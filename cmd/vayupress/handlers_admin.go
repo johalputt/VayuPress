@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/johalputt/vayupress/internal/api"
 	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
@@ -151,13 +152,13 @@ func (a *App) handleAdminCachePurge(w http.ResponseWriter, r *http.Request) {
 	purged := 0
 	purgeType := "targeted"
 	if slug != "" {
-		if !isValidSlug(slug) {
+		if !api.IsValidSlug(slug) {
 			writeAPIError(w, r, 400, "invalid_slug", "invalid slug", "https://docs.vayupress.com/api/cache")
 			return
 		}
 		var tags string
 		dbpkg.DB.QueryRow(`SELECT tags FROM articles WHERE slug=?`, slug).Scan(&tags)
-		render.CachePurge(slug, splitTags(tags), generateSitemap, generateRSS, generateRobots)
+		render.CachePurge(slug, api.SplitTags(tags), generateSitemap, generateRSS, generateRobots)
 		purged = 1
 	} else {
 		purgeType = "full"
@@ -203,7 +204,7 @@ func (a *App) handleAdminCachePurge(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) handleArticlePage(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
-	if !isValidSlug(slug) {
+	if !api.IsValidSlug(slug) {
 		http.NotFound(w, r)
 		return
 	}
@@ -223,7 +224,7 @@ func (a *App) handleArticlePage(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	art.Tags = splitTags(tagsStr)
+	art.Tags = api.SplitTags(tagsStr)
 	layout := render.DetectLayout(art, r, isAdmin)
 	html, err := render.RenderArticleWithLayout(art, layout)
 	if err != nil {

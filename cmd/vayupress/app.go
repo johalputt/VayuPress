@@ -15,6 +15,7 @@ import (
 	"github.com/microcosm-cc/bluemonday"
 	"github.com/sony/gobreaker"
 
+	"github.com/johalputt/vayupress/internal/api"
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/logging"
@@ -31,6 +32,9 @@ type App struct {
 
 	// Sanitization
 	policy *bluemonday.Policy
+
+	// Article business logic
+	articles *api.ArticleService
 
 	// Meilisearch
 	meiliCB *gobreaker.CircuitBreaker

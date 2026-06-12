@@ -15,8 +15,9 @@ import (
 // ArticleService owns all business logic for article CRUD. Handlers call
 // service methods; the service owns DB access and queue dispatch.
 type ArticleService struct {
-	DB      *sql.DB
-	Enqueue func(art dbpkg.Article, op string) error
+	DB             *sql.DB
+	Enqueue        func(art dbpkg.Article, op string) error
+	StorageCheckFn func() (used, quota int64) // nil = skip quota check
 }
 
 // CreateResult is returned after a successful create operation.
@@ -57,16 +58,16 @@ type TagCount struct {
 	Count int    `json:"count"`
 }
 
-// ErrNotFound is returned when an article slug does not exist.
-var ErrNotFound = fmt.Errorf("not found")
-
-// ErrSlugConflict is returned when the slug is already taken.
-var ErrSlugConflict = fmt.Errorf("slug already exists")
-
 // Create validates and enqueues a new article. Returns (result, error).
 func (s *ArticleService) Create(title, slug, content string, tags []string) (CreateResult, error) {
 	if err := ValidateArticleInput(title, slug, content, tags); err != nil {
 		return CreateResult{}, err
+	}
+	if s.StorageCheckFn != nil {
+		used, quota := s.StorageCheckFn()
+		if used >= quota {
+			return CreateResult{}, ErrStorageQuota
+		}
 	}
 	var count int
 	s.DB.QueryRow(`SELECT COUNT(1) FROM articles WHERE slug=?`, slug).Scan(&count)
@@ -88,7 +89,7 @@ func (s *ArticleService) Create(title, slug, content string, tags []string) (Cre
 // have duplicate slugs. Returns counts and per-item skip reasons.
 func (s *ArticleService) BulkCreate(items []BulkCreateItem) (BulkResult, error) {
 	if len(items) > 1000 {
-		return BulkResult{}, fmt.Errorf("max 1000 articles per request")
+		return BulkResult{}, ErrBulkLimit
 	}
 	res := BulkResult{}
 	for _, in := range items {
@@ -172,7 +173,7 @@ func (s *ArticleService) Delete(slug string) (dbpkg.Article, error) {
 // Get returns the article for the given slug.
 func (s *ArticleService) Get(slug string) (dbpkg.Article, error) {
 	if !IsValidSlug(slug) {
-		return dbpkg.Article{}, fmt.Errorf("invalid slug")
+		return dbpkg.Article{}, ErrInvalidSlug
 	}
 	var art dbpkg.Article
 	var tagsStr string

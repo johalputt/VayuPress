@@ -24,6 +24,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/microcosm-cc/bluemonday"
 
+	"github.com/johalputt/vayupress/internal/api"
 	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
@@ -39,10 +40,7 @@ var Version = "1.0.0-p15"
 var bootTime = time.Now()
 
 // Immutable package-level values (compiled once, never mutated).
-var (
-	slugRe    = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,198}[a-z0-9]$|^[a-z0-9]$`)
-	htmlTagRe = regexp.MustCompile(`<[^>]+>`)
-)
+var htmlTagRe = regexp.MustCompile(`<[^>]+>`)
 
 // =============================================================================
 // Magic-number file-type verification
@@ -96,44 +94,6 @@ func readJSONDirect(r *http.Request, v interface{}) error {
 	defer r.Body.Close()
 	return json.NewDecoder(io.LimitReader(r.Body, 10<<20)).Decode(v)
 }
-
-func splitTags(s string) []string {
-	if s == "" {
-		return []string{}
-	}
-	parts := strings.Split(s, ",")
-	out := make([]string, 0, len(parts))
-	for _, p := range parts {
-		p = strings.TrimSpace(p)
-		if p != "" {
-			out = append(out, p)
-		}
-	}
-	return out
-}
-
-func validateArticleInput(title, slug, content string, tags []string) error {
-	if title == "" || len(title) > 500 {
-		return fmt.Errorf("title required (1–500 chars)")
-	}
-	if !isValidSlug(slug) {
-		return fmt.Errorf("invalid slug")
-	}
-	if content == "" || len(content) > 5_000_000 {
-		return fmt.Errorf("content required (1 byte – 5 MB)")
-	}
-	if len(tags) > 20 {
-		return fmt.Errorf("max 20 tags")
-	}
-	for _, t := range tags {
-		if len(t) > 100 {
-			return fmt.Errorf("tag too long: %q", t)
-		}
-	}
-	return nil
-}
-
-func isValidSlug(s string) bool { return slugRe.MatchString(s) }
 
 func newUUID() string {
 	b := make([]byte, 16)
@@ -232,6 +192,14 @@ func main() {
 	}
 	logging.LogInfo("main", "database ready — WAL adaptive + migrations + checksum drift verified (ADR-0033/0034)")
 
+	a.articles = &api.ArticleService{
+		DB:      dbpkg.DB,
+		Enqueue: api.MakeEnqueueFn(dbpkg.DB),
+		StorageCheckFn: func() (int64, int64) {
+			return dbpkg.StorageUsedBytes(), dbpkg.StorageQuotaBytes()
+		},
+	}
+
 	if n, err := dbpkg.DB.Exec(`UPDATE write_jobs SET status='pending' WHERE status='processing'`); err == nil {
 		if rows, _ := n.RowsAffected(); rows > 0 {
 			logging.LogInfo("main", fmt.Sprintf("recovered %d stale processing jobs", rows))
@@ -259,7 +227,7 @@ func main() {
 				var tagsStr string
 				if dbpkg.DB.QueryRow(`SELECT id,title,slug,content,tags,created_at,updated_at FROM articles WHERE slug=?`, s).
 					Scan(&art.ID, &art.Title, &art.Slug, &art.Content, &tagsStr, &art.CreatedAt, &art.UpdatedAt) == nil {
-					art.Tags = splitTags(tagsStr)
+					art.Tags = api.SplitTags(tagsStr)
 					a.indexArticle(art)
 				}
 				render.CachePurge(s, nil, generateSitemap, generateRSS, generateRobots)
@@ -299,7 +267,7 @@ func main() {
 
 	go func() {
 		logging.LogInfo("cache-warm", "starting...")
-		render.WarmCache(splitTags)
+		render.WarmCache(api.SplitTags)
 		generateSitemap()
 		generateRSS()
 		generateRobots()
