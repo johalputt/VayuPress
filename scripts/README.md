@@ -8,8 +8,8 @@ This directory contains deployment and operational scripts for VayuPress.
 
 The primary deployment script. Installs and configures a full VayuPress stack on Ubuntu 24.04 LTS.
 
-**Implements**: VayuPress Governance Constitution v6.0 — Prompts 1–8  
-**Version**: v1.0.0-p8
+**Implements**: VayuPress Governance Constitution v6.0 — Prompts 1–12  
+**Version**: v1.0.0-p12
 
 **Usage**:
 ```bash
@@ -36,7 +36,7 @@ sudo ./scripts/deploy-vayupress.sh --upgrade
 10. Cron jobs: nightly backup, orphan cleanup, restore validation
 11. Smoke tests + admin credential printout
 
-**Governance compliance** (v1.0.0-p8):
+**Governance compliance** (v1.0.0-p12):
 
 | ADR | Description |
 |-----|-------------|
