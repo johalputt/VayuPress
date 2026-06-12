@@ -24,7 +24,7 @@ sudo ./scripts/deploy-vayupress.sh --upgrade
 ```
 
 **What it installs** (in order):
-1. System dependencies (nginx, sqlite3, certbot, fail2ban, ufw, Go 1.23)
+1. System dependencies (nginx, sqlite3, certbot, fail2ban, ufw, Go 1.25)
 2. Meilisearch (optional full-text search)
 3. Isso (self-hosted comment server)
 4. Self-hosted fonts — Inter + IBM Plex Mono, zero telemetry (ADR-0002)

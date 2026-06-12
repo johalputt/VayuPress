@@ -20,7 +20,7 @@
 #   Community, Ethics) and carries forward all P1–P8 compliance.
 #
 #   Stack:
-#     • Go 1.23             — HTTP server, write-queue workers, cache renderer
+#     • Go 1.25             — HTTP server, write-queue workers, cache renderer
 #     • SQLite (WAL)        — Primary and preferred database (SQLite-first doctrine)
 #     • Meilisearch         — Optional sub-50ms full-text search (graceful degradation)
 #     • Nginx               — Static-file serving (zero Go overhead for cached pages)
@@ -101,7 +101,7 @@
 #             • Canonical Go source mirrored to cmd/vayupress/main.go with
 #               committed go.mod/go.sum; native go build/vet/test now work — ADR-0044
 #             • scripts/sync-source.sh enforces parity (CI fails on drift) — ADR-0044
-#             • Dependency versions pinned (no @latest) for reproducible Go 1.23
+#             • Dependency versions pinned (no @latest) for reproducible Go 1.25
 #               builds; canonical source normalized gofmt-clean — ADR-0044
 #
 #   REQUIREMENTS
@@ -236,11 +236,11 @@ run apt-get install -y -qq \
 ok "Base dependencies installed."
 
 # =============================================================================
-# STEP 2 ── Go 1.23.5
+# STEP 2 ── Go 1.25.11
 # =============================================================================
 step "Go runtime"
 
-GO_VERSION="1.23.5"
+GO_VERSION="1.25.11"
 GO_TGZ="go${GO_VERSION}.linux-amd64.tar.gz"
 
 if command -v go &>/dev/null && go version 2>/dev/null | grep -q "go${GO_VERSION}"; then

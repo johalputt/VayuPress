@@ -40,16 +40,23 @@ breaking the self-contained install model.
    `gofmt` so the mirror passes the formatting gate. Compactness was sacrificed for
    tool-compatibility; the deploy script grew accordingly.
 
-5. **Pinned, govulncheck-clean dependencies.** The deploy script pins exact dependency
-   versions matching the committed `go.mod` (e.g. `go-chi/chi/v5@v5.1.0`,
-   `golang.org/x/crypto@v0.39.0`, `golang.org/x/net@v0.41.0`) instead of `@latest`.
-   This makes deploys reproducible. The CI `govulncheck` gate flagged a reachable
-   vulnerability in `golang.org/x/net/html` (pulled in by bluemonday); the fix
-   (`x/net >= 0.41.0`, `x/crypto >= 0.39.0`) requires Go 1.23, so per the Constitution's
-   priority order (**Security > Simplicity > Performance**) the pinned toolchain was
-   bumped from Go 1.22.5 to **Go 1.23.5** across `go.mod`, the deploy script's
-   `GO_VERSION`, and the CI `setup-go` version. Using `@latest` would also have pulled
-   chi v5.3.0 (Go 1.23) unpredictably — pinning removes that risk.
+5. **Pinned, govulncheck-clean dependencies + latest-stable toolchain.** The deploy
+   script pins exact dependency versions matching the committed `go.mod` (e.g.
+   `go-chi/chi/v5@v5.1.0`, `golang.org/x/crypto@v0.39.0`, `golang.org/x/net@v0.41.0`)
+   instead of `@latest`, making deploys reproducible. Bringing up the CI `govulncheck`
+   gate surfaced two classes of reachable vulnerabilities:
+   - **Third-party**: `golang.org/x/net/html` (pulled in by bluemonday) — fixed by
+     `x/net >= 0.41.0` / `x/crypto >= 0.39.0`.
+   - **Standard library**: `crypto/x509.Verify`, `html/template.Execute`,
+     `net/textproto.ReadMIMEHeader`, `net.Listen`, `net.Resolver.LookupIPAddr`,
+     all reachable from our HTTP/template/TLS paths — fixed only in newer Go releases.
+
+   Per the Constitution's priority order (**Security > Simplicity > Performance**), the
+   build toolchain was moved to the **latest stable Go (1.25.11)** across the deploy
+   script's `GO_VERSION` and the CI `setup-go` version (`go-version: '1.25'`, which
+   tracks the newest patch and therefore the newest stdlib security fixes). The
+   committed `go.mod` keeps a `go 1.23.0` minimum directive. Using `@latest` for deps
+   would also have pulled chi v5.3.0 unpredictably — pinning removes that risk.
 
 6. **Progressive split.** This ADR covers the first stage: a single `main` package
    extracted with **zero behavior change** (verified: `go build`, `go vet`,

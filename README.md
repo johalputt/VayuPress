@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/johalputt/vayupress/actions/workflows/ci.yml/badge.svg)](https://github.com/johalputt/vayupress/actions/workflows/ci.yml)
 [![Security](https://github.com/johalputt/vayupress/actions/workflows/security.yml/badge.svg)](https://github.com/johalputt/vayupress/actions/workflows/security.yml)
-[![Go](https://img.shields.io/badge/go-1.23-blue)](https://go.dev/)
+[![Go](https://img.shields.io/badge/go-1.25-blue)](https://go.dev/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Constitution](https://img.shields.io/badge/constitution-v6.0%20P1--P12-blueviolet)](GOVERNANCE-CONSTITUTION.md)
 
@@ -35,7 +35,7 @@ VayuPress ("Vayu" — Sanskrit for wind/speed) is modern publishing infrastructu
 
 | Component       | Role                                      |
 |-----------------|-------------------------------------------|
-| Go 1.23         | HTTP server, write-queue workers, renderer|
+| Go 1.25         | HTTP server, write-queue workers, renderer|
 | SQLite (WAL)    | Primary database (SQLite-first doctrine)  |
 | Meilisearch     | Optional full-text search (<50ms p95)     |
 | Nginx           | Static-file serving, TLS termination      |
@@ -101,7 +101,7 @@ Run benchmarks locally: `make bench`
 ```
 vayupress/
 ├── cmd/vayupress/main.go      # Real Go source (mirrors the deploy heredoc, P13)
-├── go.mod / go.sum            # Pinned dependencies (Go 1.23)
+├── go.mod / go.sum            # Pinned dependencies (Go 1.25)
 ├── scripts/
 │   ├── deploy-vayupress.sh    # Canonical self-contained installer (curl | bash)
 │   └── sync-source.sh         # Keeps cmd/vayupress/main.go == deploy heredoc

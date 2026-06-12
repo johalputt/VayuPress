@@ -25,16 +25,20 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 - Deploy script pins exact dependency versions (no `@latest`): `chi@v5.1.0`,
   `go-sqlite3@v1.14.45`, `bluemonday@v1.0.27`, `gobreaker@v1.0.0`, `cors@v1.11.1`,
   `x/crypto@v0.39.0`, `x/net@v0.41.0` — reproducible and govulncheck-clean.
-- **Toolchain bumped Go 1.22.5 → 1.23.5** (`go.mod`, deploy `GO_VERSION`, CI
-  `setup-go`) to carry the `x/net/html` security fix, which requires Go 1.23.
+- **Toolchain moved to latest stable Go 1.25.11** (deploy `GO_VERSION`, CI
+  `setup-go: '1.25'`) so the build carries the newest standard-library security
+  fixes; `go.mod` keeps a `go 1.23.0` minimum directive.
 - `Makefile`: `build`/`dev` target `./cmd/vayupress`; added `sync` and `sync-check`
   targets; `build` now depends on `sync-check`; `check-adrs` requires ADR-0044;
   `check-governance` verifies Prompt 13.
 
 ### Fixed
-- **Reachable dependency vulnerability**: `govulncheck` flagged `golang.org/x/net/html`
-  (pulled in by bluemonday). Fixed by bumping `x/net` to v0.41.0 / `x/crypto` to v0.39.0
-  (requires Go 1.23). Security outranks Simplicity per the Constitution priority order.
+- **Reachable vulnerabilities (govulncheck)**: flagged `golang.org/x/net/html` (via
+  bluemonday) and several standard-library symbols (`crypto/x509.Verify`,
+  `html/template.Execute`, `net/textproto.ReadMIMEHeader`, `net.Listen`,
+  `net.Resolver.LookupIPAddr`). Fixed by bumping `x/net`→v0.41.0 / `x/crypto`→v0.39.0
+  and building with the latest stable Go (1.25.11). Security outranks Simplicity per
+  the Constitution priority order.
 - **Latent deploy failure**: deploy script previously used `go get ...@latest`, which
   would pull `chi v5.3.0` onto the install unpredictably. Now pinned to exact versions.
 

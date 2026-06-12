@@ -6,7 +6,7 @@ A new developer should be able to run `make dev` in under 10 minutes and make th
 
 ## Prerequisites
 
-- Go 1.23+
+- Go 1.23+ (CI & deploy build with the latest stable Go, currently 1.25.x)
 - SQLite3 (`apt install sqlite3`)
 - (Optional) Meilisearch for full-text search testing
 
