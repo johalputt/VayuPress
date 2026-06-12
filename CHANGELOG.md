@@ -6,6 +6,30 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [1.0.0-p15] — 2026-06-12
+
+### Added (Prompt 15 — Runtime Architecture & Service Boundaries)
+- **`internal/plugins` package**: plugin pool (ADR-0032 hardening) extracted from `main.go`
+  into a standalone, independently testable package with `Registry`, `Manager`, `HookFunc`.
+  `main.go` plugin section reduced from ~150 lines to ~15 lines.
+- **Unit tests for all internal packages** (`go test -race ./internal/...` passes):
+  `metrics`, `auth`, `logging`, `config`, `plugins`, `health`, `queue`.
+- **ADR-0046** — Runtime Architecture & Service Boundaries.
+
+### Fixed
+- SQLite migration compatibility: removed `IF NOT EXISTS` from `ALTER TABLE ADD COLUMN`
+  in migrations 003 and 004 (not supported on older SQLite versions present in CI).
+
+---
+
+## [1.0.0-p14] — 2026-06-12
+
+### Added (Prompt 14 — Internal Package Decomposition)
+- Split `cmd/vayupress/main.go` into 8 `internal/` packages with compiler-enforced boundaries.
+- **ADR-0045** — Internal Package Decomposition.
+
+---
+
 ## [1.0.0-p13] — 2026-06-12
 
 ### Added (Prompt 13 — Repository Decomposition & Tooling Maturity)

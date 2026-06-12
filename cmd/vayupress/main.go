@@ -1,6 +1,6 @@
-// VayuPress — main.go  v1.0.0-p14
+// VayuPress — main.go  v1.0.0-p15
 // Bootstrap, route wiring, and graceful shutdown only.
-// Domain logic lives in internal/* packages (ADR-0045).
+// Domain logic lives in internal/* packages (ADR-0045, ADR-0046).
 package main
 
 import (
@@ -23,7 +23,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
-	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -44,6 +43,7 @@ import (
 	"github.com/johalputt/vayupress/internal/health"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/metrics"
+	"github.com/johalputt/vayupress/internal/plugins"
 	"github.com/johalputt/vayupress/internal/queue"
 	"github.com/johalputt/vayupress/internal/render"
 )
@@ -146,155 +146,23 @@ func verifyMagicNumber(data []byte) (string, error) {
 }
 
 // =============================================================================
-// Plugin pool (ADR-0032) — not yet extracted to its own package
+// Plugin subsystem (ADR-0032, ADR-0046) — internal/plugins
 // =============================================================================
 
-type HookFunc func(ctx context.Context, payload map[string]interface{}) error
-type hookRegistry struct {
-	mu    sync.RWMutex
-	hooks map[string][]HookFunc
-}
-
-var pluginHooks = &hookRegistry{hooks: make(map[string][]HookFunc)}
-
-func RegisterHook(event string, fn HookFunc) {
-	pluginHooks.mu.Lock()
-	pluginHooks.hooks[event] = append(pluginHooks.hooks[event], fn)
-	pluginHooks.mu.Unlock()
-}
-
-func fireHookSafe(event string, fn HookFunc, ctx context.Context, payload map[string]interface{}) (err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			stack := string(debug.Stack())
-			if len(stack) > 2048 {
-				stack = stack[:2048]
-			}
-			atomic.AddInt64(&metrics.MetricPluginPanics, 1)
-			logging.LogJSON(logging.LogFields{Level: "error", Component: "plugin-hook", Msg: fmt.Sprintf("PANIC in hook %s: %v", event, r), Error: stack})
-			err = fmt.Errorf("plugin panic in hook %s: %v", event, r)
-		}
-	}()
-	return fn(ctx, payload)
-}
-
-const (
-	pluginPoolSize    = 4
-	pluginQueueDepth  = 32
-	pluginHookTimeout = 2 * time.Second
-	pluginFailThresh  = 5
-)
-
-type pluginJob struct {
-	event   string
-	fn      HookFunc
-	payload map[string]interface{}
-}
-
 var (
-	pluginQueue    chan pluginJob
-	pluginFailures sync.Map
-	pluginDisabled sync.Map
-	pluginCtx      context.Context
-	pluginCancel   context.CancelFunc
-	workerPluginWg sync.WaitGroup
+	pluginRegistry = plugins.NewRegistry()
+	pluginManager  = plugins.New(pluginRegistry)
 )
 
-func initPluginPool() {
-	pluginCtx, pluginCancel = context.WithCancel(context.Background())
-	pluginQueue = make(chan pluginJob, pluginQueueDepth)
-	for i := 0; i < pluginPoolSize; i++ {
-		workerPluginWg.Add(1)
-		go func(workerID int) {
-			defer workerPluginWg.Done()
-			defer func() {
-				if r := recover(); r != nil {
-					atomic.AddInt64(&metrics.MetricPluginPanics, 1)
-					logging.LogJSON(logging.LogFields{Level: "error", Component: "plugin-pool", Msg: fmt.Sprintf("worker-%d PANIC: %v — worker terminated", workerID, r)})
-				}
-			}()
-			for {
-				select {
-				case <-pluginCtx.Done():
-					for {
-						select {
-						case job, ok := <-pluginQueue:
-							if !ok {
-								return
-							}
-							runPluginJob(job)
-						default:
-							return
-						}
-					}
-				case job, ok := <-pluginQueue:
-					if !ok {
-						return
-					}
-					runPluginJob(job)
-				}
-			}
-		}(i)
-	}
-	logging.LogInfo("plugin-pool", fmt.Sprintf("P8 hardened: workers=%d queue=%d (ADR-0032)", pluginPoolSize, pluginQueueDepth))
-}
-
-func runPluginJob(job pluginJob) {
-	key := fmt.Sprintf("%s:%p", job.event, job.fn)
-	ctx, cancel := context.WithTimeout(pluginCtx, pluginHookTimeout)
-	err := fireHookSafe(job.event, job.fn, ctx, job.payload)
-	cancel()
-	if err != nil {
-		v, _ := pluginFailures.LoadOrStore(key, int64(0))
-		newCount := v.(int64) + 1
-		pluginFailures.Store(key, newCount)
-		if newCount >= pluginFailThresh {
-			pluginDisabled.Store(key, true)
-			atomic.AddInt64(&metrics.MetricPluginDisabled, 1)
-			logging.LogJSON(logging.LogFields{Level: "warn", Component: "plugin-pool", Msg: fmt.Sprintf("hook disabled after %d failures: %s", newCount, job.event)})
-		}
-	} else {
-		pluginFailures.Store(key, int64(0))
-	}
-}
-
-func shutdownPluginPool() {
-	if pluginCancel == nil {
-		return
-	}
-	logging.LogInfo("plugin-pool", "cancelling context and closing queue")
-	pluginCancel()
-	close(pluginQueue)
-	drainDone := make(chan struct{})
-	go func() { workerPluginWg.Wait(); close(drainDone) }()
-	select {
-	case <-drainDone:
-		logging.LogInfo("plugin-pool", "all workers drained")
-	case <-time.After(10 * time.Second):
-		logging.LogJSON(logging.LogFields{Level: "warn", Component: "plugin-pool", Msg: "drain timeout (10s) exceeded"})
-	}
+func RegisterHook(event string, fn plugins.HookFunc) {
+	pluginRegistry.Register(event, fn)
 }
 
 func FireHook(event string, payload map[string]interface{}) {
 	if os.Getenv("VAYU_PLUGINS_ENABLED") != "true" {
 		return
 	}
-	pluginHooks.mu.RLock()
-	fns := pluginHooks.hooks[event]
-	pluginHooks.mu.RUnlock()
-	for _, fn := range fns {
-		key := fmt.Sprintf("%s:%p", event, fn)
-		if disabled, ok := pluginDisabled.Load(key); ok && disabled.(bool) {
-			continue
-		}
-		job := pluginJob{event: event, fn: fn, payload: payload}
-		select {
-		case pluginQueue <- job:
-		default:
-			atomic.AddInt64(&metrics.MetricPluginPoolDropped, 1)
-			logging.LogJSON(logging.LogFields{Level: "warn", Component: "plugin-pool", Msg: fmt.Sprintf("hook dropped — queue full: %s", event)})
-		}
-	}
+	pluginManager.Fire(event, payload)
 }
 
 // =============================================================================
@@ -1685,7 +1553,7 @@ func main() {
 	writeADRs(docsDir)
 
 	if os.Getenv("VAYU_PLUGINS_ENABLED") == "true" {
-		initPluginPool()
+		pluginManager.Start(plugins.DefaultPoolSize, plugins.DefaultQueueDepth)
 	}
 
 	if err := dbpkg.Init(); err != nil {
@@ -1899,7 +1767,7 @@ func main() {
 
 		// Phase 3: stop plugin pool
 		if os.Getenv("VAYU_PLUGINS_ENABLED") == "true" {
-			shutdownPluginPool()
+			pluginManager.Shutdown()
 			logging.LogInfo("main", "phase 3 complete — plugin pool stopped")
 		}
 

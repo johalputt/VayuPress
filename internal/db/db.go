@@ -294,9 +294,9 @@ CREATE TABLE IF NOT EXISTS write_jobs(id INTEGER PRIMARY KEY AUTOINCREMENT,artic
 CREATE INDEX IF NOT EXISTS idx_jobs_status  ON write_jobs(status,created_at);
 CREATE INDEX IF NOT EXISTS idx_jobs_retries ON write_jobs(retries);`
 	upSchemaMig := `CREATE TABLE IF NOT EXISTS schema_migrations(id INTEGER PRIMARY KEY AUTOINCREMENT,version TEXT UNIQUE NOT NULL,checksum TEXT NOT NULL DEFAULT '',applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP);`
-	upRetryAt := `ALTER TABLE write_jobs ADD COLUMN IF NOT EXISTS retry_at DATETIME;`
-	upReplayFields := `ALTER TABLE write_jobs ADD COLUMN IF NOT EXISTS replay_count INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE write_jobs ADD COLUMN IF NOT EXISTS dead_reason TEXT NOT NULL DEFAULT '';`
+	upRetryAt := `ALTER TABLE write_jobs ADD COLUMN retry_at DATETIME;`
+	upReplayFields := `ALTER TABLE write_jobs ADD COLUMN replay_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE write_jobs ADD COLUMN dead_reason TEXT NOT NULL DEFAULT '';`
 	upAuditLog := `CREATE TABLE IF NOT EXISTS audit_log(id INTEGER PRIMARY KEY AUTOINCREMENT,ts DATETIME NOT NULL,action TEXT NOT NULL,actor TEXT NOT NULL DEFAULT '',target TEXT NOT NULL DEFAULT '',detail TEXT NOT NULL DEFAULT '');
 CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_log(ts DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_log(action);
