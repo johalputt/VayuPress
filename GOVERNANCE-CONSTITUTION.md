@@ -1741,8 +1741,166 @@ See **ADR-0044** for the decomposition decision record.
 ---
 ---
 
+# **📦 PROMPT 14: INTERNAL PACKAGE DECOMPOSITION**
+
+> *"A 3,000-line `main.go` is not a codebase — it is a liability. Every line that cannot be independently tested, reasoned about, or replaced is technical debt with a clock on it."*
+
+## **P14 Purpose**
+
+Prompt 13 gave VayuPress a real Go source tree with `go build`, `go test`, `govulncheck`, and CI enforcement. Prompt 14 completes the structural work: splitting the monolithic `cmd/vayupress/main.go` into well-bounded `internal/` packages with clean dependency hygiene, independent testability, and explicit interfaces.
+
+**This is not a feature prompt. This is a discipline prompt.**
+
+---
+
+## **P14 Architecture Contract**
+
+### Target Package Layout
+
+```
+github.com/johalputt/vayupress/
+├── cmd/vayupress/main.go     # ≤ 500 lines: wiring, bootstrap, route registration, shutdown
+├── internal/
+│   ├── logging/              # Structured JSON logging (leaf — no deps)
+│   ├── config/               # Configuration loading and validation (leaf — no deps)
+│   ├── metrics/              # Atomic counters, latency histograms (leaf — no deps)
+│   ├── db/                   # SQLite, migrations, WORM audit log
+│   ├── auth/                 # API key auth, CSRF, rate limiting, Argon2id, bucket sweeper
+│   ├── render/               # Template rendering, cache, CSP nonce, CSS assets
+│   ├── queue/                # Write queue, dead-letter, replay, poison job quarantine
+│   └── health/               # All /health/* handlers with schema versioning
+```
+
+### Dependency Graph (Strictly Acyclic)
+
+```
+internal/logging   (leaf)
+internal/config    (leaf)
+internal/metrics   (leaf — defines all shared atomic counters and histogram types)
+    ↑
+internal/db        → logging, config
+internal/auth      → logging, config, metrics
+    ↑
+internal/render    → logging, config, db, metrics
+internal/queue     → logging, config, db, metrics  [render injected via callback]
+    ↑
+internal/health    → config, db, metrics, queue, render
+    ↑
+cmd/vayupress/main.go → all internal packages
+```
+
+---
+
+## **P14 Non-Negotiables**
+
+1. **No behavioral changes.** Extraction only — no redesigns, no new features, no API changes.
+2. **No garbage-drawer packages.** `internal/utils`, `internal/common`, `internal/helpers` are permanently banned.
+3. **Dependency graph must be acyclic.** Any circular dependency is an architectural defect. Fix it with dependency injection, not with a shared "glue" package.
+4. **Each package must be independently buildable:** `go build ./internal/logging/...` must work.
+5. **Each package must have at least one test file** after extraction.
+6. **`cmd/vayupress/main.go` must be ≤ 500 lines** after P14 is complete.
+7. **All atomic counters live in `internal/metrics`.** No package-level counters scattered across the codebase.
+8. **Cross-package state is injected, not global** where feasible. Use constructor/parameter injection over implicit package-level references.
+9. **Deploy script updated**: After internal package decomposition, the deploy script builds from the committed source tree (`go build ./cmd/vayupress/`) rather than the embedded single-file heredoc. The single-file embed model (P13) is superseded by the real source tree model.
+10. **CI governs the split**: Every PR that touches `internal/` must pass `go build ./...`, `go vet ./...`, `go test -race ./...`, and `govulncheck ./...`.
+
+---
+
+## **P14 Package Contracts**
+
+### `internal/logging`
+- Exports: `LogFields`, `LogJSON()`, `LogInfo()`, `LogError()`
+- Zero imports from other internal packages
+- All callers use these instead of raw `log.Println`
+
+### `internal/config`
+- Exports: `Cfg` struct, `Load()`, `EnvOr()`, `GetEnvAsInt()`
+- Zero imports from other internal packages
+- All config access goes through the `Cfg` struct, no `os.Getenv` scattered elsewhere
+
+### `internal/metrics`
+- Exports: All `MetricXxx int64` atomic counters, `Histogram` type, all histogram instances (`HTTP`, `Render`, `QueueJob`, `SQLiteWrite`)
+- Zero imports from other internal packages
+- All metric mutation goes through `atomic.AddInt64(&metrics.MetricXxx, 1)`
+
+### `internal/db`
+- Exports: `Article` struct, `DB *sql.DB`, `Init()`, `AuditLog()`, `AuditActor()`, migration functions
+- Depends: logging, config
+- The `Article` struct is the canonical domain model — all other packages that handle articles import it from here
+
+### `internal/auth`
+- Exports: `RequireAPIKey()`, `RateLimitMiddleware()`, `CSRFTokenMiddleware()`, `HashSecretArgon2id()`, `VerifySecretArgon2id()`, `StartBucketSweeper()`
+- Depends: logging, config, metrics
+- Owns all authentication state: authFailBuckets, rateBuckets, trustedIPs, csrfSecret
+
+### `internal/render`
+- Exports: `RenderArticle()`, `RenderArticleWithLayout()`, `DetectLayout()`, `CSPNonce()`, `WriteCSSAssets()`, `WarmCache()`, `CachePurge()`, `Init()`
+- Depends: logging, config, db, metrics
+- Owns: articleTmpl, bluemonday policy, CSS constants and hashes, cacheWrite
+
+### `internal/queue`
+- Exports: `WriteJob`, `DoneCh`, `StartWorkerPool()`, `HandleQueueStatus()`, `HandleQueueReplay()`
+- Depends: logging, config, db, metrics
+- `StartWorkerPool()` accepts a `renderFn func(db.Article) error` — render is injected, not imported
+- Owns: dead-letter logic, replay limits, poison job quarantine
+
+### `internal/health`
+- Exports: `HandleHealthLiveness()`, `HandleHealthReady()`, `HandleHealthDB()`, `HandleHealthWorkers()`, `HandleHealthStorage()`, `HandleHealthMigrations()`, `HandleHealthEthics()`, `HandleHealthDependencies()`, `HandleHealthSearch()`, `HandleHealthQueue()`
+- Depends: config, db, metrics, queue, render
+- Schema version constant `healthSchemaVersion = "1"` lives here
+
+---
+
+## **P14 Deploy Script Evolution**
+
+After P14, the install UX changes from embedding a single Go file to building from source:
+
+```bash
+# P13 (heredoc model — single file embedded in deploy script)
+# The deploy script contained cat > main.go << 'GOEOF' ... GOEOF
+
+# P14 (source tree model — build from committed packages)
+git clone --depth=1 https://github.com/johalputt/vayupress.git /tmp/vayupress-build
+cd /tmp/vayupress-build
+CGO_ENABLED=1 go build -ldflags="-s -w" -trimpath -o /usr/local/bin/vayupress ./cmd/vayupress/
+```
+
+The `scripts/sync-source.sh` script and `P13 · Source Sync` CI job are retired in P14. The `P14 · Native Go Build/Vet/Test` job (rename of the P13 job) continues and adds `golangci-lint`.
+
+---
+
+## **P14 Testing Requirements**
+
+| Test Type | Threshold | Notes |
+|-----------|-----------|-------|
+| Unit tests per package | ≥ 1 test file per `internal/` package | Minimum viable; full coverage in follow-up |
+| Race detector | Zero races | `go test -race ./...` |
+| Integration | Passes | `go test -tags integration ./...` |
+| Govulncheck | No High/Critical CVEs | Runs in CI |
+| golangci-lint | Zero errors | Added to CI in P14 |
+
+---
+
+## **P14 CI Gates Added**
+
+- `golangci-lint run ./...` — enforces code quality across all packages
+- `go test -race ./internal/...` — per-package race detection
+- Benchmark regression gate: `make bench` output compared against baseline
+- Restore-boot integration test: deploy script boots from clean state
+
+---
+
+## **P14 Role**
+
+Default stance: *"If a contributor cannot understand what `internal/queue` does without reading 2,000 lines of context, the decomposition is not done. Every package must have a README, a clear responsibility, and a test."*
+
+See **ADR-0045** for the internal package decomposition decision record.
+
+---
+---
+
 # **📌 HOW TO USE THIS CONSTITUTION & PROMPTS**
-This document defines **what we are** and **what we will never be**. For specific operational details, refer to the derived governance documents. The **13 Prompts** are the operational DNA; use them in every decision:
+This document defines **what we are** and **what we will never be**. For specific operational details, refer to the derived governance documents. The **14 Prompts** are the operational DNA; use them in every decision:
 
 1. Start with **Prompt 1 (Architecture)**.
 2. Run **Prompt 2 (Performance)** for speed/memory changes.
@@ -1755,8 +1913,9 @@ This document defines **what we are** and **what we will never be**. For specifi
 9. Prioritize **Prompt 9 (Security)** always.
 10. Automate with **Prompt 10 (CI)**.
 11. Govern community with **Prompt 11 (Community)**.
-12. **New**: Uphold ethics with **Prompt 12 (Ethical Governance)**.
-13. **New**: Keep the codebase navigable with **Prompt 13 (Repository Decomposition & Tooling Maturity)**.
+12. Uphold ethics with **Prompt 12 (Ethical Governance)**.
+13. Keep the codebase navigable with **Prompt 13 (Repository Decomposition & Tooling Maturity)**.
+14. **New**: Enforce structural integrity with **Prompt 14 (Internal Package Decomposition)**.
 
 **Conflict Resolution**: Use the **Weighted Priority Order** from the Institutional Philosophy section:
 **Security = Data Integrity > Ethical Compliance > Reliability > Simplicity > Performance > DX > Feature Velocity**.
@@ -1783,9 +1942,10 @@ We now target **institutional survivability and ethical leadership**, not just a
 | Legal & Compliance           | Strong          |
 | Automation Realism           | Strong          |
 | Production Validation        | Building now    |
-| **New: Ethical Governance** | **Excellent**   |
+| Ethical Governance           | Excellent       |
+| **New: Internal Package Decomposition** | **In Progress** |
 
-We have moved from **"well-designed"** to **"operationally survivable and ethically responsible"**. The final frontier is proving these principles in production over years while maintaining our ethical standards.
+We have moved from **"well-designed"** to **"operationally survivable, ethically responsible, and structurally navigable"**. P14 completes the architectural discipline phase. The final frontier is proving these principles in production over years.
 
 ---
 
