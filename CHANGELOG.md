@@ -10,7 +10,7 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Added (Prompt 13 — Repository Decomposition & Tooling Maturity)
 - **Real Go source tree**: the application is now committed at `cmd/vayupress/main.go`
-  with committed `go.mod`/`go.sum` (pinned, Go 1.22). `git clone && go build ./...`
+  with committed `go.mod`/`go.sum` (pinned, Go 1.23). `git clone && go build ./...`
   works; IDEs index the code; `go vet`/`go test`/`gofmt`/`govulncheck` all run.
 - **Source parity enforcement**: `scripts/sync-source.sh` mirrors the canonical deploy
   heredoc to `cmd/vayupress/main.go`; `--check` mode runs in CI and fails on drift.
@@ -24,15 +24,19 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   as compact one-liners were expanded for tool-compatibility).
 - Deploy script pins exact dependency versions (no `@latest`): `chi@v5.1.0`,
   `go-sqlite3@v1.14.45`, `bluemonday@v1.0.27`, `gobreaker@v1.0.0`, `cors@v1.11.1`,
-  `x/crypto@v0.31.0` — prevents pulling versions requiring Go > 1.22.
+  `x/crypto@v0.39.0`, `x/net@v0.41.0` — reproducible and govulncheck-clean.
+- **Toolchain bumped Go 1.22.5 → 1.23.5** (`go.mod`, deploy `GO_VERSION`, CI
+  `setup-go`) to carry the `x/net/html` security fix, which requires Go 1.23.
 - `Makefile`: `build`/`dev` target `./cmd/vayupress`; added `sync` and `sync-check`
   targets; `build` now depends on `sync-check`; `check-adrs` requires ADR-0044;
   `check-governance` verifies Prompt 13.
 
 ### Fixed
+- **Reachable dependency vulnerability**: `govulncheck` flagged `golang.org/x/net/html`
+  (pulled in by bluemonday). Fixed by bumping `x/net` to v0.41.0 / `x/crypto` to v0.39.0
+  (requires Go 1.23). Security outranks Simplicity per the Constitution priority order.
 - **Latent deploy failure**: deploy script previously used `go get ...@latest`, which
-  would pull `chi v5.3.0` (requires Go 1.23) onto the pinned Go 1.22.5 install and fail
-  the build. Now pinned to compatible versions.
+  would pull `chi v5.3.0` onto the install unpredictably. Now pinned to exact versions.
 
 ---
 

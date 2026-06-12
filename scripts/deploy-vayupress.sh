@@ -20,7 +20,7 @@
 #   Community, Ethics) and carries forward all P1–P8 compliance.
 #
 #   Stack:
-#     • Go 1.22             — HTTP server, write-queue workers, cache renderer
+#     • Go 1.23             — HTTP server, write-queue workers, cache renderer
 #     • SQLite (WAL)        — Primary and preferred database (SQLite-first doctrine)
 #     • Meilisearch         — Optional sub-50ms full-text search (graceful degradation)
 #     • Nginx               — Static-file serving (zero Go overhead for cached pages)
@@ -101,7 +101,7 @@
 #             • Canonical Go source mirrored to cmd/vayupress/main.go with
 #               committed go.mod/go.sum; native go build/vet/test now work — ADR-0044
 #             • scripts/sync-source.sh enforces parity (CI fails on drift) — ADR-0044
-#             • Dependency versions pinned (no @latest) for reproducible Go 1.22
+#             • Dependency versions pinned (no @latest) for reproducible Go 1.23
 #               builds; canonical source normalized gofmt-clean — ADR-0044
 #
 #   REQUIREMENTS
@@ -236,11 +236,11 @@ run apt-get install -y -qq \
 ok "Base dependencies installed."
 
 # =============================================================================
-# STEP 2 ── Go 1.22.5
+# STEP 2 ── Go 1.23.5
 # =============================================================================
 step "Go runtime"
 
-GO_VERSION="1.22.5"
+GO_VERSION="1.23.5"
 GO_TGZ="go${GO_VERSION}.linux-amd64.tar.gz"
 
 if command -v go &>/dev/null && go version 2>/dev/null | grep -q "go${GO_VERSION}"; then
@@ -487,15 +487,17 @@ export PATH=$PATH:/usr/local/go/bin
 cd "${SRC_DIR}"
 go mod init github.com/johalputt/vayupress 2>/dev/null || true
 # P13: pinned versions — must match the committed go.mod (verified to build on
-# Go ${GO_VERSION}). Do NOT use @latest: chi v5.3.0+ requires Go 1.23 and would
-# break this Go 1.22 deploy. CI enforces parity via scripts/sync-source.sh.
+# Go ${GO_VERSION}). Do NOT use @latest. These exact versions are govulncheck-clean;
+# x/net>=0.41.0 + x/crypto>=0.39.0 carry the x/net/html security fix (require Go 1.23).
+# CI enforces parity via scripts/sync-source.sh and runs govulncheck on every push.
 go get github.com/go-chi/chi/v5@v5.1.0
 go get github.com/go-chi/chi/v5/middleware@v5.1.0
 go get github.com/mattn/go-sqlite3@v1.14.45
 go get github.com/microcosm-cc/bluemonday@v1.0.27
 go get github.com/sony/gobreaker@v1.0.0
 go get github.com/rs/cors@v1.11.1
-go get golang.org/x/crypto@v0.31.0   # P9: Argon2id secret hashing
+go get golang.org/x/crypto@v0.39.0   # P9: Argon2id secret hashing
+go get golang.org/x/net@v0.41.0      # P9: x/net/html security fix (reachable via bluemonday)
 
 # Write main.go inline
 cat > main.go << 'GOEOF'

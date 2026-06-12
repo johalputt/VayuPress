@@ -40,11 +40,16 @@ breaking the self-contained install model.
    `gofmt` so the mirror passes the formatting gate. Compactness was sacrificed for
    tool-compatibility; the deploy script grew accordingly.
 
-5. **Pinned dependencies.** The deploy script pins exact dependency versions matching
-   the committed `go.mod` (e.g. `go-chi/chi/v5@v5.1.0`, `golang.org/x/crypto@v0.31.0`)
-   instead of `@latest`. This makes deploys reproducible and prevents pulling a
-   version that requires a newer Go than the pinned `GO_VERSION` (1.22.5) — chi v5.3.0+
-   requires Go 1.23 and would have broken the deploy.
+5. **Pinned, govulncheck-clean dependencies.** The deploy script pins exact dependency
+   versions matching the committed `go.mod` (e.g. `go-chi/chi/v5@v5.1.0`,
+   `golang.org/x/crypto@v0.39.0`, `golang.org/x/net@v0.41.0`) instead of `@latest`.
+   This makes deploys reproducible. The CI `govulncheck` gate flagged a reachable
+   vulnerability in `golang.org/x/net/html` (pulled in by bluemonday); the fix
+   (`x/net >= 0.41.0`, `x/crypto >= 0.39.0`) requires Go 1.23, so per the Constitution's
+   priority order (**Security > Simplicity > Performance**) the pinned toolchain was
+   bumped from Go 1.22.5 to **Go 1.23.5** across `go.mod`, the deploy script's
+   `GO_VERSION`, and the CI `setup-go` version. Using `@latest` would also have pulled
+   chi v5.3.0 (Go 1.23) unpredictably — pinning removes that risk.
 
 6. **Progressive split.** This ADR covers the first stage: a single `main` package
    extracted with **zero behavior change** (verified: `go build`, `go vet`,
