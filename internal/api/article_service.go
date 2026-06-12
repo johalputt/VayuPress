@@ -1,21 +1,18 @@
 package api
 
 import (
-	"crypto/rand"
-	"database/sql"
-	"encoding/hex"
-	"encoding/json"
+	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 )
 
 // ArticleService owns all business logic for article CRUD. Handlers call
-// service methods; the service owns DB access and queue dispatch.
+// service methods; the service owns validation, quota checks, and queue dispatch.
+// Persistence is delegated to the injected ArticleRepository.
 type ArticleService struct {
-	DB             *sql.DB
+	Repo           ArticleRepository
 	Enqueue        func(art dbpkg.Article, op string) error
 	StorageCheckFn func() (used, quota int64) // nil = skip quota check
 }
@@ -58,8 +55,14 @@ type TagCount struct {
 	Count int    `json:"count"`
 }
 
-// Create validates and enqueues a new article. Returns (result, error).
-func (s *ArticleService) Create(title, slug, content string, tags []string) (CreateResult, error) {
+// BulkCreateItem is the input type for a single item in a bulk create.
+type BulkCreateItem struct {
+	Title, Slug, Content string
+	Tags                 []string `json:"tags"`
+}
+
+// Create validates and enqueues a new article.
+func (s *ArticleService) Create(ctx context.Context, title, slug, content string, tags []string) (CreateResult, error) {
 	if err := ValidateArticleInput(title, slug, content, tags); err != nil {
 		return CreateResult{}, err
 	}
@@ -69,9 +72,11 @@ func (s *ArticleService) Create(title, slug, content string, tags []string) (Cre
 			return CreateResult{}, ErrStorageQuota
 		}
 	}
-	var count int
-	s.DB.QueryRow(`SELECT COUNT(1) FROM articles WHERE slug=?`, slug).Scan(&count)
-	if count > 0 {
+	exists, err := s.Repo.SlugExists(ctx, slug)
+	if err != nil {
+		return CreateResult{}, err
+	}
+	if exists {
 		return CreateResult{}, ErrSlugConflict
 	}
 	art := dbpkg.Article{
@@ -86,8 +91,8 @@ func (s *ArticleService) Create(title, slug, content string, tags []string) (Cre
 }
 
 // BulkCreate creates multiple articles, skipping those that fail validation or
-// have duplicate slugs. Returns counts and per-item skip reasons.
-func (s *ArticleService) BulkCreate(items []BulkCreateItem) (BulkResult, error) {
+// have duplicate slugs.
+func (s *ArticleService) BulkCreate(ctx context.Context, items []BulkCreateItem) (BulkResult, error) {
 	if len(items) > 1000 {
 		return BulkResult{}, ErrBulkLimit
 	}
@@ -98,9 +103,8 @@ func (s *ArticleService) BulkCreate(items []BulkCreateItem) (BulkResult, error) 
 			res.SkipReasons = append(res.SkipReasons, in.Slug+": "+err.Error())
 			continue
 		}
-		var count int
-		s.DB.QueryRow(`SELECT COUNT(1) FROM articles WHERE slug=?`, in.Slug).Scan(&count)
-		if count > 0 {
+		exists, _ := s.Repo.SlugExists(ctx, in.Slug)
+		if exists {
 			res.Skipped++
 			res.SkipReasons = append(res.SkipReasons, in.Slug+": duplicate slug")
 			continue
@@ -116,25 +120,12 @@ func (s *ArticleService) BulkCreate(items []BulkCreateItem) (BulkResult, error) 
 	return res, nil
 }
 
-// BulkCreateItem is the input type for a single item in a bulk create.
-type BulkCreateItem struct {
-	Title, Slug, Content string
-	Tags                 []string
-}
-
 // Update fetches the article by slug, applies the partial update, and enqueues.
-func (s *ArticleService) Update(slug string, title, content *string, tags []string) (dbpkg.Article, error) {
-	var art dbpkg.Article
-	var tagsStr string
-	err := s.DB.QueryRow(`SELECT id,title,slug,content,tags,created_at,updated_at FROM articles WHERE slug=?`, slug).
-		Scan(&art.ID, &art.Title, &art.Slug, &art.Content, &tagsStr, &art.CreatedAt, &art.UpdatedAt)
-	if err == sql.ErrNoRows {
-		return art, ErrNotFound
-	}
+func (s *ArticleService) Update(ctx context.Context, slug string, title, content *string, tags []string) (dbpkg.Article, error) {
+	art, err := s.Repo.Get(ctx, slug)
 	if err != nil {
-		return art, err
+		return art, mapRepoErr(err)
 	}
-	art.Tags = SplitTags(tagsStr)
 	if title != nil {
 		art.Title = *title
 	}
@@ -152,18 +143,11 @@ func (s *ArticleService) Update(slug string, title, content *string, tags []stri
 }
 
 // Delete fetches the article by slug and enqueues a delete operation.
-func (s *ArticleService) Delete(slug string) (dbpkg.Article, error) {
-	var art dbpkg.Article
-	var tagsStr string
-	err := s.DB.QueryRow(`SELECT id,title,slug,content,tags,created_at,updated_at FROM articles WHERE slug=?`, slug).
-		Scan(&art.ID, &art.Title, &art.Slug, &art.Content, &tagsStr, &art.CreatedAt, &art.UpdatedAt)
-	if err == sql.ErrNoRows {
-		return art, ErrNotFound
-	}
+func (s *ArticleService) Delete(ctx context.Context, slug string) (dbpkg.Article, error) {
+	art, err := s.Repo.Get(ctx, slug)
 	if err != nil {
-		return art, err
+		return art, mapRepoErr(err)
 	}
-	art.Tags = SplitTags(tagsStr)
 	if err := s.Enqueue(art, "delete"); err != nil {
 		return art, fmt.Errorf("queue: %w", err)
 	}
@@ -171,74 +155,46 @@ func (s *ArticleService) Delete(slug string) (dbpkg.Article, error) {
 }
 
 // Get returns the article for the given slug.
-func (s *ArticleService) Get(slug string) (dbpkg.Article, error) {
+func (s *ArticleService) Get(ctx context.Context, slug string) (dbpkg.Article, error) {
 	if !IsValidSlug(slug) {
 		return dbpkg.Article{}, ErrInvalidSlug
 	}
-	var art dbpkg.Article
-	var tagsStr string
-	err := s.DB.QueryRow(`SELECT id,title,slug,content,tags,created_at,updated_at FROM articles WHERE slug=?`, slug).
-		Scan(&art.ID, &art.Title, &art.Slug, &art.Content, &tagsStr, &art.CreatedAt, &art.UpdatedAt)
-	if err == sql.ErrNoRows {
-		return art, ErrNotFound
-	}
-	if err != nil {
-		return art, err
-	}
-	art.Tags = SplitTags(tagsStr)
-	return art, nil
+	art, err := s.Repo.Get(ctx, slug)
+	return art, mapRepoErr(err)
 }
 
 // List returns a paginated, optionally tag-filtered, article summary list.
-func (s *ArticleService) List(page, limit int, tag string) (ListResult, error) {
+func (s *ArticleService) List(ctx context.Context, page, limit int, tag string) (ListResult, error) {
 	if page < 1 {
 		page = 1
 	}
 	if limit < 1 || limit > 100 {
 		limit = 20
 	}
-	offset := (page - 1) * limit
-
-	var (
-		rows  *sql.Rows
-		err   error
-		total int
-	)
-	if tag != "" {
-		s.DB.QueryRow(`SELECT COUNT(1) FROM articles WHERE tags LIKE ?`, "%"+tag+"%").Scan(&total)
-		rows, err = s.DB.Query(`SELECT id,title,slug,tags,created_at,updated_at FROM articles WHERE tags LIKE ? ORDER BY created_at DESC LIMIT ? OFFSET ?`, "%"+tag+"%", limit, offset)
-	} else {
-		s.DB.QueryRow(`SELECT COUNT(1) FROM articles`).Scan(&total)
-		rows, err = s.DB.Query(`SELECT id,title,slug,tags,created_at,updated_at FROM articles ORDER BY created_at DESC LIMIT ? OFFSET ?`, limit, offset)
-	}
+	articles, total, err := s.Repo.List(ctx, page, limit, tag)
 	if err != nil {
 		return ListResult{}, err
 	}
-	defer rows.Close()
-	result := make([]ArticleSummary, 0)
-	for rows.Next() {
-		var s ArticleSummary
-		var tagsStr string
-		rows.Scan(&s.ID, &s.Title, &s.Slug, &tagsStr, &s.CreatedAt, &s.UpdatedAt)
-		s.Tags = SplitTags(tagsStr)
-		result = append(result, s)
+	summaries := make([]ArticleSummary, 0, len(articles))
+	for _, a := range articles {
+		summaries = append(summaries, ArticleSummary{
+			ID: a.ID, Title: a.Title, Slug: a.Slug, Tags: a.Tags,
+			CreatedAt: a.CreatedAt, UpdatedAt: a.UpdatedAt,
+		})
 	}
 	pages := (total + limit - 1) / limit
-	return ListResult{Articles: result, Page: page, Limit: limit, Total: total, Pages: pages}, nil
+	return ListResult{Articles: summaries, Page: page, Limit: limit, Total: total, Pages: pages}, nil
 }
 
 // ListTags returns all distinct tag names with counts across all articles.
-func (s *ArticleService) ListTags() ([]TagCount, error) {
-	rows, err := s.DB.Query(`SELECT tags FROM articles WHERE tags != ''`)
+func (s *ArticleService) ListTags(ctx context.Context) ([]TagCount, error) {
+	csvs, err := s.Repo.AllTagCSVs(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	tagCount := make(map[string]int)
-	for rows.Next() {
-		var tagsStr string
-		rows.Scan(&tagsStr)
-		for _, t := range SplitTags(tagsStr) {
+	for _, csv := range csvs {
+		for _, t := range SplitTags(csv) {
 			if t != "" {
 				tagCount[t]++
 			}
@@ -251,22 +207,14 @@ func (s *ArticleService) ListTags() ([]TagCount, error) {
 	return result, nil
 }
 
-// MakeEnqueueFn creates an Enqueue function backed by a sql.DB write_jobs table.
-func MakeEnqueueFn(db *sql.DB) func(art dbpkg.Article, op string) error {
-	return func(art dbpkg.Article, op string) error {
-		payload, err := json.Marshal(art)
-		if err != nil {
-			return err
-		}
-		_, err = db.Exec(`INSERT INTO write_jobs(article_json,op) VALUES(?,?)`, payload, op)
-		return err
+// mapRepoErr translates db-level sentinel errors to api-level sentinels so
+// handlers always work with api.Err* values.
+func mapRepoErr(err error) error {
+	if err == nil {
+		return nil
 	}
-}
-
-func newID() string {
-	b := make([]byte, 16)
-	if _, err := rand.Read(b); err != nil {
-		return fmt.Sprintf("%x%s", time.Now().UnixNano(), strings.Repeat("0", 16))
+	if err == dbpkg.ErrNotFound {
+		return ErrNotFound
 	}
-	return hex.EncodeToString(b)
+	return err
 }

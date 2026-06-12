@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"sync"
@@ -13,15 +12,16 @@ import (
 	"time"
 
 	"github.com/microcosm-cc/bluemonday"
-	"github.com/sony/gobreaker"
 
 	"github.com/johalputt/vayupress/internal/api"
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
-	"github.com/johalputt/vayupress/internal/logging"
+	"github.com/johalputt/vayupress/internal/events"
 	"github.com/johalputt/vayupress/internal/metrics"
 	"github.com/johalputt/vayupress/internal/plugins"
 	"github.com/johalputt/vayupress/internal/queue"
+	"github.com/johalputt/vayupress/internal/render"
+	"github.com/johalputt/vayupress/internal/search"
 )
 
 // App holds all mutable runtime state. Handlers are methods on *App so that
@@ -36,8 +36,11 @@ type App struct {
 	// Article business logic
 	articles *api.ArticleService
 
-	// Meilisearch
-	meiliCB *gobreaker.CircuitBreaker
+	// Search service (Meilisearch + SQLite fallback)
+	search search.Service
+
+	// Domain event bus
+	eventBus *events.Bus
 
 	// Plugin subsystem
 	pluginRegistry *plugins.Registry
@@ -73,73 +76,8 @@ func (a *App) FireHook(event string, payload map[string]interface{}) {
 }
 
 // =============================================================================
-// Meilisearch (circuit-breaker guarded)
+// CDN / search-engine side effects
 // =============================================================================
-
-func (a *App) initMeilisearchCB() {
-	a.meiliCB = gobreaker.NewCircuitBreaker(gobreaker.Settings{
-		Name: "meilisearch", MaxRequests: 3, Interval: 10 * time.Second, Timeout: 30 * time.Second,
-		ReadyToTrip: func(counts gobreaker.Counts) bool {
-			return counts.Requests >= 3 && float64(counts.TotalFailures)/float64(counts.Requests) >= 0.60
-		},
-		OnStateChange: func(name string, from, to gobreaker.State) {
-			logging.LogJSON(logging.LogFields{Level: "warn", Component: "meili-cb", Msg: fmt.Sprintf("%s → %s", from, to)})
-		},
-	})
-}
-
-func (a *App) meiliDo(method, path string, body interface{}) error {
-	var r io.Reader
-	if body != nil {
-		b, _ := json.Marshal(body)
-		r = bytes.NewReader(b)
-	}
-	req, err := http.NewRequestWithContext(context.Background(), method, config.Cfg.MeiliHost+path, r)
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	if config.Cfg.MeiliMasterKey != "" {
-		req.Header.Set("Authorization", "Bearer "+config.Cfg.MeiliMasterKey)
-	}
-	resp, err := a.outboundClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 400 {
-		b, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return fmt.Errorf("meili %d: %s", resp.StatusCode, b)
-	}
-	return nil
-}
-
-func (a *App) configureMeilisearch() {
-	_ = a.meiliDo("PATCH", "/indexes/articles/settings", map[string]interface{}{
-		"rankingRules":         []string{"words", "proximity", "attribute", "sort", "exactness"},
-		"searchableAttributes": []string{"title", "tags", "content"},
-		"filterableAttributes": []string{"tags", "created_at"},
-		"sortableAttributes":   []string{"created_at", "updated_at"},
-	})
-}
-
-func (a *App) indexArticle(art dbpkg.Article) {
-	if a.meiliCB == nil {
-		return
-	}
-	doc := map[string]interface{}{
-		"id": art.ID, "title": art.Title, "slug": art.Slug,
-		"content":    htmlTagRe.ReplaceAllString(a.policy.Sanitize(art.Content), ""),
-		"tags":       art.Tags,
-		"created_at": art.CreatedAt.Unix(),
-	}
-	_, err := a.meiliCB.Execute(func() (interface{}, error) {
-		return nil, a.meiliDo("POST", "/indexes/articles/documents", []map[string]interface{}{doc})
-	})
-	if err != nil {
-		atomic.AddInt64(&metrics.MetricMeiliErrors, 1)
-	}
-}
 
 func (a *App) purgeCloudflare(slug string) {
 	if config.Cfg.CFZoneID == "" || config.Cfg.CFAPIToken == "" {
@@ -173,6 +111,64 @@ func (a *App) pingIndexNow(slug string) {
 		return
 	}
 	defer resp.Body.Close()
+}
+
+// =============================================================================
+// Domain event subscriptions
+// =============================================================================
+
+// registerEventHandlers wires the article mutation event subscribers. Called
+// after all services are initialised in main().
+func (a *App) registerEventHandlers() {
+	bus := a.eventBus
+
+	// Search index + CDN purge + IndexNow on create / update.
+	bus.Subscribe(events.ArticleCreated{}, func(ctx context.Context, ev interface{}) {
+		e := ev.(events.ArticleCreated)
+		go func() {
+			var art dbpkg.Article
+			var tagsStr string
+			if dbpkg.DB.QueryRow(`SELECT id,title,slug,content,tags,created_at,updated_at FROM articles WHERE slug=?`, e.Slug).
+				Scan(&art.ID, &art.Title, &art.Slug, &art.Content, &tagsStr, &art.CreatedAt, &art.UpdatedAt) == nil {
+				art.Tags = api.SplitTags(tagsStr)
+				a.search.Index(ctx, art.ID, art.Title, art.Slug,
+					htmlTagRe.ReplaceAllString(a.policy.Sanitize(art.Content), ""),
+					art.Tags, art.CreatedAt.Unix())
+			}
+			render.CachePurge(e.Slug, nil, generateSitemap, generateRSS, generateRobots)
+			a.purgeCloudflare(e.Slug)
+			a.pingIndexNow(e.Slug)
+		}()
+		a.FireHook("article.create", map[string]interface{}{"slug": e.Slug, "id": e.ID})
+	})
+
+	bus.Subscribe(events.ArticleUpdated{}, func(ctx context.Context, ev interface{}) {
+		e := ev.(events.ArticleUpdated)
+		go func() {
+			var art dbpkg.Article
+			var tagsStr string
+			if dbpkg.DB.QueryRow(`SELECT id,title,slug,content,tags,created_at,updated_at FROM articles WHERE slug=?`, e.Slug).
+				Scan(&art.ID, &art.Title, &art.Slug, &art.Content, &tagsStr, &art.CreatedAt, &art.UpdatedAt) == nil {
+				art.Tags = api.SplitTags(tagsStr)
+				a.search.Index(ctx, art.ID, art.Title, art.Slug,
+					htmlTagRe.ReplaceAllString(a.policy.Sanitize(art.Content), ""),
+					art.Tags, art.CreatedAt.Unix())
+			}
+			render.CachePurge(e.Slug, nil, generateSitemap, generateRSS, generateRobots)
+			a.purgeCloudflare(e.Slug)
+			a.pingIndexNow(e.Slug)
+		}()
+		a.FireHook("article.update", map[string]interface{}{"slug": e.Slug})
+	})
+
+	bus.Subscribe(events.ArticleDeleted{}, func(ctx context.Context, ev interface{}) {
+		e := ev.(events.ArticleDeleted)
+		go func() {
+			a.search.Delete(ctx, e.ID)
+			a.purgeCloudflare(e.Slug)
+		}()
+		a.FireHook("article.delete", map[string]interface{}{"slug": e.Slug, "id": e.ID})
+	})
 }
 
 // =============================================================================

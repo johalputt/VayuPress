@@ -3,6 +3,7 @@
 package queue
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/events"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/metrics"
 )
@@ -31,8 +33,9 @@ var DoneCh = make(chan struct{})
 // RenderFn is injected by main to break the queue→render import cycle.
 var RenderFn func(dbpkg.Article) (string, error)
 
-// FireHookFn is injected by main to trigger plugin hooks without importing the plugin package.
-var FireHookFn func(event string, payload map[string]interface{})
+// EventBus is injected by main. Workers publish typed domain events after
+// successful DB mutations; subscribers handle indexing, caching, and plugins.
+var EventBus *events.Bus
 
 const maxBackoffSeconds = 300
 
@@ -88,8 +91,8 @@ func processOneJob(workerID int) (empty bool) {
 			a.ID, a.Title, a.Slug, a.Content, strings.Join(a.Tags, ","), a.CreatedAt, a.UpdatedAt)
 		if execErr == nil {
 			atomic.AddInt64(&metrics.MetricArticlesCreated, 1)
-			if FireHookFn != nil {
-				FireHookFn("article.create", map[string]interface{}{"slug": a.Slug, "id": a.ID})
+			if EventBus != nil {
+				EventBus.Publish(context.Background(), events.ArticleCreated{ID: a.ID, Slug: a.Slug, Tags: a.Tags})
 			}
 		}
 	case "update":
@@ -97,16 +100,16 @@ func processOneJob(workerID int) (empty bool) {
 			a.Title, a.Content, strings.Join(a.Tags, ","), a.UpdatedAt, a.Slug)
 		if execErr == nil {
 			atomic.AddInt64(&metrics.MetricArticlesUpdated, 1)
-			if FireHookFn != nil {
-				FireHookFn("article.update", map[string]interface{}{"slug": a.Slug})
+			if EventBus != nil {
+				EventBus.Publish(context.Background(), events.ArticleUpdated{ID: a.ID, Slug: a.Slug, Tags: a.Tags})
 			}
 		}
 	case "delete":
 		_, execErr = dbpkg.DB.Exec(`DELETE FROM articles WHERE slug=?`, a.Slug)
 		if execErr == nil {
 			atomic.AddInt64(&metrics.MetricArticlesDeleted, 1)
-			if FireHookFn != nil {
-				FireHookFn("article.delete", map[string]interface{}{"slug": a.Slug})
+			if EventBus != nil {
+				EventBus.Publish(context.Background(), events.ArticleDeleted{ID: a.ID, Slug: a.Slug})
 			}
 		}
 	default:

@@ -1,6 +1,6 @@
-// VayuPress — main.go  v1.0.0-p15
+// VayuPress — main.go  v1.0.0-p19
 // Bootstrap, route wiring, and graceful shutdown only.
-// Domain logic lives in internal/* packages (ADR-0045, ADR-0046).
+// Domain logic lives in internal/* packages (ADR-0045 – ADR-0050).
 package main
 
 import (
@@ -8,9 +8,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"os"
@@ -28,15 +26,18 @@ import (
 	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/events"
 	"github.com/johalputt/vayupress/internal/health"
+	"github.com/johalputt/vayupress/internal/httputil"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/metrics"
 	"github.com/johalputt/vayupress/internal/plugins"
 	"github.com/johalputt/vayupress/internal/queue"
 	"github.com/johalputt/vayupress/internal/render"
+	"github.com/johalputt/vayupress/internal/search"
 )
 
-var Version = "1.0.0-p15"
+var Version = "1.0.0-p19"
 var bootTime = time.Now()
 
 // Immutable package-level values (compiled once, never mutated).
@@ -64,22 +65,11 @@ func verifyMagicNumber(data []byte) (string, error) {
 }
 
 // =============================================================================
-// Response helpers
+// Response helpers (thin wrappers over internal/httputil)
 // =============================================================================
 
-type apiError struct {
-	Code      string `json:"code"`
-	Message   string `json:"message"`
-	RequestID string `json:"request_id"`
-	Docs      string `json:"docs"`
-}
-
 func writeJSON(w http.ResponseWriter, r *http.Request, code int, v interface{}) {
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.WriteHeader(code)
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	enc.Encode(v)
+	httputil.WriteJSON(w, code, v)
 }
 
 func writeAPIError(w http.ResponseWriter, r *http.Request, code int, errCode, msg, docsURL string) {
@@ -87,12 +77,11 @@ func writeAPIError(w http.ResponseWriter, r *http.Request, code int, errCode, ms
 	if r != nil {
 		reqID = getRequestID(r)
 	}
-	writeJSON(w, r, code, map[string]apiError{"error": {Code: errCode, Message: msg, RequestID: reqID, Docs: docsURL}})
+	httputil.WriteError(w, code, errCode, msg, reqID, docsURL)
 }
 
 func readJSONDirect(r *http.Request, v interface{}) error {
-	defer r.Body.Close()
-	return json.NewDecoder(io.LimitReader(r.Body, 10<<20)).Decode(v)
+	return httputil.DecodeJSON(r, v)
 }
 
 func newUUID() string {
@@ -158,7 +147,7 @@ func generateRobots() {
 
 func main() {
 	log.SetFlags(0)
-	logging.LogInfo("main", fmt.Sprintf("VayuPress v%s starting — P1–P16 active", Version))
+	logging.LogInfo("main", fmt.Sprintf("VayuPress v%s starting — P1–P19 active", Version))
 	config.Load()
 	logging.LogInfo("main", fmt.Sprintf("domain=%s port=%s workers=%d config_version=%s maintenance=%v",
 		config.Cfg.Domain, config.Cfg.Port, config.Cfg.WorkerCount, config.ConfigVersion, config.Cfg.MaintenanceMode))
@@ -168,6 +157,7 @@ func main() {
 		policy:         bluemonday.UGCPolicy(),
 		outboundClient: &http.Client{Timeout: 5 * time.Second, Transport: ssrfSafeTransport()},
 		pluginRegistry: plugins.NewRegistry(),
+		eventBus:       events.NewBus(),
 	}
 	a.pluginManager = plugins.New(a.pluginRegistry)
 
@@ -192,13 +182,17 @@ func main() {
 	}
 	logging.LogInfo("main", "database ready — WAL adaptive + migrations + checksum drift verified (ADR-0033/0034)")
 
+	// Wire article service with repository pattern (ADR-0050).
 	a.articles = &api.ArticleService{
-		DB:      dbpkg.DB,
+		Repo:    dbpkg.NewArticleRepo(dbpkg.DB),
 		Enqueue: api.MakeEnqueueFn(dbpkg.DB),
 		StorageCheckFn: func() (int64, int64) {
 			return dbpkg.StorageUsedBytes(), dbpkg.StorageQuotaBytes()
 		},
 	}
+
+	// Wire search service (ADR-0050).
+	a.search = search.NewMeiliService(a.outboundClient, dbpkg.DB)
 
 	if n, err := dbpkg.DB.Exec(`UPDATE write_jobs SET status='pending' WHERE status='processing'`); err == nil {
 		if rows, _ := n.RowsAffected(); rows > 0 {
@@ -211,59 +205,36 @@ func main() {
 	dbpkg.StartStuckJobReaper(queue.DoneCh)
 	a.startMetricsSnapshotCollector()
 
-	// Wire dependency injections into queue package
+	// Wire queue injections.
 	queue.RenderFn = render.RenderArticle
 	queue.SetCacheWriteFn(func(relPath, content string) {
 		render.CacheWrite(relPath, content) //nolint:errcheck
 	})
-	queue.FireHookFn = func(event string, payload map[string]interface{}) {
-		a.FireHook(event, payload)
-		slug, _ := payload["slug"].(string)
-		id, _ := payload["id"].(string)
-		switch event {
-		case "article.create", "article.update":
-			go func(s string) {
-				var art dbpkg.Article
-				var tagsStr string
-				if dbpkg.DB.QueryRow(`SELECT id,title,slug,content,tags,created_at,updated_at FROM articles WHERE slug=?`, s).
-					Scan(&art.ID, &art.Title, &art.Slug, &art.Content, &tagsStr, &art.CreatedAt, &art.UpdatedAt) == nil {
-					art.Tags = api.SplitTags(tagsStr)
-					a.indexArticle(art)
-				}
-				render.CachePurge(s, nil, generateSitemap, generateRSS, generateRobots)
-				go a.purgeCloudflare(s)
-				go a.pingIndexNow(s)
-			}(slug)
-		case "article.delete":
-			go a.meiliDo("DELETE", "/indexes/articles/documents/"+id, nil)
-			go a.purgeCloudflare(slug)
-		}
-	}
+	queue.EventBus = a.eventBus
 
-	// Wire health package injections
+	// Register domain event handlers after all services are wired (ADR-0050).
+	a.registerEventHandlers()
+
+	// Wire health package injections.
 	health.Version = Version
 	health.ConfigVersion = config.ConfigVersion
 	health.BootTime = bootTime
-	health.MeiliDoFn = a.meiliDo
+	health.MeiliDoFn = func(_, _ string, _ interface{}) error {
+		return a.search.Ping(context.Background())
+	}
 	health.WriteJSON = writeJSON
 	health.WriteAPIError = writeAPIError
 
-	// Wire render package version
+	// Wire render package version.
 	render.Version = Version
 
-	// Meilisearch startup
-	for i := 0; i < 12; i++ {
-		if err := a.meiliDo("GET", "/health", nil); err == nil {
-			logging.LogInfo("main", "Meilisearch ready")
-			break
-		}
-		if i == 11 {
-			logging.LogJSON(logging.LogFields{Level: "warn", Component: "main", Msg: "Meilisearch unavailable — SQLite search fallback active"})
-		}
-		time.Sleep(5 * time.Second)
+	// Meilisearch startup — search service handles the circuit breaker internally.
+	if search.WaitReady(context.Background(), a.search, 12) {
+		logging.LogInfo("main", "Meilisearch ready")
+		search.ConfigureIndex(context.Background(), a.search)
+	} else {
+		logging.LogJSON(logging.LogFields{Level: "warn", Component: "main", Msg: "Meilisearch unavailable — SQLite search fallback active"})
 	}
-	a.configureMeilisearch()
-	a.initMeilisearchCB()
 
 	go func() {
 		logging.LogInfo("cache-warm", "starting...")
@@ -294,7 +265,7 @@ func main() {
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		sig := <-sigCh
-		logging.LogInfo("main", fmt.Sprintf("received %v — P14 graceful shutdown", sig))
+		logging.LogInfo("main", fmt.Sprintf("received %v — graceful shutdown", sig))
 
 		// Phase 1: stop ingress
 		httpCtx, httpCancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -347,7 +318,7 @@ func main() {
 		os.Exit(0)
 	}()
 
-	logging.LogInfo("main", fmt.Sprintf("listening on :%s (v%s — P1–P14 active)", config.Cfg.Port, Version))
+	logging.LogInfo("main", fmt.Sprintf("listening on :%s (v%s)", config.Cfg.Port, Version))
 	if err := srv.ListenAndServe(); err != http.ErrServerClosed {
 		logging.LogError("main", "ListenAndServe error", err.Error())
 		os.Exit(1)

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
@@ -271,8 +272,8 @@ func (a *App) handleSmokeTest(w http.ResponseWriter, r *http.Request) {
 	dbpkg.DB.Exec(`DELETE FROM articles WHERE slug=?`, testSlug)
 	dbpkg.DB.Exec(`INSERT INTO write_jobs(article_json,op) VALUES(?,'delete')`, payload)
 	os.Remove(filepath.Join(config.Cfg.CacheDir, "posts", testSlug+".html"))
-	if a.meiliCB != nil {
-		go a.meiliDo("DELETE", "/indexes/articles/documents/"+testID, nil)
+	if a.search != nil {
+		go a.search.Delete(context.Background(), testID)
 	}
 	logging.LogInfo("smoke-test", fmt.Sprintf("PASS slug=%s", testSlug))
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")

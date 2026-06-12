@@ -4,6 +4,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -21,12 +22,27 @@ import (
 	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/events"
 	"github.com/johalputt/vayupress/internal/plugins"
+	"github.com/johalputt/vayupress/internal/search"
 )
+
+// noopSearch satisfies search.Service with no-op implementations for tests.
+type noopSearch struct{}
+
+func (n *noopSearch) Search(_ context.Context, _ string, _ int) (search.Result, error) {
+	return search.Result{Hits: []search.Hit{}}, nil
+}
+func (n *noopSearch) Index(_ context.Context, _, _, _, _ string, _ []string, _ int64) error {
+	return nil
+}
+func (n *noopSearch) Delete(_ context.Context, _ string) error { return nil }
+func (n *noopSearch) Ping(_ context.Context) error             { return nil }
 
 // directEnqueue inserts/updates/deletes directly into the articles table so
 // integration tests can read back results without running the queue worker.
-func directEnqueue(db interface{ Exec(string, ...interface{}) (interface{ RowsAffected() (int64, error) }, error) }) func(art dbpkg.Article, op string) error {
+// The db parameter is unused; the closure uses the package-level dbpkg.DB.
+func directEnqueue(_ interface{}) func(art dbpkg.Article, op string) error {
 	return func(art dbpkg.Article, op string) error {
 		tagsCSV := ""
 		for i, t := range art.Tags {
@@ -83,13 +99,14 @@ func newTestHarness(t *testing.T) (*httptest.Server, string) {
 		policy:         bluemonday.UGCPolicy(),
 		outboundClient: &http.Client{Timeout: 5 * time.Second},
 		pluginRegistry: plugins.NewRegistry(),
+		eventBus:       events.NewBus(),
 		articles: &api.ArticleService{
-			DB:      dbpkg.DB,
-			Enqueue: directEnqueue(nil), // nil arg unused — closure captures dbpkg.DB
+			Repo:    dbpkg.NewArticleRepo(dbpkg.DB),
+			Enqueue: directEnqueue(nil),
 		},
+		search: &noopSearch{},
 	}
 	a.pluginManager = plugins.New(a.pluginRegistry)
-	a.initMeilisearchCB()
 
 	r := chi.NewRouter()
 	a.registerRoutes(r, dir)

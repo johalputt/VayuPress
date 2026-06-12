@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"testing"
 
 	"github.com/johalputt/vayupress/internal/config"
@@ -12,9 +13,11 @@ func init() {
 	dbpkg.Init() //nolint:errcheck
 }
 
+var bg = context.Background()
+
 func makeService() *ArticleService {
 	return &ArticleService{
-		DB:      dbpkg.DB,
+		Repo:    dbpkg.NewArticleRepo(dbpkg.DB),
 		Enqueue: MakeEnqueueFn(dbpkg.DB),
 	}
 }
@@ -92,7 +95,7 @@ func TestIsValidSlug(t *testing.T) {
 
 func TestArticleService_CreateAndGet(t *testing.T) {
 	svc := makeService()
-	res, err := svc.Create("Test Title", "test-create-get", "<p>hello</p>", []string{"go"})
+	res, err := svc.Create(bg, "Test Title", "test-create-get", "<p>hello</p>", []string{"go"})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -106,7 +109,7 @@ func TestArticleService_CreateAndGet(t *testing.T) {
 		       article_json->>'$.content', 'go', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
 		FROM write_jobs WHERE status='pending' ORDER BY id DESC LIMIT 1`)
 
-	art, err := svc.Get("test-create-get")
+	art, err := svc.Get(bg, "test-create-get")
 	if err != nil {
 		t.Fatalf("Get after direct insert: %v", err)
 	}
@@ -117,9 +120,8 @@ func TestArticleService_CreateAndGet(t *testing.T) {
 
 func TestArticleService_Create_SlugConflict(t *testing.T) {
 	svc := makeService()
-	// Insert an article directly to create a conflict.
 	dbpkg.DB.Exec(`INSERT INTO articles(id,title,slug,content,tags,created_at,updated_at) VALUES('x','T','conflict-slug','c','',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)`)
-	_, err := svc.Create("Title", "conflict-slug", "content", nil)
+	_, err := svc.Create(bg, "Title", "conflict-slug", "content", nil)
 	if err != ErrSlugConflict {
 		t.Fatalf("want ErrSlugConflict, got %v", err)
 	}
@@ -127,7 +129,7 @@ func TestArticleService_Create_SlugConflict(t *testing.T) {
 
 func TestArticleService_Get_NotFound(t *testing.T) {
 	svc := makeService()
-	_, err := svc.Get("nonexistent-slug-xyz")
+	_, err := svc.Get(bg, "nonexistent-slug-xyz")
 	if err != ErrNotFound {
 		t.Fatalf("want ErrNotFound, got %v", err)
 	}
@@ -135,7 +137,7 @@ func TestArticleService_Get_NotFound(t *testing.T) {
 
 func TestArticleService_List_Empty(t *testing.T) {
 	svc := makeService()
-	res, err := svc.List(1, 20, "")
+	res, err := svc.List(bg, 1, 20, "")
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
@@ -147,7 +149,7 @@ func TestArticleService_List_Empty(t *testing.T) {
 func TestArticleService_BulkCreate_ExceedsLimit(t *testing.T) {
 	svc := makeService()
 	items := make([]BulkCreateItem, 1001)
-	_, err := svc.BulkCreate(items)
+	_, err := svc.BulkCreate(bg, items)
 	if err == nil {
 		t.Fatal("want error for >1000 items")
 	}
@@ -155,11 +157,10 @@ func TestArticleService_BulkCreate_ExceedsLimit(t *testing.T) {
 
 func TestArticleService_ListTags(t *testing.T) {
 	svc := makeService()
-	// Insert article with tags directly.
 	dbpkg.DB.Exec(`INSERT OR IGNORE INTO articles(id,title,slug,content,tags,created_at,updated_at) VALUES('tag1','T','tag-test-1','c','go,web',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)`)
-	tags, err := svc.ListTags()
+	tags, err := svc.ListTags(bg)
 	if err != nil {
 		t.Fatalf("ListTags: %v", err)
 	}
-	_ = tags // May be empty if JSON extraction not available, just no panic.
+	_ = tags
 }
