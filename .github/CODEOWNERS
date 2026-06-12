@@ -1,0 +1,23 @@
+# VayuPress Code Owners
+# These owners are automatically requested for review when a PR touches their paths.
+# Syntax: <pattern> <owner1> <owner2> ...
+
+# Default owner for everything
+* @johalputt
+
+# Governance & Constitution — requires BDFL review
+GOVERNANCE-CONSTITUTION.md @johalputt
+GOVERNANCE.md              @johalputt
+ETHICS.md                  @johalputt
+CONTRIBUTING.md            @johalputt
+
+# Security — requires Security Lead review
+SECURITY.md                @johalputt
+.github/workflows/         @johalputt
+
+# Architecture decisions — requires Architecture Lead review
+docs/adr/                  @johalputt
+docs/ARCHITECTURE.md       @johalputt
+
+# Deploy scripts — requires Architecture Lead + Security Lead
+scripts/                   @johalputt

@@ -1,0 +1,92 @@
+name: RFC Proposal
+description: Submit a formal Request for Comments for architecture changes, new dependencies, or governance modifications
+title: "[RFC]: "
+labels: ["rfc", "needs-discussion"]
+assignees: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        RFCs are required for: new dependencies, core architecture changes, major features, governance modifications, and ethical concerns.
+        Minimum **7-day discussion** period. Accepted by simple majority vote.
+
+  - type: input
+    id: author
+    attributes:
+      label: Author
+      placeholder: "@your-github-username"
+    validations:
+      required: true
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: One paragraph explanation of the proposed change
+    validations:
+      required: true
+
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation
+      description: Why is this change needed? What problem does it solve?
+    validations:
+      required: true
+
+  - type: textarea
+    id: design
+    attributes:
+      label: Detailed Design
+      description: Technical details, data flow, API changes, configuration, diagrams (Mermaid preferred)
+    validations:
+      required: true
+
+  - type: textarea
+    id: governance_impact
+    attributes:
+      label: Governance Impact
+      description: |
+        Fill in for each affected prompt:
+        | Prompt | Impact | Mitigation |
+        |--------|--------|------------|
+        | ...    | ...    | ...        |
+    validations:
+      required: true
+
+  - type: textarea
+    id: ethical_impact
+    attributes:
+      label: Ethical Impact Assessment
+      description: Privacy impact, accessibility, AI usage, environmental impact, surveillance risk
+    validations:
+      required: true
+
+  - type: textarea
+    id: operational_cost
+    attributes:
+      label: Operational Cost Estimate
+      description: |
+        - RAM cost (idle / peak):
+        - CPU cost (average / peak):
+        - Storage cost (permanent / temporary):
+        - Maintenance cost (new dependencies, update frequency):
+        - CI cost (build/test time increase):
+        - Documentation burden:
+        - Support cost:
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: What else did you consider and why reject it?
+    validations:
+      required: true
+
+  - type: textarea
+    id: open_questions
+    attributes:
+      label: Open Questions
+      description: Unresolved design questions that need community input

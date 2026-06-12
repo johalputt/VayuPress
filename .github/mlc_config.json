@@ -1,0 +1,13 @@
+{
+  "ignorePatterns": [
+    { "pattern": "^https://localhost" },
+    { "pattern": "^http://localhost" },
+    { "pattern": "^mailto:" },
+    { "pattern": "^https://docs.vayupress.com" },
+    { "pattern": "^https://vayupress.com" }
+  ],
+  "timeout": "20s",
+  "retryOn429": true,
+  "retryCount": 3,
+  "fallbackRetryDelay": "10s"
+}

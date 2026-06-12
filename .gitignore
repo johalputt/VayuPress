@@ -1,20 +1,51 @@
-# Binaries
+# Compiled binaries
+vayupress
 vayupress.exe
 *.exe
 *.dll
+*.so
+*.dylib
 
-# Go
-go.mod
-go.sum
+# Go build artifacts
+*.test
+*.out
 /vendor/
 
-# IDE
+# IDE & editor
 .vscode/
 .idea/
+*.swp
+*.swo
+.DS_Store
 
 # OS
 Thumbs.db
 Desktop.ini
 
-# Logs
+# Logs (local only — production logs go to /var/log/vayupress/)
 *.log
+
+# Secrets (never commit these)
+.env
+.env.*
+*.secrets
+/root/.vayupress-secrets
+/root/.vayupress-admin
+
+# Local test databases
+*.db
+*.db-wal
+*.db-shm
+
+# Temp & build dirs
+/tmp/
+dist/
+build/
+
+# Benchmarks & profiling output
+*.pprof
+cpu.prof
+mem.prof
+
+# Note: go.mod and go.sum are intentionally NOT ignored.
+# They must be committed when Go source is present in this repo.
