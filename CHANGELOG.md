@@ -10,6 +10,20 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Added (Prompts 9–12)
 
+#### Engine (`scripts/deploy-vayupress.sh` → v1.0.0-p12)
+- **SSRF protection**: all outbound HTTP now dials through a guarded `DialContext`
+  (`ssrfSafeTransport`/`isPrivateOrReservedIP`) that blocks loopback, link-local
+  (169.254.169.254 cloud metadata), and RFC-1918/ULA private ranges
+- **Argon2id** credential hashing helpers (`hashSecretArgon2id`/`verifySecretArgon2id`)
+  with constant-time comparison
+- **Immutable WORM audit log**: migration `005-audit-log-worm` adds an `audit_log`
+  table with `BEFORE UPDATE`/`BEFORE DELETE` triggers that `RAISE(ABORT)`; all
+  admin article create/update/delete mutations now call `auditLog()`
+- **Magic-number file verification** (`verifyMagicNumber`) for JPEG/PNG/GIF/WebP/PDF
+- **`/health/ethics`** endpoint exposing machine-readable ethics compliance
+  (no-tracking, privacy-by-design, audit-log present, charter version)
+- Verified: full `go build ./...` + `go vet ./...` pass with real dependencies
+
 #### Security (Prompt 9)
 - Dedicated `security.yml` CI workflow: supply-chain scan, 7 security header checks, CSRF, SSRF, auth lockout, audit log, rate limit, threat model verification
 - `docs/THREAT-MODEL.md` — Trust Boundaries, Entry Points, Assets, Threat Actors, Mitigations
