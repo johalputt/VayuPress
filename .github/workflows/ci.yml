@@ -116,10 +116,10 @@ jobs:
           [ "$LINES" -gt 100 ] || { echo "FAIL: Constitution appears truncated (<100 lines)"; exit 1; }
           echo "✅ Governance constitution present and intact."
 
-      - name: Verify all 12 Prompts present in Constitution
+      - name: Verify all 13 Prompts present in Constitution
         run: |
           MISSING=0
-          for i in $(seq 1 12); do
+          for i in $(seq 1 13); do
             if ! grep -q "PROMPT $i:" GOVERNANCE-CONSTITUTION.md; then
               echo "❌ MISSING: Prompt $i not found in Constitution"
               MISSING=1
@@ -143,6 +143,7 @@ jobs:
             "ADR-0032" "ADR-0033" "ADR-0034" "ADR-0035"
             "ADR-0036" "ADR-0037" "ADR-0038" "ADR-0039"
             "ADR-0040" "ADR-0041" "ADR-0042" "ADR-0043"
+            "ADR-0044"
           )
           for adr in "${REQUIRED_ADRS[@]}"; do
             if ! ls docs/adr/${adr}* 2>/dev/null | grep -q .; then
@@ -282,6 +283,45 @@ jobs:
           [ "$LINES" -gt 1000 ] || { echo "WARN: Deploy script seems too short"; }
           echo "✅ Deploy script size OK"
 
+  # ── P13: Source parity — embedded heredoc MUST match cmd/vayupress/main.go ──
+  check-source-sync:
+    name: "P13 · Source Sync (no drift)"
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify cmd/vayupress/main.go matches the deploy script heredoc
+        run: |
+          chmod +x scripts/sync-source.sh
+          scripts/sync-source.sh --check
+
+  # ── P13: Native Go tooling — build, vet, fmt, test, vuln scan ──────────────
+  go-native:
+    name: "P13 · Native Go Build/Vet/Test"
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: true
+      - name: go vet
+        run: go vet ./...
+      - name: gofmt (must be clean)
+        run: |
+          OUT=$(gofmt -l .)
+          if [ -n "$OUT" ]; then
+            echo "❌ gofmt issues in:"; echo "$OUT"; exit 1
+          fi
+          echo "✅ gofmt clean"
+      - name: go build (race)
+        run: go build -race ./...
+      - name: go test (race)
+        run: go test -race ./... -count=1
+      - name: govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          "$(go env GOPATH)/bin/govulncheck" ./...
+
   # ── Link check (advisory) ──────────────────────────────────────────────────
   check-links:
     name: "Advisory · Link Check"
@@ -310,6 +350,8 @@ jobs:
       - check-ethics
       - check-community
       - check-deploy-script
+      - check-source-sync
+      - go-native
     runs-on: ubuntu-24.04
     if: always()
     steps:
@@ -328,12 +370,14 @@ jobs:
             "${{ needs.check-ethics.result }}"
             "${{ needs.check-community.result }}"
             "${{ needs.check-deploy-script.result }}"
+            "${{ needs.check-source-sync.result }}"
+            "${{ needs.go-native.result }}"
           )
           NAMES=(
             "check-docs" "lint-shell" "lint-markdown" "secret-scan"
             "check-licenses" "check-governance" "check-adrs"
             "check-security-policy" "check-ethics" "check-community"
-            "check-deploy-script"
+            "check-deploy-script" "check-source-sync" "go-native"
           )
           for i in "${!RESULTS[@]}"; do
             if [ "${RESULTS[$i]}" != "success" ]; then

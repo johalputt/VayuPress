@@ -1,13 +1,15 @@
 # VayuPress Makefile
 # Usage: make <target>
 
-.PHONY: help dev build test test-race test-integration lint vuln check-size \
+.PHONY: help dev build sync sync-check test test-race test-integration lint vuln check-size \
         check-docs check-governance check-ethics check-security check-complexity \
         check-adrs test-migrations test-storage test-api-contracts bench \
         dry-run clean
 
 BINARY     := vayupress
-SRC_DIR    ?= .
+# P13: canonical buildable package — the deploy script heredoc is mirrored here
+# and kept in sync by scripts/sync-source.sh (enforced in CI).
+PKG        ?= ./cmd/vayupress
 GZIP_LIMIT := 47185920  # 45 MB in bytes
 JS_GZ_LIMIT := 51200    # 50 KB in bytes
 
@@ -19,11 +21,17 @@ dev: ## Run the server locally (requires env vars)
 	@echo "Starting VayuPress dev server..."
 	@[ -n "$$VAYU_API_KEY" ] || (echo "ERROR: VAYU_API_KEY not set"; exit 1)
 	@mkdir -p $${VAYU_CACHE_DIR:-/tmp/vayupress-cache}
-	go run $(SRC_DIR)/main.go
+	go run $(PKG)
 
-build: ## Build the binary
-	CGO_ENABLED=0 go build -ldflags="-s -w" -trimpath -o $(BINARY) $(SRC_DIR)/main.go
+build: sync-check ## Build the binary
+	CGO_ENABLED=1 go build -ldflags="-s -w" -trimpath -o $(BINARY) $(PKG)
 	@echo "Binary size: $$(du -sh $(BINARY) | cut -f1)"
+
+sync: ## P13: regenerate cmd/vayupress/main.go from the deploy script heredoc
+	scripts/sync-source.sh
+
+sync-check: ## P13: fail if cmd/vayupress/main.go drifts from the deploy heredoc
+	scripts/sync-source.sh --check
 
 test: ## Run unit tests
 	go test ./... -v -count=1
@@ -82,15 +90,16 @@ check-adrs: ## Verify all required ADRs exist (ADR-0001, 0002, 0032-0043)
 	           ADR-0036-csp-nonce ADR-0037-pprof-rate-limit \
 	           ADR-0038-vacuum-cooldown ADR-0039-deploy-sourced-components \
 	           ADR-0040-config-versioning ADR-0041-health-contracts \
-	           ADR-0042-backup-restore-automation ADR-0043-integration-tests; do \
+	           ADR-0042-backup-restore-automation ADR-0043-integration-tests \
+	           ADR-0044-repository-decomposition; do \
 		ls docs/adr/$${adr}*.md >/dev/null 2>&1 || { echo "MISSING ADR: $$adr"; MISSING=1; }; \
 	done; \
-	[ $$MISSING -eq 0 ] && echo "OK: All 14 required ADRs present" || exit 1
+	[ $$MISSING -eq 0 ] && echo "OK: All 15 required ADRs present" || exit 1
 
 check-governance: ## Verify all 12 Prompts present in Constitution
 	@MISSING=0; \
 	for p in "Prompt 1" "Prompt 2" "Prompt 3" "Prompt 4" "Prompt 5" "Prompt 6" \
-	          "Prompt 7" "Prompt 8" "Prompt 9" "Prompt 10" "Prompt 11" "Prompt 12"; do \
+	          "Prompt 7" "Prompt 8" "Prompt 9" "Prompt 10" "Prompt 11" "Prompt 12" "Prompt 13"; do \
 		grep -q "$$p" GOVERNANCE-CONSTITUTION.md \
 			&& echo "OK: $$p" \
 			|| { echo "MISSING: $$p in GOVERNANCE-CONSTITUTION.md"; MISSING=1; }; \

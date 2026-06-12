@@ -1,5 +1,5 @@
-# Compiled binaries
-vayupress
+# Compiled binaries (anchored to repo root so cmd/vayupress/ source is NOT ignored)
+/vayupress
 vayupress.exe
 *.exe
 *.dll

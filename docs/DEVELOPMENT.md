@@ -26,12 +26,33 @@ export PORT=8080
 # Create cache directory
 mkdir -p /tmp/vayupress-cache
 
-# Run the application
-cd /var/www/vayupress/src  # or wherever main.go lives
-go run main.go
+# Run the application (P13: real Go package)
+go run ./cmd/vayupress
+# or:
+make dev
 ```
 
 The server starts at `http://localhost:8080`.
+
+## Source Model (P13)
+
+The canonical Go source lives **embedded** in `scripts/deploy-vayupress.sh` (the
+heredoc between `cat > main.go << 'GOEOF'` and `GOEOF`). This keeps the
+`curl -sSL ... | bash` installer self-contained.
+
+That exact source is mirrored to `cmd/vayupress/main.go` so you get full Go tooling.
+**The deploy script is canonical** — if you change the embedded source, regenerate the
+mirror and commit both:
+
+```bash
+# After editing the heredoc in scripts/deploy-vayupress.sh:
+make sync          # regenerate cmd/vayupress/main.go
+make sync-check    # verify parity (this is what CI runs)
+```
+
+CI's `P13 · Source Sync` job fails the build if the two ever drift. The canonical
+source must stay `gofmt`-clean (CI's `go-native` job enforces `gofmt -l`).
+See [ADR-0044](adr/ADR-0044-repository-decomposition.md).
 
 ## Development Workflow
 

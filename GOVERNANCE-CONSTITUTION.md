@@ -1684,8 +1684,65 @@ Default stance: *"If it doesn’t align with our ethical principles, it doesn’
 ---
 ---
 
+# **🧱 PROMPT 13: REPOSITORY DECOMPOSITION & TOOLING MATURITY (NEW)**
+**Role**: *Codebase Steward*  
+**Motto**: *"A platform contributors cannot navigate is a platform that cannot survive."*
+
+---
+
+## **🎯 Why P13 Exists**
+By the end of P12, VayuPress had outgrown the single-deploy-script architecture. The
+entire Go application lived embedded in a bash heredoc: zero `.go` files, no native
+tooling, no IDE indexing, weak static analysis, and painful contributor ergonomics.
+P13 governs the transition to a **real, navigable, statically-analyzable Go source
+tree** without sacrificing the self-contained `curl | bash` install model (P5).
+
+---
+
+## **📐 Decomposition Doctrine**
+1. **Canonical embedded source**: The deploy script's heredoc remains the canonical
+   source of truth so `curl -sSL ... | bash` keeps working unchanged (P5: Operational
+   Simplicity). No breaking change to the documented install UX.
+2. **Mirrored real tree**: The exact same Go source is committed at
+   `cmd/vayupress/main.go` with a committed `go.mod`/`go.sum`, enabling
+   `go build`, `go vet`, `go test`, `golangci-lint`, and `govulncheck`.
+3. **Enforced parity (no drift)**: `scripts/sync-source.sh --check` runs in CI and
+   FAILS the build if the embedded heredoc and `cmd/vayupress/main.go` ever diverge
+   (P10: Automated Governance). The deploy script and the real tree can never silently
+   drift apart.
+4. **gofmt-clean canonical**: The canonical source must be `gofmt`-clean so the mirror
+   passes formatting checks. Compactness is sacrificed for tool-compatibility.
+5. **Pinned dependencies**: The deploy script pins exact dependency versions matching
+   the committed `go.mod` (no `@latest`) so deploys are reproducible and never pull a
+   version requiring a newer Go than the pinned toolchain.
+6. **Progressive split**: Extraction proceeds in safe stages — first a single `main`
+   package (zero behavior change), then `internal/` packages (auth, db, security,
+   health, queue) in follow-up P13.x increments, each independently verified.
+
+---
+
+## **🔒 P13 Non-Negotiables**
+- A change to the deploy script's embedded Go source **MUST** be accompanied by a
+  regenerated `cmd/vayupress/main.go` (run `scripts/sync-source.sh`).
+- CI **MUST** run native `go build`, `go vet`, and the sync-check on every push.
+- The `go` directive in `go.mod` **MUST** match the deploy script's installed Go
+  toolchain version.
+- No `@latest` dependency resolution in the deploy script.
+
+---
+
+## **📌 Your Role**
+Default stance: *"If a contributor cannot clone the repo and `go build` it, the
+decomposition is not done. The deploy script is how we ship; the source tree is how
+we are understood."*
+
+See **ADR-0044** for the decomposition decision record.
+
+---
+---
+
 # **📌 HOW TO USE THIS CONSTITUTION & PROMPTS**
-This document defines **what we are** and **what we will never be**. For specific operational details, refer to the derived governance documents. The **12 Prompts** are the operational DNA; use them in every decision:
+This document defines **what we are** and **what we will never be**. For specific operational details, refer to the derived governance documents. The **13 Prompts** are the operational DNA; use them in every decision:
 
 1. Start with **Prompt 1 (Architecture)**.
 2. Run **Prompt 2 (Performance)** for speed/memory changes.
@@ -1699,6 +1756,7 @@ This document defines **what we are** and **what we will never be**. For specifi
 10. Automate with **Prompt 10 (CI)**.
 11. Govern community with **Prompt 11 (Community)**.
 12. **New**: Uphold ethics with **Prompt 12 (Ethical Governance)**.
+13. **New**: Keep the codebase navigable with **Prompt 13 (Repository Decomposition & Tooling Maturity)**.
 
 **Conflict Resolution**: Use the **Weighted Priority Order** from the Institutional Philosophy section:
 **Security = Data Integrity > Ethical Compliance > Reliability > Simplicity > Performance > DX > Feature Velocity**.

@@ -8,8 +8,8 @@ This directory contains deployment and operational scripts for VayuPress.
 
 The primary deployment script. Installs and configures a full VayuPress stack on Ubuntu 24.04 LTS.
 
-**Implements**: VayuPress Governance Constitution v6.0 — Prompts 1–12  
-**Version**: v1.0.0-p12.1
+**Implements**: VayuPress Governance Constitution v6.0 — Prompts 1–13  
+**Version**: v1.0.0-p13
 
 **Usage**:
 ```bash
@@ -36,7 +36,7 @@ sudo ./scripts/deploy-vayupress.sh --upgrade
 10. Cron jobs: nightly backup, orphan cleanup, restore validation
 11. Smoke tests + admin credential printout
 
-**Governance compliance** (v1.0.0-p12.1):
+**Governance compliance** (v1.0.0-p13):
 
 | ADR | Description |
 |-----|-------------|
@@ -52,6 +52,7 @@ sudo ./scripts/deploy-vayupress.sh --upgrade
 | ADR-0041 | Structured health contracts with schema_version field |
 | ADR-0042 | Backup restore automation + checksum registry |
 | ADR-0043 | 8 new integration test files |
+| ADR-0044 | Repository decomposition + source parity (cmd/vayupress/main.go) |
 
 **Security features** (P9):
 - SSRF protection: all outbound HTTP blocked for loopback, link-local (169.254.169.254), RFC-1918
@@ -71,6 +72,22 @@ sudo ./scripts/deploy-vayupress.sh --upgrade
 
 **Requirements**: Ubuntu 24.04 LTS, 8 GB RAM minimum, root/sudo access.  
 **Idempotent**: Safe to run multiple times. Use `--upgrade` to preserve existing data.
+
+### `sync-source.sh`
+
+P13 source-parity tool. The canonical Go application source is embedded in the
+`deploy-vayupress.sh` heredoc (keeping the `curl | bash` install self-contained).
+This script mirrors that exact source to `cmd/vayupress/main.go` so the full Go
+toolchain (build/vet/test/lint/vuln) works.
+
+```bash
+scripts/sync-source.sh           # regenerate cmd/vayupress/main.go from the heredoc
+scripts/sync-source.sh --check   # CI mode: exit 1 if the two have drifted
+```
+
+The deploy script is **canonical**; the committed `cmd/vayupress/main.go` is the
+mirror. CI's `P13 · Source Sync` job runs `--check` on every push. See
+[ADR-0044](../docs/adr/ADR-0044-repository-decomposition.md).
 
 ## Adding New Scripts
 

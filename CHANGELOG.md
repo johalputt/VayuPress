@@ -6,6 +6,36 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [1.0.0-p13] — 2026-06-12
+
+### Added (Prompt 13 — Repository Decomposition & Tooling Maturity)
+- **Real Go source tree**: the application is now committed at `cmd/vayupress/main.go`
+  with committed `go.mod`/`go.sum` (pinned, Go 1.22). `git clone && go build ./...`
+  works; IDEs index the code; `go vet`/`go test`/`gofmt`/`govulncheck` all run.
+- **Source parity enforcement**: `scripts/sync-source.sh` mirrors the canonical deploy
+  heredoc to `cmd/vayupress/main.go`; `--check` mode runs in CI and fails on drift.
+- **Native Go CI** (`go-native` job): `go vet`, `gofmt -l`, `go build -race`,
+  `go test -race`, and `govulncheck` on every push.
+- **Constitution Prompt 13** added; `check-governance` now verifies Prompts 1–13.
+- **ADR-0044** — Repository Decomposition & Source Parity.
+
+### Changed
+- Canonical Go source normalized with `gofmt` (deploy script grew ~4.3k → ~5.5k lines
+  as compact one-liners were expanded for tool-compatibility).
+- Deploy script pins exact dependency versions (no `@latest`): `chi@v5.1.0`,
+  `go-sqlite3@v1.14.45`, `bluemonday@v1.0.27`, `gobreaker@v1.0.0`, `cors@v1.11.1`,
+  `x/crypto@v0.31.0` — prevents pulling versions requiring Go > 1.22.
+- `Makefile`: `build`/`dev` target `./cmd/vayupress`; added `sync` and `sync-check`
+  targets; `build` now depends on `sync-check`; `check-adrs` requires ADR-0044;
+  `check-governance` verifies Prompt 13.
+
+### Fixed
+- **Latent deploy failure**: deploy script previously used `go get ...@latest`, which
+  would pull `chi v5.3.0` (requires Go 1.23) onto the pinned Go 1.22.5 install and fail
+  the build. Now pinned to compatible versions.
+
+---
+
 ## [1.0.0-p12.1] — 2026-06-12
 
 ### Fixed

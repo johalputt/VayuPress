@@ -96,6 +96,36 @@ Target: ≤50ms p95 latency on a 4-vCPU / 8 GB VPS under sustained load.
 
 Run benchmarks locally: `make bench`
 
+## Repository Structure
+
+```
+vayupress/
+├── cmd/vayupress/main.go      # Real Go source (mirrors the deploy heredoc, P13)
+├── go.mod / go.sum            # Pinned dependencies (Go 1.22)
+├── scripts/
+│   ├── deploy-vayupress.sh    # Canonical self-contained installer (curl | bash)
+│   └── sync-source.sh         # Keeps cmd/vayupress/main.go == deploy heredoc
+├── docs/                      # Architecture, operations, ADRs, threat model
+│   ├── adr/                   # Architecture Decision Records (ADR-0001 … 0044)
+│   └── operations/            # Disaster-recovery and ops runbooks
+├── .github/workflows/         # CI (governance + native Go) and security
+├── Makefile                   # build / test / lint / sync / governance targets
+└── GOVERNANCE-CONSTITUTION.md # The 13 Prompts
+```
+
+**Source-of-truth model (P13):** the deploy script's embedded heredoc is *canonical*
+so `curl | bash` keeps working. `cmd/vayupress/main.go` is an exact, gofmt-clean
+mirror that enables native `go build`, `go vet`, `go test`, `golangci-lint`, and
+`govulncheck`. CI fails the build if the two ever drift (`scripts/sync-source.sh
+--check`). See [ADR-0044](docs/adr/ADR-0044-repository-decomposition.md).
+
+```bash
+# Build and test the real Go tree natively
+go build ./...
+go vet ./...
+make sync-check     # verify the mirror matches the deploy script
+```
+
 ## Requirements
 
 - Ubuntu 24.04 LTS
