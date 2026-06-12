@@ -8,8 +8,8 @@ This directory contains deployment and operational scripts for VayuPress.
 
 The primary deployment script. Installs and configures a full VayuPress stack on Ubuntu 24.04 LTS.
 
-**Implements**: VayuPress Governance Constitution v6.0 — Prompts 1–8  
-**Version**: v1.0.0-p8
+**Implements**: VayuPress Governance Constitution v6.0 — Prompts 1–12  
+**Version**: v1.0.0-p12.1
 
 **Usage**:
 ```bash
@@ -36,22 +36,38 @@ sudo ./scripts/deploy-vayupress.sh --upgrade
 10. Cron jobs: nightly backup, orphan cleanup, restore validation
 11. Smoke tests + admin credential printout
 
-**Governance compliance** (v1.0.0-p8):
+**Governance compliance** (v1.0.0-p12.1):
 
 | ADR | Description |
 |-----|-------------|
-| ADR-0032 | Plugin pool WaitGroup drain + context propagation |
+| ADR-0032 | Plugin pool WaitGroup drain + context propagation (shutdown order fixed) |
 | ADR-0033 | WAL adaptive checkpoint (size-triggered RESTART) |
 | ADR-0034 | Migration checksum drift verification at startup |
 | ADR-0035 | Dead-letter queue replay limits + poison job quarantine |
-| ADR-0036 | CSP nonce centralized template helpers |
+| ADR-0036 | CSP nonce centralized template helpers (unsafe-inline removed) |
 | ADR-0037 | Pprof explicit handler + rate-limit + audit log |
 | ADR-0038 | VACUUM cooldown + write-threshold guard |
 | ADR-0039 | Deploy sourced component architecture |
 | ADR-0040 | Config versioning + compatibility contracts |
-| ADR-0041 | Structured health contracts (/health/dependencies etc.) |
+| ADR-0041 | Structured health contracts with schema_version field |
 | ADR-0042 | Backup restore automation + checksum registry |
 | ADR-0043 | 8 new integration test files |
+
+**Security features** (P9):
+- SSRF protection: all outbound HTTP blocked for loopback, link-local (169.254.169.254), RFC-1918
+- Argon2id credential hashing with constant-time comparison
+- Magic-number file type verification (JPEG/PNG/GIF/WebP/PDF)
+- WORM audit log: SQLite `BEFORE UPDATE`/`BEFORE DELETE` triggers raise ABORT
+- CSP: `style-src 'self'` only — no `unsafe-inline`
+- Bounded memory: TTL sweeper evicts stale auth/rate-limit buckets every 10 minutes
+
+**Shutdown lifecycle** (6 phases):
+1. Stop ingress (30s HTTP drain)
+2. Drain write queue (45s timeout)
+3. Stop plugin pool (WaitGroup + channel close)
+4. WAL checkpoint (TRUNCATE)
+5. Flush metrics snapshot
+6. Close database
 
 **Requirements**: Ubuntu 24.04 LTS, 8 GB RAM minimum, root/sudo access.  
 **Idempotent**: Safe to run multiple times. Use `--upgrade` to preserve existing data.

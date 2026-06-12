@@ -1,4 +1,11 @@
 # VayuPress
+
+[![CI](https://github.com/johalputt/vayupress/actions/workflows/ci.yml/badge.svg)](https://github.com/johalputt/vayupress/actions/workflows/ci.yml)
+[![Security](https://github.com/johalputt/vayupress/actions/workflows/security.yml/badge.svg)](https://github.com/johalputt/vayupress/actions/workflows/security.yml)
+[![Go](https://img.shields.io/badge/go-1.22-blue)](https://go.dev/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![Constitution](https://img.shields.io/badge/constitution-v6.0%20P1--P12-blueviolet)](GOVERNANCE-CONSTITUTION.md)
+
 > **Ultra-lightweight, ethical publishing infrastructure.**
 > SQLite-first, zero-trust, no tracking. Built to outperform WordPress, Hugo, and Ghost.
 
@@ -34,6 +41,61 @@ VayuPress ("Vayu" — Sanskrit for wind/speed) is modern publishing infrastructu
 | Nginx           | Static-file serving, TLS termination      |
 | Isso            | Self-hosted, privacy-friendly comments    |
 
+## Architecture
+
+```
+                     ┌─────────────────────────────────┐
+                     │           Internet               │
+                     └────────────────┬────────────────┘
+                                      │ HTTPS (443)
+                     ┌────────────────▼────────────────┐
+                     │    Nginx (TLS termination,       │
+                     │    static files, gzip, CSP)      │
+                     └────────────────┬────────────────┘
+                                      │ HTTP (127.0.0.1:8080)
+             ┌────────────────────────▼────────────────────────┐
+             │              VayuPress Go Binary                 │
+             │  ┌─────────┐  ┌──────────┐  ┌───────────────┐  │
+             │  │  Router │  │  Worker  │  │  Write Queue  │  │
+             │  │  (chi)  │  │  Pool    │  │  (async)      │  │
+             │  └────┬────┘  └────┬─────┘  └───────┬───────┘  │
+             │       │            │                 │           │
+             │  ┌────▼────────────▼─────────────────▼───────┐  │
+             │  │           SQLite (WAL mode)                │  │
+             │  │   articles · media · audit_log (WORM)     │  │
+             │  └────────────────────────────────────────────┘  │
+             └──────────────────────────┬──────────────────────┘
+                                        │
+              ┌─────────────────────────┼──────────────────────┐
+              │                         │                       │
+   ┌──────────▼──────────┐  ┌──────────▼──────────┐  ┌────────▼───────┐
+   │  Meilisearch        │  │  Isso               │  │  fail2ban /    │
+   │  (optional search)  │  │  (self-hosted       │  │  UFW firewall  │
+   │  <50ms p95 search   │  │   comments)         │  │                │
+   └─────────────────────┘  └─────────────────────┘  └────────────────┘
+```
+
+**Key design decisions:**
+- Single Go binary — no runtime dependencies beyond SQLite
+- SQLite WAL mode — concurrent reads, serialized writes, no connection pooling overhead
+- SSRF-safe outbound client — blocks loopback, link-local (169.254.169.254), RFC-1918
+- Immutable WORM audit log — SQLite ABORT triggers prevent modification
+- Self-hosted fonts (Inter + IBM Plex Mono) — zero external requests, ADR-0002
+
+## Performance
+
+Target: ≤50ms p95 latency on a 4-vCPU / 8 GB VPS under sustained load.
+
+| Metric | Target | Architecture decision |
+|--------|--------|-----------------------|
+| Article page p95 | <50ms | Nginx static-file serving + in-memory cache |
+| Search p95 | <50ms | Meilisearch with pre-warmed index |
+| API write p95 | <100ms | SQLite WAL + async write queue |
+| Cold start | <500ms | Single static binary, no JVM/interpreter |
+| Binary size (gzip) | <45 MB | `-ldflags="-s -w" -trimpath` |
+
+Run benchmarks locally: `make bench`
+
 ## Requirements
 
 - Ubuntu 24.04 LTS
@@ -56,6 +118,9 @@ VayuPress ("Vayu" — Sanskrit for wind/speed) is modern publishing infrastructu
 | [GOVERNANCE](GOVERNANCE.md)            | Governance overview            |
 | [ETHICS](ETHICS.md)                    | Ethical principles & AI charter|
 | [CHANGELOG](CHANGELOG.md)              | Version history                |
+| [UPGRADING](UPGRADING.md)              | Upgrade procedures             |
+| [OPERATIONS](docs/OPERATIONS.md)       | Runbooks and incident response |
+| [THREAT MODEL](docs/THREAT-MODEL.md)   | Security threat analysis       |
 
 ## Governance
 

@@ -42,6 +42,14 @@ Desktop.ini
 dist/
 build/
 
+# Test coverage
+coverage.out
+coverage.html
+*.coverprofile
+
+# Build output
+bin/
+
 # Benchmarks & profiling output
 *.pprof
 cpu.prof
