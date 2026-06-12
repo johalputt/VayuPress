@@ -1,0 +1,113 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "claude/**"]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  # ── Documentation check ────────────────────────────────────────────────────
+  check-docs:
+    name: Required Docs
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify required documentation files
+        run: |
+          MISSING=0
+          for f in \
+            README.md CHANGELOG.md SECURITY.md GOVERNANCE.md \
+            ETHICS.md CONTRIBUTING.md CODE_OF_CONDUCT.md \
+            docs/INSTALLATION.md docs/API-REFERENCE.md \
+            docs/ARCHITECTURE.md docs/DEVELOPMENT.md; do
+            if [ ! -f "$f" ]; then
+              echo "MISSING: $f"
+              MISSING=1
+            else
+              echo "OK: $f"
+            fi
+          done
+          [ $MISSING -eq 0 ] || { echo ""; echo "FAIL: Required documentation files are missing."; exit 1; }
+
+  # ── Shell script linting ───────────────────────────────────────────────────
+  lint-shell:
+    name: Shell Script Lint
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        run: sudo apt-get install -y shellcheck
+
+      - name: Lint deploy script
+        run: shellcheck --severity=warning scripts/deploy-vayupress.sh
+
+  # ── Markdown linting ───────────────────────────────────────────────────────
+  lint-markdown:
+    name: Markdown Lint
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lint Markdown files
+        uses: DavidAnson/markdownlint-cli2-action@v16
+        with:
+          globs: "**/*.md"
+          config: |
+            {
+              "MD013": false,
+              "MD033": false,
+              "MD041": false,
+              "MD024": false
+            }
+
+  # ── Security scan on deploy script ────────────────────────────────────────
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Scan for secrets
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+          extra_args: --only-verified
+
+  # ── Link check ────────────────────────────────────────────────────────────
+  check-links:
+    name: Check Links
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check Markdown links
+        uses: gaurav-nelson/github-action-markdown-link-check@v1
+        with:
+          use-quiet-mode: yes
+          config-file: .github/mlc_config.json
+        continue-on-error: true  # advisory only — external links may be unavailable in CI
+
+  # ── All checks summary ────────────────────────────────────────────────────
+  ci-pass:
+    name: CI Pass
+    needs: [check-docs, lint-shell, lint-markdown]
+    runs-on: ubuntu-24.04
+    if: always()
+    steps:
+      - name: Verify all required checks passed
+        run: |
+          if [[ "${{ needs.check-docs.result }}" != "success" || \
+                "${{ needs.lint-shell.result }}" != "success" || \
+                "${{ needs.lint-markdown.result }}" != "success" ]]; then
+            echo "One or more required CI checks failed."
+            exit 1
+          fi
+          echo "All CI checks passed."

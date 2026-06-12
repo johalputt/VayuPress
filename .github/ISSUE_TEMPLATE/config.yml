@@ -1,0 +1,14 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security Vulnerability
+    url: mailto:security@vayupress.com
+    about: Please email security@vayupress.com for security vulnerabilities. Do NOT open a public issue.
+  - name: Ethics Violation
+    url: mailto:ethics@vayupress.com
+    about: Report ethical violations to ethics@vayupress.com
+  - name: General Support
+    url: mailto:support@vayupress.com
+    about: For general support questions, email support@vayupress.com
+  - name: Governance / RFC Discussion
+    url: mailto:governance@vayupress.com
+    about: For governance questions or RFC pre-discussion, email governance@vayupress.com

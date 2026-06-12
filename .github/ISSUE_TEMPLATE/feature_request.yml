@@ -1,0 +1,70 @@
+name: Feature Request
+description: Propose a new feature or improvement
+title: "[Feature]: "
+labels: ["enhancement", "needs-triage"]
+assignees: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before submitting, please read our [Governance Constitution](GOVERNANCE-CONSTITUTION.md).
+        VayuPress has strict architectural principles. Features must align with our core identity.
+        **Large changes require an RFC** — see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: What problem does this solve? Why does it matter?
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: How should it work? Be specific.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: What other approaches did you consider and why reject them?
+
+  - type: dropdown
+    id: prompt_alignment
+    attributes:
+      label: Governance Alignment
+      description: Which governance prompt does this feature primarily relate to?
+      options:
+        - Prompt 1 — Core Architecture
+        - Prompt 2 — Performance
+        - Prompt 3 — UI/UX
+        - Prompt 4 — Platform Evolution
+        - Prompt 5 — Operations & Observability
+        - Prompt 6 — Testing & Reliability
+        - Prompt 7 — Documentation & DX
+        - Prompt 8 — Release & Compatibility
+        - Prompt 9 — Security
+        - Prompt 10 — Automated Governance
+        - Prompt 11 — Community
+        - Prompt 12 — Ethics
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: identity_test
+    attributes:
+      label: Identity Test
+      description: Per our governance — "Does this make VayuPress more of a lightweight, ethical publishing infrastructure, or less?"
+      options:
+        - label: This feature makes VayuPress MORE lightweight / ethical / secure, not less
+          required: true
+        - label: This feature works with SQLite (does not require a separate database)
+          required: true
+        - label: This feature does not add heavy frontend frameworks to public paths
+          required: true
+        - label: I searched existing issues and RFCs — this is not a duplicate
+          required: true
