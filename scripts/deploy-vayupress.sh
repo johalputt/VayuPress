@@ -8,7 +8,7 @@
 #   ╚████╔╝ ██║  ██║   ██║   ╚██████╔╝██║     ██║  ██║███████╗███████║███████║
 #    ╚═══╝  ╚═╝  ╚═╝   ╚═╝    ╚═════╝ ╚═╝     ╚═╝  ╚═╝╚══════╝╚══════╝╚══════╝
 #
-#   VayuPress — v1.0.0-p8
+#   VayuPress — v1.0.0-p12
 #   "Vayu" (Sanskrit: wind/speed) + Press — Publish at the Speed of Wind.
 #   Author  : Ankush Choudhary Johal <https://vayupress.com>
 #   License : MIT
@@ -16,9 +16,8 @@
 #   Domain  : https://vayupress.com
 #
 #   GOVERNANCE: VayuPress Governance Constitution v6.0
-#   This version implements Prompt 8 (Modularization, Lifecycle Guarantees,
-#   Concurrency Correctness, Recovery Contracts, Observability Depth).
-#   Carries forward all P1–P7 compliance.
+#   This version implements Prompts 9–12 (Security, Automated Governance,
+#   Community, Ethics) and carries forward all P1–P8 compliance.
 #
 #   Stack:
 #     • Go 1.22             — HTTP server, write-queue workers, cache renderer
@@ -184,8 +183,8 @@ done
 echo -e "${GREEN}"
 cat << 'BANNER'
  ╔══════════════════════════════════════════════════════════════════════╗
- ║   ⚡  VayuPress v1.0.0-p8 — Publish at the Speed of Wind            ║
- ║       Prompt 7 (Decomposition, Reliability, Operational Contracts)  ║
+ ║   ⚡  VayuPress v1.0.0-p12 — Publish at the Speed of Wind           ║
+ ║       Prompts 1–12 (Security, Governance, Community, Ethics)        ║
  ║       MIT License · https://vayupress.com                           ║
  ╚══════════════════════════════════════════════════════════════════════╝
 BANNER
@@ -465,12 +464,11 @@ ok "Self-hosted fonts step complete."
 
 # =============================================================================
 # STEP 7 ── Go application source (main.go)
-#           v1.0.0-p8 — P8: Plugin pool WaitGroup+ctx, WAL adaptive checkpoint,
-#           migration drift verification, DLQ safety controls, CSP nonce helpers,
-#           pprof hardening, VACUUM rate-limit, config versioning,
-#           structured health contracts, backup restore automation. (ADR-0032–0043)
+#           v1.0.0-p12 — P9: SSRF protection, Argon2id, WORM audit log,
+#           magic-number verification, /health/ethics. P10: CI governance.
+#           P11: Community contracts. P12: Ethical AI Charter. (ADR-0032–0043)
 # =============================================================================
-step "Go application source (v1.0.0-p8 P8: Lifecycle Guarantees + Concurrency Correctness)"
+step "Go application source (v1.0.0-p12 P9–P12: Security, Governance, Community, Ethics)"
 
 [ "$DRY_RUN" = true ] && { ok "[dry-run] Skipping source generation."; }
 
@@ -747,6 +745,58 @@ var (
 	authFailMu      sync.Mutex
 	authFailBuckets = make(map[string]*authFailBucket)
 )
+
+// P9: startBucketSweeper removes expired authFail and rate-limit buckets on a
+// fixed interval to bound memory usage on long-running instances with rotating IPs.
+func startBucketSweeper(ctx context.Context) {
+	go func() {
+		ticker := time.NewTicker(10 * time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				now := time.Now()
+				authFailMu.Lock()
+				for ip, b := range authFailBuckets {
+					b.mu.Lock()
+					expired := now.After(b.lockedUntil) && now.After(b.windowEnd)
+					b.mu.Unlock()
+					if expired {
+						delete(authFailBuckets, ip)
+					}
+				}
+				authFailMu.Unlock()
+				rateMu.Lock()
+				for ip, b := range rateBuckets {
+					if now.After(b.resetAt) {
+						delete(rateBuckets, ip)
+					}
+				}
+				rateMu.Unlock()
+				pprofLimiters.Range(func(k, v interface{}) bool {
+					if b, ok := v.(*pprofBucket); ok {
+						b.mu.Lock()
+						old := now.After(b.windowEnd)
+						b.mu.Unlock()
+						if old { pprofLimiters.Delete(k) }
+					}
+					return true
+				})
+				purgeLimiters.Range(func(k, v interface{}) bool {
+					if b, ok := v.(*purgeBucket); ok {
+						b.mu.Lock()
+						idle := now.Sub(b.lastRefill) > 30*time.Minute
+						b.mu.Unlock()
+						if idle { purgeLimiters.Delete(k) }
+					}
+					return true
+				})
+			}
+		}
+	}()
+}
 
 const (
 	authFailWindow   = 15 * time.Minute
@@ -1442,20 +1492,22 @@ func runPluginJob(job pluginJob) {
 	}
 }
 
-// P8: clean shutdown — pluginCancel → drain → close(pluginQueue) → Wait() (ADR-0032)
+// P9: clean shutdown — cancel ctx → close channel → Wait() (ADR-0032)
+// Order matters: close(pluginQueue) unblocks range loops in workers; Wait()
+// then ensures all goroutines have fully exited before the caller proceeds.
 func shutdownPluginPool() {
 	if pluginCancel == nil { return }
-	logInfo("plugin-pool","cancelling context — draining workers")
+	logInfo("plugin-pool","cancelling context and closing queue")
 	pluginCancel()
+	close(pluginQueue)
 	drainDone := make(chan struct{})
 	go func() { workerPluginWg.Wait(); close(drainDone) }()
 	select {
 	case <-drainDone:
 		logInfo("plugin-pool","all workers drained")
 	case <-time.After(10 * time.Second):
-		logJSON(logFields{Level:"warn",Component:"plugin-pool",Msg:"drain timeout (10s) — closing channel"})
+		logJSON(logFields{Level:"warn",Component:"plugin-pool",Msg:"drain timeout (10s) exceeded"})
 	}
-	close(pluginQueue)
 }
 
 func FireHook(event string, payload map[string]interface{}) {
@@ -1589,12 +1641,13 @@ func structuredLoggerMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// P8: securityHeadersMiddleware stores nonce in context for CSPNonce(r) helper (ADR-0036)
+// P9: securityHeadersMiddleware — CSP no longer uses style-src 'unsafe-inline'.
+// Styles are served from static files only; the nonce covers scripts only. (ADR-0036)
 func securityHeadersMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Strict-Transport-Security","max-age=63072000; includeSubDomains; preload")
 		nonce := generateCSPNonce()
-		csp := fmt.Sprintf("default-src 'self'; font-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'nonce-%s'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'", nonce)
+		csp := fmt.Sprintf("default-src 'self'; font-src 'self'; style-src 'self'; script-src 'self' 'nonce-%s'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'", nonce)
 		w.Header().Set("Content-Security-Policy", csp)
 		ctx := context.WithValue(r.Context(), ctxKeyCSPNonce{}, nonce)
 		w.Header().Set("X-Content-Type-Options","nosniff")
@@ -2158,17 +2211,21 @@ func handleMetrics(w http.ResponseWriter, r *http.Request) {
 }
 
 // Health endpoints — P7 + P8 structured contracts (ADR-0041)
+// healthSchemaVersion is incremented when the shape of any /health response changes.
+// Automation consumers should assert schema_version matches their expectation.
+const healthSchemaVersion = "1"
+
 func handleHealthLiveness(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w,r,200,map[string]interface{}{"status":"alive","version":Version,"config_version":ConfigVersion,"uptime_seconds":time.Since(bootTime).Seconds()})
+	writeJSON(w,r,200,map[string]interface{}{"schema_version":healthSchemaVersion,"status":"alive","version":Version,"config_version":ConfigVersion,"uptime_seconds":time.Since(bootTime).Seconds()})
 }
 func handleHealthReady(w http.ResponseWriter, r *http.Request) {
-	if err := db.Ping(); err != nil { writeJSON(w,r,503,map[string]string{"status":"not_ready","reason":"db unavailable"}); return }
-	if alive := atomic.LoadInt64(&workerLiveness); alive < 1 { writeJSON(w,r,503,map[string]string{"status":"not_ready","reason":"no workers"}); return }
-	writeJSON(w,r,200,map[string]string{"status":"ready"})
+	if err := db.Ping(); err != nil { writeJSON(w,r,503,map[string]interface{}{"schema_version":healthSchemaVersion,"status":"not_ready","reason":"db unavailable"}); return }
+	if alive := atomic.LoadInt64(&workerLiveness); alive < 1 { writeJSON(w,r,503,map[string]interface{}{"schema_version":healthSchemaVersion,"status":"not_ready","reason":"no workers"}); return }
+	writeJSON(w,r,200,map[string]interface{}{"schema_version":healthSchemaVersion,"status":"ready"})
 }
 func handleHealthDB(w http.ResponseWriter, r *http.Request) {
-	if err := db.Ping(); err != nil { writeJSON(w,r,503,map[string]string{"status":"down"}); return }
-	writeJSON(w,r,200,map[string]string{"status":"ok"})
+	if err := db.Ping(); err != nil { writeJSON(w,r,503,map[string]interface{}{"schema_version":healthSchemaVersion,"status":"down"}); return }
+	writeJSON(w,r,200,map[string]interface{}{"schema_version":healthSchemaVersion,"status":"ok"})
 }
 
 // P12: /health/ethics — machine-readable ethics compliance signal. Confirms the
@@ -2178,6 +2235,7 @@ func handleHealthEthics(w http.ResponseWriter, r *http.Request) {
 	var auditTable int
 	db.QueryRow(`SELECT COUNT(1) FROM sqlite_master WHERE type='table' AND name='audit_log'`).Scan(&auditTable)
 	writeJSON(w,r,200,map[string]interface{}{
+		"schema_version":       healthSchemaVersion,
 		"status":               "ok",
 		"compliant":            true,
 		"charter_version":      "1.0",
@@ -2671,7 +2729,7 @@ func handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	log.SetFlags(0)
-	logInfo("main", fmt.Sprintf("VayuPress v%s starting — P1–P7 active, P8 initializing", Version))
+	logInfo("main", fmt.Sprintf("VayuPress v%s starting — P1–P12 active", Version))
 	loadConfig()
 	logInfo("main", fmt.Sprintf("domain=%s port=%s workers=%d config_version=%s maintenance=%v",
 		cfg.Domain, cfg.Port, cfg.WorkerCount, ConfigVersion, cfg.MaintenanceMode))
@@ -2683,6 +2741,9 @@ func main() {
 
 	// P8: pprof on isolated mux — no DefaultServeMux (ADR-0037)
 	initPprofMux()
+
+	// P9: start TTL sweeper to bound memory usage of auth/rate-limit maps
+	startBucketSweeper(context.Background())
 
 	staticDir := envOr("STATIC_DIR", "/var/www/vayupress/static")
 	writeCSSAssets(staticDir)
@@ -2830,44 +2891,54 @@ func main() {
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		sig := <-sigCh
-		logInfo("main", fmt.Sprintf("received %v — P8 graceful shutdown (ADR-0022/ADR-0032)", sig))
+		logInfo("main", fmt.Sprintf("received %v — P9–P12 graceful shutdown (ADR-0022/ADR-0032)", sig))
 
-		// Step 1: stop accepting new HTTP connections (30s window)
+		// Phase 1: stop ingress — no new HTTP requests accepted
 		httpCtx, httpCancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer httpCancel()
 		if err := srv.Shutdown(httpCtx); err != nil { logError("main","HTTP shutdown",err.Error()) }
-		logInfo("main", "HTTP server stopped accepting connections")
+		logInfo("main", "phase 1 complete — ingress stopped")
 
-		// Step 2: signal background goroutines via doneCh
-		logInfo("main", "closing doneCh — background goroutines draining")
+		// Phase 2: drain write queue (45s timeout)
 		close(doneCh)
-
-		// Step 3: P8 — shutdown plugin pool with WaitGroup drain (ADR-0032)
-		if os.Getenv("VAYU_PLUGINS_ENABLED") == "true" {
-			logInfo("main", "shutting down plugin pool (ADR-0032)")
-			shutdownPluginPool()
-		}
-
-		// Step 4: wait for write worker drain (45s timeout)
 		drainDone := make(chan struct{})
 		go func() { workerWg.Wait(); close(drainDone) }()
 		select {
 		case <-drainDone:
-			logInfo("main", "write queue drained — all workers stopped")
+			logInfo("main", "phase 2 complete — write queue drained")
 		case <-time.After(45 * time.Second):
-			logJSON(logFields{Level:"warn",Component:"main",Msg:"drain timeout (45s) — in-flight jobs retried on next startup"})
+			logJSON(logFields{Level:"warn",Component:"main",Msg:"phase 2 timeout (45s) — in-flight jobs retried on next startup"})
 		}
 
-		// Step 5: close database
+		// Phase 3: stop plugin pool (ADR-0032)
+		if os.Getenv("VAYU_PLUGINS_ENABLED") == "true" {
+			shutdownPluginPool()
+			logInfo("main", "phase 3 complete — plugin pool stopped")
+		}
+
+		// Phase 4: WAL checkpoint before close
 		if db != nil {
-			if err := db.Close(); err != nil { logError("main","DB close",err.Error()) } else { logInfo("main","database closed") }
+			if _, err := db.Exec(`PRAGMA wal_checkpoint(TRUNCATE)`); err != nil {
+				logError("main","WAL checkpoint on shutdown",err.Error())
+			} else {
+				logInfo("main","phase 4 complete — WAL checkpointed")
+			}
+		}
+
+		// Phase 5: flush final metrics snapshot
+		collectAdminMetrics()
+		logInfo("main", "phase 5 complete — metrics flushed")
+
+		// Phase 6: close database
+		if db != nil {
+			if err := db.Close(); err != nil { logError("main","DB close",err.Error()) } else { logInfo("main","phase 6 complete — database closed") }
 		}
 
 		logInfo("main", "shutdown complete — goodbye")
 		os.Exit(0)
 	}()
 
-	logInfo("main", fmt.Sprintf("listening on :%s (P8 v%s — ADRs 0032–0043 active)", cfg.Port, Version))
+	logInfo("main", fmt.Sprintf("listening on :%s (v%s — P1–P12 active)", cfg.Port, Version))
 	if err := srv.ListenAndServe(); err != http.ErrServerClosed {
 		logError("main","ListenAndServe error",err.Error()); os.Exit(1)
 	}
