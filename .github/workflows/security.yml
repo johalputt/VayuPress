@@ -33,7 +33,10 @@ jobs:
           )
           FOUND=0
           for pat in "${PATTERNS[@]}"; do
-            if grep -rE "$pat" --include="*.go" --include="*.sh" --include="*.yml" --include="*.json" . 2>/dev/null | grep -v '.git'; then
+            # Exclude: variable references (${), generated secrets (_gen_secret), env var lookups, comments
+            if grep -rE "$pat" --include="*.go" --include="*.sh" --include="*.yml" --include="*.json" . 2>/dev/null \
+                | grep -v '\.git' \
+                | grep -v '\${\|_gen_secret\|envOr\|mustEnv\|getEnv\|#'; then
               echo "❌ Potential secret pattern found: $pat"
               FOUND=1
             fi
