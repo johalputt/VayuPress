@@ -7,7 +7,7 @@
         dry-run clean
 
 BINARY     := vayupress
-SRC_DIR    := /var/www/vayupress/src
+SRC_DIR    ?= .
 GZIP_LIMIT := 47185920  # 45 MB in bytes
 JS_GZ_LIMIT := 51200    # 50 KB in bytes
 
