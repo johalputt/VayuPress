@@ -294,9 +294,9 @@ jobs:
           chmod +x scripts/sync-source.sh
           scripts/sync-source.sh --check
 
-  # ── P13: Native Go tooling — build, vet, fmt, test, vuln scan ──────────────
+  # ── P13/P16: Native Go tooling — build, vet, fmt, test, vuln scan, static analysis ──
   go-native:
-    name: "P13 · Native Go Build/Vet/Test"
+    name: "P16 · Native Go Build/Vet/Test/Staticcheck"
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -313,6 +313,10 @@ jobs:
             echo "❌ gofmt issues in:"; echo "$OUT"; exit 1
           fi
           echo "✅ gofmt clean"
+      - name: staticcheck
+        run: |
+          go install honnef.co/go/tools/cmd/staticcheck@latest
+          "$(go env GOPATH)/bin/staticcheck" ./...
       - name: go build (race)
         run: go build -race ./...
       - name: go test (race)

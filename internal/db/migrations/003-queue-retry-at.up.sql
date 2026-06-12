@@ -1,0 +1,1 @@
+ALTER TABLE write_jobs ADD COLUMN retry_at DATETIME;

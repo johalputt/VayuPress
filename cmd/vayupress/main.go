@@ -48,22 +48,46 @@ import (
 	"github.com/johalputt/vayupress/internal/render"
 )
 
-var Version = "1.0.0-p14"
+var Version = "1.0.0-p15"
 var bootTime = time.Now()
 
+// Immutable package-level values (compiled once, never mutated).
 var (
-	policy         *bluemonday.Policy
-	slugRe         = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,198}[a-z0-9]$|^[a-z0-9]$`)
-	htmlTagRe      = regexp.MustCompile(`<[^>]+>`)
-	outboundClient = &http.Client{Timeout: 5 * time.Second, Transport: ssrfSafeTransport()}
-	meiliCB        *gobreaker.CircuitBreaker
-	smokeTestMutex sync.Mutex
+	slugRe    = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,198}[a-z0-9]$|^[a-z0-9]$`)
+	htmlTagRe = regexp.MustCompile(`<[^>]+>`)
 )
 
-var (
+// App holds all mutable runtime state. Handlers are methods on *App so that
+// they depend on explicit fields rather than package-level globals (ADR-0046).
+type App struct {
+	// HTTP
+	outboundClient *http.Client
+
+	// Sanitization
+	policy *bluemonday.Policy
+
+	// Meilisearch
+	meiliCB *gobreaker.CircuitBreaker
+
+	// Plugin subsystem
+	pluginRegistry *plugins.Registry
+	pluginManager  *plugins.Manager
+
+	// Vacuum lifecycle
 	vacuumMu      sync.Mutex
 	vacuumLastRun time.Time
-)
+
+	// Smoke test
+	smokeTestMutex sync.Mutex
+
+	// Admin metrics snapshot cache
+	metricsSnapshot atomic.Value
+
+	// Benchmark state
+	lastBenchmark    *benchmarkResult
+	lastBenchmarkMu  sync.Mutex
+	benchmarkRunning int32
+}
 
 const vacuumWriteThreshold = 10
 
@@ -145,24 +169,17 @@ func verifyMagicNumber(data []byte) (string, error) {
 	return "", fmt.Errorf("file type not allowed: magic number does not match any permitted media type")
 }
 
-// =============================================================================
-// Plugin subsystem (ADR-0032, ADR-0046) — internal/plugins
-// =============================================================================
-
-var (
-	pluginRegistry = plugins.NewRegistry()
-	pluginManager  = plugins.New(pluginRegistry)
-)
-
-func RegisterHook(event string, fn plugins.HookFunc) {
-	pluginRegistry.Register(event, fn)
+// RegisterHook registers a plugin hook with the App's plugin registry.
+func (a *App) RegisterHook(event string, fn plugins.HookFunc) {
+	a.pluginRegistry.Register(event, fn)
 }
 
-func FireHook(event string, payload map[string]interface{}) {
+// FireHook dispatches an event to the App's plugin manager (noop if VAYU_PLUGINS_ENABLED != true).
+func (a *App) FireHook(event string, payload map[string]interface{}) {
 	if os.Getenv("VAYU_PLUGINS_ENABLED") != "true" {
 		return
 	}
-	pluginManager.Fire(event, payload)
+	a.pluginManager.Fire(event, payload)
 }
 
 // =============================================================================
@@ -311,8 +328,8 @@ func newUUID() string {
 // Meilisearch (circuit-breaker guarded)
 // =============================================================================
 
-func initMeilisearchCB() {
-	meiliCB = gobreaker.NewCircuitBreaker(gobreaker.Settings{
+func (a *App) initMeilisearchCB() {
+	a.meiliCB = gobreaker.NewCircuitBreaker(gobreaker.Settings{
 		Name: "meilisearch", MaxRequests: 3, Interval: 10 * time.Second, Timeout: 30 * time.Second,
 		ReadyToTrip: func(counts gobreaker.Counts) bool {
 			return counts.Requests >= 3 && float64(counts.TotalFailures)/float64(counts.Requests) >= 0.60
@@ -323,7 +340,7 @@ func initMeilisearchCB() {
 	})
 }
 
-func meiliDo(method, path string, body interface{}) error {
+func (a *App) meiliDo(method, path string, body interface{}) error {
 	var r io.Reader
 	if body != nil {
 		b, _ := json.Marshal(body)
@@ -337,7 +354,7 @@ func meiliDo(method, path string, body interface{}) error {
 	if config.Cfg.MeiliMasterKey != "" {
 		req.Header.Set("Authorization", "Bearer "+config.Cfg.MeiliMasterKey)
 	}
-	resp, err := outboundClient.Do(req)
+	resp, err := a.outboundClient.Do(req)
 	if err != nil {
 		return err
 	}
@@ -349,8 +366,8 @@ func meiliDo(method, path string, body interface{}) error {
 	return nil
 }
 
-func configureMeilisearch() {
-	_ = meiliDo("PATCH", "/indexes/articles/settings", map[string]interface{}{
+func (a *App) configureMeilisearch() {
+	_ = a.meiliDo("PATCH", "/indexes/articles/settings", map[string]interface{}{
 		"rankingRules":         []string{"words", "proximity", "attribute", "sort", "exactness"},
 		"searchableAttributes": []string{"title", "tags", "content"},
 		"filterableAttributes": []string{"tags", "created_at"},
@@ -358,25 +375,25 @@ func configureMeilisearch() {
 	})
 }
 
-func indexArticle(a dbpkg.Article) {
-	if meiliCB == nil {
+func (a *App) indexArticle(art dbpkg.Article) {
+	if a.meiliCB == nil {
 		return
 	}
 	doc := map[string]interface{}{
-		"id": a.ID, "title": a.Title, "slug": a.Slug,
-		"content":    htmlTagRe.ReplaceAllString(policy.Sanitize(a.Content), ""),
-		"tags":       a.Tags,
-		"created_at": a.CreatedAt.Unix(),
+		"id": art.ID, "title": art.Title, "slug": art.Slug,
+		"content":    htmlTagRe.ReplaceAllString(a.policy.Sanitize(art.Content), ""),
+		"tags":       art.Tags,
+		"created_at": art.CreatedAt.Unix(),
 	}
-	_, err := meiliCB.Execute(func() (interface{}, error) {
-		return nil, meiliDo("POST", "/indexes/articles/documents", []map[string]interface{}{doc})
+	_, err := a.meiliCB.Execute(func() (interface{}, error) {
+		return nil, a.meiliDo("POST", "/indexes/articles/documents", []map[string]interface{}{doc})
 	})
 	if err != nil {
 		atomic.AddInt64(&metrics.MetricMeiliErrors, 1)
 	}
 }
 
-func purgeCloudflare(slug string) {
+func (a *App) purgeCloudflare(slug string) {
 	if config.Cfg.CFZoneID == "" || config.Cfg.CFAPIToken == "" {
 		return
 	}
@@ -385,14 +402,14 @@ func purgeCloudflare(slug string) {
 	req, _ := http.NewRequestWithContext(context.Background(), "POST", url, bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+config.Cfg.CFAPIToken)
-	resp, err := outboundClient.Do(req)
+	resp, err := a.outboundClient.Do(req)
 	if err != nil {
 		return
 	}
 	defer resp.Body.Close()
 }
 
-func pingIndexNow(slug string) {
+func (a *App) pingIndexNow(slug string) {
 	if config.Cfg.IndexNowKey == "" {
 		return
 	}
@@ -403,7 +420,7 @@ func pingIndexNow(slug string) {
 	})
 	req, _ := http.NewRequestWithContext(context.Background(), "POST", "https://api.indexnow.org/indexnow", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := outboundClient.Do(req)
+	resp, err := a.outboundClient.Do(req)
 	if err != nil {
 		return
 	}
@@ -443,7 +460,7 @@ func generateRSS() {
 		var title, slug, content string
 		var created time.Time
 		rows.Scan(&title, &slug, &content, &created)
-		plain := htmlTagRe.ReplaceAllString(policy.Sanitize(content), "")
+		plain := htmlTagRe.ReplaceAllString(bluemonday.StrictPolicy().Sanitize(content), "")
 		if len(plain) > 500 {
 			plain = plain[:500] + "..."
 		}
@@ -487,9 +504,7 @@ type adminRecentArticle struct {
 	CreatedAt time.Time
 }
 
-var metricsSnapshot atomic.Value
-
-func collectAdminMetrics() {
+func (a *App) collectAdminMetrics() {
 	snap := &adminMetricsSnapshot{SnapshotAt: time.Now().UTC()}
 	row := dbpkg.DB.QueryRow(`SELECT (SELECT COUNT(1) FROM articles),SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END),SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END),SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) FROM write_jobs`)
 	row.Scan(&snap.TotalArticles, &snap.PendingJobs, &snap.FailedJobs, &snap.CompletedJobs)
@@ -513,11 +528,11 @@ func collectAdminMetrics() {
 			snap.RecentArticles = append(snap.RecentArticles, ra)
 		}
 	}
-	metricsSnapshot.Store(snap)
+	a.metricsSnapshot.Store(snap)
 }
 
-func startMetricsSnapshotCollector() {
-	collectAdminMetrics()
+func (a *App) startMetricsSnapshotCollector() {
+	a.collectAdminMetrics()
 	go func() {
 		ticker := time.NewTicker(30 * time.Second)
 		defer ticker.Stop()
@@ -526,18 +541,18 @@ func startMetricsSnapshotCollector() {
 			case <-queue.DoneCh:
 				return
 			case <-ticker.C:
-				collectAdminMetrics()
+				a.collectAdminMetrics()
 			}
 		}
 	}()
 }
 
-func getAdminSnapshot() *adminMetricsSnapshot {
-	if v := metricsSnapshot.Load(); v != nil {
+func (a *App) getAdminSnapshot() *adminMetricsSnapshot {
+	if v := a.metricsSnapshot.Load(); v != nil {
 		return v.(*adminMetricsSnapshot)
 	}
-	collectAdminMetrics()
-	if v := metricsSnapshot.Load(); v != nil {
+	a.collectAdminMetrics()
+	if v := a.metricsSnapshot.Load(); v != nil {
 		return v.(*adminMetricsSnapshot)
 	}
 	return &adminMetricsSnapshot{SnapshotAt: time.Now()}
@@ -547,7 +562,7 @@ func getAdminSnapshot() *adminMetricsSnapshot {
 // Article API handlers
 // =============================================================================
 
-func handleCreateArticle(w http.ResponseWriter, r *http.Request) {
+func (a *App) handleCreateArticle(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Title   string   `json:"title"`
 		Slug    string   `json:"slug"`
@@ -572,17 +587,17 @@ func handleCreateArticle(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, 409, "slug_conflict", "slug already exists", "https://docs.vayupress.com/api/articles")
 		return
 	}
-	a := dbpkg.Article{ID: newUUID(), Title: in.Title, Slug: in.Slug, Content: in.Content, Tags: in.Tags, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
-	payload, _ := json.Marshal(a)
+	art := dbpkg.Article{ID: newUUID(), Title: in.Title, Slug: in.Slug, Content: in.Content, Tags: in.Tags, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
+	payload, _ := json.Marshal(art)
 	if _, err := dbpkg.DB.Exec(`INSERT INTO write_jobs(article_json,op) VALUES(?,'insert')`, payload); err != nil {
 		writeAPIError(w, r, 500, "queue_error", err.Error(), "https://docs.vayupress.com/api/errors")
 		return
 	}
-	dbpkg.AuditLog("article.create", dbpkg.AuditActor(r), a.Slug, "id="+a.ID)
-	writeJSON(w, r, 202, map[string]string{"status": "queued", "id": a.ID, "slug": a.Slug})
+	dbpkg.AuditLog("article.create", dbpkg.AuditActor(r), art.Slug, "id="+art.ID)
+	writeJSON(w, r, 202, map[string]string{"status": "queued", "id": art.ID, "slug": art.Slug})
 }
 
-func handleBulkCreateArticles(w http.ResponseWriter, r *http.Request) {
+func (a *App) handleBulkCreateArticles(w http.ResponseWriter, r *http.Request) {
 	var articles []struct {
 		Title, Slug, Content string
 		Tags                 []string `json:"tags"`
@@ -618,15 +633,15 @@ func handleBulkCreateArticles(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, 202, map[string]interface{}{"status": "queued", "queued": queued, "skipped": skipped, "skip_reasons": skipReasons})
 }
 
-func handleUpdateArticle(w http.ResponseWriter, r *http.Request) {
+func (a *App) handleUpdateArticle(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
-	var a dbpkg.Article
+	var art dbpkg.Article
 	var tagsStr string
-	if err := dbpkg.DB.QueryRow(`SELECT id,title,slug,content,tags,created_at,updated_at FROM articles WHERE slug=?`, slug).Scan(&a.ID, &a.Title, &a.Slug, &a.Content, &tagsStr, &a.CreatedAt, &a.UpdatedAt); err == sql.ErrNoRows {
+	if err := dbpkg.DB.QueryRow(`SELECT id,title,slug,content,tags,created_at,updated_at FROM articles WHERE slug=?`, slug).Scan(&art.ID, &art.Title, &art.Slug, &art.Content, &tagsStr, &art.CreatedAt, &art.UpdatedAt); err == sql.ErrNoRows {
 		writeAPIError(w, r, 404, "not_found", "not found", "https://docs.vayupress.com/api/articles")
 		return
 	}
-	a.Tags = splitTags(tagsStr)
+	art.Tags = splitTags(tagsStr)
 	var in struct {
 		Title   *string  `json:"title"`
 		Content *string  `json:"content"`
@@ -637,53 +652,53 @@ func handleUpdateArticle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if in.Title != nil {
-		a.Title = *in.Title
+		art.Title = *in.Title
 	}
 	if in.Content != nil {
-		a.Content = *in.Content
+		art.Content = *in.Content
 	}
 	if in.Tags != nil {
-		a.Tags = in.Tags
+		art.Tags = in.Tags
 	}
-	a.UpdatedAt = time.Now().UTC()
-	payload, _ := json.Marshal(a)
+	art.UpdatedAt = time.Now().UTC()
+	payload, _ := json.Marshal(art)
 	dbpkg.DB.Exec(`INSERT INTO write_jobs(article_json,op) VALUES(?,'update')`, payload)
-	dbpkg.AuditLog("article.update", dbpkg.AuditActor(r), a.Slug, "id="+a.ID)
-	writeJSON(w, r, 202, map[string]string{"status": "queued", "slug": a.Slug})
+	dbpkg.AuditLog("article.update", dbpkg.AuditActor(r), art.Slug, "id="+art.ID)
+	writeJSON(w, r, 202, map[string]string{"status": "queued", "slug": art.Slug})
 }
 
-func handleDeleteArticle(w http.ResponseWriter, r *http.Request) {
+func (a *App) handleDeleteArticle(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
-	var a dbpkg.Article
+	var art dbpkg.Article
 	var tagsStr string
-	if err := dbpkg.DB.QueryRow(`SELECT id,title,slug,content,tags,created_at,updated_at FROM articles WHERE slug=?`, slug).Scan(&a.ID, &a.Title, &a.Slug, &a.Content, &tagsStr, &a.CreatedAt, &a.UpdatedAt); err == sql.ErrNoRows {
+	if err := dbpkg.DB.QueryRow(`SELECT id,title,slug,content,tags,created_at,updated_at FROM articles WHERE slug=?`, slug).Scan(&art.ID, &art.Title, &art.Slug, &art.Content, &tagsStr, &art.CreatedAt, &art.UpdatedAt); err == sql.ErrNoRows {
 		writeAPIError(w, r, 404, "not_found", "not found", "https://docs.vayupress.com/api/articles")
 		return
 	}
-	a.Tags = splitTags(tagsStr)
-	payload, _ := json.Marshal(a)
+	art.Tags = splitTags(tagsStr)
+	payload, _ := json.Marshal(art)
 	dbpkg.DB.Exec(`INSERT INTO write_jobs(article_json,op) VALUES(?,'delete')`, payload)
-	dbpkg.AuditLog("article.delete", dbpkg.AuditActor(r), slug, "id="+a.ID)
+	dbpkg.AuditLog("article.delete", dbpkg.AuditActor(r), slug, "id="+art.ID)
 	writeJSON(w, r, 200, map[string]string{"status": "queued", "slug": slug})
 }
 
-func handleGetArticle(w http.ResponseWriter, r *http.Request) {
+func (a *App) handleGetArticle(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	if !isValidSlug(slug) {
 		writeAPIError(w, r, 400, "invalid_slug", "invalid slug", "https://docs.vayupress.com/api/articles")
 		return
 	}
-	var a dbpkg.Article
+	var art dbpkg.Article
 	var tagsStr string
-	if err := dbpkg.DB.QueryRow(`SELECT id,title,slug,content,tags,created_at,updated_at FROM articles WHERE slug=?`, slug).Scan(&a.ID, &a.Title, &a.Slug, &a.Content, &tagsStr, &a.CreatedAt, &a.UpdatedAt); err == sql.ErrNoRows {
+	if err := dbpkg.DB.QueryRow(`SELECT id,title,slug,content,tags,created_at,updated_at FROM articles WHERE slug=?`, slug).Scan(&art.ID, &art.Title, &art.Slug, &art.Content, &tagsStr, &art.CreatedAt, &art.UpdatedAt); err == sql.ErrNoRows {
 		writeAPIError(w, r, 404, "not_found", "not found", "https://docs.vayupress.com/api/articles")
 		return
 	}
-	a.Tags = splitTags(tagsStr)
-	writeJSON(w, r, 200, a)
+	art.Tags = splitTags(tagsStr)
+	writeJSON(w, r, 200, art)
 }
 
-func handleListArticles(w http.ResponseWriter, r *http.Request) {
+func (a *App) handleListArticles(w http.ResponseWriter, r *http.Request) {
 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	tag := r.URL.Query().Get("tag")
@@ -730,7 +745,7 @@ func handleListArticles(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, 200, map[string]interface{}{"articles": result, "page": page, "limit": limit, "total": total, "pages": (total + limit - 1) / limit})
 }
 
-func handleSearch(w http.ResponseWriter, r *http.Request) {
+func (a *App) handleSearch(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query().Get("q")
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	if limit < 1 || limit > 100 {
@@ -740,35 +755,35 @@ func handleSearch(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, r, 200, map[string]interface{}{"hits": []interface{}{}, "query": ""})
 		return
 	}
-	if meiliCB == nil || meiliCB.State() != gobreaker.StateClosed {
-		handleSearchFallback(w, r, q, limit)
+	if a.meiliCB == nil || a.meiliCB.State() != gobreaker.StateClosed {
+		a.handleSearchFallback(w, r, q, limit)
 		return
 	}
 	body, _ := json.Marshal(map[string]interface{}{"q": q, "limit": limit, "attributesToRetrieve": []string{"title", "slug", "tags", "created_at"}})
 	req, err := http.NewRequestWithContext(context.Background(), "POST", config.Cfg.MeiliHost+"/indexes/articles/search", bytes.NewReader(body))
 	if err != nil {
-		handleSearchFallback(w, r, q, limit)
+		a.handleSearchFallback(w, r, q, limit)
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
 	if config.Cfg.MeiliMasterKey != "" {
 		req.Header.Set("Authorization", "Bearer "+config.Cfg.MeiliMasterKey)
 	}
-	resp, err := outboundClient.Do(req)
+	resp, err := a.outboundClient.Do(req)
 	if err != nil {
-		handleSearchFallback(w, r, q, limit)
+		a.handleSearchFallback(w, r, q, limit)
 		return
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
-		handleSearchFallback(w, r, q, limit)
+		a.handleSearchFallback(w, r, q, limit)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	io.Copy(w, resp.Body)
 }
 
-func handleSearchFallback(w http.ResponseWriter, r *http.Request, q string, limit int) {
+func (a *App) handleSearchFallback(w http.ResponseWriter, r *http.Request, q string, limit int) {
 	pattern := "%" + q + "%"
 	rows, err := dbpkg.DB.Query(`SELECT title,slug,tags,created_at FROM articles WHERE title LIKE ? OR content LIKE ? OR tags LIKE ? ORDER BY created_at DESC LIMIT ?`, pattern, pattern, pattern, limit)
 	if err != nil {
@@ -795,7 +810,7 @@ func handleSearchFallback(w http.ResponseWriter, r *http.Request, q string, limi
 	writeJSON(w, r, 200, map[string]interface{}{"hits": hits, "query": q, "fallback": true})
 }
 
-func handleListTags(w http.ResponseWriter, r *http.Request) {
+func (a *App) handleListTags(w http.ResponseWriter, r *http.Request) {
 	rows, err := dbpkg.DB.Query(`SELECT tags FROM articles WHERE tags != ''`)
 	if err != nil {
 		writeAPIError(w, r, 500, "db_error", "", "https://docs.vayupress.com/api/errors")
@@ -827,7 +842,7 @@ func handleListTags(w http.ResponseWriter, r *http.Request) {
 // Stats / metrics / queue handlers
 // =============================================================================
 
-func handleStats(w http.ResponseWriter, r *http.Request) {
+func (a *App) handleStats(w http.ResponseWriter, r *http.Request) {
 	var totalArticles, pendingJobs, failedJobs int
 	dbpkg.DB.QueryRow(`SELECT COUNT(1) FROM articles`).Scan(&totalArticles)
 	dbpkg.DB.QueryRow(`SELECT COUNT(1) FROM write_jobs WHERE status='pending'`).Scan(&pendingJobs)
@@ -858,15 +873,15 @@ func handleStats(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func handleQueueStatus(w http.ResponseWriter, r *http.Request) {
+func (a *App) handleQueueStatus(w http.ResponseWriter, r *http.Request) {
 	queue.HandleQueueStatus(w, r, writeJSON)
 }
 
-func handleQueueReplay(w http.ResponseWriter, r *http.Request) {
+func (a *App) handleQueueReplay(w http.ResponseWriter, r *http.Request) {
 	queue.HandleQueueReplay(w, r, writeJSON, writeAPIError)
 }
 
-func handleMetrics(w http.ResponseWriter, r *http.Request) {
+func (a *App) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	var totalArticles int
 	dbpkg.DB.QueryRow(`SELECT COUNT(1) FROM articles`).Scan(&totalArticles)
 	var ms runtime.MemStats
@@ -906,12 +921,12 @@ func handleMetrics(w http.ResponseWriter, r *http.Request) {
 // Admin handlers
 // =============================================================================
 
-func handleAdminVacuum(w http.ResponseWriter, r *http.Request) {
-	vacuumMu.Lock()
-	defer vacuumMu.Unlock()
+func (a *App) handleAdminVacuum(w http.ResponseWriter, r *http.Request) {
+	a.vacuumMu.Lock()
+	defer a.vacuumMu.Unlock()
 	cooldown := time.Duration(config.Cfg.VacuumCooldownMin) * time.Minute
-	if !vacuumLastRun.IsZero() && time.Since(vacuumLastRun) < cooldown {
-		remaining := cooldown - time.Since(vacuumLastRun)
+	if !a.vacuumLastRun.IsZero() && time.Since(a.vacuumLastRun) < cooldown {
+		remaining := cooldown - time.Since(a.vacuumLastRun)
 		atomic.AddInt64(&metrics.MetricVacuumRejected, 1)
 		writeAPIError(w, r, 429, "vacuum_cooldown", fmt.Sprintf("cooldown active — %ds remaining", int(remaining.Seconds())), "https://docs.vayupress.com/operations/vacuum")
 		return
@@ -934,7 +949,7 @@ func handleAdminVacuum(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, 500, "vacuum_failed", "VACUUM error: "+err.Error(), "https://docs.vayupress.com/operations/vacuum")
 		return
 	}
-	vacuumLastRun = time.Now()
+	a.vacuumLastRun = time.Now()
 	logging.LogInfo("vacuum", fmt.Sprintf("VACUUM complete dur=%dms (ADR-0038)", time.Since(start).Milliseconds()))
 	writeJSON(w, r, 200, map[string]interface{}{"status": "ok", "integrity": "ok", "duration_ms": time.Since(start).Milliseconds(), "next_allowed_in_minutes": config.Cfg.VacuumCooldownMin})
 }
@@ -950,7 +965,7 @@ func initPprofMux() {
 	logging.LogInfo("pprof", "explicit pprof mux initialized — DefaultServeMux unmodified (ADR-0037)")
 }
 
-func pprofHandler(w http.ResponseWriter, r *http.Request) {
+func (a *App) pprofHandler(w http.ResponseWriter, r *http.Request) {
 	ip := r.RemoteAddr
 	if xri := r.Header.Get("X-Real-IP"); xri != "" {
 		ip = xri
@@ -965,7 +980,7 @@ func pprofHandler(w http.ResponseWriter, r *http.Request) {
 	pprofMux.ServeHTTP(w, r)
 }
 
-func handleAdminBackupValidate(w http.ResponseWriter, r *http.Request) {
+func (a *App) handleAdminBackupValidate(w http.ResponseWriter, r *http.Request) {
 	backupDir := "/backups/vayupress"
 	entries, err := os.ReadDir(backupDir)
 	if err != nil {
@@ -1011,7 +1026,7 @@ func handleAdminBackupValidate(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, 200, map[string]interface{}{"status": "ok", "latest_backup": filepath.Base(latestBackup), "backup_age_hours": time.Since(latestMod).Hours(), "checksum_verified": checksumOK, "duration_ms": time.Since(start).Milliseconds()})
 }
 
-func handleAdminCachePurge(w http.ResponseWriter, r *http.Request) {
+func (a *App) handleAdminCachePurge(w http.ResponseWriter, r *http.Request) {
 	rid := getRequestID(r)
 	slug := r.URL.Query().Get("slug")
 	purged := 0
@@ -1063,11 +1078,11 @@ func handleAdminCachePurge(w http.ResponseWriter, r *http.Request) {
 		go generateRobots()
 	}
 	logging.LogJSON(logging.LogFields{Level: "info", Component: "cache-purge", RequestID: rid, Msg: fmt.Sprintf("type=%s purged=%d", purgeType, purged)})
-	FireHook("cache.purge", map[string]interface{}{"purge_type": purgeType, "slug": slug, "purged_count": purged})
+	a.FireHook("cache.purge", map[string]interface{}{"purge_type": purgeType, "slug": slug, "purged_count": purged})
 	writeJSON(w, r, 200, map[string]interface{}{"message": "cache purged", "purge_type": purgeType, "purged": purged, "request_id": rid})
 }
 
-func handleArticlePage(w http.ResponseWriter, r *http.Request) {
+func (a *App) handleArticlePage(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	if !isValidSlug(slug) {
 		http.NotFound(w, r)
@@ -1083,15 +1098,15 @@ func handleArticlePage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	atomic.AddInt64(&metrics.MetricCacheMisses, 1)
-	var a dbpkg.Article
+	var art dbpkg.Article
 	var tagsStr string
-	if err := dbpkg.DB.QueryRow(`SELECT id,title,slug,content,tags,created_at,updated_at FROM articles WHERE slug=?`, slug).Scan(&a.ID, &a.Title, &a.Slug, &a.Content, &tagsStr, &a.CreatedAt, &a.UpdatedAt); err == sql.ErrNoRows {
+	if err := dbpkg.DB.QueryRow(`SELECT id,title,slug,content,tags,created_at,updated_at FROM articles WHERE slug=?`, slug).Scan(&art.ID, &art.Title, &art.Slug, &art.Content, &tagsStr, &art.CreatedAt, &art.UpdatedAt); err == sql.ErrNoRows {
 		http.NotFound(w, r)
 		return
 	}
-	a.Tags = splitTags(tagsStr)
-	layout := render.DetectLayout(a, r, isAdmin)
-	html, err := render.RenderArticleWithLayout(a, layout)
+	art.Tags = splitTags(tagsStr)
+	layout := render.DetectLayout(art, r, isAdmin)
+	html, err := render.RenderArticleWithLayout(art, layout)
 	if err != nil {
 		http.Error(w, "render error", 500)
 		return
@@ -1103,18 +1118,18 @@ func handleArticlePage(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, html)
 }
 
-func handleSmokeTest(w http.ResponseWriter, r *http.Request) {
-	if !smokeTestMutex.TryLock() {
+func (a *App) handleSmokeTest(w http.ResponseWriter, r *http.Request) {
+	if !a.smokeTestMutex.TryLock() {
 		http.Error(w, "smoke-test already running", http.StatusServiceUnavailable)
 		return
 	}
-	defer smokeTestMutex.Unlock()
+	defer a.smokeTestMutex.Unlock()
 	testSlug := fmt.Sprintf("smoke-test-%d", time.Now().UnixNano())
 	testID := newUUID()
-	a := dbpkg.Article{ID: testID, Title: "Smoke Test", Slug: testSlug, Content: "<p>VayuPress smoke test.</p>", Tags: []string{"smoke-test"}, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
-	payload, _ := json.Marshal(a)
+	smokeArt := dbpkg.Article{ID: testID, Title: "Smoke Test", Slug: testSlug, Content: "<p>VayuPress smoke test.</p>", Tags: []string{"smoke-test"}, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
+	payload, _ := json.Marshal(smokeArt)
 	if _, err := dbpkg.DB.Exec(`INSERT INTO write_jobs(article_json,op) VALUES(?,'insert')`, payload); err != nil {
-		http.Error(w, "smoke-test: enqueue failed: "+err.Error(), 503)
+		http.Error(w, "smoke-test: enqueue failed: "+err.Error(), http.StatusServiceUnavailable)
 		return
 	}
 	deadline := time.Now().Add(config.Cfg.SmokeTestTimeout)
@@ -1130,21 +1145,21 @@ func handleSmokeTest(w http.ResponseWriter, r *http.Request) {
 	}
 	if !processed {
 		dbpkg.DB.Exec(`DELETE FROM write_jobs WHERE article_json LIKE ? AND status='pending'`, "%\"slug\":\""+testSlug+"\"%")
-		http.Error(w, fmt.Sprintf("smoke-test: worker timeout (%s)", config.Cfg.SmokeTestTimeout), 503)
+		http.Error(w, fmt.Sprintf("smoke-test: worker timeout (%s)", config.Cfg.SmokeTestTimeout), http.StatusServiceUnavailable)
 		return
 	}
 	dbpkg.DB.Exec(`DELETE FROM articles WHERE slug=?`, testSlug)
 	dbpkg.DB.Exec(`INSERT INTO write_jobs(article_json,op) VALUES(?,'delete')`, payload)
 	os.Remove(filepath.Join(config.Cfg.CacheDir, "posts", testSlug+".html"))
-	if meiliCB != nil {
-		go meiliDo("DELETE", "/indexes/articles/documents/"+testID, nil)
+	if a.meiliCB != nil {
+		go a.meiliDo("DELETE", "/indexes/articles/documents/"+testID, nil)
 	}
 	logging.LogInfo("smoke-test", fmt.Sprintf("PASS slug=%s", testSlug))
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	fmt.Fprint(w, "OK")
 }
 
-func handleAdminADR(w http.ResponseWriter, r *http.Request) {
+func (a *App) handleAdminADR(w http.ResponseWriter, r *http.Request) {
 	adrDir := filepath.Join(config.EnvOr("VAYU_DOCS_DIR", "/var/www/vayupress/docs"), "adr")
 	entries, err := os.ReadDir(adrDir)
 	if err != nil {
@@ -1179,16 +1194,10 @@ type benchmarkResult struct {
 	Overall, Notes                                 string
 }
 
-var (
-	lastBenchmark   *benchmarkResult
-	lastBenchmarkMu sync.Mutex
-	benchmarkRunning int32
-)
-
-func handleHealthBenchmarks(w http.ResponseWriter, r *http.Request) {
-	lastBenchmarkMu.Lock()
-	result := lastBenchmark
-	lastBenchmarkMu.Unlock()
+func (a *App) handleHealthBenchmarks(w http.ResponseWriter, r *http.Request) {
+	a.lastBenchmarkMu.Lock()
+	result := a.lastBenchmark
+	a.lastBenchmarkMu.Unlock()
 	if result == nil {
 		writeAPIError(w, r, 404, "no_benchmark", "no benchmark run yet; POST /admin/benchmark", "https://docs.vayupress.com/operations/benchmarks")
 		return
@@ -1196,12 +1205,12 @@ func handleHealthBenchmarks(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, 200, result)
 }
 
-func handleRunBenchmark(w http.ResponseWriter, r *http.Request) {
-	if !atomic.CompareAndSwapInt32(&benchmarkRunning, 0, 1) {
+func (a *App) handleRunBenchmark(w http.ResponseWriter, r *http.Request) {
+	if !atomic.CompareAndSwapInt32(&a.benchmarkRunning, 0, 1) {
 		writeAPIError(w, r, 409, "benchmark_running", "benchmark already in progress", "https://docs.vayupress.com/operations/benchmarks")
 		return
 	}
-	defer atomic.StoreInt32(&benchmarkRunning, 0)
+	defer atomic.StoreInt32(&a.benchmarkRunning, 0)
 	articleCount := 50
 	readConcurrency := 20
 	totalRequests := 200
@@ -1304,9 +1313,9 @@ func handleRunBenchmark(w http.ResponseWriter, r *http.Request) {
 		notes = append(notes, "approaching limits")
 	}
 	result := &benchmarkResult{RunAt: time.Now().UTC(), ArticlesWritten: actualWritten, ReadRequests: totalRequests, ReadConcurrency: readConcurrency, ReadP50: readHistogram.Percentile(50), ReadP95: p95, ReadP99: p99, ReadMean: readHistogram.Mean(), ReadMax: readMaxMs, ReadRPS: rps, P95Pass: p95Pass, P99Pass: p99Pass, Overall: overall, Notes: strings.Join(notes, "; ")}
-	lastBenchmarkMu.Lock()
-	lastBenchmark = result
-	lastBenchmarkMu.Unlock()
+	a.lastBenchmarkMu.Lock()
+	a.lastBenchmark = result
+	a.lastBenchmarkMu.Unlock()
 	logging.LogJSON(logging.LogFields{Level: "info", Component: "benchmark", Msg: fmt.Sprintf("result: %s | p95=%dms p99=%dms rps=%.0f", overall, p95, p99, rps)})
 	writeJSON(w, r, 200, result)
 }
@@ -1353,8 +1362,8 @@ func writeADRs(docsDir string) {
 // Admin dashboard
 // =============================================================================
 
-func handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
-	snap := getAdminSnapshot()
+func (a *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
+	snap := a.getAdminSnapshot()
 	pluginPanics := atomic.LoadInt64(&metrics.MetricPluginPanics)
 	failedClass := "stat-ok"
 	if snap.FailedJobs > 0 {
@@ -1535,12 +1544,19 @@ func handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	log.SetFlags(0)
-	logging.LogInfo("main", fmt.Sprintf("VayuPress v%s starting — P1–P14 active", Version))
+	logging.LogInfo("main", fmt.Sprintf("VayuPress v%s starting — P1–P16 active", Version))
 	config.Load()
 	logging.LogInfo("main", fmt.Sprintf("domain=%s port=%s workers=%d config_version=%s maintenance=%v",
 		config.Cfg.Domain, config.Cfg.Port, config.Cfg.WorkerCount, config.ConfigVersion, config.Cfg.MaintenanceMode))
 
-	policy = bluemonday.UGCPolicy()
+	// Initialise App — the single owner of all mutable runtime state (ADR-0046).
+	a := &App{
+		policy:         bluemonday.UGCPolicy(),
+		outboundClient: &http.Client{Timeout: 5 * time.Second, Transport: ssrfSafeTransport()},
+		pluginRegistry: plugins.NewRegistry(),
+	}
+	a.pluginManager = plugins.New(a.pluginRegistry)
+
 	auth.InitCSRFSecret()
 	initPprofMux()
 	auth.StartBucketSweeper(context.Background())
@@ -1553,7 +1569,7 @@ func main() {
 	writeADRs(docsDir)
 
 	if os.Getenv("VAYU_PLUGINS_ENABLED") == "true" {
-		pluginManager.Start(plugins.DefaultPoolSize, plugins.DefaultQueueDepth)
+		a.pluginManager.Start(plugins.DefaultPoolSize, plugins.DefaultQueueDepth)
 	}
 
 	if err := dbpkg.Init(); err != nil {
@@ -1571,7 +1587,7 @@ func main() {
 	dbpkg.InitStorageCachedBytes()
 	dbpkg.StartWALCheckpointGoroutine(queue.DoneCh)
 	dbpkg.StartStuckJobReaper(queue.DoneCh)
-	startMetricsSnapshotCollector()
+	a.startMetricsSnapshotCollector()
 
 	// Wire dependency injections into queue package
 	queue.RenderFn = render.RenderArticle
@@ -1579,26 +1595,26 @@ func main() {
 		render.CacheWrite(relPath, content) //nolint:errcheck
 	})
 	queue.FireHookFn = func(event string, payload map[string]interface{}) {
-		FireHook(event, payload)
+		a.FireHook(event, payload)
 		slug, _ := payload["slug"].(string)
 		id, _ := payload["id"].(string)
 		switch event {
 		case "article.create", "article.update":
 			go func(s string) {
-				var a dbpkg.Article
+				var art dbpkg.Article
 				var tagsStr string
 				if dbpkg.DB.QueryRow(`SELECT id,title,slug,content,tags,created_at,updated_at FROM articles WHERE slug=?`, s).
-					Scan(&a.ID, &a.Title, &a.Slug, &a.Content, &tagsStr, &a.CreatedAt, &a.UpdatedAt) == nil {
-					a.Tags = splitTags(tagsStr)
-					indexArticle(a)
+					Scan(&art.ID, &art.Title, &art.Slug, &art.Content, &tagsStr, &art.CreatedAt, &art.UpdatedAt) == nil {
+					art.Tags = splitTags(tagsStr)
+					a.indexArticle(art)
 				}
 				render.CachePurge(s, nil, generateSitemap, generateRSS, generateRobots)
-				go purgeCloudflare(s)
-				go pingIndexNow(s)
+				go a.purgeCloudflare(s)
+				go a.pingIndexNow(s)
 			}(slug)
 		case "article.delete":
-			go meiliDo("DELETE", "/indexes/articles/documents/"+id, nil)
-			go purgeCloudflare(slug)
+			go a.meiliDo("DELETE", "/indexes/articles/documents/"+id, nil)
+			go a.purgeCloudflare(slug)
 		}
 	}
 
@@ -1606,7 +1622,7 @@ func main() {
 	health.Version = Version
 	health.ConfigVersion = config.ConfigVersion
 	health.BootTime = bootTime
-	health.MeiliDoFn = meiliDo
+	health.MeiliDoFn = a.meiliDo
 	health.WriteJSON = writeJSON
 	health.WriteAPIError = writeAPIError
 
@@ -1615,7 +1631,7 @@ func main() {
 
 	// Meilisearch startup
 	for i := 0; i < 12; i++ {
-		if err := meiliDo("GET", "/health", nil); err == nil {
+		if err := a.meiliDo("GET", "/health", nil); err == nil {
 			logging.LogInfo("main", "Meilisearch ready")
 			break
 		}
@@ -1624,8 +1640,8 @@ func main() {
 		}
 		time.Sleep(5 * time.Second)
 	}
-	configureMeilisearch()
-	initMeilisearchCB()
+	a.configureMeilisearch()
+	a.initMeilisearchCB()
 
 	go func() {
 		logging.LogInfo("cache-warm", "starting...")
@@ -1666,7 +1682,7 @@ func main() {
 	r.Get("/health/meilisearch", health.HandleHealthMeilisearch)
 	r.Get("/health/workers", health.HandleHealthWorkers)
 	r.Get("/health/storage", health.HandleHealthStorage)
-	r.Get("/health/benchmarks", handleHealthBenchmarks)
+	r.Get("/health/benchmarks", a.handleHealthBenchmarks)
 	r.Get("/health/migrations", health.HandleHealthMigrations)
 	r.Get("/health/ethics", health.HandleHealthEthics)
 	r.Get("/health/dependencies", health.HandleHealthDependencies)
@@ -1695,42 +1711,42 @@ func main() {
 	})
 
 	// Public API
-	r.Get("/api/v1/articles", handleListArticles)
-	r.Get("/api/v1/articles/{slug}", handleGetArticle)
-	r.Get("/api/v1/search", handleSearch)
-	r.Get("/api/v1/tags", handleListTags)
-	r.Get("/api/v1/stats", handleStats)
-	r.Get("/metrics", handleMetrics)
-	r.Get("/smoke-test", handleSmokeTest)
+	r.Get("/api/v1/articles", a.handleListArticles)
+	r.Get("/api/v1/articles/{slug}", a.handleGetArticle)
+	r.Get("/api/v1/search", a.handleSearch)
+	r.Get("/api/v1/tags", a.handleListTags)
+	r.Get("/api/v1/stats", a.handleStats)
+	r.Get("/metrics", a.handleMetrics)
+	r.Get("/smoke-test", a.handleSmokeTest)
 
 	// Protected admin + write API
 	r.Group(func(r chi.Router) {
 		r.Use(auth.RequireAPIKey, auth.RateLimitMiddleware)
 
-		r.Post("/api/v1/articles", handleCreateArticle)
-		r.Post("/api/v1/articles/bulk", handleBulkCreateArticles)
-		r.Put("/api/v1/articles/{slug}", handleUpdateArticle)
-		r.Delete("/api/v1/articles/{slug}", handleDeleteArticle)
-		r.Get("/api/v1/queue", handleQueueStatus)
-		r.Post("/api/v1/queue/replay", handleQueueReplay)
+		r.Post("/api/v1/articles", a.handleCreateArticle)
+		r.Post("/api/v1/articles/bulk", a.handleBulkCreateArticles)
+		r.Put("/api/v1/articles/{slug}", a.handleUpdateArticle)
+		r.Delete("/api/v1/articles/{slug}", a.handleDeleteArticle)
+		r.Get("/api/v1/queue", a.handleQueueStatus)
+		r.Post("/api/v1/queue/replay", a.handleQueueReplay)
 
-		r.Get("/admin", handleAdminDashboard)
-		r.Get("/admin/adr", handleAdminADR)
-		r.Get("/admin/backup/validate", handleAdminBackupValidate)
+		r.Get("/admin", a.handleAdminDashboard)
+		r.Get("/admin/adr", a.handleAdminADR)
+		r.Get("/admin/backup/validate", a.handleAdminBackupValidate)
 
-		r.With(auth.CSRFTokenMiddleware).Post("/admin/benchmark", handleRunBenchmark)
-		r.With(auth.CSRFTokenMiddleware).Post("/admin/cache-purge", handleAdminCachePurge)
-		r.With(auth.CSRFTokenMiddleware).Post("/admin/vacuum", handleAdminVacuum)
+		r.With(auth.CSRFTokenMiddleware).Post("/admin/benchmark", a.handleRunBenchmark)
+		r.With(auth.CSRFTokenMiddleware).Post("/admin/cache-purge", a.handleAdminCachePurge)
+		r.With(auth.CSRFTokenMiddleware).Post("/admin/vacuum", a.handleAdminVacuum)
 
-		r.HandleFunc("/debug/pprof/", pprofHandler)
-		r.HandleFunc("/debug/pprof/cmdline", pprofHandler)
-		r.HandleFunc("/debug/pprof/profile", pprofHandler)
-		r.HandleFunc("/debug/pprof/symbol", pprofHandler)
-		r.HandleFunc("/debug/pprof/trace", pprofHandler)
-		r.HandleFunc("/debug/pprof/*", pprofHandler)
+		r.HandleFunc("/debug/pprof/", a.pprofHandler)
+		r.HandleFunc("/debug/pprof/cmdline", a.pprofHandler)
+		r.HandleFunc("/debug/pprof/profile", a.pprofHandler)
+		r.HandleFunc("/debug/pprof/symbol", a.pprofHandler)
+		r.HandleFunc("/debug/pprof/trace", a.pprofHandler)
+		r.HandleFunc("/debug/pprof/*", a.pprofHandler)
 	})
 
-	r.Get("/{slug}", handleArticlePage)
+	r.Get("/{slug}", a.handleArticlePage)
 
 	srv := &http.Server{
 		Addr:         ":" + config.Cfg.Port,
@@ -1767,7 +1783,7 @@ func main() {
 
 		// Phase 3: stop plugin pool
 		if os.Getenv("VAYU_PLUGINS_ENABLED") == "true" {
-			pluginManager.Shutdown()
+			a.pluginManager.Shutdown()
 			logging.LogInfo("main", "phase 3 complete — plugin pool stopped")
 		}
 
@@ -1781,7 +1797,7 @@ func main() {
 		}
 
 		// Phase 5: flush final metrics snapshot
-		collectAdminMetrics()
+		a.collectAdminMetrics()
 		logging.LogInfo("main", "phase 5 complete — metrics flushed")
 
 		// Phase 6: close database

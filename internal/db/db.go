@@ -4,11 +4,13 @@ package db
 import (
 	"crypto/sha256"
 	"database/sql"
+	"embed"
 	"encoding/hex"
 	"fmt"
 	"net"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -18,6 +20,9 @@ import (
 	"github.com/johalputt/vayupress/internal/metrics"
 	_ "github.com/mattn/go-sqlite3"
 )
+
+//go:embed migrations/*.sql
+var migrationFS embed.FS
 
 // Article is the canonical domain model for a published piece of content.
 type Article struct {
@@ -285,31 +290,59 @@ func checksumSQL(s string) string {
 var migrations []migration
 
 func init() {
-	upBaseline := `CREATE TABLE IF NOT EXISTS articles(id TEXT PRIMARY KEY,title TEXT NOT NULL,slug TEXT UNIQUE NOT NULL,content TEXT NOT NULL,tags TEXT DEFAULT '',created_at DATETIME NOT NULL,updated_at DATETIME NOT NULL);
-CREATE INDEX IF NOT EXISTS idx_articles_slug    ON articles(slug);
-CREATE INDEX IF NOT EXISTS idx_articles_created ON articles(created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_articles_updated ON articles(updated_at DESC);
-CREATE INDEX IF NOT EXISTS idx_articles_tags    ON articles(tags);
-CREATE TABLE IF NOT EXISTS write_jobs(id INTEGER PRIMARY KEY AUTOINCREMENT,article_json TEXT NOT NULL,op TEXT NOT NULL DEFAULT 'insert',status TEXT NOT NULL DEFAULT 'pending',retries INTEGER NOT NULL DEFAULT 0,retry_at DATETIME,created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP);
-CREATE INDEX IF NOT EXISTS idx_jobs_status  ON write_jobs(status,created_at);
-CREATE INDEX IF NOT EXISTS idx_jobs_retries ON write_jobs(retries);`
-	upSchemaMig := `CREATE TABLE IF NOT EXISTS schema_migrations(id INTEGER PRIMARY KEY AUTOINCREMENT,version TEXT UNIQUE NOT NULL,checksum TEXT NOT NULL DEFAULT '',applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP);`
-	upRetryAt := `ALTER TABLE write_jobs ADD COLUMN retry_at DATETIME;`
-	upReplayFields := `ALTER TABLE write_jobs ADD COLUMN replay_count INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE write_jobs ADD COLUMN dead_reason TEXT NOT NULL DEFAULT '';`
-	upAuditLog := `CREATE TABLE IF NOT EXISTS audit_log(id INTEGER PRIMARY KEY AUTOINCREMENT,ts DATETIME NOT NULL,action TEXT NOT NULL,actor TEXT NOT NULL DEFAULT '',target TEXT NOT NULL DEFAULT '',detail TEXT NOT NULL DEFAULT '');
-CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_log(ts DESC);
-CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_log(action);
-CREATE TRIGGER IF NOT EXISTS audit_log_no_update BEFORE UPDATE ON audit_log BEGIN SELECT RAISE(ABORT,'audit_log is append-only (WORM): updates forbidden'); END;
-CREATE TRIGGER IF NOT EXISTS audit_log_no_delete BEFORE DELETE ON audit_log BEGIN SELECT RAISE(ABORT,'audit_log is append-only (WORM): deletes forbidden'); END;`
-
-	migrations = []migration{
-		{Version: "001-baseline", Up: upBaseline, Down: "", Checksum: checksumSQL(upBaseline)},
-		{Version: "002-schema-migrations", Up: upSchemaMig, Down: "DROP TABLE IF EXISTS schema_migrations;", Checksum: checksumSQL(upSchemaMig)},
-		{Version: "003-queue-retry-at", Up: upRetryAt, Down: "", Checksum: checksumSQL(upRetryAt)},
-		{Version: "004-queue-replay-fields", Up: upReplayFields, Down: "", Checksum: checksumSQL(upReplayFields)},
-		{Version: "005-audit-log-worm", Up: upAuditLog, Down: "", Checksum: checksumSQL(upAuditLog)},
+	var err error
+	migrations, err = loadMigrationsFS(migrationFS)
+	if err != nil {
+		panic("db: failed to load embedded migrations: " + err.Error())
 	}
+}
+
+// loadMigrationsFS reads *.up.sql files from fs, pairs each with an optional
+// *.down.sql, computes the checksum of the up SQL, and returns a sorted slice.
+func loadMigrationsFS(fs embed.FS) ([]migration, error) {
+	entries, err := fs.ReadDir("migrations")
+	if err != nil {
+		return nil, fmt.Errorf("read migrations dir: %w", err)
+	}
+
+	upFiles := make(map[string]string) // version → up SQL
+	downFiles := make(map[string]string)
+
+	for _, e := range entries {
+		name := e.Name()
+		b, err := fs.ReadFile("migrations/" + name)
+		if err != nil {
+			return nil, fmt.Errorf("read %s: %w", name, err)
+		}
+		sql := strings.TrimRight(string(b), "\n")
+
+		switch {
+		case strings.HasSuffix(name, ".up.sql"):
+			version := strings.TrimSuffix(name, ".up.sql")
+			upFiles[version] = sql
+		case strings.HasSuffix(name, ".down.sql"):
+			version := strings.TrimSuffix(name, ".down.sql")
+			downFiles[version] = sql
+		}
+	}
+
+	versions := make([]string, 0, len(upFiles))
+	for v := range upFiles {
+		versions = append(versions, v)
+	}
+	sort.Strings(versions)
+
+	result := make([]migration, 0, len(versions))
+	for _, v := range versions {
+		up := upFiles[v]
+		result = append(result, migration{
+			Version:  v,
+			Up:       up,
+			Down:     downFiles[v],
+			Checksum: checksumSQL(up),
+		})
+	}
+	return result, nil
 }
 
 // Migrations returns the full list of known migrations (used by health handlers).

@@ -6,6 +6,17 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [1.0.0-p16] — 2026-06-12
+
+### Added (Prompt 16 — App Container & Handler Refactor)
+- **`App` struct**: 10 package-level mutable globals replaced by explicit fields on `*App`; all runtime state is owned and auditable
+- **28 handlers as `*App` methods**: route registration uses method values (`a.handleXxx`); handlers depend on explicit fields, not implicit globals
+- **Filesystem migrations**: SQL extracted to `internal/db/migrations/*.sql`, loaded via `embed.FS`, checksums preserved
+- **`staticcheck` in CI**: static analysis on every push; two numeric HTTP status literal issues fixed on introduction
+- **ADR-0047** — App Container & Handler Refactor
+
+---
+
 ## [1.0.0-p15] — 2026-06-12
 
 ### Added (Prompt 15 — Runtime Architecture & Service Boundaries)

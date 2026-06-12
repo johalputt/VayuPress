@@ -1,0 +1,2 @@
+ALTER TABLE write_jobs ADD COLUMN replay_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE write_jobs ADD COLUMN dead_reason TEXT NOT NULL DEFAULT '';
