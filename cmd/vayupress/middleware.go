@@ -1,0 +1,140 @@
+package main
+
+import (
+	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"fmt"
+	"net"
+	"net/http"
+	"os"
+	"time"
+
+	"github.com/go-chi/chi/v5/middleware"
+
+	"github.com/johalputt/vayupress/internal/config"
+	"github.com/johalputt/vayupress/internal/logging"
+	"github.com/johalputt/vayupress/internal/metrics"
+	"github.com/johalputt/vayupress/internal/render"
+)
+
+// =============================================================================
+// SSRF protection (ADR-0009)
+// =============================================================================
+
+func isPrivateOrReservedIP(ip net.IP) bool {
+	if ip == nil {
+		return true
+	}
+	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() ||
+		ip.IsMulticast() || ip.IsUnspecified() || ip.IsPrivate() {
+		return true
+	}
+	if ip.Equal(net.ParseIP("169.254.169.254")) || ip.Equal(net.ParseIP("100.100.100.200")) {
+		return true
+	}
+	if v6 := ip.To16(); v6 != nil && ip.To4() == nil && (v6[0]&0xfe) == 0xfc {
+		return true
+	}
+	return false
+}
+
+func ssrfSafeTransport() *http.Transport {
+	base := &net.Dialer{Timeout: 5 * time.Second, KeepAlive: 30 * time.Second}
+	return &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			host, port, err := net.SplitHostPort(addr)
+			if err != nil {
+				return nil, err
+			}
+			ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+			if err != nil {
+				return nil, err
+			}
+			for _, ipa := range ips {
+				if isPrivateOrReservedIP(ipa.IP) && !isAllowedInternalHost(host) {
+					return nil, fmt.Errorf("ssrf: refusing to connect to private/reserved IP %s (host %q)", ipa.IP, host)
+				}
+			}
+			return base.DialContext(ctx, network, net.JoinHostPort(host, port))
+		},
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          100,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   5 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	}
+}
+
+func isAllowedInternalHost(host string) bool {
+	switch host {
+	case "127.0.0.1", "localhost", "::1":
+		return true
+	}
+	return false
+}
+
+// =============================================================================
+// Request ID context
+// =============================================================================
+
+type ctxKeyRequestID struct{}
+
+func requestIDMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		reqID := r.Header.Get("X-Request-ID")
+		if reqID == "" {
+			b := make([]byte, 8)
+			if _, err := rand.Read(b); err != nil {
+				reqID = fmt.Sprintf("ts-%x", time.Now().UnixNano())
+			} else {
+				reqID = hex.EncodeToString(b)
+			}
+		}
+		w.Header().Set("X-Request-ID", reqID)
+		ctx := context.WithValue(r.Context(), ctxKeyRequestID{}, reqID)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+func getRequestID(r *http.Request) string {
+	if v, ok := r.Context().Value(ctxKeyRequestID{}).(string); ok {
+		return v
+	}
+	return ""
+}
+
+func structuredLoggerMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
+		next.ServeHTTP(ww, r)
+		dur := time.Since(start)
+		metrics.HTTPLatency.Record(dur)
+		logging.LogJSON(logging.LogFields{Level: "info", RequestID: getRequestID(r), Method: r.Method, Path: r.URL.Path, Status: ww.Status(), LatencyMS: dur.Milliseconds(), RemoteAddr: r.RemoteAddr, UserAgent: r.UserAgent(), Component: "http"})
+	})
+}
+
+func securityHeadersMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload")
+		nonce := render.GenerateCSPNonce()
+		csp := fmt.Sprintf("default-src 'self'; font-src 'self'; style-src 'self'; script-src 'self' 'nonce-%s'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'", nonce)
+		w.Header().Set("Content-Security-Policy", csp)
+		ctx := render.WithCSPNonce(r.Context(), nonce)
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("X-XSS-Protection", "1; mode=block")
+		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()")
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+func csrfCookieSecure() bool {
+	if v := os.Getenv("CSRF_SECURE_COOKIE"); v != "" {
+		return v == "true"
+	}
+	return config.Cfg.Domain != "localhost"
+}
