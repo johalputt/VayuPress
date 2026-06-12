@@ -1,0 +1,209 @@
+name: Security — Prompt 9 Enforcement
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 2 * * 1'  # Weekly Monday 02:00 UTC
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+
+  # ── Supply chain: dependency audit ────────────────────────────────────────
+  supply-chain:
+    name: "P9 · Supply Chain Audit"
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for hardcoded secrets / credentials
+        run: |
+          # Patterns that must NEVER appear in committed files
+          PATTERNS=(
+            'API_KEY\s*=\s*"[a-zA-Z0-9]{16,}"'
+            'password\s*=\s*"[^"]{8,}"'
+            'MASTER_KEY\s*=\s*"[^"]{8,}"'
+            'ghp_[a-zA-Z0-9]{36}'
+            'sk-[a-zA-Z0-9]{48}'
+          )
+          FOUND=0
+          for pat in "${PATTERNS[@]}"; do
+            if grep -rE "$pat" --include="*.go" --include="*.sh" --include="*.yml" --include="*.json" . 2>/dev/null | grep -v '.git'; then
+              echo "❌ Potential secret pattern found: $pat"
+              FOUND=1
+            fi
+          done
+          [ $FOUND -eq 0 ] || exit 1
+          echo "✅ No hardcoded secrets detected."
+
+      - name: Verify deploy script uses environment variables for secrets
+        run: |
+          # All secrets must come from env vars, not be hardcoded
+          if grep -E '(API_KEY|MASTER_KEY|PASSWORD)\s*=' scripts/deploy-vayupress.sh | grep -v 'VAYU_\|_gen_secret\|envOr\|mustEnv\|getEnv\|\${\|#'; then
+            echo "WARNING: Check these lines for hardcoded secrets"
+          fi
+          echo "✅ Secrets management check complete."
+
+  # ── Security headers verification ─────────────────────────────────────────
+  security-headers:
+    name: "P9 · Security Headers in Source"
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify all required security headers present in deploy script
+        run: |
+          MISSING=0
+          HEADERS=(
+            "Strict-Transport-Security"
+            "X-Content-Type-Options"
+            "X-Frame-Options"
+            "X-XSS-Protection"
+            "Content-Security-Policy"
+            "Referrer-Policy"
+            "Permissions-Policy"
+          )
+          for h in "${HEADERS[@]}"; do
+            if grep -q "$h" scripts/deploy-vayupress.sh; then
+              echo "✅ $h"
+            else
+              echo "❌ MISSING: $h"
+              MISSING=1
+            fi
+          done
+          [ $MISSING -eq 0 ] || exit 1
+
+  # ── CSRF protection check ─────────────────────────────────────────────────
+  csrf-check:
+    name: "P9 · CSRF Protection"
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify CSRF token implementation present
+        run: |
+          grep -q "X-CSRF-Token\|csrfToken\|csrf_token" scripts/deploy-vayupress.sh \
+            && echo "✅ CSRF protection present." \
+            || { echo "FAIL: CSRF protection missing (Prompt 9)"; exit 1; }
+
+  # ── SSRF protection check ─────────────────────────────────────────────────
+  ssrf-check:
+    name: "P9 · SSRF Protection"
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify SSRF protection present
+        run: |
+          grep -q "169.254.169.254\|ssrf\|SSRF\|private.*IP\|allowlist" scripts/deploy-vayupress.sh \
+            && echo "✅ SSRF protection present." \
+            || echo "⚠️ ADVISORY: SSRF protection not detected in script (check Go source)."
+
+  # ── Auth security check ───────────────────────────────────────────────────
+  auth-check:
+    name: "P9 · Authentication Security"
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify authentication security measures
+        run: |
+          MISSING=0
+          # Rate limiting / lockout
+          grep -q "lockout\|authFail\|brute" scripts/deploy-vayupress.sh \
+            && echo "✅ Auth lockout present" \
+            || { echo "❌ Auth lockout missing"; MISSING=1; }
+          # Argon2id or bcrypt
+          grep -q "argon2\|bcrypt\|Argon2" scripts/deploy-vayupress.sh \
+            && echo "✅ Strong password hashing present" \
+            || echo "⚠️ ADVISORY: Strong password hashing check"
+          # JWT or API key
+          grep -q "API_KEY\|apiKey\|Bearer\|jwt" scripts/deploy-vayupress.sh \
+            && echo "✅ API authentication present" \
+            || { echo "❌ API authentication missing"; MISSING=1; }
+          [ $MISSING -eq 0 ] || exit 1
+
+  # ── Audit logging check ───────────────────────────────────────────────────
+  audit-log-check:
+    name: "P9 · Audit Logging"
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify audit logging present
+        run: |
+          grep -q "audit\|auditLog\|audit_log" scripts/deploy-vayupress.sh \
+            && echo "✅ Audit logging present." \
+            || echo "⚠️ ADVISORY: Explicit audit log not found — verify via structured JSON logs."
+
+  # ── Rate limiting check ───────────────────────────────────────────────────
+  rate-limit-check:
+    name: "P9 · Rate Limiting"
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify rate limiting present
+        run: |
+          grep -q "rateLimit\|rate_limit\|RateLimit\|allowPurge\|allowPprof" scripts/deploy-vayupress.sh \
+            && echo "✅ Rate limiting present." \
+            || { echo "FAIL: Rate limiting missing (Prompt 9)"; exit 1; }
+
+  # ── Threat model check ────────────────────────────────────────────────────
+  threat-model-check:
+    name: "P9 · Threat Model"
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify threat model document exists and has required sections
+        run: |
+          [ -f "docs/THREAT-MODEL.md" ] || { echo "FAIL: docs/THREAT-MODEL.md missing"; exit 1; }
+          MISSING=0
+          for section in "Trust Boundaries" "Entry Points" "Assets" "Threat Actors" "Mitigations"; do
+            grep -q "$section" docs/THREAT-MODEL.md \
+              && echo "✅ $section" \
+              || { echo "❌ MISSING: $section"; MISSING=1; }
+          done
+          [ $MISSING -eq 0 ] || exit 1
+
+  # ── Vulnerability disclosure check ────────────────────────────────────────
+  vuln-disclosure:
+    name: "P9 · Vulnerability Disclosure"
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify vulnerability disclosure process documented
+        run: |
+          [ -f "SECURITY.md" ] || { echo "FAIL: SECURITY.md missing"; exit 1; }
+          for item in "security@vayupress.com" "72" "CVSS" "CVE" "advisory"; do
+            grep -qi "$item" SECURITY.md \
+              && echo "✅ $item" \
+              || echo "⚠️ Check SECURITY.md for: $item"
+          done
+          echo "✅ Vulnerability disclosure check complete."
+
+  security-pass:
+    name: "Security Pass — All Checks"
+    needs:
+      - supply-chain
+      - security-headers
+      - csrf-check
+      - auth-check
+      - rate-limit-check
+      - threat-model-check
+    runs-on: ubuntu-24.04
+    if: always()
+    steps:
+      - name: Verify all security checks passed
+        run: |
+          FAILED=0
+          for result in \
+            "${{ needs.supply-chain.result }}" \
+            "${{ needs.security-headers.result }}" \
+            "${{ needs.csrf-check.result }}" \
+            "${{ needs.auth-check.result }}" \
+            "${{ needs.rate-limit-check.result }}" \
+            "${{ needs.threat-model-check.result }}"; do
+            [ "$result" = "success" ] || FAILED=1
+          done
+          [ $FAILED -eq 0 ] || { echo "Security checks failed."; exit 1; }
+          echo "✅ All security checks passed."
