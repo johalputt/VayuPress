@@ -1,0 +1,20 @@
+# Binaries
+vayupress.exe
+*.exe
+*.dll
+
+# Go
+go.mod
+go.sum
+/vendor/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+Thumbs.db
+Desktop.ini
+
+# Logs
+*.log
