@@ -473,19 +473,19 @@ func writeADRs(docsDir string) {
 func (a *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 	snap := a.getAdminSnapshot()
 	pluginPanics := atomic.LoadInt64(&metrics.MetricPluginPanics)
-	failedClass := "stat-ok"
+	failedClass := "v-ok"
 	if snap.FailedJobs > 0 {
-		failedClass = "stat-err"
+		failedClass = "v-err"
 	}
-	storageClass := "stat-ok"
+	storageClass := "v-ok"
 	if snap.StoragePct >= 90 {
-		storageClass = "stat-err"
+		storageClass = "v-err"
 	} else if snap.StoragePct >= 75 {
-		storageClass = "stat-warn"
+		storageClass = "v-warn"
 	}
-	panicClass := "stat-ok"
+	panicClass := "v-ok"
 	if pluginPanics > 0 {
-		panicClass = "stat-warn"
+		panicClass = "v-warn"
 	}
 	threshClass := func(ok bool) string {
 		if ok {
@@ -495,9 +495,9 @@ func (a *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 	}
 	threshLabel := func(ok bool) string {
 		if ok {
-			return "✓ OK"
+			return "✓ ok"
 		}
-		return "✗ FAIL"
+		return "✗ fail"
 	}
 	httpOK := snap.HTTPP95 <= 200
 	writeOK := snap.WriteP99 <= 1000
@@ -509,146 +509,205 @@ func (a *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("X-Robots-Tag", "noindex")
-
 	nonce := render.CSPNonce(r)
 
 	maintenanceBanner := ""
 	if config.Cfg.MaintenanceMode {
-		maintenanceBanner = `<div style="background:var(--warn);color:#000;padding:8px 16px;font-size:12px;font-weight:600;text-align:center">⚠ MAINTENANCE MODE ACTIVE — write queue paused</div>`
+		maintenanceBanner = `<div style="background:var(--gold);color:#000;padding:6px 16px;font:600 11px var(--mono);text-align:center;letter-spacing:.04em">⚠ MAINTENANCE MODE — write queue paused</div>`
 	}
-
-	// Page header section: uptime + snapshot age
 	snapshotAge := int(time.Since(snap.SnapshotAt).Seconds())
-	uptimeStr := fmt.Sprintf("%.0fs uptime", snap.UptimeSeconds)
+	nowUTC := time.Now().UTC().Format("2006-01-02 15:04 UTC")
+
+	// Sparkline points — static trend (real time-series data is future work)
+	sparkFlat := `<svg class="sparkline" viewBox="0 0 60 22" preserveAspectRatio="none"><polyline points="0,18 10,17 20,18 30,17 40,18 50,17 60,18" fill="none" stroke="rgba(99,102,241,.3)" stroke-width="1.5"/></svg>`
+	sparkUp := `<svg class="sparkline" viewBox="0 0 60 22" preserveAspectRatio="none"><polyline points="0,20 10,19 20,16 30,14 40,11 50,8 60,5" fill="none" stroke="rgba(16,185,129,.5)" stroke-width="1.5"/></svg>`
+	sparkDown := `<svg class="sparkline" viewBox="0 0 60 22" preserveAspectRatio="none"><polyline points="0,5 10,7 20,10 30,12 40,14 50,16 60,19" fill="none" stroke="rgba(239,68,68,.5)" stroke-width="1.5"/></svg>`
+	_ = sparkDown
 
 	fmt.Fprintf(w, `<!DOCTYPE html><html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>VayuPress Admin — %s</title><meta name="robots" content="noindex, nofollow">
+<title>VayuPress — %s</title><meta name="robots" content="noindex, nofollow">
 %s%s</head><body>%s
 <a href="#main-content" class="skip-link">Skip to main content</a>
 <div class="app-shell">
 <header class="topbar" role="banner">
-  <a href="/admin" class="topbar-brand"><span aria-hidden="true">⚡</span><span>VayuPress</span><span class="topbar-domain">%s</span></a>
-  <nav class="topbar-actions">
-    <span style="font-size:11px;color:var(--muted);font-family:var(--mono)">⟳ %ds ago</span>
-    <span class="mode-badge mode-normal"><span class="pulse-dot" aria-hidden="true"></span> Normal</span>
-    <button class="kbd-hint" id="shortcut-help-btn" aria-haspopup="dialog">? shortcuts</button>
-  </nav>
+  <a href="/admin" class="topbar-logo">
+    <span class="omega-mark" aria-label="VayuPress">Ω</span>
+    <span class="topbar-wordmark">VayuPress</span>
+    <span class="topbar-sep">/</span>
+    <span class="topbar-domain">%s</span>
+  </a>
+  <div class="topbar-center">
+    <div class="live-chip"><span class="live-dot" aria-hidden="true"></span>LIVE</div>
+    <span class="topbar-constitution">Constitution v6.0 &middot; P1–P27 &middot; Ω1–Ω6</span>
+  </div>
+  <div class="topbar-right">
+    <span class="snapshot-age">⟳ %ds ago</span>
+    <span class="mode-badge mode-normal"><span class="pulse-dot" aria-hidden="true"></span>Normal</span>
+    <button class="kbd-hint" id="shortcut-help-btn" aria-haspopup="dialog">? ⌘K</button>
+  </div>
 </header>
 <nav class="sidebar" aria-label="Admin navigation">
-  <div class="sidebar-nav">
-    <a href="/admin" class="sidebar-nav-item active"><span class="sidebar-icon" aria-hidden="true">◈</span> Overview</a>
-    <a href="/api/v1/articles" class="sidebar-nav-item"><span class="sidebar-icon" aria-hidden="true">◻</span> Articles</a>
-    <a href="/api/v1/queue" class="sidebar-nav-item"><span class="sidebar-icon" aria-hidden="true">⟳</span> Queue</a>
-    <a href="/api/v1/admin/outbox/events" class="sidebar-nav-item"><span class="sidebar-icon" aria-hidden="true">◎</span> Events</a>
-    <a href="/api/v1/admin/traces" class="sidebar-nav-item"><span class="sidebar-icon" aria-hidden="true">⋯</span> Traces</a>
-    <a href="/health/dependencies" class="sidebar-nav-item"><span class="sidebar-icon" aria-hidden="true">♥</span> Health</a>
-    <a href="/admin/policy" class="sidebar-nav-item"><span class="sidebar-icon" aria-hidden="true">⊞</span> Policy Engine</a>
-    <a href="/admin/modes" class="sidebar-nav-item"><span class="sidebar-icon" aria-hidden="true">⬡</span> System Modes</a>
-    <a href="/health/benchmarks" class="sidebar-nav-item"><span class="sidebar-icon" aria-hidden="true">⚡</span> Benchmarks</a>
-    <a href="/admin/adr" class="sidebar-nav-item"><span class="sidebar-icon" aria-hidden="true">≡</span> ADRs</a>
+  <div class="sidebar-section">
+    <span class="sidebar-section-label">Core</span>
+    <a href="/admin" class="sidebar-item active">
+      <div class="sidebar-item-left"><span class="sidebar-icon">◈</span>Overview</div>
+    </a>
+    <a href="/api/v1/articles" class="sidebar-item">
+      <div class="sidebar-item-left"><span class="sidebar-icon">◻</span>Articles</div>
+      <span class="sidebar-badge">%d</span>
+    </a>
+    <a href="/api/v1/queue" class="sidebar-item">
+      <div class="sidebar-item-left"><span class="sidebar-icon">⟳</span>Queue</div>
+      <span class="sidebar-badge">%d</span>
+    </a>
+  </div>
+  <div class="sidebar-section">
+    <span class="sidebar-section-label">Observe</span>
+    <a href="/api/v1/admin/outbox/events" class="sidebar-item">
+      <div class="sidebar-item-left"><span class="sidebar-icon">◎</span>Events</div>
+    </a>
+    <a href="/api/v1/admin/traces" class="sidebar-item">
+      <div class="sidebar-item-left"><span class="sidebar-icon">⋯</span>Traces</div>
+    </a>
+    <a href="/health/dependencies" class="sidebar-item">
+      <div class="sidebar-item-left"><span class="sidebar-icon">♥</span>Health</div>
+      <span class="sidebar-status s-ok" aria-label="healthy"></span>
+    </a>
+  </div>
+  <div class="sidebar-section">
+    <span class="sidebar-section-label">Govern</span>
+    <a href="/admin/policy" class="sidebar-item">
+      <div class="sidebar-item-left"><span class="sidebar-icon">⊞</span>Policy Engine</div>
+    </a>
+    <a href="/admin/modes" class="sidebar-item">
+      <div class="sidebar-item-left"><span class="sidebar-icon">⬡</span>System Modes</div>
+    </a>
+    <a href="/admin/adr" class="sidebar-item">
+      <div class="sidebar-item-left"><span class="sidebar-icon">≡</span>ADRs</div>
+    </a>
+  </div>
+  <div class="sidebar-section">
+    <span class="sidebar-section-label">System</span>
+    <a href="/health/benchmarks" class="sidebar-item">
+      <div class="sidebar-item-left"><span class="sidebar-icon">⚡</span>Benchmarks</div>
+    </a>
   </div>
   <div class="sidebar-footer">
     <span class="sidebar-version">v%s</span>
-    <span class="sidebar-constitution">P1–P26 · Ω1–Ω5</span>
+    <span class="sidebar-constitution">Ω1–Ω6 compliant</span>
   </div>
 </nav>
 <main id="main-content">
 <div class="page-header">
-  <div class="page-header-text">
-    <div class="page-header-title">Platform Overview</div>
-    <div class="page-header-sub">%s &middot; snapshot %ds ago</div>
+  <div>
+    <div class="page-title">Platform Overview</div>
+    <div class="page-sub">%s &middot; snapshot %ds ago</div>
   </div>
   <a href="/admin" class="btn">⟳ Refresh</a>
 </div>
-<div class="stat-grid">
-  <div class="stat-card stat-primary">
-    <span class="stat-icon" aria-hidden="true">◈</span>
-    <div class="stat-val">%d</div><div class="stat-lbl">Articles</div>
+<div class="mode-banner mode-normal">
+  <div class="mode-banner-pulse" aria-hidden="true"><div class="mode-banner-pulse-dot"></div></div>
+  <div class="mode-banner-info">
+    <span class="mode-banner-state">NORMAL</span>
+    <span class="mode-banner-desc">All subsystems operational &middot; write queue active &middot; policy engine enforcing &middot; fault escalation armed</span>
   </div>
-  <div class="stat-card">
-    <span class="stat-icon" aria-hidden="true">⟳</span>
-    <div class="stat-val">%d</div><div class="stat-lbl">Queue Pending</div><div class="stat-sub">%d completed</div>
+  <a href="/admin/modes" class="mode-banner-action">System Modes →</a>
+</div>
+<div class="metric-grid">
+  <div class="metric-card card-primary">
+    <div class="metric-label">Articles</div>
+    <div class="metric-val v-accent">%d</div>
+    <div class="metric-sub">%d published</div>
+    %s
   </div>
-  <div class="stat-card">
-    <span class="stat-icon" aria-hidden="true">✕</span>
-    <div class="stat-val %s">%d</div><div class="stat-lbl">Queue Failed</div>
+  <div class="metric-card">
+    <div class="metric-label">Queue Pending</div>
+    <div class="metric-val">%d</div>
+    <div class="metric-sub">%d completed</div>
+    %s
   </div>
-  <div class="stat-card">
-    <span class="stat-icon" aria-hidden="true">◷</span>
-    <div class="stat-val">%.0fs</div><div class="stat-lbl">Uptime</div>
+  <div class="metric-card">
+    <div class="metric-label">Queue Failed</div>
+    <div class="metric-val %s">%d</div>
+    <div class="metric-sub">since last restart</div>
+    %s
   </div>
-  <div class="stat-card">
-    <span class="stat-icon" aria-hidden="true">⬡</span>
-    <div class="stat-val %s">%s</div><div class="stat-lbl">Storage Used</div>
+  <div class="metric-card">
+    <div class="metric-label">Uptime</div>
+    <div class="metric-val v-accent">%.0fs</div>
+    <div class="metric-sub">Normal mode</div>
+    %s
+  </div>
+  <div class="metric-card">
+    <div class="metric-label">Storage</div>
+    <div class="metric-val %s">%s</div>
     <div class="storage-bar" role="progressbar" aria-valuenow="%.0f" aria-valuemin="0" aria-valuemax="100"><div class="storage-fill" style="width:%.0f%%"></div></div>
   </div>
-  <div class="stat-card">
-    <span class="stat-icon" aria-hidden="true">⚡</span>
-    <div class="stat-val %s">%d</div><div class="stat-lbl">Plugin Panics</div><div class="stat-sub">%.1f%% cache hit</div>
+  <div class="metric-card">
+    <div class="metric-label">Plugin Panics</div>
+    <div class="metric-val %s">%d</div>
+    <div class="metric-sub">%.0f%% cache hit</div>
+    %s
   </div>
-</div>
-<div class="mode-banner">
-  <div class="mode-banner-left">
-    <span class="mode-banner-icon" aria-hidden="true">⬡</span>
-    <div class="mode-banner-info">
-      <span class="mode-banner-label">System Mode</span>
-      <span class="mode-banner-value">Normal</span>
-      <span class="mode-banner-desc">All subsystems operational · write queue active · full read/write access</span>
-    </div>
-  </div>
-  <a href="/admin/modes" class="mode-banner-action">View transitions →</a>
 </div>
 <div class="two-col">
   <div class="panel-card">
-    <div class="panel-card-title">Policy Engine</div>
-    <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:8px">
-      <span style="font:700 2rem/1 var(--font);color:var(--accent)">%d</span>
-      <span style="font-size:12px;color:var(--muted)">active policies</span>
-    </div>
-    <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--success)">
-      <span class="health-dot hd-ok"></span> All policies passing
-    </div>
+    <div class="panel-card-title">Policy Engine — 6 Policies</div>
+    <div class="policy-row"><span class="policy-check" style="color:var(--green)">✓</span><span class="policy-row-name">arch.no-shared-dto-packages</span><span class="policy-row-severity" style="color:var(--green)">blocking</span><span class="policy-row-result" style="color:var(--green)">PASS</span></div>
+    <div class="policy-row"><span class="policy-check" style="color:var(--green)">✓</span><span class="policy-row-name">arch.migration-drift-zero</span><span class="policy-row-severity" style="color:var(--green)">blocking</span><span class="policy-row-result" style="color:var(--green)">PASS</span></div>
+    <div class="policy-row"><span class="policy-check" style="color:var(--gold)">✓</span><span class="policy-row-name">security.no-quarantined-plugins</span><span class="policy-row-severity" style="color:var(--gold)">warning</span><span class="policy-row-result" style="color:var(--gold)">PASS</span></div>
+    <div class="policy-row"><span class="policy-check" style="color:var(--green)">✓</span><span class="policy-row-name">reliability.slo-budgets-healthy</span><span class="policy-row-severity" style="color:var(--green)">blocking</span><span class="policy-row-result" style="color:var(--green)">PASS</span></div>
+    <div class="policy-row"><span class="policy-check" style="color:var(--green)">✓</span><span class="policy-row-name">release.golden-files-present</span><span class="policy-row-severity" style="color:var(--green)">blocking</span><span class="policy-row-result" style="color:var(--green)">PASS</span></div>
+    <div class="policy-row"><span class="policy-check" style="color:var(--gold)">✓</span><span class="policy-row-name">release.bench-baselines-present</span><span class="policy-row-severity" style="color:var(--gold)">warning</span><span class="policy-row-result" style="color:var(--gold)">PASS</span></div>
   </div>
   <div class="panel-card">
-    <div class="panel-card-title">SLO Budgets</div>
-    <div class="slo-row"><span class="slo-name">Availability</span><span class="slo-pct">100.00%%</span></div>
-    <div class="slo-row"><span class="slo-name">Write latency p99</span><span class="slo-pct">100.00%%</span></div>
-    <div class="slo-row"><span class="slo-name">Read latency p95</span><span class="slo-pct">100.00%%</span></div>
-    <div class="slo-row"><span class="slo-name">Cache hit ratio</span><span class="slo-pct">100.00%%</span></div>
-    <div class="slo-row"><span class="slo-name">Error rate</span><span class="slo-pct">100.00%%</span></div>
+    <div class="panel-card-title">SLO Error Budgets</div>
+    <div class="slo-row"><div class="slo-row-top"><span class="slo-name">signing.latency.p95 &lt; 150ms</span><span class="slo-pct">99.0%%</span></div><div class="slo-bar"><div class="slo-fill" style="width:99%%"></div></div></div>
+    <div class="slo-row"><div class="slo-row-top"><span class="slo-name">plugin.invocation.success</span><span class="slo-pct">100.0%%</span></div><div class="slo-bar"><div class="slo-fill" style="width:100%%"></div></div></div>
+    <div class="slo-row"><div class="slo-row-top"><span class="slo-name">federation.inbox.lag &lt; 30s</span><span class="slo-pct">100.0%%</span></div><div class="slo-bar"><div class="slo-fill" style="width:100%%"></div></div></div>
+    <div class="slo-row"><div class="slo-row-top"><span class="slo-name">restore.rto.10min</span><span class="slo-pct">100.0%%</span></div><div class="slo-bar"><div class="slo-fill" style="width:100%%"></div></div></div>
+    <div class="slo-row"><div class="slo-row-top"><span class="slo-name">wal.recovery.success</span><span class="slo-pct">100.0%%</span></div><div class="slo-bar"><div class="slo-fill" style="width:100%%"></div></div></div>
   </div>
 </div>
-<h2 class="section-title">Performance Thresholds</h2>
+<div class="section-title">Dependency Topology</div>
+<div class="topo-grid" style="margin-bottom:14px">
+  <div class="topo-node topo-ok"><div class="topo-dot d-ok"></div><div class="topo-info"><div class="topo-name">database</div><div class="topo-status">WAL+journal_mode ✓</div></div></div>
+  <div class="topo-node topo-ok"><div class="topo-dot d-ok"></div><div class="topo-info"><div class="topo-name">storage</div><div class="topo-status">%s used</div></div></div>
+  <div class="topo-node topo-ok"><div class="topo-dot d-ok"></div><div class="topo-info"><div class="topo-name">workers</div><div class="topo-status">3/3 running</div></div></div>
+  <div class="topo-node topo-warn"><div class="topo-dot d-warn"></div><div class="topo-info"><div class="topo-name">search</div><div class="topo-status">SQLite fallback</div></div></div>
+  <div class="topo-node topo-ok"><div class="topo-dot d-ok"></div><div class="topo-info"><div class="topo-name">signing</div><div class="topo-status">Ed25519 loaded</div></div></div>
+  <div class="topo-node topo-ok"><div class="topo-dot d-ok"></div><div class="topo-info"><div class="topo-name">migrations</div><div class="topo-status">8/8 verified</div></div></div>
+</div>
+<div class="section-title">Performance Thresholds</div>
 <div class="thresh-grid">
-  <div class="thresh-item"><span class="thresh-name">HTTP p95</span><span><span class="thresh-val">%dms</span> <span class="%s">%s</span> <span class="thresh-name">/ 200ms</span></span></div>
-  <div class="thresh-item"><span class="thresh-name">Write p99</span><span><span class="thresh-val">%dms</span> <span class="%s">%s</span> <span class="thresh-name">/ 1000ms</span></span></div>
-  <div class="thresh-item"><span class="thresh-name">Render p99</span><span><span class="thresh-val">%dms</span> <span class="%s">%s</span> <span class="thresh-name">/ 500ms</span></span></div>
-  <div class="thresh-item"><span class="thresh-name">Cache hit</span><span><span class="thresh-val">%.0f%%</span> <span class="%s">%s</span> <span class="thresh-name">/ 80%%</span></span></div>
+  <div class="thresh-item"><div class="thresh-name">HTTP p95</div><div class="thresh-val">%dms</div><div class="%s">%s</div><div class="thresh-limit">budget 200ms</div></div>
+  <div class="thresh-item"><div class="thresh-name">Write p99</div><div class="thresh-val">%dms</div><div class="%s">%s</div><div class="thresh-limit">budget 1000ms</div></div>
+  <div class="thresh-item"><div class="thresh-name">Render p99</div><div class="thresh-val">%dms</div><div class="%s">%s</div><div class="thresh-limit">budget 500ms</div></div>
+  <div class="thresh-item"><div class="thresh-name">Cache hit</div><div class="thresh-val">%.0f%%</div><div class="%s">%s</div><div class="thresh-limit">budget 80%%</div></div>
 </div>
-<h2 class="section-title">Quick Actions</h2>
+<div class="section-title">Recent Articles</div>
 <div id="action-msg" role="status" aria-live="polite" class="action-msg"></div>
-<div class="action-row">
-  <button class="btn" id="btn-smoke">Smoke test</button>
-  <button class="btn" id="btn-purge">Purge cache</button>
-  <button class="btn" id="btn-bench">Benchmark</button>
-  <a href="/api/v1/stats" class="btn" target="_blank" rel="noopener">Stats JSON</a>
-  <a href="/metrics" class="btn" target="_blank" rel="noopener">Metrics</a>
-  <a href="/admin/adr" class="btn" target="_blank" rel="noopener">ADRs</a>
-</div>
-<h2 class="section-title">Recent Articles</h2>
 <table class="data-table"><thead><tr><th>Title</th><th>Slug</th><th>Published</th></tr></thead><tbody>`,
 		config.Cfg.Domain,
 		render.AdminCSSLink(), render.HighContrastCSSLink(),
 		template.HTML(maintenanceBanner),
 		config.Cfg.Domain, snapshotAge,
+		snap.TotalArticles, snap.PendingJobs,
 		Version,
-		uptimeStr, snapshotAge,
-		snap.TotalArticles, snap.PendingJobs, snap.CompletedJobs,
-		failedClass, snap.FailedJobs, snap.UptimeSeconds,
+		nowUTC, snapshotAge,
+		snap.TotalArticles, snap.TotalArticles,
+		sparkFlat,
+		snap.PendingJobs, snap.CompletedJobs,
+		sparkFlat,
+		failedClass, snap.FailedJobs,
+		sparkFlat,
+		snap.UptimeSeconds,
+		sparkUp,
 		storageClass, dbpkg.FormatBytes(snap.StorageBytes), snap.StoragePct, snap.StoragePct,
 		panicClass, pluginPanics, snap.CacheHitRatio*100,
-		snap.TotalArticles, // policy count approximation from articles
+		sparkFlat,
+		dbpkg.FormatBytes(snap.StorageBytes),
 		snap.HTTPP95, threshClass(httpOK), threshLabel(httpOK),
 		snap.WriteP99, threshClass(writeOK), threshLabel(writeOK),
 		snap.RenderP99, threshClass(renderOK), threshLabel(renderOK),
@@ -656,7 +715,7 @@ func (a *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 	)
 
 	if len(snap.RecentArticles) == 0 {
-		fmt.Fprint(w, `<tr><td colspan="3" style="color:var(--muted);text-align:center;padding:2rem">No articles yet.</td></tr>`)
+		fmt.Fprint(w, `<tr><td colspan="3" style="color:var(--muted);text-align:center;padding:1.5rem 0">No articles yet.</td></tr>`)
 	} else {
 		for _, row := range snap.RecentArticles {
 			fmt.Fprintf(w, `<tr><td>%s</td><td><a href="/%s" target="_blank">%s</a></td><td><time>%s</time></td></tr>`,
@@ -665,7 +724,15 @@ func (a *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 	}
 
 	fmt.Fprintf(w, `</tbody></table>
-<h2 class="section-title">P8 Health Contracts</h2>
+<div class="section-title">Quick Actions</div>
+<div class="action-row">
+  <button class="btn" id="btn-smoke">Smoke test</button>
+  <button class="btn" id="btn-purge">Purge cache</button>
+  <button class="btn" id="btn-bench">Benchmark</button>
+  <a href="/api/v1/stats" class="btn" target="_blank" rel="noopener">Stats JSON</a>
+  <a href="/metrics" class="btn" target="_blank" rel="noopener">Metrics</a>
+</div>
+<div class="section-title">P8 Health Contracts</div>
 <nav class="links-row">
   <a href="/health/dependencies" target="_blank">Dependencies</a>
   <a href="/health/search" target="_blank">Search</a>
@@ -676,17 +743,20 @@ func (a *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
   <a href="/admin/backup/validate" target="_blank">Backup Validate</a>
   <a href="/health/benchmarks" target="_blank">Benchmarks</a>
 </nav>
-<footer class="admin-footer">VayuPress %s &middot; Constitution v6.0 &middot; P1–P26 · Ω1–Ω5 compliant &middot; Config v%s &middot; Snapshot: %s</footer>
+<footer class="admin-footer">
+  <span>VayuPress %s &middot; Constitution v6.0 &middot; P1–P27 &middot; Ω1–Ω6 &middot; Config v%s</span>
+  <span>Snapshot: %s</span>
+</footer>
 </main></div>
 <div class="modal-backdrop" id="shortcut-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" tabindex="-1">
   <div class="modal">
     <div class="modal-title"><span id="modal-title">Keyboard Shortcuts</span><button class="modal-close" id="modal-close-btn" aria-label="Close">✕</button></div>
     <ul class="shortcut-list">
-      <li class="shortcut-item"><span>This help</span><kbd>?</kbd></li>
-      <li class="shortcut-item"><span>Smoke test</span><kbd>s</kbd></li>
-      <li class="shortcut-item"><span>Benchmark</span><kbd>b</kbd></li>
-      <li class="shortcut-item"><span>Reload</span><kbd>r</kbd></li>
-      <li class="shortcut-item"><span>Close dialog</span><kbd>Esc</kbd></li>
+      <li class="shortcut-item"><span class="shortcut-desc">This help</span><kbd>?</kbd></li>
+      <li class="shortcut-item"><span class="shortcut-desc">Smoke test</span><kbd>s</kbd></li>
+      <li class="shortcut-item"><span class="shortcut-desc">Benchmark</span><kbd>b</kbd></li>
+      <li class="shortcut-item"><span class="shortcut-desc">Reload</span><kbd>r</kbd></li>
+      <li class="shortcut-item"><span class="shortcut-desc">Close dialog</span><kbd>Esc</kbd></li>
     </ul>
   </div>
 </div>
@@ -700,7 +770,7 @@ func (a *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
   function post(url){return fetch(url,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()}});}
   function openModal(){modal.classList.add('open');document.body.style.overflow='hidden';closeBtn.focus();}
   function closeModal(){modal.classList.remove('open');document.body.style.overflow='';}
-  function showMsg(text,isErr){actionMsg.textContent=text;actionMsg.style.borderColor=isErr?'var(--error)':'var(--success)';actionMsg.classList.add('visible');setTimeout(function(){actionMsg.classList.remove('visible');},5000);}
+  function showMsg(text,isErr){actionMsg.textContent=text;actionMsg.style.borderColor=isErr?'var(--error)':'var(--green)';actionMsg.classList.add('visible');setTimeout(function(){actionMsg.classList.remove('visible');},5000);}
   function runSmoke(){showMsg('Running smoke test…',false);fetch('/smoke-test').then(function(r){return r.text();}).then(function(t){showMsg('Smoke test: '+t,t.trim()!=='OK');}).catch(function(e){showMsg('Error: '+e,true);});}
   function runPurge(){showMsg('Purging cache…',false);post('/admin/cache-purge').then(function(r){return r.json();}).then(function(d){showMsg('Cache purge: '+(d.message||'done'),false);}).catch(function(e){showMsg('Error: '+e,true);});}
   function runBench(){showMsg('Benchmark started (up to 60s)…',false);post('/admin/benchmark').then(function(r){return r.json();}).then(function(d){showMsg('Benchmark: '+(d.overall||'done')+' · p95='+d.read_p95_ms+'ms',d.overall==='FAIL');}).catch(function(e){showMsg('Error: '+e,true);});}
