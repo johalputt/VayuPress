@@ -15,8 +15,9 @@ func TestBroadcast(t *testing.T) {
 
 	// Use SSE handler with a recorder
 	rec := httptest.NewRecorder()
-	req, _ := context.WithTimeout(context.Background(), 200*time.Millisecond)
-	r := httptest.NewRequest("GET", "/ws", nil).WithContext(req)
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	r := httptest.NewRequest("GET", "/ws", nil).WithContext(ctx)
 
 	done := make(chan struct{})
 	go func() {
