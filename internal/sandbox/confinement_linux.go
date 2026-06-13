@@ -5,7 +5,6 @@ package sandbox
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"syscall"
 	"unsafe"
 
@@ -328,6 +327,9 @@ func SetupConfinement(m Manifest) *PluginConfinement {
 		return c
 	}
 
+	// Mark mount propagation private so child namespace changes don't bleed out.
+	applyMountPropagation()
+
 	mc, err := setupMountConfinement(m)
 	if err != nil {
 		logging.LogJSON(logging.LogFields{
@@ -335,6 +337,9 @@ func SetupConfinement(m Manifest) *PluginConfinement {
 			Component: "sandbox",
 			Msg:       fmt.Sprintf("sandbox: mount confinement for %s: %v (degraded)", m.Name, err),
 		})
+	} else {
+		// Mask sensitive /proc entries in the new scratch environment.
+		applyProcMask()
 	}
 	c.mount = mc
 	return c
@@ -378,9 +383,4 @@ func MountNamespaceFlags(m Manifest) uintptr {
 		return syscall.CLONE_NEWNS
 	}
 	return 0
-}
-
-// privateTmpPath returns a per-plugin private tmp path inside scratch.
-func privateTmpPath(scratchDir, name string) string {
-	return filepath.Join(scratchDir, "tmp-"+name)
 }
