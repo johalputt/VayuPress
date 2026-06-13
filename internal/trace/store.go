@@ -74,7 +74,7 @@ func (s *Store) Query(f QueryFilter) ([]*Span, error) {
 	}
 	defer rows.Close()
 
-	var spans []Span
+	var spans []*Span
 	for rows.Next() {
 		var traceID, spanID, parentSpanID, operation, startStr, endStr, statusStr string
 		if err := rows.Scan(&traceID, &spanID, &parentSpanID, &operation,
@@ -83,7 +83,7 @@ func (s *Store) Query(f QueryFilter) ([]*Span, error) {
 		}
 		startTime, _ := time.Parse(time.RFC3339Nano, startStr)
 		endTime, _ := time.Parse(time.RFC3339Nano, endStr)
-		sp := Span{
+		spans = append(spans, &Span{
 			TraceID:      traceID,
 			SpanID:       spanID,
 			ParentSpanID: parentSpanID,
@@ -91,8 +91,7 @@ func (s *Store) Query(f QueryFilter) ([]*Span, error) {
 			StartTime:    startTime,
 			EndTime:      endTime,
 			Status:       parseStatus(statusStr),
-		}
-		spans = append(spans, sp)
+		})
 	}
 	return spans, rows.Err()
 }
