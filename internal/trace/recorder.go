@@ -35,10 +35,11 @@ func statusString(s Status) string {
 
 // Recorder stores finished spans in a fixed-size ring buffer. Safe for concurrent use.
 type Recorder struct {
-	mu   sync.Mutex
-	ring []SpanRecord
-	head int
-	size int
+	mu     sync.Mutex
+	ring   []SpanRecord
+	head   int
+	size   int
+	Policy *SamplePolicy // nil = keep all
 }
 
 // NewRecorder returns a Recorder with cap entries.
@@ -50,6 +51,9 @@ func NewRecorder(cap int) *Recorder {
 }
 
 func (r *Recorder) record(s *Span) {
+	if r.Policy != nil && !r.Policy.Keep(s) {
+		return
+	}
 	s.mu.Lock()
 	rec := SpanRecord{
 		TraceID:      s.TraceID,

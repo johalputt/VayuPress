@@ -19,7 +19,7 @@ var bg = context.Background()
 func makeService() *ArticleService {
 	return &ArticleService{
 		Repo:  dbpkg.NewArticleRepo(dbpkg.DB),
-		Queue: queue.NewSQLiteWriter(dbpkg.DB),
+		Queue: queue.NewSQLiteWriter(dbpkg.DB, 0), // 0 = no hard limit in tests
 	}
 }
 

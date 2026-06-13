@@ -37,6 +37,7 @@ import (
 	"github.com/johalputt/vayupress/internal/plugins"
 	"github.com/johalputt/vayupress/internal/queue"
 	"github.com/johalputt/vayupress/internal/render"
+	"github.com/johalputt/vayupress/internal/resource"
 	"github.com/johalputt/vayupress/internal/search"
 	"github.com/johalputt/vayupress/internal/trace"
 )
@@ -186,10 +187,15 @@ func main() {
 	}
 	logging.LogInfo("main", "database ready — WAL adaptive + migrations + checksum drift verified (ADR-0033/0034)")
 
+	// Resource governance — limiters and watchdog (ADR-0055).
+	resource.Register("articles.write", config.Cfg.WorkerCount*4)
+	resource.Register("plugin.exec", config.Cfg.PluginMaxConcurrent)
+	resource.Global = resource.NewWatchdog(250 * time.Millisecond)
+
 	// Wire article service with repository pattern (ADR-0050).
 	a.articles = &api.ArticleService{
 		Repo:  dbpkg.NewArticleRepo(dbpkg.DB),
-		Queue: queue.NewSQLiteWriter(dbpkg.DB),
+		Queue: queue.NewSQLiteWriter(dbpkg.DB, config.Cfg.QueueHardLimit),
 		StorageCheckFn: func() (int64, int64) {
 			return dbpkg.StorageUsedBytes(), dbpkg.StorageQuotaBytes()
 		},
@@ -350,11 +356,14 @@ func main() {
 			logging.LogJSON(logging.LogFields{Level: "warn", Component: "main", Msg: "phase 2 timeout (45s) — in-flight jobs retried on next startup"})
 		}
 
-		// Phase 3: stop plugin pool
+		// Phase 3: stop plugin pool + resource watchdog
 		if os.Getenv("VAYU_PLUGINS_ENABLED") == "true" {
 			a.pluginManager.Shutdown()
-			logging.LogInfo("main", "phase 3 complete — plugin pool stopped")
 		}
+		if resource.Global != nil {
+			resource.Global.Stop()
+		}
+		logging.LogInfo("main", "phase 3 complete — plugin pool + watchdog stopped")
 
 		// Phase 4: WAL checkpoint before close
 		if dbpkg.DB != nil {

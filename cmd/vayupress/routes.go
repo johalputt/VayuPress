@@ -99,6 +99,9 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 		r.Get("/api/v1/admin/traces", a.handleTraceSpans)
 		r.Get("/api/v1/admin/traces/{trace_id}", a.handleTraceByID)
 
+		// Resource governance stats (ADR-0055).
+		r.Get("/api/v1/admin/resource/stats", a.handleResourceStats)
+
 		r.Get("/admin", a.handleAdminDashboard)
 		r.Get("/admin/adr", a.handleAdminADR)
 		r.Get("/admin/backup/validate", a.handleAdminBackupValidate)

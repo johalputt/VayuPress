@@ -3,6 +3,8 @@ package api
 import (
 	"errors"
 	"net/http"
+
+	"github.com/johalputt/vayupress/internal/queue"
 )
 
 // Sentinel errors returned by ArticleService methods. Handlers map these to
@@ -28,6 +30,8 @@ func HTTPStatus(err error) int {
 		return http.StatusRequestEntityTooLarge
 	case errors.Is(err, ErrBulkLimit):
 		return http.StatusBadRequest
+	case errors.Is(err, queue.ErrQueueSaturated):
+		return http.StatusTooManyRequests
 	default:
 		return http.StatusInternalServerError
 	}
@@ -46,6 +50,8 @@ func ErrorCode(err error) string {
 		return "storage_quota_exceeded"
 	case errors.Is(err, ErrBulkLimit):
 		return "too_many_articles"
+	case errors.Is(err, queue.ErrQueueSaturated):
+		return "queue_saturated"
 	default:
 		return "internal_error"
 	}

@@ -9,8 +9,10 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/metrics"
+	"github.com/johalputt/vayupress/internal/resource"
 )
 
 // HookFunc is the signature all plugin hooks must implement.
@@ -130,8 +132,21 @@ func (m *Manager) worker(id int) {
 }
 
 func (m *Manager) run(j job) {
+	// Enforce per-plugin concurrency ceiling (ADR-0055).
+	if lim := resource.Get("plugin.exec"); lim != nil {
+		if err := lim.Acquire(); err != nil {
+			atomic.AddInt64(&metrics.MetricPluginDisabled, 1)
+			logging.LogJSON(logging.LogFields{Level: "warn", Component: "plugins", Msg: "plugin.exec at capacity — dropping: " + j.event})
+			return
+		}
+		defer lim.Release()
+	}
+	timeout := time.Duration(config.Cfg.PluginTimeoutMS) * time.Millisecond
+	if timeout <= 0 {
+		timeout = hookTimeout
+	}
 	key := fmt.Sprintf("%s:%p", j.event, j.fn)
-	ctx, cancel := context.WithTimeout(m.ctx, hookTimeout)
+	ctx, cancel := context.WithTimeout(m.ctx, timeout)
 	err := safeCall(j.event, j.fn, ctx, j.payload)
 	cancel()
 	if err != nil {

@@ -55,6 +55,7 @@ REQUIRED_PKGS=(
   "internal/outbox"
   "internal/lifecycle"
   "internal/trace"
+  "internal/resource"
   "internal/events"
   "internal/search"
   "internal/httputil"

@@ -11,6 +11,7 @@ import (
 
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/events"
+	"github.com/johalputt/vayupress/internal/resource"
 	"github.com/johalputt/vayupress/internal/trace"
 )
 
@@ -26,6 +27,16 @@ func (a *App) handleTraceSpans(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, 200, map[string]interface{}{
 		"spans":          spans,
 		"count":          len(spans),
+		"correlation_id": trace.CorrelationID(r.Context()),
+	})
+}
+
+// handleResourceStats returns current resource limiter and goroutine telemetry.
+// GET /api/v1/admin/resource/stats
+func (a *App) handleResourceStats(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, r, 200, map[string]interface{}{
+		"goroutines":     resource.GoroutineCount(),
+		"limiters":       resource.AllStats(),
 		"correlation_id": trace.CorrelationID(r.Context()),
 	})
 }

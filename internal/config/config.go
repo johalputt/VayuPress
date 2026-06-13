@@ -29,6 +29,9 @@ var Cfg struct {
 	BackupRetainDays    int
 	TmpDir              string
 	QueueSaturationWarn int
+	QueueHardLimit      int // reject new jobs above this depth (backpressure)
+	PluginTimeoutMS     int // per-plugin execution budget in milliseconds
+	PluginMaxConcurrent int // max simultaneous plugin executions
 	MaintenanceMode     bool
 	VacuumCooldownMin   int
 	MaxReplayCount      int
@@ -55,6 +58,9 @@ func Load() {
 	Cfg.MediaRetainDays = GetEnvAsInt("MEDIA_RETAIN_DAYS", 365)
 	Cfg.CacheMaxSizeGB = int64(GetEnvAsInt("CACHE_MAX_SIZE_GB", 10))
 	Cfg.QueueSaturationWarn = GetEnvAsInt("QUEUE_SATURATION_WARN", 100)
+	Cfg.QueueHardLimit = GetEnvAsInt("QUEUE_HARD_LIMIT", 1000)
+	Cfg.PluginTimeoutMS = GetEnvAsInt("PLUGIN_TIMEOUT_MS", 2000)
+	Cfg.PluginMaxConcurrent = GetEnvAsInt("PLUGIN_MAX_CONCURRENT", 8)
 	st := GetEnvAsInt("SMOKE_TEST_TIMEOUT", 30)
 	Cfg.SmokeTestTimeout = time.Duration(st) * time.Second
 	Cfg.MaintenanceMode = os.Getenv("VAYU_MAINTENANCE") == "true"

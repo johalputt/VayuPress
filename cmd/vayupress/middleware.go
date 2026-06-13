@@ -16,6 +16,7 @@ import (
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/metrics"
 	"github.com/johalputt/vayupress/internal/render"
+	"github.com/johalputt/vayupress/internal/resource"
 	"github.com/johalputt/vayupress/internal/trace"
 )
 
@@ -120,6 +121,7 @@ func structuredLoggerMiddleware(next http.Handler) http.Handler {
 		span.SetAttribute("http.method", r.Method)
 		span.SetAttribute("http.path", r.URL.Path)
 		span.SetAttribute("http.remote_addr", r.RemoteAddr)
+		span.SetAttribute("runtime.goroutines", fmt.Sprintf("%d", resource.GoroutineCount()))
 
 		ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
 		next.ServeHTTP(ww, r.WithContext(ctx))
