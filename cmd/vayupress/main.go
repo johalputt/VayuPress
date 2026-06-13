@@ -256,29 +256,33 @@ func main() {
 		return nil
 	}, nil)
 
-	// Outbox relay — dispatches events written atomically with article mutations (ADR-0051).
-	outboxRelay := outbox.NewRelay(dbpkg.DB, func(ctx context.Context, eventType string, payload []byte) error {
-		switch eventType {
-		case "ArticleCreated":
+	// Outbox relay — dispatches events written atomically with article mutations (ADR-0051/0052).
+	outboxRelay := outbox.NewRelay(dbpkg.DB, func(ctx context.Context, _ string, payload []byte) error {
+		var env events.Envelope
+		if err := json.Unmarshal(payload, &env); err != nil {
+			return err
+		}
+		switch env.EventType {
+		case "article.created.v1":
 			var ev events.ArticleCreated
-			if err := json.Unmarshal(payload, &ev); err != nil {
+			if err := json.Unmarshal(env.Payload, &ev); err != nil {
 				return err
 			}
 			a.eventBus.Publish(ctx, ev)
-		case "ArticleUpdated":
+		case "article.updated.v1":
 			var ev events.ArticleUpdated
-			if err := json.Unmarshal(payload, &ev); err != nil {
+			if err := json.Unmarshal(env.Payload, &ev); err != nil {
 				return err
 			}
 			a.eventBus.Publish(ctx, ev)
-		case "ArticleDeleted":
+		case "article.deleted.v1":
 			var ev events.ArticleDeleted
-			if err := json.Unmarshal(payload, &ev); err != nil {
+			if err := json.Unmarshal(env.Payload, &ev); err != nil {
 				return err
 			}
 			a.eventBus.Publish(ctx, ev)
 		default:
-			logging.LogJSON(logging.LogFields{Level: "warn", Component: "outbox", Msg: "unknown event type: " + eventType})
+			logging.LogJSON(logging.LogFields{Level: "warn", Component: "outbox", Msg: "unknown event type: " + env.EventType})
 		}
 		return nil
 	}, queue.DoneCh)

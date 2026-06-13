@@ -4,7 +4,9 @@ package queue
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -93,7 +95,7 @@ func processOneJob(workerID int) (empty bool) {
 				a.ID, a.Title, a.Slug, a.Content, strings.Join(a.Tags, ","), a.CreatedAt, a.UpdatedAt); err != nil {
 				return err
 			}
-			return writeOutboxEvent(tx, "ArticleCreated", events.ArticleCreated{ID: a.ID, Slug: a.Slug, Tags: a.Tags})
+			return writeOutboxEvent(tx, "article.created.v1", events.ArticleCreated{ID: a.ID, Slug: a.Slug, Tags: a.Tags}, fmt.Sprintf("%d", job.ID))
 		})
 		if execErr == nil {
 			atomic.AddInt64(&metrics.MetricArticlesCreated, 1)
@@ -104,7 +106,7 @@ func processOneJob(workerID int) (empty bool) {
 				a.Title, a.Content, strings.Join(a.Tags, ","), a.UpdatedAt, a.Slug); err != nil {
 				return err
 			}
-			return writeOutboxEvent(tx, "ArticleUpdated", events.ArticleUpdated{ID: a.ID, Slug: a.Slug, Tags: a.Tags})
+			return writeOutboxEvent(tx, "article.updated.v1", events.ArticleUpdated{ID: a.ID, Slug: a.Slug, Tags: a.Tags}, fmt.Sprintf("%d", job.ID))
 		})
 		if execErr == nil {
 			atomic.AddInt64(&metrics.MetricArticlesUpdated, 1)
@@ -114,7 +116,7 @@ func processOneJob(workerID int) (empty bool) {
 			if _, err := tx.Exec(`DELETE FROM articles WHERE slug=?`, a.Slug); err != nil {
 				return err
 			}
-			return writeOutboxEvent(tx, "ArticleDeleted", events.ArticleDeleted{ID: a.ID, Slug: a.Slug})
+			return writeOutboxEvent(tx, "article.deleted.v1", events.ArticleDeleted{ID: a.ID, Slug: a.Slug}, fmt.Sprintf("%d", job.ID))
 		})
 		if execErr == nil {
 			atomic.AddInt64(&metrics.MetricArticlesDeleted, 1)
@@ -166,9 +168,30 @@ var cacheWriteFn func(relPath, content string)
 // SetCacheWriteFn sets the cache write function (called from main.go).
 func SetCacheWriteFn(fn func(relPath, content string)) { cacheWriteFn = fn }
 
-// writeOutboxEvent serialises an event and inserts it into event_outbox within tx.
-func writeOutboxEvent(tx *sql.Tx, eventType string, event interface{}) error {
-	payload, err := json.Marshal(event)
+// newEventID returns a cryptographically random 32-character hex string.
+func newEventID() string {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		return fmt.Sprintf("%x", time.Now().UnixNano())
+	}
+	return hex.EncodeToString(b)
+}
+
+// writeOutboxEvent wraps event in an Envelope and inserts it into event_outbox within tx.
+func writeOutboxEvent(tx *sql.Tx, eventType string, event interface{}, causationID string) error {
+	inner, err := json.Marshal(event)
+	if err != nil {
+		return err
+	}
+	env := events.Envelope{
+		EventID:      newEventID(),
+		EventType:    eventType,
+		EventVersion: "1",
+		CausationID:  causationID,
+		OccurredAt:   time.Now().UTC(),
+		Payload:      json.RawMessage(inner),
+	}
+	payload, err := json.Marshal(env)
 	if err != nil {
 		return err
 	}

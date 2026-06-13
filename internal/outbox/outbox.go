@@ -1,14 +1,18 @@
 // Package outbox implements the transactional outbox relay pattern (ADR-0051).
 // The relay polls the event_outbox table, dispatches events via a caller-provided
 // function, marks them delivered, and retries failures with exponential backoff.
+// Idempotent delivery is enforced via the delivered_events deduplication table (ADR-0052).
 package outbox
 
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+	"errors"
 	"math"
 	"time"
 
+	"github.com/johalputt/vayupress/internal/events"
 	"github.com/johalputt/vayupress/internal/logging"
 )
 
@@ -18,8 +22,13 @@ const (
 	pollInterval      = 200 * time.Millisecond
 )
 
+// ErrPoisonEvent is returned by a DispatchFn to signal an unrecoverable event
+// that should be dead-lettered immediately without incrementing retries.
+var ErrPoisonEvent = errors.New("poison event: unrecoverable")
+
 // DispatchFn is called for each pending outbox event. It receives the event
 // type string and raw JSON payload. Return a non-nil error to trigger a retry.
+// Return ErrPoisonEvent to dead-letter immediately.
 type DispatchFn func(ctx context.Context, eventType string, payload []byte) error
 
 // Relay reads pending events from the event_outbox table and dispatches them.
@@ -73,15 +82,47 @@ func (r *Relay) processOne() (empty bool) {
 		return true
 	}
 
-	// Claim the record by marking it processing isn't feasible with SQLite
-	// single-writer; isolation is handled by the serialised worker.
+	// Parse the envelope to get the stable event_id for deduplication.
+	var env events.Envelope
+	if parseErr := parseEnvelope(rec.payload, &env); parseErr == nil && env.EventID != "" {
+		// Check if this event_id has already been delivered.
+		var count int
+		r.db.QueryRow(`SELECT COUNT(1) FROM delivered_events WHERE event_id=?`, env.EventID).Scan(&count)
+		if count > 0 {
+			// Already delivered — mark outbox record as delivered and skip dispatch.
+			r.db.Exec(
+				`UPDATE event_outbox SET status='delivered', delivered_at=datetime('now') WHERE id=?`,
+				rec.id,
+			)
+			return false
+		}
+	}
 
+	// Poison-event fast-path: dead-letter immediately on ErrPoisonEvent.
 	dispErr := r.dispatch(context.Background(), rec.eventType, rec.payload)
+	if dispErr != nil && errors.Is(dispErr, ErrPoisonEvent) {
+		logging.LogError("outbox", "poison event dead-lettered for "+rec.eventType, dispErr.Error())
+		r.db.Exec(
+			`UPDATE event_outbox SET status='dead_letter', dead_reason=? WHERE id=?`,
+			dispErr.Error(), rec.id,
+		)
+		return false
+	}
+
 	if dispErr == nil {
 		r.db.Exec(
 			`UPDATE event_outbox SET status='delivered', delivered_at=datetime('now') WHERE id=?`,
 			rec.id,
 		)
+		// Record in delivered_events for idempotency (best effort).
+		if env.EventID != "" {
+			if _, insErr := r.db.Exec(
+				`INSERT OR IGNORE INTO delivered_events(event_id, event_type) VALUES(?, ?)`,
+				env.EventID, rec.eventType,
+			); insErr != nil {
+				logging.LogError("outbox", "delivered_events insert failed for "+env.EventID, insErr.Error())
+			}
+		}
 		return false
 	}
 
@@ -104,4 +145,11 @@ func (r *Relay) processOne() (empty bool) {
 		)
 	}
 	return false
+}
+
+// parseEnvelope attempts to parse payload as an events.Envelope.
+// It is a best-effort parse: if the payload is not an envelope (legacy format),
+// the env will have an empty EventID and deduplication is skipped.
+func parseEnvelope(payload []byte, env *events.Envelope) error {
+	return json.Unmarshal(payload, env)
 }
