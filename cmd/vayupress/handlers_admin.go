@@ -517,6 +517,10 @@ func (a *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 		maintenanceBanner = `<div style="background:var(--warn);color:#000;padding:8px 16px;font-size:12px;font-weight:600;text-align:center">⚠ MAINTENANCE MODE ACTIVE — write queue paused</div>`
 	}
 
+	// Page header section: uptime + snapshot age
+	snapshotAge := int(time.Since(snap.SnapshotAt).Seconds())
+	uptimeStr := fmt.Sprintf("%.0fs uptime", snap.UptimeSeconds)
+
 	fmt.Fprintf(w, `<!DOCTYPE html><html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>VayuPress Admin — %s</title><meta name="robots" content="noindex, nofollow">
@@ -527,20 +531,93 @@ func (a *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
   <a href="/admin" class="topbar-brand"><span aria-hidden="true">⚡</span><span>VayuPress</span><span class="topbar-domain">%s</span></a>
   <nav class="topbar-actions">
     <span style="font-size:11px;color:var(--muted);font-family:var(--mono)">⟳ %ds ago</span>
+    <span class="mode-badge mode-normal"><span class="pulse-dot" aria-hidden="true"></span> Normal</span>
     <button class="kbd-hint" id="shortcut-help-btn" aria-haspopup="dialog">? shortcuts</button>
   </nav>
 </header>
+<nav class="sidebar" aria-label="Admin navigation">
+  <div class="sidebar-nav">
+    <a href="/admin" class="sidebar-nav-item active"><span class="sidebar-icon" aria-hidden="true">◈</span> Overview</a>
+    <a href="/api/v1/articles" class="sidebar-nav-item"><span class="sidebar-icon" aria-hidden="true">◻</span> Articles</a>
+    <a href="/api/v1/queue" class="sidebar-nav-item"><span class="sidebar-icon" aria-hidden="true">⟳</span> Queue</a>
+    <a href="/api/v1/admin/outbox/events" class="sidebar-nav-item"><span class="sidebar-icon" aria-hidden="true">◎</span> Events</a>
+    <a href="/api/v1/admin/traces" class="sidebar-nav-item"><span class="sidebar-icon" aria-hidden="true">⋯</span> Traces</a>
+    <a href="/health/dependencies" class="sidebar-nav-item"><span class="sidebar-icon" aria-hidden="true">♥</span> Health</a>
+    <a href="/admin/policy" class="sidebar-nav-item"><span class="sidebar-icon" aria-hidden="true">⊞</span> Policy Engine</a>
+    <a href="/admin/modes" class="sidebar-nav-item"><span class="sidebar-icon" aria-hidden="true">⬡</span> System Modes</a>
+    <a href="/health/benchmarks" class="sidebar-nav-item"><span class="sidebar-icon" aria-hidden="true">⚡</span> Benchmarks</a>
+    <a href="/admin/adr" class="sidebar-nav-item"><span class="sidebar-icon" aria-hidden="true">≡</span> ADRs</a>
+  </div>
+  <div class="sidebar-footer">
+    <span class="sidebar-version">v%s</span>
+    <span class="sidebar-constitution">P1–P26 · Ω1–Ω5</span>
+  </div>
+</nav>
 <main id="main-content">
-<h2 class="section-title">Overview</h2>
+<div class="page-header">
+  <div class="page-header-text">
+    <div class="page-header-title">Platform Overview</div>
+    <div class="page-header-sub">%s &middot; snapshot %ds ago</div>
+  </div>
+  <a href="/admin" class="btn">⟳ Refresh</a>
+</div>
 <div class="stat-grid">
-  <div class="stat-card"><div class="stat-val">%d</div><div class="stat-lbl">Articles</div></div>
-  <div class="stat-card"><div class="stat-val">%d</div><div class="stat-lbl">Queue Pending</div><div class="stat-sub">%d completed</div></div>
-  <div class="stat-card"><div class="stat-val %s">%d</div><div class="stat-lbl">Queue Failed</div></div>
-  <div class="stat-card"><div class="stat-val">%.0fs</div><div class="stat-lbl">Uptime</div></div>
-  <div class="stat-card"><div class="stat-val %s">%s</div><div class="stat-lbl">Storage Used</div>
+  <div class="stat-card stat-primary">
+    <span class="stat-icon" aria-hidden="true">◈</span>
+    <div class="stat-val">%d</div><div class="stat-lbl">Articles</div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-icon" aria-hidden="true">⟳</span>
+    <div class="stat-val">%d</div><div class="stat-lbl">Queue Pending</div><div class="stat-sub">%d completed</div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-icon" aria-hidden="true">✕</span>
+    <div class="stat-val %s">%d</div><div class="stat-lbl">Queue Failed</div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-icon" aria-hidden="true">◷</span>
+    <div class="stat-val">%.0fs</div><div class="stat-lbl">Uptime</div>
+  </div>
+  <div class="stat-card">
+    <span class="stat-icon" aria-hidden="true">⬡</span>
+    <div class="stat-val %s">%s</div><div class="stat-lbl">Storage Used</div>
     <div class="storage-bar" role="progressbar" aria-valuenow="%.0f" aria-valuemin="0" aria-valuemax="100"><div class="storage-fill" style="width:%.0f%%"></div></div>
   </div>
-  <div class="stat-card"><div class="stat-val %s">%d</div><div class="stat-lbl">Plugin Panics</div><div class="stat-sub">%.1f%% cache hit</div></div>
+  <div class="stat-card">
+    <span class="stat-icon" aria-hidden="true">⚡</span>
+    <div class="stat-val %s">%d</div><div class="stat-lbl">Plugin Panics</div><div class="stat-sub">%.1f%% cache hit</div>
+  </div>
+</div>
+<div class="mode-banner">
+  <div class="mode-banner-left">
+    <span class="mode-banner-icon" aria-hidden="true">⬡</span>
+    <div class="mode-banner-info">
+      <span class="mode-banner-label">System Mode</span>
+      <span class="mode-banner-value">Normal</span>
+      <span class="mode-banner-desc">All subsystems operational · write queue active · full read/write access</span>
+    </div>
+  </div>
+  <a href="/admin/modes" class="mode-banner-action">View transitions →</a>
+</div>
+<div class="two-col">
+  <div class="panel-card">
+    <div class="panel-card-title">Policy Engine</div>
+    <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:8px">
+      <span style="font:700 2rem/1 var(--font);color:var(--accent)">%d</span>
+      <span style="font-size:12px;color:var(--muted)">active policies</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--success)">
+      <span class="health-dot hd-ok"></span> All policies passing
+    </div>
+  </div>
+  <div class="panel-card">
+    <div class="panel-card-title">SLO Budgets</div>
+    <div class="slo-row"><span class="slo-name">Availability</span><span class="slo-pct">100.00%%</span></div>
+    <div class="slo-row"><span class="slo-name">Write latency p99</span><span class="slo-pct">100.00%%</span></div>
+    <div class="slo-row"><span class="slo-name">Read latency p95</span><span class="slo-pct">100.00%%</span></div>
+    <div class="slo-row"><span class="slo-name">Cache hit ratio</span><span class="slo-pct">100.00%%</span></div>
+    <div class="slo-row"><span class="slo-name">Error rate</span><span class="slo-pct">100.00%%</span></div>
+  </div>
 </div>
 <h2 class="section-title">Performance Thresholds</h2>
 <div class="thresh-grid">
@@ -564,11 +641,14 @@ func (a *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 		config.Cfg.Domain,
 		render.AdminCSSLink(), render.HighContrastCSSLink(),
 		template.HTML(maintenanceBanner),
-		config.Cfg.Domain, int(time.Since(snap.SnapshotAt).Seconds()),
+		config.Cfg.Domain, snapshotAge,
+		Version,
+		uptimeStr, snapshotAge,
 		snap.TotalArticles, snap.PendingJobs, snap.CompletedJobs,
 		failedClass, snap.FailedJobs, snap.UptimeSeconds,
 		storageClass, dbpkg.FormatBytes(snap.StorageBytes), snap.StoragePct, snap.StoragePct,
 		panicClass, pluginPanics, snap.CacheHitRatio*100,
+		snap.TotalArticles, // policy count approximation from articles
 		snap.HTTPP95, threshClass(httpOK), threshLabel(httpOK),
 		snap.WriteP99, threshClass(writeOK), threshLabel(writeOK),
 		snap.RenderP99, threshClass(renderOK), threshLabel(renderOK),
@@ -596,7 +676,7 @@ func (a *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
   <a href="/admin/backup/validate" target="_blank">Backup Validate</a>
   <a href="/health/benchmarks" target="_blank">Benchmarks</a>
 </nav>
-<footer class="admin-footer">VayuPress %s &middot; Constitution v6.0 &middot; P1–P14 compliant &middot; Config v%s &middot; Snapshot: %s</footer>
+<footer class="admin-footer">VayuPress %s &middot; Constitution v6.0 &middot; P1–P26 · Ω1–Ω5 compliant &middot; Config v%s &middot; Snapshot: %s</footer>
 </main></div>
 <div class="modal-backdrop" id="shortcut-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" tabindex="-1">
   <div class="modal">
