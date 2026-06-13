@@ -13,12 +13,16 @@ import (
 	"time"
 
 	"github.com/johalputt/vayupress/internal/logging"
+	"github.com/johalputt/vayupress/internal/mode"
 	"github.com/johalputt/vayupress/internal/trace"
 )
 
 // ErrQuarantined is returned when a plugin has exceeded its restart budget
 // and has been permanently disabled until the process restarts.
 var ErrQuarantined = errors.New("sandbox: plugin quarantined after repeated crashes")
+
+// ErrSystemQuarantined is returned when the system mode forbids plugin invocation.
+var ErrSystemQuarantined = errors.New("sandbox: plugin invocation denied — system mode is quarantined")
 
 // isEPERM returns true if the error wraps a syscall.EPERM permission error.
 func isEPERM(err error) bool {
@@ -159,6 +163,11 @@ func (p *SubprocessPlugin) Invoke(ctx context.Context, hook string, payload map[
 
 	if p.quarantined {
 		return ErrQuarantined
+	}
+
+	// Deny all plugin invocations when the system is in Quarantined mode.
+	if mode.Global.Is(mode.ModeQuarantined) {
+		return ErrSystemQuarantined
 	}
 
 	// Enforce capabilities before allowing the invocation.
