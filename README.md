@@ -9,11 +9,37 @@
 > **Adaptive publishing infrastructure for the sovereign web.**
 > SQLite-first, zero-trust, zero telemetry. Policy-governed runtime with adaptive system modes, sandboxed plugins, transactional event outbox, durable audit trail, and fault-tolerant federated publishing.
 
-## Admin Dashboard
+## Platform Screenshots
 
-![VayuPress Admin Panel](docs/screenshots/admin-panel.png)
+### Homepage
+![VayuPress Homepage](docs/screenshots/homepage.png)
 
-*Admin dashboard showing system mode (Normal), policy engine status (6 policies), SLO error budgets, dependency health, and kernel invariant verification.*
+*Public homepage — article grid with tag filtering, zero-telemetry footer, system mode indicator.*
+
+### Admin Dashboard
+![VayuPress Admin Dashboard](docs/screenshots/admin-dashboard.png)
+
+*Runtime governance console — system mode (Normal), policy engine (6 policies), SLO error budgets, dependency health grid, kernel invariant checklist, mode transition graph.*
+
+### Health & Observability
+![VayuPress Health](docs/screenshots/health-observability.png)
+
+*Structured health contracts — per-component status, runtime latency table (p50/p95/p99), ethics compliance endpoint, graceful Meilisearch fallback to SQLite FTS5.*
+
+### Policy Engine & System Modes
+![VayuPress Policy Engine](docs/screenshots/policy-modes.png)
+
+*Platform control plane — 6 registered policies with category/severity/result, all 6 adaptive system modes with transition graph and append-only history.*
+
+### Distributed Traces & Metrics
+![VayuPress Traces](docs/screenshots/traces-metrics.png)
+
+*Span-based distributed tracing — correlation IDs, causation chains, waterfall view, Prometheus-format metrics exposition.*
+
+### Write Queue & Event Outbox
+![VayuPress Queue](docs/screenshots/queue-events.png)
+
+*SQLite-backed async write queue, transactional outbox relay, idempotent dispatch, write pipeline architecture diagram (HTTP → Queue → WAL → Outbox → Event Bus).*
 
 ---
 
