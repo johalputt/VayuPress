@@ -9,6 +9,14 @@
 > **Adaptive publishing infrastructure for the sovereign web.**
 > SQLite-first, zero-trust, zero telemetry. Policy-governed runtime with adaptive system modes, sandboxed plugins, transactional event outbox, durable audit trail, and fault-tolerant federated publishing.
 
+## Admin Dashboard
+
+![VayuPress Admin Panel](docs/screenshots/admin-panel.png)
+
+*Admin dashboard showing system mode (Normal), policy engine status (6 policies), SLO error budgets, dependency health, and kernel invariant verification.*
+
+---
+
 ## Quick Start
 
 ```bash
