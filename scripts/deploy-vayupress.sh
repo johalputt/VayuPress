@@ -39,7 +39,7 @@ IFS=$'\n\t'
 # ── CONFIGURATION  (edit before running) ─────────────────────────────────────
 # =============================================================================
 
-ENGINE_VERSION="1.0.0-p26"
+ENGINE_VERSION="1.0.0-p27"
 
 REPO_URL="https://github.com/johalputt/vayupress.git"
 REPO_BRANCH="main"
@@ -64,6 +64,10 @@ PLUGIN_MAX_CONCURRENT=8
 PLUGIN_TIMEOUT_MS=2000
 WAL_SIZE_THRESHOLD_MB=64
 MAINTENANCE_MODE=false
+
+# Backup & storage governance
+BACKUP_RETAIN_DAYS=30         # days to keep database backups before pruning
+STORAGE_QUOTA_GB=200          # alert threshold in GB for data directory
 
 # Meilisearch
 MEILI_DIR="/var/lib/meilisearch"
@@ -449,6 +453,41 @@ ${LOG_DIR}/*.log {
 }
 LOGROTATE
 ok "Log rotation configured."
+
+# =============================================================================
+# ── DATABASE BACKUP & INTEGRITY ───────────────────────────────────────────────
+# =============================================================================
+
+run mkdir -p "${BACKUP_DIR}"
+
+if $UPGRADE && [[ -f "${DB_PATH}" ]]; then
+  info "Running SQLite integrity check before upgrade..."
+  INTEGRITY=$(sqlite3 "${DB_PATH}" "PRAGMA integrity_check;" 2>&1 || true)
+  if [[ "$INTEGRITY" != "ok" ]]; then
+    warn "PRAGMA integrity_check returned: ${INTEGRITY}"
+    warn "Database may be corrupt — backup preserved, proceeding with caution."
+  else
+    ok "PRAGMA integrity_check: ok"
+  fi
+
+  BACKUP_FILE="${BACKUP_DIR}/vayupress-$(date +%Y%m%d-%H%M%S).db"
+  info "Backing up database to ${BACKUP_FILE}..."
+  run sqlite3 "${DB_PATH}" ".backup '${BACKUP_FILE}'"
+  ok "Database backup complete: ${BACKUP_FILE}"
+
+  # Prune backups older than BACKUP_RETAIN_DAYS
+  info "Pruning backups older than ${BACKUP_RETAIN_DAYS} days..."
+  find "${BACKUP_DIR}" -name "*.db" -mtime "+${BACKUP_RETAIN_DAYS}" -delete 2>/dev/null || true
+  ok "Backup retention enforced (${BACKUP_RETAIN_DAYS} days)."
+fi
+
+# Storage quota advisory check
+USED_GB=$(du -sg "${DATA_DIR}" 2>/dev/null | awk '{print $1}' || echo 0)
+if [[ "${USED_GB}" -gt "${STORAGE_QUOTA_GB}" ]]; then
+  warn "Storage usage ${USED_GB}GB exceeds quota ${STORAGE_QUOTA_GB}GB — consider archiving old data."
+else
+  ok "Storage usage: ${USED_GB}GB / ${STORAGE_QUOTA_GB}GB quota."
+fi
 
 # =============================================================================
 # ── START / RESTART VAYUPRESS ─────────────────────────────────────────────────
