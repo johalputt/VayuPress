@@ -1,11 +1,7 @@
 package sandbox
 
 import (
-	"context"
 	"sync/atomic"
-	"time"
-
-	"github.com/johalputt/vayupress/internal/logging"
 )
 
 // PluginTelemetry accumulates per-plugin runtime metrics.
@@ -46,31 +42,4 @@ func (t *PluginTelemetry) snapshot(name string) TelemetrySnapshot {
 		WatchdogKills: t.WatchdogKills.Load(),
 		AvgDurationMs: avg,
 	}
-}
-
-// watchdog launches a background goroutine that kills the subprocess if
-// it runs for longer than hardDeadline after the context is cancelled.
-// The caller must ensure ctx is cancelled when the invocation ends.
-func watchdog(ctx context.Context, p *SubprocessPlugin, hardDeadline time.Duration) (cancel context.CancelFunc) {
-	wctx, wcancel := context.WithCancel(ctx)
-	go func() {
-		select {
-		case <-wctx.Done():
-			// Normal path: invocation finished before watchdog fired.
-		case <-time.After(hardDeadline):
-			// Hard deadline exceeded — kill regardless of ctx.
-			p.mu.Lock()
-			defer p.mu.Unlock()
-			if p.cmd != nil && p.cmd.Process != nil {
-				logging.LogJSON(logging.LogFields{
-					Level:     "error",
-					Component: "sandbox",
-					Msg:       "watchdog: hard timeout exceeded — killing plugin " + p.manifest.Name,
-				})
-				p.telemetry.WatchdogKills.Add(1)
-				p.killSubprocess()
-			}
-		}
-	}()
-	return wcancel
 }
