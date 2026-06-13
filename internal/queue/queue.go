@@ -25,9 +25,10 @@ import (
 
 // WriteJob is a pending DB mutation stored in the write_jobs table.
 type WriteJob struct {
-	ID          int64
-	ArticleJSON string
-	Op          string
+	ID            int64
+	ArticleJSON   string
+	Op            string
+	CorrelationID string
 }
 
 // DoneCh signals workers to drain and exit on graceful shutdown.
@@ -75,7 +76,7 @@ func processOneJob(workerID int) (empty bool) {
 		return true
 	}
 	var job WriteJob
-	err := dbpkg.DB.QueryRow(`SELECT id,article_json,op FROM write_jobs WHERE status='pending' AND (retry_at IS NULL OR retry_at <= datetime('now')) ORDER BY created_at ASC LIMIT 1`).Scan(&job.ID, &job.ArticleJSON, &job.Op)
+	err := dbpkg.DB.QueryRow(`SELECT id,article_json,op,correlation_id FROM write_jobs WHERE status='pending' AND (retry_at IS NULL OR retry_at <= datetime('now')) ORDER BY created_at ASC LIMIT 1`).Scan(&job.ID, &job.ArticleJSON, &job.Op, &job.CorrelationID)
 	if err != nil {
 		return true
 	}
@@ -95,7 +96,7 @@ func processOneJob(workerID int) (empty bool) {
 				a.ID, a.Title, a.Slug, a.Content, strings.Join(a.Tags, ","), a.CreatedAt, a.UpdatedAt); err != nil {
 				return err
 			}
-			return writeOutboxEvent(tx, "article.created.v1", events.ArticleCreated{ID: a.ID, Slug: a.Slug, Tags: a.Tags}, fmt.Sprintf("%d", job.ID))
+			return writeOutboxEvent(tx, "article.created.v1", events.ArticleCreated{ID: a.ID, Slug: a.Slug, Tags: a.Tags}, fmt.Sprintf("%d", job.ID), job.CorrelationID)
 		})
 		if execErr == nil {
 			atomic.AddInt64(&metrics.MetricArticlesCreated, 1)
@@ -106,7 +107,7 @@ func processOneJob(workerID int) (empty bool) {
 				a.Title, a.Content, strings.Join(a.Tags, ","), a.UpdatedAt, a.Slug); err != nil {
 				return err
 			}
-			return writeOutboxEvent(tx, "article.updated.v1", events.ArticleUpdated{ID: a.ID, Slug: a.Slug, Tags: a.Tags}, fmt.Sprintf("%d", job.ID))
+			return writeOutboxEvent(tx, "article.updated.v1", events.ArticleUpdated{ID: a.ID, Slug: a.Slug, Tags: a.Tags}, fmt.Sprintf("%d", job.ID), job.CorrelationID)
 		})
 		if execErr == nil {
 			atomic.AddInt64(&metrics.MetricArticlesUpdated, 1)
@@ -116,7 +117,7 @@ func processOneJob(workerID int) (empty bool) {
 			if _, err := tx.Exec(`DELETE FROM articles WHERE slug=?`, a.Slug); err != nil {
 				return err
 			}
-			return writeOutboxEvent(tx, "article.deleted.v1", events.ArticleDeleted{ID: a.ID, Slug: a.Slug}, fmt.Sprintf("%d", job.ID))
+			return writeOutboxEvent(tx, "article.deleted.v1", events.ArticleDeleted{ID: a.ID, Slug: a.Slug}, fmt.Sprintf("%d", job.ID), job.CorrelationID)
 		})
 		if execErr == nil {
 			atomic.AddInt64(&metrics.MetricArticlesDeleted, 1)
@@ -178,18 +179,19 @@ func newEventID() string {
 }
 
 // writeOutboxEvent wraps event in an Envelope and inserts it into event_outbox within tx.
-func writeOutboxEvent(tx *sql.Tx, eventType string, event interface{}, causationID string) error {
+func writeOutboxEvent(tx *sql.Tx, eventType string, event interface{}, causationID, correlationID string) error {
 	inner, err := json.Marshal(event)
 	if err != nil {
 		return err
 	}
 	env := events.Envelope{
-		EventID:      newEventID(),
-		EventType:    eventType,
-		EventVersion: "1",
-		CausationID:  causationID,
-		OccurredAt:   time.Now().UTC(),
-		Payload:      json.RawMessage(inner),
+		EventID:       newEventID(),
+		EventType:     eventType,
+		EventVersion:  "1",
+		CausationID:   causationID,
+		CorrelationID: correlationID,
+		OccurredAt:    time.Now().UTC(),
+		Payload:       json.RawMessage(inner),
 	}
 	payload, err := json.Marshal(env)
 	if err != nil {

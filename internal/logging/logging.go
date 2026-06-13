@@ -9,19 +9,21 @@ import (
 )
 
 type LogFields struct {
-	Level      string `json:"level"`
-	Time       string `json:"time"`
-	RequestID  string `json:"request_id,omitempty"`
-	Method     string `json:"method,omitempty"`
-	Path       string `json:"path,omitempty"`
-	Status     int    `json:"status,omitempty"`
-	LatencyMS  int64  `json:"latency_ms,omitempty"`
-	RemoteAddr string `json:"remote_addr,omitempty"`
-	UserAgent  string `json:"user_agent,omitempty"`
-	Component  string `json:"component,omitempty"`
-	Error      string `json:"error,omitempty"`
-	Severity   string `json:"severity,omitempty"`
-	Msg        string `json:"msg,omitempty"`
+	Level         string `json:"level"`
+	Time          string `json:"time"`
+	RequestID     string `json:"request_id,omitempty"`
+	CorrelationID string `json:"correlation_id,omitempty"`
+	CausationID   string `json:"causation_id,omitempty"`
+	Method        string `json:"method,omitempty"`
+	Path          string `json:"path,omitempty"`
+	Status        int    `json:"status,omitempty"`
+	LatencyMS     int64  `json:"latency_ms,omitempty"`
+	RemoteAddr    string `json:"remote_addr,omitempty"`
+	UserAgent     string `json:"user_agent,omitempty"`
+	Component     string `json:"component,omitempty"`
+	Error         string `json:"error,omitempty"`
+	Severity      string `json:"severity,omitempty"`
+	Msg           string `json:"msg,omitempty"`
 }
 
 var SecretRedactRe = regexp.MustCompile(`(?i)(password|api.?key|bearer|secret|token|auth|master.?key)\s*[=:]\s*\S+`)

@@ -89,6 +89,12 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 		r.Get("/api/v1/queue", a.handleQueueStatus)
 		r.Post("/api/v1/queue/replay", a.handleQueueReplay)
 
+		// Observability & correlation trace API (ADR-0053).
+		r.Get("/api/v1/admin/outbox/stats", a.handleOutboxStats)
+		r.Get("/api/v1/admin/outbox/events", a.handleOutboxEvents)
+		r.Get("/api/v1/admin/outbox/events/{id}", a.handleOutboxEvent)
+		r.Get("/api/v1/admin/trace/{correlation_id}", a.handleCorrelationTrace)
+
 		r.Get("/admin", a.handleAdminDashboard)
 		r.Get("/admin/adr", a.handleAdminADR)
 		r.Get("/admin/backup/validate", a.handleAdminBackupValidate)

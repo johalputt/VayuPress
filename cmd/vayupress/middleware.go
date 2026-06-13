@@ -16,6 +16,7 @@ import (
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/metrics"
 	"github.com/johalputt/vayupress/internal/render"
+	"github.com/johalputt/vayupress/internal/trace"
 )
 
 // =============================================================================
@@ -92,8 +93,15 @@ func requestIDMiddleware(next http.Handler) http.Handler {
 				reqID = hex.EncodeToString(b)
 			}
 		}
+		// Correlation ID: caller-supplied or derived from request ID.
+		corrID := r.Header.Get("X-Correlation-ID")
+		if corrID == "" {
+			corrID = reqID
+		}
 		w.Header().Set("X-Request-ID", reqID)
+		w.Header().Set("X-Correlation-ID", corrID)
 		ctx := context.WithValue(r.Context(), ctxKeyRequestID{}, reqID)
+		ctx = trace.WithCorrelationID(ctx, corrID)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
@@ -112,7 +120,7 @@ func structuredLoggerMiddleware(next http.Handler) http.Handler {
 		next.ServeHTTP(ww, r)
 		dur := time.Since(start)
 		metrics.HTTPLatency.Record(dur)
-		logging.LogJSON(logging.LogFields{Level: "info", RequestID: getRequestID(r), Method: r.Method, Path: r.URL.Path, Status: ww.Status(), LatencyMS: dur.Milliseconds(), RemoteAddr: r.RemoteAddr, UserAgent: r.UserAgent(), Component: "http"})
+		logging.LogJSON(logging.LogFields{Level: "info", RequestID: getRequestID(r), CorrelationID: trace.CorrelationID(r.Context()), Method: r.Method, Path: r.URL.Path, Status: ww.Status(), LatencyMS: dur.Milliseconds(), RemoteAddr: r.RemoteAddr, UserAgent: r.UserAgent(), Component: "http"})
 	})
 }
 

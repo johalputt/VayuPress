@@ -38,9 +38,10 @@ import (
 	"github.com/johalputt/vayupress/internal/queue"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/search"
+	"github.com/johalputt/vayupress/internal/trace"
 )
 
-var Version = "1.0.0-p19"
+var Version = "1.0.0-p22"
 var bootTime = time.Now()
 
 // Immutable package-level values (compiled once, never mutated).
@@ -256,12 +257,21 @@ func main() {
 		return nil
 	}, nil)
 
-	// Outbox relay — dispatches events written atomically with article mutations (ADR-0051/0052).
+	// Outbox relay — dispatches events written atomically with article mutations (ADR-0051/0052/0053).
 	outboxRelay := outbox.NewRelay(dbpkg.DB, func(ctx context.Context, _ string, payload []byte) error {
 		var env events.Envelope
 		if err := json.Unmarshal(payload, &env); err != nil {
 			return err
 		}
+		// Thread correlation through dispatch context for downstream log correlation.
+		ctx = trace.WithCorrelationID(ctx, env.CorrelationID)
+		ctx = trace.WithCausationID(ctx, env.CausationID)
+		logging.LogJSON(logging.LogFields{
+			Level: "info", Component: "outbox",
+			CorrelationID: env.CorrelationID,
+			CausationID:   env.CausationID,
+			Msg:           "dispatching " + env.EventType + " event_id=" + env.EventID,
+		})
 		switch env.EventType {
 		case "article.created.v1":
 			var ev events.ArticleCreated
@@ -282,7 +292,7 @@ func main() {
 			}
 			a.eventBus.Publish(ctx, ev)
 		default:
-			logging.LogJSON(logging.LogFields{Level: "warn", Component: "outbox", Msg: "unknown event type: " + env.EventType})
+			logging.LogJSON(logging.LogFields{Level: "warn", Component: "outbox", CorrelationID: env.CorrelationID, Msg: "unknown event type: " + env.EventType})
 		}
 		return nil
 	}, queue.DoneCh)
