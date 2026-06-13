@@ -115,12 +115,30 @@ func getRequestID(r *http.Request) string {
 
 func structuredLoggerMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
+		// Root HTTP span: wraps the entire request lifecycle.
+		ctx, span := trace.Start(r.Context(), "http."+r.Method+" "+r.URL.Path)
+		span.SetAttribute("http.method", r.Method)
+		span.SetAttribute("http.path", r.URL.Path)
+		span.SetAttribute("http.remote_addr", r.RemoteAddr)
+
 		ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
-		next.ServeHTTP(ww, r)
-		dur := time.Since(start)
+		next.ServeHTTP(ww, r.WithContext(ctx))
+
+		span.SetAttribute("http.status", fmt.Sprintf("%d", ww.Status()))
+		if ww.Status() >= 500 {
+			span.Status = trace.StatusError
+		}
+		span.End()
+
+		dur := span.EndTime.Sub(span.StartTime)
 		metrics.HTTPLatency.Record(dur)
-		logging.LogJSON(logging.LogFields{Level: "info", RequestID: getRequestID(r), CorrelationID: trace.CorrelationID(r.Context()), Method: r.Method, Path: r.URL.Path, Status: ww.Status(), LatencyMS: dur.Milliseconds(), RemoteAddr: r.RemoteAddr, UserAgent: r.UserAgent(), Component: "http"})
+		logging.LogJSON(logging.LogFields{
+			Level: "info", RequestID: getRequestID(r),
+			CorrelationID: trace.CorrelationID(r.Context()),
+			Method:        r.Method, Path: r.URL.Path,
+			Status: ww.Status(), LatencyMS: dur.Milliseconds(),
+			RemoteAddr: r.RemoteAddr, UserAgent: r.UserAgent(), Component: "http",
+		})
 	})
 }
 

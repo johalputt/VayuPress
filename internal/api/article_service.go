@@ -7,6 +7,7 @@ import (
 
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/queue"
+	"github.com/johalputt/vayupress/internal/trace"
 )
 
 // ArticleService owns all business logic for article CRUD. Handlers call
@@ -64,7 +65,11 @@ type BulkCreateItem struct {
 
 // Create validates and enqueues a new article.
 func (s *ArticleService) Create(ctx context.Context, title, slug, content string, tags []string) (CreateResult, error) {
+	ctx, span := trace.Start(ctx, "ArticleService.Create")
+	defer span.End()
+	span.SetAttribute("slug", slug)
 	if err := ValidateArticleInput(title, slug, content, tags); err != nil {
+		span.SetError(err)
 		return CreateResult{}, err
 	}
 	if s.StorageCheckFn != nil {
@@ -123,8 +128,12 @@ func (s *ArticleService) BulkCreate(ctx context.Context, items []BulkCreateItem)
 
 // Update fetches the article by slug, applies the partial update, and enqueues.
 func (s *ArticleService) Update(ctx context.Context, slug string, title, content *string, tags []string) (dbpkg.Article, error) {
+	ctx, span := trace.Start(ctx, "ArticleService.Update")
+	defer span.End()
+	span.SetAttribute("slug", slug)
 	art, err := s.Repo.Get(ctx, slug)
 	if err != nil {
+		span.SetError(err)
 		return art, mapRepoErr(err)
 	}
 	if title != nil {
@@ -145,8 +154,12 @@ func (s *ArticleService) Update(ctx context.Context, slug string, title, content
 
 // Delete fetches the article by slug and enqueues a delete operation.
 func (s *ArticleService) Delete(ctx context.Context, slug string) (dbpkg.Article, error) {
+	ctx, span := trace.Start(ctx, "ArticleService.Delete")
+	defer span.End()
+	span.SetAttribute("slug", slug)
 	art, err := s.Repo.Get(ctx, slug)
 	if err != nil {
+		span.SetError(err)
 		return art, mapRepoErr(err)
 	}
 	if err := s.Queue.Enqueue(ctx, art, "delete"); err != nil {
@@ -157,15 +170,24 @@ func (s *ArticleService) Delete(ctx context.Context, slug string) (dbpkg.Article
 
 // Get returns the article for the given slug.
 func (s *ArticleService) Get(ctx context.Context, slug string) (dbpkg.Article, error) {
+	ctx, span := trace.Start(ctx, "ArticleService.Get")
+	defer span.End()
+	span.SetAttribute("slug", slug)
 	if !IsValidSlug(slug) {
+		span.SetError(ErrInvalidSlug)
 		return dbpkg.Article{}, ErrInvalidSlug
 	}
 	art, err := s.Repo.Get(ctx, slug)
+	if err != nil {
+		span.SetError(err)
+	}
 	return art, mapRepoErr(err)
 }
 
 // List returns a paginated, optionally tag-filtered, article summary list.
 func (s *ArticleService) List(ctx context.Context, page, limit int, tag string) (ListResult, error) {
+	ctx, span := trace.Start(ctx, "ArticleService.List")
+	defer span.End()
 	if page < 1 {
 		page = 1
 	}

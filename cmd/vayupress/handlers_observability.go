@@ -14,6 +14,38 @@ import (
 	"github.com/johalputt/vayupress/internal/trace"
 )
 
+// handleTraceSpans returns recent finished spans from the in-memory ring buffer.
+// GET /api/v1/admin/traces?limit=100
+func (a *App) handleTraceSpans(w http.ResponseWriter, r *http.Request) {
+	limitStr := r.URL.Query().Get("limit")
+	limit := 100
+	if n, err := strconv.Atoi(limitStr); err == nil && n > 0 && n <= 2000 {
+		limit = n
+	}
+	spans := trace.Global.Recorder.Recent(limit)
+	writeJSON(w, r, 200, map[string]interface{}{
+		"spans":          spans,
+		"count":          len(spans),
+		"correlation_id": trace.CorrelationID(r.Context()),
+	})
+}
+
+// handleTraceByID returns all spans for a specific trace (correlation) ID.
+// GET /api/v1/admin/traces/{trace_id}
+func (a *App) handleTraceByID(w http.ResponseWriter, r *http.Request) {
+	traceID := chi.URLParam(r, "trace_id")
+	if traceID == "" {
+		writeAPIError(w, r, 400, "missing_param", "trace_id required", "")
+		return
+	}
+	spans := trace.Global.Recorder.ByTraceID(traceID)
+	writeJSON(w, r, 200, map[string]interface{}{
+		"trace_id": traceID,
+		"spans":    spans,
+		"count":    len(spans),
+	})
+}
+
 // outboxEventRow is the DB projection of event_outbox for the inspection API.
 type outboxEventRow struct {
 	ID          int64            `json:"id"`

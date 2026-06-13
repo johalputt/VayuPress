@@ -95,6 +95,10 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 		r.Get("/api/v1/admin/outbox/events/{id}", a.handleOutboxEvent)
 		r.Get("/api/v1/admin/trace/{correlation_id}", a.handleCorrelationTrace)
 
+		// Structured span tracing API (ADR-0054).
+		r.Get("/api/v1/admin/traces", a.handleTraceSpans)
+		r.Get("/api/v1/admin/traces/{trace_id}", a.handleTraceByID)
+
 		r.Get("/admin", a.handleAdminDashboard)
 		r.Get("/admin/adr", a.handleAdminADR)
 		r.Get("/admin/backup/validate", a.handleAdminBackupValidate)

@@ -266,6 +266,10 @@ func main() {
 		// Thread correlation through dispatch context for downstream log correlation.
 		ctx = trace.WithCorrelationID(ctx, env.CorrelationID)
 		ctx = trace.WithCausationID(ctx, env.CausationID)
+		ctx, dispatchSpan := trace.Start(ctx, "outbox.dispatch."+env.EventType)
+		dispatchSpan.SetAttribute("event_id", env.EventID)
+		dispatchSpan.SetAttribute("event_type", env.EventType)
+		dispatchSpan.SetAttribute("causation_id", env.CausationID)
 		logging.LogJSON(logging.LogFields{
 			Level: "info", Component: "outbox",
 			CorrelationID: env.CorrelationID,
@@ -294,6 +298,7 @@ func main() {
 		default:
 			logging.LogJSON(logging.LogFields{Level: "warn", Component: "outbox", CorrelationID: env.CorrelationID, Msg: "unknown event type: " + env.EventType})
 		}
+		dispatchSpan.End()
 		return nil
 	}, queue.DoneCh)
 	lc.Register("outbox-relay", func(_ context.Context) error {
