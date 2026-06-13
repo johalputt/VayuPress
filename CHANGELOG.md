@@ -6,6 +6,140 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [1.0.0-p26] — 2026-06-13
+
+### Added (Prompt 26 — Security Sandboxing & Capability Enforcement)
+- **`internal/sandbox` capability enforcement**: subprocess plugins now run with explicitly
+  dropped Linux capabilities via `PR_SET_SECCOMP` and namespace isolation (ADR-0057)
+- **`plugins.RegisterSubprocess`**: registers sandboxed subprocess plugins via `sandbox.Manifest`;
+  launches isolated worker processes using the subprocess IPC pool
+- **`plugins.ShutdownSubprocesses`**: clean teardown of all subprocess pools during graceful shutdown
+- **`subprocess_linux.go` / `subprocess_other.go`**: platform-conditional sandbox application
+  (`//go:build !linux` guard on non-Linux stub)
+- **ADR-0057** — Security Sandboxing & Capability Enforcement
+
+---
+
+## [1.0.0-p25] — 2026-06-13
+
+### Added (Prompt 25 — Process Isolation & Runtime Sandboxing)
+- **`internal/sandbox` package**: subprocess IPC pool for out-of-process plugin execution (ADR-0056)
+- **`sandbox.Pool`**: manages a pool of sandboxed worker processes with health checking and restart
+- **`sandbox.Manifest`**: declarative plugin manifest (name, binary path, allowed syscalls, run-as user)
+- **Linux seccomp filtering**: `applyProcAttr` wires seccomp allowlist to subprocess `exec.Cmd`
+- **`SubprocessStats`**: runtime stats for all registered subprocess pools
+- **ADR-0056** — Process Isolation & Runtime Sandboxing
+
+---
+
+## [1.0.0-p24] — 2026-06-13
+
+### Added (Prompt 24 — Resource Governance & Execution Isolation)
+- **`internal/resource` package**: named semaphore-based concurrency limiters (ADR-0055)
+- **`resource.Register`**: registers a named limiter (`articles.write`, `plugin.exec`) with a cap
+- **`resource.Watchdog`**: periodic goroutine monitoring limiter saturation; logs warnings
+- **`resource.Global`**: package-level watchdog wired in `main.go`
+- Plugin worker `run()` enforces `plugin.exec` concurrency ceiling via `resource.Get`
+- **ADR-0055** — Resource Governance & Execution Isolation
+
+---
+
+## [1.0.0-p23] — 2026-06-13
+
+### Added (Prompt 23 — Structured Tracing & Execution Spans)
+- **`internal/trace` package**: span-based tracing with `Start`, `SetAttribute`, `End` (ADR-0054)
+- **Correlation and causation IDs on every span**: `WithCorrelationID`, `WithCausationID` context helpers
+- **Outbox dispatch tracing**: every outbox event dispatch opens a `outbox.dispatch.<type>` span
+- **Span attributes**: `event_id`, `event_type`, `causation_id` recorded on dispatch spans
+- **ADR-0054** — Structured Tracing & Execution Spans
+
+---
+
+## [1.0.0-p22] — 2026-06-13
+
+### Added (Prompt 22 — Observability & Correlation Architecture)
+- **`internal/logging` structured fields**: `LogFields` struct with `CorrelationID`, `CausationID`,
+  `Level`, `Component`, `Msg`, `Error` — all logs emit valid JSON (ADR-0053)
+- **Correlation IDs propagated end-to-end**: from HTTP middleware through write queue, outbox
+  dispatch, and event bus handlers
+- **`logging.LogJSON`**: type-safe structured log emission replacing ad-hoc `fmt.Sprintf` chains
+- **ADR-0053** — Observability & Correlation Architecture
+
+---
+
+## [1.0.0-p21] — 2026-06-13
+
+### Added (Prompt 21 — Event Envelopes, Idempotent Dispatch, Versioned Event Types)
+- **`events.Envelope`**: wrapper struct with `EventID` (UUID), `EventType` (versioned string),
+  `CorrelationID`, `CausationID`, `OccurredAt`, and `Payload` (raw JSON) (ADR-0052)
+- **Idempotent dispatch**: `delivered_events` table deduplicates events by `event_id`;
+  replayed outbox rows are ignored instead of double-dispatched
+- **Versioned event type strings**: `article.created.v1`, `article.updated.v1`,
+  `article.deleted.v1` — forward-compatible via envelope type routing
+- **`events.Bus` type dispatch**: outbox relay unmarshals envelope, routes by `EventType`,
+  publishes typed event to the in-process event bus
+- **ADR-0052** — Idempotency & Event Evolution
+
+---
+
+## [1.0.0-p20] — 2026-06-13
+
+### Added (Prompt 20 — Transactional Outbox, Queue Writer Interface, Lifecycle Manager)
+- **`internal/outbox` package**: transactional outbox relay — polls `outbox_events` table,
+  dispatches events atomically written alongside article mutations (ADR-0051)
+- **`outbox.NewRelay`**: wires dispatch function and done channel; started via `lifecycle.Manager`
+- **`internal/lifecycle` package**: ordered startup/shutdown with named components;
+  `lc.Register(name, startFn, stopFn)` — components start in order, shut down in reverse
+- **`queue.Writer` interface**: swappable queue backend; `queue.NewSQLiteWriter` is the
+  default production implementation
+- **`outbox_events` migration**: events table written transactionally with article mutations
+- **ADR-0051** — Transactional Consistency & Event Reliability
+
+---
+
+## [1.0.0-p19] — 2026-06-12
+
+### Added (Prompt 19 — Repository Pattern, Typed Events, Search Service, httputil)
+- **`internal/api` package**: `ArticleService` with `Repo` (interface), `Queue` (`queue.Writer`),
+  and `StorageCheckFn` — fully injectable, no direct DB references in handlers (ADR-0050)
+- **`db.ArticleRepo`**: concrete SQLite implementation of the `Repo` interface
+- **`internal/events` package**: typed domain events (`ArticleCreated`, `ArticleUpdated`,
+  `ArticleDeleted`) and `Bus` (in-process pub/sub)
+- **`internal/search`**: `MeiliService` with circuit breaker, `WaitReady`, `ConfigureIndex`,
+  `Ping` — SQLite fallback activates when Meilisearch is unavailable
+- **`internal/httputil`**: `WriteJSON`, `WriteError`, `DecodeJSON` — thin HTTP primitives
+  eliminating duplication across handlers (ADR-0049)
+- **`a.registerEventHandlers()`**: domain event handlers wired after all services are ready
+- **ADR-0050** — Persistence & Transport Maturity
+
+---
+
+## [1.0.0-p18] — 2026-06-12
+
+### Added (Prompt 18 — Thin Handlers, Service Error Layer, Integration Test Harness)
+- **Thin handler contract**: handlers call service, marshal response, set status code —
+  no business logic or direct SQL (ADR-0049)
+- **Service-layer typed errors**: `api.ErrNotFound`, `api.ErrConflict`, `api.ErrStorageQuota`,
+  `api.ErrValidation` — handlers map errors to HTTP status codes centrally
+- **Integration test harness**: `go test -race ./...` passes; per-package test files cover
+  happy-path and error scenarios without test databases
+- **ADR-0049** — Thin Handlers & Service Boundaries
+
+---
+
+## [1.0.0-p17] — 2026-06-12
+
+### Added (Prompt 17 — Route Domains, ArticleService, Centralised Validation)
+- **Route domain separation**: `handlers_articles.go`, `handlers_infra.go`, `handlers_admin.go`
+  — each file owns one domain; `routes.go` wires chi router (ADR-0048)
+- **`ArticleService`** extracted from `main.go`: create/update/delete/get with validation,
+  storage quota check, and write-queue dispatch
+- **Centralised validation**: slug format (regex), required fields, tag sanitization —
+  all in the service layer, not scattered across handlers
+- **ADR-0048** — Route Domains & Service Extraction
+
+---
+
 ## [1.0.0-p16] — 2026-06-12
 
 ### Added (Prompt 16 — App Container & Handler Refactor)
