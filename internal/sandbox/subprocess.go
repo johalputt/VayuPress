@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os/exec"
 	"sync"
 	"sync/atomic"
@@ -39,6 +40,13 @@ func NewSubprocessPlugin(m Manifest) *SubprocessPlugin {
 
 // start launches the plugin subprocess. Caller must hold p.mu.
 func (p *SubprocessPlugin) start() error {
+	// Verify binary integrity before launching.
+	if p.manifest.ExecutableHash != "" {
+		if err := verifyExecutableHash(p.manifest.Executable, p.manifest.ExecutableHash); err != nil {
+			return err
+		}
+	}
+
 	cmd := exec.Command(p.manifest.Executable, p.manifest.Args...)
 	// Minimal, sanitised environment — parent env is NOT inherited.
 	cmd.Env = append([]string{
@@ -58,12 +66,19 @@ func (p *SubprocessPlugin) start() error {
 	// Discard stderr to prevent subprocess from polluting host output.
 	cmd.Stderr = nil
 
+	applyProcAttr(cmd)
+	applyRunAs(cmd, p.manifest.RunAs)
+
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("sandbox: start %s: %w", p.manifest.Executable, err)
 	}
 	p.cmd = cmd
 	p.stdin = bufio.NewWriter(stdinPipe)
-	p.stdout = bufio.NewScanner(stdoutPipe)
+
+	maxBytes := p.manifest.effectiveMaxMessageBytes()
+	scanner := bufio.NewScanner(io.LimitReader(stdoutPipe, maxBytes))
+	scanner.Buffer(make([]byte, 64*1024), int(maxBytes))
+	p.stdout = scanner
 
 	// Goroutine to detect unexpected process exit and log it.
 	go func() {
@@ -89,6 +104,11 @@ func (p *SubprocessPlugin) Invoke(ctx context.Context, hook string, payload map[
 
 	if p.quarantined {
 		return ErrQuarantined
+	}
+
+	// Enforce capabilities before allowing the invocation.
+	if err := EnforceCapabilities(p.manifest, hook, payload); err != nil {
+		return err
 	}
 
 	// Ensure subprocess is running.

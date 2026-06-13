@@ -42,7 +42,7 @@ import (
 	"github.com/johalputt/vayupress/internal/trace"
 )
 
-var Version = "1.0.0-p25"
+var Version = "1.0.0-p26"
 var bootTime = time.Now()
 
 // Immutable package-level values (compiled once, never mutated).
@@ -152,7 +152,7 @@ func generateRobots() {
 
 func main() {
 	log.SetFlags(0)
-	logging.LogInfo("main", fmt.Sprintf("VayuPress v%s starting — P1–P19 active", Version))
+	logging.LogInfo("main", fmt.Sprintf("VayuPress v%s starting — P1–P26 active", Version))
 	config.Load()
 	logging.LogInfo("main", fmt.Sprintf("domain=%s port=%s workers=%d config_version=%s maintenance=%v",
 		config.Cfg.Domain, config.Cfg.Port, config.Cfg.WorkerCount, config.ConfigVersion, config.Cfg.MaintenanceMode))

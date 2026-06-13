@@ -2,6 +2,8 @@ package sandbox
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"os/exec"
@@ -179,6 +181,80 @@ func TestSubprocessPluginInvoke(t *testing.T) {
 	}
 	if stats.Crashes != 0 {
 		t.Errorf("expected 0 crashes, got %d", stats.Crashes)
+	}
+}
+
+// ── P26 security hardening tests ────────────────────────────────────────────
+
+func TestEnforceCapabilitiesNetworkDenied(t *testing.T) {
+	m := Manifest{Name: "test", Executable: "/bin/echo", AllowNetwork: false}
+	payload := map[string]interface{}{"url": "http://example.com"}
+	err := EnforceCapabilities(m, "some.hook", payload)
+	if err == nil {
+		t.Fatal("expected error for url key when AllowNetwork=false")
+	}
+}
+
+func TestEnforceCapabilitiesNetworkAllowed(t *testing.T) {
+	m := Manifest{Name: "test", Executable: "/bin/echo", AllowNetwork: true}
+	payload := map[string]interface{}{"url": "http://example.com"}
+	if err := EnforceCapabilities(m, "some.hook", payload); err != nil {
+		t.Fatalf("expected no error when AllowNetwork=true: %v", err)
+	}
+}
+
+func TestEnforceCapabilitiesPathDenied(t *testing.T) {
+	m := Manifest{Name: "test", Executable: "/bin/echo", AllowedReadPaths: []string{"/tmp/"}}
+	payload := map[string]interface{}{"path": "/etc/passwd"}
+	err := EnforceCapabilities(m, "some.hook", payload)
+	if err == nil {
+		t.Fatal("expected error for path not in allowed paths")
+	}
+}
+
+func TestEnforceCapabilitiesPathAllowed(t *testing.T) {
+	m := Manifest{Name: "test", Executable: "/bin/echo", AllowedReadPaths: []string{"/tmp/"}}
+	payload := map[string]interface{}{"path": "/tmp/data.txt"}
+	if err := EnforceCapabilities(m, "some.hook", payload); err != nil {
+		t.Fatalf("expected no error for allowed path: %v", err)
+	}
+}
+
+func TestVerifyExecutableHashCorrect(t *testing.T) {
+	// Write a temp file with known content.
+	dir := t.TempDir()
+	f := filepath.Join(dir, "binary")
+	content := []byte("test binary content")
+	if err := os.WriteFile(f, content, 0600); err != nil {
+		t.Fatal(err)
+	}
+	h := sha256.Sum256(content)
+	expected := hex.EncodeToString(h[:])
+	if err := verifyExecutableHash(f, expected); err != nil {
+		t.Fatalf("expected no error for correct hash: %v", err)
+	}
+}
+
+func TestVerifyExecutableHashMismatch(t *testing.T) {
+	dir := t.TempDir()
+	f := filepath.Join(dir, "binary")
+	if err := os.WriteFile(f, []byte("real content"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	err := verifyExecutableHash(f, "0000000000000000000000000000000000000000000000000000000000000000")
+	if err == nil {
+		t.Fatal("expected error for hash mismatch")
+	}
+}
+
+func TestEffectiveMaxMessageBytes(t *testing.T) {
+	m := Manifest{}
+	if got := m.effectiveMaxMessageBytes(); got != 1<<20 {
+		t.Errorf("expected 1 MiB default, got %d", got)
+	}
+	m.MaxMessageBytes = 512 * 1024
+	if got := m.effectiveMaxMessageBytes(); got != 512*1024 {
+		t.Errorf("expected 512 KiB, got %d", got)
 	}
 }
 

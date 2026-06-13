@@ -5,7 +5,12 @@
 package sandbox
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"fmt"
+	"io"
+	"os"
 	"strings"
 	"time"
 )
@@ -49,6 +54,22 @@ type Manifest struct {
 	// Env is a list of additional KEY=VALUE environment variables passed to the
 	// plugin subprocess. Sensitive parent env vars are NOT inherited by default.
 	Env []string
+
+	// ExecutableHash is the expected SHA-256 hex digest of the plugin binary.
+	// If non-empty, start() verifies the binary before launching the subprocess.
+	ExecutableHash string
+
+	// MaxMessageBytes limits the size of a single stdout message from the plugin.
+	// If zero, defaults to 1 MiB.
+	MaxMessageBytes int64
+
+	// SeccompProfile is reserved for future BPF seccomp profile path.
+	// Currently used for logging intent; actual enforcement is via NoNewPrivs.
+	SeccompProfile string
+
+	// RunAs is an optional "uid:gid" string. If set on Linux, the subprocess is
+	// launched under the given numeric uid/gid via SysProcAttr.Credential.
+	RunAs string
 }
 
 const (
@@ -101,4 +122,32 @@ func (m *Manifest) effectiveMaxRestarts() int {
 		return m.MaxRestarts
 	}
 	return DefaultMaxRestarts
+}
+
+// effectiveMaxMessageBytes returns the configured limit or 1 MiB.
+func (m *Manifest) effectiveMaxMessageBytes() int64 {
+	if m.MaxMessageBytes > 0 {
+		return m.MaxMessageBytes
+	}
+	return 1 << 20 // 1 MiB
+}
+
+// verifyExecutableHash reads the file at path, SHA-256s it, and returns an
+// error if the digest does not match expected (hex-encoded).
+func verifyExecutableHash(path, expected string) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("sandbox: open executable for hash check: %w", err)
+	}
+	defer f.Close()
+
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return fmt.Errorf("sandbox: hash executable: %w", err)
+	}
+	got := hex.EncodeToString(h.Sum(nil))
+	if got != strings.ToLower(expected) {
+		return fmt.Errorf("sandbox: executable hash mismatch: got %s want %s", got, expected)
+	}
+	return nil
 }
