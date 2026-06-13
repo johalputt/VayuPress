@@ -1,0 +1,10 @@
+{
+  "fields": [
+    "capabilities",
+    "causation_id",
+    "correlation_id",
+    "hook_name",
+    "payload",
+    "trace_id"
+  ]
+}

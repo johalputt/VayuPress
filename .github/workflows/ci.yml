@@ -328,6 +328,10 @@ jobs:
         run: go build -race ./...
       - name: go test (race)
         run: go test -race ./... -count=1
+      - name: architecture layer validator
+        run: go test ./internal/archcheck/ -v -count=1
+      - name: compatibility golden tests
+        run: go test ./internal/compat/ -v -count=1
       - name: govulncheck
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest

@@ -1,0 +1,15 @@
+{
+  "payload_fields": [
+    "author_id",
+    "body",
+    "id",
+    "published_at",
+    "title"
+  ],
+  "top_level_fields": [
+    "payload",
+    "public_key",
+    "signature"
+  ],
+  "payload_version": 1
+}

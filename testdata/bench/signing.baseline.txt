@@ -1,0 +1,8 @@
+goos: linux
+goarch: amd64
+pkg: github.com/johalputt/vayupress/internal/signing
+cpu: Intel(R) Xeon(R) Processor @ 2.10GHz
+BenchmarkSign-4     	   50412	     24160 ns/op	     688 B/op	       7 allocs/op
+BenchmarkVerify-4   	   22972	     52259 ns/op	     432 B/op	       4 allocs/op
+PASS
+ok  	github.com/johalputt/vayupress/internal/signing	3.197s
