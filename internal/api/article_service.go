@@ -6,14 +6,15 @@ import (
 	"time"
 
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/queue"
 )
 
 // ArticleService owns all business logic for article CRUD. Handlers call
 // service methods; the service owns validation, quota checks, and queue dispatch.
-// Persistence is delegated to the injected ArticleRepository.
+// Persistence is delegated to the injected ArticleRepository and queue.Writer.
 type ArticleService struct {
 	Repo           ArticleRepository
-	Enqueue        func(art dbpkg.Article, op string) error
+	Queue          queue.Writer
 	StorageCheckFn func() (used, quota int64) // nil = skip quota check
 }
 
@@ -84,7 +85,7 @@ func (s *ArticleService) Create(ctx context.Context, title, slug, content string
 		Content: content, Tags: tags,
 		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
 	}
-	if err := s.Enqueue(art, "insert"); err != nil {
+	if err := s.Queue.Enqueue(ctx, art, "insert"); err != nil {
 		return CreateResult{}, fmt.Errorf("queue: %w", err)
 	}
 	return CreateResult{ID: art.ID, Slug: art.Slug}, nil
@@ -114,7 +115,7 @@ func (s *ArticleService) BulkCreate(ctx context.Context, items []BulkCreateItem)
 			Content: in.Content, Tags: in.Tags,
 			CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
 		}
-		s.Enqueue(art, "insert") //nolint:errcheck
+		s.Queue.Enqueue(ctx, art, "insert") //nolint:errcheck
 		res.Queued++
 	}
 	return res, nil
@@ -136,7 +137,7 @@ func (s *ArticleService) Update(ctx context.Context, slug string, title, content
 		art.Tags = tags
 	}
 	art.UpdatedAt = time.Now().UTC()
-	if err := s.Enqueue(art, "update"); err != nil {
+	if err := s.Queue.Enqueue(ctx, art, "update"); err != nil {
 		return art, fmt.Errorf("queue: %w", err)
 	}
 	return art, nil
@@ -148,7 +149,7 @@ func (s *ArticleService) Delete(ctx context.Context, slug string) (dbpkg.Article
 	if err != nil {
 		return art, mapRepoErr(err)
 	}
-	if err := s.Enqueue(art, "delete"); err != nil {
+	if err := s.Queue.Enqueue(ctx, art, "delete"); err != nil {
 		return art, fmt.Errorf("queue: %w", err)
 	}
 	return art, nil

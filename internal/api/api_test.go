@@ -6,6 +6,7 @@ import (
 
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/queue"
 )
 
 func init() {
@@ -17,8 +18,8 @@ var bg = context.Background()
 
 func makeService() *ArticleService {
 	return &ArticleService{
-		Repo:    dbpkg.NewArticleRepo(dbpkg.DB),
-		Enqueue: MakeEnqueueFn(dbpkg.DB),
+		Repo:  dbpkg.NewArticleRepo(dbpkg.DB),
+		Queue: queue.NewSQLiteWriter(dbpkg.DB),
 	}
 }
 

@@ -4,6 +4,7 @@ package queue
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -87,30 +88,36 @@ func processOneJob(workerID int) (empty bool) {
 	var execErr error
 	switch job.Op {
 	case "insert":
-		_, execErr = dbpkg.DB.Exec(`INSERT INTO articles(id,title,slug,content,tags,created_at,updated_at) VALUES(?,?,?,?,?,?,?)`,
-			a.ID, a.Title, a.Slug, a.Content, strings.Join(a.Tags, ","), a.CreatedAt, a.UpdatedAt)
+		execErr = dbpkg.RunInTx(context.Background(), dbpkg.DB, func(tx *sql.Tx) error {
+			if _, err := tx.Exec(`INSERT INTO articles(id,title,slug,content,tags,created_at,updated_at) VALUES(?,?,?,?,?,?,?)`,
+				a.ID, a.Title, a.Slug, a.Content, strings.Join(a.Tags, ","), a.CreatedAt, a.UpdatedAt); err != nil {
+				return err
+			}
+			return writeOutboxEvent(tx, "ArticleCreated", events.ArticleCreated{ID: a.ID, Slug: a.Slug, Tags: a.Tags})
+		})
 		if execErr == nil {
 			atomic.AddInt64(&metrics.MetricArticlesCreated, 1)
-			if EventBus != nil {
-				EventBus.Publish(context.Background(), events.ArticleCreated{ID: a.ID, Slug: a.Slug, Tags: a.Tags})
-			}
 		}
 	case "update":
-		_, execErr = dbpkg.DB.Exec(`UPDATE articles SET title=?,content=?,tags=?,updated_at=? WHERE slug=?`,
-			a.Title, a.Content, strings.Join(a.Tags, ","), a.UpdatedAt, a.Slug)
+		execErr = dbpkg.RunInTx(context.Background(), dbpkg.DB, func(tx *sql.Tx) error {
+			if _, err := tx.Exec(`UPDATE articles SET title=?,content=?,tags=?,updated_at=? WHERE slug=?`,
+				a.Title, a.Content, strings.Join(a.Tags, ","), a.UpdatedAt, a.Slug); err != nil {
+				return err
+			}
+			return writeOutboxEvent(tx, "ArticleUpdated", events.ArticleUpdated{ID: a.ID, Slug: a.Slug, Tags: a.Tags})
+		})
 		if execErr == nil {
 			atomic.AddInt64(&metrics.MetricArticlesUpdated, 1)
-			if EventBus != nil {
-				EventBus.Publish(context.Background(), events.ArticleUpdated{ID: a.ID, Slug: a.Slug, Tags: a.Tags})
-			}
 		}
 	case "delete":
-		_, execErr = dbpkg.DB.Exec(`DELETE FROM articles WHERE slug=?`, a.Slug)
+		execErr = dbpkg.RunInTx(context.Background(), dbpkg.DB, func(tx *sql.Tx) error {
+			if _, err := tx.Exec(`DELETE FROM articles WHERE slug=?`, a.Slug); err != nil {
+				return err
+			}
+			return writeOutboxEvent(tx, "ArticleDeleted", events.ArticleDeleted{ID: a.ID, Slug: a.Slug})
+		})
 		if execErr == nil {
 			atomic.AddInt64(&metrics.MetricArticlesDeleted, 1)
-			if EventBus != nil {
-				EventBus.Publish(context.Background(), events.ArticleDeleted{ID: a.ID, Slug: a.Slug})
-			}
 		}
 	default:
 		dbpkg.WDB.Exec(`UPDATE write_jobs SET status='dead_letter',dead_reason='unknown_op' WHERE id=?`, job.ID)
@@ -158,6 +165,19 @@ var cacheWriteFn func(relPath, content string)
 
 // SetCacheWriteFn sets the cache write function (called from main.go).
 func SetCacheWriteFn(fn func(relPath, content string)) { cacheWriteFn = fn }
+
+// writeOutboxEvent serialises an event and inserts it into event_outbox within tx.
+func writeOutboxEvent(tx *sql.Tx, eventType string, event interface{}) error {
+	payload, err := json.Marshal(event)
+	if err != nil {
+		return err
+	}
+	_, err = tx.Exec(
+		`INSERT INTO event_outbox(event_type, payload) VALUES(?, ?)`,
+		eventType, payload,
+	)
+	return err
+}
 
 // HandleQueueStatus returns current queue depth by status.
 func HandleQueueStatus(w http.ResponseWriter, r *http.Request, writeJSON func(http.ResponseWriter, *http.Request, int, interface{})) {

@@ -8,6 +8,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -29,8 +30,10 @@ import (
 	"github.com/johalputt/vayupress/internal/events"
 	"github.com/johalputt/vayupress/internal/health"
 	"github.com/johalputt/vayupress/internal/httputil"
+	"github.com/johalputt/vayupress/internal/lifecycle"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/metrics"
+	"github.com/johalputt/vayupress/internal/outbox"
 	"github.com/johalputt/vayupress/internal/plugins"
 	"github.com/johalputt/vayupress/internal/queue"
 	"github.com/johalputt/vayupress/internal/render"
@@ -184,8 +187,8 @@ func main() {
 
 	// Wire article service with repository pattern (ADR-0050).
 	a.articles = &api.ArticleService{
-		Repo:    dbpkg.NewArticleRepo(dbpkg.DB),
-		Enqueue: api.MakeEnqueueFn(dbpkg.DB),
+		Repo:  dbpkg.NewArticleRepo(dbpkg.DB),
+		Queue: queue.NewSQLiteWriter(dbpkg.DB),
 		StorageCheckFn: func() (int64, int64) {
 			return dbpkg.StorageUsedBytes(), dbpkg.StorageQuotaBytes()
 		},
@@ -245,8 +248,50 @@ func main() {
 		logging.LogInfo("cache-warm", "complete")
 	}()
 
-	queue.StartWorkerPool(&metrics.WorkerWg)
-	logging.LogInfo("main", fmt.Sprintf("started %d write workers (maintenance_mode=%v)", config.Cfg.WorkerCount, config.Cfg.MaintenanceMode))
+	// Lifecycle manager — ordered startup and shutdown (ADR-0051).
+	lc := lifecycle.New()
+	lc.Register("queue-workers", func(_ context.Context) error {
+		queue.StartWorkerPool(&metrics.WorkerWg)
+		logging.LogInfo("main", fmt.Sprintf("started %d write workers (maintenance_mode=%v)", config.Cfg.WorkerCount, config.Cfg.MaintenanceMode))
+		return nil
+	}, nil)
+
+	// Outbox relay — dispatches events written atomically with article mutations (ADR-0051).
+	outboxRelay := outbox.NewRelay(dbpkg.DB, func(ctx context.Context, eventType string, payload []byte) error {
+		switch eventType {
+		case "ArticleCreated":
+			var ev events.ArticleCreated
+			if err := json.Unmarshal(payload, &ev); err != nil {
+				return err
+			}
+			a.eventBus.Publish(ctx, ev)
+		case "ArticleUpdated":
+			var ev events.ArticleUpdated
+			if err := json.Unmarshal(payload, &ev); err != nil {
+				return err
+			}
+			a.eventBus.Publish(ctx, ev)
+		case "ArticleDeleted":
+			var ev events.ArticleDeleted
+			if err := json.Unmarshal(payload, &ev); err != nil {
+				return err
+			}
+			a.eventBus.Publish(ctx, ev)
+		default:
+			logging.LogJSON(logging.LogFields{Level: "warn", Component: "outbox", Msg: "unknown event type: " + eventType})
+		}
+		return nil
+	}, queue.DoneCh)
+	lc.Register("outbox-relay", func(_ context.Context) error {
+		outboxRelay.Start()
+		logging.LogInfo("main", "outbox relay started")
+		return nil
+	}, nil)
+
+	if err := lc.Start(context.Background()); err != nil {
+		logging.LogError("main", "lifecycle start failed", err.Error())
+		os.Exit(1)
+	}
 
 	logging.LogInfo("main", fmt.Sprintf("startup complete in %dms", time.Since(bootTime).Milliseconds()))
 

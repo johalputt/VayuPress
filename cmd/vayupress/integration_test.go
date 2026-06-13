@@ -24,6 +24,7 @@ import (
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/events"
 	"github.com/johalputt/vayupress/internal/plugins"
+	"github.com/johalputt/vayupress/internal/queue"
 	"github.com/johalputt/vayupress/internal/search"
 )
 
@@ -39,40 +40,41 @@ func (n *noopSearch) Index(_ context.Context, _, _, _, _ string, _ []string, _ i
 func (n *noopSearch) Delete(_ context.Context, _ string) error { return nil }
 func (n *noopSearch) Ping(_ context.Context) error             { return nil }
 
-// directEnqueue inserts/updates/deletes directly into the articles table so
+// directWriter inserts/updates/deletes directly into the articles table so
 // integration tests can read back results without running the queue worker.
-// The db parameter is unused; the closure uses the package-level dbpkg.DB.
-func directEnqueue(_ interface{}) func(art dbpkg.Article, op string) error {
-	return func(art dbpkg.Article, op string) error {
-		tagsCSV := ""
-		for i, t := range art.Tags {
-			if i > 0 {
-				tagsCSV += ","
-			}
-			tagsCSV += t
+type directWriter struct{}
+
+func (directWriter) Enqueue(_ context.Context, art dbpkg.Article, op string) error {
+	tagsCSV := ""
+	for i, t := range art.Tags {
+		if i > 0 {
+			tagsCSV += ","
 		}
-		switch op {
-		case "insert":
-			_, err := dbpkg.DB.Exec(
-				`INSERT INTO articles(id,title,slug,content,tags,created_at,updated_at) VALUES(?,?,?,?,?,?,?)`,
-				art.ID, art.Title, art.Slug, art.Content, tagsCSV,
-				art.CreatedAt.Format(time.RFC3339), art.UpdatedAt.Format(time.RFC3339),
-			)
-			return err
-		case "update":
-			_, err := dbpkg.DB.Exec(
-				`UPDATE articles SET title=?,content=?,tags=?,updated_at=? WHERE slug=?`,
-				art.Title, art.Content, tagsCSV,
-				art.UpdatedAt.Format(time.RFC3339), art.Slug,
-			)
-			return err
-		case "delete":
-			_, err := dbpkg.DB.Exec(`DELETE FROM articles WHERE slug=?`, art.Slug)
-			return err
-		}
-		return fmt.Errorf("unknown op: %s", op)
+		tagsCSV += t
 	}
+	switch op {
+	case "insert":
+		_, err := dbpkg.DB.Exec(
+			`INSERT INTO articles(id,title,slug,content,tags,created_at,updated_at) VALUES(?,?,?,?,?,?,?)`,
+			art.ID, art.Title, art.Slug, art.Content, tagsCSV,
+			art.CreatedAt.Format(time.RFC3339), art.UpdatedAt.Format(time.RFC3339),
+		)
+		return err
+	case "update":
+		_, err := dbpkg.DB.Exec(
+			`UPDATE articles SET title=?,content=?,tags=?,updated_at=? WHERE slug=?`,
+			art.Title, art.Content, tagsCSV,
+			art.UpdatedAt.Format(time.RFC3339), art.Slug,
+		)
+		return err
+	case "delete":
+		_, err := dbpkg.DB.Exec(`DELETE FROM articles WHERE slug=?`, art.Slug)
+		return err
+	}
+	return fmt.Errorf("unknown op: %s", op)
 }
+
+var _ queue.Writer = directWriter{}
 
 // newTestHarness spins up a full HTTP test server backed by a temp SQLite DB.
 // Callers must call the returned cleanup func when the test ends.
@@ -101,8 +103,8 @@ func newTestHarness(t *testing.T) (*httptest.Server, string) {
 		pluginRegistry: plugins.NewRegistry(),
 		eventBus:       events.NewBus(),
 		articles: &api.ArticleService{
-			Repo:    dbpkg.NewArticleRepo(dbpkg.DB),
-			Enqueue: directEnqueue(nil),
+			Repo:  dbpkg.NewArticleRepo(dbpkg.DB),
+			Queue: directWriter{},
 		},
 		search: &noopSearch{},
 	}
