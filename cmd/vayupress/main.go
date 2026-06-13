@@ -1,4 +1,4 @@
-// VayuPress — main.go  v1.0.0-p19
+// VayuPress — main.go  v1.0.0-p26
 // Bootstrap, route wiring, and graceful shutdown only.
 // Domain logic lives in internal/* packages (ADR-0045 – ADR-0050).
 package main
@@ -356,9 +356,10 @@ func main() {
 			logging.LogJSON(logging.LogFields{Level: "warn", Component: "main", Msg: "phase 2 timeout (45s) — in-flight jobs retried on next startup"})
 		}
 
-		// Phase 3: stop plugin pool + resource watchdog
+		// Phase 3: stop plugin pool + subprocess pools + resource watchdog
 		if os.Getenv("VAYU_PLUGINS_ENABLED") == "true" {
 			a.pluginManager.Shutdown()
+			plugins.ShutdownSubprocesses()
 		}
 		if resource.Global != nil {
 			resource.Global.Stop()

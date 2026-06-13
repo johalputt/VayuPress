@@ -116,10 +116,10 @@ jobs:
           [ "$LINES" -gt 100 ] || { echo "FAIL: Constitution appears truncated (<100 lines)"; exit 1; }
           echo "✅ Governance constitution present and intact."
 
-      - name: Verify all 13 Prompts present in Constitution
+      - name: Verify all 14 Prompts present in Constitution
         run: |
           MISSING=0
-          for i in $(seq 1 13); do
+          for i in $(seq 1 14); do
             if ! grep -q "PROMPT $i:" GOVERNANCE-CONSTITUTION.md; then
               echo "❌ MISSING: Prompt $i not found in Constitution"
               MISSING=1
@@ -143,7 +143,10 @@ jobs:
             "ADR-0032" "ADR-0033" "ADR-0034" "ADR-0035"
             "ADR-0036" "ADR-0037" "ADR-0038" "ADR-0039"
             "ADR-0040" "ADR-0041" "ADR-0042" "ADR-0043"
-            "ADR-0044"
+            "ADR-0044" "ADR-0045" "ADR-0046" "ADR-0047"
+            "ADR-0048" "ADR-0049" "ADR-0050" "ADR-0051"
+            "ADR-0052" "ADR-0053" "ADR-0054" "ADR-0055"
+            "ADR-0056" "ADR-0057"
           )
           for adr in "${REQUIRED_ADRS[@]}"; do
             if ! ls docs/adr/${adr}* 2>/dev/null | grep -q .; then
