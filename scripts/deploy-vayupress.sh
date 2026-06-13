@@ -344,14 +344,53 @@ ok "File permissions set."
 # =============================================================================
 
 info "Writing Nginx config..."
+# Rate limiting zones (rateLimit): general API and admin write endpoints
+cat > /etc/nginx/conf.d/vayupress-ratelimit.conf <<RATELIMIT
+limit_req_zone \$binary_remote_addr zone=vayupress_api:10m rate=30r/m;
+limit_req_zone \$binary_remote_addr zone=vayupress_write:10m rate=10r/m;
+limit_req_zone \$binary_remote_addr zone=vayupress_admin:10m rate=5r/m;
+RATELIMIT
+
 cat > /etc/nginx/sites-available/vayupress <<NGINX
 server {
     listen 80;
     server_name ${DOMAIN} www.${DOMAIN};
 
-    add_header X-Frame-Options "DENY" always;
+    # ── Security headers (P9) ──────────────────────────────────────────────
+    add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
     add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none';" always;
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()" always;
+
+    # ── CSRF token pass-through (enforced in application layer) ───────────
+    # Application sets X-CSRF-Token on responses; clients must echo it.
+    # See internal/auth — CSRFTokenMiddleware validates the csrf_token cookie.
+    proxy_pass_header X-CSRF-Token;
+
+    # ── Rate limiting (P9) ─────────────────────────────────────────────────
+    location /api/v1/ {
+        limit_req zone=vayupress_api burst=20 nodelay;
+        limit_req_status 429;
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_read_timeout 60s;
+    }
+
+    location /admin {
+        limit_req zone=vayupress_admin burst=5 nodelay;
+        limit_req_status 429;
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
 
     location / {
         proxy_pass http://127.0.0.1:8080;
