@@ -24,8 +24,10 @@ import (
 	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/fault"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/metrics"
+	"github.com/johalputt/vayupress/internal/mode"
 	"github.com/johalputt/vayupress/internal/render"
 )
 
@@ -794,4 +796,83 @@ func (a *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 		Version, config.ConfigVersion, snap.SnapshotAt.UTC().Format("15:04:05 UTC"),
 		nonce,
 	)
+}
+
+// =============================================================================
+// Mode & fault status API  (Ω5/Ω6)
+// =============================================================================
+
+// handleModeStatus returns the current system mode, allowed transitions,
+// and the full transition history.
+func (a *App) handleModeStatus(w http.ResponseWriter, r *http.Request) {
+	current := mode.Global.Current()
+	history := mode.Global.History()
+
+	type transitionJSON struct {
+		From       string `json:"from"`
+		To         string `json:"to"`
+		Reason     string `json:"reason"`
+		Cause      string `json:"cause"`
+		OccurredAt string `json:"occurred_at"`
+	}
+
+	hist := make([]transitionJSON, len(history))
+	for i, t := range history {
+		hist[i] = transitionJSON{
+			From:       string(t.From),
+			To:         string(t.To),
+			Reason:     t.Reason,
+			Cause:      t.Cause,
+			OccurredAt: t.OccurredAt.UTC().Format(time.RFC3339),
+		}
+	}
+
+	writeJSON(w, r, http.StatusOK, map[string]interface{}{
+		"mode":             string(current),
+		"is_normal":        current == mode.ModeNormal,
+		"is_degraded":      current == mode.ModeDegraded,
+		"is_read_only":     current == mode.ModeReadOnly,
+		"is_recovery":      current == mode.ModeRecovery,
+		"is_maintenance":   current == mode.ModeMaintenance,
+		"is_quarantined":   current == mode.ModeQuarantined,
+		"transition_count": len(history),
+		"history":          hist,
+		"snapshot_at":      time.Now().UTC().Format(time.RFC3339),
+	})
+}
+
+// handleFaultStatus returns the current fault injection state and
+// escalation trigger counts for all registered fault points.
+func (a *App) handleFaultStatus(w http.ResponseWriter, r *http.Request) {
+	faults := []string{
+		fault.FaultWALWrite,
+		fault.FaultMigrationApply,
+		fault.FaultSigningSign,
+		fault.FaultFederationDeliver,
+		fault.FaultPluginInvoke,
+		fault.FaultOutboxCommit,
+	}
+
+	type faultEntry struct {
+		Name         string  `json:"name"`
+		TriggerCount int64   `json:"trigger_count"`
+		Probability  float64 `json:"probability"`
+	}
+
+	entries := make([]faultEntry, len(faults))
+	for i, name := range faults {
+		entries[i] = faultEntry{
+			Name:         name,
+			TriggerCount: fault.Global.TriggerCount(name),
+			Probability:  0, // injector is disabled by default in production
+		}
+	}
+
+	writeJSON(w, r, http.StatusOK, map[string]interface{}{
+		"fault_injection_enabled": false, // Global injector has zero probabilities
+		"escalation_rules":        len(fault.DefaultRules()),
+		"current_mode":            string(mode.Global.Current()),
+		"faults":                  entries,
+		"snapshot_at":             time.Now().UTC().Format(time.RFC3339),
+	})
 }

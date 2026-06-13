@@ -105,6 +105,10 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 		// Sandbox subprocess plugin stats (ADR-0056).
 		r.Get("/api/v1/admin/sandbox/stats", a.handleSandboxStats)
 
+		// System mode state machine (Ω5/Ω6).
+		r.Get("/api/v1/admin/mode", a.handleModeStatus)
+		r.Get("/api/v1/admin/fault/status", a.handleFaultStatus)
+
 		r.Get("/admin", a.handleAdminDashboard)
 		r.Get("/admin/adr", a.handleAdminADR)
 		r.Get("/admin/backup/validate", a.handleAdminBackupValidate)

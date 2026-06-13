@@ -28,11 +28,13 @@ import (
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/events"
+	"github.com/johalputt/vayupress/internal/fault"
 	"github.com/johalputt/vayupress/internal/health"
 	"github.com/johalputt/vayupress/internal/httputil"
 	"github.com/johalputt/vayupress/internal/lifecycle"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/metrics"
+	"github.com/johalputt/vayupress/internal/mode"
 	"github.com/johalputt/vayupress/internal/outbox"
 	"github.com/johalputt/vayupress/internal/plugins"
 	"github.com/johalputt/vayupress/internal/queue"
@@ -187,6 +189,16 @@ func main() {
 	}
 	logging.LogInfo("main", "database ready — WAL adaptive + migrations + checksum drift verified (ADR-0033/0034)")
 
+	// Mode journal — durable SQLite-backed transition log (Ω6).
+	dbPath := config.EnvOr("DB_PATH", "./vayupress.db")
+	modeJournalPath := dbPath + ".modes"
+	if modeJournal, past, err := mode.OpenJournal(modeJournalPath, mode.Global); err != nil {
+		logging.LogJSON(logging.LogFields{Level: "warn", Component: "mode", Msg: "mode journal unavailable (non-fatal): " + err.Error()})
+	} else {
+		logging.LogInfo("mode", fmt.Sprintf("mode journal open — %d prior transitions loaded", len(past)))
+		defer modeJournal.Close()
+	}
+
 	// Resource governance — limiters and watchdog (ADR-0055).
 	resource.Register("articles.write", config.Cfg.WorkerCount*4)
 	resource.Register("plugin.exec", config.Cfg.PluginMaxConcurrent)
@@ -267,6 +279,7 @@ func main() {
 	outboxRelay := outbox.NewRelay(dbpkg.DB, func(ctx context.Context, _ string, payload []byte) error {
 		var env events.Envelope
 		if err := json.Unmarshal(payload, &env); err != nil {
+			fault.GlobalEscalator.Record(fault.FaultOutboxCommit)
 			return err
 		}
 		// Thread correlation through dispatch context for downstream log correlation.
@@ -370,6 +383,7 @@ func main() {
 		if dbpkg.DB != nil {
 			if _, err := dbpkg.DB.Exec(`PRAGMA wal_checkpoint(TRUNCATE)`); err != nil {
 				logging.LogError("main", "WAL checkpoint on shutdown", err.Error())
+				fault.GlobalEscalator.Record(fault.FaultWALWrite)
 			} else {
 				logging.LogInfo("main", "phase 4 complete — WAL checkpointed")
 			}
