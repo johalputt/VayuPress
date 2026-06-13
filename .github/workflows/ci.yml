@@ -307,7 +307,9 @@ jobs:
         run: sudo apt-get install -y gcc build-essential
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
+          # Go 1.25+ required: govulncheck@latest needs it, and the 1.25 stdlib
+          # carries the crypto/tls + crypto/x509 security patches (GO-2025-*).
+          go-version: '1.25'
           cache: true
       - name: go vet
         run: go vet ./...

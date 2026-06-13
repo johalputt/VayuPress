@@ -145,12 +145,16 @@ echo ""
 echo "── Go native toolchain ──"
 if command -v go >/dev/null 2>&1; then
   GOSTART=$FAILED
+  # CI builds with the toolchain pinned in go.mod (go1.25.x) which carries the
+  # crypto stdlib security patches govulncheck enforces. GOTOOLCHAIN=auto lets
+  # the go command fetch it if the local default is older.
+  export GOTOOLCHAIN=auto
   go build ./... 2>/dev/null && pass "go build" || fail "go build"
   go vet ./... 2>/dev/null && pass "go vet" || fail "go vet"
   FMT=$(gofmt -l . 2>/dev/null)
   [ -z "$FMT" ] && pass "gofmt clean" || fail "gofmt issues: $FMT"
   go test ./... >/dev/null 2>&1 && pass "go test" || fail "go test"
-  [ $GOSTART -eq $FAILED ] && echo "   (note: CI also runs -race, staticcheck, govulncheck)"
+  [ $GOSTART -eq $FAILED ] && echo "   (note: CI also runs -race, staticcheck, govulncheck against go1.25 stdlib)"
 else
   fail "go not installed"
 fi
