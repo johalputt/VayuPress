@@ -102,6 +102,9 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 		// Resource governance stats (ADR-0055).
 		r.Get("/api/v1/admin/resource/stats", a.handleResourceStats)
 
+		// Sandbox subprocess plugin stats (ADR-0056).
+		r.Get("/api/v1/admin/sandbox/stats", a.handleSandboxStats)
+
 		r.Get("/admin", a.handleAdminDashboard)
 		r.Get("/admin/adr", a.handleAdminADR)
 		r.Get("/admin/backup/validate", a.handleAdminBackupValidate)

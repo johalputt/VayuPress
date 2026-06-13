@@ -66,6 +66,7 @@ REQUIRED_PKGS=(
   "internal/health"
   "internal/plugins"
   "internal/render"
+  "internal/sandbox"
 )
 
 for pkg in "${REQUIRED_PKGS[@]}"; do

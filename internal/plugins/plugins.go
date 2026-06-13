@@ -13,6 +13,7 @@ import (
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/metrics"
 	"github.com/johalputt/vayupress/internal/resource"
+	"github.com/johalputt/vayupress/internal/sandbox"
 )
 
 // HookFunc is the signature all plugin hooks must implement.
@@ -199,6 +200,57 @@ func (m *Manager) Fire(event string, payload map[string]interface{}) {
 			atomic.AddInt64(&metrics.MetricPluginPoolDropped, 1)
 			logging.LogJSON(logging.LogFields{Level: "warn", Component: "plugins", Msg: fmt.Sprintf("hook dropped — queue full: %s", event)})
 		}
+	}
+}
+
+// subprocessEntry pairs a manifest with its live pool.
+type subprocessEntry struct {
+	manifest sandbox.Manifest
+	pool     *sandbox.Pool
+}
+
+// subprocessPlugins holds all registered subprocess pools (ADR-0056).
+var (
+	spMu      sync.RWMutex
+	spEntries []*subprocessEntry
+)
+
+// RegisterSubprocess registers a sandboxed subprocess plugin and wires it into
+// the registry so its hooks fire via the subprocess IPC protocol (ADR-0056).
+// poolSize controls how many worker processes to launch.
+func RegisterSubprocess(reg *Registry, m sandbox.Manifest, hookEvent string, poolSize int) error {
+	pool, err := sandbox.NewPool(m, poolSize)
+	if err != nil {
+		return fmt.Errorf("plugins.RegisterSubprocess %s: %w", m.Name, err)
+	}
+	spMu.Lock()
+	spEntries = append(spEntries, &subprocessEntry{manifest: m, pool: pool})
+	spMu.Unlock()
+
+	reg.Register(hookEvent, func(ctx context.Context, payload map[string]interface{}) error {
+		return pool.Invoke(ctx, hookEvent, payload)
+	})
+	logging.LogInfo("plugins", fmt.Sprintf("subprocess plugin registered: name=%s hook=%s workers=%d", m.Name, hookEvent, poolSize))
+	return nil
+}
+
+// SubprocessStats returns a snapshot of all registered subprocess plugin pools.
+func SubprocessStats() []sandbox.SubprocessStats {
+	spMu.RLock()
+	defer spMu.RUnlock()
+	var out []sandbox.SubprocessStats
+	for _, e := range spEntries {
+		out = append(out, e.pool.Stats()...)
+	}
+	return out
+}
+
+// ShutdownSubprocesses terminates all subprocess plugin pools.
+func ShutdownSubprocesses() {
+	spMu.Lock()
+	defer spMu.Unlock()
+	for _, e := range spEntries {
+		e.pool.Shutdown()
 	}
 }
 

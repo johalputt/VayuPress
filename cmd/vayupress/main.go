@@ -42,7 +42,7 @@ import (
 	"github.com/johalputt/vayupress/internal/trace"
 )
 
-var Version = "1.0.0-p22"
+var Version = "1.0.0-p25"
 var bootTime = time.Now()
 
 // Immutable package-level values (compiled once, never mutated).

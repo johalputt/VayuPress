@@ -11,6 +11,7 @@ import (
 
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/events"
+	"github.com/johalputt/vayupress/internal/plugins"
 	"github.com/johalputt/vayupress/internal/resource"
 	"github.com/johalputt/vayupress/internal/trace"
 )
@@ -259,5 +260,16 @@ func (a *App) handleCorrelationTrace(w http.ResponseWriter, r *http.Request) {
 		"correlation_id": corrID,
 		"events":         result,
 		"count":          len(result),
+	})
+}
+
+// handleSandboxStats returns health snapshots for all registered subprocess plugin pools.
+// GET /api/v1/admin/sandbox/stats
+func (a *App) handleSandboxStats(w http.ResponseWriter, r *http.Request) {
+	stats := plugins.SubprocessStats()
+	writeJSON(w, r, 200, map[string]interface{}{
+		"subprocess_plugins": stats,
+		"count":              len(stats),
+		"correlation_id":     trace.CorrelationID(r.Context()),
 	})
 }
