@@ -1,0 +1,43 @@
+name: Release — Sign & Publish
+on:
+  push:
+    tags:
+      - 'v*'
+permissions:
+  contents: write
+  id-token: write  # needed for cosign keyless signing
+jobs:
+  release:
+    name: "Build, sign, and publish release"
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install C build tools
+        run: sudo apt-get install -y gcc build-essential
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache: true
+      - name: Build binary
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          mkdir -p dist
+          CGO_ENABLED=1 GOTOOLCHAIN=auto go build \
+            -trimpath -ldflags="-s -w -X main.version=$VERSION" \
+            -o dist/vayupress ./cmd/vayupress
+          sha256sum dist/vayupress > dist/vayupress.sha256
+          echo "✅ built $VERSION"
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+      - name: Sign binary (keyless OIDC)
+        run: |
+          cosign sign-blob --yes dist/vayupress \
+            --bundle dist/vayupress.cosign.bundle
+          echo "✅ signed"
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/vayupress
+            dist/vayupress.sha256
+            dist/vayupress.cosign.bundle
