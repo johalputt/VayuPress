@@ -169,3 +169,10 @@ func (s *Server) WebFinger(w http.ResponseWriter, r *http.Request) {
 		}},
 	})
 }
+
+// OutboxCount returns the number of activities in the outbox.
+func (s *Server) OutboxCount() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.outbox)
+}

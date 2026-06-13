@@ -43,6 +43,7 @@ type SubprocessPlugin struct {
 	invocations   atomic.Int64
 	cgroupCleanup func()
 	confinement   *PluginConfinement
+	telemetry     PluginTelemetry
 }
 
 // NewSubprocessPlugin creates a SubprocessPlugin. Call Start before Invoke.
@@ -218,6 +219,7 @@ func (p *SubprocessPlugin) Invoke(ctx context.Context, hook string, payload map[
 
 	select {
 	case <-time.After(time.Until(deadline)):
+		p.telemetry.TimeoutCount.Add(1)
 		p.killSubprocess()
 		return p.handleCrash(fmt.Errorf("sandbox: plugin %s timed out after %s", p.manifest.Name, timeout))
 	case <-ctx.Done():
@@ -240,11 +242,19 @@ func (p *SubprocessPlugin) Invoke(ctx context.Context, hook string, payload map[
 			})
 		}
 		p.invocations.Add(1)
+		p.telemetry.InvocationCount.Add(1)
 		if !resp.OK {
+			p.telemetry.FailureCount.Add(1)
 			return fmt.Errorf("plugin %s: %s", p.manifest.Name, resp.Error)
 		}
+		p.telemetry.SuccessCount.Add(1)
 		return nil
 	}
+}
+
+// Telemetry returns a point-in-time snapshot of plugin runtime metrics.
+func (p *SubprocessPlugin) Telemetry() TelemetrySnapshot {
+	return p.telemetry.snapshot(p.manifest.Name)
 }
 
 // killSubprocess terminates the running subprocess immediately. Caller must hold p.mu.
