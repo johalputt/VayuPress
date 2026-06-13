@@ -302,7 +302,6 @@ func (a *App) handleAdminADR(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, 200, map[string]interface{}{"adrs": adrs, "total": len(adrs)})
 }
 
-
 func (a *App) handleHealthBenchmarks(w http.ResponseWriter, r *http.Request) {
 	a.lastBenchmarkMu.Lock()
 	result := a.lastBenchmark

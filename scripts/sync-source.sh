@@ -1,66 +1,95 @@
 #!/bin/bash
 # =============================================================================
-#  sync-source.sh — VayuPress P13 Source Synchronization
+#  sync-source.sh — VayuPress Source Integrity Check (ADR-0045 / P13–P20)
 # -----------------------------------------------------------------------------
-#  The canonical Go application source lives EMBEDDED in the heredoc inside
-#  scripts/deploy-vayupress.sh (between the 'cat > main.go << GOEOF' marker and
-#  the closing 'GOEOF'). This keeps the "curl -sSL ... | bash" single-file
-#  install model intact (Constitution P5: Operational Simplicity).
+#  Architecture evolution note (P14–P20):
+#  The application was refactored from a single embedded Go heredoc in the
+#  deploy script into a proper multi-package Go module (cmd/vayupress + internal/*).
+#  The "heredoc sync" model is superseded by standard Go module tooling.
 #
-#  To gain real Go tooling (IDE indexing, go build/vet/test, golangci-lint,
-#  govulncheck) we mirror that exact source to cmd/vayupress/main.go.
+#  This script now verifies structural integrity of the Go source tree:
+#    --check   Verify required source files exist and the binary builds cleanly.
+#    (default) Same as --check (no write mode needed; source is canonical).
 #
-#  This script extracts the heredoc body and writes it to cmd/vayupress/main.go.
-#  CI runs it with --check to fail the build if the two ever drift (P10:
-#  Automated Governance — no silent divergence).
+#  CI passes when:
+#    1. cmd/vayupress/main.go exists and is non-empty.
+#    2. All required internal packages are present.
+#    3. go build ./... succeeds (binary compiles).
 #
 #  Usage:
-#    scripts/sync-source.sh           # regenerate cmd/vayupress/main.go
-#    scripts/sync-source.sh --check   # exit 1 if out of sync (CI mode)
+#    scripts/sync-source.sh           # verify source integrity
+#    scripts/sync-source.sh --check   # same (CI mode, same exit semantics)
 # =============================================================================
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DEPLOY="${ROOT}/scripts/deploy-vayupress.sh"
-TARGET="${ROOT}/cmd/vayupress/main.go"
-MODE="${1:-write}"
+cd "$ROOT"
 
-if [ ! -f "$DEPLOY" ]; then
-  echo "FATAL: ${DEPLOY} not found" >&2
-  exit 2
-fi
+FAILED=0
 
-# Extract the heredoc body: everything strictly between the opening marker
-# 'cat > main.go << '\''GOEOF'\''' and the closing 'GOEOF' line.
-EXTRACTED="$(awk '
-  /^cat > main\.go << '\''GOEOF'\''$/ { capture=1; next }
-  /^GOEOF$/ { if (capture) { capture=0 } ; next }
-  capture { print }
-' "$DEPLOY")"
+# ── 1. Required entry-point files ────────────────────────────────────────────
+REQUIRED_FILES=(
+  "cmd/vayupress/main.go"
+  "cmd/vayupress/app.go"
+  "cmd/vayupress/routes.go"
+  "cmd/vayupress/handlers_articles.go"
+  "cmd/vayupress/handlers_infra.go"
+  "cmd/vayupress/handlers_admin.go"
+  "cmd/vayupress/middleware.go"
+)
 
-if [ -z "$EXTRACTED" ]; then
-  echo "FATAL: could not extract Go source heredoc from ${DEPLOY}" >&2
-  echo "       (expected markers: 'cat > main.go << GOEOF' ... 'GOEOF')" >&2
-  exit 2
-fi
-
-mkdir -p "$(dirname "$TARGET")"
-
-if [ "$MODE" = "--check" ]; then
-  if [ ! -f "$TARGET" ]; then
-    echo "❌ ${TARGET} is missing — run scripts/sync-source.sh to generate it." >&2
-    exit 1
+for f in "${REQUIRED_FILES[@]}"; do
+  if [ ! -s "$f" ]; then
+    echo "❌ MISSING or EMPTY: $f"
+    FAILED=1
+  else
+    echo "✅ $f"
   fi
-  if ! diff -q <(printf '%s\n' "$EXTRACTED") "$TARGET" >/dev/null 2>&1; then
-    echo "❌ DRIFT: cmd/vayupress/main.go does not match the deploy script heredoc." >&2
-    echo "   The deploy script is canonical. Run: scripts/sync-source.sh" >&2
-    echo "   Then commit the regenerated cmd/vayupress/main.go." >&2
-    diff <(printf '%s\n' "$EXTRACTED") "$TARGET" | head -40 >&2 || true
-    exit 1
+done
+
+# ── 2. Required internal packages ─────────────────────────────────────────────
+REQUIRED_PKGS=(
+  "internal/api"
+  "internal/db"
+  "internal/queue"
+  "internal/outbox"
+  "internal/lifecycle"
+  "internal/events"
+  "internal/search"
+  "internal/httputil"
+  "internal/logging"
+  "internal/metrics"
+  "internal/config"
+  "internal/auth"
+  "internal/health"
+  "internal/plugins"
+  "internal/render"
+)
+
+for pkg in "${REQUIRED_PKGS[@]}"; do
+  if ls "$pkg"/*.go >/dev/null 2>&1; then
+    echo "✅ $pkg"
+  else
+    echo "❌ MISSING package: $pkg"
+    FAILED=1
   fi
-  echo "✅ cmd/vayupress/main.go is in sync with the deploy script heredoc."
-  exit 0
+done
+
+# ── 3. Binary builds cleanly ──────────────────────────────────────────────────
+echo "Running: go build ./..."
+if go build ./... 2>&1; then
+  echo "✅ go build ./... passed"
+else
+  echo "❌ go build ./... FAILED"
+  FAILED=1
 fi
 
-printf '%s\n' "$EXTRACTED" > "$TARGET"
-echo "✅ Wrote $(wc -l < "$TARGET") lines to ${TARGET} from the deploy script heredoc."
+# ── Result ────────────────────────────────────────────────────────────────────
+if [ $FAILED -ne 0 ]; then
+  echo ""
+  echo "❌ Source integrity check FAILED — see above for details."
+  exit 1
+fi
+
+echo ""
+echo "✅ Source integrity verified — multi-package Go module structure intact."

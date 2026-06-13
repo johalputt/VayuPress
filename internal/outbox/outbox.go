@@ -13,9 +13,9 @@ import (
 )
 
 const (
-	maxRetries         = 3
-	maxBackoffSeconds  = 120
-	pollInterval       = 200 * time.Millisecond
+	maxRetries        = 3
+	maxBackoffSeconds = 120
+	pollInterval      = 200 * time.Millisecond
 )
 
 // DispatchFn is called for each pending outbox event. It receives the event
