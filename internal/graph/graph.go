@@ -23,11 +23,11 @@ const (
 type EdgeType string
 
 const (
-	EdgeReferences  EdgeType = "references"
-	EdgeTranslates  EdgeType = "translates"
-	EdgeUpdates     EdgeType = "updates"
-	EdgeTagged      EdgeType = "tagged"
-	EdgeAuthored    EdgeType = "authored"
+	EdgeReferences EdgeType = "references"
+	EdgeTranslates EdgeType = "translates"
+	EdgeUpdates    EdgeType = "updates"
+	EdgeTagged     EdgeType = "tagged"
+	EdgeAuthored   EdgeType = "authored"
 )
 
 // Node is a vertex in the knowledge graph.

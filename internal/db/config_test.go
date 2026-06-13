@@ -3,8 +3,8 @@ package db_test
 import (
 	"testing"
 
-	_ "github.com/mattn/go-sqlite3"
 	"github.com/johalputt/vayupress/internal/db"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 func TestOpenDefaults(t *testing.T) {

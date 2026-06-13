@@ -18,7 +18,7 @@ import (
 
 // DIDDocument is a minimal DID Document for did:key.
 type DIDDocument struct {
-	ID         string    `json:"id"`          // e.g. "did:key:z6Mk..."
+	ID         string    `json:"id"` // e.g. "did:key:z6Mk..."
 	Controller string    `json:"controller"`
 	PublicKey  string    `json:"publicKeyBase64"` // base64-encoded Ed25519 public key
 	Created    time.Time `json:"created"`
@@ -117,10 +117,10 @@ func GenerateDIDKey() (*DIDDocument, ed25519.PrivateKey, error) {
 	// did:key uses multibase-encoded multicodec — use hex prefix for simplicity
 	id := "did:key:z" + strings.ToLower(hex.EncodeToString(pub))
 	doc := &DIDDocument{
-		ID:        id,
+		ID:         id,
 		Controller: id,
-		PublicKey: pubB64,
-		Created:   time.Now().UTC(),
+		PublicKey:  pubB64,
+		Created:    time.Now().UTC(),
 	}
 	return doc, priv, nil
 }

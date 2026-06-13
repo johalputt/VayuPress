@@ -54,9 +54,9 @@ func (si *ShardedIndex) Search(query string, limit int) ([]Result, error) {
 		limit = 20
 	}
 	var (
-		mu      sync.Mutex
-		results []Result
-		wg      sync.WaitGroup
+		mu       sync.Mutex
+		results  []Result
+		wg       sync.WaitGroup
 		firstErr error
 	)
 	for _, s := range si.shards {

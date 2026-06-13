@@ -24,9 +24,9 @@ type MountConfinement struct {
 // copy-on-write namespace semantics keep the host tree unaffected.
 //
 // For each plugin we:
-//   1. Create a per-invocation tmpfs scratch directory for writable access.
-//   2. Bind-mount allowed read paths as read-only.
-//   3. Return a cleanup func that unmounts and removes the scratch dir.
+//  1. Create a per-invocation tmpfs scratch directory for writable access.
+//  2. Bind-mount allowed read paths as read-only.
+//  3. Return a cleanup func that unmounts and removes the scratch dir.
 func setupMountConfinement(m Manifest) (*MountConfinement, error) {
 	scratch, err := os.MkdirTemp("", fmt.Sprintf("vp-plugin-%s-*", m.Name))
 	if err != nil {
@@ -256,9 +256,9 @@ type capData struct {
 }
 
 const (
-	linuxCapV3     = 0x20080522
-	sysCAPSET      = 126 // capset(2)
-	sysCAPGET      = 125 // capget(2)
+	linuxCapV3 = 0x20080522
+	sysCAPSET  = 126 // capset(2)
+	sysCAPGET  = 125 // capget(2)
 )
 
 // DropCapabilities drops all Linux capabilities from the calling process/thread.

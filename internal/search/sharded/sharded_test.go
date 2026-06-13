@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	_ "github.com/mattn/go-sqlite3"
 	"github.com/johalputt/vayupress/internal/search/sharded"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 func TestShardedSearch(t *testing.T) {

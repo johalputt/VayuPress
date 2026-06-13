@@ -25,19 +25,19 @@ const (
 
 // NodeState holds the observed state of a peer node.
 type NodeState struct {
-	ID          string    `json:"id"`
-	Addr        string    `json:"addr"`
-	Role        Role      `json:"role"`
-	LastSeen    time.Time `json:"last_seen"`
+	ID       string    `json:"id"`
+	Addr     string    `json:"addr"`
+	Role     Role      `json:"role"`
+	LastSeen time.Time `json:"last_seen"`
 }
 
 // Node is a sovereign cluster participant.
 type Node struct {
-	mu          sync.RWMutex
-	id          string
-	addr        string
-	role        Role
-	peers       map[string]*NodeState
+	mu           sync.RWMutex
+	id           string
+	addr         string
+	role         Role
+	peers        map[string]*NodeState
 	heartbeatTTL time.Duration
 }
 

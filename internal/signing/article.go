@@ -23,7 +23,7 @@ type ArticlePayload struct {
 // SignedArticle wraps a payload with its Ed25519 signature.
 type SignedArticle struct {
 	Payload   ArticlePayload `json:"payload"`
-	Signature string         `json:"signature"` // base64-std-encoded
+	Signature string         `json:"signature"`  // base64-std-encoded
 	PublicKey string         `json:"public_key"` // base64-std-encoded
 }
 

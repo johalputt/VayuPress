@@ -9,7 +9,7 @@ import (
 // ArweaveBackend is a stub for Arweave permanent storage.
 // Replace with the Arweave HTTP API (bundlr/turbo) for production use.
 type ArweaveBackend struct {
-	Gateway string // e.g. "https://arweave.net"
+	Gateway    string // e.g. "https://arweave.net"
 	WalletPath string // path to Arweave JWK wallet file
 }
 

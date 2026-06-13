@@ -4,8 +4,8 @@ import (
 	"database/sql"
 	"testing"
 
-	_ "github.com/mattn/go-sqlite3"
 	"github.com/johalputt/vayupress/internal/migrations"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 func BenchmarkMigratorUpMemory(b *testing.B) {

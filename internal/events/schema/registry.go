@@ -11,9 +11,9 @@ import (
 
 // Schema is a minimal JSON Schema descriptor for an event version.
 type Schema struct {
-	Type       string            `json:"type"`    // e.g. "article.created"
-	Version    string            `json:"version"` // e.g. "v1"
-	Required   []string          `json:"required"`
+	Type       string             `json:"type"`    // e.g. "article.created"
+	Version    string             `json:"version"` // e.g. "v1"
+	Required   []string           `json:"required"`
 	Properties map[string]PropDef `json:"properties"`
 }
 

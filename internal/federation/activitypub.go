@@ -12,11 +12,11 @@ import (
 
 const (
 	ActivityStreamsContext = "https://www.w3.org/ns/activitystreams"
-	ActivityCreate        = "Create"
-	ActivityUpdate        = "Update"
-	ActivityDelete        = "Delete"
-	ActivityFollow        = "Follow"
-	ActivityAccept        = "Accept"
+	ActivityCreate         = "Create"
+	ActivityUpdate         = "Update"
+	ActivityDelete         = "Delete"
+	ActivityFollow         = "Follow"
+	ActivityAccept         = "Accept"
 )
 
 // Actor represents an ActivityPub actor (person, service, etc.)
@@ -50,12 +50,12 @@ type Activity struct {
 
 // Server is a minimal ActivityPub server.
 type Server struct {
-	mu         sync.RWMutex
-	baseURL    string
-	actor      Actor
-	inbox      []Activity
-	outbox     []Activity
-	followers  []string
+	mu        sync.RWMutex
+	baseURL   string
+	actor     Actor
+	inbox     []Activity
+	outbox    []Activity
+	followers []string
 }
 
 // NewServer creates an ActivityPub server for the given actor.

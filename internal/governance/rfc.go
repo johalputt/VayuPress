@@ -13,22 +13,22 @@ import (
 type RFCStatus string
 
 const (
-	RFCOpen     RFCStatus = "open"
-	RFCAccepted RFCStatus = "accepted"
-	RFCRejected RFCStatus = "rejected"
+	RFCOpen      RFCStatus = "open"
+	RFCAccepted  RFCStatus = "accepted"
+	RFCRejected  RFCStatus = "rejected"
 	RFCWithdrawn RFCStatus = "withdrawn"
 )
 
 // RFC represents a Request for Comments — a governance proposal.
 type RFC struct {
-	ID          string    `json:"id"`
-	Title       string    `json:"title"`
-	Body        string    `json:"body"`
-	Author      string    `json:"author"`
-	Status      RFCStatus `json:"status"`
-	CreatedAt   time.Time `json:"created_at"`
-	ResolvedAt  *time.Time `json:"resolved_at,omitempty"`
-	Votes       []Vote    `json:"votes"`
+	ID         string     `json:"id"`
+	Title      string     `json:"title"`
+	Body       string     `json:"body"`
+	Author     string     `json:"author"`
+	Status     RFCStatus  `json:"status"`
+	CreatedAt  time.Time  `json:"created_at"`
+	ResolvedAt *time.Time `json:"resolved_at,omitempty"`
+	Votes      []Vote     `json:"votes"`
 }
 
 // Vote is a single maintainer vote on an RFC.

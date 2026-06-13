@@ -18,8 +18,8 @@ import (
 
 // Manifest describes a snapshot.
 type Manifest struct {
-	ID        string    `json:"id"`
-	CreatedAt time.Time `json:"created_at"`
+	ID        string      `json:"id"`
+	CreatedAt time.Time   `json:"created_at"`
 	Files     []FileEntry `json:"files"`
 }
 

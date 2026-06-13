@@ -20,7 +20,7 @@ func TestSingleNodeLeader(t *testing.T) {
 	n := cluster.New("node-a", "localhost:8080")
 	// With no peers, should be leader (lowest ID = only ID)
 	n.Heartbeat("", "", cluster.RoleFollower) // trigger election with no valid peer
-	_ = n.Role() // just ensure no panic
+	_ = n.Role()                              // just ensure no panic
 }
 
 func TestLivePeers(t *testing.T) {
