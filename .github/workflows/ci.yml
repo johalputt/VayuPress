@@ -146,7 +146,7 @@ jobs:
             "ADR-0044" "ADR-0045" "ADR-0046" "ADR-0047"
             "ADR-0048" "ADR-0049" "ADR-0050" "ADR-0051"
             "ADR-0052" "ADR-0053" "ADR-0054" "ADR-0055"
-            "ADR-0056" "ADR-0057"
+            "ADR-0056" "ADR-0057" "ADR-0058"
           )
           for adr in "${REQUIRED_ADRS[@]}"; do
             if ! ls docs/adr/${adr}* 2>/dev/null | grep -q .; then

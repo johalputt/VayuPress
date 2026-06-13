@@ -258,6 +258,57 @@ func TestEffectiveMaxMessageBytes(t *testing.T) {
 	}
 }
 
+// ── P27 kernel-level isolation & resource domain tests ──────────────────────
+
+func TestResourceLimitsDefaults(t *testing.T) {
+	m := Manifest{}
+	if m.ResourceLimits.MemoryMaxBytes != 0 {
+		t.Error("expected zero MemoryMaxBytes by default")
+	}
+	if m.ResourceLimits.CPUQuotaPercent != 0 {
+		t.Error("expected zero CPUQuotaPercent by default")
+	}
+	if m.ResourceLimits.MaxPIDs != 0 {
+		t.Error("expected zero MaxPIDs by default")
+	}
+}
+
+func TestResolveAndCheckPathNoSymlink(t *testing.T) {
+	dir := t.TempDir()
+	f := filepath.Join(dir, "data.txt")
+	if err := os.WriteFile(f, []byte("x"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := ResolveAndCheckPath(f, []string{dir + "/"}); err != nil {
+		t.Fatalf("expected allowed: %v", err)
+	}
+}
+
+func TestResolveAndCheckPathSymlinkEscape(t *testing.T) {
+	dir := t.TempDir()
+	secret := filepath.Join(dir, "secret.txt")
+	os.WriteFile(secret, []byte("secret"), 0600) //nolint:errcheck
+
+	allowedDir := filepath.Join(dir, "allowed") + "/"
+	os.MkdirAll(allowedDir, 0755) //nolint:errcheck
+
+	link := filepath.Join(allowedDir, "link.txt")
+	os.Symlink(secret, link) //nolint:errcheck
+
+	// link is inside allowedDir but resolves to secret outside allowedDir
+	err := ResolveAndCheckPath(link, []string{allowedDir})
+	if err == nil {
+		t.Fatal("expected error for symlink escaping allowed directory")
+	}
+}
+
+func TestNamespaceCloneflagsNoNetwork(t *testing.T) {
+	m := Manifest{Name: "test", Executable: "/bin/echo", AllowNetwork: false, IsolatePID: true, IsolateIPC: true}
+	flags := namespaceCloneflags(m)
+	// On Linux this should be non-zero; on other platforms zero.
+	_ = flags // just verify it doesn't panic
+}
+
 func TestSubprocessPluginQuarantine(t *testing.T) {
 	m := Manifest{
 		Name:        "crash-plugin",

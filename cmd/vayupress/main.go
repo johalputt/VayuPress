@@ -1,4 +1,4 @@
-// VayuPress — main.go  v1.0.0-p26
+// VayuPress — main.go  v1.0.0-p27
 // Bootstrap, route wiring, and graceful shutdown only.
 // Domain logic lives in internal/* packages (ADR-0045 – ADR-0050).
 package main
@@ -42,7 +42,7 @@ import (
 	"github.com/johalputt/vayupress/internal/trace"
 )
 
-var Version = "1.0.0-p26"
+var Version = "1.0.0-p27"
 var bootTime = time.Now()
 
 // Immutable package-level values (compiled once, never mutated).
