@@ -6,8 +6,8 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Constitution](https://img.shields.io/badge/constitution-v6.0%20P1--P26-blueviolet)](GOVERNANCE-CONSTITUTION.md)
 
-> **Ultra-lightweight, ethical publishing infrastructure.**
-> SQLite-first, zero-trust, no tracking. Sandboxed plugins, transactional event outbox, structured tracing, resource governance. Built to outperform WordPress, Hugo, and Ghost.
+> **Adaptive publishing infrastructure for the sovereign web.**
+> SQLite-first, zero-trust, zero telemetry. Policy-governed runtime with adaptive system modes, sandboxed plugins, transactional event outbox, durable audit trail, and fault-tolerant federated publishing.
 
 ## Quick Start
 
@@ -27,34 +27,20 @@ sudo ./scripts/deploy-vayupress.sh
 
 ## What Is VayuPress?
 
-VayuPress ("Vayu" — Sanskrit for wind/speed) is modern publishing infrastructure for developers, writers, and AI-assisted content engines who need:
+VayuPress ("Vayu" — Sanskrit for wind/speed) is governed publishing infrastructure for developers, writers, and AI-assisted content engines who need:
 
-- **Static-file speed** with dynamic flexibility
+- **Adaptive runtime governance** — policy-driven system modes (Normal/Degraded/ReadOnly/Recovery/Maintenance/Quarantined) with validated transition graph and operational convergence
 - **Single-VPS efficiency** — runs on 12 GB RAM / 6 vCPU / 250 GB NVMe
 - **Total control** over content, hosting, and data
 - **No vendor lock-in** — SQLite, Go, Nginx, open standards only
 - **Zero telemetry** — no tracking, no analytics harvesting, no third-party calls
-- **Production-grade reliability** — transactional outbox, idempotent event dispatch, graceful shutdown with 6-phase drain
-- **Security-first** — sandboxed subprocess plugins, capability enforcement, SSRF protection, immutable WORM audit log
-- **Full observability** — structured JSON logging, distributed tracing, correlation/causation IDs throughout
+- **Platform-kernel integrity** — immutable signing, migration integrity, identity model, event durability, and audit trail enforced by the policy engine
+- **Security-first** — sandboxed subprocess plugins, capability enforcement, SSRF protection, durable replay protection, WORM audit log
+- **Full observability** — structured JSON logging, distributed tracing, SLO error budgets, fault injection framework
 
 ---
 
-## Requirements
-
-| Requirement | Detail |
-|-------------|--------|
-| Go | 1.23+ (build from source; deploy script installs 1.25) |
-| CGO / SQLite3 | `gcc` required (`libsqlite3-dev` or bundled via `go-sqlite3`) |
-| OS | Ubuntu 24.04 LTS (recommended); Linux kernel 5.x+ for sandbox features |
-| RAM | 8 GB minimum, 12 GB recommended |
-| CPU | 4 vCPU minimum, 6 vCPU recommended |
-| Disk | 50 GB NVMe minimum, 250 GB for 1M+ posts with media |
-| Access | Root or sudo for deploy script |
-
----
-
-## Architecture
+## Architecture Overview
 
 ```
                      +----------------------------------+
@@ -68,19 +54,27 @@ VayuPress ("Vayu" — Sanskrit for wind/speed) is modern publishing infrastructu
                                      | HTTP (127.0.0.1:8080)
              +---------------------------v------------------------------+
              |                VayuPress Go Binary                       |
-             |  +---------+  +----------+  +-------------------+        |
-             |  | Router  |  | Plugin   |  | Write Queue       |        |
-             |  | (chi)   |  | Pool     |  | (async workers)   |        |
-             |  +----+----+  +----+-----+  +--------+----------+        |
-             |       |            |                 |                   |
-             |  +----v------------v-----------------v-----------+       |
-             |  |         SQLite (WAL mode)                     |       |
-             |  |  articles · media · write_jobs · audit_log   |       |
-             |  |  outbox_events · delivered_events            |       |
-             |  +-----------------------------------------------+       |
              |                                                           |
-             |  Lifecycle Manager --> Outbox Relay --> Event Bus         |
-             |  Resource Watchdog --> Sandbox Pool --> Subprocess IPC    |
+             |  ┌─────────────────────────────────────────────────┐    |
+             |  │            Platform Kernel (immutable)           │    |
+             |  │  signing · migrations · did · outbox · policy   │    |
+             |  │  slo · mode · audit                             │    |
+             |  └─────────────────────────────────────────────────┘    |
+             |                                                           |
+             |  ┌──────────┐  ┌──────────┐  ┌────────────────────┐    |
+             |  │  Router  │  │  Plugin  │  │   Write Queue      │    |
+             |  │  (chi)   │  │  Pool    │  │   (async workers)  │    |
+             |  └────┬─────┘  └────┬─────┘  └─────────┬──────────┘    |
+             |       │              │                   │               |
+             |  ┌────▼──────────────▼───────────────────▼──────────┐  |
+             |  │              SQLite (WAL mode)                    │  |
+             |  │  articles · media · write_jobs · audit_log        │  |
+             |  │  outbox_events · delivered_events · replay_store  │  |
+             |  └───────────────────────────────────────────────────┘  |
+             |                                                           |
+             |  Lifecycle Manager → Outbox Relay → Event Bus            |
+             |  Policy Engine → System Modes → Subsystem Hooks          |
+             |  Resource Watchdog → Sandbox Pool → Subprocess IPC       |
              +---------------------------+------------------------------+
                                          |
               +--------------------------+---------------------------+
@@ -94,91 +88,143 @@ VayuPress ("Vayu" — Sanskrit for wind/speed) is modern publishing infrastructu
 
 ---
 
-## Internal Package Architecture
+## Platform Kernel
 
-The application is a proper Go module (`github.com/johalputt/vayupress`) with a single entry point at `cmd/vayupress/` and domain logic split across `internal/` packages with compiler-enforced boundaries (ADR-0045).
+VayuPress has an **immutable platform kernel** — components that define invariants no plugin, extension, or subsystem can bypass. Changes require an RFC and 2/3 supermajority vote.
 
-| Package | Role | ADR |
-|---------|------|-----|
-| `cmd/vayupress` | Bootstrap, route wiring, graceful shutdown | ADR-0045 |
-| `internal/api` | `ArticleService`, repository pattern, typed domain errors | ADR-0050 |
-| `internal/auth` | JWT, CSRF, Argon2id hashing, rate-limit buckets | — |
-| `internal/config` | Env-driven config, version compatibility validation | ADR-0040 |
-| `internal/db` | SQLite init, WAL checkpoint, migrations via `embed.FS`, `ArticleRepo` | ADR-0033/0034 |
-| `internal/events` | Typed event structs, `Envelope`, `Bus`, idempotent dispatch | ADR-0052 |
-| `internal/health` | Structured health contracts (`/health/*` endpoints) | ADR-0041 |
-| `internal/httputil` | `WriteJSON`, `WriteError`, `DecodeJSON` — thin HTTP primitives | ADR-0049 |
-| `internal/lifecycle` | Ordered startup/shutdown with named phases | ADR-0051 |
-| `internal/logging` | Structured JSON logging with correlation/causation fields | ADR-0053 |
-| `internal/metrics` | Atomic metric counters, snapshot collection | — |
-| `internal/outbox` | Transactional outbox relay — poll + dispatch event envelopes | ADR-0051 |
-| `internal/plugins` | Hook registry, worker pool, subprocess plugin management | ADR-0032/0046 |
-| `internal/queue` | SQLite-backed async write queue, dead-letter replay | ADR-0035 |
-| `internal/render` | Article renderer, cache writer, CSS asset generator | ADR-0002 |
-| `internal/resource` | Semaphore-based concurrency limiters, resource watchdog | ADR-0055 |
-| `internal/sandbox` | Subprocess IPC pool, Linux seccomp/namespaces, capability enforcement | ADR-0056/0057 |
-| `internal/search` | Meilisearch client with circuit breaker, SQLite fallback | ADR-0050 |
-| `internal/trace` | Span-based tracing with correlation/causation IDs | ADR-0054 |
+| Component | Package | Invariant |
+|-----------|---------|-----------|
+| **Signing** | `internal/signing` | Every published article has a valid Ed25519 signature |
+| **Capability Enforcement** | `internal/sandbox` | Plugin capabilities checked against manifest before every Invoke() |
+| **Migration Integrity** | `internal/migrations` | Checksums verified against embedded SQL; drift is a hard error |
+| **Identity Model** | `internal/did` | DID:key authentication; no shared-secret fallback |
+| **Event Durability** | `internal/outbox` | Events written to outbox in same transaction as state change |
+| **Audit Trail** | `internal/migrations` (journal) | Migration journal is append-only; no entry may be deleted |
+| **SLO Error Budget** | `internal/slo` | BudgetExhausted() blocks the release gate |
+| **Policy Engine** | `internal/policy` | All governance policies registered here; no ad hoc enforcement |
+
+See [docs/architecture/kernel-boundary.md](docs/architecture/kernel-boundary.md) for the full kernel boundary specification.
 
 ---
 
-## Feature List (P1–P26)
+## System Modes
+
+VayuPress operates in one of six adaptive system modes, governed by the policy engine:
+
+| Mode | Trigger | Effect |
+|------|---------|--------|
+| `normal` | Default | All subsystems fully operational |
+| `degraded` | SLO error budget exhausted | Feature work pauses; writes allowed |
+| `read-only` | Migration checksum drift | Writes refused; recovery required |
+| `recovery` | Active recovery operation | Migration apply allowed; writes blocked |
+| `maintenance` | Operator-initiated | Planned downtime; controlled shutdown |
+| `quarantined` | Plugin quarantine threshold | Plugin and federation suspended |
+
+Transitions are validated against a deterministic graph. Every transition is logged to an append-only history. Policy evaluation drives automatic transitions; operators can force transitions via CLI.
+
+See [docs/architecture/system-modes.md](docs/architecture/system-modes.md).
+
+---
+
+## Internal Package Architecture
+
+| Package | Role |
+|---------|------|
+| `cmd/vayupress` | Bootstrap, route wiring, graceful shutdown |
+| `internal/ai` | Local embedding, semantic search, policy-governed inference |
+| `internal/api` | ArticleService, repository pattern, typed domain errors |
+| `internal/archcheck` | AST-level architecture validator (import rules, global state, shared abstractions) |
+| `internal/auth` | JWT, CSRF, Argon2id hashing, rate-limit buckets |
+| `internal/cluster` | Leader election, node coordination |
+| `internal/compat` | Compatibility golden tests for Stable contract verification |
+| `internal/config` | Env-driven config, version compatibility validation |
+| `internal/db` | SQLite init, WAL checkpoint, migrations via `embed.FS` |
+| `internal/did` | DID:key authentication with Ed25519 |
+| `internal/events` | Typed event structs, Envelope, Bus, idempotent dispatch |
+| `internal/fault` | Fault injection framework — named probabilistic fault points |
+| `internal/federation` | ActivityPub inbox/outbox, replay protection, adversarial hardening |
+| `internal/governance` | RFC voting, supermajority enforcement |
+| `internal/graph` | Merkle tree content integrity |
+| `internal/health` | Structured health contracts (`/health/*` endpoints) |
+| `internal/httputil` | WriteJSON, WriteError, DecodeJSON — thin HTTP primitives |
+| `internal/lifecycle` | Ordered startup/shutdown with named phases |
+| `internal/logging` | Structured JSON logging with correlation/causation fields |
+| `internal/merkle` | SHA-256 Merkle tree for article content proofs |
+| `internal/metrics` | Atomic metric counters, snapshot collection |
+| `internal/migrations` | Migration engine with dry-run, checksum verification, journal, rollback |
+| `internal/mode` | System Mode state machine — policy-driven adaptive runtime |
+| `internal/outbox` | Transactional outbox relay — poll + dispatch event envelopes |
+| `internal/plugins` | Hook registry, worker pool, subprocess plugin management |
+| `internal/policy` | Platform Policy Engine — architecture/security/reliability/release governance |
+| `internal/profiling` | Rate-limited pprof, health fingerprints, goroutine leak detection |
+| `internal/queue` | SQLite-backed async write queue, dead-letter replay |
+| `internal/registry` | Plugin manifest registry |
+| `internal/render` | Article renderer, cache writer, CSS asset generator |
+| `internal/resource` | Semaphore-based concurrency limiters, resource watchdog |
+| `internal/sandbox` | Subprocess IPC pool, Linux seccomp/namespaces, capability enforcement |
+| `internal/search` | FTS5 + semantic search, Meilisearch client, sharded index |
+| `internal/signing` | Ed25519 article signing and verification |
+| `internal/slo` | SLO error budget tracking — rolling windows, exhaustion signals |
+| `internal/storage` | Content-addressed storage, IPFS stubs |
+| `internal/testutil` | Shared test helpers |
+| `internal/trace` | Span-based tracing with correlation/causation IDs |
+| `internal/ws` | WebSocket/SSE hub for real-time event streaming |
+
+---
+
+## Feature List (P1–P26 + Ω1–Ω5)
 
 ### Core Publishing (P1–P8)
 - RESTful JSON API for articles (CRUD with slugs, tags, full-text content)
-- Async write queue — SQLite-backed, crash-safe, with dead-letter replay (ADR-0035)
+- Async write queue — SQLite-backed, crash-safe, with dead-letter replay
 - Sitemap XML, RSS feed, and robots.txt auto-generation
 - In-memory render cache with static-file output via Nginx
-- SQLite WAL mode with adaptive checkpointing (ADR-0033)
-- Migration checksum drift detection — halts startup on tampering (ADR-0034)
+- SQLite WAL mode with adaptive checkpointing
+- Migration checksum drift detection — halts startup on tampering
 - Immutable WORM audit log via SQLite `ABORT` triggers
 - Plugin hook system with worker pool, panic recovery, and circuit-breaker disable
-- Magic-number file-type verification for media uploads (JPEG/PNG/GIF/WebP/PDF)
-- SSRF-safe outbound HTTP client (blocks loopback, 169.254.169.254, RFC-1918)
-- CSP nonce per request, 7-header security baseline
-- Argon2id credential hashing with constant-time comparison
-- Pprof endpoint — localhost-only, rate-limited, audit-logged (ADR-0037)
 
 ### Security & Governance (P9–P13)
-- Automated CI governance — 13 CI jobs, `ci-pass` gate (ADR-0044)
+- Automated CI governance — 15+ CI jobs, `ci-pass` gate
 - Supply-chain secret scanning (TruffleHog), license compliance, shell linting
-- Structured health contracts: `/health/live`, `/health/ready`, `/health/dependencies`, `/health/storage`, `/health/search`, `/health/queue` (ADR-0041)
+- Structured health contracts: `/health/live`, `/health/ready`, `/health/dependencies`, `/health/storage`, `/health/search`, `/health/queue`
 - `/health/ethics` — machine-readable ethics compliance endpoint
 - Ethical AI Charter in `ETHICS.md` (no training on user data, no telemetry)
-- Backup restore automation with nightly integrity validation (ADR-0042)
-- Source parity: `cmd/vayupress/` is the canonical multi-package Go module
 
 ### Multi-Package Architecture (P14–P19)
-- Decomposed from monolithic `main.go` into 18 `internal/` packages (ADR-0045)
-- `App` struct owns all mutable runtime state — no package-level globals (ADR-0047)
-- Route domains and `ArticleService` with typed service errors (ADR-0048)
-- Thin handler layer — handlers delegate to service, not DB (ADR-0049)
-- Repository pattern: `ArticleRepo` interface backed by SQLite (ADR-0050)
+- 35+ `internal/` packages with compiler-enforced boundaries
+- `App` struct owns all mutable runtime state — no package-level globals
+- Repository pattern: `ArticleRepo` interface backed by SQLite
 - Integration test harness with `go test -race ./...`
 
 ### Event-Driven Reliability (P20–P22)
-- Transactional outbox — events written atomically with article mutations (ADR-0051)
+- Transactional outbox — events written atomically with article mutations
 - `lifecycle.Manager` — ordered startup/shutdown with registered components
-- `queue.Writer` interface — swappable queue backends
-- Typed event structs: `ArticleCreated`, `ArticleUpdated`, `ArticleDeleted` (ADR-0052)
-- Event `Envelope` with `EventID`, `CorrelationID`, `CausationID`, `OccurredAt`
+- Typed event structs with versioned schemas (`article.created.v1`)
 - Idempotent dispatch via `delivered_events` deduplication table
-- Versioned event types (`article.created.v1`, etc.) — forward-compatible
 
 ### Observability & Tracing (P22–P23)
-- Structured JSON logging with `LogFields` — correlation/causation IDs on every line (ADR-0053)
-- `internal/trace` — span-based tracing: `Start`, `SetAttribute`, `End` (ADR-0054)
-- Correlation IDs threaded through HTTP requests, outbox dispatch, and event handlers
-- Causation IDs linking child spans to parent events
+- Structured JSON logging with `LogFields` — correlation/causation IDs on every line
+- Span-based tracing: `Start`, `SetAttribute`, `End`
+- SLO error budgets with rolling windows — 5 production SLOs tracked
 
 ### Resource Governance & Sandboxing (P24–P26)
-- `internal/resource` — named semaphore limiters (`articles.write`, `plugin.exec`) (ADR-0055)
-- Resource watchdog with configurable polling interval
-- `internal/sandbox` — subprocess IPC pool for out-of-process plugin execution (ADR-0056)
+- Named semaphore limiters (`articles.write`, `plugin.exec`)
+- Subprocess IPC pool for out-of-process plugin execution
 - Linux seccomp filtering and namespace isolation for subprocess plugins
-- Capability enforcement — subprocess plugins run with dropped privileges (ADR-0057)
-- `plugins.RegisterSubprocess` — sandboxed plugin registration via manifest
-- `plugins.ShutdownSubprocesses` — clean pool teardown during graceful shutdown
+- Capability enforcement — subprocess plugins run with dropped privileges
+
+### Platform Stewardship (Ω1–Ω5)
+- **Security audit corpus** — 6 security documents (attack surfaces, trust model, incident response, federation threats, sandbox boundaries, signing model)
+- **Compatibility contracts** — stability matrix for 30+ packages, golden tests for Stable API contracts
+- **Architecture governance** — bounded-context rules, ADR index (23 ADRs), import-layer validator
+- **Migration resilience** — dry-run, checksum verification, append-only journal, rollback simulation
+- **Federation adversarial hardening** — malformed payload rejection, SQLite-durable replay protection
+- **Platform Policy Engine** — 6 canonical policies (architecture, security, reliability, release) unified under `internal/policy`
+- **WAL concurrency** — stress tests verifying write serialisation and busy-timeout behaviour
+- **Kernel boundary document** — immutable vs replaceable component classification
+- **System Modes** — 6-mode adaptive state machine with validated transition graph, policy-driven automatic transitions, and subsystem hook registry
+- **Fault injection framework** — named probabilistic fault points with deterministic replay for adversarial testing
 
 ---
 
@@ -208,6 +254,20 @@ Full reference: [docs/API-REFERENCE.md](docs/API-REFERENCE.md)
 
 ---
 
+## Requirements
+
+| Requirement | Detail |
+|-------------|--------|
+| Go | 1.23+ (build from source; deploy script installs 1.25) |
+| CGO / SQLite3 | `gcc` required (`libsqlite3-dev` or bundled via `go-sqlite3`) |
+| OS | Ubuntu 24.04 LTS (recommended); Linux kernel 5.x+ for sandbox features |
+| RAM | 8 GB minimum, 12 GB recommended |
+| CPU | 4 vCPU minimum, 6 vCPU recommended |
+| Disk | 50 GB NVMe minimum, 250 GB for 1M+ posts with media |
+| Access | Root or sudo for deploy script |
+
+---
+
 ## Deployment
 
 ### Automated (recommended)
@@ -223,23 +283,15 @@ bash scripts/deploy-vayupress.sh --dry-run
 bash scripts/deploy-vayupress.sh --upgrade
 ```
 
-The deploy script (`scripts/deploy-vayupress.sh`) handles:
-- Go toolchain installation
-- CGO/SQLite3 dependencies
-- Binary build with `-ldflags="-s -w" -trimpath`
-- Nginx configuration with TLS, CSP headers, and static-file serving
-- systemd service unit
-- Meilisearch installation (optional)
-- Nightly backup cron with integrity validation
-- fail2ban rules
+The deploy script handles: Go toolchain, CGO/SQLite3, binary build, Nginx with TLS and CSP, systemd service, Meilisearch (optional), nightly backup cron, fail2ban rules.
 
 ### Manual Build
 
 ```bash
 git clone https://github.com/johalputt/vayupress.git
 cd vayupress
-go build -race ./...            # development build
-go build -ldflags="-s -w" -trimpath ./cmd/vayupress  # production binary
+go build -race ./...                                   # development build
+go build -ldflags="-s -w" -trimpath ./cmd/vayupress   # production binary
 ```
 
 ---
@@ -250,23 +302,12 @@ go build -ldflags="-s -w" -trimpath ./cmd/vayupress  # production binary
 git clone https://github.com/johalputt/vayupress.git
 cd vayupress
 
-# Build
-go build ./...
+go build ./...          # build all packages
+go test -race ./...     # full test suite with race detector
+go vet ./...            # static analysis
+gofmt -l .              # format check
 
-# Test (with race detector)
-go test -race ./...
-
-# Format check
-gofmt -l .
-
-# Vet
-go vet ./...
-
-# Source integrity check (verifies multi-package structure and build)
-bash scripts/sync-source.sh
-
-# All-in-one via make
-make build test lint
+make build test lint    # all-in-one
 ```
 
 ### Environment Variables
@@ -281,7 +322,6 @@ make build test lint
 | `VAYU_PLUGIN_TIMEOUT_MS` | `2000` | Per-hook execution timeout |
 | `VAYU_PLUGIN_MAX_CONCURRENT` | `8` | Max concurrent plugin executions |
 | `STATIC_DIR` | `/var/www/vayupress/static` | Static asset output directory |
-| `VAYU_DOCS_DIR` | `/var/www/vayupress/docs` | ADR docs output directory |
 | `MEILI_URL` | `http://127.0.0.1:7700` | Meilisearch base URL |
 | `MEILI_MASTER_KEY` | — | Meilisearch master key |
 
@@ -291,7 +331,7 @@ make build test lint
 
 ```
 vayupress/
-├── cmd/vayupress/          # Application entry point (main.go + app.go + routes.go + handlers)
+├── cmd/vayupress/          # Application entry point
 │   ├── main.go             # Bootstrap, graceful shutdown, lifecycle wiring
 │   ├── app.go              # App struct owning all mutable runtime state
 │   ├── routes.go           # Route registration
@@ -299,38 +339,35 @@ vayupress/
 │   ├── handlers_infra.go
 │   ├── handlers_admin.go
 │   └── middleware.go
-├── internal/               # Domain packages (compiler-enforced boundaries)
-│   ├── api/                # ArticleService, repository pattern
-│   ├── auth/               # JWT, CSRF, rate-limiting
-│   ├── config/             # Env-driven configuration
-│   ├── db/                 # SQLite init, WAL, migrations
-│   ├── events/             # Typed events, Envelope, Bus
-│   ├── health/             # Structured health endpoints
-│   ├── httputil/           # HTTP response primitives
-│   ├── lifecycle/          # Ordered startup/shutdown
-│   ├── logging/            # Structured JSON logging
-│   ├── metrics/            # Atomic metric counters
-│   ├── outbox/             # Transactional outbox relay
-│   ├── plugins/            # Hook registry, worker pool, subprocess plugins
-│   ├── queue/              # Async write queue (SQLite-backed)
-│   ├── render/             # Article renderer, cache writer
-│   ├── resource/           # Semaphore limiters, watchdog
+├── internal/               # 35+ domain packages (compiler-enforced boundaries)
+│   ├── archcheck/          # AST-level architecture validator
+│   ├── compat/             # Compatibility golden tests
+│   ├── fault/              # Fault injection framework
+│   ├── federation/         # ActivityPub + replay protection
+│   ├── migrations/         # Migration engine with resilience
+│   ├── mode/               # System Mode state machine
+│   ├── policy/             # Platform Policy Engine
+│   ├── profiling/          # pprof + health fingerprints
 │   ├── sandbox/            # Subprocess IPC, seccomp, capability enforcement
-│   ├── search/             # Meilisearch client + SQLite fallback
-│   └── trace/              # Span-based distributed tracing
+│   ├── signing/            # Ed25519 article signing
+│   ├── slo/                # SLO error budget tracking
+│   └── ...                 # (full list in package table above)
+├── docs/
+│   ├── adr/                # Architecture Decision Records (ADR-0001…ADR-0062)
+│   ├── architecture/       # Bounded contexts, kernel boundary, system modes
+│   ├── compatibility/      # Stability matrix, API contracts
+│   ├── security/           # Attack surfaces, trust model, incident response
+│   ├── reliability/        # SLOs, error budgets
+│   ├── operations/         # WAL recovery, backup/restore runbooks
+│   ├── release/            # Release gate checklist
+│   └── ...
+├── testdata/
+│   ├── bench/              # Committed benchmark baselines
+│   └── golden/             # Golden test files for Stable API contracts
 ├── scripts/
 │   ├── deploy-vayupress.sh # Canonical self-contained installer
-│   └── sync-source.sh      # Multi-package source integrity check
-├── docs/
-│   ├── adr/                # Architecture Decision Records (ADR-0001…ADR-0057)
-│   ├── INSTALLATION.md
-│   ├── API-REFERENCE.md
-│   ├── ARCHITECTURE.md
-│   ├── DEVELOPMENT.md
-│   ├── OPERATIONS.md
-│   ├── THREAT-MODEL.md
-│   └── ...
-├── go.mod / go.sum         # Pinned dependencies
+│   └── sync-source.sh      # Source integrity check
+├── go.mod / go.sum
 ├── Makefile
 ├── GOVERNANCE-CONSTITUTION.md
 ├── CHANGELOG.md
@@ -345,52 +382,16 @@ vayupress/
 
 Target: ≤50ms p95 latency on a 4-vCPU / 8 GB VPS under sustained load.
 
-| Metric | Target | Architecture Decision |
-|--------|--------|-----------------------|
+| Metric | Target | Mechanism |
+|--------|--------|-----------|
 | Article page p95 | <50ms | Nginx static-file serving + in-memory render cache |
 | Search p95 | <50ms | Meilisearch with pre-warmed index |
 | API write p95 | <100ms | SQLite WAL + async write queue |
-| Cold start | <500ms | Single static binary, no JVM/interpreter |
+| Signing p95 | <30µs | Ed25519 — committed baseline in `testdata/bench/` |
+| Cold start | <500ms | Single static binary |
 | Binary size (gzip) | <45 MB | `-ldflags="-s -w" -trimpath` |
 
-Run benchmarks locally: `make bench`
-
----
-
-## ADR Index
-
-Architecture Decision Records live in `docs/adr/`. Key decisions:
-
-| ADR | Title |
-|-----|-------|
-| [ADR-0001](docs/adr/ADR-0001-sqlite-first.md) | SQLite-first doctrine |
-| [ADR-0002](docs/adr/ADR-0002-self-hosted-fonts.md) | Self-hosted fonts (zero external requests) |
-| [ADR-0032](docs/adr/ADR-0032-plugin-pool-waitgroup.md) | Plugin pool WaitGroup + context cancellation |
-| [ADR-0033](docs/adr/ADR-0033-wal-adaptive-checkpoint.md) | WAL adaptive checkpoint |
-| [ADR-0034](docs/adr/ADR-0034-migration-checksum-drift.md) | Migration checksum drift detection |
-| [ADR-0035](docs/adr/ADR-0035-dead-letter-queue-safety.md) | Dead-letter queue safety |
-| [ADR-0036](docs/adr/ADR-0036-csp-nonce.md) | CSP nonce per request |
-| [ADR-0037](docs/adr/ADR-0037-pprof-rate-limit.md) | Pprof rate-limiting + audit log |
-| [ADR-0038](docs/adr/ADR-0038-vacuum-cooldown.md) | VACUUM cooldown guard |
-| [ADR-0039](docs/adr/ADR-0039-deploy-sourced-components.md) | Deploy sourced component architecture |
-| [ADR-0040](docs/adr/ADR-0040-config-versioning.md) | Config versioning + compatibility contracts |
-| [ADR-0041](docs/adr/ADR-0041-health-contracts.md) | Structured health contracts |
-| [ADR-0042](docs/adr/ADR-0042-backup-restore-automation.md) | Backup restore automation |
-| [ADR-0043](docs/adr/ADR-0043-integration-tests.md) | Integration test suite |
-| [ADR-0044](docs/adr/ADR-0044-repository-decomposition.md) | Repository decomposition + source parity |
-| [ADR-0045](docs/adr/ADR-0045-internal-package-decomposition.md) | Internal package decomposition |
-| [ADR-0046](docs/adr/ADR-0046-runtime-architecture-service-boundaries.md) | Runtime architecture + service boundaries |
-| [ADR-0047](docs/adr/ADR-0047-app-container-handler-refactor.md) | App container + handler refactor |
-| [ADR-0048](docs/adr/ADR-0048-route-domains-service-extraction.md) | Route domains + service extraction |
-| [ADR-0049](docs/adr/ADR-0049-thin-handlers-service-boundaries.md) | Thin handlers + service boundaries |
-| [ADR-0050](docs/adr/ADR-0050-persistence-transport-maturity.md) | Repository pattern + persistence maturity |
-| [ADR-0051](docs/adr/ADR-0051-transactional-consistency-event-reliability.md) | Transactional outbox + event reliability |
-| [ADR-0052](docs/adr/ADR-0052-idempotency-event-evolution.md) | Idempotent dispatch + event evolution |
-| [ADR-0053](docs/adr/ADR-0053-observability-correlation-architecture.md) | Observability + correlation architecture |
-| [ADR-0054](docs/adr/ADR-0054-structured-tracing-execution-spans.md) | Structured tracing + execution spans |
-| [ADR-0055](docs/adr/ADR-0055-resource-governance-execution-isolation.md) | Resource governance + execution isolation |
-| [ADR-0056](docs/adr/ADR-0056-process-isolation-runtime-sandboxing.md) | Process isolation + runtime sandboxing |
-| [ADR-0057](docs/adr/ADR-0057-security-sandboxing-capability-enforcement.md) | Security sandboxing + capability enforcement |
+Run benchmarks: `make bench`
 
 ---
 
@@ -401,26 +402,24 @@ VayuPress is governed by the [VayuPress Governance Constitution v6.0](GOVERNANCE
 **Priority order (non-negotiable):**
 Security = Data Integrity > Ethical Compliance > Reliability > Simplicity > Performance > DX > Feature Velocity
 
-All 26 Prompts (governance milestones) are CI-enforced. Every push must pass the `ci-pass` gate.
+All governance policies are enforced by the Platform Policy Engine (`internal/policy`) and validated in CI on every push.
 
 ---
 
-## Documentation
+## Key Documents
 
 | Document | Description |
 |----------|-------------|
-| [INSTALLATION](docs/INSTALLATION.md) | Full installation guide |
-| [ARCHITECTURE](docs/ARCHITECTURE.md) | System design and data flow |
-| [API-REFERENCE](docs/API-REFERENCE.md) | REST API reference |
-| [DEVELOPMENT](docs/DEVELOPMENT.md) | Local development setup |
-| [OPERATIONS](docs/OPERATIONS.md) | Runbooks and incident response |
-| [THREAT MODEL](docs/THREAT-MODEL.md) | Security threat analysis |
-| [SECURITY](SECURITY.md) | Vulnerability disclosure policy |
-| [CONTRIBUTING](CONTRIBUTING.md) | How to contribute |
-| [GOVERNANCE](GOVERNANCE.md) | Governance overview |
-| [ETHICS](ETHICS.md) | Ethical principles and AI charter |
-| [CHANGELOG](CHANGELOG.md) | Version history |
-| [UPGRADING](UPGRADING.md) | Upgrade procedures |
+| [Kernel Boundary](docs/architecture/kernel-boundary.md) | Immutable kernel components and bypass prohibition |
+| [System Modes](docs/architecture/system-modes.md) | Adaptive runtime mode specification |
+| [Bounded Contexts](docs/architecture/bounded-contexts.md) | Package layer rules and prohibited coupling |
+| [Stability Matrix](docs/compatibility/stability-matrix.md) | Stable/Beta/Experimental contract classification |
+| [SLOs](docs/reliability/slos.md) | Production SLOs and error budget policy |
+| [Release Gate](docs/release/release-gate.md) | Mandatory release checklist |
+| [Security](SECURITY.md) | Vulnerability disclosure policy |
+| [Ethics](ETHICS.md) | Ethical principles and AI charter |
+| [ADR Index](docs/adr/INDEX.md) | Full Architecture Decision Record index |
+| [API Reference](docs/API-REFERENCE.md) | REST API reference |
 
 ---
 
@@ -431,7 +430,7 @@ All 26 Prompts (governance milestones) are CI-enforced. Every push must pass the
 | General | hello@vayupress.com |
 | Support | support@vayupress.com |
 | Security | security@vayupress.com |
-| Ethics violations | ethics@vayupress.com |
+| Ethics | ethics@vayupress.com |
 | Governance / RFCs | governance@vayupress.com |
 
 ---
