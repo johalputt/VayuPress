@@ -1,0 +1,48 @@
+name: Supply Chain — SBOM & Vulnerability Scan
+on:
+  push:
+    branches: [main, "claude/**"]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 3 * * 1'  # weekly Monday 03:00 UTC
+permissions:
+  contents: read
+jobs:
+  govulncheck:
+    name: "govulncheck — stdlib CVE scan"
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install C build tools
+        run: sudo apt-get install -y gcc build-essential
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache: true
+      - name: Run govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          "$(go env GOPATH)/bin/govulncheck" ./...
+          echo "✅ no vulnerabilities"
+
+  sbom:
+    name: "SBOM generation (CycloneDX)"
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache: true
+      - name: Install cyclonedx-gomod
+        run: go install github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@latest
+      - name: Generate SBOM
+        run: |
+          "$(go env GOPATH)/bin/cyclonedx-gomod" mod -output sbom.json -json
+          echo "✅ SBOM generated"
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom.json

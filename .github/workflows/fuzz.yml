@@ -1,0 +1,31 @@
+name: Fuzz — Critical Path Safety
+on:
+  schedule:
+    - cron: '0 2 * * 0'  # weekly Sunday 02:00 UTC
+  workflow_dispatch:
+    inputs:
+      fuzz_time:
+        description: 'Fuzz duration per target (e.g. 30s, 2m)'
+        default: '30s'
+permissions:
+  contents: read
+jobs:
+  fuzz:
+    name: "Fuzz critical parsers"
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install C build tools
+        run: sudo apt-get install -y gcc build-essential
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache: true
+      - name: Fuzz migrations parser
+        run: |
+          TIME="${{ github.event.inputs.fuzz_time || '30s' }}"
+          go test -fuzz=FuzzMigratorApply -fuzztime="$TIME" ./internal/migrations/
+      - name: Fuzz event schema validator
+        run: |
+          TIME="${{ github.event.inputs.fuzz_time || '30s' }}"
+          go test -fuzz=FuzzValidate -fuzztime="$TIME" ./internal/events/schema/
