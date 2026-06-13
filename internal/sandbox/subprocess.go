@@ -42,6 +42,7 @@ type SubprocessPlugin struct {
 	quarantined   bool
 	invocations   atomic.Int64
 	cgroupCleanup func()
+	confinement   *PluginConfinement
 }
 
 // NewSubprocessPlugin creates a SubprocessPlugin. Call Start before Invoke.
@@ -49,6 +50,7 @@ func NewSubprocessPlugin(m Manifest) *SubprocessPlugin {
 	return &SubprocessPlugin{
 		manifest:      m,
 		cgroupCleanup: func() {},
+		confinement:   &PluginConfinement{},
 	}
 }
 
@@ -61,20 +63,24 @@ func (p *SubprocessPlugin) start() error {
 		}
 	}
 
+	// P28: Set up filesystem confinement (tmpfs scratch, mount namespace).
+	p.confinement = SetupConfinement(p.manifest)
+
+	// P28: Close stray inherited FDs before exec — CLOEXEC all extras.
+	CloseExtraFDs(nil)
+
 	cmd := exec.Command(p.manifest.Executable, p.manifest.Args...)
 	// Minimal, sanitised environment — parent env is NOT inherited.
-	cmd.Env = append([]string{
-		"PATH=/usr/local/bin:/usr/bin:/bin",
-		"HOME=/tmp",
-		"PLUGIN_NAME=" + p.manifest.Name,
-	}, p.manifest.Env...)
+	cmd.Env = PrepareExecEnv(p.manifest, p.confinement.ScratchDir())
 
 	stdinPipe, err := cmd.StdinPipe()
 	if err != nil {
+		p.confinement.Cleanup()
 		return fmt.Errorf("sandbox: stdin pipe: %w", err)
 	}
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
+		p.confinement.Cleanup()
 		return fmt.Errorf("sandbox: stdout pipe: %w", err)
 	}
 	// Discard stderr to prevent subprocess from polluting host output.
@@ -82,7 +88,8 @@ func (p *SubprocessPlugin) start() error {
 
 	applyProcAttr(cmd)
 	applyRunAs(cmd, p.manifest.RunAs)
-	nsFlags := namespaceCloneflags(p.manifest)
+	// P27 namespaces + P28 mount namespace.
+	nsFlags := namespaceCloneflags(p.manifest) | MountNamespaceFlags(p.manifest)
 	applyNamespaceFlags(cmd, nsFlags)
 
 	if err := cmd.Start(); err != nil {
@@ -251,6 +258,10 @@ func (p *SubprocessPlugin) killSubprocess() {
 	if p.cgroupCleanup != nil {
 		p.cgroupCleanup()
 		p.cgroupCleanup = func() {}
+	}
+	if p.confinement != nil {
+		p.confinement.Cleanup()
+		p.confinement = &PluginConfinement{}
 	}
 }
 

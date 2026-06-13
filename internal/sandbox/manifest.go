@@ -82,6 +82,15 @@ type Manifest struct {
 	// RunAs is an optional "uid:gid" string. If set on Linux, the subprocess is
 	// launched under the given numeric uid/gid via SysProcAttr.Credential.
 	RunAs string
+
+	// ConfineMounts enables CLONE_NEWNS + private tmpfs scratch directory.
+	// The plugin gets a read-only view of allowed paths and a writable tmpfs.
+	ConfineMounts bool
+
+	// DropCaps instructs the sandbox to drop all Linux capabilities before exec.
+	// Requires ConfineMounts (needs the child-setup path). Default true when
+	// running as root; ignored on non-Linux.
+	DropCaps bool
 }
 
 // ResourceLimits declares cgroup v2 resource ceilings for a sandboxed plugin.
