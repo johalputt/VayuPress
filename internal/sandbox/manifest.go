@@ -55,6 +55,18 @@ type Manifest struct {
 	// plugin subprocess. Sensitive parent env vars are NOT inherited by default.
 	Env []string
 
+	// ResourceLimits declares cgroup v2 resource ceilings for this plugin's subprocess.
+	// Limits are applied after start. A zero value means unlimited.
+	ResourceLimits ResourceLimits
+
+	// IsolatePID runs the plugin in its own PID namespace (CLONE_NEWPID).
+	// The plugin cannot see or signal host processes. Default true.
+	IsolatePID bool
+
+	// IsolateIPC runs the plugin in its own IPC namespace (CLONE_NEWIPC).
+	// Prevents shared-memory and semaphore access to the host. Default true.
+	IsolateIPC bool
+
 	// ExecutableHash is the expected SHA-256 hex digest of the plugin binary.
 	// If non-empty, start() verifies the binary before launching the subprocess.
 	ExecutableHash string
@@ -70,6 +82,13 @@ type Manifest struct {
 	// RunAs is an optional "uid:gid" string. If set on Linux, the subprocess is
 	// launched under the given numeric uid/gid via SysProcAttr.Credential.
 	RunAs string
+}
+
+// ResourceLimits declares cgroup v2 resource ceilings for a sandboxed plugin.
+type ResourceLimits struct {
+	MemoryMaxBytes  int64 // 0 = unlimited; e.g. 128<<20 for 128 MiB
+	CPUQuotaPercent int   // 0 = unlimited; 50 = 50% of one CPU; 200 = 2 CPUs
+	MaxPIDs         int   // 0 = unlimited; max number of PIDs in the cgroup
 }
 
 const (

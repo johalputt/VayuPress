@@ -15,9 +15,18 @@ func applyProcAttr(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Pdeathsig: syscall.SIGKILL, // kill child if parent dies
 		Setpgid:   true,            // own process group — kill group on timeout
-		// NoNewPrivs (PR_SET_NO_NEW_PRIVS) is set via unix.Prctl in
-		// applyNoNewPrivs called after fork — see seccomp_linux.go.
 	}
+}
+
+// applyNamespaceFlags OR's namespace clone flags into the existing SysProcAttr.
+func applyNamespaceFlags(cmd *exec.Cmd, flags uintptr) {
+	if flags == 0 {
+		return
+	}
+	if cmd.SysProcAttr == nil {
+		cmd.SysProcAttr = &syscall.SysProcAttr{}
+	}
+	cmd.SysProcAttr.Cloneflags |= flags
 }
 
 // applyRunAs parses a "uid:gid" string and sets SysProcAttr.Credential.

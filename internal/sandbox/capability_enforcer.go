@@ -23,6 +23,11 @@ func EnforceCapabilities(m Manifest, hook string, payload map[string]interface{}
 		if !m.AllowsReadPath(path) && !m.AllowsWritePath(path) {
 			return fmt.Errorf("%w: hook %q path %q not in allowed paths", ErrCapabilityDenied, hook, path)
 		}
+		// Symlink traversal: verify the resolved target is also within allowed paths.
+		combined := append(append([]string{}, m.AllowedReadPaths...), m.AllowedWritePaths...)
+		if err := ResolveAndCheckPath(path, combined); err != nil {
+			return err
+		}
 	}
 	return nil
 }

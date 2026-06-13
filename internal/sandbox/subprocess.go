@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/johalputt/vayupress/internal/logging"
@@ -19,23 +20,36 @@ import (
 // and has been permanently disabled until the process restarts.
 var ErrQuarantined = errors.New("sandbox: plugin quarantined after repeated crashes")
 
+// isEPERM returns true if the error wraps a syscall.EPERM permission error.
+func isEPERM(err error) bool {
+	var errno syscall.Errno
+	if errors.As(err, &errno) {
+		return errno == syscall.EPERM
+	}
+	return false
+}
+
 // SubprocessPlugin manages the lifecycle of a single sandboxed plugin process.
 // Call Invoke to dispatch a hook; the subprocess handles it and returns a Response.
 // On crash the subprocess is restarted up to Manifest.MaxRestarts times before quarantine.
 type SubprocessPlugin struct {
-	manifest    Manifest
-	mu          sync.Mutex
-	cmd         *exec.Cmd
-	stdin       *bufio.Writer
-	stdout      *bufio.Scanner
-	crashes     int
-	quarantined bool
-	invocations atomic.Int64
+	manifest      Manifest
+	mu            sync.Mutex
+	cmd           *exec.Cmd
+	stdin         *bufio.Writer
+	stdout        *bufio.Scanner
+	crashes       int
+	quarantined   bool
+	invocations   atomic.Int64
+	cgroupCleanup func()
 }
 
 // NewSubprocessPlugin creates a SubprocessPlugin. Call Start before Invoke.
 func NewSubprocessPlugin(m Manifest) *SubprocessPlugin {
-	return &SubprocessPlugin{manifest: m}
+	return &SubprocessPlugin{
+		manifest:      m,
+		cgroupCleanup: func() {},
+	}
 }
 
 // start launches the plugin subprocess. Caller must hold p.mu.
@@ -68,10 +82,43 @@ func (p *SubprocessPlugin) start() error {
 
 	applyProcAttr(cmd)
 	applyRunAs(cmd, p.manifest.RunAs)
+	nsFlags := namespaceCloneflags(p.manifest)
+	applyNamespaceFlags(cmd, nsFlags)
 
 	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("sandbox: start %s: %w", p.manifest.Executable, err)
+		// EPERM may mean the kernel rejected namespace creation (e.g. unprivileged user).
+		// Retry without namespace flags so the plugin still starts.
+		if isEPERM(err) && nsFlags != 0 {
+			logging.LogJSON(logging.LogFields{
+				Level:     "warn",
+				Component: "sandbox",
+				Msg:       fmt.Sprintf("sandbox: namespace flags rejected (EPERM) for %s — retrying without namespaces", p.manifest.Name),
+			})
+			cmd2 := exec.Command(p.manifest.Executable, p.manifest.Args...)
+			cmd2.Env = cmd.Env
+			stdinPipe2, err2 := cmd2.StdinPipe()
+			if err2 != nil {
+				return fmt.Errorf("sandbox: stdin pipe (retry): %w", err2)
+			}
+			stdoutPipe2, err2 := cmd2.StdoutPipe()
+			if err2 != nil {
+				return fmt.Errorf("sandbox: stdout pipe (retry): %w", err2)
+			}
+			cmd2.Stderr = nil
+			applyProcAttr(cmd2)
+			applyRunAs(cmd2, p.manifest.RunAs)
+			// Cloneflags intentionally left zero — no namespace isolation.
+			if err2 := cmd2.Start(); err2 != nil {
+				return fmt.Errorf("sandbox: start %s: %w", p.manifest.Executable, err2)
+			}
+			cmd = cmd2
+			stdinPipe = stdinPipe2
+			stdoutPipe = stdoutPipe2
+		} else {
+			return fmt.Errorf("sandbox: start %s: %w", p.manifest.Executable, err)
+		}
 	}
+	p.cgroupCleanup = setupCgroup(p.manifest, cmd.Process.Pid)
 	p.cmd = cmd
 	p.stdin = bufio.NewWriter(stdinPipe)
 
@@ -201,6 +248,10 @@ func (p *SubprocessPlugin) killSubprocess() {
 	p.cmd = nil
 	p.stdin = nil
 	p.stdout = nil
+	if p.cgroupCleanup != nil {
+		p.cgroupCleanup()
+		p.cgroupCleanup = func() {}
+	}
 }
 
 // handleCrash increments the crash counter and quarantines the plugin if the
