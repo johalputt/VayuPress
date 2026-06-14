@@ -140,11 +140,25 @@ echo ""
 
 require_root
 
+# Secrets: auto-generate strong random values when unset so a fresh install
+# never silently runs with an empty/guessable key. Generated values are written
+# to /etc/vayupress/env (mode 600) below, so they persist across reruns. On an
+# upgrade with an existing env file we never regenerate — the old keys win.
+gen_secret() {
+  if command -v openssl >/dev/null 2>&1; then
+    openssl rand -hex 32
+  else
+    head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n'
+  fi
+}
+
 if [[ -z "$API_KEY" ]]; then
-  die "API_KEY is not set. Generate one: openssl rand -hex 32"
+  API_KEY="$(gen_secret)"
+  warn "API_KEY was unset — generated a random one. It will be saved to /etc/vayupress/env (chmod 600)."
 fi
 if [[ -z "$MEILI_MASTER_KEY" ]]; then
-  die "MEILI_MASTER_KEY is not set. Generate one: openssl rand -hex 32"
+  MEILI_MASTER_KEY="$(gen_secret)"
+  warn "MEILI_MASTER_KEY was unset — generated a random one. It will be saved to /etc/vayupress/env (chmod 600)."
 fi
 
 info "Pre-flight checks passed."
