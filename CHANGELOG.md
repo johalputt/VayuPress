@@ -56,6 +56,17 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   auditable classifier in `timelineSeverity`); the CSP violation log adopts the
   `VIOLATION` level; and `GET /api/v1/admin/severity` publishes the full taxonomy
   so the vocabulary is self-documenting and auditable.
+- **Causal lineage on the timeline**: each event now carries a deterministic,
+  render-stable `provenance.id` and a `provenance.parent_id`, turning the flat
+  narrative into a traversable operational graph (boot chain → governance arming →
+  fault/CSP/mode escalation ancestry → posture). Links are structural and honest —
+  derived from genuine subsystem relationships, computed over the full set before
+  display truncation so ancestors keep stable identity.
+- **Event retention doctrine** (`docs/governance/event-retention.md`): explicit
+  classification of every event store as ephemeral / durable / replayable /
+  audit-grade / operator-cognition, with the governing rule that a signal's
+  retention class must match its purpose (the timeline is a projection, not a
+  ledger; the CSP ring is ephemeral with a durable log/metric shadow).
 - **WCAG AA contrast warnings**: saving the palette returns advisory (non-blocking)
   warnings when a primary colour falls below 4.5:1 on its page background. The
   shipped **default light primary changed from `#0d9488` (3.6:1) to `#0f766e`

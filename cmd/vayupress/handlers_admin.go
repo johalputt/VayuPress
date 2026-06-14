@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"html/template"
 	"io"
 	"net/http"
@@ -558,9 +559,11 @@ type tlEntry struct {
 // correlation ID (that flows through the outbox/trace subsystem), so it is left
 // empty rather than fabricated. Honest gaps over invented attribution.
 type tlProvenance struct {
+	ID            string `json:"id,omitempty"`             // deterministic event id (stable across renders)
+	ParentID      string `json:"parent_id,omitempty"`      // causal parent event id — enables graph traversal
 	Source        string `json:"source,omitempty"`         // subsystem: runtime|db|governance|queue|mode|fault|csp
 	Actor         string `json:"actor,omitempty"`          // system|operator|policy|browser
-	Cause         string `json:"cause,omitempty"`          // causal parent (e.g. mode transition cause)
+	Cause         string `json:"cause,omitempty"`          // human-readable causal label (e.g. mode transition cause)
 	CorrelationID string `json:"correlation_id,omitempty"` // when the event carries one (outbox-sourced)
 	Build         string `json:"build,omitempty"`          // deployment version, when exact for this event
 	PolicyRev     string `json:"policy_rev,omitempty"`     // config/policy revision, when relevant
@@ -738,11 +741,77 @@ func buildOperationalTimeline(snap *adminMetricsSnapshot, faultNames []string, f
 		})
 	}
 
+	// Assign deterministic IDs and causal parent links over the FULL set (before
+	// truncation) so lineage is stable and ancestors keep their identity even when
+	// trimmed out of the display window.
+	linkCausalLineage(out)
+
 	// Keep the most recent 14 entries so a long transition history stays legible.
 	if len(out) > 14 {
 		out = out[len(out)-14:]
 	}
 	return out
+}
+
+// eventID derives a deterministic, render-stable id from an entry's identifying
+// fields, so the same logical event keeps the same id across timeline rebuilds
+// (the timeline is synthesized per request) and can be referenced as a parent.
+func eventID(e tlEntry) string {
+	h := fnv.New64a()
+	_, _ = h.Write([]byte(e.Prov.Source + "|" + e.Clock + "|" + e.Msg))
+	return fmt.Sprintf("ev_%016x", h.Sum64())
+}
+
+// linkCausalLineage assigns each entry an id and a causal parent id, turning the
+// flat narrative into a traversable operational graph. Links are STRUCTURAL and
+// honest — derived from the genuine relationships between subsystems, not invented:
+//
+//	runtime.boot → db.ready → escalator.arm → workers.start         (boot chain)
+//	escalator.arm → csp.policy                                       (governance arming)
+//	csp.policy   → csp.violation                                    (a breach depends on the policy)
+//	escalator.arm → fault.trigger                                   (faults advance an armed rule)
+//	escalator.arm → mode.transition → mode.transition → …           (escalation / recovery ancestry)
+//	last mode (or boot) → steady|monitor                            (current posture)
+func linkCausalLineage(entries []tlEntry) {
+	for i := range entries {
+		entries[i].Prov.ID = eventID(entries[i])
+	}
+	var bootCursor, armAnchor, cspPolicyAnchor, lastMode string
+	for i := range entries {
+		e := &entries[i]
+		switch {
+		case e.Cat == "runtime":
+			e.Prov.ParentID = "" // root
+			bootCursor = e.Prov.ID
+		case e.Cat == "db" || e.Cat == "queue":
+			e.Prov.ParentID = bootCursor
+			bootCursor = e.Prov.ID
+		case e.Cat == "govern": // escalator.arm
+			e.Prov.ParentID = bootCursor
+			bootCursor = e.Prov.ID
+			armAnchor = e.Prov.ID
+		case e.Cat == "csp" && strings.HasPrefix(e.Msg, "csp.policy"):
+			e.Prov.ParentID = armAnchor
+			cspPolicyAnchor = e.Prov.ID
+		case e.Cat == "csp": // a violation depends on the policy it breached
+			e.Prov.ParentID = cspPolicyAnchor
+		case e.Cat == "fault":
+			e.Prov.ParentID = armAnchor
+		case e.Cat == "mode":
+			if lastMode != "" {
+				e.Prov.ParentID = lastMode // chain → escalation/recovery ancestry
+			} else {
+				e.Prov.ParentID = armAnchor
+			}
+			lastMode = e.Prov.ID
+		case e.Cat == "steady" || e.Cat == "monitor":
+			if lastMode != "" {
+				e.Prov.ParentID = lastMode
+			} else {
+				e.Prov.ParentID = bootCursor
+			}
+		}
+	}
 }
 
 // renderTimeline emits the Unified Operational Timeline panel HTML.

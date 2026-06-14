@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -79,5 +80,63 @@ func TestTimelineSeverityClassification(t *testing.T) {
 		if got := timelineSeverity(c.e).String(); got != c.want {
 			t.Errorf("classify %q/%q/%q = %s; want %s", c.e.Cat, c.e.Sev, c.e.Msg, got, c.want)
 		}
+	}
+}
+
+func TestCausalLineageFormsTraversableGraph(t *testing.T) {
+	resetCSPRing()
+	t.Cleanup(resetCSPRing)
+	recordCSPViolation("script-src", "https://x.example/b.js")
+
+	snap := &adminMetricsSnapshot{SnapshotAt: time.Now().UTC()}
+	entries := buildOperationalTimeline(snap, nil, nil)
+
+	byID := map[string]tlEntry{}
+	for _, e := range entries {
+		if e.Prov.ID == "" {
+			t.Fatalf("entry has no id: %q", e.Msg)
+		}
+		byID[e.Prov.ID] = e
+	}
+
+	var roots, cspViolation, cspPolicy string
+	for _, e := range entries {
+		if e.Prov.ParentID == "" {
+			roots = e.Prov.ID
+		}
+		switch {
+		case e.Cat == "csp" && strings.HasPrefix(e.Msg, "csp.policy"):
+			cspPolicy = e.Prov.ID
+		case e.Cat == "csp":
+			cspViolation = e.Prov.ID
+		}
+		// Every non-root parent must resolve to a real entry within the window
+		// (or be empty for the root) — no dangling references in a fresh build.
+		if e.Prov.ParentID != "" {
+			if _, ok := byID[e.Prov.ParentID]; !ok {
+				t.Errorf("entry %q references missing parent %q", e.Msg, e.Prov.ParentID)
+			}
+		}
+	}
+	if roots == "" {
+		t.Error("expected exactly one root event (runtime.boot)")
+	}
+	// A CSP violation must descend from the CSP policy it breached.
+	if cspViolation != "" && cspPolicy != "" {
+		if byID[cspViolation].Prov.ParentID != cspPolicy {
+			t.Error("csp.violation should have csp.policy as its causal parent")
+		}
+	}
+}
+
+func TestEventIDIsDeterministic(t *testing.T) {
+	e := tlEntry{Clock: "00:00:01", Msg: "mode.transition — NORMAL → DEGRADED", Prov: tlProvenance{Source: "mode"}}
+	if eventID(e) != eventID(e) {
+		t.Error("eventID must be deterministic for identical input")
+	}
+	e2 := e
+	e2.Msg = "different"
+	if eventID(e) == eventID(e2) {
+		t.Error("eventID must differ for different messages")
 	}
 }
