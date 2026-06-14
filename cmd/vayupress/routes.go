@@ -125,5 +125,7 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 		r.HandleFunc("/debug/pprof/*", a.pprofHandler)
 	})
 
+	r.Get("/", a.handleHome)
+	r.NotFound(a.handleNotFound)
 	r.Get("/{slug}", a.handleArticlePage)
 }

@@ -205,10 +205,70 @@ func (a *App) handleAdminCachePurge(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, 200, map[string]interface{}{"message": "cache purged", "purge_type": purgeType, "purged": purged, "request_id": rid})
 }
 
+// handleHome renders the public homepage index from the most recent articles.
+// It serves a cached copy when present and regenerates on cache miss.
+func (a *App) handleHome(w http.ResponseWriter, r *http.Request) {
+	cachePath := filepath.Join(config.Cfg.CacheDir, "home", "index.html")
+	if _, err := os.Stat(cachePath); err == nil {
+		atomic.AddInt64(&metrics.MetricCacheHits, 1)
+		http.ServeFile(w, r, cachePath)
+		return
+	}
+	atomic.AddInt64(&metrics.MetricCacheMisses, 1)
+
+	var total int
+	dbpkg.DB.QueryRow(`SELECT COUNT(1) FROM articles`).Scan(&total)
+
+	rows, err := dbpkg.DB.Query(`SELECT title,slug,content,tags,created_at FROM articles ORDER BY created_at DESC LIMIT 30`)
+	var articles []render.HomeArticle
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var ha render.HomeArticle
+			var content, tagsStr string
+			if rows.Scan(&ha.Title, &ha.Slug, &content, &tagsStr, &ha.CreatedAt) == nil {
+				ha.Tags = api.SplitTags(tagsStr)
+				ha.Excerpt = excerptFromHTML(content, 160)
+				articles = append(articles, ha)
+			}
+		}
+	}
+
+	html, err := render.RenderHome(config.Cfg.Domain, Version, articles, total)
+	if err != nil {
+		http.Error(w, "render error", 500)
+		return
+	}
+	render.CacheWrite(filepath.Join("home", "index.html"), html) //nolint:errcheck
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprint(w, html)
+}
+
+// handleNotFound renders the branded 404 page.
+func (a *App) handleNotFound(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusNotFound)
+	fmt.Fprint(w, render.Render404(config.Cfg.Domain, Version))
+}
+
+// excerptFromHTML strips tags and returns a trimmed plain-text excerpt.
+func excerptFromHTML(s string, n int) string {
+	s = render.StripHTML(s)
+	s = strings.TrimSpace(strings.Join(strings.Fields(s), " "))
+	if len(s) > n {
+		cut := s[:n]
+		if idx := strings.LastIndex(cut, " "); idx > n/2 {
+			cut = cut[:idx]
+		}
+		return cut + "…"
+	}
+	return s
+}
+
 func (a *App) handleArticlePage(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	if !api.IsValidSlug(slug) {
-		http.NotFound(w, r)
+		a.handleNotFound(w, r)
 		return
 	}
 	isAdmin := r.Header.Get("X-API-Key") == config.Cfg.APIKey
@@ -224,7 +284,7 @@ func (a *App) handleArticlePage(w http.ResponseWriter, r *http.Request) {
 	var art dbpkg.Article
 	var tagsStr string
 	if err := dbpkg.DB.QueryRow(`SELECT id,title,slug,content,tags,created_at,updated_at FROM articles WHERE slug=?`, slug).Scan(&art.ID, &art.Title, &art.Slug, &art.Content, &tagsStr, &art.CreatedAt, &art.UpdatedAt); err == sql.ErrNoRows {
-		http.NotFound(w, r)
+		a.handleNotFound(w, r)
 		return
 	}
 	art.Tags = api.SplitTags(tagsStr)
