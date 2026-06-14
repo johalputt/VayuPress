@@ -174,7 +174,9 @@ var articleTmpl = template.Must(template.New("article").Funcs(template.FuncMap{
 <meta property="article:modified_time" content="{{.UpdatedAt | isoDate}}">
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"{{.Title | jsonAttr}}","datePublished":"{{.CreatedAt | isoDate}}","dateModified":"{{.UpdatedAt | isoDate}}","inLanguage":"en","author":{"@type":"Person","name":"Ankush Choudhary Johal","url":"https://{{.Domain}}/about"},"publisher":{"@type":"Organization","name":"VayuPress","url":"https://{{.Domain}}"}}</script>
 {{.ArticleCSSLink}}{{.HighContrastCSSLink}}
-<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="icon" type="image/png" href="/static/favicon-dark.png" media="(prefers-color-scheme: light)">
+<link rel="icon" type="image/png" href="/static/favicon-light.png" media="(prefers-color-scheme: dark)">
+<link rel="icon" type="image/png" href="/static/favicon-light.png">
 </head><body>
 <a href="#main-content" class="skip-link">Skip to main content</a>
 <div class="container"><main id="main-content">
@@ -221,12 +223,14 @@ var homeTmpl = template.Must(template.New("home").Funcs(homeFuncs).Parse(`<!DOCT
 <meta property="og:type" content="website"><meta property="og:title" content="{{.Domain}}">
 <meta property="og:url" content="https://{{.Domain}}/">
 {{.ArticleCSSLink}}{{.HighContrastCSSLink}}
-<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="icon" type="image/png" href="/static/favicon-dark.png" media="(prefers-color-scheme: light)">
+<link rel="icon" type="image/png" href="/static/favicon-light.png" media="(prefers-color-scheme: dark)">
+<link rel="icon" type="image/png" href="/static/favicon-light.png">
 </head><body>
 <a href="#main-content" class="skip-link">Skip to main content</a>
 <div class="container">
 <nav class="site-nav" aria-label="Primary">
-  <a href="/" class="site-nav-brand"><img class="site-nav-brand-icon" src="/favicon.svg" alt="" width="22" height="22">VayuPress</a>
+  <a href="/" class="site-nav-brand"><img class="site-nav-brand-icon" src="/static/favicon-light.png" alt="" width="24" height="24">VayuPress</a>
   <div class="site-nav-links">
     <a href="/">Home</a>
     <a href="/feed.xml">Feed</a>
@@ -256,7 +260,7 @@ var homeTmpl = template.Must(template.New("home").Funcs(homeFuncs).Parse(`<!DOCT
 </a>{{end}}
 </div>{{else}}<div class="home-empty">No articles published yet. The runtime is live and waiting.</div>{{end}}
 </main>
-<footer><div class="footer-brand"><img class="site-nav-brand-icon" src="/favicon.svg" alt="" width="22" height="22">VayuPress</div><span class="footer-badge">runtime · governed</span></footer>
+<footer><div class="footer-brand"><img class="site-nav-brand-icon" src="/static/favicon-light.png" alt="" width="24" height="24">VayuPress</div><span class="footer-badge">runtime · governed</span></footer>
 </div></body></html>`))
 
 var notFoundTmpl = template.Must(template.New("404").Parse(`<!DOCTYPE html><html lang="en"><head>
@@ -264,11 +268,13 @@ var notFoundTmpl = template.Must(template.New("404").Parse(`<!DOCTYPE html><html
 <title>404 — {{.Domain}}</title><meta name="robots" content="noindex">
 <meta name="generator" content="VayuPress {{.Version}}">
 {{.ArticleCSSLink}}{{.HighContrastCSSLink}}
-<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="icon" type="image/png" href="/static/favicon-dark.png" media="(prefers-color-scheme: light)">
+<link rel="icon" type="image/png" href="/static/favicon-light.png" media="(prefers-color-scheme: dark)">
+<link rel="icon" type="image/png" href="/static/favicon-light.png">
 </head><body>
 <div class="container">
 <nav class="site-nav" aria-label="Primary">
-  <a href="/" class="site-nav-brand"><img class="site-nav-brand-icon" src="/favicon.svg" alt="" width="22" height="22">VayuPress</a>
+  <a href="/" class="site-nav-brand"><img class="site-nav-brand-icon" src="/static/favicon-light.png" alt="" width="24" height="24">VayuPress</a>
   <div class="site-nav-links"><a href="/">Home</a><a href="/feed.xml">Feed</a><a href="/admin">Console</a></div>
   <span class="mode-indicator"><span class="mode-dot"></span>runtime · normal</span>
 </nav>

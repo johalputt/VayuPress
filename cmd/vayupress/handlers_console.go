@@ -97,12 +97,14 @@ func (a *App) writeConsoleShellHead(w http.ResponseWriter, r *http.Request, acti
 	fmt.Fprintf(w, `<!DOCTYPE html><html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>VayuPress — %s</title><meta name="robots" content="noindex, nofollow">
-<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="icon" type="image/png" href="/static/favicon-dark.png" media="(prefers-color-scheme: light)">
+<link rel="icon" type="image/png" href="/static/favicon-light.png" media="(prefers-color-scheme: dark)">
+<link rel="icon" type="image/png" href="/static/favicon-light.png">
 %s%s</head><body>
 <a href="#main-content" class="skip-link">Skip to main content</a>
 <div class="app-shell">
 <header class="topbar" role="banner">
-  <a href="/admin" class="topbar-logo"><img class="brand-mark" src="/static/logo.svg" alt="" width="26" height="26"><span class="topbar-wordmark">VayuPress</span><span class="topbar-sep">/</span><span class="topbar-domain">%s</span></a>
+  <a href="/admin" class="topbar-logo"><img class="brand-mark" src="/static/favicon-light.png" alt="" width="28" height="28"><span class="topbar-wordmark">VayuPress</span><span class="topbar-sep">/</span><span class="topbar-domain">%s</span></a>
   <div class="topbar-center"><div class="live-chip"><span class="live-dot"></span>LIVE</div><span class="topbar-constitution">Constitution v6.0 · P1–P27 · Ω1–Ω9</span></div>
   <div class="topbar-right"><span class="mode-badge %s"><span class="pulse-dot"></span>%s</span><a href="/admin" class="kbd-hint">← Console</a></div>
 </header>

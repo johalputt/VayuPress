@@ -769,13 +769,15 @@ func (a *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, `<!DOCTYPE html><html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>VayuPress — %s</title><meta name="robots" content="noindex, nofollow">
-<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="icon" type="image/png" href="/static/favicon-dark.png" media="(prefers-color-scheme: light)">
+<link rel="icon" type="image/png" href="/static/favicon-light.png" media="(prefers-color-scheme: dark)">
+<link rel="icon" type="image/png" href="/static/favicon-light.png">
 %s%s</head><body>%s
 <a href="#main-content" class="skip-link">Skip to main content</a>
 <div class="app-shell">
 <header class="topbar" role="banner">
   <a href="/admin" class="topbar-logo">
-    <img class="brand-mark" src="/static/logo.svg" alt="VayuPress" width="26" height="26">
+    <img class="brand-mark" src="/static/favicon-light.png" alt="VayuPress" width="28" height="28">
     <span class="topbar-wordmark">VayuPress</span>
     <span class="topbar-sep">/</span>
     <span class="topbar-domain">%s</span>
