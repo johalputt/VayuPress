@@ -67,6 +67,10 @@ type BulkCreateItem struct {
 func (s *ArticleService) Create(ctx context.Context, title, slug, content string, tags []string) (CreateResult, error) {
 	ctx, span := trace.Start(ctx, "ArticleService.Create")
 	defer span.End()
+	// Auto-derive a slug from the title when the caller omits one (ADR-0047).
+	if slug == "" {
+		slug = Slugify(title)
+	}
 	span.SetAttribute("slug", slug)
 	if err := ValidateArticleInput(title, slug, content, tags); err != nil {
 		span.SetError(err)

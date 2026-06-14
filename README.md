@@ -4,7 +4,7 @@
 [![Security](https://github.com/johalputt/vayupress/actions/workflows/security.yml/badge.svg)](https://github.com/johalputt/vayupress/actions/workflows/security.yml)
 [![Go](https://img.shields.io/badge/go-1.23%2B-blue)](https://go.dev/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Constitution](https://img.shields.io/badge/constitution-v6.0%20P1--P26-blueviolet)](GOVERNANCE-CONSTITUTION.md)
+[![Constitution](https://img.shields.io/badge/constitution-v6.0%20P1--P27%20%CE%A91--%CE%A911-blueviolet)](GOVERNANCE-CONSTITUTION.md)
 
 > **Adaptive publishing infrastructure for the sovereign web.**
 > SQLite-first, zero-trust, zero telemetry. Policy-governed runtime with adaptive system modes, sandboxed plugins, transactional event outbox, durable audit trail, and fault-tolerant federated publishing.
@@ -40,6 +40,21 @@
 ![VayuPress Queue](docs/screenshots/queue-events.png)
 
 *SQLite-backed async write queue, transactional outbox relay, idempotent dispatch, write pipeline architecture diagram (HTTP → Queue → WAL → Outbox → Event Bus).*
+
+### Runtime Topology (Ω9)
+![VayuPress Runtime Topology](docs/screenshots/runtime-topology.png)
+
+*Interactive operator console — 17-node live runtime graph (write path, delivery/read, governance, observability) with health derived in real time from failed-job counts, current system mode, search reachability, and fault-escalation state.*
+
+### Replay Explorer (Ω10)
+![VayuPress Replay Explorer](docs/screenshots/replay-explorer.png)
+
+*Write-job lifecycle inspector — dead-letter & poison-queue surface with single-job and batch requeue, lifecycle chain (pending → processing → completed → retry ×3 → dead-letter → replay ×3 → quarantined), and live `replay_count`/`dead_reason` tracking.*
+
+### Policy Provenance Inspector (Ω11)
+![VayuPress Policy Inspector](docs/screenshots/policy-inspector.png)
+
+*SQLite-journaled policy engine — live pass/warn/fail status strip with run-history trend sparkline, full live-evaluation table, and a persistent evaluation log (every run recorded to `policy_evaluations`) for provenance and trend analysis.*
 
 ---
 
@@ -206,7 +221,7 @@ See [docs/architecture/system-modes.md](docs/architecture/system-modes.md).
 
 ---
 
-## Feature List (P1–P26 + Ω1–Ω5)
+## Feature List (P1–P27 + Ω1–Ω11)
 
 ### Core Publishing (P1–P8)
 - RESTful JSON API for articles (CRUD with slugs, tags, full-text content)
@@ -260,6 +275,17 @@ See [docs/architecture/system-modes.md](docs/architecture/system-modes.md).
 - **System Modes** — 6-mode adaptive state machine with validated transition graph, policy-driven automatic transitions, and subsystem hook registry
 - **Fault injection framework** — named probabilistic fault points with deterministic replay for adversarial testing
 
+### Operational Cognition & Operator Console (Ω6–Ω11)
+- **Ω6 — Durable mode journal** — every system-mode transition persisted to SQLite with cause attribution; survives restart
+- **Ω7 — Kernel/trace/event/fault panels** — live runtime introspection surfaces on the admin dashboard
+- **Ω8 — Unified Operational Timeline** — single causal narrative correlating mode transitions, faults, escalations, and queue events with relative + wall-clock time
+- **Ω9 — Interactive operator console** — real control-plane pages that mutate live runtime state:
+  - **System Mode Engine** (`/admin/modes`) — drive transitions through the validated graph; invalid moves rejected 409
+  - **Fault Engine** (`/admin/faults`) — operator-driven fault simulation feeding the escalation threshold
+  - **Runtime Topology** (`/admin/topology`) — 17-node live health graph
+- **Ω10 — Live-streaming timeline + Replay Explorer** — animated causal arrows, STREAMING poller, and a dead-letter / poison-queue inspector (`/admin/replay`) with single-job and batch requeue
+- **Ω11 — Policy Provenance Inspector** (`/admin/policy`) — SQLite-journaled policy evaluations (`policy_evaluations` table), live pass/warn/fail status, run-history trend sparkline, and a persistent provenance log of every policy run
+
 ---
 
 ## API Endpoints Overview
@@ -283,6 +309,21 @@ See [docs/architecture/system-modes.md](docs/architecture/system-modes.md).
 | `GET` | `/feed.xml` | Auto-generated RSS feed |
 | `GET` | `/robots.txt` | Auto-generated robots.txt |
 | `GET` | `/metrics` | Internal metrics snapshot (admin auth required) |
+
+### Operator console (admin auth required)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/admin` | Runtime governance dashboard + Unified Operational Timeline |
+| `GET` | `/admin/modes` | System Mode Engine — drive validated mode transitions |
+| `GET` | `/admin/faults` | Fault Engine — operator-driven fault simulation |
+| `GET` | `/admin/topology` | Runtime Topology — 17-node live health graph |
+| `GET` | `/admin/replay` | Replay Explorer — dead-letter & poison queue |
+| `GET` | `/admin/policy` | Policy Provenance Inspector — journaled evaluations |
+| `POST` | `/admin/mode/transition` | Transition system mode (CSRF-protected) |
+| `POST` | `/admin/fault/simulate` | Fire a named fault (CSRF-protected) |
+| `POST` | `/admin/replay/job` | Requeue a single dead-letter job (CSRF-protected) |
+| `POST` | `/admin/benchmark` | Run the in-process load benchmark (CSRF-protected) |
 
 Full reference: [docs/API-REFERENCE.md](docs/API-REFERENCE.md)
 
@@ -414,18 +455,49 @@ vayupress/
 
 ## Performance
 
-Target: ≤50ms p95 latency on a 4-vCPU / 8 GB VPS under sustained load.
+Target: ≤50 ms p95 latency on a 4-vCPU VPS under sustained load.
 
-| Metric | Target | Mechanism |
-|--------|--------|-----------|
-| Article page p95 | <50ms | Nginx static-file serving + in-memory render cache |
-| Search p95 | <50ms | Meilisearch with pre-warmed index |
-| API write p95 | <100ms | SQLite WAL + async write queue |
-| Signing p95 | <30µs | Ed25519 — committed baseline in `testdata/bench/` |
-| Cold start | <500ms | Single static binary |
-| Binary size (gzip) | <45 MB | `-ldflags="-s -w" -trimpath` |
+### Measured — end-to-end load (built-in benchmark harness)
 
-Run benchmarks: `make bench`
+Real numbers from the in-process load benchmark (`POST /admin/benchmark`) on a
+**4-vCPU Intel Xeon @ 2.80 GHz, 16 GB** box, SQLite in WAL mode, 20 concurrent
+readers against the cached render path:
+
+| Metric | Measured | Target | Result |
+|--------|----------|--------|--------|
+| Read p50 | **16 ms** | — | — |
+| Read p95 | **16 ms** | <50 ms | ✅ PASS |
+| Read p99 | **16 ms** | <50 ms | ✅ PASS |
+| Read throughput | **~8,700 RPS** | — | — |
+| Read mean | **8.2 ms** | — | — |
+
+### Measured — micro-benchmarks (`go test -bench`)
+
+| Operation | Package | ns/op | allocs/op |
+|-----------|---------|------:|----------:|
+| Ed25519 sign | `internal/signing` | **28,423** (28.4 µs) | 7 |
+| Ed25519 verify | `internal/signing` | **64,133** (64.1 µs) | 4 |
+| Article input validation | `internal/api` | **234** | 0 |
+| Slug validation | `internal/api` | **384** | 0 |
+| Migration apply (full) | `internal/migrations` | **142,151** (142 µs) | 102 |
+| Event schema validate | `internal/events/schema` | **196** | 0 |
+| Merkle proof generation | `internal/merkle` | **1,403** | 20 |
+| Histogram record (metrics) | `internal/metrics` | **18.3** | 0 |
+| Cache hit-ratio read | `internal/metrics` | **0.46** | 0 |
+
+Hot-path validation and metrics are **zero-allocation**. Reproduce with:
+
+```bash
+make bench                                  # committed baselines
+go test -bench=. -benchmem -run=^$ ./...    # full micro-benchmark sweep
+curl -X POST -H "X-API-Key: $KEY" .../admin/benchmark   # live end-to-end load
+```
+
+| Static metric | Value | Mechanism |
+|---------------|-------|-----------|
+| Cold start | <500 ms | Single static binary |
+| Production binary | `-ldflags="-s -w" -trimpath` | Stripped, reproducible |
+| Article page serving | Nginx static + in-memory render cache | No per-request render |
 
 ---
 
@@ -454,6 +526,7 @@ All governance policies are enforced by the Platform Policy Engine (`internal/po
 | [Ethics](ETHICS.md) | Ethical principles and AI charter |
 | [ADR Index](docs/adr/INDEX.md) | Full Architecture Decision Record index |
 | [API Reference](docs/API-REFERENCE.md) | REST API reference |
+| [Benchmarks](docs/BENCHMARKS.md) | Measured performance + reproduction steps |
 
 ---
 

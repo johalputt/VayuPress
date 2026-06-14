@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/johalputt/vayupress/internal/config"
@@ -89,6 +90,54 @@ func TestIsValidSlug(t *testing.T) {
 	}
 	if !IsValidSlug("a") {
 		t.Error("single char should be valid")
+	}
+}
+
+func TestSlugify(t *testing.T) {
+	cases := map[string]string{
+		"My Great Post!":         "my-great-post",
+		"Hello, World":           "hello-world",
+		"  spaced  out  ":        "spaced-out",
+		"already-a-slug":         "already-a-slug",
+		"Multiple   ---  Dashes": "multiple-dashes",
+		"UPPER CASE":             "upper-case",
+	}
+	for in, want := range cases {
+		if got := Slugify(in); got != want {
+			t.Errorf("Slugify(%q) = %q, want %q", in, got, want)
+		}
+	}
+	for _, in := range []string{"My Great Post!", "Hello, World", "UPPER CASE"} {
+		if got := Slugify(in); !IsValidSlug(got) {
+			t.Errorf("Slugify(%q) = %q is not a valid slug", in, got)
+		}
+	}
+}
+
+func TestValidateArticleInput_ErrorClassification(t *testing.T) {
+	// Invalid slug must surface as ErrInvalidSlug (→ HTTP 400), not a bare error.
+	err := ValidateArticleInput("Title", "BAD SLUG", "<p>x</p>", nil)
+	if !errors.Is(err, ErrInvalidSlug) {
+		t.Errorf("invalid slug: want ErrInvalidSlug, got %v", err)
+	}
+	if HTTPStatus(err) != 400 {
+		t.Errorf("invalid slug: want HTTP 400, got %d", HTTPStatus(err))
+	}
+	// Other field failures must surface as ErrValidation (→ HTTP 400).
+	for _, tc := range []struct {
+		name                 string
+		title, slug, content string
+	}{
+		{"empty title", "", "ok", "<p>x</p>"},
+		{"empty content", "Title", "ok", ""},
+	} {
+		err := ValidateArticleInput(tc.title, tc.slug, tc.content, nil)
+		if !errors.Is(err, ErrValidation) {
+			t.Errorf("%s: want ErrValidation, got %v", tc.name, err)
+		}
+		if HTTPStatus(err) != 400 {
+			t.Errorf("%s: want HTTP 400, got %d", tc.name, HTTPStatus(err))
+		}
 	}
 }
 

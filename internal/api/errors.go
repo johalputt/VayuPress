@@ -13,6 +13,7 @@ var (
 	ErrNotFound     = errors.New("not found")
 	ErrSlugConflict = errors.New("slug already exists")
 	ErrInvalidSlug  = errors.New("invalid slug")
+	ErrValidation   = errors.New("validation failed")
 	ErrStorageQuota = errors.New("storage quota exceeded")
 	ErrBulkLimit    = errors.New("max 1000 articles per request")
 )
@@ -25,6 +26,8 @@ func HTTPStatus(err error) int {
 	case errors.Is(err, ErrSlugConflict):
 		return http.StatusConflict
 	case errors.Is(err, ErrInvalidSlug):
+		return http.StatusBadRequest
+	case errors.Is(err, ErrValidation):
 		return http.StatusBadRequest
 	case errors.Is(err, ErrStorageQuota):
 		return http.StatusRequestEntityTooLarge
@@ -46,6 +49,8 @@ func ErrorCode(err error) string {
 		return "slug_conflict"
 	case errors.Is(err, ErrInvalidSlug):
 		return "invalid_slug"
+	case errors.Is(err, ErrValidation):
+		return "validation_failed"
 	case errors.Is(err, ErrStorageQuota):
 		return "storage_quota_exceeded"
 	case errors.Is(err, ErrBulkLimit):
