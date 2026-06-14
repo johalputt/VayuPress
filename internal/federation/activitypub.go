@@ -5,6 +5,7 @@ package federation
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"sync"
 	"time"
@@ -56,6 +57,21 @@ type Server struct {
 	inbox     []Activity
 	outbox    []Activity
 	followers []string
+
+	// keyResolver maps a Signature keyId to the signer's RSA public key (PEM).
+	// When non-nil, InboxHandler requires and verifies an HTTP signature on
+	// every inbound request; when nil, verification is skipped (the historical
+	// behaviour, retained for tests and trusted single-tenant deployments).
+	keyResolver func(keyID string) (string, error)
+}
+
+// SetKeyResolver enables HTTP-signature enforcement on the inbox. The resolver
+// receives the Signature header's keyId and must return the corresponding RSA
+// public key in PEM form, or an error if the key is unknown.
+func (s *Server) SetKeyResolver(fn func(keyID string) (string, error)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.keyResolver = fn
 }
 
 // NewServer creates an ActivityPub server for the given actor.
@@ -106,19 +122,59 @@ func (s *Server) ReceiveActivity(act Activity) {
 	}
 }
 
+// maxInboxBody bounds the inbound activity payload (10 MiB) so a hostile peer
+// cannot exhaust memory before signature verification.
+const maxInboxBody = 10 << 20
+
 // InboxHandler handles POST /inbox.
 func (s *Server) InboxHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxInboxBody))
+	if err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+
+	// When a key resolver is configured, every inbound request must carry a
+	// valid HTTP signature from a known actor before it is admitted.
+	s.mu.RLock()
+	resolver := s.keyResolver
+	s.mu.RUnlock()
+	if resolver != nil {
+		if err := s.verifyInbound(r, body, resolver); err != nil {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+	}
+
 	var act Activity
-	if err := json.NewDecoder(r.Body).Decode(&act); err != nil {
+	if err := json.Unmarshal(body, &act); err != nil {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
 	s.ReceiveActivity(act)
 	w.WriteHeader(http.StatusAccepted)
+}
+
+// verifyInbound resolves the signing key named in the Signature header and
+// verifies the request against it.
+func (s *Server) verifyInbound(r *http.Request, body []byte, resolver func(string) (string, error)) error {
+	params, err := parseSignatureHeader(r.Header.Get("Signature"))
+	if err != nil {
+		return err
+	}
+	pem, err := resolver(params["keyid"])
+	if err != nil {
+		return ErrSignatureInvalid
+	}
+	pub, err := ParseRSAPublicKeyPEM(pem)
+	if err != nil {
+		return ErrSignatureInvalid
+	}
+	return VerifyRequest(r, body, pub)
 }
 
 // OutboxHandler handles GET /outbox.
