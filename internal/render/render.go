@@ -66,7 +66,7 @@ func WithCSPNonce(ctx context.Context, nonce string) context.Context {
 var (
 	policy    *bluemonday.Policy
 	htmlTagRe = regexp.MustCompile(`<[^>]+>`)
-	cssHashes struct{ ArticleCSS, AdminCSS, HighContrastCSS string }
+	cssHashes struct{ ArticleCSS, AdminCSS, HighContrastCSS, CustomCSS string }
 )
 
 // Init initializes the HTML sanitizer, compiles the template, writes CSS assets, and warms the cache.
@@ -91,6 +91,7 @@ func WriteCSSAssets(staticDir string) {
 		{"article.css", articleCSSMin, &cssHashes.ArticleCSS},
 		{"admin.css", adminCSSMin, &cssHashes.AdminCSS},
 		{"high-contrast.css", hcCSSMin, &cssHashes.HighContrastCSS},
+		{"custom.css", customCSSMin, &cssHashes.CustomCSS},
 	} {
 		if err := os.WriteFile(filepath.Join(cssDir, a.name), []byte(a.content), 0644); err != nil {
 			continue
@@ -132,6 +133,9 @@ func HighContrastCSSLink() template.HTML {
 	return CSSLink("high-contrast.css", cssHashes.HighContrastCSS)
 }
 
+// CustomCSSLink returns the versioned <link> for the VayuPress brand overrides (custom.css).
+func CustomCSSLink() template.HTML { return CSSLink("custom.css", cssHashes.CustomCSS) }
+
 // ── Template ──────────────────────────────────────────────────────────────────
 
 type articlePage struct {
@@ -140,6 +144,7 @@ type articlePage struct {
 	Version             string
 	Layout              ArticleLayoutType
 	PicoCSSLink         template.HTML
+	CustomCSSLink       template.HTML
 	ArticleCSSLink      template.HTML
 	HighContrastCSSLink template.HTML
 }
@@ -191,21 +196,37 @@ var articleTmpl = template.Must(template.New("article").Funcs(template.FuncMap{
 <meta name="twitter:card" content="summary"><meta name="twitter:title" content="{{.Title}}">
 <meta name="twitter:description" content="{{trunc .Content 200}}">
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","mainEntityOfPage":{"@type":"WebPage","@id":"https://{{.Domain}}/{{.Slug}}"},"headline":"{{.Title | jsonAttr}}","description":"{{.Content | jsonAttr}}","datePublished":"{{.CreatedAt | isoDate}}","dateModified":"{{.UpdatedAt | isoDate}}","inLanguage":"en","author":{"@type":"Person","name":"Ankush Choudhary Johal","url":"https://{{.Domain}}/about"},"publisher":{"@type":"Organization","name":"VayuPress","url":"https://{{.Domain}}"}}</script>
-{{.PicoCSSLink}}{{.ArticleCSSLink}}{{.HighContrastCSSLink}}
+{{.PicoCSSLink}}{{.CustomCSSLink}}{{.ArticleCSSLink}}{{.HighContrastCSSLink}}
 <link rel="icon" type="image/png" href="/static/favicon-dark.png" media="(prefers-color-scheme: light)">
 <link rel="icon" type="image/png" href="/static/favicon-light.png" media="(prefers-color-scheme: dark)">
 <link rel="icon" type="image/png" href="/static/favicon-light.png">
 </head><body>
 <a href="#main-content" class="skip-link">Skip to main content</a>
-<div class="container"><main id="main-content">
-<article itemscope itemtype="https://schema.org/BlogPosting">
-<header><h1 itemprop="headline">{{.Title}}</h1>
-<div class="meta"><time itemprop="datePublished" datetime="{{.CreatedAt | shortDate}}">{{.CreatedAt | humanDate}}</time>
-<span>· {{.Content | readTime}} min read</span>
-{{if .Tags}}<nav class="tags" aria-label="Tags">{{range .Tags}}<a href="/tags/{{.}}" rel="tag">#{{.}}</a>{{end}}</nav>{{end}}</div>
-</header><div class="content" itemprop="articleBody">{{.Content | safeHTML}}</div>
+<div class="container">
+<nav class="vayu-nav" aria-label="Primary">
+  <a href="/" class="vayu-nav-brand"><img src="/static/favicon-light.png" alt="" width="24" height="24">VayuPress</a>
+  <div class="vayu-nav-links">
+    <a href="/">Home</a>
+    <a href="/feed.xml">Feed</a>
+    <a href="/admin">Console</a>
+  </div>
+</nav>
+<main id="main-content">
+<article class="vayu-prose" itemscope itemtype="https://schema.org/BlogPosting">
+<header class="vayu-article-header">
+<h1 itemprop="headline">{{.Title}}</h1>
+<div class="vayu-article-meta">
+  <time itemprop="datePublished" datetime="{{.CreatedAt | shortDate}}">{{.CreatedAt | humanDate}}</time>
+  <span>· {{.Content | readTime}} min read</span>
+  {{if .Tags}}<span aria-label="Tags">{{range .Tags}}<a class="vayu-tag" href="/tags/{{.}}" rel="tag">#{{.}}</a> {{end}}</span>{{end}}
+</div>
+</header>
+<div class="content" itemprop="articleBody">{{.Content | safeHTML}}</div>
 </article>
-<footer><p>By <strong>Ankush Choudhary Johal</strong> · Powered by <a href="https://vayupress.com">VayuPress</a></p></footer>
+<footer class="vayu-footer">
+  <span>By <strong>Ankush Choudhary Johal</strong> · Powered by <a href="https://vayupress.com">VayuPress</a></span>
+  <span class="vayu-footer-badge">runtime · governed</span>
+</footer>
 </main></div></body></html>`))
 
 // HomeArticle is a single entry rendered on the public homepage index.
@@ -221,6 +242,7 @@ type homePage struct {
 	Domain              string
 	Version             string
 	PicoCSSLink         template.HTML
+	CustomCSSLink       template.HTML
 	ArticleCSSLink      template.HTML
 	HighContrastCSSLink template.HTML
 	Articles            []HomeArticle
@@ -241,67 +263,69 @@ var homeTmpl = template.Must(template.New("home").Funcs(homeFuncs).Parse(`<!DOCT
 <link rel="alternate" type="application/rss+xml" title="{{.Domain}} feed" href="/feed.xml">
 <meta property="og:type" content="website"><meta property="og:title" content="{{.Domain}}">
 <meta property="og:url" content="https://{{.Domain}}/">
-{{.PicoCSSLink}}{{.ArticleCSSLink}}{{.HighContrastCSSLink}}
+{{.PicoCSSLink}}{{.CustomCSSLink}}{{.ArticleCSSLink}}{{.HighContrastCSSLink}}
 <link rel="icon" type="image/png" href="/static/favicon-dark.png" media="(prefers-color-scheme: light)">
 <link rel="icon" type="image/png" href="/static/favicon-light.png" media="(prefers-color-scheme: dark)">
 <link rel="icon" type="image/png" href="/static/favicon-light.png">
 </head><body>
 <a href="#main-content" class="skip-link">Skip to main content</a>
 <div class="container">
-<nav class="site-nav" aria-label="Primary">
-  <a href="/" class="site-nav-brand"><img class="site-nav-brand-icon" src="/static/favicon-light.png" alt="" width="24" height="24">VayuPress</a>
-  <div class="site-nav-links">
+<nav class="vayu-nav" aria-label="Primary">
+  <a href="/" class="vayu-nav-brand"><img src="/static/favicon-light.png" alt="" width="24" height="24">VayuPress</a>
+  <div class="vayu-nav-links">
     <a href="/">Home</a>
     <a href="/feed.xml">Feed</a>
     <a href="/admin">Console</a>
   </div>
-  <span class="mode-indicator"><span class="mode-dot"></span>runtime · normal</span>
+  <span style="font-size:.75rem;color:var(--pico-muted-color)"><span class="vayu-mode-dot"></span>runtime · normal</span>
 </nav>
 <main id="main-content">
-<section class="home-hero">
-  <span class="home-eyebrow">Sovereign Publishing Runtime</span>
-  <h1 class="home-title">Publishing as an<br>adaptive runtime.</h1>
-  <p class="home-tagline">Durable by design, observable end to end. Every write is queued, signed, and governed by a live operational state machine — not a CMS, a control plane.</p>
-  <div class="home-stats">
-    <div class="home-stat"><span class="home-stat-val">{{.TotalCount}}</span><span class="home-stat-label">Published</span></div>
-    <div class="home-stat"><span class="home-stat-val">Ed25519</span><span class="home-stat-label">Signed</span></div>
-    <div class="home-stat"><span class="home-stat-val">WAL</span><span class="home-stat-label">Durable</span></div>
-    <div class="home-stat"><span class="home-stat-val">v{{.Version}}</span><span class="home-stat-label">Runtime</span></div>
+<section class="vayu-hero">
+  <span class="vayu-hero-eyebrow">Sovereign Publishing Runtime</span>
+  <h1>Publishing as an<br>adaptive runtime.</h1>
+  <p class="vayu-hero-tagline">Durable by design, observable end to end. Every write is queued, signed, and governed by a live operational state machine — not a CMS, a control plane.</p>
+  <div class="vayu-stats">
+    <div><span class="vayu-stat-val">{{.TotalCount}}</span><span class="vayu-stat-label">Published</span></div>
+    <div><span class="vayu-stat-val">Ed25519</span><span class="vayu-stat-label">Signed</span></div>
+    <div><span class="vayu-stat-val">WAL</span><span class="vayu-stat-label">Durable</span></div>
+    <div><span class="vayu-stat-val">v{{.Version}}</span><span class="vayu-stat-label">Runtime</span></div>
   </div>
 </section>
-<div class="section-label">Latest writing</div>
-{{if .Articles}}<div class="post-list">
-{{range .Articles}}<a class="post-card" href="/{{.Slug}}">
-  <div class="post-card-meta"><time datetime="{{.CreatedAt | shortDate}}">{{.CreatedAt | humanDate}}</time>{{if .Tags}}<span class="post-card-dot"></span><span>{{range $i, $t := .Tags}}{{if $i}} · {{end}}#{{$t}}{{end}}</span>{{end}}</div>
-  <div class="post-card-title">{{.Title}}</div>
-  {{if .Excerpt}}<div class="post-card-excerpt">{{.Excerpt}}</div>{{end}}
-  <span class="post-card-arrow" aria-hidden="true">→</span>
+<div class="vayu-section-label">Latest writing</div>
+{{if .Articles}}<div class="vayu-post-list">
+{{range .Articles}}<a class="vayu-post-card" href="/{{.Slug}}">
+  <div class="vayu-post-meta"><time datetime="{{.CreatedAt | shortDate}}">{{.CreatedAt | humanDate}}</time>{{if .Tags}}<span>·</span><span>{{range $i, $t := .Tags}}{{if $i}} · {{end}}#{{$t}}{{end}}</span>{{end}}</div>
+  <div class="vayu-post-title">{{.Title}}</div>
+  {{if .Excerpt}}<div class="vayu-post-excerpt">{{.Excerpt}}</div>{{end}}
+  <span class="vayu-post-arrow" aria-hidden="true">→</span>
 </a>{{end}}
-</div>{{else}}<div class="home-empty">No articles published yet. The runtime is live and waiting.</div>{{end}}
+</div>{{else}}<div class="vayu-empty">No articles published yet. The runtime is live and waiting.</div>{{end}}
+<footer class="vayu-footer">
+  <div style="display:flex;align-items:center;gap:.5rem"><img src="/static/favicon-light.png" alt="" width="20" height="20">VayuPress</div>
+  <span class="vayu-footer-badge">runtime · governed</span>
+</footer>
 </main>
-<footer><div class="footer-brand"><img class="site-nav-brand-icon" src="/static/favicon-light.png" alt="" width="24" height="24">VayuPress</div><span class="footer-badge">runtime · governed</span></footer>
 </div></body></html>`))
 
 var notFoundTmpl = template.Must(template.New("404").Parse(`<!DOCTYPE html><html lang="en" data-theme="dark"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>404 — {{.Domain}}</title><meta name="robots" content="noindex">
 <meta name="generator" content="VayuPress {{.Version}}">
-{{.PicoCSSLink}}{{.ArticleCSSLink}}{{.HighContrastCSSLink}}
+{{.PicoCSSLink}}{{.CustomCSSLink}}{{.ArticleCSSLink}}{{.HighContrastCSSLink}}
 <link rel="icon" type="image/png" href="/static/favicon-dark.png" media="(prefers-color-scheme: light)">
 <link rel="icon" type="image/png" href="/static/favicon-light.png" media="(prefers-color-scheme: dark)">
 <link rel="icon" type="image/png" href="/static/favicon-light.png">
 </head><body>
 <div class="container">
-<nav class="site-nav" aria-label="Primary">
-  <a href="/" class="site-nav-brand"><img class="site-nav-brand-icon" src="/static/favicon-light.png" alt="" width="24" height="24">VayuPress</a>
-  <div class="site-nav-links"><a href="/">Home</a><a href="/feed.xml">Feed</a><a href="/admin">Console</a></div>
-  <span class="mode-indicator"><span class="mode-dot"></span>runtime · normal</span>
+<nav class="vayu-nav" aria-label="Primary">
+  <a href="/" class="vayu-nav-brand"><img src="/static/favicon-light.png" alt="" width="24" height="24">VayuPress</a>
+  <div class="vayu-nav-links"><a href="/">Home</a><a href="/feed.xml">Feed</a><a href="/admin">Console</a></div>
 </nav>
-<main id="main-content"><div class="err-page">
-  <div class="err-code">404</div>
-  <div class="err-msg">This route resolves to nothing.</div>
-  <div class="err-sub">The requested resource is not in the published set.</div>
-  <a href="/" class="err-link">← Return to index</a>
+<main id="main-content"><div class="vayu-err">
+  <div class="vayu-err-code">404</div>
+  <div class="vayu-err-msg">This route resolves to nothing.</div>
+  <div class="vayu-err-sub">The requested resource is not in the published set.</div>
+  <a href="/">← Return to index</a>
 </div></main>
 </div></body></html>`))
 
@@ -312,6 +336,7 @@ func RenderHome(domain, version string, articles []HomeArticle, totalCount int) 
 		Domain:              domain,
 		Version:             version,
 		PicoCSSLink:         PicoCSSLink(),
+		CustomCSSLink:       CustomCSSLink(),
 		ArticleCSSLink:      ArticleCSSLink(),
 		HighContrastCSSLink: HighContrastCSSLink(),
 		Articles:            articles,
@@ -327,6 +352,7 @@ func Render404(domain, version string) string {
 		Domain:              domain,
 		Version:             version,
 		PicoCSSLink:         PicoCSSLink(),
+		CustomCSSLink:       CustomCSSLink(),
 		ArticleCSSLink:      ArticleCSSLink(),
 		HighContrastCSSLink: HighContrastCSSLink(),
 	})
@@ -352,6 +378,7 @@ func RenderArticleWithLayout(a db.Article, layout ArticleLayoutType) (string, er
 		Version:             Version,
 		Layout:              layout,
 		PicoCSSLink:         PicoCSSLink(),
+		CustomCSSLink:       CustomCSSLink(),
 		ArticleCSSLink:      ArticleCSSLink(),
 		HighContrastCSSLink: HighContrastCSSLink(),
 	}
@@ -478,3 +505,424 @@ const adminCSSMin = `:root{--bg:#020408;--bg2:#060a10;--surface:#0a1018;--surfac
 
 const hcCSSMin = `@media(prefers-contrast:more){:root{--bg:#000;--surface:#0a0a0a;--border:#fff;--text:#fff;--muted:#ccc;--accent:#6699ff}.btn{border-width:2px!important}.stat-card{border-width:2px!important}.thresh-ok{color:#00ff88!important;font-weight:700!important}.thresh-fail{color:#ff4444!important;font-weight:700!important}}
 @media(forced-colors:active){*:focus-visible{outline:3px solid Highlight!important;outline-offset:2px!important}.btn,button{forced-color-adjust:none;background:ButtonFace!important;color:ButtonText!important;border:2px solid ButtonBorder!important}.storage-fill{background:Highlight!important;forced-color-adjust:none}}`
+const customCSSMin = `/*
+ * VayuPress brand theme — Pico v2 CSS variable overrides.
+ * Load order: pico.min.css → custom.css → article.css
+ * Teal primary (#0d9488), saffron accent (#f59e0b), Geist/system stack.
+ */
+
+/* ── Light mode ─────────────────────────────────────────────────────────── */
+:root,
+[data-theme="light"] {
+  --pico-font-family-sans-serif: "Geist", "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --pico-font-family-serif: Georgia, "Times New Roman", serif;
+  --pico-font-family: var(--pico-font-family-sans-serif);
+  --pico-line-height: 1.75;
+  --pico-font-size: 1.0625rem;
+
+  /* Brand colours */
+  --pico-primary: #0d9488;
+  --pico-primary-hover: #0f766e;
+  --pico-primary-focus: rgba(13, 148, 136, 0.25);
+  --pico-primary-inverse: #fff;
+  --vayu-accent: #f59e0b;
+  --vayu-accent-hover: #d97706;
+
+  /* Surface */
+  --pico-background-color: #f8fafc;
+  --pico-card-background-color: #fff;
+  --pico-card-border-color: #e2e8f0;
+
+  /* Text */
+  --pico-color: #0f172a;
+  --pico-h1-color: #0f172a;
+  --pico-h2-color: #1e293b;
+  --pico-h3-color: #334155;
+  --pico-muted-color: #64748b;
+  --pico-muted-border-color: #cbd5e1;
+
+  /* Links */
+  --pico-a-color: var(--pico-primary);
+  --pico-a-hover-color: var(--pico-primary-hover);
+
+  /* Code */
+  --pico-code-background-color: #f1f5f9;
+  --pico-code-color: #0e7490;
+  --pico-ins-color: #065f46;
+  --pico-del-color: #9f1239;
+
+  /* Border radius */
+  --pico-border-radius: 0.5rem;
+  --pico-card-sectioning-background-color: #f8fafc;
+
+  /* Prose width */
+  --vayu-prose-width: 68ch;
+  --vayu-wide-width: 90ch;
+}
+
+/* ── Dark mode ──────────────────────────────────────────────────────────── */
+[data-theme="dark"] {
+  --pico-primary: #2dd4bf;
+  --pico-primary-hover: #5eead4;
+  --pico-primary-focus: rgba(45, 212, 191, 0.20);
+  --pico-primary-inverse: #0f172a;
+  --vayu-accent: #fbbf24;
+  --vayu-accent-hover: #f59e0b;
+
+  /* Surface */
+  --pico-background-color: #0a0f1a;
+  --pico-card-background-color: #111827;
+  --pico-card-border-color: #1e293b;
+  --pico-card-sectioning-background-color: #0f172a;
+
+  /* Text */
+  --pico-color: #e2e8f0;
+  --pico-h1-color: #f1f5f9;
+  --pico-h2-color: #e2e8f0;
+  --pico-h3-color: #cbd5e1;
+  --pico-muted-color: #94a3b8;
+  --pico-muted-border-color: #1e293b;
+
+  /* Links */
+  --pico-a-color: var(--pico-primary);
+  --pico-a-hover-color: var(--pico-primary-hover);
+
+  /* Code */
+  --pico-code-background-color: #0f172a;
+  --pico-code-color: #67e8f9;
+}
+
+/* ── Global typography ──────────────────────────────────────────────────── */
+body {
+  font-feature-settings: "kern" 1, "liga" 1, "calt" 1;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+}
+
+/* ── Prose layout (article body) ────────────────────────────────────────── */
+.vayu-prose {
+  max-width: var(--vayu-prose-width);
+  margin-inline: auto;
+  line-height: var(--pico-line-height);
+}
+
+.vayu-prose p {
+  margin-block: 1.25em;
+}
+
+.vayu-prose figure {
+  margin-inline: 0;
+  text-align: center;
+}
+
+.vayu-prose figure img,
+.vayu-prose img {
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--pico-border-radius);
+  display: block;
+  margin-inline: auto;
+}
+
+.vayu-prose figcaption {
+  font-size: 0.875em;
+  color: var(--pico-muted-color);
+  margin-top: 0.5em;
+  font-style: italic;
+}
+
+.vayu-prose blockquote {
+  border-left: 3px solid var(--vayu-accent);
+  margin-inline: 0;
+  padding-inline-start: 1.25em;
+  color: var(--pico-muted-color);
+}
+
+.vayu-prose pre {
+  overflow-x: auto;
+  border-radius: var(--pico-border-radius);
+}
+
+/* ── Site navigation ────────────────────────────────────────────────────── */
+.vayu-nav {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  padding-block: 1rem;
+  border-bottom: 1px solid var(--pico-muted-border-color);
+  margin-bottom: 2.5rem;
+  flex-wrap: wrap;
+}
+
+.vayu-nav-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 700;
+  font-size: 1.125rem;
+  color: var(--pico-color);
+  text-decoration: none;
+  letter-spacing: -0.02em;
+}
+
+.vayu-nav-brand:hover { color: var(--pico-primary); text-decoration: none; }
+
+.vayu-nav-brand img { border-radius: 4px; }
+
+.vayu-nav-links {
+  display: flex;
+  gap: 1.25rem;
+  margin-left: auto;
+  align-items: center;
+}
+
+.vayu-nav-links a {
+  font-size: 0.9375rem;
+  color: var(--pico-muted-color);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.vayu-nav-links a:hover { color: var(--pico-primary); }
+
+.vayu-mode-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--pico-primary);
+  margin-right: 0.35rem;
+  vertical-align: middle;
+  animation: vayu-pulse 2.5s ease-in-out infinite;
+}
+
+@keyframes vayu-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+/* ── Site footer ────────────────────────────────────────────────────────── */
+.vayu-footer {
+  border-top: 1px solid var(--pico-muted-border-color);
+  margin-top: 4rem;
+  padding-block: 2rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  font-size: 0.875rem;
+  color: var(--pico-muted-color);
+}
+
+.vayu-footer a { color: var(--pico-muted-color); }
+.vayu-footer a:hover { color: var(--pico-primary); }
+
+.vayu-footer-badge {
+  margin-left: auto;
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--pico-primary);
+  opacity: 0.75;
+}
+
+/* ── Article header ─────────────────────────────────────────────────────── */
+.vayu-article-header { margin-bottom: 2rem; }
+
+.vayu-article-header h1 {
+  font-size: clamp(1.75rem, 4vw, 2.75rem);
+  margin-bottom: 0.75rem;
+}
+
+.vayu-article-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  font-size: 0.9rem;
+  color: var(--pico-muted-color);
+}
+
+.vayu-tag {
+  display: inline-block;
+  font-size: 0.78rem;
+  padding: 0.15em 0.55em;
+  border-radius: 99px;
+  background: var(--pico-primary-focus);
+  color: var(--pico-primary);
+  text-decoration: none;
+  font-weight: 500;
+  transition: background 0.15s;
+}
+
+.vayu-tag:hover {
+  background: var(--pico-primary);
+  color: var(--pico-primary-inverse);
+  text-decoration: none;
+}
+
+/* ── Skip link ──────────────────────────────────────────────────────────── */
+.skip-link {
+  position: absolute;
+  top: -999px;
+  left: 0;
+  background: var(--pico-primary);
+  color: var(--pico-primary-inverse);
+  padding: 0.5rem 1rem;
+  z-index: 9999;
+  border-radius: 0 0 var(--pico-border-radius) 0;
+}
+.skip-link:focus { top: 0; }
+
+/* ── Hero section (homepage) ────────────────────────────────────────────── */
+.vayu-hero {
+  padding-block: 3rem 2.5rem;
+  border-bottom: 1px solid var(--pico-muted-border-color);
+  margin-bottom: 2.5rem;
+}
+
+.vayu-hero-eyebrow {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--pico-primary);
+  margin-bottom: 1rem;
+  display: block;
+}
+
+.vayu-hero h1 {
+  font-size: clamp(2rem, 5vw, 3.5rem);
+  max-width: 16ch;
+  margin-bottom: 1rem;
+}
+
+.vayu-hero-tagline {
+  max-width: 55ch;
+  color: var(--pico-muted-color);
+  font-size: 1.0625rem;
+  line-height: 1.7;
+  margin-bottom: 2rem;
+}
+
+.vayu-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem 2.5rem;
+  margin-top: 1.5rem;
+}
+
+.vayu-stat-val {
+  display: block;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--pico-h1-color);
+  font-variant-numeric: tabular-nums;
+}
+
+.vayu-stat-label {
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--pico-muted-color);
+}
+
+/* ── Post list ──────────────────────────────────────────────────────────── */
+.vayu-section-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--pico-muted-color);
+  margin-bottom: 1.25rem;
+}
+
+.vayu-post-list { display: flex; flex-direction: column; gap: 0; }
+
+.vayu-post-card {
+  display: block;
+  padding: 1.25rem 0;
+  border-bottom: 1px solid var(--pico-muted-border-color);
+  text-decoration: none;
+  color: var(--pico-color);
+  position: relative;
+  transition: padding-left 0.15s ease;
+}
+
+.vayu-post-card:hover { padding-left: 0.5rem; }
+.vayu-post-card:hover .vayu-post-title { color: var(--pico-primary); }
+
+.vayu-post-meta {
+  font-size: 0.82rem;
+  color: var(--pico-muted-color);
+  margin-bottom: 0.35rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.vayu-post-title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  transition: color 0.15s;
+  margin-bottom: 0.25rem;
+}
+
+.vayu-post-excerpt {
+  font-size: 0.9rem;
+  color: var(--pico-muted-color);
+  line-height: 1.55;
+}
+
+.vayu-post-arrow {
+  position: absolute;
+  right: 0.25rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--pico-muted-color);
+  opacity: 0;
+  transition: opacity 0.15s, right 0.15s;
+}
+
+.vayu-post-card:hover .vayu-post-arrow { opacity: 1; right: 0; }
+
+/* ── Empty state ────────────────────────────────────────────────────────── */
+.vayu-empty {
+  padding: 3rem 0;
+  text-align: center;
+  color: var(--pico-muted-color);
+  font-size: 0.9375rem;
+}
+
+/* ── Error pages ────────────────────────────────────────────────────────── */
+.vayu-err { padding: 5rem 0; text-align: center; }
+.vayu-err-code {
+  font-size: clamp(4rem, 12vw, 8rem);
+  font-weight: 900;
+  line-height: 1;
+  color: var(--pico-primary);
+  opacity: 0.15;
+  margin-bottom: 0.5rem;
+}
+.vayu-err-msg {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+.vayu-err-sub { color: var(--pico-muted-color); margin-bottom: 1.5rem; }
+
+/* ── Responsive ─────────────────────────────────────────────────────────── */
+@media (max-width: 600px) {
+  .vayu-nav-links { gap: 0.75rem; }
+  .vayu-stats { gap: 1rem 1.75rem; }
+  .vayu-post-arrow { display: none; }
+}
+`

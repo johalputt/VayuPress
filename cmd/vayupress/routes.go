@@ -63,7 +63,7 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	r.Get("/favicon.ico", servePNG(faviconDarkPNG))
 	r.Get("/static/css/{file}", func(w http.ResponseWriter, r *http.Request) {
 		file := chi.URLParam(r, "file")
-		if !map[string]bool{"article.css": true, "admin.css": true, "high-contrast.css": true, "pico.min.css": true}[file] {
+		if !map[string]bool{"article.css": true, "admin.css": true, "high-contrast.css": true, "pico.min.css": true, "custom.css": true}[file] {
 			http.NotFound(w, r)
 			return
 		}
