@@ -332,6 +332,12 @@ func main() {
 				return err
 			}
 			a.eventBus.Publish(ctx, ev)
+		case "cache.invalidated.v1":
+			var ev events.CacheInvalidated
+			if err := json.Unmarshal(env.Payload, &ev); err != nil {
+				return err
+			}
+			a.eventBus.Publish(ctx, ev)
 		default:
 			logging.LogJSON(logging.LogFields{Level: "warn", Component: "outbox", CorrelationID: env.CorrelationID, Msg: "unknown event type: " + env.EventType})
 		}

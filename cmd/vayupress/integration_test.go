@@ -39,6 +39,7 @@ func (n *noopSearch) Index(_ context.Context, _, _, _, _ string, _ []string, _ i
 }
 func (n *noopSearch) Delete(_ context.Context, _ string) error { return nil }
 func (n *noopSearch) Ping(_ context.Context) error             { return nil }
+func (n *noopSearch) DocCount(_ context.Context) (int, error)  { return 0, nil }
 
 // directWriter inserts/updates/deletes directly into the articles table so
 // integration tests can read back results without running the queue worker.

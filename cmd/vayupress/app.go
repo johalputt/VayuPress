@@ -62,6 +62,11 @@ type App struct {
 	lastBenchmark    *benchmarkResult
 	lastBenchmarkMu  sync.Mutex
 	benchmarkRunning int32
+
+	// Search reindex state (Ω-search reconciler)
+	reindexRunning int32
+	lastReindex    *reindexResult
+	lastReindexMu  sync.Mutex
 }
 
 // RegisterHook registers a plugin hook with the App's plugin registry.
@@ -178,7 +183,8 @@ func (a *App) registerEventHandlers() {
 					htmlTagRe.ReplaceAllString(a.policy.Sanitize(art.Content), ""),
 					art.Tags, art.CreatedAt.Unix())
 			}
-			render.CachePurge(e.Slug, nil, generateSitemap, generateRSS, generateRobots)
+			// Local cache invalidation is owned by the cache.invalidated.v1
+			// subscriber below (emitted transactionally with this mutation).
 			a.purgeCloudflare(e.Slug)
 			a.pingIndexNow(e.Slug)
 		}()
@@ -197,7 +203,8 @@ func (a *App) registerEventHandlers() {
 					htmlTagRe.ReplaceAllString(a.policy.Sanitize(art.Content), ""),
 					art.Tags, art.CreatedAt.Unix())
 			}
-			render.CachePurge(e.Slug, nil, generateSitemap, generateRSS, generateRobots)
+			// Local cache invalidation is owned by the cache.invalidated.v1
+			// subscriber below (emitted transactionally with this mutation).
 			a.purgeCloudflare(e.Slug)
 			a.pingIndexNow(e.Slug)
 		}()
@@ -211,6 +218,19 @@ func (a *App) registerEventHandlers() {
 			a.purgeCloudflare(e.Slug)
 		}()
 		a.FireHook("article.delete", map[string]interface{}{"slug": e.Slug, "id": e.ID})
+	})
+
+	// Cache invalidation is the single owner of local rendered-cache purging.
+	// Emitted transactionally with every article mutation (including deletes,
+	// which previously left a stale cached page behind), it purges the article
+	// page, homepage, and affected tag pages, then regenerates the global feeds.
+	bus.Subscribe(events.CacheInvalidated{}, func(_ context.Context, ev interface{}) {
+		e := ev.(events.CacheInvalidated)
+		render.CachePurge(e.Slug, e.Tags, generateSitemap, generateRSS, generateRobots)
+		logging.LogJSON(logging.LogFields{
+			Level: "info", Component: "cache", Severity: "info",
+			Msg: "invalidated rendered fragments (" + e.Reason + ")", Path: e.Slug,
+		})
 	})
 }
 

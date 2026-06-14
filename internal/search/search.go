@@ -43,6 +43,9 @@ type Service interface {
 	Index(ctx context.Context, id, title, slug, content string, tags []string, createdAt int64) error
 	Delete(ctx context.Context, id string) error
 	Ping(ctx context.Context) error
+	// DocCount reports the number of documents the search backend currently
+	// holds. Used by the reconciler to detect drift from the article store.
+	DocCount(ctx context.Context) (int, error)
 }
 
 // =============================================================================
@@ -165,6 +168,36 @@ func (s *meiliService) Index(ctx context.Context, id, title, slug, content strin
 
 func (s *meiliService) Ping(ctx context.Context) error {
 	return s.do(ctx, "GET", "/health", nil)
+}
+
+// DocCount queries Meilisearch's index stats for the live document count. When
+// Meilisearch is unavailable it falls back to the SQLite article-store count,
+// which is the search-of-record in fallback mode (so drift is zero by design).
+func (s *meiliService) DocCount(ctx context.Context) (int, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", config.Cfg.MeiliHost+"/indexes/articles/stats", nil)
+	if err == nil {
+		if config.Cfg.MeiliMasterKey != "" {
+			req.Header.Set("Authorization", "Bearer "+config.Cfg.MeiliMasterKey)
+		}
+		resp, derr := s.client.Do(req)
+		if derr == nil {
+			defer resp.Body.Close()
+			if resp.StatusCode < 400 {
+				var stats struct {
+					NumberOfDocuments int `json:"numberOfDocuments"`
+				}
+				if json.NewDecoder(io.LimitReader(resp.Body, 4096)).Decode(&stats) == nil {
+					return stats.NumberOfDocuments, nil
+				}
+			}
+		}
+	}
+	// Fallback: the SQLite store is authoritative when Meili is unreachable.
+	var n int
+	if qerr := s.db.QueryRow(`SELECT COUNT(1) FROM articles`).Scan(&n); qerr != nil {
+		return 0, qerr
+	}
+	return n, nil
 }
 
 func (s *meiliService) Delete(ctx context.Context, id string) error {

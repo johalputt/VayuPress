@@ -96,7 +96,10 @@ func processOneJob(workerID int) (empty bool) {
 				a.ID, a.Title, a.Slug, a.Content, strings.Join(a.Tags, ","), a.CreatedAt, a.UpdatedAt); err != nil {
 				return err
 			}
-			return writeOutboxEvent(tx, "article.created.v1", events.ArticleCreated{ID: a.ID, Slug: a.Slug, Tags: a.Tags}, fmt.Sprintf("%d", job.ID), job.CorrelationID)
+			if err := writeOutboxEvent(tx, "article.created.v1", events.ArticleCreated{ID: a.ID, Slug: a.Slug, Tags: a.Tags}, fmt.Sprintf("%d", job.ID), job.CorrelationID); err != nil {
+				return err
+			}
+			return writeOutboxEvent(tx, "cache.invalidated.v1", events.CacheInvalidated{Slug: a.Slug, Tags: a.Tags, Reason: "insert"}, fmt.Sprintf("%d", job.ID), job.CorrelationID)
 		})
 		if execErr == nil {
 			atomic.AddInt64(&metrics.MetricArticlesCreated, 1)
@@ -107,7 +110,10 @@ func processOneJob(workerID int) (empty bool) {
 				a.Title, a.Content, strings.Join(a.Tags, ","), a.UpdatedAt, a.Slug); err != nil {
 				return err
 			}
-			return writeOutboxEvent(tx, "article.updated.v1", events.ArticleUpdated{ID: a.ID, Slug: a.Slug, Tags: a.Tags}, fmt.Sprintf("%d", job.ID), job.CorrelationID)
+			if err := writeOutboxEvent(tx, "article.updated.v1", events.ArticleUpdated{ID: a.ID, Slug: a.Slug, Tags: a.Tags}, fmt.Sprintf("%d", job.ID), job.CorrelationID); err != nil {
+				return err
+			}
+			return writeOutboxEvent(tx, "cache.invalidated.v1", events.CacheInvalidated{Slug: a.Slug, Tags: a.Tags, Reason: "update"}, fmt.Sprintf("%d", job.ID), job.CorrelationID)
 		})
 		if execErr == nil {
 			atomic.AddInt64(&metrics.MetricArticlesUpdated, 1)
@@ -117,7 +123,10 @@ func processOneJob(workerID int) (empty bool) {
 			if _, err := tx.Exec(`DELETE FROM articles WHERE slug=?`, a.Slug); err != nil {
 				return err
 			}
-			return writeOutboxEvent(tx, "article.deleted.v1", events.ArticleDeleted{ID: a.ID, Slug: a.Slug}, fmt.Sprintf("%d", job.ID), job.CorrelationID)
+			if err := writeOutboxEvent(tx, "article.deleted.v1", events.ArticleDeleted{ID: a.ID, Slug: a.Slug}, fmt.Sprintf("%d", job.ID), job.CorrelationID); err != nil {
+				return err
+			}
+			return writeOutboxEvent(tx, "cache.invalidated.v1", events.CacheInvalidated{Slug: a.Slug, Tags: a.Tags, Reason: "delete"}, fmt.Sprintf("%d", job.ID), job.CorrelationID)
 		})
 		if execErr == nil {
 			atomic.AddInt64(&metrics.MetricArticlesDeleted, 1)

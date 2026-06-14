@@ -108,6 +108,9 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 		// Sandbox subprocess plugin stats (ADR-0056).
 		r.Get("/api/v1/admin/sandbox/stats", a.handleSandboxStats)
 
+		// Search reconciler: drift report (read) + rebuild (CSRF-protected write).
+		r.Get("/api/v1/admin/search/drift", a.handleSearchDrift)
+
 		// System mode state machine (Ω5/Ω6).
 		r.Get("/api/v1/admin/mode", a.handleModeStatus)
 		r.Get("/api/v1/admin/fault/status", a.handleFaultStatus)
@@ -130,6 +133,7 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 		r.With(auth.CSRFTokenMiddleware).Post("/admin/mode/transition", a.handleModeTransition)
 		r.With(auth.CSRFTokenMiddleware).Post("/admin/fault/simulate", a.handleFaultSimulate)
 		r.With(auth.CSRFTokenMiddleware).Post("/admin/replay/job", a.handleReplayJob)
+		r.With(auth.CSRFTokenMiddleware).Post("/admin/search/reindex", a.handleSearchReindex)
 
 		r.HandleFunc("/debug/pprof/", a.pprofHandler)
 		r.HandleFunc("/debug/pprof/cmdline", a.pprofHandler)

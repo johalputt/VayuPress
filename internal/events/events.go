@@ -29,6 +29,17 @@ type ArticleDeleted struct {
 	Slug string
 }
 
+// CacheInvalidated signals that the rendered cache fragments tied to an article
+// (its own page plus the homepage, affected tag pages, and global feeds) are
+// stale and must be purged/regenerated. It is emitted transactionally with the
+// article mutation so the invalidation is durable, replayable, and observable
+// through the outbox rather than relying on a best-effort inline side effect.
+type CacheInvalidated struct {
+	Slug   string
+	Tags   []string
+	Reason string // the originating op: "insert", "update", or "delete"
+}
+
 // Handler is a function that handles a single event. The event value is always
 // a pointer to one of the typed structs above.
 type Handler func(ctx context.Context, event interface{})
