@@ -1,0 +1,178 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "VayuPress API",
+    "description": "HTTP API for the VayuPress sovereign publishing engine. Read endpoints are public; write and admin endpoints require an API key (X-API-Key header or Authorization: Bearer). Mutating admin actions additionally require a CSRF token (X-CSRF-Token).",
+    "version": "1.0.0",
+    "license": { "name": "See repository LICENSE" }
+  },
+  "servers": [{ "url": "/", "description": "This instance" }],
+  "tags": [
+    { "name": "articles", "description": "Article CRUD" },
+    { "name": "discovery", "description": "Search, tags, stats" },
+    { "name": "health", "description": "Liveness and readiness contracts" },
+    { "name": "admin", "description": "Operator and observability endpoints" }
+  ],
+  "components": {
+    "securitySchemes": {
+      "ApiKeyHeader": { "type": "apiKey", "in": "header", "name": "X-API-Key" },
+      "BearerAuth": { "type": "http", "scheme": "bearer" }
+    },
+    "schemas": {
+      "Article": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "title": { "type": "string" },
+          "slug": { "type": "string" },
+          "content": { "type": "string" },
+          "tags": { "type": "array", "items": { "type": "string" } },
+          "created_at": { "type": "string", "format": "date-time" },
+          "updated_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "ArticleInput": {
+        "type": "object",
+        "required": ["title", "slug", "content"],
+        "properties": {
+          "title": { "type": "string" },
+          "slug": { "type": "string", "description": "lowercase, hyphen-separated" },
+          "content": { "type": "string", "description": "HTML; sanitized server-side" },
+          "tags": { "type": "array", "items": { "type": "string" } }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "type": { "type": "string" },
+          "title": { "type": "string" },
+          "status": { "type": "integer" },
+          "detail": { "type": "string" }
+        }
+      },
+      "SearchDrift": {
+        "type": "object",
+        "properties": {
+          "store_count": { "type": "integer" },
+          "index_count": { "type": "integer" },
+          "drift": { "type": "integer" },
+          "in_sync": { "type": "boolean" }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/api/v1/articles": {
+      "get": {
+        "tags": ["articles"],
+        "summary": "List articles",
+        "responses": {
+          "200": { "description": "Article list", "content": { "application/json": { "schema": { "type": "object" } } } }
+        }
+      },
+      "post": {
+        "tags": ["articles"],
+        "summary": "Create an article (enqueued for async write)",
+        "security": [{ "ApiKeyHeader": [] }, { "BearerAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ArticleInput" } } } },
+        "responses": {
+          "202": { "description": "Accepted and enqueued" },
+          "400": { "description": "Validation error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "description": "Missing or invalid API key" }
+        }
+      }
+    },
+    "/api/v1/articles/bulk": {
+      "post": {
+        "tags": ["articles"],
+        "summary": "Bulk-create articles",
+        "security": [{ "ApiKeyHeader": [] }, { "BearerAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/ArticleInput" } } } } },
+        "responses": { "202": { "description": "Accepted" }, "401": { "description": "Unauthorized" } }
+      }
+    },
+    "/api/v1/articles/{slug}": {
+      "parameters": [{ "name": "slug", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "get": {
+        "tags": ["articles"],
+        "summary": "Get one article",
+        "responses": {
+          "200": { "description": "Article", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Article" } } } },
+          "404": { "description": "Not found" }
+        }
+      },
+      "put": {
+        "tags": ["articles"],
+        "summary": "Update an article",
+        "security": [{ "ApiKeyHeader": [] }, { "BearerAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ArticleInput" } } } },
+        "responses": { "202": { "description": "Accepted" }, "401": { "description": "Unauthorized" } }
+      },
+      "delete": {
+        "tags": ["articles"],
+        "summary": "Delete an article",
+        "security": [{ "ApiKeyHeader": [] }, { "BearerAuth": [] }],
+        "responses": { "202": { "description": "Accepted" }, "401": { "description": "Unauthorized" } }
+      }
+    },
+    "/api/v1/search": {
+      "get": {
+        "tags": ["discovery"],
+        "summary": "Full-text search",
+        "parameters": [
+          { "name": "q", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 20 } }
+        ],
+        "responses": { "200": { "description": "Search hits" } }
+      }
+    },
+    "/api/v1/tags": {
+      "get": { "tags": ["discovery"], "summary": "List tags", "responses": { "200": { "description": "Tag list" } } }
+    },
+    "/api/v1/stats": {
+      "get": { "tags": ["discovery"], "summary": "Public stats", "responses": { "200": { "description": "Stats" } } }
+    },
+    "/health": {
+      "get": { "tags": ["health"], "summary": "Liveness", "responses": { "200": { "description": "Alive" } } }
+    },
+    "/health/ready": {
+      "get": { "tags": ["health"], "summary": "Readiness", "responses": { "200": { "description": "Ready" }, "503": { "description": "Not ready" } } }
+    },
+    "/metrics": {
+      "get": { "tags": ["health"], "summary": "Prometheus metrics", "responses": { "200": { "description": "Exposition format" } } }
+    },
+    "/api/v1/admin/search/drift": {
+      "get": {
+        "tags": ["admin"],
+        "summary": "Report drift between the article store and the search index",
+        "security": [{ "ApiKeyHeader": [] }, { "BearerAuth": [] }],
+        "responses": {
+          "200": { "description": "Drift report", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SearchDrift" } } } },
+          "401": { "description": "Unauthorized" }
+        }
+      }
+    },
+    "/admin/search/reindex": {
+      "post": {
+        "tags": ["admin"],
+        "summary": "Rebuild the search index from the article store (CSRF-protected, single-flighted)",
+        "security": [{ "ApiKeyHeader": [] }, { "BearerAuth": [] }],
+        "parameters": [{ "name": "X-CSRF-Token", "in": "header", "required": true, "schema": { "type": "string" } }],
+        "responses": {
+          "200": { "description": "Reindex result" },
+          "409": { "description": "A reindex is already running" },
+          "401": { "description": "Unauthorized" }
+        }
+      }
+    },
+    "/api/v1/admin/outbox/stats": {
+      "get": { "tags": ["admin"], "summary": "Outbox delivery stats", "security": [{ "ApiKeyHeader": [] }], "responses": { "200": { "description": "Stats" } } }
+    },
+    "/api/v1/admin/mode": {
+      "get": { "tags": ["admin"], "summary": "Current system mode", "security": [{ "ApiKeyHeader": [] }], "responses": { "200": { "description": "Mode state" } } }
+    },
+    "/api/v1/queue/replay": {
+      "post": { "tags": ["admin"], "summary": "Replay dead-letter jobs", "security": [{ "ApiKeyHeader": [] }], "responses": { "200": { "description": "Replay result" } } }
+    }
+  }
+}

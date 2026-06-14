@@ -170,9 +170,14 @@ var articleTmpl = template.Must(template.New("article").Funcs(template.FuncMap{
 <link rel="canonical" href="https://{{.Domain}}/{{.Slug}}">
 <meta property="og:type" content="article"><meta property="og:title" content="{{.Title}}">
 <meta property="og:url" content="https://{{.Domain}}/{{.Slug}}">
+<meta property="og:site_name" content="{{.Domain}}"><meta property="og:locale" content="en">
+<meta property="og:description" content="{{trunc .Content 200}}">
 <meta property="article:published_time" content="{{.CreatedAt | isoDate}}">
 <meta property="article:modified_time" content="{{.UpdatedAt | isoDate}}">
-<script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"{{.Title | jsonAttr}}","datePublished":"{{.CreatedAt | isoDate}}","dateModified":"{{.UpdatedAt | isoDate}}","inLanguage":"en","author":{"@type":"Person","name":"Ankush Choudhary Johal","url":"https://{{.Domain}}/about"},"publisher":{"@type":"Organization","name":"VayuPress","url":"https://{{.Domain}}"}}</script>
+{{range .Tags}}<meta property="article:tag" content="{{.}}">{{end}}
+<meta name="twitter:card" content="summary"><meta name="twitter:title" content="{{.Title}}">
+<meta name="twitter:description" content="{{trunc .Content 200}}">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","mainEntityOfPage":{"@type":"WebPage","@id":"https://{{.Domain}}/{{.Slug}}"},"headline":"{{.Title | jsonAttr}}","description":"{{.Content | jsonAttr}}","datePublished":"{{.CreatedAt | isoDate}}","dateModified":"{{.UpdatedAt | isoDate}}","inLanguage":"en","author":{"@type":"Person","name":"Ankush Choudhary Johal","url":"https://{{.Domain}}/about"},"publisher":{"@type":"Organization","name":"VayuPress","url":"https://{{.Domain}}"}}</script>
 {{.ArticleCSSLink}}{{.HighContrastCSSLink}}
 <link rel="icon" type="image/png" href="/static/favicon-dark.png" media="(prefers-color-scheme: light)">
 <link rel="icon" type="image/png" href="/static/favicon-light.png" media="(prefers-color-scheme: dark)">

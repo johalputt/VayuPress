@@ -1,0 +1,104 @@
+{
+  "__inputs": [
+    { "name": "DS_PROMETHEUS", "label": "Prometheus", "description": "", "type": "datasource", "pluginId": "prometheus", "pluginName": "Prometheus" }
+  ],
+  "title": "VayuPress Overview",
+  "uid": "vayupress-overview",
+  "tags": ["vayupress"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": { "list": [] },
+  "panels": [
+    {
+      "title": "Articles total",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [{ "expr": "vayupress_articles_total", "refId": "A" }]
+    },
+    {
+      "title": "Workers alive",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": { "defaults": { "thresholds": { "steps": [ { "color": "red", "value": 0 }, { "color": "green", "value": 1 } ] } } },
+      "targets": [{ "expr": "vayupress_workers_alive", "refId": "A" }]
+    },
+    {
+      "title": "Cache hit ratio",
+      "type": "gauge",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1 } },
+      "targets": [{ "expr": "vayupress_cache_hit_ratio", "refId": "A" }]
+    },
+    {
+      "title": "Storage used",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": { "defaults": { "unit": "bytes" } },
+      "targets": [{ "expr": "vayupress_storage_used_bytes", "refId": "A" }]
+    },
+    {
+      "title": "HTTP request latency (s)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum(rate(vayupress_http_request_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p50", "refId": "A" },
+        { "expr": "histogram_quantile(0.95, sum(rate(vayupress_http_request_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p95", "refId": "B" },
+        { "expr": "histogram_quantile(0.99, sum(rate(vayupress_http_request_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p99", "refId": "C" }
+      ]
+    },
+    {
+      "title": "Queue-job latency (s)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "targets": [
+        { "expr": "histogram_quantile(0.95, sum(rate(vayupress_queue_job_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p95", "refId": "A" },
+        { "expr": "histogram_quantile(0.99, sum(rate(vayupress_queue_job_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p99", "refId": "B" }
+      ]
+    },
+    {
+      "title": "Article mutations / s",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        { "expr": "rate(vayupress_articles_created_total[5m])", "legendFormat": "created", "refId": "A" },
+        { "expr": "rate(vayupress_articles_updated_total[5m])", "legendFormat": "updated", "refId": "B" },
+        { "expr": "rate(vayupress_articles_deleted_total[5m])", "legendFormat": "deleted", "refId": "C" }
+      ]
+    },
+    {
+      "title": "Reliability counters (rate)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        { "expr": "rate(vayupress_dead_letter_total[15m])", "legendFormat": "dead-letter", "refId": "A" },
+        { "expr": "rate(vayupress_poison_jobs_quarantined_total[15m])", "legendFormat": "poison-quarantined", "refId": "B" },
+        { "expr": "rate(vayupress_queue_failed_total[15m])", "legendFormat": "queue-failed", "refId": "C" },
+        { "expr": "rate(vayupress_meili_errors_total[15m])", "legendFormat": "meili-errors", "refId": "D" }
+      ]
+    },
+    {
+      "title": "Security counters (rate)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 20 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        { "expr": "rate(vayupress_auth_lockouts_total[5m])", "legendFormat": "auth-lockouts", "refId": "A" },
+        { "expr": "rate(vayupress_plugin_panics_total[15m])", "legendFormat": "plugin-panics", "refId": "B" },
+        { "expr": "rate(vayupress_pprof_accesses_total[15m])", "legendFormat": "pprof-accesses", "refId": "C" }
+      ]
+    }
+  ]
+}

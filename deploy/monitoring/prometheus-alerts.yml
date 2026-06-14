@@ -1,0 +1,106 @@
+# VayuPress Prometheus alerting rules.
+#
+# Load these into Prometheus via rule_files in prometheus.yml:
+#
+#   rule_files:
+#     - /etc/prometheus/rules/vayupress-alerts.yml
+#
+# They reference only metrics actually exported by GET /metrics, so every
+# expression resolves against a live instance. Tune thresholds to your SLOs;
+# the defaults mirror the benchmark gates (p95 ≤ 200ms reads, p99 ≤ 1s writes).
+groups:
+  - name: vayupress.availability
+    rules:
+      - alert: VayuPressInstanceDown
+        expr: up{job="vayupress"} == 0
+        for: 1m
+        labels: { severity: critical }
+        annotations:
+          summary: "VayuPress instance is down"
+          description: "The /metrics scrape target {{ $labels.instance }} has been unreachable for 1m."
+
+      - alert: VayuPressNoWorkersAlive
+        expr: vayupress_workers_alive == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "No write workers alive"
+          description: "vayupress_workers_alive has been 0 for 2m — the write queue is not draining."
+
+  - name: vayupress.latency
+    rules:
+      - alert: VayuPressHighReadLatencyP95
+        expr: histogram_quantile(0.95, sum(rate(vayupress_http_request_duration_seconds_bucket[5m])) by (le)) > 0.2
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "HTTP p95 above 200ms SLO"
+          description: "p95 request latency has exceeded the 200ms read SLO for 10m."
+
+      - alert: VayuPressHighWriteLatencyP99
+        expr: histogram_quantile(0.99, sum(rate(vayupress_queue_job_duration_seconds_bucket[5m])) by (le)) > 1
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "Queue-job p99 above 1s SLO"
+          description: "p99 write-job latency has exceeded the 1s SLO for 10m."
+
+  - name: vayupress.reliability
+    rules:
+      - alert: VayuPressDeadLetterGrowing
+        expr: increase(vayupress_dead_letter_total[15m]) > 0
+        for: 0m
+        labels: { severity: warning }
+        annotations:
+          summary: "Jobs are being dead-lettered"
+          description: "{{ $value }} job(s) dead-lettered in the last 15m. Inspect /admin/replay."
+
+      - alert: VayuPressPoisonJobsQuarantined
+        expr: increase(vayupress_poison_jobs_quarantined_total[15m]) > 0
+        for: 0m
+        labels: { severity: warning }
+        annotations:
+          summary: "Poison jobs quarantined"
+          description: "{{ $value }} poison job(s) quarantined in the last 15m."
+
+      - alert: VayuPressHealthDegraded
+        expr: increase(vayupress_health_degraded_events_total[5m]) > 0
+        for: 0m
+        labels: { severity: warning }
+        annotations:
+          summary: "Health degraded events observed"
+          description: "The system entered a degraded health state {{ $value }} time(s) in 5m."
+
+      - alert: VayuPressMigrationDrift
+        expr: increase(vayupress_migration_drift_detected_total[5m]) > 0
+        for: 0m
+        labels: { severity: critical }
+        annotations:
+          summary: "Schema/migration drift detected"
+          description: "Migration checksum drift was detected — investigate before further writes."
+
+      - alert: VayuPressSearchBackendErrors
+        expr: increase(vayupress_meili_errors_total[10m]) > 5
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Search backend erroring"
+          description: "More than 5 Meilisearch errors in 10m; the SQLite fallback is likely active. Consider a /admin/search/reindex once Meili recovers."
+
+  - name: vayupress.security
+    rules:
+      - alert: VayuPressAuthLockoutsSpiking
+        expr: increase(vayupress_auth_lockouts_total[5m]) > 10
+        for: 0m
+        labels: { severity: warning }
+        annotations:
+          summary: "Authentication lockouts spiking"
+          description: "{{ $value }} auth lockouts in 5m — possible credential-stuffing attempt."
+
+      - alert: VayuPressPluginPanics
+        expr: increase(vayupress_plugin_panics_total[15m]) > 0
+        for: 0m
+        labels: { severity: warning }
+        annotations:
+          summary: "Plugin panics observed"
+          description: "A sandboxed plugin panicked {{ $value }} time(s) in 15m."

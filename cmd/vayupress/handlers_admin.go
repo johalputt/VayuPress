@@ -1053,6 +1053,7 @@ func (a *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
   <button class="btn" id="btn-smoke">Smoke test</button>
   <button class="btn" id="btn-purge">Purge cache</button>
   <button class="btn" id="btn-bench">Benchmark</button>
+  <button class="btn" id="btn-reindex">Reindex search</button>
   <a href="/api/v1/stats" class="btn" target="_blank" rel="noopener">Stats JSON</a>
   <a href="/metrics" class="btn" target="_blank" rel="noopener">Metrics</a>
 </div>
@@ -1066,6 +1067,7 @@ func (a *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
   <a href="/health/migrations" target="_blank">Migrations</a>
   <a href="/admin/backup/validate" target="_blank">Backup Validate</a>
   <a href="/health/benchmarks" target="_blank">Benchmarks</a>
+  <a href="/api/v1/admin/search/drift" target="_blank">Search Drift</a>
 </nav>
 <footer class="admin-footer">
   <span>VayuPress %s &middot; Constitution v6.0 &middot; P1–P27 &middot; Ω1–Ω9 &middot; Config v%s</span>
@@ -1098,9 +1100,11 @@ func (a *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
   function runSmoke(){showMsg('Running smoke test…',false);fetch('/smoke-test').then(function(r){return r.text();}).then(function(t){showMsg('Smoke test: '+t,t.trim()!=='OK');}).catch(function(e){showMsg('Error: '+e,true);});}
   function runPurge(){showMsg('Purging cache…',false);post('/admin/cache-purge').then(function(r){return r.json();}).then(function(d){showMsg('Cache purge: '+(d.message||'done'),false);}).catch(function(e){showMsg('Error: '+e,true);});}
   function runBench(){showMsg('Benchmark started (up to 60s)…',false);post('/admin/benchmark').then(function(r){return r.json();}).then(function(d){showMsg('Benchmark: '+(d.overall||'done')+' · p95='+d.read_p95_ms+'ms',d.overall==='FAIL');}).catch(function(e){showMsg('Error: '+e,true);});}
+  function runReindex(){showMsg('Reindexing search…',false);post('/admin/search/reindex').then(function(r){return r.json();}).then(function(d){showMsg(d.indexed!==undefined?('Reindex: '+d.indexed+' indexed · '+d.failed+' failed · '+d.duration_ms+'ms'):('Reindex: '+(d.detail||d.title||'error')),d.failed>0||d.indexed===undefined);}).catch(function(e){showMsg('Error: '+e,true);});}
   document.getElementById('btn-smoke').addEventListener('click',runSmoke);
   document.getElementById('btn-purge').addEventListener('click',runPurge);
   document.getElementById('btn-bench').addEventListener('click',runBench);
+  document.getElementById('btn-reindex').addEventListener('click',runReindex);
   document.getElementById('shortcut-help-btn').addEventListener('click',openModal);
   closeBtn.addEventListener('click',closeModal);
   modal.addEventListener('click',function(e){if(e.target===modal)closeModal();});
