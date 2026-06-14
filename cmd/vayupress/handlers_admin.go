@@ -813,6 +813,9 @@ func (a *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
     <a href="/api/v1/admin/traces" class="sidebar-item">
       <div class="sidebar-item-left"><span class="sidebar-icon">⋯</span>Traces</div>
     </a>
+    <a href="/admin/topology" class="sidebar-item">
+      <div class="sidebar-item-left"><span class="sidebar-icon">❖</span>Topology</div>
+    </a>
     <a href="/health/dependencies" class="sidebar-item">
       <div class="sidebar-item-left"><span class="sidebar-icon">♥</span>Health</div>
       <span class="sidebar-status s-ok" aria-label="healthy"></span>

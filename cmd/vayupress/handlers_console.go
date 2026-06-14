@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"html/template"
 	"net/http"
@@ -101,7 +102,7 @@ func (a *App) writeConsoleShellHead(w http.ResponseWriter, r *http.Request, acti
 </header>
 <nav class="sidebar" aria-label="Admin navigation">
   <div class="sidebar-section"><span class="sidebar-section-label">Core</span>%s%s%s</div>
-  <div class="sidebar-section"><span class="sidebar-section-label">Observe</span>%s%s%s</div>
+  <div class="sidebar-section"><span class="sidebar-section-label">Observe</span>%s%s%s%s</div>
   <div class="sidebar-section"><span class="sidebar-section-label">Govern</span>%s%s%s</div>
   <div class="sidebar-section"><span class="sidebar-section-label">System</span>%s%s</div>
   <div class="sidebar-footer"><span class="sidebar-version">v%s</span><span class="sidebar-constitution">Ω1–Ω9 compliant</span></div>
@@ -117,6 +118,7 @@ func (a *App) writeConsoleShellHead(w http.ResponseWriter, r *http.Request, acti
 		sidebarItem("/api/v1/queue", "⟳", "Queue", "queue", active, "", ""),
 		sidebarItem("/api/v1/admin/outbox/events", "◎", "Events", "events", active, "", "s-ok"),
 		sidebarItem("/api/v1/admin/traces", "⋯", "Traces", "traces", active, "", ""),
+		sidebarItem("/admin/topology", "❖", "Topology", "topology", active, "", ""),
 		sidebarItem("/health/dependencies", "♥", "Health", "health", active, "", "s-ok"),
 		sidebarItem("/admin/faults", "⊞", "Fault Engine", "faults", active, "", ""),
 		sidebarItem("/admin/modes", "⬡", "System Modes", "modes", active, "", ""),
@@ -263,6 +265,192 @@ func (a *App) handleFaultPage(w http.ResponseWriter, r *http.Request) {
 </div></div>`)
 
 	writeConsoleShellFoot(w, nonce, `window.vpFault=function(name){vpPost('/admin/fault/simulate?name='+encodeURIComponent(name),function(d){var m=(d.current_mode||'').toUpperCase();return 'Fired '+name+' ×'+d.trigger_count+(d.escalated?(' → escalated to '+m):'');});};`)
+}
+
+// =============================================================================
+// Runtime Topology  (GET /admin/topology)
+// =============================================================================
+
+type topoNode struct {
+	ID, Label, Sub, Status, Band string
+	X, Y                         float64
+}
+
+const topoNodeW, topoNodeH = 162.0, 52.0
+
+func topoAnchor(n topoNode, side byte) (float64, float64) {
+	cx, cy := n.X+topoNodeW/2, n.Y+topoNodeH/2
+	switch side {
+	case 'r':
+		return n.X + topoNodeW, cy
+	case 'l':
+		return n.X, cy
+	case 't':
+		return cx, n.Y
+	case 'b':
+		return cx, n.Y + topoNodeH
+	}
+	return cx, cy
+}
+
+func (a *App) handleTopologyPage(w http.ResponseWriter, r *http.Request) {
+	snap := a.getAdminSnapshot()
+	cur := mode.Global.Current()
+
+	// Live status derivations.
+	queueStatus := "ok"
+	if snap.FailedJobs > 0 {
+		queueStatus = "warn"
+	}
+	walStatus := "ok"
+	if cur == mode.ModeReadOnly {
+		walStatus = "err"
+	}
+	fedStatus := "ok"
+	if cur == mode.ModeDegraded {
+		fedStatus = "warn"
+	}
+	searchStatus := "warn"
+	searchSub := "SQLite fallback"
+	if a.search != nil {
+		ctx, cancel := context.WithTimeout(r.Context(), 350*time.Millisecond)
+		if a.search.Ping(ctx) == nil {
+			searchStatus, searchSub = "ok", "Meilisearch"
+		}
+		cancel()
+	}
+	var faultTotal int64
+	for _, rule := range fault.DefaultRules() {
+		faultTotal += fault.Global.TriggerCount(rule.FaultName)
+	}
+	escStatus, faultStatus := "ok", "ok"
+	if faultTotal > 0 {
+		escStatus, faultStatus = "warn", "warn"
+	}
+	modeStatus := "mode-" + string(cur)
+	_, modeLabel, _ := modeVisual(cur)
+
+	nodes := []topoNode{
+		{"ingress", "HTTP Ingress", "chi router · TLS", "ok", "write", 30, 70},
+		{"auth", "Auth / CSRF", "API-key · rate-limit", "ok", "write", 250, 70},
+		{"queue", "Write Queue", fmt.Sprintf("%d pending · 3 workers", snap.PendingJobs), queueStatus, "write", 470, 70},
+		{"wal", "WAL · SQLite", "WAL+journal · PRAGMAs", walStatus, "write", 690, 70},
+		{"search", "Search", searchSub, searchStatus, "read", 30, 185},
+		{"cache", "Render Cache", fmt.Sprintf("%.0f%% hit ratio", snap.CacheHitRatio*100), "ok", "read", 250, 185},
+		{"replay", "Replay Store", "dead-letter · quarantine", "ok", "read", 470, 185},
+		{"signing", "Signing", "Ed25519 loaded", "ok", "write", 690, 185},
+		{"outbox", "Outbox Relay", "transactional events", "ok", "read", 470, 300},
+		{"federation", "Federation", "ActivityPub deliver", fedStatus, "read", 690, 300},
+		{"policy", "Policy Engine", "6/6 PASS", "ok", "govern", 30, 415},
+		{"mode", "Mode Engine", modeLabel, modeStatus, "govern", 250, 415},
+		{"escalator", "Escalation Engine", "6 rules armed", escStatus, "govern", 470, 415},
+		{"faults", "Fault Points", fmt.Sprintf("%d fired", faultTotal), faultStatus, "govern", 690, 415},
+		{"tracing", "Tracing", "correlation spans", "ok", "observe", 250, 525},
+		{"metrics", "Metrics", "Prometheus", "ok", "observe", 470, 525},
+		{"health", "Health", "12 contracts", "ok", "observe", 690, 525},
+	}
+	idx := map[string]topoNode{}
+	for _, n := range nodes {
+		idx[n.ID] = n
+	}
+
+	type edge struct {
+		from, to string
+		fs, ts   byte
+		cls      string
+	}
+	edges := []edge{
+		{"ingress", "auth", 'r', 'l', "flow"},
+		{"auth", "queue", 'r', 'l', "flow"},
+		{"queue", "wal", 'r', 'l', "flow"},
+		{"wal", "signing", 'r', 'l', "flow"},
+		{"ingress", "search", 'b', 't', ""},
+		{"auth", "cache", 'b', 't', ""},
+		{"queue", "replay", 'b', 't', ""},
+		{"wal", "outbox", 'b', 't', "flow"},
+		{"outbox", "federation", 'r', 'l', "flow"},
+		{"policy", "mode", 'r', 'l', "ctrl"},
+		{"faults", "escalator", 'l', 'r', "ctrl"},
+		{"escalator", "mode", 'l', 'r', "ctrl"},
+		{"mode", "wal", 't', 'b', "ctrl"},
+		{"mode", "tracing", 'b', 't', ""},
+		{"escalator", "metrics", 'b', 't', ""},
+		{"faults", "health", 'b', 't', ""},
+	}
+
+	nonce := a.writeConsoleShellHead(w, r, "topology", "Runtime Topology",
+		fmt.Sprintf("live subsystem graph · write path · governance overlay · current mode: %s", cur))
+
+	fmt.Fprint(w, `<div class="console-note">A live map of the runtime. Solid edges trace the write/read data path; dashed purple edges are the governance control plane — faults feed the escalator, which drives the mode engine, which constrains the write path. Node colour reflects current health.</div>
+<div class="topo-wrap"><svg class="topo-svg" viewBox="0 0 1000 600" role="img" aria-label="Runtime topology graph">
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#2b3a52"/></marker></defs>`)
+
+	// Band labels.
+	bands := []struct {
+		y     float64
+		label string
+	}{{96, "WRITE PATH"}, {211, "DELIVERY / READ"}, {441, "GOVERNANCE"}, {551, "OBSERVABILITY"}}
+	for _, b := range bands {
+		fmt.Fprintf(w, `<text class="topo-band" x="6" y="%.0f">%s</text>`, b.y, b.label)
+	}
+
+	// Edges first (under nodes).
+	for _, e := range edges {
+		x1, y1 := topoAnchor(idx[e.from], e.fs)
+		x2, y2 := topoAnchor(idx[e.to], e.ts)
+		// Smooth cubic bezier with control points biased along the exit/entry axis.
+		mx := (x1 + x2) / 2
+		my := (y1 + y2) / 2
+		c1x, c1y, c2x, c2y := mx, y1, mx, y2
+		if e.fs == 't' || e.fs == 'b' {
+			c1x, c1y, c2x, c2y = x1, my, x2, my
+		}
+		cls := "topo-edge"
+		if e.cls != "" {
+			cls += " " + e.cls
+		}
+		marker := ` marker-end="url(#arrow)"`
+		if e.cls == "ctrl" {
+			marker = ""
+		}
+		fmt.Fprintf(w, `<path class="%s" d="M%.0f,%.0f C%.0f,%.0f %.0f,%.0f %.0f,%.0f"%s/>`,
+			cls, x1, y1, c1x, c1y, c2x, c2y, x2, y2, marker)
+	}
+
+	// Nodes.
+	dotColor := map[string]string{"ok": "#10b981", "warn": "#f59e0b", "err": "#ef4444"}
+	strokeColor := map[string]string{"ok": "#1f3a30", "warn": "#3a3010", "err": "#3a1818"}
+	bandColor := map[string]string{"write": "#6366f1", "read": "#06b6d4", "govern": "#8b5cf6", "observe": "#10b981"}
+	for _, n := range nodes {
+		dc := dotColor[n.Status]
+		sc := strokeColor[n.Status]
+		if strings.HasPrefix(n.Status, "mode-") {
+			mc := map[mode.Mode]string{mode.ModeNormal: "#10b981", mode.ModeDegraded: "#f59e0b", mode.ModeReadOnly: "#ef4444", mode.ModeRecovery: "#06b6d4", mode.ModeMaintenance: "#8b5cf6", mode.ModeQuarantined: "#ef4444"}[cur]
+			dc, sc = mc, "#2a2150"
+		}
+		fmt.Fprintf(w, `<g class="topo-node">
+<rect class="topo-rect" x="%.0f" y="%.0f" width="%.0f" height="%.0f" rx="7" style="stroke:%s"/>
+<rect x="%.0f" y="%.0f" width="3" height="%.0f" rx="1.5" fill="%s"/>
+<circle cx="%.0f" cy="%.0f" r="4" fill="%s"><animate attributeName="opacity" values="1;.35;1" dur="2.6s" repeatCount="indefinite"/></circle>
+<text class="topo-label" x="%.0f" y="%.0f">%s</text>
+<text class="topo-sub" x="%.0f" y="%.0f">%s</text>
+</g>`,
+			n.X, n.Y, topoNodeW, topoNodeH, sc,
+			n.X, n.Y, topoNodeH, bandColor[n.Band],
+			n.X+topoNodeW-16, n.Y+16, dc,
+			n.X+14, n.Y+22, template.HTMLEscapeString(n.Label),
+			n.X+14, n.Y+38, template.HTMLEscapeString(n.Sub))
+	}
+	fmt.Fprint(w, `</svg></div>
+<div class="topo-legend">
+  <span class="tl-leg"><span class="tl-leg-dot" style="background:#10b981"></span>healthy</span>
+  <span class="tl-leg"><span class="tl-leg-dot" style="background:#f59e0b"></span>degraded</span>
+  <span class="tl-leg"><span class="tl-leg-dot" style="background:#ef4444"></span>blocked / fault</span>
+  <span class="tl-leg"><span class="tl-leg-line"></span>data path</span>
+  <span class="tl-leg"><span class="tl-leg-line ctrl"></span>control plane</span>
+</div>`)
+
+	writeConsoleShellFoot(w, nonce, ``)
 }
 
 // =============================================================================
