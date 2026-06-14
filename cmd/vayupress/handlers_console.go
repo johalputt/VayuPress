@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"html"
 	"html/template"
 	"net/http"
 	"strconv"
@@ -15,6 +16,7 @@ import (
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/fault"
 	"github.com/johalputt/vayupress/internal/mode"
+	"github.com/johalputt/vayupress/internal/policy"
 	"github.com/johalputt/vayupress/internal/render"
 )
 
@@ -106,7 +108,7 @@ func (a *App) writeConsoleShellHead(w http.ResponseWriter, r *http.Request, acti
 <nav class="sidebar" aria-label="Admin navigation">
   <div class="sidebar-section"><span class="sidebar-section-label">Core</span>%s%s%s%s</div>
   <div class="sidebar-section"><span class="sidebar-section-label">Observe</span>%s%s%s%s</div>
-  <div class="sidebar-section"><span class="sidebar-section-label">Govern</span>%s%s%s</div>
+  <div class="sidebar-section"><span class="sidebar-section-label">Govern</span>%s%s%s%s</div>
   <div class="sidebar-section"><span class="sidebar-section-label">System</span>%s%s</div>
   <div class="sidebar-footer"><span class="sidebar-version">v%s</span><span class="sidebar-constitution">Ω1–Ω9 compliant</span></div>
 </nav>
@@ -127,6 +129,7 @@ func (a *App) writeConsoleShellHead(w http.ResponseWriter, r *http.Request, acti
 		sidebarItem("/admin/faults", "⊞", "Fault Engine", "faults", active, "", ""),
 		sidebarItem("/admin/modes", "⬡", "System Modes", "modes", active, "", ""),
 		sidebarItem("/admin/adr", "≡", "ADRs", "adrs", active, "", ""),
+		sidebarItem("/admin/policy", "◈", "Policy Inspector", "policy", active, "", ""),
 		sidebarItem("/health/benchmarks", "⚡", "Benchmarks", "benchmarks", active, "", ""),
 		sidebarItem("/metrics", "∼", "Metrics", "metrics", active, "", ""),
 		Version,
@@ -681,4 +684,143 @@ func humanizeWindow(d time.Duration) string {
 		return fmt.Sprintf("%dmin", int(d.Minutes()))
 	}
 	return fmt.Sprintf("%ds", int(d.Seconds()))
+}
+
+// =============================================================================
+// Ω11 — Policy Provenance Inspector (GET /admin/policy)
+// Shows the live policy engine state plus full evaluation history from SQLite.
+// =============================================================================
+
+func (a *App) handlePolicyPage(w http.ResponseWriter, r *http.Request) {
+	nonce := a.writeConsoleShellHead(w, r, "policy", "Policy Provenance Inspector",
+		"governance rules · evaluation history · provenance lineage")
+
+	// Live evaluation for current display.
+	live := policy.Global.EvaluateAll(policy.Context{})
+	pass := len(live.Passed)
+	warn := len(live.Warnings)
+	fail := len(live.Failed)
+	total := pass + warn + fail
+
+	// Historical data from journal.
+	var rows []policy.EvalRow
+	var runs []policy.RunSummary
+	if policy.GlobalJournal != nil {
+		rows, _ = policy.GlobalJournal.History(120)
+		runs, _ = policy.GlobalJournal.RunHistory(20)
+	}
+
+	sb := &strings.Builder{}
+	sb.WriteString(`<div style="padding:18px 22px 0">`)
+
+	// Live status strip.
+	statusCls := "ps-pass"
+	if fail > 0 {
+		statusCls = "ps-fail"
+	} else if warn > 0 {
+		statusCls = "ps-warn"
+	}
+	sb.WriteString(`<div class="policy-strip">`)
+	sb.WriteString(fmt.Sprintf(`<div class="policy-stat"><div class="policy-stat-val %s">%d/%d</div><div class="policy-stat-label">Pass</div></div>`, statusCls, pass, total))
+	sb.WriteString(fmt.Sprintf(`<div class="policy-stat"><div class="policy-stat-val ps-warn">%d</div><div class="policy-stat-label">Warn</div></div>`, warn))
+	sb.WriteString(fmt.Sprintf(`<div class="policy-stat"><div class="policy-stat-val ps-fail">%d</div><div class="policy-stat-label">Fail</div></div>`, fail))
+	sb.WriteString(fmt.Sprintf(`<div class="policy-stat"><div class="policy-stat-val" style="color:var(--text2)">%d</div><div class="policy-stat-label">Run history</div></div>`, len(runs)))
+
+	// Trend sparkline from run history.
+	if len(runs) > 0 {
+		sb.WriteString(`<div class="policy-stat" style="padding-top:6px"><div class="policy-stat-label">Recent trend</div><div class="policy-trend">`)
+		maxTotal := 1
+		for _, rs := range runs {
+			if t := rs.Pass + rs.Warn + rs.Fail; t > maxTotal {
+				maxTotal = t
+			}
+		}
+		// Show newest on right — reverse.
+		for i := len(runs) - 1; i >= 0; i-- {
+			rs := runs[i]
+			t := rs.Pass + rs.Warn + rs.Fail
+			if t == 0 {
+				t = 1
+			}
+			h := 36 * t / maxTotal
+			if h < 3 {
+				h = 3
+			}
+			cls := "tb-pass"
+			if rs.Fail > 0 {
+				cls = "tb-fail"
+			} else if rs.Warn > 0 {
+				cls = "tb-warn"
+			}
+			sb.WriteString(fmt.Sprintf(`<div class="trend-bar %s" style="height:%dpx" title="%s: %dp %dw %df"></div>`, cls, h, rs.EvaluatedAt.UTC().Format("15:04"), rs.Pass, rs.Warn, rs.Fail))
+		}
+		sb.WriteString(`</div></div>`)
+	}
+	sb.WriteString(`</div>`) // end policy-strip
+
+	// Live policy results section.
+	sb.WriteString(`<div style="margin:18px 0 8px 0;font:600 9px var(--mono);letter-spacing:.07em;text-transform:uppercase;color:var(--muted)">LIVE EVALUATION — `)
+	sb.WriteString(time.Now().UTC().Format("15:04:05Z"))
+	sb.WriteString(`</div><div style="border-top:1px solid var(--border);margin-bottom:14px"></div>`)
+	sb.WriteString(`<table class="policy-history"><thead><tr>`)
+	for _, h := range []string{"Result", "Policy", "Category", "Severity", "Detail"} {
+		sb.WriteString(`<th>` + h + `</th>`)
+	}
+	sb.WriteString(`</tr></thead><tbody>`)
+
+	allLive := append(append(live.Passed, live.Warnings...), live.Failed...)
+	for _, r := range allLive {
+		res := "pass"
+		if !r.Passed {
+			if r.Severity == policy.SeverityWarning || r.Severity == policy.SeverityAdvisory {
+				res = "warn"
+			} else {
+				res = "fail"
+			}
+		}
+		badge := fmt.Sprintf(`<span class="pol-badge pol-%s">%s</span>`, res, strings.ToUpper(res))
+		sb.WriteString(`<tr>`)
+		sb.WriteString(`<td>` + badge + `</td>`)
+		sb.WriteString(`<td><span class="pol-name">` + html.EscapeString(r.Name) + `</span></td>`)
+		sb.WriteString(`<td><span class="pol-cat">` + html.EscapeString(string(r.Category)) + `</span></td>`)
+		sb.WriteString(`<td><span class="pol-cat">` + html.EscapeString(string(r.Severity)) + `</span></td>`)
+		sb.WriteString(`<td><span class="pol-detail">` + html.EscapeString(r.Message) + `</span></td>`)
+		sb.WriteString(`</tr>`)
+	}
+	sb.WriteString(`</tbody></table>`)
+
+	// Historical evaluation log.
+	if len(rows) > 0 {
+		sb.WriteString(`<div style="margin:22px 0 8px;font:600 9px var(--mono);letter-spacing:.07em;text-transform:uppercase;color:var(--muted)">EVALUATION HISTORY (last `)
+		sb.WriteString(fmt.Sprintf("%d", len(rows)))
+		sb.WriteString(` entries)</div><div style="border-top:1px solid var(--border);margin-bottom:14px"></div>`)
+		sb.WriteString(`<table class="policy-history"><thead><tr>`)
+		for _, h := range []string{"Timestamp", "Run ID", "Result", "Policy", "Category", "Detail"} {
+			sb.WriteString(`<th>` + h + `</th>`)
+		}
+		sb.WriteString(`</tr></thead><tbody>`)
+		for _, row := range rows {
+			badge := fmt.Sprintf(`<span class="pol-badge pol-%s">%s</span>`, row.Result, strings.ToUpper(row.Result))
+			ts := row.EvaluatedAt.UTC().Format("2006-01-02 15:04:05Z")
+			runShort := row.RunID
+			if len(runShort) > 12 {
+				runShort = runShort[:12] + "…"
+			}
+			sb.WriteString(`<tr>`)
+			sb.WriteString(`<td><span class="pol-ts">` + ts + `</span></td>`)
+			sb.WriteString(`<td><span class="pol-runid">` + html.EscapeString(runShort) + `</span></td>`)
+			sb.WriteString(`<td>` + badge + `</td>`)
+			sb.WriteString(`<td><span class="pol-name">` + html.EscapeString(row.PolicyName) + `</span></td>`)
+			sb.WriteString(`<td><span class="pol-cat">` + html.EscapeString(row.Category) + `</span></td>`)
+			sb.WriteString(`<td><span class="pol-detail">` + html.EscapeString(row.Detail) + `</span></td>`)
+			sb.WriteString(`</tr>`)
+		}
+		sb.WriteString(`</tbody></table>`)
+	} else {
+		sb.WriteString(`<div style="margin:22px 0;color:var(--muted);font:400 12px var(--mono)">No evaluation history yet — first run records on startup.</div>`)
+	}
+
+	sb.WriteString(`</div>`) // end padding wrapper
+	fmt.Fprint(w, sb.String())
+	writeConsoleShellFoot(w, nonce, "")
 }

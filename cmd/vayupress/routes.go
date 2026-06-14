@@ -119,6 +119,7 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 		r.Get("/admin/faults", a.handleFaultPage)
 		r.Get("/admin/topology", a.handleTopologyPage)
 		r.Get("/admin/replay", a.handleReplayPage)
+		r.Get("/admin/policy", a.handlePolicyPage)
 
 		r.With(auth.CSRFTokenMiddleware).Post("/admin/benchmark", a.handleRunBenchmark)
 		r.With(auth.CSRFTokenMiddleware).Post("/admin/cache-purge", a.handleAdminCachePurge)

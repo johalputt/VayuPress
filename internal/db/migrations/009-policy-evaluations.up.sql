@@ -1,0 +1,3 @@
+CREATE TABLE IF NOT EXISTS policy_evaluations (id INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT NOT NULL, policy_name TEXT NOT NULL, category TEXT NOT NULL DEFAULT '', severity TEXT NOT NULL DEFAULT 'blocking', result TEXT NOT NULL CHECK(result IN ('pass','warn','fail')), detail TEXT NOT NULL DEFAULT '', triggered_transition INTEGER NOT NULL DEFAULT 0, evaluated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE INDEX IF NOT EXISTS idx_policy_eval_run ON policy_evaluations(run_id, evaluated_at);
+CREATE INDEX IF NOT EXISTS idx_policy_eval_name ON policy_evaluations(policy_name, evaluated_at);
