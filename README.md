@@ -1,5 +1,9 @@
 <p align="center">
-  <img src="docs/assets/vayupress-logo.svg" alt="VayuPress" width="440">
+  <picture>
+    <source media="(prefers-color-scheme: dark)"  srcset="docs/assets/vayupress-logo.svg">
+    <source media="(prefers-color-scheme: light)" srcset="docs/assets/vayupress-logo.svg">
+    <img src="docs/assets/vayupress-logo.svg" alt="VayuPress" width="440">
+  </picture>
 </p>
 
 # VayuPress

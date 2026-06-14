@@ -1,17 +1,43 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none" role="img" aria-label="VayuPress mark">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 580 480" fill="none" role="img" aria-label="VayuPress">
   <defs>
-    <linearGradient id="vpWing" x1="290" y1="330" x2="480" y2="150" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#2563eb"/>
-      <stop offset="1" stop-color="#3b82f6"/>
-    </linearGradient>
+    <style>
+      .vp-v  { fill: #0b1220 }
+      .vp-w1 { fill: #3b82f6 }
+      .vp-w2 { fill: #2563eb }
+      .vp-w3 { fill: #1d4ed8 }
+      @media (prefers-color-scheme: dark) {
+        .vp-v  { fill: #e2e8f0 }
+        .vp-w1 { fill: #60a5fa }
+        .vp-w2 { fill: #3b82f6 }
+        .vp-w3 { fill: #2563eb }
+      }
+    </style>
   </defs>
-  <!-- Navy "V" -->
-  <path d="M118 150 L256 402 L360 214" stroke="#0b1220" stroke-width="62"
-        stroke-linejoin="miter" stroke-linecap="butt" fill="none"/>
-  <!-- Blue triple-swoosh wing -->
-  <g stroke="url(#vpWing)" stroke-width="26" stroke-linecap="round" fill="none">
-    <path d="M298 250 C356 176 426 156 470 168"/>
-    <path d="M298 286 C354 218 424 202 466 214"/>
-    <path d="M298 322 C350 262 414 250 448 260"/>
-  </g>
+
+  <!-- Solid "V" as filled polygon -->
+  <polygon class="vp-v"
+    points="66,88 134,88 264,396 256,410 246,396 274,88 340,88 256,416"/>
+
+  <!--
+    Three bold tapered ribbon swooshes.
+    Each is 28px tall (top-to-bottom of the ribbon band) for visual weight.
+    They emerge from the right leg of the V and sweep wide to the right.
+    top ribbon sits at shoulder height, bottom at mid-V.
+  -->
+
+  <!-- bottom ribbon -->
+  <path class="vp-w3"
+    d="M310,260 C358,236 450,228 566,242
+       C566,258 450,258 358,264 C350,264 330,266 310,278 Z"/>
+
+  <!-- middle ribbon -->
+  <path class="vp-w2"
+    d="M294,196 C346,166 450,156 568,170
+       C568,186 450,186 346,194 C336,196 316,200 294,216 Z"/>
+
+  <!-- top ribbon — longest, highest arc -->
+  <path class="vp-w1"
+    d="M278,132 C336,96 448,86 570,100
+       C570,116 448,118 336,124 C324,126 304,132 278,152 Z"/>
+
 </svg>
