@@ -184,6 +184,8 @@ h1, h2, h3, h4, h5, h6 {
 
 .vayu-nav-links a:hover { color: var(--pico-primary); }
 
+.vayu-nav-status { font-size: 0.75rem; color: var(--pico-muted-color); }
+
 .vayu-mode-dot {
   display: inline-block;
   width: 7px;
@@ -215,6 +217,8 @@ h1, h2, h3, h4, h5, h6 {
 
 .vayu-footer a { color: var(--pico-muted-color); }
 .vayu-footer a:hover { color: var(--pico-primary); }
+
+.vayu-footer-brand { display: flex; align-items: center; gap: 0.5rem; }
 
 .vayu-footer-badge {
   margin-left: auto;

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"regexp"
 	"strings"
 
 	"github.com/johalputt/vayupress/internal/logging"
@@ -12,6 +13,26 @@ import (
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/settings"
 )
+
+// hexColorRe matches #rgb and #rrggbb CSS hex colours (case-insensitive).
+var hexColorRe = regexp.MustCompile(`^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$`)
+
+// handleThemeCSS serves the dynamic per-site theme stylesheet at /theme.css.
+// Served from the same origin (text/css) so it satisfies the strict
+// `style-src 'self'` CSP. An ETag over the CSS content lets browsers revalidate
+// cheaply; no-cache forces revalidation so palette changes propagate even to
+// disk-cached HTML pages on the next request.
+func (a *App) handleThemeCSS(w http.ResponseWriter, r *http.Request) {
+	etag := render.ThemeCSSETag()
+	w.Header().Set("Content-Type", "text/css; charset=utf-8")
+	w.Header().Set("ETag", etag)
+	w.Header().Set("Cache-Control", "no-cache")
+	if r.Header.Get("If-None-Match") == etag {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+	fmt.Fprint(w, render.ThemeCSS())
+}
 
 // handleThemeGet renders the admin theme-editor page.
 func (a *App) handleThemeGet(w http.ResponseWriter, r *http.Request) {
@@ -22,7 +43,7 @@ func (a *App) handleThemeGet(w http.ResponseWriter, r *http.Request) {
 	}
 	modeStr := string(mode.Global.Current())
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprint(w, themeEditorPage(vals, modeStr, ""))
+	fmt.Fprint(w, themeEditorPage(vals, modeStr, render.CSPNonce(r), ""))
 }
 
 // handleThemeSave processes the JSON POST from the theme editor.
@@ -70,6 +91,22 @@ func (a *App) handleThemeSave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate colour fields are #rgb / #rrggbb so they can't break the served
+	// stylesheet or smuggle extra CSS declarations into the variable block.
+	for label, val := range map[string]string{
+		"Primary (light)": body.PrimaryLight,
+		"Primary (dark)":  body.PrimaryDark,
+		"Accent (light)":  body.AccentLight,
+		"Accent (dark)":   body.AccentDark,
+	} {
+		if v := strings.TrimSpace(val); v != "" && !hexColorRe.MatchString(v) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(400)
+			json.NewEncoder(w).Encode(map[string]string{"error": label + " must be a hex colour like #0d9488"}) //nolint:errcheck
+			return
+		}
+	}
+
 	kv := map[string]string{
 		settings.KeySiteName:          strings.TrimSpace(body.SiteName),
 		settings.KeySiteTagline:       strings.TrimSpace(body.SiteTagline),
@@ -106,6 +143,14 @@ func (a *App) handleThemeSave(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
+	// Identity (name/tagline/description) and custom <head> are baked into the
+	// cached HTML, so purge all rendered fragments and regenerate the feeds.
+	// The palette propagates separately via /theme.css revalidation.
+	render.CachePurgeAll()
+	go generateSitemap()
+	go generateRSS()
+	go generateRobots()
+
 	logging.LogJSON(logging.LogFields{
 		Level: "info", Component: "theme", Severity: "info",
 		Msg: "site settings updated", RequestID: getRequestID(r),
@@ -117,7 +162,7 @@ func (a *App) handleThemeSave(w http.ResponseWriter, r *http.Request) {
 }
 
 // themeEditorPage returns the full HTML for the theme editor admin page.
-func themeEditorPage(vals map[string]string, modeStr, errMsg string) string {
+func themeEditorPage(vals map[string]string, modeStr, nonce, errMsg string) string {
 	safeErr := template.HTMLEscapeString(errMsg)
 
 	v := func(key string) string {
@@ -144,26 +189,6 @@ func themeEditorPage(vals map[string]string, modeStr, errMsg string) string {
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Theme · VayuPress Console</title>
 <link rel="stylesheet" href="/static/css/admin.css">
-<style>
-.theme-tabs{display:flex;gap:2px;margin-bottom:18px;border-bottom:1px solid var(--border)}
-.theme-tab{padding:7px 14px;font:600 11px var(--mono);color:var(--text2);cursor:pointer;border:none;background:none;border-bottom:2px solid transparent;margin-bottom:-1px;transition:color .12s,border-color .12s}
-.theme-tab.active{color:var(--hi);border-bottom-color:var(--accent)}
-.theme-panel{display:none}.theme-panel.active{display:block}
-.field-row{display:grid;grid-template-columns:160px 1fr;align-items:start;gap:10px;margin-bottom:12px}
-.field-label{font:600 10px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding-top:8px}
-.field-input{background:var(--surface2);border:1px solid var(--border2);border-radius:var(--radius);color:var(--text);font:400 12px var(--mono);padding:6px 9px;width:100%;transition:border-color .12s;box-sizing:border-box}
-.field-input:focus{border-color:var(--accent);outline:none}
-textarea.field-input{resize:vertical;min-height:120px;font-size:11px;line-height:1.55}
-.color-pair{display:flex;align-items:center;gap:8px}
-.color-swatch{width:32px;height:32px;border-radius:var(--radius);border:1px solid var(--border2);cursor:pointer;padding:0}
-.field-hint{font:400 9px var(--mono);color:var(--muted);margin-top:4px}
-.theme-save{display:inline-flex;align-items:center;gap:6px;padding:7px 18px;background:linear-gradient(135deg,var(--accent) 0%,#4f46e5 100%);border:none;border-radius:var(--radius);color:#fff;font:600 11px var(--font);cursor:pointer;transition:opacity .15s}
-.theme-save:hover{opacity:.88}
-.theme-save:disabled{opacity:.5;cursor:not-allowed}
-.err-banner{padding:8px 12px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:var(--radius);color:var(--error);font:400 11px var(--mono);margin-bottom:14px}
-.ok-banner{display:none;padding:8px 12px;background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.25);border-radius:var(--radius);color:var(--green);font:400 11px var(--mono);margin-bottom:14px}
-.warn-box{padding:8px 12px;background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.2);border-radius:var(--radius);color:var(--gold);font:400 10px var(--mono);margin-bottom:12px}
-</style>
 </head><body>
 <div class="app-shell">
 <header class="topbar">
@@ -217,6 +242,7 @@ textarea.field-input{resize:vertical;min-height:120px;font-size:11px;line-height
     <div class="page-title">Theme &amp; Site Settings</div>
     <div class="page-sub">Customise identity, palette, and injected code · changes live immediately · governed write</div>
   </div>
+  <a class="btn" href="/" target="_blank" rel="noopener">View Public Site ↗</a>
 </div>
 `)
 
@@ -227,9 +253,9 @@ textarea.field-input{resize:vertical;min-height:120px;font-size:11px;line-height
 
 	sb.WriteString(`
 <div class="theme-tabs">
-  <button type="button" class="theme-tab active" onclick="showTab('identity',this)">Identity</button>
-  <button type="button" class="theme-tab" onclick="showTab('palette',this)">Palette</button>
-  <button type="button" class="theme-tab" onclick="showTab('code',this)">Custom Code</button>
+  <button type="button" class="theme-tab active" data-tab="identity">Identity</button>
+  <button type="button" class="theme-tab" data-tab="palette">Palette</button>
+  <button type="button" class="theme-tab" data-tab="code">Custom Code</button>
 </div>
 
 <!-- Identity -->
@@ -266,17 +292,15 @@ textarea.field-input{resize:vertical;min-height:120px;font-size:11px;line-height
 
 <!-- Palette -->
 <div id="tab-palette" class="theme-panel">
-  <p class="field-hint" style="margin-bottom:14px">These override Pico CSS variables on every public page render. Use valid hex colours (e.g. #0d9488).</p>
+  <p class="field-hint theme-note">These override Pico CSS variables on every public page render. Use valid hex colours (e.g. #0d9488).</p>
   <div class="section-title">Light Mode</div>
   <div class="field-row">
     <span class="field-label">Primary</span>
     <div>
       <div class="color-pair">
-        <input type="color" class="color-swatch" id="swatch-pl" value="` + v(settings.KeyThemePrimaryLight) + `"
-               oninput="document.getElementById('theme.primary_light').value=this.value">
-        <input type="text" id="theme.primary_light" class="field-input" style="max-width:120px"
-               value="` + v(settings.KeyThemePrimaryLight) + `" placeholder="#0d9488" maxlength="7"
-               oninput="document.getElementById('swatch-pl').value=this.value">
+        <input type="color" class="color-swatch" id="swatch-pl" data-sync="theme.primary_light" value="` + v(settings.KeyThemePrimaryLight) + `">
+        <input type="text" id="theme.primary_light" class="field-input field-hex" data-sync="swatch-pl"
+               value="` + v(settings.KeyThemePrimaryLight) + `" placeholder="#0d9488" maxlength="7">
       </div>
       <div class="field-hint">Link colour, button fill, tag highlights.</div>
     </div>
@@ -285,11 +309,9 @@ textarea.field-input{resize:vertical;min-height:120px;font-size:11px;line-height
     <span class="field-label">Accent</span>
     <div>
       <div class="color-pair">
-        <input type="color" class="color-swatch" id="swatch-al" value="` + v(settings.KeyThemeAccentLight) + `"
-               oninput="document.getElementById('theme.accent_light').value=this.value">
-        <input type="text" id="theme.accent_light" class="field-input" style="max-width:120px"
-               value="` + v(settings.KeyThemeAccentLight) + `" placeholder="#f59e0b" maxlength="7"
-               oninput="document.getElementById('swatch-al').value=this.value">
+        <input type="color" class="color-swatch" id="swatch-al" data-sync="theme.accent_light" value="` + v(settings.KeyThemeAccentLight) + `">
+        <input type="text" id="theme.accent_light" class="field-input field-hex" data-sync="swatch-al"
+               value="` + v(settings.KeyThemeAccentLight) + `" placeholder="#f59e0b" maxlength="7">
       </div>
       <div class="field-hint">Blockquote border, mode-dot pulse, stat highlights.</div>
     </div>
@@ -299,11 +321,9 @@ textarea.field-input{resize:vertical;min-height:120px;font-size:11px;line-height
     <span class="field-label">Primary</span>
     <div>
       <div class="color-pair">
-        <input type="color" class="color-swatch" id="swatch-pd" value="` + v(settings.KeyThemePrimaryDark) + `"
-               oninput="document.getElementById('theme.primary_dark').value=this.value">
-        <input type="text" id="theme.primary_dark" class="field-input" style="max-width:120px"
-               value="` + v(settings.KeyThemePrimaryDark) + `" placeholder="#2dd4bf" maxlength="7"
-               oninput="document.getElementById('swatch-pd').value=this.value">
+        <input type="color" class="color-swatch" id="swatch-pd" data-sync="theme.primary_dark" value="` + v(settings.KeyThemePrimaryDark) + `">
+        <input type="text" id="theme.primary_dark" class="field-input field-hex" data-sync="swatch-pd"
+               value="` + v(settings.KeyThemePrimaryDark) + `" placeholder="#2dd4bf" maxlength="7">
       </div>
     </div>
   </div>
@@ -311,11 +331,9 @@ textarea.field-input{resize:vertical;min-height:120px;font-size:11px;line-height
     <span class="field-label">Accent</span>
     <div>
       <div class="color-pair">
-        <input type="color" class="color-swatch" id="swatch-ad" value="` + v(settings.KeyThemeAccentDark) + `"
-               oninput="document.getElementById('theme.accent_dark').value=this.value">
-        <input type="text" id="theme.accent_dark" class="field-input" style="max-width:120px"
-               value="` + v(settings.KeyThemeAccentDark) + `" placeholder="#fbbf24" maxlength="7"
-               oninput="document.getElementById('swatch-ad').value=this.value">
+        <input type="color" class="color-swatch" id="swatch-ad" data-sync="theme.accent_dark" value="` + v(settings.KeyThemeAccentDark) + `">
+        <input type="text" id="theme.accent_dark" class="field-input field-hex" data-sync="swatch-ad"
+               value="` + v(settings.KeyThemeAccentDark) + `" placeholder="#fbbf24" maxlength="7">
       </div>
     </div>
   </div>
@@ -340,64 +358,78 @@ textarea.field-input{resize:vertical;min-height:120px;font-size:11px;line-height
   </div>
 </div>
 
-<div style="margin-top:20px;display:flex;align-items:center;gap:14px">
-  <button id="save-btn" class="theme-save" onclick="saveSettings()">◑ Save Settings</button>
-  <span id="save-status" style="font:400 10px var(--mono);color:var(--muted)"></span>
+<div class="theme-actions">
+  <button id="save-btn" class="theme-save">◑ Save Settings</button>
+  <span id="save-status" class="save-status"></span>
 </div>
 
-<script>
-function showTab(name, btn) {
-  document.querySelectorAll('.theme-panel').forEach(function(p){p.classList.remove('active');});
-  document.querySelectorAll('.theme-tab').forEach(function(b){b.classList.remove('active');});
-  document.getElementById('tab-'+name).classList.add('active');
-  btn.classList.add('active');
-}
-function getVal(id) {
-  var el = document.getElementById(id);
-  return el ? el.value : '';
-}
-function csrf() {
-  var m = document.cookie.split('; ').find(function(r){return r.startsWith('vp_csrf=');});
-  return m ? m.split('=')[1] : '';
-}
-function saveSettings() {
-  var btn = document.getElementById('save-btn');
-  var status = document.getElementById('save-status');
-  btn.disabled = true;
-  status.textContent = 'Saving…';
-  var payload = {
-    'site.name': getVal('site.name'),
-    'site.tagline': getVal('site.tagline'),
-    'site.description': getVal('site.description'),
-    'site.author': getVal('site.author'),
-    'theme.primary_light': getVal('theme.primary_light'),
-    'theme.primary_dark': getVal('theme.primary_dark'),
-    'theme.accent_light': getVal('theme.accent_light'),
-    'theme.accent_dark': getVal('theme.accent_dark'),
-    'theme.custom_css': getVal('theme.custom_css'),
-    'theme.custom_head': getVal('theme.custom_head')
-  };
-  fetch('/admin/theme', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrf()},
-    body: JSON.stringify(payload)
-  }).then(function(r){return r.json();}).then(function(data){
-    btn.disabled = false;
-    if (data.error) {
-      status.style.color = 'var(--error)';
-      status.textContent = '✗ ' + data.error;
-    } else {
-      status.style.color = 'var(--green)';
-      status.textContent = '✓ Saved — public pages updated';
-      document.getElementById('ok-banner').style.display = 'block';
-      setTimeout(function(){document.getElementById('ok-banner').style.display='none';}, 4000);
-    }
-  }).catch(function(e){
-    btn.disabled = false;
-    status.style.color = 'var(--error)';
-    status.textContent = '✗ Network error: ' + e.message;
+<script nonce="` + template.HTMLEscapeString(nonce) + `">
+(function(){
+  function getVal(id){ var el=document.getElementById(id); return el?el.value:''; }
+  function csrf(){
+    var m=document.cookie.split('; ').find(function(r){return r.startsWith('vp_csrf=');});
+    return m?m.split('=')[1]:'';
+  }
+  // Tab switching (no inline handlers — CSP-clean).
+  document.querySelectorAll('.theme-tab').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var name=btn.getAttribute('data-tab');
+      document.querySelectorAll('.theme-panel').forEach(function(p){p.classList.remove('active');});
+      document.querySelectorAll('.theme-tab').forEach(function(b){b.classList.remove('active');});
+      var panel=document.getElementById('tab-'+name);
+      if(panel) panel.classList.add('active');
+      btn.classList.add('active');
+    });
   });
-}
+  // Two-way colour <-> hex sync via data-sync attributes.
+  document.querySelectorAll('[data-sync]').forEach(function(el){
+    el.addEventListener('input', function(){
+      var target=document.getElementById(el.getAttribute('data-sync'));
+      if(target) target.value=el.value;
+    });
+  });
+  // Save.
+  var btn=document.getElementById('save-btn');
+  var status=document.getElementById('save-status');
+  btn.addEventListener('click', function(){
+    btn.disabled=true;
+    status.style.color='var(--muted)';
+    status.textContent='Saving…';
+    var payload={
+      'site.name':getVal('site.name'),
+      'site.tagline':getVal('site.tagline'),
+      'site.description':getVal('site.description'),
+      'site.author':getVal('site.author'),
+      'theme.primary_light':getVal('theme.primary_light'),
+      'theme.primary_dark':getVal('theme.primary_dark'),
+      'theme.accent_light':getVal('theme.accent_light'),
+      'theme.accent_dark':getVal('theme.accent_dark'),
+      'theme.custom_css':getVal('theme.custom_css'),
+      'theme.custom_head':getVal('theme.custom_head')
+    };
+    fetch('/admin/theme',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},
+      body:JSON.stringify(payload)
+    }).then(function(r){return r.json();}).then(function(data){
+      btn.disabled=false;
+      if(data.error){
+        status.style.color='var(--error)';
+        status.textContent='✗ '+data.error;
+      } else {
+        status.style.color='var(--green)';
+        status.textContent='✓ Saved — public pages updated';
+        var ok=document.getElementById('ok-banner');
+        ok.style.display='block';
+        setTimeout(function(){ok.style.display='none';},4000);
+      }
+    }).catch(function(e){
+      btn.disabled=false;
+      status.style.color='var(--error)';
+      status.textContent='✗ Network error: '+e.message;
+    });
+  });
+})();
 </script>
 </main>
 </div>
