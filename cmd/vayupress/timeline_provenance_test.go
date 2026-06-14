@@ -131,12 +131,14 @@ func TestCausalLineageFormsTraversableGraph(t *testing.T) {
 
 func TestEventIDIsDeterministic(t *testing.T) {
 	e := tlEntry{Clock: "00:00:01", Msg: "mode.transition — NORMAL → DEGRADED", Prov: tlProvenance{Source: "mode"}}
-	if eventID(e) != eventID(e) {
+	first := eventID(e)
+	second := eventID(e)
+	if first != second {
 		t.Error("eventID must be deterministic for identical input")
 	}
 	e2 := e
 	e2.Msg = "different"
-	if eventID(e) == eventID(e2) {
+	if first == eventID(e2) {
 		t.Error("eventID must differ for different messages")
 	}
 }
