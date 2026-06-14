@@ -68,7 +68,7 @@ var Defaults = map[string]string{
 	KeySiteTagline:       "Publishing as an adaptive runtime.",
 	KeySiteDescription:   "Durable by design, observable end to end.",
 	KeySiteAuthor:        "Ankush Choudhary Johal",
-	KeyThemePrimaryLight: "#0d9488",
+	KeyThemePrimaryLight: "#0f766e", // teal-700 — clears WCAG AA on the light bg
 	KeyThemePrimaryDark:  "#2dd4bf",
 	KeyThemeAccentLight:  "#f59e0b",
 	KeyThemeAccentDark:   "#fbbf24",

@@ -6,9 +6,12 @@ import (
 	"io"
 	"net/http"
 	"runtime"
+	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/logging"
@@ -16,18 +19,43 @@ import (
 	"github.com/johalputt/vayupress/internal/queue"
 )
 
+// cspReportDedup suppresses logging of identical (directive|blocked) violations
+// within a short window so a looping page can't flood the log. It is bounded:
+// when it grows past cspDedupMax entries it is reset wholesale (cheap, and the
+// rate limiter already caps ingestion).
+var (
+	cspDedupMu     sync.Mutex
+	cspDedupSeen   = map[string]time.Time{}
+	cspDedupWindow = 60 * time.Second
+	cspDedupMax    = 512
+)
+
 // handleCSPReport ingests browser Content-Security-Policy violation reports
 // (report-uri target). It is public and unauthenticated — browsers post these
-// without credentials. Each report increments a counter and is logged through
-// the structured pipeline so CSP drift is observable in the operational model,
-// turning "doctrine vs runtime" divergence into a measurable signal rather than
-// a silent assumption. The body is bounded to avoid abuse.
+// without credentials — so it is hardened against abuse:
+//   - per-IP rate limit (over-limit reports are dropped before counting/logging,
+//     so neither the metric nor the log can be inflated by a single source);
+//   - 16 KB body cap;
+//   - strict structured parsing (unparseable/empty reports are ignored);
+//   - short-window duplicate suppression on (directive|blocked-uri).
+//
+// Accepted, de-duplicated violations increment vayupress_csp_violations_total
+// and emit one structured log line, turning runtime CSP drift into a measurable
+// signal rather than a silent assumption.
 func (a *App) handleCSPReport(w http.ResponseWriter, r *http.Request) {
-	atomic.AddInt64(&metrics.MetricCSPViolations, 1)
 	defer r.Body.Close()
+	// Always answer 204 — browsers ignore the body. Bail out cheaply when the
+	// source is over its rate limit so abuse cannot inflate metrics or logs.
+	ip := r.Header.Get("X-Real-IP")
+	if ip == "" {
+		ip = strings.Split(r.RemoteAddr, ":")[0]
+	}
+	if !auth.AllowCSPReport(ip) {
+		w.WriteHeader(http.StatusTooManyRequests)
+		return
+	}
+
 	raw, _ := io.ReadAll(io.LimitReader(r.Body, 16*1024))
-	// Browsers wrap the report as {"csp-report": {...}}. Parse best-effort;
-	// never fail the response (browsers ignore it anyway).
 	var env struct {
 		Report struct {
 			DocumentURI        string `json:"document-uri"`
@@ -36,17 +64,38 @@ func (a *App) handleCSPReport(w http.ResponseWriter, r *http.Request) {
 			BlockedURI         string `json:"blocked-uri"`
 		} `json:"csp-report"`
 	}
-	if json.Unmarshal(raw, &env) == nil && (env.Report.ViolatedDirective != "" || env.Report.BlockedURI != "") {
-		directive := env.Report.ViolatedDirective
-		if directive == "" {
-			directive = env.Report.EffectiveDirective
-		}
-		logging.LogJSON(logging.LogFields{
-			Level: "warn", Component: "csp", Severity: "warning",
-			Msg:  "CSP violation: directive=" + directive + " blocked=" + env.Report.BlockedURI,
-			Path: env.Report.DocumentURI,
-		})
+	if json.Unmarshal(raw, &env) != nil || (env.Report.ViolatedDirective == "" && env.Report.BlockedURI == "") {
+		w.WriteHeader(http.StatusNoContent) // unparseable / empty → ignore quietly
+		return
 	}
+	directive := env.Report.ViolatedDirective
+	if directive == "" {
+		directive = env.Report.EffectiveDirective
+	}
+
+	// Duplicate suppression: skip counting/logging an identical violation seen
+	// within the dedup window.
+	key := directive + "|" + env.Report.BlockedURI
+	now := time.Now()
+	cspDedupMu.Lock()
+	if len(cspDedupSeen) > cspDedupMax {
+		cspDedupSeen = map[string]time.Time{}
+	}
+	last, seen := cspDedupSeen[key]
+	dup := seen && now.Sub(last) < cspDedupWindow
+	cspDedupSeen[key] = now
+	cspDedupMu.Unlock()
+	if dup {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	atomic.AddInt64(&metrics.MetricCSPViolations, 1)
+	logging.LogJSON(logging.LogFields{
+		Level: "warn", Component: "csp", Severity: "warning",
+		Msg:  "CSP violation: directive=" + directive + " blocked=" + env.Report.BlockedURI,
+		Path: env.Report.DocumentURI,
+	})
 	w.WriteHeader(http.StatusNoContent)
 }
 

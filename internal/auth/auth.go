@@ -181,6 +181,41 @@ func AllowPprof(ip string) bool {
 	return true
 }
 
+// ── CSP report rate limiter ───────────────────────────────────────────────────
+
+// cspReportLimitPerMin caps accepted CSP violation reports per IP per minute.
+// The /csp-report endpoint is public and unauthenticated, so this bounds log
+// spam, metric inflation, and ingestion abuse from a single source.
+const cspReportLimitPerMin = 30
+
+type cspBucket struct {
+	count     int
+	windowEnd time.Time
+	mu        sync.Mutex
+}
+
+var cspLimiters sync.Map
+
+// AllowCSPReport returns true if the given IP is within the CSP-report rate
+// limit (fixed window, per minute). Over-limit reports are dropped entirely —
+// neither counted nor logged — so abuse cannot inflate metrics or logs.
+func AllowCSPReport(ip string) bool {
+	v, _ := cspLimiters.LoadOrStore(ip, &cspBucket{})
+	b := v.(*cspBucket)
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	now := time.Now()
+	if now.After(b.windowEnd) {
+		b.count = 0
+		b.windowEnd = now.Add(time.Minute)
+	}
+	if b.count >= cspReportLimitPerMin {
+		return false
+	}
+	b.count++
+	return true
+}
+
 // ── Cache purge rate limiter ──────────────────────────────────────────────────
 
 type purgeBucket struct {
@@ -273,6 +308,17 @@ func StartBucketSweeper(ctx context.Context) {
 						b.mu.Unlock()
 						if idle {
 							purgeLimiters.Delete(k)
+						}
+					}
+					return true
+				})
+				cspLimiters.Range(func(k, v interface{}) bool {
+					if b, ok := v.(*cspBucket); ok {
+						b.mu.Lock()
+						old := now.After(b.windowEnd)
+						b.mu.Unlock()
+						if old {
+							cspLimiters.Delete(k)
 						}
 					}
 					return true

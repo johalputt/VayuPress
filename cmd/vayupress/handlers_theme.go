@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"math"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/johalputt/vayupress/internal/logging"
@@ -21,6 +23,68 @@ var hexColorRe = regexp.MustCompile(`^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$`)
 // the punctuation those providers use. Anything else is rejected so the value
 // can only ever render inside a meta content="" attribute.
 var verifyTokenRe = regexp.MustCompile(`^[A-Za-z0-9._-]{1,128}$`)
+
+// Page background colours the primary palette renders against. These mirror
+// --pico-background-color in static/css/custom.css and are used for WCAG
+// contrast checks on save.
+const (
+	lightModeBG  = "#f8fafc"
+	darkModeBG   = "#0a0f1a"
+	wcagAANormal = 4.5 // WCAG 2.x AA contrast ratio for normal-size text/links
+)
+
+// srgbToLinear linearises one 0–255 sRGB channel (WCAG relative-luminance step).
+func srgbToLinear(c float64) float64 {
+	c /= 255.0
+	if c <= 0.03928 {
+		return c / 12.92
+	}
+	return math.Pow((c+0.055)/1.055, 2.4)
+}
+
+// relLuminance returns the WCAG relative luminance of a #rgb / #rrggbb colour.
+func relLuminance(hexColor string) float64 {
+	h := strings.TrimPrefix(hexColor, "#")
+	if len(h) == 3 {
+		h = string([]byte{h[0], h[0], h[1], h[1], h[2], h[2]})
+	}
+	if len(h) != 6 {
+		return 0
+	}
+	ch := func(s string) float64 {
+		n, _ := strconv.ParseInt(s, 16, 0)
+		return srgbToLinear(float64(n))
+	}
+	return 0.2126*ch(h[0:2]) + 0.7152*ch(h[2:4]) + 0.0722*ch(h[4:6])
+}
+
+// contrastRatio returns the WCAG contrast ratio (1.0–21.0) between two colours.
+func contrastRatio(a, b string) float64 {
+	la, lb := relLuminance(a), relLuminance(b)
+	if la < lb {
+		la, lb = lb, la
+	}
+	return (la + 0.05) / (lb + 0.05)
+}
+
+// contrastWarnings returns advisory (non-blocking) WCAG AA warnings for the
+// primary palette colours against their page backgrounds. Primary is used as
+// the link/interactive-text colour, so failing AA hurts readability — but theme
+// sovereignty means we warn, not forbid.
+func contrastWarnings(primaryLight, primaryDark string) []string {
+	var out []string
+	if primaryLight != "" {
+		if cr := contrastRatio(primaryLight, lightModeBG); cr < wcagAANormal {
+			out = append(out, fmt.Sprintf("Light primary %s has low contrast (%.1f:1) on the light background — WCAG AA wants ≥ %.1f:1.", primaryLight, cr, wcagAANormal))
+		}
+	}
+	if primaryDark != "" {
+		if cr := contrastRatio(primaryDark, darkModeBG); cr < wcagAANormal {
+			out = append(out, fmt.Sprintf("Dark primary %s has low contrast (%.1f:1) on the dark background — WCAG AA wants ≥ %.1f:1.", primaryDark, cr, wcagAANormal))
+		}
+	}
+	return out
+}
 
 // robotsChoices lists the <meta name="robots"> options in display order. The
 // label is shown in the <select>; the value is what gets persisted and must be
@@ -226,9 +290,19 @@ func (a *App) handleThemeSave(w http.ResponseWriter, r *http.Request) {
 		Msg: "site settings updated", RequestID: getRequestID(r),
 	})
 
+	// Advisory WCAG AA contrast warnings — the save succeeds regardless; theme
+	// sovereignty means we surface accessibility risks, not veto them.
+	warnings := contrastWarnings(
+		strings.TrimSpace(body.PrimaryLight),
+		strings.TrimSpace(body.PrimaryDark),
+	)
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok"}) //nolint:errcheck
+	json.NewEncoder(w).Encode(map[string]interface{}{ //nolint:errcheck
+		"status":   "ok",
+		"warnings": warnings,
+	})
 }
 
 // themeEditorPage returns the full HTML for the theme editor admin page.
@@ -328,6 +402,7 @@ func themeEditorPage(vals map[string]string, modeStr, nonce, errMsg string) stri
 		sb.WriteString(`<div class="err-banner">` + safeErr + `</div>`)
 	}
 	sb.WriteString(`<div id="ok-banner" class="ok-banner">✓ Settings saved — public pages updated.</div>`)
+	sb.WriteString(`<div id="warn-banner" class="warn-box vayu-hidden"></div>`)
 
 	sb.WriteString(`
 <div class="theme-tabs">
@@ -541,6 +616,11 @@ func themeEditorPage(vals map[string]string, modeStr, nonce, errMsg string) stri
         var ok=document.getElementById('ok-banner');
         ok.style.display='block';
         setTimeout(function(){ok.style.display='none';},4000);
+        var wb=document.getElementById('warn-banner');
+        if(data.warnings&&data.warnings.length){
+          wb.textContent='⚠ '+data.warnings.join(' ');
+          wb.style.display='block';
+        } else { wb.style.display='none'; }
       }
     }).catch(function(e){
       btn.disabled=false;

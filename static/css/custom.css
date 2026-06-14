@@ -13,10 +13,11 @@
   --pico-line-height: 1.75;
   --pico-font-size: 1.0625rem;
 
-  /* Brand colours */
-  --pico-primary: #0d9488;
-  --pico-primary-hover: #0f766e;
-  --pico-primary-focus: rgba(13, 148, 136, 0.25);
+  /* Brand colours — light-mode primary is teal-700 (#0f766e) so links clear
+     WCAG AA (5.2:1) on the near-white background; #0d9488 only reached 3.6:1. */
+  --pico-primary: #0f766e;
+  --pico-primary-hover: #0c5d56;
+  --pico-primary-focus: rgba(15, 118, 110, 0.25);
   --pico-primary-inverse: #fff;
   --vayu-accent: #f59e0b;
   --vayu-accent-hover: #d97706;

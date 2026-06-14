@@ -149,7 +149,14 @@ func securityHeadersMiddleware(next http.Handler) http.Handler {
 		w.Header().Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload")
 		nonce := render.GenerateCSPNonce()
 		csp := fmt.Sprintf("default-src 'self'; font-src 'self'; style-src 'self'; script-src 'self' 'nonce-%s'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; report-uri /csp-report", nonce)
-		w.Header().Set("Content-Security-Policy", csp)
+		// Report-Only mode (CSP_REPORT_ONLY=true) reports violations without
+		// blocking — useful in staging to surface frontend regressions via
+		// /csp-report before flipping a stricter policy to enforcing.
+		cspHeader := "Content-Security-Policy"
+		if config.Cfg.CSPReportOnly {
+			cspHeader = "Content-Security-Policy-Report-Only"
+		}
+		w.Header().Set(cspHeader, csp)
 		ctx := render.WithCSPNonce(r.Context(), nonce)
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")

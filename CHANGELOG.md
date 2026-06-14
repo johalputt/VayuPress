@@ -23,6 +23,16 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   so it needs no CSP nonce.
 - **CSP violation reporting**: `report-uri /csp-report` + `POST /csp-report`
   endpoint, `vayupress_csp_violations_total` metric, structured per-violation logs.
+  Hardened against abuse: per-IP rate limit (`auth.AllowCSPReport`, 30/min,
+  over-limit dropped before counting/logging), 16 KB body cap, strict structured
+  parsing, and short-window duplicate suppression on `(directive|blocked-uri)`.
+- **Report-Only CSP mode**: `CSP_REPORT_ONLY=true` sends
+  `Content-Security-Policy-Report-Only` instead of the enforcing header, so a
+  candidate policy can be observed via `/csp-report` in staging before enforcing.
+- **WCAG AA contrast warnings**: saving the palette returns advisory (non-blocking)
+  warnings when a primary colour falls below 4.5:1 on its page background. The
+  shipped **default light primary changed from `#0d9488` (3.6:1) to `#0f766e`
+  (teal-700, 5.2:1)** so the defaults themselves clear AA.
 
 ### Security
 - **Declarative head capabilities replace raw `<head>` HTML**: head/SEO inputs are

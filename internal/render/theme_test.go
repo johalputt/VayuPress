@@ -95,7 +95,7 @@ func TestHeadMetaCannotInjectMarkup(t *testing.T) {
 // falls back to (settings.Defaults), or a page rendered before any operator
 // save would flash a different hue than /theme.css later applies.
 func TestDefaultPaletteMatchesVendoredCSS(t *testing.T) {
-	for _, hexColor := range []string{"#0d9488", "#2dd4bf", "#f59e0b", "#fbbf24"} {
+	for _, hexColor := range []string{"#0f766e", "#2dd4bf", "#f59e0b", "#fbbf24"} {
 		if !strings.Contains(customCSSMin, hexColor) {
 			t.Errorf("vendored custom.css missing default palette colour %s (drift vs settings.Defaults)", hexColor)
 		}
