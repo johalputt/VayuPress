@@ -86,15 +86,29 @@ func (a *App) purgeCloudflare(slug string) {
 		return
 	}
 	url := fmt.Sprintf("https://api.cloudflare.com/client/v4/zones/%s/purge_cache", config.Cfg.CFZoneID)
-	body, _ := json.Marshal(map[string][]string{"files": {"https://" + config.Cfg.Domain + "/" + slug}})
-	req, _ := http.NewRequestWithContext(context.Background(), "POST", url, bytes.NewReader(body))
+	body, err := json.Marshal(map[string][]string{"files": {"https://" + config.Cfg.Domain + "/" + slug}})
+	if err != nil {
+		logging.LogError("cloudflare", "marshal failed: "+slug, err.Error())
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(body))
+	if err != nil {
+		logging.LogError("cloudflare", "build request failed: "+slug, err.Error())
+		return
+	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+config.Cfg.CFAPIToken)
 	resp, err := a.outboundClient.Do(req)
 	if err != nil {
+		logging.LogError("cloudflare", "purge failed: "+slug, err.Error())
 		return
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		logging.LogError("cloudflare", "purge rejected: "+slug, fmt.Sprintf("status %d", resp.StatusCode))
+	}
 }
 
 func (a *App) pingIndexNow(slug string) {
@@ -111,16 +125,26 @@ func (a *App) pingIndexNow(slug string) {
 		})
 		return
 	}
-	body, _ := json.Marshal(map[string]interface{}{
+	body, err := json.Marshal(map[string]interface{}{
 		"host": config.Cfg.Domain, "key": config.Cfg.IndexNowKey,
 		"keyLocation": "https://" + config.Cfg.Domain + "/.well-known/" + config.Cfg.IndexNowKey + ".txt",
 		"urlList":     []string{"https://" + config.Cfg.Domain + "/" + slug},
 	})
-	req, _ := http.NewRequestWithContext(context.Background(), "POST", "https://api.indexnow.org/indexnow", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := a.outboundClient.Do(req)
 	if err != nil {
-		logging.LogError("indexnow", "submission failed: "+slug, err.Error())
+		logging.LogError("indexnow", "marshal failed: "+slug, err.Error())
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "POST", "https://api.indexnow.org/indexnow", bytes.NewReader(body))
+	if err != nil {
+		logging.LogError("indexnow", "build request failed: "+slug, err.Error())
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err2 := a.outboundClient.Do(req)
+	if err2 != nil {
+		logging.LogError("indexnow", "submission failed: "+slug, err2.Error())
 		return
 	}
 	defer resp.Body.Close()
@@ -238,8 +262,14 @@ func (a *App) collectAdminMetrics() {
 		defer rows.Close()
 		for rows.Next() {
 			var ra adminRecentArticle
-			rows.Scan(&ra.Title, &ra.Slug, &ra.CreatedAt)
+			if scanErr := rows.Scan(&ra.Title, &ra.Slug, &ra.CreatedAt); scanErr != nil {
+				logging.LogError("metrics", "scan recent article", scanErr.Error())
+				continue
+			}
 			snap.RecentArticles = append(snap.RecentArticles, ra)
+		}
+		if rowsErr := rows.Err(); rowsErr != nil {
+			logging.LogError("metrics", "iterate recent articles", rowsErr.Error())
 		}
 	}
 	a.metricsSnapshot.Store(snap)

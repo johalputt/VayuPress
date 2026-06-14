@@ -99,7 +99,9 @@ func (r *Relay) processOne() (empty bool) {
 	}
 
 	// Poison-event fast-path: dead-letter immediately on ErrPoisonEvent.
-	dispErr := r.dispatch(context.Background(), rec.eventType, rec.payload)
+	dispCtx, dispCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer dispCancel()
+	dispErr := r.dispatch(dispCtx, rec.eventType, rec.payload)
 	if dispErr != nil && errors.Is(dispErr, ErrPoisonEvent) {
 		logging.LogError("outbox", "poison event dead-lettered for "+rec.eventType, dispErr.Error())
 		r.db.Exec(

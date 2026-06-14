@@ -513,6 +513,7 @@ func loadJobs(status string, limit int) []replayJob {
 		}
 		out = append(out, j)
 	}
+	_ = rows.Err() // iteration errors are non-critical for UI display
 	return out
 }
 

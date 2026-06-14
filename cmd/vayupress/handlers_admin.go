@@ -138,9 +138,12 @@ func (a *App) handleAdminBackupValidate(w http.ResponseWriter, r *http.Request) 
 			if storedSum, ok := registry[filepath.Base(latestBackup)]; ok {
 				if f, ferr := os.Open(latestBackup); ferr == nil {
 					h := sha256.New()
-					io.Copy(h, f)
+					if _, copyErr := io.Copy(h, f); copyErr != nil {
+						logging.LogError("backup-validate", "hash read failed", copyErr.Error())
+					} else {
+						checksumOK = hex.EncodeToString(h.Sum(nil)) == storedSum
+					}
 					f.Close()
-					checksumOK = hex.EncodeToString(h.Sum(nil)) == storedSum
 				}
 			}
 		}
@@ -178,7 +181,7 @@ func (a *App) handleAdminCachePurge(w http.ResponseWriter, r *http.Request) {
 			for _, f := range files {
 				if !f.IsDir() && strings.HasSuffix(f.Name(), ".html") {
 					fpath := filepath.Join(postsDir, f.Name())
-					if fi, err := os.Stat(fpath); err == nil {
+					if fi, infoErr := f.Info(); infoErr == nil {
 						dbpkg.UpdateStorageDelta(-fi.Size())
 					}
 					if err := os.Remove(fpath); err == nil {
