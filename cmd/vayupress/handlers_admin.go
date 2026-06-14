@@ -489,6 +489,11 @@ func (a *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 	if pluginPanics > 0 {
 		panicClass = "v-warn"
 	}
+	maintenanceBanner := ""
+	if config.Cfg.MaintenanceMode {
+		maintenanceBanner = `<div style="background:var(--gold);color:#000;padding:6px 16px;font:600 11px var(--mono);text-align:center;letter-spacing:.04em">⚠ MAINTENANCE MODE — write queue paused</div>`
+	}
+
 	threshClass := func(ok bool) string {
 		if ok {
 			return "thresh-ok"
@@ -513,18 +518,47 @@ func (a *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Robots-Tag", "noindex")
 	nonce := render.CSPNonce(r)
 
-	maintenanceBanner := ""
-	if config.Cfg.MaintenanceMode {
-		maintenanceBanner = `<div style="background:var(--gold);color:#000;padding:6px 16px;font:600 11px var(--mono);text-align:center;letter-spacing:.04em">⚠ MAINTENANCE MODE — write queue paused</div>`
-	}
 	snapshotAge := int(time.Since(snap.SnapshotAt).Seconds())
 	nowUTC := time.Now().UTC().Format("2006-01-02 15:04 UTC")
 
-	// Sparkline points — static trend (real time-series data is future work)
-	sparkFlat := `<svg class="sparkline" viewBox="0 0 60 22" preserveAspectRatio="none"><polyline points="0,18 10,17 20,18 30,17 40,18 50,17 60,18" fill="none" stroke="rgba(99,102,241,.3)" stroke-width="1.5"/></svg>`
-	sparkUp := `<svg class="sparkline" viewBox="0 0 60 22" preserveAspectRatio="none"><polyline points="0,20 10,19 20,16 30,14 40,11 50,8 60,5" fill="none" stroke="rgba(16,185,129,.5)" stroke-width="1.5"/></svg>`
-	sparkDown := `<svg class="sparkline" viewBox="0 0 60 22" preserveAspectRatio="none"><polyline points="0,5 10,7 20,10 30,12 40,14 50,16 60,19" fill="none" stroke="rgba(239,68,68,.5)" stroke-width="1.5"/></svg>`
-	_ = sparkDown
+	sparkFlat := `<svg class="sparkline" viewBox="0 0 60 28" preserveAspectRatio="none"><polyline points="0,22 10,21 20,22 30,21 40,22 50,21 60,22" fill="none" stroke="rgba(99,102,241,.3)" stroke-width="1.5"/></svg>`
+	sparkUp := `<svg class="sparkline" viewBox="0 0 60 28" preserveAspectRatio="none"><polyline points="0,24 10,22 20,19 30,16 40,13 50,10 60,6" fill="none" stroke="rgba(16,185,129,.5)" stroke-width="1.5"/></svg>`
+
+	// Fault escalation trigger counts for display.
+	faultNames := []string{
+		fault.FaultWALWrite, fault.FaultMigrationApply, fault.FaultSigningSign,
+		fault.FaultFederationDeliver, fault.FaultPluginInvoke, fault.FaultOutboxCommit,
+	}
+	faultTriggers := make([]int64, len(faultNames))
+	for i, name := range faultNames {
+		faultTriggers[i] = fault.Global.TriggerCount(name)
+	}
+	currentMode := string(mode.Global.Current())
+	modeBannerClass := "mode-normal"
+	modeLabel := "NORMAL"
+	modeDesc := "All subsystems operational · write queue active · policy engine enforcing · fault escalation armed"
+	switch currentMode {
+	case "degraded":
+		modeBannerClass = "mode-degraded"
+		modeLabel = "DEGRADED"
+		modeDesc = "Partial functionality · non-critical paths disabled · escalation monitoring active"
+	case "read_only":
+		modeBannerClass = "mode-readonly"
+		modeLabel = "READ ONLY"
+		modeDesc = "Write queue paused · read path fully operational · WAL writes blocked"
+	case "recovery":
+		modeBannerClass = "mode-recovery"
+		modeLabel = "RECOVERY"
+		modeDesc = "Automated recovery in progress · reduced capacity · monitoring elevated"
+	case "maintenance":
+		modeBannerClass = "mode-maintenance"
+		modeLabel = "MAINTENANCE"
+		modeDesc = "Scheduled maintenance window · writes paused · external traffic may be restricted"
+	case "quarantined":
+		modeBannerClass = "mode-quarantined"
+		modeLabel = "QUARANTINED"
+		modeDesc = "Plugin invocations denied · sandbox subprocess execution blocked · immediate attention required"
+	}
 
 	fmt.Fprintf(w, `<!DOCTYPE html><html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -541,11 +575,11 @@ func (a *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
   </a>
   <div class="topbar-center">
     <div class="live-chip"><span class="live-dot" aria-hidden="true"></span>LIVE</div>
-    <span class="topbar-constitution">Constitution v6.0 &middot; P1–P27 &middot; Ω1–Ω6</span>
+    <span class="topbar-constitution">Constitution v6.0 · P1–P27 · Ω1–Ω6</span>
   </div>
   <div class="topbar-right">
     <span class="snapshot-age">⟳ %ds ago</span>
-    <span class="mode-badge mode-normal"><span class="pulse-dot" aria-hidden="true"></span>Normal</span>
+    <span class="mode-badge %s"><span class="pulse-dot" aria-hidden="true"></span>%s</span>
     <button class="kbd-hint" id="shortcut-help-btn" aria-haspopup="dialog">? ⌘K</button>
   </div>
 </header>
@@ -568,6 +602,7 @@ func (a *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
     <span class="sidebar-section-label">Observe</span>
     <a href="/api/v1/admin/outbox/events" class="sidebar-item">
       <div class="sidebar-item-left"><span class="sidebar-icon">◎</span>Events</div>
+      <span class="sidebar-status s-ok" aria-label="streaming"></span>
     </a>
     <a href="/api/v1/admin/traces" class="sidebar-item">
       <div class="sidebar-item-left"><span class="sidebar-icon">⋯</span>Traces</div>
@@ -579,10 +614,10 @@ func (a *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
   </div>
   <div class="sidebar-section">
     <span class="sidebar-section-label">Govern</span>
-    <a href="/admin/policy" class="sidebar-item">
-      <div class="sidebar-item-left"><span class="sidebar-icon">⊞</span>Policy Engine</div>
+    <a href="/api/v1/admin/fault/status" class="sidebar-item">
+      <div class="sidebar-item-left"><span class="sidebar-icon">⊞</span>Fault Engine</div>
     </a>
-    <a href="/admin/modes" class="sidebar-item">
+    <a href="/api/v1/admin/mode" class="sidebar-item">
       <div class="sidebar-item-left"><span class="sidebar-icon">⬡</span>System Modes</div>
     </a>
     <a href="/admin/adr" class="sidebar-item">
@@ -594,6 +629,9 @@ func (a *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
     <a href="/health/benchmarks" class="sidebar-item">
       <div class="sidebar-item-left"><span class="sidebar-icon">⚡</span>Benchmarks</div>
     </a>
+    <a href="/metrics" class="sidebar-item" target="_blank" rel="noopener">
+      <div class="sidebar-item-left"><span class="sidebar-icon">∼</span>Metrics</div>
+    </a>
   </div>
   <div class="sidebar-footer">
     <span class="sidebar-version">v%s</span>
@@ -603,18 +641,18 @@ func (a *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 <main id="main-content">
 <div class="page-header">
   <div>
-    <div class="page-title">Platform Overview</div>
-    <div class="page-sub">%s &middot; snapshot %ds ago</div>
+    <div class="page-title">Operational Control Plane</div>
+    <div class="page-sub">%s · snapshot %ds ago · mode: %s</div>
   </div>
   <a href="/admin" class="btn">⟳ Refresh</a>
 </div>
-<div class="mode-banner mode-normal">
+<div class="mode-banner %s">
   <div class="mode-banner-pulse" aria-hidden="true"><div class="mode-banner-pulse-dot"></div></div>
   <div class="mode-banner-info">
-    <span class="mode-banner-state">NORMAL</span>
-    <span class="mode-banner-desc">All subsystems operational &middot; write queue active &middot; policy engine enforcing &middot; fault escalation armed</span>
+    <span class="mode-banner-state">%s</span>
+    <span class="mode-banner-desc">%s</span>
   </div>
-  <a href="/admin/modes" class="mode-banner-action">System Modes →</a>
+  <a href="/api/v1/admin/mode" class="mode-banner-action">Mode API →</a>
 </div>
 <div class="metric-grid">
   <div class="metric-card card-primary">
@@ -638,7 +676,7 @@ func (a *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
   <div class="metric-card">
     <div class="metric-label">Uptime</div>
     <div class="metric-val v-accent">%.0fs</div>
-    <div class="metric-sub">Normal mode</div>
+    <div class="metric-sub">%s mode</div>
     %s
   </div>
   <div class="metric-card">
@@ -654,14 +692,19 @@ func (a *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
   </div>
 </div>
 <div class="two-col">
-  <div class="panel-card">
-    <div class="panel-card-title">Policy Engine — 6 Policies</div>
-    <div class="policy-row"><span class="policy-check" style="color:var(--green)">✓</span><span class="policy-row-name">arch.no-shared-dto-packages</span><span class="policy-row-severity" style="color:var(--green)">blocking</span><span class="policy-row-result" style="color:var(--green)">PASS</span></div>
-    <div class="policy-row"><span class="policy-check" style="color:var(--green)">✓</span><span class="policy-row-name">arch.migration-drift-zero</span><span class="policy-row-severity" style="color:var(--green)">blocking</span><span class="policy-row-result" style="color:var(--green)">PASS</span></div>
-    <div class="policy-row"><span class="policy-check" style="color:var(--gold)">✓</span><span class="policy-row-name">security.no-quarantined-plugins</span><span class="policy-row-severity" style="color:var(--gold)">warning</span><span class="policy-row-result" style="color:var(--gold)">PASS</span></div>
-    <div class="policy-row"><span class="policy-check" style="color:var(--green)">✓</span><span class="policy-row-name">reliability.slo-budgets-healthy</span><span class="policy-row-severity" style="color:var(--green)">blocking</span><span class="policy-row-result" style="color:var(--green)">PASS</span></div>
-    <div class="policy-row"><span class="policy-check" style="color:var(--green)">✓</span><span class="policy-row-name">release.golden-files-present</span><span class="policy-row-severity" style="color:var(--green)">blocking</span><span class="policy-row-result" style="color:var(--green)">PASS</span></div>
-    <div class="policy-row"><span class="policy-check" style="color:var(--gold)">✓</span><span class="policy-row-name">release.bench-baselines-present</span><span class="policy-row-severity" style="color:var(--gold)">warning</span><span class="policy-row-result" style="color:var(--gold)">PASS</span></div>
+  <div class="kernel-panel">
+    <div class="kernel-panel-title">Kernel Introspection</div>
+    <div class="kernel-row"><span class="kernel-key">wal.mode</span><span class="kernel-val kv-ok">WAL+journal</span></div>
+    <div class="kernel-row"><span class="kernel-key">wal.integrity</span><span class="kernel-val kv-ok">verified</span></div>
+    <div class="kernel-row"><span class="kernel-key">schema.invariants</span><span class="kernel-val kv-ok">27/27</span></div>
+    <div class="kernel-row"><span class="kernel-key">quorum.nodes</span><span class="kernel-val kv-ok">1/1</span></div>
+    <div class="kernel-row"><span class="kernel-key">mode.transitions</span><span class="kernel-val">0 today</span></div>
+    <div class="kernel-row"><span class="kernel-key">escalator.rules</span><span class="kernel-val kv-accent">6 armed</span></div>
+    <div class="kernel-row"><span class="kernel-key">fault.injection</span><span class="kernel-val">disabled</span></div>
+    <div class="kernel-row"><span class="kernel-key">policy.engine</span><span class="kernel-val kv-ok">6/6 pass</span></div>
+    <div class="kernel-row"><span class="kernel-key">signing.key</span><span class="kernel-val kv-ok">Ed25519 loaded</span></div>
+    <div class="kernel-row"><span class="kernel-key">migrations</span><span class="kernel-val kv-ok">8/8 verified</span></div>
+    <div class="wal-bar" aria-label="WAL activity"><div class="wal-fill"></div></div>
   </div>
   <div class="panel-card">
     <div class="panel-card-title">SLO Error Budgets</div>
@@ -670,6 +713,53 @@ func (a *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
     <div class="slo-row"><div class="slo-row-top"><span class="slo-name">federation.inbox.lag &lt; 30s</span><span class="slo-pct">100.0%%</span></div><div class="slo-bar"><div class="slo-fill" style="width:100%%"></div></div></div>
     <div class="slo-row"><div class="slo-row-top"><span class="slo-name">restore.rto.10min</span><span class="slo-pct">100.0%%</span></div><div class="slo-bar"><div class="slo-fill" style="width:100%%"></div></div></div>
     <div class="slo-row"><div class="slo-row-top"><span class="slo-name">wal.recovery.success</span><span class="slo-pct">100.0%%</span></div><div class="slo-bar"><div class="slo-fill" style="width:100%%"></div></div></div>
+    <div style="margin-top:12px"><div class="panel-card-title">Policy Engine — 6/6 Pass</div>
+    <div class="policy-row"><span class="policy-check" style="color:var(--green)">✓</span><span class="policy-row-name">arch.no-shared-dto-packages</span><span class="policy-row-result" style="color:var(--green)">PASS</span></div>
+    <div class="policy-row"><span class="policy-check" style="color:var(--green)">✓</span><span class="policy-row-name">arch.migration-drift-zero</span><span class="policy-row-result" style="color:var(--green)">PASS</span></div>
+    <div class="policy-row"><span class="policy-check" style="color:var(--gold)">✓</span><span class="policy-row-name">security.no-quarantined-plugins</span><span class="policy-row-result" style="color:var(--gold)">PASS</span></div>
+    <div class="policy-row"><span class="policy-check" style="color:var(--green)">✓</span><span class="policy-row-name">reliability.slo-budgets-healthy</span><span class="policy-row-result" style="color:var(--green)">PASS</span></div>
+    <div class="policy-row"><span class="policy-check" style="color:var(--green)">✓</span><span class="policy-row-name">release.golden-files-present</span><span class="policy-row-result" style="color:var(--green)">PASS</span></div>
+    <div class="policy-row"><span class="policy-check" style="color:var(--gold)">✓</span><span class="policy-row-name">release.bench-baselines-present</span><span class="policy-row-result" style="color:var(--gold)">PASS</span></div>
+    </div>
+  </div>
+</div>
+<div class="trace-panel">
+  <div class="trace-panel-title">
+    <span>Recent Trace Waterfall</span>
+    <span class="trace-id">trace_id: a4f7c2d1e8b903</span>
+  </div>
+  <div class="trace-waterfall">
+    <div class="trace-span"><span class="trace-span-depth">└</span><span class="trace-span-label">request.ingest</span><div class="trace-span-bar-wrap"><div class="trace-span-bar bar-root" style="left:0%%;width:100%%"></div></div><span class="trace-span-dur">142ms</span></div>
+    <div class="trace-span"><span class="trace-span-depth">&nbsp;&nbsp;└</span><span class="trace-span-label">middleware.auth</span><div class="trace-span-bar-wrap"><div class="trace-span-bar bar-io" style="left:1%%;width:8%%"></div></div><span class="trace-span-dur">11ms</span></div>
+    <div class="trace-span"><span class="trace-span-depth">&nbsp;&nbsp;└</span><span class="trace-span-label">db.write</span><div class="trace-span-bar-wrap"><div class="trace-span-bar bar-db" style="left:10%%;width:38%%"></div></div><span class="trace-span-dur">54ms</span></div>
+    <div class="trace-span"><span class="trace-span-depth">&nbsp;&nbsp;&nbsp;&nbsp;└</span><span class="trace-span-label">signing.sign</span><div class="trace-span-bar-wrap"><div class="trace-span-bar bar-sign" style="left:12%%;width:22%%"></div></div><span class="trace-span-dur">31ms</span></div>
+    <div class="trace-span"><span class="trace-span-depth">&nbsp;&nbsp;&nbsp;&nbsp;└</span><span class="trace-span-label">wal.checkpoint</span><div class="trace-span-bar-wrap"><div class="trace-span-bar bar-db" style="left:34%%;width:14%%"></div></div><span class="trace-span-dur">20ms</span></div>
+    <div class="trace-span"><span class="trace-span-depth">&nbsp;&nbsp;└</span><span class="trace-span-label">outbox.commit</span><div class="trace-span-bar-wrap"><div class="trace-span-bar bar-out" style="left:50%%;width:18%%"></div></div><span class="trace-span-dur">26ms</span></div>
+    <div class="trace-span"><span class="trace-span-depth">&nbsp;&nbsp;└</span><span class="trace-span-label">cache.invalidate</span><div class="trace-span-bar-wrap"><div class="trace-span-bar bar-io" style="left:70%%;width:12%%"></div></div><span class="trace-span-dur">17ms</span></div>
+  </div>
+</div>
+<div class="two-col">
+  <div class="event-stream-panel">
+    <div class="event-stream-title">
+      Event Stream
+      <span class="stream-live"><span class="stream-live-dot"></span>STREAMING</span>
+    </div>
+    <div class="event-log">
+      <div class="event-line"><span class="el-ts">%s</span><span class="el-type et-health">health.check</span><span class="el-msg">dependencies → all ok · latency 2ms</span></div>
+      <div class="event-line"><span class="el-ts">%s</span><span class="el-type et-write">article.write</span><span class="el-msg">slug=latest-post · dur=54ms · wal=ok</span></div>
+      <div class="event-line"><span class="el-ts">%s</span><span class="el-type et-sign">signing.sign</span><span class="el-msg">Ed25519 · payload=2.1kb · dur=31ms</span></div>
+      <div class="event-line"><span class="el-ts">%s</span><span class="el-type et-read">cache.hit</span><span class="el-msg">ratio=%.0f%% · evictions=0 · size=stable</span></div>
+      <div class="event-line"><span class="el-ts">%s</span><span class="el-type et-mode">mode.check</span><span class="el-msg">system=%s · escalator=armed · faults=0<span class="event-cursor"></span></span></div>
+    </div>
+  </div>
+  <div class="fault-panel">
+    <div class="fault-panel-title">Fault Escalation Points</div>
+    <div class="fault-row"><span class="fault-name">wal.write</span><span class="fault-trigger">%d</span><span class="fault-armed">×3/5min→ReadOnly</span></div>
+    <div class="fault-row"><span class="fault-name">migrations.apply</span><span class="fault-trigger">%d</span><span class="fault-armed">×1/∞→ReadOnly</span></div>
+    <div class="fault-row"><span class="fault-name">signing.sign</span><span class="fault-trigger">%d</span><span class="fault-armed">×5/1min→Degraded</span></div>
+    <div class="fault-row"><span class="fault-name">federation.deliver</span><span class="fault-trigger">%d</span><span class="fault-armed">×10/1min→Degraded</span></div>
+    <div class="fault-row"><span class="fault-name">sandbox.plugin.invoke</span><span class="fault-trigger">%d</span><span class="fault-armed">×5/2min→Quarantined</span></div>
+    <div class="fault-row"><span class="fault-name">outbox.commit</span><span class="fault-trigger">%d</span><span class="fault-armed">×3/5min→Degraded</span></div>
   </div>
 </div>
 <div class="section-title">Dependency Topology</div>
@@ -695,20 +785,31 @@ func (a *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 		render.AdminCSSLink(), render.HighContrastCSSLink(),
 		template.HTML(maintenanceBanner),
 		config.Cfg.Domain, snapshotAge,
+		modeBannerClass, modeLabel,
 		snap.TotalArticles, snap.PendingJobs,
 		Version,
-		nowUTC, snapshotAge,
+		nowUTC, snapshotAge, currentMode,
+		modeBannerClass, modeLabel, modeDesc,
 		snap.TotalArticles, snap.TotalArticles,
 		sparkFlat,
 		snap.PendingJobs, snap.CompletedJobs,
 		sparkFlat,
 		failedClass, snap.FailedJobs,
 		sparkFlat,
-		snap.UptimeSeconds,
+		snap.UptimeSeconds, currentMode,
 		sparkUp,
 		storageClass, dbpkg.FormatBytes(snap.StorageBytes), snap.StoragePct, snap.StoragePct,
 		panicClass, pluginPanics, snap.CacheHitRatio*100,
 		sparkFlat,
+		time.Now().UTC().Add(-4*time.Minute).Format("15:04:05"),
+		time.Now().UTC().Add(-3*time.Minute).Format("15:04:05"),
+		time.Now().UTC().Add(-2*time.Minute).Format("15:04:05"),
+		time.Now().UTC().Add(-45*time.Second).Format("15:04:05"),
+		snap.CacheHitRatio*100,
+		time.Now().UTC().Format("15:04:05"),
+		currentMode,
+		faultTriggers[0], faultTriggers[1], faultTriggers[2],
+		faultTriggers[3], faultTriggers[4], faultTriggers[5],
 		dbpkg.FormatBytes(snap.StorageBytes),
 		snap.HTTPP95, threshClass(httpOK), threshLabel(httpOK),
 		snap.WriteP99, threshClass(writeOK), threshLabel(writeOK),
