@@ -166,6 +166,8 @@
 | RR-02 | Isso comment system is 3rd-party Go | Low | Security Lead | Isolated process, no DB access |
 | RR-03 | Let's Encrypt outbound ACME traffic | Low | Security Lead | Required for TLS; ACME pinned to LE CAs |
 | RR-04 | Meilisearch has no auth in dev mode | Medium | Operator | Must set master key in production |
+| RR-05 | Inbound ActivityPub activities are not HTTP-signature verified | Medium | Security Lead | `internal/federation` enforces a 10 MiB payload cap and replay protection (`federation_seen_activities`, 7-day TTL), but does not yet verify HTTP Signatures on the inbox. Federation is suspended in `quarantined` mode. Tracked for a future hardening pass; until then, the inbox must not be exposed to untrusted peers in production. |
+| RR-06 | IndexNow submissions trust the configured key/host | Low | Operator | `pingIndexNow` is mode-aware (suppressed in `read-only`/`quarantined`/`maintenance`) and journals success/failure/suppression, but the IndexNow key is operator-supplied and not rotated automatically. |
 
 ---
 
@@ -174,3 +176,4 @@
 | Date | Reviewer | Changes |
 |------|----------|---------|
 | 2026-06-12 | @johalputt | Initial threat model (v1.0) |
+| 2026-06-14 | @johalputt | Added RR-05 (federation HTTP-signature gap) and RR-06 (IndexNow governance) after code audit |

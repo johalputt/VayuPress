@@ -17,7 +17,9 @@ import (
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/events"
+	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/metrics"
+	"github.com/johalputt/vayupress/internal/mode"
 	"github.com/johalputt/vayupress/internal/plugins"
 	"github.com/johalputt/vayupress/internal/queue"
 	"github.com/johalputt/vayupress/internal/render"
@@ -99,6 +101,16 @@ func (a *App) pingIndexNow(slug string) {
 	if config.Cfg.IndexNowKey == "" {
 		return
 	}
+	// Governance: IndexNow is an outbound mutation announcement. Suppress it in
+	// any mode where the system has withdrawn from normal write/federation
+	// activity, and journal the suppression so the timeline stays truthful.
+	if m := mode.Global.Current(); m == mode.ModeReadOnly || m == mode.ModeQuarantined || m == mode.ModeMaintenance {
+		logging.LogJSON(logging.LogFields{
+			Level: "info", Component: "indexnow", Severity: "info",
+			Msg: "submission suppressed by system mode", Path: slug, Error: string(m),
+		})
+		return
+	}
 	body, _ := json.Marshal(map[string]interface{}{
 		"host": config.Cfg.Domain, "key": config.Cfg.IndexNowKey,
 		"keyLocation": "https://" + config.Cfg.Domain + "/.well-known/" + config.Cfg.IndexNowKey + ".txt",
@@ -108,9 +120,16 @@ func (a *App) pingIndexNow(slug string) {
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := a.outboundClient.Do(req)
 	if err != nil {
+		logging.LogError("indexnow", "submission failed: "+slug, err.Error())
 		return
 	}
 	defer resp.Body.Close()
+	// IndexNow returns 200/202 on accept; surface anything else for operators.
+	if resp.StatusCode >= 300 {
+		logging.LogError("indexnow", "submission rejected: "+slug, fmt.Sprintf("status %d", resp.StatusCode))
+		return
+	}
+	logging.LogInfo("indexnow", "submitted "+slug)
 }
 
 // =============================================================================
