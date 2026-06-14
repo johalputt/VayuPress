@@ -12,15 +12,15 @@ var GlobalJournal *Journal
 
 // EvalRow is a single policy evaluation row as stored in SQLite.
 type EvalRow struct {
-	ID                   int64
-	RunID                string
-	PolicyName           string
-	Category             string
-	Severity             string
-	Result               string // "pass", "warn", "fail"
-	Detail               string
-	TriggeredTransition  bool
-	EvaluatedAt          time.Time
+	ID                  int64
+	RunID               string
+	PolicyName          string
+	Category            string
+	Severity            string
+	Result              string // "pass", "warn", "fail"
+	Detail              string
+	TriggeredTransition bool
+	EvaluatedAt         time.Time
 }
 
 // Journal persists policy evaluation runs to a SQLite database.
