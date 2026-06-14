@@ -113,9 +113,15 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 		r.Get("/admin/adr", a.handleAdminADR)
 		r.Get("/admin/backup/validate", a.handleAdminBackupValidate)
 
+		// Interactive operator console pages (Ω9).
+		r.Get("/admin/modes", a.handleModesPage)
+		r.Get("/admin/faults", a.handleFaultPage)
+
 		r.With(auth.CSRFTokenMiddleware).Post("/admin/benchmark", a.handleRunBenchmark)
 		r.With(auth.CSRFTokenMiddleware).Post("/admin/cache-purge", a.handleAdminCachePurge)
 		r.With(auth.CSRFTokenMiddleware).Post("/admin/vacuum", a.handleAdminVacuum)
+		r.With(auth.CSRFTokenMiddleware).Post("/admin/mode/transition", a.handleModeTransition)
+		r.With(auth.CSRFTokenMiddleware).Post("/admin/fault/simulate", a.handleFaultSimulate)
 
 		r.HandleFunc("/debug/pprof/", a.pprofHandler)
 		r.HandleFunc("/debug/pprof/cmdline", a.pprofHandler)

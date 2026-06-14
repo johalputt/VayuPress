@@ -639,13 +639,19 @@ func buildOperationalTimeline(snap *adminMetricsSnapshot, faultNames []string, f
 
 // renderTimeline emits the Unified Operational Timeline panel HTML.
 func renderTimeline(entries []tlEntry) template.HTML {
-	var b strings.Builder
-	b.WriteString(`<div class="timeline-panel">
+	return template.HTML(`<div class="timeline-panel">
   <div class="timeline-head">
     <span class="timeline-head-title"><span class="tl-badge"><span class="tl-badge-dot"></span>LIVE</span>Unified Operational Timeline</span>
     <span class="timeline-head-sub">causal narrative · boot → present · mode · fault · escalation</span>
   </div>
-  <div class="timeline">`)
+  ` + string(renderTimelineBody(entries)) + `</div>`)
+}
+
+// renderTimelineBody emits just the timeline spine + entries (no panel chrome),
+// so it can be embedded under custom section headers (e.g. mode lineage).
+func renderTimelineBody(entries []tlEntry) template.HTML {
+	var b strings.Builder
+	b.WriteString(`<div class="timeline">`)
 	for i, e := range entries {
 		last := ""
 		if i == len(entries)-1 {
@@ -665,7 +671,7 @@ func renderTimeline(entries []tlEntry) template.HTML {
   <div class="tl-body"><div class="tl-msg"><span class="tl-cat %s">%s</span>%s</div>%s</div>
 </div>`, last, e.Clock, rel, e.Sev, e.CatClass, e.Cat, template.HTMLEscapeString(e.Msg), causal)
 	}
-	b.WriteString(`</div></div>`)
+	b.WriteString(`</div>`)
 	return template.HTML(b.String())
 }
 
@@ -775,7 +781,7 @@ func (a *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
   </a>
   <div class="topbar-center">
     <div class="live-chip"><span class="live-dot" aria-hidden="true"></span>LIVE</div>
-    <span class="topbar-constitution">Constitution v6.0 · P1–P27 · Ω1–Ω8</span>
+    <span class="topbar-constitution">Constitution v6.0 · P1–P27 · Ω1–Ω9</span>
   </div>
   <div class="topbar-right">
     <span class="snapshot-age">⟳ %ds ago</span>
@@ -814,10 +820,10 @@ func (a *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
   </div>
   <div class="sidebar-section">
     <span class="sidebar-section-label">Govern</span>
-    <a href="/api/v1/admin/fault/status" class="sidebar-item">
+    <a href="/admin/faults" class="sidebar-item">
       <div class="sidebar-item-left"><span class="sidebar-icon">⊞</span>Fault Engine</div>
     </a>
-    <a href="/api/v1/admin/mode" class="sidebar-item">
+    <a href="/admin/modes" class="sidebar-item">
       <div class="sidebar-item-left"><span class="sidebar-icon">⬡</span>System Modes</div>
     </a>
     <a href="/admin/adr" class="sidebar-item">
@@ -835,7 +841,7 @@ func (a *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
   </div>
   <div class="sidebar-footer">
     <span class="sidebar-version">v%s</span>
-    <span class="sidebar-constitution">Ω1–Ω8 compliant</span>
+    <span class="sidebar-constitution">Ω1–Ω9 compliant</span>
   </div>
 </nav>
 <main id="main-content">
@@ -852,7 +858,7 @@ func (a *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
     <span class="mode-banner-state">%s</span>
     <span class="mode-banner-desc">%s</span>
   </div>
-  <a href="/api/v1/admin/mode" class="mode-banner-action">Mode API →</a>
+  <a href="/admin/modes" class="mode-banner-action">Mode Engine →</a>
 </div>
 <div class="metric-grid">
   <div class="metric-card card-primary">
@@ -1050,7 +1056,7 @@ func (a *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
   <a href="/health/benchmarks" target="_blank">Benchmarks</a>
 </nav>
 <footer class="admin-footer">
-  <span>VayuPress %s &middot; Constitution v6.0 &middot; P1–P27 &middot; Ω1–Ω8 &middot; Config v%s</span>
+  <span>VayuPress %s &middot; Constitution v6.0 &middot; P1–P27 &middot; Ω1–Ω9 &middot; Config v%s</span>
   <span>Snapshot: %s</span>
 </footer>
 </main></div>

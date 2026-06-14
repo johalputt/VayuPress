@@ -188,6 +188,20 @@ var allowed = map[Mode][]Mode{
 	ModeQuarantined: {ModeNormal, ModeMaintenance},
 }
 
+// AllowedFrom returns the modes reachable from the given mode via an automatic
+// (non-forced) transition, in declaration order.
+func AllowedFrom(from Mode) []Mode {
+	return append([]Mode(nil), allowed[from]...)
+}
+
+// IsAllowed reports whether an automatic transition from→to is permitted.
+func IsAllowed(from, to Mode) bool { return isAllowed(from, to) }
+
+// AllModes returns every defined mode in canonical (severity) order.
+func AllModes() []Mode {
+	return []Mode{ModeNormal, ModeDegraded, ModeReadOnly, ModeRecovery, ModeMaintenance, ModeQuarantined}
+}
+
 func isAllowed(from, to Mode) bool {
 	for _, permitted := range allowed[from] {
 		if permitted == to {

@@ -103,6 +103,21 @@ func (inj *Injector) Check(name string) error {
 	return nil
 }
 
+// Trigger manually fires the named fault point, incrementing its counter and
+// registering it on first use. Unlike Check it is independent of probability —
+// it exists for operator-driven fault simulation from the admin Fault Engine.
+// Returns the new trigger count.
+func (inj *Injector) Trigger(name string) int64 {
+	inj.mu.Lock()
+	f, ok := inj.faults[name]
+	if !ok {
+		f = &Fault{Name: name, Kind: KindError, Probability: 0}
+		inj.faults[name] = f
+	}
+	inj.mu.Unlock()
+	return f.TriggerCount.Add(1)
+}
+
 // TriggerCount returns how many times the named fault has fired. Returns 0 if
 // the fault is not registered.
 func (inj *Injector) TriggerCount(name string) int64 {
