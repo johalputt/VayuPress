@@ -186,6 +186,27 @@ h1, h2, h3, h4, h5, h6 {
 
 .vayu-nav-status { font-size: 0.75rem; color: var(--pico-muted-color); }
 
+.vayu-theme-toggle {
+  background: none;
+  border: 1px solid var(--pico-muted-border-color);
+  color: var(--pico-muted-color);
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 0.9rem;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.vayu-theme-toggle:hover {
+  color: var(--pico-primary);
+  border-color: var(--pico-primary);
+}
+
 .vayu-mode-dot {
   display: inline-block;
   width: 7px;

@@ -68,6 +68,12 @@
 ### Policy Provenance Inspector (Ω11)
 ![VayuPress Policy Inspector](docs/screenshots/policy-inspector.png)
 
+### Theme & Site Settings Control Panel
+
+> Capture with `ARTICLE_SLUG=… API_KEY=… ./scripts/capture-screenshots.sh`
+> (writes `docs/screenshots/theme-panel.png` from `/admin/theme`). Once
+> generated, embed with `![VayuPress Theme Control Panel](docs/screenshots/theme-panel.png)`.
+
 *SQLite-journaled policy engine — live pass/warn/fail status strip with run-history trend sparkline, full live-evaluation table, and a persistent evaluation log (every run recorded to `policy_evaluations`) for provenance and trend analysis.*
 
 ---
@@ -300,6 +306,33 @@ See [docs/architecture/system-modes.md](docs/architecture/system-modes.md).
 - **Ω10 — Live-streaming timeline + Replay Explorer** — animated causal arrows, STREAMING poller, and a dead-letter / poison-queue inspector (`/admin/replay`) with single-job and batch requeue
 - **Ω11 — Policy Provenance Inspector** (`/admin/policy`) — SQLite-journaled policy evaluations (`policy_evaluations` table), live pass/warn/fail status, run-history trend sparkline, and a persistent provenance log of every policy run
 
+### Theme & Site Settings Control Panel (`/admin/theme`)
+
+A governed customisation surface — every input is validated, no raw markup is
+trusted, and the strict CSP stays intact:
+
+- **Identity** — site name, tagline, meta description, author. Baked into every
+  public page; a save triggers a full rendered-cache purge so changes propagate.
+- **Palette** — light/dark primary + accent colours (hex-validated). Rendered as
+  Pico CSS-variable overrides and served same-origin at **`/theme.css`** (ETag +
+  short max-age) — never inlined, so `style-src 'self'` holds. The first-deploy
+  defaults match the vendored `custom.css`, so there is no flash-of-unstyled-content.
+- **Custom CSS** — operator stylesheet, 16 KB cap, folded into `/theme.css`.
+  Cannot reach external origins or execute scripts (CSP-contained).
+- **Head & SEO** — *declarative, allowlisted* capabilities (keywords, theme-color,
+  robots, Google/Bing verification) rendered to escaped `<meta>` tags. Raw `<head>`
+  HTML is intentionally **not** accepted — meta-refresh redirects, external
+  beacons, and `<base>` hijacks are structurally impossible, not merely filtered.
+- **Storage & safety** — persisted in the `site_settings` table (migration 006,
+  content-checksummed like every migration); writes are CSRF-protected, blocked in
+  `read-only`/`quarantined` modes, and audit-logged (`component: "theme"`).
+- **Public theme toggle** — a sun/moon switch in the site header persists the
+  reader's choice in `localStorage`; served as a same-origin script so it needs no
+  CSP nonce (which cached HTML cannot carry).
+- **CSP telemetry** — violations report to `POST /csp-report`, incrementing
+  `vayupress_csp_violations_total` and logging the offending directive, so runtime
+  CSP drift is observable rather than silent.
+
 ---
 
 ## API Endpoints Overview
@@ -335,12 +368,18 @@ See [docs/architecture/system-modes.md](docs/architecture/system-modes.md).
 | `GET` | `/admin/topology` | Runtime Topology — 17-node live health graph |
 | `GET` | `/admin/replay` | Replay Explorer — dead-letter & poison queue |
 | `GET` | `/admin/policy` | Policy Provenance Inspector — journaled evaluations |
+| `GET` | `/admin/theme` | Theme & Site Settings control panel |
+| `POST` | `/admin/theme` | Save theme/identity settings (CSRF-protected) |
 | `POST` | `/admin/mode/transition` | Transition system mode (CSRF-protected) |
 | `POST` | `/admin/fault/simulate` | Fire a named fault (CSRF-protected) |
 | `POST` | `/admin/replay/job` | Requeue a single dead-letter job (CSRF-protected) |
 | `POST` | `/admin/benchmark` | Run the in-process load benchmark (CSRF-protected) |
 | `GET` | `/api/v1/admin/search/drift` | Search-index vs article-store drift report |
 | `POST` | `/admin/search/reindex` | Rebuild the search index from the store (CSRF-protected) |
+
+Public theming endpoints (no auth): `GET /theme.css` (operator palette + custom
+CSS, served same-origin for CSP), `GET /static/js/theme-toggle.js` (sun/moon
+switcher), `POST /csp-report` (CSP violation telemetry → `vayupress_csp_violations_total`).
 
 Full reference: [docs/API-REFERENCE.md](docs/API-REFERENCE.md)
 

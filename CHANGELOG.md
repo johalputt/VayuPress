@@ -6,6 +6,37 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased] — Theme & Site Settings Control Panel
+
+### Added
+- **Theme & Site Settings control panel** (`/admin/theme`): operator-editable site
+  identity (name, tagline, description, author), light/dark palette, custom CSS, and
+  declarative head/SEO capabilities. CSRF-protected, mode-gated (blocked in
+  read-only/quarantined), audit-logged (`component: "theme"`).
+- **`internal/settings`** package: thread-safe key/value store over the new
+  `site_settings` table (migration **006**, content-checksummed), 30 s read cache,
+  transactional `SetMany`, allowlisted keys.
+- **`/theme.css`**: dynamic per-site palette + custom CSS served same-origin
+  (ETag + `max-age=60`) so it satisfies `style-src 'self'` — no inline `<style>`.
+- **Public theme toggle**: sun/moon switch in the site header, preference persisted
+  to `localStorage`, served as a same-origin script (`/static/js/theme-toggle.js`)
+  so it needs no CSP nonce.
+- **CSP violation reporting**: `report-uri /csp-report` + `POST /csp-report`
+  endpoint, `vayupress_csp_violations_total` metric, structured per-violation logs.
+
+### Security
+- **Declarative head capabilities replace raw `<head>` HTML**: head/SEO inputs are
+  an allowlisted, validated, escaped `<meta>` subset (keywords, theme-color, robots,
+  Google/Bing verification). Raw head HTML is no longer accepted — meta-refresh
+  redirects, external beacons, and `<base>` hijacks (which CSP does not fully cover)
+  are structurally impossible.
+- **Dynamic theme served as a stylesheet, not inline** — preserves the strict
+  `style-src 'self'` CSP (no `unsafe-inline`).
+- Palette colours and verification tokens are validated server-side
+  (`#rgb`/`#rrggbb`, allowlists, token regex) before persistence.
+
+---
+
 ## [1.0.0-p26] — 2026-06-13
 
 ### Added (Prompt 26 — Security Sandboxing & Capability Enforcement)

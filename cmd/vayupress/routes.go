@@ -61,6 +61,8 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	// Dynamic per-site theme stylesheet (operator palette + custom CSS).
 	// Served same-origin so it satisfies the strict style-src 'self' CSP.
 	r.Get("/theme.css", a.handleThemeCSS)
+	// Public theme toggle script (same-origin → script-src 'self', no nonce).
+	r.Get("/static/js/theme-toggle.js", a.handleThemeToggleJS)
 	r.Get("/static/favicon-dark.png", servePNG(faviconDarkPNG))
 	r.Get("/static/favicon-light.png", servePNG(faviconLightPNG))
 	r.Get("/favicon.ico", servePNG(faviconDarkPNG))

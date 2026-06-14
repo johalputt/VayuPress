@@ -56,12 +56,24 @@ func (a *App) handleThemeCSS(w http.ResponseWriter, r *http.Request) {
 	etag := render.ThemeCSSETag()
 	w.Header().Set("Content-Type", "text/css; charset=utf-8")
 	w.Header().Set("ETag", etag)
-	w.Header().Set("Cache-Control", "no-cache")
+	// Palette changes are infrequent; a short max-age lets browsers serve from
+	// cache without a round-trip, while the ETag still yields cheap 304s and
+	// caps propagation lag (≤60 s) after a save. CachePurgeAll() already
+	// regenerates the HTML pages on save.
+	w.Header().Set("Cache-Control", "public, max-age=60")
 	if r.Header.Get("If-None-Match") == etag {
 		w.WriteHeader(http.StatusNotModified)
 		return
 	}
 	fmt.Fprint(w, render.ThemeCSS())
+}
+
+// handleThemeToggleJS serves the public sun/moon theme switcher script.
+// Same-origin static asset → satisfies `script-src 'self'` without a nonce.
+func (a *App) handleThemeToggleJS(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	fmt.Fprint(w, render.ThemeToggleJS)
 }
 
 // handleThemeGet renders the admin theme-editor page.

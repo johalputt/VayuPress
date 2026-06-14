@@ -226,10 +226,37 @@ func ThemeCSSETag() string {
 }
 
 // ThemeCSSLink returns the <link> for the dynamic per-site theme stylesheet.
-// The URL is stable; the served file is sent with an ETag + no-cache so palette
-// changes propagate even to disk-cached HTML pages on the next request.
+// The URL is stable; the served file is sent with an ETag + short max-age so
+// palette changes propagate to disk-cached HTML pages within ~60 s.
 func ThemeCSSLink() template.HTML {
 	return template.HTML(`<link rel="stylesheet" href="/theme.css">`)
+}
+
+// ThemeToggleJS is the public sun/moon theme switcher. It is served as a
+// same-origin static script (not inlined) so it satisfies the strict
+// `script-src 'self'` CSP WITHOUT a per-request nonce — nonces cannot be baked
+// into disk-cached HTML pages. It applies the stored preference on parse to
+// minimise flash, then wires the header toggle button on DOMContentLoaded.
+const ThemeToggleJS = `(function(){var K='vayu-theme',r=document.documentElement;` +
+	`function a(t){if(t==='light'||t==='dark')r.setAttribute('data-theme',t);}` +
+	`try{var s=localStorage.getItem(K);if(s)a(s);}catch(e){}` +
+	`document.addEventListener('DOMContentLoaded',function(){` +
+	`var b=document.getElementById('vayu-theme-toggle');if(!b)return;` +
+	`function y(){var c=r.getAttribute('data-theme')||'dark';` +
+	`b.setAttribute('aria-label',c==='dark'?'Switch to light theme':'Switch to dark theme');` +
+	`b.textContent=c==='dark'?'☀':'☾';}y();` +
+	`b.addEventListener('click',function(){var c=r.getAttribute('data-theme')||'dark',` +
+	`n=c==='dark'?'light':'dark';a(n);try{localStorage.setItem(K,n);}catch(e){}y();});});})();`
+
+// themeToggleJSHash versions the toggle script URL for cache-busting.
+var themeToggleJSHash = func() string {
+	sum := sha256.Sum256([]byte(ThemeToggleJS))
+	return hex.EncodeToString(sum[:8])
+}()
+
+// ThemeToggleJSLink returns the <script> tag for the public theme toggle.
+func ThemeToggleJSLink() template.HTML {
+	return template.HTML(`<script src="/static/js/theme-toggle.js?v=` + themeToggleJSHash + `"></script>`)
 }
 
 // headMetaHTML renders the declarative <head> capabilities to a safe, escaped
@@ -267,6 +294,7 @@ type articlePage struct {
 	HighContrastCSSLink template.HTML
 	ThemeCSSLink        template.HTML
 	HeadMeta            template.HTML
+	ThemeToggleJSLink   template.HTML
 	SiteName            string
 	Author              string
 }
@@ -318,7 +346,7 @@ var articleTmpl = template.Must(template.New("article").Funcs(template.FuncMap{
 <meta name="twitter:card" content="summary"><meta name="twitter:title" content="{{.Title}}">
 <meta name="twitter:description" content="{{trunc .Content 200}}">
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","mainEntityOfPage":{"@type":"WebPage","@id":"https://{{.Domain}}/{{.Slug}}"},"headline":"{{.Title | jsonAttr}}","description":"{{.Content | jsonAttr}}","datePublished":"{{.CreatedAt | isoDate}}","dateModified":"{{.UpdatedAt | isoDate}}","inLanguage":"en","author":{"@type":"Person","name":"Ankush Choudhary Johal","url":"https://{{.Domain}}/about"},"publisher":{"@type":"Organization","name":"VayuPress","url":"https://{{.Domain}}"}}</script>
-{{.PicoCSSLink}}{{.CustomCSSLink}}{{.ArticleCSSLink}}{{.HighContrastCSSLink}}{{.ThemeCSSLink}}{{.HeadMeta}}
+{{.PicoCSSLink}}{{.CustomCSSLink}}{{.ArticleCSSLink}}{{.HighContrastCSSLink}}{{.ThemeCSSLink}}{{.HeadMeta}}{{.ThemeToggleJSLink}}
 <link rel="icon" type="image/png" href="/static/favicon-dark.png" media="(prefers-color-scheme: light)">
 <link rel="icon" type="image/png" href="/static/favicon-light.png" media="(prefers-color-scheme: dark)">
 <link rel="icon" type="image/png" href="/static/favicon-light.png">
@@ -331,6 +359,7 @@ var articleTmpl = template.Must(template.New("article").Funcs(template.FuncMap{
     <a href="/">Home</a>
     <a href="/feed.xml">Feed</a>
     <a href="/admin">Console</a>
+    <button type="button" id="vayu-theme-toggle" class="vayu-theme-toggle" aria-label="Toggle theme">☾</button>
   </div>
 </nav>
 <main id="main-content">
@@ -369,6 +398,7 @@ type homePage struct {
 	HighContrastCSSLink template.HTML
 	ThemeCSSLink        template.HTML
 	HeadMeta            template.HTML
+	ThemeToggleJSLink   template.HTML
 	SiteName            string
 	Tagline             string
 	Description         string
@@ -390,7 +420,7 @@ var homeTmpl = template.Must(template.New("home").Funcs(homeFuncs).Parse(`<!DOCT
 <link rel="alternate" type="application/rss+xml" title="{{.Domain}} feed" href="/feed.xml">
 <meta property="og:type" content="website"><meta property="og:title" content="{{.Domain}}">
 <meta property="og:url" content="https://{{.Domain}}/">
-{{.PicoCSSLink}}{{.CustomCSSLink}}{{.ArticleCSSLink}}{{.HighContrastCSSLink}}{{.ThemeCSSLink}}{{.HeadMeta}}
+{{.PicoCSSLink}}{{.CustomCSSLink}}{{.ArticleCSSLink}}{{.HighContrastCSSLink}}{{.ThemeCSSLink}}{{.HeadMeta}}{{.ThemeToggleJSLink}}
 <link rel="icon" type="image/png" href="/static/favicon-dark.png" media="(prefers-color-scheme: light)">
 <link rel="icon" type="image/png" href="/static/favicon-light.png" media="(prefers-color-scheme: dark)">
 <link rel="icon" type="image/png" href="/static/favicon-light.png">
@@ -403,6 +433,7 @@ var homeTmpl = template.Must(template.New("home").Funcs(homeFuncs).Parse(`<!DOCT
     <a href="/">Home</a>
     <a href="/feed.xml">Feed</a>
     <a href="/admin">Console</a>
+    <button type="button" id="vayu-theme-toggle" class="vayu-theme-toggle" aria-label="Toggle theme">☾</button>
   </div>
   <span class="vayu-nav-status"><span class="vayu-mode-dot"></span>runtime · normal</span>
 </nav>
@@ -438,7 +469,7 @@ var notFoundTmpl = template.Must(template.New("404").Parse(`<!DOCTYPE html><html
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>404 — {{.Domain}}</title><meta name="robots" content="noindex">
 <meta name="generator" content="VayuPress {{.Version}}">
-{{.PicoCSSLink}}{{.CustomCSSLink}}{{.ArticleCSSLink}}{{.HighContrastCSSLink}}{{.ThemeCSSLink}}{{.HeadMeta}}
+{{.PicoCSSLink}}{{.CustomCSSLink}}{{.ArticleCSSLink}}{{.HighContrastCSSLink}}{{.ThemeCSSLink}}{{.HeadMeta}}{{.ThemeToggleJSLink}}
 <link rel="icon" type="image/png" href="/static/favicon-dark.png" media="(prefers-color-scheme: light)">
 <link rel="icon" type="image/png" href="/static/favicon-light.png" media="(prefers-color-scheme: dark)">
 <link rel="icon" type="image/png" href="/static/favicon-light.png">
@@ -446,7 +477,7 @@ var notFoundTmpl = template.Must(template.New("404").Parse(`<!DOCTYPE html><html
 <div class="container">
 <nav class="vayu-nav" aria-label="Primary">
   <a href="/" class="vayu-nav-brand"><img src="/static/favicon-light.png" alt="" width="24" height="24">{{if .SiteName}}{{.SiteName}}{{else}}VayuPress{{end}}</a>
-  <div class="vayu-nav-links"><a href="/">Home</a><a href="/feed.xml">Feed</a><a href="/admin">Console</a></div>
+  <div class="vayu-nav-links"><a href="/">Home</a><a href="/feed.xml">Feed</a><a href="/admin">Console</a><button type="button" id="vayu-theme-toggle" class="vayu-theme-toggle" aria-label="Toggle theme">☾</button></div>
 </nav>
 <main id="main-content"><div class="vayu-err">
   <div class="vayu-err-code">404</div>
@@ -469,6 +500,7 @@ func RenderHome(domain, version string, articles []HomeArticle, totalCount int) 
 		HighContrastCSSLink: HighContrastCSSLink(),
 		ThemeCSSLink:        ThemeCSSLink(),
 		HeadMeta:            headMetaHTML(s),
+		ThemeToggleJSLink:   ThemeToggleJSLink(),
 		SiteName:            s.Name,
 		Tagline:             s.Tagline,
 		Description:         s.Description,
@@ -491,6 +523,7 @@ func Render404(domain, version string) string {
 		HighContrastCSSLink: HighContrastCSSLink(),
 		ThemeCSSLink:        ThemeCSSLink(),
 		HeadMeta:            headMetaHTML(s),
+		ThemeToggleJSLink:   ThemeToggleJSLink(),
 		SiteName:            s.Name,
 	})
 	return buf.String()
@@ -521,6 +554,7 @@ func RenderArticleWithLayout(a db.Article, layout ArticleLayoutType) (string, er
 		HighContrastCSSLink: HighContrastCSSLink(),
 		ThemeCSSLink:        ThemeCSSLink(),
 		HeadMeta:            headMetaHTML(s),
+		ThemeToggleJSLink:   ThemeToggleJSLink(),
 		SiteName:            s.Name,
 		Author:              s.Author,
 	}
@@ -857,6 +891,27 @@ h1, h2, h3, h4, h5, h6 {
 .vayu-nav-links a:hover { color: var(--pico-primary); }
 
 .vayu-nav-status { font-size: 0.75rem; color: var(--pico-muted-color); }
+
+.vayu-theme-toggle {
+  background: none;
+  border: 1px solid var(--pico-muted-border-color);
+  color: var(--pico-muted-color);
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 0.9rem;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.vayu-theme-toggle:hover {
+  color: var(--pico-primary);
+  border-color: var(--pico-primary);
+}
 
 .vayu-mode-dot {
   display: inline-block;

@@ -53,5 +53,6 @@ shot "$BASE_URL/admin/modes"      "$OUT_DIR/policy-modes.png"
 shot "$BASE_URL/admin/topology"   "$OUT_DIR/runtime-topology.png"
 shot "$BASE_URL/admin/replay"     "$OUT_DIR/replay-explorer.png"
 shot "$BASE_URL/admin/policy"     "$OUT_DIR/policy-inspector.png"
+shot "$BASE_URL/admin/theme"      "$OUT_DIR/theme-panel.png"
 
 echo "Done. Screenshots in $OUT_DIR"

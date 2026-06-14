@@ -89,3 +89,29 @@ func TestHeadMetaCannotInjectMarkup(t *testing.T) {
 		t.Errorf("head meta must not emit raw <script>, got: %s", got)
 	}
 }
+
+// TestDefaultPaletteMatchesVendoredCSS guards against first-deploy FOUC: the
+// vendored custom.css must declare the same default palette the settings layer
+// falls back to (settings.Defaults), or a page rendered before any operator
+// save would flash a different hue than /theme.css later applies.
+func TestDefaultPaletteMatchesVendoredCSS(t *testing.T) {
+	for _, hexColor := range []string{"#0d9488", "#2dd4bf", "#f59e0b", "#fbbf24"} {
+		if !strings.Contains(customCSSMin, hexColor) {
+			t.Errorf("vendored custom.css missing default palette colour %s (drift vs settings.Defaults)", hexColor)
+		}
+	}
+}
+
+func TestThemeToggleJSLinkIsSameOriginScript(t *testing.T) {
+	link := string(ThemeToggleJSLink())
+	if !strings.HasPrefix(link, `<script src="/static/js/theme-toggle.js?v=`) {
+		t.Errorf("toggle link must be a same-origin <script src>, got: %s", link)
+	}
+	// Must carry no inline body (would require a CSP nonce that cached HTML lacks).
+	if strings.Contains(link, "localStorage") {
+		t.Errorf("toggle must be external, not inline: %s", link)
+	}
+	if !strings.Contains(ThemeToggleJS, "localStorage") {
+		t.Error("toggle script should persist preference in localStorage")
+	}
+}
