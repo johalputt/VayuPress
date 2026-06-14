@@ -48,6 +48,14 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   where genuinely known — synthesized governance entries leave `correlation_id`
   empty rather than fabricate one — so the timeline becomes honest, machine-readable
   runtime memory rather than a flat string log.
+- **Formal operational severity taxonomy** (`internal/severity`): a fixed, totally
+  ordered vocabulary — OBSERVE · NOTICE · WARN · VIOLATION · ESCALATION ·
+  CONTAINMENT · CRITICAL — where each level defines its meaning, operator
+  expectation, escalation behavior, timeline class, topology colour, and policy
+  interaction. Timeline events now carry a `severity` taxonomy name (single
+  auditable classifier in `timelineSeverity`); the CSP violation log adopts the
+  `VIOLATION` level; and `GET /api/v1/admin/severity` publishes the full taxonomy
+  so the vocabulary is self-documenting and auditable.
 - **WCAG AA contrast warnings**: saving the palette returns advisory (non-blocking)
   warnings when a primary colour falls below 4.5:1 on its page background. The
   shipped **default light primary changed from `#0d9488` (3.6:1) to `#0f766e`

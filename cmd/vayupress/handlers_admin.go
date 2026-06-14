@@ -29,6 +29,7 @@ import (
 	"github.com/johalputt/vayupress/internal/metrics"
 	"github.com/johalputt/vayupress/internal/mode"
 	"github.com/johalputt/vayupress/internal/render"
+	"github.com/johalputt/vayupress/internal/severity"
 )
 
 const vacuumWriteThreshold = 10
@@ -571,6 +572,49 @@ func tlActor(cause string) string {
 		return "operator"
 	}
 	return "policy"
+}
+
+// timelineSeverity maps a timeline entry to the formal operational severity
+// taxonomy (internal/severity). Centralising the mapping here keeps a single
+// auditable source of truth for how runtime/governance signals are classified,
+// rather than scattering severity literals across every event construction site.
+func timelineSeverity(e tlEntry) severity.Level {
+	integrityThreat := func(cause string) bool {
+		c := strings.ToLower(cause)
+		return strings.Contains(c, "corruption") || strings.Contains(c, "integrity") || strings.Contains(c, "migration-drift")
+	}
+	switch e.Cat {
+	case "csp":
+		if strings.HasPrefix(e.Msg, "csp.violation") {
+			return severity.Violation
+		}
+		if e.Sev == "tl-warn" { // posture: report-only
+			return severity.Warn
+		}
+		return severity.Notice
+	case "fault":
+		return severity.Warn // advancing toward a threshold, not yet an escalation
+	case "mode":
+		if integrityThreat(e.Prov.Cause) {
+			return severity.Critical
+		}
+		switch e.Sev {
+		case "tl-err": // read-only / quarantined
+			return severity.Containment
+		case "tl-info": // recovery
+			return severity.Escalation
+		case "tl-warn": // degraded
+			return severity.Warn
+		default: // normal
+			return severity.Notice
+		}
+	case "monitor":
+		return severity.Warn
+	case "govern":
+		return severity.Notice
+	default: // runtime / db / queue / steady — informational
+		return severity.Observe
+	}
 }
 
 // buildOperationalTimeline synthesises a causal operational narrative from the
@@ -1243,22 +1287,26 @@ func (a *App) handleTimelineJSON(w http.ResponseWriter, r *http.Request) {
 	}
 	entries := buildOperationalTimeline(snap, faultNames, faultTriggers)
 
-	// entryJSON mirrors tlEntry field-for-field (tags ignored for convertibility)
-	// so each streamed event carries its structured provenance — the timeline as
-	// machine-readable runtime memory, not a flat string log.
+	// entryJSON carries the visual fields, structured provenance, AND the formal
+	// severity classification — the timeline as machine-readable runtime memory
+	// with a shared severity vocabulary, not a flat string log.
 	type entryJSON struct {
 		Clock    string       `json:"clock"`
 		Rel      string       `json:"rel"`
 		Cat      string       `json:"cat"`
 		CatClass string       `json:"catClass"`
 		Sev      string       `json:"sev"`
+		Severity string       `json:"severity"` // formal taxonomy name (OBSERVE…CRITICAL)
 		Msg      string       `json:"msg"`
 		Causal   string       `json:"causal"`
 		Prov     tlProvenance `json:"provenance"`
 	}
 	out := make([]entryJSON, len(entries))
 	for i, e := range entries {
-		out[i] = entryJSON(e)
+		out[i] = entryJSON{
+			Clock: e.Clock, Rel: e.Rel, Cat: e.Cat, CatClass: e.CatClass, Sev: e.Sev,
+			Severity: timelineSeverity(e).String(), Msg: e.Msg, Causal: e.Causal, Prov: e.Prov,
+		}
 	}
 	writeJSON(w, r, http.StatusOK, map[string]interface{}{
 		"entries":      out,
@@ -1271,6 +1319,16 @@ func (a *App) handleTimelineJSON(w http.ResponseWriter, r *http.Request) {
 			"build":      Version,
 			"policy_rev": config.ConfigVersion,
 		},
+	})
+}
+
+// handleSeverityTaxonomy publishes the formal operational severity taxonomy so
+// the vocabulary is self-documenting and auditable — operators and automation can
+// read what each level means, how the runtime escalates, and how it renders.
+func (a *App) handleSeverityTaxonomy(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, r, http.StatusOK, map[string]interface{}{
+		"taxonomy":     severity.All(),
+		"generated_at": time.Now().UTC().Format(time.RFC3339),
 	})
 }
 

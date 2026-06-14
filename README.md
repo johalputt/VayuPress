@@ -374,6 +374,7 @@ trusted, and the strict CSP stays intact:
 | `POST` | `/admin/fault/simulate` | Fire a named fault (CSRF-protected) |
 | `POST` | `/admin/replay/job` | Requeue a single dead-letter job (CSRF-protected) |
 | `POST` | `/admin/benchmark` | Run the in-process load benchmark (CSRF-protected) |
+| `GET` | `/api/v1/admin/severity` | Formal operational severity taxonomy (self-documenting) |
 | `GET` | `/api/v1/admin/search/drift` | Search-index vs article-store drift report |
 | `POST` | `/admin/search/reindex` | Rebuild the search index from the store (CSRF-protected) |
 

@@ -17,6 +17,7 @@ import (
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/metrics"
 	"github.com/johalputt/vayupress/internal/queue"
+	"github.com/johalputt/vayupress/internal/severity"
 )
 
 // cspReportDedup suppresses logging of identical (directive|blocked) violations
@@ -97,7 +98,7 @@ func (a *App) handleCSPReport(w http.ResponseWriter, r *http.Request) {
 	// receiving build version is the meaningful attribution for debugging a
 	// frontend change.
 	logging.LogJSON(logging.LogFields{
-		Level: "warn", Component: "csp", Severity: "warning",
+		Level: "warn", Component: "csp", Severity: severity.Violation.String(),
 		Msg:  "CSP violation: directive=" + directive + " blocked=" + env.Report.BlockedURI + " build=" + Version,
 		Path: env.Report.DocumentURI,
 	})

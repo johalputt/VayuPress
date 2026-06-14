@@ -60,3 +60,24 @@ func TestPostureCarriesPolicyRevision(t *testing.T) {
 		}
 	}
 }
+
+func TestTimelineSeverityClassification(t *testing.T) {
+	cases := []struct {
+		e    tlEntry
+		want string
+	}{
+		{tlEntry{Cat: "runtime", Sev: "tl-accent", Msg: "runtime.boot"}, "OBSERVE"},
+		{tlEntry{Cat: "csp", Sev: "tl-warn", Msg: "csp.violation — script-src blocked x"}, "VIOLATION"},
+		{tlEntry{Cat: "csp", Sev: "tl-ok", Msg: "csp.policy — enforcing"}, "NOTICE"},
+		{tlEntry{Cat: "csp", Sev: "tl-warn", Msg: "csp.policy — REPORT-ONLY"}, "WARN"},
+		{tlEntry{Cat: "mode", Sev: "tl-err", Msg: "mode.transition", Prov: tlProvenance{Cause: "operator"}}, "CONTAINMENT"},
+		{tlEntry{Cat: "mode", Sev: "tl-err", Msg: "mode.transition", Prov: tlProvenance{Cause: "wal.corruption"}}, "CRITICAL"},
+		{tlEntry{Cat: "mode", Sev: "tl-info", Msg: "mode.transition"}, "ESCALATION"},
+		{tlEntry{Cat: "fault", Sev: "tl-err", Msg: "fault.trigger"}, "WARN"},
+	}
+	for _, c := range cases {
+		if got := timelineSeverity(c.e).String(); got != c.want {
+			t.Errorf("classify %q/%q/%q = %s; want %s", c.e.Cat, c.e.Sev, c.e.Msg, got, c.want)
+		}
+	}
+}
