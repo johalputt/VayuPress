@@ -29,6 +29,11 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 - **Report-Only CSP mode**: `CSP_REPORT_ONLY=true` sends
   `Content-Security-Policy-Report-Only` instead of the enforcing header, so a
   candidate policy can be observed via `/csp-report` in staging before enforcing.
+- **CSP violations in the Unified Operational Timeline**: accepted violations are
+  recorded in a bounded process-local ring and rendered as `csp.violation` entries
+  in the live timeline (Ω8/Ω10), placing frontend-governance signals in the same
+  causal narrative as mode transitions and faults — visible spatially, not just as
+  a metric counter.
 - **WCAG AA contrast warnings**: saving the palette returns advisory (non-blocking)
   warnings when a primary colour falls below 4.5:1 on its page background. The
   shipped **default light primary changed from `#0d9488` (3.6:1) to `#0f766e`

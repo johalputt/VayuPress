@@ -617,6 +617,22 @@ func buildOperationalTimeline(snap *adminMetricsSnapshot, faultNames []string, f
 		}
 	}
 
+	// ── Frontend governance: recent CSP violations (report-uri ingest) ─────
+	// These make the CSP doctrine→runtime relationship visible in the same
+	// causal narrative as mode/fault signals, so a strict-policy regression is
+	// observed spatially, not just as a metric counter.
+	for _, vio := range recentCSPViolations() {
+		blocked := vio.BlockedURI
+		if blocked == "" {
+			blocked = "(inline)"
+		}
+		out = append(out, tlEntry{
+			clock(vio.When), "", "csp", "tl-cat-fault", "tl-warn",
+			fmt.Sprintf("csp.violation — %s blocked %s", vio.Directive, blocked),
+			"frontend governance · report-uri ingest",
+		})
+	}
+
 	// ── Current posture: steady (NORMAL, no faults) or active monitoring ───
 	cur := mode.Global.Current()
 	if cur == mode.ModeNormal && !anyFault {

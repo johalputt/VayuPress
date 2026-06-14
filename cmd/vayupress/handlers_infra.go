@@ -91,6 +91,7 @@ func (a *App) handleCSPReport(w http.ResponseWriter, r *http.Request) {
 	}
 
 	atomic.AddInt64(&metrics.MetricCSPViolations, 1)
+	recordCSPViolation(directive, env.Report.BlockedURI)
 	logging.LogJSON(logging.LogFields{
 		Level: "warn", Component: "csp", Severity: "warning",
 		Msg:  "CSP violation: directive=" + directive + " blocked=" + env.Report.BlockedURI,
