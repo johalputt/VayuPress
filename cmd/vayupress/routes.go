@@ -136,6 +136,10 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 		r.With(auth.CSRFTokenMiddleware).Post("/admin/replay/job", a.handleReplayJob)
 		r.With(auth.CSRFTokenMiddleware).Post("/admin/search/reindex", a.handleSearchReindex)
 
+		// Theme & site settings editor.
+		r.Get("/admin/theme", a.handleThemeGet)
+		r.With(auth.CSRFTokenMiddleware).Post("/admin/theme", a.handleThemeSave)
+
 		r.HandleFunc("/debug/pprof/", a.pprofHandler)
 		r.HandleFunc("/debug/pprof/cmdline", a.pprofHandler)
 		r.HandleFunc("/debug/pprof/profile", a.pprofHandler)

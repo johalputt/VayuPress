@@ -42,6 +42,7 @@ import (
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/resource"
 	"github.com/johalputt/vayupress/internal/search"
+	"github.com/johalputt/vayupress/internal/settings"
 	"github.com/johalputt/vayupress/internal/trace"
 )
 
@@ -189,6 +190,23 @@ func main() {
 		os.Exit(1)
 	}
 	logging.LogInfo("main", "database ready — WAL adaptive + migrations + checksum drift verified (ADR-0033/0034)")
+
+	// Site settings store — warm cache and push initial values into the render pipeline.
+	a.siteSettings = settings.New(dbpkg.DB)
+	if sv, err := a.siteSettings.GetAll(context.Background()); err == nil {
+		render.SetActiveSettings(render.SiteSettings{
+			Name:         sv[settings.KeySiteName],
+			Tagline:      sv[settings.KeySiteTagline],
+			Description:  sv[settings.KeySiteDescription],
+			Author:       sv[settings.KeySiteAuthor],
+			PrimaryLight: sv[settings.KeyThemePrimaryLight],
+			PrimaryDark:  sv[settings.KeyThemePrimaryDark],
+			AccentLight:  sv[settings.KeyThemeAccentLight],
+			AccentDark:   sv[settings.KeyThemeAccentDark],
+			CustomCSS:    sv[settings.KeyThemeCustomCSS],
+			CustomHead:   sv[settings.KeyThemeCustomHead],
+		})
+	}
 
 	// Mode journal — durable SQLite-backed transition log (Ω6).
 	dbPath := config.EnvOr("DB_PATH", "./vayupress.db")

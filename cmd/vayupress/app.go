@@ -24,6 +24,7 @@ import (
 	"github.com/johalputt/vayupress/internal/queue"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/search"
+	"github.com/johalputt/vayupress/internal/settings"
 )
 
 // App holds all mutable runtime state. Handlers are methods on *App so that
@@ -67,6 +68,9 @@ type App struct {
 	reindexRunning int32
 	lastReindex    *reindexResult
 	lastReindexMu  sync.Mutex
+
+	// Site/theme settings store (migration 006)
+	siteSettings *settings.Store
 }
 
 // RegisterHook registers a plugin hook with the App's plugin registry.

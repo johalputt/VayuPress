@@ -11,6 +11,7 @@ import (
 	"html/template"
 	"net/http"
 	"os"
+	"sync"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -136,6 +137,88 @@ func HighContrastCSSLink() template.HTML {
 // CustomCSSLink returns the versioned <link> for the VayuPress brand overrides (custom.css).
 func CustomCSSLink() template.HTML { return CSSLink("custom.css", cssHashes.CustomCSS) }
 
+// ── Dynamic site settings ─────────────────────────────────────────────────────
+
+// SiteSettings holds operator-configurable values that are injected into every
+// public page render. The zero value is safe and falls back to Pico defaults.
+type SiteSettings struct {
+	Name         string // site brand name
+	Tagline      string // hero headline
+	Description  string // meta description
+	Author       string // article author
+	PrimaryLight string // --pico-primary for light mode (hex)
+	PrimaryDark  string // --pico-primary for dark mode (hex)
+	AccentLight  string // --vayu-accent for light mode (hex)
+	AccentDark   string // --vayu-accent for dark mode (hex)
+	CustomCSS    string // operator-supplied CSS injected in <style>
+	CustomHead   string // operator-supplied <head> HTML (no <script>)
+}
+
+var (
+	activeSettingsMu sync.RWMutex
+	activeSettings   SiteSettings
+)
+
+// SetActiveSettings replaces the global active site settings. Thread-safe.
+func SetActiveSettings(s SiteSettings) {
+	activeSettingsMu.Lock()
+	activeSettings = s
+	activeSettingsMu.Unlock()
+}
+
+// getActiveSettings returns a copy of the current active settings.
+func getActiveSettings() SiteSettings {
+	activeSettingsMu.RLock()
+	s := activeSettings
+	activeSettingsMu.RUnlock()
+	return s
+}
+
+// dynamicStyleBlock returns a <style> tag that overrides Pico CSS variables with
+// the operator palette, plus any operator-supplied custom CSS.
+func dynamicStyleBlock(s SiteSettings) template.HTML {
+	var sb strings.Builder
+	sb.WriteString("<style>")
+	if s.PrimaryLight != "" || s.AccentLight != "" {
+		sb.WriteString(":root,")
+		sb.WriteString("[data-theme=\"light\"]{")
+		if s.PrimaryLight != "" {
+			sb.WriteString("--pico-primary:")
+			sb.WriteString(s.PrimaryLight)
+			sb.WriteString(";--pico-a-color:")
+			sb.WriteString(s.PrimaryLight)
+			sb.WriteString(";")
+		}
+		if s.AccentLight != "" {
+			sb.WriteString("--vayu-accent:")
+			sb.WriteString(s.AccentLight)
+			sb.WriteString(";")
+		}
+		sb.WriteString("}")
+	}
+	if s.PrimaryDark != "" || s.AccentDark != "" {
+		sb.WriteString("[data-theme=\"dark\"]{")
+		if s.PrimaryDark != "" {
+			sb.WriteString("--pico-primary:")
+			sb.WriteString(s.PrimaryDark)
+			sb.WriteString(";--pico-a-color:")
+			sb.WriteString(s.PrimaryDark)
+			sb.WriteString(";")
+		}
+		if s.AccentDark != "" {
+			sb.WriteString("--vayu-accent:")
+			sb.WriteString(s.AccentDark)
+			sb.WriteString(";")
+		}
+		sb.WriteString("}")
+	}
+	if s.CustomCSS != "" {
+		sb.WriteString(s.CustomCSS)
+	}
+	sb.WriteString("</style>")
+	return template.HTML(sb.String())
+}
+
 // ── Template ──────────────────────────────────────────────────────────────────
 
 type articlePage struct {
@@ -147,6 +230,10 @@ type articlePage struct {
 	CustomCSSLink       template.HTML
 	ArticleCSSLink      template.HTML
 	HighContrastCSSLink template.HTML
+	DynamicStyle        template.HTML
+	CustomHead          template.HTML
+	SiteName            string
+	Author              string
 }
 
 var articleTmpl = template.Must(template.New("article").Funcs(template.FuncMap{
@@ -196,7 +283,7 @@ var articleTmpl = template.Must(template.New("article").Funcs(template.FuncMap{
 <meta name="twitter:card" content="summary"><meta name="twitter:title" content="{{.Title}}">
 <meta name="twitter:description" content="{{trunc .Content 200}}">
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","mainEntityOfPage":{"@type":"WebPage","@id":"https://{{.Domain}}/{{.Slug}}"},"headline":"{{.Title | jsonAttr}}","description":"{{.Content | jsonAttr}}","datePublished":"{{.CreatedAt | isoDate}}","dateModified":"{{.UpdatedAt | isoDate}}","inLanguage":"en","author":{"@type":"Person","name":"Ankush Choudhary Johal","url":"https://{{.Domain}}/about"},"publisher":{"@type":"Organization","name":"VayuPress","url":"https://{{.Domain}}"}}</script>
-{{.PicoCSSLink}}{{.CustomCSSLink}}{{.ArticleCSSLink}}{{.HighContrastCSSLink}}
+{{.PicoCSSLink}}{{.CustomCSSLink}}{{.ArticleCSSLink}}{{.HighContrastCSSLink}}{{.DynamicStyle}}{{.CustomHead}}
 <link rel="icon" type="image/png" href="/static/favicon-dark.png" media="(prefers-color-scheme: light)">
 <link rel="icon" type="image/png" href="/static/favicon-light.png" media="(prefers-color-scheme: dark)">
 <link rel="icon" type="image/png" href="/static/favicon-light.png">
@@ -204,7 +291,7 @@ var articleTmpl = template.Must(template.New("article").Funcs(template.FuncMap{
 <a href="#main-content" class="skip-link">Skip to main content</a>
 <div class="container">
 <nav class="vayu-nav" aria-label="Primary">
-  <a href="/" class="vayu-nav-brand"><img src="/static/favicon-light.png" alt="" width="24" height="24">VayuPress</a>
+  <a href="/" class="vayu-nav-brand"><img src="/static/favicon-light.png" alt="" width="24" height="24">{{if .SiteName}}{{.SiteName}}{{else}}VayuPress{{end}}</a>
   <div class="vayu-nav-links">
     <a href="/">Home</a>
     <a href="/feed.xml">Feed</a>
@@ -224,7 +311,7 @@ var articleTmpl = template.Must(template.New("article").Funcs(template.FuncMap{
 <div class="content" itemprop="articleBody">{{.Content | safeHTML}}</div>
 </article>
 <footer class="vayu-footer">
-  <span>By <strong>Ankush Choudhary Johal</strong> · Powered by <a href="https://vayupress.com">VayuPress</a></span>
+  <span>By <strong>{{if .Author}}{{.Author}}{{else}}Ankush Choudhary Johal{{end}}</strong> · Powered by <a href="https://vayupress.com">VayuPress</a></span>
   <span class="vayu-footer-badge">runtime · governed</span>
 </footer>
 </main></div></body></html>`))
@@ -245,6 +332,11 @@ type homePage struct {
 	CustomCSSLink       template.HTML
 	ArticleCSSLink      template.HTML
 	HighContrastCSSLink template.HTML
+	DynamicStyle        template.HTML
+	CustomHead          template.HTML
+	SiteName            string
+	Tagline             string
+	Description         string
 	Articles            []HomeArticle
 	TotalCount          int
 }
@@ -263,7 +355,7 @@ var homeTmpl = template.Must(template.New("home").Funcs(homeFuncs).Parse(`<!DOCT
 <link rel="alternate" type="application/rss+xml" title="{{.Domain}} feed" href="/feed.xml">
 <meta property="og:type" content="website"><meta property="og:title" content="{{.Domain}}">
 <meta property="og:url" content="https://{{.Domain}}/">
-{{.PicoCSSLink}}{{.CustomCSSLink}}{{.ArticleCSSLink}}{{.HighContrastCSSLink}}
+{{.PicoCSSLink}}{{.CustomCSSLink}}{{.ArticleCSSLink}}{{.HighContrastCSSLink}}{{.DynamicStyle}}{{.CustomHead}}
 <link rel="icon" type="image/png" href="/static/favicon-dark.png" media="(prefers-color-scheme: light)">
 <link rel="icon" type="image/png" href="/static/favicon-light.png" media="(prefers-color-scheme: dark)">
 <link rel="icon" type="image/png" href="/static/favicon-light.png">
@@ -271,7 +363,7 @@ var homeTmpl = template.Must(template.New("home").Funcs(homeFuncs).Parse(`<!DOCT
 <a href="#main-content" class="skip-link">Skip to main content</a>
 <div class="container">
 <nav class="vayu-nav" aria-label="Primary">
-  <a href="/" class="vayu-nav-brand"><img src="/static/favicon-light.png" alt="" width="24" height="24">VayuPress</a>
+  <a href="/" class="vayu-nav-brand"><img src="/static/favicon-light.png" alt="" width="24" height="24">{{if .SiteName}}{{.SiteName}}{{else}}VayuPress{{end}}</a>
   <div class="vayu-nav-links">
     <a href="/">Home</a>
     <a href="/feed.xml">Feed</a>
@@ -282,8 +374,8 @@ var homeTmpl = template.Must(template.New("home").Funcs(homeFuncs).Parse(`<!DOCT
 <main id="main-content">
 <section class="vayu-hero">
   <span class="vayu-hero-eyebrow">Sovereign Publishing Runtime</span>
-  <h1>Publishing as an<br>adaptive runtime.</h1>
-  <p class="vayu-hero-tagline">Durable by design, observable end to end. Every write is queued, signed, and governed by a live operational state machine — not a CMS, a control plane.</p>
+  <h1>{{if .Tagline}}{{.Tagline}}{{else}}Publishing as an<br>adaptive runtime.{{end}}</h1>
+  <p class="vayu-hero-tagline">{{if .Description}}{{.Description}}{{else}}Durable by design, observable end to end. Every write is queued, signed, and governed by a live operational state machine — not a CMS, a control plane.{{end}}</p>
   <div class="vayu-stats">
     <div><span class="vayu-stat-val">{{.TotalCount}}</span><span class="vayu-stat-label">Published</span></div>
     <div><span class="vayu-stat-val">Ed25519</span><span class="vayu-stat-label">Signed</span></div>
@@ -311,14 +403,14 @@ var notFoundTmpl = template.Must(template.New("404").Parse(`<!DOCTYPE html><html
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>404 — {{.Domain}}</title><meta name="robots" content="noindex">
 <meta name="generator" content="VayuPress {{.Version}}">
-{{.PicoCSSLink}}{{.CustomCSSLink}}{{.ArticleCSSLink}}{{.HighContrastCSSLink}}
+{{.PicoCSSLink}}{{.CustomCSSLink}}{{.ArticleCSSLink}}{{.HighContrastCSSLink}}{{.DynamicStyle}}{{.CustomHead}}
 <link rel="icon" type="image/png" href="/static/favicon-dark.png" media="(prefers-color-scheme: light)">
 <link rel="icon" type="image/png" href="/static/favicon-light.png" media="(prefers-color-scheme: dark)">
 <link rel="icon" type="image/png" href="/static/favicon-light.png">
 </head><body>
 <div class="container">
 <nav class="vayu-nav" aria-label="Primary">
-  <a href="/" class="vayu-nav-brand"><img src="/static/favicon-light.png" alt="" width="24" height="24">VayuPress</a>
+  <a href="/" class="vayu-nav-brand"><img src="/static/favicon-light.png" alt="" width="24" height="24">{{if .SiteName}}{{.SiteName}}{{else}}VayuPress{{end}}</a>
   <div class="vayu-nav-links"><a href="/">Home</a><a href="/feed.xml">Feed</a><a href="/admin">Console</a></div>
 </nav>
 <main id="main-content"><div class="vayu-err">
@@ -332,6 +424,7 @@ var notFoundTmpl = template.Must(template.New("404").Parse(`<!DOCTYPE html><html
 // RenderHome renders the public homepage index from recent articles.
 func RenderHome(domain, version string, articles []HomeArticle, totalCount int) (string, error) {
 	var buf strings.Builder
+	s := getActiveSettings()
 	err := homeTmpl.Execute(&buf, homePage{
 		Domain:              domain,
 		Version:             version,
@@ -339,6 +432,11 @@ func RenderHome(domain, version string, articles []HomeArticle, totalCount int) 
 		CustomCSSLink:       CustomCSSLink(),
 		ArticleCSSLink:      ArticleCSSLink(),
 		HighContrastCSSLink: HighContrastCSSLink(),
+		DynamicStyle:        dynamicStyleBlock(s),
+		CustomHead:          template.HTML(s.CustomHead),
+		SiteName:            s.Name,
+		Tagline:             s.Tagline,
+		Description:         s.Description,
 		Articles:            articles,
 		TotalCount:          totalCount,
 	})
@@ -348,6 +446,7 @@ func RenderHome(domain, version string, articles []HomeArticle, totalCount int) 
 // Render404 renders the branded not-found page.
 func Render404(domain, version string) string {
 	var buf strings.Builder
+	s := getActiveSettings()
 	_ = notFoundTmpl.Execute(&buf, homePage{
 		Domain:              domain,
 		Version:             version,
@@ -355,6 +454,9 @@ func Render404(domain, version string) string {
 		CustomCSSLink:       CustomCSSLink(),
 		ArticleCSSLink:      ArticleCSSLink(),
 		HighContrastCSSLink: HighContrastCSSLink(),
+		DynamicStyle:        dynamicStyleBlock(s),
+		CustomHead:          template.HTML(s.CustomHead),
+		SiteName:            s.Name,
 	})
 	return buf.String()
 }
@@ -372,6 +474,7 @@ func RenderArticleWithLayout(a db.Article, layout ArticleLayoutType) (string, er
 	a.Content = policy.Sanitize(a.Content)
 	start := time.Now()
 	var buf strings.Builder
+	s := getActiveSettings()
 	data := articlePage{
 		Article:             a,
 		Domain:              config.Cfg.Domain,
@@ -381,6 +484,10 @@ func RenderArticleWithLayout(a db.Article, layout ArticleLayoutType) (string, er
 		CustomCSSLink:       CustomCSSLink(),
 		ArticleCSSLink:      ArticleCSSLink(),
 		HighContrastCSSLink: HighContrastCSSLink(),
+		DynamicStyle:        dynamicStyleBlock(s),
+		CustomHead:          template.HTML(s.CustomHead),
+		SiteName:            s.Name,
+		Author:              s.Author,
 	}
 	if err := articleTmpl.Execute(&buf, data); err != nil {
 		return "", fmt.Errorf("template: %w", err)
