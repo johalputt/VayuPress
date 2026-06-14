@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/assets/vayupress-logo.svg" alt="VayuPress" width="440">
+</p>
+
 # VayuPress
 
 [![CI](https://github.com/johalputt/vayupress/actions/workflows/ci.yml/badge.svg)](https://github.com/johalputt/vayupress/actions/workflows/ci.yml)

@@ -58,6 +58,8 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	r.Get("/robots.txt", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, filepath.Join(config.Cfg.CacheDir, "robots.txt"))
 	})
+	r.Get("/favicon.svg", serveBrandMark)
+	r.Get("/static/logo.svg", serveBrandMark)
 	r.Get("/static/css/{file}", func(w http.ResponseWriter, r *http.Request) {
 		file := chi.URLParam(r, "file")
 		if !map[string]bool{"article.css": true, "admin.css": true, "high-contrast.css": true}[file] {

@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none" role="img" aria-label="VayuPress mark">
+  <defs>
+    <linearGradient id="vpWing" x1="290" y1="330" x2="480" y2="150" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2563eb"/>
+      <stop offset="1" stop-color="#3b82f6"/>
+    </linearGradient>
+  </defs>
+  <!-- Navy "V" -->
+  <path d="M118 150 L256 402 L360 214" stroke="#0b1220" stroke-width="62"
+        stroke-linejoin="miter" stroke-linecap="butt" fill="none"/>
+  <!-- Blue triple-swoosh wing -->
+  <g stroke="url(#vpWing)" stroke-width="26" stroke-linecap="round" fill="none">
+    <path d="M298 250 C356 176 426 156 470 168"/>
+    <path d="M298 286 C354 218 424 202 466 214"/>
+    <path d="M298 322 C350 262 414 250 448 260"/>
+  </g>
+</svg>
