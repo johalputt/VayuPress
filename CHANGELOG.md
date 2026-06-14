@@ -29,6 +29,13 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 - **Report-Only CSP mode**: `CSP_REPORT_ONLY=true` sends
   `Content-Security-Policy-Report-Only` instead of the enforcing header, so a
   candidate policy can be observed via `/csp-report` in staging before enforcing.
+  Enforcement posture is now operationally visible (not hidden in an env var): a
+  `csp.policy` boot entry in the Unified Operational Timeline, a `csp_mode` field
+  on `/api/v1/admin/timeline` and `/api/v1/stats`.
+- **CSP report attribution**: violation logs are tagged with the receiving
+  deployment build version (`build=`) for release attribution — browser CSP
+  reports carry no session/correlation context, so build version is the
+  meaningful debugging anchor for a frontend change.
 - **CSP violations in the Unified Operational Timeline**: accepted violations are
   recorded in a bounded process-local ring and rendered as `csp.violation` entries
   in the live timeline (Ω8/Ω10), placing frontend-governance signals in the same

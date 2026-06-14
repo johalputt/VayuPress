@@ -1,8 +1,11 @@
 package main
 
 import (
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/johalputt/vayupress/internal/config"
 )
 
 func resetCSPRing() {
@@ -20,6 +23,37 @@ func TestCSPRingIsBounded(t *testing.T) {
 	got := recentCSPViolations()
 	if len(got) != cspRingMax {
 		t.Fatalf("ring should cap at %d, got %d", cspRingMax, len(got))
+	}
+}
+
+func TestCSPEnforcementModeReflectsConfig(t *testing.T) {
+	orig := config.Cfg.CSPReportOnly
+	t.Cleanup(func() { config.Cfg.CSPReportOnly = orig })
+
+	config.Cfg.CSPReportOnly = false
+	if got := cspEnforcementMode(); got != "enforcing" {
+		t.Errorf("expected enforcing, got %q", got)
+	}
+	config.Cfg.CSPReportOnly = true
+	if got := cspEnforcementMode(); got != "report-only" {
+		t.Errorf("expected report-only, got %q", got)
+	}
+}
+
+func TestCSPPostureAlwaysInTimeline(t *testing.T) {
+	resetCSPRing()
+	t.Cleanup(resetCSPRing)
+	// Even with no violations, the boot sequence must state the CSP posture.
+	snap := &adminMetricsSnapshot{SnapshotAt: time.Now().UTC()}
+	entries := buildOperationalTimeline(snap, nil, nil)
+	var posture bool
+	for _, e := range entries {
+		if e.Cat == "csp" && strings.Contains(e.Msg, "csp.policy") {
+			posture = true
+		}
+	}
+	if !posture {
+		t.Error("expected a csp.policy posture entry in the timeline boot sequence")
 	}
 }
 

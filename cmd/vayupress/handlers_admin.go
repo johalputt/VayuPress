@@ -582,6 +582,18 @@ func buildOperationalTimeline(snap *adminMetricsSnapshot, faultNames []string, f
 			"workers.start — 3 write workers online · outbox relay active", ""},
 	)
 
+	// CSP enforcement posture — operational state, surfaced in the narrative.
+	cspSev := "tl-ok"
+	cspNote := "strict CSP enforcing · report-uri /csp-report armed"
+	if config.Cfg.CSPReportOnly {
+		cspSev = "tl-warn"
+		cspNote = "strict CSP REPORT-ONLY (staging) · violations reported, not blocked"
+	}
+	out = append(out, tlEntry{
+		clock(boot.Add(7 * time.Millisecond)), rel(7 * time.Millisecond), "csp", "tl-cat-gov", cspSev,
+		"csp.policy — " + cspNote, "",
+	})
+
 	// ── Real mode transitions (the causal spine under stress) ──────────────
 	for _, t := range mode.Global.History() {
 		sev := "tl-warn"
@@ -1214,6 +1226,7 @@ func (a *App) handleTimelineJSON(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, http.StatusOK, map[string]interface{}{
 		"entries":      out,
 		"mode":         string(mode.Global.Current()),
+		"csp_mode":     cspEnforcementMode(),
 		"generated_at": time.Now().UTC().Format(time.RFC3339),
 	})
 }

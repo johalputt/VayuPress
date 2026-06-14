@@ -92,9 +92,13 @@ func (a *App) handleCSPReport(w http.ResponseWriter, r *http.Request) {
 
 	atomic.AddInt64(&metrics.MetricCSPViolations, 1)
 	recordCSPViolation(directive, env.Report.BlockedURI)
+	// Tag with the deployment build version for release attribution. Browser CSP
+	// reports carry no session/correlation context (unauthenticated POSTs), so the
+	// receiving build version is the meaningful attribution for debugging a
+	// frontend change.
 	logging.LogJSON(logging.LogFields{
 		Level: "warn", Component: "csp", Severity: "warning",
-		Msg:  "CSP violation: directive=" + directive + " blocked=" + env.Report.BlockedURI,
+		Msg:  "CSP violation: directive=" + directive + " blocked=" + env.Report.BlockedURI + " build=" + Version,
 		Path: env.Report.DocumentURI,
 	})
 	w.WriteHeader(http.StatusNoContent)
@@ -114,6 +118,7 @@ func (a *App) handleStats(w http.ResponseWriter, r *http.Request) {
 		"storage_used_bytes": used, "storage_quota_bytes": quota,
 		"workers_alive":    atomic.LoadInt64(&metrics.WorkerLiveness),
 		"maintenance_mode": config.Cfg.MaintenanceMode,
+		"csp_mode":         cspEnforcementMode(),
 		"metrics": map[string]int64{
 			"articles_created": atomic.LoadInt64(&metrics.MetricArticlesCreated), "articles_updated": atomic.LoadInt64(&metrics.MetricArticlesUpdated),
 			"articles_deleted": atomic.LoadInt64(&metrics.MetricArticlesDeleted), "queue_processed": atomic.LoadInt64(&metrics.MetricQueueProcessed),

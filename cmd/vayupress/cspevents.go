@@ -3,6 +3,8 @@ package main
 import (
 	"sync"
 	"time"
+
+	"github.com/johalputt/vayupress/internal/config"
 )
 
 // cspViolation is one recent Content-Security-Policy violation, kept in a small
@@ -40,4 +42,14 @@ func recentCSPViolations() []cspViolation {
 	out := make([]cspViolation, len(cspRing))
 	copy(out, cspRing)
 	return out
+}
+
+// cspEnforcementMode returns the human-readable CSP enforcement posture. The
+// enforcement posture is operational state, so it is surfaced in the timeline,
+// the governance dashboard, and the stats/health JSON — not hidden in an env var.
+func cspEnforcementMode() string {
+	if config.Cfg.CSPReportOnly {
+		return "report-only"
+	}
+	return "enforcing"
 }
