@@ -2,14 +2,17 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/config"
+	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/fault"
 	"github.com/johalputt/vayupress/internal/mode"
 	"github.com/johalputt/vayupress/internal/render"
@@ -101,7 +104,7 @@ func (a *App) writeConsoleShellHead(w http.ResponseWriter, r *http.Request, acti
   <div class="topbar-right"><span class="mode-badge %s"><span class="pulse-dot"></span>%s</span><a href="/admin" class="kbd-hint">← Console</a></div>
 </header>
 <nav class="sidebar" aria-label="Admin navigation">
-  <div class="sidebar-section"><span class="sidebar-section-label">Core</span>%s%s%s</div>
+  <div class="sidebar-section"><span class="sidebar-section-label">Core</span>%s%s%s%s</div>
   <div class="sidebar-section"><span class="sidebar-section-label">Observe</span>%s%s%s%s</div>
   <div class="sidebar-section"><span class="sidebar-section-label">Govern</span>%s%s%s</div>
   <div class="sidebar-section"><span class="sidebar-section-label">System</span>%s%s</div>
@@ -116,6 +119,7 @@ func (a *App) writeConsoleShellHead(w http.ResponseWriter, r *http.Request, acti
 		sidebarItem("/admin", "◈", "Overview", "overview", active, "", ""),
 		sidebarItem("/api/v1/articles", "◻", "Articles", "articles", active, "", ""),
 		sidebarItem("/api/v1/queue", "⟳", "Queue", "queue", active, "", ""),
+		sidebarItem("/admin/replay", "⟲", "Replay", "replay", active, "", ""),
 		sidebarItem("/api/v1/admin/outbox/events", "◎", "Events", "events", active, "", "s-ok"),
 		sidebarItem("/api/v1/admin/traces", "⋯", "Traces", "traces", active, "", ""),
 		sidebarItem("/admin/topology", "❖", "Topology", "topology", active, "", ""),
@@ -451,6 +455,162 @@ func (a *App) handleTopologyPage(w http.ResponseWriter, r *http.Request) {
 </div>`)
 
 	writeConsoleShellFoot(w, nonce, ``)
+}
+
+// =============================================================================
+// Replay Explorer  (GET /admin/replay)
+// =============================================================================
+
+type replayJob struct {
+	ID            int64
+	Op            string
+	DeadReason    string
+	CorrelationID string
+	Slug          string
+	Retries       int
+	ReplayCount   int
+	CreatedAt     string
+}
+
+func queueCount(status string) int {
+	var n int
+	dbpkg.DB.QueryRow(`SELECT COUNT(1) FROM write_jobs WHERE status=?`, status).Scan(&n)
+	return n
+}
+
+func loadJobs(status string, limit int) []replayJob {
+	rows, err := dbpkg.DB.Query(
+		`SELECT id,op,dead_reason,retries,replay_count,correlation_id,article_json,created_at FROM write_jobs WHERE status=? ORDER BY created_at DESC LIMIT ?`, status, limit)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var out []replayJob
+	for rows.Next() {
+		var j replayJob
+		var aj string
+		if rows.Scan(&j.ID, &j.Op, &j.DeadReason, &j.Retries, &j.ReplayCount, &j.CorrelationID, &aj, &j.CreatedAt) != nil {
+			continue
+		}
+		var meta struct {
+			Slug  string `json:"slug"`
+			Title string `json:"title"`
+		}
+		if json.Unmarshal([]byte(aj), &meta) == nil {
+			j.Slug = meta.Slug
+			if j.Slug == "" {
+				j.Slug = meta.Title
+			}
+		}
+		if j.Slug == "" {
+			j.Slug = "—"
+		}
+		out = append(out, j)
+	}
+	return out
+}
+
+func (a *App) handleReplayPage(w http.ResponseWriter, r *http.Request) {
+	pending := queueCount("pending")
+	processing := queueCount("processing")
+	completed := queueCount("completed")
+	failed := queueCount("failed")
+	deadLetter := queueCount("dead_letter")
+	quarantined := queueCount("quarantined")
+	deadJobs := loadJobs("dead_letter", 60)
+	poisonJobs := loadJobs("quarantined", 30)
+
+	nonce := a.writeConsoleShellHead(w, r, "replay", "Replay Explorer",
+		fmt.Sprintf("write-job lifecycle · dead-letter & poison queue · %d dead-letter · %d quarantined", deadLetter, quarantined))
+
+	fmt.Fprintf(w, `<div class="console-note">Jobs that exhaust 3 retries enter the dead-letter queue. Replaying requeues them (replay_count++); a job that crosses MAX_REPLAY_COUNT=%d is quarantined as poison. Batch replay processes up to REPLAY_BATCH_LIMIT=%d per call. Actions mutate the live write queue.</div>
+<div class="q-strip">
+  <div class="q-stat"><div class="q-stat-val" style="color:var(--accent2)">%d</div><div class="q-stat-label">Pending</div></div>
+  <div class="q-stat"><div class="q-stat-val" style="color:var(--cyan)">%d</div><div class="q-stat-label">Processing</div></div>
+  <div class="q-stat"><div class="q-stat-val" style="color:var(--green)">%d</div><div class="q-stat-label">Completed</div></div>
+  <div class="q-stat"><div class="q-stat-val" style="color:var(--gold)">%d</div><div class="q-stat-label">Failed</div></div>
+  <div class="q-stat"><div class="q-stat-val" style="color:var(--error)">%d</div><div class="q-stat-label">Dead-letter</div></div>
+  <div class="q-stat"><div class="q-stat-val" style="color:var(--red)">%d</div><div class="q-stat-label">Quarantined</div></div>
+</div>
+<div class="section-title">Job Lifecycle</div>
+<div class="trace-panel"><div class="esc-chain">
+  <span class="esc-step">pending</span><span class="esc-arrow">→</span>
+  <span class="esc-step">processing</span><span class="esc-arrow">→</span>
+  <span class="esc-step" style="border-color:rgba(16,185,129,.4);color:var(--green)">completed</span>
+  <span class="esc-arrow" style="margin:0 4px">⟲</span>
+  <span class="esc-step" style="border-color:rgba(245,158,11,.4);color:var(--gold)">retry ×3</span><span class="esc-arrow">→</span>
+  <span class="esc-step" style="border-color:rgba(239,68,68,.4);color:var(--error)">dead-letter</span><span class="esc-arrow">→</span>
+  <span class="esc-step">replay ×%d</span><span class="esc-arrow">→</span>
+  <span class="esc-step" style="border-color:rgba(248,113,113,.4);color:var(--red)">quarantined</span>
+</div></div>`,
+		config.Cfg.MaxReplayCount, config.Cfg.ReplayBatchLimit,
+		pending, processing, completed, failed, deadLetter, quarantined,
+		config.Cfg.MaxReplayCount)
+
+	// Dead-letter table.
+	fmt.Fprintf(w, `<div class="section-title">Dead-Letter Queue (%d)</div>`, deadLetter)
+	if deadLetter > 0 {
+		fmt.Fprintf(w, `<div class="action-row"><button class="btn btn-primary" onclick="vpReplayAll()">⟲ Replay all dead-letter (≤%d)</button></div>`, config.Cfg.ReplayBatchLimit)
+	}
+	if len(deadJobs) == 0 {
+		fmt.Fprint(w, `<div class="console-note">Dead-letter queue is empty — no jobs have exhausted their retries.</div>`)
+	} else {
+		fmt.Fprint(w, `<table class="fe-table"><thead><tr><th>Job</th><th>Op</th><th>Reason</th><th>Retries</th><th>Replays</th><th>Correlation</th><th>Created</th><th>Action</th></tr></thead><tbody>`)
+		for _, j := range deadJobs {
+			reasonCls := "fe-target t-degraded"
+			if j.DeadReason == "parse_error" || j.DeadReason == "unknown_op" {
+				reasonCls = "fe-target t-readonly"
+			}
+			corr := j.CorrelationID
+			if corr == "" {
+				corr = "—"
+			} else if len(corr) > 12 {
+				corr = corr[:12]
+			}
+			fmt.Fprintf(w, `<tr><td class="fe-name">#%d %s</td><td>%s</td><td><span class="%s">%s</span></td><td>%d</td><td>%d/%d</td><td style="color:var(--muted)">%s</td><td>%s</td><td><button class="fe-sim-btn" onclick="vpReplay(%d)">⟲ Replay</button></td></tr>`,
+				j.ID, template.HTMLEscapeString(j.Slug), j.Op, reasonCls, j.DeadReason, j.Retries, j.ReplayCount, config.Cfg.MaxReplayCount, corr, template.HTMLEscapeString(j.CreatedAt), j.ID)
+		}
+		fmt.Fprint(w, `</tbody></table>`)
+	}
+
+	// Quarantined (poison) table.
+	fmt.Fprintf(w, `<div class="section-title">Poison / Quarantined (%d)</div>`, quarantined)
+	if len(poisonJobs) == 0 {
+		fmt.Fprint(w, `<div class="console-note">No quarantined jobs — nothing has crossed the replay ceiling.</div>`)
+	} else {
+		fmt.Fprint(w, `<table class="fe-table"><thead><tr><th>Job</th><th>Op</th><th>Reason</th><th>Replays</th><th>Correlation</th><th>Created</th></tr></thead><tbody>`)
+		for _, j := range poisonJobs {
+			corr := j.CorrelationID
+			if corr == "" {
+				corr = "—"
+			} else if len(corr) > 12 {
+				corr = corr[:12]
+			}
+			fmt.Fprintf(w, `<tr><td class="fe-name">#%d %s</td><td>%s</td><td><span class="fe-target t-readonly">%s</span></td><td>%d</td><td style="color:var(--muted)">%s</td><td style="color:var(--muted)">%s</td></tr>`,
+				j.ID, template.HTMLEscapeString(j.Slug), j.Op, j.DeadReason, j.ReplayCount, corr, template.HTMLEscapeString(j.CreatedAt))
+		}
+		fmt.Fprint(w, `</tbody></table>`)
+	}
+
+	writeConsoleShellFoot(w, nonce, `window.vpReplay=function(id){vpPost('/admin/replay/job?id='+id,function(d){return d.replayed?('Requeued job #'+id):'Job not replayable';});};
+window.vpReplayAll=function(){vpPost('/api/v1/queue/replay',function(d){return 'Replayed '+d.replayed+' · quarantined '+d.skipped_quarantined;});};`)
+}
+
+// handleReplayJob requeues a single dead-letter job back to pending.
+func (a *App) handleReplayJob(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.URL.Query().Get("id"), 10, 64)
+	if err != nil {
+		writeAPIError(w, r, 400, "invalid_id", "id must be a positive integer", "https://docs.vayupress.com/operations/replay")
+		return
+	}
+	res, err := dbpkg.WDB.Exec(
+		`UPDATE write_jobs SET status='pending',retries=0,retry_at=NULL,replay_count=replay_count+1 WHERE id=? AND status='dead_letter'`, id)
+	if err != nil {
+		writeAPIError(w, r, 500, "replay_failed", err.Error(), "https://docs.vayupress.com/operations/replay")
+		return
+	}
+	n, _ := res.RowsAffected()
+	writeJSON(w, r, 200, map[string]interface{}{"replayed": n > 0, "id": id})
 }
 
 // =============================================================================

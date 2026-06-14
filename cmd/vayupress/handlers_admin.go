@@ -803,6 +803,9 @@ func (a *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
       <div class="sidebar-item-left"><span class="sidebar-icon">⟳</span>Queue</div>
       <span class="sidebar-badge">%d</span>
     </a>
+    <a href="/admin/replay" class="sidebar-item">
+      <div class="sidebar-item-left"><span class="sidebar-icon">⟲</span>Replay</div>
+    </a>
   </div>
   <div class="sidebar-section">
     <span class="sidebar-section-label">Observe</span>

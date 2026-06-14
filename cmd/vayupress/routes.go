@@ -118,12 +118,14 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 		r.Get("/admin/modes", a.handleModesPage)
 		r.Get("/admin/faults", a.handleFaultPage)
 		r.Get("/admin/topology", a.handleTopologyPage)
+		r.Get("/admin/replay", a.handleReplayPage)
 
 		r.With(auth.CSRFTokenMiddleware).Post("/admin/benchmark", a.handleRunBenchmark)
 		r.With(auth.CSRFTokenMiddleware).Post("/admin/cache-purge", a.handleAdminCachePurge)
 		r.With(auth.CSRFTokenMiddleware).Post("/admin/vacuum", a.handleAdminVacuum)
 		r.With(auth.CSRFTokenMiddleware).Post("/admin/mode/transition", a.handleModeTransition)
 		r.With(auth.CSRFTokenMiddleware).Post("/admin/fault/simulate", a.handleFaultSimulate)
+		r.With(auth.CSRFTokenMiddleware).Post("/admin/replay/job", a.handleReplayJob)
 
 		r.HandleFunc("/debug/pprof/", a.pprofHandler)
 		r.HandleFunc("/debug/pprof/cmdline", a.pprofHandler)
