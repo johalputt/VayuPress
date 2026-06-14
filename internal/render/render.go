@@ -150,8 +150,16 @@ type SiteSettings struct {
 	PrimaryDark  string // --pico-primary for dark mode (hex)
 	AccentLight  string // --vayu-accent for light mode (hex)
 	AccentDark   string // --vayu-accent for dark mode (hex)
-	CustomCSS    string // operator-supplied CSS injected in <style>
-	CustomHead   string // operator-supplied <head> HTML (no <script>)
+	CustomCSS    string // operator-supplied CSS, served via /theme.css
+
+	// Declarative <head> capabilities (validated on write, escaped on render).
+	// These replace raw head HTML so no arbitrary markup — meta-refresh
+	// redirects, external beacons, <base> hijacks — can reach the page.
+	Keywords     string // meta keywords
+	ThemeColor   string // meta theme-color (hex)
+	Robots       string // meta robots directive (allowlisted)
+	VerifyGoogle string // google-site-verification token
+	VerifyBing   string // msvalidate.01 token
 }
 
 var (
@@ -224,11 +232,26 @@ func ThemeCSSLink() template.HTML {
 	return template.HTML(`<link rel="stylesheet" href="/theme.css">`)
 }
 
-// customHeadHTML returns the operator-supplied <head> HTML. It is rendered raw
-// (server-controlled, validated on write to reject <script>); under the strict
-// CSP only same-origin/meta tags take effect.
-func customHeadHTML(s SiteSettings) template.HTML {
-	return template.HTML(s.CustomHead)
+// headMetaHTML renders the declarative <head> capabilities to a safe, escaped
+// allowlist of <meta> tags. Values are validated on write (hex/token/allowlist)
+// and HTML-escaped here — defense in depth. No arbitrary operator markup ever
+// reaches the document head, so meta-refresh redirects, external beacons, and
+// <base> hijacks are structurally impossible.
+func headMetaHTML(s SiteSettings) template.HTML {
+	var sb strings.Builder
+	esc := template.HTMLEscapeString
+	writeMeta := func(name, content string) {
+		if content == "" {
+			return
+		}
+		sb.WriteString(`<meta name="` + name + `" content="` + esc(content) + `">`)
+	}
+	writeMeta("keywords", s.Keywords)
+	writeMeta("theme-color", s.ThemeColor)
+	writeMeta("robots", s.Robots)
+	writeMeta("google-site-verification", s.VerifyGoogle)
+	writeMeta("msvalidate.01", s.VerifyBing)
+	return template.HTML(sb.String())
 }
 
 // ── Template ──────────────────────────────────────────────────────────────────
@@ -243,7 +266,7 @@ type articlePage struct {
 	ArticleCSSLink      template.HTML
 	HighContrastCSSLink template.HTML
 	ThemeCSSLink        template.HTML
-	CustomHead          template.HTML
+	HeadMeta            template.HTML
 	SiteName            string
 	Author              string
 }
@@ -295,7 +318,7 @@ var articleTmpl = template.Must(template.New("article").Funcs(template.FuncMap{
 <meta name="twitter:card" content="summary"><meta name="twitter:title" content="{{.Title}}">
 <meta name="twitter:description" content="{{trunc .Content 200}}">
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","mainEntityOfPage":{"@type":"WebPage","@id":"https://{{.Domain}}/{{.Slug}}"},"headline":"{{.Title | jsonAttr}}","description":"{{.Content | jsonAttr}}","datePublished":"{{.CreatedAt | isoDate}}","dateModified":"{{.UpdatedAt | isoDate}}","inLanguage":"en","author":{"@type":"Person","name":"Ankush Choudhary Johal","url":"https://{{.Domain}}/about"},"publisher":{"@type":"Organization","name":"VayuPress","url":"https://{{.Domain}}"}}</script>
-{{.PicoCSSLink}}{{.CustomCSSLink}}{{.ArticleCSSLink}}{{.HighContrastCSSLink}}{{.ThemeCSSLink}}{{.CustomHead}}
+{{.PicoCSSLink}}{{.CustomCSSLink}}{{.ArticleCSSLink}}{{.HighContrastCSSLink}}{{.ThemeCSSLink}}{{.HeadMeta}}
 <link rel="icon" type="image/png" href="/static/favicon-dark.png" media="(prefers-color-scheme: light)">
 <link rel="icon" type="image/png" href="/static/favicon-light.png" media="(prefers-color-scheme: dark)">
 <link rel="icon" type="image/png" href="/static/favicon-light.png">
@@ -345,7 +368,7 @@ type homePage struct {
 	ArticleCSSLink      template.HTML
 	HighContrastCSSLink template.HTML
 	ThemeCSSLink        template.HTML
-	CustomHead          template.HTML
+	HeadMeta            template.HTML
 	SiteName            string
 	Tagline             string
 	Description         string
@@ -367,7 +390,7 @@ var homeTmpl = template.Must(template.New("home").Funcs(homeFuncs).Parse(`<!DOCT
 <link rel="alternate" type="application/rss+xml" title="{{.Domain}} feed" href="/feed.xml">
 <meta property="og:type" content="website"><meta property="og:title" content="{{.Domain}}">
 <meta property="og:url" content="https://{{.Domain}}/">
-{{.PicoCSSLink}}{{.CustomCSSLink}}{{.ArticleCSSLink}}{{.HighContrastCSSLink}}{{.ThemeCSSLink}}{{.CustomHead}}
+{{.PicoCSSLink}}{{.CustomCSSLink}}{{.ArticleCSSLink}}{{.HighContrastCSSLink}}{{.ThemeCSSLink}}{{.HeadMeta}}
 <link rel="icon" type="image/png" href="/static/favicon-dark.png" media="(prefers-color-scheme: light)">
 <link rel="icon" type="image/png" href="/static/favicon-light.png" media="(prefers-color-scheme: dark)">
 <link rel="icon" type="image/png" href="/static/favicon-light.png">
@@ -415,7 +438,7 @@ var notFoundTmpl = template.Must(template.New("404").Parse(`<!DOCTYPE html><html
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>404 — {{.Domain}}</title><meta name="robots" content="noindex">
 <meta name="generator" content="VayuPress {{.Version}}">
-{{.PicoCSSLink}}{{.CustomCSSLink}}{{.ArticleCSSLink}}{{.HighContrastCSSLink}}{{.ThemeCSSLink}}{{.CustomHead}}
+{{.PicoCSSLink}}{{.CustomCSSLink}}{{.ArticleCSSLink}}{{.HighContrastCSSLink}}{{.ThemeCSSLink}}{{.HeadMeta}}
 <link rel="icon" type="image/png" href="/static/favicon-dark.png" media="(prefers-color-scheme: light)">
 <link rel="icon" type="image/png" href="/static/favicon-light.png" media="(prefers-color-scheme: dark)">
 <link rel="icon" type="image/png" href="/static/favicon-light.png">
@@ -445,7 +468,7 @@ func RenderHome(domain, version string, articles []HomeArticle, totalCount int) 
 		ArticleCSSLink:      ArticleCSSLink(),
 		HighContrastCSSLink: HighContrastCSSLink(),
 		ThemeCSSLink:        ThemeCSSLink(),
-		CustomHead:          customHeadHTML(s),
+		HeadMeta:            headMetaHTML(s),
 		SiteName:            s.Name,
 		Tagline:             s.Tagline,
 		Description:         s.Description,
@@ -467,7 +490,7 @@ func Render404(domain, version string) string {
 		ArticleCSSLink:      ArticleCSSLink(),
 		HighContrastCSSLink: HighContrastCSSLink(),
 		ThemeCSSLink:        ThemeCSSLink(),
-		CustomHead:          customHeadHTML(s),
+		HeadMeta:            headMetaHTML(s),
 		SiteName:            s.Name,
 	})
 	return buf.String()
@@ -497,7 +520,7 @@ func RenderArticleWithLayout(a db.Article, layout ArticleLayoutType) (string, er
 		ArticleCSSLink:      ArticleCSSLink(),
 		HighContrastCSSLink: HighContrastCSSLink(),
 		ThemeCSSLink:        ThemeCSSLink(),
-		CustomHead:          customHeadHTML(s),
+		HeadMeta:            headMetaHTML(s),
 		SiteName:            s.Name,
 		Author:              s.Author,
 	}

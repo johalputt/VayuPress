@@ -17,6 +17,36 @@ import (
 // hexColorRe matches #rgb and #rrggbb CSS hex colours (case-insensitive).
 var hexColorRe = regexp.MustCompile(`^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$`)
 
+// verifyTokenRe matches search-engine verification tokens: letters, digits and
+// the punctuation those providers use. Anything else is rejected so the value
+// can only ever render inside a meta content="" attribute.
+var verifyTokenRe = regexp.MustCompile(`^[A-Za-z0-9._-]{1,128}$`)
+
+// robotsChoices lists the <meta name="robots"> options in display order. The
+// label is shown in the <select>; the value is what gets persisted and must be
+// a member of settings.RobotsOptions.
+var robotsChoices = []struct{ value, label string }{
+	{"", "Default (no directive — fully indexable)"},
+	{"index,follow", "index, follow"},
+	{"index,nofollow", "index, nofollow"},
+	{"noindex,follow", "noindex, follow"},
+	{"noindex,nofollow", "noindex, nofollow"},
+}
+
+// robotsOptionsHTML renders the <option> elements for the robots <select>,
+// marking current as selected.
+func robotsOptionsHTML(current string) string {
+	var sb strings.Builder
+	for _, c := range robotsChoices {
+		sel := ""
+		if c.value == current {
+			sel = " selected"
+		}
+		sb.WriteString(`<option value="` + template.HTMLEscapeString(c.value) + `"` + sel + `>` + template.HTMLEscapeString(c.label) + `</option>`)
+	}
+	return sb.String()
+}
+
 // handleThemeCSS serves the dynamic per-site theme stylesheet at /theme.css.
 // Served from the same origin (text/css) so it satisfies the strict
 // `style-src 'self'` CSP. An ETag over the CSS content lets browsers revalidate
@@ -57,6 +87,12 @@ func (a *App) handleThemeSave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	fail := func(code int, msg string) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(code)
+		json.NewEncoder(w).Encode(map[string]string{"error": msg}) //nolint:errcheck
+	}
+
 	var body struct {
 		SiteName        string `json:"site.name"`
 		SiteTagline     string `json:"site.tagline"`
@@ -67,27 +103,20 @@ func (a *App) handleThemeSave(w http.ResponseWriter, r *http.Request) {
 		AccentLight     string `json:"theme.accent_light"`
 		AccentDark      string `json:"theme.accent_dark"`
 		CustomCSS       string `json:"theme.custom_css"`
-		CustomHead      string `json:"theme.custom_head"`
+		Keywords        string `json:"head.keywords"`
+		ThemeColor      string `json:"head.theme_color"`
+		Robots          string `json:"head.robots"`
+		VerifyGoogle    string `json:"head.verify_google"`
+		VerifyBing      string `json:"head.verify_bing"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(400)
-		json.NewEncoder(w).Encode(map[string]string{"error": "invalid JSON: " + err.Error()}) //nolint:errcheck
+		fail(400, "invalid JSON: "+err.Error())
 		return
 	}
 
-	customHead := strings.TrimSpace(body.CustomHead)
-	if strings.Contains(strings.ToLower(customHead), "<script") {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(400)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Custom Head HTML must not contain <script> tags"}) //nolint:errcheck
-		return
-	}
 	customCSS := strings.TrimSpace(body.CustomCSS)
 	if len(customCSS) > 16*1024 {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(400)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Custom CSS exceeds the 16 KB limit"}) //nolint:errcheck
+		fail(400, "Custom CSS exceeds the 16 KB limit")
 		return
 	}
 
@@ -98,11 +127,34 @@ func (a *App) handleThemeSave(w http.ResponseWriter, r *http.Request) {
 		"Primary (dark)":  body.PrimaryDark,
 		"Accent (light)":  body.AccentLight,
 		"Accent (dark)":   body.AccentDark,
+		"Theme colour":    body.ThemeColor,
 	} {
 		if v := strings.TrimSpace(val); v != "" && !hexColorRe.MatchString(v) {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(400)
-			json.NewEncoder(w).Encode(map[string]string{"error": label + " must be a hex colour like #0d9488"}) //nolint:errcheck
+			fail(400, label+" must be a hex colour like #0d9488")
+			return
+		}
+	}
+
+	// Declarative <head> capabilities: each is allowlisted/tokenised so only a
+	// safe, escaped <meta> subset can ever reach the document head.
+	keywords := strings.TrimSpace(body.Keywords)
+	if len(keywords) > 256 {
+		fail(400, "Keywords exceed the 256-character limit")
+		return
+	}
+	robots := strings.TrimSpace(body.Robots)
+	if !settings.RobotsOptions[robots] {
+		fail(400, "Robots directive is not an allowed value")
+		return
+	}
+	verifyGoogle := strings.TrimSpace(body.VerifyGoogle)
+	verifyBing := strings.TrimSpace(body.VerifyBing)
+	for label, tok := range map[string]string{
+		"Google verification": verifyGoogle,
+		"Bing verification":   verifyBing,
+	} {
+		if tok != "" && !verifyTokenRe.MatchString(tok) {
+			fail(400, label+" token may contain only letters, digits, '-', '_', and '.'")
 			return
 		}
 	}
@@ -117,13 +169,15 @@ func (a *App) handleThemeSave(w http.ResponseWriter, r *http.Request) {
 		settings.KeyThemeAccentLight:  strings.TrimSpace(body.AccentLight),
 		settings.KeyThemeAccentDark:   strings.TrimSpace(body.AccentDark),
 		settings.KeyThemeCustomCSS:    customCSS,
-		settings.KeyThemeCustomHead:   customHead,
+		settings.KeyHeadKeywords:      keywords,
+		settings.KeyHeadThemeColor:    strings.TrimSpace(body.ThemeColor),
+		settings.KeyHeadRobots:        robots,
+		settings.KeyHeadVerifyGoogle:  verifyGoogle,
+		settings.KeyHeadVerifyBing:    verifyBing,
 	}
 
 	if err := a.siteSettings.SetMany(r.Context(), kv); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(500)
-		json.NewEncoder(w).Encode(map[string]string{"error": "save failed: " + err.Error()}) //nolint:errcheck
+		fail(500, "save failed: "+err.Error())
 		return
 	}
 
@@ -139,7 +193,11 @@ func (a *App) handleThemeSave(w http.ResponseWriter, r *http.Request) {
 			AccentLight:  newVals[settings.KeyThemeAccentLight],
 			AccentDark:   newVals[settings.KeyThemeAccentDark],
 			CustomCSS:    newVals[settings.KeyThemeCustomCSS],
-			CustomHead:   newVals[settings.KeyThemeCustomHead],
+			Keywords:     newVals[settings.KeyHeadKeywords],
+			ThemeColor:   newVals[settings.KeyHeadThemeColor],
+			Robots:       newVals[settings.KeyHeadRobots],
+			VerifyGoogle: newVals[settings.KeyHeadVerifyGoogle],
+			VerifyBing:   newVals[settings.KeyHeadVerifyBing],
 		})
 	}
 
@@ -182,6 +240,14 @@ func themeEditorPage(vals map[string]string, modeStr, nonce, errMsg string) stri
 			return def
 		}
 		return ""
+	}
+	// vOr returns the escaped value, falling back to fallback when unset (used to
+	// give the colour swatch a sensible starting hue when no value is stored).
+	vOr := func(key, fallback string) string {
+		if got := raw(key); got != "" {
+			return template.HTMLEscapeString(got)
+		}
+		return template.HTMLEscapeString(fallback)
 	}
 
 	var sb strings.Builder
@@ -255,7 +321,8 @@ func themeEditorPage(vals map[string]string, modeStr, nonce, errMsg string) stri
 <div class="theme-tabs">
   <button type="button" class="theme-tab active" data-tab="identity">Identity</button>
   <button type="button" class="theme-tab" data-tab="palette">Palette</button>
-  <button type="button" class="theme-tab" data-tab="code">Custom Code</button>
+  <button type="button" class="theme-tab" data-tab="code">Custom CSS</button>
+  <button type="button" class="theme-tab" data-tab="head">Head &amp; SEO</button>
 </div>
 
 <!-- Identity -->
@@ -341,19 +408,55 @@ func themeEditorPage(vals map[string]string, modeStr, nonce, errMsg string) stri
 
 <!-- Custom Code -->
 <div id="tab-code" class="theme-panel">
-  <div class="warn-box">⚠ Code injected here appears verbatim on every public page. Never include &lt;script&gt; tags — they are blocked server-side.</div>
+  <div class="warn-box">Custom CSS is served same-origin via <code>/theme.css</code> (CSP-safe) and cannot reach external origins or execute scripts. Max 16 KB.</div>
   <div class="field-row">
     <span class="field-label">Custom CSS</span>
     <div>
       <textarea id="theme.custom_css" class="field-input" rows="10" placeholder="/* e.g. body { font-family: Georgia, serif; } */" maxlength="16384">` + template.HTMLEscapeString(raw(settings.KeyThemeCustomCSS)) + `</textarea>
-      <div class="field-hint">Injected inside a &lt;style&gt; tag after pico.min.css + custom.css. Max 16 KB.</div>
+      <div class="field-hint">Appended after pico.min.css + custom.css in the served stylesheet.</div>
+    </div>
+  </div>
+</div>
+
+<!-- Head & SEO (declarative — no raw HTML) -->
+<div id="tab-head" class="theme-panel">
+  <div class="warn-box">Raw &lt;head&gt; HTML is intentionally not accepted — it would allow meta-refresh redirects, external beacons, and &lt;base&gt; hijacks the CSP cannot fully block. These fields render to a validated, escaped &lt;meta&gt; allowlist only.</div>
+  <div class="field-row">
+    <span class="field-label">Keywords</span>
+    <div>
+      <input type="text" id="head.keywords" class="field-input" value="` + v(settings.KeyHeadKeywords) + `" maxlength="256" placeholder="publishing, governance, sovereignty">
+      <div class="field-hint">Comma-separated. Rendered as &lt;meta name="keywords"&gt;.</div>
     </div>
   </div>
   <div class="field-row">
-    <span class="field-label">Custom &lt;head&gt;</span>
+    <span class="field-label">Theme colour</span>
     <div>
-      <textarea id="theme.custom_head" class="field-input" rows="6" placeholder="&lt;!-- e.g. analytics snippet, preconnect --&gt;">` + template.HTMLEscapeString(raw(settings.KeyThemeCustomHead)) + `</textarea>
-      <div class="field-hint">Injected verbatim inside &lt;head&gt; on public pages. No &lt;script&gt; tags allowed.</div>
+      <div class="color-pair">
+        <input type="color" class="color-swatch" id="swatch-tc" data-sync="head.theme_color" value="` + vOr(settings.KeyHeadThemeColor, "#0d9488") + `">
+        <input type="text" id="head.theme_color" class="field-input field-hex" data-sync="swatch-tc" value="` + v(settings.KeyHeadThemeColor) + `" placeholder="#0d9488" maxlength="7">
+      </div>
+      <div class="field-hint">Browser UI tint. Rendered as &lt;meta name="theme-color"&gt;.</div>
+    </div>
+  </div>
+  <div class="field-row">
+    <span class="field-label">Robots</span>
+    <div>
+      <select id="head.robots" class="field-input">` + robotsOptionsHTML(raw(settings.KeyHeadRobots)) + `</select>
+      <div class="field-hint">Crawler directive. Leave default unless intentionally restricting indexing.</div>
+    </div>
+  </div>
+  <div class="field-row">
+    <span class="field-label">Google verify</span>
+    <div>
+      <input type="text" id="head.verify_google" class="field-input" value="` + v(settings.KeyHeadVerifyGoogle) + `" maxlength="128" placeholder="google-site-verification token">
+      <div class="field-hint">Token only (letters/digits/-._). Rendered as the verification &lt;meta&gt;.</div>
+    </div>
+  </div>
+  <div class="field-row">
+    <span class="field-label">Bing verify</span>
+    <div>
+      <input type="text" id="head.verify_bing" class="field-input" value="` + v(settings.KeyHeadVerifyBing) + `" maxlength="128" placeholder="msvalidate.01 token">
+      <div class="field-hint">Token only. Rendered as &lt;meta name="msvalidate.01"&gt;.</div>
     </div>
   </div>
 </div>
@@ -405,7 +508,11 @@ func themeEditorPage(vals map[string]string, modeStr, nonce, errMsg string) stri
       'theme.accent_light':getVal('theme.accent_light'),
       'theme.accent_dark':getVal('theme.accent_dark'),
       'theme.custom_css':getVal('theme.custom_css'),
-      'theme.custom_head':getVal('theme.custom_head')
+      'head.keywords':getVal('head.keywords'),
+      'head.theme_color':getVal('head.theme_color'),
+      'head.robots':getVal('head.robots'),
+      'head.verify_google':getVal('head.verify_google'),
+      'head.verify_bing':getVal('head.verify_bing')
     };
     fetch('/admin/theme',{
       method:'POST',

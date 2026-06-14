@@ -49,3 +49,43 @@ func TestThemeCSSEmptyWhenUnset(t *testing.T) {
 		t.Errorf("expected empty CSS for zero settings, got %q", got)
 	}
 }
+
+func TestHeadMetaRendersAllowlistedTagsEscaped(t *testing.T) {
+	got := string(headMetaHTML(SiteSettings{
+		Keywords:     `sovereignty, "governance"`,
+		ThemeColor:   "#0d9488",
+		Robots:       "noindex,nofollow",
+		VerifyGoogle: "abc-123_def",
+	}))
+	for _, want := range []string{
+		`<meta name="keywords" content="sovereignty, &#34;governance&#34;">`,
+		`<meta name="theme-color" content="#0d9488">`,
+		`<meta name="robots" content="noindex,nofollow">`,
+		`<meta name="google-site-verification" content="abc-123_def">`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("headMetaHTML missing %q\ngot: %s", want, got)
+		}
+	}
+	// Bing was empty → no msvalidate tag emitted.
+	if strings.Contains(got, "msvalidate") {
+		t.Errorf("expected no bing tag when unset, got: %s", got)
+	}
+}
+
+func TestHeadMetaEmptyWhenUnset(t *testing.T) {
+	if got := string(headMetaHTML(SiteSettings{})); got != "" {
+		t.Errorf("expected empty head meta for zero settings, got %q", got)
+	}
+}
+
+// Guards the core governance property: a value that tries to break out of the
+// content="" attribute is escaped, so no arbitrary markup can reach <head>.
+func TestHeadMetaCannotInjectMarkup(t *testing.T) {
+	got := string(headMetaHTML(SiteSettings{
+		Keywords: `"><script>alert(1)</script>`,
+	}))
+	if strings.Contains(got, "<script>") {
+		t.Errorf("head meta must not emit raw <script>, got: %s", got)
+	}
+}

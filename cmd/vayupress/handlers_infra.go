@@ -1,7 +1,9 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"runtime"
 	"sync/atomic"
@@ -9,9 +11,44 @@ import (
 
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/metrics"
 	"github.com/johalputt/vayupress/internal/queue"
 )
+
+// handleCSPReport ingests browser Content-Security-Policy violation reports
+// (report-uri target). It is public and unauthenticated — browsers post these
+// without credentials. Each report increments a counter and is logged through
+// the structured pipeline so CSP drift is observable in the operational model,
+// turning "doctrine vs runtime" divergence into a measurable signal rather than
+// a silent assumption. The body is bounded to avoid abuse.
+func (a *App) handleCSPReport(w http.ResponseWriter, r *http.Request) {
+	atomic.AddInt64(&metrics.MetricCSPViolations, 1)
+	defer r.Body.Close()
+	raw, _ := io.ReadAll(io.LimitReader(r.Body, 16*1024))
+	// Browsers wrap the report as {"csp-report": {...}}. Parse best-effort;
+	// never fail the response (browsers ignore it anyway).
+	var env struct {
+		Report struct {
+			DocumentURI        string `json:"document-uri"`
+			ViolatedDirective  string `json:"violated-directive"`
+			EffectiveDirective string `json:"effective-directive"`
+			BlockedURI         string `json:"blocked-uri"`
+		} `json:"csp-report"`
+	}
+	if json.Unmarshal(raw, &env) == nil && (env.Report.ViolatedDirective != "" || env.Report.BlockedURI != "") {
+		directive := env.Report.ViolatedDirective
+		if directive == "" {
+			directive = env.Report.EffectiveDirective
+		}
+		logging.LogJSON(logging.LogFields{
+			Level: "warn", Component: "csp", Severity: "warning",
+			Msg:  "CSP violation: directive=" + directive + " blocked=" + env.Report.BlockedURI,
+			Path: env.Report.DocumentURI,
+		})
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
 
 func (a *App) handleStats(w http.ResponseWriter, r *http.Request) {
 	var totalArticles, pendingJobs, failedJobs int
@@ -69,7 +106,7 @@ func (a *App) handleMetrics(w http.ResponseWriter, r *http.Request) {
 			"vayupress_wal_checkpoint_duration_ms_total %d\nvayupress_wal_adaptive_checkpoints_total %d\n"+
 			"vayupress_migration_drift_detected_total %d\nvayupress_poison_jobs_quarantined_total %d\n"+
 			"vayupress_pprof_accesses_total %d\nvayupress_vacuum_rejected_total %d\n"+
-			"vayupress_health_degraded_events_total %d\n",
+			"vayupress_health_degraded_events_total %d\nvayupress_csp_violations_total %d\n",
 		time.Since(bootTime).Seconds(), totalArticles,
 		atomic.LoadInt64(&metrics.MetricArticlesCreated), atomic.LoadInt64(&metrics.MetricArticlesUpdated), atomic.LoadInt64(&metrics.MetricArticlesDeleted),
 		atomic.LoadInt64(&metrics.MetricQueueProcessed), atomic.LoadInt64(&metrics.MetricQueueFailed), atomic.LoadInt64(&metrics.MetricQueueStuckResets),
@@ -80,7 +117,7 @@ func (a *App) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		atomic.LoadInt64(&metrics.MetricWALCheckpointDurationMS), atomic.LoadInt64(&metrics.MetricWALAdaptiveCheckpoints),
 		atomic.LoadInt64(&metrics.MetricMigrationDriftDetected), atomic.LoadInt64(&metrics.MetricPoisonJobsQuarantined),
 		atomic.LoadInt64(&metrics.MetricPprofAccesses), atomic.LoadInt64(&metrics.MetricVacuumRejected),
-		atomic.LoadInt64(&metrics.MetricHealthDegradedEvents),
+		atomic.LoadInt64(&metrics.MetricHealthDegradedEvents), atomic.LoadInt64(&metrics.MetricCSPViolations),
 	)
 	fmt.Fprint(w, metrics.HTTPLatency.Prometheus("vayupress_http_request_duration_seconds", "HTTP latency"))
 	fmt.Fprint(w, metrics.RenderLatency.Prometheus("vayupress_render_duration_seconds", "Render latency"))

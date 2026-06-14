@@ -204,7 +204,11 @@ func main() {
 			AccentLight:  sv[settings.KeyThemeAccentLight],
 			AccentDark:   sv[settings.KeyThemeAccentDark],
 			CustomCSS:    sv[settings.KeyThemeCustomCSS],
-			CustomHead:   sv[settings.KeyThemeCustomHead],
+			Keywords:     sv[settings.KeyHeadKeywords],
+			ThemeColor:   sv[settings.KeyHeadThemeColor],
+			Robots:       sv[settings.KeyHeadRobots],
+			VerifyGoogle: sv[settings.KeyHeadVerifyGoogle],
+			VerifyBing:   sv[settings.KeyHeadVerifyBing],
 		})
 	}
 

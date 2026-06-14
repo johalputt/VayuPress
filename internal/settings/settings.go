@@ -22,8 +22,27 @@ const (
 	KeyThemeAccentLight  = "theme.accent_light"
 	KeyThemeAccentDark   = "theme.accent_dark"
 	KeyThemeCustomCSS    = "theme.custom_css"
-	KeyThemeCustomHead   = "theme.custom_head"
+
+	// Declarative <head> capabilities. These replace the former raw-HTML
+	// `theme.custom_head` field (removed): arbitrary head HTML allowed
+	// meta-refresh redirects, external beacons, and <base> hijacks that the
+	// CSP does not fully cover. Each capability below renders to a single
+	// escaped, allowlisted <meta> tag — no arbitrary markup reaches the page.
+	KeyHeadKeywords     = "head.keywords"      // <meta name="keywords">
+	KeyHeadThemeColor   = "head.theme_color"   // <meta name="theme-color"> (hex)
+	KeyHeadRobots       = "head.robots"        // <meta name="robots"> (allowlisted)
+	KeyHeadVerifyGoogle = "head.verify_google" // google-site-verification token
+	KeyHeadVerifyBing   = "head.verify_bing"   // msvalidate.01 token
 )
+
+// RobotsOptions is the allowlist of accepted <meta name="robots"> directives.
+var RobotsOptions = map[string]bool{
+	"":                 true, // unset — omit the tag
+	"index,follow":     true,
+	"noindex,nofollow": true,
+	"noindex,follow":   true,
+	"index,nofollow":   true,
+}
 
 // AllKeys is the canonical set of settings keys accepted by Set/SetMany.
 var AllKeys = map[string]bool{
@@ -36,7 +55,11 @@ var AllKeys = map[string]bool{
 	KeyThemeAccentLight:  true,
 	KeyThemeAccentDark:   true,
 	KeyThemeCustomCSS:    true,
-	KeyThemeCustomHead:   true,
+	KeyHeadKeywords:      true,
+	KeyHeadThemeColor:    true,
+	KeyHeadRobots:        true,
+	KeyHeadVerifyGoogle:  true,
+	KeyHeadVerifyBing:    true,
 }
 
 // Defaults are returned when no DB value exists for a key.
@@ -50,7 +73,11 @@ var Defaults = map[string]string{
 	KeyThemeAccentLight:  "#f59e0b",
 	KeyThemeAccentDark:   "#fbbf24",
 	KeyThemeCustomCSS:    "",
-	KeyThemeCustomHead:   "",
+	KeyHeadKeywords:      "",
+	KeyHeadThemeColor:    "",
+	KeyHeadRobots:        "",
+	KeyHeadVerifyGoogle:  "",
+	KeyHeadVerifyBing:    "",
 }
 
 // Store is a thread-safe settings store with an in-process read cache.

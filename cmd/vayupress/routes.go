@@ -82,6 +82,7 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	r.Get("/api/v1/tags", a.handleListTags)
 	r.Get("/api/v1/stats", a.handleStats)
 	r.Get("/metrics", a.handleMetrics)
+	r.Post("/csp-report", a.handleCSPReport)
 	r.Get("/smoke-test", a.handleSmokeTest)
 	r.Get("/api/v1/openapi.json", a.handleOpenAPISpec)
 
