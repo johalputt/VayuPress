@@ -153,11 +153,11 @@ gen_secret() {
 }
 
 if [[ -z "$API_KEY" ]]; then
-  API_KEY="$(gen_secret)"
+  API_KEY="${API_KEY:-$(gen_secret)}"
   warn "API_KEY was unset — generated a random one. It will be saved to /etc/vayupress/env (chmod 600)."
 fi
 if [[ -z "$MEILI_MASTER_KEY" ]]; then
-  MEILI_MASTER_KEY="$(gen_secret)"
+  MEILI_MASTER_KEY="${MEILI_MASTER_KEY:-$(gen_secret)}"
   warn "MEILI_MASTER_KEY was unset — generated a random one. It will be saved to /etc/vayupress/env (chmod 600)."
 fi
 
