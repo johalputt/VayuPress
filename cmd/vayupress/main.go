@@ -244,6 +244,7 @@ func main() {
 	dbpkg.StartWALCheckpointGoroutine(queue.DoneCh)
 	dbpkg.StartStuckJobReaper(queue.DoneCh)
 	a.startMetricsSnapshotCollector()
+	a.startSearchReconciler(queue.DoneCh)
 
 	// Wire queue injections.
 	queue.RenderFn = render.RenderArticle

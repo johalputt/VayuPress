@@ -389,7 +389,11 @@ func CSRFTokenMiddleware(next http.Handler) http.Handler {
 			if c, err := r.Cookie("vp_csrf"); err == nil {
 				cookieToken = c.Value
 			}
-			if headerToken == "" || cookieToken == "" || headerToken != cookieToken || !ValidateCSRFToken(headerToken) {
+			// Constant-time double-submit comparison: avoid leaking how much of
+			// the token matched via response timing. ValidateCSRFToken separately
+			// verifies the HMAC so a forged-but-matching pair still fails.
+			tokensMatch := subtle.ConstantTimeCompare([]byte(headerToken), []byte(cookieToken)) == 1
+			if headerToken == "" || cookieToken == "" || !tokensMatch || !ValidateCSRFToken(headerToken) {
 				writeAuthError(w, 403, "csrf_invalid", "CSRF token missing or invalid", "https://docs.vayupress.com/api/csrf")
 				return
 			}

@@ -63,6 +63,72 @@ The `--upgrade` flag:
 
 ---
 
+## Schema Changes & Migration Authoring
+
+Migrations are **forward-only**, embedded into the binary, and content-checksummed.
+Each lives in `internal/migrations/sql/` as a numbered up/down pair:
+
+```
+internal/migrations/sql/
+  010_article_summary.up.sql
+  010_article_summary.down.sql
+```
+
+### Authoring a new migration
+
+1. Create the next-numbered `NNN_name.up.sql` and `NNN_name.down.sql`. The
+   engine applies `*.up.sql` in numeric order exactly once and records a
+   SHA-256 of each file in the `schema_migrations` table.
+
+   ```sql
+   -- 010_article_summary.up.sql
+   ALTER TABLE articles ADD COLUMN summary TEXT NOT NULL DEFAULT '';
+   ```
+
+   ```sql
+   -- 010_article_summary.down.sql  (documents intent; not auto-run)
+   ALTER TABLE articles DROP COLUMN summary;
+   ```
+
+2. Keep migrations **additive and idempotent-friendly**. Prefer
+   `ADD COLUMN ... DEFAULT` over destructive rewrites; SQLite rewrites the whole
+   table for some `ALTER`s, so large tables should be migrated during a
+   maintenance window.
+
+3. **Never edit an already-released migration file.** Its checksum is recorded
+   on every deployed instance; changing the bytes trips drift detection (below)
+   and the instance refuses to treat the schema as trusted. To change a shipped
+   migration, add a *new* one.
+
+### Automated validation
+
+Checksum drift is detected automatically and surfaced two ways:
+
+```bash
+# Liveness contract — fails (non-ok) if any applied migration's bytes changed
+curl -sf http://localhost:8080/health/migrations | jq .
+
+# The vayupress_migration_drift_detected_total metric increments on drift
+curl -sf http://localhost:8080/metrics | grep migration_drift
+```
+
+`internal/migrations` (`VerifyChecksums`) compares each row in
+`schema_migrations` against the embedded SQL and returns the drifting versions;
+the deploy script and the `/health/migrations` contract both call into it, so a
+bad upgrade is caught before it serves traffic.
+
+### Testing a migration locally
+
+```bash
+# Apply against a throwaway DB and confirm the schema + checksums verify
+DB_PATH=$(mktemp -u).db go test ./internal/migrations/ -run TestMigrate -v
+
+# Full gate before pushing a schema change
+gofmt -l . && go vet ./... && go test ./...
+```
+
+---
+
 ## Rollback Procedure
 
 VayuPress does not support automatic rollback of database migrations. To roll back:

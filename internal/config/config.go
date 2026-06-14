@@ -38,6 +38,9 @@ var Cfg struct {
 	ReplayBatchLimit    int
 	WALSizeThresholdMB  int
 	PprofRateLimit      int
+	// SearchReconcileMin is the interval, in minutes, between background search
+	// drift checks. 0 disables the periodic reconciler entirely.
+	SearchReconcileMin int
 }
 
 func Load() {
@@ -69,6 +72,7 @@ func Load() {
 	Cfg.ReplayBatchLimit = GetEnvAsInt("REPLAY_BATCH_LIMIT", 100)
 	Cfg.WALSizeThresholdMB = GetEnvAsInt("WAL_SIZE_THRESHOLD_MB", 32)
 	Cfg.PprofRateLimit = GetEnvAsInt("PPROF_RATE_LIMIT", 5)
+	Cfg.SearchReconcileMin = GetEnvAsInt("SEARCH_RECONCILE_MIN", 60)
 }
 
 func MustEnv(k string) string {

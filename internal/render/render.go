@@ -109,6 +109,18 @@ func CSSLink(filename, hash string) template.HTML {
 	return template.HTML(fmt.Sprintf(`<link rel="stylesheet" href="/static/css/%s?v=%s">`, filename, ver))
 }
 
+// picoVersion is the vendored Pico CSS release served from /static/css. It is a
+// local copy (no third-party origin) so the strict CSP and sovereignty posture
+// hold. Bump this when the vendored file in static/css/pico.min.css changes.
+const picoVersion = "2.1.1"
+
+// PicoCSSLink returns the <link> for the vendored Pico CSS base theme used by
+// the public site. It is loaded before the VayuPress overrides so brand styles
+// win the cascade.
+func PicoCSSLink() template.HTML {
+	return template.HTML(fmt.Sprintf(`<link rel="stylesheet" href="/static/css/pico.min.css?v=%s">`, picoVersion))
+}
+
 // ArticleCSSLink returns the versioned <link> for article.css.
 func ArticleCSSLink() template.HTML { return CSSLink("article.css", cssHashes.ArticleCSS) }
 
@@ -127,6 +139,7 @@ type articlePage struct {
 	Domain              string
 	Version             string
 	Layout              ArticleLayoutType
+	PicoCSSLink         template.HTML
 	ArticleCSSLink      template.HTML
 	HighContrastCSSLink template.HTML
 }
@@ -162,7 +175,7 @@ var articleTmpl = template.Must(template.New("article").Funcs(template.FuncMap{
 	"isoDate":   func(t time.Time) string { return t.UTC().Format(time.RFC3339) },
 	"shortDate": func(t time.Time) string { return t.UTC().Format("2006-01-02") },
 	"humanDate": func(t time.Time) string { return t.Format("2 January 2006") },
-}).Parse(`<!DOCTYPE html><html lang="en"><head>
+}).Parse(`<!DOCTYPE html><html lang="en" data-theme="dark"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{.Title}} — {{.Domain}}</title>
 <meta name="description" content="{{trunc .Content 160}}">
@@ -178,7 +191,7 @@ var articleTmpl = template.Must(template.New("article").Funcs(template.FuncMap{
 <meta name="twitter:card" content="summary"><meta name="twitter:title" content="{{.Title}}">
 <meta name="twitter:description" content="{{trunc .Content 200}}">
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","mainEntityOfPage":{"@type":"WebPage","@id":"https://{{.Domain}}/{{.Slug}}"},"headline":"{{.Title | jsonAttr}}","description":"{{.Content | jsonAttr}}","datePublished":"{{.CreatedAt | isoDate}}","dateModified":"{{.UpdatedAt | isoDate}}","inLanguage":"en","author":{"@type":"Person","name":"Ankush Choudhary Johal","url":"https://{{.Domain}}/about"},"publisher":{"@type":"Organization","name":"VayuPress","url":"https://{{.Domain}}"}}</script>
-{{.ArticleCSSLink}}{{.HighContrastCSSLink}}
+{{.PicoCSSLink}}{{.ArticleCSSLink}}{{.HighContrastCSSLink}}
 <link rel="icon" type="image/png" href="/static/favicon-dark.png" media="(prefers-color-scheme: light)">
 <link rel="icon" type="image/png" href="/static/favicon-light.png" media="(prefers-color-scheme: dark)">
 <link rel="icon" type="image/png" href="/static/favicon-light.png">
@@ -207,6 +220,7 @@ type HomeArticle struct {
 type homePage struct {
 	Domain              string
 	Version             string
+	PicoCSSLink         template.HTML
 	ArticleCSSLink      template.HTML
 	HighContrastCSSLink template.HTML
 	Articles            []HomeArticle
@@ -218,7 +232,7 @@ var homeFuncs = template.FuncMap{
 	"shortDate": func(t time.Time) string { return t.UTC().Format("2006-01-02") },
 }
 
-var homeTmpl = template.Must(template.New("home").Funcs(homeFuncs).Parse(`<!DOCTYPE html><html lang="en"><head>
+var homeTmpl = template.Must(template.New("home").Funcs(homeFuncs).Parse(`<!DOCTYPE html><html lang="en" data-theme="dark"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{.Domain}} — Sovereign Publishing Runtime</title>
 <meta name="description" content="VayuPress — a governed, adaptive publishing runtime. Durable by design, observable end to end.">
@@ -227,7 +241,7 @@ var homeTmpl = template.Must(template.New("home").Funcs(homeFuncs).Parse(`<!DOCT
 <link rel="alternate" type="application/rss+xml" title="{{.Domain}} feed" href="/feed.xml">
 <meta property="og:type" content="website"><meta property="og:title" content="{{.Domain}}">
 <meta property="og:url" content="https://{{.Domain}}/">
-{{.ArticleCSSLink}}{{.HighContrastCSSLink}}
+{{.PicoCSSLink}}{{.ArticleCSSLink}}{{.HighContrastCSSLink}}
 <link rel="icon" type="image/png" href="/static/favicon-dark.png" media="(prefers-color-scheme: light)">
 <link rel="icon" type="image/png" href="/static/favicon-light.png" media="(prefers-color-scheme: dark)">
 <link rel="icon" type="image/png" href="/static/favicon-light.png">
@@ -268,11 +282,11 @@ var homeTmpl = template.Must(template.New("home").Funcs(homeFuncs).Parse(`<!DOCT
 <footer><div class="footer-brand"><img class="site-nav-brand-icon" src="/static/favicon-light.png" alt="" width="24" height="24">VayuPress</div><span class="footer-badge">runtime · governed</span></footer>
 </div></body></html>`))
 
-var notFoundTmpl = template.Must(template.New("404").Parse(`<!DOCTYPE html><html lang="en"><head>
+var notFoundTmpl = template.Must(template.New("404").Parse(`<!DOCTYPE html><html lang="en" data-theme="dark"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>404 — {{.Domain}}</title><meta name="robots" content="noindex">
 <meta name="generator" content="VayuPress {{.Version}}">
-{{.ArticleCSSLink}}{{.HighContrastCSSLink}}
+{{.PicoCSSLink}}{{.ArticleCSSLink}}{{.HighContrastCSSLink}}
 <link rel="icon" type="image/png" href="/static/favicon-dark.png" media="(prefers-color-scheme: light)">
 <link rel="icon" type="image/png" href="/static/favicon-light.png" media="(prefers-color-scheme: dark)">
 <link rel="icon" type="image/png" href="/static/favicon-light.png">
@@ -297,6 +311,7 @@ func RenderHome(domain, version string, articles []HomeArticle, totalCount int) 
 	err := homeTmpl.Execute(&buf, homePage{
 		Domain:              domain,
 		Version:             version,
+		PicoCSSLink:         PicoCSSLink(),
 		ArticleCSSLink:      ArticleCSSLink(),
 		HighContrastCSSLink: HighContrastCSSLink(),
 		Articles:            articles,
@@ -311,6 +326,7 @@ func Render404(domain, version string) string {
 	_ = notFoundTmpl.Execute(&buf, homePage{
 		Domain:              domain,
 		Version:             version,
+		PicoCSSLink:         PicoCSSLink(),
 		ArticleCSSLink:      ArticleCSSLink(),
 		HighContrastCSSLink: HighContrastCSSLink(),
 	})
@@ -335,6 +351,7 @@ func RenderArticleWithLayout(a db.Article, layout ArticleLayoutType) (string, er
 		Domain:              config.Cfg.Domain,
 		Version:             Version,
 		Layout:              layout,
+		PicoCSSLink:         PicoCSSLink(),
 		ArticleCSSLink:      ArticleCSSLink(),
 		HighContrastCSSLink: HighContrastCSSLink(),
 	}

@@ -19,10 +19,16 @@
 
 ## Platform Screenshots
 
+> Screenshots are regenerated from a live instance with
+> [`scripts/capture-screenshots.sh`](scripts/capture-screenshots.sh) and written
+> to `docs/screenshots/`. The public pages ship the vendored
+> [Pico CSS](https://picocss.com/) theme as their default base style (served
+> locally — no third-party origin — to keep the strict CSP intact).
+
 ### Homepage
 ![VayuPress Homepage](docs/screenshots/homepage.png)
 
-*Public homepage — article grid with tag filtering, zero-telemetry footer, system mode indicator.*
+*Public homepage — article grid with tag filtering, zero-telemetry footer, system mode indicator. Public site styled on the vendored Pico CSS theme.*
 
 ### Admin Dashboard
 ![VayuPress Admin Dashboard](docs/screenshots/admin-dashboard.png)
@@ -316,6 +322,7 @@ See [docs/architecture/system-modes.md](docs/architecture/system-modes.md).
 | `GET` | `/sitemap.xml` | Auto-generated XML sitemap |
 | `GET` | `/feed.xml` | Auto-generated RSS feed |
 | `GET` | `/robots.txt` | Auto-generated robots.txt |
+| `GET` | `/api/v1/openapi.json` | OpenAPI 3.0 description of the API (embedded, public) |
 | `GET` | `/metrics` | Internal metrics snapshot (admin auth required) |
 
 ### Operator console (admin auth required)
@@ -332,6 +339,8 @@ See [docs/architecture/system-modes.md](docs/architecture/system-modes.md).
 | `POST` | `/admin/fault/simulate` | Fire a named fault (CSRF-protected) |
 | `POST` | `/admin/replay/job` | Requeue a single dead-letter job (CSRF-protected) |
 | `POST` | `/admin/benchmark` | Run the in-process load benchmark (CSRF-protected) |
+| `GET` | `/api/v1/admin/search/drift` | Search-index vs article-store drift report |
+| `POST` | `/admin/search/reindex` | Rebuild the search index from the store (CSRF-protected) |
 
 Full reference: [docs/API-REFERENCE.md](docs/API-REFERENCE.md)
 
@@ -534,6 +543,10 @@ All governance policies are enforced by the Platform Policy Engine (`internal/po
 | [Ethics](ETHICS.md) | Ethical principles and AI charter |
 | [ADR Index](docs/adr/INDEX.md) | Full Architecture Decision Record index |
 | [API Reference](docs/API-REFERENCE.md) | REST API reference |
+| [OpenAPI Spec](cmd/vayupress/openapi.json) | Machine-readable OpenAPI 3.0 (served at `/api/v1/openapi.json`) |
+| [Plugins Guide](docs/plugins/README.md) | Sandbox IPC protocol, manifests, example plugins |
+| [Monitoring](deploy/monitoring/README.md) | Prometheus alert rules + Grafana dashboard |
+| [Upgrading](UPGRADING.md) | Upgrade procedure + schema/migration authoring |
 | [Benchmarks](docs/BENCHMARKS.md) | Measured performance + reproduction steps |
 
 ---
