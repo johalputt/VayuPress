@@ -41,6 +41,13 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   in the live timeline (Ω8/Ω10), placing frontend-governance signals in the same
   causal narrative as mode transitions and faults — visible spatially, not just as
   a metric counter.
+- **Timeline event provenance**: every timeline entry now carries structured
+  provenance (`source` subsystem, `actor`, causal `cause`, `correlation_id`,
+  `build`, `policy_rev`) in the `/api/v1/admin/timeline` JSON, plus an
+  envelope-level `provenance` (build + policy revision). Fields are populated only
+  where genuinely known — synthesized governance entries leave `correlation_id`
+  empty rather than fabricate one — so the timeline becomes honest, machine-readable
+  runtime memory rather than a flat string log.
 - **WCAG AA contrast warnings**: saving the palette returns advisory (non-blocking)
   warnings when a primary colour falls below 4.5:1 on its page background. The
   shipped **default light primary changed from `#0d9488` (3.6:1) to `#0f766e`

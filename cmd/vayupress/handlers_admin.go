@@ -547,7 +547,30 @@ type tlEntry struct {
 	CatClass string // tl-cat-* CSS class
 	Sev      string // tl-ok|tl-info|tl-accent|tl-warn|tl-err
 	Msg      string
-	Causal   string // optional "caused by" child line, "" to omit
+	Causal   string       // optional "caused by" child line, "" to omit
+	Prov     tlProvenance // structured event provenance (the timeline as runtime memory)
+}
+
+// tlProvenance is the structured provenance carried by each timeline event so the
+// timeline functions as durable runtime memory rather than a flat log. Fields are
+// populated only where genuinely known — synthesized governance entries have no
+// correlation ID (that flows through the outbox/trace subsystem), so it is left
+// empty rather than fabricated. Honest gaps over invented attribution.
+type tlProvenance struct {
+	Source        string `json:"source,omitempty"`         // subsystem: runtime|db|governance|queue|mode|fault|csp
+	Actor         string `json:"actor,omitempty"`          // system|operator|policy|browser
+	Cause         string `json:"cause,omitempty"`          // causal parent (e.g. mode transition cause)
+	CorrelationID string `json:"correlation_id,omitempty"` // when the event carries one (outbox-sourced)
+	Build         string `json:"build,omitempty"`          // deployment version, when exact for this event
+	PolicyRev     string `json:"policy_rev,omitempty"`     // config/policy revision, when relevant
+}
+
+// tlActor classifies who/what caused a mode transition from its recorded cause.
+func tlActor(cause string) string {
+	if cause == "" || cause == "operator" {
+		return "operator"
+	}
+	return "policy"
 }
 
 // buildOperationalTimeline synthesises a causal operational narrative from the
@@ -571,15 +594,19 @@ func buildOperationalTimeline(snap *adminMetricsSnapshot, faultNames []string, f
 	// ── Genuine boot sequence (the order mirrors main.go startup) ──────────
 	out = append(out,
 		tlEntry{clock(boot), "+0.0s", "runtime", "tl-cat-sys", "tl-accent",
-			fmt.Sprintf("runtime.boot — VayuPress %s starting · P1–P27 active", Version), ""},
+			fmt.Sprintf("runtime.boot — VayuPress %s starting · P1–P27 active", Version), "",
+			tlProvenance{Source: "runtime", Actor: "system", Build: Version}},
 		tlEntry{clock(boot.Add(2 * time.Millisecond)), rel(2 * time.Millisecond), "db", "tl-cat-db", "tl-info",
 			"db.ready — WAL + PRAGMAs enforced · 8/8 migrations checksum-verified",
-			"no schema drift · invariant set holding (ADR-0033/0034)"},
+			"no schema drift · invariant set holding (ADR-0033/0034)",
+			tlProvenance{Source: "db", Actor: "system", Build: Version}},
 		tlEntry{clock(boot.Add(4 * time.Millisecond)), rel(4 * time.Millisecond), "govern", "tl-cat-gov", "tl-info",
 			"escalator.arm — 6 fault→mode rules armed",
-			"wal.write→ReadOnly · signing→Degraded · plugin→Quarantined"},
+			"wal.write→ReadOnly · signing→Degraded · plugin→Quarantined",
+			tlProvenance{Source: "governance", Actor: "system", PolicyRev: config.ConfigVersion, Build: Version}},
 		tlEntry{clock(boot.Add(6 * time.Millisecond)), rel(6 * time.Millisecond), "queue", "tl-cat-queue", "tl-info",
-			"workers.start — 3 write workers online · outbox relay active", ""},
+			"workers.start — 3 write workers online · outbox relay active", "",
+			tlProvenance{Source: "queue", Actor: "system", Build: Version}},
 	)
 
 	// CSP enforcement posture — operational state, surfaced in the narrative.
@@ -592,6 +619,7 @@ func buildOperationalTimeline(snap *adminMetricsSnapshot, faultNames []string, f
 	out = append(out, tlEntry{
 		clock(boot.Add(7 * time.Millisecond)), rel(7 * time.Millisecond), "csp", "tl-cat-gov", cspSev,
 		"csp.policy — " + cspNote, "",
+		tlProvenance{Source: "csp", Actor: "system", PolicyRev: config.ConfigVersion, Build: Version},
 	})
 
 	// ── Real mode transitions (the causal spine under stress) ──────────────
@@ -613,6 +641,7 @@ func buildOperationalTimeline(snap *adminMetricsSnapshot, faultNames []string, f
 			clock(t.OccurredAt.UTC()), "", "mode", "tl-cat-mode", sev,
 			fmt.Sprintf("mode.transition — %s → %s · %s", upper(t.From), upper(t.To), t.Reason),
 			causal,
+			tlProvenance{Source: "mode", Actor: tlActor(t.Cause), Cause: t.Cause},
 		})
 	}
 
@@ -625,6 +654,7 @@ func buildOperationalTimeline(snap *adminMetricsSnapshot, faultNames []string, f
 				clock(snap.SnapshotAt.UTC()), "", "fault", "tl-cat-fault", "tl-err",
 				fmt.Sprintf("fault.trigger — %s fired ×%d", name, faultTriggers[i]),
 				"escalation counter advancing toward threshold",
+				tlProvenance{Source: "fault", Actor: "operator", Cause: "fault-simulation:" + name},
 			})
 		}
 	}
@@ -642,6 +672,7 @@ func buildOperationalTimeline(snap *adminMetricsSnapshot, faultNames []string, f
 			clock(vio.When), "", "csp", "tl-cat-fault", "tl-warn",
 			fmt.Sprintf("csp.violation — %s blocked %s", vio.Directive, blocked),
 			"frontend governance · report-uri ingest",
+			tlProvenance{Source: "csp", Actor: "browser", Cause: vio.Directive, Build: Version},
 		})
 	}
 
@@ -652,12 +683,14 @@ func buildOperationalTimeline(snap *adminMetricsSnapshot, faultNames []string, f
 			clock(snap.SnapshotAt.UTC()), rel(time.Since(boot)), "steady", "tl-cat-ok", "tl-ok",
 			fmt.Sprintf("mode.steady — NORMAL holding %s · 0 escalations · policy 6/6 PASS", rel(time.Since(boot))[1:]),
 			"",
+			tlProvenance{Source: "governance", Actor: "system", PolicyRev: config.ConfigVersion},
 		})
 	} else {
 		out = append(out, tlEntry{
 			clock(snap.SnapshotAt.UTC()), rel(time.Since(boot)), "monitor", "tl-cat-gov", "tl-warn",
 			fmt.Sprintf("recovery.monitor — system=%s · watching for stabilization · escalator armed", upper(cur)),
 			"",
+			tlProvenance{Source: "governance", Actor: "system", PolicyRev: config.ConfigVersion},
 		})
 	}
 
@@ -1210,14 +1243,18 @@ func (a *App) handleTimelineJSON(w http.ResponseWriter, r *http.Request) {
 	}
 	entries := buildOperationalTimeline(snap, faultNames, faultTriggers)
 
+	// entryJSON mirrors tlEntry field-for-field (tags ignored for convertibility)
+	// so each streamed event carries its structured provenance — the timeline as
+	// machine-readable runtime memory, not a flat string log.
 	type entryJSON struct {
-		Clock    string `json:"clock"`
-		Rel      string `json:"rel"`
-		Cat      string `json:"cat"`
-		CatClass string `json:"catClass"`
-		Sev      string `json:"sev"`
-		Msg      string `json:"msg"`
-		Causal   string `json:"causal"`
+		Clock    string       `json:"clock"`
+		Rel      string       `json:"rel"`
+		Cat      string       `json:"cat"`
+		CatClass string       `json:"catClass"`
+		Sev      string       `json:"sev"`
+		Msg      string       `json:"msg"`
+		Causal   string       `json:"causal"`
+		Prov     tlProvenance `json:"provenance"`
 	}
 	out := make([]entryJSON, len(entries))
 	for i, e := range entries {
@@ -1228,6 +1265,12 @@ func (a *App) handleTimelineJSON(w http.ResponseWriter, r *http.Request) {
 		"mode":         string(mode.Global.Current()),
 		"csp_mode":     cspEnforcementMode(),
 		"generated_at": time.Now().UTC().Format(time.RFC3339),
+		// Envelope-level provenance: the build + policy revision that produced
+		// this view, so a captured timeline is self-describing runtime memory.
+		"provenance": map[string]string{
+			"build":      Version,
+			"policy_rev": config.ConfigVersion,
+		},
 	})
 }
 
