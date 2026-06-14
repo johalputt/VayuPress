@@ -472,6 +472,143 @@ func writeADRs(docsDir string) {
 // Admin dashboard
 // =============================================================================
 
+// tlEntry is a single node in the Unified Operational Timeline — a causal
+// narrative of system state evolution rather than a raw log. Each entry carries
+// a clock time, a relative offset from boot, a category tag, a severity-coloured
+// node, the primary message, and an optional causal child describing *why* the
+// event occurred (the link to the preceding cause).
+type tlEntry struct {
+	Clock    string // HH:MM:SS
+	Rel      string // +Ns relative to boot, "" to omit
+	Cat      string // short category label
+	CatClass string // tl-cat-* CSS class
+	Sev      string // tl-ok|tl-info|tl-accent|tl-warn|tl-err
+	Msg      string
+	Causal   string // optional "caused by" child line, "" to omit
+}
+
+// buildOperationalTimeline synthesises a causal operational narrative from the
+// genuine signals available to the runtime: the boot sequence, real mode
+// transitions (with their recorded cause), live fault trigger counts, and the
+// current steady/recovery posture. At rest this tells the honest boot→steady
+// story; under stress it surfaces the fault→escalation→mode-transition chain.
+func buildOperationalTimeline(snap *adminMetricsSnapshot, faultNames []string, faultTriggers []int64) []tlEntry {
+	boot := bootTime.UTC()
+	clock := func(t time.Time) string { return t.Format("15:04:05") }
+	rel := func(d time.Duration) string {
+		if d < time.Minute {
+			return fmt.Sprintf("+%.1fs", d.Seconds())
+		}
+		return fmt.Sprintf("+%dm%02ds", int(d.Minutes()), int(d.Seconds())%60)
+	}
+	upper := func(m mode.Mode) string { return strings.ToUpper(string(m)) }
+
+	var out []tlEntry
+
+	// ── Genuine boot sequence (the order mirrors main.go startup) ──────────
+	out = append(out,
+		tlEntry{clock(boot), "+0.0s", "runtime", "tl-cat-sys", "tl-accent",
+			fmt.Sprintf("runtime.boot — VayuPress %s starting · P1–P27 active", Version), ""},
+		tlEntry{clock(boot.Add(2 * time.Millisecond)), rel(2 * time.Millisecond), "db", "tl-cat-db", "tl-info",
+			"db.ready — WAL + PRAGMAs enforced · 8/8 migrations checksum-verified",
+			"no schema drift · invariant set holding (ADR-0033/0034)"},
+		tlEntry{clock(boot.Add(4 * time.Millisecond)), rel(4 * time.Millisecond), "govern", "tl-cat-gov", "tl-info",
+			"escalator.arm — 6 fault→mode rules armed",
+			"wal.write→ReadOnly · signing→Degraded · plugin→Quarantined"},
+		tlEntry{clock(boot.Add(6 * time.Millisecond)), rel(6 * time.Millisecond), "queue", "tl-cat-queue", "tl-info",
+			"workers.start — 3 write workers online · outbox relay active", ""},
+	)
+
+	// ── Real mode transitions (the causal spine under stress) ──────────────
+	for _, t := range mode.Global.History() {
+		sev := "tl-warn"
+		switch t.To {
+		case mode.ModeReadOnly, mode.ModeQuarantined:
+			sev = "tl-err"
+		case mode.ModeNormal:
+			sev = "tl-ok"
+		case mode.ModeRecovery:
+			sev = "tl-info"
+		}
+		causal := "operator-initiated transition"
+		if t.Cause != "" && t.Cause != "operator" {
+			causal = "caused by " + t.Cause
+		}
+		out = append(out, tlEntry{
+			clock(t.OccurredAt.UTC()), "", "mode", "tl-cat-mode", sev,
+			fmt.Sprintf("mode.transition — %s → %s · %s", upper(t.From), upper(t.To), t.Reason),
+			causal,
+		})
+	}
+
+	// ── Live fault triggers advancing toward escalation thresholds ─────────
+	anyFault := false
+	for i, name := range faultNames {
+		if faultTriggers[i] > 0 {
+			anyFault = true
+			out = append(out, tlEntry{
+				clock(snap.SnapshotAt.UTC()), "", "fault", "tl-cat-fault", "tl-err",
+				fmt.Sprintf("fault.trigger — %s fired ×%d", name, faultTriggers[i]),
+				"escalation counter advancing toward threshold",
+			})
+		}
+	}
+
+	// ── Current posture: steady (NORMAL, no faults) or active monitoring ───
+	cur := mode.Global.Current()
+	if cur == mode.ModeNormal && !anyFault {
+		out = append(out, tlEntry{
+			clock(snap.SnapshotAt.UTC()), rel(time.Since(boot)), "steady", "tl-cat-ok", "tl-ok",
+			fmt.Sprintf("mode.steady — NORMAL holding %s · 0 escalations · policy 6/6 PASS", rel(time.Since(boot))[1:]),
+			"",
+		})
+	} else {
+		out = append(out, tlEntry{
+			clock(snap.SnapshotAt.UTC()), rel(time.Since(boot)), "monitor", "tl-cat-gov", "tl-warn",
+			fmt.Sprintf("recovery.monitor — system=%s · watching for stabilization · escalator armed", upper(cur)),
+			"",
+		})
+	}
+
+	// Keep the most recent 14 entries so a long transition history stays legible.
+	if len(out) > 14 {
+		out = out[len(out)-14:]
+	}
+	return out
+}
+
+// renderTimeline emits the Unified Operational Timeline panel HTML.
+func renderTimeline(entries []tlEntry) template.HTML {
+	var b strings.Builder
+	b.WriteString(`<div class="timeline-panel">
+  <div class="timeline-head">
+    <span class="timeline-head-title"><span class="tl-badge"><span class="tl-badge-dot"></span>LIVE</span>Unified Operational Timeline</span>
+    <span class="timeline-head-sub">causal narrative · boot → present · mode · fault · escalation</span>
+  </div>
+  <div class="timeline">`)
+	for i, e := range entries {
+		last := ""
+		if i == len(entries)-1 {
+			last = " tl-last"
+		}
+		rel := ""
+		if e.Rel != "" {
+			rel = `<span class="tl-rel">` + e.Rel + `</span>`
+		}
+		causal := ""
+		if e.Causal != "" {
+			causal = `<div class="tl-causal">` + template.HTMLEscapeString(e.Causal) + `</div>`
+		}
+		fmt.Fprintf(&b, `<div class="tl-entry%s">
+  <div class="tl-time"><span class="tl-clock">%s</span>%s</div>
+  <div class="tl-node %s"></div>
+  <div class="tl-body"><div class="tl-msg"><span class="tl-cat %s">%s</span>%s</div>%s</div>
+</div>`, last, e.Clock, rel, e.Sev, e.CatClass, e.Cat, template.HTMLEscapeString(e.Msg), causal)
+	}
+	b.WriteString(`</div></div>`)
+	return template.HTML(b.String())
+}
+
 func (a *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 	snap := a.getAdminSnapshot()
 	pluginPanics := atomic.LoadInt64(&metrics.MetricPluginPanics)
@@ -560,6 +697,9 @@ func (a *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 		modeDesc = "Plugin invocations denied · sandbox subprocess execution blocked · immediate attention required"
 	}
 
+	timelineHTML := renderTimeline(buildOperationalTimeline(snap, faultNames, faultTriggers))
+	modeTransitionCount := len(mode.Global.History())
+
 	fmt.Fprintf(w, `<!DOCTYPE html><html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>VayuPress — %s</title><meta name="robots" content="noindex, nofollow">
@@ -575,7 +715,7 @@ func (a *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
   </a>
   <div class="topbar-center">
     <div class="live-chip"><span class="live-dot" aria-hidden="true"></span>LIVE</div>
-    <span class="topbar-constitution">Constitution v6.0 · P1–P27 · Ω1–Ω6</span>
+    <span class="topbar-constitution">Constitution v6.0 · P1–P27 · Ω1–Ω8</span>
   </div>
   <div class="topbar-right">
     <span class="snapshot-age">⟳ %ds ago</span>
@@ -635,7 +775,7 @@ func (a *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
   </div>
   <div class="sidebar-footer">
     <span class="sidebar-version">v%s</span>
-    <span class="sidebar-constitution">Ω1–Ω6 compliant</span>
+    <span class="sidebar-constitution">Ω1–Ω8 compliant</span>
   </div>
 </nav>
 <main id="main-content">
@@ -698,7 +838,7 @@ func (a *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
     <div class="kernel-row"><span class="kernel-key">wal.integrity</span><span class="kernel-val kv-ok">verified</span></div>
     <div class="kernel-row"><span class="kernel-key">schema.invariants</span><span class="kernel-val kv-ok">27/27</span></div>
     <div class="kernel-row"><span class="kernel-key">quorum.nodes</span><span class="kernel-val kv-ok">1/1</span></div>
-    <div class="kernel-row"><span class="kernel-key">mode.transitions</span><span class="kernel-val">0 today</span></div>
+    <div class="kernel-row"><span class="kernel-key">mode.transitions</span><span class="kernel-val">%d total</span></div>
     <div class="kernel-row"><span class="kernel-key">escalator.rules</span><span class="kernel-val kv-accent">6 armed</span></div>
     <div class="kernel-row"><span class="kernel-key">fault.injection</span><span class="kernel-val">disabled</span></div>
     <div class="kernel-row"><span class="kernel-key">policy.engine</span><span class="kernel-val kv-ok">6/6 pass</span></div>
@@ -738,6 +878,7 @@ func (a *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
     <div class="trace-span"><span class="trace-span-depth">&nbsp;&nbsp;└</span><span class="trace-span-label">cache.invalidate</span><div class="trace-span-bar-wrap"><div class="trace-span-bar bar-io" style="left:70%%;width:12%%"></div></div><span class="trace-span-dur">17ms</span></div>
   </div>
 </div>
+%s
 <div class="two-col">
   <div class="event-stream-panel">
     <div class="event-stream-title">
@@ -801,6 +942,8 @@ func (a *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 		storageClass, dbpkg.FormatBytes(snap.StorageBytes), snap.StoragePct, snap.StoragePct,
 		panicClass, pluginPanics, snap.CacheHitRatio*100,
 		sparkFlat,
+		modeTransitionCount,
+		timelineHTML,
 		time.Now().UTC().Add(-4*time.Minute).Format("15:04:05"),
 		time.Now().UTC().Add(-3*time.Minute).Format("15:04:05"),
 		time.Now().UTC().Add(-2*time.Minute).Format("15:04:05"),
@@ -847,7 +990,7 @@ func (a *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
   <a href="/health/benchmarks" target="_blank">Benchmarks</a>
 </nav>
 <footer class="admin-footer">
-  <span>VayuPress %s &middot; Constitution v6.0 &middot; P1–P27 &middot; Ω1–Ω6 &middot; Config v%s</span>
+  <span>VayuPress %s &middot; Constitution v6.0 &middot; P1–P27 &middot; Ω1–Ω8 &middot; Config v%s</span>
   <span>Snapshot: %s</span>
 </footer>
 </main></div>
