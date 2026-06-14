@@ -108,6 +108,7 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 		// System mode state machine (Ω5/Ω6).
 		r.Get("/api/v1/admin/mode", a.handleModeStatus)
 		r.Get("/api/v1/admin/fault/status", a.handleFaultStatus)
+		r.Get("/api/v1/admin/timeline", a.handleTimelineJSON)
 
 		r.Get("/admin", a.handleAdminDashboard)
 		r.Get("/admin/adr", a.handleAdminADR)

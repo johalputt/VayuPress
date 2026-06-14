@@ -641,8 +641,8 @@ func buildOperationalTimeline(snap *adminMetricsSnapshot, faultNames []string, f
 func renderTimeline(entries []tlEntry) template.HTML {
 	return template.HTML(`<div class="timeline-panel">
   <div class="timeline-head">
-    <span class="timeline-head-title"><span class="tl-badge"><span class="tl-badge-dot"></span>LIVE</span>Unified Operational Timeline</span>
-    <span class="timeline-head-sub">causal narrative · boot → present · mode · fault · escalation</span>
+    <span class="timeline-head-title"><span class="tl-badge"><span class="tl-badge-dot"></span>LIVE</span>Unified Operational Timeline<span class="tl-stream-flag" id="tl-stream"><span class="stream-live-dot"></span>STREAMING</span></span>
+    <span class="timeline-head-sub">causal narrative · boot → present · mode · fault · escalation · auto-refresh 5s</span>
   </div>
   ` + string(renderTimelineBody(entries)) + `</div>`)
 }
@@ -1104,6 +1104,40 @@ func (a *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
     if(e.key==='b'&&!e.ctrlKey&&!e.metaKey){runBench();return;}
     if(e.key==='r'&&!e.ctrlKey&&!e.metaKey){location.reload();return;}
   });
+  // ── Live operational timeline streaming (Ω10) ──
+  var TL=document.querySelector('.timeline-panel .timeline'),
+      streamFlag=document.getElementById('tl-stream'),
+      tlSeen=Object.create(null),streamOn=true;
+  if(TL){Array.prototype.forEach.call(TL.querySelectorAll('.tl-entry'),function(el){
+    var c=el.querySelector('.tl-clock'),m=el.querySelector('.tl-msg');
+    if(c&&m)tlSeen[c.textContent+'|'+m.textContent.trim()]=1;});}
+  function tlEntryEl(e,isNew,isLast){
+    var d=document.createElement('div');d.className='tl-entry'+(isNew?' tl-enter':'')+(isLast?' tl-last':'');
+    var tm=document.createElement('div');tm.className='tl-time';
+    var ck=document.createElement('span');ck.className='tl-clock';ck.textContent=e.clock;tm.appendChild(ck);
+    if(e.rel){var rl=document.createElement('span');rl.className='tl-rel';rl.textContent=e.rel;tm.appendChild(rl);}
+    var nd=document.createElement('div');nd.className='tl-node '+e.sev;
+    var bd=document.createElement('div');bd.className='tl-body';
+    var ms=document.createElement('div');ms.className='tl-msg';
+    var ct=document.createElement('span');ct.className='tl-cat '+e.catClass;ct.textContent=e.cat;ms.appendChild(ct);
+    ms.appendChild(document.createTextNode(e.msg));bd.appendChild(ms);
+    if(e.causal){var cs=document.createElement('div');cs.className='tl-causal';cs.textContent=e.causal;bd.appendChild(cs);}
+    d.appendChild(tm);d.appendChild(nd);d.appendChild(bd);return d;
+  }
+  function pollTimeline(){
+    if(!streamOn||!TL||document.hidden)return;
+    fetch('/api/v1/admin/timeline',{headers:{'Accept':'application/json'}}).then(function(r){return r.ok?r.json():null;}).then(function(data){
+      if(!data||!data.entries)return;
+      var frag=document.createDocumentFragment(),last=data.entries.length-1;
+      data.entries.forEach(function(e,i){
+        var key=e.clock+'|'+e.msg,isNew=!tlSeen[key]&&i<last;tlSeen[key]=1;
+        frag.appendChild(tlEntryEl(e,isNew,i===last));});
+      TL.innerHTML='';TL.appendChild(frag);
+    }).catch(function(){if(streamFlag){streamFlag.classList.add('paused');streamFlag.lastChild.textContent='OFFLINE';}});
+  }
+  if(streamFlag){streamFlag.style.cursor='pointer';streamFlag.title='Toggle live streaming';
+    streamFlag.addEventListener('click',function(){streamOn=!streamOn;streamFlag.classList.toggle('paused',!streamOn);streamFlag.lastChild.textContent=streamOn?'STREAMING':'PAUSED';if(streamOn)pollTimeline();});}
+  setInterval(pollTimeline,5000);
 })();
 </script></body></html>`,
 		Version, config.ConfigVersion, snap.SnapshotAt.UTC().Format("15:04:05 UTC"),
@@ -1114,6 +1148,40 @@ func (a *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 // =============================================================================
 // Mode & fault status API  (Ω5/Ω6)
 // =============================================================================
+
+// handleTimelineJSON returns the live operational timeline entries as JSON so
+// the dashboard can stream updates without a full reload (Ω10).
+func (a *App) handleTimelineJSON(w http.ResponseWriter, r *http.Request) {
+	snap := a.getAdminSnapshot()
+	faultNames := []string{
+		fault.FaultWALWrite, fault.FaultMigrationApply, fault.FaultSigningSign,
+		fault.FaultFederationDeliver, fault.FaultPluginInvoke, fault.FaultOutboxCommit,
+	}
+	faultTriggers := make([]int64, len(faultNames))
+	for i, name := range faultNames {
+		faultTriggers[i] = fault.Global.TriggerCount(name)
+	}
+	entries := buildOperationalTimeline(snap, faultNames, faultTriggers)
+
+	type entryJSON struct {
+		Clock    string `json:"clock"`
+		Rel      string `json:"rel"`
+		Cat      string `json:"cat"`
+		CatClass string `json:"catClass"`
+		Sev      string `json:"sev"`
+		Msg      string `json:"msg"`
+		Causal   string `json:"causal"`
+	}
+	out := make([]entryJSON, len(entries))
+	for i, e := range entries {
+		out[i] = entryJSON{e.Clock, e.Rel, e.Cat, e.CatClass, e.Sev, e.Msg, e.Causal}
+	}
+	writeJSON(w, r, http.StatusOK, map[string]interface{}{
+		"entries":      out,
+		"mode":         string(mode.Global.Current()),
+		"generated_at": time.Now().UTC().Format(time.RFC3339),
+	})
+}
 
 // handleModeStatus returns the current system mode, allowed transitions,
 // and the full transition history.
