@@ -1177,7 +1177,7 @@ func (a *App) handleTimelineJSON(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]entryJSON, len(entries))
 	for i, e := range entries {
-		out[i] = entryJSON{e.Clock, e.Rel, e.Cat, e.CatClass, e.Sev, e.Msg, e.Causal}
+		out[i] = entryJSON(e)
 	}
 	writeJSON(w, r, http.StatusOK, map[string]interface{}{
 		"entries":      out,
