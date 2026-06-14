@@ -57,3 +57,4 @@ mem.prof
 
 # Note: go.mod and go.sum are intentionally NOT ignored.
 # They must be committed when Go source is present in this repo.
+.claude/
