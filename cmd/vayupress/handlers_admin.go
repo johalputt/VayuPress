@@ -23,6 +23,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/johalputt/vayupress/internal/api"
 	"github.com/johalputt/vayupress/internal/auth"
+	"github.com/johalputt/vayupress/internal/budget"
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/fault"
@@ -611,6 +612,13 @@ func timelineSeverity(e tlEntry) severity.Level {
 		default: // normal
 			return severity.Notice
 		}
+	case "budget":
+		// The budget entry's provenance cause is the recommended escalation
+		// (a severity name) when exhausted; otherwise it is "at-risk" → WARN.
+		if lvl, ok := severity.Parse(e.Prov.Cause); ok {
+			return lvl
+		}
+		return severity.Warn
 	case "monitor":
 		return severity.Warn
 	case "govern":
@@ -741,6 +749,29 @@ func buildOperationalTimeline(snap *adminMetricsSnapshot, faultNames []string, f
 		})
 	}
 
+	// ── Governance budgets: surface any non-healthy error budget ───────────
+	// This closes the loop from classified signal → accumulated debt → implied
+	// escalation, making the budget posture part of the operational narrative.
+	for _, b := range budget.Global.Status(snap.SnapshotAt) {
+		if b.State == "healthy" {
+			continue
+		}
+		sevClass, cause := "tl-warn", "at-risk"
+		msg := fmt.Sprintf("governance.budget — %s %s (%d/%d %s)", b.Name, b.State, b.Consumed, b.Limit, b.Tracks)
+		if b.State == "exhausted" {
+			cause = b.Recommended // severity name drives the entry's taxonomy level
+			if lvl, ok := severity.Parse(b.Recommended); ok {
+				sevClass = lvl.TimelineClass()
+			}
+			msg += " → " + b.Recommended + " recommended"
+		}
+		out = append(out, tlEntry{
+			clock(snap.SnapshotAt.UTC()), "", "budget", "tl-cat-gov", sevClass, msg,
+			"governance error budget",
+			tlProvenance{Source: "governance", Actor: "policy", Cause: cause, PolicyRev: config.ConfigVersion},
+		})
+	}
+
 	// Assign deterministic IDs and causal parent links over the FULL set (before
 	// truncation) so lineage is stable and ancestors keep their identity even when
 	// trimmed out of the display window.
@@ -804,6 +835,9 @@ func linkCausalLineage(entries []tlEntry) {
 				e.Prov.ParentID = armAnchor
 			}
 			lastMode = e.Prov.ID
+		case e.Cat == "budget":
+			// A budget is owned by the armed escalator (it encodes the thresholds).
+			e.Prov.ParentID = armAnchor
 		case e.Cat == "steady" || e.Cat == "monitor":
 			if lastMode != "" {
 				e.Prov.ParentID = lastMode
@@ -1397,6 +1431,18 @@ func (a *App) handleTimelineJSON(w http.ResponseWriter, r *http.Request) {
 func (a *App) handleSeverityTaxonomy(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, http.StatusOK, map[string]interface{}{
 		"taxonomy":     severity.All(),
+		"generated_at": time.Now().UTC().Format(time.RFC3339),
+	})
+}
+
+// handleGovernanceBudgets returns the live governance error-budget state: how much
+// of each severity budget is consumed and the escalation recommended at
+// exhaustion. Accounting + recommendation only — actuation into the mode engine is
+// intentionally NOT performed here (see internal/budget for the scope boundary).
+func (a *App) handleGovernanceBudgets(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, r, http.StatusOK, map[string]interface{}{
+		"budgets":      budget.Global.Status(time.Now()),
+		"note":         "accounting + recommendation; mode transitions are operator/gated, not auto-applied",
 		"generated_at": time.Now().UTC().Format(time.RFC3339),
 	})
 }

@@ -123,6 +123,7 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 		r.Get("/api/v1/admin/fault/status", a.handleFaultStatus)
 		r.Get("/api/v1/admin/timeline", a.handleTimelineJSON)
 		r.Get("/api/v1/admin/severity", a.handleSeverityTaxonomy)
+		r.Get("/api/v1/admin/budgets", a.handleGovernanceBudgets)
 
 		r.Get("/admin", a.handleAdminDashboard)
 		r.Get("/admin/adr", a.handleAdminADR)

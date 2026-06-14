@@ -67,6 +67,15 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   audit-grade / operator-cognition, with the governing rule that a signal's
   retention class must match its purpose (the timeline is a projection, not a
   ledger; the CSP ring is ephemeral with a durable log/metric shadow).
+- **Governance error budgets** (`internal/budget`): severity-classified events
+  accumulate against bounded, rolling-window budgets that imply a defined
+  escalation when exhausted — `5 WARN/10m → NOTICE debt`, `3 VIOLATION/10m →
+  ESCALATION`, `1 CRITICAL/1h → CONTAINMENT`. CSP violations charge the breach
+  budget; budget posture surfaces in the timeline (`governance.budget` entries,
+  severity = the recommended escalation), via `GET /api/v1/admin/budgets`, and as
+  the `vayupress_governance_budgets_exhausted` metric. Deliberate scope boundary:
+  the engine **accounts and recommends only** — it does not auto-drive mode
+  transitions (that control-loop actuation is gated behind its own safety design).
 - **WCAG AA contrast warnings**: saving the palette returns advisory (non-blocking)
   warnings when a primary colour falls below 4.5:1 on its page background. The
   shipped **default light primary changed from `#0d9488` (3.6:1) to `#0f766e`

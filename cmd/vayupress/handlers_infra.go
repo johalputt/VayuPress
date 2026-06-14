@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/johalputt/vayupress/internal/auth"
+	"github.com/johalputt/vayupress/internal/budget"
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/logging"
@@ -93,6 +94,8 @@ func (a *App) handleCSPReport(w http.ResponseWriter, r *http.Request) {
 
 	atomic.AddInt64(&metrics.MetricCSPViolations, 1)
 	recordCSPViolation(directive, env.Report.BlockedURI)
+	// Charge the governance breach budget — a CSP violation is a VIOLATION.
+	budget.Global.Record(severity.Violation, time.Now())
 	// Tag with the deployment build version for release attribution. Browser CSP
 	// reports carry no session/correlation context (unauthenticated POSTs), so the
 	// receiving build version is the meaningful attribution for debugging a
@@ -162,7 +165,8 @@ func (a *App) handleMetrics(w http.ResponseWriter, r *http.Request) {
 			"vayupress_wal_checkpoint_duration_ms_total %d\nvayupress_wal_adaptive_checkpoints_total %d\n"+
 			"vayupress_migration_drift_detected_total %d\nvayupress_poison_jobs_quarantined_total %d\n"+
 			"vayupress_pprof_accesses_total %d\nvayupress_vacuum_rejected_total %d\n"+
-			"vayupress_health_degraded_events_total %d\nvayupress_csp_violations_total %d\n",
+			"vayupress_health_degraded_events_total %d\nvayupress_csp_violations_total %d\n"+
+			"vayupress_governance_budgets_exhausted %d\n",
 		time.Since(bootTime).Seconds(), totalArticles,
 		atomic.LoadInt64(&metrics.MetricArticlesCreated), atomic.LoadInt64(&metrics.MetricArticlesUpdated), atomic.LoadInt64(&metrics.MetricArticlesDeleted),
 		atomic.LoadInt64(&metrics.MetricQueueProcessed), atomic.LoadInt64(&metrics.MetricQueueFailed), atomic.LoadInt64(&metrics.MetricQueueStuckResets),
@@ -174,6 +178,7 @@ func (a *App) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		atomic.LoadInt64(&metrics.MetricMigrationDriftDetected), atomic.LoadInt64(&metrics.MetricPoisonJobsQuarantined),
 		atomic.LoadInt64(&metrics.MetricPprofAccesses), atomic.LoadInt64(&metrics.MetricVacuumRejected),
 		atomic.LoadInt64(&metrics.MetricHealthDegradedEvents), atomic.LoadInt64(&metrics.MetricCSPViolations),
+		budget.Global.ExhaustedCount(time.Now()),
 	)
 	fmt.Fprint(w, metrics.HTTPLatency.Prometheus("vayupress_http_request_duration_seconds", "HTTP latency"))
 	fmt.Fprint(w, metrics.RenderLatency.Prometheus("vayupress_render_duration_seconds", "Render latency"))
