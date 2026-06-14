@@ -173,7 +173,7 @@ func main() {
 	auth.StartBucketSweeper(context.Background())
 
 	staticDir := config.EnvOr("STATIC_DIR", "/var/www/vayupress/static")
-	render.WriteCSSAssets(staticDir)
+	render.Init(staticDir)
 
 	docsDir := config.EnvOr("VAYU_DOCS_DIR", "/var/www/vayupress/docs")
 	os.MkdirAll(docsDir, 0755)
