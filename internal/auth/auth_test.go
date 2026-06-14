@@ -126,3 +126,27 @@ func TestRequireAPIKeyValid(t *testing.T) {
 		t.Fatalf("valid key: want 200, got %d", rr.Code)
 	}
 }
+
+// TestRequireAPIKeyEmptyConfigRejects guards the defense-in-depth branch: when
+// no API key is configured, requests must never authenticate — not even an
+// empty presented key (which a naive == comparison would have let through).
+func TestRequireAPIKeyEmptyConfigRejects(t *testing.T) {
+	prev := config.Cfg.APIKey
+	config.Cfg.APIKey = ""
+	defer func() { config.Cfg.APIKey = prev }()
+
+	handler := RequireAPIKey(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+	}))
+	for _, presented := range []string{"", "anything"} {
+		req := httptest.NewRequest("GET", "/", nil)
+		if presented != "" {
+			req.Header.Set("X-API-Key", presented)
+		}
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+		if rr.Code != 401 {
+			t.Fatalf("empty configured key with presented=%q: want 401, got %d", presented, rr.Code)
+		}
+	}
+}

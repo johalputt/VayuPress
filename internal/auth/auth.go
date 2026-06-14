@@ -7,6 +7,7 @@ import (
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -418,7 +419,10 @@ func RequireAPIKey(next http.Handler) http.Handler {
 		if key == "" {
 			key = strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 		}
-		if key != config.Cfg.APIKey {
+		// Constant-time comparison prevents timing attacks that could otherwise
+		// leak the configured key one byte at a time. An empty configured key is
+		// never a valid credential, even against an empty presented key.
+		if config.Cfg.APIKey == "" || subtle.ConstantTimeCompare([]byte(key), []byte(config.Cfg.APIKey)) != 1 {
 			RecordAuthFailure(ip)
 			writeAuthError(w, 401, "unauthorized", "invalid or missing API key", "https://docs.vayupress.com/api/auth")
 			return
