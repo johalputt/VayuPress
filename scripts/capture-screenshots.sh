@@ -35,24 +35,30 @@ BROWSER="$(find_browser)" || {
 }
 
 shot() {
-  local url="$1" out="$2"
+  local url="$1" out="$2" width="${3:-1440}" height="${4:-1024}"
   echo "Capturing $url -> $(basename "$out")"
   "$BROWSER" --headless=new --disable-gpu --hide-scrollbars \
-    --window-size=1440,1024 --screenshot="$out" "$url" \
-    || echo "  WARN: failed to capture $url (auth required?)" >&2
+    --window-size="${width},${height}" --screenshot="$out" "$url" \
+    || echo "  WARN: failed to capture $url" >&2
 }
 
-# Public pages (no auth).
-shot "$BASE_URL/"                 "$OUT_DIR/homepage.png"
-# Article page: pass a real slug as ARTICLE_SLUG, else the first listed article.
-shot "$BASE_URL/${ARTICLE_SLUG:-}" "$OUT_DIR/article-page.png"
+# ── Public pages (no auth) ────────────────────────────────────────────────────
+shot "$BASE_URL/"                                 "$OUT_DIR/homepage.png"
+shot "$BASE_URL/${ARTICLE_SLUG:-hello-vayupress}" "$OUT_DIR/article-page.png"
+shot "$BASE_URL/health"                           "$OUT_DIR/health-observability.png"
 
-# Operator console (auth required — see header note).
-shot "$BASE_URL/admin"            "$OUT_DIR/admin-dashboard.png"
-shot "$BASE_URL/admin/modes"      "$OUT_DIR/policy-modes.png"
-shot "$BASE_URL/admin/topology"   "$OUT_DIR/runtime-topology.png"
-shot "$BASE_URL/admin/replay"     "$OUT_DIR/replay-explorer.png"
-shot "$BASE_URL/admin/policy"     "$OUT_DIR/policy-inspector.png"
-shot "$BASE_URL/admin/theme"      "$OUT_DIR/theme-panel.png"
+# ── Operator console (auth injected by screenshot-proxy or session) ───────────
+shot "$BASE_URL/admin"                            "$OUT_DIR/admin-dashboard.png"
+shot "$BASE_URL/admin/theme"                      "$OUT_DIR/theme-panel.png"
+shot "$BASE_URL/admin/modes"                      "$OUT_DIR/policy-modes.png"
+shot "$BASE_URL/admin/policy"                     "$OUT_DIR/policy-inspector.png"
+shot "$BASE_URL/admin/topology"                   "$OUT_DIR/runtime-topology.png"
+shot "$BASE_URL/admin/replay"                     "$OUT_DIR/replay-explorer.png"
+shot "$BASE_URL/admin/faults"                     "$OUT_DIR/fault-manager.png"
+shot "$BASE_URL/admin/adr"                        "$OUT_DIR/adr-registry.png"
+
+# ── API / observability endpoints (JSON, shown in browser) ───────────────────
+shot "$BASE_URL/api/v1/admin/traces"              "$OUT_DIR/traces-metrics.png"
+shot "$BASE_URL/api/v1/queue"                     "$OUT_DIR/queue-events.png"
 
 echo "Done. Screenshots in $OUT_DIR"

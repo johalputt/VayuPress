@@ -19,31 +19,66 @@
 
 ## Platform Screenshots
 
-> Screenshots are regenerated from a live instance with
-> [`scripts/capture-screenshots.sh`](scripts/capture-screenshots.sh) and written
-> to `docs/screenshots/`. The public pages ship the vendored
-> [Pico CSS](https://picocss.com/) theme as their default base style (served
-> locally — no third-party origin — to keep the strict CSP intact).
+> Screenshots are regenerated automatically from a live instance by the
+> [screenshots CI workflow](.github/workflows/screenshots.yml) and committed
+> back to `docs/screenshots/`. Run it via **GitHub → Actions → screenshots → Run workflow**.
 
-### Homepage
+### Public Homepage
 ![VayuPress Homepage](docs/screenshots/homepage.png)
 
-*Public homepage — article grid with tag filtering, zero-telemetry footer, system mode indicator. Public site styled on the vendored Pico CSS theme.*
+*Public homepage — article grid with tag filtering, dark/light mode toggle, zero-telemetry footer, system mode indicator. Styled on vendored Pico CSS served locally to keep the strict `style-src 'self'` CSP intact.*
 
-### Admin Dashboard
-![VayuPress Admin Dashboard](docs/screenshots/admin-dashboard.png)
+### Article Page
+![VayuPress Article](docs/screenshots/article-page.png)
 
-*Runtime governance console — system mode (Normal), policy engine (6 policies), SLO error budgets, dependency health grid, kernel invariant checklist, mode transition graph.*
+*Rendered article — JSON-LD schema, author/date meta, tag strip, reading time, zero third-party requests.*
 
 ### Health & Observability
 ![VayuPress Health](docs/screenshots/health-observability.png)
 
-*Structured health contracts — per-component status, runtime latency table (p50/p95/p99), ethics compliance endpoint, graceful Meilisearch fallback to SQLite FTS5.*
+*Structured health contracts — per-component liveness/readiness, runtime latency table (p50/p95/p99), graceful Meilisearch fallback to SQLite FTS5.*
 
-### Policy Engine & System Modes
-![VayuPress Policy Engine](docs/screenshots/policy-modes.png)
+---
 
-*Platform control plane — 6 registered policies with category/severity/result, all 6 adaptive system modes with transition graph and append-only history.*
+### Admin Dashboard
+![VayuPress Admin Dashboard](docs/screenshots/admin-dashboard.png)
+
+*Runtime governance console — system mode (Normal/Degraded/ReadOnly/Recovery/Maintenance/Quarantined), SLO error budgets with contributor attribution, dependency health grid, kernel invariant checklist, operational timeline with epistemic confidence annotations.*
+
+### Theme & Site Settings Control Panel
+![VayuPress Theme Control Panel](docs/screenshots/theme-panel.png)
+
+*Theme console — identity fields, palette editor with live hex+swatch sync and WCAG AA contrast advisory, custom CSS (16 KB, served same-origin via `/theme.css`), declarative `<head>` capabilities, JSON export/import, and one-click Reset to Defaults. All changes are mode-gated CSRF-protected governed writes.*
+
+### System Modes & Policy Engine
+![VayuPress Policy Modes](docs/screenshots/policy-modes.png)
+
+*Platform control plane — 6 adaptive system modes with validated transition graph, append-only mode history, and all registered policies with live pass/warn/fail status.*
+
+### Policy Provenance Inspector (Ω11)
+![VayuPress Policy Inspector](docs/screenshots/policy-inspector.png)
+
+*Live policy evaluation table — per-policy category/severity/result strip, run-history trend, and persistent evaluation log for provenance and trend analysis.*
+
+### Runtime Topology (Ω9)
+![VayuPress Runtime Topology](docs/screenshots/runtime-topology.png)
+
+*Interactive operator console — 17-node live runtime graph (write path, delivery/read, governance, observability) with health derived in real time from failed-job counts, current mode, and fault-escalation state.*
+
+### Replay Explorer (Ω10)
+![VayuPress Replay Explorer](docs/screenshots/replay-explorer.png)
+
+*Write-job lifecycle inspector — dead-letter & poison-queue surface with single-job and batch requeue, full lifecycle chain (pending → processing → completed → retry ×3 → dead-letter → replay ×3 → quarantined).*
+
+### Fault Manager
+![VayuPress Fault Manager](docs/screenshots/fault-manager.png)
+
+*Fault escalation surface — active faults with severity level, trigger source, and escalation path through the mode state machine.*
+
+### ADR Registry
+![VayuPress ADR Registry](docs/screenshots/adr-registry.png)
+
+*Architecture Decision Records — every design decision indexed with status, date, and rationale. Governance documentation lives in the running system, not a separate wiki.*
 
 ### Distributed Traces & Metrics
 ![VayuPress Traces](docs/screenshots/traces-metrics.png)
@@ -53,26 +88,7 @@
 ### Write Queue & Event Outbox
 ![VayuPress Queue](docs/screenshots/queue-events.png)
 
-*SQLite-backed async write queue, transactional outbox relay, idempotent dispatch, write pipeline architecture diagram (HTTP → Queue → WAL → Outbox → Event Bus).*
-
-### Runtime Topology (Ω9)
-![VayuPress Runtime Topology](docs/screenshots/runtime-topology.png)
-
-*Interactive operator console — 17-node live runtime graph (write path, delivery/read, governance, observability) with health derived in real time from failed-job counts, current system mode, search reachability, and fault-escalation state.*
-
-### Replay Explorer (Ω10)
-![VayuPress Replay Explorer](docs/screenshots/replay-explorer.png)
-
-*Write-job lifecycle inspector — dead-letter & poison-queue surface with single-job and batch requeue, lifecycle chain (pending → processing → completed → retry ×3 → dead-letter → replay ×3 → quarantined), and live `replay_count`/`dead_reason` tracking.*
-
-### Policy Provenance Inspector (Ω11)
-![VayuPress Policy Inspector](docs/screenshots/policy-inspector.png)
-
-### Theme & Site Settings Control Panel
-
-![VayuPress Theme Control Panel](docs/screenshots/theme-panel.png)
-
-*Theme console — identity fields (name/tagline/description/author), palette editor with live hex+swatch sync and WCAG AA contrast advisory, custom CSS (16 KB, served same-origin via `/theme.css`), declarative `<head>` capabilities (keywords, theme colour, robots, verification tokens), JSON export/import for backup and cross-instance transfer, and one-click Reset to Defaults. All changes are governed writes: mode-gated, CSRF-protected, and immediately reflected across public pages.*
+*SQLite-backed async write queue, transactional outbox relay, idempotent dispatch.*
 
 ---
 
