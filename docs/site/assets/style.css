@@ -47,6 +47,13 @@
   bottom: 16%; right: 14%;
 }
 
+/* ── Brand logo (real PNG artwork) ── */
+.brand-mark {
+  image-rendering: -webkit-optimize-contrast;
+  /* lift it off the dark background just slightly so the white edges pop */
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.6));
+}
+
 /* ── Nav link underline ── */
 .nav-link { position: relative; }
 .nav-link::after {
