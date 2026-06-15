@@ -40,11 +40,11 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install Chromium + puppeteer-core
+      - name: Install puppeteer (downloads pinned Chromium)
         run: |
-          sudo apt-get update
-          sudo apt-get install -y chromium-browser || sudo apt-get install -y chromium
-          npm install puppeteer-core
+          npm install puppeteer
+          # Let puppeteer download its own Chromium — avoids snap sandbox
+          # confinement that blocks CSS/font sub-resource loads from localhost.
 
       - name: Build VayuPress
         run: |
