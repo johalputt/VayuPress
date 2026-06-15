@@ -30,6 +30,7 @@ import (
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/metrics"
 	"github.com/johalputt/vayupress/internal/mode"
+	"github.com/johalputt/vayupress/internal/provenance"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/severity"
 )
@@ -571,22 +572,14 @@ type tlProvenance struct {
 	PolicyRev     string `json:"policy_rev,omitempty"`     // config/policy revision, when relevant
 }
 
-// Event confidence vocabulary. Operational reasoning must distinguish what was
-// directly observed from what was reconstructed, because trust in a signal
-// changes how an operator should act on it. Every timeline entry declares one:
-//
-//	canonical — a directly observed, durably-backed fact (a recorded mode
-//	            transition, an ingested CSP report, a live fault count).
-//	derived   — computed deterministically from canonical signals (a budget
-//	            posture from recorded charges, the steady/monitor posture from
-//	            the current mode). True, but a function of other facts.
-//	inferred  — a synthesized narrative assertion not backed by its own durable
-//	            record (the reconstructed boot sequence). Honest, but lowest
-//	            certainty — never to be trusted as ground truth.
+// Event confidence vocabulary. The taxonomy and its propagation rules live in
+// internal/provenance (the single source of truth shared with the future
+// canonical event substrate); these aliases keep the timeline construction sites
+// terse while staying bound to that one vocabulary.
 const (
-	confCanonical = "canonical"
-	confDerived   = "derived"
-	confInferred  = "inferred"
+	confCanonical = string(provenance.Canonical)
+	confDerived   = string(provenance.Derived)
+	confInferred  = string(provenance.Inferred)
 )
 
 // tlActor classifies who/what caused a mode transition from its recorded cause.
@@ -792,10 +785,22 @@ func buildOperationalTimeline(snap *adminMetricsSnapshot, faultNames []string, f
 		if b.AckedAgoSec > 0 {
 			causal += " · operator-acknowledged"
 		}
+		// The budget posture is a derivation over its inputs: each contributing
+		// charge is a canonical observation (an ingested CSP report, etc.). The
+		// confidence follows the propagation rule — a conclusion drawn from
+		// canonical observations is derived, never itself canonical — rather than
+		// being asserted by hand.
+		inputs := make([]provenance.Confidence, 0, len(b.Contributors))
+		for range b.Contributors {
+			inputs = append(inputs, provenance.Canonical)
+		}
+		if len(inputs) == 0 {
+			inputs = append(inputs, provenance.Canonical) // the recorded count is itself a canonical fact
+		}
 		out = append(out, tlEntry{
 			clock(snap.SnapshotAt.UTC()), "", "budget", "tl-cat-gov", sevClass, msg,
 			causal,
-			tlProvenance{Source: "governance", Actor: "policy", Confidence: confDerived, Cause: cause, PolicyRev: config.ConfigVersion},
+			tlProvenance{Source: "governance", Actor: "policy", Confidence: provenance.Combine(inputs...).String(), Cause: cause, PolicyRev: config.ConfigVersion},
 		})
 	}
 
