@@ -36,10 +36,15 @@ jobs:
         with:
           go-version: '1.25'
 
-      - name: Install Chromium
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Chromium + puppeteer-core
         run: |
           sudo apt-get update
           sudo apt-get install -y chromium-browser || sudo apt-get install -y chromium
+          npm install puppeteer-core
 
       - name: Build VayuPress
         run: |
