@@ -30,6 +30,7 @@ jobs:
       PROXY_URL: http://localhost:8088
       ARTICLE_SLUG: hello-vayupress
       STATIC_DIR: ${{ github.workspace }}/static
+      VAYU_DOCS_DIR: ${{ github.workspace }}/docs
     steps:
       - uses: actions/checkout@v4
 
@@ -101,6 +102,13 @@ jobs:
 
       - name: Capture screenshots
         run: |
+          # Wait for DB to settle (smoke-test does a write round-trip).
+          for i in $(seq 1 30); do
+            if curl -fsS -H "X-API-Key: $API_KEY" http://localhost:8080/smoke-test >/dev/null 2>&1; then
+              echo "DB ready"; break
+            fi
+            sleep 1
+          done
           API_KEY=$API_KEY ARTICLE_SLUG=hello-vayupress \
             ./scripts/capture-screenshots.sh "$PROXY_URL"
 
