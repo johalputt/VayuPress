@@ -366,11 +366,19 @@ func (a *App) handleAdminADR(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		name := strings.TrimSuffix(e.Name(), ".md")
+		// Filenames look like "ADR-0001-sqlite-first" or "0001-some-title".
+		// Treat the leading "<id>" or "<prefix>-<id>" as the number and the
+		// remainder as a human-readable title.
 		number := name
 		title := name
-		if idx := strings.Index(name, "-"); idx >= 0 {
-			number = name[:idx]
-			title = strings.ReplaceAll(name[idx+1:], "-", " ")
+		parts := strings.SplitN(name, "-", 3)
+		switch {
+		case len(parts) >= 3 && strings.EqualFold(parts[0], "ADR"):
+			number = parts[0] + "-" + parts[1]
+			title = strings.ReplaceAll(parts[2], "-", " ")
+		case len(parts) >= 2:
+			number = parts[0]
+			title = strings.ReplaceAll(strings.SplitN(name, "-", 2)[1], "-", " ")
 		}
 		adrs = append(adrs, adrEntry{e.Name(), number, title})
 	}
