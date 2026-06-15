@@ -238,6 +238,31 @@ func TestActuator_TargetModeMapping(t *testing.T) {
 	}
 }
 
+func TestActuator_LastAppliedIsSticky(t *testing.T) {
+	l := NewLedger(DefaultRules())
+	fm := newFakeMode(mode.ModeNormal)
+	a := NewActuator(l, fm, true)
+
+	if a.LastApplied() != nil {
+		t.Fatal("LastApplied should be nil before any actuation")
+	}
+
+	now := time.Now()
+	exhaust(l, severity.Violation, 3, now) // → Degraded, applied
+	a.Evaluate(now)
+
+	la := a.LastApplied()
+	if la == nil || !la.Applied || la.Budget != "governance-breach" {
+		t.Fatalf("LastApplied = %+v, want an applied governance-breach actuation", la)
+	}
+
+	// A later tick with nothing new must NOT clear the sticky last-applied.
+	a.Evaluate(now.Add(time.Second))
+	if a.LastApplied() == nil {
+		t.Error("LastApplied must survive a subsequent no-op evaluation")
+	}
+}
+
 func TestActuator_EnableToggle(t *testing.T) {
 	a := NewActuator(NewLedger(DefaultRules()), newFakeMode(mode.ModeNormal), false)
 	if a.Enabled() {

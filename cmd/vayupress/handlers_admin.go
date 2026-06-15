@@ -1508,6 +1508,7 @@ func (a *App) handleGovernanceBudgets(w http.ResponseWriter, r *http.Request) {
 		"budgets":           budget.Global.Status(now),
 		"actuation_enabled": budget.GlobalActuator.Enabled(),
 		"actuations":        actuations,
+		"last_applied":      budget.GlobalActuator.LastApplied(), // sticky: survives across polls, nil if never
 		"note":              note,
 		"generated_at":      now.UTC().Format(time.RFC3339),
 	})

@@ -53,12 +53,13 @@ type Actuation struct {
 // Actuator watches a Ledger and, when enabled, escalates the system mode in
 // response to exhausted budgets. Safe for concurrent use.
 type Actuator struct {
-	mu        sync.Mutex
-	ledger    *Ledger
-	manager   modeController
-	enabled   bool
-	exhausted map[string]bool // budgets currently in the exhausted edge state (for one-shot)
-	last      []Actuation     // actuations from the most recent Evaluate (for the API)
+	mu          sync.Mutex
+	ledger      *Ledger
+	manager     modeController
+	enabled     bool
+	exhausted   map[string]bool // budgets currently in the exhausted edge state (for one-shot)
+	last        []Actuation     // actuations from the most recent Evaluate (for the API)
+	lastApplied *Actuation      // the most recent APPLIED actuation, sticky across ticks (observability)
 }
 
 // NewActuator builds an actuator over a ledger and mode controller. enabled
@@ -100,6 +101,20 @@ func (a *Actuator) LastActuations() []Actuation {
 	out := make([]Actuation, len(a.last))
 	copy(out, a.last)
 	return out
+}
+
+// LastApplied returns the most recent actuation that actually drove a mode
+// transition, or nil if none has. Unlike LastActuations it is sticky across
+// evaluation ticks, so the API can show "last actuation: <budget> at <time>"
+// long after the poll that performed it.
+func (a *Actuator) LastApplied() *Actuation {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.lastApplied == nil {
+		return nil
+	}
+	cp := *a.lastApplied
+	return &cp
 }
 
 // targetModeFor maps a budget's on-exhaust escalation severity to the protective
@@ -164,6 +179,8 @@ func (a *Actuator) Evaluate(now time.Time) []Actuation {
 		}
 
 		if act.Applied {
+			applied := act
+			a.lastApplied = &applied
 			logging.LogJSON(logging.LogFields{
 				Level: "warn", Component: "budget-actuator", Severity: "escalation",
 				Msg: "budget " + st.Name + " exhausted → mode " + act.TargetMode + " (contributors: " + joinContributors(st.Contributors) + ")",
