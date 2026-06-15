@@ -353,22 +353,39 @@ func (a *App) handleAdminADR(w http.ResponseWriter, r *http.Request) {
 	adrDir := filepath.Join(config.EnvOr("VAYU_DOCS_DIR", "/var/www/vayupress/docs"), "adr")
 	entries, err := os.ReadDir(adrDir)
 	if err != nil {
-		writeAPIError(w, r, 404, "adr_dir_not_found", "ADR directory not found", "https://docs.vayupress.com/governance/adrs")
+		nonce := a.writeConsoleShellHead(w, r, "adrs", "ADR Registry", "Architecture Decision Records")
+		fmt.Fprint(w, `<div class="empty-state"><div class="empty-icon">≡</div><div class="empty-title">No ADR directory found</div><div class="empty-sub">Set VAYU_DOCS_DIR to a directory containing an adr/ subdirectory.</div></div>`)
+		writeConsoleShellFoot(w, nonce, "")
 		return
 	}
-	type adrEntry struct {
-		Filename string `json:"filename"`
-	}
+
+	type adrEntry struct{ Filename, Number, Title string }
 	var adrs []adrEntry
 	for _, e := range entries {
-		if !e.IsDir() && strings.HasSuffix(e.Name(), ".md") {
-			adrs = append(adrs, adrEntry{e.Name()})
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+			continue
 		}
+		name := strings.TrimSuffix(e.Name(), ".md")
+		number := name
+		title := name
+		if idx := strings.Index(name, "-"); idx >= 0 {
+			number = name[:idx]
+			title = strings.ReplaceAll(name[idx+1:], "-", " ")
+		}
+		adrs = append(adrs, adrEntry{e.Name(), number, title})
 	}
-	if adrs == nil {
-		adrs = []adrEntry{}
+
+	nonce := a.writeConsoleShellHead(w, r, "adrs", "ADR Registry", fmt.Sprintf("%d architecture decision records", len(adrs)))
+	fmt.Fprintf(w, `<div class="adr-list">`)
+	for _, adr := range adrs {
+		fmt.Fprintf(w, `<div class="adr-row"><span class="adr-number">%s</span><span class="adr-title">%s</span><span class="adr-badge s-ok">Accepted</span></div>`,
+			template.HTMLEscapeString(adr.Number), template.HTMLEscapeString(adr.Title))
 	}
-	writeJSON(w, r, 200, map[string]interface{}{"adrs": adrs, "total": len(adrs)})
+	if len(adrs) == 0 {
+		fmt.Fprint(w, `<div class="empty-state"><div class="empty-title">No ADR files found</div></div>`)
+	}
+	fmt.Fprint(w, `</div>`)
+	writeConsoleShellFoot(w, nonce, "")
 }
 
 func (a *App) handleHealthBenchmarks(w http.ResponseWriter, r *http.Request) {
