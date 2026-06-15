@@ -2,7 +2,10 @@ package main
 
 import (
 	"math"
+	"strings"
 	"testing"
+
+	"github.com/johalputt/vayupress/internal/settings"
 )
 
 func TestContrastRatioKnownValues(t *testing.T) {
@@ -23,6 +26,26 @@ func TestDefaultPalettePassesWCAGAA(t *testing.T) {
 	// defaults. Light primary #0f766e and dark primary #2dd4bf are the defaults.
 	if w := contrastWarnings("#0f766e", "#2dd4bf"); len(w) != 0 {
 		t.Errorf("default palette must pass WCAG AA, got warnings: %v", w)
+	}
+}
+
+// TestThemeEditorCoversSettingsAllowlist is a drift guard: every key in the
+// settings allowlist must appear in the rendered editor — both as an input id and
+// in the import key list — so export/import and the editor can never fall out of
+// sync with the allowlist as keys are added or removed.
+func TestThemeEditorCoversSettingsAllowlist(t *testing.T) {
+	page := themeEditorPage(map[string]string{}, "NORMAL", "test-nonce", "")
+	for key := range settings.AllKeys {
+		if !strings.Contains(page, `id="`+key+`"`) {
+			t.Errorf("settings key %q has no input field in the theme editor", key)
+		}
+		if !strings.Contains(page, `'`+key+`'`) {
+			t.Errorf("settings key %q is missing from the import/save key list", key)
+		}
+	}
+	// The export and import sides must agree on the bundle schema version.
+	if themeExportVersion != 1 {
+		t.Errorf("import JS pins vayupress_theme===1; bump it in lockstep with themeExportVersion (%d)", themeExportVersion)
 	}
 }
 

@@ -152,6 +152,36 @@ func (a *App) handleThemeGet(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, themeEditorPage(vals, modeStr, render.CSPNonce(r), ""))
 }
 
+// themeExportVersion is the schema version of an exported theme bundle. Bump it
+// only on a breaking change to the export shape so importers can refuse bundles
+// they don't understand (fail-closed) rather than silently mis-applying them.
+const themeExportVersion = 1
+
+// handleThemeExport streams the persisted, allowlisted site/theme settings as a
+// downloadable JSON bundle. It is a pure read over the settings allowlist — no
+// secrets, no raw HTML, only the same keys the editor already round-trips — so a
+// bundle is safe to share and re-import on another instance.
+func (a *App) handleThemeExport(w http.ResponseWriter, r *http.Request) {
+	vals, err := a.siteSettings.GetAll(r.Context())
+	if err != nil {
+		http.Error(w, "failed to load settings", 500)
+		return
+	}
+	// Emit only the canonical allowlist, so an export never carries anything the
+	// import path wouldn't accept back.
+	out := make(map[string]string, len(settings.AllKeys))
+	for key := range settings.AllKeys {
+		out[key] = vals[key]
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Content-Disposition", `attachment; filename="vayupress-theme.json"`)
+	w.Header().Set("Cache-Control", "no-store")
+	json.NewEncoder(w).Encode(map[string]interface{}{ //nolint:errcheck
+		"vayupress_theme": themeExportVersion,
+		"settings":        out,
+	})
+}
+
 // handleThemeSave processes the JSON POST from the theme editor.
 // The browser sends application/json via fetch with the X-CSRF-Token header.
 func (a *App) handleThemeSave(w http.ResponseWriter, r *http.Request) {
@@ -550,6 +580,9 @@ func themeEditorPage(vals map[string]string, modeStr, nonce, errMsg string) stri
 
 <div class="theme-actions">
   <button id="save-btn" class="theme-save">◑ Save Settings</button>
+  <a class="btn" href="/admin/theme/export" download>⭳ Export JSON</a>
+  <button type="button" id="import-btn" class="btn">⭱ Import JSON</button>
+  <input type="file" id="import-file" accept="application/json,.json" class="vayu-hidden">
   <span id="save-status" class="save-status"></span>
 </div>
 
@@ -577,6 +610,45 @@ func themeEditorPage(vals map[string]string, modeStr, nonce, errMsg string) stri
       var target=document.getElementById(el.getAttribute('data-sync'));
       if(target) target.value=el.value;
     });
+  });
+  // Import: read a previously-exported JSON bundle and POPULATE the form only.
+  // Nothing is persisted here — the operator reviews the loaded values and then
+  // clicks Save, so every imported value still passes the server's validation.
+  var IMPORT_KEYS=['site.name','site.tagline','site.description','site.author',
+    'theme.primary_light','theme.primary_dark','theme.accent_light','theme.accent_dark',
+    'theme.custom_css','head.keywords','head.theme_color','head.robots',
+    'head.verify_google','head.verify_bing'];
+  var importBtn=document.getElementById('import-btn');
+  var importFile=document.getElementById('import-file');
+  importBtn.addEventListener('click', function(){ importFile.click(); });
+  importFile.addEventListener('change', function(){
+    var st=document.getElementById('save-status');
+    var f=importFile.files&&importFile.files[0];
+    if(!f) return;
+    var reader=new FileReader();
+    reader.onload=function(){
+      var data;
+      try { data=JSON.parse(reader.result); } catch(e){
+        st.style.color='var(--error)'; st.textContent='✗ Not valid JSON'; importFile.value=''; return;
+      }
+      var s=data&&data.settings;
+      if(!data||data.vayupress_theme!==1||typeof s!=='object'||!s){
+        st.style.color='var(--error)'; st.textContent='✗ Not a VayuPress theme bundle'; importFile.value=''; return;
+      }
+      var n=0;
+      IMPORT_KEYS.forEach(function(k){
+        if(typeof s[k]!=='string') return;          // skip missing/non-string keys
+        var el=document.getElementById(k);
+        if(!el) return;
+        el.value=s[k];
+        el.dispatchEvent(new Event('input'));        // refresh linked colour swatches
+        n++;
+      });
+      st.style.color='var(--gold)';
+      st.textContent='⭱ Loaded '+n+' fields — review, then Save to apply';
+      importFile.value='';                           // allow re-importing the same file
+    };
+    reader.readAsText(f);
   });
   // Save.
   var btn=document.getElementById('save-btn');
