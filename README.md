@@ -33,11 +33,6 @@
 
 *Rendered article — JSON-LD schema, author/date meta, tag strip, reading time, zero third-party requests.*
 
-### Health & Observability
-![VayuPress Health](docs/screenshots/health-observability.png)
-
-*Structured health contracts — per-component liveness/readiness, runtime latency table (p50/p95/p99), graceful Meilisearch fallback to SQLite FTS5.*
-
 ---
 
 ### Admin Dashboard
@@ -79,16 +74,6 @@
 ![VayuPress ADR Registry](docs/screenshots/adr-registry.png)
 
 *Architecture Decision Records — every design decision indexed with status, date, and rationale. Governance documentation lives in the running system, not a separate wiki.*
-
-### Distributed Traces & Metrics
-![VayuPress Traces](docs/screenshots/traces-metrics.png)
-
-*Span-based distributed tracing — correlation IDs, causation chains, waterfall view, Prometheus-format metrics exposition.*
-
-### Write Queue & Event Outbox
-![VayuPress Queue](docs/screenshots/queue-events.png)
-
-*SQLite-backed async write queue, transactional outbox relay, idempotent dispatch.*
 
 ---
 
