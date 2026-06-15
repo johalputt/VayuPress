@@ -43,7 +43,7 @@
 ### Theme & Site Settings Control Panel
 ![VayuPress Theme Control Panel](docs/screenshots/theme-panel.png)
 
-*Theme console — identity fields, palette editor with live hex+swatch sync and WCAG AA contrast advisory, custom CSS (16 KB, served same-origin via `/theme.css`), declarative `<head>` capabilities, JSON export/import, and one-click Reset to Defaults. All changes are mode-gated CSRF-protected governed writes.*
+*Theme console — identity fields, palette editor with live hex+swatch sync and WCAG AA contrast advisory, custom CSS (16 KB, served same-origin via `/theme.css`), declarative `<head>` capabilities, and custom favicon/logo upload (PNG/ICO, magic-number validated, stored in the database). Themes round-trip as a portable JSON bundle via **Export / Import**, and a one-click **Reset to Defaults** restores the factory palette. The public site ships a self-hosted **dark/light mode toggle** (no third-party fonts or scripts — `script-src 'self'`). All changes are mode-gated, CSRF-protected governed writes.*
 
 ### System Modes & Policy Engine
 ![VayuPress Policy Modes](docs/screenshots/policy-modes.png)
