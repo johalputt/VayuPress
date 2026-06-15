@@ -29,6 +29,7 @@ jobs:
       UPSTREAM: http://localhost:8080
       PROXY_URL: http://localhost:8088
       ARTICLE_SLUG: hello-vayupress
+      STATIC_DIR: ${{ github.workspace }}/static
     steps:
       - uses: actions/checkout@v4
 
