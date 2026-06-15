@@ -6,7 +6,40 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
-## [Unreleased] — Theme & Site Settings Control Panel
+## [1.0.0] — 2026-06-15 — First Stable Release
+
+VayuPress 1.0.0 is the first tagged release: a sovereign, single-VPS publishing
+engine with an adaptive governance runtime. It consolidates phases P1–P28 and
+Ω1–Ω12 into a stable line.
+
+### Added (1.0.0 release highlights)
+- **Custom favicon/logo upload** (`/admin/theme` → Branding tab): PNG/ICO,
+  magic-number validated, ≤ 256 KB, stored base64 in `site_settings` and served
+  over the existing favicon routes (overrides the embedded default everywhere
+  without template edits). CSRF-protected, mode-gated, with live preview + remove.
+- **Gated governance budget actuation (Ω12)** (`internal/budget.Actuator`): when
+  `GOVERNANCE_ACTUATION=true`, an exhausted governance budget drives an automatic,
+  graph-respecting mode escalation. Opt-in (off by default), one-shot/debounced,
+  and audited. Surfaced via `GET /api/v1/admin/budgets` (`actuation_enabled`,
+  `actuations[]`, `last_applied`). See **ADR-0063**.
+- **`trace-tap` example plugin**: demonstrates participating in the distributed
+  trace substrate — reads `correlation_id`/`causation_id`/`trace_id` and echoes
+  them so plugin work stitches into the host trace waterfall.
+- **ADR Registry HTML console** (`/admin/adr`): the architecture decision records
+  now render as a styled console page instead of a raw JSON endpoint.
+- **CI screenshot pipeline** (`.github/workflows/screenshots.yml`): boots a live
+  instance, seeds content, and captures the public + operator-console pages via
+  Playwright, committing refreshed PNGs back to the branch.
+
+### Security (1.0.0)
+- **Federation inbox replay protection**: `InboxHandler` consults an optional
+  durable `ReplayStore`, so a captured signed activity (or a benign retry) is
+  recorded once by id and a duplicate is accepted idempotently without being
+  processed twice; id-less activities are refused. `MarkOrReject` is now atomic
+  (single `INSERT OR IGNORE` + rows-affected), closing the prior check-then-mark
+  TOCTOU window.
+- **CSRF cookie seeding on `/admin/theme`**: the editor GET now issues its own
+  CSRF cookie, so Save/Reset/favicon writes work when the page is opened directly.
 
 ### Added
 - **Theme & Site Settings control panel** (`/admin/theme`): operator-editable site
