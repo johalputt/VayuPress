@@ -1,0 +1,122 @@
+name: screenshots
+
+# Regenerates the README screenshots from a live instance on a runner that has a
+# browser (this repo bundles none). Headless Chrome cannot send the X-API-Key
+# header the operator console needs, so a tiny reverse proxy
+# (scripts/screenshot-proxy) injects it and the capture script points Chrome at
+# the proxy. The refreshed PNGs are committed back to the triggering branch.
+on:
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: "Commit refreshed screenshots back to the branch"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    env:
+      API_KEY: screenshot-ci-key
+      DB_PATH: /tmp/vayupress/data.db
+      CACHE_DIR: /tmp/vayupress/cache
+      TMP_DIR: /tmp/vayupress/tmp
+      PORT: "8080"
+      DOMAIN: localhost
+      UPSTREAM: http://localhost:8080
+      PROXY_URL: http://localhost:8088
+      ARTICLE_SLUG: hello-vayupress
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - name: Install Chromium
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y chromium-browser || sudo apt-get install -y chromium
+
+      - name: Build VayuPress
+        run: |
+          mkdir -p /tmp/vayupress
+          CGO_ENABLED=1 go build -o /tmp/vayupress/vayupress ./cmd/vayupress/
+
+      - name: Start server
+        run: |
+          /tmp/vayupress/vayupress > /tmp/vayupress/server.log 2>&1 &
+          echo $! > /tmp/vayupress/server.pid
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8080/smoke-test >/dev/null 2>&1; then
+              echo "server up"; exit 0
+            fi
+            sleep 1
+          done
+          echo "server did not start"; cat /tmp/vayupress/server.log; exit 1
+
+      - name: Seed an article
+        run: |
+          curl -fsS -X POST http://localhost:8080/api/v1/articles \
+            -H "X-API-Key: $API_KEY" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "title": "Hello VayuPress",
+              "slug": "hello-vayupress",
+              "content": "<p>A sovereign, single-VPS publishing engine. This seed article exists so the homepage and article-page screenshots render real content during capture.</p>",
+              "tags": ["welcome", "governance"]
+            }'
+          # The write queue is async — poll until the article is readable.
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8080/api/v1/articles/hello-vayupress >/dev/null 2>&1; then
+              echo "article published"; exit 0
+            fi
+            sleep 1
+          done
+          echo "article never became visible"; cat /tmp/vayupress/server.log; exit 1
+
+      - name: Start header-injecting proxy
+        run: |
+          LISTEN=:8088 UPSTREAM=http://localhost:8080 API_KEY=$API_KEY \
+            go run ./scripts/screenshot-proxy > /tmp/vayupress/proxy.log 2>&1 &
+          echo $! > /tmp/vayupress/proxy.pid
+          for i in $(seq 1 20); do
+            if curl -fsS http://localhost:8088/smoke-test >/dev/null 2>&1; then
+              echo "proxy up"; exit 0
+            fi
+            sleep 1
+          done
+          echo "proxy did not start"; cat /tmp/vayupress/proxy.log; exit 1
+
+      - name: Capture screenshots
+        run: |
+          API_KEY=$API_KEY ARTICLE_SLUG=hello-vayupress \
+            ./scripts/capture-screenshots.sh "$PROXY_URL"
+
+      - name: Upload screenshots artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: docs/screenshots/*.png
+
+      - name: Commit refreshed screenshots
+        if: ${{ inputs.commit }}
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet -- docs/screenshots; then
+            echo "No screenshot changes to commit."
+            exit 0
+          fi
+          git add docs/screenshots/*.png
+          git commit -m "Refresh screenshots from live instance (CI)"
+          git push origin HEAD:${GITHUB_REF_NAME}
+
+      - name: Stop background processes
+        if: always()
+        run: |
+          [ -f /tmp/vayupress/proxy.pid ]  && kill "$(cat /tmp/vayupress/proxy.pid)"  || true
+          [ -f /tmp/vayupress/server.pid ] && kill "$(cat /tmp/vayupress/server.pid)" || true
