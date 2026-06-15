@@ -36,6 +36,29 @@ func TestRegistryComplete(t *testing.T) {
 	}
 }
 
+// TestRegistryIndexAlignment is an ontology-drift guard: registry[i] must be the
+// level whose constant equals i, so the O(1) Meta() lookup, the JSON name
+// vocabulary, and the Level constants can never silently disagree. If someone
+// reorders the registry or inserts a level out of place, this fails loudly.
+func TestRegistryIndexAlignment(t *testing.T) {
+	all := All()
+	for i, m := range all {
+		if int(m.Level) != i {
+			t.Errorf("registry[%d] has Level %d (%s) — index and Level must align", i, m.Level, m.Name)
+		}
+		if Level(i).Meta().Name != m.Name {
+			t.Errorf("Level(%d).Meta() = %s; registry[%d] = %s", i, Level(i).Meta().Name, i, m.Name)
+		}
+		// TimelineClass must be a recognised tl-* class so the timeline renderer
+		// and the taxonomy never drift apart.
+		switch m.TimelineClass {
+		case "tl-info", "tl-ok", "tl-accent", "tl-warn", "tl-err":
+		default:
+			t.Errorf("level %s has unknown timeline class %q", m.Name, m.TimelineClass)
+		}
+	}
+}
+
 func TestParseRoundTrip(t *testing.T) {
 	for _, m := range All() {
 		got, ok := Parse(m.Name)

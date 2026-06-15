@@ -42,6 +42,37 @@ func TestTimelineEntriesCarryProvenance(t *testing.T) {
 	}
 }
 
+// TestEveryEntryDeclaresConfidence is an ontology-drift guard: every synthesized
+// timeline entry must declare a confidence drawn from the known vocabulary, so an
+// operator can always tell an observed fact from a reconstructed narrative. A new,
+// un-annotated event source fails this loudly.
+func TestEveryEntryDeclaresConfidence(t *testing.T) {
+	resetCSPRing()
+	t.Cleanup(resetCSPRing)
+	recordCSPViolation("script-src", "https://x.example/b.js")
+
+	snap := &adminMetricsSnapshot{SnapshotAt: time.Now().UTC()}
+	known := map[string]bool{confCanonical: true, confDerived: true, confInferred: true}
+	var sawCanonical, sawInferred bool
+	for _, e := range buildOperationalTimeline(snap, nil, nil) {
+		if !known[e.Prov.Confidence] {
+			t.Errorf("entry %q declares unknown/empty confidence %q", e.Msg, e.Prov.Confidence)
+		}
+		switch e.Prov.Confidence {
+		case confCanonical:
+			sawCanonical = true
+		case confInferred:
+			sawInferred = true
+		}
+	}
+	if !sawCanonical {
+		t.Error("expected at least one canonical (directly observed) entry — e.g. the CSP violation")
+	}
+	if !sawInferred {
+		t.Error("expected at least one inferred (synthesized) entry — e.g. the boot sequence")
+	}
+}
+
 func TestModeTransitionActorClassification(t *testing.T) {
 	if tlActor("") != "operator" || tlActor("operator") != "operator" {
 		t.Error("empty/operator cause should classify as operator")

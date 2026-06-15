@@ -564,11 +564,30 @@ type tlProvenance struct {
 	ParentID      string `json:"parent_id,omitempty"`      // causal parent event id — enables graph traversal
 	Source        string `json:"source,omitempty"`         // subsystem: runtime|db|governance|queue|mode|fault|csp
 	Actor         string `json:"actor,omitempty"`          // system|operator|policy|browser
+	Confidence    string `json:"confidence,omitempty"`     // canonical|derived|inferred — source certainty (see below)
 	Cause         string `json:"cause,omitempty"`          // human-readable causal label (e.g. mode transition cause)
 	CorrelationID string `json:"correlation_id,omitempty"` // when the event carries one (outbox-sourced)
 	Build         string `json:"build,omitempty"`          // deployment version, when exact for this event
 	PolicyRev     string `json:"policy_rev,omitempty"`     // config/policy revision, when relevant
 }
+
+// Event confidence vocabulary. Operational reasoning must distinguish what was
+// directly observed from what was reconstructed, because trust in a signal
+// changes how an operator should act on it. Every timeline entry declares one:
+//
+//	canonical — a directly observed, durably-backed fact (a recorded mode
+//	            transition, an ingested CSP report, a live fault count).
+//	derived   — computed deterministically from canonical signals (a budget
+//	            posture from recorded charges, the steady/monitor posture from
+//	            the current mode). True, but a function of other facts.
+//	inferred  — a synthesized narrative assertion not backed by its own durable
+//	            record (the reconstructed boot sequence). Honest, but lowest
+//	            certainty — never to be trusted as ground truth.
+const (
+	confCanonical = "canonical"
+	confDerived   = "derived"
+	confInferred  = "inferred"
+)
 
 // tlActor classifies who/what caused a mode transition from its recorded cause.
 func tlActor(cause string) string {
@@ -650,18 +669,18 @@ func buildOperationalTimeline(snap *adminMetricsSnapshot, faultNames []string, f
 	out = append(out,
 		tlEntry{clock(boot), "+0.0s", "runtime", "tl-cat-sys", "tl-accent",
 			fmt.Sprintf("runtime.boot — VayuPress %s starting · P1–P27 active", Version), "",
-			tlProvenance{Source: "runtime", Actor: "system", Build: Version}},
+			tlProvenance{Source: "runtime", Actor: "system", Confidence: confInferred, Build: Version}},
 		tlEntry{clock(boot.Add(2 * time.Millisecond)), rel(2 * time.Millisecond), "db", "tl-cat-db", "tl-info",
 			"db.ready — WAL + PRAGMAs enforced · 8/8 migrations checksum-verified",
 			"no schema drift · invariant set holding (ADR-0033/0034)",
-			tlProvenance{Source: "db", Actor: "system", Build: Version}},
+			tlProvenance{Source: "db", Actor: "system", Confidence: confInferred, Build: Version}},
 		tlEntry{clock(boot.Add(4 * time.Millisecond)), rel(4 * time.Millisecond), "govern", "tl-cat-gov", "tl-info",
 			"escalator.arm — 6 fault→mode rules armed",
 			"wal.write→ReadOnly · signing→Degraded · plugin→Quarantined",
-			tlProvenance{Source: "governance", Actor: "system", PolicyRev: config.ConfigVersion, Build: Version}},
+			tlProvenance{Source: "governance", Actor: "system", Confidence: confInferred, PolicyRev: config.ConfigVersion, Build: Version}},
 		tlEntry{clock(boot.Add(6 * time.Millisecond)), rel(6 * time.Millisecond), "queue", "tl-cat-queue", "tl-info",
 			"workers.start — 3 write workers online · outbox relay active", "",
-			tlProvenance{Source: "queue", Actor: "system", Build: Version}},
+			tlProvenance{Source: "queue", Actor: "system", Confidence: confInferred, Build: Version}},
 	)
 
 	// CSP enforcement posture — operational state, surfaced in the narrative.
@@ -674,7 +693,7 @@ func buildOperationalTimeline(snap *adminMetricsSnapshot, faultNames []string, f
 	out = append(out, tlEntry{
 		clock(boot.Add(7 * time.Millisecond)), rel(7 * time.Millisecond), "csp", "tl-cat-gov", cspSev,
 		"csp.policy — " + cspNote, "",
-		tlProvenance{Source: "csp", Actor: "system", PolicyRev: config.ConfigVersion, Build: Version},
+		tlProvenance{Source: "csp", Actor: "system", Confidence: confDerived, PolicyRev: config.ConfigVersion, Build: Version},
 	})
 
 	// ── Real mode transitions (the causal spine under stress) ──────────────
@@ -696,7 +715,7 @@ func buildOperationalTimeline(snap *adminMetricsSnapshot, faultNames []string, f
 			clock(t.OccurredAt.UTC()), "", "mode", "tl-cat-mode", sev,
 			fmt.Sprintf("mode.transition — %s → %s · %s", upper(t.From), upper(t.To), t.Reason),
 			causal,
-			tlProvenance{Source: "mode", Actor: tlActor(t.Cause), Cause: t.Cause},
+			tlProvenance{Source: "mode", Actor: tlActor(t.Cause), Confidence: confCanonical, Cause: t.Cause},
 		})
 	}
 
@@ -709,7 +728,7 @@ func buildOperationalTimeline(snap *adminMetricsSnapshot, faultNames []string, f
 				clock(snap.SnapshotAt.UTC()), "", "fault", "tl-cat-fault", "tl-err",
 				fmt.Sprintf("fault.trigger — %s fired ×%d", name, faultTriggers[i]),
 				"escalation counter advancing toward threshold",
-				tlProvenance{Source: "fault", Actor: "operator", Cause: "fault-simulation:" + name},
+				tlProvenance{Source: "fault", Actor: "operator", Confidence: confCanonical, Cause: "fault-simulation:" + name},
 			})
 		}
 	}
@@ -727,7 +746,7 @@ func buildOperationalTimeline(snap *adminMetricsSnapshot, faultNames []string, f
 			clock(vio.When), "", "csp", "tl-cat-fault", "tl-warn",
 			fmt.Sprintf("csp.violation — %s blocked %s", vio.Directive, blocked),
 			"frontend governance · report-uri ingest",
-			tlProvenance{Source: "csp", Actor: "browser", Cause: vio.Directive, Build: Version},
+			tlProvenance{Source: "csp", Actor: "browser", Confidence: confCanonical, Cause: vio.Directive, Build: Version},
 		})
 	}
 
@@ -738,14 +757,14 @@ func buildOperationalTimeline(snap *adminMetricsSnapshot, faultNames []string, f
 			clock(snap.SnapshotAt.UTC()), rel(time.Since(boot)), "steady", "tl-cat-ok", "tl-ok",
 			fmt.Sprintf("mode.steady — NORMAL holding %s · 0 escalations · policy 6/6 PASS", rel(time.Since(boot))[1:]),
 			"",
-			tlProvenance{Source: "governance", Actor: "system", PolicyRev: config.ConfigVersion},
+			tlProvenance{Source: "governance", Actor: "system", Confidence: confDerived, PolicyRev: config.ConfigVersion},
 		})
 	} else {
 		out = append(out, tlEntry{
 			clock(snap.SnapshotAt.UTC()), rel(time.Since(boot)), "monitor", "tl-cat-gov", "tl-warn",
 			fmt.Sprintf("recovery.monitor — system=%s · watching for stabilization · escalator armed", upper(cur)),
 			"",
-			tlProvenance{Source: "governance", Actor: "system", PolicyRev: config.ConfigVersion},
+			tlProvenance{Source: "governance", Actor: "system", Confidence: confDerived, PolicyRev: config.ConfigVersion},
 		})
 	}
 
@@ -765,10 +784,18 @@ func buildOperationalTimeline(snap *adminMetricsSnapshot, faultNames []string, f
 			}
 			msg += " → " + b.Recommended + " recommended"
 		}
+		// Attribute the debt: name what consumed it so exhaustion is explainable.
+		causal := "governance error budget"
+		if len(b.Contributors) > 0 {
+			causal = "debt from " + strings.Join(b.Contributors, ", ")
+		}
+		if b.AckedAgoSec > 0 {
+			causal += " · operator-acknowledged"
+		}
 		out = append(out, tlEntry{
 			clock(snap.SnapshotAt.UTC()), "", "budget", "tl-cat-gov", sevClass, msg,
-			"governance error budget",
-			tlProvenance{Source: "governance", Actor: "policy", Cause: cause, PolicyRev: config.ConfigVersion},
+			causal,
+			tlProvenance{Source: "governance", Actor: "policy", Confidence: confDerived, Cause: cause, PolicyRev: config.ConfigVersion},
 		})
 	}
 
@@ -1442,7 +1469,34 @@ func (a *App) handleSeverityTaxonomy(w http.ResponseWriter, r *http.Request) {
 func (a *App) handleGovernanceBudgets(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, http.StatusOK, map[string]interface{}{
 		"budgets":      budget.Global.Status(time.Now()),
-		"note":         "accounting + recommendation; mode transitions are operator/gated, not auto-applied",
+		"note":         "accounting + recommendation; mode transitions are operator/gated, not auto-applied. POST /api/v1/admin/budgets/ack {name} to clear debt.",
+		"generated_at": time.Now().UTC().Format(time.RFC3339),
+	})
+}
+
+// handleGovernanceBudgetAck lets an operator acknowledge a governance budget,
+// clearing its current debt window and stamping the recovery time. This is the
+// recovery half of the budget doctrine: accumulated debt is operator-clearable
+// rather than only decaying with the rolling window. It is still accounting, not
+// actuation — acknowledging a budget records that an operator has taken
+// responsibility for the cause; it does not itself change the system mode.
+func (a *App) handleGovernanceBudgetAck(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&body); err != nil || body.Name == "" {
+		writeAPIError(w, r, http.StatusBadRequest, "invalid_request", "expected JSON body {\"name\":\"<budget>\"}", "https://docs.vayupress.com/governance/budgets")
+		return
+	}
+	if !budget.Global.Acknowledge(body.Name, time.Now()) {
+		writeAPIError(w, r, http.StatusNotFound, "unknown_budget", "no governance budget named "+body.Name, "https://docs.vayupress.com/governance/budgets")
+		return
+	}
+	logging.LogInfo("budget", "operator acknowledged governance budget "+body.Name+" — debt window cleared")
+	writeJSON(w, r, http.StatusOK, map[string]interface{}{
+		"status":       "ok",
+		"acknowledged": body.Name,
+		"budgets":      budget.Global.Status(time.Now()),
 		"generated_at": time.Now().UTC().Format(time.RFC3339),
 	})
 }

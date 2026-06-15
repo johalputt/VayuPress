@@ -72,6 +72,66 @@ func TestExhaustedCount(t *testing.T) {
 	}
 }
 
+func TestBudgetAttributesContributors(t *testing.T) {
+	l := NewLedger(DefaultRules())
+	now := time.Now()
+	l.RecordFrom(severity.Violation, "csp:script-src", now)
+	l.RecordFrom(severity.Violation, "csp:script-src", now)
+	l.RecordFrom(severity.Violation, "csp:img-src", now)
+	st := statusByName(l.Status(now), "governance-breach")
+	if st.State != "exhausted" {
+		t.Fatalf("expected exhausted at 3/3, got %s", st.State)
+	}
+	// Most-consuming source must lead.
+	if len(st.Contributors) != 2 || st.Contributors[0] != "csp:script-src" {
+		t.Errorf("expected csp:script-src to lead contributors, got %v", st.Contributors)
+	}
+}
+
+func TestBudgetAcknowledgeClearsDebt(t *testing.T) {
+	l := NewLedger(DefaultRules())
+	now := time.Now()
+	l.Record(severity.Violation, now)
+	l.Record(severity.Violation, now)
+	l.Record(severity.Violation, now)
+	if statusByName(l.Status(now), "governance-breach").State != "exhausted" {
+		t.Fatal("precondition: budget should be exhausted")
+	}
+	if !l.Acknowledge("governance-breach", now) {
+		t.Fatal("Acknowledge should succeed for a real budget")
+	}
+	st := statusByName(l.Status(now), "governance-breach")
+	if st.State != "healthy" || st.Consumed != 0 {
+		t.Errorf("acknowledging should clear debt, got state=%s consumed=%d", st.State, st.Consumed)
+	}
+	if l.Acknowledge("does-not-exist", now) {
+		t.Error("Acknowledge must reject unknown budgets")
+	}
+}
+
+// TestDefaultRulesAreOntologicallyConsistent is an ontology-drift guard: every
+// governance budget must track and escalate to real severity levels drawn from the
+// taxonomy and have a well-formed window/limit. This keeps the budget doctrine
+// semantically coherent with the severity taxonomy as both evolve independently.
+func TestDefaultRulesAreOntologicallyConsistent(t *testing.T) {
+	seen := map[string]bool{}
+	for _, r := range DefaultRules() {
+		if r.Name == "" || r.Limit <= 0 || r.Window <= 0 {
+			t.Errorf("budget %q has an invalid shape: %+v", r.Name, r)
+		}
+		if seen[r.Name] {
+			t.Errorf("duplicate budget name %q — names must be unique to be addressable", r.Name)
+		}
+		seen[r.Name] = true
+		if _, ok := severity.Parse(r.Tracks.String()); !ok {
+			t.Errorf("budget %q tracks an unknown severity %v", r.Name, r.Tracks)
+		}
+		if _, ok := severity.Parse(r.OnExhaust.String()); !ok {
+			t.Errorf("budget %q escalates to an unknown severity %v", r.Name, r.OnExhaust)
+		}
+	}
+}
+
 func statusByName(ss []Status, name string) Status {
 	for _, s := range ss {
 		if s.Name == name {

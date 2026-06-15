@@ -95,7 +95,9 @@ func (a *App) handleCSPReport(w http.ResponseWriter, r *http.Request) {
 	atomic.AddInt64(&metrics.MetricCSPViolations, 1)
 	recordCSPViolation(directive, env.Report.BlockedURI)
 	// Charge the governance breach budget — a CSP violation is a VIOLATION.
-	budget.Global.Record(severity.Violation, time.Now())
+	// Attribute the charge to the breached directive so an exhausted budget can
+	// name what consumed it (provenance), not just that it was spent.
+	budget.Global.RecordFrom(severity.Violation, "csp:"+directive, time.Now())
 	// Tag with the deployment build version for release attribution. Browser CSP
 	// reports carry no session/correlation context (unauthenticated POSTs), so the
 	// receiving build version is the meaningful attribution for debugging a
