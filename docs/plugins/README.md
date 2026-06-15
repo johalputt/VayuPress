@@ -75,6 +75,7 @@ Plugins only fire when `VAYU_PLUGINS_ENABLED=true`.
 | [`webhook-notify`](examples/webhook-notify) | `AllowNetwork: true` | An outbound integration that self-checks its granted capability before calling out. |
 | [`seo-stamp`](examples/seo-stamp) | `AllowedReadPaths` | Settings access: reads an exported `vayupress-theme.json` bundle from an allowlisted read path (self-checking the grant first) and stamps SEO from `site.author` / `head.keywords`. |
 | [`frontmatter-guard`](examples/frontmatter-guard) | none (fully isolated) | A pure governance check: validates editorial invariants and signals a failure via `{"ok": false}`, which the host records and quarantines on. |
+| [`trace-tap`](examples/trace-tap) | none (fully isolated) | An observability tap: reads the `correlation_id` / `causation_id` / `trace_id` the host passes on every call and echoes them in its log line, so plugin work stitches into the host's trace waterfall (`GET /api/v1/admin/trace/{correlation_id}`). |
 
 Build an example:
 
