@@ -37,8 +37,15 @@ BROWSER="$(find_browser)" || {
 shot() {
   local url="$1" out="$2" width="${3:-1440}" height="${4:-1024}"
   echo "Capturing $url -> $(basename "$out")"
+  # --virtual-time-budget gives headless Chrome 3 s of virtual time to finish
+  # loading all CSS/JS/fonts before the screenshot is taken. Without it the
+  # capture fires instantly and the page renders as unstyled HTML.
+  # --run-all-compositor-stages-before-draw ensures the GPU pipeline flushes.
   "$BROWSER" --headless=new --disable-gpu --hide-scrollbars \
-    --window-size="${width},${height}" --screenshot="$out" "$url" \
+    --window-size="${width},${height}" \
+    --virtual-time-budget=3000 \
+    --run-all-compositor-stages-before-draw \
+    --screenshot="$out" "$url" \
     || echo "  WARN: failed to capture $url" >&2
 }
 
