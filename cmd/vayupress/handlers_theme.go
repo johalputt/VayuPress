@@ -215,6 +215,11 @@ func (a *App) handleThemeSave(w http.ResponseWriter, r *http.Request) {
 		VerifyGoogle    string `json:"head.verify_google"`
 		VerifyBing      string `json:"head.verify_bing"`
 	}
+	// Cap the request body before decoding. The largest legitimate field is the
+	// 16 KB custom CSS (checked again post-decode); 64 KB leaves generous room for
+	// the other small fields while refusing an oversized body up front rather than
+	// streaming it into the decoder.
+	r.Body = http.MaxBytesReader(w, r.Body, 64*1024)
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		fail(400, "invalid JSON: "+err.Error())
 		return
