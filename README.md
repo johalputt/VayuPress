@@ -70,11 +70,9 @@
 
 ### Theme & Site Settings Control Panel
 
-> Capture with `ARTICLE_SLUG=… API_KEY=… ./scripts/capture-screenshots.sh`
-> (writes `docs/screenshots/theme-panel.png` from `/admin/theme`). Once
-> generated, embed with `![VayuPress Theme Control Panel](docs/screenshots/theme-panel.png)`.
+![VayuPress Theme Control Panel](docs/screenshots/theme-panel.png)
 
-*SQLite-journaled policy engine — live pass/warn/fail status strip with run-history trend sparkline, full live-evaluation table, and a persistent evaluation log (every run recorded to `policy_evaluations`) for provenance and trend analysis.*
+*Theme console — identity fields (name/tagline/description/author), palette editor with live hex+swatch sync and WCAG AA contrast advisory, custom CSS (16 KB, served same-origin via `/theme.css`), declarative `<head>` capabilities (keywords, theme colour, robots, verification tokens), JSON export/import for backup and cross-instance transfer, and one-click Reset to Defaults. All changes are governed writes: mode-gated, CSRF-protected, and immediately reflected across public pages.*
 
 ---
 

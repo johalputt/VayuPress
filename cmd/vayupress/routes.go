@@ -149,6 +149,7 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 		r.Get("/admin/theme", a.handleThemeGet)
 		r.Get("/admin/theme/export", a.handleThemeExport)
 		r.With(auth.CSRFTokenMiddleware).Post("/admin/theme", a.handleThemeSave)
+		r.With(auth.CSRFTokenMiddleware).Post("/admin/theme/reset", a.handleThemeReset)
 
 		r.HandleFunc("/debug/pprof/", a.pprofHandler)
 		r.HandleFunc("/debug/pprof/cmdline", a.pprofHandler)

@@ -182,6 +182,61 @@ func (a *App) handleThemeExport(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleThemeReset restores every setting to its compile-time default and
+// propagates the change through the render pipeline identically to a Save.
+// It is a CSRF-protected POST — idempotent on a clean install, but a
+// deliberate, irreversible write on a customised one. The operator must
+// explicitly confirm in the browser before the request is sent.
+func (a *App) handleThemeReset(w http.ResponseWriter, r *http.Request) {
+	cur := mode.Global.Current()
+	if cur == mode.ModeReadOnly || cur == mode.ModeQuarantined {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(503)
+		json.NewEncoder(w).Encode(map[string]string{"error": "settings cannot be reset in " + string(cur) + " mode"}) //nolint:errcheck
+		return
+	}
+
+	if err := a.siteSettings.SetMany(r.Context(), settings.Defaults); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(500)
+		json.NewEncoder(w).Encode(map[string]string{"error": "reset failed: " + err.Error()}) //nolint:errcheck
+		return
+	}
+
+	if newVals, err := a.siteSettings.GetAll(r.Context()); err == nil {
+		render.SetActiveSettings(render.SiteSettings{
+			Name:         newVals[settings.KeySiteName],
+			Tagline:      newVals[settings.KeySiteTagline],
+			Description:  newVals[settings.KeySiteDescription],
+			Author:       newVals[settings.KeySiteAuthor],
+			PrimaryLight: newVals[settings.KeyThemePrimaryLight],
+			PrimaryDark:  newVals[settings.KeyThemePrimaryDark],
+			AccentLight:  newVals[settings.KeyThemeAccentLight],
+			AccentDark:   newVals[settings.KeyThemeAccentDark],
+			CustomCSS:    newVals[settings.KeyThemeCustomCSS],
+			Keywords:     newVals[settings.KeyHeadKeywords],
+			ThemeColor:   newVals[settings.KeyHeadThemeColor],
+			Robots:       newVals[settings.KeyHeadRobots],
+			VerifyGoogle: newVals[settings.KeyHeadVerifyGoogle],
+			VerifyBing:   newVals[settings.KeyHeadVerifyBing],
+		})
+	}
+
+	render.CachePurgeAll()
+	go generateSitemap()
+	go generateRSS()
+	go generateRobots()
+
+	logging.LogJSON(logging.LogFields{
+		Level: "info", Component: "theme", Severity: "info",
+		Msg: "site settings reset to defaults", RequestID: getRequestID(r),
+	})
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"}) //nolint:errcheck
+}
+
 // handleThemeSave processes the JSON POST from the theme editor.
 // The browser sends application/json via fetch with the X-CSRF-Token header.
 func (a *App) handleThemeSave(w http.ResponseWriter, r *http.Request) {
@@ -587,6 +642,7 @@ func themeEditorPage(vals map[string]string, modeStr, nonce, errMsg string) stri
   <button id="save-btn" class="theme-save">◑ Save Settings</button>
   <a class="btn" href="/admin/theme/export" download>⭳ Export JSON</a>
   <button type="button" id="import-btn" class="btn">⭱ Import JSON</button>
+  <button type="button" id="reset-btn" class="btn btn-danger">↺ Reset to Defaults</button>
   <input type="file" id="import-file" accept="application/json,.json" class="vayu-hidden">
   <span id="save-status" class="save-status"></span>
 </div>
@@ -701,6 +757,34 @@ func themeEditorPage(vals map[string]string, modeStr, nonce, errMsg string) stri
       }
     }).catch(function(e){
       btn.disabled=false;
+      status.style.color='var(--error)';
+      status.textContent='✗ Network error: '+e.message;
+    });
+  });
+  // Reset to defaults — requires explicit confirmation; reloads the page on success
+  // so the form reflects the restored values without any stale state.
+  var resetBtn=document.getElementById('reset-btn');
+  resetBtn.addEventListener('click', function(){
+    if(!confirm('Reset ALL settings to factory defaults? This cannot be undone.')) return;
+    resetBtn.disabled=true;
+    status.style.color='var(--muted)';
+    status.textContent='Resetting…';
+    fetch('/admin/theme/reset',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},
+      body:'{}'
+    }).then(function(r){return r.json();}).then(function(data){
+      if(data.error){
+        resetBtn.disabled=false;
+        status.style.color='var(--error)';
+        status.textContent='✗ '+data.error;
+      } else {
+        status.style.color='var(--green)';
+        status.textContent='↺ Defaults restored — reloading…';
+        setTimeout(function(){ window.location.reload(); }, 900);
+      }
+    }).catch(function(e){
+      resetBtn.disabled=false;
       status.style.color='var(--error)';
       status.textContent='✗ Network error: '+e.message;
     });
