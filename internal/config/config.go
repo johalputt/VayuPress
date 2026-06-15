@@ -34,6 +34,7 @@ var Cfg struct {
 	PluginMaxConcurrent int // max simultaneous plugin executions
 	MaintenanceMode     bool
 	CSPReportOnly       bool // send Content-Security-Policy-Report-Only (staging) instead of enforcing
+	GovernanceActuation bool // when true, exhausted governance budgets drive automatic mode escalation (default off)
 	VacuumCooldownMin   int
 	MaxReplayCount      int
 	ReplayBatchLimit    int
@@ -69,6 +70,7 @@ func Load() {
 	Cfg.SmokeTestTimeout = time.Duration(st) * time.Second
 	Cfg.MaintenanceMode = os.Getenv("VAYU_MAINTENANCE") == "true"
 	Cfg.CSPReportOnly = os.Getenv("CSP_REPORT_ONLY") == "true"
+	Cfg.GovernanceActuation = os.Getenv("GOVERNANCE_ACTUATION") == "true"
 	Cfg.VacuumCooldownMin = GetEnvAsInt("VACUUM_COOLDOWN_MIN", 10)
 	Cfg.MaxReplayCount = GetEnvAsInt("MAX_REPLAY_COUNT", 3)
 	Cfg.ReplayBatchLimit = GetEnvAsInt("REPLAY_BATCH_LIMIT", 100)

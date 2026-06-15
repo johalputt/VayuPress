@@ -1494,13 +1494,22 @@ func (a *App) handleSeverityTaxonomy(w http.ResponseWriter, r *http.Request) {
 
 // handleGovernanceBudgets returns the live governance error-budget state: how much
 // of each severity budget is consumed and the escalation recommended at
-// exhaustion. Accounting + recommendation only — actuation into the mode engine is
-// intentionally NOT performed here (see internal/budget for the scope boundary).
+// exhaustion. When the gated actuator (Ω12) is enabled it also runs one
+// evaluation tick — driving exhausted budgets into their protective mode — and
+// reports what it did; when disabled (the default) this is accounting only.
 func (a *App) handleGovernanceBudgets(w http.ResponseWriter, r *http.Request) {
+	now := time.Now()
+	actuations := budget.GlobalActuator.Evaluate(now)
+	note := "accounting + recommendation; mode transitions are operator/gated, not auto-applied. POST /api/v1/admin/budgets/ack {name} to clear debt."
+	if budget.GlobalActuator.Enabled() {
+		note = "actuation ENABLED (Ω12): exhausted budgets drive automatic, graph-respecting mode escalation. See actuations[]."
+	}
 	writeJSON(w, r, http.StatusOK, map[string]interface{}{
-		"budgets":      budget.Global.Status(time.Now()),
-		"note":         "accounting + recommendation; mode transitions are operator/gated, not auto-applied. POST /api/v1/admin/budgets/ack {name} to clear debt.",
-		"generated_at": time.Now().UTC().Format(time.RFC3339),
+		"budgets":           budget.Global.Status(now),
+		"actuation_enabled": budget.GlobalActuator.Enabled(),
+		"actuations":        actuations,
+		"note":              note,
+		"generated_at":      now.UTC().Format(time.RFC3339),
 	})
 }
 

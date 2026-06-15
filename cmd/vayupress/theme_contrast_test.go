@@ -34,8 +34,18 @@ func TestDefaultPalettePassesWCAGAA(t *testing.T) {
 // in the import key list — so export/import and the editor can never fall out of
 // sync with the allowlist as keys are added or removed.
 func TestThemeEditorCoversSettingsAllowlist(t *testing.T) {
+	// Branding keys are managed out-of-band by the multipart favicon upload
+	// handler (POST /admin/theme/favicon), not the JSON Save form, so they are
+	// deliberately absent from the form-field / import-key drift guard below.
+	outOfBand := map[string]bool{
+		settings.KeyBrandFavicon:     true,
+		settings.KeyBrandFaviconType: true,
+	}
 	page := themeEditorPage(map[string]string{}, "NORMAL", "test-nonce", "")
 	for key := range settings.AllKeys {
+		if outOfBand[key] {
+			continue
+		}
 		if !strings.Contains(page, `id="`+key+`"`) {
 			t.Errorf("settings key %q has no input field in the theme editor", key)
 		}

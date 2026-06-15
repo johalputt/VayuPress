@@ -25,6 +25,7 @@ import (
 
 	"github.com/johalputt/vayupress/internal/api"
 	"github.com/johalputt/vayupress/internal/auth"
+	"github.com/johalputt/vayupress/internal/budget"
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/events"
@@ -190,6 +191,19 @@ func main() {
 		os.Exit(1)
 	}
 	logging.LogInfo("main", "database ready — WAL adaptive + migrations + checksum drift verified (ADR-0033/0034)")
+
+	// Governance budget actuation (Ω12) — OFF by default. Only when an operator
+	// explicitly sets GOVERNANCE_ACTUATION=true does an exhausted budget drive an
+	// automatic mode escalation; otherwise budgets remain recommend-only.
+	if config.Cfg.GovernanceActuation {
+		budget.GlobalActuator.SetEnabled(true)
+		logging.LogJSON(logging.LogFields{
+			Level: "warn", Component: "budget-actuator", Severity: "notice",
+			Msg: "governance budget actuation ENABLED — exhausted budgets will drive automatic mode escalation",
+		})
+	} else {
+		logging.LogInfo("budget-actuator", "governance budget actuation disabled (recommend-only) — set GOVERNANCE_ACTUATION=true to enable")
+	}
 
 	// Site settings store — warm cache and push initial values into the render pipeline.
 	a.siteSettings = settings.New(dbpkg.DB)
