@@ -1,0 +1,67 @@
+/* ── Custom styles that complement Tailwind ── */
+
+:root {
+  --teal: #0d9488;
+  --saffron: #f59e0b;
+  --ink: #0a0f1e;
+}
+
+/* gradient text helper */
+.text-gradient {
+  background: linear-gradient(135deg, #2dd4bf 0%, #f59e0b 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* subtle grid background for hero */
+.hero-grid {
+  background-image:
+    linear-gradient(rgba(13,148,136,0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(13,148,136,0.08) 1px, transparent 1px);
+  background-size: 64px 64px;
+}
+
+/* ADR ticker animation */
+.adr-ticker {
+  animation: ticker 40s linear infinite;
+}
+
+.adr-ticker:hover {
+  animation-play-state: paused;
+}
+
+@keyframes ticker {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+
+/* feature card subtle entrance */
+.feature-card {
+  animation: fadeUp 0.5s ease both;
+}
+
+/* scrollbar polish */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+
+/* selection */
+::selection { background: rgba(13,148,136,0.35); color: #fff; }
+
+/* code blocks */
+pre code { color: #e2e8f0; }
+
+/* smooth focus ring */
+:focus-visible {
+  outline: 2px solid #0d9488;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* responsive screenshot images */
+section img {
+  display: block;
+  width: 100%;
+}
