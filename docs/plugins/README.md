@@ -73,6 +73,8 @@ Plugins only fire when `VAYU_PLUGINS_ENABLED=true`.
 |---------|--------------|--------------|
 | [`wordcount`](examples/wordcount) | none (fully isolated) | A pure, side-effect-free transform that reads the payload and emits a log line. |
 | [`webhook-notify`](examples/webhook-notify) | `AllowNetwork: true` | An outbound integration that self-checks its granted capability before calling out. |
+| [`seo-stamp`](examples/seo-stamp) | `AllowedReadPaths` | Settings access: reads an exported `vayupress-theme.json` bundle from an allowlisted read path (self-checking the grant first) and stamps SEO from `site.author` / `head.keywords`. |
+| [`frontmatter-guard`](examples/frontmatter-guard) | none (fully isolated) | A pure governance check: validates editorial invariants and signals a failure via `{"ok": false}`, which the host records and quarantines on. |
 
 Build an example:
 
