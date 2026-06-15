@@ -75,18 +75,40 @@ func (rs *ReplayStore) Mark(activityID string) error {
 	return nil
 }
 
-// MarkOrReject marks the activity as seen if new; returns ErrReplay if duplicate.
+// MarkOrReject atomically marks the activity as seen if new; returns ErrReplay
+// if it was already recorded. Atomicity matters: a check-then-insert (Seen then
+// Mark) has a TOCTOU window where two concurrent deliveries of the same activity
+// can both observe "unseen" and both be admitted. Here the single INSERT is the
+// decision — rows-affected == 0 means the PRIMARY KEY already held the ID, i.e. a
+// replay — so the verdict is correct regardless of connection pool size.
 var ErrReplay = fmt.Errorf("federation: replay detected — activity already processed")
 
 func (rs *ReplayStore) MarkOrReject(activityID string) error {
-	seen, err := rs.Seen(activityID)
+	if activityID == "" {
+		return fmt.Errorf("replay: empty activity ID")
+	}
+	// Prune expired entries first so a long-expired ID can be legitimately re-seen.
+	if _, err := rs.db.Exec(
+		`DELETE FROM federation_seen_activities WHERE expires_at < datetime('now','utc')`,
+	); err != nil {
+		return fmt.Errorf("replay: prune: %w", err)
+	}
+	expiresAt := time.Now().UTC().Add(rs.ttl).Format("2006-01-02 15:04:05")
+	res, err := rs.db.Exec(
+		`INSERT OR IGNORE INTO federation_seen_activities(activity_id, expires_at) VALUES(?,?)`,
+		activityID, expiresAt,
+	)
 	if err != nil {
-		return err
+		return fmt.Errorf("replay: mark-or-reject: %w", err)
 	}
-	if seen {
-		return ErrReplay
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("replay: rows-affected: %w", err)
 	}
-	return rs.Mark(activityID)
+	if n == 0 {
+		return ErrReplay // PRIMARY KEY collision → already processed
+	}
+	return nil
 }
 
 // Count returns the number of active (non-expired) entries in the store.

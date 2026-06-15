@@ -63,6 +63,20 @@ type Server struct {
 	// every inbound request; when nil, verification is skipped (the historical
 	// behaviour, retained for tests and trusted single-tenant deployments).
 	keyResolver func(keyID string) (string, error)
+
+	// replay, when non-nil, gives InboxHandler durable replay protection: each
+	// inbound activity's id is recorded once and a re-delivery of the same id is
+	// accepted idempotently without being processed twice. Nil disables it.
+	replay *ReplayStore
+}
+
+// SetReplayStore enables durable replay protection on the inbox. Pass a
+// ReplayStore whose EnsureSchema has been called; once set, a duplicate activity
+// id is dropped (idempotent accept) rather than re-applied.
+func (s *Server) SetReplayStore(rs *ReplayStore) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.replay = rs
 }
 
 // SetKeyResolver enables HTTP-signature enforcement on the inbox. The resolver
@@ -155,6 +169,33 @@ func (s *Server) InboxHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
+
+	// Durable replay protection (when configured). A signed activity that a
+	// hostile peer captured and re-sends — or a benign network retry — must not be
+	// processed twice. Replay protection keys on the activity id, so an activity
+	// with no id cannot be deduplicated and is refused outright.
+	s.mu.RLock()
+	replay := s.replay
+	s.mu.RUnlock()
+	if replay != nil {
+		if act.ID == "" {
+			http.Error(w, "activity missing id", http.StatusBadRequest)
+			return
+		}
+		switch err := replay.MarkOrReject(act.ID); err {
+		case nil:
+			// fresh — fall through and process
+		case ErrReplay:
+			// Idempotent accept: acknowledge so the peer stops retrying, but do
+			// not re-apply. 200 (not 202) signals "already handled".
+			w.WriteHeader(http.StatusOK)
+			return
+		default:
+			http.Error(w, "replay store error", http.StatusInternalServerError)
+			return
+		}
+	}
+
 	s.ReceiveActivity(act)
 	w.WriteHeader(http.StatusAccepted)
 }
