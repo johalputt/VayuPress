@@ -63,9 +63,11 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	r.Get("/theme.css", a.handleThemeCSS)
 	// Public theme toggle script (same-origin → script-src 'self', no nonce).
 	r.Get("/static/js/theme-toggle.js", a.handleThemeToggleJS)
-	r.Get("/static/favicon-dark.png", servePNG(faviconDarkPNG))
-	r.Get("/static/favicon-light.png", servePNG(faviconLightPNG))
-	r.Get("/favicon.ico", servePNG(faviconDarkPNG))
+	// Favicon routes serve the operator's uploaded brand mark when one is stored
+	// (see /admin/theme branding), falling back to the embedded default per scheme.
+	r.Get("/static/favicon-dark.png", a.serveFavicon(faviconDarkPNG))
+	r.Get("/static/favicon-light.png", a.serveFavicon(faviconLightPNG))
+	r.Get("/favicon.ico", a.serveFavicon(faviconDarkPNG))
 	r.Get("/static/css/{file}", func(w http.ResponseWriter, r *http.Request) {
 		file := chi.URLParam(r, "file")
 		if !map[string]bool{"article.css": true, "admin.css": true, "high-contrast.css": true, "pico.min.css": true, "custom.css": true}[file] {
@@ -150,6 +152,7 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 		r.Get("/admin/theme/export", a.handleThemeExport)
 		r.With(auth.CSRFTokenMiddleware).Post("/admin/theme", a.handleThemeSave)
 		r.With(auth.CSRFTokenMiddleware).Post("/admin/theme/reset", a.handleThemeReset)
+		r.With(auth.CSRFTokenMiddleware).Post("/admin/theme/favicon", a.handleFaviconUpload)
 
 		r.HandleFunc("/debug/pprof/", a.pprofHandler)
 		r.HandleFunc("/debug/pprof/cmdline", a.pprofHandler)

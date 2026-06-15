@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/mode"
 	"github.com/johalputt/vayupress/internal/render"
@@ -147,6 +148,15 @@ func (a *App) handleThemeGet(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to load settings", 500)
 		return
 	}
+	// Seed the CSRF cookie the page's Save/Reset/favicon POSTs read back via the
+	// X-CSRF-Token header. This GET route isn't wrapped in CSRFTokenMiddleware, so
+	// without this a visitor landing directly on /admin/theme would have no token
+	// and every governed write would 403 until they bounced through another page.
+	if c, err := r.Cookie("vp_csrf"); err != nil || c.Value == "" {
+		if token := auth.GenerateCSRFToken(); token != "" {
+			http.SetCookie(w, &http.Cookie{Name: "vp_csrf", Value: token, Path: "/", SameSite: http.SameSiteStrictMode, HttpOnly: false, Secure: csrfCookieSecure(), MaxAge: 3600})
+		}
+	}
 	modeStr := string(mode.Global.Current())
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	fmt.Fprint(w, themeEditorPage(vals, modeStr, render.CSPNonce(r), ""))
@@ -168,9 +178,14 @@ func (a *App) handleThemeExport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Emit only the canonical allowlist, so an export never carries anything the
-	// import path wouldn't accept back.
+	// import path wouldn't accept back. Branding (the base64 favicon blob) is
+	// deliberately excluded — it is binary, large, and not round-tripped by the
+	// importer, so it would only bloat an otherwise shareable text bundle.
 	out := make(map[string]string, len(settings.AllKeys))
 	for key := range settings.AllKeys {
+		if key == settings.KeyBrandFavicon || key == settings.KeyBrandFaviconType {
+			continue
+		}
 		out[key] = vals[key]
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
@@ -395,6 +410,15 @@ func (a *App) handleThemeSave(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// faviconStateLabel describes whether a custom favicon is in effect, for the
+// branding tab's status line.
+func faviconStateLabel(stored string) string {
+	if stored != "" {
+		return "Custom favicon active — stored in the database."
+	}
+	return "Using the default VayuPress mark."
+}
+
 // themeEditorPage returns the full HTML for the theme editor admin page.
 func themeEditorPage(vals map[string]string, modeStr, nonce, errMsg string) string {
 	safeErr := template.HTMLEscapeString(errMsg)
@@ -497,6 +521,7 @@ func themeEditorPage(vals map[string]string, modeStr, nonce, errMsg string) stri
 	sb.WriteString(`
 <div class="theme-tabs">
   <button type="button" class="theme-tab active" data-tab="identity">Identity</button>
+  <button type="button" class="theme-tab" data-tab="branding">Branding</button>
   <button type="button" class="theme-tab" data-tab="palette">Palette</button>
   <button type="button" class="theme-tab" data-tab="code">Custom CSS</button>
   <button type="button" class="theme-tab" data-tab="head">Head &amp; SEO</button>
@@ -530,6 +555,32 @@ func themeEditorPage(vals map[string]string, modeStr, nonce, errMsg string) stri
     <div>
       <input type="text" id="site.author" class="field-input" value="` + v(settings.KeySiteAuthor) + `" maxlength="120" placeholder="Ankush Choudhary Johal">
       <div class="field-hint">Author name in article footers and JSON-LD schema.</div>
+    </div>
+  </div>
+</div>
+
+<!-- Branding (favicon / logo upload) -->
+<div id="tab-branding" class="theme-panel">
+  <div class="warn-box">Upload a custom favicon — a <strong>PNG</strong> or <strong>ICO</strong>, square, ≤ 256 KB. It is validated by magic number, stored in the database, and replaces the default mark in every browser tab and nav brand. Changes apply immediately.</div>
+  <div class="field-row">
+    <span class="field-label">Current favicon</span>
+    <div>
+      <div class="favicon-preview">
+        <img id="favicon-img" src="/static/favicon-light.png" alt="Current favicon" width="48" height="48">
+        <span class="field-hint" id="favicon-state">` + faviconStateLabel(raw(settings.KeyBrandFavicon)) + `</span>
+      </div>
+    </div>
+  </div>
+  <div class="field-row">
+    <span class="field-label">Upload new</span>
+    <div>
+      <input type="file" id="favicon-file" accept="image/png,image/x-icon,.png,.ico" class="field-input">
+      <div class="field-hint">PNG or ICO only. A 32×32 or 48×48 square renders best.</div>
+      <div class="theme-actions favicon-actions">
+        <button type="button" id="favicon-upload-btn" class="btn">⭱ Upload favicon</button>
+        <button type="button" id="favicon-remove-btn" class="btn btn-danger">↺ Remove (use default)</button>
+        <span id="favicon-status" class="save-status"></span>
+      </div>
     </div>
   </div>
 </div>
@@ -789,6 +840,48 @@ func themeEditorPage(vals map[string]string, modeStr, nonce, errMsg string) stri
       status.textContent='✗ Network error: '+e.message;
     });
   });
+  // Branding: favicon upload (multipart) and removal. The CSRF token rides the
+  // X-CSRF-Token header so it doesn't collide with the multipart body.
+  var favFile=document.getElementById('favicon-file');
+  var favUpload=document.getElementById('favicon-upload-btn');
+  var favRemove=document.getElementById('favicon-remove-btn');
+  var favStatus=document.getElementById('favicon-status');
+  var favImg=document.getElementById('favicon-img');
+  var favState=document.getElementById('favicon-state');
+  function bust(el){ if(el) el.src='/static/favicon-light.png?t='+Date.now(); }
+  if(favUpload){
+    favUpload.addEventListener('click', function(){
+      var f=favFile&&favFile.files&&favFile.files[0];
+      if(!f){ favStatus.style.color='var(--error)'; favStatus.textContent='✗ Choose a PNG or ICO first'; return; }
+      var fd=new FormData(); fd.append('favicon', f);
+      favUpload.disabled=true;
+      favStatus.style.color='var(--muted)'; favStatus.textContent='Uploading…';
+      fetch('/admin/theme/favicon',{method:'POST',headers:{'X-CSRF-Token':csrf()},body:fd})
+        .then(function(r){return r.json();}).then(function(data){
+          favUpload.disabled=false;
+          if(data.error){ favStatus.style.color='var(--error)'; favStatus.textContent='✗ '+data.error; return; }
+          favStatus.style.color='var(--green)'; favStatus.textContent='✓ '+(data.message||'Uploaded');
+          if(favState) favState.textContent='Custom favicon active — stored in the database.';
+          bust(favImg); favFile.value='';
+        }).catch(function(e){ favUpload.disabled=false; favStatus.style.color='var(--error)'; favStatus.textContent='✗ Network error: '+e.message; });
+    });
+  }
+  if(favRemove){
+    favRemove.addEventListener('click', function(){
+      if(!confirm('Remove the custom favicon and restore the default mark?')) return;
+      var fd=new FormData(); fd.append('remove','1');
+      favRemove.disabled=true;
+      favStatus.style.color='var(--muted)'; favStatus.textContent='Removing…';
+      fetch('/admin/theme/favicon',{method:'POST',headers:{'X-CSRF-Token':csrf()},body:fd})
+        .then(function(r){return r.json();}).then(function(data){
+          favRemove.disabled=false;
+          if(data.error){ favStatus.style.color='var(--error)'; favStatus.textContent='✗ '+data.error; return; }
+          favStatus.style.color='var(--green)'; favStatus.textContent='↺ '+(data.message||'Removed');
+          if(favState) favState.textContent='Using the default VayuPress mark.';
+          bust(favImg);
+        }).catch(function(e){ favRemove.disabled=false; favStatus.style.color='var(--error)'; favStatus.textContent='✗ Network error: '+e.message; });
+    });
+  }
 })();
 </script>
 </main>

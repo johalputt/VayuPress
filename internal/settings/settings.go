@@ -33,6 +33,14 @@ const (
 	KeyHeadRobots       = "head.robots"        // <meta name="robots"> (allowlisted)
 	KeyHeadVerifyGoogle = "head.verify_google" // google-site-verification token
 	KeyHeadVerifyBing   = "head.verify_bing"   // msvalidate.01 token
+
+	// Branding. A custom favicon/logo uploaded through the theme console is
+	// stored base64-encoded in the DB (sovereign — survives in backups, no
+	// extra file management) and overrides the embedded default marks at the
+	// favicon serving routes. The type key records the validated MIME so the
+	// serving handler sets the right Content-Type.
+	KeyBrandFavicon     = "brand.favicon"      // base64-encoded PNG/ICO bytes
+	KeyBrandFaviconType = "brand.favicon_type" // "image/png" | "image/x-icon"
 )
 
 // RobotsOptions is the allowlist of accepted <meta name="robots"> directives.
@@ -60,6 +68,8 @@ var AllKeys = map[string]bool{
 	KeyHeadRobots:        true,
 	KeyHeadVerifyGoogle:  true,
 	KeyHeadVerifyBing:    true,
+	KeyBrandFavicon:      true,
+	KeyBrandFaviconType:  true,
 }
 
 // Defaults are returned when no DB value exists for a key.
@@ -78,6 +88,8 @@ var Defaults = map[string]string{
 	KeyHeadRobots:        "",
 	KeyHeadVerifyGoogle:  "",
 	KeyHeadVerifyBing:    "",
+	KeyBrandFavicon:      "",
+	KeyBrandFaviconType:  "",
 }
 
 // Store is a thread-safe settings store with an in-process read cache.
