@@ -40,11 +40,10 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install puppeteer (downloads pinned Chromium)
+      - name: Install Playwright + Chromium
         run: |
-          npm install puppeteer
-          # Let puppeteer download its own Chromium — avoids snap sandbox
-          # confinement that blocks CSS/font sub-resource loads from localhost.
+          npm install playwright
+          npx playwright install --with-deps chromium
 
       - name: Build VayuPress
         run: |

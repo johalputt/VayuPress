@@ -10,7 +10,14 @@
 // Exits 0 on success, 1 on error (non-fatal — capture-screenshots.sh warns
 // and continues so one bad page doesn't kill the whole run).
 
-import puppeteer from 'puppeteer';
+#!/usr/bin/env node
+// Takes a styled screenshot using Playwright Chromium.
+// Playwright installs its own browser and handles CI sandbox correctly.
+//
+// Usage:
+//   node scripts/screenshot.mjs <url> <output.png> [width] [height]
+
+import { chromium } from 'playwright';
 import { resolve } from 'path';
 
 const [,, url, out, w, h] = process.argv;
@@ -22,18 +29,18 @@ if (!url || !out) {
 const width  = parseInt(w  || '1440', 10);
 const height = parseInt(h  || '1024', 10);
 
-// puppeteer (full package) uses its own pinned Chromium — avoids snap sandbox
-// confinement issues that block CSS/font sub-resource loads from localhost.
-const browser = await puppeteer.launch({
-  headless: true,
-  args: [
-    '--no-sandbox',
-    '--disable-setuid-sandbox',
-    '--disable-dev-shm-usage',
-    '--disable-gpu',
-    '--hide-scrollbars',
-  ],
-});
+const browser = await chromium.launch();
+try {
+  const page = await browser.newPage();
+  await page.setViewportSize({ width, height });
+  // waitUntil networkidle waits for all CSS/fonts/JS to finish loading.
+  await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
+  await page.screenshot({ path: resolve(out), fullPage: false });
+  console.log(`  OK  ${out}`);
+} finally {
+  await browser.close();
+}
+
 
 try {
   const page = await browser.newPage();
