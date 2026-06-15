@@ -43,15 +43,18 @@ jobs:
 
       - name: Build VayuPress
         run: |
-          mkdir -p /tmp/vayupress
+          mkdir -p /tmp/vayupress/cache /tmp/vayupress/tmp
           CGO_ENABLED=1 go build -o /tmp/vayupress/vayupress ./cmd/vayupress/
 
       - name: Start server
         run: |
           /tmp/vayupress/vayupress > /tmp/vayupress/server.log 2>&1 &
           echo $! > /tmp/vayupress/server.pid
-          for i in $(seq 1 30); do
-            if curl -fsS http://localhost:8080/smoke-test >/dev/null 2>&1; then
+          # Poll /health/live (instant liveness check, no DB writes) rather than
+          # /smoke-test (which does a write round-trip and can take 10+ seconds
+          # on a cold runner). 90 s cap covers slow runners.
+          for i in $(seq 1 90); do
+            if curl -fsS http://localhost:8080/health/live >/dev/null 2>&1; then
               echo "server up"; exit 0
             fi
             sleep 1
@@ -84,7 +87,7 @@ jobs:
             go run ./scripts/screenshot-proxy > /tmp/vayupress/proxy.log 2>&1 &
           echo $! > /tmp/vayupress/proxy.pid
           for i in $(seq 1 20); do
-            if curl -fsS http://localhost:8088/smoke-test >/dev/null 2>&1; then
+            if curl -fsS http://localhost:8088/health/live >/dev/null 2>&1; then
               echo "proxy up"; exit 0
             fi
             sleep 1
