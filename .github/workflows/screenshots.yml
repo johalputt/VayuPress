@@ -100,15 +100,25 @@ jobs:
           done
           echo "proxy did not start"; cat /tmp/vayupress/proxy.log; exit 1
 
+      - name: Pre-flight checks
+        run: |
+          # Verify admin pages are reachable through proxy before screenshotting.
+          # This also warms the settings cache so /admin/theme won't re-query DB mid-shot.
+          echo "--- /admin/theme ---"
+          STATUS=$(curl -sS -o /tmp/theme-resp.txt -w "%{http_code}" \
+            -H "X-API-Key: $API_KEY" "$PROXY_URL/admin/theme")
+          echo "HTTP $STATUS"
+          if [ "$STATUS" != "200" ]; then
+            echo "BODY:"; cat /tmp/theme-resp.txt
+            echo "SERVER LOG:"; cat /tmp/vayupress/server.log
+            exit 1
+          fi
+          echo "--- /admin/adr ---"
+          curl -sS -H "X-API-Key: $API_KEY" "$PROXY_URL/admin/adr" | head -3
+          echo "--- pre-flight OK ---"
+
       - name: Capture screenshots
         run: |
-          # Wait for DB to settle (smoke-test does a write round-trip).
-          for i in $(seq 1 30); do
-            if curl -fsS -H "X-API-Key: $API_KEY" http://localhost:8080/smoke-test >/dev/null 2>&1; then
-              echo "DB ready"; break
-            fi
-            sleep 1
-          done
           API_KEY=$API_KEY ARTICLE_SLUG=hello-vayupress \
             ./scripts/capture-screenshots.sh "$PROXY_URL"
 
