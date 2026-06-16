@@ -21,6 +21,7 @@ import (
 	"github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/metrics"
+	"github.com/johalputt/vayupress/internal/seo"
 	"github.com/microcosm-cc/bluemonday"
 )
 
@@ -297,6 +298,9 @@ type articlePage struct {
 	ThemeToggleJSLink   template.HTML
 	SiteName            string
 	Author              string
+	// SEO fields computed by internal/seo
+	SEODescription string
+	OGImage        string
 }
 
 var articleTmpl = template.Must(template.New("article").Funcs(template.FuncMap{
@@ -333,19 +337,24 @@ var articleTmpl = template.Must(template.New("article").Funcs(template.FuncMap{
 }).Parse(`<!DOCTYPE html><html lang="en" data-theme="dark"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{.Title}} — {{.Domain}}</title>
-<meta name="description" content="{{trunc .Content 160}}">
+<meta name="description" content="{{if .SEODescription}}{{.SEODescription}}{{else}}{{trunc .Content 160}}{{end}}">
 <meta name="generator" content="VayuPress {{.Version}}">
 <link rel="canonical" href="https://{{.Domain}}/{{.Slug}}">
-<meta property="og:type" content="article"><meta property="og:title" content="{{.Title}}">
+<meta property="og:type" content="article">
+<meta property="og:title" content="{{.Title}}">
+<meta property="og:description" content="{{if .SEODescription}}{{.SEODescription}}{{else}}{{trunc .Content 160}}{{end}}">
 <meta property="og:url" content="https://{{.Domain}}/{{.Slug}}">
-<meta property="og:site_name" content="{{.Domain}}"><meta property="og:locale" content="en">
-<meta property="og:description" content="{{trunc .Content 200}}">
+<meta property="og:site_name" content="{{if .SiteName}}{{.SiteName}}{{else}}{{.Domain}}{{end}}">
+<meta property="og:locale" content="en">
+{{if .OGImage}}<meta property="og:image" content="{{.OGImage}}">{{end}}
 <meta property="article:published_time" content="{{.CreatedAt | isoDate}}">
 <meta property="article:modified_time" content="{{.UpdatedAt | isoDate}}">
 {{range .Tags}}<meta property="article:tag" content="{{.}}">{{end}}
-<meta name="twitter:card" content="summary"><meta name="twitter:title" content="{{.Title}}">
-<meta name="twitter:description" content="{{trunc .Content 200}}">
-<script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","mainEntityOfPage":{"@type":"WebPage","@id":"https://{{.Domain}}/{{.Slug}}"},"headline":"{{.Title | jsonAttr}}","description":"{{.Content | jsonAttr}}","datePublished":"{{.CreatedAt | isoDate}}","dateModified":"{{.UpdatedAt | isoDate}}","inLanguage":"en","author":{"@type":"Person","name":"Ankush Choudhary Johal","url":"https://{{.Domain}}/about"},"publisher":{"@type":"Organization","name":"VayuPress","url":"https://{{.Domain}}"}}</script>
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="{{.Title}}">
+<meta name="twitter:description" content="{{if .SEODescription}}{{.SEODescription}}{{else}}{{trunc .Content 160}}{{end}}">
+{{if .OGImage}}<meta name="twitter:image" content="{{.OGImage}}">{{end}}
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"Article","headline":"{{.Title | jsonAttr}}","description":"{{if .SEODescription}}{{.SEODescription | jsonAttr}}{{else}}{{.Content | jsonAttr}}{{end}}","datePublished":"{{.CreatedAt | isoDate}}","dateModified":"{{.UpdatedAt | isoDate}}","url":"https://{{.Domain}}/{{.Slug}}","inLanguage":"en","author":{"@type":"Person","name":"Ankush Choudhary Johal","url":"https://{{.Domain}}/about"},"publisher":{"@type":"Organization","name":"VayuPress","url":"https://{{.Domain}}"}}</script>
 {{.PicoCSSLink}}{{.CustomCSSLink}}{{.ArticleCSSLink}}{{.HighContrastCSSLink}}{{.ThemeCSSLink}}{{.HeadMeta}}{{.ThemeToggleJSLink}}
 <link rel="icon" type="image/png" href="/static/favicon-dark.png" media="(prefers-color-scheme: light)">
 <link rel="icon" type="image/png" href="/static/favicon-light.png" media="(prefers-color-scheme: dark)">
@@ -543,6 +552,7 @@ func RenderArticleWithLayout(a db.Article, layout ArticleLayoutType) (string, er
 	start := time.Now()
 	var buf strings.Builder
 	s := getActiveSettings()
+	seoMeta := seo.Compute(a.Title, a.Slug, a.Content, a.CreatedAt, a.UpdatedAt, config.Cfg.Domain, s.Name)
 	data := articlePage{
 		Article:             a,
 		Domain:              config.Cfg.Domain,
@@ -557,6 +567,8 @@ func RenderArticleWithLayout(a db.Article, layout ArticleLayoutType) (string, er
 		ThemeToggleJSLink:   ThemeToggleJSLink(),
 		SiteName:            s.Name,
 		Author:              s.Author,
+		SEODescription:      seoMeta.Description,
+		OGImage:             seoMeta.OGImage,
 	}
 	if err := articleTmpl.Execute(&buf, data); err != nil {
 		return "", fmt.Errorf("template: %w", err)

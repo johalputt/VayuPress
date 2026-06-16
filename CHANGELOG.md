@@ -6,6 +6,29 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased]
+
+### Added — Companion tools & SEO (Phase 1)
+- **`wordpress2vayu`** (`tools/wordpress2vayu`): migrate a WordPress site directly
+  from its MySQL database into VayuPress SQLite. Reads `wp_posts` (posts/pages),
+  maps categories and tags via the term tables, and recovers featured images from
+  `wp_postmeta` (`_thumbnail_id`). Supports custom table prefixes, keyset
+  pagination, throttled batching, checkpoint/resume, and idempotent
+  `INSERT OR IGNORE` writes. Content HTML and original slugs are preserved.
+- **`markdownfolder2vayu`** (`tools/markdownfolder2vayu`): import a folder of
+  Markdown files with YAML frontmatter (`title`, `slug`, `date`, `tags`, `draft`).
+  Renders GitHub-Flavored Markdown to HTML via goldmark, derives slug from filename
+  and date from file mtime when absent, skips drafts, and walks subdirectories.
+  `import` and `list` subcommands.
+- **Built-in SEO Optimizer** (`internal/seo`): per-article meta description and
+  Open Graph / Twitter Card image computed from content, Article JSON-LD, and
+  sitemap generation. Enhanced article `<head>` meta tags (`og:image`,
+  `twitter:card=summary_large_image`, `twitter:image`, `og:site_name`).
+- Marketing site (`docs/site`): Tools section now lists `wordpress2vayu` and
+  `markdownfolder2vayu` alongside `ghost-to-vayu`.
+
+---
+
 ## [1.0.0] — 2026-06-15 — First Stable Release
 
 VayuPress 1.0.0 is the first tagged release: a sovereign, single-VPS publishing

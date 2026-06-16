@@ -386,6 +386,38 @@ Full reference: [docs/API-REFERENCE.md](docs/API-REFERENCE.md)
 
 ---
 
+## Companion Tools
+
+Standalone migration and import tools live under [`tools/`](tools/). Each is an
+independent Go module so it builds and ships without pulling in the engine.
+
+| Tool | Purpose | Source |
+|------|---------|--------|
+| **ghost-to-vayu** | Migrate a Ghost CMS database (MySQL/SQLite) straight into VayuPress — no Ghost admin or API. HTML, slugs, tags, images and timestamps preserved; keyset pagination, checkpoints, idempotent. | [`tools/ghost-to-vayu`](tools/ghost-to-vayu) |
+| **wordpress2vayu** | Migrate a WordPress site directly from its MySQL database. Reads `wp_posts`, categories/tags and recovers featured images from `wp_postmeta`. Custom table prefixes, resumable, idempotent. | [`tools/wordpress2vayu`](tools/wordpress2vayu) |
+| **markdownfolder2vayu** | Import a folder of Markdown files with YAML frontmatter. GitHub-Flavored Markdown rendered to HTML via goldmark; slug/date fallbacks, draft-skipping, recursive walk. | [`tools/markdownfolder2vayu`](tools/markdownfolder2vayu) |
+
+```bash
+# Example: migrate a WordPress database
+cd tools/wordpress2vayu
+go build -o wp2vayu ./cmd/wp2vayu
+./wp2vayu migrate \
+  --wp-dsn "user:pass@tcp(localhost:3306)/wordpress" \
+  --vayu-db /var/lib/vayupress/vayupress.db \
+  --status publish
+
+# Example: import a folder of Markdown posts
+cd tools/markdownfolder2vayu
+go build -o md2vayu ./cmd/md2vayu
+./md2vayu import --dir ./posts --vayu-db /var/lib/vayupress/vayupress.db
+```
+
+**Built-in SEO Optimizer** — VayuPress core ([`internal/seo`](internal/seo))
+auto-computes per-article meta descriptions and Open Graph / Twitter Card
+images, emits Article JSON-LD, and serves `/sitemap.xml` and `/robots.txt`.
+
+---
+
 ## Requirements
 
 | Requirement | Detail |
