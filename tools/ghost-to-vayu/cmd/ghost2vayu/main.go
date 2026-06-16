@@ -52,9 +52,11 @@ var rootCmd = &cobra.Command{
 	Long: `ghost2vayu reads your Ghost database (MySQL or SQLite) without needing
 Ghost admin access and imports all posts into a VayuPress SQLite database.
 
-Ghost HTML / mobiledoc / Lexical content is converted to plain text.
-Original Ghost slugs are preserved exactly. Migration is throttled to
-avoid overloading your VPS. Supports resume-on-interrupt via checkpoints.`,
+Ghost HTML is passed through (images, links, and formatting preserved) and
+sanitized by VayuPress on render. Mobiledoc and Lexical editor formats are
+converted to HTML when no rendered html is stored. Original Ghost slugs are
+preserved exactly. Migration uses keyset pagination and throttled batching to
+stay gentle on your VPS, and resumes from a checkpoint if interrupted.`,
 }
 
 var migrateCmd = &cobra.Command{
@@ -133,69 +135,69 @@ func runMigrate(cmd *cobra.Command, _ []string) error {
 			return fmt.Errorf("VayuPress DB: %w", err)
 		}
 		defer writer.Close()
-		fmt.Println("  ✓ VayuPress DB ready\n")
+		fmt.Println("  ✓ VayuPress DB ready")
+		fmt.Println()
 	} else {
-		fmt.Println("→ DRY-RUN mode — nothing will be written\n")
+		fmt.Println("→ DRY-RUN mode — nothing will be written")
+		fmt.Println()
 	}
 
 	// ── Resume checkpoint ─────────────────────────────────────────────
-	var startOffset int64
+	var afterID string
 	if flagResume && !flagDryRun {
-		startOffset, err = writer.LoadCheckpoint(ctx)
+		afterID, err = writer.LoadCheckpoint(ctx)
 		if err != nil {
 			return fmt.Errorf("load checkpoint: %w", err)
 		}
-		if startOffset > 0 {
-			fmt.Printf("→ Resuming from offset %d (skipping already-migrated posts)\n\n", startOffset)
+		if afterID != "" {
+			fmt.Printf("→ Resuming after Ghost post id %s\n\n", afterID)
 		}
 	}
 
-	// ── Migration loop ────────────────────────────────────────────────
+	// ── Migration loop (keyset pagination) ────────────────────────────
 	var (
-		offset   = startOffset
-		inserted int64
-		skipped  int64
-		errors   int64
-		batchNum int
+		processed int64
+		inserted  int64
+		skipped   int64
+		errs      int64
+		batchNum  int
 	)
 
-	ticker := time.NewTicker(flagDelay)
-	defer ticker.Stop()
-
 	for {
-		select {
-		case <-ctx.Done():
-			fmt.Printf("\n⚠ Interrupted — saving checkpoint at offset %d\n", offset)
-			if writer != nil {
-				writer.SaveCheckpoint(context.Background(), offset)
-			}
-			printSummary(inserted, skipped, errors, total)
-			return nil
-		case <-ticker.C:
-		}
-
-		posts, err := reader.Fetch(ctx, flagStatus, flagBatch, int(offset))
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "  fetch error at offset %d: %v\n", offset, err)
-			errors++
-			offset += int64(flagBatch)
-			continue
-		}
-		if len(posts) == 0 {
+		if err := ctx.Err(); err != nil {
+			fmt.Printf("\n⚠ Interrupted — checkpoint saved at id %s\n", afterID)
 			break
 		}
 
+		posts, err := reader.Fetch(ctx, flagStatus, flagBatch, afterID)
+		if err != nil {
+			if ctx.Err() != nil {
+				break
+			}
+			return fmt.Errorf("fetch after id %q: %w", afterID, err)
+		}
+		if len(posts) == 0 {
+			break // reached the end
+		}
+
 		batchNum++
-		batchInserted := 0
-		batchSkipped := 0
+		var batchIns, batchSkip int
 
 		for _, p := range posts {
-			content := convert.BestContent(p.HTML, p.Mobiledoc, p.Lexical)
+			content := convert.BestContent(p.HTML, p.Mobiledoc, p.Lexical, p.FeatureImage)
 			if content == "" {
-				content = p.Title // minimum viable content
+				content = "<p>" + p.Title + "</p>" // minimum viable body
 			}
 
-			art := vacuum.Article{
+			if flagDryRun {
+				fmt.Printf("  [dry] %s — %q (%d bytes html, %d tags)\n",
+					p.Slug, truncate(p.Title, 50), len(content), len(p.Tags))
+				batchIns++
+				afterID = p.ID
+				continue
+			}
+
+			ok, err := writer.Insert(ctx, vacuum.Article{
 				ID:        p.ID,
 				Title:     p.Title,
 				Slug:      p.Slug,
@@ -203,63 +205,59 @@ func runMigrate(cmd *cobra.Command, _ []string) error {
 				Tags:      p.Tags,
 				CreatedAt: p.CreatedAt,
 				UpdatedAt: p.UpdatedAt,
-			}
-
-			if flagDryRun {
-				fmt.Printf("  [dry] %s — %q (%d chars, %d tags)\n",
-					p.Slug, truncate(p.Title, 50), len(content), len(p.Tags))
-				batchInserted++
-				continue
-			}
-
-			ok, err := writer.Insert(ctx, art)
+			})
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "  ERR  %s: %v\n", p.Slug, err)
-				errors++
+				errs++
+				afterID = p.ID
 				continue
 			}
 			if ok {
-				batchInserted++
+				batchIns++
 			} else {
-				batchSkipped++
+				batchSkip++
 			}
+			afterID = p.ID
 		}
 
-		inserted += int64(batchInserted)
-		skipped += int64(batchSkipped)
-		offset += int64(len(posts))
+		processed += int64(len(posts))
+		inserted += int64(batchIns)
+		skipped += int64(batchSkip)
 
-		pct := float64(offset) / float64(total) * 100
-		fmt.Printf("  batch %-4d  offset %-8d  +%-4d  skip %-4d  %.1f%%\n",
-			batchNum, offset, batchInserted, batchSkipped, pct)
+		pct := 0.0
+		if total > 0 {
+			pct = float64(processed) / float64(total) * 100
+		}
+		fmt.Printf("  batch %-4d  id %-26s  +%-4d  skip %-4d  %d/%d (%.1f%%)\n",
+			batchNum, afterID, batchIns, batchSkip, processed, total, pct)
 
-		// Save checkpoint every 10 batches
-		if !flagDryRun && batchNum%10 == 0 {
-			if err := writer.SaveCheckpoint(ctx, offset); err != nil {
+		if !flagDryRun {
+			if err := writer.SaveCheckpoint(ctx, afterID); err != nil {
 				fmt.Fprintf(os.Stderr, "  checkpoint err: %v\n", err)
 			}
 		}
 
 		if len(posts) < flagBatch {
-			break // last page
+			break // last (partial) page
+		}
+
+		// Throttle: pause between batches, but wake immediately on interrupt.
+		select {
+		case <-ctx.Done():
+		case <-time.After(flagDelay):
 		}
 	}
 
-	// Final checkpoint
-	if !flagDryRun && writer != nil {
-		writer.SaveCheckpoint(context.Background(), offset)
-	}
-
 	fmt.Println()
-	printSummary(inserted, skipped, errors, total)
+	printSummary(inserted, skipped, errs, total)
 	return nil
 }
 
-func printSummary(inserted, skipped, errors, total int64) {
+func printSummary(inserted, skipped, errs, total int64) {
 	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 	fmt.Printf("  Inserted : %d\n", inserted)
 	fmt.Printf("  Skipped  : %d (already existed)\n", skipped)
-	fmt.Printf("  Errors   : %d\n", errors)
+	fmt.Printf("  Errors   : %d\n", errs)
 	fmt.Printf("  Total    : %d\n", total)
 	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 }

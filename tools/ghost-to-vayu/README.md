@@ -16,12 +16,19 @@ Ghost's admin API requires a running Ghost instance. When you only have database
 
 - **Direct DB access** — MySQL and SQLite supported, no Ghost process needed
 - **Slug preservation** — Ghost slugs become VayuPress slugs as-is
-- **Content conversion** — handles Ghost HTML, Mobiledoc (v3), and Lexical (v5) formats
-- **Throttled batching** — configurable batch size and delay, default 50 posts / 200 ms pause
-- **Resume on interrupt** — checkpoint saved every 10 batches; `Ctrl+C` resumes safely
+- **Images & formatting preserved** — Ghost HTML is passed through, so every
+  inline Unsplash/Pixabay image, link, heading, and list survives. VayuPress
+  sanitizes it (bluemonday) on render, so it's safe by construction.
+- **Feature images kept** — a post's hero image is prepended as a `<figure>`
+- **All editor formats** — rendered HTML preferred; Mobiledoc (Ghost 1–4) and
+  Lexical (Ghost 5) converted to HTML when no rendered html is stored
+- **Keyset pagination** — pages by primary key, not `OFFSET`, so every batch
+  stays fast and light even 200k rows deep (no full-table scans on your VPS)
+- **Throttled batching** — configurable batch size and delay, default 50 / 200 ms
+- **Resume on interrupt** — checkpoint saved every batch; `Ctrl+C` resumes safely
+- **Idempotent** — re-running skips posts already imported (`INSERT OR IGNORE`)
 - **Dry-run mode** — preview conversion without writing anything
-- **Tags preserved** — Ghost tag slugs → VayuPress tag CSV
-- **Works at scale** — tested design for 200k+ post datasets
+- **Tags preserved** — Ghost tag slugs → VayuPress tag CSV, in Ghost sort order
 
 ---
 
@@ -30,8 +37,8 @@ Ghost's admin API requires a running Ghost instance. When you only have database
 ### 1. Install
 
 ```bash
-git clone https://github.com/johalputt/ghost-to-vayu
-cd ghost-to-vayu
+git clone https://github.com/johalputt/VayuPress
+cd VayuPress/tools/ghost-to-vayu
 go build -o ghost2vayu ./cmd/ghost2vayu
 ```
 
@@ -105,22 +112,28 @@ For a large dataset (100k+ posts) use a longer delay on a loaded VPS:
 ```
 Ghost DB (MySQL / SQLite)
         │
-        │  SELECT posts, tags, authors  (batched, offset-paginated)
+        │  SELECT posts + tags  (keyset paginated: WHERE id > ? ORDER BY id)
         ▼
   ghostdb.Reader
         │
-        │  HTML → plain text  (golang.org/x/net/html walker)
-        │  Mobiledoc JSON → text  (section/marker extraction)
-        │  Lexical JSON → text  (node tree walk)
+        │  html      → passed through (images/links/formatting preserved)
+        │  lexical   → HTML  (Ghost 5.x fallback)
+        │  mobiledoc → HTML  (Ghost 1–4 fallback)
+        │  feature_image → prepended as <figure>
         ▼
   convert.BestContent()
         │
-        │  INSERT OR IGNORE into articles table
+        │  INSERT OR IGNORE into articles  (slug preserved)
         ▼
-  VayuPress SQLite  (vayupress.db)
+  VayuPress SQLite  →  bluemonday sanitizes on render
 ```
 
 Ghost content priority: `html` > `lexical` > `mobiledoc`
+
+VayuPress stores article bodies as HTML and sanitizes them with bluemonday
+before display, so passing Ghost's HTML through is both faithful and safe —
+`<script>` and other unsafe markup are stripped at render time, while images,
+links, headings, and lists are kept.
 
 ---
 
@@ -131,14 +144,18 @@ Tested against Ghost 3.x, 4.x, and 5.x table structures:
 - `posts` — id, title, slug, html, mobiledoc, lexical, published_at, created_at, updated_at, status, feature_image, type
 - `tags` — id, slug
 - `posts_tags` — post_id, tag_id, sort_order
-- `users` — id, name
-- `posts_authors` — post_id, author_id, sort_order
+
+For MySQL, `parseTime=true` is appended to your DSN automatically if missing.
 
 ---
 
 ## Resuming after interruption
 
-Press `Ctrl+C` at any time. The tool saves a checkpoint offset to a `ghost2vayu_checkpoint` table in the VayuPress database. Re-run the same command — it picks up from where it left off automatically (because `--resume` is true by default).
+Press `Ctrl+C` at any time. The tool saves the last processed Ghost post id to a
+`ghost2vayu_checkpoint` table in the VayuPress database after every batch. Re-run
+the same command — it resumes right after that id (because `--resume` is true by
+default). Even without a checkpoint, re-running is safe: posts already imported
+are skipped via `INSERT OR IGNORE`.
 
 ---
 
