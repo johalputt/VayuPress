@@ -195,6 +195,30 @@ STATIC_DIR=./static VAYU_DOCS_DIR=./docs ./vayupress --port 8080`,
         cmd:'go build -o ghost2vayu ./cmd/ghost2vayu',
         href:'https://github.com/johalputt/VayuPress/tree/main/tools/ghost-to-vayu',
       },
+      {
+        name:'wordpress2vayu',
+        tag:'Migration',
+        desc:'Lift a WordPress site into VayuPress directly from its MySQL database — no plugins, no export files, no running WordPress. Reads wp_posts, categories and tags, recovers featured images, preserves slugs and dates, and throttles itself for a smooth migration at any scale.',
+        points:[
+          'Direct MySQL access — reads posts, pages, categories & tags',
+          'Featured images recovered from postmeta, content HTML preserved',
+          'Custom table prefixes, keyset pagination, resumable & idempotent',
+        ],
+        cmd:'go build -o wp2vayu ./cmd/wp2vayu',
+        href:'https://github.com/johalputt/VayuPress/tree/main/tools/wordpress2vayu',
+      },
+      {
+        name:'markdownfolder2vayu',
+        tag:'Import',
+        desc:'Turn a folder of Markdown files into a published VayuPress site. Parses YAML frontmatter, renders GitHub-Flavored Markdown to clean HTML, derives slugs and dates when they are missing, and skips drafts — perfect for moving off Hugo, Jekyll, or a plain notes folder.',
+        points:[
+          'YAML frontmatter — title, slug, date, tags, draft',
+          'GitHub-Flavored Markdown → HTML via goldmark (tables, task lists)',
+          'Slug & date fallbacks, draft-skipping, recursive folder walk',
+        ],
+        cmd:'go build -o md2vayu ./cmd/md2vayu',
+        href:'https://github.com/johalputt/VayuPress/tree/main/tools/markdownfolder2vayu',
+      },
     ],
 
     footer: [
