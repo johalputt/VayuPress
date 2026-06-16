@@ -182,6 +182,21 @@ STATIC_DIR=./static VAYU_DOCS_DIR=./docs ./vayupress --port 8080`,
       { label:'Start the server',                  cmd:'STATIC_DIR=./static ./vayupress --port 8080' },
     ],
 
+    tools: [
+      {
+        name:'ghost-to-vayu',
+        tag:'Migration',
+        desc:'Move an entire Ghost site into VayuPress straight from the database — no Ghost admin or API needed. Reads MySQL or SQLite directly, preserves every slug, tag, image and timestamp, and throttles itself so even a 200k-post migration never overloads your VPS.',
+        points:[
+          'Direct DB access — MySQL & SQLite, no running Ghost required',
+          'Images, links & formatting preserved (HTML passed through, sanitized on render)',
+          'Keyset pagination + checkpoints — gentle, resumable, idempotent',
+        ],
+        cmd:'go build -o ghost2vayu ./cmd/ghost2vayu',
+        href:'https://github.com/johalputt/VayuPress/tree/main/tools/ghost-to-vayu',
+      },
+    ],
+
     footer: [
       { head:'Project', links:[
         { label:'GitHub',    href:'https://github.com/johalputt/VayuPress' },
