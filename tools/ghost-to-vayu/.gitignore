@@ -1,0 +1,5 @@
+/ghost2vayu
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
