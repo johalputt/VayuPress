@@ -1,0 +1,4 @@
+# Vendored third-party libraries — exclude from language stats and mark as
+# generated so they are skipped by diffs and code-scanning heuristics.
+static/js/purify.min.js linguist-vendored linguist-generated
+static/js/purify.LICENSE linguist-vendored

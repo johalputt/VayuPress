@@ -49,6 +49,10 @@ func (a *App) registerAdminUIRoutes(r chi.Router) {
 	// Public: vendored static assets (served same-origin → style-src/script-src 'self').
 	r.Get("/admin/v2/static/css/admin-v2.css", serveAdminV2Asset("css/admin-v2.css", "text/css; charset=utf-8"))
 	r.Get("/admin/v2/static/js/admin-v2.js", serveAdminV2Asset("js/admin-v2.js", "application/javascript; charset=utf-8"))
+	// Vendored DOMPurify (Cure53, Apache-2.0/MPL-2.0) — self-hosted, served
+	// same-origin so script-src 'self' covers it with no nonce. Used by the
+	// editor preview as the HTML sanitiser (no external CDN, ADR-0065).
+	r.Get("/admin/v2/static/js/purify.min.js", serveAdminV2Asset("js/purify.min.js", "application/javascript; charset=utf-8"))
 	// Public: brand fonts (font-src 'self'). Optional — operator drops woff2 files.
 	r.Get("/admin/v2/static/fonts/{file}", func(w http.ResponseWriter, req *http.Request) {
 		// Build the path from string literals matched in the switch, not from
@@ -143,6 +147,7 @@ func adminV2Layout(nonce, title, sidebarActive, bodyHTML string) string {
   </main>
 </div>
 </div>
+<script src="/admin/v2/static/js/purify.min.js"></script>
 <script nonce="` + nonce + `" src="/admin/v2/static/js/admin-v2.js"></script>
 </body></html>`
 }
@@ -572,6 +577,7 @@ func (a *App) handleV2Login(w http.ResponseWriter, r *http.Request) {
     <div class="btn-row mt-2"><a class="btn btn-primary" href="/admin/v2">Enter console</a></div>
   </form>
 </div></div>
+<script src="/admin/v2/static/js/purify.min.js"></script>
 <script nonce="` + nonce + `" src="/admin/v2/static/js/admin-v2.js"></script>
 </body></html>`
 	_, _ = w.Write([]byte(body))

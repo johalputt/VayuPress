@@ -44,7 +44,9 @@ test.describe("Admin v2", () => {
     await ta.fill("# Hello\n\nThis is a **test** paragraph with several words.");
     await expect(page.locator("[data-preview] h1")).toContainText("Hello");
     await expect(page.locator("[data-preview] strong")).toContainText("test");
-    await expect(page.locator("[data-wordcount]")).not.toContainText("0 words");
+    // A non-zero count. Use a regex, not .not.toContainText("0 words"), because
+    // "10 words" contains the substring "0 words" and would false-match.
+    await expect(page.locator("[data-wordcount]")).toContainText(/[1-9]\d* words?/);
   });
 
   test("slash palette opens and filters", async ({ page }) => {

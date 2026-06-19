@@ -112,32 +112,31 @@
   window.vpMarkdown = markdownToHTML;
 
   /* ---- HTML sanitiser (CSP-safe, no innerHTML sink) --------------------- */
-  /* Parses an HTML string into an INERT document via DOMParser (scripts never
-     run there), strips every execution vector — <script>/<style>/<iframe>/etc.,
-     all on* event-handler attributes, inline styles, and javascript:/vbscript:/
-     data: URLs — then returns a DocumentFragment of cleaned nodes. Callers use
-     `el.replaceChildren(fragment)` instead of assigning `innerHTML`, so tainted
-     text is never reinterpreted as live HTML (fixes CodeQL js/html-constructed-
-     from-input). This is the same trust boundary the server enforces with
-     bluemonday on publish — here it protects the live editor preview too. */
-  var DANGEROUS_TAGS = "script,style,iframe,object,embed,link,meta,base,form,svg,math,template,noscript";
+  /* Sanitises an HTML string and returns a DocumentFragment of safe nodes.
+     Callers use `el.replaceChildren(fragment)` instead of assigning innerHTML,
+     so tainted text is never reinterpreted as live HTML.
+
+     The sanitiser is DOMPurify (Cure53), vendored same-origin at
+     /admin/v2/static/js/purify.min.js and loaded before this file — no CDN, no
+     unsafe-eval, so the strict CSP and the project's offline-sovereignty
+     constraint both hold (ADR-0065). DOMPurify strips every execution vector
+     (scripts, event handlers, javascript:/data: URLs, mXSS, etc.). This is the
+     same trust boundary the server enforces with bluemonday on publish.
+
+     Fail-closed: if DOMPurify is somehow unavailable, the content is rendered
+     as inert text (textContent) rather than risking unsanitised HTML — and no
+     HTML sink is touched on that path either. */
   function sanitizeToFragment(html) {
-    var doc = new DOMParser().parseFromString(String(html), "text/html");
-    Array.prototype.forEach.call(doc.querySelectorAll(DANGEROUS_TAGS), function (el) { el.remove(); });
-    Array.prototype.forEach.call(doc.querySelectorAll("*"), function (el) {
-      Array.prototype.slice.call(el.attributes).forEach(function (attr) {
-        var n = attr.name.toLowerCase();
-        if (n.indexOf("on") === 0 || n === "style") { el.removeAttribute(attr.name); return; }
-        if ((n === "href" || n === "src" || n === "xlink:href") &&
-            /^\s*(javascript|vbscript|data):/i.test(attr.value)) {
-          // permit only inline images (data:image/...) on <img src>
-          var isImg = el.tagName.toLowerCase() === "img" && n === "src" && /^\s*data:image\//i.test(attr.value);
-          if (!isImg) el.removeAttribute(attr.name);
-        }
+    if (window.DOMPurify && typeof window.DOMPurify.sanitize === "function") {
+      return window.DOMPurify.sanitize(String(html), {
+        RETURN_DOM_FRAGMENT: true,
+        USE_PROFILES: { html: true }
       });
-    });
-    var frag = doc.createDocumentFragment();
-    while (doc.body && doc.body.firstChild) frag.appendChild(doc.body.firstChild);
+    }
+    var frag = document.createDocumentFragment();
+    var pre = document.createElement("pre");
+    pre.textContent = String(html);
+    frag.appendChild(pre);
     return frag;
   }
   window.vpSanitize = sanitizeToFragment;
