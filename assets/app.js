@@ -183,6 +183,7 @@ STATIC_DIR=./static VAYU_DOCS_DIR=./docs ./vayupress --port 8080`,
     ],
 
     tools: [
+      /* ── Migration tools ── */
       {
         name:'ghost-to-vayu',
         tag:'Migration',
@@ -198,7 +199,7 @@ STATIC_DIR=./static VAYU_DOCS_DIR=./docs ./vayupress --port 8080`,
       {
         name:'wordpress2vayu',
         tag:'Migration',
-        desc:'Lift a WordPress site into VayuPress directly from its MySQL database — no plugins, no export files, no running WordPress. Reads wp_posts, categories and tags, recovers featured images, preserves slugs and dates, and throttles itself for a smooth migration at any scale.',
+        desc:'Lift a WordPress site into VayuPress directly from its MySQL database — no plugins, no export files, no running WordPress. Reads wp_posts, categories and tags, recovers featured images, preserves slugs and dates.',
         points:[
           'Direct MySQL access — reads posts, pages, categories & tags',
           'Featured images recovered from postmeta, content HTML preserved',
@@ -208,9 +209,69 @@ STATIC_DIR=./static VAYU_DOCS_DIR=./docs ./vayupress --port 8080`,
         href:'https://github.com/johalputt/VayuPress/tree/main/tools/wordpress2vayu',
       },
       {
+        name:'hugo2vayu',
+        tag:'Migration',
+        desc:'Import a Hugo site into VayuPress. Parses YAML and TOML frontmatter from Hugo content directories, merges categories into tags, strips the date prefix from filenames, and renders Markdown to HTML with goldmark.',
+        points:[
+          'YAML and TOML frontmatter support (--- and +++ delimiters)',
+          'Merges categories + tags, strips Hugo date-prefixed filenames',
+          'Dry-run and resume support',
+        ],
+        cmd:'go build -o hugo2vayu ./cmd/hugo2vayu',
+        href:'https://github.com/johalputt/VayuPress/tree/main/tools/hugo2vayu',
+      },
+      {
+        name:'jekyll2vayu',
+        tag:'Migration',
+        desc:'Import a Jekyll blog into VayuPress. Reads _posts and _pages, parses YAML frontmatter, extracts the date from the YYYY-MM-DD-slug.md filename format, and renders Markdown to HTML.',
+        points:[
+          'YAML frontmatter — title, date, slug, categories, tags, layout',
+          'Date extracted from Jekyll filename convention',
+          'Drafts from _drafts directory optionally included',
+        ],
+        cmd:'go build -o jekyll2vayu ./cmd/jekyll2vayu',
+        href:'https://github.com/johalputt/VayuPress/tree/main/tools/jekyll2vayu',
+      },
+      {
+        name:'substack2vayu',
+        tag:'Migration',
+        desc:'Import a Substack export into VayuPress. Reads the posts.csv that Substack provides and imports the title, slug, HTML body, and publication date — no Substack API key needed.',
+        points:[
+          'Reads Substack posts.csv export — no API access required',
+          'Subtitle prepended to body, slugs extracted from Substack post URLs',
+          'Skip drafts and free/subscriber-only filters',
+        ],
+        cmd:'go build -o substack2vayu ./cmd/substack2vayu',
+        href:'https://github.com/johalputt/VayuPress/tree/main/tools/substack2vayu',
+      },
+      {
+        name:'notion2vayu',
+        tag:'Migration',
+        desc:'Import a Notion HTML export into VayuPress. Parses the ZIP archive that Notion generates, extracts title and date from each page\'s HTML, and preserves content formatting.',
+        points:[
+          'Reads Notion ZIP export or flat directory of HTML files',
+          'Title from <h1>, date from first <time> element',
+          'Idempotent — safe to re-run after partial imports',
+        ],
+        cmd:'go build -o notion2vayu ./cmd/notion2vayu',
+        href:'https://github.com/johalputt/VayuPress/tree/main/tools/notion2vayu',
+      },
+      {
+        name:'medium2vayu',
+        tag:'Migration',
+        desc:'Import a Medium HTML export into VayuPress. Medium exports a ZIP of HTML files, one per post — this tool extracts title, date, tags and content from each file and inserts them into your VayuPress database.',
+        points:[
+          'Reads Medium export ZIP or extracted directory',
+          'Extracts date from <time datetime="..."> and tags from <a rel="tag">',
+          'Slug derived from Medium filename (date-prefix and hash stripped)',
+        ],
+        cmd:'go build -o medium2vayu ./cmd/medium2vayu',
+        href:'https://github.com/johalputt/VayuPress/tree/main/tools/medium2vayu',
+      },
+      {
         name:'markdownfolder2vayu',
         tag:'Import',
-        desc:'Turn a folder of Markdown files into a published VayuPress site. Parses YAML frontmatter, renders GitHub-Flavored Markdown to clean HTML, derives slugs and dates when they are missing, and skips drafts — perfect for moving off Hugo, Jekyll, or a plain notes folder.',
+        desc:'Turn any folder of Markdown files into a VayuPress site. Parses YAML frontmatter, renders GitHub-Flavored Markdown to HTML, derives slugs and dates from filenames when missing, and skips drafts.',
         points:[
           'YAML frontmatter — title, slug, date, tags, draft',
           'GitHub-Flavored Markdown → HTML via goldmark (tables, task lists)',
@@ -218,6 +279,43 @@ STATIC_DIR=./static VAYU_DOCS_DIR=./docs ./vayupress --port 8080`,
         ],
         cmd:'go build -o md2vayu ./cmd/md2vayu',
         href:'https://github.com/johalputt/VayuPress/tree/main/tools/markdownfolder2vayu',
+      },
+      /* ── Operational tools ── */
+      {
+        name:'vayu-backup',
+        tag:'Operations',
+        desc:'Backup, restore, and verify VayuPress SQLite databases. Creates compressed tar.gz archives with a manifest, verifies checksums on restore, and supports scheduled backups with retention policies.',
+        points:[
+          'Compressed backup archives with SHA-256 manifest',
+          'Verify backup integrity before restoring',
+          'Schedule automated backups with retention',
+        ],
+        cmd:'go build -o vayu-backup ./cmd/vayu-backup',
+        href:'https://github.com/johalputt/VayuPress/tree/main/tools/vayu-backup',
+      },
+      {
+        name:'vayu-export',
+        tag:'Operations',
+        desc:'Export a VayuPress database as a static HTML site — every article rendered to a self-contained page, with a paginated index. Perfect for archiving, CDN deployment, or zero-server hosting.',
+        points:[
+          'Renders every article to standalone HTML with shared CSS',
+          'Paginated index page with configurable page size',
+          'Base URL rewriting for CDN or subdirectory deployment',
+        ],
+        cmd:'go build -o vayu-export ./cmd/vayu-export',
+        href:'https://github.com/johalputt/VayuPress/tree/main/tools/vayu-export',
+      },
+      {
+        name:'vayu-validate',
+        tag:'Operations',
+        desc:'Check a VayuPress database for content integrity issues before going live or after a migration. Catches empty titles, invalid slugs, duplicate slugs, bad dates, oversized content, and suspicious tags. Exits 1 on errors — CI-friendly.',
+        points:[
+          'Detects empty titles, invalid/duplicate slugs, empty content',
+          'Flags suspicious dates (pre-2000 — common bad-migration artifact)',
+          'Stats subcommand for content analytics — top tags, avg size, date range',
+        ],
+        cmd:'go build -o vayu-validate ./cmd/vayu-validate',
+        href:'https://github.com/johalputt/VayuPress/tree/main/tools/vayu-validate',
       },
     ],
 
