@@ -195,6 +195,18 @@ STATIC_DIR=./static VAYU_DOCS_DIR=./docs ./vayupress --port 8080`,
     tools: [
       /* ── Migration tools ── */
       {
+        name:'vayupress migrate (built-in)',
+        tag:'Migration',
+        desc:'New in v1.1.0 — import Markdown folders straight from the main binary, no separate tool to build. Parses YAML frontmatter, renders GitHub-Flavored Markdown, and writes both the sanitised article and an editable Markdown side-car so the editor reopens each post in Markdown mode.',
+        points:[
+          'vayupress migrate markdown --dir ./posts (--dry-run to preview)',
+          'Idempotent INSERT OR IGNORE — safe to re-run after interruptions',
+          'vayupress migrate info prints options for every supported platform',
+        ],
+        cmd:'vayupress migrate markdown --dir ./posts',
+        href:'https://github.com/johalputt/VayuPress/blob/main/docs/MIGRATION.md',
+      },
+      {
         name:'ghost-to-vayu',
         tag:'Migration',
         desc:'Move an entire Ghost site into VayuPress straight from the database — no Ghost admin or API needed. Reads MySQL or SQLite directly, preserves every slug, tag, image and timestamp, and throttles itself so even a 200k-post migration never overloads your VPS.',

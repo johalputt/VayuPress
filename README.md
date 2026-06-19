@@ -17,6 +17,29 @@
 > **Adaptive publishing infrastructure for the sovereign web.**
 > SQLite-first, zero-trust, zero telemetry. Policy-governed runtime with adaptive system modes, sandboxed plugins, transactional event outbox, durable audit trail, and fault-tolerant federated publishing.
 
+## What's New in v1.1.0
+
+> Full notes in [`CHANGELOG.md`](CHANGELOG.md) · upgrade steps in [`docs/UPGRADING.md`](docs/UPGRADING.md)
+
+- **Built-in `vayupress migrate` command** — import Markdown folders straight
+  into the database (`migrate markdown`, `migrate list`, `migrate info`); no
+  separate tool to build. Idempotent (`INSERT OR IGNORE`), YAML-frontmatter
+  aware, with `--dry-run`.
+- **Multi-format post editor** — author each post in **Markdown _or_ raw HTML**
+  via a segmented toggle. The chosen format and editable source round-trip
+  losslessly through the new `article_sources` side-car table (migration 018);
+  the public renderer always receives server-sanitised HTML.
+- **Dual-write autosave** — every save persists the editable source *and* the
+  rendered HTML in parallel; new posts create-and-redirect to a permanent URL.
+- **Security hardening** — HTML-escaped article title/slug in the admin
+  dashboard, XML-escaped sitemap `<loc>` slugs, and CDATA-injection defence in
+  the RSS feed (security review 2026-06-19).
+
+### Upgrading from v1.0.0
+No breaking changes. Start the server once and migration 018 applies
+automatically. The legacy `/admin` console is untouched. Existing posts open in
+the editor in HTML mode until first saved in Markdown mode.
+
 ## Platform Screenshots
 
 > Screenshots are regenerated automatically from a live instance by the
@@ -397,6 +420,17 @@ Full reference: [docs/API-REFERENCE.md](docs/API-REFERENCE.md)
 ---
 
 ## Companion Tools
+
+> **New in v1.1.0 — built-in `migrate` command.** The main binary now imports
+> Markdown folders directly, no separate tool to build:
+> ```bash
+> vayupress migrate markdown --dir ./posts --dry-run   # preview
+> vayupress migrate markdown --dir ./posts             # import
+> vayupress migrate info                               # all platform options
+> ```
+> Imports write both the sanitised article and an `article_sources` side-car so
+> the Admin v2 editor reopens each post in Markdown mode. See
+> [`docs/MIGRATION.md`](docs/MIGRATION.md) for the full guide.
 
 Standalone migration and import tools live under [`tools/`](tools/). Each is an
 independent Go module — builds without pulling in the engine.
