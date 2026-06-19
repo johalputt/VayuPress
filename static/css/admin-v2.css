@@ -580,4 +580,81 @@ body.distraction-free .editor-toolbar:hover { opacity: 1; }
     margin-left: -260px;
   }
   body.sidebar-open .sidebar { margin-left: 0; }
+  .quick-actions { grid-template-columns: 1fr; }
 }
+
+/* ── Phase 1+: shared polish (badges, empty states, search, quick actions) ─ */
+.badge-warn { background: rgba(245, 158, 11, 0.16); color: var(--accent); }
+
+.count-pill {
+  font-size: 13px; font-weight: 600; font-family: var(--mono);
+  color: var(--muted); background: var(--surface-2);
+  padding: 2px 9px; border-radius: 99px; margin-left: 8px; vertical-align: middle;
+}
+
+/* Empty states */
+.empty-state { text-align: center; padding: 56px 24px; }
+.empty-icon { font-size: 40px; margin-bottom: 10px; }
+.empty-title { font-family: var(--head); font-size: 19px; margin-bottom: 6px; }
+.empty-sub { color: var(--muted); max-width: 420px; margin: 0 auto; }
+
+/* Posts toolbar + search */
+.toolbar-row { margin-bottom: 14px; }
+.search-input { max-width: 360px; }
+.row-sub { font-size: 12px; font-family: var(--mono); margin-top: 2px; }
+.row-actions { white-space: nowrap; text-align: right; }
+.row-actions .btn + .btn { margin-left: 6px; }
+.table tbody tr { transition: background .12s ease; }
+.table tbody tr:hover { background: rgba(13, 148, 136, 0.06); }
+
+/* Dashboard quick actions */
+.quick-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.quick-action {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  color: var(--text); text-decoration: none; background: var(--surface-2);
+  transition: border-color .15s ease, transform .08s ease, background .15s ease;
+}
+.quick-action:hover { border-color: var(--primary); background: rgba(13, 148, 136, 0.10); }
+.quick-action:active { transform: translateY(1px); }
+.quick-action .qa-icon { font-size: 18px; }
+
+/* ── Self-update panel ─────────────────────────────────────────────────── */
+.update-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 4px; }
+.version-line { color: var(--muted); margin-top: 6px; }
+.update-result { margin-top: 16px; }
+.update-banner {
+  padding: 12px 14px; border-radius: var(--radius-sm); font-weight: 600;
+  border: 1px solid var(--border); margin-bottom: 14px;
+}
+.update-banner.is-available { background: rgba(245, 158, 11, 0.12); color: var(--accent); border-color: rgba(245, 158, 11, 0.4); }
+.update-banner.is-current { background: rgba(34, 197, 94, 0.12); color: var(--ok); border-color: rgba(34, 197, 94, 0.35); }
+.update-banner.is-error { background: rgba(239, 68, 68, 0.12); color: var(--danger); border-color: rgba(239, 68, 68, 0.35); }
+.changelog-body { color: var(--muted); font-size: 14px; line-height: 1.6; margin-top: 6px; }
+.changelog-body h1, .changelog-body h2, .changelog-body h3 { font-family: var(--head); color: var(--text); font-size: 15px; margin: 10px 0 4px; }
+
+.apply-guide { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border); }
+.apply-steps { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 10px; }
+.apply-steps li { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.step-n {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 99px; flex: none;
+  background: var(--primary); color: #04201d; font-weight: 700; font-size: 12px;
+}
+code.cmd {
+  font-family: var(--mono); font-size: 13px; cursor: pointer;
+  background: var(--surface-2); border: 1px solid var(--border);
+  padding: 4px 9px; border-radius: var(--radius-sm); color: var(--primary-bright);
+  transition: border-color .15s ease;
+}
+code.cmd:hover { border-color: var(--primary); }
+code.cmd::after { content: " ⧉"; color: var(--muted); }
+
+/* ── SEO dashboard ─────────────────────────────────────────────────────── */
+.seo-status { padding: 10px 14px; border-radius: var(--radius-sm); margin-bottom: 16px; font-weight: 600; }
+.seo-status.ok { background: rgba(34, 197, 94, 0.12); color: var(--ok); }
+.seo-status.err { background: rgba(239, 68, 68, 0.12); color: var(--danger); }
+.seo-when { font-size: 12px; }
+.seo-checklist { list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 8px; }
+.seo-checklist li { color: var(--text); font-size: 14px; }
+.seo-checklist code { font-family: var(--mono); font-size: 12px; }

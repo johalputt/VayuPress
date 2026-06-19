@@ -15,10 +15,13 @@ the host.
 
 ### From the admin panel (read-only)
 
-`Settings → Updates → Check for Updates` calls `GET /admin/api/updates/check`,
-which compares your running version with the latest GitHub release and shows the
-changelog. It performs no download and changes nothing on disk. Every check is
-recorded in the `update_history` table.
+`Settings → Software updates → Check for updates` (Admin v2) calls
+`GET /admin/api/updates/check`, which compares your running version with the
+latest GitHub release and renders the changelog. When an update is available it
+surfaces the exact, copy-to-clipboard signed-apply commands (dry-run, apply,
+rollback). It performs no download and changes nothing on disk. The page also
+shows recent **update history** (`GET /admin/api/updates/history`), and every
+check is recorded in the `update_history` table.
 
 ### From the CLI
 
@@ -85,7 +88,16 @@ sudo systemctl restart vayupress
 ### Rollback
 
 The previous binary is preserved as `<binary>.bak` and a database backup is
-written before every apply. To roll back:
+written before every apply. The fastest path is the built-in command, which
+swaps the `.bak` back over the running binary:
+
+```bash
+sudo systemctl stop vayupress
+vayupress update rollback
+sudo systemctl start vayupress
+```
+
+Or do it by hand:
 
 ```bash
 sudo systemctl stop vayupress

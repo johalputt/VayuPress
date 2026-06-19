@@ -23,7 +23,7 @@ const (
 // via PreflightApply before calling ApplyVerified.
 func RunCLI(ctx context.Context, args []string, w io.Writer, db *sql.DB, current string) error {
 	if len(args) == 0 {
-		fmt.Fprintln(w, "usage: vayupress update <check|apply [--dry-run]|history>")
+		fmt.Fprintln(w, "usage: vayupress update <check|apply [--dry-run]|rollback|history>")
 		return fmt.Errorf("update: missing subcommand")
 	}
 
@@ -42,11 +42,38 @@ func RunCLI(ctx context.Context, args []string, w io.Writer, db *sql.DB, current
 			}
 		}
 		return runApply(ctx, w, client, owner, repo, st, current, dryRun)
+	case "rollback":
+		return runRollback(ctx, w, st, current)
 	case "history":
 		return runHistory(ctx, w, st)
 	default:
 		return fmt.Errorf("update: unknown subcommand %q", args[0])
 	}
+}
+
+// runRollback restores the previous binary kept as <binary>.bak by a prior
+// apply, swapping it back over the running binary. The operator restarts after.
+func runRollback(ctx context.Context, w io.Writer, st *Store, current string) error {
+	binPath, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("update: locate running binary: %w", err)
+	}
+	bak := binPath + ".bak"
+	if _, err := os.Stat(bak); err != nil {
+		return fmt.Errorf("update: no rollback artifact found at %s (nothing to roll back)", bak)
+	}
+	id, _ := st.Log(ctx, Record{ToVersion: current, Status: "started", Detail: "rollback"})
+	if err := os.Rename(bak, binPath); err != nil {
+		if id > 0 {
+			_ = st.MarkComplete(ctx, id, "failed", "rollback: "+err.Error())
+		}
+		return fmt.Errorf("update: rollback swap failed: %w", err)
+	}
+	if id > 0 {
+		_ = st.MarkComplete(ctx, id, "success", "rolled back from "+current)
+	}
+	fmt.Fprintf(w, "Rolled back to the previous binary (%s restored).\nRestart the service to run it.\n", bak)
+	return nil
 }
 
 func runCheck(ctx context.Context, w io.Writer, client *http.Client, owner, repo string, st *Store, current string) error {

@@ -31,6 +31,7 @@ shot "$BASE_URL/${ARTICLE_SLUG:-hello-vayupress}" "$OUT_DIR/article-page.png"
 shot "$BASE_URL/admin/v2"                                   "$OUT_DIR/admin-v2-dashboard.png"
 shot "$BASE_URL/admin/v2/posts"                             "$OUT_DIR/admin-v2-posts.png"
 shot "$BASE_URL/admin/v2/editor/${ARTICLE_SLUG:-hello-vayupress}" "$OUT_DIR/admin-v2-editor.png"
+shot "$BASE_URL/admin/v2/seo"                               "$OUT_DIR/admin-v2-seo.png"
 shot "$BASE_URL/admin/v2/settings"                          "$OUT_DIR/admin-v2-settings.png"
 
 # ── Operator console (auth injected by screenshot-proxy) ─────────────────────

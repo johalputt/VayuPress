@@ -490,21 +490,126 @@
     ta.focus();
   }
 
-  /* ---- settings: update checker ----------------------------------------- */
+  /* ---- settings: rich update checker ------------------------------------ */
   function wireUpdateCheck() {
     var btn = $("[data-action='check-updates']");
     if (!btn) return;
-    var status = $("[data-update-status]");
+    var result = $("[data-update-result]");
+    var banner = $("[data-update-banner]");
+    var changelog = $("[data-update-changelog]");
+    var guide = $("[data-apply-guide]");
+
     btn.addEventListener("click", function () {
-      if (status) status.textContent = "Checking…";
+      btn.disabled = true;
+      var orig = btn.textContent;
+      btn.textContent = "Checking…";
       fetch("/admin/api/updates/check", { credentials: "same-origin" })
         .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
         .then(function (data) {
-          if (!status) return;
-          if (data && data.available) status.textContent = "Update available: " + (data.latest || "");
-          else status.textContent = "Up to date (" + (data.current || "current") + ")";
+          if (result) result.hidden = false;
+          var avail = data.updateAvailable;
+          if (banner) {
+            banner.className = "update-banner " + (avail ? "is-available" : "is-current");
+            banner.textContent = avail
+              ? "Update available: v" + (data.latest || "?") + " (you have v" + (data.current || "?") + ")"
+              : "You're on the latest version (v" + (data.current || "?") + ").";
+          }
+          if (changelog) {
+            changelog.innerHTML = "";
+            if (avail && data.changelog) {
+              var h = document.createElement("div"); h.className = "card-title"; h.textContent = "What's new";
+              var pre = document.createElement("div"); pre.className = "changelog-body";
+              pre.innerHTML = markdownToHTML(String(data.changelog));
+              changelog.appendChild(h); changelog.appendChild(pre);
+            }
+          }
+          if (guide) guide.hidden = !avail;
         })
-        .catch(function (st) { if (status) status.textContent = "Check failed (" + st + ")"; });
+        .catch(function (st) {
+          if (result) result.hidden = false;
+          if (banner) { banner.className = "update-banner is-error"; banner.textContent = "Check failed (" + st + ")."; }
+        })
+        .finally(function () { btn.disabled = false; btn.textContent = orig; });
+    });
+  }
+
+  /* ---- settings: update history ----------------------------------------- */
+  function wireUpdateHistory() {
+    var host = $("[data-update-history]");
+    if (!host) return;
+    fetch("/admin/api/updates/history", { credentials: "same-origin" })
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+      .then(function (data) {
+        var list = (data && data.history) || [];
+        if (!list.length) { host.innerHTML = "<p class='muted'>No update activity recorded yet.</p>"; return; }
+        var rows = list.map(function (h) {
+          var when = h.started_at || h.StartedAt || "";
+          var from = h.from_version || h.FromVersion || "—";
+          var to = h.to_version || h.ToVersion || "—";
+          var status = h.status || h.Status || "";
+          return "<tr><td class='muted'>" + escapeHTML(String(when)) + "</td><td>" +
+            escapeHTML(String(from)) + " → " + escapeHTML(String(to)) +
+            "</td><td><span class='badge'>" + escapeHTML(String(status)) + "</span></td></tr>";
+        }).join("");
+        host.innerHTML = "<table class='table'><thead><tr><th>When</th><th>Version</th><th>Status</th></tr></thead><tbody>" + rows + "</tbody></table>";
+      })
+      .catch(function () { host.innerHTML = "<p class='muted'>Update history unavailable.</p>"; });
+  }
+
+  /* ---- copy-to-clipboard (CLI commands) --------------------------------- */
+  function wireCopy() {
+    $all("[data-copy]").forEach(function (el) {
+      el.addEventListener("click", function () {
+        var text = el.getAttribute("data-copy");
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(function () { toast("Copied", "ok"); });
+        } else {
+          var ta = document.createElement("textarea"); ta.value = text; document.body.appendChild(ta);
+          ta.select(); try { document.execCommand("copy"); toast("Copied", "ok"); } catch (e) { /* ignore */ }
+          document.body.removeChild(ta);
+        }
+      });
+    });
+  }
+
+  /* ---- posts list: instant client-side search --------------------------- */
+  function wirePostsSearch() {
+    var input = $("[data-posts-search]");
+    if (!input) return;
+    var emptyMsg = $("[data-search-empty]");
+    input.addEventListener("input", function () {
+      var q = input.value.trim().toLowerCase();
+      var shown = 0;
+      $all("[data-post-row]").forEach(function (row) {
+        var hit = !q || (row.getAttribute("data-search") || "").indexOf(q) >= 0;
+        row.hidden = !hit;
+        if (hit) shown++;
+      });
+      if (emptyMsg) emptyMsg.hidden = shown !== 0;
+    });
+  }
+
+  /* ---- SEO: regenerate artefacts ---------------------------------------- */
+  function wireSEO() {
+    var btn = $("[data-action='seo-regenerate']");
+    if (!btn) return;
+    var status = $("[data-seo-status]");
+    btn.addEventListener("click", function () {
+      btn.disabled = true;
+      var orig = btn.textContent; btn.textContent = "Regenerating…";
+      var headers = { "Content-Type": "application/json" };
+      var csrf = cookie("vp_csrf"); if (csrf) headers["X-CSRF-Token"] = csrf;
+      fetch("/admin/v2/api/seo/regenerate", { method: "POST", headers: headers, credentials: "same-origin" })
+        .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+        .then(function (data) {
+          if (status) { status.hidden = false; status.className = "seo-status ok"; status.textContent = "Regenerated: " + ((data.regenerated || []).join(", ")); }
+          toast("SEO artefacts regenerated", "ok");
+        })
+        .catch(function (st) {
+          if (status) { status.hidden = false; status.className = "seo-status err"; status.textContent = "Regenerate failed (" + st + ")"; }
+          toast("Regenerate failed", "err");
+        })
+        .finally(function () { btn.disabled = false; btn.textContent = orig; });
     });
   }
 
@@ -515,6 +620,10 @@
     wireDropdowns();
     wireEditor();
     wireUpdateCheck();
+    wireUpdateHistory();
+    wireCopy();
+    wirePostsSearch();
+    wireSEO();
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
   else boot();

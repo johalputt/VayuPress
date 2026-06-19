@@ -18,14 +18,18 @@ import (
 	"context"
 	"html"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 
 	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/config"
+	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/mode"
 	"github.com/johalputt/vayupress/internal/render"
 )
 
@@ -74,7 +78,10 @@ func (a *App) registerAdminUIRoutes(r chi.Router) {
 		pr.Get("/admin/v2/posts", a.handleV2Posts)
 		pr.Get("/admin/v2/editor", a.handleV2Editor)
 		pr.Get("/admin/v2/editor/{slug}", a.handleV2Editor)
+		pr.Get("/admin/v2/seo", a.handleV2SEO)
 		pr.Get("/admin/v2/settings", a.handleV2Settings)
+		// SEO artefact regeneration — CSRF-protected governed write.
+		pr.With(auth.CSRFTokenMiddleware).Post("/admin/v2/api/seo/regenerate", a.handleSEORegenerate)
 	})
 }
 
@@ -117,6 +124,7 @@ func adminV2Layout(nonce, title, sidebarActive, bodyHTML string) string {
     ` + nav("/admin/v2", "Dashboard", "dashboard") + `
     ` + nav("/admin/v2/posts", "Posts", "posts") + `
     ` + nav("/admin/v2/editor", "New Post", "editor") + `
+    ` + nav("/admin/v2/seo", "SEO", "seo") + `
     <div class="nav-section">System</div>
     ` + nav("/admin/v2/settings", "Settings", "settings") + `
     <a class="nav-link" href="/admin">Classic Console</a>
@@ -179,18 +187,34 @@ func (a *App) handleV2Dashboard(w http.ResponseWriter, r *http.Request) {
 		recent = `<table class="table"><thead><tr><th>Title</th><th>Created</th></tr></thead><tbody>` + rows + `</tbody></table>`
 	}
 
-	body := `<div class="page-header"><h1>Dashboard</h1></div>
+	body := `<div class="page-header"><h1>Dashboard</h1>
+  <div class="btn-row">
+    <a class="btn btn-ghost btn-sm" href="/admin/v2/seo">SEO</a>
+    <a class="btn btn-primary" href="/admin/v2/editor">New Post</a>
+  </div>
+</div>
 <div class="grid grid-4">
   <div class="card stat"><span class="stat-value">` + strconv.Itoa(snap.TotalArticles) + `</span><span class="stat-label">Articles</span></div>
   <div class="card stat"><span class="stat-value stat-primary">` + strconv.Itoa(snap.PendingJobs) + `</span><span class="stat-label">Pending jobs</span></div>
   <div class="card stat"><span class="stat-value stat-accent">` + strconv.Itoa(snap.FailedJobs) + `</span><span class="stat-label">Failed jobs</span></div>
   <div class="card stat"><span class="stat-value">` + strconv.Itoa(snap.CompletedJobs) + `</span><span class="stat-label">Completed jobs</span></div>
 </div>
-<div class="card mt-2">
-  <div class="card-title">Storage</div>
-  <div class="progress"><div class="` + barCls + ` ` + wCls + `"></div></div>
-  <div class="hint mt-1">` + strconv.Itoa(pct) + `% of quota used · cache hit ` +
+<div class="grid grid-2 mt-2">
+  <div class="card">
+    <div class="card-title">Storage</div>
+    <div class="progress"><div class="` + barCls + ` ` + wCls + `"></div></div>
+    <div class="hint mt-1">` + strconv.Itoa(pct) + `% of quota used · cache hit ` +
 		strconv.Itoa(int(snap.CacheHitRatio*100)) + `%</div>
+  </div>
+  <div class="card">
+    <div class="card-title">Quick actions</div>
+    <div class="quick-actions">
+      <a class="quick-action" href="/admin/v2/editor"><span class="qa-icon">✍️</span><span>Write a post</span></a>
+      <a class="quick-action" href="/admin/v2/posts"><span class="qa-icon">📄</span><span>Manage posts</span></a>
+      <a class="quick-action" href="/admin/v2/seo"><span class="qa-icon">🔍</span><span>SEO dashboard</span></a>
+      <a class="quick-action" href="/admin/v2/settings"><span class="qa-icon">⚙️</span><span>Settings &amp; updates</span></a>
+    </div>
+  </div>
 </div>
 <div class="card mt-2">
   <div class="card-title">Recent articles</div>
@@ -201,25 +225,54 @@ func (a *App) handleV2Dashboard(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) handleV2Posts(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
-	res, err := a.articles.List(r.Context(), 1, 50, "")
+	res, err := a.articles.List(r.Context(), 1, 200, "")
 	rows := ""
+	count := 0
 	if err == nil {
 		for _, p := range res.Articles {
+			count++
 			tags := ""
+			searchTags := ""
 			for _, t := range p.Tags {
 				tags += `<span class="badge badge-primary tag-chip">#` + html.EscapeString(t) + `</span>`
+				searchTags += " " + t
 			}
-			rows += `<tr><td><a href="/admin/v2/editor/` + html.EscapeString(p.Slug) + `">` +
-				html.EscapeString(p.Title) + `</a></td><td>` + tags + `</td><td class="muted">` +
-				p.UpdatedAt.UTC().Format("2006-01-02") + `</td></tr>`
+			// data-search carries lowercased title+tags for instant client-side filtering.
+			rows += `<tr data-post-row data-search="` + html.EscapeString(strings.ToLower(p.Title+searchTags)) + `">` +
+				`<td><a href="/admin/v2/editor/` + html.EscapeString(p.Slug) + `">` +
+				html.EscapeString(p.Title) + `</a><div class="row-sub muted">/` + html.EscapeString(p.Slug) + `</div></td>` +
+				`<td>` + tags + `</td>` +
+				`<td class="muted">` + p.UpdatedAt.UTC().Format("2006-01-02") + `</td>` +
+				`<td class="row-actions"><a class="btn btn-ghost btn-sm" href="/admin/v2/editor/` + html.EscapeString(p.Slug) + `">Edit</a>` +
+				`<a class="btn btn-ghost btn-sm" href="/` + html.EscapeString(p.Slug) + `" target="_blank" rel="noopener">View ↗</a></td>` +
+				`</tr>`
 		}
 	}
-	table := `<div class="table-empty">No posts found.</div>`
-	if rows != "" {
-		table = `<table class="table"><thead><tr><th>Title</th><th>Tags</th><th>Updated</th></tr></thead><tbody>` + rows + `</tbody></table>`
+
+	var body string
+	if count == 0 {
+		// Delightful empty state instead of a bare "no rows" line.
+		body = `<div class="page-header"><h1>Posts</h1></div>
+<div class="card empty-state">
+  <div class="empty-icon">✍️</div>
+  <div class="empty-title">No posts yet</div>
+  <div class="empty-sub">Your published articles will appear here. Write your first one — it takes a minute.</div>
+  <a class="btn btn-primary mt-2" href="/admin/v2/editor">Write your first post</a>
+</div>`
+	} else {
+		body = `<div class="page-header"><h1>Posts <span class="count-pill">` + strconv.Itoa(count) + `</span></h1>
+  <a class="btn btn-primary" href="/admin/v2/editor">New Post</a>
+</div>
+<div class="card">
+  <div class="toolbar-row">
+    <input class="input search-input" type="search" data-posts-search placeholder="Search posts by title or tag…" aria-label="Search posts">
+  </div>
+  <table class="table"><thead><tr><th>Title</th><th>Tags</th><th>Updated</th><th></th></tr></thead>
+    <tbody>` + rows + `</tbody>
+  </table>
+  <div class="table-empty" data-search-empty hidden>No posts match your search.</div>
+</div>`
 	}
-	body := `<div class="page-header"><h1>Posts</h1><a class="btn btn-primary" href="/admin/v2/editor">New Post</a></div>
-<div class="card">` + table + `</div>`
 	writeV2HTML(w, adminV2Layout(nonce, "Posts", "posts", body))
 }
 
@@ -318,22 +371,155 @@ func editorBodyHTML(slug, heading, title, content string) string {
 
 func (a *App) handleV2Settings(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
+	cur := html.EscapeString(Version)
 	body := `<div class="page-header"><h1>Settings</h1></div>
-<div class="card">
-  <div class="card-title">Updates</div>
-  <div class="update-panel">
-    <p class="update-status" data-update-status>Click check to query for a newer VayuPress release.</p>
-    <div class="btn-row">
-      <button type="button" class="btn btn-primary" data-action="check-updates">Check for updates</button>
+
+<div class="card update-card">
+  <div class="update-head">
+    <div>
+      <div class="card-title">Software updates</div>
+      <div class="version-line">Running <span class="badge badge-primary">v` + cur + `</span></div>
     </div>
-    <p class="hint">Queries <code>/admin/api/updates/check</code> (built separately).</p>
+    <button type="button" class="btn btn-primary" data-action="check-updates">Check for updates</button>
   </div>
+
+  <div class="update-result" data-update-result hidden>
+    <div class="update-banner" data-update-banner></div>
+    <div class="changelog" data-update-changelog></div>
+
+    <!-- Guided, signature-verified apply (ADR-0064): applying swaps the binary
+         and is therefore CLI-only and Ed25519-verified. The UI surfaces the
+         exact command and a dry-run, never executing a privileged web action. -->
+    <div class="apply-guide" data-apply-guide hidden>
+      <div class="card-title">Apply this update</div>
+      <p class="hint">For safety, applying is signature-verified and runs from the CLI (no web RCE). VayuPress backs up first, verifies the Ed25519 signature, then swaps the binary atomically — your old binary is kept as <code>.bak</code> for rollback.</p>
+      <ol class="apply-steps">
+        <li><span class="step-n">1</span> Dry-run to preview: <code class="cmd" data-copy="vayupress update apply --dry-run">vayupress update apply --dry-run</code></li>
+        <li><span class="step-n">2</span> Apply &amp; restart: <code class="cmd" data-copy="vayupress update apply">vayupress update apply</code></li>
+        <li><span class="step-n">3</span> Roll back if needed: <code class="cmd" data-copy="vayupress update rollback">vayupress update rollback</code></li>
+      </ol>
+      <p class="hint">Requires <code>VAYU_SELFUPDATE_ENABLED=true</code> and a pinned <code>VAYU_RELEASE_PUBKEY</code>. See <code>docs/UPGRADING.md</code>.</p>
+    </div>
+  </div>
+
+  <p class="hint">Checks <code>/admin/api/updates/check</code> against the official release feed. No telemetry is sent — the check is a single outbound request you initiate.</p>
 </div>
+
+<div class="card mt-2">
+  <div class="card-title">Update history</div>
+  <div data-update-history><p class="muted">Loading recent update activity…</p></div>
+</div>
+
 <div class="card mt-2">
   <div class="card-title">About</div>
-  <p class="muted">VayuPress Admin v2 — strict-CSP, vendored UI. Served under <code>/admin/v2</code>.</p>
+  <p class="muted">VayuPress Admin v2 — strict-CSP (no <code>eval</code>, no inline styles, per-request nonce), fully vendored UI, zero telemetry. Served under <code>/admin/v2</code> (ADR-0065).</p>
 </div>`
 	writeV2HTML(w, adminV2Layout(nonce, "Settings", "settings", body))
+}
+
+// handleV2SEO renders the native SEO dashboard: artefact status (sitemap, feed,
+// robots), per-article SEO readiness, and a one-click regenerate. All numbers
+// are computed from the live DB and on-disk cache — no third-party services.
+func (a *App) handleV2SEO(w http.ResponseWriter, r *http.Request) {
+	nonce := render.CSPNonce(r)
+
+	// Artefact freshness — stat the generated cache files.
+	artefact := func(name string) (bool, string) {
+		fi, err := os.Stat(filepath.Join(config.Cfg.CacheDir, name))
+		if err != nil {
+			return false, "missing"
+		}
+		return true, fi.ModTime().UTC().Format("2006-01-02 15:04") + " UTC"
+	}
+	smOK, smWhen := artefact("sitemap.xml")
+	feedOK, feedWhen := artefact("feed.xml")
+	robotsOK, robotsWhen := artefact("robots.txt")
+
+	// Per-article readiness — titles present, content depth, thin-content count.
+	// Computed in SQL so we read content length without loading every body.
+	// Thin ≈ <1500 chars (~300 words). A missing/blank title is counted once.
+	total, thin, noTitle := 0, 0, 0
+	if rows, err := dbpkg.DB.QueryContext(r.Context(), `SELECT COALESCE(TRIM(title),''), LENGTH(COALESCE(content,'')) FROM articles`); err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var title string
+			var clen int
+			if rows.Scan(&title, &clen) != nil {
+				continue
+			}
+			total++
+			if title == "" {
+				noTitle++
+			} else if clen < 1500 {
+				thin++
+			}
+		}
+	}
+	healthy := total - thin - noTitle
+	if healthy < 0 {
+		healthy = 0
+	}
+
+	statusBadge := func(ok bool, when string) string {
+		if ok {
+			return `<span class="badge badge-ok">✓ generated</span><span class="muted seo-when"> ` + html.EscapeString(when) + `</span>`
+		}
+		return `<span class="badge badge-warn">not generated</span>`
+	}
+
+	body := `<div class="page-header"><h1>SEO</h1>
+  <button type="button" class="btn btn-primary" data-action="seo-regenerate">Regenerate artefacts</button>
+</div>
+<div class="seo-status" data-seo-status hidden></div>
+
+<div class="grid grid-3">
+  <div class="card stat"><span class="stat-value stat-primary">` + strconv.Itoa(healthy) + `</span><span class="stat-label">SEO-healthy posts</span></div>
+  <div class="card stat"><span class="stat-value stat-accent">` + strconv.Itoa(thin) + `</span><span class="stat-label">Thin (&lt;300 words)</span></div>
+  <div class="card stat"><span class="stat-value">` + strconv.Itoa(noTitle) + `</span><span class="stat-label">Missing title</span></div>
+</div>
+
+<div class="card mt-2">
+  <div class="card-title">Generated artefacts</div>
+  <table class="table">
+    <thead><tr><th>Artefact</th><th>Status</th><th>Path</th></tr></thead>
+    <tbody>
+      <tr><td>Sitemap</td><td>` + statusBadge(smOK, smWhen) + `</td><td><code>/sitemap.xml</code></td></tr>
+      <tr><td>RSS feed</td><td>` + statusBadge(feedOK, feedWhen) + `</td><td><code>/feed.xml</code></td></tr>
+      <tr><td>robots.txt</td><td>` + statusBadge(robotsOK, robotsWhen) + `</td><td><code>/robots.txt</code></td></tr>
+    </tbody>
+  </table>
+  <p class="hint">Regenerating rebuilds the sitemap (up to 50k URLs), the RSS feed (latest 50), and robots.txt from the live database, then writes them to the cache served at the public paths above.</p>
+</div>
+
+<div class="card mt-2">
+  <div class="card-title">On-page SEO (automatic)</div>
+  <p class="muted">Every article page ships these with no configuration:</p>
+  <ul class="seo-checklist">
+    <li>✓ Semantic <code>&lt;title&gt;</code> and meta description from the post</li>
+    <li>✓ OpenGraph + Twitter Card tags for rich link previews</li>
+    <li>✓ JSON-LD <code>Article</code> structured data (author, dates, headline)</li>
+    <li>✓ Canonical URL + reading-time and tag metadata</li>
+    <li>✓ Zero third-party scripts — fast Core Web Vitals by construction</li>
+  </ul>
+</div>`
+	writeV2HTML(w, adminV2Layout(nonce, "SEO", "seo", body))
+}
+
+// handleSEORegenerate rebuilds the SEO artefacts on demand. It is a
+// CSRF-protected, mode-gated governed write (it only writes to the cache dir).
+func (a *App) handleSEORegenerate(w http.ResponseWriter, r *http.Request) {
+	cur := mode.Global.Current()
+	if cur == mode.ModeReadOnly || cur == mode.ModeQuarantined {
+		writeJSON(w, r, http.StatusServiceUnavailable, map[string]string{"error": "cannot regenerate in " + string(cur) + " mode"})
+		return
+	}
+	generateSitemap()
+	generateRSS()
+	generateRobots()
+	writeJSON(w, r, http.StatusOK, map[string]interface{}{
+		"status":      "ok",
+		"regenerated": []string{"sitemap.xml", "feed.xml", "robots.txt"},
+	})
 }
 
 func (a *App) handleV2Login(w http.ResponseWriter, r *http.Request) {
