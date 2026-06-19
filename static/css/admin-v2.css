@@ -459,8 +459,68 @@ body.distraction-free .content { max-width: 1000px; margin: 0 auto; }
   font-size: 14px;
   color: var(--text);
 }
+.slash-palette { top: 14px; left: 14px; max-height: 280px; overflow-y: auto; }
 .slash-item:hover, .slash-item.active { background: rgba(13, 148, 136, 0.18); color: var(--primary-bright); }
+.slash-item.active { box-shadow: inset 2px 0 0 var(--primary-bright); }
 .slash-item .slash-key { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-left: auto; }
+
+/* ── Drag-&-drop image overlay ─────────────────────────────────────────── */
+.drop-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(13, 148, 136, 0.10);
+  border: 2px dashed var(--primary-bright);
+  border-radius: var(--radius-sm);
+  pointer-events: none;
+}
+.drop-overlay.show { display: flex; }
+.drop-overlay-inner {
+  font-family: var(--head);
+  font-size: 16px;
+  color: var(--primary-bright);
+  background: var(--surface);
+  padding: 10px 18px;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+}
+
+/* ── SEO readiness meter ───────────────────────────────────────────────── */
+.seo-preview { padding-bottom: 10px; border-bottom: 1px solid var(--border); margin-bottom: 10px; }
+.seo-meter { height: 6px; background: var(--border); border-radius: 99px; overflow: hidden; }
+.seo-meter-bar {
+  height: 100%;
+  width: 0;
+  border-radius: 99px;
+  transition: width .35s ease, background .35s ease;
+  background: var(--danger);
+}
+.seo-meter-bar.low { background: var(--danger); }
+.seo-meter-bar.ok { background: var(--accent); }
+.seo-meter-bar.good { background: var(--ok); }
+
+/* ── Tool-button polish + keyboard hint ────────────────────────────────── */
+.tool-btn { transition: background .15s ease, color .15s ease, transform .08s ease; }
+.tool-btn:active { transform: translateY(1px); }
+.kbd-hint-text { color: var(--muted); font-size: 12px; font-family: var(--mono); }
+
+/* ── Preview-hidden mode (Ctrl/⌘+P) — write full-width ─────────────────── */
+body.preview-hidden .preview-pane { display: none; }
+body.preview-hidden .split { grid-template-columns: 1fr; }
+
+/* ── Focus-mode typography: larger, calmer measure ─────────────────────── */
+body.distraction-free .editor-area {
+  font-size: 17px;
+  line-height: 1.75;
+  max-width: 740px;
+  margin: 0 auto;
+  padding: 32px;
+}
+body.distraction-free .editor-toolbar { opacity: .35; transition: opacity .2s ease; }
+body.distraction-free .editor-toolbar:hover { opacity: 1; }
 
 /* ── Version history dropdown ──────────────────────────────────────────── */
 .dropdown { position: relative; display: inline-block; }

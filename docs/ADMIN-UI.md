@@ -68,17 +68,38 @@ assets.
 The editor is the centrepiece. All interactivity is CSP-safe (no `eval`):
 
 - **Split-view live preview** — Markdown on the left, rendered HTML on the right.
-- **Distraction-free mode** — toggles a body class to hide chrome.
-- **Slash commands** — type `/` for a palette: image, code block, quote, table,
-  callout, heading.
-- **Formatting toolbar** — bold / italic / heading / link / code wrap the
-  current selection.
-- **Live stats** — word count, reading time, and an SEO preview (title, slug,
-  first 160 characters).
+  Toggle the preview off (`Ctrl/⌘+P`) to write full-width.
+- **Distraction-free / focus mode** (`Ctrl/⌘+.`) — hides all chrome and switches
+  to a calmer, larger measure for long-form writing.
+- **Slash commands** — type `/` for a **filterable, keyboard-navigable** palette
+  (↑/↓ to move, Enter to insert, Esc to dismiss): headings, image, code block,
+  quote, callout, lists, table, divider. Typing after the `/` filters the list,
+  and the typed query is replaced by the inserted block.
+- **Formatting toolbar + keyboard shortcuts** — bold (`Ctrl/⌘+B`), italic
+  (`Ctrl/⌘+I`), link (`Ctrl/⌘+K`), plus heading / quote / list / code. `Tab`
+  indents instead of leaving the field.
+- **Inline image upload** — click the image button, **drag-&-drop** an image onto
+  the editor, or **paste** an image from the clipboard. Images upload to the
+  sovereign, same-origin endpoint `POST /api/v1/admin/media` (magic-number
+  validated, content-addressed) and the Markdown is inserted automatically.
+- **Live stats** — word count, character count, reading time.
+- **SEO preview + readiness meter** — title / slug / 160-char description preview
+  plus a 0–100 score that reacts to title length, word count, slug, headings,
+  and images, with an actionable hint.
 - **Autosave** — debounced `PUT /api/v1/articles/{slug}` using the existing CSRF
-  handshake, with a "Saving…/Saved" toast.
+  handshake, with a live "Saving…/Saved" status. A `beforeunload` guard warns
+  before leaving with unsaved edits. The slug auto-derives from the title until
+  you edit it.
 - **Version history** — reads `GET /api/v1/admin/articles/{slug}/versions`
   (backed by `internal/versions`).
+
+### Media storage
+
+Editor image uploads are written to `MEDIA_DIR` (env var, default
+`/var/lib/vayupress/media`) and served same-origin from `/media/{file}`. Only
+PNG / JPEG / GIF / WebP are accepted — SVG is refused because it can carry inline
+script. Files are content-addressed (`<hash>.<ext>`), so duplicate uploads
+collapse to one file and the path is never attacker-influenced.
 
 ---
 

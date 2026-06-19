@@ -250,12 +250,13 @@ func editorBodyHTML(slug, heading, title, content string) string {
 	es := html.EscapeString(slug)
 	return `<div class="page-header"><h1>` + html.EscapeString(heading) + `</h1>
   <div class="btn-row">
-    <button type="button" class="btn btn-ghost btn-sm" data-action="toggle-distraction">Focus</button>
+    <button type="button" class="btn btn-ghost btn-sm" data-action="toggle-preview" title="Toggle preview (Ctrl/⌘+P)">Preview</button>
+    <button type="button" class="btn btn-ghost btn-sm" data-action="toggle-distraction" title="Focus mode (Ctrl/⌘+.)">Focus</button>
     <div class="dropdown">
       <button type="button" class="btn btn-ghost btn-sm" data-dropdown-toggle="version-menu" data-load-versions="version-menu">History ▾</button>
       <div class="dropdown-menu" id="version-menu"><div class="version-item muted">Open to load…</div></div>
     </div>
-    <button type="button" class="btn btn-accent btn-sm" data-action="save-now">Save</button>
+    <button type="button" class="btn btn-accent btn-sm" data-action="save-now" title="Save (Ctrl/⌘+S)">Save</button>
   </div>
 </div>
 <div class="editor-grid">
@@ -265,7 +266,17 @@ func editorBodyHTML(slug, heading, title, content string) string {
         <input id="ed-title" class="input" data-field="title" value="` + et + `" placeholder="Post title"></div>
       <div class="field"><label for="ed-slug">Slug</label>
         <input id="ed-slug" class="input" data-field="slug" value="` + es + `" placeholder="auto-from-title"></div>
-      <p class="hint">Autosave PUTs to <code>/api/v1/articles/{slug}</code> on edit.</p>
+      <div class="card seo-card">
+        <div class="card-title">SEO preview</div>
+        <div class="seo-preview">
+          <div class="seo-preview-title" data-seo-title>Untitled</div>
+          <div class="seo-preview-url" data-seo-url>/your-slug</div>
+          <div class="seo-preview-desc" data-seo-desc>No description yet.</div>
+        </div>
+        <div class="seo-meter"><div class="seo-meter-bar" data-seo-meter></div></div>
+        <div class="hint" data-seo-hint>Add a title and 50+ words for a healthy score.</div>
+      </div>
+      <p class="hint">Autosave PUTs to <code>/api/v1/articles/{slug}</code> as you type. Drag an image onto the editor to upload.</p>
       <!-- AUTH HANDSHAKE: leave blank if the API key is supplied via cookie/proxy.
            Operators wire a real key here only if RequireAPIKey needs the header. -->
       <input type="hidden" id="vp-api-key" value="">
@@ -273,41 +284,36 @@ func editorBodyHTML(slug, heading, title, content string) string {
   </div>
   <div class="editor-pane">
     <div class="editor-toolbar">
-      <button type="button" class="tool-btn" data-wrap="**|**" title="Bold">B</button>
-      <button type="button" class="tool-btn" data-wrap="*|*" title="Italic">i</button>
+      <button type="button" class="tool-btn" data-wrap="**|**" title="Bold (Ctrl/⌘+B)"><b>B</b></button>
+      <button type="button" class="tool-btn" data-wrap="*|*" title="Italic (Ctrl/⌘+I)"><i>I</i></button>
       <button type="button" class="tool-btn" data-prefix="## " title="Heading">H</button>
-      <button type="button" class="tool-btn" data-wrap="[|](https://)" title="Link">link</button>
-      <button type="button" class="tool-btn" data-wrap="` + "`" + `|` + "`" + `" title="Code">&lt;/&gt;</button>
+      <button type="button" class="tool-btn" data-wrap="[|](https://)" title="Link (Ctrl/⌘+K)">↗</button>
+      <button type="button" class="tool-btn" data-wrap="` + "`" + `|` + "`" + `" title="Inline code">&lt;/&gt;</button>
+      <button type="button" class="tool-btn" data-prefix="> " title="Quote">&ldquo;</button>
+      <button type="button" class="tool-btn" data-prefix="- " title="List">&bull;</button>
+      <button type="button" class="tool-btn" data-action="insert-image" title="Upload image">🖼</button>
       <span class="tool-spacer"></span>
-      <span class="badge" data-save-status>Idle</span>
+      <button type="button" class="tool-btn" data-action="toggle-distraction" title="Focus mode">⤢</button>
+      <span class="badge save-status" data-save-status>Idle</span>
     </div>
     <div class="split">
       <div class="split-pane">
-        <textarea class="editor-area" data-editor data-slug="` + es + `" placeholder="Write Markdown… type / for commands">` + ec + `</textarea>
-        <div class="slash-palette" data-slash-palette>
-          <div class="slash-item" data-snippet="heading">Heading<span class="slash-key">H</span></div>
-          <div class="slash-item" data-snippet="image">Image<span class="slash-key">Img</span></div>
-          <div class="slash-item" data-snippet="code">Code block<span class="slash-key">&lt;/&gt;</span></div>
-          <div class="slash-item" data-snippet="quote">Quote<span class="slash-key">&ldquo;</span></div>
-          <div class="slash-item" data-snippet="table">Table<span class="slash-key">Tbl</span></div>
-          <div class="slash-item" data-snippet="callout">Callout<span class="slash-key">!</span></div>
-        </div>
+        <textarea class="editor-area" data-editor data-slug="` + es + `" spellcheck="true" placeholder="Write in Markdown… type / for commands, drag an image to upload">` + ec + `</textarea>
+        <div class="slash-palette" data-slash-palette role="listbox" aria-label="Insert block"></div>
+        <div class="drop-overlay" data-drop-overlay><div class="drop-overlay-inner">Drop image to upload</div></div>
       </div>
-      <div class="split-pane"><div class="preview" data-preview></div></div>
+      <div class="split-pane preview-pane"><div class="preview" data-preview></div></div>
     </div>
     <div class="editor-statusbar">
       <span data-wordcount>0 words</span><span class="sep">·</span>
+      <span data-charcount>0 chars</span><span class="sep">·</span>
       <span data-readtime>~1 min read</span>
-      <span class="save-status" data-save-status>Idle</span>
-    </div>
-    <div class="card seo-card">
-      <div class="card-title">SEO preview</div>
-      <div class="seo-preview-title" data-seo-title>Untitled</div>
-      <div class="seo-preview-url" data-seo-url>/your-slug</div>
-      <div class="seo-preview-desc" data-seo-desc>No description yet.</div>
+      <span class="tool-spacer"></span>
+      <span class="kbd-hint-text">/ commands · Ctrl/⌘+S save · Ctrl/⌘+. focus</span>
     </div>
   </div>
-</div>`
+</div>
+<input type="file" accept="image/png,image/jpeg,image/gif,image/webp" data-image-input hidden>`
 }
 
 func (a *App) handleV2Settings(w http.ResponseWriter, r *http.Request) {

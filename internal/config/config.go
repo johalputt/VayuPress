@@ -14,6 +14,7 @@ var Cfg struct {
 	APIKey              string
 	DBPath              string
 	CacheDir            string
+	MediaDir            string
 	MeiliHost           string
 	MeiliMasterKey      string
 	Domain              string
@@ -49,6 +50,7 @@ func Load() {
 	Cfg.APIKey = MustEnv("API_KEY")
 	Cfg.DBPath = EnvOr("DB_PATH", "/var/lib/vayupress/data.db")
 	Cfg.CacheDir = EnvOr("CACHE_DIR", "/var/cache/vayupress")
+	Cfg.MediaDir = EnvOr("MEDIA_DIR", "/var/lib/vayupress/media")
 	Cfg.MeiliHost = EnvOr("MEILI_HOST", "http://localhost:7700")
 	Cfg.MeiliMasterKey = EnvOr("MEILI_MASTER_KEY", "")
 	Cfg.Domain = EnvOr("DOMAIN", "localhost")

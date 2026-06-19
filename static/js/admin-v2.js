@@ -154,16 +154,26 @@
     });
   }
 
-  /* ---- slash-command snippets ------------------------------------------- */
-  var SNIPPETS = {
-    heading: { label: "Heading", key: "H", text: "## Heading\n" },
-    image: { label: "Image", key: "Img", text: "![alt text](https://)\n" },
-    code: { label: "Code block", key: "</>", text: "```\ncode here\n```\n" },
-    quote: { label: "Quote", key: "“", text: "> quote\n" },
-    table: { label: "Table", key: "Tbl", text: "| Col A | Col B |\n| --- | --- |\n| a | b |\n" },
-    callout: { label: "Callout", key: "!", text: "> **Note:** callout text\n" }
+  /* ---- slash-command catalog -------------------------------------------- */
+  /* Ordered list so the palette is keyboard-navigable and filterable. Each
+     command carries the keywords it matches and the Markdown it inserts. */
+  var COMMANDS = [
+    { id: "h1", label: "Heading 1", hint: "H1", words: "heading title h1", text: "# " },
+    { id: "h2", label: "Heading 2", hint: "H2", words: "heading subtitle h2", text: "## " },
+    { id: "h3", label: "Heading 3", hint: "H3", words: "heading h3", text: "### " },
+    { id: "image", label: "Image", hint: "Img", words: "image picture photo upload", text: "![alt text](https://)\n" },
+    { id: "code", label: "Code block", hint: "</>", words: "code snippet pre fenced", text: "```\ncode here\n```\n" },
+    { id: "quote", label: "Quote", hint: "“", words: "quote blockquote citation", text: "> " },
+    { id: "callout", label: "Callout", hint: "!", words: "callout note tip warning", text: "> **Note:** callout text\n" },
+    { id: "ul", label: "Bullet list", hint: "•", words: "list bullet unordered ul", text: "- " },
+    { id: "ol", label: "Numbered list", hint: "1.", words: "list numbered ordered ol", text: "1. " },
+    { id: "table", label: "Table", hint: "Tbl", words: "table grid columns", text: "| Col A | Col B |\n| --- | --- |\n| a | b |\n" },
+    { id: "hr", label: "Divider", hint: "—", words: "divider rule separator hr", text: "\n---\n" }
+  ];
+  window.vpSnippet = function (id) {
+    for (var i = 0; i < COMMANDS.length; i++) if (COMMANDS[i].id === id) return COMMANDS[i].text;
+    return "";
   };
-  window.vpSnippet = function (name) { return SNIPPETS[name] ? SNIPPETS[name].text : ""; };
 
   function insertAtCursor(ta, text) {
     var start = ta.selectionStart, end = ta.selectionEnd;
@@ -185,6 +195,11 @@
     ta.focus();
   }
 
+  /* ---- slugify (mirrors the server's rule closely enough for previews) --- */
+  function slugify(s) {
+    return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80);
+  }
+
   /* ---- editor ----------------------------------------------------------- */
   function wireEditor() {
     var ta = $("[data-editor]");
@@ -193,6 +208,8 @@
     var slug = ta.getAttribute("data-slug") || "";
     var titleInput = $("[data-field='title']");
     var slugInput = $("[data-field='slug']");
+    var slugTouched = !!(slugInput && slugInput.value);
+    var dirty = false;
 
     function renderPreview() {
       if (preview) preview.innerHTML = markdownToHTML(ta.value);
@@ -200,10 +217,13 @@
       updateSEO();
     }
 
+    function wordCount() { return ta.value.trim() ? ta.value.trim().split(/\s+/).length : 0; }
+
     function updateStats() {
-      var words = ta.value.trim() ? ta.value.trim().split(/\s+/).length : 0;
+      var words = wordCount();
       var mins = Math.max(1, Math.round(words / 200));
-      var wc = $("[data-wordcount]"); if (wc) wc.textContent = words + " words";
+      var wc = $("[data-wordcount]"); if (wc) wc.textContent = words + (words === 1 ? " word" : " words");
+      var cc = $("[data-charcount]"); if (cc) cc.textContent = ta.value.length + " chars";
       var rt = $("[data-readtime]"); if (rt) rt.textContent = "~" + mins + " min read";
     }
 
@@ -212,17 +232,43 @@
       var sl = slugInput ? slugInput.value : slug;
       var st = $("[data-seo-title]"); if (st) st.textContent = t || "Untitled";
       var su = $("[data-seo-url]"); if (su) su.textContent = "/" + (sl || "your-slug");
-      var sd = $("[data-seo-desc]");
-      if (sd) { var txt = stripMd(ta.value).slice(0, 160); sd.textContent = txt || "No description yet."; }
+      var desc = stripMd(ta.value).slice(0, 160);
+      var sd = $("[data-seo-desc]"); if (sd) sd.textContent = desc || "No description yet.";
+
+      /* lightweight readiness score (0–100) — title, length, slug, structure */
+      var words = wordCount(), score = 0;
+      if (t.length >= 10 && t.length <= 65) score += 30; else if (t) score += 12;
+      if (words >= 300) score += 35; else if (words >= 50) score += 20; else if (words > 0) score += 6;
+      if (sl) score += 15;
+      if (/^#{1,3}\s/m.test(ta.value)) score += 10;        // has a heading
+      if (/!\[[^\]]*\]\([^)]+\)/.test(ta.value)) score += 10; // has an image
+      score = Math.min(100, score);
+      var meter = $("[data-seo-meter]");
+      if (meter) {
+        meter.style.width = score + "%";
+        meter.className = "seo-meter-bar " + (score >= 75 ? "good" : score >= 45 ? "ok" : "low");
+      }
+      var hint = $("[data-seo-hint]");
+      if (hint) {
+        if (!t) hint.textContent = "Add a title to start scoring.";
+        else if (words < 50) hint.textContent = "Write 50+ words for a healthier score.";
+        else if (score >= 75) hint.textContent = "Looking great — well-structured and substantial.";
+        else hint.textContent = "Good. Add a heading or image to lift the score.";
+      }
     }
 
-    /* live preview */
-    ta.addEventListener("input", renderPreview);
-    if (titleInput) titleInput.addEventListener("input", updateSEO);
-    if (slugInput) slugInput.addEventListener("input", updateSEO);
+    function markDirty() { dirty = true; }
+
+    /* live preview + auto-slug from title */
+    ta.addEventListener("input", function () { renderPreview(); markDirty(); });
+    if (titleInput) titleInput.addEventListener("input", function () {
+      if (slugInput && !slugTouched) slugInput.value = slugify(titleInput.value);
+      updateSEO(); markDirty();
+    });
+    if (slugInput) slugInput.addEventListener("input", function () { slugTouched = true; updateSEO(); markDirty(); });
     renderPreview();
 
-    /* toolbar wrap buttons */
+    /* toolbar wrap / prefix buttons */
     $all("[data-wrap]").forEach(function (b) {
       b.addEventListener("click", function () {
         var spec = b.getAttribute("data-wrap").split("|");
@@ -230,70 +276,106 @@
       });
     });
     $all("[data-prefix]").forEach(function (b) {
-      b.addEventListener("click", function () { insertAtCursor(ta, b.getAttribute("data-prefix")); });
+      b.addEventListener("click", function () { insertLinePrefix(ta, b.getAttribute("data-prefix")); });
     });
 
-    /* distraction-free toggle */
-    var df = $("[data-action='toggle-distraction']");
-    if (df) df.addEventListener("click", function () { document.body.classList.toggle("distraction-free"); });
+    /* distraction-free + preview toggles */
+    $all("[data-action='toggle-distraction']").forEach(function (df) {
+      df.addEventListener("click", function () { document.body.classList.toggle("distraction-free"); });
+    });
+    var pvBtn = $("[data-action='toggle-preview']");
+    if (pvBtn) pvBtn.addEventListener("click", function () { document.body.classList.toggle("preview-hidden"); });
 
-    /* slash palette */
+    /* ---- slash palette (filterable, keyboard-navigable) ----------------- */
     var palette = $("[data-slash-palette]");
+    var paletteOpen = false, activeIdx = 0, slashPos = -1;
+    function renderPalette(filter) {
+      if (!palette) return;
+      var f = (filter || "").toLowerCase();
+      var matches = COMMANDS.filter(function (c) {
+        return !f || c.label.toLowerCase().indexOf(f) >= 0 || c.words.indexOf(f) >= 0;
+      });
+      palette.innerHTML = "";
+      if (!matches.length) { closePalette(); return; }
+      if (activeIdx >= matches.length) activeIdx = matches.length - 1;
+      matches.forEach(function (c, idx) {
+        var el = document.createElement("div");
+        el.className = "slash-item" + (idx === activeIdx ? " active" : "");
+        el.setAttribute("role", "option");
+        el.innerHTML = "";
+        var lab = document.createElement("span"); lab.textContent = c.label;
+        var key = document.createElement("span"); key.className = "slash-key"; key.textContent = c.hint;
+        el.appendChild(lab); el.appendChild(key);
+        el.addEventListener("mousedown", function (ev) { ev.preventDefault(); choose(c); });
+        palette.appendChild(el);
+      });
+      palette._matches = matches;
+      palette.classList.add("open");
+      paletteOpen = true;
+    }
+    function closePalette() { if (palette) { palette.classList.remove("open"); paletteOpen = false; slashPos = -1; activeIdx = 0; } }
+    function choose(c) {
+      /* replace the "/filter" the user typed with the snippet */
+      if (slashPos >= 0) {
+        var caret = ta.selectionStart;
+        ta.value = ta.value.slice(0, slashPos) + ta.value.slice(caret);
+        ta.selectionStart = ta.selectionEnd = slashPos;
+      }
+      insertAtCursor(ta, c.text);
+      closePalette(); markDirty();
+    }
     if (palette) {
-      $all(".slash-item", palette).forEach(function (item) {
-        item.addEventListener("mousedown", function (ev) {
-          ev.preventDefault();
-          insertAtCursor(ta, window.vpSnippet(item.getAttribute("data-snippet")));
-          palette.classList.remove("open");
-        });
+      ta.addEventListener("input", function () {
+        var caret = ta.selectionStart;
+        var upto = ta.value.slice(0, caret);
+        var m = /(?:^|\s)\/([a-z0-9]*)$/i.exec(upto);
+        if (m) { slashPos = caret - m[1].length - 1; activeIdx = 0; renderPalette(m[1]); }
+        else closePalette();
       });
-      ta.addEventListener("keyup", function (e) {
-        if (e.key === "/") {
-          palette.classList.add("open");
-        } else if (e.key === "Escape") {
-          palette.classList.remove("open");
-        }
+      ta.addEventListener("keydown", function (e) {
+        if (!paletteOpen) return;
+        var matches = palette._matches || [];
+        if (e.key === "ArrowDown") { e.preventDefault(); activeIdx = (activeIdx + 1) % matches.length; renderPalette(currentFilter()); }
+        else if (e.key === "ArrowUp") { e.preventDefault(); activeIdx = (activeIdx - 1 + matches.length) % matches.length; renderPalette(currentFilter()); }
+        else if (e.key === "Enter") { e.preventDefault(); if (matches[activeIdx]) choose(matches[activeIdx]); }
+        else if (e.key === "Escape") { e.preventDefault(); closePalette(); }
       });
-      ta.addEventListener("blur", function () {
-        setTimeout(function () { palette.classList.remove("open"); }, 150);
-      });
+      function currentFilter() {
+        var upto = ta.value.slice(0, ta.selectionStart);
+        var m = /(?:^|\s)\/([a-z0-9]*)$/i.exec(upto);
+        return m ? m[1] : "";
+      }
+      ta.addEventListener("blur", function () { setTimeout(closePalette, 150); });
     }
 
-    /* autosave (debounced PUT to existing /api/v1/articles/{slug}) */
-    var saveStatus = $("[data-save-status]");
+    /* ---- Tab to indent (don't lose focus) ------------------------------- */
+    ta.addEventListener("keydown", function (e) {
+      if (e.key === "Tab" && !paletteOpen) { e.preventDefault(); insertAtCursor(ta, "  "); }
+    });
+
+    /* ---- autosave (debounced PUT to /api/v1/articles/{slug}) ------------ */
     var saveTimer;
     function setStatus(text, cls) {
-      if (!saveStatus) return;
-      saveStatus.textContent = text;
-      saveStatus.className = "save-status" + (cls ? " " + cls : "");
+      $all("[data-save-status]").forEach(function (s) {
+        s.textContent = text;
+        s.className = (s.classList.contains("badge") ? "badge save-status" : "save-status") + (cls ? " " + cls : "");
+      });
     }
     function doSave() {
-      if (!slug) { return; } // new posts: operator creates via POST first
+      if (!slug) { toast("Create the post first to enable autosave", "err"); return; }
       setStatus("Saving…", "saving");
-      /* AUTH HANDSHAKE: admin pages are protected by the API key (cookie/header
-         depending on the operator's reverse proxy). The update endpoint also
-         enforces CSRF. We send the double-submit CSRF token from the vp_csrf
-         cookie as X-CSRF-Token, and forward any API key the operator wired into
-         the hidden #vp-api-key field. If the deployment keys the API via cookie,
-         RequireAPIKey reads it transparently and the header may be empty. */
       var headers = { "Content-Type": "application/json" };
       var csrf = cookie("vp_csrf");
       if (csrf) headers["X-CSRF-Token"] = csrf;
       var apiKeyField = document.getElementById("vp-api-key");
       if (apiKeyField && apiKeyField.value) headers["X-API-Key"] = apiKeyField.value;
-      var body = {
-        title: titleInput ? titleInput.value : undefined,
-        content: ta.value
-      };
+      var body = { title: titleInput ? titleInput.value : undefined, content: ta.value };
       fetch("/api/v1/articles/" + encodeURIComponent(slug), {
-        method: "PUT",
-        headers: headers,
-        credentials: "same-origin",
-        body: JSON.stringify(body)
+        method: "PUT", headers: headers, credentials: "same-origin", body: JSON.stringify(body)
       }).then(function (r) {
-        if (r.ok) { setStatus("Saved", "saved"); toast("Saved", "ok"); }
-        else { setStatus("Save failed", ""); toast("Save failed (" + r.status + ")", "err"); }
-      }).catch(function () { setStatus("Save failed", ""); toast("Network error", "err"); });
+        if (r.ok) { setStatus("Saved", "saved"); dirty = false; }
+        else { setStatus("Save failed", "err"); toast("Save failed (" + r.status + ")", "err"); }
+      }).catch(function () { setStatus("Offline", "err"); toast("Network error — changes kept locally", "err"); });
     }
     ta.addEventListener("input", function () {
       clearTimeout(saveTimer);
@@ -303,7 +385,74 @@
     var saveBtn = $("[data-action='save-now']");
     if (saveBtn) saveBtn.addEventListener("click", function () { clearTimeout(saveTimer); doSave(); });
 
-    /* version history fetch */
+    /* warn before leaving with unsaved edits */
+    window.addEventListener("beforeunload", function (e) {
+      if (dirty) { e.preventDefault(); e.returnValue = ""; return ""; }
+    });
+
+    /* ---- keyboard shortcuts --------------------------------------------- */
+    ta.addEventListener("keydown", function (e) {
+      var mod = e.ctrlKey || e.metaKey;
+      if (!mod) return;
+      var k = e.key.toLowerCase();
+      if (k === "b") { e.preventDefault(); wrapSelection(ta, "**", "**"); }
+      else if (k === "i") { e.preventDefault(); wrapSelection(ta, "*", "*"); }
+      else if (k === "k") { e.preventDefault(); wrapSelection(ta, "[", "](https://)"); }
+      else if (k === "s") { e.preventDefault(); clearTimeout(saveTimer); doSave(); }
+    });
+    document.addEventListener("keydown", function (e) {
+      var mod = e.ctrlKey || e.metaKey;
+      if (mod && e.key === ".") { e.preventDefault(); document.body.classList.toggle("distraction-free"); }
+      if (mod && e.key.toLowerCase() === "p") { e.preventDefault(); document.body.classList.toggle("preview-hidden"); }
+    });
+
+    /* ---- image upload: button + drag&drop + paste ----------------------- */
+    var imageInput = $("[data-image-input]");
+    var dropOverlay = $("[data-drop-overlay]");
+    function uploadImage(fileBlob) {
+      if (!fileBlob) return;
+      if (fileBlob.size > 8 * 1024 * 1024) { toast("Image exceeds 8 MB", "err"); return; }
+      setStatus("Uploading image…", "saving");
+      var fd = new FormData();
+      fd.append("file", fileBlob, fileBlob.name || "image.png");
+      var headers = {};
+      var csrf = cookie("vp_csrf");
+      if (csrf) headers["X-CSRF-Token"] = csrf;
+      var apiKeyField = document.getElementById("vp-api-key");
+      if (apiKeyField && apiKeyField.value) headers["X-API-Key"] = apiKeyField.value;
+      fetch("/api/v1/admin/media", { method: "POST", headers: headers, credentials: "same-origin", body: fd })
+        .then(function (r) { return r.ok ? r.json() : r.json().then(function (j) { return Promise.reject(j.error || r.status); }); })
+        .then(function (data) {
+          insertAtCursor(ta, "![](" + data.url + ")\n");
+          setStatus("Saved", "saved"); toast("Image uploaded", "ok"); markDirty();
+        })
+        .catch(function (err) { setStatus("Idle", ""); toast("Upload failed: " + err, "err"); });
+    }
+    var imgBtn = $("[data-action='insert-image']");
+    if (imgBtn && imageInput) imgBtn.addEventListener("click", function () { imageInput.click(); });
+    if (imageInput) imageInput.addEventListener("change", function () {
+      if (imageInput.files && imageInput.files[0]) uploadImage(imageInput.files[0]);
+      imageInput.value = "";
+    });
+    ta.addEventListener("paste", function (e) {
+      var items = (e.clipboardData && e.clipboardData.items) || [];
+      for (var i = 0; i < items.length; i++) {
+        if (items[i].type && items[i].type.indexOf("image/") === 0) {
+          e.preventDefault(); uploadImage(items[i].getAsFile()); return;
+        }
+      }
+    });
+    var dragDepth = 0;
+    ta.addEventListener("dragenter", function (e) { e.preventDefault(); dragDepth++; if (dropOverlay) dropOverlay.classList.add("show"); });
+    ta.addEventListener("dragover", function (e) { e.preventDefault(); });
+    ta.addEventListener("dragleave", function () { dragDepth--; if (dragDepth <= 0 && dropOverlay) dropOverlay.classList.remove("show"); });
+    ta.addEventListener("drop", function (e) {
+      e.preventDefault(); dragDepth = 0; if (dropOverlay) dropOverlay.classList.remove("show");
+      var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      if (f && f.type.indexOf("image/") === 0) uploadImage(f);
+    });
+
+    /* ---- version history fetch ------------------------------------------ */
     var verBtn = $("[data-load-versions]");
     if (verBtn) {
       verBtn.addEventListener("click", function () {
@@ -314,7 +463,7 @@
           .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
           .then(function (data) {
             var list = (data && data.versions) || data || [];
-            if (!list.length) { menu.innerHTML = "<div class='version-item muted'>No versions</div>"; return; }
+            if (!list.length) { menu.innerHTML = "<div class='version-item muted'>No versions yet</div>"; return; }
             menu.innerHTML = "";
             list.forEach(function (v) {
               var d = document.createElement("div");
@@ -329,6 +478,16 @@
           .catch(function (st) { menu.innerHTML = "<div class='version-item muted'>Failed (" + st + ")</div>"; });
       });
     }
+  }
+
+  /* insert a line-level prefix (heading/quote/list) at the cursor's line start */
+  function insertLinePrefix(ta, prefix) {
+    var s = ta.selectionStart;
+    var lineStart = ta.value.lastIndexOf("\n", s - 1) + 1;
+    ta.value = ta.value.slice(0, lineStart) + prefix + ta.value.slice(lineStart);
+    ta.selectionStart = ta.selectionEnd = s + prefix.length;
+    ta.dispatchEvent(new Event("input", { bubbles: true }));
+    ta.focus();
   }
 
   /* ---- settings: update checker ----------------------------------------- */

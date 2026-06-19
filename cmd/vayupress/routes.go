@@ -96,6 +96,10 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 		http.ServeFile(w, r, filepath.Join(staticDir, "css", canon))
 	})
 
+	// Public: same-origin media (editor image uploads). Name is strictly
+	// validated in the handler — no path-traversal surface.
+	r.Get("/media/{file}", a.serveMedia)
+
 	// Public API
 	r.Get("/api/v1/articles", a.handleListArticles)
 	r.Get("/api/v1/articles/{slug}", a.handleGetArticle)
@@ -141,6 +145,8 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 		r.Get("/api/v1/admin/webmentions", a.handleWebmentionList)
 		r.With(auth.CSRFTokenMiddleware).Put("/api/v1/admin/webmentions/{id}/status", a.handleWebmentionModerate)
 		r.With(auth.CSRFTokenMiddleware).Post("/api/v1/admin/preview", a.handlePreviewIssue)
+		// Editor image upload — sovereign, same-origin, magic-number validated.
+		r.With(auth.CSRFTokenMiddleware).Post("/api/v1/admin/media", a.handleMediaUpload)
 		r.Get("/api/v1/admin/redirects", a.handleRedirectList)
 		r.With(auth.CSRFTokenMiddleware).Post("/api/v1/admin/redirects", a.handleRedirectCreate)
 		r.With(auth.CSRFTokenMiddleware).Delete("/api/v1/admin/redirects/{id}", a.handleRedirectDelete)
