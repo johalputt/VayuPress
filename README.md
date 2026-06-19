@@ -11,7 +11,7 @@
 [![CI](https://github.com/johalputt/vayupress/actions/workflows/ci.yml/badge.svg)](https://github.com/johalputt/vayupress/actions/workflows/ci.yml)
 [![Security](https://github.com/johalputt/vayupress/actions/workflows/security.yml/badge.svg)](https://github.com/johalputt/vayupress/actions/workflows/security.yml)
 [![Go](https://img.shields.io/badge/go-1.23%2B-blue)](https://go.dev/)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![License: Apache 2.0](https://img.shields.io/badge/license-Apache--2.0-green)](LICENSE)
 [![Constitution](https://img.shields.io/badge/constitution-v6.0%20P1--P27%20%CE%A91--%CE%A911-blueviolet)](GOVERNANCE-CONSTITUTION.md)
 
 > **Adaptive publishing infrastructure for the sovereign web.**
@@ -742,6 +742,11 @@ All governance policies are enforced by the Platform Policy Engine (`internal/po
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+Apache License 2.0 — see [LICENSE](LICENSE) and [NOTICE](NOTICE).
+
+The Apache-2.0 license adds an explicit patent grant and trademark terms on top
+of a permissive core, which makes adoption inside organizations clearer than a
+bare MIT grant. Bundled third-party components retain their own licenses
+(see [NOTICE](NOTICE)).
 
 > *"Stay lightweight. Stay fast. Stay secure. Stay disciplined. Stay ethical."*

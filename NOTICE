@@ -1,0 +1,27 @@
+VayuPress
+Copyright 2026 Ankush Choudhary
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+------------------------------------------------------------------------------
+Third-party components
+------------------------------------------------------------------------------
+
+This product bundles the following third-party software, each under its own
+license. The project's Apache-2.0 license does not alter those terms.
+
+* DOMPurify (static/js/purify.min.js)
+  Copyright (c) Cure53 and other contributors
+  Licensed under the Apache License, Version 2.0 OR the Mozilla Public License,
+  Version 2.0. Used here under the Apache License, Version 2.0.
+  https://github.com/cure53/DOMPurify
+  Full license text: static/js/purify.LICENSE
+
+* Pico CSS (static/css/pico.min.css)
+  Copyright (c) Pico CSS contributors
+  Licensed under the MIT License.
+  https://github.com/picocss/pico
+
+Go module dependencies retain their respective upstream licenses (MIT,
+Apache-2.0, and BSD-3-Clause) as declared in go.mod / go.sum; see
+docs/ARCHITECTURE.md for the dependency license inventory.

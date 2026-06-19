@@ -125,5 +125,11 @@ Key decisions:
 | github.com/microcosm-cc/bluemonday | HTML sanitizer | BSD-3-Clause |
 | github.com/sony/gobreaker  | Circuit breaker       | MIT          |
 | github.com/rs/cors         | CORS middleware       | MIT          |
+| github.com/yuin/goldmark   | Markdown → HTML (migrate) | MIT      |
+
+Vendored frontend assets (self-hosted, no CDN): DOMPurify
+(`static/js/purify.min.js`, Apache-2.0/MPL-2.0) sanitizes the Admin v2 editor
+preview; Pico CSS (`static/css/pico.min.css`, MIT) styles the public site. See
+[NOTICE](../NOTICE) for attribution. VayuPress itself is Apache-2.0 licensed.
 
 No frontend framework. Public paths: HTMX + Alpine.js only.

@@ -55,7 +55,7 @@
 
 <!-- All commits must be signed with `git commit -s` (Developer Certificate of Origin) -->
 
-By submitting this PR, I confirm that my contribution is made under the terms of the [MIT License](LICENSE) and I have signed all commits with `git commit -s`.
+By submitting this PR, I confirm that my contribution is made under the terms of the [Apache License 2.0](LICENSE) and I have signed all commits with `git commit -s`.
 
 ---
 

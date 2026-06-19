@@ -96,7 +96,7 @@ The project's "bus factor" (how many maintainers can be lost before the project 
 
 ### Fork Rights
 
-VayuPress is MIT licensed. Anyone may fork the project. If the project becomes unmaintained:
+VayuPress is Apache-2.0 licensed. Anyone may fork the project. If the project becomes unmaintained:
 
 1. Forks are explicitly encouraged
 2. The last maintainer should post a notice in README.md

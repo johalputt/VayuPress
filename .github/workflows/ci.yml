@@ -95,12 +95,12 @@ jobs:
       - name: Check for GPL/AGPL licenses in scripts
         run: |
           echo "Checking SPDX headers and license files..."
-          # Verify project license is MIT
-          if ! grep -q "MIT License" LICENSE; then
-            echo "FAIL: LICENSE file does not contain MIT License"
+          # Verify project license is Apache-2.0
+          if ! grep -q "Apache License" LICENSE; then
+            echo "FAIL: LICENSE file does not contain the Apache License"
             exit 1
           fi
-          echo "✅ License check passed (MIT)."
+          echo "✅ License check passed (Apache-2.0)."
 
   # ── P10: Governance self-consistency check ────────────────────────────────
   check-governance:
