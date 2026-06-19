@@ -111,6 +111,37 @@
   }
   window.vpMarkdown = markdownToHTML;
 
+  /* ---- HTML sanitiser (CSP-safe, no innerHTML sink) --------------------- */
+  /* Parses an HTML string into an INERT document via DOMParser (scripts never
+     run there), strips every execution vector — <script>/<style>/<iframe>/etc.,
+     all on* event-handler attributes, inline styles, and javascript:/vbscript:/
+     data: URLs — then returns a DocumentFragment of cleaned nodes. Callers use
+     `el.replaceChildren(fragment)` instead of assigning `innerHTML`, so tainted
+     text is never reinterpreted as live HTML (fixes CodeQL js/html-constructed-
+     from-input). This is the same trust boundary the server enforces with
+     bluemonday on publish — here it protects the live editor preview too. */
+  var DANGEROUS_TAGS = "script,style,iframe,object,embed,link,meta,base,form,svg,math,template,noscript";
+  function sanitizeToFragment(html) {
+    var doc = new DOMParser().parseFromString(String(html), "text/html");
+    Array.prototype.forEach.call(doc.querySelectorAll(DANGEROUS_TAGS), function (el) { el.remove(); });
+    Array.prototype.forEach.call(doc.querySelectorAll("*"), function (el) {
+      Array.prototype.slice.call(el.attributes).forEach(function (attr) {
+        var n = attr.name.toLowerCase();
+        if (n.indexOf("on") === 0 || n === "style") { el.removeAttribute(attr.name); return; }
+        if ((n === "href" || n === "src" || n === "xlink:href") &&
+            /^\s*(javascript|vbscript|data):/i.test(attr.value)) {
+          // permit only inline images (data:image/...) on <img src>
+          var isImg = el.tagName.toLowerCase() === "img" && n === "src" && /^\s*data:image\//i.test(attr.value);
+          if (!isImg) el.removeAttribute(attr.name);
+        }
+      });
+    });
+    var frag = doc.createDocumentFragment();
+    while (doc.body && doc.body.firstChild) frag.appendChild(doc.body.firstChild);
+    return frag;
+  }
+  window.vpSanitize = sanitizeToFragment;
+
   function stripMd(src) {
     return src.replace(/[#>*_`\-]/g, " ").replace(/\s+/g, " ").trim();
   }
@@ -220,7 +251,7 @@
     function computeHTML() { return format === "html" ? ta.value : markdownToHTML(ta.value); }
 
     function renderPreview() {
-      if (preview) preview.innerHTML = computeHTML();
+      if (preview) preview.replaceChildren(sanitizeToFragment(computeHTML()));
       updateStats();
       updateSEO();
     }
@@ -571,7 +602,7 @@
             if (avail && data.changelog) {
               var h = document.createElement("div"); h.className = "card-title"; h.textContent = "What's new";
               var pre = document.createElement("div"); pre.className = "changelog-body";
-              pre.innerHTML = markdownToHTML(String(data.changelog));
+              pre.replaceChildren(sanitizeToFragment(markdownToHTML(String(data.changelog))));
               changelog.appendChild(h); changelog.appendChild(pre);
             }
           }
