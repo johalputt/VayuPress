@@ -360,13 +360,6 @@ func parseMDFile(path string) (*mdDoc, error) {
 // parseYAML is a minimal key:value YAML parser for frontmatter.
 // It handles string, bool, and list values without importing gopkg.in/yaml.v3.
 func parseYAML(data []byte, out interface{}) {
-	type fmMap struct {
-		Title string
-		Slug  string
-		Date  string
-		Tags  []string
-		Draft bool
-	}
 	fm, ok := out.(*struct {
 		Title string   `yaml:"title"`
 		Slug  string   `yaml:"slug"`
