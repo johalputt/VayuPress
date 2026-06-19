@@ -40,7 +40,7 @@ func TestAdminV2Layout_NonceAndStructure(t *testing.T) {
 }
 
 func TestEditorBodyHTML_CSPSafe(t *testing.T) {
-	out := editorBodyHTML("my-post", "Edit Post", "My Title", "# Hello\nworld")
+	out := editorBodyHTML("my-post", "Edit Post", "My Title", "markdown", "# Hello\nworld")
 	for _, want := range []string{
 		`data-editor`, `data-preview`, `data-slash-palette`,
 		`data-save-status`, `data-wordcount`, `data-load-versions`,
@@ -57,7 +57,7 @@ func TestEditorBodyHTML_CSPSafe(t *testing.T) {
 }
 
 func TestEditorBodyHTML_EscapesContent(t *testing.T) {
-	out := editorBodyHTML("s", "Edit", `<script>x</script>`, `<img onerror=1>`)
+	out := editorBodyHTML("s", "Edit", `<script>x</script>`, "html", `<img onerror=1>`)
 	if strings.Contains(out, "<script>x</script>") {
 		t.Error("title not HTML-escaped in editor body")
 	}

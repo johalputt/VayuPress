@@ -8,6 +8,71 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+---
+
+## [1.1.0] — 2026-06-19
+
+### Added
+
+- **`vayupress migrate` CLI subcommand** (built into the main binary) — import
+  Markdown folders directly into VayuPress without a separate binary.
+  Supports `--dry-run`, `--recursive`, `--skip-drafts`, YAML frontmatter
+  (title/slug/date/tags/draft), falls back gracefully on missing fields.
+  Writes both the sanitised HTML article row **and** an `article_sources`
+  side-car row (`format=markdown`) so the Admin v2 editor reopens posts in
+  Markdown mode. `INSERT OR IGNORE` makes re-runs idempotent.
+  Subcommands: `migrate markdown`, `migrate list`, `migrate info`.
+- **Multi-format post editor** (`/admin/v2/editor`) — Markdown ⇄ raw HTML
+  toggle via a segmented control; `[data-format-state]` hidden input persists
+  the chosen format across saves. `computeHTML()` converts Markdown to HTML or
+  passes raw HTML through; the public renderer always receives sanitised HTML
+  regardless of authoring format. The editable source and format are stored in
+  the `article_sources` side-car (migration 018) so round-tripping is lossless.
+- **`article_sources` side-car table** (migration 018) — stores `(slug, format,
+  source, updated_at)` separate from the write queue; never rendered
+  server-side, zero XSS surface.
+- **New-post create flow** — when the editor has no slug yet, the first save
+  `POST`s to `/api/v1/articles`, then redirects to the permanent
+  `/admin/v2/editor/{slug}` URL so autosave can continue.
+- **Dual-write autosave** — each save fires two CSRF-protected requests in
+  parallel: `PUT .../source` (editable source + format) and
+  `PUT /api/v1/articles/{slug}` (rendered, sanitised HTML).
+- **`docs/MIGRATION.md`** — comprehensive migration guide covering all 8
+  platforms and the new built-in Markdown import.
+- **`vayupress migrate rollback`** (already in `vayupress update rollback` —
+  documented in UPGRADING.md).
+- **`github.com/yuin/goldmark`** added as a direct dependency for the built-in
+  Markdown importer.
+
+### Fixed
+
+- **HTML-escaping gap in admin snapshot** — article `title` and `slug` values
+  emitted in the admin v2 dashboard's recent-articles table were not
+  HTML-escaped; fixed with `html.EscapeString`.
+- **XML-injection in sitemap / RSS** — `slug` values in `<loc>` tags were
+  written unescaped; now escaped with `xml.EscapeText`. CDATA title/body
+  content defensively strips embedded `]]>` sequences to prevent CDATA
+  injection.
+- **Test signature mismatch** — `admin_ui_test.go` calls to `editorBodyHTML`
+  updated to match the 5-parameter signature (`slug, heading, title, format,
+  source`).
+
+### Security
+
+- All user-originated string fields emitted in HTML contexts in the operator
+  console now use `html.EscapeString` or `template.HTMLEscapeString` (audit
+  finding from security review 2026-06-19).
+
+### Upgrade Notes
+
+- Run the server once; migration 018 (`article_sources`) is applied
+  automatically on startup.
+- No breaking API changes. Legacy `/admin` is unaffected.
+- Existing posts open in the editor in HTML mode (the side-car is empty until
+  a save in Markdown mode creates it).
+
+---
+
 ### Fixed — Critical: migrations 011–016 broke fresh installs
 - The migration runner (`internal/db/db.go`) executes each migration **one
   statement per line**. Migrations `011`–`016` (article-versions, redirects,

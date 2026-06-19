@@ -1315,7 +1315,7 @@ func (a *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 	} else {
 		for _, row := range snap.RecentArticles {
 			fmt.Fprintf(w, `<tr><td>%s</td><td><a href="/%s" target="_blank">%s</a></td><td><time>%s</time></td></tr>`,
-				row.Title, row.Slug, row.Slug, row.CreatedAt.Format("2 Jan 2006"))
+				html.EscapeString(row.Title), html.EscapeString(row.Slug), html.EscapeString(row.Slug), row.CreatedAt.Format("2 Jan 2006"))
 		}
 	}
 

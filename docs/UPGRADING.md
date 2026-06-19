@@ -144,3 +144,31 @@ data.
 | `VAYU_RELEASE_PUBKEY` | *(unset)* | Hex Ed25519 key the apply step verifies against |
 
 Both are required for `apply`; neither affects `check`.
+
+---
+
+## 4. Migrating content from another platform
+
+VayuPress v1.1.0 ships a built-in Markdown import subcommand:
+
+```bash
+# Preview (no writes)
+vayupress migrate markdown --dir ./posts --dry-run
+
+# Import
+vayupress migrate markdown --dir ./posts
+
+# See all migration options (WordPress, Ghost, Hugo, Jekyll, Medium, Notion, Substack)
+vayupress migrate info
+```
+
+See [docs/MIGRATION.md](MIGRATION.md) for the complete guide.
+
+---
+
+## Release History
+
+| Version | Date | Highlights |
+|---------|------|------------|
+| **v1.1.0** | 2026-06-19 | Built-in `migrate` CLI, multi-format editor (Markdown ⇄ HTML), `article_sources` side-car, XML/HTML escaping fixes |
+| **v1.0.0** | 2026-06-15 | Initial stable release (P1–P27 constitution, adaptive modes, write-queue, self-update, Admin v2) |

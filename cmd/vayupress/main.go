@@ -1,4 +1,4 @@
-// VayuPress — main.go  v1.0.0-p27
+// VayuPress — main.go  v1.1.0
 // Bootstrap, route wiring, and graceful shutdown only.
 // Domain logic lives in internal/* packages (ADR-0045 – ADR-0050).
 package main
@@ -9,6 +9,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"log"
 	"net/http"
@@ -55,7 +56,7 @@ import (
 	"github.com/johalputt/vayupress/internal/webmention"
 )
 
-var Version = "1.0.0"
+var Version = "1.1.0"
 var bootTime = time.Now()
 
 // Immutable package-level values (compiled once, never mutated).
@@ -126,7 +127,9 @@ func generateSitemap() {
 		var slug string
 		var updated time.Time
 		rows.Scan(&slug, &updated)
-		fmt.Fprintf(&sb, "<url><loc>https://%s/%s</loc><lastmod>%s</lastmod></url>", config.Cfg.Domain, slug, updated.Format("2006-01-02"))
+		var locBuf strings.Builder
+		xml.EscapeText(&locBuf, []byte(fmt.Sprintf("https://%s/%s", config.Cfg.Domain, slug))) //nolint:errcheck
+		fmt.Fprintf(&sb, "<url><loc>%s</loc><lastmod>%s</lastmod></url>", locBuf.String(), updated.Format("2006-01-02"))
 	}
 	sb.WriteString("</urlset>")
 	render.CacheWrite("sitemap.xml", sb.String()) //nolint:errcheck
@@ -147,8 +150,14 @@ func generateRSS() {
 		if len(plain) > 500 {
 			plain = plain[:500] + "..."
 		}
-		fmt.Fprintf(&items, "<item><title><![CDATA[%s]]></title><link>https://%s/%s</link><guid isPermaLink=\"true\">https://%s/%s</guid><pubDate>%s</pubDate><description><![CDATA[%s]]></description></item>",
-			title, config.Cfg.Domain, slug, config.Cfg.Domain, slug, created.Format(time.RFC1123Z), plain)
+		var linkBuf, guidBuf strings.Builder
+		xml.EscapeText(&linkBuf, []byte(fmt.Sprintf("https://%s/%s", config.Cfg.Domain, slug))) //nolint:errcheck
+		xml.EscapeText(&guidBuf, []byte(fmt.Sprintf("https://%s/%s", config.Cfg.Domain, slug))) //nolint:errcheck
+		// CDATA wraps title/plain — strip any embedded ]]> sequences defensively
+		safeTitle := strings.ReplaceAll(title, "]]>", "]]]]><![CDATA[>")
+		safePlain := strings.ReplaceAll(plain, "]]>", "]]]]><![CDATA[>")
+		fmt.Fprintf(&items, "<item><title><![CDATA[%s]]></title><link>%s</link><guid isPermaLink=\"true\">%s</guid><pubDate>%s</pubDate><description><![CDATA[%s]]></description></item>",
+			safeTitle, linkBuf.String(), guidBuf.String(), created.Format(time.RFC1123Z), safePlain)
 	}
 	rss := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel><title>%s</title><link>https://%s</link><description>%s</description>%s</channel></rss>`,
 		config.Cfg.Domain, config.Cfg.Domain, config.Cfg.Domain, items.String())
@@ -177,6 +186,20 @@ func main() {
 		}
 		if err := update.RunCLI(context.Background(), os.Args[2:], os.Stdout, dbpkg.DB, Version); err != nil {
 			fmt.Fprintln(os.Stderr, "update:", err)
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
+
+	// migrate subcommand: import Markdown folders into the VayuPress database.
+	if len(os.Args) > 1 && os.Args[1] == "migrate" {
+		config.Load()
+		if err := dbpkg.Init(); err != nil {
+			fmt.Fprintln(os.Stderr, "DB init failed:", err)
+			os.Exit(1)
+		}
+		if err := runMigrate(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, "migrate:", err)
 			os.Exit(1)
 		}
 		os.Exit(0)
