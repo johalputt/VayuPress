@@ -34,6 +34,11 @@ test.describe("Admin v2", () => {
     await expect(page.locator(".editor-toolbar")).toBeVisible();
     await expect(page.locator("[data-preview]")).toBeVisible();
 
+    // Author in Markdown mode so the live preview renders Markdown. Legacy
+    // posts open in HTML mode, so explicitly select the Markdown format first
+    // (this also exercises the multi-format segmented switch).
+    await page.locator('[data-format-btn="markdown"]').click();
+
     // Typing updates the live preview and the word count.
     await ta.click();
     await ta.fill("# Hello\n\nThis is a **test** paragraph with several words.");
