@@ -43,7 +43,7 @@
 
 ![VayuPress Admin v2 Editor](docs/screenshots/admin-v2-editor.png)
 
-*The editor — split-view live Markdown preview, slash-command palette, formatting toolbar, word-count / reading-time, SEO preview, and debounced autosave over the existing CSRF-protected API. All interactivity is eval-free.*
+*The editor — **multi-format authoring** (Markdown ⇄ raw HTML toggle), split-view live preview, slash-command palette, formatting toolbar, drag-&-drop / paste image upload, word-count / reading-time, SEO readiness meter, and debounced autosave over the existing CSRF-protected API. The editable source + format round-trip through a side-car table while the public renderer always receives server-sanitised HTML. All interactivity is eval-free.*
 
 ### Admin Dashboard (Classic Console)
 ![VayuPress Admin Dashboard](docs/screenshots/admin-dashboard.png)

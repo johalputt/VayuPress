@@ -67,7 +67,16 @@ assets.
 
 The editor is the centrepiece. All interactivity is CSP-safe (no `eval`):
 
-- **Split-view live preview** — Markdown on the left, rendered HTML on the right.
+- **Multi-format authoring** — a segmented switch toggles between **Markdown**
+  and **raw HTML**. Whichever you choose, the editor renders the same live
+  preview, and the *published* content is always HTML — Markdown is converted on
+  save, raw HTML is passed straight through. Every save is sanitised by the
+  server (bluemonday) before it reaches the public renderer, so neither mode can
+  introduce an XSS vector. The chosen format and your editable source are
+  persisted in a side-car (`article_sources`) so reopening a post restores the
+  exact text you wrote, not a lossy round-trip. Legacy posts (no side-car yet)
+  open as HTML seeded from their stored content.
+- **Split-view live preview** — source on the left, rendered HTML on the right.
   Toggle the preview off (`Ctrl/⌘+P`) to write full-width.
 - **Distraction-free / focus mode** (`Ctrl/⌘+.`) — hides all chrome and switches
   to a calmer, larger measure for long-form writing.
@@ -86,10 +95,14 @@ The editor is the centrepiece. All interactivity is CSP-safe (no `eval`):
 - **SEO preview + readiness meter** — title / slug / 160-char description preview
   plus a 0–100 score that reacts to title length, word count, slug, headings,
   and images, with an actionable hint.
-- **Autosave** — debounced `PUT /api/v1/articles/{slug}` using the existing CSRF
-  handshake, with a live "Saving…/Saved" status. A `beforeunload` guard warns
-  before leaving with unsaved edits. The slug auto-derives from the title until
-  you edit it.
+- **Autosave** — debounced and triggered on edit or `Ctrl/⌘+S`, with a live
+  "Saving…/Saved" status. Each save writes two CSRF-protected requests in
+  parallel: the editable source + format to
+  `PUT /api/v1/admin/articles/{slug}/source`, and the rendered, publishable HTML
+  to `PUT /api/v1/articles/{slug}`. On a brand-new post the first save `POST`s to
+  `/api/v1/articles` and redirects to the permanent editor URL so autosave can
+  continue. A `beforeunload` guard warns before leaving with unsaved edits, and
+  the slug auto-derives from the title until you edit it.
 - **Version history** — reads `GET /api/v1/admin/articles/{slug}/versions`
   (backed by `internal/versions`).
 
