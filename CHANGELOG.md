@@ -8,6 +8,45 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Fixed — Critical: migrations 011–016 broke fresh installs
+- The migration runner (`internal/db/db.go`) executes each migration **one
+  statement per line**. Migrations `011`–`016` (article-versions, redirects,
+  comments, collections, newsletter, webmentions) were authored as multi-line
+  `CREATE TABLE` statements, so a fresh database failed at `011` with
+  `incomplete input` and never reached the later schema. Rewrote `011`–`017` as
+  single-statement-per-line to match the runner's contract; a fresh DB now
+  migrates all 17 cleanly (verified end-to-end). Existing databases that already
+  applied these are unaffected (checksums recomputed on next deploy).
+
+### Added — Sovereign self-update (ADR-0064)
+- **`internal/update`**: check-only service + signature-verified, CLI-only apply.
+  - `vayupress update check|apply|history` CLI.
+  - Read-only HTTP: `GET /admin/api/updates/check`, `GET /admin/api/updates/history`.
+    There is **no** web endpoint that downloads, replaces, or restarts the binary.
+  - Apply gates (all enforced before any disk write): opt-in
+    `VAYU_SELFUPDATE_ENABLED=true`, pinned `VAYU_RELEASE_PUBKEY` (Ed25519),
+    mode not in {read-only, quarantined, maintenance}, SHA-256 checksum **and**
+    Ed25519 signature over the digest, DB backup first, atomic binary swap with
+    `.bak` kept. Never auto-restarts — prints `systemctl` instructions.
+  - Audit trail in `update_history` (migration `017`).
+
+### Added — Modern admin UI `/admin/v2` (ADR-0065)
+- CSP-compliant, fully vendored (no CDNs). Tailwind precompiled to
+  `static/css/admin-v2.css`; Alpine via its CSP build; eval-free `admin-v2.js`;
+  per-request nonce on every inline script; self-hosted fonts.
+- Editor-first: split-view live preview, distraction-free mode, slash-command
+  palette, formatting toolbar, word count / reading time, SEO preview, debounced
+  autosave (reusing `/api/v1/articles`), version-history access.
+- **Non-breaking**: served alongside the untouched legacy `/admin`.
+
+### Security & dependencies
+- Bumped all modules (core + every tool) to latest and re-tidied:
+  `chi v5.3.0`, `go-sqlite3 v1.14.46`, `golang.org/x/crypto v0.53.0`,
+  `golang.org/x/net v0.56.0`, `golang.org/x/sys v0.46.0`.
+- Fixed `internal/preview.Issue()` negative-TTL bug (now yields an expired token).
+- New docs: `docs/UPGRADING.md`, `docs/ADMIN-UI.md`, `docs/SECURITY.md`;
+  ADR-0064, ADR-0065 added to the registry.
+
 ### Added — Full tool ecosystem & plugin API wiring
 
 **8 migration tools** (all standalone Go modules, no API keys required):

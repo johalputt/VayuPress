@@ -1,0 +1,134 @@
+# Upgrading VayuPress
+
+VayuPress supports two upgrade paths. Both are sovereign — nothing phones home,
+and the privilege to replace the running binary always requires shell access to
+the host.
+
+> **Security model:** see [ADR-0064](adr/ADR-0064-sovereign-self-update.md). In
+> short: the web panel can only *check* for updates (read-only). *Applying* an
+> update is a CLI action, gated by an opt-in flag, system mode, and an
+> **operator-pinned Ed25519 signature** — not just a checksum.
+
+---
+
+## 1. Checking for updates
+
+### From the admin panel (read-only)
+
+`Settings → Updates → Check for Updates` calls `GET /admin/api/updates/check`,
+which compares your running version with the latest GitHub release and shows the
+changelog. It performs no download and changes nothing on disk. Every check is
+recorded in the `update_history` table.
+
+### From the CLI
+
+```bash
+vayupress update check
+```
+
+Prints the current version, the latest release, whether an update is available,
+and the release notes.
+
+---
+
+## 2. Applying an update (CLI-only, signature-verified)
+
+Applying is **off by default** and refuses to run unless every safety gate is
+satisfied.
+
+### One-time setup
+
+1. **Opt in:**
+   ```bash
+   export VAYU_SELFUPDATE_ENABLED=true
+   ```
+2. **Pin the release signing key** (obtain it out-of-band from the project's
+   published key, *not* over the same channel as the binary):
+   ```bash
+   export VAYU_RELEASE_PUBKEY=<hex-encoded-ed25519-public-key>
+   ```
+
+### Dry run first (verifies everything, changes nothing)
+
+```bash
+vayupress update apply --dry-run
+```
+
+This downloads the candidate binary, verifies its SHA-256 against the published
+checksum, verifies the **Ed25519 signature** over that digest against your pinned
+key, and reports success — without replacing anything.
+
+### Apply
+
+```bash
+vayupress update apply
+```
+
+Sequence enforced by `internal/update`:
+
+1. Refuse unless `VAYU_SELFUPDATE_ENABLED=true`.
+2. Refuse unless `VAYU_RELEASE_PUBKEY` is set.
+3. Refuse if system mode is `read-only`, `quarantined`, or `maintenance`.
+4. Download → verify checksum (constant-time) → verify Ed25519 signature.
+5. Back up the SQLite database (+ WAL/SHM) to a timestamped `.tar.gz`.
+6. Atomically swap the binary (`os.Rename`), keeping `<binary>.bak`.
+7. **Print restart instructions — does not restart for you.**
+
+### Restart
+
+VayuPress never restarts itself. After a successful apply:
+
+```bash
+sudo systemctl restart vayupress
+```
+
+### Rollback
+
+The previous binary is preserved as `<binary>.bak` and a database backup is
+written before every apply. To roll back:
+
+```bash
+sudo systemctl stop vayupress
+mv /usr/local/bin/vayupress.bak /usr/local/bin/vayupress
+# restore the DB backup if a migration changed schema:
+#   tar xzf /var/cache/vayupress/backups/<timestamp>.tar.gz -C /
+sudo systemctl start vayupress
+```
+
+### History
+
+```bash
+vayupress update history
+```
+
+Shows the last update attempts with status (`checked`, `started`, `success`,
+`failed`, `rolled_back`), versions, and backup paths.
+
+---
+
+## 3. Manual upgrade (no self-update)
+
+If you prefer not to enable self-update at all, upgrade the operator-driven way:
+
+```bash
+# Back up first
+vayu-backup backup --db /var/lib/vayupress/data.db --out backup.tar.gz --compress
+
+# Replace the binary with a release you built/verified yourself, then:
+sudo systemctl restart vayupress
+```
+
+Database migrations run automatically on startup with checksum-drift detection
+(ADR-0034) — a tampered or skipped migration halts boot rather than corrupting
+data.
+
+---
+
+## Environment variables
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `VAYU_SELFUPDATE_ENABLED` | `false` | Master opt-in for `update apply` |
+| `VAYU_RELEASE_PUBKEY` | *(unset)* | Hex Ed25519 key the apply step verifies against |
+
+Both are required for `apply`; neither affects `check`.

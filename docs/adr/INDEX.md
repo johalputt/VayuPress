@@ -42,6 +42,9 @@
 | [ADR-0060](ADR-0060-modular-deploy-migration-sqlite.md) | Modular Deploy/Migration/SQLite | Accepted | Core | 2026-06-13 |
 | [ADR-0061](ADR-0061-sovereign-platform-p2-p3.md) | Sovereign Platform P2-P3 | Accepted | Core | 2026-06-13 |
 | [ADR-0062](ADR-0062-phase-omega-consolidation.md) | Phase Ω: Consolidation | Accepted | Core | 2026-06-13 |
+| [ADR-0063](ADR-0063-gated-budget-actuation.md) | Gated Governance Budget Actuation (Ω12) | Accepted | Governance | 2026-06-15 |
+| [ADR-0064](ADR-0064-sovereign-self-update.md) | Sovereign Self-Update (check-only + signed CLI apply) | Accepted | Security | 2026-06-19 |
+| [ADR-0065](ADR-0065-admin-ui-csp-compliant-stack.md) | Modern Admin UI on CSP-Compliant Vendored Stack | Accepted | Security | 2026-06-19 |
 
 ---
 

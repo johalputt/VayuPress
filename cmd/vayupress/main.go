@@ -26,6 +26,8 @@ import (
 	"github.com/johalputt/vayupress/internal/api"
 	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/budget"
+	"github.com/johalputt/vayupress/internal/collections"
+	"github.com/johalputt/vayupress/internal/comments"
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/events"
@@ -36,20 +38,19 @@ import (
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/metrics"
 	"github.com/johalputt/vayupress/internal/mode"
+	"github.com/johalputt/vayupress/internal/newsletter"
 	"github.com/johalputt/vayupress/internal/outbox"
 	"github.com/johalputt/vayupress/internal/plugins"
 	"github.com/johalputt/vayupress/internal/policy"
-	"github.com/johalputt/vayupress/internal/queue"
-	"github.com/johalputt/vayupress/internal/render"
-	"github.com/johalputt/vayupress/internal/comments"
-	"github.com/johalputt/vayupress/internal/collections"
-	"github.com/johalputt/vayupress/internal/newsletter"
 	"github.com/johalputt/vayupress/internal/preview"
+	"github.com/johalputt/vayupress/internal/queue"
 	"github.com/johalputt/vayupress/internal/redirects"
+	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/resource"
 	"github.com/johalputt/vayupress/internal/search"
 	"github.com/johalputt/vayupress/internal/settings"
 	"github.com/johalputt/vayupress/internal/trace"
+	"github.com/johalputt/vayupress/internal/update"
 	"github.com/johalputt/vayupress/internal/versions"
 	"github.com/johalputt/vayupress/internal/webmention"
 )
@@ -164,6 +165,23 @@ func generateRobots() {
 
 func main() {
 	log.SetFlags(0)
+
+	// CLI subcommands run before the server boots. `vayupress update <check|apply|history>`
+	// is the ONLY path that can apply a binary update — it is gated, signature-verified,
+	// and CLI-only by design (ADR-0064). The web layer exposes a read-only check endpoint.
+	if len(os.Args) > 1 && os.Args[1] == "update" {
+		config.Load()
+		if err := dbpkg.Init(); err != nil {
+			fmt.Fprintln(os.Stderr, "DB init failed:", err)
+			os.Exit(1)
+		}
+		if err := update.RunCLI(context.Background(), os.Args[2:], os.Stdout, dbpkg.DB, Version); err != nil {
+			fmt.Fprintln(os.Stderr, "update:", err)
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
+
 	logging.LogInfo("main", fmt.Sprintf("VayuPress v%s starting — P1–P26 active", Version))
 	config.Load()
 	logging.LogInfo("main", fmt.Sprintf("domain=%s port=%s workers=%d config_version=%s maintenance=%v",
@@ -246,6 +264,7 @@ func main() {
 	}
 	previewSecret := config.EnvOr("VAYU_SECRET", config.EnvOr("VAYU_API_KEY", ""))
 	a.previewSigner = preview.New(previewSecret)
+	a.updateStore = update.New(dbpkg.DB)
 
 	// Mode journal — durable SQLite-backed transition log (Ω6).
 	dbPath := config.EnvOr("DB_PATH", "./vayupress.db")

@@ -30,6 +30,7 @@ import (
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/search"
 	"github.com/johalputt/vayupress/internal/settings"
+	"github.com/johalputt/vayupress/internal/update"
 	"github.com/johalputt/vayupress/internal/versions"
 	"github.com/johalputt/vayupress/internal/webmention"
 )
@@ -80,13 +81,14 @@ type App struct {
 	siteSettings *settings.Store
 
 	// Plugin stores (wired at startup when DB is ready)
-	commentStore   *comments.Store
-	versionStore   *versions.Store
+	commentStore    *comments.Store
+	versionStore    *versions.Store
 	collectionStore *collections.Store
 	newsletterStore *newsletter.Store
 	webmentionStore *webmention.Store
-	redirectMgr    *redirects.Manager
-	previewSigner  *preview.Signer
+	redirectMgr     *redirects.Manager
+	previewSigner   *preview.Signer
+	updateStore     *update.Store
 }
 
 // RegisterHook registers a plugin hook with the App's plugin registry.

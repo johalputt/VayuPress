@@ -448,6 +448,34 @@ These features are part of VayuPress core (no external service required):
 | **ActivityPub / Federation** | `internal/federation` | Outbox relay + HTTP Signatures |
 | **Spam Guard** | `internal/spam` | Comment classification middleware |
 | **Content Signing** | `internal/signing` | HMAC article verification |
+| **Sovereign Self-Update** | `internal/update` | Check-only web API + signature-verified CLI apply |
+
+### Modern Admin UI (`/admin/v2`)
+
+An editor-first admin redesign on a fully vendored, CSP-compliant stack (no
+CDNs, no `unsafe-eval`) — served alongside the untouched legacy `/admin`. The
+editor has split-view live preview, a slash-command palette, distraction-free
+mode, word count / reading time, an SEO preview, debounced autosave, and version
+history. See [docs/ADMIN-UI.md](docs/ADMIN-UI.md) and
+[ADR-0065](docs/adr/ADR-0065-admin-ui-csp-compliant-stack.md).
+
+### Self-Update
+
+VayuPress can check for and apply its own updates **sovereignly and safely**:
+
+```bash
+vayupress update check               # read-only version/changelog check
+vayupress update apply --dry-run     # verify checksum + Ed25519 signature, change nothing
+vayupress update apply               # gated, signed, backed-up binary swap (CLI-only)
+```
+
+The web panel can only *check* (`GET /admin/api/updates/check`). Applying an
+update is **CLI-only**, requires opt-in (`VAYU_SELFUPDATE_ENABLED=true`) and an
+operator-pinned Ed25519 key (`VAYU_RELEASE_PUBKEY`), is refused in
+read-only/quarantine/maintenance mode, backs up the database first, and never
+auto-restarts. See [docs/UPGRADING.md](docs/UPGRADING.md),
+[docs/SECURITY.md](docs/SECURITY.md), and
+[ADR-0064](docs/adr/ADR-0064-sovereign-self-update.md).
 
 ---
 

@@ -132,6 +132,10 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 		r.With(auth.CSRFTokenMiddleware).Post("/api/v1/admin/redirects", a.handleRedirectCreate)
 		r.With(auth.CSRFTokenMiddleware).Delete("/api/v1/admin/redirects/{id}", a.handleRedirectDelete)
 
+		// Self-update — READ-ONLY check + history (ADR-0064). No web apply path.
+		r.Get("/admin/api/updates/check", a.handleUpdateCheck)
+		r.Get("/admin/api/updates/history", a.handleUpdateHistory)
+
 		// Observability & correlation trace API (ADR-0053).
 		r.Get("/api/v1/admin/outbox/stats", a.handleOutboxStats)
 		r.Get("/api/v1/admin/outbox/events", a.handleOutboxEvents)
@@ -192,6 +196,10 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 		r.HandleFunc("/debug/pprof/trace", a.pprofHandler)
 		r.HandleFunc("/debug/pprof/*", a.pprofHandler)
 	})
+
+	// Modern admin UI (/admin/v2) — vendored, CSP-compliant, non-breaking (ADR-0065).
+	// It manages its own public/auth split internally.
+	a.registerAdminUIRoutes(r)
 
 	r.Get("/", a.handleHome)
 	r.NotFound(a.handleNotFound)

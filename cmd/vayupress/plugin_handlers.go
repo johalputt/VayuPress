@@ -18,9 +18,62 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/johalputt/vayupress/internal/toc"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/toc"
+	"github.com/johalputt/vayupress/internal/update"
 )
+
+// =============================================================================
+// Self-update — READ-ONLY check endpoint (ADR-0064)
+//
+// This is the ONLY update-related HTTP route. There is deliberately no web path
+// that downloads, replaces, or restarts the binary. Applying an update is a
+// gated, signature-verified, CLI-only action: `vayupress update apply`.
+// =============================================================================
+
+// GET /admin/api/updates/check
+func (a *App) handleUpdateCheck(w http.ResponseWriter, r *http.Request) {
+	rel, err := update.CheckLatest(r.Context(), a.outboundClient, "johalputt", "vayupress")
+	if err != nil {
+		writeAPIError(w, r, http.StatusBadGateway, "update-check-failed", err.Error(), "")
+		return
+	}
+	available := update.UpdateAvailable(Version, rel.Version)
+
+	// Audit the check (best-effort; never blocks the response).
+	if a.updateStore != nil {
+		_, _ = a.updateStore.Log(r.Context(), update.Record{
+			FromVersion: Version,
+			ToVersion:   rel.Version,
+			Status:      "checked",
+		})
+	}
+
+	writeJSON(w, r, http.StatusOK, map[string]interface{}{
+		"current":         Version,
+		"latest":          rel.Version,
+		"updateAvailable": available,
+		"changelog":       rel.Notes,
+		"url":             rel.URL,
+		"published_at":    rel.Published,
+		// Applying is CLI-only and signature-verified — see ADR-0064.
+		"apply_via": "vayupress update apply",
+	})
+}
+
+// GET /admin/api/updates/history
+func (a *App) handleUpdateHistory(w http.ResponseWriter, r *http.Request) {
+	if a.updateStore == nil {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "update-disabled", "Update store not initialised", "")
+		return
+	}
+	recs, err := a.updateStore.List(r.Context(), 20)
+	if err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "db-error", err.Error(), "")
+		return
+	}
+	writeJSON(w, r, http.StatusOK, map[string]interface{}{"history": recs})
+}
 
 // =============================================================================
 // Comments
