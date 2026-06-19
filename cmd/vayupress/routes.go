@@ -139,6 +139,9 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 		r.With(auth.CSRFTokenMiddleware).Put("/api/v1/admin/comments/{id}/status", a.handleCommentModerate)
 		r.Get("/api/v1/admin/articles/{slug}/versions", a.handleVersionList)
 		r.Get("/api/v1/admin/articles/{slug}/versions/{id}", a.handleVersionGet)
+		// Editable source side-car (Admin v2 multi-format authoring).
+		r.Get("/api/v1/admin/articles/{slug}/source", a.handleArticleSourceGet)
+		r.With(auth.CSRFTokenMiddleware).Put("/api/v1/admin/articles/{slug}/source", a.handleArticleSourcePut)
 		r.Post("/api/v1/collections", a.handleCollectionCreate)
 		r.With(auth.CSRFTokenMiddleware).Post("/api/v1/admin/collections/{id}/articles", a.handleCollectionAddArticle)
 		r.Get("/api/v1/admin/newsletter/subscribers", a.handleNewsletterList)

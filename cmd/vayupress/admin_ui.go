@@ -280,6 +280,7 @@ func (a *App) handleV2Editor(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	slug := chi.URLParam(r, "slug")
 	title, content := "", ""
+	format, source := "markdown", ""
 	heading := "New Post"
 	if slug != "" {
 		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
@@ -289,22 +290,51 @@ func (a *App) handleV2Editor(w http.ResponseWriter, r *http.Request) {
 			title, content = art.Title, art.Content
 			heading = "Edit Post"
 		}
+		// Prefer the editable source side-car (multi-format round-trip). If a
+		// post was authored in the v2 editor we get back the original Markdown
+		// or HTML; otherwise we fall back to the stored (HTML) content below.
+		var f, s string
+		if err := dbpkg.DB.QueryRowContext(r.Context(),
+			`SELECT format, source FROM article_sources WHERE slug=?`, slug).Scan(&f, &s); err == nil && s != "" {
+			format, source = f, s
+		} else {
+			// Legacy / non-v2 post: edit the stored HTML directly.
+			format, source = "html", content
+		}
 	}
-	body := editorBodyHTML(slug, heading, title, content)
+	body := editorBodyHTML(slug, heading, title, format, source)
 	writeV2HTML(w, adminV2Layout(nonce, heading, "editor", body))
 }
 
 // editorBodyHTML builds the post-editor body: meta column + toolbar + split
 // view (textarea/preview) + slash palette + status bar + SEO preview. All
 // interactivity is wired by admin-v2.js via data-* attributes (CSP-safe).
-func editorBodyHTML(slug, heading, title, content string) string {
+// The textarea holds the editable *source*; data-format selects how it is
+// interpreted (markdown or html) for preview and on save.
+func editorBodyHTML(slug, heading, title, format, source string) string {
 	et := html.EscapeString(title)
-	ec := html.EscapeString(content)
+	ec := html.EscapeString(source)
 	es := html.EscapeString(slug)
+	ef := html.EscapeString(format)
+	mdSel, htmlSel := "", ""
+	if format == "html" {
+		htmlSel = " active"
+	} else {
+		mdSel = " active"
+	}
+	viewBtn := ""
+	if slug != "" {
+		viewBtn = `<a class="btn btn-ghost btn-sm" href="/` + es + `" target="_blank" rel="noopener" title="Open the live page">View ↗</a>`
+	}
 	return `<div class="page-header"><h1>` + html.EscapeString(heading) + `</h1>
   <div class="btn-row">
+    <div class="seg" role="group" aria-label="Editor format">
+      <button type="button" class="seg-btn` + mdSel + `" data-format-btn="markdown" title="Write in Markdown">Markdown</button>
+      <button type="button" class="seg-btn` + htmlSel + `" data-format-btn="html" title="Write raw HTML">HTML</button>
+    </div>
     <button type="button" class="btn btn-ghost btn-sm" data-action="toggle-preview" title="Toggle preview (Ctrl/⌘+P)">Preview</button>
     <button type="button" class="btn btn-ghost btn-sm" data-action="toggle-distraction" title="Focus mode (Ctrl/⌘+.)">Focus</button>
+    ` + viewBtn + `
     <div class="dropdown">
       <button type="button" class="btn btn-ghost btn-sm" data-dropdown-toggle="version-menu" data-load-versions="version-menu">History ▾</button>
       <div class="dropdown-menu" id="version-menu"><div class="version-item muted">Open to load…</div></div>
@@ -312,6 +342,7 @@ func editorBodyHTML(slug, heading, title, content string) string {
     <button type="button" class="btn btn-accent btn-sm" data-action="save-now" title="Save (Ctrl/⌘+S)">Save</button>
   </div>
 </div>
+<input type="hidden" data-format-state value="` + ef + `">
 <div class="editor-grid">
   <div class="editor-meta">
     <div class="card">
