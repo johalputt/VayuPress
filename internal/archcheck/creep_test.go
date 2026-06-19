@@ -40,6 +40,8 @@ func TestNoGlobalMutableStateInDomainPackages(t *testing.T) {
 		}
 
 		fset := token.NewFileSet()
+		//lint:ignore SA1019 ParseDir is sufficient for this build-tag-agnostic
+		// architecture creep check; the go/packages alternative is overkill here.
 		pkgs, err := parser.ParseDir(fset, pkgPath, func(fi os.FileInfo) bool {
 			return !strings.HasSuffix(fi.Name(), "_test.go")
 		}, 0)
@@ -95,6 +97,8 @@ func TestNoReflectionInCriticalPaths(t *testing.T) {
 		}
 
 		fset := token.NewFileSet()
+		//lint:ignore SA1019 ParseDir is sufficient for this build-tag-agnostic
+		// architecture creep check; the go/packages alternative is overkill here.
 		pkgs, err := parser.ParseDir(fset, pkgPath, func(fi os.FileInfo) bool {
 			return !strings.HasSuffix(fi.Name(), "_test.go")
 		}, 0)

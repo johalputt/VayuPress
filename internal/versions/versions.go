@@ -4,9 +4,7 @@ package versions
 
 import (
 	"context"
-	"crypto/rand"
 	"database/sql"
-	"encoding/hex"
 	"fmt"
 	"strings"
 	"time"
@@ -106,10 +104,4 @@ func (s *Store) Purge(ctx context.Context, articleID string, maxAge time.Duratio
 	}
 	n, _ := res.RowsAffected()
 	return n, nil
-}
-
-func newID() string {
-	b := make([]byte, 8)
-	rand.Read(b)
-	return hex.EncodeToString(b)
 }
