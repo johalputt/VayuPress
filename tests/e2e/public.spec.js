@@ -21,9 +21,12 @@ test.describe("public site", () => {
   test("no third-party origins are requested (sovereignty)", async ({ page }) => {
     const offHost = [];
     page.on("request", (req) => {
-      const u = new URL(req.url());
+      const url = req.url();
+      // Ignore inline/embedded schemes — only real network hosts matter.
+      if (!/^https?:\/\//i.test(url)) return;
+      const u = new URL(url);
       if (u.hostname !== "localhost" && u.hostname !== "127.0.0.1") {
-        offHost.push(req.url());
+        offHost.push(url);
       }
     });
     await page.goto("/");
