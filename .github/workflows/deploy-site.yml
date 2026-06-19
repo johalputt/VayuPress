@@ -1,0 +1,86 @@
+name: deploy-site
+
+# Publishes the marketing/docs site (docs/site/) to the gh-pages branch, which
+# serves vayupress.com. Runs automatically whenever the site source changes on
+# main, and can be triggered by hand. Mirrors the repo's existing convention of
+# pushing with the built-in GITHUB_TOKEN (see screenshots.yml) rather than a
+# third-party deploy action — sovereign, no external dependencies.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/site/**"
+      - ".github/workflows/deploy-site.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# Never let two deploys race the gh-pages branch.
+concurrency:
+  group: deploy-site
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main (full history for branch push)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Publish docs/site to gh-pages
+        env:
+          GIT_AUTHOR_NAME: "github-actions[bot]"
+          GIT_AUTHOR_EMAIL: "github-actions[bot]@users.noreply.github.com"
+          GIT_COMMITTER_NAME: "github-actions[bot]"
+          GIT_COMMITTER_EMAIL: "github-actions[bot]@users.noreply.github.com"
+        run: |
+          set -euo pipefail
+
+          SRC="docs/site"
+          if [ ! -f "$SRC/index.html" ]; then
+            echo "::error::$SRC/index.html not found — nothing to deploy"
+            exit 1
+          fi
+
+          # Stage the site payload outside the repo so a branch switch can't
+          # clobber it. Preserve .nojekyll and the screenshots/ directory that
+          # live only on gh-pages (not in docs/site).
+          STAGE="$(mktemp -d)"
+          cp -r "$SRC"/. "$STAGE"/
+          # README.md is source-only; it should not ship to the live site.
+          rm -f "$STAGE/README.md"
+          touch "$STAGE/.nojekyll"
+
+          SHA="$(git rev-parse --short HEAD)"
+
+          # Check out (or create) gh-pages.
+          git fetch origin gh-pages --depth=1 || true
+          if git show-ref --verify --quiet refs/remotes/origin/gh-pages; then
+            git checkout -B gh-pages origin/gh-pages
+          else
+            git checkout --orphan gh-pages
+            git rm -rf . >/dev/null 2>&1 || true
+          fi
+
+          # Carry forward gh-pages-only assets that aren't part of docs/site.
+          if [ -d screenshots ]; then
+            cp -r screenshots "$STAGE/screenshots"
+          fi
+
+          # Replace tracked content with the staged payload.
+          # Keep .git; remove everything else, then copy the staged site in.
+          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          cp -r "$STAGE"/. ./
+
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No site changes to deploy."
+            exit 0
+          fi
+
+          git commit -m "Deploy site from main@${SHA}"
+          git push origin gh-pages
+          echo "Deployed docs/site -> gh-pages (main@${SHA})."
