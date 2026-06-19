@@ -211,11 +211,35 @@
     var slugTouched = !!(slugInput && slugInput.value);
     var dirty = false;
 
+    /* ---- authoring format (markdown | html) ----------------------------- */
+    var fmtState = $("[data-format-state]");
+    var format = (fmtState && fmtState.value) || "markdown";
+
+    // The HTML actually published: raw in HTML mode, converted from Markdown
+    // otherwise. The public renderer sanitizes it (bluemonday) regardless.
+    function computeHTML() { return format === "html" ? ta.value : markdownToHTML(ta.value); }
+
     function renderPreview() {
-      if (preview) preview.innerHTML = markdownToHTML(ta.value);
+      if (preview) preview.innerHTML = computeHTML();
       updateStats();
       updateSEO();
     }
+
+    function setFormat(f) {
+      if (f !== "markdown" && f !== "html") return;
+      format = f;
+      if (fmtState) fmtState.value = f;
+      $all("[data-format-btn]").forEach(function (b) {
+        b.classList.toggle("active", b.getAttribute("data-format-btn") === f);
+      });
+      ta.setAttribute("placeholder", f === "html"
+        ? "Write raw HTML… it is sanitized on publish"
+        : "Write in Markdown… type / for commands, drag an image to upload");
+      renderPreview(); markDirty();
+    }
+    $all("[data-format-btn]").forEach(function (b) {
+      b.addEventListener("click", function () { setFormat(b.getAttribute("data-format-btn")); });
+    });
 
     function wordCount() { return ta.value.trim() ? ta.value.trim().split(/\s+/).length : 0; }
 
@@ -353,7 +377,7 @@
       if (e.key === "Tab" && !paletteOpen) { e.preventDefault(); insertAtCursor(ta, "  "); }
     });
 
-    /* ---- autosave (debounced PUT to /api/v1/articles/{slug}) ------------ */
+    /* ---- autosave -------------------------------------------------------- */
     var saveTimer;
     function setStatus(text, cls) {
       $all("[data-save-status]").forEach(function (s) {
@@ -361,20 +385,48 @@
         s.className = (s.classList.contains("badge") ? "badge save-status" : "save-status") + (cls ? " " + cls : "");
       });
     }
+
+    function buildHeaders() {
+      var h = { "Content-Type": "application/json" };
+      var csrf = cookie("vp_csrf"); if (csrf) h["X-CSRF-Token"] = csrf;
+      var k = document.getElementById("vp-api-key"); if (k && k.value) h["X-API-Key"] = k.value;
+      return h;
+    }
+
+    /* Create a new post, then redirect the editor to the permanent URL. */
+    function doCreate() {
+      var titleVal = titleInput ? titleInput.value.trim() : "";
+      var slugVal = slugInput ? slugInput.value.trim() : "";
+      if (!titleVal) { toast("Add a title first", "err"); return; }
+      setStatus("Creating…", "saving");
+      fetch("/api/v1/articles", {
+        method: "POST", headers: buildHeaders(), credentials: "same-origin",
+        body: JSON.stringify({ title: titleVal, slug: slugVal || slugify(titleVal), content: computeHTML(), tags: [] })
+      })
+        .then(function (r) { return r.ok ? r.json() : r.json().then(function (j) { return Promise.reject(j.error || r.status); }); })
+        .then(function (data) {
+          dirty = false;
+          window.location.href = "/admin/v2/editor/" + encodeURIComponent(data.slug || (slugVal || slugify(titleVal)));
+        })
+        .catch(function (err) { setStatus("Create failed", "err"); toast("Create failed: " + err, "err"); });
+    }
+
+    /* Save both the editable source side-car AND the rendered HTML. */
     function doSave() {
-      if (!slug) { toast("Create the post first to enable autosave", "err"); return; }
+      if (!slug) { doCreate(); return; }
       setStatus("Saving…", "saving");
-      var headers = { "Content-Type": "application/json" };
-      var csrf = cookie("vp_csrf");
-      if (csrf) headers["X-CSRF-Token"] = csrf;
-      var apiKeyField = document.getElementById("vp-api-key");
-      if (apiKeyField && apiKeyField.value) headers["X-API-Key"] = apiKeyField.value;
-      var body = { title: titleInput ? titleInput.value : undefined, content: ta.value };
-      fetch("/api/v1/articles/" + encodeURIComponent(slug), {
-        method: "PUT", headers: headers, credentials: "same-origin", body: JSON.stringify(body)
-      }).then(function (r) {
-        if (r.ok) { setStatus("Saved", "saved"); dirty = false; }
-        else { setStatus("Save failed", "err"); toast("Save failed (" + r.status + ")", "err"); }
+      var h = buildHeaders();
+      var srcPromise = fetch("/api/v1/admin/articles/" + encodeURIComponent(slug) + "/source", {
+        method: "PUT", headers: h, credentials: "same-origin",
+        body: JSON.stringify({ format: format, source: ta.value })
+      });
+      var artBody = { title: titleInput ? titleInput.value : undefined, content: computeHTML() };
+      var artPromise = fetch("/api/v1/articles/" + encodeURIComponent(slug), {
+        method: "PUT", headers: h, credentials: "same-origin", body: JSON.stringify(artBody)
+      });
+      Promise.all([srcPromise, artPromise]).then(function (rs) {
+        if (rs[0].ok && rs[1].ok) { setStatus("Saved", "saved"); dirty = false; }
+        else { setStatus("Save failed", "err"); toast("Save failed", "err"); }
       }).catch(function () { setStatus("Offline", "err"); toast("Network error — changes kept locally", "err"); });
     }
     ta.addEventListener("input", function () {
