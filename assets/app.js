@@ -126,7 +126,7 @@ STATIC_DIR=./static VAYU_DOCS_DIR=./docs ./vayupress --port 8080`,
       'SQLite-durable',
       'zero third-party trackers',
       '63 architecture decisions',
-      'MIT licensed',
+      'Apache-2.0 licensed',
       'ActivityPub federation',
     ],
 
