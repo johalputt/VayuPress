@@ -11,13 +11,13 @@ import (
 
 // Entry is a single heading in the table of contents.
 type Entry struct {
-	Level  int    `json:"level"`   // 2, 3, or 4
-	Text   string `json:"text"`    // plain text of the heading
-	Anchor string `json:"anchor"`  // URL-safe anchor slug
+	Level  int    `json:"level"`  // 2, 3, or 4
+	Text   string `json:"text"`   // plain text of the heading
+	Anchor string `json:"anchor"` // URL-safe anchor slug
 }
 
 var headingRe = regexp.MustCompile(`(?i)<h([2-4])([^>]*)>(.*?)</h[2-4]>`)
-var tagRe     = regexp.MustCompile(`<[^>]+>`)
+var tagRe = regexp.MustCompile(`<[^>]+>`)
 
 // Extract returns the table of contents entries from the given HTML.
 func Extract(html string) []Entry {

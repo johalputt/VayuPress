@@ -133,4 +133,3 @@ func TestValidate_ZeroDate(t *testing.T) {
 		t.Errorf("expected suspicious-date warning, got issues=%+v", r.Issues)
 	}
 }
-

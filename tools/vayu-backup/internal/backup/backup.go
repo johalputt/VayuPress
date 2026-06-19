@@ -80,8 +80,8 @@ func Create(opts Options) (string, error) {
 	}
 
 	manifest := Manifest{
-		CreatedAt:   time.Now().UTC(),
-		VayuVersion: VayuVersion,
+		CreatedAt:    time.Now().UTC(),
+		VayuVersion:  VayuVersion,
 		ArticleCount: articleCount,
 		Files: []FileEntry{
 			{Name: "vayupress.db", Size: dbSize, SHA256: dbChecksum},

@@ -25,7 +25,7 @@ const (
 
 // Issue is a single validation finding.
 type Issue struct {
-	Severity Severity
+	Severity  Severity
 	ArticleID string
 	Slug      string
 	Rule      string
