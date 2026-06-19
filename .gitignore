@@ -28,6 +28,7 @@ Desktop.ini
 # Secrets (never commit these)
 .env
 .env.*
+!.env.example
 *.secrets
 /root/.vayupress-secrets
 /root/.vayupress-admin

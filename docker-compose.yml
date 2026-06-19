@@ -1,0 +1,51 @@
+# VayuPress — Docker Compose for a sovereign single-host deployment.
+#
+#   1. Copy .env.example to .env and set a strong API_KEY + your DOMAIN.
+#   2. docker compose up -d --build
+#   3. Put a TLS-terminating reverse proxy (nginx/Caddy) in front (see
+#      docs/INSTALLATION.md). VayuPress itself speaks plain HTTP on :8080 and
+#      expects to sit behind a trusted proxy that sets X-Forwarded-For.
+#
+# Meilisearch is OPTIONAL — VayuPress falls back to SQLite full-text search if
+# it is absent. Uncomment the `meilisearch` service to enable richer search.
+
+services:
+  vayupress:
+    build:
+      context: .
+      args:
+        VERSION: ${VAYU_VERSION:-docker}
+    image: vayupress:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"   # bind to loopback; the reverse proxy exposes 443
+    environment:
+      API_KEY: ${API_KEY:?set API_KEY in .env}
+      DOMAIN: ${DOMAIN:-localhost}
+      PORT: "8080"
+      # Optional Meilisearch wiring (matches the commented service below):
+      # MEILI_HOST: http://meilisearch:7700
+      # MEILI_MASTER_KEY: ${MEILI_MASTER_KEY}
+    volumes:
+      - vayupress-data:/var/lib/vayupress     # SQLite DB + uploaded media
+      - vayupress-cache:/var/cache/vayupress  # rendered HTML / sitemap / feed
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health/live"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  # meilisearch:
+  #   image: getmeili/meilisearch:v1.6
+  #   restart: unless-stopped
+  #   environment:
+  #     MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:?set MEILI_MASTER_KEY in .env}
+  #     MEILI_NO_ANALYTICS: "true"
+  #   volumes:
+  #     - meili-data:/meili_data
+
+volumes:
+  vayupress-data:
+  vayupress-cache:
+  # meili-data:

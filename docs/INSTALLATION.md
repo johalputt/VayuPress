@@ -91,6 +91,7 @@ Expected: `{"status":"ok"}` from both endpoints.
 | `API_KEY`             | (required)                     | Admin API key                      |
 | `DB_PATH`             | `/var/lib/vayupress/data.db`   | SQLite database path               |
 | `CACHE_DIR`           | `/var/cache/vayupress`         | Rendered HTML cache directory      |
+| `MEDIA_DIR`           | `/var/lib/vayupress/media`     | Editor image uploads (served at `/media/`) |
 | `MEILI_HOST`          | `http://localhost:7700`        | Meilisearch URL                    |
 | `MEILI_MASTER_KEY`    | (generated)                    | Meilisearch master key             |
 | `DOMAIN`              | `localhost`                    | Public domain                      |
@@ -102,6 +103,60 @@ Expected: `{"status":"ok"}` from both endpoints.
 | `MAX_REPLAY_COUNT`    | `3`                            | Max dead-letter replay attempts    |
 | `WAL_SIZE_THRESHOLD_MB`| `32`                          | WAL size to trigger RESTART checkpoint|
 | `VAYU_MAINTENANCE`    | `false`                        | Enable maintenance mode            |
+| `VAYU_SELFUPDATE_ENABLED`| `false`                     | Opt-in for `vayupress update apply` (see UPGRADING.md) |
+| `VAYU_RELEASE_PUBKEY` | (unset)                        | Hex Ed25519 key the signed apply verifies against |
+
+## Docker
+
+A multi-stage `Dockerfile` and `docker-compose.yml` ship in the repo root for a
+container deployment. The image compiles the CGO/SQLite binary, then runs it as
+an unprivileged user on a minimal Debian-slim base with a built-in healthcheck.
+
+```bash
+cp .env.example .env
+# edit .env: set a strong API_KEY (openssl rand -hex 32) and your DOMAIN
+docker compose up -d --build
+```
+
+VayuPress listens on plain HTTP `:8080` (bound to loopback in the compose file)
+and expects a **TLS-terminating reverse proxy** in front that sets
+`X-Forwarded-For`. A minimal nginx server block:
+
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/example.com/privkey.pem;
+
+    client_max_body_size 12m;   # headroom for 8 MB editor image uploads
+
+    location / {
+        proxy_pass         http://127.0.0.1:8080;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+Persistent state lives in two named volumes: `vayupress-data`
+(`/var/lib/vayupress` — SQLite DB **and** uploaded media) and `vayupress-cache`
+(`/var/cache/vayupress` — rendered HTML, sitemap, feed). Back up the former; the
+latter is regenerable.
+
+### Backup (Docker)
+
+```bash
+# Hot backup of the SQLite DB + media to a tarball on the host:
+docker run --rm -v vayupress-data:/data -v "$PWD":/backup debian:bookworm-slim \
+  tar czf /backup/vayupress-$(date +%F).tar.gz -C /data .
+```
+
+For online, WAL-safe backups and restore, the bundled `vayu-backup` tool and
+[docs/operations/backup-restore.md](operations/backup-restore.md) remain the
+recommended path.
 
 ## Upgrade
 
@@ -111,7 +166,9 @@ git pull origin main
 sudo ./scripts/deploy-vayupress.sh --upgrade
 ```
 
-The `--upgrade` flag preserves existing secrets and data.
+The `--upgrade` flag preserves existing secrets and data. For container
+deployments, rebuild and recreate: `docker compose up -d --build`. See
+[docs/UPGRADING.md](UPGRADING.md) for the signed self-update path.
 
 ## Uninstall
 
