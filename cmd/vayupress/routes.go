@@ -25,6 +25,10 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 		chimw.Timeout(30*time.Second),
 		securityHeadersMiddleware,
 	)
+	// Redirect middleware — runs after core middleware, serves 301/302 before routing.
+	if a.redirectMgr != nil {
+		r.Use(a.redirectMgr.Middleware)
+	}
 	r.Use(cors.New(cors.Options{
 		AllowedOrigins:   []string{"https://" + config.Cfg.Domain},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
@@ -82,12 +86,24 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	// Public API
 	r.Get("/api/v1/articles", a.handleListArticles)
 	r.Get("/api/v1/articles/{slug}", a.handleGetArticle)
+	r.Get("/api/v1/articles/{slug}/comments", a.handleCommentList)
+	r.Get("/api/v1/articles/{slug}/toc", a.handleArticleTOC)
+	r.Post("/api/v1/articles/{slug}/comments", a.handleCommentSubmit)
 	r.Get("/api/v1/search", a.handleSearch)
 	r.Get("/api/v1/tags", a.handleListTags)
 	r.Get("/api/v1/stats", a.handleStats)
+	r.Get("/api/v1/collections", a.handleCollectionList)
+	r.Get("/api/v1/collections/{id}", a.handleCollectionGet)
+	r.Get("/api/v1/preview/verify", a.handlePreviewVerify)
 	r.Get("/metrics", a.handleMetrics)
 	r.Post("/csp-report", a.handleCSPReport)
 	r.Get("/smoke-test", a.handleSmokeTest)
+	// Webmention receiver (W3C standard, public endpoint)
+	r.Post("/webmention", a.handleWebmentionReceive)
+	// Newsletter (public subscribe/confirm/unsubscribe flows)
+	r.Post("/api/v1/newsletter/subscribe", a.handleNewsletterSubscribe)
+	r.Get("/api/v1/newsletter/confirm", a.handleNewsletterConfirm)
+	r.Get("/api/v1/newsletter/unsubscribe", a.handleNewsletterUnsubscribe)
 	r.Get("/api/v1/openapi.json", a.handleOpenAPISpec)
 
 	// Protected admin + write API
@@ -100,6 +116,21 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 		r.Delete("/api/v1/articles/{slug}", a.handleDeleteArticle)
 		r.Get("/api/v1/queue", a.handleQueueStatus)
 		r.Post("/api/v1/queue/replay", a.handleQueueReplay)
+
+		// Plugin features — comments, versions, collections, newsletter, webmentions, redirects, preview.
+		r.Get("/api/v1/admin/comments", a.handleCommentListAdmin)
+		r.With(auth.CSRFTokenMiddleware).Put("/api/v1/admin/comments/{id}/status", a.handleCommentModerate)
+		r.Get("/api/v1/admin/articles/{slug}/versions", a.handleVersionList)
+		r.Get("/api/v1/admin/articles/{slug}/versions/{id}", a.handleVersionGet)
+		r.Post("/api/v1/collections", a.handleCollectionCreate)
+		r.With(auth.CSRFTokenMiddleware).Post("/api/v1/admin/collections/{id}/articles", a.handleCollectionAddArticle)
+		r.Get("/api/v1/admin/newsletter/subscribers", a.handleNewsletterList)
+		r.Get("/api/v1/admin/webmentions", a.handleWebmentionList)
+		r.With(auth.CSRFTokenMiddleware).Put("/api/v1/admin/webmentions/{id}/status", a.handleWebmentionModerate)
+		r.With(auth.CSRFTokenMiddleware).Post("/api/v1/admin/preview", a.handlePreviewIssue)
+		r.Get("/api/v1/admin/redirects", a.handleRedirectList)
+		r.With(auth.CSRFTokenMiddleware).Post("/api/v1/admin/redirects", a.handleRedirectCreate)
+		r.With(auth.CSRFTokenMiddleware).Delete("/api/v1/admin/redirects/{id}", a.handleRedirectDelete)
 
 		// Observability & correlation trace API (ADR-0053).
 		r.Get("/api/v1/admin/outbox/stats", a.handleOutboxStats)

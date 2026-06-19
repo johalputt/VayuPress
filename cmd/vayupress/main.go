@@ -41,10 +41,17 @@ import (
 	"github.com/johalputt/vayupress/internal/policy"
 	"github.com/johalputt/vayupress/internal/queue"
 	"github.com/johalputt/vayupress/internal/render"
+	"github.com/johalputt/vayupress/internal/comments"
+	"github.com/johalputt/vayupress/internal/collections"
+	"github.com/johalputt/vayupress/internal/newsletter"
+	"github.com/johalputt/vayupress/internal/preview"
+	"github.com/johalputt/vayupress/internal/redirects"
 	"github.com/johalputt/vayupress/internal/resource"
 	"github.com/johalputt/vayupress/internal/search"
 	"github.com/johalputt/vayupress/internal/settings"
 	"github.com/johalputt/vayupress/internal/trace"
+	"github.com/johalputt/vayupress/internal/versions"
+	"github.com/johalputt/vayupress/internal/webmention"
 )
 
 var Version = "1.0.0"
@@ -225,6 +232,20 @@ func main() {
 			VerifyBing:   sv[settings.KeyHeadVerifyBing],
 		})
 	}
+
+	// Plugin feature stores — wired after DB is confirmed ready.
+	a.commentStore = comments.New(dbpkg.DB)
+	a.versionStore = versions.New(dbpkg.DB)
+	a.collectionStore = collections.New(dbpkg.DB)
+	a.newsletterStore = newsletter.New(dbpkg.DB)
+	a.webmentionStore = webmention.New(dbpkg.DB)
+	if rdMgr, err := redirects.New(dbpkg.DB); err != nil {
+		logging.LogError("main", "redirect manager init", err.Error())
+	} else {
+		a.redirectMgr = rdMgr
+	}
+	previewSecret := config.EnvOr("VAYU_SECRET", config.EnvOr("VAYU_API_KEY", ""))
+	a.previewSigner = preview.New(previewSecret)
 
 	// Mode journal — durable SQLite-backed transition log (Ω6).
 	dbPath := config.EnvOr("DB_PATH", "./vayupress.db")

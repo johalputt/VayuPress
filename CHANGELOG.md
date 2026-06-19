@@ -8,24 +8,40 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
-### Added — Companion tools & SEO (Phase 1)
-- **`wordpress2vayu`** (`tools/wordpress2vayu`): migrate a WordPress site directly
-  from its MySQL database into VayuPress SQLite. Reads `wp_posts` (posts/pages),
-  maps categories and tags via the term tables, and recovers featured images from
-  `wp_postmeta` (`_thumbnail_id`). Supports custom table prefixes, keyset
-  pagination, throttled batching, checkpoint/resume, and idempotent
-  `INSERT OR IGNORE` writes. Content HTML and original slugs are preserved.
-- **`markdownfolder2vayu`** (`tools/markdownfolder2vayu`): import a folder of
-  Markdown files with YAML frontmatter (`title`, `slug`, `date`, `tags`, `draft`).
-  Renders GitHub-Flavored Markdown to HTML via goldmark, derives slug from filename
-  and date from file mtime when absent, skips drafts, and walks subdirectories.
-  `import` and `list` subcommands.
-- **Built-in SEO Optimizer** (`internal/seo`): per-article meta description and
-  Open Graph / Twitter Card image computed from content, Article JSON-LD, and
-  sitemap generation. Enhanced article `<head>` meta tags (`og:image`,
-  `twitter:card=summary_large_image`, `twitter:image`, `og:site_name`).
-- Marketing site (`docs/site`): Tools section now lists `wordpress2vayu` and
-  `markdownfolder2vayu` alongside `ghost-to-vayu`.
+### Added — Full tool ecosystem & plugin API wiring
+
+**8 migration tools** (all standalone Go modules, no API keys required):
+- **`ghost-to-vayu`**: Ghost CMS → VayuPress (MySQL/SQLite direct DB)
+- **`wordpress2vayu`**: WordPress MySQL → VayuPress (posts, pages, categories, featured images)
+- **`hugo2vayu`**: Hugo site → VayuPress (YAML + TOML frontmatter, goldmark GFM)
+- **`jekyll2vayu`**: Jekyll `_posts` → VayuPress (YAML frontmatter, date-in-filename)
+- **`substack2vayu`**: Substack CSV export → VayuPress
+- **`notion2vayu`**: Notion HTML export → VayuPress
+- **`medium2vayu`**: Medium HTML export (ZIP) → VayuPress (new)
+- **`markdownfolder2vayu`**: Any Markdown folder with YAML frontmatter → VayuPress
+
+**3 operational tools:**
+- **`vayu-backup`**: compressed backup archives, verify, restore, retention scheduling
+- **`vayu-export`**: render all articles to a static HTML site for CDN or archiving
+- **`vayu-validate`**: content integrity checker — slugs, duplicates, bad dates, CI-safe exit codes (new)
+
+**Plugin API routes wired into VayuPress core** (`cmd/vayupress/plugin_handlers.go`):
+- **Comments**: `POST/GET /api/v1/articles/{slug}/comments`, admin moderation (`PUT /api/v1/admin/comments/{id}/status`)
+- **Article Versions**: `GET /api/v1/admin/articles/{slug}/versions[/{id}]`
+- **Collections / Series**: `GET/POST /api/v1/collections`, admin membership management
+- **Newsletter**: `POST /api/v1/newsletter/subscribe`, confirm/unsubscribe links, admin subscriber list
+- **Webmention receiver**: `POST /webmention` (W3C standard), admin list + moderation
+- **Draft Preview Links**: `POST /api/v1/admin/preview` (issues HMAC token + shareable URL)
+- **Redirect Manager**: `GET/POST/DELETE /api/v1/admin/redirects` + redirect middleware wired into chi router
+- **Table of Contents**: `GET /api/v1/articles/{slug}/toc`
+
+**Built-in SEO Optimizer** (`internal/seo`): per-article meta description and
+Open Graph / Twitter Card image, Article JSON-LD, sitemap generation.
+
+**Bug fix**: `internal/preview.Issue()` with negative TTL now correctly produces
+an already-expired token instead of silently substituting the default 48-hour TTL.
+
+**Website**: Tools section updated with all 8 migration tools + 3 operational tools.
 
 ---
 

@@ -389,32 +389,65 @@ Full reference: [docs/API-REFERENCE.md](docs/API-REFERENCE.md)
 ## Companion Tools
 
 Standalone migration and import tools live under [`tools/`](tools/). Each is an
-independent Go module so it builds and ships without pulling in the engine.
+independent Go module — builds without pulling in the engine.
+
+### Migration Tools
+
+| Tool | Migrates from | Source |
+|------|--------------|--------|
+| **ghost-to-vayu** | Ghost CMS (MySQL or SQLite direct DB) | [`tools/ghost-to-vayu`](tools/ghost-to-vayu) |
+| **wordpress2vayu** | WordPress MySQL — posts, pages, categories, tags, featured images | [`tools/wordpress2vayu`](tools/wordpress2vayu) |
+| **hugo2vayu** | Hugo Markdown sites (YAML + TOML frontmatter) | [`tools/hugo2vayu`](tools/hugo2vayu) |
+| **jekyll2vayu** | Jekyll `_posts` (YAML frontmatter, date-in-filename) | [`tools/jekyll2vayu`](tools/jekyll2vayu) |
+| **substack2vayu** | Substack `posts.csv` export | [`tools/substack2vayu`](tools/substack2vayu) |
+| **notion2vayu** | Notion HTML export (ZIP or directory) | [`tools/notion2vayu`](tools/notion2vayu) |
+| **medium2vayu** | Medium HTML export (ZIP or directory) | [`tools/medium2vayu`](tools/medium2vayu) |
+| **markdownfolder2vayu** | Any folder of Markdown files with YAML frontmatter | [`tools/markdownfolder2vayu`](tools/markdownfolder2vayu) |
+
+All migration tools share the same design: direct source access (no API keys needed), keyset pagination, throttled batching, checkpoint/resume, and idempotent `INSERT OR IGNORE` writes.
+
+### Operational Tools
 
 | Tool | Purpose | Source |
 |------|---------|--------|
-| **ghost-to-vayu** | Migrate a Ghost CMS database (MySQL/SQLite) straight into VayuPress — no Ghost admin or API. HTML, slugs, tags, images and timestamps preserved; keyset pagination, checkpoints, idempotent. | [`tools/ghost-to-vayu`](tools/ghost-to-vayu) |
-| **wordpress2vayu** | Migrate a WordPress site directly from its MySQL database. Reads `wp_posts`, categories/tags and recovers featured images from `wp_postmeta`. Custom table prefixes, resumable, idempotent. | [`tools/wordpress2vayu`](tools/wordpress2vayu) |
-| **markdownfolder2vayu** | Import a folder of Markdown files with YAML frontmatter. GitHub-Flavored Markdown rendered to HTML via goldmark; slug/date fallbacks, draft-skipping, recursive walk. | [`tools/markdownfolder2vayu`](tools/markdownfolder2vayu) |
+| **vayu-backup** | Compress, verify, and restore VayuPress SQLite databases | [`tools/vayu-backup`](tools/vayu-backup) |
+| **vayu-export** | Render all articles to a static HTML site for CDN or archiving | [`tools/vayu-export`](tools/vayu-export) |
+| **vayu-validate** | Content integrity checker — slug validity, duplicates, bad dates, oversized content | [`tools/vayu-validate`](tools/vayu-validate) |
 
 ```bash
-# Example: migrate a WordPress database
-cd tools/wordpress2vayu
-go build -o wp2vayu ./cmd/wp2vayu
-./wp2vayu migrate \
-  --wp-dsn "user:pass@tcp(localhost:3306)/wordpress" \
-  --vayu-db /var/lib/vayupress/vayupress.db \
-  --status publish
+# Migrate from Ghost
+cd tools/ghost-to-vayu && go build -o ghost2vayu ./cmd/ghost2vayu
+./ghost2vayu migrate --ghost-driver mysql \
+  --ghost-dsn "user:pass@tcp(localhost:3306)/ghost_production" \
+  --vayu-db /var/lib/vayupress/vayupress.db
 
-# Example: import a folder of Markdown posts
-cd tools/markdownfolder2vayu
-go build -o md2vayu ./cmd/md2vayu
+# Import Markdown posts
+cd tools/markdownfolder2vayu && go build -o md2vayu ./cmd/md2vayu
 ./md2vayu import --dir ./posts --vayu-db /var/lib/vayupress/vayupress.db
+
+# Validate after migration (exits 1 on errors — CI-safe)
+cd tools/vayu-validate && go build -o vayu-validate ./cmd/vayu-validate
+./vayu-validate validate --db /var/lib/vayupress/vayupress.db
 ```
 
-**Built-in SEO Optimizer** — VayuPress core ([`internal/seo`](internal/seo))
-auto-computes per-article meta descriptions and Open Graph / Twitter Card
-images, emits Article JSON-LD, and serves `/sitemap.xml` and `/robots.txt`.
+### Built-in Plugin Features
+
+These features are part of VayuPress core (no external service required):
+
+| Feature | Package | API |
+|---------|---------|-----|
+| **SEO Optimizer** | `internal/seo` | Auto OpenGraph, Twitter Card, JSON-LD per article |
+| **Comments** | `internal/comments` | `POST /api/v1/articles/{slug}/comments` + moderation |
+| **Article Versions** | `internal/versions` | `GET /api/v1/admin/articles/{slug}/versions` |
+| **Series/Collections** | `internal/collections` | `GET/POST /api/v1/collections` |
+| **Newsletter** | `internal/newsletter` | `POST /api/v1/newsletter/subscribe` |
+| **Webmentions** | `internal/webmention` | `POST /webmention` (W3C receiver) |
+| **Draft Preview Links** | `internal/preview` | `POST /api/v1/admin/preview` |
+| **Redirect Manager** | `internal/redirects` | `GET/POST /api/v1/admin/redirects` |
+| **Table of Contents** | `internal/toc` | `GET /api/v1/articles/{slug}/toc` |
+| **ActivityPub / Federation** | `internal/federation` | Outbox relay + HTTP Signatures |
+| **Spam Guard** | `internal/spam` | Comment classification middleware |
+| **Content Signing** | `internal/signing` | HMAC article verification |
 
 ---
 

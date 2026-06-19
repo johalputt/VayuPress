@@ -1,0 +1,12 @@
+CREATE TABLE IF NOT EXISTS webmentions(
+  id         TEXT    PRIMARY KEY,
+  source     TEXT    NOT NULL,
+  target     TEXT    NOT NULL,
+  type       TEXT    NOT NULL DEFAULT 'mention',
+  author     TEXT    NOT NULL DEFAULT '',
+  title      TEXT    NOT NULL DEFAULT '',
+  excerpt    TEXT    NOT NULL DEFAULT '',
+  status     TEXT    NOT NULL DEFAULT 'pending',
+  received_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_webmentions_target ON webmentions(target, status, received_at DESC);

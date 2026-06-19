@@ -14,17 +14,24 @@ import (
 	"github.com/microcosm-cc/bluemonday"
 
 	"github.com/johalputt/vayupress/internal/api"
+	"github.com/johalputt/vayupress/internal/collections"
+	"github.com/johalputt/vayupress/internal/comments"
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/events"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/metrics"
 	"github.com/johalputt/vayupress/internal/mode"
+	"github.com/johalputt/vayupress/internal/newsletter"
 	"github.com/johalputt/vayupress/internal/plugins"
+	"github.com/johalputt/vayupress/internal/preview"
 	"github.com/johalputt/vayupress/internal/queue"
+	"github.com/johalputt/vayupress/internal/redirects"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/search"
 	"github.com/johalputt/vayupress/internal/settings"
+	"github.com/johalputt/vayupress/internal/versions"
+	"github.com/johalputt/vayupress/internal/webmention"
 )
 
 // App holds all mutable runtime state. Handlers are methods on *App so that
@@ -71,6 +78,15 @@ type App struct {
 
 	// Site/theme settings store (migration 006)
 	siteSettings *settings.Store
+
+	// Plugin stores (wired at startup when DB is ready)
+	commentStore   *comments.Store
+	versionStore   *versions.Store
+	collectionStore *collections.Store
+	newsletterStore *newsletter.Store
+	webmentionStore *webmention.Store
+	redirectMgr    *redirects.Manager
+	previewSigner  *preview.Signer
 }
 
 // RegisterHook registers a plugin hook with the App's plugin registry.
