@@ -1,0 +1,85 @@
+name: lighthouse
+
+# Lighthouse CI audit of the public site. Targets 95+ on accessibility,
+# best-practices and SEO (asserted), with performance tracked as a warning to
+# absorb CI runner variance. Public pages need no auth, so Lighthouse hits the
+# server directly on :8080.
+on:
+  push:
+    branches: [main, "claude/**"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lighthouse:
+    runs-on: ubuntu-latest
+    env:
+      API_KEY: lh-ci-key
+      DB_PATH: /tmp/vayupress/data.db
+      CACHE_DIR: /tmp/vayupress/cache
+      MEDIA_DIR: /tmp/vayupress/media
+      TMP_DIR: /tmp/vayupress/tmp
+      PORT: "8080"
+      DOMAIN: localhost
+      STATIC_DIR: ${{ github.workspace }}/static
+      VAYU_DOCS_DIR: ${{ github.workspace }}/docs
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build VayuPress
+        run: |
+          mkdir -p /tmp/vayupress/cache /tmp/vayupress/tmp /tmp/vayupress/media
+          CGO_ENABLED=1 go build -o /tmp/vayupress/vayupress ./cmd/vayupress/
+
+      - name: Start server
+        run: |
+          /tmp/vayupress/vayupress > /tmp/vayupress/server.log 2>&1 &
+          echo $! > /tmp/vayupress/server.pid
+          for i in $(seq 1 90); do
+            if curl -fsS http://localhost:8080/health/live >/dev/null 2>&1; then
+              echo "server up"; exit 0
+            fi
+            sleep 1
+          done
+          echo "server did not start"; cat /tmp/vayupress/server.log; exit 1
+
+      - name: Seed an article
+        run: |
+          curl -fsS -X POST http://localhost:8080/api/v1/articles \
+            -H "X-API-Key: $API_KEY" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "title": "Hello VayuPress",
+              "slug": "hello-vayupress",
+              "content": "<p>A sovereign, single-VPS publishing engine. Seed content for the Lighthouse audit so the article page has real content.</p>",
+              "tags": ["welcome", "governance"]
+            }'
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8080/api/v1/articles/hello-vayupress >/dev/null 2>&1; then
+              echo "article published"; exit 0
+            fi
+            sleep 1
+          done
+          echo "article never became visible"; cat /tmp/vayupress/server.log; exit 1
+
+      - name: Run Lighthouse CI
+        run: |
+          npm install -g @lhci/cli@0.14.x
+          lhci autorun --config=lighthouserc.json
+
+      - name: Stop server
+        if: always()
+        run: |
+          [ -f /tmp/vayupress/server.pid ] && kill "$(cat /tmp/vayupress/server.pid)" || true

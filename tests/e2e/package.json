@@ -1,0 +1,11 @@
+{
+  "name": "vayupress-e2e",
+  "private": true,
+  "description": "Playwright end-to-end tests for VayuPress (public site + Admin v2).",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0"
+  }
+}

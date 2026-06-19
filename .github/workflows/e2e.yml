@@ -1,0 +1,116 @@
+name: e2e
+
+# End-to-end tests (Playwright) for the public site and Admin v2. The server is
+# booted on the runner; a tiny header-injecting proxy (scripts/screenshot-proxy)
+# supplies the admin X-API-Key so the protected pages are reachable. Mirrors the
+# boot sequence of screenshots.yml, which is known-good.
+on:
+  push:
+    branches: [main, "claude/**"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    env:
+      API_KEY: e2e-ci-key
+      DB_PATH: /tmp/vayupress/data.db
+      CACHE_DIR: /tmp/vayupress/cache
+      MEDIA_DIR: /tmp/vayupress/media
+      TMP_DIR: /tmp/vayupress/tmp
+      PORT: "8080"
+      DOMAIN: localhost
+      UPSTREAM: http://localhost:8080
+      PROXY_URL: http://localhost:8088
+      BASE_URL: http://localhost:8088
+      ARTICLE_SLUG: hello-vayupress
+      STATIC_DIR: ${{ github.workspace }}/static
+      VAYU_DOCS_DIR: ${{ github.workspace }}/docs
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Playwright + Chromium
+        working-directory: tests/e2e
+        run: |
+          npm install
+          npx playwright install --with-deps chromium
+
+      - name: Build VayuPress
+        run: |
+          mkdir -p /tmp/vayupress/cache /tmp/vayupress/tmp /tmp/vayupress/media
+          CGO_ENABLED=1 go build -o /tmp/vayupress/vayupress ./cmd/vayupress/
+
+      - name: Start server
+        run: |
+          /tmp/vayupress/vayupress > /tmp/vayupress/server.log 2>&1 &
+          echo $! > /tmp/vayupress/server.pid
+          for i in $(seq 1 90); do
+            if curl -fsS http://localhost:8080/health/live >/dev/null 2>&1; then
+              echo "server up"; exit 0
+            fi
+            sleep 1
+          done
+          echo "server did not start"; cat /tmp/vayupress/server.log; exit 1
+
+      - name: Seed an article
+        run: |
+          curl -fsS -X POST http://localhost:8080/api/v1/articles \
+            -H "X-API-Key: $API_KEY" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "title": "Hello VayuPress",
+              "slug": "hello-vayupress",
+              "content": "<p>A sovereign, single-VPS publishing engine. Seed content for E2E.</p>",
+              "tags": ["welcome", "governance"]
+            }'
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8080/api/v1/articles/hello-vayupress >/dev/null 2>&1; then
+              echo "article published"; exit 0
+            fi
+            sleep 1
+          done
+          echo "article never became visible"; cat /tmp/vayupress/server.log; exit 1
+
+      - name: Start header-injecting proxy
+        run: |
+          LISTEN=:8088 UPSTREAM=http://localhost:8080 API_KEY=$API_KEY \
+            go run ./scripts/screenshot-proxy > /tmp/vayupress/proxy.log 2>&1 &
+          echo $! > /tmp/vayupress/proxy.pid
+          for i in $(seq 1 20); do
+            if curl -fsS http://localhost:8088/health/live >/dev/null 2>&1; then
+              echo "proxy up"; exit 0
+            fi
+            sleep 1
+          done
+          echo "proxy did not start"; cat /tmp/vayupress/proxy.log; exit 1
+
+      - name: Run Playwright tests
+        working-directory: tests/e2e
+        run: npx playwright test
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: tests/e2e/playwright-report/
+          if-no-files-found: ignore
+
+      - name: Stop background processes
+        if: always()
+        run: |
+          [ -f /tmp/vayupress/proxy.pid ]  && kill "$(cat /tmp/vayupress/proxy.pid)"  || true
+          [ -f /tmp/vayupress/server.pid ] && kill "$(cat /tmp/vayupress/server.pid)" || true
