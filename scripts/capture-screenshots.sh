@@ -24,6 +24,15 @@ shot() {
 shot "$BASE_URL/"                                 "$OUT_DIR/homepage.png"
 shot "$BASE_URL/${ARTICLE_SLUG:-hello-vayupress}" "$OUT_DIR/article-page.png"
 
+# ── Modern admin UI — Admin v2 (auth injected by screenshot-proxy) ───────────
+# The editor-first redesign lives under /admin/v2 (ADR-0065). Capture the
+# dashboard, posts list, and the editor (loaded with the seeded article so the
+# split-view live preview renders real content).
+shot "$BASE_URL/admin/v2"                                   "$OUT_DIR/admin-v2-dashboard.png"
+shot "$BASE_URL/admin/v2/posts"                             "$OUT_DIR/admin-v2-posts.png"
+shot "$BASE_URL/admin/v2/editor/${ARTICLE_SLUG:-hello-vayupress}" "$OUT_DIR/admin-v2-editor.png"
+shot "$BASE_URL/admin/v2/settings"                          "$OUT_DIR/admin-v2-settings.png"
+
 # ── Operator console (auth injected by screenshot-proxy) ─────────────────────
 shot "$BASE_URL/admin"                            "$OUT_DIR/admin-dashboard.png"
 shot "$BASE_URL/admin/theme"                      "$OUT_DIR/theme-panel.png"

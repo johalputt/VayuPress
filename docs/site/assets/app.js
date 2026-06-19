@@ -167,7 +167,9 @@ STATIC_DIR=./static VAYU_DOCS_DIR=./docs ./vayupress --port 8080`,
 
     screenshots: [
       { label:'Homepage',         path:'/',                       src:'screenshots/homepage.png',         caption:'Public homepage — clean, fast, no third-party scripts.' },
-      { label:'Admin dashboard',  path:'/admin',                  src:'screenshots/admin-dashboard.png',  caption:'Operator dashboard — runtime health, mode status and quick actions.' },
+      { label:'Admin v2 editor',  path:'/admin/v2/editor',        src:'screenshots/admin-v2-editor.png',  caption:'Editor-first redesign — split-view live preview, slash commands, autosave. CSP-strict, eval-free (ADR-0065).' },
+      { label:'Admin v2 dashboard', path:'/admin/v2',             src:'screenshots/admin-v2-dashboard.png', caption:'Modern admin dashboard — dark-first, teal/saffron, fully vendored, no CDNs.' },
+      { label:'Admin dashboard',  path:'/admin',                  src:'screenshots/admin-dashboard.png',  caption:'Classic operator console — runtime health, mode status and quick actions.' },
       { label:'Theme console',    path:'/admin/theme',            src:'screenshots/admin-panel.png',      caption:'Theme console — identity, palette, favicon upload, export/import and reset.' },
       { label:'Policy modes',     path:'/admin/policy/modes',     src:'screenshots/policy-modes.png',     caption:'Six modes: normal → degraded → read-only → quarantined → recovery → maintenance.' },
       { label:'Policy inspector', path:'/admin/policy/inspector', src:'screenshots/policy-inspector.png', caption:'Live error budgets with severity classification and actuation status.' },

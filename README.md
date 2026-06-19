@@ -35,7 +35,17 @@
 
 ---
 
-### Admin Dashboard
+### Admin v2 — Editor-First Redesign
+
+![VayuPress Admin v2 Dashboard](docs/screenshots/admin-v2-dashboard.png)
+
+*Modern, editor-first admin (`/admin/v2`) on a fully-vendored, CSP-strict stack — dark-first, teal/saffron palette, no external CDNs, no `unsafe-eval`/`unsafe-inline` (ADR-0065).*
+
+![VayuPress Admin v2 Editor](docs/screenshots/admin-v2-editor.png)
+
+*The editor — split-view live Markdown preview, slash-command palette, formatting toolbar, word-count / reading-time, SEO preview, and debounced autosave over the existing CSRF-protected API. All interactivity is eval-free.*
+
+### Admin Dashboard (Classic Console)
 ![VayuPress Admin Dashboard](docs/screenshots/admin-dashboard.png)
 
 *Runtime governance console — system mode (Normal/Degraded/ReadOnly/Recovery/Maintenance/Quarantined), SLO error budgets with contributor attribution, dependency health grid, kernel invariant checklist, operational timeline with epistemic confidence annotations.*
