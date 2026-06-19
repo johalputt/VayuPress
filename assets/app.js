@@ -157,8 +157,8 @@ STATIC_DIR=./static VAYU_DOCS_DIR=./docs ./vayupress --port 8080`,
         tags:['ActivityPub','replay'] },
       { icon:'✍️', iconBg:'bg-teal-900/60 border border-teal-800/60',     orb:'rgba(45,212,191,0.40)',
         title:'Editor-first admin (/admin/v2)',
-        desc:'A modern, distraction-free writing surface on a fully vendored, CSP-clean stack — no CDNs, no unsafe-eval. Split-view live preview, slash commands, autosave, SEO preview and version history.',
-        tags:['editor','CSP-safe','vendored'] },
+        desc:'A modern, distraction-free writing surface on a fully vendored, CSP-clean stack — no CDNs, no unsafe-eval. Author in Markdown or raw HTML, with split-view live preview, slash commands, drag-&-drop image upload, autosave, an SEO readiness meter and version history. The public renderer always receives server-sanitised HTML.',
+        tags:['editor','Markdown / HTML','CSP-safe'] },
       { icon:'⬆️', iconBg:'bg-amber-900/60 border border-amber-800/60',   orb:'rgba(245,158,11,0.35)',
         title:'Sovereign self-update',
         desc:'Check for updates from the panel; apply them from the CLI only — gated by opt-in, system mode, an operator-pinned Ed25519 key, checksum + signature verification, and an automatic backup. No web RCE, ever.',
@@ -167,7 +167,9 @@ STATIC_DIR=./static VAYU_DOCS_DIR=./docs ./vayupress --port 8080`,
 
     screenshots: [
       { label:'Homepage',         path:'/',                       src:'screenshots/homepage.png',         caption:'Public homepage — clean, fast, no third-party scripts.' },
-      { label:'Admin dashboard',  path:'/admin',                  src:'screenshots/admin-dashboard.png',  caption:'Operator dashboard — runtime health, mode status and quick actions.' },
+      { label:'Admin v2 editor',  path:'/admin/v2/editor',        src:'screenshots/admin-v2-editor.png',  caption:'Editor-first redesign — split-view live preview, slash commands, autosave. CSP-strict, eval-free (ADR-0065).' },
+      { label:'Admin v2 dashboard', path:'/admin/v2',             src:'screenshots/admin-v2-dashboard.png', caption:'Modern admin dashboard — dark-first, teal/saffron, fully vendored, no CDNs.' },
+      { label:'Admin dashboard',  path:'/admin',                  src:'screenshots/admin-dashboard.png',  caption:'Classic operator console — runtime health, mode status and quick actions.' },
       { label:'Theme console',    path:'/admin/theme',            src:'screenshots/admin-panel.png',      caption:'Theme console — identity, palette, favicon upload, export/import and reset.' },
       { label:'Policy modes',     path:'/admin/policy/modes',     src:'screenshots/policy-modes.png',     caption:'Six modes: normal → degraded → read-only → quarantined → recovery → maintenance.' },
       { label:'Policy inspector', path:'/admin/policy/inspector', src:'screenshots/policy-inspector.png', caption:'Live error budgets with severity classification and actuation status.' },
@@ -192,6 +194,18 @@ STATIC_DIR=./static VAYU_DOCS_DIR=./docs ./vayupress --port 8080`,
 
     tools: [
       /* ── Migration tools ── */
+      {
+        name:'vayupress migrate (built-in)',
+        tag:'Migration',
+        desc:'New in v1.1.0 — import Markdown folders straight from the main binary, no separate tool to build. Parses YAML frontmatter, renders GitHub-Flavored Markdown, and writes both the sanitised article and an editable Markdown side-car so the editor reopens each post in Markdown mode.',
+        points:[
+          'vayupress migrate markdown --dir ./posts (--dry-run to preview)',
+          'Idempotent INSERT OR IGNORE — safe to re-run after interruptions',
+          'vayupress migrate info prints options for every supported platform',
+        ],
+        cmd:'vayupress migrate markdown --dir ./posts',
+        href:'https://github.com/johalputt/VayuPress/blob/main/docs/MIGRATION.md',
+      },
       {
         name:'ghost-to-vayu',
         tag:'Migration',
