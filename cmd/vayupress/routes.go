@@ -72,15 +72,25 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	r.Get("/static/favicon-dark.png", a.serveFavicon(faviconDarkPNG))
 	r.Get("/static/favicon-light.png", a.serveFavicon(faviconLightPNG))
 	r.Get("/favicon.ico", a.serveFavicon(faviconDarkPNG))
+	// cssAllowlist maps the URL parameter to its canonical on-disk name.
+	// The path passed to http.ServeFile comes from the *value* (a string literal),
+	// not from the user-supplied key, so there is no path-traversal vector.
+	cssAllowlist := map[string]string{
+		"article.css":       "article.css",
+		"admin.css":         "admin.css",
+		"high-contrast.css": "high-contrast.css",
+		"pico.min.css":      "pico.min.css",
+		"custom.css":        "custom.css",
+	}
 	r.Get("/static/css/{file}", func(w http.ResponseWriter, r *http.Request) {
-		file := chi.URLParam(r, "file")
-		if !map[string]bool{"article.css": true, "admin.css": true, "high-contrast.css": true, "pico.min.css": true, "custom.css": true}[file] {
+		canon, ok := cssAllowlist[chi.URLParam(r, "file")]
+		if !ok {
 			http.NotFound(w, r)
 			return
 		}
 		w.Header().Set("Cache-Control", "public, immutable, max-age=31536000")
 		w.Header().Set("Content-Type", "text/css; charset=utf-8")
-		http.ServeFile(w, r, filepath.Join(staticDir, "css", file))
+		http.ServeFile(w, r, filepath.Join(staticDir, "css", canon))
 	})
 
 	// Public API

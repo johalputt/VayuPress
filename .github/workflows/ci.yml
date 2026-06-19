@@ -309,7 +309,7 @@ jobs:
         with:
           # Go 1.25+ required: govulncheck@latest needs it, and the 1.25 stdlib
           # carries the crypto/tls + crypto/x509 security patches (GO-2025-*).
-          go-version: '1.25'
+          go-version: 'stable'
           cache: true
       - name: go vet
         run: go vet ./...

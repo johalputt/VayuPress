@@ -93,7 +93,17 @@ func ParseZip(zipPath string) ([]Article, string, error) {
 	}
 	defer r.Close()
 	for _, f := range r.File {
-		outPath := filepath.Join(tmpDir, f.Name)
+		// Sanitize path to prevent Zip Slip: reject absolute paths and any
+		// component that escapes the destination directory via "..".
+		clean := filepath.Clean(f.Name)
+		if filepath.IsAbs(clean) || strings.HasPrefix(clean, ".."+string(filepath.Separator)) || clean == ".." {
+			continue
+		}
+		outPath := filepath.Join(tmpDir, clean)
+		// Double-check the resolved path is still inside tmpDir.
+		if !strings.HasPrefix(outPath, filepath.Clean(tmpDir)+string(filepath.Separator)) {
+			continue
+		}
 		if f.FileInfo().IsDir() {
 			os.MkdirAll(outPath, 0755)
 			continue

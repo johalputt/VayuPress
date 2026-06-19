@@ -117,10 +117,10 @@ func (a *App) writeConsoleShellHead(w http.ResponseWriter, r *http.Request, acti
 </nav>
 <main id="main-content">
 <div class="page-header"><div><div class="page-title">%s</div><div class="page-sub">%s</div></div><a href="/admin" class="btn">← Overview</a></div>`,
-		pageTitle,
+		html.EscapeString(pageTitle),
 		render.AdminCSSLink(), render.HighContrastCSSLink(),
-		config.Cfg.Domain,
-		modeCls, modeLabel,
+		html.EscapeString(config.Cfg.Domain),
+		modeCls, html.EscapeString(modeLabel),
 		sidebarItem("/admin", "◈", "Overview", "overview", active, "", ""),
 		sidebarItem("/api/v1/articles", "◻", "Articles", "articles", active, "", ""),
 		sidebarItem("/api/v1/queue", "⟳", "Queue", "queue", active, "", ""),
@@ -136,7 +136,7 @@ func (a *App) writeConsoleShellHead(w http.ResponseWriter, r *http.Request, acti
 		sidebarItem("/health/benchmarks", "⚡", "Benchmarks", "benchmarks", active, "", ""),
 		sidebarItem("/metrics", "∼", "Metrics", "metrics", active, "", ""),
 		Version,
-		pageTitle, pageSub,
+		html.EscapeString(pageTitle), html.EscapeString(pageSub),
 	)
 	return nonce
 }
@@ -171,7 +171,7 @@ func (a *App) handleModesPage(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, `<div class="mode-banner %s"><div class="mode-banner-pulse"><div class="mode-banner-pulse-dot"></div></div><div class="mode-banner-info"><span class="mode-banner-state">%s</span><span class="mode-banner-desc">%s</span></div></div>
 <div class="console-note">Transitions follow the permitted graph. Reachable targets are actionable; blocked targets require an intermediate transition or operator override. Every transition is journaled and appears on the Overview timeline.</div>
 <div class="section-title">Mode State Machine</div>
-<div class="mode-grid">`, curCls, curLabel, curDesc)
+<div class="mode-grid">`, curCls, html.EscapeString(curLabel), html.EscapeString(curDesc))
 
 	for _, m := range mode.AllModes() {
 		cls := modeShortClass(m)

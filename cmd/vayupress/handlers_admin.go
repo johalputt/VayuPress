@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"hash/fnv"
+	"html"
 	"html/template"
 	"io"
 	"net/http"
@@ -1278,15 +1279,15 @@ func (a *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 		modeBannerClass, modeLabel,
 		snap.TotalArticles, snap.PendingJobs,
 		Version,
-		nowUTC, snapshotAge, currentMode,
-		modeBannerClass, modeLabel, modeDesc,
+		nowUTC, snapshotAge, html.EscapeString(currentMode),
+		modeBannerClass, html.EscapeString(modeLabel), html.EscapeString(modeDesc),
 		snap.TotalArticles, snap.TotalArticles,
 		sparkFlat,
 		snap.PendingJobs, snap.CompletedJobs,
 		sparkFlat,
 		failedClass, snap.FailedJobs,
 		sparkFlat,
-		snap.UptimeSeconds, currentMode,
+		snap.UptimeSeconds, html.EscapeString(currentMode),
 		sparkUp,
 		storageClass, dbpkg.FormatBytes(snap.StorageBytes), snap.StoragePct, snap.StoragePct,
 		panicClass, pluginPanics, snap.CacheHitRatio*100,

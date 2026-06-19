@@ -47,15 +47,21 @@ func (a *App) registerAdminUIRoutes(r chi.Router) {
 	r.Get("/admin/v2/static/js/admin-v2.js", serveAdminV2Asset("js/admin-v2.js", "application/javascript; charset=utf-8"))
 	// Public: brand fonts (font-src 'self'). Optional — operator drops woff2 files.
 	r.Get("/admin/v2/static/fonts/{file}", func(w http.ResponseWriter, req *http.Request) {
-		file := chi.URLParam(req, "file")
-		switch file {
-		case "space-grotesk.woff2", "inter.woff2":
-			w.Header().Set("Content-Type", "font/woff2")
-			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-			http.ServeFile(w, req, filepath.Join(adminV2StaticDir(), "fonts", file))
+		// Build the path from string literals matched in the switch, not from
+		// the user-supplied URL parameter, to prevent any path-traversal.
+		var canon string
+		switch chi.URLParam(req, "file") {
+		case "space-grotesk.woff2":
+			canon = "space-grotesk.woff2"
+		case "inter.woff2":
+			canon = "inter.woff2"
 		default:
 			http.NotFound(w, req)
+			return
 		}
+		w.Header().Set("Content-Type", "font/woff2")
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		http.ServeFile(w, req, filepath.Join(adminV2StaticDir(), "fonts", canon))
 	})
 
 	// Public: login page.
