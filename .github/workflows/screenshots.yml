@@ -139,7 +139,12 @@ jobs:
           fi
           git add docs/screenshots/*.png
           git commit -m "Refresh screenshots from live instance (CI)"
-          git push origin HEAD:${GITHUB_REF_NAME}
+          # Rebase onto any commits that landed on the target branch while
+          # screenshots were being captured, then push. The only changed files
+          # are binary PNGs so rebase conflicts are essentially impossible.
+          git fetch origin "${GITHUB_REF_NAME}"
+          git rebase "origin/${GITHUB_REF_NAME}"
+          git push origin HEAD:"${GITHUB_REF_NAME}"
 
       - name: Stop background processes
         if: always()
