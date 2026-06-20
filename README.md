@@ -285,6 +285,9 @@ See [docs/architecture/system-modes.md](docs/architecture/system-modes.md).
   library (no third-party SDKs, no hosted senders), double opt-in confirmations,
   and one-click broadcasts with auto unsubscribe links; a safe no-op until
   `SMTP_HOST` is set
+- **Automatic image optimization** — stdlib-only (no libvips/CGO) downscaling of
+  oversized PNG/JPEG editor uploads with area-averaging resampling; GIF/WebP pass
+  through untouched
 - Sitemap XML, RSS feed, and robots.txt auto-generation
 - In-memory render cache with static-file output via Nginx
 - SQLite WAL mode with adaptive checkpointing

@@ -32,6 +32,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/johalputt/vayupress/internal/config"
+	"github.com/johalputt/vayupress/internal/imageproc"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/mode"
 )
@@ -128,7 +129,25 @@ func (a *App) handleMediaUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sum := sha256.Sum256(raw)
+	// Optimize: downscale oversized PNG/JPEG with the stdlib-only pipeline.
+	// GIF/WebP pass through untouched (animation/format preserved). Failures are
+	// non-fatal — we fall back to storing the original bytes.
+	stored := raw
+	var imgW, imgH int
+	if res, err := imageproc.Optimize(raw, ext, imageproc.DefaultMaxWidth); err == nil {
+		stored = res.Data
+		imgW, imgH = res.Width, res.Height
+		if res.Resized {
+			logging.LogJSON(logging.LogFields{
+				Level: "info", Component: "media", Severity: "info",
+				Msg: "image downscaled to " + imageproc.DefaultMaxWidthStr() + "px wide", RequestID: getRequestID(r),
+			})
+		}
+	} else {
+		logging.LogError("media", "optimize failed (storing original)", err.Error())
+	}
+
+	sum := sha256.Sum256(stored)
 	name := hex.EncodeToString(sum[:16]) + "." + ext // 32 hex chars + ext
 
 	if err := os.MkdirAll(config.Cfg.MediaDir, 0o755); err != nil {
@@ -138,7 +157,7 @@ func (a *App) handleMediaUpload(w http.ResponseWriter, r *http.Request) {
 	dest := filepath.Join(config.Cfg.MediaDir, name)
 	// Content-addressed: if it already exists, reuse it (idempotent upload).
 	if _, statErr := os.Stat(dest); os.IsNotExist(statErr) {
-		if err := os.WriteFile(dest, raw, 0o644); err != nil {
+		if err := os.WriteFile(dest, stored, 0o644); err != nil {
 			fail(500, "could not store image: "+err.Error())
 			return
 		}
@@ -152,10 +171,12 @@ func (a *App) handleMediaUpload(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(201)
 	json.NewEncoder(w).Encode(map[string]interface{}{ //nolint:errcheck
-		"url":  "/media/" + name,
-		"name": name,
-		"size": len(raw),
-		"mime": mime,
+		"url":    "/media/" + name,
+		"name":   name,
+		"size":   len(stored),
+		"mime":   mime,
+		"width":  imgW,
+		"height": imgH,
 	})
 }
 

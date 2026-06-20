@@ -128,6 +128,15 @@ credentials) to enable:
 When `SMTP_HOST` is empty, every email call is a safe no-op: subscriber and
 comment flows keep working, delivery is simply skipped and audit-logged.
 
+### Image optimization (Tier 1)
+
+Editor image uploads are automatically optimized using a **stdlib-only** pipeline
+(no libvips, no CGO, no third-party scaling libraries). PNG and JPEG uploads
+wider than 1600px are downscaled proportionally with area-averaging resampling
+and re-encoded; the smaller of the optimized/original bytes always wins.
+Animated GIF and WebP pass through untouched to preserve animation and format.
+The upload response now includes `width` and `height`.
+
 ### Scheduled publishing (Tier 1)
 
 Stage future-dated posts with `POST /api/v1/admin/schedule`
