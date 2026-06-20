@@ -190,6 +190,48 @@ func (s *Store) Delete(ctx context.Context, email string) error {
 	return nil
 }
 
+// ── Two-factor (TOTP) ──────────────────────────────────────────────────────
+
+// TOTPStatus reports whether the user has a pending secret and whether 2FA is
+// fully enabled (verified).
+func (s *Store) TOTPStatus(ctx context.Context, id string) (secret string, enabled bool, err error) {
+	var enabledInt int
+	err = s.db.QueryRowContext(ctx,
+		`SELECT COALESCE(totp_secret,''), COALESCE(totp_enabled,0) FROM users WHERE id=?`, id).
+		Scan(&secret, &enabledInt)
+	return secret, enabledInt == 1, err
+}
+
+// SetTOTPSecret stores a (not-yet-verified) secret for the user. Enabling is a
+// separate step so an abandoned enrolment never activates 2FA.
+func (s *Store) SetTOTPSecret(ctx context.Context, id, secret string) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE users SET totp_secret=?, totp_enabled=0 WHERE id=?`, secret, id)
+	return err
+}
+
+// EnableTOTP marks 2FA active once the user has proven possession of the secret.
+func (s *Store) EnableTOTP(ctx context.Context, id string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE users SET totp_enabled=1 WHERE id=?`, id)
+	return err
+}
+
+// DisableTOTP clears the secret and turns 2FA off.
+func (s *Store) DisableTOTP(ctx context.Context, id string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE users SET totp_secret='', totp_enabled=0 WHERE id=?`, id)
+	return err
+}
+
+// TOTPSecretByEmail returns the stored secret and enabled flag for a login by
+// email — used during sign-in to decide whether to demand a 2FA code.
+func (s *Store) TOTPSecretByEmail(ctx context.Context, email string) (secret string, enabled bool, err error) {
+	var enabledInt int
+	err = s.db.QueryRowContext(ctx,
+		`SELECT COALESCE(totp_secret,''), COALESCE(totp_enabled,0) FROM users WHERE email=?`,
+		strings.TrimSpace(strings.ToLower(email))).Scan(&secret, &enabledInt)
+	return secret, enabledInt == 1, err
+}
+
 // decoyHash is a valid Argon2id-encoded hash of a random value, used to spend
 // comparable CPU time on unknown-email logins so timing does not reveal which
 // emails are registered.

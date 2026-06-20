@@ -1463,3 +1463,15 @@
 }
 .vp-v3 .media-card__copy:hover { background: var(--bg-surface-3); color: var(--text); }
 .vp-v3 .skeleton--media { aspect-ratio: 4 / 3; height: auto; border-radius: var(--r-md); }
+
+/* ── Security / TOTP enrolment (Phase 5, ADR-0068) ─────────────────────────── */
+.vp-v3 .totp-key {
+  margin-top: var(--sp-3);
+  padding: var(--sp-3);
+  background: var(--bg-surface-3);
+  border-radius: var(--r-sm);
+  letter-spacing: 0.12em;
+  word-break: break-all;
+}
+.vp-v3 .totp-uri { margin-top: var(--sp-2); }
+.vp-v3 .totp-enroll[hidden] { display: none; }

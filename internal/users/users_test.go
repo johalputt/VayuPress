@@ -14,7 +14,7 @@ func newTestStore(t *testing.T) *Store {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = db.Exec(`CREATE TABLE users(id TEXT PRIMARY KEY,email TEXT NOT NULL UNIQUE,name TEXT NOT NULL DEFAULT '',password_hash TEXT NOT NULL,role TEXT NOT NULL DEFAULT 'author',created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,last_login DATETIME)`)
+	_, err = db.Exec(`CREATE TABLE users(id TEXT PRIMARY KEY,email TEXT NOT NULL UNIQUE,name TEXT NOT NULL DEFAULT '',password_hash TEXT NOT NULL,role TEXT NOT NULL DEFAULT 'author',created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,last_login DATETIME,totp_secret TEXT NOT NULL DEFAULT '',totp_enabled INTEGER NOT NULL DEFAULT 0)`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,5 +81,53 @@ func TestSetPasswordAndCount(t *testing.T) {
 	n, _ := s.Count(ctx)
 	if n != 1 {
 		t.Errorf("count = %d, want 1", n)
+	}
+}
+
+func TestTOTPLifecycle(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	u, err := s.Create(ctx, "bob@example.com", "Bob", "supersecret", RoleAdmin)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Fresh account: no secret, not enabled.
+	secret, enabled, err := s.TOTPStatus(ctx, u.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if secret != "" || enabled {
+		t.Fatalf("new account should have no TOTP, got secret=%q enabled=%v", secret, enabled)
+	}
+
+	// Store a secret — still disabled until verified.
+	if err := s.SetTOTPSecret(ctx, u.ID, "JBSWY3DPEHPK3PXP"); err != nil {
+		t.Fatal(err)
+	}
+	secret, enabled, _ = s.TOTPStatus(ctx, u.ID)
+	if secret != "JBSWY3DPEHPK3PXP" || enabled {
+		t.Fatalf("after SetTOTPSecret: secret=%q enabled=%v", secret, enabled)
+	}
+
+	// Enable, then confirm via the email-keyed lookup used at login.
+	if err := s.EnableTOTP(ctx, u.ID); err != nil {
+		t.Fatal(err)
+	}
+	es, een, err := s.TOTPSecretByEmail(ctx, "bob@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if es != "JBSWY3DPEHPK3PXP" || !een {
+		t.Fatalf("TOTPSecretByEmail: secret=%q enabled=%v", es, een)
+	}
+
+	// Disable clears everything.
+	if err := s.DisableTOTP(ctx, u.ID); err != nil {
+		t.Fatal(err)
+	}
+	secret, enabled, _ = s.TOTPStatus(ctx, u.ID)
+	if secret != "" || enabled {
+		t.Fatalf("after disable: secret=%q enabled=%v", secret, enabled)
 	}
 }

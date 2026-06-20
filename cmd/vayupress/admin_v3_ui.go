@@ -58,6 +58,7 @@ func (a *App) registerAdminV3UIRoutes(r chi.Router) {
 	r.Get("/admin/v3/static/css/admin-v3.css", serveAdminV3Asset("css/admin-v3.css", "text/css; charset=utf-8"))
 	r.Get("/admin/v3/static/js/admin-v3.js", serveAdminV3Asset("js/admin-v3.js", "application/javascript; charset=utf-8"))
 	r.Get("/admin/v3/static/js/admin-v3-editor.js", serveAdminV3Asset("js/admin-v3-editor.js", "application/javascript; charset=utf-8"))
+	r.Get("/admin/v3/static/js/admin-v3-security.js", serveAdminV3Asset("js/admin-v3-security.js", "application/javascript; charset=utf-8"))
 	r.Get("/admin/v3/static/js/purify.min.js", serveAdminV3Asset("js/purify.min.js", "application/javascript; charset=utf-8"))
 
 	// Fonts — path-traversal prevented by switch allowlist (same pattern as v2).
@@ -93,6 +94,11 @@ func (a *App) registerAdminV3UIRoutes(r chi.Router) {
 		pr.Get("/admin/v3/posts", a.handleV3Posts)
 		pr.Get("/admin/v3/media", a.handleV3Media)
 		pr.Get("/admin/v3/api/media", a.handleV3MediaList)
+		pr.Get("/admin/v3/members", a.handleV3Members)
+		pr.Get("/admin/v3/security", a.handleV3Security)
+		pr.With(auth.CSRFTokenMiddleware).Post("/admin/v3/api/totp/begin", a.handleV3TOTPBegin)
+		pr.With(auth.CSRFTokenMiddleware).Post("/admin/v3/api/totp/verify", a.handleV3TOTPVerify)
+		pr.With(auth.CSRFTokenMiddleware).Post("/admin/v3/api/totp/disable", a.handleV3TOTPDisable)
 		pr.Get("/admin/v3/editor", a.handleV3Editor)
 		pr.Get("/admin/v3/editor/{slug}", a.handleV3Editor)
 		pr.Get("/admin/v3/seo", a.handleV3SEO)
@@ -371,6 +377,13 @@ func (a *App) handleV3LoginSubmit(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(v3LoginPage(email, "Invalid email or password.")))
 		return
 	}
+	// Second factor: if the account has 2FA enabled, a valid TOTP code is required.
+	// On failure the password must be re-entered (it is never echoed back).
+	if ok, required := a.verifyTOTPForLogin(r.Context(), email, r.FormValue("totp")); required && !ok {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte(v3LoginPage(email, "Enter the 6-digit code from your authenticator app, then re-enter your password.")))
+		return
+	}
 	token, err := a.sessions.Create(r.Context(), u.ID)
 	if err != nil {
 		http.Error(w, "could not start session", http.StatusInternalServerError)
@@ -443,6 +456,12 @@ func v3LoginPage(prefillEmail, errMsg string) string {
       <label class="field-label" for="login-password">Password</label>
       <input id="login-password" class="input" type="password" name="password"
         placeholder="••••••••" autocomplete="current-password" required>
+    </div>
+    <div class="field">
+      <label class="field-label" for="login-totp">Two-factor code <span class="muted text-xs">(if enabled)</span></label>
+      <input id="login-totp" class="input" type="text" name="totp"
+        inputmode="numeric" autocomplete="one-time-code" maxlength="6"
+        placeholder="000000">
     </div>
     <button type="submit" class="btn btn--primary">Sign in</button>
   </form>

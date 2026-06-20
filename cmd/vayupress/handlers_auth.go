@@ -85,6 +85,13 @@ func (a *App) handleV2LoginSubmit(w http.ResponseWriter, r *http.Request) {
 		a.renderLoginPage(w, r, "Invalid email or password.")
 		return
 	}
+	// Second factor: enforce TOTP when the account has 2FA enabled. This closes
+	// the older surface so an enrolled account cannot bypass 2FA via /admin/v2.
+	if ok, required := a.verifyTOTPForLogin(r.Context(), email, r.PostFormValue("totp")); required && !ok {
+		logging.LogJSON(logging.LogFields{Level: "warn", Component: "auth", Severity: "notice", Msg: "login 2fa failed"})
+		a.renderLoginPage(w, r, "Enter the 6-digit code from your authenticator app, then re-enter your password.")
+		return
+	}
 	token, err := a.sessions.Create(r.Context(), u.ID)
 	if err != nil {
 		http.Error(w, "could not start session", http.StatusInternalServerError)
@@ -131,6 +138,8 @@ func (a *App) renderLoginPage(w http.ResponseWriter, r *http.Request, errMsg str
       <input id="lg-email" name="email" class="input" type="email" autocomplete="username" required autofocus></div>
     <div class="field"><label for="lg-pass">Password</label>
       <input id="lg-pass" name="password" class="input" type="password" autocomplete="current-password" required></div>
+    <div class="field"><label for="lg-totp">Two-factor code (if enabled)</label>
+      <input id="lg-totp" name="totp" class="input" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000"></div>
     <div class="btn-row mt-2"><button class="btn btn-primary" type="submit">Sign in</button></div>
     <p class="hint">Or supply the API key via the configured proxy header to bypass password login.</p>
   </form>
