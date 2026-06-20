@@ -325,6 +325,9 @@ See [docs/architecture/system-modes.md](docs/architecture/system-modes.md).
 - **Built-in Ghost & WordPress importers** — `vayupress migrate ghost --file …`
   and `vayupress migrate wordpress --file …` move content off both platforms with
   no external tooling (titles, slugs, dates, tags, draft status preserved)
+- **Sovereign AI writing assistant** — summarize / improve / titles / SEO /
+  continue, powered by a **local** Ollama server (no hosted model, no telemetry).
+  Suggest-only — never auto-edits. `POST /api/v1/admin/ai/assist`
 
 ### Event-Driven Reliability (P20–P22)
 - Transactional outbox — events written atomically with article mutations
@@ -452,6 +455,8 @@ trusted, and the strict CSP stays intact:
 | `POST` | `/api/v1/admin/webhooks` | Register a webhook (CSRF-protected) |
 | `DELETE` | `/api/v1/admin/webhooks/{id}` | Delete a webhook (CSRF-protected) |
 | `GET` | `/api/v1/admin/webhooks/{id}/deliveries` | Webhook delivery audit trail |
+| `GET` | `/api/v1/admin/ai/status` | AI assistant availability + supported ops |
+| `POST` | `/api/v1/admin/ai/assist` | Run a local-LLM writing operation (CSRF-protected) |
 
 Public theming endpoints (no auth): `GET /theme.css` (operator palette + custom
 CSS, served same-origin for CSP), `GET /static/js/theme-toggle.js` (sun/moon

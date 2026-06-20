@@ -24,6 +24,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/microcosm-cc/bluemonday"
 
+	"github.com/johalputt/vayupress/internal/aiassist"
 	"github.com/johalputt/vayupress/internal/analytics"
 	"github.com/johalputt/vayupress/internal/api"
 	"github.com/johalputt/vayupress/internal/auth"
@@ -336,6 +337,10 @@ func main() {
 	}, a.outboundClient)
 	if a.social.Enabled() {
 		logging.LogInfo("social", "auto-posting enabled — mastodon="+config.Cfg.MastodonInstance)
+	}
+	a.aiAssist = aiassist.New(aiassist.Config{URL: config.Cfg.AIURL, Model: config.Cfg.AIModel}, a.outboundClient)
+	if a.aiAssist.Enabled() {
+		logging.LogInfo("ai", "writing assistant enabled — url="+config.Cfg.AIURL+" model="+a.aiAssist.Model())
 	}
 	go func() {
 		ticker := time.NewTicker(24 * time.Hour)

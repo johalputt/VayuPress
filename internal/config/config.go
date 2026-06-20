@@ -64,6 +64,10 @@ var Cfg struct {
 	// Social auto-posting (Mastodon-compatible). Empty = disabled.
 	MastodonInstance string
 	MastodonToken    string
+
+	// AI writing assistant — local Ollama endpoint. Empty = disabled.
+	AIURL   string
+	AIModel string
 }
 
 func Load() {
@@ -109,6 +113,8 @@ func Load() {
 	Cfg.AnalyticsRetainDays = GetEnvAsInt("ANALYTICS_RETAIN_DAYS", 365)
 	Cfg.MastodonInstance = EnvOr("SOCIAL_MASTODON_INSTANCE", "")
 	Cfg.MastodonToken = EnvOr("SOCIAL_MASTODON_TOKEN", "")
+	Cfg.AIURL = EnvOr("VAYU_AI_URL", "")
+	Cfg.AIModel = EnvOr("VAYU_AI_MODEL", "llama3.2")
 }
 
 func MustEnv(k string) string {

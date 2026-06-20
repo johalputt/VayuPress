@@ -13,6 +13,7 @@ import (
 
 	"github.com/microcosm-cc/bluemonday"
 
+	"github.com/johalputt/vayupress/internal/aiassist"
 	"github.com/johalputt/vayupress/internal/analytics"
 	"github.com/johalputt/vayupress/internal/api"
 	"github.com/johalputt/vayupress/internal/auth"
@@ -115,6 +116,9 @@ type App struct {
 
 	// Social auto-posting (Tier 2).
 	social *social.Poster
+
+	// AI writing assistant — local Ollama, opt-in (Tier 2).
+	aiAssist *aiassist.Client
 }
 
 // startScheduler runs the background ticker that promotes due scheduled posts to

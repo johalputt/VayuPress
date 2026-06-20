@@ -160,6 +160,10 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 		// Privacy-first analytics (Tier 2).
 		r.Get("/api/v1/admin/analytics", a.handleAnalytics)
 
+		// AI writing assistant — local Ollama, opt-in (Tier 2).
+		r.Get("/api/v1/admin/ai/status", a.handleAIStatus)
+		r.With(auth.CSRFTokenMiddleware).Post("/api/v1/admin/ai/assist", a.handleAIAssist)
+
 		// Outbound webhooks (Tier 2).
 		r.Get("/api/v1/admin/webhooks", a.handleWebhookList)
 		r.With(auth.CSRFTokenMiddleware).Post("/api/v1/admin/webhooks", a.handleWebhookCreate)

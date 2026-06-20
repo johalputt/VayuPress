@@ -191,6 +191,10 @@ STATIC_DIR=./static VAYU_DOCS_DIR=./docs ./vayupress --port 8080`,
         title:'Social auto-posting & easy migration',
         desc:'Auto-share new posts to Mastodon/Pleroma/Akkoma with a single app token — no OAuth dance. Plus built-in Ghost (JSON) and WordPress (WXR) importers move your whole archive across with no external tooling: titles, slugs, dates, tags and draft status preserved.',
         tags:['Mastodon','Ghost import','WP import'] },
+      { icon:'🤖', iconBg:'bg-teal-900/60 border border-teal-800/60',     orb:'rgba(45,212,191,0.32)',
+        title:'Sovereign AI writing assistant',
+        desc:'Summarize, improve, suggest titles, draft SEO metadata or continue a draft — powered by a LOCAL Ollama model you run yourself. Nothing is sent to a hosted third party, and the assistant only suggests: it never auto-edits your content.',
+        tags:['local-LLM','Ollama','suggest-only'] },
     ],
 
     screenshots: [

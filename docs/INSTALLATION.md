@@ -115,6 +115,8 @@ Expected: `{"status":"ok"}` from both endpoints.
 | `ANALYTICS_RETAIN_DAYS`| `365`                         | Retention window for privacy-first view aggregates |
 | `SOCIAL_MASTODON_INSTANCE`| (unset)                    | Mastodon-compatible base URL for auto-posting (e.g. `https://mastodon.social`) |
 | `SOCIAL_MASTODON_TOKEN`| (unset)                       | Mastodon app access token (`write:statuses` scope) |
+| `VAYU_AI_URL`         | (unset)                        | Local Ollama base URL for the AI writing assistant (e.g. `http://localhost:11434`) |
+| `VAYU_AI_MODEL`       | `llama3.2`                     | Ollama model name for the assistant |
 
 ### Email delivery (Tier 1)
 
@@ -130,6 +132,18 @@ credentials) to enable:
 
 When `SMTP_HOST` is empty, every email call is a safe no-op: subscriber and
 comment flows keep working, delivery is simply skipped and audit-logged.
+
+### AI writing assistant (Tier 2)
+
+An opt-in, **sovereign** writing assistant that talks to a LOCAL,
+operator-run [Ollama](https://ollama.com) server — nothing is ever sent to a
+hosted third-party model. Set `VAYU_AI_URL` (and optionally `VAYU_AI_MODEL`) to
+enable. Operations via `POST /api/v1/admin/ai/assist` (`{op, text}`):
+`summarize`, `improve`, `titles`, `seo`, `continue`. Probe availability at
+`GET /api/v1/admin/ai/status`.
+
+The assistant only *suggests* — it never auto-edits content, consistent with the
+project's "no autonomous actions" ethics charter.
 
 ### Social auto-posting (Tier 2)
 
