@@ -201,6 +201,7 @@ func adminV3Layout(nonce, title, active string, settings *v3Settings, bodyHTML s
     ` + navItem("/admin/v3", "Dashboard", "dashboard", active, iconDashboard) + `
     ` + navItem("/admin/v3/posts", "Posts", "posts", active, iconPosts) + `
     ` + navItem("/admin/v3/editor", "New Post", "editor", active, iconNewPost) + `
+    ` + navItem("/admin/v3/media", "Media", "media", active, iconMedia) + `
 
     <div class="sidebar-section-label">Audience</div>
     ` + navItem("/admin/v3/members", "Members", "members", active, iconMembers) + `
