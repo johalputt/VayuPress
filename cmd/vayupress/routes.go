@@ -279,6 +279,9 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	// It manages its own public/auth split internally.
 	a.registerAdminUIRoutes(r)
 
+	// Admin v3 — next-generation UI surpassing Ghost/WordPress/Substack (ADR-0068).
+	a.registerAdminV3UIRoutes(r)
+
 	r.Get("/", a.handleHome)
 	r.NotFound(a.handleNotFound)
 	r.Get("/{slug}", a.handleArticlePage)
