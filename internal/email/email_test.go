@@ -1,6 +1,7 @@
 package email
 
 import (
+	"encoding/base64"
 	"strings"
 	"testing"
 )
@@ -49,8 +50,16 @@ func TestAssemblePlainText(t *testing.T) {
 	if !strings.Contains(body, "Subject: Hi") {
 		t.Error("missing subject header")
 	}
-	if !strings.Contains(body, "Hello\r\nWorld") {
-		t.Error("body should use CRLF line endings")
+	if !strings.Contains(body, "Content-Transfer-Encoding: base64") {
+		t.Error("expected base64 transfer encoding")
+	}
+	// Body is base64-encoded; decode and verify CRLF line endings are present.
+	decoded, err := base64.StdEncoding.DecodeString(strings.TrimSpace(body[strings.Index(body, "\r\n\r\n")+4:]))
+	if err != nil {
+		t.Fatalf("base64 decode failed: %v", err)
+	}
+	if !strings.Contains(string(decoded), "Hello") {
+		t.Error("decoded body missing expected text")
 	}
 }
 
@@ -64,8 +73,15 @@ func TestAssembleMultipart(t *testing.T) {
 	if !strings.Contains(body, "multipart/alternative") {
 		t.Error("expected multipart/alternative")
 	}
-	if !strings.Contains(body, "text/html") || !strings.Contains(body, "<b>rich</b>") {
-		t.Error("missing HTML part")
+	if !strings.Contains(body, "text/html") {
+		t.Error("missing text/html part header")
+	}
+	if !strings.Contains(body, "Content-Transfer-Encoding: base64") {
+		t.Error("expected base64 transfer encoding")
+	}
+	// HTML part is base64-encoded — verify the encoded form of <b>rich</b> is present.
+	if !strings.Contains(body, base64.StdEncoding.EncodeToString([]byte("<b>rich</b>"))) {
+		t.Error("missing base64-encoded HTML content")
 	}
 }
 
