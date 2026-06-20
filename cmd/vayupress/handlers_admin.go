@@ -22,6 +22,8 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/microcosm-cc/bluemonday"
+
 	"github.com/johalputt/vayupress/internal/api"
 	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/budget"
@@ -29,6 +31,7 @@ import (
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/fault"
 	"github.com/johalputt/vayupress/internal/logging"
+	"github.com/johalputt/vayupress/internal/members"
 	"github.com/johalputt/vayupress/internal/metrics"
 	"github.com/johalputt/vayupress/internal/mode"
 	"github.com/johalputt/vayupress/internal/provenance"
@@ -291,8 +294,17 @@ func (a *App) handleArticlePage(w http.ResponseWriter, r *http.Request) {
 			}
 		}()
 	}
+	// Paywall (Tier 2): non-public articles bypass the static cache so access is
+	// re-evaluated per request. Authorised viewers get the full body; everyone
+	// else gets a preview + sign-in/subscribe CTA.
+	accessLevel := members.AccessPublic
+	if a.members != nil {
+		accessLevel = a.members.GetAccess(r.Context(), slug)
+	}
+	gated := accessLevel != members.AccessPublic && !isAdmin
+
 	cachePath := filepath.Join(config.Cfg.CacheDir, "posts", slug+".html")
-	if !isAdmin || r.URL.Query().Get("layout") == "" {
+	if !gated && (!isAdmin || r.URL.Query().Get("layout") == "") {
 		if _, err := os.Stat(cachePath); err == nil {
 			atomic.AddInt64(&metrics.MetricCacheHits, 1)
 			http.ServeFile(w, r, cachePath)
@@ -307,17 +319,62 @@ func (a *App) handleArticlePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	art.Tags = api.SplitTags(tagsStr)
+
+	// Enforce the paywall: if this article is gated and the viewer is not
+	// authorised, serve a preview with a call to action instead of the body.
+	if gated {
+		if m := a.resolveMember(r); !authorizedFor(accessLevel, m) {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.Header().Set("Cache-Control", "no-store")
+			fmt.Fprint(w, renderPaywall(art, accessLevel))
+			return
+		}
+	}
+
 	layout := render.DetectLayout(art, r, isAdmin)
-	html, err := render.RenderArticleWithLayout(art, layout)
+	htmlOut, err := render.RenderArticleWithLayout(art, layout)
 	if err != nil {
 		http.Error(w, "render error", 500)
 		return
 	}
-	if layout == render.ArticleLayoutDefault {
-		render.CacheWrite(filepath.Join("posts", slug+".html"), html) //nolint:errcheck
+	// Never cache gated articles to disk — access must be re-checked each request.
+	if layout == render.ArticleLayoutDefault && !gated {
+		render.CacheWrite(filepath.Join("posts", slug+".html"), htmlOut) //nolint:errcheck
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprint(w, html)
+	if gated {
+		w.Header().Set("Cache-Control", "no-store")
+	}
+	fmt.Fprint(w, htmlOut)
+}
+
+// renderPaywall builds a minimal, sovereign preview page for gated content: the
+// title, a short text excerpt, and a sign-in / subscribe call to action.
+func renderPaywall(art dbpkg.Article, level string) string {
+	excerpt := htmlTagRe.ReplaceAllString(bluemonday.StrictPolicy().Sanitize(art.Content), "")
+	if len(excerpt) > 600 {
+		excerpt = excerpt[:600] + "…"
+	}
+	cta := "This post is for members."
+	if level == members.AccessPaid {
+		cta = "This post is for paid members."
+	}
+	esc := html.EscapeString
+	return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">` +
+		`<meta name="viewport" content="width=device-width, initial-scale=1">` +
+		`<title>` + esc(art.Title) + `</title>` +
+		`<link rel="stylesheet" href="/theme.css"><link rel="stylesheet" href="/static/css/article.css">` +
+		`<meta name="robots" content="noindex"></head><body><main class="article" style="max-width:42rem;margin:3rem auto;padding:0 1rem">` +
+		`<h1>` + esc(art.Title) + `</h1>` +
+		`<p style="opacity:.8">` + esc(excerpt) + `</p>` +
+		`<div style="margin-top:2rem;padding:1.5rem;border:1px solid rgba(128,128,128,.3);border-radius:12px;text-align:center">` +
+		`<p style="font-weight:600;margin:0 0 .75rem">` + esc(cta) + `</p>` +
+		`<form method="POST" action="/members/login" style="display:flex;gap:.5rem;justify-content:center;flex-wrap:wrap">` +
+		`<input type="email" name="email" required placeholder="you@example.com" style="padding:.5rem .75rem;border-radius:8px;border:1px solid rgba(128,128,128,.4)">` +
+		`<button type="submit" style="padding:.5rem 1rem;border-radius:8px">Email me a sign-in link</button>` +
+		`</form>` +
+		`<p style="font-size:.8rem;opacity:.6;margin-top:.75rem">Already a member? Use the same link to sign in.</p>` +
+		`</div></main></body></html>`
 }
 
 func (a *App) handleSmokeTest(w http.ResponseWriter, r *http.Request) {

@@ -65,15 +65,14 @@ func (s *SessionStore) Validate(ctx context.Context, token string) (string, erro
 		return "", fmt.Errorf("no session")
 	}
 	var userID string
-	var expiresRaw string
+	var expires time.Time
 	err := s.db.QueryRowContext(ctx,
 		`SELECT user_id,expires_at FROM sessions WHERE token_hash=?`, hashToken(token)).
-		Scan(&userID, &expiresRaw)
+		Scan(&userID, &expires)
 	if err != nil {
 		return "", fmt.Errorf("invalid session")
 	}
-	expires, _ := time.Parse("2006-01-02 15:04:05", expiresRaw)
-	if time.Now().UTC().After(expires) {
+	if time.Now().UTC().After(expires.UTC()) {
 		_ = s.Destroy(ctx, token)
 		return "", fmt.Errorf("session expired")
 	}

@@ -195,6 +195,10 @@ STATIC_DIR=./static VAYU_DOCS_DIR=./docs ./vayupress --port 8080`,
         title:'Sovereign AI writing assistant',
         desc:'Summarize, improve, suggest titles, draft SEO metadata or continue a draft — powered by a LOCAL Ollama model you run yourself. Nothing is sent to a hosted third party, and the assistant only suggests: it never auto-edits your content.',
         tags:['local-LLM','Ollama','suggest-only'] },
+      { icon:'💳', iconBg:'bg-green-900/60 border border-green-800/60',   orb:'rgba(74,222,128,0.32)',
+        title:'Memberships & paywalls',
+        desc:'Turn readers into members with passwordless magic-link sign-in (no reader passwords stored). Gate any article as public, members or paid — non-members get a preview plus a sign-in CTA. Optional signature-verified Stripe webhook handles paid upgrades, with no payment SDK embedded.',
+        tags:['magic-link','paywall','Stripe-optional'] },
     ],
 
     screenshots: [

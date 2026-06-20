@@ -117,6 +117,7 @@ Expected: `{"status":"ok"}` from both endpoints.
 | `SOCIAL_MASTODON_TOKEN`| (unset)                       | Mastodon app access token (`write:statuses` scope) |
 | `VAYU_AI_URL`         | (unset)                        | Local Ollama base URL for the AI writing assistant (e.g. `http://localhost:11434`) |
 | `VAYU_AI_MODEL`       | `llama3.2`                     | Ollama model name for the assistant |
+| `STRIPE_WEBHOOK_SECRET`| (unset)                       | Stripe webhook signing secret for paid-member upgrades (optional) |
 
 ### Email delivery (Tier 1)
 
@@ -132,6 +133,27 @@ credentials) to enable:
 
 When `SMTP_HOST` is empty, every email call is a safe no-op: subscriber and
 comment flows keep working, delivery is simply skipped and audit-logged.
+
+### Memberships & paywalls (Tier 2)
+
+Turn readers into members and gate premium content — sovereign, no payment SDK
+embedded.
+
+- **Passwordless member login.** Readers request a magic link
+  (`POST /members/login` or `/api/v1/members/login`), receive a one-time emailed
+  link to `/members/verify`, and get a hardened `HttpOnly` session cookie. No
+  reader passwords are ever stored. (Requires SMTP — see email setup.)
+- **Per-article access levels.** Set `public`, `members`, or `paid` via
+  `PUT /api/v1/admin/articles/{slug}/access`. Non-authorised readers see a
+  preview plus a sign-in CTA instead of the full body; gated articles bypass the
+  static cache so access is re-checked per request.
+- **Tiers.** `GET /api/v1/admin/members` lists members;
+  `PUT /api/v1/admin/members/{email}/tier` sets `free`/`paid` manually.
+- **Optional Stripe upgrades.** Set `STRIPE_WEBHOOK_SECRET` and point a Stripe
+  webhook at `POST /api/v1/stripe/webhook`. The signature is verified
+  (HMAC-SHA256 over `t.payload`); on `checkout.session.completed` the customer's
+  member is upgraded to `paid`. VayuPress embeds no Stripe SDK — it only reacts
+  to the signed webhook.
 
 ### AI writing assistant (Tier 2)
 

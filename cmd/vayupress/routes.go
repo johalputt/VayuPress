@@ -123,6 +123,14 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	r.Get("/api/v1/newsletter/unsubscribe", a.handleNewsletterUnsubscribe)
 	r.Get("/api/v1/openapi.json", a.handleOpenAPISpec)
 
+	// Reader memberships (Tier 2) — public passwordless login + paywall.
+	r.Post("/api/v1/members/login", a.handleMemberLogin)
+	r.Post("/members/login", a.handleMemberLogin) // HTML form variant from the paywall
+	r.Get("/members/verify", a.handleMemberVerify)
+	r.Post("/members/logout", a.handleMemberLogout)
+	// Stripe webhook for paid upgrades — verified by signature, not API key.
+	r.Post("/api/v1/stripe/webhook", a.handleStripeWebhook)
+
 	// Protected admin + write API
 	r.Group(func(r chi.Router) {
 		r.Use(auth.RequireAPIKey, auth.RateLimitMiddleware)
@@ -163,6 +171,12 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 		// AI writing assistant — local Ollama, opt-in (Tier 2).
 		r.Get("/api/v1/admin/ai/status", a.handleAIStatus)
 		r.With(auth.CSRFTokenMiddleware).Post("/api/v1/admin/ai/assist", a.handleAIAssist)
+
+		// Reader memberships & paywalls (Tier 2) — admin management.
+		r.Get("/api/v1/admin/members", a.handleMemberListAdmin)
+		r.With(auth.CSRFTokenMiddleware).Put("/api/v1/admin/members/{email}/tier", a.handleMemberSetTier)
+		r.Get("/api/v1/admin/articles/{slug}/access", a.handleArticleAccessGet)
+		r.With(auth.CSRFTokenMiddleware).Put("/api/v1/admin/articles/{slug}/access", a.handleArticleAccessSet)
 
 		// Outbound webhooks (Tier 2).
 		r.Get("/api/v1/admin/webhooks", a.handleWebhookList)

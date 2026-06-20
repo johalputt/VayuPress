@@ -328,6 +328,9 @@ See [docs/architecture/system-modes.md](docs/architecture/system-modes.md).
 - **Sovereign AI writing assistant** — summarize / improve / titles / SEO /
   continue, powered by a **local** Ollama server (no hosted model, no telemetry).
   Suggest-only — never auto-edits. `POST /api/v1/admin/ai/assist`
+- **Memberships & paywalls** — passwordless magic-link reader login, per-article
+  access levels (public/members/paid) with preview + CTA, and an optional
+  signature-verified Stripe webhook for paid upgrades (no embedded payment SDK)
 
 ### Event-Driven Reliability (P20–P22)
 - Transactional outbox — events written atomically with article mutations
@@ -457,6 +460,12 @@ trusted, and the strict CSP stays intact:
 | `GET` | `/api/v1/admin/webhooks/{id}/deliveries` | Webhook delivery audit trail |
 | `GET` | `/api/v1/admin/ai/status` | AI assistant availability + supported ops |
 | `POST` | `/api/v1/admin/ai/assist` | Run a local-LLM writing operation (CSRF-protected) |
+| `POST` | `/api/v1/members/login` | Request a passwordless member sign-in link |
+| `GET` | `/members/verify` | Consume a magic link, start a member session |
+| `GET` | `/api/v1/admin/members` | List members + tier counts |
+| `PUT` | `/api/v1/admin/members/{email}/tier` | Set a member's tier (CSRF-protected) |
+| `PUT` | `/api/v1/admin/articles/{slug}/access` | Set article access level (CSRF-protected) |
+| `POST` | `/api/v1/stripe/webhook` | Signed Stripe webhook → paid upgrades (optional) |
 
 Public theming endpoints (no auth): `GET /theme.css` (operator palette + custom
 CSS, served same-origin for CSP), `GET /static/js/theme-toggle.js` (sun/moon

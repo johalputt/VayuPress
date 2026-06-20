@@ -144,15 +144,15 @@ func scanPosts(rows *sql.Rows) ([]Post, error) {
 	var out []Post
 	for rows.Next() {
 		var p Post
-		var tagStr, paRaw, createdRaw string
-		if err := rows.Scan(&p.ID, &p.Slug, &p.Title, &p.Content, &tagStr, &paRaw, &p.Status, &p.Error, &createdRaw); err != nil {
+		var tagStr string
+		// expires/created columns are DATETIME; scan directly into time.Time so
+		// go-sqlite3 handles the stored format (it returns RFC3339 to strings).
+		if err := rows.Scan(&p.ID, &p.Slug, &p.Title, &p.Content, &tagStr, &p.PublishAt, &p.Status, &p.Error, &p.CreatedAt); err != nil {
 			return nil, err
 		}
 		if tagStr != "" {
 			p.Tags = strings.Split(tagStr, ",")
 		}
-		p.PublishAt, _ = time.Parse("2006-01-02 15:04:05", paRaw)
-		p.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdRaw)
 		out = append(out, p)
 	}
 	return out, rows.Err()

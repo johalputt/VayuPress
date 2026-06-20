@@ -24,6 +24,7 @@ import (
 	"github.com/johalputt/vayupress/internal/email"
 	"github.com/johalputt/vayupress/internal/events"
 	"github.com/johalputt/vayupress/internal/logging"
+	"github.com/johalputt/vayupress/internal/members"
 	"github.com/johalputt/vayupress/internal/metrics"
 	"github.com/johalputt/vayupress/internal/mode"
 	"github.com/johalputt/vayupress/internal/newsletter"
@@ -119,6 +120,9 @@ type App struct {
 
 	// AI writing assistant — local Ollama, opt-in (Tier 2).
 	aiAssist *aiassist.Client
+
+	// Reader memberships & paywalls (Tier 2).
+	members *members.Store
 }
 
 // startScheduler runs the background ticker that promotes due scheduled posts to

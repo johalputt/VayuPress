@@ -40,6 +40,7 @@ import (
 	"github.com/johalputt/vayupress/internal/httputil"
 	"github.com/johalputt/vayupress/internal/lifecycle"
 	"github.com/johalputt/vayupress/internal/logging"
+	"github.com/johalputt/vayupress/internal/members"
 	"github.com/johalputt/vayupress/internal/metrics"
 	"github.com/johalputt/vayupress/internal/mode"
 	"github.com/johalputt/vayupress/internal/newsletter"
@@ -342,6 +343,23 @@ func main() {
 	if a.aiAssist.Enabled() {
 		logging.LogInfo("ai", "writing assistant enabled — url="+config.Cfg.AIURL+" model="+a.aiAssist.Model())
 	}
+
+	// Reader memberships & paywalls (Tier 2).
+	a.members = members.New(dbpkg.DB)
+	go func() {
+		ticker := time.NewTicker(1 * time.Hour)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-queue.DoneCh:
+				return
+			case <-ticker.C:
+				if n, err := a.members.PurgeExpired(context.Background()); err == nil && n > 0 {
+					logging.LogInfo("members", fmt.Sprintf("purged %d expired member tokens/sessions", n))
+				}
+			}
+		}
+	}()
 	go func() {
 		ticker := time.NewTicker(24 * time.Hour)
 		defer ticker.Stop()

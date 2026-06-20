@@ -68,6 +68,9 @@ var Cfg struct {
 	// AI writing assistant — local Ollama endpoint. Empty = disabled.
 	AIURL   string
 	AIModel string
+
+	// Stripe webhook signing secret for paid-member upgrades. Empty = disabled.
+	StripeWebhookSecret string
 }
 
 func Load() {
@@ -115,6 +118,7 @@ func Load() {
 	Cfg.MastodonToken = EnvOr("SOCIAL_MASTODON_TOKEN", "")
 	Cfg.AIURL = EnvOr("VAYU_AI_URL", "")
 	Cfg.AIModel = EnvOr("VAYU_AI_MODEL", "llama3.2")
+	Cfg.StripeWebhookSecret = EnvOr("STRIPE_WEBHOOK_SECRET", "")
 }
 
 func MustEnv(k string) string {

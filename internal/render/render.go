@@ -640,6 +640,16 @@ func CachePurgeAll() {
 	}
 }
 
+// CachePurgePost removes just the cached HTML for a single article slug. Used
+// when an article's access level changes so the paywall takes effect at once.
+func CachePurgePost(slug string) {
+	postFile := filepath.Join(config.Cfg.CacheDir, "posts", slug+".html")
+	if fi, err := os.Stat(postFile); err == nil {
+		db.UpdateStorageDelta(-fi.Size())
+	}
+	os.Remove(postFile)
+}
+
 // CachePurge removes the cached file for an article and its associated tag pages.
 func CachePurge(slug string, tags []string, generateSitemap, generateRSS, generateRobots func()) {
 	postFile := filepath.Join(config.Cfg.CacheDir, "posts", slug+".html")
