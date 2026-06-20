@@ -151,6 +151,11 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 		r.Get("/api/v1/admin/schedule", a.handleScheduleList)
 		r.With(auth.CSRFTokenMiddleware).Post("/api/v1/admin/schedule", a.handleScheduleCreate)
 		r.With(auth.CSRFTokenMiddleware).Delete("/api/v1/admin/schedule/{id}", a.handleScheduleCancel)
+
+		// Multi-author accounts (Tier 1) — admin-role guarded.
+		r.Get("/api/v1/admin/users", a.handleUserList)
+		r.With(auth.CSRFTokenMiddleware).Post("/api/v1/admin/users", a.handleUserCreate)
+		r.With(auth.CSRFTokenMiddleware).Delete("/api/v1/admin/users/{email}", a.handleUserDelete)
 		r.Get("/api/v1/admin/webmentions", a.handleWebmentionList)
 		r.With(auth.CSRFTokenMiddleware).Put("/api/v1/admin/webmentions/{id}/status", a.handleWebmentionModerate)
 		r.With(auth.CSRFTokenMiddleware).Post("/api/v1/admin/preview", a.handlePreviewIssue)

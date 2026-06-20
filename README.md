@@ -296,6 +296,10 @@ See [docs/architecture/system-modes.md](docs/architecture/system-modes.md).
 - Plugin hook system with worker pool, panic recovery, and circuit-breaker disable
 
 ### Security & Governance (P9–P13)
+- **Multi-author accounts & password login** — Argon2id-hashed credentials,
+  server-side SQLite sessions (only token SHA-256 stored), hardened
+  `HttpOnly`/`SameSite=Lax` cookie; admin pages accept an API key **or** a login
+  session. Bootstrap via `vayupress user add … --admin`
 - Automated CI governance — 15+ CI jobs, `ci-pass` gate
 - Supply-chain secret scanning (TruffleHog), license compliance, shell linting
 - Structured health contracts: `/health/live`, `/health/ready`, `/health/dependencies`, `/health/storage`, `/health/search`, `/health/queue`
@@ -424,6 +428,11 @@ trusted, and the strict CSP stays intact:
 | `GET` | `/api/v1/admin/schedule` | List staged scheduled posts |
 | `POST` | `/api/v1/admin/schedule` | Stage a future-dated post (CSRF-protected) |
 | `DELETE` | `/api/v1/admin/schedule/{id}` | Cancel a scheduled post (CSRF-protected) |
+| `GET` | `/api/v1/admin/users` | List author accounts (admin role) |
+| `POST` | `/api/v1/admin/users` | Create an account (admin role, CSRF-protected) |
+| `DELETE` | `/api/v1/admin/users/{email}` | Delete an account (admin role, CSRF-protected) |
+| `POST` | `/admin/v2/login` | Email + password sign-in (issues session cookie) |
+| `POST` | `/admin/v2/logout` | Destroy the current session |
 
 Public theming endpoints (no auth): `GET /theme.css` (operator palette + custom
 CSS, served same-origin for CSP), `GET /static/js/theme-toggle.js` (sun/moon

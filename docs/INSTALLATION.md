@@ -128,6 +128,28 @@ credentials) to enable:
 When `SMTP_HOST` is empty, every email call is a safe no-op: subscriber and
 comment flows keep working, delivery is simply skipped and audit-logged.
 
+### Multi-author accounts & password login (Tier 1)
+
+VayuPress supports per-author accounts with email + password sign-in, in
+addition to the legacy single API key. Passwords are hashed with Argon2id;
+login sessions are stored server-side in SQLite (only the SHA-256 of each token
+is persisted) and carried in a hardened `HttpOnly`, `SameSite=Lax` cookie.
+
+Bootstrap the first admin from the CLI (the only path that needs no existing
+session):
+
+```bash
+vayupress user add alice@example.com 'a-strong-password' Alice --admin
+vayupress user list
+vayupress user passwd alice@example.com 'new-password'
+vayupress user delete bob@example.com
+```
+
+Sign in at `/admin/v2/login`. Admin-role users can also manage accounts over the
+API: `GET/POST /api/v1/admin/users`, `DELETE /api/v1/admin/users/{email}`. The
+existing API-key path keeps working unchanged — admin pages accept **either** a
+valid API key **or** a login session.
+
 ### Image optimization (Tier 1)
 
 Editor image uploads are automatically optimized using a **stdlib-only** pipeline

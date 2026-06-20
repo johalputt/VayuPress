@@ -72,12 +72,17 @@ func (a *App) registerAdminUIRoutes(r chi.Router) {
 		http.ServeFile(w, req, filepath.Join(adminV2StaticDir(), "fonts", canon))
 	})
 
-	// Public: login page.
+	// Public: login page + credential submission (password sign-in, Tier 1).
 	r.Get("/admin/v2/login", a.handleV2Login)
+	// Login/logout are credential-bearing form posts; they cannot send the
+	// double-submit CSRF header, so they rely on the SameSite=Lax session cookie
+	// rather than CSRFTokenMiddleware.
+	r.Post("/admin/v2/login", a.handleV2LoginSubmit)
+	r.Post("/admin/v2/logout", a.handleV2Logout)
 
-	// Protected pages.
+	// Protected pages — accept an API key OR a login session (Tier 1).
 	r.Group(func(pr chi.Router) {
-		pr.Use(auth.RequireAPIKey)
+		pr.Use(a.requireSessionOrAPIKey)
 		pr.Get("/admin/v2", a.handleV2Dashboard)
 		pr.Get("/admin/v2/posts", a.handleV2Posts)
 		pr.Get("/admin/v2/editor", a.handleV2Editor)
@@ -141,6 +146,9 @@ func adminV2Layout(nonce, title, sidebarActive, bodyHTML string) string {
     <span class="topbar-title">` + et + `</span>
     <span class="topbar-spacer"></span>
     <a class="btn btn-primary btn-sm" href="/admin/v2/editor">New Post</a>
+    <form method="POST" action="/admin/v2/logout" class="topbar-logout">
+      <button type="submit" class="btn btn-ghost btn-sm">Sign out</button>
+    </form>
   </header>
   <main id="main-content" class="content">
 ` + bodyHTML + `
@@ -559,28 +567,20 @@ func (a *App) handleSEORegenerate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleV2Login(w http.ResponseWriter, r *http.Request) {
-	nonce := render.CSPNonce(r)
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("X-Robots-Tag", "noindex")
-	body := `<!DOCTYPE html><html lang="en"><head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Sign in — VayuPress Admin</title><meta name="robots" content="noindex, nofollow">
-<link rel="stylesheet" href="/admin/v2/static/css/admin-v2.css">
-<link rel="icon" type="image/png" href="/static/favicon-light.png">
-</head><body>
-<div class="login-wrap"><div class="card login-card">
-  <div class="login-brand">VayuPress</div>
-  <form method="GET" action="/admin/v2">
-    <div class="field"><label for="lg-key">API key</label>
-      <input id="lg-key" class="input" type="password" autocomplete="off" placeholder="Provided via header/cookie at the proxy"></div>
-    <p class="hint">Access is gated by <code>auth.RequireAPIKey</code>. Supply your key through the configured header or cookie, then continue.</p>
-    <div class="btn-row mt-2"><a class="btn btn-primary" href="/admin/v2">Enter console</a></div>
-  </form>
-</div></div>
-<script src="/admin/v2/static/js/purify.min.js"></script>
-<script nonce="` + nonce + `" src="/admin/v2/static/js/admin-v2.js"></script>
-</body></html>`
-	_, _ = w.Write([]byte(body))
+	// If already authenticated, skip the form.
+	if auth.HasValidAPIKey(r) {
+		http.Redirect(w, r, "/admin/v2", http.StatusSeeOther)
+		return
+	}
+	if a.sessions != nil {
+		if token := auth.SessionTokenFromRequest(r); token != "" {
+			if _, err := a.sessions.Validate(r.Context(), token); err == nil {
+				http.Redirect(w, r, "/admin/v2", http.StatusSeeOther)
+				return
+			}
+		}
+	}
+	a.renderLoginPage(w, r, "")
 }
 
 // storageWidthClass maps a 0–100 percentage to a precompiled width utility

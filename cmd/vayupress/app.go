@@ -14,6 +14,7 @@ import (
 	"github.com/microcosm-cc/bluemonday"
 
 	"github.com/johalputt/vayupress/internal/api"
+	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/collections"
 	"github.com/johalputt/vayupress/internal/comments"
 	"github.com/johalputt/vayupress/internal/config"
@@ -33,6 +34,7 @@ import (
 	"github.com/johalputt/vayupress/internal/search"
 	"github.com/johalputt/vayupress/internal/settings"
 	"github.com/johalputt/vayupress/internal/update"
+	"github.com/johalputt/vayupress/internal/users"
 	"github.com/johalputt/vayupress/internal/versions"
 	"github.com/johalputt/vayupress/internal/webmention"
 )
@@ -97,6 +99,10 @@ type App struct {
 
 	// Scheduled publishing (Tier 1).
 	scheduler *scheduler.Store
+
+	// Multi-author accounts + login sessions (Tier 1).
+	userStore *users.Store
+	sessions  *auth.SessionStore
 }
 
 // startScheduler runs the background ticker that promotes due scheduled posts to

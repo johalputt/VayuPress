@@ -54,6 +54,7 @@ import (
 	"github.com/johalputt/vayupress/internal/settings"
 	"github.com/johalputt/vayupress/internal/trace"
 	"github.com/johalputt/vayupress/internal/update"
+	"github.com/johalputt/vayupress/internal/users"
 	"github.com/johalputt/vayupress/internal/versions"
 	"github.com/johalputt/vayupress/internal/webmention"
 )
@@ -193,6 +194,20 @@ func main() {
 		os.Exit(0)
 	}
 
+	// user subcommand: manage accounts (bootstrap the first admin, etc.).
+	if len(os.Args) > 1 && os.Args[1] == "user" {
+		config.Load()
+		if err := dbpkg.Init(); err != nil {
+			fmt.Fprintln(os.Stderr, "DB init failed:", err)
+			os.Exit(1)
+		}
+		if err := runUserCLI(os.Args[2:], os.Stdout); err != nil {
+			fmt.Fprintln(os.Stderr, "user:", err)
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
+
 	// migrate subcommand: import Markdown folders into the VayuPress database.
 	if len(os.Args) > 1 && os.Args[1] == "migrate" {
 		config.Load()
@@ -308,6 +323,28 @@ func main() {
 
 	// Scheduled publishing (Tier 1).
 	a.scheduler = scheduler.New(dbpkg.DB)
+
+	// Multi-author accounts + login sessions (Tier 1).
+	a.userStore = users.New(dbpkg.DB)
+	a.sessions = auth.NewSessionStore(dbpkg.DB)
+	if n, err := a.userStore.Count(context.Background()); err == nil && n == 0 {
+		logging.LogInfo("users", "no accounts yet — bootstrap one with: vayupress user add <email> <password> [--admin]")
+	}
+	// Periodic expired-session sweep.
+	go func() {
+		ticker := time.NewTicker(1 * time.Hour)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-queue.DoneCh:
+				return
+			case <-ticker.C:
+				if n, err := a.sessions.PurgeExpired(context.Background()); err == nil && n > 0 {
+					logging.LogInfo("auth", fmt.Sprintf("purged %d expired sessions", n))
+				}
+			}
+		}
+	}()
 
 	// Mode journal — durable SQLite-backed transition log (Ω6).
 	dbPath := config.EnvOr("DB_PATH", "./vayupress.db")
