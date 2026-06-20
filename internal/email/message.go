@@ -28,8 +28,8 @@ func (s *Sender) assemble(to string, msg Message) ([]byte, error) {
 	// containing CR or LF is rejected outright, so no user-influenced field
 	// (recipient, subject, From) can inject extra headers or smuggle a body.
 	// This is defence in depth even though Send() also validates the recipient.
-	// The body parts are line-ending-normalised (see normalizeBody) and sit
-	// after the header/body separator, so they cannot forge headers.
+	// The body parts are base64-encoded (see below) and sit after the
+	// header/body separator, so they cannot forge headers.
 	// Recipient: parse with net/mail and use only the canonical address it
 	// returns. A value that does not parse as a single valid address is rejected,
 	// so no CR/LF or extra header can ride along in the To field.
@@ -104,7 +104,8 @@ func sanitizeHeader(v string) string { return headerValue(v) }
 // stripControl removes ASCII control characters from s except tab and newline,
 // so a plain-text body cannot carry NUL or a stray CR that would corrupt the
 // SMTP stream or MIME structure. Tabs and newlines (legitimate in bodies) are
-// kept; the body is CRLF-normalised separately by normalizeBody.
+// kept; bodies are base64-encoded at assembly time, which neutralises any
+// residual line-ending concerns.
 func stripControl(s string) string {
 	return strings.Map(func(r rune) rune {
 		if r == '\t' || r == '\n' || r == '\r' {
@@ -115,14 +116,6 @@ func stripControl(s string) string {
 		}
 		return r
 	}, s)
-}
-
-// normalizeBody ensures the body uses CRLF line endings as required by SMTP and
-// guards against accidental "." dot-stuffing edge cases at line starts.
-func normalizeBody(s string) string {
-	s = strings.ReplaceAll(s, "\r\n", "\n")
-	s = strings.ReplaceAll(s, "\n", "\r\n")
-	return s
 }
 
 // envelopeAddress extracts the bare address from a possibly display-name-wrapped
