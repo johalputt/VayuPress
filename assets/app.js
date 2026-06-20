@@ -187,6 +187,10 @@ STATIC_DIR=./static VAYU_DOCS_DIR=./docs ./vayupress --port 8080`,
         title:'Outbound webhooks',
         desc:'HMAC-SHA256-signed JSON POSTs on article create/update/delete — wire VayuPress into Zapier, n8n, Make or any custom service. Per-hook secrets, bounded retry/backoff, and a full delivery audit trail.',
         tags:['HMAC-signed','retry','audit'] },
+      { icon:'🐘', iconBg:'bg-purple-900/60 border border-purple-800/60', orb:'rgba(192,132,252,0.32)',
+        title:'Social auto-posting & easy migration',
+        desc:'Auto-share new posts to Mastodon/Pleroma/Akkoma with a single app token — no OAuth dance. Plus built-in Ghost (JSON) and WordPress (WXR) importers move your whole archive across with no external tooling: titles, slugs, dates, tags and draft status preserved.',
+        tags:['Mastodon','Ghost import','WP import'] },
     ],
 
     screenshots: [
