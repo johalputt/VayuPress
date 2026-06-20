@@ -65,9 +65,15 @@ jobs:
             git rm -rf . >/dev/null 2>&1 || true
           fi
 
-          # Carry forward gh-pages-only assets that aren't part of docs/site.
+          # Carry forward screenshots: first from gh-pages (existing), then
+          # overlay with docs/screenshots/ from main so newly-captured PNGs
+          # (e.g. admin-v3-*.png) are immediately available on the live site.
           if [ -d screenshots ]; then
             cp -r screenshots "$STAGE/screenshots"
+          fi
+          mkdir -p "$STAGE/screenshots"
+          if [ -d "$GITHUB_WORKSPACE/docs/screenshots" ]; then
+            cp "$GITHUB_WORKSPACE/docs/screenshots"/*.png "$STAGE/screenshots/" 2>/dev/null || true
           fi
 
           # Replace tracked content with the staged payload.
