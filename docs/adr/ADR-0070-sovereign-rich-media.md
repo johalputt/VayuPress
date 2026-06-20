@@ -1,6 +1,6 @@
 # ADR-0070 — Sovereign Rich Media: Server-Rendered Diagrams & Privacy-First Embeds
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-06-20
 **Deciders:** VayuPress Maintainers
 **Target release:** v1.4.0

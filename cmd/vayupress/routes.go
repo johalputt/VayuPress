@@ -197,6 +197,8 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 		r.With(auth.CSRFTokenMiddleware).Post("/api/v1/admin/preview", a.handlePreviewIssue)
 		// Editor image upload — sovereign, same-origin, magic-number validated.
 		r.With(auth.CSRFTokenMiddleware).Post("/api/v1/admin/media", a.handleMediaUpload)
+		// Remote-image import — SSRF-safe fetch + re-host (ADR-0070).
+		r.With(auth.CSRFTokenMiddleware).Post("/api/v1/admin/media/import", a.handleMediaImport)
 		r.Get("/api/v1/admin/redirects", a.handleRedirectList)
 		r.With(auth.CSRFTokenMiddleware).Post("/api/v1/admin/redirects", a.handleRedirectCreate)
 		r.With(auth.CSRFTokenMiddleware).Delete("/api/v1/admin/redirects/{id}", a.handleRedirectDelete)

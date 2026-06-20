@@ -23,6 +23,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"os"
@@ -80,6 +81,76 @@ func detectImageType(b []byte) (ext, mime string, ok bool) {
 	return "", "", false
 }
 
+// storedMedia is the result of validating and persisting a media byte slice.
+type storedMedia struct {
+	Name   string // content-addressed filename (matches safeMediaName)
+	URL    string // same-origin URL ("/media/{name}")
+	MIME   string // canonical MIME type detected by magic number
+	Size   int    // stored byte length (post-optimization)
+	Width  int    // pixel width (0 for non-raster / PDF)
+	Height int    // pixel height
+}
+
+// storeValidatedMedia is the single trusted path that turns raw bytes into a
+// stored media file. It validates by MAGIC NUMBER (never filename/Content-Type),
+// refuses SVG implicitly (not in the allowlist), optionally downscales rasters
+// with the stdlib pipeline, and content-addresses the result so duplicates
+// collapse. Both the multipart upload handler and the remote-image import use
+// it, so every byte served from /media has passed the identical gate.
+//
+// allowPDF controls whether a %PDF document is accepted (uploads: yes; remote
+// image import: no — only rasters are re-hosted).
+func storeValidatedMedia(raw []byte, allowPDF bool) (storedMedia, error) {
+	if len(raw) == 0 {
+		return storedMedia{}, errMediaEmpty
+	}
+	ext, mime, valid := detectImageType(raw)
+	isPDF := false
+	if !valid && allowPDF && len(raw) >= 4 && string(raw[:4]) == "%PDF" {
+		ext, mime, valid, isPDF = "pdf", "application/pdf", true, true
+	}
+	if !valid {
+		return storedMedia{}, errMediaUnsupported
+	}
+	if !isPDF && len(raw) > maxImageBytes {
+		return storedMedia{}, errMediaTooLarge
+	}
+
+	stored := raw
+	var imgW, imgH int
+	if !isPDF {
+		if res, err := imageproc.Optimize(raw, ext, imageproc.DefaultMaxWidth); err == nil {
+			stored, imgW, imgH = res.Data, res.Width, res.Height
+		} else {
+			logging.LogError("media", "optimize failed (storing original)", err.Error())
+		}
+	}
+
+	sum := sha256.Sum256(stored)
+	name := hex.EncodeToString(sum[:16]) + "." + ext
+	if err := os.MkdirAll(config.Cfg.MediaDir, 0o755); err != nil {
+		return storedMedia{}, err
+	}
+	dest := filepath.Join(config.Cfg.MediaDir, name)
+	if _, statErr := os.Stat(dest); os.IsNotExist(statErr) {
+		if err := os.WriteFile(dest, stored, 0o644); err != nil {
+			return storedMedia{}, err
+		}
+	}
+	return storedMedia{
+		Name: name, URL: "/media/" + name, MIME: mime,
+		Size: len(stored), Width: imgW, Height: imgH,
+	}, nil
+}
+
+// Sentinel errors for storeValidatedMedia so callers can map them to the right
+// HTTP status without string matching.
+var (
+	errMediaEmpty       = errors.New("media: empty file")
+	errMediaUnsupported = errors.New("media: unsupported file type")
+	errMediaTooLarge    = errors.New("media: file exceeds size limit")
+)
+
 // handleMediaUpload accepts a multipart image upload (field "file"), validates
 // it by magic number, stores it under MediaDir keyed by its content hash, and
 // returns {url, name, size, mime}. Duplicate uploads collapse to the same file.
@@ -127,72 +198,37 @@ func (a *App) handleMediaUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Try image first; then PDF.
-	ext, mime, valid := detectImageType(raw)
-	isPDF := false
-	if !valid {
-		if len(raw) >= 4 && string(raw[:4]) == "%PDF" {
-			ext, mime, valid, isPDF = "pdf", "application/pdf", true, true
-		}
-	}
-	if !valid {
+	// Validate + optimize + store via the shared trusted path (PDF allowed here).
+	res, err := storeValidatedMedia(raw, true)
+	switch {
+	case errors.Is(err, errMediaEmpty):
+		fail(400, "uploaded file is empty")
+		return
+	case errors.Is(err, errMediaUnsupported):
 		fail(415, "unsupported file type (allowed: PNG, JPEG, GIF, WebP, PDF)")
 		return
-	}
-	if !isPDF && len(raw) > maxImageBytes {
+	case errors.Is(err, errMediaTooLarge):
 		fail(400, "image exceeds the 8 MB limit")
 		return
-	}
-
-	// Optimize: downscale oversized PNG/JPEG with the stdlib-only pipeline.
-	// GIF/WebP and PDF pass through untouched.
-	stored := raw
-	var imgW, imgH int
-	if !isPDF {
-		if res, err := imageproc.Optimize(raw, ext, imageproc.DefaultMaxWidth); err == nil {
-			stored = res.Data
-			imgW, imgH = res.Width, res.Height
-			if res.Resized {
-				logging.LogJSON(logging.LogFields{
-					Level: "info", Component: "media", Severity: "info",
-					Msg: "image downscaled to " + imageproc.DefaultMaxWidthStr() + "px wide", RequestID: getRequestID(r),
-				})
-			}
-		} else {
-			logging.LogError("media", "optimize failed (storing original)", err.Error())
-		}
-	}
-
-	sum := sha256.Sum256(stored)
-	name := hex.EncodeToString(sum[:16]) + "." + ext // 32 hex chars + ext
-
-	if err := os.MkdirAll(config.Cfg.MediaDir, 0o755); err != nil {
-		fail(500, "media storage unavailable: "+err.Error())
+	case err != nil:
+		fail(500, "could not store file: "+err.Error())
 		return
-	}
-	dest := filepath.Join(config.Cfg.MediaDir, name)
-	// Content-addressed: if it already exists, reuse it (idempotent upload).
-	if _, statErr := os.Stat(dest); os.IsNotExist(statErr) {
-		if err := os.WriteFile(dest, stored, 0o644); err != nil {
-			fail(500, "could not store image: "+err.Error())
-			return
-		}
 	}
 
 	logging.LogJSON(logging.LogFields{
 		Level: "info", Component: "media", Severity: "info",
-		Msg: "image uploaded: " + name, RequestID: getRequestID(r),
+		Msg: "image uploaded: " + res.Name, RequestID: getRequestID(r),
 	})
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(201)
 	json.NewEncoder(w).Encode(map[string]interface{}{ //nolint:errcheck
-		"url":    "/media/" + name,
-		"name":   name,
-		"size":   len(stored),
-		"mime":   mime,
-		"width":  imgW,
-		"height": imgH,
+		"url":    res.URL,
+		"name":   res.Name,
+		"size":   res.Size,
+		"mime":   res.MIME,
+		"width":  res.Width,
+		"height": res.Height,
 	})
 }
 

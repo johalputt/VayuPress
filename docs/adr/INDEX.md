@@ -49,6 +49,7 @@
 | [ADR-0067](ADR-0067-enterprise-interfaces.md) | Enterprise Interfaces: Read-Only GraphQL, i18n, Email Templates, Live Stream | Accepted | Core | 2026-06-20 |
 | [ADR-0068](ADR-0068-admin-v3-next-gen-ui.md) | Admin v3: Next-Generation Admin & Block Editor (design system, block editor, media library, TOTP 2FA, intelligence) | Accepted | Core | 2026-06-20 |
 | [ADR-0069](ADR-0069-admin-v2-retirement-plan.md) | Admin v2 Retirement Plan (staged deprecation gated on v3 parity) | Accepted | Core | 2026-06-20 |
+| [ADR-0070](ADR-0070-sovereign-rich-media.md) | Sovereign Rich Media: server-rendered Mermaid→SVG diagrams + privacy-first click-to-load embeds | Accepted | Core | 2026-06-20 |
 
 ---
 
@@ -72,7 +73,6 @@
 
 | ADR | Title | Author | Opened |
 |-----|-------|--------|--------|
-| [ADR-0070](ADR-0070-sovereign-rich-media.md) | Sovereign Rich Media: server-rendered Mermaid→SVG diagrams + privacy-first click-to-load embeds | Core | 2026-06-20 |
 | [ADR-0071](ADR-0071-theme-studio.md) | Theme Studio: safe token-driven theme editor with a sandboxed template DSL (surpasses Tumblr) | Core | 2026-06-20 |
 
 ---
