@@ -13,14 +13,24 @@ import (
 // multipart/alternative carrying both the plain-text and HTML parts so that
 // every client renders something readable.
 func (s *Sender) assemble(to string, msg Message) ([]byte, error) {
-	// Every header value is CRLF-stripped at the point of assembly so no
-	// user-influenced field (recipient, subject, From) can inject extra headers
-	// or smuggle a body — defence in depth even though Send() also validates the
-	// recipient. The body parts are line-ending-normalised (see normalizeBody)
-	// and sit after the header/body separator, so they cannot forge headers.
-	to = sanitizeHeader(to)
-	from := sanitizeHeader(s.cfg.From)
-	subject := sanitizeHeader(msg.Subject)
+	// Every header value is hard-validated at the point of assembly: a value
+	// containing CR or LF is rejected outright, so no user-influenced field
+	// (recipient, subject, From) can inject extra headers or smuggle a body.
+	// This is defence in depth even though Send() also validates the recipient.
+	// The body parts are line-ending-normalised (see normalizeBody) and sit
+	// after the header/body separator, so they cannot forge headers.
+	to, err := headerValue(to)
+	if err != nil {
+		return nil, fmt.Errorf("email: recipient: %w", err)
+	}
+	from, err := headerValue(s.cfg.From)
+	if err != nil {
+		return nil, fmt.Errorf("email: from: %w", err)
+	}
+	subject, err := headerValue(msg.Subject)
+	if err != nil {
+		return nil, fmt.Errorf("email: subject: %w", err)
+	}
 	date := time.Now().Format(time.RFC1123Z)
 	msgID := fmt.Sprintf("<%s@%s>", randHex(16), hostOf(from))
 
@@ -58,8 +68,20 @@ func (s *Sender) assemble(to string, msg Message) ([]byte, error) {
 	return []byte(b.String()), nil
 }
 
+// headerValue validates a single email header value: it rejects any value that
+// contains a CR or LF (the header-injection vector) and returns the trimmed
+// value otherwise. Returning an error on newline — rather than silently
+// stripping — is an explicit, auditable barrier against header/content injection.
+func headerValue(v string) (string, error) {
+	if strings.ContainsAny(v, "\r\n") {
+		return "", fmt.Errorf("illegal newline in header value")
+	}
+	return strings.TrimSpace(v), nil
+}
+
 // sanitizeHeader strips CR/LF to defeat header-injection through user-supplied
-// subjects or addresses.
+// values. Used where a non-erroring caller just needs a safe value (logging,
+// envelope address extraction).
 func sanitizeHeader(v string) string {
 	v = strings.ReplaceAll(v, "\r", "")
 	v = strings.ReplaceAll(v, "\n", "")

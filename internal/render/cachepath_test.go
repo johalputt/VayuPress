@@ -1,38 +1,44 @@
 package render
 
 import (
+	"strings"
 	"testing"
-
-	"github.com/johalputt/vayupress/internal/config"
 )
 
-// TestSafeCacheJoin verifies the cache-path guard rejects traversal that would
-// escape the cache directory (defence in depth for CodeQL "uncontrolled data in
-// path expression"), while accepting legitimate relative paths.
-func TestSafeCacheJoin(t *testing.T) {
-	config.Cfg.CacheDir = "/var/cache/vayupress"
-
-	ok := []string{
-		"posts/hello.html",
-		"tags/go.html",
-		"home/index.html",
-		"posts/a-b-c.html",
+// TestSafePathComponent verifies the cache filename-component sanitizer strips
+// directory parts and traversal sequences (defence in depth for CodeQL
+// "uncontrolled data in path expression") while preserving legitimate slugs.
+func TestSafePathComponent(t *testing.T) {
+	keep := map[string]string{
+		"hello":      "hello",
+		"a-b-c":      "a-b-c",
+		"go_lang.v2": "go_lang.v2",
+		"Post123":    "Post123",
 	}
-	for _, p := range ok {
-		if _, valid := safeCacheJoin(p); !valid {
-			t.Errorf("expected %q to be accepted", p)
+	for in, want := range keep {
+		if got := safePathComponent(in); got != want {
+			t.Errorf("safePathComponent(%q) = %q, want %q", in, got, want)
 		}
 	}
 
+	// Traversal / separator payloads must never yield a separator or "..".
 	bad := []string{
 		"../etc/passwd",
-		"posts/../../etc/passwd",
-		"../../../../etc/shadow",
-		"posts/../../../tmp/x",
+		"../../etc/shadow",
+		"posts/../../secret",
+		"..",
+		".",
+		"/etc/passwd",
+		"a/b/c",
+		"....//....//",
 	}
-	for _, p := range bad {
-		if full, valid := safeCacheJoin(p); valid {
-			t.Errorf("expected %q to be rejected, got %q", p, full)
+	for _, in := range bad {
+		got := safePathComponent(in)
+		if strings.ContainsAny(got, `/\`) || strings.Contains(got, "..") || got == "." {
+			t.Errorf("safePathComponent(%q) = %q — still unsafe", in, got)
+		}
+		if got == "" {
+			t.Errorf("safePathComponent(%q) returned empty (should fall back)", in)
 		}
 	}
 }
