@@ -57,6 +57,7 @@ func (a *App) registerAdminV3UIRoutes(r chi.Router) {
 	// Public static assets (served same-origin so CSP 'self' covers them).
 	r.Get("/admin/v3/static/css/admin-v3.css", serveAdminV3Asset("css/admin-v3.css", "text/css; charset=utf-8"))
 	r.Get("/admin/v3/static/js/admin-v3.js", serveAdminV3Asset("js/admin-v3.js", "application/javascript; charset=utf-8"))
+	r.Get("/admin/v3/static/js/admin-v3-editor.js", serveAdminV3Asset("js/admin-v3-editor.js", "application/javascript; charset=utf-8"))
 	r.Get("/admin/v3/static/js/purify.min.js", serveAdminV3Asset("js/purify.min.js", "application/javascript; charset=utf-8"))
 
 	// Fonts — path-traversal prevented by switch allowlist (same pattern as v2).
@@ -100,6 +101,8 @@ func (a *App) registerAdminV3UIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/admin/v3/api/seo/regenerate", a.handleSEORegenerate)
 		pr.With(auth.CSRFTokenMiddleware).Post("/admin/v3/api/settings", a.handleV3SettingsAPI)
 		pr.With(auth.CSRFTokenMiddleware).Post("/admin/v3/api/posts/quick-create", a.handleV3QuickCreatePost)
+		pr.With(auth.CSRFTokenMiddleware).Post("/admin/v3/api/editor/save", a.handleV3EditorSave)
+		pr.With(auth.CSRFTokenMiddleware).Post("/admin/v3/api/editor/preview", a.handleV3EditorPreview)
 
 		// Read-only APIs (no CSRF needed)
 		pr.Get("/admin/v3/api/activity", a.handleV3Activity)
@@ -734,24 +737,50 @@ func (a *App) handleV3Posts(w http.ResponseWriter, r *http.Request) {
 
 // ── Editor ───────────────────────────────────────────────────────────────────
 
-// handleV3Editor wraps the v2 editor with the v3 layout for Phase 1.
-// Phase 3 will replace this with the full block-based editor.
+// handleV3Editor serves the post editor. To avoid any data loss during the
+// gradual migration it picks the editor by article state:
+//   - existing article with a block document      → native v3 block editor
+//   - existing empty draft (no content, no blocks) → native v3 block editor
+//   - existing article with legacy HTML/Markdown   → v2 editor (lossless)
+//   - brand-new post (no slug)                     → v2 editor (handles create)
 func (a *App) handleV3Editor(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getV3Settings(r.Context())
 	slug := chi.URLParam(r, "slug")
-	title, content := "", ""
-	format, source := "markdown", ""
-	heading := "New Post"
 
 	if slug != "" {
 		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 		defer cancel()
 		art, err := a.articles.Get(ctx, slug)
 		if err == nil {
-			title, content = art.Title, art.Content
-			heading = "Edit Post"
+			blocksJSON := loadBlocksJSON(r.Context(), slug)
+			hasBlocks := strings.TrimSpace(blocksJSON) != "" && strings.TrimSpace(blocksJSON) != "[]"
+			emptyDraft := strings.TrimSpace(art.Content) == ""
+			if hasBlocks || emptyDraft {
+				body := v3EditorBody(slug, art.Title, blocksJSON)
+				body += `
+<script nonce="` + nonce + `" src="/admin/v3/static/js/admin-v3-editor.js"></script>`
+				writeV3HTML(w, adminV3Layout(nonce, "Edit Post", "editor", cfg, body))
+				return
+			}
+			// Legacy content: fall through to the lossless v2 editor.
+			a.serveV3LegacyEditor(w, r, nonce, cfg, slug, art.Title, art.Content)
+			return
 		}
+	}
+
+	// Brand-new post: v2 editor (it owns the create path).
+	a.serveV3LegacyEditor(w, r, nonce, cfg, "", "", "")
+}
+
+// serveV3LegacyEditor renders the v2 editor body wrapped in v3 chrome. Used for
+// legacy (non-block) articles and brand-new posts so no existing content path
+// regresses while the block editor matures.
+func (a *App) serveV3LegacyEditor(w http.ResponseWriter, r *http.Request, nonce string, cfg *v3Settings, slug, title, content string) {
+	heading := "New Post"
+	format, source := "markdown", ""
+	if slug != "" {
+		heading = "Edit Post"
 		var f, s string
 		if err := dbpkg.DB.QueryRowContext(r.Context(),
 			`SELECT format, source FROM article_sources WHERE slug=?`, slug).Scan(&f, &s); err == nil && s != "" {
@@ -760,15 +789,9 @@ func (a *App) handleV3Editor(w http.ResponseWriter, r *http.Request) {
 			format, source = "html", content
 		}
 	}
-
-	// Reuse the v2 editor body which already has all interactive features.
-	// The v3 chrome (sidebar, topbar) wraps it.
 	edBody := editorBodyHTML(slug, heading, title, format, source)
-
-	// Also load v2's JS for the editor functionality (it's CSP-safe same-origin).
 	body := edBody + `
 <script nonce="` + nonce + `" src="/admin/v2/static/js/admin-v2.js"></script>`
-
 	writeV3HTML(w, adminV3Layout(nonce, heading, "editor", cfg, body))
 }
 

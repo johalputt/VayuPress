@@ -61,3 +61,16 @@ func TestV3Sparkline(t *testing.T) {
 		t.Error("single-point sparkline did not render")
 	}
 }
+
+// TestV3EditorBodyCSPSafe verifies the block-editor shell is CSP-clean and
+// escapes the slug, title, and embedded blocks JSON.
+func TestV3EditorBodyCSPSafe(t *testing.T) {
+	out := v3EditorBody(`slug"<x>`, `T"<i>`, `[{"type":"paragraph","text":"<script>x</script>"}]`)
+	assertCSPSafe(t, "v3EditorBody", out)
+	if strings.Contains(out, "<script>x</script>") {
+		t.Error("editor body did not escape blocks JSON content")
+	}
+	if strings.Contains(out, `slug"<x>`) {
+		t.Error("editor body did not escape slug")
+	}
+}
