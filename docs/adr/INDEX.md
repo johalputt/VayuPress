@@ -72,7 +72,8 @@
 
 | ADR | Title | Author | Opened |
 |-----|-------|--------|--------|
-| _(none currently)_ | — | — | — |
+| [ADR-0070](ADR-0070-sovereign-rich-media.md) | Sovereign Rich Media: server-rendered Mermaid→SVG diagrams + privacy-first click-to-load embeds | Core | 2026-06-20 |
+| [ADR-0071](ADR-0071-theme-studio.md) | Theme Studio: safe token-driven theme editor with a sandboxed template DSL (surpasses Tumblr) | Core | 2026-06-20 |
 
 ---
 
