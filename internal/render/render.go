@@ -737,31 +737,22 @@ func DetectLayout(a db.Article, r *http.Request, isAdmin bool) ArticleLayoutType
 
 // ── Cache helpers ─────────────────────────────────────────────────────────────
 
-// unsafePathComponentRe matches every character not allowed in a cache filename
-// component. Reducing a value to this set makes it impossible for it to contain
-// a path separator or a "/.." traversal sequence.
-var unsafePathComponentRe = regexp.MustCompile(`[^A-Za-z0-9._-]`)
-
-// safePathComponent reduces a user-influenced slug or tag to a single safe
-// filename component. It first strips any directory part (filepath.Base), then
-// removes every character outside [A-Za-z0-9._-], then trims leading dots so the
-// result can never be ".", "..", or a hidden/escaping name. This is the inline
-// barrier the cache layer uses before any value reaches a filesystem sink, so a
-// traversal payload cannot read, write, or delete outside the cache directory —
+// unsafePathComponent reports whether a user-influenced slug or tag is unsafe to
+// use as a cache filename component: it must not contain a ".." traversal
+// sequence, a path separator, or a NUL. Callers reject the value when this
+// returns true, before it ever reaches a filesystem sink — so a traversal
+// payload can never read, write, or delete outside the cache directory,
 // regardless of upstream validation (api.IsValidSlug).
-func safePathComponent(s string) string {
-	s = filepath.Base(s)
-	s = unsafePathComponentRe.ReplaceAllString(s, "")
-	s = strings.TrimLeft(s, ".")
-	if s == "" {
-		return "_"
-	}
-	return s
+func unsafePathComponent(s string) bool {
+	return strings.Contains(s, "..") || strings.ContainsAny(s, `/\`+"\x00")
 }
 
 // CacheWrite writes content to a path under the configured cache directory. The
 // relative path is cleaned and confined to the cache tree before any write.
 func CacheWrite(relPath, content string) error {
+	if strings.Contains(relPath, "..") {
+		return fmt.Errorf("cache: refusing traversal in path: %q", relPath)
+	}
 	base := filepath.Clean(config.Cfg.CacheDir)
 	full := filepath.Clean(filepath.Join(base, filepath.FromSlash(relPath)))
 	// Confine to the cache directory: reject anything that escaped via "..".
@@ -808,7 +799,10 @@ func CachePurgeAll() {
 // CachePurgePost removes just the cached HTML for a single article slug. Used
 // when an article's access level changes so the paywall takes effect at once.
 func CachePurgePost(slug string) {
-	postFile := filepath.Join(config.Cfg.CacheDir, "posts", safePathComponent(slug)+".html")
+	if unsafePathComponent(slug) {
+		return
+	}
+	postFile := filepath.Join(config.Cfg.CacheDir, "posts", slug+".html")
 	if fi, err := os.Stat(postFile); err == nil {
 		db.UpdateStorageDelta(-fi.Size())
 	}
@@ -817,15 +811,17 @@ func CachePurgePost(slug string) {
 
 // CachePurge removes the cached file for an article and its associated tag pages.
 func CachePurge(slug string, tags []string, generateSitemap, generateRSS, generateRobots func()) {
-	postFile := filepath.Join(config.Cfg.CacheDir, "posts", safePathComponent(slug)+".html")
-	if fi, err := os.Stat(postFile); err == nil {
-		db.UpdateStorageDelta(-fi.Size())
+	if !unsafePathComponent(slug) {
+		postFile := filepath.Join(config.Cfg.CacheDir, "posts", slug+".html")
+		if fi, err := os.Stat(postFile); err == nil {
+			db.UpdateStorageDelta(-fi.Size())
+		}
+		os.Remove(postFile)
 	}
-	os.Remove(postFile)
 	os.Remove(filepath.Join(config.Cfg.CacheDir, "home", "index.html"))
 	for _, t := range tags {
-		if t != "" {
-			tagFile := filepath.Join(config.Cfg.CacheDir, "tags", safePathComponent(t)+".html")
+		if t != "" && !unsafePathComponent(t) {
+			tagFile := filepath.Join(config.Cfg.CacheDir, "tags", t+".html")
 			if fi, err := os.Stat(tagFile); err == nil {
 				db.UpdateStorageDelta(-fi.Size())
 			}
@@ -856,8 +852,10 @@ func WarmCache(splitTags func(string) []string) {
 		var tagsStr string
 		rows.Scan(&a.ID, &a.Title, &a.Slug, &a.Content, &tagsStr, &a.CreatedAt, &a.UpdatedAt)
 		a.Tags = splitTags(tagsStr)
-		safeSlug := safePathComponent(a.Slug)
-		dest := filepath.Join(config.Cfg.CacheDir, "posts", safeSlug+".html")
+		if unsafePathComponent(a.Slug) {
+			continue
+		}
+		dest := filepath.Join(config.Cfg.CacheDir, "posts", a.Slug+".html")
 		if _, err := os.Stat(dest); err == nil {
 			continue
 		}
@@ -865,7 +863,7 @@ func WarmCache(splitTags func(string) []string) {
 		if err != nil {
 			continue
 		}
-		CacheWrite(filepath.Join("posts", safeSlug+".html"), html)
+		CacheWrite(filepath.Join("posts", a.Slug+".html"), html)
 		count++
 	}
 	logging.LogInfo("cache-warm", fmt.Sprintf("pre-rendered %d articles", count))

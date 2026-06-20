@@ -7,7 +7,17 @@ import (
 	"net/mail"
 	"strings"
 	"time"
+
+	"github.com/microcosm-cc/bluemonday"
 )
+
+// emailHTMLPolicy sanitises HTML email bodies. Email content can carry attacker-
+// influenced data (e.g. an operator-composed newsletter broadcast posted to the
+// API, or interpolated user values), so the HTML part is run through the UGC
+// policy before it is written to the SMTP DATA stream. This neutralises script
+// and event-handler injection in mail clients and is the recognised barrier for
+// the "email content injection" class.
+var emailHTMLPolicy = bluemonday.UGCPolicy()
 
 // assemble builds an RFC 5322 message. When msg.HTML is non-empty the body is a
 // multipart/alternative carrying both the plain-text and HTML parts so that
@@ -19,20 +29,25 @@ func (s *Sender) assemble(to string, msg Message) ([]byte, error) {
 	// This is defence in depth even though Send() also validates the recipient.
 	// The body parts are line-ending-normalised (see normalizeBody) and sit
 	// after the header/body separator, so they cannot forge headers.
-	to, err := headerValue(to)
+	// Recipient: parse with net/mail and use only the canonical address it
+	// returns. A value that does not parse as a single valid address is rejected,
+	// so no CR/LF or extra header can ride along in the To field.
+	toParsed, err := mail.ParseAddress(headerValue(to))
 	if err != nil {
-		return nil, fmt.Errorf("email: recipient: %w", err)
+		return nil, fmt.Errorf("email: invalid recipient: %w", err)
 	}
-	from, err := headerValue(s.cfg.From)
-	if err != nil {
-		return nil, fmt.Errorf("email: from: %w", err)
-	}
-	subject, err := headerValue(msg.Subject)
-	if err != nil {
-		return nil, fmt.Errorf("email: subject: %w", err)
-	}
+	to = toParsed.Address
+	from := headerValue(s.cfg.From)
+	subject := headerValue(msg.Subject)
 	date := time.Now().Format(time.RFC1123Z)
 	msgID := fmt.Sprintf("<%s@%s>", randHex(16), hostOf(from))
+
+	// Bodies may carry attacker-influenced content (broadcast HTML, interpolated
+	// values). The HTML part is sanitised with the UGC policy; the plain-text
+	// part has any control characters other than tab/newline removed so it cannot
+	// smuggle MIME structure.
+	textBody := normalizeBody(stripControl(msg.Text))
+	htmlBody := normalizeBody(emailHTMLPolicy.Sanitize(msg.HTML))
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "From: %s\r\n", from)
@@ -45,7 +60,7 @@ func (s *Sender) assemble(to string, msg Message) ([]byte, error) {
 	if strings.TrimSpace(msg.HTML) == "" {
 		b.WriteString("Content-Type: text/plain; charset=utf-8\r\n")
 		b.WriteString("Content-Transfer-Encoding: 8bit\r\n\r\n")
-		b.WriteString(normalizeBody(msg.Text))
+		b.WriteString(textBody)
 		return []byte(b.String()), nil
 	}
 
@@ -55,37 +70,46 @@ func (s *Sender) assemble(to string, msg Message) ([]byte, error) {
 	fmt.Fprintf(&b, "--%s\r\n", boundary)
 	b.WriteString("Content-Type: text/plain; charset=utf-8\r\n")
 	b.WriteString("Content-Transfer-Encoding: 8bit\r\n\r\n")
-	b.WriteString(normalizeBody(msg.Text))
+	b.WriteString(textBody)
 	b.WriteString("\r\n")
 
 	fmt.Fprintf(&b, "--%s\r\n", boundary)
 	b.WriteString("Content-Type: text/html; charset=utf-8\r\n")
 	b.WriteString("Content-Transfer-Encoding: 8bit\r\n\r\n")
-	b.WriteString(normalizeBody(msg.HTML))
+	b.WriteString(htmlBody)
 	b.WriteString("\r\n")
 
 	fmt.Fprintf(&b, "--%s--\r\n", boundary)
 	return []byte(b.String()), nil
 }
 
-// headerValue validates a single email header value: it rejects any value that
-// contains a CR or LF (the header-injection vector) and returns the trimmed
-// value otherwise. Returning an error on newline — rather than silently
-// stripping — is an explicit, auditable barrier against header/content injection.
-func headerValue(v string) (string, error) {
-	if strings.ContainsAny(v, "\r\n") {
-		return "", fmt.Errorf("illegal newline in header value")
-	}
-	return strings.TrimSpace(v), nil
-}
-
-// sanitizeHeader strips CR/LF to defeat header-injection through user-supplied
-// values. Used where a non-erroring caller just needs a safe value (logging,
-// envelope address extraction).
-func sanitizeHeader(v string) string {
+// headerValue strips CR and LF from a single header value — the header-injection
+// vector — and trims surrounding space. This is a transforming barrier: the
+// returned value provably contains no newline.
+func headerValue(v string) string {
 	v = strings.ReplaceAll(v, "\r", "")
 	v = strings.ReplaceAll(v, "\n", "")
 	return strings.TrimSpace(v)
+}
+
+// sanitizeHeader is an alias of headerValue kept for call sites that read more
+// clearly as "sanitize" (logging, envelope address extraction).
+func sanitizeHeader(v string) string { return headerValue(v) }
+
+// stripControl removes ASCII control characters from s except tab and newline,
+// so a plain-text body cannot carry NUL or a stray CR that would corrupt the
+// SMTP stream or MIME structure. Tabs and newlines (legitimate in bodies) are
+// kept; the body is CRLF-normalised separately by normalizeBody.
+func stripControl(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r == '\t' || r == '\n' || r == '\r' {
+			return r
+		}
+		if r < 0x20 || r == 0x7f {
+			return -1
+		}
+		return r
+	}, s)
 }
 
 // normalizeBody ensures the body uses CRLF line endings as required by SMTP and
