@@ -1148,8 +1148,11 @@ func (a *App) handleV3QuickCreatePost(w http.ResponseWriter, r *http.Request) {
 		}
 		slug = base + "-" + strconv.Itoa(i)
 	}
-	// Create the draft.
-	if _, err := a.articles.Create(r.Context(), title, slug, "", nil); err != nil {
+	// Create the draft. Content must be non-empty to pass article validation, so
+	// we seed a single space: it trims to empty, so handleV3Editor treats the
+	// post as an empty draft and opens the block editor, and the placeholder is
+	// replaced by the rendered blocks on the first save.
+	if _, err := a.articles.Create(r.Context(), title, slug, " ", nil); err != nil {
 		writeAPIError(w, r, http.StatusInternalServerError, "create-error", err.Error(), "")
 		return
 	}
