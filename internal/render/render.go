@@ -737,9 +737,28 @@ func DetectLayout(a db.Article, r *http.Request, isAdmin bool) ArticleLayoutType
 
 // ── Cache helpers ─────────────────────────────────────────────────────────────
 
+// safeCacheJoin joins relPath under the configured cache directory and verifies
+// the cleaned result cannot escape that directory via "../" traversal. It
+// returns ("", false) when the path would resolve outside the cache tree.
+//
+// This is defence in depth: article slugs and tags are validated upstream
+// (api.IsValidSlug), but the cache layer must never read, write, or delete
+// outside its own directory regardless of what reaches it.
+func safeCacheJoin(relPath string) (string, bool) {
+	base := filepath.Clean(config.Cfg.CacheDir)
+	full := filepath.Clean(filepath.Join(base, relPath))
+	if full != base && !strings.HasPrefix(full, base+string(os.PathSeparator)) {
+		return "", false
+	}
+	return full, true
+}
+
 // CacheWrite writes content to a path under the configured cache directory.
 func CacheWrite(relPath, content string) error {
-	full := filepath.Join(config.Cfg.CacheDir, relPath)
+	full, ok := safeCacheJoin(relPath)
+	if !ok {
+		return fmt.Errorf("cache: refusing path outside cache dir: %q", relPath)
+	}
 	if err := os.MkdirAll(filepath.Dir(full), 0755); err != nil {
 		return fmt.Errorf("mkdir: %w", err)
 	}
@@ -780,7 +799,10 @@ func CachePurgeAll() {
 // CachePurgePost removes just the cached HTML for a single article slug. Used
 // when an article's access level changes so the paywall takes effect at once.
 func CachePurgePost(slug string) {
-	postFile := filepath.Join(config.Cfg.CacheDir, "posts", slug+".html")
+	postFile, ok := safeCacheJoin(filepath.Join("posts", slug+".html"))
+	if !ok {
+		return
+	}
 	if fi, err := os.Stat(postFile); err == nil {
 		db.UpdateStorageDelta(-fi.Size())
 	}
@@ -789,15 +811,19 @@ func CachePurgePost(slug string) {
 
 // CachePurge removes the cached file for an article and its associated tag pages.
 func CachePurge(slug string, tags []string, generateSitemap, generateRSS, generateRobots func()) {
-	postFile := filepath.Join(config.Cfg.CacheDir, "posts", slug+".html")
-	if fi, err := os.Stat(postFile); err == nil {
-		db.UpdateStorageDelta(-fi.Size())
+	if postFile, ok := safeCacheJoin(filepath.Join("posts", slug+".html")); ok {
+		if fi, err := os.Stat(postFile); err == nil {
+			db.UpdateStorageDelta(-fi.Size())
+		}
+		os.Remove(postFile)
 	}
-	os.Remove(postFile)
 	os.Remove(filepath.Join(config.Cfg.CacheDir, "home", "index.html"))
 	for _, t := range tags {
 		if t != "" {
-			tagFile := filepath.Join(config.Cfg.CacheDir, "tags", t+".html")
+			tagFile, ok := safeCacheJoin(filepath.Join("tags", t+".html"))
+			if !ok {
+				continue
+			}
 			if fi, err := os.Stat(tagFile); err == nil {
 				db.UpdateStorageDelta(-fi.Size())
 			}
@@ -828,7 +854,10 @@ func WarmCache(splitTags func(string) []string) {
 		var tagsStr string
 		rows.Scan(&a.ID, &a.Title, &a.Slug, &a.Content, &tagsStr, &a.CreatedAt, &a.UpdatedAt)
 		a.Tags = splitTags(tagsStr)
-		dest := filepath.Join(config.Cfg.CacheDir, "posts", a.Slug+".html")
+		dest, ok := safeCacheJoin(filepath.Join("posts", a.Slug+".html"))
+		if !ok {
+			continue
+		}
 		if _, err := os.Stat(dest); err == nil {
 			continue
 		}

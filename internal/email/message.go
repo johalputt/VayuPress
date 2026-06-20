@@ -13,6 +13,12 @@ import (
 // multipart/alternative carrying both the plain-text and HTML parts so that
 // every client renders something readable.
 func (s *Sender) assemble(to string, msg Message) ([]byte, error) {
+	// Every header value is CRLF-stripped at the point of assembly so no
+	// user-influenced field (recipient, subject, From) can inject extra headers
+	// or smuggle a body — defence in depth even though Send() also validates the
+	// recipient. The body parts are line-ending-normalised (see normalizeBody)
+	// and sit after the header/body separator, so they cannot forge headers.
+	to = sanitizeHeader(to)
 	from := sanitizeHeader(s.cfg.From)
 	subject := sanitizeHeader(msg.Subject)
 	date := time.Now().Format(time.RFC1123Z)

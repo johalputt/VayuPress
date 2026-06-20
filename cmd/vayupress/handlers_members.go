@@ -150,7 +150,13 @@ func (a *App) handleMemberLogout(w http.ResponseWriter, r *http.Request) {
 			_ = a.members.DestroySession(r.Context(), c.Value)
 		}
 	}
-	http.SetCookie(w, &http.Cookie{Name: memberCookie, Value: "", Path: "/", HttpOnly: true, MaxAge: -1})
+	// Clear with the same security attributes the session cookie was set with so
+	// the deletion reliably targets the original Secure/SameSite cookie.
+	http.SetCookie(w, &http.Cookie{
+		Name: memberCookie, Value: "", Path: "/", HttpOnly: true,
+		Secure: config.Cfg.Domain != "localhost", SameSite: http.SameSiteLaxMode,
+		MaxAge: -1,
+	})
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
