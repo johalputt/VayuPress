@@ -25,7 +25,7 @@
   <script type="application/ld+json">
   {"@context":"https://schema.org","@type":"SoftwareApplication","name":"VayuPress",
    "applicationCategory":"DeveloperApplication","operatingSystem":"Linux",
-   "softwareVersion":"1.1.0","description":"A sovereign, single-VPS publishing engine built as an adaptive governance runtime.",
+   "softwareVersion":"1.2.0","description":"A sovereign, single-VPS publishing engine built as an adaptive governance runtime.",
    "url":"https://vayupress.com/","license":"https://www.apache.org/licenses/LICENSE-2.0",
    "offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},
    "author":{"@type":"Organization","name":"VayuPress"}}
@@ -82,7 +82,7 @@
         <img src="assets/mark-dark.png" alt="VayuPress mark"
              class="brand-mark h-7 w-auto transition-transform duration-300 group-hover:scale-110" />
         <span class="font-display font-semibold text-white tracking-tight hidden sm:block">VayuPress</span>
-        <span class="hidden sm:inline text-[10px] text-teal-300 font-mono border border-teal-800/60 rounded px-1.5 py-0.5 leading-none">v1.1.0</span>
+        <span class="hidden sm:inline text-[10px] text-teal-300 font-mono border border-teal-800/60 rounded px-1.5 py-0.5 leading-none">v1.2.0</span>
       </a>
 
       <!-- desktop links -->
@@ -90,6 +90,7 @@
         <a href="#features"   class="nav-link hover:text-white transition-colors">Features</a>
         <a href="#gallery"    class="nav-link hover:text-white transition-colors">Gallery</a>
         <a href="#philosophy" class="nav-link hover:text-white transition-colors">Philosophy</a>
+        <a href="#compare"    class="nav-link hover:text-white transition-colors">Compare</a>
         <a href="#tools"      class="nav-link hover:text-white transition-colors">Tools</a>
         <a href="#quickstart" class="nav-link hover:text-white transition-colors">Quick start</a>
       </div>
@@ -117,7 +118,7 @@
             <span class="absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-75 animate-ping"></span>
             <span class="relative inline-flex rounded-full w-1.5 h-1.5 bg-teal-400"></span>
           </span>
-          v1.1.0 · built-in migrate + multi-format editor
+          v1.2.0 · 4 tiers: highlighting, GraphQL, i18n, real-time
         </div>
 
         <h1 class="font-display font-bold tracking-tightest text-white leading-[0.93] mb-7
@@ -375,6 +376,62 @@
         "Complexity that exists must be visible, bounded, and owned.
         VayuPress makes nothing disappear — it makes everything observable."
       </blockquote>
+    </div>
+  </section>
+
+  <!-- ══════════════ COMPARISON ══════════════ -->
+  <section id="compare" class="relative py-24 sm:py-28 lg:py-36 bg-white/[0.015] border-y border-white/[0.06]">
+    <div class="max-w-6xl mx-auto px-6">
+      <header class="max-w-2xl mb-14 sm:mb-16" data-reveal>
+        <p class="text-teal-400 font-mono text-xs mb-4 tracking-[0.25em] uppercase">How it compares</p>
+        <h2 class="font-display text-3xl sm:text-4xl lg:text-5xl font-bold text-white tracking-tight">What makes VayuPress different.</h2>
+        <p class="mt-5 text-base sm:text-lg text-gray-400 leading-relaxed">
+          Most platforms bolt sovereignty, observability and governance on as
+          plugins — or sell them as a hosted tier. VayuPress ships them in a
+          single binary, with every byte of behaviour owned by the operator.
+        </p>
+      </header>
+
+      <div data-reveal class="overflow-x-auto rounded-2xl border border-white/[0.08]">
+        <table class="w-full text-left border-collapse min-w-[640px]">
+          <thead>
+            <tr class="bg-white/[0.03]">
+              <th class="py-4 px-5 text-sm font-semibold text-gray-300">Capability</th>
+              <template x-for="(c, ci) in compareCols" :key="c">
+                <th class="py-4 px-5 text-sm font-semibold"
+                    :class="ci === 0 ? 'text-teal-300' : 'text-gray-400'"
+                    x-text="c"></th>
+              </template>
+            </tr>
+          </thead>
+          <tbody>
+            <template x-for="(row, ri) in compareRows" :key="row.f">
+              <tr class="border-t border-white/[0.05] hover:bg-white/[0.02] transition-colors">
+                <td class="py-3.5 px-5 text-sm text-gray-300" x-text="row.f"></td>
+                <template x-for="(val, vi) in row.v" :key="vi">
+                  <td class="py-3.5 px-5 text-sm"
+                      :class="vi === 0 ? 'font-medium' : ''">
+                    <span x-show="val === 'yes'" class="inline-flex items-center gap-1.5"
+                          :class="vi === 0 ? 'text-teal-300' : 'text-emerald-400/80'">
+                      <span aria-hidden="true">✓</span><span x-text="vi === 0 ? 'Built in' : 'Yes'"></span>
+                    </span>
+                    <span x-show="val === 'no'" class="text-gray-600">—</span>
+                    <span x-show="val === 'partial'" class="text-amber-400/80">Partial</span>
+                    <span x-show="val === 'plugin'" class="text-amber-400/70">Plugin</span>
+                    <span x-show="val === 'hosted-only'" class="text-amber-400/70">Hosted only</span>
+                    <span x-show="val === 'n/a'" class="text-gray-600">n/a</span>
+                  </td>
+                </template>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+      <p class="mt-5 text-xs text-gray-500 font-mono" data-reveal>
+        Comparison reflects out-of-the-box, self-hosted defaults. WordPress/Ghost
+        capabilities marked “Plugin” are achievable via third-party extensions;
+        Substack is hosted-only and not self-hostable.
+      </p>
     </div>
   </section>
 
