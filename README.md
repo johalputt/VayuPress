@@ -312,6 +312,14 @@ See [docs/architecture/system-modes.md](docs/architecture/system-modes.md).
 - Repository pattern: `ArticleRepo` interface backed by SQLite
 - Integration test harness with `go test -race ./...`
 
+### Integrations & Insight (Tier 2)
+- **Privacy-first analytics** — cookieless, consent-free page-view counting with
+  zero PII (no IPs, UAs, cookies, or per-visitor rows); only daily aggregates per
+  path/referrer. `GET /api/v1/admin/analytics`
+- **Outbound webhooks** — HMAC-SHA256-signed JSON POSTs on
+  article create/update/delete to Zapier/n8n/Make/custom services, with bounded
+  retry and a per-hook delivery audit trail
+
 ### Event-Driven Reliability (P20–P22)
 - Transactional outbox — events written atomically with article mutations
 - `lifecycle.Manager` — ordered startup/shutdown with registered components
@@ -433,6 +441,11 @@ trusted, and the strict CSP stays intact:
 | `DELETE` | `/api/v1/admin/users/{email}` | Delete an account (admin role, CSRF-protected) |
 | `POST` | `/admin/v2/login` | Email + password sign-in (issues session cookie) |
 | `POST` | `/admin/v2/logout` | Destroy the current session |
+| `GET` | `/api/v1/admin/analytics` | Privacy-first page-view summary (cookieless) |
+| `GET` | `/api/v1/admin/webhooks` | List outbound webhooks |
+| `POST` | `/api/v1/admin/webhooks` | Register a webhook (CSRF-protected) |
+| `DELETE` | `/api/v1/admin/webhooks/{id}` | Delete a webhook (CSRF-protected) |
+| `GET` | `/api/v1/admin/webhooks/{id}/deliveries` | Webhook delivery audit trail |
 
 Public theming endpoints (no auth): `GET /theme.css` (operator palette + custom
 CSS, served same-origin for CSP), `GET /static/js/theme-toggle.js` (sun/moon

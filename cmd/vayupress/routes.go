@@ -156,6 +156,15 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 		r.Get("/api/v1/admin/users", a.handleUserList)
 		r.With(auth.CSRFTokenMiddleware).Post("/api/v1/admin/users", a.handleUserCreate)
 		r.With(auth.CSRFTokenMiddleware).Delete("/api/v1/admin/users/{email}", a.handleUserDelete)
+
+		// Privacy-first analytics (Tier 2).
+		r.Get("/api/v1/admin/analytics", a.handleAnalytics)
+
+		// Outbound webhooks (Tier 2).
+		r.Get("/api/v1/admin/webhooks", a.handleWebhookList)
+		r.With(auth.CSRFTokenMiddleware).Post("/api/v1/admin/webhooks", a.handleWebhookCreate)
+		r.With(auth.CSRFTokenMiddleware).Delete("/api/v1/admin/webhooks/{id}", a.handleWebhookDelete)
+		r.Get("/api/v1/admin/webhooks/{id}/deliveries", a.handleWebhookDeliveries)
 		r.Get("/api/v1/admin/webmentions", a.handleWebmentionList)
 		r.With(auth.CSRFTokenMiddleware).Put("/api/v1/admin/webmentions/{id}/status", a.handleWebmentionModerate)
 		r.With(auth.CSRFTokenMiddleware).Post("/api/v1/admin/preview", a.handlePreviewIssue)

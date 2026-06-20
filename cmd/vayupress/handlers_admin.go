@@ -280,6 +280,17 @@ func (a *App) handleArticlePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	isAdmin := r.Header.Get("X-API-Key") == config.Cfg.APIKey
+	// Privacy-first analytics: count the view (cookieless, no PII) before the
+	// cache early-return so cached hits are still tallied. Admin previews are
+	// excluded. Recording is async and best-effort.
+	if !isAdmin && a.analytics != nil {
+		path, ref := "/"+slug, r.Referer()
+		go func() {
+			if err := a.analytics.Record(context.Background(), path, ref); err != nil {
+				logging.LogError("analytics", "record failed", err.Error())
+			}
+		}()
+	}
 	cachePath := filepath.Join(config.Cfg.CacheDir, "posts", slug+".html")
 	if !isAdmin || r.URL.Query().Get("layout") == "" {
 		if _, err := os.Stat(cachePath); err == nil {

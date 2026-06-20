@@ -57,6 +57,9 @@ var Cfg struct {
 	// SchedulerTickSec is how often the publishing scheduler scans for posts
 	// whose scheduled time has arrived. 0 disables scheduled publishing.
 	SchedulerTickSec int
+
+	// AnalyticsRetainDays bounds how long privacy-first view aggregates are kept.
+	AnalyticsRetainDays int
 }
 
 func Load() {
@@ -99,6 +102,7 @@ func Load() {
 	Cfg.SMTPFrom = EnvOr("SMTP_FROM", "VayuPress <noreply@"+Cfg.Domain+">")
 	Cfg.SMTPTLS = EnvOr("SMTP_TLS", "starttls")
 	Cfg.SchedulerTickSec = GetEnvAsInt("SCHEDULER_TICK_SEC", 60)
+	Cfg.AnalyticsRetainDays = GetEnvAsInt("ANALYTICS_RETAIN_DAYS", 365)
 }
 
 func MustEnv(k string) string {

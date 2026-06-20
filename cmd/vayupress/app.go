@@ -13,6 +13,7 @@ import (
 
 	"github.com/microcosm-cc/bluemonday"
 
+	"github.com/johalputt/vayupress/internal/analytics"
 	"github.com/johalputt/vayupress/internal/api"
 	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/collections"
@@ -36,6 +37,7 @@ import (
 	"github.com/johalputt/vayupress/internal/update"
 	"github.com/johalputt/vayupress/internal/users"
 	"github.com/johalputt/vayupress/internal/versions"
+	"github.com/johalputt/vayupress/internal/webhooks"
 	"github.com/johalputt/vayupress/internal/webmention"
 )
 
@@ -103,6 +105,12 @@ type App struct {
 	// Multi-author accounts + login sessions (Tier 1).
 	userStore *users.Store
 	sessions  *auth.SessionStore
+
+	// Privacy-first analytics (Tier 2).
+	analytics *analytics.Store
+
+	// Outbound webhooks (Tier 2).
+	webhooks *webhooks.Store
 }
 
 // startScheduler runs the background ticker that promotes due scheduled posts to
@@ -150,6 +158,15 @@ func (a *App) publishDuePosts() {
 		}
 		logging.LogInfo("scheduler", "published scheduled post: "+p.Slug)
 	}
+}
+
+// dispatchWebhook fans an event out to registered outbound webhooks (Tier 2).
+// No-op when no webhook store is wired. Runs asynchronously and best-effort.
+func (a *App) dispatchWebhook(event string, payload interface{}) {
+	if a.webhooks == nil {
+		return
+	}
+	go a.webhooks.Dispatch(context.Background(), event, payload)
 }
 
 // RegisterHook registers a plugin hook with the App's plugin registry.
@@ -272,6 +289,7 @@ func (a *App) registerEventHandlers() {
 			a.pingIndexNow(e.Slug)
 		}()
 		a.FireHook("article.create", map[string]interface{}{"slug": e.Slug, "id": e.ID})
+		a.dispatchWebhook("article.created.v1", map[string]interface{}{"slug": e.Slug, "id": e.ID})
 	})
 
 	bus.Subscribe(events.ArticleUpdated{}, func(ctx context.Context, ev interface{}) {
@@ -292,6 +310,7 @@ func (a *App) registerEventHandlers() {
 			a.pingIndexNow(e.Slug)
 		}()
 		a.FireHook("article.update", map[string]interface{}{"slug": e.Slug})
+		a.dispatchWebhook("article.updated.v1", map[string]interface{}{"slug": e.Slug})
 	})
 
 	bus.Subscribe(events.ArticleDeleted{}, func(ctx context.Context, ev interface{}) {
@@ -301,6 +320,7 @@ func (a *App) registerEventHandlers() {
 			a.purgeCloudflare(e.Slug)
 		}()
 		a.FireHook("article.delete", map[string]interface{}{"slug": e.Slug, "id": e.ID})
+		a.dispatchWebhook("article.deleted.v1", map[string]interface{}{"slug": e.Slug, "id": e.ID})
 	})
 
 	// Cache invalidation is the single owner of local rendered-cache purging.

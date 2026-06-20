@@ -112,6 +112,7 @@ Expected: `{"status":"ok"}` from both endpoints.
 | `SMTP_FROM`           | `VayuPress <noreply@$DOMAIN>`  | From header / envelope sender      |
 | `SMTP_TLS`            | `starttls`                     | `starttls` (587), `ssl` (465), or `none` (trusted localhost) |
 | `SCHEDULER_TICK_SEC`  | `60`                           | Scheduled-publish poll interval (seconds); `0` disables |
+| `ANALYTICS_RETAIN_DAYS`| `365`                         | Retention window for privacy-first view aggregates |
 
 ### Email delivery (Tier 1)
 
@@ -127,6 +128,34 @@ credentials) to enable:
 
 When `SMTP_HOST` is empty, every email call is a safe no-op: subscriber and
 comment flows keep working, delivery is simply skipped and audit-logged.
+
+### Privacy-first analytics (Tier 2)
+
+Cookieless, consent-free page-view counting that stores **no IP addresses, no
+user agents, no cookies, no fingerprints, and no per-visitor rows** — only daily
+aggregate counts per path and per referrer host. There is nothing in the schema
+that can identify a reader. Read the rollup at
+`GET /api/v1/admin/analytics?days=30&limit=20`. Aggregates older than
+`ANALYTICS_RETAIN_DAYS` are pruned daily.
+
+### Outbound webhooks (Tier 2)
+
+Register endpoints that receive a signed JSON POST when content changes —
+integrate with Zapier, n8n, Make, or any custom service. Each delivery carries
+`X-VayuPress-Signature: sha256=<hmac>` over the raw body (per-hook secret) plus
+`X-VayuPress-Event`. Subscribe to `article.created.v1`, `article.updated.v1`,
+`article.deleted.v1`, or `*`. Bounded retry/backoff; every attempt is recorded.
+
+```bash
+# Register a webhook (secret returned once, on creation)
+curl -X POST https://$DOMAIN/api/v1/admin/webhooks \
+  -H "X-API-Key: $API_KEY" -H "Content-Type: application/json" \
+  -d '{"url":"https://example.com/hook","events":["article.created.v1","article.updated.v1"]}'
+```
+
+Manage with `GET /api/v1/admin/webhooks`,
+`DELETE /api/v1/admin/webhooks/{id}`, and inspect delivery history at
+`GET /api/v1/admin/webhooks/{id}/deliveries`.
 
 ### Multi-author accounts & password login (Tier 1)
 

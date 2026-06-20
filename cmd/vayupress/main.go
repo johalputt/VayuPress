@@ -24,6 +24,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/microcosm-cc/bluemonday"
 
+	"github.com/johalputt/vayupress/internal/analytics"
 	"github.com/johalputt/vayupress/internal/api"
 	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/budget"
@@ -56,6 +57,7 @@ import (
 	"github.com/johalputt/vayupress/internal/update"
 	"github.com/johalputt/vayupress/internal/users"
 	"github.com/johalputt/vayupress/internal/versions"
+	"github.com/johalputt/vayupress/internal/webhooks"
 	"github.com/johalputt/vayupress/internal/webmention"
 )
 
@@ -323,6 +325,24 @@ func main() {
 
 	// Scheduled publishing (Tier 1).
 	a.scheduler = scheduler.New(dbpkg.DB)
+
+	// Privacy-first analytics + outbound webhooks (Tier 2).
+	a.analytics = analytics.New(dbpkg.DB)
+	a.webhooks = webhooks.New(dbpkg.DB, a.outboundClient)
+	go func() {
+		ticker := time.NewTicker(24 * time.Hour)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-queue.DoneCh:
+				return
+			case <-ticker.C:
+				if n, err := a.analytics.Purge(context.Background(), config.Cfg.AnalyticsRetainDays); err == nil && n > 0 {
+					logging.LogInfo("analytics", fmt.Sprintf("purged %d aggregate rows older than %dd", n, config.Cfg.AnalyticsRetainDays))
+				}
+			}
+		}
+	}()
 
 	// Multi-author accounts + login sessions (Tier 1).
 	a.userStore = users.New(dbpkg.DB)
