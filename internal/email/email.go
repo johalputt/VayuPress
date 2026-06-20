@@ -102,6 +102,12 @@ func (s *Sender) Send(msg Message) error {
 	if _, err := mailParse(to); err != nil {
 		return fmt.Errorf("email: invalid recipient: %w", err)
 	}
+	// Sanitize bodies here so CodeQL's taint tracker sees the barrier in the
+	// same call chain as deliver() → wc.Write(raw). The HTML part is run
+	// through the UGC policy (strips scripts/events); the plain-text part has
+	// control characters removed to prevent SMTP stream corruption.
+	msg.HTML = emailHTMLPolicy.Sanitize(msg.HTML)
+	msg.Text = stripControl(msg.Text)
 	raw, err := s.assemble(to, msg)
 	if err != nil {
 		return err
