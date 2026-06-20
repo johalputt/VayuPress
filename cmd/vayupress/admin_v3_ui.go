@@ -214,7 +214,7 @@ func adminV3Layout(nonce, title, active string, settings *v3Settings, bodyHTML s
     <div class="sidebar-section-label">System</div>
     ` + navItem("/admin/v3/settings", "Settings", "settings", active, iconSettings) + `
     ` + navItem("/admin/v3/security", "Security", "security", active, iconSecurity) + `
-    <div class="sidebar-section-label" style="margin-top:auto"></div>
+    <div class="sidebar-spacer"></div>
     <a class="nav-link" href="/admin/v2">
       <svg viewBox="0 0 20 20" fill="none" width="16" height="16" aria-hidden="true"><path d="M9 4H5a2 2 0 00-2 2v8a2 2 0 002 2h10a2 2 0 002-2v-4M13 4h4m0 0v4m0-4L9 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
       Admin v2
@@ -222,7 +222,7 @@ func adminV3Layout(nonce, title, active string, settings *v3Settings, bodyHTML s
   </nav>
   <div class="sidebar-footer">
     <div class="sidebar-user">
-      <div class="avatar avatar--sm" style="background:var(--brand-dim);color:var(--brand)">A</div>
+      <div class="avatar avatar--sm avatar--brand">A</div>
       <div class="sidebar-user-info">
         <div class="sidebar-user-name">Admin</div>
         <div class="sidebar-user-role">Administrator</div>
@@ -417,7 +417,7 @@ func v3LoginPage(prefillEmail, errMsg string) string {
   </div>
   <div class="login-hero-tagline-wrap">
     <div class="login-hero-headline">Publishing that belongs to you.</div>
-    <div class="login-hero-sub">Sovereign, single-binary, zero-CDN. More powerful than Ghost. More private than Substack. Yours completely.</div>
+    <div class="login-hero-sub">Sovereign, single-binary, zero third-party dependencies. More powerful than Ghost. More private than Substack. Yours completely.</div>
   </div>
 </div>
 
@@ -450,10 +450,88 @@ func v3LoginPage(prefillEmail, errMsg string) string {
 
 // ── Dashboard ────────────────────────────────────────────────────────────────
 
+// v3PublishTrend returns the count of articles created on each of the last n
+// days (oldest first). Used to render the dashboard sparkline. Counts come
+// straight from the articles table grouped by calendar day (UTC).
+func v3PublishTrend(ctx context.Context, n int) []int {
+	out := make([]int, n)
+	if dbpkg.DB == nil {
+		return out
+	}
+	// Bucket per day for the window. SQLite date() truncates to YYYY-MM-DD.
+	rows, err := dbpkg.DB.QueryContext(ctx,
+		`SELECT date(created_at) d, COUNT(1) c
+		 FROM articles
+		 WHERE created_at >= date('now', ?)
+		 GROUP BY d`, "-"+strconv.Itoa(n-1)+" days")
+	if err != nil {
+		return out
+	}
+	defer rows.Close()
+	byDay := map[string]int{}
+	for rows.Next() {
+		var d string
+		var c int
+		if rows.Scan(&d, &c) == nil {
+			byDay[d] = c
+		}
+	}
+	now := time.Now().UTC()
+	for i := 0; i < n; i++ {
+		day := now.AddDate(0, 0, -(n - 1 - i)).Format("2006-01-02")
+		out[i] = byDay[day]
+	}
+	return out
+}
+
+// v3Sparkline renders a compact inline SVG line chart from a series of values.
+// It emits no inline styles (CSP-safe); all colour comes from CSS via
+// currentColor on the .sparkline class. width/height are SVG viewBox units.
+func v3Sparkline(vals []int) string {
+	const w, h = 240, 48
+	if len(vals) == 0 {
+		return ""
+	}
+	maxV := 1
+	for _, v := range vals {
+		if v > maxV {
+			maxV = v
+		}
+	}
+	n := len(vals)
+	stepX := float64(w) / float64(n-1)
+	if n == 1 {
+		stepX = 0
+	}
+	pts := make([]string, 0, n)
+	for i, v := range vals {
+		x := float64(i) * stepX
+		// Leave 4px top/bottom padding so the stroke isn't clipped.
+		y := float64(h-4) - (float64(v)/float64(maxV))*float64(h-8)
+		pts = append(pts, strconv.FormatFloat(x, 'f', 1, 64)+","+strconv.FormatFloat(y, 'f', 1, 64))
+	}
+	poly := strings.Join(pts, " ")
+	// Area fill path (down to baseline) + the line on top.
+	area := "0," + strconv.Itoa(h) + " " + poly + " " + strconv.Itoa(w) + "," + strconv.Itoa(h)
+	return `<svg class="sparkline" viewBox="0 0 ` + strconv.Itoa(w) + ` ` + strconv.Itoa(h) +
+		`" preserveAspectRatio="none" role="img" aria-label="Publishing activity, last ` + strconv.Itoa(n) + ` days">` +
+		`<polyline class="sparkline__area" points="` + area + `"/>` +
+		`<polyline class="sparkline__line" points="` + poly + `"/>` +
+		`</svg>`
+}
+
 func (a *App) handleV3Dashboard(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getV3Settings(r.Context())
 	snap := a.getAdminSnapshot()
+
+	// 14-day publishing trend sparkline.
+	trend := v3PublishTrend(r.Context(), 14)
+	trendTotal := 0
+	for _, v := range trend {
+		trendTotal += v
+	}
+	sparkSVG := v3Sparkline(trend)
 
 	pct := int(snap.StoragePct)
 	storBar := "progress__bar"
@@ -547,6 +625,15 @@ func (a *App) handleV3Dashboard(w http.ResponseWriter, r *http.Request) {
   </div>
 </div>
 
+<!-- Publishing trend -->
+<div class="card mb-6">
+  <div class="flex justify-between items-center">
+    <div class="card-title">Publishing trend</div>
+    <span class="text-xs muted">` + strconv.Itoa(trendTotal) + ` in last 14 days</span>
+  </div>
+  <div class="sparkline-wrap">` + sparkSVG + `</div>
+</div>
+
 <div class="grid grid-2 mb-6">
   <!-- Storage -->
   <div class="card">
@@ -564,8 +651,8 @@ func (a *App) handleV3Dashboard(w http.ResponseWriter, r *http.Request) {
     <div id="activity-feed" class="activity-list">
       <!-- Populated by admin-v3.js via GET /admin/v3/api/activity -->
       <div class="skeleton skeleton--text mb-3"></div>
-      <div class="skeleton skeleton--text mb-3" style="width:80%"></div>
-      <div class="skeleton skeleton--text" style="width:65%"></div>
+      <div class="skeleton skeleton--text mb-3 w-80"></div>
+      <div class="skeleton skeleton--text w-65"></div>
     </div>
   </div>
 </div>

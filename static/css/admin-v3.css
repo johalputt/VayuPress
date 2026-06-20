@@ -229,6 +229,8 @@
   margin-top: var(--sp-2);
 }
 
+.vp-v3 .sidebar-spacer { margin-top: auto; }
+
 .vp-v3 .nav-link {
   display: flex;
   align-items: center;
@@ -558,6 +560,13 @@
 .vp-v3 .progress__bar--warn { background: var(--warn); }
 .vp-v3 .progress__bar--danger { background: var(--danger); }
 .vp-v3 .progress__bar--ok { background: var(--ok); }
+
+/* Sparkline — server-rendered SVG line chart, colour via currentColor (no inline style) */
+.vp-v3 .sparkline-wrap { margin-top: var(--sp-3); color: var(--brand); height: 64px; }
+.vp-v3 .sparkline { width: 100%; height: 100%; display: block; }
+.vp-v3 .sparkline__line { fill: none; stroke: currentColor; stroke-width: 2; vector-effect: non-scaling-stroke; stroke-linejoin: round; stroke-linecap: round; }
+.vp-v3 .sparkline__area { fill: var(--brand-dim); stroke: none; opacity: 0.5; }
+
 /* Width utilities */
 .vp-v3 .w-0{width:0%}.vp-v3 .w-5{width:5%}.vp-v3 .w-10{width:10%}
 .vp-v3 .w-15{width:15%}.vp-v3 .w-20{width:20%}.vp-v3 .w-25{width:25%}
@@ -640,6 +649,7 @@
   font-family: var(--font-head);
 }
 .vp-v3 .avatar--sm { width: 28px; height: 28px; font-size: var(--text-xs); }
+.vp-v3 .avatar--brand { background: var(--brand-dim); color: var(--brand); }
 .vp-v3 .avatar--lg { width: 48px; height: 48px; font-size: var(--text-lg); }
 
 /* ── Modal ───────────────────────────────────────────────────── */
