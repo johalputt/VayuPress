@@ -332,7 +332,8 @@ func (a *App) handleArticlePage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	layout := render.DetectLayout(art, r, isAdmin)
-	htmlOut, err := render.RenderArticleWithLayout(art, layout)
+	related := a.relatedArticles(r.Context(), art.Slug, art.Tags, 4)
+	htmlOut, err := render.RenderArticleWithLayout(art, layout, related)
 	if err != nil {
 		http.Error(w, "render error", 500)
 		return
@@ -1683,4 +1684,36 @@ func (a *App) handleFaultStatus(w http.ResponseWriter, r *http.Request) {
 		"faults":                  entries,
 		"snapshot_at":             time.Now().UTC().Format(time.RFC3339),
 	})
+}
+
+// relatedArticles returns up to limit published articles that share at least one
+// tag with the current article. The current article's slug is excluded.
+func (a *App) relatedArticles(ctx context.Context, currentSlug string, tags []string, limit int) []render.RelatedArticle {
+	if len(tags) == 0 || dbpkg.DB == nil {
+		return nil
+	}
+	// Build a LIKE clause per tag — tags are stored as comma-separated text.
+	args := []interface{}{}
+	clauses := []string{}
+	for _, t := range tags {
+		clauses = append(clauses, `tags LIKE ?`)
+		args = append(args, "%"+t+"%")
+	}
+	args = append(args, currentSlug, limit)
+	q := `SELECT title, slug, created_at FROM articles WHERE status='published' AND (` +
+		strings.Join(clauses, " OR ") + `) AND slug != ? ORDER BY created_at DESC LIMIT ?`
+	rows, err := dbpkg.DB.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var out []render.RelatedArticle
+	for rows.Next() {
+		var ra render.RelatedArticle
+		if err := rows.Scan(&ra.Title, &ra.Slug, &ra.CreatedAt); err != nil {
+			continue
+		}
+		out = append(out, ra)
+	}
+	return out
 }

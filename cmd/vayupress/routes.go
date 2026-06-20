@@ -96,6 +96,12 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 		http.ServeFile(w, r, filepath.Join(staticDir, "css", canon))
 	})
 
+	// Chroma syntax-highlighting stylesheet (generated from github-dark theme).
+	r.Get("/static/chroma.css", a.handleChromaCSS)
+	// PWA manifest and service worker.
+	r.Get("/manifest.json", a.handlePWAManifest)
+	r.Get("/sw.js", a.handleServiceWorker)
+
 	// Public: same-origin media (editor image uploads). Name is strictly
 	// validated in the handler — no path-traversal surface.
 	r.Get("/media/{file}", a.serveMedia)

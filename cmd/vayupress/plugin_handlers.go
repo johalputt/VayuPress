@@ -11,6 +11,7 @@ package main
 //   - Table of Contents (extracted per-article)
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"html"
@@ -160,6 +161,10 @@ func (a *App) handleCommentModerate(w http.ResponseWriter, r *http.Request) {
 	if err := a.commentStore.Moderate(r.Context(), id, body.Status); err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "moderate-error", err.Error(), "")
 		return
+	}
+	// Email the commenter when their comment is approved.
+	if body.Status == "approved" {
+		go a.notifyCommentApproved(r.Context(), id)
 	}
 	writeJSON(w, r, http.StatusOK, map[string]string{"status": body.Status})
 }
@@ -666,4 +671,35 @@ func (a *App) handleArticleTOC(w http.ResponseWriter, r *http.Request) {
 	}
 	entries := toc.Extract(content)
 	writeJSON(w, r, http.StatusOK, map[string]interface{}{"toc": entries, "slug": slug})
+}
+
+// notifyCommentApproved emails the commenter (if they provided an address) to
+// let them know their comment is live. Runs in a goroutine; all errors are
+// logged and discarded so a mail failure never affects the HTTP response.
+func (a *App) notifyCommentApproved(ctx context.Context, commentID string) {
+	if a.mailer == nil {
+		return
+	}
+	var author, addr, articleSlug string
+	err := dbpkg.DB.QueryRowContext(ctx,
+		`SELECT c.author, c.email, a.slug
+		   FROM comments c
+		   JOIN articles a ON a.id = c.article_id
+		  WHERE c.id = ?`, commentID).Scan(&author, &addr, &articleSlug)
+	if err != nil || addr == "" {
+		return
+	}
+	link := "https://" + config.Cfg.Domain + "/" + articleSlug
+	text := "Hi " + author + ",\r\n\r\nYour comment on " + link + " has been approved and is now live.\r\n\r\nThank you for contributing!"
+	htmlBody := `<p>Hi <strong>` + html.EscapeString(author) + `</strong>,</p>` +
+		`<p>Your comment on <a href="` + html.EscapeString(link) + `">` + html.EscapeString(articleSlug) + `</a> has been approved and is now live.</p>` +
+		`<p>Thank you for contributing!</p>`
+	if err := a.mailer.Send(email.Message{
+		To:      addr,
+		Subject: "Your comment is live",
+		Text:    text,
+		HTML:    htmlBody,
+	}); err != nil {
+		logging.LogError("comments", "approval email failed", err.Error())
+	}
 }

@@ -41,10 +41,12 @@ import (
 // high-resolution screenshots and photos while refusing anything abusive.
 const maxImageBytes = 8 * 1024 * 1024
 
+// maxDocBytes caps a document (PDF) upload at 32 MB.
+const maxDocBytes = 32 * 1024 * 1024
+
 // safeMediaName matches only the names this server itself generates:
-// 32 lowercase hex chars + a known raster extension. Anything else is rejected
-// before the path ever reaches the filesystem.
-var safeMediaName = regexp.MustCompile(`^[a-f0-9]{32}\.(png|jpg|gif|webp)$`)
+// 32 lowercase hex chars + a known raster or document extension.
+var safeMediaName = regexp.MustCompile(`^[a-f0-9]{32}\.(png|jpg|gif|webp|pdf)$`)
 
 // imageMagic maps a canonical extension to the leading signature bytes used to
 // validate an upload by content. jpg covers the standard JFIF/EXIF SOI marker.
@@ -96,9 +98,9 @@ func (a *App) handleMediaUpload(w http.ResponseWriter, r *http.Request) {
 
 	// Cap the whole request body before touching the multipart reader so an
 	// oversized upload is refused up front rather than buffered to disk.
-	r.Body = http.MaxBytesReader(w, r.Body, maxImageBytes+8*1024)
-	if err := r.ParseMultipartForm(maxImageBytes + 8*1024); err != nil {
-		fail(400, "could not read upload (max 8 MB): "+err.Error())
+	r.Body = http.MaxBytesReader(w, r.Body, maxDocBytes+8*1024)
+	if err := r.ParseMultipartForm(maxDocBytes + 8*1024); err != nil {
+		fail(400, "could not read upload (max 32 MB): "+err.Error())
 		return
 	}
 
@@ -118,33 +120,45 @@ func (a *App) handleMediaUpload(w http.ResponseWriter, r *http.Request) {
 		fail(400, "uploaded file is empty")
 		return
 	}
-	if len(raw) > maxImageBytes {
+	if len(raw) > maxDocBytes {
+		fail(400, "file exceeds the 32 MB limit")
+		return
+	}
+
+	// Try image first; then PDF.
+	ext, mime, valid := detectImageType(raw)
+	isPDF := false
+	if !valid {
+		if len(raw) >= 4 && string(raw[:4]) == "%PDF" {
+			ext, mime, valid, isPDF = "pdf", "application/pdf", true, true
+		}
+	}
+	if !valid {
+		fail(415, "unsupported file type (allowed: PNG, JPEG, GIF, WebP, PDF)")
+		return
+	}
+	if !isPDF && len(raw) > maxImageBytes {
 		fail(400, "image exceeds the 8 MB limit")
 		return
 	}
 
-	ext, mime, valid := detectImageType(raw)
-	if !valid {
-		fail(415, "unsupported image type (allowed: PNG, JPEG, GIF, WebP)")
-		return
-	}
-
 	// Optimize: downscale oversized PNG/JPEG with the stdlib-only pipeline.
-	// GIF/WebP pass through untouched (animation/format preserved). Failures are
-	// non-fatal — we fall back to storing the original bytes.
+	// GIF/WebP and PDF pass through untouched.
 	stored := raw
 	var imgW, imgH int
-	if res, err := imageproc.Optimize(raw, ext, imageproc.DefaultMaxWidth); err == nil {
-		stored = res.Data
-		imgW, imgH = res.Width, res.Height
-		if res.Resized {
-			logging.LogJSON(logging.LogFields{
-				Level: "info", Component: "media", Severity: "info",
-				Msg: "image downscaled to " + imageproc.DefaultMaxWidthStr() + "px wide", RequestID: getRequestID(r),
-			})
+	if !isPDF {
+		if res, err := imageproc.Optimize(raw, ext, imageproc.DefaultMaxWidth); err == nil {
+			stored = res.Data
+			imgW, imgH = res.Width, res.Height
+			if res.Resized {
+				logging.LogJSON(logging.LogFields{
+					Level: "info", Component: "media", Severity: "info",
+					Msg: "image downscaled to " + imageproc.DefaultMaxWidthStr() + "px wide", RequestID: getRequestID(r),
+				})
+			}
+		} else {
+			logging.LogError("media", "optimize failed (storing original)", err.Error())
 		}
-	} else {
-		logging.LogError("media", "optimize failed (storing original)", err.Error())
 	}
 
 	sum := sha256.Sum256(stored)
