@@ -17,6 +17,40 @@
 > **Adaptive publishing infrastructure for the sovereign web.**
 > SQLite-first, zero-trust, zero telemetry. Policy-governed runtime with adaptive system modes, sandboxed plugins, transactional event outbox, durable audit trail, and fault-tolerant federated publishing.
 
+## What's New in v1.2.0
+
+> Full notes in [`CHANGELOG.md`](CHANGELOG.md) · upgrade steps in [`docs/UPGRADING.md`](docs/UPGRADING.md)
+
+Four shipped tiers of new capability — all single-binary, all sovereign, all
+honouring the strict-CSP and governed-write invariants.
+
+**Tier 1 — Sovereign foundations:** standard-library SMTP email + double-opt-in
+newsletter, durable scheduled publishing, multi-author accounts (Argon2id +
+server-side sessions), and stdlib-only automatic image optimization (no CGO).
+
+**Tier 2 — Reach & insight:** cookieless zero-PII analytics, HMAC-signed outbound
+webhooks with retry + delivery audit, Mastodon auto-posting, Ghost/WordPress
+importers, a **local-Ollama** AI writing assistant (suggest-only), and
+memberships & paywalls with passwordless magic-link sign-in and an optional,
+signature-verified Stripe webhook.
+
+**Tier 3 — Reading polish (ADR-0066):** server-side **syntax highlighting**
+(chroma, `style-src 'self'`-safe via a highlight-before-sanitise placeholder
+pipeline), **related articles** (precise comma-token tag matching), reading-time,
+**PDF/document uploads**, comment-approval emails, and an installable **PWA** with
+offline service worker.
+
+**Tier 4 — Enterprise interfaces (ADR-0067):** a **read-only GraphQL** content
+API (query-only — no mutation surface), **internationalisation** with
+`Accept-Language` negotiation and operator-editable catalogs, **customisable
+transactional email templates**, and a real-time **SSE event stream**. Cloudflare
+edge-purge + IndexNow CDN push fire on every mutation.
+
+### Upgrading from v1.1.0
+No breaking changes. Start the server once and migrations 019–024 apply
+automatically. Every new capability is opt-in and a safe no-op until configured
+(SMTP, Stripe, Mastodon, Ollama, Cloudflare, etc.).
+
 ## What's New in v1.1.0
 
 > Full notes in [`CHANGELOG.md`](CHANGELOG.md) · upgrade steps in [`docs/UPGRADING.md`](docs/UPGRADING.md)
@@ -411,6 +445,13 @@ trusted, and the strict CSP stays intact:
 | `PUT` | `/api/articles/{slug}` | Update article |
 | `DELETE` | `/api/articles/{slug}` | Delete article |
 | `GET` | `/api/search?q=...` | Full-text search (Meilisearch or SQLite fallback) |
+| `GET`/`POST` | `/api/v1/graphql` | Read-only GraphQL content API (query-only — no mutations) (ADR-0067) |
+| `GET` | `/api/v1/i18n/{lang}` | Merged i18n message bundle for a language (public) |
+| `GET` | `/api/v1/stream` | Real-time SSE feed of article events (API-key-gated) |
+| `GET`/`PUT` | `/api/v1/admin/i18n[/{lang}]` | List/override i18n languages (PUT CSRF-protected) |
+| `GET`/`PUT` | `/api/v1/admin/email-templates[/{kind}]` | List/override transactional email templates (PUT CSRF-protected) |
+| `GET` | `/manifest.json` · `/sw.js` | PWA manifest + offline service worker |
+| `GET` | `/static/chroma.css` | Syntax-highlighting stylesheet (`style-src 'self'`) |
 | `GET` | `/health/live` | Liveness probe |
 | `GET` | `/health/ready` | Readiness probe |
 | `GET` | `/health/dependencies` | Dependency health (DB, search, queue) |

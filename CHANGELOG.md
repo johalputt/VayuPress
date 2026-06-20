@@ -10,6 +10,59 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [1.2.0] — 2026-06-20
+
+Four tiers of new capability — all single-binary, sovereign, and CSP/governed-write safe.
+
+### Added
+
+- **Tier 1 — Sovereign foundations:** standard-library SMTP email + double-opt-in
+  newsletter (`internal/email`), durable scheduled publishing (`internal/scheduler`,
+  migration 019), multi-author accounts with Argon2id + server-side sessions
+  (`internal/users`, `internal/auth`, migration 020), and stdlib-only automatic
+  image optimization (`internal/imageproc`, no CGO).
+- **Tier 2 — Reach & insight:** cookieless zero-PII analytics (`internal/analytics`,
+  migration 021), HMAC-SHA256 outbound webhooks with retry + delivery audit
+  (`internal/webhooks`, migration 022), Mastodon auto-posting (`internal/social`),
+  Ghost/WordPress importers, a local-Ollama AI writing assistant (`internal/aiassist`,
+  suggest-only), and memberships & paywalls with passwordless magic-link sign-in and
+  an optional signature-verified Stripe webhook (`internal/members`, migration 023).
+- **Tier 3 — Reading polish (ADR-0066):** server-side syntax highlighting (chroma,
+  `style-src 'self'`-safe via a highlight-before-sanitise placeholder pipeline),
+  related articles with precise comma-token tag matching, reading-time, PDF/document
+  uploads (≤32 MB, magic-number validated), comment-approval emails, and an
+  installable PWA (`/manifest.json`, `/sw.js`) with offline service worker.
+- **Tier 4 — Enterprise interfaces (ADR-0067):** read-only GraphQL content API
+  (`/api/v1/graphql`, query-only — no mutations), internationalisation with
+  `Accept-Language` negotiation and operator-editable catalogs (`internal/i18n`),
+  customisable transactional email templates (`internal/emailtmpl`), and a real-time
+  SSE event stream (`/api/v1/stream`). Migration 024 adds `email_templates` +
+  `i18n_messages`. Cloudflare edge-purge + IndexNow CDN push confirmed on every mutation.
+
+### Fixed
+
+- Syntax highlighting: bluemonday stripped the `language-*` class before chroma ran,
+  so code never highlighted — reworked into a highlight-before-sanitise placeholder
+  pipeline (regression-tested, including placeholder-forgery).
+- Related articles: query referenced a non-existent `status` column and returned nil.
+- PDF uploads were truncated to ~8 MB (wrong read limit) producing corrupt files.
+- Related-article tag matching no longer matches substrings (`go` ≠ `golang`) or
+  treats tag `%`/`_` as LIKE wildcards.
+- GraphQL `articles(offset:)` now honours non-page-aligned offsets exactly.
+
+### Security
+
+- GraphQL is deliberately query-only so writes never get a second path around the
+  governed REST API. SSE stream is API-key-gated. SVG uploads remain refused.
+  Service worker never caches `/admin` pages.
+
+### Upgrade Notes
+
+No breaking changes. Start the server once and migrations 019–024 apply
+automatically. Every new capability is opt-in and a safe no-op until configured.
+
+---
+
 ## [1.1.0] — 2026-06-19
 
 ### Added

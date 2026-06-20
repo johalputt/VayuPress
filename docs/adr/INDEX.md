@@ -45,6 +45,8 @@
 | [ADR-0063](ADR-0063-gated-budget-actuation.md) | Gated Governance Budget Actuation (Ω12) | Accepted | Governance | 2026-06-15 |
 | [ADR-0064](ADR-0064-sovereign-self-update.md) | Sovereign Self-Update (check-only + signed CLI apply) | Accepted | Security | 2026-06-19 |
 | [ADR-0065](ADR-0065-admin-ui-csp-compliant-stack.md) | Modern Admin UI on CSP-Compliant Vendored Stack | Accepted | Security | 2026-06-19 |
+| [ADR-0066](ADR-0066-content-polish-layer.md) | Content Polish Layer: CSP-Safe Highlighting, Related Posts, PWA | Accepted | Core | 2026-06-20 |
+| [ADR-0067](ADR-0067-enterprise-interfaces.md) | Enterprise Interfaces: Read-Only GraphQL, i18n, Email Templates, Live Stream | Accepted | Core | 2026-06-20 |
 
 ---
 
