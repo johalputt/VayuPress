@@ -28,7 +28,6 @@ import (
 	"encoding/json"
 	"html"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -59,6 +58,7 @@ func (a *App) registerAdminV3UIRoutes(r chi.Router) {
 	r.Get("/admin/v3/static/js/admin-v3.js", serveAdminV3Asset("js/admin-v3.js", "application/javascript; charset=utf-8"))
 	r.Get("/admin/v3/static/js/admin-v3-editor.js", serveAdminV3Asset("js/admin-v3-editor.js", "application/javascript; charset=utf-8"))
 	r.Get("/admin/v3/static/js/admin-v3-security.js", serveAdminV3Asset("js/admin-v3-security.js", "application/javascript; charset=utf-8"))
+	r.Get("/admin/v3/static/js/admin-v3-intel.js", serveAdminV3Asset("js/admin-v3-intel.js", "application/javascript; charset=utf-8"))
 	r.Get("/admin/v3/static/js/purify.min.js", serveAdminV3Asset("js/purify.min.js", "application/javascript; charset=utf-8"))
 
 	// Fonts — path-traversal prevented by switch allowlist (same pattern as v2).
@@ -101,7 +101,8 @@ func (a *App) registerAdminV3UIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/admin/v3/api/totp/disable", a.handleV3TOTPDisable)
 		pr.Get("/admin/v3/editor", a.handleV3Editor)
 		pr.Get("/admin/v3/editor/{slug}", a.handleV3Editor)
-		pr.Get("/admin/v3/seo", a.handleV3SEO)
+		pr.Get("/admin/v3/seo", a.handleV3SEONative)
+		pr.Get("/admin/v3/analytics", a.handleV3Analytics)
 		pr.Get("/admin/v3/settings", a.handleV3Settings)
 		pr.Get("/admin/v3/settings/{group}", a.handleV3Settings)
 
@@ -817,21 +818,7 @@ func (a *App) serveV3LegacyEditor(w http.ResponseWriter, r *http.Request, nonce 
 }
 
 // ── SEO ──────────────────────────────────────────────────────────────────────
-
-func (a *App) handleV3SEO(w http.ResponseWriter, r *http.Request) {
-	nonce := render.CSPNonce(r)
-	cfg := a.getV3Settings(r.Context())
-
-	// Delegate to v2 SEO body renderer, wrap in v3 layout.
-	inner := a.v2SEOBodyHTML(r)
-	writeV3HTML(w, adminV3Layout(nonce, "SEO", "seo", cfg, inner))
-}
-
-// v2SEOBodyHTML extracts the SEO body from v2 and returns it for embedding.
-// This avoids duplicating the complex SEO rendering logic.
-func (a *App) v2SEOBodyHTML(r *http.Request) string {
-	return buildV2SEOBody(r.Context())
-}
+// The native SEO dashboard now lives in admin_v3_intel.go (handleV3SEONative).
 
 // ── Settings ─────────────────────────────────────────────────────────────────
 
@@ -1170,46 +1157,6 @@ func (a *App) handleV3QuickCreatePost(w http.ResponseWriter, r *http.Request) {
 }
 
 // ── Helpers shared with v2 ────────────────────────────────────────────────────
-
-// buildV2SEOBody produces the SEO artefact status card.
-// Stat-files are checked via os.Stat on the cache directory.
-// When Phase 6 delivers a full SEO page this function will be replaced.
-func buildV2SEOBody(_ context.Context) string {
-	artefact := func(name string) (bool, string) {
-		fi, err := os.Stat(filepath.Join(config.Cfg.CacheDir, name))
-		if err != nil {
-			return false, "missing"
-		}
-		return true, fi.ModTime().UTC().Format("2006-01-02 15:04") + " UTC"
-	}
-	smOK, smWhen := artefact("sitemap.xml")
-	feedOK, feedWhen := artefact("feed.xml")
-	robotsOK, robotsWhen := artefact("robots.txt")
-
-	badge := func(ok bool, when string) string {
-		if ok {
-			return `<span class="badge badge--ok">✓ Ready</span> <span class="muted text-sm">` + html.EscapeString(when) + `</span>`
-		}
-		return `<span class="badge badge--warn">Missing</span>`
-	}
-
-	return `<div class="mt-4 card">
-  <div class="card-title">SEO artefacts</div>
-  <table class="table">
-    <thead><tr><th>Artefact</th><th>Status</th></tr></thead>
-    <tbody>
-      <tr><td>Sitemap</td><td>` + badge(smOK, smWhen) + `</td></tr>
-      <tr><td>RSS Feed</td><td>` + badge(feedOK, feedWhen) + `</td></tr>
-      <tr><td>robots.txt</td><td>` + badge(robotsOK, robotsWhen) + `</td></tr>
-    </tbody>
-  </table>
-  <div class="mt-4">
-    <form method="POST" action="/admin/v3/api/seo/regenerate">
-      <button type="submit" class="btn btn--primary btn--sm">Regenerate all SEO artefacts</button>
-    </form>
-  </div>
-</div>`
-}
 
 // buildV2SettingsBody returns the update-checker card from v2 settings.
 // Phase 7 will have its own version; for now we reuse the v2 snapshot.
