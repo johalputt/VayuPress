@@ -10,6 +10,7 @@ on:
     branches: [main]
     paths:
       - "docs/site/**"
+      - "docs/screenshots/**"
       - ".github/workflows/deploy-site.yml"
   workflow_dispatch:
 
@@ -46,13 +47,20 @@ jobs:
           fi
 
           # Stage the site payload outside the repo so a branch switch can't
-          # clobber it. Preserve .nojekyll and the screenshots/ directory that
-          # live only on gh-pages (not in docs/site).
+          # clobber it. Preserve .nojekyll and copy docs/screenshots/ NOW while
+          # we are still on main (after the branch switch the workspace reflects
+          # gh-pages and docs/screenshots/ no longer exists).
           STAGE="$(mktemp -d)"
           cp -r "$SRC"/. "$STAGE"/
           # README.md is source-only; it should not ship to the live site.
           rm -f "$STAGE/README.md"
           touch "$STAGE/.nojekyll"
+
+          # Copy all screenshots from main into stage BEFORE the branch switch.
+          mkdir -p "$STAGE/screenshots"
+          if [ -d "docs/screenshots" ]; then
+            cp docs/screenshots/*.png "$STAGE/screenshots/" 2>/dev/null || true
+          fi
 
           SHA="$(git rev-parse --short HEAD)"
 
@@ -65,15 +73,13 @@ jobs:
             git rm -rf . >/dev/null 2>&1 || true
           fi
 
-          # Carry forward screenshots: first from gh-pages (existing), then
-          # overlay with docs/screenshots/ from main so newly-captured PNGs
-          # (e.g. admin-v3-*.png) are immediately available on the live site.
+          # Carry forward any screenshots that exist only on gh-pages (legacy
+          # PNGs not yet regenerated into docs/screenshots/ on main). Already-
+          # staged files from docs/screenshots/ take precedence (newer).
           if [ -d screenshots ]; then
-            cp -r screenshots "$STAGE/screenshots"
-          fi
-          mkdir -p "$STAGE/screenshots"
-          if [ -d "$GITHUB_WORKSPACE/docs/screenshots" ]; then
-            cp "$GITHUB_WORKSPACE/docs/screenshots"/*.png "$STAGE/screenshots/" 2>/dev/null || true
+            for f in screenshots/*.png; do
+              [ -f "$STAGE/$f" ] || cp "$f" "$STAGE/$f"
+            done
           fi
 
           # Replace tracked content with the staged payload.
