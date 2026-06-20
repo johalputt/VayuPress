@@ -34,6 +34,19 @@ shot "$BASE_URL/admin/v2/editor/${ARTICLE_SLUG:-hello-vayupress}" "$OUT_DIR/admi
 shot "$BASE_URL/admin/v2/seo"                               "$OUT_DIR/admin-v2-seo.png"
 shot "$BASE_URL/admin/v2/settings"                          "$OUT_DIR/admin-v2-settings.png"
 
+# ── Next-generation admin UI — Admin v3 (auth injected by screenshot-proxy) ──
+# The ground-up redesign lives under /admin/v3 (ADR-0068): design system,
+# dashboard intelligence, block editor, media library, members, security (2FA),
+# SEO, and analytics. The editor opens with the seeded article.
+shot "$BASE_URL/admin/v3"                                   "$OUT_DIR/admin-v3-dashboard.png"
+shot "$BASE_URL/admin/v3/posts"                             "$OUT_DIR/admin-v3-posts.png"
+shot "$BASE_URL/admin/v3/editor/${ARTICLE_SLUG:-hello-vayupress}" "$OUT_DIR/admin-v3-editor.png"
+shot "$BASE_URL/admin/v3/media"                             "$OUT_DIR/admin-v3-media.png"
+shot "$BASE_URL/admin/v3/seo"                               "$OUT_DIR/admin-v3-seo.png"
+shot "$BASE_URL/admin/v3/analytics"                         "$OUT_DIR/admin-v3-analytics.png"
+shot "$BASE_URL/admin/v3/security"                          "$OUT_DIR/admin-v3-security.png"
+shot "$BASE_URL/admin/v3/settings"                          "$OUT_DIR/admin-v3-settings.png"
+
 # ── Operator console (auth injected by screenshot-proxy) ─────────────────────
 shot "$BASE_URL/admin"                            "$OUT_DIR/admin-dashboard.png"
 shot "$BASE_URL/admin/theme"                      "$OUT_DIR/theme-panel.png"

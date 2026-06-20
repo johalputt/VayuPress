@@ -94,6 +94,16 @@ the editor in HTML mode until first saved in Markdown mode.
 
 ### Admin v3 — Next-Generation Admin & Block Editor
 
+![VayuPress Admin v3 Dashboard](docs/screenshots/admin-v3-dashboard.png)
+
+*The Admin v3 dashboard (`/admin/v3`) — grouped sidebar, stat cards, 14-day
+publishing-trend sparkline, activity feed, and command palette (⌘K).*
+
+![VayuPress Admin v3 Block Editor](docs/screenshots/admin-v3-editor.png)
+
+*The block editor — typed-block document rendered server-side through
+escape + bluemonday UGC, slash-command palette, autosave, and live preview.*
+
 The flagship admin (`/admin/v3`) surpasses Ghost/WordPress/Substack in design and
 depth while staying a sovereign single binary with **zero CDN dependencies** and a
 **strict CSP** (no `unsafe-eval`, no `unsafe-inline`). It runs alongside `/admin/v2`,

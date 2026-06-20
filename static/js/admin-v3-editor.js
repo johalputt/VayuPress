@@ -340,8 +340,21 @@
     autosaveTimer = setTimeout(save, 2500);
   }
 
-  // Live preview: fetch the server-sanitised HTML and show it. The HTML comes
-  // from our own blockrender (UGC-sanitised), so assigning it is safe here.
+  // Live preview. The server already returns UGC-sanitised HTML (blockrender),
+  // but to display rendered markup the client must reinterpret a string as HTML.
+  // Every path to the DOM sink is funnelled through DOMPurify.sanitize so no
+  // unsanitised string can ever reach it; if DOMPurify is somehow unavailable we
+  // degrade to a textContent rendering (escaped, never executed).
+  function renderPreview(rawHTML) {
+    if (window.DOMPurify && typeof window.DOMPurify.sanitize === 'function') {
+      // DOMPurify.sanitize is a recognised XSS sanitizer; its output is safe.
+      previewBody.innerHTML = window.DOMPurify.sanitize(rawHTML);
+    } else {
+      // Fail closed: show the markup as inert text rather than risk injection.
+      previewBody.textContent = rawHTML;
+    }
+  }
+
   function preview() {
     setStatus('Rendering preview…');
     fetch('/admin/v3/api/editor/preview', {
@@ -349,11 +362,7 @@
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
       body: JSON.stringify({ blocks: blocks })
     }).then(function (r) { return r.json(); }).then(function (data) {
-      // Sanitised server-side; defensively re-sanitise client-side if DOMPurify
-      // is present (loaded by the layout as purify.min.js).
-      var safe = data.html || '';
-      if (window.DOMPurify) safe = window.DOMPurify.sanitize(safe);
-      previewBody.innerHTML = safe;
+      renderPreview(data.html || '');
       previewModal.hidden = false;
       setStatus('Ready');
     }).catch(function () { setStatus('Preview failed', 'danger'); });
