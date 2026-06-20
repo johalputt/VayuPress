@@ -319,6 +319,12 @@ See [docs/architecture/system-modes.md](docs/architecture/system-modes.md).
 - **Outbound webhooks** — HMAC-SHA256-signed JSON POSTs on
   article create/update/delete to Zapier/n8n/Make/custom services, with bounded
   retry and a per-hook delivery audit trail
+- **Social auto-posting** — newly published articles auto-share to
+  Mastodon/Pleroma/Akkoma via a single app token (no OAuth dance), async and
+  best-effort with idempotency
+- **Built-in Ghost & WordPress importers** — `vayupress migrate ghost --file …`
+  and `vayupress migrate wordpress --file …` move content off both platforms with
+  no external tooling (titles, slugs, dates, tags, draft status preserved)
 
 ### Event-Driven Reliability (P20–P22)
 - Transactional outbox — events written atomically with article mutations

@@ -34,6 +34,7 @@ import (
 	"github.com/johalputt/vayupress/internal/scheduler"
 	"github.com/johalputt/vayupress/internal/search"
 	"github.com/johalputt/vayupress/internal/settings"
+	"github.com/johalputt/vayupress/internal/social"
 	"github.com/johalputt/vayupress/internal/update"
 	"github.com/johalputt/vayupress/internal/users"
 	"github.com/johalputt/vayupress/internal/versions"
@@ -111,6 +112,9 @@ type App struct {
 
 	// Outbound webhooks (Tier 2).
 	webhooks *webhooks.Store
+
+	// Social auto-posting (Tier 2).
+	social *social.Poster
 }
 
 // startScheduler runs the background ticker that promotes due scheduled posts to
@@ -167,6 +171,25 @@ func (a *App) dispatchWebhook(event string, payload interface{}) {
 		return
 	}
 	go a.webhooks.Dispatch(context.Background(), event, payload)
+}
+
+// shareToSocial auto-posts a newly published article to configured social
+// networks (Tier 2). No-op when social posting is unconfigured. The article
+// title is looked up from the store; failures are logged, never fatal.
+func (a *App) shareToSocial(slug string) {
+	if a.social == nil || !a.social.Enabled() {
+		return
+	}
+	go func() {
+		var title string
+		if err := dbpkg.DB.QueryRow(`SELECT title FROM articles WHERE slug=?`, slug).Scan(&title); err != nil {
+			return
+		}
+		link := "https://" + config.Cfg.Domain + "/" + slug
+		if err := a.social.Share(context.Background(), title, link); err != nil {
+			logging.LogError("social", "share failed: "+slug, err.Error())
+		}
+	}()
 }
 
 // RegisterHook registers a plugin hook with the App's plugin registry.
@@ -290,6 +313,7 @@ func (a *App) registerEventHandlers() {
 		}()
 		a.FireHook("article.create", map[string]interface{}{"slug": e.Slug, "id": e.ID})
 		a.dispatchWebhook("article.created.v1", map[string]interface{}{"slug": e.Slug, "id": e.ID})
+		a.shareToSocial(e.Slug)
 	})
 
 	bus.Subscribe(events.ArticleUpdated{}, func(ctx context.Context, ev interface{}) {

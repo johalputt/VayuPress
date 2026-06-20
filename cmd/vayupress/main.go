@@ -53,6 +53,7 @@ import (
 	"github.com/johalputt/vayupress/internal/scheduler"
 	"github.com/johalputt/vayupress/internal/search"
 	"github.com/johalputt/vayupress/internal/settings"
+	"github.com/johalputt/vayupress/internal/social"
 	"github.com/johalputt/vayupress/internal/trace"
 	"github.com/johalputt/vayupress/internal/update"
 	"github.com/johalputt/vayupress/internal/users"
@@ -326,9 +327,16 @@ func main() {
 	// Scheduled publishing (Tier 1).
 	a.scheduler = scheduler.New(dbpkg.DB)
 
-	// Privacy-first analytics + outbound webhooks (Tier 2).
+	// Privacy-first analytics + outbound webhooks + social posting (Tier 2).
 	a.analytics = analytics.New(dbpkg.DB)
 	a.webhooks = webhooks.New(dbpkg.DB, a.outboundClient)
+	a.social = social.New(social.MastodonConfig{
+		Instance: config.Cfg.MastodonInstance,
+		Token:    config.Cfg.MastodonToken,
+	}, a.outboundClient)
+	if a.social.Enabled() {
+		logging.LogInfo("social", "auto-posting enabled — mastodon="+config.Cfg.MastodonInstance)
+	}
 	go func() {
 		ticker := time.NewTicker(24 * time.Hour)
 		defer ticker.Stop()

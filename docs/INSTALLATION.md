@@ -113,6 +113,8 @@ Expected: `{"status":"ok"}` from both endpoints.
 | `SMTP_TLS`            | `starttls`                     | `starttls` (587), `ssl` (465), or `none` (trusted localhost) |
 | `SCHEDULER_TICK_SEC`  | `60`                           | Scheduled-publish poll interval (seconds); `0` disables |
 | `ANALYTICS_RETAIN_DAYS`| `365`                         | Retention window for privacy-first view aggregates |
+| `SOCIAL_MASTODON_INSTANCE`| (unset)                    | Mastodon-compatible base URL for auto-posting (e.g. `https://mastodon.social`) |
+| `SOCIAL_MASTODON_TOKEN`| (unset)                       | Mastodon app access token (`write:statuses` scope) |
 
 ### Email delivery (Tier 1)
 
@@ -128,6 +130,33 @@ credentials) to enable:
 
 When `SMTP_HOST` is empty, every email call is a safe no-op: subscriber and
 comment flows keep working, delivery is simply skipped and audit-logged.
+
+### Social auto-posting (Tier 2)
+
+When `SOCIAL_MASTODON_INSTANCE` + `SOCIAL_MASTODON_TOKEN` are set, each newly
+published article is automatically shared to your Mastodon-compatible server
+(Mastodon, Pleroma, Akkoma). A single app access token is all that's needed — no
+OAuth redirect flow. Sharing is async and best-effort; a failed toot never
+affects publishing, and an idempotency key prevents duplicate posts on retry.
+
+### Migrating from Ghost & WordPress (Tier 2)
+
+Two built-in importers move content off the most common platforms with no
+external tooling:
+
+```bash
+# Ghost — Settings → Export → download the JSON
+vayupress migrate ghost --file ghost-export.json --dry-run   # preview
+vayupress migrate ghost --file ghost-export.json             # import
+
+# WordPress — Tools → Export → All content (WXR/XML)
+vayupress migrate wordpress --file wordpress-export.xml --dry-run
+vayupress migrate wordpress --file wordpress-export.xml
+```
+
+Both preserve titles, slugs, publish dates, tags/categories, and draft status
+(`--skip-drafts` is on by default), sanitise HTML through the same policy as the
+write queue, and dedupe by slug so re-running is safe.
 
 ### Privacy-first analytics (Tier 2)
 

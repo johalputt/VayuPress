@@ -60,6 +60,10 @@ var Cfg struct {
 
 	// AnalyticsRetainDays bounds how long privacy-first view aggregates are kept.
 	AnalyticsRetainDays int
+
+	// Social auto-posting (Mastodon-compatible). Empty = disabled.
+	MastodonInstance string
+	MastodonToken    string
 }
 
 func Load() {
@@ -103,6 +107,8 @@ func Load() {
 	Cfg.SMTPTLS = EnvOr("SMTP_TLS", "starttls")
 	Cfg.SchedulerTickSec = GetEnvAsInt("SCHEDULER_TICK_SEC", 60)
 	Cfg.AnalyticsRetainDays = GetEnvAsInt("ANALYTICS_RETAIN_DAYS", 365)
+	Cfg.MastodonInstance = EnvOr("SOCIAL_MASTODON_INSTANCE", "")
+	Cfg.MastodonToken = EnvOr("SOCIAL_MASTODON_TOKEN", "")
 }
 
 func MustEnv(k string) string {
