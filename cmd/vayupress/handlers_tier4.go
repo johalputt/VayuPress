@@ -9,8 +9,10 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -77,10 +79,14 @@ func (a *App) handleEmailTemplateList(w http.ResponseWriter, r *http.Request) {
 			DefaultText:    emailtmpl.DefaultText(k),
 			DefaultHTML:    emailtmpl.DefaultHTML(k),
 		}
-		// Pull stored override from DB (may be empty — caller reads defaults above).
-		dbpkg.DB.QueryRowContext(r.Context(),
+		// Pull stored override from DB. ErrNoRows is the benign "no override" case;
+		// any other error is surfaced rather than masked as an empty override.
+		if err := dbpkg.DB.QueryRowContext(r.Context(),
 			`SELECT subject, text_body, html_body FROM email_templates WHERE kind=?`, string(k)).
-			Scan(&row.Subject, &row.Text, &row.HTML)
+			Scan(&row.Subject, &row.Text, &row.HTML); err != nil && err != sql.ErrNoRows {
+			writeAPIError(w, r, http.StatusInternalServerError, "db-error", err.Error(), "")
+			return
+		}
 		out = append(out, row)
 	}
 	writeJSON(w, r, http.StatusOK, map[string]interface{}{"templates": out})
@@ -221,7 +227,7 @@ func (a *App) handleI18nLanguageSet(w http.ResponseWriter, r *http.Request) {
 	}
 	// Hot-reload in-memory catalog.
 	a.i18n.SetLanguage(lang, body.Messages)
-	logging.LogInfo("i18n", "updated "+lang+" ("+string(rune('0'+len(body.Messages)))+" keys)")
+	logging.LogInfo("i18n", "updated "+lang+" ("+strconv.Itoa(len(body.Messages))+" keys)")
 	writeJSON(w, r, http.StatusOK, map[string]interface{}{
 		"status": "ok", "lang": lang, "keys": len(body.Messages),
 	})

@@ -111,7 +111,9 @@ func (a *App) handleMediaUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close() //nolint:errcheck
 
-	raw, err := io.ReadAll(io.LimitReader(file, maxImageBytes+1))
+	// Read up to the document cap (+1 to detect overflow). PDFs may be up to
+	// maxDocBytes; images are additionally constrained to maxImageBytes below.
+	raw, err := io.ReadAll(io.LimitReader(file, maxDocBytes+1))
 	if err != nil {
 		fail(400, "could not read file: "+err.Error())
 		return

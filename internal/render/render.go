@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -320,53 +321,102 @@ type RelatedArticle struct {
 }
 
 // codeBlockRe matches <pre><code class="language-LANG"> or <pre><code class="lang-LANG">
+// (class optional). It runs against the RAW, pre-sanitised content so the
+// language hint on the class attribute is still present.
 var codeBlockRe = regexp.MustCompile(`(?s)<pre><code(?:\s+class="(?:language-|lang-)([^"]+)")?>([^<]*(?:<[^/][^<]*)*)</code></pre>`)
 
-// highlightCodeBlocks walks the HTML string and replaces fenced code blocks with
-// chroma-highlighted equivalents. Unknown languages fall back to "text". The
-// generated <span> elements carry only inline class attributes (no inline style)
-// so CSP style-src 'self' is not violated.
-func highlightCodeBlocks(html string) string {
-	return codeBlockRe.ReplaceAllStringFunc(html, func(match string) string {
+// renderContentHTML produces the final, safe article body HTML. It must be the
+// single entry point for turning stored article content into rendered HTML.
+//
+// Code blocks are highlighted by chroma BEFORE the prose is sanitised, because
+// bluemonday's UGC policy would otherwise (a) strip the `class="language-…"`
+// hint we need to pick a lexer and (b) strip chroma's own `<span class="…">`
+// output. To avoid both, each code block is replaced with an unguessable
+// plain-text placeholder, the surrounding prose is sanitised, and the trusted —
+// fully HTML-escaped, class-only, no-inline-style — chroma output is substituted
+// back in afterwards. This keeps the strict-CSP posture (style-src 'self') and
+// the XSS posture (all user prose still passes through bluemonday) intact.
+func renderContentHTML(raw string) string {
+	highlighted := map[string]string{}
+	nonce := newNonce()
+	i := 0
+
+	withPlaceholders := codeBlockRe.ReplaceAllStringFunc(raw, func(match string) string {
 		sub := codeBlockRe.FindStringSubmatch(match)
 		if sub == nil {
 			return match
 		}
-		lang := sub[1]
-		code := sub[2]
-		// unescape HTML entities that bluemonday/goldmark encoded
-		code = strings.ReplaceAll(code, "&lt;", "<")
-		code = strings.ReplaceAll(code, "&gt;", ">")
-		code = strings.ReplaceAll(code, "&amp;", "&")
-		code = strings.ReplaceAll(code, "&#34;", `"`)
-		code = strings.ReplaceAll(code, "&#39;", "'")
-
-		var lexer = lexers.Get(lang)
-		if lexer == nil {
-			lexer = lexers.Fallback
+		out, ok := highlightOne(sub[1], sub[2])
+		if !ok {
+			return match // leave the original block for bluemonday to sanitise
 		}
-		style := styles.Get("github-dark")
-		if style == nil {
-			style = styles.Fallback
-		}
-		formatter := chromahtml.New(
-			chromahtml.WithClasses(true),
-			chromahtml.PreventSurroundingPre(true),
-		)
-		iterator, err := lexer.Tokenise(nil, code)
-		if err != nil {
-			return match
-		}
-		var buf bytes.Buffer
-		if err := formatter.Format(&buf, style, iterator); err != nil {
-			return match
-		}
-		langAttr := ""
-		if lang != "" {
-			langAttr = ` data-lang="` + lang + `"`
-		}
-		return `<pre` + langAttr + `><code>` + buf.String() + `</code></pre>`
+		token := "VAYUCODE" + nonce + strconv.Itoa(i) + "ENDVAYUCODE"
+		i++
+		highlighted[token] = out
+		return token
 	})
+
+	safe := policy.Sanitize(withPlaceholders)
+
+	for token, htmlOut := range highlighted {
+		safe = strings.ReplaceAll(safe, token, htmlOut)
+	}
+	return safe
+}
+
+// highlightOne renders a single code block with chroma. It returns the
+// `<pre><code>…</code></pre>` HTML and true on success, or ("", false) when the
+// block should be left untouched (and sanitised normally).
+func highlightOne(lang, code string) (string, bool) {
+	// Undo the entity-encoding goldmark applies inside code fences.
+	code = strings.ReplaceAll(code, "&lt;", "<")
+	code = strings.ReplaceAll(code, "&gt;", ">")
+	code = strings.ReplaceAll(code, "&#34;", `"`)
+	code = strings.ReplaceAll(code, "&#39;", "'")
+	code = strings.ReplaceAll(code, "&amp;", "&") // must be last
+
+	lexer := lexers.Get(lang)
+	if lexer == nil {
+		// No usable language hint → don't pretend to highlight; let bluemonday
+		// render it as a plain (but still styled) code block.
+		return "", false
+	}
+	style := styles.Get("github-dark")
+	if style == nil {
+		style = styles.Fallback
+	}
+	formatter := chromahtml.New(
+		chromahtml.WithClasses(true),
+		chromahtml.PreventSurroundingPre(true),
+	)
+	iterator, err := lexer.Tokenise(nil, code)
+	if err != nil {
+		return "", false
+	}
+	var buf bytes.Buffer
+	if err := formatter.Format(&buf, style, iterator); err != nil {
+		return "", false
+	}
+	langAttr := ""
+	if lang != "" {
+		langAttr = ` data-lang="` + template.HTMLEscapeString(lang) + `"`
+	}
+	return `<pre class="chroma"` + langAttr + `><code>` + buf.String() + `</code></pre>`, true
+}
+
+// newNonce returns a short random hex string used to make code-block
+// placeholders unguessable, so article content cannot forge one. On the
+// (astronomically unlikely) RNG failure it mixes in the current time so the
+// token never degenerates to a predictable all-zero value.
+func newNonce() string {
+	var b [8]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		t := time.Now().UnixNano()
+		for i := 0; i < 8; i++ {
+			b[i] = byte(t >> (8 * i))
+		}
+	}
+	return hex.EncodeToString(b[:])
 }
 
 // ChromaCSS returns the CSS stylesheet for chroma's github-dark theme.
@@ -634,8 +684,7 @@ func RenderArticle(a db.Article) (string, error) {
 // RenderArticleWithLayout sanitizes content, applies syntax highlighting, executes the template,
 // and records render latency. related is an optional list of same-tag suggestions.
 func RenderArticleWithLayout(a db.Article, layout ArticleLayoutType, related []RelatedArticle) (string, error) {
-	a.Content = policy.Sanitize(a.Content)
-	a.Content = highlightCodeBlocks(a.Content)
+	a.Content = renderContentHTML(a.Content)
 	start := time.Now()
 	var buf strings.Builder
 	s := getActiveSettings()

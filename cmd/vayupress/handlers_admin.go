@@ -1686,21 +1686,43 @@ func (a *App) handleFaultStatus(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// relatedArticles returns up to limit published articles that share at least one
-// tag with the current article. The current article's slug is excluded.
+// relatedArticles returns up to limit articles that share at least one tag with
+// the current article, most recent first. The current slug is excluded.
+//
+// Tags are stored as a comma-separated string. A coarse SQL LIKE pre-filter
+// narrows candidates cheaply; exact, comma-delimited token matching is then done
+// in Go so a tag like "go" does not spuriously match "golang", and so a tag that
+// happens to contain LIKE metacharacters ("%", "_") cannot widen the match. We
+// over-fetch (limit*4, capped) before the precise filter to avoid missing rows.
 func (a *App) relatedArticles(ctx context.Context, currentSlug string, tags []string, limit int) []render.RelatedArticle {
 	if len(tags) == 0 || dbpkg.DB == nil {
 		return nil
 	}
-	// Build a LIKE clause per tag — tags are stored as comma-separated text.
+	want := make(map[string]struct{}, len(tags))
 	args := []interface{}{}
 	clauses := []string{}
 	for _, t := range tags {
-		clauses = append(clauses, `tags LIKE ?`)
-		args = append(args, "%"+t+"%")
+		t = strings.TrimSpace(t)
+		if t == "" {
+			continue
+		}
+		want[strings.ToLower(t)] = struct{}{}
+		// Escape LIKE metacharacters so a tag value cannot act as a wildcard.
+		esc := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(t)
+		clauses = append(clauses, `tags LIKE ? ESCAPE '\'`)
+		args = append(args, "%"+esc+"%")
 	}
-	args = append(args, currentSlug, limit)
-	q := `SELECT title, slug, created_at FROM articles WHERE status='published' AND (` +
+	if len(clauses) == 0 {
+		return nil
+	}
+	overFetch := limit * 4
+	if overFetch > 200 {
+		overFetch = 200
+	}
+	args = append(args, currentSlug, overFetch)
+	// Note: the articles table has no status column — every row is a published
+	// article (drafts live behind preview tokens).
+	q := `SELECT title, slug, tags, created_at FROM articles WHERE (` +
 		strings.Join(clauses, " OR ") + `) AND slug != ? ORDER BY created_at DESC LIMIT ?`
 	rows, err := dbpkg.DB.QueryContext(ctx, q, args...)
 	if err != nil {
@@ -1710,10 +1732,25 @@ func (a *App) relatedArticles(ctx context.Context, currentSlug string, tags []st
 	var out []render.RelatedArticle
 	for rows.Next() {
 		var ra render.RelatedArticle
-		if err := rows.Scan(&ra.Title, &ra.Slug, &ra.CreatedAt); err != nil {
+		var tagsCSV string
+		if err := rows.Scan(&ra.Title, &ra.Slug, &tagsCSV, &ra.CreatedAt); err != nil {
+			continue
+		}
+		// Precise token match: at least one tag must equal a wanted tag.
+		match := false
+		for _, t := range strings.Split(tagsCSV, ",") {
+			if _, ok := want[strings.ToLower(strings.TrimSpace(t))]; ok {
+				match = true
+				break
+			}
+		}
+		if !match {
 			continue
 		}
 		out = append(out, ra)
+		if len(out) >= limit {
+			break
+		}
 	}
 	return out
 }

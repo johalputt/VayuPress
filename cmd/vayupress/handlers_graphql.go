@@ -31,9 +31,30 @@ func (g gqlResolver) Article(ctx context.Context, slug string) (*dbpkg.Article, 
 }
 
 func (g gqlResolver) Articles(ctx context.Context, tag string, limit, offset int) ([]dbpkg.Article, error) {
-	page := offset/limit + 1
-	arts, _, err := g.a.articles.Repo.List(ctx, page, limit, tag)
-	return arts, err
+	// The repo paginates by (page, limit); to honour an arbitrary offset exactly
+	// (not just page-aligned offsets) we fetch a window covering offset+limit
+	// rows from page 1 and slice. The window is bounded so a huge offset cannot
+	// force an unbounded scan.
+	if offset < 0 {
+		offset = 0
+	}
+	window := offset + limit
+	const maxWindow = 1000
+	if window > maxWindow {
+		window = maxWindow
+	}
+	arts, _, err := g.a.articles.Repo.List(ctx, 1, window, tag)
+	if err != nil {
+		return nil, err
+	}
+	if offset >= len(arts) {
+		return nil, nil
+	}
+	end := offset + limit
+	if end > len(arts) {
+		end = len(arts)
+	}
+	return arts[offset:end], nil
 }
 
 func (g gqlResolver) Tags(ctx context.Context) (map[string]int, error) {

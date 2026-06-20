@@ -111,6 +111,12 @@ self.addEventListener('fetch', event => {
     );
     return;
   }
+  // Never cache authenticated admin pages — they must always hit the network
+  // (avoids serving a stale/foreign admin view from a shared-device cache).
+  if (url.pathname === '/admin' || url.pathname.startsWith('/admin/')) {
+    event.respondWith(fetch(event.request));
+    return;
+  }
   // Stale-while-revalidate for HTML pages.
   if (event.request.mode === 'navigate') {
     event.respondWith(
