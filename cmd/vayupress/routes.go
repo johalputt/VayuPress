@@ -107,6 +107,9 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	r.Get("/media/{file}", a.serveMedia)
 
 	// Public API
+	r.Get("/api/v1/graphql", a.handleGraphQL)          // read-only GraphQL (GET)
+	r.Post("/api/v1/graphql", a.handleGraphQL)         // read-only GraphQL (POST)
+	r.Get("/api/v1/i18n/{lang}", a.handleI18nMessages) // i18n message bundle
 	r.Get("/api/v1/articles", a.handleListArticles)
 	r.Get("/api/v1/articles/{slug}", a.handleGetArticle)
 	r.Get("/api/v1/articles/{slug}/comments", a.handleCommentList)
@@ -254,6 +257,15 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 		r.With(auth.CSRFTokenMiddleware).Post("/admin/theme", a.handleThemeSave)
 		r.With(auth.CSRFTokenMiddleware).Post("/admin/theme/reset", a.handleThemeReset)
 		r.With(auth.CSRFTokenMiddleware).Post("/admin/theme/favicon", a.handleFaviconUpload)
+
+		// Tier 4: real-time SSE event stream.
+		r.Get("/api/v1/stream", a.handleEventStream)
+		// Tier 4: email template management.
+		r.Get("/api/v1/admin/email-templates", a.handleEmailTemplateList)
+		r.With(auth.CSRFTokenMiddleware).Put("/api/v1/admin/email-templates/{kind}", a.handleEmailTemplateSet)
+		// Tier 4: i18n catalog management.
+		r.Get("/api/v1/admin/i18n", a.handleI18nLanguageList)
+		r.With(auth.CSRFTokenMiddleware).Put("/api/v1/admin/i18n/{lang}", a.handleI18nLanguageSet)
 
 		r.HandleFunc("/debug/pprof/", a.pprofHandler)
 		r.HandleFunc("/debug/pprof/cmdline", a.pprofHandler)

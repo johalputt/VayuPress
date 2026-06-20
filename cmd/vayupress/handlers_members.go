@@ -13,7 +13,6 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
-	"html"
 	"io"
 	"net/http"
 	"strings"
@@ -22,6 +21,7 @@ import (
 
 	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/email"
+	"github.com/johalputt/vayupress/internal/emailtmpl"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/members"
 	"github.com/johalputt/vayupress/internal/render"
@@ -96,16 +96,19 @@ func (a *App) handleMemberLogin(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, http.StatusOK, map[string]string{"status": "check your email"})
 }
 
-// sendMemberMagicLink emails the one-time sign-in link.
+// sendMemberMagicLink emails the one-time sign-in link, honouring any
+// operator-customised template (Tier 4).
 func (a *App) sendMemberMagicLink(addr, token string) {
 	if a.mailer == nil {
 		return
 	}
 	link := "https://" + config.Cfg.Domain + "/members/verify?token=" + token
-	text := "Sign in to " + config.Cfg.Domain + " by opening this link (valid 30 minutes):\r\n\r\n" + link
-	htmlBody := `<p>Sign in to <strong>` + html.EscapeString(config.Cfg.Domain) + `</strong>:</p>` +
-		`<p><a href="` + html.EscapeString(link) + `">Sign in</a> (valid 30 minutes)</p>`
-	if err := a.mailer.Send(email.Message{To: addr, Subject: "Your sign-in link", Text: text, HTML: htmlBody}); err != nil {
+	msg := a.renderEmail(emailtmpl.MagicLink, map[string]interface{}{
+		"Domain":     config.Cfg.Domain,
+		"Link":       link,
+		"TTLMinutes": 30,
+	})
+	if err := a.mailer.Send(email.Message{To: addr, Subject: msg.Subject, Text: msg.Text, HTML: msg.HTML}); err != nil {
 		logging.LogError("members", "magic link email failed", err.Error())
 	}
 }

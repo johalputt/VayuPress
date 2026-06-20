@@ -34,10 +34,12 @@ import (
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/email"
+	"github.com/johalputt/vayupress/internal/emailtmpl"
 	"github.com/johalputt/vayupress/internal/events"
 	"github.com/johalputt/vayupress/internal/fault"
 	"github.com/johalputt/vayupress/internal/health"
 	"github.com/johalputt/vayupress/internal/httputil"
+	"github.com/johalputt/vayupress/internal/i18n"
 	"github.com/johalputt/vayupress/internal/lifecycle"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/members"
@@ -62,6 +64,7 @@ import (
 	"github.com/johalputt/vayupress/internal/versions"
 	"github.com/johalputt/vayupress/internal/webhooks"
 	"github.com/johalputt/vayupress/internal/webmention"
+	"github.com/johalputt/vayupress/internal/ws"
 )
 
 var Version = "1.1.0"
@@ -440,6 +443,14 @@ func main() {
 
 	// Wire search service (ADR-0050).
 	a.search = search.NewMeiliService(a.outboundClient, dbpkg.DB)
+
+	// Tier 4 services: GraphQL, live collaboration stream, email templates, i18n.
+	a.initGraphQL()
+	a.collab = ws.New(64)
+	a.emailTmpl = emailtmpl.New()
+	a.i18n = i18n.New()
+	a.loadEmailTemplateOverrides()
+	a.loadI18nFromDB()
 
 	if n, err := dbpkg.DB.Exec(`UPDATE write_jobs SET status='pending' WHERE status='processing'`); err == nil {
 		if rows, _ := n.RowsAffected(); rows > 0 {

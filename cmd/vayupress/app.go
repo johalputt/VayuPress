@@ -22,7 +22,10 @@ import (
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/email"
+	"github.com/johalputt/vayupress/internal/emailtmpl"
 	"github.com/johalputt/vayupress/internal/events"
+	"github.com/johalputt/vayupress/internal/graphqlapi"
+	"github.com/johalputt/vayupress/internal/i18n"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/members"
 	"github.com/johalputt/vayupress/internal/metrics"
@@ -42,6 +45,7 @@ import (
 	"github.com/johalputt/vayupress/internal/versions"
 	"github.com/johalputt/vayupress/internal/webhooks"
 	"github.com/johalputt/vayupress/internal/webmention"
+	"github.com/johalputt/vayupress/internal/ws"
 )
 
 // App holds all mutable runtime state. Handlers are methods on *App so that
@@ -123,6 +127,15 @@ type App struct {
 
 	// Reader memberships & paywalls (Tier 2).
 	members *members.Store
+
+	// Read-only public GraphQL API (Tier 4).
+	graphql *graphqlapi.Service
+	// Real-time collaboration / live admin event stream (Tier 4).
+	collab *ws.Hub
+	// Operator-customisable email templates (Tier 4).
+	emailTmpl *emailtmpl.Store
+	// UI/content internationalisation (Tier 4).
+	i18n *i18n.Catalog
 }
 
 // startScheduler runs the background ticker that promotes due scheduled posts to
@@ -322,6 +335,7 @@ func (a *App) registerEventHandlers() {
 		a.FireHook("article.create", map[string]interface{}{"slug": e.Slug, "id": e.ID})
 		a.dispatchWebhook("article.created.v1", map[string]interface{}{"slug": e.Slug, "id": e.ID})
 		a.shareToSocial(e.Slug)
+		a.broadcastEvent("article.created", map[string]interface{}{"slug": e.Slug, "id": e.ID})
 	})
 
 	bus.Subscribe(events.ArticleUpdated{}, func(ctx context.Context, ev interface{}) {
@@ -343,6 +357,7 @@ func (a *App) registerEventHandlers() {
 		}()
 		a.FireHook("article.update", map[string]interface{}{"slug": e.Slug})
 		a.dispatchWebhook("article.updated.v1", map[string]interface{}{"slug": e.Slug})
+		a.broadcastEvent("article.updated", map[string]interface{}{"slug": e.Slug})
 	})
 
 	bus.Subscribe(events.ArticleDeleted{}, func(ctx context.Context, ev interface{}) {
@@ -353,6 +368,7 @@ func (a *App) registerEventHandlers() {
 		}()
 		a.FireHook("article.delete", map[string]interface{}{"slug": e.Slug, "id": e.ID})
 		a.dispatchWebhook("article.deleted.v1", map[string]interface{}{"slug": e.Slug, "id": e.ID})
+		a.broadcastEvent("article.deleted", map[string]interface{}{"slug": e.Slug, "id": e.ID})
 	})
 
 	// Cache invalidation is the single owner of local rendered-cache purging.

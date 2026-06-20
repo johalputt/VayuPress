@@ -24,6 +24,7 @@ import (
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/email"
+	"github.com/johalputt/vayupress/internal/emailtmpl"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/newsletter"
 	"github.com/johalputt/vayupress/internal/toc"
@@ -349,23 +350,19 @@ func (a *App) handleNewsletterSubscribe(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, r, code, map[string]interface{}{"subscriber": sub, "new": isNew})
 }
 
-// sendNewsletterConfirmation emails the double opt-in confirmation link.
+// sendNewsletterConfirmation emails the double opt-in confirmation link,
+// honouring any operator-customised template (Tier 4).
 func (a *App) sendNewsletterConfirmation(addr, token string) {
 	if a.mailer == nil {
 		return
 	}
-	base := "https://" + config.Cfg.Domain
-	confirm := base + "/api/v1/newsletter/confirm?token=" + token
-	text := "Welcome to " + config.Cfg.Domain + "!\r\n\r\n" +
-		"Please confirm your subscription by visiting:\r\n" + confirm + "\r\n\r\n" +
-		"If you did not request this, you can ignore this email."
-	htmlBody := `<p>Welcome to <strong>` + html.EscapeString(config.Cfg.Domain) + `</strong>!</p>` +
-		`<p>Please confirm your subscription:</p>` +
-		`<p><a href="` + html.EscapeString(confirm) + `">Confirm my subscription</a></p>` +
-		`<p style="color:#888;font-size:12px">If you did not request this, you can ignore this email.</p>`
+	confirm := "https://" + config.Cfg.Domain + "/api/v1/newsletter/confirm?token=" + token
+	msg := a.renderEmail(emailtmpl.NewsletterConfirm, map[string]interface{}{
+		"Domain": config.Cfg.Domain,
+		"Link":   confirm,
+	})
 	if err := a.mailer.Send(email.Message{
-		To: addr, Subject: "Confirm your subscription to " + config.Cfg.Domain,
-		Text: text, HTML: htmlBody,
+		To: addr, Subject: msg.Subject, Text: msg.Text, HTML: msg.HTML,
 	}); err != nil {
 		logging.LogError("newsletter", "confirmation email failed", err.Error())
 	}
@@ -690,15 +687,16 @@ func (a *App) notifyCommentApproved(ctx context.Context, commentID string) {
 		return
 	}
 	link := "https://" + config.Cfg.Domain + "/" + articleSlug
-	text := "Hi " + author + ",\r\n\r\nYour comment on " + link + " has been approved and is now live.\r\n\r\nThank you for contributing!"
-	htmlBody := `<p>Hi <strong>` + html.EscapeString(author) + `</strong>,</p>` +
-		`<p>Your comment on <a href="` + html.EscapeString(link) + `">` + html.EscapeString(articleSlug) + `</a> has been approved and is now live.</p>` +
-		`<p>Thank you for contributing!</p>`
+	msg := a.renderEmail(emailtmpl.CommentApproved, map[string]interface{}{
+		"Author": author,
+		"Link":   link,
+		"Slug":   articleSlug,
+	})
 	if err := a.mailer.Send(email.Message{
 		To:      addr,
-		Subject: "Your comment is live",
-		Text:    text,
-		HTML:    htmlBody,
+		Subject: msg.Subject,
+		Text:    msg.Text,
+		HTML:    msg.HTML,
 	}); err != nil {
 		logging.LogError("comments", "approval email failed", err.Error())
 	}

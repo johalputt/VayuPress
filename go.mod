@@ -14,6 +14,7 @@ require (
 require (
 	github.com/alecthomas/chroma/v2 v2.27.0 // indirect
 	github.com/dlclark/regexp2/v2 v2.2.1 // indirect
+	github.com/graphql-go/graphql v0.8.1 // indirect
 )
 
 require (
