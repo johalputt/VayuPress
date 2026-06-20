@@ -1411,3 +1411,55 @@
   .vp-v3 .editor-shell { grid-template-columns: 1fr; }
   .vp-v3 .editor-sidebar { position: static; }
 }
+
+/* ── Media library (Phase 4, ADR-0068) ─────────────────────────────────────── */
+.vp-v3 .media-dropzone {
+  border: 2px dashed var(--border-strong);
+  border-radius: var(--r-md);
+  padding: var(--sp-8);
+  text-align: center;
+  cursor: pointer;
+  transition: border-color var(--t-fast), background var(--t-fast);
+  margin-bottom: var(--sp-6);
+}
+.vp-v3 .media-dropzone:hover, .vp-v3 .media-dropzone:focus-visible { border-color: var(--brand); background: var(--brand-dim); outline: none; }
+.vp-v3 .media-dropzone--over { border-color: var(--brand); background: var(--brand-dim); }
+.vp-v3 .media-dropzone__icon { font-size: 2rem; color: var(--brand); }
+.vp-v3 .media-dropzone__text { margin-top: var(--sp-2); font-weight: 500; }
+.vp-v3 .media-dropzone__link { color: var(--brand); text-decoration: underline; }
+.vp-v3 .media-dropzone__hint { margin-top: var(--sp-1); }
+
+.vp-v3 .media-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: var(--sp-4);
+}
+.vp-v3 .media-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.vp-v3 .media-card__thumb {
+  aspect-ratio: 4 / 3;
+  background: var(--bg-surface-3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.vp-v3 .media-card__thumb img { width: 100%; height: 100%; object-fit: cover; }
+.vp-v3 .media-card__pdf { font-weight: 700; color: var(--danger); letter-spacing: 0.05em; }
+.vp-v3 .media-card__meta { padding: var(--sp-2) var(--sp-3); display: flex; flex-direction: column; gap: var(--sp-1); font-size: var(--text-xs); color: var(--text-2); }
+.vp-v3 .media-card__copy {
+  align-self: flex-start;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 2px var(--sp-2);
+  font-size: var(--text-xs);
+  color: var(--text-2);
+}
+.vp-v3 .media-card__copy:hover { background: var(--bg-surface-3); color: var(--text); }
+.vp-v3 .skeleton--media { aspect-ratio: 4 / 3; height: auto; border-radius: var(--r-md); }

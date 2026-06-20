@@ -1,8 +1,12 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/johalputt/vayupress/internal/config"
 )
 
 // TestV3LayoutCSPSafe verifies the v3 chrome carries the nonce'd script, links
@@ -72,5 +76,45 @@ func TestV3EditorBodyCSPSafe(t *testing.T) {
 	}
 	if strings.Contains(out, `slug"<x>`) {
 		t.Error("editor body did not escape slug")
+	}
+}
+
+// TestListMediaItemsFiltersUnsafeNames ensures the media library only surfaces
+// server-generated content-addressed names and silently ignores anything else
+// (stray uploads, traversal-looking names, disallowed extensions).
+func TestListMediaItemsFiltersUnsafeNames(t *testing.T) {
+	dir := t.TempDir()
+	prev := config.Cfg.MediaDir
+	config.Cfg.MediaDir = dir
+	t.Cleanup(func() { config.Cfg.MediaDir = prev })
+
+	good := strings.Repeat("a", 32) + ".png"
+	goodPDF := strings.Repeat("b", 32) + ".pdf"
+	bad := []string{
+		"evil.svg",
+		"..%2fetc%2fpasswd",
+		strings.Repeat("a", 32) + ".svg", // SVG never allowed
+		"short.png",
+		"notes.txt",
+	}
+	for _, n := range append([]string{good, goodPDF}, bad...) {
+		if err := os.WriteFile(filepath.Join(dir, n), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	items := listMediaItems()
+	if len(items) != 2 {
+		t.Fatalf("want 2 safe items, got %d: %+v", len(items), items)
+	}
+	got := map[string]bool{}
+	for _, it := range items {
+		got[it.Name] = true
+		if !strings.HasPrefix(it.URL, "/media/") {
+			t.Errorf("unexpected URL: %q", it.URL)
+		}
+	}
+	if !got[good] || !got[goodPDF] {
+		t.Errorf("expected safe names present, got %+v", got)
 	}
 }

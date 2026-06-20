@@ -91,6 +91,8 @@ func (a *App) registerAdminV3UIRoutes(r chi.Router) {
 		// Pages
 		pr.Get("/admin/v3", a.handleV3Dashboard)
 		pr.Get("/admin/v3/posts", a.handleV3Posts)
+		pr.Get("/admin/v3/media", a.handleV3Media)
+		pr.Get("/admin/v3/api/media", a.handleV3MediaList)
 		pr.Get("/admin/v3/editor", a.handleV3Editor)
 		pr.Get("/admin/v3/editor/{slug}", a.handleV3Editor)
 		pr.Get("/admin/v3/seo", a.handleV3SEO)

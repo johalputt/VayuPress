@@ -384,6 +384,125 @@ $$('[data-setting-key]').forEach(function (el) {
   });
 });
 
+/* ── Media library (Phase 4) ─────────────────────────────────── */
+(function initMedia() {
+  var grid = $('[data-media-grid]');
+  if (!grid) return;
+  var dropzone = $('[data-media-dropzone]');
+  var input = $('[data-media-input]');
+
+  function relTime(unix) {
+    var s = Math.floor(Date.now() / 1000) - unix;
+    if (s < 60) return 'just now';
+    if (s < 3600) return Math.floor(s / 60) + 'm ago';
+    if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+    return Math.floor(s / 86400) + 'd ago';
+  }
+
+  function fmtSize(b) {
+    if (b < 1024) return b + ' B';
+    if (b < 1048576) return (b / 1024).toFixed(0) + ' KB';
+    return (b / 1048576).toFixed(1) + ' MB';
+  }
+
+  function card(item) {
+    var el = document.createElement('figure');
+    el.className = 'media-card';
+
+    var thumb = document.createElement('div');
+    thumb.className = 'media-card__thumb';
+    if (item.isPdf) {
+      var badge = document.createElement('span');
+      badge.className = 'media-card__pdf';
+      badge.textContent = 'PDF';
+      thumb.appendChild(badge);
+    } else {
+      var img = document.createElement('img');
+      img.loading = 'lazy';
+      img.src = item.url;
+      img.alt = item.name;
+      thumb.appendChild(img);
+    }
+    el.appendChild(thumb);
+
+    var meta = document.createElement('figcaption');
+    meta.className = 'media-card__meta';
+    var size = document.createElement('span');
+    size.textContent = fmtSize(item.size) + ' · ' + relTime(item.mod);
+    meta.appendChild(size);
+
+    var copy = document.createElement('button');
+    copy.type = 'button';
+    copy.className = 'media-card__copy';
+    copy.textContent = 'Copy URL';
+    copy.addEventListener('click', function () {
+      var full = window.location.origin + item.url;
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(full).then(function () { toast('URL copied', 'ok'); });
+      } else {
+        toast(full, 'ok');
+      }
+    });
+    meta.appendChild(copy);
+    el.appendChild(meta);
+    return el;
+  }
+
+  function load() {
+    fetch('/admin/v3/api/media', { headers: { 'Accept': 'application/json' } })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        while (grid.firstChild) grid.removeChild(grid.firstChild);
+        var items = (data && data.items) || [];
+        if (!items.length) {
+          var empty = document.createElement('div');
+          empty.className = 'empty-state';
+          empty.textContent = 'No media yet. Upload your first image or PDF.';
+          grid.appendChild(empty);
+          return;
+        }
+        items.forEach(function (it) { grid.appendChild(card(it)); });
+      })
+      .catch(function () { toast('Could not load media', 'error'); });
+  }
+
+  function upload(file) {
+    if (!file) return;
+    var fd = new FormData();
+    fd.append('file', file);
+    toast('Uploading…', 'ok');
+    fetch('/api/v1/admin/media', {
+      method: 'POST',
+      headers: { 'X-CSRF-Token': cookie('vp_csrf') },
+      body: fd
+    })
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (res) {
+        if (!res.ok) { toast(res.j.error || 'Upload failed', 'error'); return; }
+        toast('Uploaded', 'ok');
+        load();
+      })
+      .catch(function () { toast('Network error', 'error'); });
+  }
+
+  if (dropzone) {
+    dropzone.addEventListener('click', function () { if (input) input.click(); });
+    dropzone.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (input) input.click(); }
+    });
+    dropzone.addEventListener('dragover', function (e) { e.preventDefault(); dropzone.classList.add('media-dropzone--over'); });
+    dropzone.addEventListener('dragleave', function () { dropzone.classList.remove('media-dropzone--over'); });
+    dropzone.addEventListener('drop', function (e) {
+      e.preventDefault();
+      dropzone.classList.remove('media-dropzone--over');
+      if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) upload(e.dataTransfer.files[0]);
+    });
+  }
+  if (input) input.addEventListener('change', function () { if (input.files.length) upload(input.files[0]); });
+
+  load();
+})();
+
 /* ── Login page shake on error ───────────────────────────────── */
 (function initLogin() {
   var panel = $('.login-panel');
