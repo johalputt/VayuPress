@@ -278,6 +278,13 @@ See [docs/architecture/system-modes.md](docs/architecture/system-modes.md).
 ### Core Publishing (P1–P8)
 - RESTful JSON API for articles (CRUD with slugs, tags, full-text content)
 - Async write queue — SQLite-backed, crash-safe, with dead-letter replay
+- **Scheduled publishing** — stage future-dated posts (RFC3339), promoted through
+  the normal render/index/cache pipeline by a durable SQLite-backed ticker that
+  also catches up anything missed during downtime
+- **Sovereign email & newsletter** — plain-SMTP delivery on the Go standard
+  library (no third-party SDKs, no hosted senders), double opt-in confirmations,
+  and one-click broadcasts with auto unsubscribe links; a safe no-op until
+  `SMTP_HOST` is set
 - Sitemap XML, RSS feed, and robots.txt auto-generation
 - In-memory render cache with static-file output via Nginx
 - SQLite WAL mode with adaptive checkpointing
@@ -410,6 +417,10 @@ trusted, and the strict CSP stays intact:
 | `GET` | `/api/v1/admin/budgets` | Governance error-budget state + recommended escalation |
 | `GET` | `/api/v1/admin/search/drift` | Search-index vs article-store drift report |
 | `POST` | `/admin/search/reindex` | Rebuild the search index from the store (CSRF-protected) |
+| `POST` | `/api/v1/admin/newsletter/broadcast` | Email all confirmed subscribers (CSRF-protected) |
+| `GET` | `/api/v1/admin/schedule` | List staged scheduled posts |
+| `POST` | `/api/v1/admin/schedule` | Stage a future-dated post (CSRF-protected) |
+| `DELETE` | `/api/v1/admin/schedule/{id}` | Cancel a scheduled post (CSRF-protected) |
 
 Public theming endpoints (no auth): `GET /theme.css` (operator palette + custom
 CSS, served same-origin for CSP), `GET /static/js/theme-toggle.js` (sun/moon

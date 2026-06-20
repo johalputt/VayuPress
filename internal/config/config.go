@@ -44,6 +44,19 @@ var Cfg struct {
 	// SearchReconcileMin is the interval, in minutes, between background search
 	// drift checks. 0 disables the periodic reconciler entirely.
 	SearchReconcileMin int
+
+	// SMTP email delivery (Tier 1). When SMTPHost is empty, email is a no-op:
+	// subscriber/comment flows still work, delivery is simply skipped.
+	SMTPHost     string
+	SMTPPort     int
+	SMTPUsername string
+	SMTPPassword string
+	SMTPFrom     string // "VayuPress <hello@example.com>"
+	SMTPTLS      string // starttls (default) | ssl | none
+
+	// SchedulerTickSec is how often the publishing scheduler scans for posts
+	// whose scheduled time has arrived. 0 disables scheduled publishing.
+	SchedulerTickSec int
 }
 
 func Load() {
@@ -79,6 +92,13 @@ func Load() {
 	Cfg.WALSizeThresholdMB = GetEnvAsInt("WAL_SIZE_THRESHOLD_MB", 32)
 	Cfg.PprofRateLimit = GetEnvAsInt("PPROF_RATE_LIMIT", 5)
 	Cfg.SearchReconcileMin = GetEnvAsInt("SEARCH_RECONCILE_MIN", 60)
+	Cfg.SMTPHost = EnvOr("SMTP_HOST", "")
+	Cfg.SMTPPort = GetEnvAsInt("SMTP_PORT", 587)
+	Cfg.SMTPUsername = EnvOr("SMTP_USERNAME", "")
+	Cfg.SMTPPassword = EnvOr("SMTP_PASSWORD", "")
+	Cfg.SMTPFrom = EnvOr("SMTP_FROM", "VayuPress <noreply@"+Cfg.Domain+">")
+	Cfg.SMTPTLS = EnvOr("SMTP_TLS", "starttls")
+	Cfg.SchedulerTickSec = GetEnvAsInt("SCHEDULER_TICK_SEC", 60)
 }
 
 func MustEnv(k string) string {

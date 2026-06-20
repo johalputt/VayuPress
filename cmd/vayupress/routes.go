@@ -145,6 +145,12 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 		r.Post("/api/v1/collections", a.handleCollectionCreate)
 		r.With(auth.CSRFTokenMiddleware).Post("/api/v1/admin/collections/{id}/articles", a.handleCollectionAddArticle)
 		r.Get("/api/v1/admin/newsletter/subscribers", a.handleNewsletterList)
+		r.With(auth.CSRFTokenMiddleware).Post("/api/v1/admin/newsletter/broadcast", a.handleNewsletterBroadcast)
+
+		// Scheduled publishing (Tier 1).
+		r.Get("/api/v1/admin/schedule", a.handleScheduleList)
+		r.With(auth.CSRFTokenMiddleware).Post("/api/v1/admin/schedule", a.handleScheduleCreate)
+		r.With(auth.CSRFTokenMiddleware).Delete("/api/v1/admin/schedule/{id}", a.handleScheduleCancel)
 		r.Get("/api/v1/admin/webmentions", a.handleWebmentionList)
 		r.With(auth.CSRFTokenMiddleware).Put("/api/v1/admin/webmentions/{id}/status", a.handleWebmentionModerate)
 		r.With(auth.CSRFTokenMiddleware).Post("/api/v1/admin/preview", a.handlePreviewIssue)

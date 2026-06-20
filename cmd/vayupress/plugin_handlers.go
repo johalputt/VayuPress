@@ -12,13 +12,19 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
+	"html"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/email"
+	"github.com/johalputt/vayupress/internal/logging"
+	"github.com/johalputt/vayupress/internal/newsletter"
 	"github.com/johalputt/vayupress/internal/toc"
 	"github.com/johalputt/vayupress/internal/update"
 )
@@ -326,11 +332,94 @@ func (a *App) handleNewsletterSubscribe(w http.ResponseWriter, r *http.Request) 
 		writeAPIError(w, r, http.StatusBadRequest, "subscribe-error", err.Error(), "")
 		return
 	}
+	// Send the double opt-in confirmation email out-of-band (no-op when SMTP is
+	// unconfigured). Only new, unconfirmed subscribers receive a fresh link.
+	if isNew && sub != nil && sub.Token != "" {
+		go a.sendNewsletterConfirmation(sub.Email, sub.Token)
+	}
 	code := http.StatusCreated
 	if !isNew {
 		code = http.StatusOK
 	}
 	writeJSON(w, r, code, map[string]interface{}{"subscriber": sub, "new": isNew})
+}
+
+// sendNewsletterConfirmation emails the double opt-in confirmation link.
+func (a *App) sendNewsletterConfirmation(addr, token string) {
+	if a.mailer == nil {
+		return
+	}
+	base := "https://" + config.Cfg.Domain
+	confirm := base + "/api/v1/newsletter/confirm?token=" + token
+	text := "Welcome to " + config.Cfg.Domain + "!\r\n\r\n" +
+		"Please confirm your subscription by visiting:\r\n" + confirm + "\r\n\r\n" +
+		"If you did not request this, you can ignore this email."
+	htmlBody := `<p>Welcome to <strong>` + html.EscapeString(config.Cfg.Domain) + `</strong>!</p>` +
+		`<p>Please confirm your subscription:</p>` +
+		`<p><a href="` + html.EscapeString(confirm) + `">Confirm my subscription</a></p>` +
+		`<p style="color:#888;font-size:12px">If you did not request this, you can ignore this email.</p>`
+	if err := a.mailer.Send(email.Message{
+		To: addr, Subject: "Confirm your subscription to " + config.Cfg.Domain,
+		Text: text, HTML: htmlBody,
+	}); err != nil {
+		logging.LogError("newsletter", "confirmation email failed", err.Error())
+	}
+}
+
+// POST /api/v1/admin/newsletter/broadcast  {subject, text, html}
+// Sends a one-off broadcast to every active, confirmed subscriber. Delivery is
+// sequential and best-effort; per-recipient failures are counted, not fatal.
+func (a *App) handleNewsletterBroadcast(w http.ResponseWriter, r *http.Request) {
+	if a.newsletterStore == nil {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "newsletter-disabled", "Newsletter not initialised", "")
+		return
+	}
+	if a.mailer == nil || !a.mailer.Enabled() {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "email-disabled", "SMTP not configured — set SMTP_HOST to send broadcasts", "")
+		return
+	}
+	var body struct {
+		Subject string `json:"subject"`
+		Text    string `json:"text"`
+		HTML    string `json:"html"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "bad-json", "Invalid request body", "")
+		return
+	}
+	if strings.TrimSpace(body.Subject) == "" || strings.TrimSpace(body.Text) == "" {
+		writeAPIError(w, r, http.StatusBadRequest, "missing-fields", "subject and text are required", "")
+		return
+	}
+	subs, err := a.newsletterStore.ListActive(r.Context())
+	if err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "db-error", err.Error(), "")
+		return
+	}
+	// Run delivery in the background so the request returns promptly; report the
+	// recipient count synchronously.
+	go a.deliverBroadcast(subs, body.Subject, body.Text, body.HTML)
+	writeJSON(w, r, http.StatusAccepted, map[string]interface{}{
+		"queued": len(subs), "status": "sending",
+	})
+}
+
+func (a *App) deliverBroadcast(subs []newsletter.Subscriber, subject, text, htmlBody string) {
+	var sent, failed int
+	for _, s := range subs {
+		unsub := "https://" + config.Cfg.Domain + "/api/v1/newsletter/unsubscribe?token=" + s.Token
+		ftext := text + "\r\n\r\n---\r\nUnsubscribe: " + unsub
+		fhtml := htmlBody
+		if fhtml != "" {
+			fhtml += `<hr><p style="color:#888;font-size:12px"><a href="` + html.EscapeString(unsub) + `">Unsubscribe</a></p>`
+		}
+		if err := a.mailer.Send(email.Message{To: s.Email, Subject: subject, Text: ftext, HTML: fhtml}); err != nil {
+			failed++
+		} else {
+			sent++
+		}
+	}
+	logging.LogInfo("newsletter", fmt.Sprintf("broadcast complete — sent=%d failed=%d", sent, failed))
 }
 
 // GET /api/v1/newsletter/confirm?token=...

@@ -94,7 +94,7 @@ func (s *Store) Unsubscribe(ctx context.Context, token string) error {
 // ListActive returns all active, confirmed subscribers.
 func (s *Store) ListActive(ctx context.Context) ([]Subscriber, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id,email,status,confirmed,subscribed_at FROM newsletter_subscribers WHERE status='active' AND confirmed=1 ORDER BY subscribed_at`)
+		`SELECT id,email,status,confirmed,token,subscribed_at FROM newsletter_subscribers WHERE status='active' AND confirmed=1 ORDER BY subscribed_at`)
 	if err != nil {
 		return nil, err
 	}
@@ -103,7 +103,7 @@ func (s *Store) ListActive(ctx context.Context) ([]Subscriber, error) {
 	for rows.Next() {
 		var sub Subscriber
 		var subsRaw string
-		if err := rows.Scan(&sub.ID, &sub.Email, &sub.Status, &sub.Confirmed, &subsRaw); err != nil {
+		if err := rows.Scan(&sub.ID, &sub.Email, &sub.Status, &sub.Confirmed, &sub.Token, &subsRaw); err != nil {
 			return nil, err
 		}
 		sub.SubscribedAt, _ = time.Parse("2006-01-02 15:04:05", subsRaw)

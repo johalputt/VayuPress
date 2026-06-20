@@ -31,6 +31,7 @@ import (
 	"github.com/johalputt/vayupress/internal/comments"
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/email"
 	"github.com/johalputt/vayupress/internal/events"
 	"github.com/johalputt/vayupress/internal/fault"
 	"github.com/johalputt/vayupress/internal/health"
@@ -48,6 +49,7 @@ import (
 	"github.com/johalputt/vayupress/internal/redirects"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/resource"
+	"github.com/johalputt/vayupress/internal/scheduler"
 	"github.com/johalputt/vayupress/internal/search"
 	"github.com/johalputt/vayupress/internal/settings"
 	"github.com/johalputt/vayupress/internal/trace"
@@ -289,6 +291,24 @@ func main() {
 	a.previewSigner = preview.New(previewSecret)
 	a.updateStore = update.New(dbpkg.DB)
 
+	// Email delivery (Tier 1) — sovereign SMTP, no-op when unconfigured.
+	a.mailer = email.New(email.Config{
+		Host:     config.Cfg.SMTPHost,
+		Port:     config.Cfg.SMTPPort,
+		Username: config.Cfg.SMTPUsername,
+		Password: config.Cfg.SMTPPassword,
+		From:     config.Cfg.SMTPFrom,
+		TLS:      email.TLSMode(config.Cfg.SMTPTLS),
+	})
+	if a.mailer.Enabled() {
+		logging.LogInfo("email", "SMTP delivery configured — host="+config.Cfg.SMTPHost)
+	} else {
+		logging.LogInfo("email", "SMTP not configured — email delivery disabled (set SMTP_HOST to enable)")
+	}
+
+	// Scheduled publishing (Tier 1).
+	a.scheduler = scheduler.New(dbpkg.DB)
+
 	// Mode journal — durable SQLite-backed transition log (Ω6).
 	dbPath := config.EnvOr("DB_PATH", "./vayupress.db")
 	modeJournalPath := dbPath + ".modes"
@@ -344,6 +364,7 @@ func main() {
 	dbpkg.StartStuckJobReaper(queue.DoneCh)
 	a.startMetricsSnapshotCollector()
 	a.startSearchReconciler(queue.DoneCh)
+	a.startScheduler(queue.DoneCh)
 
 	// Wire queue injections.
 	queue.RenderFn = render.RenderArticle

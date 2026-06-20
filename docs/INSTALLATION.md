@@ -105,6 +105,37 @@ Expected: `{"status":"ok"}` from both endpoints.
 | `VAYU_MAINTENANCE`    | `false`                        | Enable maintenance mode            |
 | `VAYU_SELFUPDATE_ENABLED`| `false`                     | Opt-in for `vayupress update apply` (see UPGRADING.md) |
 | `VAYU_RELEASE_PUBKEY` | (unset)                        | Hex Ed25519 key the signed apply verifies against |
+| `SMTP_HOST`           | (unset)                        | SMTP server for email delivery. Empty = email disabled (no-op) |
+| `SMTP_PORT`           | `587`                          | SMTP submission port               |
+| `SMTP_USERNAME`       | (unset)                        | SMTP auth username (omit for unauthenticated relays) |
+| `SMTP_PASSWORD`       | (unset)                        | SMTP auth password                 |
+| `SMTP_FROM`           | `VayuPress <noreply@$DOMAIN>`  | From header / envelope sender      |
+| `SMTP_TLS`            | `starttls`                     | `starttls` (587), `ssl` (465), or `none` (trusted localhost) |
+| `SCHEDULER_TICK_SEC`  | `60`                           | Scheduled-publish poll interval (seconds); `0` disables |
+
+### Email delivery (Tier 1)
+
+VayuPress sends email over plain SMTP using only the Go standard library — no
+third-party SDKs, no hosted APIs, no telemetry. Set `SMTP_HOST` (plus
+credentials) to enable:
+
+- **Double opt-in confirmations** are emailed automatically on newsletter
+  subscribe.
+- **Broadcasts** to all confirmed subscribers via
+  `POST /api/v1/admin/newsletter/broadcast` (`{subject, text, html}`), each with
+  an auto-appended unsubscribe link.
+
+When `SMTP_HOST` is empty, every email call is a safe no-op: subscriber and
+comment flows keep working, delivery is simply skipped and audit-logged.
+
+### Scheduled publishing (Tier 1)
+
+Stage future-dated posts with `POST /api/v1/admin/schedule`
+(`{slug, title, content, tags[], publish_at}` where `publish_at` is RFC3339). A
+durable SQLite-backed ticker promotes each post through the normal
+render → index → cache pipeline when its time arrives. Posts staged while the
+server was down are caught up on the next startup tick. List with
+`GET /api/v1/admin/schedule`; cancel with `DELETE /api/v1/admin/schedule/{id}`.
 
 ## Docker
 

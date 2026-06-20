@@ -18,6 +18,7 @@ import (
 	"github.com/johalputt/vayupress/internal/comments"
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/email"
 	"github.com/johalputt/vayupress/internal/events"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/metrics"
@@ -28,6 +29,7 @@ import (
 	"github.com/johalputt/vayupress/internal/queue"
 	"github.com/johalputt/vayupress/internal/redirects"
 	"github.com/johalputt/vayupress/internal/render"
+	"github.com/johalputt/vayupress/internal/scheduler"
 	"github.com/johalputt/vayupress/internal/search"
 	"github.com/johalputt/vayupress/internal/settings"
 	"github.com/johalputt/vayupress/internal/update"
@@ -89,6 +91,59 @@ type App struct {
 	redirectMgr     *redirects.Manager
 	previewSigner   *preview.Signer
 	updateStore     *update.Store
+
+	// Email delivery (Tier 1) — no-op when SMTP is unconfigured.
+	mailer *email.Sender
+
+	// Scheduled publishing (Tier 1).
+	scheduler *scheduler.Store
+}
+
+// startScheduler runs the background ticker that promotes due scheduled posts to
+// live articles via the normal create pipeline. Disabled when SchedulerTickSec<=0.
+func (a *App) startScheduler(done <-chan struct{}) {
+	tick := config.Cfg.SchedulerTickSec
+	if tick <= 0 || a.scheduler == nil {
+		logging.LogInfo("scheduler", "scheduled publishing disabled (SCHEDULER_TICK_SEC<=0)")
+		return
+	}
+	logging.LogInfo("scheduler", fmt.Sprintf("scheduled publishing active — tick=%ds", tick))
+	go func() {
+		ticker := time.NewTicker(time.Duration(tick) * time.Second)
+		defer ticker.Stop()
+		a.publishDuePosts() // run once at startup to catch anything missed while down
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				a.publishDuePosts()
+			}
+		}
+	}()
+}
+
+// publishDuePosts promotes every post whose publish_at has arrived.
+func (a *App) publishDuePosts() {
+	ctx := context.Background()
+	due, err := a.scheduler.Due(ctx, time.Now(), 50)
+	if err != nil {
+		logging.LogError("scheduler", "due query failed", err.Error())
+		return
+	}
+	for _, p := range due {
+		if _, err := a.articles.Create(ctx, p.Title, p.Slug, p.Content, p.Tags); err != nil {
+			logging.LogError("scheduler", "publish failed: "+p.Slug, err.Error())
+			if mErr := a.scheduler.MarkFailed(ctx, p.ID, err.Error()); mErr != nil {
+				logging.LogError("scheduler", "mark-failed failed", mErr.Error())
+			}
+			continue
+		}
+		if err := a.scheduler.MarkPublished(ctx, p.ID); err != nil {
+			logging.LogError("scheduler", "mark-published failed", err.Error())
+		}
+		logging.LogInfo("scheduler", "published scheduled post: "+p.Slug)
+	}
 }
 
 // RegisterHook registers a plugin hook with the App's plugin registry.
