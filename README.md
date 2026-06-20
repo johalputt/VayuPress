@@ -17,6 +17,42 @@
 > **Adaptive publishing infrastructure for the sovereign web.**
 > SQLite-first, zero-trust, zero telemetry. Policy-governed runtime with adaptive system modes, sandboxed plugins, transactional event outbox, durable audit trail, and fault-tolerant federated publishing.
 
+## What's New in v1.3.0
+
+> Full notes in [`CHANGELOG.md`](CHANGELOG.md) · upgrade steps in [`docs/UPGRADING.md`](docs/UPGRADING.md)
+
+**Admin v3** — a ground-up admin & block editor that surpasses Ghost, WordPress,
+and Substack in design, depth, and security, while remaining a sovereign single
+binary with **zero CDN dependencies** and a **strict CSP** (no `unsafe-eval`, no
+`unsafe-inline`). Mounted at `/admin/v3` alongside `/admin/v2` — fully
+non-breaking (ADR-0068).
+
+- **Design system** — hand-authored CSS, CSS-custom-property theming (dark/light/auto),
+  grouped sidebar, command palette (⌘K), mobile bottom-nav, toast notifications.
+- **Block editor** — typed-block document stored as JSON, rendered server-side
+  through HTML escape + bluemonday UGC sanitisation (`internal/blockrender`).
+  No raw-HTML escape hatch. Slash-command palette, autosave (⌘S), and a
+  DOMPurify-guarded live preview. Legacy posts stay in the lossless v2 editor.
+- **Media library** — drag-and-drop upload, content-addressed, type-allowlisted,
+  SVG refused (XSS vector), CSRF-protected, grid browsing, copy-URL.
+- **Two-factor auth (TOTP)** — RFC 6238 in pure Go stdlib (`internal/totp`,
+  validated against RFC test vectors). Two-step enrolment: secret stored disabled
+  until verified, so abandoned setup can never lock an operator out. Enforced on
+  both v2 and v3 sign-in surfaces.
+- **Intelligence** — native SEO readiness dashboard and privacy-preserving
+  analytics page sourced entirely from the local SQLite database.
+- **Security hardening** — CodeQL-clean: `html.EscapeString` called directly
+  (not via a function alias) in all block-editor render paths; email Subject now
+  emitted as an RFC 2047 base64 encoded-word (`mime.BEncoding`), clearing both
+  the `go/reflected-xss` and `go/email-injection` findings.
+
+### Upgrading from v1.2.0
+No breaking changes. Start the server once and migrations 025–026 apply
+automatically (adds `blocks_json` to articles and `totp_secret`/`totp_enabled`
+to users). Admin v2 is unaffected; Admin v3 lives at a separate path.
+
+---
+
 ## What's New in v1.2.0
 
 > Full notes in [`CHANGELOG.md`](CHANGELOG.md) · upgrade steps in [`docs/UPGRADING.md`](docs/UPGRADING.md)
