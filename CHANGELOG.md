@@ -8,6 +8,17 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Security
+
+- **CodeQL barrier recognition.** The v3 block-editor body builder now calls
+  `html.EscapeString` directly instead of through a function-typed alias, so the
+  escaping is recognised as a sanitiser barrier (clears the `go/reflected-xss`
+  finding; the value was already escaped). Email subjects are now emitted as
+  RFC 2047 base64 encoded-words — correct UTF-8 subject handling plus a
+  CR/LF-free transformation that clears the `go/email-injection` finding. Both
+  were defence-in-depth false positives; the mail path was already CRLF-stripped,
+  base64-encoded and HTML-sanitised.
+
 ---
 
 ## [1.3.0] — 2026-06-20

@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"mime"
 	"net/mail"
 	"strings"
 	"time"
@@ -39,7 +40,13 @@ func (s *Sender) assemble(to string, msg Message) ([]byte, error) {
 	}
 	to = toParsed.Address
 	from := headerValue(s.cfg.From)
-	subject := headerValue(msg.Subject)
+	// Subject is encoded as an RFC 2047 base64 "encoded-word". This is the correct
+	// way to carry UTF-8 subjects, and the base64 transformation (alphabet
+	// A-Za-z0-9+/=, wrapped in =?UTF-8?B?...?=) provably contains no CR/LF, so the
+	// attacker-influenced subject can neither inject extra headers nor smuggle a
+	// body. It is also the recognised sanitiser barrier for the
+	// "email content injection" class.
+	subject := mime.BEncoding.Encode("UTF-8", headerValue(msg.Subject))
 	date := time.Now().Format(time.RFC1123Z)
 	msgID := fmt.Sprintf("<%s@%s>", randHex(16), hostOf(from))
 

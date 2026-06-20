@@ -127,11 +127,13 @@ func (a *App) handleV3EditorPreview(w http.ResponseWriter, r *http.Request) {
 // data-blocks attribute (raw JSON) on first paint; an empty value starts a
 // fresh document.
 func v3EditorBody(slug, title, blocksJSON string) string {
-	esc := html.EscapeString
+	// Every interpolated value is escaped with a direct html.EscapeString call so
+	// static analysis recognises the sanitiser barrier (an indirect call through a
+	// function-typed variable is not recognised as a barrier).
 	// data-blocks carries the raw JSON document; the layout/editor JS reads it.
-	return `<div class="editor-shell" data-editor data-slug="` + esc(slug) + `" data-blocks="` + esc(blocksJSON) + `">
+	return `<div class="editor-shell" data-editor data-slug="` + html.EscapeString(slug) + `" data-blocks="` + html.EscapeString(blocksJSON) + `">
   <div class="editor-main">
-    <input class="editor-title" data-editor-title type="text" placeholder="Post title…" value="` + esc(title) + `" aria-label="Post title">
+    <input class="editor-title" data-editor-title type="text" placeholder="Post title…" value="` + html.EscapeString(title) + `" aria-label="Post title">
     <div class="editor-canvas" data-editor-canvas aria-label="Editor canvas"></div>
   </div>
   <aside class="editor-sidebar" aria-label="Editor tools">
