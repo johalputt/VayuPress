@@ -47,6 +47,7 @@
 | [ADR-0065](ADR-0065-admin-ui-csp-compliant-stack.md) | Modern Admin UI on CSP-Compliant Vendored Stack | Accepted | Security | 2026-06-19 |
 | [ADR-0066](ADR-0066-content-polish-layer.md) | Content Polish Layer: CSP-Safe Highlighting, Related Posts, PWA | Accepted | Core | 2026-06-20 |
 | [ADR-0067](ADR-0067-enterprise-interfaces.md) | Enterprise Interfaces: Read-Only GraphQL, i18n, Email Templates, Live Stream | Accepted | Core | 2026-06-20 |
+| [ADR-0068](ADR-0068-admin-v3-next-gen-ui.md) | Admin v3: Next-Generation Admin & Block Editor (design system, block editor, media library, TOTP 2FA, intelligence) | Accepted | Core | 2026-06-20 |
 
 ---
 

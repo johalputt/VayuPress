@@ -92,6 +92,33 @@ the editor in HTML mode until first saved in Markdown mode.
 
 ---
 
+### Admin v3 — Next-Generation Admin & Block Editor
+
+The flagship admin (`/admin/v3`) surpasses Ghost/WordPress/Substack in design and
+depth while staying a sovereign single binary with **zero CDN dependencies** and a
+**strict CSP** (no `unsafe-eval`, no `unsafe-inline`). It runs alongside `/admin/v2`,
+so adoption is fully non-breaking (ADR-0068).
+
+- **Design system** — hand-authored, CSS-custom-property theming (dark/light/auto),
+  grouped sidebar, command palette (⌘K), mobile bottom-nav. No inline styles.
+- **Block editor** — typed-block document stored as JSON; every block is rendered
+  to HTML server-side through escape + bluemonday UGC (`internal/blockrender`),
+  with **no raw-HTML escape hatch**. Slash-command palette, autosave, ⌘S, and a
+  server-rendered + DOMPurify-guarded live preview. Legacy/new posts keep the
+  lossless v2 editor, so a save can never wipe existing content.
+- **Media library** — drag-and-drop upload (content-addressed, type-allowlisted,
+  **SVG refused**, CSRF), grid browsing, copy-URL.
+- **Two-factor auth (TOTP)** — RFC 6238 in pure stdlib (`internal/totp`, validated
+  against the RFC test vectors), enforced on **both** v1 and v3 login surfaces.
+- **Intelligence** — native SEO readiness dashboard and a privacy-preserving
+  analytics page sourced only from the local database.
+
+All interactivity is vanilla JS in same-origin files; the only inline `<script>`
+is the per-request nonce-gated bootstrap, and DOM mutation uses
+`createElement`/`textContent` — never `innerHTML` with untrusted data.
+
+---
+
 ### Admin v2 — Editor-First Redesign
 
 ![VayuPress Admin v2 Dashboard](docs/screenshots/admin-v2-dashboard.png)

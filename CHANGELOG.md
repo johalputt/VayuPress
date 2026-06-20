@@ -10,6 +10,57 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [1.3.0] — 2026-06-20
+
+**Admin v3** — a ground-up admin & editor that surpasses Ghost/WordPress/Substack
+in design, depth, and security, while staying a sovereign single binary with zero
+CDN dependencies and a strict CSP (no `unsafe-eval`, no `unsafe-inline`). Mounted
+at `/admin/v3` alongside `/admin/v2`, so the upgrade is fully non-breaking
+(ADR-0068).
+
+### Added
+
+- **Design system & shell.** Hand-authored `admin-v3.css` scoped to `.vp-v3`,
+  CSS-custom-property theming with dark/light/auto, grouped sidebar, mobile
+  bottom-nav, command palette (⌘K), toasts — all same-origin, no inline styles.
+- **Dashboard intelligence.** Real 14-day publishing-trend sparkline
+  (server-rendered SVG), live stat cards, storage + activity feed, quick-compose.
+- **Block editor.** Canonical block document in `articles.blocks_json`
+  (migration 025); `internal/blockrender` renders blocks → sanitised HTML
+  (HTML-escape + bluemonday UGC, no raw-HTML escape hatch). Vanilla-JS editor
+  with 9 block types, slash (`/`) command palette, debounced autosave, ⌘S, and a
+  server-rendered + DOMPurify-guarded live preview. Legacy and new posts keep the
+  lossless v2 editor so no content can be wiped on save.
+- **Media library.** Responsive grid with drag-and-drop upload reusing the
+  hardened backend (content-addressed, type-allowlisted, **SVG refused**, CSRF).
+  Listing only surfaces server-generated content-addressed names.
+- **Members.** Tier counts and roster.
+- **Native SEO dashboard.** Per-article readiness (healthy / thin / missing-title)
+  and artefact freshness (sitemap / feed / robots) with one-click regenerate.
+- **Privacy-preserving analytics page.** 30-day views sparkline, top pages, and
+  referrers — sourced only from the local DB, no third-party services.
+
+### Security
+
+- **Two-factor authentication (TOTP).** New `internal/totp` implements RFC 6238
+  over RFC 4226 using only the standard library (no new dependency), validated
+  against the official RFC test vectors, with constant-time comparison and clock-
+  skew tolerance. Migration 026 adds `users.totp_secret` / `users.totp_enabled`.
+  Enrolment is a verify-before-enable ceremony; sign-in enforcement is wired into
+  **both** the v2 and v3 login flows so an enrolled account cannot bypass 2FA via
+  the older surface. The password is never echoed back on a failed second factor.
+- Strict CSP maintained throughout: the only inline `<script>` is the nonce-gated
+  bootstrap; all DOM mutation uses `createElement`/`textContent`; SVG uploads
+  remain refused (script-carrier XSS vector).
+
+### Upgrade Notes
+
+- Additive, non-breaking. Migrations 025 and 026 apply automatically with safe
+  defaults. `/admin/v2` continues to work unchanged; `/admin/v3` is the new
+  recommended surface.
+
+---
+
 ## [1.2.0] — 2026-06-20
 
 Four tiers of new capability — all single-binary, sovereign, and CSP/governed-write safe.
