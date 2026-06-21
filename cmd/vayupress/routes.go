@@ -239,7 +239,15 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 		r.Get("/api/v1/admin/budgets", a.handleGovernanceBudgets)
 		r.With(auth.CSRFTokenMiddleware).Post("/api/v1/admin/budgets/ack", a.handleGovernanceBudgetAck)
 
-		r.Get("/admin", a.handleAdminDashboard)
+		// The classic console root redirects to Admin v3 by default (ADR-0069
+		// Stage 2); ADMIN_LEGACY=1 restores the legacy dashboard. The operator
+		// console sub-pages below (modes, faults, …) keep their own lifecycle and
+		// are always reachable.
+		if adminLegacyEnabled() {
+			r.Get("/admin", a.handleAdminDashboard)
+		} else {
+			r.Get("/admin", legacyRedirect())
+		}
 		r.Get("/admin/adr", a.handleAdminADR)
 		r.Get("/admin/backup/validate", a.handleAdminBackupValidate)
 

@@ -34,13 +34,21 @@ Each stage is independently shippable and reversible until the final removal.
   Until converted, legacy posts still open losslessly — no automatic rewrite.
 - v3 reaches feature parity for every task an operator can do in v2.
 
-### Stage 2 — Soft deprecation (target: 1.5.0)
+### Stage 2 — Soft deprecation (target: 1.5.0) — **IN EFFECT**
 
-- `/admin/v2` shows a dismissible **deprecation banner** linking to v3 with a
-  removal date.
-- `/admin` and `/admin/v2` begin **redirecting to `/admin/v3`** by default, with
-  an `ADMIN_LEGACY=1` escape hatch env var to keep v2 reachable for one release.
+- ✅ `/admin/v2` shows a dismissible **deprecation banner** linking to v3 and
+  naming the removal release (`legacyDeprecationBanner`, shown only when the
+  escape hatch is on, since otherwise the pages redirect).
+- ✅ `/admin` and `/admin/v2[/...]` **redirect (302) to the `/admin/v3`
+  equivalent** by default (`v2ToV3Path` + `legacyRedirect`); the
+  `ADMIN_LEGACY=1` (or `true`) escape hatch keeps v2 reachable for one release.
+- ✅ Stage-1 prerequisite met: convert-to-blocks (ADR-0073) lets legacy posts
+  adopt the v3 block editor losslessly.
 - Docs and the website point exclusively to v3; v2 screenshots are archived.
+
+Implemented in `cmd/vayupress/admin_legacy.go`. The redirects are 302 (not 301)
+during soft deprecation so Stage 3 can switch them to permanent without clients
+having cached an early 301.
 
 ### Stage 3 — Removal (target: 1.6.0, no sooner than ~2 minor releases after 1.3.0)
 

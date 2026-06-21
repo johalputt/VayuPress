@@ -658,3 +658,21 @@ code.cmd::after { content: " ⧉"; color: var(--muted); }
 .seo-checklist { list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 8px; }
 .seo-checklist li { color: var(--text); font-size: 14px; }
 .seo-checklist code { font-family: var(--mono); font-size: 12px; }
+
+/* ── Deprecation banner (ADR-0069 Stage 2 soft deprecation) ────────────────── */
+.legacy-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 12px 16px;
+  margin-bottom: 20px;
+  border: 1px solid var(--warn, #d97706);
+  border-radius: 10px;
+  background: rgba(217, 119, 6, 0.10);
+}
+.legacy-banner__text { display: flex; flex-direction: column; gap: 2px; font-size: 0.9rem; }
+.legacy-banner__text strong { color: var(--text, #f5f5f5); }
+.legacy-banner__text span { color: var(--text-muted, #9aa4ad); }
+.legacy-banner__actions { display: flex; gap: 8px; align-items: center; }

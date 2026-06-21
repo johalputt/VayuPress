@@ -80,6 +80,20 @@ func (a *App) registerAdminUIRoutes(r chi.Router) {
 	r.Post("/admin/v2/login", a.handleV2LoginSubmit)
 	r.Post("/admin/v2/logout", a.handleV2Logout)
 
+	// Admin v2 is soft-deprecated (ADR-0069 Stage 2). By default its pages
+	// redirect to the v3 equivalents; the ADMIN_LEGACY escape hatch keeps them
+	// live (with a deprecation banner) for one more release.
+	if !adminLegacyEnabled() {
+		redirect := legacyRedirect()
+		r.Get("/admin/v2", redirect)
+		r.Get("/admin/v2/posts", redirect)
+		r.Get("/admin/v2/editor", redirect)
+		r.Get("/admin/v2/editor/{slug}", redirect)
+		r.Get("/admin/v2/seo", redirect)
+		r.Get("/admin/v2/settings", redirect)
+		return
+	}
+
 	// Protected pages — accept an API key OR a login session (Tier 1).
 	r.Group(func(pr chi.Router) {
 		pr.Use(a.requireSessionOrAPIKey)
@@ -152,7 +166,7 @@ func adminV2Layout(nonce, title, sidebarActive, bodyHTML string) string {
     </form>
   </header>
   <main id="main-content" class="content">
-` + bodyHTML + `
+` + legacyDeprecationBanner(nonce) + bodyHTML + `
   </main>
 </div>
 </div>
