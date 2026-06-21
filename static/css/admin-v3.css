@@ -210,6 +210,18 @@
 }
 .vp-v3 .sidebar-brand img { width: 28px; height: 28px; border-radius: var(--r-sm); }
 .vp-v3 .sidebar-brand-name { color: var(--text); }
+.vp-v3 .sidebar-brand-os {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 7px;
+}
 
 .vp-v3 .sidebar-nav {
   flex: 1;

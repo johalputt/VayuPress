@@ -7,7 +7,7 @@ package main
 // hex/font/dimension validation, CSS compilation, persistence — already lives in
 // internal/theme and the shared handlers (handleThemePresets/Tokens/Preview/
 // Apply). This file adds the v3 page shell; the JSON endpoints are reused under
-// session-friendly /admin/v3/api/theme/* mirrors registered in admin_v3_ui.go.
+// session-friendly /os/api/theme/* mirrors registered in admin_v3_ui.go.
 //
 // CSP posture matches the rest of admin v3: zero inline styles, the only inline
 // <script> carries the per-request nonce, every dynamic string is escaped. The
@@ -154,7 +154,7 @@ func (a *App) handleV3Theme(w http.ResponseWriter, r *http.Request) {
     <div class="text-xs muted mt-3">Preview reflects dark-mode tokens. Light-mode values apply on readers whose system is set to light.</div>
   </aside>
 </div>
-<script nonce="` + nonce + `" src="/admin/v3/static/js/admin-v3-theme.js"></script>`
+<script nonce="` + nonce + `" src="/os/static/js/admin-v3-theme.js"></script>`
 
 	writeV3HTML(w, adminV3Layout(nonce, "Theme Studio", "theme", cfg, body))
 }

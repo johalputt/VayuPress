@@ -39,10 +39,13 @@ per-request nonces). See ADR-0069 and ADR-0073.
 
 ### Changed
 
-- **Admin v2 soft-deprecated (ADR-0069 Stage 2).** `/admin` and `/admin/v2[/...]`
-  now 302-redirect to the v3 equivalent by default. The `ADMIN_LEGACY=1` escape
-  hatch keeps v2 reachable for one more release and shows a dismissible
-  deprecation banner naming the removal release (`v1.6.0`).
+- **VayuOS — the admin moves to `/os`.** The canonical admin surface is now
+  mounted at `/os`. The three historical surfaces — the classic console
+  (`/admin`), Admin v2 (`/admin/v2`), and Admin v3 (`/admin/v3`) — are legacy and
+  302-redirect into the `/os` equivalent (ADR-0069).
+- **Admin v2 soft-deprecated (ADR-0069 Stage 2).** The deprecated v2 pages can be
+  kept reachable with the `ADMIN_LEGACY=1` escape hatch, which also shows a
+  dismissible deprecation banner naming the removal release (`v1.6.0`).
 - **CI concurrency control.** Heavy workflows (`ci`, `race`, `e2e`, `lighthouse`,
   `sbom`) now cancel superseded runs on the same ref, so rapid pushes no longer
   stack redundant runs.

@@ -152,7 +152,7 @@ func (a *App) handleV3Monitoring(w http.ResponseWriter, r *http.Request) {
   <h1>Monitoring</h1>
   <div class="page-actions"><span class="text-sm muted" data-mon-updated>live</span></div>
 </div>` + modeCard + perf + storageJobs + budgetsCard + consoles + `
-<script nonce="` + nonce + `" src="/admin/v3/static/js/admin-v3-monitoring.js"></script>`
+<script nonce="` + nonce + `" src="/os/static/js/admin-v3-monitoring.js"></script>`
 
 	writeV3HTML(w, adminV3Layout(nonce, "Monitoring", "monitoring", cfg, body))
 }

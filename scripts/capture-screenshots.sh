@@ -30,15 +30,15 @@ shot "$BASE_URL/${ARTICLE_SLUG:-hello-vayupress}" "$OUT_DIR/article-page.png"
 # AI-assist and version-history diff), native Theme Studio, media library,
 # members, security (2FA), SEO and analytics. The editor opens with the seeded
 # article so the live preview renders real content.
-shot "$BASE_URL/admin/v3"                                   "$OUT_DIR/admin-v3-dashboard.png"
-shot "$BASE_URL/admin/v3/posts"                             "$OUT_DIR/admin-v3-posts.png"
-shot "$BASE_URL/admin/v3/editor/${ARTICLE_SLUG:-hello-vayupress}" "$OUT_DIR/admin-v3-editor.png"
-shot "$BASE_URL/admin/v3/theme"                             "$OUT_DIR/admin-v3-theme.png"
-shot "$BASE_URL/admin/v3/media"                             "$OUT_DIR/admin-v3-media.png"
-shot "$BASE_URL/admin/v3/seo"                               "$OUT_DIR/admin-v3-seo.png"
-shot "$BASE_URL/admin/v3/analytics"                         "$OUT_DIR/admin-v3-analytics.png"
-shot "$BASE_URL/admin/v3/security"                          "$OUT_DIR/admin-v3-security.png"
-shot "$BASE_URL/admin/v3/settings"                          "$OUT_DIR/admin-v3-settings.png"
+shot "$BASE_URL/os"                                   "$OUT_DIR/admin-v3-dashboard.png"
+shot "$BASE_URL/os/posts"                             "$OUT_DIR/admin-v3-posts.png"
+shot "$BASE_URL/os/editor/${ARTICLE_SLUG:-hello-vayupress}" "$OUT_DIR/admin-v3-editor.png"
+shot "$BASE_URL/os/theme"                             "$OUT_DIR/admin-v3-theme.png"
+shot "$BASE_URL/os/media"                             "$OUT_DIR/admin-v3-media.png"
+shot "$BASE_URL/os/seo"                               "$OUT_DIR/admin-v3-seo.png"
+shot "$BASE_URL/os/analytics"                         "$OUT_DIR/admin-v3-analytics.png"
+shot "$BASE_URL/os/security"                          "$OUT_DIR/admin-v3-security.png"
+shot "$BASE_URL/os/settings"                          "$OUT_DIR/admin-v3-settings.png"
 
 # ── Operator console (auth injected by screenshot-proxy) ─────────────────────
 shot "$BASE_URL/admin/modes"                      "$OUT_DIR/policy-modes.png"

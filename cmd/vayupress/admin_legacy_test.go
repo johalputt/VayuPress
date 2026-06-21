@@ -7,19 +7,24 @@ import (
 	"testing"
 )
 
-func TestV2ToV3PathMapping(t *testing.T) {
+func TestLegacyToOSPathMapping(t *testing.T) {
 	cases := map[string]string{
-		"/admin":                   "/admin/v3",
-		"/admin/v2":                "/admin/v3",
-		"/admin/v2/posts":          "/admin/v3/posts",
-		"/admin/v2/editor":         "/admin/v3/editor",
-		"/admin/v2/editor/my-post": "/admin/v3/editor/my-post",
-		"/admin/v2/seo":            "/admin/v3/seo",
-		"/admin/v2/settings":       "/admin/v3/settings",
+		"/admin":                   "/os",
+		"/admin/v2":                "/os",
+		"/admin/v2/posts":          "/os/posts",
+		"/admin/v2/editor":         "/os/editor",
+		"/admin/v2/editor/my-post": "/os/editor/my-post",
+		"/admin/v2/seo":            "/os/seo",
+		"/admin/v2/settings":       "/os/settings",
+		"/admin/v3":                "/os",
+		"/admin/v3/posts":          "/os/posts",
+		"/admin/v3/editor/my-post": "/os/editor/my-post",
+		"/admin/v3/theme":          "/os/theme",
+		"/admin/v3/monitoring":     "/os/monitoring",
 	}
 	for in, want := range cases {
-		if got := v2ToV3Path(in); got != want {
-			t.Errorf("v2ToV3Path(%q) = %q, want %q", in, got, want)
+		if got := legacyToOSPath(in); got != want {
+			t.Errorf("legacyToOSPath(%q) = %q, want %q", in, got, want)
 		}
 	}
 }
@@ -32,8 +37,8 @@ func TestLegacyRedirectIssues302(t *testing.T) {
 	if rec.Code != http.StatusFound {
 		t.Fatalf("status = %d, want 302", rec.Code)
 	}
-	if loc := rec.Header().Get("Location"); loc != "/admin/v3/editor/hello" {
-		t.Errorf("Location = %q, want /admin/v3/editor/hello", loc)
+	if loc := rec.Header().Get("Location"); loc != "/os/editor/hello" {
+		t.Errorf("Location = %q, want /os/editor/hello", loc)
 	}
 }
 
@@ -58,7 +63,7 @@ func TestLegacyBannerContentAndCSP(t *testing.T) {
 	out := legacyDeprecationBanner("TESTNONCE")
 	for _, want := range []string{
 		`nonce="TESTNONCE"`,
-		`href="/admin/v3"`,
+		`href="/os"`,
 		legacyRemovalRelease,
 		`data-legacy-dismiss`,
 	} {

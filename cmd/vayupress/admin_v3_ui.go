@@ -1,6 +1,6 @@
 package main
 
-// admin_v3_ui.go — VayuPress Admin v3, mounted under /admin/v3.
+// admin_v3_ui.go — VayuPress Admin v3, mounted under /os.
 //
 // Design goals (ADR-0068): surpass Ghost/WordPress/Substack in UI beauty,
 // feature depth, and security while remaining a sovereign single-binary with
@@ -13,7 +13,7 @@ package main
 // Rules honoured:
 //   - No inline <style> or style="" attributes. All CSS lives in admin-v3.css.
 //   - The only inline <script> block carries the per-request CSP nonce.
-//   - No external CDNs. All assets served same-origin under /admin/v3/static/.
+//   - No external CDNs. All assets served same-origin under /os/static/.
 //   - All user-originated strings escaped with html.EscapeString before HTML emit.
 //   - DOM mutations in admin-v3.js use textContent / createElement; no innerHTML
 //     with untrusted data.
@@ -50,22 +50,29 @@ func adminV3StaticDir() string {
 
 // ── Route registration ───────────────────────────────────────────────────────
 
-// registerAdminV3UIRoutes mounts Admin v3 under /admin/v3.
+// registerAdminV3UIRoutes mounts Admin v3 under /os.
 // Follows the same auth/CSP/CSRF patterns as Admin v2 (admin_ui.go).
 func (a *App) registerAdminV3UIRoutes(r chi.Router) {
+	// Admin v3 is now a legacy surface (ADR-0069 Stage 3 in progress): the
+	// canonical admin is VayuOS at /os. Old /admin/v3[/...] URLs 302-redirect
+	// into the /os equivalent, joining /admin and /admin/v2.
+	v3Redirect := legacyRedirect()
+	r.Get("/admin/v3", v3Redirect)
+	r.Handle("/admin/v3/*", v3Redirect)
+
 	// Public static assets (served same-origin so CSP 'self' covers them).
-	r.Get("/admin/v3/static/css/admin-v3.css", serveAdminV3Asset("css/admin-v3.css", "text/css; charset=utf-8"))
-	r.Get("/admin/v3/static/js/admin-v3.js", serveAdminV3Asset("js/admin-v3.js", "application/javascript; charset=utf-8"))
-	r.Get("/admin/v3/static/js/admin-v3-editor.js", serveAdminV3Asset("js/admin-v3-editor.js", "application/javascript; charset=utf-8"))
-	r.Get("/admin/v3/static/js/admin-v3-security.js", serveAdminV3Asset("js/admin-v3-security.js", "application/javascript; charset=utf-8"))
-	r.Get("/admin/v3/static/js/admin-v3-intel.js", serveAdminV3Asset("js/admin-v3-intel.js", "application/javascript; charset=utf-8"))
-	r.Get("/admin/v3/static/js/admin-v3-tools.js", serveAdminV3Asset("js/admin-v3-tools.js", "application/javascript; charset=utf-8"))
-	r.Get("/admin/v3/static/js/admin-v3-monitoring.js", serveAdminV3Asset("js/admin-v3-monitoring.js", "application/javascript; charset=utf-8"))
-	r.Get("/admin/v3/static/js/admin-v3-theme.js", serveAdminV3Asset("js/admin-v3-theme.js", "application/javascript; charset=utf-8"))
-	r.Get("/admin/v3/static/js/purify.min.js", serveAdminV3Asset("js/purify.min.js", "application/javascript; charset=utf-8"))
+	r.Get("/os/static/css/admin-v3.css", serveAdminV3Asset("css/admin-v3.css", "text/css; charset=utf-8"))
+	r.Get("/os/static/js/admin-v3.js", serveAdminV3Asset("js/admin-v3.js", "application/javascript; charset=utf-8"))
+	r.Get("/os/static/js/admin-v3-editor.js", serveAdminV3Asset("js/admin-v3-editor.js", "application/javascript; charset=utf-8"))
+	r.Get("/os/static/js/admin-v3-security.js", serveAdminV3Asset("js/admin-v3-security.js", "application/javascript; charset=utf-8"))
+	r.Get("/os/static/js/admin-v3-intel.js", serveAdminV3Asset("js/admin-v3-intel.js", "application/javascript; charset=utf-8"))
+	r.Get("/os/static/js/admin-v3-tools.js", serveAdminV3Asset("js/admin-v3-tools.js", "application/javascript; charset=utf-8"))
+	r.Get("/os/static/js/admin-v3-monitoring.js", serveAdminV3Asset("js/admin-v3-monitoring.js", "application/javascript; charset=utf-8"))
+	r.Get("/os/static/js/admin-v3-theme.js", serveAdminV3Asset("js/admin-v3-theme.js", "application/javascript; charset=utf-8"))
+	r.Get("/os/static/js/purify.min.js", serveAdminV3Asset("js/purify.min.js", "application/javascript; charset=utf-8"))
 
 	// Fonts — path-traversal prevented by switch allowlist (same pattern as v2).
-	r.Get("/admin/v3/static/fonts/{file}", func(w http.ResponseWriter, req *http.Request) {
+	r.Get("/os/static/fonts/{file}", func(w http.ResponseWriter, req *http.Request) {
 		var canon string
 		switch chi.URLParam(req, "file") {
 		case "space-grotesk.woff2":
@@ -84,66 +91,66 @@ func (a *App) registerAdminV3UIRoutes(r chi.Router) {
 	})
 
 	// Public: login page and credential forms.
-	r.Get("/admin/v3/login", a.handleV3Login)
-	r.Post("/admin/v3/login", a.handleV3LoginSubmit)
-	r.Post("/admin/v3/logout", a.handleV3Logout)
+	r.Get("/os/login", a.handleV3Login)
+	r.Post("/os/login", a.handleV3LoginSubmit)
+	r.Post("/os/logout", a.handleV3Logout)
 
 	// Protected pages and APIs — require session or API key.
 	r.Group(func(pr chi.Router) {
 		pr.Use(a.requireSessionOrAPIKey)
 
 		// Pages
-		pr.Get("/admin/v3", a.handleV3Dashboard)
-		pr.Get("/admin/v3/posts", a.handleV3Posts)
-		pr.Get("/admin/v3/media", a.handleV3Media)
-		pr.Get("/admin/v3/api/media", a.handleV3MediaList)
-		pr.Get("/admin/v3/members", a.handleV3Members)
-		pr.Get("/admin/v3/security", a.handleV3Security)
-		pr.With(auth.CSRFTokenMiddleware).Post("/admin/v3/api/totp/begin", a.handleV3TOTPBegin)
-		pr.With(auth.CSRFTokenMiddleware).Post("/admin/v3/api/totp/verify", a.handleV3TOTPVerify)
-		pr.With(auth.CSRFTokenMiddleware).Post("/admin/v3/api/totp/disable", a.handleV3TOTPDisable)
-		pr.Get("/admin/v3/editor", a.handleV3Editor)
-		pr.Get("/admin/v3/editor/{slug}", a.handleV3Editor)
-		pr.Get("/admin/v3/monitoring", a.handleV3Monitoring)
-		pr.Get("/admin/v3/theme", a.handleV3Theme)
+		pr.Get("/os", a.handleV3Dashboard)
+		pr.Get("/os/posts", a.handleV3Posts)
+		pr.Get("/os/media", a.handleV3Media)
+		pr.Get("/os/api/media", a.handleV3MediaList)
+		pr.Get("/os/members", a.handleV3Members)
+		pr.Get("/os/security", a.handleV3Security)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/totp/begin", a.handleV3TOTPBegin)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/totp/verify", a.handleV3TOTPVerify)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/totp/disable", a.handleV3TOTPDisable)
+		pr.Get("/os/editor", a.handleV3Editor)
+		pr.Get("/os/editor/{slug}", a.handleV3Editor)
+		pr.Get("/os/monitoring", a.handleV3Monitoring)
+		pr.Get("/os/theme", a.handleV3Theme)
 		// Session-friendly mirrors of the Theme Studio JSON API (the /api/v1/admin
 		// originals require an API key; v3 operators hold a session cookie).
-		pr.Get("/admin/v3/api/theme/presets", a.handleThemePresets)
-		pr.Get("/admin/v3/api/theme/tokens", a.handleThemeTokens)
-		pr.With(auth.CSRFTokenMiddleware).Post("/admin/v3/api/theme/preview", a.handleThemePreview)
-		pr.With(auth.CSRFTokenMiddleware).Post("/admin/v3/api/theme/apply", a.handleThemeApply)
+		pr.Get("/os/api/theme/presets", a.handleThemePresets)
+		pr.Get("/os/api/theme/tokens", a.handleThemeTokens)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/theme/preview", a.handleThemePreview)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/theme/apply", a.handleThemeApply)
 		// Session-friendly read-only mirrors of the operator JSON APIs (the
 		// /api/v1/admin/* originals require an API key; v3 operators hold a
 		// session cookie). Same handlers, no CSRF needed for GETs.
-		pr.Get("/admin/v3/api/mode", a.handleModeStatus)
-		pr.Get("/admin/v3/api/budgets", a.handleGovernanceBudgets)
-		pr.Get("/admin/v3/tools", a.handleV3Tools)
-		pr.Get("/admin/v3/api/tools", a.handleV3ToolsList)
-		pr.With(auth.CSRFTokenMiddleware).Post("/admin/v3/api/tools/toggle", a.handleV3ToolToggle)
-		pr.Get("/admin/v3/seo", a.handleV3SEONative)
-		pr.Get("/admin/v3/analytics", a.handleV3Analytics)
-		pr.Get("/admin/v3/settings", a.handleV3Settings)
-		pr.Get("/admin/v3/settings/{group}", a.handleV3Settings)
+		pr.Get("/os/api/mode", a.handleModeStatus)
+		pr.Get("/os/api/budgets", a.handleGovernanceBudgets)
+		pr.Get("/os/tools", a.handleV3Tools)
+		pr.Get("/os/api/tools", a.handleV3ToolsList)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/tools/toggle", a.handleV3ToolToggle)
+		pr.Get("/os/seo", a.handleV3SEONative)
+		pr.Get("/os/analytics", a.handleV3Analytics)
+		pr.Get("/os/settings", a.handleV3Settings)
+		pr.Get("/os/settings/{group}", a.handleV3Settings)
 
 		// CSRF-protected writes
-		pr.With(auth.CSRFTokenMiddleware).Post("/admin/v3/api/seo/regenerate", a.handleSEORegenerate)
-		pr.With(auth.CSRFTokenMiddleware).Post("/admin/v3/api/settings", a.handleV3SettingsAPI)
-		pr.With(auth.CSRFTokenMiddleware).Post("/admin/v3/api/posts/quick-create", a.handleV3QuickCreatePost)
-		pr.With(auth.CSRFTokenMiddleware).Post("/admin/v3/api/editor/save", a.handleV3EditorSave)
-		pr.With(auth.CSRFTokenMiddleware).Post("/admin/v3/api/editor/preview", a.handleV3EditorPreview)
-		pr.With(auth.CSRFTokenMiddleware).Post("/admin/v3/api/editor/ai", a.handleV3EditorAI)
-		pr.With(auth.CSRFTokenMiddleware).Post("/admin/v3/api/editor/convert", a.handleV3EditorConvert)
-		pr.Get("/admin/v3/api/editor/versions/{slug}", a.handleV3EditorVersionList)
-		pr.Get("/admin/v3/api/editor/versions/{slug}/{id}", a.handleV3EditorVersionGet)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/seo/regenerate", a.handleSEORegenerate)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/settings", a.handleV3SettingsAPI)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/posts/quick-create", a.handleV3QuickCreatePost)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/editor/save", a.handleV3EditorSave)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/editor/preview", a.handleV3EditorPreview)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/editor/ai", a.handleV3EditorAI)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/editor/convert", a.handleV3EditorConvert)
+		pr.Get("/os/api/editor/versions/{slug}", a.handleV3EditorVersionList)
+		pr.Get("/os/api/editor/versions/{slug}/{id}", a.handleV3EditorVersionGet)
 
 		// Read-only APIs (no CSRF needed)
-		pr.Get("/admin/v3/api/activity", a.handleV3Activity)
-		pr.Get("/admin/v3/api/cmd-index", a.handleV3CmdIndex)
+		pr.Get("/os/api/activity", a.handleV3Activity)
+		pr.Get("/os/api/cmd-index", a.handleV3CmdIndex)
 	})
 
-	// Redirect bare /admin/v3/* to dashboard if hitting unknown paths
-	r.Get("/admin/v3/*", func(w http.ResponseWriter, req *http.Request) {
-		http.Redirect(w, req, "/admin/v3", http.StatusSeeOther)
+	// Redirect bare /os/* to dashboard if hitting unknown paths
+	r.Get("/os/*", func(w http.ResponseWriter, req *http.Request) {
+		http.Redirect(w, req, "/os", http.StatusSeeOther)
 	})
 }
 
@@ -216,9 +223,9 @@ func adminV3Layout(nonce, title, active string, settings *v3Settings, bodyHTML s
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>` + et + ` — ` + siteName + ` Admin</title>
+<title>` + et + ` — ` + siteName + ` · VayuOS</title>
 <meta name="robots" content="noindex, nofollow">
-<link rel="stylesheet" href="/admin/v3/static/css/admin-v3.css">
+<link rel="stylesheet" href="/os/static/css/admin-v3.css">
 <link rel="icon" type="image/png" href="/static/favicon-light.png">
 </head>
 <body class="vp-v3" data-admin-theme="` + html.EscapeString(theme) + `">
@@ -233,28 +240,29 @@ func adminV3Layout(nonce, title, active string, settings *v3Settings, bodyHTML s
   <div class="sidebar-brand">
     <img src="/static/favicon-light.png" alt="" width="28" height="28">
     <span class="sidebar-brand-name">` + siteName + `</span>
+    <span class="sidebar-brand-os">VayuOS</span>
   </div>
   <nav class="sidebar-nav" aria-label="Primary">
     <div class="sidebar-section-label">Content</div>
-    ` + navItem("/admin/v3", "Dashboard", "dashboard", active, iconDashboard) + `
-    ` + navItem("/admin/v3/posts", "Posts", "posts", active, iconPosts) + `
-    ` + navItem("/admin/v3/editor", "New Post", "editor", active, iconNewPost) + `
-    ` + navItem("/admin/v3/media", "Media", "media", active, iconMedia) + `
+    ` + navItem("/os", "Dashboard", "dashboard", active, iconDashboard) + `
+    ` + navItem("/os/posts", "Posts", "posts", active, iconPosts) + `
+    ` + navItem("/os/editor", "New Post", "editor", active, iconNewPost) + `
+    ` + navItem("/os/media", "Media", "media", active, iconMedia) + `
 
     <div class="sidebar-section-label">Audience</div>
-    ` + navItem("/admin/v3/members", "Members", "members", active, iconMembers) + `
-    ` + navItem("/admin/v3/newsletter", "Newsletter", "newsletter", active, iconNewsletter) + `
+    ` + navItem("/os/members", "Members", "members", active, iconMembers) + `
+    ` + navItem("/os/newsletter", "Newsletter", "newsletter", active, iconNewsletter) + `
 
     <div class="sidebar-section-label">Optimize</div>
-    ` + navItem("/admin/v3/seo", "SEO", "seo", active, iconSEO) + `
-    ` + navItem("/admin/v3/analytics", "Analytics", "analytics", active, iconAnalytics) + `
-    ` + navItem("/admin/v3/theme", "Theme Studio", "theme", active, iconTheme) + `
+    ` + navItem("/os/seo", "SEO", "seo", active, iconSEO) + `
+    ` + navItem("/os/analytics", "Analytics", "analytics", active, iconAnalytics) + `
+    ` + navItem("/os/theme", "Theme Studio", "theme", active, iconTheme) + `
 
     <div class="sidebar-section-label">System</div>
-    ` + navItem("/admin/v3/monitoring", "Monitoring", "monitoring", active, iconMonitoring) + `
-    ` + navItem("/admin/v3/tools", "Tools & Plugins", "tools", active, iconTools) + `
-    ` + navItem("/admin/v3/settings", "Settings", "settings", active, iconSettings) + `
-    ` + navItem("/admin/v3/security", "Security", "security", active, iconSecurity) + `
+    ` + navItem("/os/monitoring", "Monitoring", "monitoring", active, iconMonitoring) + `
+    ` + navItem("/os/tools", "Tools & Plugins", "tools", active, iconTools) + `
+    ` + navItem("/os/settings", "Settings", "settings", active, iconSettings) + `
+    ` + navItem("/os/security", "Security", "security", active, iconSecurity) + `
     <div class="sidebar-spacer"></div>
     <a class="nav-link" href="/admin/v2">
       <svg viewBox="0 0 20 20" fill="none" width="16" height="16" aria-hidden="true"><path d="M9 4H5a2 2 0 00-2 2v8a2 2 0 002 2h10a2 2 0 002-2v-4M13 4h4m0 0v4m0-4L9 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
@@ -281,8 +289,8 @@ func adminV3Layout(nonce, title, active string, settings *v3Settings, bodyHTML s
     <span class="topbar-title">` + et + `</span>
     <span class="topbar-spacer"></span>
     ` + cmdHint + `
-    <a class="btn btn--primary btn--sm" href="/admin/v3/editor">New Post</a>
-    <form method="POST" action="/admin/v3/logout">
+    <a class="btn btn--primary btn--sm" href="/os/editor">New Post</a>
+    <form method="POST" action="/os/logout">
       <button type="submit" class="btn btn--ghost btn--sm">Sign out</button>
     </form>
   </header>
@@ -295,19 +303,19 @@ func adminV3Layout(nonce, title, active string, settings *v3Settings, bodyHTML s
 
 <!-- Bottom nav for mobile -->
 <nav class="bottom-nav" aria-label="Mobile navigation">
-  <a class="bottom-nav-item` + activeCls("dashboard", active) + `" href="/admin/v3">
+  <a class="bottom-nav-item` + activeCls("dashboard", active) + `" href="/os">
     ` + iconDashboard + `<span>Home</span>
   </a>
-  <a class="bottom-nav-item` + activeCls("posts", active) + `" href="/admin/v3/posts">
+  <a class="bottom-nav-item` + activeCls("posts", active) + `" href="/os/posts">
     ` + iconPosts + `<span>Posts</span>
   </a>
-  <a class="bottom-nav-item` + activeCls("editor", active) + `" href="/admin/v3/editor">
+  <a class="bottom-nav-item` + activeCls("editor", active) + `" href="/os/editor">
     ` + iconNewPost + `<span>Write</span>
   </a>
-  <a class="bottom-nav-item` + activeCls("members", active) + `" href="/admin/v3/members">
+  <a class="bottom-nav-item` + activeCls("members", active) + `" href="/os/members">
     ` + iconMembers + `<span>Members</span>
   </a>
-  <a class="bottom-nav-item` + activeCls("settings", active) + `" href="/admin/v3/settings">
+  <a class="bottom-nav-item` + activeCls("settings", active) + `" href="/os/settings">
     ` + iconSettings + `<span>Settings</span>
   </a>
 </nav>
@@ -334,8 +342,8 @@ func adminV3Layout(nonce, title, active string, settings *v3Settings, bodyHTML s
 <div class="toast-container" aria-live="polite" aria-atomic="true"></div>
 
 <!-- Bootstrap (nonce-gated, reads data-admin-theme from body) -->
-<script src="/admin/v3/static/js/purify.min.js"></script>
-<script nonce="` + nonce + `" src="/admin/v3/static/js/admin-v3.js"></script>
+<script src="/os/static/js/purify.min.js"></script>
+<script nonce="` + nonce + `" src="/os/static/js/admin-v3.js"></script>
 </body></html>`
 }
 
@@ -432,7 +440,7 @@ func (a *App) handleV3LoginSubmit(w http.ResponseWriter, r *http.Request) {
 	auth.RecordAuthSuccess(ip)
 	a.userStore.TouchLastLogin(r.Context(), u.ID)
 	auth.SetSessionCookie(w, token)
-	http.Redirect(w, r, "/admin/v3", http.StatusSeeOther)
+	http.Redirect(w, r, "/os", http.StatusSeeOther)
 }
 
 func (a *App) handleV3Logout(w http.ResponseWriter, r *http.Request) {
@@ -442,7 +450,7 @@ func (a *App) handleV3Logout(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	auth.ClearSessionCookie(w)
-	http.Redirect(w, r, "/admin/v3/login", http.StatusSeeOther)
+	http.Redirect(w, r, "/os/login", http.StatusSeeOther)
 }
 
 // v3LoginPage builds the full login page HTML. It uses a split-viewport layout:
@@ -459,7 +467,7 @@ func v3LoginPage(prefillEmail, errMsg string) string {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Sign in — VayuPress Admin</title>
 <meta name="robots" content="noindex, nofollow">
-<link rel="stylesheet" href="/admin/v3/static/css/admin-v3.css">
+<link rel="stylesheet" href="/os/static/css/admin-v3.css">
 <link rel="icon" type="image/png" href="/static/favicon-light.png">
 </head>
 <body class="vp-v3 login-page">
@@ -485,7 +493,7 @@ func v3LoginPage(prefillEmail, errMsg string) string {
   <div class="login-card-title">Welcome back</div>
   <div class="login-card-sub">Sign in to your VayuPress dashboard</div>
   ` + errHTML + `
-  <form class="login-form" method="POST" action="/admin/v3/login" novalidate>
+  <form class="login-form" method="POST" action="/os/login" novalidate>
     <div class="field">
       <label class="field-label" for="login-email">Email</label>
       <input id="login-email" class="input" type="email" name="email"
@@ -509,7 +517,7 @@ func v3LoginPage(prefillEmail, errMsg string) string {
   <div class="login-footer">VayuPress Admin v3 · CSP-strict · Zero-telemetry</div>
 </div>
 
-<script src="/admin/v3/static/js/admin-v3.js"></script>
+<script src="/os/static/js/admin-v3.js"></script>
 </body></html>`
 }
 
@@ -610,16 +618,16 @@ func (a *App) handleV3Dashboard(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Recent articles table
-	recentHTML := `<div class="table-empty">No articles yet — <a href="/admin/v3/editor">write your first post</a>.</div>`
+	recentHTML := `<div class="table-empty">No articles yet — <a href="/os/editor">write your first post</a>.</div>`
 	if len(snap.RecentArticles) > 0 {
 		rows := ""
 		for _, ra := range snap.RecentArticles {
 			rows += `<tr>
-  <td class="row-title"><a href="/admin/v3/editor/` + html.EscapeString(ra.Slug) + `">` + html.EscapeString(ra.Title) + `</a>
+  <td class="row-title"><a href="/os/editor/` + html.EscapeString(ra.Slug) + `">` + html.EscapeString(ra.Title) + `</a>
     <div class="row-meta">/` + html.EscapeString(ra.Slug) + `</div></td>
   <td class="muted text-sm">` + ra.CreatedAt.UTC().Format("2 Jan 2006") + `</td>
   <td class="row-actions">
-    <a class="btn btn--ghost btn--sm" href="/admin/v3/editor/` + html.EscapeString(ra.Slug) + `">Edit</a>
+    <a class="btn btn--ghost btn--sm" href="/os/editor/` + html.EscapeString(ra.Slug) + `">Edit</a>
     <a class="btn btn--ghost btn--sm" href="/` + html.EscapeString(ra.Slug) + `" target="_blank" rel="noopener">View ↗</a>
   </td>
 </tr>`
@@ -714,7 +722,7 @@ func (a *App) handleV3Dashboard(w http.ResponseWriter, r *http.Request) {
   <div class="card">
     <div class="card-title">Recent activity</div>
     <div id="activity-feed" class="activity-list">
-      <!-- Populated by admin-v3.js via GET /admin/v3/api/activity -->
+      <!-- Populated by admin-v3.js via GET /os/api/activity -->
       <div class="skeleton skeleton--text mb-3"></div>
       <div class="skeleton skeleton--text mb-3 w-80"></div>
       <div class="skeleton skeleton--text w-65"></div>
@@ -751,13 +759,13 @@ func (a *App) handleV3Posts(w http.ResponseWriter, r *http.Request) {
 			}
 			rows += `<tr data-post-row data-search="` + html.EscapeString(strings.ToLower(p.Title+searchTags)) + `">
   <td class="row-title">
-    <a href="/admin/v3/editor/` + html.EscapeString(p.Slug) + `">` + html.EscapeString(p.Title) + `</a>
+    <a href="/os/editor/` + html.EscapeString(p.Slug) + `">` + html.EscapeString(p.Title) + `</a>
     <div class="row-meta">/` + html.EscapeString(p.Slug) + `</div>
   </td>
   <td>` + tags + `</td>
   <td class="muted text-sm">` + p.UpdatedAt.UTC().Format("2 Jan 2006") + `</td>
   <td class="row-actions">
-    <a class="btn btn--ghost btn--sm" href="/admin/v3/editor/` + html.EscapeString(p.Slug) + `">Edit</a>
+    <a class="btn btn--ghost btn--sm" href="/os/editor/` + html.EscapeString(p.Slug) + `">Edit</a>
     <a class="btn btn--ghost btn--sm" href="/` + html.EscapeString(p.Slug) + `" target="_blank" rel="noopener">View ↗</a>
   </td>
 </tr>`
@@ -771,13 +779,13 @@ func (a *App) handleV3Posts(w http.ResponseWriter, r *http.Request) {
   <div class="empty-icon">✍️</div>
   <div class="empty-title">No posts yet</div>
   <div class="empty-sub">Your published articles will appear here. Write your first one — it only takes a minute.</div>
-  <a class="btn btn--primary mt-4" href="/admin/v3/editor">Write your first post</a>
+  <a class="btn btn--primary mt-4" href="/os/editor">Write your first post</a>
 </div>`
 	} else {
 		body = `<div class="page-header">
   <h1>Posts <span class="count-pill">` + strconv.Itoa(count) + `</span></h1>
   <div class="page-actions">
-    <a class="btn btn--primary" href="/admin/v3/editor">New Post</a>
+    <a class="btn btn--primary" href="/os/editor">New Post</a>
   </div>
 </div>
 <div class="card">
@@ -821,7 +829,7 @@ func (a *App) handleV3Editor(w http.ResponseWriter, r *http.Request) {
 			if hasBlocks || emptyDraft {
 				body := v3EditorBody(slug, art.Title, blocksJSON)
 				body += `
-<script nonce="` + nonce + `" src="/admin/v3/static/js/admin-v3-editor.js"></script>`
+<script nonce="` + nonce + `" src="/os/static/js/admin-v3-editor.js"></script>`
 				writeV3HTML(w, adminV3Layout(nonce, "Edit Post", "editor", cfg, body))
 				return
 			}
@@ -878,7 +886,7 @@ func (a *App) serveV3LegacyEditor(w http.ResponseWriter, r *http.Request, nonce 
     var csrf = m ? decodeURIComponent(m[1]) : '';
     btn.disabled = true;
     btn.textContent = 'Converting…';
-    fetch('/admin/v3/api/editor/convert', {
+    fetch('/os/api/editor/convert', {
       method:'POST',
       headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},
       body: JSON.stringify({slug: slug})
@@ -886,7 +894,7 @@ func (a *App) serveV3LegacyEditor(w http.ResponseWriter, r *http.Request, nonce 
       if(!r.ok) throw new Error('convert failed ('+r.status+')');
       return r.json();
     }).then(function(){
-      window.location.href = '/admin/v3/editor/' + encodeURIComponent(slug);
+      window.location.href = '/os/editor/' + encodeURIComponent(slug);
     }).catch(function(err){
       btn.disabled = false;
       btn.textContent = 'Convert to blocks';
@@ -916,12 +924,12 @@ func (a *App) handleV3Settings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	tabs := []struct{ Key, Label, Href string }{
-		{"general", "General", "/admin/v3/settings/general"},
-		{"design", "Design", "/admin/v3/settings/design"},
-		{"members", "Members", "/admin/v3/settings/members"},
-		{"email", "Email", "/admin/v3/settings/email"},
-		{"security", "Security", "/admin/v3/settings/security"},
-		{"advanced", "Advanced", "/admin/v3/settings/advanced"},
+		{"general", "General", "/os/settings/general"},
+		{"design", "Design", "/os/settings/design"},
+		{"members", "Members", "/os/settings/members"},
+		{"email", "Email", "/os/settings/email"},
+		{"security", "Security", "/os/settings/security"},
+		{"advanced", "Advanced", "/os/settings/advanced"},
 	}
 
 	tabHTML := ""
@@ -1170,13 +1178,13 @@ func (a *App) handleV3CmdIndex(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sPages := []cmdSetting{
-		{Label: "Theme Studio", Icon: "🎨", Href: "/admin/v3/theme"},
-		{Label: "Tools & Plugins", Icon: "🧩", Href: "/admin/v3/tools"},
-		{Label: "General settings", Icon: "⚙", Href: "/admin/v3/settings/general"},
-		{Label: "Design & theme", Icon: "🎨", Href: "/admin/v3/settings/design"},
-		{Label: "Email settings", Icon: "✉", Href: "/admin/v3/settings/email"},
-		{Label: "Members settings", Icon: "👥", Href: "/admin/v3/settings/members"},
-		{Label: "Security settings", Icon: "🔒", Href: "/admin/v3/settings/security"},
+		{Label: "Theme Studio", Icon: "🎨", Href: "/os/theme"},
+		{Label: "Tools & Plugins", Icon: "🧩", Href: "/os/tools"},
+		{Label: "General settings", Icon: "⚙", Href: "/os/settings/general"},
+		{Label: "Design & theme", Icon: "🎨", Href: "/os/settings/design"},
+		{Label: "Email settings", Icon: "✉", Href: "/os/settings/email"},
+		{Label: "Members settings", Icon: "👥", Href: "/os/settings/members"},
+		{Label: "Security settings", Icon: "🔒", Href: "/os/settings/security"},
 	}
 
 	w.Header().Set("Content-Type", "application/json")

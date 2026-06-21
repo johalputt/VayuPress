@@ -145,7 +145,7 @@ func (a *App) handleV3Security(w http.ResponseWriter, r *http.Request) {
 
 	body := `<div class="page-header"><h1>Security</h1></div>
 <div class="card" data-totp-card>` + section + `</div>
-<script nonce="` + nonce + `" src="/admin/v3/static/js/admin-v3-security.js"></script>`
+<script nonce="` + nonce + `" src="/os/static/js/admin-v3-security.js"></script>`
 
 	writeV3HTML(w, adminV3Layout(nonce, "Security", "security", cfg, body))
 }

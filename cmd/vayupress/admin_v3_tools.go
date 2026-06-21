@@ -177,7 +177,7 @@ func (a *App) handleV3Tools(w http.ResponseWriter, r *http.Request) {
   </div>
 </div>
 <div class="tools-grid" data-tools-grid>` + cards.String() + `</div>
-<script nonce="` + nonce + `" src="/admin/v3/static/js/admin-v3-tools.js"></script>`
+<script nonce="` + nonce + `" src="/os/static/js/admin-v3-tools.js"></script>`
 
 	writeV3HTML(w, adminV3Layout(nonce, "Tools & Plugins", "tools", cfg, body))
 }

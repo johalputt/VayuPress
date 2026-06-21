@@ -25,7 +25,7 @@
   btn.addEventListener('click', function () {
     btn.disabled = true;
     show('Regenerating sitemap, feed, and robots…');
-    fetch('/admin/v3/api/seo/regenerate', {
+    fetch('/os/api/seo/regenerate', {
       method: 'POST',
       headers: { 'X-CSRF-Token': csrf() }
     })

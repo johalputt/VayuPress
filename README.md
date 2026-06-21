@@ -21,12 +21,14 @@
 
 > Full notes in [`CHANGELOG.md`](CHANGELOG.md) · upgrade steps in [`docs/UPGRADING.md`](docs/UPGRADING.md)
 
-**VayuOS — One Admin** (ADR-0069, ADR-0073) — the v1/v2/v3 admin surfaces
-consolidate into a single, fast **Admin v3**. The block editor gains depth, the
-Theme Studio becomes native, legacy posts can be adopted into blocks losslessly,
-and Admin v2 enters soft deprecation — all on the same sovereign single binary
-with zero CDNs and a strict CSP (no `unsafe-eval`, no `unsafe-inline`,
-per-request nonces).
+**VayuOS — One Admin** (ADR-0069, ADR-0073) — the three historical admin
+surfaces (the classic console `/admin`, Admin v2 `/admin/v2`, and Admin v3
+`/admin/v3`) consolidate into a single, fast admin: **VayuOS, mounted at `/os`**.
+All three legacy paths now 302-redirect into the `/os` equivalent. The block
+editor gains depth, the Theme Studio becomes native, and legacy posts can be
+adopted into blocks losslessly — all on the same sovereign single binary with
+zero CDNs and a strict CSP (no `unsafe-eval`, no `unsafe-inline`, per-request
+nonces).
 
 - **AI-assist slash commands (opt-in)** — when `VAYU_AI_URL` is configured, the
   block editor's slash palette gains an AI section (continue, rewrite, summarise)
@@ -36,19 +38,21 @@ per-request nonces).
   renders a word-level LCS diff against the working draft.
 - **Native Theme Studio in Admin v3** — preset gallery + design-token editor with
   a CSP-clean live preview via scripted CSSOM custom-property writes (no `<style>`
-  injection), served from session-gated `/admin/v3/api/theme/*` mirrors.
+  injection), served from session-gated `/os/api/theme/*` mirrors.
 - **Convert-to-blocks (ADR-0073)** — an explicit, confirmed, **non-destructive**
   action imports a legacy article's HTML into a block document (`blocks_json`
   side-car) via `blockrender.ImportHTML`. `articles.content` is never touched, so
   the action is reversible by simply not saving.
-- **Admin v2 soft-deprecated (ADR-0069 Stage 2)** — `/admin` and `/admin/v2[/...]`
-  now 302-redirect to the v3 equivalent. Set `ADMIN_LEGACY=1` to keep v2 reachable
-  for one more release; it is scheduled for removal in `v1.6.0`.
+- **Legacy admin surfaces redirect to VayuOS (ADR-0069)** — `/admin`,
+  `/admin/v2[/...]` and `/admin/v3[/...]` now 302-redirect to the `/os`
+  equivalent. Set `ADMIN_LEGACY=1` to keep the deprecated v2 pages reachable for
+  one more release; they are scheduled for removal in `v1.6.0`.
 
 ### Upgrading from v1.4.0
-No breaking changes. Operators who still rely on Admin v2 must set
-`ADMIN_LEGACY=1`; otherwise v2 URLs redirect to Admin v3. AI-assist stays off
-unless `VAYU_AI_URL` is set.
+No breaking changes. The admin now lives at **`/os`**; bookmark it there. Old
+`/admin`, `/admin/v2` and `/admin/v3` URLs redirect automatically. Operators who
+still rely on the deprecated v2 pages must set `ADMIN_LEGACY=1`. AI-assist stays
+off unless `VAYU_AI_URL` is set.
 
 ---
 
@@ -96,7 +100,7 @@ changes; rich media and the Theme Studio are available immediately.
 **Admin v3** — a ground-up admin & block editor that surpasses Ghost, WordPress,
 and Substack in design, depth, and security, while remaining a sovereign single
 binary with **zero CDN dependencies** and a **strict CSP** (no `unsafe-eval`, no
-`unsafe-inline`). Mounted at `/admin/v3` alongside `/admin/v2` — fully
+`unsafe-inline`). Mounted at `/os` alongside `/admin/v2` — fully
 non-breaking (ADR-0068).
 
 - **Design system** — hand-authored CSS, CSS-custom-property theming (dark/light/auto),
@@ -204,7 +208,7 @@ the editor in HTML mode until first saved in Markdown mode.
 
 ![VayuPress Theme Studio](docs/screenshots/admin-v3-theme.png)
 
-*The Theme Studio, now native to Admin v3 (`/admin/v3/theme`) — a preset gallery
+*The Theme Studio, now native to Admin v3 (`/os/theme`) — a preset gallery
 and design-token editor with an instant live preview. Colour ramps, typography
 and spacing compile to a single sovereign stylesheet served from your own origin.
 The preview applies values through CSSOM `setProperty`, so it stays inside the
@@ -217,7 +221,7 @@ strict `style-src 'self'` CSP — no inline styles, no third-party fonts, no CDN
 
 ![VayuPress Admin v3 Dashboard](docs/screenshots/admin-v3-dashboard.png)
 
-*The Admin v3 dashboard (`/admin/v3`) — grouped sidebar, stat cards, 14-day
+*The Admin v3 dashboard (`/os`) — grouped sidebar, stat cards, 14-day
 publishing-trend sparkline, activity feed, and command palette (⌘K).*
 
 ![VayuPress Admin v3 Block Editor](docs/screenshots/admin-v3-editor.png)
@@ -226,7 +230,7 @@ publishing-trend sparkline, activity feed, and command palette (⌘K).*
 escape + bluemonday UGC, slash-command palette with opt-in **AI-assist**, an
 inline **version-history diff**, autosave, and live preview.*
 
-As of v1.5.0 the flagship admin (`/admin/v3`) is the **single** admin surface —
+As of v1.5.0 the flagship admin (`/os`) is the **single** admin surface —
 it surpasses Ghost/WordPress/Substack in design and depth while staying a
 sovereign single binary with **zero CDN dependencies** and a **strict CSP** (no
 `unsafe-eval`, no `unsafe-inline`). Admin v2 is soft-deprecated and redirects

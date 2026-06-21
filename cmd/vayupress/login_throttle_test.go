@@ -8,7 +8,7 @@ import (
 )
 
 func TestLoginClientIPStripsPort(t *testing.T) {
-	r := httptest.NewRequest("POST", "/admin/v3/login", nil)
+	r := httptest.NewRequest("POST", "/os/login", nil)
 	r.RemoteAddr = "203.0.113.7:54321"
 	if got := loginClientIP(r); got != "203.0.113.7" {
 		t.Errorf("loginClientIP with port: want 203.0.113.7, got %q", got)

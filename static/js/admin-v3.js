@@ -29,7 +29,7 @@ const on = (el, ev, fn) => el && el.addEventListener(ev, fn);
     btn.title = 'Theme: ' + next;
     // Persist via API (fire-and-forget)
     const csrf = cookie('vp_csrf');
-    fetch('/admin/v3/api/settings', {
+    fetch('/os/api/settings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
       body: JSON.stringify({ key: 'admin.theme', value: next }),
@@ -148,7 +148,7 @@ window.vpToast = toast;
     var cached = null;
     try { cached = JSON.parse(sessionStorage.getItem('vp3_cmd_index_' + Date.now().toString().slice(0, -4))); } catch (e) {}
     if (cached) { index = cached; return; }
-    fetch('/admin/v3/api/cmd-index')
+    fetch('/os/api/cmd-index')
       .then(function (r) { return r.json(); })
       .then(function (data) {
         index = data;
@@ -173,7 +173,7 @@ window.vpToast = toast;
     }
 
     var sections = [
-      { label: 'Posts', key: 'posts', icon: '✍', href: function(i){ return '/admin/v3/editor/' + i.slug; } },
+      { label: 'Posts', key: 'posts', icon: '✍', href: function(i){ return '/os/editor/' + i.slug; } },
       { label: 'Quick Actions', key: 'actions', icon: '⚡', fn: function(i){ return i.fn; } },
       { label: 'Settings', key: 'settings', icon: '⚙', href: function(i){ return i.href; } },
     ];
@@ -275,7 +275,7 @@ window.vpToast = toast;
     if (!title) return;
     input.disabled = true;
     var csrf = cookie('vp_csrf');
-    fetch('/admin/v3/api/posts/quick-create', {
+    fetch('/os/api/posts/quick-create', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
       body: JSON.stringify({ title: title }),
@@ -283,7 +283,7 @@ window.vpToast = toast;
     .then(function (r) { return r.json(); })
     .then(function (data) {
       if (data.slug) {
-        window.location.href = '/admin/v3/editor/' + data.slug;
+        window.location.href = '/os/editor/' + data.slug;
       } else {
         toast(data.error || 'Could not create post', 'error');
         input.disabled = false;
@@ -323,7 +323,7 @@ window.vpRelTime = relativeTime;
 (function initActivityFeed() {
   var feed = $('#activity-feed');
   if (!feed) return;
-  fetch('/admin/v3/api/activity')
+  fetch('/os/api/activity')
     .then(function (r) { return r.json(); })
     .then(function (data) {
       feed.innerHTML = '';
@@ -370,7 +370,7 @@ $$('[data-setting-key]').forEach(function (el) {
     var key = el.dataset.settingKey;
     var val = el.type === 'checkbox' ? (el.checked ? 'true' : 'false') : el.value;
     var csrf = cookie('vp_csrf');
-    fetch('/admin/v3/api/settings', {
+    fetch('/os/api/settings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
       body: JSON.stringify({ key: key, value: val }),
@@ -449,7 +449,7 @@ $$('[data-setting-key]').forEach(function (el) {
   }
 
   function load() {
-    fetch('/admin/v3/api/media', { headers: { 'Accept': 'application/json' } })
+    fetch('/os/api/media', { headers: { 'Accept': 'application/json' } })
       .then(function (r) { return r.json(); })
       .then(function (data) {
         while (grid.firstChild) grid.removeChild(grid.firstChild);

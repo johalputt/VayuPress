@@ -35,7 +35,7 @@ func TestV3EditorSaveRoundTrip(t *testing.T) {
 			{"type": "paragraph", "text": "Body text here"},
 		},
 	})
-	req, _ := http.NewRequest("POST", srv.URL+"/admin/v3/api/editor/save", bytes.NewReader(payload))
+	req, _ := http.NewRequest("POST", srv.URL+"/os/api/editor/save", bytes.NewReader(payload))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-API-Key", key)
 	req.Header.Set("X-CSRF-Token", csrf)
@@ -65,7 +65,7 @@ func TestV3QuickCreateOpensBlockEditor(t *testing.T) {
 
 	csrf := auth.GenerateCSRFToken()
 	body, _ := json.Marshal(map[string]string{"title": "My Fresh Draft"})
-	req, _ := http.NewRequest("POST", srv.URL+"/admin/v3/api/posts/quick-create", bytes.NewReader(body))
+	req, _ := http.NewRequest("POST", srv.URL+"/os/api/posts/quick-create", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-API-Key", key)
 	req.Header.Set("X-CSRF-Token", csrf)
@@ -86,7 +86,7 @@ func TestV3QuickCreateOpensBlockEditor(t *testing.T) {
 
 	// The editor page for the new draft must open the block editor (data-editor
 	// canvas + the block editor script), not error.
-	er := doRequest(t, srv, "GET", "/admin/v3/editor/"+out.Slug, key, nil)
+	er := doRequest(t, srv, "GET", "/os/editor/"+out.Slug, key, nil)
 	if er.StatusCode != 200 {
 		t.Fatalf("editor GET want 200, got %d", er.StatusCode)
 	}

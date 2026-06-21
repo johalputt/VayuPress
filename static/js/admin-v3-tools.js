@@ -2,7 +2,7 @@
  * admin-v3-tools.js — Tools & Plugins panel for Admin v3 (VayuOS foundation).
  * Strict CSP: no eval, DOM updates via textContent / className only.
  *
- * Wires each module switch to POST /admin/v3/api/tools/toggle. On success the
+ * Wires each module switch to POST /os/api/tools/toggle. On success the
  * card's status label is updated in place; on failure the switch reverts so the
  * UI never drifts from server state.
  */
@@ -34,7 +34,7 @@
       var want = input.checked;
       input.disabled = true;
 
-      fetch('/admin/v3/api/tools/toggle', {
+      fetch('/os/api/tools/toggle', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

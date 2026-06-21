@@ -15,10 +15,10 @@ import (
 func TestV3LayoutCSPSafe(t *testing.T) {
 	out := adminV3Layout("TESTNONCE", "Dashboard", "dashboard", &v3Settings{SiteName: "Demo"}, "<p>body</p>")
 	assertCSPSafe(t, "adminV3Layout", out)
-	if !strings.Contains(out, `<script nonce="TESTNONCE" src="/admin/v3/static/js/admin-v3.js"></script>`) {
+	if !strings.Contains(out, `<script nonce="TESTNONCE" src="/os/static/js/admin-v3.js"></script>`) {
 		t.Error("v3 layout missing nonce'd script tag")
 	}
-	if !strings.Contains(out, `<link rel="stylesheet" href="/admin/v3/static/css/admin-v3.css">`) {
+	if !strings.Contains(out, `<link rel="stylesheet" href="/os/static/css/admin-v3.css">`) {
 		t.Error("v3 layout missing same-origin stylesheet link")
 	}
 	if !strings.Contains(out, "Demo") {

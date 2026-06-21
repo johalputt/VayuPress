@@ -90,7 +90,7 @@ func (a *App) handleV3SEONative(w http.ResponseWriter, r *http.Request) {
   </table></div>
   <div class="seo-status mt-3" data-seo-status hidden></div>
 </div>
-<script nonce="` + nonce + `" src="/admin/v3/static/js/admin-v3-intel.js"></script>`
+<script nonce="` + nonce + `" src="/os/static/js/admin-v3-intel.js"></script>`
 
 	writeV3HTML(w, adminV3Layout(nonce, "SEO", "seo", cfg, body))
 }

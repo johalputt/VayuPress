@@ -7,10 +7,10 @@
  * not gated by style-src, so no compiled-CSS string is ever parsed client side.
  *
  * Flow:
- *   1. Load active tokens (/admin/v3/api/theme/tokens) → fill inputs + preview.
- *   2. Load presets (/admin/v3/api/theme/presets) → gallery of swatch cards.
+ *   1. Load active tokens (/os/api/theme/tokens) → fill inputs + preview.
+ *   2. Load presets (/os/api/theme/presets) → gallery of swatch cards.
  *   3. Editing any token live-updates the preview locally.
- *   4. "Apply theme" POSTs the full token set to /admin/v3/api/theme/apply,
+ *   4. "Apply theme" POSTs the full token set to /os/api/theme/apply,
  *      which validates + compiles + persists server-side (the only source of
  *      truth). "Revert" reloads the persisted tokens.
  */
@@ -130,7 +130,7 @@
   // ── Persistence ─────────────────────────────────────────────────────────────
   function apply() {
     setStatus('Applying…');
-    fetch('/admin/v3/api/theme/apply', {
+    fetch('/os/api/theme/apply', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
       body: JSON.stringify({ tokens: model })
@@ -146,13 +146,13 @@
   }
 
   function fetchTokens() {
-    return fetch('/admin/v3/api/theme/tokens', { headers: { Accept: 'application/json' } })
+    return fetch('/os/api/theme/tokens', { headers: { Accept: 'application/json' } })
       .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
       .then(function (tok) { loadTokens(tok); });
   }
 
   function fetchPresets() {
-    return fetch('/admin/v3/api/theme/presets', { headers: { Accept: 'application/json' } })
+    return fetch('/os/api/theme/presets', { headers: { Accept: 'application/json' } })
       .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
       .then(function (list) { renderPresets(Array.isArray(list) ? list : []); });
   }

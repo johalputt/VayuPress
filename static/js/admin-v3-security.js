@@ -33,7 +33,7 @@
 
   if (beginBtn) {
     beginBtn.addEventListener('click', function () {
-      post('/admin/v3/api/totp/begin')
+      post('/os/api/totp/begin')
         .then(function (r) { return r.json(); })
         .then(function (data) {
           if (!data.secret) { toast(data.message || 'Could not start 2FA', 'error'); return; }
@@ -51,7 +51,7 @@
     verifyBtn.addEventListener('click', function () {
       var code = codeEl ? codeEl.value.trim() : '';
       if (code.length !== 6) { toast('Enter the 6-digit code', 'error'); return; }
-      post('/admin/v3/api/totp/verify', { code: code })
+      post('/os/api/totp/verify', { code: code })
         .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
         .then(function (res) {
           if (!res.ok) { toast(res.j.message || 'Invalid code', 'error'); return; }
@@ -65,7 +65,7 @@
   if (disableBtn) {
     disableBtn.addEventListener('click', function () {
       if (!window.confirm('Disable two-factor authentication for your account?')) return;
-      post('/admin/v3/api/totp/disable')
+      post('/os/api/totp/disable')
         .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
         .then(function (res) {
           if (!res.ok) { toast(res.j.message || 'Could not disable', 'error'); return; }

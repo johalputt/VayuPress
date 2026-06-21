@@ -37,7 +37,7 @@
   }
 
   function refreshMode() {
-    return fetch('/admin/v3/api/mode', { headers: { Accept: 'application/json' } })
+    return fetch('/os/api/mode', { headers: { Accept: 'application/json' } })
       .then(function (r) { return r.ok ? r.json() : Promise.reject(r); })
       .then(function (d) {
         if (d && typeof d.mode === 'string') {
@@ -47,7 +47,7 @@
   }
 
   function refreshBudgets() {
-    return fetch('/admin/v3/api/budgets', { headers: { Accept: 'application/json' } })
+    return fetch('/os/api/budgets', { headers: { Accept: 'application/json' } })
       .then(function (r) { return r.ok ? r.json() : Promise.reject(r); })
       .then(function (d) {
         var list = (d && d.budgets) || [];

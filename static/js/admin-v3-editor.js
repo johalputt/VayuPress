@@ -51,7 +51,7 @@
     { op: 'summarize', label: 'AI: Summarize', icon: '✦', hint: 'Condense the current block to a short summary' },
     { op: 'rewrite', label: 'AI: Rewrite', icon: '✦', hint: 'Rephrase the current block for clarity' }
   ];
-  var aiEnabled = false; // updated from /admin/v3/api/editor/ai status check on load
+  var aiEnabled = false; // updated from /os/api/editor/ai status check on load
 
   // ── Document model ─────────────────────────────────────────────────────────
   var blocks = [];
@@ -406,7 +406,7 @@
       return;
     }
     setStatus('AI thinking…');
-    fetch('/admin/v3/api/editor/ai', {
+    fetch('/os/api/editor/ai', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
       body: JSON.stringify({ op: op, text: text })
@@ -479,7 +479,7 @@
     loading.textContent = 'Loading…';
     historyList.appendChild(loading);
 
-    fetch('/admin/v3/api/editor/versions/' + encodeURIComponent(slug), {
+    fetch('/os/api/editor/versions/' + encodeURIComponent(slug), {
       headers: { Accept: 'application/json' }
     }).then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
       .then(function (d) {
@@ -524,7 +524,7 @@
     loading.textContent = 'Loading diff…';
     historyDiff.appendChild(loading);
 
-    fetch('/admin/v3/api/editor/versions/' + encodeURIComponent(slug) + '/' + encodeURIComponent(String(id)), {
+    fetch('/os/api/editor/versions/' + encodeURIComponent(slug) + '/' + encodeURIComponent(String(id)), {
       headers: { Accept: 'application/json' }
     }).then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
       .then(function (v) {
@@ -636,7 +636,7 @@
       return;
     }
     setStatus('Saving…');
-    fetch('/admin/v3/api/editor/save', {
+    fetch('/os/api/editor/save', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
       body: payload()
@@ -676,7 +676,7 @@
 
   function preview() {
     setStatus('Rendering preview…');
-    fetch('/admin/v3/api/editor/preview', {
+    fetch('/os/api/editor/preview', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
       body: JSON.stringify({ blocks: blocks })
@@ -707,7 +707,7 @@
   });
 
   // Probe AI availability (fire-and-forget, affects palette only).
-  fetch('/admin/v3/api/editor/ai', {
+  fetch('/os/api/editor/ai', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
     body: JSON.stringify({ op: 'ping', text: '' })

@@ -159,7 +159,7 @@ func adminV2Layout(nonce, title, sidebarActive, bodyHTML string) string {
     <button type="button" class="menu-toggle" data-action="toggle-sidebar" aria-label="Toggle menu">≡</button>
     <span class="topbar-title">` + et + `</span>
     <span class="topbar-spacer"></span>
-    <a class="btn btn-ghost btn-sm" href="/admin/v3" title="Try the next-generation admin">✨ Admin v3</a>
+    <a class="btn btn-ghost btn-sm" href="/os" title="Try the next-generation admin">✨ Admin v3</a>
     <a class="btn btn-primary btn-sm" href="/admin/v2/editor">New Post</a>
     <form method="POST" action="/admin/v2/logout" class="topbar-logout">
       <button type="submit" class="btn btn-ghost btn-sm">Sign out</button>
