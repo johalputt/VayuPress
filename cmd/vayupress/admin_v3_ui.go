@@ -378,8 +378,17 @@ func (a *App) handleV3LoginSubmit(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "accounts not initialised", http.StatusServiceUnavailable)
 		return
 	}
+	// Brute-force guard — shared lockout state with the v2 surface and the
+	// API-key path so attempts cannot be split across surfaces.
+	ip := loginClientIP(r)
+	if locked, until := auth.CheckAuthLockout(ip); locked {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte(v3LoginPage(email, loginLockoutMessage(until))))
+		return
+	}
 	u, err := a.userStore.Authenticate(r.Context(), email, pass)
 	if err != nil {
+		auth.RecordAuthFailure(ip)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_, _ = w.Write([]byte(v3LoginPage(email, "Invalid email or password.")))
 		return
@@ -387,6 +396,7 @@ func (a *App) handleV3LoginSubmit(w http.ResponseWriter, r *http.Request) {
 	// Second factor: if the account has 2FA enabled, a valid TOTP code is required.
 	// On failure the password must be re-entered (it is never echoed back).
 	if ok, required := a.verifyTOTPForLogin(r.Context(), email, r.FormValue("totp")); required && !ok {
+		auth.RecordAuthFailure(ip)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_, _ = w.Write([]byte(v3LoginPage(email, "Enter the 6-digit code from your authenticator app, then re-enter your password.")))
 		return
@@ -396,6 +406,7 @@ func (a *App) handleV3LoginSubmit(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "could not start session", http.StatusInternalServerError)
 		return
 	}
+	auth.RecordAuthSuccess(ip)
 	a.userStore.TouchLastLogin(r.Context(), u.ID)
 	auth.SetSessionCookie(w, token)
 	http.Redirect(w, r, "/admin/v3", http.StatusSeeOther)

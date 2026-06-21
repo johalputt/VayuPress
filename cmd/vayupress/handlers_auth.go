@@ -12,8 +12,10 @@ import (
 	"context"
 	"encoding/json"
 	"html"
+	"net"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/johalputt/vayupress/internal/auth"
@@ -67,6 +69,24 @@ func (a *App) requireSessionOrAPIKey(next http.Handler) http.Handler {
 	})
 }
 
+// loginClientIP returns the client IP used to key login brute-force lockout.
+// chi's RealIP middleware has already normalised r.RemoteAddr to the real
+// client address (honouring X-Forwarded-For behind the trusted proxy); we strip
+// any trailing port so direct and proxied connections key consistently.
+func loginClientIP(r *http.Request) string {
+	ip := r.RemoteAddr
+	if host, _, err := net.SplitHostPort(ip); err == nil {
+		ip = host
+	}
+	return ip
+}
+
+// loginLockoutMessage formats the operator-facing lockout notice.
+func loginLockoutMessage(until time.Time) string {
+	return "Too many failed sign-in attempts. Try again after " +
+		until.UTC().Format("15:04 MST") + "."
+}
+
 // handleV2LoginSubmit authenticates email+password and starts a session.
 func (a *App) handleV2LoginSubmit(w http.ResponseWriter, r *http.Request) {
 	if a.userStore == nil || a.sessions == nil {
@@ -77,10 +97,20 @@ func (a *App) handleV2LoginSubmit(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad form", http.StatusBadRequest)
 		return
 	}
+	// Brute-force guard: refuse before touching the password hash when the
+	// client IP is locked out (5 failures / 15 min → 1 h lock, shared with the
+	// API-key path so attackers cannot split their budget across surfaces).
+	ip := loginClientIP(r)
+	if locked, until := auth.CheckAuthLockout(ip); locked {
+		logging.LogJSON(logging.LogFields{Level: "warn", Component: "auth", Severity: "notice", Msg: "login blocked — IP locked out"})
+		a.renderLoginPage(w, r, loginLockoutMessage(until))
+		return
+	}
 	email := r.PostFormValue("email")
 	password := r.PostFormValue("password")
 	u, err := a.userStore.Authenticate(r.Context(), email, password)
 	if err != nil {
+		auth.RecordAuthFailure(ip)
 		logging.LogJSON(logging.LogFields{Level: "warn", Component: "auth", Severity: "notice", Msg: "login failed"})
 		a.renderLoginPage(w, r, "Invalid email or password.")
 		return
@@ -88,6 +118,9 @@ func (a *App) handleV2LoginSubmit(w http.ResponseWriter, r *http.Request) {
 	// Second factor: enforce TOTP when the account has 2FA enabled. This closes
 	// the older surface so an enrolled account cannot bypass 2FA via /admin/v2.
 	if ok, required := a.verifyTOTPForLogin(r.Context(), email, r.PostFormValue("totp")); required && !ok {
+		// A wrong second factor counts toward lockout too — otherwise a stolen
+		// password could be paired with unlimited TOTP guesses.
+		auth.RecordAuthFailure(ip)
 		logging.LogJSON(logging.LogFields{Level: "warn", Component: "auth", Severity: "notice", Msg: "login 2fa failed"})
 		a.renderLoginPage(w, r, "Enter the 6-digit code from your authenticator app, then re-enter your password.")
 		return
@@ -97,6 +130,7 @@ func (a *App) handleV2LoginSubmit(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "could not start session", http.StatusInternalServerError)
 		return
 	}
+	auth.RecordAuthSuccess(ip)
 	a.userStore.TouchLastLogin(r.Context(), u.ID)
 	auth.SetSessionCookie(w, token)
 	logging.LogInfo("auth", "login: "+u.Email+" ("+u.Role+")")
