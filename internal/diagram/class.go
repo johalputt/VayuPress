@@ -12,7 +12,6 @@ import (
 // -- (link), ..> (dependency), ..|> (realization). Labels via `: text`.
 
 var classRelRe = regexp.MustCompile(`^(.+?)\s*((?:<\|--|<\|\.\.|\*--|o--|-->|--\.|<--|\.\.>|<\.\.|--|\.\.))\s*(.+?)(?:\s*:\s*(.*))?$`)
-var classMemberRe = regexp.MustCompile(`^\s{2,}(.+)`)
 
 type classNode struct {
 	id      string

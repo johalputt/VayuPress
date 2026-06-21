@@ -61,23 +61,67 @@ type embedMeta struct {
 	EmbedSrc string `json:"embedSrc,omitempty"`
 }
 
-// Video URL → id extractors for the supported providers.
+// Fully-anchored ID validators. These match the *entire* extracted id, never a
+// substring, so a crafted query/path fragment cannot smuggle an id through.
 var (
-	ytVideoRe    = regexp.MustCompile(`(?i)(?:youtube\.com/(?:watch\?(?:.*&)?v=|embed/|shorts/|v/)|youtu\.be/)([A-Za-z0-9_-]{6,64})`)
-	vimeoVideoRe = regexp.MustCompile(`(?i)vimeo\.com/(?:video/)?(\d{6,15})`)
+	ytIDRe    = regexp.MustCompile(`^[A-Za-z0-9_-]{6,64}$`)
+	vimeoIDRe = regexp.MustCompile(`^\d{6,15}$`)
 )
 
 // detectVideoEmbed returns the provider key and a validated cookie-free embed
-// URL when rawURL is a recognised video link, else ("", ""). The embed URL is
-// built by render.VideoEmbedSrc, so it is always rooted at an allowlisted origin.
+// URL when rawURL is a recognised video link, else ("", ""). The host is matched
+// by exact equality after parsing (never a substring regex), so a URL such as
+// https://evil.com/?x=youtube.com/VIDEOID cannot be misclassified. The embed URL
+// is built by render.VideoEmbedSrc, so it is always rooted at an allowlisted origin.
 func detectVideoEmbed(rawURL string) (provider, embedSrc string) {
-	if m := ytVideoRe.FindStringSubmatch(rawURL); m != nil {
-		return "youtube", render.VideoEmbedSrc("youtube", m[1])
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return "", ""
 	}
-	if m := vimeoVideoRe.FindStringSubmatch(rawURL); m != nil {
-		return "vimeo", render.VideoEmbedSrc("vimeo", m[1])
+	host := strings.ToLower(u.Hostname())
+	host = strings.TrimPrefix(host, "www.")
+
+	switch host {
+	case "youtube.com", "m.youtube.com", "music.youtube.com":
+		// /watch?v=ID  → id in the query string.
+		if id := u.Query().Get("v"); ytIDRe.MatchString(id) {
+			return "youtube", render.VideoEmbedSrc("youtube", id)
+		}
+		// /embed/ID, /shorts/ID, /v/ID → id is the second path segment.
+		if id := nthPathSegment(u.Path, 1); ytIDRe.MatchString(id) {
+			switch firstPathSegment(u.Path) {
+			case "embed", "shorts", "v":
+				return "youtube", render.VideoEmbedSrc("youtube", id)
+			}
+		}
+	case "youtu.be":
+		// https://youtu.be/ID → id is the first path segment.
+		if id := firstPathSegment(u.Path); ytIDRe.MatchString(id) {
+			return "youtube", render.VideoEmbedSrc("youtube", id)
+		}
+	case "vimeo.com", "player.vimeo.com":
+		// /ID or /video/ID → take the last numeric path segment.
+		seg := firstPathSegment(u.Path)
+		if seg == "video" {
+			seg = nthPathSegment(u.Path, 1)
+		}
+		if vimeoIDRe.MatchString(seg) {
+			return "vimeo", render.VideoEmbedSrc("vimeo", seg)
+		}
 	}
 	return "", ""
+}
+
+// firstPathSegment returns the first non-empty path segment, or "".
+func firstPathSegment(p string) string { return nthPathSegment(p, 0) }
+
+// nthPathSegment returns the n-th (0-based) non-empty path segment, or "".
+func nthPathSegment(p string, n int) string {
+	segs := strings.FieldsFunc(p, func(r rune) bool { return r == '/' })
+	if n >= 0 && n < len(segs) {
+		return segs[n]
+	}
+	return ""
 }
 
 // handleEmbedUnfurl implements POST /api/v1/admin/embed/unfurl.

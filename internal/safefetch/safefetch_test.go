@@ -44,6 +44,7 @@ func TestGetAllowsPublicServer(t *testing.T) {
 
 	c := New(Options{})
 	c.httpc.Transport = srv.Client().Transport // loopback transport for the test
+	c.hostGuard = nil                          // bypass the host barrier for the loopback server
 
 	res, err := c.Get(context.Background(), srv.URL)
 	if err != nil {
@@ -91,6 +92,7 @@ func TestGetEnforcesSizeCap(t *testing.T) {
 
 	c := New(Options{MaxBytes: 1024})
 	c.httpc.Transport = srv.Client().Transport // loopback for the test
+	c.hostGuard = nil                          // bypass the host barrier for the loopback server
 
 	_, err := c.Get(context.Background(), srv.URL)
 	if !errors.Is(err, ErrTooLarge) {
@@ -106,6 +108,7 @@ func TestGetSizeCapBoundary(t *testing.T) {
 
 	c := New(Options{MaxBytes: 1024})
 	c.httpc.Transport = srv.Client().Transport
+	c.hostGuard = nil // bypass the host barrier for the loopback server
 
 	res, err := c.Get(context.Background(), srv.URL)
 	if err != nil {

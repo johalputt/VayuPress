@@ -53,6 +53,12 @@ type Client struct {
 	maxBytes int64
 	schemes  map[string]bool
 	ua       string
+	// hostGuard is the pre-flight SSRF barrier applied to every request host.
+	// It defaults to validatePublicHost. Tests that intentionally target a
+	// loopback httptest server (to exercise body/size handling) set it to nil
+	// alongside swapping httpc.Transport, the same way the dial-time guard is
+	// bypassed. Production callers never touch it.
+	hostGuard func(context.Context, string) error
 }
 
 // Result is a fetched response with its body already read (and size-capped).
@@ -82,7 +88,7 @@ func New(opts Options) *Client {
 		schemes[strings.ToLower(s)] = true
 	}
 
-	c := &Client{maxBytes: opts.MaxBytes, schemes: schemes, ua: opts.UserAgent}
+	c := &Client{maxBytes: opts.MaxBytes, schemes: schemes, ua: opts.UserAgent, hostGuard: validatePublicHost}
 	c.httpc = &http.Client{
 		Timeout:   opts.Timeout,
 		Transport: c.transport(),
@@ -146,6 +152,17 @@ func (c *Client) Get(ctx context.Context, rawURL string) (*Result, error) {
 	if !c.schemes[strings.ToLower(req.URL.Scheme)] {
 		return nil, fmt.Errorf("%w: scheme %q not allowed", ErrBlockedAddress, req.URL.Scheme)
 	}
+	// Pre-flight SSRF barrier: resolve the request host and reject it unless it
+	// has at least one public address (and no IP-literal host that is itself
+	// private/reserved). This fails fast — before any connection is opened — and
+	// is the validation the dial-time guard then re-enforces against the *pinned*
+	// IP on every redirect hop (closing the DNS-rebind window). Validating here
+	// makes the host an allow-checked value rather than raw, untrusted input.
+	if c.hostGuard != nil {
+		if err := c.hostGuard(req.Context(), req.URL.Hostname()); err != nil {
+			return nil, err
+		}
+	}
 	req.Header.Set("User-Agent", c.ua)
 	req.Header.Set("Accept-Encoding", "identity") // size cap must apply to real bytes
 
@@ -171,6 +188,35 @@ func (c *Client) Get(ctx context.Context, rawURL string) (*Result, error) {
 		FinalURL:    resp.Request.URL.String(),
 		Status:      resp.StatusCode,
 	}, nil
+}
+
+// validatePublicHost resolves host and returns nil only when it maps to at
+// least one public, non-reserved address. An empty host, an IP-literal host
+// that is private/reserved, a resolution failure, or a host that resolves to
+// only private/reserved addresses all return ErrBlockedAddress. This is a
+// fail-fast pre-flight guard; the authoritative, rebind-safe check still runs
+// in the transport dialer against the pinned IP.
+func validatePublicHost(ctx context.Context, host string) error {
+	if host == "" {
+		return fmt.Errorf("%w: empty host", ErrBlockedAddress)
+	}
+	// IP-literal host: validate directly without a DNS lookup.
+	if ip := net.ParseIP(host); ip != nil {
+		if isPrivateOrReservedIP(ip) {
+			return fmt.Errorf("%w: host %q is private/reserved", ErrBlockedAddress, host)
+		}
+		return nil
+	}
+	ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	if err != nil {
+		return fmt.Errorf("%w: cannot resolve host %q: %v", ErrBlockedAddress, host, err)
+	}
+	for _, ipa := range ips {
+		if !isPrivateOrReservedIP(ipa.IP) {
+			return nil // at least one public address — allowed
+		}
+	}
+	return fmt.Errorf("%w: host %q has no public address", ErrBlockedAddress, host)
 }
 
 // isPrivateOrReservedIP reports whether ip is one we must never connect to from
