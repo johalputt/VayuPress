@@ -110,6 +110,7 @@ function app() {
     scrollPct:  0,
     t:          0,          // hero terminal line
     lightbox:   null,
+    feature:    null,       // open feature-detail index
     typed:      '',
     copied:     false,
     stars:      '★',
@@ -243,16 +244,14 @@ STATIC_DIR=./static VAYU_DOCS_DIR=./docs ./vayupress --port 8080`,
 
     screenshots: [
       { label:'Homepage',         path:'/',                       src:'screenshots/homepage.png',         caption:'Public homepage — clean, fast, no third-party scripts.' },
-      { label:'Admin v3 dashboard', path:'/admin/v3',             src:'screenshots/admin-v3-dashboard.png', caption:'Next-gen admin (ADR-0068) — grouped sidebar, stat cards and a CSP-safe 14-day server-rendered sparkline.' },
-      { label:'Admin v3 block editor', path:'/admin/v3/editor',   src:'screenshots/admin-v3-editor.png',  caption:'Typed block editor — document rendered server-side and re-sanitised, no raw-HTML escape hatch.' },
-      { label:'Admin v3 media',   path:'/admin/v3/media',         src:'screenshots/admin-v3-media.png',   caption:'Media library — magic-number-validated uploads; SVG refused as an XSS vector.' },
-      { label:'Admin v3 security (2FA)', path:'/admin/v3/security', src:'screenshots/admin-v3-security.png', caption:'Security — TOTP two-factor enrolment (RFC 6238, pure stdlib), enforced on sign-in.' },
-      { label:'Admin v2 editor',  path:'/admin/v2/editor',        src:'screenshots/admin-v2-editor.png',  caption:'Editor-first redesign — split-view live preview, slash commands, autosave. CSP-strict, eval-free (ADR-0065).' },
-      { label:'Admin v2 dashboard', path:'/admin/v2',             src:'screenshots/admin-v2-dashboard.png', caption:'Modern admin dashboard — dark-first, teal/saffron, fully vendored, no CDNs.' },
-      { label:'Admin dashboard',  path:'/admin',                  src:'screenshots/admin-dashboard.png',  caption:'Classic operator console — runtime health, mode status and quick actions.' },
-      { label:'Theme console',    path:'/admin/theme',            src:'screenshots/admin-panel.png',      caption:'Theme console — identity, palette, favicon upload, export/import and reset.' },
-      { label:'Theme Studio',     path:'/admin/theme?tab=studio', src:'screenshots/theme-studio.png',     caption:'Theme Studio (v1.4.0) — curated design-token presets with an instant, CSP-safe live preview. Colour, type and spacing compile to a single sovereign stylesheet — no inline styles, no CDNs.' },
-      { label:'Policy modes',     path:'/admin/policy/modes',     src:'screenshots/policy-modes.png',     caption:'Six modes: normal → degraded → read-only → quarantined → recovery → maintenance.' },
+      { label:'Admin dashboard',  path:'/admin/v3',               src:'screenshots/admin-v3-dashboard.png', caption:'VayuOS — the single, fast Admin v3. Grouped sidebar, stat cards and a CSP-safe 14-day server-rendered sparkline (ADR-0068).' },
+      { label:'Block editor',     path:'/admin/v3/editor',        src:'screenshots/admin-v3-editor.png',  caption:'Typed block editor with opt-in AI-assist and inline version-history diff — document rendered server-side and re-sanitised, no raw-HTML escape hatch.' },
+      { label:'Theme Studio',     path:'/admin/v3/theme',         src:'screenshots/admin-v3-theme.png',   caption:'Native Theme Studio (v1.5.0) — preset gallery and design-token editor with an instant, CSP-clean live preview via scripted CSSOM. No inline styles, no CDNs.' },
+      { label:'Media library',    path:'/admin/v3/media',         src:'screenshots/admin-v3-media.png',   caption:'Media library — magic-number-validated uploads; SVG refused as an XSS vector.' },
+      { label:'SEO',              path:'/admin/v3/seo',           src:'screenshots/admin-v3-seo.png',     caption:'Native SEO — sitemap, robots, structured data and per-post readiness, all in v3.' },
+      { label:'Analytics',        path:'/admin/v3/analytics',     src:'screenshots/admin-v3-analytics.png', caption:'Privacy-first analytics — cookieless, no PII, daily aggregates only.' },
+      { label:'Security (2FA)',   path:'/admin/v3/security',      src:'screenshots/admin-v3-security.png', caption:'Security — TOTP two-factor enrolment (RFC 6238, pure stdlib), enforced on sign-in.' },
+      { label:'Policy modes',     path:'/admin/modes',            src:'screenshots/policy-modes.png',     caption:'Six modes: normal → degraded → read-only → quarantined → recovery → maintenance.' },
       { label:'Policy inspector', path:'/admin/policy/inspector', src:'screenshots/policy-inspector.png', caption:'Live error budgets with severity classification and actuation status.' },
       { label:'Runtime topology', path:'/admin/runtime/topology', src:'screenshots/runtime-topology.png', caption:'Subsystem graph with health and dependency edges.' },
       { label:'Replay explorer',  path:'/admin/replay',           src:'screenshots/replay-explorer.png',  caption:'Inspect and re-drive dead-letter activities from the SQLite outbox.' },
@@ -496,6 +495,12 @@ STATIC_DIR=./static VAYU_DOCS_DIR=./docs ./vayupress --port 8080`,
     },
     untilt(e) { e.currentTarget.style.transform = ''; },
 
+    /* feature-detail modal */
+    openFeature(i) { this.feature = i; document.body.style.overflow = 'hidden'; },
+    closeFeature() { this.feature = null; document.body.style.overflow = ''; },
+    nextFeature()  { if (this.feature !== null) this.feature = (this.feature + 1) % this.features.length; },
+    prevFeature()  { if (this.feature !== null) this.feature = (this.feature - 1 + this.features.length) % this.features.length; },
+
     ripple(e) {
       const btn = e.currentTarget;
       const el  = document.createElement('span');
@@ -565,9 +570,18 @@ STATIC_DIR=./static VAYU_DOCS_DIR=./docs ./vayupress --port 8080`,
 
       /* lightbox keyboard nav */
       addEventListener('keydown', (e) => {
-        if (this.lightbox === null) return;
-        if (e.key === 'ArrowLeft')  this.lightbox = (this.lightbox - 1 + this.screenshots.length) % this.screenshots.length;
-        if (e.key === 'ArrowRight') this.lightbox = (this.lightbox + 1) % this.screenshots.length;
+        if (this.lightbox !== null) {
+          if (e.key === 'Escape')     this.lightbox = null;
+          if (e.key === 'ArrowLeft')  this.lightbox = (this.lightbox - 1 + this.screenshots.length) % this.screenshots.length;
+          if (e.key === 'ArrowRight') this.lightbox = (this.lightbox + 1) % this.screenshots.length;
+          return;
+        }
+        /* feature-detail modal nav */
+        if (this.feature !== null) {
+          if (e.key === 'Escape')     this.closeFeature();
+          if (e.key === 'ArrowLeft')  this.prevFeature();
+          if (e.key === 'ArrowRight') this.nextFeature();
+        }
       });
     },
   };

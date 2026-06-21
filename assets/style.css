@@ -121,6 +121,20 @@
   transition: opacity 0.4s ease;
 }
 .feature-card:hover .card-glow { opacity: 1; }
+.feature-card:hover { transform: translateY(-3px); }
+
+/* Clamp a teaser to two lines so the feature grid stays compact; the full
+   copy is revealed in the click-through detail modal. */
+.clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Feature detail modal card */
+.feature-modal { max-height: 90vh; overflow-y: auto; }
 
 /* ── Scroll hint pill ── */
 .scroll-pill {

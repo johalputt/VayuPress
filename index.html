@@ -252,24 +252,35 @@
 
       <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
         <template x-for="(f, i) in features" :key="i">
-          <article data-reveal :style="`--d:${i*60}ms`"
+          <article data-reveal :style="`--d:${i*40}ms`"
                    @mousemove="tilt($event)" @mouseleave="untilt($event)"
-                   class="feature-card group relative rounded-2xl border border-white/[0.07] bg-white/[0.025] p-6 sm:p-7 overflow-hidden cursor-default">
+                   @click="openFeature(i)" @keydown.enter="openFeature(i)" @keydown.space.prevent="openFeature(i)"
+                   role="button" tabindex="0" :aria-label="`${f.title} — read more`"
+                   class="feature-card group relative rounded-2xl border border-white/[0.07] bg-white/[0.025] p-5 sm:p-6 overflow-hidden cursor-pointer focus-ring flex flex-col">
             <!-- orb -->
             <div class="card-orb" :style="`--orb:${f.orb}`" aria-hidden="true"></div>
             <!-- cursor glow -->
             <div class="card-glow" aria-hidden="true"></div>
-            <div class="relative">
-              <div class="w-11 h-11 rounded-xl flex items-center justify-center text-xl mb-5
-                          transition-transform duration-300 group-hover:scale-110 group-hover:-rotate-6"
-                   :class="f.iconBg" x-text="f.icon" aria-hidden="true"></div>
-              <h3 class="font-display text-base sm:text-lg font-semibold text-white mb-2" x-text="f.title"></h3>
-              <p class="text-sm text-gray-400 leading-relaxed" x-text="f.desc"></p>
-              <div class="mt-5 flex flex-wrap gap-1.5" role="list" aria-label="tags">
-                <template x-for="tag in f.tags" :key="tag">
-                  <span class="text-[11px] px-2 py-0.5 rounded-full bg-white/[0.04] border border-white/[0.07]
-                               text-gray-500 font-mono" role="listitem" x-text="tag"></span>
-                </template>
+            <div class="relative flex flex-col h-full">
+              <div class="flex items-start gap-3 mb-3">
+                <div class="w-10 h-10 shrink-0 rounded-xl flex items-center justify-center text-lg
+                            transition-transform duration-300 group-hover:scale-110 group-hover:-rotate-6"
+                     :class="f.iconBg" x-text="f.icon" aria-hidden="true"></div>
+                <h3 class="font-display text-[0.95rem] sm:text-base font-semibold text-white leading-snug mt-1" x-text="f.title"></h3>
+              </div>
+              <p class="text-[13px] text-gray-400 leading-relaxed clamp-2" x-text="f.desc"></p>
+              <div class="mt-auto pt-4 flex items-center justify-between gap-2">
+                <div class="flex flex-wrap gap-1.5" role="list" aria-label="tags">
+                  <template x-for="tag in f.tags.slice(0,2)" :key="tag">
+                    <span class="text-[10px] px-2 py-0.5 rounded-full bg-white/[0.04] border border-white/[0.07]
+                                 text-gray-500 font-mono" role="listitem" x-text="tag"></span>
+                  </template>
+                </div>
+                <span class="text-[11px] font-mono text-teal-400/80 group-hover:text-teal-300 whitespace-nowrap
+                             transition-colors flex items-center gap-1">
+                  Details
+                  <span class="inline-block transition-transform group-hover:translate-x-0.5" aria-hidden="true">→</span>
+                </span>
               </div>
             </div>
           </article>
@@ -277,6 +288,61 @@
       </div>
     </div>
   </section>
+
+  <!-- ── Feature detail modal ── -->
+  <div x-show="feature !== null" x-cloak
+       x-transition:enter="transition ease-out duration-250"
+       x-transition:enter-start="opacity-0"
+       x-transition:enter-end="opacity-100"
+       x-transition:leave="transition ease-in duration-200"
+       x-transition:leave-start="opacity-100"
+       x-transition:leave-end="opacity-0"
+       class="fixed inset-0 z-[100] bg-ink-950/90 backdrop-blur-lg flex items-center justify-center p-4 sm:p-6"
+       @click="closeFeature()"
+       role="dialog" aria-modal="true" :aria-label="feature!==null ? features[feature].title : ''">
+    <template x-if="feature !== null">
+      <div @click.stop
+           x-transition:enter="transition ease-out duration-300 delay-75"
+           x-transition:enter-start="opacity-0 translate-y-4 scale-[0.98]"
+           x-transition:enter-end="opacity-100 translate-y-0 scale-100"
+           class="feature-modal relative w-full max-w-lg rounded-3xl border border-white/[0.09] bg-ink-900/95 overflow-hidden shadow-2xl">
+        <!-- accent glow -->
+        <div class="absolute -top-24 -right-16 w-64 h-64 rounded-full blur-3xl pointer-events-none"
+             :style="`background:${features[feature].orb}`" aria-hidden="true"></div>
+
+        <!-- close -->
+        <button @click="closeFeature()" aria-label="Close"
+                class="absolute top-4 right-4 z-10 w-9 h-9 rounded-full bg-white/[0.06] hover:bg-white/[0.12]
+                       text-gray-300 hover:text-white flex items-center justify-center text-xl leading-none transition-colors focus-ring">×</button>
+
+        <div class="relative p-7 sm:p-9">
+          <div class="w-14 h-14 rounded-2xl flex items-center justify-center text-2xl mb-5"
+               :class="features[feature].iconBg" x-text="features[feature].icon" aria-hidden="true"></div>
+
+          <h3 class="font-display text-xl sm:text-2xl font-bold text-white tracking-tight mb-4"
+              x-text="features[feature].title"></h3>
+
+          <p class="text-[15px] text-gray-300 leading-relaxed mb-6" x-text="features[feature].desc"></p>
+
+          <div class="flex flex-wrap gap-2 mb-7" role="list" aria-label="tags">
+            <template x-for="tag in features[feature].tags" :key="tag">
+              <span class="text-[11px] px-2.5 py-1 rounded-full bg-teal-900/30 border border-teal-800/40
+                           text-teal-300/90 font-mono" role="listitem" x-text="tag"></span>
+            </template>
+          </div>
+
+          <!-- footer nav -->
+          <div class="flex items-center justify-between pt-5 border-t border-white/[0.07]">
+            <button @click="prevFeature()" class="text-sm text-gray-500 hover:text-white font-mono transition-colors focus-ring rounded px-1"
+                    aria-label="Previous feature">← Prev</button>
+            <span class="text-[11px] text-gray-600 font-mono" x-text="`${feature+1} / ${features.length}`"></span>
+            <button @click="nextFeature()" class="text-sm text-gray-500 hover:text-white font-mono transition-colors focus-ring rounded px-1"
+                    aria-label="Next feature">Next →</button>
+          </div>
+        </div>
+      </div>
+    </template>
+  </div>
 
   <!-- ══════════════ GALLERY ══════════════ -->
   <section id="gallery" class="relative py-24 sm:py-28 lg:py-36 bg-white/[0.015] border-y border-white/[0.06] overflow-hidden">
