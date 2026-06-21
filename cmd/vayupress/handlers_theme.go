@@ -141,6 +141,14 @@ func (a *App) handleThemeToggleJS(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, render.ThemeToggleJS)
 }
 
+// handleVideoFacadeJS serves the public click-to-load video facade script.
+// Same-origin static asset → satisfies `script-src 'self'` without a nonce.
+func (a *App) handleVideoFacadeJS(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	fmt.Fprint(w, render.VideoFacadeJS)
+}
+
 // handleThemeGet renders the admin theme-editor page.
 func (a *App) handleThemeGet(w http.ResponseWriter, r *http.Request) {
 	vals, err := a.siteSettings.GetAll(r.Context())

@@ -70,6 +70,7 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	r.Get("/theme.css", a.handleThemeCSS)
 	// Public theme toggle script (same-origin → script-src 'self', no nonce).
 	r.Get("/static/js/theme-toggle.js", a.handleThemeToggleJS)
+	r.Get("/static/js/video-facade.js", a.handleVideoFacadeJS)
 	// Favicon routes serve the operator's uploaded brand mark when one is stored
 	// (see /admin/theme branding), falling back to the embedded default per scheme.
 	r.Get("/static/favicon-dark.png", a.serveFavicon(faviconDarkPNG))

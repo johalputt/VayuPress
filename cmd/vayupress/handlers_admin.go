@@ -307,6 +307,11 @@ func (a *App) handleArticlePage(w http.ResponseWriter, r *http.Request) {
 	if !gated && (!isAdmin || r.URL.Query().Get("layout") == "") {
 		if _, err := os.Stat(cachePath); err == nil {
 			atomic.AddInt64(&metrics.MetricCacheHits, 1)
+			// Re-apply the per-page video-embed CSP for cached pages that carry a
+			// facade (recorded in a sidecar at render time) before serving.
+			if origins := render.CacheReadCSPSidecar(slug); len(origins) > 0 {
+				setEmbedCSP(w, r, origins)
+			}
 			http.ServeFile(w, r, cachePath)
 			return
 		}
@@ -338,15 +343,33 @@ func (a *App) handleArticlePage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "render error", 500)
 		return
 	}
+	// Detect click-to-load video facades in the rendered body and narrowly
+	// extend frame-src for this page only (admin/non-embed pages stay locked).
+	embedOrigins := render.FrameOriginsInHTML(art.Content)
 	// Never cache gated articles to disk — access must be re-checked each request.
 	if layout == render.ArticleLayoutDefault && !gated {
 		render.CacheWrite(filepath.Join("posts", slug+".html"), htmlOut) //nolint:errcheck
+		render.CacheWriteCSPSidecar(slug, embedOrigins)
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if gated {
 		w.Header().Set("Cache-Control", "no-store")
 	}
+	if len(embedOrigins) > 0 {
+		setEmbedCSP(w, r, embedOrigins)
+	}
 	fmt.Fprint(w, htmlOut)
+}
+
+// setEmbedCSP overwrites the per-request CSP header with a policy that narrowly
+// admits the given (already allowlist-validated) video-embed frame origins. It
+// mirrors the report-only header-name choice made by securityHeadersMiddleware.
+func setEmbedCSP(w http.ResponseWriter, r *http.Request, origins []string) {
+	hdr := "Content-Security-Policy"
+	if config.Cfg.CSPReportOnly {
+		hdr = "Content-Security-Policy-Report-Only"
+	}
+	w.Header().Set(hdr, render.BuildCSP(render.CSPNonce(r), origins))
 }
 
 // renderPaywall builds a minimal, sovereign preview page for gated content: the

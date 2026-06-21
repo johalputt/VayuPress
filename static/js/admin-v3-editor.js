@@ -137,7 +137,10 @@
             block.description = data.description || '';
             block.provider = data.provider || '';
             block.thumbURL = data.thumbURL || '';
-            embedStatus.textContent = block.title || block.url;
+            block.kind = data.kind || 'link';
+            block.embedSrc = data.embedSrc || '';
+            var verb = block.kind === 'video' ? '▶ Video: ' : '';
+            embedStatus.textContent = verb + (block.title || block.url);
             scheduleAutosave();
           }).catch(function () { embedStatus.textContent = 'Could not fetch URL'; });
         });

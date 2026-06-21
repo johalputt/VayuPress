@@ -8,6 +8,25 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Added
+
+- **Sovereign rich media — embeds & click-to-load video (ADR-0070, Phase 1–2).**
+  - New `embed` block: paste any URL and the server unfurls it into a self-hosted
+    link card (OpenGraph metadata fetched via the SSRF-hardened `safefetch`
+    client; the thumbnail is imported into the media library, never hotlinked).
+  - **Video embeds are privacy-first click-to-load facades.** YouTube and Vimeo
+    URLs render as a poster + play button with **no third-party request until the
+    reader clicks**. On click, same-origin `video-facade.js` injects a sandboxed
+    iframe pointed at the cookie-free privacy origin (`youtube-nocookie.com`,
+    `player.vimeo.com`).
+  - **Per-page CSP builder.** The reader's baseline CSP never carries a
+    third-party `frame-src`. A page that contains a video facade narrowly extends
+    `frame-src` to exactly the vetted privacy origin(s) it needs — validated
+    against a closed allowlist, so a crafted block or tampered cache sidecar can
+    never widen the policy. Admin and non-embed pages stay fully locked. The
+    extension is re-applied on cache-hit serves via a tiny CSP sidecar.
+  - Migration 027 adds `embed_cache` for resolved metadata + provenance.
+
 ### Security
 
 - **CodeQL barrier recognition.** The v3 block-editor body builder now calls

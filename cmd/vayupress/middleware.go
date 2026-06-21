@@ -148,7 +148,9 @@ func securityHeadersMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload")
 		nonce := render.GenerateCSPNonce()
-		csp := fmt.Sprintf("default-src 'self'; font-src 'self'; style-src 'self'; script-src 'self' 'nonce-%s'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; report-uri /csp-report", nonce)
+		// Strict baseline (no third-party frame-src). Pages with a click-to-load
+		// video facade narrowly extend frame-src themselves via render.BuildCSP.
+		csp := render.BuildCSP(nonce, nil)
 		// Report-Only mode (CSP_REPORT_ONLY=true) reports violations without
 		// blocking — useful in staging to surface frontend regressions via
 		// /csp-report before flipping a stricter policy to enforcing.

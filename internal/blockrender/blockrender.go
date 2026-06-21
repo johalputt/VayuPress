@@ -12,18 +12,38 @@ package blockrender
 import (
 	"encoding/json"
 	"html"
+	"regexp"
 	"strconv"
 	"strings"
 
 	"github.com/microcosm-cc/bluemonday"
 )
 
+// embedSrcRe is the closed allowlist for a video-facade iframe source: only the
+// cookie-free YouTube/Vimeo embed origins, with a constrained id. It is used
+// both to validate before emitting the attribute and (re-applied) as the
+// bluemonday Matching barrier — a crafted block can never inject another origin.
+var embedSrcRe = regexp.MustCompile(
+	`^https://(?:www\.youtube-nocookie\.com/embed|player\.vimeo\.com/video)/[A-Za-z0-9_-]{1,64}$`)
+
+// safeEmbedSrc returns s if it is an allowlisted video-embed URL, else "".
+func safeEmbedSrc(s string) string {
+	if embedSrcRe.MatchString(s) {
+		return s
+	}
+	return ""
+}
+
 // policy sanitises the assembled HTML. UGCPolicy allows a safe subset of tags
 // (p, headings, lists, blockquote, pre/code, a, img, em/strong, etc.) and
-// strips scripts, event handlers, and javascript: URLs.
+// strips scripts, event handlers, and javascript: URLs. We additionally allow
+// class on div/span and the validated data-embed-src / data-embed-title on the
+// video-facade div (click-to-load — no iframe is present until the reader acts).
 var policy = func() *bluemonday.Policy {
 	p := bluemonday.UGCPolicy()
 	p.AllowAttrs("class").OnElements("div", "span")
+	p.AllowAttrs("data-embed-src").Matching(embedSrcRe).OnElements("div")
+	p.AllowAttrs("data-embed-title").OnElements("div")
 	return p
 }()
 
@@ -43,6 +63,8 @@ type Block struct {
 	Description string `json:"description,omitempty"`
 	Provider    string `json:"provider,omitempty"`
 	ThumbURL    string `json:"thumbURL,omitempty"` // local /media/... URL
+	Kind        string `json:"kind,omitempty"`     // embed: "link" (default) or "video"
+	EmbedSrc    string `json:"embedSrc,omitempty"` // video: cookie-free iframe URL (allowlisted)
 }
 
 // Render parses a blocks JSON document and returns sanitised HTML plus a plain-
@@ -117,6 +139,32 @@ func renderBlock(b, plain *strings.Builder, blk Block) {
 	case "embed":
 		if strings.TrimSpace(blk.URL) == "" {
 			return
+		}
+		// Video facade (click-to-load): render a poster + play button, never an
+		// iframe. The vetted cookie-free embed URL is carried in data-embed-src so
+		// public/video-facade.js can inject a sandboxed iframe only on click; the
+		// page CSP narrowly admits the origin only when this attribute is present.
+		if blk.Kind == "video" {
+			if src := safeEmbedSrc(blk.EmbedSrc); src != "" {
+				b.WriteString(`<div class="video-facade" data-embed-src="` + html.EscapeString(src) +
+					`" data-embed-title="` + html.EscapeString(blk.Title) + `">`)
+				if blk.ThumbURL != "" {
+					b.WriteString(`<img class="video-facade__poster" src="` + html.EscapeString(blk.ThumbURL) + `" alt="" loading="lazy">`)
+				}
+				b.WriteString(`<span class="video-facade__play" aria-hidden="true"></span>`)
+				label := blk.Title
+				if label == "" {
+					label = "Play video"
+				}
+				b.WriteString(`<a class="video-facade__label" href="` + html.EscapeString(blk.URL) +
+					`" rel="noopener noreferrer" target="_blank">` + html.EscapeString(label) + `</a>`)
+				b.WriteString(`</div>`)
+				if blk.Title != "" {
+					plain.WriteString(blk.Title + " ")
+				}
+				return
+			}
+			// EmbedSrc failed validation — fall through to a safe link card.
 		}
 		b.WriteString(`<div class="embed-card">`)
 		if blk.ThumbURL != "" {

@@ -44,8 +44,8 @@ block**, never raw HTML.
 - Output is a static, themeable SVG (`currentColor` + CSS classes, reusing the
   v3 dashboard sparkline pattern) — paints instantly, prints perfectly, and
   ships **no JavaScript**, so the strict CSP is untouched.
-- Rendered SVG is content-hash cached in SQLite (`diagram_cache`, migration 027);
-  re-renders are free.
+- Rendered SVG is content-hash cached in SQLite (`diagram_cache`, a later
+  migration); re-renders are free.
 - Supported grammar is phased, with graceful fallback to an annotated code block
   for anything unsupported:
   - Phase 1: `flowchart` (Sugiyama layered-DAG layout) and `sequence`
@@ -82,7 +82,8 @@ refused as an XSS vector.
 (OpenGraph/oEmbed metadata fetched server-side, thumbnail cached locally) — no
 iframe, fully sanitised, lightweight.
 
-- `embed_cache` (migration 028) stores resolved metadata + provenance.
+- `embed_cache` (migration 027) stores resolved metadata + provenance (video
+  `kind`/`embedSrc` are persisted in its `raw_meta`).
 - A per-response **CSP builder** starts from the strict baseline and *narrowly*
   extends `frame-src`/`img-src` only when a page contains an embed that requires
   it, listing exact origins. Admin and non-embed pages stay fully locked.

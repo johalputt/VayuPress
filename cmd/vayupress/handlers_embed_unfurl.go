@@ -26,6 +26,7 @@ import (
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/mode"
+	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/safefetch"
 )
 
@@ -49,6 +50,34 @@ type unfurlResponse struct {
 	Description string `json:"description"`
 	Provider    string `json:"provider"`
 	ThumbURL    string `json:"thumbURL"`
+	Kind        string `json:"kind"`               // "link" (default) or "video"
+	EmbedSrc    string `json:"embedSrc,omitempty"` // video: cookie-free iframe URL
+}
+
+// embedMeta is the JSON shape stored in embed_cache.raw_meta so video resolution
+// (kind + privacy-origin embed URL) survives caching without a schema change.
+type embedMeta struct {
+	Kind     string `json:"kind,omitempty"`
+	EmbedSrc string `json:"embedSrc,omitempty"`
+}
+
+// Video URL → id extractors for the supported providers.
+var (
+	ytVideoRe    = regexp.MustCompile(`(?i)(?:youtube\.com/(?:watch\?(?:.*&)?v=|embed/|shorts/|v/)|youtu\.be/)([A-Za-z0-9_-]{6,64})`)
+	vimeoVideoRe = regexp.MustCompile(`(?i)vimeo\.com/(?:video/)?(\d{6,15})`)
+)
+
+// detectVideoEmbed returns the provider key and a validated cookie-free embed
+// URL when rawURL is a recognised video link, else ("", ""). The embed URL is
+// built by render.VideoEmbedSrc, so it is always rooted at an allowlisted origin.
+func detectVideoEmbed(rawURL string) (provider, embedSrc string) {
+	if m := ytVideoRe.FindStringSubmatch(rawURL); m != nil {
+		return "youtube", render.VideoEmbedSrc("youtube", m[1])
+	}
+	if m := vimeoVideoRe.FindStringSubmatch(rawURL); m != nil {
+		return "vimeo", render.VideoEmbedSrc("vimeo", m[1])
+	}
+	return "", ""
 }
 
 // handleEmbedUnfurl implements POST /api/v1/admin/embed/unfurl.
@@ -123,6 +152,22 @@ func (a *App) handleEmbedUnfurl(w http.ResponseWriter, r *http.Request) {
 	// Detect provider from hostname.
 	provider := detectEmbedProvider(parsed.Hostname(), siteName)
 
+	// If the URL is a known video, resolve a click-to-load facade: a validated
+	// cookie-free embed URL the editor stores and the public page injects only on
+	// click. Match on the original input URL (the embeddable id lives there).
+	kind := "link"
+	embedSrc := ""
+	if vp, src := detectVideoEmbed(rawURL); src != "" {
+		kind = "video"
+		embedSrc = src
+		switch vp {
+		case "youtube":
+			provider = "YouTube"
+		case "vimeo":
+			provider = "Vimeo"
+		}
+	}
+
 	// Download and store the thumbnail image using the same validated path as
 	// media imports — magic-number checked, content-addressed, SSRF-safe.
 	thumbURL := ""
@@ -136,6 +181,8 @@ func (a *App) handleEmbedUnfurl(w http.ResponseWriter, r *http.Request) {
 		Description: description,
 		Provider:    provider,
 		ThumbURL:    thumbURL,
+		Kind:        kind,
+		EmbedSrc:    embedSrc,
 	}
 
 	// Persist to cache so subsequent paste of the same URL is instant.
@@ -217,16 +264,25 @@ func (a *App) loadEmbedCache(rawURL string) *unfurlResponse {
 		return nil
 	}
 	row := dbpkg.DB.QueryRow(
-		`SELECT resolved_url, title, description, provider, thumb_name FROM embed_cache WHERE url = ?`,
+		`SELECT resolved_url, title, description, provider, thumb_name, raw_meta FROM embed_cache WHERE url = ?`,
 		rawURL,
 	)
-	var resolvedURL, title, description, provider, thumbName string
-	if err := row.Scan(&resolvedURL, &title, &description, &provider, &thumbName); err != nil {
+	var resolvedURL, title, description, provider, thumbName, rawMeta string
+	if err := row.Scan(&resolvedURL, &title, &description, &provider, &thumbName, &rawMeta); err != nil {
 		return nil
 	}
 	thumbURL := ""
 	if thumbName != "" {
 		thumbURL = "/media/" + thumbName
+	}
+	kind := "link"
+	embedSrc := ""
+	if rawMeta != "" {
+		var meta embedMeta
+		if json.Unmarshal([]byte(rawMeta), &meta) == nil && meta.Kind != "" {
+			kind = meta.Kind
+			embedSrc = meta.EmbedSrc
+		}
 	}
 	return &unfurlResponse{
 		URL:         resolvedURL,
@@ -234,6 +290,8 @@ func (a *App) loadEmbedCache(rawURL string) *unfurlResponse {
 		Description: description,
 		Provider:    provider,
 		ThumbURL:    thumbURL,
+		Kind:        kind,
+		EmbedSrc:    embedSrc,
 	}
 }
 
@@ -243,16 +301,23 @@ func (a *App) saveEmbedCache(rawURL string, res *unfurlResponse) {
 		return
 	}
 	thumbName := strings.TrimPrefix(res.ThumbURL, "/media/")
+	rawMeta := "{}"
+	if res.Kind == "video" {
+		if b, err := json.Marshal(embedMeta{Kind: res.Kind, EmbedSrc: res.EmbedSrc}); err == nil {
+			rawMeta = string(b)
+		}
+	}
 	_, _ = dbpkg.DB.Exec(
-		`INSERT INTO embed_cache (url, resolved_url, title, description, provider, thumb_name, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+		`INSERT INTO embed_cache (url, resolved_url, title, description, provider, thumb_name, raw_meta, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ','now'))
 		 ON CONFLICT(url) DO UPDATE SET
 		   resolved_url = excluded.resolved_url,
 		   title        = excluded.title,
 		   description  = excluded.description,
 		   provider     = excluded.provider,
 		   thumb_name   = excluded.thumb_name,
+		   raw_meta     = excluded.raw_meta,
 		   updated_at   = excluded.updated_at`,
-		rawURL, res.URL, res.Title, res.Description, res.Provider, thumbName,
+		rawURL, res.URL, res.Title, res.Description, res.Provider, thumbName, rawMeta,
 	)
 }

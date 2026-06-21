@@ -96,3 +96,42 @@ func TestExcerptTruncates(t *testing.T) {
 		t.Errorf("expected ellipsis suffix: %q", got)
 	}
 }
+
+func TestRenderVideoFacade(t *testing.T) {
+	doc := `[{"type":"embed","kind":"video","url":"https://youtu.be/dQw4w9WgXcQ",` +
+		`"title":"Demo","thumbURL":"/media/abc.jpg",` +
+		`"embedSrc":"https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ"}]`
+	h, _, err := Render(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(h, `class="video-facade"`) {
+		t.Errorf("facade wrapper missing: %s", h)
+	}
+	if !strings.Contains(h, `data-embed-src="https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ"`) {
+		t.Errorf("validated embed src did not survive sanitization: %s", h)
+	}
+	if strings.Contains(h, "<iframe") {
+		t.Errorf("facade must NOT contain an iframe (click-to-load only): %s", h)
+	}
+}
+
+func TestRenderVideoFacadeRejectsForeignOrigin(t *testing.T) {
+	// A crafted embedSrc pointing at a non-allowlisted origin must NOT appear and
+	// the block must degrade to a safe link card.
+	doc := `[{"type":"embed","kind":"video","url":"https://evil.example/x",` +
+		`"title":"Bad","embedSrc":"https://evil.example/embed/x"}]`
+	h, _, err := Render(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(h, "evil.example/embed") {
+		t.Errorf("foreign embed origin leaked into output: %s", h)
+	}
+	if strings.Contains(h, "data-embed-src") {
+		t.Errorf("invalid embed src must be dropped: %s", h)
+	}
+	if !strings.Contains(h, "embed-card") {
+		t.Errorf("expected fallback link card: %s", h)
+	}
+}
