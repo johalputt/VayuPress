@@ -34,17 +34,22 @@ Each stage is independently shippable and reversible until the final removal.
   Until converted, legacy posts still open losslessly — no automatic rewrite.
 - v3 reaches feature parity for every task an operator can do in v2.
 
-### Stage 2 — Soft deprecation (target: 1.5.0) — **IN EFFECT**
+### Stage 2 — Soft deprecation & the VayuOS move (target: 1.5.0) — **IN EFFECT**
 
-- ✅ `/admin/v2` shows a dismissible **deprecation banner** linking to v3 and
-  naming the removal release (`legacyDeprecationBanner`, shown only when the
-  escape hatch is on, since otherwise the pages redirect).
-- ✅ `/admin` and `/admin/v2[/...]` **redirect (302) to the `/admin/v3`
-  equivalent** by default (`v2ToV3Path` + `legacyRedirect`); the
-  `ADMIN_LEGACY=1` (or `true`) escape hatch keeps v2 reachable for one release.
+The 1.5.0 work went further than the original plan: rather than making Admin v3
+the destination, the admin was rebranded and **remounted as VayuOS at `/os`**,
+and **all three** historical surfaces — the classic console (`/admin`), Admin v2
+(`/admin/v2`) and Admin v3 (`/admin/v3`) — became legacy.
+
+- ✅ The canonical admin is **VayuOS at `/os`**.
+- ✅ `/admin`, `/admin/v2[/...]` **and** `/admin/v3[/...]` **redirect (302) to the
+  `/os` equivalent** by default (`legacyToOSPath` + `legacyRedirect`); each hit
+  also emits a structured deprecation **warning to the server log**. The
+  `ADMIN_LEGACY=1` (or `true`) escape hatch keeps the v2 pages reachable for one
+  release, with a dismissible deprecation banner.
 - ✅ Stage-1 prerequisite met: convert-to-blocks (ADR-0073) lets legacy posts
-  adopt the v3 block editor losslessly.
-- Docs and the website point exclusively to v3; v2 screenshots are archived.
+  adopt the block editor losslessly.
+- Docs and the website point exclusively to `/os`; v2 screenshots are archived.
 
 Implemented in `cmd/vayupress/admin_legacy.go`. The redirects are 302 (not 301)
 during soft deprecation so Stage 3 can switch them to permanent without clients
@@ -53,10 +58,10 @@ having cached an early 301.
 ### Stage 3 — Removal (target: 1.6.0, no sooner than ~2 minor releases after 1.3.0)
 
 - Delete the v2 handlers, templates, and `static/*/admin-v2.*` assets.
-- `/admin` and `/admin/v2` permanently redirect (301) to `/admin/v3`.
+- `/admin`, `/admin/v2` and `/admin/v3` permanently redirect (301) to `/os`.
 - Remove the `ADMIN_LEGACY` escape hatch.
 - A CHANGELOG **Upgrade Notes** entry documents the removal; the major-version
-  policy is respected (removal is additive-safe because v3 covers all flows).
+  policy is respected (removal is additive-safe because `/os` covers all flows).
 
 ## Guardrails
 

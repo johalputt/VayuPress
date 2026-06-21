@@ -38,6 +38,9 @@ shot "$BASE_URL/os/media"                             "$OUT_DIR/admin-v3-media.p
 shot "$BASE_URL/os/seo"                               "$OUT_DIR/admin-v3-seo.png"
 shot "$BASE_URL/os/analytics"                         "$OUT_DIR/admin-v3-analytics.png"
 shot "$BASE_URL/os/security"                          "$OUT_DIR/admin-v3-security.png"
+shot "$BASE_URL/os/monitoring"                        "$OUT_DIR/admin-v3-monitoring.png"
+shot "$BASE_URL/os/governance"                        "$OUT_DIR/admin-v3-governance.png"
+shot "$BASE_URL/os/tools"                             "$OUT_DIR/admin-v3-tools.png"
 shot "$BASE_URL/os/settings"                          "$OUT_DIR/admin-v3-settings.png"
 
 # ── Operator console (auth injected by screenshot-proxy) ─────────────────────

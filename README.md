@@ -43,6 +43,19 @@ nonces).
   action imports a legacy article's HTML into a block document (`blocks_json`
   side-car) via `blockrender.ImportHTML`. `articles.content` is never touched, so
   the action is reversible by simply not saving.
+- **Governance panel (`/os/governance`)** — a dedicated control surface for the
+  adaptive-governance runtime: current system mode + full transition lineage, the
+  severity-classified error-budget ledger, and a live policy-engine evaluation
+  (pass / warning / fail). Server-rendered, CSP-clean.
+- **Formal plugin interface spec (ADR-0074)** — `docs/plugins/SPEC.md` is a
+  normative, RFC-2119, independently versioned (v1.0) contract: plugin kinds,
+  manifest schema, deny-by-default capability model, line-oriented JSON IPC
+  protocol, hook events, lifecycle and conformance. The Tools panel gains a live
+  **registry** of sandboxed out-of-process plugins (running/quarantined, PID,
+  invocations, crashes).
+- **Legacy-route log warnings** — every hit on `/admin`, `/admin/v2` or
+  `/admin/v3` emits a structured `warn` log line naming the `/os` target and the
+  removal release, so operators can find stale bookmarks and integrations.
 - **Legacy admin surfaces redirect to VayuOS (ADR-0069)** — `/admin`,
   `/admin/v2[/...]` and `/admin/v3[/...]` now 302-redirect to the `/os`
   equivalent. Set `ADMIN_LEGACY=1` to keep the deprecated v2 pages reachable for

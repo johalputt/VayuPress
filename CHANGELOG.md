@@ -35,9 +35,23 @@ per-request nonces). See ADR-0069 and ADR-0073.
   action imports a legacy article's HTML into a block document (`blocks_json`
   side-car) via `blockrender.ImportHTML` — `articles.content` is never touched,
   so the action is reversible by simply not saving.
+- **Governance panel (`/os/governance`).** A dedicated control surface for the
+  adaptive-governance runtime: current system mode + full transition lineage, the
+  severity-classified error-budget ledger, and a live policy-engine evaluation
+  (pass / warning / fail). Server-rendered, CSP-clean; wired into the sidebar and
+  command palette.
+- **Formal plugin interface specification (ADR-0074).** `docs/plugins/SPEC.md` —
+  a normative, RFC-2119, independently versioned (v1.0) contract covering plugin
+  kinds, the manifest schema, the deny-by-default capability model, the
+  line-oriented JSON IPC protocol, hook events, lifecycle and conformance. The
+  Tools panel gains a live registry of sandboxed out-of-process plugins.
 - **"About the Developer" page** on the marketing site.
 
 ### Changed
+
+- **Legacy admin routes log a deprecation warning.** Every hit on `/admin`,
+  `/admin/v2` or `/admin/v3` emits a structured `warn` log line (component
+  `admin-legacy`) naming the `/os` target and the removal release.
 
 - **VayuOS — the admin moves to `/os`.** The canonical admin surface is now
   mounted at `/os`. The three historical surfaces — the classic console
