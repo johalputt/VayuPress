@@ -132,6 +132,7 @@ func (a *App) registerAdminV3UIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/admin/v3/api/editor/save", a.handleV3EditorSave)
 		pr.With(auth.CSRFTokenMiddleware).Post("/admin/v3/api/editor/preview", a.handleV3EditorPreview)
 		pr.With(auth.CSRFTokenMiddleware).Post("/admin/v3/api/editor/ai", a.handleV3EditorAI)
+		pr.With(auth.CSRFTokenMiddleware).Post("/admin/v3/api/editor/convert", a.handleV3EditorConvert)
 		pr.Get("/admin/v3/api/editor/versions/{slug}", a.handleV3EditorVersionList)
 		pr.Get("/admin/v3/api/editor/versions/{slug}/{id}", a.handleV3EditorVersionGet)
 
@@ -851,7 +852,52 @@ func (a *App) serveV3LegacyEditor(w http.ResponseWriter, r *http.Request, nonce 
 		}
 	}
 	edBody := editorBodyHTML(slug, heading, title, format, source)
-	body := edBody + `
+
+	// For existing legacy posts, offer a non-destructive "Convert to blocks"
+	// action (ADR-0069 Stage 1). It imports the HTML into a block document and
+	// reopens this URL in the native block editor; the rendered article content
+	// is untouched until the operator re-saves, so the conversion is reversible
+	// by simply navigating away without saving.
+	convertBanner := ""
+	if slug != "" {
+		convertBanner = `<div class="convert-banner" data-convert-banner>
+  <div class="convert-banner__text">
+    <strong>New block editor available.</strong>
+    <span class="muted">Convert this post to editable blocks — your published content stays unchanged until you save.</span>
+  </div>
+  <button type="button" class="btn btn--primary btn--sm" data-convert-slug="` + html.EscapeString(slug) + `">Convert to blocks</button>
+</div>
+<script nonce="` + nonce + `">
+(function(){
+  var btn = document.querySelector('[data-convert-slug]');
+  if(!btn) return;
+  btn.addEventListener('click', function(){
+    if(!window.confirm('Import this post into the block editor? Your live content will not change until you save in the new editor.')) return;
+    var slug = btn.getAttribute('data-convert-slug');
+    var m = document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);
+    var csrf = m ? decodeURIComponent(m[1]) : '';
+    btn.disabled = true;
+    btn.textContent = 'Converting…';
+    fetch('/admin/v3/api/editor/convert', {
+      method:'POST',
+      headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},
+      body: JSON.stringify({slug: slug})
+    }).then(function(r){
+      if(!r.ok) throw new Error('convert failed ('+r.status+')');
+      return r.json();
+    }).then(function(){
+      window.location.href = '/admin/v3/editor/' + encodeURIComponent(slug);
+    }).catch(function(err){
+      btn.disabled = false;
+      btn.textContent = 'Convert to blocks';
+      window.alert(String(err.message||err));
+    });
+  });
+})();
+</script>`
+	}
+
+	body := convertBanner + edBody + `
 <script nonce="` + nonce + `" src="/admin/v2/static/js/admin-v2.js"></script>`
 	writeV3HTML(w, adminV3Layout(nonce, heading, "editor", cfg, body))
 }

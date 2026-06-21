@@ -101,6 +101,50 @@ func (a *App) handleV3EditorSave(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, http.StatusOK, map[string]string{"status": "saved", "slug": slug})
 }
 
+// handleV3EditorConvert imports a legacy article's HTML into a block document
+// (ADR-0069 Stage 1). It is deliberately non-destructive: it writes only the
+// blocks_json side-car and never touches the rendered article content. The
+// operator reviews the imported blocks in the editor and the original content
+// stays authoritative until they explicitly Save. This keeps legacy posts
+// lossless — a poor import can be abandoned by navigating away.
+func (a *App) handleV3EditorConvert(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Slug string `json:"slug"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "bad-json", "Invalid request body", "")
+		return
+	}
+	slug := strings.TrimSpace(body.Slug)
+	if slug == "" {
+		writeAPIError(w, r, http.StatusBadRequest, "missing-slug", "slug is required", "")
+		return
+	}
+
+	art, err := a.articles.Get(r.Context(), slug)
+	if err != nil {
+		writeAPIError(w, r, http.StatusNotFound, "not-found", "No article with that slug", "")
+		return
+	}
+
+	blocks := blockrender.ImportHTML(art.Content)
+	raw, err := json.Marshal(blocks)
+	if err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "marshal-error", err.Error(), "")
+		return
+	}
+	if err := persistBlocksJSON(r.Context(), slug, string(raw)); err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "persist-error", err.Error(), "")
+		return
+	}
+
+	writeJSON(w, r, http.StatusOK, map[string]interface{}{
+		"status": "converted",
+		"slug":   slug,
+		"blocks": len(blocks),
+	})
+}
+
 // handleV3EditorPreview renders a block document to sanitised HTML without
 // persisting anything — used by the editor's live preview pane.
 func (a *App) handleV3EditorPreview(w http.ResponseWriter, r *http.Request) {
