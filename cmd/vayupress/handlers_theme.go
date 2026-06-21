@@ -529,6 +529,7 @@ func themeEditorPage(vals map[string]string, modeStr, nonce, errMsg string) stri
 	sb.WriteString(`
 <div class="theme-tabs">
   <button type="button" class="theme-tab active" data-tab="identity">Identity</button>
+  <button type="button" class="theme-tab" data-tab="studio">Studio</button>
   <button type="button" class="theme-tab" data-tab="branding">Branding</button>
   <button type="button" class="theme-tab" data-tab="palette">Palette</button>
   <button type="button" class="theme-tab" data-tab="code">Custom CSS</button>
@@ -563,6 +564,33 @@ func themeEditorPage(vals map[string]string, modeStr, nonce, errMsg string) stri
     <div>
       <input type="text" id="site.author" class="field-input" value="` + v(settings.KeySiteAuthor) + `" maxlength="120" placeholder="Ankush Choudhary Johal">
       <div class="field-hint">Author name in article footers and JSON-LD schema.</div>
+    </div>
+  </div>
+</div>
+
+<!-- Studio: curated design-token presets with live preview -->
+<div id="tab-studio" class="theme-panel">
+  <p class="field-hint theme-note">Pick a curated preset — the preview updates live. Click <strong>Apply Theme</strong> to publish it across every public page. Presets use system fonts only, so no external requests are ever made.</p>
+  <div class="studio-layout">
+    <div class="studio-presets" id="studio-presets" aria-label="Theme presets"></div>
+    <div class="studio-preview-wrap">
+      <div class="studio-preview" id="studio-preview">
+        <h2 id="studio-preview-title">Live Preview</h2>
+        <p>The quick brown fox jumps over the lazy dog. Typography, colour, and spacing update instantly as you browse presets. <a href="#" id="studio-preview-link">Read the full story →</a></p>
+        <blockquote>Design is not just what it looks like and feels like. Design is how it works.</blockquote>
+        <pre><code>func Greet(name string) string {
+    return "Hello, " + name
+}</code></pre>
+        <div class="studio-tags">
+          <span class="studio-tag">design</span>
+          <span class="studio-tag">sovereign</span>
+          <button type="button" class="studio-btn">Subscribe</button>
+        </div>
+      </div>
+      <div class="theme-actions">
+        <button type="button" id="studio-apply" class="theme-save">◑ Apply Theme</button>
+        <span id="studio-status" class="save-status"></span>
+      </div>
     </div>
   </div>
 </div>
@@ -888,6 +916,125 @@ func themeEditorPage(vals map[string]string, modeStr, nonce, errMsg string) stri
           if(favState) favState.textContent='Using the default VayuPress mark.';
           bust(favImg);
         }).catch(function(e){ favRemove.disabled=false; favStatus.style.color='var(--error)'; favStatus.textContent='✗ Network error: '+e.message; });
+    });
+  }
+  // ── Theme Studio: preset gallery + live preview ─────────────────────────
+  // CSP-clean: the preview's colours are applied as CSS custom properties via
+  // the CSSOM (el.style.setProperty), never as inline style attributes or
+  // injected <style> blocks, so style-src 'self' stays intact.
+  var studioPresets=document.getElementById('studio-presets');
+  var studioPreview=document.getElementById('studio-preview');
+  var studioApply=document.getElementById('studio-apply');
+  var studioStatus=document.getElementById('studio-status');
+  var studioLoaded=false;
+  var studioSelected=null;   // currently highlighted preset name
+  var studioCurrent=null;    // currently previewed token object
+  // Map a token object's dark-mode values onto the preview container's vars.
+  function studioApplyTokens(t){
+    if(!studioPreview||!t) return;
+    var s=studioPreview.style;
+    s.setProperty('--vp-bg', t.BgDark||'#0a0f1a');
+    s.setProperty('--vp-surface', t.SurfaceDark||'#111827');
+    s.setProperty('--vp-text', t.TextDark||'#e5e7eb');
+    s.setProperty('--vp-muted', t.MutedDark||'#6b7280');
+    s.setProperty('--vp-accent', t.AccentDark||'#2dd4bf');
+    s.setProperty('--vp-accent2', t.Accent2Dark||'#f59e0b');
+    s.setProperty('--vp-hi', t.HiDark||'#fbbf24');
+    if(t.FontSans) s.setProperty('--vp-font-sans', t.FontSans);
+    if(t.RadiusLg) s.setProperty('--vp-radius-lg', t.RadiusLg);
+    var title=document.getElementById('studio-preview-title');
+    if(title) title.textContent=(t.Name||'Theme')+' Preview';
+  }
+  function studioSelectCard(name){
+    studioSelected=name;
+    Array.prototype.forEach.call(studioPresets.querySelectorAll('.studio-card'), function(c){
+      c.classList.toggle('selected', c.getAttribute('data-name')===name);
+    });
+  }
+  function studioBuildCard(t){
+    var card=document.createElement('button');
+    card.type='button';
+    card.className='studio-card';
+    card.setAttribute('data-name', t.Name);
+    var sw=document.createElement('div');
+    sw.className='studio-card-swatches';
+    [t.BgDark, t.SurfaceDark, t.AccentDark, t.Accent2Dark].forEach(function(c){
+      var d=document.createElement('span');
+      d.className='studio-swatch';
+      // setProperty on background — CSSOM, CSP-clean. Validate it's a hex first.
+      if(/^#[0-9a-fA-F]{3,8}$/.test(c)) d.style.setProperty('background-color', c);
+      sw.appendChild(d);
+    });
+    var meta=document.createElement('div');
+    meta.className='studio-card-meta';
+    var nm=document.createElement('span');
+    nm.className='studio-card-name';
+    nm.textContent=t.Name;
+    var sub=document.createElement('span');
+    sub.className='studio-card-sub';
+    sub.textContent=(t.AccentDark||'')+' · '+(t.MaxWidth||'');
+    meta.appendChild(nm); meta.appendChild(sub);
+    card.appendChild(sw); card.appendChild(meta);
+    card.addEventListener('click', function(){
+      studioCurrent=t;
+      studioApplyTokens(t);
+      studioSelectCard(t.Name);
+      studioStatus.textContent='';
+    });
+    return card;
+  }
+  function studioLoad(){
+    if(studioLoaded) return;
+    studioLoaded=true;
+    studioStatus.style.color='var(--muted)';
+    studioStatus.textContent='Loading presets…';
+    fetch('/api/v1/admin/theme/presets',{headers:{'Accept':'application/json'}})
+      .then(function(r){return r.json();})
+      .then(function(list){
+        studioPresets.textContent='';
+        if(!Array.isArray(list)||!list.length){ studioStatus.textContent='No presets available.'; return; }
+        list.forEach(function(t){ studioPresets.appendChild(studioBuildCard(t)); });
+        // Preselect the first preset so the preview is populated.
+        studioCurrent=list[0];
+        studioApplyTokens(list[0]);
+        studioSelectCard(list[0].Name);
+        studioStatus.textContent='';
+      }).catch(function(e){
+        studioLoaded=false;
+        studioStatus.style.color='var(--error)';
+        studioStatus.textContent='✗ Failed to load presets: '+e.message;
+      });
+  }
+  // Lazy-load presets the first time the Studio tab is opened.
+  document.querySelectorAll('.theme-tab').forEach(function(tb){
+    if(tb.getAttribute('data-tab')==='studio'){
+      tb.addEventListener('click', studioLoad);
+    }
+  });
+  if(studioApply){
+    studioApply.addEventListener('click', function(){
+      if(!studioCurrent){ studioStatus.style.color='var(--error)'; studioStatus.textContent='✗ Pick a preset first'; return; }
+      studioApply.disabled=true;
+      studioStatus.style.color='var(--muted)';
+      studioStatus.textContent='Applying…';
+      fetch('/api/v1/admin/theme/apply',{
+        method:'POST',
+        headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},
+        body:JSON.stringify({preset:studioCurrent.Name})
+      }).then(function(r){return r.json();}).then(function(data){
+        studioApply.disabled=false;
+        if(data.error){
+          studioStatus.style.color='var(--error)';
+          studioStatus.textContent='✗ '+data.error;
+        } else {
+          studioStatus.style.color='var(--green)';
+          studioStatus.textContent='✓ Applied “'+(data.name||studioCurrent.Name)+'” — public pages updated';
+        }
+      }).catch(function(e){
+        studioApply.disabled=false;
+        studioStatus.style.color='var(--error)';
+        studioStatus.textContent='✗ Network error: '+e.message;
+      });
     });
   }
 })();
