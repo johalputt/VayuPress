@@ -446,6 +446,7 @@ STATIC_DIR=./static VAYU_DOCS_DIR=./docs ./vayupress --port 8080`,
     footer: [
       { head:'Project', links:[
         { label:'GitHub',    href:'https://github.com/johalputt/VayuPress' },
+        { label:'About the developer', href:'about.html' },
         { label:'Changelog', href:'https://github.com/johalputt/VayuPress/blob/main/CHANGELOG.md' },
         { label:'Releases',  href:'https://github.com/johalputt/VayuPress/releases' },
       ]},
