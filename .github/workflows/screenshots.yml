@@ -139,11 +139,18 @@ jobs:
           fi
           git add docs/screenshots/*.png
           git commit -m "Refresh screenshots from live instance (CI)"
+          # The build (npm install, go build) and the live capture run can leave
+          # unrelated tracked files modified in the working tree. Our screenshots
+          # are already committed above, so discard that working-tree noise to
+          # give the rebase a clean tree — otherwise it aborts with "cannot
+          # rebase: You have unstaged changes." Untracked build dirs such as
+          # node_modules are ignored by rebase and left untouched.
+          git checkout -- .
           # Rebase onto any commits that landed on the target branch while
           # screenshots were being captured, then push. The only changed files
           # are binary PNGs so rebase conflicts are essentially impossible.
           git fetch origin "${GITHUB_REF_NAME}"
-          git rebase "origin/${GITHUB_REF_NAME}"
+          git rebase --autostash "origin/${GITHUB_REF_NAME}"
           git push origin HEAD:"${GITHUB_REF_NAME}"
 
       - name: Stop background processes
