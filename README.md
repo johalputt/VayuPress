@@ -17,6 +17,41 @@
 > **Adaptive publishing infrastructure for the sovereign web.**
 > SQLite-first, zero-trust, zero telemetry. Policy-governed runtime with adaptive system modes, sandboxed plugins, transactional event outbox, durable audit trail, and fault-tolerant federated publishing.
 
+## What's New in v1.5.0
+
+> Full notes in [`CHANGELOG.md`](CHANGELOG.md) · upgrade steps in [`docs/UPGRADING.md`](docs/UPGRADING.md)
+
+**VayuOS — One Admin** (ADR-0069, ADR-0073) — the v1/v2/v3 admin surfaces
+consolidate into a single, fast **Admin v3**. The block editor gains depth, the
+Theme Studio becomes native, legacy posts can be adopted into blocks losslessly,
+and Admin v2 enters soft deprecation — all on the same sovereign single binary
+with zero CDNs and a strict CSP (no `unsafe-eval`, no `unsafe-inline`,
+per-request nonces).
+
+- **AI-assist slash commands (opt-in)** — when `VAYU_AI_URL` is configured, the
+  block editor's slash palette gains an AI section (continue, rewrite, summarise)
+  with an inline Accept/Discard overlay. Disabled and invisible by default;
+  nothing leaves your server unless you wire up a local model.
+- **Inline version-history diff** — a History panel lists recent versions and
+  renders a word-level LCS diff against the working draft.
+- **Native Theme Studio in Admin v3** — preset gallery + design-token editor with
+  a CSP-clean live preview via scripted CSSOM custom-property writes (no `<style>`
+  injection), served from session-gated `/admin/v3/api/theme/*` mirrors.
+- **Convert-to-blocks (ADR-0073)** — an explicit, confirmed, **non-destructive**
+  action imports a legacy article's HTML into a block document (`blocks_json`
+  side-car) via `blockrender.ImportHTML`. `articles.content` is never touched, so
+  the action is reversible by simply not saving.
+- **Admin v2 soft-deprecated (ADR-0069 Stage 2)** — `/admin` and `/admin/v2[/...]`
+  now 302-redirect to the v3 equivalent. Set `ADMIN_LEGACY=1` to keep v2 reachable
+  for one more release; it is scheduled for removal in `v1.6.0`.
+
+### Upgrading from v1.4.0
+No breaking changes. Operators who still rely on Admin v2 must set
+`ADMIN_LEGACY=1`; otherwise v2 URLs redirect to Admin v3. AI-assist stays off
+unless `VAYU_AI_URL` is set.
+
+---
+
 ## What's New in v1.4.0
 
 > Full notes in [`CHANGELOG.md`](CHANGELOG.md) · upgrade steps in [`docs/UPGRADING.md`](docs/UPGRADING.md)
@@ -165,16 +200,16 @@ the editor in HTML mode until first saved in Markdown mode.
 
 ---
 
-### Theme Studio — Live Design-Token Editor (v1.4.0)
+### Theme Studio — Native to Admin v3 (v1.5.0)
 
-![VayuPress Theme Studio](docs/screenshots/theme-studio.png)
+![VayuPress Theme Studio](docs/screenshots/admin-v3-theme.png)
 
-*The Theme Studio (`/admin/theme` → **Studio** tab) — curated design-token
-presets with an instant live preview. Colour ramps, typography and spacing
-compile to a single sovereign stylesheet served from your own origin. The
-preview applies values through CSSOM `setProperty`, so it stays inside the
+*The Theme Studio, now native to Admin v3 (`/admin/v3/theme`) — a preset gallery
+and design-token editor with an instant live preview. Colour ramps, typography
+and spacing compile to a single sovereign stylesheet served from your own origin.
+The preview applies values through CSSOM `setProperty`, so it stays inside the
 strict `style-src 'self'` CSP — no inline styles, no third-party fonts, no CDNs
-(ADR-0070).*
+(ADR-0070, ADR-0069).*
 
 ---
 
@@ -188,20 +223,24 @@ publishing-trend sparkline, activity feed, and command palette (⌘K).*
 ![VayuPress Admin v3 Block Editor](docs/screenshots/admin-v3-editor.png)
 
 *The block editor — typed-block document rendered server-side through
-escape + bluemonday UGC, slash-command palette, autosave, and live preview.*
+escape + bluemonday UGC, slash-command palette with opt-in **AI-assist**, an
+inline **version-history diff**, autosave, and live preview.*
 
-The flagship admin (`/admin/v3`) surpasses Ghost/WordPress/Substack in design and
-depth while staying a sovereign single binary with **zero CDN dependencies** and a
-**strict CSP** (no `unsafe-eval`, no `unsafe-inline`). It runs alongside `/admin/v2`,
-so adoption is fully non-breaking (ADR-0068).
+As of v1.5.0 the flagship admin (`/admin/v3`) is the **single** admin surface —
+it surpasses Ghost/WordPress/Substack in design and depth while staying a
+sovereign single binary with **zero CDN dependencies** and a **strict CSP** (no
+`unsafe-eval`, no `unsafe-inline`). Admin v2 is soft-deprecated and redirects
+here (ADR-0068, ADR-0069).
 
 - **Design system** — hand-authored, CSS-custom-property theming (dark/light/auto),
   grouped sidebar, command palette (⌘K), mobile bottom-nav. No inline styles.
 - **Block editor** — typed-block document stored as JSON; every block is rendered
   to HTML server-side through escape + bluemonday UGC (`internal/blockrender`),
-  with **no raw-HTML escape hatch**. Slash-command palette, autosave, ⌘S, and a
-  server-rendered + DOMPurify-guarded live preview. Legacy/new posts keep the
-  lossless v2 editor, so a save can never wipe existing content.
+  with **no raw-HTML escape hatch**. Slash-command palette (with opt-in AI-assist),
+  inline version-history diff, autosave, ⌘S, and a server-rendered +
+  DOMPurify-guarded live preview. Legacy posts open losslessly and can be adopted
+  into blocks via an explicit, reversible **Convert to blocks** action (ADR-0073),
+  so a save can never wipe existing content.
 - **Media library** — drag-and-drop upload (content-addressed, type-allowlisted,
   **SVG refused**, CSRF), grid browsing, copy-URL.
 - **Two-factor auth (TOTP)** — RFC 6238 in pure stdlib (`internal/totp`, validated
@@ -214,26 +253,6 @@ is the per-request nonce-gated bootstrap, and DOM mutation uses
 `createElement`/`textContent` — never `innerHTML` with untrusted data.
 
 ---
-
-### Admin v2 — Editor-First Redesign
-
-![VayuPress Admin v2 Dashboard](docs/screenshots/admin-v2-dashboard.png)
-
-*Modern, editor-first admin (`/admin/v2`) on a fully-vendored, CSP-strict stack — dark-first, teal/saffron palette, no external CDNs, no `unsafe-eval`/`unsafe-inline` (ADR-0065).*
-
-![VayuPress Admin v2 Editor](docs/screenshots/admin-v2-editor.png)
-
-*The editor — **multi-format authoring** (Markdown ⇄ raw HTML toggle), split-view live preview, slash-command palette, formatting toolbar, drag-&-drop / paste image upload, word-count / reading-time, SEO readiness meter, and debounced autosave over the existing CSRF-protected API. The editable source + format round-trip through a side-car table while the public renderer always receives server-sanitised HTML. All interactivity is eval-free.*
-
-### Admin Dashboard (Classic Console)
-![VayuPress Admin Dashboard](docs/screenshots/admin-dashboard.png)
-
-*Runtime governance console — system mode (Normal/Degraded/ReadOnly/Recovery/Maintenance/Quarantined), SLO error budgets with contributor attribution, dependency health grid, kernel invariant checklist, operational timeline with epistemic confidence annotations.*
-
-### Theme & Site Settings Control Panel
-![VayuPress Theme Control Panel](docs/screenshots/theme-panel.png)
-
-*Theme console — identity fields, palette editor with live hex+swatch sync and WCAG AA contrast advisory, custom CSS (16 KB, served same-origin via `/theme.css`), declarative `<head>` capabilities, and custom favicon/logo upload (PNG/ICO, magic-number validated, stored in the database). Themes round-trip as a portable JSON bundle via **Export / Import**, and a one-click **Reset to Defaults** restores the factory palette. The public site ships a self-hosted **dark/light mode toggle** (no third-party fonts or scripts — `script-src 'self'`). All changes are mode-gated, CSRF-protected governed writes.*
 
 ### System Modes & Policy Engine
 ![VayuPress Policy Modes](docs/screenshots/policy-modes.png)

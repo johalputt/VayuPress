@@ -24,23 +24,16 @@ shot() {
 shot "$BASE_URL/"                                 "$OUT_DIR/homepage.png"
 shot "$BASE_URL/${ARTICLE_SLUG:-hello-vayupress}" "$OUT_DIR/article-page.png"
 
-# ── Modern admin UI — Admin v2 (auth injected by screenshot-proxy) ───────────
-# The editor-first redesign lives under /admin/v2 (ADR-0065). Capture the
-# dashboard, posts list, and the editor (loaded with the seeded article so the
-# split-view live preview renders real content).
-shot "$BASE_URL/admin/v2"                                   "$OUT_DIR/admin-v2-dashboard.png"
-shot "$BASE_URL/admin/v2/posts"                             "$OUT_DIR/admin-v2-posts.png"
-shot "$BASE_URL/admin/v2/editor/${ARTICLE_SLUG:-hello-vayupress}" "$OUT_DIR/admin-v2-editor.png"
-shot "$BASE_URL/admin/v2/seo"                               "$OUT_DIR/admin-v2-seo.png"
-shot "$BASE_URL/admin/v2/settings"                          "$OUT_DIR/admin-v2-settings.png"
-
-# ── Next-generation admin UI — Admin v3 (auth injected by screenshot-proxy) ──
-# The ground-up redesign lives under /admin/v3 (ADR-0068): design system,
-# dashboard intelligence, block editor, media library, members, security (2FA),
-# SEO, and analytics. The editor opens with the seeded article.
+# ── VayuOS — the single Admin v3 (auth injected by screenshot-proxy) ─────────
+# As of v1.5.0 the v1/v2 admin surfaces are consolidated into Admin v3 (ADR-0068,
+# ADR-0069): cohesive design system, dashboard intelligence, block editor (with
+# AI-assist and version-history diff), native Theme Studio, media library,
+# members, security (2FA), SEO and analytics. The editor opens with the seeded
+# article so the live preview renders real content.
 shot "$BASE_URL/admin/v3"                                   "$OUT_DIR/admin-v3-dashboard.png"
 shot "$BASE_URL/admin/v3/posts"                             "$OUT_DIR/admin-v3-posts.png"
 shot "$BASE_URL/admin/v3/editor/${ARTICLE_SLUG:-hello-vayupress}" "$OUT_DIR/admin-v3-editor.png"
+shot "$BASE_URL/admin/v3/theme"                             "$OUT_DIR/admin-v3-theme.png"
 shot "$BASE_URL/admin/v3/media"                             "$OUT_DIR/admin-v3-media.png"
 shot "$BASE_URL/admin/v3/seo"                               "$OUT_DIR/admin-v3-seo.png"
 shot "$BASE_URL/admin/v3/analytics"                         "$OUT_DIR/admin-v3-analytics.png"
@@ -48,9 +41,6 @@ shot "$BASE_URL/admin/v3/security"                          "$OUT_DIR/admin-v3-s
 shot "$BASE_URL/admin/v3/settings"                          "$OUT_DIR/admin-v3-settings.png"
 
 # ── Operator console (auth injected by screenshot-proxy) ─────────────────────
-shot "$BASE_URL/admin"                            "$OUT_DIR/admin-dashboard.png"
-shot "$BASE_URL/admin/theme"                      "$OUT_DIR/theme-panel.png"
-shot "$BASE_URL/admin/theme?tab=studio"           "$OUT_DIR/theme-studio.png"
 shot "$BASE_URL/admin/modes"                      "$OUT_DIR/policy-modes.png"
 shot "$BASE_URL/admin/policy"                     "$OUT_DIR/policy-inspector.png"
 shot "$BASE_URL/admin/topology"                   "$OUT_DIR/runtime-topology.png"
