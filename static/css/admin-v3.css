@@ -1477,3 +1477,71 @@
 .vp-v3 .totp-enroll[hidden] { display: none; }
 .eblock__embed-status{display:block;font-size:12px;color:var(--muted,#64748b);margin-top:4px;font-style:italic;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .eblock__diagram-preview{margin-top:8px;padding:12px;border:1px solid var(--border,#1e2d42);border-radius:6px;background:var(--surface,#0a1018);text-align:center;overflow-x:auto;min-height:40px}.eblock__diagram-preview svg{max-width:100%;height:auto}.eblock__diagram-preview.is-error{color:var(--red,#f87171);font:400 12px/1.5 var(--mono,monospace);text-align:left}.eblock__diagram-preview .vp-diagram__node,.eblock__diagram-preview .vp-diagram__actor{fill:#0e1520;stroke:#6366f1;stroke-width:1.5}.eblock__diagram-preview .vp-diagram__node--round,.eblock__diagram-preview .vp-diagram__node--diamond,.eblock__diagram-preview .vp-diagram__note{fill:#121c2a}.eblock__diagram-preview .vp-diagram__label,.eblock__diagram-preview .vp-diagram__actorlabel,.eblock__diagram-preview .vp-diagram__notetext{fill:#dde6f0}.eblock__diagram-preview .vp-diagram__edge,.eblock__diagram-preview .vp-diagram__msg{stroke:#8a9bb5;fill:none;stroke-width:1.5}.eblock__diagram-preview .vp-diagram__arrowhead{fill:#8a9bb5}.eblock__diagram-preview .vp-diagram__edgelabel,.eblock__diagram-preview .vp-diagram__msglabel{fill:#8a9bb5}.eblock__diagram-preview .vp-diagram__lifeline{stroke:#1e2d42;stroke-dasharray:3 3}
+
+/* ── Tools & Plugins panel (VayuOS foundation) ─────────────────────────────── */
+.vp-v3 .tools-cat {
+  grid-column: 1 / -1;
+  font-family: var(--font-head);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-3);
+  margin: var(--sp-4) 0 var(--sp-1);
+}
+.vp-v3 .tools-cat:first-child { margin-top: 0; }
+.vp-v3 .tools-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--sp-4);
+}
+.vp-v3 .tool-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: var(--sp-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+.vp-v3 .tool-card:hover { border-color: var(--border-strong); transform: translateY(-1px); }
+.vp-v3 .tool-card__head { display: flex; align-items: center; gap: var(--sp-3); }
+.vp-v3 .tool-card__icon { font-size: 1.25rem; line-height: 1; }
+.vp-v3 .tool-card__title {
+  font-family: var(--font-head);
+  font-weight: 600;
+  font-size: var(--text-base);
+  flex: 1;
+  min-width: 0;
+}
+.vp-v3 .tool-card__desc { color: var(--text-2); font-size: var(--text-sm); line-height: 1.5; flex: 1; }
+.vp-v3 .tool-card__foot { display: flex; align-items: center; }
+.vp-v3 .tool-status {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--r-full);
+  border: 1px solid transparent;
+}
+.vp-v3 .tool-status--on   { color: var(--ok);     background: var(--ok-dim); }
+.vp-v3 .tool-status--off  { color: var(--text-3); background: var(--bg-surface-2); }
+.vp-v3 .tool-status--idle { color: var(--warn);   background: var(--warn-dim); }
+
+/* Toggle switch */
+.vp-v3 .switch { position: relative; display: inline-flex; cursor: pointer; flex: 0 0 auto; }
+.vp-v3 .switch-input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+.vp-v3 .switch-track {
+  width: 38px; height: 22px; border-radius: var(--r-full);
+  background: var(--bg-surface-3); border: 1px solid var(--border);
+  transition: background 0.18s ease, border-color 0.18s ease;
+  position: relative; display: inline-block;
+}
+.vp-v3 .switch-track::after {
+  content: ""; position: absolute; top: 2px; left: 2px;
+  width: 16px; height: 16px; border-radius: 50%;
+  background: var(--text-2); transition: transform 0.18s ease, background 0.18s ease;
+}
+.vp-v3 .switch-input:checked + .switch-track { background: var(--brand-dim); border-color: var(--brand); }
+.vp-v3 .switch-input:checked + .switch-track::after { transform: translateX(16px); background: var(--brand); }
+.vp-v3 .switch-input:disabled + .switch-track { opacity: 0.5; }
+.vp-v3 .switch-input:focus-visible + .switch-track { box-shadow: 0 0 0 2px var(--brand-glow); }

@@ -41,7 +41,31 @@ const (
 	// serving handler sets the right Content-Type.
 	KeyBrandFavicon     = "brand.favicon"      // base64-encoded PNG/ICO bytes
 	KeyBrandFaviconType = "brand.favicon_type" // "image/png" | "image/x-icon"
+
+	// Feature flags — operator-toggleable platform modules surfaced in the
+	// Tools & Plugins panel. Each value is "on" (default) or "off". Disabling a
+	// flag turns the corresponding public surface off at the request boundary;
+	// it never tears down the backing store, so re-enabling is instant and
+	// lossless. Unset is treated as enabled (see FeatureEnabled).
+	KeyFeatureComments    = "feature.comments"    // public comment submission
+	KeyFeatureNewsletter  = "feature.newsletter"  // public newsletter subscribe
+	KeyFeatureWebmentions = "feature.webmentions" // inbound webmention receiver
 )
+
+// FeatureKeys is the set of operator-toggleable feature flags. Each maps to a
+// public surface whose request handler consults FeatureEnabled before acting.
+var FeatureKeys = map[string]bool{
+	KeyFeatureComments:    true,
+	KeyFeatureNewsletter:  true,
+	KeyFeatureWebmentions: true,
+}
+
+// FeatureEnabled reports whether an operator-toggleable feature is on. An unset
+// or any non-"off" value counts as enabled, so features default to available
+// and only an explicit "off" disables them.
+func (s *Store) FeatureEnabled(ctx context.Context, key string) bool {
+	return s.Get(ctx, key) != "off"
+}
 
 // RobotsOptions is the allowlist of accepted <meta name="robots"> directives.
 var RobotsOptions = map[string]bool{
@@ -54,42 +78,48 @@ var RobotsOptions = map[string]bool{
 
 // AllKeys is the canonical set of settings keys accepted by Set/SetMany.
 var AllKeys = map[string]bool{
-	KeySiteName:          true,
-	KeySiteTagline:       true,
-	KeySiteDescription:   true,
-	KeySiteAuthor:        true,
-	KeyThemePrimaryLight: true,
-	KeyThemePrimaryDark:  true,
-	KeyThemeAccentLight:  true,
-	KeyThemeAccentDark:   true,
-	KeyThemeCustomCSS:    true,
-	KeyHeadKeywords:      true,
-	KeyHeadThemeColor:    true,
-	KeyHeadRobots:        true,
-	KeyHeadVerifyGoogle:  true,
-	KeyHeadVerifyBing:    true,
-	KeyBrandFavicon:      true,
-	KeyBrandFaviconType:  true,
+	KeySiteName:           true,
+	KeySiteTagline:        true,
+	KeySiteDescription:    true,
+	KeySiteAuthor:         true,
+	KeyThemePrimaryLight:  true,
+	KeyThemePrimaryDark:   true,
+	KeyThemeAccentLight:   true,
+	KeyThemeAccentDark:    true,
+	KeyThemeCustomCSS:     true,
+	KeyHeadKeywords:       true,
+	KeyHeadThemeColor:     true,
+	KeyHeadRobots:         true,
+	KeyHeadVerifyGoogle:   true,
+	KeyHeadVerifyBing:     true,
+	KeyBrandFavicon:       true,
+	KeyBrandFaviconType:   true,
+	KeyFeatureComments:    true,
+	KeyFeatureNewsletter:  true,
+	KeyFeatureWebmentions: true,
 }
 
 // Defaults are returned when no DB value exists for a key.
 var Defaults = map[string]string{
-	KeySiteName:          "VayuPress",
-	KeySiteTagline:       "Publishing as an adaptive runtime.",
-	KeySiteDescription:   "Durable by design, observable end to end.",
-	KeySiteAuthor:        "Ankush Choudhary Johal",
-	KeyThemePrimaryLight: "#0f766e", // teal-700 — clears WCAG AA on the light bg
-	KeyThemePrimaryDark:  "#2dd4bf",
-	KeyThemeAccentLight:  "#f59e0b",
-	KeyThemeAccentDark:   "#fbbf24",
-	KeyThemeCustomCSS:    "",
-	KeyHeadKeywords:      "",
-	KeyHeadThemeColor:    "",
-	KeyHeadRobots:        "",
-	KeyHeadVerifyGoogle:  "",
-	KeyHeadVerifyBing:    "",
-	KeyBrandFavicon:      "",
-	KeyBrandFaviconType:  "",
+	KeySiteName:           "VayuPress",
+	KeySiteTagline:        "Publishing as an adaptive runtime.",
+	KeySiteDescription:    "Durable by design, observable end to end.",
+	KeySiteAuthor:         "Ankush Choudhary Johal",
+	KeyThemePrimaryLight:  "#0f766e", // teal-700 — clears WCAG AA on the light bg
+	KeyThemePrimaryDark:   "#2dd4bf",
+	KeyThemeAccentLight:   "#f59e0b",
+	KeyThemeAccentDark:    "#fbbf24",
+	KeyThemeCustomCSS:     "",
+	KeyHeadKeywords:       "",
+	KeyHeadThemeColor:     "",
+	KeyHeadRobots:         "",
+	KeyHeadVerifyGoogle:   "",
+	KeyHeadVerifyBing:     "",
+	KeyBrandFavicon:       "",
+	KeyBrandFaviconType:   "",
+	KeyFeatureComments:    "on",
+	KeyFeatureNewsletter:  "on",
+	KeyFeatureWebmentions: "on",
 }
 
 // Store is a thread-safe settings store with an in-process read cache.

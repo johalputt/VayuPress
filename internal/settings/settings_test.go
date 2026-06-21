@@ -73,3 +73,26 @@ func TestGetSingleFallsBackToDefault(t *testing.T) {
 		t.Errorf("expected default accent, got %q", got)
 	}
 }
+
+func TestFeatureEnabledDefaultsOn(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	// Unset → defaults to "on" → enabled.
+	if !s.FeatureEnabled(ctx, KeyFeatureComments) {
+		t.Error("comments should default to enabled")
+	}
+	// Explicit "off" disables.
+	if err := s.SetMany(ctx, map[string]string{KeyFeatureComments: "off"}); err != nil {
+		t.Fatalf("SetMany: %v", err)
+	}
+	if s.FeatureEnabled(ctx, KeyFeatureComments) {
+		t.Error("comments should be disabled after setting off")
+	}
+	// Re-enable.
+	if err := s.SetMany(ctx, map[string]string{KeyFeatureComments: "on"}); err != nil {
+		t.Fatalf("SetMany: %v", err)
+	}
+	if !s.FeatureEnabled(ctx, KeyFeatureComments) {
+		t.Error("comments should be re-enabled after setting on")
+	}
+}

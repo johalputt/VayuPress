@@ -40,6 +40,11 @@ func TestThemeEditorCoversSettingsAllowlist(t *testing.T) {
 	outOfBand := map[string]bool{
 		settings.KeyBrandFavicon:     true,
 		settings.KeyBrandFaviconType: true,
+		// Feature flags are toggled through the Tools & Plugins panel
+		// (POST /admin/v3/api/tools/toggle), not the theme editor form.
+		settings.KeyFeatureComments:    true,
+		settings.KeyFeatureNewsletter:  true,
+		settings.KeyFeatureWebmentions: true,
 	}
 	page := themeEditorPage(map[string]string{}, "NORMAL", "test-nonce", "")
 	for key := range settings.AllKeys {

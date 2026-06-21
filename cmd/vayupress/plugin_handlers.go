@@ -27,6 +27,7 @@ import (
 	"github.com/johalputt/vayupress/internal/emailtmpl"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/newsletter"
+	"github.com/johalputt/vayupress/internal/settings"
 	"github.com/johalputt/vayupress/internal/toc"
 	"github.com/johalputt/vayupress/internal/update"
 )
@@ -91,6 +92,10 @@ func (a *App) handleUpdateHistory(w http.ResponseWriter, r *http.Request) {
 func (a *App) handleCommentSubmit(w http.ResponseWriter, r *http.Request) {
 	if a.commentStore == nil {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "comments-disabled", "Comments not initialised", "")
+		return
+	}
+	if a.siteSettings != nil && !a.siteSettings.FeatureEnabled(r.Context(), settings.KeyFeatureComments) {
+		writeAPIError(w, r, http.StatusForbidden, "comments-off", "Comments are disabled by the operator", "")
 		return
 	}
 	slug := chi.URLParam(r, "slug")
@@ -326,6 +331,10 @@ func (a *App) handleNewsletterSubscribe(w http.ResponseWriter, r *http.Request) 
 		writeAPIError(w, r, http.StatusServiceUnavailable, "newsletter-disabled", "Newsletter not initialised", "")
 		return
 	}
+	if a.siteSettings != nil && !a.siteSettings.FeatureEnabled(r.Context(), settings.KeyFeatureNewsletter) {
+		writeAPIError(w, r, http.StatusForbidden, "newsletter-off", "Newsletter signup is disabled by the operator", "")
+		return
+	}
 	var body struct {
 		Email string `json:"email"`
 	}
@@ -474,6 +483,10 @@ func (a *App) handleNewsletterList(w http.ResponseWriter, r *http.Request) {
 func (a *App) handleWebmentionReceive(w http.ResponseWriter, r *http.Request) {
 	if a.webmentionStore == nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	if a.siteSettings != nil && !a.siteSettings.FeatureEnabled(r.Context(), settings.KeyFeatureWebmentions) {
+		w.WriteHeader(http.StatusForbidden)
 		return
 	}
 	source := r.FormValue("source")
