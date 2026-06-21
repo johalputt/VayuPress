@@ -24,12 +24,17 @@ func validHex(field, value string) (string, error) {
 	return v, nil
 }
 
-// safeFont strips characters that could escape a CSS string context.
-// Only printable ASCII minus single-quote, backslash, and angle-brackets is allowed.
+// safeFont strips characters that could escape the CSS variable value.
+// A font-family stack only ever needs letters, digits, spaces, commas,
+// hyphens, and dots, so every CSS-structural character — quotes,
+// backslash, angle-brackets, and crucially the block/declaration
+// punctuation ; { } ( ) : — is removed. Without that punctuation a value
+// cannot break out of the surrounding :root{ … } block to inject rules.
 func safeFont(s string) string {
 	var sb strings.Builder
 	for _, r := range s {
-		if r == '\'' || r == '\\' || r == '<' || r == '>' || r == '"' {
+		switch r {
+		case '\'', '\\', '<', '>', '"', ';', '{', '}', '(', ')', ':':
 			continue
 		}
 		if r < 0x20 || r > 0x7e {

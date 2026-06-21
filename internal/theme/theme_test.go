@@ -27,6 +27,31 @@ func TestCompileCSSEscapesColors(t *testing.T) {
 	}
 }
 
+// TestCompileCSSSanitizesFontInjection verifies that CSS-structural characters
+// in a font field cannot break out of the :root{ … } block to inject rules.
+// Fonts are stripped (not rejected), so compilation succeeds but the compiled
+// CSS must not contain the breakout punctuation or the injected selector.
+func TestCompileCSSSanitizesFontInjection(t *testing.T) {
+	tok := theme.Default()
+	tok.FontSans = "sans-serif;} body{display:none} :root{"
+	tok.FontMono = "mono'/*\\<script>"
+
+	css, err := theme.CompileCSS(tok)
+	if err != nil {
+		t.Fatalf("CompileCSS returned error: %v", err)
+	}
+	// The single :root{ block (plus the light-mode @media one) is all that
+	// should exist; the injected "body{" selector must be gone.
+	// The injected "body{display:none}" selector and the <script> payload must
+	// not survive; the only "{" / "}" present should be the compiler's own
+	// :root and @media blocks.
+	for _, bad := range []string{"body{", "{display", "display:none", "<script>", "\\", "*/"} {
+		if strings.Contains(css, bad) {
+			t.Fatalf("compiled CSS contains breakout sequence %q: %s", bad, css)
+		}
+	}
+}
+
 // TestPresetsAllValid verifies that each of the 8 built-in presets compiles
 // successfully with CompileCSS.
 func TestPresetsAllValid(t *testing.T) {

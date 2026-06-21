@@ -219,6 +219,23 @@ func validatePublicHost(ctx context.Context, host string) error {
 	return fmt.Errorf("%w: host %q has no public address", ErrBlockedAddress, host)
 }
 
+// reservedV4 holds IPv4 ranges that net.IP.IsPrivate does not flag but which a
+// guarded fetch must still refuse.
+var reservedV4 = func() []*net.IPNet {
+	var nets []*net.IPNet
+	for _, s := range []string{
+		"100.64.0.0/10", // carrier-grade NAT (RFC 6598)
+		"192.0.0.0/24",  // IETF protocol assignments (RFC 6890)
+		"198.18.0.0/15", // benchmarking (RFC 2544)
+		"240.0.0.0/4",   // reserved / Class E (RFC 1112)
+	} {
+		if _, n, err := net.ParseCIDR(s); err == nil {
+			nets = append(nets, n)
+		}
+	}
+	return nets
+}()
+
 // isPrivateOrReservedIP reports whether ip is one we must never connect to from
 // a guarded fetch: loopback, link-local, multicast, unspecified, RFC1918/ULA
 // private, or a known cloud metadata endpoint. A nil IP is treated as blocked.
@@ -233,6 +250,17 @@ func isPrivateOrReservedIP(ip net.IP) bool {
 	// Cloud metadata services (AWS/GCP/Azure IMDS, Alibaba).
 	if ip.Equal(net.ParseIP("169.254.169.254")) || ip.Equal(net.ParseIP("100.100.100.200")) {
 		return true
+	}
+	// Ranges ip.IsPrivate() does not cover but which must never be reachable:
+	// carrier-grade NAT (100.64.0.0/10), IETF protocol assignments
+	// (192.0.0.0/24), benchmarking (198.18.0.0/15), and reserved/Class-E
+	// (240.0.0.0/4). These can front internal infrastructure.
+	if v4 := ip.To4(); v4 != nil {
+		for _, cidr := range reservedV4 {
+			if cidr.Contains(v4) {
+				return true
+			}
+		}
 	}
 	// IPv6 unique-local addresses (fc00::/7).
 	if v6 := ip.To16(); v6 != nil && ip.To4() == nil && (v6[0]&0xfe) == 0xfc {

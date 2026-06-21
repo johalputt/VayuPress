@@ -133,6 +133,9 @@ func emitState(nodes map[string]*fcNode, order []string, edges []fcEdge) string 
 
 	for _, e := range edges {
 		from, to := nodes[e.from], nodes[e.to]
+		if from == nil || to == nil {
+			continue
+		}
 		x1, y1, x2, y2 := edgeAnchors(from, to, false, "TD")
 		fmt.Fprintf(&b, `<line class="vp-diagram__edge" x1="%s" y1="%s" x2="%s" y2="%s" marker-end="url(#vp-arrow)"></line>`,
 			num(x1), num(y1), num(x2), num(y2))
