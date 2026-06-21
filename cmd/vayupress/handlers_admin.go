@@ -641,10 +641,17 @@ func writeADRs(docsDir string) {
 		"ADR-0045-internal-package-decomposition.md":        "# ADR-0045: Internal Package Decomposition (P14)\n\n**Status**: Accepted\n**Date**: " + now + "\n\n## Decision\nSplit main.go into internal/* packages: logging, config, metrics, db, auth, render, queue, health.\n",
 	}
 	for filename, content := range adrs {
-		path := filepath.Join(adrDir, filename)
-		if _, err := os.Stat(path); err == nil {
+		// Skip if an ADR with this number already exists under ANY filename.
+		// Several of these bootstrap stubs were later rewritten as canonical,
+		// hand-authored ADRs with better slugs (e.g. ADR-0032-plugin-pool-
+		// waitgroup.md). Matching only the exact stub name would recreate the
+		// obsolete stub every boot, producing duplicate ADR numbers in the
+		// registry. Glob on the "ADR-NNNN-" prefix so the canonical file wins.
+		num := filename[:len("ADR-0000")] // e.g. "ADR-0032"
+		if existing, _ := filepath.Glob(filepath.Join(adrDir, num+"-*.md")); len(existing) > 0 {
 			continue
 		}
+		path := filepath.Join(adrDir, filename)
 		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 			logging.LogError("adr", "write failed: "+filename, err.Error())
 		} else {
