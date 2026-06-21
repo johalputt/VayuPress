@@ -11,7 +11,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"html"
 	"net"
 	"net/http"
 	"strings"
@@ -19,8 +18,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/johalputt/vayupress/internal/auth"
-	"github.com/johalputt/vayupress/internal/logging"
-	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/users"
 )
 
@@ -65,7 +62,7 @@ func (a *App) requireSessionOrAPIKey(next http.Handler) http.Handler {
 			writeAPIError(w, r, http.StatusUnauthorized, "unauthorized", "login required", "")
 			return
 		}
-		http.Redirect(w, r, "/admin/v2/login", http.StatusSeeOther)
+		http.Redirect(w, r, "/os/login", http.StatusSeeOther)
 	})
 }
 
@@ -85,103 +82,6 @@ func loginClientIP(r *http.Request) string {
 func loginLockoutMessage(until time.Time) string {
 	return "Too many failed sign-in attempts. Try again after " +
 		until.UTC().Format("15:04 MST") + "."
-}
-
-// handleV2LoginSubmit authenticates email+password and starts a session.
-func (a *App) handleV2LoginSubmit(w http.ResponseWriter, r *http.Request) {
-	if a.userStore == nil || a.sessions == nil {
-		http.Error(w, "accounts not initialised", http.StatusServiceUnavailable)
-		return
-	}
-	if err := r.ParseForm(); err != nil {
-		http.Error(w, "bad form", http.StatusBadRequest)
-		return
-	}
-	// Brute-force guard: refuse before touching the password hash when the
-	// client IP is locked out (5 failures / 15 min → 1 h lock, shared with the
-	// API-key path so attackers cannot split their budget across surfaces).
-	ip := loginClientIP(r)
-	if locked, until := auth.CheckAuthLockout(ip); locked {
-		logging.LogJSON(logging.LogFields{Level: "warn", Component: "auth", Severity: "notice", Msg: "login blocked — IP locked out"})
-		a.renderLoginPage(w, r, loginLockoutMessage(until))
-		return
-	}
-	email := r.PostFormValue("email")
-	password := r.PostFormValue("password")
-	u, err := a.userStore.Authenticate(r.Context(), email, password)
-	if err != nil {
-		auth.RecordAuthFailure(ip)
-		logging.LogJSON(logging.LogFields{Level: "warn", Component: "auth", Severity: "notice", Msg: "login failed"})
-		a.renderLoginPage(w, r, "Invalid email or password.")
-		return
-	}
-	// Second factor: enforce TOTP when the account has 2FA enabled. This closes
-	// the older surface so an enrolled account cannot bypass 2FA via /admin/v2.
-	if ok, required := a.verifyTOTPForLogin(r.Context(), email, r.PostFormValue("totp")); required && !ok {
-		// A wrong second factor counts toward lockout too — otherwise a stolen
-		// password could be paired with unlimited TOTP guesses.
-		auth.RecordAuthFailure(ip)
-		logging.LogJSON(logging.LogFields{Level: "warn", Component: "auth", Severity: "notice", Msg: "login 2fa failed"})
-		a.renderLoginPage(w, r, "Enter the 6-digit code from your authenticator app, then re-enter your password.")
-		return
-	}
-	token, err := a.sessions.Create(r.Context(), u.ID)
-	if err != nil {
-		http.Error(w, "could not start session", http.StatusInternalServerError)
-		return
-	}
-	auth.RecordAuthSuccess(ip)
-	a.userStore.TouchLastLogin(r.Context(), u.ID)
-	auth.SetSessionCookie(w, token)
-	logging.LogInfo("auth", "login: "+u.Email+" ("+u.Role+")")
-	http.Redirect(w, r, "/admin/v2", http.StatusSeeOther)
-}
-
-// handleV2Logout destroys the current session.
-func (a *App) handleV2Logout(w http.ResponseWriter, r *http.Request) {
-	if a.sessions != nil {
-		if token := auth.SessionTokenFromRequest(r); token != "" {
-			_ = a.sessions.Destroy(r.Context(), token)
-		}
-	}
-	auth.ClearSessionCookie(w)
-	http.Redirect(w, r, "/admin/v2/login", http.StatusSeeOther)
-}
-
-// renderLoginPage renders the email/password sign-in form. errMsg, when set, is
-// shown as an inline error. The form posts to /admin/v2/login.
-func (a *App) renderLoginPage(w http.ResponseWriter, r *http.Request, errMsg string) {
-	nonce := render.CSPNonce(r)
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("X-Robots-Tag", "noindex")
-	errBlock := ""
-	if errMsg != "" {
-		errBlock = `<p class="login-error" role="alert">` + html.EscapeString(errMsg) + `</p>`
-	}
-	body := `<!DOCTYPE html><html lang="en"><head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Sign in — VayuPress Admin</title><meta name="robots" content="noindex, nofollow">
-<link rel="stylesheet" href="/admin/v2/static/css/admin-v2.css">
-<link rel="icon" type="image/png" href="/static/favicon-light.png">
-</head><body>
-<div class="login-wrap"><div class="card login-card">
-  <div class="login-brand">VayuPress</div>
-  ` + errBlock + `
-  <form method="POST" action="/admin/v2/login">
-    <div class="field"><label for="lg-email">Email</label>
-      <input id="lg-email" name="email" class="input" type="email" autocomplete="username" required autofocus></div>
-    <div class="field"><label for="lg-pass">Password</label>
-      <input id="lg-pass" name="password" class="input" type="password" autocomplete="current-password" required></div>
-    <div class="field"><label for="lg-totp">Two-factor code (if enabled)</label>
-      <input id="lg-totp" name="totp" class="input" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000"></div>
-    <div class="btn-row mt-2"><button class="btn btn-primary" type="submit">Sign in</button></div>
-    <p class="hint">Or supply the API key via the configured proxy header to bypass password login.</p>
-  </form>
-</div></div>
-<script src="/admin/v2/static/js/purify.min.js"></script>
-<script nonce="` + nonce + `" src="/admin/v2/static/js/admin-v2.js"></script>
-</body></html>`
-	_, _ = w.Write([]byte(body))
 }
 
 // =============================================================================

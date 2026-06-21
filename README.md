@@ -17,6 +17,32 @@
 > **Adaptive publishing infrastructure for the sovereign web.**
 > SQLite-first, zero-trust, zero telemetry. Policy-governed runtime with adaptive system modes, sandboxed plugins, transactional event outbox, durable audit trail, and fault-tolerant federated publishing.
 
+## What's New in v1.6.0
+
+> Full notes in [`CHANGELOG.md`](CHANGELOG.md) · upgrade steps in [`docs/UPGRADING.md`](docs/UPGRADING.md)
+
+**One admin, for real — Admin v2 removed (ADR-0069 Stage 3).** VayuOS at `/os` is
+now the only admin, and the block editor owns every authoring flow.
+
+- **Native create path** — brand-new posts open the `/os` block editor and are
+  created on first Save through the authoritative article service (no more
+  delegating to the v2 editor).
+- **Native legacy-post editing** — opening an existing legacy (non-block) post
+  loads it in the block editor, pre-seeded with an in-memory import of its HTML;
+  the import is not persisted and the published content is untouched until Save.
+- **Admin v2 deleted** — `admin_ui.go`, the v2 login handlers, `admin-v2.css`,
+  `admin-v2.js` and the v2 e2e specs are gone, along with the `ADMIN_LEGACY`
+  escape hatch and deprecation banner.
+- **Permanent (301) redirects** — `/admin`, `/admin/v2[/...]` and
+  `/admin/v3[/...]` now 301-redirect into the `/os` equivalent.
+
+### Upgrading from v1.5.0
+No data migration. The admin is at **`/os`**; old `/admin`, `/admin/v2` and
+`/admin/v3` URLs redirect there automatically. Update any bookmarks/automation
+that hard-coded `/admin/v2`, and drop the `ADMIN_LEGACY` env var (now a no-op).
+
+---
+
 ## What's New in v1.5.0
 
 > Full notes in [`CHANGELOG.md`](CHANGELOG.md) · upgrade steps in [`docs/UPGRADING.md`](docs/UPGRADING.md)

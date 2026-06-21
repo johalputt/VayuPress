@@ -1,6 +1,6 @@
 # ADR-0069 — Admin v2 Retirement Plan
 
-**Status:** Accepted (plan; execution staged across future releases)
+**Status:** Accepted — **fully executed in v1.6.0** (all three stages complete)
 **Date:** 2026-06-20
 **Deciders:** VayuPress Maintainers
 **Supersedes (eventually):** the operator-facing surface of ADR-0065
@@ -62,13 +62,23 @@ Implemented in `cmd/vayupress/admin_legacy.go`. The redirects are 302 (not 301)
 during soft deprecation so Stage 3 can switch them to permanent without clients
 having cached an early 301.
 
-### Stage 3 — Removal (target: 1.6.0, no sooner than ~2 minor releases after 1.3.0)
+### Stage 3 — Removal (1.6.0) — **COMPLETE**
 
-- Delete the v2 handlers, templates, and `static/*/admin-v2.*` assets.
-- `/admin`, `/admin/v2` and `/admin/v3` permanently redirect (301) to `/os`.
-- Remove the `ADMIN_LEGACY` escape hatch.
-- A CHANGELOG **Upgrade Notes** entry documents the removal; the major-version
-  policy is respected (removal is additive-safe because `/os` covers all flows).
+- ✅ Prerequisite met: the `/os` block editor owns **create** (native create path)
+  and **legacy edit** (auto-import legacy HTML → blocks on open, non-destructive
+  until save). Nothing authoring-related depends on v2 any more.
+- ✅ Deleted the v2 handlers and assets: `admin_ui.go`, the v2 login handlers,
+  `static/css/admin-v2.css`, `static/js/admin-v2.js`, and the v2 e2e specs.
+- ✅ `/admin`, `/admin/v2[/...]` and `/admin/v3[/...]` permanently redirect (301)
+  to the `/os` equivalent.
+- ✅ Removed the `ADMIN_LEGACY` escape hatch and the deprecation banner.
+- ✅ CHANGELOG **Upgrade Notes** document the removal; removal is additive-safe
+  because `/os` covers all flows.
+
+Note: the v1 **operator console** sub-pages (`/admin/modes`, `/admin/faults`,
+`/admin/topology`, `/admin/replay`, `/admin/policy`, `/admin/adr`, …) are
+intentionally retained — they have a separate lifecycle and were never part of
+the Admin v2 editorial surface.
 
 ## Guardrails
 

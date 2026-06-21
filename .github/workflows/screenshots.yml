@@ -21,9 +21,6 @@ jobs:
     runs-on: ubuntu-latest
     env:
       API_KEY: screenshot-ci-key
-      # Keep Admin v2 and the classic /admin console reachable during capture
-      # (ADR-0069 Stage 2 redirects them to v3 by default in v1.5.0).
-      ADMIN_LEGACY: "1"
       DB_PATH: /tmp/vayupress/data.db
       CACHE_DIR: /tmp/vayupress/cache
       TMP_DIR: /tmp/vayupress/tmp

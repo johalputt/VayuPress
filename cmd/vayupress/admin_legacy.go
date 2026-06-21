@@ -2,38 +2,20 @@ package main
 
 // admin_legacy.go — legacy admin redirection into VayuOS (`/os`).
 //
-// As of v1.5.0 the canonical admin surface is VayuOS, mounted at `/os`. The
-// three historical surfaces — the classic console (`/admin`), Admin v2
-// (`/admin/v2`), and Admin v3 (`/admin/v3`) — are legacy and redirect into the
-// `/os` equivalent (302; ADR-0069 Stage 3 will make these permanent 301s in
-// v1.6.0 before the handlers are deleted).
-//
-// Operators who need a deprecated surface for one more release can set the
-// environment escape hatch ADMIN_LEGACY=1, which keeps the v2 pages live and
-// renders a dismissible deprecation banner pointing at VayuOS.
+// As of v1.6.0 the canonical admin surface is VayuOS, mounted at `/os`, and
+// Admin v2 has been removed (ADR-0069 Stage 3). The three historical surfaces —
+// the classic console root (`/admin`), Admin v2 (`/admin/v2`), and Admin v3
+// (`/admin/v3`) — permanently redirect (301) into the `/os` equivalent.
 //
 // The API surface (/api/v1/*) and the operator console sub-pages (/admin/modes,
 // /admin/faults, …) are unaffected — they have a separate lifecycle.
 
 import (
 	"net/http"
-	"os"
 	"strings"
 
 	"github.com/johalputt/vayupress/internal/logging"
 )
-
-// legacyRemovalRelease is the release in which the legacy admin handlers are
-// deleted (ADR-0069 Stage 3). Surfaced in the deprecation banner so operators
-// can plan.
-const legacyRemovalRelease = "v1.6.0"
-
-// adminLegacyEnabled reports whether the ADMIN_LEGACY escape hatch is set, which
-// keeps the deprecated Admin v2 surface reachable for one more release.
-func adminLegacyEnabled() bool {
-	v := strings.TrimSpace(os.Getenv("ADMIN_LEGACY"))
-	return v == "1" || strings.EqualFold(v, "true")
-}
 
 // legacyToOSPath maps a deprecated admin path (`/admin`, `/admin/v2[/...]`, or
 // `/admin/v3[/...]`) to its VayuOS (`/os`) equivalent, preserving any trailing
@@ -51,11 +33,11 @@ func legacyToOSPath(p string) string {
 	}
 }
 
-// legacyRedirect returns a handler that 302-redirects the current path to its
-// VayuOS (`/os`) equivalent. Used for the legacy admin surfaces. Each hit emits
-// a structured deprecation warning to the server log (ADR-0069) so operators
-// can find and update bookmarks/integrations before the routes are removed in
-// the legacyRemovalRelease.
+// legacyRedirect returns a handler that permanently (301) redirects the current
+// path to its VayuOS (`/os`) equivalent. Admin v2 was removed in v1.6.0
+// (ADR-0069 Stage 3); these redirects keep old bookmarks and integrations
+// working. Each hit emits a structured deprecation warning to the server log so
+// operators can find and update stale links.
 func legacyRedirect() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		target := legacyToOSPath(r.URL.Path)
@@ -67,40 +49,8 @@ func legacyRedirect() http.HandlerFunc {
 			Path:       r.URL.Path,
 			RemoteAddr: r.RemoteAddr,
 			UserAgent:  r.UserAgent(),
-			Msg: "deprecated admin route used; redirecting to VayuOS (" + target +
-				"). Legacy /admin, /admin/v2 and /admin/v3 routes are removed in " +
-				legacyRemovalRelease,
+			Msg:        "deprecated admin route used; permanently redirecting to VayuOS (" + target + ")",
 		})
-		http.Redirect(w, r, target, http.StatusFound)
+		http.Redirect(w, r, target, http.StatusMovedPermanently)
 	}
-}
-
-// legacyDeprecationBanner renders the dismissible banner shown atop legacy Admin
-// v2 pages when the escape hatch is enabled. The dismiss state is remembered in
-// localStorage by a single nonce-gated inline script (CSP-clean: no inline
-// styles, no eval). All markup is static, so there is nothing to escape.
-func legacyDeprecationBanner(nonce string) string {
-	return `<div class="legacy-banner" data-legacy-banner role="status">
-  <div class="legacy-banner__text">
-    <strong>This admin surface is deprecated.</strong>
-    <span>Everything now lives in the faster VayuOS. This surface will be removed in ` + legacyRemovalRelease + `.</span>
-  </div>
-  <div class="legacy-banner__actions">
-    <a class="btn btn-primary btn-sm" href="/os">Switch to VayuOS</a>
-    <button type="button" class="btn btn-ghost btn-sm" data-legacy-dismiss aria-label="Dismiss deprecation notice">Dismiss</button>
-  </div>
-</div>
-<script nonce="` + nonce + `">
-(function(){
-  var KEY='vp_legacy_banner_dismissed';
-  var el=document.querySelector('[data-legacy-banner]');
-  if(!el) return;
-  try{ if(localStorage.getItem(KEY)==='1'){ el.remove(); return; } }catch(e){}
-  var btn=el.querySelector('[data-legacy-dismiss]');
-  if(btn) btn.addEventListener('click',function(){
-    try{ localStorage.setItem(KEY,'1'); }catch(e){}
-    el.remove();
-  });
-})();
-</script>`
 }

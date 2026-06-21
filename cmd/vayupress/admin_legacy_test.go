@@ -3,7 +3,6 @@ package main
 import (
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 )
 
@@ -29,52 +28,17 @@ func TestLegacyToOSPathMapping(t *testing.T) {
 	}
 }
 
-func TestLegacyRedirectIssues302(t *testing.T) {
+// Admin v2 was removed in v1.6.0 (ADR-0069 Stage 3): legacy admin URLs now
+// permanently (301) redirect into VayuOS.
+func TestLegacyRedirectIssues301(t *testing.T) {
 	h := legacyRedirect()
 	req := httptest.NewRequest(http.MethodGet, "/admin/v2/editor/hello", nil)
 	rec := httptest.NewRecorder()
 	h(rec, req)
-	if rec.Code != http.StatusFound {
-		t.Fatalf("status = %d, want 302", rec.Code)
+	if rec.Code != http.StatusMovedPermanently {
+		t.Fatalf("status = %d, want 301", rec.Code)
 	}
 	if loc := rec.Header().Get("Location"); loc != "/os/editor/hello" {
 		t.Errorf("Location = %q, want /os/editor/hello", loc)
-	}
-}
-
-func TestAdminLegacyEnabledEnv(t *testing.T) {
-	for _, v := range []string{"1", "true", "TRUE"} {
-		t.Setenv("ADMIN_LEGACY", v)
-		if !adminLegacyEnabled() {
-			t.Errorf("ADMIN_LEGACY=%q should enable legacy", v)
-		}
-	}
-	for _, v := range []string{"", "0", "no", "off"} {
-		t.Setenv("ADMIN_LEGACY", v)
-		if adminLegacyEnabled() {
-			t.Errorf("ADMIN_LEGACY=%q should NOT enable legacy", v)
-		}
-	}
-}
-
-// The banner must carry the nonce, point at v3, name the removal release, and
-// stay CSP-clean (no inline style attributes, no eval).
-func TestLegacyBannerContentAndCSP(t *testing.T) {
-	out := legacyDeprecationBanner("TESTNONCE")
-	for _, want := range []string{
-		`nonce="TESTNONCE"`,
-		`href="/os"`,
-		legacyRemovalRelease,
-		`data-legacy-dismiss`,
-	} {
-		if !strings.Contains(out, want) {
-			t.Errorf("banner missing %q", want)
-		}
-	}
-	if strings.Contains(out, `style="`) {
-		t.Error("banner contains inline style attribute (violates CSP)")
-	}
-	if strings.Contains(out, "eval(") || strings.Contains(out, "unsafe-eval") {
-		t.Error("banner references eval")
 	}
 }

@@ -239,15 +239,10 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 		r.Get("/api/v1/admin/budgets", a.handleGovernanceBudgets)
 		r.With(auth.CSRFTokenMiddleware).Post("/api/v1/admin/budgets/ack", a.handleGovernanceBudgetAck)
 
-		// The classic console root redirects to Admin v3 by default (ADR-0069
-		// Stage 2); ADMIN_LEGACY=1 restores the legacy dashboard. The operator
-		// console sub-pages below (modes, faults, …) keep their own lifecycle and
-		// are always reachable.
-		if adminLegacyEnabled() {
-			r.Get("/admin", a.handleAdminDashboard)
-		} else {
-			r.Get("/admin", legacyRedirect())
-		}
+		// The classic console root permanently redirects to VayuOS (ADR-0069
+		// Stage 3). The operator console sub-pages below (modes, faults, …) keep
+		// their own lifecycle and are always reachable.
+		r.Get("/admin", legacyRedirect())
 		r.Get("/admin/adr", a.handleAdminADR)
 		r.Get("/admin/backup/validate", a.handleAdminBackupValidate)
 
@@ -296,11 +291,13 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 		r.HandleFunc("/debug/pprof/*", a.pprofHandler)
 	})
 
-	// Modern admin UI (/admin/v2) — vendored, CSP-compliant, non-breaking (ADR-0065).
-	// It manages its own public/auth split internally.
-	a.registerAdminUIRoutes(r)
+	// Admin v2 was removed in v1.6.0 (ADR-0069 Stage 3). Its old URLs permanently
+	// redirect into VayuOS; the redirect handler maps /admin/v2[/...] -> /os[/...].
+	v2Redirect := legacyRedirect()
+	r.Get("/admin/v2", v2Redirect)
+	r.Handle("/admin/v2/*", v2Redirect)
 
-	// Admin v3 — next-generation UI surpassing Ghost/WordPress/Substack (ADR-0068).
+	// VayuOS — the single admin, mounted at /os (ADR-0068, ADR-0069).
 	a.registerAdminV3UIRoutes(r)
 
 	r.Get("/", a.handleHome)

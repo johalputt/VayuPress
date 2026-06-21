@@ -36,6 +36,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/johalputt/vayupress/internal/auth"
+	"github.com/johalputt/vayupress/internal/blockrender"
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/render"
@@ -267,10 +268,6 @@ func adminV3Layout(nonce, title, active string, settings *v3Settings, bodyHTML s
     ` + navItem("/os/settings", "Settings", "settings", active, iconSettings) + `
     ` + navItem("/os/security", "Security", "security", active, iconSecurity) + `
     <div class="sidebar-spacer"></div>
-    <a class="nav-link" href="/admin/v2">
-      <svg viewBox="0 0 20 20" fill="none" width="16" height="16" aria-hidden="true"><path d="M9 4H5a2 2 0 00-2 2v8a2 2 0 002 2h10a2 2 0 002-2v-4M13 4h4m0 0v4m0-4L9 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-      Admin v2
-    </a>
   </nav>
   <div class="sidebar-footer">
     <div class="sidebar-user">
@@ -836,8 +833,21 @@ func (a *App) handleV3Editor(w http.ResponseWriter, r *http.Request) {
 				writeV3HTML(w, adminV3Layout(nonce, "Edit Post", "editor", cfg, body))
 				return
 			}
-			// Legacy content: fall through to the lossless v2 editor.
-			a.serveV3LegacyEditor(w, r, nonce, cfg, slug, art.Title, art.Content)
+			// Legacy (non-block) content: open it in the native block editor,
+			// pre-seeded with an in-memory import of the article HTML. The block
+			// side-car is NOT persisted and articles.content is left untouched, so
+			// this is non-destructive — navigating away leaves the post exactly as
+			// it was. The first Save commits the imported blocks (HTML→blocks via
+			// the conservative importer + bluemonday on render).
+			blocks := blockrender.ImportHTML(art.Content)
+			raw, err := json.Marshal(blocks)
+			if err != nil {
+				raw = []byte("[]")
+			}
+			body := v3EditorBody(slug, art.Title, string(raw))
+			body += `
+<script nonce="` + nonce + `" src="/os/static/js/admin-v3-editor.js"></script>`
+			writeV3HTML(w, adminV3Layout(nonce, "Edit Post", "editor", cfg, body))
 			return
 		}
 	}
@@ -849,73 +859,6 @@ func (a *App) handleV3Editor(w http.ResponseWriter, r *http.Request) {
 	body += `
 <script nonce="` + nonce + `" src="/os/static/js/admin-v3-editor.js"></script>`
 	writeV3HTML(w, adminV3Layout(nonce, "New Post", "editor", cfg, body))
-}
-
-// serveV3LegacyEditor renders the v2 editor body wrapped in v3 chrome. Used for
-// legacy (non-block) articles and brand-new posts so no existing content path
-// regresses while the block editor matures.
-func (a *App) serveV3LegacyEditor(w http.ResponseWriter, r *http.Request, nonce string, cfg *v3Settings, slug, title, content string) {
-	heading := "New Post"
-	format, source := "markdown", ""
-	if slug != "" {
-		heading = "Edit Post"
-		var f, s string
-		if err := dbpkg.DB.QueryRowContext(r.Context(),
-			`SELECT format, source FROM article_sources WHERE slug=?`, slug).Scan(&f, &s); err == nil && s != "" {
-			format, source = f, s
-		} else {
-			format, source = "html", content
-		}
-	}
-	edBody := editorBodyHTML(slug, heading, title, format, source)
-
-	// For existing legacy posts, offer a non-destructive "Convert to blocks"
-	// action (ADR-0069 Stage 1). It imports the HTML into a block document and
-	// reopens this URL in the native block editor; the rendered article content
-	// is untouched until the operator re-saves, so the conversion is reversible
-	// by simply navigating away without saving.
-	convertBanner := ""
-	if slug != "" {
-		convertBanner = `<div class="convert-banner" data-convert-banner>
-  <div class="convert-banner__text">
-    <strong>New block editor available.</strong>
-    <span class="muted">Convert this post to editable blocks — your published content stays unchanged until you save.</span>
-  </div>
-  <button type="button" class="btn btn--primary btn--sm" data-convert-slug="` + html.EscapeString(slug) + `">Convert to blocks</button>
-</div>
-<script nonce="` + nonce + `">
-(function(){
-  var btn = document.querySelector('[data-convert-slug]');
-  if(!btn) return;
-  btn.addEventListener('click', function(){
-    if(!window.confirm('Import this post into the block editor? Your live content will not change until you save in the new editor.')) return;
-    var slug = btn.getAttribute('data-convert-slug');
-    var m = document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);
-    var csrf = m ? decodeURIComponent(m[1]) : '';
-    btn.disabled = true;
-    btn.textContent = 'Converting…';
-    fetch('/os/api/editor/convert', {
-      method:'POST',
-      headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},
-      body: JSON.stringify({slug: slug})
-    }).then(function(r){
-      if(!r.ok) throw new Error('convert failed ('+r.status+')');
-      return r.json();
-    }).then(function(){
-      window.location.href = '/os/editor/' + encodeURIComponent(slug);
-    }).catch(function(err){
-      btn.disabled = false;
-      btn.textContent = 'Convert to blocks';
-      window.alert(String(err.message||err));
-    });
-  });
-})();
-</script>`
-	}
-
-	body := convertBanner + edBody + `
-<script nonce="` + nonce + `" src="/admin/v2/static/js/admin-v2.js"></script>`
-	writeV3HTML(w, adminV3Layout(nonce, heading, "editor", cfg, body))
 }
 
 // ── SEO ──────────────────────────────────────────────────────────────────────
@@ -970,9 +913,7 @@ func (a *App) handleV3Settings(w http.ResponseWriter, r *http.Request) {
   <h1>Settings</h1>
 </div>
 <nav class="tab-list" aria-label="Settings sections">` + tabHTML + `</nav>
-<div class="card">` + groupBody + `</div>
-<!-- Also show the update checker from v2 -->
-` + buildV2SettingsBody(r.Context())
+<div class="card">` + groupBody + `</div>`
 
 	writeV3HTML(w, adminV3Layout(nonce, "Settings", "settings", cfg, body))
 }
@@ -1084,11 +1025,8 @@ func v3SettingsEmail(ctx context.Context, ss *settings.Store) string {
 
 func v3SettingsSecurity(_ context.Context, _ *settings.Store) string {
 	return `<div class="settings-section">
-  <div class="settings-block-title">Security (Phase 5)</div>
-  <p class="text-sm muted">Two-factor authentication (TOTP), session management, IP allowlist, and audit log will be available in Phase 5.</p>
-  <div class="mt-4">
-    <a class="btn btn--ghost btn--sm" href="/admin/v2/settings">Legacy settings →</a>
-  </div>
+  <div class="settings-block-title">Security</div>
+  <p class="text-sm muted">Two-factor authentication (TOTP) and session management live in the dedicated <a href="/os/security">Security</a> panel.</p>
 </div>`
 }
 
@@ -1251,18 +1189,4 @@ func (a *App) handleV3QuickCreatePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, r, http.StatusOK, map[string]string{"slug": slug})
-}
-
-// ── Helpers shared with v2 ────────────────────────────────────────────────────
-
-// buildV2SettingsBody returns the update-checker card from v2 settings.
-// Phase 7 will have its own version; for now we reuse the v2 snapshot.
-func buildV2SettingsBody(_ context.Context) string {
-	// Return minimal body — the full update check logic runs in handleV2Settings.
-	// v3 Phase 1 just links to the v2 settings update panel.
-	return `<div class="card mt-4">
-  <div class="card-title">Software updates</div>
-  <p class="text-sm muted">Update history and version management are available in
-  <a href="/admin/v2/settings">Admin v2 settings</a> while Phase 7 is in progress.</p>
-</div>`
 }

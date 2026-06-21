@@ -6,22 +6,49 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
-## [Unreleased] — 1.6.0 (in development)
+## [Unreleased]
 
-Working toward ADR-0069 Stage 3 (retire Admin v2). Stage 3 can only complete
-once `/os` owns every authoring flow; this is the first piece.
+_Nothing yet._
+
+---
+
+## [1.6.0] — 2026-06-21
+
+**One admin, for real — Admin v2 removed (ADR-0069 Stage 3).** VayuOS at `/os` is
+now the only admin. The block editor owns every authoring flow, so the legacy
+Admin v2 surface, its assets and its escape hatch are gone.
 
 ### Added
 
-- **Native create path in the `/os` block editor.** Brand-new posts now open the
+- **Native create path in the `/os` block editor.** Brand-new posts open the
   native block editor (no slug) and are created on first Save through the
   authoritative article service — `handleV3EditorSave` derives a unique slug from
   the title, creates the article, persists the block document, and the editor
-  adopts the new slug / URL in place. The "New Post" route no longer depends on
-  the legacy Admin v2 editor, completing the real ADR-0069 Stage 1 prerequisite
-  for new content. (Legacy non-block *editing* still uses the v2 editor until a
-  native lossless legacy-edit path lands; that is the remaining gate before the
-  v2 handlers can be deleted.)
+  adopts the new slug / URL in place.
+- **Native legacy-post editing.** Opening an existing legacy (non-block) post now
+  loads it in the block editor, pre-seeded with an in-memory import of its HTML
+  (`blockrender.ImportHTML`). The import is **not** persisted and the published
+  content is untouched until you Save, so opening a post is non-destructive.
+
+### Removed
+
+- **Admin v2 (`/admin/v2`) and its assets** — `admin_ui.go`, the v2 login
+  handlers, `static/css/admin-v2.css`, `static/js/admin-v2.js`, and the v2 e2e
+  specs are deleted. The block editor no longer depends on any v2 code.
+- **The `ADMIN_LEGACY` escape hatch** and the deprecation banner.
+
+### Changed
+
+- **Legacy admin routes now redirect permanently (301).** `/admin`,
+  `/admin/v2[/...]` and `/admin/v3[/...]` 301-redirect into the `/os` equivalent
+  (previously 302), still emitting a deprecation warning to the server log.
+
+### Upgrade Notes
+
+- The admin lives at **`/os`**. Old `/admin`, `/admin/v2` and `/admin/v3` URLs
+  redirect there automatically (now 301). Update any bookmarks or automation that
+  hard-coded `/admin/v2`. There is no configuration to change and no data
+  migration; legacy posts keep their stored HTML until you edit and save them.
 
 ---
 
