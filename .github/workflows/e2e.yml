@@ -4,6 +4,11 @@ name: e2e
 # booted on the runner; a tiny header-injecting proxy (scripts/screenshot-proxy)
 # supplies the admin X-API-Key so the protected pages are reachable. Mirrors the
 # boot sequence of screenshots.yml, which is known-good.
+#
+# Admin v2 is soft-deprecated as of v1.5.0 (ADR-0069 Stage 2): its pages
+# 302-redirect to Admin v3 by default. The server is therefore started with
+# ADMIN_LEGACY=1 so the legacy surface stays reachable for this suite, which
+# still exercises v2. These v2 specs retire with the v2 handlers in v1.6.0.
 on:
   push:
     branches: [main, "claude/**"]
@@ -23,6 +28,9 @@ jobs:
     runs-on: ubuntu-latest
     env:
       API_KEY: e2e-ci-key
+      # Keep the soft-deprecated Admin v2 surface reachable (ADR-0069 Stage 2)
+      # so the v2 e2e specs still resolve instead of redirecting to v3.
+      ADMIN_LEGACY: "1"
       DB_PATH: /tmp/vayupress/data.db
       CACHE_DIR: /tmp/vayupress/cache
       MEDIA_DIR: /tmp/vayupress/media
