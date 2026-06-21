@@ -6,6 +6,9 @@ on:
     branches: [main]
   schedule:
     - cron: '0 3 * * 1'  # weekly Monday 03:00 UTC
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:

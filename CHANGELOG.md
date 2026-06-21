@@ -12,6 +12,48 @@ _Nothing yet._
 
 ---
 
+## [1.5.0] — 2026-06-21
+
+**VayuOS — One Admin.** The v1/v2/v3 admin surfaces consolidate into a single,
+fast Admin v3. The block editor gains AI-assist and an inline version-history
+diff; the Theme Studio becomes native to v3; legacy posts can be adopted into
+blocks losslessly; and Admin v2 enters soft deprecation. Still a sovereign
+single binary — zero CDNs, strict CSP (no `unsafe-eval`, no `unsafe-inline`,
+per-request nonces). See ADR-0069 and ADR-0073.
+
+### Added
+
+- **AI-assist slash commands (opt-in).** When `VAYU_AI_URL` is configured, the
+  block editor's slash palette gains an AI section (continue, rewrite, summarise)
+  with an inline Accept/Discard overlay. Disabled and invisible by default.
+- **Inline version-history diff.** A History panel in the v3 editor lists recent
+  versions and renders a word-level LCS diff against the working draft.
+- **Native Theme Studio in Admin v3.** Preset gallery + design-token editor with
+  CSP-clean live preview via scripted CSSOM custom-property writes (no `<style>`
+  injection). Session-gated API mirrors under `/admin/v3/api/theme/*`.
+- **Convert-to-blocks (ADR-0073).** An explicit, confirmed, non-destructive
+  action imports a legacy article's HTML into a block document (`blocks_json`
+  side-car) via `blockrender.ImportHTML` — `articles.content` is never touched,
+  so the action is reversible by simply not saving.
+- **"About the Developer" page** on the marketing site.
+
+### Changed
+
+- **Admin v2 soft-deprecated (ADR-0069 Stage 2).** `/admin` and `/admin/v2[/...]`
+  now 302-redirect to the v3 equivalent by default. The `ADMIN_LEGACY=1` escape
+  hatch keeps v2 reachable for one more release and shows a dismissible
+  deprecation banner naming the removal release (`v1.6.0`).
+- **CI concurrency control.** Heavy workflows (`ci`, `race`, `e2e`, `lighthouse`,
+  `sbom`) now cancel superseded runs on the same ref, so rapid pushes no longer
+  stack redundant runs.
+
+### Upgrade Notes
+
+- Operators who still rely on Admin v2 must set `ADMIN_LEGACY=1`; otherwise v2
+  URLs redirect to Admin v3. Admin v2 is scheduled for removal in `v1.6.0`.
+
+---
+
 ## [1.4.0] — 2026-06-21
 
 **Sovereign Rich Media & Theme Studio** — diagrams, privacy-first embeds, and a
