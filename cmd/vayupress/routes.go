@@ -274,6 +274,12 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 		r.Get("/api/v1/admin/i18n", a.handleI18nLanguageList)
 		r.With(auth.CSRFTokenMiddleware).Put("/api/v1/admin/i18n/{lang}", a.handleI18nLanguageSet)
 
+		// Theme Studio — design-token system (Phase 5).
+		r.Get("/api/v1/admin/theme/presets", a.handleThemePresets)
+		r.Get("/api/v1/admin/theme/tokens", a.handleThemeTokens)
+		r.With(auth.CSRFTokenMiddleware).Post("/api/v1/admin/theme/preview", a.handleThemePreview)
+		r.With(auth.CSRFTokenMiddleware).Post("/api/v1/admin/theme/apply", a.handleThemeApply)
+
 		r.HandleFunc("/debug/pprof/", a.pprofHandler)
 		r.HandleFunc("/debug/pprof/cmdline", a.pprofHandler)
 		r.HandleFunc("/debug/pprof/profile", a.pprofHandler)
