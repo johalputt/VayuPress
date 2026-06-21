@@ -162,18 +162,11 @@ func emitGantt(title string, tasks []ganttTask) string {
 			num(canvasW/2), num(ganttMarginT), esc(title))
 	}
 
-	// Section stripes and rows.
+	// Task rows. Section grouping labels are emitted in the pass below.
 	lastSection := ""
-	sectionColors := []string{"vp-diagram__gantt-section--a", "vp-diagram__gantt-section--b"}
-	sectionIdx := 0
 
 	for i, t := range tasks {
-		if t.section != lastSection && t.section != "" {
-			lastSection = t.section
-			sectionIdx++
-		}
 		ry := titleH + ganttMarginT + float64(i)*(ganttRowH+ganttRowGap)
-		_ = sectionColors[sectionIdx%2]
 
 		// Task label.
 		fmt.Fprintf(&b, `<text class="vp-diagram__gantt-label" x="%s" y="%s" text-anchor="end" dominant-baseline="central" font-size="%s">%s</text>`,

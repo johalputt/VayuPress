@@ -177,7 +177,7 @@ func emitClass(nodes map[string]*classNode, order []string, edges []classEdge) s
 	var b strings.Builder
 	fmt.Fprintf(&b, `<svg xmlns="http://www.w3.org/2000/svg" class="vp-diagram vp-diagram--class" viewBox="0 0 %s %s" role="img" aria-label="Class diagram" preserveAspectRatio="xMidYMid meet">`,
 		num(canvasW), num(canvasH))
-	b.WriteString(`<defs><marker id="vp-arrow" class="vp-diagram__arrowmarker" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L8,3 L0,6 Z" class="vp-diagram__arrowhead"></path></marker><marker id="vp-arrow-open" class="vp-diagram__arrowmarker" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L8,3 L0,6" fill="none" class="vp-diagram__arrowhead"></path></marker><marker id="vp-diamond" class="vp-diagram__arrowmarker" markerWidth="12" markerHeight="8" refX="10" refY="4" orient="auto" markerUnits="strokeWidth"><polygon points="0,4 5,0 10,4 5,8" class="vp-diagram__arrowhead"></polygon></marker></defs>`)
+	b.WriteString(`<defs><marker id="vp-arrow" class="vp-diagram__arrowmarker" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L8,3 L0,6 Z" class="vp-diagram__arrowhead"></path></marker><marker id="vp-arrow-open" class="vp-diagram__arrowmarker" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L8,3 L0,6" fill="none" class="vp-diagram__arrowhead"></path></marker><marker id="vp-diamond" class="vp-diagram__arrowmarker" markerWidth="12" markerHeight="8" refX="10" refY="4" orient="auto" markerUnits="strokeWidth"><polygon points="0,4 5,0 10,4 5,8" class="vp-diagram__arrowhead"></polygon></marker><marker id="vp-diamond-open" class="vp-diagram__arrowmarker" markerWidth="12" markerHeight="8" refX="10" refY="4" orient="auto" markerUnits="strokeWidth"><polygon points="0,4 5,0 10,4 5,8" fill="none" class="vp-diagram__arrowhead"></polygon></marker></defs>`)
 
 	// Edges first (under nodes).
 	for _, e := range edges {
@@ -195,9 +195,9 @@ func emitClass(nodes map[string]*classNode, order []string, edges []classEdge) s
 		}
 		marker := "url(#vp-arrow)"
 		if strings.Contains(e.rel, "o") {
-			marker = "url(#vp-diamond)"
+			marker = "url(#vp-diamond-open)" // aggregation: hollow diamond
 		} else if strings.Contains(e.rel, "*") {
-			marker = "url(#vp-diamond)"
+			marker = "url(#vp-diamond)" // composition: filled diamond
 		}
 		fmt.Fprintf(&b, `<line class="%s" x1="%s" y1="%s" x2="%s" y2="%s" marker-end="%s"></line>`,
 			cls, num(x1), num(y1), num(x2), num(y2), marker)

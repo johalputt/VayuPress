@@ -50,6 +50,7 @@ shot "$BASE_URL/admin/v3/settings"                          "$OUT_DIR/admin-v3-s
 # ── Operator console (auth injected by screenshot-proxy) ─────────────────────
 shot "$BASE_URL/admin"                            "$OUT_DIR/admin-dashboard.png"
 shot "$BASE_URL/admin/theme"                      "$OUT_DIR/theme-panel.png"
+shot "$BASE_URL/admin/theme?tab=studio"           "$OUT_DIR/theme-studio.png"
 shot "$BASE_URL/admin/modes"                      "$OUT_DIR/policy-modes.png"
 shot "$BASE_URL/admin/policy"                     "$OUT_DIR/policy-inspector.png"
 shot "$BASE_URL/admin/topology"                   "$OUT_DIR/runtime-topology.png"

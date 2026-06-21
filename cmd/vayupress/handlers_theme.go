@@ -1011,6 +1011,14 @@ func themeEditorPage(vals map[string]string, modeStr, nonce, errMsg string) stri
       tb.addEventListener('click', studioLoad);
     }
   });
+  // Deep-link: /admin/theme?tab=<name> opens that tab on load. Used by the
+  // screenshot pipeline to capture the Studio tab, and handy for bookmarks.
+  (function(){
+    var want=new URLSearchParams(location.search).get('tab');
+    if(!want) return;
+    var tb=document.querySelector('.theme-tab[data-tab="'+want+'"]');
+    if(tb) tb.click();
+  })();
   if(studioApply){
     studioApply.addEventListener('click', function(){
       if(!studioCurrent){ studioStatus.style.color='var(--error)'; studioStatus.textContent='✗ Pick a preset first'; return; }

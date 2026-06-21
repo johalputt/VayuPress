@@ -165,6 +165,19 @@ the editor in HTML mode until first saved in Markdown mode.
 
 ---
 
+### Theme Studio — Live Design-Token Editor (v1.4.0)
+
+![VayuPress Theme Studio](docs/screenshots/theme-studio.png)
+
+*The Theme Studio (`/admin/theme` → **Studio** tab) — curated design-token
+presets with an instant live preview. Colour ramps, typography and spacing
+compile to a single sovereign stylesheet served from your own origin. The
+preview applies values through CSSOM `setProperty`, so it stays inside the
+strict `style-src 'self'` CSP — no inline styles, no third-party fonts, no CDNs
+(ADR-0070).*
+
+---
+
 ### Admin v3 — Next-Generation Admin & Block Editor
 
 ![VayuPress Admin v3 Dashboard](docs/screenshots/admin-v3-dashboard.png)
