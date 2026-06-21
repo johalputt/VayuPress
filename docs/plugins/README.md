@@ -1,5 +1,10 @@
 # VayuPress Plugins
 
+> **Normative contract:** [`SPEC.md`](SPEC.md) is the formal, versioned plugin
+> interface specification (manifest schema, capability model, IPC protocol, hook
+> events, lifecycle, conformance). This README is the friendly companion — where
+> they differ, `SPEC.md` wins.
+
 VayuPress plugins are **out-of-process** programs the host launches inside a
 sandbox (seccomp-BPF syscall filtering, PID/IPC/mount namespaces, cgroups v2
 limits, dropped capabilities, and explicit path/network allowlists — ADR-0056).

@@ -22,6 +22,7 @@ import (
 	"strings"
 
 	"github.com/johalputt/vayupress/internal/logging"
+	"github.com/johalputt/vayupress/internal/plugins"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/settings"
 )
@@ -176,10 +177,56 @@ func (a *App) handleV3Tools(w http.ResponseWriter, r *http.Request) {
     <span class="text-sm muted">Sovereign modules — all built in, zero downloads.</span>
   </div>
 </div>
-<div class="tools-grid" data-tools-grid>` + cards.String() + `</div>
+<div class="tools-grid" data-tools-grid>` + cards.String() + `</div>` +
+		pluginRegistryHTML() + `
 <script nonce="` + nonce + `" src="/os/static/js/admin-v3-tools.js"></script>`
 
 	writeV3HTML(w, adminV3Layout(nonce, "Tools & Plugins", "tools", cfg, body))
+}
+
+// pluginRegistryHTML renders the live sandboxed-plugin registry: every
+// subprocess plugin registered via plugins.RegisterSubprocess, with its runtime
+// health (process state, invocation count, crash/quarantine status). Empty when
+// no out-of-process plugins are installed, with a pointer to the interface spec.
+func pluginRegistryHTML() string {
+	stats := plugins.SubprocessStats()
+
+	header := `<div class="tools-cat">Sandboxed plugins (out-of-process)</div>`
+	if len(stats) == 0 {
+		return header + `<div class="card">
+  <div class="tool-card__desc muted">No out-of-process plugins are installed. Sandboxed plugins run as isolated subprocesses (seccomp, namespaces, capability allowlists) and speak the line-oriented JSON IPC protocol — see <code>docs/plugins/SPEC.md</code>.</div>
+</div>`
+	}
+
+	var rows strings.Builder
+	for _, s := range stats {
+		status, cls := "Stopped", "tool-status--idle"
+		switch {
+		case s.Quarantined:
+			status, cls = "Quarantined", "tool-status--off"
+		case s.Running:
+			status, cls = "Running", "tool-status--on"
+		}
+		pid := "—"
+		if s.PID > 0 {
+			pid = strconv.Itoa(s.PID)
+		}
+		rows.WriteString(`<tr>
+  <td class="row-title">` + html.EscapeString(s.Name) + `</td>
+  <td class="muted text-sm">` + pid + `</td>
+  <td class="muted text-sm">` + strconv.FormatInt(s.Invocations, 10) + `</td>
+  <td class="muted text-sm">` + strconv.Itoa(s.Crashes) + `</td>
+  <td><span class="tool-status ` + cls + `">` + status + `</span></td>
+</tr>`)
+	}
+
+	return header + `<div class="card">
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th>Plugin</th><th>PID</th><th>Invocations</th><th>Crashes</th><th>Status</th></tr></thead>
+    <tbody>` + rows.String() + `</tbody>
+  </table></div>
+  <div class="text-xs muted mt-3">Each plugin is a sandboxed subprocess (capability allowlists, seccomp, namespaces). Interface contract: <code>docs/plugins/SPEC.md</code>.</div>
+</div>`
 }
 
 // toolCardHTML renders a single module card. Toggleable modules get a switch;

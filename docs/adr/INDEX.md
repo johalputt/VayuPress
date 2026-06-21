@@ -74,6 +74,7 @@
 | ADR | Title | Author | Opened |
 |-----|-------|--------|--------|
 | [ADR-0071](ADR-0071-theme-studio.md) | Theme Studio: safe token-driven theme editor with a sandboxed template DSL (surpasses Tumblr) | Core | 2026-06-20 |
+| [ADR-0074](ADR-0074-plugin-interface-spec.md) | Formal Plugin Interface Specification (language-neutral, versioned contract) | Core | 2026-06-21 |
 
 ---
 
