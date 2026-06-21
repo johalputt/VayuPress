@@ -202,6 +202,8 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 		r.With(auth.CSRFTokenMiddleware).Post("/api/v1/admin/media/import", a.handleMediaImport)
 		// Embed unfurl — server-side OG metadata fetch + thumbnail import (ADR-0070).
 		r.With(auth.CSRFTokenMiddleware).Post("/api/v1/admin/embed/unfurl", a.handleEmbedUnfurl)
+		// Diagram live preview — pure-Go Mermaid→SVG, content-addressed (ADR-0070).
+		r.With(auth.CSRFTokenMiddleware).Post("/api/v1/admin/diagram/preview", a.handleDiagramPreview)
 		r.Get("/api/v1/admin/redirects", a.handleRedirectList)
 		r.With(auth.CSRFTokenMiddleware).Post("/api/v1/admin/redirects", a.handleRedirectCreate)
 		r.With(auth.CSRFTokenMiddleware).Delete("/api/v1/admin/redirects/{id}", a.handleRedirectDelete)

@@ -135,3 +135,32 @@ func TestRenderVideoFacadeRejectsForeignOrigin(t *testing.T) {
 		t.Errorf("expected fallback link card: %s", h)
 	}
 }
+
+func TestRenderDiagramBlock(t *testing.T) {
+	doc := `[{"type":"diagram","text":"flowchart LR\n A[Start] --> B[End]"}]`
+	h, _, err := Render(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(h, "<svg") || !strings.Contains(h, "vp-diagram--flowchart") {
+		t.Errorf("diagram svg missing: %s", h)
+	}
+	if !strings.Contains(h, "vp-diagram-figure") {
+		t.Errorf("figure wrapper missing: %s", h)
+	}
+}
+
+func TestRenderDiagramBlockFallback(t *testing.T) {
+	// Unsupported diagram type degrades to an escaped code block, not an error.
+	doc := `[{"type":"diagram","text":"pie title X\n \"A\": 1"}]`
+	h, _, err := Render(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(h, "vp-diagram-fallback") {
+		t.Errorf("expected fallback code block: %s", h)
+	}
+	if strings.Contains(h, "<svg") {
+		t.Errorf("unsupported diagram must not emit svg: %s", h)
+	}
+}

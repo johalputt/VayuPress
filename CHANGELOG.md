@@ -26,6 +26,20 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
     never widen the policy. Admin and non-embed pages stay fully locked. The
     extension is re-applied on cache-hit serves via a tiny CSP sidecar.
   - Migration 027 adds `embed_cache` for resolved metadata + provenance.
+- **Sovereign diagrams — pure-Go Mermaid→SVG (ADR-0070, Phase 3).**
+  - New `diagram` block compiles a useful Mermaid subset — **flowcharts**
+    (`flowchart`/`graph`, directions TD/TB/LR/RL/BT, rect/rounded/diamond nodes,
+    labelled solid/dashed edges) and **sequence diagrams** (`sequenceDiagram`,
+    participants, solid/dashed messages, notes) — to a static, themeable SVG
+    entirely on the server. No headless browser, no Node, no client JavaScript,
+    no `eval`; the strict reader CSP is untouched and pages stay light.
+  - The SVG uses `currentColor`/CSS classes so it inherits the page theme and
+    prints perfectly; it is sanitised through a closed SVG allowlist (no
+    `<script>`, no `<foreignObject>`, no event handlers).
+  - Unsupported/malformed sources degrade gracefully to an annotated code block.
+  - Editor gains a live preview via a debounced server endpoint
+    (`POST /api/v1/admin/diagram/preview`); results are content-addressed in
+    `diagram_cache` (migration 028). No Mermaid library ever reaches the browser.
 
 ### Security
 

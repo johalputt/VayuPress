@@ -36,6 +36,7 @@
     { type: 'callout', label: 'Callout', icon: '!', hint: 'Highlighted note' },
     { type: 'image', label: 'Image', icon: '🖼', hint: 'Image by URL' },
     { type: 'embed', label: 'Embed / Link card', icon: '🔗', hint: 'Unfurl a URL as a rich link card' },
+    { type: 'diagram', label: 'Diagram', icon: '🔀', hint: 'Mermaid flowchart / sequence → SVG' },
     { type: 'divider', label: 'Divider', icon: '―', hint: 'Horizontal rule' }
   ];
 
@@ -166,6 +167,34 @@
         code.addEventListener('input', function () { block.text = code.value; });
         field.appendChild(lang);
         field.appendChild(code);
+        break;
+      }
+      case 'diagram': {
+        var dsrc = mkTextarea(block.text || '', 'flowchart TD\n  A[Start] --> B[End]');
+        dsrc.className += ' eblock__code';
+        var dprev = document.createElement('div');
+        dprev.className = 'eblock__diagram-preview';
+        var dtimer;
+        var renderDiag = function () {
+          var v = dsrc.value.trim();
+          if (!v) { dprev.innerHTML = ''; return; }
+          fetch('/api/v1/admin/diagram/preview', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
+            body: JSON.stringify({ source: v })
+          }).then(function (r) { return r.json(); }).then(function (d) {
+            if (d.svg) { dprev.innerHTML = d.svg; dprev.classList.remove('is-error'); }
+            else { dprev.textContent = d.error || 'Could not render diagram'; dprev.classList.add('is-error'); }
+          }).catch(function () { dprev.textContent = 'Preview failed'; dprev.classList.add('is-error'); });
+        };
+        dsrc.addEventListener('input', function () {
+          block.text = dsrc.value;
+          clearTimeout(dtimer);
+          dtimer = setTimeout(renderDiag, 400);
+        });
+        field.appendChild(dsrc);
+        field.appendChild(dprev);
+        if (block.text) { setTimeout(renderDiag, 0); }
         break;
       }
       case 'heading': {
@@ -318,6 +347,7 @@
     if (type === 'image') return { type: 'image', url: '', alt: '' };
     if (type === 'embed') return { type: 'embed', url: '', title: '', description: '', provider: '', thumbURL: '' };
     if (type === 'code') return { type: 'code', lang: '', text: '' };
+    if (type === 'diagram') return { type: 'diagram', text: '' };
     if (type === 'callout') return { type: 'callout', style: 'info', text: '' };
     return { type: 'paragraph', text: '' };
   }

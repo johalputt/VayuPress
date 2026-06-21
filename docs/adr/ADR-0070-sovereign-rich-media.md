@@ -44,8 +44,8 @@ block**, never raw HTML.
 - Output is a static, themeable SVG (`currentColor` + CSS classes, reusing the
   v3 dashboard sparkline pattern) — paints instantly, prints perfectly, and
   ships **no JavaScript**, so the strict CSP is untouched.
-- Rendered SVG is content-hash cached in SQLite (`diagram_cache`, a later
-  migration); re-renders are free.
+- Rendered SVG is content-hash cached in SQLite (`diagram_cache`, migration 028);
+  re-renders are free.
 - Supported grammar is phased, with graceful fallback to an annotated code block
   for anything unsupported:
   - Phase 1: `flowchart` (Sugiyama layered-DAG layout) and `sequence`

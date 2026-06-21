@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/johalputt/vayupress/internal/diagram"
 	"github.com/microcosm-cc/bluemonday"
 )
 
@@ -41,7 +42,7 @@ func safeEmbedSrc(s string) string {
 // video-facade div (click-to-load — no iframe is present until the reader acts).
 var policy = func() *bluemonday.Policy {
 	p := bluemonday.UGCPolicy()
-	p.AllowAttrs("class").OnElements("div", "span")
+	p.AllowAttrs("class").OnElements("div", "span", "pre")
 	p.AllowAttrs("data-embed-src").Matching(embedSrcRe).OnElements("div")
 	p.AllowAttrs("data-embed-title").OnElements("div")
 	return p
@@ -80,13 +81,37 @@ func Render(blocksJSON string) (htmlOut, text string, err error) {
 	if err := json.Unmarshal([]byte(trimmed), &blocks); err != nil {
 		return "", "", err
 	}
-	var b strings.Builder
+	// Blocks are sanitised per-fragment so that a diagram block's SVG (validated
+	// by the diagram package's own closed allowlist) can survive — the UGC policy
+	// would otherwise strip every SVG element. Text blocks still pass through the
+	// UGC policy; the result is the concatenation of independently-safe fragments.
+	var out strings.Builder
 	var plain strings.Builder
 	for _, blk := range blocks {
-		renderBlock(&b, &plain, blk)
+		if blk.Type == "diagram" {
+			out.WriteString(renderDiagramBlock(blk, &plain))
+			continue
+		}
+		var frag strings.Builder
+		renderBlock(&frag, &plain, blk)
+		out.WriteString(policy.Sanitize(frag.String()))
 	}
-	clean := policy.Sanitize(b.String())
-	return clean, excerpt(plain.String()), nil
+	return out.String(), excerpt(plain.String()), nil
+}
+
+// renderDiagramBlock compiles a diagram block's source to a themeable SVG via the
+// dependency-free diagram engine. The SVG is already sanitised by that engine's
+// allowlist, so it is wrapped in a trusted, constant <figure> and returned
+// verbatim. Unsupported/malformed sources degrade to an escaped code block.
+func renderDiagramBlock(blk Block, plain *strings.Builder) string {
+	src := blk.Text
+	svg, err := diagram.Render(src)
+	if err != nil {
+		var f strings.Builder
+		f.WriteString(`<pre class="vp-diagram-fallback"><code>` + html.EscapeString(src) + `</code></pre>`)
+		return policy.Sanitize(f.String())
+	}
+	return `<figure class="vp-diagram-figure">` + svg + `</figure>`
 }
 
 func renderBlock(b, plain *strings.Builder, blk Block) {
