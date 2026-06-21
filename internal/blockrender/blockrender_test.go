@@ -152,7 +152,7 @@ func TestRenderDiagramBlock(t *testing.T) {
 
 func TestRenderDiagramBlockFallback(t *testing.T) {
 	// Unsupported diagram type degrades to an escaped code block, not an error.
-	doc := `[{"type":"diagram","text":"pie title X\n \"A\": 1"}]`
+	doc := `[{"type":"diagram","text":"unknowndiagram\n  foo bar"}]`
 	h, _, err := Render(doc)
 	if err != nil {
 		t.Fatal(err)

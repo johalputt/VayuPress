@@ -66,6 +66,14 @@ func Render(source string) (string, error) {
 		raw, err = renderFlowchart(src)
 	case kindSequence:
 		raw, err = renderSequence(src)
+	case kindPie:
+		raw, err = renderPie(src)
+	case kindState:
+		raw, err = renderState(src)
+	case kindClass:
+		raw, err = renderClass(src)
+	case kindGantt:
+		raw, err = renderGantt(src)
 	default:
 		return "", ErrUnsupported
 	}
@@ -81,6 +89,10 @@ const (
 	kindUnknown diagramKind = iota
 	kindFlowchart
 	kindSequence
+	kindPie
+	kindState
+	kindClass
+	kindGantt
 )
 
 // detectKind inspects the first non-empty, non-directive line to choose a parser.
@@ -96,6 +108,14 @@ func detectKind(src string) diagramKind {
 			return kindSequence
 		case strings.HasPrefix(head, "flowchart"), strings.HasPrefix(head, "graph"):
 			return kindFlowchart
+		case strings.HasPrefix(head, "pie"):
+			return kindPie
+		case strings.HasPrefix(head, "statediagram"):
+			return kindState
+		case strings.HasPrefix(head, "classdiagram"):
+			return kindClass
+		case strings.HasPrefix(head, "gantt"):
+			return kindGantt
 		}
 		return kindUnknown
 	}

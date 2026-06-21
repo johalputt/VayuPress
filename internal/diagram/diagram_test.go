@@ -56,11 +56,74 @@ func TestRenderUnsupported(t *testing.T) {
 	if _, err := Render(""); err != ErrUnsupported {
 		t.Errorf("empty: want ErrUnsupported, got %v", err)
 	}
-	if _, err := Render("pie title Pets\n  \"Dogs\" : 5"); err != ErrUnsupported {
-		t.Errorf("pie (unimplemented): want ErrUnsupported, got %v", err)
-	}
 	if _, err := Render("just some prose"); err != ErrUnsupported {
 		t.Errorf("prose: want ErrUnsupported, got %v", err)
+	}
+}
+
+func TestRenderPieBasic(t *testing.T) {
+	src := "pie title Pets\n  \"Dogs\" : 5\n  \"Cats\" : 3\n  \"Fish\" : 2"
+	svg, err := Render(src)
+	if err != nil {
+		t.Fatalf("render pie: %v", err)
+	}
+	for _, want := range []string{"vp-diagram--pie", "Pets", "Dogs", "Cats", "Fish", "vp-diagram__slice--0"} {
+		if !strings.Contains(svg, want) {
+			t.Errorf("pie svg missing %q", want)
+		}
+	}
+	if strings.Contains(svg, "<script") {
+		t.Errorf("pie svg contained <script>")
+	}
+}
+
+func TestRenderPieSingleSlice(t *testing.T) {
+	src := "pie\n  \"Only\" : 100"
+	svg, err := Render(src)
+	if err != nil {
+		t.Fatalf("render single-slice pie: %v", err)
+	}
+	if !strings.Contains(svg, "<circle") {
+		t.Errorf("single-slice pie should use <circle>, got: %.80s", svg)
+	}
+}
+
+func TestRenderStateBasic(t *testing.T) {
+	src := "stateDiagram-v2\n  [*] --> Idle\n  Idle --> Running : start\n  Running --> [*]"
+	svg, err := Render(src)
+	if err != nil {
+		t.Fatalf("render state: %v", err)
+	}
+	for _, want := range []string{"vp-diagram--state", "Idle", "Running", "vp-diagram__statepoint"} {
+		if !strings.Contains(svg, want) {
+			t.Errorf("state svg missing %q", want)
+		}
+	}
+}
+
+func TestRenderClassBasic(t *testing.T) {
+	src := "classDiagram\n  class Animal {\n    +name string\n    +speak()\n  }\n  class Dog\n  Animal <|-- Dog"
+	svg, err := Render(src)
+	if err != nil {
+		t.Fatalf("render class: %v", err)
+	}
+	for _, want := range []string{"vp-diagram--class", "Animal", "Dog", "speak"} {
+		if !strings.Contains(svg, want) {
+			t.Errorf("class svg missing %q", want)
+		}
+	}
+}
+
+func TestRenderGanttBasic(t *testing.T) {
+	src := "gantt\n  title Project\n  section Phase1\n  Task A : a1, 2024-01-01, 7d\n  Task B : after a1, 5d"
+	svg, err := Render(src)
+	if err != nil {
+		t.Fatalf("render gantt: %v", err)
+	}
+	for _, want := range []string{"vp-diagram--gantt", "Project", "Task A", "Task B"} {
+		if !strings.Contains(svg, want) {
+			t.Errorf("gantt svg missing %q", want)
+		}
 	}
 }
 
