@@ -16,8 +16,10 @@ import (
 	"encoding/json"
 	"html"
 	"net/http"
+	"strconv"
 	"strings"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/johalputt/vayupress/internal/blockrender"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 )
@@ -123,6 +125,69 @@ func (a *App) handleV3EditorPreview(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, http.StatusOK, map[string]string{"html": contentHTML, "excerpt": excerpt})
 }
 
+// handleV3EditorAI proxies an AI writing-assist request for v3 session-cookie
+// operators. The backing model is opt-in (VAYU_AI_URL); when absent the handler
+// returns 503 so the editor UI can degrade gracefully.
+func (a *App) handleV3EditorAI(w http.ResponseWriter, r *http.Request) {
+	if a.aiAssist == nil || !a.aiAssist.Enabled() {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "ai-disabled", "AI assistant not configured (set VAYU_AI_URL)", "")
+		return
+	}
+	var body struct {
+		Op   string `json:"op"`
+		Text string `json:"text"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "bad-json", "Invalid request body", "")
+		return
+	}
+	result, err := a.aiAssist.Assist(r.Context(), body.Op, body.Text)
+	if err != nil {
+		writeAPIError(w, r, http.StatusBadGateway, "ai-error", err.Error(), "")
+		return
+	}
+	writeJSON(w, r, http.StatusOK, map[string]interface{}{"op": body.Op, "result": result})
+}
+
+// handleV3EditorVersionList returns the version list for a slug, session-gated.
+func (a *App) handleV3EditorVersionList(w http.ResponseWriter, r *http.Request) {
+	if a.versionStore == nil {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "versions-disabled", "Version store not initialised", "")
+		return
+	}
+	slug := chi.URLParam(r, "slug")
+	var articleID string
+	if err := dbpkg.DB.QueryRowContext(r.Context(), `SELECT id FROM articles WHERE slug=?`, slug).Scan(&articleID); err != nil {
+		writeAPIError(w, r, http.StatusNotFound, "article-not-found", "No article with that slug", "")
+		return
+	}
+	vs, err := a.versionStore.List(r.Context(), articleID, 30)
+	if err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "db-error", err.Error(), "")
+		return
+	}
+	writeJSON(w, r, http.StatusOK, map[string]interface{}{"versions": vs})
+}
+
+// handleV3EditorVersionGet returns a single version by ID, session-gated.
+func (a *App) handleV3EditorVersionGet(w http.ResponseWriter, r *http.Request) {
+	if a.versionStore == nil {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "versions-disabled", "Version store not initialised", "")
+		return
+	}
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "bad-id", "Version id must be an integer", "")
+		return
+	}
+	v, err := a.versionStore.Get(r.Context(), id)
+	if err != nil {
+		writeAPIError(w, r, http.StatusNotFound, "not-found", "Version not found", "")
+		return
+	}
+	writeJSON(w, r, http.StatusOK, v)
+}
+
 // v3EditorBody builds the block-editor shell. The editor hydrates from the
 // data-blocks attribute (raw JSON) on first paint; an empty value starts a
 // fresh document.
@@ -141,8 +206,9 @@ func v3EditorBody(slug, title, blocksJSON string) string {
     <div class="editor-actions">
       <button type="button" class="btn btn--primary btn--sm" data-editor-save>Save</button>
       <button type="button" class="btn btn--ghost btn--sm" data-editor-preview-btn>Preview</button>
+      <button type="button" class="btn btn--ghost btn--sm" data-editor-history-btn>History</button>
     </div>
-    <div class="editor-hint text-xs muted">Press <kbd>/</kbd> on an empty block for commands.</div>
+    <div class="editor-hint text-xs muted">Press <kbd>/</kbd> on an empty block for commands. <kbd>/ai</kbd> for AI assist.</div>
   </aside>
   <div class="editor-preview-modal" data-editor-preview hidden role="dialog" aria-modal="true" aria-label="Preview">
     <div class="editor-preview-panel">
@@ -151,6 +217,18 @@ func v3EditorBody(slug, title, blocksJSON string) string {
         <button type="button" class="btn--icon" data-editor-preview-close aria-label="Close preview">✕</button>
       </div>
       <article class="editor-preview-body article" data-editor-preview-body></article>
+    </div>
+  </div>
+  <div class="editor-history-modal" data-editor-history hidden role="dialog" aria-modal="true" aria-label="Version history">
+    <div class="editor-history-panel">
+      <div class="editor-history-head">
+        <span>Version history</span>
+        <button type="button" class="btn--icon" data-editor-history-close aria-label="Close history">✕</button>
+      </div>
+      <div class="editor-history-body">
+        <div class="editor-history-list" data-editor-history-list></div>
+        <div class="editor-history-diff" data-editor-history-diff></div>
+      </div>
     </div>
   </div>
 </div>`

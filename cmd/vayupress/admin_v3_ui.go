@@ -123,6 +123,9 @@ func (a *App) registerAdminV3UIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/admin/v3/api/posts/quick-create", a.handleV3QuickCreatePost)
 		pr.With(auth.CSRFTokenMiddleware).Post("/admin/v3/api/editor/save", a.handleV3EditorSave)
 		pr.With(auth.CSRFTokenMiddleware).Post("/admin/v3/api/editor/preview", a.handleV3EditorPreview)
+		pr.With(auth.CSRFTokenMiddleware).Post("/admin/v3/api/editor/ai", a.handleV3EditorAI)
+		pr.Get("/admin/v3/api/editor/versions/{slug}", a.handleV3EditorVersionList)
+		pr.Get("/admin/v3/api/editor/versions/{slug}/{id}", a.handleV3EditorVersionGet)
 
 		// Read-only APIs (no CSRF needed)
 		pr.Get("/admin/v3/api/activity", a.handleV3Activity)

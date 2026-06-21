@@ -23,6 +23,11 @@
   var previewModal = root.querySelector('[data-editor-preview]');
   var previewBody = root.querySelector('[data-editor-preview-body]');
   var previewClose = root.querySelector('[data-editor-preview-close]');
+  var historyBtn = root.querySelector('[data-editor-history-btn]');
+  var historyModal = root.querySelector('[data-editor-history]');
+  var historyList = root.querySelector('[data-editor-history-list]');
+  var historyDiff = root.querySelector('[data-editor-history-diff]');
+  var historyClose = root.querySelector('[data-editor-history-close]');
 
   // Block type registry. Each defines how to create its editing UI and how to
   // serialise back to the document model.
@@ -39,6 +44,14 @@
     { type: 'diagram', label: 'Diagram', icon: '🔀', hint: 'Mermaid flowchart / sequence → SVG' },
     { type: 'divider', label: 'Divider', icon: '―', hint: 'Horizontal rule' }
   ];
+
+  // AI-assist commands shown at the bottom of the slash palette (when AI is available).
+  var AI_CMDS = [
+    { op: 'continue', label: 'AI: Continue writing', icon: '✦', hint: 'Continue the current paragraph' },
+    { op: 'summarize', label: 'AI: Summarize', icon: '✦', hint: 'Condense the current block to a short summary' },
+    { op: 'rewrite', label: 'AI: Rewrite', icon: '✦', hint: 'Rephrase the current block for clarity' }
+  ];
+  var aiEnabled = false; // updated from /admin/v3/api/editor/ai status check on load
 
   // ── Document model ─────────────────────────────────────────────────────────
   var blocks = [];
@@ -270,7 +283,7 @@
       var el = e.target;
       if (e.key === '/' && el.value === '') {
         e.preventDefault();
-        openPalette(idx + 1);
+        openPalette(idx + 1, idx);
         return;
       }
       if (e.key === 'Enter' && !e.shiftKey && (el.tagName === 'INPUT')) {
@@ -305,34 +318,54 @@
 
   // ── Slash command palette ──────────────────────────────────────────────────
   var paletteEl = null;
-  function openPalette(insertAt) {
+
+  function makePaletteItem(icon, label, hint, onClick) {
+    var item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'block-palette__item';
+    var ic = document.createElement('span');
+    ic.className = 'block-palette__icon';
+    ic.textContent = icon;
+    var lab = document.createElement('span');
+    lab.className = 'block-palette__label';
+    lab.textContent = label;
+    var hintEl = document.createElement('span');
+    hintEl.className = 'block-palette__hint';
+    hintEl.textContent = hint;
+    item.appendChild(ic);
+    item.appendChild(lab);
+    item.appendChild(hintEl);
+    item.addEventListener('click', function () { onClick(); closePalette(); });
+    return item;
+  }
+
+  function openPalette(insertAt, sourceBlockIdx) {
     closePalette();
     paletteEl = document.createElement('div');
     paletteEl.className = 'block-palette';
     var list = document.createElement('div');
     list.className = 'block-palette__list';
+
     BLOCK_TYPES.forEach(function (bt) {
-      var item = document.createElement('button');
-      item.type = 'button';
-      item.className = 'block-palette__item';
-      var ic = document.createElement('span');
-      ic.className = 'block-palette__icon';
-      ic.textContent = bt.icon;
-      var lab = document.createElement('span');
-      lab.className = 'block-palette__label';
-      lab.textContent = bt.label;
-      var hint = document.createElement('span');
-      hint.className = 'block-palette__hint';
-      hint.textContent = bt.hint;
-      item.appendChild(ic);
-      item.appendChild(lab);
-      item.appendChild(hint);
-      item.addEventListener('click', function () {
+      list.appendChild(makePaletteItem(bt.icon, bt.label, bt.hint, function () {
         insertBlock(insertAt, newBlockOf(bt.type));
-        closePalette();
-      });
-      list.appendChild(item);
+      }));
     });
+
+    if (aiEnabled && sourceBlockIdx != null && sourceBlockIdx >= 0 && sourceBlockIdx < blocks.length) {
+      var sep = document.createElement('div');
+      sep.className = 'block-palette__sep';
+      sep.textContent = 'AI assist';
+      list.appendChild(sep);
+      var srcBlock = blocks[sourceBlockIdx];
+      var srcText = srcBlock.text || (srcBlock.items || []).join(' ') || '';
+      AI_CMDS.forEach(function (cmd) {
+        list.appendChild(makePaletteItem(cmd.icon, cmd.label, cmd.hint, function () {
+          runAI(cmd.op, srcText, insertAt);
+        }));
+      });
+    }
+
     paletteEl.appendChild(list);
     document.body.appendChild(paletteEl);
     document.addEventListener('keydown', escClose);
@@ -361,6 +394,226 @@
     paletteEl = null;
     document.removeEventListener('keydown', escClose);
     document.removeEventListener('click', outsideClose);
+  }
+
+  // ── AI assist ─────────────────────────────────────────────────────────────
+  // Sends the block's text to the AI backend and inserts the suggestion as a new
+  // paragraph block. An inline overlay shows the pending state; if AI is
+  // unavailable the editor silently disables AI items in the palette.
+  function runAI(op, text, insertAt) {
+    if (!text.trim()) {
+      setStatus('Select a block with text first', 'warn');
+      return;
+    }
+    setStatus('AI thinking…');
+    fetch('/admin/v3/api/editor/ai', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
+      body: JSON.stringify({ op: op, text: text })
+    }).then(function (r) {
+      if (r.status === 503) { aiEnabled = false; }
+      if (!r.ok) throw new Error('ai-' + r.status);
+      return r.json();
+    }).then(function (d) {
+      var result = (d && d.result) ? String(d.result) : '';
+      if (!result) { setStatus('AI returned empty result', 'warn'); return; }
+      showAISuggestion(result, insertAt);
+      setStatus('AI suggestion ready', 'ok');
+    }).catch(function (err) {
+      setStatus('AI assist: ' + String(err.message || err), 'danger');
+    });
+  }
+
+  // Shows an inline suggestion overlay with Accept / Discard buttons.
+  function showAISuggestion(text, insertAt) {
+    var existing = document.getElementById('ai-suggest-overlay');
+    if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+
+    var overlay = document.createElement('div');
+    overlay.id = 'ai-suggest-overlay';
+    overlay.className = 'ai-suggest';
+    var pre = document.createElement('div');
+    pre.className = 'ai-suggest__text';
+    pre.textContent = text;
+    var actions = document.createElement('div');
+    actions.className = 'ai-suggest__actions';
+
+    var accept = document.createElement('button');
+    accept.type = 'button';
+    accept.className = 'btn btn--primary btn--xs';
+    accept.textContent = 'Accept';
+    accept.addEventListener('click', function () {
+      insertBlock(insertAt, { type: 'paragraph', text: text });
+      overlay.parentNode && overlay.parentNode.removeChild(overlay);
+    });
+
+    var discard = document.createElement('button');
+    discard.type = 'button';
+    discard.className = 'btn btn--ghost btn--xs';
+    discard.textContent = 'Discard';
+    discard.addEventListener('click', function () {
+      overlay.parentNode && overlay.parentNode.removeChild(overlay);
+      setStatus('Ready');
+    });
+
+    actions.appendChild(accept);
+    actions.appendChild(discard);
+    overlay.appendChild(pre);
+    overlay.appendChild(actions);
+    canvas.parentNode.insertBefore(overlay, canvas.nextSibling);
+  }
+
+  // ── Version history ────────────────────────────────────────────────────────
+  function openHistory() {
+    if (!slug) { setStatus('Save the post first', 'warn'); return; }
+    if (!historyModal) return;
+    historyModal.hidden = false;
+    loadVersionList();
+  }
+
+  function loadVersionList() {
+    if (!historyList) return;
+    while (historyList.firstChild) historyList.removeChild(historyList.firstChild);
+    var loading = document.createElement('div');
+    loading.className = 'text-sm muted';
+    loading.textContent = 'Loading…';
+    historyList.appendChild(loading);
+
+    fetch('/admin/v3/api/editor/versions/' + encodeURIComponent(slug), {
+      headers: { Accept: 'application/json' }
+    }).then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+      .then(function (d) {
+        while (historyList.firstChild) historyList.removeChild(historyList.firstChild);
+        var list = (d && d.versions) || [];
+        if (!list.length) {
+          var empty = document.createElement('div');
+          empty.className = 'text-sm muted';
+          empty.textContent = 'No versions yet.';
+          historyList.appendChild(empty);
+          return;
+        }
+        list.forEach(function (v) {
+          var btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'history-ver';
+          var ts = document.createElement('span');
+          ts.className = 'history-ver__ts';
+          ts.textContent = new Date(v.created_at || v.CreatedAt || '').toLocaleString();
+          var label = document.createElement('span');
+          label.className = 'history-ver__label';
+          label.textContent = v.label || ('#' + v.id);
+          btn.appendChild(ts);
+          btn.appendChild(label);
+          btn.addEventListener('click', function () { loadVersionDiff(v.id); });
+          historyList.appendChild(btn);
+        });
+      }).catch(function () {
+        while (historyList.firstChild) historyList.removeChild(historyList.firstChild);
+        var err = document.createElement('div');
+        err.className = 'text-sm muted';
+        err.textContent = 'Could not load versions.';
+        historyList.appendChild(err);
+      });
+  }
+
+  function loadVersionDiff(id) {
+    if (!historyDiff) return;
+    while (historyDiff.firstChild) historyDiff.removeChild(historyDiff.firstChild);
+    var loading = document.createElement('div');
+    loading.className = 'text-sm muted';
+    loading.textContent = 'Loading diff…';
+    historyDiff.appendChild(loading);
+
+    fetch('/admin/v3/api/editor/versions/' + encodeURIComponent(slug) + '/' + encodeURIComponent(String(id)), {
+      headers: { Accept: 'application/json' }
+    }).then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+      .then(function (v) {
+        while (historyDiff.firstChild) historyDiff.removeChild(historyDiff.firstChild);
+        var currentText = collectAllText();
+        var oldText = v.content || v.Content || '';
+        renderWordDiff(currentText, oldText);
+      }).catch(function () {
+        while (historyDiff.firstChild) historyDiff.removeChild(historyDiff.firstChild);
+        var err = document.createElement('div');
+        err.className = 'text-sm muted';
+        err.textContent = 'Could not load version.';
+        historyDiff.appendChild(err);
+      });
+  }
+
+  // collectAllText joins all block texts into one string for diffing.
+  function collectAllText() {
+    return blocks.map(function (b) {
+      return b.text || (b.items || []).join('\n') || '';
+    }).join('\n');
+  }
+
+  // renderWordDiff builds a word-level visual diff in historyDiff using only
+  // DOM APIs — no innerHTML with untrusted data. Words present in old but absent
+  // in new are shown in red (del), words present in new but absent in old are in
+  // green (ins). Common words pass through unstyled.
+  function renderWordDiff(current, old) {
+    var pre = document.createElement('div');
+    pre.className = 'history-diff__view';
+
+    var oldWords = old.split(/\s+/).filter(Boolean);
+    var newWords = current.split(/\s+/).filter(Boolean);
+
+    // Simple LCS-based word diff using a greedy approach.
+    var ops = lcsWordDiff(oldWords, newWords);
+    ops.forEach(function (op) {
+      var span = document.createElement('span');
+      span.className = op.kind === 'del' ? 'diff-del'
+                      : op.kind === 'ins' ? 'diff-ins'
+                      : 'diff-eq';
+      span.textContent = op.word + ' ';
+      pre.appendChild(span);
+    });
+
+    var heading = document.createElement('div');
+    heading.className = 'history-diff__title text-xs muted';
+    heading.textContent = 'Current ↔ selected version (word-level diff)';
+    historyDiff.appendChild(heading);
+    historyDiff.appendChild(pre);
+  }
+
+  // lcsWordDiff: returns array of {kind:'eq'|'ins'|'del', word} operations.
+  function lcsWordDiff(oldW, newW) {
+    var m = oldW.length, n = newW.length;
+    // Build LCS table (limit to 300 words each side to stay O(n²) bounded).
+    var maxW = 300;
+    if (m > maxW || n > maxW) {
+      var ops = [];
+      oldW.slice(0, maxW).forEach(function (w) { ops.push({ kind: 'del', word: w }); });
+      newW.slice(0, maxW).forEach(function (w) { ops.push({ kind: 'ins', word: w }); });
+      return ops;
+    }
+    var dp = [];
+    for (var i = 0; i <= m; i++) {
+      dp[i] = new Array(n + 1).fill(0);
+    }
+    for (var ii = 1; ii <= m; ii++) {
+      for (var jj = 1; jj <= n; jj++) {
+        dp[ii][jj] = oldW[ii-1] === newW[jj-1]
+          ? dp[ii-1][jj-1] + 1
+          : Math.max(dp[ii-1][jj], dp[ii][jj-1]);
+      }
+    }
+    var result = [];
+    var a = m, b = n;
+    while (a > 0 || b > 0) {
+      if (a > 0 && b > 0 && oldW[a-1] === newW[b-1]) {
+        result.unshift({ kind: 'eq', word: oldW[a-1] });
+        a--; b--;
+      } else if (b > 0 && (a === 0 || dp[a][b-1] >= dp[a-1][b])) {
+        result.unshift({ kind: 'ins', word: newW[b-1] });
+        b--;
+      } else {
+        result.unshift({ kind: 'del', word: oldW[a-1] });
+        a--;
+      }
+    }
+    return result;
   }
 
   // ── Persistence ────────────────────────────────────────────────────────────
@@ -441,6 +694,8 @@
   if (saveBtn) saveBtn.addEventListener('click', save);
   if (previewBtn) previewBtn.addEventListener('click', preview);
   if (previewClose) previewClose.addEventListener('click', function () { previewModal.hidden = true; });
+  if (historyBtn) historyBtn.addEventListener('click', openHistory);
+  if (historyClose) historyClose.addEventListener('click', function () { historyModal.hidden = true; });
   if (titleEl) titleEl.addEventListener('input', scheduleAutosave);
 
   // Cmd/Ctrl+S saves.
@@ -450,4 +705,14 @@
       save();
     }
   });
+
+  // Probe AI availability (fire-and-forget, affects palette only).
+  fetch('/admin/v3/api/editor/ai', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
+    body: JSON.stringify({ op: 'ping', text: '' })
+  }).then(function (r) {
+    // 503 → AI disabled; anything else (even 400 bad-op) means the endpoint is live.
+    if (r.status !== 503) aiEnabled = true;
+  }).catch(function () {});
 })();
