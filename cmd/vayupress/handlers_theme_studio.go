@@ -153,6 +153,7 @@ func (a *App) handleThemeApply(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	render.SetThemeCSS(css)
 	render.CachePurgeAll()
 
 	dbpkg.AuditLog("theme.apply", dbpkg.AuditActor(r), t.Name, "")

@@ -173,6 +173,20 @@ var (
 	activeSettings   SiteSettings
 )
 
+// themeTokenCSS holds the CSS variable block compiled from the active design
+// tokens. It is prepended to the ThemeCSS() output so token-derived variables
+// take precedence over the legacy PrimaryLight/AccentLight fields.
+var themeTokenCSS string
+var themeTokenMu sync.RWMutex
+
+// SetThemeCSS replaces the compiled design-token CSS. Thread-safe. Called by
+// handleThemeApply after persisting a new preset or custom token set.
+func SetThemeCSS(css string) {
+	themeTokenMu.Lock()
+	themeTokenCSS = css
+	themeTokenMu.Unlock()
+}
+
 // SetActiveSettings replaces the global active site settings. Thread-safe.
 func SetActiveSettings(s SiteSettings) {
 	activeSettingsMu.Lock()
@@ -201,6 +215,11 @@ func getActiveSettings() SiteSettings {
 func ThemeCSS() string {
 	s := getActiveSettings()
 	var sb strings.Builder
+	themeTokenMu.RLock()
+	if themeTokenCSS != "" {
+		sb.WriteString(themeTokenCSS)
+	}
+	themeTokenMu.RUnlock()
 	if s.PrimaryLight != "" || s.AccentLight != "" {
 		sb.WriteString(":root,[data-theme=\"light\"]{")
 		if s.PrimaryLight != "" {

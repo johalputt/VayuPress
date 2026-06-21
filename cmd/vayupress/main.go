@@ -58,6 +58,7 @@ import (
 	"github.com/johalputt/vayupress/internal/search"
 	"github.com/johalputt/vayupress/internal/settings"
 	"github.com/johalputt/vayupress/internal/social"
+	"github.com/johalputt/vayupress/internal/theme"
 	"github.com/johalputt/vayupress/internal/trace"
 	"github.com/johalputt/vayupress/internal/update"
 	"github.com/johalputt/vayupress/internal/users"
@@ -297,6 +298,13 @@ func main() {
 			VerifyGoogle: sv[settings.KeyHeadVerifyGoogle],
 			VerifyBing:   sv[settings.KeyHeadVerifyBing],
 		})
+	}
+
+	// Load persisted design-token theme into the render pipeline.
+	if tok, err := theme.Load(context.Background(), dbpkg.DB); err == nil {
+		if css, err := theme.CompileCSS(tok); err == nil {
+			render.SetThemeCSS(css)
+		}
 	}
 
 	// Plugin feature stores — wired after DB is confirmed ready.
