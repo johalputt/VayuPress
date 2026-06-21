@@ -21,6 +21,9 @@ jobs:
     runs-on: ubuntu-latest
     env:
       API_KEY: screenshot-ci-key
+      # Keep Admin v2 and the classic /admin console reachable during capture
+      # (ADR-0069 Stage 2 redirects them to v3 by default in v1.5.0).
+      ADMIN_LEGACY: "1"
       DB_PATH: /tmp/vayupress/data.db
       CACHE_DIR: /tmp/vayupress/cache
       TMP_DIR: /tmp/vayupress/tmp
@@ -103,13 +106,13 @@ jobs:
       - name: Pre-flight checks
         run: |
           # Verify admin pages are reachable through proxy before screenshotting.
-          # This also warms the settings cache so /admin/theme won't re-query DB mid-shot.
-          echo "--- /admin/theme ---"
-          STATUS=$(curl -sS -o /tmp/theme-resp.txt -w "%{http_code}" \
-            -H "X-API-Key: $API_KEY" "$PROXY_URL/admin/theme")
+          # Check /admin/v3 (the primary surface as of v1.5.0) and /admin/adr.
+          echo "--- /admin/v3 ---"
+          STATUS=$(curl -sS -o /tmp/v3-resp.txt -w "%{http_code}" \
+            -H "X-API-Key: $API_KEY" "$PROXY_URL/admin/v3")
           echo "HTTP $STATUS"
           if [ "$STATUS" != "200" ]; then
-            echo "BODY:"; cat /tmp/theme-resp.txt
+            echo "BODY:"; cat /tmp/v3-resp.txt
             echo "SERVER LOG:"; cat /tmp/vayupress/server.log
             exit 1
           fi
@@ -133,23 +136,35 @@ jobs:
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          if git diff --quiet -- docs/screenshots; then
+
+          # Stage all new/updated PNGs that were just captured.
+          git add docs/screenshots/*.png
+
+          # Fetch the target branch so we know which PNGs it currently expects.
+          # Any PNG that is tracked by origin but absent from docs/screenshots/
+          # (i.e. it was deleted in a recent commit) must be removed here too —
+          # otherwise the rebase below gets a modify/delete conflict on those files.
+          git fetch origin "${GITHUB_REF_NAME}"
+          DELETED=$(git diff --name-only --diff-filter=D \
+            "HEAD..origin/${GITHUB_REF_NAME}" -- 'docs/screenshots/*.png' 2>/dev/null || true)
+          if [ -n "$DELETED" ]; then
+            echo "Removing PNGs deleted on origin: $DELETED"
+            # shellcheck disable=SC2086
+            git rm --ignore-unmatch --cached $DELETED 2>/dev/null || true
+          fi
+
+          if git diff --cached --quiet; then
             echo "No screenshot changes to commit."
             exit 0
           fi
-          git add docs/screenshots/*.png
+
           git commit -m "Refresh screenshots from live instance (CI)"
-          # The build (npm install, go build) and the live capture run can leave
-          # unrelated tracked files modified in the working tree. Our screenshots
-          # are already committed above, so discard that working-tree noise to
-          # give the rebase a clean tree — otherwise it aborts with "cannot
-          # rebase: You have unstaged changes." Untracked build dirs such as
-          # node_modules are ignored by rebase and left untouched.
+
+          # Discard any working-tree noise (go build artefacts, npm dirs) before
+          # rebase — otherwise rebase aborts with "unstaged changes".
           git checkout -- .
-          # Rebase onto any commits that landed on the target branch while
-          # screenshots were being captured, then push. The only changed files
-          # are binary PNGs so rebase conflicts are essentially impossible.
-          git fetch origin "${GITHUB_REF_NAME}"
+
+          # Rebase onto target branch so new screenshots land cleanly on top.
           git rebase --autostash "origin/${GITHUB_REF_NAME}"
           git push origin HEAD:"${GITHUB_REF_NAME}"
 
