@@ -1545,3 +1545,7 @@
 .vp-v3 .switch-input:checked + .switch-track::after { transform: translateX(16px); background: var(--brand); }
 .vp-v3 .switch-input:disabled + .switch-track { opacity: 0.5; }
 .vp-v3 .switch-input:focus-visible + .switch-track { box-shadow: 0 0 0 2px var(--brand-glow); }
+
+/* Monitoring: tool-card used as a navigational link */
+.vp-v3 a.tool-card { text-decoration: none; color: inherit; cursor: pointer; }
+.vp-v3 a.tool-card:hover .tool-card__title { color: var(--brand); }

@@ -60,6 +60,7 @@ func (a *App) registerAdminV3UIRoutes(r chi.Router) {
 	r.Get("/admin/v3/static/js/admin-v3-security.js", serveAdminV3Asset("js/admin-v3-security.js", "application/javascript; charset=utf-8"))
 	r.Get("/admin/v3/static/js/admin-v3-intel.js", serveAdminV3Asset("js/admin-v3-intel.js", "application/javascript; charset=utf-8"))
 	r.Get("/admin/v3/static/js/admin-v3-tools.js", serveAdminV3Asset("js/admin-v3-tools.js", "application/javascript; charset=utf-8"))
+	r.Get("/admin/v3/static/js/admin-v3-monitoring.js", serveAdminV3Asset("js/admin-v3-monitoring.js", "application/javascript; charset=utf-8"))
 	r.Get("/admin/v3/static/js/purify.min.js", serveAdminV3Asset("js/purify.min.js", "application/javascript; charset=utf-8"))
 
 	// Fonts — path-traversal prevented by switch allowlist (same pattern as v2).
@@ -102,6 +103,12 @@ func (a *App) registerAdminV3UIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/admin/v3/api/totp/disable", a.handleV3TOTPDisable)
 		pr.Get("/admin/v3/editor", a.handleV3Editor)
 		pr.Get("/admin/v3/editor/{slug}", a.handleV3Editor)
+		pr.Get("/admin/v3/monitoring", a.handleV3Monitoring)
+		// Session-friendly read-only mirrors of the operator JSON APIs (the
+		// /api/v1/admin/* originals require an API key; v3 operators hold a
+		// session cookie). Same handlers, no CSRF needed for GETs.
+		pr.Get("/admin/v3/api/mode", a.handleModeStatus)
+		pr.Get("/admin/v3/api/budgets", a.handleGovernanceBudgets)
 		pr.Get("/admin/v3/tools", a.handleV3Tools)
 		pr.Get("/admin/v3/api/tools", a.handleV3ToolsList)
 		pr.With(auth.CSRFTokenMiddleware).Post("/admin/v3/api/tools/toggle", a.handleV3ToolToggle)
@@ -168,6 +175,7 @@ var (
 	iconSettings   = svgIcon("M10 13a3 3 0 100-6 3 3 0 000 6zm0 0v1m0-8V5M4.2 4.2l.7.7m10-.7l-.7.7M3 10H2m16 0h-1M4.9 15.8l.7-.7m9.5.7l-.7-.7")
 	iconSecurity   = svgIcon("M10 2l6 3v5c0 3.5-2.5 6.8-6 8-3.5-1.2-6-4.5-6-8V5l6-3z")
 	iconTools      = svgIcon("M12.5 3.5a3 3 0 00-3.9 3.9l-5.1 5.1 2 2 5.1-5.1a3 3 0 003.9-3.9l-2 2-2-2 2-2z")
+	iconMonitoring = svgIcon("M2 10h3l2-5 3 11 3-8 2 2h3")
 )
 
 // adminV3Layout renders the shared chrome for admin v3.
@@ -229,6 +237,7 @@ func adminV3Layout(nonce, title, active string, settings *v3Settings, bodyHTML s
     ` + navItem("/admin/v3/analytics", "Analytics", "analytics", active, iconAnalytics) + `
 
     <div class="sidebar-section-label">System</div>
+    ` + navItem("/admin/v3/monitoring", "Monitoring", "monitoring", active, iconMonitoring) + `
     ` + navItem("/admin/v3/tools", "Tools & Plugins", "tools", active, iconTools) + `
     ` + navItem("/admin/v3/settings", "Settings", "settings", active, iconSettings) + `
     ` + navItem("/admin/v3/security", "Security", "security", active, iconSecurity) + `
