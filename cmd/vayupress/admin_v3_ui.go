@@ -61,6 +61,7 @@ func (a *App) registerAdminV3UIRoutes(r chi.Router) {
 	r.Get("/admin/v3/static/js/admin-v3-intel.js", serveAdminV3Asset("js/admin-v3-intel.js", "application/javascript; charset=utf-8"))
 	r.Get("/admin/v3/static/js/admin-v3-tools.js", serveAdminV3Asset("js/admin-v3-tools.js", "application/javascript; charset=utf-8"))
 	r.Get("/admin/v3/static/js/admin-v3-monitoring.js", serveAdminV3Asset("js/admin-v3-monitoring.js", "application/javascript; charset=utf-8"))
+	r.Get("/admin/v3/static/js/admin-v3-theme.js", serveAdminV3Asset("js/admin-v3-theme.js", "application/javascript; charset=utf-8"))
 	r.Get("/admin/v3/static/js/purify.min.js", serveAdminV3Asset("js/purify.min.js", "application/javascript; charset=utf-8"))
 
 	// Fonts — path-traversal prevented by switch allowlist (same pattern as v2).
@@ -104,6 +105,13 @@ func (a *App) registerAdminV3UIRoutes(r chi.Router) {
 		pr.Get("/admin/v3/editor", a.handleV3Editor)
 		pr.Get("/admin/v3/editor/{slug}", a.handleV3Editor)
 		pr.Get("/admin/v3/monitoring", a.handleV3Monitoring)
+		pr.Get("/admin/v3/theme", a.handleV3Theme)
+		// Session-friendly mirrors of the Theme Studio JSON API (the /api/v1/admin
+		// originals require an API key; v3 operators hold a session cookie).
+		pr.Get("/admin/v3/api/theme/presets", a.handleThemePresets)
+		pr.Get("/admin/v3/api/theme/tokens", a.handleThemeTokens)
+		pr.With(auth.CSRFTokenMiddleware).Post("/admin/v3/api/theme/preview", a.handleThemePreview)
+		pr.With(auth.CSRFTokenMiddleware).Post("/admin/v3/api/theme/apply", a.handleThemeApply)
 		// Session-friendly read-only mirrors of the operator JSON APIs (the
 		// /api/v1/admin/* originals require an API key; v3 operators hold a
 		// session cookie). Same handlers, no CSRF needed for GETs.
@@ -179,6 +187,7 @@ var (
 	iconSecurity   = svgIcon("M10 2l6 3v5c0 3.5-2.5 6.8-6 8-3.5-1.2-6-4.5-6-8V5l6-3z")
 	iconTools      = svgIcon("M12.5 3.5a3 3 0 00-3.9 3.9l-5.1 5.1 2 2 5.1-5.1a3 3 0 003.9-3.9l-2 2-2-2 2-2z")
 	iconMonitoring = svgIcon("M2 10h3l2-5 3 11 3-8 2 2h3")
+	iconTheme      = svgIcon("M10 2a8 8 0 100 16c1 0 1.5-.7 1.5-1.5 0-.4-.2-.8-.4-1-.3-.3-.4-.6-.4-1 0-.8.7-1.5 1.5-1.5H14a4 4 0 004-4c0-3.6-3.6-6.5-8-6.5zM5.5 10a1 1 0 110-2 1 1 0 010 2zm3-3a1 1 0 110-2 1 1 0 010 2zm5 0a1 1 0 110-2 1 1 0 010 2z")
 )
 
 // adminV3Layout renders the shared chrome for admin v3.
@@ -238,6 +247,7 @@ func adminV3Layout(nonce, title, active string, settings *v3Settings, bodyHTML s
     <div class="sidebar-section-label">Optimize</div>
     ` + navItem("/admin/v3/seo", "SEO", "seo", active, iconSEO) + `
     ` + navItem("/admin/v3/analytics", "Analytics", "analytics", active, iconAnalytics) + `
+    ` + navItem("/admin/v3/theme", "Theme Studio", "theme", active, iconTheme) + `
 
     <div class="sidebar-section-label">System</div>
     ` + navItem("/admin/v3/monitoring", "Monitoring", "monitoring", active, iconMonitoring) + `
@@ -1114,6 +1124,7 @@ func (a *App) handleV3CmdIndex(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sPages := []cmdSetting{
+		{Label: "Theme Studio", Icon: "🎨", Href: "/admin/v3/theme"},
 		{Label: "Tools & Plugins", Icon: "🧩", Href: "/admin/v3/tools"},
 		{Label: "General settings", Icon: "⚙", Href: "/admin/v3/settings/general"},
 		{Label: "Design & theme", Icon: "🎨", Href: "/admin/v3/settings/design"},
