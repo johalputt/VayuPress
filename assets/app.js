@@ -131,6 +131,10 @@ STATIC_DIR=./static VAYU_DOCS_DIR=./docs ./vayupress --port 8080`,
     ],
 
     features: [
+      { icon:'🎬', iconBg:'bg-teal-900/60 border border-teal-800/60',   orb:'rgba(45,212,191,0.45)',
+        title:'Sovereign rich media & Theme Studio',
+        desc:'New in v1.4.0 (ADR-0070): diagrams, video and design — all rendered on your own origin. A pure-Go engine turns Mermaid into sanitised SVG server-side (flowchart, sequence, pie, state, class, gantt) with no browser JS. Video and link embeds are unfurled and self-hosted, never calling the reader’s browser out to a third party. The Theme Studio compiles typed design tokens — colour ramps, typography, spacing — into a single sovereign stylesheet, with an instant live preview that stays inside the strict style-src ’self’ CSP.',
+        tags:['Mermaid→SVG','rich media','design tokens'] },
       { icon:'⚡', iconBg:'bg-teal-900/60 border border-teal-800/60',   orb:'rgba(13,148,136,0.45)',
         title:'Adaptive governance runtime',
         desc:'Six system modes on a validated transition graph, severity-classified error budgets, append-only mode journal, and the gated budget actuator (Ω12) for opt-in automatic escalation.',
