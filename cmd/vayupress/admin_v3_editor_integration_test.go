@@ -97,3 +97,80 @@ func TestV3QuickCreateOpensBlockEditor(t *testing.T) {
 		t.Error("expected block editor for fresh quick-created draft")
 	}
 }
+
+// TestV3EditorNativeCreatePath verifies the block editor owns the create flow:
+// a Save with an empty slug creates the article (slug derived from title),
+// renders the blocks into content, and the new-post URL (/os/editor) opens the
+// native block editor rather than the legacy v2 editor.
+func TestV3EditorNativeCreatePath(t *testing.T) {
+	srv, key := newTestHarness(t)
+
+	// The "New Post" route (no slug) must serve the native block editor.
+	np := doRequest(t, srv, "GET", "/os/editor", key, nil)
+	if np.StatusCode != 200 {
+		t.Fatalf("new-post editor GET want 200, got %d", np.StatusCode)
+	}
+	npBuf := new(strings.Builder)
+	io.Copy(npBuf, np.Body)
+	np.Body.Close()
+	if !strings.Contains(npBuf.String(), "data-editor-canvas") {
+		t.Error("new-post route should serve the native block editor")
+	}
+	if strings.Contains(npBuf.String(), "/os/static/js/admin-v2.js") ||
+		strings.Contains(npBuf.String(), "/admin/v2/static/js/admin-v2.js") {
+		t.Error("new-post route must not depend on the legacy v2 editor assets")
+	}
+
+	// A Save with no slug creates the post.
+	csrf := auth.GenerateCSRFToken()
+	payload, _ := json.Marshal(map[string]interface{}{
+		"slug":  "",
+		"title": "Born In Blocks",
+		"blocks": []map[string]interface{}{
+			{"type": "heading", "level": 2, "text": "Hello"},
+			{"type": "paragraph", "text": "Created natively"},
+		},
+	})
+	req, _ := http.NewRequest("POST", srv.URL+"/os/api/editor/save", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-API-Key", key)
+	req.Header.Set("X-CSRF-Token", csrf)
+	req.AddCookie(&http.Cookie{Name: "vp_csrf", Value: csrf})
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("create-save request: %v", err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf("create-save want 200, got %d", resp.StatusCode)
+	}
+	var out struct{ Status, Slug string }
+	json.NewDecoder(resp.Body).Decode(&out)
+	resp.Body.Close()
+	if out.Status != "created" || out.Slug == "" {
+		t.Fatalf("create-save: want status=created with a slug, got %+v", out)
+	}
+
+	// The created article must carry the rendered block content.
+	getResp := doRequest(t, srv, "GET", "/api/v1/articles/"+out.Slug, "", nil)
+	body := decodeBody(t, getResp)
+	content, _ := body["content"].(string)
+	if !strings.Contains(content, "<h2>Hello</h2>") || !strings.Contains(content, "Created natively") {
+		t.Errorf("created article content not rendered from blocks: %q", content)
+	}
+
+	// A create-save with no title must be rejected (slug cannot be derived).
+	noTitle, _ := json.Marshal(map[string]interface{}{"slug": "", "title": "  ", "blocks": []interface{}{}})
+	req2, _ := http.NewRequest("POST", srv.URL+"/os/api/editor/save", bytes.NewReader(noTitle))
+	req2.Header.Set("Content-Type", "application/json")
+	req2.Header.Set("X-API-Key", key)
+	req2.Header.Set("X-CSRF-Token", csrf)
+	req2.AddCookie(&http.Cookie{Name: "vp_csrf", Value: csrf})
+	resp2, err := http.DefaultClient.Do(req2)
+	if err != nil {
+		t.Fatalf("no-title request: %v", err)
+	}
+	if resp2.StatusCode != 400 {
+		t.Errorf("create-save without title want 400, got %d", resp2.StatusCode)
+	}
+	resp2.Body.Close()
+}

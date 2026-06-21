@@ -25,14 +25,21 @@ any content-loss risk. Retirement cannot complete until v3 owns these.
 Retire Admin v2 gradually over three releases, gated on v3 reaching full parity.
 Each stage is independently shippable and reversible until the final removal.
 
-### Stage 1 — Parity (target: 1.4.0)
+### Stage 1 — Parity (target: 1.4.0 → completed for create in 1.6.0-dev)
 
-- v3 block editor gains a **create path** so brand-new posts no longer need v2.
-- Add a one-time, explicit **"Convert to blocks"** action that imports a legacy
-  article's HTML into a block document (parse → blocks) behind a confirmation,
-  so legacy posts can be adopted into v3 without the current "open in v2" detour.
-  Until converted, legacy posts still open losslessly — no automatic rewrite.
-- v3 reaches feature parity for every task an operator can do in v2.
+- ✅ **Native create path** (1.6.0-dev): brand-new posts open the `/os` block
+  editor and are created on first Save through the article service
+  (`handleV3EditorSave` with an empty slug). The "New Post" route no longer
+  delegates to the v2 editor. (Originally targeted at 1.4.0 but in practice the
+  create path still routed to v2 until this change.)
+- ✅ **"Convert to blocks"** (ADR-0073): an explicit, confirmed, reversible action
+  imports a legacy article's HTML into a block document. Until converted, legacy
+  posts still open losslessly — no automatic rewrite.
+- ⏳ **Remaining gate:** editing an *existing legacy (non-block)* post still opens
+  the v2 editor (`serveV3LegacyEditor`) for lossless HTML/Markdown source editing.
+  Because there is deliberately no raw-HTML block (all blocks pass through
+  bluemonday), a native lossless legacy-edit surface must be built before the v2
+  handlers can be deleted. This is the last blocker for Stage 3.
 
 ### Stage 2 — Soft deprecation & the VayuOS move (target: 1.5.0) — **IN EFFECT**
 

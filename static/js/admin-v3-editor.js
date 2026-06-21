@@ -631,8 +631,11 @@
   }
 
   function save() {
-    if (!slug) {
-      setStatus('Save unavailable for unsaved drafts', 'warn');
+    // Brand-new drafts have no slug yet; the server creates the post on first
+    // save and returns the new slug. A title is required to derive that slug.
+    if (!slug && (!titleEl || !titleEl.value.trim())) {
+      setStatus('Add a title before saving', 'warn');
+      if (titleEl) titleEl.focus();
       return;
     }
     setStatus('Saving…');
@@ -643,7 +646,14 @@
     }).then(function (r) {
       if (!r.ok) throw new Error('save failed (' + r.status + ')');
       return r.json();
-    }).then(function () {
+    }).then(function (data) {
+      // On create, adopt the server-assigned slug and update the URL in place so
+      // a refresh re-opens the same post and autosave/history start working.
+      if (!slug && data && data.slug) {
+        slug = data.slug;
+        if (root) root.setAttribute('data-slug', slug);
+        try { history.replaceState({}, '', '/os/editor/' + encodeURIComponent(slug)); } catch (e) {}
+      }
       setStatus('Saved · ' + new Date().toLocaleTimeString(), 'ok');
       if (window.vpToast) window.vpToast('Post saved', 'ok');
     }).catch(function (err) {

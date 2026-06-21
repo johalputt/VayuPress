@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/johalputt/vayupress/internal/blockrender"
@@ -62,10 +63,7 @@ func (a *App) handleV3EditorSave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slug := strings.TrimSpace(body.Slug)
-	if slug == "" {
-		writeAPIError(w, r, http.StatusBadRequest, "missing-slug", "slug is required", "")
-		return
-	}
+	isNew := slug == ""
 
 	// Re-marshal the blocks array to a canonical JSON string for storage+render.
 	blocksJSON := "[]"
@@ -81,8 +79,37 @@ func (a *App) handleV3EditorSave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Update title + content through the article service (authoritative pipeline).
 	title := strings.TrimSpace(body.Title)
+
+	// ── Native create path (no slug) ─────────────────────────────────────────
+	// A brand-new post is created here through the same authoritative article
+	// service the API uses — so /os owns the create flow end to end and no
+	// longer delegates to the legacy editor. A title is required to derive the
+	// slug; article validation needs non-empty content, so an empty document is
+	// seeded with a single space that renders to nothing.
+	if isNew {
+		if title == "" {
+			writeAPIError(w, r, http.StatusBadRequest, "missing-title", "A title is required to create a post", "")
+			return
+		}
+		slug = a.uniqueArticleSlug(r.Context(), title)
+		seed := contentHTML
+		if strings.TrimSpace(seed) == "" {
+			seed = " "
+		}
+		if _, err := a.articles.Create(r.Context(), title, slug, seed, nil); err != nil {
+			writeAPIError(w, r, http.StatusInternalServerError, "create-error", err.Error(), "")
+			return
+		}
+		if err := persistBlocksJSON(r.Context(), slug, blocksJSON); err != nil {
+			writeAPIError(w, r, http.StatusInternalServerError, "persist-error", err.Error(), "")
+			return
+		}
+		writeJSON(w, r, http.StatusOK, map[string]string{"status": "created", "slug": slug})
+		return
+	}
+
+	// ── Update path (existing slug) ──────────────────────────────────────────
 	var titlePtr *string
 	if title != "" {
 		titlePtr = &title
@@ -99,6 +126,24 @@ func (a *App) handleV3EditorSave(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, r, http.StatusOK, map[string]string{"status": "saved", "slug": slug})
+}
+
+// uniqueArticleSlug derives a URL slug from title and ensures it does not collide
+// with an existing article, appending -2, -3, … as needed. Shared by the native
+// editor create path and quick-create.
+func (a *App) uniqueArticleSlug(ctx context.Context, title string) string {
+	slug := migrateSlugify(title)
+	if slug == "" {
+		slug = "untitled-" + strconv.FormatInt(time.Now().Unix(), 36)
+	}
+	base := slug
+	for i := 2; i <= 99; i++ {
+		if _, err := a.articles.Get(ctx, slug); err != nil {
+			break // available
+		}
+		slug = base + "-" + strconv.Itoa(i)
+	}
+	return slug
 }
 
 // handleV3EditorConvert imports a legacy article's HTML into a block document

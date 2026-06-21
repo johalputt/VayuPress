@@ -842,8 +842,13 @@ func (a *App) handleV3Editor(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Brand-new post: v2 editor (it owns the create path).
-	a.serveV3LegacyEditor(w, r, nonce, cfg, "", "", "")
+	// Brand-new post: the native block editor owns the create path (v1.6.0).
+	// It hydrates with an empty document and an empty slug; the first Save POSTs
+	// to /os/api/editor/save, which creates the article and returns its slug.
+	body := v3EditorBody("", "", "[]")
+	body += `
+<script nonce="` + nonce + `" src="/os/static/js/admin-v3-editor.js"></script>`
+	writeV3HTML(w, adminV3Layout(nonce, "New Post", "editor", cfg, body))
 }
 
 // serveV3LegacyEditor renders the v2 editor body wrapped in v3 chrome. Used for
@@ -1235,19 +1240,8 @@ func (a *App) handleV3QuickCreatePost(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusBadRequest, "empty-title", "Title is required", "")
 		return
 	}
-	// Generate slug from title.
-	slug := migrateSlugify(title)
-	if slug == "" {
-		slug = "untitled-" + strconv.FormatInt(time.Now().Unix(), 36)
-	}
-	// Ensure uniqueness.
-	base := slug
-	for i := 2; i <= 99; i++ {
-		if _, err := a.articles.Get(r.Context(), slug); err != nil {
-			break // slug is available
-		}
-		slug = base + "-" + strconv.Itoa(i)
-	}
+	// Generate a unique slug from the title (shared with the native editor).
+	slug := a.uniqueArticleSlug(r.Context(), title)
 	// Create the draft. Content must be non-empty to pass article validation, so
 	// we seed a single space: it trims to empty, so handleV3Editor treats the
 	// post as an empty draft and opens the block editor, and the placeholder is

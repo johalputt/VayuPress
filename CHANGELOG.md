@@ -6,9 +6,22 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
-## [Unreleased]
+## [Unreleased] — 1.6.0 (in development)
 
-_Nothing yet._
+Working toward ADR-0069 Stage 3 (retire Admin v2). Stage 3 can only complete
+once `/os` owns every authoring flow; this is the first piece.
+
+### Added
+
+- **Native create path in the `/os` block editor.** Brand-new posts now open the
+  native block editor (no slug) and are created on first Save through the
+  authoritative article service — `handleV3EditorSave` derives a unique slug from
+  the title, creates the article, persists the block document, and the editor
+  adopts the new slug / URL in place. The "New Post" route no longer depends on
+  the legacy Admin v2 editor, completing the real ADR-0069 Stage 1 prerequisite
+  for new content. (Legacy non-block *editing* still uses the v2 editor until a
+  native lossless legacy-edit path lands; that is the remaining gate before the
+  v2 handlers can be deleted.)
 
 ---
 
