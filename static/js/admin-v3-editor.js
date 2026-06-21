@@ -35,6 +35,7 @@
     { type: 'code', label: 'Code', icon: '</>', hint: 'Code block' },
     { type: 'callout', label: 'Callout', icon: '!', hint: 'Highlighted note' },
     { type: 'image', label: 'Image', icon: '🖼', hint: 'Image by URL' },
+    { type: 'embed', label: 'Embed / Link card', icon: '🔗', hint: 'Unfurl a URL as a rich link card' },
     { type: 'divider', label: 'Divider', icon: '―', hint: 'Horizontal rule' }
   ];
 
@@ -111,6 +112,37 @@
         alt.addEventListener('input', function () { block.alt = alt.value; });
         field.appendChild(url);
         field.appendChild(alt);
+        break;
+      }
+      case 'embed': {
+        var embedUrl = mkInput('text', block.url || '', 'Paste a URL to unfurl…');
+        var embedStatus = document.createElement('span');
+        embedStatus.className = 'eblock__embed-status';
+        if (block.title) {
+          embedStatus.textContent = block.title;
+        }
+        embedUrl.addEventListener('change', function () {
+          var val = embedUrl.value.trim();
+          block.url = val;
+          if (!val) return;
+          embedStatus.textContent = 'Fetching…';
+          fetch('/api/v1/admin/embed/unfurl', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
+            body: JSON.stringify({ url: val })
+          }).then(function (r) { return r.json(); }).then(function (data) {
+            if (data.error) { embedStatus.textContent = 'Error: ' + data.error; return; }
+            block.url = data.url || val;
+            block.title = data.title || '';
+            block.description = data.description || '';
+            block.provider = data.provider || '';
+            block.thumbURL = data.thumbURL || '';
+            embedStatus.textContent = block.title || block.url;
+            scheduleAutosave();
+          }).catch(function () { embedStatus.textContent = 'Could not fetch URL'; });
+        });
+        field.appendChild(embedUrl);
+        field.appendChild(embedStatus);
         break;
       }
       case 'list':
@@ -281,6 +313,7 @@
     if (type === 'heading') return { type: 'heading', level: 2, text: '' };
     if (type === 'divider') return { type: 'divider' };
     if (type === 'image') return { type: 'image', url: '', alt: '' };
+    if (type === 'embed') return { type: 'embed', url: '', title: '', description: '', provider: '', thumbURL: '' };
     if (type === 'code') return { type: 'code', lang: '', text: '' };
     if (type === 'callout') return { type: 'callout', style: 'info', text: '' };
     return { type: 'paragraph', text: '' };

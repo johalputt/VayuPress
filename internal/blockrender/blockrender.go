@@ -21,7 +21,11 @@ import (
 // policy sanitises the assembled HTML. UGCPolicy allows a safe subset of tags
 // (p, headings, lists, blockquote, pre/code, a, img, em/strong, etc.) and
 // strips scripts, event handlers, and javascript: URLs.
-var policy = bluemonday.UGCPolicy()
+var policy = func() *bluemonday.Policy {
+	p := bluemonday.UGCPolicy()
+	p.AllowAttrs("class").OnElements("div", "span")
+	return p
+}()
 
 // Block is a single editor block. Only the fields relevant to a given Type are
 // populated. Unknown types are skipped during rendering (forward-compatible).
@@ -34,6 +38,11 @@ type Block struct {
 	Alt   string   `json:"alt,omitempty"`   // image alt text
 	Lang  string   `json:"lang,omitempty"`  // code language hint
 	Style string   `json:"style,omitempty"` // list: "ordered"|"unordered"; callout: tone
+	// embed block fields — resolved server-side at paste time, stored in the block document.
+	Title       string `json:"title,omitempty"`
+	Description string `json:"description,omitempty"`
+	Provider    string `json:"provider,omitempty"`
+	ThumbURL    string `json:"thumbURL,omitempty"` // local /media/... URL
 }
 
 // Render parses a blocks JSON document and returns sanitised HTML plus a plain-
@@ -104,6 +113,34 @@ func renderBlock(b, plain *strings.Builder, blk Block) {
 			`" alt="` + html.EscapeString(blk.Alt) + `" loading="lazy"></figure>`)
 		if blk.Alt != "" {
 			plain.WriteString(blk.Alt + " ")
+		}
+	case "embed":
+		if strings.TrimSpace(blk.URL) == "" {
+			return
+		}
+		b.WriteString(`<div class="embed-card">`)
+		if blk.ThumbURL != "" {
+			b.WriteString(`<a href="` + html.EscapeString(blk.URL) + `" class="embed-card__thumb" rel="noopener noreferrer" target="_blank">`)
+			b.WriteString(`<img src="` + html.EscapeString(blk.ThumbURL) + `" alt="" loading="lazy">`)
+			b.WriteString(`</a>`)
+		}
+		b.WriteString(`<div class="embed-card__body">`)
+		if blk.Provider != "" {
+			b.WriteString(`<span class="embed-card__provider">` + html.EscapeString(blk.Provider) + `</span>`)
+		}
+		if blk.Title != "" {
+			b.WriteString(`<a href="` + html.EscapeString(blk.URL) + `" class="embed-card__title" rel="noopener noreferrer" target="_blank">` + html.EscapeString(blk.Title) + `</a>`)
+		}
+		if blk.Description != "" {
+			b.WriteString(`<p class="embed-card__desc">` + html.EscapeString(blk.Description) + `</p>`)
+		}
+		b.WriteString(`<span class="embed-card__url">` + html.EscapeString(blk.URL) + `</span>`)
+		b.WriteString(`</div></div>`)
+		if blk.Title != "" {
+			plain.WriteString(blk.Title + " ")
+		}
+		if blk.Description != "" {
+			plain.WriteString(blk.Description + " ")
 		}
 	case "divider":
 		b.WriteString("<hr>")
