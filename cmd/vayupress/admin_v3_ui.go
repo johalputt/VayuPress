@@ -112,6 +112,7 @@ func (a *App) registerAdminV3UIRoutes(r chi.Router) {
 		pr.Get("/os/editor", a.handleV3Editor)
 		pr.Get("/os/editor/{slug}", a.handleV3Editor)
 		pr.Get("/os/monitoring", a.handleV3Monitoring)
+		pr.Get("/os/governance", a.handleV3Governance)
 		pr.Get("/os/theme", a.handleV3Theme)
 		// Session-friendly mirrors of the Theme Studio JSON API (the /api/v1/admin
 		// originals require an API key; v3 operators hold a session cookie).
@@ -195,6 +196,7 @@ var (
 	iconSecurity   = svgIcon("M10 2l6 3v5c0 3.5-2.5 6.8-6 8-3.5-1.2-6-4.5-6-8V5l6-3z")
 	iconTools      = svgIcon("M12.5 3.5a3 3 0 00-3.9 3.9l-5.1 5.1 2 2 5.1-5.1a3 3 0 003.9-3.9l-2 2-2-2 2-2z")
 	iconMonitoring = svgIcon("M2 10h3l2-5 3 11 3-8 2 2h3")
+	iconGovernance = svgIcon("M10 2l7 3v5c0 3.5-2.8 6.8-7 8-4.2-1.2-7-4.5-7-8V5l7-3zm0 5v6m-3-3h6")
 	iconTheme      = svgIcon("M10 2a8 8 0 100 16c1 0 1.5-.7 1.5-1.5 0-.4-.2-.8-.4-1-.3-.3-.4-.6-.4-1 0-.8.7-1.5 1.5-1.5H14a4 4 0 004-4c0-3.6-3.6-6.5-8-6.5zM5.5 10a1 1 0 110-2 1 1 0 010 2zm3-3a1 1 0 110-2 1 1 0 010 2zm5 0a1 1 0 110-2 1 1 0 010 2z")
 )
 
@@ -260,6 +262,7 @@ func adminV3Layout(nonce, title, active string, settings *v3Settings, bodyHTML s
 
     <div class="sidebar-section-label">System</div>
     ` + navItem("/os/monitoring", "Monitoring", "monitoring", active, iconMonitoring) + `
+    ` + navItem("/os/governance", "Governance", "governance", active, iconGovernance) + `
     ` + navItem("/os/tools", "Tools & Plugins", "tools", active, iconTools) + `
     ` + navItem("/os/settings", "Settings", "settings", active, iconSettings) + `
     ` + navItem("/os/security", "Security", "security", active, iconSecurity) + `
@@ -1179,6 +1182,8 @@ func (a *App) handleV3CmdIndex(w http.ResponseWriter, r *http.Request) {
 
 	sPages := []cmdSetting{
 		{Label: "Theme Studio", Icon: "🎨", Href: "/os/theme"},
+		{Label: "Monitoring", Icon: "📈", Href: "/os/monitoring"},
+		{Label: "Governance", Icon: "🛡", Href: "/os/governance"},
 		{Label: "Tools & Plugins", Icon: "🧩", Href: "/os/tools"},
 		{Label: "General settings", Icon: "⚙", Href: "/os/settings/general"},
 		{Label: "Design & theme", Icon: "🎨", Href: "/os/settings/design"},
