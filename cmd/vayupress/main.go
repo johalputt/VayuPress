@@ -68,7 +68,7 @@ import (
 	"github.com/johalputt/vayupress/internal/ws"
 )
 
-var Version = "1.2.0"
+var Version = "1.4.0"
 var bootTime = time.Now()
 
 // Immutable package-level values (compiled once, never mutated).

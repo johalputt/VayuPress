@@ -8,6 +8,17 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+_Nothing yet._
+
+---
+
+## [1.4.0] — 2026-06-21
+
+**Sovereign Rich Media & Theme Studio** — diagrams, privacy-first embeds, and a
+design-token theme system that surpasses Tumblr's customiser, all as a sovereign
+single binary with zero CDN dependencies and a strict CSP (no `unsafe-eval`, no
+`unsafe-inline`). See ADR-0070.
+
 ### Added
 
 - **Sovereign rich media — embeds & click-to-load video (ADR-0070, Phase 1–2).**
@@ -40,6 +51,30 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   - Editor gains a live preview via a debounced server endpoint
     (`POST /api/v1/admin/diagram/preview`); results are content-addressed in
     `diagram_cache` (migration 028). No Mermaid library ever reaches the browser.
+- **Expanded diagram grammar (ADR-0070, Phase 4).** The pure-Go engine now also
+  compiles **pie charts** (`pie`, arc geometry + themeable legend), **state
+  diagrams** (`stateDiagram`/`-v2`, `[*]` pseudo-states as filled circles,
+  layered layout), **class diagrams** (`classDiagram`, member compartments,
+  inheritance/composition/aggregation markers), and **Gantt charts** (`gantt`,
+  sections, `done`/`active`/`crit`/`milestone` styles, `after <id>` sequencing).
+  Six grammars total, all server-rendered to sanitised SVG with graceful
+  fallback — still zero client JavaScript.
+- **Theme Studio — sovereign design-token system (ADR-0070, Phases 5–6).**
+  - New `internal/theme` package: a typed 23-field token schema (dark/light
+    colour ramps, typography, spacing, radii), a CSS-variable compiler that
+    validates every hex value before emission (injection-proof), and SQLite
+    persistence (`theme_tokens`, migration 029, singleton row).
+  - **Eight built-in presets** — Default, Aurora, Slate, Terminal, Sepia,
+    Carbon, Ocean, Sakura — using system fonts only, so a theme switch makes
+    **zero external requests**.
+  - REST API (auth + CSRF gated): `GET …/theme/presets`, `GET …/theme/tokens`,
+    `POST …/theme/preview` (compiled CSS + sanitised sample HTML), and
+    `POST …/theme/apply` (validates, persists, recompiles, purges the render
+    cache). Applied token CSS is served live via `/theme.css` with no restart.
+  - **Studio tab** in the admin theme editor: a preset gallery with colour
+    swatches and a live preview pane that re-themes instantly. The preview
+    applies colours via CSSOM `setProperty` (no inline `<style>`, no `style=`
+    attributes), so the strict `style-src 'self'` CSP stays intact.
 
 ### Security
 
@@ -51,6 +86,26 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   CR/LF-free transformation that clears the `go/email-injection` finding. Both
   were defence-in-depth false positives; the mail path was already CRLF-stripped,
   base64-encoded and HTML-sanitised.
+- **Anchored video-embed host matching.** YouTube/Vimeo detection now parses the
+  URL and matches the provider by **exact host equality** with fully-anchored ID
+  validators, instead of unanchored substring regexes. A URL that merely contains
+  a provider host as a path/query fragment (e.g. `evil.com/youtube.com/embed/ID`,
+  `youtube.com.evil.com/…`) is refused. Clears two `go/regex/missing-regexp-anchor`
+  findings; covered by `TestDetectVideoEmbed`.
+- **Pre-flight SSRF host barrier in `safefetch`.** Every guarded fetch now
+  resolves and validates the request host (public, non-reserved address required)
+  *before* any connection is opened, in addition to the authoritative dial-time
+  pinned-IP guard that re-runs on each redirect hop. Fail-fast and an explicit
+  allow-check on previously-raw input (`go/request-forgery`).
+
+### Upgrade Notes
+
+- Migrations **027–029** apply automatically on first boot (embed cache, diagram
+  cache, theme tokens). No manual steps; downgrades are not supported once the
+  new tables exist.
+- No configuration changes are required. Embeds, video facades, diagrams, and the
+  Theme Studio are available immediately; the reader-facing CSP stays strict by
+  default and only narrows `frame-src` per-page when a video facade is present.
 
 ---
 

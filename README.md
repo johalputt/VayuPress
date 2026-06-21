@@ -17,6 +17,43 @@
 > **Adaptive publishing infrastructure for the sovereign web.**
 > SQLite-first, zero-trust, zero telemetry. Policy-governed runtime with adaptive system modes, sandboxed plugins, transactional event outbox, durable audit trail, and fault-tolerant federated publishing.
 
+## What's New in v1.4.0
+
+> Full notes in [`CHANGELOG.md`](CHANGELOG.md) · upgrade steps in [`docs/UPGRADING.md`](docs/UPGRADING.md)
+
+**Sovereign Rich Media & Theme Studio** (ADR-0070) — put diagrams, video, and
+arbitrary embeds into posts, and restyle the whole site from a visual editor,
+**without** a single third-party reader-side request. Every capability is a typed
+block or server-rendered asset; the strict reader CSP (no `unsafe-eval`, no
+`unsafe-inline`, no wildcard `frame-src`/`img-src`) is never relaxed by default.
+
+- **Pure-Go Mermaid → SVG diagrams** — `diagram` blocks compile **six** grammars
+  (flowchart, sequence, pie, state, class, gantt) to static, themeable, sanitised
+  SVG entirely on the server. No headless browser, no Node, **no client
+  JavaScript**, no `eval`. Unsupported sources degrade to an annotated code block.
+  Live editor preview via a debounced endpoint; results cached in `diagram_cache`.
+- **Privacy-first embeds** — paste any URL for a self-hosted link card
+  (OpenGraph fetched via the SSRF-hardened `safefetch` client; thumbnail
+  **imported**, never hotlinked). YouTube/Vimeo become **click-to-load facades**:
+  nothing third-party loads until the reader clicks, then a sandboxed iframe opens
+  to the cookie-free origin. A per-page CSP builder narrows `frame-src` to a
+  **closed allowlist** only for pages that need it.
+- **Theme Studio** — a sovereign design-token system: typed tokens (colour ramps,
+  typography, spacing, radii), a hex-validated CSS-variable compiler, **eight
+  system-font presets** (Aurora, Slate, Terminal, Sepia, Carbon, Ocean, Sakura,
+  Default), and a **Studio tab** with a preset gallery + live preview that
+  re-themes instantly via CSSOM — no inline styles, CSP stays strict.
+- **Security** — anchored video-host matching (refuses spoofed
+  `evil.com/youtube.com/…` URLs), a fail-fast pre-flight SSRF host barrier in
+  `safefetch`, and all emitted HTML/SVG through bluemonday allowlists.
+
+### Upgrading from v1.3.0
+No breaking changes. Start the server once and migrations **027–029** apply
+automatically (embed cache, diagram cache, theme tokens). No configuration
+changes; rich media and the Theme Studio are available immediately.
+
+---
+
 ## What's New in v1.3.0
 
 > Full notes in [`CHANGELOG.md`](CHANGELOG.md) · upgrade steps in [`docs/UPGRADING.md`](docs/UPGRADING.md)
@@ -395,6 +432,13 @@ See [docs/architecture/system-modes.md](docs/architecture/system-modes.md).
 - **Automatic image optimization** — stdlib-only (no libvips/CGO) downscaling of
   oversized PNG/JPEG editor uploads with area-averaging resampling; GIF/WebP pass
   through untouched
+- **Sovereign rich media (ADR-0070)** — `embed` blocks unfurl any URL into a
+  self-hosted link card; YouTube/Vimeo render as privacy-first click-to-load
+  facades (no third-party request until the reader clicks). A pure-Go Mermaid→SVG
+  engine compiles **six** diagram grammars (flowchart, sequence, pie, state,
+  class, gantt) server-side with zero client JavaScript. Every server-side fetch
+  goes through the SSRF-hardened `safefetch` client; all output is bluemonday-
+  sanitised with no raw-HTML escape hatch
 - Sitemap XML, RSS feed, and robots.txt auto-generation
 - In-memory render cache with static-file output via Nginx
 - SQLite WAL mode with adaptive checkpointing
@@ -490,6 +534,14 @@ trusted, and the strict CSP stays intact:
   Pico CSS-variable overrides and served same-origin at **`/theme.css`** (ETag +
   short max-age) — never inlined, so `style-src 'self'` holds. The first-deploy
   defaults match the vendored `custom.css`, so there is no flash-of-unstyled-content.
+- **Studio** — a sovereign design-token theme system (ADR-0070, `internal/theme`):
+  a typed 23-field token schema, a hex-validated CSS-variable compiler, and **eight
+  system-font presets** (Default, Aurora, Slate, Terminal, Sepia, Carbon, Ocean,
+  Sakura). The Studio tab shows a preset gallery and a **live preview** that
+  re-themes instantly via CSSOM `setProperty` — no inline `<style>`, no `style=`
+  attributes, so the strict CSP is untouched. Apply persists to `theme_tokens`
+  (migration 029), recompiles `/theme.css`, and purges the render cache. API:
+  `GET/POST /api/v1/admin/theme/{presets,tokens,preview,apply}` (auth + CSRF).
 - **Custom CSS** — operator stylesheet, 16 KB cap, folded into `/theme.css`.
   Cannot reach external origins or execute scripts (CSP-contained).
 - **Head & SEO** — *declarative, allowlisted* capabilities (keywords, theme-color,
