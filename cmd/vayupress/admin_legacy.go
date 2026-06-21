@@ -19,6 +19,8 @@ import (
 	"net/http"
 	"os"
 	"strings"
+
+	"github.com/johalputt/vayupress/internal/logging"
 )
 
 // legacyRemovalRelease is the release in which the legacy admin handlers are
@@ -50,10 +52,26 @@ func legacyToOSPath(p string) string {
 }
 
 // legacyRedirect returns a handler that 302-redirects the current path to its
-// VayuOS (`/os`) equivalent. Used for the legacy admin surfaces.
+// VayuOS (`/os`) equivalent. Used for the legacy admin surfaces. Each hit emits
+// a structured deprecation warning to the server log (ADR-0069) so operators
+// can find and update bookmarks/integrations before the routes are removed in
+// the legacyRemovalRelease.
 func legacyRedirect() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, legacyToOSPath(r.URL.Path), http.StatusFound)
+		target := legacyToOSPath(r.URL.Path)
+		logging.LogJSON(logging.LogFields{
+			Level:      "warn",
+			Severity:   "warning",
+			Component:  "admin-legacy",
+			Method:     r.Method,
+			Path:       r.URL.Path,
+			RemoteAddr: r.RemoteAddr,
+			UserAgent:  r.UserAgent(),
+			Msg: "deprecated admin route used; redirecting to VayuOS (" + target +
+				"). Legacy /admin, /admin/v2 and /admin/v3 routes are removed in " +
+				legacyRemovalRelease,
+		})
+		http.Redirect(w, r, target, http.StatusFound)
 	}
 }
 

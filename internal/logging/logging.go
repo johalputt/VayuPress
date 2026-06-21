@@ -47,6 +47,10 @@ func LogInfo(component, msg string) {
 	LogJSON(LogFields{Level: "info", Component: component, Msg: msg})
 }
 
+func LogWarn(component, msg string) {
+	LogJSON(LogFields{Level: "warn", Component: component, Msg: msg, Severity: "warning"})
+}
+
 func LogError(component, msg, e string) {
 	LogJSON(LogFields{Level: "error", Component: component, Msg: msg, Error: e, Severity: "error"})
 }
