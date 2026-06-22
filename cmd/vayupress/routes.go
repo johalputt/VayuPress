@@ -247,14 +247,6 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 		r.Get("/admin", legacyRedirect())
 		r.Get("/admin/backup/validate", a.handleAdminBackupValidate)
 
-		// Interactive operator consoles (Ω9–Ω11), rendered in the VayuOS shell.
-		r.Get("/os/modes", a.handleModesPage)
-		r.Get("/os/faults", a.handleFaultPage)
-		r.Get("/os/topology", a.handleTopologyPage)
-		r.Get("/os/replay", a.handleReplayPage)
-		r.Get("/os/policy", a.handlePolicyPage)
-		r.Get("/os/adr", a.handleAdminADR)
-
 		// Legacy /admin/* operator page URLs 301-redirect into VayuOS (/os/*).
 		opsRedirect := operatorLegacyRedirect()
 		r.Get("/admin/modes", opsRedirect)

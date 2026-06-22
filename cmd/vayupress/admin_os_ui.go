@@ -152,6 +152,17 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.Get("/os/api/cmd-index", a.handleOSCmdIndex)
 		pr.Get("/os/api/search/drift", a.handleSearchDrift)
 
+		// Interactive operator consoles — rendered in the VayuOS shell.
+		// These were previously in the RequireAPIKey group in routes.go, which
+		// caused a 401 JSON error when visited from a browser (no API key header).
+		// They belong here under requireSessionOrAPIKey so a browser session works.
+		pr.Get("/os/modes", a.handleModesPage)
+		pr.Get("/os/faults", a.handleFaultPage)
+		pr.Get("/os/topology", a.handleTopologyPage)
+		pr.Get("/os/replay", a.handleReplayPage)
+		pr.Get("/os/policy", a.handlePolicyPage)
+		pr.Get("/os/adr", a.handleAdminADR)
+
 		// Operator-initiated actions — API key callers don't hold a browser session
 		// so they have no CSRF cookie. These are gated by requireSessionOrAPIKey;
 		// browser callers arriving via the panel always carry a session and are
