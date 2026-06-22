@@ -200,6 +200,12 @@ var (
 	iconMonitoring = svgIcon("M2 10h3l2-5 3 11 3-8 2 2h3")
 	iconGovernance = svgIcon("M10 2l7 3v5c0 3.5-2.8 6.8-7 8-4.2-1.2-7-4.5-7-8V5l7-3zm0 5v6m-3-3h6")
 	iconTheme      = svgIcon("M10 2a8 8 0 100 16c1 0 1.5-.7 1.5-1.5 0-.4-.2-.8-.4-1-.3-.3-.4-.6-.4-1 0-.8.7-1.5 1.5-1.5H14a4 4 0 004-4c0-3.6-3.6-6.5-8-6.5zM5.5 10a1 1 0 110-2 1 1 0 010 2zm3-3a1 1 0 110-2 1 1 0 010 2zm5 0a1 1 0 110-2 1 1 0 010 2z")
+	iconModes      = svgIcon("M10 2l7 4v8l-7 4-7-4V6l7-4zm0 2.3L5 7v6l5 2.7L15 13V7l-5-2.7z")
+	iconPolicy     = svgIcon("M10 2l6 3v5c0 3.5-2.5 6.8-6 8-3.5-1.2-6-4.5-6-8V5l6-3zm-1 9l4-4-1.4-1.4L9 8.2 7.4 6.6 6 8l3 3z")
+	iconTopology   = svgIcon("M10 3a2 2 0 100 4 2 2 0 000-4zM4 13a2 2 0 100 4 2 2 0 000-4zm12 0a2 2 0 100 4 2 2 0 000-4zM10 7v3m0 0l-4 3m4-3l4 3")
+	iconReplay     = svgIcon("M4 10a6 6 0 116 6m-6-6l-2-2m2 2l2-2m-2 8v-2")
+	iconFaults     = svgIcon("M10 2l8 14H2L10 2zm0 5v4m0 3h.01")
+	iconADR        = svgIcon("M5 3h7l3 3v11H5V3zm7 0v3h3M7 9h6m-6 3h6m-6 3h4")
 )
 
 // trustedHTMLPassthrough emits a pre-constructed HTML fragment verbatim. It
@@ -220,7 +226,21 @@ func renderTrustedHTML(h htmpl.HTML) string {
 // adminOSLayout renders the shared chrome for VayuOS.
 // The nonce is injected into the single inline bootstrap <script> block.
 // All CSS/JS are external same-origin files. No inline styles.
+//
+// It is composed from adminOSShellHead + the body + adminOSShellFoot so that
+// streaming operator pages (System Modes, Policy, Topology, Replay, Faults,
+// ADRs) can share the exact same VayuOS chrome without buffering their whole
+// body — they call the head/foot helpers directly.
 func adminOSLayout(nonce, title, active string, settings *osSettings, bodyHTML htmpl.HTML) string {
+	return adminOSShellHead(nonce, title, active, settings) +
+		renderTrustedHTML(bodyHTML) +
+		adminOSShellFoot(nonce, "")
+}
+
+// adminOSShellHead emits the VayuOS document head, sidebar, topbar and the
+// opening <main class="content"> tag. The caller appends body content and then
+// adminOSShellFoot.
+func adminOSShellHead(nonce, title, active string, settings *osSettings) string {
 	et := html.EscapeString(title)
 	theme := "dark"
 	if settings != nil && settings.AdminTheme != "" {
@@ -283,6 +303,14 @@ func adminOSLayout(nonce, title, active string, settings *osSettings, bodyHTML h
     ` + navItem("/os/tools", "Tools & Plugins", "tools", active, iconTools) + `
     ` + navItem("/os/settings", "Settings", "settings", active, iconSettings) + `
     ` + navItem("/os/security", "Security", "security", active, iconSecurity) + `
+
+    <div class="sidebar-section-label">Operations</div>
+    ` + navItem("/os/modes", "System Modes", "modes", active, iconModes) + `
+    ` + navItem("/os/policy", "Policy Inspector", "policy", active, iconPolicy) + `
+    ` + navItem("/os/topology", "Topology", "topology", active, iconTopology) + `
+    ` + navItem("/os/replay", "Replay Explorer", "replay", active, iconReplay) + `
+    ` + navItem("/os/faults", "Fault Engine", "faults", active, iconFaults) + `
+    ` + navItem("/os/adr", "ADR Registry", "adrs", active, iconADR) + `
     <div class="sidebar-spacer"></div>
   </nav>
   <div class="sidebar-footer">
@@ -312,26 +340,47 @@ func adminOSLayout(nonce, title, active string, settings *osSettings, bodyHTML h
   </header>
 
   <main id="main-content" class="content">
-` + renderTrustedHTML(bodyHTML) + `
-  </main>
+`
+}
+
+// adminOSShellFoot closes the content/main/shell, renders the mobile bottom nav,
+// command palette and toast container, then the nonce-gated bootstrap script.
+// When pageScript is non-empty it is emitted as an additional nonce-gated inline
+// script alongside the shared operator-control helpers (csrf/vpPost/show) and a
+// live status region, so streaming operator pages keep their POST controls.
+func adminOSShellFoot(nonce, pageScript string) string {
+	ops := ""
+	if pageScript != "" {
+		ops = `<div id="action-msg" role="status" aria-live="polite" class="action-msg"></div>
+<script nonce="` + nonce + `">
+(function(){'use strict';
+var msg=document.getElementById('action-msg');
+function csrf(){var m=document.cookie.split('; ').find(function(r){return r.startsWith('vp_csrf=');});return m?m.split('=')[1]:'';}
+function show(text,isErr){if(!msg)return;msg.textContent=text;msg.classList.toggle('is-error',!!isErr);msg.classList.add('visible');}
+window.vpPost=function(url,onok){fetch(url,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()}}).then(function(r){return r.json().then(function(d){return {ok:r.ok,d:d};});}).then(function(res){show(res.ok?(onok?onok(res.d):'ok'):(res.d.detail||res.d.title||'error'),!res.ok);if(res.ok)setTimeout(function(){location.reload();},650);}).catch(function(e){show('Error: '+e,true);});};
+` + pageScript + `
+})();
+</script>`
+	}
+	return `  </main>
 </div><!-- .main -->
 </div><!-- .shell -->
-
+` + ops + `
 <!-- Bottom nav for mobile -->
 <nav class="bottom-nav" aria-label="Mobile navigation">
-  <a class="bottom-nav-item` + activeCls("dashboard", active) + `" href="/os">
+  <a class="bottom-nav-item" href="/os">
     ` + iconDashboard + `<span>Home</span>
   </a>
-  <a class="bottom-nav-item` + activeCls("posts", active) + `" href="/os/posts">
+  <a class="bottom-nav-item" href="/os/posts">
     ` + iconPosts + `<span>Posts</span>
   </a>
-  <a class="bottom-nav-item` + activeCls("editor", active) + `" href="/os/editor">
+  <a class="bottom-nav-item" href="/os/editor">
     ` + iconNewPost + `<span>Write</span>
   </a>
-  <a class="bottom-nav-item` + activeCls("members", active) + `" href="/os/members">
+  <a class="bottom-nav-item" href="/os/members">
     ` + iconMembers + `<span>Members</span>
   </a>
-  <a class="bottom-nav-item` + activeCls("settings", active) + `" href="/os/settings">
+  <a class="bottom-nav-item" href="/os/settings">
     ` + iconSettings + `<span>Settings</span>
   </a>
 </nav>
@@ -361,14 +410,6 @@ func adminOSLayout(nonce, title, active string, settings *osSettings, bodyHTML h
 <script src="/os/static/js/purify.min.js"></script>
 <script nonce="` + nonce + `" src="/os/static/js/admin-os.js"></script>
 </body></html>`
-}
-
-// activeCls returns " active" when the key matches the active page.
-func activeCls(key, active string) string {
-	if key == active {
-		return " active"
-	}
-	return ""
 }
 
 // osSettings holds the subset of site settings needed to render every page.

@@ -65,24 +65,11 @@ func modeShortClass(m mode.Mode) string {
 	return "m-normal"
 }
 
-// sidebarItem renders one nav row, marking it active when key==active.
-func sidebarItem(href, icon, label, key, active string, badge, status string) string {
-	cls := "sidebar-item"
-	if key == active {
-		cls += " active"
-	}
-	right := ""
-	if badge != "" {
-		right = `<span class="sidebar-badge">` + badge + `</span>`
-	} else if status != "" {
-		right = `<span class="sidebar-status ` + status + `"></span>`
-	}
-	return fmt.Sprintf(`<a href="%s" class="%s"><div class="sidebar-item-left"><span class="sidebar-icon">%s</span>%s</div>%s</a>`,
-		href, cls, icon, label, right)
-}
-
-// writeConsoleShellHead emits the admin shell through the opening <main> and the
-// page header. active selects the highlighted sidebar item.
+// writeConsoleShellHead emits the VayuOS shell through the opening <main> and a
+// VayuOS-styled page header. The operator consoles (System Modes, Policy,
+// Topology, Replay, Faults, ADRs) all render inside the single VayuOS shell —
+// there is no separate admin panel. active selects the highlighted sidebar item
+// (one of: modes, policy, topology, replay, faults, adrs).
 func (a *App) writeConsoleShellHead(w http.ResponseWriter, r *http.Request, active, pageTitle, pageSub string) string {
 	if token := auth.GenerateCSRFToken(); token != "" {
 		http.SetCookie(w, &http.Cookie{Name: "vp_csrf", Value: token, Path: "/", SameSite: http.SameSiteStrictMode, HttpOnly: false, Secure: csrfCookieSecure(), MaxAge: 3600})
@@ -91,68 +78,15 @@ func (a *App) writeConsoleShellHead(w http.ResponseWriter, r *http.Request, acti
 	w.Header().Set("X-Robots-Tag", "noindex")
 	nonce := render.CSPNonce(r)
 
-	cur := mode.Global.Current()
-	modeCls, modeLabel, _ := modeVisual(cur)
-
-	fmt.Fprintf(w, `<!DOCTYPE html><html lang="en"><head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>VayuPress — %s</title><meta name="robots" content="noindex, nofollow">
-<link rel="icon" type="image/png" href="/static/favicon-dark.png" media="(prefers-color-scheme: light)">
-<link rel="icon" type="image/png" href="/static/favicon-light.png" media="(prefers-color-scheme: dark)">
-<link rel="icon" type="image/png" href="/static/favicon-light.png">
-%s%s</head><body>
-<a href="#main-content" class="skip-link">Skip to main content</a>
-<div class="app-shell">
-<header class="topbar" role="banner">
-  <a href="/admin" class="topbar-logo"><img class="brand-mark" src="/static/favicon-light.png" alt="" width="28" height="28"><span class="topbar-wordmark">VayuPress</span><span class="topbar-sep">/</span><span class="topbar-domain">%s</span></a>
-  <div class="topbar-center"><div class="live-chip"><span class="live-dot"></span>LIVE</div><span class="topbar-constitution">Constitution v6.0 · P1–P27 · Ω1–Ω9</span></div>
-  <div class="topbar-right"><span class="mode-badge %s"><span class="pulse-dot"></span>%s</span><a href="/admin" class="kbd-hint">← Console</a></div>
-</header>
-<nav class="sidebar" aria-label="Admin navigation">
-  <div class="sidebar-section"><span class="sidebar-section-label">Core</span>%s%s%s%s</div>
-  <div class="sidebar-section"><span class="sidebar-section-label">Observe</span>%s%s%s%s</div>
-  <div class="sidebar-section"><span class="sidebar-section-label">Govern</span>%s%s%s%s</div>
-  <div class="sidebar-section"><span class="sidebar-section-label">System</span>%s%s</div>
-  <div class="sidebar-footer"><span class="sidebar-version">v%s</span><span class="sidebar-constitution">Ω1–Ω9 compliant</span></div>
-</nav>
-<main id="main-content">
-<div class="page-header"><div><div class="page-title">%s</div><div class="page-sub">%s</div></div><a href="/admin" class="btn">← Overview</a></div>`,
-		html.EscapeString(pageTitle),
-		render.AdminCSSLink(), render.HighContrastCSSLink(),
-		html.EscapeString(config.Cfg.Domain),
-		modeCls, html.EscapeString(modeLabel),
-		sidebarItem("/admin", "◈", "Overview", "overview", active, "", ""),
-		sidebarItem("/api/v1/articles", "◻", "Articles", "articles", active, "", ""),
-		sidebarItem("/api/v1/queue", "⟳", "Queue", "queue", active, "", ""),
-		sidebarItem("/admin/replay", "⟲", "Replay", "replay", active, "", ""),
-		sidebarItem("/api/v1/admin/outbox/events", "◎", "Events", "events", active, "", "s-ok"),
-		sidebarItem("/api/v1/admin/traces", "⋯", "Traces", "traces", active, "", ""),
-		sidebarItem("/admin/topology", "❖", "Topology", "topology", active, "", ""),
-		sidebarItem("/health/dependencies", "♥", "Health", "health", active, "", "s-ok"),
-		sidebarItem("/admin/faults", "⊞", "Fault Engine", "faults", active, "", ""),
-		sidebarItem("/admin/modes", "⬡", "System Modes", "modes", active, "", ""),
-		sidebarItem("/admin/adr", "≡", "ADRs", "adrs", active, "", ""),
-		sidebarItem("/admin/policy", "◈", "Policy Inspector", "policy", active, "", ""),
-		sidebarItem("/health/benchmarks", "⚡", "Benchmarks", "benchmarks", active, "", ""),
-		sidebarItem("/metrics", "∼", "Metrics", "metrics", active, "", ""),
-		Version,
-		html.EscapeString(pageTitle), html.EscapeString(pageSub),
-	)
+	cfg := a.getOSSettings(r.Context())
+	fmt.Fprint(w, adminOSShellHead(nonce, pageTitle, active, cfg))
+	fmt.Fprintf(w, `<div class="os-page-head"><div><h1 class="os-page-title">%s</h1><p class="os-page-sub">%s</p></div></div>`,
+		html.EscapeString(pageTitle), html.EscapeString(pageSub))
 	return nonce
 }
 
 func writeConsoleShellFoot(w http.ResponseWriter, nonce, script string) {
-	fmt.Fprintf(w, `</main></div>
-<div id="action-msg" role="status" aria-live="polite" class="action-msg" style="position:fixed;bottom:16px;right:16px;z-index:500;max-width:360px"></div>
-<script nonce="%s">
-(function(){'use strict';
-var msg=document.getElementById('action-msg');
-function csrf(){var m=document.cookie.split('; ').find(function(r){return r.startsWith('vp_csrf=');});return m?m.split('=')[1]:'';}
-window.vpPost=function(url,onok){fetch(url,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()}}).then(function(r){return r.json().then(function(d){return {ok:r.ok,d:d};});}).then(function(res){show(res.ok?(onok?onok(res.d):'ok'):(res.d.detail||res.d.title||'error'),!res.ok);if(res.ok)setTimeout(function(){location.reload();},650);}).catch(function(e){show('Error: '+e,true);});};
-function show(text,isErr){msg.textContent=text;msg.style.borderColor=isErr?'var(--error)':'var(--green)';msg.style.background=isErr?'rgba(239,68,68,.08)':'rgba(16,185,129,.08)';msg.classList.add('visible');}
-%s
-})();
-</script></body></html>`, nonce, script)
+	fmt.Fprint(w, adminOSShellFoot(nonce, script))
 }
 
 // =============================================================================

@@ -1,0 +1,197 @@
+/* signup.css — public reader/member signup page.
+   Uses the site theme tokens from /theme.css where available, with safe
+   fallbacks so the page looks premium even on a freshly-installed theme.
+   No inline styles (strict-CSP friendly). */
+
+:root {
+  --su-bg: var(--vp-bg, #0d0f14);
+  --su-surface: var(--vp-surface, #161922);
+  --su-surface-2: #1d212c;
+  --su-border: rgba(255, 255, 255, .08);
+  --su-text: var(--vp-text, #e8eaf0);
+  --su-muted: #9aa3b2;
+  --su-accent: var(--vp-accent, #6366f1);
+  --su-accent-2: #818cf8;
+  --su-ok: #10b981;
+  --su-err: #ef4444;
+  --su-font: var(--vp-font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
+}
+
+* { box-sizing: border-box; }
+
+.su-body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(1200px 600px at 50% -10%, rgba(99, 102, 241, .18), transparent 60%),
+    var(--su-bg);
+  color: var(--su-text);
+  font-family: var(--su-font);
+  -webkit-font-smoothing: antialiased;
+  display: flex;
+}
+
+.su-shell {
+  margin: auto;
+  width: 100%;
+  max-width: 30rem;
+  padding: 2.5rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+.su-card {
+  width: 100%;
+  background: linear-gradient(180deg, var(--su-surface-2), var(--su-surface));
+  border: 1px solid var(--su-border);
+  border-radius: 18px;
+  padding: 2.25rem 2rem 2rem;
+  box-shadow: 0 24px 60px -20px rgba(0, 0, 0, .65);
+}
+
+.su-brand {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  margin-bottom: 1.5rem;
+}
+
+.su-logo { border-radius: 9px; }
+
+.su-brand-name {
+  font-weight: 700;
+  font-size: 1.05rem;
+  letter-spacing: -.01em;
+}
+
+.su-title {
+  margin: 0 0 .4rem;
+  font-size: 1.7rem;
+  line-height: 1.1;
+  letter-spacing: -.02em;
+}
+
+.su-sub {
+  margin: 0 0 1.4rem;
+  color: var(--su-muted);
+  font-size: .95rem;
+  line-height: 1.55;
+}
+
+.su-notice {
+  margin: 0 0 1.1rem;
+  padding: .7rem .85rem;
+  border-radius: 10px;
+  font-size: .86rem;
+  line-height: 1.45;
+  border: 1px solid transparent;
+}
+
+.su-notice--ok {
+  color: #d1fae5;
+  background: rgba(16, 185, 129, .12);
+  border-color: rgba(16, 185, 129, .35);
+}
+
+.su-notice--err {
+  color: #fee2e2;
+  background: rgba(239, 68, 68, .12);
+  border-color: rgba(239, 68, 68, .35);
+}
+
+.su-form {
+  display: flex;
+  flex-direction: column;
+  gap: .6rem;
+  margin-bottom: 1.4rem;
+}
+
+.su-label {
+  font-size: .8rem;
+  font-weight: 600;
+  color: var(--su-muted);
+}
+
+.su-input {
+  width: 100%;
+  padding: .8rem .9rem;
+  font-size: .98rem;
+  color: var(--su-text);
+  background: var(--su-bg);
+  border: 1px solid var(--su-border);
+  border-radius: 11px;
+  outline: none;
+  transition: border-color .15s, box-shadow .15s;
+}
+
+.su-input:focus {
+  border-color: var(--su-accent);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, .25);
+}
+
+.su-btn {
+  margin-top: .25rem;
+  padding: .85rem 1rem;
+  font-size: 1rem;
+  font-weight: 650;
+  color: #fff;
+  background: linear-gradient(180deg, var(--su-accent-2), var(--su-accent));
+  border: 0;
+  border-radius: 11px;
+  cursor: pointer;
+  transition: filter .15s, transform .05s;
+}
+
+.su-btn:hover { filter: brightness(1.07); }
+.su-btn:active { transform: translateY(1px); }
+.su-btn:disabled { filter: saturate(.6) brightness(.9); cursor: default; }
+
+.su-perks {
+  list-style: none;
+  margin: 0 0 1.3rem;
+  padding: 1.1rem 0 0;
+  border-top: 1px solid var(--su-border);
+  display: flex;
+  flex-direction: column;
+  gap: .6rem;
+}
+
+.su-perks li {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  font-size: .9rem;
+  color: var(--su-text);
+}
+
+.su-perk-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--su-accent-2);
+  box-shadow: 0 0 0 4px rgba(99, 102, 241, .15);
+  flex: none;
+}
+
+.su-foot {
+  margin: 0;
+  font-size: .85rem;
+  color: var(--su-muted);
+}
+
+.su-link {
+  color: var(--su-accent-2);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.su-link:hover { text-decoration: underline; }
+
+.su-legal {
+  margin: 0;
+  font-size: .76rem;
+  color: var(--su-muted);
+  opacity: .8;
+}

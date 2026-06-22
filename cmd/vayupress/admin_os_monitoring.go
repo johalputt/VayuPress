@@ -142,11 +142,11 @@ func (a *App) handleOSMonitoring(w http.ResponseWriter, r *http.Request) {
 	}
 	consoles := `<div class="tools-cat">Deep operator consoles</div>
 <div class="tools-grid">` +
-		link("/admin/modes", "Mode transitions", "Drive the system-mode state machine and review the transition journal.") +
-		link("/admin/topology", "Topology", "Subsystem dependency graph and live component health.") +
-		link("/admin/faults", "Fault simulation", "Inject controlled faults to exercise recovery (non-production).") +
-		link("/admin/replay", "Replay", "Dead-letter inspection and safe job replay.") +
-		link("/admin/adr", "ADR registry", "Browse the architecture decision record index.") +
+		link("/os/modes", "Mode transitions", "Drive the system-mode state machine and review the transition journal.") +
+		link("/os/topology", "Topology", "Subsystem dependency graph and live component health.") +
+		link("/os/faults", "Fault simulation", "Inject controlled faults to exercise recovery (non-production).") +
+		link("/os/replay", "Replay", "Dead-letter inspection and safe job replay.") +
+		link("/os/adr", "ADR registry", "Browse the architecture decision record index.") +
 		`</div>`
 
 	body := `<div class="page-header">

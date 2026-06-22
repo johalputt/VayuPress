@@ -54,3 +54,25 @@ func legacyRedirect() http.HandlerFunc {
 		http.Redirect(w, r, target, http.StatusMovedPermanently)
 	}
 }
+
+// operatorLegacyRedirect 301-redirects a legacy operator-console page URL
+// (/admin/modes, /admin/policy, /admin/topology, /admin/replay, /admin/faults,
+// /admin/adr) to its VayuOS equivalent under /os. The operator consoles now
+// live inside the single VayuOS shell; only the page URLs moved (the POST
+// control endpoints under /admin/* are unchanged).
+func operatorLegacyRedirect() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		target := "/os/" + strings.TrimPrefix(r.URL.Path, "/admin/")
+		logging.LogJSON(logging.LogFields{
+			Level:      "warn",
+			Severity:   "warning",
+			Component:  "admin-legacy",
+			Method:     r.Method,
+			Path:       r.URL.Path,
+			RemoteAddr: r.RemoteAddr,
+			UserAgent:  r.UserAgent(),
+			Msg:        "deprecated operator route used; permanently redirecting to VayuOS (" + target + ")",
+		})
+		http.Redirect(w, r, target, http.StatusMovedPermanently)
+	}
+}

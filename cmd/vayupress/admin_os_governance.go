@@ -158,8 +158,8 @@ func (a *App) handleOSGovernance(w http.ResponseWriter, r *http.Request) {
 	}
 	consoles := `<div class="tools-cat">Deep operator consoles</div>
 <div class="tools-grid">` +
-		link("/admin/modes", "Mode transitions", "Drive the system-mode state machine and review the full journal.") +
-		link("/admin/policy", "Policy provenance", "Per-policy evaluation log, run history and trend analysis.") +
+		link("/os/modes", "Mode transitions", "Drive the system-mode state machine and review the full journal.") +
+		link("/os/policy", "Policy provenance", "Per-policy evaluation log, run history and trend analysis.") +
 		`</div>`
 
 	body := `<div class="page-header">

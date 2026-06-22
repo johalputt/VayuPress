@@ -85,6 +85,7 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 		"high-contrast.css": "high-contrast.css",
 		"pico.min.css":      "pico.min.css",
 		"custom.css":        "custom.css",
+		"signup.css":        "signup.css",
 	}
 	r.Get("/static/css/{file}", func(w http.ResponseWriter, r *http.Request) {
 		canon, ok := cssAllowlist[chi.URLParam(r, "file")]
@@ -134,6 +135,7 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	r.Get("/api/v1/openapi.json", a.handleOpenAPISpec)
 
 	// Reader memberships (Tier 2) — public passwordless login + paywall.
+	r.Get("/signup", a.handleMemberSignup)
 	r.Post("/api/v1/members/login", a.handleMemberLogin)
 	r.Post("/members/login", a.handleMemberLogin) // HTML form variant from the paywall
 	r.Get("/members/verify", a.handleMemberVerify)
@@ -240,18 +242,27 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 		r.With(auth.CSRFTokenMiddleware).Post("/api/v1/admin/budgets/ack", a.handleGovernanceBudgetAck)
 
 		// The classic console root permanently redirects to VayuOS (ADR-0069
-		// Stage 3). The operator console sub-pages below (modes, faults, …) keep
-		// their own lifecycle and are always reachable.
+		// Stage 3). The operator consoles now live inside the single VayuOS shell
+		// under /os/*; the legacy /admin/* page URLs 301-redirect to them.
 		r.Get("/admin", legacyRedirect())
-		r.Get("/admin/adr", a.handleAdminADR)
 		r.Get("/admin/backup/validate", a.handleAdminBackupValidate)
 
-		// Interactive operator console pages (Ω9).
-		r.Get("/admin/modes", a.handleModesPage)
-		r.Get("/admin/faults", a.handleFaultPage)
-		r.Get("/admin/topology", a.handleTopologyPage)
-		r.Get("/admin/replay", a.handleReplayPage)
-		r.Get("/admin/policy", a.handlePolicyPage)
+		// Interactive operator consoles (Ω9–Ω11), rendered in the VayuOS shell.
+		r.Get("/os/modes", a.handleModesPage)
+		r.Get("/os/faults", a.handleFaultPage)
+		r.Get("/os/topology", a.handleTopologyPage)
+		r.Get("/os/replay", a.handleReplayPage)
+		r.Get("/os/policy", a.handlePolicyPage)
+		r.Get("/os/adr", a.handleAdminADR)
+
+		// Legacy /admin/* operator page URLs 301-redirect into VayuOS (/os/*).
+		opsRedirect := operatorLegacyRedirect()
+		r.Get("/admin/modes", opsRedirect)
+		r.Get("/admin/faults", opsRedirect)
+		r.Get("/admin/topology", opsRedirect)
+		r.Get("/admin/replay", opsRedirect)
+		r.Get("/admin/policy", opsRedirect)
+		r.Get("/admin/adr", opsRedirect)
 
 		r.With(auth.CSRFTokenMiddleware).Post("/admin/benchmark", a.handleRunBenchmark)
 		r.With(auth.CSRFTokenMiddleware).Post("/admin/cache-purge", a.handleAdminCachePurge)
