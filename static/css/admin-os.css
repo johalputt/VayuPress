@@ -1034,6 +1034,15 @@
 /* ── Settings forms ──────────────────────────────────────────── */
 .vp-os .settings-grid { display: grid; grid-template-columns: 280px 1fr; gap: var(--sp-8); align-items: start; }
 .vp-os .settings-section { display: flex; flex-direction: column; gap: var(--sp-6); }
+.vp-os .settings-save-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--sp-4);
+  padding: var(--sp-4) 0 0;
+  margin-top: var(--sp-6);
+  border-top: 1px solid var(--border);
+}
 .vp-os .settings-block { display: flex; flex-direction: column; gap: var(--sp-4); }
 .vp-os .settings-block-title { font-size: var(--text-sm); font-weight: 600; color: var(--text-2); padding-bottom: var(--sp-3); border-bottom: 1px solid var(--border); margin-bottom: var(--sp-1); }
 .vp-os .settings-row { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-6); padding: var(--sp-3) 0; }

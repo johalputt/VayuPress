@@ -1057,19 +1057,29 @@ func (a *App) handleOSSettings(w http.ResponseWriter, r *http.Request) {
 	body := `<div class="page-header">
   <h1>Settings</h1>
   <div class="page-actions">
-    <span id="settings-status" class="text-xs muted" aria-live="polite"></span>
+    <span id="settings-status" role="status" aria-live="polite" class="text-xs muted"></span>
     <button type="button" class="btn btn--primary btn--sm" id="settings-save-btn">Save changes</button>
   </div>
 </div>
 <nav class="tab-list" aria-label="Settings sections">` + tabHTML + `</nav>
-<div class="card">` + groupBody + `</div>
-<script nonce="` + nonce + `">
-(function(){'use strict';
-var btn=document.getElementById('settings-save-btn');
+<div class="card">
+  ` + groupBody + `
+  <div class="settings-save-bar">
+    <span id="settings-status-bar" role="status" aria-live="polite" class="text-xs muted"></span>
+    <button type="button" class="btn btn--primary btn--sm" id="settings-save-bar-btn">Save changes</button>
+  </div>
+</div>`
+
+	saveScript := `var saveBtn=document.getElementById('settings-save-btn');
+var saveBtnBar=document.getElementById('settings-save-bar-btn');
 var statusEl=document.getElementById('settings-status');
-function csrf(){var m=document.cookie.split('; ').find(function(r){return r.startsWith('vp_csrf=');});return m?m.split('=')[1]:'';}
-function setStatus(t,isErr){if(!statusEl)return;statusEl.textContent=t;statusEl.style.color=isErr?'var(--color-danger)':'var(--color-success)';}
-if(btn){btn.addEventListener('click',function(){
+var statusBar=document.getElementById('settings-status-bar');
+function setStatus(t,isErr){
+  var c=isErr?'var(--color-danger,#ef4444)':'var(--color-success,#22c55e)';
+  if(statusEl){statusEl.textContent=t;statusEl.style.color=c;}
+  if(statusBar){statusBar.textContent=t;statusBar.style.color=c;}
+}
+function doSave(){
   var fields=document.querySelectorAll('[data-setting-key]');
   var pairs=[];
   fields.forEach(function(el){
@@ -1078,7 +1088,8 @@ if(btn){btn.addEventListener('click',function(){
     pairs.push({key:key,value:val});
   });
   if(!pairs.length){setStatus('Nothing to save',false);return;}
-  btn.disabled=true;
+  if(saveBtn)saveBtn.disabled=true;
+  if(saveBtnBar)saveBtnBar.disabled=true;
   setStatus('Saving…',false);
   var c=csrf();
   Promise.all(pairs.map(function(p){
@@ -1086,17 +1097,22 @@ if(btn){btn.addEventListener('click',function(){
       .then(function(r){if(!r.ok)throw new Error(p.key);});
   })).then(function(){
     setStatus('Saved',false);
-    btn.disabled=false;
+    if(saveBtn)saveBtn.disabled=false;
+    if(saveBtnBar)saveBtnBar.disabled=false;
     if(window.vpToast)window.vpToast('Settings saved','ok');
   }).catch(function(e){
-    setStatus('Error saving: '+e.message,true);
-    btn.disabled=false;
+    setStatus('Error: '+e.message,true);
+    if(saveBtn)saveBtn.disabled=false;
+    if(saveBtnBar)saveBtnBar.disabled=false;
   });
-});}
-})();
-</script>`
+}
+if(saveBtn)saveBtn.addEventListener('click',doSave);
+if(saveBtnBar)saveBtnBar.addEventListener('click',doSave);`
 
-	writeOSHTML(w, adminOSLayout(nonce, "Settings", "settings", cfg, htmpl.HTML(body)))
+	fullHTML := adminOSShellHead(nonce, "Settings", "settings", cfg) +
+		renderTrustedHTML(htmpl.HTML(body)) +
+		adminOSShellFoot(nonce, saveScript)
+	writeOSHTML(w, fullHTML)
 }
 
 func osSettingsGeneral(ctx context.Context, ss *settings.Store) string {

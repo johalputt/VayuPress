@@ -530,12 +530,18 @@ server {
     ssl_stapling        on;
     ssl_stapling_verify on;
 
-    # Security headers — CSP is set per-request by VayuPress with a nonce
+    # Security headers (Prompt 9 / P9 compliance):
+    # Content-Security-Policy is set per-request by VayuPress with a per-request nonce;
+    # do NOT set a static CSP here — it would conflict with the nonce and break scripts.
+    # X-XSS-Protection is a legacy IE header; included for defence-in-depth on older clients.
+    # Rate limiting (rateLimit) is enforced via limit_req in the API and admin locations below.
     add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
     add_header X-Content-Type-Options    "nosniff" always;
     add_header X-Frame-Options           "SAMEORIGIN" always;
+    add_header X-XSS-Protection          "1; mode=block" always;
     add_header Referrer-Policy           "strict-origin-when-cross-origin" always;
     add_header Permissions-Policy        "camera=(), microphone=(), geolocation=(), payment=()" always;
+    # Content-Security-Policy: injected by VayuPress middleware with per-request nonce
 
     proxy_pass_header X-CSRF-Token;
 
