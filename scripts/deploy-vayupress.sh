@@ -73,11 +73,8 @@ STORAGE_QUOTA_GB=200          # alert threshold in GB for data directory
 MEILI_DIR="/var/lib/meilisearch"
 MEILI_MASTER_KEY=""           # set a strong random value: openssl rand -hex 32
 
-# Go toolchain
-GO_VERSION="1.23.0"
-GO_TARBALL="go${GO_VERSION}.linux-amd64.tar.gz"
-GO_URL="https://go.dev/dl/${GO_TARBALL}"
-GO_SHA256="c9c08b1c4c34c70ebe5b3396beba93af8e3e0fc6261ce28fb038c9c4e67af060"
+# Go toolchain — version resolved dynamically; pin here only if you need a specific release
+GO_VERSION=""   # leave empty to auto-select latest stable
 
 # =============================================================================
 # ── HELPERS ───────────────────────────────────────────────────────────────────
@@ -181,11 +178,63 @@ ok "System packages installed."
 # ── GO TOOLCHAIN ──────────────────────────────────────────────────────────────
 # =============================================================================
 
+# Resolve Go version and checksum from the official download API (no hardcoded hash)
+_resolve_go_version() {
+  # Fetch the latest stable version string (e.g. "go1.24.3") from the Go download API
+  local latest
+  latest=$(curl -fsSL "https://go.dev/dl/?mode=json&include=all" \
+    | python3 -c "
+import json,sys
+releases = json.load(sys.stdin)
+# pick the newest stable release for linux/amd64
+for r in releases:
+    if r.get('stable'):
+        print(r['version'])
+        break
+" 2>/dev/null || true)
+  echo "${latest#go}"   # strip leading "go" → "1.24.3"
+}
+
+_go_sha256() {
+  local ver="$1"
+  local target="go${ver}.linux-amd64.tar.gz"
+  curl -fsSL "https://go.dev/dl/?mode=json&include=all" \
+    | python3 -c "
+import json,sys
+target = sys.argv[1]
+releases = json.load(sys.stdin)
+for r in releases:
+    for f in r.get('files',[]):
+        if f.get('filename') == target:
+            print(f.get('sha256',''))
+            sys.exit(0)
+" "$target" 2>/dev/null || true
+}
+
+if [[ -z "$GO_VERSION" ]]; then
+  info "Resolving latest stable Go version..."
+  GO_VERSION=$(_resolve_go_version)
+  [[ -z "$GO_VERSION" ]] && die "Could not determine latest Go version from go.dev/dl — check network."
+  info "Latest stable Go: ${GO_VERSION}"
+fi
+
+GO_TARBALL="go${GO_VERSION}.linux-amd64.tar.gz"
+GO_URL="https://go.dev/dl/${GO_TARBALL}"
+
 INSTALLED_GO=$(go version 2>/dev/null | awk '{print $3}' || true)
 if [[ "$INSTALLED_GO" == "go${GO_VERSION}" ]]; then
   ok "Go ${GO_VERSION} already installed — skipping."
 else
   info "Installing Go ${GO_VERSION}..."
+
+  # Fetch expected SHA256 from the Go download API (authoritative source)
+  info "Fetching checksum for ${GO_TARBALL} from go.dev..."
+  GO_SHA256=$(_go_sha256 "${GO_VERSION}")
+  if [[ -z "$GO_SHA256" ]]; then
+    die "Could not fetch SHA256 for ${GO_TARBALL} from go.dev — abort."
+  fi
+  info "Expected SHA256: ${GO_SHA256}"
+
   run curl -fsSL -o "/tmp/${GO_TARBALL}" "${GO_URL}"
   ACTUAL_SHA=$(sha256sum "/tmp/${GO_TARBALL}" | awk '{print $1}')
   if [[ "$ACTUAL_SHA" != "$GO_SHA256" ]]; then
