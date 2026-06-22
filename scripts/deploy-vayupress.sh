@@ -73,8 +73,9 @@ STORAGE_QUOTA_GB=200          # alert threshold in GB for data directory
 MEILI_DIR="/var/lib/meilisearch"
 MEILI_MASTER_KEY=""           # set a strong random value: openssl rand -hex 32
 
-# Go toolchain — version resolved dynamically; pin here only if you need a specific release
-GO_VERSION=""   # leave empty to auto-select latest stable
+# Go toolchain — minimum acceptable major.minor (patch is irrelevant)
+GO_MIN_MAJOR=1
+GO_MIN_MINOR=22   # VayuPress requires Go 1.22+; any patch release is fine
 
 # =============================================================================
 # ── HELPERS ───────────────────────────────────────────────────────────────────
@@ -178,73 +179,114 @@ ok "System packages installed."
 # ── GO TOOLCHAIN ──────────────────────────────────────────────────────────────
 # =============================================================================
 
-# Resolve Go version and checksum from the official download API (no hardcoded hash)
-_resolve_go_version() {
-  # Fetch the latest stable version string (e.g. "go1.24.3") from the Go download API
-  local latest
-  latest=$(curl -fsSL "https://go.dev/dl/?mode=json&include=all" \
-    | python3 -c "
-import json,sys
-releases = json.load(sys.stdin)
-# pick the newest stable release for linux/amd64
-for r in releases:
-    if r.get('stable'):
-        print(r['version'])
-        break
-" 2>/dev/null || true)
-  echo "${latest#go}"   # strip leading "go" → "1.24.3"
+# ── Go toolchain install ──────────────────────────────────────────────────────
+#
+# Strategy (patch-version-agnostic, no hardcoded hashes):
+#   1. If `go` is already installed and meets the minimum major.minor, keep it.
+#   2. Otherwise fetch the latest stable release + its SHA256 from the official
+#      go.dev/dl JSON API — the same place Go publishes authoritative checksums.
+#   3. Verify the downloaded tarball against that API-sourced SHA256.
+#   4. Fallback: if the API is unreachable and no acceptable Go is installed,
+#      abort with a clear message rather than installing an unverified binary.
+#
+# No SHA256 is ever hardcoded; no patch version is ever pinned.
+
+_go_meets_minimum() {
+  # Returns 0 (true) if the installed go version >= GO_MIN_MAJOR.GO_MIN_MINOR
+  local ver
+  ver=$(go version 2>/dev/null | awk '{print $3}') || return 1
+  ver="${ver#go}"   # "1.24.3"
+  local major minor
+  major=$(echo "$ver" | cut -d. -f1)
+  minor=$(echo "$ver" | cut -d. -f2)
+  [[ "$major" -gt "$GO_MIN_MAJOR" ]] && return 0
+  [[ "$major" -eq "$GO_MIN_MAJOR" && "$minor" -ge "$GO_MIN_MINOR" ]] && return 0
+  return 1
 }
 
-_go_sha256() {
-  local ver="$1"
-  local target="go${ver}.linux-amd64.tar.gz"
-  curl -fsSL "https://go.dev/dl/?mode=json&include=all" \
+_go_fetch_release_json() {
+  # Fetch and cache the go.dev release JSON once per script run
+  if [[ -z "${_GO_RELEASE_JSON:-}" ]]; then
+    _GO_RELEASE_JSON=$(curl -fsSL --max-time 15 \
+      "https://go.dev/dl/?mode=json" 2>/dev/null || true)
+  fi
+  echo "$_GO_RELEASE_JSON"
+}
+
+_go_latest_version() {
+  # Returns the latest stable version string without the "go" prefix, e.g. "1.24.3"
+  _go_fetch_release_json \
     | python3 -c "
 import json,sys
-target = sys.argv[1]
-releases = json.load(sys.stdin)
+data = sys.stdin.read().strip()
+if not data: sys.exit(1)
+releases = json.loads(data)
 for r in releases:
+    if r.get('stable'):
+        print(r['version'].lstrip('go'))
+        sys.exit(0)
+sys.exit(1)
+" 2>/dev/null || true
+}
+
+_go_sha256_for() {
+  # Returns the official SHA256 for go<ver>.linux-amd64.tar.gz
+  local ver="$1" target="go${1}.linux-amd64.tar.gz"
+  _go_fetch_release_json \
+    | python3 -c "
+import json,sys
+target, data = sys.argv[1], sys.stdin.read().strip()
+if not data: sys.exit(1)
+for r in json.loads(data):
     for f in r.get('files',[]):
         if f.get('filename') == target:
             print(f.get('sha256',''))
             sys.exit(0)
+sys.exit(1)
 " "$target" 2>/dev/null || true
 }
 
-if [[ -z "$GO_VERSION" ]]; then
-  info "Resolving latest stable Go version..."
-  GO_VERSION=$(_resolve_go_version)
-  [[ -z "$GO_VERSION" ]] && die "Could not determine latest Go version from go.dev/dl — check network."
-  info "Latest stable Go: ${GO_VERSION}"
-fi
-
-GO_TARBALL="go${GO_VERSION}.linux-amd64.tar.gz"
-GO_URL="https://go.dev/dl/${GO_TARBALL}"
-
-INSTALLED_GO=$(go version 2>/dev/null | awk '{print $3}' || true)
-if [[ "$INSTALLED_GO" == "go${GO_VERSION}" ]]; then
-  ok "Go ${GO_VERSION} already installed — skipping."
+# ── Decision: install or skip ─────────────────────────────────────────────────
+if _go_meets_minimum; then
+  INSTALLED_VER=$(go version | awk '{print $3}')
+  ok "Go ${INSTALLED_VER} already satisfies >= ${GO_MIN_MAJOR}.${GO_MIN_MINOR} — skipping install."
 else
-  info "Installing Go ${GO_VERSION}..."
+  info "No suitable Go found. Resolving latest stable release from go.dev..."
 
-  # Fetch expected SHA256 from the Go download API (authoritative source)
-  info "Fetching checksum for ${GO_TARBALL} from go.dev..."
-  GO_SHA256=$(_go_sha256 "${GO_VERSION}")
-  if [[ -z "$GO_SHA256" ]]; then
-    die "Could not fetch SHA256 for ${GO_TARBALL} from go.dev — abort."
+  GO_VERSION=$(_go_latest_version)
+  if [[ -z "$GO_VERSION" ]]; then
+    die "Could not reach go.dev/dl to resolve the latest Go version. \
+Check network connectivity and retry."
   fi
-  info "Expected SHA256: ${GO_SHA256}"
+  info "Will install Go ${GO_VERSION}."
 
-  run curl -fsSL -o "/tmp/${GO_TARBALL}" "${GO_URL}"
+  GO_TARBALL="go${GO_VERSION}.linux-amd64.tar.gz"
+  GO_URL="https://go.dev/dl/${GO_TARBALL}"
+
+  info "Fetching authoritative SHA256 for ${GO_TARBALL} from go.dev..."
+  GO_SHA256=$(_go_sha256_for "$GO_VERSION")
+  if [[ -z "$GO_SHA256" ]]; then
+    die "go.dev returned no SHA256 for ${GO_TARBALL}. \
+The version may not yet be indexed — retry in a few minutes."
+  fi
+
+  info "Downloading ${GO_URL}..."
+  run curl -fsSL --max-time 120 -o "/tmp/${GO_TARBALL}" "${GO_URL}"
+
   ACTUAL_SHA=$(sha256sum "/tmp/${GO_TARBALL}" | awk '{print $1}')
   if [[ "$ACTUAL_SHA" != "$GO_SHA256" ]]; then
-    die "Go tarball SHA256 mismatch! expected=${GO_SHA256} got=${ACTUAL_SHA}"
+    rm -f "/tmp/${GO_TARBALL}"
+    die "SHA256 mismatch for ${GO_TARBALL}:
+  expected (go.dev): ${GO_SHA256}
+  actual   (disk):   ${ACTUAL_SHA}
+The file may be corrupt or tampered — aborting."
   fi
+
   run rm -rf /usr/local/go
   run tar -C /usr/local -xzf "/tmp/${GO_TARBALL}"
-  run rm -f "/tmp/${GO_TARBALL}"
+  rm -f "/tmp/${GO_TARBALL}"
   export PATH="/usr/local/go/bin:${PATH}"
-  ok "Go ${GO_VERSION} installed."
+  ok "Go ${GO_VERSION} installed and verified."
 fi
 
 export PATH="/usr/local/go/bin:${PATH}"
