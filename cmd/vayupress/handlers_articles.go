@@ -83,6 +83,12 @@ func (a *App) handleGetArticle(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, api.HTTPStatus(err), api.ErrorCode(err), err.Error(), docsArticles)
 		return
 	}
+	// Drafts are visible only to authenticated operators; to anyone else a draft
+	// must be indistinguishable from a non-existent article (no content leak).
+	if art.Status == "draft" && !a.isAdminRequest(r) {
+		writeAPIError(w, r, http.StatusNotFound, "not_found", "article not found", docsArticles)
+		return
+	}
 	writeJSON(w, r, 200, art)
 }
 

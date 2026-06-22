@@ -153,11 +153,21 @@ func processOneJob(workerID int) (empty bool) {
 		return false
 	}
 	if job.Op != "delete" && RenderFn != nil {
-		html, err := RenderFn(a)
-		if err != nil {
-			logging.LogError("worker", "render error for "+a.Slug, err.Error())
-		} else {
-			cacheWriteFn(fmt.Sprintf("posts/%s.html", a.Slug), html)
+		// Never write a draft's HTML to the public disk cache — the article page
+		// serves the cache file before its status check, so a cached draft would
+		// be publicly readable. Read the authoritative status of the row we just
+		// wrote; only published articles are pre-rendered into the cache.
+		var status string
+		if err := dbpkg.DB.QueryRow(`SELECT COALESCE(status,'published') FROM articles WHERE slug=?`, a.Slug).Scan(&status); err != nil {
+			status = "published" // row missing/unknown — fall back to prior behaviour
+		}
+		if status == "published" {
+			html, err := RenderFn(a)
+			if err != nil {
+				logging.LogError("worker", "render error for "+a.Slug, err.Error())
+			} else {
+				cacheWriteFn(fmt.Sprintf("posts/%s.html", a.Slug), html)
+			}
 		}
 	}
 	dbpkg.DB.Exec(`UPDATE write_jobs SET status='completed' WHERE id=?`, job.ID)

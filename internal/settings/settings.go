@@ -17,7 +17,8 @@ const (
 	KeySiteDescription = "site.description"
 	KeySiteAuthor      = "site.author"
 	// KeyMembershipButtons shows the public Sign in / Sign up buttons in the
-	// homepage nav. Unlike feature flags it defaults OFF — only "on" enables it.
+	// homepage nav. Unlike feature flags it defaults OFF — only the string
+	// "true" (as written by the settings toggle) enables it.
 	KeyMembershipButtons = "site.membership_buttons"
 
 	KeyThemePrimaryLight = "theme.primary_light"

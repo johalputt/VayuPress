@@ -110,9 +110,10 @@ func (a *App) handleCommentSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Resolve article ID from slug.
+	// Resolve article ID from slug. Drafts are not public, so commenting on one
+	// returns the same not-found as a non-existent slug (no existence leak).
 	var articleID string
-	if err := dbpkg.DB.QueryRowContext(r.Context(), `SELECT id FROM articles WHERE slug=?`, slug).Scan(&articleID); err != nil {
+	if err := dbpkg.DB.QueryRowContext(r.Context(), `SELECT id FROM articles WHERE slug=? AND COALESCE(status,'published')='published'`, slug).Scan(&articleID); err != nil {
 		writeAPIError(w, r, http.StatusNotFound, "article-not-found", "No article with that slug", "")
 		return
 	}
@@ -137,8 +138,9 @@ func (a *App) handleCommentList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slug := chi.URLParam(r, "slug")
+	// Drafts are not public — listing comments for one returns not-found.
 	var articleID string
-	if err := dbpkg.DB.QueryRowContext(r.Context(), `SELECT id FROM articles WHERE slug=?`, slug).Scan(&articleID); err != nil {
+	if err := dbpkg.DB.QueryRowContext(r.Context(), `SELECT id FROM articles WHERE slug=? AND COALESCE(status,'published')='published'`, slug).Scan(&articleID); err != nil {
 		writeAPIError(w, r, http.StatusNotFound, "article-not-found", "No article with that slug", "")
 		return
 	}
