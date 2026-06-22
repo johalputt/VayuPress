@@ -173,6 +173,10 @@ type SiteSettings struct {
 	// NavJSON is the raw JSON array of {label,href} nav items configured by the
 	// operator. Empty means render the built-in default links.
 	NavJSON string
+
+	// CommentsEnabled mirrors the feature.comments flag so the article template
+	// can render (or omit) the public comment widget.
+	CommentsEnabled bool
 }
 
 // NavItem is a single public navigation link (label + destination).
@@ -386,6 +390,60 @@ func VideoFacadeJSLink() template.HTML {
 	return template.HTML(`<script src="/static/js/video-facade.js?v=` + videoFacadeJSHash + `" defer></script>`)
 }
 
+// CommentsJS is the public comment widget. It loads approved comments for the
+// article (GET) and posts new ones (POST) against the same-origin public API,
+// building all DOM via createElement/textContent so it satisfies a strict CSP
+// (script-src 'self', no inline, no eval). New comments enter a moderation
+// queue, so the form reports "awaiting moderation" on success.
+const CommentsJS = `(function(){` +
+	`var root=document.getElementById('vayu-comments');if(!root)return;` +
+	`var slug=root.getAttribute('data-slug');if(!slug)return;` +
+	`var listEl=document.createElement('div');listEl.className='vayu-comment-list';` +
+	`function esc(t){return t==null?'':String(t);}` +
+	`function fmt(d){try{return new Date(d).toLocaleDateString();}catch(e){return '';}}` +
+	`function render(items){` +
+	`while(listEl.firstChild)listEl.removeChild(listEl.firstChild);` +
+	`if(!items||!items.length){var p=document.createElement('p');p.className='vayu-comment-empty';p.textContent='No comments yet. Be the first.';listEl.appendChild(p);return;}` +
+	`items.forEach(function(c){` +
+	`var card=document.createElement('div');card.className='vayu-comment';` +
+	`var meta=document.createElement('div');meta.className='vayu-comment-meta';` +
+	`var who=document.createElement('span');who.className='vayu-comment-author';who.textContent=esc(c.author)||'Anonymous';` +
+	`var when=document.createElement('span');when.className='vayu-comment-date';when.textContent=fmt(c.created_at);` +
+	`meta.appendChild(who);meta.appendChild(when);` +
+	`var body=document.createElement('p');body.className='vayu-comment-body';body.textContent=esc(c.body);` +
+	`card.appendChild(meta);card.appendChild(body);listEl.appendChild(card);});}` +
+	`function load(){fetch('/api/v1/articles/'+encodeURIComponent(slug)+'/comments',{headers:{'Accept':'application/json'}})` +
+	`.then(function(r){return r.ok?r.json():{comments:[]};}).then(function(d){render(d.comments||[]);}).catch(function(){render([]);});}` +
+	`var h=document.createElement('h2');h.className='vayu-comment-heading';h.textContent='Comments';` +
+	`var form=document.createElement('form');form.className='vayu-comment-form';form.setAttribute('novalidate','');` +
+	`function field(ph,type,req){var i=document.createElement(type==='textarea'?'textarea':'input');if(type!=='textarea')i.type=type;i.placeholder=ph;if(req)i.required=true;i.className='vayu-comment-input';return i;}` +
+	`var nameI=field('Your name','text',true);` +
+	`var mailI=field('Email (optional, never shown)','email',false);` +
+	`var bodyI=field('Write a comment…','textarea',true);` +
+	`var btn=document.createElement('button');btn.type='submit';btn.className='vayu-comment-submit';btn.textContent='Post comment';` +
+	`var status=document.createElement('span');status.className='vayu-comment-status';status.setAttribute('role','status');` +
+	`form.appendChild(nameI);form.appendChild(mailI);form.appendChild(bodyI);` +
+	`var actions=document.createElement('div');actions.className='vayu-comment-actions';actions.appendChild(btn);actions.appendChild(status);form.appendChild(actions);` +
+	`form.addEventListener('submit',function(e){e.preventDefault();` +
+	`if(!nameI.value.trim()||!bodyI.value.trim()){status.textContent='Name and comment are required.';return;}` +
+	`btn.disabled=true;status.textContent='Posting…';` +
+	`fetch('/api/v1/articles/'+encodeURIComponent(slug)+'/comments',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({author:nameI.value.trim(),email:mailI.value.trim(),body:bodyI.value.trim()})})` +
+	`.then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d};});})` +
+	`.then(function(res){btn.disabled=false;if(res.ok){nameI.value='';mailI.value='';bodyI.value='';status.textContent='Thanks! Your comment is awaiting moderation.';}else{status.textContent=(res.d&&(res.d.error&&(res.d.error.message||res.d.error)||res.d.message))||'Could not post comment.';}})` +
+	`.catch(function(){btn.disabled=false;status.textContent='Network error — please try again.';});});` +
+	`root.appendChild(h);root.appendChild(listEl);root.appendChild(form);load();` +
+	`})();`
+
+var commentsJSHash = func() string {
+	sum := sha256.Sum256([]byte(CommentsJS))
+	return hex.EncodeToString(sum[:8])
+}()
+
+// CommentsJSLink returns the <script> tag for the public comment widget.
+func CommentsJSLink() template.HTML {
+	return template.HTML(`<script src="/static/js/comments.js?v=` + commentsJSHash + `" defer></script>`)
+}
+
 // headMetaHTML renders the declarative <head> capabilities to a safe, escaped
 // allowlist of <meta> tags. Values are validated on write (hex/token/allowlist)
 // and HTML-escaped here — defense in depth. No arbitrary operator markup ever
@@ -423,7 +481,9 @@ type articlePage struct {
 	HeadMeta            template.HTML
 	ThemeToggleJSLink   template.HTML
 	VideoFacadeJSLink   template.HTML
+	CommentsJSLink      template.HTML
 	NavLinks            template.HTML
+	CommentsEnabled     bool
 	SiteName            string
 	Author              string
 	// SEO fields computed by internal/seo
@@ -635,11 +695,12 @@ var articleTmpl = template.Must(template.New("article").Funcs(template.FuncMap{
 <h2 class="vayu-related-heading">Related articles</h2>
 <ul class="vayu-related-list">{{range .Related}}<li><a href="/{{.Slug}}">{{.Title}}</a> <time>{{.CreatedAt | humanDate}}</time></li>{{end}}</ul>
 </section>{{end}}
+{{if .CommentsEnabled}}<section id="vayu-comments" class="vayu-comments" data-slug="{{.Slug}}" aria-label="Comments"></section>{{end}}
 <footer class="vayu-footer">
   <span>By <strong>{{if .Author}}{{.Author}}{{else}}Ankush Choudhary Johal{{end}}</strong> · Powered by <a href="https://vayupress.com">VayuPress</a></span>
   <span class="vayu-footer-badge">runtime · governed</span>
 </footer>
-</main></div></body></html>`))
+</main></div>{{if .CommentsEnabled}}{{.CommentsJSLink}}{{end}}</body></html>`))
 
 // HomeArticle is a single entry rendered on the public homepage index.
 type HomeArticle struct {
@@ -825,7 +886,9 @@ func RenderArticleWithLayout(a db.Article, layout ArticleLayoutType, related []R
 		HeadMeta:            headMetaHTML(s),
 		ThemeToggleJSLink:   ThemeToggleJSLink(),
 		VideoFacadeJSLink:   VideoFacadeJSLink(),
+		CommentsJSLink:      CommentsJSLink(),
 		NavLinks:            navLinksHTML(s.NavJSON),
+		CommentsEnabled:     s.CommentsEnabled,
 		SiteName:            s.Name,
 		Author:              s.Author,
 		SEODescription:      seoMeta.Description,

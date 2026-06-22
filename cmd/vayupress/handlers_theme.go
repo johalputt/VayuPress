@@ -149,6 +149,14 @@ func (a *App) handleVideoFacadeJS(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, render.VideoFacadeJS)
 }
 
+// handleCommentsJS serves the public comment widget script.
+// Same-origin static asset → satisfies `script-src 'self'` without a nonce.
+func (a *App) handleCommentsJS(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	fmt.Fprint(w, render.CommentsJS)
+}
+
 // handleThemeGet renders the admin theme-editor page.
 func (a *App) handleThemeGet(w http.ResponseWriter, r *http.Request) {
 	vals, err := a.siteSettings.GetAll(r.Context())
@@ -228,22 +236,23 @@ func (a *App) handleThemeReset(w http.ResponseWriter, r *http.Request) {
 
 	if newVals, err := a.siteSettings.GetAll(r.Context()); err == nil {
 		render.SetActiveSettings(render.SiteSettings{
-			Name:           newVals[settings.KeySiteName],
-			Tagline:        newVals[settings.KeySiteTagline],
-			Description:    newVals[settings.KeySiteDescription],
-			Author:         newVals[settings.KeySiteAuthor],
-			ShowMembership: newVals[settings.KeyMembershipButtons] == "true",
-			PrimaryLight:   newVals[settings.KeyThemePrimaryLight],
-			PrimaryDark:    newVals[settings.KeyThemePrimaryDark],
-			AccentLight:    newVals[settings.KeyThemeAccentLight],
-			AccentDark:     newVals[settings.KeyThemeAccentDark],
-			CustomCSS:      newVals[settings.KeyThemeCustomCSS],
-			Keywords:       newVals[settings.KeyHeadKeywords],
-			ThemeColor:     newVals[settings.KeyHeadThemeColor],
-			Robots:         newVals[settings.KeyHeadRobots],
-			VerifyGoogle:   newVals[settings.KeyHeadVerifyGoogle],
-			VerifyBing:     newVals[settings.KeyHeadVerifyBing],
-			NavJSON:        newVals[settings.KeyNavItems],
+			Name:            newVals[settings.KeySiteName],
+			Tagline:         newVals[settings.KeySiteTagline],
+			Description:     newVals[settings.KeySiteDescription],
+			Author:          newVals[settings.KeySiteAuthor],
+			ShowMembership:  newVals[settings.KeyMembershipButtons] == "true",
+			PrimaryLight:    newVals[settings.KeyThemePrimaryLight],
+			PrimaryDark:     newVals[settings.KeyThemePrimaryDark],
+			AccentLight:     newVals[settings.KeyThemeAccentLight],
+			AccentDark:      newVals[settings.KeyThemeAccentDark],
+			CustomCSS:       newVals[settings.KeyThemeCustomCSS],
+			Keywords:        newVals[settings.KeyHeadKeywords],
+			ThemeColor:      newVals[settings.KeyHeadThemeColor],
+			Robots:          newVals[settings.KeyHeadRobots],
+			VerifyGoogle:    newVals[settings.KeyHeadVerifyGoogle],
+			VerifyBing:      newVals[settings.KeyHeadVerifyBing],
+			NavJSON:         newVals[settings.KeyNavItems],
+			CommentsEnabled: newVals[settings.KeyFeatureComments] != "off",
 		})
 	}
 
@@ -375,22 +384,23 @@ func (a *App) handleThemeSave(w http.ResponseWriter, r *http.Request) {
 	// Push updated values into the render pipeline immediately.
 	if newVals, err := a.siteSettings.GetAll(r.Context()); err == nil {
 		render.SetActiveSettings(render.SiteSettings{
-			Name:           newVals[settings.KeySiteName],
-			Tagline:        newVals[settings.KeySiteTagline],
-			Description:    newVals[settings.KeySiteDescription],
-			Author:         newVals[settings.KeySiteAuthor],
-			ShowMembership: newVals[settings.KeyMembershipButtons] == "true",
-			PrimaryLight:   newVals[settings.KeyThemePrimaryLight],
-			PrimaryDark:    newVals[settings.KeyThemePrimaryDark],
-			AccentLight:    newVals[settings.KeyThemeAccentLight],
-			AccentDark:     newVals[settings.KeyThemeAccentDark],
-			CustomCSS:      newVals[settings.KeyThemeCustomCSS],
-			Keywords:       newVals[settings.KeyHeadKeywords],
-			ThemeColor:     newVals[settings.KeyHeadThemeColor],
-			Robots:         newVals[settings.KeyHeadRobots],
-			VerifyGoogle:   newVals[settings.KeyHeadVerifyGoogle],
-			VerifyBing:     newVals[settings.KeyHeadVerifyBing],
-			NavJSON:        newVals[settings.KeyNavItems],
+			Name:            newVals[settings.KeySiteName],
+			Tagline:         newVals[settings.KeySiteTagline],
+			Description:     newVals[settings.KeySiteDescription],
+			Author:          newVals[settings.KeySiteAuthor],
+			ShowMembership:  newVals[settings.KeyMembershipButtons] == "true",
+			PrimaryLight:    newVals[settings.KeyThemePrimaryLight],
+			PrimaryDark:     newVals[settings.KeyThemePrimaryDark],
+			AccentLight:     newVals[settings.KeyThemeAccentLight],
+			AccentDark:      newVals[settings.KeyThemeAccentDark],
+			CustomCSS:       newVals[settings.KeyThemeCustomCSS],
+			Keywords:        newVals[settings.KeyHeadKeywords],
+			ThemeColor:      newVals[settings.KeyHeadThemeColor],
+			Robots:          newVals[settings.KeyHeadRobots],
+			VerifyGoogle:    newVals[settings.KeyHeadVerifyGoogle],
+			VerifyBing:      newVals[settings.KeyHeadVerifyBing],
+			NavJSON:         newVals[settings.KeyNavItems],
+			CommentsEnabled: newVals[settings.KeyFeatureComments] != "off",
 		})
 	}
 
