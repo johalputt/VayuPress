@@ -255,9 +255,15 @@ Based on benchmarks for SQLite WAL + Go HTTP on a single VPS:
 SQLite FTS5 works but Meilisearch is faster and more relevant at this scale.
 
 ```bash
-# Install Meilisearch on the same VPS
-curl -L https://install.meilisearch.com | sh
-mv meilisearch /usr/local/bin/
+# Install Meilisearch on the same VPS.
+# Use the MUSL static build — the default install.meilisearch.com binary is
+# dynamically linked against GLIBC 2.32+ and will crash on Ubuntu 20.04 (GLIBC 2.31).
+MEILI_VER=$(curl -fsSL "https://api.github.com/repos/meilisearch/meilisearch/releases/latest" \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['tag_name'])")
+curl -fsSL -o /tmp/meilisearch \
+  "https://github.com/meilisearch/meilisearch/releases/download/${MEILI_VER}/meilisearch-linux-amd64-musl"
+chmod +x /tmp/meilisearch
+sudo mv /tmp/meilisearch /usr/local/bin/
 
 # Create systemd unit
 cat > /etc/systemd/system/meilisearch.service << 'EOF'

@@ -406,9 +406,17 @@ ok "Systemd service written."
 # =============================================================================
 
 if ! command -v meilisearch &>/dev/null; then
-  info "Installing Meilisearch..."
-  run curl -L https://install.meilisearch.com | sh
-  run mv meilisearch /usr/local/bin/meilisearch
+  info "Installing Meilisearch (MUSL static build — works on Ubuntu 20.04 / GLIBC 2.31)..."
+  # The default install.meilisearch.com binary is dynamically linked and requires
+  # GLIBC 2.32+, which Ubuntu 20.04 does not provide. The x86_64-linux-musl build
+  # is statically linked and has no GLIBC dependency at all.
+  MEILI_VER=$(curl -fsSL "https://api.github.com/repos/meilisearch/meilisearch/releases/latest" \
+    | python3 -c "import sys,json; print(json.load(sys.stdin)['tag_name'])")
+  MEILI_URL="https://github.com/meilisearch/meilisearch/releases/download/${MEILI_VER}/meilisearch-linux-amd64-musl"
+  info "Downloading Meilisearch ${MEILI_VER} (musl)..."
+  run curl -fsSL -o /tmp/meilisearch "${MEILI_URL}"
+  run chmod +x /tmp/meilisearch
+  run mv /tmp/meilisearch /usr/local/bin/meilisearch
 fi
 
 run useradd -r -s /bin/false meilisearch 2>/dev/null || true
