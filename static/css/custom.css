@@ -185,6 +185,25 @@ h1, h2, h3, h4, h5, h6 {
 
 .vayu-nav-links a:hover { color: var(--pico-primary); }
 
+/* Public Sign in / Sign up (membership) buttons — Ghost-style. */
+.vayu-nav-links a.vayu-nav-signin {
+  color: var(--pico-color);
+  font-weight: 600;
+}
+.vayu-nav-links a.vayu-nav-signup {
+  color: var(--pico-primary-inverse, #fff);
+  background: var(--pico-primary);
+  padding: 0.4rem 0.95rem;
+  border-radius: 8px;
+  font-weight: 600;
+  transition: filter 0.15s ease, transform 0.05s ease;
+}
+.vayu-nav-links a.vayu-nav-signup:hover {
+  color: var(--pico-primary-inverse, #fff);
+  filter: brightness(1.08);
+}
+.vayu-nav-links a.vayu-nav-signup:active { transform: translateY(1px); }
+
 .vayu-nav-status { font-size: 0.75rem; color: var(--pico-muted-color); }
 
 .vayu-theme-toggle {

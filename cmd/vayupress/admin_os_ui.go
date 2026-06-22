@@ -1112,7 +1112,11 @@ func osSettingsDesign(ctx context.Context, ss *settings.Store) string {
 </div>`
 }
 
-func osSettingsMembers(_ context.Context, _ *settings.Store) string {
+func osSettingsMembers(ctx context.Context, ss *settings.Store) string {
+	membershipBtns := ""
+	if ss != nil && ss.Get(ctx, settings.KeyMembershipButtons) == "true" {
+		membershipBtns = " checked"
+	}
 	return `<div class="settings-section">
   <div class="settings-block-title">Memberships</div>
   <div class="settings-row">
@@ -1121,6 +1125,13 @@ func osSettingsMembers(_ context.Context, _ *settings.Store) string {
       <div class="settings-row-hint">Allow readers to create free or paid accounts</div>
     </div>
     <input type="checkbox" class="toggle" data-setting-key="members.enabled" checked>
+  </div>
+  <div class="settings-row">
+    <div class="settings-row-info">
+      <div class="settings-row-label">Show Sign in / Sign up on the site</div>
+      <div class="settings-row-hint">Display public Sign in &amp; Sign up buttons in the homepage navigation (like Ghost)</div>
+    </div>
+    <input type="checkbox" class="toggle" data-setting-key="` + settings.KeyMembershipButtons + `"` + membershipBtns + `>
   </div>
   <div class="settings-row">
     <div class="settings-row-info">
@@ -1287,6 +1298,29 @@ func (a *App) handleOSSettingsAPI(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusBadRequest, "settings-error", err.Error(), "")
 		return
 	}
+	// Push the change into the live render pipeline and drop cached pages so
+	// public-facing settings (site identity, membership buttons, SEO meta) take
+	// effect immediately rather than on the next restart.
+	if sv, err := a.siteSettings.GetAll(r.Context()); err == nil {
+		render.SetActiveSettings(render.SiteSettings{
+			Name:           sv[settings.KeySiteName],
+			Tagline:        sv[settings.KeySiteTagline],
+			Description:    sv[settings.KeySiteDescription],
+			Author:         sv[settings.KeySiteAuthor],
+			ShowMembership: sv[settings.KeyMembershipButtons] == "true",
+			PrimaryLight:   sv[settings.KeyThemePrimaryLight],
+			PrimaryDark:    sv[settings.KeyThemePrimaryDark],
+			AccentLight:    sv[settings.KeyThemeAccentLight],
+			AccentDark:     sv[settings.KeyThemeAccentDark],
+			CustomCSS:      sv[settings.KeyThemeCustomCSS],
+			Keywords:       sv[settings.KeyHeadKeywords],
+			ThemeColor:     sv[settings.KeyHeadThemeColor],
+			Robots:         sv[settings.KeyHeadRobots],
+			VerifyGoogle:   sv[settings.KeyHeadVerifyGoogle],
+			VerifyBing:     sv[settings.KeyHeadVerifyBing],
+		})
+	}
+	render.CachePurgeAll()
 	writeJSON(w, r, http.StatusOK, map[string]string{"status": "ok"})
 }
 

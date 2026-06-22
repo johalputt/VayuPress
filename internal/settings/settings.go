@@ -16,6 +16,9 @@ const (
 	KeySiteTagline     = "site.tagline"
 	KeySiteDescription = "site.description"
 	KeySiteAuthor      = "site.author"
+	// KeyMembershipButtons shows the public Sign in / Sign up buttons in the
+	// homepage nav. Unlike feature flags it defaults OFF — only "on" enables it.
+	KeyMembershipButtons = "site.membership_buttons"
 
 	KeyThemePrimaryLight = "theme.primary_light"
 	KeyThemePrimaryDark  = "theme.primary_dark"
@@ -82,6 +85,7 @@ var AllKeys = map[string]bool{
 	KeySiteTagline:        true,
 	KeySiteDescription:    true,
 	KeySiteAuthor:         true,
+	KeyMembershipButtons:  true,
 	KeyThemePrimaryLight:  true,
 	KeyThemePrimaryDark:   true,
 	KeyThemeAccentLight:   true,

@@ -283,20 +283,21 @@ func main() {
 	a.siteSettings = settings.New(dbpkg.DB)
 	if sv, err := a.siteSettings.GetAll(context.Background()); err == nil {
 		render.SetActiveSettings(render.SiteSettings{
-			Name:         sv[settings.KeySiteName],
-			Tagline:      sv[settings.KeySiteTagline],
-			Description:  sv[settings.KeySiteDescription],
-			Author:       sv[settings.KeySiteAuthor],
-			PrimaryLight: sv[settings.KeyThemePrimaryLight],
-			PrimaryDark:  sv[settings.KeyThemePrimaryDark],
-			AccentLight:  sv[settings.KeyThemeAccentLight],
-			AccentDark:   sv[settings.KeyThemeAccentDark],
-			CustomCSS:    sv[settings.KeyThemeCustomCSS],
-			Keywords:     sv[settings.KeyHeadKeywords],
-			ThemeColor:   sv[settings.KeyHeadThemeColor],
-			Robots:       sv[settings.KeyHeadRobots],
-			VerifyGoogle: sv[settings.KeyHeadVerifyGoogle],
-			VerifyBing:   sv[settings.KeyHeadVerifyBing],
+			Name:           sv[settings.KeySiteName],
+			Tagline:        sv[settings.KeySiteTagline],
+			Description:    sv[settings.KeySiteDescription],
+			Author:         sv[settings.KeySiteAuthor],
+			ShowMembership: sv[settings.KeyMembershipButtons] == "true",
+			PrimaryLight:   sv[settings.KeyThemePrimaryLight],
+			PrimaryDark:    sv[settings.KeyThemePrimaryDark],
+			AccentLight:    sv[settings.KeyThemeAccentLight],
+			AccentDark:     sv[settings.KeyThemeAccentDark],
+			CustomCSS:      sv[settings.KeyThemeCustomCSS],
+			Keywords:       sv[settings.KeyHeadKeywords],
+			ThemeColor:     sv[settings.KeyHeadThemeColor],
+			Robots:         sv[settings.KeyHeadRobots],
+			VerifyGoogle:   sv[settings.KeyHeadVerifyGoogle],
+			VerifyBing:     sv[settings.KeyHeadVerifyBing],
 		})
 	}
 

@@ -45,6 +45,9 @@ func TestThemeEditorCoversSettingsAllowlist(t *testing.T) {
 		settings.KeyFeatureComments:    true,
 		settings.KeyFeatureNewsletter:  true,
 		settings.KeyFeatureWebmentions: true,
+		// The public Sign in / Sign up toggle lives in the VayuOS Members
+		// settings (/os/settings/members), not the legacy theme editor.
+		settings.KeyMembershipButtons: true,
 	}
 	page := themeEditorPage(map[string]string{}, "NORMAL", "test-nonce", "")
 	for key := range settings.AllKeys {

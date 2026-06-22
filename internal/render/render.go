@@ -148,15 +148,17 @@ func CustomCSSLink() template.HTML { return CSSLink("custom.css", cssHashes.Cust
 // SiteSettings holds operator-configurable values that are injected into every
 // public page render. The zero value is safe and falls back to Pico defaults.
 type SiteSettings struct {
-	Name         string // site brand name
-	Tagline      string // hero headline
-	Description  string // meta description
-	Author       string // article author
-	PrimaryLight string // --pico-primary for light mode (hex)
-	PrimaryDark  string // --pico-primary for dark mode (hex)
-	AccentLight  string // --vayu-accent for light mode (hex)
-	AccentDark   string // --vayu-accent for dark mode (hex)
-	CustomCSS    string // operator-supplied CSS, served via /theme.css
+	Name        string // site brand name
+	Tagline     string // hero headline
+	Description string // meta description
+	Author      string // article author
+	// ShowMembership renders the public Sign in / Sign up buttons in the nav.
+	ShowMembership bool
+	PrimaryLight   string // --pico-primary for light mode (hex)
+	PrimaryDark    string // --pico-primary for dark mode (hex)
+	AccentLight    string // --vayu-accent for light mode (hex)
+	AccentDark     string // --vayu-accent for dark mode (hex)
+	CustomCSS      string // operator-supplied CSS, served via /theme.css
 
 	// Declarative <head> capabilities (validated on write, escaped on render).
 	// These replace raw head HTML so no arbitrary markup — meta-refresh
@@ -601,6 +603,7 @@ type homePage struct {
 	SiteName            string
 	Tagline             string
 	Description         string
+	ShowMembership      bool
 	Articles            []HomeArticle
 	TotalCount          int
 }
@@ -634,6 +637,8 @@ var homeTmpl = template.Must(template.New("home").Funcs(homeFuncs).Parse(`<!DOCT
     <a href="/feed.xml">Feed</a>
     <a href="/admin">Console</a>
     <button type="button" id="vayu-theme-toggle" class="vayu-theme-toggle" aria-label="Toggle theme">☾</button>
+    {{if .ShowMembership}}<a href="/signup" class="vayu-nav-signin">Sign in</a>
+    <a href="/signup" class="vayu-nav-signup">Sign up</a>{{end}}
   </div>
   <span class="vayu-nav-status"><span class="vayu-mode-dot"></span>runtime · normal</span>
 </nav>
@@ -704,6 +709,7 @@ func RenderHome(domain, version string, articles []HomeArticle, totalCount int) 
 		SiteName:            s.Name,
 		Tagline:             s.Tagline,
 		Description:         s.Description,
+		ShowMembership:      s.ShowMembership,
 		Articles:            articles,
 		TotalCount:          totalCount,
 	})

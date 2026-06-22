@@ -228,20 +228,21 @@ func (a *App) handleThemeReset(w http.ResponseWriter, r *http.Request) {
 
 	if newVals, err := a.siteSettings.GetAll(r.Context()); err == nil {
 		render.SetActiveSettings(render.SiteSettings{
-			Name:         newVals[settings.KeySiteName],
-			Tagline:      newVals[settings.KeySiteTagline],
-			Description:  newVals[settings.KeySiteDescription],
-			Author:       newVals[settings.KeySiteAuthor],
-			PrimaryLight: newVals[settings.KeyThemePrimaryLight],
-			PrimaryDark:  newVals[settings.KeyThemePrimaryDark],
-			AccentLight:  newVals[settings.KeyThemeAccentLight],
-			AccentDark:   newVals[settings.KeyThemeAccentDark],
-			CustomCSS:    newVals[settings.KeyThemeCustomCSS],
-			Keywords:     newVals[settings.KeyHeadKeywords],
-			ThemeColor:   newVals[settings.KeyHeadThemeColor],
-			Robots:       newVals[settings.KeyHeadRobots],
-			VerifyGoogle: newVals[settings.KeyHeadVerifyGoogle],
-			VerifyBing:   newVals[settings.KeyHeadVerifyBing],
+			Name:           newVals[settings.KeySiteName],
+			Tagline:        newVals[settings.KeySiteTagline],
+			Description:    newVals[settings.KeySiteDescription],
+			Author:         newVals[settings.KeySiteAuthor],
+			ShowMembership: newVals[settings.KeyMembershipButtons] == "true",
+			PrimaryLight:   newVals[settings.KeyThemePrimaryLight],
+			PrimaryDark:    newVals[settings.KeyThemePrimaryDark],
+			AccentLight:    newVals[settings.KeyThemeAccentLight],
+			AccentDark:     newVals[settings.KeyThemeAccentDark],
+			CustomCSS:      newVals[settings.KeyThemeCustomCSS],
+			Keywords:       newVals[settings.KeyHeadKeywords],
+			ThemeColor:     newVals[settings.KeyHeadThemeColor],
+			Robots:         newVals[settings.KeyHeadRobots],
+			VerifyGoogle:   newVals[settings.KeyHeadVerifyGoogle],
+			VerifyBing:     newVals[settings.KeyHeadVerifyBing],
 		})
 	}
 
@@ -373,20 +374,21 @@ func (a *App) handleThemeSave(w http.ResponseWriter, r *http.Request) {
 	// Push updated values into the render pipeline immediately.
 	if newVals, err := a.siteSettings.GetAll(r.Context()); err == nil {
 		render.SetActiveSettings(render.SiteSettings{
-			Name:         newVals[settings.KeySiteName],
-			Tagline:      newVals[settings.KeySiteTagline],
-			Description:  newVals[settings.KeySiteDescription],
-			Author:       newVals[settings.KeySiteAuthor],
-			PrimaryLight: newVals[settings.KeyThemePrimaryLight],
-			PrimaryDark:  newVals[settings.KeyThemePrimaryDark],
-			AccentLight:  newVals[settings.KeyThemeAccentLight],
-			AccentDark:   newVals[settings.KeyThemeAccentDark],
-			CustomCSS:    newVals[settings.KeyThemeCustomCSS],
-			Keywords:     newVals[settings.KeyHeadKeywords],
-			ThemeColor:   newVals[settings.KeyHeadThemeColor],
-			Robots:       newVals[settings.KeyHeadRobots],
-			VerifyGoogle: newVals[settings.KeyHeadVerifyGoogle],
-			VerifyBing:   newVals[settings.KeyHeadVerifyBing],
+			Name:           newVals[settings.KeySiteName],
+			Tagline:        newVals[settings.KeySiteTagline],
+			Description:    newVals[settings.KeySiteDescription],
+			Author:         newVals[settings.KeySiteAuthor],
+			ShowMembership: newVals[settings.KeyMembershipButtons] == "true",
+			PrimaryLight:   newVals[settings.KeyThemePrimaryLight],
+			PrimaryDark:    newVals[settings.KeyThemePrimaryDark],
+			AccentLight:    newVals[settings.KeyThemeAccentLight],
+			AccentDark:     newVals[settings.KeyThemeAccentDark],
+			CustomCSS:      newVals[settings.KeyThemeCustomCSS],
+			Keywords:       newVals[settings.KeyHeadKeywords],
+			ThemeColor:     newVals[settings.KeyHeadThemeColor],
+			Robots:         newVals[settings.KeyHeadRobots],
+			VerifyGoogle:   newVals[settings.KeyHeadVerifyGoogle],
+			VerifyBing:     newVals[settings.KeyHeadVerifyBing],
 		})
 	}
 
