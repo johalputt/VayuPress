@@ -102,19 +102,20 @@ jobs:
 
       - name: Pre-flight checks
         run: |
-          # Verify admin pages are reachable through proxy before screenshotting.
-          # Check /os (the only admin surface as of v1.6.0) and /admin/adr.
+          # Verify VayuOS pages are reachable through the proxy before
+          # screenshotting. VayuOS is the only admin (mounted at /os); the
+          # operator consoles now live under /os/* too.
           echo "--- /os ---"
-          STATUS=$(curl -sS -o /tmp/v3-resp.txt -w "%{http_code}" \
+          STATUS=$(curl -sS -o /tmp/os-resp.txt -w "%{http_code}" \
             -H "X-API-Key: $API_KEY" "$PROXY_URL/os")
           echo "HTTP $STATUS"
           if [ "$STATUS" != "200" ]; then
-            echo "BODY:"; cat /tmp/v3-resp.txt
+            echo "BODY:"; cat /tmp/os-resp.txt
             echo "SERVER LOG:"; cat /tmp/vayupress/server.log
             exit 1
           fi
-          echo "--- /admin/adr ---"
-          curl -sS -H "X-API-Key: $API_KEY" "$PROXY_URL/admin/adr" | head -3
+          echo "--- /os/modes ---"
+          curl -sS -H "X-API-Key: $API_KEY" "$PROXY_URL/os/modes" | head -3
           echo "--- pre-flight OK ---"
 
       - name: Capture screenshots
