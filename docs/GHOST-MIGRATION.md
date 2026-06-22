@@ -229,7 +229,7 @@ done
 5. Lower DNS TTL to 300 seconds 24 hours before cutover
 6. Update DNS A record to VPS IP
 7. Verify with: `curl -s https://yourdomain.com/ | head -5`
-7. Restore DNS TTL to 3600 after confirming clean
+8. Restore DNS TTL to 3600 after confirming clean
 
 ---
 
