@@ -150,6 +150,14 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		// Read-only APIs (no CSRF needed)
 		pr.Get("/os/api/activity", a.handleOSActivity)
 		pr.Get("/os/api/cmd-index", a.handleOSCmdIndex)
+		pr.Get("/os/api/search/drift", a.handleSearchDrift)
+
+		// Operator-initiated actions — API key callers don't hold a browser session
+		// so they have no CSRF cookie. These are gated by requireSessionOrAPIKey;
+		// browser callers arriving via the panel always carry a session and are
+		// protected by the SameSite=Strict session cookie which prevents CSRF itself.
+		pr.Post("/os/api/search/reindex", a.handleOSSearchReindex)
+		pr.Post("/os/api/feed/regenerate", a.handleOSFeedRegenerate)
 	})
 
 	// Redirect bare /os/* to dashboard if hitting unknown paths
@@ -1349,4 +1357,21 @@ func (a *App) handleOSQuickCreatePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, r, http.StatusOK, map[string]string{"slug": slug})
+}
+
+// handleOSSearchReindex triggers a full search index rebuild without requiring a
+// CSRF token so that operators can call it with an API key from the shell.
+// Example: curl -X POST https://yourdomain.com/os/api/search/reindex -H "X-API-Key: KEY"
+func (a *App) handleOSSearchReindex(w http.ResponseWriter, r *http.Request) {
+	a.handleSearchReindex(w, r)
+}
+
+// handleOSFeedRegenerate regenerates feed.xml (and sitemap.xml) from the
+// current article store. Useful after a bulk migration that bypassed the
+// normal write queue. Accessible with an API key so no browser session is needed.
+// Example: curl -X POST https://yourdomain.com/os/api/feed/regenerate -H "X-API-Key: KEY"
+func (a *App) handleOSFeedRegenerate(w http.ResponseWriter, r *http.Request) {
+	go generateRSS()
+	go generateSitemap()
+	writeJSON(w, r, http.StatusOK, map[string]string{"status": "regenerating", "note": "feed.xml and sitemap.xml are being rebuilt in the background"})
 }
