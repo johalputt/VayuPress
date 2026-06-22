@@ -124,7 +124,7 @@ If you prefer not to enable self-update at all, upgrade the operator-driven way:
 
 ```bash
 # Back up first
-vayu-backup backup --db /var/lib/vayupress/data.db --out backup.tar.gz --compress
+vayu-backup backup --db /var/lib/vayupress/vayupress.db --out backup.tar.gz --compress
 
 # Replace the binary with a release you built/verified yourself, then:
 sudo systemctl restart vayupress

@@ -36,7 +36,7 @@ sudo systemctl restart meilisearch
 Writes are asynchronous. Check the queue:
 
 ```bash
-sqlite3 /var/lib/vayupress/data.db "SELECT status, COUNT(*) FROM write_jobs GROUP BY status"
+sqlite3 /var/lib/vayupress/vayupress.db "SELECT status, COUNT(*) FROM write_jobs GROUP BY status"
 ```
 
 If jobs are stuck in `processing`:
@@ -44,14 +44,14 @@ If jobs are stuck in `processing`:
 ```bash
 # The stuck-job reaper runs every minute and resets jobs stuck >5 min
 # Or manually reset:
-sqlite3 /var/lib/vayupress/data.db "UPDATE write_jobs SET status='pending' WHERE status='processing'"
+sqlite3 /var/lib/vayupress/vayupress.db "UPDATE write_jobs SET status='pending' WHERE status='processing'"
 sudo systemctl restart vayupress
 ```
 
 ### Jobs in dead-letter queue
 
 ```bash
-sqlite3 /var/lib/vayupress/data.db "SELECT id, op, dead_reason FROM write_jobs WHERE status='dead'"
+sqlite3 /var/lib/vayupress/vayupress.db "SELECT id, op, dead_reason FROM write_jobs WHERE status='dead'"
 ```
 
 Jobs move to `dead` after `MAX_REPLAY_COUNT` (default 3) replay attempts. Check logs for the root cause.
@@ -63,13 +63,13 @@ Jobs move to `dead` after `MAX_REPLAY_COUNT` (default 3) replay attempts. Check 
 WAL mode is mandatory. Verify:
 
 ```bash
-sqlite3 /var/lib/vayupress/data.db "PRAGMA journal_mode"
+sqlite3 /var/lib/vayupress/vayupress.db "PRAGMA journal_mode"
 # Expected: wal
 ```
 
 If not WAL:
 ```bash
-sqlite3 /var/lib/vayupress/data.db "PRAGMA journal_mode=WAL"
+sqlite3 /var/lib/vayupress/vayupress.db "PRAGMA journal_mode=WAL"
 ```
 
 ### Migration checksum drift (startup halted)
@@ -85,7 +85,7 @@ This is a security alert. Do not bypass it without understanding why the checksu
 ### Database corruption
 
 ```bash
-sqlite3 /var/lib/vayupress/data.db "PRAGMA integrity_check"
+sqlite3 /var/lib/vayupress/vayupress.db "PRAGMA integrity_check"
 # Expected: ok
 ```
 
@@ -95,7 +95,7 @@ If corrupt, restore from backup:
 ls -lt /backups/vayupress-*.db.gz | head -5
 # Restore:
 sudo systemctl stop vayupress
-gunzip -c /backups/vayupress-<date>.db.gz > /var/lib/vayupress/data.db
+gunzip -c /backups/vayupress-<date>.db.gz > /var/lib/vayupress/vayupress.db
 sudo systemctl start vayupress
 ```
 

@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       API_KEY: e2e-ci-key
-      DB_PATH: /tmp/vayupress/data.db
+      DB_PATH: /tmp/vayupress/vayupress.db
       CACHE_DIR: /tmp/vayupress/cache
       MEDIA_DIR: /tmp/vayupress/media
       TMP_DIR: /tmp/vayupress/tmp

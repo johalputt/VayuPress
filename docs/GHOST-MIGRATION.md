@@ -58,7 +58,7 @@ cd /tmp/VayuPress/tools/ghost-to-vayu
 ./ghost2vayu migrate \
   --ghost-driver mysql \
   --ghost-dsn "ghost_user:password@tcp(127.0.0.1:3306)/ghost_production" \
-  --vayu-db /var/lib/vayupress/data.db \
+  --vayu-db /var/lib/vayupress/vayupress.db \
   --status all \
   --dry-run
 ```
@@ -72,7 +72,7 @@ Review the output — any Mobiledoc/Lexical conversion warnings appear here.
 ./ghost2vayu migrate \
   --ghost-driver mysql \
   --ghost-dsn "ghost_user:password@tcp(127.0.0.1:3306)/ghost_production" \
-  --vayu-db /var/lib/vayupress/data.db \
+  --vayu-db /var/lib/vayupress/vayupress.db \
   --status published \
   --batch 25 \
   --delay 300ms
@@ -81,7 +81,7 @@ Review the output — any Mobiledoc/Lexical conversion warnings appear here.
 ./ghost2vayu migrate \
   --ghost-driver mysql \
   --ghost-dsn "ghost_user:password@tcp(127.0.0.1:3306)/ghost_production" \
-  --vayu-db /var/lib/vayupress/data.db \
+  --vayu-db /var/lib/vayupress/vayupress.db \
   --status draft \
   --batch 25 \
   --delay 300ms

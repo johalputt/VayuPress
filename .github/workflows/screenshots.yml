@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       API_KEY: screenshot-ci-key
-      DB_PATH: /tmp/vayupress/data.db
+      DB_PATH: /tmp/vayupress/vayupress.db
       CACHE_DIR: /tmp/vayupress/cache
       TMP_DIR: /tmp/vayupress/tmp
       PORT: "8080"

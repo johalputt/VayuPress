@@ -89,7 +89,7 @@ Expected: `{"status":"ok"}` from both endpoints.
 | Variable              | Default                        | Description                        |
 |-----------------------|--------------------------------|------------------------------------|
 | `API_KEY`             | (required)                     | Admin API key                      |
-| `DB_PATH`             | `/var/lib/vayupress/data.db`   | SQLite database path               |
+| `DB_PATH`             | `/var/lib/vayupress/vayupress.db`   | SQLite database path               |
 | `CACHE_DIR`           | `/var/cache/vayupress`         | Rendered HTML cache directory      |
 | `MEDIA_DIR`           | `/var/lib/vayupress/media`     | Editor image uploads (served at `/media/`) |
 | `MEILI_HOST`          | `http://localhost:7700`        | Meilisearch URL                    |
