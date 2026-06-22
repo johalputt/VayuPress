@@ -62,7 +62,7 @@ nonces).
   nothing leaves your server unless you wire up a local model.
 - **Inline version-history diff** — a History panel lists recent versions and
   renders a word-level LCS diff against the working draft.
-- **Native Theme Studio in Admin v3** — preset gallery + design-token editor with
+- **Native Theme Studio in VayuOS** — preset gallery + design-token editor with
   a CSP-clean live preview via scripted CSSOM custom-property writes (no `<style>`
   injection), served from session-gated `/os/api/theme/*` mirrors.
 - **Convert-to-blocks (ADR-0073)** — an explicit, confirmed, **non-destructive**
@@ -136,7 +136,7 @@ changes; rich media and the Theme Studio are available immediately.
 
 > Full notes in [`CHANGELOG.md`](CHANGELOG.md) · upgrade steps in [`docs/UPGRADING.md`](docs/UPGRADING.md)
 
-**Admin v3** — a ground-up admin & block editor that surpasses Ghost, WordPress,
+**VayuOS** — a ground-up admin & block editor that surpasses Ghost, WordPress,
 and Substack in design, depth, and security, while remaining a sovereign single
 binary with **zero CDN dependencies** and a **strict CSP** (no `unsafe-eval`, no
 `unsafe-inline`). Mounted at `/os` alongside `/admin/v2` — fully
@@ -243,11 +243,11 @@ the editor in HTML mode until first saved in Markdown mode.
 
 ---
 
-### Theme Studio — Native to Admin v3 (v1.5.0)
+### Theme Studio — Native to VayuOS
 
-![VayuPress Theme Studio](docs/screenshots/admin-v3-theme.png)
+![VayuPress Theme Studio](docs/screenshots/admin-os-theme.png)
 
-*The Theme Studio, now native to Admin v3 (`/os/theme`) — a preset gallery
+*The Theme Studio, now native to VayuOS (`/os/theme`) — a preset gallery
 and design-token editor with an instant live preview. Colour ramps, typography
 and spacing compile to a single sovereign stylesheet served from your own origin.
 The preview applies values through CSSOM `setProperty`, so it stays inside the
@@ -256,14 +256,14 @@ strict `style-src 'self'` CSP — no inline styles, no third-party fonts, no CDN
 
 ---
 
-### Admin v3 — Next-Generation Admin & Block Editor
+### VayuOS — The Single Control Panel & Block Editor
 
-![VayuPress Admin v3 Dashboard](docs/screenshots/admin-v3-dashboard.png)
+![VayuPress VayuOS Dashboard](docs/screenshots/admin-os-dashboard.png)
 
-*The Admin v3 dashboard (`/os`) — grouped sidebar, stat cards, 14-day
+*The VayuOS dashboard (`/os`) — grouped sidebar, stat cards, 14-day
 publishing-trend sparkline, activity feed, and command palette (⌘K).*
 
-![VayuPress Admin v3 Block Editor](docs/screenshots/admin-v3-editor.png)
+![VayuPress VayuOS Block Editor](docs/screenshots/admin-os-editor.png)
 
 *The block editor — typed-block document rendered server-side through
 escape + bluemonday UGC, slash-command palette with opt-in **AI-assist**, an
@@ -288,7 +288,7 @@ sovereign single binary with **zero CDN dependencies** and a **strict CSP** (no
 - **Media library** — drag-and-drop upload (content-addressed, type-allowlisted,
   **SVG refused**, CSRF), grid browsing, copy-URL.
 - **Two-factor auth (TOTP)** — RFC 6238 in pure stdlib (`internal/totp`, validated
-  against the RFC test vectors), enforced on **both** v1 and v3 login surfaces.
+  against the RFC test vectors), enforced on the VayuOS login surface.
 - **Intelligence** — native SEO readiness dashboard and a privacy-preserving
   analytics page sourced only from the local database.
 
@@ -298,10 +298,33 @@ is the per-request nonce-gated bootstrap, and DOM mutation uses
 
 ---
 
+### Sign in & Sign up
+
+![VayuOS sign-in](docs/screenshots/os-login.png)
+
+*The VayuOS sign-in page (`/os/login`) — passwordless-friendly, strict-CSP,
+self-hosted. The single front door to the whole control panel.*
+
+![Member signup](docs/screenshots/member-signup.png)
+
+*The public reader/member signup page (`/signup`) — branded, site-themed,
+passwordless. A reader enters their email and receives a one-time sign-in link
+(the member is created on first use). Zero third-party requests.*
+
+---
+
+### Operator consoles — inside VayuOS
+
+> As of v1.6.0 the operator consoles below are **no longer a separate admin
+> panel** — they render inside the single VayuOS shell under `/os/*` (an
+> **Operations** sidebar section). The legacy `/admin/modes`, `/admin/policy`,
+> `/admin/topology`, `/admin/replay`, `/admin/faults` and `/admin/adr` page URLs
+> permanently (301) redirect into VayuOS.
+
 ### System Modes & Policy Engine
 ![VayuPress Policy Modes](docs/screenshots/policy-modes.png)
 
-*Platform control plane — 6 adaptive system modes with validated transition graph, append-only mode history, and all registered policies with live pass/warn/fail status.*
+*Platform control plane (`/os/modes`) — 6 adaptive system modes with validated transition graph, append-only mode history, and all registered policies with live pass/warn/fail status.*
 
 ### Policy Provenance Inspector (Ω11)
 ![VayuPress Policy Inspector](docs/screenshots/policy-inspector.png)
