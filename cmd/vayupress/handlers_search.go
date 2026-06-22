@@ -30,7 +30,7 @@ func (a *App) reindexAllArticles(ctx context.Context) (*reindexResult, error) {
 	start := time.Now()
 	res := &reindexResult{RanAt: start.UTC()}
 	rows, err := dbpkg.DB.QueryContext(ctx,
-		`SELECT id,title,slug,content,tags,created_at FROM articles ORDER BY created_at ASC`)
+		`SELECT id,title,slug,content,tags,created_at FROM articles WHERE COALESCE(status,'published')='published' ORDER BY created_at ASC`)
 	if err != nil {
 		return nil, err
 	}

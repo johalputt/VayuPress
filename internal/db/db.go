@@ -33,6 +33,9 @@ type Article struct {
 	Tags      []string  `json:"tags"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+	// Status is "published" (publicly visible) or "draft" (visible only inside
+	// VayuOS). Empty is treated as "published" for backward compatibility.
+	Status string `json:"status,omitempty"`
 }
 
 // DB is the package-level database connection.

@@ -129,7 +129,7 @@ func (s *meiliService) Search(ctx context.Context, q string, limit int) (Result,
 func (s *meiliService) fallback(ctx context.Context, q string, limit int) (Result, error) {
 	pattern := "%" + q + "%"
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT title,slug,tags,created_at FROM articles WHERE title LIKE ? OR content LIKE ? OR tags LIKE ? ORDER BY created_at DESC LIMIT ?`,
+		`SELECT title,slug,tags,created_at FROM articles WHERE (title LIKE ? OR content LIKE ? OR tags LIKE ?) AND COALESCE(status,'published')='published' ORDER BY created_at DESC LIMIT ?`,
 		pattern, pattern, pattern, limit,
 	)
 	if err != nil {

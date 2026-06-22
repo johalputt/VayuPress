@@ -23,6 +23,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/johalputt/vayupress/internal/blockrender"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/render"
 )
 
 // loadBlocksJSON returns the stored block document for a slug, or "" if the
@@ -126,6 +127,54 @@ func (a *App) handleOSEditorSave(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, r, http.StatusOK, map[string]string{"status": "saved", "slug": slug})
+}
+
+// handleOSPostStatus publishes or unpublishes (drafts) an article from the post
+// manager. Unpublishing hides it from every public surface; both directions
+// purge the public caches so the change is immediately visible.
+func (a *App) handleOSPostStatus(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Slug   string `json:"slug"`
+		Status string `json:"status"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "bad-json", "Invalid request body", "")
+		return
+	}
+	slug := strings.TrimSpace(body.Slug)
+	status := strings.TrimSpace(body.Status)
+	if slug == "" || (status != "published" && status != "draft") {
+		writeAPIError(w, r, http.StatusBadRequest, "bad-input", "slug and a valid status (published|draft) are required", "")
+		return
+	}
+	var tagsCSV string
+	if err := dbpkg.DB.QueryRowContext(r.Context(), `SELECT COALESCE(tags,'') FROM articles WHERE slug=?`, slug).Scan(&tagsCSV); err != nil {
+		writeAPIError(w, r, http.StatusNotFound, "not-found", "No article with that slug", "")
+		return
+	}
+	if _, err := dbpkg.WDB.Exec(`UPDATE articles SET status=?, updated_at=? WHERE slug=?`, status, time.Now().UTC(), slug); err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "update-error", err.Error(), "")
+		return
+	}
+	// Purge public caches (article page, homepage, tag pages, sitemap, feed) so
+	// an unpublish disappears — and a publish appears — without delay.
+	render.CachePurge(slug, splitCSVTags(tagsCSV), generateSitemap, generateRSS, generateRobots)
+	writeJSON(w, r, http.StatusOK, map[string]string{"status": status, "slug": slug})
+}
+
+// splitCSVTags splits a stored comma-separated tag string into a slice.
+func splitCSVTags(s string) []string {
+	if strings.TrimSpace(s) == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // uniqueArticleSlug derives a URL slug from title and ensures it does not collide

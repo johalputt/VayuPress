@@ -139,6 +139,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/seo/regenerate", a.handleSEORegenerate)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/settings", a.handleOSSettingsAPI)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/posts/quick-create", a.handleOSQuickCreatePost)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/posts/status", a.handleOSPostStatus)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/editor/save", a.handleOSEditorSave)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/editor/preview", a.handleOSEditorPreview)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/editor/ai", a.handleOSEditorAI)
@@ -802,45 +803,83 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
 
-	res, err := a.articles.List(r.Context(), 1, 200, "")
-	count := 0
-	rows := ""
-	if err == nil {
-		for _, p := range res.Articles {
-			count++
-			tags := ""
-			searchTags := ""
-			for _, t := range p.Tags {
-				tags += `<span class="chip chip--brand">#` + html.EscapeString(t) + `</span> `
-				searchTags += " " + t
+	// A CSRF token cookie so the inline publish/unpublish control can POST.
+	if token := auth.GenerateCSRFToken(); token != "" {
+		http.SetCookie(w, &http.Cookie{Name: "vp_csrf", Value: token, Path: "/", SameSite: http.SameSiteStrictMode, HttpOnly: false, Secure: csrfCookieSecure(), MaxAge: 3600})
+	}
+
+	// All posts (drafts included) — the post manager shows everything; the
+	// public site never does.
+	type postRow struct {
+		Title, Slug, Status string
+		Tags                []string
+		Updated             time.Time
+	}
+	var posts []postRow
+	published, drafts := 0, 0
+	if rows, err := dbpkg.DB.QueryContext(r.Context(),
+		`SELECT title,slug,COALESCE(tags,''),updated_at,COALESCE(status,'published') FROM articles ORDER BY created_at DESC LIMIT 500`); err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var p postRow
+			var tagsCSV string
+			if rows.Scan(&p.Title, &p.Slug, &tagsCSV, &p.Updated, &p.Status) == nil {
+				p.Tags = splitCSVTags(tagsCSV)
+				posts = append(posts, p)
+				if p.Status == "draft" {
+					drafts++
+				} else {
+					published++
+				}
 			}
-			rows += `<tr data-post-row data-search="` + html.EscapeString(strings.ToLower(p.Title+searchTags)) + `">
-  <td class="row-title">
-    <a href="/os/editor/` + html.EscapeString(p.Slug) + `">` + html.EscapeString(p.Title) + `</a>
-    <div class="row-meta">/` + html.EscapeString(p.Slug) + `</div>
-  </td>
-  <td>` + tags + `</td>
-  <td class="muted text-sm">` + p.UpdatedAt.UTC().Format("2 Jan 2006") + `</td>
-  <td class="row-actions">
-    <a class="btn btn--ghost btn--sm" href="/os/editor/` + html.EscapeString(p.Slug) + `">Edit</a>
-    <a class="btn btn--ghost btn--sm" href="/` + html.EscapeString(p.Slug) + `" target="_blank" rel="noopener">View ↗</a>
-  </td>
-</tr>`
 		}
 	}
 
 	var body string
-	if count == 0 {
+	if len(posts) == 0 {
 		body = `<div class="page-header"><h1>Posts</h1></div>
 <div class="card empty-state">
   <div class="empty-icon">✍️</div>
   <div class="empty-title">No posts yet</div>
-  <div class="empty-sub">Your published articles will appear here. Write your first one — it only takes a minute.</div>
+  <div class="empty-sub">Your articles will appear here. Write your first one — it only takes a minute.</div>
   <a class="btn btn--primary mt-4" href="/os/editor">Write your first post</a>
 </div>`
 	} else {
+		rows := ""
+		for _, p := range posts {
+			tags, searchTags := "", ""
+			for _, t := range p.Tags {
+				tags += `<span class="chip chip--brand">#` + html.EscapeString(t) + `</span> `
+				searchTags += " " + t
+			}
+			esc := html.EscapeString(p.Slug)
+			isDraft := p.Status == "draft"
+			statusPill := `<span class="status-pill status-pill--live">● Published</span>`
+			toggleLabel, toggleTo := "Unpublish", "draft"
+			viewBtn := `<a class="btn btn--ghost btn--sm" href="/` + esc + `" target="_blank" rel="noopener">View ↗</a>`
+			if isDraft {
+				statusPill = `<span class="status-pill status-pill--draft">● Draft</span>`
+				toggleLabel, toggleTo = "Publish", "published"
+				// A draft is hidden from the public site (previewed in the editor).
+				viewBtn = ""
+			}
+			rows += `<tr data-post-row data-status="` + p.Status + `" data-search="` + html.EscapeString(strings.ToLower(p.Title+searchTags)) + `">
+  <td class="row-title">
+    <a href="/os/editor/` + esc + `">` + html.EscapeString(p.Title) + `</a>
+    <div class="row-meta">/` + esc + `</div>
+  </td>
+  <td>` + statusPill + `</td>
+  <td>` + tags + `</td>
+  <td class="muted text-sm">` + p.Updated.UTC().Format("2 Jan 2006") + `</td>
+  <td class="row-actions">
+    <a class="btn btn--ghost btn--sm" href="/os/editor/` + esc + `">Edit</a>
+    ` + viewBtn + `
+    <button type="button" class="btn btn--ghost btn--sm" data-post-toggle data-slug="` + esc + `" data-to="` + toggleTo + `">` + toggleLabel + `</button>
+  </td>
+</tr>`
+		}
 		body = `<div class="page-header">
-  <h1>Posts <span class="count-pill">` + strconv.Itoa(count) + `</span></h1>
+  <h1>Posts <span class="count-pill">` + strconv.Itoa(len(posts)) + `</span></h1>
   <div class="page-actions">
     <a class="btn btn--primary" href="/os/editor">New Post</a>
   </div>
@@ -849,15 +888,45 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
   <div class="toolbar-row">
     <input class="input search-input" type="search"
       data-posts-search placeholder="Search by title or tag…" aria-label="Search posts">
+    <div class="seg-filter" role="tablist" aria-label="Filter by status">
+      <button type="button" class="seg-btn is-active" data-status-filter="all">All <span class="muted">` + strconv.Itoa(len(posts)) + `</span></button>
+      <button type="button" class="seg-btn" data-status-filter="published">Published <span class="muted">` + strconv.Itoa(published) + `</span></button>
+      <button type="button" class="seg-btn" data-status-filter="draft">Drafts <span class="muted">` + strconv.Itoa(drafts) + `</span></button>
+    </div>
   </div>
   <div class="table-wrap">
     <table class="table">
-      <thead><tr><th>Title</th><th>Tags</th><th>Updated</th><th></th></tr></thead>
+      <thead><tr><th>Title</th><th>Status</th><th>Tags</th><th>Updated</th><th></th></tr></thead>
       <tbody>` + rows + `</tbody>
     </table>
   </div>
-  <div class="table-empty" data-search-empty hidden>No posts match your search.</div>
-</div>`
+  <div class="table-empty" data-search-empty hidden>No posts match your filter.</div>
+</div>
+<div id="action-msg" role="status" aria-live="polite" class="action-msg"></div>
+<script nonce="` + nonce + `">
+(function(){'use strict';
+function csrf(){var m=document.cookie.split('; ').find(function(r){return r.startsWith('vp_csrf=');});return m?m.split('=')[1]:'';}
+var msg=document.getElementById('action-msg');
+function show(t,e){if(!msg)return;msg.textContent=t;msg.classList.toggle('is-error',!!e);msg.classList.add('visible');}
+document.querySelectorAll('[data-post-toggle]').forEach(function(b){
+  b.addEventListener('click',function(){
+    b.disabled=true;
+    fetch('/os/api/posts/status',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},body:JSON.stringify({slug:b.getAttribute('data-slug'),status:b.getAttribute('data-to')})})
+      .then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d};});})
+      .then(function(res){if(res.ok){show(res.d.status==='published'?'Published':'Moved to draft',false);setTimeout(function(){location.reload();},500);}else{b.disabled=false;show(res.d.detail||res.d.title||'Error',true);}})
+      .catch(function(e){b.disabled=false;show('Error: '+e,true);});
+  });
+});
+var rowsEl=document.querySelectorAll('[data-post-row]');
+function applyFilter(f){rowsEl.forEach(function(row){var st=row.getAttribute('data-status');row.hidden=(f!=='all'&&st!==f);});}
+document.querySelectorAll('[data-status-filter]').forEach(function(s){
+  s.addEventListener('click',function(){
+    document.querySelectorAll('[data-status-filter]').forEach(function(x){x.classList.remove('is-active');});
+    s.classList.add('is-active');applyFilter(s.getAttribute('data-status-filter'));
+  });
+});
+})();
+</script>`
 	}
 	writeOSHTML(w, adminOSLayout(nonce, "Posts", "posts", cfg, htmpl.HTML(body)))
 }

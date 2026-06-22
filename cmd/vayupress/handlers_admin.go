@@ -228,9 +228,9 @@ func (a *App) handleHome(w http.ResponseWriter, r *http.Request) {
 	atomic.AddInt64(&metrics.MetricCacheMisses, 1)
 
 	var total int
-	dbpkg.DB.QueryRow(`SELECT COUNT(1) FROM articles`).Scan(&total)
+	dbpkg.DB.QueryRow(`SELECT COUNT(1) FROM articles WHERE COALESCE(status,'published')='published'`).Scan(&total)
 
-	rows, err := dbpkg.DB.Query(`SELECT title,slug,content,tags,created_at FROM articles ORDER BY created_at DESC LIMIT 30`)
+	rows, err := dbpkg.DB.Query(`SELECT title,slug,content,tags,created_at FROM articles WHERE COALESCE(status,'published')='published' ORDER BY created_at DESC LIMIT 30`)
 	var articles []render.HomeArticle
 	if err == nil {
 		defer rows.Close()
@@ -319,7 +319,12 @@ func (a *App) handleArticlePage(w http.ResponseWriter, r *http.Request) {
 	atomic.AddInt64(&metrics.MetricCacheMisses, 1)
 	var art dbpkg.Article
 	var tagsStr string
-	if err := dbpkg.DB.QueryRow(`SELECT id,title,slug,content,tags,created_at,updated_at FROM articles WHERE slug=?`, slug).Scan(&art.ID, &art.Title, &art.Slug, &art.Content, &tagsStr, &art.CreatedAt, &art.UpdatedAt); err == sql.ErrNoRows {
+	if err := dbpkg.DB.QueryRow(`SELECT id,title,slug,content,tags,created_at,updated_at,COALESCE(status,'published') FROM articles WHERE slug=?`, slug).Scan(&art.ID, &art.Title, &art.Slug, &art.Content, &tagsStr, &art.CreatedAt, &art.UpdatedAt, &art.Status); err == sql.ErrNoRows {
+		a.handleNotFound(w, r)
+		return
+	}
+	// Drafts are visible only to authenticated operators; the public gets a 404.
+	if art.Status == "draft" && !isAdmin {
 		a.handleNotFound(w, r)
 		return
 	}
@@ -1254,10 +1259,9 @@ func (a *App) relatedArticles(ctx context.Context, currentSlug string, tags []st
 		overFetch = 200
 	}
 	args = append(args, currentSlug, overFetch)
-	// Note: the articles table has no status column — every row is a published
-	// article (drafts live behind preview tokens).
+	// Related posts are a public surface — exclude drafts.
 	q := `SELECT title, slug, tags, created_at FROM articles WHERE (` +
-		strings.Join(clauses, " OR ") + `) AND slug != ? ORDER BY created_at DESC LIMIT ?`
+		strings.Join(clauses, " OR ") + `) AND slug != ? AND COALESCE(status,'published')='published' ORDER BY created_at DESC LIMIT ?`
 	rows, err := dbpkg.DB.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil

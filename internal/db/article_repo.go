@@ -28,10 +28,14 @@ func (r *sqliteArticleRepo) SlugExists(ctx context.Context, slug string) (bool, 
 }
 
 func (r *sqliteArticleRepo) Create(ctx context.Context, art Article) error {
+	status := art.Status
+	if status == "" {
+		status = "published"
+	}
 	_, err := r.db.ExecContext(ctx,
-		`INSERT INTO articles(id,title,slug,content,tags,created_at,updated_at) VALUES(?,?,?,?,?,?,?)`,
+		`INSERT INTO articles(id,title,slug,content,tags,created_at,updated_at,status) VALUES(?,?,?,?,?,?,?,?)`,
 		art.ID, art.Title, art.Slug, art.Content,
-		strings.Join(art.Tags, ","), art.CreatedAt, art.UpdatedAt,
+		strings.Join(art.Tags, ","), art.CreatedAt, art.UpdatedAt, status,
 	)
 	return err
 }
@@ -40,8 +44,8 @@ func (r *sqliteArticleRepo) Get(ctx context.Context, slug string) (Article, erro
 	var art Article
 	var tagsCSV string
 	err := r.db.QueryRowContext(ctx,
-		`SELECT id,title,slug,content,tags,created_at,updated_at FROM articles WHERE slug=?`, slug,
-	).Scan(&art.ID, &art.Title, &art.Slug, &art.Content, &tagsCSV, &art.CreatedAt, &art.UpdatedAt)
+		`SELECT id,title,slug,content,tags,created_at,updated_at,COALESCE(status,'published') FROM articles WHERE slug=?`, slug,
+	).Scan(&art.ID, &art.Title, &art.Slug, &art.Content, &tagsCSV, &art.CreatedAt, &art.UpdatedAt, &art.Status)
 	if err == sql.ErrNoRows {
 		return art, ErrNotFound
 	}
@@ -69,17 +73,18 @@ func (r *sqliteArticleRepo) List(ctx context.Context, page, limit int, tag strin
 	var total int
 	var rows *sql.Rows
 	var err error
+	// List is the public-facing listing (JSON API): drafts are never included.
 	if tag != "" {
 		like := "%" + tag + "%"
-		r.db.QueryRowContext(ctx, `SELECT COUNT(1) FROM articles WHERE tags LIKE ?`, like).Scan(&total)
+		r.db.QueryRowContext(ctx, `SELECT COUNT(1) FROM articles WHERE tags LIKE ? AND COALESCE(status,'published')='published'`, like).Scan(&total)
 		rows, err = r.db.QueryContext(ctx,
-			`SELECT id,title,slug,content,tags,created_at,updated_at FROM articles WHERE tags LIKE ? ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+			`SELECT id,title,slug,content,tags,created_at,updated_at,COALESCE(status,'published') FROM articles WHERE tags LIKE ? AND COALESCE(status,'published')='published' ORDER BY created_at DESC LIMIT ? OFFSET ?`,
 			like, limit, (page-1)*limit,
 		)
 	} else {
-		r.db.QueryRowContext(ctx, `SELECT COUNT(1) FROM articles`).Scan(&total)
+		r.db.QueryRowContext(ctx, `SELECT COUNT(1) FROM articles WHERE COALESCE(status,'published')='published'`).Scan(&total)
 		rows, err = r.db.QueryContext(ctx,
-			`SELECT id,title,slug,content,tags,created_at,updated_at FROM articles ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+			`SELECT id,title,slug,content,tags,created_at,updated_at,COALESCE(status,'published') FROM articles WHERE COALESCE(status,'published')='published' ORDER BY created_at DESC LIMIT ? OFFSET ?`,
 			limit, (page-1)*limit,
 		)
 	}
@@ -91,7 +96,7 @@ func (r *sqliteArticleRepo) List(ctx context.Context, page, limit int, tag strin
 	for rows.Next() {
 		var a Article
 		var tagsCSV string
-		rows.Scan(&a.ID, &a.Title, &a.Slug, &a.Content, &tagsCSV, &a.CreatedAt, &a.UpdatedAt)
+		rows.Scan(&a.ID, &a.Title, &a.Slug, &a.Content, &tagsCSV, &a.CreatedAt, &a.UpdatedAt, &a.Status)
 		a.Tags = splitCSV(tagsCSV)
 		result = append(result, a)
 	}

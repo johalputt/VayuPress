@@ -932,7 +932,7 @@ func CachePurge(slug string, tags []string, generateSitemap, generateRSS, genera
 
 // WarmCache pre-renders the 1000 most recently updated articles that are not already cached.
 func WarmCache(splitTags func(string) []string) {
-	rows, err := db.DB.Query(`SELECT id,title,slug,content,tags,created_at,updated_at FROM articles ORDER BY updated_at DESC LIMIT 1000`)
+	rows, err := db.DB.Query(`SELECT id,title,slug,content,tags,created_at,updated_at FROM articles WHERE COALESCE(status,'published')='published' ORDER BY updated_at DESC LIMIT 1000`)
 	if err != nil {
 		return
 	}
