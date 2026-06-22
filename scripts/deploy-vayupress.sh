@@ -291,6 +291,14 @@ fi
 
 export PATH="/usr/local/go/bin:${PATH}"
 
+# Persist Go PATH for all future shell sessions (sudo and non-sudo).
+# This ensures manual commands like `go build` after deployment find the
+# right Go binary rather than a stale system-package version.
+if ! grep -q '/usr/local/go/bin' /etc/profile.d/go.sh 2>/dev/null; then
+  echo 'export PATH="/usr/local/go/bin:$PATH"' > /etc/profile.d/go.sh
+  chmod 644 /etc/profile.d/go.sh
+fi
+
 # =============================================================================
 # ── DIRECTORY LAYOUT ─────────────────────────────────────────────────────────
 # =============================================================================

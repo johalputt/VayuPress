@@ -27,11 +27,16 @@ database directly — no running Ghost process needed. It uses keyset pagination
 ### Step 1 — Build the migration tool
 
 ```bash
-# On the VPS or a build machine with Go 1.23+
-git clone https://github.com/johalputt/VayuPress.git
-cd VayuPress/tools/ghost-to-vayu
-go build -o ghost2vayu ./cmd/ghost2vayu/
+# On the VPS — use the full path to avoid picking up an old system Go
+git clone https://github.com/johalputt/VayuPress.git /tmp/VayuPress
+cd /tmp/VayuPress/tools/ghost-to-vayu
+/usr/local/go/bin/go build -o /usr/local/bin/ghost2vayu ./cmd/ghost2vayu/
 ```
+
+> **Note:** always call `/usr/local/go/bin/go` explicitly (or run
+> `source /etc/profile.d/go.sh` first) to make sure you are using the Go
+> version installed by the deploy script rather than an older system Go.
+> The `toolchain` directive in the module requires Go 1.24+.
 
 ### Step 2 — Count posts (dry run first)
 
