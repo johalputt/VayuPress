@@ -147,7 +147,7 @@
           block.url = val;
           if (!val) return;
           embedStatus.textContent = 'Fetching…';
-          fetch('/api/v1/admin/embed/unfurl', {
+          fetch('/os/api/embed/unfurl', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
             body: JSON.stringify({ url: val })
@@ -198,7 +198,7 @@
         var renderDiag = function () {
           var v = dsrc.value.trim();
           if (!v) { dprev.innerHTML = ''; return; }
-          fetch('/api/v1/admin/diagram/preview', {
+          fetch('/os/api/diagram/preview', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
             body: JSON.stringify({ source: v })

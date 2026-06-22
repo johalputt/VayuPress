@@ -471,7 +471,7 @@ $$('[data-setting-key]').forEach(function (el) {
     var fd = new FormData();
     fd.append('file', file);
     toast('Uploading…', 'ok');
-    fetch('/api/v1/admin/media', {
+    fetch('/os/api/media/upload', {
       method: 'POST',
       headers: { 'X-CSRF-Token': cookie('vp_csrf') },
       body: fd

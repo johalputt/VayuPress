@@ -106,6 +106,11 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.Get("/os/posts", a.handleOSPosts)
 		pr.Get("/os/media", a.handleOSMedia)
 		pr.Get("/os/api/media", a.handleOSMediaList)
+		// Session-friendly media upload + import. The /api/v1/admin/media originals
+		// require an API key; VayuOS operators hold a session cookie, so the browser
+		// Media library must POST here instead (same handlers, CSRF-protected).
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/media/upload", a.handleMediaUpload)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/media/import", a.handleMediaImport)
 		pr.Get("/os/members", a.handleOSMembers)
 		pr.Get("/os/security", a.handleOSSecurity)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/totp/begin", a.handleOSTOTPBegin)
@@ -142,6 +147,10 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/posts/status", a.handleOSPostStatus)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/editor/save", a.handleOSEditorSave)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/editor/preview", a.handleOSEditorPreview)
+		// Session-friendly mirrors of the editor's block tools (the /api/v1/admin
+		// originals require an API key; os operators hold a session cookie).
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/embed/unfurl", a.handleEmbedUnfurl)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/diagram/preview", a.handleDiagramPreview)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/editor/ai", a.handleOSEditorAI)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/editor/convert", a.handleOSEditorConvert)
 		pr.Get("/os/api/editor/versions/{slug}", a.handleOSEditorVersionList)
