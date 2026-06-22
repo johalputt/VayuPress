@@ -209,16 +209,26 @@ done
 ## DNS cutover checklist
 
 1. VayuPress running and all posts verified → `systemctl status vayupress`
-2. Nginx configured for your domain with HTTPS
-3. Add 301 redirects in Nginx for any changed URL patterns:
+2. Nginx configured for your domain — see `deploy/nginx-vayupress.conf`
+3. Obtain TLS certificate with the webroot method (VayuPress proxies everything,
+   so `--nginx` certbot mode fails unless you add the ACME challenge block first):
+   ```bash
+   # The nginx config already serves /.well-known/acme-challenge/ from /var/cache/vayupress.
+   # Reload nginx first, then:
+   sudo certbot certonly --webroot -w /var/cache/vayupress \
+     -d yourdomain.com -d www.yourdomain.com \
+     --non-interactive --agree-tos -m admin@yourdomain.com
+   sudo nginx -t && sudo systemctl reload nginx
+   ```
+4. Add 301 redirects in Nginx for any changed URL patterns:
    ```nginx
    # Ghost used /tag/:tag — VayuPress uses /tag/:tag (same — no change needed)
    # Ghost author pages: redirect if you don't need them
    location ~ ^/author/ { return 301 /; }
    ```
-4. Lower DNS TTL to 300 seconds 24 hours before cutover
-5. Update DNS A record to VPS IP
-6. Verify with: `curl -I https://yourdomain.com/your-first-post-slug`
+5. Lower DNS TTL to 300 seconds 24 hours before cutover
+6. Update DNS A record to VPS IP
+7. Verify with: `curl -s https://yourdomain.com/ | head -5`
 7. Restore DNS TTL to 3600 after confirming clean
 
 ---
