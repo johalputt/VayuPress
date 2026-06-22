@@ -145,6 +145,10 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/settings", a.handleOSSettingsAPI)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/posts/quick-create", a.handleOSQuickCreatePost)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/posts/status", a.handleOSPostStatus)
+		// Session-friendly branding (favicon) upload — the /admin/theme/favicon
+		// original is in the API-key-only group, so a browser operator can't reach
+		// it. This mirror is gated by requireSessionOrAPIKey + CSRF.
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/branding/favicon", a.handleFaviconUpload)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/editor/save", a.handleOSEditorSave)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/editor/preview", a.handleOSEditorPreview)
 		// Session-friendly mirrors of the editor's block tools (the /api/v1/admin
@@ -384,7 +388,7 @@ func adminOSShellFoot(nonce, pageScript string) string {
 <script nonce="` + nonce + `">
 (function(){'use strict';
 var msg=document.getElementById('action-msg');
-function csrf(){var m=document.cookie.match(/(?:^|;\\s*)vp_csrf=([^;]+)/);return m?m[1]:'';}
+function csrf(){var m=document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);return m?m[1]:'';}
 function show(text,isErr){if(!msg)return;msg.textContent=text;msg.classList.toggle('is-error',!!isErr);msg.classList.add('visible');}
 window.vpPost=function(url,onok){fetch(url,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()}}).then(function(r){return r.json().then(function(d){return {ok:r.ok,d:d};});}).then(function(res){show(res.ok?(onok?onok(res.d):'ok'):(res.d.detail||res.d.title||'error'),!res.ok);if(res.ok)setTimeout(function(){location.reload();},650);}).catch(function(e){show('Error: '+e,true);});};
 ` + pageScript + `
@@ -933,7 +937,7 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 <div id="action-msg" role="status" aria-live="polite" class="action-msg"></div>
 <script nonce="` + nonce + `">
 (function(){'use strict';
-function csrf(){var m=document.cookie.match(/(?:^|;\\s*)vp_csrf=([^;]+)/);return m?m[1]:'';}
+function csrf(){var m=document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);return m?m[1]:'';}
 var msg=document.getElementById('action-msg');
 function show(t,e){if(!msg)return;msg.textContent=t;msg.classList.toggle('is-error',!!e);msg.classList.add('visible');}
 document.querySelectorAll('[data-post-toggle]').forEach(function(b){
@@ -1129,7 +1133,34 @@ function doSave(){
   });
 }
 if(saveBtn)saveBtn.addEventListener('click',doSave);
-if(saveBtnBar)saveBtnBar.addEventListener('click',doSave);`
+if(saveBtnBar)saveBtnBar.addEventListener('click',doSave);
+// Branding: favicon/logo upload (Design tab). Elements only exist there.
+var favFile=document.getElementById('brand-favicon-file');
+var favUp=document.getElementById('brand-favicon-upload');
+var favRm=document.getElementById('brand-favicon-remove');
+var favStatus=document.getElementById('brand-favicon-status');
+var favImg=document.getElementById('brand-favicon-img');
+var favState=document.getElementById('brand-favicon-state');
+function favSet(t,isErr){if(favStatus){favStatus.textContent=t;favStatus.style.color=isErr?'var(--color-danger,#ef4444)':'var(--color-success,#22c55e)';}}
+function favBust(){if(favImg)favImg.src='/favicon.ico?t='+Date.now();}
+if(favUp)favUp.addEventListener('click',function(){
+  var f=favFile&&favFile.files&&favFile.files[0];
+  if(!f){favSet('Choose a PNG or ICO first',true);return;}
+  favUp.disabled=true;favSet('Uploading…',false);
+  var fd=new FormData();fd.append('favicon',f);
+  fetch('/os/api/branding/favicon',{method:'POST',headers:{'X-CSRF-Token':csrf()},body:fd})
+    .then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d};});})
+    .then(function(res){favUp.disabled=false;if(res.ok){favSet('Favicon updated',false);favBust();if(favState)favState.textContent='Custom favicon active — stored in the database.';}else{favSet(res.d.error||'Upload failed',true);}})
+    .catch(function(e){favUp.disabled=false;favSet('Error: '+e,true);});
+});
+if(favRm)favRm.addEventListener('click',function(){
+  favRm.disabled=true;favSet('Removing…',false);
+  var fd=new FormData();fd.append('remove','1');
+  fetch('/os/api/branding/favicon',{method:'POST',headers:{'X-CSRF-Token':csrf()},body:fd})
+    .then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d};});})
+    .then(function(res){favRm.disabled=false;if(res.ok){favSet('Default restored',false);favBust();if(favState)favState.textContent='Using the default mark.';}else{favSet(res.d.error||'Remove failed',true);}})
+    .catch(function(e){favRm.disabled=false;favSet('Error: '+e,true);});
+});`
 
 	fullHTML := adminOSShellHead(nonce, "Settings", "settings", cfg) +
 		renderTrustedHTML(htmpl.HTML(body)) +
@@ -1169,6 +1200,7 @@ func osSettingsGeneral(ctx context.Context, ss *settings.Store) string {
 
 func osSettingsDesign(ctx context.Context, ss *settings.Store) string {
 	primaryLight, primaryDark, customCSS := "#0f766e", "#2dd4bf", ""
+	faviconState := "Using the default mark."
 	if ss != nil {
 		if v := ss.Get(ctx, settings.KeyThemePrimaryLight); v != "" {
 			primaryLight = v
@@ -1177,9 +1209,32 @@ func osSettingsDesign(ctx context.Context, ss *settings.Store) string {
 			primaryDark = v
 		}
 		customCSS = ss.Get(ctx, settings.KeyThemeCustomCSS)
+		if ss.Get(ctx, settings.KeyBrandFavicon) != "" {
+			faviconState = "Custom favicon active — stored in the database."
+		}
 	}
 
 	return `<div class="settings-section">
+  <div class="settings-block-title">Branding</div>
+  <div class="field">
+    <label class="field-label">Logo &amp; favicon</label>
+    <div class="settings-row" style="align-items:center;gap:1rem">
+      <img id="brand-favicon-img" src="/favicon.ico?t=` + strconv.FormatInt(time.Now().Unix(), 10) + `" alt="Current favicon" width="40" height="40" style="border-radius:6px;background:var(--surface-2,#1a1a1a)">
+      <div class="settings-row-info">
+        <div class="settings-row-label">Site mark</div>
+        <div class="settings-row-hint" id="brand-favicon-state">` + html.EscapeString(faviconState) + `</div>
+      </div>
+    </div>
+    <span class="field-hint">PNG or ICO, square, ≤ 256 KB. Used as the favicon (browser tab) and the nav-bar logo on the public site. Applies immediately.</span>
+    <div class="theme-actions" style="display:flex;gap:.5rem;align-items:center;margin-top:.5rem;flex-wrap:wrap">
+      <input type="file" id="brand-favicon-file" accept="image/png,image/x-icon,.png,.ico" class="input" style="max-width:18rem">
+      <button type="button" class="btn btn--primary btn--sm" id="brand-favicon-upload">Upload</button>
+      <button type="button" class="btn btn--sm" id="brand-favicon-remove">Remove (use default)</button>
+      <span id="brand-favicon-status" class="text-xs muted" role="status" aria-live="polite"></span>
+    </div>
+  </div>
+</div>
+<div class="settings-section">
   <div class="settings-block-title">Theme colours</div>
   <div class="settings-row">
     <div class="settings-row-info">
