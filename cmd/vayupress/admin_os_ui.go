@@ -709,7 +709,7 @@ func (a *App) handleOSDashboard(w http.ResponseWriter, r *http.Request) {
     <div class="stat-card__top">
       <div class="stat-card__label">Articles</div>
       <div class="stat-card__icon stat-card__icon--brand">
-        <svg viewBox="0 0 16 16" fill="none" width="16" height="16" aria-hidden="true"><path d="M2 3h12v2H2OSzm0 4h12v2H2V7zm0 4h8v2H2v-2z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>
+        <svg viewBox="0 0 16 16" fill="none" width="16" height="16" aria-hidden="true"><path d="M2 3h12v2H2V3zm0 4h12v2H2V7zm0 4h8v2H2v-2z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>
       </div>
     </div>
     <div class="stat-card__value">` + strconv.Itoa(snap.TotalArticles) + `</div>
