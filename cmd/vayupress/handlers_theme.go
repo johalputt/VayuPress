@@ -740,8 +740,8 @@ func themeEditorPage(vals map[string]string, modeStr, nonce, errMsg string) stri
 (function(){
   function getVal(id){ var el=document.getElementById(id); return el?el.value:''; }
   function csrf(){
-    var m=document.cookie.split('; ').find(function(r){return r.startsWith('vp_csrf=');});
-    return m?m.split('=')[1]:'';
+    var m=document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);
+    return m?m[1]:'';
   }
   // Tab switching (no inline handlers — CSP-clean).
   document.querySelectorAll('.theme-tab').forEach(function(btn){

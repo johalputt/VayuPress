@@ -384,7 +384,7 @@ func adminOSShellFoot(nonce, pageScript string) string {
 <script nonce="` + nonce + `">
 (function(){'use strict';
 var msg=document.getElementById('action-msg');
-function csrf(){var m=document.cookie.split('; ').find(function(r){return r.startsWith('vp_csrf=');});return m?m.split('=')[1]:'';}
+function csrf(){var m=document.cookie.match(/(?:^|;\\s*)vp_csrf=([^;]+)/);return m?m[1]:'';}
 function show(text,isErr){if(!msg)return;msg.textContent=text;msg.classList.toggle('is-error',!!isErr);msg.classList.add('visible');}
 window.vpPost=function(url,onok){fetch(url,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()}}).then(function(r){return r.json().then(function(d){return {ok:r.ok,d:d};});}).then(function(res){show(res.ok?(onok?onok(res.d):'ok'):(res.d.detail||res.d.title||'error'),!res.ok);if(res.ok)setTimeout(function(){location.reload();},650);}).catch(function(e){show('Error: '+e,true);});};
 ` + pageScript + `
@@ -933,7 +933,7 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 <div id="action-msg" role="status" aria-live="polite" class="action-msg"></div>
 <script nonce="` + nonce + `">
 (function(){'use strict';
-function csrf(){var m=document.cookie.split('; ').find(function(r){return r.startsWith('vp_csrf=');});return m?m.split('=')[1]:'';}
+function csrf(){var m=document.cookie.match(/(?:^|;\\s*)vp_csrf=([^;]+)/);return m?m[1]:'';}
 var msg=document.getElementById('action-msg');
 function show(t,e){if(!msg)return;msg.textContent=t;msg.classList.toggle('is-error',!!e);msg.classList.add('visible');}
 document.querySelectorAll('[data-post-toggle]').forEach(function(b){

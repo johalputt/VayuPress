@@ -73,6 +73,19 @@ else
   warn "No static/ dir in $SRC_DIR — skipping asset copy."
 fi
 
+# Copy docs (ADR registry, guides) to a stable data location so the ADR page
+# works even after /tmp is cleared. The handler probes /var/lib/vayupress/docs.
+DOCS_DEST="${DOCS_DEST:-/var/lib/vayupress/docs}"
+if [[ -d "$SRC_DIR/docs" ]]; then
+  info "Refreshing docs in $DOCS_DEST..."
+  mkdir -p "$DOCS_DEST"
+  cp -r "$SRC_DIR/docs/." "$DOCS_DEST/"
+  chown -R www-data:www-data "$DOCS_DEST" 2>/dev/null || true
+  ok "Docs refreshed (ADR registry will populate)."
+else
+  warn "No docs/ dir in $SRC_DIR — ADR page may be empty."
+fi
+
 # ── 5. Restart and verify ────────────────────────────────────────────────────
 info "Restarting $SERVICE..."
 systemctl restart "$SERVICE"

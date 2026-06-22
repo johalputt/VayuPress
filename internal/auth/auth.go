@@ -396,7 +396,10 @@ func GenerateCSRFToken() string {
 	mac := hmac.New(sha256.New, csrfSecret)
 	mac.Write([]byte(token))
 	sig := hex.EncodeToString(mac.Sum(nil))
-	return base64.URLEncoding.EncodeToString([]byte(token + "." + sig))
+	// RawURLEncoding (no '=' padding) so the token is safe to carry in a cookie
+	// and read back in JS. base64.URLEncoding adds a trailing '=' which naive
+	// `cookie.split('=')[1]` parsers strip, breaking the double-submit match.
+	return base64.RawURLEncoding.EncodeToString([]byte(token + "." + sig))
 }
 
 // ValidateCSRFToken verifies a token produced by GenerateCSRFToken.
@@ -404,7 +407,10 @@ func ValidateCSRFToken(token string) bool {
 	if token == "" {
 		return false
 	}
-	decoded, err := base64.URLEncoding.DecodeString(token)
+	// Accept both the current padding-free form and any legacy padded token
+	// still sitting in a browser cookie (they regenerate on the next page load).
+	token = strings.TrimRight(token, "=")
+	decoded, err := base64.RawURLEncoding.DecodeString(token)
 	if err != nil {
 		return false
 	}

@@ -447,23 +447,47 @@ func (a *App) handleSmokeTest(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, "OK")
 }
 
-func (a *App) handleAdminADR(w http.ResponseWriter, r *http.Request) {
-	// VAYU_DOCS_DIR overrides the docs root. Default: look next to the binary,
-	// then fall back to the classic /var/www path (old deploy convention).
-	docsBase := config.EnvOr("VAYU_DOCS_DIR", "")
-	if docsBase == "" {
-		// Try <binary-dir>/../../docs (works when binary is /opt/vayupress/vayupress)
-		if exe, err := os.Executable(); err == nil {
-			candidate := filepath.Join(filepath.Dir(exe), "..", "..", "docs")
-			if _, e := os.Stat(filepath.Join(candidate, "adr")); e == nil {
-				docsBase = candidate
+// resolveADRDir locates the docs/adr directory across deployment layouts.
+// VAYU_DOCS_DIR (pointing at the docs root) always wins. Otherwise it probes
+// the common install locations and the source checkout used by the deploy and
+// update scripts, returning the first that actually contains ADR files. If none
+// match it returns the first candidate so the caller renders a helpful empty
+// state with the path it expected.
+func resolveADRDir() string {
+	var candidates []string
+	if v := config.EnvOr("VAYU_DOCS_DIR", ""); v != "" {
+		candidates = append(candidates, filepath.Join(v, "adr"))
+	}
+	candidates = append(candidates,
+		"/opt/vayupress/docs/adr", // INSTALL_DIR from deploy-vayupress.sh
+		"/tmp/VayuPress/docs/adr", // SRC_DIR from update-vayupress.sh
+		"/var/lib/vayupress/docs/adr",
+		"/var/www/vayupress/docs/adr", // legacy convention
+	)
+	// Relative to the binary and the working directory, for dev/ad-hoc runs.
+	if exe, err := os.Executable(); err == nil {
+		dir := filepath.Dir(exe)
+		candidates = append(candidates,
+			filepath.Join(dir, "docs", "adr"),
+			filepath.Join(dir, "..", "docs", "adr"),
+		)
+	}
+	candidates = append(candidates, "docs/adr")
+
+	for _, c := range candidates {
+		if entries, err := os.ReadDir(c); err == nil {
+			for _, e := range entries {
+				if !e.IsDir() && strings.HasSuffix(e.Name(), ".md") {
+					return c
+				}
 			}
 		}
 	}
-	if docsBase == "" {
-		docsBase = "/var/www/vayupress/docs"
-	}
-	adrDir := filepath.Join(docsBase, "adr")
+	return candidates[0]
+}
+
+func (a *App) handleAdminADR(w http.ResponseWriter, r *http.Request) {
+	adrDir := resolveADRDir()
 	entries, err := os.ReadDir(adrDir)
 	if err != nil {
 		nonce := a.writeConsoleShellHead(w, r, "adrs", "ADR Registry", "Architecture Decision Records")

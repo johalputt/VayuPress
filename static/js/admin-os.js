@@ -39,7 +39,9 @@ const on = (el, ev, fn) => el && el.addEventListener(ev, fn);
 
 /* ── Cookies ─────────────────────────────────────────────────── */
 function cookie(name) {
-  return (document.cookie.split('; ').find(function (r) { return r.startsWith(name + '='); }) || '').split('=')[1] || '';
+  // Take everything after the first '=' so base64 values keep any '=' padding.
+  var row = document.cookie.split('; ').find(function (r) { return r.startsWith(name + '='); });
+  return row ? row.slice(name.length + 1) : '';
 }
 
 /* ── Toast system ────────────────────────────────────────────── */
