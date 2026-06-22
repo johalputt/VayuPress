@@ -1101,16 +1101,29 @@ function doSave(){
   if(saveBtnBar)saveBtnBar.disabled=true;
   setStatus('Saving…',false);
   var c=csrf();
-  Promise.all(pairs.map(function(p){
-    return fetch('/os/api/settings',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':c},body:JSON.stringify(p)})
-      .then(function(r){if(!r.ok)throw new Error(p.key);});
-  })).then(function(){
+  // Send sequentially to avoid SQLite write contention (WAL allows one writer).
+  pairs.reduce(function(chain,p){
+    return chain.then(function(){
+      return fetch('/os/api/settings',{
+        method:'POST',
+        headers:{'Content-Type':'application/json','X-CSRF-Token':c},
+        body:JSON.stringify(p)
+      }).then(function(r){
+        if(r.ok)return;
+        return r.json().then(function(e){
+          throw new Error(p.key+': '+(e.detail||e.message||e.error||r.status));
+        }).catch(function(){
+          throw new Error(p.key+': HTTP '+r.status);
+        });
+      });
+    });
+  },Promise.resolve()).then(function(){
     setStatus('Saved',false);
     if(saveBtn)saveBtn.disabled=false;
     if(saveBtnBar)saveBtnBar.disabled=false;
     if(window.vpToast)window.vpToast('Settings saved','ok');
   }).catch(function(e){
-    setStatus('Error: '+e.message,true);
+    setStatus('Failed — '+e.message,true);
     if(saveBtn)saveBtn.disabled=false;
     if(saveBtnBar)saveBtnBar.disabled=false;
   });

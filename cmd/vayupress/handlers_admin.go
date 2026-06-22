@@ -448,7 +448,22 @@ func (a *App) handleSmokeTest(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleAdminADR(w http.ResponseWriter, r *http.Request) {
-	adrDir := filepath.Join(config.EnvOr("VAYU_DOCS_DIR", "/var/www/vayupress/docs"), "adr")
+	// VAYU_DOCS_DIR overrides the docs root. Default: look next to the binary,
+	// then fall back to the classic /var/www path (old deploy convention).
+	docsBase := config.EnvOr("VAYU_DOCS_DIR", "")
+	if docsBase == "" {
+		// Try <binary-dir>/../../docs (works when binary is /opt/vayupress/vayupress)
+		if exe, err := os.Executable(); err == nil {
+			candidate := filepath.Join(filepath.Dir(exe), "..", "..", "docs")
+			if _, e := os.Stat(filepath.Join(candidate, "adr")); e == nil {
+				docsBase = candidate
+			}
+		}
+	}
+	if docsBase == "" {
+		docsBase = "/var/www/vayupress/docs"
+	}
+	adrDir := filepath.Join(docsBase, "adr")
 	entries, err := os.ReadDir(adrDir)
 	if err != nil {
 		nonce := a.writeConsoleShellHead(w, r, "adrs", "ADR Registry", "Architecture Decision Records")

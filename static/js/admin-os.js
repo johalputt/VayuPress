@@ -478,7 +478,7 @@ $$('[data-setting-key]').forEach(function (el) {
     })
       .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
       .then(function (res) {
-        if (!res.ok) { toast(res.j.error || 'Upload failed', 'error'); return; }
+        if (!res.ok) { toast(typeof res.j.error === 'string' ? res.j.error : (res.j.message || res.j.detail || 'Upload failed'), 'error'); return; }
         toast('Uploaded', 'ok');
         load();
       })
