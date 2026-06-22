@@ -457,85 +457,165 @@ ok "Meilisearch configured and started."
 # ── FILE PERMISSIONS ──────────────────────────────────────────────────────────
 # =============================================================================
 
-run chown -R www-data:www-data "${DATA_DIR}" "${LOG_DIR}" "${CACHE_DIR}" "${STATIC_DIR}" "${BACKUP_DIR}"
+run chown -R www-data:www-data "${DATA_DIR}" "${LOG_DIR}" "${CACHE_DIR}" "${BACKUP_DIR}"
+# STATIC_DIR ownership is set after static files are copied below
 ok "File permissions set."
+
+# =============================================================================
+# ── STATIC ASSETS ─────────────────────────────────────────────────────────────
+# =============================================================================
+
+info "Copying static assets to ${STATIC_DIR}..."
+run mkdir -p "${STATIC_DIR}/css" "${STATIC_DIR}/js" "${STATIC_DIR}/fonts" "${STATIC_DIR}/img"
+if [[ -d "${INSTALL_DIR}/static" ]]; then
+  run cp -r "${INSTALL_DIR}/static/." "${STATIC_DIR}/"
+  ok "Static assets copied."
+else
+  warn "No static/ directory found in ${INSTALL_DIR} — skipping asset copy."
+fi
+run chown -R www-data:www-data "${STATIC_DIR}"
 
 # =============================================================================
 # ── NGINX ─────────────────────────────────────────────────────────────────────
 # =============================================================================
 
 info "Writing Nginx config..."
-# Rate limiting zones (rateLimit): general API and admin write endpoints
+# Rate limiting zones — must live in http{} context (conf.d/ is included there).
+# The site config references these zones; they MUST be defined here before the
+# site config is parsed, otherwise nginx will return 500/403 on every request.
 cat > /etc/nginx/conf.d/vayupress-ratelimit.conf <<RATELIMIT
-limit_req_zone \$binary_remote_addr zone=vayupress_api:10m rate=30r/m;
+limit_req_zone \$binary_remote_addr zone=vayupress_api:10m   rate=30r/m;
 limit_req_zone \$binary_remote_addr zone=vayupress_write:10m rate=10r/m;
 limit_req_zone \$binary_remote_addr zone=vayupress_admin:10m rate=5r/m;
 RATELIMIT
 
+# HTTP server: ACME challenge (for certbot webroot renewals) + redirect to HTTPS.
+# VayuPress proxies everything so certbot --nginx mode cannot serve the ACME
+# challenge itself. We serve /.well-known/acme-challenge/ from the filesystem
+# at ${CACHE_DIR} instead, then redirect everything else to HTTPS.
 cat > /etc/nginx/sites-available/vayupress <<NGINX
+# ── HTTP → HTTPS redirect ──────────────────────────────────────────────────────
 server {
     listen 80;
+    listen [::]:80;
     server_name ${DOMAIN} www.${DOMAIN};
 
-    # ── Security headers (P9) ──────────────────────────────────────────────
-    add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header X-Frame-Options "DENY" always;
-    add_header X-XSS-Protection "1; mode=block" always;
-    add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none';" always;
-    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-    add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()" always;
+    # Certbot webroot: served from filesystem, not proxied to VayuPress.
+    # Required both for initial certificate issuance and for renewals.
+    location ^~ /.well-known/acme-challenge/ {
+        root ${CACHE_DIR};
+        default_type text/plain;
+        try_files \$uri =404;
+    }
 
-    # ── CSRF token pass-through (enforced in application layer) ───────────
-    # Application sets X-CSRF-Token on responses; clients must echo it.
-    # See internal/auth — CSRFTokenMiddleware validates the csrf_token cookie.
+    location / {
+        return 301 https://\$host\$request_uri;
+    }
+}
+
+# ── HTTPS main server ──────────────────────────────────────────────────────────
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name ${DOMAIN} www.${DOMAIN};
+
+    # TLS — populated by certbot after first run
+    ssl_certificate     /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_ciphers         ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384;
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache   shared:SSL:10m;
+    ssl_session_timeout 1d;
+    ssl_stapling        on;
+    ssl_stapling_verify on;
+
+    # Security headers — CSP is set per-request by VayuPress with a nonce
+    add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
+    add_header X-Content-Type-Options    "nosniff" always;
+    add_header X-Frame-Options           "SAMEORIGIN" always;
+    add_header Referrer-Policy           "strict-origin-when-cross-origin" always;
+    add_header Permissions-Policy        "camera=(), microphone=(), geolocation=(), payment=()" always;
+
     proxy_pass_header X-CSRF-Token;
 
-    # ── Rate limiting (P9) ─────────────────────────────────────────────────
+    client_max_body_size 50M;
+    proxy_read_timeout    60s;
+    proxy_send_timeout    30s;
+    proxy_connect_timeout 10s;
+
+    gzip on;
+    gzip_vary on;
+    gzip_proxied any;
+    gzip_comp_level 6;
+    gzip_types text/plain text/css text/xml text/javascript
+               application/javascript application/json application/xml+rss;
+
+    # ACME challenge (for renewals after TLS is live)
+    location ^~ /.well-known/acme-challenge/ {
+        root ${CACHE_DIR};
+        default_type text/plain;
+        try_files \$uri =404;
+    }
+
+    # WebSocket (VayuOS live monitoring)
+    location /os/ws {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade    \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host       \$host;
+        proxy_read_timeout 3600s;
+    }
+
+    # Health check — no rate limit, no access log
+    location /health {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_buffering off;
+        access_log off;
+    }
+
+    # API rate limiting
     location /api/v1/ {
         limit_req zone=vayupress_api burst=20 nodelay;
         limit_req_status 429;
         proxy_pass http://127.0.0.1:8080;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header Host              \$host;
+        proxy_set_header X-Real-IP         \$remote_addr;
+        proxy_set_header X-Forwarded-For   \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_read_timeout 60s;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
     }
 
-    location /admin {
+    # Admin write rate limiting
+    location /os/api/ {
         limit_req zone=vayupress_admin burst=5 nodelay;
         limit_req_status 429;
         proxy_pass http://127.0.0.1:8080;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header Host              \$host;
+        proxy_set_header X-Real-IP         \$remote_addr;
+        proxy_set_header X-Forwarded-For   \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_pass_header X-CSRF-Token;
     }
 
+    # Everything else → VayuPress
     location / {
         proxy_pass http://127.0.0.1:8080;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header Host              \$host;
+        proxy_set_header X-Real-IP         \$remote_addr;
+        proxy_set_header X-Forwarded-For   \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_read_timeout 60s;
-        proxy_connect_timeout 10s;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_pass_header X-CSRF-Token;
     }
 
-    location /static/ {
-        proxy_pass http://127.0.0.1:8080;
-        add_header Cache-Control "public, immutable, max-age=31536000";
-    }
-
-    location /health {
-        proxy_pass http://127.0.0.1:8080;
-        proxy_buffering off;
-    }
-
-    client_max_body_size 50M;
-    gzip on;
-    gzip_types text/plain text/css application/json application/javascript;
+    access_log /var/log/nginx/vayupress-access.log;
+    error_log  /var/log/nginx/vayupress-error.log warn;
 }
 NGINX
 
@@ -553,13 +633,33 @@ ok "Nginx configured."
 if [[ -n "$DOMAIN" && "$DOMAIN" != "localhost" ]]; then
   if [[ ! -f "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" ]]; then
     info "Obtaining Let's Encrypt certificate for ${DOMAIN}..."
-    run certbot --nginx -d "${DOMAIN}" -d "www.${DOMAIN}" \
-      --email "${EMAIL}" --agree-tos --non-interactive --redirect || \
-      warn "Certbot failed — HTTP only. Run certbot manually after DNS propagates."
+    # Use webroot mode, NOT --nginx: VayuPress proxies everything to port 8080,
+    # so certbot's --nginx plugin cannot serve the ACME challenge itself.
+    # The nginx config already serves /.well-known/acme-challenge/ from CACHE_DIR.
+    # We need nginx running first (HTTP-only config above), then certbot, then
+    # nginx will pick up the ssl_certificate paths on the next reload.
+    run mkdir -p "${CACHE_DIR}/.well-known/acme-challenge"
+    run chown -R www-data:www-data "${CACHE_DIR}"
+
+    # Reload nginx to activate the HTTP config (which has the ACME block)
+    run nginx -t
+    run systemctl reload nginx
+
+    run certbot certonly --webroot \
+      -w "${CACHE_DIR}" \
+      -d "${DOMAIN}" -d "www.${DOMAIN}" \
+      --email "${EMAIL}" --agree-tos --non-interactive || \
+      warn "Certbot failed — site will run HTTP only until cert is obtained.
+  After DNS propagates, re-run: sudo certbot certonly --webroot -w ${CACHE_DIR} -d ${DOMAIN} -d www.${DOMAIN} --email ${EMAIL} --agree-tos --non-interactive
+  Then: sudo nginx -t && sudo systemctl reload nginx"
   else
     ok "TLS certificate already exists for ${DOMAIN}."
   fi
 fi
+
+run nginx -t
+run systemctl reload nginx
+ok "Nginx reloaded."
 
 # =============================================================================
 # ── FIREWALL ─────────────────────────────────────────────────────────────────
