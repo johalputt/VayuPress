@@ -1045,9 +1045,45 @@ func (a *App) handleOSSettings(w http.ResponseWriter, r *http.Request) {
 
 	body := `<div class="page-header">
   <h1>Settings</h1>
+  <div class="page-actions">
+    <span id="settings-status" class="text-xs muted" aria-live="polite"></span>
+    <button type="button" class="btn btn--primary btn--sm" id="settings-save-btn">Save changes</button>
+  </div>
 </div>
 <nav class="tab-list" aria-label="Settings sections">` + tabHTML + `</nav>
-<div class="card">` + groupBody + `</div>`
+<div class="card">` + groupBody + `</div>
+<script nonce="` + nonce + `">
+(function(){'use strict';
+var btn=document.getElementById('settings-save-btn');
+var statusEl=document.getElementById('settings-status');
+function csrf(){var m=document.cookie.split('; ').find(function(r){return r.startsWith('vp_csrf=');});return m?m.split('=')[1]:'';}
+function setStatus(t,isErr){if(!statusEl)return;statusEl.textContent=t;statusEl.style.color=isErr?'var(--color-danger)':'var(--color-success)';}
+if(btn){btn.addEventListener('click',function(){
+  var fields=document.querySelectorAll('[data-setting-key]');
+  var pairs=[];
+  fields.forEach(function(el){
+    var key=el.dataset.settingKey;
+    var val=el.type==='checkbox'?(el.checked?'true':'false'):el.value;
+    pairs.push({key:key,value:val});
+  });
+  if(!pairs.length){setStatus('Nothing to save',false);return;}
+  btn.disabled=true;
+  setStatus('Saving…',false);
+  var c=csrf();
+  Promise.all(pairs.map(function(p){
+    return fetch('/os/api/settings',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':c},body:JSON.stringify(p)})
+      .then(function(r){if(!r.ok)throw new Error(p.key);});
+  })).then(function(){
+    setStatus('Saved',false);
+    btn.disabled=false;
+    if(window.vpToast)window.vpToast('Settings saved','ok');
+  }).catch(function(e){
+    setStatus('Error saving: '+e.message,true);
+    btn.disabled=false;
+  });
+});}
+})();
+</script>`
 
 	writeOSHTML(w, adminOSLayout(nonce, "Settings", "settings", cfg, htmpl.HTML(body)))
 }

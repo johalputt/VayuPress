@@ -1279,6 +1279,22 @@
   gap: var(--sp-6);
   align-items: start;
 }
+.vp-os .editor-topbar {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--sp-3) var(--sp-4);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-surface);
+  border-radius: var(--r-md) var(--r-md) 0 0;
+  gap: var(--sp-3);
+}
+.vp-os .editor-topbar-actions { display: flex; gap: var(--sp-2); }
+.vp-os .editor-topbar-status { font-size: var(--text-xs); color: var(--text-2); }
+.vp-os .editor-topbar-status--ok   { color: var(--color-success, #22c55e); }
+.vp-os .editor-topbar-status--warn { color: var(--color-warn, #f59e0b); }
+.vp-os .editor-topbar-status--error { color: var(--color-danger, #ef4444); }
 .vp-os .editor-main { min-width: 0; }
 .vp-os .editor-title {
   width: 100%;

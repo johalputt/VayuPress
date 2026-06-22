@@ -342,6 +342,13 @@ func (a *App) handleOSEditorVersionGet(w http.ResponseWriter, r *http.Request) {
 var osEditorHeadTmpl = htmpl.Must(htmpl.New("oseditorhead").Parse(
 	`<script type="application/json" id="vp-editor-data">{{.Blocks}}</script>
 <div class="editor-shell" data-editor data-slug="{{.Slug}}">
+  <div class="editor-topbar">
+    <span class="editor-topbar-status" data-editor-topbar-status></span>
+    <div class="editor-topbar-actions">
+      <button type="button" class="btn btn--ghost btn--sm" data-editor-preview-btn>Preview</button>
+      <button type="button" class="btn btn--primary btn--sm" data-editor-save>Save</button>
+    </div>
+  </div>
   <div class="editor-main">
     <input class="editor-title" data-editor-title type="text" placeholder="Post title…" value="{{.Title}}" aria-label="Post title">
     <div class="editor-canvas" data-editor-canvas aria-label="Editor canvas"></div>
@@ -362,11 +369,10 @@ func osEditorBody(slug, title, blocksJSON string) string {
   <aside class="editor-sidebar" aria-label="Editor tools">
     <div class="editor-status" data-editor-status>Ready</div>
     <div class="editor-actions">
-      <button type="button" class="btn btn--primary btn--sm" data-editor-save>Save</button>
-      <button type="button" class="btn btn--ghost btn--sm" data-editor-preview-btn>Preview</button>
       <button type="button" class="btn btn--ghost btn--sm" data-editor-history-btn>History</button>
     </div>
     <div class="editor-hint text-xs muted">Press <kbd>/</kbd> on an empty block for commands. <kbd>/ai</kbd> for AI assist.</div>
+    <div class="editor-hint text-xs muted mt-2"><kbd>⌘S</kbd> / <kbd>Ctrl+S</kbd> to save.</div>
   </aside>
   <div class="editor-preview-modal" data-editor-preview hidden role="dialog" aria-modal="true" aria-label="Preview">
     <div class="editor-preview-panel">

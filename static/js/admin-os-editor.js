@@ -18,6 +18,7 @@
   var canvas = root.querySelector('[data-editor-canvas]');
   var titleEl = root.querySelector('[data-editor-title]');
   var statusEl = root.querySelector('[data-editor-status]');
+  var topbarStatusEl = root.querySelector('[data-editor-topbar-status]');
   var saveBtn = root.querySelector('[data-editor-save]');
   var previewBtn = root.querySelector('[data-editor-preview-btn]');
   var previewModal = root.querySelector('[data-editor-preview]');
@@ -74,9 +75,14 @@
 
   // ── Rendering the editing surface (all DOM built safely) ───────────────────
   function setStatus(msg, kind) {
-    if (!statusEl) return;
-    statusEl.textContent = msg;
-    statusEl.className = 'editor-status' + (kind ? ' editor-status--' + kind : '');
+    if (statusEl) {
+      statusEl.textContent = msg;
+      statusEl.className = 'editor-status' + (kind ? ' editor-status--' + kind : '');
+    }
+    if (topbarStatusEl) {
+      topbarStatusEl.textContent = msg;
+      topbarStatusEl.className = 'editor-topbar-status' + (kind ? ' editor-topbar-status--' + kind : '');
+    }
   }
 
   function makeBlockEl(block, idx) {
