@@ -1,0 +1,57 @@
+# VayuPress v1.7.0 — Production systemd unit
+# Copy to /etc/systemd/system/vayupress.service
+# Then: systemctl daemon-reload && systemctl enable vayupress && systemctl start vayupress
+
+[Unit]
+Description=VayuPress v1.7.0 — Sovereign Publishing Engine
+Documentation=https://github.com/johalputt/VayuPress
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=vayupress
+Group=vayupress
+EnvironmentFile=/etc/vayupress/env
+ExecStart=/usr/local/bin/vayupress
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=vayupress
+
+# ── File descriptor limits ─────────────────────────────────────────────────
+# Required for 10k+ concurrent connections (default OS limit is 1024)
+LimitNOFILE=65536
+LimitNPROC=8192
+
+# ── Memory governance ──────────────────────────────────────────────────────
+# Adjust MemoryMax to ~75% of VPS RAM. On 8GB VPS: 6G. On 16GB VPS: 12G.
+MemoryMax=6G
+MemoryHigh=5G
+MemorySwapMax=0
+MemoryAccounting=yes
+# Protect from OOM killer — lower score = harder to kill (range: -1000 to 1000)
+OOMScoreAdjust=-500
+
+# ── CPU ────────────────────────────────────────────────────────────────────
+# Leave 20% headroom for OS + Meilisearch + Nginx
+CPUQuota=80%
+
+# ── Filesystem isolation ───────────────────────────────────────────────────
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+# Paths that must be writable
+ReadWritePaths=/var/lib/vayupress /var/cache/vayupress /tmp
+NoNewPrivileges=yes
+
+# ── Syscall filtering ──────────────────────────────────────────────────────
+SystemCallFilter=~@mount @privileged @obsolete @clock
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================================
-#  deploy-vayupress.sh — VayuPress Production Deployment (v1.0.0-p26)
+#  deploy-vayupress.sh — VayuPress Production Deployment (v1.7.0)
 # =============================================================================
 #
 #  Deploys the multi-package Go module architecture introduced in P14.
@@ -39,14 +39,14 @@ IFS=$'\n\t'
 # ── CONFIGURATION  (edit before running) ─────────────────────────────────────
 # =============================================================================
 
-ENGINE_VERSION="1.0.0-p27"
+ENGINE_VERSION="1.7.0"
 
 REPO_URL="https://github.com/johalputt/vayupress.git"
 REPO_BRANCH="main"
 
 DOMAIN="vayupress.com"
 EMAIL="admin@vayupress.com"
-WORKER_COUNT=3
+WORKER_COUNT=4
 
 # Directories
 INSTALL_DIR="/opt/vayupress"

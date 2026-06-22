@@ -92,7 +92,7 @@ func Init() error {
 		"PRAGMA busy_timeout=5000",
 		"PRAGMA foreign_keys=ON",
 		"PRAGMA cache_size=-65536",
-		"PRAGMA mmap_size=268435456",
+		"PRAGMA mmap_size=536870912", // 512 MB — sized for 200k-post workloads
 		"PRAGMA temp_store=MEMORY",
 		"PRAGMA journal_size_limit=67108864",
 		"PRAGMA wal_autocheckpoint=1000",
