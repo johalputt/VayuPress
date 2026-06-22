@@ -269,11 +269,12 @@ publishing-trend sparkline, activity feed, and command palette (⌘K).*
 escape + bluemonday UGC, slash-command palette with opt-in **AI-assist**, an
 inline **version-history diff**, autosave, and live preview.*
 
-As of v1.5.0 the flagship admin (`/os`) is the **single** admin surface —
+As of v1.6.0 the flagship admin (`/os`) is the **only** admin surface —
 it surpasses Ghost/WordPress/Substack in design and depth while staying a
 sovereign single binary with **zero CDN dependencies** and a **strict CSP** (no
-`unsafe-eval`, no `unsafe-inline`). Admin v2 is soft-deprecated and redirects
-here (ADR-0068, ADR-0069).
+`unsafe-eval`, no `unsafe-inline`). Admin v2 has been removed; the legacy
+`/admin`, `/admin/v2` and `/admin/v3` paths permanently (301) redirect here
+(ADR-0068, ADR-0069 Stage 3).
 
 - **Design system** — hand-authored, CSS-custom-property theming (dark/light/auto),
   grouped sidebar, command palette (⌘K), mobile bottom-nav. No inline styles.
@@ -692,8 +693,8 @@ trusted, and the strict CSP stays intact:
 | `GET` | `/api/v1/admin/users` | List author accounts (admin role) |
 | `POST` | `/api/v1/admin/users` | Create an account (admin role, CSRF-protected) |
 | `DELETE` | `/api/v1/admin/users/{email}` | Delete an account (admin role, CSRF-protected) |
-| `POST` | `/admin/v2/login` | Email + password sign-in (issues session cookie) |
-| `POST` | `/admin/v2/logout` | Destroy the current session |
+| `POST` | `/os/login` | Email + password sign-in (issues session cookie) |
+| `POST` | `/os/logout` | Destroy the current session |
 | `GET` | `/api/v1/admin/analytics` | Privacy-first page-view summary (cookieless) |
 | `GET` | `/api/v1/admin/webhooks` | List outbound webhooks |
 | `POST` | `/api/v1/admin/webhooks` | Register a webhook (CSRF-protected) |
@@ -726,7 +727,7 @@ Full reference: [docs/API-REFERENCE.md](docs/API-REFERENCE.md)
 > vayupress migrate info                               # all platform options
 > ```
 > Imports write both the sanitised article and an `article_sources` side-car so
-> the Admin v2 editor reopens each post in Markdown mode. See
+> the VayuOS block editor can reopen each post losslessly. See
 > [`docs/MIGRATION.md`](docs/MIGRATION.md) for the full guide.
 
 Standalone migration and import tools live under [`tools/`](tools/). Each is an
@@ -791,14 +792,17 @@ These features are part of VayuPress core (no external service required):
 | **Content Signing** | `internal/signing` | HMAC article verification |
 | **Sovereign Self-Update** | `internal/update` | Check-only web API + signature-verified CLI apply |
 
-### Modern Admin UI (`/admin/v2`)
+### Admin UI — VayuOS (`/os`)
 
-An editor-first admin redesign on a fully vendored, CSP-compliant stack (no
-CDNs, no `unsafe-eval`) — served alongside the untouched legacy `/admin`. The
-editor has split-view live preview, a slash-command palette, distraction-free
-mode, word count / reading time, an SEO preview, debounced autosave, and version
-history. See [docs/ADMIN-UI.md](docs/ADMIN-UI.md) and
-[ADR-0065](docs/adr/ADR-0065-admin-ui-csp-compliant-stack.md).
+VayuOS is the single, editor-first admin on a fully vendored, CSP-compliant
+stack (no CDNs, no `unsafe-eval`, per-request nonces). The typed block editor
+has AI-assist, inline version-history diff, live preview, a command palette
+(⌘K), distraction-free mode, word count / reading time, an SEO readiness meter
+and autosave. The historical Admin v2 (`/admin/v2`, ADR-0065) was removed in
+v1.6.0 (ADR-0069 Stage 3); its routes now permanently redirect to `/os`. See
+[docs/ADMIN-UI.md](docs/ADMIN-UI.md),
+[ADR-0068](docs/adr/ADR-0068-admin-v3-next-gen-ui.md) and
+[ADR-0069](docs/adr/ADR-0069-admin-v2-retirement-plan.md).
 
 ### Self-Update
 

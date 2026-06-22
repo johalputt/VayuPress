@@ -103,10 +103,10 @@ jobs:
       - name: Pre-flight checks
         run: |
           # Verify admin pages are reachable through proxy before screenshotting.
-          # Check /admin/v3 (the primary surface as of v1.5.0) and /admin/adr.
-          echo "--- /admin/v3 ---"
+          # Check /os (the only admin surface as of v1.6.0) and /admin/adr.
+          echo "--- /os ---"
           STATUS=$(curl -sS -o /tmp/v3-resp.txt -w "%{http_code}" \
-            -H "X-API-Key: $API_KEY" "$PROXY_URL/admin/v3")
+            -H "X-API-Key: $API_KEY" "$PROXY_URL/os")
           echo "HTTP $STATUS"
           if [ "$STATUS" != "200" ]; then
             echo "BODY:"; cat /tmp/v3-resp.txt
