@@ -14,7 +14,7 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"html"
+	htmpl "html/template"
 	"net/http"
 	"strconv"
 	"strings"
@@ -278,19 +278,38 @@ func (a *App) handleV3EditorVersionGet(w http.ResponseWriter, r *http.Request) {
 }
 
 // v3EditorBody builds the block-editor shell. The editor hydrates from the
-// data-blocks attribute (raw JSON) on first paint; an empty value starts a
-// fresh document.
-func v3EditorBody(slug, title, blocksJSON string) string {
-	// Every interpolated value is escaped with a direct html.EscapeString call so
-	// static analysis recognises the sanitiser barrier (an indirect call through a
-	// function-typed variable is not recognised as a barrier).
-	// data-blocks carries the raw JSON document; the layout/editor JS reads it.
-	return `<script type="application/json" id="vp-editor-data">` + strings.ReplaceAll(blocksJSON, "</", `<\/`) + `</script>
-<div class="editor-shell" data-editor data-slug="` + html.EscapeString(slug) + `">
+// <script type="application/json" id="vp-editor-data"> document on first paint;
+// an empty value starts a fresh document.
+// v3EditorHeadTmpl renders the interpolated head of the editor shell through
+// html/template so every value passes a recognised escaping barrier:
+//   - .Blocks is emitted in the <script type="application/json"> context, where
+//     html/template turns HTML-significant bytes (<, >, &, U+2028/9) into \uXXXX
+//     escapes that JSON.parse reverses — so </script> can never break out, yet
+//     the document round-trips losslessly.
+//   - .Slug and .Title are attribute-escaped (double quotes become &#34;).
+//
+// The static remainder of the shell carries no interpolation and is appended
+// as a literal.
+var v3EditorHeadTmpl = htmpl.Must(htmpl.New("v3editorhead").Parse(
+	`<script type="application/json" id="vp-editor-data">{{.Blocks}}</script>
+<div class="editor-shell" data-editor data-slug="{{.Slug}}">
   <div class="editor-main">
-    <input class="editor-title" data-editor-title type="text" placeholder="Post title…" value="` + html.EscapeString(title) + `" aria-label="Post title">
+    <input class="editor-title" data-editor-title type="text" placeholder="Post title…" value="{{.Title}}" aria-label="Post title">
     <div class="editor-canvas" data-editor-canvas aria-label="Editor canvas"></div>
-  </div>
+  </div>`))
+
+func v3EditorBody(slug, title, blocksJSON string) string {
+	if strings.TrimSpace(blocksJSON) == "" {
+		blocksJSON = "[]"
+	}
+	var head strings.Builder
+	// Execute cannot fail for these scalar fields and a constant template.
+	_ = v3EditorHeadTmpl.Execute(&head, struct {
+		Blocks json.RawMessage
+		Slug   string
+		Title  string
+	}{json.RawMessage(blocksJSON), slug, title})
+	return head.String() + `
   <aside class="editor-sidebar" aria-label="Editor tools">
     <div class="editor-status" data-editor-status>Ready</div>
     <div class="editor-actions">
