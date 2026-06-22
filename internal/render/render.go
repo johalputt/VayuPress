@@ -615,7 +615,7 @@ var homeFuncs = template.FuncMap{
 
 var homeTmpl = template.Must(template.New("home").Funcs(homeFuncs).Parse(`<!DOCTYPE html><html lang="en" data-theme="dark"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{.Domain}} — Sovereign Publishing Runtime</title>
+<title>{{if .SiteName}}{{.SiteName}}{{else}}{{.Domain}}{{end}}{{if .Tagline}} — {{.Tagline}}{{end}}</title>
 <meta name="description" content="VayuPress — a governed, adaptive publishing runtime. Durable by design, observable end to end.">
 <meta name="generator" content="VayuPress {{.Version}}">
 <link rel="canonical" href="https://{{.Domain}}/">
@@ -644,7 +644,7 @@ var homeTmpl = template.Must(template.New("home").Funcs(homeFuncs).Parse(`<!DOCT
 </nav>
 <main id="main-content">
 <section class="vayu-hero">
-  <span class="vayu-hero-eyebrow">Sovereign Publishing Runtime</span>
+  <span class="vayu-hero-eyebrow">{{if .SiteName}}{{.SiteName}}{{else}}Sovereign Publishing Runtime{{end}}</span>
   <h1>{{if .Tagline}}{{.Tagline}}{{else}}Publishing as an<br>adaptive runtime.{{end}}</h1>
   <p class="vayu-hero-tagline">{{if .Description}}{{.Description}}{{else}}Durable by design, observable end to end. Every write is queued, signed, and governed by a live operational state machine — not a CMS, a control plane.{{end}}</p>
   <div class="vayu-stats">
