@@ -46,6 +46,12 @@ const (
 	KeyBrandFavicon     = "brand.favicon"      // base64-encoded PNG/ICO bytes
 	KeyBrandFaviconType = "brand.favicon_type" // "image/png" | "image/x-icon"
 
+	// Navigation menu. A JSON array of {"label","href"} objects defining the
+	// public nav links (top of every page). When unset, a sensible default
+	// (Home / Feed / Console) is rendered. Operators add/remove items — internal
+	// pages or external/redirect links — from Settings → Navigation.
+	KeyNavItems = "nav.items"
+
 	// Feature flags — operator-toggleable platform modules surfaced in the
 	// Tools & Plugins panel. Each value is "on" (default) or "off". Disabling a
 	// flag turns the corresponding public surface off at the request boundary;
@@ -99,6 +105,7 @@ var AllKeys = map[string]bool{
 	KeyHeadVerifyBing:     true,
 	KeyBrandFavicon:       true,
 	KeyBrandFaviconType:   true,
+	KeyNavItems:           true,
 	KeyFeatureComments:    true,
 	KeyFeatureNewsletter:  true,
 	KeyFeatureWebmentions: true,

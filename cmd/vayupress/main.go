@@ -298,6 +298,7 @@ func main() {
 			Robots:         sv[settings.KeyHeadRobots],
 			VerifyGoogle:   sv[settings.KeyHeadVerifyGoogle],
 			VerifyBing:     sv[settings.KeyHeadVerifyBing],
+			NavJSON:        sv[settings.KeyNavItems],
 		})
 	}
 

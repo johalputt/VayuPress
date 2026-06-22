@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"net/http"
@@ -168,6 +169,66 @@ type SiteSettings struct {
 	Robots       string // meta robots directive (allowlisted)
 	VerifyGoogle string // google-site-verification token
 	VerifyBing   string // msvalidate.01 token
+
+	// NavJSON is the raw JSON array of {label,href} nav items configured by the
+	// operator. Empty means render the built-in default links.
+	NavJSON string
+}
+
+// NavItem is a single public navigation link (label + destination).
+type NavItem struct {
+	Label string `json:"label"`
+	Href  string `json:"href"`
+}
+
+// navLinksHTML builds the inner <a> tags for the public nav from the operator's
+// configured nav.items JSON. It falls back to the built-in Home/Feed/Console
+// links when nothing is configured. Labels are HTML-escaped and hrefs are
+// restricted to safe schemes (internal paths, http(s), mailto) so a stored
+// value can never inject markup or a javascript: URL.
+func navLinksHTML(navJSON string) template.HTML {
+	var items []NavItem
+	if strings.TrimSpace(navJSON) != "" {
+		_ = json.Unmarshal([]byte(navJSON), &items)
+	}
+	var b strings.Builder
+	if len(items) == 0 {
+		return template.HTML(`<a href="/">Home</a><a href="/feed.xml">Feed</a><a href="/admin">Console</a>`)
+	}
+	for _, it := range items {
+		label := strings.TrimSpace(it.Label)
+		href := strings.TrimSpace(it.Href)
+		if label == "" || href == "" || !safeNavHref(href) {
+			continue
+		}
+		ext := ""
+		if strings.HasPrefix(href, "http://") || strings.HasPrefix(href, "https://") {
+			ext = ` rel="noopener noreferrer"`
+		}
+		b.WriteString(`<a href="`)
+		b.WriteString(template.HTMLEscapeString(href))
+		b.WriteString(`"` + ext + `>`)
+		b.WriteString(template.HTMLEscapeString(label))
+		b.WriteString(`</a>`)
+	}
+	return template.HTML(b.String())
+}
+
+// safeNavHref allows internal paths, fragment/anchor links, http(s) URLs and
+// mailto: links. Everything else (javascript:, data:, etc.) is rejected.
+func safeNavHref(href string) bool {
+	switch {
+	case strings.HasPrefix(href, "/"):
+		return true
+	case strings.HasPrefix(href, "#"):
+		return true
+	case strings.HasPrefix(href, "http://"), strings.HasPrefix(href, "https://"):
+		return true
+	case strings.HasPrefix(href, "mailto:"):
+		return true
+	default:
+		return false
+	}
 }
 
 var (
@@ -362,6 +423,7 @@ type articlePage struct {
 	HeadMeta            template.HTML
 	ThemeToggleJSLink   template.HTML
 	VideoFacadeJSLink   template.HTML
+	NavLinks            template.HTML
 	SiteName            string
 	Author              string
 	// SEO fields computed by internal/seo
@@ -553,9 +615,7 @@ var articleTmpl = template.Must(template.New("article").Funcs(template.FuncMap{
 <nav class="vayu-nav" aria-label="Primary">
   <a href="/" class="vayu-nav-brand"><img src="/static/favicon-light.png" alt="" width="24" height="24">{{if .SiteName}}{{.SiteName}}{{else}}VayuPress{{end}}</a>
   <div class="vayu-nav-links">
-    <a href="/">Home</a>
-    <a href="/feed.xml">Feed</a>
-    <a href="/admin">Console</a>
+    {{.NavLinks}}
     <button type="button" id="vayu-theme-toggle" class="vayu-theme-toggle" aria-label="Toggle theme">☾</button>
   </div>
 </nav>
@@ -604,6 +664,7 @@ type homePage struct {
 	Tagline             string
 	Description         string
 	ShowMembership      bool
+	NavLinks            template.HTML
 	Articles            []HomeArticle
 	TotalCount          int
 }
@@ -633,9 +694,7 @@ var homeTmpl = template.Must(template.New("home").Funcs(homeFuncs).Parse(`<!DOCT
 <nav class="vayu-nav" aria-label="Primary">
   <a href="/" class="vayu-nav-brand"><img src="/static/favicon-light.png" alt="" width="24" height="24">{{if .SiteName}}{{.SiteName}}{{else}}VayuPress{{end}}</a>
   <div class="vayu-nav-links">
-    <a href="/">Home</a>
-    <a href="/feed.xml">Feed</a>
-    <a href="/admin">Console</a>
+    {{.NavLinks}}
     <button type="button" id="vayu-theme-toggle" class="vayu-theme-toggle" aria-label="Toggle theme">☾</button>
     {{if .ShowMembership}}<a href="/signup" class="vayu-nav-signin">Sign in</a>
     <a href="/signup" class="vayu-nav-signup">Sign up</a>{{end}}
@@ -682,7 +741,7 @@ var notFoundTmpl = template.Must(template.New("404").Parse(`<!DOCTYPE html><html
 <div class="container">
 <nav class="vayu-nav" aria-label="Primary">
   <a href="/" class="vayu-nav-brand"><img src="/static/favicon-light.png" alt="" width="24" height="24">{{if .SiteName}}{{.SiteName}}{{else}}VayuPress{{end}}</a>
-  <div class="vayu-nav-links"><a href="/">Home</a><a href="/feed.xml">Feed</a><a href="/admin">Console</a><button type="button" id="vayu-theme-toggle" class="vayu-theme-toggle" aria-label="Toggle theme">☾</button></div>
+  <div class="vayu-nav-links">{{.NavLinks}}<button type="button" id="vayu-theme-toggle" class="vayu-theme-toggle" aria-label="Toggle theme">☾</button></div>
 </nav>
 <main id="main-content"><div class="vayu-err">
   <div class="vayu-err-code">404</div>
@@ -710,6 +769,7 @@ func RenderHome(domain, version string, articles []HomeArticle, totalCount int) 
 		Tagline:             s.Tagline,
 		Description:         s.Description,
 		ShowMembership:      s.ShowMembership,
+		NavLinks:            navLinksHTML(s.NavJSON),
 		Articles:            articles,
 		TotalCount:          totalCount,
 	})
@@ -730,6 +790,7 @@ func Render404(domain, version string) string {
 		ThemeCSSLink:        ThemeCSSLink(),
 		HeadMeta:            headMetaHTML(s),
 		ThemeToggleJSLink:   ThemeToggleJSLink(),
+		NavLinks:            navLinksHTML(s.NavJSON),
 		SiteName:            s.Name,
 	})
 	return buf.String()
@@ -764,6 +825,7 @@ func RenderArticleWithLayout(a db.Article, layout ArticleLayoutType, related []R
 		HeadMeta:            headMetaHTML(s),
 		ThemeToggleJSLink:   ThemeToggleJSLink(),
 		VideoFacadeJSLink:   VideoFacadeJSLink(),
+		NavLinks:            navLinksHTML(s.NavJSON),
 		SiteName:            s.Name,
 		Author:              s.Author,
 		SEODescription:      seoMeta.Description,

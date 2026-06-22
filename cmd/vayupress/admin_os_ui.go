@@ -1034,6 +1034,7 @@ func (a *App) handleOSSettings(w http.ResponseWriter, r *http.Request) {
 
 	tabs := []struct{ Key, Label, Href string }{
 		{"general", "General", "/os/settings/general"},
+		{"navigation", "Navigation", "/os/settings/navigation"},
 		{"design", "Design", "/os/settings/design"},
 		{"members", "Members", "/os/settings/members"},
 		{"email", "Email", "/os/settings/email"},
@@ -1053,6 +1054,8 @@ func (a *App) handleOSSettings(w http.ResponseWriter, r *http.Request) {
 	var groupBody string
 	ss := a.siteSettings
 	switch group {
+	case "navigation":
+		groupBody = osSettingsNavigation(r.Context(), ss)
 	case "design":
 		groupBody = osSettingsDesign(r.Context(), ss)
 	case "members":
@@ -1134,6 +1137,38 @@ function doSave(){
 }
 if(saveBtn)saveBtn.addEventListener('click',doSave);
 if(saveBtnBar)saveBtnBar.addEventListener('click',doSave);
+// Navigation menu editor (Navigation tab). Builds rows from nav.items JSON and
+// keeps a hidden input in sync so the generic Save picks it up.
+var navEditor=document.getElementById('nav-editor');
+var navHidden=document.getElementById('nav-json-input');
+var navAdd=document.getElementById('nav-add-btn');
+if(navEditor&&navHidden){
+  function navSync(){
+    var rows=navEditor.querySelectorAll('[data-nav-row]');var out=[];
+    rows.forEach(function(row){
+      var l=row.querySelector('[data-nav-label]').value.trim();
+      var h=row.querySelector('[data-nav-href]').value.trim();
+      if(l&&h)out.push({label:l,href:h});
+    });
+    navHidden.value=JSON.stringify(out);
+  }
+  function navRow(label,href){
+    var row=document.createElement('div');row.setAttribute('data-nav-row','');
+    row.style.cssText='display:flex;gap:.5rem;align-items:center;margin-bottom:.5rem';
+    var li=document.createElement('input');li.className='input';li.type='text';li.placeholder='Label';li.value=label||'';li.setAttribute('data-nav-label','');li.style.flex='1';
+    var hi=document.createElement('input');hi.className='input';hi.type='text';hi.placeholder='/path or https://…';hi.value=href||'';hi.setAttribute('data-nav-href','');hi.style.flex='2';
+    var rm=document.createElement('button');rm.type='button';rm.className='btn btn--sm';rm.textContent='✕';
+    rm.addEventListener('click',function(){row.remove();navSync();});
+    li.addEventListener('input',navSync);hi.addEventListener('input',navSync);
+    row.appendChild(li);row.appendChild(hi);row.appendChild(rm);
+    return row;
+  }
+  (function(){
+    var seed=[];try{seed=JSON.parse(navEditor.getAttribute('data-nav-json')||'[]');}catch(e){seed=[];}
+    seed.forEach(function(it){navEditor.appendChild(navRow(it.label,it.href));});
+  })();
+  if(navAdd)navAdd.addEventListener('click',function(){navEditor.appendChild(navRow('',''));});
+}
 // Branding: favicon/logo upload (Design tab). Elements only exist there.
 var favFile=document.getElementById('brand-favicon-file');
 var favUp=document.getElementById('brand-favicon-upload');
@@ -1195,6 +1230,26 @@ func osSettingsGeneral(ctx context.Context, ss *settings.Store) string {
     <input id="s-author" class="input" type="text"
       data-setting-key="` + settings.KeySiteAuthor + `"
       value="` + html.EscapeString(author) + `" placeholder="Your name"></div>
+</div>`
+}
+
+func osSettingsNavigation(ctx context.Context, ss *settings.Store) string {
+	navJSON := ""
+	if ss != nil {
+		navJSON = ss.Get(ctx, settings.KeyNavItems)
+	}
+	if strings.TrimSpace(navJSON) == "" {
+		// Seed the editor with the built-in defaults so operators start from the
+		// current visible menu rather than a blank slate.
+		navJSON = `[{"label":"Home","href":"/"},{"label":"Feed","href":"/feed.xml"},{"label":"Console","href":"/admin"}]`
+	}
+	return `<div class="settings-section">
+  <div class="settings-block-title">Public navigation menu</div>
+  <p class="text-sm muted mb-4">These links appear in the top navigation bar on every public page. Point them at internal pages (e.g. <code>/about</code>), feeds, or external/redirect URLs (e.g. <code>https://example.com</code>). Drag-free, add or remove as many as you like.</p>
+  <div id="nav-editor" data-nav-json="` + html.EscapeString(navJSON) + `"></div>
+  <button type="button" class="btn btn--sm mt-2" id="nav-add-btn">+ Add link</button>
+  <input type="hidden" id="nav-json-input" data-setting-key="` + settings.KeyNavItems + `" value="` + html.EscapeString(navJSON) + `">
+  <p class="field-hint mt-2">Leave the list empty and Save to restore the default Home / Feed / Console menu.</p>
 </div>`
 }
 
@@ -1466,6 +1521,7 @@ func (a *App) handleOSSettingsAPI(w http.ResponseWriter, r *http.Request) {
 			Robots:         sv[settings.KeyHeadRobots],
 			VerifyGoogle:   sv[settings.KeyHeadVerifyGoogle],
 			VerifyBing:     sv[settings.KeyHeadVerifyBing],
+			NavJSON:        sv[settings.KeyNavItems],
 		})
 	}
 	render.CachePurgeAll()

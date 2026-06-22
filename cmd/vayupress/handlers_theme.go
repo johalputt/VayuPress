@@ -243,6 +243,7 @@ func (a *App) handleThemeReset(w http.ResponseWriter, r *http.Request) {
 			Robots:         newVals[settings.KeyHeadRobots],
 			VerifyGoogle:   newVals[settings.KeyHeadVerifyGoogle],
 			VerifyBing:     newVals[settings.KeyHeadVerifyBing],
+			NavJSON:        newVals[settings.KeyNavItems],
 		})
 	}
 
@@ -389,6 +390,7 @@ func (a *App) handleThemeSave(w http.ResponseWriter, r *http.Request) {
 			Robots:         newVals[settings.KeyHeadRobots],
 			VerifyGoogle:   newVals[settings.KeyHeadVerifyGoogle],
 			VerifyBing:     newVals[settings.KeyHeadVerifyBing],
+			NavJSON:        newVals[settings.KeyNavItems],
 		})
 	}
 
