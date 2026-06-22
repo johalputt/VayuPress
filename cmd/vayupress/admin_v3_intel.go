@@ -7,6 +7,7 @@ package main
 
 import (
 	"html"
+	htmpl "html/template"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -92,7 +93,7 @@ func (a *App) handleV3SEONative(w http.ResponseWriter, r *http.Request) {
 </div>
 <script nonce="` + nonce + `" src="/os/static/js/admin-v3-intel.js"></script>`
 
-	writeV3HTML(w, adminV3Layout(nonce, "SEO", "seo", cfg, body))
+	writeV3HTML(w, adminV3Layout(nonce, "SEO", "seo", cfg, htmpl.HTML(body)))
 }
 
 // handleV3Analytics renders the privacy-preserving analytics page from the local
@@ -104,7 +105,7 @@ func (a *App) handleV3Analytics(w http.ResponseWriter, r *http.Request) {
 	if a.analytics == nil {
 		body := `<div class="page-header"><h1>Analytics</h1></div>
 <div class="empty-state">Analytics are not enabled on this instance.</div>`
-		writeV3HTML(w, adminV3Layout(nonce, "Analytics", "analytics", cfg, body))
+		writeV3HTML(w, adminV3Layout(nonce, "Analytics", "analytics", cfg, htmpl.HTML(body)))
 		return
 	}
 
@@ -112,7 +113,7 @@ func (a *App) handleV3Analytics(w http.ResponseWriter, r *http.Request) {
 	if err != nil || sum == nil {
 		body := `<div class="page-header"><h1>Analytics</h1></div>
 <div class="empty-state">No analytics data yet.</div>`
-		writeV3HTML(w, adminV3Layout(nonce, "Analytics", "analytics", cfg, body))
+		writeV3HTML(w, adminV3Layout(nonce, "Analytics", "analytics", cfg, htmpl.HTML(body)))
 		return
 	}
 
@@ -153,5 +154,5 @@ func (a *App) handleV3Analytics(w http.ResponseWriter, r *http.Request) {
   <div class="card"><div class="card-title">Referrers</div>` + refs + `</div>
 </div>`
 
-	writeV3HTML(w, adminV3Layout(nonce, "Analytics", "analytics", cfg, body))
+	writeV3HTML(w, adminV3Layout(nonce, "Analytics", "analytics", cfg, htmpl.HTML(body)))
 }

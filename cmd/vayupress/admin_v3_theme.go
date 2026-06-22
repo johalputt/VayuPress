@@ -18,6 +18,7 @@ package main
 
 import (
 	"html"
+	htmpl "html/template"
 	"net/http"
 
 	"github.com/johalputt/vayupress/internal/render"
@@ -156,5 +157,5 @@ func (a *App) handleV3Theme(w http.ResponseWriter, r *http.Request) {
 </div>
 <script nonce="` + nonce + `" src="/os/static/js/admin-v3-theme.js"></script>`
 
-	writeV3HTML(w, adminV3Layout(nonce, "Theme Studio", "theme", cfg, body))
+	writeV3HTML(w, adminV3Layout(nonce, "Theme Studio", "theme", cfg, htmpl.HTML(body)))
 }

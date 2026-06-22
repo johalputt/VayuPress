@@ -10,6 +10,7 @@ package main
 // (validated by safeMediaName), so there is no path-traversal or info-leak vector.
 
 import (
+	htmpl "html/template"
 	"net/http"
 	"os"
 	"sort"
@@ -96,5 +97,5 @@ func (a *App) handleV3Media(w http.ResponseWriter, r *http.Request) {
   <div class="skeleton skeleton--media"></div>
 </div>`
 
-	writeV3HTML(w, adminV3Layout(nonce, "Media", "media", cfg, body))
+	writeV3HTML(w, adminV3Layout(nonce, "Media", "media", cfg, htmpl.HTML(body)))
 }

@@ -15,6 +15,7 @@ import (
 	"context"
 	"encoding/json"
 	"html"
+	htmpl "html/template"
 	"net/http"
 	"strconv"
 	"strings"
@@ -46,7 +47,7 @@ func (a *App) handleV3Members(w http.ResponseWriter, r *http.Request) {
 	if a.members == nil {
 		body := `<div class="page-header"><h1>Members</h1></div>
 <div class="empty-state">Memberships are not enabled on this instance.</div>`
-		writeV3HTML(w, adminV3Layout(nonce, "Members", "members", cfg, body))
+		writeV3HTML(w, adminV3Layout(nonce, "Members", "members", cfg, htmpl.HTML(body)))
 		return
 	}
 
@@ -85,7 +86,7 @@ func (a *App) handleV3Members(w http.ResponseWriter, r *http.Request) {
 		`</div>
 <div class="card">` + tableHTML + `</div>`
 
-	writeV3HTML(w, adminV3Layout(nonce, "Members", "members", cfg, body))
+	writeV3HTML(w, adminV3Layout(nonce, "Members", "members", cfg, htmpl.HTML(body)))
 }
 
 // ── Security page (TOTP) ────────────────────────────────────────────────────
@@ -99,7 +100,7 @@ func (a *App) handleV3Security(w http.ResponseWriter, r *http.Request) {
 		// API-key session (no user record): 2FA is per-account, so explain.
 		body := `<div class="page-header"><h1>Security</h1></div>
 <div class="card"><p class="muted">Two-factor authentication applies to password accounts. You are signed in with an API key.</p></div>`
-		writeV3HTML(w, adminV3Layout(nonce, "Security", "security", cfg, body))
+		writeV3HTML(w, adminV3Layout(nonce, "Security", "security", cfg, htmpl.HTML(body)))
 		return
 	}
 
@@ -147,7 +148,7 @@ func (a *App) handleV3Security(w http.ResponseWriter, r *http.Request) {
 <div class="card" data-totp-card>` + section + `</div>
 <script nonce="` + nonce + `" src="/os/static/js/admin-v3-security.js"></script>`
 
-	writeV3HTML(w, adminV3Layout(nonce, "Security", "security", cfg, body))
+	writeV3HTML(w, adminV3Layout(nonce, "Security", "security", cfg, htmpl.HTML(body)))
 }
 
 // handleV3TOTPBegin generates a fresh secret (stored disabled) and returns the

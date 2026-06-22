@@ -285,7 +285,8 @@ func v3EditorBody(slug, title, blocksJSON string) string {
 	// static analysis recognises the sanitiser barrier (an indirect call through a
 	// function-typed variable is not recognised as a barrier).
 	// data-blocks carries the raw JSON document; the layout/editor JS reads it.
-	return `<div class="editor-shell" data-editor data-slug="` + html.EscapeString(slug) + `" data-blocks="` + html.EscapeString(blocksJSON) + `">
+	return `<script type="application/json" id="vp-editor-data">` + strings.ReplaceAll(blocksJSON, "</", `<\/`) + `</script>
+<div class="editor-shell" data-editor data-slug="` + html.EscapeString(slug) + `">
   <div class="editor-main">
     <input class="editor-title" data-editor-title type="text" placeholder="Post title…" value="` + html.EscapeString(title) + `" aria-label="Post title">
     <div class="editor-canvas" data-editor-canvas aria-label="Editor canvas"></div>

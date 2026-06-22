@@ -19,6 +19,7 @@ package main
 
 import (
 	"html"
+	htmpl "html/template"
 	"net/http"
 	"strconv"
 	"time"
@@ -166,5 +167,5 @@ func (a *App) handleV3Governance(w http.ResponseWriter, r *http.Request) {
   <div class="page-actions"><span class="text-sm muted">adaptive runtime</span></div>
 </div>` + summary + policyCard + budgetCard + transCard + consoles
 
-	writeV3HTML(w, adminV3Layout(nonce, "Governance", "governance", cfg, body))
+	writeV3HTML(w, adminV3Layout(nonce, "Governance", "governance", cfg, htmpl.HTML(body)))
 }

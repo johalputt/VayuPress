@@ -17,6 +17,7 @@ import (
 	"context"
 	"encoding/json"
 	"html"
+	htmpl "html/template"
 	"net/http"
 	"strconv"
 	"strings"
@@ -181,7 +182,7 @@ func (a *App) handleV3Tools(w http.ResponseWriter, r *http.Request) {
 		pluginRegistryHTML() + `
 <script nonce="` + nonce + `" src="/os/static/js/admin-v3-tools.js"></script>`
 
-	writeV3HTML(w, adminV3Layout(nonce, "Tools & Plugins", "tools", cfg, body))
+	writeV3HTML(w, adminV3Layout(nonce, "Tools & Plugins", "tools", cfg, htmpl.HTML(body)))
 }
 
 // pluginRegistryHTML renders the live sandboxed-plugin registry: every

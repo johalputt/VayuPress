@@ -1,6 +1,7 @@
 package main
 
 import (
+	htmpl "html/template"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,7 +14,7 @@ import (
 // the same-origin stylesheet, and emits no CSP-violating inline styles or
 // external asset hosts.
 func TestV3LayoutCSPSafe(t *testing.T) {
-	out := adminV3Layout("TESTNONCE", "Dashboard", "dashboard", &v3Settings{SiteName: "Demo"}, "<p>body</p>")
+	out := adminV3Layout("TESTNONCE", "Dashboard", "dashboard", &v3Settings{SiteName: "Demo"}, htmpl.HTML("<p>body</p>"))
 	assertCSPSafe(t, "adminV3Layout", out)
 	if !strings.Contains(out, `<script nonce="TESTNONCE" src="/os/static/js/admin-v3.js"></script>`) {
 		t.Error("v3 layout missing nonce'd script tag")
@@ -29,7 +30,7 @@ func TestV3LayoutCSPSafe(t *testing.T) {
 // TestV3LayoutEscapesTitle ensures a hostile page title cannot break out of the
 // HTML context (defence against reflected XSS in the chrome).
 func TestV3LayoutEscapesTitle(t *testing.T) {
-	out := adminV3Layout("N", `</title><script>alert(1)</script>`, "dashboard", nil, "")
+	out := adminV3Layout("N", `</title><script>alert(1)</script>`, "dashboard", nil, htmpl.HTML(""))
 	if strings.Contains(out, "<script>alert(1)") {
 		t.Error("v3 layout did not escape the page title")
 	}

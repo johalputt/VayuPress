@@ -57,7 +57,8 @@
   var blocks = [];
 
   function hydrate() {
-    var raw = root.getAttribute('data-blocks');
+    var dataEl = document.getElementById('vp-editor-data');
+    var raw = dataEl ? dataEl.textContent.trim() : '';
     if (raw) {
       try {
         var parsed = JSON.parse(raw);

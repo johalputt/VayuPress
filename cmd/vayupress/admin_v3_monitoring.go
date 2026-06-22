@@ -16,6 +16,7 @@ package main
 
 import (
 	"html"
+	htmpl "html/template"
 	"net/http"
 	"strconv"
 	"time"
@@ -154,5 +155,5 @@ func (a *App) handleV3Monitoring(w http.ResponseWriter, r *http.Request) {
 </div>` + modeCard + perf + storageJobs + budgetsCard + consoles + `
 <script nonce="` + nonce + `" src="/os/static/js/admin-v3-monitoring.js"></script>`
 
-	writeV3HTML(w, adminV3Layout(nonce, "Monitoring", "monitoring", cfg, body))
+	writeV3HTML(w, adminV3Layout(nonce, "Monitoring", "monitoring", cfg, htmpl.HTML(body)))
 }

@@ -27,6 +27,7 @@ import (
 	"context"
 	"encoding/json"
 	"html"
+	htmpl "html/template"
 	"net/http"
 	"path/filepath"
 	"strconv"
@@ -204,7 +205,7 @@ var (
 // adminV3Layout renders the shared chrome for admin v3.
 // The nonce is injected into the single inline bootstrap <script> block.
 // All CSS/JS are external same-origin files. No inline styles.
-func adminV3Layout(nonce, title, active string, settings *v3Settings, bodyHTML string) string {
+func adminV3Layout(nonce, title, active string, settings *v3Settings, bodyHTML htmpl.HTML) string {
 	et := html.EscapeString(title)
 	theme := "dark"
 	if settings != nil && settings.AdminTheme != "" {
@@ -296,7 +297,7 @@ func adminV3Layout(nonce, title, active string, settings *v3Settings, bodyHTML s
   </header>
 
   <main id="main-content" class="content">
-` + bodyHTML + `
+` + string(bodyHTML) + `
   </main>
 </div><!-- .main -->
 </div><!-- .shell -->
@@ -736,7 +737,7 @@ func (a *App) handleV3Dashboard(w http.ResponseWriter, r *http.Request) {
   ` + recentHTML + `
 </div>`
 
-	writeV3HTML(w, adminV3Layout(nonce, "Dashboard", "dashboard", cfg, body))
+	writeV3HTML(w, adminV3Layout(nonce, "Dashboard", "dashboard", cfg, htmpl.HTML(body)))
 }
 
 // ── Posts ────────────────────────────────────────────────────────────────────
@@ -802,7 +803,7 @@ func (a *App) handleV3Posts(w http.ResponseWriter, r *http.Request) {
   <div class="table-empty" data-search-empty hidden>No posts match your search.</div>
 </div>`
 	}
-	writeV3HTML(w, adminV3Layout(nonce, "Posts", "posts", cfg, body))
+	writeV3HTML(w, adminV3Layout(nonce, "Posts", "posts", cfg, htmpl.HTML(body)))
 }
 
 // ── Editor ───────────────────────────────────────────────────────────────────
@@ -830,7 +831,7 @@ func (a *App) handleV3Editor(w http.ResponseWriter, r *http.Request) {
 				body := v3EditorBody(slug, art.Title, blocksJSON)
 				body += `
 <script nonce="` + nonce + `" src="/os/static/js/admin-v3-editor.js"></script>`
-				writeV3HTML(w, adminV3Layout(nonce, "Edit Post", "editor", cfg, body))
+				writeV3HTML(w, adminV3Layout(nonce, "Edit Post", "editor", cfg, htmpl.HTML(body)))
 				return
 			}
 			// Legacy (non-block) content: open it in the native block editor,
@@ -847,7 +848,7 @@ func (a *App) handleV3Editor(w http.ResponseWriter, r *http.Request) {
 			body := v3EditorBody(slug, art.Title, string(raw))
 			body += `
 <script nonce="` + nonce + `" src="/os/static/js/admin-v3-editor.js"></script>`
-			writeV3HTML(w, adminV3Layout(nonce, "Edit Post", "editor", cfg, body))
+			writeV3HTML(w, adminV3Layout(nonce, "Edit Post", "editor", cfg, htmpl.HTML(body)))
 			return
 		}
 	}
@@ -858,7 +859,7 @@ func (a *App) handleV3Editor(w http.ResponseWriter, r *http.Request) {
 	body := v3EditorBody("", "", "[]")
 	body += `
 <script nonce="` + nonce + `" src="/os/static/js/admin-v3-editor.js"></script>`
-	writeV3HTML(w, adminV3Layout(nonce, "New Post", "editor", cfg, body))
+	writeV3HTML(w, adminV3Layout(nonce, "New Post", "editor", cfg, htmpl.HTML(body)))
 }
 
 // ── SEO ──────────────────────────────────────────────────────────────────────
@@ -915,7 +916,7 @@ func (a *App) handleV3Settings(w http.ResponseWriter, r *http.Request) {
 <nav class="tab-list" aria-label="Settings sections">` + tabHTML + `</nav>
 <div class="card">` + groupBody + `</div>`
 
-	writeV3HTML(w, adminV3Layout(nonce, "Settings", "settings", cfg, body))
+	writeV3HTML(w, adminV3Layout(nonce, "Settings", "settings", cfg, htmpl.HTML(body)))
 }
 
 func v3SettingsGeneral(ctx context.Context, ss *settings.Store) string {
