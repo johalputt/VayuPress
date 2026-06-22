@@ -1,8 +1,8 @@
 package main
 
-// admin_v3_editor.go — Admin v3 block editor server endpoints (ADR-0068, Phase 3).
+// admin_os_editor.go — VayuOS block editor server endpoints (ADR-0068, Phase 3).
 //
-// The editor is a vanilla-JS, CSP-strict block editor (static/js/admin-v3-editor.js).
+// The editor is a vanilla-JS, CSP-strict block editor (static/js/admin-os-editor.js).
 // The canonical document is a JSON array of typed blocks. On save the server:
 //   1. renders the blocks to sanitised HTML via internal/blockrender,
 //   2. updates articles.content (so every reader/feed/search path is unchanged),
@@ -49,10 +49,10 @@ func persistBlocksJSON(ctx context.Context, slug, blocksJSON string) error {
 	return err
 }
 
-// handleV3EditorSave persists a block document for an existing article. It
+// handleOSEditorSave persists a block document for an existing article. It
 // renders blocks → HTML, updates the article content+title via the service,
 // then stores the raw blocks for re-hydration.
-func (a *App) handleV3EditorSave(w http.ResponseWriter, r *http.Request) {
+func (a *App) handleOSEditorSave(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Slug   string            `json:"slug"`
 		Title  string            `json:"title"`
@@ -146,13 +146,13 @@ func (a *App) uniqueArticleSlug(ctx context.Context, title string) string {
 	return slug
 }
 
-// handleV3EditorConvert imports a legacy article's HTML into a block document
+// handleOSEditorConvert imports a legacy article's HTML into a block document
 // (ADR-0069 Stage 1). It is deliberately non-destructive: it writes only the
 // blocks_json side-car and never touches the rendered article content. The
 // operator reviews the imported blocks in the editor and the original content
 // stays authoritative until they explicitly Save. This keeps legacy posts
 // lossless — a poor import can be abandoned by navigating away.
-func (a *App) handleV3EditorConvert(w http.ResponseWriter, r *http.Request) {
+func (a *App) handleOSEditorConvert(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Slug string `json:"slug"`
 	}
@@ -190,9 +190,9 @@ func (a *App) handleV3EditorConvert(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleV3EditorPreview renders a block document to sanitised HTML without
+// handleOSEditorPreview renders a block document to sanitised HTML without
 // persisting anything — used by the editor's live preview pane.
-func (a *App) handleV3EditorPreview(w http.ResponseWriter, r *http.Request) {
+func (a *App) handleOSEditorPreview(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Blocks []json.RawMessage `json:"blocks"`
 	}
@@ -214,10 +214,10 @@ func (a *App) handleV3EditorPreview(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, http.StatusOK, map[string]string{"html": contentHTML, "excerpt": excerpt})
 }
 
-// handleV3EditorAI proxies an AI writing-assist request for v3 session-cookie
+// handleOSEditorAI proxies an AI writing-assist request for os session-cookie
 // operators. The backing model is opt-in (VAYU_AI_URL); when absent the handler
 // returns 503 so the editor UI can degrade gracefully.
-func (a *App) handleV3EditorAI(w http.ResponseWriter, r *http.Request) {
+func (a *App) handleOSEditorAI(w http.ResponseWriter, r *http.Request) {
 	if a.aiAssist == nil || !a.aiAssist.Enabled() {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "ai-disabled", "AI assistant not configured (set VAYU_AI_URL)", "")
 		return
@@ -238,8 +238,8 @@ func (a *App) handleV3EditorAI(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, http.StatusOK, map[string]interface{}{"op": body.Op, "result": result})
 }
 
-// handleV3EditorVersionList returns the version list for a slug, session-gated.
-func (a *App) handleV3EditorVersionList(w http.ResponseWriter, r *http.Request) {
+// handleOSEditorVersionList returns the version list for a slug, session-gated.
+func (a *App) handleOSEditorVersionList(w http.ResponseWriter, r *http.Request) {
 	if a.versionStore == nil {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "versions-disabled", "Version store not initialised", "")
 		return
@@ -258,8 +258,8 @@ func (a *App) handleV3EditorVersionList(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, r, http.StatusOK, map[string]interface{}{"versions": vs})
 }
 
-// handleV3EditorVersionGet returns a single version by ID, session-gated.
-func (a *App) handleV3EditorVersionGet(w http.ResponseWriter, r *http.Request) {
+// handleOSEditorVersionGet returns a single version by ID, session-gated.
+func (a *App) handleOSEditorVersionGet(w http.ResponseWriter, r *http.Request) {
 	if a.versionStore == nil {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "versions-disabled", "Version store not initialised", "")
 		return
@@ -277,10 +277,10 @@ func (a *App) handleV3EditorVersionGet(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, http.StatusOK, v)
 }
 
-// v3EditorBody builds the block-editor shell. The editor hydrates from the
+// osEditorBody builds the block-editor shell. The editor hydrates from the
 // <script type="application/json" id="vp-editor-data"> document on first paint;
 // an empty value starts a fresh document.
-// v3EditorHeadTmpl renders the interpolated head of the editor shell through
+// osEditorHeadTmpl renders the interpolated head of the editor shell through
 // html/template so every value passes a recognised escaping barrier:
 //   - .Blocks is emitted in the <script type="application/json"> context, where
 //     html/template turns HTML-significant bytes (<, >, &, U+2028/9) into \uXXXX
@@ -290,7 +290,7 @@ func (a *App) handleV3EditorVersionGet(w http.ResponseWriter, r *http.Request) {
 //
 // The static remainder of the shell carries no interpolation and is appended
 // as a literal.
-var v3EditorHeadTmpl = htmpl.Must(htmpl.New("v3editorhead").Parse(
+var osEditorHeadTmpl = htmpl.Must(htmpl.New("oseditorhead").Parse(
 	`<script type="application/json" id="vp-editor-data">{{.Blocks}}</script>
 <div class="editor-shell" data-editor data-slug="{{.Slug}}">
   <div class="editor-main">
@@ -298,13 +298,13 @@ var v3EditorHeadTmpl = htmpl.Must(htmpl.New("v3editorhead").Parse(
     <div class="editor-canvas" data-editor-canvas aria-label="Editor canvas"></div>
   </div>`))
 
-func v3EditorBody(slug, title, blocksJSON string) string {
+func osEditorBody(slug, title, blocksJSON string) string {
 	if strings.TrimSpace(blocksJSON) == "" {
 		blocksJSON = "[]"
 	}
 	var head strings.Builder
 	// Execute cannot fail for these scalar fields and a constant template.
-	_ = v3EditorHeadTmpl.Execute(&head, struct {
+	_ = osEditorHeadTmpl.Execute(&head, struct {
 		Blocks json.RawMessage
 		Slug   string
 		Title  string

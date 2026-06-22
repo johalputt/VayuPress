@@ -1,5 +1,5 @@
 /*
- * admin-v3-intel.js — SEO dashboard actions for Admin v3 (ADR-0068, Phase 6).
+ * admin-os-intel.js — SEO dashboard actions for VayuOS (ADR-0068, Phase 6).
  * Strict CSP: no eval, DOM updates via textContent only.
  */
 (function () {

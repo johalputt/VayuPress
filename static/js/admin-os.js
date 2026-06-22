@@ -1,4 +1,4 @@
-/* VayuPress Admin v3 — Bootstrap
+/* VayuPress VayuOS — Bootstrap
  * Sovereign · Self-hosted · Zero-CDN · Strict-CSP
  * No eval, no new Function, no innerHTML with untrusted data.
  * All DOM mutation via textContent / createElement / appendChild.

@@ -1,6 +1,6 @@
 package main
 
-// admin_v3_ui.go — VayuPress Admin v3, mounted under /os.
+// admin_os_ui.go — VayuPress VayuOS, mounted under /os.
 //
 // Design goals (ADR-0068): surpass Ghost/WordPress/Substack in UI beauty,
 // feature depth, and security while remaining a sovereign single-binary with
@@ -11,11 +11,11 @@ package main
 //   font-src 'self'; img-src 'self' data:; form-action 'self'
 //
 // Rules honoured:
-//   - No inline <style> or style="" attributes. All CSS lives in admin-v3.css.
+//   - No inline <style> or style="" attributes. All CSS lives in admin-os.css.
 //   - The only inline <script> block carries the per-request CSP nonce.
 //   - No external CDNs. All assets served same-origin under /os/static/.
 //   - All user-originated strings escaped with html.EscapeString before HTML emit.
-//   - DOM mutations in admin-v3.js use textContent / createElement; no innerHTML
+//   - DOM mutations in admin-os.js use textContent / createElement; no innerHTML
 //     with untrusted data.
 //
 // Phase 1 implements: login page redesign, new grouped sidebar, stat-card
@@ -46,32 +46,32 @@ import (
 
 // ── Static asset path ────────────────────────────────────────────────────────
 
-func adminV3StaticDir() string {
+func adminOSStaticDir() string {
 	return config.EnvOr("STATIC_DIR", "/var/www/vayupress/static")
 }
 
 // ── Route registration ───────────────────────────────────────────────────────
 
-// registerAdminV3UIRoutes mounts Admin v3 under /os.
+// registerAdminOSUIRoutes mounts VayuOS under /os.
 // Follows the same auth/CSP/CSRF patterns as Admin v2 (admin_ui.go).
-func (a *App) registerAdminV3UIRoutes(r chi.Router) {
-	// Admin v3 is now a legacy surface (ADR-0069 Stage 3 in progress): the
+func (a *App) registerAdminOSUIRoutes(r chi.Router) {
+	// VayuOS is now a legacy surface (ADR-0069 Stage 3 in progress): the
 	// canonical admin is VayuOS at /os. Old /admin/v3[/...] URLs 302-redirect
 	// into the /os equivalent, joining /admin and /admin/v2.
-	v3Redirect := legacyRedirect()
-	r.Get("/admin/v3", v3Redirect)
-	r.Handle("/admin/v3/*", v3Redirect)
+	osRedirect := legacyRedirect()
+	r.Get("/admin/v3", osRedirect)
+	r.Handle("/admin/v3/*", osRedirect)
 
 	// Public static assets (served same-origin so CSP 'self' covers them).
-	r.Get("/os/static/css/admin-v3.css", serveAdminV3Asset("css/admin-v3.css", "text/css; charset=utf-8"))
-	r.Get("/os/static/js/admin-v3.js", serveAdminV3Asset("js/admin-v3.js", "application/javascript; charset=utf-8"))
-	r.Get("/os/static/js/admin-v3-editor.js", serveAdminV3Asset("js/admin-v3-editor.js", "application/javascript; charset=utf-8"))
-	r.Get("/os/static/js/admin-v3-security.js", serveAdminV3Asset("js/admin-v3-security.js", "application/javascript; charset=utf-8"))
-	r.Get("/os/static/js/admin-v3-intel.js", serveAdminV3Asset("js/admin-v3-intel.js", "application/javascript; charset=utf-8"))
-	r.Get("/os/static/js/admin-v3-tools.js", serveAdminV3Asset("js/admin-v3-tools.js", "application/javascript; charset=utf-8"))
-	r.Get("/os/static/js/admin-v3-monitoring.js", serveAdminV3Asset("js/admin-v3-monitoring.js", "application/javascript; charset=utf-8"))
-	r.Get("/os/static/js/admin-v3-theme.js", serveAdminV3Asset("js/admin-v3-theme.js", "application/javascript; charset=utf-8"))
-	r.Get("/os/static/js/purify.min.js", serveAdminV3Asset("js/purify.min.js", "application/javascript; charset=utf-8"))
+	r.Get("/os/static/css/admin-os.css", serveAdminOSAsset("css/admin-os.css", "text/css; charset=utf-8"))
+	r.Get("/os/static/js/admin-os.js", serveAdminOSAsset("js/admin-os.js", "application/javascript; charset=utf-8"))
+	r.Get("/os/static/js/admin-os-editor.js", serveAdminOSAsset("js/admin-os-editor.js", "application/javascript; charset=utf-8"))
+	r.Get("/os/static/js/admin-os-security.js", serveAdminOSAsset("js/admin-os-security.js", "application/javascript; charset=utf-8"))
+	r.Get("/os/static/js/admin-os-intel.js", serveAdminOSAsset("js/admin-os-intel.js", "application/javascript; charset=utf-8"))
+	r.Get("/os/static/js/admin-os-tools.js", serveAdminOSAsset("js/admin-os-tools.js", "application/javascript; charset=utf-8"))
+	r.Get("/os/static/js/admin-os-monitoring.js", serveAdminOSAsset("js/admin-os-monitoring.js", "application/javascript; charset=utf-8"))
+	r.Get("/os/static/js/admin-os-theme.js", serveAdminOSAsset("js/admin-os-theme.js", "application/javascript; charset=utf-8"))
+	r.Get("/os/static/js/purify.min.js", serveAdminOSAsset("js/purify.min.js", "application/javascript; charset=utf-8"))
 
 	// Fonts — path-traversal prevented by switch allowlist (same pattern as v2).
 	r.Get("/os/static/fonts/{file}", func(w http.ResponseWriter, req *http.Request) {
@@ -89,66 +89,66 @@ func (a *App) registerAdminV3UIRoutes(r chi.Router) {
 		}
 		w.Header().Set("Content-Type", "font/woff2")
 		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-		http.ServeFile(w, req, filepath.Join(adminV3StaticDir(), "fonts", canon))
+		http.ServeFile(w, req, filepath.Join(adminOSStaticDir(), "fonts", canon))
 	})
 
 	// Public: login page and credential forms.
-	r.Get("/os/login", a.handleV3Login)
-	r.Post("/os/login", a.handleV3LoginSubmit)
-	r.Post("/os/logout", a.handleV3Logout)
+	r.Get("/os/login", a.handleOSLogin)
+	r.Post("/os/login", a.handleOSLoginSubmit)
+	r.Post("/os/logout", a.handleOSLogout)
 
 	// Protected pages and APIs — require session or API key.
 	r.Group(func(pr chi.Router) {
 		pr.Use(a.requireSessionOrAPIKey)
 
 		// Pages
-		pr.Get("/os", a.handleV3Dashboard)
-		pr.Get("/os/posts", a.handleV3Posts)
-		pr.Get("/os/media", a.handleV3Media)
-		pr.Get("/os/api/media", a.handleV3MediaList)
-		pr.Get("/os/members", a.handleV3Members)
-		pr.Get("/os/security", a.handleV3Security)
-		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/totp/begin", a.handleV3TOTPBegin)
-		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/totp/verify", a.handleV3TOTPVerify)
-		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/totp/disable", a.handleV3TOTPDisable)
-		pr.Get("/os/editor", a.handleV3Editor)
-		pr.Get("/os/editor/{slug}", a.handleV3Editor)
-		pr.Get("/os/monitoring", a.handleV3Monitoring)
-		pr.Get("/os/governance", a.handleV3Governance)
-		pr.Get("/os/theme", a.handleV3Theme)
+		pr.Get("/os", a.handleOSDashboard)
+		pr.Get("/os/posts", a.handleOSPosts)
+		pr.Get("/os/media", a.handleOSMedia)
+		pr.Get("/os/api/media", a.handleOSMediaList)
+		pr.Get("/os/members", a.handleOSMembers)
+		pr.Get("/os/security", a.handleOSSecurity)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/totp/begin", a.handleOSTOTPBegin)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/totp/verify", a.handleOSTOTPVerify)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/totp/disable", a.handleOSTOTPDisable)
+		pr.Get("/os/editor", a.handleOSEditor)
+		pr.Get("/os/editor/{slug}", a.handleOSEditor)
+		pr.Get("/os/monitoring", a.handleOSMonitoring)
+		pr.Get("/os/governance", a.handleOSGovernance)
+		pr.Get("/os/theme", a.handleOSTheme)
 		// Session-friendly mirrors of the Theme Studio JSON API (the /api/v1/admin
-		// originals require an API key; v3 operators hold a session cookie).
+		// originals require an API key; os operators hold a session cookie).
 		pr.Get("/os/api/theme/presets", a.handleThemePresets)
 		pr.Get("/os/api/theme/tokens", a.handleThemeTokens)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/theme/preview", a.handleThemePreview)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/theme/apply", a.handleThemeApply)
 		// Session-friendly read-only mirrors of the operator JSON APIs (the
-		// /api/v1/admin/* originals require an API key; v3 operators hold a
+		// /api/v1/admin/* originals require an API key; os operators hold a
 		// session cookie). Same handlers, no CSRF needed for GETs.
 		pr.Get("/os/api/mode", a.handleModeStatus)
 		pr.Get("/os/api/budgets", a.handleGovernanceBudgets)
-		pr.Get("/os/tools", a.handleV3Tools)
-		pr.Get("/os/api/tools", a.handleV3ToolsList)
-		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/tools/toggle", a.handleV3ToolToggle)
-		pr.Get("/os/seo", a.handleV3SEONative)
-		pr.Get("/os/analytics", a.handleV3Analytics)
-		pr.Get("/os/settings", a.handleV3Settings)
-		pr.Get("/os/settings/{group}", a.handleV3Settings)
+		pr.Get("/os/tools", a.handleOSTools)
+		pr.Get("/os/api/tools", a.handleOSToolsList)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/tools/toggle", a.handleOSToolToggle)
+		pr.Get("/os/seo", a.handleOSSEONative)
+		pr.Get("/os/analytics", a.handleOSAnalytics)
+		pr.Get("/os/settings", a.handleOSSettings)
+		pr.Get("/os/settings/{group}", a.handleOSSettings)
 
 		// CSRF-protected writes
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/seo/regenerate", a.handleSEORegenerate)
-		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/settings", a.handleV3SettingsAPI)
-		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/posts/quick-create", a.handleV3QuickCreatePost)
-		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/editor/save", a.handleV3EditorSave)
-		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/editor/preview", a.handleV3EditorPreview)
-		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/editor/ai", a.handleV3EditorAI)
-		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/editor/convert", a.handleV3EditorConvert)
-		pr.Get("/os/api/editor/versions/{slug}", a.handleV3EditorVersionList)
-		pr.Get("/os/api/editor/versions/{slug}/{id}", a.handleV3EditorVersionGet)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/settings", a.handleOSSettingsAPI)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/posts/quick-create", a.handleOSQuickCreatePost)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/editor/save", a.handleOSEditorSave)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/editor/preview", a.handleOSEditorPreview)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/editor/ai", a.handleOSEditorAI)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/editor/convert", a.handleOSEditorConvert)
+		pr.Get("/os/api/editor/versions/{slug}", a.handleOSEditorVersionList)
+		pr.Get("/os/api/editor/versions/{slug}/{id}", a.handleOSEditorVersionGet)
 
 		// Read-only APIs (no CSRF needed)
-		pr.Get("/os/api/activity", a.handleV3Activity)
-		pr.Get("/os/api/cmd-index", a.handleV3CmdIndex)
+		pr.Get("/os/api/activity", a.handleOSActivity)
+		pr.Get("/os/api/cmd-index", a.handleOSCmdIndex)
 	})
 
 	// Redirect bare /os/* to dashboard if hitting unknown paths
@@ -157,11 +157,11 @@ func (a *App) registerAdminV3UIRoutes(r chi.Router) {
 	})
 }
 
-func serveAdminV3Asset(rel, contentType string) http.HandlerFunc {
+func serveAdminOSAsset(rel, contentType string) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		w.Header().Set("Content-Type", contentType)
 		w.Header().Set("Cache-Control", "public, max-age=3600")
-		http.ServeFile(w, req, filepath.Join(adminV3StaticDir(), filepath.FromSlash(rel)))
+		http.ServeFile(w, req, filepath.Join(adminOSStaticDir(), filepath.FromSlash(rel)))
 	}
 }
 
@@ -217,10 +217,10 @@ func renderTrustedHTML(h htmpl.HTML) string {
 	return b.String()
 }
 
-// adminV3Layout renders the shared chrome for admin v3.
+// adminOSLayout renders the shared chrome for VayuOS.
 // The nonce is injected into the single inline bootstrap <script> block.
 // All CSS/JS are external same-origin files. No inline styles.
-func adminV3Layout(nonce, title, active string, settings *v3Settings, bodyHTML htmpl.HTML) string {
+func adminOSLayout(nonce, title, active string, settings *osSettings, bodyHTML htmpl.HTML) string {
 	et := html.EscapeString(title)
 	theme := "dark"
 	if settings != nil && settings.AdminTheme != "" {
@@ -244,10 +244,10 @@ func adminV3Layout(nonce, title, active string, settings *v3Settings, bodyHTML h
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>` + et + ` — ` + siteName + ` · VayuOS</title>
 <meta name="robots" content="noindex, nofollow">
-<link rel="stylesheet" href="/os/static/css/admin-v3.css">
+<link rel="stylesheet" href="/os/static/css/admin-os.css">
 <link rel="icon" type="image/png" href="/static/favicon-light.png">
 </head>
-<body class="vp-v3" data-admin-theme="` + html.EscapeString(theme) + `">
+<body class="vp-os" data-admin-theme="` + html.EscapeString(theme) + `">
 <a href="#main-content" class="skip-link">Skip to main content</a>
 
 <!-- Sidebar overlay for mobile tap-to-close -->
@@ -359,7 +359,7 @@ func adminV3Layout(nonce, title, active string, settings *v3Settings, bodyHTML h
 
 <!-- Bootstrap (nonce-gated, reads data-admin-theme from body) -->
 <script src="/os/static/js/purify.min.js"></script>
-<script nonce="` + nonce + `" src="/os/static/js/admin-v3.js"></script>
+<script nonce="` + nonce + `" src="/os/static/js/admin-os.js"></script>
 </body></html>`
 }
 
@@ -371,15 +371,15 @@ func activeCls(key, active string) string {
 	return ""
 }
 
-// v3Settings holds the subset of site settings needed to render every page.
-type v3Settings struct {
+// osSettings holds the subset of site settings needed to render every page.
+type osSettings struct {
 	SiteName   string
 	AdminTheme string
 }
 
-// getV3Settings loads settings needed for layout rendering.
-func (a *App) getV3Settings(ctx context.Context) *v3Settings {
-	s := &v3Settings{}
+// getOSSettings loads settings needed for layout rendering.
+func (a *App) getOSSettings(ctx context.Context) *osSettings {
+	s := &osSettings{}
 	if a.siteSettings != nil {
 		s.SiteName = a.siteSettings.Get(ctx, settings.KeySiteName)
 		s.AdminTheme = a.siteSettings.Get(ctx, "admin.theme")
@@ -387,8 +387,8 @@ func (a *App) getV3Settings(ctx context.Context) *v3Settings {
 	return s
 }
 
-// writeV3HTML writes HTML with the standard v3 response headers and CSRF cookie.
-func writeV3HTML(w http.ResponseWriter, body string) {
+// writeOSHTML writes HTML with the standard os response headers and CSRF cookie.
+func writeOSHTML(w http.ResponseWriter, body string) {
 	if token := auth.GenerateCSRFToken(); token != "" {
 		http.SetCookie(w, &http.Cookie{
 			Name: "vp_csrf", Value: token, Path: "/",
@@ -404,12 +404,12 @@ func writeV3HTML(w http.ResponseWriter, body string) {
 
 // ── Login page ───────────────────────────────────────────────────────────────
 
-func (a *App) handleV3Login(w http.ResponseWriter, r *http.Request) {
+func (a *App) handleOSLogin(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = w.Write([]byte(v3LoginPage("", "")))
+	_, _ = w.Write([]byte(osLoginPage("", "")))
 }
 
-func (a *App) handleV3LoginSubmit(w http.ResponseWriter, r *http.Request) {
+func (a *App) handleOSLoginSubmit(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
@@ -418,7 +418,7 @@ func (a *App) handleV3LoginSubmit(w http.ResponseWriter, r *http.Request) {
 	pass := r.FormValue("password")
 	if email == "" || pass == "" {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte(v3LoginPage(email, "Email and password are required.")))
+		_, _ = w.Write([]byte(osLoginPage(email, "Email and password are required.")))
 		return
 	}
 	if a.userStore == nil || a.sessions == nil {
@@ -430,14 +430,14 @@ func (a *App) handleV3LoginSubmit(w http.ResponseWriter, r *http.Request) {
 	ip := loginClientIP(r)
 	if locked, until := auth.CheckAuthLockout(ip); locked {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte(v3LoginPage(email, loginLockoutMessage(until))))
+		_, _ = w.Write([]byte(osLoginPage(email, loginLockoutMessage(until))))
 		return
 	}
 	u, err := a.userStore.Authenticate(r.Context(), email, pass)
 	if err != nil {
 		auth.RecordAuthFailure(ip)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte(v3LoginPage(email, "Invalid email or password.")))
+		_, _ = w.Write([]byte(osLoginPage(email, "Invalid email or password.")))
 		return
 	}
 	// Second factor: if the account has 2FA enabled, a valid TOTP code is required.
@@ -445,7 +445,7 @@ func (a *App) handleV3LoginSubmit(w http.ResponseWriter, r *http.Request) {
 	if ok, required := a.verifyTOTPForLogin(r.Context(), email, r.FormValue("totp")); required && !ok {
 		auth.RecordAuthFailure(ip)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte(v3LoginPage(email, "Enter the 6-digit code from your authenticator app, then re-enter your password.")))
+		_, _ = w.Write([]byte(osLoginPage(email, "Enter the 6-digit code from your authenticator app, then re-enter your password.")))
 		return
 	}
 	token, err := a.sessions.Create(r.Context(), u.ID)
@@ -459,7 +459,7 @@ func (a *App) handleV3LoginSubmit(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/os", http.StatusSeeOther)
 }
 
-func (a *App) handleV3Logout(w http.ResponseWriter, r *http.Request) {
+func (a *App) handleOSLogout(w http.ResponseWriter, r *http.Request) {
 	if a.sessions != nil {
 		if token := auth.SessionTokenFromRequest(r); token != "" {
 			_ = a.sessions.Destroy(r.Context(), token)
@@ -469,9 +469,9 @@ func (a *App) handleV3Logout(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/os/login", http.StatusSeeOther)
 }
 
-// v3LoginPage builds the full login page HTML. It uses a split-viewport layout:
+// osLoginPage builds the full login page HTML. It uses a split-viewport layout:
 // left hero panel (animated gradient mesh) + right form panel.
-func v3LoginPage(prefillEmail, errMsg string) string {
+func osLoginPage(prefillEmail, errMsg string) string {
 	errHTML := ""
 	if errMsg != "" {
 		errHTML = `<div class="login-error" role="alert">` + html.EscapeString(errMsg) + `</div>`
@@ -483,10 +483,10 @@ func v3LoginPage(prefillEmail, errMsg string) string {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Sign in — VayuPress Admin</title>
 <meta name="robots" content="noindex, nofollow">
-<link rel="stylesheet" href="/os/static/css/admin-v3.css">
+<link rel="stylesheet" href="/os/static/css/admin-os.css">
 <link rel="icon" type="image/png" href="/static/favicon-light.png">
 </head>
-<body class="vp-v3 login-page">
+<body class="vp-os login-page">
 
 <!-- Hero panel -->
 <div class="login-hero" aria-hidden="true">
@@ -530,19 +530,19 @@ func v3LoginPage(prefillEmail, errMsg string) string {
     </div>
     <button type="submit" class="btn btn--primary">Sign in</button>
   </form>
-  <div class="login-footer">VayuPress Admin v3 · CSP-strict · Zero-telemetry</div>
+  <div class="login-footer">VayuPress VayuOS · CSP-strict · Zero-telemetry</div>
 </div>
 
-<script src="/os/static/js/admin-v3.js"></script>
+<script src="/os/static/js/admin-os.js"></script>
 </body></html>`
 }
 
 // ── Dashboard ────────────────────────────────────────────────────────────────
 
-// v3PublishTrend returns the count of articles created on each of the last n
+// osPublishTrend returns the count of articles created on each of the last n
 // days (oldest first). Used to render the dashboard sparkline. Counts come
 // straight from the articles table grouped by calendar day (UTC).
-func v3PublishTrend(ctx context.Context, n int) []int {
+func osPublishTrend(ctx context.Context, n int) []int {
 	out := make([]int, n)
 	if dbpkg.DB == nil {
 		return out
@@ -573,10 +573,10 @@ func v3PublishTrend(ctx context.Context, n int) []int {
 	return out
 }
 
-// v3Sparkline renders a compact inline SVG line chart from a series of values.
+// osSparkline renders a compact inline SVG line chart from a series of values.
 // It emits no inline styles (CSP-safe); all colour comes from CSS via
 // currentColor on the .sparkline class. width/height are SVG viewBox units.
-func v3Sparkline(vals []int) string {
+func osSparkline(vals []int) string {
 	const w, h = 240, 48
 	if len(vals) == 0 {
 		return ""
@@ -609,18 +609,18 @@ func v3Sparkline(vals []int) string {
 		`</svg>`
 }
 
-func (a *App) handleV3Dashboard(w http.ResponseWriter, r *http.Request) {
+func (a *App) handleOSDashboard(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
-	cfg := a.getV3Settings(r.Context())
+	cfg := a.getOSSettings(r.Context())
 	snap := a.getAdminSnapshot()
 
 	// 14-day publishing trend sparkline.
-	trend := v3PublishTrend(r.Context(), 14)
+	trend := osPublishTrend(r.Context(), 14)
 	trendTotal := 0
 	for _, v := range trend {
 		trendTotal += v
 	}
-	sparkSVG := v3Sparkline(trend)
+	sparkSVG := osSparkline(trend)
 
 	pct := int(snap.StoragePct)
 	storBar := "progress__bar"
@@ -668,7 +668,7 @@ func (a *App) handleV3Dashboard(w http.ResponseWriter, r *http.Request) {
     <div class="stat-card__top">
       <div class="stat-card__label">Articles</div>
       <div class="stat-card__icon stat-card__icon--brand">
-        <svg viewBox="0 0 16 16" fill="none" width="16" height="16" aria-hidden="true"><path d="M2 3h12v2H2V3zm0 4h12v2H2V7zm0 4h8v2H2v-2z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>
+        <svg viewBox="0 0 16 16" fill="none" width="16" height="16" aria-hidden="true"><path d="M2 3h12v2H2OSzm0 4h12v2H2V7zm0 4h8v2H2v-2z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>
       </div>
     </div>
     <div class="stat-card__value">` + strconv.Itoa(snap.TotalArticles) + `</div>
@@ -738,7 +738,7 @@ func (a *App) handleV3Dashboard(w http.ResponseWriter, r *http.Request) {
   <div class="card">
     <div class="card-title">Recent activity</div>
     <div id="activity-feed" class="activity-list">
-      <!-- Populated by admin-v3.js via GET /os/api/activity -->
+      <!-- Populated by admin-os.js via GET /os/api/activity -->
       <div class="skeleton skeleton--text mb-3"></div>
       <div class="skeleton skeleton--text mb-3 w-80"></div>
       <div class="skeleton skeleton--text w-65"></div>
@@ -752,14 +752,14 @@ func (a *App) handleV3Dashboard(w http.ResponseWriter, r *http.Request) {
   ` + recentHTML + `
 </div>`
 
-	writeV3HTML(w, adminV3Layout(nonce, "Dashboard", "dashboard", cfg, htmpl.HTML(body)))
+	writeOSHTML(w, adminOSLayout(nonce, "Dashboard", "dashboard", cfg, htmpl.HTML(body)))
 }
 
 // ── Posts ────────────────────────────────────────────────────────────────────
 
-func (a *App) handleV3Posts(w http.ResponseWriter, r *http.Request) {
+func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
-	cfg := a.getV3Settings(r.Context())
+	cfg := a.getOSSettings(r.Context())
 
 	res, err := a.articles.List(r.Context(), 1, 200, "")
 	count := 0
@@ -818,20 +818,20 @@ func (a *App) handleV3Posts(w http.ResponseWriter, r *http.Request) {
   <div class="table-empty" data-search-empty hidden>No posts match your search.</div>
 </div>`
 	}
-	writeV3HTML(w, adminV3Layout(nonce, "Posts", "posts", cfg, htmpl.HTML(body)))
+	writeOSHTML(w, adminOSLayout(nonce, "Posts", "posts", cfg, htmpl.HTML(body)))
 }
 
 // ── Editor ───────────────────────────────────────────────────────────────────
 
-// handleV3Editor serves the post editor. To avoid any data loss during the
+// handleOSEditor serves the post editor. To avoid any data loss during the
 // gradual migration it picks the editor by article state:
-//   - existing article with a block document      → native v3 block editor
-//   - existing empty draft (no content, no blocks) → native v3 block editor
+//   - existing article with a block document      → native os block editor
+//   - existing empty draft (no content, no blocks) → native os block editor
 //   - existing article with legacy HTML/Markdown   → v2 editor (lossless)
 //   - brand-new post (no slug)                     → v2 editor (handles create)
-func (a *App) handleV3Editor(w http.ResponseWriter, r *http.Request) {
+func (a *App) handleOSEditor(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
-	cfg := a.getV3Settings(r.Context())
+	cfg := a.getOSSettings(r.Context())
 	slug := chi.URLParam(r, "slug")
 
 	if slug != "" {
@@ -843,10 +843,10 @@ func (a *App) handleV3Editor(w http.ResponseWriter, r *http.Request) {
 			hasBlocks := strings.TrimSpace(blocksJSON) != "" && strings.TrimSpace(blocksJSON) != "[]"
 			emptyDraft := strings.TrimSpace(art.Content) == ""
 			if hasBlocks || emptyDraft {
-				body := v3EditorBody(slug, art.Title, blocksJSON)
+				body := osEditorBody(slug, art.Title, blocksJSON)
 				body += `
-<script nonce="` + nonce + `" src="/os/static/js/admin-v3-editor.js"></script>`
-				writeV3HTML(w, adminV3Layout(nonce, "Edit Post", "editor", cfg, htmpl.HTML(body)))
+<script nonce="` + nonce + `" src="/os/static/js/admin-os-editor.js"></script>`
+				writeOSHTML(w, adminOSLayout(nonce, "Edit Post", "editor", cfg, htmpl.HTML(body)))
 				return
 			}
 			// Legacy (non-block) content: open it in the native block editor,
@@ -860,10 +860,10 @@ func (a *App) handleV3Editor(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				raw = []byte("[]")
 			}
-			body := v3EditorBody(slug, art.Title, string(raw))
+			body := osEditorBody(slug, art.Title, string(raw))
 			body += `
-<script nonce="` + nonce + `" src="/os/static/js/admin-v3-editor.js"></script>`
-			writeV3HTML(w, adminV3Layout(nonce, "Edit Post", "editor", cfg, htmpl.HTML(body)))
+<script nonce="` + nonce + `" src="/os/static/js/admin-os-editor.js"></script>`
+			writeOSHTML(w, adminOSLayout(nonce, "Edit Post", "editor", cfg, htmpl.HTML(body)))
 			return
 		}
 	}
@@ -871,20 +871,20 @@ func (a *App) handleV3Editor(w http.ResponseWriter, r *http.Request) {
 	// Brand-new post: the native block editor owns the create path (v1.6.0).
 	// It hydrates with an empty document and an empty slug; the first Save POSTs
 	// to /os/api/editor/save, which creates the article and returns its slug.
-	body := v3EditorBody("", "", "[]")
+	body := osEditorBody("", "", "[]")
 	body += `
-<script nonce="` + nonce + `" src="/os/static/js/admin-v3-editor.js"></script>`
-	writeV3HTML(w, adminV3Layout(nonce, "New Post", "editor", cfg, htmpl.HTML(body)))
+<script nonce="` + nonce + `" src="/os/static/js/admin-os-editor.js"></script>`
+	writeOSHTML(w, adminOSLayout(nonce, "New Post", "editor", cfg, htmpl.HTML(body)))
 }
 
 // ── SEO ──────────────────────────────────────────────────────────────────────
-// The native SEO dashboard now lives in admin_v3_intel.go (handleV3SEONative).
+// The native SEO dashboard now lives in admin_os_intel.go (handleOSSEONative).
 
 // ── Settings ─────────────────────────────────────────────────────────────────
 
-func (a *App) handleV3Settings(w http.ResponseWriter, r *http.Request) {
+func (a *App) handleOSSettings(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
-	cfg := a.getV3Settings(r.Context())
+	cfg := a.getOSSettings(r.Context())
 	group := chi.URLParam(r, "group")
 	if group == "" {
 		group = "general"
@@ -912,17 +912,17 @@ func (a *App) handleV3Settings(w http.ResponseWriter, r *http.Request) {
 	ss := a.siteSettings
 	switch group {
 	case "design":
-		groupBody = v3SettingsDesign(r.Context(), ss)
+		groupBody = osSettingsDesign(r.Context(), ss)
 	case "members":
-		groupBody = v3SettingsMembers(r.Context(), ss)
+		groupBody = osSettingsMembers(r.Context(), ss)
 	case "email":
-		groupBody = v3SettingsEmail(r.Context(), ss)
+		groupBody = osSettingsEmail(r.Context(), ss)
 	case "security":
-		groupBody = v3SettingsSecurity(r.Context(), ss)
+		groupBody = osSettingsSecurity(r.Context(), ss)
 	case "advanced":
-		groupBody = v3SettingsAdvanced(r.Context(), ss)
+		groupBody = osSettingsAdvanced(r.Context(), ss)
 	default:
-		groupBody = v3SettingsGeneral(r.Context(), ss)
+		groupBody = osSettingsGeneral(r.Context(), ss)
 	}
 
 	body := `<div class="page-header">
@@ -931,10 +931,10 @@ func (a *App) handleV3Settings(w http.ResponseWriter, r *http.Request) {
 <nav class="tab-list" aria-label="Settings sections">` + tabHTML + `</nav>
 <div class="card">` + groupBody + `</div>`
 
-	writeV3HTML(w, adminV3Layout(nonce, "Settings", "settings", cfg, htmpl.HTML(body)))
+	writeOSHTML(w, adminOSLayout(nonce, "Settings", "settings", cfg, htmpl.HTML(body)))
 }
 
-func v3SettingsGeneral(ctx context.Context, ss *settings.Store) string {
+func osSettingsGeneral(ctx context.Context, ss *settings.Store) string {
 	var siteName, tagline, desc, author string
 	if ss != nil {
 		siteName = ss.Get(ctx, settings.KeySiteName)
@@ -964,7 +964,7 @@ func v3SettingsGeneral(ctx context.Context, ss *settings.Store) string {
 </div>`
 }
 
-func v3SettingsDesign(ctx context.Context, ss *settings.Store) string {
+func osSettingsDesign(ctx context.Context, ss *settings.Store) string {
 	primaryLight, primaryDark, customCSS := "#0f766e", "#2dd4bf", ""
 	if ss != nil {
 		if v := ss.Get(ctx, settings.KeyThemePrimaryLight); v != "" {
@@ -1002,7 +1002,7 @@ func v3SettingsDesign(ctx context.Context, ss *settings.Store) string {
 </div>`
 }
 
-func v3SettingsMembers(_ context.Context, _ *settings.Store) string {
+func osSettingsMembers(_ context.Context, _ *settings.Store) string {
 	return `<div class="settings-section">
   <div class="settings-block-title">Memberships</div>
   <div class="settings-row">
@@ -1023,7 +1023,7 @@ func v3SettingsMembers(_ context.Context, _ *settings.Store) string {
 </div>`
 }
 
-func v3SettingsEmail(ctx context.Context, ss *settings.Store) string {
+func osSettingsEmail(ctx context.Context, ss *settings.Store) string {
 	from := ""
 	if ss != nil {
 		from = ss.Get(ctx, "smtp.from")
@@ -1039,14 +1039,14 @@ func v3SettingsEmail(ctx context.Context, ss *settings.Store) string {
 </div>`
 }
 
-func v3SettingsSecurity(_ context.Context, _ *settings.Store) string {
+func osSettingsSecurity(_ context.Context, _ *settings.Store) string {
 	return `<div class="settings-section">
   <div class="settings-block-title">Security</div>
   <p class="text-sm muted">Two-factor authentication (TOTP) and session management live in the dedicated <a href="/os/security">Security</a> panel.</p>
 </div>`
 }
 
-func v3SettingsAdvanced(_ context.Context, _ *settings.Store) string {
+func osSettingsAdvanced(_ context.Context, _ *settings.Store) string {
 	return `<div class="settings-section">
   <div class="settings-block-title">Cache</div>
   <div class="settings-row">
@@ -1065,8 +1065,8 @@ func v3SettingsAdvanced(_ context.Context, _ *settings.Store) string {
 
 // ── JSON APIs ─────────────────────────────────────────────────────────────────
 
-// handleV3Activity returns recent admin activity as JSON for the dashboard feed.
-func (a *App) handleV3Activity(w http.ResponseWriter, r *http.Request) {
+// handleOSActivity returns recent admin activity as JSON for the dashboard feed.
+func (a *App) handleOSActivity(w http.ResponseWriter, r *http.Request) {
 	type activityItem struct {
 		Kind string `json:"kind"`
 		Icon string `json:"icon"`
@@ -1120,8 +1120,8 @@ func (a *App) handleV3Activity(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(items)
 }
 
-// handleV3CmdIndex returns the command palette search index as JSON.
-func (a *App) handleV3CmdIndex(w http.ResponseWriter, r *http.Request) {
+// handleOSCmdIndex returns the command palette search index as JSON.
+func (a *App) handleOSCmdIndex(w http.ResponseWriter, r *http.Request) {
 	type cmdPost struct{ Label, Slug string }
 	type cmdAction struct{ Label, Icon, Hint, Fn string }
 	type cmdSetting struct{ Label, Icon, Href string }
@@ -1159,8 +1159,8 @@ func (a *App) handleV3CmdIndex(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleV3SettingsAPI persists a single settings key/value from the admin v3 UI.
-func (a *App) handleV3SettingsAPI(w http.ResponseWriter, r *http.Request) {
+// handleOSSettingsAPI persists a single settings key/value from the VayuOS UI.
+func (a *App) handleOSSettingsAPI(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Key   string `json:"key"`
 		Value string `json:"value"`
@@ -1180,8 +1180,8 @@ func (a *App) handleV3SettingsAPI(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-// handleV3QuickCreatePost creates a draft post from the dashboard quick-compose.
-func (a *App) handleV3QuickCreatePost(w http.ResponseWriter, r *http.Request) {
+// handleOSQuickCreatePost creates a draft post from the dashboard quick-compose.
+func (a *App) handleOSQuickCreatePost(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Title string `json:"title"`
 	}
@@ -1197,7 +1197,7 @@ func (a *App) handleV3QuickCreatePost(w http.ResponseWriter, r *http.Request) {
 	// Generate a unique slug from the title (shared with the native editor).
 	slug := a.uniqueArticleSlug(r.Context(), title)
 	// Create the draft. Content must be non-empty to pass article validation, so
-	// we seed a single space: it trims to empty, so handleV3Editor treats the
+	// we seed a single space: it trims to empty, so handleOSEditor treats the
 	// post as an empty draft and opens the block editor, and the placeholder is
 	// replaced by the rendered blocks on the first save.
 	if _, err := a.articles.Create(r.Context(), title, slug, " ", nil); err != nil {

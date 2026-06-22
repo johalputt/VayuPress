@@ -1,5 +1,5 @@
 /*
- * admin-v3-security.js — TOTP 2FA enrolment for Admin v3 (ADR-0068, Phase 5).
+ * admin-os-security.js — TOTP 2FA enrolment for VayuOS (ADR-0068, Phase 5).
  * Strict CSP: no eval, no innerHTML with untrusted data; DOM via textContent.
  */
 (function () {

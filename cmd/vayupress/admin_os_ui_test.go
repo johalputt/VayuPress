@@ -10,37 +10,37 @@ import (
 	"github.com/johalputt/vayupress/internal/config"
 )
 
-// TestV3LayoutCSPSafe verifies the v3 chrome carries the nonce'd script, links
+// TestOSLayoutCSPSafe verifies the os chrome carries the nonce'd script, links
 // the same-origin stylesheet, and emits no CSP-violating inline styles or
 // external asset hosts.
-func TestV3LayoutCSPSafe(t *testing.T) {
-	out := adminV3Layout("TESTNONCE", "Dashboard", "dashboard", &v3Settings{SiteName: "Demo"}, htmpl.HTML("<p>body</p>"))
-	assertCSPSafe(t, "adminV3Layout", out)
-	if !strings.Contains(out, `<script nonce="TESTNONCE" src="/os/static/js/admin-v3.js"></script>`) {
-		t.Error("v3 layout missing nonce'd script tag")
+func TestOSLayoutCSPSafe(t *testing.T) {
+	out := adminOSLayout("TESTNONCE", "Dashboard", "dashboard", &osSettings{SiteName: "Demo"}, htmpl.HTML("<p>body</p>"))
+	assertCSPSafe(t, "adminOSLayout", out)
+	if !strings.Contains(out, `<script nonce="TESTNONCE" src="/os/static/js/admin-os.js"></script>`) {
+		t.Error("os layout missing nonce'd script tag")
 	}
-	if !strings.Contains(out, `<link rel="stylesheet" href="/os/static/css/admin-v3.css">`) {
-		t.Error("v3 layout missing same-origin stylesheet link")
+	if !strings.Contains(out, `<link rel="stylesheet" href="/os/static/css/admin-os.css">`) {
+		t.Error("os layout missing same-origin stylesheet link")
 	}
 	if !strings.Contains(out, "Demo") {
-		t.Error("v3 layout did not render site name")
+		t.Error("os layout did not render site name")
 	}
 }
 
-// TestV3LayoutEscapesTitle ensures a hostile page title cannot break out of the
+// TestOSLayoutEscapesTitle ensures a hostile page title cannot break out of the
 // HTML context (defence against reflected XSS in the chrome).
-func TestV3LayoutEscapesTitle(t *testing.T) {
-	out := adminV3Layout("N", `</title><script>alert(1)</script>`, "dashboard", nil, htmpl.HTML(""))
+func TestOSLayoutEscapesTitle(t *testing.T) {
+	out := adminOSLayout("N", `</title><script>alert(1)</script>`, "dashboard", nil, htmpl.HTML(""))
 	if strings.Contains(out, "<script>alert(1)") {
-		t.Error("v3 layout did not escape the page title")
+		t.Error("os layout did not escape the page title")
 	}
 }
 
-// TestV3LoginPageCSPSafe checks the standalone login page is CSP-clean and
+// TestOSLoginPageCSPSafe checks the standalone login page is CSP-clean and
 // escapes the error message and prefilled email.
-func TestV3LoginPageCSPSafe(t *testing.T) {
-	out := v3LoginPage(`evil"<x>`, `<b>bad</b>`)
-	assertCSPSafe(t, "v3LoginPage", out)
+func TestOSLoginPageCSPSafe(t *testing.T) {
+	out := osLoginPage(`evil"<x>`, `<b>bad</b>`)
+	assertCSPSafe(t, "osLoginPage", out)
 	if strings.Contains(out, "<b>bad</b>") {
 		t.Error("login page did not escape error message")
 	}
@@ -49,12 +49,12 @@ func TestV3LoginPageCSPSafe(t *testing.T) {
 	}
 }
 
-// TestV3SparklineEmpty returns empty string for no data and never panics.
-func TestV3Sparkline(t *testing.T) {
-	if v3Sparkline(nil) != "" {
+// TestOSSparklineEmpty returns empty string for no data and never panics.
+func TestOSSparkline(t *testing.T) {
+	if osSparkline(nil) != "" {
 		t.Error("expected empty string for nil series")
 	}
-	out := v3Sparkline([]int{0, 1, 3, 2, 5})
+	out := osSparkline([]int{0, 1, 3, 2, 5})
 	if !strings.Contains(out, "<svg") || !strings.Contains(out, "sparkline__line") {
 		t.Error("sparkline did not render expected SVG structure")
 	}
@@ -62,16 +62,16 @@ func TestV3Sparkline(t *testing.T) {
 		t.Error("sparkline emitted an inline style attribute (CSP violation)")
 	}
 	// Single point must not divide by zero.
-	if got := v3Sparkline([]int{4}); !strings.Contains(got, "<svg") {
+	if got := osSparkline([]int{4}); !strings.Contains(got, "<svg") {
 		t.Error("single-point sparkline did not render")
 	}
 }
 
-// TestV3EditorBodyCSPSafe verifies the block-editor shell is CSP-clean and
+// TestOSEditorBodyCSPSafe verifies the block-editor shell is CSP-clean and
 // escapes the slug, title, and embedded blocks JSON.
-func TestV3EditorBodyCSPSafe(t *testing.T) {
-	out := v3EditorBody(`slug"<x>`, `T"<i>`, `[{"type":"paragraph","text":"<script>x</script>"}]`)
-	assertCSPSafe(t, "v3EditorBody", out)
+func TestOSEditorBodyCSPSafe(t *testing.T) {
+	out := osEditorBody(`slug"<x>`, `T"<i>`, `[{"type":"paragraph","text":"<script>x</script>"}]`)
+	assertCSPSafe(t, "osEditorBody", out)
 	if strings.Contains(out, "<script>x</script>") {
 		t.Error("editor body did not escape blocks JSON content")
 	}

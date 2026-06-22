@@ -13,10 +13,10 @@ import (
 	"github.com/johalputt/vayupress/internal/auth"
 )
 
-// TestV3EditorSaveRoundTrip exercises the full save path: create a draft, POST a
+// TestOSEditorSaveRoundTrip exercises the full save path: create a draft, POST a
 // block document, and confirm the rendered HTML lands in content and the raw
 // blocks persist for re-hydration.
-func TestV3EditorSaveRoundTrip(t *testing.T) {
+func TestOSEditorSaveRoundTrip(t *testing.T) {
 	srv, key := newTestHarness(t)
 
 	doRequest(t, srv, "POST", "/api/v1/articles", key, map[string]interface{}{
@@ -57,10 +57,10 @@ func TestV3EditorSaveRoundTrip(t *testing.T) {
 	}
 }
 
-// TestV3QuickCreateOpensBlockEditor verifies the dashboard quick-compose creates
+// TestOSQuickCreateOpensBlockEditor verifies the dashboard quick-compose creates
 // a draft (non-empty content to pass validation, but blank after trim) and that
 // the editor then opens the block editor for it rather than 500-ing.
-func TestV3QuickCreateOpensBlockEditor(t *testing.T) {
+func TestOSQuickCreateOpensBlockEditor(t *testing.T) {
 	srv, key := newTestHarness(t)
 
 	csrf := auth.GenerateCSRFToken()
@@ -98,11 +98,11 @@ func TestV3QuickCreateOpensBlockEditor(t *testing.T) {
 	}
 }
 
-// TestV3EditorNativeCreatePath verifies the block editor owns the create flow:
+// TestOSEditorNativeCreatePath verifies the block editor owns the create flow:
 // a Save with an empty slug creates the article (slug derived from title),
 // renders the blocks into content, and the new-post URL (/os/editor) opens the
 // native block editor rather than the legacy v2 editor.
-func TestV3EditorNativeCreatePath(t *testing.T) {
+func TestOSEditorNativeCreatePath(t *testing.T) {
 	srv, key := newTestHarness(t)
 
 	// The "New Post" route (no slug) must serve the native block editor.

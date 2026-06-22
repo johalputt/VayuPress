@@ -1,6 +1,6 @@
 package main
 
-// admin_v3_security.go — Admin v3 Members page + TOTP two-factor (ADR-0068, Phase 5).
+// admin_os_security.go — VayuOS Members page + TOTP two-factor (ADR-0068, Phase 5).
 //
 // TOTP enrolment is a two-step ceremony so a half-finished setup never locks an
 // operator out: (1) begin → a secret is generated and stored disabled, the
@@ -8,7 +8,7 @@ package main
 // code is checked and only then is 2FA enabled. Disable clears the secret.
 //
 // Sign-in enforcement lives in verifyTOTPForLogin and is wired into both the v2
-// and v3 login submit handlers, so an enrolled account cannot bypass 2FA via the
+// and os login submit handlers, so an enrolled account cannot bypass 2FA via the
 // older surface.
 
 import (
@@ -40,14 +40,14 @@ func (a *App) verifyTOTPForLogin(ctx context.Context, email, code string) (ok, r
 
 // ── Members page ───────────────────────────────────────────────────────────
 
-func (a *App) handleV3Members(w http.ResponseWriter, r *http.Request) {
+func (a *App) handleOSMembers(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
-	cfg := a.getV3Settings(r.Context())
+	cfg := a.getOSSettings(r.Context())
 
 	if a.members == nil {
 		body := `<div class="page-header"><h1>Members</h1></div>
 <div class="empty-state">Memberships are not enabled on this instance.</div>`
-		writeV3HTML(w, adminV3Layout(nonce, "Members", "members", cfg, htmpl.HTML(body)))
+		writeOSHTML(w, adminOSLayout(nonce, "Members", "members", cfg, htmpl.HTML(body)))
 		return
 	}
 
@@ -86,21 +86,21 @@ func (a *App) handleV3Members(w http.ResponseWriter, r *http.Request) {
 		`</div>
 <div class="card">` + tableHTML + `</div>`
 
-	writeV3HTML(w, adminV3Layout(nonce, "Members", "members", cfg, htmpl.HTML(body)))
+	writeOSHTML(w, adminOSLayout(nonce, "Members", "members", cfg, htmpl.HTML(body)))
 }
 
 // ── Security page (TOTP) ────────────────────────────────────────────────────
 
-func (a *App) handleV3Security(w http.ResponseWriter, r *http.Request) {
+func (a *App) handleOSSecurity(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
-	cfg := a.getV3Settings(r.Context())
+	cfg := a.getOSSettings(r.Context())
 
 	u := currentUser(r)
 	if u == nil || a.userStore == nil {
 		// API-key session (no user record): 2FA is per-account, so explain.
 		body := `<div class="page-header"><h1>Security</h1></div>
 <div class="card"><p class="muted">Two-factor authentication applies to password accounts. You are signed in with an API key.</p></div>`
-		writeV3HTML(w, adminV3Layout(nonce, "Security", "security", cfg, htmpl.HTML(body)))
+		writeOSHTML(w, adminOSLayout(nonce, "Security", "security", cfg, htmpl.HTML(body)))
 		return
 	}
 
@@ -146,14 +146,14 @@ func (a *App) handleV3Security(w http.ResponseWriter, r *http.Request) {
 
 	body := `<div class="page-header"><h1>Security</h1></div>
 <div class="card" data-totp-card>` + section + `</div>
-<script nonce="` + nonce + `" src="/os/static/js/admin-v3-security.js"></script>`
+<script nonce="` + nonce + `" src="/os/static/js/admin-os-security.js"></script>`
 
-	writeV3HTML(w, adminV3Layout(nonce, "Security", "security", cfg, htmpl.HTML(body)))
+	writeOSHTML(w, adminOSLayout(nonce, "Security", "security", cfg, htmpl.HTML(body)))
 }
 
-// handleV3TOTPBegin generates a fresh secret (stored disabled) and returns the
+// handleOSTOTPBegin generates a fresh secret (stored disabled) and returns the
 // provisioning URI + manual key for the current user.
-func (a *App) handleV3TOTPBegin(w http.ResponseWriter, r *http.Request) {
+func (a *App) handleOSTOTPBegin(w http.ResponseWriter, r *http.Request) {
 	u := currentUser(r)
 	if u == nil || a.userStore == nil {
 		writeAPIError(w, r, http.StatusForbidden, "no-account", "2FA requires a password account", "")
@@ -172,9 +172,9 @@ func (a *App) handleV3TOTPBegin(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, http.StatusOK, map[string]string{"secret": secret, "uri": uri})
 }
 
-// handleV3TOTPVerify checks the submitted code against the pending secret and,
+// handleOSTOTPVerify checks the submitted code against the pending secret and,
 // on success, enables 2FA.
-func (a *App) handleV3TOTPVerify(w http.ResponseWriter, r *http.Request) {
+func (a *App) handleOSTOTPVerify(w http.ResponseWriter, r *http.Request) {
 	u := currentUser(r)
 	if u == nil || a.userStore == nil {
 		writeAPIError(w, r, http.StatusForbidden, "no-account", "2FA requires a password account", "")
@@ -203,8 +203,8 @@ func (a *App) handleV3TOTPVerify(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, http.StatusOK, map[string]string{"status": "enabled"})
 }
 
-// handleV3TOTPDisable clears 2FA for the current user.
-func (a *App) handleV3TOTPDisable(w http.ResponseWriter, r *http.Request) {
+// handleOSTOTPDisable clears 2FA for the current user.
+func (a *App) handleOSTOTPDisable(w http.ResponseWriter, r *http.Request) {
 	u := currentUser(r)
 	if u == nil || a.userStore == nil {
 		writeAPIError(w, r, http.StatusForbidden, "no-account", "2FA requires a password account", "")

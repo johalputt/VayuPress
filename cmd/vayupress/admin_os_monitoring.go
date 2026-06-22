@@ -1,9 +1,9 @@
 package main
 
-// admin_v3_monitoring.go — Admin v3 "Monitoring" surface (VayuOS consolidation).
+// admin_os_monitoring.go — VayuOS "Monitoring" surface (VayuOS consolidation).
 //
 // This folds the at-a-glance half of the classic v1 SRE console into the single
-// v3 admin: current system mode, live performance percentiles, storage/queue
+// os admin: current system mode, live performance percentiles, storage/queue
 // health, and the governance error-budget ledger — all rendered server-side
 // from the same in-process sources the v1 console and JSON APIs use, then kept
 // fresh by a small poll loop against the existing /api/v1/admin/{mode,budgets}
@@ -11,7 +11,7 @@ package main
 // simulation, replay, ADR registry) remain at their /admin/* routes and are
 // linked from here, so nothing regresses while the surfaces converge.
 //
-// CSP posture matches the rest of admin v3: no inline styles, the only inline
+// CSP posture matches the rest of VayuOS: no inline styles, the only inline
 // <script> carries the per-request nonce, every dynamic string is escaped.
 
 import (
@@ -60,9 +60,9 @@ func monStat(label, value, sub string) string {
 </div>`
 }
 
-func (a *App) handleV3Monitoring(w http.ResponseWriter, r *http.Request) {
+func (a *App) handleOSMonitoring(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
-	cfg := a.getV3Settings(r.Context())
+	cfg := a.getOSSettings(r.Context())
 	snap := a.getAdminSnapshot()
 
 	// ── System mode ──────────────────────────────────────────────────────────
@@ -153,7 +153,7 @@ func (a *App) handleV3Monitoring(w http.ResponseWriter, r *http.Request) {
   <h1>Monitoring</h1>
   <div class="page-actions"><span class="text-sm muted" data-mon-updated>live</span></div>
 </div>` + modeCard + perf + storageJobs + budgetsCard + consoles + `
-<script nonce="` + nonce + `" src="/os/static/js/admin-v3-monitoring.js"></script>`
+<script nonce="` + nonce + `" src="/os/static/js/admin-os-monitoring.js"></script>`
 
-	writeV3HTML(w, adminV3Layout(nonce, "Monitoring", "monitoring", cfg, htmpl.HTML(body)))
+	writeOSHTML(w, adminOSLayout(nonce, "Monitoring", "monitoring", cfg, htmpl.HTML(body)))
 }

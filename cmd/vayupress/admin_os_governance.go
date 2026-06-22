@@ -1,6 +1,6 @@
 package main
 
-// admin_v3_governance.go — VayuOS "Governance" panel.
+// admin_os_governance.go — VayuOS "Governance" panel.
 //
 // A dedicated control surface for the adaptive-governance runtime, distinct from
 // the Monitoring page (which is about throughput/health). Governance focuses on
@@ -42,9 +42,9 @@ func policyStatusPill(p policy.PolicyResult) (string, string) {
 	}
 }
 
-func (a *App) handleV3Governance(w http.ResponseWriter, r *http.Request) {
+func (a *App) handleOSGovernance(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
-	cfg := a.getV3Settings(r.Context())
+	cfg := a.getOSSettings(r.Context())
 
 	now := time.Now()
 	cur := mode.Global.Current()
@@ -167,5 +167,5 @@ func (a *App) handleV3Governance(w http.ResponseWriter, r *http.Request) {
   <div class="page-actions"><span class="text-sm muted">adaptive runtime</span></div>
 </div>` + summary + policyCard + budgetCard + transCard + consoles
 
-	writeV3HTML(w, adminV3Layout(nonce, "Governance", "governance", cfg, htmpl.HTML(body)))
+	writeOSHTML(w, adminOSLayout(nonce, "Governance", "governance", cfg, htmpl.HTML(body)))
 }

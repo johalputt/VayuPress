@@ -1,5 +1,5 @@
 /*
- * admin-v3-editor.js — VayuPress Admin v3 block editor (ADR-0068, Phase 3).
+ * admin-os-editor.js — VayuPress VayuOS block editor (ADR-0068, Phase 3).
  *
  * Vanilla JS, strict CSP: no eval, no new Function, no innerHTML with untrusted
  * data. The DOM is built with createElement/textContent. The canonical document

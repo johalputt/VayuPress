@@ -1,5 +1,5 @@
 /*
- * admin-v3-tools.js — Tools & Plugins panel for Admin v3 (VayuOS foundation).
+ * admin-os-tools.js — Tools & Plugins panel for VayuOS (VayuOS foundation).
  * Strict CSP: no eval, DOM updates via textContent / className only.
  *
  * Wires each module switch to POST /os/api/tools/toggle. On success the

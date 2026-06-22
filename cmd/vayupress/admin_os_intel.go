@@ -1,6 +1,6 @@
 package main
 
-// admin_v3_intel.go — Admin v3 intelligence surfaces (ADR-0068, Phase 6):
+// admin_os_intel.go — VayuOS intelligence surfaces (ADR-0068, Phase 6):
 // a native SEO dashboard and a privacy-preserving analytics page. Both read
 // only from the local DB and on-disk cache — no third-party services, matching
 // VayuPress's sovereign, zero-telemetry stance.
@@ -18,11 +18,11 @@ import (
 	"github.com/johalputt/vayupress/internal/render"
 )
 
-// handleV3SEONative renders the native v3 SEO dashboard: artefact freshness plus
+// handleOSSEONative renders the native os SEO dashboard: artefact freshness plus
 // per-article readiness, computed live from the DB and cache.
-func (a *App) handleV3SEONative(w http.ResponseWriter, r *http.Request) {
+func (a *App) handleOSSEONative(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
-	cfg := a.getV3Settings(r.Context())
+	cfg := a.getOSSettings(r.Context())
 
 	artefact := func(name string) (bool, string) {
 		fi, err := os.Stat(filepath.Join(config.Cfg.CacheDir, name))
@@ -91,21 +91,21 @@ func (a *App) handleV3SEONative(w http.ResponseWriter, r *http.Request) {
   </table></div>
   <div class="seo-status mt-3" data-seo-status hidden></div>
 </div>
-<script nonce="` + nonce + `" src="/os/static/js/admin-v3-intel.js"></script>`
+<script nonce="` + nonce + `" src="/os/static/js/admin-os-intel.js"></script>`
 
-	writeV3HTML(w, adminV3Layout(nonce, "SEO", "seo", cfg, htmpl.HTML(body)))
+	writeOSHTML(w, adminOSLayout(nonce, "SEO", "seo", cfg, htmpl.HTML(body)))
 }
 
-// handleV3Analytics renders the privacy-preserving analytics page from the local
+// handleOSAnalytics renders the privacy-preserving analytics page from the local
 // analytics_daily / analytics_referrers tables.
-func (a *App) handleV3Analytics(w http.ResponseWriter, r *http.Request) {
+func (a *App) handleOSAnalytics(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
-	cfg := a.getV3Settings(r.Context())
+	cfg := a.getOSSettings(r.Context())
 
 	if a.analytics == nil {
 		body := `<div class="page-header"><h1>Analytics</h1></div>
 <div class="empty-state">Analytics are not enabled on this instance.</div>`
-		writeV3HTML(w, adminV3Layout(nonce, "Analytics", "analytics", cfg, htmpl.HTML(body)))
+		writeOSHTML(w, adminOSLayout(nonce, "Analytics", "analytics", cfg, htmpl.HTML(body)))
 		return
 	}
 
@@ -113,7 +113,7 @@ func (a *App) handleV3Analytics(w http.ResponseWriter, r *http.Request) {
 	if err != nil || sum == nil {
 		body := `<div class="page-header"><h1>Analytics</h1></div>
 <div class="empty-state">No analytics data yet.</div>`
-		writeV3HTML(w, adminV3Layout(nonce, "Analytics", "analytics", cfg, htmpl.HTML(body)))
+		writeOSHTML(w, adminOSLayout(nonce, "Analytics", "analytics", cfg, htmpl.HTML(body)))
 		return
 	}
 
@@ -125,7 +125,7 @@ func (a *App) handleV3Analytics(w http.ResponseWriter, r *http.Request) {
 	spark := ""
 	if len(vals) > 0 {
 		spark = `<div class="card mb-6"><div class="card-title">Views — last 30 days</div>
-<div class="sparkline-wrap">` + v3Sparkline(vals) + `</div></div>`
+<div class="sparkline-wrap">` + osSparkline(vals) + `</div></div>`
 	}
 
 	pages := `<div class="empty-state">No page views recorded yet.</div>`
@@ -154,5 +154,5 @@ func (a *App) handleV3Analytics(w http.ResponseWriter, r *http.Request) {
   <div class="card"><div class="card-title">Referrers</div>` + refs + `</div>
 </div>`
 
-	writeV3HTML(w, adminV3Layout(nonce, "Analytics", "analytics", cfg, htmpl.HTML(body)))
+	writeOSHTML(w, adminOSLayout(nonce, "Analytics", "analytics", cfg, htmpl.HTML(body)))
 }

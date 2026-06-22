@@ -1,5 +1,5 @@
 /*
- * admin-v3-theme.js — VayuPress Admin v3 Theme Studio.
+ * admin-os-theme.js — VayuPress VayuOS Theme Studio.
  *
  * Vanilla JS, strict CSP: no eval, no innerHTML with untrusted data, no inline
  * <style> injection. The live preview is driven entirely through the CSSOM

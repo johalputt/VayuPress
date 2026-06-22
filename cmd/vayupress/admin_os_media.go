@@ -1,11 +1,11 @@
 package main
 
-// admin_v3_media.go — Admin v3 media library (ADR-0068, Phase 4).
+// admin_os_media.go — VayuOS media library (ADR-0068, Phase 4).
 //
 // The upload + storage backend already exists (handlers_media.go): content-
 // addressed files under config.Cfg.MediaDir, served same-origin from /media/{file},
 // with a strict type allowlist (PNG/JPEG/GIF/WebP/PDF — SVG is refused because it
-// can carry inline script). This file adds the v3 browsing surface: a grid page
+// can carry inline script). This file adds the os browsing surface: a grid page
 // and a JSON listing endpoint. Listing only ever exposes server-generated names
 // (validated by safeMediaName), so there is no path-traversal or info-leak vector.
 
@@ -63,17 +63,17 @@ func listMediaItems() []mediaItem {
 	return items
 }
 
-// handleV3MediaList returns the media library contents as JSON.
-func (a *App) handleV3MediaList(w http.ResponseWriter, r *http.Request) {
+// handleOSMediaList returns the media library contents as JSON.
+func (a *App) handleOSMediaList(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, http.StatusOK, map[string]interface{}{"items": listMediaItems()})
 }
 
-// handleV3Media renders the media library page: a responsive grid populated by
-// admin-v3.js from the listing endpoint, plus an upload dropzone that POSTs to
+// handleOSMedia renders the media library page: a responsive grid populated by
+// admin-os.js from the listing endpoint, plus an upload dropzone that POSTs to
 // the existing /api/v1/admin/media handler.
-func (a *App) handleV3Media(w http.ResponseWriter, r *http.Request) {
+func (a *App) handleOSMedia(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
-	cfg := a.getV3Settings(r.Context())
+	cfg := a.getOSSettings(r.Context())
 
 	count := len(listMediaItems())
 
@@ -97,5 +97,5 @@ func (a *App) handleV3Media(w http.ResponseWriter, r *http.Request) {
   <div class="skeleton skeleton--media"></div>
 </div>`
 
-	writeV3HTML(w, adminV3Layout(nonce, "Media", "media", cfg, htmpl.HTML(body)))
+	writeOSHTML(w, adminOSLayout(nonce, "Media", "media", cfg, htmpl.HTML(body)))
 }

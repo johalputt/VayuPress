@@ -298,7 +298,7 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	r.Handle("/admin/v2/*", v2Redirect)
 
 	// VayuOS — the single admin, mounted at /os (ADR-0068, ADR-0069).
-	a.registerAdminV3UIRoutes(r)
+	a.registerAdminOSUIRoutes(r)
 
 	r.Get("/", a.handleHome)
 	r.NotFound(a.handleNotFound)

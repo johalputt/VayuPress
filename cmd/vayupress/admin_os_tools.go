@@ -1,6 +1,6 @@
 package main
 
-// admin_v3_tools.go — VayuPress Admin v3 "Tools & Plugins" panel.
+// admin_os_tools.go — VayuPress VayuOS "Tools & Plugins" panel.
 //
 // This is the first stone of the VayuOS vision: a single surface that lists
 // every platform module, shows its live runtime status, and lets the operator
@@ -9,7 +9,7 @@ package main
 // so "install" is not a network action: a module is either built in (always
 // present) or operator-toggleable via a persisted feature flag.
 //
-// CSP posture is identical to the rest of admin v3: no inline styles, the only
+// CSP posture is identical to the rest of VayuOS: no inline styles, the only
 // inline <script> carries the per-request nonce, all user-facing strings are
 // escaped before HTML emit, and toggles are CSRF-protected writes.
 
@@ -147,9 +147,9 @@ func (a *App) toolStates(ctx context.Context) []toolState {
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 
-func (a *App) handleV3Tools(w http.ResponseWriter, r *http.Request) {
+func (a *App) handleOSTools(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
-	cfg := a.getV3Settings(r.Context())
+	cfg := a.getOSSettings(r.Context())
 	states := a.toolStates(r.Context())
 
 	// Count enabled toggleable + total ready for the summary line.
@@ -180,9 +180,9 @@ func (a *App) handleV3Tools(w http.ResponseWriter, r *http.Request) {
 </div>
 <div class="tools-grid" data-tools-grid>` + cards.String() + `</div>` +
 		pluginRegistryHTML() + `
-<script nonce="` + nonce + `" src="/os/static/js/admin-v3-tools.js"></script>`
+<script nonce="` + nonce + `" src="/os/static/js/admin-os-tools.js"></script>`
 
-	writeV3HTML(w, adminV3Layout(nonce, "Tools & Plugins", "tools", cfg, htmpl.HTML(body)))
+	writeOSHTML(w, adminOSLayout(nonce, "Tools & Plugins", "tools", cfg, htmpl.HTML(body)))
 }
 
 // pluginRegistryHTML renders the live sandboxed-plugin registry: every
@@ -249,7 +249,7 @@ func toolCardHTML(s toolState) string {
 		if s.Enabled {
 			checked = " checked"
 		}
-		// The switch posts through admin-v3-tools.js (CSRF-guarded fetch).
+		// The switch posts through admin-os-tools.js (CSRF-guarded fetch).
 		control = `<label class="switch" title="Enable or disable this module">
       <input type="checkbox" class="switch-input" data-tool-toggle="` + html.EscapeString(s.ID) + `"` + checked + `>
       <span class="switch-track" aria-hidden="true"></span>
@@ -273,15 +273,15 @@ func toolCardHTML(s toolState) string {
 
 // ── APIs ─────────────────────────────────────────────────────────────────────
 
-// handleV3ToolsList returns the registry as JSON (read-only, no CSRF).
-func (a *App) handleV3ToolsList(w http.ResponseWriter, r *http.Request) {
+// handleOSToolsList returns the registry as JSON (read-only, no CSRF).
+func (a *App) handleOSToolsList(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, http.StatusOK, map[string]interface{}{"tools": a.toolStates(r.Context())})
 }
 
-// handleV3ToolToggle flips a single toggleable module on or off. Only flags in
+// handleOSToolToggle flips a single toggleable module on or off. Only flags in
 // settings.FeatureKeys are accepted; anything else is rejected so a built-in
 // module can never be switched off.
-func (a *App) handleV3ToolToggle(w http.ResponseWriter, r *http.Request) {
+func (a *App) handleOSToolToggle(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		ID      string `json:"id"`
 		Enabled bool   `json:"enabled"`

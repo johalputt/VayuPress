@@ -1,5 +1,5 @@
 /*
- * admin-v3-monitoring.js — live refresh for the Admin v3 Monitoring surface.
+ * admin-os-monitoring.js — live refresh for the VayuOS Monitoring surface.
  * Strict CSP: no eval, DOM updates via textContent / className only.
  *
  * Polls the existing read-only operator APIs every 5 s and updates the system

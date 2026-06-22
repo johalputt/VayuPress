@@ -1,15 +1,15 @@
 package main
 
-// admin_v3_theme.go — Admin v3 "Theme Studio" surface (VayuOS consolidation).
+// admin_os_theme.go — VayuOS "Theme Studio" surface (VayuOS consolidation).
 //
 // Folds the v1/v2 Theme Studio (preset gallery + design-token editor + live
-// preview) into the single v3 admin. The heavy lifting — preset definitions,
+// preview) into the single os admin. The heavy lifting — preset definitions,
 // hex/font/dimension validation, CSS compilation, persistence — already lives in
 // internal/theme and the shared handlers (handleThemePresets/Tokens/Preview/
-// Apply). This file adds the v3 page shell; the JSON endpoints are reused under
-// session-friendly /os/api/theme/* mirrors registered in admin_v3_ui.go.
+// Apply). This file adds the os page shell; the JSON endpoints are reused under
+// session-friendly /os/api/theme/* mirrors registered in admin_os_ui.go.
 //
-// CSP posture matches the rest of admin v3: zero inline styles, the only inline
+// CSP posture matches the rest of VayuOS: zero inline styles, the only inline
 // <script> carries the per-request nonce, every dynamic string is escaped. The
 // live preview never injects a <style> element — it sets --vp-* custom
 // properties on the preview container through the CSSOM (scripted style writes
@@ -82,9 +82,9 @@ func textRow(field, label, placeholder string) string {
 </label>`
 }
 
-func (a *App) handleV3Theme(w http.ResponseWriter, r *http.Request) {
+func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
-	cfg := a.getV3Settings(r.Context())
+	cfg := a.getOSSettings(r.Context())
 
 	darkRows := ""
 	for _, f := range themeDarkColors() {
@@ -155,7 +155,7 @@ func (a *App) handleV3Theme(w http.ResponseWriter, r *http.Request) {
     <div class="text-xs muted mt-3">Preview reflects dark-mode tokens. Light-mode values apply on readers whose system is set to light.</div>
   </aside>
 </div>
-<script nonce="` + nonce + `" src="/os/static/js/admin-v3-theme.js"></script>`
+<script nonce="` + nonce + `" src="/os/static/js/admin-os-theme.js"></script>`
 
-	writeV3HTML(w, adminV3Layout(nonce, "Theme Studio", "theme", cfg, htmpl.HTML(body)))
+	writeOSHTML(w, adminOSLayout(nonce, "Theme Studio", "theme", cfg, htmpl.HTML(body)))
 }
