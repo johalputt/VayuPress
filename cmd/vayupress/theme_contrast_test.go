@@ -48,6 +48,9 @@ func TestThemeEditorCoversSettingsAllowlist(t *testing.T) {
 		// The public Sign in / Sign up toggle lives in the VayuOS Members
 		// settings (/os/settings/members), not the legacy theme editor.
 		settings.KeyMembershipButtons: true,
+		// Navigation menu is managed through the VayuOS Navigation tab
+		// (/os/settings/navigation), not the legacy theme editor.
+		settings.KeyNavItems: true,
 	}
 	page := themeEditorPage(map[string]string{}, "NORMAL", "test-nonce", "")
 	for key := range settings.AllKeys {
