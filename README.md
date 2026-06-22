@@ -17,6 +17,41 @@
 > **Adaptive publishing infrastructure for the sovereign web.**
 > SQLite-first, zero-trust, zero telemetry. Policy-governed runtime with adaptive system modes, sandboxed plugins, transactional event outbox, durable audit trail, and fault-tolerant federated publishing.
 
+## What's New in v1.7.0
+
+> Full notes in [`CHANGELOG.md`](CHANGELOG.md) · upgrade steps in [`docs/UPGRADING.md`](docs/UPGRADING.md)
+
+**VayuOS — unified operator powerhouse, draft/publish workflow, and member signup.**
+
+- **Draft/publish workflow** — articles are `published` or `draft`. The VayuOS
+  post manager (`/os/posts`) lists every post with a live status pill and
+  one-click Publish / Unpublish that purges render caches immediately.
+- **All operator tools inside VayuOS** — System Modes, Policy Engine, Runtime
+  Topology, Replay Explorer, Fault Manager, and ADR Registry now render inside
+  the VayuOS chrome. Old `/admin/*` operator URLs 301-redirect.
+- **Member signup page** (`/signup`) — branded reader-facing page wired to the
+  magic-link auth flow.
+- **Ghost-style homepage auth buttons** — optional Sign in / Sign up buttons in
+  the public nav, toggled per-site from VayuOS → Members settings.
+- **Three draft-content security fixes** — API, render cache, and comment API
+  all now treat drafts as non-existent to anonymous callers (see Security below).
+
+### Security (v1.7.0)
+
+| ID | Severity | Surface | Fix |
+|----|----------|---------|-----|
+| LEAK-1 | Critical | `GET /api/v1/articles/{slug}` | Returns 404 for drafts to unauthenticated callers |
+| LEAK-2 | High | On-disk render cache | Worker verifies DB status before caching draft HTML |
+| LEAK-3 | Low | Comment API | Rejects requests whose slug resolves to a draft |
+
+### Upgrading from v1.6.0
+
+Run migrations — **migration 030** adds the `status` column to `articles`.
+All existing rows default to `published`; nothing is hidden after upgrade.
+The VayuOS shell at `/os` is unchanged; old operator-page URLs 301-redirect.
+
+---
+
 ## What's New in v1.6.0
 
 > Full notes in [`CHANGELOG.md`](CHANGELOG.md) · upgrade steps in [`docs/UPGRADING.md`](docs/UPGRADING.md)

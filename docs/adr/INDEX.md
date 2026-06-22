@@ -50,6 +50,11 @@
 | [ADR-0068](ADR-0068-admin-v3-next-gen-ui.md) | Admin v3: Next-Generation Admin & Block Editor (design system, block editor, media library, TOTP 2FA, intelligence) | Accepted | Core | 2026-06-20 |
 | [ADR-0069](ADR-0069-admin-v2-retirement-plan.md) | Admin v2 Retirement Plan (staged deprecation gated on v3 parity) | Accepted | Core | 2026-06-20 |
 | [ADR-0070](ADR-0070-sovereign-rich-media.md) | Sovereign Rich Media: server-rendered Mermaid→SVG diagrams + privacy-first click-to-load embeds | Accepted | Core | 2026-06-20 |
+| [ADR-0071](ADR-0071-theme-studio.md) | Theme Studio: safe token-driven theme editor with a sandboxed template DSL | Accepted | Core | 2026-06-20 |
+| [ADR-0072](ADR-0072-tools-plugins-panel.md) | Tools & Plugins Panel | Accepted | Core | 2026-06-21 |
+| [ADR-0073](ADR-0073-convert-to-blocks.md) | Convert-to-Blocks (non-destructive import into block editor) | Accepted | Core | 2026-06-21 |
+| [ADR-0074](ADR-0074-plugin-interface-spec.md) | Formal Plugin Interface Specification (language-neutral, versioned contract) | Accepted | Security | 2026-06-21 |
+| [ADR-0075](ADR-0075-draft-publish-workflow.md) | Draft/Publish Workflow and Public-Surface Isolation | Accepted | Security | 2026-06-22 |
 
 ---
 
@@ -73,8 +78,7 @@
 
 | ADR | Title | Author | Opened |
 |-----|-------|--------|--------|
-| [ADR-0071](ADR-0071-theme-studio.md) | Theme Studio: safe token-driven theme editor with a sandboxed template DSL (surpasses Tumblr) | Core | 2026-06-20 |
-| [ADR-0074](ADR-0074-plugin-interface-spec.md) | Formal Plugin Interface Specification (language-neutral, versioned contract) | Core | 2026-06-21 |
+| _(none)_ | — | — | — |
 
 ---
 

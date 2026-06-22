@@ -170,5 +170,20 @@ See [docs/MIGRATION.md](MIGRATION.md) for the complete guide.
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| **v1.7.0** | 2026-06-22 | Draft/publish workflow, VayuOS unified operator consoles, member signup, 3 security fixes (LEAK-1/2/3) |
+| **v1.6.0** | 2026-06-21 | Admin v2 removed — VayuOS is the one admin; native create + legacy-post editing in block editor |
+| **v1.5.0** | 2026-06-21 | VayuOS launch, governance panel, AI-assist (opt-in), inline history diff, native Theme Studio |
 | **v1.1.0** | 2026-06-19 | Built-in `migrate` CLI, multi-format editor (Markdown ⇄ HTML), `article_sources` side-car, XML/HTML escaping fixes |
 | **v1.0.0** | 2026-06-15 | Initial stable release (P1–P27 constitution, adaptive modes, write-queue, self-update, Admin v2) |
+
+---
+
+## v1.7.0 Upgrade Steps
+
+1. **Back up the database** before upgrading.
+2. Replace the binary. Migrations run automatically on startup.
+3. **Migration 030** adds `status TEXT NOT NULL DEFAULT 'published'` to
+   `articles`. All existing rows become `published` — no content is hidden.
+4. No environment changes required.
+5. The VayuOS shell at `/os` is unchanged. Old operator paths
+   (`/admin/modes`, `/admin/policy`, etc.) continue to 301-redirect.

@@ -12,6 +12,71 @@ _Nothing yet._
 
 ---
 
+## [1.7.0] — 2026-06-22
+
+**VayuOS — unified operator powerhouse, draft/publish workflow, and member signup.**
+All operator tools now live in the VayuOS shell (no separate admin panels).
+Drafts are a first-class concept with full public-surface isolation. Readers can
+sign up through a branded page. Three security vulnerabilities were closed.
+
+### Added
+
+- **Draft/publish workflow** — articles carry a `status` column (`published` |
+  `draft`, migration 030). The VayuOS post manager lists all posts with status
+  pills; each row has Publish / Unpublish and Edit buttons. The block editor's
+  top bar shows the current status and an action button.
+- **VayuOS post manager** (`/os/posts`) — single page listing all articles
+  (published + draft), filterable by tab, with inline status toggling that
+  purges render caches immediately on transition.
+- **Six operator consoles unified into VayuOS** — System Modes (Ω7), Policy
+  Engine / Provenance Inspector (Ω11), Runtime Topology (Ω9), Replay Explorer
+  (Ω10), Fault Manager, and ADR Registry all render inside the VayuOS chrome.
+  Old `/admin/{modes,policy,topology,replay,faults,adr}` paths 301-redirect.
+- **Member/reader signup page** (`/signup`) — branded, nonce-gated; integrates
+  with the existing magic-link member auth flow.
+- **Ghost-style homepage auth buttons** — optional Sign in / Sign up links in
+  the public nav, controlled by the `site.membership_buttons` toggle in VayuOS
+  → Members settings.
+- **Draft regression tests** — `TestDraftNotLeakedViaArticleAPI`,
+  `TestDraftNotLeakedViaListAPI`, `TestDraftNotLeakedViaCommentAPI` (integration
+  build tag) permanently guard the three previously-patched leak paths.
+
+### Security
+
+- **LEAK-1 (Critical)** — `GET /api/v1/articles/{slug}` now returns 404 for
+  draft articles to unauthenticated callers, preventing content enumeration via
+  the public API. (Only authenticated operators receive the draft payload.)
+- **LEAK-2 (High)** — The write-queue worker now verifies the article's DB
+  status before writing the rendered HTML to the on-disk cache, preventing a
+  draft from being served as a cached public page after a status transition.
+- **LEAK-3 (Low)** — Comment submission (`POST /api/v1/comments/{slug}`) and
+  comment listing (`GET /api/v1/comments/{slug}`) reject requests whose slug
+  resolves to a draft article, preventing slug-existence probing via the comment
+  API.
+
+### Changed
+
+- **Internal rename: Admin v3 → VayuOS** — `admin_v3_ui.go` →
+  `admin_os_ui.go`, `admin_v3_editor.go` → `admin_os_editor.go`,
+  `admin-v3.css` → `admin-os.css`. All 450 `.vp-v3` CSS selectors renamed to
+  `.vp-os`. All `/admin/v3` references removed from source; 301-redirects
+  preserved for existing bookmarks.
+- **`site.membership_buttons` added to settings allowlist** — the key was
+  previously silently dropped by `SetMany`.
+- Public surfaces (list API, article page, sitemap, RSS, search index, related
+  articles) filter `COALESCE(status,'published')='published'` so drafts are
+  invisible outside the operator console.
+
+### Upgrade Notes
+
+- Run migrations on upgrade — migration **030** adds the `status` column and
+  index to `articles`. All existing rows default to `published`; no content is
+  hidden after the upgrade.
+- The `/os` shell is the only admin. Old `/admin/v3` and operator-page URLs
+  continue to 301-redirect.
+
+---
+
 ## [1.6.0] — 2026-06-21
 
 **One admin, for real — Admin v2 removed (ADR-0069 Stage 3).** VayuOS at `/os` is
