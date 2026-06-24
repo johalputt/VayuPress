@@ -102,6 +102,32 @@ func (e *Engine) Inbox(domain, username string) ([]StoredMessage, error) {
 	return e.maildir.List(domain, username)
 }
 
+// markSeen moves a message from new/ to cur/ (with the Maildir ":2,S" flag),
+// marking it read. It returns the new List() id. If the message is already in
+// cur/, it is returned unchanged.
+func (m *Maildir) markSeen(domain, username, id string) (string, error) {
+	sub, name, ok := strings.Cut(id, "/")
+	if !ok {
+		return id, errors.New("vayumail: invalid message id")
+	}
+	if sub == "cur" {
+		return id, nil
+	}
+	if name == "" || strings.ContainsAny(name, "/\\") || strings.Contains(name, "..") {
+		return id, errors.New("vayumail: invalid message id")
+	}
+	src := filepath.Join(m.accountDir(domain, username), "new", name)
+	newName := name
+	if !strings.Contains(newName, ":2,") {
+		newName = newName + ":2,S"
+	}
+	dst := filepath.Join(m.accountDir(domain, username), "cur", newName)
+	if err := os.Rename(src, dst); err != nil {
+		return id, err
+	}
+	return "cur/" + newName, nil
+}
+
 func splitAddress(addr string) (local, domain string) {
 	addr = strings.TrimSpace(addr)
 	// Tolerate "Name <user@host>" form.

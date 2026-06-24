@@ -21,11 +21,15 @@ The receive side of VayuMail, built incrementally so each step ships working:
       DMARC verification, then hand off to `DeliverInbound`. Greylisting + the
       existing rate-limiter to bound abuse. Gated behind an explicit
       `VAYUOS_MAIL_INBOUND=on` switch (Operational Simplicity Doctrine).
-- [ ] **IMAP read access (port 993, TLS)** — minimal IMAP4rev1 so standard
-      clients (Thunderbird, mobile) can read the Maildir. Auth delegated to
-      VayuPress accounts via the existing `Bridge.AuthUser`.
-- [ ] **Auto PGP decrypt on read** — transparently decrypt PGP messages for the
-      owning account when serving them, reusing VayuPGP.
+      _Landed (verification hardening still to come)._
+- [x] **SMTP receive server** — RFC 5321 listener, no-open-relay, dot-unstuffing,
+      size caps, delivers to Maildir. Opt-in via `VAYUOS_MAIL_INBOUND=on`.
+- [x] **IMAP read access** — RFC 3501 subset (LOGIN via VayuPress accounts,
+      SELECT/LIST/FETCH/STORE \Seen) so standard clients read the Maildir.
+- [x] **Auto PGP decrypt on read** — transparent decryption for the owning
+      account, reusing VayuPGP.
+- [ ] **TLS for IMAP (port 993) + SMTP submission STARTTLS hardening**, plus
+      SPF/DKIM/DMARC verification on inbound and greylisting.
 
 ## 2. Low-resource optimisation
 

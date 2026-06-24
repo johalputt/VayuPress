@@ -46,6 +46,16 @@ type Config struct {
 	DKIMEnabled  bool
 	SPFEnabled   bool
 	DMARCEnabled bool
+
+	// InboundEnabled gates the receive side (SMTP listener + IMAP). It is an
+	// explicit opt-in per the Operational Simplicity Doctrine: a long-running
+	// mail daemon is only started when the operator asks for it.
+	InboundEnabled bool
+	// SMTPListen / IMAPListen are the bind addresses for the receive servers.
+	SMTPListen string
+	IMAPListen string
+	// MaxMessageBytes caps an inbound message size.
+	MaxMessageBytes int64
 }
 
 // DefaultConfig returns constitutional defaults.
@@ -60,5 +70,9 @@ func DefaultConfig() Config {
 		DKIMEnabled:      true,
 		SPFEnabled:       true,
 		DMARCEnabled:     true,
+		InboundEnabled:   false, // opt-in (VAYUOS_MAIL_INBOUND=on)
+		SMTPListen:       ":25",
+		IMAPListen:       ":143",
+		MaxMessageBytes:  25 * 1024 * 1024, // 25 MiB
 	}
 }

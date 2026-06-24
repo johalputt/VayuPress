@@ -103,6 +103,40 @@ func (b *vayuMailBridge) SignAs(plaintext []byte, senderUserID string) ([]byte, 
 
 var _ vmail.Bridge = (*vayuMailBridge)(nil)
 
+// pgpDecryptForAccount transparently decrypts an inline PGP message for the
+// account that owns the mailbox, when VayuPGP holds that account's private key.
+// It is best-effort: on any failure it returns the original bytes unchanged so
+// the client always receives a readable (if still-encrypted) message.
+func (a *App) pgpDecryptForAccount(accountEmail string, raw []byte) []byte {
+	if a.vayuPGP == nil {
+		return raw
+	}
+	const begin = "-----BEGIN PGP MESSAGE-----"
+	const end = "-----END PGP MESSAGE-----"
+	s := string(raw)
+	bi := strings.Index(s, begin)
+	if bi < 0 {
+		return raw
+	}
+	ei := strings.Index(s, end)
+	if ei < 0 || ei < bi {
+		return raw
+	}
+	ei += len(end)
+	armored := s[bi:ei]
+
+	mu, err := (&vayuMailBridge{app: a}).GetUserByEmail(accountEmail)
+	if err != nil || mu == nil {
+		return raw
+	}
+	plain, err := a.vayuPGP.Decrypt([]byte(armored), mu.UserID)
+	if err != nil {
+		return raw
+	}
+	// Splice the decrypted text back in place of the armored block.
+	return []byte(s[:bi] + string(plain) + s[ei:])
+}
+
 // ── Boot ─────────────────────────────────────────────────────────────────────
 
 // bootVayuOS constructs and boots the VayuOS subsystems in dependency order:
@@ -124,7 +158,15 @@ func (a *App) bootVayuOS() {
 		mailCfg.Hostname = "mail." + d
 		mailCfg.Enabled = true
 	}
+	// Inbound receive side is an explicit opt-in (Operational Simplicity Doctrine).
+	if strings.EqualFold(config.EnvOr("VAYUOS_MAIL_INBOUND", "off"), "on") {
+		mailCfg.InboundEnabled = true
+		mailCfg.SMTPListen = config.EnvOr("VAYUOS_MAIL_SMTP_LISTEN", ":25")
+		mailCfg.IMAPListen = config.EnvOr("VAYUOS_MAIL_IMAP_LISTEN", ":143")
+	}
 	a.vayuMail = vmail.NewEngine(&mailCfg, &vayuMailBridge{app: a}, dbpkg.DB)
+	// Transparent PGP decryption when serving mail over IMAP to the owner.
+	a.vayuMail.SetDecryptHook(a.pgpDecryptForAccount)
 
 	secEnabled := strings.EqualFold(config.EnvOr("VAYUOS_SECURITY_UPDATES", "off"), "on")
 	a.vayuSec = secwatch.New(secEnabled)

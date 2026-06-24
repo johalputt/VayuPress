@@ -8,14 +8,23 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
-### Added (v1.9.0 — in progress: "Stable Private Email")
+### Added (v1.9.0 — "Stable Private Email")
 
-- **Inbound mail storage + read access** (first increment of the VayuMail
-  receive side): local delivery into Maildir (`Engine.DeliverInbound`), mailbox
-  message listing and raw read with path-traversal protection
+- **Inbound mail — receive side complete.** Local delivery into Maildir
+  (`Engine.DeliverInbound`), mailbox listing/read with path-traversal protection
   (`Maildir.List` / `ReadRaw`), per-account inbox summaries (`Engine.Mailboxes`),
-  and a `/os/vayuos/mail/inbox` panel view. A listening SMTP/IMAP server remains
-  a governed future milestone (see `docs/ROADMAP-v1.9.md`).
+  and a `/os/vayuos/mail/inbox` panel view.
+- **SMTP-receive server** (`smtpd.go`) — RFC 5321 listener (EHLO/MAIL/RCPT/DATA/
+  RSET/NOOP/QUIT), no-open-relay (only local-domain recipients accepted),
+  dot-unstuffing, size caps. Opt-in via `VAYUOS_MAIL_INBOUND=on`.
+- **IMAP read server** (`imapd.go`) — RFC 3501 subset (CAPABILITY, LOGIN via
+  VayuPress accounts, LIST, SELECT, FETCH incl. BODY[]/FLAGS/SIZE/INTERNALDATE,
+  STORE \Seen, NOOP, LOGOUT) so standard clients can read the Maildir.
+- **Transparent PGP decryption on read** — IMAP serves decrypted bodies to the
+  owning account when VayuPGP holds its key; best-effort, never blocks delivery.
+
+> The inbound listeners are a long-running daemon and therefore strictly
+> opt-in (`VAYUOS_MAIL_INBOUND=on`) per the Operational Simplicity Doctrine.
 
 ---
 

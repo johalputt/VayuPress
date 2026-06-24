@@ -20,8 +20,15 @@ type Engine struct {
 	dkim    *DKIM
 	queue   *Queue
 	maildir *Maildir
+	smtpd   *SMTPServer
+	imapd   *IMAPServer
+	decrypt DecryptHook
 	done    chan struct{}
 }
+
+// SetDecryptHook installs a transform applied to messages before they are
+// served over IMAP (used for transparent PGP decryption). Call before Start.
+func (e *Engine) SetDecryptHook(h DecryptHook) { e.decrypt = h }
 
 // NewEngine constructs the engine; call Start to initialise I/O.
 func NewEngine(cfg *Config, bridge Bridge, db *sql.DB) *Engine {
@@ -65,11 +72,38 @@ func (e *Engine) Start(ctx context.Context) error {
 	}
 	e.queue = q
 	go e.worker()
+
+	// Inbound receive side (opt-in). A listening mail daemon is started only
+	// when the operator explicitly enables it (Operational Simplicity Doctrine).
+	if e.cfg.InboundEnabled {
+		e.smtpd = NewSMTPServer(e.cfg, func(from string, rcpts []string, raw []byte) error {
+			var firstErr error
+			for _, rcpt := range rcpts {
+				if _, derr := e.DeliverInbound(rcpt, raw); derr != nil && firstErr == nil {
+					firstErr = derr
+				}
+			}
+			return firstErr
+		})
+		if err := e.smtpd.Start(ctx); err != nil {
+			return fmt.Errorf("vayumail: smtp receive: %w", err)
+		}
+		e.imapd = NewIMAPServer(e.cfg, e.bridge, e.maildir, e.decrypt)
+		if err := e.imapd.Start(ctx); err != nil {
+			return fmt.Errorf("vayumail: imap: %w", err)
+		}
+	}
 	return nil
 }
 
 // Stop halts the retry worker.
 func (e *Engine) Stop(_ context.Context) error {
+	if e.smtpd != nil {
+		_ = e.smtpd.Stop(context.Background())
+	}
+	if e.imapd != nil {
+		_ = e.imapd.Stop(context.Background())
+	}
 	select {
 	case <-e.done:
 	default:
