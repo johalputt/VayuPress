@@ -21,6 +21,29 @@
 > _Own your content. Own your communication. Own your infrastructure._
 > Publishing is the core identity, **VayuMail** the native sovereignty layer, **VayuPGP** the native privacy layer, and **VayuOS** the native control layer — all in a single Go binary, single process, single config.
 
+## What's New in v1.9.1
+
+> Full notes in [`CHANGELOG.md`](CHANGELOG.md)
+
+**Deeper analytics and a more complete mailbox** — all still in one binary, privacy-first.
+
+- **VayuAnalytics — reporting periods up to 3 years.** Pick any window from 24h
+  to 3 years; it flows through every card, goals/journey, and exports.
+- **VayuAnalytics — conversion goals.** Track a page view or custom event as a
+  goal and see completions and conversion rate.
+- **VayuAnalytics — visitor journey.** Most common page-to-page paths with
+  `(entry)`/`(exit)` markers.
+- **VayuAnalytics — export.** Download any report as CSV or JSON (computed
+  locally, no PII).
+- **VayuAnalytics — country/region/city.** Read **server-side from your reverse
+  proxy** (e.g. Cloudflare `CF-IPCountry`/`CF-IPCity`, `X-Geo-*`). VayuPress does
+  **no GeoIP lookup, bundles no GeoIP database, and never stores an IP** — geo
+  shows only when your proxy supplies it.
+- **VayuAnalytics — live panel.** Active visitors and pages, refreshed every 10s.
+- **VayuMail — junk filter, account password/disable, reply & forward.** A
+  fully-local spam heuristic files junk on inbound; set or disable mailbox
+  passwords from the panel; reply/forward pre-filled from the original message.
+
 ## What's New in v1.9.0
 
 > Full notes in [`CHANGELOG.md`](CHANGELOG.md) · architecture decisions in [`docs/adr/`](docs/adr/) (ADR-0076–0080) · roadmap in [`docs/ROADMAP-v1.9.md`](docs/ROADMAP-v1.9.md)

@@ -19,7 +19,7 @@ func TestOSLayoutCSPSafe(t *testing.T) {
 	if !strings.Contains(out, `<script nonce="TESTNONCE" src="/os/static/js/admin-os.js"></script>`) {
 		t.Error("os layout missing nonce'd script tag")
 	}
-	if !strings.Contains(out, `<link rel="stylesheet" href="/os/static/css/admin-os.css">`) {
+	if !strings.Contains(out, `<link rel="stylesheet" href="/os/static/css/admin-os.css?v=`) {
 		t.Error("os layout missing same-origin stylesheet link")
 	}
 	if !strings.Contains(out, "Demo") {

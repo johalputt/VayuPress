@@ -319,7 +319,7 @@ func adminOSShellHead(nonce, title, active string, settings *osSettings) string 
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>` + et + ` — ` + siteName + ` · VayuOS</title>
 <meta name="robots" content="noindex, nofollow">
-<link rel="stylesheet" href="/os/static/css/admin-os.css">
+<link rel="stylesheet" href="/os/static/css/admin-os.css?v=` + Version + `">
 <link rel="icon" type="image/png" href="/static/favicon-light.png">
 </head>
 <body class="vp-os" data-admin-theme="` + html.EscapeString(theme) + `">
@@ -580,7 +580,7 @@ func osLoginPage(prefillEmail, errMsg string) string {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Sign in — VayuPress Admin</title>
 <meta name="robots" content="noindex, nofollow">
-<link rel="stylesheet" href="/os/static/css/admin-os.css">
+<link rel="stylesheet" href="/os/static/css/admin-os.css?v=` + Version + `">
 <link rel="icon" type="image/png" href="/static/favicon-light.png">
 </head>
 <body class="vp-os login-page">

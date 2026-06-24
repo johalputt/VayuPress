@@ -207,7 +207,7 @@ func (a *App) handleOSAnalytics(w http.ResponseWriter, r *http.Request) {
   <div class="card"><div class="card-title">Top pages</div>` + pages + `</div>
   <div class="card"><div class="card-title">Referrers</div>` + refs + `</div>
 </div>` + extra + `
-<script nonce="` + nonce + `" src="/os/static/js/admin-os-intel.js"></script>`
+<script nonce="` + nonce + `" src="/os/static/js/admin-os-intel.js?v=` + Version + `"></script>`
 
 	writeOSHTML(w, adminOSLayout(nonce, "Analytics", "analytics", cfg, htmpl.HTML(body)))
 }

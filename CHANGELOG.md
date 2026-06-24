@@ -12,6 +12,50 @@ _Nothing yet._
 
 ---
 
+## [1.9.1] — 2026-06-24
+
+**Analytics & mail polish — deeper insights and a more complete mailbox.**
+
+### Added
+
+- **VayuAnalytics — reporting period selector.** Choose any window from 24
+  hours up to **3 years** (24h / 7d / 30d / 90d / 6mo / 1y / 2y / 3y) on the
+  Analytics page; the selection flows through every card, the goals/journey
+  sections, and the export links.
+- **VayuAnalytics — conversion goals.** Define named goals as either a page
+  view (path, with a trailing-`*` prefix match) or a custom event; the panel
+  shows completions, unique converters, and conversion rate over the window.
+- **VayuAnalytics — visitor journey / path analysis.** Most common
+  page-to-page transitions with synthetic `(entry)`/`(exit)` markers; computed
+  on a bounded scan so it stays cheap on large datasets.
+- **VayuAnalytics — report export.** Download any report (overview, pages,
+  referrers, browsers, devices, OS, countries, regions, cities, UTM, events,
+  sessions, goals, journey) as **CSV or JSON**. Exports are computed locally
+  and contain no PII.
+- **VayuAnalytics — country/region/city.** Coarse location captured
+  **server-side from trusted reverse-proxy headers** (Cloudflare
+  `CF-IPCountry`/`CF-IPCity`, generic `X-Geo-*`, App Engine). VayuPress performs
+  **no GeoIP lookup, bundles no GeoIP database, and never stores an IP**;
+  Cloudflare `XX`/`T1` placeholders are dropped.
+- **VayuAnalytics — live panel.** A realtime card showing active visitors and
+  active pages, refreshing every 10s (pauses on a hidden tab); CSP-safe.
+- **VayuMail — built-in junk filter.** Fully-local heuristic scorer files
+  obvious spam straight into the recipient's Junk folder on inbound delivery
+  (no external services, no network calls); operator-toggleable.
+- **VayuMail — account management.** Set a new password or enable/disable an
+  existing mail account from the panel (disabled accounts keep their mailbox
+  but cannot authenticate).
+- **VayuMail — reply & forward.** Compose pre-filled server-side from the
+  selected message (original PGP-decrypted for the owner and quoted).
+
+### Fixed
+
+- **Admin-OS asset caching.** Versioned `?v=` query on the VayuOS CSS/JS so a
+  deploy always serves fresh panel assets instead of a stale 1-hour browser
+  cache.
+
+---
+
 ## [1.9.0] — 2026-06-24
 
 **"Stable Private Email" — the inbound half of VayuMail.**
