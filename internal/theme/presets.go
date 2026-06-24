@@ -2,8 +2,11 @@ package theme
 
 import _ "embed"
 
-//go:embed gale.css
+		//go:embed gale.css
 var galeCSS string
+
+//go:embed zephyr.css
+var zephyrCSS string
 
 // Default returns the Default preset — neutral dark/light tones.
 func Default() Tokens {
@@ -263,6 +266,7 @@ func AllPresets() []Tokens {
 		Glacier(),
 		Coral(),
 		Gale(),
+		Zephyr(),
 	}
 }
 
@@ -445,5 +449,19 @@ func Gale() Tokens {
 		FontSans: "Inter, system-ui, sans-serif", FontMono: "IBM Plex Mono, monospace",
 		FontSizeBase: "1.125rem", LineHeight: "1.8", MaxWidth: "48rem", RadiusSm: "0.25rem", RadiusLg: "0.25rem",
 		CustomCSS: galeCSS,
+	}
+}
+
+// Zephyr — bright, creative, open layout with prominent CTAs.
+// Coral-rose accents, airy spacing, multi-column footer.
+func Zephyr() Tokens {
+	return Tokens{
+		Name: "Zephyr", BgDark: "#1a1b1e", SurfaceDark: "#24252d", TextDark: "#e4e5e9",
+		MutedDark: "#8b8d97", AccentDark: "#ef767a", Accent2Dark: "#f9a0a3", HiDark: "#7ec8e3", GreenDark: "#6eeb83",
+		BgLight: "#fefefa", SurfaceLight: "#ffffff", TextLight: "#1a1a1a", MutedLight: "#6b6b6b",
+		AccentLight: "#e74c3c", Accent2Light: "#ef767a", HiLight: "#2980b9",
+		FontSans: "Inter, system-ui, sans-serif", FontMono: "IBM Plex Mono, monospace",
+		FontSizeBase: "1.0625rem", LineHeight: "1.75", MaxWidth: "44rem", RadiusSm: "0.5rem", RadiusLg: "0.75rem",
+		CustomCSS: zephyrCSS,
 	}
 }
