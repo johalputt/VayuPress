@@ -6,6 +6,7 @@ package main
 // VayuPress's sovereign, zero-telemetry stance.
 
 import (
+	"fmt"
 	"html"
 	htmpl "html/template"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 	"path/filepath"
 	"strconv"
 
+	"github.com/johalputt/vayupress/internal/analytics"
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/render"
@@ -146,13 +148,90 @@ func (a *App) handleOSAnalytics(w http.ResponseWriter, r *http.Request) {
 		refs = `<div class="table-wrap"><table class="table"><thead><tr><th>Referrer</th><th>Hits</th></tr></thead><tbody>` + rows + `</tbody></table></div>`
 	}
 
+	// ── VayuAnalytics extended insights (v1.8.0): audience, engagement, events ──
+	ctx := r.Context()
+	ov, _ := a.analytics.OverviewSince(ctx, 30)
+	devices, _ := a.analytics.Devices(ctx, 30)
+	browsers, _ := a.analytics.Browsers(ctx, 30)
+	oses, _ := a.analytics.OperatingSystems(ctx, 30)
+	events, _ := a.analytics.CustomEvents(ctx, 30)
+	utm, _ := a.analytics.UTMStats(ctx, 30)
+
+	overviewCard := ""
+	if ov != nil {
+		overviewCard = `<div class="grid grid-4">` +
+			osStatCard("Unique visitors", strconv.Itoa(ov.UniqueVisitors)) +
+			osStatCard("Visits", strconv.Itoa(ov.TotalVisits)) +
+			osStatCard("Pageviews", strconv.Itoa(ov.TotalPageviews)) +
+			osStatCard("Bounce rate", fmt.Sprintf("%.0f%%", ov.BounceRate)) + `</div>`
+	}
+
+	utmRows := `<div class="empty-state">No campaign traffic yet.</div>`
+	if len(utm) > 0 {
+		rows := ""
+		for _, u := range utm {
+			src := u.Source
+			if src == "" {
+				src = "(direct)"
+			}
+			rows += `<tr><td class="row-title">` + html.EscapeString(src) + `</td><td>` + html.EscapeString(u.Medium) + `</td><td>` + html.EscapeString(u.Campaign) + `</td><td>` + strconv.Itoa(u.Count) + `</td></tr>`
+		}
+		utmRows = `<div class="table-wrap"><table class="table"><thead><tr><th>Source</th><th>Medium</th><th>Campaign</th><th>Hits</th></tr></thead><tbody>` + rows + `</tbody></table></div>`
+	}
+
+	extra := `<div class="card-title mt-6" style="margin-top:1.5rem">VayuAnalytics — session insights · last 30 days</div>
+<p class="muted text-sm mb-3">Cookieless, no-PII (server-side daily-rotating salted hash). Populates as visitors hit your site after this update.</p>` +
+		overviewCard +
+		`<div class="grid grid-3">
+  <div class="card"><div class="card-title">Devices</div>` + osAudienceTable(devices) + `</div>
+  <div class="card"><div class="card-title">Browsers</div>` + osAudienceTable(browsers) + `</div>
+  <div class="card"><div class="card-title">Operating systems</div>` + osAudienceTable(oses) + `</div>
+</div>
+<div class="grid grid-2">
+  <div class="card"><div class="card-title">Custom events</div>` + osEventTable(events) + `</div>
+  <div class="card"><div class="card-title">Campaign sources (UTM)</div>` + utmRows + `</div>
+</div>`
+
 	body := `<div class="page-header"><h1>Analytics</h1>
   <span class="muted text-sm">` + strconv.FormatInt(sum.TotalViews, 10) + ` views · 30 days</span>
 </div>` + spark + `
 <div class="grid grid-2">
   <div class="card"><div class="card-title">Top pages</div>` + pages + `</div>
   <div class="card"><div class="card-title">Referrers</div>` + refs + `</div>
-</div>`
+</div>` + extra
 
 	writeOSHTML(w, adminOSLayout(nonce, "Analytics", "analytics", cfg, htmpl.HTML(body)))
+}
+
+// osStatCard renders a single big-number stat card.
+func osStatCard(label, val string) string {
+	return `<div class="card"><div class="card-title">` + html.EscapeString(label) + `</div><div class="stat" style="font-size:1.6rem;font-weight:600">` + html.EscapeString(val) + `</div></div>`
+}
+
+// osAudienceTable renders a label/count breakdown (devices, browsers, OS).
+func osAudienceTable(items []analytics.AudienceStat) string {
+	if len(items) == 0 {
+		return `<div class="empty-state">No data yet.</div>`
+	}
+	rows := ""
+	for _, it := range items {
+		label := it.Label
+		if label == "" {
+			label = "(unknown)"
+		}
+		rows += `<tr><td class="row-title">` + html.EscapeString(label) + `</td><td>` + strconv.Itoa(it.Count) + `</td></tr>`
+	}
+	return `<div class="table-wrap"><table class="table"><tbody>` + rows + `</tbody></table></div>`
+}
+
+// osEventTable renders custom-event counts.
+func osEventTable(items []analytics.EventStat) string {
+	if len(items) == 0 {
+		return `<div class="empty-state">No custom events yet. Fire them with <code>VayuPress.track('name')</code> or <code>data-vp-event</code> attributes.</div>`
+	}
+	rows := ""
+	for _, it := range items {
+		rows += `<tr><td class="row-title">` + html.EscapeString(it.Name) + `</td><td>` + strconv.Itoa(it.Count) + `</td></tr>`
+	}
+	return `<div class="table-wrap"><table class="table"><thead><tr><th>Event</th><th>Count</th></tr></thead><tbody>` + rows + `</tbody></table></div>`
 }

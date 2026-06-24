@@ -22,7 +22,26 @@ import (
 	"net/http"
 
 	"github.com/johalputt/vayupress/internal/render"
+	"github.com/johalputt/vayupress/internal/theme"
 )
+
+// themePresetCards renders the preset gallery server-side (CSP-safe: swatch
+// colours are carried as data-color attributes and applied via the CSSOM in JS,
+// never as inline style). Every built-in preset — including Gale and Zephyr —
+// appears here.
+func themePresetCards() string {
+	out := ""
+	for _, p := range theme.AllPresets() {
+		name := html.EscapeString(p.Name)
+		sw := func(c string) string {
+			return `<i class="theme-card__sw" data-color="` + html.EscapeString(c) + `" aria-hidden="true"></i>`
+		}
+		out += `<button type="button" class="theme-card" data-preset="` + name + `">` +
+			`<span class="theme-card__swatches">` + sw(p.BgDark) + sw(p.SurfaceDark) + sw(p.AccentDark) + sw(p.Accent2Dark) + `</span>` +
+			`<span class="theme-card__name">` + name + `</span></button>`
+	}
+	return out
+}
 
 // themeColorField is one editable colour token. Field is the canonical Tokens
 // field name (matched case-insensitively by applyOverrides); Vari is the public
@@ -116,7 +135,7 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
     <div class="card mb-6">
       <div class="card-title">Presets</div>
       <div class="text-sm muted mb-3">Start from a built-in palette, then fine-tune any token below.</div>
-      <div class="theme-presets" data-theme-presets aria-label="Theme presets"></div>
+      <div class="theme-presets" data-theme-presets aria-label="Theme presets">` + themePresetCards() + `</div>
     </div>
 
     <div class="card mb-6">

@@ -18,7 +18,7 @@
   var root = document.querySelector('[data-theme-studio]');
   if (!root) return;
 
-  var galleryEl = root.querySelector('[data-theme-gallery]');
+  var galleryEl = root.querySelector('[data-theme-presets]');
   var previewEl = root.querySelector('[data-theme-preview]');
   var statusEl = document.querySelector('[data-theme-status]');
   var applyBtn = document.querySelector('[data-theme-apply]');
@@ -158,6 +158,16 @@
   if (revertBtn) revertBtn.addEventListener('click', function () {
     fetchTokens().then(function () { setStatus('Reverted to saved theme', 'ok'); });
   });
+
+  // ── Colorize preset swatches via CSSOM (CSP-safe: no inline style attrs) ────
+  function paintSwatches() {
+    if (!galleryEl) return;
+    galleryEl.querySelectorAll('.theme-card__sw[data-color]').forEach(function (el) {
+      var c = el.getAttribute('data-color');
+      if (c) el.style.backgroundColor = c;
+    });
+  }
+  paintSwatches();
 
   // ── Init ────────────────────────────────────────────────────────────────────
   Promise.all([fetchTokens(), fetchPresets()])

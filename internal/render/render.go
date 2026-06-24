@@ -669,6 +669,7 @@ var articleTmpl = template.Must(template.New("article").Funcs(template.FuncMap{
 <link rel="icon" type="image/png" href="/static/favicon-dark.png" media="(prefers-color-scheme: light)">
 <link rel="icon" type="image/png" href="/static/favicon-light.png" media="(prefers-color-scheme: dark)">
 <link rel="icon" type="image/png" href="/static/favicon-light.png">
+<script defer src="/static/vp-analytics.js"></script>
 </head><body>
 <a href="#main-content" class="skip-link">Skip to main content</a>
 <div class="container">
@@ -749,6 +750,7 @@ var homeTmpl = template.Must(template.New("home").Funcs(homeFuncs).Parse(`<!DOCT
 <link rel="icon" type="image/png" href="/static/favicon-dark.png" media="(prefers-color-scheme: light)">
 <link rel="icon" type="image/png" href="/static/favicon-light.png" media="(prefers-color-scheme: dark)">
 <link rel="icon" type="image/png" href="/static/favicon-light.png">
+<script defer src="/static/vp-analytics.js"></script>
 </head><body>
 <a href="#main-content" class="skip-link">Skip to main content</a>
 <div class="container">
@@ -798,6 +800,7 @@ var notFoundTmpl = template.Must(template.New("404").Parse(`<!DOCTYPE html><html
 <link rel="icon" type="image/png" href="/static/favicon-dark.png" media="(prefers-color-scheme: light)">
 <link rel="icon" type="image/png" href="/static/favicon-light.png" media="(prefers-color-scheme: dark)">
 <link rel="icon" type="image/png" href="/static/favicon-light.png">
+<script defer src="/static/vp-analytics.js"></script>
 </head><body>
 <div class="container">
 <nav class="vayu-nav" aria-label="Primary">
