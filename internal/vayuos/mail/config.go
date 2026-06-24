@@ -56,23 +56,30 @@ type Config struct {
 	IMAPListen string
 	// MaxMessageBytes caps an inbound message size.
 	MaxMessageBytes int64
+
+	// JunkFilterEnabled turns on the built-in, fully-local heuristic spam
+	// filter. High-scoring inbound mail is filed into the recipient's Junk
+	// folder instead of the inbox. No external services or network calls are
+	// involved (privacy by default).
+	JunkFilterEnabled bool
 }
 
 // DefaultConfig returns constitutional defaults.
 func DefaultConfig() Config {
 	return Config{
-		Enabled:          false, // enabled by the first-boot wizard once a domain is set
-		DKIMSelector:     "vayu",
-		StorageDir:       "./vayudata/mail",
-		QueueMaxAttempts: 12,
-		QueueBaseBackoff: 2 * time.Minute,
-		DeliveryTimeout:  30 * time.Second,
-		DKIMEnabled:      true,
-		SPFEnabled:       true,
-		DMARCEnabled:     true,
-		InboundEnabled:   false, // opt-in (VAYUOS_MAIL_INBOUND=on)
-		SMTPListen:       ":25",
-		IMAPListen:       ":143",
-		MaxMessageBytes:  25 * 1024 * 1024, // 25 MiB
+		Enabled:           false, // enabled by the first-boot wizard once a domain is set
+		DKIMSelector:      "vayu",
+		StorageDir:        "./vayudata/mail",
+		QueueMaxAttempts:  12,
+		QueueBaseBackoff:  2 * time.Minute,
+		DeliveryTimeout:   30 * time.Second,
+		DKIMEnabled:       true,
+		SPFEnabled:        true,
+		DMARCEnabled:      true,
+		InboundEnabled:    false, // opt-in (VAYUOS_MAIL_INBOUND=on)
+		SMTPListen:        ":25",
+		IMAPListen:        ":143",
+		MaxMessageBytes:   25 * 1024 * 1024, // 25 MiB
+		JunkFilterEnabled: true,             // local heuristic, no external services
 	}
 }

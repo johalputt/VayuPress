@@ -82,6 +82,34 @@
     });
   });
 
+  // ── Set account password ─────────────────────────────────────────────────────
+  document.querySelectorAll('[data-acct-pass]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var email = btn.getAttribute('data-acct-pass');
+      var pass = window.prompt('New password for ' + email + ' (min 8 characters):');
+      if (pass === null) return;
+      if (pass.length < 8) { window.alert('Password must be at least 8 characters.'); return; }
+      postJSON('/os/vayuos/mail/accounts/update', { email: email, pass: pass }).then(function (res) {
+        if (res.ok) window.alert('Password updated for ' + email);
+        else window.alert('Update failed: ' + ((res.body && res.body.message) || res.status));
+      });
+    });
+  });
+
+  // ── Enable / disable account ─────────────────────────────────────────────────
+  document.querySelectorAll('[data-acct-toggle]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var email = btn.getAttribute('data-acct-toggle');
+      var active = btn.getAttribute('data-active') === 'true';
+      var verb = active ? 'Enable' : 'Disable';
+      if (!window.confirm(verb + ' mail account ' + email + '?')) return;
+      postJSON('/os/vayuos/mail/accounts/update', { email: email, active: active }).then(function (res) {
+        if (res.ok) window.location.reload();
+        else window.alert('Update failed: ' + ((res.body && res.body.message) || res.status));
+      });
+    });
+  });
+
   // ── Message actions (Junk / Trash / Restore / Delete) ────────────────────────
   var actions = document.querySelector('[data-mail-actions]');
   if (actions) {

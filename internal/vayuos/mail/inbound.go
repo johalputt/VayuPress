@@ -89,6 +89,14 @@ func (e *Engine) DeliverInbound(recipientEmail string, raw []byte) (string, erro
 	if domain == "" {
 		domain = e.cfg.Domain
 	}
+	// Built-in heuristic junk filter (fully local — no external services). Mail
+	// scoring at or above the threshold is filed straight into the recipient's
+	// Junk folder instead of the inbox.
+	if e.cfg.JunkFilterEnabled {
+		if v := ScoreSpam(raw); v.IsSpam {
+			return e.maildir.DeliverTo(domain, local, "Junk", raw)
+		}
+	}
 	return e.maildir.Deliver(domain, local, raw)
 }
 

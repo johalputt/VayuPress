@@ -65,7 +65,31 @@ func (s *AccountStore) SetPasswordHash(ctx context.Context, email, passwordHash 
 	if s.db == nil {
 		return errors.New("vayumail: no storage")
 	}
+	if passwordHash == "" {
+		return errors.New("password required")
+	}
 	res, err := s.db.ExecContext(ctx, `UPDATE vayumail_accounts SET password_hash=? WHERE email=?`, passwordHash, normEmail(email))
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return errors.New("no such account")
+	}
+	return nil
+}
+
+// SetActive enables or disables an account. A disabled account keeps its
+// mailbox and password but cannot authenticate for SMTP/IMAP (HashFor returns
+// "" for inactive accounts).
+func (s *AccountStore) SetActive(ctx context.Context, email string, active bool) error {
+	if s.db == nil {
+		return errors.New("vayumail: no storage")
+	}
+	v := 0
+	if active {
+		v = 1
+	}
+	res, err := s.db.ExecContext(ctx, `UPDATE vayumail_accounts SET active=? WHERE email=?`, v, normEmail(email))
 	if err != nil {
 		return err
 	}
