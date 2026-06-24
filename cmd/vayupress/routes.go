@@ -135,6 +135,9 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	r.Get("/api/v1/newsletter/unsubscribe", a.handleNewsletterUnsubscribe)
 	r.Get("/api/v1/openapi.json", a.handleOpenAPISpec)
 
+	// WKD (Web Key Directory) — RFC 9579, public key discovery (no auth).
+	r.Get("/.well-known/openpgpkey/{domain}/hu/{hash}", a.handleWKDLookup)
+
 	// Analytics — public ingest + tracking script (no auth).
 	r.Post("/api/v1/analytics/collect", a.handleAnalyticsCollect)
 	r.Get("/static/vp-analytics.js", a.handleAnalyticsScript)
@@ -328,6 +331,14 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 
 	// VayuOS — the single admin, mounted at /os (ADR-0068, ADR-0069).
 	a.registerAdminOSUIRoutes(r)
+
+	// VayuOS subsystem panel routes (VayuMail, VayuPGP, DNS, TLS, System Health).
+	if a.vayuOS != nil {
+		r.Group(func(pr chi.Router) {
+			pr.Use(a.requireSessionOrAPIKey)
+			a.vayuOS.RegisterRoutes(pr)
+		})
+	}
 
 	r.Get("/", a.handleHome)
 	r.NotFound(a.handleNotFound)

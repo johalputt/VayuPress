@@ -13,7 +13,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
+"os"
 	"os/signal"
 	"regexp"
 	"strings"
@@ -62,6 +62,15 @@ import (
 	"github.com/johalputt/vayupress/internal/trace"
 	"github.com/johalputt/vayupress/internal/update"
 	"github.com/johalputt/vayupress/internal/users"
+
+
+
+	vdns "github.com/johalputt/vayupress/internal/vayuos/dns"
+	vkernel "github.com/johalputt/vayupress/internal/vayuos/kernel"
+	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
+	vpanel "github.com/johalputt/vayupress/internal/vayuos/panel"
+	vpgp "github.com/johalputt/vayupress/internal/vayuos/pgp"
+	vtls "github.com/johalputt/vayupress/internal/vayuos/tls"
 	"github.com/johalputt/vayupress/internal/versions"
 	"github.com/johalputt/vayupress/internal/webhooks"
 	"github.com/johalputt/vayupress/internal/webmention"
@@ -410,6 +419,69 @@ func main() {
 			}
 		}
 	}()
+
+	// ── VayuOS Subsystem Boot (Phase 2) ──────────────────────────────────────
+	a.vayuKernel = vkernel.NewBus()
+	a.vayuHealth = vkernel.NewHealthMonitor()
+
+	// VayuPGP engine — auto-generates keys on user creation.
+	pgpCfg := vpgp.DefaultConfig()
+	a.vayuPGP = vpgp.NewEngine(&pgpCfg)
+	if err := a.vayuPGP.Start(context.Background()); err != nil {
+		logging.LogError("main", "VayuPGP start failed", err.Error())
+	} else {
+		logging.LogInfo("main", "VayuPGP engine started")
+	}
+
+	// VayuTLS manager — auto-obtains certs for mail domains.
+	tlsCfg := vtls.DefaultTLSConfig()
+	a.vayuTLS = vtls.NewManager(&tlsCfg)
+	if err := a.vayuTLS.Start(context.Background()); err != nil {
+		logging.LogError("main", "VayuTLS start failed", err.Error())
+	} else {
+		logging.LogInfo("main", "VayuTLS manager started")
+	}
+
+	// VayuMail engine — SMTP/IMAP bridge to VayuPress.
+	mailCfg := vmail.DefaultConfig()
+	mailCfg.Domain = config.Cfg.Domain
+	mailCfg.Hostname = "mail." + config.Cfg.Domain
+	a.vayuMail = vmail.NewEngine(&mailCfg, &vayuMailBridge{app: a})
+	if err := a.vayuMail.Start(context.Background()); err != nil {
+		logging.LogInfo("main", "VayuMail engine not started (mail subsystem disabled)")
+	} else {
+		logging.LogInfo("main", "VayuMail engine started — domain="+mailCfg.Domain)
+	}
+
+	// DNS manager
+	a.vayuDNS = vdns.NewManager()
+
+	// VayuOS panel handlers
+	a.vayuOS = vpanel.NewHandlers(a.vayuMail, a.vayuPGP, a.vayuDNS, a.vayuTLS, a.vayuKernel, a.vayuHealth)
+	logging.LogInfo("main", "VayuOS panel handlers registered")
+
+	// Wire event: user created → auto PGP keypair
+	a.vayuKernel.Subscribe(vkernel.UserCreated{}, func(_ context.Context, ev interface{}) {
+		e := ev.(vkernel.UserCreated)
+		if pgpCfg.AutoGenerate {
+			if kp, err := a.vayuPGP.GenerateKeypair(&vpgp.PGPUser{UserID: e.UserID, Name: e.Name, Email: e.Email}); err != nil {
+				logging.LogError("vayuos", "auto-generate PGP key failed: "+e.Email, err.Error())
+			} else {
+				logging.LogInfo("vayuos", "auto-generated PGP keypair for "+e.Email+" fingerprint="+kp.Fingerprint)
+			}
+		}
+		if !a.vayuMail.Config().Enabled {
+			return
+		}
+		localPart := strings.SplitN(e.Email, "@", 2)[0]
+		if err := a.vayuMail.CreateMailbox(mailCfg.Domain, localPart); err != nil {
+			logging.LogError("vayuos", "auto-create mailbox failed: "+e.Email, err.Error())
+		} else {
+			logging.LogInfo("vayuos", "auto-created mailbox for "+e.Email)
+		}
+	})
+	logging.LogInfo("main", "VayuOS event handlers wired (UserCreated → PGP keypair + mailbox)")
+	// ── End VayuOS boot ──────────────────────────────────────────────────────
 
 	// Mode journal — durable SQLite-backed transition log (Ω6).
 	dbPath := config.EnvOr("DB_PATH", "./vayupress.db")

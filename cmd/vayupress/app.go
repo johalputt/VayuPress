@@ -42,6 +42,12 @@ import (
 	"github.com/johalputt/vayupress/internal/social"
 	"github.com/johalputt/vayupress/internal/update"
 	"github.com/johalputt/vayupress/internal/users"
+	vkernel "github.com/johalputt/vayupress/internal/vayuos/kernel"
+	vdns "github.com/johalputt/vayupress/internal/vayuos/dns"
+	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
+	vpanel "github.com/johalputt/vayupress/internal/vayuos/panel"
+	vpgp "github.com/johalputt/vayupress/internal/vayuos/pgp"
+	vtls "github.com/johalputt/vayupress/internal/vayuos/tls"
 	"github.com/johalputt/vayupress/internal/versions"
 	"github.com/johalputt/vayupress/internal/webhooks"
 	"github.com/johalputt/vayupress/internal/webmention"
@@ -136,6 +142,15 @@ type App struct {
 	emailTmpl *emailtmpl.Store
 	// UI/content internationalisation (Tier 4).
 	i18n *i18n.Catalog
+
+	// VayuOS subsystems (Phase 2) — mail, PGP, TLS, DNS.
+	vayuMail *vmail.Engine
+	vayuPGP  *vpgp.Engine
+	vayuTLS  *vtls.Manager
+	vayuDNS  *vdns.Manager
+	vayuOS   *vpanel.Handlers
+	vayuKernel *vkernel.Bus
+	vayuHealth *vkernel.HealthMonitor
 }
 
 // startScheduler runs the background ticker that promotes due scheduled posts to
