@@ -207,6 +207,17 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 		r.Get("/api/v1/analytics/revenue", a.handleAnalyticsRevenue)
 		r.With(auth.CSRFTokenMiddleware).Post("/api/v1/analytics/revenue", a.handleAnalyticsRecordRevenue)
 
+		// Goals (conversion targets) — list/create/delete + computed results.
+		r.Get("/api/v1/analytics/goals", a.handleAnalyticsGoals)
+		r.With(auth.CSRFTokenMiddleware).Post("/api/v1/analytics/goals", a.handleAnalyticsCreateGoal)
+		r.With(auth.CSRFTokenMiddleware).Delete("/api/v1/analytics/goals/{id}", a.handleAnalyticsDeleteGoal)
+
+		// Visitor journey / path-flow analysis.
+		r.Get("/api/v1/analytics/journey", a.handleAnalyticsJourney)
+
+		// Report export (CSV/JSON download) for every report.
+		r.Get("/api/v1/analytics/export", a.handleAnalyticsExport)
+
 		// AI writing assistant — local Ollama, opt-in (Tier 2).
 		r.Get("/api/v1/admin/ai/status", a.handleAIStatus)
 		r.With(auth.CSRFTokenMiddleware).Post("/api/v1/admin/ai/assist", a.handleAIAssist)

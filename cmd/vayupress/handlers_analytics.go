@@ -390,6 +390,71 @@ func (a *App) handleAnalyticsRecordRevenue(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, r, 201, map[string]string{"id": id})
 }
 
+// ── Goals (conversion targets) ───────────────────────────────────────────────
+
+func (a *App) handleAnalyticsGoals(w http.ResponseWriter, r *http.Request) {
+	if a.analytics == nil {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "analytics-disabled", "Analytics not initialised", "")
+		return
+	}
+	data, err := a.analytics.GoalResults(r.Context(), queryInt(r, "days", 30))
+	if err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "db-error", err.Error(), "")
+		return
+	}
+	writeJSON(w, r, http.StatusOK, data)
+}
+
+func (a *App) handleAnalyticsCreateGoal(w http.ResponseWriter, r *http.Request) {
+	if a.analytics == nil {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "analytics-disabled", "Analytics not initialised", "")
+		return
+	}
+	var in struct {
+		Name   string `json:"name"`
+		Kind   string `json:"kind"`
+		Target string `json:"target"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16*1024)).Decode(&in); err != nil {
+		writeAPIError(w, r, 400, "invalid_json", err.Error(), "")
+		return
+	}
+	id, err := a.analytics.CreateGoal(r.Context(), in.Name, in.Kind, in.Target)
+	if err != nil {
+		writeAPIError(w, r, 400, "validation_error", err.Error(), "")
+		return
+	}
+	writeJSON(w, r, 201, map[string]string{"id": id, "name": in.Name})
+}
+
+func (a *App) handleAnalyticsDeleteGoal(w http.ResponseWriter, r *http.Request) {
+	if a.analytics == nil {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "analytics-disabled", "Analytics not initialised", "")
+		return
+	}
+	id := chi.URLParam(r, "id")
+	if err := a.analytics.DeleteGoal(r.Context(), id); err != nil {
+		writeAPIError(w, r, 404, "not_found", err.Error(), "")
+		return
+	}
+	writeJSON(w, r, 200, map[string]bool{"deleted": true})
+}
+
+// ── Visitor journey / path flows ─────────────────────────────────────────────
+
+func (a *App) handleAnalyticsJourney(w http.ResponseWriter, r *http.Request) {
+	if a.analytics == nil {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "analytics-disabled", "Analytics not initialised", "")
+		return
+	}
+	data, err := a.analytics.PathFlows(r.Context(), queryInt(r, "days", 14), queryInt(r, "limit", 100))
+	if err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "db-error", err.Error(), "")
+		return
+	}
+	writeJSON(w, r, http.StatusOK, data)
+}
+
 func queryInt(r *http.Request, key string, def int) int {
 	if v := r.URL.Query().Get(key); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {

@@ -6,6 +6,7 @@ package main
 // VayuPress's sovereign, zero-telemetry stance.
 
 import (
+	"context"
 	"fmt"
 	"html"
 	htmpl "html/template"
@@ -190,7 +191,7 @@ func (a *App) handleOSAnalytics(w http.ResponseWriter, r *http.Request) {
 <div class="grid grid-2">
   <div class="card"><div class="card-title">Custom events</div>` + osEventTable(events) + `</div>
   <div class="card"><div class="card-title">Campaign sources (UTM)</div>` + utmRows + `</div>
-</div>`
+</div>` + a.osGoalsSection(ctx) + a.osJourneySection(ctx) + osExportSection()
 
 	body := `<div class="page-header"><h1>Analytics</h1>
   <span class="muted text-sm">` + strconv.FormatInt(sum.TotalViews, 10) + ` views · 30 days</span>
@@ -198,9 +199,83 @@ func (a *App) handleOSAnalytics(w http.ResponseWriter, r *http.Request) {
 <div class="grid grid-2">
   <div class="card"><div class="card-title">Top pages</div>` + pages + `</div>
   <div class="card"><div class="card-title">Referrers</div>` + refs + `</div>
-</div>` + extra
+</div>` + extra + `
+<script nonce="` + nonce + `" src="/os/static/js/admin-os-intel.js"></script>`
 
 	writeOSHTML(w, adminOSLayout(nonce, "Analytics", "analytics", cfg, htmpl.HTML(body)))
+}
+
+// osGoalsSection renders the conversion-goals card: a create form, plus a table
+// of each goal's completions and conversion rate over the last 30 days.
+func (a *App) osGoalsSection(ctx context.Context) string {
+	results, _ := a.analytics.GoalResults(ctx, 30)
+	rows := `<tr><td colspan="5" class="muted">No goals yet. Add one above (e.g. a "/thank-you" path view or a "signup" custom event).</td></tr>`
+	if len(results) > 0 {
+		rows = ""
+		for _, g := range results {
+			rows += `<tr><td class="row-title">` + html.EscapeString(g.Name) + `</td>` +
+				`<td><span class="badge">` + html.EscapeString(g.Kind) + `</span></td>` +
+				`<td class="muted">` + html.EscapeString(g.Target) + `</td>` +
+				`<td>` + strconv.Itoa(g.Completions) + ` <span class="muted text-xs">(` + strconv.Itoa(g.UniqueVisitors) + ` visitors)</span></td>` +
+				`<td>` + fmt.Sprintf("%.1f%%", g.ConversionRate) + `</td>` +
+				`<td><button class="btn btn--danger btn--sm" data-goal-delete="` + html.EscapeString(g.ID) + `">Delete</button></td></tr>`
+		}
+	}
+	return `<div class="card mt-6" data-goals>
+  <div class="card-title">Conversion goals</div>
+  <p class="muted text-sm mb-3">Track how many visitors reach a page or fire a custom event. Conversion rate is the share of all unique visitors in the window.</p>
+  <form class="vm-row mb-3" data-goal-form>
+    <input class="input" type="text" data-goal-name placeholder="Goal name (e.g. Newsletter signup)" required>
+    <select class="input" data-goal-kind>
+      <option value="path">Page view</option>
+      <option value="event">Custom event</option>
+    </select>
+    <input class="input" type="text" data-goal-target placeholder="/thank-you  or  signup" required>
+    <button class="btn btn--primary" type="submit">Add goal</button>
+  </form>
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th>Goal</th><th>Type</th><th>Target</th><th>Completions</th><th>Conv. rate</th><th></th></tr></thead>
+    <tbody>` + rows + `</tbody>
+  </table></div>
+</div>`
+}
+
+// osJourneySection renders the top page-to-page transitions (visitor journey).
+func (a *App) osJourneySection(ctx context.Context) string {
+	flows, _ := a.analytics.PathFlows(ctx, 14, 25)
+	body := `<div class="empty-state">No multi-page journeys recorded yet.</div>`
+	if len(flows) > 0 {
+		rows := ""
+		for _, f := range flows {
+			rows += `<tr><td class="row-title">` + html.EscapeString(f.From) + `</td><td class="muted">→</td><td class="row-title">` + html.EscapeString(f.To) + `</td><td>` + strconv.Itoa(f.Count) + `</td></tr>`
+		}
+		body = `<div class="table-wrap"><table class="table"><thead><tr><th>From</th><th></th><th>To</th><th>Transitions</th></tr></thead><tbody>` + rows + `</tbody></table></div>`
+	}
+	return `<div class="card mt-6">
+  <div class="card-title">Visitor journey · last 14 days</div>
+  <p class="muted text-sm mb-3">Most common page-to-page transitions. <code>(entry)</code> marks where sessions begin and <code>(exit)</code> where they end.</p>` + body + `</div>`
+}
+
+// osExportSection renders download links for every report in CSV and JSON.
+func osExportSection() string {
+	labels := map[string]string{
+		"overview": "Overview", "pages": "Top pages", "referrers": "Referrers",
+		"browsers": "Browsers", "devices": "Devices", "os": "Operating systems",
+		"utm": "Campaigns (UTM)", "events": "Custom events", "sessions": "Sessions",
+		"goals": "Goals", "journey": "Visitor journey",
+	}
+	rows := ""
+	for _, rep := range analyticsExportReports {
+		base := "/os/api/analytics/export?report=" + rep
+		rows += `<tr><td class="row-title">` + html.EscapeString(labels[rep]) + `</td>` +
+			`<td><a class="btn btn--sm" href="` + base + `&format=csv" download>CSV</a> ` +
+			`<a class="btn btn--sm" href="` + base + `&format=json" download>JSON</a></td></tr>`
+	}
+	return `<div class="card mt-6">
+  <div class="card-title">Export reports</div>
+  <p class="muted text-sm mb-3">Download any report as CSV or JSON. Exports are computed locally and contain no PII.</p>
+  <div class="table-wrap"><table class="table"><thead><tr><th>Report</th><th>Download</th></tr></thead><tbody>` + rows + `</tbody></table></div>
+</div>`
 }
 
 // osStatCard renders a single big-number stat card.
