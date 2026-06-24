@@ -97,24 +97,29 @@ else
   warn "No docs/ dir in $SRC_DIR — ADR page may be empty."
 fi
 
-# ── 5. Back up the database (best-effort, consistent) ────────────────────────
-# Releases can include schema migrations that run on startup. Take a consistent
-# snapshot first so you can roll back. Uses sqlite3 .backup (safe on a live WAL
-# DB). Override DB_PATH if your install differs; skipped if the DB isn't found.
+# ── 5. Back up the database (opt-in, consistent, never blocks) ───────────────
+# Disabled by default so the update is always fast and can never hang on a busy
+# live DB. Enable with BACKUP_DB=1 to take a consistent snapshot (sqlite3 online
+# backup) before the restart — recommended before migration-bearing releases.
+# A hard timeout guarantees it can never stall the update.
 DB_PATH="${DB_PATH:-/var/lib/vayupress/vayupress.db}"
-if [[ -f "$DB_PATH" ]]; then
-  if command -v sqlite3 >/dev/null 2>&1; then
+BACKUP_DB="${BACKUP_DB:-0}"
+BACKUP_TIMEOUT="${BACKUP_TIMEOUT:-120}"
+if [[ "$BACKUP_DB" == "1" ]]; then
+  if [[ -f "$DB_PATH" ]] && command -v sqlite3 >/dev/null 2>&1; then
     BACKUP="${DB_PATH%.db}.backup-$(date +%Y%m%d-%H%M%S).db"
-    if sqlite3 "$DB_PATH" ".backup '$BACKUP'" 2>/dev/null; then
+    info "Backing up DB to $BACKUP (max ${BACKUP_TIMEOUT}s)..."
+    if timeout "$BACKUP_TIMEOUT" sqlite3 -cmd ".timeout 5000" "$DB_PATH" ".backup '$BACKUP'" 2>/dev/null; then
       ok "DB backup written: $BACKUP ($(du -h "$BACKUP" | cut -f1))"
     else
-      warn "DB backup failed (continuing). Consider backing up $DB_PATH manually."
+      rm -f "$BACKUP"
+      warn "DB backup timed out/failed (continuing). Back up $DB_PATH manually if needed."
     fi
   else
-    warn "sqlite3 CLI not found — skipping DB backup. Install it or back up $DB_PATH manually before updates."
+    warn "BACKUP_DB=1 but DB not found at $DB_PATH or sqlite3 missing — skipping backup."
   fi
 else
-  warn "DB not found at $DB_PATH — skipping backup (set DB_PATH=... if it lives elsewhere)."
+  info "DB backup skipped (set BACKUP_DB=1 to snapshot before updating)."
 fi
 
 # ── 6. Restart and verify ────────────────────────────────────────────────────
