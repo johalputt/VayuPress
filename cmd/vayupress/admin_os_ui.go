@@ -141,6 +141,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.Get("/os/vayuos", a.handleVayuOSDashboard)
 		pr.Get("/os/vayuos/pgp", a.handleVayuOSPGP)
 		pr.Get("/os/vayuos/mail", a.handleVayuOSMail)
+		pr.Get("/os/vayuos/mail/inbox", a.handleVayuOSInbox)
 		pr.Get("/os/vayuos/security", a.handleVayuOSSecurity)
 		pr.Get("/os/api/vayuos/health", a.handleVayuOSHealthJSON)
 		pr.Get("/os/settings", a.handleOSSettings)

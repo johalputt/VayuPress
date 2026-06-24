@@ -8,7 +8,14 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added (v1.9.0 — in progress: "Stable Private Email")
+
+- **Inbound mail storage + read access** (first increment of the VayuMail
+  receive side): local delivery into Maildir (`Engine.DeliverInbound`), mailbox
+  message listing and raw read with path-traversal protection
+  (`Maildir.List` / `ReadRaw`), per-account inbox summaries (`Engine.Mailboxes`),
+  and a `/os/vayuos/mail/inbox` panel view. A listening SMTP/IMAP server remains
+  a governed future milestone (see `docs/ROADMAP-v1.9.md`).
 
 ---
 

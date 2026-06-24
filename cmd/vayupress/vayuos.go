@@ -339,4 +339,33 @@ func (a *App) handleVayuOSHealthJSON(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, http.StatusOK, a.vayuHealth.Snapshot())
 }
 
+// handleVayuOSInbox shows per-account inbox summaries (v1.9.0 inbound storage).
+func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
+	nonce := render.CSPNonce(r)
+	cfg := a.getOSSettings(r.Context())
+	var body strings.Builder
+	body.WriteString(`<div class="page-header"><h1>Mailboxes</h1><span class="muted text-sm">Inbound message storage (Maildir)</span></div>`)
+	if a.vayuMail == nil || !a.vayuMail.Config().Enabled {
+		body.WriteString(`<div class="empty-state">VayuMail is inactive. Set your domain to provision mailboxes.</div>`)
+		writeOSHTML(w, adminOSLayout(nonce, "Mailboxes", "vayuos", cfg, htmpl.HTML(body.String())))
+		return
+	}
+	boxes, err := a.vayuMail.Mailboxes()
+	if err != nil {
+		body.WriteString(`<div class="empty-state">Could not read mailboxes: ` + html.EscapeString(err.Error()) + `</div>`)
+		writeOSHTML(w, adminOSLayout(nonce, "Mailboxes", "vayuos", cfg, htmpl.HTML(body.String())))
+		return
+	}
+	body.WriteString(`<div class="card"><div class="card-title">Accounts</div><div class="table-wrap"><table class="table"><thead><tr><th>Mailbox</th><th>Messages</th><th>Unseen</th></tr></thead><tbody>`)
+	if len(boxes) == 0 {
+		body.WriteString(`<tr><td colspan="3" class="muted">No mailboxes yet — they are provisioned automatically when accounts are created.</td></tr>`)
+	}
+	for _, b := range boxes {
+		body.WriteString(`<tr><td>` + html.EscapeString(b.Username) + `@` + html.EscapeString(a.vayuMail.Config().Domain) + `</td><td>` + itoaSafe(b.Total) + `</td><td>` + itoaSafe(b.Unseen) + `</td></tr>`)
+	}
+	body.WriteString(`</tbody></table></div></div>
+<div class="card"><div class="card-title">Roadmap</div><p class="muted">v1.9.0 delivers inbound message storage and read access. A listening MX + IMAP server is the next governed milestone.</p></div>`)
+	writeOSHTML(w, adminOSLayout(nonce, "Mailboxes", "vayuos", cfg, htmpl.HTML(body.String())))
+}
+
 func itoaSafe(n int) string { return fmt.Sprintf("%d", n) }
