@@ -5,7 +5,7 @@
 .zephyr-hero__title{font-size:2.75rem;font-weight:700;line-height:1.15;letter-spacing:-.03em;max-width:720px;margin:0 auto 1rem;color:var(--vp-text)}
 .zephyr-hero__sub{font-size:1.15rem;line-height:1.6;color:var(--vp-muted);max-width:520px;margin:0 auto 2rem}
 .zephyr-hero__actions{display:flex;gap:.75rem;justify-content:center;flex-wrap:wrap}
-.zephyr-hero__btn{display:inline-flex;align-items:center;gap:.5rem;padding:.75rem 2rem;border-radius:2rem;font-size:.9rem;font-weight:600;text-decoration:none;transition:opacity .15s,transform .15s}
+.zephyr-hero__btn{display:inline-flex;align-items:center;gap:.5rem;padding:.85rem 2rem;min-height:44px;min-width:44px;border-radius:2rem;font-size:.9rem;font-weight:600;text-decoration:none;transition:opacity .15s,transform .15s}
 .zephyr-hero__btn:hover{transform:translateY(-1px)}
 .zephyr-hero__btn--primary{background:var(--vp-accent);color:#fff}
 .zephyr-hero__btn--primary:hover{opacity:.9}
@@ -31,9 +31,9 @@
 .zephyr-cta__title{font-size:1.5rem;font-weight:650;color:var(--vp-text);margin-bottom:.5rem}
 .zephyr-cta__text{font-size:1rem;color:var(--vp-muted);margin-bottom:1.5rem;max-width:460px;margin-left:auto;margin-right:auto}
 .zephyr-cta__form{display:flex;gap:.5rem;justify-content:center;max-width:460px;margin:0 auto}
-.zephyr-cta__input{flex:1;padding:.7rem 1.15rem;border-radius:2rem;border:1.5px solid rgba(255,255,255,.1);background:var(--vp-bg);color:var(--vp-text);font-size:.9rem}
+.zephyr-cta__input{flex:1;padding:.75rem 1.15rem;min-height:44px;border-radius:2rem;border:1.5px solid rgba(255,255,255,.1);background:var(--vp-bg);color:var(--vp-text);font-size:.9rem}
 @media(prefers-color-scheme:light){.zephyr-cta__input{border-color:rgba(0,0,0,.12)}}
-.zephyr-cta__btn{padding:.7rem 1.75rem;border-radius:2rem;border:0;background:var(--vp-accent);color:#fff;font-weight:600;font-size:.9rem;cursor:pointer;white-space:nowrap;transition:opacity .15s}
+.zephyr-cta__btn{padding:.85rem 1.75rem;min-height:44px;min-width:44px;border-radius:2rem;border:0;background:var(--vp-accent);color:#fff;font-weight:600;font-size:.9rem;cursor:pointer;white-space:nowrap;transition:opacity .15s}
 .zephyr-cta__btn:hover{opacity:.85}
 .zephyr-footer{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:2rem;padding:3rem 0 2rem;border-top:1px solid rgba(255,255,255,.06);margin-top:3rem}
 @media(prefers-color-scheme:light){.zephyr-footer{border-color:rgba(0,0,0,.08)}}

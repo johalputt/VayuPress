@@ -459,7 +459,7 @@ func Zephyr() Tokens {
 		Name: "Zephyr", BgDark: "#1a1b1e", SurfaceDark: "#24252d", TextDark: "#e4e5e9",
 		MutedDark: "#8b8d97", AccentDark: "#ef767a", Accent2Dark: "#f9a0a3", HiDark: "#7ec8e3", GreenDark: "#6eeb83",
 		BgLight: "#fefefa", SurfaceLight: "#ffffff", TextLight: "#1a1a1a", MutedLight: "#6b6b6b",
-		AccentLight: "#e74c3c", Accent2Light: "#ef767a", HiLight: "#2980b9",
+		AccentLight: "#c0392b", Accent2Light: "#e74c3c", HiLight: "#2980b9",
 		FontSans: "Inter, system-ui, sans-serif", FontMono: "IBM Plex Mono, monospace",
 		FontSizeBase: "1.0625rem", LineHeight: "1.75", MaxWidth: "44rem", RadiusSm: "0.5rem", RadiusLg: "0.75rem",
 		CustomCSS: zephyrCSS,
