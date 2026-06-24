@@ -1,0 +1,55 @@
+/* Gale theme CSS — editorial magazine layout for VayuPress.
+   Embedded via go:embed, auto-applied when Gale preset is selected. */
+.gale-hero{position:relative;padding:0 0 3rem 0}
+.gale-hero__featured{display:grid;grid-template-columns:1fr 1fr;gap:2rem;margin-bottom:2.5rem;padding:1.5rem;border-radius:.25rem;background:var(--vp-surface);border:1px solid rgba(255,255,255,.06)}
+@media(prefers-color-scheme:light){.gale-hero__featured{border:1px solid rgba(0,0,0,.08)}}
+.gale-hero__media{width:100%;aspect-ratio:16/10;object-fit:cover;border-radius:.25rem;background:var(--vp-surface)}
+.gale-hero__content{display:flex;flex-direction:column;justify-content:center;gap:.75rem}
+.gale-hero__kicker{font-size:.75rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--vp-accent)}
+.gale-hero__title{font-size:2rem;font-weight:700;line-height:1.2;letter-spacing:-.02em;color:var(--vp-text)}
+.gale-hero__title a{color:inherit;text-decoration:none}.gale-hero__title a:hover{color:var(--vp-accent)}
+.gale-hero__excerpt{font-size:1rem;line-height:1.65;color:var(--vp-muted);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.gale-hero__byline{display:flex;align-items:center;gap:.5rem;font-size:.85rem;color:var(--vp-muted)}
+.gale-hero__read{display:inline-flex;align-items:center;gap:.25rem;font-size:.85rem;font-weight:600;color:var(--vp-accent);text-decoration:none;transition:gap .15s}
+.gale-hero__read:hover{gap:.5rem}
+.gale-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:2rem}
+.gale-card{display:flex;flex-direction:column;border-radius:.25rem;overflow:hidden;transition:transform .15s,box-shadow .15s}
+.gale-card:hover{transform:translateY(-2px);box-shadow:0 8px 30px rgba(0,0,0,.15)}
+.gale-card__media{width:100%;aspect-ratio:16/10;object-fit:cover;background:var(--vp-surface);border-radius:.25rem .25rem 0 0}
+.gale-card__body{padding:1.25rem;display:flex;flex-direction:column;gap:.5rem;background:var(--vp-surface);border:1px solid rgba(255,255,255,.04);border-top:0;border-radius:0 0 .25rem .25rem}
+@media(prefers-color-scheme:light){.gale-card__body{border:1px solid rgba(0,0,0,.06);border-top:0}}
+.gale-card__tag{font-size:.7rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--vp-accent);text-decoration:none}
+.gale-card__title{font-size:1.15rem;font-weight:650;line-height:1.35;letter-spacing:-.01em;color:var(--vp-text)}
+.gale-card__title a{color:inherit;text-decoration:none}.gale-card__title a:hover{color:var(--vp-accent)}
+.gale-card__excerpt{font-size:.9rem;line-height:1.55;color:var(--vp-muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.gale-card__footer{display:flex;justify-content:space-between;align-items:center;margin-top:.75rem;padding-top:.75rem;border-top:1px solid rgba(255,255,255,.05);font-size:.8rem;color:var(--vp-muted)}
+@media(prefers-color-scheme:light){.gale-card__footer{border-top:1px solid rgba(0,0,0,.06)}}
+.gale-section{margin:3rem 0 1.5rem}
+.gale-section__title{font-size:1rem;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--vp-accent);padding-bottom:.5rem;border-bottom:2px solid var(--vp-accent);display:inline-block}
+.gale-tags{display:flex;flex-wrap:wrap;gap:.5rem;margin:1rem 0}
+.gale-tag{display:inline-block;padding:.25rem .75rem;border-radius:.25rem;font-size:.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.04em;text-decoration:none;background:rgba(212,168,83,.1);color:var(--vp-accent);border:1px solid rgba(212,168,83,.2);transition:background .15s}
+.gale-tag:hover{background:rgba(212,168,83,.2)}
+.gale-author{display:flex;align-items:center;gap:.75rem;margin:2rem 0;padding:1rem 0;border-top:1px solid rgba(255,255,255,.06);border-bottom:1px solid rgba(255,255,255,.06)}
+@media(prefers-color-scheme:light){.gale-author{border-color:rgba(0,0,0,.08)}}
+.gale-author__avatar{width:48px;height:48px;border-radius:50%;background:var(--vp-surface);flex-shrink:0}
+.gale-author__name{font-weight:600;font-size:.95rem;color:var(--vp-text)}
+.gale-author__bio{font-size:.85rem;color:var(--vp-muted)}
+.gale-progress{position:fixed;top:0;left:0;height:3px;background:var(--vp-accent);z-index:9999;transition:width .1s linear}
+.gale-cta{margin:3rem 0;padding:2rem;border-radius:.25rem;background:var(--vp-surface);border:1px solid rgba(212,168,83,.15);text-align:center}
+.gale-cta__title{font-size:1.35rem;font-weight:650;color:var(--vp-text);margin-bottom:.5rem}
+.gale-cta__text{font-size:.95rem;color:var(--vp-muted);margin-bottom:1.25rem}
+.gale-cta__form{display:flex;gap:.5rem;justify-content:center;max-width:420px;margin:0 auto}
+.gale-cta__input{flex:1;padding:.65rem 1rem;border-radius:.25rem;border:1px solid rgba(255,255,255,.1);background:var(--vp-bg);color:var(--vp-text);font-size:.9rem}
+@media(prefers-color-scheme:light){.gale-cta__input{border-color:rgba(0,0,0,.12)}}
+.gale-cta__btn{padding:.65rem 1.5rem;border-radius:.25rem;border:0;background:var(--vp-accent);color:var(--vp-bg);font-weight:600;font-size:.9rem;cursor:pointer;white-space:nowrap;transition:opacity .15s}
+.gale-cta__btn:hover{opacity:.85}
+.gale-typography h1{font-size:2.5rem;font-weight:700;line-height:1.15;letter-spacing:-.03em;margin:2rem 0 1rem}
+.gale-typography h2{font-size:1.75rem;font-weight:650;line-height:1.25;letter-spacing:-.02em;margin:1.75rem 0 .75rem}
+.gale-typography h3{font-size:1.35rem;font-weight:600;line-height:1.35;margin:1.5rem 0 .5rem}
+.gale-typography blockquote{margin:2rem 0;padding:1rem 0 1rem 1.5rem;border-left:3px solid var(--vp-accent);font-size:1.25rem;font-style:italic;line-height:1.7;color:var(--vp-muted);background:rgba(212,168,83,.04);border-radius:0 .25rem .25rem 0}
+.gale-typography code{background:var(--vp-surface);padding:.15em .4em;border-radius:.2rem;font-size:.9em;font-family:var(--vp-font-mono)}
+.gale-typography pre{background:var(--vp-surface);padding:1.25rem;border-radius:.25rem;overflow-x:auto;margin:1.5rem 0;border:1px solid rgba(255,255,255,.05)}
+@media(prefers-color-scheme:light){.gale-typography pre{border-color:rgba(0,0,0,.08)}}
+@media(max-width:768px){.gale-hero__featured{grid-template-columns:1fr}.gale-hero__title{font-size:1.5rem}.gale-grid{grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1.25rem}.gale-card__title{font-size:1rem}.gale-typography h1{font-size:2rem}.gale-typography h2{font-size:1.5rem}.gale-cta__form{flex-direction:column}}
+@media(max-width:480px){.gale-grid{grid-template-columns:1fr}}
+@media(prefers-reduced-motion:reduce){.gale-card,.gale-hero__read,.gale-cta__btn,.gale-tag,.gale-progress{transition:none}}
