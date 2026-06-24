@@ -21,6 +21,33 @@
 > _Own your content. Own your communication. Own your infrastructure._
 > Publishing is the core identity, **VayuMail** the native sovereignty layer, **VayuPGP** the native privacy layer, and **VayuOS** the native control layer — all in a single Go binary, single process, single config.
 
+## What's New in v1.9.0
+
+> Full notes in [`CHANGELOG.md`](CHANGELOG.md) · architecture decisions in [`docs/adr/`](docs/adr/) (ADR-0076–0080) · roadmap in [`docs/ROADMAP-v1.9.md`](docs/ROADMAP-v1.9.md)
+
+**"Stable Private Email" — the inbound half of VayuMail.** v1.9.0 completes the
+receive side so VayuPress is a mailbox you can actually receive and read mail in,
+still inside one binary.
+
+- **SMTP-receive server** — a pure-Go RFC 5321 listener (EHLO/MAIL/RCPT/DATA/
+  RSET/NOOP/QUIT) that accepts mail only for your local domain (no open relay),
+  undoes dot-stuffing, and enforces size caps, delivering into Maildir.
+- **IMAP read server** — a pure-Go RFC 3501 subset (CAPABILITY, LOGIN via your
+  VayuPress account, LIST, SELECT, FETCH incl. `BODY[]`/FLAGS/SIZE/INTERNALDATE,
+  STORE `\Seen`, LOGOUT) so standard clients (Thunderbird, mobile) read the
+  Maildir.
+- **Transparent PGP decryption on read** — when VayuPGP holds the account's key,
+  IMAP serves the decrypted message body; best-effort, and it never blocks
+  delivery.
+- **Inbox panel** — `/os/vayuos/mail/inbox` shows per-account message/unseen
+  counts.
+- **Opt-in by design** — the inbound listeners start only with
+  `VAYUOS_MAIL_INBOUND=on` (Operational Simplicity Doctrine); when off, no mail
+  port is opened and the binary boots unchanged.
+
+> **Scope:** inbound SPF/DKIM/DMARC verification, greylisting, and IMAPS/TLS
+> hardening are tracked as the next milestones in `docs/ROADMAP-v1.9.md`.
+
 ## What's New in v1.8.0
 
 > Full notes in [`CHANGELOG.md`](CHANGELOG.md) · upgrade steps in [`docs/UPGRADING.md`](docs/UPGRADING.md)
