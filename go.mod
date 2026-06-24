@@ -15,7 +15,7 @@ require (
 )
 
 require (
-	github.com/cloudflare/circl v1.6.2 // indirect
+	github.com/cloudflare/circl v1.6.3 // indirect
 	github.com/dlclark/regexp2/v2 v2.2.1 // indirect
 )
 

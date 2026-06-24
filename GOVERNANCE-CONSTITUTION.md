@@ -38,7 +38,7 @@ VayuPress is **modern lightweight publishing infrastructure** for developers, wr
 ### **Sovereignty Vision (v1.8.0 amendment)**
 
 > **"Complete digital sovereignty in one binary.
->  Own your content. Own your communication. Own your infrastructure."**
+> Own your content. Own your communication. Own your infrastructure."**
 
 As of v1.8.0 the identity of VayuPress evolves from a publishing engine into a
 sovereignty engine, organised as four native layers — all compiled into the
