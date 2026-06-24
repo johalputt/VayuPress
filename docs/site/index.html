@@ -4,14 +4,14 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>VayuPress — Sovereign Publishing Engine</title>
-  <meta name="description" content="VayuPress is a sovereign, single-VPS publishing engine built as an adaptive governance runtime. SQLite-durable, zero third-party scripts, fully observable. Own every layer of your stack." />
+  <meta name="description" content="VayuPress is a sovereign, single-VPS, single-binary engine for complete digital sovereignty: own your content (Publishing), your communication (VayuMail — DKIM + inbound IMAP), and your privacy (VayuPGP — end-to-end encryption). SQLite-durable, zero telemetry, Apache-2.0." />
   <meta name="theme-color" content="#04060d" />
   <link rel="canonical" href="https://vayupress.com/" />
 
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://vayupress.com/" />
   <meta property="og:title" content="VayuPress — Sovereign Publishing. Finally." />
-  <meta property="og:description" content="A single-VPS publishing engine built as an adaptive governance runtime. SQLite-durable, observable end to end, zero third-party scripts." />
+  <meta property="og:description" content="Complete digital sovereignty in one Go binary: own your content (Publishing), communication (VayuMail), and privacy (VayuPGP). SQLite-durable, zero telemetry." />
   <!-- Social share card shows the VayuPress brand mark, not a screenshot. -->
   <meta property="og:image" content="https://vayupress.com/assets/logo-dark.png" />
   <meta property="og:image:width" content="923" />
@@ -19,7 +19,7 @@
   <meta property="og:image:alt" content="VayuPress" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="VayuPress — Sovereign Publishing. Finally." />
-  <meta name="twitter:description" content="A single-VPS publishing engine built as an adaptive governance runtime." />
+  <meta name="twitter:description" content="Complete digital sovereignty in one binary: Publishing + VayuMail + VayuPGP + VayuOS. Own your content, communication, and privacy." />
   <meta name="twitter:image" content="https://vayupress.com/assets/logo-dark.png" />
   <meta name="twitter:image:alt" content="VayuPress" />
 
@@ -129,16 +129,18 @@
 
         <h1 class="font-display font-bold tracking-tightest text-white leading-[0.93] mb-7
                    text-[2.8rem] xs:text-5xl sm:text-6xl lg:text-[5.2rem]">
-          <span class="block" data-reveal>Sovereign</span>
-          <span class="block text-gradient" data-reveal style="--d:80ms">Publishing.</span>
-          <span class="block text-white/30" data-reveal style="--d:160ms">Finally.</span>
+          <span class="block" data-reveal>Own your content,</span>
+          <span class="block text-gradient" data-reveal style="--d:80ms">mail &amp; privacy.</span>
+          <span class="block text-white/30" data-reveal style="--d:160ms">One binary.</span>
         </h1>
 
         <p data-reveal style="--d:220ms"
            class="text-base sm:text-lg text-gray-400 leading-relaxed mb-9 max-w-xl font-light">
-          One VPS. SQLite. Zero third-party fonts or scripts. A publishing engine
-          built as an adaptive governance runtime — where
-          <span class="text-gray-100 font-medium">you</span> own every layer.
+          Complete digital sovereignty in a single Go binary. One VPS, SQLite,
+          zero telemetry — publishing (CMS), native
+          <span class="text-gray-100 font-medium">VayuMail</span> (DKIM + inbound IMAP),
+          end-to-end <span class="text-gray-100 font-medium">VayuPGP</span>, and the
+          <span class="text-gray-100 font-medium">VayuOS</span> control layer, all in one process.
         </p>
 
         <div data-reveal style="--d:280ms" class="flex flex-wrap gap-3 items-center">
@@ -174,7 +176,7 @@
             <div class="text-xs text-gray-500 mt-0.5">to first deploy</div>
           </div>
           <div>
-            <div class="font-display text-xl sm:text-2xl font-bold text-white">75</div>
+            <div class="font-display text-xl sm:text-2xl font-bold text-white">80</div>
             <div class="text-xs text-gray-500 mt-0.5">design decisions</div>
           </div>
           <div>
@@ -204,12 +206,12 @@
             <div x-show="t>=4" x-transition.opacity.duration.300ms>
               <span class="text-teal-400">❯</span> <span class="text-gray-300">./vayupress --port 8080</span>
             </div>
-            <div x-show="t>=5" x-transition.opacity.duration.300ms class="text-emerald-400">✓ migrations applied · 018 schemas</div>
-            <div x-show="t>=6" x-transition.opacity.duration.300ms class="text-emerald-400">✓ WAL mode · adaptive checkpoint</div>
-            <div x-show="t>=7" x-transition.opacity.duration.300ms class="text-emerald-400">✓ governance runtime · <span class="text-teal-300">normal</span></div>
-            <div x-show="t>=8" x-transition.opacity.duration.300ms class="text-emerald-400">✓ federation substrate ready</div>
+            <div x-show="t>=5" x-transition.opacity.duration.300ms class="text-emerald-400">✓ migrations applied · 036 schemas</div>
+            <div x-show="t>=6" x-transition.opacity.duration.300ms class="text-emerald-400">✓ VayuPGP · Ed25519 keystore (AES-256 at rest)</div>
+            <div x-show="t>=7" x-transition.opacity.duration.300ms class="text-emerald-400">✓ VayuMail · DKIM signed · IMAP inbox ready</div>
+            <div x-show="t>=8" x-transition.opacity.duration.300ms class="text-emerald-400">✓ WKD published · <span class="text-teal-300">/.well-known/openpgpkey</span></div>
             <div x-show="t>=9" x-transition.opacity.duration.300ms class="text-saffron-300 font-medium pt-2">
-              listening on :8080 <span class="cursor" aria-hidden="true">▊</span>
+              VayuOS online · listening on :8080 <span class="cursor" aria-hidden="true">▊</span>
             </div>
           </div>
         </div>
@@ -655,7 +657,7 @@
         <div class="lg:col-span-2">
           <img src="assets/logo-dark.png" alt="VayuPress" width="200" height="105"
                class="brand-mark h-9 sm:h-11 w-auto mb-5" loading="lazy" />
-          <p class="text-sm text-gray-500 leading-relaxed max-w-xs">Sovereign, single-VPS publishing engine. Adaptive governance, durable by design, observable end to end.</p>
+          <p class="text-sm text-gray-500 leading-relaxed max-w-xs">Complete digital sovereignty in one binary — own your content, communication &amp; privacy. Publishing · VayuMail · VayuPGP · VayuOS.</p>
           <p class="mt-5 text-xs text-gray-700 font-mono italic">vayu · the wind · carries only what you choose</p>
         </div>
         <template x-for="col in footer" :key="col.head">
