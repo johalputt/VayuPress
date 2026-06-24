@@ -6,13 +6,8 @@ import (
 	"strings"
 )
 
-// hexColorRe matches CSS hex colours: #rgb, #rrggbb, #rgba, #rrggbbaa.
-// Values that don't match are rejected so they can never break the served
-// stylesheet or carry injection payloads inside a CSS variable block.
 var hexColorRe = regexp.MustCompile(`^#[0-9a-fA-F]{3,8}$`)
 
-// validHex returns the value unchanged when it is a valid hex colour string,
-// or returns an empty string and a non-nil error when it is not.
 func validHex(field, value string) (string, error) {
 	v := strings.TrimSpace(value)
 	if v == "" {
@@ -24,12 +19,6 @@ func validHex(field, value string) (string, error) {
 	return v, nil
 }
 
-// safeFont strips characters that could escape the CSS variable value.
-// A font-family stack only ever needs letters, digits, spaces, commas,
-// hyphens, and dots, so every CSS-structural character — quotes,
-// backslash, angle-brackets, and crucially the block/declaration
-// punctuation ; { } ( ) : — is removed. Without that punctuation a value
-// cannot break out of the surrounding :root{ … } block to inject rules.
 func safeFont(s string) string {
 	var sb strings.Builder
 	for _, r := range s {
@@ -45,11 +34,8 @@ func safeFont(s string) string {
 	return sb.String()
 }
 
-// safeDimension allows only digits, dots, and a short set of CSS unit suffixes.
-// Anything that doesn't look like a CSS length/ratio is replaced with an empty string.
 func safeDimension(s string) string {
 	s = strings.TrimSpace(s)
-	// Allow e.g. "1rem", "1.6", "72ch", "0", "0.25rem", "1.0625rem"
 	allowed := regexp.MustCompile(`^[0-9]+(\.[0-9]+)?(rem|em|px|ch|%|vw|vh)?$`)
 	if allowed.MatchString(s) {
 		return s
@@ -57,11 +43,10 @@ func safeDimension(s string) string {
 	return ""
 }
 
-// CompileCSS converts a Tokens value into a minimal CSS block.
-// It validates every hex colour; non-hex values produce an error.
-// Font stacks and dimension values are sanitised to prevent injection.
+// CompileCSS converts Tokens into a CSS block with --vp-* variables plus a
+// Pico-bridge that maps --vp-* tokens to --pico-* variables so presets
+// actually change the public site appearance.
 func CompileCSS(t Tokens) (string, error) {
-	// Validate all hex colour fields.
 	type colorField struct {
 		name string
 		ptr  *string
@@ -100,14 +85,14 @@ func CompileCSS(t Tokens) (string, error) {
 	radLg := safeDimension(t.RadiusLg)
 
 	var sb strings.Builder
-
-	// Dark-mode root (default)
-	sb.WriteString(":root{")
 	writeVar := func(name, val string) {
 		if val != "" {
 			fmt.Fprintf(&sb, "--vp-%s:%s;", name, val)
 		}
 	}
+
+	// ── Dark-mode root ─────────────────────────────────────────────────────
+	sb.WriteString(":root{")
 	writeVar("bg", t.BgDark)
 	writeVar("surface", t.SurfaceDark)
 	writeVar("text", t.TextDark)
@@ -127,9 +112,33 @@ func CompileCSS(t Tokens) (string, error) {
 	writeVar("max-width", maxW)
 	writeVar("radius-sm", radSm)
 	writeVar("radius-lg", radLg)
+
+	// ── Pico bridge (dark) — maps --vp-* to --pico-* for site-wide effect ──
+	writePicoDark := func() {
+		if t.BgDark != "" {
+			fmt.Fprintf(&sb, "--pico-background-color:%s;", t.BgDark)
+		}
+		if t.SurfaceDark != "" {
+			fmt.Fprintf(&sb, "--pico-card-background-color:%s;", t.SurfaceDark)
+		}
+		if t.TextDark != "" {
+			fmt.Fprintf(&sb, "--pico-color:%s;--pico-h1-color:%s;--pico-h2-color:%s;", t.TextDark, t.TextDark, t.TextDark)
+		}
+		if t.MutedDark != "" {
+			fmt.Fprintf(&sb, "--pico-muted-color:%s;--pico-muted-border-color:%s;", t.MutedDark, t.MutedDark)
+		}
+		if t.AccentDark != "" {
+			fmt.Fprintf(&sb, "--pico-primary:%s;--pico-primary-hover:%s;--vayu-accent:%s;--vayu-accent-hover:%s;",
+				t.AccentDark, t.AccentDark, t.Accent2Dark, t.Accent2Dark)
+		}
+		if t.SurfaceDark != "" {
+			fmt.Fprintf(&sb, "--pico-code-background-color:%s;", t.SurfaceDark)
+		}
+	}
+	writePicoDark()
 	sb.WriteString("}")
 
-	// Light-mode override
+	// ── Light-mode override ───────────────────────────────────────────────
 	sb.WriteString("@media(prefers-color-scheme:light){:root{")
 	writeVar("bg", t.BgLight)
 	writeVar("surface", t.SurfaceLight)
@@ -138,7 +147,73 @@ func CompileCSS(t Tokens) (string, error) {
 	writeVar("accent", t.AccentLight)
 	writeVar("accent2", t.Accent2Light)
 	writeVar("hi", t.HiLight)
+
+	// Pico bridge (light)
+	if t.BgLight != "" {
+		fmt.Fprintf(&sb, "--pico-background-color:%s;", t.BgLight)
+	}
+	if t.SurfaceLight != "" {
+		fmt.Fprintf(&sb, "--pico-card-background-color:%s;", t.SurfaceLight)
+	}
+	if t.TextLight != "" {
+		fmt.Fprintf(&sb, "--pico-color:%s;--pico-h1-color:%s;--pico-h2-color:%s;", t.TextLight, t.TextLight, t.TextLight)
+	}
+	if t.MutedLight != "" {
+		fmt.Fprintf(&sb, "--pico-muted-color:%s;--pico-muted-border-color:%s;", t.MutedLight, t.MutedLight)
+	}
+	if t.AccentLight != "" {
+		fmt.Fprintf(&sb, "--pico-primary:%s;--pico-primary-hover:%s;--vayu-accent:%s;--vayu-accent-hover:%s;",
+			t.AccentLight, t.AccentLight, t.Accent2Light, t.Accent2Light)
+	}
+	if t.SurfaceLight != "" {
+		fmt.Fprintf(&sb, "--pico-card-sectioning-background-color:%s;", t.SurfaceLight)
+	}
 	sb.WriteString("}}")
 
+	return sb.String(), nil
+}
+
+// CompileVPOnly returns --vp-* variables only (no Pico bridge) for the live preview panel.
+func CompileVPOnly(t Tokens) (string, error) {
+	type colorField struct {
+		name string
+		ptr  *string
+	}
+	fields := []colorField{
+		{"BgDark", &t.BgDark}, {"SurfaceDark", &t.SurfaceDark}, {"TextDark", &t.TextDark},
+		{"MutedDark", &t.MutedDark}, {"AccentDark", &t.AccentDark}, {"Accent2Dark", &t.Accent2Dark},
+		{"HiDark", &t.HiDark}, {"GreenDark", &t.GreenDark},
+		{"BgLight", &t.BgLight}, {"SurfaceLight", &t.SurfaceLight}, {"TextLight", &t.TextLight},
+		{"MutedLight", &t.MutedLight}, {"AccentLight", &t.AccentLight}, {"Accent2Light", &t.Accent2Light},
+		{"HiLight", &t.HiLight},
+	}
+	for _, f := range fields {
+		v, err := validHex(f.name, *f.ptr)
+		if err != nil {
+			return "", err
+		}
+		*f.ptr = v
+	}
+	fontSans := safeFont(t.FontSans)
+	fontMono := safeFont(t.FontMono)
+
+	var sb strings.Builder
+	writeVar := func(name, val string) {
+		if val != "" {
+			fmt.Fprintf(&sb, "--vp-%s:%s;", name, val)
+		}
+	}
+	sb.WriteString(":root{")
+	writeVar("bg", t.BgDark); writeVar("surface", t.SurfaceDark); writeVar("text", t.TextDark)
+	writeVar("muted", t.MutedDark); writeVar("accent", t.AccentDark); writeVar("accent2", t.Accent2Dark)
+	writeVar("hi", t.HiDark); writeVar("green", t.GreenDark)
+	if fontSans != "" { fmt.Fprintf(&sb, "--vp-font-sans:%s;", fontSans) }
+	if fontMono != "" { fmt.Fprintf(&sb, "--vp-font-mono:%s;", fontMono) }
+	sb.WriteString("}")
+	sb.WriteString("@media(prefers-color-scheme:light){:root{")
+	writeVar("bg", t.BgLight); writeVar("surface", t.SurfaceLight); writeVar("text", t.TextLight)
+	writeVar("muted", t.MutedLight); writeVar("accent", t.AccentLight); writeVar("accent2", t.Accent2Light)
+	writeVar("hi", t.HiLight)
+	sb.WriteString("}}")
 	return sb.String(), nil
 }

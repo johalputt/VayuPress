@@ -1,39 +1,21 @@
 package main
 
-// admin_os_theme.go — VayuOS "Theme Studio" surface (VayuOS consolidation).
-//
-// Folds the v1/v2 Theme Studio (preset gallery + design-token editor + live
-// preview) into the single os admin. The heavy lifting — preset definitions,
-// hex/font/dimension validation, CSS compilation, persistence — already lives in
-// internal/theme and the shared handlers (handleThemePresets/Tokens/Preview/
-// Apply). This file adds the os page shell; the JSON endpoints are reused under
-// session-friendly /os/api/theme/* mirrors registered in admin_os_ui.go.
-//
-// CSP posture matches the rest of VayuOS: zero inline styles, the only inline
-// <script> carries the per-request nonce, every dynamic string is escaped. The
-// live preview never injects a <style> element — it sets --vp-* custom
-// properties on the preview container through the CSSOM (scripted style writes
-// are not gated by style-src), so no compiled-CSS string is ever parsed client
-// side.
-
 import (
 	"html"
 	htmpl "html/template"
 	"net/http"
+	"strconv"
 
 	"github.com/johalputt/vayupress/internal/render"
+	"github.com/johalputt/vayupress/internal/theme"
 )
 
-// themeColorField is one editable colour token. Field is the canonical Tokens
-// field name (matched case-insensitively by applyOverrides); Vari is the public
-// --vp-* variable it maps to for the live preview (dark-mode tokens only).
 type themeColorField struct {
-	Field string // e.g. "AccentDark"
+	Field string
 	Label string
-	Vari  string // e.g. "accent" → --vp-accent (empty when not previewed)
+	Vari  string
 }
 
-// themeDarkColors are the dark-mode tokens, each wired to a preview variable.
 func themeDarkColors() []themeColorField {
 	return []themeColorField{
 		{"BgDark", "Background", "bg"},
@@ -47,7 +29,6 @@ func themeDarkColors() []themeColorField {
 	}
 }
 
-// themeLightColors are the light-mode tokens (no live preview — preview is dark).
 func themeLightColors() []themeColorField {
 	return []themeColorField{
 		{"BgLight", "Background", ""},
@@ -60,9 +41,6 @@ func themeLightColors() []themeColorField {
 	}
 }
 
-// colorRow renders one colour-token control. The colour input carries the
-// canonical field name and (when set) the preview variable so the JS can both
-// serialise the token and live-update the preview without a server round-trip.
 func colorRow(f themeColorField) string {
 	vari := ""
 	if f.Vari != "" {
@@ -74,12 +52,39 @@ func colorRow(f themeColorField) string {
 </label>`
 }
 
-// textRow renders a typography/layout text token control.
 func textRow(field, label, placeholder string) string {
 	return `<label class="theme-field theme-field--text">
   <span class="theme-field__label">` + html.EscapeString(label) + `</span>
   <input type="text" class="input" data-token="` + html.EscapeString(field) + `" placeholder="` + html.EscapeString(placeholder) + `" aria-label="` + html.EscapeString(label) + `">
 </label>`
+}
+
+func themeCardHTML(t theme.Tokens) string {
+	borderColor := t.AccentDark
+	if borderColor == "" {
+		borderColor = t.BgDark
+	}
+	accentColor := t.AccentDark
+	if accentColor == "" {
+		accentColor = "#6c5ce7"
+	}
+
+	return `<button class="theme-card" data-preset="` + html.EscapeString(t.Name) + `"
+  title="Apply ` + html.EscapeString(t.Name) + ` theme"
+  aria-label="Apply ` + html.EscapeString(t.Name) + ` preset">
+  <div class="theme-card__preview" style="background:` + html.EscapeString(t.BgDark) + `">
+    <div class="theme-card__bar" style="background:` + html.EscapeString(t.SurfaceDark) + `"></div>
+    <div class="theme-card__body">
+      <div class="theme-card__line" style="background:` + html.EscapeString(t.MutedDark) + `"></div>
+      <div class="theme-card__line theme-card__line--short" style="background:` + html.EscapeString(t.MutedDark) + `"></div>
+      <div class="theme-card__pills">
+        <span style="background:` + html.EscapeString(accentColor) + `"></span>
+        <span style="background:` + html.EscapeString(t.Accent2Dark) + `"></span>
+      </div>
+    </div>
+  </div>
+  <span class="theme-card__name">` + html.EscapeString(t.Name) + `</span>
+</button>`
 }
 
 func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
@@ -102,6 +107,13 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
 		textRow("RadiusSm", "Small radius", "0.25rem") +
 		textRow("RadiusLg", "Large radius", "0.75rem")
 
+	// Build theme gallery cards
+	presets := theme.AllPresets()
+	galleryCards := ""
+	for _, t := range presets {
+		galleryCards += themeCardHTML(t)
+	}
+
 	body := `<div class="page-header">
   <h1>Theme Studio</h1>
   <div class="page-actions">
@@ -113,10 +125,20 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
 
 <div class="theme-studio" data-theme-studio>
   <div class="theme-studio__main">
+
+    <!-- ── Gallery ── -->
     <div class="card mb-6">
-      <div class="card-title">Presets</div>
-      <div class="text-sm muted mb-3">Start from a built-in palette, then fine-tune any token below.</div>
-      <div class="theme-presets" data-theme-presets aria-label="Theme presets"></div>
+      <div class="card-title">Gallery</div>
+      <div class="text-sm muted mb-3">` + strconv.Itoa(len(presets)) + ` built-in themes. Click to preview, apply to set your site's theme.</div>
+      <div class="theme-gallery" data-theme-gallery aria-label="Theme gallery">
+        ` + galleryCards + `
+      </div>
+    </div>
+
+    <!-- ── Active preset indicator ── -->
+    <div class="card mb-6">
+      <div class="card-title" data-active-preset-name>Current theme</div>
+      <div class="text-sm muted">Fine-tune any token below to customise the active theme.</div>
     </div>
 
     <div class="card mb-6">
@@ -152,7 +174,6 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
         </div>
       </article>
     </div>
-    <div class="text-xs muted mt-3">Preview reflects dark-mode tokens. Light-mode values apply on readers whose system is set to light.</div>
   </aside>
 </div>
 <script nonce="` + nonce + `" src="/os/static/js/admin-os-theme.js"></script>`
