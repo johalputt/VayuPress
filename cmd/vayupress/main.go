@@ -385,6 +385,10 @@ func main() {
 				if n, err := a.analytics.Purge(context.Background(), config.Cfg.AnalyticsRetainDays); err == nil && n > 0 {
 					logging.LogInfo("analytics", fmt.Sprintf("purged %d aggregate rows older than %dd", n, config.Cfg.AnalyticsRetainDays))
 				}
+				// VayuAnalytics: data-minimisation sweep of detailed session/pageview rows.
+				if n, err := a.analytics.PurgeOlderThan(context.Background(), config.Cfg.AnalyticsRetainDays); err == nil && n > 0 {
+					logging.LogInfo("analytics", fmt.Sprintf("purged %d detailed rows older than %dd", n, config.Cfg.AnalyticsRetainDays))
+				}
 			}
 		}
 	}()
@@ -410,6 +414,9 @@ func main() {
 			}
 		}
 	}()
+
+	// ── VayuOS control layer (Phase 2): Publishing · Mail · PGP ──────────────
+	a.bootVayuOS()
 
 	// Mode journal — durable SQLite-backed transition log (Ω6).
 	dbPath := config.EnvOr("DB_PATH", "./vayupress.db")

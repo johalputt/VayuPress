@@ -22,6 +22,23 @@ license. The project's Apache-2.0 license does not alter those terms.
   Licensed under the MIT License.
   https://github.com/picocss/pico
 
+The VayuPGP privacy layer and VayuMail sovereignty layer (added in v1.8.0) are
+built on the following Go modules, compiled into the single VayuPress binary:
+
+* ProtonMail go-crypto (VayuPGP: OpenPGP keygen, encrypt/decrypt/sign/verify, WKD)
+  Copyright (c) The ProtonMail Authors
+  Licensed under the Apache License, Version 2.0.
+  https://github.com/ProtonMail/go-crypto
+
+* Cloudflare CIRCL (transitive elliptic-curve backend for go-crypto)
+  Copyright (c) Cloudflare, Inc.
+  Licensed under the BSD-3-Clause License (with an additional patent grant).
+  https://github.com/cloudflare/circl
+
+VayuMail's SMTP submission, DKIM signing (RFC 6376), Maildir storage, queue and
+DNS tooling are original VayuPress code written in pure Go on the standard
+library; VayuPress does not bundle or fork the Mox mail server.
+
 Go module dependencies retain their respective upstream licenses (MIT,
 Apache-2.0, and BSD-3-Clause) as declared in go.mod / go.sum; see
 docs/ARCHITECTURE.md for the dependency license inventory.

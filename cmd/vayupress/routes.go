@@ -135,6 +135,13 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	r.Get("/api/v1/newsletter/unsubscribe", a.handleNewsletterUnsubscribe)
 	r.Get("/api/v1/openapi.json", a.handleOpenAPISpec)
 
+	// VayuAnalytics — public ingest + tracking script (no auth; body-capped and per-IP rate-limited).
+	r.Post("/api/v1/analytics/collect", a.handleAnalyticsCollect)
+	r.Get("/static/vp-analytics.js", a.handleAnalyticsScript)
+
+	// VayuPGP Web Key Directory — public key discovery (RFC WKD advanced method).
+	r.Get("/.well-known/openpgpkey/*", a.handleWKD)
+
 	// Reader memberships (Tier 2) — public passwordless login + paywall.
 	r.Get("/signup", a.handleMemberSignup)
 	r.Post("/api/v1/members/login", a.handleMemberLogin)
@@ -180,6 +187,25 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 
 		// Privacy-first analytics (Tier 2).
 		r.Get("/api/v1/admin/analytics", a.handleAnalytics)
+
+		// VayuAnalytics — extended endpoints (Tier 2, protected).
+		r.Get("/api/v1/analytics/overview", a.handleAnalyticsOverview)
+		r.Get("/api/v1/analytics/pageviews", a.handleAnalyticsPageviews)
+		r.Get("/api/v1/analytics/pages", a.handleAnalyticsPages)
+		r.Get("/api/v1/analytics/referrers", a.handleAnalyticsReferrers)
+		r.Get("/api/v1/analytics/browsers", a.handleAnalyticsBrowsers)
+		r.Get("/api/v1/analytics/devices", a.handleAnalyticsDevices)
+		r.Get("/api/v1/analytics/os", a.handleAnalyticsOS)
+		r.Get("/api/v1/analytics/utm", a.handleAnalyticsUTM)
+		r.Get("/api/v1/analytics/events", a.handleAnalyticsEvents)
+		r.Get("/api/v1/analytics/realtime", a.handleAnalyticsRealtime)
+		r.Get("/api/v1/analytics/sessions", a.handleAnalyticsSessions)
+		r.Get("/api/v1/analytics/funnels", a.handleAnalyticsFunnels)
+		r.With(auth.CSRFTokenMiddleware).Post("/api/v1/analytics/funnels", a.handleAnalyticsCreateFunnel)
+		r.Get("/api/v1/analytics/funnels/{id}", a.handleAnalyticsGetFunnel)
+		r.Get("/api/v1/analytics/retention", a.handleAnalyticsRetention)
+		r.Get("/api/v1/analytics/revenue", a.handleAnalyticsRevenue)
+		r.With(auth.CSRFTokenMiddleware).Post("/api/v1/analytics/revenue", a.handleAnalyticsRecordRevenue)
 
 		// AI writing assistant — local Ollama, opt-in (Tier 2).
 		r.Get("/api/v1/admin/ai/status", a.handleAIStatus)

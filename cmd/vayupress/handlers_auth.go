@@ -119,6 +119,8 @@ func (a *App) handleUserCreate(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusBadRequest, "create-error", err.Error(), "")
 		return
 	}
+	// VayuOS: auto-provision PGP keypair + mailbox for the new account.
+	a.publishUserCreated(r.Context(), u.ID, u.Name, u.Email)
 	writeJSON(w, r, http.StatusCreated, map[string]interface{}{"user": u})
 }
 

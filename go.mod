@@ -3,6 +3,7 @@ module github.com/johalputt/vayupress
 go 1.25.0
 
 require (
+	github.com/ProtonMail/go-crypto v1.4.1
 	github.com/alecthomas/chroma/v2 v2.27.0
 	github.com/go-chi/chi/v5 v5.3.0
 	github.com/graphql-go/graphql v0.8.1
@@ -13,7 +14,10 @@ require (
 	golang.org/x/crypto v0.53.0
 )
 
-require github.com/dlclark/regexp2/v2 v2.2.1 // indirect
+require (
+	github.com/cloudflare/circl v1.6.2 // indirect
+	github.com/dlclark/regexp2/v2 v2.2.1 // indirect
+)
 
 require (
 	github.com/aymerick/douceur v0.2.0 // indirect

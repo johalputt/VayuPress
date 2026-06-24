@@ -17,7 +17,55 @@
 > **Adaptive publishing infrastructure for the sovereign web.**
 > SQLite-first, zero-trust, zero telemetry. Policy-governed runtime with adaptive system modes, sandboxed plugins, transactional event outbox, durable audit trail, and fault-tolerant federated publishing.
 
-## What's New in v1.7.0
+> **Complete digital sovereignty in one binary.**
+> _Own your content. Own your communication. Own your infrastructure._
+> Publishing is the core identity, **VayuMail** the native sovereignty layer, **VayuPGP** the native privacy layer, and **VayuOS** the native control layer — all in a single Go binary, single process, single config.
+
+## What's New in v1.8.0
+
+> Full notes in [`CHANGELOG.md`](CHANGELOG.md) · upgrade steps in [`docs/UPGRADING.md`](docs/UPGRADING.md)
+
+**Sovereignty release — VayuAnalytics, VayuOS Phase 2 (VayuMail + VayuPGP), and the Theme Studio Gallery.**
+
+- **VayuAnalytics — privacy-first, cookieless, no-PII web analytics.** Pageviews,
+  sessions, top pages, referrers, UTM campaigns, custom events, funnels,
+  retention cohorts and revenue — stored locally in SQLite. Visitor identity is
+  a **server-side daily-rotating salted hash**: no cookies, no `localStorage`,
+  no IP or User-Agent ever stored, no consent banner required, nothing to leak
+  on a database compromise. The public ingest endpoint is body-capped and
+  per-IP rate-limited; a retention sweeper enforces data minimisation.
+- **VayuPGP — native end-to-end PGP privacy layer** (built on ProtonMail
+  go-crypto). Ed25519 + Curve25519 keypairs auto-generated on account creation,
+  **private keys AES-256-GCM encrypted at rest** under a key derived from the
+  master secret (never logged, never leave the server), full
+  encrypt/decrypt/sign/verify, key rotation that preserves old messages, and a
+  **Web Key Directory (WKD)** served at `/.well-known/openpgpkey/` so any GPG
+  client can discover your keys.
+- **VayuMail — native outbound mail sovereignty layer.** RFC 6376 **DKIM
+  signing** (relaxed/relaxed, RSA-SHA256), **direct-to-MX delivery** with
+  opportunistic STARTTLS (no third-party relay), a durable SQLite retry queue,
+  Maildir storage, automatic **MX / SPF / DKIM / DMARC** record generation with
+  **live DNS health checks**, and automatic PGP encryption of outgoing mail when
+  a recipient key is discoverable. Mail never leaves your server unencrypted to
+  a third party.
+- **VayuOS control layer** — a typed event bus (account creation auto-provisions
+  a PGP keypair + mailbox), an ordered boot orchestrator with graceful
+  degradation, and a health monitor, all surfaced in the `/os/vayuos` console
+  (keys, mail queue, DNS health, security updates).
+- **Security-update watcher** — an **opt-in** (privacy-default-off) advisory that
+  tracks upstream security releases of the crypto dependencies powering VayuPGP
+  and VayuMail, surfacing available patches in the panel. It transmits nothing
+  about your site.
+- **Theme Studio Gallery** — expanded preset gallery (20+ themes incl. the new
+  **Gale** editorial and **Zephyr** bright-creative layouts) with a CSP-safe
+  Pico bridge so presets restyle the public site instantly, plus WCAG-AA
+  contrast and ≥44px touch targets.
+
+> **Scope note:** VayuMail v1.8.0 delivers the **outbound** sovereignty path
+> (submission, DKIM, queue, DNS, WKD, PGP). A full inbound MX + IMAP server is a
+> governed future milestone under the Operational Simplicity Doctrine.
+
+## Previously in v1.7.0
 
 > Full notes in [`CHANGELOG.md`](CHANGELOG.md) · upgrade steps in [`docs/UPGRADING.md`](docs/UPGRADING.md)
 

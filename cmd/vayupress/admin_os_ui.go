@@ -137,6 +137,12 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/tools/toggle", a.handleOSToolToggle)
 		pr.Get("/os/seo", a.handleOSSEONative)
 		pr.Get("/os/analytics", a.handleOSAnalytics)
+		// VayuOS — native control layer (Phase 2): Publishing · Mail · PGP.
+		pr.Get("/os/vayuos", a.handleVayuOSDashboard)
+		pr.Get("/os/vayuos/pgp", a.handleVayuOSPGP)
+		pr.Get("/os/vayuos/mail", a.handleVayuOSMail)
+		pr.Get("/os/vayuos/security", a.handleVayuOSSecurity)
+		pr.Get("/os/api/vayuos/health", a.handleVayuOSHealthJSON)
 		pr.Get("/os/settings", a.handleOSSettings)
 		pr.Get("/os/settings/{group}", a.handleOSSettings)
 
@@ -329,6 +335,7 @@ func adminOSShellHead(nonce, title, active string, settings *osSettings) string 
     ` + navItem("/os/seo", "SEO", "seo", active, iconSEO) + `
     ` + navItem("/os/analytics", "Analytics", "analytics", active, iconAnalytics) + `
     ` + navItem("/os/theme", "Theme Studio", "theme", active, iconTheme) + `
+    ` + navItem("/os/vayuos", "VayuOS", "vayuos", active, iconSecurity) + `
 
     <div class="sidebar-section-label">System</div>
     ` + navItem("/os/monitoring", "Monitoring", "monitoring", active, iconMonitoring) + `
