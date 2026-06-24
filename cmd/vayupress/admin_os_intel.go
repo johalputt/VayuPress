@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strconv"
 
+	"github.com/johalputt/vayupress/internal/analytics"
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/render"
@@ -109,15 +110,13 @@ func (a *App) handleOSAnalytics(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Load overview data for the default tab
 	sum, err := a.analytics.Since(r.Context(), 30, 10)
 	if err != nil || sum == nil {
-		body := `<div class="page-header"><h1>Analytics</h1></div>
-<div class="empty-state">No analytics data yet.</div>`
-		writeOSHTML(w, adminOSLayout(nonce, "Analytics", "analytics", cfg, htmpl.HTML(body)))
-		return
+		sum = &analytics.Summary{Days: 30, TopPages: []analytics.PathCount{}, Referrers: []analytics.HostCount{}, Daily: []analytics.DayCount{}}
 	}
 
-	// Sparkline of daily views (reuse the dashboard renderer).
+	// Sparkline of daily views
 	vals := make([]int, 0, len(sum.Daily))
 	for _, d := range sum.Daily {
 		vals = append(vals, int(d.Views))
@@ -146,13 +145,46 @@ func (a *App) handleOSAnalytics(w http.ResponseWriter, r *http.Request) {
 		refs = `<div class="table-wrap"><table class="table"><thead><tr><th>Referrer</th><th>Hits</th></tr></thead><tbody>` + rows + `</tbody></table></div>`
 	}
 
+	// Tab navigation
+	tabs := `<div class="tab-bar">
+<a href="/os/analytics?tab=overview" class="tab active" data-tab="overview">Overview</a>
+<a href="/os/analytics?tab=realtime" class="tab" data-tab="realtime">Realtime</a>
+<a href="/os/analytics?tab=pages" class="tab" data-tab="pages">Pages</a>
+<a href="/os/analytics?tab=referrers" class="tab" data-tab="referrers">Referrers</a>
+<a href="/os/analytics?tab=audience" class="tab" data-tab="audience">Audience</a>
+<a href="/os/analytics?tab=events" class="tab" data-tab="events">Events</a>
+<a href="/os/analytics?tab=funnels" class="tab" data-tab="funnels">Funnels</a>
+<a href="/os/analytics?tab=retention" class="tab" data-tab="retention">Retention</a>
+<a href="/os/analytics?tab=revenue" class="tab" data-tab="revenue">Revenue</a>
+<a href="/os/analytics?tab=replays" class="tab" data-tab="replays">Replays</a>
+</div>`
+
+	// Tab content containers
 	body := `<div class="page-header"><h1>Analytics</h1>
   <span class="muted text-sm">` + strconv.FormatInt(sum.TotalViews, 10) + ` views · 30 days</span>
-</div>` + spark + `
+</div>` + tabs + `
+<div id="tab-overview" class="tab-content active">` + spark + `
 <div class="grid grid-2">
   <div class="card"><div class="card-title">Top pages</div>` + pages + `</div>
   <div class="card"><div class="card-title">Referrers</div>` + refs + `</div>
-</div>`
+</div></div>
+<div id="tab-realtime" class="tab-content"><div class="card" id="realtime-card"><div class="card-title">Loading...</div></div></div>
+<div id="tab-pages" class="tab-content"><div class="card" id="pages-card"><div class="card-title">Loading...</div></div></div>
+<div id="tab-referrers" class="tab-content"><div class="card" id="referrers-card"><div class="card-title">Loading...</div></div></div>
+<div id="tab-audience" class="tab-content"><div class="card" id="audience-card"><div class="card-title">Loading...</div></div></div>
+<div id="tab-events" class="tab-content"><div class="card" id="events-card"><div class="card-title">Loading...</div></div></div>
+<div id="tab-funnels" class="tab-content"><div class="card" id="funnels-card"><div class="card-title">Loading...</div></div></div>
+<div id="tab-retention" class="tab-content"><div class="card" id="retention-card"><div class="card-title">Loading...</div></div></div>
+<div id="tab-revenue" class="tab-content"><div class="card" id="revenue-card"><div class="card-title">Loading...</div></div></div>
+<div id="tab-replays" class="tab-content"><div class="card" id="replays-card"><div class="card-title">Loading...</div></div></div>
+<script nonce="` + nonce + `">
+(function(){
+var tab=new URLSearchParams(window.location.search).get('tab')||'overview';
+document.querySelectorAll('.tab').forEach(function(t){if(t.dataset.tab===tab)t.classList.add('active');else t.classList.remove('active')});
+document.querySelectorAll('.tab-content').forEach(function(c){c.style.display='none'});
+var el=document.getElementById('tab-'+tab);if(el)el.style.display='block';
+})();
+</script>`
 
 	writeOSHTML(w, adminOSLayout(nonce, "Analytics", "analytics", cfg, htmpl.HTML(body)))
 }

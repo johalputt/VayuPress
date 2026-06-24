@@ -135,6 +135,10 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	r.Get("/api/v1/newsletter/unsubscribe", a.handleNewsletterUnsubscribe)
 	r.Get("/api/v1/openapi.json", a.handleOpenAPISpec)
 
+	// Analytics — public ingest + tracking script (no auth).
+	r.Post("/api/v1/analytics/collect", a.handleAnalyticsCollect)
+	r.Get("/static/vp-analytics.js", a.handleAnalyticsScript)
+
 	// Reader memberships (Tier 2) — public passwordless login + paywall.
 	r.Get("/signup", a.handleMemberSignup)
 	r.Post("/api/v1/members/login", a.handleMemberLogin)
@@ -180,6 +184,27 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 
 		// Privacy-first analytics (Tier 2).
 		r.Get("/api/v1/admin/analytics", a.handleAnalytics)
+
+		// Analytics — Umami-grade extended endpoints (protected).
+		r.Get("/api/v1/analytics/overview", a.handleAnalyticsOverview)
+		r.Get("/api/v1/analytics/pageviews", a.handleAnalyticsPageviews)
+		r.Get("/api/v1/analytics/pages", a.handleAnalyticsPages)
+		r.Get("/api/v1/analytics/referrers", a.handleAnalyticsReferrers)
+		r.Get("/api/v1/analytics/countries", a.handleAnalyticsCountries)
+		r.Get("/api/v1/analytics/browsers", a.handleAnalyticsBrowsers)
+		r.Get("/api/v1/analytics/devices", a.handleAnalyticsDevices)
+		r.Get("/api/v1/analytics/utm", a.handleAnalyticsUTM)
+		r.Get("/api/v1/analytics/events", a.handleAnalyticsEvents)
+		r.Get("/api/v1/analytics/realtime", a.handleAnalyticsRealtime)
+		r.Get("/api/v1/analytics/sessions", a.handleAnalyticsSessions)
+		r.Get("/api/v1/analytics/funnels", a.handleAnalyticsFunnels)
+		r.Post("/api/v1/analytics/funnels", a.handleAnalyticsCreateFunnel)
+		r.Get("/api/v1/analytics/funnels/{id}", a.handleAnalyticsGetFunnel)
+		r.Get("/api/v1/analytics/retention", a.handleAnalyticsRetention)
+		r.Get("/api/v1/analytics/revenue", a.handleAnalyticsRevenue)
+		r.Post("/api/v1/analytics/revenue", a.handleAnalyticsRecordRevenue)
+		r.Get("/api/v1/analytics/replays", a.handleAnalyticsReplays)
+		r.Get("/api/v1/analytics/replays/{id}", a.handleAnalyticsGetReplay)
 
 		// AI writing assistant — local Ollama, opt-in (Tier 2).
 		r.Get("/api/v1/admin/ai/status", a.handleAIStatus)
