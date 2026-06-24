@@ -138,6 +138,11 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/tools/toggle", a.handleOSToolToggle)
 		pr.Get("/os/seo", a.handleOSSEONative)
 		pr.Get("/os/analytics", a.handleOSAnalytics)
+		// VayuAnalytics: export downloads + goal management (session-authed).
+		pr.Get("/os/api/analytics/export", a.handleAnalyticsExport)
+		pr.Get("/os/api/analytics/realtime", a.handleAnalyticsRealtime)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/analytics/goals", a.handleAnalyticsCreateGoal)
+		pr.With(auth.CSRFTokenMiddleware).Delete("/os/api/analytics/goals/{id}", a.handleAnalyticsDeleteGoal)
 		// VayuOS — native control layer (Phase 2): Publishing · Mail · PGP.
 		pr.Get("/os/vayuos", a.handleVayuOSDashboard)
 		pr.Get("/os/vayuos/pgp", a.handleVayuOSPGP)

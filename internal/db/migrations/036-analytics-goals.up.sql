@@ -1,0 +1,2 @@
+CREATE TABLE IF NOT EXISTS analytics_goals(id TEXT PRIMARY KEY,name TEXT NOT NULL,kind TEXT NOT NULL DEFAULT 'path',target TEXT NOT NULL DEFAULT '',created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE INDEX IF NOT EXISTS idx_agoals_created ON analytics_goals(created_at DESC);

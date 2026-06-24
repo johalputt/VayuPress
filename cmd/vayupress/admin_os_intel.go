@@ -6,6 +6,7 @@ package main
 // VayuPress's sovereign, zero-telemetry stance.
 
 import (
+	"context"
 	"fmt"
 	"html"
 	htmpl "html/template"
@@ -111,10 +112,14 @@ func (a *App) handleOSAnalytics(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sum, err := a.analytics.Since(r.Context(), 30, 10)
+	// Selected reporting period (default 30 days, up to 3 years).
+	days, periodLabel := analyticsPeriod(r)
+
+	sum, err := a.analytics.Since(r.Context(), days, 10)
 	if err != nil || sum == nil {
-		body := `<div class="page-header"><h1>Analytics</h1></div>
-<div class="empty-state">No analytics data yet.</div>`
+		body := `<div class="page-header"><h1>Analytics</h1></div>` +
+			osPeriodSelector(days) +
+			`<div class="empty-state">No analytics data yet.</div>`
 		writeOSHTML(w, adminOSLayout(nonce, "Analytics", "analytics", cfg, htmpl.HTML(body)))
 		return
 	}
@@ -126,7 +131,7 @@ func (a *App) handleOSAnalytics(w http.ResponseWriter, r *http.Request) {
 	}
 	spark := ""
 	if len(vals) > 0 {
-		spark = `<div class="card mb-6"><div class="card-title">Views — last 30 days</div>
+		spark = `<div class="card mb-6"><div class="card-title">Views — ` + periodLabel + `</div>
 <div class="sparkline-wrap">` + osSparkline(vals) + `</div></div>`
 	}
 
@@ -150,12 +155,15 @@ func (a *App) handleOSAnalytics(w http.ResponseWriter, r *http.Request) {
 
 	// ── VayuAnalytics extended insights (v1.8.0): audience, engagement, events ──
 	ctx := r.Context()
-	ov, _ := a.analytics.OverviewSince(ctx, 30)
-	devices, _ := a.analytics.Devices(ctx, 30)
-	browsers, _ := a.analytics.Browsers(ctx, 30)
-	oses, _ := a.analytics.OperatingSystems(ctx, 30)
-	events, _ := a.analytics.CustomEvents(ctx, 30)
-	utm, _ := a.analytics.UTMStats(ctx, 30)
+	ov, _ := a.analytics.OverviewSince(ctx, days)
+	devices, _ := a.analytics.Devices(ctx, days)
+	browsers, _ := a.analytics.Browsers(ctx, days)
+	oses, _ := a.analytics.OperatingSystems(ctx, days)
+	events, _ := a.analytics.CustomEvents(ctx, days)
+	utm, _ := a.analytics.UTMStats(ctx, days)
+	countries, _ := a.analytics.Countries(ctx, days)
+	regions, _ := a.analytics.Regions(ctx, days)
+	cities, _ := a.analytics.Cities(ctx, days)
 
 	overviewCard := ""
 	if ov != nil {
@@ -179,28 +187,166 @@ func (a *App) handleOSAnalytics(w http.ResponseWriter, r *http.Request) {
 		utmRows = `<div class="table-wrap"><table class="table"><thead><tr><th>Source</th><th>Medium</th><th>Campaign</th><th>Hits</th></tr></thead><tbody>` + rows + `</tbody></table></div>`
 	}
 
-	extra := `<div class="card-title vm-section-title">VayuAnalytics — session insights · last 30 days</div>
+	extra := `<div class="card-title vm-section-title">VayuAnalytics — session insights · ` + periodLabel + `</div>
 <p class="muted text-sm mb-3">Cookieless, no-PII (server-side daily-rotating salted hash). Populates as visitors hit your site after this update.</p>` +
 		overviewCard +
 		`<div class="grid grid-3">
   <div class="card"><div class="card-title">Devices</div>` + osAudienceTable(devices) + `</div>
   <div class="card"><div class="card-title">Browsers</div>` + osAudienceTable(browsers) + `</div>
   <div class="card"><div class="card-title">Operating systems</div>` + osAudienceTable(oses) + `</div>
-</div>
+</div>` + osGeoSection(countries, regions, cities) + `
 <div class="grid grid-2">
   <div class="card"><div class="card-title">Custom events</div>` + osEventTable(events) + `</div>
   <div class="card"><div class="card-title">Campaign sources (UTM)</div>` + utmRows + `</div>
-</div>`
+</div>` + a.osGoalsSection(ctx, days) + a.osJourneySection(ctx, days) + osExportSection(days)
 
 	body := `<div class="page-header"><h1>Analytics</h1>
-  <span class="muted text-sm">` + strconv.FormatInt(sum.TotalViews, 10) + ` views · 30 days</span>
-</div>` + spark + `
+  <span class="muted text-sm">` + strconv.FormatInt(sum.TotalViews, 10) + ` views · ` + periodLabel + `</span>
+</div>` + osPeriodSelector(days) + osLiveCard() + spark + `
 <div class="grid grid-2">
   <div class="card"><div class="card-title">Top pages</div>` + pages + `</div>
   <div class="card"><div class="card-title">Referrers</div>` + refs + `</div>
-</div>` + extra
+</div>` + extra + `
+<script nonce="` + nonce + `" src="/os/static/js/admin-os-intel.js"></script>`
 
 	writeOSHTML(w, adminOSLayout(nonce, "Analytics", "analytics", cfg, htmpl.HTML(body)))
+}
+
+// analyticsPeriodOptions defines the selectable reporting windows, in days.
+var analyticsPeriodOptions = []struct {
+	Days  int
+	Label string
+}{
+	{1, "24 hours"}, {7, "7 days"}, {30, "30 days"}, {90, "90 days"},
+	{180, "6 months"}, {365, "1 year"}, {730, "2 years"}, {1095, "3 years"},
+}
+
+// analyticsPeriod resolves the ?days= query param to a whitelisted window,
+// returning the day count and a human label. Defaults to 30 days; the maximum
+// is 3 years (1095 days).
+func analyticsPeriod(r *http.Request) (int, string) {
+	want, _ := strconv.Atoi(r.URL.Query().Get("days"))
+	for _, o := range analyticsPeriodOptions {
+		if o.Days == want {
+			return o.Days, "last " + o.Label
+		}
+	}
+	return 30, "last 30 days"
+}
+
+// osPeriodSelector renders the period chooser as a row of links (GET, no JS).
+func osPeriodSelector(days int) string {
+	b := `<div class="vm-row mb-4" data-period>`
+	for _, o := range analyticsPeriodOptions {
+		cls := "btn btn--sm"
+		if o.Days == days {
+			cls += " btn--primary"
+		}
+		b += `<a class="` + cls + `" href="/os/analytics?days=` + strconv.Itoa(o.Days) + `">` + o.Label + `</a>`
+	}
+	return b + `</div>`
+}
+
+// osLiveCard renders the live-visitors panel; admin-os-intel.js polls
+// /os/api/analytics/realtime every few seconds and fills it in.
+func osLiveCard() string {
+	return `<div class="card mb-6" data-live>
+  <div class="card-title"><span class="live-dot"></span> Live · active now</div>
+  <div class="vm-stat" data-live-count>—</div>
+  <div class="muted text-sm">visitors active in the last 5 minutes · updates every 10s</div>
+  <div class="table-wrap mt-3"><table class="table"><thead><tr><th>Active page</th><th>Viewers</th></tr></thead><tbody data-live-pages><tr><td colspan="2" class="muted">Waiting for live data…</td></tr></tbody></table></div>
+</div>`
+}
+
+// osGeoSection renders country/region/city breakdowns. Geo is populated only
+// when a reverse proxy (e.g. Cloudflare) supplies location headers; when empty
+// it shows guidance rather than a blank card.
+func osGeoSection(countries, regions, cities []analytics.AudienceStat) string {
+	if len(countries) == 0 && len(regions) == 0 && len(cities) == 0 {
+		return `<div class="card"><div class="card-title">Locations</div>
+<div class="empty-state">No location data yet. VayuPress does no GeoIP lookups (privacy by design); to see countries/cities, front your site with a proxy that sets geo headers — e.g. Cloudflare's <code>CF-IPCountry</code> (country, all plans) and <code>CF-IPCity</code> (city, where available), or any <code>X-Geo-Country</code> / <code>X-Geo-City</code> header.</div></div>`
+	}
+	return `<div class="grid grid-3">
+  <div class="card"><div class="card-title">Countries</div>` + osAudienceTable(countries) + `</div>
+  <div class="card"><div class="card-title">Regions</div>` + osAudienceTable(regions) + `</div>
+  <div class="card"><div class="card-title">Cities</div>` + osAudienceTable(cities) + `</div>
+</div>`
+}
+
+// osGoalsSection renders the conversion-goals card: a create form, plus a table
+// of each goal's completions and conversion rate over the selected window.
+func (a *App) osGoalsSection(ctx context.Context, days int) string {
+	results, _ := a.analytics.GoalResults(ctx, days)
+	rows := `<tr><td colspan="5" class="muted">No goals yet. Add one above (e.g. a "/thank-you" path view or a "signup" custom event).</td></tr>`
+	if len(results) > 0 {
+		rows = ""
+		for _, g := range results {
+			rows += `<tr><td class="row-title">` + html.EscapeString(g.Name) + `</td>` +
+				`<td><span class="badge">` + html.EscapeString(g.Kind) + `</span></td>` +
+				`<td class="muted">` + html.EscapeString(g.Target) + `</td>` +
+				`<td>` + strconv.Itoa(g.Completions) + ` <span class="muted text-xs">(` + strconv.Itoa(g.UniqueVisitors) + ` visitors)</span></td>` +
+				`<td>` + fmt.Sprintf("%.1f%%", g.ConversionRate) + `</td>` +
+				`<td><button class="btn btn--danger btn--sm" data-goal-delete="` + html.EscapeString(g.ID) + `">Delete</button></td></tr>`
+		}
+	}
+	return `<div class="card mt-6" data-goals>
+  <div class="card-title">Conversion goals</div>
+  <p class="muted text-sm mb-3">Track how many visitors reach a page or fire a custom event. Conversion rate is the share of all unique visitors in the window.</p>
+  <form class="vm-row mb-3" data-goal-form>
+    <input class="input" type="text" data-goal-name placeholder="Goal name (e.g. Newsletter signup)" required>
+    <select class="input" data-goal-kind>
+      <option value="path">Page view</option>
+      <option value="event">Custom event</option>
+    </select>
+    <input class="input" type="text" data-goal-target placeholder="/thank-you  or  signup" required>
+    <button class="btn btn--primary" type="submit">Add goal</button>
+  </form>
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th>Goal</th><th>Type</th><th>Target</th><th>Completions</th><th>Conv. rate</th><th></th></tr></thead>
+    <tbody>` + rows + `</tbody>
+  </table></div>
+</div>`
+}
+
+// osJourneySection renders the top page-to-page transitions (visitor journey).
+func (a *App) osJourneySection(ctx context.Context, days int) string {
+	flows, _ := a.analytics.PathFlows(ctx, days, 25)
+	body := `<div class="empty-state">No multi-page journeys recorded yet.</div>`
+	if len(flows) > 0 {
+		rows := ""
+		for _, f := range flows {
+			rows += `<tr><td class="row-title">` + html.EscapeString(f.From) + `</td><td class="muted">→</td><td class="row-title">` + html.EscapeString(f.To) + `</td><td>` + strconv.Itoa(f.Count) + `</td></tr>`
+		}
+		body = `<div class="table-wrap"><table class="table"><thead><tr><th>From</th><th></th><th>To</th><th>Transitions</th></tr></thead><tbody>` + rows + `</tbody></table></div>`
+	}
+	return `<div class="card mt-6">
+  <div class="card-title">Visitor journey</div>
+  <p class="muted text-sm mb-3">Most common page-to-page transitions. <code>(entry)</code> marks where sessions begin and <code>(exit)</code> where they end.</p>` + body + `</div>`
+}
+
+// osExportSection renders download links for every report in CSV and JSON over
+// the selected window.
+func osExportSection(days int) string {
+	labels := map[string]string{
+		"overview": "Overview", "pages": "Top pages", "referrers": "Referrers",
+		"browsers": "Browsers", "devices": "Devices", "os": "Operating systems",
+		"countries": "Countries", "regions": "Regions", "cities": "Cities",
+		"utm": "Campaigns (UTM)", "events": "Custom events", "sessions": "Sessions",
+		"goals": "Goals", "journey": "Visitor journey",
+	}
+	d := strconv.Itoa(days)
+	rows := ""
+	for _, rep := range analyticsExportReports {
+		base := "/os/api/analytics/export?days=" + d + "&report=" + rep
+		rows += `<tr><td class="row-title">` + html.EscapeString(labels[rep]) + `</td>` +
+			`<td><a class="btn btn--sm" href="` + base + `&format=csv" download>CSV</a> ` +
+			`<a class="btn btn--sm" href="` + base + `&format=json" download>JSON</a></td></tr>`
+	}
+	return `<div class="card mt-6">
+  <div class="card-title">Export reports</div>
+  <p class="muted text-sm mb-3">Download any report as CSV or JSON for the selected period. Exports are computed locally and contain no PII.</p>
+  <div class="table-wrap"><table class="table"><thead><tr><th>Report</th><th>Download</th></tr></thead><tbody>` + rows + `</tbody></table></div>
+</div>`
 }
 
 // osStatCard renders a single big-number stat card.
