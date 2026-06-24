@@ -2,6 +2,7 @@ package mail
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"net/mail"
 	"os"
@@ -100,6 +101,33 @@ func (e *Engine) Inbox(domain, username string) ([]StoredMessage, error) {
 		domain = e.cfg.Domain
 	}
 	return e.maildir.List(domain, username)
+}
+
+// ReadInboxMessage returns a stored message for display, PGP-decrypted for the
+// owning account when possible (best-effort).
+func (e *Engine) ReadInboxMessage(domain, username, id string) ([]byte, error) {
+	if e.maildir == nil {
+		return nil, errors.New("vayumail: not started")
+	}
+	if domain == "" {
+		domain = e.cfg.Domain
+	}
+	raw, err := e.maildir.ReadRaw(domain, username, id)
+	if err != nil {
+		return nil, err
+	}
+	if e.decrypt != nil {
+		raw = e.decrypt(username+"@"+domain, raw)
+	}
+	return raw, nil
+}
+
+// Sent returns recent outbound messages (the "Sent" view) from the queue.
+func (e *Engine) Sent(ctx context.Context, limit int) ([]SentInfo, error) {
+	if e.queue == nil {
+		return []SentInfo{}, nil
+	}
+	return e.queue.Recent(ctx, limit)
 }
 
 // markSeen moves a message from new/ to cur/ (with the Maildir ":2,S" flag),

@@ -13,6 +13,7 @@ import (
 	"html"
 	htmpl "html/template"
 	"net/http"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"time"
@@ -265,10 +266,12 @@ func (a *App) handleVayuOSDashboard(w http.ResponseWriter, r *http.Request) {
 		rows.WriteString(`<tr><td>` + html.EscapeString(c.Name) + `</td><td>` + badge + `</td><td class="muted">` + html.EscapeString(c.Detail) + `</td></tr>`)
 	}
 	body := `<div class="page-header"><h1>VayuOS</h1>
-<span class="muted text-sm">Complete digital sovereignty in one binary — Publishing · Mail · PGP</span></div>
+<span class="muted text-sm">Complete digital sovereignty in one binary — Publishing · Mail · PGP</span></div>` + vayuosNav("overview") + `
 <div class="grid grid-3">
+  <div class="card"><div class="card-title">Inbox</div><p class="muted">Read mail received into your mailboxes (Maildir).</p><a class="btn" href="/os/vayuos/mail/inbox">Open inbox</a></div>
+  <div class="card"><div class="card-title">Sent</div><p class="muted">Outbound delivery queue with per-message status.</p><a class="btn" href="/os/vayuos/mail/sent">View sent</a></div>
   <div class="card"><div class="card-title">Privacy (VayuPGP)</div><p class="muted">End-to-end PGP, keys encrypted at rest, WKD published.</p><a class="btn" href="/os/vayuos/pgp">Manage keys</a></div>
-  <div class="card"><div class="card-title">Sovereignty (VayuMail)</div><p class="muted">DKIM-signed outbound mail, direct-to-MX, retry queue.</p><a class="btn" href="/os/vayuos/mail">Mail &amp; DNS</a></div>
+  <div class="card"><div class="card-title">Sovereignty (VayuMail)</div><p class="muted">DKIM-signed outbound mail, direct-to-MX, DNS health.</p><a class="btn" href="/os/vayuos/mail">Mail &amp; DNS</a></div>
   <div class="card"><div class="card-title">Security updates</div><p class="muted">Track upstream PGP/crypto security releases.</p><a class="btn" href="/os/vayuos/security">Updates</a></div>
 </div>
 <div class="card"><div class="card-title">Subsystem health</div>
@@ -294,7 +297,7 @@ func (a *App) handleVayuOSPGP(w http.ResponseWriter, r *http.Request) {
 		rows.WriteString(`<tr><td colspan="4" class="muted">No keys yet — keys are generated automatically when accounts are created.</td></tr>`)
 	}
 	body := `<div class="page-header"><h1>VayuPGP keys</h1>
-<span class="muted text-sm">Ed25519 + Curve25519 · private keys AES-256-GCM encrypted at rest · published via WKD</span></div>
+<span class="muted text-sm">Ed25519 + Curve25519 · private keys AES-256-GCM encrypted at rest · published via WKD</span></div>` + vayuosNav("pgp") + `
 <div class="card"><div class="card-title">Keypairs</div>
 <div class="table-wrap"><table class="table"><thead><tr><th>Email</th><th>Fingerprint</th><th>State</th><th>Expires</th></tr></thead><tbody>` + rows.String() + `</tbody></table></div></div>
 <div class="card"><div class="card-title">Web Key Directory</div><p class="muted">External clients discover these keys at <code>/.well-known/openpgpkey/</code> (advanced method).</p></div>`
@@ -307,6 +310,7 @@ func (a *App) handleVayuOSMail(w http.ResponseWriter, r *http.Request) {
 	mc := a.vayuMail.Config()
 	var body strings.Builder
 	body.WriteString(`<div class="page-header"><h1>VayuMail</h1><span class="muted text-sm">Native outbound mail sovereignty</span></div>`)
+	body.WriteString(vayuosNav("mail"))
 	if !mc.Enabled {
 		body.WriteString(`<div class="empty-state">VayuMail is inactive. Set your domain (DOMAIN env / first-boot wizard) to activate DKIM signing and outbound delivery.</div>`)
 		writeOSHTML(w, adminOSLayout(nonce, "VayuMail", "vayuos", cfg, htmpl.HTML(body.String())))
@@ -344,6 +348,7 @@ func (a *App) handleVayuOSSecurity(w http.ResponseWriter, r *http.Request) {
 	rep, _ := a.vayuSec.Check(r.Context())
 	var body strings.Builder
 	body.WriteString(`<div class="page-header"><h1>Security updates</h1><span class="muted text-sm">Upstream PGP &amp; crypto dependency monitoring</span></div>`)
+	body.WriteString(vayuosNav("security"))
 	if !rep.Enabled {
 		body.WriteString(`<div class="empty-state">The security-update watcher is disabled by default (privacy first). Enable it by setting <code>VAYUOS_SECURITY_UPDATES=on</code>. It fetches only public release metadata from GitHub and never transmits anything about your site.</div>`)
 		// Still show the pinned versions (read from build info, no network).
@@ -381,33 +386,159 @@ func (a *App) handleVayuOSHealthJSON(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, http.StatusOK, a.vayuHealth.Snapshot())
 }
 
-// handleVayuOSInbox shows per-account inbox summaries (v1.9.0 inbound storage).
+// vayuosNav renders the VayuOS sub-navigation shown on every VayuOS page.
+func vayuosNav(active string) string {
+	items := []struct{ key, label, href string }{
+		{"overview", "Overview", "/os/vayuos"},
+		{"inbox", "Inbox", "/os/vayuos/mail/inbox"},
+		{"sent", "Sent", "/os/vayuos/mail/sent"},
+		{"pgp", "PGP Keys", "/os/vayuos/pgp"},
+		{"mail", "Mail & DNS", "/os/vayuos/mail"},
+		{"security", "Security", "/os/vayuos/security"},
+	}
+	var sb strings.Builder
+	sb.WriteString(`<div class="tab-bar" style="display:flex;flex-wrap:wrap;gap:.25rem;margin-bottom:1rem;border-bottom:1px solid var(--border,#222);">`)
+	for _, it := range items {
+		cls := "tab"
+		if it.key == active {
+			cls = "tab active"
+		}
+		sb.WriteString(`<a class="` + cls + `" href="` + it.href + `" style="padding:.5rem .85rem;border-radius:.4rem .4rem 0 0;">` + html.EscapeString(it.label) + `</a>`)
+	}
+	sb.WriteString(`</div>`)
+	return sb.String()
+}
+
+// handleVayuOSInbox lists mailboxes, or (with ?user=) the messages in one.
 func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
 	var body strings.Builder
-	body.WriteString(`<div class="page-header"><h1>Mailboxes</h1><span class="muted text-sm">Inbound message storage (Maildir)</span></div>`)
+	body.WriteString(`<div class="page-header"><h1>Inbox</h1><span class="muted text-sm">Received mail (Maildir)</span></div>`)
+	body.WriteString(vayuosNav("inbox"))
+
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled {
-		body.WriteString(`<div class="empty-state">VayuMail is inactive. Set your domain to provision mailboxes.</div>`)
-		writeOSHTML(w, adminOSLayout(nonce, "Mailboxes", "vayuos", cfg, htmpl.HTML(body.String())))
+		body.WriteString(`<div class="empty-state">VayuMail is inactive. Set <code>DOMAIN</code> to a real domain to provision mailboxes. To receive mail, also enable the inbound listener with <code>VAYUOS_MAIL_INBOUND=on</code>.</div>`)
+		writeOSHTML(w, adminOSLayout(nonce, "Inbox", "vayuos", cfg, htmpl.HTML(body.String())))
 		return
 	}
-	boxes, err := a.vayuMail.Mailboxes()
+	domain := a.vayuMail.Config().Domain
+	user := strings.TrimSpace(r.URL.Query().Get("user"))
+
+	if user == "" {
+		// Mailbox list.
+		boxes, err := a.vayuMail.Mailboxes()
+		if err != nil {
+			body.WriteString(`<div class="empty-state">Could not read mailboxes: ` + html.EscapeString(err.Error()) + `</div>`)
+			writeOSHTML(w, adminOSLayout(nonce, "Inbox", "vayuos", cfg, htmpl.HTML(body.String())))
+			return
+		}
+		body.WriteString(`<div class="card"><div class="card-title">Mailboxes</div><div class="table-wrap"><table class="table"><thead><tr><th>Mailbox</th><th>Messages</th><th>Unseen</th></tr></thead><tbody>`)
+		if len(boxes) == 0 {
+			body.WriteString(`<tr><td colspan="3" class="muted">No mailboxes yet — one is provisioned automatically when an account is created.</td></tr>`)
+		}
+		for _, b := range boxes {
+			addr := b.Username + "@" + domain
+			body.WriteString(`<tr><td><a href="/os/vayuos/mail/inbox?user=` + url.QueryEscape(b.Username) + `">` + html.EscapeString(addr) + `</a></td><td>` + itoaSafe(b.Total) + `</td><td>` + itoaSafe(b.Unseen) + `</td></tr>`)
+		}
+		body.WriteString(`</tbody></table></div></div>`)
+		writeOSHTML(w, adminOSLayout(nonce, "Inbox", "vayuos", cfg, htmpl.HTML(body.String())))
+		return
+	}
+
+	// Messages in one mailbox.
+	msgs, err := a.vayuMail.Inbox(domain, user)
 	if err != nil {
-		body.WriteString(`<div class="empty-state">Could not read mailboxes: ` + html.EscapeString(err.Error()) + `</div>`)
-		writeOSHTML(w, adminOSLayout(nonce, "Mailboxes", "vayuos", cfg, htmpl.HTML(body.String())))
+		body.WriteString(`<div class="empty-state">Could not read mailbox: ` + html.EscapeString(err.Error()) + `</div>`)
+		writeOSHTML(w, adminOSLayout(nonce, "Inbox", "vayuos", cfg, htmpl.HTML(body.String())))
 		return
 	}
-	body.WriteString(`<div class="card"><div class="card-title">Accounts</div><div class="table-wrap"><table class="table"><thead><tr><th>Mailbox</th><th>Messages</th><th>Unseen</th></tr></thead><tbody>`)
-	if len(boxes) == 0 {
-		body.WriteString(`<tr><td colspan="3" class="muted">No mailboxes yet — they are provisioned automatically when accounts are created.</td></tr>`)
+	body.WriteString(`<div class="card"><div class="card-title">` + html.EscapeString(user+"@"+domain) + ` · <a href="/os/vayuos/mail/inbox">all mailboxes</a></div><div class="table-wrap"><table class="table"><thead><tr><th>From</th><th>Subject</th><th>Date</th></tr></thead><tbody>`)
+	if len(msgs) == 0 {
+		body.WriteString(`<tr><td colspan="3" class="muted">No messages. Mail arrives here once the inbound SMTP listener (VAYUOS_MAIL_INBOUND=on) receives it.</td></tr>`)
 	}
-	for _, b := range boxes {
-		body.WriteString(`<tr><td>` + html.EscapeString(b.Username) + `@` + html.EscapeString(a.vayuMail.Config().Domain) + `</td><td>` + itoaSafe(b.Total) + `</td><td>` + itoaSafe(b.Unseen) + `</td></tr>`)
+	for _, m := range msgs {
+		subj := m.Subject
+		if subj == "" {
+			subj = "(no subject)"
+		}
+		link := "/os/vayuos/mail/message?user=" + url.QueryEscape(user) + "&id=" + url.QueryEscape(m.ID)
+		seen := ""
+		if !m.Seen {
+			seen = ` <span class="badge badge-ok">new</span>`
+		}
+		body.WriteString(`<tr><td class="text-sm">` + html.EscapeString(m.From) + `</td><td><a href="` + link + `">` + html.EscapeString(subj) + `</a>` + seen + `</td><td class="muted text-sm">` + m.Date.Format("2006-01-02 15:04") + `</td></tr>`)
 	}
-	body.WriteString(`</tbody></table></div></div>
-<div class="card"><div class="card-title">Roadmap</div><p class="muted">v1.9.0 delivers inbound message storage and read access. A listening MX + IMAP server is the next governed milestone.</p></div>`)
-	writeOSHTML(w, adminOSLayout(nonce, "Mailboxes", "vayuos", cfg, htmpl.HTML(body.String())))
+	body.WriteString(`</tbody></table></div></div>`)
+	writeOSHTML(w, adminOSLayout(nonce, "Inbox", "vayuos", cfg, htmpl.HTML(body.String())))
+}
+
+// handleVayuOSMessage shows a single received message (PGP-decrypted if possible).
+func (a *App) handleVayuOSMessage(w http.ResponseWriter, r *http.Request) {
+	nonce := render.CSPNonce(r)
+	cfg := a.getOSSettings(r.Context())
+	user := strings.TrimSpace(r.URL.Query().Get("user"))
+	id := strings.TrimSpace(r.URL.Query().Get("id"))
+	var body strings.Builder
+	body.WriteString(`<div class="page-header"><h1>Message</h1><span class="muted text-sm">` + html.EscapeString(user) + `</span></div>`)
+	body.WriteString(vayuosNav("inbox"))
+	if a.vayuMail == nil || !a.vayuMail.Config().Enabled || user == "" || id == "" {
+		body.WriteString(`<div class="empty-state">Message not available. <a href="/os/vayuos/mail/inbox">Back to Inbox</a></div>`)
+		writeOSHTML(w, adminOSLayout(nonce, "Message", "vayuos", cfg, htmpl.HTML(body.String())))
+		return
+	}
+	raw, err := a.vayuMail.ReadInboxMessage("", user, id)
+	if err != nil {
+		body.WriteString(`<div class="empty-state">Could not read message: ` + html.EscapeString(err.Error()) + ` <a href="/os/vayuos/mail/inbox?user=` + url.QueryEscape(user) + `">Back</a></div>`)
+		writeOSHTML(w, adminOSLayout(nonce, "Message", "vayuos", cfg, htmpl.HTML(body.String())))
+		return
+	}
+	body.WriteString(`<div class="card"><div class="card-title"><a href="/os/vayuos/mail/inbox?user=` + url.QueryEscape(user) + `">← Back to mailbox</a></div>`)
+	body.WriteString(`<pre style="white-space:pre-wrap;word-break:break-word;font-size:13px;line-height:1.5;max-height:70vh;overflow:auto;">` + html.EscapeString(string(raw)) + `</pre></div>`)
+	writeOSHTML(w, adminOSLayout(nonce, "Message", "vayuos", cfg, htmpl.HTML(body.String())))
+}
+
+// handleVayuOSSent lists recent outbound messages from the delivery queue.
+func (a *App) handleVayuOSSent(w http.ResponseWriter, r *http.Request) {
+	nonce := render.CSPNonce(r)
+	cfg := a.getOSSettings(r.Context())
+	var body strings.Builder
+	body.WriteString(`<div class="page-header"><h1>Sent</h1><span class="muted text-sm">Outbound delivery queue</span></div>`)
+	body.WriteString(vayuosNav("sent"))
+	if a.vayuMail == nil || !a.vayuMail.Config().Enabled {
+		body.WriteString(`<div class="empty-state">VayuMail is inactive. Set <code>DOMAIN</code> to activate outbound delivery.</div>`)
+		writeOSHTML(w, adminOSLayout(nonce, "Sent", "vayuos", cfg, htmpl.HTML(body.String())))
+		return
+	}
+	sent, err := a.vayuMail.Sent(r.Context(), 100)
+	if err != nil {
+		body.WriteString(`<div class="empty-state">Could not read outbound queue: ` + html.EscapeString(err.Error()) + `</div>`)
+		writeOSHTML(w, adminOSLayout(nonce, "Sent", "vayuos", cfg, htmpl.HTML(body.String())))
+		return
+	}
+	body.WriteString(`<div class="card"><div class="card-title">Recent outbound</div><div class="table-wrap"><table class="table"><thead><tr><th>To</th><th>Subject</th><th>Status</th><th>When</th></tr></thead><tbody>`)
+	if len(sent) == 0 {
+		body.WriteString(`<tr><td colspan="4" class="muted">Nothing sent yet. Mail sent through VayuMail (DKIM-signed, direct-to-MX) appears here with delivery status.</td></tr>`)
+	}
+	for _, s := range sent {
+		subj := s.Subject
+		if subj == "" {
+			subj = "(no subject)"
+		}
+		badge := `<span class="badge badge-ok">` + html.EscapeString(s.State) + `</span>`
+		if s.State == "failed" {
+			badge = `<span class="badge badge-warn">failed</span>`
+		} else if s.State == "pending" {
+			badge = `<span class="badge">pending</span>`
+		}
+		when := s.CreatedAt
+		if len(when) > 19 {
+			when = when[:19]
+		}
+		body.WriteString(`<tr><td class="text-sm">` + html.EscapeString(strings.Join(s.To, ", ")) + `</td><td>` + html.EscapeString(subj) + `</td><td>` + badge + `</td><td class="muted text-sm">` + html.EscapeString(when) + `</td></tr>`)
+	}
+	body.WriteString(`</tbody></table></div></div>`)
+	writeOSHTML(w, adminOSLayout(nonce, "Sent", "vayuos", cfg, htmpl.HTML(body.String())))
 }
 
 func itoaSafe(n int) string { return fmt.Sprintf("%d", n) }

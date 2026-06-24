@@ -1,10 +1,12 @@
 package mail
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"net/mail"
 	"time"
 )
 
@@ -128,6 +130,46 @@ func (q *Queue) ProcessDue(ctx context.Context, now time.Time) (delivered, faile
 			attempts, derr.Error(), next, it.id)
 	}
 	return delivered, failed, nil
+}
+
+// SentInfo summarises an outbound queue message for the panel.
+type SentInfo struct {
+	ID        int64    `json:"id"`
+	From      string   `json:"from"`
+	To        []string `json:"to"`
+	Subject   string   `json:"subject"`
+	State     string   `json:"state"`
+	Attempts  int      `json:"attempts"`
+	LastError string   `json:"last_error"`
+	CreatedAt string   `json:"created_at"`
+}
+
+// Recent returns the most recent outbound messages (the "Sent" view).
+func (q *Queue) Recent(ctx context.Context, limit int) ([]SentInfo, error) {
+	if limit <= 0 || limit > 500 {
+		limit = 100
+	}
+	rows, err := q.db.QueryContext(ctx,
+		`SELECT id,from_addr,to_json,raw,state,attempts,last_error,created_at FROM vayumail_queue ORDER BY id DESC LIMIT ?`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []SentInfo{}
+	for rows.Next() {
+		var si SentInfo
+		var toJSON string
+		var raw []byte
+		if err := rows.Scan(&si.ID, &si.From, &toJSON, &raw, &si.State, &si.Attempts, &si.LastError, &si.CreatedAt); err != nil {
+			return nil, err
+		}
+		_ = json.Unmarshal([]byte(toJSON), &si.To)
+		if msg, perr := mail.ReadMessage(bytes.NewReader(raw)); perr == nil {
+			si.Subject = msg.Header.Get("Subject")
+		}
+		out = append(out, si)
+	}
+	return out, rows.Err()
 }
 
 // Status returns counters for the VayuOS panel.
