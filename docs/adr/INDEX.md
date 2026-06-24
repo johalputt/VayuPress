@@ -10,6 +10,11 @@
 | ADR | Title | Status | Owner | Date |
 |-----|-------|--------|-------|------|
 | [ADR-0001](ADR-0001-sqlite-first.md) | SQLite-First Data Layer | Accepted | Core | 2024-01-01 |
+| [ADR-0076](ADR-0076-vayupgp-at-rest-keys.md) | VayuPGP — Keys Encrypted At Rest | Accepted | VayuOS | 2026-06-24 |
+| [ADR-0077](ADR-0077-vayumail-outbound-pure-go.md) | VayuMail Outbound — Pure-Go (No Mox Fork) | Accepted | VayuOS | 2026-06-24 |
+| [ADR-0078](ADR-0078-vayumail-inbound-optin.md) | VayuMail Inbound — Opt-In SMTP/IMAP | Accepted | VayuOS | 2026-06-24 |
+| [ADR-0079](ADR-0079-vayuanalytics-no-pii.md) | VayuAnalytics — No-PII Rotating Salt | Accepted | VayuOS | 2026-06-24 |
+| [ADR-0080](ADR-0080-security-update-watcher.md) | Security-Update Watcher — Opt-In | Accepted | VayuOS | 2026-06-24 |
 | [ADR-0002](ADR-0002-self-hosted-fonts.md) | Self-Hosted Fonts | Accepted | Core | 2024-01-01 |
 | [ADR-0032](ADR-0032-plugin-pool-waitgroup.md) | Plugin Pool WaitGroup | Accepted | Sandbox | — |
 | [ADR-0033](ADR-0033-wal-adaptive-checkpoint.md) | WAL Adaptive Checkpoint | Accepted | DB | — |

@@ -8,6 +8,14 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+_Nothing yet._
+
+---
+
+## [1.9.0] — 2026-06-24
+
+**"Stable Private Email" — the inbound half of VayuMail.**
+
 ### Added (v1.9.0 — "Stable Private Email")
 
 - **Inbound mail — receive side complete.** Local delivery into Maildir
