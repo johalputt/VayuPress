@@ -265,8 +265,8 @@ func (a *App) handleVayuOSDashboard(w http.ResponseWriter, r *http.Request) {
 		}
 		rows.WriteString(`<tr><td>` + html.EscapeString(c.Name) + `</td><td>` + badge + `</td><td class="muted">` + html.EscapeString(c.Detail) + `</td></tr>`)
 	}
-	body := `<div class="page-header"><h1>VayuOS</h1>
-<span class="muted text-sm">Complete digital sovereignty in one binary — Publishing · Mail · PGP</span></div>` + vayuosNav("overview") + `
+	body := `<div class="page-header"><h1>VayuMail</h1>
+<span class="muted text-sm">Native mail sovereignty + privacy — Mail · Inbox · Sent · PGP · DNS</span></div>` + vayuosNav("overview") + `
 <div class="grid grid-3">
   <div class="card"><div class="card-title">Inbox</div><p class="muted">Read mail received into your mailboxes (Maildir).</p><a class="btn" href="/os/vayuos/mail/inbox">Open inbox</a></div>
   <div class="card"><div class="card-title">Sent</div><p class="muted">Outbound delivery queue with per-message status.</p><a class="btn" href="/os/vayuos/mail/sent">View sent</a></div>
@@ -276,7 +276,7 @@ func (a *App) handleVayuOSDashboard(w http.ResponseWriter, r *http.Request) {
 </div>
 <div class="card"><div class="card-title">Subsystem health</div>
 <div class="table-wrap"><table class="table"><thead><tr><th>Component</th><th>Status</th><th>Detail</th></tr></thead><tbody>` + rows.String() + `</tbody></table></div></div>`
-	writeOSHTML(w, adminOSLayout(nonce, "VayuOS", "vayuos", cfg, htmpl.HTML(body)))
+	writeOSHTML(w, adminOSLayout(nonce, "VayuMail", "vayuos", cfg, htmpl.HTML(body)))
 }
 
 func (a *App) handleVayuOSPGP(w http.ResponseWriter, r *http.Request) {

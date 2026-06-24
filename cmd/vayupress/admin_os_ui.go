@@ -338,7 +338,7 @@ func adminOSShellHead(nonce, title, active string, settings *osSettings) string 
     ` + navItem("/os/seo", "SEO", "seo", active, iconSEO) + `
     ` + navItem("/os/analytics", "Analytics", "analytics", active, iconAnalytics) + `
     ` + navItem("/os/theme", "Theme Studio", "theme", active, iconTheme) + `
-    ` + navItem("/os/vayuos", "VayuOS", "vayuos", active, iconSecurity) + `
+    ` + navItem("/os/vayuos", "VayuMail", "vayuos", active, iconSecurity) + `
 
     <div class="sidebar-section-label">System</div>
     ` + navItem("/os/monitoring", "Monitoring", "monitoring", active, iconMonitoring) + `
