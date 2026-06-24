@@ -1,0 +1,53 @@
+name: Tag Release
+
+# Creates and pushes a `v*` git tag, which triggers the signed `release.yml`
+# workflow (build + cosign + publish). A release can therefore be cut by bumping
+# the `.release-version` file on main, or by a manual run — no local git tagging
+# required. Sovereign: uses only the built-in GITHUB_TOKEN, no external actions.
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".release-version"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version tag to create (e.g. v1.9.0)"
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: tag-release
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create and push tag
+        run: |
+          set -euo pipefail
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            V="${{ github.event.inputs.version }}"
+          else
+            V="$(tr -d ' \t\r\n' < .release-version)"
+          fi
+          case "$V" in
+            v[0-9]*) : ;;
+            *) echo "::error::version '$V' must look like vX.Y.Z"; exit 1 ;;
+          esac
+          if git ls-remote --tags origin "refs/tags/$V" | grep -q "refs/tags/$V"; then
+            echo "Tag $V already exists on origin — nothing to do."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "$V" -m "VayuPress $V"
+          git push origin "$V"
+          echo "Pushed tag $V — release.yml will build, sign, and publish."
