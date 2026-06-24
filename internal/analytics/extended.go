@@ -652,11 +652,17 @@ type CohortRow struct {
 	Weeks []int  `json:"weeks"`
 }
 
+// maxRetentionWeeks bounds the retention cohort window. It is a compile-time
+// constant so cohort slices are never sized from request-controlled input.
+const maxRetentionWeeks = 12
+
 // Retention returns weekly cohort retention computed in a single pass over the
 // session table (bounded set), avoiding per-visitor N+1 queries.
 func (s *Store) Retention(ctx context.Context, weeks int) ([]CohortRow, error) {
-	if weeks <= 0 || weeks > 12 {
-		weeks = 12
+	// Hard-clamp the request-controlled window to a fixed maximum. weeks is only
+	// ever used as a loop/slice bound below — never as an allocation size.
+	if weeks <= 0 || weeks > maxRetentionWeeks {
+		weeks = maxRetentionWeeks
 	}
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT visitor_id, DATE(created_at) FROM analytics_sessions ORDER BY created_at DESC LIMIT 50000`)
@@ -703,7 +709,9 @@ func (s *Store) Retention(ctx context.Context, weeks int) ([]CohortRow, error) {
 		cohortKey := v.first.Format("2006-01-02")
 		a, ok := cohorts[cohortKey]
 		if !ok {
-			a = &agg{weeks: make([]int, weeks)}
+			// Allocate a fixed-size slice (constant, never request-sized); only
+			// indices [1, weeks) are populated below.
+			a = &agg{weeks: make([]int, maxRetentionWeeks)}
 			cohorts[cohortKey] = a
 		}
 		a.size++
@@ -725,7 +733,8 @@ func (s *Store) Retention(ctx context.Context, weeks int) ([]CohortRow, error) {
 
 	result := []CohortRow{}
 	for date, a := range cohorts {
-		result = append(result, CohortRow{Date: date, Size: a.size, Weeks: a.weeks})
+		// Trim the fixed-size slice to the requested (clamped) window for output.
+		result = append(result, CohortRow{Date: date, Size: a.size, Weeks: a.weeks[:weeks]})
 	}
 	return result, nil
 }
