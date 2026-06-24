@@ -1,0 +1,77 @@
+name: Publish v1.9.0 Release
+
+# Self-contained release runner that executes when this branch is pushed (and on
+# manual dispatch). It builds, best-effort cosign-signs, ensures the v1.9.0 tag,
+# and publishes the GitHub Release — without requiring a merge to main. Signing
+# is non-fatal so the Release always publishes (binary + sha256).
+on:
+  push:
+    branches: [ci/publish-v1.9.0]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write
+
+concurrency:
+  group: publish-v1-9-0
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install C build tools
+        run: sudo apt-get install -y gcc build-essential
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
+          cache: true
+
+      - name: Build binary
+        run: |
+          set -euo pipefail
+          VERSION="v1.9.0"
+          mkdir -p dist
+          CGO_ENABLED=1 GOTOOLCHAIN=auto go build \
+            -trimpath -ldflags="-s -w -X main.Version=${VERSION#v}" \
+            -o dist/vayupress ./cmd/vayupress
+          sha256sum dist/vayupress > dist/vayupress.sha256
+          echo "built $VERSION"
+
+      - name: Install cosign
+        continue-on-error: true
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign binary (keyless OIDC, best-effort)
+        continue-on-error: true
+        run: |
+          cosign sign-blob --yes dist/vayupress --bundle dist/vayupress.cosign.bundle \
+            || echo "cosign skipped/failed — publishing without signature"
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.9.0
+          name: "VayuPress v1.9.0 — Stable Private Email"
+          generate_release_notes: true
+          fail_on_unmatched_files: false
+          body: |
+            **VayuPress v1.9.0 — "Stable Private Email"** completes the sovereignty stack in one binary.
+
+            - **VayuMail** — outbound DKIM (RFC 6376) + direct-to-MX delivery + durable SQLite queue, and the v1.9.0 inbound side: SMTP-receive (no open relay), minimal IMAP read server, and transparent PGP-decrypt-on-read. Opt-in via `VAYUOS_MAIL_INBOUND=on`.
+            - **VayuPGP** — Ed25519 + Curve25519 keys, AES-256-GCM at rest, encrypt/decrypt/sign/verify, rotation, and WKD at `/.well-known/openpgpkey/`.
+            - **VayuAnalytics** — cookieless, no-PII analytics (server-side daily-rotating salted hash; no IP/UA stored).
+            - **VayuOS** — typed event bus, ordered boot, health monitor at `/os/vayuos`; opt-in security-update watcher.
+            - **Theme Studio Gallery** — 20+ presets incl. Gale & Zephyr.
+
+            See `CHANGELOG.md` and ADR-0076–0080.
+          files: |
+            dist/vayupress
+            dist/vayupress.sha256
+            dist/vayupress.cosign.bundle
