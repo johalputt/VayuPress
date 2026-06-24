@@ -25,7 +25,7 @@ import (
 // is also used by the admin UI to render the export buttons.
 var analyticsExportReports = []string{
 	"overview", "pages", "referrers", "browsers", "devices",
-	"os", "utm", "events", "sessions", "goals", "journey",
+	"os", "countries", "regions", "cities", "utm", "events", "sessions", "goals", "journey",
 }
 
 // handleAnalyticsExport serves GET /api/v1/analytics/export?report=&format=&days=
@@ -127,6 +127,17 @@ func (a *App) buildAnalyticsExport(r *http.Request, report string, days int) (he
 		}
 		return header, rows, items, nil
 
+	case "countries", "regions", "cities":
+		items, e := audienceFor(ctx, a.analytics, report, days)
+		if e != nil {
+			return nil, nil, nil, e
+		}
+		header = []string{strings.TrimSuffix(report, "s"), "visitors"}
+		for _, it := range items {
+			rows = append(rows, []string{it.Label, strconv.Itoa(it.Count)})
+		}
+		return header, rows, items, nil
+
 	case "utm":
 		items, e := a.analytics.UTMStats(ctx, days)
 		if e != nil {
@@ -192,6 +203,12 @@ func audienceFor(ctx context.Context, store *analytics.Store, report string, day
 		return store.Browsers(ctx, days)
 	case "devices":
 		return store.Devices(ctx, days)
+	case "countries":
+		return store.Countries(ctx, days)
+	case "regions":
+		return store.Regions(ctx, days)
+	case "cities":
+		return store.Cities(ctx, days)
 	default:
 		return store.OperatingSystems(ctx, days)
 	}

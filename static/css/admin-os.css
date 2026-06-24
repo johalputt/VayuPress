@@ -1994,3 +1994,23 @@
 .vm-stat { font-size: 1.6rem; font-weight: 600; }
 .vm-section-title { margin-top: 1.5rem; }
 .vm-break { word-break: break-all; }
+
+
+/* Live analytics indicator — pulsing dot next to the "Live" card title. */
+.vp-os .live-dot {
+  display: inline-block;
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  background: var(--ok, #1db954);
+  margin-right: 0.4rem;
+  vertical-align: middle;
+  animation: vp-live-pulse 1.6s ease-in-out infinite;
+}
+@keyframes vp-live-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(0.7); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vp-os .live-dot { animation: none; }
+}

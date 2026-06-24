@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -131,11 +132,37 @@ func (a *App) handleAnalyticsCollect(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
+	// Geo is set server-side from trusted proxy headers, never from the beacon.
+	req.Geo = geoFromHeaders(r)
 	if err := a.analytics.Collect(r.Context(), req, ip, r.UserAgent()); err != nil {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// geoFromHeaders extracts coarse visitor location from trusted reverse-proxy
+// headers. VayuPress performs no GeoIP lookup and bundles no GeoIP database; if
+// the operator fronts VayuPress with a proxy that injects these headers (e.g.
+// Cloudflare's CF-IPCountry), the data is recorded — otherwise it stays empty.
+// No IP is ever stored. Country is normalised to an uppercase ISO alpha-2 code;
+// Cloudflare's "XX"/"T1" placeholders (unknown / Tor) are dropped.
+func geoFromHeaders(r *http.Request) analytics.GeoInfo {
+	pick := func(keys ...string) string {
+		for _, k := range keys {
+			if v := strings.TrimSpace(r.Header.Get(k)); v != "" {
+				return v
+			}
+		}
+		return ""
+	}
+	country := strings.ToUpper(pick("CF-IPCountry", "X-Geo-Country", "X-Country", "X-AppEngine-Country"))
+	if country == "XX" || country == "T1" || len(country) != 2 {
+		country = ""
+	}
+	region := pick("CF-Region", "cf-region", "X-Geo-Region", "X-AppEngine-Region")
+	city := pick("CF-IPCity", "cf-ipcity", "X-Geo-City", "X-City", "X-AppEngine-City")
+	return analytics.GeoInfo{Country: country, Region: region, City: city}
 }
 
 // ── Protected extended endpoints ─────────────────────────────────────────────

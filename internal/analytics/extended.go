@@ -150,6 +150,20 @@ type CollectRequest struct {
 	EventType   int               `json:"event_type"` // 1=pageview 2=customEvent
 	EventName   string            `json:"event_name"`
 	EventData   map[string]string `json:"event_data"`
+
+	// Geo is populated server-side from trusted reverse-proxy headers (never
+	// from the client beacon — hence json:"-"). VayuPress performs NO GeoIP
+	// lookups and bundles no GeoIP database: if the operator's proxy (e.g.
+	// Cloudflare) supplies country/region/city headers they are recorded,
+	// otherwise these stay empty. No IP is ever persisted.
+	Geo GeoInfo `json:"-"`
+}
+
+// GeoInfo carries coarse, proxy-supplied location for a visit.
+type GeoInfo struct {
+	Country string // ISO-3166 alpha-2 (e.g. "US"), uppercased
+	Region  string
+	City    string
 }
 
 // maxEventDataProps bounds how many custom-event properties a single beacon may
@@ -176,14 +190,17 @@ func (s *Store) Collect(ctx context.Context, req CollectRequest, ip, ua string) 
 	os := coarseOS(ua)
 	device := coarseDevice(ua)
 
-	// Upsert the session. country/region/city remain empty: VayuPress performs
-	// no GeoIP lookups (no third-party data sharing, no IP retention).
+	// Upsert the session. country/region/city are populated only from trusted
+	// reverse-proxy headers (see CollectRequest.Geo); VayuPress itself performs
+	// no GeoIP lookups and retains no IP.
 	var exists string
 	_ = s.db.QueryRowContext(ctx, `SELECT id FROM analytics_sessions WHERE id=?`, sid).Scan(&exists)
 	if exists == "" {
 		if _, err := s.db.ExecContext(ctx,
 			`INSERT OR IGNORE INTO analytics_sessions(id,visitor_id,browser,os,device,screen,language,country,region,city,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
-			sid, vid, browser, os, device, "", "", "", "", "", time.Now().UTC()); err != nil {
+			sid, vid, browser, os, device, "", "",
+			trunc(req.Geo.Country, 2), trunc(req.Geo.Region, 80), trunc(req.Geo.City, 120),
+			time.Now().UTC()); err != nil {
 			return err
 		}
 	}
@@ -387,19 +404,36 @@ func (s *Store) OperatingSystems(ctx context.Context, days int) ([]AudienceStat,
 	return s.audienceSince(ctx, "os", days)
 }
 
+// Countries returns visitor counts by country (ISO alpha-2), populated only
+// when a reverse proxy supplies geo headers (see CollectRequest.Geo).
+func (s *Store) Countries(ctx context.Context, days int) ([]AudienceStat, error) {
+	return s.audienceSince(ctx, "country", days)
+}
+
+// Regions returns visitor counts by region/state (proxy-supplied).
+func (s *Store) Regions(ctx context.Context, days int) ([]AudienceStat, error) {
+	return s.audienceSince(ctx, "region", days)
+}
+
+// Cities returns visitor counts by city (proxy-supplied; often empty unless the
+// CDN/proxy provides a city header).
+func (s *Store) Cities(ctx context.Context, days int) ([]AudienceStat, error) {
+	return s.audienceSince(ctx, "city", days)
+}
+
 func (s *Store) audienceSince(ctx context.Context, column string, days int) ([]AudienceStat, error) {
 	if days <= 0 {
 		days = 14
 	}
 	// column is a fixed internal identifier (never user input), so this is safe.
 	switch column {
-	case "browser", "device", "os":
+	case "browser", "device", "os", "country", "region", "city":
 	default:
 		column = "browser"
 	}
 	from := time.Now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT `+column+`,COUNT(DISTINCT visitor_id) FROM analytics_sessions WHERE created_at>=? AND `+column+`!='' GROUP BY `+column+` ORDER BY 2 DESC`, from)
+		`SELECT `+column+`,COUNT(DISTINCT visitor_id) FROM analytics_sessions WHERE created_at>=? AND `+column+`!='' GROUP BY `+column+` ORDER BY 2 DESC LIMIT 100`, from)
 	if err != nil {
 		return nil, err
 	}
