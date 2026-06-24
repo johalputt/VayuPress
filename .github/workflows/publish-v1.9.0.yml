@@ -59,6 +59,7 @@ jobs:
         with:
           tag_name: v1.9.0
           name: "VayuPress v1.9.0 — Stable Private Email"
+          make_latest: true
           generate_release_notes: true
           fail_on_unmatched_files: false
           body: |
