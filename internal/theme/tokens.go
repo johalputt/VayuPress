@@ -3,6 +3,7 @@ package theme
 // Tokens holds the full set of design tokens for a VayuPress theme.
 // Dark-mode tokens apply when prefers-color-scheme is dark (the default);
 // light-mode tokens apply via the @media override.
+// CustomCSS is optional per-preset CSS injected alongside the token stylesheet.
 type Tokens struct {
 	Name string
 
@@ -35,4 +36,7 @@ type Tokens struct {
 	MaxWidth string
 	RadiusSm string
 	RadiusLg string
+
+	// Per-preset CSS (optional) — injected into /theme.css when this preset is active.
+	CustomCSS string `json:"custom_css,omitempty"`
 }

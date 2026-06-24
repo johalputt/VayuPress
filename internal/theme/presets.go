@@ -1,5 +1,10 @@
 package theme
 
+import _ "embed"
+
+//go:embed flair.css
+var flairCSS string
+
 // Default returns the Default preset — neutral dark/light tones.
 func Default() Tokens {
 	return Tokens{
@@ -257,6 +262,7 @@ func AllPresets() []Tokens {
 		Rust(),
 		Glacier(),
 		Coral(),
+		Flair(),
 	}
 }
 
@@ -425,5 +431,20 @@ func Coral() Tokens {
 		AccentLight: "#f43f5e", Accent2Light: "#be123c", HiLight: "#ea580c",
 		FontSans: "system-ui, Inter, sans-serif", FontMono: "IBM Plex Mono, monospace",
 		FontSizeBase: "1.0625rem", LineHeight: "1.7", MaxWidth: "42rem", RadiusSm: "0.5rem", RadiusLg: "0.75rem",
+	}
+}
+
+// Flair — editorial magazine style, bold typography, dark sophistication.
+// Inspired by the Ghost Flair theme — large hero sections, card-based grid
+// layout, warm amber accents against deep charcoal backgrounds.
+func Flair() Tokens {
+	return Tokens{
+		Name: "Flair", BgDark: "#111318", SurfaceDark: "#1a1d24", TextDark: "#e8eaed",
+		MutedDark: "#8b919e", AccentDark: "#d4a853", Accent2Dark: "#f0d78c", HiDark: "#60a5fa", GreenDark: "#4ade80",
+		BgLight: "#fafaf8", SurfaceLight: "#ffffff", TextLight: "#1a1a1a", MutedLight: "#6b6b6b",
+		AccentLight: "#b8860b", Accent2Light: "#d4a853", HiLight: "#2563eb",
+		FontSans: "Inter, system-ui, sans-serif", FontMono: "IBM Plex Mono, monospace",
+		FontSizeBase: "1.125rem", LineHeight: "1.8", MaxWidth: "48rem", RadiusSm: "0.25rem", RadiusLg: "0.25rem",
+		CustomCSS: flairCSS,
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"github.com/microcosm-cc/bluemonday"
 
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/theme"
 )
@@ -155,6 +156,20 @@ func (a *App) handleThemeApply(w http.ResponseWriter, r *http.Request) {
 
 	render.SetThemeCSS(css)
 	render.CachePurgeAll()
+
+	// If the activated theme has associated CustomCSS, persist it to site_settings
+	// so it is included in /theme.css on every page load.
+	if t.CustomCSS != "" {
+		if a.siteSettings != nil {
+			if err := a.siteSettings.Set(r.Context(), "theme.custom_css", t.CustomCSS); err != nil {
+				logging.LogError("theme", "failed to save preset custom CSS", err.Error())
+			}
+		}
+		// Force render to pick up the new custom CSS.
+		render.SetActiveSettings(render.SiteSettings{
+			CustomCSS: t.CustomCSS,
+		})
+	}
 
 	dbpkg.AuditLog("theme.apply", dbpkg.AuditActor(r), t.Name, "")
 
