@@ -16,6 +16,7 @@ import (
 type StoredMessage struct {
 	ID      string    `json:"id"`
 	From    string    `json:"from"`
+	To      string    `json:"to"`
 	Subject string    `json:"subject"`
 	Date    time.Time `json:"date"`
 	Size    int64     `json:"size"`

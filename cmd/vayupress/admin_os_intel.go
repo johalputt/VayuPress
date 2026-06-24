@@ -179,7 +179,7 @@ func (a *App) handleOSAnalytics(w http.ResponseWriter, r *http.Request) {
 		utmRows = `<div class="table-wrap"><table class="table"><thead><tr><th>Source</th><th>Medium</th><th>Campaign</th><th>Hits</th></tr></thead><tbody>` + rows + `</tbody></table></div>`
 	}
 
-	extra := `<div class="card-title mt-6" style="margin-top:1.5rem">VayuAnalytics — session insights · last 30 days</div>
+	extra := `<div class="card-title vm-section-title">VayuAnalytics — session insights · last 30 days</div>
 <p class="muted text-sm mb-3">Cookieless, no-PII (server-side daily-rotating salted hash). Populates as visitors hit your site after this update.</p>` +
 		overviewCard +
 		`<div class="grid grid-3">
@@ -205,7 +205,7 @@ func (a *App) handleOSAnalytics(w http.ResponseWriter, r *http.Request) {
 
 // osStatCard renders a single big-number stat card.
 func osStatCard(label, val string) string {
-	return `<div class="card"><div class="card-title">` + html.EscapeString(label) + `</div><div class="stat" style="font-size:1.6rem;font-weight:600">` + html.EscapeString(val) + `</div></div>`
+	return `<div class="card"><div class="card-title">` + html.EscapeString(label) + `</div><div class="vm-stat">` + html.EscapeString(val) + `</div></div>`
 }
 
 // osAudienceTable renders a label/count breakdown (devices, browsers, OS).

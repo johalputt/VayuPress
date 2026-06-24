@@ -14,16 +14,82 @@ import (
 // Engine is the VayuMail runtime: DKIM signer + outbound queue + Maildir store,
 // wired to VayuPress core through the Bridge.
 type Engine struct {
-	cfg     Config
-	bridge  Bridge
-	db      *sql.DB
-	dkim    *DKIM
-	queue   *Queue
-	maildir *Maildir
-	smtpd   *SMTPServer
-	imapd   *IMAPServer
-	decrypt DecryptHook
-	done    chan struct{}
+	cfg      Config
+	bridge   Bridge
+	db       *sql.DB
+	dkim     *DKIM
+	queue    *Queue
+	maildir  *Maildir
+	accounts *AccountStore
+	smtpd    *SMTPServer
+	imapd    *IMAPServer
+	decrypt  DecryptHook
+	done     chan struct{}
+}
+
+// Accounts returns the admin-managed mail account store (nil until Start).
+func (e *Engine) Accounts() *AccountStore { return e.accounts }
+
+// Folders returns the standard mailbox folder names.
+func (e *Engine) Folders() []string { return StandardFolders }
+
+// ListFolder returns the messages in a folder for a local account.
+func (e *Engine) ListFolder(username, folder string) ([]StoredMessage, error) {
+	if e.maildir == nil {
+		return nil, errors.New("vayumail: not started")
+	}
+	return e.maildir.ListFolder(e.cfg.Domain, username, folder)
+}
+
+// ReadFolderMessage returns a message from a folder, PGP-decrypted if possible.
+func (e *Engine) ReadFolderMessage(username, folder, id string) ([]byte, error) {
+	if e.maildir == nil {
+		return nil, errors.New("vayumail: not started")
+	}
+	raw, err := e.maildir.ReadRawFolder(e.cfg.Domain, username, folder, id)
+	if err != nil {
+		return nil, err
+	}
+	if e.decrypt != nil {
+		raw = e.decrypt(username+"@"+e.cfg.Domain, raw)
+	}
+	return raw, nil
+}
+
+// MoveMessage moves a message between folders (e.g. mark as Junk, or Trash).
+func (e *Engine) MoveMessage(username, id, from, to string) error {
+	if e.maildir == nil {
+		return errors.New("vayumail: not started")
+	}
+	return e.maildir.MoveBetween(e.cfg.Domain, username, id, from, to)
+}
+
+// DeleteMessage permanently removes a message from a folder.
+func (e *Engine) DeleteMessage(username, folder, id string) error {
+	if e.maildir == nil {
+		return errors.New("vayumail: not started")
+	}
+	return e.maildir.deleteMessage(e.cfg.Domain, username, folder, id)
+}
+
+// Compose assembles, DKIM-signs, queues an outgoing message and files a copy in
+// the sender's Sent folder. senderUserID is the PGP context (may be "").
+func (e *Engine) Compose(ctx context.Context, from string, to []string, subject, body, senderUserID string) (int64, error) {
+	id, err := e.SendMail(ctx, from, to, subject, "", body, senderUserID)
+	if err != nil {
+		return 0, err
+	}
+	// File a plain copy in the sender's Sent folder (best-effort).
+	if e.maildir != nil {
+		local := from
+		if i := strings.Index(local, "@"); i >= 0 {
+			local = local[:i]
+		}
+		sent := "From: " + from + "\r\nTo: " + strings.Join(to, ", ") + "\r\nSubject: " + subject +
+			"\r\nDate: " + time.Now().UTC().Format(time.RFC1123Z) + "\r\n\r\n" + body + "\r\n"
+		_, _ = e.maildir.DeliverTo(e.cfg.Domain, local, "Sent", []byte(sent))
+	}
+	return id, nil
 }
 
 // SetDecryptHook installs a transform applied to messages before they are
@@ -72,6 +138,13 @@ func (e *Engine) Start(ctx context.Context) error {
 	}
 	e.queue = q
 	go e.worker()
+
+	// Admin-managed mail accounts (email + password).
+	if as, aerr := NewAccountStore(e.db); aerr == nil {
+		e.accounts = as
+	} else {
+		return fmt.Errorf("vayumail: accounts init: %w", aerr)
+	}
 
 	// Inbound receive side (opt-in). A listening mail daemon is started only
 	// when the operator explicitly enables it (Operational Simplicity Doctrine).

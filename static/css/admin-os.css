@@ -1980,3 +1980,17 @@
 .seg-btn .muted{font-weight:500;opacity:.7;margin-left:.3em}
 .seg-btn:hover{color:var(--text)}
 .seg-btn.is-active{background:var(--bg-surface);color:var(--text);box-shadow:var(--sh-sm)}
+
+
+/* ── VayuMail panel (CSP-safe: no inline styles) ───────────────────────────── */
+.vmtabs { display: flex; flex-wrap: wrap; gap: .25rem; margin: .25rem 0 1rem; border-bottom: 1px solid var(--os-border, #222); }
+.vmtabs .tab { padding: .5rem .85rem; }
+.vm-row { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; margin-top: .75rem; }
+.vm-row--end { align-items: flex-end; }
+.vm-actions { display: flex; gap: .5rem; flex-wrap: wrap; margin-bottom: .75rem; }
+.vm-grow { flex: 1 1 12rem; }
+.vm-suffix { color: var(--os-muted, #8a8f98); font-size: .85rem; margin-left: .35rem; }
+.vm-pre { white-space: pre-wrap; word-break: break-word; font-size: 13px; line-height: 1.5; max-height: 65vh; overflow: auto; margin: 0; }
+.vm-stat { font-size: 1.6rem; font-weight: 600; }
+.vm-section-title { margin-top: 1.5rem; }
+.vm-break { word-break: break-all; }
