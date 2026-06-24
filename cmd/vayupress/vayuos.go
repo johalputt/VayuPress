@@ -535,8 +535,14 @@ func (a *App) handleVayuOSMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	back := "/os/vayuos/mail/inbox?user=" + url.QueryEscape(user) + "&folder=" + url.QueryEscape(folder)
+	// Reply / Forward open the composer pre-filled from this message (server-side).
+	q := "user=" + url.QueryEscape(user) + "&folder=" + url.QueryEscape(folder) + "&id=" + url.QueryEscape(id)
+	replyLink := "/os/vayuos/mail/compose?reply=1&" + q
+	forwardLink := "/os/vayuos/mail/compose?forward=1&" + q
 	// Action buttons (POST via admin-os-mail.js, CSRF-protected).
 	actions := `<div class="vm-actions" data-mail-actions data-user="` + html.EscapeString(user) + `" data-folder="` + html.EscapeString(folder) + `" data-id="` + html.EscapeString(id) + `">`
+	actions += `<a class="btn btn--primary" href="` + replyLink + `">Reply</a>`
+	actions += `<a class="btn" href="` + forwardLink + `">Forward</a>`
 	if !strings.EqualFold(folder, "Junk") {
 		actions += `<button class="btn" data-mail-move="Junk">Mark as Junk</button>`
 	}

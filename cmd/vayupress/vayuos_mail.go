@@ -4,10 +4,13 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"html"
 	htmpl "html/template"
+	"io"
 	"net/http"
+	netmail "net/mail"
 	"strings"
 
 	"github.com/johalputt/vayupress/internal/auth"
@@ -37,22 +40,97 @@ func (a *App) handleVayuOSCompose(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+
+	// Prefill (reply / forward / direct). Reply and forward load the original
+	// message server-side so URLs stay short and large bodies are handled.
+	prefillTo, prefillSubject, prefillBody := a.composePrefill(r)
+
 	body.WriteString(`<div class="card"><div class="card-title">New message</div>
 <form data-mail-compose>
   <label class="field"><span class="field-label">From</span>
     <select class="input" data-c-from>` + fromOpts + `</select></label>
   <label class="field"><span class="field-label">To (comma-separated)</span>
-    <input class="input" type="text" data-c-to placeholder="someone@example.com" required></label>
+    <input class="input" type="text" data-c-to placeholder="someone@example.com" value="` + html.EscapeString(prefillTo) + `" required></label>
   <label class="field"><span class="field-label">Subject</span>
-    <input class="input" type="text" data-c-subject placeholder="Subject"></label>
+    <input class="input" type="text" data-c-subject placeholder="Subject" value="` + html.EscapeString(prefillSubject) + `"></label>
   <label class="field"><span class="field-label">Message</span>
-    <textarea class="input" rows="12" data-c-body placeholder="Write your message…"></textarea></label>
+    <textarea class="input" rows="12" data-c-body placeholder="Write your message…">` + html.EscapeString(prefillBody) + `</textarea></label>
   <div class="vm-row">
     <button class="btn btn--primary" type="submit">Send</button>
     <span class="muted text-sm" data-c-status></span>
   </div>
 </form></div>` + `<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail.js"></script>`)
 	writeOSHTML(w, adminOSLayout(nonce, "Compose", "vayuos", cfg, htmpl.HTML(body.String())))
+}
+
+// composePrefill derives the To/Subject/Body for the compose form from the
+// request. It supports three modes:
+//
+//   - reply:   ?reply=1&user=&folder=&id=  → To=original From, "Re: ", quoted body
+//   - forward: ?forward=1&user=&folder=&id= → "Fwd: ", quoted body, empty To
+//   - direct:  ?to=&subject=&body=          → verbatim prefill
+//
+// Reply/forward load the stored message (PGP-decrypted for the owner) so the
+// quoted text is readable.
+func (a *App) composePrefill(r *http.Request) (to, subject, bodyText string) {
+	q := r.URL.Query()
+	reply := q.Get("reply") != ""
+	forward := q.Get("forward") != ""
+	if !reply && !forward {
+		return q.Get("to"), q.Get("subject"), q.Get("body")
+	}
+	user := strings.TrimSpace(q.Get("user"))
+	folder := strings.TrimSpace(q.Get("folder"))
+	if folder == "" {
+		folder = "Inbox"
+	}
+	id := strings.TrimSpace(q.Get("id"))
+	if a.vayuMail == nil || user == "" || id == "" {
+		return "", "", ""
+	}
+	raw, err := a.vayuMail.ReadFolderMessage(user, folder, id)
+	if err != nil {
+		return "", "", ""
+	}
+	origFrom, origSubject, origBody := parseForQuote(raw)
+	quoted := quoteBody(origFrom, origBody)
+	if reply {
+		return origFrom, ensurePrefix(origSubject, "Re: "), "\r\n\r\n" + quoted
+	}
+	// forward
+	return "", ensurePrefix(origSubject, "Fwd: "), "\r\n\r\n---------- Forwarded message ----------\r\n" + quoted
+}
+
+// parseForQuote extracts From, Subject and a plain-text body from a raw message.
+func parseForQuote(raw []byte) (from, subject, bodyText string) {
+	msg, err := netmail.ReadMessage(bytes.NewReader(raw))
+	if err != nil {
+		return "", "", string(raw)
+	}
+	from = msg.Header.Get("From")
+	subject = msg.Header.Get("Subject")
+	b, _ := io.ReadAll(msg.Body)
+	return from, subject, string(b)
+}
+
+// quoteBody prefixes each line of the original body with "> " (RFC 3676 style).
+func quoteBody(from, bodyText string) string {
+	var sb strings.Builder
+	if from != "" {
+		sb.WriteString("On a previous message, " + from + " wrote:\r\n")
+	}
+	for _, line := range strings.Split(bodyText, "\n") {
+		sb.WriteString("> " + strings.TrimRight(line, "\r") + "\r\n")
+	}
+	return sb.String()
+}
+
+// ensurePrefix adds prefix unless the string already starts with it (case-insensitive).
+func ensurePrefix(s, prefix string) string {
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(s)), strings.ToLower(strings.TrimSpace(prefix))) {
+		return s
+	}
+	return prefix + s
 }
 
 func (a *App) handleVayuOSSend(w http.ResponseWriter, r *http.Request) {
@@ -176,12 +254,23 @@ func (a *App) handleVayuOSAccounts(w http.ResponseWriter, r *http.Request) {
 </form></div>`)
 
 	// Existing accounts.
-	body.WriteString(`<div class="card"><div class="card-title">Accounts</div><div class="table-wrap"><table class="table"><thead><tr><th>Email</th><th>Name</th><th>Created</th><th></th></tr></thead><tbody>`)
+	body.WriteString(`<div class="card"><div class="card-title">Accounts</div><div class="table-wrap"><table class="table"><thead><tr><th>Email</th><th>Name</th><th>Status</th><th>Created</th><th></th></tr></thead><tbody>`)
 	if len(accs) == 0 {
-		body.WriteString(`<tr><td colspan="4" class="muted">No mail accounts yet.</td></tr>`)
+		body.WriteString(`<tr><td colspan="5" class="muted">No mail accounts yet.</td></tr>`)
 	}
 	for _, ac := range accs {
-		body.WriteString(`<tr><td>` + html.EscapeString(ac.Email) + `</td><td>` + html.EscapeString(ac.FullName) + `</td><td class="muted text-sm">` + ac.CreatedAt.Format("2006-01-02") + `</td><td><button class="btn btn--danger" data-acct-delete="` + html.EscapeString(ac.Email) + `">Delete</button></td></tr>`)
+		status := `<span class="badge badge--ok">active</span>`
+		toggleLabel := "Disable"
+		toggleActive := "false"
+		if !ac.Active {
+			status = `<span class="badge badge--warn">disabled</span>`
+			toggleLabel = "Enable"
+			toggleActive = "true"
+		}
+		body.WriteString(`<tr><td>` + html.EscapeString(ac.Email) + `</td><td>` + html.EscapeString(ac.FullName) + `</td><td>` + status + `</td><td class="muted text-sm">` + ac.CreatedAt.Format("2006-01-02") + `</td><td class="vm-row">` +
+			`<button class="btn" data-acct-pass="` + html.EscapeString(ac.Email) + `">Set password</button>` +
+			`<button class="btn" data-acct-toggle="` + html.EscapeString(ac.Email) + `" data-active="` + toggleActive + `">` + toggleLabel + `</button>` +
+			`<button class="btn btn--danger" data-acct-delete="` + html.EscapeString(ac.Email) + `">Delete</button></td></tr>`)
 	}
 	body.WriteString(`</tbody></table></div></div>`)
 	body.WriteString(`<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail.js"></script>`)
@@ -243,4 +332,49 @@ func (a *App) handleVayuOSAccountDelete(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	writeJSON(w, r, 200, map[string]bool{"deleted": true})
+}
+
+// handleVayuOSAccountUpdate sets a new password and/or enables/disables an
+// existing mail account. Exactly one of {password, active} should be provided
+// per call; both are honoured if present.
+func (a *App) handleVayuOSAccountUpdate(w http.ResponseWriter, r *http.Request) {
+	if a.vayuMail == nil || a.vayuMail.Accounts() == nil {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", "VayuMail is not active", "")
+		return
+	}
+	var in struct {
+		Email  string `json:"email"`
+		Pass   string `json:"pass"`
+		Active *bool  `json:"active"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64*1024)).Decode(&in); err != nil {
+		writeAPIError(w, r, 400, "invalid_json", err.Error(), "")
+		return
+	}
+	if strings.TrimSpace(in.Email) == "" {
+		writeAPIError(w, r, 400, "validation_error", "email is required", "")
+		return
+	}
+	if in.Pass != "" {
+		if len(in.Pass) < 8 {
+			writeAPIError(w, r, 400, "validation_error", "password must be at least 8 characters", "")
+			return
+		}
+		hash, err := auth.HashSecretArgon2id(in.Pass)
+		if err != nil {
+			writeAPIError(w, r, 500, "hash-failed", "could not hash password", "")
+			return
+		}
+		if err := a.vayuMail.Accounts().SetPasswordHash(r.Context(), in.Email, hash); err != nil {
+			writeAPIError(w, r, 400, "update-failed", err.Error(), "")
+			return
+		}
+	}
+	if in.Active != nil {
+		if err := a.vayuMail.Accounts().SetActive(r.Context(), in.Email, *in.Active); err != nil {
+			writeAPIError(w, r, 400, "update-failed", err.Error(), "")
+			return
+		}
+	}
+	writeJSON(w, r, 200, map[string]bool{"updated": true})
 }
