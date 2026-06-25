@@ -10,25 +10,20 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Added
 
-- **VayuAnalytics dashboard polish.** The privacy-first analytics page now reads
-  far more clearly at a glance:
-  - **Full country names + flag emoji.** Country breakdowns show e.g.
-    "🇺🇸 United States" instead of the raw `US` code. The mapping is render-only
-    (ISO 3166-1 alpha-2 → name, flag derived from Regional Indicator Symbols);
-    nothing extra is stored, so the no-GeoIP / no-PII guarantee is unchanged.
-  - **Period-over-period deltas** on the headline metrics (Unique visitors /
-    Visits / Pageviews / Bounce rate) — an up/down badge comparing the selected
-    window to the immediately-preceding window of equal length, powered by the
-    new `Store.OverviewBetween`. Colour semantics are inverted for bounce rate
-    (lower is better).
-  - **Cleaner page URLs** in Top pages and Visitor journey: query strings
-    stripped, percent-encoding decoded, long paths truncated with the full value
-    kept in a tooltip.
-  - **Friendlier empty states** for campaigns, countries, page views, referrers
-    and visitor journeys (actionable guidance instead of a bare "No data yet").
   - **"Last updated" timestamp** in the page header, a **local-only privacy
     footer**, a **loading cue** when switching the time range, and **mobile
     single-column layout** with horizontally swipeable tables.
+- **TLS for mail (STARTTLS + IMAPS + authenticated submission).** The mail
+  listeners now offer encryption: **STARTTLS** on SMTP `:25`, the new
+  **submission** service `:587` (STARTTLS **required** before `AUTH PLAIN`/
+  `LOGIN`, then authenticated relay), and IMAP `:143`; plus implicit-TLS
+  **IMAPS** on `:993`. A CA-signed certificate can be supplied via
+  `VAYUOS_MAIL_TLS_CERT` / `VAYUOS_MAIL_TLS_KEY`; when unset, VayuMail generates
+  an in-memory self-signed certificate so opportunistic STARTTLS works
+  immediately. All TLS listeners are best-effort (a bind/cert failure is
+  surfaced in the health panel but never blocks outbound/local mail). The health
+  row now shows which secure listeners are active (`STARTTLS`, `submission:587`,
+  `IMAPS:993`).
 - **Clean reader view for received mail.** The message page now shows a decoded
   view — From / To / Cc / Subject / Date summary plus the rendered `text/plain`
   body (or sanitised HTML when that's all a message carries) — instead of raw

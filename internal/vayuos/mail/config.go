@@ -57,6 +57,18 @@ type Config struct {
 	// SMTPListen / IMAPListen are the bind addresses for the receive servers.
 	SMTPListen string
 	IMAPListen string
+
+	// TLS. When TLSCertFile/TLSKeyFile are set they are used for STARTTLS
+	// (SMTP :25, submission :587, IMAP :143) and implicit TLS (IMAPS :993).
+	// When empty, an in-memory self-signed certificate is generated for
+	// Hostname so opportunistic STARTTLS still works out of the box (sending
+	// MTAs use opportunistic TLS and do not verify the certificate).
+	TLSCertFile string
+	TLSKeyFile  string
+	// SubmissionListen is the authenticated mail-submission bind address (587).
+	SubmissionListen string
+	// IMAPSListen is the implicit-TLS IMAP bind address (993).
+	IMAPSListen string
 	// MaxMessageBytes caps an inbound message size.
 	MaxMessageBytes int64
 
@@ -82,6 +94,8 @@ func DefaultConfig() Config {
 		InboundEnabled:    true, // on by default; disable with VAYUOS_MAIL_INBOUND=off
 		SMTPListen:        ":25",
 		IMAPListen:        ":143",
+		SubmissionListen:  ":587",
+		IMAPSListen:       ":993",
 		MaxMessageBytes:   25 * 1024 * 1024, // 25 MiB
 		JunkFilterEnabled: true,             // local heuristic, no external services
 	}
