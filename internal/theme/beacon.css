@@ -234,3 +234,28 @@
   .beacon-btn:hover{transform:none}
   .beacon-topics--cards{scroll-behavior:auto}
 }
+
+
+/* ============================================================================
+   Live public-site styling — overrides the real VayuPress markup (vayu-*).
+   Identity: modern SaaS — sticky glass nav, a gradient-mesh hero backdrop,
+   clean white cards with soft shadows in a grid, pill buttons.
+   ============================================================================ */
+.container{max-width:62rem}
+.vayu-nav{position:sticky;top:0;z-index:50;background:color-mix(in srgb,var(--vp-bg) 82%,transparent);backdrop-filter:saturate(170%) blur(12px);border-bottom:1px solid color-mix(in srgb,var(--vp-muted) 16%,transparent);padding:.85rem 0;margin-bottom:2.5rem}
+.vayu-nav-brand{font-weight:800;letter-spacing:-.02em}
+.vayu-hero{position:relative;text-align:center;padding:5rem 1rem 3.5rem;overflow:hidden}
+.vayu-hero::before{content:"";position:absolute;inset:-30% -10% auto -10%;height:340px;z-index:0;background:radial-gradient(45% 60% at 30% 20%,color-mix(in srgb,var(--vp-accent) 30%,transparent),transparent 70%),radial-gradient(45% 60% at 75% 25%,color-mix(in srgb,var(--vp-accent2,var(--vp-hi)) 28%,transparent),transparent 70%);filter:blur(36px)}
+.vayu-hero>*{position:relative;z-index:1}
+.vayu-hero-eyebrow{justify-content:center}
+.vayu-hero h1{font-size:clamp(2.6rem,7vw,4.4rem);font-weight:800;letter-spacing:-.035em;line-height:1.02;-webkit-text-fill-color:currentColor;background:none;color:var(--vp-text)}
+.vayu-hero-tagline{margin-left:auto;margin-right:auto;font-size:1.2rem;max-width:50ch}
+.vayu-stats{justify-content:center;gap:2.5rem}
+.vayu-post-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:1.5rem}
+.vayu-post-card{background:var(--vp-surface);border:1px solid color-mix(in srgb,var(--vp-muted) 14%,transparent);border-radius:.875rem;padding:1.5rem;box-shadow:0 1px 2px rgba(0,0,0,.06);transition:transform .16s,box-shadow .16s}
+.vayu-post-card:hover{transform:translateY(-4px);box-shadow:0 16px 40px rgba(0,0,0,.12)}
+.vayu-post-title{font-size:1.25rem;font-weight:750;letter-spacing:-.015em}
+.vayu-post-arrow{display:none}
+.vayu-nav-signup,.vayu-nav-signin{border-radius:2rem}
+article.vayu-prose h1,.vayu-article-header h1{font-size:clamp(2.1rem,5vw,3.2rem);font-weight:800;letter-spacing:-.03em;-webkit-text-fill-color:currentColor;background:none;color:var(--vp-text)}
+.vayu-footer{border-top:1px solid color-mix(in srgb,var(--vp-muted) 16%,transparent)}

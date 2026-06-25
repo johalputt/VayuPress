@@ -238,3 +238,27 @@
   .dispatch-btn:hover{transform:none}
   .dispatch-reviews{scroll-behavior:auto}
 }
+
+
+/* ============================================================================
+   Live public-site styling — overrides the real VayuPress markup (vayu-*).
+   Identity: newsletter / inbox — compact reading column, rows that read like
+   an inbox with an accent rail, monospace meta, a boxed subscribe hero.
+   ============================================================================ */
+.container{max-width:44rem}
+.vayu-nav{border-bottom:1px solid color-mix(in srgb,var(--vp-muted) 18%,transparent);padding-bottom:.9rem;margin-bottom:2rem}
+.vayu-hero{background:var(--vp-surface);border:1px solid color-mix(in srgb,var(--vp-accent) 22%,transparent);border-radius:1rem;padding:2.5rem;text-align:center;margin-bottom:2.5rem}
+.vayu-hero-eyebrow{justify-content:center}
+.vayu-hero h1{font-size:clamp(2rem,5vw,3rem);font-weight:800;letter-spacing:-.02em;-webkit-text-fill-color:currentColor;background:none;color:var(--vp-text)}
+.vayu-hero-tagline{margin-left:auto;margin-right:auto;max-width:44ch}
+.vayu-stats{justify-content:center;gap:2rem}
+.vayu-section-label{font-family:var(--vp-font-mono,ui-monospace,monospace)}
+.vayu-post-list{display:flex;flex-direction:column;gap:.4rem}
+.vayu-post-card{display:grid;grid-template-columns:4px 1fr;gap:1rem;align-items:start;background:var(--vp-surface);border:1px solid color-mix(in srgb,var(--vp-muted) 14%,transparent);border-radius:.75rem;padding:1.15rem 1.25rem}
+.vayu-post-card::before{content:"";grid-row:1/99;width:4px;border-radius:4px;background:var(--vp-accent);align-self:stretch}
+.vayu-post-card:hover{transform:none;border-color:var(--vp-accent);background:color-mix(in srgb,var(--vp-accent) 6%,transparent)}
+.vayu-post-meta{font-family:var(--vp-font-mono,ui-monospace,monospace);font-size:.78rem}
+.vayu-post-title{font-size:1.15rem;font-weight:700}
+.vayu-post-arrow{display:none}
+article.vayu-prose h1,.vayu-article-header h1{font-size:clamp(1.9rem,4.5vw,2.7rem);font-weight:800;-webkit-text-fill-color:currentColor;background:none;color:var(--vp-text)}
+.vayu-footer{border-top:1px solid color-mix(in srgb,var(--vp-muted) 16%,transparent)}

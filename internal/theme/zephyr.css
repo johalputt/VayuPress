@@ -58,3 +58,29 @@
 .zephyr-card,.zephyr-hero__btn,.zephyr-hero__scroll,.zephyr-cta__btn,.zephyr-tag{transition:none}
 .zephyr-hero__scroll{animation:none}
 }
+
+
+/* ============================================================================
+   Live public-site styling — overrides the real VayuPress markup (vayu-*).
+   Identity: bright, airy, friendly — pill nav, centered hero, soft rounded
+   cards, generous whitespace.
+   ============================================================================ */
+.container{max-width:60rem}
+.vayu-nav{background:var(--vp-surface);border:1px solid color-mix(in srgb,var(--vp-muted) 18%,transparent);border-radius:2rem;padding:.6rem 1.4rem;margin-bottom:3rem}
+.vayu-nav-links a{padding:.4rem .9rem;border-radius:2rem}
+.vayu-nav-links a:hover{background:color-mix(in srgb,var(--vp-accent) 12%,transparent)}
+.vayu-hero{text-align:center;padding:4.5rem 1rem}
+.vayu-hero-eyebrow{justify-content:center;background:color-mix(in srgb,var(--vp-accent) 14%,transparent);color:var(--vp-accent);padding:.35rem 1rem;border-radius:2rem}
+.vayu-hero h1{font-size:clamp(2.4rem,6vw,3.8rem);font-weight:800;letter-spacing:-.03em;line-height:1.08;-webkit-text-fill-color:currentColor;background:none;color:var(--vp-text)}
+.vayu-hero-tagline{margin-left:auto;margin-right:auto;font-size:1.2rem;max-width:46ch}
+.vayu-stats{justify-content:center;gap:3rem}
+.vayu-section-label{justify-content:center}
+.vayu-section-label::after,.vayu-section-label::before{display:none}
+.vayu-post-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:1.5rem}
+.vayu-post-card{background:var(--vp-surface);border:1px solid color-mix(in srgb,var(--vp-muted) 16%,transparent);border-radius:1.25rem;padding:1.75rem;transition:transform .16s,box-shadow .16s}
+.vayu-post-card:hover{transform:translateY(-4px);box-shadow:0 16px 38px rgba(0,0,0,.12)}
+.vayu-post-title{font-size:1.3rem;font-weight:700;letter-spacing:-.01em}
+.vayu-post-arrow{display:none}
+.vayu-tag{border-radius:2rem;background:color-mix(in srgb,var(--vp-accent) 12%,transparent);border-color:transparent}
+article.vayu-prose h1,.vayu-article-header h1{font-size:clamp(2rem,5vw,3rem);font-weight:800;letter-spacing:-.02em;-webkit-text-fill-color:currentColor;background:none;color:var(--vp-text)}
+.vayu-footer{margin-top:3rem;border-top:1px solid color-mix(in srgb,var(--vp-muted) 16%,transparent)}

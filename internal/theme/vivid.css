@@ -202,3 +202,28 @@
   .vivid-btn:hover,.vivid-tag:hover,.vivid-tagtile:hover{transform:none}
   .vivid-featured,.vivid-tags{scroll-behavior:auto}
 }
+
+
+/* ============================================================================
+   Live public-site styling — overrides the real VayuPress markup (vayu-*).
+   Identity: bold, colorful magazine — a full-width accent header band, huge
+   expressive headings, vivid tag chips, a two-column card grid.
+   ============================================================================ */
+.container{max-width:64rem}
+.vayu-nav{background:var(--vp-accent);margin:0 calc(50% - 50vw) 2.5rem;padding:1rem max(1.5rem,calc(50vw - 32rem));width:100vw;border-radius:0}
+.vayu-nav-brand,.vayu-nav-links a,.vayu-nav-status{color:#fff}
+.vayu-nav-links a:hover{color:#fff;opacity:.8}
+.vayu-theme-toggle{color:#fff}
+.vayu-hero{padding:3.5rem 0}
+.vayu-hero h1{font-size:clamp(2.8rem,8vw,5rem);font-weight:800;letter-spacing:-.035em;line-height:.98;-webkit-text-fill-color:currentColor;background:none;color:var(--vp-text)}
+.vayu-hero-eyebrow{color:var(--vp-accent);font-weight:800;letter-spacing:.14em}
+.vayu-hero-tagline{font-size:1.25rem;max-width:48ch}
+.vayu-stat-val{color:var(--vp-accent)}
+.vayu-section-label{font-weight:800;color:var(--vp-text)}
+.vayu-post-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:1.75rem}
+.vayu-post-card{background:var(--vp-surface);border:2px solid color-mix(in srgb,var(--vp-muted) 16%,transparent);border-radius:1rem;padding:1.6rem}
+.vayu-post-card:hover{transform:translateY(-3px);border-color:var(--vp-accent);background:var(--vp-surface)}
+.vayu-post-title{font-size:1.45rem;font-weight:800;letter-spacing:-.02em;line-height:1.12}
+.vayu-tag{background:var(--vp-accent);border-color:var(--vp-accent);color:#fff}
+article.vayu-prose h1,.vayu-article-header h1{font-size:clamp(2.4rem,6vw,3.8rem);font-weight:800;letter-spacing:-.03em;-webkit-text-fill-color:currentColor;background:none;color:var(--vp-text)}
+.vayu-footer{border-top:3px solid var(--vp-accent)}
