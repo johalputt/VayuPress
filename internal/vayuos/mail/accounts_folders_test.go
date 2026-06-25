@@ -17,10 +17,10 @@ func TestAccountStoreCRUD(t *testing.T) {
 		t.Fatalf("store: %v", err)
 	}
 	ctx := context.Background()
-	if err := s.Create(ctx, "Alice@Example.com", "hash123", "Alice"); err != nil {
+	if err := s.Create(ctx, "Alice@Example.com", "hash123", "Alice", "author"); err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	if err := s.Create(ctx, "alice@example.com", "h", "dup"); err == nil {
+	if err := s.Create(ctx, "alice@example.com", "h", "dup", "author"); err == nil {
 		t.Fatalf("expected duplicate rejection")
 	}
 	if h := s.HashFor(ctx, "alice@example.com"); h != "hash123" {
@@ -83,7 +83,7 @@ func TestAccountSetActive(t *testing.T) {
 		t.Fatalf("store: %v", err)
 	}
 	ctx := context.Background()
-	if err := s.Create(ctx, "carol@example.com", "hash", "Carol"); err != nil {
+	if err := s.Create(ctx, "carol@example.com", "hash", "Carol", "author"); err != nil {
 		t.Fatalf("create: %v", err)
 	}
 	// Active by default → HashFor returns the hash.

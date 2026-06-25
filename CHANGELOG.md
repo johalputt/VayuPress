@@ -71,6 +71,33 @@ breaking the constitution (single binary, lightweight, privacy-first, strict CSP
 
 ---
 
+## [1.13.0] — 2026-06-25
+
+**VayuMail towards Gmail-like usability — roles, Archive, and search.**
+
+### Added
+
+- **Role-based mail accounts.** Each admin-managed mailbox now carries a role —
+  **Administrator**, **Editor**, **Author**, **Reviewer** (read-only), or a
+  custom role. Roles are set on creation and editable inline in the Accounts
+  table. Permission helpers (`RoleCanSend`, `RoleCanDelete`,
+  `RoleCanManageAccounts`) gate per-account capabilities; account creation and
+  deletion remain restricted to the VayuPress admin session.
+- **Archive folder.** A first-class `Archive` folder alongside
+  Inbox/Sent/Drafts/Junk/Trash, with a one-click Archive action on any message.
+- **Mailbox full-text search.** A search box over a mailbox scans From / To /
+  Subject (with a body fallback) across all folders. The scan is bounded and
+  fully local — no external index, no extra services.
+
+### Notes
+
+- This is the foundational slice of the Gmail-like VayuMail roadmap. Threaded
+  conversations, rich HTML compose with attachments and scheduling, server-side
+  filters, vacation responder, and real-time notifications are tracked for
+  v1.14.0.
+
+---
+
 ## [1.12.5] — 2026-06-25
 
 **Security: close the reflected-XSS path exposed by v1.12.4.**

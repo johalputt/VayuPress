@@ -45,6 +45,24 @@
   `unsafe-inline`, no CDNs), and AI assistance remains strictly opt-in and off by
   default. The block storage format is unchanged — fully backward compatible.
 
+## What's New in v1.13.0
+
+> Full notes in [`CHANGELOG.md`](CHANGELOG.md)
+
+**VayuMail moves toward a Gmail-like experience — still 100% sovereign.**
+
+- **Role-based mail accounts** — every mailbox has a role (Administrator,
+  Editor, Author, Reviewer / read-only, or custom). Roles are chosen on creation
+  and editable inline; account create/delete stays admin-only.
+- **Archive folder** — a first-class Archive alongside Inbox/Sent/Drafts/Junk/
+  Trash, with one-click archiving from any message.
+- **Mailbox full-text search** — search From / To / Subject (and body) across
+  all folders. Bounded and fully local — no external index, no extra services.
+
+> Foundational slice of the Gmail-like roadmap; threading, rich compose +
+> attachments, server-side filters, vacation responder and real-time
+> notifications are planned for v1.14.0.
+
 ## What's New in v1.12.0
 
 > Full notes in [`CHANGELOG.md`](CHANGELOG.md)

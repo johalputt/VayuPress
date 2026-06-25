@@ -14,7 +14,7 @@ import (
 )
 
 // StandardFolders are the mailbox folders surfaced in the panel, in order.
-var StandardFolders = []string{"Inbox", "Sent", "Drafts", "Junk", "Trash"}
+var StandardFolders = []string{"Inbox", "Sent", "Drafts", "Archive", "Junk", "Trash"}
 
 // canonicalFolder returns the canonical folder name, defaulting to Inbox.
 func canonicalFolder(name string) string {
@@ -128,6 +128,55 @@ func (m *Maildir) ReadRawFolder(domain, username, folder, id string) ([]byte, er
 	}
 	name = filepath.Base(name) // defense-in-depth: guarantee a single path element
 	return os.ReadFile(filepath.Join(m.folderDir(domain, username, folder), sub, name))
+}
+
+// SearchResult is a message matched by Search, tagged with its folder.
+type SearchResult struct {
+	StoredMessage
+	Folder string `json:"folder"`
+}
+
+// Search scans an account's folders for messages whose From/To/Subject (and, as
+// a fallback, body) contain q (case-insensitive). It is bounded by maxScan
+// files so it stays cheap on a low-resource VPS — no external index, fully
+// local. Header matches avoid re-reading the message; only non-header matches
+// touch the body.
+func (m *Maildir) Search(domain, username, q string, limit int) ([]SearchResult, error) {
+	q = strings.ToLower(strings.TrimSpace(q))
+	if q == "" {
+		return nil, nil
+	}
+	if limit <= 0 || limit > 200 {
+		limit = 100
+	}
+	const maxScan = 5000
+	scanned := 0
+	out := []SearchResult{}
+	for _, folder := range StandardFolders {
+		msgs, err := m.ListFolder(domain, username, folder)
+		if err != nil {
+			continue
+		}
+		for _, sm := range msgs {
+			if scanned >= maxScan {
+				return out, nil
+			}
+			scanned++
+			matched := strings.Contains(strings.ToLower(sm.From+" "+sm.To+" "+sm.Subject), q)
+			if !matched {
+				if raw, rerr := m.ReadRawFolder(domain, username, folder, sm.ID); rerr == nil {
+					matched = strings.Contains(strings.ToLower(string(raw)), q)
+				}
+			}
+			if matched {
+				out = append(out, SearchResult{StoredMessage: sm, Folder: folder})
+				if len(out) >= limit {
+					return out, nil
+				}
+			}
+		}
+	}
+	return out, nil
 }
 
 // MoveBetween moves a message from one folder to another (e.g. Inbox→Junk).

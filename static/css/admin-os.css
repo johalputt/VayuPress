@@ -2084,7 +2084,7 @@
 
 
 /* ══════════════════════════════════════════════════════════════════════════
-   Post editor v1.13.0 — new blocks, reordering, focus mode, split preview,
+   Post editor v1.14.0 — new blocks, reordering, focus mode, split preview,
    live stats, palette polish. (Strict CSP: classes only, no inline styles.)
    ══════════════════════════════════════════════════════════════════════════ */
 
@@ -2244,3 +2244,7 @@
 .vp-os .article .vp-audio { margin: var(--sp-4) 0; }
 .vp-os .article .vp-audio audio { width: 100%; }
 .vp-os .article .vp-audio figcaption { font-size: var(--text-xs); color: var(--text-3); margin-top: var(--sp-1); }
+
+/* VayuMail: mailbox search bar */
+.vp-os .vm-search { display: flex; gap: 0.5rem; align-items: center; margin: 0.75rem 0; }
+.vp-os .vm-search .input { flex: 1 1 auto; }

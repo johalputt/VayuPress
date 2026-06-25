@@ -56,6 +56,15 @@ func (e *Engine) ReadFolderMessage(username, folder, id string) ([]byte, error) 
 	return raw, nil
 }
 
+// Search runs a bounded, fully-local full-text search across an account's
+// folders (no external index).
+func (e *Engine) Search(username, q string, limit int) ([]SearchResult, error) {
+	if e.maildir == nil {
+		return nil, errors.New("vayumail: not started")
+	}
+	return e.maildir.Search(e.cfg.Domain, username, q, limit)
+}
+
 // MoveMessage moves a message between folders (e.g. mark as Junk, or Trash).
 func (e *Engine) MoveMessage(username, id, from, to string) error {
 	if e.maildir == nil {
