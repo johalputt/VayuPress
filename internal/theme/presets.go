@@ -23,6 +23,9 @@ var rippleCSS string
 //go:embed maverick.css
 var maverickCSS string
 
+//go:embed agora.css
+var agoraCSS string
+
 // Default returns the Default preset — neutral dark/light tones.
 func Default() Tokens {
 	return Tokens{
@@ -287,6 +290,7 @@ func AllPresets() []Tokens {
 		Beacon(),
 		Ripple(),
 		Maverick(),
+		Agora(),
 	}
 }
 
@@ -587,5 +591,27 @@ func Maverick() Tokens {
 		FontSans: "Inter, system-ui, -apple-system, 'Segoe UI', sans-serif", FontMono: "IBM Plex Mono, ui-monospace, monospace",
 		FontSizeBase: "1.0625rem", LineHeight: "1.6", MaxWidth: "46rem", RadiusSm: "0", RadiusLg: "0.25rem",
 		CustomCSS: maverickCSS,
+	}
+}
+
+// Agora — a community & discussion theme. A clean, forum-inspired publication
+// on a neutral canvas with a friendly indigo-violet accent. Ships a full
+// component CSS covering a three-column layout with dual toggleable sidebars,
+// a customizable hero (six image positions and three actions), homepage feed
+// tabs (latest/featured/updated/categories) with four switchable view styles
+// (list/compact/cards/articles), post cards with a comment-count badge and an
+// inline comments drawer, topic/category sections and a tag-cards template,
+// default and full-width post templates, membership pages (sign in/up, account,
+// tiers), an authors page, a blank landing template, and a footer with a
+// light/dark toggle.
+func Agora() Tokens {
+	return Tokens{
+		Name: "Agora", BgDark: "#0b0b0f", SurfaceDark: "#15151c", TextDark: "#ececf2",
+		MutedDark: "#8b8b99", AccentDark: "#8b86f5", Accent2Dark: "#a5a0ff", HiDark: "#38bdf8", GreenDark: "#34d399",
+		BgLight: "#fcfcfd", SurfaceLight: "#ffffff", TextLight: "#0d0d12", MutedLight: "#6b6b78",
+		AccentLight: "#5b54e6", Accent2Light: "#4840c4", HiLight: "#0ea5e9",
+		FontSans: "Inter, system-ui, -apple-system, 'Segoe UI', sans-serif", FontMono: "IBM Plex Mono, ui-monospace, monospace",
+		FontSizeBase: "1rem", LineHeight: "1.6", MaxWidth: "44rem", RadiusSm: "0.5rem", RadiusLg: "0.875rem",
+		CustomCSS: agoraCSS,
 	}
 }
