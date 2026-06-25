@@ -209,6 +209,19 @@ func (a *App) bootVayuOS() {
 		mailCfg.TLSCertFile = config.EnvOr("VAYUOS_MAIL_TLS_CERT", "")
 		mailCfg.TLSKeyFile = config.EnvOr("VAYUOS_MAIL_TLS_KEY", "")
 	}
+	// Optional outbound smarthost relay. Sovereign direct-to-MX stays the
+	// default; setting VAYUOS_MAIL_RELAY_HOST routes outbound through an
+	// authenticated relay whose IP reputation carries deliverability, while
+	// inbound, IMAP, local delivery and DKIM signing remain self-hosted.
+	if rh := config.EnvOr("VAYUOS_MAIL_RELAY_HOST", ""); rh != "" {
+		mailCfg.RelayHost = rh
+		mailCfg.RelayPort = config.GetEnvAsInt("VAYUOS_MAIL_RELAY_PORT", 587)
+		mailCfg.RelayUsername = config.EnvOr("VAYUOS_MAIL_RELAY_USERNAME", "")
+		mailCfg.RelayPassword = config.EnvOr("VAYUOS_MAIL_RELAY_PASSWORD", "")
+		// TLS before AUTH is required by default; opt out only for a trusted
+		// relay on a private network.
+		mailCfg.RelayRequireTLS = !strings.EqualFold(config.EnvOr("VAYUOS_MAIL_RELAY_TLS", "on"), "off")
+	}
 	a.vayuMail = vmail.NewEngine(&mailCfg, &vayuMailBridge{app: a}, dbpkg.DB)
 	// Transparent PGP decryption when serving mail over IMAP to the owner.
 	a.vayuMail.SetDecryptHook(a.pgpDecryptForAccount)

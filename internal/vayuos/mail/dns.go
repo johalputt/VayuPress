@@ -121,6 +121,20 @@ func Deliverability(ctx context.Context, cfg Config, dkimName, dkimTXT string) [
 	var out []RecordHealth
 	r := &net.Resolver{}
 
+	// Outbound smarthost relay: when configured, the relay's IP reputation (not
+	// this host's) governs deliverability, so a local PTR/FQDN mismatch is no
+	// longer a spam factor for outbound mail. Surface this so the operator reads
+	// the checks below in the right context.
+	if cfg.RelayEnabled() {
+		out = append(out, RecordHealth{
+			Type:    "Outbound relay",
+			Name:    cfg.RelayAddr(),
+			OK:      true,
+			Found:   cfg.RelayAddr(),
+			Message: "active — outbound mail is sent through this authenticated relay; its IP reputation applies. DKIM is still signed with your domain key, so DMARC stays aligned.",
+		})
+	}
+
 	// HELO/hostname must be a fully-qualified domain name. A bare label or
 	// "localhost" announced in EHLO is an immediate spam signal for Gmail and
 	// Outlook.
