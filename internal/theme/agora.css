@@ -24,7 +24,12 @@
                                             .agora-viewswitch
    Feed view styles                     -> .agora-feed--{list|compact|cards|articles}
    Post card (+ comment count badge)    -> .agora-card / .agora-card__comments
-   Inline comments drawer               -> .agora-drawer
+   Inline comments drawer (+ backdrop)  -> .agora-drawer / .agora-drawer__backdrop / __close
+   Threaded comments + reply form       -> .agora-comment / __replies / __reply
+   Member role badges + presence dot    -> .agora-badge(--admin|--mod|--member) / .agora-presence
+   Reactions / upvote control           -> .agora-reactions / .agora-react(--active)
+   Thread status markers                -> .agora-status(--pinned|--answered|--locked|--hot),
+                                            .agora-card--pinned, .agora-dot--new
    Topic/category sections + tag cards  -> .agora-topics / .agora-topic /
                                             .agora-tagcards / .agora-tagcard
    Post templates (default | full)      -> .agora-post / .agora-post--full
@@ -38,7 +43,15 @@
 :root{
   --agora-display:var(--vp-font-sans,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif);
   --agora-body:var(--vp-font-sans,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif);
+  --agora-sticky-top:1.5rem;   /* sticky offset for sidebars (clears a sticky header) */
 }
+
+/* Accessible focus ring on every interactive element (keyboard navigation) */
+.agora-btn:focus-visible,.agora-chip:focus-visible,.agora-feedtab:focus-visible,
+.agora-viewswitch button:focus-visible,.agora-toggle button:focus-visible,
+.agora-card__comments:focus-visible,.agora-react:focus-visible,
+.agora-drawer__close:focus-visible,.agora-search:focus-visible{
+  outline:2px solid var(--vp-accent);outline-offset:2px;border-radius:.35rem}
 
 /* ── Shared primitives ──────────────────────────────────────────────────── */
 .agora-eyebrow{display:inline-block;font-size:.72rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--vp-accent)}
@@ -245,4 +258,80 @@
   .agora-btn,.agora-chip,.agora-card__comments{transition:none}
   .agora-btn:hover{transform:none}
   .agora-drawer{transition:none}
+}
+
+
+/* ============================================================================
+   Refinements — deeper discussion affordances + interaction polish
+   ============================================================================ */
+
+/* Sidebars clear a sticky header and get slim, unobtrusive scrollbars. */
+.agora-aside-left,.agora-aside-right{top:var(--agora-sticky-top);max-height:calc(100vh - var(--agora-sticky-top) - 1rem);overflow-y:auto;scrollbar-width:thin;scrollbar-color:color-mix(in srgb,var(--vp-muted) 40%,transparent) transparent}
+.agora-aside-left::-webkit-scrollbar,.agora-aside-right::-webkit-scrollbar,.agora-drawer__body::-webkit-scrollbar{width:8px}
+.agora-aside-left::-webkit-scrollbar-thumb,.agora-aside-right::-webkit-scrollbar-thumb,.agora-drawer__body::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--vp-muted) 35%,transparent);border-radius:8px}
+
+/* Card hover elevation (cards & compact feeds become tactile). */
+.agora-feed--cards .agora-card,.agora-feed--compact .agora-card{transition:transform .15s,box-shadow .15s,border-color .15s}
+.agora-feed--cards .agora-card:hover,.agora-feed--compact .agora-card:hover{transform:translateY(-3px);box-shadow:0 12px 30px rgba(0,0,0,.1);border-color:color-mix(in srgb,var(--vp-accent) 35%,transparent)}
+
+/* Comment-count badge: gains a speech-bubble glyph. */
+.agora-card__comments::before{content:"\1F4AC";font-size:.95em;line-height:1}
+
+/* ── Comments drawer: backdrop + close + polish ─────────────────────────── */
+.agora-drawer__backdrop{position:fixed;inset:0;z-index:190;background:rgba(0,0,0,.45);opacity:0;visibility:hidden;transition:opacity .25s,visibility .25s}
+.agora-drawer__backdrop[data-open="true"]{opacity:1;visibility:visible}
+.agora-drawer__close{display:grid;place-items:center;width:38px;height:38px;border:0;border-radius:50%;background:color-mix(in srgb,var(--vp-muted) 14%,transparent);color:var(--vp-text);cursor:pointer;font-size:1.1rem;line-height:1}
+.agora-drawer__close:hover{background:var(--vp-accent);color:#fff}
+.agora-drawer__count{font-size:.82rem;font-weight:600;color:var(--vp-muted)}
+
+/* ── Threaded comments ──────────────────────────────────────────────────── */
+.agora-comment{display:grid;grid-template-columns:auto 1fr;gap:.85rem;padding:1rem 0;border-bottom:1px solid color-mix(in srgb,var(--vp-muted) 12%,transparent)}
+.agora-comment__avatar{width:40px;height:40px;border-radius:50%;object-fit:cover}
+.agora-comment__head{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:.3rem}
+.agora-comment__author{font-weight:700;color:var(--vp-text)}
+.agora-comment__time{font-size:.78rem;color:var(--vp-muted)}
+.agora-comment__body{font-size:.92rem;line-height:1.55;color:var(--vp-text)}
+.agora-comment__actions{display:flex;align-items:center;gap:.9rem;margin-top:.5rem;font-size:.8rem}
+.agora-comment__reply{font-weight:650;color:var(--vp-accent);text-decoration:none;cursor:pointer}
+.agora-comment__reply:hover{text-decoration:underline}
+/* Nested replies indent with a guide line. */
+.agora-comment__replies{margin-left:1.25rem;padding-left:1.25rem;border-left:2px solid color-mix(in srgb,var(--vp-accent) 22%,transparent)}
+.agora-comment__form{display:flex;gap:.5rem;margin-top:1rem}
+
+/* ── Member role badges + presence dot ──────────────────────────────────── */
+.agora-badge{display:inline-flex;align-items:center;font-size:.66rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:.12rem .5rem;border-radius:2rem;line-height:1.4}
+.agora-badge--admin{color:#fff;background:var(--vp-accent)}
+.agora-badge--mod{color:var(--vp-accent);background:color-mix(in srgb,var(--vp-accent) 16%,transparent)}
+.agora-badge--member{color:var(--vp-muted);background:color-mix(in srgb,var(--vp-muted) 14%,transparent)}
+.agora-presence{position:relative;display:inline-block}
+.agora-presence::after{content:"";position:absolute;right:-1px;bottom:-1px;width:11px;height:11px;border-radius:50%;background:var(--vp-muted);border:2px solid var(--vp-bg)}
+.agora-presence--online::after{background:var(--vp-green,#34d399)}
+
+/* ── Reactions / upvote control ─────────────────────────────────────────── */
+.agora-reactions{display:flex;flex-wrap:wrap;gap:.4rem;align-items:center}
+.agora-react{display:inline-flex;align-items:center;gap:.3rem;min-height:32px;padding:.25rem .65rem;border-radius:2rem;font-size:.8rem;font-weight:650;cursor:pointer;text-decoration:none;color:var(--vp-text);background:color-mix(in srgb,var(--vp-muted) 12%,transparent);border:1px solid transparent;transition:background .15s,color .15s,border-color .15s}
+.agora-react:hover{border-color:color-mix(in srgb,var(--vp-accent) 40%,transparent)}
+.agora-react--active{color:var(--vp-accent);background:color-mix(in srgb,var(--vp-accent) 14%,transparent);border-color:color-mix(in srgb,var(--vp-accent) 45%,transparent)}
+.agora-react__count{font-variant-numeric:tabular-nums}
+
+/* ── Thread status markers ──────────────────────────────────────────────── */
+.agora-status{display:inline-flex;align-items:center;gap:.3rem;font-size:.7rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:.14rem .55rem;border-radius:2rem}
+.agora-status--pinned{color:var(--vp-accent);background:color-mix(in srgb,var(--vp-accent) 14%,transparent)}
+.agora-status--answered{color:#fff;background:var(--vp-green,#34d399)}
+.agora-status--locked{color:var(--vp-muted);background:color-mix(in srgb,var(--vp-muted) 14%,transparent)}
+.agora-status--hot{color:#fff;background:var(--vp-hi,#f59e0b)}
+.agora-status--pinned::before{content:"\1F4CC"}
+.agora-status--answered::before{content:"\2713"}
+.agora-status--locked::before{content:"\1F512"}
+.agora-status--hot::before{content:"\1F525"}
+/* Pinned cards get a subtle accent rail. */
+.agora-card--pinned{border-left:3px solid var(--vp-accent);padding-left:1rem}
+/* "New / unread" dot for category & nav items. */
+.agora-dot--new{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--vp-accent)}
+
+/* ── Reduced motion (cover the refinements) ─────────────────────────────── */
+@media(prefers-reduced-motion:reduce){
+  .agora-feed--cards .agora-card,.agora-feed--compact .agora-card,
+  .agora-react,.agora-drawer__backdrop{transition:none}
+  .agora-feed--cards .agora-card:hover,.agora-feed--compact .agora-card:hover{transform:none}
 }

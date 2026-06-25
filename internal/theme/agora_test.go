@@ -46,6 +46,20 @@ func TestAgoraPresetCompiles(t *testing.T) {
 			t.Errorf("Agora layout modifier %q missing", mod)
 		}
 	}
+	// Refinements: threaded comments, drawer backdrop/close, role badges,
+	// reactions, and thread-status markers must ship.
+	for _, want := range []string{
+		".agora-drawer__backdrop", ".agora-drawer__close",
+		".agora-comment__replies", ".agora-comment__reply",
+		".agora-badge--admin", ".agora-badge--mod", ".agora-presence--online",
+		".agora-react--active",
+		".agora-status--pinned", ".agora-status--answered", ".agora-status--locked", ".agora-status--hot",
+		":focus-visible",
+	} {
+		if !strings.Contains(css, want) {
+			t.Errorf("Agora refinement %q missing", want)
+		}
+	}
 }
 
 // TestAgoraInStore proves Agora appears in the Theme Store under the Community
