@@ -9,7 +9,7 @@ require (
 	github.com/alecthomas/chroma/v2 v2.27.0
 	github.com/go-chi/chi/v5 v5.3.0
 	github.com/graphql-go/graphql v0.8.1
-	github.com/mattn/go-sqlite3 v1.14.46
+	github.com/mattn/go-sqlite3 v1.14.47
 	github.com/microcosm-cc/bluemonday v1.0.27
 	github.com/rs/cors v1.11.1
 	github.com/sony/gobreaker v1.0.0
@@ -17,8 +17,8 @@ require (
 )
 
 require (
-	github.com/cloudflare/circl v1.6.3 // indirect
-	github.com/dlclark/regexp2/v2 v2.2.1 // indirect
+	github.com/cloudflare/circl v1.6.4 // indirect
+	github.com/dlclark/regexp2/v2 v2.2.2 // indirect
 )
 
 require (

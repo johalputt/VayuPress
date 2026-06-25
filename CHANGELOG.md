@@ -12,6 +12,20 @@ _Nothing yet._
 
 ---
 
+## [1.12.2] — 2026-06-25
+
+**Dependency updates (clear security alerts).**
+
+### Security
+
+- **Upgraded dependencies to their latest published patch releases**:
+  `cloudflare/circl` v1.6.3 to v1.6.4, `dlclark/regexp2/v2` v2.2.1 to v2.2.2,
+  and `mattn/go-sqlite3` v1.14.46 to v1.14.47. Combined with the pinned
+  `go1.26.4` toolchain from v1.12.1, `govulncheck ./...` reports **no
+  vulnerabilities**. All other modules were already at their latest versions.
+
+---
+
 ## [1.12.1] — 2026-06-25
 
 **CI fix + supply-chain hardening.**
