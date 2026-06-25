@@ -33,6 +33,7 @@
   var model = {};
   var allPresets = [];
   var activePresetName = '';
+  var loadedCustomCSS = '';   // per-theme component CSS carried through Apply
 
   function setStatus(msg, kind) {
     if (!statusEl) return;
@@ -73,6 +74,9 @@
       }
     });
     activePresetName = tok.Name || '';
+    // Preserve the preset's component CSS (apex.css/gale.css/etc.) so a theme
+    // loaded via "Customize" keeps its full design when the operator hits Apply.
+    loadedCustomCSS = tok.custom_css || tok.CustomCSS || '';
     if (activeNameEl) {
       activeNameEl.textContent = activePresetName ? 'Current theme: ' + activePresetName : 'Current theme';
     }
@@ -119,10 +123,13 @@
   // ── Persistence ─────────────────────────────────────────────────────────────
   function apply() {
     setStatus('Applying…');
+    var payload = {};
+    Object.keys(model).forEach(function (k) { payload[k] = model[k]; });
+    if (loadedCustomCSS) payload.custom_css = loadedCustomCSS;
     fetch('/os/api/theme/apply', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
-      body: JSON.stringify({ tokens: model })
+      body: JSON.stringify({ tokens: payload })
     }).then(function (r) {
       if (!r.ok) return r.json().then(function (e) { throw new Error((e.error && e.error.message) || ('apply failed (' + r.status + ')')); });
       return r.json();
@@ -146,11 +153,10 @@
     return fetch('/os/api/theme/presets', { headers: { Accept: 'application/json' } })
       .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
       .then(function (list) {
+        // Gallery cards are rendered server-side; just keep the data for clicks.
+        // NOTE: do NOT re-fetch tokens here — a second, un-awaited load would
+        // resolve after applyLoadParam() and clobber a "Customize" selection.
         allPresets = Array.isArray(list) ? list : [];
-        // Gallery cards already rendered server-side — just sync active state
-        fetchTokens().then(function () {
-          highlightActiveCard(activePresetName);
-        });
       });
   }
 
@@ -273,6 +279,11 @@
   }
 
   Promise.all([fetchTokens(), fetchPresets()])
-    .then(function () { if (!applyLoadParam()) setStatus('Ready'); })
+    .then(function () {
+      if (!applyLoadParam()) {
+        highlightActiveCard(activePresetName);
+        setStatus('Ready');
+      }
+    })
     .catch(function () { setStatus('Could not load theme', 'danger'); });
 })();
