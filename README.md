@@ -21,7 +21,7 @@
 > _Own your content. Own your communication. Own your infrastructure._
 > Publishing is the core identity, **VayuMail** the native sovereignty layer, **VayuPGP** the native privacy layer, and **VayuOS** the native control layer — all in a single Go binary, single process, single config.
 
-## What's New in v1.13.0
+## What's New in v1.14.0
 
 > Full notes in [`CHANGELOG.md`](CHANGELOG.md)
 

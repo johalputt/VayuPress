@@ -118,7 +118,7 @@ func TestImportHTMLDropsScripts(t *testing.T) {
 	}
 }
 
-// TestImportTableAndToggle covers the v1.13.0 legacy → block mappings.
+// TestImportTableAndToggle covers the v1.14.0 legacy → block mappings.
 func TestImportTableAndToggle(t *testing.T) {
 	html := `<table>
 		<thead><tr><th>Name</th><th>Role</th></tr></thead>

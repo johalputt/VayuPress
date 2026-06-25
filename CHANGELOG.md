@@ -12,7 +12,7 @@ _Nothing yet._
 
 ---
 
-## [1.13.0] — 2026-06-25
+## [1.14.0] — 2026-06-25
 
 **The Post Editor becomes the most powerful sovereign writing studio — without
 breaking the constitution (single binary, lightweight, privacy-first, strict CSP).**

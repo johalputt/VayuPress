@@ -1,5 +1,5 @@
 /*
- * admin-os-editor.js — VayuPress VayuOS block editor (ADR-0068; v1.13.0 upgrade).
+ * admin-os-editor.js — VayuPress VayuOS block editor (ADR-0068; v1.14.0 upgrade).
  *
  * Vanilla JS, strict CSP: no eval, no new Function, no innerHTML with untrusted
  * data. The DOM is built with createElement/textContent. The canonical document
@@ -8,7 +8,7 @@
  * rendered HTML except the server's own sanitised preview, injected only through
  * the DOMPurify-guarded renderSanitized() sink below.
  *
- * v1.13.0 adds: table / toggle / task-list / math / audio blocks, drag-and-drop
+ * v1.14.0 adds: table / toggle / task-list / math / audio blocks, drag-and-drop
  * + keyboard block reordering, an undo/redo stack, live word/character count and
  * reading time, a distraction-free focus mode, a split-screen live preview, a
  * global Cmd/Ctrl+K command menu, and a categorised, keyboard-navigable slash
@@ -36,7 +36,7 @@
   var historyList = root.querySelector('[data-editor-history-list]');
   var historyDiff = root.querySelector('[data-editor-history-diff]');
   var historyClose = root.querySelector('[data-editor-history-close]');
-  // v1.13.0 chrome (optional — guarded everywhere so older shells still work).
+  // v1.14.0 chrome (optional — guarded everywhere so older shells still work).
   var focusBtn = root.querySelector('[data-editor-focus-btn]');
   var splitBtn = root.querySelector('[data-editor-split-btn]');
   var wordCountEl = root.querySelector('[data-editor-wordcount]');

@@ -235,7 +235,7 @@ func TestRenderInlineStillStripsXSS(t *testing.T) {
 	}
 }
 
-// ── v1.13.0 block types ──────────────────────────────────────────────────────
+// ── v1.14.0 block types ──────────────────────────────────────────────────────
 
 func TestRenderTableBlock(t *testing.T) {
 	doc := `[{"type":"table",
