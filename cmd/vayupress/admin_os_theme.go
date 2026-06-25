@@ -52,19 +52,36 @@ type themeHeadExport struct {
 	VerifyBing   string `json:"verify_bing"`
 }
 
-// themePresetCards renders the preset gallery server-side (CSP-safe: swatch
-// colours are carried as data-color attributes and applied via the CSSOM in JS,
-// never as inline style). Every built-in preset — including Gale and Zephyr —
-// appears here.
+// themePresetCards renders the Tumblr-style theme gallery server-side. Each card
+// is a miniature visual preview of the preset — a coloured "page" (background)
+// with an accent bar, two body text lines, and a row of accent pills — so the
+// operator can recognise a theme at a glance rather than from raw swatches.
+//
+// CSP-safe: every colour is carried as a data-color attribute and applied to
+// the element's background via the CSSOM in JS (admin-os-theme.js #paintSwatches),
+// never as an inline style attribute. Every built-in preset — including Gale and
+// Zephyr — appears here, in AllPresets() display order.
 func themePresetCards() string {
 	out := ""
 	for _, p := range theme.AllPresets() {
 		name := html.EscapeString(p.Name)
-		sw := func(c string) string {
-			return `<i class="theme-card__sw" data-color="` + html.EscapeString(c) + `" aria-hidden="true"></i>`
+		// el renders a colour-bearing element. The colour is applied via CSSOM,
+		// so only the (escaped) hex string lands in the data-color attribute.
+		el := func(cls, color string) string {
+			return `<span class="` + cls + `" data-color="` + html.EscapeString(color) + `" aria-hidden="true"></span>`
 		}
-		out += `<button type="button" class="theme-card" data-preset="` + name + `">` +
-			`<span class="theme-card__swatches">` + sw(p.BgDark) + sw(p.SurfaceDark) + sw(p.AccentDark) + sw(p.Accent2Dark) + `</span>` +
+		pill := func(color string) string {
+			return `<span data-color="` + html.EscapeString(color) + `" aria-hidden="true"></span>`
+		}
+		out += `<button type="button" class="theme-card" data-preset="` + name + `" aria-label="Apply the ` + name + ` theme">` +
+			`<span class="theme-card__preview" data-color="` + html.EscapeString(p.BgDark) + `" aria-hidden="true">` +
+			el("theme-card__bar", p.AccentDark) +
+			`<span class="theme-card__body">` +
+			el("theme-card__line", p.TextDark) +
+			el("theme-card__line theme-card__line--short", p.MutedDark) +
+			`</span>` +
+			`<span class="theme-card__pills">` + pill(p.AccentDark) + pill(p.Accent2Dark) + pill(p.HiDark) + `</span>` +
+			`</span>` +
 			`<span class="theme-card__name">` + name + `</span></button>`
 	}
 	return out
@@ -171,7 +188,7 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
     <div class="card mb-6">
       <div class="card-title">Presets</div>
       <div class="text-sm muted mb-3">Start from a built-in palette, then fine-tune any token below.</div>
-      <div class="theme-presets" data-theme-presets aria-label="Theme presets">` + themePresetCards() + `</div>
+      <div class="theme-gallery" data-theme-presets aria-label="Theme presets">` + themePresetCards() + `</div>
     </div>
 
     <div class="card mb-6">
