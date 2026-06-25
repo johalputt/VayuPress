@@ -42,7 +42,7 @@ breaking the constitution (single binary, lightweight, privacy-first, strict CSP
 - **Command palette** — the slash (`/`) menu is now grouped by category and fully
   keyboard-navigable (↑/↓/Enter/Esc), and a global **`Ctrl/Cmd+K`** opens it from
   anywhere.
-- **Markdown shortcut** `- [ ] ` / `* [ ] ` converts a paragraph into a task list.
+- **Markdown shortcut** — typing `- [ ]` or `* [ ]` (then a space) converts a paragraph into a task list.
 - Legacy **HTML import** now maps `<table>` → table blocks and `<details>` →
   toggle blocks (`internal/blockrender/importer.go`), keeping "Convert to blocks"
   lossless for more content.
