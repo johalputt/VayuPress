@@ -423,6 +423,12 @@ func vayuosNav(active string) string {
 }
 
 // folderTabs renders the mailbox folder selector (Inbox/Sent/Drafts/Junk/Trash).
+// qparam returns a query-string value that is safe both inside the URL and inside
+// the surrounding HTML attribute: url.QueryEscape handles URL encoding, and the
+// html.EscapeString wrapper is a no-op on that output but gives static analysis
+// (CodeQL go/reflected-xss) the HTML-context sanitiser barrier it recognises.
+func qparam(s string) string { return html.EscapeString(url.QueryEscape(s)) }
+
 func folderTabs(user, active string) string {
 	var sb strings.Builder
 	sb.WriteString(`<div class="vmtabs">`)
@@ -431,7 +437,7 @@ func folderTabs(user, active string) string {
 		if strings.EqualFold(f, active) {
 			cls = "tab tab--active"
 		}
-		href := "/os/vayuos/mail/inbox?user=" + url.QueryEscape(user) + "&folder=" + url.QueryEscape(f)
+		href := "/os/vayuos/mail/inbox?user=" + qparam(user) + "&folder=" + qparam(f)
 		sb.WriteString(`<a class="` + cls + `" href="` + href + `">` + f + `</a>`)
 	}
 	sb.WriteString(`</div>`)
@@ -471,7 +477,7 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 		}
 		for _, b := range boxes {
 			addr := b.Username + "@" + domain
-			body.WriteString(`<tr><td><a href="/os/vayuos/mail/inbox?user=` + url.QueryEscape(b.Username) + `">` + html.EscapeString(addr) + `</a></td><td>` + itoaSafe(b.Total) + `</td><td>` + itoaSafe(b.Unseen) + `</td></tr>`)
+			body.WriteString(`<tr><td><a href="/os/vayuos/mail/inbox?user=` + qparam(b.Username) + `">` + html.EscapeString(addr) + `</a></td><td>` + itoaSafe(b.Total) + `</td><td>` + itoaSafe(b.Unseen) + `</td></tr>`)
 		}
 		body.WriteString(`</tbody></table></div></div>`)
 		writeOSHTML(w, adminOSLayout(nonce, "Mailbox", "vayuos", cfg, htmpl.HTML(body.String())))
@@ -499,7 +505,7 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 		if strings.EqualFold(folder, "Sent") || strings.EqualFold(folder, "Drafts") {
 			who = "→ " + m.To
 		}
-		link := "/os/vayuos/mail/message?user=" + url.QueryEscape(user) + "&folder=" + url.QueryEscape(folder) + "&id=" + url.QueryEscape(m.ID)
+		link := "/os/vayuos/mail/message?user=" + qparam(user) + "&folder=" + qparam(folder) + "&id=" + qparam(m.ID)
 		seen := ""
 		if !m.Seen && strings.EqualFold(folder, "Inbox") {
 			seen = ` <span class="badge badge--ok">new</span>`
@@ -530,13 +536,13 @@ func (a *App) handleVayuOSMessage(w http.ResponseWriter, r *http.Request) {
 	}
 	raw, err := a.vayuMail.ReadFolderMessage(user, folder, id)
 	if err != nil {
-		body.WriteString(`<div class="empty-state">Could not read message: ` + html.EscapeString(err.Error()) + ` <a href="/os/vayuos/mail/inbox?user=` + url.QueryEscape(user) + `">Back</a></div>`)
+		body.WriteString(`<div class="empty-state">Could not read message: ` + html.EscapeString(err.Error()) + ` <a href="/os/vayuos/mail/inbox?user=` + qparam(user) + `">Back</a></div>`)
 		writeOSHTML(w, adminOSLayout(nonce, "Message", "vayuos", cfg, htmpl.HTML(body.String())))
 		return
 	}
-	back := "/os/vayuos/mail/inbox?user=" + url.QueryEscape(user) + "&folder=" + url.QueryEscape(folder)
+	back := "/os/vayuos/mail/inbox?user=" + qparam(user) + "&folder=" + qparam(folder)
 	// Reply / Forward open the composer pre-filled from this message (server-side).
-	q := "user=" + url.QueryEscape(user) + "&folder=" + url.QueryEscape(folder) + "&id=" + url.QueryEscape(id)
+	q := "user=" + qparam(user) + "&folder=" + qparam(folder) + "&id=" + qparam(id)
 	replyLink := "/os/vayuos/mail/compose?reply=1&" + q
 	forwardLink := "/os/vayuos/mail/compose?forward=1&" + q
 	// Action buttons (POST via admin-os-mail.js, CSRF-protected).

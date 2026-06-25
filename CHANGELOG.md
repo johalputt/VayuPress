@@ -12,6 +12,22 @@ _Nothing yet._
 
 ---
 
+## [1.12.5] — 2026-06-25
+
+**Security: close the reflected-XSS path exposed by v1.12.4.**
+
+### Security
+
+- **VayuMail panel link parameters are now HTML-context safe.** Mailbox links
+  embedded `user`/`folder`/`id` values with `url.QueryEscape` only; once the
+  html/template passthrough was removed in v1.12.4, CodeQL traced those values
+  to the page sink (`go/reflected-xss`). A new `qparam` helper wraps the
+  query-escaped value with `html.EscapeString` (a no-op on that output) so it is
+  safe in both the URL and the surrounding HTML attribute, clearing the finding
+  without changing behaviour.
+
+---
+
 ## [1.12.4] — 2026-06-25
 
 **Security: resolve the last CodeQL XSS finding.**
