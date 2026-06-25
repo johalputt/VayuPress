@@ -139,9 +139,14 @@ func (s *SMTPServer) handle(conn net.Conn) {
 		bw     *bufio.Writer
 		onTLS  bool
 		authed bool
+		helo   string
 		from   string
 		rcpts  []string
 	)
+	var clientIP net.IP
+	if ta, ok := conn.RemoteAddr().(*net.TCPAddr); ok {
+		clientIP = ta.IP
+	}
 	setup := func(c net.Conn) {
 		br = bufio.NewReader(io.LimitReader(c, s.cfg.MaxMessageBytes+1<<16))
 		bw = bufio.NewWriter(c)
@@ -165,8 +170,10 @@ func (s *SMTPServer) handle(conn net.Conn) {
 		cmd, arg := splitCmd(line)
 		switch cmd {
 		case "HELO":
+			helo = arg
 			write("250 " + s.hostname())
 		case "EHLO":
+			helo = arg
 			_, _ = bw.WriteString("250-" + s.hostname() + "\r\n")
 			_, _ = bw.WriteString("250-8BITMIME\r\n")
 			_, _ = bw.WriteString(fmt.Sprintf("250-SIZE %d\r\n", s.cfg.MaxMessageBytes))
@@ -254,7 +261,19 @@ func (s *SMTPServer) handle(conn net.Conn) {
 				return
 			}
 			if s.handler != nil {
-				if herr := s.handler(from, rcpts, raw); herr != nil {
+				msg := raw
+				// Inbound (not submission): authenticate the sender and stamp an
+				// Authentication-Results header. A DMARC failure under an
+				// enforcing policy is flagged for the junk filter.
+				if !s.submission {
+					v := verifyInbound(s.hostname(), clientIP, helo, from, raw)
+					pre := v.authResultsHeader()
+					if v.Quarantine {
+						pre += "X-VayuMail-Auth-Quarantine: yes\r\n"
+					}
+					msg = append([]byte(pre), raw...)
+				}
+				if herr := s.handler(from, rcpts, msg); herr != nil {
 					write("451 4.3.0 Message handling failed")
 					continue
 				}
