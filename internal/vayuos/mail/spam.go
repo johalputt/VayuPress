@@ -66,6 +66,14 @@ func ScoreSpam(raw []byte) SpamVerdict {
 		if from == "" {
 			add(2, "missing From header")
 		}
+		// Inbound authentication outcome (set by the SMTP receiver). A DMARC
+		// failure under an enforcing policy forces the message to Junk; a plain
+		// DMARC alignment failure contributes a smaller signal.
+		if strings.EqualFold(strings.TrimSpace(msg.Header.Get("X-VayuMail-Auth-Quarantine")), "yes") {
+			add(SpamThreshold, "failed DMARC under an enforcing policy")
+		} else if ar := strings.ToLower(msg.Header.Get("Authentication-Results")); strings.Contains(ar, "dmarc=fail") {
+			add(2, "DMARC alignment failure")
+		}
 		if b, berr := readAll(msg); berr == nil {
 			body = b
 		}
