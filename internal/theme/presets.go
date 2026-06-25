@@ -8,6 +8,9 @@ var galeCSS string
 //go:embed zephyr.css
 var zephyrCSS string
 
+//go:embed dispatch.css
+var dispatchCSS string
+
 // Default returns the Default preset — neutral dark/light tones.
 func Default() Tokens {
 	return Tokens{
@@ -267,6 +270,7 @@ func AllPresets() []Tokens {
 		Coral(),
 		Gale(),
 		Zephyr(),
+		Dispatch(),
 	}
 }
 
@@ -463,5 +467,25 @@ func Zephyr() Tokens {
 		FontSans: "Inter, system-ui, sans-serif", FontMono: "IBM Plex Mono, monospace",
 		FontSizeBase: "1.0625rem", LineHeight: "1.75", MaxWidth: "44rem", RadiusSm: "0.5rem", RadiusLg: "0.75rem",
 		CustomCSS: zephyrCSS,
+	}
+}
+
+// Dispatch — a modern newsletter & email-publication theme. Clean neutral
+// canvas, a confident emerald accent, modern sans typography, and an
+// email-width reading measure. Ships a full component CSS covering common
+// newsletter features: customizable hero, subscribe section, "Featured in"
+// logos, story section, inbox-style featured issues, reviews slider,
+// latest-issues feed with sidebar (detailed/minimal), topic list,
+// newsletters-page cards, membership tiers, archive, web/email post formats,
+// footer, and a light/dark switcher.
+func Dispatch() Tokens {
+	return Tokens{
+		Name: "Dispatch", BgDark: "#0b0c0e", SurfaceDark: "#15171b", TextDark: "#e9eaec",
+		MutedDark: "#9197a3", AccentDark: "#34d399", Accent2Dark: "#6ee7b7", HiDark: "#fbbf24", GreenDark: "#34d399",
+		BgLight: "#fbfbfa", SurfaceLight: "#ffffff", TextLight: "#16181d", MutedLight: "#5f6672",
+		AccentLight: "#059669", Accent2Light: "#047857", HiLight: "#b45309",
+		FontSans: "Inter, system-ui, -apple-system, sans-serif", FontMono: "IBM Plex Mono, ui-monospace, monospace",
+		FontSizeBase: "1.0625rem", LineHeight: "1.7", MaxWidth: "44rem", RadiusSm: "0.5rem", RadiusLg: "0.875rem",
+		CustomCSS: dispatchCSS,
 	}
 }
