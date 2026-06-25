@@ -11,6 +11,9 @@ var zephyrCSS string
 //go:embed dispatch.css
 var dispatchCSS string
 
+//go:embed vivid.css
+var vividCSS string
+
 // Default returns the Default preset — neutral dark/light tones.
 func Default() Tokens {
 	return Tokens{
@@ -271,6 +274,7 @@ func AllPresets() []Tokens {
 		Gale(),
 		Zephyr(),
 		Dispatch(),
+		Vivid(),
 	}
 }
 
@@ -487,5 +491,25 @@ func Dispatch() Tokens {
 		FontSans: "Inter, system-ui, -apple-system, sans-serif", FontMono: "IBM Plex Mono, ui-monospace, monospace",
 		FontSizeBase: "1.0625rem", LineHeight: "1.7", MaxWidth: "44rem", RadiusSm: "0.5rem", RadiusLg: "0.875rem",
 		CustomCSS: dispatchCSS,
+	}
+}
+
+// Vivid — a bold, expressive, color-scheme-driven magazine theme. A warm
+// dusty-orange accent on a clean paper canvas, expressive serif display
+// headings paired with a modern sans body, playful rounded shapes, and an
+// accent-colored header band. Ships a full component CSS covering a clean post
+// grid, a featured-posts slider, a popular-tags carousel, a quote widget, five
+// featured-image aspect ratios, author/tags/contact templates, membership
+// tiers, a multi-column footer, an announcement bar, and six swappable color
+// schemes — light & dark.
+func Vivid() Tokens {
+	return Tokens{
+		Name: "Vivid", BgDark: "#14110d", SurfaceDark: "#1f1a14", TextDark: "#f5efe6",
+		MutedDark: "#a99e8d", AccentDark: "#f2784b", Accent2Dark: "#ff9466", HiDark: "#f4c430", GreenDark: "#6ee787",
+		BgLight: "#faf7f2", SurfaceLight: "#ffffff", TextLight: "#1a1410", MutedLight: "#6b6357",
+		AccentLight: "#ce5c25", Accent2Light: "#a8431a", HiLight: "#b8860b",
+		FontSans: "Work Sans, Inter, system-ui, -apple-system, sans-serif", FontMono: "IBM Plex Mono, ui-monospace, monospace",
+		FontSizeBase: "1.0625rem", LineHeight: "1.65", MaxWidth: "46rem", RadiusSm: "0.5rem", RadiusLg: "1rem",
+		CustomCSS: vividCSS,
 	}
 }

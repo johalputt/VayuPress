@@ -200,6 +200,12 @@ var catalogMeta = map[string]ThemeMeta{
 		Tags:        []string{"newsletter", "email", "subscribe", "emerald", "layout"},
 		Category:    CatNewsletter,
 	},
+	"Vivid": {
+		Tagline:     "Bold, expressive magazine with color schemes.",
+		Description: "A bold, expressive magazine theme with a clean grid, playful rounded shapes, an accent-colored header band, and expressive serif display headings over a modern sans body. Ships a complete component kit: a hero with five intro modes (signup form/button, search, dual CTA, or none) plus optional cover, a featured-posts slider, a popular-tags carousel, a quote widget, five featured-image aspect ratios, author/tags/contact templates, membership tiers, a multi-column footer, an announcement bar, and six swappable color schemes — light & dark.",
+		Tags:        []string{"magazine", "bold", "expressive", "color schemes", "layout"},
+		Category:    CatVibrant,
+	},
 }
 
 // Meta returns the store metadata for a theme by name. When no explicit entry
