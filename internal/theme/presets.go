@@ -17,6 +17,9 @@ var vividCSS string
 //go:embed beacon.css
 var beaconCSS string
 
+//go:embed ripple.css
+var rippleCSS string
+
 // Default returns the Default preset — neutral dark/light tones.
 func Default() Tokens {
 	return Tokens{
@@ -279,6 +282,7 @@ func AllPresets() []Tokens {
 		Dispatch(),
 		Vivid(),
 		Beacon(),
+		Ripple(),
 	}
 }
 
@@ -536,5 +540,26 @@ func Beacon() Tokens {
 		FontSans: "Inter, system-ui, -apple-system, 'Segoe UI', sans-serif", FontMono: "IBM Plex Mono, ui-monospace, monospace",
 		FontSizeBase: "1.0625rem", LineHeight: "1.65", MaxWidth: "44rem", RadiusSm: "0.5rem", RadiusLg: "0.875rem",
 		CustomCSS: beaconCSS,
+	}
+}
+
+// Ripple — a fluid, wave-styled blog & magazine theme. A friendly content +
+// sidebar layout on a cool turquoise palette, whose signature is decorative
+// wave-shaped section dividers (drawn with pure CSS masks). Ships a full
+// component CSS covering a wave-edged hero, a widget-rich sidebar (about me,
+// recent/related articles, social profiles, tag cloud, advertising), four
+// single-post dispositions (classic/vertical/fullcover/no-sidebar), membership
+// pricing tables with a monthly/yearly toggle, post cards with per-post accents,
+// custom tag/author/popular-authors/404 pages, a gallery grid, and a footer
+// with quick links — light & dark.
+func Ripple() Tokens {
+	return Tokens{
+		Name: "Ripple", BgDark: "#0a1719", SurfaceDark: "#102427", TextDark: "#e3f2f1",
+		MutedDark: "#7fa3a3", AccentDark: "#2dd4c4", Accent2Dark: "#5eead4", HiDark: "#fbbf24", GreenDark: "#34d399",
+		BgLight: "#f6fbfb", SurfaceLight: "#ffffff", TextLight: "#0f2027", MutedLight: "#5b7178",
+		AccentLight: "#0e9aa8", Accent2Light: "#0c8f8e", HiLight: "#d97706",
+		FontSans: "system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif", FontMono: "IBM Plex Mono, ui-monospace, monospace",
+		FontSizeBase: "1.0625rem", LineHeight: "1.7", MaxWidth: "44rem", RadiusSm: "0.5rem", RadiusLg: "1.25rem",
+		CustomCSS: rippleCSS,
 	}
 }
