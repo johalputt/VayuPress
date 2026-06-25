@@ -10,6 +10,17 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Added
 
+- **Mailbox usability: drafts, mark-as-read, and a deliverability self-check.**
+  - **Drafts** — Compose now has a **Save as draft** button that files the
+    message into the sender's Drafts folder; opening a draft from the mailbox
+    reloads it in the composer to finish and send (`Engine.SaveDraft`).
+  - **Mark as read / unread** — the reader view has ✓ **Mark read** / **Mark
+    unread** actions and each Inbox row has a per-message read toggle, backed by
+    proper Maildir Seen-flag moves (`Engine.MarkRead` / `MarkUnread`).
+  - **Deliverability self-check** — the Mail & DNS panel now flags the common
+    reasons mail is marked as spam: a **DKIM key published in DNS that does not
+    match VayuMail's signing key**, and a **reverse-DNS (PTR) mismatch** against
+    the mail hostname (`Engine.Deliverability`).
 - **VayuAnalytics dashboard polish.** The privacy-first analytics page now reads
   far more clearly at a glance:
   - **Full country names + flag emoji.** Country breakdowns show e.g.

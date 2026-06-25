@@ -112,3 +112,55 @@ func txtContains(ctx context.Context, r *net.Resolver, typ, name, needle string)
 	}
 	return health(typ, name, false, strings.Join(txts, " | "))
 }
+
+// Deliverability runs the live checks that most often send legitimate mail to
+// spam: whether the DKIM key actually published in DNS matches the key VayuMail
+// signs with, and whether the host's reverse DNS (PTR) matches the mail
+// hostname. Both are best-effort.
+func Deliverability(ctx context.Context, cfg Config, dkimName, dkimTXT string) []RecordHealth {
+	var out []RecordHealth
+	r := &net.Resolver{}
+
+	// DKIM published-key vs signing-key — a mismatch means dkim=fail at the
+	// recipient, which (with an enforcing DMARC policy) lands mail in spam.
+	if cfg.DKIMEnabled && dkimTXT != "" {
+		wantP := dkimPValue(dkimTXT)
+		published, _ := r.LookupTXT(ctx, dkimName)
+		joined := strings.ReplaceAll(strings.Join(published, ""), " ", "")
+		switch {
+		case len(published) == 0:
+			out = append(out, RecordHealth{Type: "DKIM key", Name: dkimName, OK: false, Message: "no DKIM record published — publish the DKIM record shown above"})
+		case wantP != "" && strings.Contains(joined, wantP):
+			out = append(out, RecordHealth{Type: "DKIM key", Name: dkimName, OK: true, Found: "matches signing key", Message: "ok"})
+		default:
+			out = append(out, RecordHealth{Type: "DKIM key", Name: dkimName, OK: false, Found: "different key in DNS", Message: "published DKIM key does NOT match VayuMail's signing key — replace the TXT record with the DKIM value above or every message fails DKIM"})
+		}
+	}
+
+	// Reverse DNS (PTR) vs the mail hostname.
+	ptr := RecordHealth{Type: "PTR", Name: cfg.Hostname, Message: "could not resolve reverse DNS"}
+	if ips, err := r.LookupHost(ctx, cfg.Hostname); err == nil && len(ips) > 0 {
+		if names, err := r.LookupAddr(ctx, ips[0]); err == nil && len(names) > 0 {
+			ptr.Found = strings.TrimSuffix(names[0], ".")
+			if strings.EqualFold(ptr.Found, cfg.Hostname) {
+				ptr.OK, ptr.Message = true, "ok"
+			} else {
+				ptr.Message = "reverse DNS does not match " + cfg.Hostname + " — set rDNS/PTR at your VPS provider; Gmail/Outlook penalise a mismatch"
+			}
+		}
+	}
+	out = append(out, ptr)
+	return out
+}
+
+// dkimPValue extracts the whitespace-stripped base64 public key (the p= tag)
+// from a DKIM TXT value, for robust comparison against a published record.
+func dkimPValue(txt string) string {
+	for _, part := range strings.Split(txt, ";") {
+		part = strings.TrimSpace(part)
+		if strings.HasPrefix(part, "p=") {
+			return strings.ReplaceAll(strings.TrimSpace(part[2:]), " ", "")
+		}
+	}
+	return ""
+}
