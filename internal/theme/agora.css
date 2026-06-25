@@ -335,3 +335,24 @@
   .agora-react,.agora-drawer__backdrop{transition:none}
   .agora-feed--cards .agora-card:hover,.agora-feed--compact .agora-card:hover{transform:none}
 }
+
+
+/* ============================================================================
+   Live public-site styling — overrides the real VayuPress markup (vayu-*).
+   Identity: community/forum — bordered discussion rows with a left accent
+   rail, calm neutral surfaces, comment-style meta.
+   ============================================================================ */
+.container{max-width:48rem}
+.vayu-nav{border-bottom:1px solid color-mix(in srgb,var(--vp-muted) 18%,transparent);padding-bottom:.9rem;margin-bottom:2rem}
+.vayu-hero{padding:3rem 0 2rem;border-bottom:1px solid color-mix(in srgb,var(--vp-muted) 16%,transparent);margin-bottom:2rem}
+.vayu-hero h1{font-size:clamp(2rem,5vw,3rem);font-weight:750;letter-spacing:-.02em;-webkit-text-fill-color:currentColor;background:none;color:var(--vp-text)}
+.vayu-section-label{font-weight:700;color:var(--vp-accent)}
+.vayu-post-list{display:flex;flex-direction:column;gap:.6rem}
+.vayu-post-card{display:block;background:var(--vp-surface);border:1px solid color-mix(in srgb,var(--vp-muted) 16%,transparent);border-left:3px solid var(--vp-accent);border-radius:.5rem;padding:1.1rem 1.25rem}
+.vayu-post-card:hover{transform:none;background:color-mix(in srgb,var(--vp-accent) 7%,transparent);border-left-color:var(--vp-accent)}
+.vayu-post-meta{font-size:.78rem}
+.vayu-post-title{font-size:1.2rem;font-weight:700}
+.vayu-post-arrow{display:none}
+.vayu-tag{border-radius:2rem;background:color-mix(in srgb,var(--vp-accent) 12%,transparent);border-color:transparent;color:var(--vp-accent)}
+article.vayu-prose h1,.vayu-article-header h1{font-size:clamp(1.9rem,4.5vw,2.7rem);font-weight:750;-webkit-text-fill-color:currentColor;background:none;color:var(--vp-text)}
+.vayu-footer{border-top:1px solid color-mix(in srgb,var(--vp-muted) 16%,transparent)}
