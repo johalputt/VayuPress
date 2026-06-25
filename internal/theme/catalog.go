@@ -37,13 +37,14 @@ type StoreEntry struct {
 
 // Store-card category vocabulary (kept small and stable for the filter UI).
 const (
-	CatDark      = "Dark"
-	CatLight     = "Light"
-	CatMinimal   = "Minimal"
-	CatVibrant   = "Vibrant"
-	CatEditorial = "Editorial"
-	CatReading   = "Reading"
-	CatMono      = "Mono"
+	CatDark       = "Dark"
+	CatLight      = "Light"
+	CatMinimal    = "Minimal"
+	CatVibrant    = "Vibrant"
+	CatEditorial  = "Editorial"
+	CatReading    = "Reading"
+	CatMono       = "Mono"
+	CatNewsletter = "Newsletter"
 )
 
 // catalogMeta maps a preset Name to its store metadata. Names must match the
@@ -193,6 +194,12 @@ var catalogMeta = map[string]ThemeMeta{
 		Tags:        []string{"creative", "coral", "layout"},
 		Category:    CatEditorial,
 	},
+	"Dispatch": {
+		Tagline:     "Modern newsletter & email publication.",
+		Description: "A modern newsletter and email-publication theme. A clean neutral canvas with a confident emerald accent and an email-width measure, shipping a complete component kit: a customizable hero with inline/section subscribe, a 'Featured in' logos strip, a story section, inbox-style featured issues, a reviews slider, a latest-issues feed with a sticky subscribe sidebar, a topic list, newsletter cards, membership tiers, archive, and web/email post formats — light & dark.",
+		Tags:        []string{"newsletter", "email", "subscribe", "emerald", "layout"},
+		Category:    CatNewsletter,
+	},
 }
 
 // Meta returns the store metadata for a theme by name. When no explicit entry
@@ -229,7 +236,7 @@ func Store() []StoreEntry {
 // Categories returns the distinct category labels present in the store, in a
 // stable, curated order (categories not present in the catalogue are omitted).
 func Categories() []string {
-	order := []string{CatDark, CatLight, CatMinimal, CatReading, CatEditorial, CatVibrant, CatMono}
+	order := []string{CatDark, CatLight, CatMinimal, CatReading, CatEditorial, CatNewsletter, CatVibrant, CatMono}
 	present := map[string]bool{}
 	for _, e := range Store() {
 		present[e.Meta.Category] = true
