@@ -202,6 +202,45 @@
     });
   }
 
+  // ── Theme import / export ───────────────────────────────────────────────────
+  var importFile = root.querySelector('[data-theme-import-file]');
+  var importBtn = root.querySelector('[data-theme-import]');
+  var importStatusEl = root.querySelector('[data-theme-import-status]');
+
+  function setImportStatus(msg, kind) {
+    if (!importStatusEl) return;
+    importStatusEl.textContent = msg;
+    importStatusEl.className = 'text-sm' + (kind ? ' status--' + kind : ' muted');
+  }
+
+  if (importBtn) {
+    importBtn.addEventListener('click', function () {
+      var f = importFile && importFile.files && importFile.files[0];
+      if (!f) { setImportStatus('Choose a .json theme file first', 'danger'); return; }
+      var reader = new FileReader();
+      reader.onload = function () {
+        setImportStatus('Importing…');
+        importBtn.disabled = true;
+        fetch('/os/api/theme/import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
+          body: reader.result
+        }).then(function (r) {
+          if (!r.ok) return r.json().then(function (e) { throw new Error(e.error || ('import failed (' + r.status + ')')); });
+          return r.json();
+        }).then(function (d) {
+          setImportStatus('Imported “' + (d.name || 'theme') + '” — reloading…', 'ok');
+          setTimeout(function () { window.location.reload(); }, 900);
+        }).catch(function (err) {
+          setImportStatus(String(err.message || err), 'danger');
+          importBtn.disabled = false;
+        });
+      };
+      reader.onerror = function () { setImportStatus('Could not read the file', 'danger'); };
+      reader.readAsText(f);
+    });
+  }
+
   // ── Colorize preset swatches via CSSOM (CSP-safe: no inline style attrs) ────
   function paintSwatches() {
     if (!galleryEl) return;

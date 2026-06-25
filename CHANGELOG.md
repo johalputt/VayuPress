@@ -12,6 +12,23 @@ _Nothing yet._
 
 ---
 
+## [1.12.0] — 2026-06-25
+
+**Theme import / export in Theme Studio.**
+
+### Added
+
+- **Export theme.** Download the full active theme — design tokens
+  (palette/typography/layout) plus the site-wide custom CSS and head/SEO meta —
+  as a single portable JSON file from Theme Studio (`GET /os/api/theme/export`).
+- **Import theme.** Upload a previously exported theme JSON to apply it
+  everywhere (`POST /os/api/theme/import`). Imported tokens are **validated by
+  compiling them** before going live, custom CSS is capped at 16 KB, and head
+  meta is checked against the same escaped allowlist as the editor — so a bad
+  file can never break the site or bypass the CSP.
+
+---
+
 ## [1.11.0] — 2026-06-25
 
 **Tumblr-style theme code editing in Theme Studio.**

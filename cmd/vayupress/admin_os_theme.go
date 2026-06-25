@@ -22,13 +22,35 @@ import (
 	htmpl "html/template"
 	"net/http"
 	"strings"
+	"time"
 
+	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/mode"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/settings"
 	"github.com/johalputt/vayupress/internal/theme"
 )
+
+// themeExport is the on-disk JSON envelope for a full VayuPress theme: design
+// tokens (palette/typography/layout) plus the site-wide custom CSS and the
+// validated head/SEO meta. It round-trips through the export/import endpoints.
+type themeExport struct {
+	Schema     int             `json:"vayupress_theme"`
+	Version    string          `json:"version,omitempty"`
+	ExportedAt string          `json:"exported_at,omitempty"`
+	Tokens     theme.Tokens    `json:"tokens"`
+	CustomCSS  string          `json:"custom_css"`
+	Head       themeHeadExport `json:"head"`
+}
+
+type themeHeadExport struct {
+	Keywords     string `json:"keywords"`
+	ThemeColor   string `json:"theme_color"`
+	Robots       string `json:"robots"`
+	VerifyGoogle string `json:"verify_google"`
+	VerifyBing   string `json:"verify_bing"`
+}
 
 // themePresetCards renders the preset gallery server-side (CSP-safe: swatch
 // colours are carried as data-color attributes and applied via the CSSOM in JS,
@@ -193,6 +215,17 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
         <span class="text-sm muted" data-theme-code-status></span>
       </div>
     </div>
+
+    <div class="card">
+      <div class="card-title">Import / Export theme</div>
+      <div class="text-sm muted mb-3">Download the full theme (palette, typography, custom CSS, meta) as a JSON file, or import one to apply it everywhere. Imported tokens are validated before they go live.</div>
+      <div class="vm-row">
+        <a class="btn btn--sm" href="/os/api/theme/export" download>Export theme JSON</a>
+        <input type="file" accept="application/json,.json" class="input" data-theme-import-file>
+        <button type="button" class="btn btn--primary btn--sm" data-theme-import>Import</button>
+        <span class="text-sm muted" data-theme-import-status></span>
+      </div>
+    </div>
   </div>
 
   <aside class="theme-studio__preview" aria-label="Live preview">
@@ -321,4 +354,146 @@ func (a *App) handleOSThemeCode(w http.ResponseWriter, r *http.Request) {
 		Msg: "theme custom CSS / head settings updated", RequestID: getRequestID(r),
 	})
 	writeJSON(w, r, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// handleOSThemeExport streams the full active theme (tokens + custom CSS +
+// head/SEO meta) as a downloadable JSON file.
+func (a *App) handleOSThemeExport(w http.ResponseWriter, r *http.Request) {
+	t, err := theme.Load(r.Context(), dbpkg.DB)
+	if err != nil {
+		writeJSON(w, r, http.StatusInternalServerError, map[string]string{"error": "failed to load theme: " + err.Error()})
+		return
+	}
+	vals, _ := a.siteSettings.GetAll(r.Context())
+	get := func(k string) string {
+		if v, ok := vals[k]; ok {
+			return v
+		}
+		return settings.Defaults[k]
+	}
+	env := themeExport{
+		Schema:     1,
+		Version:    Version,
+		ExportedAt: time.Now().UTC().Format(time.RFC3339),
+		Tokens:     t,
+		CustomCSS:  get(settings.KeyThemeCustomCSS),
+		Head: themeHeadExport{
+			Keywords:     get(settings.KeyHeadKeywords),
+			ThemeColor:   get(settings.KeyHeadThemeColor),
+			Robots:       get(settings.KeyHeadRobots),
+			VerifyGoogle: get(settings.KeyHeadVerifyGoogle),
+			VerifyBing:   get(settings.KeyHeadVerifyBing),
+		},
+	}
+	name := "vayupress-theme-" + time.Now().UTC().Format("20060102") + ".json"
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Content-Disposition", "attachment; filename=\""+name+"\"")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	_ = enc.Encode(env)
+}
+
+// handleOSThemeImport applies a theme JSON envelope produced by export: it
+// validates the tokens (must compile), the custom CSS (<=16 KB) and the head
+// meta (escaped allowlist), then persists tokens + settings, refreshes the
+// render pipeline, and purges cached HTML.
+func (a *App) handleOSThemeImport(w http.ResponseWriter, r *http.Request) {
+	cur := mode.Global.Current()
+	if cur == mode.ModeReadOnly || cur == mode.ModeQuarantined {
+		writeJSON(w, r, http.StatusServiceUnavailable, map[string]string{"error": "theme cannot be imported in " + string(cur) + " mode"})
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 128*1024)
+	var env themeExport
+	if err := json.NewDecoder(r.Body).Decode(&env); err != nil {
+		writeJSON(w, r, http.StatusBadRequest, map[string]string{"error": "not a valid theme file: " + err.Error()})
+		return
+	}
+	if env.Schema != 1 {
+		writeJSON(w, r, http.StatusBadRequest, map[string]string{"error": "unsupported or missing theme schema (expected vayupress_theme: 1)"})
+		return
+	}
+
+	// Validate tokens by compiling them (rejects malformed colours/values).
+	css, err := theme.CompileCSS(env.Tokens)
+	if err != nil {
+		writeJSON(w, r, http.StatusBadRequest, map[string]string{"error": "invalid theme tokens: " + err.Error()})
+		return
+	}
+
+	ccss := strings.TrimSpace(env.CustomCSS)
+	if len(ccss) > 16*1024 {
+		writeJSON(w, r, http.StatusBadRequest, map[string]string{"error": "custom CSS in file exceeds the 16 KB limit"})
+		return
+	}
+	keywords := strings.TrimSpace(env.Head.Keywords)
+	if len(keywords) > 256 {
+		keywords = keywords[:256]
+	}
+	themeColor := strings.TrimSpace(env.Head.ThemeColor)
+	if themeColor != "" && !hexColorRe.MatchString(themeColor) {
+		writeJSON(w, r, http.StatusBadRequest, map[string]string{"error": "head theme_color is not a valid hex colour"})
+		return
+	}
+	robots := strings.TrimSpace(env.Head.Robots)
+	if robots == "" || !settings.RobotsOptions[robots] {
+		robots = settings.Defaults[settings.KeyHeadRobots]
+	}
+	verifyGoogle := strings.TrimSpace(env.Head.VerifyGoogle)
+	verifyBing := strings.TrimSpace(env.Head.VerifyBing)
+	for _, tok := range []string{verifyGoogle, verifyBing} {
+		if tok != "" && !verifyTokenRe.MatchString(tok) {
+			writeJSON(w, r, http.StatusBadRequest, map[string]string{"error": "head verification token contains invalid characters"})
+			return
+		}
+	}
+
+	if err := theme.Save(r.Context(), dbpkg.DB, env.Tokens); err != nil {
+		writeJSON(w, r, http.StatusInternalServerError, map[string]string{"error": "failed to persist tokens: " + err.Error()})
+		return
+	}
+	render.SetThemeCSS(css)
+
+	kv := map[string]string{
+		settings.KeyThemeCustomCSS:   ccss,
+		settings.KeyHeadKeywords:     keywords,
+		settings.KeyHeadThemeColor:   themeColor,
+		settings.KeyHeadRobots:       robots,
+		settings.KeyHeadVerifyGoogle: verifyGoogle,
+		settings.KeyHeadVerifyBing:   verifyBing,
+	}
+	if err := a.siteSettings.SetMany(r.Context(), kv); err != nil {
+		writeJSON(w, r, http.StatusInternalServerError, map[string]string{"error": "failed to persist settings: " + err.Error()})
+		return
+	}
+	if nv, err := a.siteSettings.GetAll(r.Context()); err == nil {
+		render.SetActiveSettings(render.SiteSettings{
+			Name:            nv[settings.KeySiteName],
+			Tagline:         nv[settings.KeySiteTagline],
+			Description:     nv[settings.KeySiteDescription],
+			Author:          nv[settings.KeySiteAuthor],
+			ShowMembership:  nv[settings.KeyMembershipButtons] == "true",
+			PrimaryLight:    nv[settings.KeyThemePrimaryLight],
+			PrimaryDark:     nv[settings.KeyThemePrimaryDark],
+			AccentLight:     nv[settings.KeyThemeAccentLight],
+			AccentDark:      nv[settings.KeyThemeAccentDark],
+			CustomCSS:       nv[settings.KeyThemeCustomCSS],
+			Keywords:        nv[settings.KeyHeadKeywords],
+			ThemeColor:      nv[settings.KeyHeadThemeColor],
+			Robots:          nv[settings.KeyHeadRobots],
+			VerifyGoogle:    nv[settings.KeyHeadVerifyGoogle],
+			VerifyBing:      nv[settings.KeyHeadVerifyBing],
+			NavJSON:         nv[settings.KeyNavItems],
+			CommentsEnabled: nv[settings.KeyFeatureComments] != "off",
+		})
+	}
+	render.CachePurgeAll()
+	dbpkg.AuditLog("theme.import", dbpkg.AuditActor(r), env.Tokens.Name, "")
+
+	logging.LogJSON(logging.LogFields{
+		Level: "info", Component: "theme", Severity: "info",
+		Msg: "theme imported: " + env.Tokens.Name, RequestID: getRequestID(r),
+	})
+	writeJSON(w, r, http.StatusOK, map[string]string{"status": "ok", "name": env.Tokens.Name})
 }
