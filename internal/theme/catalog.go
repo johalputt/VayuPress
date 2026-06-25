@@ -213,6 +213,12 @@ var catalogMeta = map[string]ThemeMeta{
 		Tags:        []string{"startup", "company", "saas", "professional", "layout"},
 		Category:    CatBusiness,
 	},
+	"Ripple": {
+		Tagline:     "Fluid, wave-styled sidebar blog.",
+		Description: "A friendly, fluid blog and magazine theme on a cool turquoise palette, whose signature is decorative wave-shaped section dividers. Ships a complete component kit: a wave-edged hero, a content + sidebar layout with a full set of widgets (about me, recent/related articles, social profiles, tag cloud, advertising), four single-post dispositions (classic, vertical, fullcover, no-sidebar), membership pricing tables with a monthly/yearly toggle, post cards with per-post accents, custom tag/author/popular-authors/404 pages, a gallery grid, and a footer with quick links — light & dark.",
+		Tags:        []string{"blog", "sidebar", "waves", "widgets", "layout"},
+		Category:    CatEditorial,
+	},
 }
 
 // Meta returns the store metadata for a theme by name. When no explicit entry

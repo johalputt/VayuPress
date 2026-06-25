@@ -1,0 +1,225 @@
+/* ============================================================================
+   Ripple — a fluid, wave-styled blog & magazine theme for VayuPress.
+
+   A friendly content + sidebar publication theme whose signature is decorative
+   wave-shaped section dividers, paired with a widget-rich sidebar, four single-
+   post dispositions, and membership pricing tables. Every component is CSP-safe
+   and same-origin (served via /theme.css, style-src 'self'), driven by the
+   VayuPress design tokens (--vp-*). No external fonts, no CDNs, no JS required.
+
+   Feature  ->  Ripple class / hook
+   ----------------------------------------------------------------------------
+   Wave section dividers (signature)   -> .ripple-wave (--flip), .ripple-hero
+   Content + sidebar layout            -> .ripple-layout / .ripple-main / .ripple-sidebar
+   Sidebar widgets (about, recent,
+     related, social, tag cloud, ad,
+     text, social feed)                -> .ripple-widget(--about/--ad), .ripple-widget__list,
+                                          .ripple-tagcloud / __tag, .ripple-social
+   Four post dispositions              -> .ripple-post--{classic|vertical|fullcover|nosidebar}
+   Membership pricing tables
+     (free/monthly/yearly + toggle)     -> .ripple-pricing / .ripple-plan(--featured) / __toggle
+   Post feed cards (per-post accent)   -> .ripple-feed / .ripple-card (--card-accent)
+   Custom tag / author / popular
+     authors / 404 pages               -> .ripple-tagheader / .ripple-authorcard /
+                                          .ripple-authors / .ripple-404
+   Subscribe / sign-in pages           -> .ripple-auth
+   Header (primary nav, search, sticky)-> .ripple-header / .ripple-nav (+ __dropdown)
+   Footer (secondary "Quick Links",
+     text widget, social)              -> .ripple-footer / __quicklinks / __about
+   Gallery (lightbox-ready grid)       -> .ripple-gallery
+   Syntax-highlight code block         -> .ripple-code
+   Pagination                          -> .ripple-pagination
+   ============================================================================ */
+
+:root{
+  --ripple-display:var(--vp-font-sans,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif);
+  --ripple-body:var(--vp-font-sans,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif);
+  --ripple-wave-size:40px;
+}
+
+/* ── Shared primitives ──────────────────────────────────────────────────── */
+.ripple-eyebrow{display:inline-block;font-size:.72rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--vp-accent)}
+.ripple-btn{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;min-height:44px;min-width:44px;padding:.7rem 1.5rem;font-family:var(--ripple-body);font-size:.92rem;font-weight:650;text-decoration:none;border:2px solid var(--vp-accent);border-radius:2rem;cursor:pointer;transition:background .15s,color .15s,transform .15s}
+.ripple-btn:hover{transform:translateY(-1px)}
+.ripple-btn--primary{background:var(--vp-accent);color:#fff}
+.ripple-btn--primary:hover{background:var(--vp-accent2);border-color:var(--vp-accent2)}
+.ripple-btn--ghost{background:transparent;color:var(--vp-accent)}
+.ripple-btn--ghost:hover{background:color-mix(in srgb,var(--vp-accent) 12%,transparent)}
+.ripple-input{flex:1;min-height:44px;padding:.7rem 1.2rem;font-size:.92rem;border-radius:2rem;border:2px solid color-mix(in srgb,var(--vp-muted) 35%,transparent);background:var(--vp-bg);color:var(--vp-text)}
+.ripple-input:focus{outline:2px solid var(--vp-accent);outline-offset:1px;border-color:var(--vp-accent)}
+.ripple-section{margin:3.5rem 0}
+.ripple-section__title{font-family:var(--ripple-display);font-weight:750;letter-spacing:-.01em;font-size:1.6rem;color:var(--vp-text);margin:0 0 1.25rem}
+
+/* ── Wave section dividers (the signature) ──────────────────────────────── */
+/* An accent-coloured strip with a scalloped wave edge, drawn purely with a
+   CSS mask (no external SVG). Place between sections or below the hero. */
+.ripple-wave{height:24px;background:var(--vp-accent);
+  -webkit-mask:radial-gradient(var(--ripple-wave-size) at 50% calc(100% + 14px),#0000 calc(99% - 2px),#000 calc(101% - 2px)) 50% / calc(2*var(--ripple-wave-size)) 100% repeat-x;
+          mask:radial-gradient(var(--ripple-wave-size) at 50% calc(100% + 14px),#0000 calc(99% - 2px),#000 calc(101% - 2px)) 50% / calc(2*var(--ripple-wave-size)) 100% repeat-x}
+.ripple-wave--flip{transform:rotate(180deg)}
+.ripple-wave--soft{background:color-mix(in srgb,var(--vp-accent) 16%,transparent)}
+
+/* ── Hero / blog cover (with a wave bottom edge) ────────────────────────── */
+.ripple-hero{position:relative;padding:4rem 0 3rem;text-align:center;background:color-mix(in srgb,var(--vp-accent) 10%,transparent)}
+.ripple-hero__title{font-family:var(--ripple-display);font-weight:800;letter-spacing:-.02em;font-size:clamp(2.1rem,5vw,3.2rem);line-height:1.1;color:var(--vp-text);margin:0 auto 1rem;max-width:18ch}
+.ripple-hero__sub{font-size:1.15rem;line-height:1.6;color:var(--vp-muted);max-width:50ch;margin:0 auto 1.75rem}
+.ripple-hero__wave{position:absolute;left:0;right:0;bottom:-1px;height:28px;background:var(--vp-bg);
+  -webkit-mask:radial-gradient(var(--ripple-wave-size) at 50% 0,#0000 calc(99% - 2px),#000 calc(101% - 2px)) 50% / calc(2*var(--ripple-wave-size)) 100% repeat-x;
+          mask:radial-gradient(var(--ripple-wave-size) at 50% 0,#0000 calc(99% - 2px),#000 calc(101% - 2px)) 50% / calc(2*var(--ripple-wave-size)) 100% repeat-x}
+
+/* ── Content + sidebar layout ───────────────────────────────────────────── */
+.ripple-layout{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:3rem;align-items:start}
+.ripple-main{min-width:0}
+.ripple-sidebar{position:sticky;top:1.5rem;display:flex;flex-direction:column;gap:1.5rem}
+
+/* ── Sidebar widgets ────────────────────────────────────────────────────── */
+.ripple-widget{padding:1.5rem;border-radius:var(--vp-radius-lg,1.25rem);background:var(--vp-surface);border:1px solid color-mix(in srgb,var(--vp-muted) 16%,transparent)}
+.ripple-widget__title{font-size:.78rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--vp-accent);margin:0 0 1rem;position:relative;padding-bottom:.6rem}
+.ripple-widget__title::after{content:"";position:absolute;left:0;bottom:0;width:36px;height:3px;border-radius:3px;background:var(--vp-accent)}
+.ripple-widget__list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:.85rem}
+.ripple-widget__item{display:grid;grid-template-columns:56px 1fr;gap:.75rem;align-items:center;text-decoration:none}
+.ripple-widget__thumb{width:56px;height:56px;border-radius:.75rem;object-fit:cover}
+.ripple-widget__itemtitle{font-size:.9rem;font-weight:600;line-height:1.3;color:var(--vp-text)}
+.ripple-widget__meta{font-size:.76rem;color:var(--vp-muted)}
+/* About-me widget */
+.ripple-widget--about{text-align:center}
+.ripple-widget--about .ripple-widget__avatar{width:88px;height:88px;border-radius:50%;object-fit:cover;margin:0 auto .85rem}
+.ripple-widget--about p{font-size:.9rem;line-height:1.6;color:var(--vp-muted);margin:0 0 1rem}
+/* Advertising widget */
+.ripple-widget--ad{padding:0;overflow:hidden;display:grid;place-items:center;min-height:200px;background:color-mix(in srgb,var(--vp-muted) 8%,transparent)}
+.ripple-widget--ad img{width:100%;height:auto;display:block}
+/* Social profiles */
+.ripple-social{display:flex;flex-wrap:wrap;gap:.6rem}
+.ripple-social a{display:grid;place-items:center;width:42px;height:42px;border-radius:50%;color:var(--vp-muted);background:color-mix(in srgb,var(--vp-muted) 12%,transparent);text-decoration:none;transition:color .15s,background .15s}
+.ripple-social a:hover{color:#fff;background:var(--vp-accent)}
+/* Tag cloud */
+.ripple-tagcloud{display:flex;flex-wrap:wrap;gap:.5rem}
+.ripple-tagcloud__tag{--tag-accent:var(--vp-accent);display:inline-flex;align-items:center;min-height:34px;padding:.35rem .8rem;border-radius:2rem;font-size:.8rem;font-weight:600;text-decoration:none;color:var(--vp-text);background:color-mix(in srgb,var(--tag-accent) 14%,transparent);transition:background .15s,color .15s}
+.ripple-tagcloud__tag:hover{background:var(--tag-accent);color:#fff}
+
+/* ── Post feed cards (per-post accent via --card-accent) ────────────────── */
+.ripple-feed{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:2rem}
+.ripple-card{--card-accent:var(--vp-accent);display:flex;flex-direction:column;border-radius:var(--vp-radius-lg,1.25rem);overflow:hidden;background:var(--vp-surface);border:1px solid color-mix(in srgb,var(--vp-muted) 14%,transparent);transition:transform .15s,box-shadow .15s}
+.ripple-card:hover{transform:translateY(-3px);box-shadow:0 12px 30px rgba(0,0,0,.12)}
+.ripple-card__media{width:100%;aspect-ratio:16/10;object-fit:cover}
+.ripple-card__body{display:flex;flex-direction:column;gap:.55rem;padding:1.35rem}
+.ripple-card__tag{align-self:flex-start;font-size:.7rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#fff;background:var(--card-accent);padding:.22rem .65rem;border-radius:2rem;text-decoration:none}
+.ripple-card__title{font-family:var(--ripple-display);font-weight:750;letter-spacing:-.01em;font-size:1.25rem;line-height:1.25;margin:0}
+.ripple-card__title a{color:var(--vp-text);text-decoration:none}
+.ripple-card__title a:hover{color:var(--card-accent)}
+.ripple-card__excerpt{font-size:.9rem;line-height:1.55;color:var(--vp-muted);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.ripple-card__meta{display:flex;gap:.75rem;align-items:center;margin-top:auto;padding-top:.5rem;font-size:.8rem;color:var(--vp-muted)}
+
+/* ── Four single-post dispositions ──────────────────────────────────────── */
+/* Classic (default): feature image on top, content + sidebar below */
+.ripple-post--classic .ripple-post__feature{width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:var(--vp-radius-lg,1.25rem);margin-bottom:2rem}
+/* Vertical: small portrait image beside the post header */
+.ripple-post--vertical .ripple-post__head{display:grid;grid-template-columns:200px 1fr;gap:1.5rem;align-items:center;margin-bottom:2rem}
+.ripple-post--vertical .ripple-post__feature{width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:var(--vp-radius-lg,1rem)}
+/* Fullcover: full-width feature, content keeps the sidebar */
+.ripple-post--fullcover .ripple-post__feature{width:100vw;max-width:1400px;margin-left:50%;transform:translateX(-50%);aspect-ratio:21/9;object-fit:cover;margin-bottom:2.5rem}
+/* No sidebar: full-width article, no aside */
+.ripple-post--nosidebar{max-width:var(--vp-max-width,44rem);margin:0 auto}
+.ripple-post--nosidebar .ripple-sidebar{display:none}
+.ripple-post__heading{font-family:var(--ripple-display);font-weight:800;letter-spacing:-.02em;font-size:clamp(1.9rem,4vw,2.7rem);line-height:1.12;color:var(--vp-text)}
+
+/* ── Membership pricing tables (free / monthly / yearly + toggle) ───────── */
+.ripple-pricing{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1.5rem;align-items:start}
+.ripple-pricing__toggle{display:inline-flex;gap:.2rem;margin:0 auto 2rem;padding:.25rem;border-radius:2rem;background:color-mix(in srgb,var(--vp-muted) 14%,transparent)}
+.ripple-pricing__toggle button{min-height:40px;padding:.4rem 1.2rem;border:0;border-radius:2rem;background:transparent;color:var(--vp-muted);font-weight:650;cursor:pointer}
+.ripple-pricing__toggle button[aria-pressed="true"]{background:var(--vp-accent);color:#fff}
+.ripple-plan{display:flex;flex-direction:column;gap:.5rem;padding:2rem;border-radius:var(--vp-radius-lg,1.25rem);background:var(--vp-surface);border:2px solid color-mix(in srgb,var(--vp-muted) 18%,transparent)}
+.ripple-plan--featured{border-color:var(--vp-accent);box-shadow:0 0 0 1px var(--vp-accent)}
+.ripple-plan__name{font-size:1rem;font-weight:700;color:var(--vp-text)}
+.ripple-plan__price{font-family:var(--ripple-display);font-weight:800;font-size:2.5rem;color:var(--vp-text)}
+.ripple-plan__price span{font-family:var(--ripple-body);font-size:.9rem;font-weight:500;color:var(--vp-muted)}
+.ripple-plan__list{list-style:none;margin:1rem 0;padding:0;display:flex;flex-direction:column;gap:.6rem}
+.ripple-plan__list li{display:flex;gap:.5rem;font-size:.9rem;color:var(--vp-muted)}
+.ripple-plan__list li::before{content:"\2713";color:var(--vp-accent);font-weight:700}
+
+/* ── Custom tag / author / popular-authors / 404 pages ──────────────────── */
+.ripple-tagheader{position:relative;padding:3rem 2rem;border-radius:var(--vp-radius-lg,1.25rem);text-align:center;color:#fff;overflow:hidden;background:var(--vp-accent)}
+.ripple-tagheader__cover{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.45}
+.ripple-tagheader__title{position:relative;font-family:var(--ripple-display);font-weight:800;font-size:2.2rem;margin:0}
+.ripple-tagheader__count{position:relative;font-size:.9rem;opacity:.9}
+.ripple-authorcard{display:grid;grid-template-columns:auto 1fr;gap:1.5rem;align-items:center;padding:2rem;border-radius:var(--vp-radius-lg,1.25rem);background:var(--vp-surface);border:1px solid color-mix(in srgb,var(--vp-muted) 16%,transparent)}
+.ripple-authorcard__avatar{width:96px;height:96px;border-radius:50%;object-fit:cover}
+.ripple-authorcard__name{font-family:var(--ripple-display);font-weight:800;font-size:1.6rem;color:var(--vp-text);margin:0}
+.ripple-authorcard__bio{font-size:.92rem;line-height:1.6;color:var(--vp-muted);margin:.4rem 0 0}
+.ripple-authors{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:1.5rem}
+.ripple-authors__item{text-align:center;text-decoration:none}
+.ripple-authors__avatar{width:80px;height:80px;border-radius:50%;object-fit:cover;margin:0 auto .65rem;border:3px solid color-mix(in srgb,var(--vp-accent) 40%,transparent)}
+.ripple-authors__name{font-weight:650;color:var(--vp-text)}
+.ripple-authors__count{font-size:.78rem;color:var(--vp-muted)}
+.ripple-404{text-align:center;padding:5rem 1rem}
+.ripple-404__code{font-family:var(--ripple-display);font-weight:800;font-size:clamp(4rem,16vw,9rem);line-height:1;color:var(--vp-accent);margin:0}
+.ripple-404__text{font-size:1.1rem;color:var(--vp-muted);margin:.5rem 0 1.75rem}
+
+/* ── Subscribe / sign-in pages ──────────────────────────────────────────── */
+.ripple-auth{max-width:420px;margin:3rem auto;padding:2.5rem;border-radius:var(--vp-radius-lg,1.25rem);background:var(--vp-surface);border:1px solid color-mix(in srgb,var(--vp-muted) 18%,transparent);text-align:center}
+.ripple-auth__title{font-family:var(--ripple-display);font-weight:800;font-size:1.7rem;color:var(--vp-text);margin:0 0 .5rem}
+.ripple-auth__form{display:flex;flex-direction:column;gap:.75rem;margin-top:1.25rem}
+
+/* ── Header (primary nav, search, sticky) ───────────────────────────────── */
+.ripple-header{position:sticky;top:0;z-index:100;background:color-mix(in srgb,var(--vp-bg) 88%,transparent);border-bottom:1px solid color-mix(in srgb,var(--vp-muted) 16%,transparent);backdrop-filter:saturate(180%) blur(10px)}
+.ripple-header__inner{display:flex;align-items:center;justify-content:space-between;gap:1.5rem;padding:1rem 0}
+.ripple-header__brand{font-family:var(--ripple-display);font-size:1.3rem;font-weight:800;letter-spacing:-.01em;color:var(--vp-text);text-decoration:none}
+.ripple-nav{display:flex;align-items:center;gap:1.4rem;list-style:none;margin:0;padding:0}
+.ripple-nav__item{position:relative}
+.ripple-nav__link{font-size:.9rem;font-weight:600;color:var(--vp-muted);text-decoration:none;transition:color .15s}
+.ripple-nav__link:hover{color:var(--vp-accent)}
+.ripple-nav__dropdown{position:absolute;top:160%;left:0;min-width:180px;display:flex;flex-direction:column;gap:.1rem;padding:.5rem;border-radius:var(--vp-radius-lg,1rem);background:var(--vp-surface);border:1px solid color-mix(in srgb,var(--vp-muted) 18%,transparent);box-shadow:0 12px 32px rgba(0,0,0,.18);opacity:0;visibility:hidden;transform:translateY(-4px);transition:opacity .15s,transform .15s,visibility .15s;z-index:120}
+.ripple-nav__item:hover .ripple-nav__dropdown,.ripple-nav__item:focus-within .ripple-nav__dropdown{opacity:1;visibility:visible;transform:translateY(0)}
+.ripple-nav__dropdown a{padding:.5rem .75rem;border-radius:.6rem;font-size:.88rem;color:var(--vp-text);text-decoration:none}
+.ripple-nav__dropdown a:hover{background:color-mix(in srgb,var(--vp-accent) 12%,transparent);color:var(--vp-accent)}
+.ripple-search{display:grid;place-items:center;width:42px;height:42px;border-radius:50%;border:0;background:transparent;color:var(--vp-muted);cursor:pointer}
+.ripple-search:hover{color:var(--vp-accent);background:color-mix(in srgb,var(--vp-accent) 10%,transparent)}
+
+/* ── Gallery (lightbox-ready grid) ──────────────────────────────────────── */
+.ripple-gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.75rem}
+.ripple-gallery a{display:block;border-radius:.75rem;overflow:hidden}
+.ripple-gallery img{width:100%;height:100%;aspect-ratio:1/1;object-fit:cover;transition:transform .2s}
+.ripple-gallery a:hover img{transform:scale(1.05)}
+
+/* ── Syntax-highlight code block ────────────────────────────────────────── */
+.ripple-code{position:relative;padding:1.25rem 1.5rem;border-radius:var(--vp-radius-lg,.875rem);background:var(--vp-surface);border-left:4px solid var(--vp-accent);overflow-x:auto;font-family:var(--vp-font-mono,ui-monospace,monospace);font-size:.88rem;line-height:1.6;color:var(--vp-text)}
+
+/* ── Pagination ─────────────────────────────────────────────────────────── */
+.ripple-pagination{display:flex;align-items:center;justify-content:center;gap:.75rem;margin:3.5rem 0}
+.ripple-pagination a,.ripple-pagination span{min-height:44px;min-width:44px;display:inline-flex;align-items:center;justify-content:center;padding:.5rem 1.1rem;border-radius:2rem;font-weight:650;text-decoration:none;color:var(--vp-text);border:2px solid color-mix(in srgb,var(--vp-muted) 25%,transparent)}
+.ripple-pagination a:hover{border-color:var(--vp-accent);color:var(--vp-accent)}
+
+/* ── Footer (secondary "Quick Links", text widget, social) ──────────────── */
+.ripple-footer{position:relative;display:grid;grid-template-columns:1.6fr repeat(2,1fr);gap:2rem;padding:3.5rem 0 2rem;margin-top:4rem;background:color-mix(in srgb,var(--vp-accent) 8%,transparent)}
+.ripple-footer__about .ripple-footer__brand{font-family:var(--ripple-display);font-size:1.3rem;font-weight:800;color:var(--vp-text);text-decoration:none}
+.ripple-footer__about p{font-size:.9rem;line-height:1.6;color:var(--vp-muted);margin:.6rem 0 1rem;max-width:36ch}
+.ripple-footer__head{font-size:.75rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--vp-accent);margin:0 0 .75rem}
+.ripple-footer__quicklinks{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:.4rem}
+.ripple-footer__quicklinks a{font-size:.88rem;color:var(--vp-muted);text-decoration:none}
+.ripple-footer__quicklinks a:hover{color:var(--vp-accent)}
+.ripple-footer__bottom{grid-column:1/-1;padding-top:1.5rem;margin-top:1rem;border-top:1px solid color-mix(in srgb,var(--vp-muted) 16%,transparent);font-size:.82rem;color:var(--vp-muted)}
+
+/* ── Responsive ─────────────────────────────────────────────────────────── */
+@media(max-width:900px){
+  .ripple-layout{grid-template-columns:1fr}
+  .ripple-sidebar{position:static;display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+  .ripple-footer{grid-template-columns:1fr 1fr}
+}
+@media(max-width:768px){
+  .ripple-nav{display:none}
+  .ripple-post--vertical .ripple-post__head{grid-template-columns:1fr}
+  .ripple-post--fullcover .ripple-post__feature{width:100%;margin-left:0;transform:none;aspect-ratio:16/9}
+  .ripple-feed{grid-template-columns:1fr}
+}
+@media(max-width:480px){
+  .ripple-footer{grid-template-columns:1fr}
+  .ripple-pricing{grid-template-columns:1fr}
+  .ripple-auth__form,.ripple-hero__form{flex-direction:column}
+}
+
+/* ── Reduced motion ─────────────────────────────────────────────────────── */
+@media(prefers-reduced-motion:reduce){
+  .ripple-btn,.ripple-card,.ripple-tagcloud__tag,.ripple-social a,.ripple-nav__dropdown,.ripple-gallery img{transition:none}
+  .ripple-btn:hover,.ripple-card:hover{transform:none}
+  .ripple-gallery a:hover img{transform:none}
+}
