@@ -159,6 +159,49 @@
     fetchTokens().then(function () { setStatus('Reverted to saved theme', 'ok'); });
   });
 
+  // ── Custom CSS + Head/SEO code editor ───────────────────────────────────────
+  var cssArea = root.querySelector('[data-theme-css]');
+  var codeSaveBtn = root.querySelector('[data-theme-code-save]');
+  var codeStatusEl = root.querySelector('[data-theme-code-status]');
+
+  function setCodeStatus(msg, kind) {
+    if (!codeStatusEl) return;
+    codeStatusEl.textContent = msg;
+    codeStatusEl.className = 'text-sm' + (kind ? ' status--' + kind : ' muted');
+  }
+
+  function headVal(name) {
+    var el = root.querySelector('[data-head="' + name + '"]');
+    return el ? el.value : '';
+  }
+
+  if (codeSaveBtn) {
+    codeSaveBtn.addEventListener('click', function () {
+      setCodeStatus('Saving…');
+      codeSaveBtn.disabled = true;
+      fetch('/os/api/theme/code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
+        body: JSON.stringify({
+          custom_css: cssArea ? cssArea.value : '',
+          keywords: headVal('keywords'),
+          theme_color: headVal('theme_color'),
+          robots: headVal('robots'),
+          verify_google: headVal('verify_google'),
+          verify_bing: headVal('verify_bing')
+        })
+      }).then(function (r) {
+        if (!r.ok) return r.json().then(function (e) { throw new Error(e.error || ('save failed (' + r.status + ')')); });
+        return r.json();
+      }).then(function () {
+        setCodeStatus('Saved · live on public pages · ' + new Date().toLocaleTimeString(), 'ok');
+        if (window.vpToast) window.vpToast('Custom CSS & meta saved', 'ok');
+      }).catch(function (err) {
+        setCodeStatus(String(err.message || err), 'danger');
+      }).then(function () { codeSaveBtn.disabled = false; });
+    });
+  }
+
   // ── Colorize preset swatches via CSSOM (CSP-safe: no inline style attrs) ────
   function paintSwatches() {
     if (!galleryEl) return;

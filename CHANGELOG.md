@@ -12,6 +12,25 @@ _Nothing yet._
 
 ---
 
+## [1.11.0] — 2026-06-25
+
+**Tumblr-style theme code editing in Theme Studio.**
+
+### Added
+
+- **Custom CSS editor in Theme Studio.** The VayuOS Theme Studio (`/os/theme`)
+  now has a full Custom CSS editor (monospace, 16 KB). Styles are served
+  same-origin via `/theme.css` — **CSP-safe** (`style-src 'self'`), no external
+  origins, no script execution — and apply to every public page on save.
+- **Head & SEO meta controls in Theme Studio.** Keywords, theme-colour,
+  robots directive, and Google/Bing verification tokens are editable inline.
+  Raw `<head>` HTML is deliberately rejected (it could smuggle redirects or
+  beacons past the CSP); fields render to a validated, escaped `<meta>`
+  allowlist. Saved via a new dedicated `POST /os/api/theme/code` endpoint that
+  only touches these keys (never the identity/palette settings).
+
+---
+
 ## [1.10.0] — 2026-06-25
 
 **A Ghost-style writing experience for the VayuOS editor.**

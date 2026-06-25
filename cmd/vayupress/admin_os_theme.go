@@ -17,11 +17,16 @@ package main
 // side.
 
 import (
+	"encoding/json"
 	"html"
 	htmpl "html/template"
 	"net/http"
+	"strings"
 
+	"github.com/johalputt/vayupress/internal/logging"
+	"github.com/johalputt/vayupress/internal/mode"
 	"github.com/johalputt/vayupress/internal/render"
+	"github.com/johalputt/vayupress/internal/settings"
 	"github.com/johalputt/vayupress/internal/theme"
 )
 
@@ -105,6 +110,15 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
 
+	// Current persisted custom CSS + head/SEO values (Tumblr-style code editor).
+	vals, _ := a.siteSettings.GetAll(r.Context())
+	val := func(k string) string {
+		if v, ok := vals[k]; ok {
+			return v
+		}
+		return settings.Defaults[k]
+	}
+
 	darkRows := ""
 	for _, f := range themeDarkColors() {
 		darkRows += colorRow(f)
@@ -152,6 +166,33 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
       <div class="card-title">Typography &amp; layout</div>
       <div class="theme-fields theme-fields--text">` + typoRows + `</div>
     </div>
+
+    <div class="card mb-6 mt-6">
+      <div class="card-title">Custom CSS</div>
+      <div class="text-sm muted mb-3">Served same-origin via <code>/theme.css</code> (CSP-safe) — appended after the theme styles. Max 16&nbsp;KB. Cannot reach external origins or run scripts.</div>
+      <textarea class="input theme-code" data-theme-css rows="12" maxlength="16384" spellcheck="false" placeholder="/* e.g. .post-title { letter-spacing: -0.02em; } */">` + html.EscapeString(val(settings.KeyThemeCustomCSS)) + `</textarea>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Head &amp; SEO (meta)</div>
+      <div class="text-sm muted mb-3">Raw &lt;head&gt; HTML is intentionally not accepted (it could smuggle redirects/beacons past the CSP). These render to a validated, escaped <code>&lt;meta&gt;</code> allowlist.</div>
+      <div class="theme-fields theme-fields--text">
+        <label class="theme-field theme-field--text"><span class="theme-field__label">Keywords</span>
+          <input type="text" class="input" data-head="keywords" maxlength="256" value="` + html.EscapeString(val(settings.KeyHeadKeywords)) + `" placeholder="publishing, sovereignty"></label>
+        <label class="theme-field theme-field--text"><span class="theme-field__label">Theme colour (hex)</span>
+          <input type="text" class="input" data-head="theme_color" maxlength="7" value="` + html.EscapeString(val(settings.KeyHeadThemeColor)) + `" placeholder="#0d9488"></label>
+        <label class="theme-field theme-field--text"><span class="theme-field__label">Robots</span>
+          <select class="input" data-head="robots">` + robotsOptionsHTML(val(settings.KeyHeadRobots)) + `</select></label>
+        <label class="theme-field theme-field--text"><span class="theme-field__label">Google verification</span>
+          <input type="text" class="input" data-head="verify_google" maxlength="128" value="` + html.EscapeString(val(settings.KeyHeadVerifyGoogle)) + `" placeholder="google-site-verification token"></label>
+        <label class="theme-field theme-field--text"><span class="theme-field__label">Bing verification</span>
+          <input type="text" class="input" data-head="verify_bing" maxlength="128" value="` + html.EscapeString(val(settings.KeyHeadVerifyBing)) + `" placeholder="msvalidate.01 token"></label>
+      </div>
+      <div class="vm-row">
+        <button type="button" class="btn btn--primary btn--sm" data-theme-code-save>Save CSS &amp; meta</button>
+        <span class="text-sm muted" data-theme-code-status></span>
+      </div>
+    </div>
   </div>
 
   <aside class="theme-studio__preview" aria-label="Live preview">
@@ -177,4 +218,107 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
 <script nonce="` + nonce + `" src="/os/static/js/admin-os-theme.js"></script>`
 
 	writeOSHTML(w, adminOSLayout(nonce, "Theme Studio", "theme", cfg, htmpl.HTML(body)))
+}
+
+// handleOSThemeCode persists the Theme Studio "Custom CSS" + head/SEO meta
+// fields. It writes ONLY these keys (never the identity/palette ones) so a
+// partial POST can't wipe unrelated settings, then refreshes the render
+// pipeline and purges cached HTML. Custom CSS reaches the public site via the
+// same-origin /theme.css stylesheet (CSP-safe). Raw <head> HTML is not
+// accepted — head fields are validated to an escaped <meta> allowlist.
+func (a *App) handleOSThemeCode(w http.ResponseWriter, r *http.Request) {
+	cur := mode.Global.Current()
+	if cur == mode.ModeReadOnly || cur == mode.ModeQuarantined {
+		writeJSON(w, r, http.StatusServiceUnavailable, map[string]string{"error": "settings cannot be saved in " + string(cur) + " mode"})
+		return
+	}
+	var body struct {
+		CustomCSS    string `json:"custom_css"`
+		Keywords     string `json:"keywords"`
+		ThemeColor   string `json:"theme_color"`
+		Robots       string `json:"robots"`
+		VerifyGoogle string `json:"verify_google"`
+		VerifyBing   string `json:"verify_bing"`
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 64*1024)
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSON(w, r, http.StatusBadRequest, map[string]string{"error": "invalid JSON: " + err.Error()})
+		return
+	}
+
+	css := strings.TrimSpace(body.CustomCSS)
+	if len(css) > 16*1024 {
+		writeJSON(w, r, http.StatusBadRequest, map[string]string{"error": "Custom CSS exceeds the 16 KB limit"})
+		return
+	}
+	keywords := strings.TrimSpace(body.Keywords)
+	if len(keywords) > 256 {
+		writeJSON(w, r, http.StatusBadRequest, map[string]string{"error": "Keywords exceed the 256-character limit"})
+		return
+	}
+	themeColor := strings.TrimSpace(body.ThemeColor)
+	if themeColor != "" && !hexColorRe.MatchString(themeColor) {
+		writeJSON(w, r, http.StatusBadRequest, map[string]string{"error": "Theme colour must be a hex colour like #0d9488"})
+		return
+	}
+	robots := strings.TrimSpace(body.Robots)
+	if robots == "" {
+		robots = settings.Defaults[settings.KeyHeadRobots]
+	}
+	if !settings.RobotsOptions[robots] {
+		writeJSON(w, r, http.StatusBadRequest, map[string]string{"error": "Robots directive is not an allowed value"})
+		return
+	}
+	verifyGoogle := strings.TrimSpace(body.VerifyGoogle)
+	verifyBing := strings.TrimSpace(body.VerifyBing)
+	for _, tok := range []string{verifyGoogle, verifyBing} {
+		if tok != "" && !verifyTokenRe.MatchString(tok) {
+			writeJSON(w, r, http.StatusBadRequest, map[string]string{"error": "Verification token may contain only letters, digits, '-', '_', and '.'"})
+			return
+		}
+	}
+
+	kv := map[string]string{
+		settings.KeyThemeCustomCSS:   css,
+		settings.KeyHeadKeywords:     keywords,
+		settings.KeyHeadThemeColor:   themeColor,
+		settings.KeyHeadRobots:       robots,
+		settings.KeyHeadVerifyGoogle: verifyGoogle,
+		settings.KeyHeadVerifyBing:   verifyBing,
+	}
+	if err := a.siteSettings.SetMany(r.Context(), kv); err != nil {
+		writeJSON(w, r, http.StatusInternalServerError, map[string]string{"error": "save failed: " + err.Error()})
+		return
+	}
+
+	// Re-read the full set so we refresh the render pipeline without clobbering
+	// the identity/palette values this endpoint doesn't touch.
+	if nv, err := a.siteSettings.GetAll(r.Context()); err == nil {
+		render.SetActiveSettings(render.SiteSettings{
+			Name:            nv[settings.KeySiteName],
+			Tagline:         nv[settings.KeySiteTagline],
+			Description:     nv[settings.KeySiteDescription],
+			Author:          nv[settings.KeySiteAuthor],
+			ShowMembership:  nv[settings.KeyMembershipButtons] == "true",
+			PrimaryLight:    nv[settings.KeyThemePrimaryLight],
+			PrimaryDark:     nv[settings.KeyThemePrimaryDark],
+			AccentLight:     nv[settings.KeyThemeAccentLight],
+			AccentDark:      nv[settings.KeyThemeAccentDark],
+			CustomCSS:       nv[settings.KeyThemeCustomCSS],
+			Keywords:        nv[settings.KeyHeadKeywords],
+			ThemeColor:      nv[settings.KeyHeadThemeColor],
+			Robots:          nv[settings.KeyHeadRobots],
+			VerifyGoogle:    nv[settings.KeyHeadVerifyGoogle],
+			VerifyBing:      nv[settings.KeyHeadVerifyBing],
+			NavJSON:         nv[settings.KeyNavItems],
+			CommentsEnabled: nv[settings.KeyFeatureComments] != "off",
+		})
+	}
+	render.CachePurgeAll()
+
+	logging.LogJSON(logging.LogFields{
+		Level: "info", Component: "theme", Severity: "info",
+		Msg: "theme custom CSS / head settings updated", RequestID: getRequestID(r),
+	})
+	writeJSON(w, r, http.StatusOK, map[string]string{"status": "ok"})
 }

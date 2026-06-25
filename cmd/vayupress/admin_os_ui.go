@@ -128,6 +128,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.Get("/os/api/theme/tokens", a.handleThemeTokens)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/theme/preview", a.handleThemePreview)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/theme/apply", a.handleThemeApply)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/theme/code", a.handleOSThemeCode)
 		// Session-friendly read-only mirrors of the operator JSON APIs (the
 		// /api/v1/admin/* originals require an API key; os operators hold a
 		// session cookie). Same handlers, no CSRF needed for GETs.

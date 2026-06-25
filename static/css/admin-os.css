@@ -2065,3 +2065,19 @@
   outline-offset: 6px;
   border-radius: var(--r-md);
 }
+
+
+/* ── Theme Studio: custom CSS / code editor ───────────────────────────────── */
+.vp-os textarea.theme-code {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 220px;
+  resize: vertical;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  tab-size: 2;
+  white-space: pre;
+  overflow-wrap: normal;
+  overflow-x: auto;
+}
