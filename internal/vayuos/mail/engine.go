@@ -185,7 +185,16 @@ func (e *Engine) Start(ctx context.Context) error {
 	}
 	e.dkim = dk
 	e.maildir = NewMaildir(e.cfg.StorageDir + "/maildir")
-	q, err := NewQueue(e.db, e.cfg, NewMXDeliverer(e.cfg.Hostname, e.cfg.DeliveryTimeout))
+	// Outbound transport: an authenticated smarthost relay when configured
+	// (the relay's IP reputation carries deliverability), otherwise sovereign
+	// direct-to-MX. DKIM signing happens before the queue either way.
+	var deliver DeliverFunc
+	if e.cfg.RelayEnabled() {
+		deliver = NewRelayDeliverer(e.cfg, e.cfg.Hostname, e.cfg.DeliveryTimeout)
+	} else {
+		deliver = NewMXDeliverer(e.cfg.Hostname, e.cfg.DeliveryTimeout)
+	}
+	q, err := NewQueue(e.db, e.cfg, deliver)
 	if err != nil {
 		return fmt.Errorf("vayumail: queue init: %w", err)
 	}

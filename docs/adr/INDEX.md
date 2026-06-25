@@ -64,6 +64,7 @@
 | [ADR-0082](ADR-0082-theme-studio-code-editor.md) | Theme Studio Code Editor, Head Meta, and Import/Export (CSP-safe) | Accepted | Core | 2026-06-25 |
 | [ADR-0083](ADR-0083-vayumail-roles-search.md) | VayuMail Role-Based Accounts and Local Mailbox Search | Accepted | Core | 2026-06-25 |
 | [ADR-0084](ADR-0084-vayumail-outbound-deliverability.md) | VayuMail Outbound Deliverability — Vetted DKIM Signing + Well-Formed MIME | Accepted | VayuOS | 2026-06-25 |
+| [ADR-0085](ADR-0085-vayumail-outbound-smarthost-relay.md) | VayuMail Optional Outbound Smarthost Relay | Accepted | VayuOS | 2026-06-25 |
 
 ---
 

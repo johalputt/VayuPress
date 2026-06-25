@@ -10,6 +10,20 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Added
 
+- **Optional outbound smarthost relay (deliverability without losing
+  sovereignty).** When `VAYUOS_MAIL_RELAY_HOST` is set, VayuMail delivers
+  outbound mail through an authenticated SMTP relay instead of direct-to-MX —
+  the pragmatic remedy for a fresh self-hosted IP that Gmail/Outlook still
+  spam-file for lack of sending reputation. The relay's established IP reputation
+  carries deliverability, while **inbound receive, IMAP, local delivery and DKIM
+  signing all remain self-hosted**, and VayuMail still DKIM-signs with the domain
+  key so DMARC stays aligned. STARTTLS (587) and implicit TLS (465) are
+  supported with `AUTH PLAIN`/`LOGIN`; encryption before AUTH is required by
+  default (`VAYUOS_MAIL_RELAY_TLS=off` to opt out on a trusted private network).
+  Credentials are read from the environment only and never persisted. Direct-to-
+  MX remains the default when no relay is configured. The deliverability panel
+  shows when a relay is active. See ADR-0085.
+
 - **Mailbox usability: drafts, mark-as-read, and a deliverability self-check.**
   - **Drafts** — Compose now has a **Save as draft** button that files the
     message into the sender's Drafts folder; opening a draft from the mailbox

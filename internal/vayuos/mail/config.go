@@ -21,7 +21,11 @@
 // the condition and continues with outbound + local delivery intact.
 package mail
 
-import "time"
+import (
+	"net"
+	"strconv"
+	"time"
+)
 
 // Config controls the VayuMail engine.
 type Config struct {
@@ -77,6 +81,37 @@ type Config struct {
 	// folder instead of the inbox. No external services or network calls are
 	// involved (privacy by default).
 	JunkFilterEnabled bool
+
+	// Outbound smarthost relay (optional). When RelayHost is set, the outbound
+	// queue delivers through this authenticated SMTP relay instead of direct-to-
+	// MX. Everything else stays sovereign (inbound receive, IMAP, local
+	// delivery, DKIM signing). This is the pragmatic answer to a fresh self-
+	// hosted IP that lacks sending reputation: the relay's established IP
+	// reputation carries deliverability while the domain, DKIM and storage
+	// remain self-owned. Credentials are never persisted by VayuMail; they come
+	// from the environment at boot.
+	RelayHost     string // relay hostname (e.g. smtp.provider.com)
+	RelayPort     int    // relay port (587 submission / 465 implicit TLS / 25)
+	RelayUsername string // SMTP AUTH username (empty = no auth)
+	RelayPassword string // SMTP AUTH password
+	// RelayRequireTLS requires an encrypted channel (STARTTLS, or implicit TLS
+	// on :465) before AUTH/DATA. On by default; only disable for a trusted relay
+	// on a private network.
+	RelayRequireTLS bool
+}
+
+// RelayEnabled reports whether outbound mail should be sent through a configured
+// smarthost relay rather than direct-to-MX.
+func (c Config) RelayEnabled() bool { return c.RelayHost != "" }
+
+// RelayAddr returns the host:port of the configured relay (defaulting the port
+// to 587 — the standard authenticated submission port).
+func (c Config) RelayAddr() string {
+	port := c.RelayPort
+	if port == 0 {
+		port = 587
+	}
+	return net.JoinHostPort(c.RelayHost, strconv.Itoa(port))
 }
 
 // DefaultConfig returns constitutional defaults.
@@ -98,5 +133,7 @@ func DefaultConfig() Config {
 		IMAPSListen:       ":993",
 		MaxMessageBytes:   25 * 1024 * 1024, // 25 MiB
 		JunkFilterEnabled: true,             // local heuristic, no external services
+		RelayPort:         587,              // standard authenticated submission port
+		RelayRequireTLS:   true,             // never AUTH over plaintext by default
 	}
 }
