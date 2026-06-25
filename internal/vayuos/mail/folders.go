@@ -126,6 +126,7 @@ func (m *Maildir) ReadRawFolder(domain, username, folder, id string) ([]byte, er
 	if name == "" || strings.ContainsAny(name, "/\\") || strings.Contains(name, "..") {
 		return nil, errors.New("vayumail: invalid message id")
 	}
+	name = filepath.Base(name) // defense-in-depth: guarantee a single path element
 	return os.ReadFile(filepath.Join(m.folderDir(domain, username, folder), sub, name))
 }
 
@@ -150,5 +151,6 @@ func (m *Maildir) deleteMessage(domain, username, folder, id string) error {
 	if name == "" || strings.ContainsAny(name, "/\\") || strings.Contains(name, "..") {
 		return errors.New("vayumail: invalid message id")
 	}
+	name = filepath.Base(name) // defense-in-depth: guarantee a single path element
 	return os.Remove(filepath.Join(m.folderDir(domain, username, folder), sub, name))
 }

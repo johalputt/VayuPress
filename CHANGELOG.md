@@ -12,6 +12,31 @@ _Nothing yet._
 
 ---
 
+## [1.12.3] — 2026-06-25
+
+**Security: fix CodeQL path-traversal and SSRF findings.**
+
+### Security
+
+- **Path traversal in the Maildir store (CWE-22).** Untrusted mailbox domain and
+  username values now pass through a single-segment sanitiser (filepath.Base of
+  a cleaned path) before being joined to the storage base, so a hostile value
+  can never escape it; message ids are additionally reduced with filepath.Base.
+  Resolves nine CodeQL "uncontrolled data in path expression" alerts under
+  internal/vayuos/mail.
+- **Server-side request forgery in WKD key discovery (CWE-918).** External
+  public-key lookup now validates the recipient domain against a strict
+  public-hostname allowlist — rejecting IP literals, localhost and numeric TLDs
+  — and URL-escapes the local part before building the request, so a crafted
+  recipient domain cannot point the request at internal hosts. Resolves the
+  critical CodeQL alert in internal/vayuos/pgp/wkd.go.
+
+### Tests
+
+- Added path-traversal and WKD-domain-validation regression tests.
+
+---
+
 ## [1.12.2] — 2026-06-25
 
 **Dependency updates (clear security alerts).**

@@ -4,11 +4,42 @@ import (
 	"bytes"
 	"crypto/sha1"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
+	"regexp"
 	"strings"
 
 	"github.com/ProtonMail/go-crypto/openpgp/armor"
 )
+
+// wkdDomainRe matches a syntactically valid public DNS hostname (at least two
+// labels). It deliberately excludes schemes, ports, paths and userinfo.
+var wkdDomainRe = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$`)
+
+// validExternalWKDDomain reports whether domain is a public DNS hostname that is
+// safe to fetch a WKD key from. It rejects IP literals, "localhost", numeric
+// TLDs and malformed input so an attacker-supplied recipient domain cannot
+// steer the outbound request at internal/loopback hosts (SSRF — CWE-918).
+func validExternalWKDDomain(domain string) bool {
+	if domain == "" || len(domain) > 253 {
+		return false
+	}
+	if strings.EqualFold(domain, "localhost") || net.ParseIP(domain) != nil {
+		return false
+	}
+	if !wkdDomainRe.MatchString(domain) {
+		return false
+	}
+	labels := strings.Split(domain, ".")
+	tld := labels[len(labels)-1]
+	for _, r := range tld { // a non-numeric TLD rules out disguised IPs
+		if r < '0' || r > '9' {
+			return true
+		}
+	}
+	return false
+}
 
 // zbase32Alphabet is the encoding used by WKD for the hashed local-part.
 const zbase32Alphabet = "ybndrfg8ejkmcpqxot1uwisza345h769"
@@ -121,13 +152,14 @@ func (e *Engine) ServeWKD(domain string) http.Handler {
 // trying the advanced method first and then the direct method.
 func (e *Engine) LookupExternalKey(email string) (*PublicKey, error) {
 	local, domain := splitEmail(normalizeEmail(email))
-	if domain == "" {
+	if domain == "" || !validExternalWKDDomain(domain) {
 		return nil, ErrNotFound
 	}
 	hash := wkdLocalHash(local)
+	lq := url.QueryEscape(local)
 	urls := []string{
-		"https://openpgpkey." + domain + "/.well-known/openpgpkey/" + domain + "/hu/" + hash + "?l=" + local,
-		"https://" + domain + "/.well-known/openpgpkey/hu/" + hash + "?l=" + local,
+		"https://openpgpkey." + domain + "/.well-known/openpgpkey/" + domain + "/hu/" + hash + "?l=" + lq,
+		"https://" + domain + "/.well-known/openpgpkey/hu/" + hash + "?l=" + lq,
 	}
 	for _, u := range urls {
 		req, err := http.NewRequest(http.MethodGet, u, nil)

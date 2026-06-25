@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"time"
 )
@@ -18,8 +19,20 @@ type Maildir struct {
 // NewMaildir returns a Maildir rooted at base.
 func NewMaildir(base string) *Maildir { return &Maildir{base: base} }
 
+// safeSegment reduces an untrusted value (domain or username) to a single safe
+// path segment. filepath.Base(filepath.Clean(...)) strips any directory
+// separators and ".." components, so a hostile domain/username can never escape
+// the Maildir base directory (defends against path traversal).
+func safeSegment(s string) string {
+	s = filepath.Base(filepath.Clean("/" + strings.TrimSpace(s)))
+	if s == "." || s == string(filepath.Separator) || s == "" {
+		return "_"
+	}
+	return s
+}
+
 func (m *Maildir) accountDir(domain, username string) string {
-	return filepath.Join(m.base, domain, username)
+	return filepath.Join(m.base, safeSegment(domain), safeSegment(username))
 }
 
 // Create provisions the tmp/new/cur directories for an account.
