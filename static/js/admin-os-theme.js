@@ -256,7 +256,23 @@
   paintSwatches();
 
   // ── Init ────────────────────────────────────────────────────────────────────
+  // If arriving from the Theme Store via "Customize" (/os/theme?load=<Name>),
+  // preselect that theme into the editor once presets have loaded so the
+  // operator lands ready to fine-tune it (not yet applied).
+  function applyLoadParam() {
+    var m = window.location.search.match(/[?&]load=([^&]+)/);
+    if (!m) return false;
+    var want = decodeURIComponent(m[1].replace(/\+/g, ' '));
+    var preset = allPresets.find(function (p) { return p.Name === want; });
+    if (preset) {
+      loadTokens(preset);
+      setStatus('Loaded "' + preset.Name + '" from the Store — not yet applied', 'warn');
+      return true;
+    }
+    return false;
+  }
+
   Promise.all([fetchTokens(), fetchPresets()])
-    .then(function () { setStatus('Ready'); })
+    .then(function () { if (!applyLoadParam()) setStatus('Ready'); })
     .catch(function () { setStatus('Could not load theme', 'danger'); });
 })();
