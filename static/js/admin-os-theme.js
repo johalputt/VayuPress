@@ -241,10 +241,14 @@
     });
   }
 
-  // ── Colorize preset swatches via CSSOM (CSP-safe: no inline style attrs) ────
+  // ── Colorize gallery cards via CSSOM (CSP-safe: no inline style attrs) ──────
+  // Every colour-bearing element in the gallery carries a data-color hex string;
+  // we apply it as a background-color through the CSSOM, which style-src does not
+  // gate. Covers the card "page" background, accent bar, body text lines and the
+  // accent pills — i.e. the whole Tumblr-style preview.
   function paintSwatches() {
     if (!galleryEl) return;
-    galleryEl.querySelectorAll('.theme-card__sw[data-color]').forEach(function (el) {
+    galleryEl.querySelectorAll('[data-color]').forEach(function (el) {
       var c = el.getAttribute('data-color');
       if (c) el.style.backgroundColor = c;
     });
