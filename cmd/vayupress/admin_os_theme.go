@@ -178,6 +178,7 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
   <h1>Theme Studio</h1>
   <div class="page-actions">
     <span class="text-sm muted" data-theme-status>Loading…</span>
+    <a class="btn btn--ghost btn--sm" href="/os/theme/store">Browse Theme Store</a>
     <button type="button" class="btn btn--ghost btn--sm" data-theme-revert>Revert</button>
     <button type="button" class="btn btn--primary btn--sm" data-theme-apply>Apply theme</button>
   </div>
