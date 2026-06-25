@@ -49,9 +49,45 @@ ProtectHome=yes
 ReadWritePaths=/var/lib/vayupress /var/cache/vayupress /tmp
 NoNewPrivileges=yes
 
+# ── Capabilities ───────────────────────────────────────────────────────────
+# Allow the non-root vayupress user to bind privileged ports (<1024) so the
+# VayuMail inbound listeners can take :25 (SMTP) and :143 (IMAP) directly.
+# Without this, inbound mail fails with "bind: permission denied" and only
+# outbound works. Ambient capabilities are granted by systemd at exec and work
+# alongside NoNewPrivileges=yes as long as the cap is in the bounding set.
+# (To run outbound-only instead, set VAYUOS_MAIL_INBOUND=off and you can drop
+# these two lines. To avoid privileged ports entirely, bind high ports via
+# VAYUOS_MAIL_SMTP_LISTEN=:2525 / VAYUOS_MAIL_IMAP_LISTEN=:1143 and redirect
+# 25->2525 and 143->1143 with nftables/iptables — see the note at the foot of
+# this file.)
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+
 # ── Syscall filtering ──────────────────────────────────────────────────────
 SystemCallFilter=~@mount @privileged @obsolete @clock
 SystemCallArchitectures=native
 
 [Install]
 WantedBy=multi-user.target
+
+# ── Alternative: unprivileged high ports + firewall redirect ────────────────
+# If you prefer NOT to grant CAP_NET_BIND_SERVICE, run the listeners on high
+# ports and redirect the well-known ports to them at the firewall. External
+# senders still connect to :25; the kernel forwards to the app's high port.
+#
+#   In /etc/vayupress/env:
+#     VAYUOS_MAIL_SMTP_LISTEN=:2525
+#     VAYUOS_MAIL_IMAP_LISTEN=:1143
+#
+#   nftables (persist in /etc/nftables.conf):
+#     nft add table ip nat
+#     nft add chain ip nat prerouting '{ type nat hook prerouting priority -100 ; }'
+#     nft add rule ip nat prerouting tcp dport 25  redirect to :2525
+#     nft add rule ip nat prerouting tcp dport 143 redirect to :1143
+#
+#   or iptables:
+#     iptables -t nat -A PREROUTING -p tcp --dport 25  -j REDIRECT --to-port 2525
+#     iptables -t nat -A PREROUTING -p tcp --dport 143 -j REDIRECT --to-port 1143
+#
+# Either way, receiving external mail also needs inbound TCP 25 allowed by your
+# host/cloud firewall and a public MX (+ A) DNS record pointing at this server.
