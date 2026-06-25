@@ -14,6 +14,9 @@ var dispatchCSS string
 //go:embed vivid.css
 var vividCSS string
 
+//go:embed beacon.css
+var beaconCSS string
+
 // Default returns the Default preset — neutral dark/light tones.
 func Default() Tokens {
 	return Tokens{
@@ -275,6 +278,7 @@ func AllPresets() []Tokens {
 		Zephyr(),
 		Dispatch(),
 		Vivid(),
+		Beacon(),
 	}
 }
 
@@ -511,5 +515,26 @@ func Vivid() Tokens {
 		FontSans: "Work Sans, Inter, system-ui, -apple-system, sans-serif", FontMono: "IBM Plex Mono, ui-monospace, monospace",
 		FontSizeBase: "1.0625rem", LineHeight: "1.65", MaxWidth: "46rem", RadiusSm: "0.5rem", RadiusLg: "1rem",
 		CustomCSS: vividCSS,
+	}
+}
+
+// Beacon — a modern, sleek startup & company-blog theme. A clean light-first
+// canvas with a confident royal-blue accent, a sticky glassy header, and a
+// brand-accent hero. Ships a full component CSS covering a hero with four
+// background styles and three action styles, adaptive featured posts (1-5),
+// pinned/sponsored pages, a featured-tags topic list in three layouts
+// (list/section/cards), list & grid post feeds with three card styles
+// (minimal/bordered/shadowed), a CTA section, narrow/wide post templates with a
+// table of contents, membership tiers, archive/tags index, and a multi-column
+// footer with a light/dark toggle.
+func Beacon() Tokens {
+	return Tokens{
+		Name: "Beacon", BgDark: "#0b1120", SurfaceDark: "#111a2e", TextDark: "#e8eef7",
+		MutedDark: "#94a3b8", AccentDark: "#3b82f6", Accent2Dark: "#60a5fa", HiDark: "#22d3ee", GreenDark: "#34d399",
+		BgLight: "#ffffff", SurfaceLight: "#f8fafc", TextLight: "#0f172a", MutedLight: "#64748b",
+		AccentLight: "#2563eb", Accent2Light: "#1d4ed8", HiLight: "#0891b2",
+		FontSans: "Inter, system-ui, -apple-system, 'Segoe UI', sans-serif", FontMono: "IBM Plex Mono, ui-monospace, monospace",
+		FontSizeBase: "1.0625rem", LineHeight: "1.65", MaxWidth: "44rem", RadiusSm: "0.5rem", RadiusLg: "0.875rem",
+		CustomCSS: beaconCSS,
 	}
 }
