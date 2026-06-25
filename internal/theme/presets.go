@@ -20,6 +20,9 @@ var beaconCSS string
 //go:embed ripple.css
 var rippleCSS string
 
+//go:embed maverick.css
+var maverickCSS string
+
 // Default returns the Default preset — neutral dark/light tones.
 func Default() Tokens {
 	return Tokens{
@@ -283,6 +286,7 @@ func AllPresets() []Tokens {
 		Vivid(),
 		Beacon(),
 		Ripple(),
+		Maverick(),
 	}
 }
 
@@ -561,5 +565,27 @@ func Ripple() Tokens {
 		FontSans: "system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif", FontMono: "IBM Plex Mono, ui-monospace, monospace",
 		FontSizeBase: "1.0625rem", LineHeight: "1.7", MaxWidth: "44rem", RadiusSm: "0.5rem", RadiusLg: "1.25rem",
 		CustomCSS: rippleCSS,
+	}
+}
+
+// Maverick — a bold, creative "dare to stand out" statement theme. A high-
+// contrast monochrome canvas with a punchy magenta accent, big display
+// typography, and sharp corners. Ships a full component CSS covering full-bleed
+// background-media heroes with overlaid text (configurable button style,
+// content position and length), an "our selection" slider, animated floating
+// circles (testimonials or tags), creative/default post cards with eight image
+// aspect ratios, four post templates (default & right-aligned, each with
+// optional featured video), text-style and heading-scale controls, page-load
+// animations, custom account/sign-in/up pages with background video, and
+// authors/FAQ/archive/all-posts pages — light & dark.
+func Maverick() Tokens {
+	return Tokens{
+		Name: "Maverick", BgDark: "#0a0a0b", SurfaceDark: "#151517", TextDark: "#fafafa",
+		MutedDark: "#8e8e93", AccentDark: "#ff3d9a", Accent2Dark: "#ff7ab8", HiDark: "#fde047", GreenDark: "#34d399",
+		BgLight: "#ffffff", SurfaceLight: "#f4f4f5", TextLight: "#0a0a0a", MutedLight: "#71717a",
+		AccentLight: "#d6006e", Accent2Light: "#a30054", HiLight: "#ca8a04",
+		FontSans: "Inter, system-ui, -apple-system, 'Segoe UI', sans-serif", FontMono: "IBM Plex Mono, ui-monospace, monospace",
+		FontSizeBase: "1.0625rem", LineHeight: "1.6", MaxWidth: "46rem", RadiusSm: "0", RadiusLg: "0.25rem",
+		CustomCSS: maverickCSS,
 	}
 }
