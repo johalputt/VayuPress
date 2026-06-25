@@ -87,6 +87,12 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Fixed
 
+- **Compose Send / Save-as-draft no longer fail with `403` after a while.** The
+  VayuOS panel pages did not re-issue the `vp_csrf` cookie, so once it expired
+  (1h) every panel POST (send, save draft, message/account actions) was rejected
+  as a CSRF failure. The VayuOS GET pages are now wrapped in the CSRF middleware
+  so each page load re-seeds the token, and a `403` now shows a clear
+  "reload the page" hint instead of a bare error.
 - **Outbound mail now carries the sender's display name.** Messages put a
   friendly `From: "Full Name" <addr>` header (from the mail account's full name,
   or the CMS user's name) so recipients see a name instead of a bare address.
