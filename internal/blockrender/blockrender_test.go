@@ -164,3 +164,73 @@ func TestRenderDiagramBlockFallback(t *testing.T) {
 		t.Errorf("unsupported diagram must not emit svg: %s", h)
 	}
 }
+
+func TestRenderInlineFormatting(t *testing.T) {
+	cases := []struct {
+		name  string
+		doc   string
+		wants []string
+	}{
+		{
+			name:  "bold and italic in paragraph",
+			doc:   `[{"type":"paragraph","text":"a **bold** and *italic* word"}]`,
+			wants: []string{"<strong>bold</strong>", "<em>italic</em>"},
+		},
+		{
+			name:  "inline code",
+			doc:   "[{\"type\":\"paragraph\",\"text\":\"run `go test` now\"}]",
+			wants: []string{"<code>go test</code>"},
+		},
+		{
+			name:  "link",
+			doc:   `[{"type":"paragraph","text":"see [docs](https://example.com/x)"}]`,
+			wants: []string{`href="https://example.com/x"`, "docs</a>"},
+		},
+		{
+			name:  "strikethrough",
+			doc:   `[{"type":"paragraph","text":"~~gone~~ kept"}]`,
+			wants: []string{"<del>gone</del>"},
+		},
+		{
+			name:  "heading keeps tag and adds emphasis",
+			doc:   `[{"type":"heading","level":2,"text":"a **b**"}]`,
+			wants: []string{"<h2>", "<strong>b</strong>", "</h2>"},
+		},
+		{
+			name:  "list item formatting",
+			doc:   `[{"type":"list","style":"unordered","items":["**one**","two"]}]`,
+			wants: []string{"<li><strong>one</strong></li>", "<li>two</li>"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			out, _, err := Render(tc.doc)
+			if err != nil {
+				t.Fatalf("render: %v", err)
+			}
+			for _, w := range tc.wants {
+				if !strings.Contains(out, w) {
+					t.Errorf("output missing %q\ngot: %s", w, out)
+				}
+			}
+		})
+	}
+}
+
+func TestRenderInlineStillStripsXSS(t *testing.T) {
+	// A script tag and a javascript: link inside formatted text must not survive.
+	doc := `[{"type":"paragraph","text":"hi <script>alert(1)</script> [x](javascript:alert(2)) **b**"}]`
+	out, _, err := Render(doc)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if strings.Contains(strings.ToLower(out), "<script") {
+		t.Fatalf("script tag survived: %s", out)
+	}
+	if strings.Contains(strings.ToLower(out), "javascript:") {
+		t.Fatalf("javascript: URL survived: %s", out)
+	}
+	if !strings.Contains(out, "<strong>b</strong>") {
+		t.Fatalf("legit formatting lost: %s", out)
+	}
+}

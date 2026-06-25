@@ -10,6 +10,7 @@
 package blockrender
 
 import (
+	"bytes"
 	"encoding/json"
 	"html"
 	"regexp"
@@ -18,7 +19,41 @@ import (
 
 	"github.com/johalputt/vayupress/internal/diagram"
 	"github.com/microcosm-cc/bluemonday"
+	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/extension"
+	goldhtml "github.com/yuin/goldmark/renderer/html"
 )
+
+// inlineMD renders inline markdown (bold, italic, inline code, links,
+// strikethrough) inside block text. It is GFM-based but HTML-unsafe input is
+// escaped by goldmark and the assembled fragment is still run through the
+// bluemonday UGC policy below, so this never widens the XSS surface — it only
+// upgrades the previously plain-escaped text to safe rich inline HTML.
+var inlineMD = goldmark.New(
+	goldmark.WithExtensions(extension.Strikethrough, extension.Linkify),
+	goldmark.WithRendererOptions(goldhtml.WithHardWraps()),
+)
+
+// renderInlineHTML converts s to inline HTML (no enclosing block element). It is
+// used for the text of paragraph/heading/quote/callout/list blocks so authors
+// can use **bold**, *italic*, `code`, [links](url) and ~~strike~~. The caller
+// wraps the result in the appropriate block tag; bluemonday then sanitises the
+// whole fragment.
+func renderInlineHTML(s string) string {
+	if strings.TrimSpace(s) == "" {
+		return ""
+	}
+	var buf bytes.Buffer
+	if err := inlineMD.Convert([]byte(s), &buf); err != nil {
+		return html.EscapeString(s)
+	}
+	out := strings.TrimSpace(buf.String())
+	// Strip a single enclosing <p>…</p> so the text can be placed inside the
+	// caller's own block tag (heading, li, blockquote, …). Multi-paragraph text
+	// keeps its inner <p> boundaries, which remain valid after wrapping.
+	out = strings.TrimSuffix(strings.TrimPrefix(out, "<p>"), "</p>")
+	return out
+}
 
 // embedSrcRe is the closed allowlist for a video-facade iframe source: only the
 // cookie-free YouTube/Vimeo embed origins, with a constrained id. It is used
@@ -120,7 +155,7 @@ func renderBlock(b, plain *strings.Builder, blk Block) {
 		if strings.TrimSpace(blk.Text) == "" {
 			return
 		}
-		b.WriteString("<p>" + html.EscapeString(blk.Text) + "</p>")
+		b.WriteString("<p>" + renderInlineHTML(blk.Text) + "</p>")
 		plain.WriteString(blk.Text + " ")
 	case "heading":
 		lvl := blk.Level
@@ -128,10 +163,10 @@ func renderBlock(b, plain *strings.Builder, blk Block) {
 			lvl = 2
 		}
 		tag := "h" + strconv.Itoa(lvl)
-		b.WriteString("<" + tag + ">" + html.EscapeString(blk.Text) + "</" + tag + ">")
+		b.WriteString("<" + tag + ">" + renderInlineHTML(blk.Text) + "</" + tag + ">")
 		plain.WriteString(blk.Text + " ")
 	case "quote":
-		b.WriteString("<blockquote><p>" + html.EscapeString(blk.Text) + "</p></blockquote>")
+		b.WriteString("<blockquote><p>" + renderInlineHTML(blk.Text) + "</p></blockquote>")
 		plain.WriteString(blk.Text + " ")
 	case "code":
 		cls := ""
@@ -148,7 +183,7 @@ func renderBlock(b, plain *strings.Builder, blk Block) {
 		}
 		b.WriteString("<" + tag + ">")
 		for _, it := range blk.Items {
-			b.WriteString("<li>" + html.EscapeString(it) + "</li>")
+			b.WriteString("<li>" + renderInlineHTML(it) + "</li>")
 			plain.WriteString(it + " ")
 		}
 		b.WriteString("</" + tag + ">")
@@ -223,7 +258,7 @@ func renderBlock(b, plain *strings.Builder, blk Block) {
 		if tone != "" {
 			cls += " callout--" + tone
 		}
-		b.WriteString(`<div class="` + cls + `"><p>` + html.EscapeString(blk.Text) + `</p></div>`)
+		b.WriteString(`<div class="` + cls + `"><p>` + renderInlineHTML(blk.Text) + `</p></div>`)
 		plain.WriteString(blk.Text + " ")
 	default:
 		// Unknown/forward-compatible block: skip silently.

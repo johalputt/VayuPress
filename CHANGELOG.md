@@ -12,6 +12,34 @@ _Nothing yet._
 
 ---
 
+## [1.10.0] — 2026-06-25
+
+**A Ghost-style writing experience for the VayuOS editor.**
+
+### Added
+
+- **Inline rich text.** Block text now renders Markdown inline — **bold**,
+  *italic*, `inline code`, [links](#), and ~~strikethrough~~ — across
+  paragraphs, headings, quotes, callouts and list items. Output is still run
+  through the bluemonday UGC sanitizer (no new XSS surface).
+- **Selection formatting toolbar.** Select text in the editor and a floating bar
+  appears with Bold / Italic / Code / Strikethrough / Link, wrapping the
+  selection in the matching Markdown.
+- **Markdown shortcuts while typing.** At the start of a paragraph: `## ` →
+  heading, `- ` / `* ` → bullet list, `1. ` → numbered list, `> ` → quote,
+  ```` ``` ```` → code block, `---` → divider — converted instantly as you type.
+- **Continuous writing flow.** <kbd>Enter</kbd> creates the next block and
+  focuses it; <kbd>Shift+Enter</kbd> inserts a soft line break;
+  <kbd>Backspace</kbd> on an empty block removes it and returns focus to the
+  previous one. New/converted blocks autofocus.
+- **Filterable slash menu.** The `/` block palette now has a search box — type
+  to narrow the list and press <kbd>Enter</kbd> to insert the first match.
+- **Image paste & drag-and-drop.** Paste an image from the clipboard or drop an
+  image file onto the canvas to upload it (via the existing media pipeline) and
+  insert it inline.
+
+---
+
 ## [1.9.3] — 2026-06-25
 
 **Fix: admin panel pages could show stale content after an update.**

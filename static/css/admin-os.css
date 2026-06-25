@@ -2014,3 +2014,54 @@
 @media (prefers-reduced-motion: reduce) {
   .vp-os .live-dot { animation: none; }
 }
+
+
+/* ── Editor: inline formatting toolbar (floating on text selection) ───────── */
+.vp-os .fmt-bar {
+  position: absolute;
+  display: none;
+  gap: 2px;
+  padding: 4px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-lg, 0 12px 32px rgba(0,0,0,0.4));
+  z-index: 320;
+}
+.vp-os .fmt-bar__btn {
+  min-width: 30px;
+  height: 30px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--r-sm, 6px);
+  background: transparent;
+  color: var(--text);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  line-height: 1;
+}
+.vp-os .fmt-bar__btn:hover { background: var(--brand-dim); color: var(--brand); }
+.vp-os .fmt-bar__btn--b { font-weight: 800; }
+.vp-os .fmt-bar__btn--i { font-style: italic; font-family: Georgia, serif; }
+.vp-os .fmt-bar__btn--s { text-decoration: line-through; }
+
+/* ── Editor: slash-palette filter input ───────────────────────────────────── */
+.vp-os .block-palette__search {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 14px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font-size: var(--text-sm);
+  outline: none;
+}
+.vp-os .block-palette__search::placeholder { color: var(--text-3); }
+
+/* ── Editor: image drag-and-drop affordance ───────────────────────────────── */
+.vp-os [data-editor-canvas].is-dragover {
+  outline: 2px dashed var(--brand);
+  outline-offset: 6px;
+  border-radius: var(--r-md);
+}

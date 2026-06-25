@@ -372,7 +372,9 @@ func osEditorBody(slug, title, blocksJSON string) string {
       <button type="button" class="btn btn--ghost btn--sm" data-editor-history-btn>History</button>
     </div>
     <div class="editor-hint text-xs muted">Press <kbd>/</kbd> on an empty block for commands. <kbd>/ai</kbd> for AI assist.</div>
-    <div class="editor-hint text-xs muted mt-2"><kbd>⌘S</kbd> / <kbd>Ctrl+S</kbd> to save.</div>
+    <div class="editor-hint text-xs muted mt-2">Type Markdown to format: <kbd>## </kbd> heading, <kbd>- </kbd> list, <kbd>1. </kbd> numbered, <kbd>&gt; </kbd> quote, <kbd>&#96;&#96;&#96;</kbd> code, <kbd>---</kbd> divider.</div>
+    <div class="editor-hint text-xs muted mt-2">Select text for <strong>bold</strong>/<em>italic</em>/link, or use <kbd>**bold**</kbd>, <kbd>*italic*</kbd>, <kbd>[text](url)</kbd>. Drag or paste an image to upload.</div>
+    <div class="editor-hint text-xs muted mt-2"><kbd>Enter</kbd> new block · <kbd>Shift+Enter</kbd> line break · <kbd>⌘S</kbd> / <kbd>Ctrl+S</kbd> to save.</div>
   </aside>
   <div class="editor-preview-modal" data-editor-preview hidden role="dialog" aria-modal="true" aria-label="Preview">
     <div class="editor-preview-panel">

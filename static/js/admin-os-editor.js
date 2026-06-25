@@ -239,7 +239,11 @@
       default: {
         // paragraph, quote, callout — single text area.
         var t = mkTextarea(block.text || '', placeholderFor(block.type));
-        t.addEventListener('input', function () { block.text = t.value; autoGrow(t); });
+        t.addEventListener('input', function () {
+          block.text = t.value;
+          autoGrow(t);
+          if (block.type === 'paragraph' && tryParagraphShortcut(idx, t)) return;
+        });
         t.addEventListener('keydown', onTextKey(idx));
         field.appendChild(t);
         if (block.type === 'callout') {
@@ -284,7 +288,72 @@
     t.style.height = (t.scrollHeight) + 'px';
   }
 
-  // Enter on an empty text block at the cursor with leading '/' opens the palette.
+  // focusBlock moves keyboard focus to a block's primary editable field,
+  // optionally placing the caret at the end (used after splits/conversions).
+  function focusBlock(idx, atEnd) {
+    var wrap = canvas.querySelector('[data-block-idx="' + idx + '"]');
+    if (!wrap) return;
+    var f = wrap.querySelector('.eblock__heading, .eblock__text, .eblock__input');
+    if (!f) return;
+    f.focus();
+    if (atEnd && typeof f.setSelectionRange === 'function') {
+      try { var n = f.value.length; f.setSelectionRange(n, n); } catch (e) {}
+    }
+  }
+
+  // convertBlock replaces the block at idx with a new typed block (used by the
+  // markdown shortcuts), re-renders, and focuses the new field.
+  function convertBlock(idx, newBlock) {
+    blocks[idx] = newBlock;
+    renderCanvas();
+    setTimeout(function () { focusBlock(idx, true); }, 0);
+    scheduleAutosave();
+  }
+
+  // tryParagraphShortcut turns leading Markdown markers in a paragraph into the
+  // matching block as soon as the trigger space is typed (Ghost-style):
+  //   "## " → heading · "- "/"* " → bullet · "1. " → numbered · "> " → quote
+  //   "```"  → code   · "---"      → divider
+  function tryParagraphShortcut(idx, el) {
+    var v = el.value;
+    var m;
+    if ((m = /^(#{1,4})\s(.*)$/.exec(v))) {
+      var lvl = Math.min(4, Math.max(2, m[1].length));
+      convertBlock(idx, { type: 'heading', level: lvl, text: m[2] });
+      return true;
+    }
+    if ((m = /^[-*]\s(.*)$/.exec(v))) {
+      convertBlock(idx, { type: 'list', style: 'unordered', items: m[1] ? [m[1]] : [] });
+      return true;
+    }
+    if ((m = /^1\.\s(.*)$/.exec(v))) {
+      convertBlock(idx, { type: 'list', style: 'ordered', items: m[1] ? [m[1]] : [] });
+      return true;
+    }
+    if ((m = /^>\s(.*)$/.exec(v))) {
+      convertBlock(idx, { type: 'quote', text: m[1] });
+      return true;
+    }
+    if ((m = /^```(\w*)$/.exec(v))) {
+      convertBlock(idx, { type: 'code', lang: m[1] || '', text: '' });
+      return true;
+    }
+    if (/^---\s?$/.test(v)) {
+      blocks[idx] = { type: 'divider' };
+      blocks.splice(idx + 1, 0, { type: 'paragraph', text: '' });
+      renderCanvas();
+      setTimeout(function () { focusBlock(idx + 1, true); }, 0);
+      scheduleAutosave();
+      return true;
+    }
+    return false;
+  }
+
+  // onTextKey gives text blocks a continuous, Ghost-like flow:
+  //   "/" on an empty block      → block palette
+  //   Enter (no shift)           → new paragraph below, focus it
+  //   Shift+Enter (textarea)     → soft line break (default)
+  //   Backspace at empty start   → delete block, focus the previous one
   function onTextKey(idx) {
     return function (e) {
       var el = e.target;
@@ -293,9 +362,19 @@
         openPalette(idx + 1, idx);
         return;
       }
-      if (e.key === 'Enter' && !e.shiftKey && (el.tagName === 'INPUT')) {
+      if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         insertBlock(idx + 1, { type: 'paragraph', text: '' });
+        setTimeout(function () { focusBlock(idx + 1, true); }, 0);
+        return;
+      }
+      if (e.key === 'Backspace' && el.selectionStart === 0 && el.selectionEnd === 0 &&
+          el.value === '' && blocks.length > 1) {
+        e.preventDefault();
+        var prev = idx - 1;
+        removeBlock(idx);
+        if (prev >= 0) setTimeout(function () { focusBlock(prev, true); }, 0);
+        return;
       }
     };
   }
@@ -350,13 +429,24 @@
     closePalette();
     paletteEl = document.createElement('div');
     paletteEl.className = 'block-palette';
+
+    // Filter input (Ghost-style: type to narrow the block list).
+    var search = document.createElement('input');
+    search.type = 'text';
+    search.className = 'block-palette__search';
+    search.placeholder = 'Filter blocks…';
+    paletteEl.appendChild(search);
+
     var list = document.createElement('div');
     list.className = 'block-palette__list';
 
     BLOCK_TYPES.forEach(function (bt) {
-      list.appendChild(makePaletteItem(bt.icon, bt.label, bt.hint, function () {
+      var item = makePaletteItem(bt.icon, bt.label, bt.hint, function () {
         insertBlock(insertAt, newBlockOf(bt.type));
-      }));
+        setTimeout(function () { focusBlock(insertAt, true); }, 0);
+      });
+      item.setAttribute('data-search', (bt.label + ' ' + bt.hint).toLowerCase());
+      list.appendChild(item);
     });
 
     if (aiEnabled && sourceBlockIdx != null && sourceBlockIdx >= 0 && sourceBlockIdx < blocks.length) {
@@ -367,14 +457,40 @@
       var srcBlock = blocks[sourceBlockIdx];
       var srcText = srcBlock.text || (srcBlock.items || []).join(' ') || '';
       AI_CMDS.forEach(function (cmd) {
-        list.appendChild(makePaletteItem(cmd.icon, cmd.label, cmd.hint, function () {
+        var item = makePaletteItem(cmd.icon, cmd.label, cmd.hint, function () {
           runAI(cmd.op, srcText, insertAt);
-        }));
+        });
+        item.setAttribute('data-search', (cmd.label + ' ' + cmd.hint).toLowerCase());
+        list.appendChild(item);
       });
     }
 
     paletteEl.appendChild(list);
+
+    // Filtering: hide non-matching items; Enter triggers the first visible one.
+    function applyFilter() {
+      var q = search.value.trim().toLowerCase();
+      var items = list.querySelectorAll('.block-palette__item');
+      items.forEach(function (it) {
+        var hay = it.getAttribute('data-search') || '';
+        it.style.display = (!q || hay.indexOf(q) !== -1) ? '' : 'none';
+      });
+    }
+    search.addEventListener('input', applyFilter);
+    search.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        var firstVisible = Array.prototype.filter.call(
+          list.querySelectorAll('.block-palette__item'),
+          function (it) { return it.style.display !== 'none'; })[0];
+        if (firstVisible) firstVisible.click();
+      } else if (e.key === 'Escape') {
+        closePalette();
+      }
+    });
+
     document.body.appendChild(paletteEl);
+    setTimeout(function () { search.focus(); }, 0);
     document.addEventListener('keydown', escClose);
     setTimeout(function () { document.addEventListener('click', outsideClose); }, 0);
   }
@@ -703,6 +819,163 @@
       setStatus('Ready');
     }).catch(function () { setStatus('Preview failed', 'danger'); });
   }
+
+  // ── Inline formatting toolbar ──────────────────────────────────────────────
+  // A floating bar appears above the selection in a formattable text field and
+  // wraps the selected text in Markdown markers (rendered server-side as safe
+  // inline HTML). CSP-safe: built with createElement, no innerHTML.
+  var fmtBar = null;
+
+  // fmtTarget returns the focused field if inline formatting applies to it
+  // (paragraph/quote/callout/list text + headings), else null. Code & diagram
+  // textareas (which also carry eblock__text) are excluded.
+  function fmtTarget() {
+    var el = document.activeElement;
+    if (!el || !canvas.contains(el)) return null;
+    if (el.tagName === 'TEXTAREA' && el.classList.contains('eblock__text') && !el.classList.contains('eblock__code')) return el;
+    if (el.tagName === 'INPUT' && el.classList.contains('eblock__heading')) return el;
+    return null;
+  }
+
+  function wrapSelection(el, pre, post) {
+    var s = el.selectionStart, e = el.selectionEnd, val = el.value;
+    var sel = val.slice(s, e);
+    el.value = val.slice(0, s) + pre + sel + post + val.slice(e);
+    var ns = s + pre.length;
+    el.setSelectionRange(ns, ns + sel.length);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.focus();
+  }
+
+  function applyLink(el) {
+    var s = el.selectionStart, e = el.selectionEnd, val = el.value;
+    var sel = val.slice(s, e) || 'link text';
+    var insert = '[' + sel + '](url)';
+    el.value = val.slice(0, s) + insert + val.slice(e);
+    var urlStart = s + ('[' + sel + '](').length;
+    el.setSelectionRange(urlStart, urlStart + 3); // select "url" for quick typing
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.focus();
+  }
+
+  function buildFmtBar() {
+    var bar = document.createElement('div');
+    bar.className = 'fmt-bar';
+    var defs = [
+      { label: 'B', title: 'Bold', cls: 'fmt-bar__btn--b', fn: function (el) { wrapSelection(el, '**', '**'); } },
+      { label: 'i', title: 'Italic', cls: 'fmt-bar__btn--i', fn: function (el) { wrapSelection(el, '*', '*'); } },
+      { label: '</>', title: 'Inline code', cls: '', fn: function (el) { wrapSelection(el, '`', '`'); } },
+      { label: 'S', title: 'Strikethrough', cls: 'fmt-bar__btn--s', fn: function (el) { wrapSelection(el, '~~', '~~'); } },
+      { label: '🔗', title: 'Link', cls: '', fn: function (el) { applyLink(el); } }
+    ];
+    defs.forEach(function (d) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'fmt-bar__btn ' + d.cls;
+      b.title = d.title;
+      b.textContent = d.label;
+      // mousedown keeps the textarea selection/focus; act on click.
+      b.addEventListener('mousedown', function (e) { e.preventDefault(); });
+      b.addEventListener('click', function (e) {
+        e.preventDefault();
+        var el = fmtTarget() || lastFmtEl;
+        if (el) d.fn(el);
+        positionFmtBar(el);
+      });
+      bar.appendChild(b);
+    });
+    return bar;
+  }
+
+  var lastFmtEl = null;
+  function positionFmtBar(el) {
+    if (!fmtBar || !el) return;
+    var r = el.getBoundingClientRect();
+    fmtBar.style.top = (window.scrollY + r.top - fmtBar.offsetHeight - 8) + 'px';
+    fmtBar.style.left = (window.scrollX + r.left + 8) + 'px';
+  }
+
+  function maybeShowFmtBar() {
+    var el = fmtTarget();
+    var hasSel = el && el.selectionStart !== el.selectionEnd;
+    if (!hasSel) { hideFmtBar(); return; }
+    lastFmtEl = el;
+    if (!fmtBar) {
+      fmtBar = buildFmtBar();
+      document.body.appendChild(fmtBar);
+    }
+    fmtBar.style.display = 'flex';
+    positionFmtBar(el);
+  }
+
+  function hideFmtBar() {
+    if (fmtBar) fmtBar.style.display = 'none';
+  }
+
+  document.addEventListener('mouseup', function () { setTimeout(maybeShowFmtBar, 0); });
+  document.addEventListener('keyup', function (e) {
+    if (e.shiftKey || e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      setTimeout(maybeShowFmtBar, 0);
+    }
+  });
+  document.addEventListener('scroll', hideFmtBar, true);
+
+  // ── Image paste / drop upload ──────────────────────────────────────────────
+  function focusedBlockIdx() {
+    var el = document.activeElement;
+    if (!el || !canvas.contains(el)) return blocks.length;
+    var wrap = el.closest ? el.closest('[data-block-idx]') : null;
+    if (!wrap) return blocks.length;
+    var i = parseInt(wrap.getAttribute('data-block-idx'), 10);
+    return isNaN(i) ? blocks.length : i + 1;
+  }
+
+  function uploadImageFile(file, insertAt) {
+    var fd = new FormData();
+    fd.append('file', file);
+    setStatus('Uploading image…');
+    fetch('/os/api/media/upload', {
+      method: 'POST',
+      headers: { 'X-CSRF-Token': csrfToken() },
+      body: fd
+    }).then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+      .then(function (d) {
+        if (d && d.url) {
+          insertBlock(insertAt, { type: 'image', url: d.url, alt: '' });
+          setStatus('Image inserted', 'ok');
+        } else { setStatus('Upload failed', 'danger'); }
+      }).catch(function () { setStatus('Image upload failed', 'danger'); });
+  }
+
+  canvas.addEventListener('paste', function (e) {
+    var items = (e.clipboardData && e.clipboardData.items) || [];
+    for (var i = 0; i < items.length; i++) {
+      if (items[i].type && items[i].type.indexOf('image/') === 0) {
+        var f = items[i].getAsFile();
+        if (f) { e.preventDefault(); uploadImageFile(f, focusedBlockIdx()); }
+      }
+    }
+  });
+  canvas.addEventListener('dragover', function (e) {
+    if (e.dataTransfer && Array.prototype.indexOf.call(e.dataTransfer.types || [], 'Files') >= 0) {
+      e.preventDefault();
+      canvas.classList.add('is-dragover');
+    }
+  });
+  canvas.addEventListener('dragleave', function () { canvas.classList.remove('is-dragover'); });
+  canvas.addEventListener('drop', function (e) {
+    canvas.classList.remove('is-dragover');
+    var files = (e.dataTransfer && e.dataTransfer.files) || [];
+    var imgs = [];
+    for (var i = 0; i < files.length; i++) {
+      if (files[i].type && files[i].type.indexOf('image/') === 0) imgs.push(files[i]);
+    }
+    if (imgs.length) {
+      e.preventDefault();
+      var at = blocks.length;
+      imgs.forEach(function (f) { uploadImageFile(f, at++); });
+    }
+  });
 
   // ── Wire up ────────────────────────────────────────────────────────────────
   hydrate();
