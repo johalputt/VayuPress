@@ -1,6 +1,7 @@
 package mail
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/tls"
@@ -375,23 +376,23 @@ func (e *Engine) SendMail(ctx context.Context, from string, to []string, subject
 		return 0, errors.New("vayumail: no recipients")
 	}
 
-	body := textBody
-	contentType := "text/plain; charset=utf-8"
+	text := textBody
+	html := htmlBody
 	pgpApplied := false
 
-	// PGP: encrypt to a single known recipient when possible (privacy by default).
+	// PGP: encrypt to a single known recipient when possible (privacy by
+	// default). An encrypted message is sent as a single ASCII-armored
+	// text/plain part — never alongside an HTML alternative.
 	if e.bridge != nil && len(to) == 1 {
 		if ct, ok := e.bridge.EncryptForRecipient([]byte(textBody), to[0]); ok && len(ct) > 0 {
-			body = string(ct)
-			contentType = "text/plain; charset=utf-8" // inline PGP/ASCII-armored
+			text = string(ct)
+			html = ""
 			pgpApplied = true
 		}
 	}
-	if !pgpApplied && htmlBody != "" {
-		body = htmlBody
-		contentType = "text/html; charset=utf-8"
-	}
 
+	// Ordered RFC 5322 headers. Date and Message-ID are mandatory for inbox
+	// placement; mailbox providers penalise their absence heavily.
 	headers := []HeaderField{
 		{Key: "From", Value: from},
 		{Key: "To", Value: strings.Join(to, ", ")},
@@ -399,20 +400,42 @@ func (e *Engine) SendMail(ctx context.Context, from string, to []string, subject
 		{Key: "Date", Value: time.Now().UTC().Format(time.RFC1123Z)},
 		{Key: "Message-ID", Value: e.messageID()},
 		{Key: "MIME-Version", Value: "1.0"},
-		{Key: "Content-Type", Value: contentType},
-	}
-	if pgpApplied {
-		headers = append(headers, HeaderField{Key: "X-VayuPGP", Value: "encrypted"})
 	}
 
-	dkimHeader, err := e.dkim.Sign(headers, []byte(body))
-	if err != nil {
-		return 0, fmt.Errorf("vayumail: dkim sign: %w", err)
+	var bodyBuf bytes.Buffer
+	switch {
+	case pgpApplied:
+		headers = append(headers,
+			HeaderField{Key: "Content-Type", Value: "text/plain; charset=utf-8"},
+			HeaderField{Key: "Content-Transfer-Encoding", Value: "8bit"},
+			HeaderField{Key: "X-VayuPGP", Value: "encrypted"},
+		)
+		bodyBuf.WriteString(normalizeCRLF(text))
+	case html != "" && text != "":
+		// Well-formed multipart/alternative (text first, HTML second) — the
+		// shape every mainstream MUA sends and that spam filters expect.
+		boundary := mimeBoundary()
+		headers = append(headers, HeaderField{Key: "Content-Type", Value: `multipart/alternative; boundary="` + boundary + `"`})
+		writeMIMEPart(&bodyBuf, boundary, "text/plain; charset=utf-8", text)
+		writeMIMEPart(&bodyBuf, boundary, "text/html; charset=utf-8", html)
+		bodyBuf.WriteString("--" + boundary + "--\r\n")
+	case html != "":
+		headers = append(headers,
+			HeaderField{Key: "Content-Type", Value: "text/html; charset=utf-8"},
+			HeaderField{Key: "Content-Transfer-Encoding", Value: "8bit"},
+		)
+		bodyBuf.WriteString(normalizeCRLF(html))
+	default:
+		headers = append(headers,
+			HeaderField{Key: "Content-Type", Value: "text/plain; charset=utf-8"},
+			HeaderField{Key: "Content-Transfer-Encoding", Value: "8bit"},
+		)
+		bodyBuf.WriteString(normalizeCRLF(text))
 	}
 
-	var raw strings.Builder
-	raw.WriteString(dkimHeader)
-	raw.WriteString("\r\n")
+	// Assemble the complete message (CRLF throughout), then DKIM-sign it as a
+	// whole so the signed bytes are exactly the bytes we transmit.
+	var raw bytes.Buffer
 	for _, h := range headers {
 		raw.WriteString(h.Key)
 		raw.WriteString(": ")
@@ -420,8 +443,12 @@ func (e *Engine) SendMail(ctx context.Context, from string, to []string, subject
 		raw.WriteString("\r\n")
 	}
 	raw.WriteString("\r\n")
-	raw.WriteString(body)
-	rawMsg := []byte(raw.String())
+	raw.Write(bodyBuf.Bytes())
+
+	rawMsg, err := e.dkim.SignMessage(raw.Bytes())
+	if err != nil {
+		return 0, fmt.Errorf("vayumail: dkim sign: %w", err)
+	}
 
 	// Split recipients into local mailboxes (delivered straight into the
 	// Maildir, so they appear in the recipient's Inbox) and remote addresses
@@ -477,4 +504,31 @@ func (e *Engine) messageID() string {
 	b := make([]byte, 12)
 	_, _ = rand.Read(b)
 	return "<" + hex.EncodeToString(b) + "@" + e.cfg.Domain + ">"
+}
+
+// mimeBoundary returns a unique multipart boundary token.
+func mimeBoundary() string {
+	b := make([]byte, 16)
+	_, _ = rand.Read(b)
+	return "vayu-" + hex.EncodeToString(b)
+}
+
+// normalizeCRLF rewrites bare LF and lone CR line endings to canonical CRLF so
+// the transmitted bytes match what DKIM canonicalization expects.
+func normalizeCRLF(s string) string {
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	s = strings.ReplaceAll(s, "\r", "\n")
+	return strings.ReplaceAll(s, "\n", "\r\n")
+}
+
+// writeMIMEPart appends one multipart/alternative body part (CRLF-terminated).
+func writeMIMEPart(buf *bytes.Buffer, boundary, contentType, content string) {
+	buf.WriteString("--" + boundary + "\r\n")
+	buf.WriteString("Content-Type: " + contentType + "\r\n")
+	buf.WriteString("Content-Transfer-Encoding: 8bit\r\n\r\n")
+	body := normalizeCRLF(content)
+	buf.WriteString(body)
+	if !strings.HasSuffix(body, "\r\n") {
+		buf.WriteString("\r\n")
+	}
 }

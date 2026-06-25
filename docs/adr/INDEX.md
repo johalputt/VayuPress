@@ -63,6 +63,7 @@
 | [ADR-0081](ADR-0081-editor-inline-markdown.md) | Block Editor Inline Rich Text via Markdown (goldmark + bluemonday) | Accepted | Core | 2026-06-25 |
 | [ADR-0082](ADR-0082-theme-studio-code-editor.md) | Theme Studio Code Editor, Head Meta, and Import/Export (CSP-safe) | Accepted | Core | 2026-06-25 |
 | [ADR-0083](ADR-0083-vayumail-roles-search.md) | VayuMail Role-Based Accounts and Local Mailbox Search | Accepted | Core | 2026-06-25 |
+| [ADR-0084](ADR-0084-vayumail-outbound-deliverability.md) | VayuMail Outbound Deliverability — Vetted DKIM Signing + Well-Formed MIME | Accepted | VayuOS | 2026-06-25 |
 
 ---
 

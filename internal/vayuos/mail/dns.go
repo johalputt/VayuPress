@@ -121,6 +121,16 @@ func Deliverability(ctx context.Context, cfg Config, dkimName, dkimTXT string) [
 	var out []RecordHealth
 	r := &net.Resolver{}
 
+	// HELO/hostname must be a fully-qualified domain name. A bare label or
+	// "localhost" announced in EHLO is an immediate spam signal for Gmail and
+	// Outlook.
+	hn := RecordHealth{Type: "HELO hostname", Name: cfg.Hostname, Message: "ok", OK: true, Found: cfg.Hostname}
+	if cfg.Hostname == "" || !strings.Contains(strings.TrimSuffix(cfg.Hostname, "."), ".") || strings.EqualFold(cfg.Hostname, "localhost") {
+		hn.OK = false
+		hn.Message = "mail hostname is not a fully-qualified domain name — set VAYUOS_MAIL_HOSTNAME to e.g. mail.example.com so EHLO announces a real FQDN"
+	}
+	out = append(out, hn)
+
 	// DKIM published-key vs signing-key — a mismatch means dkim=fail at the
 	// recipient, which (with an enforcing DMARC policy) lands mail in spam.
 	if cfg.DKIMEnabled && dkimTXT != "" {

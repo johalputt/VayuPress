@@ -85,6 +85,23 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   (Receiving external mail still also requires port 25 reachable and MX/A DNS
   records pointing at the host.)
 
+- **Outbound deliverability hardening (fewer messages in Gmail/Outlook spam).**
+  - **DKIM signing now uses the vetted `github.com/emersion/go-msgauth/dkim`
+    library** instead of a hand-rolled canonicalizer. A subtle canonicalization
+    bug is one of the most common reasons a message that "looks" signed still
+    fails verification at the receiver and is filed as spam; delegating to the
+    same battle-tested implementation already used for inbound verification
+    removes that entire class of risk. Signing remains relaxed/relaxed,
+    rsa-sha256, `d=` aligned to the From domain.
+  - **Well-formed MIME.** Messages with both a text and an HTML body are now sent
+    as a proper `multipart/alternative` (text part first, HTML second) — the
+    shape mainstream mail clients send and spam filters expect — with explicit
+    `Content-Transfer-Encoding` and canonical CRLF line endings throughout. The
+    inline PGP path is unchanged (a single ASCII-armored `text/plain` part).
+  - **Deliverability self-check** now also flags a **mail hostname that is not a
+    fully-qualified domain name** (announced in EHLO/HELO), alongside the
+    existing DKIM-key and reverse-DNS (PTR) checks.
+
 ### Fixed
 
 - **Compose Send / Save-as-draft no longer fail with `403` after a while.** The

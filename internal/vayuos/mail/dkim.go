@@ -1,19 +1,18 @@
 package mail
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
-	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/pem"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
-	"time"
+
+	"github.com/emersion/go-msgauth/dkim"
 )
 
 // HeaderField is one RFC 5322 header used as DKIM signing input.
@@ -74,89 +73,31 @@ func (d *DKIM) RecordName() string {
 	return d.Selector + "._domainkey." + d.Domain
 }
 
-// canonicalizeBodyRelaxed implements RFC 6376 §3.4.4.
-func canonicalizeBodyRelaxed(body []byte) []byte {
-	text := strings.ReplaceAll(string(body), "\r\n", "\n")
-	lines := strings.Split(text, "\n")
-	for i, ln := range lines {
-		// Reduce WSP runs to a single space and strip trailing WSP.
-		ln = reduceWSP(ln)
-		lines[i] = strings.TrimRight(ln, " \t")
-	}
-	out := strings.Join(lines, "\r\n")
-	// Ignore all empty lines at the end of the body.
-	out = strings.TrimRight(out, "\r\n")
-	if len(out) == 0 {
-		return []byte{}
-	}
-	return []byte(out + "\r\n")
-}
-
-// canonicalizeHeaderRelaxed implements RFC 6376 §3.4.2 for one header.
-func canonicalizeHeaderRelaxed(key, value string) string {
-	k := strings.ToLower(strings.TrimSpace(key))
-	// Unfold: remove CRLF, then collapse WSP runs.
-	v := strings.ReplaceAll(value, "\r\n", "")
-	v = strings.ReplaceAll(v, "\n", "")
-	v = reduceWSP(v)
-	v = strings.TrimSpace(v)
-	return k + ":" + v
-}
-
-// reduceWSP collapses runs of spaces/tabs into a single space.
-func reduceWSP(s string) string {
-	var b strings.Builder
-	prevWSP := false
-	for _, r := range s {
-		if r == ' ' || r == '\t' {
-			if !prevWSP {
-				b.WriteByte(' ')
-			}
-			prevWSP = true
-			continue
-		}
-		b.WriteRune(r)
-		prevWSP = false
-	}
-	return b.String()
-}
-
-// Sign produces a complete "DKIM-Signature: …" header (no trailing CRLF) over
-// the given headers and body using relaxed/relaxed canonicalization and
-// rsa-sha256, as defined by RFC 6376.
-func (d *DKIM) Sign(headers []HeaderField, body []byte) (string, error) {
+// SignMessage DKIM-signs a complete RFC 5322 message (header block, a blank
+// line, then the body, all CRLF-terminated) and returns the message with a
+// freshly prepended "DKIM-Signature:" header.
+//
+// Signing is delegated to the battle-tested github.com/emersion/go-msgauth/dkim
+// implementation (relaxed/relaxed canonicalization, rsa-sha256) rather than a
+// bespoke canonicalizer: a subtle canonicalization bug is one of the most
+// common reasons a message that "looks" signed still fails verification at
+// Gmail/Outlook and is filed as spam. Using the vetted library removes that
+// entire class of risk. All present headers are signed (HeaderKeys nil).
+func (d *DKIM) SignMessage(raw []byte) ([]byte, error) {
 	if d.priv == nil {
-		return "", errors.New("vayumail: DKIM key not initialised")
+		return nil, errors.New("vayumail: DKIM key not initialised")
 	}
-	bodyHash := sha256.Sum256(canonicalizeBodyRelaxed(body))
-	bh := base64.StdEncoding.EncodeToString(bodyHash[:])
-
-	// Header names included in the signature, in signing order.
-	var signedNames []string
-	for _, h := range headers {
-		signedNames = append(signedNames, h.Key)
+	opts := &dkim.SignOptions{
+		Domain:                 d.Domain,
+		Selector:               d.Selector,
+		Signer:                 d.priv,
+		Hash:                   crypto.SHA256,
+		HeaderCanonicalization: dkim.CanonicalizationRelaxed,
+		BodyCanonicalization:   dkim.CanonicalizationRelaxed,
 	}
-
-	sig := fmt.Sprintf(
-		"v=1; a=rsa-sha256; c=relaxed/relaxed; d=%s; s=%s; t=%d; h=%s; bh=%s; b=",
-		d.Domain, d.Selector, time.Now().UTC().Unix(), strings.Join(signedNames, ":"), bh,
-	)
-
-	// Build the data to sign: each signed header canonicalized + CRLF, then the
-	// DKIM-Signature header itself canonicalized with an empty b= and NO
-	// trailing CRLF.
-	var sb strings.Builder
-	for _, h := range headers {
-		sb.WriteString(canonicalizeHeaderRelaxed(h.Key, h.Value))
-		sb.WriteString("\r\n")
+	var out bytes.Buffer
+	if err := dkim.Sign(&out, bytes.NewReader(raw), opts); err != nil {
+		return nil, err
 	}
-	sb.WriteString(canonicalizeHeaderRelaxed("DKIM-Signature", sig))
-
-	digest := sha256.Sum256([]byte(sb.String()))
-	signature, err := rsa.SignPKCS1v15(rand.Reader, d.priv, crypto.SHA256, digest[:])
-	if err != nil {
-		return "", err
-	}
-	b := base64.StdEncoding.EncodeToString(signature)
-	return "DKIM-Signature: " + sig + b, nil
+	return out.Bytes(), nil
 }
