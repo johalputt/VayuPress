@@ -48,6 +48,7 @@ const (
 	CatBusiness   = "Business"
 	CatCreative   = "Creative"
 	CatCommunity  = "Community"
+	CatFlagship   = "Flagship"
 )
 
 // catalogMeta maps a preset Name to its store metadata. Names must match the
@@ -233,6 +234,12 @@ var catalogMeta = map[string]ThemeMeta{
 		Tags:        []string{"community", "discussion", "forum", "sidebars", "layout"},
 		Category:    CatCommunity,
 	},
+	"Apex": {
+		Tagline:     "The flagship do-everything theme.",
+		Description: "The flagship, do-everything theme — a premium, infinitely-configurable publication system on a gradient-driven indigo-violet and cyan palette. Ships the most complete component kit in the catalogue: a glass sticky header with mega-menu, four hero styles (split, centered, full-bleed media, pure-CSS gradient mesh), a signature bento grid, four feed layouts (grid/list/magazine/masonry) and several card styles, plus features, stats, logos, testimonials, pricing tiers, FAQ accordion, gallery, timeline, newsletter and CTA sections, a full reading experience (reading-progress bar, sticky table of contents, share, author box, related posts), a mega footer, and ten swappable color schemes with density (compact/comfortable/spacious) and shape (sharp/rounded/pill) modes plus an optional gradient accent — CSP-safe, WCAG-AA, light & dark.",
+		Tags:        []string{"flagship", "premium", "multipurpose", "bento", "gradient", "configurable"},
+		Category:    CatFlagship,
+	},
 }
 
 // Meta returns the store metadata for a theme by name. When no explicit entry
@@ -269,7 +276,7 @@ func Store() []StoreEntry {
 // Categories returns the distinct category labels present in the store, in a
 // stable, curated order (categories not present in the catalogue are omitted).
 func Categories() []string {
-	order := []string{CatDark, CatLight, CatMinimal, CatReading, CatEditorial, CatNewsletter, CatBusiness, CatCommunity, CatCreative, CatVibrant, CatMono}
+	order := []string{CatFlagship, CatDark, CatLight, CatMinimal, CatReading, CatEditorial, CatNewsletter, CatBusiness, CatCommunity, CatCreative, CatVibrant, CatMono}
 	present := map[string]bool{}
 	for _, e := range Store() {
 		present[e.Meta.Category] = true

@@ -1,0 +1,327 @@
+/* ============================================================================
+   Apex — the flagship, do-everything theme for VayuPress.
+
+   A premium, infinitely-configurable publication system: glass header, a dozen
+   section components (bento, magazine, masonry, stats, pricing, testimonials,
+   FAQ, gallery, timeline, newsletter…), ten color schemes, density and shape
+   modes, and a gradient design language — all CSP-safe and same-origin (served
+   via /theme.css, style-src 'self'), driven by the VayuPress tokens (--vp-*).
+   No external fonts, no CDNs, no JS required.
+
+   Customization hooks (add a class to any wrapper — no code):
+     Color scheme   .apex-scheme--{indigo|violet|cyan|emerald|rose|amber|
+                                    slate|crimson|teal|mono}
+     Density        .apex--compact | .apex--spacious        (default: comfortable)
+     Shape          .apex--sharp | .apex--rounded | .apex--pill
+     Accent fill    .apex--gradient   (buttons/headings use the accent gradient)
+
+   Section / component map
+     Header (glass, sticky, mega-menu)  -> .apex-header / .apex-nav / __mega / .apex-toggle
+     Heroes (split/center/media/mesh)   -> .apex-hero(--split|--center|--media|--mesh)
+     Bento grid (signature)             -> .apex-bento / .apex-bento__cell(--lg|--tall|--wide)
+     Feeds (grid/list/magazine/masonry) -> .apex-feed--{grid|list|magazine|masonry}
+     Cards (standard/overlay/horizontal)-> .apex-card(--overlay|--horizontal|--minimal)
+     Features / stats / logos           -> .apex-features / .apex-stats / .apex-logos
+     Testimonials slider                -> .apex-testimonials / .apex-quote
+     Pricing tiers (monthly/yearly)     -> .apex-pricing / .apex-tier / __toggle
+     FAQ accordion                      -> .apex-faq / .apex-faq__item
+     Gallery + timeline                 -> .apex-gallery / .apex-timeline
+     Newsletter / CTA band              -> .apex-newsletter / .apex-cta
+     Post (TOC, progress, share, author,
+       related; narrow/wide/immersive)  -> .apex-post(--wide|--immersive), .apex-toc,
+                                            .apex-progress, .apex-share, .apex-authorbox, .apex-related
+     Membership / auth                  -> .apex-auth / (pricing above)
+     Mega footer                        -> .apex-footer
+     Utilities                          -> .apex-btn(--primary|--ghost|--gradient),
+                                            .apex-badge, .apex-chip, .apex-gradient-text,
+                                            .apex-reveal (load animation)
+   ============================================================================ */
+
+:root{
+  --apex-display:var(--vp-font-sans,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif);
+  --apex-body:var(--vp-font-sans,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif);
+  --apex-accent:var(--vp-accent);
+  --apex-accent2:var(--vp-accent2,var(--vp-accent));
+  --apex-grad:linear-gradient(135deg,var(--apex-accent),var(--apex-accent2));
+  --apex-r:var(--vp-radius-lg,1rem);
+  --apex-r-sm:var(--vp-radius-sm,.5rem);
+  --apex-gap:clamp(1rem,2.5vw,2rem);
+  --apex-pad:clamp(2.5rem,6vw,5rem);
+  --apex-ring:0 0 0 1px color-mix(in srgb,var(--vp-muted) 16%,transparent);
+  --apex-shadow:0 14px 40px rgba(0,0,0,.14);
+  --apex-bd:color-mix(in srgb,var(--vp-muted) 16%,transparent);
+}
+
+/* ── Color schemes (swap the accent pair) ───────────────────────────────── */
+.apex-scheme--indigo{--apex-accent:#6366f1;--apex-accent2:#22d3ee}
+.apex-scheme--violet{--apex-accent:#8b5cf6;--apex-accent2:#ec4899}
+.apex-scheme--cyan{--apex-accent:#06b6d4;--apex-accent2:#3b82f6}
+.apex-scheme--emerald{--apex-accent:#10b981;--apex-accent2:#84cc16}
+.apex-scheme--rose{--apex-accent:#f43f5e;--apex-accent2:#fb923c}
+.apex-scheme--amber{--apex-accent:#f59e0b;--apex-accent2:#ef4444}
+.apex-scheme--slate{--apex-accent:#64748b;--apex-accent2:#94a3b8}
+.apex-scheme--crimson{--apex-accent:#dc2626;--apex-accent2:#7c3aed}
+.apex-scheme--teal{--apex-accent:#14b8a6;--apex-accent2:#0ea5e9}
+.apex-scheme--mono{--apex-accent:var(--vp-text);--apex-accent2:var(--vp-muted)}
+
+/* ── Density modes ──────────────────────────────────────────────────────── */
+.apex--compact{--apex-gap:clamp(.75rem,1.5vw,1.25rem);--apex-pad:clamp(1.75rem,4vw,3rem)}
+.apex--spacious{--apex-gap:clamp(1.5rem,3.5vw,3rem);--apex-pad:clamp(3.5rem,8vw,7rem)}
+
+/* ── Shape modes ────────────────────────────────────────────────────────── */
+.apex--sharp{--apex-r:0;--apex-r-sm:0}
+.apex--rounded{--apex-r:1.5rem;--apex-r-sm:.85rem}
+.apex--pill{--apex-r:2rem;--apex-r-sm:2rem}
+
+/* ── Utilities ──────────────────────────────────────────────────────────── */
+.apex-gradient-text{background:var(--apex-grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.apex--gradient .apex-btn--primary{background:var(--apex-grad);border-color:transparent}
+.apex--gradient .apex-section__title,.apex--gradient .apex-hero__title{background:var(--apex-grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.apex-eyebrow{display:inline-block;font-size:.72rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--apex-accent)}
+.apex-badge{display:inline-flex;align-items:center;gap:.3rem;font-size:.68rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:.18rem .6rem;border-radius:2rem;color:#fff;background:var(--apex-accent)}
+.apex-chip{display:inline-flex;align-items:center;min-height:32px;padding:.3rem .8rem;border-radius:2rem;font-size:.8rem;font-weight:600;text-decoration:none;color:var(--vp-text);background:color-mix(in srgb,var(--vp-muted) 12%,transparent);transition:background .15s,color .15s}
+.apex-chip:hover{background:var(--apex-accent);color:#fff}
+.apex-btn{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;min-height:44px;min-width:44px;padding:.72rem 1.5rem;font-family:var(--apex-body);font-size:.92rem;font-weight:650;text-decoration:none;border:1.5px solid transparent;border-radius:var(--apex-r-sm);cursor:pointer;transition:transform .15s,background .15s,color .15s,box-shadow .15s}
+.apex-btn:hover{transform:translateY(-2px)}
+.apex-btn--primary{background:var(--apex-accent);color:#fff;box-shadow:0 6px 18px color-mix(in srgb,var(--apex-accent) 35%,transparent)}
+.apex-btn--gradient{background:var(--apex-grad);color:#fff}
+.apex-btn--ghost{border-color:var(--apex-bd);color:var(--vp-text);background:transparent}
+.apex-btn--ghost:hover{border-color:var(--apex-accent);color:var(--apex-accent)}
+.apex-input{flex:1;min-height:44px;padding:.72rem 1.1rem;font-size:.92rem;border-radius:var(--apex-r-sm);border:1.5px solid var(--apex-bd);background:var(--vp-bg);color:var(--vp-text)}
+.apex-input:focus{outline:2px solid var(--apex-accent);outline-offset:1px;border-color:var(--apex-accent)}
+.apex-divider{height:1px;background:var(--apex-bd);margin:var(--apex-pad) 0;border:0}
+:where(.apex-btn,.apex-chip,.apex-nav__link,.apex-toggle button,.apex-faq__item summary,.apex-tier a):focus-visible{outline:2px solid var(--apex-accent);outline-offset:2px;border-radius:.35rem}
+
+/* ── Section scaffolding ────────────────────────────────────────────────── */
+.apex-section{margin:var(--apex-pad) 0}
+.apex-section__head{display:flex;flex-direction:column;gap:.6rem;align-items:center;text-align:center;margin-bottom:calc(var(--apex-pad) * .55);max-width:46rem;margin-left:auto;margin-right:auto}
+.apex-section__title{font-family:var(--apex-display);font-weight:800;letter-spacing:-.03em;line-height:1.05;font-size:clamp(1.8rem,4vw,2.8rem);color:var(--vp-text);margin:0}
+.apex-section__sub{font-size:1.1rem;line-height:1.6;color:var(--vp-muted);margin:0}
+.apex-section__head--left{align-items:flex-start;text-align:left;margin-left:0}
+
+/* ── Header (glass, sticky, mega-menu) ──────────────────────────────────── */
+.apex-header{position:sticky;top:0;z-index:100;background:color-mix(in srgb,var(--vp-bg) 80%,transparent);border-bottom:1px solid var(--apex-bd);backdrop-filter:saturate(180%) blur(14px)}
+.apex-header__inner{display:flex;align-items:center;justify-content:space-between;gap:1.5rem;padding:1rem 0}
+.apex-header__brand{font-family:var(--apex-display);font-size:1.25rem;font-weight:800;letter-spacing:-.02em;color:var(--vp-text);text-decoration:none}
+.apex-nav{display:flex;align-items:center;gap:1.5rem;list-style:none;margin:0;padding:0}
+.apex-nav__item{position:relative}
+.apex-nav__link{font-size:.9rem;font-weight:600;color:var(--vp-muted);text-decoration:none;transition:color .15s}
+.apex-nav__link:hover{color:var(--vp-text)}
+.apex-nav__mega{position:absolute;top:165%;left:50%;transform:translateX(-50%) translateY(-6px);min-width:520px;display:grid;grid-template-columns:repeat(2,1fr);gap:.4rem;padding:1rem;border-radius:var(--apex-r);background:var(--vp-surface);border:1px solid var(--apex-bd);box-shadow:var(--apex-shadow);opacity:0;visibility:hidden;transition:opacity .15s,transform .15s,visibility .15s;z-index:120}
+.apex-nav__item:hover .apex-nav__mega,.apex-nav__item:focus-within .apex-nav__mega{opacity:1;visibility:visible;transform:translateX(-50%) translateY(0)}
+.apex-nav__mega a{display:flex;flex-direction:column;gap:.15rem;padding:.6rem .75rem;border-radius:var(--apex-r-sm);text-decoration:none}
+.apex-nav__mega a:hover{background:color-mix(in srgb,var(--apex-accent) 10%,transparent)}
+.apex-nav__mega strong{font-size:.9rem;color:var(--vp-text)}
+.apex-nav__mega span{font-size:.78rem;color:var(--vp-muted)}
+.apex-header__actions{display:flex;align-items:center;gap:.6rem}
+.apex-toggle{display:inline-flex;gap:.15rem;padding:.22rem;border-radius:2rem;background:color-mix(in srgb,var(--vp-muted) 14%,transparent)}
+.apex-toggle button{display:grid;place-items:center;width:32px;height:32px;border:0;border-radius:50%;background:transparent;color:var(--vp-muted);cursor:pointer}
+.apex-toggle button[aria-pressed="true"]{background:var(--vp-surface);color:var(--apex-accent)}
+
+/* ── Heroes ─────────────────────────────────────────────────────────────── */
+.apex-hero{padding:var(--apex-pad) 0}
+.apex-hero__eyebrow{margin-bottom:1rem}
+.apex-hero__title{font-family:var(--apex-display);font-weight:800;letter-spacing:-.04em;line-height:1;font-size:clamp(2.6rem,7vw,5rem);color:var(--vp-text);margin:0 0 1.25rem}
+.apex-hero__sub{font-size:1.25rem;line-height:1.55;color:var(--vp-muted);max-width:52ch;margin:0 0 2rem}
+.apex-hero__actions{display:flex;gap:.85rem;flex-wrap:wrap}
+.apex-hero--center{text-align:center}
+.apex-hero--center .apex-hero__sub{margin-left:auto;margin-right:auto}
+.apex-hero--center .apex-hero__actions{justify-content:center}
+.apex-hero--split{display:grid;grid-template-columns:1.05fr .95fr;gap:var(--apex-gap);align-items:center}
+.apex-hero__media{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:var(--apex-r);box-shadow:var(--apex-shadow)}
+.apex-hero--media{position:relative;min-height:78vh;display:flex;align-items:flex-end;padding:var(--apex-pad);color:#fff;border-radius:var(--apex-r);overflow:hidden}
+.apex-hero--media .apex-hero__bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0}
+.apex-hero--media::after{content:"";position:absolute;inset:0;background:linear-gradient(transparent,rgba(0,0,0,.75));z-index:1}
+.apex-hero--media>*{position:relative;z-index:2}
+.apex-hero--media .apex-hero__title,.apex-hero--media .apex-hero__sub{color:#fff}
+/* Gradient-mesh hero (pure CSS, no images) */
+.apex-hero--mesh{position:relative;text-align:center;padding:calc(var(--apex-pad) * 1.3) 1.5rem;border-radius:var(--apex-r);overflow:hidden}
+.apex-hero--mesh::before{content:"";position:absolute;inset:-20%;z-index:0;background:
+  radial-gradient(40% 50% at 20% 20%,color-mix(in srgb,var(--apex-accent) 45%,transparent),transparent 60%),
+  radial-gradient(40% 50% at 80% 25%,color-mix(in srgb,var(--apex-accent2) 45%,transparent),transparent 60%),
+  radial-gradient(45% 55% at 55% 85%,color-mix(in srgb,var(--apex-accent) 30%,transparent),transparent 60%);
+  filter:blur(36px);opacity:.85}
+.apex-hero--mesh>*{position:relative;z-index:1}
+.apex-hero--mesh .apex-hero__sub{margin-left:auto;margin-right:auto}
+.apex-hero--mesh .apex-hero__actions{justify-content:center}
+
+/* ── Bento grid (signature) ─────────────────────────────────────────────── */
+.apex-bento{display:grid;grid-template-columns:repeat(4,1fr);grid-auto-rows:200px;gap:var(--apex-gap)}
+.apex-bento__cell{position:relative;display:flex;flex-direction:column;justify-content:flex-end;gap:.4rem;padding:1.5rem;border-radius:var(--apex-r);overflow:hidden;background:var(--vp-surface);border:1px solid var(--apex-bd);text-decoration:none;transition:transform .18s,box-shadow .18s}
+.apex-bento__cell:hover{transform:translateY(-3px);box-shadow:var(--apex-shadow)}
+.apex-bento__cell--lg{grid-column:span 2;grid-row:span 2}
+.apex-bento__cell--wide{grid-column:span 2}
+.apex-bento__cell--tall{grid-row:span 2}
+.apex-bento__media{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.apex-bento__cell--media::after{content:"";position:absolute;inset:0;background:linear-gradient(transparent 35%,rgba(0,0,0,.78))}
+.apex-bento__cell--media *{position:relative;z-index:1;color:#fff}
+.apex-bento__title{font-family:var(--apex-display);font-weight:750;letter-spacing:-.02em;font-size:1.3rem;line-height:1.15;margin:0;color:var(--vp-text)}
+.apex-bento__cell--media .apex-bento__title{color:#fff}
+
+/* ── Feeds + cards ──────────────────────────────────────────────────────── */
+.apex-feed--grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:var(--apex-gap)}
+.apex-feed--magazine{display:grid;grid-template-columns:1.4fr 1fr;gap:var(--apex-gap)}
+.apex-feed--masonry{columns:3 280px;column-gap:var(--apex-gap)}
+.apex-feed--masonry>.apex-card{break-inside:avoid;margin-bottom:var(--apex-gap)}
+.apex-feed--list{display:flex;flex-direction:column}
+.apex-card{display:flex;flex-direction:column;gap:.8rem;text-decoration:none}
+.apex-card__media{width:100%;aspect-ratio:16/10;object-fit:cover;border-radius:var(--apex-r);background:var(--vp-surface)}
+.apex-card__tag{align-self:flex-start;font-size:.7rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--apex-accent);text-decoration:none}
+.apex-card__title{font-family:var(--apex-display);font-weight:750;letter-spacing:-.02em;font-size:1.3rem;line-height:1.22;margin:0;color:var(--vp-text)}
+.apex-card:hover .apex-card__title{color:var(--apex-accent)}
+.apex-card__excerpt{font-size:.92rem;line-height:1.55;color:var(--vp-muted);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.apex-card__meta{display:flex;gap:.75rem;align-items:center;font-size:.8rem;color:var(--vp-muted)}
+.apex-card--overlay{position:relative;justify-content:flex-end;min-height:360px;padding:1.5rem;overflow:hidden;border-radius:var(--apex-r);color:#fff}
+.apex-card--overlay .apex-card__media{position:absolute;inset:0;height:100%;border-radius:0}
+.apex-card--overlay::after{content:"";position:absolute;inset:0;background:linear-gradient(transparent 38%,rgba(0,0,0,.82))}
+.apex-card--overlay .apex-card__title,.apex-card--overlay .apex-card__meta,.apex-card--overlay .apex-card__tag{position:relative;z-index:1;color:#fff}
+.apex-card--horizontal{flex-direction:row;align-items:center;gap:1.25rem}
+.apex-card--horizontal .apex-card__media{width:220px;flex:none}
+.apex-card--minimal .apex-card__media{display:none}
+.apex-feed--list .apex-card{padding:1.5rem 0;border-bottom:1px solid var(--apex-bd)}
+
+/* ── Features / stats / logos ───────────────────────────────────────────── */
+.apex-features{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:var(--apex-gap)}
+.apex-feature{display:flex;flex-direction:column;gap:.6rem;padding:1.75rem;border-radius:var(--apex-r);background:var(--vp-surface);border:1px solid var(--apex-bd)}
+.apex-feature__icon{display:grid;place-items:center;width:48px;height:48px;border-radius:var(--apex-r-sm);background:color-mix(in srgb,var(--apex-accent) 14%,transparent);color:var(--apex-accent);font-size:1.4rem}
+.apex-feature__title{font-family:var(--apex-display);font-weight:700;font-size:1.1rem;color:var(--vp-text);margin:0}
+.apex-feature__text{font-size:.9rem;line-height:1.55;color:var(--vp-muted);margin:0}
+.apex-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:var(--apex-gap);text-align:center}
+.apex-stat__num{font-family:var(--apex-display);font-weight:800;font-size:clamp(2.2rem,5vw,3.4rem);line-height:1;background:var(--apex-grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.apex-stat__label{font-size:.85rem;color:var(--vp-muted);margin-top:.4rem}
+.apex-logos{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:2.5rem}
+.apex-logos img{height:30px;width:auto;opacity:.6;filter:grayscale(1);transition:opacity .15s}
+.apex-logos img:hover{opacity:1}
+
+/* ── Testimonials ───────────────────────────────────────────────────────── */
+.apex-testimonials{display:flex;gap:var(--apex-gap);overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:.5rem}
+.apex-quote{flex:0 0 360px;scroll-snap-align:start;display:flex;flex-direction:column;gap:1rem;padding:1.75rem;border-radius:var(--apex-r);background:var(--vp-surface);border:1px solid var(--apex-bd)}
+.apex-quote__text{font-size:1.05rem;line-height:1.55;color:var(--vp-text)}
+.apex-quote__by{display:flex;align-items:center;gap:.65rem;font-size:.85rem;color:var(--vp-muted)}
+.apex-quote__avatar{width:38px;height:38px;border-radius:50%;object-fit:cover}
+
+/* ── Pricing tiers ──────────────────────────────────────────────────────── */
+.apex-pricing{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:var(--apex-gap);align-items:stretch}
+.apex-pricing__toggle{display:inline-flex;gap:.2rem;margin:0 auto 2rem;padding:.25rem;border-radius:2rem;background:color-mix(in srgb,var(--vp-muted) 14%,transparent)}
+.apex-pricing__toggle button{min-height:40px;padding:.4rem 1.2rem;border:0;border-radius:2rem;background:transparent;color:var(--vp-muted);font-weight:650;cursor:pointer}
+.apex-pricing__toggle button[aria-pressed="true"]{background:var(--apex-accent);color:#fff}
+.apex-tier{display:flex;flex-direction:column;gap:.5rem;padding:2rem;border-radius:var(--apex-r);background:var(--vp-surface);border:1.5px solid var(--apex-bd)}
+.apex-tier--featured{border-color:transparent;box-shadow:0 0 0 2px var(--apex-accent),var(--apex-shadow);position:relative}
+.apex-tier--featured::before{content:"Popular";position:absolute;top:-.8rem;right:1.25rem;font-size:.66rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#fff;background:var(--apex-grad);padding:.2rem .7rem;border-radius:2rem}
+.apex-tier__name{font-size:.95rem;font-weight:700;color:var(--vp-text)}
+.apex-tier__price{font-family:var(--apex-display);font-weight:800;font-size:2.6rem;color:var(--vp-text)}
+.apex-tier__price span{font-family:var(--apex-body);font-size:.85rem;font-weight:500;color:var(--vp-muted)}
+.apex-tier__list{list-style:none;margin:1rem 0;padding:0;display:flex;flex-direction:column;gap:.6rem;flex:1}
+.apex-tier__list li{display:flex;gap:.5rem;font-size:.9rem;color:var(--vp-muted)}
+.apex-tier__list li::before{content:"\2713";color:var(--apex-accent);font-weight:700}
+
+/* ── FAQ accordion ──────────────────────────────────────────────────────── */
+.apex-faq{max-width:48rem;margin:0 auto;display:flex;flex-direction:column}
+.apex-faq__item{border-bottom:1px solid var(--apex-bd)}
+.apex-faq__item summary{display:flex;align-items:center;justify-content:space-between;gap:1rem;cursor:pointer;list-style:none;padding:1.1rem 0;font-family:var(--apex-display);font-weight:700;font-size:1.1rem;color:var(--vp-text)}
+.apex-faq__item summary::after{content:"+";color:var(--apex-accent);font-size:1.5rem;line-height:1}
+.apex-faq__item[open] summary::after{content:"\2212"}
+.apex-faq__item p{margin:0;padding:0 0 1.2rem;color:var(--vp-muted);line-height:1.6}
+
+/* ── Gallery + timeline ─────────────────────────────────────────────────── */
+.apex-gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:.6rem}
+.apex-gallery a{border-radius:var(--apex-r-sm);overflow:hidden;display:block}
+.apex-gallery img{width:100%;aspect-ratio:1/1;object-fit:cover;transition:transform .2s}
+.apex-gallery a:hover img{transform:scale(1.06)}
+.apex-timeline{position:relative;margin-left:1rem;padding-left:2rem;border-left:2px solid var(--apex-bd)}
+.apex-timeline__item{position:relative;padding-bottom:2rem}
+.apex-timeline__item::before{content:"";position:absolute;left:calc(-2rem - 6px);top:.3rem;width:12px;height:12px;border-radius:50%;background:var(--apex-accent);box-shadow:0 0 0 4px var(--vp-bg)}
+.apex-timeline__date{font-size:.78rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--apex-accent)}
+.apex-timeline__title{font-family:var(--apex-display);font-weight:700;font-size:1.15rem;color:var(--vp-text);margin:.2rem 0 .4rem}
+
+/* ── Newsletter + CTA band ──────────────────────────────────────────────── */
+.apex-newsletter,.apex-cta{position:relative;padding:var(--apex-pad);border-radius:var(--apex-r);text-align:center;overflow:hidden;background:var(--vp-surface);border:1px solid var(--apex-bd)}
+.apex-newsletter::before,.apex-cta::before{content:"";position:absolute;inset:0;z-index:0;background:radial-gradient(60% 120% at 50% -10%,color-mix(in srgb,var(--apex-accent) 18%,transparent),transparent 70%)}
+.apex-newsletter>*,.apex-cta>*{position:relative;z-index:1}
+.apex-cta__title,.apex-newsletter__title{font-family:var(--apex-display);font-weight:800;letter-spacing:-.025em;font-size:clamp(1.7rem,4vw,2.6rem);color:var(--vp-text);margin:0 0 .6rem}
+.apex-cta__text,.apex-newsletter__text{font-size:1.05rem;color:var(--vp-muted);max-width:50ch;margin:0 auto 1.75rem}
+.apex-newsletter__form{display:flex;gap:.6rem;max-width:460px;margin:0 auto;flex-wrap:wrap}
+
+/* ── Post (reading) ─────────────────────────────────────────────────────── */
+.apex-progress{position:fixed;top:0;left:0;height:3px;background:var(--apex-grad);z-index:200;width:var(--apex-progress,0%)}
+.apex-post{display:grid;grid-template-columns:minmax(0,1fr) 240px;gap:var(--apex-gap);align-items:start}
+.apex-post--wide{grid-template-columns:1fr}
+.apex-post--immersive{grid-template-columns:1fr;max-width:none}
+.apex-post__body{min-width:0;max-width:var(--vp-max-width,46rem)}
+.apex-post__heading{font-family:var(--apex-display);font-weight:800;letter-spacing:-.03em;line-height:1.08;font-size:clamp(2rem,5vw,3.4rem);color:var(--vp-text)}
+.apex-post__feature{width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:var(--apex-r);margin-bottom:2rem}
+.apex-post--immersive .apex-post__feature{aspect-ratio:21/9;border-radius:0;width:100vw;max-width:1600px;margin-left:50%;transform:translateX(-50%)}
+.apex-toc{position:sticky;top:90px;align-self:start;padding:1.25rem;border-radius:var(--apex-r);background:var(--vp-surface);border:1px solid var(--apex-bd);font-size:.88rem}
+.apex-toc__title{font-size:.72rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--vp-muted);margin:0 0 .75rem}
+.apex-toc a{display:block;padding:.3rem 0 .3rem .75rem;color:var(--vp-muted);text-decoration:none;border-left:2px solid transparent}
+.apex-toc a:hover,.apex-toc a[aria-current="true"]{color:var(--apex-accent);border-left-color:var(--apex-accent)}
+.apex-share{display:flex;gap:.6rem;align-items:center;margin:2rem 0}
+.apex-share a{display:grid;place-items:center;width:42px;height:42px;border-radius:50%;color:var(--vp-muted);background:color-mix(in srgb,var(--vp-muted) 12%,transparent);text-decoration:none;transition:color .15s,background .15s}
+.apex-share a:hover{color:#fff;background:var(--apex-accent)}
+.apex-authorbox{display:flex;gap:1.25rem;align-items:center;padding:1.75rem;border-radius:var(--apex-r);background:var(--vp-surface);border:1px solid var(--apex-bd);margin:2.5rem 0}
+.apex-authorbox__avatar{width:72px;height:72px;border-radius:50%;object-fit:cover;flex:none}
+.apex-authorbox__name{font-family:var(--apex-display);font-weight:750;font-size:1.2rem;color:var(--vp-text);margin:0}
+.apex-authorbox__bio{font-size:.9rem;line-height:1.55;color:var(--vp-muted);margin:.3rem 0 0}
+.apex-related{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:var(--apex-gap)}
+
+/* ── Auth / membership pages ────────────────────────────────────────────── */
+.apex-auth{max-width:420px;margin:3rem auto;padding:2.5rem;border-radius:var(--apex-r);background:var(--vp-surface);border:1px solid var(--apex-bd);text-align:center}
+.apex-auth__title{font-family:var(--apex-display);font-weight:800;font-size:1.8rem;color:var(--vp-text);margin:0 0 .5rem}
+.apex-auth__form{display:flex;flex-direction:column;gap:.75rem;margin-top:1.25rem}
+
+/* ── Mega footer ────────────────────────────────────────────────────────── */
+.apex-footer{display:grid;grid-template-columns:1.6fr repeat(3,1fr);gap:var(--apex-gap);padding:var(--apex-pad) 0 2rem;margin-top:var(--apex-pad);border-top:1px solid var(--apex-bd)}
+.apex-footer__brand{font-family:var(--apex-display);font-size:1.3rem;font-weight:800;color:var(--vp-text);text-decoration:none}
+.apex-footer__desc{font-size:.9rem;line-height:1.6;color:var(--vp-muted);margin:.6rem 0 1rem;max-width:34ch}
+.apex-footer__head{font-size:.72rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--vp-muted);margin:0 0 .75rem}
+.apex-footer__link{display:block;font-size:.9rem;color:var(--vp-text);text-decoration:none;padding:.25rem 0}
+.apex-footer__link:hover{color:var(--apex-accent)}
+.apex-footer__social{display:flex;gap:.6rem;margin-top:.6rem}
+.apex-footer__social a{display:grid;place-items:center;width:38px;height:38px;border-radius:50%;color:var(--vp-muted);background:color-mix(in srgb,var(--vp-muted) 12%,transparent);text-decoration:none}
+.apex-footer__social a:hover{color:#fff;background:var(--apex-accent)}
+.apex-footer__bottom{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;padding-top:1.5rem;margin-top:1rem;border-top:1px solid var(--apex-bd);font-size:.82rem;color:var(--vp-muted)}
+
+/* ── Pagination ─────────────────────────────────────────────────────────── */
+.apex-pagination{display:flex;align-items:center;justify-content:center;gap:.75rem;margin:var(--apex-pad) 0}
+.apex-pagination a,.apex-pagination span{min-height:44px;min-width:44px;display:inline-flex;align-items:center;justify-content:center;padding:.5rem 1.1rem;border-radius:var(--apex-r-sm);font-weight:650;text-decoration:none;color:var(--vp-text);border:1.5px solid var(--apex-bd)}
+.apex-pagination a:hover{border-color:var(--apex-accent);color:var(--apex-accent)}
+
+/* ── Load-reveal animation ──────────────────────────────────────────────── */
+.apex-reveal{opacity:0;transform:translateY(26px);animation:apex-rise .7s cubic-bezier(.2,.7,.2,1) forwards}
+.apex-reveal:nth-child(2){animation-delay:.07s}
+.apex-reveal:nth-child(3){animation-delay:.14s}
+.apex-reveal:nth-child(4){animation-delay:.21s}
+.apex-reveal:nth-child(5){animation-delay:.28s}
+@keyframes apex-rise{to{opacity:1;transform:translateY(0)}}
+
+/* ── Responsive ─────────────────────────────────────────────────────────── */
+@media(max-width:1024px){
+  .apex-post{grid-template-columns:1fr}
+  .apex-toc{display:none}
+  .apex-bento{grid-template-columns:repeat(2,1fr)}
+  .apex-feed--magazine{grid-template-columns:1fr}
+  .apex-footer{grid-template-columns:1fr 1fr}
+}
+@media(max-width:768px){
+  .apex-nav{display:none}
+  .apex-hero--split{grid-template-columns:1fr}
+  .apex-feed--masonry{columns:1}
+  .apex-card--horizontal{flex-direction:column;align-items:stretch}
+  .apex-card--horizontal .apex-card__media{width:100%}
+  .apex-bento__cell--lg,.apex-bento__cell--wide,.apex-bento__cell--tall{grid-column:auto;grid-row:auto}
+}
+@media(max-width:480px){
+  .apex-bento{grid-template-columns:1fr}
+  .apex-footer{grid-template-columns:1fr}
+  .apex-pricing,.apex-features{grid-template-columns:1fr}
+  .apex-hero__actions,.apex-newsletter__form,.apex-auth__form{flex-direction:column}
+  .apex-quote{flex-basis:85vw}
+}
+
+/* ── Reduced motion ─────────────────────────────────────────────────────── */
+@media(prefers-reduced-motion:reduce){
+  .apex-btn,.apex-chip,.apex-bento__cell,.apex-card,.apex-gallery img,.apex-nav__mega{transition:none}
+  .apex-btn:hover,.apex-bento__cell:hover{transform:none}
+  .apex-reveal{opacity:1;transform:none;animation:none}
+  .apex-testimonials{scroll-behavior:auto}
+}

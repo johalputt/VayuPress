@@ -26,6 +26,9 @@ var maverickCSS string
 //go:embed agora.css
 var agoraCSS string
 
+//go:embed apex.css
+var apexCSS string
+
 // Default returns the Default preset — neutral dark/light tones.
 func Default() Tokens {
 	return Tokens{
@@ -291,6 +294,7 @@ func AllPresets() []Tokens {
 		Ripple(),
 		Maverick(),
 		Agora(),
+		Apex(),
 	}
 }
 
@@ -613,5 +617,28 @@ func Agora() Tokens {
 		FontSans: "Inter, system-ui, -apple-system, 'Segoe UI', sans-serif", FontMono: "IBM Plex Mono, ui-monospace, monospace",
 		FontSizeBase: "1rem", LineHeight: "1.6", MaxWidth: "44rem", RadiusSm: "0.5rem", RadiusLg: "0.875rem",
 		CustomCSS: agoraCSS,
+	}
+}
+
+// Apex — the flagship, do-everything theme. A premium, infinitely-configurable
+// publication system on a deep gradient-driven palette (electric indigo-violet
+// paired with cyan). Ships the most complete component CSS in the catalogue: a
+// glass sticky header with mega-menu, multiple hero styles (split, centered,
+// full-bleed media, pure-CSS gradient mesh), a signature bento grid, four feed
+// layouts (grid/list/magazine/masonry) and several card styles, plus features,
+// stats, logos, testimonials, pricing tiers, an FAQ accordion, gallery,
+// timeline, newsletter and CTA sections, a full reading experience (reading-
+// progress bar, sticky table of contents, share, author box, related), a mega
+// footer, and ten swappable color schemes with density and shape modes — all
+// CSP-safe, accessible, and light & dark.
+func Apex() Tokens {
+	return Tokens{
+		Name: "Apex", BgDark: "#0a0a12", SurfaceDark: "#13131f", TextDark: "#f4f4fa",
+		MutedDark: "#9a9ab0", AccentDark: "#7c6cff", Accent2Dark: "#22d3ee", HiDark: "#fbbf24", GreenDark: "#34d399",
+		BgLight: "#fbfbfe", SurfaceLight: "#ffffff", TextLight: "#0b0b14", MutedLight: "#5a5a72",
+		AccentLight: "#5b3df5", Accent2Light: "#0891b2", HiLight: "#d97706",
+		FontSans: "Inter, system-ui, -apple-system, 'Segoe UI', sans-serif", FontMono: "IBM Plex Mono, ui-monospace, monospace",
+		FontSizeBase: "1.0625rem", LineHeight: "1.65", MaxWidth: "46rem", RadiusSm: "0.5rem", RadiusLg: "1.25rem",
+		CustomCSS: apexCSS,
 	}
 }
