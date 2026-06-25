@@ -118,6 +118,15 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Fixed
 
+- **Theme Studio: deploying a theme now restyles the whole public site, not just
+  colours.** The token compiler bridges the active theme onto the variables the
+  public templates actually read (`--bg`, `--surface`, `--text`, `--accent`,
+  `--font`, `--max-w`, `--radius`), with explicit `[data-theme]` blocks so the
+  manual light/dark toggle re-themes the site too. The built-in design themes
+  (Gale, Zephyr, Dispatch, Vivid, Beacon) now style the real `vayu-*` markup, so
+  each visibly changes layout and typography rather than only recolouring. The
+  Theme Store "Customize" action no longer reverts to the active theme and
+  carries the selected theme's design through to Apply.
 - **Compose Send / Save-as-draft no longer fail with `403` after a while.** The
   VayuOS panel pages did not re-issue the `vp_csrf` cookie, so once it expired
   (1h) every panel POST (send, save draft, message/account actions) was rejected
