@@ -3,6 +3,7 @@ package mail
 import (
 	"context"
 	"crypto/rand"
+	"crypto/tls"
 	"database/sql"
 	"encoding/hex"
 	"errors"
@@ -23,6 +24,9 @@ type Engine struct {
 	accounts   *AccountStore
 	smtpd      *SMTPServer
 	imapd      *IMAPServer
+	submitd    *SMTPServer // authenticated submission (587)
+	imapsd     *IMAPServer // implicit-TLS IMAPS (993)
+	tlsConf    *tls.Config // shared STARTTLS / implicit-TLS config
 	decrypt    DecryptHook
 	inboundErr error
 	done       chan struct{}
@@ -91,10 +95,9 @@ func (e *Engine) Compose(ctx context.Context, from string, to []string, subject,
 	}
 	// File a plain copy in the sender's Sent folder (best-effort).
 	if e.maildir != nil {
-		local := from
-		if i := strings.Index(local, "@"); i >= 0 {
-			local = local[:i]
-		}
+		// splitAddress tolerates a `"Name" <addr>` From, so the Sent copy is
+		// filed under the sender's bare local part, not the display name.
+		local, _ := splitAddress(from)
 		sent := "From: " + from + "\r\nTo: " + strings.Join(to, ", ") + "\r\nSubject: " + subject +
 			"\r\nDate: " + time.Now().UTC().Format(time.RFC1123Z) + "\r\n\r\n" + body + "\r\n"
 		_, _ = e.maildir.DeliverTo(e.cfg.Domain, local, "Sent", []byte(sent))
@@ -162,32 +165,78 @@ func (e *Engine) Start(ctx context.Context) error {
 	// or a port already in use) is recorded and surfaced, but never fails engine
 	// startup, so outbound delivery and local loopback delivery stay available.
 	if e.cfg.InboundEnabled {
-		smtpd := NewSMTPServer(e.cfg, func(from string, rcpts []string, raw []byte) error {
-			var firstErr error
-			for _, rcpt := range rcpts {
-				if _, derr := e.DeliverInbound(rcpt, raw); derr != nil && firstErr == nil {
-					firstErr = derr
-				}
-			}
-			return firstErr
-		})
+		// Best-effort TLS for STARTTLS (SMTP/submission/IMAP) + implicit IMAPS.
+		if tc, terr := loadTLSConfig(e.cfg); terr == nil {
+			e.tlsConf = tc
+		} else {
+			e.inboundErr = fmt.Errorf("tls: %w", terr)
+		}
+
+		smtpd := NewSMTPServer(e.cfg, e.inboundDeliver).WithTLS(e.tlsConf)
 		if err := smtpd.Start(ctx); err != nil {
-			e.inboundErr = fmt.Errorf("smtp receive: %w", err)
+			e.inboundErr = errors.Join(e.inboundErr, fmt.Errorf("smtp receive: %w", err))
 		} else {
 			e.smtpd = smtpd
-			imapd := NewIMAPServer(e.cfg, e.bridge, e.maildir, e.decrypt)
-			if err := imapd.Start(ctx); err != nil {
-				e.inboundErr = fmt.Errorf("imap: %w", err)
-			} else {
-				e.imapd = imapd
+		}
+
+		imapd := NewIMAPServer(e.cfg, e.bridge, e.maildir, e.decrypt).WithTLS(e.tlsConf)
+		if err := imapd.Start(ctx); err != nil {
+			e.inboundErr = errors.Join(e.inboundErr, fmt.Errorf("imap: %w", err))
+		} else {
+			e.imapd = imapd
+		}
+
+		// Implicit-TLS IMAPS (993) and authenticated submission (587) require a
+		// TLS config; both are best-effort and never block startup.
+		if e.tlsConf != nil {
+			imapsd := NewIMAPServer(e.cfg, e.bridge, e.maildir, e.decrypt).WithImplicitTLS(e.tlsConf, e.cfg.IMAPSListen)
+			if err := imapsd.Start(ctx); err == nil {
+				e.imapsd = imapsd
+			}
+			if e.bridge != nil {
+				submitd := NewSubmissionServer(e.cfg, e.tlsConf, e.bridge.AuthUser, e.relayOutbound)
+				if err := submitd.Start(ctx); err == nil {
+					e.submitd = submitd
+				}
 			}
 		}
 	}
 	return nil
 }
 
+// inboundDeliver files each recipient's copy of a received message locally.
+func (e *Engine) inboundDeliver(_ string, rcpts []string, raw []byte) error {
+	var firstErr error
+	for _, rcpt := range rcpts {
+		if _, derr := e.DeliverInbound(rcpt, raw); derr != nil && firstErr == nil {
+			firstErr = derr
+		}
+	}
+	return firstErr
+}
+
+// relayOutbound enqueues an authenticated submission for MX delivery. The
+// envelope sender is reduced to a bare address.
+func (e *Engine) relayOutbound(from string, rcpts []string, raw []byte) error {
+	if e.queue == nil {
+		return errors.New("vayumail: queue unavailable")
+	}
+	_, err := e.queue.Enqueue(context.Background(), envelopeAddress(from), rcpts, raw)
+	return err
+}
+
 // InboundActive reports whether the inbound SMTP receive listener is running.
 func (e *Engine) InboundActive() bool { return e.smtpd != nil }
+
+// TLSActive reports whether STARTTLS/implicit-TLS is available to the listeners.
+func (e *Engine) TLSActive() bool { return e.tlsConf != nil }
+
+// SubmissionActive reports whether the authenticated submission (587) listener
+// is running.
+func (e *Engine) SubmissionActive() bool { return e.submitd != nil }
+
+// IMAPSActive reports whether the implicit-TLS IMAPS (993) listener is running.
+func (e *Engine) IMAPSActive() bool { return e.imapsd != nil }
 
 // InboundError returns the reason the inbound listeners could not start, or nil
 // when inbound is disabled or running. It lets the panel explain a failed bind
@@ -199,8 +248,14 @@ func (e *Engine) Stop(_ context.Context) error {
 	if e.smtpd != nil {
 		_ = e.smtpd.Stop(context.Background())
 	}
+	if e.submitd != nil {
+		_ = e.submitd.Stop(context.Background())
+	}
 	if e.imapd != nil {
 		_ = e.imapd.Stop(context.Background())
+	}
+	if e.imapsd != nil {
+		_ = e.imapsd.Stop(context.Background())
 	}
 	select {
 	case <-e.done:
@@ -345,7 +400,9 @@ func (e *Engine) SendMail(ctx context.Context, from string, to []string, subject
 		// queue id (the message is already in the recipient's Maildir).
 		return 0, nil
 	}
-	return e.queue.Enqueue(ctx, from, remote, rawMsg)
+	// The envelope sender (MAIL FROM) must be a bare address even when the
+	// From: header carries a display name like `"Ankush" <a@b>`.
+	return e.queue.Enqueue(ctx, envelopeAddress(from), remote, rawMsg)
 }
 
 // splitLocalRecipients partitions recipients into those served by this instance

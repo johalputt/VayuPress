@@ -150,4 +150,18 @@
       });
     }
   }
+  // ── Message raw-source toggle ────────────────────────────────────────────────
+  var rawBtn = document.querySelector('[data-mail-raw-toggle]');
+  var rawPre = document.querySelector('[data-mail-raw]');
+  if (rawBtn && rawPre) {
+    rawBtn.addEventListener('click', function () {
+      if (rawPre.hasAttribute('hidden')) {
+        rawPre.removeAttribute('hidden');
+        rawBtn.textContent = 'Hide raw source';
+      } else {
+        rawPre.setAttribute('hidden', '');
+        rawBtn.textContent = 'View raw source';
+      }
+    });
+  }
 })();

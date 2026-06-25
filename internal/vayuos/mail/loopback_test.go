@@ -3,6 +3,7 @@ package mail
 import (
 	"context"
 	"database/sql"
+	"strings"
 	"testing"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -126,8 +127,27 @@ func TestSendMailMixedLocalAndRemote(t *testing.T) {
 	}
 }
 
-// When the recipient domain does not match the configured domain, the bridge is
-// never consulted and the address is treated as remote.
+// A From header with a display name must be preserved verbatim in the delivered
+// message (so recipients see the name), while the envelope uses the bare
+// address. This is the local-delivery half; envelopeAddress covers the relay.
+func TestSendMailPreservesDisplayName(t *testing.T) {
+	t.Parallel()
+	bridge := loopbackBridge{localSet: map[string]bool{"bob@example.com": true}}
+	e := newLoopbackEngine(t, bridge)
+
+	from := `"Alice Example" <alice@example.com>`
+	if _, err := e.SendMail(context.Background(), from,
+		[]string{"bob@example.com"}, "Hi Bob", "", "body", ""); err != nil {
+		t.Fatalf("send: %v", err)
+	}
+	msgs, _ := e.ListFolder("bob", "Inbox")
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(msgs))
+	}
+	if !strings.Contains(msgs[0].From, "Alice Example") {
+		t.Errorf("display name not preserved in From: %q", msgs[0].From)
+	}
+}
 func TestSplitLocalRecipientsDomainGate(t *testing.T) {
 	t.Parallel()
 	// localSet would match on local-part alone, but the domain differs.
