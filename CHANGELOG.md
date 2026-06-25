@@ -12,6 +12,23 @@ _Nothing yet._
 
 ---
 
+## [1.9.2] — 2026-06-25
+
+**Fix: SEO dashboard 502 on large sites.**
+
+### Fixed
+
+- **SEO page no longer times out (502) on large sites.** The content-quality
+  tallies (healthy / thin / missing-title) previously scanned every article
+  body (`LENGTH(content)` across all rows) on each page load — far too slow on
+  a 234k-post database, causing an nginx **502 Bad Gateway**. The scan now runs
+  as a single aggregate query in a **background goroutine**, cached for 15
+  minutes with throttled refresh, so the SEO page renders instantly and never
+  blocks the request path. Numbers show `…` on the very first view and fill in
+  within a few seconds.
+
+---
+
 ## [1.9.1] — 2026-06-24
 
 **Analytics & mail polish — deeper insights and a more complete mailbox.**

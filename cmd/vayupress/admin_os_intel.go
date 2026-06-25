@@ -14,6 +14,8 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"sync"
+	"time"
 
 	"github.com/johalputt/vayupress/internal/analytics"
 	"github.com/johalputt/vayupress/internal/config"
@@ -38,29 +40,18 @@ func (a *App) handleOSSEONative(w http.ResponseWriter, r *http.Request) {
 	feedOK, feedWhen := artefact("feed.xml")
 	robotsOK, robotsWhen := artefact("robots.txt")
 
-	// Per-article readiness (titles present, content depth). Computed in SQL so
-	// we never load full bodies. Thin ≈ <1500 chars (~300 words).
-	total, thin, noTitle := 0, 0, 0
-	if rows, err := dbpkg.DB.QueryContext(r.Context(),
-		`SELECT COALESCE(TRIM(title),''), LENGTH(COALESCE(content,'')) FROM articles`); err == nil {
-		defer rows.Close()
-		for rows.Next() {
-			var title string
-			var clen int
-			if rows.Scan(&title, &clen) != nil {
-				continue
-			}
-			total++
-			if title == "" {
-				noTitle++
-			} else if clen < 1500 {
-				thin++
-			}
+	// Per-article readiness. On large sites (hundreds of thousands of posts)
+	// scanning every body to measure content length is expensive, so it is
+	// computed in the BACKGROUND and cached — the page always renders instantly
+	// and can never time out / 502 on the request path.
+	stats, ready := seoStatsSnapshot()
+	total, thin, noTitle, healthy := stats.total, stats.thin, stats.noTitle, stats.healthy
+
+	num := func(n int) string {
+		if !ready {
+			return "…"
 		}
-	}
-	healthy := total - thin - noTitle
-	if healthy < 0 {
-		healthy = 0
+		return strconv.Itoa(n)
 	}
 
 	badge := func(ok bool, when string) string {
@@ -76,11 +67,11 @@ func (a *App) handleOSSEONative(w http.ResponseWriter, r *http.Request) {
 </div>
 
 <div class="stat-grid mb-6">
-  <div class="stat-card"><div class="stat-card__label">SEO-healthy</div><div class="stat-card__value">` + strconv.Itoa(healthy) + `</div><div class="stat-card__bottom"><span class="muted text-xs">good title + depth</span></div></div>
-  <div class="stat-card"><div class="stat-card__label">Thin content</div><div class="stat-card__value">` + strconv.Itoa(thin) + `</div><div class="stat-card__bottom"><span class="muted text-xs">&lt;300 words</span></div></div>
-  <div class="stat-card"><div class="stat-card__label">Missing title</div><div class="stat-card__value">` + strconv.Itoa(noTitle) + `</div><div class="stat-card__bottom"><span class="muted text-xs">needs a title</span></div></div>
-  <div class="stat-card"><div class="stat-card__label">Total posts</div><div class="stat-card__value">` + strconv.Itoa(total) + `</div></div>
-</div>
+  <div class="stat-card"><div class="stat-card__label">SEO-healthy</div><div class="stat-card__value">` + num(healthy) + `</div><div class="stat-card__bottom"><span class="muted text-xs">good title + depth</span></div></div>
+  <div class="stat-card"><div class="stat-card__label">Thin content</div><div class="stat-card__value">` + num(thin) + `</div><div class="stat-card__bottom"><span class="muted text-xs">&lt;300 words</span></div></div>
+  <div class="stat-card"><div class="stat-card__label">Missing title</div><div class="stat-card__value">` + num(noTitle) + `</div><div class="stat-card__bottom"><span class="muted text-xs">needs a title</span></div></div>
+  <div class="stat-card"><div class="stat-card__label">Total posts</div><div class="stat-card__value">` + num(total) + `</div></div>
+</div>` + seoComputingNote(ready) + `
 
 <div class="card">
   <div class="card-title">Artefacts</div>
@@ -97,6 +88,86 @@ func (a *App) handleOSSEONative(w http.ResponseWriter, r *http.Request) {
 <script nonce="` + nonce + `" src="/os/static/js/admin-os-intel.js"></script>`
 
 	writeOSHTML(w, adminOSLayout(nonce, "SEO", "seo", cfg, htmpl.HTML(body)))
+}
+
+// ── SEO stats cache ──────────────────────────────────────────────────────────
+//
+// Counting "thin"/"missing title" posts requires reading every article body to
+// measure its length. On a 234k-post site that is far too slow to run on the
+// request path (it would time out behind nginx and return 502). So we compute
+// it with a single aggregate query in a background goroutine, cache the result
+// with a TTL, and refresh it lazily when the SEO page is viewed and the cache
+// is stale. The page itself always renders instantly.
+
+type seoStats struct {
+	total, thin, noTitle, healthy int
+	computedAt                    time.Time
+	ready                         bool
+}
+
+var (
+	seoStatsMu        sync.Mutex
+	seoStatsCache     seoStats
+	seoStatsComputing bool
+	seoStatsLastTry   time.Time
+)
+
+const (
+	seoStatsTTL      = 15 * time.Minute // re-use a fresh result this long
+	seoStatsRetryGap = 1 * time.Minute  // throttle re-attempts after a miss/failure
+)
+
+// seoStatsSnapshot returns the cached tallies and whether a real computation has
+// completed. It kicks off a background refresh when the cache is missing/stale
+// and one isn't already running. It never blocks on the heavy scan.
+func seoStatsSnapshot() (seoStats, bool) {
+	seoStatsMu.Lock()
+	defer seoStatsMu.Unlock()
+	fresh := seoStatsCache.ready && time.Since(seoStatsCache.computedAt) < seoStatsTTL
+	if !fresh && !seoStatsComputing && time.Since(seoStatsLastTry) > seoStatsRetryGap {
+		seoStatsComputing = true
+		seoStatsLastTry = time.Now()
+		go computeSEOStats()
+	}
+	return seoStatsCache, seoStatsCache.ready
+}
+
+// computeSEOStats runs the (potentially slow) aggregate scan with a hard timeout
+// and caches the result. Runs off the request path.
+func computeSEOStats() {
+	defer func() {
+		seoStatsMu.Lock()
+		seoStatsComputing = false
+		seoStatsMu.Unlock()
+	}()
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+
+	var total, noTitle, thin int
+	err := dbpkg.DB.QueryRowContext(ctx,
+		`SELECT COUNT(*),
+		        COALESCE(SUM(CASE WHEN TRIM(COALESCE(title,''))='' THEN 1 ELSE 0 END),0),
+		        COALESCE(SUM(CASE WHEN TRIM(COALESCE(title,''))<>'' AND LENGTH(COALESCE(content,''))<1500 THEN 1 ELSE 0 END),0)
+		 FROM articles`).Scan(&total, &noTitle, &thin)
+	if err != nil {
+		return // leave previous cache intact; retry is throttled by seoStatsRetryGap
+	}
+	healthy := total - thin - noTitle
+	if healthy < 0 {
+		healthy = 0
+	}
+	seoStatsMu.Lock()
+	seoStatsCache = seoStats{total: total, thin: thin, noTitle: noTitle, healthy: healthy, computedAt: time.Now(), ready: true}
+	seoStatsMu.Unlock()
+}
+
+// seoComputingNote shows a hint while the first background computation is in
+// flight (so the "…" placeholders make sense to the operator).
+func seoComputingNote(ready bool) string {
+	if ready {
+		return ""
+	}
+	return `<div class="empty-state">Computing content-quality stats in the background (large site)… reload in a few seconds.</div>`
 }
 
 // handleOSAnalytics renders the privacy-preserving analytics page from the local
