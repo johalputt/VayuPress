@@ -2081,3 +2081,8 @@
   overflow-wrap: normal;
   overflow-x: auto;
 }
+
+
+/* VayuMail: mailbox search bar */
+.vp-os .vm-search { display: flex; gap: 0.5rem; align-items: center; margin: 0.75rem 0; }
+.vp-os .vm-search .input { flex: 1 1 auto; }

@@ -432,7 +432,7 @@ func qparam(s string) string { return html.EscapeString(url.QueryEscape(s)) }
 func folderTabs(user, active string) string {
 	var sb strings.Builder
 	sb.WriteString(`<div class="vmtabs">`)
-	for _, f := range []string{"Inbox", "Sent", "Drafts", "Junk", "Trash"} {
+	for _, f := range []string{"Inbox", "Sent", "Drafts", "Archive", "Junk", "Trash"} {
 		cls := "tab"
 		if strings.EqualFold(f, active) {
 			cls = "tab tab--active"
@@ -491,6 +491,11 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	body.WriteString(`<div class="card"><div class="card-title">` + html.EscapeString(user+"@"+domain) + ` · <a href="/os/vayuos/mail/inbox">all mailboxes</a></div>`)
+	body.WriteString(`<form class="vm-search" method="get" action="/os/vayuos/mail/search">
+  <input type="hidden" name="user" value="` + html.EscapeString(user) + `">
+  <input class="input" type="search" name="q" placeholder="Search mail (from, subject, body)…" aria-label="Search mail">
+  <button class="btn" type="submit">Search</button>
+</form>`)
 	body.WriteString(folderTabs(user, folder))
 	body.WriteString(`<div class="table-wrap"><table class="table"><thead><tr><th>From</th><th>Subject</th><th>Date</th></tr></thead><tbody>`)
 	if len(msgs) == 0 {
@@ -514,6 +519,46 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 	}
 	body.WriteString(`</tbody></table></div></div>`)
 	writeOSHTML(w, adminOSLayout(nonce, "Mailbox", "vayuos", cfg, htmpl.HTML(body.String())))
+}
+
+// handleVayuOSSearch runs a bounded full-text search across a mailbox's folders.
+func (a *App) handleVayuOSSearch(w http.ResponseWriter, r *http.Request) {
+	nonce := render.CSPNonce(r)
+	cfg := a.getOSSettings(r.Context())
+	user := strings.TrimSpace(r.URL.Query().Get("user"))
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	var body strings.Builder
+	body.WriteString(`<div class="page-header"><h1>Search mail</h1><span class="muted text-sm">` + html.EscapeString(user+"@"+a.cfgDomain()) + `</span></div>`)
+	body.WriteString(vayuosNav("mailbox"))
+	if a.vayuMail == nil || !a.vayuMail.Config().Enabled || user == "" {
+		body.WriteString(`<div class="empty-state">VayuMail is inactive or no mailbox selected. <a href="/os/vayuos/mail/inbox">Back to Mailbox</a></div>`)
+		writeOSHTML(w, adminOSLayout(nonce, "Search mail", "vayuos", cfg, htmpl.HTML(body.String())))
+		return
+	}
+	body.WriteString(`<div class="card"><div class="card-title"><a href="/os/vayuos/mail/inbox?user=` + qparam(user) + `">← ` + html.EscapeString(user+"@"+a.cfgDomain()) + `</a></div>`)
+	body.WriteString(`<form class="vm-search" method="get" action="/os/vayuos/mail/search">
+  <input type="hidden" name="user" value="` + html.EscapeString(user) + `">
+  <input class="input" type="search" name="q" value="` + html.EscapeString(q) + `" placeholder="Search mail…" aria-label="Search mail">
+  <button class="btn btn--primary" type="submit">Search</button>
+</form>`)
+	if q != "" {
+		results, _ := a.vayuMail.Search(user, q, 100)
+		body.WriteString(`<div class="table-wrap"><table class="table"><thead><tr><th>Folder</th><th>From</th><th>Subject</th><th>Date</th></tr></thead><tbody>`)
+		if len(results) == 0 {
+			body.WriteString(`<tr><td colspan="4" class="muted">No matches for “` + html.EscapeString(q) + `”.</td></tr>`)
+		}
+		for _, m := range results {
+			subj := m.Subject
+			if subj == "" {
+				subj = "(no subject)"
+			}
+			link := "/os/vayuos/mail/message?user=" + qparam(user) + "&folder=" + qparam(m.Folder) + "&id=" + qparam(m.ID)
+			body.WriteString(`<tr><td><span class="badge">` + html.EscapeString(m.Folder) + `</span></td><td class="text-sm">` + html.EscapeString(m.From) + `</td><td><a href="` + link + `">` + html.EscapeString(subj) + `</a></td><td class="muted text-sm">` + m.Date.Format("2006-01-02 15:04") + `</td></tr>`)
+		}
+		body.WriteString(`</tbody></table></div>`)
+	}
+	body.WriteString(`</div>`)
+	writeOSHTML(w, adminOSLayout(nonce, "Search mail", "vayuos", cfg, htmpl.HTML(body.String())))
 }
 
 // handleVayuOSMessage shows a single message with Junk/Trash/Delete actions.
@@ -551,6 +596,9 @@ func (a *App) handleVayuOSMessage(w http.ResponseWriter, r *http.Request) {
 	actions += `<a class="btn" href="` + forwardLink + `">Forward</a>`
 	if !strings.EqualFold(folder, "Junk") {
 		actions += `<button class="btn" data-mail-move="Junk">Mark as Junk</button>`
+	}
+	if !strings.EqualFold(folder, "Archive") {
+		actions += `<button class="btn" data-mail-move="Archive">Archive</button>`
 	}
 	if !strings.EqualFold(folder, "Trash") {
 		actions += `<button class="btn" data-mail-move="Trash">Move to Trash</button>`

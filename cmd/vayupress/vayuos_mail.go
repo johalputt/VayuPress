@@ -15,6 +15,7 @@ import (
 
 	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/render"
+	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
 )
 
 // ── Compose ──────────────────────────────────────────────────────────────────
@@ -246,6 +247,13 @@ func (a *App) handleVayuOSAccounts(w http.ResponseWriter, r *http.Request) {
       <span class="vm-suffix">@` + html.EscapeString(domain) + `</span></label>
     <label class="field vm-grow"><span class="field-label">Full name (optional)</span>
       <input class="input" type="text" data-a-name placeholder="Display name"></label>
+    <label class="field"><span class="field-label">Role</span>
+      <select class="input" data-a-role>
+        <option value="author" selected>Author (send + read)</option>
+        <option value="editor">Editor (send + delete)</option>
+        <option value="reviewer">Reviewer (read-only)</option>
+        <option value="administrator">Administrator (full)</option>
+      </select></label>
     <label class="field vm-grow"><span class="field-label">Password (min 8)</span>
       <input class="input" type="password" data-a-pass placeholder="••••••••" required></label>
     <button class="btn btn--primary" type="submit">Create</button>
@@ -254,9 +262,9 @@ func (a *App) handleVayuOSAccounts(w http.ResponseWriter, r *http.Request) {
 </form></div>`)
 
 	// Existing accounts.
-	body.WriteString(`<div class="card"><div class="card-title">Accounts</div><div class="table-wrap"><table class="table"><thead><tr><th>Email</th><th>Name</th><th>Status</th><th>Created</th><th></th></tr></thead><tbody>`)
+	body.WriteString(`<div class="card"><div class="card-title">Accounts</div><div class="table-wrap"><table class="table"><thead><tr><th>Email</th><th>Name</th><th>Role</th><th>Status</th><th>Created</th><th></th></tr></thead><tbody>`)
 	if len(accs) == 0 {
-		body.WriteString(`<tr><td colspan="5" class="muted">No mail accounts yet.</td></tr>`)
+		body.WriteString(`<tr><td colspan="6" class="muted">No mail accounts yet.</td></tr>`)
 	}
 	for _, ac := range accs {
 		status := `<span class="badge badge--ok">active</span>`
@@ -267,7 +275,21 @@ func (a *App) handleVayuOSAccounts(w http.ResponseWriter, r *http.Request) {
 			toggleLabel = "Enable"
 			toggleActive = "true"
 		}
-		body.WriteString(`<tr><td>` + html.EscapeString(ac.Email) + `</td><td>` + html.EscapeString(ac.FullName) + `</td><td>` + status + `</td><td class="muted text-sm">` + ac.CreatedAt.Format("2006-01-02") + `</td><td class="vm-row">` +
+		roleSel := `<select class="input input--sm" data-acct-role="` + html.EscapeString(ac.Email) + `">`
+		for _, rr := range vmail.BuiltinRoles {
+			sel := ""
+			if strings.EqualFold(rr, ac.Role) {
+				sel = " selected"
+			}
+			label := strings.ToUpper(rr[:1]) + rr[1:]
+			roleSel += `<option value="` + rr + `"` + sel + `>` + label + `</option>`
+		}
+		// Preserve a custom (non-builtin) role as a selected option.
+		if ac.Role != "" && !vmail.IsBuiltinRole(ac.Role) {
+			roleSel += `<option value="` + html.EscapeString(ac.Role) + `" selected>` + html.EscapeString(ac.Role) + `</option>`
+		}
+		roleSel += `</select>`
+		body.WriteString(`<tr><td>` + html.EscapeString(ac.Email) + `</td><td>` + html.EscapeString(ac.FullName) + `</td><td>` + roleSel + `</td><td>` + status + `</td><td class="muted text-sm">` + ac.CreatedAt.Format("2006-01-02") + `</td><td class="vm-row">` +
 			`<button class="btn" data-acct-pass="` + html.EscapeString(ac.Email) + `">Set password</button>` +
 			`<button class="btn" data-acct-toggle="` + html.EscapeString(ac.Email) + `" data-active="` + toggleActive + `">` + toggleLabel + `</button>` +
 			`<button class="btn btn--danger" data-acct-delete="` + html.EscapeString(ac.Email) + `">Delete</button></td></tr>`)
@@ -286,6 +308,7 @@ func (a *App) handleVayuOSAccountCreate(w http.ResponseWriter, r *http.Request) 
 		Local string `json:"local"`
 		Name  string `json:"name"`
 		Pass  string `json:"pass"`
+		Role  string `json:"role"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64*1024)).Decode(&in); err != nil {
 		writeAPIError(w, r, 400, "invalid_json", err.Error(), "")
@@ -306,7 +329,7 @@ func (a *App) handleVayuOSAccountCreate(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	email := local + "@" + a.vayuMail.Config().Domain
-	if err := a.vayuMail.Accounts().Create(r.Context(), email, hash, in.Name); err != nil {
+	if err := a.vayuMail.Accounts().Create(r.Context(), email, hash, in.Name, in.Role); err != nil {
 		writeAPIError(w, r, 400, "create-failed", err.Error(), "")
 		return
 	}
@@ -346,6 +369,7 @@ func (a *App) handleVayuOSAccountUpdate(w http.ResponseWriter, r *http.Request) 
 		Email  string `json:"email"`
 		Pass   string `json:"pass"`
 		Active *bool  `json:"active"`
+		Role   string `json:"role"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64*1024)).Decode(&in); err != nil {
 		writeAPIError(w, r, 400, "invalid_json", err.Error(), "")
@@ -372,6 +396,12 @@ func (a *App) handleVayuOSAccountUpdate(w http.ResponseWriter, r *http.Request) 
 	}
 	if in.Active != nil {
 		if err := a.vayuMail.Accounts().SetActive(r.Context(), in.Email, *in.Active); err != nil {
+			writeAPIError(w, r, 400, "update-failed", err.Error(), "")
+			return
+		}
+	}
+	if strings.TrimSpace(in.Role) != "" {
+		if err := a.vayuMail.Accounts().SetRole(r.Context(), in.Email, in.Role); err != nil {
 			writeAPIError(w, r, 400, "update-failed", err.Error(), "")
 			return
 		}

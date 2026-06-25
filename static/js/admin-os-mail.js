@@ -63,12 +63,23 @@
       if (aStatus) aStatus.textContent = 'Creating…';
       postJSON('/os/vayuos/mail/accounts/create', {
         local: local, name: val(acctForm, '[data-a-name]'), pass: pass,
+        role: val(acctForm, '[data-a-role]'),
       }).then(function (res) {
         if (res.ok) { window.location.reload(); }
         else if (aStatus) aStatus.textContent = 'Failed: ' + ((res.body && res.body.message) || res.status);
       });
     });
   }
+
+  // ── Change account role ──────────────────────────────────────────────────────
+  document.querySelectorAll('[data-acct-role]').forEach(function (sel) {
+    sel.addEventListener('change', function () {
+      var email = sel.getAttribute('data-acct-role');
+      postJSON('/os/vayuos/mail/accounts/update', { email: email, role: sel.value }).then(function (res) {
+        if (!res.ok) window.alert('Role update failed: ' + ((res.body && res.body.message) || res.status));
+      });
+    });
+  });
 
   // ── Delete mail account ──────────────────────────────────────────────────────
   document.querySelectorAll('[data-acct-delete]').forEach(function (btn) {
