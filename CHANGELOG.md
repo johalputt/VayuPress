@@ -8,7 +8,28 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
-_Nothing yet._
+### Fixed
+
+- **Incoming mail now lands in the recipient's Inbox (local delivery loopback).**
+  Mail addressed to a mailbox served by this instance was only ever enqueued for
+  external MX relay, so it never appeared in the local recipient's Inbox even
+  though outbound delivery to remote servers worked. `Engine.SendMail` now
+  splits recipients: local-domain mailboxes (a CMS user or an admin-managed mail
+  account, resolved through the new `Bridge.IsLocalRecipient`) are delivered
+  straight into their Maildir via the existing inbound path — honouring the
+  heuristic junk filter — while only genuinely remote recipients are queued for
+  MX relay. When no bridge is wired the engine falls back to a domain-only check
+  matching the inbound SMTP relay policy.
+- **PGP keys now show for every mailbox.** Keypairs were auto-generated only for
+  CMS users at registration, so admin-managed mail accounts (and accounts that
+  pre-dated auto-keygen) had no key and the VayuPGP panel listed nothing for
+  them. A new idempotent `Bridge.EnsureKeypair` mints a key the first time and
+  reuses the existing one by email thereafter; it is invoked on mail-account
+  creation and from a non-blocking boot-time backfill that covers existing CMS
+  users and mail accounts. Transparent inbox decryption now resolves the
+  recipient through the key store (new `Bridge.DecryptForEmail`) rather than the
+  CMS user table, so it works for mail-only accounts too. Private keys remain
+  AES-256-GCM encrypted at rest.
 
 ---
 

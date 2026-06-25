@@ -59,6 +59,12 @@ type Bridge interface {
 	AuthUser(username, password string) (bool, error)
 	GetUserByEmail(email string) (*MailUser, error)
 
+	// IsLocalRecipient reports whether email belongs to a mailbox served by this
+	// instance (a CMS user or an admin-managed mail account on the configured
+	// domain). VayuMail uses it to short-circuit delivery: local recipients are
+	// filed straight into their Maildir instead of being relayed out to an MX.
+	IsLocalRecipient(email string) bool
+
 	// Transactional sending.
 	SendTransactional(msg *TransactionalMessage) error
 

@@ -96,6 +96,26 @@ func (e *Engine) GenerateKeypair(user *PGPUser) (*Keypair, error) {
 	return e.persist(user, ent)
 }
 
+// EnsureKeypair returns the existing keypair for the user's email when one is
+// already stored, or generates a fresh one otherwise. It is idempotent and
+// safe to call repeatedly (e.g. on every account creation or a boot-time
+// backfill), so accounts that pre-date auto-keygen still get a key and surface
+// in the VayuPGP panel.
+func (e *Engine) EnsureKeypair(user *PGPUser) (*Keypair, error) {
+	if e.ks == nil {
+		return nil, errors.New("vayupgp: engine not started")
+	}
+	if user == nil || user.Email == "" {
+		return nil, errors.New("vayupgp: user email required")
+	}
+	if userID, ok := e.ks.userIDForEmail(user.Email); ok {
+		if rec, err := e.ks.loadMeta(userID); err == nil {
+			return recToKeypair(rec), nil
+		}
+	}
+	return e.GenerateKeypair(user)
+}
+
 func (e *Engine) persist(user *PGPUser, ent *openpgp.Entity) (*Keypair, error) {
 	pubArmor, err := armorEntity(ent, false)
 	if err != nil {
@@ -341,6 +361,22 @@ func (e *Engine) Decrypt(ciphertext []byte, userID string) ([]byte, error) {
 		return nil, fmt.Errorf("vayupgp: read message: %w", err)
 	}
 	return io.ReadAll(md.UnverifiedBody)
+}
+
+// DecryptForEmail resolves a recipient email to its local key (via the
+// email→userID index) and decrypts the message with that account's key ring.
+// It lets callers transparently decrypt mail addressed to any local mailbox —
+// CMS users and admin-managed mail accounts alike — without first knowing the
+// internal userID under which the key is stored.
+func (e *Engine) DecryptForEmail(ciphertext []byte, recipientEmail string) ([]byte, error) {
+	if e.ks == nil {
+		return nil, errors.New("vayupgp: engine not started")
+	}
+	userID, ok := e.ks.userIDForEmail(recipientEmail)
+	if !ok {
+		return nil, ErrNotFound
+	}
+	return e.Decrypt(ciphertext, userID)
 }
 
 // Sign returns an armored detached signature over data using userID's key.

@@ -14,8 +14,10 @@ import (
 	"strings"
 
 	"github.com/johalputt/vayupress/internal/auth"
+	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/render"
 	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
+	vpgp "github.com/johalputt/vayupress/internal/vayuos/pgp"
 )
 
 // ── Compose ──────────────────────────────────────────────────────────────────
@@ -335,6 +337,15 @@ func (a *App) handleVayuOSAccountCreate(w http.ResponseWriter, r *http.Request) 
 	}
 	// Provision the Maildir folders for the new address.
 	_ = a.vayuMail.CreateMailbox("", local)
+	// Auto-generate a PGP keypair for the new mailbox (private key encrypted at
+	// rest) so it appears in the VayuPGP panel and its mail can be encrypted /
+	// transparently decrypted. Best-effort: a key failure must not fail account
+	// creation.
+	if a.vayuPGP != nil {
+		if _, err := a.vayuPGP.EnsureKeypair(&vpgp.PGPUser{UserID: email, Name: in.Name, Email: email}); err != nil {
+			logging.LogError("vayuos", "auto PGP keygen failed for "+email, err.Error())
+		}
+	}
 	writeJSON(w, r, 201, map[string]string{"email": email})
 }
 
