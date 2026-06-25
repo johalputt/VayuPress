@@ -11,9 +11,11 @@ import (
 	"html"
 	htmpl "html/template"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -206,16 +208,16 @@ func (a *App) handleOSAnalytics(w http.ResponseWriter, r *http.Request) {
 <div class="sparkline-wrap">` + osSparkline(vals) + `</div></div>`
 	}
 
-	pages := `<div class="empty-state">No page views recorded yet.</div>`
+	pages := `<div class="empty-state">No page views recorded yet. They'll appear here as visitors browse your site.</div>`
 	if len(sum.TopPages) > 0 {
 		rows := ""
 		for _, p := range sum.TopPages {
-			rows += `<tr><td class="row-title">` + html.EscapeString(p.Path) + `</td><td>` + strconv.FormatInt(p.Views, 10) + `</td></tr>`
+			rows += `<tr><td class="row-title">` + osPrettyPath(p.Path) + `</td><td>` + strconv.FormatInt(p.Views, 10) + `</td></tr>`
 		}
 		pages = `<div class="table-wrap"><table class="table"><thead><tr><th>Page</th><th>Views</th></tr></thead><tbody>` + rows + `</tbody></table></div>`
 	}
 
-	refs := `<div class="empty-state">No referrers recorded yet.</div>`
+	refs := `<div class="empty-state">No referrers recorded yet. Links from other sites will show up here.</div>`
 	if len(sum.Referrers) > 0 {
 		rows := ""
 		for _, h := range sum.Referrers {
@@ -227,6 +229,13 @@ func (a *App) handleOSAnalytics(w http.ResponseWriter, r *http.Request) {
 	// ── VayuAnalytics extended insights (v1.8.0): audience, engagement, events ──
 	ctx := r.Context()
 	ov, _ := a.analytics.OverviewSince(ctx, days)
+	// Previous equal-length window, for period-over-period % deltas on the
+	// headline metrics. Bounds are date strings; the current window starts at
+	// curFrom (inclusive) and the previous window is [prevFrom, curFrom).
+	now := time.Now().UTC()
+	curFrom := now.AddDate(0, 0, -(days - 1)).Format("2006-01-02")
+	prevFrom := now.AddDate(0, 0, -(2*days - 1)).Format("2006-01-02")
+	prevOv, _ := a.analytics.OverviewBetween(ctx, prevFrom, curFrom)
 	devices, _ := a.analytics.Devices(ctx, days)
 	browsers, _ := a.analytics.Browsers(ctx, days)
 	oses, _ := a.analytics.OperatingSystems(ctx, days)
@@ -238,14 +247,20 @@ func (a *App) handleOSAnalytics(w http.ResponseWriter, r *http.Request) {
 
 	overviewCard := ""
 	if ov != nil {
-		overviewCard = `<div class="grid grid-4">` +
-			osStatCard("Unique visitors", strconv.Itoa(ov.UniqueVisitors)) +
-			osStatCard("Visits", strconv.Itoa(ov.TotalVisits)) +
-			osStatCard("Pageviews", strconv.Itoa(ov.TotalPageviews)) +
-			osStatCard("Bounce rate", fmt.Sprintf("%.0f%%", ov.BounceRate)) + `</div>`
+		hasPrev := prevOv != nil && (prevOv.UniqueVisitors > 0 || prevOv.TotalVisits > 0 || prevOv.TotalPageviews > 0)
+		pv, vis, pvw := 0, 0, 0
+		var bounce float64
+		if prevOv != nil {
+			pv, vis, pvw, bounce = prevOv.UniqueVisitors, prevOv.TotalVisits, prevOv.TotalPageviews, prevOv.BounceRate
+		}
+		overviewCard = `<div class="grid grid-4 vm-metrics">` +
+			osStatCardDelta("Unique visitors", strconv.Itoa(ov.UniqueVisitors), osDeltaPct(ov.UniqueVisitors, pv, hasPrev, false)) +
+			osStatCardDelta("Visits", strconv.Itoa(ov.TotalVisits), osDeltaPct(ov.TotalVisits, vis, hasPrev, false)) +
+			osStatCardDelta("Pageviews", strconv.Itoa(ov.TotalPageviews), osDeltaPct(ov.TotalPageviews, pvw, hasPrev, false)) +
+			osStatCardDelta("Bounce rate", fmt.Sprintf("%.0f%%", ov.BounceRate), osDeltaPoints(ov.BounceRate, bounce, hasPrev)) + `</div>`
 	}
 
-	utmRows := `<div class="empty-state">No campaign traffic yet.</div>`
+	utmRows := `<div class="empty-state">No campaign traffic yet. Add <code>utm_source</code>, <code>utm_medium</code> &amp; <code>utm_campaign</code> tags to the links you share to see which campaigns bring visitors.</div>`
 	if len(utm) > 0 {
 		rows := ""
 		for _, u := range utm {
@@ -272,12 +287,12 @@ func (a *App) handleOSAnalytics(w http.ResponseWriter, r *http.Request) {
 </div>` + a.osGoalsSection(ctx, days) + a.osJourneySection(ctx, days) + osExportSection(days)
 
 	body := `<div class="page-header"><h1>Analytics</h1>
-  <span class="muted text-sm">` + strconv.FormatInt(sum.TotalViews, 10) + ` views · ` + periodLabel + `</span>
+  <span class="muted text-sm">` + strconv.FormatInt(sum.TotalViews, 10) + ` views · ` + periodLabel + ` · updated ` + now.Format("2006-01-02 15:04") + ` UTC</span>
 </div>` + osPeriodSelector(days) + osLiveCard() + spark + `
 <div class="grid grid-2">
   <div class="card"><div class="card-title">Top pages</div>` + pages + `</div>
   <div class="card"><div class="card-title">Referrers</div>` + refs + `</div>
-</div>` + extra + `
+</div>` + extra + osPrivacyNote() + `
 <script nonce="` + nonce + `" src="/os/static/js/admin-os-intel.js?v=` + Version + `"></script>`
 
 	writeOSHTML(w, adminOSLayout(nonce, "Analytics", "analytics", cfg, htmpl.HTML(body)))
@@ -338,7 +353,7 @@ func osGeoSection(countries, regions, cities []analytics.AudienceStat) string {
 <div class="empty-state">No location data yet. VayuPress does no GeoIP lookups (privacy by design); to see countries/cities, front your site with a proxy that sets geo headers — e.g. Cloudflare's <code>CF-IPCountry</code> (country, all plans) and <code>CF-IPCity</code> (city, where available), or any <code>X-Geo-Country</code> / <code>X-Geo-City</code> header.</div></div>`
 	}
 	return `<div class="grid grid-3">
-  <div class="card"><div class="card-title">Countries</div>` + osAudienceTable(countries) + `</div>
+  <div class="card"><div class="card-title">Countries</div>` + osCountryTable(countries) + `</div>
   <div class="card"><div class="card-title">Regions</div>` + osAudienceTable(regions) + `</div>
   <div class="card"><div class="card-title">Cities</div>` + osAudienceTable(cities) + `</div>
 </div>`
@@ -382,11 +397,11 @@ func (a *App) osGoalsSection(ctx context.Context, days int) string {
 // osJourneySection renders the top page-to-page transitions (visitor journey).
 func (a *App) osJourneySection(ctx context.Context, days int) string {
 	flows, _ := a.analytics.PathFlows(ctx, days, 25)
-	body := `<div class="empty-state">No multi-page journeys recorded yet.</div>`
+	body := `<div class="empty-state">No multi-page journeys recorded yet. Once visitors browse more than one page in a session, their most common paths will show here.</div>`
 	if len(flows) > 0 {
 		rows := ""
 		for _, f := range flows {
-			rows += `<tr><td class="row-title">` + html.EscapeString(f.From) + `</td><td class="muted">→</td><td class="row-title">` + html.EscapeString(f.To) + `</td><td>` + strconv.Itoa(f.Count) + `</td></tr>`
+			rows += `<tr><td class="row-title">` + osPrettyPath(f.From) + `</td><td class="muted">→</td><td class="row-title">` + osPrettyPath(f.To) + `</td><td>` + strconv.Itoa(f.Count) + `</td></tr>`
 		}
 		body = `<div class="table-wrap"><table class="table"><thead><tr><th>From</th><th></th><th>To</th><th>Transitions</th></tr></thead><tbody>` + rows + `</tbody></table></div>`
 	}
@@ -420,9 +435,99 @@ func osExportSection(days int) string {
 </div>`
 }
 
-// osStatCard renders a single big-number stat card.
-func osStatCard(label, val string) string {
-	return `<div class="card"><div class="card-title">` + html.EscapeString(label) + `</div><div class="vm-stat">` + html.EscapeString(val) + `</div></div>`
+// osStatCardDelta renders a big-number stat card with an optional period-over-
+// period change badge (deltaHTML may be empty).
+func osStatCardDelta(label, val, deltaHTML string) string {
+	return `<div class="card"><div class="card-title">` + html.EscapeString(label) + `</div>` +
+		`<div class="vm-stat-row"><span class="vm-stat">` + html.EscapeString(val) + `</span>` + deltaHTML + `</div></div>`
+}
+
+// osDeltaPct renders a relative percentage-change badge comparing the current
+// value to the previous equal-length window. When lowerIsBetter is true (e.g.
+// bounce rate) the colour semantics are inverted. Returns "" when there is no
+// comparable previous data.
+func osDeltaPct(cur, prev int, hasPrev, lowerIsBetter bool) string {
+	if !hasPrev {
+		if cur > 0 {
+			return `<span class="vm-delta vm-delta--new" title="No data in the previous period">new</span>`
+		}
+		return ""
+	}
+	if prev == 0 {
+		if cur == 0 {
+			return ""
+		}
+		return `<span class="vm-delta vm-delta--good" title="Up from 0 in the previous period">▲ new</span>`
+	}
+	pct := float64(cur-prev) / float64(prev) * 100
+	return osDeltaBadge(pct, cur >= prev, lowerIsBetter, fmt.Sprintf("%.0f%%", absFloat(pct)))
+}
+
+// osDeltaPoints renders a percentage-point change badge for rate metrics such
+// as bounce rate (where a decrease is an improvement).
+func osDeltaPoints(cur, prev float64, hasPrev bool) string {
+	if !hasPrev {
+		return ""
+	}
+	diff := cur - prev
+	if absFloat(diff) < 0.05 {
+		return `<span class="vm-delta vm-delta--flat" title="No change vs previous period">±0 pts</span>`
+	}
+	return osDeltaBadge(diff, cur >= prev, true, fmt.Sprintf("%.1f pts", absFloat(diff)))
+}
+
+// osDeltaBadge builds the arrow + text badge with good/bad/flat colouring.
+func osDeltaBadge(delta float64, up, lowerIsBetter bool, text string) string {
+	if absFloat(delta) < 0.5 {
+		return `<span class="vm-delta vm-delta--flat" title="No meaningful change vs previous period">±0%</span>`
+	}
+	arrow := "▲"
+	if !up {
+		arrow = "▼"
+	}
+	good := up != lowerIsBetter // up & higher-is-better, or down & lower-is-better
+	cls := "vm-delta--bad"
+	if good {
+		cls = "vm-delta--good"
+	}
+	return `<span class="vm-delta ` + cls + `" title="vs previous ` + "period" + `">` + arrow + ` ` + html.EscapeString(text) + `</span>`
+}
+
+func absFloat(f float64) float64 {
+	if f < 0 {
+		return -f
+	}
+	return f
+}
+
+// osPrettyPath renders a page path for display: URL-decoded, query-string
+// stripped, and truncated with an ellipsis (full value preserved in a tooltip).
+// The literal journey markers "(entry)" / "(exit)" are passed through verbatim.
+func osPrettyPath(p string) string {
+	full := p
+	disp := p
+	// Drop any query/fragment that may have slipped through.
+	if i := strings.IndexAny(disp, "?#"); i >= 0 {
+		disp = disp[:i]
+	}
+	if dec, err := url.QueryUnescape(disp); err == nil && dec != "" {
+		disp = dec
+	}
+	if disp == "" {
+		disp = "/"
+	}
+	const max = 48
+	if len([]rune(disp)) > max {
+		r := []rune(disp)
+		disp = string(r[:max-1]) + "…"
+	}
+	return `<span title="` + html.EscapeString(full) + `">` + html.EscapeString(disp) + `</span>`
+}
+
+// osPrivacyNote renders the trust footer shown at the bottom of the analytics
+// page, reassuring operators that nothing leaves their server.
+func osPrivacyNote() string {
+	return `<p class="vm-privacy-note muted text-sm">🔒 All analytics are computed and stored locally on your own server. No cookies, no PII, no third-party requests — your data never leaves this instance.</p>`
 }
 
 // osAudienceTable renders a label/count breakdown (devices, browsers, OS).

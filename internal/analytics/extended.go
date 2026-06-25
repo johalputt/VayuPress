@@ -278,6 +278,24 @@ func (s *Store) OverviewSince(ctx context.Context, days int) (*Overview, error) 
 	return o, nil
 }
 
+// OverviewBetween returns aggregate analytics for the half-open date window
+// [fromInclusive, toExclusive), where both bounds are "YYYY-MM-DD" strings. It
+// powers the dashboard's period-over-period percentage deltas by letting the
+// caller fetch the immediately-preceding window of equal length.
+func (s *Store) OverviewBetween(ctx context.Context, fromInclusive, toExclusive string) (*Overview, error) {
+	o := &Overview{}
+	_ = s.db.QueryRowContext(ctx,
+		`SELECT COUNT(1),COUNT(DISTINCT session_id) FROM analytics_pageviews WHERE created_at>=? AND created_at<?`, fromInclusive, toExclusive).
+		Scan(&o.TotalPageviews, &o.TotalVisits)
+	_ = s.db.QueryRowContext(ctx,
+		`SELECT COUNT(DISTINCT visitor_id) FROM analytics_sessions WHERE created_at>=? AND created_at<?`, fromInclusive, toExclusive).
+		Scan(&o.UniqueVisitors)
+	_ = s.db.QueryRowContext(ctx,
+		`SELECT COALESCE(AVG(CASE WHEN v.cnt=1 THEN 100.0 ELSE 0.0 END),0) FROM (SELECT session_id,COUNT(1) cnt FROM analytics_pageviews WHERE created_at>=? AND created_at<? GROUP BY session_id) v`, fromInclusive, toExclusive).
+		Scan(&o.BounceRate)
+	return o, nil
+}
+
 // ── Pageview time series ─────────────────────────────────────────────────────
 
 // DayPageviews is a single day's pageview + visitor count.
