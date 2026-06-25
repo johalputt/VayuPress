@@ -21,6 +21,13 @@
     });
   }
 
+  // errText turns a failed response into a readable message, with a clear hint
+  // for the expired-CSRF (403) case so the operator knows to just reload.
+  function errText(res) {
+    if (res.status === 403) return 'session token expired — reload the page and try again';
+    return (res.body && res.body.message) || res.status;
+  }
+
   function val(root, sel) {
     var el = root.querySelector(sel);
     return el ? (el.value || '').trim() : '';
@@ -48,7 +55,7 @@
           if (cStatus) cStatus.textContent = 'Queued for delivery ✓';
           setTimeout(function () { window.location.href = '/os/vayuos/mail/sent'; }, 700);
         } else {
-          if (cStatus) cStatus.textContent = 'Failed: ' + ((res.body && res.body.message) || res.status);
+          if (cStatus) cStatus.textContent = 'Failed: ' + errText(res);
         }
       });
     });
@@ -62,7 +69,7 @@
             if (cStatus) cStatus.textContent = 'Saved to Drafts ✓';
             setTimeout(function () { window.location.href = '/os/vayuos/mail/inbox?user=' + encodeURIComponent((f.from.match(/[^<@\s]+(?=@)/) || [''])[0]) + '&folder=Drafts'; }, 700);
           } else if (cStatus) {
-            cStatus.textContent = 'Draft failed: ' + ((res.body && res.body.message) || res.status);
+            cStatus.textContent = 'Draft failed: ' + errText(res);
           }
         });
       });

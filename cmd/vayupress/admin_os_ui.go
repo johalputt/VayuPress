@@ -147,15 +147,18 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/analytics/goals", a.handleAnalyticsCreateGoal)
 		pr.With(auth.CSRFTokenMiddleware).Delete("/os/api/analytics/goals/{id}", a.handleAnalyticsDeleteGoal)
 		// VayuOS — native control layer (Phase 2): Publishing · Mail · PGP.
-		pr.Get("/os/vayuos", a.handleVayuOSDashboard)
-		pr.Get("/os/vayuos/pgp", a.handleVayuOSPGP)
-		pr.Get("/os/vayuos/mail", a.handleVayuOSMail)
-		pr.Get("/os/vayuos/mail/inbox", a.handleVayuOSInbox)
-		pr.Get("/os/vayuos/mail/search", a.handleVayuOSSearch)
-		pr.Get("/os/vayuos/mail/message", a.handleVayuOSMessage)
-		pr.Get("/os/vayuos/mail/sent", a.handleVayuOSSent)
-		pr.Get("/os/vayuos/mail/compose", a.handleVayuOSCompose)
-		pr.Get("/os/vayuos/mail/accounts", a.handleVayuOSAccounts)
+		// GET pages are wrapped in CSRFTokenMiddleware so each load (re)issues the
+		// vp_csrf cookie the panel's POSTs read back; without this the token
+		// expires (1h) and Send / Save-as-draft / message actions start 403ing.
+		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayuos", a.handleVayuOSDashboard)
+		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayuos/pgp", a.handleVayuOSPGP)
+		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayuos/mail", a.handleVayuOSMail)
+		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayuos/mail/inbox", a.handleVayuOSInbox)
+		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayuos/mail/search", a.handleVayuOSSearch)
+		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayuos/mail/message", a.handleVayuOSMessage)
+		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayuos/mail/sent", a.handleVayuOSSent)
+		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayuos/mail/compose", a.handleVayuOSCompose)
+		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayuos/mail/accounts", a.handleVayuOSAccounts)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayuos/mail/send", a.handleVayuOSSend)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayuos/mail/draft", a.handleVayuOSDraft)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayuos/mail/message/action", a.handleVayuOSMessageAction)
