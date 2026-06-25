@@ -234,3 +234,140 @@ func TestRenderInlineStillStripsXSS(t *testing.T) {
 		t.Fatalf("legit formatting lost: %s", out)
 	}
 }
+
+// ── v1.14.0 block types ──────────────────────────────────────────────────────
+
+func TestRenderTableBlock(t *testing.T) {
+	doc := `[{"type":"table",
+		"header":["Name","Role"],
+		"rows":[["Ada","**Engineer**"],["Grace","Admiral"]]}]`
+	h, txt, err := Render(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"<table>", "<thead>", "<th>Name</th>", "<td>Ada</td>",
+		"<strong>Engineer</strong>", "<td>Grace</td>"} {
+		if !strings.Contains(h, want) {
+			t.Errorf("table output missing %q\nGOT: %s", want, h)
+		}
+	}
+	if !strings.Contains(txt, "Ada") || !strings.Contains(txt, "Grace") {
+		t.Errorf("table excerpt missing cell text: %q", txt)
+	}
+}
+
+func TestRenderTableSanitizesXSS(t *testing.T) {
+	doc := `[{"type":"table","header":["<script>alert(1)</script>"],` +
+		`"rows":[["<img src=x onerror=alert(2)>"]]}]`
+	h, _, err := Render(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, bad := range []string{"<script", "onerror", "<img"} {
+		if strings.Contains(h, bad) {
+			t.Errorf("table XSS payload survived: %q\nGOT: %s", bad, h)
+		}
+	}
+}
+
+func TestRenderToggleBlock(t *testing.T) {
+	doc := `[{"type":"toggle","summary":"More info","text":"hidden **body**","open":true}]`
+	h, _, err := Render(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"<details", "open", "<summary>More info</summary>",
+		"vp-toggle__body", "<strong>body</strong>"} {
+		if !strings.Contains(h, want) {
+			t.Errorf("toggle output missing %q\nGOT: %s", want, h)
+		}
+	}
+}
+
+func TestRenderToggleDefaultsCollapsed(t *testing.T) {
+	doc := `[{"type":"toggle","summary":"Q","text":"A"}]`
+	h, _, err := Render(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// No "open" attribute when Open is false.
+	if strings.Contains(h, "<details open") || strings.Contains(h, "open>") {
+		t.Errorf("toggle should be collapsed by default: %s", h)
+	}
+}
+
+func TestRenderTaskListBlock(t *testing.T) {
+	doc := `[{"type":"tasklist","items":["done item","todo item"],"checked":[true,false]}]`
+	h, txt, err := Render(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`class="vp-tasks"`, "vp-task--done", "done item", "todo item"} {
+		if !strings.Contains(h, want) {
+			t.Errorf("tasklist output missing %q\nGOT: %s", want, h)
+		}
+	}
+	// Static glyph only — never a live <input> on the public page.
+	if strings.Contains(h, "<input") {
+		t.Errorf("tasklist must not emit <input> elements: %s", h)
+	}
+	if !strings.Contains(txt, "todo item") {
+		t.Errorf("tasklist excerpt missing text: %q", txt)
+	}
+}
+
+func TestRenderMathBlock(t *testing.T) {
+	doc := `[{"type":"math","text":"E = mc^2"}]`
+	h, _, err := Render(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(h, `class="vp-math"`) || !strings.Contains(h, "E = mc^2") {
+		t.Errorf("math block missing: %s", h)
+	}
+}
+
+func TestRenderMathEscapesAngles(t *testing.T) {
+	doc := `[{"type":"math","text":"a < b </div><script>alert(1)</script>"}]`
+	h, _, err := Render(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(h, "<script") {
+		t.Errorf("math source must be escaped, not executed: %s", h)
+	}
+}
+
+func TestRenderAudioLocalOnly(t *testing.T) {
+	doc := `[{"type":"audio","url":"/media/abc123.mp3","alt":"Episode 1"}]`
+	h, _, err := Render(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"<audio", "controls", `src="/media/abc123.mp3"`,
+		"<figcaption>Episode 1</figcaption>"} {
+		if !strings.Contains(h, want) {
+			t.Errorf("audio output missing %q\nGOT: %s", want, h)
+		}
+	}
+}
+
+func TestRenderAudioRejectsExternalSrc(t *testing.T) {
+	// An external or javascript: src must be dropped — audio is local-only.
+	for _, bad := range []string{
+		`[{"type":"audio","url":"https://evil.example/track.mp3"}]`,
+		`[{"type":"audio","url":"javascript:alert(1)"}]`,
+		`[{"type":"audio","url":"//evil.example/x.mp3"}]`,
+	} {
+		h, _, err := Render(bad)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(h, "evil.example") || strings.Contains(h, "javascript:") {
+			t.Errorf("external/unsafe audio src leaked: %s", h)
+		}
+		if strings.Contains(h, "<audio") {
+			t.Errorf("audio with non-local src must render nothing: %s", h)
+		}
+	}
+}

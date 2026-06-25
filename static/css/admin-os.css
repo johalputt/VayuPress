@@ -2083,6 +2083,168 @@
 }
 
 
+/* ══════════════════════════════════════════════════════════════════════════
+   Post editor v1.14.0 — new blocks, reordering, focus mode, split preview,
+   live stats, palette polish. (Strict CSP: classes only, no inline styles.)
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Topbar word-count chip ─────────────────────────────────────────────── */
+.vp-os .editor-wordcount {
+  font-size: var(--text-xs);
+  color: var(--text-3);
+  padding: 2px var(--sp-2);
+  border-radius: var(--r-full);
+  background: var(--bg-surface-2);
+  white-space: nowrap;
+}
+.vp-os .btn.is-active { background: var(--brand-dim); color: var(--brand); border-color: var(--brand); }
+
+/* ── Workspace: canvas + optional split live-preview ────────────────────── */
+.vp-os .editor-workspace { display: flex; gap: var(--sp-5); align-items: stretch; min-width: 0; }
+.vp-os .editor-workspace > .editor-canvas { flex: 1 1 auto; min-width: 0; }
+.vp-os .editor-live {
+  flex: 1 1 50%;
+  min-width: 0;
+  border-left: 1px solid var(--border);
+  padding-left: var(--sp-5);
+  max-height: calc(100vh - var(--topbar-h) - 120px);
+  overflow-y: auto;
+  animation: vp3-enter var(--t-enter);
+}
+.vp-os .editor-live[hidden] { display: none; }
+.vp-os .editor-live-head {
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-3);
+  margin-bottom: var(--sp-3);
+}
+.vp-os .editor-live-body { font-size: var(--text-base); line-height: 1.7; }
+@keyframes vp3-enter { from { opacity: 0; transform: translateX(8px); } to { opacity: 1; transform: none; } }
+
+/* ── Sidebar live stats ─────────────────────────────────────────────────── */
+.vp-os .editor-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--sp-2);
+  padding: var(--sp-3) 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.vp-os .editor-stat { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 2px; }
+.vp-os .editor-stat__num { font-size: var(--text-lg); font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+.vp-os .editor-stat__label { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-3); }
+
+/* ── Block control rail (drag, move, insert, delete) ────────────────────── */
+.vp-os .eblock__ctrl { flex-direction: column; gap: 2px; }
+.vp-os .eblock__drag { cursor: grab; }
+.vp-os .eblock__drag:active { cursor: grabbing; }
+.vp-os .eblock.is-dragging { opacity: 0.45; }
+.vp-os .eblock.is-drop-before { box-shadow: 0 -2px 0 0 var(--brand); }
+.vp-os .eblock.is-drop-after  { box-shadow: 0 2px 0 0 var(--brand); }
+
+/* ── Task-list block editor ─────────────────────────────────────────────── */
+.vp-os .eblock__tasks { display: flex; flex-direction: column; gap: var(--sp-1); }
+.vp-os .eblock__task { display: flex; align-items: center; gap: var(--sp-2); }
+.vp-os .eblock__task-check { width: 16px; height: 16px; accent-color: var(--brand); flex: 0 0 auto; cursor: pointer; }
+.vp-os .eblock__task-text { flex: 1 1 auto; }
+.vp-os .eblock__task.is-done .eblock__task-text { text-decoration: line-through; color: var(--text-3); }
+.vp-os .eblock__addrow {
+  align-self: flex-start;
+  margin-top: var(--sp-1);
+  border: 1px dashed var(--border-strong);
+  background: transparent;
+  color: var(--text-2);
+  border-radius: var(--r-sm);
+  padding: 2px var(--sp-3);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  transition: color var(--t-fast), border-color var(--t-fast);
+}
+.vp-os .eblock__addrow:hover { color: var(--brand); border-color: var(--brand); }
+
+/* ── Table block editor ─────────────────────────────────────────────────── */
+.vp-os .eblock__table { display: flex; flex-direction: column; gap: var(--sp-2); overflow-x: auto; }
+.vp-os .eblock__table-grid { border-collapse: collapse; width: 100%; }
+.vp-os .eblock__table-grid th, .vp-os .eblock__table-grid td { border: 1px solid var(--border); padding: 2px; vertical-align: middle; }
+.vp-os .eblock__table-grid th .eblock__input { font-weight: 700; }
+.vp-os .eblock__table-grid .eblock__input { border: none; background: transparent; padding: var(--sp-2); }
+.vp-os .eblock__table-grid .eblock__input:focus { background: var(--bg-surface); border-radius: var(--r-sm); }
+.vp-os .eblock__table-rowctl { width: 30px; text-align: center; border: none !important; }
+.vp-os .eblock__table-ctl { display: flex; gap: var(--sp-2); }
+
+/* ── Toggle / math / hint helpers ───────────────────────────────────────── */
+.vp-os .eblock__checkline { display: flex; align-items: center; gap: var(--sp-2); font-size: var(--text-sm); color: var(--text-2); cursor: pointer; }
+.vp-os .eblock__checkline input { accent-color: var(--brand); }
+.vp-os .eblock__hint { margin-top: 2px; }
+.vp-os .eblock--toggle .eblock__field { border-left: 3px solid var(--accent); padding-left: var(--sp-3); }
+.vp-os .eblock--math .eblock__code { font-family: var(--font-mono); }
+
+/* ── Slash palette: keyboard highlight ──────────────────────────────────── */
+.vp-os .block-palette__item.is-active { background: var(--brand-dim); outline: 1px solid var(--brand); }
+
+/* ── Focus (distraction-free) mode ──────────────────────────────────────── */
+.vp-os .editor-shell.is-focus { grid-template-columns: 1fr; }
+.vp-os .editor-shell.is-focus .editor-sidebar { display: none; }
+.vp-os .editor-shell.is-focus .editor-topbar { background: transparent; border-bottom-color: transparent; }
+.vp-os .editor-shell.is-focus .editor-topbar-status,
+.vp-os .editor-shell.is-focus .editor-wordcount { opacity: 0.6; }
+.vp-os .editor-shell.is-focus .editor-main { max-width: 760px; margin: 0 auto; width: 100%; }
+.vp-os .editor-shell.is-focus .editor-canvas { padding-top: var(--sp-8); }
+.vp-os .editor-shell.is-focus .eblock__ctrl { opacity: 0; }
+.vp-os .editor-shell.is-focus .eblock:hover .eblock__ctrl { opacity: 1; }
+
+@media (max-width: 900px) {
+  .vp-os .editor-workspace { flex-direction: column; }
+  .vp-os .editor-live { border-left: none; border-top: 1px solid var(--border); padding-left: 0; padding-top: var(--sp-4); }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Rendered block styles (admin preview + live pane). These mirror the classes
+   emitted by internal/blockrender so Preview/Split match the published page.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* Table */
+.vp-os .article .vp-table { overflow-x: auto; margin: var(--sp-5) 0; }
+.vp-os .article .vp-table table { border-collapse: collapse; width: 100%; font-size: var(--text-sm); }
+.vp-os .article .vp-table th, .vp-os .article .vp-table td { border: 1px solid var(--border); padding: var(--sp-2) var(--sp-3); text-align: left; }
+.vp-os .article .vp-table thead th { background: var(--bg-surface-2); font-weight: 700; }
+.vp-os .article .vp-table tbody tr:nth-child(even) { background: var(--bg-surface-2); }
+
+/* Toggle */
+.vp-os .article .vp-toggle { border: 1px solid var(--border); border-radius: var(--r-md); padding: var(--sp-3) var(--sp-4); margin: var(--sp-4) 0; background: var(--bg-surface); }
+.vp-os .article .vp-toggle > summary { cursor: pointer; font-weight: 600; color: var(--text); list-style: none; }
+.vp-os .article .vp-toggle > summary::-webkit-details-marker { display: none; }
+.vp-os .article .vp-toggle > summary::before { content: "▸"; display: inline-block; margin-right: var(--sp-2); color: var(--brand); transition: transform var(--t-fast); }
+.vp-os .article .vp-toggle[open] > summary::before { transform: rotate(90deg); }
+.vp-os .article .vp-toggle__body { margin-top: var(--sp-3); color: var(--text-2); }
+
+/* Task list */
+.vp-os .article .vp-tasks { list-style: none; padding-left: 0; margin: var(--sp-4) 0; }
+.vp-os .article .vp-task { display: flex; align-items: flex-start; gap: var(--sp-2); padding: 2px 0; }
+.vp-os .article .vp-task__box { flex: 0 0 auto; width: 16px; height: 16px; margin-top: 3px; border: 2px solid var(--border-strong); border-radius: 4px; }
+.vp-os .article .vp-task--done .vp-task__box { background: var(--brand); border-color: var(--brand); position: relative; }
+.vp-os .article .vp-task--done .vp-task__box::after { content: "✓"; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 11px; color: #fff; line-height: 1; }
+.vp-os .article .vp-task--done .vp-task__text { text-decoration: line-through; color: var(--text-3); }
+
+/* Math */
+.vp-os .article .vp-math {
+  font-family: var(--font-mono);
+  background: var(--bg-surface-2);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--r-sm);
+  padding: var(--sp-3) var(--sp-4);
+  margin: var(--sp-4) 0;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  color: var(--text);
+}
+
+/* Audio */
+.vp-os .article .vp-audio { margin: var(--sp-4) 0; }
+.vp-os .article .vp-audio audio { width: 100%; }
+.vp-os .article .vp-audio figcaption { font-size: var(--text-xs); color: var(--text-3); margin-top: var(--sp-1); }
+
 /* VayuMail: mailbox search bar */
 .vp-os .vm-search { display: flex; gap: 0.5rem; align-items: center; margin: 0.75rem 0; }
 .vp-os .vm-search .input { flex: 1 1 auto; }

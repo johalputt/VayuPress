@@ -12,6 +12,65 @@ _Nothing yet._
 
 ---
 
+## [1.14.0] — 2026-06-25
+
+**The Post Editor becomes the most powerful sovereign writing studio — without
+breaking the constitution (single binary, lightweight, privacy-first, strict CSP).**
+
+### Added
+
+- **Five new editor blocks**, each rendered and re-sanitised server-side by
+  `internal/blockrender` (bluemonday UGC policy — no raw-HTML escape hatch):
+  - **Table** — optional heading row plus body rows; cell text supports inline
+    Markdown (bold/italic/code/links).
+  - **Toggle** — a collapsible `<details>`/`<summary>` with an "expanded by
+    default" option.
+  - **Task list** — a checklist with per-item done states, rendered as a static
+    glyph (never a live `<input>` on the public page).
+  - **Math** — a LaTeX/expression block stored verbatim and shown in a styled,
+    dependency-free element (a theme may progressively enhance `.vp-math`).
+  - **Audio** — a self-hosted `<audio>` player whose `src` is **restricted to the
+    site's own `/media` path** (double-guarded by `safeMediaURL` and a bluemonday
+    `Matching` rule), so audio never triggers a third-party request.
+- **Drag-and-drop block reordering** plus keyboard `↑`/`↓` move buttons.
+- **Undo / redo** history for structural edits (native per-field text undo is
+  preserved — `Ctrl/Cmd+Z` is only intercepted outside an editable field).
+- **Live word count, character count and reading time** in the editor sidebar and
+  topbar.
+- **Focus mode** (`Ctrl/Cmd+.`) for distraction-free writing, and a **split-screen
+  live preview** that renders the sanitised published look beside the draft.
+- **Command palette** — the slash (`/`) menu is now grouped by category and fully
+  keyboard-navigable (↑/↓/Enter/Esc), and a global **`Ctrl/Cmd+K`** opens it from
+  anywhere.
+- **Markdown shortcut** `- [ ] ` / `* [ ] ` converts a paragraph into a task list.
+- Legacy **HTML import** now maps `<table>` → table blocks and `<details>` →
+  toggle blocks (`internal/blockrender/importer.go`), keeping "Convert to blocks"
+  lossless for more content.
+
+### Changed
+
+- The `osEditorBody` editor shell gained CSP-safe controls (focus/split buttons,
+  word-count chip, document-stats panel, undo/redo) — markup stays class-only with
+  no inline styles, scripts or external hosts (verified by `TestOSEditorBodyCSPSafe`).
+- The editor frontend (`static/js/admin-os-editor.js`) is rebuilt around the new
+  block model while preserving the save/preview/AI/history network contract and the
+  on-disk **block storage format (fully backward compatible)**.
+
+### Security
+
+- New blocks add **no new XSS surface**: the bluemonday policy was widened only to
+  the structural elements the renderer emits (tables, `details`/`summary`, a
+  local-only `<audio>`), and audio sources are constrained to the `/media` origin.
+  Regression tests cover table/cell XSS, task-list `<input>` suppression, math
+  escaping, and rejection of external/`javascript:` audio sources.
+
+### Tests
+
+- Added `internal/blockrender` unit tests for every new block type and its
+  sanitisation, and importer round-trip tests for tables and toggles.
+
+---
+
 ## [1.13.0] — 2026-06-25
 
 **VayuMail towards Gmail-like usability — roles, Archive, and search.**

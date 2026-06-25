@@ -21,6 +21,30 @@
 > _Own your content. Own your communication. Own your infrastructure._
 > Publishing is the core identity, **VayuMail** the native sovereignty layer, **VayuPGP** the native privacy layer, and **VayuOS** the native control layer — all in a single Go binary, single process, single config.
 
+## What's New in v1.14.0
+
+> Full notes in [`CHANGELOG.md`](CHANGELOG.md)
+
+**The most powerful sovereign Post Editor yet — beautiful, intelligent, and still lightweight.**
+
+- **Five new blocks** — **tables**, collapsible **toggles**, **task lists** (with
+  done states), **math** (LaTeX/expression), and self-hosted **audio** — joining
+  images, privacy-first video embeds, Mermaid diagrams, callouts and code. Every
+  block is still rendered and re-sanitised server-side (bluemonday); there is no
+  raw-HTML escape hatch and no new XSS surface. Audio is **local-only** (`/media`)
+  so playback never calls a third party.
+- **Block reordering** — drag the `⋮⋮` handle or use the `↑`/`↓` buttons, with an
+  **undo/redo** history for every structural change.
+- **Live writing stats** — word count, character count and reading time update as
+  you type.
+- **Focus mode** (`⌘.`/`Ctrl+.`) hides the chrome for distraction-free writing,
+  and a **split-screen live preview** renders the published look beside your draft.
+- **Command palette** — a categorised, keyboard-navigable slash menu plus a global
+  `⌘K`/`Ctrl+K` command menu put every block one keystroke away.
+- **Constitution-clean** — single Go binary, vanilla JS, strict CSP (no
+  `unsafe-inline`, no CDNs), and AI assistance remains strictly opt-in and off by
+  default. The block storage format is unchanged — fully backward compatible.
+
 ## What's New in v1.13.0
 
 > Full notes in [`CHANGELOG.md`](CHANGELOG.md)
