@@ -145,3 +145,23 @@
     }
   });
 })();
+
+
+/*
+ * Period selector loading cue (Analytics page). The selector is plain GET
+ * navigation; on click we mark the bar busy so the operator gets immediate
+ * feedback while the next time-window renders. No-op without the bar. CSP-safe:
+ * toggles a class only, no inline styles.
+ */
+(function () {
+  'use strict';
+
+  var bar = document.querySelector('[data-period]');
+  if (!bar) return;
+  bar.addEventListener('click', function (e) {
+    var link = e.target.closest('a');
+    if (!link || !bar.contains(link)) return;
+    bar.classList.add('is-loading');
+    bar.setAttribute('aria-busy', 'true');
+  });
+})();

@@ -2248,3 +2248,53 @@
 /* VayuMail: mailbox search bar */
 .vp-os .vm-search { display: flex; gap: 0.5rem; align-items: center; margin: 0.75rem 0; }
 .vp-os .vm-search .input { flex: 1 1 auto; }
+
+
+/* ── VayuAnalytics dashboard polish (metric deltas, privacy note, mobile) ──── */
+.vp-os .vm-stat-row { display: flex; align-items: baseline; gap: var(--sp-2); flex-wrap: wrap; }
+.vp-os .vm-delta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15em;
+  padding: 0.1em 0.5em;
+  border-radius: var(--r-full);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.vp-os .vm-delta--good { background: var(--ok-dim);     color: var(--ok); }
+.vp-os .vm-delta--bad  { background: var(--danger-dim); color: var(--danger); }
+.vp-os .vm-delta--flat { background: var(--bg-surface-2); color: var(--text-3); }
+.vp-os .vm-delta--new  { background: var(--info-dim);   color: var(--info); }
+
+/* Trust footer */
+.vp-os .vm-privacy-note {
+  margin-top: var(--sp-6);
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--bg-surface-2);
+  text-align: center;
+}
+
+/* Period selector: subtle "loading" cue while the next window is fetched. */
+.vp-os [data-period].is-loading { opacity: 0.5; pointer-events: none; }
+.vp-os [data-period].is-loading::after {
+  content: "Loading…";
+  margin-left: var(--sp-2);
+  font-size: var(--text-xs);
+  color: var(--text-3);
+  align-self: center;
+}
+
+/* Mobile: stack the multi-column analytics grids and keep tables swipeable. */
+@media (max-width: 860px) {
+  .vp-os .grid-2,
+  .vp-os .grid-3,
+  .vp-os .vm-metrics.grid-4 { grid-template-columns: 1fr; }
+}
+@media (max-width: 560px) {
+  .vp-os .table-wrap { -webkit-overflow-scrolling: touch; }
+  .vp-os .vm-stat { font-size: 1.35rem; }
+}

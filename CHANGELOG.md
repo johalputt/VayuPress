@@ -8,6 +8,28 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Added
+
+- **VayuAnalytics dashboard polish.** The privacy-first analytics page now reads
+  far more clearly at a glance:
+  - **Full country names + flag emoji.** Country breakdowns show e.g.
+    "🇺🇸 United States" instead of the raw `US` code. The mapping is render-only
+    (ISO 3166-1 alpha-2 → name, flag derived from Regional Indicator Symbols);
+    nothing extra is stored, so the no-GeoIP / no-PII guarantee is unchanged.
+  - **Period-over-period deltas** on the headline metrics (Unique visitors /
+    Visits / Pageviews / Bounce rate) — an up/down badge comparing the selected
+    window to the immediately-preceding window of equal length, powered by the
+    new `Store.OverviewBetween`. Colour semantics are inverted for bounce rate
+    (lower is better).
+  - **Cleaner page URLs** in Top pages and Visitor journey: query strings
+    stripped, percent-encoding decoded, long paths truncated with the full value
+    kept in a tooltip.
+  - **Friendlier empty states** for campaigns, countries, page views, referrers
+    and visitor journeys (actionable guidance instead of a bare "No data yet").
+  - **"Last updated" timestamp** in the page header, a **local-only privacy
+    footer**, a **loading cue** when switching the time range, and **mobile
+    single-column layout** with horizontally swipeable tables.
+
 ### Changed
 
 - **Inbound mail is now enabled by default.** Once a `DOMAIN` is configured, the
