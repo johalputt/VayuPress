@@ -5,6 +5,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"html"
 	htmpl "html/template"
@@ -13,12 +14,19 @@ import (
 	netmail "net/mail"
 	"strings"
 
+	"github.com/microcosm-cc/bluemonday"
+
 	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/render"
 	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
 	vpgp "github.com/johalputt/vayupress/internal/vayuos/pgp"
 )
+
+// mailHTMLPolicy sanitises HTML mail bodies before they are rendered in the
+// reader view. UGCPolicy strips scripts, event handlers, and inline styles, so
+// the message can be shown without weakening the admin console's strict CSP.
+var mailHTMLPolicy = bluemonday.UGCPolicy()
 
 // ── Compose ──────────────────────────────────────────────────────────────────
 
@@ -171,12 +179,49 @@ func (a *App) handleVayuOSSend(w http.ResponseWriter, r *http.Request) {
 	if mu, err := (&vayuMailBridge{app: a}).GetUserByEmail(from); err == nil && mu != nil {
 		senderUserID = mu.UserID
 	}
-	id, err := a.vayuMail.Compose(r.Context(), from, to, in.Subject, in.Body, senderUserID)
+	// Add the sender's display name to the From header so recipients (and the
+	// Sent folder) show a friendly name instead of a bare address. The engine
+	// still uses the bare address for the SMTP envelope.
+	fromHeader := from
+	if name := a.senderDisplayName(r.Context(), from); name != "" {
+		fromHeader = (&netmail.Address{Name: name, Address: from}).String()
+	}
+	id, err := a.vayuMail.Compose(r.Context(), fromHeader, to, in.Subject, in.Body, senderUserID)
 	if err != nil {
 		writeAPIError(w, r, 500, "send-failed", err.Error(), "")
 		return
 	}
 	writeJSON(w, r, 200, map[string]interface{}{"queued": true, "id": id})
+}
+
+// senderDisplayName returns the friendly name to put in the From: header for a
+// sending address: the admin-managed mail account's full name when set, else
+// the matching CMS user's name. Empty when no name is known (the caller then
+// sends with the bare address, as before).
+func (a *App) senderDisplayName(ctx context.Context, emailAddr string) string {
+	emailAddr = strings.TrimSpace(emailAddr)
+	if emailAddr == "" {
+		return ""
+	}
+	if a.vayuMail != nil && a.vayuMail.Accounts() != nil {
+		if accs, err := a.vayuMail.Accounts().List(ctx); err == nil {
+			for _, ac := range accs {
+				if strings.EqualFold(ac.Email, emailAddr) && strings.TrimSpace(ac.FullName) != "" {
+					return strings.TrimSpace(ac.FullName)
+				}
+			}
+		}
+	}
+	if a.userStore != nil {
+		if users, err := a.userStore.List(ctx); err == nil {
+			for _, u := range users {
+				if strings.EqualFold(u.Email, emailAddr) && strings.TrimSpace(u.Name) != "" {
+					return strings.TrimSpace(u.Name)
+				}
+			}
+		}
+	}
+	return ""
 }
 
 // ── Message folder actions ───────────────────────────────────────────────────
