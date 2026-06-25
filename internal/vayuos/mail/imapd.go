@@ -3,6 +3,7 @@ package mail
 import (
 	"bufio"
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net"
 	"strings"
@@ -25,6 +26,10 @@ type IMAPServer struct {
 	maildir *Maildir
 	decrypt DecryptHook
 
+	tls         *tls.Config
+	implicitTLS bool
+	listenAddr  string
+
 	ln     net.Listener
 	wg     sync.WaitGroup
 	mu     sync.Mutex
@@ -33,7 +38,22 @@ type IMAPServer struct {
 
 // NewIMAPServer creates an IMAP server bound to cfg.IMAPListen.
 func NewIMAPServer(cfg Config, bridge Bridge, md *Maildir, decrypt DecryptHook) *IMAPServer {
-	return &IMAPServer{cfg: cfg, bridge: bridge, maildir: md, decrypt: decrypt}
+	return &IMAPServer{cfg: cfg, bridge: bridge, maildir: md, decrypt: decrypt, listenAddr: cfg.IMAPListen}
+}
+
+// WithTLS enables the STARTTLS command on the plaintext (143) listener.
+func (s *IMAPServer) WithTLS(t *tls.Config) *IMAPServer {
+	s.tls = t
+	return s
+}
+
+// WithImplicitTLS turns this into an implicit-TLS IMAPS listener bound to addr
+// (993): connections are wrapped in TLS immediately, with no STARTTLS step.
+func (s *IMAPServer) WithImplicitTLS(t *tls.Config, addr string) *IMAPServer {
+	s.tls = t
+	s.implicitTLS = true
+	s.listenAddr = addr
+	return s
 }
 
 // Addr returns the actual listen address (useful with :0 in tests).
@@ -48,9 +68,9 @@ func (s *IMAPServer) Addr() string {
 
 // Start begins listening.
 func (s *IMAPServer) Start(_ context.Context) error {
-	ln, err := net.Listen("tcp", s.cfg.IMAPListen)
+	ln, err := net.Listen("tcp", s.listenAddr)
 	if err != nil {
-		return fmt.Errorf("vayumail: imap listen %s: %w", s.cfg.IMAPListen, err)
+		return fmt.Errorf("vayumail: imap listen %s: %w", s.listenAddr, err)
 	}
 	s.mu.Lock()
 	s.ln = ln
@@ -93,7 +113,11 @@ func (s *IMAPServer) acceptLoop() {
 		s.wg.Add(1)
 		go func() {
 			defer s.wg.Done()
-			s.handle(conn)
+			c := conn
+			if s.implicitTLS && s.tls != nil {
+				c = tls.Server(conn, s.tls)
+			}
+			s.handle(c)
 		}()
 	}
 }
@@ -110,11 +134,26 @@ func (sess *imapSession) authed() bool { return sess.authedUser != "" }
 func (s *IMAPServer) handle(conn net.Conn) {
 	defer conn.Close()
 	_ = conn.SetDeadline(time.Now().Add(30 * time.Minute))
-	br := bufio.NewReader(conn)
-	w := bufio.NewWriter(conn)
+	var (
+		br *bufio.Reader
+		w  *bufio.Writer
+	)
+	setup := func(c net.Conn) {
+		br = bufio.NewReader(c)
+		w = bufio.NewWriter(c)
+	}
+	setup(conn)
 	line := func(str string) { _, _ = w.WriteString(str + "\r\n"); _ = w.Flush() }
 
-	line("* OK [CAPABILITY IMAP4rev1 AUTH=PLAIN] VayuMail IMAP ready")
+	onTLS := s.implicitTLS
+	caps := func() string {
+		c := "IMAP4rev1 AUTH=PLAIN"
+		if s.tls != nil && !onTLS {
+			c += " STARTTLS"
+		}
+		return c
+	}
+	line("* OK [CAPABILITY " + caps() + "] VayuMail IMAP ready")
 
 	sess := &imapSession{}
 	for {
@@ -128,8 +167,23 @@ func (s *IMAPServer) handle(conn net.Conn) {
 		cmd = strings.ToUpper(cmd)
 		switch cmd {
 		case "CAPABILITY":
-			line("* CAPABILITY IMAP4rev1 AUTH=PLAIN")
+			line("* CAPABILITY " + caps())
 			line(tag + " OK CAPABILITY completed")
+		case "STARTTLS":
+			if s.tls == nil || onTLS {
+				line(tag + " NO STARTTLS not available")
+				continue
+			}
+			line(tag + " OK Begin TLS negotiation now")
+			tconn := tls.Server(conn, s.tls)
+			if herr := tconn.Handshake(); herr != nil {
+				return
+			}
+			conn = tconn
+			_ = conn.SetDeadline(time.Now().Add(30 * time.Minute))
+			setup(conn)
+			onTLS = true
+			sess = &imapSession{} // RFC 2595: discard any prior session state
 		case "NOOP":
 			line(tag + " OK NOOP completed")
 		case "LOGIN":

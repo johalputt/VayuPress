@@ -202,6 +202,12 @@ func (a *App) bootVayuOS() {
 		mailCfg.InboundEnabled = true
 		mailCfg.SMTPListen = config.EnvOr("VAYUOS_MAIL_SMTP_LISTEN", ":25")
 		mailCfg.IMAPListen = config.EnvOr("VAYUOS_MAIL_IMAP_LISTEN", ":143")
+		mailCfg.SubmissionListen = config.EnvOr("VAYUOS_MAIL_SUBMISSION_LISTEN", ":587")
+		mailCfg.IMAPSListen = config.EnvOr("VAYUOS_MAIL_IMAPS_LISTEN", ":993")
+		// Optional CA-signed cert (e.g. Let's Encrypt). When unset, VayuMail
+		// generates an in-memory self-signed cert so STARTTLS still works.
+		mailCfg.TLSCertFile = config.EnvOr("VAYUOS_MAIL_TLS_CERT", "")
+		mailCfg.TLSKeyFile = config.EnvOr("VAYUOS_MAIL_TLS_KEY", "")
 	}
 	a.vayuMail = vmail.NewEngine(&mailCfg, &vayuMailBridge{app: a}, dbpkg.DB)
 	// Transparent PGP decryption when serving mail over IMAP to the owner.
@@ -234,11 +240,28 @@ func (a *App) bootVayuOS() {
 			return false, "disabled — set a domain in the wizard"
 		}
 		if a.vayuMail.Config().InboundEnabled {
+			if a.vayuMail.InboundActive() {
+				extras := []string{}
+				if a.vayuMail.TLSActive() {
+					extras = append(extras, "STARTTLS")
+				}
+				if a.vayuMail.SubmissionActive() {
+					extras = append(extras, "submission:587")
+				}
+				if a.vayuMail.IMAPSActive() {
+					extras = append(extras, "IMAPS:993")
+				}
+				msg := "outbound + DKIM active; inbound SMTP/IMAP listening"
+				if len(extras) > 0 {
+					msg += " + " + strings.Join(extras, ", ")
+				}
+				if err := a.vayuMail.InboundError(); err != nil {
+					msg += "; note: " + err.Error() + inboundHint(err)
+				}
+				return true, msg
+			}
 			if err := a.vayuMail.InboundError(); err != nil {
 				return true, "outbound + DKIM active; inbound listener unavailable: " + err.Error() + inboundHint(err)
-			}
-			if a.vayuMail.InboundActive() {
-				return true, "outbound + DKIM active; inbound SMTP/IMAP listening"
 			}
 		}
 		return true, "outbound queue + DKIM active (inbound disabled)"

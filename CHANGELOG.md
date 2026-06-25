@@ -10,6 +10,17 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Added
 
+- **TLS for mail (STARTTLS + IMAPS + authenticated submission).** The mail
+  listeners now offer encryption: **STARTTLS** on SMTP `:25`, the new
+  **submission** service `:587` (STARTTLS **required** before `AUTH PLAIN`/
+  `LOGIN`, then authenticated relay), and IMAP `:143`; plus implicit-TLS
+  **IMAPS** on `:993`. A CA-signed certificate can be supplied via
+  `VAYUOS_MAIL_TLS_CERT` / `VAYUOS_MAIL_TLS_KEY`; when unset, VayuMail generates
+  an in-memory self-signed certificate so opportunistic STARTTLS works
+  immediately. All TLS listeners are best-effort (a bind/cert failure is
+  surfaced in the health panel but never blocks outbound/local mail). The health
+  row now shows which secure listeners are active (`STARTTLS`, `submission:587`,
+  `IMAPS:993`).
 - **Clean reader view for received mail.** The message page now shows a decoded
   view — From / To / Cc / Subject / Date summary plus the rendered `text/plain`
   body (or sanitised HTML when that's all a message carries) — instead of raw
