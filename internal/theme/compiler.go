@@ -85,90 +85,97 @@ func CompileCSS(t Tokens) (string, error) {
 	radLg := safeDimension(t.RadiusLg)
 
 	var sb strings.Builder
-	writeVar := func(name, val string) {
-		if val != "" {
-			fmt.Fprintf(&sb, "--vp-%s:%s;", name, val)
+
+	// emit writes one fully-themed context. Crucially it sets THREE families of
+	// variables from the same token set so a deployed theme restyles the entire
+	// site — not just the Pico colour bridge:
+	//   1. --vp-*   : the design tokens used by per-theme component CSS.
+	//   2. --pico-* : the Pico base theme (admin, signup and Pico-based pages).
+	//   3. bare     : the names the PUBLIC stylesheet (article.css) actually
+	//                 reads — --bg/--surface/--text/--muted/--accent/--accent2/
+	//                 --hi/--green/--font/--mono/--max-w/--radius/--radius2 — so
+	//                 the public palette, typography, reading measure and corner
+	//                 radius all change on a theme switch (theme.css is loaded
+	//                 last, after article.css, so these overrides win).
+	emit := func(bg, surface, text, muted, accent, accent2, hi, green string) {
+		set := func(name, val string) {
+			if val != "" {
+				fmt.Fprintf(&sb, "%s:%s;", name, val)
+			}
 		}
+		// 1. --vp-* design tokens
+		set("--vp-bg", bg)
+		set("--vp-surface", surface)
+		set("--vp-text", text)
+		set("--vp-muted", muted)
+		set("--vp-accent", accent)
+		set("--vp-accent2", accent2)
+		set("--vp-hi", hi)
+		set("--vp-green", green)
+		set("--vp-font-sans", fontSans)
+		set("--vp-font-mono", fontMono)
+		set("--vp-font-size-base", fontSize)
+		set("--vp-line-height", lineH)
+		set("--vp-max-width", maxW)
+		set("--vp-radius-sm", radSm)
+		set("--vp-radius-lg", radLg)
+
+		// 2. Pico bridge
+		set("--pico-background-color", bg)
+		set("--pico-card-background-color", surface)
+		set("--pico-card-sectioning-background-color", surface)
+		set("--pico-code-background-color", surface)
+		if text != "" {
+			fmt.Fprintf(&sb, "--pico-color:%s;--pico-h1-color:%s;--pico-h2-color:%s;--pico-h3-color:%s;", text, text, text, text)
+		}
+		if muted != "" {
+			fmt.Fprintf(&sb, "--pico-muted-color:%s;--pico-muted-border-color:%s;", muted, muted)
+		}
+		if accent != "" {
+			fmt.Fprintf(&sb, "--pico-primary:%s;--pico-primary-hover:%s;--pico-a-color:%s;", accent, accent, accent)
+		}
+		if accent2 != "" {
+			fmt.Fprintf(&sb, "--vayu-accent:%s;--vayu-accent-hover:%s;", accent2, accent2)
+		}
+
+		// 3. Public-site variable bridge (article.css and friends)
+		set("--bg", bg)
+		set("--surface", surface)
+		set("--surface2", surface)
+		set("--text", text)
+		set("--muted", muted)
+		set("--accent", accent)
+		set("--accent2", accent2)
+		set("--hi", hi)
+		set("--green", green)
+		if muted != "" {
+			fmt.Fprintf(&sb, "--border:color-mix(in srgb,%s 22%%,transparent);--border2:color-mix(in srgb,%s 40%%,transparent);", muted, muted)
+		}
+		set("--font", fontSans)
+		set("--mono", fontMono)
+		set("--max-w", maxW)
+		set("--radius", radSm)
+		set("--radius2", radLg)
 	}
 
-	// ── Dark-mode root ─────────────────────────────────────────────────────
+	// Default (dark) under :root; light under the system media query — matching
+	// how the public stylesheet (article.css) is authored.
 	sb.WriteString(":root{")
-	writeVar("bg", t.BgDark)
-	writeVar("surface", t.SurfaceDark)
-	writeVar("text", t.TextDark)
-	writeVar("muted", t.MutedDark)
-	writeVar("accent", t.AccentDark)
-	writeVar("accent2", t.Accent2Dark)
-	writeVar("hi", t.HiDark)
-	writeVar("green", t.GreenDark)
-	if fontSans != "" {
-		fmt.Fprintf(&sb, "--vp-font-sans:%s;", fontSans)
-	}
-	if fontMono != "" {
-		fmt.Fprintf(&sb, "--vp-font-mono:%s;", fontMono)
-	}
-	writeVar("font-size-base", fontSize)
-	writeVar("line-height", lineH)
-	writeVar("max-width", maxW)
-	writeVar("radius-sm", radSm)
-	writeVar("radius-lg", radLg)
-
-	// ── Pico bridge (dark) — maps --vp-* to --pico-* for site-wide effect ──
-	writePicoDark := func() {
-		if t.BgDark != "" {
-			fmt.Fprintf(&sb, "--pico-background-color:%s;", t.BgDark)
-		}
-		if t.SurfaceDark != "" {
-			fmt.Fprintf(&sb, "--pico-card-background-color:%s;", t.SurfaceDark)
-		}
-		if t.TextDark != "" {
-			fmt.Fprintf(&sb, "--pico-color:%s;--pico-h1-color:%s;--pico-h2-color:%s;", t.TextDark, t.TextDark, t.TextDark)
-		}
-		if t.MutedDark != "" {
-			fmt.Fprintf(&sb, "--pico-muted-color:%s;--pico-muted-border-color:%s;", t.MutedDark, t.MutedDark)
-		}
-		if t.AccentDark != "" {
-			fmt.Fprintf(&sb, "--pico-primary:%s;--pico-primary-hover:%s;--vayu-accent:%s;--vayu-accent-hover:%s;",
-				t.AccentDark, t.AccentDark, t.Accent2Dark, t.Accent2Dark)
-		}
-		if t.SurfaceDark != "" {
-			fmt.Fprintf(&sb, "--pico-code-background-color:%s;", t.SurfaceDark)
-		}
-	}
-	writePicoDark()
+	emit(t.BgDark, t.SurfaceDark, t.TextDark, t.MutedDark, t.AccentDark, t.Accent2Dark, t.HiDark, t.GreenDark)
 	sb.WriteString("}")
-
-	// ── Light-mode override ───────────────────────────────────────────────
 	sb.WriteString("@media(prefers-color-scheme:light){:root{")
-	writeVar("bg", t.BgLight)
-	writeVar("surface", t.SurfaceLight)
-	writeVar("text", t.TextLight)
-	writeVar("muted", t.MutedLight)
-	writeVar("accent", t.AccentLight)
-	writeVar("accent2", t.Accent2Light)
-	writeVar("hi", t.HiLight)
-
-	// Pico bridge (light)
-	if t.BgLight != "" {
-		fmt.Fprintf(&sb, "--pico-background-color:%s;", t.BgLight)
-	}
-	if t.SurfaceLight != "" {
-		fmt.Fprintf(&sb, "--pico-card-background-color:%s;", t.SurfaceLight)
-	}
-	if t.TextLight != "" {
-		fmt.Fprintf(&sb, "--pico-color:%s;--pico-h1-color:%s;--pico-h2-color:%s;", t.TextLight, t.TextLight, t.TextLight)
-	}
-	if t.MutedLight != "" {
-		fmt.Fprintf(&sb, "--pico-muted-color:%s;--pico-muted-border-color:%s;", t.MutedLight, t.MutedLight)
-	}
-	if t.AccentLight != "" {
-		fmt.Fprintf(&sb, "--pico-primary:%s;--pico-primary-hover:%s;--vayu-accent:%s;--vayu-accent-hover:%s;",
-			t.AccentLight, t.AccentLight, t.Accent2Light, t.Accent2Light)
-	}
-	if t.SurfaceLight != "" {
-		fmt.Fprintf(&sb, "--pico-card-sectioning-background-color:%s;", t.SurfaceLight)
-	}
+	emit(t.BgLight, t.SurfaceLight, t.TextLight, t.MutedLight, t.AccentLight, t.Accent2Light, t.HiLight, t.GreenDark)
 	sb.WriteString("}}")
+
+	// Manual sun/moon toggle: an explicit [data-theme] / [data-color-scheme]
+	// choice overrides the media query so the WHOLE site (public + Pico) flips,
+	// not just Pico pages.
+	sb.WriteString(`:root[data-theme="dark"],:root[data-color-scheme="dark"]{`)
+	emit(t.BgDark, t.SurfaceDark, t.TextDark, t.MutedDark, t.AccentDark, t.Accent2Dark, t.HiDark, t.GreenDark)
+	sb.WriteString("}")
+	sb.WriteString(`:root[data-theme="light"],:root[data-color-scheme="light"]{`)
+	emit(t.BgLight, t.SurfaceLight, t.TextLight, t.MutedLight, t.AccentLight, t.Accent2Light, t.HiLight, t.GreenDark)
+	sb.WriteString("}")
 
 	// Per-preset / per-site custom CSS is appended verbatim after the token
 	// blocks so presets like Gale and Zephyr can ship their own layout rules.
