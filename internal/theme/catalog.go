@@ -47,6 +47,7 @@ const (
 	CatNewsletter = "Newsletter"
 	CatBusiness   = "Business"
 	CatCreative   = "Creative"
+	CatCommunity  = "Community"
 )
 
 // catalogMeta maps a preset Name to its store metadata. Names must match the
@@ -226,6 +227,12 @@ var catalogMeta = map[string]ThemeMeta{
 		Tags:        []string{"bold", "creative", "portfolio", "animated", "layout"},
 		Category:    CatCreative,
 	},
+	"Agora": {
+		Tagline:     "Community & discussion, dual sidebars.",
+		Description: "A clean, forum-inspired community and discussion theme on a neutral canvas with a friendly indigo-violet accent. Ships a complete component kit: a three-column layout with dual toggleable sidebars, a customizable hero (six image positions and three actions), homepage feed tabs (latest/featured/updated/categories) with four switchable view styles (list/compact/cards/articles), post cards with a comment-count badge and an inline comments drawer, topic/category sections and a tag-cards template, default and full-width post templates, membership pages (sign in/up, account, tiers), an authors page, a blank landing template, and a footer with a light/dark toggle.",
+		Tags:        []string{"community", "discussion", "forum", "sidebars", "layout"},
+		Category:    CatCommunity,
+	},
 }
 
 // Meta returns the store metadata for a theme by name. When no explicit entry
@@ -262,7 +269,7 @@ func Store() []StoreEntry {
 // Categories returns the distinct category labels present in the store, in a
 // stable, curated order (categories not present in the catalogue are omitted).
 func Categories() []string {
-	order := []string{CatDark, CatLight, CatMinimal, CatReading, CatEditorial, CatNewsletter, CatBusiness, CatCreative, CatVibrant, CatMono}
+	order := []string{CatDark, CatLight, CatMinimal, CatReading, CatEditorial, CatNewsletter, CatBusiness, CatCommunity, CatCreative, CatVibrant, CatMono}
 	present := map[string]bool{}
 	for _, e := range Store() {
 		present[e.Meta.Category] = true

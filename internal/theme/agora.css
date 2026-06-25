@@ -1,0 +1,248 @@
+/* ============================================================================
+   Agora — a community & discussion theme for VayuPress.
+
+   A forum-inspired publication theme built around a three-column layout with
+   dual sidebars, topic-based organization, switchable feeds, and conversation
+   surfaced right in the list (comment counts + an inline comments drawer).
+   Every component is CSP-safe and same-origin (served via /theme.css,
+   style-src 'self'), driven by the VayuPress design tokens (--vp-*). No
+   external fonts, no CDNs, no JS required.
+
+   Feature  ->  Agora class / hook
+   ----------------------------------------------------------------------------
+   Three-column layout, dual sidebars  -> .agora-layout(--no-left|--no-right),
+     (each toggleable)                     .agora-main, .agora-aside-left/-right
+   Left sidebar (nav, categories,
+     authors, secondary nav)            -> .agora-side-nav / -cats / -authors
+   Right sidebar (author, about+sub,
+     follow, recommendations, cta)      -> .agora-side-author / .agora-about /
+                                            .agora-follow / .agora-recs / .agora-side-cta
+   Hero (6 image positions + 3 actions)-> .agora-hero--img-{none|top|bottom|left|
+                                            right|background}, __form, __cta
+   Feed tabs (latest/featured/updated/
+     categories) + view switch          -> .agora-feedtabs / .agora-feedtab,
+                                            .agora-viewswitch
+   Feed view styles                     -> .agora-feed--{list|compact|cards|articles}
+   Post card (+ comment count badge)    -> .agora-card / .agora-card__comments
+   Inline comments drawer               -> .agora-drawer
+   Topic/category sections + tag cards  -> .agora-topics / .agora-topic /
+                                            .agora-tagcards / .agora-tagcard
+   Post templates (default | full)      -> .agora-post / .agora-post--full
+   Membership (sign in/up/account/tiers)-> .agora-auth / .agora-tiers / .agora-tier
+   Blank landing template               -> .agora-blank
+   Authors page                         -> .agora-authors / .agora-authorcard
+   Header + footer + theme toggle       -> .agora-header / .agora-footer / .agora-toggle
+   Syntax highlight + share + socials   -> .agora-code / .agora-share / .agora-social
+   ============================================================================ */
+
+:root{
+  --agora-display:var(--vp-font-sans,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif);
+  --agora-body:var(--vp-font-sans,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif);
+}
+
+/* ── Shared primitives ──────────────────────────────────────────────────── */
+.agora-eyebrow{display:inline-block;font-size:.72rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--vp-accent)}
+.agora-btn{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;min-height:44px;min-width:44px;padding:.65rem 1.3rem;font-family:var(--agora-body);font-size:.9rem;font-weight:650;text-decoration:none;border:1.5px solid transparent;border-radius:var(--vp-radius-lg,.75rem);cursor:pointer;transition:background .15s,color .15s,transform .15s}
+.agora-btn:hover{transform:translateY(-1px)}
+.agora-btn--primary{background:var(--vp-accent);color:#fff}
+.agora-btn--primary:hover{background:var(--vp-accent2)}
+.agora-btn--ghost{border-color:color-mix(in srgb,var(--vp-muted) 35%,transparent);color:var(--vp-text);background:transparent}
+.agora-btn--ghost:hover{border-color:var(--vp-accent);color:var(--vp-accent)}
+.agora-input{flex:1;min-height:44px;padding:.65rem 1.05rem;font-size:.9rem;border-radius:var(--vp-radius-lg,.75rem);border:1.5px solid color-mix(in srgb,var(--vp-muted) 35%,transparent);background:var(--vp-bg);color:var(--vp-text)}
+.agora-input:focus{outline:2px solid var(--vp-accent);outline-offset:1px;border-color:var(--vp-accent)}
+.agora-chip{display:inline-flex;align-items:center;gap:.35rem;min-height:30px;padding:.2rem .7rem;border-radius:2rem;font-size:.78rem;font-weight:600;text-decoration:none;color:var(--vp-text);background:color-mix(in srgb,var(--vp-muted) 12%,transparent);transition:background .15s,color .15s}
+.agora-chip:hover{background:var(--vp-accent);color:#fff}
+
+/* ── Header ─────────────────────────────────────────────────────────────── */
+.agora-header{display:flex;align-items:center;justify-content:space-between;gap:1.25rem;padding:.9rem 0;border-bottom:1px solid color-mix(in srgb,var(--vp-muted) 16%,transparent)}
+.agora-header__brand{font-family:var(--agora-display);font-size:1.2rem;font-weight:750;letter-spacing:-.01em;color:var(--vp-text);text-decoration:none}
+.agora-header__actions{display:flex;align-items:center;gap:.6rem}
+.agora-search{display:grid;place-items:center;width:40px;height:40px;border-radius:50%;border:0;background:transparent;color:var(--vp-muted);cursor:pointer}
+.agora-search:hover{color:var(--vp-accent);background:color-mix(in srgb,var(--vp-accent) 10%,transparent)}
+
+/* ── Three-column layout with dual sidebars ─────────────────────────────── */
+.agora-layout{display:grid;grid-template-columns:240px minmax(0,1fr) 300px;gap:2.5rem;align-items:start}
+.agora-layout--no-left{grid-template-columns:minmax(0,1fr) 300px}
+.agora-layout--no-right{grid-template-columns:240px minmax(0,1fr)}
+.agora-layout--no-left.agora-layout--no-right{grid-template-columns:minmax(0,1fr)}
+.agora-main{min-width:0}
+.agora-aside-left,.agora-aside-right{position:sticky;top:1.5rem;display:flex;flex-direction:column;gap:1.75rem;font-size:.92rem}
+
+/* ── Sidebar modules (shared) ───────────────────────────────────────────── */
+.agora-module__title{font-size:.72rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--vp-muted);margin:0 0 .85rem}
+.agora-side-nav,.agora-side-cats,.agora-side-authors{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:.15rem}
+.agora-side-nav a,.agora-side-cats a,.agora-side-authors a{display:flex;align-items:center;gap:.6rem;padding:.5rem .65rem;border-radius:var(--vp-radius-lg,.6rem);font-weight:550;color:var(--vp-text);text-decoration:none;transition:background .15s,color .15s}
+.agora-side-nav a:hover,.agora-side-cats a:hover,.agora-side-authors a:hover{background:color-mix(in srgb,var(--vp-accent) 10%,transparent);color:var(--vp-accent)}
+.agora-side-cats a{justify-content:space-between}
+.agora-side-cats__count{font-size:.76rem;color:var(--vp-muted)}
+.agora-side-authors__avatar{width:26px;height:26px;border-radius:50%;object-fit:cover}
+/* Right-sidebar: current author */
+.agora-side-author{display:flex;flex-direction:column;gap:.5rem;padding:1.25rem;border-radius:var(--vp-radius-lg,1rem);background:var(--vp-surface);border:1px solid color-mix(in srgb,var(--vp-muted) 14%,transparent)}
+.agora-side-author__avatar{width:54px;height:54px;border-radius:50%;object-fit:cover}
+.agora-side-author__name{font-weight:700;color:var(--vp-text)}
+/* Right-sidebar: about + subscribe */
+.agora-about{display:flex;flex-direction:column;gap:.65rem;padding:1.25rem;border-radius:var(--vp-radius-lg,1rem);background:color-mix(in srgb,var(--vp-accent) 8%,transparent)}
+.agora-about__icon{width:44px;height:44px;border-radius:var(--vp-radius-lg,.6rem);object-fit:cover}
+.agora-about__name{font-family:var(--agora-display);font-weight:750;color:var(--vp-text)}
+.agora-about__text{font-size:.86rem;line-height:1.5;color:var(--vp-muted)}
+.agora-about__form{display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.25rem}
+/* Right-sidebar: follow / recommendations / cta */
+.agora-follow{display:flex;flex-wrap:wrap;gap:.5rem}
+.agora-recs{display:flex;flex-direction:column;gap:.75rem}
+.agora-recs a{display:block;font-weight:600;color:var(--vp-text);text-decoration:none}
+.agora-recs a:hover{color:var(--vp-accent)}
+.agora-recs__url{display:block;font-size:.78rem;color:var(--vp-muted)}
+.agora-side-cta{padding:1.25rem;border-radius:var(--vp-radius-lg,1rem);background:var(--vp-surface);border:1px solid color-mix(in srgb,var(--vp-accent) 30%,transparent)}
+
+/* ── Hero (6 image positions + 3 actions) ───────────────────────────────── */
+.agora-hero{margin-bottom:2.5rem}
+.agora-hero__title{font-family:var(--agora-display);font-weight:800;letter-spacing:-.02em;font-size:clamp(1.9rem,4vw,2.8rem);line-height:1.1;color:var(--vp-text);margin:0 0 .85rem}
+.agora-hero__sub{font-size:1.1rem;line-height:1.55;color:var(--vp-muted);margin:0 0 1.5rem}
+.agora-hero__media{width:100%;object-fit:cover;border-radius:var(--vp-radius-lg,1rem)}
+.agora-hero__form{display:flex;gap:.5rem;max-width:440px;flex-wrap:wrap}
+.agora-hero__cta{display:flex;gap:.6rem;flex-wrap:wrap}
+/* image positions */
+.agora-hero--img-none{text-align:center}
+.agora-hero--img-none .agora-hero__form,.agora-hero--img-none .agora-hero__cta{justify-content:center}
+.agora-hero--img-top{text-align:center;display:flex;flex-direction:column-reverse;gap:1.5rem}
+.agora-hero--img-bottom{text-align:center;display:flex;flex-direction:column;gap:1.5rem}
+.agora-hero--img-left{display:grid;grid-template-columns:1fr 1fr;gap:2rem;align-items:center;direction:rtl}
+.agora-hero--img-left>*{direction:ltr}
+.agora-hero--img-right{display:grid;grid-template-columns:1fr 1fr;gap:2rem;align-items:center}
+.agora-hero--img-background{position:relative;text-align:center;padding:4rem 2rem;color:#fff;border-radius:var(--vp-radius-lg,1rem);overflow:hidden}
+.agora-hero--img-background .agora-hero__media{position:absolute;inset:0;height:100%;z-index:0;border-radius:0}
+.agora-hero--img-background::after{content:"";position:absolute;inset:0;background:rgba(0,0,0,.5);z-index:1}
+.agora-hero--img-background>*{position:relative;z-index:2}
+.agora-hero--img-background .agora-hero__title,.agora-hero--img-background .agora-hero__sub{color:#fff}
+
+/* ── Feed tabs + view switch ────────────────────────────────────────────── */
+.agora-feedbar{display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:1.5rem;border-bottom:1px solid color-mix(in srgb,var(--vp-muted) 16%,transparent)}
+.agora-feedtabs{display:flex;gap:.25rem;list-style:none;margin:0;padding:0}
+.agora-feedtab{padding:.6rem .9rem;font-size:.88rem;font-weight:650;color:var(--vp-muted);text-decoration:none;border-bottom:2px solid transparent;cursor:pointer}
+.agora-feedtab:hover{color:var(--vp-text)}
+.agora-feedtab[aria-selected="true"]{color:var(--vp-accent);border-bottom-color:var(--vp-accent)}
+.agora-viewswitch{display:inline-flex;gap:.15rem;padding:.2rem;border-radius:var(--vp-radius-lg,.6rem);background:color-mix(in srgb,var(--vp-muted) 12%,transparent)}
+.agora-viewswitch button{display:grid;place-items:center;width:34px;height:34px;border:0;border-radius:.4rem;background:transparent;color:var(--vp-muted);cursor:pointer}
+.agora-viewswitch button[aria-pressed="true"]{background:var(--vp-surface);color:var(--vp-accent)}
+
+/* ── Feeds: list / compact / cards / articles ───────────────────────────── */
+.agora-feed--list,.agora-feed--articles{display:flex;flex-direction:column}
+.agora-feed--compact{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:1rem}
+.agora-feed--cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1.75rem}
+
+/* ── Post card (with comment-count badge) ───────────────────────────────── */
+.agora-card{display:flex;flex-direction:column;gap:.6rem;padding:1.4rem 0;border-bottom:1px solid color-mix(in srgb,var(--vp-muted) 14%,transparent)}
+.agora-card__media{width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:var(--vp-radius-lg,.875rem)}
+.agora-card__tags{display:flex;flex-wrap:wrap;gap:.35rem}
+.agora-card__title{font-family:var(--agora-display);font-weight:750;letter-spacing:-.01em;font-size:1.25rem;line-height:1.25;margin:0}
+.agora-card__title a{color:var(--vp-text);text-decoration:none}
+.agora-card__title a:hover{color:var(--vp-accent)}
+.agora-card__excerpt{font-size:.92rem;line-height:1.55;color:var(--vp-muted)}
+.agora-card__meta{display:flex;flex-wrap:wrap;align-items:center;gap:.85rem;font-size:.8rem;color:var(--vp-muted)}
+.agora-card__author{display:inline-flex;align-items:center;gap:.4rem}
+.agora-card__avatar{width:24px;height:24px;border-radius:50%;object-fit:cover}
+/* The signature: a comment-count badge that opens the inline drawer */
+.agora-card__comments{display:inline-flex;align-items:center;gap:.35rem;margin-left:auto;padding:.3rem .7rem;border-radius:2rem;font-weight:650;color:var(--vp-accent);background:color-mix(in srgb,var(--vp-accent) 12%,transparent);text-decoration:none;cursor:pointer}
+.agora-card__comments:hover{background:var(--vp-accent);color:#fff}
+/* Feed-style adaptations */
+.agora-feed--compact .agora-card{padding:1rem;border:1px solid color-mix(in srgb,var(--vp-muted) 14%,transparent);border-radius:var(--vp-radius-lg,.875rem)}
+.agora-feed--compact .agora-card__media,.agora-feed--compact .agora-card__excerpt{display:none}
+.agora-feed--cards .agora-card{padding:0;border:1px solid color-mix(in srgb,var(--vp-muted) 14%,transparent);border-radius:var(--vp-radius-lg,1rem);overflow:hidden}
+.agora-feed--cards .agora-card__media{border-radius:0}
+.agora-feed--cards .agora-card__tags,.agora-feed--cards .agora-card__title,.agora-feed--cards .agora-card__excerpt,.agora-feed--cards .agora-card__meta{padding-left:1.25rem;padding-right:1.25rem}
+.agora-feed--cards .agora-card__meta{padding-bottom:1.25rem}
+.agora-feed--list .agora-card__media{max-height:220px}
+
+/* ── Inline comments drawer ─────────────────────────────────────────────── */
+.agora-drawer{position:fixed;top:0;right:0;bottom:0;width:min(440px,92vw);z-index:200;display:flex;flex-direction:column;padding:1.5rem;background:var(--vp-bg);border-left:1px solid color-mix(in srgb,var(--vp-muted) 18%,transparent);box-shadow:-12px 0 36px rgba(0,0,0,.22);transform:translateX(100%);transition:transform .25s ease}
+.agora-drawer[data-open="true"],.agora-drawer:target{transform:translateX(0)}
+.agora-drawer__head{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem}
+.agora-drawer__title{font-family:var(--agora-display);font-weight:700;font-size:1.1rem;color:var(--vp-text);margin:0}
+.agora-drawer__body{flex:1;overflow-y:auto}
+
+/* ── Topic / category sections + tag cards ──────────────────────────────── */
+.agora-topics{display:flex;flex-direction:column;gap:2.5rem}
+.agora-topic__head{display:flex;align-items:baseline;justify-content:space-between;gap:1rem;margin-bottom:1rem;padding-bottom:.5rem;border-bottom:2px solid color-mix(in srgb,var(--vp-accent) 28%,transparent)}
+.agora-topic__name{font-family:var(--agora-display);font-weight:750;font-size:1.3rem;color:var(--vp-text);margin:0}
+.agora-topic__desc{font-size:.86rem;color:var(--vp-muted)}
+.agora-topic__viewall{font-size:.82rem;font-weight:650;color:var(--vp-accent);text-decoration:none;white-space:nowrap}
+.agora-tagcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:1rem}
+.agora-tagcard{position:relative;display:flex;flex-direction:column;justify-content:flex-end;min-height:130px;padding:1.1rem;border-radius:var(--vp-radius-lg,1rem);overflow:hidden;color:#fff;text-decoration:none;background:var(--vp-accent)}
+.agora-tagcard__cover{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.5}
+.agora-tagcard__name{position:relative;font-family:var(--agora-display);font-weight:750;font-size:1.1rem;margin:0}
+.agora-tagcard__count{position:relative;font-size:.78rem;opacity:.9}
+
+/* ── Post templates (default / full-width) + comments ───────────────────── */
+.agora-post{min-width:0}
+.agora-post--full{max-width:min(100%,52rem);margin:0 auto}
+.agora-post__heading{font-family:var(--agora-display);font-weight:800;letter-spacing:-.02em;font-size:clamp(1.9rem,4vw,2.7rem);line-height:1.14;color:var(--vp-text)}
+.agora-post__feature{width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:var(--vp-radius-lg,1rem);margin-bottom:2rem}
+.agora-comments{margin-top:3rem;padding-top:2rem;border-top:1px solid color-mix(in srgb,var(--vp-muted) 16%,transparent)}
+.agora-comments__title{font-family:var(--agora-display);font-weight:700;font-size:1.2rem;color:var(--vp-text);margin:0 0 1.25rem}
+.agora-share{display:flex;gap:.6rem;align-items:center;margin:2rem 0}
+.agora-share a{display:grid;place-items:center;width:40px;height:40px;border-radius:50%;color:var(--vp-muted);background:color-mix(in srgb,var(--vp-muted) 12%,transparent);text-decoration:none;transition:color .15s,background .15s}
+.agora-share a:hover{color:#fff;background:var(--vp-accent)}
+
+/* ── Membership: sign in/up, account, tiers ─────────────────────────────── */
+.agora-auth{max-width:420px;margin:3rem auto;padding:2.25rem;border-radius:var(--vp-radius-lg,1rem);background:var(--vp-surface);border:1px solid color-mix(in srgb,var(--vp-muted) 16%,transparent);text-align:center}
+.agora-auth__title{font-family:var(--agora-display);font-weight:750;font-size:1.6rem;color:var(--vp-text);margin:0 0 .5rem}
+.agora-auth__form{display:flex;flex-direction:column;gap:.75rem;margin-top:1.25rem}
+.agora-tiers{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:1.5rem;align-items:start}
+.agora-tier{display:flex;flex-direction:column;gap:.5rem;padding:1.75rem;border-radius:var(--vp-radius-lg,1rem);background:var(--vp-surface);border:1.5px solid color-mix(in srgb,var(--vp-muted) 18%,transparent)}
+.agora-tier--featured{border-color:var(--vp-accent);box-shadow:0 0 0 1px var(--vp-accent)}
+.agora-tier__name{font-size:.95rem;font-weight:700;color:var(--vp-text)}
+.agora-tier__price{font-family:var(--agora-display);font-weight:800;font-size:2.2rem;color:var(--vp-text)}
+.agora-tier__price span{font-family:var(--agora-body);font-size:.85rem;font-weight:500;color:var(--vp-muted)}
+.agora-tier__list{list-style:none;margin:.85rem 0;padding:0;display:flex;flex-direction:column;gap:.55rem}
+.agora-tier__list li{display:flex;gap:.5rem;font-size:.88rem;color:var(--vp-muted)}
+.agora-tier__list li::before{content:"\2713";color:var(--vp-accent);font-weight:700}
+
+/* ── Authors page ───────────────────────────────────────────────────────── */
+.agora-authors{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:1.5rem}
+.agora-authorcard{display:flex;flex-direction:column;align-items:center;text-align:center;gap:.5rem;padding:1.75rem;border-radius:var(--vp-radius-lg,1rem);background:var(--vp-surface);border:1px solid color-mix(in srgb,var(--vp-muted) 14%,transparent);text-decoration:none}
+.agora-authorcard__avatar{width:84px;height:84px;border-radius:50%;object-fit:cover}
+.agora-authorcard__name{font-family:var(--agora-display);font-weight:700;font-size:1.1rem;color:var(--vp-text)}
+.agora-authorcard__count{font-size:.78rem;color:var(--vp-muted)}
+
+/* ── Blank landing template ─────────────────────────────────────────────── */
+.agora-blank{max-width:var(--vp-max-width,44rem);margin:0 auto;padding:3rem 0}
+
+/* ── Footer + theme toggle ──────────────────────────────────────────────── */
+.agora-footer{font-size:.82rem;color:var(--vp-muted);padding-top:1.5rem;border-top:1px solid color-mix(in srgb,var(--vp-muted) 16%,transparent)}
+.agora-toggle{display:inline-flex;gap:.15rem;padding:.25rem;border-radius:2rem;background:color-mix(in srgb,var(--vp-muted) 14%,transparent)}
+.agora-toggle button{display:grid;place-items:center;width:32px;height:32px;border:0;border-radius:50%;background:transparent;color:var(--vp-muted);cursor:pointer}
+.agora-toggle button[aria-pressed="true"]{background:var(--vp-surface);color:var(--vp-accent)}
+
+/* ── Social links + syntax-highlight code block ─────────────────────────── */
+.agora-social{display:flex;flex-wrap:wrap;gap:.5rem}
+.agora-social a{display:grid;place-items:center;width:36px;height:36px;border-radius:50%;color:var(--vp-muted);background:color-mix(in srgb,var(--vp-muted) 12%,transparent);text-decoration:none}
+.agora-social a:hover{color:#fff;background:var(--vp-accent)}
+.agora-code{padding:1.25rem 1.5rem;border-radius:var(--vp-radius-lg,.75rem);background:var(--vp-surface);border:1px solid color-mix(in srgb,var(--vp-muted) 16%,transparent);overflow-x:auto;font-family:var(--vp-font-mono,ui-monospace,monospace);font-size:.86rem;line-height:1.6;color:var(--vp-text)}
+
+/* ── Pagination ─────────────────────────────────────────────────────────── */
+.agora-pagination{display:flex;align-items:center;justify-content:center;gap:.75rem;margin:3rem 0}
+.agora-pagination a,.agora-pagination span{min-height:44px;min-width:44px;display:inline-flex;align-items:center;justify-content:center;padding:.5rem 1rem;border-radius:var(--vp-radius-lg,.75rem);font-weight:650;text-decoration:none;color:var(--vp-text);border:1.5px solid color-mix(in srgb,var(--vp-muted) 25%,transparent)}
+.agora-pagination a:hover{border-color:var(--vp-accent);color:var(--vp-accent)}
+
+/* ── Responsive (collapse sidebars) ─────────────────────────────────────── */
+@media(max-width:1100px){
+  .agora-layout,.agora-layout--no-left,.agora-layout--no-right{grid-template-columns:240px minmax(0,1fr)}
+  .agora-aside-right{display:none}
+}
+@media(max-width:768px){
+  .agora-layout,.agora-layout--no-left,.agora-layout--no-right{grid-template-columns:1fr}
+  .agora-aside-left{position:static;display:none}
+  .agora-hero--img-left,.agora-hero--img-right{grid-template-columns:1fr;direction:ltr}
+  .agora-feed--compact,.agora-feed--cards{grid-template-columns:1fr}
+}
+@media(max-width:480px){
+  .agora-hero__form,.agora-hero__cta,.agora-auth__form{flex-direction:column}
+  .agora-tiers{grid-template-columns:1fr}
+}
+
+/* ── Reduced motion ─────────────────────────────────────────────────────── */
+@media(prefers-reduced-motion:reduce){
+  .agora-btn,.agora-chip,.agora-card__comments{transition:none}
+  .agora-btn:hover{transform:none}
+  .agora-drawer{transition:none}
+}
