@@ -467,6 +467,16 @@ func (a *App) handleVayuOSMail(w http.ResponseWriter, r *http.Request) {
 		body.WriteString(`<tr><td>` + html.EscapeString(rh.Type) + `</td><td>` + badge + `</td><td class="mono text-sm vm-break">` + html.EscapeString(rh.Found) + `</td></tr>`)
 	}
 	body.WriteString(`</tbody></table></div></div>`)
+	// Deliverability self-check — the things that most often send mail to spam.
+	body.WriteString(`<div class="card"><div class="card-title">Deliverability self-check</div><p class="muted text-sm">Why mail may be marked as spam. Fix any ✗ rows below.</p><div class="table-wrap"><table class="table"><thead><tr><th>Check</th><th>Status</th><th>Detail</th></tr></thead><tbody>`)
+	for _, rh := range a.vayuMail.Deliverability(r.Context()) {
+		badge := `<span class="badge badge--ok">ok</span>`
+		if !rh.OK {
+			badge = `<span class="badge badge--warn">action needed</span>`
+		}
+		body.WriteString(`<tr><td>` + html.EscapeString(rh.Type) + `</td><td>` + badge + `</td><td class="muted text-sm vm-break">` + html.EscapeString(rh.Message) + `</td></tr>`)
+	}
+	body.WriteString(`</tbody></table></div></div>`)
 	writeOSHTML(w, adminOSLayout(nonce, "VayuMail", "vayuos", cfg, htmpl.HTML(body.String())))
 }
 
@@ -614,9 +624,9 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
   <button class="btn" type="submit">Search</button>
 </form>`)
 	body.WriteString(folderTabs(user, folder))
-	body.WriteString(`<div class="table-wrap"><table class="table"><thead><tr><th>From</th><th>Subject</th><th>Date</th></tr></thead><tbody>`)
+	body.WriteString(`<div class="table-wrap"><table class="table"><thead><tr><th>From</th><th>Subject</th><th>Date</th><th></th></tr></thead><tbody>`)
 	if len(msgs) == 0 {
-		body.WriteString(`<tr><td colspan="3" class="muted">No messages in ` + html.EscapeString(folder) + `.</td></tr>`)
+		body.WriteString(`<tr><td colspan="4" class="muted">No messages in ` + html.EscapeString(folder) + `.</td></tr>`)
 	}
 	for _, m := range msgs {
 		subj := m.Subject
@@ -627,14 +637,29 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 		if strings.EqualFold(folder, "Sent") || strings.EqualFold(folder, "Drafts") {
 			who = "→ " + m.To
 		}
+		// Drafts reopen in the composer; everything else opens the reader view.
 		link := "/os/vayuos/mail/message?user=" + qparam(user) + "&folder=" + qparam(folder) + "&id=" + qparam(m.ID)
-		seen := ""
-		if !m.Seen && strings.EqualFold(folder, "Inbox") {
-			seen = ` <span class="badge badge--ok">new</span>`
+		if strings.EqualFold(folder, "Drafts") {
+			link = "/os/vayuos/mail/compose?draft=1&user=" + qparam(user) + "&id=" + qparam(m.ID)
 		}
-		body.WriteString(`<tr><td class="text-sm">` + html.EscapeString(who) + `</td><td><a href="` + link + `">` + html.EscapeString(subj) + `</a>` + seen + `</td><td class="muted text-sm">` + m.Date.Format("2006-01-02 15:04") + `</td></tr>`)
+		seen := ""
+		tick := ""
+		if strings.EqualFold(folder, "Inbox") {
+			if !m.Seen {
+				seen = ` <span class="badge badge--ok">new</span>`
+			}
+			// Read/unread toggle (a tick when read).
+			mark := "read"
+			label := "Mark read"
+			if m.Seen {
+				mark, label = "unread", "✓ read"
+			}
+			tick = `<button class="btn btn--sm" data-mail-mark-row="` + mark + `" data-user="` + html.EscapeString(user) + `" data-folder="` + html.EscapeString(folder) + `" data-id="` + html.EscapeString(m.ID) + `">` + label + `</button>`
+		}
+		body.WriteString(`<tr><td class="text-sm">` + html.EscapeString(who) + `</td><td><a href="` + link + `">` + html.EscapeString(subj) + `</a>` + seen + `</td><td class="muted text-sm">` + m.Date.Format("2006-01-02 15:04") + `</td><td class="text-sm">` + tick + `</td></tr>`)
 	}
 	body.WriteString(`</tbody></table></div></div>`)
+	body.WriteString(`<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail.js"></script>`)
 	writeOSHTML(w, adminOSLayout(nonce, "Mailbox", "vayuos", cfg, htmpl.HTML(body.String())))
 }
 
@@ -711,6 +736,8 @@ func (a *App) handleVayuOSMessage(w http.ResponseWriter, r *http.Request) {
 	actions := `<div class="vm-actions" data-mail-actions data-user="` + html.EscapeString(user) + `" data-folder="` + html.EscapeString(folder) + `" data-id="` + html.EscapeString(id) + `">`
 	actions += `<a class="btn btn--primary" href="` + replyLink + `">Reply</a>`
 	actions += `<a class="btn" href="` + forwardLink + `">Forward</a>`
+	actions += `<button class="btn" data-mail-mark="read">✓ Mark read</button>`
+	actions += `<button class="btn" data-mail-mark="unread">Mark unread</button>`
 	if !strings.EqualFold(folder, "Junk") {
 		actions += `<button class="btn" data-mail-move="Junk">Mark as Junk</button>`
 	}

@@ -157,6 +157,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.Get("/os/vayuos/mail/compose", a.handleVayuOSCompose)
 		pr.Get("/os/vayuos/mail/accounts", a.handleVayuOSAccounts)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayuos/mail/send", a.handleVayuOSSend)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayuos/mail/draft", a.handleVayuOSDraft)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayuos/mail/message/action", a.handleVayuOSMessageAction)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayuos/mail/accounts/create", a.handleVayuOSAccountCreate)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayuos/mail/accounts/delete", a.handleVayuOSAccountDelete)

@@ -30,17 +30,20 @@
   var compose = document.querySelector('form[data-mail-compose]');
   if (compose) {
     var cStatus = compose.querySelector('[data-c-status]');
-    compose.addEventListener('submit', function (e) {
-      e.preventDefault();
-      var to = val(compose, '[data-c-to]');
-      if (!to) { if (cStatus) cStatus.textContent = 'Add at least one recipient.'; return; }
-      if (cStatus) cStatus.textContent = 'Sending…';
-      postJSON('/os/vayuos/mail/send', {
+    var composeFields = function () {
+      return {
         from: val(compose, '[data-c-from]'),
-        to: to,
+        to: val(compose, '[data-c-to]'),
         subject: val(compose, '[data-c-subject]'),
         body: val(compose, '[data-c-body]'),
-      }).then(function (res) {
+      };
+    };
+    compose.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var f = composeFields();
+      if (!f.to) { if (cStatus) cStatus.textContent = 'Add at least one recipient.'; return; }
+      if (cStatus) cStatus.textContent = 'Sending…';
+      postJSON('/os/vayuos/mail/send', f).then(function (res) {
         if (res.ok) {
           if (cStatus) cStatus.textContent = 'Queued for delivery ✓';
           setTimeout(function () { window.location.href = '/os/vayuos/mail/sent'; }, 700);
@@ -49,6 +52,21 @@
         }
       });
     });
+    var draftBtn = compose.querySelector('[data-c-draft]');
+    if (draftBtn) {
+      draftBtn.addEventListener('click', function () {
+        var f = composeFields();
+        if (cStatus) cStatus.textContent = 'Saving draft…';
+        postJSON('/os/vayuos/mail/draft', f).then(function (res) {
+          if (res.ok) {
+            if (cStatus) cStatus.textContent = 'Saved to Drafts ✓';
+            setTimeout(function () { window.location.href = '/os/vayuos/mail/inbox?user=' + encodeURIComponent((f.from.match(/[^<@\s]+(?=@)/) || [''])[0]) + '&folder=Drafts'; }, 700);
+          } else if (cStatus) {
+            cStatus.textContent = 'Draft failed: ' + ((res.body && res.body.message) || res.status);
+          }
+        });
+      });
+    }
   }
 
   // ── Create mail account ──────────────────────────────────────────────────────
@@ -139,6 +157,16 @@
       });
     });
 
+    actions.querySelectorAll('[data-mail-mark]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var mark = btn.getAttribute('data-mail-mark');
+        postJSON('/os/vayuos/mail/message/action', { user: user, id: id, folder: folder, mark: mark }).then(function (res) {
+          if (res.ok) window.location.href = backFolder(folder);
+          else window.alert('Mark failed: ' + ((res.body && res.body.message) || res.status));
+        });
+      });
+    });
+
     var del = actions.querySelector('[data-mail-delete]');
     if (del) {
       del.addEventListener('click', function () {
@@ -150,6 +178,21 @@
       });
     }
   }
+  // ── Mailbox list: per-row read/unread toggle ─────────────────────────────────
+  document.querySelectorAll('[data-mail-mark-row]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      postJSON('/os/vayuos/mail/message/action', {
+        user: btn.getAttribute('data-user'),
+        folder: btn.getAttribute('data-folder'),
+        id: btn.getAttribute('data-id'),
+        mark: btn.getAttribute('data-mail-mark-row'),
+      }).then(function (res) {
+        if (res.ok) window.location.reload();
+        else window.alert('Mark failed: ' + ((res.body && res.body.message) || res.status));
+      });
+    });
+  });
+
   // ── Message raw-source toggle ────────────────────────────────────────────────
   var rawBtn = document.querySelector('[data-mail-raw-toggle]');
   var rawPre = document.querySelector('[data-mail-raw]');

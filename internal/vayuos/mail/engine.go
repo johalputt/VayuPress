@@ -78,6 +78,45 @@ func (e *Engine) MoveMessage(username, id, from, to string) error {
 	return e.maildir.MoveBetween(e.cfg.Domain, username, id, from, to)
 }
 
+// MarkRead flags a message as read (Maildir Seen) within a folder, returning
+// its new id.
+func (e *Engine) MarkRead(username, folder, id string) (string, error) {
+	if e.maildir == nil {
+		return id, errors.New("vayumail: not started")
+	}
+	return e.maildir.markSeenFolder(e.cfg.Domain, username, folder, id)
+}
+
+// MarkUnread clears the read flag, returning the message's new id.
+func (e *Engine) MarkUnread(username, folder, id string) (string, error) {
+	if e.maildir == nil {
+		return id, errors.New("vayumail: not started")
+	}
+	return e.maildir.markUnseenFolder(e.cfg.Domain, username, folder, id)
+}
+
+// SaveDraft files a composed message into the sender's Drafts folder and
+// returns its id, so it can be reopened in the composer and finished later.
+func (e *Engine) SaveDraft(from string, to []string, subject, body string) (string, error) {
+	if e.maildir == nil {
+		return "", errors.New("vayumail: not started")
+	}
+	local, _ := splitAddress(from)
+	raw := "From: " + from + "\r\nTo: " + strings.Join(to, ", ") + "\r\nSubject: " + subject +
+		"\r\nDate: " + time.Now().UTC().Format(time.RFC1123Z) + "\r\n\r\n" + body + "\r\n"
+	return e.maildir.DeliverTo(e.cfg.Domain, local, "Drafts", []byte(raw))
+}
+
+// Deliverability runs the live spam-prevention self-checks (DKIM published-key
+// vs signing-key, and reverse DNS/PTR vs hostname).
+func (e *Engine) Deliverability(ctx context.Context) []RecordHealth {
+	dkimName, dkimTXT := "", ""
+	if e.dkim != nil {
+		dkimName, dkimTXT = e.dkim.RecordName(), e.dkim.PublicTXT()
+	}
+	return Deliverability(ctx, e.cfg, dkimName, dkimTXT)
+}
+
 // DeleteMessage permanently removes a message from a folder.
 func (e *Engine) DeleteMessage(username, folder, id string) error {
 	if e.maildir == nil {
