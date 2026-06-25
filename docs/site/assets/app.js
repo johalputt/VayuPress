@@ -134,6 +134,10 @@ STATIC_DIR=./static VAYU_DOCS_DIR=./docs ./vayupress --port 8080`,
     ],
 
     features: [
+      { icon:'✍️', iconBg:'bg-teal-900/60 border border-teal-800/60',   orb:'rgba(45,212,191,0.55)',
+        title:'The most powerful sovereign editor (v1.13.0)',
+        desc:'A delightful, distraction-free writing studio that beats Ghost while staying lightweight and sovereign. New blocks — tables, collapsible toggles, task lists, math, self-hosted audio — join images, privacy-first video, Mermaid diagrams, callouts and code. Reorder by dragging the handle or with the keyboard, undo/redo any change, and watch a live word-count and reading-time tick as you type. A categorised, keyboard-navigable slash menu and a global ⌘K/Ctrl+K command palette put every block a keystroke away; a focus mode and a split-screen live preview keep you in flow. Every block is still rendered and re-sanitised server-side — no raw-HTML escape hatch, strict CSP, zero CDNs, AI strictly opt-in and off by default.',
+        tags:['tables · toggles · tasks · math · audio','drag & drop · undo/redo','focus mode · live preview · ⌘K'] },
       { icon:'📈', iconBg:'bg-teal-900/60 border border-teal-800/60',   orb:'rgba(45,212,191,0.55)',
         title:'VayuAnalytics — privacy-first product analytics (v1.8.0)',
         desc:'Umami-grade insight with zero PII: pageviews, sessions, top pages, referrers, browsers/devices/OS, UTM campaigns, custom events, realtime, funnels, weekly retention cohorts and revenue — all in your own SQLite. Visitor identity is a server-side daily-rotating salted hash of (IP+User-Agent+host): no cookies, no localStorage, the raw IP and User-Agent are never stored, and there is no consent banner to show. The public ingest endpoint is body-capped and per-IP rate-limited; a retention sweeper enforces data minimisation (ADR-0079).',

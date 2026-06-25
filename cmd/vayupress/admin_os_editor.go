@@ -345,13 +345,22 @@ var osEditorHeadTmpl = htmpl.Must(htmpl.New("oseditorhead").Parse(
   <div class="editor-topbar">
     <span class="editor-topbar-status" data-editor-topbar-status></span>
     <div class="editor-topbar-actions">
+      <span class="editor-wordcount" data-editor-wordcount aria-live="polite"></span>
+      <button type="button" class="btn btn--ghost btn--sm" data-editor-focus-btn title="Focus mode (Ctrl/Cmd+.)">Focus</button>
+      <button type="button" class="btn btn--ghost btn--sm" data-editor-split-btn title="Toggle live preview">Split</button>
       <button type="button" class="btn btn--ghost btn--sm" data-editor-preview-btn>Preview</button>
       <button type="button" class="btn btn--primary btn--sm" data-editor-save>Save</button>
     </div>
   </div>
   <div class="editor-main">
     <input class="editor-title" data-editor-title type="text" placeholder="Post title…" value="{{.Title}}" aria-label="Post title">
-    <div class="editor-canvas" data-editor-canvas aria-label="Editor canvas"></div>
+    <div class="editor-workspace">
+      <div class="editor-canvas" data-editor-canvas aria-label="Editor canvas"></div>
+      <aside class="editor-live" data-editor-live hidden aria-label="Live preview">
+        <div class="editor-live-head">Live preview</div>
+        <article class="editor-live-body article" data-editor-live-body></article>
+      </aside>
+    </div>
   </div>`))
 
 func osEditorBody(slug, title, blocksJSON string) string {
@@ -368,12 +377,20 @@ func osEditorBody(slug, title, blocksJSON string) string {
 	return head.String() + `
   <aside class="editor-sidebar" aria-label="Editor tools">
     <div class="editor-status" data-editor-status>Ready</div>
+    <div class="editor-stats" aria-label="Document statistics">
+      <div class="editor-stat"><span class="editor-stat__num" data-editor-stats-words>0</span><span class="editor-stat__label">words</span></div>
+      <div class="editor-stat"><span class="editor-stat__num" data-editor-stats-chars>0</span><span class="editor-stat__label">characters</span></div>
+      <div class="editor-stat"><span class="editor-stat__num" data-editor-stats-read>—</span><span class="editor-stat__label">reading</span></div>
+    </div>
     <div class="editor-actions">
+      <button type="button" class="btn btn--ghost btn--sm" data-editor-undo title="Undo (Ctrl/Cmd+Z outside a field)" disabled>Undo</button>
+      <button type="button" class="btn btn--ghost btn--sm" data-editor-redo title="Redo (Ctrl/Cmd+Shift+Z)" disabled>Redo</button>
       <button type="button" class="btn btn--ghost btn--sm" data-editor-history-btn>History</button>
     </div>
-    <div class="editor-hint text-xs muted">Press <kbd>/</kbd> on an empty block for commands. <kbd>/ai</kbd> for AI assist.</div>
-    <div class="editor-hint text-xs muted mt-2">Type Markdown to format: <kbd>## </kbd> heading, <kbd>- </kbd> list, <kbd>1. </kbd> numbered, <kbd>&gt; </kbd> quote, <kbd>&#96;&#96;&#96;</kbd> code, <kbd>---</kbd> divider.</div>
+    <div class="editor-hint text-xs muted">Press <kbd>/</kbd> on an empty block for commands, or <kbd>⌘K</kbd>/<kbd>Ctrl+K</kbd> anywhere. <kbd>/ai</kbd> for AI assist.</div>
+    <div class="editor-hint text-xs muted mt-2">Type Markdown to format: <kbd>## </kbd> heading, <kbd>- </kbd> list, <kbd>- [ ] </kbd> task, <kbd>1. </kbd> numbered, <kbd>&gt; </kbd> quote, <kbd>&#96;&#96;&#96;</kbd> code, <kbd>---</kbd> divider.</div>
     <div class="editor-hint text-xs muted mt-2">Select text for <strong>bold</strong>/<em>italic</em>/link, or use <kbd>**bold**</kbd>, <kbd>*italic*</kbd>, <kbd>[text](url)</kbd>. Drag or paste an image to upload.</div>
+    <div class="editor-hint text-xs muted mt-2">Reorder blocks by dragging <kbd>⋮⋮</kbd> or with the <kbd>↑</kbd>/<kbd>↓</kbd> buttons. <kbd>⌘.</kbd> toggles focus mode.</div>
     <div class="editor-hint text-xs muted mt-2"><kbd>Enter</kbd> new block · <kbd>Shift+Enter</kbd> line break · <kbd>⌘S</kbd> / <kbd>Ctrl+S</kbd> to save.</div>
   </aside>
   <div class="editor-preview-modal" data-editor-preview hidden role="dialog" aria-modal="true" aria-label="Preview">

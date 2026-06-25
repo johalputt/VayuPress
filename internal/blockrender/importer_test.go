@@ -117,3 +117,41 @@ func TestImportHTMLDropsScripts(t *testing.T) {
 		t.Errorf("script tag survived conversion: %q", out)
 	}
 }
+
+// TestImportTableAndToggle covers the v1.13.0 legacy → block mappings.
+func TestImportTableAndToggle(t *testing.T) {
+	html := `<table>
+		<thead><tr><th>Name</th><th>Role</th></tr></thead>
+		<tbody><tr><td>Ada</td><td>Engineer</td></tr></tbody>
+	</table>
+	<details open><summary>FAQ</summary><p>Some answer.</p></details>`
+
+	blocks := ImportHTML(html)
+	if len(blocks) != 2 {
+		t.Fatalf("got %d blocks, want 2: %+v", len(blocks), blocks)
+	}
+	tbl := blocks[0]
+	if tbl.Type != "table" {
+		t.Fatalf("block 0 type %q, want table", tbl.Type)
+	}
+	if len(tbl.Header) != 2 || tbl.Header[0] != "Name" || tbl.Header[1] != "Role" {
+		t.Errorf("table header wrong: %+v", tbl.Header)
+	}
+	if len(tbl.Rows) != 1 || tbl.Rows[0][0] != "Ada" || tbl.Rows[0][1] != "Engineer" {
+		t.Errorf("table rows wrong: %+v", tbl.Rows)
+	}
+
+	tog := blocks[1]
+	if tog.Type != "toggle" {
+		t.Fatalf("block 1 type %q, want toggle", tog.Type)
+	}
+	if tog.Summary != "FAQ" || !strings.Contains(tog.Text, "Some answer") || !tog.Open {
+		t.Errorf("toggle parsed wrong: %+v", tog)
+	}
+
+	// And the imported document round-trips through Render without error.
+	raw, _ := json.Marshal(blocks)
+	if _, _, err := Render(string(raw)); err != nil {
+		t.Fatalf("render of imported blocks failed: %v", err)
+	}
+}
