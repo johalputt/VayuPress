@@ -145,9 +145,13 @@ still inside one binary.
   delivery.
 - **Inbox panel** — `/os/vayuos/mail/inbox` shows per-account message/unseen
   counts.
-- **Opt-in by design** — the inbound listeners start only with
-  `VAYUOS_MAIL_INBOUND=on` (Operational Simplicity Doctrine); when off, no mail
-  port is opened and the binary boots unchanged.
+- **On by default** — once a `DOMAIN` is configured the inbound SMTP/IMAP
+  listeners start automatically so the instance can receive external mail. Run
+  outbound-only with `VAYUOS_MAIL_INBOUND=off`. Binding the mail ports is
+  best-effort: if a port can't be opened (e.g. `:25` without privileges) the
+  engine records the reason, surfaces it in the panel, and keeps outbound and
+  local delivery running. Receiving external mail also requires port 25
+  reachable and MX/A DNS records pointing at the host.
 
 > **Scope:** inbound SPF/DKIM/DMARC verification, greylisting, and IMAPS/TLS
 > hardening are tracked as the next milestones in `docs/ROADMAP-v1.9.md`.

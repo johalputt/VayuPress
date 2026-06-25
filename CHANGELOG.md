@@ -30,6 +30,19 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
     footer**, a **loading cue** when switching the time range, and **mobile
     single-column layout** with horizontally swipeable tables.
 
+### Changed
+
+- **Inbound mail is now enabled by default.** Once a `DOMAIN` is configured, the
+  SMTP-receive + IMAP read listeners start automatically so the instance can
+  actually receive external mail; previously this required the easily-missed
+  `VAYUOS_MAIL_INBOUND=on` opt-in. Set `VAYUOS_MAIL_INBOUND=off` to run
+  outbound-only. Binding the mail ports is best-effort: a failed bind (e.g.
+  `:25` without privileges, or a port already in use) is recorded
+  (`Engine.InboundError`), surfaced in the VayuOS health panel, and **never**
+  fails engine startup — outbound and local delivery stay available. Amends
+  ADR-0078. (Receiving external mail still also requires port 25 reachable and
+  MX/A DNS records pointing at the host.)
+
 ### Fixed
 
 - **Incoming mail now lands in the recipient's Inbox (local delivery loopback).**

@@ -14,11 +14,11 @@
 // Authentication and storage are delegated to VayuPress core through the
 // Bridge interface; VayuMail never stores plaintext passwords.
 //
-// Scope note: a full inbound MX listener + IMAP server is intentionally a
-// future milestone. A long-running mail daemon listening on ports 25/143/993
-// is a significant resource and attack-surface commitment that is governed by
-// the VayuPress Operational Simplicity Doctrine, so it is delivered separately
-// rather than bundled half-finished.
+// Inbound: a minimal RFC 5321 SMTP-receive listener + RFC 3501 IMAP read
+// server provide the receive side. They are enabled by default when a domain
+// is configured (set VAYUOS_MAIL_INBOUND=off to run outbound-only). Binding the
+// mail ports is best-effort: if the ports cannot be opened the engine records
+// the condition and continues with outbound + local delivery intact.
 package mail
 
 import "time"
@@ -47,9 +47,12 @@ type Config struct {
 	SPFEnabled   bool
 	DMARCEnabled bool
 
-	// InboundEnabled gates the receive side (SMTP listener + IMAP). It is an
-	// explicit opt-in per the Operational Simplicity Doctrine: a long-running
-	// mail daemon is only started when the operator asks for it.
+	// InboundEnabled gates the receive side (SMTP listener + IMAP). It is on by
+	// default so a configured domain can actually receive external mail; set
+	// VAYUOS_MAIL_INBOUND=off to run outbound-only. Binding the mail ports is
+	// best-effort — if the process cannot bind them (e.g. :25 without
+	// privileges) the engine records the condition and continues serving
+	// outbound and local delivery rather than failing to start.
 	InboundEnabled bool
 	// SMTPListen / IMAPListen are the bind addresses for the receive servers.
 	SMTPListen string
@@ -76,7 +79,7 @@ func DefaultConfig() Config {
 		DKIMEnabled:       true,
 		SPFEnabled:        true,
 		DMARCEnabled:      true,
-		InboundEnabled:    false, // opt-in (VAYUOS_MAIL_INBOUND=on)
+		InboundEnabled:    true, // on by default; disable with VAYUOS_MAIL_INBOUND=off
 		SMTPListen:        ":25",
 		IMAPListen:        ":143",
 		MaxMessageBytes:   25 * 1024 * 1024, // 25 MiB

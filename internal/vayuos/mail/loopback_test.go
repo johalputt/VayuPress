@@ -37,6 +37,7 @@ func newLoopbackEngine(t *testing.T, bridge Bridge) *Engine {
 	cfg.Domain = "example.com"
 	cfg.Hostname = "mail.example.com"
 	cfg.StorageDir = t.TempDir()
+	cfg.InboundEnabled = false // these tests exercise outbound/local delivery, not the listener
 	e := NewEngine(&cfg, bridge, db)
 	if err := e.Start(context.Background()); err != nil {
 		t.Fatalf("start: %v", err)
