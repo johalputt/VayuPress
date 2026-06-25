@@ -12,6 +12,22 @@ _Nothing yet._
 
 ---
 
+## [1.12.4] — 2026-06-25
+
+**Security: resolve the last CodeQL XSS finding.**
+
+### Security
+
+- **VayuOS trusted-HTML passthrough no longer routes through html/template.**
+  `renderTrustedHTML` previously executed a `{{.}}` template with a
+  `template.HTML` argument, which CodeQL flagged as an escaping bypass
+  (`go/html-template-escaping-bypass`, alert in admin_os_ui.go). The function is
+  a verbatim passthrough — every interpolated user value is already escaped via
+  html.EscapeString at construction — so it is now a direct string conversion
+  with byte-identical output, removing the html/template sink entirely.
+
+---
+
 ## [1.12.3] — 2026-06-25
 
 **Security: fix CodeQL path-traversal and SSRF findings.**

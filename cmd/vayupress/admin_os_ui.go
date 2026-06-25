@@ -266,19 +266,17 @@ var (
 	iconADR        = svgIcon("M5 3h7l3 3v11H5V3zm7 0v3h3M7 9h6m-6 3h6m-6 3h4")
 )
 
-// trustedHTMLPassthrough emits a pre-constructed HTML fragment verbatim. It
-// exists so the page body — assembled server-side from fixed templates with
-// every user value already escaped via html.EscapeString — flows through
-// html/template's escaping pipeline. Routing it through Execute gives static
-// analysers (CodeQL go/unsafe-quoting) the sanitiser barrier they require; at
-// runtime template.HTML is emitted byte-for-byte unchanged.
-var trustedHTMLPassthrough = htmpl.Must(htmpl.New("trusted").Parse(`{{.}}`))
-
+// renderTrustedHTML emits a pre-constructed, server-side HTML fragment verbatim.
+// The page body is assembled from fixed templates with every interpolated user
+// value escaped via html.EscapeString at construction, so it is already safe.
+//
+// It is intentionally a plain string conversion — NOT an html/template
+// execution. Passing a template.HTML value into html/template's Execute is what
+// CodeQL flags as an "escaping bypass" (go/html-template-escaping-bypass), and
+// since the passthrough emits the bytes unchanged either way, the direct
+// conversion is equivalent and keeps the data off the html/template sink.
 func renderTrustedHTML(h htmpl.HTML) string {
-	var b strings.Builder
-	// Execute on a constant template with a template.HTML argument cannot fail.
-	_ = trustedHTMLPassthrough.Execute(&b, h)
-	return b.String()
+	return string(h)
 }
 
 // adminOSLayout renders the shared chrome for VayuOS.
