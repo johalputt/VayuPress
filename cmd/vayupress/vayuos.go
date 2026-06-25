@@ -235,7 +235,7 @@ func (a *App) bootVayuOS() {
 		}
 		if a.vayuMail.Config().InboundEnabled {
 			if err := a.vayuMail.InboundError(); err != nil {
-				return true, "outbound + DKIM active; inbound listener unavailable: " + err.Error()
+				return true, "outbound + DKIM active; inbound listener unavailable: " + err.Error() + inboundHint(err)
 			}
 			if a.vayuMail.InboundActive() {
 				return true, "outbound + DKIM active; inbound SMTP/IMAP listening"
@@ -315,6 +315,24 @@ func (a *App) backfillPGPKeys(ctx context.Context) {
 				}
 			}
 		}
+	}
+}
+
+// inboundHint translates a listener bind failure into an actionable next step
+// for the operator, so the pitfalls of self-hosting (privileged ports, a
+// pre-installed MTA) are explained right in the panel instead of being silent.
+func inboundHint(err error) string {
+	if err == nil {
+		return ""
+	}
+	msg := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(msg, "permission denied"):
+		return " — the process lacks privilege to bind ports below 1024. Grant CAP_NET_BIND_SERVICE (see deploy/vayupress.service), or set VAYUOS_MAIL_SMTP_LISTEN=:2525 / VAYUOS_MAIL_IMAP_LISTEN=:1143 and redirect 25→2525, 143→1143."
+	case strings.Contains(msg, "address already in use"), strings.Contains(msg, "in use"):
+		return " — another mail server already holds the port. Stop it (e.g. `sudo systemctl disable --now postfix`) and restart, or point VAYUOS_MAIL_SMTP_LISTEN/IMAP_LISTEN at free ports."
+	default:
+		return ""
 	}
 }
 
@@ -682,8 +700,44 @@ func (a *App) handleVayuOSMessage(w http.ResponseWriter, r *http.Request) {
 		actions += `<button class="btn" data-mail-move="Inbox">Restore to Inbox</button>`
 	}
 	actions += `<button class="btn btn--danger" data-mail-delete>Delete permanently</button></div>`
-	body.WriteString(`<div class="card"><div class="card-title"><a href="` + back + `">← Back to ` + html.EscapeString(folder) + `</a></div>` + actions +
-		`<pre class="vm-pre">` + html.EscapeString(string(raw)) + `</pre></div>`)
+	// Clean reader view: decoded headers + body, with a raw-source toggle.
+	pm := vmail.ParseMessage(raw)
+	subj := strings.TrimSpace(pm.Subject)
+	if subj == "" {
+		subj = "(no subject)"
+	}
+	var card strings.Builder
+	card.WriteString(`<div class="card"><div class="card-title"><a href="` + back + `">← Back to ` + html.EscapeString(folder) + `</a></div>`)
+	card.WriteString(actions)
+	// Header summary (long technical headers are hidden behind "raw source").
+	card.WriteString(`<div class="vm-msg-head"><div class="card-title">` + html.EscapeString(subj) + `</div>`)
+	hdrRow := func(label, value string) {
+		if strings.TrimSpace(value) == "" {
+			return
+		}
+		card.WriteString(`<div class="muted text-sm"><strong>` + label + `:</strong> ` + html.EscapeString(value) + `</div>`)
+	}
+	hdrRow("From", pm.From)
+	hdrRow("To", pm.To)
+	hdrRow("Cc", pm.Cc)
+	hdrRow("Date", pm.Date)
+	card.WriteString(`</div>`)
+	// Body: prefer decoded text/plain; else sanitised HTML; else raw fallback.
+	card.WriteString(`<div class="vm-msg-body">`)
+	switch {
+	case strings.TrimSpace(pm.Text) != "":
+		card.WriteString(`<pre class="vm-pre">` + html.EscapeString(pm.Text) + `</pre>`)
+	case strings.TrimSpace(pm.HTML) != "":
+		card.WriteString(`<div class="vm-html">` + mailHTMLPolicy.Sanitize(pm.HTML) + `</div>`)
+	default:
+		card.WriteString(`<pre class="vm-pre">` + html.EscapeString(string(raw)) + `</pre>`)
+	}
+	card.WriteString(`</div>`)
+	// Raw source, hidden by default, toggled by admin-os-mail.js (CSP-safe).
+	card.WriteString(`<div class="vm-rawwrap"><button class="btn" type="button" data-mail-raw-toggle>View raw source</button>`)
+	card.WriteString(`<pre class="vm-pre vm-raw" data-mail-raw hidden>` + html.EscapeString(string(raw)) + `</pre></div>`)
+	card.WriteString(`</div>`)
+	body.WriteString(card.String())
 	body.WriteString(`<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail.js"></script>`)
 	writeOSHTML(w, adminOSLayout(nonce, "Message", "vayuos", cfg, htmpl.HTML(body.String())))
 }

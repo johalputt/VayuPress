@@ -91,10 +91,9 @@ func (e *Engine) Compose(ctx context.Context, from string, to []string, subject,
 	}
 	// File a plain copy in the sender's Sent folder (best-effort).
 	if e.maildir != nil {
-		local := from
-		if i := strings.Index(local, "@"); i >= 0 {
-			local = local[:i]
-		}
+		// splitAddress tolerates a `"Name" <addr>` From, so the Sent copy is
+		// filed under the sender's bare local part, not the display name.
+		local, _ := splitAddress(from)
 		sent := "From: " + from + "\r\nTo: " + strings.Join(to, ", ") + "\r\nSubject: " + subject +
 			"\r\nDate: " + time.Now().UTC().Format(time.RFC1123Z) + "\r\n\r\n" + body + "\r\n"
 		_, _ = e.maildir.DeliverTo(e.cfg.Domain, local, "Sent", []byte(sent))
@@ -345,7 +344,9 @@ func (e *Engine) SendMail(ctx context.Context, from string, to []string, subject
 		// queue id (the message is already in the recipient's Maildir).
 		return 0, nil
 	}
-	return e.queue.Enqueue(ctx, from, remote, rawMsg)
+	// The envelope sender (MAIL FROM) must be a bare address even when the
+	// From: header carries a display name like `"Ankush" <a@b>`.
+	return e.queue.Enqueue(ctx, envelopeAddress(from), remote, rawMsg)
 }
 
 // splitLocalRecipients partitions recipients into those served by this instance
