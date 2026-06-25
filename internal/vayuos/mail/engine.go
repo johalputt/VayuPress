@@ -14,17 +14,18 @@ import (
 // Engine is the VayuMail runtime: DKIM signer + outbound queue + Maildir store,
 // wired to VayuPress core through the Bridge.
 type Engine struct {
-	cfg      Config
-	bridge   Bridge
-	db       *sql.DB
-	dkim     *DKIM
-	queue    *Queue
-	maildir  *Maildir
-	accounts *AccountStore
-	smtpd    *SMTPServer
-	imapd    *IMAPServer
-	decrypt  DecryptHook
-	done     chan struct{}
+	cfg        Config
+	bridge     Bridge
+	db         *sql.DB
+	dkim       *DKIM
+	queue      *Queue
+	maildir    *Maildir
+	accounts   *AccountStore
+	smtpd      *SMTPServer
+	imapd      *IMAPServer
+	decrypt    DecryptHook
+	inboundErr error
+	done       chan struct{}
 }
 
 // Accounts returns the admin-managed mail account store (nil until Start).
@@ -155,10 +156,13 @@ func (e *Engine) Start(ctx context.Context) error {
 		return fmt.Errorf("vayumail: accounts init: %w", aerr)
 	}
 
-	// Inbound receive side (opt-in). A listening mail daemon is started only
-	// when the operator explicitly enables it (Operational Simplicity Doctrine).
+	// Inbound receive side. Enabled by default so a configured domain can
+	// receive external mail; disabled with VAYUOS_MAIL_INBOUND=off. Binding the
+	// mail ports is best-effort — a bind failure (e.g. :25 without privileges,
+	// or a port already in use) is recorded and surfaced, but never fails engine
+	// startup, so outbound delivery and local loopback delivery stay available.
 	if e.cfg.InboundEnabled {
-		e.smtpd = NewSMTPServer(e.cfg, func(from string, rcpts []string, raw []byte) error {
+		smtpd := NewSMTPServer(e.cfg, func(from string, rcpts []string, raw []byte) error {
 			var firstErr error
 			for _, rcpt := range rcpts {
 				if _, derr := e.DeliverInbound(rcpt, raw); derr != nil && firstErr == nil {
@@ -167,16 +171,28 @@ func (e *Engine) Start(ctx context.Context) error {
 			}
 			return firstErr
 		})
-		if err := e.smtpd.Start(ctx); err != nil {
-			return fmt.Errorf("vayumail: smtp receive: %w", err)
-		}
-		e.imapd = NewIMAPServer(e.cfg, e.bridge, e.maildir, e.decrypt)
-		if err := e.imapd.Start(ctx); err != nil {
-			return fmt.Errorf("vayumail: imap: %w", err)
+		if err := smtpd.Start(ctx); err != nil {
+			e.inboundErr = fmt.Errorf("smtp receive: %w", err)
+		} else {
+			e.smtpd = smtpd
+			imapd := NewIMAPServer(e.cfg, e.bridge, e.maildir, e.decrypt)
+			if err := imapd.Start(ctx); err != nil {
+				e.inboundErr = fmt.Errorf("imap: %w", err)
+			} else {
+				e.imapd = imapd
+			}
 		}
 	}
 	return nil
 }
+
+// InboundActive reports whether the inbound SMTP receive listener is running.
+func (e *Engine) InboundActive() bool { return e.smtpd != nil }
+
+// InboundError returns the reason the inbound listeners could not start, or nil
+// when inbound is disabled or running. It lets the panel explain a failed bind
+// (e.g. ":25 without privileges") without taking down outbound mail.
+func (e *Engine) InboundError() error { return e.inboundErr }
 
 // Stop halts the retry worker.
 func (e *Engine) Stop(_ context.Context) error {

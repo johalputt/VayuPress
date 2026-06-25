@@ -1,7 +1,7 @@
-# ADR-0078: VayuMail Inbound — Opt-In SMTP/IMAP Daemon
+# ADR-0078: VayuMail Inbound — SMTP/IMAP Daemon
 
-**Status**: Accepted  
-**Date**: 2026-06-24  
+**Status**: Accepted (amended — see "Update" below)  
+**Date**: 2026-06-24 (amended 2026-06-25)  
 **Author**: @johalputt
 
 ## Context
@@ -28,3 +28,22 @@ Doctrine treats with caution.
   the operator consciously enables the listener.
 - Follow-up: inbound SPF/DKIM/DMARC verification, greylisting, and IMAPS/TLS
   hardening are tracked for a subsequent milestone (`docs/ROADMAP-v1.9.md`).
+
+## Update (2026-06-25): inbound enabled by default
+
+Decision (2) is amended. In practice the strict opt-in meant a freshly
+configured domain silently could not **receive** mail — operators reasonably
+expected a configured mail domain to accept incoming messages, and the hidden
+`VAYUOS_MAIL_INBOUND=on` step was a frequent "incoming mail not working"
+surprise.
+
+Inbound is now **on by default** once `DOMAIN` is set, and is disabled with
+`VAYUOS_MAIL_INBOUND=off` (the toggle is inverted, not removed). To keep the
+"no daemon should be able to break the binary" guarantee, **binding the mail
+ports is best-effort**: if `:25`/`:143` cannot be opened (e.g. insufficient
+privileges, or a port already in use) the engine records the reason
+(`Engine.InboundError`), surfaces it in the VayuOS health panel, and continues
+serving outbound delivery and local loopback delivery. A failed listener never
+fails engine startup. This preserves the spirit of the Operational Simplicity
+Doctrine (predictable, non-fatal, observable) while making a configured mail
+domain actually receive mail out of the box.

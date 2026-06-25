@@ -192,8 +192,13 @@ func (a *App) bootVayuOS() {
 		mailCfg.Hostname = "mail." + d
 		mailCfg.Enabled = true
 	}
-	// Inbound receive side is an explicit opt-in (Operational Simplicity Doctrine).
-	if strings.EqualFold(config.EnvOr("VAYUOS_MAIL_INBOUND", "off"), "on") {
+	// Inbound receive side is enabled by default so a configured domain can
+	// receive external mail. Run outbound-only with VAYUOS_MAIL_INBOUND=off.
+	// Binding the mail ports is best-effort inside the engine (a failed bind is
+	// surfaced but never blocks outbound/local delivery).
+	if strings.EqualFold(config.EnvOr("VAYUOS_MAIL_INBOUND", "on"), "off") {
+		mailCfg.InboundEnabled = false
+	} else {
 		mailCfg.InboundEnabled = true
 		mailCfg.SMTPListen = config.EnvOr("VAYUOS_MAIL_SMTP_LISTEN", ":25")
 		mailCfg.IMAPListen = config.EnvOr("VAYUOS_MAIL_IMAP_LISTEN", ":143")
@@ -228,7 +233,15 @@ func (a *App) bootVayuOS() {
 		if a.vayuMail == nil || !a.vayuMail.Config().Enabled {
 			return false, "disabled — set a domain in the wizard"
 		}
-		return true, "outbound queue + DKIM active"
+		if a.vayuMail.Config().InboundEnabled {
+			if err := a.vayuMail.InboundError(); err != nil {
+				return true, "outbound + DKIM active; inbound listener unavailable: " + err.Error()
+			}
+			if a.vayuMail.InboundActive() {
+				return true, "outbound + DKIM active; inbound SMTP/IMAP listening"
+			}
+		}
+		return true, "outbound queue + DKIM active (inbound disabled)"
 	})
 	a.vayuHealth.Register("vayusecwatch", func() (bool, string) {
 		if a.vayuSec != nil && a.vayuSec.Enabled() {
@@ -516,7 +529,7 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 	body.WriteString(vayuosNav("mailbox"))
 
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled {
-		body.WriteString(`<div class="empty-state">VayuMail is inactive. Set <code>DOMAIN</code> to a real domain to provision mailboxes. To receive external mail, also enable the inbound listener with <code>VAYUOS_MAIL_INBOUND=on</code>.</div>`)
+		body.WriteString(`<div class="empty-state">VayuMail is inactive. Set <code>DOMAIN</code> to a real domain to provision mailboxes. The inbound SMTP/IMAP listener runs by default once a domain is set (disable with <code>VAYUOS_MAIL_INBOUND=off</code>); receiving external mail also needs port 25 reachable and MX/A DNS records pointing at this host.</div>`)
 		writeOSHTML(w, adminOSLayout(nonce, "Mailbox", "vayuos", cfg, htmpl.HTML(body.String())))
 		return
 	}
