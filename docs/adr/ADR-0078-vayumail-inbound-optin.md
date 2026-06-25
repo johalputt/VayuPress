@@ -47,3 +47,20 @@ serving outbound delivery and local loopback delivery. A failed listener never
 fails engine startup. This preserves the spirit of the Operational Simplicity
 Doctrine (predictable, non-fatal, observable) while making a configured mail
 domain actually receive mail out of the box.
+
+## Update (2026-06-25, part 2): TLS + inbound authentication landed
+
+The original follow-ups are now implemented:
+
+- **TLS** — STARTTLS on SMTP `:25`, authenticated submission `:587`, and IMAP
+  `:143`, plus implicit-TLS IMAPS `:993`. An operator certificate
+  (`VAYUOS_MAIL_TLS_CERT`/`KEY`) is used when present; otherwise an in-memory
+  self-signed certificate is generated so opportunistic STARTTLS works
+  immediately. All TLS listeners are best-effort and never block startup.
+- **Inbound SPF/DKIM/DMARC verification** — every received message is checked
+  during the SMTP transaction and stamped with an `Authentication-Results`
+  header; a DMARC failure under an enforcing policy (`p=quarantine`/`p=reject`)
+  is filed to Junk via the existing local filter. Lookups are best-effort (DNS
+  errors degrade to `none`/`temperror`, never blocking delivery). Implemented
+  with `github.com/emersion/go-msgauth` (DKIM/DMARC) and `blitiri.com.ar/go/spf`.
+  Greylisting remains a future option.
