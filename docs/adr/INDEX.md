@@ -60,6 +60,8 @@
 | [ADR-0073](ADR-0073-convert-to-blocks.md) | Convert-to-Blocks (non-destructive import into block editor) | Accepted | Core | 2026-06-21 |
 | [ADR-0074](ADR-0074-plugin-interface-spec.md) | Formal Plugin Interface Specification (language-neutral, versioned contract) | Accepted | Security | 2026-06-21 |
 | [ADR-0075](ADR-0075-draft-publish-workflow.md) | Draft/Publish Workflow and Public-Surface Isolation | Accepted | Security | 2026-06-22 |
+| [ADR-0081](ADR-0081-editor-inline-markdown.md) | Block Editor Inline Rich Text via Markdown (goldmark + bluemonday) | Accepted | Core | 2026-06-25 |
+| [ADR-0082](ADR-0082-theme-studio-code-editor.md) | Theme Studio Code Editor, Head Meta, and Import/Export (CSP-safe) | Accepted | Core | 2026-06-25 |
 
 ---
 

@@ -21,6 +21,45 @@
 > _Own your content. Own your communication. Own your infrastructure._
 > Publishing is the core identity, **VayuMail** the native sovereignty layer, **VayuPGP** the native privacy layer, and **VayuOS** the native control layer — all in a single Go binary, single process, single config.
 
+## What's New in v1.12.0
+
+> Full notes in [`CHANGELOG.md`](CHANGELOG.md)
+
+**Theme import / export.** Download your entire theme — design tokens
+(palette, typography, layout) plus the site-wide custom CSS and head/SEO meta —
+as one portable JSON file, and import it to apply it everywhere. Imported tokens
+are validated by compiling them before they go live, so a bad file can never
+break the site or bypass the CSP.
+
+## What's New in v1.11.0
+
+> Full notes in [`CHANGELOG.md`](CHANGELOG.md)
+
+**Tumblr-style theme code editing in Theme Studio.**
+
+- **Custom CSS editor** — a full monospace editor (16 KB) in Theme Studio.
+  Styles are served same-origin via `/theme.css` (CSP-safe — no inline styles,
+  no external origins, no scripts) and apply to every public page on save.
+- **Head & SEO meta** — keywords, theme-colour, robots directive, and
+  Google/Bing verification, editable inline. Raw `<head>` HTML is rejected;
+  fields render to a validated, escaped `<meta>` allowlist.
+
+## What's New in v1.10.0
+
+> Full notes in [`CHANGELOG.md`](CHANGELOG.md)
+
+**A Ghost-style writing experience for the VayuOS editor.**
+
+- **Inline rich text** — bold, italic, inline code, links and strikethrough
+  across paragraphs, headings, quotes, callouts and lists (still sanitised by
+  bluemonday — no new XSS surface).
+- **Selection toolbar** — select text for Bold / Italic / Code / Strike / Link.
+- **Markdown shortcuts** — `##` heading, `-` list, `1.` numbered, `>` quote,
+  a triple-backtick fence for code, `---` divider — converted as you type.
+- **Continuous flow** — Enter starts the next block, Shift+Enter a soft break,
+  Backspace removes an empty block; new blocks autofocus.
+- **Filterable slash menu** and **image paste / drag-and-drop upload**.
+
 ## What's New in v1.9.1
 
 > Full notes in [`CHANGELOG.md`](CHANGELOG.md)
