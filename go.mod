@@ -2,6 +2,8 @@ module github.com/johalputt/vayupress
 
 go 1.25.0
 
+toolchain go1.26.4
+
 require (
 	github.com/ProtonMail/go-crypto v1.4.1
 	github.com/alecthomas/chroma/v2 v2.27.0

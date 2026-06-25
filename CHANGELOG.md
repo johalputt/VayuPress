@@ -12,6 +12,27 @@ _Nothing yet._
 
 ---
 
+## [1.12.1] — 2026-06-25
+
+**CI fix + supply-chain hardening.**
+
+### Fixed
+
+- **CI markdown lint.** The v1.10.0 changelog entry used an empty link and code
+  spans with trailing spaces, failing the `lint-markdown` gate. Rewritten to
+  satisfy markdownlint (MD038/MD042) so CI is green again.
+
+### Security
+
+- **Pinned a patched Go toolchain** (`toolchain go1.26.4` in `go.mod`). Builds —
+  including the in-place `update-vayupress.sh` path on a server — now link the
+  fixed standard library, clearing the `crypto/tls`, `crypto/x509`,
+  `encoding/pem`, `net/url`, and `net/mail` advisories. `govulncheck ./...`
+  reports **no vulnerabilities**. Dependencies were already at their latest
+  published versions.
+
+---
+
 ## [1.12.0] — 2026-06-25
 
 **Theme import / export in Theme Studio.**
@@ -55,15 +76,16 @@ _Nothing yet._
 ### Added
 
 - **Inline rich text.** Block text now renders Markdown inline — **bold**,
-  *italic*, `inline code`, [links](#), and ~~strikethrough~~ — across
+  *italic*, `inline code`, links, and ~~strikethrough~~ — across
   paragraphs, headings, quotes, callouts and list items. Output is still run
   through the bluemonday UGC sanitizer (no new XSS surface).
 - **Selection formatting toolbar.** Select text in the editor and a floating bar
   appears with Bold / Italic / Code / Strikethrough / Link, wrapping the
   selection in the matching Markdown.
-- **Markdown shortcuts while typing.** At the start of a paragraph: `## ` →
-  heading, `- ` / `* ` → bullet list, `1. ` → numbered list, `> ` → quote,
-  ```` ``` ```` → code block, `---` → divider — converted instantly as you type.
+- **Markdown shortcuts while typing.** At the start of a paragraph: `##` then a
+  space becomes a heading, `-` or `*` a bullet list, `1.` a numbered list, `>` a
+  quote, a triple-backtick fence a code block, `---` a divider — converted
+  instantly as you type.
 - **Continuous writing flow.** <kbd>Enter</kbd> creates the next block and
   focuses it; <kbd>Shift+Enter</kbd> inserts a soft line break;
   <kbd>Backspace</kbd> on an empty block removes it and returns focus to the
