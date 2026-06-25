@@ -79,6 +79,32 @@ func (b *vayuMailBridge) GetUserByEmail(emailAddr string) (*vmail.MailUser, erro
 	return nil, fmt.Errorf("vayumail: no such user")
 }
 
+func (b *vayuMailBridge) IsLocalRecipient(emailAddr string) bool {
+	if b.app.vayuMail == nil {
+		return false
+	}
+	domain := b.app.vayuMail.Config().Domain
+	if domain == "" {
+		return false
+	}
+	at := strings.LastIndex(emailAddr, "@")
+	if at < 0 || !strings.EqualFold(strings.TrimSpace(emailAddr[at+1:]), domain) {
+		return false
+	}
+	// 1) CMS users (full VayuPress accounts).
+	if _, err := b.GetUserByEmail(emailAddr); err == nil {
+		return true
+	}
+	// 2) Admin-managed mail-only accounts (existence regardless of active state,
+	// so disabled mailboxes still receive mail rather than bouncing out).
+	if b.app.vayuMail.Accounts() != nil {
+		if role := b.app.vayuMail.Accounts().RoleFor(context.Background(), emailAddr); role != "" {
+			return true
+		}
+	}
+	return false
+}
+
 func (b *vayuMailBridge) SendTransactional(msg *vmail.TransactionalMessage) error {
 	if b.app.mailer == nil || !b.app.mailer.Enabled() {
 		return fmt.Errorf("vayumail: transactional mailer not configured")
@@ -137,11 +163,7 @@ func (a *App) pgpDecryptForAccount(accountEmail string, raw []byte) []byte {
 	ei += len(end)
 	armored := s[bi:ei]
 
-	mu, err := (&vayuMailBridge{app: a}).GetUserByEmail(accountEmail)
-	if err != nil || mu == nil {
-		return raw
-	}
-	plain, err := a.vayuPGP.Decrypt([]byte(armored), mu.UserID)
+	plain, err := a.vayuPGP.DecryptForEmail([]byte(armored), accountEmail)
 	if err != nil {
 		return raw
 	}
@@ -240,6 +262,47 @@ func (a *App) bootVayuOS() {
 	})
 
 	logging.LogInfo("vayuos", "VayuOS control layer online (Publishing · Mail · PGP)")
+
+	// Backfill PGP keypairs for accounts that pre-date auto-keygen (CMS users
+	// created before VayuOS, and admin-managed mail accounts which previously
+	// got a mailbox but no key). Runs in the background so boot is never blocked;
+	// EnsureKeypair is idempotent so this is a no-op once every account has a key.
+	go a.backfillPGPKeys(context.Background())
+}
+
+// backfillPGPKeys ensures every known local identity (CMS user + admin-managed
+// mail account) has a PGP keypair, so the VayuPGP panel lists them and their
+// inbound mail can be encrypted at rest / transparently decrypted on read.
+func (a *App) backfillPGPKeys(ctx context.Context) {
+	if a.vayuPGP == nil {
+		return
+	}
+	// CMS users.
+	if a.userStore != nil {
+		if users, err := a.userStore.List(ctx); err == nil {
+			for _, u := range users {
+				if u.Email == "" {
+					continue
+				}
+				if _, err := a.vayuPGP.EnsureKeypair(&vpgp.PGPUser{UserID: u.ID, Name: u.Name, Email: u.Email}); err != nil {
+					logging.LogError("vayuos", "PGP key backfill failed for "+u.Email, err.Error())
+				}
+			}
+		}
+	}
+	// Admin-managed mail accounts (keyed by their email address).
+	if a.vayuMail != nil && a.vayuMail.Accounts() != nil {
+		if accts, err := a.vayuMail.Accounts().List(ctx); err == nil {
+			for _, ac := range accts {
+				if ac.Email == "" {
+					continue
+				}
+				if _, err := a.vayuPGP.EnsureKeypair(&vpgp.PGPUser{UserID: ac.Email, Name: ac.FullName, Email: ac.Email}); err != nil {
+					logging.LogError("vayuos", "PGP key backfill failed for "+ac.Email, err.Error())
+				}
+			}
+		}
+	}
 }
 
 // publishUserCreated notifies VayuOS that an account was created.

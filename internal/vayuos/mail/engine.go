@@ -311,8 +311,54 @@ func (e *Engine) SendMail(ctx context.Context, from string, to []string, subject
 	}
 	raw.WriteString("\r\n")
 	raw.WriteString(body)
+	rawMsg := []byte(raw.String())
 
-	return e.queue.Enqueue(ctx, from, to, []byte(raw.String()))
+	// Split recipients into local mailboxes (delivered straight into the
+	// Maildir, so they appear in the recipient's Inbox) and remote addresses
+	// (relayed out via the MX queue). Without this loopback, mail sent to a
+	// local account would only ever be queued for external delivery and would
+	// never land in the recipient's Inbox on this instance.
+	local, remote := e.splitLocalRecipients(to)
+	for _, rcpt := range local {
+		if _, derr := e.DeliverInbound(rcpt, rawMsg); derr != nil {
+			return 0, fmt.Errorf("vayumail: local delivery to %s: %w", rcpt, derr)
+		}
+	}
+	if len(remote) == 0 {
+		// Purely local delivery — nothing to relay. Report success with no
+		// queue id (the message is already in the recipient's Maildir).
+		return 0, nil
+	}
+	return e.queue.Enqueue(ctx, from, remote, rawMsg)
+}
+
+// splitLocalRecipients partitions recipients into those served by this instance
+// (delivered locally) and those that must be relayed out. When no bridge is
+// wired it falls back to a domain-only check against the configured domain,
+// matching the inbound SMTP server's relay policy.
+func (e *Engine) splitLocalRecipients(to []string) (local, remote []string) {
+	for _, addr := range to {
+		if e.isLocalRecipient(addr) {
+			local = append(local, addr)
+		} else {
+			remote = append(remote, addr)
+		}
+	}
+	return local, remote
+}
+
+// isLocalRecipient reports whether addr is a mailbox on this instance. The
+// recipient domain must match the configured domain; account existence is then
+// confirmed through the bridge (CMS user or admin-managed mail account).
+func (e *Engine) isLocalRecipient(addr string) bool {
+	_, domain := splitAddress(addr)
+	if domain == "" || !strings.EqualFold(domain, e.cfg.Domain) {
+		return false
+	}
+	if e.bridge != nil {
+		return e.bridge.IsLocalRecipient(addr)
+	}
+	return true
 }
 
 func (e *Engine) messageID() string {

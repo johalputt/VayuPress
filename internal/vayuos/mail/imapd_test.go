@@ -16,6 +16,7 @@ func (stubBridge) AuthUser(username, password string) (bool, error) {
 	return username == "bob" && password == "pw", nil
 }
 func (stubBridge) GetUserByEmail(string) (*MailUser, error)          { return nil, nil }
+func (stubBridge) IsLocalRecipient(string) bool                      { return false }
 func (stubBridge) SendTransactional(*TransactionalMessage) error     { return nil }
 func (stubBridge) EncryptForRecipient([]byte, string) ([]byte, bool) { return nil, false }
 func (stubBridge) SignAs([]byte, string) ([]byte, bool)              { return nil, false }

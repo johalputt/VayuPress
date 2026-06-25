@@ -51,6 +51,7 @@ type KeyStatus struct {
 type Bridge interface {
 	// Key lifecycle.
 	GenerateKeypair(user *PGPUser) (*Keypair, error)
+	EnsureKeypair(user *PGPUser) (*Keypair, error)
 	GetKeypair(userID string) (*Keypair, error)
 	GetPublicKey(email string) (*PublicKey, error)
 	RevokeKeypair(userID string) error
@@ -60,6 +61,7 @@ type Bridge interface {
 	// Crypto operations.
 	Encrypt(plaintext []byte, recipientEmail string) ([]byte, error)
 	Decrypt(ciphertext []byte, userID string) ([]byte, error)
+	DecryptForEmail(ciphertext []byte, recipientEmail string) ([]byte, error)
 	Sign(data []byte, userID string) ([]byte, error)
 	Verify(data, sig []byte, senderEmail string) (bool, error)
 	EncryptAndSign(plaintext []byte, recipientEmail, senderUserID string) ([]byte, error)
