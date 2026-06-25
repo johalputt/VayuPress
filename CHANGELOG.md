@@ -12,6 +12,21 @@ _Nothing yet._
 
 ---
 
+## [1.9.3] — 2026-06-25
+
+**Fix: admin panel pages could show stale content after an update.**
+
+### Fixed
+
+- **VayuOS admin pages are now served with `Cache-Control: no-store`.** Admin
+  HTML previously carried no cache directives, so a browser (especially mobile)
+  or proxy could keep showing an old panel — e.g. the Analytics page appearing
+  "unchanged" after a deploy even though the new version was live. Admin pages
+  are dynamic and cheap to render, so they are now always served fresh; combined
+  with the v1.9.1 versioned (`?v=`) CSS/JS, deploys take effect immediately.
+
+---
+
 ## [1.9.2] — 2026-06-25
 
 **Fix: SEO dashboard 502 on large sites.**
