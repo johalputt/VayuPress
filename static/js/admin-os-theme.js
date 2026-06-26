@@ -1,16 +1,22 @@
 /*
- * admin-os-theme.js — VayuPress VayuOS Theme Studio.
+ * admin-os-theme.js — VayuPress VayuOS Theme Studio (Ghost-style customizer).
  *
  * Vanilla JS, strict CSP: no eval, no innerHTML with untrusted data, no inline
- * <style> injection. The live preview is driven entirely through the CSSOM.
+ * <style> injection.
+ *
+ * The live preview is a real, full-page same-origin iframe that renders the
+ * actual public markup. On EVERY change (preset, colour, typography, layout,
+ * option, or custom CSS) we POST the exact token payload Apply would use to
+ * /os/api/theme/preview-draft; the server compiles it with the real pipeline and
+ * returns a stylesheet id. We then hot-swap the iframe's stylesheet via a
+ * same-origin postMessage — so the preview reflects the WHOLE design instantly,
+ * not just colours, with no full reload/flicker.
  *
  * Flow:
- *   1. Load active tokens (/os/api/theme/tokens) -> fill inputs + preview.
- *   2. Load presets (/os/api/theme/presets) -> populate theme gallery cards.
- *   3. Click a gallery card -> load tokens into editor + auto-preview.
- *   4. Editing any token live-updates the preview locally.
- *   5. "Apply theme" POSTs full token set -> server validates, compiles, persists.
- *   6. "Revert" reloads the persisted tokens.
+ *   1. Load active tokens + presets -> fill controls.
+ *   2. Any control change -> debounced preview refresh (draft -> swap).
+ *   3. Device toggle resizes the preview viewport (desktop/tablet/mobile).
+ *   4. Apply persists; Revert reloads saved tokens; Import replaces everything.
  */
 (function () {
   'use strict';
@@ -19,155 +25,89 @@
   if (!root) return;
 
   var galleryEl = root.querySelector('[data-theme-presets]');
-  var previewEl = root.querySelector('[data-theme-preview]');
   var statusEl = document.querySelector('[data-theme-status]');
   var applyBtn = document.querySelector('[data-theme-apply]');
   var revertBtn = document.querySelector('[data-theme-revert]');
   var activeNameEl = document.querySelector('[data-active-preset-name]');
 
+  // Preview iframe + chrome.
+  var frame = document.querySelector('[data-theme-frame]');
+  var frameLoading = document.querySelector('[data-theme-frame-loading]');
+  var viewport = document.querySelector('[data-theme-viewport]');
+  var previewStatusEl = document.querySelector('[data-theme-preview-status]');
+  var newTabLink = document.querySelector('[data-theme-newtab]');
+  var deviceBtns = Array.prototype.slice.call(document.querySelectorAll('[data-theme-device]'));
+
+  // Token + option controls.
   var inputs = {};
-  root.querySelectorAll('[data-token]').forEach(function (el) {
-    inputs[el.getAttribute('data-token')] = el;
-  });
-
-  // Theme-level customization controls (color scheme, width, corners, …).
+  root.querySelectorAll('[data-token]').forEach(function (el) { inputs[el.getAttribute('data-token')] = el; });
   var optInputs = {};
-  root.querySelectorAll('[data-token-opt]').forEach(function (el) {
-    optInputs[el.getAttribute('data-token-opt')] = el;
-  });
-  var options = {};
-
-  // Accent pairs mirror schemePalettes in internal/theme/options.go (dark
-  // variants, for the dark preview panel) so the live preview matches Apply.
-  var SCHEMES = {
-    indigo: ['#6366f1', '#22d3ee'], violet: ['#8b5cf6', '#ec4899'], cyan: ['#06b6d4', '#3b82f6'],
-    emerald: ['#10b981', '#84cc16'], rose: ['#f43f5e', '#fb923c'], amber: ['#f59e0b', '#ef4444'],
-    crimson: ['#ef4444', '#a78bfa'], teal: ['#14b8a6', '#38bdf8'], slate: ['#64748b', '#94a3b8'],
-    mono: ['#e5e7eb', '#9ca3af']
-  };
+  root.querySelectorAll('[data-token-opt]').forEach(function (el) { optInputs[el.getAttribute('data-token-opt')] = el; });
+  var cssArea = root.querySelector('[data-theme-css]');
 
   var model = {};
+  var options = {};
   var allPresets = [];
   var activePresetName = '';
-  var loadedCustomCSS = '';   // per-theme component CSS carried through Apply
+  var loadedCustomCSS = '';
+
+  // Preview pipeline state.
+  var previewReady = false;     // iframe loaded + handshake received
+  var framePointed = false;     // iframe.src set to a draft page at least once
+  var pendingHref = null;       // latest stylesheet href awaiting handshake
+  var debounceTimer = null;
+  var reqSeq = 0;               // guards against out-of-order draft responses
 
   function setStatus(msg, kind) {
     if (!statusEl) return;
     statusEl.textContent = msg;
     statusEl.className = 'text-sm' + (kind ? ' status--' + kind : ' muted');
   }
+  function setPreviewStatus(msg) { if (previewStatusEl) previewStatusEl.textContent = msg; }
+  function showLoading(on) { if (frameLoading) frameLoading.hidden = !on; }
 
   function csrfToken() {
     var m = document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);
     return m ? decodeURIComponent(m[1]) : '';
   }
 
-  function paintPreview() {
-    if (!previewEl) return;
-    root.querySelectorAll('[data-token-var]').forEach(function (el) {
-      var field = el.getAttribute('data-token');
-      var vari = el.getAttribute('data-token-var');
-      var val = model[field];
-      if (val) previewEl.style.setProperty('--vp-' + vari, val);
-    });
-    if (model.FontSans) previewEl.style.setProperty('--vp-font-sans', model.FontSans);
-    if (model.FontMono) previewEl.style.setProperty('--vp-font-mono', model.FontMono);
-    if (model.FontSizeBase) previewEl.style.setProperty('--vp-font-size-base', model.FontSizeBase);
-    if (model.LineHeight) previewEl.style.setProperty('--vp-line-height', model.LineHeight);
-    if (model.RadiusLg) previewEl.style.setProperty('--vp-radius-lg', model.RadiusLg);
-  }
-
-  // paintOptionPreview live-applies the option choices to the preview panel
-  // (scheme accent + corner radius are the visible ones at this size).
-  function paintOptionPreview() {
-    if (!previewEl) return;
-    var s = options.scheme;
-    if (s && SCHEMES[s]) {
-      previewEl.style.setProperty('--vp-accent', SCHEMES[s][0]);
-      previewEl.style.setProperty('--vp-accent2', SCHEMES[s][1]);
-    } else {
-      // revert to the token-defined accent
-      if (model.AccentDark) previewEl.style.setProperty('--vp-accent', model.AccentDark);
-      if (model.Accent2Dark) previewEl.style.setProperty('--vp-accent2', model.Accent2Dark);
-    }
-    var c = options.corners;
-    if (c === 'sharp') previewEl.style.setProperty('--vp-radius-lg', '0');
-    else if (c === 'round') previewEl.style.setProperty('--vp-radius-lg', '1.5rem');
-    else if (c === 'soft') previewEl.style.setProperty('--vp-radius-lg', '0.875rem');
-    else if (model.RadiusLg) previewEl.style.setProperty('--vp-radius-lg', model.RadiusLg);
-  }
-
+  // ── Load tokens into controls ──────────────────────────────────────────────
   function loadTokens(tok) {
     model = {};
     Object.keys(inputs).forEach(function (field) {
-      var val = tok[field] != null ? String(tok[field]) : '';
-      model[field] = val;
+      var v = tok[field] != null ? String(tok[field]) : '';
+      model[field] = v;
       var el = inputs[field];
-      if (el.type === 'color') {
-        if (/^#[0-9a-fA-F]{6}$/.test(val)) el.value = val;
-      } else {
-        el.value = val;
-      }
+      if (el.type === 'color') { if (/^#[0-9a-fA-F]{6}$/.test(v)) el.value = v; }
+      else el.value = v;
     });
     activePresetName = tok.Name || '';
-    // Preserve the preset's component CSS (apex.css/gale.css/etc.) so a theme
-    // loaded via "Customize" keeps its full design when the operator hits Apply.
     loadedCustomCSS = tok.custom_css || tok.CustomCSS || '';
-    // Theme-level options — restore saved choices (default-select otherwise).
     options = {};
-    var savedOpts = (tok && (tok.options || tok.Options)) || {};
+    var saved = (tok && (tok.options || tok.Options)) || {};
     Object.keys(optInputs).forEach(function (key) {
       var el = optInputs[key];
-      el.value = savedOpts[key] != null ? String(savedOpts[key]) : (el.options[0] ? el.options[0].value : '');
+      el.value = saved[key] != null ? String(saved[key]) : (el.options[0] ? el.options[0].value : '');
       options[key] = el.value;
     });
-    if (activeNameEl) {
-      activeNameEl.textContent = activePresetName ? 'Current theme: ' + activePresetName : 'Current theme';
-    }
+    if (activeNameEl) activeNameEl.textContent = activePresetName ? 'Current theme: ' + activePresetName : 'Current theme';
     updateOptionVisibility();
     highlightActiveCard(activePresetName);
-    paintPreview();
-    paintOptionPreview();
   }
 
-  // Highlight the active theme card in the gallery
   function highlightActiveCard(name) {
     if (!galleryEl) return;
     galleryEl.querySelectorAll('.theme-card').forEach(function (card) {
-      var presetName = card.getAttribute('data-preset');
-      if (presetName === name) {
-        card.classList.add('theme-card--active');
-      } else {
-        card.classList.remove('theme-card--active');
-      }
+      card.classList.toggle('theme-card--active', card.getAttribute('data-preset') === name);
     });
   }
 
-  Object.keys(inputs).forEach(function (field) {
-    var el = inputs[field];
-    var evt = el.type === 'color' ? 'input' : 'change';
-    el.addEventListener(evt, function () {
-      model[field] = el.value;
-      paintPreview();
-      paintOptionPreview();
-    });
-  });
-
-  // Option selects → update state + live preview.
-  Object.keys(optInputs).forEach(function (key) {
-    optInputs[key].addEventListener('change', function () {
-      options[key] = optInputs[key].value;
-      paintOptionPreview();
-    });
-  });
-
-  // Show only the per-theme extra options that apply to the active theme; hide
-  // (and reset) the rest so a hidden option never silently applies.
+  // Show only the per-theme extra options that apply to the active theme.
   function updateOptionVisibility() {
     Object.keys(optInputs).forEach(function (key) {
       var el = optInputs[key];
       var row = el.closest('[data-opt-theme]');
-      if (!row) return; // shared option — always visible
+      if (!row) return;
       var themes = (row.getAttribute('data-opt-theme') || '').split(',');
       var show = themes.indexOf(activePresetName) !== -1;
       row.hidden = !show;
@@ -178,21 +118,124 @@
     });
   }
 
+  // ── Preview payload (mirrors Apply) ────────────────────────────────────────
+  function buildTokens() {
+    var t = {};
+    Object.keys(model).forEach(function (k) { t[k] = model[k]; });
+    // Combine the preset's component CSS with the operator's custom CSS so the
+    // preview reflects BOTH (Apply persists them via separate paths).
+    var css = loadedCustomCSS || '';
+    if (cssArea && cssArea.value) css = (css ? css + '\n' : '') + cssArea.value;
+    if (css) t.custom_css = css;
+    t.options = options;
+    return t;
+  }
+
+  // ── Live preview: draft -> hot-swap stylesheet ──────────────────────────────
+  function schedulePreview() {
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(refreshPreview, 220);
+  }
+
+  function refreshPreview() {
+    var seq = ++reqSeq;
+    showLoading(true);
+    setPreviewStatus('Updating…');
+    fetch('/os/api/theme/preview-draft', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
+      body: JSON.stringify({ tokens: buildTokens() })
+    }).then(function (r) {
+      if (!r.ok) return r.json().then(function (e) { throw new Error((e.error) || ('preview failed (' + r.status + ')')); });
+      return r.json();
+    }).then(function (d) {
+      if (seq !== reqSeq) return; // a newer request superseded this one
+      applyPreview(d.id, d.css_href);
+    }).catch(function (err) {
+      if (seq !== reqSeq) return;
+      showLoading(false);
+      setPreviewStatus('Preview error');
+      setStatus(String(err.message || err), 'danger');
+    });
+  }
+
+  function applyPreview(id, cssHref) {
+    var pageURL = '/os/theme/preview?draft=' + encodeURIComponent(id);
+    if (newTabLink) newTabLink.setAttribute('href', pageURL);
+    if (!framePointed) {
+      // First load: point the iframe at the draft preview page.
+      framePointed = true;
+      if (frame) frame.src = pageURL;
+      // showLoading cleared on frame load handler below.
+    } else if (previewReady && frame && frame.contentWindow) {
+      frame.contentWindow.postMessage({ type: 'vayu-preview-css', href: cssHref }, location.origin);
+      pendingHref = null;
+      showLoading(false);
+      setPreviewStatus('Live preview');
+    } else {
+      // iframe still booting — flush once the ready handshake arrives.
+      pendingHref = cssHref;
+    }
+  }
+
+  // Handshake + load wiring.
+  window.addEventListener('message', function (e) {
+    if (e.origin !== location.origin) return;
+    var d = e.data || {};
+    if (d.type === 'vayu-preview-ready') {
+      previewReady = true;
+      showLoading(false);
+      setPreviewStatus('Live preview');
+      if (pendingHref && frame && frame.contentWindow) {
+        frame.contentWindow.postMessage({ type: 'vayu-preview-css', href: pendingHref }, location.origin);
+        pendingHref = null;
+      }
+    }
+  });
+  if (frame) {
+    frame.addEventListener('load', function () { showLoading(false); });
+  }
+
+  // ── Device toggle ────────────────────────────────────────────────────────────
+  deviceBtns.forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var dev = btn.getAttribute('data-theme-device') || 'desktop';
+      if (viewport) viewport.setAttribute('data-device', dev);
+      deviceBtns.forEach(function (b) {
+        var on = b === btn;
+        b.classList.toggle('cz-device--active', on);
+        b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      });
+    });
+  });
+
+  // ── Control change wiring ─────────────────────────────────────────────────────
+  Object.keys(inputs).forEach(function (field) {
+    var el = inputs[field];
+    var evt = el.type === 'color' ? 'input' : 'change';
+    el.addEventListener(evt, function () { model[field] = el.value; schedulePreview(); });
+  });
+  Object.keys(optInputs).forEach(function (key) {
+    optInputs[key].addEventListener('change', function () { options[key] = optInputs[key].value; schedulePreview(); });
+  });
+  if (cssArea) cssArea.addEventListener('input', schedulePreview);
+
   // ── Gallery card clicks ────────────────────────────────────────────────────
   if (galleryEl) {
     galleryEl.addEventListener('click', function (e) {
       var card = e.target.closest('.theme-card');
       if (!card) return;
-      var presetName = card.getAttribute('data-preset');
-      var preset = allPresets.find(function (p) { return p.Name === presetName; });
+      var name = card.getAttribute('data-preset');
+      var preset = allPresets.find(function (p) { return p.Name === name; });
       if (preset) {
         loadTokens(preset);
-        setStatus('Preset "' + presetName + '" loaded - not yet applied', 'warn');
+        setStatus('Preset "' + name + '" loaded — not yet applied', 'warn');
+        schedulePreview();
       }
     });
   }
 
-  // ── Persistence ─────────────────────────────────────────────────────────────
+  // ── Apply / Revert ──────────────────────────────────────────────────────────
   function apply() {
     setStatus('Applying…');
     var payload = {};
@@ -211,9 +254,7 @@
       highlightActiveCard(d.name || '');
       if (activeNameEl) activeNameEl.textContent = 'Current theme: ' + (d.name || 'Custom');
       if (window.vpToast) window.vpToast('Theme applied', 'ok');
-    }).catch(function (err) {
-      setStatus(String(err.message || err), 'danger');
-    });
+    }).catch(function (err) { setStatus(String(err.message || err), 'danger'); });
   }
 
   function fetchTokens() {
@@ -221,87 +262,26 @@
       .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
       .then(function (tok) { loadTokens(tok); });
   }
-
   function fetchPresets() {
     return fetch('/os/api/theme/presets', { headers: { Accept: 'application/json' } })
       .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
-      .then(function (list) {
-        // Gallery cards are rendered server-side; just keep the data for clicks.
-        // NOTE: do NOT re-fetch tokens here — a second, un-awaited load would
-        // resolve after applyLoadParam() and clobber a "Customize" selection.
-        allPresets = Array.isArray(list) ? list : [];
-      });
+      .then(function (list) { allPresets = Array.isArray(list) ? list : []; });
   }
 
   if (applyBtn) applyBtn.addEventListener('click', apply);
   if (revertBtn) revertBtn.addEventListener('click', function () {
-    fetchTokens().then(function () { setStatus('Reverted to saved theme', 'ok'); });
+    fetchTokens().then(function () { setStatus('Reverted to saved theme', 'ok'); schedulePreview(); });
   });
 
-  // ── Full preview overlay (real public markup, option-aware iframe) ──────────
-  // Unlike the small CSSOM panel (which can only show colour/corner changes at
-  // its size), this renders the actual home-page markup styled by the selected
-  // preset PLUS every customization option (density, heading size, width, …),
-  // so design/feature changes are visible exactly as readers would see them.
-  var fpBtn = document.querySelector('[data-theme-fullpreview]');
-  var fpOverlay = document.querySelector('[data-theme-preview-overlay]');
-  var fpFrame = fpOverlay && fpOverlay.querySelector('[data-theme-preview-frame]');
-  var fpTitle = fpOverlay && fpOverlay.querySelector('[data-theme-preview-title]');
-  var fpApply = fpOverlay && fpOverlay.querySelector('[data-theme-preview-apply]');
-  var fpClose = fpOverlay && fpOverlay.querySelector('[data-theme-preview-close]');
-
-  function previewURL() {
-    var name = activePresetName || 'Default';
-    var q = 'preset=' + encodeURIComponent(name);
-    Object.keys(options).forEach(function (k) {
-      var v = options[k];
-      if (v) q += '&' + encodeURIComponent(k) + '=' + encodeURIComponent(v);
-    });
-    return '/os/theme/preview?' + q;
-  }
-  function openFullPreview() {
-    if (!fpOverlay || !fpFrame) return;
-    fpFrame.src = previewURL();
-    if (fpTitle) fpTitle.textContent = 'Full preview — ' + (activePresetName || 'Default');
-    fpOverlay.hidden = false;
-    document.body.style.overflow = 'hidden';
-    if (fpClose) fpClose.focus();
-  }
-  function closeFullPreview() {
-    if (!fpOverlay) return;
-    fpOverlay.hidden = true;
-    if (fpFrame) fpFrame.src = 'about:blank';
-    document.body.style.overflow = '';
-  }
-  if (fpBtn) fpBtn.addEventListener('click', openFullPreview);
-  if (fpClose) fpClose.addEventListener('click', closeFullPreview);
-  if (fpOverlay) fpOverlay.addEventListener('click', function (e) {
-    if (e.target === fpOverlay) closeFullPreview();
-  });
-  document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape' && fpOverlay && !fpOverlay.hidden) closeFullPreview();
-  });
-  if (fpApply) fpApply.addEventListener('click', function () {
-    apply();
-    closeFullPreview();
-  });
-
-  // ── Custom CSS + Head/SEO code editor ───────────────────────────────────────
-  var cssArea = root.querySelector('[data-theme-css]');
+  // ── Custom CSS + Head/SEO save ────────────────────────────────────────────────
   var codeSaveBtn = root.querySelector('[data-theme-code-save]');
   var codeStatusEl = root.querySelector('[data-theme-code-status]');
-
   function setCodeStatus(msg, kind) {
     if (!codeStatusEl) return;
     codeStatusEl.textContent = msg;
     codeStatusEl.className = 'text-sm' + (kind ? ' status--' + kind : ' muted');
   }
-
-  function headVal(name) {
-    var el = root.querySelector('[data-head="' + name + '"]');
-    return el ? el.value : '';
-  }
-
+  function headVal(name) { var el = root.querySelector('[data-head="' + name + '"]'); return el ? el.value : ''; }
   if (codeSaveBtn) {
     codeSaveBtn.addEventListener('click', function () {
       setCodeStatus('Saving…');
@@ -311,11 +291,8 @@
         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
         body: JSON.stringify({
           custom_css: cssArea ? cssArea.value : '',
-          keywords: headVal('keywords'),
-          theme_color: headVal('theme_color'),
-          robots: headVal('robots'),
-          verify_google: headVal('verify_google'),
-          verify_bing: headVal('verify_bing')
+          keywords: headVal('keywords'), theme_color: headVal('theme_color'),
+          robots: headVal('robots'), verify_google: headVal('verify_google'), verify_bing: headVal('verify_bing')
         })
       }).then(function (r) {
         if (!r.ok) return r.json().then(function (e) { throw new Error(e.error || ('save failed (' + r.status + ')')); });
@@ -323,23 +300,20 @@
       }).then(function () {
         setCodeStatus('Saved · live on public pages · ' + new Date().toLocaleTimeString(), 'ok');
         if (window.vpToast) window.vpToast('Custom CSS & meta saved', 'ok');
-      }).catch(function (err) {
-        setCodeStatus(String(err.message || err), 'danger');
-      }).then(function () { codeSaveBtn.disabled = false; });
+      }).catch(function (err) { setCodeStatus(String(err.message || err), 'danger'); })
+        .then(function () { codeSaveBtn.disabled = false; });
     });
   }
 
-  // ── Theme import / export ───────────────────────────────────────────────────
+  // ── Import ──────────────────────────────────────────────────────────────────
   var importFile = root.querySelector('[data-theme-import-file]');
   var importBtn = root.querySelector('[data-theme-import]');
   var importStatusEl = root.querySelector('[data-theme-import-status]');
-
   function setImportStatus(msg, kind) {
     if (!importStatusEl) return;
     importStatusEl.textContent = msg;
     importStatusEl.className = 'text-sm' + (kind ? ' status--' + kind : ' muted');
   }
-
   if (importBtn) {
     importBtn.addEventListener('click', function () {
       var f = importFile && importFile.files && importFile.files[0];
@@ -358,21 +332,14 @@
         }).then(function (d) {
           setImportStatus('Imported “' + (d.name || 'theme') + '” — reloading…', 'ok');
           setTimeout(function () { window.location.reload(); }, 900);
-        }).catch(function (err) {
-          setImportStatus(String(err.message || err), 'danger');
-          importBtn.disabled = false;
-        });
+        }).catch(function (err) { setImportStatus(String(err.message || err), 'danger'); importBtn.disabled = false; });
       };
       reader.onerror = function () { setImportStatus('Could not read the file', 'danger'); };
       reader.readAsText(f);
     });
   }
 
-  // ── Colorize gallery cards via CSSOM (CSP-safe: no inline style attrs) ──────
-  // Every colour-bearing element in the gallery carries a data-color hex string;
-  // we apply it as a background-color through the CSSOM, which style-src does not
-  // gate. Covers the card "page" background, accent bar, body text lines and the
-  // accent pills — i.e. the whole Tumblr-style preview.
+  // ── Gallery swatches via CSSOM (CSP-safe) ──────────────────────────────────
   function paintSwatches() {
     if (!galleryEl) return;
     galleryEl.querySelectorAll('[data-color]').forEach(function (el) {
@@ -383,9 +350,6 @@
   paintSwatches();
 
   // ── Init ────────────────────────────────────────────────────────────────────
-  // If arriving from the Theme Store via "Customize" (/os/theme?load=<Name>),
-  // preselect that theme into the editor once presets have loaded so the
-  // operator lands ready to fine-tune it (not yet applied).
   function applyLoadParam() {
     var m = window.location.search.match(/[?&]load=([^&]+)/);
     if (!m) return false;
@@ -401,10 +365,8 @@
 
   Promise.all([fetchTokens(), fetchPresets()])
     .then(function () {
-      if (!applyLoadParam()) {
-        highlightActiveCard(activePresetName);
-        setStatus('Ready');
-      }
+      if (!applyLoadParam()) { highlightActiveCard(activePresetName); setStatus('Ready'); }
+      schedulePreview(); // first preview load
     })
     .catch(function () { setStatus('Could not load theme', 'danger'); });
 })();
