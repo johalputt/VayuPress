@@ -80,6 +80,20 @@ func AllOptions() []Option {
 			},
 		},
 		{
+			Key: "feedlayout", Label: "Post feed layout", Default: "default",
+			Help: "How the home-page post list is arranged.",
+			Choices: []OptionChoice{
+				{"default", "Theme default"}, {"list", "List"}, {"grid", "Grid"}, {"cards", "Cards"},
+			},
+		},
+		{
+			Key: "headeralign", Label: "Header alignment", Default: "default",
+			Help: "Alignment of the hero/title block.",
+			Choices: []OptionChoice{
+				{"default", "Theme default"}, {"left", "Left"}, {"center", "Centered"},
+			},
+		},
+		{
 			Key: "headingcase", Label: "Heading case", Default: "default",
 			Choices: []OptionChoice{
 				{"default", "Theme default"}, {"normal", "Normal"}, {"uppercase", "Uppercase"},
@@ -221,6 +235,23 @@ func applyThemeOptions(t *Tokens) string {
 	}
 	if t.Options["accentfill"] == "gradient" {
 		extra.WriteString(headingSelectors + "{background:linear-gradient(135deg,var(--vp-accent),var(--vp-accent2,var(--vp-hi)));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent}")
+	}
+
+	// Post feed layout — arrange the home-page post list. Falls back gracefully
+	// (the var() fallbacks keep cards readable even if a theme omits the vars).
+	switch t.Options["feedlayout"] {
+	case "list":
+		extra.WriteString(".vayu-post-list{display:flex;flex-direction:column;gap:1rem}")
+	case "grid":
+		extra.WriteString(".vayu-post-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:1.5rem;align-items:start}")
+	case "cards":
+		extra.WriteString(".vayu-post-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:1.25rem;align-items:start}.vayu-post-card{border:1px solid var(--border,rgba(125,125,125,.22));border-radius:var(--radius2,12px);padding:1.25rem}")
+	}
+	switch t.Options["headeralign"] {
+	case "left":
+		extra.WriteString(".vayu-hero{text-align:left}")
+	case "center":
+		extra.WriteString(".vayu-hero{text-align:center}.vayu-hero .vayu-stats{justify-content:center}.vayu-hero .vayu-hero-tagline{margin-left:auto;margin-right:auto}")
 	}
 
 	// ── Per-theme extras ────────────────────────────────────────────────────

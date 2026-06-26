@@ -96,29 +96,38 @@ type themeColorField struct {
 	Vari  string // e.g. "accent" → --vp-accent (empty when not previewed)
 }
 
-// themeDarkColors are the dark-mode tokens, each wired to a preview variable.
+// brandColorFields are the accent colours surfaced prominently in the Brand
+// group (the most-used controls), with live preview wiring for the dark accents.
+func brandColorFields() []themeColorField {
+	return []themeColorField{
+		{"AccentDark", "Accent", "accent"},
+		{"Accent2Dark", "Accent 2", "accent2"},
+		{"AccentLight", "Accent (light mode)", ""},
+		{"Accent2Light", "Accent 2 (light mode)", ""},
+	}
+}
+
+// themeDarkColors are the dark-mode surface tokens (accents live in the Brand
+// group), each wired to a preview variable.
 func themeDarkColors() []themeColorField {
 	return []themeColorField{
 		{"BgDark", "Background", "bg"},
 		{"SurfaceDark", "Surface", "surface"},
 		{"TextDark", "Text", "text"},
 		{"MutedDark", "Muted", "muted"},
-		{"AccentDark", "Accent", "accent"},
-		{"Accent2Dark", "Accent 2", "accent2"},
 		{"HiDark", "Highlight", "hi"},
 		{"GreenDark", "Success", "green"},
 	}
 }
 
-// themeLightColors are the light-mode tokens (no live preview — preview is dark).
+// themeLightColors are the light-mode surface tokens (no live preview — preview
+// is dark; accents live in the Brand group).
 func themeLightColors() []themeColorField {
 	return []themeColorField{
 		{"BgLight", "Background", ""},
 		{"SurfaceLight", "Surface", ""},
 		{"TextLight", "Text", ""},
 		{"MutedLight", "Muted", ""},
-		{"AccentLight", "Accent", ""},
-		{"Accent2Light", "Accent 2", ""},
 		{"HiLight", "Highlight", ""},
 	}
 }
@@ -145,41 +154,45 @@ func textRow(field, label, placeholder string) string {
 </label>`
 }
 
-// themeOptionRows renders the theme-level customization controls — color scheme,
-// reading width, corner style, heading case, accent fill — as <select>s bound to
-// data-token-opt. The Studio JS loads/saves their values as Tokens.Options, which
-// CompileCSS realises (re-tinting the accent, resizing the measure, etc.) for
-// any theme. CSP-safe: plain selects, no inline handlers.
-func themeOptionRows() string {
-	out := ""
-	for _, o := range theme.AllOptions() {
-		opts := ""
-		for _, c := range o.Choices {
-			opts += `<option value="` + html.EscapeString(c.Value) + `">` + html.EscapeString(c.Label) + `</option>`
-		}
-		hint := ""
-		if o.Help != "" {
-			hint = `<span class="theme-field__hint">` + html.EscapeString(o.Help) + `</span>`
-		}
-		out += `<label class="theme-field theme-field--text">
-  <span class="theme-field__label">` + html.EscapeString(o.Label) + `</span>
-  <select class="input" data-token-opt="` + html.EscapeString(o.Key) + `" aria-label="` + html.EscapeString(o.Label) + `">` + opts + `</select>` + hint + `</label>`
+// optionSelectRow renders one customization option as a labelled <select> bound
+// to data-token-opt. When themesCSV is non-empty the row carries data-opt-theme
+// and starts hidden, so the Studio JS shows it only for matching themes.
+func optionSelectRow(o theme.Option, themesCSV string) string {
+	opts := ""
+	for _, c := range o.Choices {
+		opts += `<option value="` + html.EscapeString(c.Value) + `">` + html.EscapeString(c.Label) + `</option>`
 	}
-	// Per-theme extras — rendered for every theme but shown/hidden by the Studio
-	// JS based on the active theme (data-opt-theme is a comma-separated list).
-	for _, to := range theme.PerThemeOptions() {
-		o := to.Option
-		opts := ""
-		for _, c := range o.Choices {
-			opts += `<option value="` + html.EscapeString(c.Value) + `">` + html.EscapeString(c.Label) + `</option>`
-		}
-		hint := ""
-		if o.Help != "" {
-			hint = `<span class="theme-field__hint">` + html.EscapeString(o.Help) + `</span>`
-		}
-		out += `<label class="theme-field theme-field--text" data-opt-theme="` + html.EscapeString(strings.Join(to.Themes, ",")) + `" hidden>
+	hint := ""
+	if o.Help != "" {
+		hint = `<span class="theme-field__hint">` + html.EscapeString(o.Help) + `</span>`
+	}
+	attr := ""
+	if themesCSV != "" {
+		attr = ` data-opt-theme="` + html.EscapeString(themesCSV) + `" hidden`
+	}
+	return `<label class="theme-field theme-field--text"` + attr + `>
   <span class="theme-field__label">` + html.EscapeString(o.Label) + `</span>
   <select class="input" data-token-opt="` + html.EscapeString(o.Key) + `" aria-label="` + html.EscapeString(o.Label) + `">` + opts + `</select>` + hint + `</label>`
+}
+
+// optionRowsByKeys renders the named options (shared or per-theme) in order, so
+// the Studio can compose them into Ghost-style groups (Brand, Layout, …).
+func optionRowsByKeys(keys ...string) string {
+	out := ""
+	for _, k := range keys {
+		for _, o := range theme.AllOptions() {
+			if o.Key == k {
+				out += optionSelectRow(o, "")
+				goto next
+			}
+		}
+		for _, to := range theme.PerThemeOptions() {
+			if to.Option.Key == k {
+				out += optionSelectRow(to.Option, strings.Join(to.Themes, ","))
+				goto next
+			}
+		}
+	next:
 	}
 	return out
 }
@@ -232,6 +245,10 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
 	for _, f := range themeLightColors() {
 		lightRows += colorRow(f)
 	}
+	brandRows := ""
+	for _, f := range brandColorFields() {
+		brandRows += colorRow(f)
+	}
 	typoRows := textRow("FontSans", "Sans-serif stack", "system-ui, sans-serif") +
 		textRow("FontMono", "Monospace stack", "ui-monospace, monospace") +
 		textRow("FontSizeBase", "Base font size", "1rem") +
@@ -239,6 +256,9 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
 		textRow("MaxWidth", "Max content width", "72ch") +
 		textRow("RadiusSm", "Small radius", "0.25rem") +
 		textRow("RadiusLg", "Large radius", "0.75rem")
+
+	faviconBust := time.Now().Format("150405")
+	navSeed := html.EscapeString(val(settings.KeyNavItems))
 
 	body := `<div class="page-header">
   <div>
@@ -265,14 +285,44 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
     </details>
 
     <details class="cz-group" open>
-      <summary class="cz-group__head">Quick styles</summary>
+      <summary class="cz-group__head">Brand <span class="cz-group__hint">logo &amp; accent</span></summary>
       <div class="cz-group__body">
-        <p class="text-sm muted mb-3">High-level controls that restyle the whole site — colour scheme, reading width, corners, density and more.</p>
-        <div class="theme-fields theme-fields--text">` + themeOptionRows() + `</div>
+        <div class="cz-logo">
+          <img id="brand-favicon-img" class="cz-logo__img" src="/favicon.ico?t=` + faviconBust + `" alt="Current site mark" width="44" height="44">
+          <div class="cz-logo__meta">
+            <div class="cz-logo__title">Logo &amp; favicon</div>
+            <div class="text-xs muted" id="brand-favicon-state">Used as the favicon and nav-bar logo.</div>
+          </div>
+        </div>
+        <div class="vm-row mt-2">
+          <input type="file" id="brand-favicon-file" accept="image/png,image/x-icon,.png,.ico" class="input">
+          <button type="button" class="btn btn--primary btn--sm" id="brand-favicon-upload">Upload</button>
+          <button type="button" class="btn btn--sm" id="brand-favicon-remove">Default</button>
+          <span id="brand-favicon-status" class="text-xs muted" role="status" aria-live="polite"></span>
+        </div>
+        <span class="theme-field__hint">PNG or ICO, square, &le; 256 KB. Applies to the live site immediately.</span>
+        <div class="theme-fields mt-4">` + brandRows + `</div>
+        <div class="theme-fields theme-fields--text mt-3">` + optionRowsByKeys("scheme", "accentfill") + `</div>
       </div>
     </details>
 
     <details class="cz-group" open>
+      <summary class="cz-group__head">Layout</summary>
+      <div class="cz-group__body">
+        <p class="text-sm muted mb-3">Reading width, corners, post-feed layout, header alignment and density.</p>
+        <div class="theme-fields theme-fields--text">` + optionRowsByKeys("width", "corners", "feedlayout", "headeralign", "density") + `</div>
+      </div>
+    </details>
+
+    <details class="cz-group">
+      <summary class="cz-group__head">Typography &amp; fonts</summary>
+      <div class="cz-group__body">
+        ` + fontPairSelectHTML() + `
+        <div class="theme-fields theme-fields--text">` + optionRowsByKeys("headingcase", "headingscale") + typoRows + `</div>
+      </div>
+    </details>
+
+    <details class="cz-group">
       <summary class="cz-group__head">Colours — dark mode</summary>
       <div class="cz-group__body">
         <div class="theme-fields">` + darkRows + `</div>
@@ -287,10 +337,16 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
     </details>
 
     <details class="cz-group">
-      <summary class="cz-group__head">Typography &amp; layout</summary>
+      <summary class="cz-group__head">Navigation <span class="cz-group__hint">live</span></summary>
       <div class="cz-group__body">
-        ` + fontPairSelectHTML() + `
-        <div class="theme-fields theme-fields--text">` + typoRows + `</div>
+        <p class="text-sm muted mb-3">Edit the public site menu. Saved straight to your live site (the preview shows a representative menu).</p>
+        <div id="cz-nav-rows" data-nav-editor></div>
+        <button type="button" class="btn btn--sm mt-2" id="cz-nav-add">+ Add link</button>
+        <div class="vm-row mt-3">
+          <button type="button" class="btn btn--primary btn--sm" id="cz-nav-save">Save navigation</button>
+          <span class="text-sm muted" id="cz-nav-status"></span>
+        </div>
+        <input type="hidden" id="cz-nav-seed" value="` + navSeed + `">
       </div>
     </details>
 
