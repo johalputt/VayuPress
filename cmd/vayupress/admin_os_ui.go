@@ -82,6 +82,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 	r.Get("/os/static/js/theme-preview-frame.js", serveAdminOSAsset("js/theme-preview-frame.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-theme-store.js", serveAdminOSAsset("js/admin-os-theme-store.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-mail.js", serveAdminOSAsset("js/admin-os-mail.js", "application/javascript; charset=utf-8"))
+	r.Get("/os/static/js/admin-os-update.js", serveAdminOSAsset("js/admin-os-update.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/purify.min.js", serveAdminOSAsset("js/purify.min.js", "application/javascript; charset=utf-8"))
 
 	// Fonts — path-traversal prevented by switch allowlist (same pattern as v2).
@@ -199,6 +200,19 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.Get("/os/tools", a.handleOSTools)
 		pr.Get("/os/api/tools", a.handleOSToolsList)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/tools/toggle", a.handleOSToolToggle)
+
+		// Update & Backup — one-click signature-verified self-update plus full
+		// site (database + settings) export/import. Writes are CSRF-protected and
+		// admin-role gated inside each handler; export/import lift the server
+		// read/write deadlines so transfers have no size limit.
+		pr.Get("/os/update", a.handleOSUpdate)
+		pr.Get("/os/api/update/check", a.handleOSUpdateCheck)
+		pr.Get("/os/api/update/history", a.handleOSUpdateHistory)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/update/apply", a.handleOSUpdateApply)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/update/restart", a.handleOSUpdateRestart)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/update/rollback", a.handleOSUpdateRollback)
+		pr.Get("/os/api/backup/export", a.handleOSBackupExport)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/backup/import", a.handleOSBackupImport)
 		pr.Get("/os/seo", a.handleOSSEONative)
 		pr.Get("/os/analytics", a.handleOSAnalytics)
 		// VayuAnalytics: export downloads + goal management (session-authed).
@@ -357,6 +371,7 @@ var (
 	iconSettings   = svgIcon("M10 13a3 3 0 100-6 3 3 0 000 6zm0 0v1m0-8V5M4.2 4.2l.7.7m10-.7l-.7.7M3 10H2m16 0h-1M4.9 15.8l.7-.7m9.5.7l-.7-.7")
 	iconSecurity   = svgIcon("M10 2l6 3v5c0 3.5-2.5 6.8-6 8-3.5-1.2-6-4.5-6-8V5l6-3z")
 	iconTools      = svgIcon("M12.5 3.5a3 3 0 00-3.9 3.9l-5.1 5.1 2 2 5.1-5.1a3 3 0 003.9-3.9l-2 2-2-2 2-2z")
+	iconUpdate     = svgIcon("M3 10a7 7 0 0112-4.9L17 7m0 0V3m0 4h-4M17 10a7 7 0 01-12 4.9L3 13m0 0v4m0-4h4")
 	iconMonitoring = svgIcon("M2 10h3l2-5 3 11 3-8 2 2h3")
 	iconGovernance = svgIcon("M10 2l7 3v5c0 3.5-2.8 6.8-7 8-4.2-1.2-7-4.5-7-8V5l7-3zm0 5v6m-3-3h6")
 	iconTheme      = svgIcon("M10 2a8 8 0 100 16c1 0 1.5-.7 1.5-1.5 0-.4-.2-.8-.4-1-.3-.3-.4-.6-.4-1 0-.8.7-1.5 1.5-1.5H14a4 4 0 004-4c0-3.6-3.6-6.5-8-6.5zM5.5 10a1 1 0 110-2 1 1 0 010 2zm3-3a1 1 0 110-2 1 1 0 010 2zm5 0a1 1 0 110-2 1 1 0 010 2z")
@@ -464,6 +479,7 @@ func adminOSShellHead(nonce, title, active string, settings *osSettings) string 
     ` + navItem("/os/monitoring", "Monitoring", "monitoring", active, iconMonitoring) + `
     ` + navItem("/os/governance", "Governance", "governance", active, iconGovernance) + `
     ` + navItem("/os/tools", "Tools & Plugins", "tools", active, iconTools) + `
+    ` + navItem("/os/update", "Update & Backup", "update", active, iconUpdate) + `
     ` + navItem("/os/settings", "Settings", "settings", active, iconSettings) + `
     ` + navItem("/os/apikeys", "API Keys", "apikeys", active, iconKey) + `
     ` + navItem("/os/security", "Security", "security", active, iconSecurity) + `
@@ -2249,6 +2265,7 @@ func (a *App) handleOSCmdIndex(w http.ResponseWriter, r *http.Request) {
 		{Label: "Monitoring", Icon: "📈", Href: "/os/monitoring"},
 		{Label: "Governance", Icon: "🛡", Href: "/os/governance"},
 		{Label: "Tools & Plugins", Icon: "🧩", Href: "/os/tools"},
+		{Label: "Update & Backup", Icon: "⬆", Href: "/os/update"},
 		{Label: "General settings", Icon: "⚙", Href: "/os/settings/general"},
 		{Label: "Design & theme", Icon: "🎨", Href: "/os/settings/design"},
 		{Label: "Email settings", Icon: "✉", Href: "/os/settings/email"},

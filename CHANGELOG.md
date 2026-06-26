@@ -8,6 +8,41 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [1.18.0] — 2026-06-26
+
+### Added
+
+- **Update & Backup — a one-click VayuOS surface for software updates and full
+  site backups.** A new **Update & Backup** page (under *System* in the sidebar
+  and the command palette) brings two operator tasks that previously required
+  shell access into the admin panel. See ADR-0089.
+- **One-click software update — no command line, nothing left half-done.** Check
+  GitHub for the latest signed release and install it in a single click: the
+  release is downloaded, its SHA-256 checksum **and** Ed25519 signature are
+  verified against the pinned release key, your database is backed up
+  automatically, the binary is swapped atomically, and the service re-launches
+  itself to activate the new version. A **Roll back** action restores the
+  previous binary and restarts. Every step is recorded in the update history and
+  the tamper-evident audit log.
+- **Full backup, export & import — with no size limit.** Download your entire
+  site — the database and every setting — as a single consistent, checksummed
+  `.tar.gz`, and restore it on this or another server. The database is copied
+  with SQLite `VACUUM INTO` for a clean, point-in-time snapshot (no torn pages).
+  Export streams straight to the download and import streams the upload to disk,
+  both in constant memory with the request timeouts lifted, so multi-gigabyte
+  sites move without trouble. A restore validates the archive (checksum +
+  integrity check + schema check), backs up the current database first, then
+  swaps the restored data in atomically at startup and restarts.
+
+### Security
+
+- One-click apply keeps every guarantee of the CLI updater (ADR-0064): it still
+  requires the operator opt-in (`VAYU_SELFUPDATE_ENABLED=true`) and a pinned
+  release public key (`VAYU_RELEASE_PUBKEY`), refuses in
+  read-only/quarantined/maintenance modes, and verifies signatures before
+  writing anything. All update, restart, rollback, export and import actions are
+  admin-role gated, CSRF-protected, and written to the WORM audit log.
+
 ## [1.17.0] — 2026-06-26
 
 ### Added

@@ -21,6 +21,33 @@
 > _Own your content. Own your communication. Own your infrastructure._
 > Publishing is the core identity, **VayuMail** the native sovereignty layer, **VayuPGP** the native privacy layer, and **VayuOS** the native control layer — all in a single Go binary, single process, single config.
 
+## What's New in v1.18.0
+
+> Full notes in [`CHANGELOG.md`](CHANGELOG.md)
+
+**Update & Backup — update VayuPress and back up your whole site in one click,
+from VayuOS.** A new **Update & Backup** page (under *System*) finally brings two
+shell-only chores into the admin panel. See ADR-0089.
+
+- **One-click software updates — no command line, nothing left half-done.** Check
+  for the latest signed release and install it in a single click: the download is
+  verified by SHA-256 checksum **and** Ed25519 signature against the pinned
+  release key, your database is backed up automatically, the binary is swapped
+  atomically, and the service re-launches itself to activate the new version. A
+  **Roll back** button restores the previous binary and restarts.
+- **Full backup, export & import — with no size limit.** Download your entire
+  site — the database and every setting — as one consistent, checksummed
+  `.tar.gz`, and restore it on this or another server. The database is copied
+  with SQLite `VACUUM INTO` for a clean point-in-time snapshot; export and import
+  stream in constant memory with the request timeouts lifted, so multi-gigabyte
+  sites move without trouble. A restore validates the archive, backs up the
+  current database first, then swaps the restored data in atomically at startup.
+- **Same security contract as the CLI updater (ADR-0064).** One-click apply still
+  requires the operator opt-in (`VAYU_SELFUPDATE_ENABLED=true`) and a pinned
+  release key (`VAYU_RELEASE_PUBKEY`), refuses in unsafe modes, and verifies
+  signatures before writing anything. Every action is admin-gated,
+  CSRF-protected, and recorded in the update history and the WORM audit log.
+
 ## What's New in v1.17.0
 
 > Full notes in [`CHANGELOG.md`](CHANGELOG.md)
@@ -1136,7 +1163,7 @@ These features are part of VayuPress core (no external service required):
 | **ActivityPub / Federation** | `internal/federation` | Outbox relay + HTTP Signatures |
 | **Spam Guard** | `internal/spam` | Comment classification middleware |
 | **Content Signing** | `internal/signing` | HMAC article verification |
-| **Sovereign Self-Update** | `internal/update` | Check-only web API + signature-verified CLI apply |
+| **Sovereign Self-Update** | `internal/update` | One-click signed update + full backup/restore in VayuOS, plus signature-verified CLI apply |
 
 ### Admin UI — VayuOS (`/os`)
 
@@ -1150,23 +1177,33 @@ v1.6.0 (ADR-0069 Stage 3); its routes now permanently redirect to `/os`. See
 [ADR-0068](docs/adr/ADR-0068-admin-v3-next-gen-ui.md) and
 [ADR-0069](docs/adr/ADR-0069-admin-v2-retirement-plan.md).
 
-### Self-Update
+### Self-Update & Backup
 
-VayuPress can check for and apply its own updates **sovereignly and safely**:
+VayuPress updates itself and backs up your whole site **sovereignly and safely**,
+either from VayuOS (**System → Update & Backup**, `/os/update`) or the CLI:
 
 ```bash
 vayupress update check               # read-only version/changelog check
 vayupress update apply --dry-run     # verify checksum + Ed25519 signature, change nothing
-vayupress update apply               # gated, signed, backed-up binary swap (CLI-only)
+vayupress update apply               # gated, signed, backed-up binary swap
 ```
 
-The web panel can only *check* (`GET /admin/api/updates/check`). Applying an
-update is **CLI-only**, requires opt-in (`VAYU_SELFUPDATE_ENABLED=true`) and an
+From the **Update & Backup** panel an admin can, in one click: check for and
+install the latest signed release (verify → auto-backup → atomic swap →
+self-restart), roll back to the previous binary, **download a full backup** of
+the database and every setting as a single consistent `.tar.gz`, and **restore**
+from such a file (validated, with an automatic pre-restore backup, applied
+atomically at the next start). Export and import have **no size limit** — they
+stream with the request timeouts lifted.
+
+Applying an update requires opt-in (`VAYU_SELFUPDATE_ENABLED=true`) and an
 operator-pinned Ed25519 key (`VAYU_RELEASE_PUBKEY`), is refused in
-read-only/quarantine/maintenance mode, backs up the database first, and never
-auto-restarts. See [docs/UPGRADING.md](docs/UPGRADING.md),
-[docs/SECURITY.md](docs/SECURITY.md), and
-[ADR-0064](docs/adr/ADR-0064-sovereign-self-update.md).
+read-only/quarantine/maintenance mode, backs up the database first, and verifies
+the signature before writing anything — whether triggered from the UI or the
+CLI. See [docs/UPGRADING.md](docs/UPGRADING.md),
+[docs/SECURITY.md](docs/SECURITY.md),
+[ADR-0064](docs/adr/ADR-0064-sovereign-self-update.md), and
+[ADR-0089](docs/adr/ADR-0089-vayuos-one-click-update-and-backup.md).
 
 ---
 
