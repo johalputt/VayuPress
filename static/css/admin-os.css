@@ -1780,6 +1780,14 @@
 }
 .vp-os .customizer__frame-loading[hidden] { display: none; }
 
+/* Brand logo + navigation editor rows in the customizer panel */
+.vp-os .cz-logo { display: flex; align-items: center; gap: 12px; }
+.vp-os .cz-logo__img { border-radius: 8px; background: var(--bg-surface-2); object-fit: cover; border: 1px solid var(--border); }
+.vp-os .cz-logo__title { font-size: 0.85rem; font-weight: 600; color: var(--text); }
+.vp-os .cz-nav-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+.vp-os .cz-nav-row input[data-nav-label] { flex: 1; min-width: 0; }
+.vp-os .cz-nav-row input[data-nav-href] { flex: 2; min-width: 0; }
+
 
 .vp-os .theme-presets { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 12px; }
 .vp-os .theme-preset {

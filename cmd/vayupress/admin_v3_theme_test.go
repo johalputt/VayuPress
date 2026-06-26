@@ -38,19 +38,25 @@ func TestTextRowEscapesAndCSPSafe(t *testing.T) {
 	}
 }
 
-// The dark colour set must map exactly to the eight previewable --vp-* vars.
+// The previewable --vp-* vars must be covered across the Brand (dark accents)
+// and dark-mode colour sets combined — together they map to the eight preview
+// variables the live preview wires up.
 func TestDarkColorsCoverPreviewVars(t *testing.T) {
 	want := map[string]bool{
 		"bg": true, "surface": true, "text": true, "muted": true,
 		"accent": true, "accent2": true, "hi": true, "green": true,
 	}
-	for _, f := range themeDarkColors() {
+	fields := append(brandColorFields(), themeDarkColors()...)
+	for _, f := range fields {
+		if f.Vari == "" {
+			continue // light-mode accents in the brand set carry no preview var
+		}
 		if !want[f.Vari] {
 			t.Errorf("unexpected preview var %q for field %q", f.Vari, f.Field)
 		}
 		delete(want, f.Vari)
 	}
 	if len(want) != 0 {
-		t.Errorf("dark colour set missing preview vars: %v", want)
+		t.Errorf("Brand + dark colour sets missing preview vars: %v", want)
 	}
 }
