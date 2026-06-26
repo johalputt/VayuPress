@@ -46,21 +46,73 @@ const SessionTTL = 30 * 24 * time.Hour
 
 // Member is a reader account.
 type Member struct {
-	ID        string    `json:"id"`
-	Email     string    `json:"email"`
-	Tier      string    `json:"tier"`
-	Status    string    `json:"status"`
-	CreatedAt time.Time `json:"created_at"`
+	ID              string     `json:"id"`
+	Email           string     `json:"email"`
+	Name            string     `json:"name"`
+	Note            string     `json:"note,omitempty"`
+	Tier            string     `json:"tier"`
+	Status          string     `json:"status"`
+	NewsletterOptIn bool       `json:"newsletter_opt_in"`
+	StripeCustomer  string     `json:"-"`
+	Labels          []string   `json:"labels,omitempty"`
+	LastSeenAt      *time.Time `json:"last_seen_at,omitempty"`
+	CreatedAt       time.Time  `json:"created_at"`
 }
 
-// IsPaid reports whether the member has an active paid membership.
-func (m *Member) IsPaid() bool { return m != nil && m.Tier == TierPaid && m.Status == "active" }
+// IsPaid reports whether the member has an active paying membership. Any active
+// tier other than the built-in free tier counts as paid, so custom premium
+// tiers unlock "paid" content just like the default paid tier does.
+func (m *Member) IsPaid() bool {
+	return m != nil && m.Status == "active" && m.Tier != "" && m.Tier != TierFree
+}
+
+// DisplayName returns the member's name, falling back to the local part of
+// their email address so the portal always has something friendly to show.
+func (m *Member) DisplayName() string {
+	if m == nil {
+		return ""
+	}
+	if strings.TrimSpace(m.Name) != "" {
+		return m.Name
+	}
+	if i := strings.IndexByte(m.Email, '@'); i > 0 {
+		return m.Email[:i]
+	}
+	return m.Email
+}
 
 // Store manages members, magic-link tokens, sessions, and per-article access.
 type Store struct{ db *sql.DB }
 
 // New creates a Store.
 func New(db *sql.DB) *Store { return &Store{db: db} }
+
+// memberCols is the canonical SELECT column list for scanning into a Member.
+const memberCols = `id,email,name,note,tier,status,newsletter_opt_in,stripe_customer,last_seen_at,created_at`
+
+// scanner is satisfied by both *sql.Row and *sql.Rows.
+type scanner interface {
+	Scan(dest ...interface{}) error
+}
+
+// scanMember reads one member row selected with memberCols.
+func scanMember(sc scanner) (*Member, error) {
+	var m Member
+	var note, stripe string
+	var optIn int
+	var lastSeen sql.NullTime
+	if err := sc.Scan(&m.ID, &m.Email, &m.Name, &note, &m.Tier, &m.Status, &optIn, &stripe, &lastSeen, &m.CreatedAt); err != nil {
+		return nil, err
+	}
+	m.Note = note
+	m.StripeCustomer = stripe
+	m.NewsletterOptIn = optIn != 0
+	if lastSeen.Valid {
+		t := lastSeen.Time.UTC()
+		m.LastSeenAt = &t
+	}
+	return &m, nil
+}
 
 // Upsert ensures a member row exists for email and returns it.
 func (s *Store) Upsert(ctx context.Context, email string) (*Member, error) {
@@ -76,32 +128,31 @@ func (s *Store) Upsert(ctx context.Context, email string) (*Member, error) {
 		`INSERT INTO members(id,email) VALUES(?,?)`, id, email); err != nil {
 		return nil, fmt.Errorf("upsert member: %w", err)
 	}
-	return &Member{ID: id, Email: email, Tier: TierFree, Status: "active", CreatedAt: time.Now().UTC()}, nil
+	return &Member{ID: id, Email: email, Tier: TierFree, Status: "active", NewsletterOptIn: true, CreatedAt: time.Now().UTC()}, nil
 }
 
 // Get returns the member with the given email.
 func (s *Store) Get(ctx context.Context, email string) (*Member, error) {
-	var m Member
-	err := s.db.QueryRowContext(ctx,
-		`SELECT id,email,tier,status,created_at FROM members WHERE email=?`,
-		strings.TrimSpace(strings.ToLower(email))).
-		Scan(&m.ID, &m.Email, &m.Tier, &m.Status, &m.CreatedAt)
+	row := s.db.QueryRowContext(ctx,
+		`SELECT `+memberCols+` FROM members WHERE email=?`,
+		strings.TrimSpace(strings.ToLower(email)))
+	m, err := scanMember(row)
 	if err != nil {
 		return nil, err
 	}
-	return &m, nil
+	m.Labels, _ = s.LabelsForMember(ctx, m.ID)
+	return m, nil
 }
 
 // GetByID returns the member with the given id.
 func (s *Store) GetByID(ctx context.Context, id string) (*Member, error) {
-	var m Member
-	err := s.db.QueryRowContext(ctx,
-		`SELECT id,email,tier,status,created_at FROM members WHERE id=?`, id).
-		Scan(&m.ID, &m.Email, &m.Tier, &m.Status, &m.CreatedAt)
+	row := s.db.QueryRowContext(ctx, `SELECT `+memberCols+` FROM members WHERE id=?`, id)
+	m, err := scanMember(row)
 	if err != nil {
 		return nil, err
 	}
-	return &m, nil
+	m.Labels, _ = s.LabelsForMember(ctx, m.ID)
+	return m, nil
 }
 
 // List returns members, newest first.
@@ -110,29 +161,71 @@ func (s *Store) List(ctx context.Context, limit int) ([]Member, error) {
 		limit = 200
 	}
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id,email,tier,status,created_at FROM members ORDER BY created_at DESC LIMIT ?`, limit)
+		`SELECT `+memberCols+` FROM members ORDER BY created_at DESC LIMIT ?`, limit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	var out []Member
 	for rows.Next() {
-		var m Member
-		if err := rows.Scan(&m.ID, &m.Email, &m.Tier, &m.Status, &m.CreatedAt); err != nil {
+		m, err := scanMember(rows)
+		if err != nil {
 			return nil, err
 		}
-		out = append(out, m)
+		out = append(out, *m)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	// Attach labels in a second pass so the row cursor is closed first.
+	for i := range out {
+		out[i].Labels, _ = s.LabelsForMember(ctx, out[i].ID)
+	}
+	return out, nil
 }
 
-// SetTier updates a member's tier (free|paid) by email.
+// SetTier updates a member's tier by slug. The slug must be the built-in free
+// tier or an existing tier in member_tiers. Assigning a tier keeps the member's
+// subscription record in sync (see syncSubscriptionForTier).
 func (s *Store) SetTier(ctx context.Context, email, tier string) error {
-	if tier != TierFree && tier != TierPaid {
+	email = strings.TrimSpace(strings.ToLower(email))
+	if !s.tierAssignable(ctx, tier) {
 		return fmt.Errorf("invalid tier %q", tier)
 	}
 	res, err := s.db.ExecContext(ctx,
-		`UPDATE members SET tier=? WHERE email=?`, tier, strings.TrimSpace(strings.ToLower(email)))
+		`UPDATE members SET tier=? WHERE email=?`, tier, email)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("no member with that email")
+	}
+	m, err := s.Get(ctx, email)
+	if err == nil {
+		_ = s.syncSubscriptionForTier(ctx, m.ID, tier)
+	}
+	return nil
+}
+
+// tierAssignable reports whether tier may be assigned to a member: the built-in
+// free/paid slugs are always allowed (they are seeded), as is any slug present
+// in member_tiers. This keeps SetTier working even before tiers are seeded.
+func (s *Store) tierAssignable(ctx context.Context, tier string) bool {
+	if tier == TierFree || tier == TierPaid {
+		return true
+	}
+	var n int
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(1) FROM member_tiers WHERE slug=?`, tier).Scan(&n); err != nil {
+		return false
+	}
+	return n > 0
+}
+
+// UpdateProfile updates a member's display name and operator note by email.
+func (s *Store) UpdateProfile(ctx context.Context, email, name, note string) error {
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE members SET name=?,note=? WHERE email=?`,
+		strings.TrimSpace(name), strings.TrimSpace(note), strings.TrimSpace(strings.ToLower(email)))
 	if err != nil {
 		return err
 	}
@@ -142,16 +235,58 @@ func (s *Store) SetTier(ctx context.Context, email, tier string) error {
 	return nil
 }
 
-// LinkStripeCustomer associates a Stripe customer id with a member (by email),
-// creating the member if necessary, and sets them to paid.
+// SetNewsletterOptIn toggles whether a member receives the members newsletter.
+func (s *Store) SetNewsletterOptIn(ctx context.Context, email string, on bool) error {
+	v := 0
+	if on {
+		v = 1
+	}
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE members SET newsletter_opt_in=? WHERE email=?`,
+		v, strings.TrimSpace(strings.ToLower(email)))
+	return err
+}
+
+// TouchLastSeen records the member's most recent activity. Best-effort.
+func (s *Store) TouchLastSeen(ctx context.Context, id string) {
+	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	_, _ = s.db.ExecContext(ctx, `UPDATE members SET last_seen_at=? WHERE id=?`, now, id)
+}
+
+// UpgradeByEmail associates a Stripe customer id with a member (by email),
+// creating the member if necessary, sets them to the paid tier, and records an
+// active subscription reflecting the paid tier's monthly price so the upgrade
+// contributes to MRR. Safe to call repeatedly for the same customer.
 func (s *Store) UpgradeByEmail(ctx context.Context, email, stripeCustomer string) error {
+	return s.UpgradeByEmailToTier(ctx, email, stripeCustomer, TierPaid, "")
+}
+
+// UpgradeByEmailToTier upgrades a member to a specific tier slug. tierSlug
+// defaults to the paid tier when empty. stripeSub is the Stripe subscription id
+// when known (used for reconciliation), and may be empty.
+func (s *Store) UpgradeByEmailToTier(ctx context.Context, email, stripeCustomer, tierSlug, stripeSub string) error {
+	if strings.TrimSpace(tierSlug) == "" {
+		tierSlug = TierPaid
+	}
 	m, err := s.Upsert(ctx, email)
 	if err != nil {
 		return err
 	}
-	_, err = s.db.ExecContext(ctx,
-		`UPDATE members SET tier=?,stripe_customer=? WHERE id=?`, TierPaid, stripeCustomer, m.ID)
-	return err
+	if _, err := s.db.ExecContext(ctx,
+		`UPDATE members SET tier=?,stripe_customer=? WHERE id=?`, tierSlug, stripeCustomer, m.ID); err != nil {
+		return err
+	}
+	// Reflect the upgrade as a paying subscription (best-effort; tier price is
+	// looked up when available, otherwise the subscription records zero).
+	amount, currency, cadence := 0, "USD", "monthly"
+	if t, err := s.GetTier(ctx, tierSlug); err == nil {
+		amount, currency = t.MonthlyCents, t.Currency
+	}
+	_ = s.StartSubscription(ctx, SubscriptionInput{
+		MemberID: m.ID, TierSlug: tierSlug, Cadence: cadence,
+		AmountCents: amount, Currency: currency, StripeSubscription: stripeSub,
+	})
+	return nil
 }
 
 // Count returns the number of members by tier.

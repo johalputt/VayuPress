@@ -645,6 +645,13 @@
   gap: var(--sp-3);
   margin-bottom: var(--sp-4);
 }
+.vp-os .card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-4);
+}
 .vp-os .search-input { max-width: 320px; }
 
 /* ── Avatar ──────────────────────────────────────────────────── */

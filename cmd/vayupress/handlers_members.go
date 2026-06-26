@@ -8,6 +8,7 @@ package main
 // signature-verified Stripe webhook upgrades members to the paid tier.
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -42,6 +43,8 @@ func (a *App) resolveMember(r *http.Request) *members.Member {
 	if err != nil {
 		return nil
 	}
+	// Record activity so the console can show last-seen. Best-effort, async.
+	go a.members.TouchLastSeen(context.Background(), m.ID)
 	return m
 }
 
@@ -140,7 +143,7 @@ func (a *App) handleMemberVerify(w http.ResponseWriter, r *http.Request) {
 		MaxAge: int(members.SessionTTL.Seconds()),
 	})
 	logging.LogInfo("members", "member signed in: "+m.Email)
-	http.Redirect(w, r, "/?member=1", http.StatusSeeOther)
+	http.Redirect(w, r, "/members/account", http.StatusSeeOther)
 }
 
 // POST /members/logout — ends the member session.

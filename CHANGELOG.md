@@ -10,6 +10,47 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Added
 
+- **Premium membership system — multi-tier plans, a member portal, and revenue
+  insight.** VayuPress memberships grow from a free/paid switch into a complete
+  membership product, all still sovereign and passwordless:
+  - **Priced subscription tiers** — operators define named plans with monthly
+    and/or yearly pricing, a description, and a benefit list. Two tiers ship
+    seeded (Free and Premium); add, edit, hide, or archive more from the Members
+    console. The built-in Free and Premium plans are protected from deletion.
+  - **Public pricing page (`/pricing`)** — a themed, responsive plan grid built
+    from the published tiers, with a JSON catalogue at `GET /api/v1/tiers` for
+    themes and integrations. Plans, prices, and benefits render server-side with
+    no inline styles, so the strict CSP is untouched.
+  - **Member portal (`/members/account`)** — signed-in readers see their plan
+    (with price/cadence), edit their display name, toggle the members newsletter,
+    and sign out. A dedicated sign-in page (`/members`) replaces the previously
+    dead "Sign in" link, and verifying a magic link now lands members in their
+    portal.
+  - **Richer member records** — members gain a display name, an operator note,
+    a newsletter preference, last-seen activity, and free-form **labels** for
+    segmentation. The Members console shows each member's tier (changeable
+    inline), labels (add/remove), last-seen, and join date.
+  - **Subscription state + MRR** — every paid grant or Stripe upgrade records a
+    subscription (tier, cadence, amount), so the console surfaces **Monthly
+    Recurring Revenue**, annual run-rate, paid/free split, active subscriptions,
+    and 30-day signups. Yearly plans are normalised to monthly; complimentary
+    (operator-granted) plans never inflate revenue.
+  - **Tier-aware paywall** — gated posts now show the cheapest paid plan's price
+    and benefits with a clear call to action, alongside the inline passwordless
+    sign-in form.
+  - **New admin/JSON API** — `GET/POST/PUT/DELETE /api/v1/admin/tiers[/{id}]`,
+    `GET /api/v1/admin/members/stats`, `GET /api/v1/admin/members/{email}`, and
+    `POST/DELETE /api/v1/admin/members/{email}/labels[/{label}]`, all
+    CSRF-protected on writes and mirrored under `/os/api/members/*` for the
+    session-authenticated console. The Stripe webhook continues to upgrade paid
+    members with no embedded payment SDK — it now also records the subscription.
+  - Backward compatible: the existing `public`/`members`/`paid` article access
+    levels are unchanged; "paid" content now unlocks for **any** paid tier.
+    Migration `037-member-premium` adds the new tables/columns and seeds the
+    default tiers; existing members upgrade losslessly.
+
+### Added
+
 - **Browsable tag pages — clicking a tag now opens a real page.** Tag links on
   posts pointed at `/tags/<tag>`, but no route served that path, so every tag
   click fell through to the 404 page. VayuPress now ships a complete public

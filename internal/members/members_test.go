@@ -15,10 +15,15 @@ func newTestStore(t *testing.T) *Store {
 		t.Fatal(err)
 	}
 	for _, stmt := range []string{
-		`CREATE TABLE members(id TEXT PRIMARY KEY,email TEXT NOT NULL UNIQUE,tier TEXT NOT NULL DEFAULT 'free',status TEXT NOT NULL DEFAULT 'active',stripe_customer TEXT NOT NULL DEFAULT '',created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
+		`CREATE TABLE members(id TEXT PRIMARY KEY,email TEXT NOT NULL UNIQUE,name TEXT NOT NULL DEFAULT '',note TEXT NOT NULL DEFAULT '',tier TEXT NOT NULL DEFAULT 'free',status TEXT NOT NULL DEFAULT 'active',newsletter_opt_in INTEGER NOT NULL DEFAULT 1,stripe_customer TEXT NOT NULL DEFAULT '',last_seen_at DATETIME,created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
 		`CREATE TABLE member_login_tokens(token_hash TEXT PRIMARY KEY,email TEXT NOT NULL,expires_at DATETIME NOT NULL)`,
 		`CREATE TABLE member_sessions(token_hash TEXT PRIMARY KEY,member_id TEXT NOT NULL,expires_at DATETIME NOT NULL)`,
 		`CREATE TABLE article_access(slug TEXT PRIMARY KEY,level TEXT NOT NULL DEFAULT 'public')`,
+		`CREATE TABLE member_tiers(id TEXT PRIMARY KEY,slug TEXT NOT NULL UNIQUE,name TEXT NOT NULL,description TEXT NOT NULL DEFAULT '',monthly_cents INTEGER NOT NULL DEFAULT 0,yearly_cents INTEGER NOT NULL DEFAULT 0,currency TEXT NOT NULL DEFAULT 'USD',benefits TEXT NOT NULL DEFAULT '[]',visibility TEXT NOT NULL DEFAULT 'public',active INTEGER NOT NULL DEFAULT 1,sort INTEGER NOT NULL DEFAULT 0,created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
+		`CREATE TABLE member_subscriptions(id TEXT PRIMARY KEY,member_id TEXT NOT NULL,tier_slug TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'active',cadence TEXT NOT NULL DEFAULT 'monthly',amount_cents INTEGER NOT NULL DEFAULT 0,currency TEXT NOT NULL DEFAULT 'USD',stripe_subscription TEXT NOT NULL DEFAULT '',current_period_end DATETIME,started_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,canceled_at DATETIME)`,
+		`CREATE TABLE member_labels(id TEXT PRIMARY KEY,name TEXT NOT NULL UNIQUE,created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
+		`CREATE TABLE member_label_map(member_id TEXT NOT NULL,label_id TEXT NOT NULL,PRIMARY KEY(member_id,label_id))`,
+		`INSERT INTO member_tiers(id,slug,name,monthly_cents,yearly_cents,sort) VALUES('tier_free','free','Free',0,0,0),('tier_paid','paid','Premium',500,5000,1)`,
 	} {
 		if _, err := db.Exec(stmt); err != nil {
 			t.Fatal(err)

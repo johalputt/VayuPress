@@ -148,6 +148,13 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	r.Post("/members/login", a.handleMemberLogin) // HTML form variant from the paywall
 	r.Get("/members/verify", a.handleMemberVerify)
 	r.Post("/members/logout", a.handleMemberLogout)
+	// Premium membership: sign-in page, member portal/account, and the public
+	// pricing page + tier catalogue.
+	r.Get("/members", a.handleMemberSigninPage)
+	r.Get("/members/account", a.handleMemberAccount)
+	r.Post("/members/account", a.handleMemberAccountUpdate)
+	r.Get("/pricing", a.handlePricingPage)
+	r.Get("/api/v1/tiers", a.handleTiersPublic)
 	// Stripe webhook for paid upgrades — verified by signature, not API key.
 	r.Post("/api/v1/stripe/webhook", a.handleStripeWebhook)
 
@@ -224,9 +231,19 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 
 		// Reader memberships & paywalls (Tier 2) — admin management.
 		r.Get("/api/v1/admin/members", a.handleMemberListAdmin)
+		r.Get("/api/v1/admin/members/stats", a.handleMemberStats)
 		r.With(auth.CSRFTokenMiddleware).Put("/api/v1/admin/members/{email}/tier", a.handleMemberSetTier)
+		r.Get("/api/v1/admin/members/{email}", a.handleMemberDetail)
+		r.With(auth.CSRFTokenMiddleware).Post("/api/v1/admin/members/{email}/labels", a.handleMemberLabelAdd)
+		r.With(auth.CSRFTokenMiddleware).Delete("/api/v1/admin/members/{email}/labels/{label}", a.handleMemberLabelRemove)
 		r.Get("/api/v1/admin/articles/{slug}/access", a.handleArticleAccessGet)
 		r.With(auth.CSRFTokenMiddleware).Put("/api/v1/admin/articles/{slug}/access", a.handleArticleAccessSet)
+
+		// Membership tiers (premium plans) — list / create / update / archive.
+		r.Get("/api/v1/admin/tiers", a.handleTierListAdmin)
+		r.With(auth.CSRFTokenMiddleware).Post("/api/v1/admin/tiers", a.handleTierCreate)
+		r.With(auth.CSRFTokenMiddleware).Put("/api/v1/admin/tiers/{id}", a.handleTierUpdate)
+		r.With(auth.CSRFTokenMiddleware).Delete("/api/v1/admin/tiers/{id}", a.handleTierDelete)
 
 		// Outbound webhooks (Tier 2).
 		r.Get("/api/v1/admin/webhooks", a.handleWebhookList)

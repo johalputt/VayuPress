@@ -890,7 +890,7 @@ var homeTmpl = template.Must(template.New("home").Funcs(homeFuncs).Parse(`<!DOCT
   <div class="vayu-nav-links">
     {{.NavLinks}}
     <button type="button" id="vayu-theme-toggle" class="vayu-theme-toggle" aria-label="Toggle theme">☾</button>
-    {{if .ShowMembership}}<a href="/signup" class="vayu-nav-signin">Sign in</a>
+    {{if .ShowMembership}}<a href="/members" class="vayu-nav-signin">Sign in</a>
     <a href="/signup" class="vayu-nav-signup">Sign up</a>{{end}}
   </div>
   <span class="vayu-nav-status"><span class="vayu-mode-dot"></span>runtime · normal</span>

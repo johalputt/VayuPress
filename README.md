@@ -21,6 +21,33 @@
 > _Own your content. Own your communication. Own your infrastructure._
 > Publishing is the core identity, **VayuMail** the native sovereignty layer, **VayuPGP** the native privacy layer, and **VayuOS** the native control layer — all in a single Go binary, single process, single config.
 
+## What's New in v1.15.0
+
+> Full notes in [`CHANGELOG.md`](CHANGELOG.md)
+
+**A complete premium membership system — multi-tier plans, a member portal, and revenue insight.**
+
+- **Priced subscription tiers** — define named plans with monthly/yearly pricing
+  and a benefit list. Free and Premium ship seeded; add, edit, hide, or archive
+  more from the Members console.
+- **Public pricing page (`/pricing`)** — a themed plan grid built from your
+  published tiers, plus a JSON catalogue at `GET /api/v1/tiers`.
+- **Member portal (`/members/account`)** — signed-in readers see their plan,
+  edit their display name, toggle the members newsletter, and sign out. A proper
+  sign-in page now lives at `/members`.
+- **Richer members + labels** — display name, operator note, newsletter
+  preference, last-seen activity, and free-form labels for segmentation, all
+  manageable inline in the console.
+- **Revenue insight** — Monthly Recurring Revenue, annual run-rate, paid/free
+  split, active subscriptions, and 30-day signups, computed from per-member
+  subscription records (yearly normalised to monthly; complimentary grants
+  excluded).
+- **Tier-aware paywall** — gated posts surface the cheapest paid plan's price and
+  benefits beside the passwordless sign-in form.
+- **Constitution-clean** — single Go binary, passwordless magic-link auth, no
+  embedded payment SDK (optional signed Stripe webhook only), strict CSP with no
+  inline styles, and fully backward-compatible access levels.
+
 ## What's New in v1.14.0
 
 > Full notes in [`CHANGELOG.md`](CHANGELOG.md)
@@ -796,8 +823,11 @@ See [docs/architecture/system-modes.md](docs/architecture/system-modes.md).
 - **Sovereign AI writing assistant** — summarize / improve / titles / SEO /
   continue, powered by a **local** Ollama server (no hosted model, no telemetry).
   Suggest-only — never auto-edits. `POST /api/v1/admin/ai/assist`
-- **Memberships & paywalls** — passwordless magic-link reader login, per-article
-  access levels (public/members/paid) with preview + CTA, and an optional
+- **Memberships & paywalls** — passwordless magic-link reader login, **priced
+  multi-tier subscription plans** with a public pricing page (`/pricing`) and a
+  self-service member portal (`/members/account`), per-article access levels
+  (public/members/paid) with a tier-aware preview + CTA, member labels for
+  segmentation, Monthly Recurring Revenue reporting, and an optional
   signature-verified Stripe webhook for paid upgrades (no embedded payment SDK)
 
 ### Event-Driven Reliability (P20–P22)
@@ -944,9 +974,15 @@ trusted, and the strict CSP stays intact:
 | `GET` | `/api/v1/admin/ai/status` | AI assistant availability + supported ops |
 | `POST` | `/api/v1/admin/ai/assist` | Run a local-LLM writing operation (CSRF-protected) |
 | `POST` | `/api/v1/members/login` | Request a passwordless member sign-in link |
+| `GET` | `/members` · `/members/account` | Member sign-in page · self-service portal |
 | `GET` | `/members/verify` | Consume a magic link, start a member session |
+| `GET` | `/pricing` · `/api/v1/tiers` | Public pricing page · tier catalogue (JSON) |
 | `GET` | `/api/v1/admin/members` | List members + tier counts |
+| `GET` | `/api/v1/admin/members/stats` | Membership stats — MRR, tiers, growth |
+| `GET` | `/api/v1/admin/members/{email}` | Member detail + active subscription |
 | `PUT` | `/api/v1/admin/members/{email}/tier` | Set a member's tier (CSRF-protected) |
+| `POST`/`DELETE` | `/api/v1/admin/members/{email}/labels[/{label}]` | Add/remove a member label (CSRF-protected) |
+| `GET`/`POST`/`PUT`/`DELETE` | `/api/v1/admin/tiers[/{id}]` | Manage subscription tiers (writes CSRF-protected) |
 | `PUT` | `/api/v1/admin/articles/{slug}/access` | Set article access level (CSRF-protected) |
 | `POST` | `/api/v1/stripe/webhook` | Signed Stripe webhook → paid upgrades (optional) |
 
