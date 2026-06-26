@@ -47,6 +47,11 @@ func safeDimension(s string) string {
 // Pico-bridge that maps --vp-* tokens to --pico-* variables so presets
 // actually change the public site appearance.
 func CompileCSS(t Tokens) (string, error) {
+	// Realise theme-level customization options first: scheme/width/corners
+	// mutate the tokens below (so the choice flows through every bridge), and
+	// the rest return scoped CSS appended at the end.
+	optionCSS := applyThemeOptions(&t)
+
 	type colorField struct {
 		name string
 		ptr  *string
@@ -184,6 +189,13 @@ func CompileCSS(t Tokens) (string, error) {
 	if cssExtra := strings.TrimSpace(t.CustomCSS); cssExtra != "" {
 		sb.WriteString("\n")
 		sb.WriteString(cssExtra)
+	}
+
+	// Theme-option scoped CSS (heading case / accent fill) — appended last so it
+	// overrides the component CSS above.
+	if optionCSS != "" {
+		sb.WriteString("\n")
+		sb.WriteString(optionCSS)
 	}
 
 	return sb.String(), nil
