@@ -262,3 +262,24 @@
 .vayu-post-arrow{display:none}
 article.vayu-prose h1,.vayu-article-header h1{font-size:clamp(1.9rem,4.5vw,2.7rem);font-weight:800;-webkit-text-fill-color:currentColor;background:none;color:var(--vp-text)}
 .vayu-footer{border-top:1px solid color-mix(in srgb,var(--vp-muted) 16%,transparent)}
+
+/* ── Whole-site coverage — Dispatch (newsletter/inbox): narrow, accent rail, mono ── */
+.vayu-post-card--media{grid-template-columns:4px 84px 1fr}
+.vayu-post-card--media .vayu-post-thumb{border-radius:.5rem;overflow:hidden;align-self:start}
+.vayu-post-card--media .vayu-post-thumb img{width:100%;aspect-ratio:1/1;object-fit:cover;display:block}
+.vayu-post-author{font-family:var(--vp-font-mono,ui-monospace,monospace);font-size:.78rem}
+.vayu-author-box{display:flex;gap:1rem;align-items:flex-start;background:var(--vp-surface);border:1px solid color-mix(in srgb,var(--vp-muted) 14%,transparent);border-left:4px solid var(--vp-accent);border-radius:.75rem;padding:1.3rem;margin:2.4rem 0}
+.vayu-author-avatar{border-radius:.5rem}
+.vayu-author-name{font-weight:700}
+.vayu-author-bio{color:var(--vp-muted)}
+.vayu-related-heading{font-family:var(--vp-font-mono,ui-monospace,monospace);font-size:.95rem;letter-spacing:.02em}
+.vayu-related-list a{color:var(--vp-accent)}
+.vayu-comments{margin-top:2.4rem}
+.vayu-nav-signup{background:var(--vp-accent);color:#fff;border-radius:.5rem;padding:.4rem 1rem}
+.vayu-footer-main{display:grid;grid-template-columns:1.5fr 1fr 1fr;gap:2rem}
+.vayu-footer-col-title{font-family:var(--vp-font-mono,ui-monospace,monospace);font-size:.8rem;letter-spacing:.04em;text-transform:uppercase}
+.vayu-footer-col-links a{color:var(--vp-muted)}
+.vayu-footer-col-links a:hover{color:var(--vp-accent)}
+.vayu-footer-bottom{border-top:1px solid color-mix(in srgb,var(--vp-muted) 16%,transparent);padding-top:1rem;margin-top:1.5rem;font-family:var(--vp-font-mono,ui-monospace,monospace);font-size:.78rem}
+.content blockquote{border-left:4px solid var(--vp-accent);background:var(--vp-surface);border-radius:0 .5rem .5rem 0;padding:1rem 1.25rem}
+.content img{border-radius:.5rem}

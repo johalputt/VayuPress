@@ -227,3 +227,25 @@
 .vayu-tag{background:var(--vp-accent);border-color:var(--vp-accent);color:#fff}
 article.vayu-prose h1,.vayu-article-header h1{font-size:clamp(2.4rem,6vw,3.8rem);font-weight:800;letter-spacing:-.03em;-webkit-text-fill-color:currentColor;background:none;color:var(--vp-text)}
 .vayu-footer{border-top:3px solid var(--vp-accent)}
+
+/* ── Whole-site coverage — Vivid (bold magazine): 2px borders, accent-strong ── */
+.vayu-post-card--media{padding-top:0;overflow:hidden}
+.vayu-post-card--media .vayu-post-thumb{margin:-1.6rem -1.6rem 1.1rem;overflow:hidden;border-bottom:2px solid color-mix(in srgb,var(--vp-muted) 16%,transparent)}
+.vayu-post-card--media .vayu-post-thumb img{width:100%;aspect-ratio:16/9;object-fit:cover;display:block}
+.vayu-post-author{font-weight:700}
+.vayu-author-box{display:flex;gap:1.1rem;align-items:center;background:var(--vp-surface);border:2px solid color-mix(in srgb,var(--vp-muted) 16%,transparent);border-radius:1rem;padding:1.5rem;margin:2.6rem 0}
+.vayu-author-avatar{border-radius:50%}
+.vayu-author-name{font-weight:800}
+.vayu-author-bio{color:var(--vp-muted)}
+.vayu-related-heading{font-weight:800;color:var(--vp-text)}
+.vayu-related-list a{color:var(--vp-accent);font-weight:600}
+.vayu-comments{margin-top:2.6rem}
+.vayu-nav-signup{background:#fff;color:var(--vp-accent);border-radius:.5rem;font-weight:800;padding:.4rem 1.1rem}
+.vayu-footer{border-top:3px solid var(--vp-accent)}
+.vayu-footer-main{display:grid;grid-template-columns:1.5fr 1fr 1fr;gap:2rem}
+.vayu-footer-col-title{font-weight:800;color:var(--vp-text)}
+.vayu-footer-col-links a{color:var(--vp-muted)}
+.vayu-footer-col-links a:hover{color:var(--vp-accent)}
+.vayu-footer-bottom{border-top:1px solid color-mix(in srgb,var(--vp-muted) 16%,transparent);padding-top:1rem;margin-top:1.5rem}
+.content blockquote{border-left:4px solid var(--vp-accent);padding:.6rem 1.25rem;font-size:1.2rem;font-weight:600}
+.content img{border-radius:.75rem}
