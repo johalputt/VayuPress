@@ -35,6 +35,34 @@ func TestThemeOptionsApply(t *testing.T) {
 	}
 }
 
+// TestLayoutOptions proves the post-feed layout and header-alignment options
+// emit scoped CSS targeting the real public markup, so they change structure
+// (not just colours) in both the live site and the preview.
+func TestLayoutOptions(t *testing.T) {
+	g := theme.Gale()
+	g.Options = map[string]string{"feedlayout": "grid", "headeralign": "center"}
+	css, err := theme.CompileCSS(g)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	for _, want := range []string{
+		".vayu-post-list{display:grid",
+		".vayu-hero{text-align:center}",
+	} {
+		if !strings.Contains(css, want) {
+			t.Errorf("layout-option CSS missing %q", want)
+		}
+	}
+
+	// "cards" adds card chrome on top of the grid.
+	g2 := theme.Gale()
+	g2.Options = map[string]string{"feedlayout": "cards"}
+	css2, _ := theme.CompileCSS(g2)
+	if !strings.Contains(css2, ".vayu-post-card{border:") {
+		t.Errorf("cards feed layout should add card chrome, got: %s", css2)
+	}
+}
+
 // TestDefaultOptionsAreNoop proves applying the default option set produces the
 // exact same CSS as no options at all — so the controls never surprise users.
 func TestDefaultOptionsAreNoop(t *testing.T) {
@@ -65,8 +93,8 @@ func TestPerThemeExtras(t *testing.T) {
 		t.Errorf("Apex should expose shared + extras (>=7), got %d", got)
 	}
 	// A theme with no extras keeps exactly the shared set.
-	if got := len(theme.OptionsFor("Default")); got != 5 {
-		t.Errorf("Default should expose exactly the 5 shared options, got %d", got)
+	if got := len(theme.OptionsFor("Default")); got != 7 {
+		t.Errorf("Default should expose exactly the 7 shared options, got %d", got)
 	}
 	if len(theme.PerThemeOptions()) == 0 {
 		t.Fatal("expected at least one per-theme option")
