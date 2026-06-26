@@ -151,11 +151,14 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		// Session-friendly membership management APIs (the /api/v1/admin/* originals
 		// require an API key; VayuOS operators hold a session cookie).
 		pr.Get("/os/api/members/stats", a.handleMemberStats)
+		pr.Get("/os/api/members/export.csv", a.handleMembersExportCSV)
+		pr.Get("/os/api/members/{email}", a.handleMemberDetail)
 		pr.Get("/os/api/members/tiers", a.handleTierListAdmin)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/members/tiers", a.handleTierCreate)
 		pr.With(auth.CSRFTokenMiddleware).Put("/os/api/members/tiers/{id}", a.handleTierUpdate)
 		pr.With(auth.CSRFTokenMiddleware).Delete("/os/api/members/tiers/{id}", a.handleTierDelete)
 		pr.With(auth.CSRFTokenMiddleware).Put("/os/api/members/{email}/tier", a.handleMemberSetTier)
+		pr.With(auth.CSRFTokenMiddleware).Put("/os/api/members/{email}/cancel", a.handleMemberCancel)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/members/{email}/labels", a.handleMemberLabelAdd)
 		pr.With(auth.CSRFTokenMiddleware).Delete("/os/api/members/{email}/labels/{label}", a.handleMemberLabelRemove)
 		// Self-service author profile + admin team/role management (session mirrors).

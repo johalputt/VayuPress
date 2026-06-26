@@ -332,21 +332,25 @@ func (a *App) handleTierListAdmin(w http.ResponseWriter, r *http.Request) {
 
 // tierBody is the JSON shape accepted by tier create/update.
 type tierBody struct {
-	Name         string   `json:"name"`
-	Description  string   `json:"description"`
-	MonthlyCents int      `json:"monthly_cents"`
-	YearlyCents  int      `json:"yearly_cents"`
-	Currency     string   `json:"currency"`
-	Benefits     []string `json:"benefits"`
-	Visibility   string   `json:"visibility"`
-	Sort         int      `json:"sort"`
+	Name               string   `json:"name"`
+	Description        string   `json:"description"`
+	MonthlyCents       int      `json:"monthly_cents"`
+	YearlyCents        int      `json:"yearly_cents"`
+	Currency           string   `json:"currency"`
+	Benefits           []string `json:"benefits"`
+	Visibility         string   `json:"visibility"`
+	Sort               int      `json:"sort"`
+	TrialDays          int      `json:"trial_days"`
+	StripeMonthlyPrice string   `json:"stripe_monthly_price"`
+	StripeYearlyPrice  string   `json:"stripe_yearly_price"`
 }
 
 func (b tierBody) toInput() members.TierInput {
 	return members.TierInput{
 		Name: b.Name, Description: b.Description, MonthlyCents: b.MonthlyCents,
 		YearlyCents: b.YearlyCents, Currency: b.Currency, Benefits: b.Benefits,
-		Visibility: b.Visibility, Sort: b.Sort,
+		Visibility: b.Visibility, Sort: b.Sort, TrialDays: b.TrialDays,
+		StripeMonthlyPrice: b.StripeMonthlyPrice, StripeYearlyPrice: b.StripeYearlyPrice,
 	}
 }
 
@@ -422,7 +426,14 @@ func (a *App) handleMemberStats(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	series, _ := a.members.SignupsByDay(r.Context(), days)
-	writeJSON(w, r, http.StatusOK, map[string]interface{}{"stats": stats, "signups": series})
+	revenue, _ := a.members.RevenueByTier(r.Context())
+	activity, _ := a.members.RecentEvents(r.Context(), 25)
+	writeJSON(w, r, http.StatusOK, map[string]interface{}{
+		"stats":    stats,
+		"signups":  series,
+		"revenue":  revenue,
+		"activity": activity,
+	})
 }
 
 // GET /api/v1/admin/members/{email} — a single member with subscription detail.
@@ -437,7 +448,8 @@ func (a *App) handleMemberDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sub, _ := a.members.ActiveSubscription(r.Context(), m.ID)
-	writeJSON(w, r, http.StatusOK, map[string]interface{}{"member": m, "subscription": sub})
+	activity, _ := a.members.EventsForMember(r.Context(), m.ID, 50)
+	writeJSON(w, r, http.StatusOK, map[string]interface{}{"member": m, "subscription": sub, "activity": activity})
 }
 
 // labelBody is the JSON shape for adding a label.
@@ -486,6 +498,61 @@ func (a *App) handleMemberLabelRemove(w http.ResponseWriter, r *http.Request) {
 	}
 	labels, _ := a.members.LabelsForMember(r.Context(), m.ID)
 	writeJSON(w, r, http.StatusOK, map[string]interface{}{"labels": labels})
+}
+
+// =============================================================================
+// Admin: export + subscription lifecycle actions
+// =============================================================================
+
+// GET /os/api/members/export.csv (and /api/v1/admin/members/export.csv)
+// Streams every member as a CSV download — handy for backups and for migrating
+// an existing audience in from another platform.
+func (a *App) handleMembersExportCSV(w http.ResponseWriter, r *http.Request) {
+	if a.members == nil {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "members-disabled", "Memberships not initialised", "")
+		return
+	}
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", `attachment; filename="members.csv"`)
+	w.Header().Set("Cache-Control", "no-store")
+	if err := a.members.ExportCSV(r.Context(), w); err != nil {
+		// Headers may already be sent; log-only fallback keeps the stream honest.
+		writeAPIError(w, r, http.StatusInternalServerError, "export-error", err.Error(), "")
+		return
+	}
+}
+
+// PUT /os/api/members/{email}/cancel  {immediate?}
+// Cancels a member's subscription. By default the cancellation is scheduled for
+// the end of the paid period (the member keeps access until then); pass
+// {"immediate": true} to revoke access right away and drop them to free.
+func (a *App) handleMemberCancel(w http.ResponseWriter, r *http.Request) {
+	if a.members == nil {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "members-disabled", "Memberships not initialised", "")
+		return
+	}
+	m, err := a.members.Get(r.Context(), chi.URLParam(r, "email"))
+	if err != nil {
+		writeAPIError(w, r, http.StatusNotFound, "not-found", "No member with that email", "")
+		return
+	}
+	var body struct {
+		Immediate bool `json:"immediate"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body) // empty body is fine → scheduled cancel
+	if body.Immediate {
+		if err := a.members.CancelSubscription(r.Context(), m.ID); err != nil {
+			writeAPIError(w, r, http.StatusBadRequest, "cancel-error", err.Error(), "")
+			return
+		}
+		writeJSON(w, r, http.StatusOK, map[string]string{"status": "canceled"})
+		return
+	}
+	if err := a.members.ScheduleCancellation(r.Context(), m.ID); err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "cancel-error", err.Error(), "")
+		return
+	}
+	writeJSON(w, r, http.StatusOK, map[string]string{"status": "scheduled"})
 }
 
 // =============================================================================

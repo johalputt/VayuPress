@@ -8,6 +8,56 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [1.16.0] — 2026-06-26
+
+### Added
+
+- **Subscription Engine v2 — the Members console becomes a revenue cockpit that
+  goes well beyond what a hosted newsletter platform shows you.** The Members
+  page now opens on a dashboard with eight headline metrics — Monthly Recurring
+  Revenue (with a coloured 30-day net-movement trend), annual run-rate, paid
+  members (with how many are trialing), total members and 30-day new signups,
+  free-to-paid **conversion rate**, 30-day **churn rate**, **ARPU** (average
+  revenue per paying member) and an estimated **lifetime value (LTV)** — none of
+  which existed before. See ADR-0087.
+- **Growth & revenue at a glance.** A dependency-free inline SVG sparkline plots
+  new members per day for the last 30 days, and a "revenue by tier" panel breaks
+  MRR down across your plans with proportional bars.
+- **Member activity feed.** Signups, subscription starts, trials, upgrades,
+  cancellations, complimentary grants and failed payments are recorded to a new
+  per-member activity log and surfaced both as a site-wide recent-activity feed
+  on the dashboard and as a timeline on each member's detail record.
+- **Free trials per tier.** A tier can grant an N-day free trial: the member
+  gets full paid access immediately but contributes nothing to MRR until the
+  trial converts, and trialing members are counted separately.
+- **Graceful cancellations.** Operators (and the Stripe webhook) can now cancel a
+  member at the end of their paid period — keeping access until then — instead of
+  only revoking access immediately. A per-member **Cancel** action sits in the
+  console (hold Shift to cancel immediately).
+- **One-click CSV export** of your entire audience (email, name, tier, status,
+  newsletter opt-in, monthly value, labels, joined/last-seen) for backups or for
+  migrating an audience in from another platform.
+- **Member search.** An instant client-side filter over email, name and labels
+  on the members table.
+- **Optional Stripe price wiring per tier.** Tiers can store a monthly/yearly
+  Stripe Price id so a hosted Stripe Checkout can be linked without any embedded
+  payment SDK, and the webhook now also reconciles
+  `customer.subscription.updated` (scheduled cancel), `customer.subscription.deleted`
+  (cancellation) and `invoice.payment_failed` (at-risk flagging).
+
+### Changed
+
+- Membership MRR now excludes subscriptions still inside a free trial, matching
+  how trialing members are reported, so the figure reflects truly recurring
+  revenue.
+
+### Upgrade Notes
+
+- Migration `040-subscription-engine` adds trial/Stripe-price columns to tiers,
+  trial/cancel-at-period-end columns to subscriptions, and a new `member_events`
+  activity log. It is additive and backward-compatible; existing members, tiers
+  and subscriptions are untouched.
+
 ## [1.15.0] — 2026-06-26
 
 ### Added

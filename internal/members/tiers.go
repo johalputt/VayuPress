@@ -24,18 +24,27 @@ const (
 
 // Tier is a priced membership plan.
 type Tier struct {
-	ID           string    `json:"id"`
-	Slug         string    `json:"slug"`
-	Name         string    `json:"name"`
-	Description  string    `json:"description"`
-	MonthlyCents int       `json:"monthly_cents"`
-	YearlyCents  int       `json:"yearly_cents"`
-	Currency     string    `json:"currency"`
-	Benefits     []string  `json:"benefits"`
-	Visibility   string    `json:"visibility"`
-	Active       bool      `json:"active"`
-	Sort         int       `json:"sort"`
-	CreatedAt    time.Time `json:"created_at"`
+	ID           string   `json:"id"`
+	Slug         string   `json:"slug"`
+	Name         string   `json:"name"`
+	Description  string   `json:"description"`
+	MonthlyCents int      `json:"monthly_cents"`
+	YearlyCents  int      `json:"yearly_cents"`
+	Currency     string   `json:"currency"`
+	Benefits     []string `json:"benefits"`
+	Visibility   string   `json:"visibility"`
+	Active       bool     `json:"active"`
+	Sort         int      `json:"sort"`
+	// TrialDays is the length of the free trial granted when a member starts
+	// this tier (0 = no trial). During a trial the member has full paid access
+	// but contributes no MRR until the trial converts.
+	TrialDays int `json:"trial_days"`
+	// StripeMonthlyPrice / StripeYearlyPrice are optional Stripe Price ids. When
+	// set, the public pricing page can route the reader straight to a hosted
+	// Stripe Checkout for that cadence without any embedded payment SDK.
+	StripeMonthlyPrice string    `json:"stripe_monthly_price,omitempty"`
+	StripeYearlyPrice  string    `json:"stripe_yearly_price,omitempty"`
+	CreatedAt          time.Time `json:"created_at"`
 }
 
 // IsFree reports whether the tier carries no recurring price.
@@ -55,7 +64,8 @@ func scanTier(sc scanner) (*Tier, error) {
 	var benefits string
 	var active int
 	if err := sc.Scan(&t.ID, &t.Slug, &t.Name, &t.Description, &t.MonthlyCents, &t.YearlyCents,
-		&t.Currency, &benefits, &t.Visibility, &active, &t.Sort, &t.CreatedAt); err != nil {
+		&t.Currency, &benefits, &t.Visibility, &active, &t.Sort, &t.TrialDays,
+		&t.StripeMonthlyPrice, &t.StripeYearlyPrice, &t.CreatedAt); err != nil {
 		return nil, err
 	}
 	t.Active = active != 0
@@ -65,18 +75,21 @@ func scanTier(sc scanner) (*Tier, error) {
 	return &t, nil
 }
 
-const tierCols = `id,slug,name,description,monthly_cents,yearly_cents,currency,benefits,visibility,active,sort,created_at`
+const tierCols = `id,slug,name,description,monthly_cents,yearly_cents,currency,benefits,visibility,active,sort,trial_days,stripe_monthly_price,stripe_yearly_price,created_at`
 
 // TierInput carries the editable fields of a tier.
 type TierInput struct {
-	Name         string
-	Description  string
-	MonthlyCents int
-	YearlyCents  int
-	Currency     string
-	Benefits     []string
-	Visibility   string
-	Sort         int
+	Name               string
+	Description        string
+	MonthlyCents       int
+	YearlyCents        int
+	Currency           string
+	Benefits           []string
+	Visibility         string
+	Sort               int
+	TrialDays          int
+	StripeMonthlyPrice string
+	StripeYearlyPrice  string
 }
 
 // CreateTier inserts a new tier, deriving a unique slug from the name.
@@ -97,10 +110,11 @@ func (s *Store) CreateTier(ctx context.Context, in TierInput) (*Tier, error) {
 	benefits, _ := json.Marshal(cleanBenefits(in.Benefits))
 	id := "tier_" + randHex(8)
 	if _, err := s.db.ExecContext(ctx,
-		`INSERT INTO member_tiers(id,slug,name,description,monthly_cents,yearly_cents,currency,benefits,visibility,active,sort)
-		 VALUES(?,?,?,?,?,?,?,?,?,1,?)`,
+		`INSERT INTO member_tiers(id,slug,name,description,monthly_cents,yearly_cents,currency,benefits,visibility,active,sort,trial_days,stripe_monthly_price,stripe_yearly_price)
+		 VALUES(?,?,?,?,?,?,?,?,?,1,?,?,?,?)`,
 		id, slug, name, strings.TrimSpace(in.Description), maxInt(0, in.MonthlyCents), maxInt(0, in.YearlyCents),
-		currency, string(benefits), visibility, in.Sort); err != nil {
+		currency, string(benefits), visibility, in.Sort, maxInt(0, in.TrialDays),
+		strings.TrimSpace(in.StripeMonthlyPrice), strings.TrimSpace(in.StripeYearlyPrice)); err != nil {
 		return nil, fmt.Errorf("create tier: %w", err)
 	}
 	return s.GetTierByID(ctx, id)
@@ -123,9 +137,10 @@ func (s *Store) UpdateTier(ctx context.Context, id string, in TierInput) error {
 	}
 	benefits, _ := json.Marshal(cleanBenefits(in.Benefits))
 	res, err := s.db.ExecContext(ctx,
-		`UPDATE member_tiers SET name=?,description=?,monthly_cents=?,yearly_cents=?,currency=?,benefits=?,visibility=?,sort=? WHERE id=?`,
+		`UPDATE member_tiers SET name=?,description=?,monthly_cents=?,yearly_cents=?,currency=?,benefits=?,visibility=?,sort=?,trial_days=?,stripe_monthly_price=?,stripe_yearly_price=? WHERE id=?`,
 		name, strings.TrimSpace(in.Description), maxInt(0, in.MonthlyCents), maxInt(0, in.YearlyCents),
-		currency, string(benefits), visibility, in.Sort, id)
+		currency, string(benefits), visibility, in.Sort, maxInt(0, in.TrialDays),
+		strings.TrimSpace(in.StripeMonthlyPrice), strings.TrimSpace(in.StripeYearlyPrice), id)
 	if err != nil {
 		return err
 	}

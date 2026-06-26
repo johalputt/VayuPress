@@ -14,6 +14,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"html"
 	htmpl "html/template"
 	"net/http"
@@ -59,22 +60,60 @@ func (a *App) handleOSMembers(w http.ResponseWriter, r *http.Request) {
 	}
 	tiers, _ := a.members.ListTiers(ctx, true)
 	list, _ := a.members.List(ctx, 100)
+	signups, _ := a.members.SignupsByDay(ctx, 30)
+	revenue, _ := a.members.RevenueByTier(ctx)
+	activity, _ := a.members.RecentEvents(ctx, 12)
 
 	esc := html.EscapeString
 
-	stat := func(label, value string) string {
+	stat := func(label, value, sub string) string {
+		subHTML := ""
+		if sub != "" {
+			subHTML = `<div class="stat-card__sub">` + sub + `</div>`
+		}
 		return `<div class="stat-card"><div class="stat-card__label">` + esc(label) +
-			`</div><div class="stat-card__value">` + value + `</div></div>`
+			`</div><div class="stat-card__value">` + value + `</div>` + subHTML + `</div>`
 	}
 
-	// ── Stat cards ──────────────────────────────────────────────────────────
+	// Net MRR movement (last 30 days), coloured by direction.
+	movement := priceLabel(stats.Currency, stats.NetMRRMovementCents) + " · 30d"
+	if stats.NetMRRMovementCents > 0 {
+		movement = `<span class="trend trend--up">▲ ` + priceLabel(stats.Currency, stats.NetMRRMovementCents) + `</span> · 30d`
+	} else if stats.NetMRRMovementCents < 0 {
+		movement = `<span class="trend trend--down">▼ ` + priceLabel(stats.Currency, -stats.NetMRRMovementCents) + `</span> · 30d`
+	}
+
+	// ── Stat cards — the revenue & retention picture at a glance ──────────────
 	statGrid := `<div class="stat-grid mb-6">` +
-		stat("Total members", strconv.Itoa(stats.Total)) +
-		stat("Free", strconv.Itoa(stats.Free)) +
-		stat("Paid", strconv.Itoa(stats.Paid)) +
-		stat("MRR", priceLabel(stats.Currency, stats.MRRCents)) +
-		stat("New · 30 days", strconv.Itoa(stats.NewLast30)) +
+		stat("MRR", priceLabel(stats.Currency, stats.MRRCents), movement) +
+		stat("ARR", priceLabel(stats.Currency, stats.ARRCents), "annual run-rate") +
+		stat("Paid members", strconv.Itoa(stats.Paid), strconv.Itoa(stats.Trialing)+" in trial") +
+		stat("Total members", strconv.Itoa(stats.Total), "+"+strconv.Itoa(stats.NewLast30)+" · 30d") +
+		stat("Conversion", formatPercent(stats.ConversionRate), "free → paid") +
+		stat("Churn · 30d", formatPercent(stats.ChurnRate30), strconv.Itoa(stats.CanceledLast30)+" canceled") +
+		stat("ARPU", priceLabel(stats.Currency, stats.ARPUCents), "per paid member") +
+		stat("LTV", priceLabel(stats.Currency, stats.LTVCents), "est. lifetime value") +
 		`</div>`
+
+	// ── Insights: growth sparkline + revenue by tier ──────────────────────────
+	insightsCard := `<div class="card mb-6">
+  <div class="card-head"><h2 class="card-title">Growth &amp; revenue</h2>
+    <a class="btn btn--sm btn--ghost" href="/os/api/members/export.csv" download>Export CSV</a></div>
+  <div class="grid grid-2 gap-4">
+    <div>
+      <div class="field-label">New members · last 30 days</div>
+      ` + sparklineSVG(signups) + `
+    </div>
+    <div>
+      <div class="field-label">Monthly recurring revenue by tier</div>
+      ` + revenueByTierHTML(revenue, stats.Currency, stats.MRRCents) + `
+    </div>
+  </div>
+</div>`
+
+	// ── Recent activity feed ──────────────────────────────────────────────────
+	activityCard := `<div class="card mb-6"><h2 class="card-title">Recent activity</h2>` +
+		activityFeedHTML(activity, stats.Currency) + `</div>`
 
 	// ── Tiers card ──────────────────────────────────────────────────────────
 	tierRows := ""
@@ -86,6 +125,9 @@ func (a *App) handleOSMembers(w http.ResponseWriter, r *http.Request) {
 				price = priceLabel(t.Currency, t.YearlyCents) + " / yr"
 			}
 		}
+		if t.TrialDays > 0 {
+			price += ` <span class="badge badge--muted">` + strconv.Itoa(t.TrialDays) + `-day trial</span>`
+		}
 		vis := `<span class="badge badge--muted">` + esc(t.Visibility) + `</span>`
 		status := `<span class="badge badge--ok">active</span>`
 		if !t.Active {
@@ -95,6 +137,7 @@ func (a *App) handleOSMembers(w http.ResponseWriter, r *http.Request) {
 			data-id="` + esc(t.ID) + `" data-name="` + esc(t.Name) + `" data-description="` + esc(t.Description) + `"
 			data-monthly="` + strconv.Itoa(t.MonthlyCents) + `" data-yearly="` + strconv.Itoa(t.YearlyCents) + `"
 			data-currency="` + esc(t.Currency) + `" data-visibility="` + esc(t.Visibility) + `"
+			data-trial="` + strconv.Itoa(t.TrialDays) + `" data-stripe-monthly="` + esc(t.StripeMonthlyPrice) + `" data-stripe-yearly="` + esc(t.StripeYearlyPrice) + `"
 			data-benefits="` + esc(strings.Join(t.Benefits, "\n")) + `">Edit</button>`
 		if t.Slug != members.TierFree && t.Slug != members.TierPaid {
 			actions += ` <button class="btn btn--sm btn--danger" type="button" data-archive-tier data-id="` + esc(t.ID) + `">Archive</button>`
@@ -159,7 +202,13 @@ func (a *App) handleOSMembers(w http.ResponseWriter, r *http.Request) {
 		if name == "" {
 			name = `<span class="row-meta">—</span>`
 		}
-		rows += `<tr>
+		actions := `<span class="row-meta">—</span>`
+		if m.IsPaid() {
+			actions = `<button type="button" class="btn btn--xs btn--danger" data-cancel-member data-email="` + esc(m.Email) + `">Cancel</button>`
+		}
+		// data-search lets the client-side filter match on email, name and labels.
+		searchKey := esc(strings.ToLower(m.Email + " " + m.Name + " " + strings.Join(m.Labels, " ")))
+		rows += `<tr data-member-row data-search="` + searchKey + `">
   <td class="row-title">` + esc(m.Email) + `</td>
   <td>` + name + `</td>
   <td>` + badge + `</td>
@@ -167,15 +216,20 @@ func (a *App) handleOSMembers(w http.ResponseWriter, r *http.Request) {
   <td>` + labelChips + `</td>
   <td class="row-meta">` + lastSeen + `</td>
   <td class="row-meta">` + m.CreatedAt.UTC().Format("2 Jan 2006") + `</td>
+  <td class="row-actions">` + actions + `</td>
 </tr>`
 	}
 	membersTable := `<div class="empty-state">No members yet.</div>`
 	if rows != "" {
 		membersTable = `<div class="table-wrap"><table class="table">
-  <thead><tr><th>Email</th><th>Name</th><th>Tier</th><th>Plan</th><th>Labels</th><th>Last seen</th><th>Joined</th></tr></thead>
-  <tbody>` + rows + `</tbody></table></div>`
+  <thead><tr><th>Email</th><th>Name</th><th>Tier</th><th>Plan</th><th>Labels</th><th>Last seen</th><th>Joined</th><th></th></tr></thead>
+  <tbody data-members-body>` + rows + `</tbody></table></div>`
 	}
-	membersCard := `<div class="card"><h2 class="card-title">Members</h2>` + membersTable + `</div>`
+	membersCard := `<div class="card">
+  <div class="card-head"><h2 class="card-title">Members</h2>
+    <input class="input input--sm" type="search" placeholder="Search members…" data-member-search aria-label="Search members" style="max-width:16rem">
+  </div>
+  <div class="empty-state" data-members-empty hidden>No members match your search.</div>` + membersTable + `</div>`
 
 	// ── Team & roles (admin-only; staff accounts, not readers) ────────────────
 	teamCard := a.teamCardHTML(r)
@@ -204,6 +258,15 @@ func (a *App) handleOSMembers(w http.ResponseWriter, r *http.Request) {
           <div class="field"><label class="field-label" for="tier-visibility">Visibility</label>
             <select class="select" id="tier-visibility"><option value="public">Public</option><option value="hidden">Hidden</option></select></div>
         </div>
+        <div class="field mt-3"><label class="field-label" for="tier-trial">Free trial (days)</label>
+          <input class="input" id="tier-trial" type="number" min="0" value="0">
+          <p class="field-hint">New members on this tier get full access for this many days before being charged. 0 disables the trial.</p></div>
+        <div class="grid grid-2 gap-3 mt-3">
+          <div class="field"><label class="field-label" for="tier-stripe-monthly">Stripe monthly price ID</label>
+            <input class="input" id="tier-stripe-monthly" type="text" maxlength="80" placeholder="price_…"></div>
+          <div class="field"><label class="field-label" for="tier-stripe-yearly">Stripe yearly price ID</label>
+            <input class="input" id="tier-stripe-yearly" type="text" maxlength="80" placeholder="price_…"></div>
+        </div>
         <div class="field mt-3"><label class="field-label" for="tier-benefits">Benefits (one per line)</label>
           <textarea class="textarea" id="tier-benefits" rows="4" placeholder="Full access to premium posts&#10;Members-only newsletter"></textarea></div>
       </div>
@@ -216,7 +279,7 @@ func (a *App) handleOSMembers(w http.ResponseWriter, r *http.Request) {
 </div>`
 
 	body := `<div class="page-header"><h1>Members</h1></div>` +
-		statGrid + tiersCard + teamCard + membersCard + modal +
+		statGrid + insightsCard + activityCard + tiersCard + teamCard + membersCard + modal +
 		`<script nonce="` + nonce + `" src="/os/static/js/admin-os-members.js?v=` + assetVer("js/admin-os-members.js") + `"></script>`
 
 	writeOSHTML(w, adminOSLayout(nonce, "Members", "members", cfg, htmpl.HTML(body)))
@@ -348,4 +411,129 @@ func (a *App) handleOSTOTPDisable(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, r, http.StatusOK, map[string]string{"status": "disabled"})
+}
+
+// ── Members dashboard render helpers ─────────────────────────────────────────
+
+// formatPercent renders a 0..1 ratio as a one-decimal percentage (e.g. "12.5%").
+func formatPercent(f float64) string {
+	if f < 0 {
+		f = 0
+	}
+	return fmt.Sprintf("%.1f%%", f*100)
+}
+
+// sparklineSVG renders a daily signup series as a compact inline bar chart. The
+// chart is resolution-independent (viewBox + preserveAspectRatio) so it scales
+// to its container without a JS charting dependency.
+func sparklineSVG(series []members.DayCount) string {
+	if len(series) == 0 {
+		return `<div class="empty-state">No data yet.</div>`
+	}
+	max := 1
+	total := 0
+	for _, d := range series {
+		if d.Count > max {
+			max = d.Count
+		}
+		total += d.Count
+	}
+	n := len(series)
+	bw := 100.0 / float64(n)
+	bars := ""
+	for i, d := range series {
+		h := float64(d.Count) / float64(max) * 36.0
+		x := float64(i) * bw
+		y := 40.0 - h
+		bars += fmt.Sprintf(
+			`<rect x="%.2f" y="%.2f" width="%.2f" height="%.2f" rx="0.5" fill="#7c83ff" opacity="0.85"><title>%s: %d</title></rect>`,
+			x+bw*0.15, y, bw*0.7, h, html.EscapeString(d.Day), d.Count)
+	}
+	return `<svg viewBox="0 0 100 40" preserveAspectRatio="none" width="100%" height="84" role="img" aria-label="New members per day">` +
+		bars + `</svg><div class="row-meta mt-2">` + strconv.Itoa(total) + ` new members in the last 30 days</div>`
+}
+
+// revenueByTierHTML renders each tier's MRR contribution as a labelled bar.
+func revenueByTierHTML(rev []members.TierRevenue, currency string, totalMRR int) string {
+	if len(rev) == 0 {
+		return `<div class="empty-state">No paying members yet.</div>`
+	}
+	esc := html.EscapeString
+	out := `<div>`
+	for _, t := range rev {
+		pct := 0.0
+		if totalMRR > 0 {
+			pct = float64(t.MRRCents) / float64(totalMRR) * 100
+		}
+		cur := t.Currency
+		if cur == "" {
+			cur = currency
+		}
+		out += `<div class="mb-3">
+  <div class="flex-between" style="display:flex;justify-content:space-between;font-size:.85rem">
+    <span>` + esc(t.Name) + `</span>
+    <span class="row-meta">` + priceLabel(cur, t.MRRCents) + ` · ` + strconv.Itoa(t.Members) + ` members</span>
+  </div>
+  <div style="background:rgba(124,131,255,.15);border-radius:4px;height:8px;overflow:hidden;margin-top:4px">
+    <div style="height:100%;background:#7c83ff;width:` + fmt.Sprintf("%.1f", pct) + `%"></div>
+  </div>
+</div>`
+	}
+	out += `</div>`
+	return out
+}
+
+// activityFeedHTML renders the recent member activity events as a timeline.
+func activityFeedHTML(events []members.Event, currency string) string {
+	if len(events) == 0 {
+		return `<div class="empty-state">No activity yet. Member signups and subscription changes will appear here.</div>`
+	}
+	esc := html.EscapeString
+	labels := map[string]string{
+		members.EventSignup:          "joined as a free member",
+		members.EventSubscribe:       "started a paid subscription",
+		members.EventTrialStart:      "started a free trial",
+		members.EventUpgrade:         "upgraded their plan",
+		members.EventDowngrade:       "downgraded their plan",
+		members.EventRenew:           "renewed their subscription",
+		members.EventCancel:          "cancelled their subscription",
+		members.EventCancelScheduled: "scheduled a cancellation",
+		members.EventComp:            "was granted a complimentary plan",
+		members.EventPaymentFailed:   "had a payment fail",
+	}
+	colors := map[string]string{
+		members.EventSubscribe:     "#22c55e",
+		members.EventTrialStart:    "#3b82f6",
+		members.EventUpgrade:       "#22c55e",
+		members.EventCancel:        "#ef4444",
+		members.EventPaymentFailed: "#f59e0b",
+		members.EventComp:          "#a855f7",
+	}
+	out := `<ul style="list-style:none;margin:0;padding:0">`
+	for _, e := range events {
+		who := e.Email
+		if who == "" {
+			who = "A member"
+		}
+		label := labels[e.Type]
+		if label == "" {
+			label = strings.ReplaceAll(e.Type, "_", " ")
+		}
+		dot := colors[e.Type]
+		if dot == "" {
+			dot = "#9ca3af"
+		}
+		amt := ""
+		if e.AmountCents > 0 {
+			amt = ` <span class="row-meta">(` + priceLabel(currency, e.AmountCents) + `/mo)</span>`
+		}
+		when := e.CreatedAt.UTC().Format("2 Jan 15:04")
+		out += `<li style="display:flex;align-items:center;gap:.6rem;padding:.45rem 0;border-bottom:1px solid rgba(127,127,127,.12)">
+  <span style="flex:none;width:8px;height:8px;border-radius:50%;background:` + dot + `"></span>
+  <span style="flex:1;font-size:.9rem"><strong>` + esc(who) + `</strong> ` + esc(label) + amt + `</span>
+  <span class="row-meta">` + esc(when) + `</span>
+</li>`
+	}
+	out += `</ul>`
+	return out
 }

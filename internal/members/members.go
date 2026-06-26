@@ -128,6 +128,7 @@ func (s *Store) Upsert(ctx context.Context, email string) (*Member, error) {
 		`INSERT INTO members(id,email) VALUES(?,?)`, id, email); err != nil {
 		return nil, fmt.Errorf("upsert member: %w", err)
 	}
+	s.recordEventTx(ctx, id, EventSignup, "", 0)
 	return &Member{ID: id, Email: email, Tier: TierFree, Status: "active", NewsletterOptIn: true, CreatedAt: time.Now().UTC()}, nil
 }
 
@@ -147,6 +148,22 @@ func (s *Store) Get(ctx context.Context, email string) (*Member, error) {
 // GetByID returns the member with the given id.
 func (s *Store) GetByID(ctx context.Context, id string) (*Member, error) {
 	row := s.db.QueryRowContext(ctx, `SELECT `+memberCols+` FROM members WHERE id=?`, id)
+	m, err := scanMember(row)
+	if err != nil {
+		return nil, err
+	}
+	m.Labels, _ = s.LabelsForMember(ctx, m.ID)
+	return m, nil
+}
+
+// GetByStripeCustomer returns the member linked to a Stripe customer id. Used by
+// the webhook receiver to reconcile subscription updates and cancellations that
+// arrive keyed by customer rather than by email.
+func (s *Store) GetByStripeCustomer(ctx context.Context, customer string) (*Member, error) {
+	if strings.TrimSpace(customer) == "" {
+		return nil, fmt.Errorf("empty stripe customer")
+	}
+	row := s.db.QueryRowContext(ctx, `SELECT `+memberCols+` FROM members WHERE stripe_customer=?`, customer)
 	m, err := scanMember(row)
 	if err != nil {
 		return nil, err
