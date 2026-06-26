@@ -25,8 +25,18 @@
 
 > Full notes in [`CHANGELOG.md`](CHANGELOG.md)
 
-**A complete premium membership system — multi-tier plans, a member portal, and revenue insight.**
+**A Theme Studio overhaul *and* a complete premium membership system.**
 
+- **Themes restyle your whole blog, not just the colours.** All nine built-in
+  design themes (Gale, Zephyr, Dispatch, Vivid, Beacon, Ripple, Maverick, Agora,
+  Apex) now style the real public markup across every section — nav, hero, post
+  cards, article pages, author box, related posts, comments, and a multi-column
+  footer — so switching themes transforms the entire site. Colour presets each
+  carry a layout archetype (Minimal / Classic / Magazine / Editorial / Bold) so
+  even a palette swap changes structure and spacing. See ADR-0086.
+- **One place for design.** Logo, brand colours, layout, fonts, hero, article
+  options and the social/OG share image are all edited in the Theme Studio with
+  a live preview; the homepage hero is now opt-in for a clean, post-first home.
 - **Priced subscription tiers** — define named plans with monthly/yearly pricing
   and a benefit list. Free and Premium ship seeded; add, edit, hide, or archive
   more from the Members console.
