@@ -49,11 +49,11 @@ func TestHeroAndDesignOptions(t *testing.T) {
 		t.Fatalf("compile: %v", err)
 	}
 	for _, want := range []string{
-		"url(/theme-assets/hero)",      // hero image background
-		".vayu-hero{",                  // hero restyled
-		".vayu-nav{display:flex",       // nav style
-		".vayu-post-card{",             // card style
-		"text-decoration:underline",    // link style
+		"url(/theme-assets/hero)",   // hero image background
+		".vayu-hero{",               // hero restyled
+		".vayu-nav{display:flex",    // nav style
+		".vayu-post-card{",          // card style
+		"text-decoration:underline", // link style
 	} {
 		if !strings.Contains(css, want) {
 			t.Errorf("hero/design option CSS missing %q", want)
