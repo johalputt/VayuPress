@@ -11,6 +11,7 @@ import (
 func TestAccountStoreCRUD(t *testing.T) {
 	t.Parallel()
 	db, _ := sql.Open("sqlite3", ":memory:")
+	db.SetMaxOpenConns(1) // :memory: is per-connection; pin the pool so migrations & queries share one DB
 	defer db.Close()
 	s, err := NewAccountStore(db)
 	if err != nil {
@@ -77,6 +78,7 @@ func TestMaildirFolders(t *testing.T) {
 func TestAccountSetActive(t *testing.T) {
 	t.Parallel()
 	db, _ := sql.Open("sqlite3", ":memory:")
+	db.SetMaxOpenConns(1) // :memory: is per-connection; pin the pool so migrations & queries share one DB
 	defer db.Close()
 	s, err := NewAccountStore(db)
 	if err != nil {
@@ -142,6 +144,7 @@ func TestScoreSpam(t *testing.T) {
 func TestDeliverInboundFilesSpamToJunk(t *testing.T) {
 	t.Parallel()
 	db, _ := sql.Open("sqlite3", ":memory:")
+	db.SetMaxOpenConns(1) // :memory: is per-connection; pin the pool so migrations & queries share one DB
 	defer db.Close()
 	cfg := DefaultConfig()
 	cfg.Enabled = true

@@ -15,6 +15,7 @@ func newAcctStore(t *testing.T) *AccountStore {
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
+	db.SetMaxOpenConns(1) // :memory: is per-connection; pin the pool so migrations & queries share one DB
 	t.Cleanup(func() { db.Close() })
 	s, err := NewAccountStore(db)
 	if err != nil {
