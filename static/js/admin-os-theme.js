@@ -243,14 +243,27 @@
     });
   });
 
-  // ── Collapsible control groups (explicit toggle; robust, no <details>) ──────
-  root.querySelectorAll('.cz-group__head').forEach(function (head) {
-    head.addEventListener('click', function () {
-      var group = head.closest('.cz-group');
-      if (!group) return;
-      var open = group.classList.toggle('cz-group--open');
-      head.setAttribute('aria-expanded', open ? 'true' : 'false');
+  // ── Collapsible control groups — single-open accordion ─────────────────────
+  // Clicking a header opens that section fully and closes the rest, so the panel
+  // stays compact and every section name is always visible. Delegated for
+  // robustness; CSP-safe (wired here, no inline handlers).
+  var panel = root.querySelector('.customizer__panel') || root;
+  panel.addEventListener('click', function (e) {
+    var head = e.target.closest('.cz-group__head');
+    if (!head || !panel.contains(head)) return;
+    var group = head.closest('.cz-group');
+    if (!group) return;
+    var willOpen = !group.classList.contains('cz-group--open');
+    panel.querySelectorAll('.cz-group').forEach(function (g) {
+      g.classList.remove('cz-group--open');
+      var h = g.querySelector('.cz-group__head');
+      if (h) h.setAttribute('aria-expanded', 'false');
     });
+    if (willOpen) {
+      group.classList.add('cz-group--open');
+      head.setAttribute('aria-expanded', 'true');
+      if (group.scrollIntoView) group.scrollIntoView({ block: 'nearest' });
+    }
   });
 
   // ── Control change wiring ─────────────────────────────────────────────────────

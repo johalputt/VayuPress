@@ -1742,6 +1742,8 @@
 }
 .vp-os .cz-group--open > .cz-group__head::after { transform: translateY(0) rotate(180deg); }
 .vp-os .cz-group__head:hover { background: var(--bg-surface-2); }
+.vp-os .cz-group--open { border-color: var(--border-strong); }
+.vp-os .cz-group--open > .cz-group__head { background: var(--bg-surface-2); color: var(--text); }
 .vp-os .cz-group__hint {
   font-size: 0.68rem; font-weight: 600; letter-spacing: .03em; text-transform: uppercase;
   color: #fff; background: var(--brand); padding: 2px 7px; border-radius: var(--r-full);
