@@ -325,3 +325,27 @@
   .apex-reveal{opacity:1;transform:none;animation:none}
   .apex-testimonials{scroll-behavior:auto}
 }
+
+
+/* ============================================================================
+   Live public-site styling — overrides the real VayuPress markup (vayu-*),
+   so deploying Apex transforms the actual home & article pages. /theme.css is
+   served last, so these win. Identity: premium flagship — glass sticky nav,
+   gradient hero, card grid, wide measure.
+   ============================================================================ */
+.container{max-width:1100px}
+.vayu-nav{position:sticky;top:0;z-index:50;background:color-mix(in srgb,var(--vp-bg) 78%,transparent);backdrop-filter:saturate(180%) blur(14px);border:1px solid color-mix(in srgb,var(--vp-muted) 16%,transparent);border-radius:1rem;padding:.8rem 1.25rem;margin-bottom:2.5rem}
+.vayu-nav-brand{font-weight:800;letter-spacing:-.02em}
+.vayu-hero{text-align:center;padding:5rem 1rem 3.5rem}
+.vayu-hero-eyebrow{justify-content:center}
+.vayu-hero h1{font-size:clamp(2.8rem,7vw,4.8rem);font-weight:800;letter-spacing:-.04em;line-height:1.02;background:linear-gradient(135deg,var(--vp-accent),var(--vp-accent2,var(--vp-hi)));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.vayu-hero-tagline{margin:0 auto;font-size:1.25rem;max-width:52ch}
+.vayu-stats{justify-content:center;gap:2.5rem}
+.vayu-stat-val{background:linear-gradient(135deg,var(--vp-accent),var(--vp-accent2,var(--vp-hi)));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.vayu-post-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:1.5rem}
+.vayu-post-card{background:var(--vp-surface);border:1px solid color-mix(in srgb,var(--vp-muted) 16%,transparent);border-radius:1rem;padding:1.6rem;transition:transform .16s,box-shadow .16s,border-color .16s}
+.vayu-post-card:hover{transform:translateY(-4px);box-shadow:0 18px 44px rgba(0,0,0,.16);border-color:var(--vp-accent)}
+.vayu-post-title{font-size:1.3rem;font-weight:750;letter-spacing:-.02em}
+.vayu-post-arrow{display:none}
+article.vayu-prose h1,.vayu-article-header h1{font-size:clamp(2.2rem,5vw,3.4rem);font-weight:800;letter-spacing:-.03em;background:linear-gradient(135deg,var(--vp-text),var(--vp-accent));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.vayu-footer{border-top:1px solid color-mix(in srgb,var(--vp-muted) 16%,transparent)}

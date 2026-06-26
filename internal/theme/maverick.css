@@ -253,3 +253,29 @@
   .maverick-btn:hover{transform:none}
   .maverick-slider{scroll-behavior:auto}
 }
+
+
+/* ============================================================================
+   Live public-site styling — overrides the real VayuPress markup (vayu-*).
+   Identity: bold statement — huge uppercase headings, sharp corners, heavy
+   borders, stark high-contrast cards.
+   ============================================================================ */
+.container{max-width:1000px}
+.vayu-nav{border-bottom:3px solid var(--vp-text);padding-bottom:1rem;margin-bottom:3rem}
+.vayu-nav-brand{font-weight:800;text-transform:uppercase;letter-spacing:.02em}
+.vayu-nav-links a{text-transform:uppercase;font-size:.78rem;font-weight:700;letter-spacing:.05em}
+.vayu-hero{padding:4rem 0 3rem}
+.vayu-hero-eyebrow{font-weight:800;letter-spacing:.18em}
+.vayu-hero h1{font-size:clamp(3rem,9vw,6rem);font-weight:800;letter-spacing:-.04em;line-height:.95;text-transform:uppercase;-webkit-text-fill-color:currentColor;background:none;color:var(--vp-text)}
+.vayu-hero-tagline{font-size:1.25rem;max-width:50ch}
+.vayu-stat-val{color:var(--vp-accent)}
+.vayu-section-label{font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:var(--vp-text)}
+.vayu-post-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:0;border-top:2px solid var(--vp-text)}
+.vayu-post-card{border:2px solid var(--vp-text);border-top:0;border-radius:0;padding:1.5rem}
+.vayu-post-card:hover{background:var(--vp-accent);transform:none}
+.vayu-post-card:hover .vayu-post-title,.vayu-post-card:hover .vayu-post-excerpt,.vayu-post-card:hover .vayu-post-meta{color:#fff}
+.vayu-post-title{font-size:1.5rem;font-weight:800;letter-spacing:-.02em;line-height:1.1;text-transform:uppercase}
+.vayu-post-arrow{display:none}
+.vayu-tag{border-radius:0;border:1.5px solid var(--vp-text);background:transparent;color:var(--vp-text);text-transform:uppercase;font-weight:700}
+article.vayu-prose h1,.vayu-article-header h1{font-size:clamp(2.6rem,7vw,4.4rem);font-weight:800;letter-spacing:-.04em;line-height:.98;text-transform:uppercase;-webkit-text-fill-color:currentColor;background:none;color:var(--vp-text)}
+.vayu-footer{border-top:3px solid var(--vp-text)}
