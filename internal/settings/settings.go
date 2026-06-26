@@ -58,6 +58,11 @@ const (
 	KeyThemeOGImage     = "theme.og_image"
 	KeyThemeOGImageType = "theme.og_image_type"
 
+	// KeyHomeHero toggles the big homepage hero block. Default OFF ("") for a
+	// clean homepage that goes straight to the post list; set to "true" to show
+	// the hero (tagline headline + description), styled by the Hero options.
+	KeyHomeHero = "home.hero"
+
 	// Navigation menu. A JSON array of {"label","href"} objects defining the
 	// public nav links (top of every page). When unset, a sensible default
 	// (Home / Feed / Console) is rendered. Operators add/remove items — internal
@@ -127,6 +132,7 @@ var AllKeys = map[string]bool{
 	KeyThemeHeroImageType: true,
 	KeyThemeOGImage:       true,
 	KeyThemeOGImageType:   true,
+	KeyHomeHero:           true,
 	KeyNavItems:           true,
 	KeyFooterConfig:       true,
 	KeyFeatureComments:    true,
@@ -156,6 +162,7 @@ var Defaults = map[string]string{
 	KeyThemeHeroImageType: "",
 	KeyThemeOGImage:       "",
 	KeyThemeOGImageType:   "",
+	KeyHomeHero:           "",
 	KeyFeatureComments:    "on",
 	KeyFeatureNewsletter:  "on",
 	KeyFeatureWebmentions: "on",

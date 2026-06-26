@@ -540,6 +540,23 @@
     }).catch(function (err) { if (memStatus) { memStatus.textContent = String(err.message || err); memStatus.className = 'text-xs status--danger'; } });
   });
 
+  // ── Homepage hero toggle (saved straight to the live site) ──────────────────
+  var heroToggle = document.getElementById('home-hero');
+  var heroToggleStatus = document.getElementById('home-hero-status');
+  if (heroToggle) heroToggle.addEventListener('change', function () {
+    if (heroToggleStatus) { heroToggleStatus.textContent = 'Saving…'; heroToggleStatus.className = 'text-xs muted'; }
+    fetch('/os/api/settings', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
+      body: JSON.stringify({ key: 'home.hero', value: heroToggle.checked ? 'true' : 'false' })
+    }).then(function (r) {
+      if (!r.ok) return r.json().then(function (e) { throw new Error((e.error && e.error.message) || e.error || ('save failed (' + r.status + ')')); });
+      return r.json();
+    }).then(function () {
+      if (heroToggleStatus) { heroToggleStatus.textContent = 'Saved'; heroToggleStatus.className = 'text-xs status--ok'; }
+      if (window.vpToast) window.vpToast('Saved', 'ok');
+    }).catch(function (err) { if (heroToggleStatus) { heroToggleStatus.textContent = String(err.message || err); heroToggleStatus.className = 'text-xs status--danger'; } });
+  });
+
   // ── Navigation editor (saves nav.items straight to the live site) ───────────
   var navRows = document.getElementById('cz-nav-rows');
   var navAdd = document.getElementById('cz-nav-add');

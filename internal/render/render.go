@@ -200,6 +200,10 @@ type SiteSettings struct {
 	// homepage and as the fallback og:image for articles without an inline image.
 	OGImage string
 
+	// ShowHero toggles the homepage hero block. Default false → a clean homepage
+	// that opens straight into the post list.
+	ShowHero bool
+
 	// CommentsEnabled mirrors the feature.comments flag so the article template
 	// can render (or omit) the public comment widget.
 	CommentsEnabled bool
@@ -930,6 +934,7 @@ type homePage struct {
 	NavLinks            template.HTML
 	Footer              template.HTML
 	OGImage             string
+	ShowHero            bool
 	Articles            []HomeArticle
 	TotalCount          int
 }
@@ -969,12 +974,12 @@ var homeTmpl = template.Must(template.New("home").Funcs(homeFuncs).Parse(`<!DOCT
   </div>
 </nav>
 <main id="main-content">
-{{if or .Tagline .Description}}<section class="vayu-hero">
-  {{if .Tagline}}<h1>{{.Tagline}}</h1>{{else}}<h1>{{.SiteName}}</h1>{{end}}
+{{if .ShowHero}}<section class="vayu-hero">
+  {{if .Tagline}}<h1>{{.Tagline}}</h1>{{else}}<h1>{{if .SiteName}}{{.SiteName}}{{else}}{{.Domain}}{{end}}</h1>{{end}}
   {{if .Description}}<p class="vayu-hero-tagline">{{.Description}}</p>{{end}}
 </section>{{end}}
-<div class="vayu-section-label">Latest writing</div>
-{{if .Articles}}<div class="vayu-post-list">
+{{if .Articles}}<div class="vayu-section-label">Latest writing</div>
+<div class="vayu-post-list">
 {{range .Articles}}<a class="vayu-post-card{{if .Image}} vayu-post-card--media{{end}}" href="/{{.Slug}}">
   {{if .Image}}<div class="vayu-post-thumb"><img src="{{.Image}}" alt="" loading="lazy" decoding="async"></div>{{end}}
   <div class="vayu-post-body">
@@ -1034,6 +1039,7 @@ func RenderHome(domain, version string, articles []HomeArticle, totalCount int) 
 		NavLinks:            navLinksHTML(s.NavJSON),
 		Footer:              footerHTML(s),
 		OGImage:             s.OGImage,
+		ShowHero:            s.ShowHero,
 		Articles:            articles,
 		TotalCount:          totalCount,
 	})

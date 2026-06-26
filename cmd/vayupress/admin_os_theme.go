@@ -263,6 +263,10 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
 	if val(settings.KeyMembershipButtons) == "true" {
 		membershipChecked = " checked"
 	}
+	heroChecked := ""
+	if val(settings.KeyHomeHero) == "true" {
+		heroChecked = " checked"
+	}
 
 	body := `<div class="page-header">
   <div>
@@ -348,6 +352,10 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
       <button type="button" class="cz-group__head" aria-expanded="false">Hero section</button>
       <div class="cz-group__body">
         <p class="text-sm muted mb-3">Style the homepage hero — layout, height and an optional background tint, gradient or uploaded image.</p>
+        <div class="vm-row mb-3">
+          <label class="cz-check"><input type="checkbox" id="home-hero"` + heroChecked + `> Show the homepage hero (off = clean homepage, straight to posts)</label>
+          <span class="text-xs muted" id="home-hero-status" role="status" aria-live="polite"></span>
+        </div>
         <div class="cz-logo">
           <img id="hero-img" class="cz-logo__img" src="/theme-assets/hero?t=` + faviconBust + `" alt="Current hero image" width="64" height="40">
           <div class="cz-logo__meta">
@@ -574,6 +582,7 @@ func (a *App) handleOSThemeCode(w http.ResponseWriter, r *http.Request) {
 			NavJSON:         nv[settings.KeyNavItems],
 			FooterJSON:      nv[settings.KeyFooterConfig],
 			OGImage:         render.OGImagePath(nv[settings.KeyThemeOGImage]),
+			ShowHero:        nv[settings.KeyHomeHero] == "true",
 			CommentsEnabled: nv[settings.KeyFeatureComments] != "off",
 		})
 	}
@@ -717,6 +726,7 @@ func (a *App) handleOSThemeImport(w http.ResponseWriter, r *http.Request) {
 			NavJSON:         nv[settings.KeyNavItems],
 			FooterJSON:      nv[settings.KeyFooterConfig],
 			OGImage:         render.OGImagePath(nv[settings.KeyThemeOGImage]),
+			ShowHero:        nv[settings.KeyHomeHero] == "true",
 			CommentsEnabled: nv[settings.KeyFeatureComments] != "off",
 		})
 	}

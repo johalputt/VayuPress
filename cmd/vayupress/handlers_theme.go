@@ -263,6 +263,7 @@ func (a *App) handleThemeReset(w http.ResponseWriter, r *http.Request) {
 			NavJSON:         newVals[settings.KeyNavItems],
 			FooterJSON:      newVals[settings.KeyFooterConfig],
 			OGImage:         render.OGImagePath(newVals[settings.KeyThemeOGImage]),
+			ShowHero:        newVals[settings.KeyHomeHero] == "true",
 			CommentsEnabled: newVals[settings.KeyFeatureComments] != "off",
 		})
 	}
@@ -413,6 +414,7 @@ func (a *App) handleThemeSave(w http.ResponseWriter, r *http.Request) {
 			NavJSON:         newVals[settings.KeyNavItems],
 			FooterJSON:      newVals[settings.KeyFooterConfig],
 			OGImage:         render.OGImagePath(newVals[settings.KeyThemeOGImage]),
+			ShowHero:        newVals[settings.KeyHomeHero] == "true",
 			CommentsEnabled: newVals[settings.KeyFeatureComments] != "off",
 		})
 	}
