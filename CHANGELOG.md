@@ -8,6 +8,15 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Security
+
+- **Hardened the profile avatar preview against DOM-based injection (CodeQL:
+  "DOM text reinterpreted as HTML").** The live avatar preview assigned the raw
+  text field value to an element attribute; it now passes the value through a
+  protocol allowlist (`new URL` + http/https check) before touching the DOM, so
+  only safe image URLs are ever loaded. The server already validated avatar URLs
+  as `http(s)` on save — this closes the client-side path too.
+
 ### Fixed
 
 - **VayuOS stylesheet/script updates now reach the browser immediately.** The

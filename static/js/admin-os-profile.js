@@ -24,21 +24,39 @@
   if (bio) { bio.addEventListener('input', updateCount); updateCount(); }
 
   // Live avatar preview — reflects the URL into the fixed cropped thumbnail.
+  // The raw input is sanitised through a protocol allowlist before it is ever
+  // assigned to the DOM, so only http(s) (or same-origin relative) image URLs
+  // are loaded — never javascript:/data:/other dangerous schemes.
   var avatarInput = form.querySelector('[data-p-avatar]');
   var preview = form.querySelector('[data-avatar-preview]');
   var emptyHint = form.querySelector('[data-avatar-empty]');
+
+  function safeImageURL(raw) {
+    if (!raw) { return ''; }
+    try {
+      var u = new URL(raw, window.location.origin);
+      if (u.protocol === 'http:' || u.protocol === 'https:') {
+        return u.href;
+      }
+    } catch (e) { /* malformed URL → reject */ }
+    return '';
+  }
+
+  function showPreview(safe) {
+    if (safe) {
+      preview.setAttribute('src', safe);
+      preview.removeAttribute('hidden');
+      if (emptyHint) { emptyHint.setAttribute('hidden', ''); }
+    } else {
+      preview.setAttribute('hidden', '');
+      preview.removeAttribute('src');
+      if (emptyHint) { emptyHint.removeAttribute('hidden'); }
+    }
+  }
+
   if (avatarInput && preview) {
     avatarInput.addEventListener('input', function () {
-      var url = avatarInput.value.trim();
-      if (url) {
-        preview.src = url;
-        preview.removeAttribute('hidden');
-        if (emptyHint) { emptyHint.setAttribute('hidden', ''); }
-      } else {
-        preview.setAttribute('hidden', '');
-        preview.removeAttribute('src');
-        if (emptyHint) { emptyHint.removeAttribute('hidden'); }
-      }
+      showPreview(safeImageURL(avatarInput.value.trim()));
     });
     // A broken image URL falls back to the "no photo" hint.
     preview.addEventListener('error', function () {
