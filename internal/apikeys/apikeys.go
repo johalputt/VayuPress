@@ -27,8 +27,23 @@ import (
 // It lets operators (and secret scanners) recognise a VayuPress key at a glance.
 const TokenPrefix = "vp_"
 
+// Key scopes. An "internal" key is the single, auto-provisioned system key that
+// VayuPress manages itself for internal automation (plugins, background jobs).
+// It is propagated to internal consumers live on rotation and cannot be
+// manually revoked/deleted. "external" keys are issued by the operator.
+const (
+	ScopeInternal = "internal"
+	ScopeExternal = "external"
+)
+
+// InternalKeyID is the reserved, stable id of the internal/system key.
+const InternalKeyID = "internal-system"
+
 // ErrNotFound is returned when no key matches the supplied id.
 var ErrNotFound = errors.New("apikeys: key not found")
+
+// ErrInternalProtected is returned when a destructive op targets the system key.
+var ErrInternalProtected = errors.New("apikeys: the internal system key cannot be revoked or deleted")
 
 // Key is the metadata view of an issued API key. The raw token and its hash are
 // never exposed through this type — only a short, non-sensitive display prefix.
@@ -36,6 +51,7 @@ type Key struct {
 	ID         string     `json:"id"`
 	Label      string     `json:"label"`
 	Prefix     string     `json:"prefix"` // e.g. "vp_a1b2c3" — safe to display
+	Scope      string     `json:"scope"`  // "internal" or "external"
 	CreatedAt  time.Time  `json:"created_at"`
 	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
 	Revoked    bool       `json:"revoked"`
@@ -51,6 +67,8 @@ type Store struct {
 	mu     sync.RWMutex
 	active map[string]string // sha256(token) hex -> key id
 	ttl    time.Time
+
+	internalRaw string // in-memory raw value of the system key (read live)
 }
 
 // New creates a Store backed by db.
@@ -79,9 +97,17 @@ func generateToken() (raw, prefix string, err error) {
 	return raw, prefix, nil
 }
 
-// Create issues a new API key with the given label and returns the metadata
-// plus the raw token. The raw token is shown to the caller exactly once.
+// Create issues a new external API key with the given label and returns the
+// metadata plus the raw token. The raw token is shown to the caller exactly once.
 func (s *Store) Create(ctx context.Context, label string) (Key, string, error) {
+	return s.CreateScoped(ctx, label, ScopeExternal)
+}
+
+// CreateScoped issues a new key with an explicit scope.
+func (s *Store) CreateScoped(ctx context.Context, label, scope string) (Key, string, error) {
+	if scope != ScopeInternal {
+		scope = ScopeExternal
+	}
 	raw, prefix, err := generateToken()
 	if err != nil {
 		return Key{}, "", err
@@ -89,14 +115,48 @@ func (s *Store) Create(ctx context.Context, label string) (Key, string, error) {
 	id := hashToken(raw)[:24] // stable, opaque id derived from the token hash
 	now := time.Now().UTC()
 	if _, err := s.db.ExecContext(ctx,
-		`INSERT INTO vayu_api_keys(id, label, prefix, key_hash, created_at, revoked)
-		 VALUES(?,?,?,?,?,0)`,
-		id, label, prefix, hashToken(raw), now,
+		`INSERT INTO vayu_api_keys(id, label, prefix, key_hash, scope, created_at, revoked)
+		 VALUES(?,?,?,?,?,?,0)`,
+		id, label, prefix, hashToken(raw), scope, now,
 	); err != nil {
 		return Key{}, "", err
 	}
 	s.invalidate()
-	return Key{ID: id, Label: label, Prefix: prefix, CreatedAt: now}, raw, nil
+	return Key{ID: id, Label: label, Prefix: prefix, Scope: scope, CreatedAt: now}, raw, nil
+}
+
+// EnsureInternal provisions (or refreshes) the single internal/system key and
+// caches its raw value in memory for internal consumers. It is called once at
+// boot; the raw value is regenerated each start (the system key is never handed
+// to external parties, and internal callers always read the live value via
+// InternalKey), and the stored hash is updated so the key authenticates.
+func (s *Store) EnsureInternal(ctx context.Context) error {
+	raw, prefix, err := generateToken()
+	if err != nil {
+		return err
+	}
+	now := time.Now().UTC()
+	if _, err := s.db.ExecContext(ctx,
+		`INSERT INTO vayu_api_keys(id, label, prefix, key_hash, scope, created_at, revoked)
+		 VALUES(?,?,?,?,?,?,0)
+		 ON CONFLICT(id) DO UPDATE SET key_hash=excluded.key_hash, prefix=excluded.prefix, scope='internal', revoked=0`,
+		InternalKeyID, "System (internal)", prefix, hashToken(raw), ScopeInternal, now,
+	); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	s.internalRaw = raw
+	s.mu.Unlock()
+	s.invalidate()
+	return nil
+}
+
+// InternalKey returns the current raw value of the internal/system key. Internal
+// consumers should call this at use time so a rotation propagates automatically.
+func (s *Store) InternalKey() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.internalRaw
 }
 
 // Rotate replaces the secret of an existing (non-revoked) key, returning the new
@@ -117,12 +177,22 @@ func (s *Store) Rotate(ctx context.Context, id string) (string, error) {
 	if n, _ := res.RowsAffected(); n == 0 {
 		return "", ErrNotFound
 	}
+	// If the system key was rotated, propagate the new value to internal
+	// consumers immediately (they read InternalKey() live — no manual step).
+	if id == InternalKeyID {
+		s.mu.Lock()
+		s.internalRaw = raw
+		s.mu.Unlock()
+	}
 	s.invalidate()
 	return raw, nil
 }
 
 // Revoke permanently disables a key without deleting its audit row.
 func (s *Store) Revoke(ctx context.Context, id string) error {
+	if id == InternalKeyID {
+		return ErrInternalProtected
+	}
 	res, err := s.db.ExecContext(ctx, `UPDATE vayu_api_keys SET revoked=1 WHERE id=?`, id)
 	if err != nil {
 		return err
@@ -136,6 +206,9 @@ func (s *Store) Revoke(ctx context.Context, id string) error {
 
 // Delete removes a key row entirely.
 func (s *Store) Delete(ctx context.Context, id string) error {
+	if id == InternalKeyID {
+		return ErrInternalProtected
+	}
 	res, err := s.db.ExecContext(ctx, `DELETE FROM vayu_api_keys WHERE id=?`, id)
 	if err != nil {
 		return err
@@ -150,8 +223,8 @@ func (s *Store) Delete(ctx context.Context, id string) error {
 // List returns all keys (active and revoked), newest first, metadata only.
 func (s *Store) List(ctx context.Context) ([]Key, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, label, prefix, created_at, last_used_at, revoked
-		 FROM vayu_api_keys ORDER BY created_at DESC`)
+		`SELECT id, label, prefix, scope, created_at, last_used_at, revoked
+		 FROM vayu_api_keys ORDER BY (scope='internal') DESC, created_at DESC`)
 	if err != nil {
 		return nil, err
 	}
@@ -161,7 +234,7 @@ func (s *Store) List(ctx context.Context) ([]Key, error) {
 		var k Key
 		var last sql.NullTime
 		var revoked int
-		if err := rows.Scan(&k.ID, &k.Label, &k.Prefix, &k.CreatedAt, &last, &revoked); err != nil {
+		if err := rows.Scan(&k.ID, &k.Label, &k.Prefix, &k.Scope, &k.CreatedAt, &last, &revoked); err != nil {
 			return nil, err
 		}
 		if last.Valid {

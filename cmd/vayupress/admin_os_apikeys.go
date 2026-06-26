@@ -90,6 +90,17 @@ func (a *App) handleIndexNowKeyFile(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte(key))
 }
 
+// InternalAPIKey returns the live value of the auto-provisioned internal/system
+// API key, for internal automation (plugins, background jobs) that needs to
+// authenticate to the VayuPress API in-process. Reading it at use time means a
+// rotation of the system key propagates automatically with no manual step.
+func (a *App) InternalAPIKey() string {
+	if a.apiKeys == nil {
+		return ""
+	}
+	return a.apiKeys.InternalKey()
+}
+
 // handleOSAPIKeys renders the VayuOS API Keys console: VayuPress's own issued
 // bearer tokens (create / rotate / revoke) and encrypted third-party service
 // credentials (IndexNow, OpenRouter, Ollama, n8n, custom).
@@ -136,12 +147,18 @@ func (a *App) handleOSAPIKeys(w http.ResponseWriter, r *http.Request) {
 func osAPIKeysOwnSection(keys []apikeys.Key) string {
 	rows := ""
 	for _, k := range keys {
-		status := `<span class="badge badge--success">Active</span>`
-		actions := `<button type="button" class="btn btn--sm" data-action="ak-rotate" data-id="` + html.EscapeString(k.ID) + `">Rotate</button>
-        <button type="button" class="btn btn--sm" data-action="ak-revoke" data-id="` + html.EscapeString(k.ID) + `">Revoke</button>`
-		if k.Revoked {
+		var status, actions string
+		if k.Scope == apikeys.ScopeInternal {
+			// The system key is auto-managed: rotate only, never revoke/delete.
+			status = `<span class="badge">System · auto-managed</span>`
+			actions = `<button type="button" class="btn btn--sm" data-action="ak-rotate" data-id="` + html.EscapeString(k.ID) + `">Rotate</button>`
+		} else if k.Revoked {
 			status = `<span class="badge">Revoked</span>`
 			actions = `<button type="button" class="btn btn--sm" data-action="ak-delete" data-id="` + html.EscapeString(k.ID) + `">Delete</button>`
+		} else {
+			status = `<span class="badge badge--success">Active</span>`
+			actions = `<button type="button" class="btn btn--sm" data-action="ak-rotate" data-id="` + html.EscapeString(k.ID) + `">Rotate</button>
+        <button type="button" class="btn btn--sm" data-action="ak-revoke" data-id="` + html.EscapeString(k.ID) + `">Revoke</button>`
 		}
 		last := "Never"
 		if k.LastUsedAt != nil {
@@ -162,7 +179,7 @@ func osAPIKeysOwnSection(keys []apikeys.Key) string {
 
 	return `<div class="card">
   <div class="settings-block-title">VayuPress API keys</div>
-  <p class="text-sm muted mb-4">Issue keys for scripts, integrations, and CI. Send a key as the <code>X-API-Key</code> header or <code>Authorization: Bearer &lt;key&gt;</code>. Rotating a key invalidates the old value immediately; revoking disables it without deleting the audit record.</p>
+  <p class="text-sm muted mb-4">Issue keys for scripts, integrations, and CI. Send a key as the <code>X-API-Key</code> header or <code>Authorization: Bearer &lt;key&gt;</code>. Rotating a key invalidates the old value immediately; revoking disables it without deleting the audit record. The <strong>System</strong> key is provisioned and managed automatically for internal use — it can be rotated but never revoked, and internal automation always picks up the current value with no manual step.</p>
   <div style="display:flex;gap:.5rem;align-items:flex-end;margin-bottom:1rem;flex-wrap:wrap">
     <div class="field" style="flex:1;min-width:14rem;margin:0">
       <label class="field-label" for="ak-new-label">Label</label>
@@ -176,7 +193,7 @@ func osAPIKeysOwnSection(keys []apikeys.Key) string {
       <tbody>` + rows + `</tbody>
     </table>
   </div>
-  <p class="field-hint mt-2">A root key set via the <code>API_KEY</code> environment variable always remains valid as a bootstrap credential and is not listed here.</p>
+  <p class="field-hint mt-2">A root key set via the <code>API_KEY</code> environment variable always remains valid as a bootstrap credential and is not listed here. Rotating any key here never affects your stored third-party secrets — they are encrypted with a separate, persistent key, so nothing needs re-entering.</p>
 </div>`
 }
 
