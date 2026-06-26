@@ -258,6 +258,9 @@ textarea.vayu-comment-input { min-height: 6rem; resize: vertical; }
 .vayu-comment-submit:hover { filter: brightness(1.08); }
 .vayu-comment-submit:disabled { opacity: 0.6; cursor: default; }
 .vayu-comment-status { font-size: 0.85rem; color: var(--pico-muted-color); }
+.vayu-comment-compose { margin-top: 1rem; }
+.vayu-comment-gate { color: var(--pico-muted-color); margin: 0 0 0.6rem; }
+.vayu-comment-as { font-size: 0.85rem; color: var(--pico-muted-color); margin: 0 0 0.6rem; }
 
 .vayu-footer-brand { display: flex; align-items: center; gap: 0.5rem; }
 

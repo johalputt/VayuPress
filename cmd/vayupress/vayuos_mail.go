@@ -418,6 +418,7 @@ func (a *App) handleVayuOSAccounts(w http.ResponseWriter, r *http.Request) {
         <option value="author" selected>Author (send + read)</option>
         <option value="editor">Editor (send + delete)</option>
         <option value="reviewer">Reviewer (read-only)</option>
+        <option value="mailbox">Mailbox (mail only, no console)</option>
         <option value="administrator">Administrator (full)</option>
       </select></label>
     <label class="field vm-grow"><span class="field-label">Password (min 8)</span>

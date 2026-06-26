@@ -18,13 +18,18 @@ const (
 	RoleEditor        = "editor"        // send + delete + read
 	RoleAuthor        = "author"        // send + read (no delete)
 	RoleReviewer      = "reviewer"      // read-only (no send, no delete)
+	// RoleMailbox is a mail-only identity: it can send and read its own
+	// mailbox, but unlike administrator it grants NO access to the wider
+	// VayuOS console — when such an account signs in through the membership
+	// portal it is confined to the VayuMail surface (see resolveMailMember).
+	RoleMailbox = "mailbox" // send + read own mailbox only; no console access
 )
 
 // BuiltinRoles is the set of first-class roles, in display order.
-var BuiltinRoles = []string{RoleAdministrator, RoleEditor, RoleAuthor, RoleReviewer}
+var BuiltinRoles = []string{RoleAdministrator, RoleEditor, RoleAuthor, RoleReviewer, RoleMailbox}
 
 var builtinRoleSet = map[string]bool{
-	RoleAdministrator: true, RoleEditor: true, RoleAuthor: true, RoleReviewer: true,
+	RoleAdministrator: true, RoleEditor: true, RoleAuthor: true, RoleReviewer: true, RoleMailbox: true,
 }
 
 // IsBuiltinRole reports whether r is one of the first-class roles.
