@@ -68,11 +68,12 @@ func RoleCanManageAccounts(role string) bool { return normRole(role) == RoleAdmi
 // addresses. Password hashing is done by the caller (the cmd layer, using the
 // project's Argon2id helper); this store only persists the hash.
 type Account struct {
-	Email     string    `json:"email"`
-	FullName  string    `json:"full_name"`
-	Role      string    `json:"role"`
-	Active    bool      `json:"active"`
-	CreatedAt time.Time `json:"created_at"`
+	Email       string    `json:"email"`
+	FullName    string    `json:"full_name"`
+	Role        string    `json:"role"`
+	Active      bool      `json:"active"`
+	TOTPEnabled bool      `json:"totp_enabled"`
+	CreatedAt   time.Time `json:"created_at"`
 }
 
 // AccountStore persists mail accounts in SQLite.
@@ -98,6 +99,18 @@ func NewAccountStore(db *sql.DB) (*AccountStore, error) {
 	if _, err := db.Exec(`ALTER TABLE vayumail_accounts ADD COLUMN role TEXT NOT NULL DEFAULT 'author'`); err != nil &&
 		!strings.Contains(err.Error(), "duplicate column") {
 		return s, err
+	}
+	// Idempotent migration: optional TOTP 2FA for mailbox login. totp_secret
+	// holds the base32 secret once enrolment begins; totp_enabled flips to 1
+	// only after the operator verifies a code, so a half-finished enrolment can
+	// never lock anyone out. Both default to "off" for existing accounts.
+	for _, stmt := range []string{
+		`ALTER TABLE vayumail_accounts ADD COLUMN totp_secret TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE vayumail_accounts ADD COLUMN totp_enabled INTEGER NOT NULL DEFAULT 0`,
+	} {
+		if _, err := db.Exec(stmt); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+			return s, err
+		}
 	}
 	return s, nil
 }
@@ -215,19 +228,81 @@ func (s *AccountStore) List(ctx context.Context) ([]Account, error) {
 	if s.db == nil {
 		return out, nil
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT email,full_name,role,active,created_at FROM vayumail_accounts ORDER BY email`)
+	rows, err := s.db.QueryContext(ctx, `SELECT email,full_name,role,active,totp_enabled,created_at FROM vayumail_accounts ORDER BY email`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var a Account
-		var active int
-		if err := rows.Scan(&a.Email, &a.FullName, &a.Role, &active, &a.CreatedAt); err != nil {
+		var active, totpEnabled int
+		if err := rows.Scan(&a.Email, &a.FullName, &a.Role, &active, &totpEnabled, &a.CreatedAt); err != nil {
 			return nil, err
 		}
 		a.Active = active == 1
+		a.TOTPEnabled = totpEnabled == 1
 		out = append(out, a)
 	}
 	return out, rows.Err()
+}
+
+// ── TOTP 2FA ─────────────────────────────────────────────────────────────────
+
+// SetTOTPSecret stores a freshly generated (not-yet-verified) secret for an
+// account and leaves 2FA disabled. EnableTOTP flips it on once a code is
+// verified, so an abandoned enrolment never locks the holder out.
+func (s *AccountStore) SetTOTPSecret(ctx context.Context, email, secret string) error {
+	if s.db == nil {
+		return errors.New("vayumail: no storage")
+	}
+	if strings.TrimSpace(secret) == "" {
+		return errors.New("secret required")
+	}
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE vayumail_accounts SET totp_secret=?, totp_enabled=0 WHERE email=?`, secret, normEmail(email))
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return errors.New("no such account")
+	}
+	return nil
+}
+
+// EnableTOTP marks 2FA active for an account that already has a stored secret.
+func (s *AccountStore) EnableTOTP(ctx context.Context, email string) error {
+	if s.db == nil {
+		return errors.New("vayumail: no storage")
+	}
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE vayumail_accounts SET totp_enabled=1 WHERE email=? AND totp_secret<>''`, normEmail(email))
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return errors.New("no enrolment in progress for this account")
+	}
+	return nil
+}
+
+// DisableTOTP turns 2FA off and clears the stored secret.
+func (s *AccountStore) DisableTOTP(ctx context.Context, email string) error {
+	if s.db == nil {
+		return errors.New("vayumail: no storage")
+	}
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE vayumail_accounts SET totp_secret='', totp_enabled=0 WHERE email=?`, normEmail(email))
+	return err
+}
+
+// TOTPStatus returns the stored secret and whether 2FA is currently enforced
+// for the account. An empty secret (or an unknown account) reports disabled.
+func (s *AccountStore) TOTPStatus(ctx context.Context, email string) (secret string, enabled bool) {
+	if s.db == nil {
+		return "", false
+	}
+	var en int
+	_ = s.db.QueryRowContext(ctx,
+		`SELECT totp_secret, totp_enabled FROM vayumail_accounts WHERE email=?`, normEmail(email)).Scan(&secret, &en)
+	return secret, en == 1
 }

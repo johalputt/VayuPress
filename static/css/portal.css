@@ -1,0 +1,238 @@
+/* portal.css — VayuPortal, the reader membership overlay.
+   A floating launch button plus a slide-in panel with sign-up, sign-in,
+   "Sign in with VayuMail", and an account view. Self-contained and theme-aware:
+   it reads the site's /theme.css tokens where present and falls back to a
+   premium dark palette otherwise. No inline styles (strict-CSP friendly). */
+
+:root {
+  --vpp-bg: var(--vp-bg, #0d0f14);
+  --vpp-surface: var(--vp-surface, #161922);
+  --vpp-surface-2: #1d212c;
+  --vpp-border: rgba(255, 255, 255, .08);
+  --vpp-text: var(--vp-text, #e8eaf0);
+  --vpp-muted: #9aa3b2;
+  --vpp-accent: var(--vp-accent, #6366f1);
+  --vpp-accent-2: #818cf8;
+  --vpp-ok: #10b981;
+  --vpp-err: #ef4444;
+  --vpp-font: var(--vp-font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
+  --vpp-shadow: 0 24px 70px -18px rgba(0, 0, 0, .7);
+}
+
+/* ── Floating launch button ──────────────────────────────────────────────── */
+
+.vp-portal-trigger {
+  position: fixed;
+  right: 1.5rem;
+  bottom: 1.5rem;
+  z-index: 2147483000;
+  width: 56px;
+  height: 56px;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  background: linear-gradient(180deg, var(--vpp-accent-2), var(--vpp-accent));
+  box-shadow: 0 12px 30px -8px rgba(99, 102, 241, .6), 0 2px 6px rgba(0, 0, 0, .3);
+  transition: transform .18s ease, filter .18s ease, box-shadow .18s ease;
+  font-family: var(--vpp-font);
+}
+
+.vp-portal-trigger:hover { transform: translateY(-2px) scale(1.04); filter: brightness(1.06); }
+.vp-portal-trigger:active { transform: translateY(0) scale(.98); }
+.vp-portal-trigger:focus-visible { outline: 3px solid var(--vpp-accent-2); outline-offset: 3px; }
+.vp-portal-trigger svg { width: 24px; height: 24px; display: block; }
+
+/* When signed in, the trigger shows the member's initial instead of an icon. */
+.vp-portal-trigger--member { font-weight: 700; font-size: 1.15rem; letter-spacing: .01em; }
+
+@media (prefers-reduced-motion: reduce) {
+  .vp-portal-trigger, .vp-portal-panel, .vp-portal-overlay { transition: none !important; }
+}
+
+/* ── Overlay + panel ─────────────────────────────────────────────────────── */
+
+.vp-portal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483001;
+  display: flex;
+  justify-content: flex-end;
+  background: rgba(6, 8, 12, .55);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity .2s ease, visibility .2s ease;
+  font-family: var(--vpp-font);
+}
+
+.vp-portal-overlay.is-open { opacity: 1; visibility: visible; }
+
+.vp-portal-panel {
+  position: relative;
+  width: 100%;
+  max-width: 27rem;
+  height: 100%;
+  overflow-y: auto;
+  background: linear-gradient(180deg, var(--vpp-surface-2), var(--vpp-surface));
+  border-left: 1px solid var(--vpp-border);
+  box-shadow: var(--vpp-shadow);
+  color: var(--vpp-text);
+  transform: translateX(100%);
+  transition: transform .26s cubic-bezier(.22, .61, .36, 1);
+  padding: 2.25rem 2rem 2.5rem;
+}
+
+.vp-portal-overlay.is-open .vp-portal-panel { transform: translateX(0); }
+
+.vp-portal-close {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  border: 1px solid var(--vpp-border);
+  background: transparent;
+  color: var(--vpp-muted);
+  cursor: pointer;
+  font-size: 1.25rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.vp-portal-close:hover { color: var(--vpp-text); border-color: var(--vpp-accent); }
+
+/* ── Content ─────────────────────────────────────────────────────────────── */
+
+.vp-portal-brand { display: flex; align-items: center; gap: .55rem; margin-bottom: 1.6rem; }
+.vp-portal-brand img { width: 32px; height: 32px; border-radius: 8px; }
+.vp-portal-brand span { font-weight: 700; font-size: 1rem; letter-spacing: -.01em; }
+
+.vp-portal-title { margin: 0 0 .35rem; font-size: 1.55rem; line-height: 1.15; letter-spacing: -.02em; }
+.vp-portal-sub { margin: 0 0 1.4rem; color: var(--vpp-muted); font-size: .92rem; line-height: 1.55; }
+
+.vp-portal-form { display: flex; flex-direction: column; gap: .65rem; }
+.vp-portal-label { font-size: .78rem; font-weight: 600; color: var(--vpp-muted); }
+
+.vp-portal-input {
+  width: 100%;
+  padding: .8rem .9rem;
+  font-size: .98rem;
+  color: var(--vpp-text);
+  background: var(--vpp-bg);
+  border: 1px solid var(--vpp-border);
+  border-radius: 11px;
+  outline: none;
+  transition: border-color .15s, box-shadow .15s;
+  font-family: inherit;
+}
+.vp-portal-input:focus { border-color: var(--vpp-accent); box-shadow: 0 0 0 3px rgba(99, 102, 241, .25); }
+
+.vp-portal-btn {
+  margin-top: .35rem;
+  padding: .85rem 1rem;
+  font-size: 1rem;
+  font-weight: 650;
+  color: #fff;
+  background: linear-gradient(180deg, var(--vpp-accent-2), var(--vpp-accent));
+  border: 0;
+  border-radius: 11px;
+  cursor: pointer;
+  transition: filter .15s, transform .05s;
+  font-family: inherit;
+}
+.vp-portal-btn:hover { filter: brightness(1.07); }
+.vp-portal-btn:active { transform: translateY(1px); }
+.vp-portal-btn:disabled { filter: saturate(.6) brightness(.9); cursor: default; }
+
+.vp-portal-btn--ghost {
+  color: var(--vpp-text);
+  background: transparent;
+  border: 1px solid var(--vpp-border);
+}
+.vp-portal-btn--ghost:hover { border-color: var(--vpp-accent); filter: none; }
+
+/* Divider with centred label ("or"). */
+.vp-portal-or {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  margin: 1.25rem 0;
+  color: var(--vpp-muted);
+  font-size: .78rem;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+.vp-portal-or::before, .vp-portal-or::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--vpp-border);
+}
+
+.vp-portal-vmbtn { display: flex; align-items: center; justify-content: center; gap: .55rem; }
+.vp-portal-vmbtn svg { width: 18px; height: 18px; }
+
+.vp-portal-notice {
+  margin: 1rem 0 0;
+  padding: .7rem .85rem;
+  border-radius: 10px;
+  font-size: .85rem;
+  line-height: 1.45;
+  border: 1px solid transparent;
+}
+.vp-portal-notice--ok { color: #d1fae5; background: rgba(16, 185, 129, .12); border-color: rgba(16, 185, 129, .35); }
+.vp-portal-notice--err { color: #fee2e2; background: rgba(239, 68, 68, .12); border-color: rgba(239, 68, 68, .35); }
+
+.vp-portal-foot { margin: 1.3rem 0 0; font-size: .88rem; color: var(--vpp-muted); }
+.vp-portal-link {
+  color: var(--vpp-accent-2);
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+}
+.vp-portal-link:hover { text-decoration: underline; }
+
+.vp-portal-perks { list-style: none; margin: 1.3rem 0 0; padding: 1.1rem 0 0; border-top: 1px solid var(--vpp-border); display: flex; flex-direction: column; gap: .55rem; }
+.vp-portal-perks li { display: flex; align-items: center; gap: .55rem; font-size: .9rem; }
+.vp-portal-perks li::before { content: "✓"; color: var(--vpp-accent-2); font-weight: 700; }
+
+/* Account view */
+.vp-portal-account-id { display: flex; align-items: center; gap: .85rem; margin-bottom: 1.5rem; }
+.vp-portal-avatar {
+  width: 52px; height: 52px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 1.3rem; color: #fff;
+  background: linear-gradient(180deg, var(--vpp-accent-2), var(--vpp-accent));
+  flex: none;
+}
+.vp-portal-account-id .vp-portal-acc-name { font-weight: 700; font-size: 1.05rem; }
+.vp-portal-account-id .vp-portal-acc-mail { color: var(--vpp-muted); font-size: .85rem; }
+
+.vp-portal-plan {
+  border: 1px solid var(--vpp-border);
+  border-radius: 12px;
+  padding: 1rem 1.1rem;
+  margin-bottom: 1.1rem;
+  background: var(--vpp-bg);
+}
+.vp-portal-plan-label { color: var(--vpp-muted); font-size: .78rem; text-transform: uppercase; letter-spacing: .07em; }
+.vp-portal-plan-name { font-weight: 700; font-size: 1.05rem; margin-top: .15rem; }
+
+.vp-portal-actions { display: flex; flex-direction: column; gap: .6rem; margin-top: .4rem; }
+.vp-portal-actions a, .vp-portal-actions button { width: 100%; text-align: center; text-decoration: none; box-sizing: border-box; }
+
+@media (max-width: 480px) {
+  .vp-portal-panel { max-width: 100%; padding: 2.5rem 1.4rem; }
+  .vp-portal-trigger { right: 1rem; bottom: 1rem; }
+}

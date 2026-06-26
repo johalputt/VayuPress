@@ -19,6 +19,7 @@ import (
 	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/render"
+	"github.com/johalputt/vayupress/internal/totp"
 	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
 	vpgp "github.com/johalputt/vayupress/internal/vayuos/pgp"
 )
@@ -427,9 +428,9 @@ func (a *App) handleVayuOSAccounts(w http.ResponseWriter, r *http.Request) {
 </form></div>`)
 
 	// Existing accounts.
-	body.WriteString(`<div class="card"><div class="card-title">Accounts</div><div class="table-wrap"><table class="table"><thead><tr><th>Email</th><th>Name</th><th>Role</th><th>Status</th><th>Created</th><th></th></tr></thead><tbody>`)
+	body.WriteString(`<div class="card"><div class="card-title">Accounts</div><div class="table-wrap"><table class="table"><thead><tr><th>Email</th><th>Name</th><th>Role</th><th>Status</th><th>2FA</th><th>Created</th><th></th></tr></thead><tbody>`)
 	if len(accs) == 0 {
-		body.WriteString(`<tr><td colspan="6" class="muted">No mail accounts yet.</td></tr>`)
+		body.WriteString(`<tr><td colspan="7" class="muted">No mail accounts yet.</td></tr>`)
 	}
 	for _, ac := range accs {
 		status := `<span class="badge badge--ok">active</span>`
@@ -454,8 +455,16 @@ func (a *App) handleVayuOSAccounts(w http.ResponseWriter, r *http.Request) {
 			roleSel += `<option value="` + html.EscapeString(ac.Role) + `" selected>` + html.EscapeString(ac.Role) + `</option>`
 		}
 		roleSel += `</select>`
-		body.WriteString(`<tr><td>` + html.EscapeString(ac.Email) + `</td><td>` + html.EscapeString(ac.FullName) + `</td><td>` + roleSel + `</td><td>` + status + `</td><td class="muted text-sm">` + ac.CreatedAt.Format("2006-01-02") + `</td><td class="vm-row">` +
+		// 2FA status badge + enrol/disable control.
+		twofa := `<span class="badge badge--warn">off</span>`
+		twofaBtn := `<button class="btn" data-acct-2fa-enable="` + html.EscapeString(ac.Email) + `">Enable 2FA</button>`
+		if ac.TOTPEnabled {
+			twofa = `<span class="badge badge--ok">on</span>`
+			twofaBtn = `<button class="btn" data-acct-2fa-disable="` + html.EscapeString(ac.Email) + `">Disable 2FA</button>`
+		}
+		body.WriteString(`<tr><td>` + html.EscapeString(ac.Email) + `</td><td>` + html.EscapeString(ac.FullName) + `</td><td>` + roleSel + `</td><td>` + status + `</td><td>` + twofa + `</td><td class="muted text-sm">` + ac.CreatedAt.Format("2006-01-02") + `</td><td class="vm-row">` +
 			`<button class="btn" data-acct-pass="` + html.EscapeString(ac.Email) + `">Set password</button>` +
+			twofaBtn +
 			`<button class="btn" data-acct-toggle="` + html.EscapeString(ac.Email) + `" data-active="` + toggleActive + `">` + toggleLabel + `</button>` +
 			`<button class="btn btn--danger" data-acct-delete="` + html.EscapeString(ac.Email) + `">Delete</button></td></tr>`)
 	}
@@ -593,4 +602,80 @@ func (a *App) handleVayuOSAccountUpdate(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 	writeJSON(w, r, 200, map[string]bool{"updated": true})
+}
+
+// handleVayuOSAccountTOTP manages two-factor authentication (TOTP) for a mail
+// account. CSRF-protected, admin-only. The action field drives a small state
+// machine:
+//
+//   - "begin":   generate a fresh secret, store it (still disabled), and return
+//     the secret + otpauth:// URI for the operator to scan/enter.
+//   - "verify":  validate a 6-digit code against the stored secret and, on
+//     success, enable 2FA for the account.
+//   - "disable": turn 2FA off and forget the secret.
+//
+// 2FA, once enabled, is enforced by the public "Sign in with VayuMail" flow
+// (handleMemberVayuMailLogin) — it adds a second factor to mailbox-credential
+// sign-in without affecting the passwordless magic-link path.
+func (a *App) handleVayuOSAccountTOTP(w http.ResponseWriter, r *http.Request) {
+	if !a.isAdminRequest(r) {
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", "admin role required", "")
+		return
+	}
+	if a.vayuMail == nil || a.vayuMail.Accounts() == nil {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", "VayuMail is not active", "")
+		return
+	}
+	var in struct {
+		Email  string `json:"email"`
+		Action string `json:"action"`
+		Code   string `json:"code"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16*1024)).Decode(&in); err != nil {
+		writeAPIError(w, r, 400, "invalid_json", err.Error(), "")
+		return
+	}
+	email := strings.ToLower(strings.TrimSpace(in.Email))
+	if email == "" {
+		writeAPIError(w, r, 400, "validation_error", "email is required", "")
+		return
+	}
+	accts := a.vayuMail.Accounts()
+	switch in.Action {
+	case "begin":
+		secret, err := totp.GenerateSecret()
+		if err != nil {
+			writeAPIError(w, r, 500, "totp-failed", "could not generate a secret", "")
+			return
+		}
+		if err := accts.SetTOTPSecret(r.Context(), email, secret); err != nil {
+			writeAPIError(w, r, 400, "totp-failed", err.Error(), "")
+			return
+		}
+		uri := totp.ProvisioningURI(secret, a.vayuMail.Config().Domain, email)
+		writeJSON(w, r, 200, map[string]string{"secret": secret, "uri": uri})
+	case "verify":
+		secret, _ := accts.TOTPStatus(r.Context(), email)
+		if secret == "" {
+			writeAPIError(w, r, 400, "totp-failed", "start enrolment first", "")
+			return
+		}
+		if !totp.Validate(secret, in.Code) {
+			writeAPIError(w, r, 400, "totp-invalid", "that code is not valid — check the time on the device", "")
+			return
+		}
+		if err := accts.EnableTOTP(r.Context(), email); err != nil {
+			writeAPIError(w, r, 400, "totp-failed", err.Error(), "")
+			return
+		}
+		writeJSON(w, r, 200, map[string]bool{"enabled": true})
+	case "disable":
+		if err := accts.DisableTOTP(r.Context(), email); err != nil {
+			writeAPIError(w, r, 400, "totp-failed", err.Error(), "")
+			return
+		}
+		writeJSON(w, r, 200, map[string]bool{"enabled": false})
+	default:
+		writeAPIError(w, r, 400, "validation_error", "unknown action", "")
+	}
 }

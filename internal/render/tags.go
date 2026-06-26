@@ -80,6 +80,7 @@ var tagIndexTmpl = template.Must(template.New("tagindex").Funcs(tagFuncs).Parse(
 <link rel="icon" type="image/png" href="/static/favicon-light.png" media="(prefers-color-scheme: dark)">
 <link rel="icon" type="image/png" href="/static/favicon-light.png">
 <script defer src="/static/vp-analytics.js"></script>
+<script defer src="/static/js/portal.js"></script>
 </head><body>
 <a href="#main-content" class="skip-link">Skip to main content</a>
 <div class="container">
@@ -118,6 +119,7 @@ var tagPageTmpl = template.Must(template.New("tagpage").Funcs(tagFuncs).Parse(`<
 <link rel="icon" type="image/png" href="/static/favicon-light.png" media="(prefers-color-scheme: dark)">
 <link rel="icon" type="image/png" href="/static/favicon-light.png">
 <script defer src="/static/vp-analytics.js"></script>
+<script defer src="/static/js/portal.js"></script>
 </head><body>
 <a href="#main-content" class="skip-link">Skip to main content</a>
 <div class="container">
