@@ -10,6 +10,26 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Added
 
+- **Browsable tag pages — clicking a tag now opens a real page.** Tag links on
+  posts pointed at `/tags/<tag>`, but no route served that path, so every tag
+  click fell through to the 404 page. VayuPress now ships a complete public
+  taxonomy:
+  - **`/tags` topic index** — a premium tag cloud listing every tag with its
+    published-post count, most-used first, styled with the existing theme tokens
+    so it adapts to every preset and light/dark mode.
+  - **`/tags/<tag>` listing** — each tag opens its own page listing the matching
+    posts (most recent first) with the same card layout as the homepage. Tag
+    matching is exact and case-insensitive (so `go` never collides with
+    `golang`), drafts are excluded, and a tag with no published posts returns a
+    proper 404 instead of an empty indexed page.
+  - Per-tag pages are disk-cached at `tags/<tag>.html` and invalidated
+    automatically when an article carrying that tag is created, updated, or
+    deleted (reusing the existing cache-purge path). The topic index renders
+    live so newly introduced tags appear immediately.
+  - Tag URLs are path-escaped end to end (links, canonical tags, and sitemap),
+    and both `/tags` and every `/tags/<tag>` page are now emitted in
+    `sitemap.xml` for discovery.
+
 - **VayuAnalytics gets a tabbed dashboard + a richer Live view.** The analytics
   page was one long scroll; it is now split into client-side tabs (no reload):
   Overview, Live, Pages, Audience, Geography, Campaigns, Events, Goals, Journey

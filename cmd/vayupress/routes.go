@@ -342,6 +342,12 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	a.registerAdminOSUIRoutes(r)
 
 	r.Get("/", a.handleHome)
+	// Public taxonomy pages — the topic index and per-tag listings. Registered
+	// before the single-segment "/{slug}" catch-all so "/tags" and "/tags/{tag}"
+	// resolve here instead of falling through to a 404 (the two-segment form
+	// previously matched no route).
+	r.Get("/tags", a.handleTagIndex)
+	r.Get("/tags/{tag}", a.handleTagPage)
 	r.NotFound(a.handleNotFound)
 	r.Get("/{slug}", a.handleArticlePage)
 }
