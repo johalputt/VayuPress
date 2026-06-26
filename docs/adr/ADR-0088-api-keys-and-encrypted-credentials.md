@@ -31,29 +31,56 @@ rest on a single-VPS deployment.
      Verification is an O(1) lookup against an in-memory set of active hashes
      (30 s TTL, invalidated on mutation).
    - `internal/secrets` — third-party credentials that must be recoverable in
-     plaintext at runtime. They are sealed with **AES-256-GCM** under a key
-     derived (domain-separated SHA-256) from the master secret (`API_KEY`) — the
-     same at-rest scheme as VayuPGP (ADR-0076). Only the ciphertext and a masked
-     hint are stored.
-2. **Auth integration via a registered verifier.** `internal/auth` exposes
+     plaintext at runtime. They are sealed with **AES-256-GCM**.
+2. **Envelope encryption decoupled from any auth credential (100% automated
+   rotation).** Credentials are not encrypted directly with the API key.
+   Instead a persistent, randomly-generated **Data Encryption Key (DEK)**,
+   stored once in the `secret_keyring` table, encrypts every credential. The DEK
+   is independent of the API key, so rotating any key — including the bootstrap
+   `API_KEY` — never makes a stored secret undecryptable and never requires
+   re-entering anything.
+   - By default the DEK is self-managed (stored directly; the database file is
+     the trust boundary on a single VPS).
+   - If `VAYU_SECRET` is set, the DEK is **wrapped** by a Key Encryption Key
+     (KEK) derived from it (domain-separated SHA-256) for defence-in-depth, with
+     a sealed check value to detect a wrong/missing secret at boot.
+   - Because only the small DEK is wrapped, `RewrapMaster` can introduce or
+     change the encryption secret **in place** without re-encrypting — or
+     losing — a single credential.
+
+   This intentionally supersedes the earlier reflex of reusing the `API_KEY`
+   master (as VayuPGP does, ADR-0076): for *recoverable* secrets we want
+   rotation of the auth key to be consequence-free.
+3. **Auth integration via a registered verifier.** `internal/auth` exposes
    `SetExtraAPIKeyVerifier`; `RequireAPIKey` and `HasValidAPIKey` accept a
    DB-issued key as a fallback to the static `API_KEY`, keeping the existing
    constant-time comparison and IP-lockout protections. The env key remains a
    valid bootstrap credential.
-3. **IndexNow becomes self-serving.** `pingIndexNow` resolves its key from the
+4. **Internal vs external key scopes.** `vayu_api_keys.scope` separates an
+   auto-provisioned **internal/system** key (`scope='internal'`) from
+   operator-issued **external** keys. The system key is created automatically at
+   boot, exposed to internal automation via `App.InternalAPIKey()` (read live,
+   so a rotation propagates with no manual step), and is protected from
+   revoke/delete.
+5. **IndexNow becomes self-serving.** `pingIndexNow` resolves its key from the
    secrets store first, then the env var. The verification file at
    `/.well-known/<key>.txt` is served dynamically whenever a key is configured,
    so no manual upload is required.
-4. **First-class provider cards** for IndexNow, OpenRouter, Ollama and n8n, plus
+6. **First-class provider cards** for IndexNow, OpenRouter, Ollama and n8n, plus
    a generic "custom" credential, all on a new VayuOS **API Keys** page.
 
 ## Consequences
 
-- Positive: runtime key issuance/rotation/revocation; integration secrets are
-  encrypted at rest and never displayed in clear after saving; IndexNow works
-  end-to-end from the UI.
-- Trade-off: the master secret (`API_KEY`) must remain stable — rotating it
-  re-keys the at-rest seal and makes stored third-party secrets undecryptable
-  (they must be re-entered). This matches the existing VayuPGP constraint and is
-  documented alongside it.
-- Migration `041-api-keys` adds `vayu_api_keys` and `service_credentials`.
+- Positive: runtime key issuance/rotation/revocation; **rotating any key never
+  affects stored third-party secrets** (no manual re-entry); the internal key is
+  zero-config and self-propagating; integration secrets are encrypted at rest
+  and never displayed in clear after saving; IndexNow works end-to-end from the
+  UI.
+- Trade-off: with `VAYU_SECRET` set, that secret becomes the stable unlock for
+  the keyring — changing/losing it out-of-band without `RewrapMaster` would make
+  the DEK (and thus the credentials) unreadable. That is why `VAYU_SECRET` is a
+  dedicated, stable encryption secret, explicitly *not* the rotatable `API_KEY`.
+  With no `VAYU_SECRET`, the DEK lives in the database, whose file is the trust
+  boundary on a single-VPS deployment.
+- Migrations: `041-api-keys` adds `vayu_api_keys` and `service_credentials`;
+  `042-api-keys-envelope` adds `secret_keyring` and the `scope` column.

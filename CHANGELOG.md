@@ -26,9 +26,8 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   credential.
 - **Encrypted third-party service credentials.** Store the secrets VayuPress
   uses to talk to other services directly in the admin panel, **sealed with
-  AES-256-GCM at rest** (the same scheme as VayuPGP, keyed off the master
-  secret). Secrets are shown only as a masked hint after saving and can be
-  revealed on demand. First-class cards ship for:
+  AES-256-GCM at rest**. Secrets are shown only as a masked hint after saving
+  and can be revealed on demand. First-class cards ship for:
   - **IndexNow** — set the submission key in the UI (no more env-only key, and
     no manual file upload). The ownership-verification file at
     `/.well-known/<key>.txt` is now served automatically whenever a key is
@@ -38,6 +37,19 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
     features run on infrastructure you control; no data leaves your server.
   - **n8n** — wire VayuPress events into automation workflows via a webhook.
   - **Custom** — store an API key for any other service by name.
+- **Rotation is 100% automated — nothing to re-enter.** Stored credentials are
+  encrypted with a persistent, randomly-generated **Data Encryption Key (DEK)**
+  held in a new keyring, deliberately decoupled from any authentication
+  credential. Rotating an API key (or even the bootstrap `API_KEY`) therefore
+  never makes a stored secret undecryptable — there is no manual migration step.
+  Optionally set `VAYU_SECRET` to wrap the DEK for defence-in-depth; the
+  encryption secret can be introduced or changed in place without re-entering a
+  single credential.
+- **Auto-managed internal/system key.** VayuPress provisions a dedicated
+  **System** key for internal use automatically — you never have to create or
+  configure it. Internal automation always reads the live value, so rotating it
+  propagates instantly with no manual step; it can be rotated but never revoked
+  or deleted. Operator-issued keys remain explicitly managed.
 
 ### Changed
 
@@ -48,8 +60,8 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 ### Security
 
 - Third-party secrets and issued API keys are never persisted in clear text:
-  service credentials are AES-256-GCM encrypted, and API keys are stored as
-  one-way SHA-256 hashes.
+  service credentials are AES-256-GCM encrypted under a dedicated keyring DEK,
+  and API keys are stored as one-way SHA-256 hashes.
 
 ## [1.16.0] — 2026-06-26
 
