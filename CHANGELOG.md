@@ -35,12 +35,14 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 - **Role-based VayuMail access after portal sign-in, plus a new mail-only
   role.** When a reader signs in with their VayuMail mailbox, they can now open
-  VayuMail according to that account's role: an `administrator` mailbox reaches
-  the full VayuOS console, while every other role is confined to the VayuMail
-  surface only. A new **mailbox** role (mail only, no console) joins the
-  existing administrator/editor/author/reviewer roles for handing out
-  pure-email identities. The portal account view surfaces an "Open VayuMail"
-  (or full-console) shortcut, and signing out clears both sessions at once.
+  VayuMail according to that account's role: `administrator`, `editor`, and
+  `author` mailboxes reach the VayuOS console with the matching capabilities
+  (admin / editor / author), while `reviewer` and the new mail-only **mailbox**
+  role are confined to the VayuMail surface only. The new **mailbox** role joins
+  the existing administrator/editor/author/reviewer roles for handing out
+  pure-email identities with no console access. The portal account view surfaces
+  an "Open VayuOS console" (or "Open VayuMail") shortcut, and signing out clears
+  both sessions at once.
 
 - **Commenting is now members-only.** Posting a comment requires an
   authenticated member session — readers sign in via the membership portal

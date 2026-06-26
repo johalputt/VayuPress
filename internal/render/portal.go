@@ -125,7 +125,7 @@ const PortalJS = `(function () {
     var plan = m.paid ? 'Premium member' : 'Free member';
     var mailBtn = '';
     if (m.mail) {
-      mailBtn = m.mail.admin
+      mailBtn = m.mail.console
         ? '<a class="vp-portal-btn" href="/os">Open VayuOS console</a>'
         : '<a class="vp-portal-btn" href="/os/vayuos/mail/inbox">Open VayuMail</a>';
     }
