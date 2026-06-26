@@ -652,6 +652,11 @@
   gap: var(--sp-3);
   margin-bottom: var(--sp-4);
 }
+.vp-os .pf-head { display: flex; align-items: center; gap: var(--sp-4); }
+.vp-os .pf-avatar {
+  width: 56px; height: 56px; border-radius: var(--r-full);
+  object-fit: cover; border: 1px solid var(--border);
+}
 .vp-os .search-input { max-width: 320px; }
 
 /* ── Avatar ──────────────────────────────────────────────────── */

@@ -15,8 +15,10 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"net/mail"
+	"net/url"
 	"strings"
 	"time"
 
@@ -24,19 +26,42 @@ import (
 )
 
 // Roles recognised by the authorization layer.
+//
+//   - admin:  may manage other users, roles, and system settings.
+//   - editor: may write and publish/manage all content.
+//   - author: may write their own content.
 const (
 	RoleAdmin  = "admin"
+	RoleEditor = "editor"
 	RoleAuthor = "author"
 )
 
+// MaxBioLen / MaxNameLen bound the free-text profile fields.
+const (
+	MaxBioLen  = 250
+	MaxNameLen = 250
+)
+
+// ValidRole reports whether role is a recognised account role.
+func ValidRole(role string) bool {
+	switch role {
+	case RoleAdmin, RoleEditor, RoleAuthor:
+		return true
+	}
+	return false
+}
+
 // User is an account record. The password hash is never serialised to JSON.
 type User struct {
-	ID        string     `json:"id"`
-	Email     string     `json:"email"`
-	Name      string     `json:"name"`
-	Role      string     `json:"role"`
-	CreatedAt time.Time  `json:"created_at"`
-	LastLogin *time.Time `json:"last_login,omitempty"`
+	ID        string            `json:"id"`
+	Email     string            `json:"email"`
+	Name      string            `json:"name"`
+	Role      string            `json:"role"`
+	AvatarURL string            `json:"avatar_url,omitempty"`
+	Bio       string            `json:"bio,omitempty"`
+	Socials   map[string]string `json:"socials,omitempty"`
+	CreatedAt time.Time         `json:"created_at"`
+	LastLogin *time.Time        `json:"last_login,omitempty"`
 }
 
 // Store manages user accounts in SQLite.
@@ -58,8 +83,8 @@ func (s *Store) Create(ctx context.Context, email, name, password, role string) 
 	if role == "" {
 		role = RoleAuthor
 	}
-	if role != RoleAdmin && role != RoleAuthor {
-		return nil, fmt.Errorf("invalid role %q (want admin or author)", role)
+	if !ValidRole(role) {
+		return nil, fmt.Errorf("invalid role %q (want admin, editor, or author)", role)
 	}
 	hash, err := auth.HashSecretArgon2id(password)
 	if err != nil {
@@ -106,43 +131,127 @@ func (s *Store) Authenticate(ctx context.Context, email, password string) (*User
 	return &u, nil
 }
 
-// GetByID returns the user with the given id.
-func (s *Store) GetByID(ctx context.Context, id string) (*User, error) {
+// profileCols is the SELECT list for reads that include public profile fields.
+const profileCols = `id,email,name,role,avatar_url,bio,socials,created_at,last_login`
+
+// scanUserProfile reads a row selected with profileCols.
+func scanUserProfile(sc interface{ Scan(...interface{}) error }) (*User, error) {
 	var u User
+	var avatar, bio, socials string
 	var lastLogin sql.NullTime
-	err := s.db.QueryRowContext(ctx,
-		`SELECT id,email,name,role,created_at,last_login FROM users WHERE id=?`, id).
-		Scan(&u.ID, &u.Email, &u.Name, &u.Role, &u.CreatedAt, &lastLogin)
-	if err != nil {
+	if err := sc.Scan(&u.ID, &u.Email, &u.Name, &u.Role, &avatar, &bio, &socials, &u.CreatedAt, &lastLogin); err != nil {
 		return nil, err
 	}
+	u.AvatarURL = avatar
+	u.Bio = bio
+	u.Socials = decodeSocials(socials)
 	if lastLogin.Valid {
 		u.LastLogin = &lastLogin.Time
 	}
 	return &u, nil
 }
 
-// List returns all users ordered by creation time.
+// GetByID returns the user with the given id, including profile fields.
+func (s *Store) GetByID(ctx context.Context, id string) (*User, error) {
+	return scanUserProfile(s.db.QueryRowContext(ctx,
+		`SELECT `+profileCols+` FROM users WHERE id=?`, id))
+}
+
+// List returns all users ordered by creation time, including profile fields.
 func (s *Store) List(ctx context.Context) ([]User, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id,email,name,role,created_at,last_login FROM users ORDER BY created_at`)
+		`SELECT `+profileCols+` FROM users ORDER BY created_at`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	var out []User
 	for rows.Next() {
-		var u User
-		var lastLogin sql.NullTime
-		if err := rows.Scan(&u.ID, &u.Email, &u.Name, &u.Role, &u.CreatedAt, &lastLogin); err != nil {
+		u, err := scanUserProfile(rows)
+		if err != nil {
 			return nil, err
 		}
-		if lastLogin.Valid {
-			u.LastLogin = &lastLogin.Time
-		}
-		out = append(out, u)
+		out = append(out, *u)
 	}
 	return out, rows.Err()
+}
+
+// SetRole changes a user's role by email. The role must be recognised.
+func (s *Store) SetRole(ctx context.Context, email, role string) error {
+	if !ValidRole(role) {
+		return fmt.Errorf("invalid role %q (want admin, editor, or author)", role)
+	}
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE users SET role=? WHERE email=?`, role, strings.TrimSpace(strings.ToLower(email)))
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("no user with that email")
+	}
+	return nil
+}
+
+// UpdateProfile sets a user's public profile (display name, bio, avatar URL,
+// and social links) by id. Name and bio are length-capped; social link values
+// must be http(s) URLs and are stored as a label->URL map.
+func (s *Store) UpdateProfile(ctx context.Context, id, name, bio, avatarURL string, socials map[string]string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return fmt.Errorf("name is required")
+	}
+	if len([]rune(name)) > MaxNameLen {
+		return fmt.Errorf("name must be at most %d characters", MaxNameLen)
+	}
+	bio = strings.TrimSpace(bio)
+	if len([]rune(bio)) > MaxBioLen {
+		return fmt.Errorf("bio must be at most %d characters", MaxBioLen)
+	}
+	avatarURL = strings.TrimSpace(avatarURL)
+	if avatarURL != "" && !isHTTPURL(avatarURL) {
+		return fmt.Errorf("avatar URL must be an http(s) URL")
+	}
+	clean := map[string]string{}
+	for label, link := range socials {
+		label = strings.TrimSpace(strings.ToLower(label))
+		link = strings.TrimSpace(link)
+		if label == "" || link == "" {
+			continue
+		}
+		if !isHTTPURL(link) {
+			return fmt.Errorf("social link for %q must be an http(s) URL", label)
+		}
+		clean[label] = link
+	}
+	enc, _ := json.Marshal(clean)
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE users SET name=?,bio=?,avatar_url=?,socials=? WHERE id=?`,
+		name, bio, avatarURL, string(enc), id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("no user with that id")
+	}
+	return nil
+}
+
+// decodeSocials parses the stored JSON map, tolerating empty/legacy values.
+func decodeSocials(raw string) map[string]string {
+	if strings.TrimSpace(raw) == "" || raw == "{}" {
+		return nil
+	}
+	m := map[string]string{}
+	if err := json.Unmarshal([]byte(raw), &m); err != nil || len(m) == 0 {
+		return nil
+	}
+	return m
+}
+
+// isHTTPURL reports whether s is a syntactically valid absolute http(s) URL.
+func isHTTPURL(s string) bool {
+	u, err := url.Parse(s)
+	return err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host != ""
 }
 
 // SetPassword updates a user's password (after the same strength check as Create).

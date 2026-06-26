@@ -1,0 +1,397 @@
+package main
+
+// handlers_team.go — staff team management, self-service author profiles, and
+// the public author profile page.
+//
+// Roles: admin / editor / author. Admins manage the team (create accounts,
+// change roles, delete) from the Members console; creating an account also
+// auto-provisions a sovereign VayuMail mailbox + PGP keypair (publishUserCreated).
+// Every staff member can edit their own public profile — display name, a short
+// bio (<=250 chars), an avatar, and social links — which renders at
+// /author/{id} for readers.
+
+import (
+	"encoding/json"
+	"html"
+	htmpl "html/template"
+	"net/http"
+	"sort"
+	"strings"
+
+	"github.com/go-chi/chi/v5"
+
+	"github.com/johalputt/vayupress/internal/config"
+	"github.com/johalputt/vayupress/internal/render"
+	"github.com/johalputt/vayupress/internal/users"
+)
+
+// socialPlatforms is the curated set of social links the profile editor offers.
+// label -> human name. Values are stored/rendered as a label->URL map.
+var socialPlatforms = []struct{ Key, Label, Placeholder string }{
+	{"website", "Website", "https://example.com"},
+	{"twitter", "X / Twitter", "https://x.com/you"},
+	{"github", "GitHub", "https://github.com/you"},
+	{"linkedin", "LinkedIn", "https://linkedin.com/in/you"},
+	{"mastodon", "Mastodon", "https://mastodon.social/@you"},
+	{"instagram", "Instagram", "https://instagram.com/you"},
+	{"youtube", "YouTube", "https://youtube.com/@you"},
+}
+
+func socialLabel(key string) string {
+	for _, p := range socialPlatforms {
+		if p.Key == key {
+			return p.Label
+		}
+	}
+	if key == "" {
+		return ""
+	}
+	return strings.ToUpper(key[:1]) + key[1:]
+}
+
+// =============================================================================
+// Admin: role management
+// =============================================================================
+
+// roleBody is the JSON payload for a role change.
+type roleBody struct {
+	Role string `json:"role"`
+}
+
+// PUT /api/v1/admin/users/{email}/role  {role}
+// PUT /os/api/users/{email}/role        {role}
+func (a *App) handleUserSetRole(w http.ResponseWriter, r *http.Request) {
+	if a.userStore == nil {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "users-disabled", "Accounts not initialised", "")
+		return
+	}
+	if !a.isAdminRequest(r) {
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", "admin role required", "")
+		return
+	}
+	email := chi.URLParam(r, "email")
+	var body roleBody
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16*1024)).Decode(&body); err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "bad-json", "Invalid request body", "")
+		return
+	}
+	// Guard against an admin removing the last admin role and locking everyone
+	// out of administration.
+	if !users.ValidRole(body.Role) {
+		writeAPIError(w, r, http.StatusBadRequest, "role-error", "invalid role (want admin, editor, or author)", "")
+		return
+	}
+	if body.Role != users.RoleAdmin {
+		if last, err := a.isLastAdmin(r, email); err == nil && last {
+			writeAPIError(w, r, http.StatusBadRequest, "role-error", "cannot demote the last remaining admin", "")
+			return
+		}
+	}
+	if err := a.userStore.SetRole(r.Context(), email, body.Role); err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "role-error", err.Error(), "")
+		return
+	}
+	writeJSON(w, r, http.StatusOK, map[string]string{"email": email, "role": body.Role})
+}
+
+// isLastAdmin reports whether email is the only admin account.
+func (a *App) isLastAdmin(r *http.Request, email string) (bool, error) {
+	list, err := a.userStore.List(r.Context())
+	if err != nil {
+		return false, err
+	}
+	admins, isTarget := 0, false
+	for _, u := range list {
+		if u.Role == users.RoleAdmin {
+			admins++
+			if strings.EqualFold(u.Email, email) {
+				isTarget = true
+			}
+		}
+	}
+	return isTarget && admins <= 1, nil
+}
+
+// =============================================================================
+// Self-service profile
+// =============================================================================
+
+// GET /os/profile — the signed-in staff member's profile editor.
+func (a *App) handleOSProfile(w http.ResponseWriter, r *http.Request) {
+	nonce := render.CSPNonce(r)
+	cfg := a.getOSSettings(r.Context())
+	u := currentUser(r)
+	if u == nil {
+		// API-key sessions have no associated user account to edit.
+		body := `<div class="page-header"><h1>My profile</h1></div>
+<div class="empty-state">Profile editing is available when you sign in with a user account.</div>`
+		writeOSHTML(w, adminOSLayout(nonce, "My profile", "profile", cfg, htmpl.HTML(body)))
+		return
+	}
+	// Reload to get the freshest profile fields.
+	if fresh, err := a.userStore.GetByID(r.Context(), u.ID); err == nil {
+		u = fresh
+	}
+	esc := html.EscapeString
+
+	socialFields := ""
+	for _, p := range socialPlatforms {
+		val := ""
+		if u.Socials != nil {
+			val = u.Socials[p.Key]
+		}
+		socialFields += `<label class="field mt-3"><span class="field-label">` + esc(p.Label) + `</span>
+      <input class="input" type="url" data-social="` + p.Key + `" value="` + esc(val) + `" placeholder="` + esc(p.Placeholder) + `"></label>`
+	}
+
+	avatarPreview := ""
+	if u.AvatarURL != "" {
+		avatarPreview = `<img class="pf-avatar" src="` + esc(u.AvatarURL) + `" alt="Current avatar">`
+	}
+
+	body := `<div class="page-header"><h1>My profile</h1>
+<span class="muted text-sm">Your public author profile — shown at <a href="/author/` + esc(u.ID) + `">/author/` + esc(u.ID) + `</a></span></div>
+<div class="card">
+  <form data-profile-form>
+    <div class="pf-head">` + avatarPreview + `<div>
+      <div class="muted text-sm">Signed in as</div>
+      <div class="row-title">` + esc(u.Email) + ` <span class="badge badge--ok">` + esc(u.Role) + `</span></div>
+    </div></div>
+    <label class="field mt-4"><span class="field-label">Display name</span>
+      <input class="input" type="text" data-p-name value="` + esc(u.Name) + `" maxlength="250" required></label>
+    <label class="field mt-3"><span class="field-label">About you <span class="muted">(max 250 characters)</span></span>
+      <textarea class="input" rows="3" data-p-bio maxlength="250" placeholder="A short bio shown on your public profile.">` + esc(u.Bio) + `</textarea>
+      <span class="field-hint" data-bio-count></span></label>
+    <label class="field mt-3"><span class="field-label">Avatar image URL</span>
+      <input class="input" type="url" data-p-avatar value="` + esc(u.AvatarURL) + `" placeholder="https://…/photo.jpg"></label>
+    <div class="card-subtitle mt-4">Social links</div>
+    ` + socialFields + `
+    <div class="vm-row mt-4">
+      <button class="btn btn--primary" type="submit">Save profile</button>
+      <a class="btn" href="/author/` + esc(u.ID) + `" target="_blank" rel="noopener">View public profile ↗</a>
+      <span class="muted text-sm" data-p-status></span>
+    </div>
+  </form>
+</div>
+<script nonce="` + nonce + `" src="/os/static/js/admin-os-profile.js"></script>`
+	writeOSHTML(w, adminOSLayout(nonce, "My profile", "profile", cfg, htmpl.HTML(body)))
+}
+
+// profileSaveBody is the JSON payload from the profile editor.
+type profileSaveBody struct {
+	Name    string            `json:"name"`
+	Bio     string            `json:"bio"`
+	Avatar  string            `json:"avatar_url"`
+	Socials map[string]string `json:"socials"`
+}
+
+// POST /os/api/profile — save the signed-in member's profile.
+func (a *App) handleProfileSave(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+	if u == nil || a.userStore == nil {
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", "a signed-in user account is required", "")
+		return
+	}
+	var body profileSaveBody
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64*1024)).Decode(&body); err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "bad-json", "Invalid request body", "")
+		return
+	}
+	if err := a.userStore.UpdateProfile(r.Context(), u.ID, body.Name, body.Bio, body.Avatar, body.Socials); err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "profile-error", err.Error(), "")
+		return
+	}
+	writeJSON(w, r, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// =============================================================================
+// Team card (rendered inside the Members console for admins)
+// =============================================================================
+
+// teamCardHTML renders the staff/team management card: the roster with inline
+// role selectors and delete actions, plus a create form. Returns "" when the
+// caller is not an admin so the card stays admin-only.
+func (a *App) teamCardHTML(r *http.Request) string {
+	if a.userStore == nil || !a.isAdminRequest(r) {
+		return ""
+	}
+	esc := html.EscapeString
+	list, _ := a.userStore.List(r.Context())
+
+	roleOptions := func(current string) string {
+		opts := ""
+		for _, role := range []string{users.RoleAdmin, users.RoleEditor, users.RoleAuthor} {
+			sel := ""
+			if role == current {
+				sel = " selected"
+			}
+			label := strings.ToUpper(role[:1]) + role[1:]
+			opts += `<option value="` + role + `"` + sel + `>` + label + `</option>`
+		}
+		return opts
+	}
+
+	rows := ""
+	for _, u := range list {
+		name := esc(u.Name)
+		if name == "" {
+			name = `<span class="row-meta">—</span>`
+		}
+		mailbox := `<span class="row-meta">—</span>`
+		if a.vayuMail != nil && a.vayuMail.Config().Enabled {
+			mailbox = `<span class="badge badge--ok">provisioned</span>`
+		}
+		rows += `<tr>
+  <td class="row-title"><a href="/author/` + esc(u.ID) + `" target="_blank" rel="noopener">` + esc(u.Email) + `</a></td>
+  <td>` + name + `</td>
+  <td><select class="select input--sm" data-user-role data-email="` + esc(u.Email) + `">` + roleOptions(u.Role) + `</select></td>
+  <td>` + mailbox + `</td>
+  <td class="row-actions"><button class="btn btn--sm btn--danger" type="button" data-delete-user data-email="` + esc(u.Email) + `">Remove</button></td>
+</tr>`
+	}
+	table := `<div class="empty-state">No team members yet.</div>`
+	if rows != "" {
+		table = `<div class="table-wrap"><table class="table">
+  <thead><tr><th>Email</th><th>Name</th><th>Role</th><th>VayuMail</th><th></th></tr></thead>
+  <tbody>` + rows + `</tbody></table></div>`
+	}
+
+	mailNote := `Set <code>DOMAIN</code> to auto-provision a sovereign VayuMail mailbox for each new account.`
+	if a.vayuMail != nil && a.vayuMail.Config().Enabled {
+		mailNote = `New accounts are auto-provisioned a sovereign VayuMail mailbox (<code>name@` + esc(a.vayuMail.Config().Domain) + `</code>) and a PGP keypair. Manage mailboxes &amp; passwords under <a href="/os/vayuos/accounts">VayuMail → Mail accounts</a>.`
+	}
+
+	return `<div class="card mb-6">
+  <div class="card-head">
+    <h2 class="card-title">Team &amp; roles</h2>
+    <span class="badge badge--muted">admin only</span>
+  </div>
+  <p class="field-hint">Roles: <strong>Admin</strong> manages the team &amp; settings · <strong>Editor</strong> writes &amp; manages all content · <strong>Author</strong> writes their own content. Each member edits their public profile under <a href="/os/profile">My profile</a>.</p>
+  ` + table + `
+  <div class="card-subtitle mt-4">Add a team member</div>
+  <form data-new-user>
+    <div class="grid grid-2 gap-3">
+      <label class="field"><span class="field-label">Email</span>
+        <input class="input" type="email" data-u-email required placeholder="name@example.com"></label>
+      <label class="field"><span class="field-label">Name</span>
+        <input class="input" type="text" data-u-name placeholder="Full name"></label>
+      <label class="field"><span class="field-label">Password (min 8)</span>
+        <input class="input" type="password" data-u-pass required minlength="8" placeholder="••••••••"></label>
+      <label class="field"><span class="field-label">Role</span>
+        <select class="select" data-u-role>
+          <option value="author" selected>Author</option>
+          <option value="editor">Editor</option>
+          <option value="admin">Admin</option>
+        </select></label>
+    </div>
+    <div class="vm-row mt-3">
+      <button class="btn btn--primary btn--sm" type="submit">Create account</button>
+      <span class="muted text-sm" data-team-status></span>
+    </div>
+  </form>
+  <p class="field-hint mt-3">` + mailNote + `</p>
+</div>`
+}
+
+// =============================================================================
+// Public author profile
+// =============================================================================
+
+// GET /author/{id} — a public profile page for a staff member.
+func (a *App) handlePublicAuthor(w http.ResponseWriter, r *http.Request) {
+	if a.userStore == nil {
+		http.NotFound(w, r)
+		return
+	}
+	u, err := a.userStore.GetByID(r.Context(), chi.URLParam(r, "id"))
+	if err != nil || u == nil {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("X-Robots-Tag", "index, follow")
+
+	esc := html.EscapeString
+	brand := esc(config.Cfg.Domain)
+	name := esc(u.Name)
+	if name == "" {
+		name = esc(authorFallbackName(u.Email))
+	}
+
+	avatar := `<div class="au-avatar au-avatar--placeholder" aria-hidden="true">` + esc(initials(u.Name, u.Email)) + `</div>`
+	if u.AvatarURL != "" {
+		avatar = `<img class="au-avatar" src="` + esc(u.AvatarURL) + `" alt="` + name + `" width="96" height="96">`
+	}
+
+	roleLabel := strings.ToUpper(u.Role[:1]) + u.Role[1:]
+
+	bio := ""
+	if u.Bio != "" {
+		bio = `<p class="au-bio">` + esc(u.Bio) + `</p>`
+	}
+
+	socials := ""
+	if len(u.Socials) > 0 {
+		keys := make([]string, 0, len(u.Socials))
+		for k := range u.Socials {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		links := ""
+		for _, k := range keys {
+			links += `<a class="au-social" href="` + esc(u.Socials[k]) + `" rel="noopener nofollow" target="_blank">` + esc(socialLabel(k)) + `</a>`
+		}
+		socials = `<div class="au-socials">` + links + `</div>`
+	}
+
+	page := `<!DOCTYPE html><html lang="en"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>` + name + ` · ` + brand + `</title>
+<meta name="description" content="` + name + ` on ` + brand + `.">
+<link rel="stylesheet" href="/theme.css">
+<link rel="stylesheet" href="/static/css/signup.css">
+<link rel="icon" type="image/png" href="/static/favicon-light.png">
+</head>
+<body class="su-body">
+<main class="au-shell" id="main-content">
+  <article class="au-card">
+    ` + avatar + `
+    <h1 class="au-name">` + name + `</h1>
+    <p class="au-role">` + esc(roleLabel) + `</p>
+    ` + bio + socials + `
+    <p class="au-foot"><a class="su-link" href="/">← Back to ` + brand + `</a></p>
+  </article>
+</main>
+</body></html>`
+	_, _ = w.Write([]byte(page))
+}
+
+// authorFallbackName returns a friendly name from an email local part.
+func authorFallbackName(email string) string {
+	if i := strings.IndexByte(email, '@'); i > 0 {
+		return email[:i]
+	}
+	return email
+}
+
+// initials derives up-to-two-letter initials from a name (or email local part).
+func initials(name, email string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		if i := strings.IndexByte(email, '@'); i > 0 {
+			name = email[:i]
+		} else {
+			name = email
+		}
+	}
+	parts := strings.Fields(name)
+	if len(parts) == 0 {
+		return "?"
+	}
+	out := strings.ToUpper(parts[0][:1])
+	if len(parts) > 1 {
+		out += strings.ToUpper(parts[len(parts)-1][:1])
+	}
+	return out
+}

@@ -44,10 +44,26 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
     CSRF-protected on writes and mirrored under `/os/api/members/*` for the
     session-authenticated console. The Stripe webhook continues to upgrade paid
     members with no embedded payment SDK — it now also records the subscription.
-  - Backward compatible: the existing `public`/`members`/`paid` article access
-    levels are unchanged; "paid" content now unlocks for **any** paid tier.
-    Migration `037-member-premium` adds the new tables/columns and seeds the
-    default tiers; existing members upgrade losslessly.
+- **Team roles, staff mailboxes, and author profiles.** Membership now spans the
+  people who run the site, not just readers:
+  - **Roles** — accounts are **admin**, **editor**, or **author**. Admins manage
+    the team from the Members console: create accounts, change roles inline, and
+    remove people. The last remaining admin cannot be demoted, so a site can
+    never lock itself out of administration.
+  - **Sovereign staff mailboxes** — creating a team member auto-provisions a
+    VayuMail mailbox (`name@yourdomain`) and a PGP keypair when VayuMail is
+    active, giving authors and editors a real, self-hosted email address with no
+    third-party provider.
+  - **Author profiles** — every staff member edits their own public profile from
+    **My Profile**: a display name, a short bio (capped at 250 characters), an
+    avatar image, and social links (website, X, GitHub, LinkedIn, Mastodon,
+    Instagram, YouTube). Profiles render at **`/author/{id}`** as a themed,
+    indexable page. Social/avatar URLs are validated as `http(s)` and the public
+    page is escaped end to end.
+  - New CSRF-protected API: `PUT /api/v1/admin/users/{email}/role`, mirrored
+    (with the existing user create/list/delete) under `/os/api/users/*` for the
+    session-authenticated console, plus `POST /os/api/profile` for self-service
+    profile edits. Migration `038-user-profiles` adds the profile columns.
 
 ### Added
 

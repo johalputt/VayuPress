@@ -44,6 +44,10 @@
   excluded).
 - **Tier-aware paywall** — gated posts surface the cheapest paid plan's price and
   benefits beside the passwordless sign-in form.
+- **Team roles & author profiles** — admin/editor/author accounts with inline
+  role management in the Members console, auto-provisioned sovereign VayuMail
+  mailboxes for staff, and self-service author profiles (avatar, bio ≤250 chars,
+  social links) published at `/author/{id}`.
 - **Constitution-clean** — single Go binary, passwordless magic-link auth, no
   embedded payment SDK (optional signed Stripe webhook only), strict CSP with no
   inline styles, and fully backward-compatible access levels.
@@ -983,6 +987,9 @@ trusted, and the strict CSP stays intact:
 | `PUT` | `/api/v1/admin/members/{email}/tier` | Set a member's tier (CSRF-protected) |
 | `POST`/`DELETE` | `/api/v1/admin/members/{email}/labels[/{label}]` | Add/remove a member label (CSRF-protected) |
 | `GET`/`POST`/`PUT`/`DELETE` | `/api/v1/admin/tiers[/{id}]` | Manage subscription tiers (writes CSRF-protected) |
+| `GET`/`POST`/`DELETE` | `/api/v1/admin/users[/{email}]` | List / create / remove team accounts (writes CSRF-protected) |
+| `PUT` | `/api/v1/admin/users/{email}/role` | Change a team member's role (CSRF-protected) |
+| `GET` | `/author/{id}` | Public author profile (avatar, bio, social links) |
 | `PUT` | `/api/v1/admin/articles/{slug}/access` | Set article access level (CSRF-protected) |
 | `POST` | `/api/v1/stripe/webhook` | Signed Stripe webhook → paid upgrades (optional) |
 

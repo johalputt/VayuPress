@@ -363,3 +363,54 @@
 .pw-hint { font-size: .8rem; color: var(--su-muted); margin-top: .75rem; }
 .pw-shell { max-width: 42rem; margin: 3rem auto; padding: 0 1rem; }
 .pw-excerpt { opacity: .85; }
+
+
+/* ── Public author profile (/author/{id}) ─────────────────────────────────── */
+
+.au-shell { width: 100%; max-width: 34rem; margin: 0 auto; padding: 3rem 1.25rem; }
+
+.au-card {
+  text-align: center;
+  border: 1px solid var(--su-border);
+  border-radius: 18px;
+  padding: 2.5rem 2rem;
+  background: linear-gradient(180deg, var(--su-surface-2), var(--su-surface));
+}
+
+.au-avatar {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  object-fit: cover;
+  margin: 0 auto 1rem;
+  display: block;
+  border: 2px solid var(--su-border);
+}
+
+.au-avatar--placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(180deg, var(--su-accent-2), var(--su-accent));
+}
+
+.au-name { margin: 0 0 .25rem; font-size: 1.6rem; letter-spacing: -.02em; }
+.au-role { margin: 0 0 1rem; color: var(--su-muted); font-size: .85rem; text-transform: uppercase; letter-spacing: .08em; }
+.au-bio { margin: 0 auto 1.25rem; max-width: 28rem; line-height: 1.6; color: var(--su-text); }
+
+.au-socials { display: flex; flex-wrap: wrap; gap: .5rem; justify-content: center; margin-bottom: 1.25rem; }
+.au-social {
+  display: inline-block;
+  padding: .4rem .85rem;
+  border-radius: 999px;
+  border: 1px solid var(--su-border);
+  color: var(--su-text);
+  text-decoration: none;
+  font-size: .85rem;
+}
+.au-social:hover { border-color: var(--su-accent); color: var(--su-accent-2); }
+
+.au-foot { margin: .5rem 0 0; font-size: .85rem; }

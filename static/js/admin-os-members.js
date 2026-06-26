@@ -121,4 +121,47 @@
       });
     });
   });
+
+  // ── Team & roles (admin only) ──────────────────────────────────────────
+  var teamForm = document.querySelector('[data-new-user]');
+  if (teamForm) {
+    teamForm.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var status = teamForm.querySelector('[data-team-status]');
+      var payload = {
+        email: teamForm.querySelector('[data-u-email]').value.trim(),
+        name: teamForm.querySelector('[data-u-name]').value.trim(),
+        password: teamForm.querySelector('[data-u-pass]').value,
+        role: teamForm.querySelector('[data-u-role]').value,
+      };
+      if (status) { status.textContent = 'Creating…'; }
+      api('POST', '/os/api/users', payload).then(function (r) {
+        return r.json().then(function (d) { return { ok: r.ok, d: d }; });
+      }).then(function (res) {
+        if (res.ok) { reload(); }
+        else if (status) { status.textContent = (res.d && (res.d.message || res.d.error)) || 'Could not create the account.'; }
+      }).catch(function () { if (status) { status.textContent = 'Network error.'; } });
+    });
+  }
+
+  document.querySelectorAll('[data-user-role]').forEach(function (sel) {
+    var previous = sel.value;
+    sel.addEventListener('change', function () {
+      api('PUT', '/os/api/users/' + encodeURIComponent(sel.dataset.email) + '/role', { role: sel.value }).then(function (r) {
+        return r.json().then(function (d) { return { ok: r.ok, d: d }; });
+      }).then(function (res) {
+        if (res.ok) { reload(); }
+        else { sel.value = previous; alert((res.d && (res.d.message || res.d.error)) || 'Could not change the role.'); }
+      }).catch(function () { sel.value = previous; });
+    });
+  });
+
+  document.querySelectorAll('[data-delete-user]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      if (!window.confirm('Remove ' + btn.dataset.email + '? Their account and access are revoked.')) { return; }
+      api('DELETE', '/os/api/users/' + encodeURIComponent(btn.dataset.email)).then(function (r) {
+        if (r.ok) { reload(); } else { alert('Could not remove the account.'); }
+      });
+    });
+  });
 })();
