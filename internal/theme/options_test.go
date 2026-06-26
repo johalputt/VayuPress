@@ -35,6 +35,34 @@ func TestThemeOptionsApply(t *testing.T) {
 	}
 }
 
+// TestArticleLayoutOptions proves the article-page options emit scoped CSS that
+// targets the real article markup (header, meta, related) — so they restyle
+// every post page, not just the homepage.
+func TestArticleLayoutOptions(t *testing.T) {
+	g := theme.Gale()
+	g.Options = map[string]string{"articlealign": "center", "articlemeta": "hidden", "relatedposts": "hidden"}
+	css, err := theme.CompileCSS(g)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	for _, want := range []string{
+		".vayu-article-header{text-align:center}",
+		".vayu-article-meta{display:none}",
+		".vayu-related{display:none}",
+	} {
+		if !strings.Contains(css, want) {
+			t.Errorf("article-option CSS missing %q", want)
+		}
+	}
+	// "notags" hides only the tag links, not the whole meta line.
+	g2 := theme.Gale()
+	g2.Options = map[string]string{"articlemeta": "notags"}
+	css2, _ := theme.CompileCSS(g2)
+	if !strings.Contains(css2, ".vayu-article-meta a.vayu-tag{display:none}") {
+		t.Errorf("notags should hide only tag links, got: %s", css2)
+	}
+}
+
 // TestHeroAndDesignOptions proves the hero, navigation, card and link options
 // emit scoped CSS targeting the real public markup — so they restyle the live
 // site (and preview), not just a section.
@@ -119,8 +147,8 @@ func TestPerThemeExtras(t *testing.T) {
 		t.Errorf("Apex should expose shared + extras (>=7), got %d", got)
 	}
 	// A theme with no extras keeps exactly the shared set.
-	if got := len(theme.OptionsFor("Default")); got != 13 {
-		t.Errorf("Default should expose exactly the 13 shared options, got %d", got)
+	if got := len(theme.OptionsFor("Default")); got != 16 {
+		t.Errorf("Default should expose exactly the 16 shared options, got %d", got)
 	}
 	if len(theme.PerThemeOptions()) == 0 {
 		t.Fatal("expected at least one per-theme option")

@@ -259,6 +259,10 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
 
 	faviconBust := time.Now().Format("150405")
 	navSeed := html.EscapeString(val(settings.KeyNavItems))
+	membershipChecked := ""
+	if val(settings.KeyMembershipButtons) == "true" {
+		membershipChecked = " checked"
+	}
 
 	body := `<div class="page-header">
   <div>
@@ -285,8 +289,9 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
     </section>
 
     <section class="cz-group">
-      <button type="button" class="cz-group__head" aria-expanded="false">Brand <span class="cz-group__hint">logo &amp; accent</span></button>
+      <button type="button" class="cz-group__head" aria-expanded="false">Site basics <span class="cz-group__hint">global</span></button>
       <div class="cz-group__body">
+        <p class="text-sm muted mb-3">Global settings that stay fixed when you switch themes — logo, social share image and membership buttons.</p>
         <div class="cz-logo">
           <img id="brand-favicon-img" class="cz-logo__img" src="/favicon.ico?t=` + faviconBust + `" alt="Current site mark" width="44" height="44">
           <div class="cz-logo__meta">
@@ -301,7 +306,32 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
           <span id="brand-favicon-status" class="text-xs muted" role="status" aria-live="polite"></span>
         </div>
         <span class="theme-field__hint">PNG or ICO, square, &le; 256 KB. Applies to the live site immediately.</span>
-        <div class="theme-fields mt-4">` + brandRows + `</div>
+        <div class="cz-logo mt-4">
+          <img id="og-img" class="cz-logo__img" src="/theme-assets/og?t=` + faviconBust + `" alt="Current share image" width="64" height="34">
+          <div class="cz-logo__meta">
+            <div class="cz-logo__title">Social / share image</div>
+            <div class="text-xs muted" id="og-img-state">Shown when your site or posts are shared (og:image).</div>
+          </div>
+        </div>
+        <div class="vm-row mt-2">
+          <input type="file" id="og-img-file" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" class="input">
+          <button type="button" class="btn btn--primary btn--sm" id="og-img-upload">Upload</button>
+          <button type="button" class="btn btn--sm" id="og-img-remove">Remove</button>
+          <span id="og-img-status" class="text-xs muted" role="status" aria-live="polite"></span>
+        </div>
+        <span class="theme-field__hint">PNG, JPEG or WebP, &le; 1.5 MB. Used for the homepage and as a fallback for posts.</span>
+        <div class="vm-row mt-4">
+          <label class="cz-check"><input type="checkbox" id="site-membership"` + membershipChecked + `> Show Sign in / Sign up buttons in the nav</label>
+          <span class="text-xs muted" id="site-membership-status" role="status" aria-live="polite"></span>
+        </div>
+      </div>
+    </section>
+
+    <section class="cz-group">
+      <button type="button" class="cz-group__head" aria-expanded="false">Brand colours <span class="cz-group__hint">theme</span></button>
+      <div class="cz-group__body">
+        <p class="text-sm muted mb-3">Accent colours and colour scheme for the active theme.</p>
+        <div class="theme-fields">` + brandRows + `</div>
         <div class="theme-fields theme-fields--text mt-3">` + optionRowsByKeys("scheme", "accentfill") + `</div>
       </div>
     </section>
@@ -340,7 +370,15 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
       <button type="button" class="cz-group__head" aria-expanded="false">Typography &amp; fonts</button>
       <div class="cz-group__body">
         ` + fontPairSelectHTML() + `
-        <div class="theme-fields theme-fields--text">` + optionRowsByKeys("headingcase", "headingscale", "linkstyle") + typoRows + `</div>
+        <div class="theme-fields theme-fields--text">` + optionRowsByKeys("headingcase", "headingscale") + typoRows + `</div>
+      </div>
+    </section>
+
+    <section class="cz-group">
+      <button type="button" class="cz-group__head" aria-expanded="false">Article pages</button>
+      <div class="cz-group__body">
+        <p class="text-sm muted mb-3">How individual posts look — header alignment, the meta line, related posts and content links.</p>
+        <div class="theme-fields theme-fields--text">` + optionRowsByKeys("articlealign", "articlemeta", "relatedposts", "linkstyle") + `</div>
       </div>
     </section>
 
@@ -535,6 +573,7 @@ func (a *App) handleOSThemeCode(w http.ResponseWriter, r *http.Request) {
 			VerifyBing:      nv[settings.KeyHeadVerifyBing],
 			NavJSON:         nv[settings.KeyNavItems],
 			FooterJSON:      nv[settings.KeyFooterConfig],
+			OGImage:         render.OGImagePath(nv[settings.KeyThemeOGImage]),
 			CommentsEnabled: nv[settings.KeyFeatureComments] != "off",
 		})
 	}
@@ -677,6 +716,7 @@ func (a *App) handleOSThemeImport(w http.ResponseWriter, r *http.Request) {
 			VerifyBing:      nv[settings.KeyHeadVerifyBing],
 			NavJSON:         nv[settings.KeyNavItems],
 			FooterJSON:      nv[settings.KeyFooterConfig],
+			OGImage:         render.OGImagePath(nv[settings.KeyThemeOGImage]),
 			CommentsEnabled: nv[settings.KeyFeatureComments] != "off",
 		})
 	}

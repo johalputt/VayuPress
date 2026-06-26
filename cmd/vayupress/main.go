@@ -340,6 +340,7 @@ func main() {
 			VerifyBing:      sv[settings.KeyHeadVerifyBing],
 			NavJSON:         sv[settings.KeyNavItems],
 			FooterJSON:      sv[settings.KeyFooterConfig],
+			OGImage:         render.OGImagePath(sv[settings.KeyThemeOGImage]),
 			CommentsEnabled: sv[settings.KeyFeatureComments] != "off",
 		})
 	}

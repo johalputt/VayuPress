@@ -488,6 +488,58 @@
       }).catch(function (e) { heroRm.disabled = false; heroSet('Error: ' + e, 'danger'); });
   });
 
+  // ── Social/share (OG) image upload ─────────────────────────────────────────
+  var ogFile = document.getElementById('og-img-file');
+  var ogUp = document.getElementById('og-img-upload');
+  var ogRm = document.getElementById('og-img-remove');
+  var ogStatus = document.getElementById('og-img-status');
+  var ogImg = document.getElementById('og-img');
+  var ogState = document.getElementById('og-img-state');
+  function ogSet(t, kind) { if (ogStatus) { ogStatus.textContent = t; ogStatus.className = 'text-xs' + (kind ? ' status--' + kind : ' muted'); } }
+  function ogBust() { if (ogImg) { ogImg.style.display = ''; ogImg.src = '/theme-assets/og?t=' + Date.now(); } }
+  if (ogImg) ogImg.addEventListener('error', function () { ogImg.style.display = 'none'; });
+  if (ogUp) ogUp.addEventListener('click', function () {
+    var f = ogFile && ogFile.files && ogFile.files[0];
+    if (!f) { ogSet('Choose a PNG, JPEG or WebP first', 'danger'); return; }
+    ogUp.disabled = true; ogSet('Uploading…');
+    var fd = new FormData(); fd.append('image', f);
+    fetch('/os/api/branding/og', { method: 'POST', headers: { 'X-CSRF-Token': csrfToken() }, body: fd })
+      .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+      .then(function (res) {
+        ogUp.disabled = false;
+        if (res.ok) { ogSet('Share image updated', 'ok'); ogBust(); if (ogState) ogState.textContent = 'Custom share image active.'; }
+        else { ogSet((res.d && res.d.error) || 'Upload failed', 'danger'); }
+      }).catch(function (e) { ogUp.disabled = false; ogSet('Error: ' + e, 'danger'); });
+  });
+  if (ogRm) ogRm.addEventListener('click', function () {
+    ogRm.disabled = true; ogSet('Removing…');
+    var fd = new FormData(); fd.append('remove', '1');
+    fetch('/os/api/branding/og', { method: 'POST', headers: { 'X-CSRF-Token': csrfToken() }, body: fd })
+      .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+      .then(function (res) {
+        ogRm.disabled = false;
+        if (res.ok) { ogSet('Share image removed', 'ok'); if (ogImg) ogImg.style.display = 'none'; if (ogState) ogState.textContent = 'No share image set.'; }
+        else { ogSet((res.d && res.d.error) || 'Remove failed', 'danger'); }
+      }).catch(function (e) { ogRm.disabled = false; ogSet('Error: ' + e, 'danger'); });
+  });
+
+  // ── Membership buttons toggle (saved straight to the live site) ─────────────
+  var memToggle = document.getElementById('site-membership');
+  var memStatus = document.getElementById('site-membership-status');
+  if (memToggle) memToggle.addEventListener('change', function () {
+    if (memStatus) { memStatus.textContent = 'Saving…'; memStatus.className = 'text-xs muted'; }
+    fetch('/os/api/settings', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
+      body: JSON.stringify({ key: 'site.membership_buttons', value: memToggle.checked ? 'true' : 'false' })
+    }).then(function (r) {
+      if (!r.ok) return r.json().then(function (e) { throw new Error((e.error && e.error.message) || e.error || ('save failed (' + r.status + ')')); });
+      return r.json();
+    }).then(function () {
+      if (memStatus) { memStatus.textContent = 'Saved'; memStatus.className = 'text-xs status--ok'; }
+      if (window.vpToast) window.vpToast('Saved', 'ok');
+    }).catch(function (err) { if (memStatus) { memStatus.textContent = String(err.message || err); memStatus.className = 'text-xs status--danger'; } });
+  });
+
   // ── Navigation editor (saves nav.items straight to the live site) ───────────
   var navRows = document.getElementById('cz-nav-rows');
   var navAdd = document.getElementById('cz-nav-add');
