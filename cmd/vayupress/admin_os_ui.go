@@ -68,6 +68,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 	r.Get("/os/static/js/admin-os-editor.js", serveAdminOSAsset("js/admin-os-editor.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-security.js", serveAdminOSAsset("js/admin-os-security.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-members.js", serveAdminOSAsset("js/admin-os-members.js", "application/javascript; charset=utf-8"))
+	r.Get("/os/static/js/admin-os-profile.js", serveAdminOSAsset("js/admin-os-profile.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-intel.js", serveAdminOSAsset("js/admin-os-intel.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-tools.js", serveAdminOSAsset("js/admin-os-tools.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-monitoring.js", serveAdminOSAsset("js/admin-os-monitoring.js", "application/javascript; charset=utf-8"))
@@ -140,6 +141,13 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Put("/os/api/members/{email}/tier", a.handleMemberSetTier)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/members/{email}/labels", a.handleMemberLabelAdd)
 		pr.With(auth.CSRFTokenMiddleware).Delete("/os/api/members/{email}/labels/{label}", a.handleMemberLabelRemove)
+		// Self-service author profile + admin team/role management (session mirrors).
+		pr.Get("/os/profile", a.handleOSProfile)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/profile", a.handleProfileSave)
+		pr.Get("/os/api/users", a.handleUserList)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/users", a.handleUserCreate)
+		pr.With(auth.CSRFTokenMiddleware).Put("/os/api/users/{email}/role", a.handleUserSetRole)
+		pr.With(auth.CSRFTokenMiddleware).Delete("/os/api/users/{email}", a.handleUserDelete)
 		pr.Get("/os/security", a.handleOSSecurity)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/totp/begin", a.handleOSTOTPBegin)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/totp/verify", a.handleOSTOTPVerify)
@@ -384,6 +392,7 @@ func adminOSShellHead(nonce, title, active string, settings *osSettings) string 
     <div class="sidebar-section-label">Audience</div>
     ` + navItem("/os/members", "Members", "members", active, iconMembers) + `
     ` + navItem("/os/newsletter", "Newsletter", "newsletter", active, iconNewsletter) + `
+    ` + navItem("/os/profile", "My Profile", "profile", active, iconMembers) + `
 
     <div class="sidebar-section-label">Optimize</div>
     ` + navItem("/os/seo", "SEO", "seo", active, iconSEO) + `

@@ -155,6 +155,8 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	r.Post("/members/account", a.handleMemberAccountUpdate)
 	r.Get("/pricing", a.handlePricingPage)
 	r.Get("/api/v1/tiers", a.handleTiersPublic)
+	// Public author profile pages.
+	r.Get("/author/{id}", a.handlePublicAuthor)
 	// Stripe webhook for paid upgrades — verified by signature, not API key.
 	r.Post("/api/v1/stripe/webhook", a.handleStripeWebhook)
 
@@ -190,6 +192,7 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 		// Multi-author accounts (Tier 1) — admin-role guarded.
 		r.Get("/api/v1/admin/users", a.handleUserList)
 		r.With(auth.CSRFTokenMiddleware).Post("/api/v1/admin/users", a.handleUserCreate)
+		r.With(auth.CSRFTokenMiddleware).Put("/api/v1/admin/users/{email}/role", a.handleUserSetRole)
 		r.With(auth.CSRFTokenMiddleware).Delete("/api/v1/admin/users/{email}", a.handleUserDelete)
 
 		// Privacy-first analytics (Tier 2).

@@ -177,6 +177,9 @@ func (a *App) handleOSMembers(w http.ResponseWriter, r *http.Request) {
 	}
 	membersCard := `<div class="card"><h2 class="card-title">Members</h2>` + membersTable + `</div>`
 
+	// ── Team & roles (admin-only; staff accounts, not readers) ────────────────
+	teamCard := a.teamCardHTML(r)
+
 	// ── Tier editor modal ─────────────────────────────────────────────────────
 	modal := `<div class="modal-backdrop" id="tier-modal" hidden>
   <div class="modal-panel">
@@ -213,7 +216,7 @@ func (a *App) handleOSMembers(w http.ResponseWriter, r *http.Request) {
 </div>`
 
 	body := `<div class="page-header"><h1>Members</h1></div>` +
-		statGrid + tiersCard + membersCard + modal +
+		statGrid + tiersCard + teamCard + membersCard + modal +
 		`<script nonce="` + nonce + `" src="/os/static/js/admin-os-members.js"></script>`
 
 	writeOSHTML(w, adminOSLayout(nonce, "Members", "members", cfg, htmpl.HTML(body)))
