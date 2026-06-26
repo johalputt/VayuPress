@@ -56,3 +56,31 @@ func TestOptionsForEveryTheme(t *testing.T) {
 		}
 	}
 }
+
+// TestPerThemeExtras proves per-theme extras layer on top of the shared set and
+// realise through CompileCSS (density + heading scale emit scoped rules).
+func TestPerThemeExtras(t *testing.T) {
+	// Apex gets both density and headingscale on top of the 5 shared options.
+	if got := len(theme.OptionsFor("Apex")); got < 7 {
+		t.Errorf("Apex should expose shared + extras (>=7), got %d", got)
+	}
+	// A theme with no extras keeps exactly the shared set.
+	if got := len(theme.OptionsFor("Default")); got != 5 {
+		t.Errorf("Default should expose exactly the 5 shared options, got %d", got)
+	}
+	if len(theme.PerThemeOptions()) == 0 {
+		t.Fatal("expected at least one per-theme option")
+	}
+
+	ap := theme.Apex()
+	ap.Options = map[string]string{"density": "spacious", "headingscale": "xl"}
+	css, err := theme.CompileCSS(ap)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	for _, want := range []string{"line-height:1.85", ".vayu-hero h1{font-size:4.6rem}"} {
+		if !strings.Contains(css, want) {
+			t.Errorf("per-theme extra CSS missing %q", want)
+		}
+	}
+}

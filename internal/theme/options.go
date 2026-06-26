@@ -95,10 +95,58 @@ func AllOptions() []Option {
 	}
 }
 
-// OptionsFor returns the options for a theme. Today the set is uniform across
-// themes; the per-name signature lets us specialise later without touching
-// callers.
-func OptionsFor(_ string) []Option { return AllOptions() }
+// OptionsFor returns the options for a theme: the shared set (AllOptions) plus
+// any per-theme extras that apply to it.
+func OptionsFor(name string) []Option {
+	out := AllOptions()
+	for _, to := range perThemeOptions {
+		for _, t := range to.Themes {
+			if t == name {
+				out = append(out, to.Option)
+				break
+			}
+		}
+	}
+	return out
+}
+
+// ThemedOption is a per-theme extra option plus the themes it applies to.
+type ThemedOption struct {
+	Themes []string `json:"themes"`
+	Option Option   `json:"option"`
+}
+
+// perThemeOptions are extra controls layered on top of the shared set for
+// specific themes. Their effects (below, in applyThemeOptions) target the real
+// vayu-* markup, so they are harmless if ever applied to another theme.
+var perThemeOptions = []ThemedOption{
+	{
+		Themes: []string{"Apex", "Beacon", "Dispatch", "Agora", "Ripple"},
+		Option: Option{
+			Key: "density", Label: "Density", Default: "default",
+			Help: "Vertical rhythm and section spacing.",
+			Choices: []OptionChoice{
+				{"default", "Theme default"}, {"compact", "Compact"},
+				{"comfortable", "Comfortable"}, {"spacious", "Spacious"},
+			},
+		},
+	},
+	{
+		Themes: []string{"Maverick", "Vivid", "Gale", "Apex", "Noir"},
+		Option: Option{
+			Key: "headingscale", Label: "Heading size", Default: "default",
+			Help: "Scale of display headings.",
+			Choices: []OptionChoice{
+				{"default", "Theme default"}, {"sm", "Small"}, {"md", "Medium"},
+				{"lg", "Large"}, {"xl", "Extra large"},
+			},
+		},
+	},
+}
+
+// PerThemeOptions exposes the per-theme extras (with their target themes) so the
+// Studio can render them and show/hide per the active theme.
+func PerThemeOptions() []ThemedOption { return perThemeOptions }
 
 // DefaultOptions returns the default value for every option key.
 func DefaultOptions() map[string]string {
@@ -153,6 +201,26 @@ func applyThemeOptions(t *Tokens) string {
 	}
 	if t.Options["accentfill"] == "gradient" {
 		extra.WriteString(headingSelectors + "{background:linear-gradient(135deg,var(--vp-accent),var(--vp-accent2,var(--vp-hi)));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent}")
+	}
+
+	// ── Per-theme extras ────────────────────────────────────────────────────
+	switch t.Options["density"] {
+	case "compact":
+		extra.WriteString("body{line-height:1.5}.vayu-hero{padding-top:2.5rem;padding-bottom:2rem}.vayu-section{margin:2rem 0}")
+	case "comfortable":
+		extra.WriteString("body{line-height:1.7}.vayu-hero{padding-top:4rem;padding-bottom:3rem}")
+	case "spacious":
+		extra.WriteString("body{line-height:1.85}.vayu-hero{padding-top:6rem;padding-bottom:4.5rem}.vayu-section{margin:4.5rem 0}")
+	}
+	switch t.Options["headingscale"] {
+	case "sm":
+		extra.WriteString(".vayu-hero h1{font-size:2rem}.vayu-post-title{font-size:1.1rem}article.vayu-prose h1,.vayu-article-header h1{font-size:1.9rem}")
+	case "md":
+		extra.WriteString(".vayu-hero h1{font-size:2.7rem}.vayu-post-title{font-size:1.3rem}article.vayu-prose h1,.vayu-article-header h1{font-size:2.4rem}")
+	case "lg":
+		extra.WriteString(".vayu-hero h1{font-size:3.6rem}.vayu-post-title{font-size:1.55rem}article.vayu-prose h1,.vayu-article-header h1{font-size:3.1rem}")
+	case "xl":
+		extra.WriteString(".vayu-hero h1{font-size:4.6rem}.vayu-post-title{font-size:1.8rem}article.vayu-prose h1,.vayu-article-header h1{font-size:3.9rem}")
 	}
 	return extra.String()
 }
