@@ -207,6 +207,14 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   (the first image in the body, when present), a `date · author` line, the title,
   and a three-line excerpt. Inline tag chips were removed from the cards for a
   calmer, more readable feed. The same treatment applies to tag listing pages.
+  - **The home page no longer lags behind after a redeploy.** Pre-rendered public
+    HTML (`home/index.html`, `tags/*.html`, `posts/*.html`) is now fingerprinted
+    with the renderer version and stylesheet hashes; on startup any cache produced
+    by an older renderer is cleared, so a redeploy always serves the current
+    design rather than a stale cached home page.
+  - **Broken cover images are hidden.** A small same-origin script (CSP-safe,
+    `script-src 'self'`) removes a card's cover image if it fails to load (or was
+    blocked), so an expired/broken image link never shows a broken-image icon.
 
 - **Theme Studio: deploying a theme now restyles the whole public site, not just
   colours.** The token compiler bridges the active theme onto the variables the
