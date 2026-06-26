@@ -65,6 +65,9 @@ func TestThemeEditorCoversSettingsAllowlist(t *testing.T) {
 		// The homepage-hero toggle lives in the Theme Studio Hero group
 		// (POST /os/api/settings), not the legacy theme editor.
 		settings.KeyHomeHero: true,
+		// Author bio is edited in the Theme Studio Article-pages group
+		// (POST /os/api/settings), not the legacy theme editor.
+		settings.KeyAuthorBio: true,
 	}
 	page := themeEditorPage(map[string]string{}, "NORMAL", "test-nonce", "")
 	for key := range settings.AllKeys {

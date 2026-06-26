@@ -63,6 +63,10 @@ const (
 	// the hero (tagline headline + description), styled by the Hero options.
 	KeyHomeHero = "home.hero"
 
+	// KeyAuthorBio is a short author bio shown in the article author box (with
+	// the site author name). Plain text, optional.
+	KeyAuthorBio = "site.author_bio"
+
 	// Navigation menu. A JSON array of {"label","href"} objects defining the
 	// public nav links (top of every page). When unset, a sensible default
 	// (Home / Feed / Console) is rendered. Operators add/remove items — internal
@@ -133,6 +137,7 @@ var AllKeys = map[string]bool{
 	KeyThemeOGImage:       true,
 	KeyThemeOGImageType:   true,
 	KeyHomeHero:           true,
+	KeyAuthorBio:          true,
 	KeyNavItems:           true,
 	KeyFooterConfig:       true,
 	KeyFeatureComments:    true,
@@ -163,6 +168,7 @@ var Defaults = map[string]string{
 	KeyThemeOGImage:       "",
 	KeyThemeOGImageType:   "",
 	KeyHomeHero:           "",
+	KeyAuthorBio:          "",
 	KeyFeatureComments:    "on",
 	KeyFeatureNewsletter:  "on",
 	KeyFeatureWebmentions: "on",

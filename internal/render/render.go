@@ -169,6 +169,7 @@ type SiteSettings struct {
 	Tagline     string // hero headline
 	Description string // meta description
 	Author      string // article author
+	AuthorBio   string // short author bio for the article author box
 	// ShowMembership renders the public Sign in / Sign up buttons in the nav.
 	ShowMembership bool
 	PrimaryLight   string // --pico-primary for light mode (hex)
@@ -687,6 +688,7 @@ type articlePage struct {
 	CommentsEnabled     bool
 	SiteName            string
 	Author              string
+	AuthorBio           string
 	// SEO fields computed by internal/seo
 	SEODescription string
 	OGImage        string
@@ -897,6 +899,13 @@ var articleTmpl = template.Must(template.New("article").Funcs(template.FuncMap{
 </header>
 <div class="content" itemprop="articleBody">{{.Content | safeHTML}}</div>
 </article>
+{{if .Author}}<aside class="vayu-author-box" aria-label="About the author">
+<img class="vayu-author-avatar" src="/favicon.ico" alt="" width="48" height="48">
+<div class="vayu-author-info">
+  <div class="vayu-author-name">{{.Author}}</div>
+  {{if .AuthorBio}}<p class="vayu-author-bio">{{.AuthorBio}}</p>{{end}}
+</div>
+</aside>{{end}}
 {{if .Related}}<section class="vayu-related" aria-label="Related articles">
 <h2 class="vayu-related-heading">Related articles</h2>
 <ul class="vayu-related-list">{{range .Related}}<li><a href="/{{.Slug}}">{{.Title}}</a> <time>{{.CreatedAt | humanDate}}</time></li>{{end}}</ul>
@@ -1100,6 +1109,7 @@ func RenderArticleWithLayout(a db.Article, layout ArticleLayoutType, related []R
 		CommentsEnabled:     s.CommentsEnabled,
 		SiteName:            s.Name,
 		Author:              s.Author,
+		AuthorBio:           s.AuthorBio,
 		Footer:              footerHTML(s),
 		SEODescription:      seoMeta.Description,
 		OGImage:             seoMeta.OGImage,

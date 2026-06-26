@@ -56,6 +56,11 @@ var schemePalettes = map[string]schemePalette{
 func AllOptions() []Option {
 	return []Option{
 		{
+			Key: "archetype", Label: "Layout archetype", Default: "default",
+			Help:    "The overall layout & structure of the blog — switches the whole look.",
+			Choices: ArchetypeChoices(),
+		},
+		{
 			Key: "scheme", Label: "Color scheme", Default: "default",
 			Help: "Re-tint the accent across the whole site.",
 			Choices: []OptionChoice{
@@ -172,6 +177,20 @@ func AllOptions() []Option {
 			Help: "The related-articles list at the end of a post.",
 			Choices: []OptionChoice{
 				{"default", "Theme default"}, {"show", "Show"}, {"hidden", "Hide"},
+			},
+		},
+		{
+			Key: "authorbox", Label: "Author box", Default: "default",
+			Help: "An author card at the end of each post (uses the site author + bio).",
+			Choices: []OptionChoice{
+				{"default", "Theme default"}, {"show", "Show"}, {"hidden", "Hide"},
+			},
+		},
+		{
+			Key: "cardimage", Label: "Featured image style", Default: "default",
+			Help: "How a post's cover image appears on post cards.",
+			Choices: []OptionChoice{
+				{"default", "Theme default"}, {"top", "On top"}, {"side", "Beside text"}, {"hidden", "Hidden"},
 			},
 		},
 	}
@@ -296,6 +315,12 @@ func applyThemeOptions(t *Tokens) string {
 	}
 
 	var extra strings.Builder
+
+	// Layout archetype first, so the per-option tweaks below (card style, hero
+	// background, density, …) layer on top of and refine the archetype.
+	if arch := t.Options["archetype"]; arch != "" && arch != "default" {
+		extra.WriteString(ArchetypeCSS(arch))
+	}
 	if t.Options["headingcase"] == "uppercase" {
 		extra.WriteString(headingSelectors + "{text-transform:uppercase;letter-spacing:-.01em}")
 	} else if t.Options["headingcase"] == "normal" {
@@ -401,6 +426,17 @@ func applyThemeOptions(t *Tokens) string {
 	}
 	if t.Options["relatedposts"] == "hidden" {
 		extra.WriteString(".vayu-related{display:none}")
+	}
+	if t.Options["authorbox"] == "hidden" {
+		extra.WriteString(".vayu-author-box{display:none}")
+	}
+	switch t.Options["cardimage"] {
+	case "top":
+		extra.WriteString(".vayu-post-card--media{display:flex;flex-direction:column}.vayu-post-card--media .vayu-post-thumb{width:100%}")
+	case "side":
+		extra.WriteString(".vayu-post-card--media{display:flex;flex-direction:row;gap:1.1rem;align-items:flex-start}.vayu-post-card--media .vayu-post-thumb{flex:0 0 38%;max-width:38%}")
+	case "hidden":
+		extra.WriteString(".vayu-post-card--media .vayu-post-thumb{display:none}")
 	}
 
 	// ── Per-theme extras ────────────────────────────────────────────────────
