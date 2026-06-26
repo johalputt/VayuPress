@@ -231,6 +231,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		// original is in the API-key-only group, so a browser operator can't reach
 		// it. This mirror is gated by requireSessionOrAPIKey + CSRF.
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/branding/favicon", a.handleFaviconUpload)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/branding/hero", a.handleHeroUpload)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/editor/save", a.handleOSEditorSave)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/editor/preview", a.handleOSEditorPreview)
 		// Session-friendly mirrors of the editor's block tools (the /api/v1/admin

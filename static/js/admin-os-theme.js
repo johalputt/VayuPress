@@ -447,6 +447,47 @@
       }).catch(function (e) { favRm.disabled = false; favSet('Error: ' + e, 'danger'); });
   });
 
+  // ── Hero background image upload + live preview refresh ─────────────────────
+  var heroFile = document.getElementById('hero-img-file');
+  var heroUp = document.getElementById('hero-img-upload');
+  var heroRm = document.getElementById('hero-img-remove');
+  var heroStatus = document.getElementById('hero-img-status');
+  var heroImg = document.getElementById('hero-img');
+  var heroState = document.getElementById('hero-img-state');
+  function heroSet(t, kind) { if (heroStatus) { heroStatus.textContent = t; heroStatus.className = 'text-xs' + (kind ? ' status--' + kind : ' muted'); } }
+  function heroBust() { if (heroImg) { heroImg.style.display = ''; heroImg.src = '/theme-assets/hero?t=' + Date.now(); } }
+  // Hide the thumbnail if no hero image exists (404) — CSP-safe (no inline onerror).
+  if (heroImg) heroImg.addEventListener('error', function () { heroImg.style.display = 'none'; });
+  if (heroUp) heroUp.addEventListener('click', function () {
+    var f = heroFile && heroFile.files && heroFile.files[0];
+    if (!f) { heroSet('Choose a PNG, JPEG or WebP first', 'danger'); return; }
+    heroUp.disabled = true; heroSet('Uploading…');
+    var fd = new FormData(); fd.append('image', f);
+    fetch('/os/api/branding/hero', { method: 'POST', headers: { 'X-CSRF-Token': csrfToken() }, body: fd })
+      .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+      .then(function (res) {
+        heroUp.disabled = false;
+        if (res.ok) {
+          heroSet('Hero image updated', 'ok'); heroBust();
+          if (heroState) heroState.textContent = 'Custom hero image active.';
+          // Switch the Hero background option to Image and refresh the preview.
+          if (optInputs.herobg) { optInputs.herobg.value = 'image'; options.herobg = 'image'; }
+          schedulePreview();
+        } else { heroSet((res.d && res.d.error) || 'Upload failed', 'danger'); }
+      }).catch(function (e) { heroUp.disabled = false; heroSet('Error: ' + e, 'danger'); });
+  });
+  if (heroRm) heroRm.addEventListener('click', function () {
+    heroRm.disabled = true; heroSet('Removing…');
+    var fd = new FormData(); fd.append('remove', '1');
+    fetch('/os/api/branding/hero', { method: 'POST', headers: { 'X-CSRF-Token': csrfToken() }, body: fd })
+      .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+      .then(function (res) {
+        heroRm.disabled = false;
+        if (res.ok) { heroSet('Hero image removed', 'ok'); if (heroImg) heroImg.style.display = 'none'; if (heroState) heroState.textContent = 'No hero image set.'; schedulePreview(); }
+        else { heroSet((res.d && res.d.error) || 'Remove failed', 'danger'); }
+      }).catch(function (e) { heroRm.disabled = false; heroSet('Error: ' + e, 'danger'); });
+  });
+
   // ── Navigation editor (saves nav.items straight to the live site) ───────────
   var navRows = document.getElementById('cz-nav-rows');
   var navAdd = document.getElementById('cz-nav-add');

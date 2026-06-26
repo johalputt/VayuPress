@@ -309,8 +309,30 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
     <section class="cz-group">
       <button type="button" class="cz-group__head" aria-expanded="false">Layout</button>
       <div class="cz-group__body">
-        <p class="text-sm muted mb-3">Reading width, corners, post-feed layout, header alignment and density.</p>
-        <div class="theme-fields theme-fields--text">` + optionRowsByKeys("width", "corners", "feedlayout", "headeralign", "density") + `</div>
+        <p class="text-sm muted mb-3">Reading width, corners, post-feed layout, header alignment, navigation, post cards and density — applied across the whole blog.</p>
+        <div class="theme-fields theme-fields--text">` + optionRowsByKeys("width", "corners", "feedlayout", "headeralign", "navstyle", "cardstyle", "density") + `</div>
+      </div>
+    </section>
+
+    <section class="cz-group">
+      <button type="button" class="cz-group__head" aria-expanded="false">Hero section</button>
+      <div class="cz-group__body">
+        <p class="text-sm muted mb-3">Style the homepage hero — layout, height and an optional background tint, gradient or uploaded image.</p>
+        <div class="cz-logo">
+          <img id="hero-img" class="cz-logo__img" src="/theme-assets/hero?t=` + faviconBust + `" alt="Current hero image" width="64" height="40">
+          <div class="cz-logo__meta">
+            <div class="cz-logo__title">Hero background image</div>
+            <div class="text-xs muted" id="hero-img-state">Used when “Hero background” is set to Image.</div>
+          </div>
+        </div>
+        <div class="vm-row mt-2">
+          <input type="file" id="hero-img-file" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" class="input">
+          <button type="button" class="btn btn--primary btn--sm" id="hero-img-upload">Upload</button>
+          <button type="button" class="btn btn--sm" id="hero-img-remove">Remove</button>
+          <span id="hero-img-status" class="text-xs muted" role="status" aria-live="polite"></span>
+        </div>
+        <span class="theme-field__hint">PNG, JPEG or WebP, &le; 2 MB. Applies live; set “Hero background” to Image to show it.</span>
+        <div class="theme-fields theme-fields--text mt-4">` + optionRowsByKeys("herostyle", "herobg", "heroheight") + `</div>
       </div>
     </section>
 
@@ -318,7 +340,7 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
       <button type="button" class="cz-group__head" aria-expanded="false">Typography &amp; fonts</button>
       <div class="cz-group__body">
         ` + fontPairSelectHTML() + `
-        <div class="theme-fields theme-fields--text">` + optionRowsByKeys("headingcase", "headingscale") + typoRows + `</div>
+        <div class="theme-fields theme-fields--text">` + optionRowsByKeys("headingcase", "headingscale", "linkstyle") + typoRows + `</div>
       </div>
     </section>
 

@@ -106,6 +106,52 @@ func AllOptions() []Option {
 				{"default", "Theme default"}, {"solid", "Solid"}, {"gradient", "Gradient"},
 			},
 		},
+		{
+			Key: "herostyle", Label: "Hero style", Default: "default",
+			Help: "Layout of the homepage hero block.",
+			Choices: []OptionChoice{
+				{"default", "Theme default"}, {"centered", "Centered"}, {"left", "Left"},
+				{"minimal", "Minimal"}, {"boxed", "Boxed"},
+			},
+		},
+		{
+			Key: "herobg", Label: "Hero background", Default: "default",
+			Help: "Tint, gradient, or an uploaded image behind the hero.",
+			Choices: []OptionChoice{
+				{"default", "Theme default"}, {"none", "None"}, {"tint", "Accent tint"},
+				{"gradient", "Accent gradient"}, {"image", "Uploaded image"},
+			},
+		},
+		{
+			Key: "heroheight", Label: "Hero height", Default: "default",
+			Choices: []OptionChoice{
+				{"default", "Theme default"}, {"compact", "Compact"}, {"regular", "Regular"}, {"tall", "Tall"},
+			},
+		},
+		{
+			Key: "navstyle", Label: "Navigation style", Default: "default",
+			Help: "Alignment of the top navigation bar.",
+			Choices: []OptionChoice{
+				{"default", "Theme default"}, {"spread", "Brand left, links right"},
+				{"center", "Centered"}, {"stack", "Stacked"},
+			},
+		},
+		{
+			Key: "cardstyle", Label: "Post card style", Default: "default",
+			Help: "How post cards look across the blog.",
+			Choices: []OptionChoice{
+				{"default", "Theme default"}, {"flat", "Flat"}, {"bordered", "Bordered"},
+				{"elevated", "Elevated"}, {"underline", "Underlined"},
+			},
+		},
+		{
+			Key: "linkstyle", Label: "Link style", Default: "default",
+			Help: "Underlining of links in article content.",
+			Choices: []OptionChoice{
+				{"default", "Theme default"}, {"underline", "Always underline"},
+				{"hover", "Underline on hover"}, {"clean", "No underline"},
+			},
+		},
 	}
 }
 
@@ -252,6 +298,70 @@ func applyThemeOptions(t *Tokens) string {
 		extra.WriteString(".vayu-hero{text-align:left}")
 	case "center":
 		extra.WriteString(".vayu-hero{text-align:center}.vayu-hero .vayu-stats{justify-content:center}.vayu-hero .vayu-hero-tagline{margin-left:auto;margin-right:auto}")
+	}
+
+	// ── Hero section ──────────────────────────────────────────────────────────
+	switch t.Options["herostyle"] {
+	case "centered":
+		extra.WriteString(".vayu-hero{text-align:center}.vayu-hero h1{margin-left:auto;margin-right:auto}.vayu-hero .vayu-hero-tagline{margin-left:auto;margin-right:auto}.vayu-hero .vayu-stats{justify-content:center}")
+	case "left":
+		extra.WriteString(".vayu-hero{text-align:left}")
+	case "minimal":
+		extra.WriteString(".vayu-hero{border-bottom:0;padding-bottom:1.5rem}.vayu-hero .vayu-stats{display:none}")
+	case "boxed":
+		extra.WriteString(".vayu-hero{border:1px solid var(--border,rgba(125,125,125,.22));border-radius:var(--radius2,14px);padding:2.5rem 1.75rem}")
+	}
+	switch t.Options["heroheight"] {
+	case "compact":
+		extra.WriteString(".vayu-hero{padding-top:1.75rem;padding-bottom:1.5rem}")
+	case "regular":
+		extra.WriteString(".vayu-hero{padding-top:3.5rem;padding-bottom:3rem}")
+	case "tall":
+		extra.WriteString(".vayu-hero{padding-top:6rem;padding-bottom:5rem}")
+	}
+	switch t.Options["herobg"] {
+	case "none":
+		extra.WriteString(".vayu-hero{background:none}")
+	case "tint":
+		extra.WriteString(".vayu-hero{background:color-mix(in srgb,var(--accent,#2dd4bf) 10%,transparent);border-radius:var(--radius2,14px);padding:2.5rem 1.75rem;border-bottom:0}")
+	case "gradient":
+		extra.WriteString(".vayu-hero{background:linear-gradient(135deg,color-mix(in srgb,var(--accent,#2dd4bf) 22%,transparent),color-mix(in srgb,var(--accent2,#6366f1) 16%,transparent));border-radius:var(--radius2,14px);padding:2.75rem 1.75rem;border-bottom:0}")
+	case "image":
+		// References a fixed same-origin URL; if no image is uploaded the request
+		// 404s and CSS simply shows no background (no broken-image artefact).
+		extra.WriteString(`.vayu-hero{background-image:linear-gradient(180deg,rgba(0,0,0,.35),rgba(0,0,0,.72)),url(/theme-assets/hero);background-size:cover;background-position:center;background-repeat:no-repeat;border-radius:var(--radius2,14px);border-bottom:0;padding:4rem 1.75rem;color:#fff}.vayu-hero .vayu-hero-tagline{color:rgba(255,255,255,.9)}.vayu-hero .vayu-stat-label{color:rgba(255,255,255,.75)}`)
+	}
+
+	// ── Navigation style ──────────────────────────────────────────────────────
+	switch t.Options["navstyle"] {
+	case "spread":
+		extra.WriteString(".vayu-nav{display:flex;align-items:center;justify-content:space-between}.vayu-nav .vayu-nav-links{margin-left:auto;display:flex;gap:1.25rem}")
+	case "center":
+		extra.WriteString(".vayu-nav{display:flex;flex-direction:column;align-items:center;gap:.5rem}.vayu-nav .vayu-nav-links{display:flex;gap:1.25rem;justify-content:center}")
+	case "stack":
+		extra.WriteString(".vayu-nav{display:flex;flex-direction:column;align-items:flex-start;gap:.5rem}.vayu-nav .vayu-nav-links{display:flex;gap:1rem;flex-wrap:wrap}")
+	}
+
+	// ── Post card style (applies wherever .vayu-post-card appears) ─────────────
+	switch t.Options["cardstyle"] {
+	case "flat":
+		extra.WriteString(".vayu-post-card{border:0;box-shadow:none;padding:0}")
+	case "bordered":
+		extra.WriteString(".vayu-post-card{border:1px solid var(--border,rgba(125,125,125,.22));border-radius:var(--radius2,12px);padding:1.25rem}")
+	case "elevated":
+		extra.WriteString(".vayu-post-card{border:1px solid var(--border,rgba(125,125,125,.16));border-radius:var(--radius2,14px);padding:1.25rem;box-shadow:0 6px 24px rgba(0,0,0,.18);transition:transform .15s,box-shadow .15s}.vayu-post-card:hover{transform:translateY(-3px);box-shadow:0 12px 36px rgba(0,0,0,.26)}")
+	case "underline":
+		extra.WriteString(".vayu-post-card{border:0;border-bottom:1px solid var(--border,rgba(125,125,125,.2));border-radius:0;padding:0 0 1.25rem}")
+	}
+
+	// ── Link style (article content) ──────────────────────────────────────────
+	switch t.Options["linkstyle"] {
+	case "underline":
+		extra.WriteString("article.vayu-prose a,.vayu-prose a{text-decoration:underline}")
+	case "hover":
+		extra.WriteString("article.vayu-prose a,.vayu-prose a{text-decoration:none}article.vayu-prose a:hover,.vayu-prose a:hover{text-decoration:underline}")
+	case "clean":
+		extra.WriteString("article.vayu-prose a,.vayu-prose a{text-decoration:none}")
 	}
 
 	// ── Per-theme extras ────────────────────────────────────────────────────

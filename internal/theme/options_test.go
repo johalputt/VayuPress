@@ -35,6 +35,32 @@ func TestThemeOptionsApply(t *testing.T) {
 	}
 }
 
+// TestHeroAndDesignOptions proves the hero, navigation, card and link options
+// emit scoped CSS targeting the real public markup — so they restyle the live
+// site (and preview), not just a section.
+func TestHeroAndDesignOptions(t *testing.T) {
+	g := theme.Gale()
+	g.Options = map[string]string{
+		"herostyle": "boxed", "herobg": "image", "heroheight": "tall",
+		"navstyle": "spread", "cardstyle": "elevated", "linkstyle": "underline",
+	}
+	css, err := theme.CompileCSS(g)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	for _, want := range []string{
+		"url(/theme-assets/hero)",      // hero image background
+		".vayu-hero{",                  // hero restyled
+		".vayu-nav{display:flex",       // nav style
+		".vayu-post-card{",             // card style
+		"text-decoration:underline",    // link style
+	} {
+		if !strings.Contains(css, want) {
+			t.Errorf("hero/design option CSS missing %q", want)
+		}
+	}
+}
+
 // TestLayoutOptions proves the post-feed layout and header-alignment options
 // emit scoped CSS targeting the real public markup, so they change structure
 // (not just colours) in both the live site and the preview.
@@ -93,8 +119,8 @@ func TestPerThemeExtras(t *testing.T) {
 		t.Errorf("Apex should expose shared + extras (>=7), got %d", got)
 	}
 	// A theme with no extras keeps exactly the shared set.
-	if got := len(theme.OptionsFor("Default")); got != 7 {
-		t.Errorf("Default should expose exactly the 7 shared options, got %d", got)
+	if got := len(theme.OptionsFor("Default")); got != 13 {
+		t.Errorf("Default should expose exactly the 13 shared options, got %d", got)
 	}
 	if len(theme.PerThemeOptions()) == 0 {
 		t.Fatal("expected at least one per-theme option")
