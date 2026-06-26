@@ -20,6 +20,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/johalputt/vayupress/internal/members"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/totp"
 )
@@ -51,40 +52,169 @@ func (a *App) handleOSMembers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	counts, _ := a.members.Count(r.Context())
-	total := 0
-	for _, n := range counts {
-		total += n
+	ctx := r.Context()
+	stats, _ := a.members.Stats(ctx)
+	if stats == nil {
+		stats = &members.Stats{ByTier: map[string]int{}, Currency: "USD"}
 	}
-	list, _ := a.members.List(r.Context(), 100)
+	tiers, _ := a.members.ListTiers(ctx, true)
+	list, _ := a.members.List(ctx, 100)
 
-	stat := func(label string, n int) string {
-		return `<div class="stat-card"><div class="stat-card__label">` + html.EscapeString(label) +
-			`</div><div class="stat-card__value">` + strconv.Itoa(n) + `</div></div>`
+	esc := html.EscapeString
+
+	stat := func(label, value string) string {
+		return `<div class="stat-card"><div class="stat-card__label">` + esc(label) +
+			`</div><div class="stat-card__value">` + value + `</div></div>`
 	}
 
-	rows := ""
-	for _, m := range list {
-		rows += `<tr>
-  <td class="row-title">` + html.EscapeString(m.Email) + `</td>
-  <td><span class="badge badge--ok">` + html.EscapeString(m.Tier) + `</span></td>
-  <td class="muted text-sm">` + m.CreatedAt.UTC().Format("2 Jan 2006") + `</td>
+	// ── Stat cards ──────────────────────────────────────────────────────────
+	statGrid := `<div class="stat-grid mb-6">` +
+		stat("Total members", strconv.Itoa(stats.Total)) +
+		stat("Free", strconv.Itoa(stats.Free)) +
+		stat("Paid", strconv.Itoa(stats.Paid)) +
+		stat("MRR", priceLabel(stats.Currency, stats.MRRCents)) +
+		stat("New · 30 days", strconv.Itoa(stats.NewLast30)) +
+		`</div>`
+
+	// ── Tiers card ──────────────────────────────────────────────────────────
+	tierRows := ""
+	for _, t := range tiers {
+		price := "Free"
+		if !t.IsFree() {
+			price = priceLabel(t.Currency, t.MonthlyCents) + " / mo"
+			if t.MonthlyCents == 0 && t.YearlyCents > 0 {
+				price = priceLabel(t.Currency, t.YearlyCents) + " / yr"
+			}
+		}
+		vis := `<span class="badge badge--muted">` + esc(t.Visibility) + `</span>`
+		status := `<span class="badge badge--ok">active</span>`
+		if !t.Active {
+			status = `<span class="badge badge--muted">archived</span>`
+		}
+		actions := `<button class="btn btn--sm btn--ghost" type="button" data-edit-tier
+			data-id="` + esc(t.ID) + `" data-name="` + esc(t.Name) + `" data-description="` + esc(t.Description) + `"
+			data-monthly="` + strconv.Itoa(t.MonthlyCents) + `" data-yearly="` + strconv.Itoa(t.YearlyCents) + `"
+			data-currency="` + esc(t.Currency) + `" data-visibility="` + esc(t.Visibility) + `"
+			data-benefits="` + esc(strings.Join(t.Benefits, "\n")) + `">Edit</button>`
+		if t.Slug != members.TierFree && t.Slug != members.TierPaid {
+			actions += ` <button class="btn btn--sm btn--danger" type="button" data-archive-tier data-id="` + esc(t.ID) + `">Archive</button>`
+		}
+		tierRows += `<tr>
+  <td class="row-title">` + esc(t.Name) + ` <span class="row-meta">` + esc(t.Slug) + `</span></td>
+  <td>` + esc(price) + `</td>
+  <td>` + vis + `</td>
+  <td>` + status + `</td>
+  <td class="row-actions">` + actions + `</td>
 </tr>`
 	}
-	tableHTML := `<div class="empty-state">No members yet.</div>`
+	tierTable := `<div class="empty-state">No tiers yet.</div>`
+	if tierRows != "" {
+		tierTable = `<div class="table-wrap"><table class="table">
+  <thead><tr><th>Plan</th><th>Price</th><th>Visibility</th><th>Status</th><th></th></tr></thead>
+  <tbody>` + tierRows + `</tbody></table></div>`
+	}
+	tiersCard := `<div class="card mb-6">
+  <div class="card-head">
+    <h2 class="card-title">Membership tiers</h2>
+    <button class="btn btn--primary btn--sm" type="button" data-new-tier>+ New tier</button>
+  </div>
+  ` + tierTable + `
+  <p class="field-hint mt-3">Tiers appear on your public <a href="/pricing">pricing page</a>. The built-in Free and Premium plans cannot be removed.</p>
+</div>`
+
+	// ── Members table ───────────────────────────────────────────────────────
+	tierOptions := func(current string) string {
+		opts := ""
+		seen := map[string]bool{}
+		for _, t := range tiers {
+			sel := ""
+			if t.Slug == current {
+				sel = " selected"
+			}
+			opts += `<option value="` + esc(t.Slug) + `"` + sel + `>` + esc(t.Name) + `</option>`
+			seen[t.Slug] = true
+		}
+		if !seen[current] && current != "" {
+			opts += `<option value="` + esc(current) + `" selected>` + esc(current) + `</option>`
+		}
+		return opts
+	}
+	rows := ""
+	for _, m := range list {
+		badge := `<span class="badge badge--free">free</span>`
+		if m.IsPaid() {
+			badge = `<span class="badge badge--paid">` + esc(m.Tier) + `</span>`
+		}
+		labelChips := ""
+		for _, l := range m.Labels {
+			labelChips += `<span class="chip chip--removable">` + esc(l) +
+				`<button type="button" data-remove-label data-email="` + esc(m.Email) + `" data-label="` + esc(l) + `" aria-label="Remove label">×</button></span> `
+		}
+		labelChips += `<button type="button" class="btn btn--xs btn--ghost" data-add-label data-email="` + esc(m.Email) + `">+ label</button>`
+		lastSeen := `<span class="row-meta">never</span>`
+		if m.LastSeenAt != nil {
+			lastSeen = m.LastSeenAt.Format("2 Jan 2006")
+		}
+		name := esc(m.Name)
+		if name == "" {
+			name = `<span class="row-meta">—</span>`
+		}
+		rows += `<tr>
+  <td class="row-title">` + esc(m.Email) + `</td>
+  <td>` + name + `</td>
+  <td>` + badge + `</td>
+  <td><select class="select input--sm" data-member-tier data-email="` + esc(m.Email) + `">` + tierOptions(m.Tier) + `</select></td>
+  <td>` + labelChips + `</td>
+  <td class="row-meta">` + lastSeen + `</td>
+  <td class="row-meta">` + m.CreatedAt.UTC().Format("2 Jan 2006") + `</td>
+</tr>`
+	}
+	membersTable := `<div class="empty-state">No members yet.</div>`
 	if rows != "" {
-		tableHTML = `<div class="table-wrap"><table class="table">
-  <thead><tr><th>Email</th><th>Tier</th><th>Joined</th></tr></thead>
+		membersTable = `<div class="table-wrap"><table class="table">
+  <thead><tr><th>Email</th><th>Name</th><th>Tier</th><th>Plan</th><th>Labels</th><th>Last seen</th><th>Joined</th></tr></thead>
   <tbody>` + rows + `</tbody></table></div>`
 	}
+	membersCard := `<div class="card"><h2 class="card-title">Members</h2>` + membersTable + `</div>`
 
-	body := `<div class="page-header"><h1>Members</h1></div>
-<div class="stat-grid mb-6">` +
-		stat("Total", total) +
-		stat("Free", counts["free"]) +
-		stat("Paid", counts["paid"]) +
-		`</div>
-<div class="card">` + tableHTML + `</div>`
+	// ── Tier editor modal ─────────────────────────────────────────────────────
+	modal := `<div class="modal-backdrop" id="tier-modal" hidden>
+  <div class="modal-panel">
+    <div class="modal-header"><h3 class="modal-title" id="tier-modal-title">New tier</h3>
+      <button class="modal-close" type="button" id="tier-cancel" aria-label="Close">×</button></div>
+    <form id="tier-form">
+      <div class="modal-body">
+        <input type="hidden" id="tier-id">
+        <div class="field"><label class="field-label" for="tier-name">Name</label>
+          <input class="input" id="tier-name" type="text" required maxlength="60" placeholder="e.g. Premium"></div>
+        <div class="field mt-3"><label class="field-label" for="tier-desc">Description</label>
+          <input class="input" id="tier-desc" type="text" maxlength="200" placeholder="Short summary shown on the pricing page"></div>
+        <div class="grid grid-2 gap-3 mt-3">
+          <div class="field"><label class="field-label" for="tier-monthly">Monthly price (cents)</label>
+            <input class="input" id="tier-monthly" type="number" min="0" value="0"></div>
+          <div class="field"><label class="field-label" for="tier-yearly">Yearly price (cents)</label>
+            <input class="input" id="tier-yearly" type="number" min="0" value="0"></div>
+        </div>
+        <div class="grid grid-2 gap-3 mt-3">
+          <div class="field"><label class="field-label" for="tier-currency">Currency</label>
+            <input class="input" id="tier-currency" type="text" maxlength="3" value="USD"></div>
+          <div class="field"><label class="field-label" for="tier-visibility">Visibility</label>
+            <select class="select" id="tier-visibility"><option value="public">Public</option><option value="hidden">Hidden</option></select></div>
+        </div>
+        <div class="field mt-3"><label class="field-label" for="tier-benefits">Benefits (one per line)</label>
+          <textarea class="textarea" id="tier-benefits" rows="4" placeholder="Full access to premium posts&#10;Members-only newsletter"></textarea></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn--ghost" type="button" id="tier-cancel-2">Cancel</button>
+        <button class="btn btn--primary" type="submit" id="tier-save">Save tier</button>
+      </div>
+    </form>
+  </div>
+</div>`
+
+	body := `<div class="page-header"><h1>Members</h1></div>` +
+		statGrid + tiersCard + membersCard + modal +
+		`<script nonce="` + nonce + `" src="/os/static/js/admin-os-members.js"></script>`
 
 	writeOSHTML(w, adminOSLayout(nonce, "Members", "members", cfg, htmpl.HTML(body)))
 }
