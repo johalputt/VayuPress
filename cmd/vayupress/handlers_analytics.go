@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -156,12 +157,38 @@ func geoFromHeaders(r *http.Request) analytics.GeoInfo {
 		}
 		return ""
 	}
-	country := strings.ToUpper(pick("CF-IPCountry", "X-Geo-Country", "X-Country", "X-AppEngine-Country"))
+	// Some proxies (notably Vercel) URL-encode city/region values ("San%20Jose").
+	decode := func(s string) string {
+		if strings.IndexByte(s, '%') >= 0 {
+			if d, err := url.QueryUnescape(s); err == nil {
+				return strings.TrimSpace(d)
+			}
+		}
+		return s
+	}
+	country := strings.ToUpper(pick(
+		"CF-IPCountry",              // Cloudflare (all plans)
+		"CloudFront-Viewer-Country", // AWS CloudFront
+		"X-Vercel-IP-Country",       // Vercel
+		"Fastly-Geo-Country",        // Fastly (when configured)
+		"X-Geo-Country", "X-Country", "X-AppEngine-Country",
+	))
 	if country == "XX" || country == "T1" || len(country) != 2 {
 		country = ""
 	}
-	region := pick("CF-Region", "cf-region", "X-Geo-Region", "X-AppEngine-Region")
-	city := pick("CF-IPCity", "cf-ipcity", "X-Geo-City", "X-City", "X-AppEngine-City")
+	region := decode(pick(
+		"CF-Region",                             // Cloudflare (full name, e.g. "California")
+		"CloudFront-Viewer-Country-Region-Name", // AWS CloudFront (name)
+		"CloudFront-Viewer-Country-Region",      // AWS CloudFront (code)
+		"X-Vercel-IP-Country-Region",            // Vercel (code)
+		"X-Geo-Region", "X-AppEngine-Region",
+	))
+	city := decode(pick(
+		"CF-IPCity",              // Cloudflare
+		"CloudFront-Viewer-City", // AWS CloudFront
+		"X-Vercel-IP-City",       // Vercel (URL-encoded)
+		"X-Geo-City", "X-City", "X-AppEngine-City",
+	))
 	return analytics.GeoInfo{Country: country, Region: region, City: city}
 }
 
@@ -306,10 +333,15 @@ func (a *App) handleAnalyticsRealtime(w http.ResponseWriter, r *http.Request) {
 			resp.WindowMinutes = data.WindowMinutes
 		}
 		for _, c := range data.ActiveCountries {
+			name := countryName(c.Label)
+			if strings.TrimSpace(c.Label) == "" {
+				name = "Unknown"
+			}
 			resp.ActiveCountries = append(resp.ActiveCountries, realtimeCountry{
 				Code:  c.Label,
-				Name:  countryName(c.Label),
+				Name:  name,
 				Flag:  countryFlagURL(c.Label),
+				Label: name, // back-compat for older cached clients reading "label"
 				Count: c.Count,
 			})
 		}
@@ -321,7 +353,8 @@ func (a *App) handleAnalyticsRealtime(w http.ResponseWriter, r *http.Request) {
 type realtimeCountry struct {
 	Code  string `json:"code"`
 	Name  string `json:"name"`
-	Flag  string `json:"flag"` // served SVG URL, or "" when unavailable
+	Flag  string `json:"flag"`  // served SVG URL, or "" when unavailable
+	Label string `json:"label"` // = Name; kept so older cached JS still shows text
 	Count int    `json:"count"`
 }
 

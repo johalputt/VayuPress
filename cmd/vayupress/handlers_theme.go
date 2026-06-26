@@ -157,6 +157,15 @@ func (a *App) handleCommentsJS(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, render.CommentsJS)
 }
 
+// handlePostCardMediaJS serves the post-card cover-image fallback script, which
+// hides broken/expired cover images on the home and tag pages.
+// Same-origin static asset → satisfies `script-src 'self'` without a nonce.
+func (a *App) handlePostCardMediaJS(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	fmt.Fprint(w, render.PostCardMediaJS)
+}
+
 // handleThemeGet renders the admin theme-editor page.
 func (a *App) handleThemeGet(w http.ResponseWriter, r *http.Request) {
 	vals, err := a.siteSettings.GetAll(r.Context())

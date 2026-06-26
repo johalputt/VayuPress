@@ -47,6 +47,24 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   `POST /api/v1/admin/users/{email}/mailbox` (mirrored at `/os/api/...`),
   admin-only and CSRF-protected. Migration `039-user-mailbox` links the address.
 
+- **Posts manager now paginates the full archive instead of capping at 500.**
+  The VayuOS Posts screen previously rendered a single hard `LIMIT 500` list, so
+  older posts beyond the 500th were unreachable. It now serves the archive in
+  pages of 100 (newest first on page 1) with a premium pager:
+  - **Page navigation** — First / Last, Prev / Next, a windowed run of numbered
+    pages around the current one, and **jump ±10 pages** controls for skating
+    through large archives. A "Go to page N of M" box jumps directly to any page.
+    Every control is a plain GET link/form, so navigation works without
+    JavaScript and stays within the strict CSP.
+  - **Find any post by time** — a time-range filter with quick presets (last 7 /
+    30 / 90 days, last 12 months) plus a custom **From / To** date range filters
+    posts by their created date so you can pull up a specific period instantly.
+  - **Server-side search & status tabs** — title/tag search and the
+    All / Published / Drafts tabs now filter across the entire archive (not just
+    the current page), and the tab counts reflect the active search/date filter.
+    A "showing X–Y of Z posts" summary keeps the position clear. All filters are
+    preserved in the URL, so a filtered view is shareable and survives reloads.
+
 - **Premium membership system — multi-tier plans, a member portal, and revenue
   insight.** VayuPress memberships grow from a free/paid switch into a complete
   membership product, all still sovereign and passwordless:
@@ -251,6 +269,26 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
     existing DKIM-key and reverse-DNS (PTR) checks.
 
 ### Fixed
+
+- **Home and topic post cards now show a clean title and excerpt instead of raw
+  markup.** A post whose body began with a `<style>` or `<script>` block leaked
+  its CSS/JS as the card "excerpt", because the plain-text helper stripped tags
+  but kept their inner text. A new `render.PlainText` removes non-rendered blocks
+  (`<style>`, `<script>`, `<head>`, `<noscript>`, `<template>`, `<svg>`) and HTML
+  comments in full before stripping the remaining tags, unescapes entities, and
+  tidies whitespace — so only readable body text reaches the card. The cards were
+  also redesigned: each is now a clean grid card showing the post's cover image
+  (the first image in the body, when present), a `date · author` line, the title,
+  and a three-line excerpt. Inline tag chips were removed from the cards for a
+  calmer, more readable feed. The same treatment applies to tag listing pages.
+  - **The home page no longer lags behind after a redeploy.** Pre-rendered public
+    HTML (`home/index.html`, `tags/*.html`, `posts/*.html`) is now fingerprinted
+    with the renderer version and stylesheet hashes; on startup any cache produced
+    by an older renderer is cleared, so a redeploy always serves the current
+    design rather than a stale cached home page.
+  - **Broken cover images are hidden.** A small same-origin script (CSP-safe,
+    `script-src 'self'`) removes a card's cover image if it fails to load (or was
+    blocked), so an expired/broken image link never shows a broken-image icon.
 
 - **Theme Studio: deploying a theme now restyles the whole public site, not just
   colours.** The token compiler bridges the active theme onto the variables the

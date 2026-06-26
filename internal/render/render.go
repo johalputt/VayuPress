@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"html"
 	"html/template"
 	"net/http"
 	"os"
@@ -74,7 +75,22 @@ func WithCSPNonce(ctx context.Context, nonce string) context.Context {
 var (
 	policy    *bluemonday.Policy
 	htmlTagRe = regexp.MustCompile(`<[^>]+>`)
-	cssHashes struct{ ArticleCSS, AdminCSS, HighContrastCSS, CustomCSS string }
+	// htmlBlockRes matches non-rendered blocks (script/style/head/etc.) including
+	// their inner text, so raw CSS/JS never leaks into plain-text excerpts. Go's
+	// RE2 engine has no backreferences, so each block type gets its own pattern.
+	htmlBlockRes = func() []*regexp.Regexp {
+		tags := []string{"script", "style", "head", "noscript", "template", "svg"}
+		res := make([]*regexp.Regexp, 0, len(tags))
+		for _, t := range tags {
+			res = append(res, regexp.MustCompile(`(?is)<`+t+`\b[^>]*>.*?</\s*`+t+`\s*>`))
+		}
+		return res
+	}()
+	htmlCommentRe = regexp.MustCompile(`(?s)<!--.*?-->`)
+	// spaceBeforePunctRe trims the stray space introduced when an inline tag
+	// (e.g. </strong>) sits directly before punctuation, keeping excerpts tidy.
+	spaceBeforePunctRe = regexp.MustCompile(`\s+([.,!?;:])`)
+	cssHashes          struct{ ArticleCSS, AdminCSS, HighContrastCSS, CustomCSS string }
 )
 
 // Init initializes the HTML sanitizer, compiles the template, writes CSS assets, and warms the cache.
@@ -576,6 +592,30 @@ func CommentsJSLink() template.HTML {
 	return template.HTML(`<script src="/static/js/comments.js?v=` + commentsJSHash + `" defer></script>`)
 }
 
+// PostCardMediaJS hides a post card's cover image when the image fails to load,
+// so a broken/expired image URL never renders a broken-image icon on the home
+// or tag listing pages. It wires an `error` handler on each card image and also
+// catches images that already failed before the script ran (complete but zero
+// natural width). Served same-origin → satisfies the strict `script-src 'self'`
+// CSP without a nonce (so it works in disk-cached pages).
+const PostCardMediaJS = `(function(){` +
+	`function hide(img){var t=img.closest&&img.closest('.vayu-post-thumb');var n=t||img;if(n&&n.parentNode){n.parentNode.removeChild(n);}}` +
+	`function wire(img){img.addEventListener('error',function(){hide(img);});if(img.complete&&img.naturalWidth===0){hide(img);}}` +
+	`function init(){var n=document.querySelectorAll('.vayu-post-thumb img');for(var i=0;i<n.length;i++){wire(n[i]);}}` +
+	`if(document.readyState!=='loading'){init();}else{document.addEventListener('DOMContentLoaded',init);}` +
+	`})();`
+
+// postCardMediaJSHash versions the script URL for cache-busting.
+var postCardMediaJSHash = func() string {
+	sum := sha256.Sum256([]byte(PostCardMediaJS))
+	return hex.EncodeToString(sum[:8])
+}()
+
+// PostCardMediaJSLink returns the <script> tag for the post-card image fallback.
+func PostCardMediaJSLink() template.HTML {
+	return template.HTML(`<script src="/static/js/post-card-media.js?v=` + postCardMediaJSHash + `" defer></script>`)
+}
+
 // headMetaHTML renders the declarative <head> capabilities to a safe, escaped
 // allowlist of <meta> tags. Values are validated on write (hex/token/allowlist)
 // and HTML-escaped here — defense in depth. No arbitrary operator markup ever
@@ -838,6 +878,8 @@ type HomeArticle struct {
 	Title     string
 	Slug      string
 	Excerpt   string
+	Image     string // cover image URL (first image found in the post), optional
+	Author    string // display name shown on the card, optional
 	Tags      []string
 	CreatedAt time.Time
 }
@@ -852,6 +894,7 @@ type homePage struct {
 	ThemeCSSLink        template.HTML
 	HeadMeta            template.HTML
 	ThemeToggleJSLink   template.HTML
+	PostCardMediaJSLink template.HTML
 	SiteName            string
 	Tagline             string
 	Description         string
@@ -909,16 +952,18 @@ var homeTmpl = template.Must(template.New("home").Funcs(homeFuncs).Parse(`<!DOCT
 </section>
 <div class="vayu-section-label">Latest writing</div>
 {{if .Articles}}<div class="vayu-post-list">
-{{range .Articles}}<a class="vayu-post-card" href="/{{.Slug}}">
-  <div class="vayu-post-meta"><time datetime="{{.CreatedAt | shortDate}}">{{.CreatedAt | humanDate}}</time>{{if .Tags}}<span>·</span><span>{{range $i, $t := .Tags}}{{if $i}} · {{end}}#{{$t}}{{end}}</span>{{end}}</div>
-  <div class="vayu-post-title">{{.Title}}</div>
-  {{if .Excerpt}}<div class="vayu-post-excerpt">{{.Excerpt}}</div>{{end}}
-  <span class="vayu-post-arrow" aria-hidden="true">→</span>
+{{range .Articles}}<a class="vayu-post-card{{if .Image}} vayu-post-card--media{{end}}" href="/{{.Slug}}">
+  {{if .Image}}<div class="vayu-post-thumb"><img src="{{.Image}}" alt="" loading="lazy" decoding="async"></div>{{end}}
+  <div class="vayu-post-body">
+    <div class="vayu-post-meta"><time datetime="{{.CreatedAt | shortDate}}">{{.CreatedAt | humanDate}}</time>{{if .Author}}<span class="vayu-post-dot" aria-hidden="true"></span><span class="vayu-post-author">{{.Author}}</span>{{end}}</div>
+    <h2 class="vayu-post-title">{{.Title}}</h2>
+    {{if .Excerpt}}<p class="vayu-post-excerpt">{{.Excerpt}}</p>{{end}}
+  </div>
 </a>{{end}}
 </div>{{else}}<div class="vayu-empty">No articles published yet. The runtime is live and waiting.</div>{{end}}
 {{.Footer}}
 </main>
-</div></body></html>`))
+</div>{{.PostCardMediaJSLink}}</body></html>`))
 
 var notFoundTmpl = template.Must(template.New("404").Parse(`<!DOCTYPE html><html lang="en" data-theme="dark"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -957,6 +1002,7 @@ func RenderHome(domain, version string, articles []HomeArticle, totalCount int) 
 		ThemeCSSLink:        ThemeCSSLink(),
 		HeadMeta:            headMetaHTML(s),
 		ThemeToggleJSLink:   ThemeToggleJSLink(),
+		PostCardMediaJSLink: PostCardMediaJSLink(),
 		SiteName:            s.Name,
 		Tagline:             s.Tagline,
 		Description:         s.Description,
@@ -1224,9 +1270,78 @@ func WarmCache(splitTags func(string) []string) {
 	logging.LogInfo("cache-warm", fmt.Sprintf("pre-rendered %d articles", count))
 }
 
+// cacheSchema is bumped whenever the public listing/article templates change in
+// a way the CSS content hashes do not already capture (e.g. markup-only edits).
+// It feeds the cache fingerprint below so such changes still invalidate stale
+// pre-rendered HTML on the next deploy.
+const cacheSchema = "2"
+
+// cacheFingerprint summarises everything baked into the running binary that
+// affects pre-rendered public HTML: the release version, the manual cache
+// schema, and the content hashes of every stylesheet. Any change flips the
+// fingerprint.
+func cacheFingerprint() string {
+	sum := sha256.Sum256([]byte(strings.Join([]string{
+		Version, cacheSchema,
+		cssHashes.ArticleCSS, cssHashes.CustomCSS,
+		cssHashes.HighContrastCSS, cssHashes.AdminCSS,
+	}, "|")))
+	return hex.EncodeToString(sum[:])
+}
+
+// ReconcileCacheVersion drops stale pre-rendered public HTML after a deploy.
+//
+// The on-disk cache (home/index.html, tags/*.html, posts/*.html) is produced by
+// the templates and stylesheets compiled into the running binary. When those
+// change — a new release, edited card markup, or restyled cards — the cached
+// HTML would otherwise keep serving the OLD design until each page is purged by
+// an unrelated event (e.g. an article edit). That is exactly why the home page
+// can lag behind the tag pages: the home cache is only invalidated on content
+// changes, so a redeploy alone never refreshes it.
+//
+// We persist the renderer fingerprint next to the cache. On startup, if it no
+// longer matches (or is absent), every cached public page is removed so the next
+// request regenerates it with the current templates and CSS. Pages are cheap to
+// rebuild on demand, so this is safe to run on every boot.
+//
+// Call after render.Version is set and WriteCSSAssets has run (Init), so the
+// version and CSS hashes are populated.
+func ReconcileCacheVersion() {
+	fp := cacheFingerprint()
+	stampPath := filepath.Join(config.Cfg.CacheDir, ".render-stamp")
+	if b, err := os.ReadFile(stampPath); err == nil && strings.TrimSpace(string(b)) == fp {
+		return // cache was produced by this exact renderer — keep it
+	}
+	for _, sub := range []string{"home", "tags", "posts"} {
+		os.RemoveAll(filepath.Join(config.Cfg.CacheDir, sub))
+	}
+	if err := os.MkdirAll(config.Cfg.CacheDir, 0o755); err == nil {
+		_ = os.WriteFile(stampPath, []byte(fp), 0o644)
+	}
+	logging.LogInfo("cache", "render fingerprint changed — cleared stale pre-rendered public HTML")
+}
+
 // StripHTML removes all HTML tags from s and returns plain text.
 func StripHTML(s string) string {
 	return htmlTagRe.ReplaceAllString(s, "")
+}
+
+// PlainText converts HTML content into readable plain text suitable for
+// excerpts and previews. Unlike StripHTML, it first removes non-rendered blocks
+// such as <style>, <script> and <head> (including their inner text) and HTML
+// comments, then strips the remaining tags, unescapes HTML entities, and
+// collapses whitespace. This guarantees that a post which begins with a
+// <style>…</style> or <script>…</script> block never leaks raw CSS/JS into its
+// card excerpt.
+func PlainText(s string) string {
+	s = htmlCommentRe.ReplaceAllString(s, " ")
+	for _, re := range htmlBlockRes {
+		s = re.ReplaceAllString(s, " ")
+	}
+	s = htmlTagRe.ReplaceAllString(s, " ")
+	s = html.UnescapeString(s)
+	s = strings.TrimSpace(strings.Join(strings.Fields(s), " "))
+	return spaceBeforePunctRe.ReplaceAllString(s, "$1")
 }
 
 // SanitizeHTML runs the bluemonday UGC policy over s.
@@ -1657,56 +1772,90 @@ h1, h2, h3, h4, h5, h6 {
   margin-bottom: 1.25rem;
 }
 
-.vayu-post-list { display: flex; flex-direction: column; gap: 0; }
+.vayu-post-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1.5rem;
+}
 
 .vayu-post-card {
-  display: block;
-  padding: 1.25rem 0;
-  border-bottom: 1px solid var(--pico-muted-border-color);
+  display: flex;
+  flex-direction: column;
+  background: var(--pico-card-background-color, var(--pico-background-color));
+  border: 1px solid var(--pico-muted-border-color);
+  border-radius: 14px;
+  overflow: hidden;
   text-decoration: none;
   color: var(--pico-color);
-  position: relative;
-  transition: padding-left 0.15s ease;
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
 }
 
-.vayu-post-card:hover { padding-left: 0.5rem; }
+.vayu-post-card:hover {
+  transform: translateY(-4px);
+  border-color: var(--pico-primary);
+  box-shadow: 0 14px 34px -16px rgba(0, 0, 0, 0.55);
+}
 .vayu-post-card:hover .vayu-post-title { color: var(--pico-primary); }
 
-.vayu-post-meta {
-  font-size: 0.82rem;
-  color: var(--pico-muted-color);
-  margin-bottom: 0.35rem;
+.vayu-post-thumb {
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  background: var(--pico-muted-border-color);
+}
+.vayu-post-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.3s ease;
+}
+.vayu-post-card:hover .vayu-post-thumb img { transform: scale(1.05); }
+
+.vayu-post-body {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  align-items: center;
+  flex-direction: column;
+  flex: 1;
+  padding: 1.25rem 1.35rem 1.4rem;
 }
 
+.vayu-post-meta {
+  font-size: 0.8rem;
+  color: var(--pico-muted-color);
+  margin-bottom: 0.55rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+.vayu-post-dot {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.55;
+}
+.vayu-post-author { font-weight: 500; }
+
 .vayu-post-title {
-  font-size: 1.125rem;
-  font-weight: 600;
+  font-size: 1.2rem;
+  font-weight: 700;
+  line-height: 1.3;
   letter-spacing: -0.01em;
+  margin: 0 0 0.5rem;
   transition: color 0.15s;
-  margin-bottom: 0.25rem;
 }
 
 .vayu-post-excerpt {
-  font-size: 0.9rem;
+  font-size: 0.92rem;
   color: var(--pico-muted-color);
-  line-height: 1.55;
+  line-height: 1.6;
+  margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
-
-.vayu-post-arrow {
-  position: absolute;
-  right: 0.25rem;
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--pico-muted-color);
-  opacity: 0;
-  transition: opacity 0.15s, right 0.15s;
-}
-
-.vayu-post-card:hover .vayu-post-arrow { opacity: 1; right: 0; }
 
 /* ── Empty state ────────────────────────────────────────────────────────── */
 .vayu-empty {
@@ -1737,7 +1886,7 @@ h1, h2, h3, h4, h5, h6 {
 @media (max-width: 600px) {
   .vayu-nav-links { gap: 0.75rem; }
   .vayu-stats { gap: 1rem 1.75rem; }
-  .vayu-post-arrow { display: none; }
+  .vayu-post-list { grid-template-columns: 1fr; gap: 1.1rem; }
 }
 
 /* ── Tag index (topic cloud) + tag-page back link ───────────────────────── */

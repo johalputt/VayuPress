@@ -22,12 +22,13 @@ license. The project's Apache-2.0 license does not alter those terms.
   Licensed under the MIT License.
   https://github.com/picocss/pico
 
-* flag-icons country flags (static/flags/*.svg)
+* flag-icons country flags (cmd/vayupress/flags/*.svg, embedded in the binary)
   Copyright (c) 2013 Panayiotis Lipiridis
   Licensed under the MIT License. Self-hosted SVG country flags shown in the
-  VayuOS analytics dashboard; served same-origin, no third-party requests.
+  VayuOS analytics dashboard; compiled into the binary and served same-origin,
+  no third-party requests.
   https://github.com/lipis/flag-icons
-  Full license text: static/flags/LICENSE
+  Full license text: cmd/vayupress/flags/LICENSE
 
 The VayuPGP privacy layer and VayuMail sovereignty layer (added in v1.8.0) are
 built on the following Go modules, compiled into the single VayuPress binary:

@@ -36,6 +36,7 @@ import (
 	"github.com/johalputt/vayupress/internal/mode"
 	"github.com/johalputt/vayupress/internal/provenance"
 	"github.com/johalputt/vayupress/internal/render"
+	"github.com/johalputt/vayupress/internal/seo"
 	"github.com/johalputt/vayupress/internal/severity"
 )
 
@@ -232,6 +233,7 @@ func (a *App) handleHome(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := dbpkg.DB.Query(`SELECT title,slug,content,tags,created_at FROM articles WHERE COALESCE(status,'published')='published' ORDER BY created_at DESC LIMIT 30`)
 	var articles []render.HomeArticle
+	author := render.GetActiveSettings().Author
 	if err == nil {
 		defer rows.Close()
 		for rows.Next() {
@@ -240,6 +242,8 @@ func (a *App) handleHome(w http.ResponseWriter, r *http.Request) {
 			if rows.Scan(&ha.Title, &ha.Slug, &content, &tagsStr, &ha.CreatedAt) == nil {
 				ha.Tags = api.SplitTags(tagsStr)
 				ha.Excerpt = excerptFromHTML(content, 160)
+				ha.Image = seo.ExtractFirstImage(content)
+				ha.Author = author
 				articles = append(articles, ha)
 			}
 		}
@@ -262,10 +266,11 @@ func (a *App) handleNotFound(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, render.Render404(config.Cfg.Domain, Version))
 }
 
-// excerptFromHTML strips tags and returns a trimmed plain-text excerpt.
+// excerptFromHTML returns a trimmed plain-text excerpt from HTML content. It
+// uses render.PlainText so non-rendered blocks (<style>, <script>, <head>) and
+// HTML comments are dropped entirely — only readable body text can appear.
 func excerptFromHTML(s string, n int) string {
-	s = render.StripHTML(s)
-	s = strings.TrimSpace(strings.Join(strings.Fields(s), " "))
+	s = render.PlainText(s)
 	if len(s) > n {
 		cut := s[:n]
 		if idx := strings.LastIndex(cut, " "); idx > n/2 {

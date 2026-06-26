@@ -54,8 +54,11 @@
   // Preview pipeline state.
   var previewReady = false;     // iframe loaded + handshake received
   var framePointed = false;     // iframe.src set to a draft page at least once
-  var pendingHref = null;       // latest stylesheet href awaiting handshake
+  var useReload = false;        // fallback mode: reload the iframe instead of hot-swap
+  var pending = null;           // latest {pageURL, cssHref} awaiting handshake
   var debounceTimer = null;
+  var ackTimer = null;
+  var readyTimer = null;
   var reqSeq = 0;               // guards against out-of-order draft responses
 
   function setStatus(msg, kind) {
@@ -162,34 +165,65 @@
   function applyPreview(id, cssHref) {
     var pageURL = '/os/theme/preview?draft=' + encodeURIComponent(id);
     if (newTabLink) newTabLink.setAttribute('href', pageURL);
-    if (!framePointed) {
-      // First load: point the iframe at the draft preview page.
+
+    // Fallback mode (or first load): reload the iframe with the draft page —
+    // always works, even if cross-frame messaging is blocked.
+    if (useReload || !framePointed) {
       framePointed = true;
       if (frame) frame.src = pageURL;
-      // showLoading cleared on frame load handler below.
-    } else if (previewReady && frame && frame.contentWindow) {
+      if (!useReload) startReadyTimer(); // first load: detect a dead handshake
+      return;
+    }
+    // Hot-swap path: ask the iframe to swap its stylesheet (no flicker, keeps
+    // scroll). If the iframe doesn't acknowledge quickly, fall back to a reload.
+    if (previewReady && frame && frame.contentWindow) {
       frame.contentWindow.postMessage({ type: 'vayu-preview-css', href: cssHref }, location.origin);
-      pendingHref = null;
-      showLoading(false);
-      setPreviewStatus('Live preview');
+      startAckTimer(pageURL);
     } else {
-      // iframe still booting — flush once the ready handshake arrives.
-      pendingHref = cssHref;
+      pending = { pageURL: pageURL, cssHref: cssHref };
     }
   }
 
-  // Handshake + load wiring.
+  function startReadyTimer() {
+    clearTimeout(readyTimer);
+    readyTimer = setTimeout(function () {
+      if (previewReady) return;
+      // Handshake never arrived — the in-frame script is unavailable. Switch to
+      // reload mode permanently so changes still take effect.
+      useReload = true;
+      if (pending) { var p = pending; pending = null; if (frame) frame.src = p.pageURL; }
+    }, 2500);
+  }
+
+  function startAckTimer(pageURL) {
+    clearTimeout(ackTimer);
+    ackTimer = setTimeout(function () {
+      // No ack — assume messaging is unreliable and reload instead, now and on.
+      useReload = true;
+      if (frame) frame.src = pageURL;
+      showLoading(false);
+      setPreviewStatus('Live preview');
+    }, 900);
+  }
+
+  // Handshake + ack wiring.
   window.addEventListener('message', function (e) {
     if (e.origin !== location.origin) return;
     var d = e.data || {};
     if (d.type === 'vayu-preview-ready') {
       previewReady = true;
+      clearTimeout(readyTimer);
       showLoading(false);
       setPreviewStatus('Live preview');
-      if (pendingHref && frame && frame.contentWindow) {
-        frame.contentWindow.postMessage({ type: 'vayu-preview-css', href: pendingHref }, location.origin);
-        pendingHref = null;
+      if (pending && frame && frame.contentWindow) {
+        var p = pending; pending = null;
+        frame.contentWindow.postMessage({ type: 'vayu-preview-css', href: p.cssHref }, location.origin);
+        startAckTimer(p.pageURL);
       }
+    } else if (d.type === 'vayu-preview-ack') {
+      clearTimeout(ackTimer);
+      showLoading(false);
+      setPreviewStatus('Live preview');
     }
   });
   if (frame) {
@@ -209,6 +243,29 @@
     });
   });
 
+  // ── Collapsible control groups — single-open accordion ─────────────────────
+  // Clicking a header opens that section fully and closes the rest, so the panel
+  // stays compact and every section name is always visible. Delegated for
+  // robustness; CSP-safe (wired here, no inline handlers).
+  var panel = root.querySelector('.customizer__panel') || root;
+  panel.addEventListener('click', function (e) {
+    var head = e.target.closest('.cz-group__head');
+    if (!head || !panel.contains(head)) return;
+    var group = head.closest('.cz-group');
+    if (!group) return;
+    var willOpen = !group.classList.contains('cz-group--open');
+    panel.querySelectorAll('.cz-group').forEach(function (g) {
+      g.classList.remove('cz-group--open');
+      var h = g.querySelector('.cz-group__head');
+      if (h) h.setAttribute('aria-expanded', 'false');
+    });
+    if (willOpen) {
+      group.classList.add('cz-group--open');
+      head.setAttribute('aria-expanded', 'true');
+      if (group.scrollIntoView) group.scrollIntoView({ block: 'nearest' });
+    }
+  });
+
   // ── Control change wiring ─────────────────────────────────────────────────────
   Object.keys(inputs).forEach(function (field) {
     var el = inputs[field];
@@ -219,6 +276,23 @@
     optInputs[key].addEventListener('change', function () { options[key] = optInputs[key].value; schedulePreview(); });
   });
   if (cssArea) cssArea.addEventListener('input', schedulePreview);
+
+  // Font pairing quick-set: applies a sans + mono stack to the FontSans/FontMono
+  // tokens at once, updates their text inputs, and refreshes the preview.
+  var fontPair = root.querySelector('[data-font-pair]');
+  if (fontPair) {
+    fontPair.addEventListener('change', function () {
+      var opt = fontPair.options[fontPair.selectedIndex];
+      if (!opt) return;
+      var sans = opt.getAttribute('data-sans') || '';
+      var mono = opt.getAttribute('data-mono') || '';
+      if (!sans) return; // "Keep current"
+      model.FontSans = sans;
+      if (inputs.FontSans) inputs.FontSans.value = sans;
+      if (mono) { model.FontMono = mono; if (inputs.FontMono) inputs.FontMono.value = mono; }
+      schedulePreview();
+    });
+  }
 
   // ── Gallery card clicks ────────────────────────────────────────────────────
   if (galleryEl) {
@@ -338,6 +412,84 @@
       reader.readAsText(f);
     });
   }
+
+  // ── Brand: logo / favicon upload (reuses the branding endpoint) ─────────────
+  var favFile = document.getElementById('brand-favicon-file');
+  var favUp = document.getElementById('brand-favicon-upload');
+  var favRm = document.getElementById('brand-favicon-remove');
+  var favStatus = document.getElementById('brand-favicon-status');
+  var favImg = document.getElementById('brand-favicon-img');
+  var favState = document.getElementById('brand-favicon-state');
+  function favSet(t, kind) { if (favStatus) { favStatus.textContent = t; favStatus.className = 'text-xs' + (kind ? ' status--' + kind : ' muted'); } }
+  function favBust() { if (favImg) favImg.src = '/favicon.ico?t=' + Date.now(); }
+  if (favUp) favUp.addEventListener('click', function () {
+    var f = favFile && favFile.files && favFile.files[0];
+    if (!f) { favSet('Choose a PNG or ICO first', 'danger'); return; }
+    favUp.disabled = true; favSet('Uploading…');
+    var fd = new FormData(); fd.append('favicon', f);
+    fetch('/os/api/branding/favicon', { method: 'POST', headers: { 'X-CSRF-Token': csrfToken() }, body: fd })
+      .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+      .then(function (res) {
+        favUp.disabled = false;
+        if (res.ok) { favSet('Logo updated', 'ok'); favBust(); if (favState) favState.textContent = 'Custom logo active — live on your site.'; }
+        else { favSet((res.d && res.d.error) || 'Upload failed', 'danger'); }
+      }).catch(function (e) { favUp.disabled = false; favSet('Error: ' + e, 'danger'); });
+  });
+  if (favRm) favRm.addEventListener('click', function () {
+    favRm.disabled = true; favSet('Removing…');
+    var fd = new FormData(); fd.append('remove', '1');
+    fetch('/os/api/branding/favicon', { method: 'POST', headers: { 'X-CSRF-Token': csrfToken() }, body: fd })
+      .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+      .then(function (res) {
+        favRm.disabled = false;
+        if (res.ok) { favSet('Default restored', 'ok'); favBust(); if (favState) favState.textContent = 'Using the default mark.'; }
+        else { favSet((res.d && res.d.error) || 'Remove failed', 'danger'); }
+      }).catch(function (e) { favRm.disabled = false; favSet('Error: ' + e, 'danger'); });
+  });
+
+  // ── Navigation editor (saves nav.items straight to the live site) ───────────
+  var navRows = document.getElementById('cz-nav-rows');
+  var navAdd = document.getElementById('cz-nav-add');
+  var navSave = document.getElementById('cz-nav-save');
+  var navStatus = document.getElementById('cz-nav-status');
+  var navSeedEl = document.getElementById('cz-nav-seed');
+  function navSet(t, kind) { if (navStatus) { navStatus.textContent = t; navStatus.className = 'text-sm' + (kind ? ' status--' + kind : ' muted'); } }
+  function navRow(label, href) {
+    var row = document.createElement('div'); row.setAttribute('data-nav-row', ''); row.className = 'cz-nav-row';
+    var li = document.createElement('input'); li.className = 'input'; li.type = 'text'; li.placeholder = 'Label'; li.value = label || ''; li.setAttribute('data-nav-label', '');
+    var hi = document.createElement('input'); hi.className = 'input'; hi.type = 'text'; hi.placeholder = '/path or https://…'; hi.value = href || ''; hi.setAttribute('data-nav-href', '');
+    var rm = document.createElement('button'); rm.type = 'button'; rm.className = 'btn btn--sm'; rm.textContent = '✕';
+    rm.addEventListener('click', function () { row.remove(); });
+    row.appendChild(li); row.appendChild(hi); row.appendChild(rm);
+    return row;
+  }
+  if (navRows) {
+    var navSeed = [];
+    try { navSeed = JSON.parse(navSeedEl && navSeedEl.value ? navSeedEl.value : '[]'); } catch (e) { navSeed = []; }
+    if (!Array.isArray(navSeed) || !navSeed.length) navSeed = [{ label: 'Home', href: '/' }, { label: 'Archive', href: '/feed.xml' }];
+    navSeed.forEach(function (it) { navRows.appendChild(navRow(it.label || it.Label, it.href || it.Href)); });
+  }
+  if (navAdd) navAdd.addEventListener('click', function () { if (navRows) navRows.appendChild(navRow('', '')); });
+  if (navSave) navSave.addEventListener('click', function () {
+    var items = [];
+    if (navRows) navRows.querySelectorAll('[data-nav-row]').forEach(function (row) {
+      var l = row.querySelector('[data-nav-label]').value.trim();
+      var h = row.querySelector('[data-nav-href]').value.trim();
+      if (l && h) items.push({ label: l, href: h });
+    });
+    navSet('Saving…'); navSave.disabled = true;
+    fetch('/os/api/settings', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
+      body: JSON.stringify({ key: 'nav.items', value: JSON.stringify(items) })
+    }).then(function (r) {
+      if (!r.ok) return r.json().then(function (e) { throw new Error((e.error && e.error.message) || e.error || ('save failed (' + r.status + ')')); });
+      return r.json();
+    }).then(function () {
+      navSet('Saved · live on your site · ' + new Date().toLocaleTimeString(), 'ok');
+      if (window.vpToast) window.vpToast('Navigation saved', 'ok');
+    }).catch(function (err) { navSet(String(err.message || err), 'danger'); })
+      .then(function () { navSave.disabled = false; });
+  });
 
   // ── Gallery swatches via CSSOM (CSP-safe) ──────────────────────────────────
   function paintSwatches() {

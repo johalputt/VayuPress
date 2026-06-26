@@ -1724,29 +1724,35 @@
 }
 @media (max-width: 1100px) { .vp-os .customizer__panel { height: auto; overflow: visible; } }
 
-/* Collapsible control groups. */
+/* Collapsible control groups. flex:0 0 auto stops a tall open section from being
+   squeezed (and clipped by overflow:hidden) to fit the panel — instead the panel
+   itself scrolls, so the whole section and all its controls are reachable. */
 .vp-os .cz-group {
+  flex: 0 0 auto;
   background: var(--bg-surface); border: 1px solid var(--border);
   border-radius: var(--r-lg); overflow: hidden;
 }
 .vp-os .cz-group__head {
-  display: flex; align-items: center; gap: 8px;
-  padding: 13px 16px; cursor: pointer; user-select: none;
-  font-size: 0.9rem; font-weight: 600; color: var(--text);
-  list-style: none;
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 13px 16px; cursor: pointer; user-select: none; text-align: left;
+  font-family: inherit; font-size: 0.9rem; font-weight: 600; color: var(--text);
+  background: transparent; border: 0; appearance: none; list-style: none;
 }
 .vp-os .cz-group__head::-webkit-details-marker { display: none; }
 .vp-os .cz-group__head::after {
   content: "⌄"; margin-left: auto; font-size: 1rem; color: var(--text-2);
   transition: transform .15s; transform: translateY(-2px) rotate(0deg);
 }
-.vp-os .cz-group[open] > .cz-group__head::after { transform: translateY(0) rotate(180deg); }
+.vp-os .cz-group--open > .cz-group__head::after { transform: translateY(0) rotate(180deg); }
 .vp-os .cz-group__head:hover { background: var(--bg-surface-2); }
+.vp-os .cz-group--open { border-color: var(--border-strong); }
+.vp-os .cz-group--open > .cz-group__head { background: var(--bg-surface-2); color: var(--text); }
 .vp-os .cz-group__hint {
   font-size: 0.68rem; font-weight: 600; letter-spacing: .03em; text-transform: uppercase;
   color: #fff; background: var(--brand); padding: 2px 7px; border-radius: var(--r-full);
 }
-.vp-os .cz-group__body { padding: 4px 16px 16px; border-top: 1px solid var(--border); }
+.vp-os .cz-group__body { display: none; padding: 4px 16px 16px; border-top: 1px solid var(--border); }
+.vp-os .cz-group--open > .cz-group__body { display: block; }
 
 /* Preview stage. */
 .vp-os .customizer__stage {
@@ -1803,6 +1809,14 @@
   pointer-events: none; z-index: 2;
 }
 .vp-os .customizer__frame-loading[hidden] { display: none; }
+
+/* Brand logo + navigation editor rows in the customizer panel */
+.vp-os .cz-logo { display: flex; align-items: center; gap: 12px; }
+.vp-os .cz-logo__img { border-radius: 8px; background: var(--bg-surface-2); object-fit: cover; border: 1px solid var(--border); }
+.vp-os .cz-logo__title { font-size: 0.85rem; font-weight: 600; color: var(--text); }
+.vp-os .cz-nav-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+.vp-os .cz-nav-row input[data-nav-label] { flex: 1; min-width: 0; }
+.vp-os .cz-nav-row input[data-nav-href] { flex: 2; min-width: 0; }
 
 
 .vp-os .theme-presets { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 12px; }
@@ -2200,6 +2214,34 @@
 .seg-btn .muted{font-weight:500;opacity:.7;margin-left:.3em}
 .seg-btn:hover{color:var(--text)}
 .seg-btn.is-active{background:var(--bg-surface);color:var(--text);box-shadow:var(--sh-sm)}
+/* Status tabs are now <a> links (server-side filtering) — strip the underline. */
+.vp-os a.seg-btn{text-decoration:none}
+
+/* ── Posts manager: filter bar + pagination (CSP-safe, no inline styles) ───── */
+.vp-os .posts-filter{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2)}
+.vp-os .posts-filter .search-input{min-width:200px}
+.vp-os .posts-filter-date{display:inline-flex;align-items:center;gap:.4em;font-size:var(--text-xs);color:var(--text-3);white-space:nowrap}
+.vp-os .posts-filter-date .input{width:auto}
+.vp-os .select--inline,.vp-os .select--sm{width:auto;padding-top:.375rem;padding-bottom:.375rem;font-size:var(--text-xs)}
+
+.vp-os .pager{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-3);margin-top:var(--sp-4);padding-top:var(--sp-4);border-top:1px solid var(--border)}
+.vp-os .pager-info{color:var(--text-3);font-size:var(--text-sm)}
+.vp-os .pager-info strong{color:var(--text-2);font-weight:600}
+.vp-os .pager-controls{display:inline-flex;flex-wrap:wrap;align-items:center;gap:2px;margin-left:auto}
+.vp-os .pager-btn{display:inline-flex;align-items:center;justify-content:center;min-width:34px;height:34px;padding:0 .6em;border:1px solid var(--border);border-radius:var(--r-sm);background:var(--bg-surface-2);color:var(--text-2);font:600 var(--text-sm) var(--font-body);text-decoration:none;cursor:pointer;transition:background var(--t-fast),color var(--t-fast),border-color var(--t-fast)}
+.vp-os a.pager-btn:hover{background:var(--bg-surface-3);color:var(--text);border-color:var(--border-strong)}
+.vp-os .pager-btn.is-current{background:var(--brand);border-color:var(--brand);color:#fff;cursor:default}
+.vp-os .pager-btn.is-disabled{opacity:.4;cursor:not-allowed;pointer-events:none}
+.vp-os .pager-gap{padding:0 .3em;color:var(--text-3)}
+.vp-os .pager-jump{display:inline-flex;align-items:center;gap:.4em;font-size:var(--text-xs);color:var(--text-3)}
+.vp-os .pager-jump-label{display:inline-flex;align-items:center;gap:.4em;white-space:nowrap}
+.vp-os .pager-jump-input{width:5em;text-align:center}
+.vp-os .pager-jump-total{white-space:nowrap}
+@media (max-width:720px){
+  .vp-os .pager{flex-direction:column;align-items:stretch}
+  .vp-os .pager-controls{margin-left:0;justify-content:center}
+  .vp-os .pager-jump{justify-content:center}
+}
 
 
 /* ── VayuMail panel (CSP-safe: no inline styles) ───────────────────────────── */
@@ -2521,29 +2563,38 @@
 
 
 /* ── VayuAnalytics: tabbed layout + premium live view ──────────────────────── */
-/* Tab bar (buttons). Reuses .tab styling; reset native <button> chrome and let
-   the bar scroll horizontally on small screens instead of wrapping awkwardly. */
+/* Tab bar (buttons) — clean wrapping pills. Wraps onto multiple lines instead
+   of showing a horizontal scrollbar, so every section is reachable at a glance. */
 .vp-os .vm-analytics-tabs {
-  flex-wrap: nowrap;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: thin;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  border-bottom: none;
+  margin-bottom: var(--sp-5);
+  overflow: visible;
 }
 .vp-os button.tab {
-  background: none;
-  border: none;
-  border-bottom: 2px solid transparent;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-full);
   cursor: pointer;
   white-space: nowrap;
   color: var(--text-3);
   font: inherit;
   font-size: var(--text-sm);
+  font-weight: 500;
+  padding: 0.4rem 0.9rem;
   display: inline-flex;
   align-items: center;
-  gap: 0.35em;
+  gap: 0.4em;
+  transition: color var(--t-fast), background var(--t-fast), border-color var(--t-fast);
 }
-.vp-os button.tab:hover { color: var(--text-2); }
-.vp-os button.tab.tab--active { color: var(--brand); border-bottom-color: var(--brand); }
+.vp-os button.tab:hover { color: var(--text); border-color: var(--border-strong); }
+.vp-os button.tab.tab--active {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: #fff;
+}
 .vp-os .vm-tab-ico { font-size: 1em; line-height: 1; }
 .vp-os .vm-tab-panel { animation: vm-fade-in var(--t, 160ms) ease; }
 @keyframes vm-fade-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
@@ -2573,6 +2624,13 @@
   margin-right: 0.45em;
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.12);
   background: var(--bg-surface-2);
+}
+/* Neutral globe placeholder for visitors with no known country (no GeoIP). */
+.vp-os .vp-flag-unknown {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2399a' stroke-width='2'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18'/%3E%3C/svg%3E");
+  background-size: cover;
+  background-position: center;
+  box-shadow: none;
 }
 
 @media (max-width: 860px) {

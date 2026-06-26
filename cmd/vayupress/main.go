@@ -547,6 +547,11 @@ func main() {
 	// Wire render package version.
 	render.Version = Version
 
+	// Drop stale pre-rendered public HTML when the renderer changed (new release,
+	// edited templates, or restyled cards) so a redeploy always serves the
+	// current design instead of a cached older home/tag page.
+	render.ReconcileCacheVersion()
+
 	// Meilisearch startup — search service handles the circuit breaker internally.
 	if search.WaitReady(context.Background(), a.search, 12) {
 		logging.LogInfo("main", "Meilisearch ready")
