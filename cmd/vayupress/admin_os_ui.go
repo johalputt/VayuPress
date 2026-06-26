@@ -71,6 +71,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 	r.Get("/os/static/js/admin-os-tools.js", serveAdminOSAsset("js/admin-os-tools.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-monitoring.js", serveAdminOSAsset("js/admin-os-monitoring.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-theme.js", serveAdminOSAsset("js/admin-os-theme.js", "application/javascript; charset=utf-8"))
+	r.Get("/os/static/js/theme-preview-frame.js", serveAdminOSAsset("js/theme-preview-frame.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-theme-store.js", serveAdminOSAsset("js/admin-os-theme-store.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-mail.js", serveAdminOSAsset("js/admin-os-mail.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/purify.min.js", serveAdminOSAsset("js/purify.min.js", "application/javascript; charset=utf-8"))

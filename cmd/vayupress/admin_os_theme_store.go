@@ -295,16 +295,11 @@ func (a *App) handleOSThemePreview(w http.ResponseWriter, r *http.Request) {
 		title = tok.Name
 	}
 
-	// A tiny nonce'd script lets the parent Studio hot-swap the stylesheet (on a
-	// new draft) WITHOUT reloading the document — instant, flicker-free preview.
-	// It only accepts same-origin messages and only same-origin preview hrefs.
-	swap := `<script nonce="` + nonce + `">(function(){var l=document.getElementById('vayu-theme-css');` +
-		`function ok(h){return typeof h==='string'&&h.indexOf('/os/theme/preview.css?')===0;}` +
-		`window.addEventListener('message',function(e){if(e.origin!==location.origin)return;var d=e.data||{};` +
-		`if(d.type==='vayu-preview-css'&&ok(d.href)){var n=l.cloneNode(false);n.href=d.href;` +
-		`n.addEventListener('load',function(){if(l&&l!==n&&l.parentNode)l.parentNode.removeChild(l);l=n;});` +
-		`l.parentNode.insertBefore(n,l.nextSibling);}});` +
-		`try{if(window.parent&&window.parent!==window)window.parent.postMessage({type:'vayu-preview-ready'},location.origin);}catch(_){}})();</script>`
+	// The preview iframe hot-swaps its stylesheet on a same-origin postMessage.
+	// That logic lives in an EXTERNAL same-origin script (script-src 'self'), so
+	// it is always allowed by the strict CSP — unlike an inline nonce'd script,
+	// which can silently fail and make live updates appear broken.
+	swap := `<script src="/os/static/js/theme-preview-frame.js"></script>`
 
 	page := `<!doctype html><html lang="en"><head><meta charset="utf-8">` +
 		`<meta name="viewport" content="width=device-width, initial-scale=1">` +
