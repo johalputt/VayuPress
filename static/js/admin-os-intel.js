@@ -133,12 +133,13 @@
     });
   }
 
-  // Fill the live-countries table with a flag <img> + name + count.
+  // Fill the live-countries table with a flag <img> (or a neutral globe for
+  // unknown locations) + name + count. Resilient to old/new payload shapes.
   function fillCountries(el, items) {
     if (!el) return;
     clear(el);
     items = items || [];
-    if (!items.length) { emptyRow(el, 2, 'No location data (needs a geo-header proxy).'); return; }
+    if (!items.length) { emptyRow(el, 2, 'No active visitors right now.'); return; }
     items.forEach(function (c) {
       var tr = document.createElement('tr');
       var label = document.createElement('td');
@@ -151,9 +152,13 @@
         img.width = 20; img.height = 15;
         img.loading = 'lazy';
         label.appendChild(img);
-        label.appendChild(document.createTextNode(' '));
+      } else {
+        var globe = document.createElement('span');
+        globe.className = 'vp-flag-img vp-flag-unknown';
+        globe.setAttribute('aria-hidden', 'true');
+        label.appendChild(globe);
       }
-      label.appendChild(document.createTextNode(c.name || c.code || '(unknown)'));
+      label.appendChild(document.createTextNode(' ' + (c.name || c.label || c.code || 'Unknown')));
       var n = document.createElement('td');
       n.textContent = String(c.count || 0);
       tr.appendChild(label);

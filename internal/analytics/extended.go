@@ -585,6 +585,18 @@ func (s *Store) Realtime(ctx context.Context) (*RealtimeStats, error) {
 		rows.Close()
 	}
 
+	// Active visitors with no proxy-supplied country are bucketed as "Unknown"
+	// (Label empty) so the live panel still accounts for everyone rather than
+	// silently dropping them. VayuPress does no GeoIP — country is only known
+	// when a reverse proxy sets a geo header.
+	var unknownCountry int
+	_ = s.db.QueryRowContext(ctx,
+		`SELECT COUNT(DISTINCT p.session_id) FROM analytics_pageviews p JOIN analytics_sessions s ON p.session_id=s.id WHERE p.created_at>=? AND COALESCE(s.country,'')=''`, since).
+		Scan(&unknownCountry)
+	if unknownCountry > 0 {
+		rs.ActiveCountries = append(rs.ActiveCountries, AudienceStat{Label: "", Count: unknownCountry})
+	}
+
 	// How active visitors arrived (referrer host, recorded at ingest).
 	if rows, err := s.db.QueryContext(ctx,
 		`SELECT referrer,COUNT(1) FROM analytics_pageviews WHERE created_at>=? AND referrer!='' GROUP BY referrer ORDER BY 2 DESC LIMIT 10`, since); err == nil {
