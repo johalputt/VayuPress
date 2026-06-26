@@ -16,6 +16,7 @@ import (
 	"github.com/johalputt/vayupress/internal/aiassist"
 	"github.com/johalputt/vayupress/internal/analytics"
 	"github.com/johalputt/vayupress/internal/api"
+	"github.com/johalputt/vayupress/internal/apikeys"
 	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/collections"
 	"github.com/johalputt/vayupress/internal/comments"
@@ -38,6 +39,7 @@ import (
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/scheduler"
 	"github.com/johalputt/vayupress/internal/search"
+	"github.com/johalputt/vayupress/internal/secrets"
 	"github.com/johalputt/vayupress/internal/settings"
 	"github.com/johalputt/vayupress/internal/social"
 	"github.com/johalputt/vayupress/internal/update"
@@ -96,6 +98,11 @@ type App struct {
 
 	// Site/theme settings store (migration 006)
 	siteSettings *settings.Store
+
+	// API key management (migration 041): VayuPress's own rotatable bearer
+	// tokens, plus encrypted-at-rest third-party service credentials.
+	apiKeys *apikeys.Store
+	secrets *secrets.Store
 
 	// Plugin stores (wired at startup when DB is ready)
 	commentStore    *comments.Store
@@ -271,8 +278,24 @@ func (a *App) purgeCloudflare(slug string) {
 	}
 }
 
+// indexNowKey resolves the active IndexNow key, preferring a credential managed
+// from the VayuOS API Keys console (encrypted at rest) and falling back to the
+// INDEXNOW_KEY environment variable. This lets operators set/rotate the key
+// from the admin panel without an env change or restart.
+func (a *App) indexNowKey() string {
+	if a.secrets != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		if k, _ := a.secrets.ProviderSecret(ctx, secrets.ProviderIndexNow); k != "" {
+			return k
+		}
+	}
+	return config.Cfg.IndexNowKey
+}
+
 func (a *App) pingIndexNow(slug string) {
-	if config.Cfg.IndexNowKey == "" {
+	indexNowKey := a.indexNowKey()
+	if indexNowKey == "" {
 		return
 	}
 	// Governance: IndexNow is an outbound mutation announcement. Suppress it in
@@ -286,8 +309,8 @@ func (a *App) pingIndexNow(slug string) {
 		return
 	}
 	body, err := json.Marshal(map[string]interface{}{
-		"host": config.Cfg.Domain, "key": config.Cfg.IndexNowKey,
-		"keyLocation": "https://" + config.Cfg.Domain + "/.well-known/" + config.Cfg.IndexNowKey + ".txt",
+		"host": config.Cfg.Domain, "key": indexNowKey,
+		"keyLocation": "https://" + config.Cfg.Domain + "/.well-known/" + indexNowKey + ".txt",
 		"urlList":     []string{"https://" + config.Cfg.Domain + "/" + slug},
 	})
 	if err != nil {

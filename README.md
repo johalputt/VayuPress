@@ -21,6 +21,24 @@
 > _Own your content. Own your communication. Own your infrastructure._
 > Publishing is the core identity, **VayuMail** the native sovereignty layer, **VayuPGP** the native privacy layer, and **VayuOS** the native control layer — all in a single Go binary, single process, single config.
 
+## What's New in v1.17.0
+
+> Full notes in [`CHANGELOG.md`](CHANGELOG.md)
+
+**API Keys console — manage every credential from VayuOS.**
+
+- **Issue, rotate and revoke API keys from the admin panel.** Mint as many
+  labelled keys as you need (deploy bot, CI, integrations) and rotate or revoke
+  any of them instantly — no restart. Only a SHA-256 hash is stored; the full
+  key is shown once at creation. The `API_KEY` env value still works as a
+  bootstrap credential. See ADR-0088.
+- **Encrypted third-party credentials.** Store the secrets VayuPress uses to
+  reach other services, **AES-256-GCM encrypted at rest** and shown only as a
+  masked hint. First-class cards for **IndexNow** (set the key in the UI — the
+  `/.well-known/<key>.txt` verification file is now served automatically),
+  **OpenRouter**, **Local AI (Ollama)**, **n8n**, plus a **custom** option for
+  anything else.
+
 ## What's New in v1.16.0
 
 > Full notes in [`CHANGELOG.md`](CHANGELOG.md)

@@ -8,6 +8,49 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [1.17.0] — 2026-06-26
+
+### Added
+
+- **API Keys console — a dedicated VayuOS surface for credential management.** A
+  new **API Keys** page (under *System* in the sidebar, and in the command
+  palette) brings two long-missing capabilities into the admin panel. See
+  ADR-0088.
+- **Issue, rotate and revoke your own API keys from the UI.** Previously the
+  VayuPress API accepted a single static key set via the `API_KEY` environment
+  variable. You can now mint as many labelled keys as you need at runtime —
+  for a deploy bot, CI, a third-party integration — and **rotate** or **revoke**
+  any of them instantly without a restart. Only a SHA-256 hash of each token is
+  stored; the full key is shown exactly once at creation/rotation and is never
+  recoverable afterwards. The `API_KEY` env value still works as a bootstrap
+  credential.
+- **Encrypted third-party service credentials.** Store the secrets VayuPress
+  uses to talk to other services directly in the admin panel, **sealed with
+  AES-256-GCM at rest** (the same scheme as VayuPGP, keyed off the master
+  secret). Secrets are shown only as a masked hint after saving and can be
+  revealed on demand. First-class cards ship for:
+  - **IndexNow** — set the submission key in the UI (no more env-only key, and
+    no manual file upload). The ownership-verification file at
+    `/.well-known/<key>.txt` is now served automatically whenever a key is
+    configured, so instant search-engine indexing works out of the box.
+  - **OpenRouter** — hosted access to a wide range of AI models via a single key.
+  - **Local AI (Ollama)** — point VayuPress at a self-hosted model runtime so AI
+    features run on infrastructure you control; no data leaves your server.
+  - **n8n** — wire VayuPress events into automation workflows via a webhook.
+  - **Custom** — store an API key for any other service by name.
+
+### Changed
+
+- The API authentication middleware now accepts keys issued from the API Keys
+  console in addition to the static `API_KEY`, with the same constant-time /
+  lockout protections.
+
+### Security
+
+- Third-party secrets and issued API keys are never persisted in clear text:
+  service credentials are AES-256-GCM encrypted, and API keys are stored as
+  one-way SHA-256 hashes.
+
 ## [1.16.0] — 2026-06-26
 
 ### Added

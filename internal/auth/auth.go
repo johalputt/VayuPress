@@ -466,6 +466,36 @@ func CSRFTokenMiddleware(next http.Handler) http.Handler {
 
 // ── API key middleware ────────────────────────────────────────────────────────
 
+// extraAPIKeyVerifier is an optional, runtime-registered verifier for
+// database-backed API keys (issued/rotated from the VayuOS admin panel; see
+// internal/apikeys). It is consulted in addition to the static bootstrap
+// API_KEY so operators can mint and revoke keys without a restart. Guarded by a
+// mutex so registration during startup is race-free against request handling.
+var (
+	extraAPIKeyMu       sync.RWMutex
+	extraAPIKeyVerifier func(presentedKey string) bool
+)
+
+// SetExtraAPIKeyVerifier registers (or clears, with nil) the additional API-key
+// verifier consulted by RequireAPIKey and HasValidAPIKey. Wired in main once the
+// API-key store is ready.
+func SetExtraAPIKeyVerifier(fn func(presentedKey string) bool) {
+	extraAPIKeyMu.Lock()
+	extraAPIKeyVerifier = fn
+	extraAPIKeyMu.Unlock()
+}
+
+// verifyExtraAPIKey reports whether a registered verifier accepts the key.
+func verifyExtraAPIKey(key string) bool {
+	if key == "" {
+		return false
+	}
+	extraAPIKeyMu.RLock()
+	fn := extraAPIKeyVerifier
+	extraAPIKeyMu.RUnlock()
+	return fn != nil && fn(key)
+}
+
 // RequireAPIKey is HTTP middleware that validates X-API-Key / Authorization: Bearer headers.
 func RequireAPIKey(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -487,8 +517,10 @@ func RequireAPIKey(next http.Handler) http.Handler {
 		}
 		// Constant-time comparison prevents timing attacks that could otherwise
 		// leak the configured key one byte at a time. An empty configured key is
-		// never a valid credential, even against an empty presented key.
-		if config.Cfg.APIKey == "" || subtle.ConstantTimeCompare([]byte(key), []byte(config.Cfg.APIKey)) != 1 {
+		// never a valid credential, even against an empty presented key. A
+		// database-backed key (issued from VayuOS) is accepted as a fallback.
+		staticOK := config.Cfg.APIKey != "" && subtle.ConstantTimeCompare([]byte(key), []byte(config.Cfg.APIKey)) == 1
+		if !staticOK && !verifyExtraAPIKey(key) {
 			RecordAuthFailure(ip)
 			writeAuthError(w, 401, "unauthorized", "invalid or missing API key", "https://docs.vayupress.com/api/auth")
 			return

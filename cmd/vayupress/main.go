@@ -28,6 +28,7 @@ import (
 	"github.com/johalputt/vayupress/internal/aiassist"
 	"github.com/johalputt/vayupress/internal/analytics"
 	"github.com/johalputt/vayupress/internal/api"
+	"github.com/johalputt/vayupress/internal/apikeys"
 	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/budget"
 	"github.com/johalputt/vayupress/internal/collections"
@@ -57,6 +58,7 @@ import (
 	"github.com/johalputt/vayupress/internal/resource"
 	"github.com/johalputt/vayupress/internal/scheduler"
 	"github.com/johalputt/vayupress/internal/search"
+	"github.com/johalputt/vayupress/internal/secrets"
 	"github.com/johalputt/vayupress/internal/settings"
 	"github.com/johalputt/vayupress/internal/social"
 	"github.com/johalputt/vayupress/internal/theme"
@@ -321,6 +323,14 @@ func main() {
 
 	// Site settings store — warm cache and push initial values into the render pipeline.
 	a.siteSettings = settings.New(dbpkg.DB)
+	// API key management (migration 041): VayuPress's own rotatable bearer
+	// tokens plus encrypted-at-rest third-party service credentials. The secrets
+	// store derives its AES-256-GCM key from the master secret (API_KEY), the
+	// same at-rest scheme as VayuPGP (ADR-0076/0088). Register the issued-key
+	// verifier so DB-backed keys authenticate API requests alongside API_KEY.
+	a.apiKeys = apikeys.New(dbpkg.DB)
+	a.secrets = secrets.New(dbpkg.DB, []byte(config.Cfg.APIKey))
+	auth.SetExtraAPIKeyVerifier(a.apiKeys.Verify)
 	if sv, err := a.siteSettings.GetAll(context.Background()); err == nil {
 		render.SetActiveSettings(render.SiteSettings{
 			Name:            sv[settings.KeySiteName],

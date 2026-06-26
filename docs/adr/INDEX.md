@@ -10,6 +10,7 @@
 | ADR | Title | Status | Owner | Date |
 |-----|-------|--------|-------|------|
 | [ADR-0001](ADR-0001-sqlite-first.md) | SQLite-First Data Layer | Accepted | Core | 2024-01-01 |
+| [ADR-0088](ADR-0088-api-keys-and-encrypted-credentials.md) | API Key Console & Encrypted Third-Party Credentials | Accepted | VayuOS | 2026-06-26 |
 | [ADR-0076](ADR-0076-vayupgp-at-rest-keys.md) | VayuPGP — Keys Encrypted At Rest | Accepted | VayuOS | 2026-06-24 |
 | [ADR-0077](ADR-0077-vayumail-outbound-pure-go.md) | VayuMail Outbound — Pure-Go (No Mox Fork) | Accepted | VayuOS | 2026-06-24 |
 | [ADR-0078](ADR-0078-vayumail-inbound-optin.md) | VayuMail Inbound — Opt-In SMTP/IMAP | Accepted | VayuOS | 2026-06-24 |

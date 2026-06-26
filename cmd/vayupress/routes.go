@@ -151,6 +151,13 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	// VayuPGP Web Key Directory — public key discovery (RFC WKD advanced method).
 	r.Get("/.well-known/openpgpkey/*", a.handleWKD)
 
+	// IndexNow key verification file. Search engines fetch
+	// /.well-known/<key>.txt and expect the body to equal <key>. We serve it
+	// dynamically from the active IndexNow key (managed in the VayuOS API Keys
+	// console, with env fallback) so enabling IndexNow needs no manual file
+	// upload — the verification file simply exists once a key is configured.
+	r.Get("/.well-known/{file}", a.handleIndexNowKeyFile)
+
 	// Reader memberships (Tier 2) — public passwordless login + paywall.
 	r.Get("/signup", a.handleMemberSignup)
 	r.Post("/api/v1/members/login", a.handleMemberLogin)
