@@ -82,6 +82,7 @@ func TestQueueRetryAndDeliver(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
+	db.SetMaxOpenConns(1) // :memory: is per-connection; pin the pool so migrations & queries share one DB
 	defer db.Close()
 
 	cfg := DefaultConfig()
@@ -123,6 +124,7 @@ func TestQueueRetryAndDeliver(t *testing.T) {
 func TestQueuePermanentFailure(t *testing.T) {
 	t.Parallel()
 	db, _ := sql.Open("sqlite3", ":memory:")
+	db.SetMaxOpenConns(1) // :memory: is per-connection; pin the pool so migrations & queries share one DB
 	defer db.Close()
 	cfg := DefaultConfig()
 	cfg.QueueMaxAttempts = 1
