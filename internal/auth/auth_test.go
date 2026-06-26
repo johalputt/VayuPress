@@ -151,7 +151,6 @@ func TestRequireAPIKeyEmptyConfigRejects(t *testing.T) {
 	}
 }
 
-
 // TestCSRFMiddlewareRefreshesStaleCookie guards the recovery path: a GET that
 // arrives with a stale/invalid vp_csrf cookie (e.g. after a CSRF-secret
 // rotation on restart) must be re-issued a fresh, valid token so that simply
