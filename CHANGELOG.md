@@ -8,6 +8,15 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Fixed
+
+- **VayuOS stylesheet/script updates now reach the browser immediately.** The
+  admin CSS/JS were cache-busted only by the release version, so iterative
+  changes within a build could be masked by a stale cached `admin-os.css`
+  (most visibly: the profile avatar preview rendering at full size). Assets are
+  now versioned by a short content hash, so an updated file is refetched as soon
+  as its content changes, while unchanged files stay cached.
+
 ### Added
 
 - **Premium membership system — multi-tier plans, a member portal, and revenue
