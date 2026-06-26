@@ -2211,6 +2211,34 @@
 .seg-btn .muted{font-weight:500;opacity:.7;margin-left:.3em}
 .seg-btn:hover{color:var(--text)}
 .seg-btn.is-active{background:var(--bg-surface);color:var(--text);box-shadow:var(--sh-sm)}
+/* Status tabs are now <a> links (server-side filtering) — strip the underline. */
+.vp-os a.seg-btn{text-decoration:none}
+
+/* ── Posts manager: filter bar + pagination (CSP-safe, no inline styles) ───── */
+.vp-os .posts-filter{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2)}
+.vp-os .posts-filter .search-input{min-width:200px}
+.vp-os .posts-filter-date{display:inline-flex;align-items:center;gap:.4em;font-size:var(--text-xs);color:var(--text-3);white-space:nowrap}
+.vp-os .posts-filter-date .input{width:auto}
+.vp-os .select--inline,.vp-os .select--sm{width:auto;padding-top:.375rem;padding-bottom:.375rem;font-size:var(--text-xs)}
+
+.vp-os .pager{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-3);margin-top:var(--sp-4);padding-top:var(--sp-4);border-top:1px solid var(--border)}
+.vp-os .pager-info{color:var(--text-3);font-size:var(--text-sm)}
+.vp-os .pager-info strong{color:var(--text-2);font-weight:600}
+.vp-os .pager-controls{display:inline-flex;flex-wrap:wrap;align-items:center;gap:2px;margin-left:auto}
+.vp-os .pager-btn{display:inline-flex;align-items:center;justify-content:center;min-width:34px;height:34px;padding:0 .6em;border:1px solid var(--border);border-radius:var(--r-sm);background:var(--bg-surface-2);color:var(--text-2);font:600 var(--text-sm) var(--font-body);text-decoration:none;cursor:pointer;transition:background var(--t-fast),color var(--t-fast),border-color var(--t-fast)}
+.vp-os a.pager-btn:hover{background:var(--bg-surface-3);color:var(--text);border-color:var(--border-strong)}
+.vp-os .pager-btn.is-current{background:var(--brand);border-color:var(--brand);color:#fff;cursor:default}
+.vp-os .pager-btn.is-disabled{opacity:.4;cursor:not-allowed;pointer-events:none}
+.vp-os .pager-gap{padding:0 .3em;color:var(--text-3)}
+.vp-os .pager-jump{display:inline-flex;align-items:center;gap:.4em;font-size:var(--text-xs);color:var(--text-3)}
+.vp-os .pager-jump-label{display:inline-flex;align-items:center;gap:.4em;white-space:nowrap}
+.vp-os .pager-jump-input{width:5em;text-align:center}
+.vp-os .pager-jump-total{white-space:nowrap}
+@media (max-width:720px){
+  .vp-os .pager{flex-direction:column;align-items:stretch}
+  .vp-os .pager-controls{margin-left:0;justify-content:center}
+  .vp-os .pager-jump{justify-content:center}
+}
 
 
 /* ── VayuMail panel (CSP-safe: no inline styles) ───────────────────────────── */

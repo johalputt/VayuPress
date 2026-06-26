@@ -28,9 +28,25 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Added
 
-- **Premium membership system — multi-tier plans, a member portal, and revenue
-  insight.** VayuPress memberships grow from a free/paid switch into a complete
-  membership product, all still sovereign and passwordless:
+- **Posts manager now paginates the full archive instead of capping at 500.**
+  The VayuOS Posts screen previously rendered a single hard `LIMIT 500` list, so
+  older posts beyond the 500th were unreachable. It now serves the archive in
+  pages of 100 (newest first on page 1) with a premium pager:
+  - **Page navigation** — First / Last, Prev / Next, a windowed run of numbered
+    pages around the current one, and **jump ±10 pages** controls for skating
+    through large archives. A "Go to page N of M" box jumps directly to any page.
+    Every control is a plain GET link/form, so navigation works without
+    JavaScript and stays within the strict CSP.
+  - **Find any post by time** — a time-range filter with quick presets (last 7 /
+    30 / 90 days, last 12 months) plus a custom **From / To** date range filters
+    posts by their created date so you can pull up a specific period instantly.
+  - **Server-side search & status tabs** — title/tag search and the
+    All / Published / Drafts tabs now filter across the entire archive (not just
+    the current page), and the tab counts reflect the active search/date filter.
+    A "showing X–Y of Z posts" summary keeps the position clear. All filters are
+    preserved in the URL, so a filtered view is shareable and survives reloads.
+
+
   - **Priced subscription tiers** — operators define named plans with monthly
     and/or yearly pricing, a description, and a benefit list. Two tiers ship
     seeded (Free and Premium); add, edit, hide, or archive more from the Members
