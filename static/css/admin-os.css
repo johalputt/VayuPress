@@ -2637,3 +2637,54 @@
   .vp-os .vm-live-grid { grid-template-columns: 1fr; }
   .vp-os .vm-live-count { font-size: 2.4rem; }
 }
+
+
+/* ── Update & Backup panel (admin_os_update.go) ──────────────────────────── */
+.vp-os .settings-callout {
+  display: flex;
+  flex-direction: column;
+  gap: .35rem;
+  padding: .9rem 1.1rem;
+  margin-bottom: 1.5rem;
+  border: 1px solid var(--border, #2a2a2a);
+  border-left: 3px solid var(--brand, #7c83ff);
+  border-radius: 10px;
+  background: var(--surface-2, rgba(124, 131, 255, .06));
+}
+.vp-os .theme-actions {
+  display: flex;
+  gap: .5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.vp-os .update-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+  margin-bottom: .5rem;
+}
+.vp-os .update-version__value {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-top: .15rem;
+}
+.vp-os .update-version__value.is-available { color: var(--brand, #7c83ff); }
+.vp-os .update-notes {
+  margin-top: 1rem;
+  padding: .85rem 1rem;
+  max-height: 16rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: .85rem;
+  line-height: 1.5;
+  border: 1px solid var(--border, #2a2a2a);
+  border-radius: 8px;
+  background: var(--surface-2, rgba(127, 127, 127, .06));
+  color: var(--text-muted, #9ca3af);
+}
+.vp-os [data-update-msg].is-error,
+.vp-os [data-backup-msg].is-error { color: var(--danger, #ef4444); }
+@media (max-width: 720px) {
+  .vp-os .update-row { grid-template-columns: 1fr; }
+}

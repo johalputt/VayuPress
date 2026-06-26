@@ -71,7 +71,7 @@ import (
 	"github.com/johalputt/vayupress/internal/ws"
 )
 
-var Version = "1.15.0"
+var Version = "1.18.0"
 var bootTime = time.Now()
 
 // Immutable package-level values (compiled once, never mutated).
@@ -300,6 +300,16 @@ func main() {
 
 	if os.Getenv("VAYU_PLUGINS_ENABLED") == "true" {
 		a.pluginManager.Start(plugins.DefaultPoolSize, plugins.DefaultQueueDepth)
+	}
+
+	// Pending database restore (staged by a VayuOS backup import). This MUST run
+	// before the database is opened: it atomically swaps a validated snapshot
+	// over the live DB (taking a safety backup of the current file first), so the
+	// restore is crash-safe and completes on the very next start.
+	if restored, err := update.ApplyPendingRestore(config.Cfg.DBPath, config.Cfg.CacheDir+"/update-backups"); err != nil {
+		logging.LogError("main", "pending restore failed", err.Error())
+	} else if restored {
+		logging.LogInfo("main", "database restore applied from staged snapshot")
 	}
 
 	if err := dbpkg.Init(); err != nil {
