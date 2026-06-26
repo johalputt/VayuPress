@@ -33,6 +33,22 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   after a code is verified, so a half-finished enrolment can never lock anyone
   out.
 
+- **Role-based VayuMail access after portal sign-in, plus a new mail-only
+  role.** When a reader signs in with their VayuMail mailbox, they can now open
+  VayuMail according to that account's role: an `administrator` mailbox reaches
+  the full VayuOS console, while every other role is confined to the VayuMail
+  surface only. A new **mailbox** role (mail only, no console) joins the
+  existing administrator/editor/author/reviewer roles for handing out
+  pure-email identities. The portal account view surfaces an "Open VayuMail"
+  (or full-console) shortcut, and signing out clears both sessions at once.
+
+- **Commenting is now members-only.** Posting a comment requires an
+  authenticated member session — readers sign in via the membership portal
+  (magic link) or with a VayuMail mailbox — and the commenter's identity is
+  taken from that session rather than the request body, so comments can no
+  longer be posted anonymously or under a spoofed identity. The comment widget
+  shows a "Sign in to comment" prompt to signed-out readers.
+
 ### Security
 
 - **VayuMail is now role-scoped: non-admin staff can only operate their own

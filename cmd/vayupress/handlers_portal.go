@@ -27,6 +27,7 @@ import (
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/settings"
 	"github.com/johalputt/vayupress/internal/totp"
+	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
 )
 
 // setMemberSessionCookie writes the member session cookie with the same
@@ -68,12 +69,23 @@ func (a *App) handleMemberMe(w http.ResponseWriter, r *http.Request) {
 	}
 	if m := a.resolveMember(r); m != nil {
 		resp["authenticated"] = true
-		resp["member"] = map[string]interface{}{
+		mem := map[string]interface{}{
 			"email": m.Email,
 			"name":  m.DisplayName(),
 			"tier":  m.Tier,
 			"paid":  m.IsPaid(),
 		}
+		// When this member also holds a VayuMail mailbox, advertise the role so
+		// the portal can offer an "Open VayuMail" (or full console) shortcut.
+		if a.vayuMailLoginEnabled() {
+			if role := a.vayuMail.Accounts().RoleFor(r.Context(), m.Email); role != "" {
+				mem["mail"] = map[string]interface{}{
+					"role":  role,
+					"admin": role == vmail.RoleAdministrator,
+				}
+			}
+		}
+		resp["member"] = mem
 	}
 	writeJSON(w, r, http.StatusOK, resp)
 }

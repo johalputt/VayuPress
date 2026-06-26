@@ -123,6 +123,12 @@ const PortalJS = `(function () {
     var name = m.name || 'there';
     var initial = (name.charAt(0) || '?').toUpperCase();
     var plan = m.paid ? 'Premium member' : 'Free member';
+    var mailBtn = '';
+    if (m.mail) {
+      mailBtn = m.mail.admin
+        ? '<a class="vp-portal-btn" href="/os">Open VayuOS console</a>'
+        : '<a class="vp-portal-btn" href="/os/vayuos/mail/inbox">Open VayuMail</a>';
+    }
     return '<div class="vp-portal-account-id">' +
       '<div class="vp-portal-avatar">' + esc(initial) + '</div>' +
       '<div><div class="vp-portal-acc-name">' + esc(name) + '</div>' +
@@ -130,6 +136,7 @@ const PortalJS = `(function () {
       '<div class="vp-portal-plan"><div class="vp-portal-plan-label">Your plan</div>' +
       '<div class="vp-portal-plan-name">' + esc(plan) + '</div></div>' +
       '<div class="vp-portal-actions">' +
+      mailBtn +
       '<a class="vp-portal-btn vp-portal-btn--ghost" href="/members/account">Manage account</a>' +
       (m.paid ? '' : '<a class="vp-portal-btn" href="/pricing">See membership plans</a>') +
       '<button type="button" class="vp-portal-btn vp-portal-btn--ghost" data-vp-logout>Sign out</button>' +
@@ -305,6 +312,9 @@ const PortalJS = `(function () {
         state.member = d.member || null;
         ensureCSS();
         buildShell();
+        // Expose a programmatic opener so other public widgets (e.g. the
+        // comment box) can prompt sign-in through the same portal.
+        window.vpPortalOpen = function (v) { open(v); };
       })
       .catch(function () {});
   }

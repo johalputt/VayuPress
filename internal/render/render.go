@@ -563,23 +563,33 @@ const CommentsJS = `(function(){` +
 	`function load(){fetch('/api/v1/articles/'+encodeURIComponent(slug)+'/comments',{headers:{'Accept':'application/json'}})` +
 	`.then(function(r){return r.ok?r.json():{comments:[]};}).then(function(d){render(d.comments||[]);}).catch(function(){render([]);});}` +
 	`var h=document.createElement('h2');h.className='vayu-comment-heading';h.textContent='Comments';` +
-	`var form=document.createElement('form');form.className='vayu-comment-form';form.setAttribute('novalidate','');` +
+	`root.appendChild(h);root.appendChild(listEl);load();` +
+	`var compose=document.createElement('div');compose.className='vayu-comment-compose';root.appendChild(compose);` +
 	`function field(ph,type,req){var i=document.createElement(type==='textarea'?'textarea':'input');if(type!=='textarea')i.type=type;i.placeholder=ph;if(req)i.required=true;i.className='vayu-comment-input';return i;}` +
-	`var nameI=field('Your name','text',true);` +
-	`var mailI=field('Email (optional, never shown)','email',false);` +
+	`function clear(n){while(n.firstChild)n.removeChild(n.firstChild);}` +
+	`function guestPrompt(){clear(compose);` +
+	`var p=document.createElement('p');p.className='vayu-comment-gate';p.textContent='Please sign in as a member to join the conversation.';` +
+	`var b=document.createElement('button');b.type='button';b.className='vayu-comment-submit';b.textContent='Sign in to comment';` +
+	`b.addEventListener('click',function(){if(typeof window.vpPortalOpen==='function'){window.vpPortalOpen('signin');}else{window.location.href='/members';}});` +
+	`compose.appendChild(p);compose.appendChild(b);}` +
+	`function memberForm(name){clear(compose);` +
+	`var who=document.createElement('p');who.className='vayu-comment-as';who.textContent='Commenting as '+(name||'you');` +
+	`var form=document.createElement('form');form.className='vayu-comment-form';form.setAttribute('novalidate','');` +
 	`var bodyI=field('Write a comment…','textarea',true);` +
 	`var btn=document.createElement('button');btn.type='submit';btn.className='vayu-comment-submit';btn.textContent='Post comment';` +
 	`var status=document.createElement('span');status.className='vayu-comment-status';status.setAttribute('role','status');` +
-	`form.appendChild(nameI);form.appendChild(mailI);form.appendChild(bodyI);` +
+	`form.appendChild(bodyI);` +
 	`var actions=document.createElement('div');actions.className='vayu-comment-actions';actions.appendChild(btn);actions.appendChild(status);form.appendChild(actions);` +
 	`form.addEventListener('submit',function(e){e.preventDefault();` +
-	`if(!nameI.value.trim()||!bodyI.value.trim()){status.textContent='Name and comment are required.';return;}` +
+	`if(!bodyI.value.trim()){status.textContent='Please write a comment.';return;}` +
 	`btn.disabled=true;status.textContent='Posting…';` +
-	`fetch('/api/v1/articles/'+encodeURIComponent(slug)+'/comments',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({author:nameI.value.trim(),email:mailI.value.trim(),body:bodyI.value.trim()})})` +
-	`.then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d};});})` +
-	`.then(function(res){btn.disabled=false;if(res.ok){nameI.value='';mailI.value='';bodyI.value='';status.textContent='Thanks! Your comment is awaiting moderation.';}else{status.textContent=(res.d&&(res.d.error&&(res.d.error.message||res.d.error)||res.d.message))||'Could not post comment.';}})` +
+	`fetch('/api/v1/articles/'+encodeURIComponent(slug)+'/comments',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({body:bodyI.value.trim()})})` +
+	`.then(function(r){return r.json().then(function(d){return{ok:r.ok,status:r.status,d:d};});})` +
+	`.then(function(res){btn.disabled=false;if(res.ok){bodyI.value='';status.textContent='Thanks! Your comment is awaiting moderation.';}else if(res.status===401){guestPrompt();}else{status.textContent=(res.d&&res.d.error&&(res.d.error.message||res.d.error))||'Could not post comment.';}})` +
 	`.catch(function(){btn.disabled=false;status.textContent='Network error — please try again.';});});` +
-	`root.appendChild(h);root.appendChild(listEl);root.appendChild(form);load();` +
+	`compose.appendChild(who);compose.appendChild(form);}` +
+	`fetch('/api/v1/members/me',{credentials:'same-origin',headers:{'Accept':'application/json'}})` +
+	`.then(function(r){return r.ok?r.json():null;}).then(function(d){if(d&&d.authenticated&&d.member){memberForm(d.member.name);}else{guestPrompt();}}).catch(function(){guestPrompt();});` +
 	`})();`
 
 var commentsJSHash = func() string {

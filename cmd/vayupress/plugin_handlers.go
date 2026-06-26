@@ -98,6 +98,15 @@ func (a *App) handleCommentSubmit(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusForbidden, "comments-off", "Comments are disabled by the operator", "")
 		return
 	}
+	// Commenting is restricted to authenticated members. Readers sign in either
+	// through the membership portal (magic link) or with a VayuMail mailbox —
+	// both produce a member session — so a valid session here means "member or
+	// VayuMail account holder". Anonymous posts are refused.
+	member := a.resolveMember(r)
+	if member == nil {
+		writeAPIError(w, r, http.StatusUnauthorized, "members-only", "Please sign in as a member to comment", "")
+		return
+	}
 	slug := chi.URLParam(r, "slug")
 
 	var body struct {
@@ -108,6 +117,13 @@ func (a *App) handleCommentSubmit(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "bad-json", "Invalid request body", "")
 		return
+	}
+	// Identity comes from the authenticated member, not the client payload, so a
+	// commenter cannot impersonate someone else. An optional display name is
+	// honoured but the email is always the session's.
+	author := strings.TrimSpace(body.Author)
+	if author == "" {
+		author = member.DisplayName()
 	}
 
 	// Resolve article ID from slug. Drafts are not public, so commenting on one
@@ -123,7 +139,7 @@ func (a *App) handleCommentSubmit(w http.ResponseWriter, r *http.Request) {
 		ip = strings.Split(fwd, ",")[0]
 	}
 
-	c, err := a.commentStore.Submit(r.Context(), articleID, body.Author, body.Email, body.Body, ip)
+	c, err := a.commentStore.Submit(r.Context(), articleID, author, member.Email, body.Body, ip)
 	if err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "comment-error", err.Error(), "")
 		return

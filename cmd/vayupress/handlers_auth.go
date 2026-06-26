@@ -19,11 +19,17 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/users"
+	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
 )
 
 type ctxKey string
 
 const ctxUserKey ctxKey = "vp_user"
+
+// ctxMailOnlyKey marks a request whose VayuOS access was granted via a
+// VayuMail mailbox login that is NOT an administrator — such sessions are
+// confined to the VayuMail surface (see requireSessionOrAPIKey).
+const ctxMailOnlyKey ctxKey = "vp_mail_only"
 
 // currentUser returns the authenticated user attached to the request, if any.
 func currentUser(r *http.Request) *users.User {
@@ -56,6 +62,22 @@ func (a *App) requireSessionOrAPIKey(next http.Handler) http.Handler {
 				}
 			}
 		}
+		// Fallback: a reader who signed in with their VayuMail mailbox (via the
+		// membership portal) may open VayuMail according to that account's role.
+		// Administrators get the full console; every other mail role is confined
+		// to the VayuMail surface ("only mail → only VayuMail").
+		if u, mailOnly, ok := a.resolveMailMember(r); ok {
+			if mailOnly && !mailOnlyPathAllowed(r.URL.Path) {
+				http.Redirect(w, r, "/os/vayuos/mail/inbox", http.StatusSeeOther)
+				return
+			}
+			ctx := context.WithValue(r.Context(), ctxUserKey, u)
+			if mailOnly {
+				ctx = context.WithValue(ctx, ctxMailOnlyKey, true)
+			}
+			next.ServeHTTP(w, r.WithContext(ctx))
+			return
+		}
 		// Unauthenticated.
 		if strings.Contains(r.Header.Get("Accept"), "application/json") ||
 			r.Header.Get("X-Requested-With") == "XMLHttpRequest" {
@@ -64,6 +86,58 @@ func (a *App) requireSessionOrAPIKey(next http.Handler) http.Handler {
 		}
 		http.Redirect(w, r, "/os/login", http.StatusSeeOther)
 	})
+}
+
+// resolveMailMember attempts to authenticate the request as a VayuMail mailbox
+// holder who signed in through the membership portal. It returns a synthesized
+// admin-context user plus a mailOnly flag:
+//
+//   - administrator mail role → full VayuOS access (mailOnly = false)
+//   - any other mail role     → confined to the VayuMail surface (mailOnly = true)
+//
+// The synthesized user is never persisted; its ID is prefixed "vmail:" so it
+// can never collide with a real CMS user, and its MailAddress is set so the
+// existing per-mailbox scoping (ownMailbox) resolves to the holder's own inbox.
+func (a *App) resolveMailMember(r *http.Request) (u *users.User, mailOnly bool, ok bool) {
+	if a.vayuMail == nil || !a.vayuMail.Config().Enabled || a.vayuMail.Accounts() == nil {
+		return nil, false, false
+	}
+	m := a.resolveMember(r)
+	if m == nil {
+		return nil, false, false
+	}
+	role := a.vayuMail.Accounts().RoleFor(r.Context(), m.Email)
+	if role == "" {
+		return nil, false, false // not a VayuMail account
+	}
+	su := &users.User{
+		ID:          "vmail:" + m.Email,
+		Email:       m.Email,
+		Name:        m.DisplayName(),
+		MailAddress: m.Email,
+	}
+	if role == vmail.RoleAdministrator {
+		su.Role = users.RoleAdmin
+		return su, false, true
+	}
+	// Every non-administrator mail role (mailbox/author/editor/reviewer) maps to
+	// a non-admin console identity that is locked to the mail surface.
+	su.Role = users.RoleAuthor
+	return su, true, true
+}
+
+// mailOnlyPathAllowed reports whether a mail-only (non-administrator) VayuMail
+// session may reach the given VayuOS path. Such sessions are restricted to the
+// VayuMail pages and the static assets those pages need; everything else is
+// redirected back to the inbox.
+func mailOnlyPathAllowed(path string) bool {
+	switch {
+	case strings.HasPrefix(path, "/os/vayuos/mail"),
+		strings.HasPrefix(path, "/os/static"),
+		strings.HasPrefix(path, "/os/api/vayuos"):
+		return true
+	}
+	return false
 }
 
 // loginClientIP returns the client IP used to key login brute-force lockout.

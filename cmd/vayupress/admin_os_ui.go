@@ -707,6 +707,17 @@ func (a *App) handleOSLogout(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	auth.ClearSessionCookie(w)
+	// Also end any membership session, so a reader who reached VayuMail via the
+	// portal (VayuMail mailbox login) is signed out completely from one action.
+	if a.members != nil {
+		if c, err := r.Cookie(memberCookie); err == nil && c.Value != "" {
+			_ = a.members.DestroySession(r.Context(), c.Value)
+		}
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name: memberCookie, Value: "", Path: "/", HttpOnly: true,
+		Secure: config.Cfg.Domain != "localhost", SameSite: http.SameSiteLaxMode, MaxAge: -1,
+	})
 	http.Redirect(w, r, "/os/login", http.StatusSeeOther)
 }
 
