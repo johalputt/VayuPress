@@ -80,3 +80,23 @@ article.vayu-prose h1,.vayu-article-header h1{font-family:Georgia,"Times New Rom
 .content h2,.content h3{font-family:Georgia,"Times New Roman",serif}
 .content>p:first-of-type::first-letter{font-family:Georgia,serif;font-size:3.4rem;font-weight:700;float:left;line-height:.8;padding:.1em .12em 0 0;color:var(--vp-accent)}
 .vayu-footer{border-top:2px solid var(--vp-text)}
+
+/* ── Whole-site coverage — Gale (editorial): serif, square, rule-based ────── */
+.vayu-post-card--media .vayu-post-thumb{border-radius:0;overflow:hidden;margin-bottom:1.1rem;filter:grayscale(.15)}
+.vayu-post-card--media .vayu-post-thumb img{width:100%;aspect-ratio:16/9;object-fit:cover;display:block}
+.vayu-post-author{font-family:Georgia,serif;font-style:italic}
+.vayu-author-box{display:flex;gap:1.1rem;align-items:flex-start;border-top:1px solid color-mix(in srgb,var(--vp-muted) 24%,transparent);border-bottom:1px solid color-mix(in srgb,var(--vp-muted) 24%,transparent);padding:1.6rem 0;margin:2.6rem 0}
+.vayu-author-avatar{border-radius:0}
+.vayu-author-name{font-family:Georgia,"Times New Roman",serif;font-weight:700;font-size:1.15rem}
+.vayu-author-bio{font-family:Georgia,serif;color:var(--vp-muted)}
+.vayu-related-heading{font-family:Georgia,serif;font-style:italic;text-transform:none;letter-spacing:0;color:var(--vp-accent)}
+.vayu-related-list a{font-family:Georgia,"Times New Roman",serif;font-size:1.1rem}
+.vayu-comments{border-top:1px solid color-mix(in srgb,var(--vp-muted) 24%,transparent);margin-top:2.6rem;padding-top:1.6rem}
+.vayu-footer-main{display:grid;grid-template-columns:1.5fr 1fr 1fr;gap:2rem}
+.vayu-footer-brand{font-family:Georgia,"Times New Roman",serif;font-weight:700;font-size:1.2rem}
+.vayu-footer-col-title{font-family:Georgia,serif;font-style:italic;text-transform:none;letter-spacing:0;color:var(--vp-accent)}
+.vayu-footer-col-links a{color:var(--vp-muted)}
+.vayu-footer-col-links a:hover{color:var(--vp-text)}
+.vayu-footer-bottom{border-top:1px solid color-mix(in srgb,var(--vp-muted) 24%,transparent);padding-top:1rem;margin-top:1.5rem}
+.content blockquote{border-left:3px solid var(--vp-accent);padding-left:1.2rem;font-family:Georgia,serif;font-style:italic;font-size:1.25rem;color:var(--vp-text)}
+.content img{border-radius:0}

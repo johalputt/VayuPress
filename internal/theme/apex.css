@@ -349,3 +349,23 @@
 .vayu-post-arrow{display:none}
 article.vayu-prose h1,.vayu-article-header h1{font-size:clamp(2.2rem,5vw,3.4rem);font-weight:800;letter-spacing:-.03em;background:linear-gradient(135deg,var(--vp-text),var(--vp-accent));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
 .vayu-footer{border-top:1px solid color-mix(in srgb,var(--vp-muted) 16%,transparent)}
+
+/* ── Whole-site coverage — Apex (flagship): glass, gradient accents, shadow ── */
+.vayu-post-card--media{padding-top:0;overflow:hidden}
+.vayu-post-card--media .vayu-post-thumb{margin:-1.6rem -1.6rem 1.1rem;overflow:hidden}
+.vayu-post-card--media .vayu-post-thumb img{width:100%;aspect-ratio:16/9;object-fit:cover;display:block}
+.vayu-author-box{display:flex;gap:1.1rem;align-items:center;background:var(--vp-surface);border:1px solid color-mix(in srgb,var(--vp-muted) 16%,transparent);border-radius:1rem;box-shadow:0 6px 22px rgba(0,0,0,.10);padding:1.5rem;margin:2.6rem 0}
+.vayu-author-avatar{border-radius:50%}
+.vayu-author-name{font-weight:750;letter-spacing:-.01em}
+.vayu-author-bio{color:var(--vp-muted)}
+.vayu-related-heading{font-weight:800;background:linear-gradient(135deg,var(--vp-accent),var(--vp-accent2,var(--vp-hi)));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.vayu-related-list a{color:var(--vp-accent)}
+.vayu-comments{margin-top:2.6rem}
+.vayu-nav-signup{background:linear-gradient(135deg,var(--vp-accent),var(--vp-accent2,var(--vp-hi)));color:#fff;border-radius:2rem;padding:.45rem 1.2rem;font-weight:600}
+.vayu-footer-main{display:grid;grid-template-columns:1.6fr 1fr 1fr;gap:2rem}
+.vayu-footer-col-title{font-weight:750;letter-spacing:-.01em}
+.vayu-footer-col-links a{color:var(--vp-muted)}
+.vayu-footer-col-links a:hover{color:var(--vp-accent)}
+.vayu-footer-bottom{border-top:1px solid color-mix(in srgb,var(--vp-muted) 16%,transparent);padding-top:1rem;margin-top:1.5rem}
+.content blockquote{border-left:3px solid var(--vp-accent);background:var(--vp-surface);border-radius:0 1rem 1rem 0;padding:1rem 1.3rem}
+.content img{border-radius:1rem}

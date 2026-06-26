@@ -279,3 +279,24 @@
 .vayu-tag{border-radius:0;border:1.5px solid var(--vp-text);background:transparent;color:var(--vp-text);text-transform:uppercase;font-weight:700}
 article.vayu-prose h1,.vayu-article-header h1{font-size:clamp(2.6rem,7vw,4.4rem);font-weight:800;letter-spacing:-.04em;line-height:.98;text-transform:uppercase;-webkit-text-fill-color:currentColor;background:none;color:var(--vp-text)}
 .vayu-footer{border-top:3px solid var(--vp-text)}
+
+/* ── Whole-site coverage — Maverick (statement): sharp, heavy borders, caps ── */
+.vayu-post-card--media{padding-top:0;overflow:hidden}
+.vayu-post-card--media .vayu-post-thumb{margin:-1.5rem -1.5rem 1.1rem;overflow:hidden;border-bottom:2px solid var(--vp-text)}
+.vayu-post-card--media .vayu-post-thumb img{width:100%;aspect-ratio:16/9;object-fit:cover;display:block;filter:grayscale(.1) contrast(1.05)}
+.vayu-post-author{text-transform:uppercase;font-weight:700;letter-spacing:.04em}
+.vayu-author-box{display:flex;gap:1.1rem;align-items:flex-start;border:2px solid var(--vp-text);border-radius:0;padding:1.5rem;margin:2.6rem 0}
+.vayu-author-avatar{border-radius:0}
+.vayu-author-name{font-weight:800;text-transform:uppercase;letter-spacing:.02em}
+.vayu-author-bio{color:var(--vp-muted)}
+.vayu-related-heading{font-weight:800;text-transform:uppercase;letter-spacing:.1em}
+.vayu-related-list a{font-weight:700;text-transform:uppercase;font-size:.95rem}
+.vayu-comments{border-top:2px solid var(--vp-text);margin-top:2.6rem;padding-top:1.6rem}
+.vayu-nav-signup{border:2px solid var(--vp-text);border-radius:0;background:var(--vp-text);color:var(--vp-bg);text-transform:uppercase;font-weight:700;padding:.4rem 1rem}
+.vayu-footer-main{display:grid;grid-template-columns:1.5fr 1fr 1fr;gap:2rem}
+.vayu-footer-col-title{font-weight:800;text-transform:uppercase;letter-spacing:.08em}
+.vayu-footer-col-links a{color:var(--vp-muted)}
+.vayu-footer-col-links a:hover{color:var(--vp-text)}
+.vayu-footer-bottom{border-top:2px solid var(--vp-text);padding-top:1rem;margin-top:1.5rem;text-transform:uppercase;font-size:.78rem;letter-spacing:.04em}
+.content blockquote{border-left:6px solid var(--vp-text);padding-left:1.25rem;font-weight:700;font-size:1.25rem}
+.content img{border-radius:0;border:2px solid var(--vp-text)}
