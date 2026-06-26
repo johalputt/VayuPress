@@ -217,7 +217,7 @@ func (a *App) handleOSMembers(w http.ResponseWriter, r *http.Request) {
 
 	body := `<div class="page-header"><h1>Members</h1></div>` +
 		statGrid + tiersCard + teamCard + membersCard + modal +
-		`<script nonce="` + nonce + `" src="/os/static/js/admin-os-members.js"></script>`
+		`<script nonce="` + nonce + `" src="/os/static/js/admin-os-members.js?v=` + assetVer("js/admin-os-members.js") + `"></script>`
 
 	writeOSHTML(w, adminOSLayout(nonce, "Members", "members", cfg, htmpl.HTML(body)))
 }

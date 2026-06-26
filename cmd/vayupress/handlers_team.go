@@ -184,7 +184,7 @@ func (a *App) handleOSProfile(w http.ResponseWriter, r *http.Request) {
     </div>
   </form>
 </div>
-<script nonce="` + nonce + `" src="/os/static/js/admin-os-profile.js"></script>`
+<script nonce="` + nonce + `" src="/os/static/js/admin-os-profile.js?v=` + assetVer("js/admin-os-profile.js") + `"></script>`
 	writeOSHTML(w, adminOSLayout(nonce, "My profile", "profile", cfg, htmpl.HTML(body)))
 }
 

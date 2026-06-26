@@ -25,13 +25,17 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"html"
 	htmpl "html/template"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -275,6 +279,27 @@ func serveAdminOSAsset(rel, contentType string) http.HandlerFunc {
 	}
 }
 
+// assetVerCache memoises per-asset cache-busting tokens.
+var assetVerCache sync.Map // rel -> string
+
+// assetVer returns a cache-busting query value for a VayuOS static asset that
+// combines the release Version with a short content hash of the file. Because
+// it tracks file content, browsers refetch CSS/JS as soon as it actually
+// changes — even between builds that share the same release Version — while
+// still caching aggressively when nothing changed.
+func assetVer(rel string) string {
+	if v, ok := assetVerCache.Load(rel); ok {
+		return v.(string)
+	}
+	v := Version
+	if b, err := os.ReadFile(filepath.Join(adminOSStaticDir(), filepath.FromSlash(rel))); err == nil {
+		sum := sha256.Sum256(b)
+		v = Version + "-" + hex.EncodeToString(sum[:4])
+	}
+	assetVerCache.Store(rel, v)
+	return v
+}
+
 // ── Shared layout ────────────────────────────────────────────────────────────
 
 // navItem builds a sidebar nav link with an inline SVG icon.
@@ -373,7 +398,7 @@ func adminOSShellHead(nonce, title, active string, settings *osSettings) string 
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>` + et + ` — ` + siteName + ` · VayuOS</title>
 <meta name="robots" content="noindex, nofollow">
-<link rel="stylesheet" href="/os/static/css/admin-os.css?v=` + Version + `">
+<link rel="stylesheet" href="/os/static/css/admin-os.css?v=` + assetVer("css/admin-os.css") + `">
 <link rel="icon" type="image/png" href="/static/favicon-light.png">
 </head>
 <body class="vp-os" data-admin-theme="` + html.EscapeString(theme) + `">
@@ -695,7 +720,7 @@ func osLoginPage(prefillEmail, errMsg string) string {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Sign in — VayuPress Admin</title>
 <meta name="robots" content="noindex, nofollow">
-<link rel="stylesheet" href="/os/static/css/admin-os.css?v=` + Version + `">
+<link rel="stylesheet" href="/os/static/css/admin-os.css?v=` + assetVer("css/admin-os.css") + `">
 <link rel="icon" type="image/png" href="/static/favicon-light.png">
 </head>
 <body class="vp-os login-page">
