@@ -104,6 +104,10 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		// Pages
 		pr.Get("/os", a.handleOSDashboard)
 		pr.Get("/os/posts", a.handleOSPosts)
+		pr.Get("/os/comments", a.handleOSComments)
+		// Session-friendly comment moderation. The /api/v1/admin/comments originals
+		// require an API key; VayuOS operators hold a session cookie.
+		pr.With(auth.CSRFTokenMiddleware).Put("/os/api/comments/{id}/status", a.handleCommentModerate)
 		pr.Get("/os/media", a.handleOSMedia)
 		pr.Get("/os/api/media", a.handleOSMediaList)
 		// Session-friendly media upload + import. The /api/v1/admin/media originals
@@ -221,6 +225,7 @@ func svgIcon(path string) string {
 var (
 	iconDashboard  = svgIcon("M3 10.5L10 3l7 7.5M5 8.5V17h3.5v-4h3v4H15V8.5")
 	iconPosts      = svgIcon("M4 4h12v2H4V4zm0 4h12v2H4V8zm0 4h8v2H4v-2z")
+	iconComments   = svgIcon("M3 4h14v9H7l-4 3V4zm3 3h8M6 10h5")
 	iconNewPost    = svgIcon("M10 4v12m-6-6h12")
 	iconMedia      = svgIcon("M3 5a2 2 0 012-2h10a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V5zm0 8l4-4 3 3 2-2 4 4")
 	iconMembers    = svgIcon("M13 6a3 3 0 11-6 0 3 3 0 016 0zm-9 10a6 6 0 1112 0H4z")
@@ -318,6 +323,7 @@ func adminOSShellHead(nonce, title, active string, settings *osSettings) string 
     <div class="sidebar-section-label">Content</div>
     ` + navItem("/os", "Dashboard", "dashboard", active, iconDashboard) + `
     ` + navItem("/os/posts", "Posts", "posts", active, iconPosts) + `
+    ` + navItem("/os/comments", "Comments", "comments", active, iconComments) + `
     ` + navItem("/os/editor", "New Post", "editor", active, iconNewPost) + `
     ` + navItem("/os/media", "Media", "media", active, iconMedia) + `
 
@@ -961,6 +967,141 @@ document.querySelectorAll('[data-status-filter]').forEach(function(s){
 </script>`
 	}
 	writeOSHTML(w, adminOSLayout(nonce, "Posts", "posts", cfg, htmpl.HTML(body)))
+}
+
+// ── Comments moderation ──────────────────────────────────────────────────────
+
+func (a *App) handleOSComments(w http.ResponseWriter, r *http.Request) {
+	nonce := render.CSPNonce(r)
+	cfg := a.getOSSettings(r.Context())
+
+	// CSRF token cookie so the inline approve/reject controls can POST.
+	if token := auth.GenerateCSRFToken(); token != "" {
+		http.SetCookie(w, &http.Cookie{Name: "vp_csrf", Value: token, Path: "/", SameSite: http.SameSiteStrictMode, HttpOnly: false, Secure: csrfCookieSecure(), MaxAge: 3600})
+	}
+
+	var body string
+	if a.commentStore == nil {
+		body = `<div class="page-header"><h1>Comments</h1></div>
+<div class="card empty-state"><div class="empty-icon">💬</div>
+<div class="empty-title">Comments unavailable</div>
+<div class="empty-sub">The comment store is not initialised.</div></div>`
+		writeOSHTML(w, adminOSLayout(nonce, "Comments", "comments", cfg, htmpl.HTML(body)))
+		return
+	}
+
+	// Map article IDs to slugs so each comment links back to its post.
+	slugByID := map[string]string{}
+	if rows, err := dbpkg.DB.QueryContext(r.Context(), `SELECT id, slug FROM articles`); err == nil {
+		defer rows.Close() //nolint:errcheck
+		for rows.Next() {
+			var id, slug string
+			if rows.Scan(&id, &slug) == nil {
+				slugByID[id] = slug
+			}
+		}
+	}
+
+	all, _ := a.commentStore.ListAll(r.Context(), "all", 500)
+	var pending, approved int
+	rowsHTML := ""
+	for _, c := range all {
+		switch c.Status {
+		case "pending":
+			pending++
+		case "approved":
+			approved++
+		}
+		pill := `<span class="status-pill">` + html.EscapeString(c.Status) + `</span>`
+		switch c.Status {
+		case "approved":
+			pill = `<span class="status-pill status-pill--live">● approved</span>`
+		case "pending":
+			pill = `<span class="status-pill status-pill--draft">● pending</span>`
+		case "rejected", "spam":
+			pill = `<span class="status-pill">● ` + html.EscapeString(c.Status) + `</span>`
+		}
+		slug := slugByID[c.ArticleID]
+		postCell := html.EscapeString(slug)
+		if slug != "" {
+			postCell = `<a href="/` + html.EscapeString(slug) + `" target="_blank" rel="noopener">/` + html.EscapeString(slug) + `</a>`
+		}
+		// Action buttons depend on current status.
+		actions := ""
+		if c.Status != "approved" {
+			actions += `<button type="button" class="btn btn--primary btn--sm" data-comment-action data-id="` + html.EscapeString(c.ID) + `" data-to="approved">Approve</button> `
+		}
+		if c.Status != "rejected" {
+			actions += `<button type="button" class="btn btn--ghost btn--sm" data-comment-action data-id="` + html.EscapeString(c.ID) + `" data-to="rejected">Reject</button> `
+		}
+		if c.Status != "spam" {
+			actions += `<button type="button" class="btn btn--ghost btn--sm" data-comment-action data-id="` + html.EscapeString(c.ID) + `" data-to="spam">Spam</button>`
+		}
+		rowsHTML += `<tr data-comment-row data-status="` + c.Status + `">
+  <td class="row-title"><strong>` + html.EscapeString(c.Author) + `</strong>
+    <div class="row-meta">` + html.EscapeString(c.Email) + `</div></td>
+  <td>` + html.EscapeString(c.Body) + `</td>
+  <td>` + postCell + `</td>
+  <td>` + pill + `</td>
+  <td class="muted text-sm">` + c.CreatedAt.UTC().Format("2 Jan 2006 15:04") + `</td>
+  <td class="row-actions">` + actions + `</td>
+</tr>`
+	}
+
+	if len(all) == 0 {
+		body = `<div class="page-header"><h1>Comments</h1></div>
+<div class="card empty-state"><div class="empty-icon">💬</div>
+<div class="empty-title">No comments yet</div>
+<div class="empty-sub">When readers comment on your articles, they appear here for moderation before going public.</div></div>`
+	} else {
+		body = `<div class="page-header">
+  <h1>Comments <span class="count-pill">` + strconv.Itoa(len(all)) + `</span></h1>
+  <div class="page-actions"><span class="text-sm muted">` + strconv.Itoa(pending) + ` pending · ` + strconv.Itoa(approved) + ` approved</span></div>
+</div>
+<div class="card">
+  <div class="toolbar-row">
+    <div class="seg-filter" role="tablist" aria-label="Filter by status">
+      <button type="button" class="seg-btn is-active" data-comment-filter="all">All <span class="muted">` + strconv.Itoa(len(all)) + `</span></button>
+      <button type="button" class="seg-btn" data-comment-filter="pending">Pending <span class="muted">` + strconv.Itoa(pending) + `</span></button>
+      <button type="button" class="seg-btn" data-comment-filter="approved">Approved <span class="muted">` + strconv.Itoa(approved) + `</span></button>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table class="table">
+      <thead><tr><th>Author</th><th>Comment</th><th>Post</th><th>Status</th><th>When</th><th></th></tr></thead>
+      <tbody>` + rowsHTML + `</tbody>
+    </table>
+  </div>
+  <div class="table-empty" data-filter-empty hidden>No comments match this filter.</div>
+</div>
+<div id="action-msg" role="status" aria-live="polite" class="action-msg"></div>
+<script nonce="` + nonce + `">
+(function(){'use strict';
+function csrf(){var m=document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);return m?m[1]:'';}
+var msg=document.getElementById('action-msg');
+function show(t,e){if(!msg)return;msg.textContent=t;msg.classList.toggle('is-error',!!e);msg.classList.add('visible');}
+document.querySelectorAll('[data-comment-action]').forEach(function(b){
+  b.addEventListener('click',function(){
+    b.disabled=true;
+    fetch('/os/api/comments/'+encodeURIComponent(b.getAttribute('data-id'))+'/status',{method:'PUT',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},body:JSON.stringify({status:b.getAttribute('data-to')})})
+      .then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d};});})
+      .then(function(res){if(res.ok){show('Comment '+b.getAttribute('data-to'),false);setTimeout(function(){location.reload();},400);}else{b.disabled=false;show(res.d.detail||res.d.title||res.d.error||'Error',true);}})
+      .catch(function(e){b.disabled=false;show('Error: '+e,true);});
+  });
+});
+var rowsEl=document.querySelectorAll('[data-comment-row]');
+document.querySelectorAll('[data-comment-filter]').forEach(function(s){
+  s.addEventListener('click',function(){
+    document.querySelectorAll('[data-comment-filter]').forEach(function(x){x.classList.remove('is-active');});
+    s.classList.add('is-active');
+    var f=s.getAttribute('data-comment-filter');
+    rowsEl.forEach(function(row){row.hidden=(f!=='all'&&row.getAttribute('data-status')!==f);});
+  });
+});
+})();
+</script>`
+	}
+	writeOSHTML(w, adminOSLayout(nonce, "Comments", "comments", cfg, htmpl.HTML(body)))
 }
 
 // ── Editor ───────────────────────────────────────────────────────────────────
