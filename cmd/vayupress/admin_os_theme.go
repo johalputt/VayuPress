@@ -229,7 +229,15 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
 	cfg := a.getOSSettings(r.Context())
 
 	// Current persisted custom CSS + head/SEO values (Tumblr-style code editor).
-	vals, _ := a.siteSettings.GetAll(r.Context())
+	// Guard the settings store like every other settings-dependent handler does:
+	// if it isn't ready yet (startup race / settings-store init failure) we still
+	// render the full Studio — including the theme gallery — from Defaults rather
+	// than dereferencing a nil store and panicking (which would 500 the page and
+	// make the gallery appear to "not show" at all). A nil map reads safely.
+	var vals map[string]string
+	if a.siteSettings != nil {
+		vals, _ = a.siteSettings.GetAll(r.Context())
+	}
 	val := func(k string) string {
 		if v, ok := vals[k]; ok {
 			return v
