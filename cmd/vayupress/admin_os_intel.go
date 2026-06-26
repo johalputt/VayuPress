@@ -273,26 +273,60 @@ func (a *App) handleOSAnalytics(w http.ResponseWriter, r *http.Request) {
 		utmRows = `<div class="table-wrap"><table class="table"><thead><tr><th>Source</th><th>Medium</th><th>Campaign</th><th>Hits</th></tr></thead><tbody>` + rows + `</tbody></table></div>`
 	}
 
-	extra := `<div class="card-title vm-section-title">VayuAnalytics — session insights · ` + periodLabel + `</div>
-<p class="muted text-sm mb-3">Cookieless, no-PII (server-side daily-rotating salted hash). Populates as visitors hit your site after this update.</p>` +
-		overviewCard +
-		`<div class="grid grid-3">
+	// Build each section once, then arrange them into tabs so the page stops
+	// being one giant scroll. Tabs are switched client-side (no reload); the
+	// period selector above applies to every tab.
+	metricsIntro := `<p class="muted text-sm mb-3">Cookieless, no-PII (server-side daily-rotating salted hash). Populates as visitors hit your site.</p>`
+
+	overviewPanel := metricsIntro + overviewCard + spark
+	if overviewCard == "" && spark == "" {
+		overviewPanel = metricsIntro + `<div class="empty-state">No visits in this period yet.</div>`
+	}
+
+	pagesPanel := `<div class="grid grid-2">
+  <div class="card"><div class="card-title">Top pages</div>` + pages + `</div>
+  <div class="card"><div class="card-title">Referrers</div>` + refs + `</div>
+</div>`
+
+	audiencePanel := `<div class="grid grid-3">
   <div class="card"><div class="card-title">Devices</div>` + osAudienceTable(devices) + `</div>
   <div class="card"><div class="card-title">Browsers</div>` + osAudienceTable(browsers) + `</div>
   <div class="card"><div class="card-title">Operating systems</div>` + osAudienceTable(oses) + `</div>
-</div>` + osGeoSection(countries, regions, cities) + `
-<div class="grid grid-2">
-  <div class="card"><div class="card-title">Custom events</div>` + osEventTable(events) + `</div>
-  <div class="card"><div class="card-title">Campaign sources (UTM)</div>` + utmRows + `</div>
-</div>` + a.osGoalsSection(ctx, days) + a.osJourneySection(ctx, days) + osExportSection(days)
+</div>`
+
+	campaignsPanel := `<div class="card"><div class="card-title">Campaign sources (UTM)</div>` + utmRows + `</div>`
+	eventsPanel := `<div class="card"><div class="card-title">Custom events</div>` + osEventTable(events) + `</div>`
+
+	tabs := []struct{ id, label, icon, body string }{
+		{"overview", "Overview", "📊", overviewPanel},
+		{"live", "Live", "🟢", osLiveCard()},
+		{"pages", "Pages", "📄", pagesPanel},
+		{"audience", "Audience", "🖥️", audiencePanel},
+		{"geo", "Geography", "🌍", osGeoSection(countries, regions, cities)},
+		{"campaigns", "Campaigns", "📣", campaignsPanel},
+		{"events", "Events", "✨", eventsPanel},
+		{"goals", "Goals", "🎯", a.osGoalsSection(ctx, days)},
+		{"journey", "Journey", "🧭", a.osJourneySection(ctx, days)},
+		{"export", "Export", "⬇️", osExportSection(days)},
+	}
+
+	nav := `<div class="tab-list vm-analytics-tabs" role="tablist" data-analytics-tabs>`
+	panels := ""
+	for i, t := range tabs {
+		active := ""
+		hidden := " hidden"
+		if i == 0 {
+			active = " tab--active"
+			hidden = ""
+		}
+		nav += `<button type="button" class="tab` + active + `" role="tab" data-atab="` + t.id + `"><span class="vm-tab-ico" aria-hidden="true">` + t.icon + `</span> ` + html.EscapeString(t.label) + `</button>`
+		panels += `<section class="vm-tab-panel" role="tabpanel" data-atab-panel="` + t.id + `"` + hidden + `>` + t.body + `</section>`
+	}
+	nav += `</div>`
 
 	body := `<div class="page-header"><h1>Analytics</h1>
   <span class="muted text-sm">` + strconv.FormatInt(sum.TotalViews, 10) + ` views · ` + periodLabel + ` · updated ` + now.Format("2006-01-02 15:04") + ` UTC</span>
-</div>` + osPeriodSelector(days) + osLiveCard() + spark + `
-<div class="grid grid-2">
-  <div class="card"><div class="card-title">Top pages</div>` + pages + `</div>
-  <div class="card"><div class="card-title">Referrers</div>` + refs + `</div>
-</div>` + extra + osPrivacyNote() + `
+</div>` + osPeriodSelector(days) + nav + panels + osPrivacyNote() + `
 <script nonce="` + nonce + `" src="/os/static/js/admin-os-intel.js?v=` + Version + `"></script>`
 
 	writeOSHTML(w, adminOSLayout(nonce, "Analytics", "analytics", cfg, htmpl.HTML(body)))
@@ -334,13 +368,27 @@ func osPeriodSelector(days int) string {
 }
 
 // osLiveCard renders the live-visitors panel; admin-os-intel.js polls
-// /os/api/analytics/realtime every few seconds and fills it in.
+// /os/api/analytics/realtime every few seconds and fills it in. It shows the
+// active-visitor count plus where they are (country), what they're viewing,
+// and how they arrived (referrer).
 func osLiveCard() string {
-	return `<div class="card mb-6" data-live>
-  <div class="card-title"><span class="live-dot"></span> Live · active now</div>
-  <div class="vm-stat" data-live-count>—</div>
-  <div class="muted text-sm">visitors active in the last 5 minutes · updates every 10s</div>
-  <div class="table-wrap mt-3"><table class="table"><thead><tr><th>Active page</th><th>Viewers</th></tr></thead><tbody data-live-pages><tr><td colspan="2" class="muted">Waiting for live data…</td></tr></tbody></table></div>
+	return `<div class="vm-live" data-live>
+  <div class="card vm-live-hero mb-4">
+    <div class="card-title"><span class="live-dot"></span> Active right now</div>
+    <div class="vm-live-count" data-live-count>—</div>
+    <div class="muted text-sm">visitors in the last 5 minutes · auto-refreshes every 10s <span class="vm-live-pulse" data-live-updated></span></div>
+  </div>
+  <div class="grid grid-3 vm-live-grid">
+    <div class="card"><div class="card-title">🌍 Countries</div>
+      <div class="table-wrap"><table class="table"><tbody data-live-countries><tr><td class="muted">Waiting for live data…</td></tr></tbody></table></div>
+    </div>
+    <div class="card"><div class="card-title">📄 Active pages</div>
+      <div class="table-wrap"><table class="table"><thead><tr><th>Page</th><th>Viewers</th></tr></thead><tbody data-live-pages><tr><td colspan="2" class="muted">Waiting for live data…</td></tr></tbody></table></div>
+    </div>
+    <div class="card"><div class="card-title">🔗 Referrers</div>
+      <div class="table-wrap"><table class="table"><tbody data-live-referrers><tr><td class="muted">Waiting for live data…</td></tr></tbody></table></div>
+    </div>
+  </div>
 </div>`
 }
 

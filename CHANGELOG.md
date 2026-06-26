@@ -10,6 +10,21 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Added
 
+- **VayuAnalytics gets a tabbed dashboard + a richer Live view.** The analytics
+  page was one long scroll; it is now split into client-side tabs (no reload):
+  Overview, Live, Pages, Audience, Geography, Campaigns, Events, Goals, Journey
+  and Export. The selected tab is remembered in the URL hash so refreshes and
+  shared links reopen it.
+  - **Live view is now real-time situational awareness:** a large active-visitor
+    counter plus three live panels — **Countries** (with flag + full name),
+    **Active pages**, and **Referrers** — all refreshing every 10s and pausing
+    when the browser tab is hidden. Backed by an extended `Store.Realtime`
+    (active countries + referrers over the last 5 minutes).
+  - Country flags in server-rendered tables are wrapped in a `.vp-flag` span
+    with a colour-emoji font stack so they render wherever the OS ships flag
+    glyphs (macOS/iOS/Android/Linux); the full country name is always shown
+    alongside (Windows omits flag emoji from its system font by design).
+
 - **Optional outbound smarthost relay (deliverability without losing
   sovereignty).** When `VAYUOS_MAIL_RELAY_HOST` is set, VayuMail delivers
   outbound mail through an authenticated SMTP relay instead of direct-to-MX —

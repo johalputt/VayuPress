@@ -87,8 +87,9 @@
 
 /*
  * Live analytics — polls the realtime endpoint every 10s and updates the Live
- * card. CSP-safe: DOM updated via textContent only, no eval, no inline styles.
- * No-op on pages without the live card.
+ * tab: active-visitor count, countries, active pages, and referrers. CSP-safe:
+ * DOM updated via textContent only, no eval, no inline styles. No-op without
+ * the live card.
  */
 (function () {
   'use strict';
@@ -97,33 +98,51 @@
   if (!card) return;
   var countEl = card.querySelector('[data-live-count]');
   var pagesEl = card.querySelector('[data-live-pages]');
+  var countriesEl = card.querySelector('[data-live-countries]');
+  var referrersEl = card.querySelector('[data-live-referrers]');
+  var updatedEl = card.querySelector('[data-live-updated]');
+
+  function clear(el) { while (el && el.firstChild) el.removeChild(el.firstChild); }
+
+  function emptyRow(el, cols, msg) {
+    var tr = document.createElement('tr');
+    var td = document.createElement('td');
+    if (cols > 1) td.setAttribute('colspan', String(cols));
+    td.className = 'muted';
+    td.textContent = msg;
+    tr.appendChild(td);
+    el.appendChild(tr);
+  }
+
+  // Fill a two-column [label, count] table body from {label,count}/{path,count}.
+  function fill(el, items, labelKey, emptyMsg) {
+    if (!el) return;
+    clear(el);
+    items = items || [];
+    if (!items.length) { emptyRow(el, 2, emptyMsg); return; }
+    items.forEach(function (it) {
+      var tr = document.createElement('tr');
+      var label = document.createElement('td');
+      label.className = 'row-title';
+      label.textContent = it[labelKey] || it.label || '(unknown)';
+      var n = document.createElement('td');
+      n.textContent = String(it.count || 0);
+      tr.appendChild(label);
+      tr.appendChild(n);
+      el.appendChild(tr);
+    });
+  }
 
   function render(data) {
-    if (countEl) countEl.textContent = String((data && data.active_visitors) || 0);
-    if (!pagesEl) return;
-    while (pagesEl.firstChild) pagesEl.removeChild(pagesEl.firstChild);
-    var pages = (data && data.active_pages) || [];
-    if (!pages.length) {
-      var tr = document.createElement('tr');
-      var td = document.createElement('td');
-      td.setAttribute('colspan', '2');
-      td.className = 'muted';
-      td.textContent = 'No active visitors right now.';
-      tr.appendChild(td);
-      pagesEl.appendChild(tr);
-      return;
+    data = data || {};
+    if (countEl) countEl.textContent = String(data.active_visitors || 0);
+    fill(pagesEl, data.active_pages, 'path', 'No active visitors right now.');
+    fill(countriesEl, data.active_countries, 'label', 'No location data (needs a geo-header proxy).');
+    fill(referrersEl, data.active_referrers, 'label', 'No referrers in the last 5 minutes.');
+    if (updatedEl) {
+      var t = new Date();
+      updatedEl.textContent = '· updated ' + t.toLocaleTimeString();
     }
-    pages.forEach(function (p) {
-      var tr = document.createElement('tr');
-      var path = document.createElement('td');
-      path.className = 'row-title';
-      path.textContent = p.path || '/';
-      var n = document.createElement('td');
-      n.textContent = String(p.count || 0);
-      tr.appendChild(path);
-      tr.appendChild(n);
-      pagesEl.appendChild(tr);
-    });
   }
 
   function poll() {
@@ -145,6 +164,49 @@
     }
   });
 })();
+
+/*
+ * Analytics tabs — client-side section switching (no reload). The selected tab
+ * is remembered in the URL hash so a refresh / shared link reopens it. CSP-safe:
+ * toggles classes / the [hidden] attribute only. No-op without the tab bar.
+ */
+(function () {
+  'use strict';
+
+  var bar = document.querySelector('[data-analytics-tabs]');
+  if (!bar) return;
+  var tabs = Array.prototype.slice.call(bar.querySelectorAll('[data-atab]'));
+  var panels = Array.prototype.slice.call(document.querySelectorAll('[data-atab-panel]'));
+  if (!tabs.length) return;
+
+  function activate(id, push) {
+    var matched = false;
+    tabs.forEach(function (t) {
+      var on = t.getAttribute('data-atab') === id;
+      t.classList.toggle('tab--active', on);
+      t.setAttribute('aria-selected', on ? 'true' : 'false');
+      if (on) matched = true;
+    });
+    if (!matched) return;
+    panels.forEach(function (p) {
+      p.hidden = p.getAttribute('data-atab-panel') !== id;
+    });
+    if (push && window.history && window.history.replaceState) {
+      window.history.replaceState(null, '', '#' + id);
+    }
+  }
+
+  tabs.forEach(function (t) {
+    t.addEventListener('click', function () { activate(t.getAttribute('data-atab'), true); });
+  });
+
+  var initial = (window.location.hash || '').replace(/^#/, '');
+  if (initial) activate(initial, false);
+  window.addEventListener('hashchange', function () {
+    activate((window.location.hash || '').replace(/^#/, ''), false);
+  });
+})();
+
 
 
 /*
