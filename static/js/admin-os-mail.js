@@ -146,6 +146,45 @@
     });
   });
 
+  // ── Enable two-factor (TOTP) on a mail account ───────────────────────────────
+  // Two-step: begin (generate + store secret) → verify (validate a code → on).
+  document.querySelectorAll('[data-acct-2fa-enable]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var email = btn.getAttribute('data-acct-2fa-enable');
+      postJSON('/os/vayuos/mail/accounts/totp', { email: email, action: 'begin' }).then(function (res) {
+        if (!res.ok || !res.body || !res.body.secret) {
+          window.alert('Could not start 2FA setup: ' + errText(res));
+          return;
+        }
+        // Show the secret + otpauth URI so it can be added to an authenticator
+        // app (or pasted into one that accepts otpauth:// links).
+        window.prompt(
+          'Add this account to an authenticator app, then enter the 6-digit code below.\n\n' +
+          'Secret key:\n' + res.body.secret + '\n\notpauth URI (copyable):',
+          res.body.uri || ''
+        );
+        var code = window.prompt('Enter the current 6-digit code from your authenticator for ' + email + ':');
+        if (code === null) return;
+        postJSON('/os/vayuos/mail/accounts/totp', { email: email, action: 'verify', code: (code || '').trim() }).then(function (vr) {
+          if (vr.ok) { window.alert('Two-factor authentication is now ON for ' + email); window.location.reload(); }
+          else window.alert('Verification failed: ' + errText(vr));
+        });
+      });
+    });
+  });
+
+  // ── Disable two-factor on a mail account ─────────────────────────────────────
+  document.querySelectorAll('[data-acct-2fa-disable]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var email = btn.getAttribute('data-acct-2fa-disable');
+      if (!window.confirm('Turn OFF two-factor authentication for ' + email + '?')) return;
+      postJSON('/os/vayuos/mail/accounts/totp', { email: email, action: 'disable' }).then(function (res) {
+        if (res.ok) window.location.reload();
+        else window.alert('Update failed: ' + errText(res));
+      });
+    });
+  });
+
   // ── Message actions (Junk / Trash / Restore / Delete) ────────────────────────
   var actions = document.querySelector('[data-mail-actions]');
   if (actions) {

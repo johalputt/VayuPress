@@ -73,6 +73,8 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	r.Get("/static/js/video-facade.js", a.handleVideoFacadeJS)
 	r.Get("/static/js/comments.js", a.handleCommentsJS)
 	r.Get("/static/js/post-card-media.js", a.handlePostCardMediaJS)
+	// VayuPortal — the reader membership overlay widget (same-origin → script-src 'self').
+	r.Get("/static/js/portal.js", a.handleMemberPortalJS)
 	// Favicon routes serve the operator's uploaded brand mark when one is stored
 	// (see /admin/theme branding), falling back to the embedded default per scheme.
 	r.Get("/static/favicon-dark.png", a.serveFavicon(faviconDarkPNG))
@@ -91,6 +93,7 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 		"pico.min.css":      "pico.min.css",
 		"custom.css":        "custom.css",
 		"signup.css":        "signup.css",
+		"portal.css":        "portal.css",
 	}
 	r.Get("/static/css/{file}", func(w http.ResponseWriter, r *http.Request) {
 		canon, ok := cssAllowlist[chi.URLParam(r, "file")]
@@ -157,6 +160,9 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	r.Get("/members", a.handleMemberSigninPage)
 	r.Get("/members/account", a.handleMemberAccount)
 	r.Post("/members/account", a.handleMemberAccountUpdate)
+	// VayuPortal overlay backend — capability snapshot + VayuMail credential login.
+	r.Get("/api/v1/members/me", a.handleMemberMe)
+	r.Post("/api/v1/members/vayumail-login", a.handleMemberVayuMailLogin)
 	r.Get("/pricing", a.handlePricingPage)
 	r.Get("/api/v1/tiers", a.handleTiersPublic)
 	// Public author profile pages.

@@ -8,6 +8,31 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Added
+
+- **VayuPortal — a clean, minimalist membership overlay for the public site.**
+  A floating launch button plus an accessible slide-in panel now lets readers
+  sign up, sign in, and manage their account without leaving the page they are
+  reading. It is a self-contained, dependency-free, same-origin script that
+  renders only when membership is enabled, transparently upgrades the existing
+  nav "Sign in" / "Sign up" links to open the panel in place, and reuses the
+  existing passwordless magic-link backend. Served at `/static/js/portal.js`
+  with styles in `/static/css/portal.css`; capability/auth state comes from the
+  new `GET /api/v1/members/me` endpoint.
+- **"Sign in with VayuMail" for readers.** Members who hold a VayuMail mailbox
+  can now sign in directly with their mailbox email and password via
+  `POST /api/v1/members/vayumail-login`, as an alternative to the emailed
+  sign-in link. Bad credentials return a uniform response so the endpoint cannot
+  enumerate addresses.
+- **Optional two-factor authentication (TOTP) for VayuMail accounts.**
+  Administrators can enrol any mail account in 2FA from
+  **VayuOS → Mail accounts** (scan/enter a secret, verify a code to turn it on,
+  or disable it). When enabled, the "Sign in with VayuMail" flow requires a
+  valid 6-digit code as a second factor. Uses the existing stdlib-only TOTP
+  implementation; secrets are stored per account and 2FA is only switched on
+  after a code is verified, so a half-finished enrolment can never lock anyone
+  out.
+
 ### Security
 
 - **VayuMail is now role-scoped: non-admin staff can only operate their own
