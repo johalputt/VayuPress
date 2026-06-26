@@ -5,34 +5,20 @@ package main
 // VayuPress stores only the ISO 3166-1 alpha-2 country code supplied by the
 // operator's reverse proxy (e.g. Cloudflare's CF-IPCountry); it performs no
 // GeoIP lookup and persists no IP. These helpers turn that raw two-letter code
-// into a human-friendly country name plus a flag emoji *at render time only* —
-// nothing extra is stored, preserving the privacy-by-architecture stance.
+// into a human-friendly country name plus a self-hosted SVG flag *at render
+// time only* — nothing extra is stored, preserving the privacy-by-architecture
+// stance. Flags are served from /os/static/flags/<cc>.svg (flag-icons, MIT).
 
 import (
 	"html"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/johalputt/vayupress/internal/analytics"
 )
-
-// countryFlagEmoji turns a two-letter ISO country code into its flag emoji by
-// mapping each ASCII letter to its Regional Indicator Symbol. Returns "" for
-// anything that is not a clean A–Z pair.
-func countryFlagEmoji(code string) string {
-	code = strings.ToUpper(strings.TrimSpace(code))
-	if len(code) != 2 {
-		return ""
-	}
-	runes := make([]rune, 0, 2)
-	for _, c := range code {
-		if c < 'A' || c > 'Z' {
-			return ""
-		}
-		runes = append(runes, rune(0x1F1E6)+(c-'A'))
-	}
-	return string(runes)
-}
 
 // countryName resolves an ISO 3166-1 alpha-2 code to a full English country
 // name. Unknown codes are returned uppercased and unchanged so the dashboard
@@ -45,25 +31,74 @@ func countryName(code string) string {
 	return code
 }
 
-// countryDisplay returns "🇺🇸 United States" for a known code, falling back to
-// just the (uppercased) code when it is unknown or malformed. Plain text — used
-// for JSON payloads (the realtime API) where the client sets textContent.
-func countryDisplay(code string) string {
-	name := countryName(code)
-	if flag := countryFlagEmoji(code); flag != "" {
-		return flag + " " + name
+// isFlagFile reports whether name is exactly "<cc>.svg" for a two-letter
+// lowercase ISO code. Used to bound the public flag route to safe filenames.
+func isFlagFile(name string) bool {
+	if len(name) != 6 || !strings.HasSuffix(name, ".svg") {
+		return false
 	}
-	return name
+	for _, c := range name[:2] {
+		if c < 'a' || c > 'z' {
+			return false
+		}
+	}
+	return true
 }
 
-// countryDisplayHTML is the HTML form used in server-rendered tables: the flag
-// emoji is wrapped in a <span class="vp-flag"> so CSS can apply an emoji font
-// stack (maximising the chance the glyph renders across platforms), and the
-// name is HTML-escaped.
+// flagSet caches which flag SVGs exist on disk, so we never emit an <img> that
+// would 404 into a broken-image icon.
+var (
+	flagOnce sync.Once
+	flagSet  map[string]bool // nil ⇒ directory unreadable (optimistic fallback)
+)
+
+func flagAvailable(lc string) bool {
+	flagOnce.Do(func() {
+		entries, err := os.ReadDir(filepath.Join(adminOSStaticDir(), "flags"))
+		if err != nil {
+			flagSet = nil
+			return
+		}
+		flagSet = make(map[string]bool, len(entries))
+		for _, e := range entries {
+			if n := e.Name(); isFlagFile(n) {
+				flagSet[strings.TrimSuffix(n, ".svg")] = true
+			}
+		}
+	})
+	if flagSet == nil {
+		return len(lc) == 2 // can't verify; assume present for valid codes
+	}
+	return flagSet[lc]
+}
+
+// countryFlagURL returns the served path of a country's flag SVG, or "" when no
+// flag is available for the code.
+func countryFlagURL(code string) string {
+	lc := strings.ToLower(strings.TrimSpace(code))
+	if len(lc) != 2 || !flagAvailable(lc) {
+		return ""
+	}
+	return "/os/static/flags/" + lc + ".svg"
+}
+
+// countryFlagImg returns an <img> tag for the country's flag, or "" if none.
+func countryFlagImg(code string) string {
+	url := countryFlagURL(code)
+	if url == "" {
+		return ""
+	}
+	return `<img class="vp-flag-img" src="` + url + `" alt="" width="20" height="15" loading="lazy" decoding="async">`
+}
+
+// countryDisplayHTML is the HTML form used in server-rendered tables: a real
+// self-hosted SVG flag image followed by the HTML-escaped country name. Unlike
+// flag emoji (which Windows omits from its system font), the SVG renders
+// identically on every platform.
 func countryDisplayHTML(code string) string {
 	name := html.EscapeString(countryName(code))
-	if flag := countryFlagEmoji(code); flag != "" {
-		return `<span class="vp-flag">` + flag + `</span> ` + name
+	if img := countryFlagImg(code); img != "" {
+		return img + ` ` + name
 	}
 	return name
 }

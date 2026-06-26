@@ -2529,15 +2529,20 @@
 }
 .vp-os .vm-live-pulse { color: var(--text-3); }
 
-/* Flag glyphs: prefer a colour-emoji font so country flags render where the OS
-   ships them (macOS/iOS/Android/Linux). Note: Windows omits flag emoji from
-   Segoe UI Emoji by design, so the country name is always shown alongside. */
-.vp-os .vp-flag,
-.vp-os [data-live-countries] .row-title {
-  font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Twemoji Mozilla", sans-serif;
-  font-style: normal;
+/* Country flags: real self-hosted SVG images (flag-icons, MIT), so they render
+   identically on every platform — including Windows, which omits flag emoji
+   from its system font. The country name is always shown alongside. */
+.vp-os .vp-flag-img {
+  display: inline-block;
+  width: 1.33em;
+  height: 1em;
+  object-fit: cover;
+  border-radius: 2px;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.12);
+  background: var(--bg-surface-2);
 }
-.vp-os .vp-flag { margin-right: 0.15em; }
 
 @media (max-width: 860px) {
   .vp-os .vm-live-grid { grid-template-columns: 1fr; }

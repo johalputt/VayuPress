@@ -294,15 +294,45 @@ func (a *App) handleAnalyticsRealtime(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusInternalServerError, "db-error", err.Error(), "")
 		return
 	}
-	// Enrich raw ISO country codes into "🇺🇸 United States" for display. Done in
-	// the handler (cmd) layer because the country-name table lives here, keeping
-	// the analytics store free of presentation concerns.
+	// Re-shape live countries for the client: send the full name + a self-hosted
+	// flag-SVG URL (resolved here because the country-name table and flag assets
+	// live in the cmd layer), keeping the analytics store presentation-free.
+	resp := realtimeResponse{WindowMinutes: 5}
 	if data != nil {
-		for i := range data.ActiveCountries {
-			data.ActiveCountries[i].Label = countryDisplay(data.ActiveCountries[i].Label)
+		resp.ActiveVisitors = data.ActiveVisitors
+		resp.ActivePages = data.ActivePages
+		resp.ActiveReferrers = data.ActiveReferrers
+		if data.WindowMinutes > 0 {
+			resp.WindowMinutes = data.WindowMinutes
+		}
+		for _, c := range data.ActiveCountries {
+			resp.ActiveCountries = append(resp.ActiveCountries, realtimeCountry{
+				Code:  c.Label,
+				Name:  countryName(c.Label),
+				Flag:  countryFlagURL(c.Label),
+				Count: c.Count,
+			})
 		}
 	}
-	writeJSON(w, r, http.StatusOK, data)
+	writeJSON(w, r, http.StatusOK, resp)
+}
+
+// realtimeCountry is the display-enriched live country row sent to the browser.
+type realtimeCountry struct {
+	Code  string `json:"code"`
+	Name  string `json:"name"`
+	Flag  string `json:"flag"` // served SVG URL, or "" when unavailable
+	Count int    `json:"count"`
+}
+
+// realtimeResponse is the live-analytics payload: identical to the store's
+// RealtimeStats except countries carry a name + flag URL for direct display.
+type realtimeResponse struct {
+	ActiveVisitors  int                      `json:"active_visitors"`
+	ActivePages     []analytics.RealtimePage `json:"active_pages"`
+	ActiveCountries []realtimeCountry        `json:"active_countries"`
+	ActiveReferrers []analytics.AudienceStat `json:"active_referrers"`
+	WindowMinutes   int                      `json:"window_minutes"`
 }
 
 func (a *App) handleAnalyticsSessions(w http.ResponseWriter, r *http.Request) {
