@@ -31,6 +31,7 @@ import (
 	"html"
 	htmpl "html/template"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -994,6 +995,12 @@ func (a *App) handleOSDashboard(w http.ResponseWriter, r *http.Request) {
 
 // ── Posts ────────────────────────────────────────────────────────────────────
 
+// osPostsPageSize is how many posts the manager shows per page. The newest
+// page (page 1) lists the latest osPostsPageSize posts; older posts live on
+// subsequent pages reachable via the pager. This replaces the old hard
+// `LIMIT 500` cap so every post is reachable regardless of archive size.
+const osPostsPageSize = 100
+
 func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
@@ -1003,35 +1010,135 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 		http.SetCookie(w, &http.Cookie{Name: "vp_csrf", Value: token, Path: "/", SameSite: http.SameSiteStrictMode, HttpOnly: false, Secure: csrfCookieSecure(), MaxAge: 3600})
 	}
 
-	// All posts (drafts included) — the post manager shows everything; the
-	// public site never does.
+	// ── Parse filters from the query string ──────────────────────────────────
+	qv := r.URL.Query()
+	q := strings.TrimSpace(qv.Get("q"))
+	if len(q) > 120 {
+		q = q[:120]
+	}
+	status := qv.Get("status")
+	if status != "published" && status != "draft" {
+		status = "all"
+	}
+	period := qv.Get("period")
+	from := normalizeDateParam(qv.Get("from"))
+	to := normalizeDateParam(qv.Get("to"))
+	// A period preset is a shortcut for a created-at window. An explicit custom
+	// from/to range always wins; the preset only applies when no range is set.
+	if from == "" && to == "" {
+		if since := periodSince(period); since != "" {
+			from = since
+		} else {
+			period = "all"
+		}
+	} else {
+		period = "" // a custom range overrides the preset selector
+	}
+
+	// ── Shared filter predicate (search + date range), independent of the
+	// status tab so the tab counts reflect the active search/date filter. ──
+	where := []string{}
+	args := []any{}
+	if q != "" {
+		where = append(where, "(title LIKE ? OR COALESCE(tags,'') LIKE ?)")
+		like := "%" + q + "%"
+		args = append(args, like, like)
+	}
+	if from != "" {
+		where = append(where, "date(created_at) >= ?")
+		args = append(args, from)
+	}
+	if to != "" {
+		where = append(where, "date(created_at) <= ?")
+		args = append(args, to)
+	}
+	filterClause := ""
+	if len(where) > 0 {
+		filterClause = " WHERE " + strings.Join(where, " AND ")
+	}
+
+	// ── Status counts within the active filter ───────────────────────────────
+	allCount, published, drafts := 0, 0, 0
+	if dbpkg.DB != nil {
+		if rows, err := dbpkg.DB.QueryContext(r.Context(),
+			`SELECT COALESCE(status,'published') s, COUNT(1) c FROM articles`+filterClause+` GROUP BY s`, args...); err == nil {
+			for rows.Next() {
+				var s string
+				var c int
+				if rows.Scan(&s, &c) == nil {
+					allCount += c
+					if s == "draft" {
+						drafts += c
+					} else {
+						published += c
+					}
+				}
+			}
+			rows.Close()
+		}
+	}
+	total := allCount
+	switch status {
+	case "published":
+		total = published
+	case "draft":
+		total = drafts
+	}
+
+	// ── Pagination maths (100 per page; page clamped to a valid range) ────────
+	totalPages := (total + osPostsPageSize - 1) / osPostsPageSize
+	if totalPages < 1 {
+		totalPages = 1
+	}
+	page := 1
+	if p, err := strconv.Atoi(qv.Get("page")); err == nil && p > 1 {
+		page = p
+	}
+	if page > totalPages {
+		page = totalPages
+	}
+	offset := (page - 1) * osPostsPageSize
+
+	// ── Fetch the current page of posts (drafts included; the public site never
+	// surfaces drafts but the manager must). ──────────────────────────────────
 	type postRow struct {
 		Title, Slug, Status string
 		Tags                []string
 		Updated             time.Time
 	}
 	var posts []postRow
-	published, drafts := 0, 0
-	if rows, err := dbpkg.DB.QueryContext(r.Context(),
-		`SELECT title,slug,COALESCE(tags,''),updated_at,COALESCE(status,'published') FROM articles ORDER BY created_at DESC LIMIT 500`); err == nil {
-		defer rows.Close()
-		for rows.Next() {
-			var p postRow
-			var tagsCSV string
-			if rows.Scan(&p.Title, &p.Slug, &tagsCSV, &p.Updated, &p.Status) == nil {
-				p.Tags = splitCSVTags(tagsCSV)
-				posts = append(posts, p)
-				if p.Status == "draft" {
-					drafts++
-				} else {
-					published++
+	listWhere := append([]string{}, where...)
+	listArgs := append([]any{}, args...)
+	switch status {
+	case "published":
+		listWhere = append(listWhere, "COALESCE(status,'published')='published'")
+	case "draft":
+		listWhere = append(listWhere, "COALESCE(status,'published')='draft'")
+	}
+	listClause := ""
+	if len(listWhere) > 0 {
+		listClause = " WHERE " + strings.Join(listWhere, " AND ")
+	}
+	listArgs = append(listArgs, osPostsPageSize, offset)
+	if dbpkg.DB != nil {
+		if rows, err := dbpkg.DB.QueryContext(r.Context(),
+			`SELECT title,slug,COALESCE(tags,''),updated_at,COALESCE(status,'published') FROM articles`+listClause+` ORDER BY created_at DESC LIMIT ? OFFSET ?`, listArgs...); err == nil {
+			defer rows.Close()
+			for rows.Next() {
+				var p postRow
+				var tagsCSV string
+				if rows.Scan(&p.Title, &p.Slug, &tagsCSV, &p.Updated, &p.Status) == nil {
+					p.Tags = splitCSVTags(tagsCSV)
+					posts = append(posts, p)
 				}
 			}
 		}
 	}
 
+	filtersActive := q != "" || from != "" || to != "" || status != "all"
+
 	var body string
-	if len(posts) == 0 {
+	if allCount == 0 && !filtersActive {
 		body = `<div class="page-header"><h1>Posts</h1></div>
 <div class="card empty-state">
   <div class="empty-icon">✍️</div>
@@ -1042,10 +1149,9 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 	} else {
 		rows := ""
 		for _, p := range posts {
-			tags, searchTags := "", ""
+			tags := ""
 			for _, t := range p.Tags {
 				tags += `<span class="chip chip--brand">#` + html.EscapeString(t) + `</span> `
-				searchTags += " " + t
 			}
 			esc := html.EscapeString(p.Slug)
 			isDraft := p.Status == "draft"
@@ -1058,7 +1164,7 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 				// A draft is hidden from the public site (previewed in the editor).
 				viewBtn = ""
 			}
-			rows += `<tr data-post-row data-status="` + p.Status + `" data-search="` + html.EscapeString(strings.ToLower(p.Title+searchTags)) + `">
+			rows += `<tr data-post-row data-status="` + p.Status + `">
   <td class="row-title">
     <a href="/os/editor/` + esc + `">` + html.EscapeString(p.Title) + `</a>
     <div class="row-meta">/` + esc + `</div>
@@ -1073,29 +1179,48 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
   </td>
 </tr>`
 		}
+
+		tableBlock := `<div class="table-wrap">
+    <table class="table">
+      <thead><tr><th>Title</th><th>Status</th><th>Tags</th><th>Updated</th><th></th></tr></thead>
+      <tbody>` + rows + `</tbody>
+    </table>
+  </div>`
+		if len(posts) == 0 {
+			tableBlock = `<div class="table-empty">No posts match your filter. <a href="/os/posts">Clear filters</a>.</div>`
+		}
+
+		shownFrom, shownTo := 0, 0
+		if len(posts) > 0 {
+			shownFrom = offset + 1
+			shownTo = offset + len(posts)
+		}
+
 		body = `<div class="page-header">
-  <h1>Posts <span class="count-pill">` + strconv.Itoa(len(posts)) + `</span></h1>
+  <h1>Posts <span class="count-pill">` + strconv.Itoa(allCount) + `</span></h1>
   <div class="page-actions">
     <a class="btn btn--primary" href="/os/editor">New Post</a>
   </div>
 </div>
 <div class="card">
   <div class="toolbar-row">
-    <input class="input search-input" type="search"
-      data-posts-search placeholder="Search by title or tag…" aria-label="Search posts">
+    <form class="posts-filter" method="GET" action="/os/posts" role="search">
+      <input type="hidden" name="status" value="` + html.EscapeString(status) + `">
+      <input class="input search-input" type="search" name="q" value="` + html.EscapeString(q) + `" placeholder="Search by title or tag…" aria-label="Search posts">
+      ` + osPostsPeriodSelect(period) + `
+      <label class="posts-filter-date">From <input class="input input--sm" type="date" name="from" value="` + html.EscapeString(from) + `" aria-label="From date"></label>
+      <label class="posts-filter-date">To <input class="input input--sm" type="date" name="to" value="` + html.EscapeString(to) + `" aria-label="To date"></label>
+      <button class="btn btn--ghost btn--sm" type="submit">Filter</button>
+      <a class="btn btn--ghost btn--sm" href="/os/posts">Clear</a>
+    </form>
     <div class="seg-filter" role="tablist" aria-label="Filter by status">
-      <button type="button" class="seg-btn is-active" data-status-filter="all">All <span class="muted">` + strconv.Itoa(len(posts)) + `</span></button>
-      <button type="button" class="seg-btn" data-status-filter="published">Published <span class="muted">` + strconv.Itoa(published) + `</span></button>
-      <button type="button" class="seg-btn" data-status-filter="draft">Drafts <span class="muted">` + strconv.Itoa(drafts) + `</span></button>
+      <a class="seg-btn` + osActiveCls(status == "all") + `" href="` + osPostsHref("all", q, from, to, period, 1) + `">All <span class="muted">` + strconv.Itoa(allCount) + `</span></a>
+      <a class="seg-btn` + osActiveCls(status == "published") + `" href="` + osPostsHref("published", q, from, to, period, 1) + `">Published <span class="muted">` + strconv.Itoa(published) + `</span></a>
+      <a class="seg-btn` + osActiveCls(status == "draft") + `" href="` + osPostsHref("draft", q, from, to, period, 1) + `">Drafts <span class="muted">` + strconv.Itoa(drafts) + `</span></a>
     </div>
   </div>
-  <div class="table-wrap">
-    <table class="table">
-      <thead><tr><th>Title</th><th>Status</th><th>Tags</th><th>Updated</th><th></th></tr></thead>
-      <tbody>` + rows + `</tbody>
-    </table>
-  </div>
-  <div class="table-empty" data-search-empty hidden>No posts match your filter.</div>
+  ` + tableBlock + `
+  ` + osPostsPager(status, q, from, to, period, page, totalPages, total, shownFrom, shownTo) + `
 </div>
 <div id="action-msg" role="status" aria-live="polite" class="action-msg"></div>
 <script nonce="` + nonce + `">
@@ -1112,18 +1237,208 @@ document.querySelectorAll('[data-post-toggle]').forEach(function(b){
       .catch(function(e){b.disabled=false;show('Error: '+e,true);});
   });
 });
-var rowsEl=document.querySelectorAll('[data-post-row]');
-function applyFilter(f){rowsEl.forEach(function(row){var st=row.getAttribute('data-status');row.hidden=(f!=='all'&&st!==f);});}
-document.querySelectorAll('[data-status-filter]').forEach(function(s){
-  s.addEventListener('click',function(){
-    document.querySelectorAll('[data-status-filter]').forEach(function(x){x.classList.remove('is-active');});
-    s.classList.add('is-active');applyFilter(s.getAttribute('data-status-filter'));
-  });
-});
 })();
 </script>`
 	}
 	writeOSHTML(w, adminOSLayout(nonce, "Posts", "posts", cfg, htmpl.HTML(body)))
+}
+
+// osActiveCls returns the " is-active" class suffix when active is true.
+func osActiveCls(active bool) string {
+	if active {
+		return " is-active"
+	}
+	return ""
+}
+
+// normalizeDateParam validates a YYYY-MM-DD date string, returning "" if it is
+// empty or malformed so an invalid value never reaches the SQL query.
+func normalizeDateParam(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+	if _, err := time.Parse("2006-01-02", s); err != nil {
+		return ""
+	}
+	return s
+}
+
+// periodSince maps a preset time-window key to an inclusive lower-bound date
+// (YYYY-MM-DD, UTC). An empty return means "all time" / unrecognised key.
+func periodSince(period string) string {
+	var days int
+	switch period {
+	case "7d":
+		days = 7
+	case "30d":
+		days = 30
+	case "90d":
+		days = 90
+	case "365d":
+		days = 365
+	default:
+		return ""
+	}
+	return time.Now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
+}
+
+// osPostsPeriodSelect renders the time-range preset dropdown with the active
+// option preselected.
+func osPostsPeriodSelect(period string) string {
+	opts := []struct{ Val, Label string }{
+		{"all", "Any time"},
+		{"7d", "Last 7 days"},
+		{"30d", "Last 30 days"},
+		{"90d", "Last 90 days"},
+		{"365d", "Last 12 months"},
+	}
+	cur := period
+	if cur == "" {
+		cur = "all"
+	}
+	out := `<select class="select select--inline" name="period" aria-label="Time range">`
+	for _, o := range opts {
+		sel := ""
+		if o.Val == cur {
+			sel = " selected"
+		}
+		out += `<option value="` + o.Val + `"` + sel + `>` + o.Label + `</option>`
+	}
+	out += `</select>`
+	return out
+}
+
+// osPostsHref builds a /os/posts URL that preserves the active filters while
+// overriding the status tab and target page. Default values are omitted so the
+// query string stays clean and shareable.
+func osPostsHref(status, q, from, to, period string, page int) string {
+	v := url.Values{}
+	if status != "" && status != "all" {
+		v.Set("status", status)
+	}
+	if q != "" {
+		v.Set("q", q)
+	}
+	if from != "" {
+		v.Set("from", from)
+	}
+	if to != "" {
+		v.Set("to", to)
+	}
+	if period != "" && period != "all" {
+		v.Set("period", period)
+	}
+	if page > 1 {
+		v.Set("page", strconv.Itoa(page))
+	}
+	if enc := v.Encode(); enc != "" {
+		return "/os/posts?" + enc
+	}
+	return "/os/posts"
+}
+
+// osPostsPager renders the premium pagination control: a "showing X–Y of Z"
+// summary, first/last + prev/next + ±10-page jump buttons, a windowed run of
+// page numbers, and a "go to page" form. All navigation is plain GET links so
+// it works without JavaScript and respects the strict CSP.
+func osPostsPager(status, q, from, to, period string, page, totalPages, total, shownFrom, shownTo int) string {
+	info := `<div class="pager-info">Showing <strong>` + strconv.Itoa(shownFrom) + `–` + strconv.Itoa(shownTo) +
+		`</strong> of <strong>` + strconv.Itoa(total) + `</strong> posts</div>`
+	if totalPages <= 1 {
+		return `<nav class="pager" aria-label="Posts pagination">` + info + `</nav>`
+	}
+
+	btn := func(label string, target int, disabled bool, extraCls string) string {
+		cls := "pager-btn"
+		if extraCls != "" {
+			cls += " " + extraCls
+		}
+		if disabled {
+			return `<span class="` + cls + ` is-disabled" aria-disabled="true">` + label + `</span>`
+		}
+		return `<a class="` + cls + `" href="` + osPostsHref(status, q, from, to, period, target) + `">` + label + `</a>`
+	}
+	num := func(i int) string {
+		if i == page {
+			return `<span class="pager-btn is-current" aria-current="page">` + strconv.Itoa(i) + `</span>`
+		}
+		return `<a class="pager-btn" href="` + osPostsHref(status, q, from, to, period, i) + `">` + strconv.Itoa(i) + `</a>`
+	}
+
+	prev10 := page - 10
+	if prev10 < 1 {
+		prev10 = 1
+	}
+	next10 := page + 10
+	if next10 > totalPages {
+		next10 = totalPages
+	}
+
+	controls := btn("« First", 1, page == 1, "")
+	if totalPages > 10 {
+		controls += btn("‹‹ 10", prev10, page == 1, "")
+	}
+	controls += btn("‹ Prev", page-1, page == 1, "")
+
+	start := page - 2
+	if start < 1 {
+		start = 1
+	}
+	end := page + 2
+	if end > totalPages {
+		end = totalPages
+	}
+	if start > 1 {
+		controls += num(1)
+		if start > 2 {
+			controls += `<span class="pager-gap">…</span>`
+		}
+	}
+	for i := start; i <= end; i++ {
+		controls += num(i)
+	}
+	if end < totalPages {
+		if end < totalPages-1 {
+			controls += `<span class="pager-gap">…</span>`
+		}
+		controls += num(totalPages)
+	}
+
+	controls += btn("Next ›", page+1, page == totalPages, "")
+	if totalPages > 10 {
+		controls += btn("10 ››", next10, page == totalPages, "")
+	}
+	controls += btn("Last »", totalPages, page == totalPages, "")
+
+	jump := `<form class="pager-jump" method="GET" action="/os/posts">`
+	if status != "all" {
+		jump += `<input type="hidden" name="status" value="` + html.EscapeString(status) + `">`
+	}
+	if q != "" {
+		jump += `<input type="hidden" name="q" value="` + html.EscapeString(q) + `">`
+	}
+	if from != "" {
+		jump += `<input type="hidden" name="from" value="` + html.EscapeString(from) + `">`
+	}
+	if to != "" {
+		jump += `<input type="hidden" name="to" value="` + html.EscapeString(to) + `">`
+	}
+	if period != "" && period != "all" {
+		jump += `<input type="hidden" name="period" value="` + html.EscapeString(period) + `">`
+	}
+	jump += `<label class="pager-jump-label">Go to page
+      <input class="input input--sm pager-jump-input" type="number" name="page" min="1" max="` + strconv.Itoa(totalPages) + `" value="` + strconv.Itoa(page) + `" aria-label="Page number">
+    </label>
+    <span class="pager-jump-total">of ` + strconv.Itoa(totalPages) + `</span>
+    <button class="btn btn--ghost btn--sm" type="submit">Go</button>
+  </form>`
+
+	return `<nav class="pager" aria-label="Posts pagination">
+  ` + info + `
+  <div class="pager-controls">` + controls + `</div>
+  ` + jump + `
+</nav>`
 }
 
 // ── Editor ───────────────────────────────────────────────────────────────────
