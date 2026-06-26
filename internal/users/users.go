@@ -53,15 +53,16 @@ func ValidRole(role string) bool {
 
 // User is an account record. The password hash is never serialised to JSON.
 type User struct {
-	ID        string            `json:"id"`
-	Email     string            `json:"email"`
-	Name      string            `json:"name"`
-	Role      string            `json:"role"`
-	AvatarURL string            `json:"avatar_url,omitempty"`
-	Bio       string            `json:"bio,omitempty"`
-	Socials   map[string]string `json:"socials,omitempty"`
-	CreatedAt time.Time         `json:"created_at"`
-	LastLogin *time.Time        `json:"last_login,omitempty"`
+	ID          string            `json:"id"`
+	Email       string            `json:"email"`
+	Name        string            `json:"name"`
+	Role        string            `json:"role"`
+	AvatarURL   string            `json:"avatar_url,omitempty"`
+	Bio         string            `json:"bio,omitempty"`
+	Socials     map[string]string `json:"socials,omitempty"`
+	MailAddress string            `json:"mail_address,omitempty"`
+	CreatedAt   time.Time         `json:"created_at"`
+	LastLogin   *time.Time        `json:"last_login,omitempty"`
 }
 
 // Store manages user accounts in SQLite.
@@ -132,19 +133,20 @@ func (s *Store) Authenticate(ctx context.Context, email, password string) (*User
 }
 
 // profileCols is the SELECT list for reads that include public profile fields.
-const profileCols = `id,email,name,role,avatar_url,bio,socials,created_at,last_login`
+const profileCols = `id,email,name,role,avatar_url,bio,socials,mail_address,created_at,last_login`
 
 // scanUserProfile reads a row selected with profileCols.
 func scanUserProfile(sc interface{ Scan(...interface{}) error }) (*User, error) {
 	var u User
-	var avatar, bio, socials string
+	var avatar, bio, socials, mailAddr string
 	var lastLogin sql.NullTime
-	if err := sc.Scan(&u.ID, &u.Email, &u.Name, &u.Role, &avatar, &bio, &socials, &u.CreatedAt, &lastLogin); err != nil {
+	if err := sc.Scan(&u.ID, &u.Email, &u.Name, &u.Role, &avatar, &bio, &socials, &mailAddr, &u.CreatedAt, &lastLogin); err != nil {
 		return nil, err
 	}
 	u.AvatarURL = avatar
 	u.Bio = bio
 	u.Socials = decodeSocials(socials)
+	u.MailAddress = mailAddr
 	if lastLogin.Valid {
 		u.LastLogin = &lastLogin.Time
 	}
@@ -155,6 +157,12 @@ func scanUserProfile(sc interface{ Scan(...interface{}) error }) (*User, error) 
 func (s *Store) GetByID(ctx context.Context, id string) (*User, error) {
 	return scanUserProfile(s.db.QueryRowContext(ctx,
 		`SELECT `+profileCols+` FROM users WHERE id=?`, id))
+}
+
+// GetByEmail returns the user with the given email, including profile fields.
+func (s *Store) GetByEmail(ctx context.Context, email string) (*User, error) {
+	return scanUserProfile(s.db.QueryRowContext(ctx,
+		`SELECT `+profileCols+` FROM users WHERE email=?`, strings.TrimSpace(strings.ToLower(email))))
 }
 
 // List returns all users ordered by creation time, including profile fields.
@@ -174,6 +182,21 @@ func (s *Store) List(ctx context.Context) ([]User, error) {
 		out = append(out, *u)
 	}
 	return out, rows.Err()
+}
+
+// SetMailAddress records the VayuMail mailbox address assigned to a user (or
+// clears it when addr is empty). The address is normalised to lowercase.
+func (s *Store) SetMailAddress(ctx context.Context, id, addr string) error {
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE users SET mail_address=? WHERE id=?`,
+		strings.TrimSpace(strings.ToLower(addr)), id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("no user with that id")
+	}
+	return nil
 }
 
 // SetRole changes a user's role by email. The role must be recognised.

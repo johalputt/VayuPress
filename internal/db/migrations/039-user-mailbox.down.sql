@@ -1,0 +1,2 @@
+-- The mail_address column is intentionally retained; SQLite DROP COLUMN support
+-- is version-dependent and the column is harmless if the migration is rolled back.

@@ -10,6 +10,14 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Security
 
+- **VayuMail is now role-scoped: non-admin staff can only operate their own
+  mailbox.** Previously any signed-in user could browse, read, search, and act
+  on any mailbox via the `?user=` parameter, and could open the mail-account
+  management screens. The webmail (inbox, message, search, compose, send, draft,
+  message actions) now locks non-admins to their assigned mailbox and rejects
+  cross-mailbox access; mail-account management (create/update/delete/list) is
+  restricted to administrators.
+
 - **Hardened the profile avatar preview against DOM-based injection (CodeQL:
   "DOM text reinterpreted as HTML").** The live avatar preview assigned the raw
   text field value to an element attribute; it now passes the value through a
@@ -27,6 +35,17 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   as its content changes, while unchanged files stay cached.
 
 ### Added
+
+- **Admins can assign a custom VayuMail mailbox to each team member, and staff
+  operate it from their own panel.** From **Members → Team & roles**, an admin
+  assigns a mailbox (`name@yourdomain` + password) to any admin/editor/author;
+  the address is linked to their account and the mailbox + PGP keypair are
+  provisioned automatically. Signed-in staff then use the VayuMail panel scoped
+  to their own mailbox — inbox, read, compose, reply/forward, and send all run
+  as their assigned address. The role↔mailbox mapping is admin→administrator,
+  editor→editor, author→author. New endpoint:
+  `POST /api/v1/admin/users/{email}/mailbox` (mirrored at `/os/api/...`),
+  admin-only and CSRF-protected. Migration `039-user-mailbox` links the address.
 
 - **Premium membership system — multi-tier plans, a member portal, and revenue
   insight.** VayuPress memberships grow from a free/paid switch into a complete

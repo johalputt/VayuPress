@@ -152,6 +152,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.Get("/os/api/users", a.handleUserList)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/users", a.handleUserCreate)
 		pr.With(auth.CSRFTokenMiddleware).Put("/os/api/users/{email}/role", a.handleUserSetRole)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/users/{email}/mailbox", a.handleAssignMailbox)
 		pr.With(auth.CSRFTokenMiddleware).Delete("/os/api/users/{email}", a.handleUserDelete)
 		pr.Get("/os/security", a.handleOSSecurity)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/totp/begin", a.handleOSTOTPBegin)

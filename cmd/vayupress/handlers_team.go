@@ -21,9 +21,13 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/config"
+	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/users"
+	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
+	vpgp "github.com/johalputt/vayupress/internal/vayuos/pgp"
 )
 
 // socialPlatforms is the curated set of social links the profile editor offers.
@@ -117,6 +121,136 @@ func (a *App) isLastAdmin(r *http.Request, email string) (bool, error) {
 		}
 	}
 	return isTarget && admins <= 1, nil
+}
+
+// =============================================================================
+// Admin: assign a VayuMail mailbox to a team member
+// =============================================================================
+
+// mapMailRole maps a CMS role to the corresponding VayuMail mailbox role.
+func mapMailRole(cmsRole string) string {
+	switch cmsRole {
+	case users.RoleAdmin:
+		return vmail.RoleAdministrator
+	case users.RoleEditor:
+		return vmail.RoleEditor
+	default:
+		return vmail.RoleAuthor
+	}
+}
+
+// mailboxBody is the JSON payload for assigning a mailbox.
+type mailboxBody struct {
+	Local string `json:"local"`
+	Pass  string `json:"pass"`
+}
+
+// POST /os/api/users/{email}/mailbox  {local, pass}
+//
+// Assigns (creates or re-passwords) a sovereign VayuMail mailbox
+// "local@domain" to a team member and links it to their account so their mail
+// panel scopes to it. Admin-only, CSRF-protected.
+func (a *App) handleAssignMailbox(w http.ResponseWriter, r *http.Request) {
+	if !a.isAdminRequest(r) {
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", "admin role required", "")
+		return
+	}
+	if a.userStore == nil {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "users-disabled", "Accounts not initialised", "")
+		return
+	}
+	if a.vayuMail == nil || !a.vayuMail.Config().Enabled || a.vayuMail.Accounts() == nil {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", "VayuMail is not active (set DOMAIN to enable mailboxes)", "")
+		return
+	}
+	u, err := a.userStore.GetByEmail(r.Context(), chi.URLParam(r, "email"))
+	if err != nil {
+		writeAPIError(w, r, http.StatusNotFound, "not-found", "No team member with that email", "")
+		return
+	}
+	var body mailboxBody
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16*1024)).Decode(&body); err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "bad-json", "Invalid request body", "")
+		return
+	}
+	local := strings.ToLower(strings.TrimSpace(body.Local))
+	if local == "" || strings.ContainsAny(local, "@ \t") {
+		writeAPIError(w, r, http.StatusBadRequest, "validation_error", "Enter a valid mailbox name (the part before @)", "")
+		return
+	}
+	if len(body.Pass) < 8 {
+		writeAPIError(w, r, http.StatusBadRequest, "validation_error", "Password must be at least 8 characters", "")
+		return
+	}
+	hash, err := auth.HashSecretArgon2id(body.Pass)
+	if err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "hash-failed", "Could not hash password", "")
+		return
+	}
+	email := local + "@" + a.vayuMail.Config().Domain
+	role := mapMailRole(u.Role)
+	accts := a.vayuMail.Accounts()
+
+	// Create the account, or update the password + role if it already exists.
+	if err := accts.Create(r.Context(), email, hash, u.Name, role); err != nil {
+		if strings.Contains(err.Error(), "already exists") {
+			if perr := accts.SetPasswordHash(r.Context(), email, hash); perr != nil {
+				writeAPIError(w, r, http.StatusBadRequest, "assign-failed", perr.Error(), "")
+				return
+			}
+			_ = accts.SetRole(r.Context(), email, role)
+			_ = accts.SetActive(r.Context(), email, true)
+		} else {
+			writeAPIError(w, r, http.StatusBadRequest, "assign-failed", err.Error(), "")
+			return
+		}
+	}
+	// Provision the Maildir folders and a PGP keypair (best-effort).
+	_ = a.vayuMail.CreateMailbox("", local)
+	if a.vayuPGP != nil {
+		if _, err := a.vayuPGP.EnsureKeypair(&vpgp.PGPUser{UserID: email, Name: u.Name, Email: email}); err != nil {
+			logging.LogError("vayuos", "PGP keygen failed for assigned mailbox "+email, err.Error())
+		}
+	}
+	// Link the mailbox to the CMS user so their panel scopes to it.
+	if err := a.userStore.SetMailAddress(r.Context(), u.ID, email); err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "link-failed", err.Error(), "")
+		return
+	}
+	writeJSON(w, r, http.StatusOK, map[string]string{"email": email, "role": role})
+}
+
+// scopedMailUser resolves the mailbox identifier (local part) a request may
+// operate on. Admins may target the requested mailbox; everyone else is locked
+// to their own assigned mailbox (empty when none).
+func (a *App) scopedMailUser(r *http.Request, requested string) string {
+	if a.isAdminRequest(r) {
+		return strings.TrimSpace(requested)
+	}
+	local, _ := a.ownMailbox(r)
+	return local
+}
+
+// ownMailbox returns the signed-in user's assigned mailbox local part and full
+// address, or ("","") when none is assigned (or the caller is an API-key
+// session with no user).
+func (a *App) ownMailbox(r *http.Request) (local, email string) {
+	u := currentUser(r)
+	if u == nil || a.userStore == nil {
+		return "", ""
+	}
+	if fresh, err := a.userStore.GetByID(r.Context(), u.ID); err == nil {
+		u = fresh
+	}
+	email = strings.TrimSpace(u.MailAddress)
+	if email == "" {
+		return "", ""
+	}
+	local = email
+	if i := strings.Index(local, "@"); i >= 0 {
+		local = local[:i]
+	}
+	return local, email
 }
 
 // =============================================================================
@@ -228,6 +362,11 @@ func (a *App) teamCardHTML(r *http.Request) string {
 	}
 	esc := html.EscapeString
 	list, _ := a.userStore.List(r.Context())
+	mailEnabled := a.vayuMail != nil && a.vayuMail.Config().Enabled
+	mailDomain := ""
+	if mailEnabled {
+		mailDomain = a.vayuMail.Config().Domain
+	}
 
 	roleOptions := func(current string) string {
 		opts := ""
@@ -248,9 +387,14 @@ func (a *App) teamCardHTML(r *http.Request) string {
 		if name == "" {
 			name = `<span class="row-meta">—</span>`
 		}
-		mailbox := `<span class="row-meta">—</span>`
-		if a.vayuMail != nil && a.vayuMail.Config().Enabled {
-			mailbox = `<span class="badge badge--ok">provisioned</span>`
+		mailbox := `<span class="row-meta">mail off</span>`
+		if mailEnabled {
+			if u.MailAddress != "" {
+				mailbox = `<span class="badge badge--ok">` + esc(u.MailAddress) + `</span> ` +
+					`<button class="btn btn--xs btn--ghost" type="button" data-assign-mailbox data-email="` + esc(u.Email) + `" data-domain="` + esc(mailDomain) + `" data-current="` + esc(u.MailAddress) + `">Change</button>`
+			} else {
+				mailbox = `<button class="btn btn--xs" type="button" data-assign-mailbox data-email="` + esc(u.Email) + `" data-domain="` + esc(mailDomain) + `">Assign email</button>`
+			}
 		}
 		rows += `<tr>
   <td class="row-title"><a href="/author/` + esc(u.ID) + `" target="_blank" rel="noopener">` + esc(u.Email) + `</a></td>
