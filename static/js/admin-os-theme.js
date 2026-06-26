@@ -243,6 +243,16 @@
     });
   });
 
+  // ── Collapsible control groups (explicit toggle; robust, no <details>) ──────
+  root.querySelectorAll('.cz-group__head').forEach(function (head) {
+    head.addEventListener('click', function () {
+      var group = head.closest('.cz-group');
+      if (!group) return;
+      var open = group.classList.toggle('cz-group--open');
+      head.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+  });
+
   // ── Control change wiring ─────────────────────────────────────────────────────
   Object.keys(inputs).forEach(function (field) {
     var el = inputs[field];
