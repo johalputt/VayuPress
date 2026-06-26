@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"regexp"
@@ -143,8 +144,47 @@ func generateSitemap() {
 		xml.EscapeText(&locBuf, []byte(fmt.Sprintf("https://%s/%s", config.Cfg.Domain, slug))) //nolint:errcheck
 		fmt.Fprintf(&sb, "<url><loc>%s</loc><lastmod>%s</lastmod></url>", locBuf.String(), updated.Format("2006-01-02"))
 	}
+	sitemapAppendTagPages(&sb)
 	sb.WriteString("</urlset>")
 	render.CacheWrite("sitemap.xml", sb.String()) //nolint:errcheck
+}
+
+// sitemapAppendTagPages adds the topic index (/tags) and every per-tag listing
+// (/tags/<tag>) to the sitemap so search engines discover the taxonomy. Tags are
+// gathered from published articles, deduplicated case-insensitively, and the URL
+// path segment is escaped to match the live route's decoding.
+func sitemapAppendTagPages(sb *strings.Builder) {
+	rows, err := dbpkg.DB.Query(`SELECT tags FROM articles WHERE tags != '' AND COALESCE(status,'published')='published'`)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	seen := make(map[string]string) // lower(tag) -> first-seen display form
+	for rows.Next() {
+		var csv string
+		if rows.Scan(&csv) != nil {
+			continue
+		}
+		for _, t := range api.SplitTags(csv) {
+			t = strings.TrimSpace(t)
+			if t == "" {
+				continue
+			}
+			if _, ok := seen[strings.ToLower(t)]; !ok {
+				seen[strings.ToLower(t)] = t
+			}
+		}
+	}
+	// Topic index.
+	var idxBuf strings.Builder
+	xml.EscapeText(&idxBuf, []byte(fmt.Sprintf("https://%s/tags", config.Cfg.Domain))) //nolint:errcheck
+	fmt.Fprintf(sb, "<url><loc>%s</loc></url>", idxBuf.String())
+	for _, display := range seen {
+		var locBuf strings.Builder
+		loc := fmt.Sprintf("https://%s/tags/%s", config.Cfg.Domain, url.PathEscape(display))
+		xml.EscapeText(&locBuf, []byte(loc)) //nolint:errcheck
+		fmt.Fprintf(sb, "<url><loc>%s</loc></url>", locBuf.String())
+	}
 }
 
 func generateRSS() {

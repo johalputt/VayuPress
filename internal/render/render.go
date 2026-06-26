@@ -1739,4 +1739,55 @@ h1, h2, h3, h4, h5, h6 {
   .vayu-stats { gap: 1rem 1.75rem; }
   .vayu-post-arrow { display: none; }
 }
+
+/* ── Tag index (topic cloud) + tag-page back link ───────────────────────── */
+.vayu-tag-cloud {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+}
+
+.vayu-tag--cloud {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.9rem;
+  padding: 0.4em 0.75em;
+  border: 1px solid var(--pico-muted-border-color);
+  background: var(--pico-card-background-color, var(--pico-primary-focus));
+  line-height: 1.2;
+  transition: background 0.15s, border-color 0.15s, transform 0.15s;
+}
+
+.vayu-tag--cloud:hover {
+  border-color: var(--pico-primary);
+  transform: translateY(-1px);
+}
+
+.vayu-tag-count {
+  font-size: 0.72rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  min-width: 1.4em;
+  padding: 0.05em 0.4em;
+  text-align: center;
+  border-radius: 99px;
+  background: var(--pico-primary);
+  color: var(--pico-primary-inverse);
+}
+
+.vayu-tag--cloud:hover .vayu-tag-count {
+  background: var(--pico-primary-inverse);
+  color: var(--pico-primary);
+}
+
+.vayu-tag-back {
+  color: var(--pico-muted-color);
+  text-decoration: none;
+  font-weight: 600;
+  transition: color 0.15s;
+}
+
+.vayu-tag-back:hover { color: var(--pico-primary); text-decoration: none; }
 `
