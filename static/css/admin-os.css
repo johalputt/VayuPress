@@ -1833,6 +1833,7 @@
 .vp-os .theme-field { display: flex; flex-direction: column; gap: 6px; }
 .vp-os .theme-field--text { gap: 6px; }
 .vp-os .theme-field__label { font-size: 0.78rem; color: var(--text-2); }
+.vp-os .theme-field__hint { font-size: 0.72rem; color: var(--text-3, var(--text-2)); opacity: 0.85; margin-top: 2px; }
 .vp-os .theme-field__color {
   width: 100%; height: 38px; padding: 2px; cursor: pointer;
   background: var(--bg-surface-2); border: 1px solid var(--border); border-radius: var(--r-sm);

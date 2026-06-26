@@ -30,6 +30,22 @@
     inputs[el.getAttribute('data-token')] = el;
   });
 
+  // Theme-level customization controls (color scheme, width, corners, …).
+  var optInputs = {};
+  root.querySelectorAll('[data-token-opt]').forEach(function (el) {
+    optInputs[el.getAttribute('data-token-opt')] = el;
+  });
+  var options = {};
+
+  // Accent pairs mirror schemePalettes in internal/theme/options.go (dark
+  // variants, for the dark preview panel) so the live preview matches Apply.
+  var SCHEMES = {
+    indigo: ['#6366f1', '#22d3ee'], violet: ['#8b5cf6', '#ec4899'], cyan: ['#06b6d4', '#3b82f6'],
+    emerald: ['#10b981', '#84cc16'], rose: ['#f43f5e', '#fb923c'], amber: ['#f59e0b', '#ef4444'],
+    crimson: ['#ef4444', '#a78bfa'], teal: ['#14b8a6', '#38bdf8'], slate: ['#64748b', '#94a3b8'],
+    mono: ['#e5e7eb', '#9ca3af']
+  };
+
   var model = {};
   var allPresets = [];
   var activePresetName = '';
@@ -61,6 +77,26 @@
     if (model.RadiusLg) previewEl.style.setProperty('--vp-radius-lg', model.RadiusLg);
   }
 
+  // paintOptionPreview live-applies the option choices to the preview panel
+  // (scheme accent + corner radius are the visible ones at this size).
+  function paintOptionPreview() {
+    if (!previewEl) return;
+    var s = options.scheme;
+    if (s && SCHEMES[s]) {
+      previewEl.style.setProperty('--vp-accent', SCHEMES[s][0]);
+      previewEl.style.setProperty('--vp-accent2', SCHEMES[s][1]);
+    } else {
+      // revert to the token-defined accent
+      if (model.AccentDark) previewEl.style.setProperty('--vp-accent', model.AccentDark);
+      if (model.Accent2Dark) previewEl.style.setProperty('--vp-accent2', model.Accent2Dark);
+    }
+    var c = options.corners;
+    if (c === 'sharp') previewEl.style.setProperty('--vp-radius-lg', '0');
+    else if (c === 'round') previewEl.style.setProperty('--vp-radius-lg', '1.5rem');
+    else if (c === 'soft') previewEl.style.setProperty('--vp-radius-lg', '0.875rem');
+    else if (model.RadiusLg) previewEl.style.setProperty('--vp-radius-lg', model.RadiusLg);
+  }
+
   function loadTokens(tok) {
     model = {};
     Object.keys(inputs).forEach(function (field) {
@@ -77,11 +113,20 @@
     // Preserve the preset's component CSS (apex.css/gale.css/etc.) so a theme
     // loaded via "Customize" keeps its full design when the operator hits Apply.
     loadedCustomCSS = tok.custom_css || tok.CustomCSS || '';
+    // Theme-level options — restore saved choices (default-select otherwise).
+    options = {};
+    var savedOpts = (tok && (tok.options || tok.Options)) || {};
+    Object.keys(optInputs).forEach(function (key) {
+      var el = optInputs[key];
+      el.value = savedOpts[key] != null ? String(savedOpts[key]) : (el.options[0] ? el.options[0].value : '');
+      options[key] = el.value;
+    });
     if (activeNameEl) {
       activeNameEl.textContent = activePresetName ? 'Current theme: ' + activePresetName : 'Current theme';
     }
     highlightActiveCard(activePresetName);
     paintPreview();
+    paintOptionPreview();
   }
 
   // Highlight the active theme card in the gallery
@@ -103,6 +148,15 @@
     el.addEventListener(evt, function () {
       model[field] = el.value;
       paintPreview();
+      paintOptionPreview();
+    });
+  });
+
+  // Option selects → update state + live preview.
+  Object.keys(optInputs).forEach(function (key) {
+    optInputs[key].addEventListener('change', function () {
+      options[key] = optInputs[key].value;
+      paintOptionPreview();
     });
   });
 
@@ -126,6 +180,7 @@
     var payload = {};
     Object.keys(model).forEach(function (k) { payload[k] = model[k]; });
     if (loadedCustomCSS) payload.custom_css = loadedCustomCSS;
+    payload.options = options;
     fetch('/os/api/theme/apply', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },

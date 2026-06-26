@@ -145,6 +145,29 @@ func textRow(field, label, placeholder string) string {
 </label>`
 }
 
+// themeOptionRows renders the theme-level customization controls — color scheme,
+// reading width, corner style, heading case, accent fill — as <select>s bound to
+// data-token-opt. The Studio JS loads/saves their values as Tokens.Options, which
+// CompileCSS realises (re-tinting the accent, resizing the measure, etc.) for
+// any theme. CSP-safe: plain selects, no inline handlers.
+func themeOptionRows() string {
+	out := ""
+	for _, o := range theme.AllOptions() {
+		opts := ""
+		for _, c := range o.Choices {
+			opts += `<option value="` + html.EscapeString(c.Value) + `">` + html.EscapeString(c.Label) + `</option>`
+		}
+		hint := ""
+		if o.Help != "" {
+			hint = `<span class="theme-field__hint">` + html.EscapeString(o.Help) + `</span>`
+		}
+		out += `<label class="theme-field theme-field--text">
+  <span class="theme-field__label">` + html.EscapeString(o.Label) + `</span>
+  <select class="input" data-token-opt="` + html.EscapeString(o.Key) + `" aria-label="` + html.EscapeString(o.Label) + `">` + opts + `</select>` + hint + `</label>`
+	}
+	return out
+}
+
 func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
@@ -190,6 +213,12 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
       <div class="card-title">Presets</div>
       <div class="text-sm muted mb-3">Start from a built-in palette, then fine-tune any token below.</div>
       <div class="theme-gallery" data-theme-presets aria-label="Theme presets">` + themePresetCards() + `</div>
+    </div>
+
+    <div class="card mb-6">
+      <div class="card-title">Customize</div>
+      <div class="text-sm muted mb-3">Tune any theme along these dimensions — applied site-wide on Apply. Use the colour pickers below for fine control.</div>
+      <div class="theme-fields theme-fields--text">` + themeOptionRows() + `</div>
     </div>
 
     <div class="card mb-6">
