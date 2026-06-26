@@ -52,6 +52,12 @@ const (
 	// pages or external/redirect links — from Settings → Navigation.
 	KeyNavItems = "nav.items"
 
+	// Footer. A JSON object describing the premium public-site footer: tagline,
+	// link columns, social links, legal links (Privacy/Terms…) and the copyright
+	// line. Edited in Settings → Footer. When unset, a clean default copyright
+	// bar is rendered.
+	KeyFooterConfig = "footer.config"
+
 	// Feature flags — operator-toggleable platform modules surfaced in the
 	// Tools & Plugins panel. Each value is "on" (default) or "off". Disabling a
 	// flag turns the corresponding public surface off at the request boundary;
@@ -106,6 +112,7 @@ var AllKeys = map[string]bool{
 	KeyBrandFavicon:       true,
 	KeyBrandFaviconType:   true,
 	KeyNavItems:           true,
+	KeyFooterConfig:       true,
 	KeyFeatureComments:    true,
 	KeyFeatureNewsletter:  true,
 	KeyFeatureWebmentions: true,

@@ -202,6 +202,25 @@ func (a *App) bootVayuOS() {
 		mailCfg.InboundEnabled = true
 		mailCfg.SMTPListen = config.EnvOr("VAYUOS_MAIL_SMTP_LISTEN", ":25")
 		mailCfg.IMAPListen = config.EnvOr("VAYUOS_MAIL_IMAP_LISTEN", ":143")
+		mailCfg.SubmissionListen = config.EnvOr("VAYUOS_MAIL_SUBMISSION_LISTEN", ":587")
+		mailCfg.IMAPSListen = config.EnvOr("VAYUOS_MAIL_IMAPS_LISTEN", ":993")
+		// Optional CA-signed cert (e.g. Let's Encrypt). When unset, VayuMail
+		// generates an in-memory self-signed cert so STARTTLS still works.
+		mailCfg.TLSCertFile = config.EnvOr("VAYUOS_MAIL_TLS_CERT", "")
+		mailCfg.TLSKeyFile = config.EnvOr("VAYUOS_MAIL_TLS_KEY", "")
+	}
+	// Optional outbound smarthost relay. Sovereign direct-to-MX stays the
+	// default; setting VAYUOS_MAIL_RELAY_HOST routes outbound through an
+	// authenticated relay whose IP reputation carries deliverability, while
+	// inbound, IMAP, local delivery and DKIM signing remain self-hosted.
+	if rh := config.EnvOr("VAYUOS_MAIL_RELAY_HOST", ""); rh != "" {
+		mailCfg.RelayHost = rh
+		mailCfg.RelayPort = config.GetEnvAsInt("VAYUOS_MAIL_RELAY_PORT", 587)
+		mailCfg.RelayUsername = config.EnvOr("VAYUOS_MAIL_RELAY_USERNAME", "")
+		mailCfg.RelayPassword = config.EnvOr("VAYUOS_MAIL_RELAY_PASSWORD", "")
+		// TLS before AUTH is required by default; opt out only for a trusted
+		// relay on a private network.
+		mailCfg.RelayRequireTLS = !strings.EqualFold(config.EnvOr("VAYUOS_MAIL_RELAY_TLS", "on"), "off")
 	}
 	a.vayuMail = vmail.NewEngine(&mailCfg, &vayuMailBridge{app: a}, dbpkg.DB)
 	// Transparent PGP decryption when serving mail over IMAP to the owner.
@@ -234,11 +253,28 @@ func (a *App) bootVayuOS() {
 			return false, "disabled — set a domain in the wizard"
 		}
 		if a.vayuMail.Config().InboundEnabled {
-			if err := a.vayuMail.InboundError(); err != nil {
-				return true, "outbound + DKIM active; inbound listener unavailable: " + err.Error()
-			}
 			if a.vayuMail.InboundActive() {
-				return true, "outbound + DKIM active; inbound SMTP/IMAP listening"
+				extras := []string{}
+				if a.vayuMail.TLSActive() {
+					extras = append(extras, "STARTTLS")
+				}
+				if a.vayuMail.SubmissionActive() {
+					extras = append(extras, "submission:587")
+				}
+				if a.vayuMail.IMAPSActive() {
+					extras = append(extras, "IMAPS:993")
+				}
+				msg := "outbound + DKIM active; inbound SMTP/IMAP listening"
+				if len(extras) > 0 {
+					msg += " + " + strings.Join(extras, ", ")
+				}
+				if err := a.vayuMail.InboundError(); err != nil {
+					msg += "; note: " + err.Error() + inboundHint(err)
+				}
+				return true, msg
+			}
+			if err := a.vayuMail.InboundError(); err != nil {
+				return true, "outbound + DKIM active; inbound listener unavailable: " + err.Error() + inboundHint(err)
 			}
 		}
 		return true, "outbound queue + DKIM active (inbound disabled)"
@@ -315,6 +351,24 @@ func (a *App) backfillPGPKeys(ctx context.Context) {
 				}
 			}
 		}
+	}
+}
+
+// inboundHint translates a listener bind failure into an actionable next step
+// for the operator, so the pitfalls of self-hosting (privileged ports, a
+// pre-installed MTA) are explained right in the panel instead of being silent.
+func inboundHint(err error) string {
+	if err == nil {
+		return ""
+	}
+	msg := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(msg, "permission denied"):
+		return " — the process lacks privilege to bind ports below 1024. Grant CAP_NET_BIND_SERVICE (see deploy/vayupress.service), or set VAYUOS_MAIL_SMTP_LISTEN=:2525 / VAYUOS_MAIL_IMAP_LISTEN=:1143 and redirect 25→2525, 143→1143."
+	case strings.Contains(msg, "address already in use"), strings.Contains(msg, "in use"):
+		return " — another mail server already holds the port. Stop it (e.g. `sudo systemctl disable --now postfix`) and restart, or point VAYUOS_MAIL_SMTP_LISTEN/IMAP_LISTEN at free ports."
+	default:
+		return ""
 	}
 }
 
@@ -424,6 +478,16 @@ func (a *App) handleVayuOSMail(w http.ResponseWriter, r *http.Request) {
 			badge = `<span class="badge badge--warn">missing</span>`
 		}
 		body.WriteString(`<tr><td>` + html.EscapeString(rh.Type) + `</td><td>` + badge + `</td><td class="mono text-sm vm-break">` + html.EscapeString(rh.Found) + `</td></tr>`)
+	}
+	body.WriteString(`</tbody></table></div></div>`)
+	// Deliverability self-check — the things that most often send mail to spam.
+	body.WriteString(`<div class="card"><div class="card-title">Deliverability self-check</div><p class="muted text-sm">Why mail may be marked as spam. Fix any ✗ rows below.</p><div class="table-wrap"><table class="table"><thead><tr><th>Check</th><th>Status</th><th>Detail</th></tr></thead><tbody>`)
+	for _, rh := range a.vayuMail.Deliverability(r.Context()) {
+		badge := `<span class="badge badge--ok">ok</span>`
+		if !rh.OK {
+			badge = `<span class="badge badge--warn">action needed</span>`
+		}
+		body.WriteString(`<tr><td>` + html.EscapeString(rh.Type) + `</td><td>` + badge + `</td><td class="muted text-sm vm-break">` + html.EscapeString(rh.Message) + `</td></tr>`)
 	}
 	body.WriteString(`</tbody></table></div></div>`)
 	writeOSHTML(w, adminOSLayout(nonce, "VayuMail", "vayuos", cfg, htmpl.HTML(body.String())))
@@ -573,9 +637,9 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
   <button class="btn" type="submit">Search</button>
 </form>`)
 	body.WriteString(folderTabs(user, folder))
-	body.WriteString(`<div class="table-wrap"><table class="table"><thead><tr><th>From</th><th>Subject</th><th>Date</th></tr></thead><tbody>`)
+	body.WriteString(`<div class="table-wrap"><table class="table"><thead><tr><th>From</th><th>Subject</th><th>Date</th><th></th></tr></thead><tbody>`)
 	if len(msgs) == 0 {
-		body.WriteString(`<tr><td colspan="3" class="muted">No messages in ` + html.EscapeString(folder) + `.</td></tr>`)
+		body.WriteString(`<tr><td colspan="4" class="muted">No messages in ` + html.EscapeString(folder) + `.</td></tr>`)
 	}
 	for _, m := range msgs {
 		subj := m.Subject
@@ -586,14 +650,29 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 		if strings.EqualFold(folder, "Sent") || strings.EqualFold(folder, "Drafts") {
 			who = "→ " + m.To
 		}
+		// Drafts reopen in the composer; everything else opens the reader view.
 		link := "/os/vayuos/mail/message?user=" + qparam(user) + "&folder=" + qparam(folder) + "&id=" + qparam(m.ID)
-		seen := ""
-		if !m.Seen && strings.EqualFold(folder, "Inbox") {
-			seen = ` <span class="badge badge--ok">new</span>`
+		if strings.EqualFold(folder, "Drafts") {
+			link = "/os/vayuos/mail/compose?draft=1&user=" + qparam(user) + "&id=" + qparam(m.ID)
 		}
-		body.WriteString(`<tr><td class="text-sm">` + html.EscapeString(who) + `</td><td><a href="` + link + `">` + html.EscapeString(subj) + `</a>` + seen + `</td><td class="muted text-sm">` + m.Date.Format("2006-01-02 15:04") + `</td></tr>`)
+		seen := ""
+		tick := ""
+		if strings.EqualFold(folder, "Inbox") {
+			if !m.Seen {
+				seen = ` <span class="badge badge--ok">new</span>`
+			}
+			// Read/unread toggle (a tick when read).
+			mark := "read"
+			label := "Mark read"
+			if m.Seen {
+				mark, label = "unread", "✓ read"
+			}
+			tick = `<button class="btn btn--sm" data-mail-mark-row="` + mark + `" data-user="` + html.EscapeString(user) + `" data-folder="` + html.EscapeString(folder) + `" data-id="` + html.EscapeString(m.ID) + `">` + label + `</button>`
+		}
+		body.WriteString(`<tr><td class="text-sm">` + html.EscapeString(who) + `</td><td><a href="` + link + `">` + html.EscapeString(subj) + `</a>` + seen + `</td><td class="muted text-sm">` + m.Date.Format("2006-01-02 15:04") + `</td><td class="text-sm">` + tick + `</td></tr>`)
 	}
 	body.WriteString(`</tbody></table></div></div>`)
+	body.WriteString(`<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail.js"></script>`)
 	writeOSHTML(w, adminOSLayout(nonce, "Mailbox", "vayuos", cfg, htmpl.HTML(body.String())))
 }
 
@@ -670,6 +749,8 @@ func (a *App) handleVayuOSMessage(w http.ResponseWriter, r *http.Request) {
 	actions := `<div class="vm-actions" data-mail-actions data-user="` + html.EscapeString(user) + `" data-folder="` + html.EscapeString(folder) + `" data-id="` + html.EscapeString(id) + `">`
 	actions += `<a class="btn btn--primary" href="` + replyLink + `">Reply</a>`
 	actions += `<a class="btn" href="` + forwardLink + `">Forward</a>`
+	actions += `<button class="btn" data-mail-mark="read">✓ Mark read</button>`
+	actions += `<button class="btn" data-mail-mark="unread">Mark unread</button>`
 	if !strings.EqualFold(folder, "Junk") {
 		actions += `<button class="btn" data-mail-move="Junk">Mark as Junk</button>`
 	}
@@ -682,8 +763,44 @@ func (a *App) handleVayuOSMessage(w http.ResponseWriter, r *http.Request) {
 		actions += `<button class="btn" data-mail-move="Inbox">Restore to Inbox</button>`
 	}
 	actions += `<button class="btn btn--danger" data-mail-delete>Delete permanently</button></div>`
-	body.WriteString(`<div class="card"><div class="card-title"><a href="` + back + `">← Back to ` + html.EscapeString(folder) + `</a></div>` + actions +
-		`<pre class="vm-pre">` + html.EscapeString(string(raw)) + `</pre></div>`)
+	// Clean reader view: decoded headers + body, with a raw-source toggle.
+	pm := vmail.ParseMessage(raw)
+	subj := strings.TrimSpace(pm.Subject)
+	if subj == "" {
+		subj = "(no subject)"
+	}
+	var card strings.Builder
+	card.WriteString(`<div class="card"><div class="card-title"><a href="` + back + `">← Back to ` + html.EscapeString(folder) + `</a></div>`)
+	card.WriteString(actions)
+	// Header summary (long technical headers are hidden behind "raw source").
+	card.WriteString(`<div class="vm-msg-head"><div class="card-title">` + html.EscapeString(subj) + `</div>`)
+	hdrRow := func(label, value string) {
+		if strings.TrimSpace(value) == "" {
+			return
+		}
+		card.WriteString(`<div class="muted text-sm"><strong>` + label + `:</strong> ` + html.EscapeString(value) + `</div>`)
+	}
+	hdrRow("From", pm.From)
+	hdrRow("To", pm.To)
+	hdrRow("Cc", pm.Cc)
+	hdrRow("Date", pm.Date)
+	card.WriteString(`</div>`)
+	// Body: prefer decoded text/plain; else sanitised HTML; else raw fallback.
+	card.WriteString(`<div class="vm-msg-body">`)
+	switch {
+	case strings.TrimSpace(pm.Text) != "":
+		card.WriteString(`<pre class="vm-pre">` + html.EscapeString(pm.Text) + `</pre>`)
+	case strings.TrimSpace(pm.HTML) != "":
+		card.WriteString(`<div class="vm-html">` + mailHTMLPolicy.Sanitize(pm.HTML) + `</div>`)
+	default:
+		card.WriteString(`<pre class="vm-pre">` + html.EscapeString(string(raw)) + `</pre>`)
+	}
+	card.WriteString(`</div>`)
+	// Raw source, hidden by default, toggled by admin-os-mail.js (CSP-safe).
+	card.WriteString(`<div class="vm-rawwrap"><button class="btn" type="button" data-mail-raw-toggle>View raw source</button>`)
+	card.WriteString(`<pre class="vm-pre vm-raw" data-mail-raw hidden>` + html.EscapeString(string(raw)) + `</pre></div>`)
+	card.WriteString(`</div>`)
+	body.WriteString(card.String())
 	body.WriteString(`<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail.js"></script>`)
 	writeOSHTML(w, adminOSLayout(nonce, "Message", "vayuos", cfg, htmpl.HTML(body.String())))
 }

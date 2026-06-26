@@ -252,6 +252,7 @@ func (a *App) handleThemeReset(w http.ResponseWriter, r *http.Request) {
 			VerifyGoogle:    newVals[settings.KeyHeadVerifyGoogle],
 			VerifyBing:      newVals[settings.KeyHeadVerifyBing],
 			NavJSON:         newVals[settings.KeyNavItems],
+			FooterJSON:      newVals[settings.KeyFooterConfig],
 			CommentsEnabled: newVals[settings.KeyFeatureComments] != "off",
 		})
 	}
@@ -305,18 +306,18 @@ func (a *App) handleThemeSave(w http.ResponseWriter, r *http.Request) {
 		VerifyBing      string `json:"head.verify_bing"`
 	}
 	// Cap the request body before decoding. The largest legitimate field is the
-	// 16 KB custom CSS (checked again post-decode); 64 KB leaves generous room for
-	// the other small fields while refusing an oversized body up front rather than
-	// streaming it into the decoder.
-	r.Body = http.MaxBytesReader(w, r.Body, 64*1024)
+	// 64 KB custom CSS (checked again post-decode); 128 KB leaves generous room
+	// for the other small fields while refusing an oversized body up front rather
+	// than streaming it into the decoder.
+	r.Body = http.MaxBytesReader(w, r.Body, 128*1024)
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		fail(400, "invalid JSON: "+err.Error())
 		return
 	}
 
 	customCSS := strings.TrimSpace(body.CustomCSS)
-	if len(customCSS) > 16*1024 {
-		fail(400, "Custom CSS exceeds the 16 KB limit")
+	if len(customCSS) > 64*1024 {
+		fail(400, "Custom CSS exceeds the 64 KB limit")
 		return
 	}
 
@@ -400,6 +401,7 @@ func (a *App) handleThemeSave(w http.ResponseWriter, r *http.Request) {
 			VerifyGoogle:    newVals[settings.KeyHeadVerifyGoogle],
 			VerifyBing:      newVals[settings.KeyHeadVerifyBing],
 			NavJSON:         newVals[settings.KeyNavItems],
+			FooterJSON:      newVals[settings.KeyFooterConfig],
 			CommentsEnabled: newVals[settings.KeyFeatureComments] != "off",
 		})
 	}
@@ -686,7 +688,7 @@ func themeEditorPage(vals map[string]string, modeStr, nonce, errMsg string) stri
 
 <!-- Custom Code -->
 <div id="tab-code" class="theme-panel">
-  <div class="warn-box">Custom CSS is served same-origin via <code>/theme.css</code> (CSP-safe) and cannot reach external origins or execute scripts. Max 16 KB.</div>
+  <div class="warn-box">Custom CSS is served same-origin via <code>/theme.css</code> (CSP-safe) and cannot reach external origins or execute scripts. Max 64 KB.</div>
   <div class="field-row">
     <span class="field-label">Custom CSS</span>
     <div>

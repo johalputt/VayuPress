@@ -71,6 +71,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 	r.Get("/os/static/js/admin-os-tools.js", serveAdminOSAsset("js/admin-os-tools.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-monitoring.js", serveAdminOSAsset("js/admin-os-monitoring.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-theme.js", serveAdminOSAsset("js/admin-os-theme.js", "application/javascript; charset=utf-8"))
+	r.Get("/os/static/js/admin-os-theme-store.js", serveAdminOSAsset("js/admin-os-theme-store.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-mail.js", serveAdminOSAsset("js/admin-os-mail.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/purify.min.js", serveAdminOSAsset("js/purify.min.js", "application/javascript; charset=utf-8"))
 
@@ -122,6 +123,9 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.Get("/os/monitoring", a.handleOSMonitoring)
 		pr.Get("/os/governance", a.handleOSGovernance)
 		pr.Get("/os/theme", a.handleOSTheme)
+		pr.Get("/os/theme/store", a.handleOSThemeStore)
+		pr.Get("/os/theme/preview", a.handleOSThemePreview)
+		pr.Get("/os/theme/preview.css", a.handleOSThemePreviewCSS)
 		// Session-friendly mirrors of the Theme Studio JSON API (the /api/v1/admin
 		// originals require an API key; os operators hold a session cookie).
 		pr.Get("/os/api/theme/presets", a.handleThemePresets)
@@ -147,16 +151,20 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/analytics/goals", a.handleAnalyticsCreateGoal)
 		pr.With(auth.CSRFTokenMiddleware).Delete("/os/api/analytics/goals/{id}", a.handleAnalyticsDeleteGoal)
 		// VayuOS — native control layer (Phase 2): Publishing · Mail · PGP.
-		pr.Get("/os/vayuos", a.handleVayuOSDashboard)
-		pr.Get("/os/vayuos/pgp", a.handleVayuOSPGP)
-		pr.Get("/os/vayuos/mail", a.handleVayuOSMail)
-		pr.Get("/os/vayuos/mail/inbox", a.handleVayuOSInbox)
-		pr.Get("/os/vayuos/mail/search", a.handleVayuOSSearch)
-		pr.Get("/os/vayuos/mail/message", a.handleVayuOSMessage)
-		pr.Get("/os/vayuos/mail/sent", a.handleVayuOSSent)
-		pr.Get("/os/vayuos/mail/compose", a.handleVayuOSCompose)
-		pr.Get("/os/vayuos/mail/accounts", a.handleVayuOSAccounts)
+		// GET pages are wrapped in CSRFTokenMiddleware so each load (re)issues the
+		// vp_csrf cookie the panel's POSTs read back; without this the token
+		// expires (1h) and Send / Save-as-draft / message actions start 403ing.
+		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayuos", a.handleVayuOSDashboard)
+		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayuos/pgp", a.handleVayuOSPGP)
+		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayuos/mail", a.handleVayuOSMail)
+		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayuos/mail/inbox", a.handleVayuOSInbox)
+		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayuos/mail/search", a.handleVayuOSSearch)
+		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayuos/mail/message", a.handleVayuOSMessage)
+		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayuos/mail/sent", a.handleVayuOSSent)
+		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayuos/mail/compose", a.handleVayuOSCompose)
+		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayuos/mail/accounts", a.handleVayuOSAccounts)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayuos/mail/send", a.handleVayuOSSend)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayuos/mail/draft", a.handleVayuOSDraft)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayuos/mail/message/action", a.handleVayuOSMessageAction)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayuos/mail/accounts/create", a.handleVayuOSAccountCreate)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayuos/mail/accounts/delete", a.handleVayuOSAccountDelete)
@@ -259,6 +267,7 @@ var (
 	iconMonitoring = svgIcon("M2 10h3l2-5 3 11 3-8 2 2h3")
 	iconGovernance = svgIcon("M10 2l7 3v5c0 3.5-2.8 6.8-7 8-4.2-1.2-7-4.5-7-8V5l7-3zm0 5v6m-3-3h6")
 	iconTheme      = svgIcon("M10 2a8 8 0 100 16c1 0 1.5-.7 1.5-1.5 0-.4-.2-.8-.4-1-.3-.3-.4-.6-.4-1 0-.8.7-1.5 1.5-1.5H14a4 4 0 004-4c0-3.6-3.6-6.5-8-6.5zM5.5 10a1 1 0 110-2 1 1 0 010 2zm3-3a1 1 0 110-2 1 1 0 010 2zm5 0a1 1 0 110-2 1 1 0 010 2z")
+	iconThemeStore = svgIcon("M3 7l1.5-3h11L17 7M3 7h14M3 7v9a1 1 0 001 1h12a1 1 0 001-1V7M8 7v3a2 2 0 004 0V7")
 	iconModes      = svgIcon("M10 2l7 4v8l-7 4-7-4V6l7-4zm0 2.3L5 7v6l5 2.7L15 13V7l-5-2.7z")
 	iconPolicy     = svgIcon("M10 2l6 3v5c0 3.5-2.5 6.8-6 8-3.5-1.2-6-4.5-6-8V5l6-3zm-1 9l4-4-1.4-1.4L9 8.2 7.4 6.6 6 8l3 3z")
 	iconTopology   = svgIcon("M10 3a2 2 0 100 4 2 2 0 000-4zM4 13a2 2 0 100 4 2 2 0 000-4zm12 0a2 2 0 100 4 2 2 0 000-4zM10 7v3m0 0l-4 3m4-3l4 3")
@@ -353,6 +362,7 @@ func adminOSShellHead(nonce, title, active string, settings *osSettings) string 
     ` + navItem("/os/seo", "SEO", "seo", active, iconSEO) + `
     ` + navItem("/os/analytics", "Analytics", "analytics", active, iconAnalytics) + `
     ` + navItem("/os/theme", "Theme Studio", "theme", active, iconTheme) + `
+    ` + navItem("/os/theme/store", "Theme Store", "theme-store", active, iconThemeStore) + `
     ` + navItem("/os/vayuos", "VayuMail", "vayuos", active, iconSecurity) + `
 
     <div class="sidebar-section-label">System</div>
@@ -1066,6 +1076,7 @@ func (a *App) handleOSSettings(w http.ResponseWriter, r *http.Request) {
 	tabs := []struct{ Key, Label, Href string }{
 		{"general", "General", "/os/settings/general"},
 		{"navigation", "Navigation", "/os/settings/navigation"},
+		{"footer", "Footer", "/os/settings/footer"},
 		{"design", "Design", "/os/settings/design"},
 		{"members", "Members", "/os/settings/members"},
 		{"email", "Email", "/os/settings/email"},
@@ -1087,6 +1098,8 @@ func (a *App) handleOSSettings(w http.ResponseWriter, r *http.Request) {
 	switch group {
 	case "navigation":
 		groupBody = osSettingsNavigation(r.Context(), ss)
+	case "footer":
+		groupBody = osSettingsFooter(r.Context(), ss)
 	case "design":
 		groupBody = osSettingsDesign(r.Context(), ss)
 	case "members":
@@ -1226,7 +1239,85 @@ if(favRm)favRm.addEventListener('click',function(){
     .then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d};});})
     .then(function(res){favRm.disabled=false;if(res.ok){favSet('Default restored',false);favBust();if(favState)favState.textContent='Using the default mark.';}else{favSet(res.d.error||'Remove failed',true);}})
     .catch(function(e){favRm.disabled=false;favSet('Error: '+e,true);});
-});`
+});
+// Footer editor (Footer tab). Builds tagline/copyright/columns/social/legal and
+// keeps a hidden JSON input (footer.config) in sync for the generic Save.
+var footerInput=document.getElementById('footer-json-input');
+if(footerInput){
+  var fTagline=document.getElementById('footer-tagline');
+  var fCopyright=document.getElementById('footer-copyright');
+  var fCols=document.getElementById('footer-cols');
+  var fSocial=document.getElementById('footer-social');
+  var fLegal=document.getElementById('footer-legal');
+  function fLinkRow(label,href){
+    var row=document.createElement('div');row.setAttribute('data-f-link','');
+    row.style.cssText='display:flex;gap:.5rem;align-items:center;margin-bottom:.4rem';
+    var li=document.createElement('input');li.className='input';li.type='text';li.placeholder='Label';li.value=label||'';li.setAttribute('data-f-label','');li.style.flex='1';
+    var hi=document.createElement('input');hi.className='input';hi.type='text';hi.placeholder='/path, mailto: or https://…';hi.value=href||'';hi.setAttribute('data-f-href','');hi.style.flex='2';
+    var rm=document.createElement('button');rm.type='button';rm.className='btn btn--sm';rm.textContent='✕';
+    rm.addEventListener('click',function(){row.remove();footerSync();});
+    li.addEventListener('input',footerSync);hi.addEventListener('input',footerSync);
+    row.appendChild(li);row.appendChild(hi);row.appendChild(rm);
+    return row;
+  }
+  function fColCard(title,links){
+    var card=document.createElement('div');card.setAttribute('data-f-col','');
+    card.style.cssText='border:1px solid var(--border,#2a2a2a);border-radius:8px;padding:.75rem;margin-bottom:.75rem';
+    var head=document.createElement('div');head.style.cssText='display:flex;gap:.5rem;align-items:center;margin-bottom:.5rem';
+    var ti=document.createElement('input');ti.className='input';ti.type='text';ti.placeholder='Column title (e.g. Company)';ti.value=title||'';ti.setAttribute('data-f-col-title','');ti.style.flex='1';
+    ti.addEventListener('input',footerSync);
+    var rmc=document.createElement('button');rmc.type='button';rmc.className='btn btn--sm';rmc.textContent='Remove column';
+    rmc.addEventListener('click',function(){card.remove();footerSync();});
+    head.appendChild(ti);head.appendChild(rmc);
+    var linksWrap=document.createElement('div');linksWrap.setAttribute('data-f-col-links','');
+    (links||[]).forEach(function(l){linksWrap.appendChild(fLinkRow(l.label,l.href));});
+    var addL=document.createElement('button');addL.type='button';addL.className='btn btn--sm';addL.textContent='+ Add link';
+    addL.addEventListener('click',function(){linksWrap.appendChild(fLinkRow('',''));footerSync();});
+    card.appendChild(head);card.appendChild(linksWrap);card.appendChild(addL);
+    return card;
+  }
+  function fCollect(wrap){
+    var out=[];if(!wrap)return out;
+    wrap.querySelectorAll('[data-f-link]').forEach(function(row){
+      var l=row.querySelector('[data-f-label]').value.trim();
+      var h=row.querySelector('[data-f-href]').value.trim();
+      if(l&&h)out.push({label:l,href:h});
+    });
+    return out;
+  }
+  function footerSync(){
+    var cols=[];
+    if(fCols)fCols.querySelectorAll('[data-f-col]').forEach(function(card){
+      var t=card.querySelector('[data-f-col-title]').value.trim();
+      var links=fCollect(card.querySelector('[data-f-col-links]'));
+      if(t||links.length)cols.push({title:t,links:links});
+    });
+    footerInput.value=JSON.stringify({
+      tagline:fTagline?fTagline.value.trim():'',
+      copyright:fCopyright?fCopyright.value.trim():'',
+      columns:cols,
+      social:fCollect(fSocial),
+      legal:fCollect(fLegal)
+    });
+  }
+  (function(){
+    var seed={};try{seed=JSON.parse(footerInput.getAttribute('data-footer-seed')||'{}');}catch(e){seed={};}
+    if(fTagline)fTagline.value=seed.tagline||'';
+    if(fCopyright)fCopyright.value=seed.copyright||'';
+    if(fCols)(seed.columns||[]).forEach(function(c){fCols.appendChild(fColCard(c.title,c.links));});
+    if(fSocial)(seed.social||[]).forEach(function(l){fSocial.appendChild(fLinkRow(l.label,l.href));});
+    if(fLegal)(seed.legal||[]).forEach(function(l){fLegal.appendChild(fLinkRow(l.label,l.href));});
+    if(fTagline)fTagline.addEventListener('input',footerSync);
+    if(fCopyright)fCopyright.addEventListener('input',footerSync);
+    footerSync();
+  })();
+  var addCol=document.getElementById('footer-add-col');
+  if(addCol)addCol.addEventListener('click',function(){fCols.appendChild(fColCard('',[]));footerSync();});
+  var addSocial=document.getElementById('footer-add-social');
+  if(addSocial)addSocial.addEventListener('click',function(){fSocial.appendChild(fLinkRow('',''));footerSync();});
+  var addLegal=document.getElementById('footer-add-legal');
+  if(addLegal)addLegal.addEventListener('click',function(){fLegal.appendChild(fLinkRow('',''));footerSync();});
+}`
 
 	fullHTML := adminOSShellHead(nonce, "Settings", "settings", cfg) +
 		renderTrustedHTML(htmpl.HTML(body)) +
@@ -1281,6 +1372,49 @@ func osSettingsNavigation(ctx context.Context, ss *settings.Store) string {
   <button type="button" class="btn btn--sm mt-2" id="nav-add-btn">+ Add link</button>
   <input type="hidden" id="nav-json-input" data-setting-key="` + settings.KeyNavItems + `" value="` + html.EscapeString(navJSON) + `">
   <p class="field-hint mt-2">Leave the list empty and Save to restore the default Home / Feed / Console menu.</p>
+</div>`
+}
+
+// defaultFooterSeed pre-populates the footer editor for operators who have not
+// configured a footer yet, so they start from a premium layout (a link column,
+// Privacy/Terms legal links, copyright line) rather than a blank slate.
+const defaultFooterSeed = `{"tagline":"","copyright":"© {year} {site}. All rights reserved.","columns":[{"title":"Explore","links":[{"label":"Home","href":"/"},{"label":"Feed","href":"/feed.xml"}]}],"social":[],"legal":[{"label":"Privacy","href":"/privacy"},{"label":"Terms","href":"/terms"}]}`
+
+func osSettingsFooter(ctx context.Context, ss *settings.Store) string {
+	footerJSON := ""
+	if ss != nil {
+		footerJSON = ss.Get(ctx, settings.KeyFooterConfig)
+	}
+	if strings.TrimSpace(footerJSON) == "" {
+		footerJSON = defaultFooterSeed
+	}
+	esc := html.EscapeString(footerJSON)
+	return `<div class="settings-section">
+  <div class="settings-block-title">Premium footer</div>
+  <p class="text-sm muted mb-4">Build a rich footer for every public page: a brand tagline, multiple link columns, social links, a legal-links bar (Privacy, Terms…) and a copyright line. Hrefs accept internal paths (e.g. <code>/privacy</code>), feeds, <code>mailto:</code> or external URLs. Leave everything empty to fall back to a clean default copyright bar.</p>
+
+  <div class="field"><label class="field-label" for="footer-tagline">Footer tagline</label>
+    <input id="footer-tagline" class="input" type="text" placeholder="A short line shown under your brand"></div>
+
+  <div class="field"><label class="field-label" for="footer-copyright">Copyright line</label>
+    <input id="footer-copyright" class="input" type="text" placeholder="© {year} {site}. All rights reserved.">
+    <span class="field-hint">Use <code>{year}</code> for the current year and <code>{site}</code> for your site name.</span></div>
+
+  <div class="settings-block-title mt-4">Link columns</div>
+  <p class="text-sm muted mb-2">Grouped link lists (e.g. Explore, Company, Resources).</p>
+  <div id="footer-cols"></div>
+  <button type="button" class="btn btn--sm mt-2" id="footer-add-col">+ Add column</button>
+
+  <div class="settings-block-title mt-4">Social links</div>
+  <div id="footer-social"></div>
+  <button type="button" class="btn btn--sm mt-2" id="footer-add-social">+ Add social link</button>
+
+  <div class="settings-block-title mt-4">Legal links (bottom bar)</div>
+  <p class="text-sm muted mb-2">Shown in the footer's bottom bar next to the copyright — e.g. Privacy, Terms, Cookies.</p>
+  <div id="footer-legal"></div>
+  <button type="button" class="btn btn--sm mt-2" id="footer-add-legal">+ Add legal link</button>
+
+  <input type="hidden" id="footer-json-input" data-setting-key="` + settings.KeyFooterConfig + `" data-footer-seed="` + esc + `" value="` + esc + `">
 </div>`
 }
 
@@ -1553,6 +1687,7 @@ func (a *App) handleOSSettingsAPI(w http.ResponseWriter, r *http.Request) {
 			VerifyGoogle:    sv[settings.KeyHeadVerifyGoogle],
 			VerifyBing:      sv[settings.KeyHeadVerifyBing],
 			NavJSON:         sv[settings.KeyNavItems],
+			FooterJSON:      sv[settings.KeyFooterConfig],
 			CommentsEnabled: sv[settings.KeyFeatureComments] != "off",
 		})
 	}

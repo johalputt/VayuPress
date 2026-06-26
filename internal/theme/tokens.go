@@ -39,4 +39,11 @@ type Tokens struct {
 
 	// Per-preset CSS (optional) — injected into /theme.css when this preset is active.
 	CustomCSS string `json:"custom_css,omitempty"`
+
+	// Options holds theme-level customization choices (color scheme, reading
+	// width, corner style, heading case, accent fill, …). They are applied by
+	// CompileCSS — mostly by mutating the tokens above, plus a little scoped CSS
+	// — so every theme is customizable along the same dimensions without editing
+	// raw CSS. See options.go for the available keys/values.
+	Options map[string]string `json:"options,omitempty"`
 }

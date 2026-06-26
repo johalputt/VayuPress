@@ -5,8 +5,10 @@ go 1.25.0
 toolchain go1.26.4
 
 require (
+	blitiri.com.ar/go/spf v1.5.1
 	github.com/ProtonMail/go-crypto v1.4.1
 	github.com/alecthomas/chroma/v2 v2.27.0
+	github.com/emersion/go-msgauth v0.7.0
 	github.com/go-chi/chi/v5 v5.3.0
 	github.com/graphql-go/graphql v0.8.1
 	github.com/mattn/go-sqlite3 v1.14.47

@@ -52,19 +52,36 @@ type themeHeadExport struct {
 	VerifyBing   string `json:"verify_bing"`
 }
 
-// themePresetCards renders the preset gallery server-side (CSP-safe: swatch
-// colours are carried as data-color attributes and applied via the CSSOM in JS,
-// never as inline style). Every built-in preset — including Gale and Zephyr —
-// appears here.
+// themePresetCards renders the Tumblr-style theme gallery server-side. Each card
+// is a miniature visual preview of the preset — a coloured "page" (background)
+// with an accent bar, two body text lines, and a row of accent pills — so the
+// operator can recognise a theme at a glance rather than from raw swatches.
+//
+// CSP-safe: every colour is carried as a data-color attribute and applied to
+// the element's background via the CSSOM in JS (admin-os-theme.js #paintSwatches),
+// never as an inline style attribute. Every built-in preset — including Gale and
+// Zephyr — appears here, in AllPresets() display order.
 func themePresetCards() string {
 	out := ""
 	for _, p := range theme.AllPresets() {
 		name := html.EscapeString(p.Name)
-		sw := func(c string) string {
-			return `<i class="theme-card__sw" data-color="` + html.EscapeString(c) + `" aria-hidden="true"></i>`
+		// el renders a colour-bearing element. The colour is applied via CSSOM,
+		// so only the (escaped) hex string lands in the data-color attribute.
+		el := func(cls, color string) string {
+			return `<span class="` + cls + `" data-color="` + html.EscapeString(color) + `" aria-hidden="true"></span>`
 		}
-		out += `<button type="button" class="theme-card" data-preset="` + name + `">` +
-			`<span class="theme-card__swatches">` + sw(p.BgDark) + sw(p.SurfaceDark) + sw(p.AccentDark) + sw(p.Accent2Dark) + `</span>` +
+		pill := func(color string) string {
+			return `<span data-color="` + html.EscapeString(color) + `" aria-hidden="true"></span>`
+		}
+		out += `<button type="button" class="theme-card" data-preset="` + name + `" aria-label="Apply the ` + name + ` theme">` +
+			`<span class="theme-card__preview" data-color="` + html.EscapeString(p.BgDark) + `" aria-hidden="true">` +
+			el("theme-card__bar", p.AccentDark) +
+			`<span class="theme-card__body">` +
+			el("theme-card__line", p.TextDark) +
+			el("theme-card__line theme-card__line--short", p.MutedDark) +
+			`</span>` +
+			`<span class="theme-card__pills">` + pill(p.AccentDark) + pill(p.Accent2Dark) + pill(p.HiDark) + `</span>` +
+			`</span>` +
 			`<span class="theme-card__name">` + name + `</span></button>`
 	}
 	return out
@@ -128,6 +145,45 @@ func textRow(field, label, placeholder string) string {
 </label>`
 }
 
+// themeOptionRows renders the theme-level customization controls — color scheme,
+// reading width, corner style, heading case, accent fill — as <select>s bound to
+// data-token-opt. The Studio JS loads/saves their values as Tokens.Options, which
+// CompileCSS realises (re-tinting the accent, resizing the measure, etc.) for
+// any theme. CSP-safe: plain selects, no inline handlers.
+func themeOptionRows() string {
+	out := ""
+	for _, o := range theme.AllOptions() {
+		opts := ""
+		for _, c := range o.Choices {
+			opts += `<option value="` + html.EscapeString(c.Value) + `">` + html.EscapeString(c.Label) + `</option>`
+		}
+		hint := ""
+		if o.Help != "" {
+			hint = `<span class="theme-field__hint">` + html.EscapeString(o.Help) + `</span>`
+		}
+		out += `<label class="theme-field theme-field--text">
+  <span class="theme-field__label">` + html.EscapeString(o.Label) + `</span>
+  <select class="input" data-token-opt="` + html.EscapeString(o.Key) + `" aria-label="` + html.EscapeString(o.Label) + `">` + opts + `</select>` + hint + `</label>`
+	}
+	// Per-theme extras — rendered for every theme but shown/hidden by the Studio
+	// JS based on the active theme (data-opt-theme is a comma-separated list).
+	for _, to := range theme.PerThemeOptions() {
+		o := to.Option
+		opts := ""
+		for _, c := range o.Choices {
+			opts += `<option value="` + html.EscapeString(c.Value) + `">` + html.EscapeString(c.Label) + `</option>`
+		}
+		hint := ""
+		if o.Help != "" {
+			hint = `<span class="theme-field__hint">` + html.EscapeString(o.Help) + `</span>`
+		}
+		out += `<label class="theme-field theme-field--text" data-opt-theme="` + html.EscapeString(strings.Join(to.Themes, ",")) + `" hidden>
+  <span class="theme-field__label">` + html.EscapeString(o.Label) + `</span>
+  <select class="input" data-token-opt="` + html.EscapeString(o.Key) + `" aria-label="` + html.EscapeString(o.Label) + `">` + opts + `</select>` + hint + `</label>`
+	}
+	return out
+}
+
 func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
@@ -161,6 +217,8 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
   <h1>Theme Studio</h1>
   <div class="page-actions">
     <span class="text-sm muted" data-theme-status>Loading…</span>
+    <a class="btn btn--ghost btn--sm" href="/os/theme/store">Browse Theme Store</a>
+    <button type="button" class="btn btn--ghost btn--sm" data-theme-fullpreview>Full preview</button>
     <button type="button" class="btn btn--ghost btn--sm" data-theme-revert>Revert</button>
     <button type="button" class="btn btn--primary btn--sm" data-theme-apply>Apply theme</button>
   </div>
@@ -171,7 +229,13 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
     <div class="card mb-6">
       <div class="card-title">Presets</div>
       <div class="text-sm muted mb-3">Start from a built-in palette, then fine-tune any token below.</div>
-      <div class="theme-presets" data-theme-presets aria-label="Theme presets">` + themePresetCards() + `</div>
+      <div class="theme-gallery" data-theme-presets aria-label="Theme presets">` + themePresetCards() + `</div>
+    </div>
+
+    <div class="card mb-6">
+      <div class="card-title">Customize</div>
+      <div class="text-sm muted mb-3">Tune any theme along these dimensions — applied site-wide on Apply. Use the colour pickers below for fine control.</div>
+      <div class="theme-fields theme-fields--text">` + themeOptionRows() + `</div>
     </div>
 
     <div class="card mb-6">
@@ -191,8 +255,8 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
 
     <div class="card mb-6 mt-6">
       <div class="card-title">Custom CSS</div>
-      <div class="text-sm muted mb-3">Served same-origin via <code>/theme.css</code> (CSP-safe) — appended after the theme styles. Max 16&nbsp;KB. Cannot reach external origins or run scripts.</div>
-      <textarea class="input theme-code" data-theme-css rows="12" maxlength="16384" spellcheck="false" placeholder="/* e.g. .post-title { letter-spacing: -0.02em; } */">` + html.EscapeString(val(settings.KeyThemeCustomCSS)) + `</textarea>
+      <div class="text-sm muted mb-3">Served same-origin via <code>/theme.css</code> (CSP-safe) — appended after the theme styles. Max 64&nbsp;KB. Cannot reach external origins or run scripts.</div>
+      <textarea class="input theme-code" data-theme-css rows="12" maxlength="65536" spellcheck="false" placeholder="/* e.g. .post-title { letter-spacing: -0.02em; } */">` + html.EscapeString(val(settings.KeyThemeCustomCSS)) + `</textarea>
     </div>
 
     <div class="card">
@@ -248,6 +312,16 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
     <div class="text-xs muted mt-3">Preview reflects dark-mode tokens. Light-mode values apply on readers whose system is set to light.</div>
   </aside>
 </div>
+
+<div class="store-preview" data-theme-preview-overlay hidden>
+  <div class="store-preview__bar">
+    <span class="store-preview__title" data-theme-preview-title>Full preview</span>
+    <span class="store-preview__spacer"></span>
+    <button type="button" class="btn btn--primary btn--sm" data-theme-preview-apply>Apply this theme</button>
+    <button type="button" class="store-preview__close" data-theme-preview-close aria-label="Close preview">&times;</button>
+  </div>
+  <iframe class="store-preview__frame" data-theme-preview-frame title="Full theme preview" loading="lazy" referrerpolicy="no-referrer"></iframe>
+</div>
 <script nonce="` + nonce + `" src="/os/static/js/admin-os-theme.js"></script>`
 
 	writeOSHTML(w, adminOSLayout(nonce, "Theme Studio", "theme", cfg, htmpl.HTML(body)))
@@ -273,15 +347,15 @@ func (a *App) handleOSThemeCode(w http.ResponseWriter, r *http.Request) {
 		VerifyGoogle string `json:"verify_google"`
 		VerifyBing   string `json:"verify_bing"`
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, 64*1024)
+	r.Body = http.MaxBytesReader(w, r.Body, 128*1024)
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeJSON(w, r, http.StatusBadRequest, map[string]string{"error": "invalid JSON: " + err.Error()})
 		return
 	}
 
 	css := strings.TrimSpace(body.CustomCSS)
-	if len(css) > 16*1024 {
-		writeJSON(w, r, http.StatusBadRequest, map[string]string{"error": "Custom CSS exceeds the 16 KB limit"})
+	if len(css) > 64*1024 {
+		writeJSON(w, r, http.StatusBadRequest, map[string]string{"error": "Custom CSS exceeds the 64 KB limit"})
 		return
 	}
 	keywords := strings.TrimSpace(body.Keywords)
@@ -344,6 +418,7 @@ func (a *App) handleOSThemeCode(w http.ResponseWriter, r *http.Request) {
 			VerifyGoogle:    nv[settings.KeyHeadVerifyGoogle],
 			VerifyBing:      nv[settings.KeyHeadVerifyBing],
 			NavJSON:         nv[settings.KeyNavItems],
+			FooterJSON:      nv[settings.KeyFooterConfig],
 			CommentsEnabled: nv[settings.KeyFeatureComments] != "off",
 		})
 	}
@@ -423,8 +498,8 @@ func (a *App) handleOSThemeImport(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ccss := strings.TrimSpace(env.CustomCSS)
-	if len(ccss) > 16*1024 {
-		writeJSON(w, r, http.StatusBadRequest, map[string]string{"error": "custom CSS in file exceeds the 16 KB limit"})
+	if len(ccss) > 64*1024 {
+		writeJSON(w, r, http.StatusBadRequest, map[string]string{"error": "custom CSS in file exceeds the 64 KB limit"})
 		return
 	}
 	keywords := strings.TrimSpace(env.Head.Keywords)
@@ -485,6 +560,7 @@ func (a *App) handleOSThemeImport(w http.ResponseWriter, r *http.Request) {
 			VerifyGoogle:    nv[settings.KeyHeadVerifyGoogle],
 			VerifyBing:      nv[settings.KeyHeadVerifyBing],
 			NavJSON:         nv[settings.KeyNavItems],
+			FooterJSON:      nv[settings.KeyFooterConfig],
 			CommentsEnabled: nv[settings.KeyFeatureComments] != "off",
 		})
 	}

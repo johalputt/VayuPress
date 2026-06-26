@@ -53,3 +53,30 @@
 @media(max-width:768px){.gale-hero__featured{grid-template-columns:1fr}.gale-hero__title{font-size:1.5rem}.gale-grid{grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1.25rem}.gale-card__title{font-size:1rem}.gale-typography h1{font-size:2rem}.gale-typography h2{font-size:1.5rem}.gale-cta__form{flex-direction:column}}
 @media(max-width:480px){.gale-grid{grid-template-columns:1fr}}
 @media(prefers-reduced-motion:reduce){.gale-card,.gale-hero__read,.gale-cta__btn,.gale-tag,.gale-progress{transition:none}}
+
+
+/* ============================================================================
+   Live public-site styling — overrides the real VayuPress markup (vayu-*),
+   so deploying Gale transforms the actual home & article pages, not just colours.
+   /theme.css loads after custom.css, so these win. Identity: editorial
+   magazine — serif display, generous rules, restrained palette.
+   ============================================================================ */
+.container{max-width:48rem}
+.vayu-nav{border-bottom:2px solid var(--vp-text);padding-bottom:1rem;margin-bottom:2.5rem}
+.vayu-nav-brand{font-family:Georgia,"Times New Roman",serif;font-weight:700;font-size:1.4rem;letter-spacing:-.01em}
+.vayu-hero{border-bottom:1px solid color-mix(in srgb,var(--vp-muted) 30%,transparent);padding-bottom:2.5rem;margin-bottom:2.5rem}
+.vayu-hero-eyebrow{color:var(--vp-accent);font-weight:700;letter-spacing:.18em}
+.vayu-hero h1{font-family:Georgia,"Times New Roman",serif;font-weight:700;font-size:clamp(2.6rem,6vw,4rem);line-height:1.06;letter-spacing:-.015em;-webkit-text-fill-color:currentColor;background:none;color:var(--vp-text)}
+.vayu-hero-tagline{font-family:Georgia,"Times New Roman",serif;font-style:italic;font-size:1.3rem;color:var(--vp-muted)}
+.vayu-stats{border-top:1px solid color-mix(in srgb,var(--vp-muted) 24%,transparent);padding-top:1.5rem;margin-top:2rem}
+.vayu-section-label{font-family:Georgia,serif;font-style:italic;text-transform:none;letter-spacing:0;font-size:1.1rem;color:var(--vp-accent)}
+.vayu-post-list{display:flex;flex-direction:column;gap:0}
+.vayu-post-card{padding:1.75rem 0;border-top:1px solid color-mix(in srgb,var(--vp-muted) 24%,transparent);border-radius:0}
+.vayu-post-card:hover{background:none;transform:none}
+.vayu-post-meta{font-family:Georgia,serif;font-style:italic;text-transform:none;letter-spacing:0}
+.vayu-post-title{font-family:Georgia,"Times New Roman",serif;font-weight:700;font-size:1.7rem;line-height:1.18;letter-spacing:-.01em}
+.vayu-post-excerpt{font-family:Georgia,serif;font-size:1.05rem;max-width:60ch}
+article.vayu-prose h1,.vayu-article-header h1{font-family:Georgia,"Times New Roman",serif;font-weight:700;font-size:clamp(2.2rem,5vw,3.2rem);line-height:1.1;-webkit-text-fill-color:currentColor;background:none;color:var(--vp-text)}
+.content h2,.content h3{font-family:Georgia,"Times New Roman",serif}
+.content>p:first-of-type::first-letter{font-family:Georgia,serif;font-size:3.4rem;font-weight:700;float:left;line-height:.8;padding:.1em .12em 0 0;color:var(--vp-accent)}
+.vayu-footer{border-top:2px solid var(--vp-text)}

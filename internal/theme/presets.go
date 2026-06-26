@@ -8,6 +8,27 @@ var galeCSS string
 //go:embed zephyr.css
 var zephyrCSS string
 
+//go:embed dispatch.css
+var dispatchCSS string
+
+//go:embed vivid.css
+var vividCSS string
+
+//go:embed beacon.css
+var beaconCSS string
+
+//go:embed ripple.css
+var rippleCSS string
+
+//go:embed maverick.css
+var maverickCSS string
+
+//go:embed agora.css
+var agoraCSS string
+
+//go:embed apex.css
+var apexCSS string
+
 // Default returns the Default preset — neutral dark/light tones.
 func Default() Tokens {
 	return Tokens{
@@ -267,6 +288,13 @@ func AllPresets() []Tokens {
 		Coral(),
 		Gale(),
 		Zephyr(),
+		Dispatch(),
+		Vivid(),
+		Beacon(),
+		Ripple(),
+		Maverick(),
+		Agora(),
+		Apex(),
 	}
 }
 
@@ -463,5 +491,154 @@ func Zephyr() Tokens {
 		FontSans: "Inter, system-ui, sans-serif", FontMono: "IBM Plex Mono, monospace",
 		FontSizeBase: "1.0625rem", LineHeight: "1.75", MaxWidth: "44rem", RadiusSm: "0.5rem", RadiusLg: "0.75rem",
 		CustomCSS: zephyrCSS,
+	}
+}
+
+// Dispatch — a modern newsletter & email-publication theme. Clean neutral
+// canvas, a confident emerald accent, modern sans typography, and an
+// email-width reading measure. Ships a full component CSS covering common
+// newsletter features: customizable hero, subscribe section, "Featured in"
+// logos, story section, inbox-style featured issues, reviews slider,
+// latest-issues feed with sidebar (detailed/minimal), topic list,
+// newsletters-page cards, membership tiers, archive, web/email post formats,
+// footer, and a light/dark switcher.
+func Dispatch() Tokens {
+	return Tokens{
+		Name: "Dispatch", BgDark: "#0b0c0e", SurfaceDark: "#15171b", TextDark: "#e9eaec",
+		MutedDark: "#9197a3", AccentDark: "#34d399", Accent2Dark: "#6ee7b7", HiDark: "#fbbf24", GreenDark: "#34d399",
+		BgLight: "#fbfbfa", SurfaceLight: "#ffffff", TextLight: "#16181d", MutedLight: "#5f6672",
+		AccentLight: "#059669", Accent2Light: "#047857", HiLight: "#b45309",
+		FontSans: "Inter, system-ui, -apple-system, sans-serif", FontMono: "IBM Plex Mono, ui-monospace, monospace",
+		FontSizeBase: "1.0625rem", LineHeight: "1.7", MaxWidth: "44rem", RadiusSm: "0.5rem", RadiusLg: "0.875rem",
+		CustomCSS: dispatchCSS,
+	}
+}
+
+// Vivid — a bold, expressive, color-scheme-driven magazine theme. A warm
+// dusty-orange accent on a clean paper canvas, expressive serif display
+// headings paired with a modern sans body, playful rounded shapes, and an
+// accent-colored header band. Ships a full component CSS covering a clean post
+// grid, a featured-posts slider, a popular-tags carousel, a quote widget, five
+// featured-image aspect ratios, author/tags/contact templates, membership
+// tiers, a multi-column footer, an announcement bar, and six swappable color
+// schemes — light & dark.
+func Vivid() Tokens {
+	return Tokens{
+		Name: "Vivid", BgDark: "#14110d", SurfaceDark: "#1f1a14", TextDark: "#f5efe6",
+		MutedDark: "#a99e8d", AccentDark: "#f2784b", Accent2Dark: "#ff9466", HiDark: "#f4c430", GreenDark: "#6ee787",
+		BgLight: "#faf7f2", SurfaceLight: "#ffffff", TextLight: "#1a1410", MutedLight: "#6b6357",
+		AccentLight: "#ce5c25", Accent2Light: "#a8431a", HiLight: "#b8860b",
+		FontSans: "Work Sans, Inter, system-ui, -apple-system, sans-serif", FontMono: "IBM Plex Mono, ui-monospace, monospace",
+		FontSizeBase: "1.0625rem", LineHeight: "1.65", MaxWidth: "46rem", RadiusSm: "0.5rem", RadiusLg: "1rem",
+		CustomCSS: vividCSS,
+	}
+}
+
+// Beacon — a modern, sleek startup & company-blog theme. A clean light-first
+// canvas with a confident royal-blue accent, a sticky glassy header, and a
+// brand-accent hero. Ships a full component CSS covering a hero with four
+// background styles and three action styles, adaptive featured posts (1-5),
+// pinned/sponsored pages, a featured-tags topic list in three layouts
+// (list/section/cards), list & grid post feeds with three card styles
+// (minimal/bordered/shadowed), a CTA section, narrow/wide post templates with a
+// table of contents, membership tiers, archive/tags index, and a multi-column
+// footer with a light/dark toggle.
+func Beacon() Tokens {
+	return Tokens{
+		Name: "Beacon", BgDark: "#0b1120", SurfaceDark: "#111a2e", TextDark: "#e8eef7",
+		MutedDark: "#94a3b8", AccentDark: "#3b82f6", Accent2Dark: "#60a5fa", HiDark: "#22d3ee", GreenDark: "#34d399",
+		BgLight: "#ffffff", SurfaceLight: "#f8fafc", TextLight: "#0f172a", MutedLight: "#64748b",
+		AccentLight: "#2563eb", Accent2Light: "#1d4ed8", HiLight: "#0891b2",
+		FontSans: "Inter, system-ui, -apple-system, 'Segoe UI', sans-serif", FontMono: "IBM Plex Mono, ui-monospace, monospace",
+		FontSizeBase: "1.0625rem", LineHeight: "1.65", MaxWidth: "44rem", RadiusSm: "0.5rem", RadiusLg: "0.875rem",
+		CustomCSS: beaconCSS,
+	}
+}
+
+// Ripple — a fluid, wave-styled blog & magazine theme. A friendly content +
+// sidebar layout on a cool turquoise palette, whose signature is decorative
+// wave-shaped section dividers (drawn with pure CSS masks). Ships a full
+// component CSS covering a wave-edged hero, a widget-rich sidebar (about me,
+// recent/related articles, social profiles, tag cloud, advertising), four
+// single-post dispositions (classic/vertical/fullcover/no-sidebar), membership
+// pricing tables with a monthly/yearly toggle, post cards with per-post accents,
+// custom tag/author/popular-authors/404 pages, a gallery grid, and a footer
+// with quick links — light & dark.
+func Ripple() Tokens {
+	return Tokens{
+		Name: "Ripple", BgDark: "#0a1719", SurfaceDark: "#102427", TextDark: "#e3f2f1",
+		MutedDark: "#7fa3a3", AccentDark: "#2dd4c4", Accent2Dark: "#5eead4", HiDark: "#fbbf24", GreenDark: "#34d399",
+		BgLight: "#f6fbfb", SurfaceLight: "#ffffff", TextLight: "#0f2027", MutedLight: "#5b7178",
+		AccentLight: "#0e9aa8", Accent2Light: "#0c8f8e", HiLight: "#d97706",
+		FontSans: "system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif", FontMono: "IBM Plex Mono, ui-monospace, monospace",
+		FontSizeBase: "1.0625rem", LineHeight: "1.7", MaxWidth: "44rem", RadiusSm: "0.5rem", RadiusLg: "1.25rem",
+		CustomCSS: rippleCSS,
+	}
+}
+
+// Maverick — a bold, creative "dare to stand out" statement theme. A high-
+// contrast monochrome canvas with a punchy magenta accent, big display
+// typography, and sharp corners. Ships a full component CSS covering full-bleed
+// background-media heroes with overlaid text (configurable button style,
+// content position and length), an "our selection" slider, animated floating
+// circles (testimonials or tags), creative/default post cards with eight image
+// aspect ratios, four post templates (default & right-aligned, each with
+// optional featured video), text-style and heading-scale controls, page-load
+// animations, custom account/sign-in/up pages with background video, and
+// authors/FAQ/archive/all-posts pages — light & dark.
+func Maverick() Tokens {
+	return Tokens{
+		Name: "Maverick", BgDark: "#0a0a0b", SurfaceDark: "#151517", TextDark: "#fafafa",
+		MutedDark: "#8e8e93", AccentDark: "#ff3d9a", Accent2Dark: "#ff7ab8", HiDark: "#fde047", GreenDark: "#34d399",
+		BgLight: "#ffffff", SurfaceLight: "#f4f4f5", TextLight: "#0a0a0a", MutedLight: "#71717a",
+		AccentLight: "#d6006e", Accent2Light: "#a30054", HiLight: "#ca8a04",
+		FontSans: "Inter, system-ui, -apple-system, 'Segoe UI', sans-serif", FontMono: "IBM Plex Mono, ui-monospace, monospace",
+		FontSizeBase: "1.0625rem", LineHeight: "1.6", MaxWidth: "46rem", RadiusSm: "0", RadiusLg: "0.25rem",
+		CustomCSS: maverickCSS,
+	}
+}
+
+// Agora — a community & discussion theme. A clean, forum-inspired publication
+// on a neutral canvas with a friendly indigo-violet accent. Ships a full
+// component CSS covering a three-column layout with dual toggleable sidebars,
+// a customizable hero (six image positions and three actions), homepage feed
+// tabs (latest/featured/updated/categories) with four switchable view styles
+// (list/compact/cards/articles), post cards with a comment-count badge and an
+// inline comments drawer, topic/category sections and a tag-cards template,
+// default and full-width post templates, membership pages (sign in/up, account,
+// tiers), an authors page, a blank landing template, and a footer with a
+// light/dark toggle.
+func Agora() Tokens {
+	return Tokens{
+		Name: "Agora", BgDark: "#0b0b0f", SurfaceDark: "#15151c", TextDark: "#ececf2",
+		MutedDark: "#8b8b99", AccentDark: "#8b86f5", Accent2Dark: "#a5a0ff", HiDark: "#38bdf8", GreenDark: "#34d399",
+		BgLight: "#fcfcfd", SurfaceLight: "#ffffff", TextLight: "#0d0d12", MutedLight: "#6b6b78",
+		AccentLight: "#5b54e6", Accent2Light: "#4840c4", HiLight: "#0ea5e9",
+		FontSans: "Inter, system-ui, -apple-system, 'Segoe UI', sans-serif", FontMono: "IBM Plex Mono, ui-monospace, monospace",
+		FontSizeBase: "1rem", LineHeight: "1.6", MaxWidth: "44rem", RadiusSm: "0.5rem", RadiusLg: "0.875rem",
+		CustomCSS: agoraCSS,
+	}
+}
+
+// Apex — the flagship, do-everything theme. A premium, infinitely-configurable
+// publication system on a deep gradient-driven palette (electric indigo-violet
+// paired with cyan). Ships the most complete component CSS in the catalogue: a
+// glass sticky header with mega-menu, multiple hero styles (split, centered,
+// full-bleed media, pure-CSS gradient mesh), a signature bento grid, four feed
+// layouts (grid/list/magazine/masonry) and several card styles, plus features,
+// stats, logos, testimonials, pricing tiers, an FAQ accordion, gallery,
+// timeline, newsletter and CTA sections, a full reading experience (reading-
+// progress bar, sticky table of contents, share, author box, related), a mega
+// footer, and ten swappable color schemes with density and shape modes — all
+// CSP-safe, accessible, and light & dark.
+func Apex() Tokens {
+	return Tokens{
+		Name: "Apex", BgDark: "#0a0a12", SurfaceDark: "#13131f", TextDark: "#f4f4fa",
+		MutedDark: "#9a9ab0", AccentDark: "#7c6cff", Accent2Dark: "#22d3ee", HiDark: "#fbbf24", GreenDark: "#34d399",
+		BgLight: "#fbfbfe", SurfaceLight: "#ffffff", TextLight: "#0b0b14", MutedLight: "#5a5a72",
+		AccentLight: "#5b3df5", Accent2Light: "#0891b2", HiLight: "#d97706",
+		FontSans: "Inter, system-ui, -apple-system, 'Segoe UI', sans-serif", FontMono: "IBM Plex Mono, ui-monospace, monospace",
+		FontSizeBase: "1.0625rem", LineHeight: "1.65", MaxWidth: "46rem", RadiusSm: "0.5rem", RadiusLg: "1.25rem",
+		CustomCSS: apexCSS,
 	}
 }

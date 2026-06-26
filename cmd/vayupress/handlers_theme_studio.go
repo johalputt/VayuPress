@@ -58,7 +58,10 @@ func (a *App) handleThemeTokens(w http.ResponseWriter, r *http.Request) {
 //
 //	POST /api/v1/admin/theme/preview
 func (a *App) handleThemePreview(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, 32*1024)
+	// Generous cap: a customized theme's request can carry the full per-theme
+	// component CSS (custom_css), which for the richest design themes is ~33 KB.
+	// 512 KB leaves ample headroom while still bounding the request. Admin-only.
+	r.Body = http.MaxBytesReader(w, r.Body, 512*1024)
 
 	// Start from the currently active tokens so callers can send partial overrides.
 	base, err := theme.Load(r.Context(), dbpkg.DB)
@@ -95,7 +98,10 @@ func (a *App) handleThemePreview(w http.ResponseWriter, r *http.Request) {
 //
 //	POST /api/v1/admin/theme/apply
 func (a *App) handleThemeApply(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, 32*1024)
+	// Generous cap: applying a customized theme carries the full per-theme
+	// component CSS (custom_css) — ~33 KB for the richest design themes — plus
+	// the design tokens. 512 KB fits any theme while still bounding the request.
+	r.Body = http.MaxBytesReader(w, r.Body, 512*1024)
 
 	var body struct {
 		Preset string            `json:"preset"`

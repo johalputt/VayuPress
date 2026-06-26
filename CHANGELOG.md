@@ -25,6 +25,31 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
     glyphs (macOS/iOS/Android/Linux); the full country name is always shown
     alongside (Windows omits flag emoji from its system font by design).
 
+- **Optional outbound smarthost relay (deliverability without losing
+  sovereignty).** When `VAYUOS_MAIL_RELAY_HOST` is set, VayuMail delivers
+  outbound mail through an authenticated SMTP relay instead of direct-to-MX —
+  the pragmatic remedy for a fresh self-hosted IP that Gmail/Outlook still
+  spam-file for lack of sending reputation. The relay's established IP reputation
+  carries deliverability, while **inbound receive, IMAP, local delivery and DKIM
+  signing all remain self-hosted**, and VayuMail still DKIM-signs with the domain
+  key so DMARC stays aligned. STARTTLS (587) and implicit TLS (465) are
+  supported with `AUTH PLAIN`/`LOGIN`; encryption before AUTH is required by
+  default (`VAYUOS_MAIL_RELAY_TLS=off` to opt out on a trusted private network).
+  Credentials are read from the environment only and never persisted. Direct-to-
+  MX remains the default when no relay is configured. The deliverability panel
+  shows when a relay is active. See ADR-0085.
+
+- **Mailbox usability: drafts, mark-as-read, and a deliverability self-check.**
+  - **Drafts** — Compose now has a **Save as draft** button that files the
+    message into the sender's Drafts folder; opening a draft from the mailbox
+    reloads it in the composer to finish and send (`Engine.SaveDraft`).
+  - **Mark as read / unread** — the reader view has ✓ **Mark read** / **Mark
+    unread** actions and each Inbox row has a per-message read toggle, backed by
+    proper Maildir Seen-flag moves (`Engine.MarkRead` / `MarkUnread`).
+  - **Deliverability self-check** — the Mail & DNS panel now flags the common
+    reasons mail is marked as spam: a **DKIM key published in DNS that does not
+    match VayuMail's signing key**, and a **reverse-DNS (PTR) mismatch** against
+    the mail hostname (`Engine.Deliverability`).
 - **VayuAnalytics dashboard polish.** The privacy-first analytics page now reads
   far more clearly at a glance:
   - **Full country names + flag emoji.** Country breakdowns show e.g.
@@ -44,6 +69,34 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   - **"Last updated" timestamp** in the page header, a **local-only privacy
     footer**, a **loading cue** when switching the time range, and **mobile
     single-column layout** with horizontally swipeable tables.
+- **TLS for mail (STARTTLS + IMAPS + authenticated submission).** The mail
+  listeners now offer encryption: **STARTTLS** on SMTP `:25`, the new
+  **submission** service `:587` (STARTTLS **required** before `AUTH PLAIN`/
+  `LOGIN`, then authenticated relay), and IMAP `:143`; plus implicit-TLS
+  **IMAPS** on `:993`. A CA-signed certificate can be supplied via
+  `VAYUOS_MAIL_TLS_CERT` / `VAYUOS_MAIL_TLS_KEY`; when unset, VayuMail generates
+  an in-memory self-signed certificate so opportunistic STARTTLS works
+  immediately. All TLS listeners are best-effort (a bind/cert failure is
+  surfaced in the health panel but never blocks outbound/local mail). The health
+  row now shows which secure listeners are active (`STARTTLS`, `submission:587`,
+  `IMAPS:993`).
+- **Inbound SPF / DKIM / DMARC verification.** Received mail is now
+  authenticated during the SMTP transaction: **SPF** (connecting IP vs the
+  envelope sender), **DKIM** (signature verification), and **DMARC** (policy +
+  identifier alignment with the From domain). The outcome is stamped as a
+  standard `Authentication-Results` header, and a DMARC failure under an
+  enforcing policy (`p=quarantine`/`p=reject`) is routed to **Junk** via the
+  existing local filter. All lookups are best-effort — a DNS error degrades to
+  `none`/`temperror` and never blocks delivery. Implemented with the vetted
+  `github.com/emersion/go-msgauth` (DKIM/DMARC) and `blitiri.com.ar/go/spf`
+  libraries (completes the ADR-0078 follow-up).
+- **Clean reader view for received mail.** The message page now shows a decoded
+  view — From / To / Cc / Subject / Date summary plus the rendered `text/plain`
+  body (or sanitised HTML when that's all a message carries) — instead of raw
+  MIME. A **"View raw source"** toggle reveals the full original headers/MIME on
+  demand. HTML is sanitised through a bluemonday UGC policy so it respects the
+  console's strict CSP. New `mail.ParseMessage` decodes multipart/alternative,
+  quoted-printable, base64, and RFC 2047 encoded-word headers.
 
 ### Changed
 
@@ -53,12 +106,53 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   `VAYUOS_MAIL_INBOUND=on` opt-in. Set `VAYUOS_MAIL_INBOUND=off` to run
   outbound-only. Binding the mail ports is best-effort: a failed bind (e.g.
   `:25` without privileges, or a port already in use) is recorded
-  (`Engine.InboundError`), surfaced in the VayuOS health panel, and **never**
-  fails engine startup — outbound and local delivery stay available. Amends
-  ADR-0078. (Receiving external mail still also requires port 25 reachable and
-  MX/A DNS records pointing at the host.)
+  (`Engine.InboundError`), surfaced in the VayuOS health panel **with an
+  actionable hint** (grant `CAP_NET_BIND_SERVICE`, or stop a conflicting MTA
+  like Postfix), and **never** fails engine startup — outbound and local
+  delivery stay available. Amends ADR-0078. The shipped `deploy/vayupress.service`
+  now grants `CAP_NET_BIND_SERVICE` so the non-root service can bind `:25`/`:143`.
+  (Receiving external mail still also requires port 25 reachable and MX/A DNS
+  records pointing at the host.)
+
+- **Outbound deliverability hardening (fewer messages in Gmail/Outlook spam).**
+  - **DKIM signing now uses the vetted `github.com/emersion/go-msgauth/dkim`
+    library** instead of a hand-rolled canonicalizer. A subtle canonicalization
+    bug is one of the most common reasons a message that "looks" signed still
+    fails verification at the receiver and is filed as spam; delegating to the
+    same battle-tested implementation already used for inbound verification
+    removes that entire class of risk. Signing remains relaxed/relaxed,
+    rsa-sha256, `d=` aligned to the From domain.
+  - **Well-formed MIME.** Messages with both a text and an HTML body are now sent
+    as a proper `multipart/alternative` (text part first, HTML second) — the
+    shape mainstream mail clients send and spam filters expect — with explicit
+    `Content-Transfer-Encoding` and canonical CRLF line endings throughout. The
+    inline PGP path is unchanged (a single ASCII-armored `text/plain` part).
+  - **Deliverability self-check** now also flags a **mail hostname that is not a
+    fully-qualified domain name** (announced in EHLO/HELO), alongside the
+    existing DKIM-key and reverse-DNS (PTR) checks.
 
 ### Fixed
+
+- **Theme Studio: deploying a theme now restyles the whole public site, not just
+  colours.** The token compiler bridges the active theme onto the variables the
+  public templates actually read (`--bg`, `--surface`, `--text`, `--accent`,
+  `--font`, `--max-w`, `--radius`), with explicit `[data-theme]` blocks so the
+  manual light/dark toggle re-themes the site too. The built-in design themes
+  (Gale, Zephyr, Dispatch, Vivid, Beacon) now style the real `vayu-*` markup, so
+  each visibly changes layout and typography rather than only recolouring. The
+  Theme Store "Customize" action no longer reverts to the active theme and
+  carries the selected theme's design through to Apply.
+- **Compose Send / Save-as-draft no longer fail with `403` after a while.** The
+  VayuOS panel pages did not re-issue the `vp_csrf` cookie, so once it expired
+  (1h) every panel POST (send, save draft, message/account actions) was rejected
+  as a CSRF failure. The VayuOS GET pages are now wrapped in the CSRF middleware
+  so each page load re-seeds the token, and a `403` now shows a clear
+  "reload the page" hint instead of a bare error.
+- **Outbound mail now carries the sender's display name.** Messages put a
+  friendly `From: "Full Name" <addr>` header (from the mail account's full name,
+  or the CMS user's name) so recipients see a name instead of a bare address.
+  The SMTP envelope (MAIL FROM) and the outbound queue still use the bare
+  address, and the DKIM signature is unaffected.
 
 - **Incoming mail now lands in the recipient's Inbox (local delivery loopback).**
   Mail addressed to a mailbox served by this instance was only ever enqueued for

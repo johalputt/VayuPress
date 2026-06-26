@@ -1,0 +1,281 @@
+/* ============================================================================
+   Maverick — a bold, creative, "dare to stand out" statement theme for VayuPress.
+
+   A striking editorial/portfolio theme built around full-bleed background-media
+   heroes with overlaid text, animated floating "circles", big display
+   typography, and a selection slider. Every component is CSP-safe and
+   same-origin (served via /theme.css, style-src 'self'), driven by the
+   VayuPress design tokens (--vp-*). No external fonts, no CDNs, no JS required.
+
+   Feature  ->  Maverick class / hook
+   ----------------------------------------------------------------------------
+   Background-media hero w/ overlay     -> .maverick-hero (+ __bg/__overlay),
+     (button style, content pos/length)    --pos-{bottom-left|center},
+                                            --len-{narrow|wide|full},
+                                            .maverick-btn--{bracket|solid}
+   "Our selection" slider               -> .maverick-slider / .maverick-slide
+   Moving circles (testimonials|tags)   -> .maverick-circles / .maverick-circle
+   Featured posts (+ mobile preview)    -> .maverick-featured / __preview
+   Home post card style (creative|def.) -> .maverick-card(--creative|--default)
+   Post card image aspect ratios (8)    -> .maverick-card__media--{2-3,3-4,4-5,
+                                            16-9,4-3,3-2,5-4,1-1}
+   Post card extra info (author/date)   -> .maverick-card__meta
+   Four post templates (default|right,
+     each with optional video)          -> .maverick-post--{default|right}, __video
+   Text style (upper/lower/caps/none)   -> .maverick-tt--{upper|lower|caps|none}
+   Heading scale + line-height scale    -> --mv-h-scale / --mv-h-lh (+ .maverick-hscale--*)
+   Page load animations                 -> .maverick-animate
+   Custom account / sign in/up pages    -> .maverick-auth (+ __bg video)
+   Authors / FAQ / archive / all-posts  -> .maverick-authors / .maverick-faq /
+                                            .maverick-archive / .maverick-allposts
+   Membership tiers (monthly/yearly)    -> .maverick-tiers / .maverick-tier / __toggle
+   Header (nav + sub-links) + footer    -> .maverick-header / .maverick-nav /
+                                            .maverick-footer(--creative)
+   Logo scale                           -> --mv-logo-scale / .maverick-logo
+   ============================================================================ */
+
+:root{
+  --mv-display:var(--vp-font-sans,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif);
+  --mv-body:var(--vp-font-sans,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif);
+  --mv-h-scale:1;        /* heading font scale factor */
+  --mv-h-lh:1.05;        /* heading line-height */
+  --mv-logo-scale:1;     /* logo scale factor */
+}
+.maverick-display{font-family:var(--mv-display);font-weight:800;line-height:var(--mv-h-lh);letter-spacing:-.03em}
+
+/* Heading-scale presets */
+.maverick-hscale--sm{--mv-h-scale:.85}
+.maverick-hscale--md{--mv-h-scale:1}
+.maverick-hscale--lg{--mv-h-scale:1.15}
+.maverick-hscale--xl{--mv-h-scale:1.35}
+
+/* Text-transform (text style) options */
+.maverick-tt--upper{text-transform:uppercase}
+.maverick-tt--lower{text-transform:lowercase}
+.maverick-tt--caps{text-transform:capitalize}
+.maverick-tt--none{text-transform:none}
+
+/* ── Shared primitives ──────────────────────────────────────────────────── */
+.maverick-eyebrow{display:inline-block;font-size:.72rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--vp-accent)}
+.maverick-btn{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;min-height:44px;min-width:44px;padding:.75rem 1.6rem;font-family:var(--mv-body);font-size:.9rem;font-weight:700;letter-spacing:.02em;text-decoration:none;border:2px solid var(--vp-accent);border-radius:var(--vp-radius-sm,0);cursor:pointer;transition:background .15s,color .15s,transform .15s}
+.maverick-btn:hover{transform:translateY(-2px)}
+.maverick-btn--primary{background:var(--vp-accent);color:#fff}
+.maverick-btn--primary:hover{background:var(--vp-accent2);border-color:var(--vp-accent2)}
+.maverick-btn--ghost{background:transparent;color:var(--vp-text);border-color:currentColor}
+.maverick-btn--ghost:hover{background:var(--vp-accent);color:#fff;border-color:var(--vp-accent)}
+/* Button styles on background media */
+.maverick-btn--solid{background:#fff;color:#000;border-color:#fff}
+.maverick-btn--solid:hover{background:var(--vp-accent);color:#fff;border-color:var(--vp-accent)}
+.maverick-btn--bracket{border:0;background:transparent;color:#fff;padding:.5rem .25rem;border-radius:0}
+.maverick-btn--bracket::before{content:"[\00a0"}
+.maverick-btn--bracket::after{content:"\00a0]"}
+.maverick-btn--bracket:hover{transform:none;color:var(--vp-accent)}
+.maverick-input{flex:1;min-height:44px;padding:.7rem 1.1rem;font-size:.92rem;border-radius:var(--vp-radius-sm,0);border:2px solid color-mix(in srgb,var(--vp-muted) 35%,transparent);background:var(--vp-bg);color:var(--vp-text)}
+.maverick-input:focus{outline:2px solid var(--vp-accent);outline-offset:1px;border-color:var(--vp-accent)}
+.maverick-section{margin:4.5rem 0}
+.maverick-section__title{font-family:var(--mv-display);font-weight:800;letter-spacing:-.03em;line-height:1.05;font-size:calc(2rem * var(--mv-h-scale));color:var(--vp-text);margin:0 0 1.5rem}
+
+/* ── Header (primary nav with sub-links) ────────────────────────────────── */
+.maverick-header{display:flex;align-items:center;justify-content:space-between;gap:1.5rem;padding:1.25rem 0}
+.maverick-logo,.maverick-header__brand{font-family:var(--mv-display);font-weight:800;letter-spacing:-.02em;font-size:calc(1.4rem * var(--mv-logo-scale));color:var(--vp-text);text-decoration:none}
+.maverick-nav{display:flex;align-items:center;gap:1.6rem;list-style:none;margin:0;padding:0}
+.maverick-nav__item{position:relative}
+.maverick-nav__link{font-size:.82rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--vp-text);text-decoration:none;transition:color .15s}
+.maverick-nav__link:hover{color:var(--vp-accent)}
+.maverick-nav__dropdown{position:absolute;top:170%;left:0;min-width:190px;display:flex;flex-direction:column;gap:.1rem;padding:.5rem;background:var(--vp-surface);border:1px solid color-mix(in srgb,var(--vp-muted) 18%,transparent);box-shadow:0 14px 36px rgba(0,0,0,.22);opacity:0;visibility:hidden;transform:translateY(-4px);transition:opacity .15s,transform .15s,visibility .15s;z-index:120}
+.maverick-nav__item:hover .maverick-nav__dropdown,.maverick-nav__item:focus-within .maverick-nav__dropdown{opacity:1;visibility:visible;transform:translateY(0)}
+.maverick-nav__dropdown a{padding:.5rem .75rem;font-size:.85rem;color:var(--vp-text);text-decoration:none}
+.maverick-nav__dropdown a:hover{background:color-mix(in srgb,var(--vp-accent) 12%,transparent);color:var(--vp-accent)}
+
+/* ── Background-media hero (overlay text, configurable) ─────────────────── */
+.maverick-hero{position:relative;display:flex;min-height:80vh;padding:3rem;overflow:hidden;color:#fff;border-radius:var(--vp-radius-lg,0)}
+.maverick-hero__bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0}
+.maverick-hero__overlay{position:absolute;inset:0;background:linear-gradient(transparent,rgba(0,0,0,.6));z-index:1}
+.maverick-hero__content{position:relative;z-index:2;display:flex;flex-direction:column;gap:1.25rem;width:100%}
+.maverick-hero__title{font-family:var(--mv-display);font-weight:800;letter-spacing:-.03em;line-height:1;font-size:clamp(2.6rem,8vw,6rem);margin:0;color:#fff}
+.maverick-hero__sub{font-size:1.2rem;line-height:1.5;max-width:54ch;opacity:.92}
+.maverick-hero__actions{display:flex;gap:.75rem;flex-wrap:wrap}
+/* content position */
+.maverick-hero--pos-bottom-left{align-items:flex-end;justify-content:flex-start}
+.maverick-hero--pos-bottom-left .maverick-hero__content{align-items:flex-start;text-align:left}
+.maverick-hero--pos-center{align-items:center;justify-content:center}
+.maverick-hero--pos-center .maverick-hero__content{align-items:center;text-align:center}
+.maverick-hero--pos-center .maverick-hero__sub{margin-left:auto;margin-right:auto}
+/* content length */
+.maverick-hero--len-narrow .maverick-hero__content{max-width:540px}
+.maverick-hero--len-wide .maverick-hero__content{max-width:860px}
+.maverick-hero--len-full .maverick-hero__content{max-width:none}
+
+/* ── "Our selection" slider ─────────────────────────────────────────────── */
+.maverick-slider{display:flex;gap:1rem;overflow-x:auto;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch}
+.maverick-slide{position:relative;flex:0 0 min(720px,92%);scroll-snap-align:center;min-height:420px;display:flex;align-items:flex-end;padding:2rem;overflow:hidden;color:#fff;border-radius:var(--vp-radius-lg,0)}
+.maverick-slide__bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0}
+.maverick-slide::after{content:"";position:absolute;inset:0;background:linear-gradient(transparent 40%,rgba(0,0,0,.78));z-index:1}
+.maverick-slide__content{position:relative;z-index:2}
+.maverick-slide__title{font-family:var(--mv-display);font-weight:800;letter-spacing:-.02em;font-size:2rem;line-height:1.1;margin:0;color:#fff}
+
+/* ── Moving circles (testimonials / tags) ───────────────────────────────── */
+.maverick-circles{position:relative;display:flex;flex-wrap:wrap;gap:1.5rem;align-items:center;justify-content:center;padding:3rem 0}
+.maverick-circle{display:grid;place-items:center;text-align:center;width:170px;height:170px;border-radius:50%;padding:1.25rem;background:color-mix(in srgb,var(--vp-accent) 12%,transparent);border:1px solid color-mix(in srgb,var(--vp-accent) 30%,transparent);animation:mv-float 6s ease-in-out infinite}
+.maverick-circle:nth-child(2n){animation-delay:-1.5s}
+.maverick-circle:nth-child(3n){animation-delay:-3s;background:color-mix(in srgb,var(--vp-accent) 20%,transparent)}
+.maverick-circle__quote{font-size:.84rem;line-height:1.4;color:var(--vp-text)}
+.maverick-circle__name{font-size:.74rem;font-weight:700;color:var(--vp-accent);margin-top:.4rem}
+.maverick-circle--tag{font-family:var(--mv-display);font-weight:800;font-size:1.1rem;color:var(--vp-accent);text-decoration:none}
+@keyframes mv-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-14px)}}
+
+/* ── Featured posts (+ mobile preview) ──────────────────────────────────── */
+.maverick-featured{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1.5rem}
+.maverick-featured__preview{display:none}
+
+/* ── Post cards (creative / default) + 8 aspect ratios ──────────────────── */
+.maverick-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:2.5rem}
+.maverick-card{display:flex;flex-direction:column;gap:.85rem;text-decoration:none}
+.maverick-card__media{width:100%;object-fit:cover;border-radius:var(--vp-radius-lg,0)}
+.maverick-card__media--2-3{aspect-ratio:2/3}
+.maverick-card__media--3-4{aspect-ratio:3/4}
+.maverick-card__media--4-5{aspect-ratio:4/5}
+.maverick-card__media--16-9{aspect-ratio:16/9}
+.maverick-card__media--4-3{aspect-ratio:4/3}
+.maverick-card__media--3-2{aspect-ratio:3/2}
+.maverick-card__media--5-4{aspect-ratio:5/4}
+.maverick-card__media--1-1{aspect-ratio:1/1}
+.maverick-card__title{font-family:var(--mv-display);font-weight:800;letter-spacing:-.02em;line-height:1.1;font-size:calc(1.35rem * var(--mv-h-scale));color:var(--vp-text);margin:0}
+.maverick-card__title a{color:inherit;text-decoration:none}
+.maverick-card__title a:hover{color:var(--vp-accent)}
+.maverick-card__meta{display:flex;gap:.6rem;font-size:.78rem;letter-spacing:.03em;text-transform:uppercase;color:var(--vp-muted)}
+/* Creative card: media with overlaid title */
+.maverick-card--creative{position:relative;justify-content:flex-end;min-height:380px;padding:1.5rem;overflow:hidden;color:#fff}
+.maverick-card--creative .maverick-card__media{position:absolute;inset:0;height:100%}
+.maverick-card--creative::after{content:"";position:absolute;inset:0;background:linear-gradient(transparent 40%,rgba(0,0,0,.78))}
+.maverick-card--creative .maverick-card__title,.maverick-card--creative .maverick-card__meta{position:relative;z-index:1;color:#fff}
+
+/* ── Four post templates (default / right-aligned, with optional video) ──── */
+.maverick-post--default{max-width:var(--vp-max-width,46rem);margin:0 auto}
+.maverick-post__heading{font-family:var(--mv-display);font-weight:800;letter-spacing:-.03em;line-height:1.05;font-size:calc(clamp(2rem,5vw,3.4rem) * var(--mv-h-scale));color:var(--vp-text)}
+.maverick-post__feature,.maverick-post__video{width:100%;border-radius:var(--vp-radius-lg,0);margin-bottom:2rem}
+.maverick-post__feature{aspect-ratio:16/9;object-fit:cover}
+.maverick-post__video{aspect-ratio:16/9}
+/* Right-aligned: content to the right, H2 headings on the left (desktop) */
+.maverick-post--right{max-width:1100px;margin:0 auto}
+@media(min-width:900px){
+  .maverick-post--right .maverick-post__body{margin-left:auto;max-width:60%}
+  .maverick-post--right .maverick-post__body h2{position:relative;margin-left:-66%;width:60%;text-align:right}
+}
+
+/* ── Membership tiers (monthly / yearly) ────────────────────────────────── */
+.maverick-tiers{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1.5rem;align-items:start}
+.maverick-tiers__toggle{display:inline-flex;gap:.2rem;margin:0 auto 2rem;padding:.25rem;border:2px solid color-mix(in srgb,var(--vp-muted) 25%,transparent)}
+.maverick-tiers__toggle button{min-height:40px;padding:.4rem 1.2rem;border:0;background:transparent;color:var(--vp-muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em;font-size:.78rem;cursor:pointer}
+.maverick-tiers__toggle button[aria-pressed="true"]{background:var(--vp-accent);color:#fff}
+.maverick-tier{display:flex;flex-direction:column;gap:.5rem;padding:2rem;background:var(--vp-surface);border:2px solid color-mix(in srgb,var(--vp-muted) 18%,transparent)}
+.maverick-tier--featured{border-color:var(--vp-accent)}
+.maverick-tier__name{font-size:.82rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--vp-text)}
+.maverick-tier__price{font-family:var(--mv-display);font-weight:800;font-size:2.6rem;color:var(--vp-text)}
+.maverick-tier__price span{font-family:var(--mv-body);font-size:.85rem;font-weight:500;color:var(--vp-muted)}
+.maverick-tier__list{list-style:none;margin:1rem 0;padding:0;display:flex;flex-direction:column;gap:.6rem}
+.maverick-tier__list li{display:flex;gap:.5rem;font-size:.9rem;color:var(--vp-muted)}
+.maverick-tier__list li::before{content:"\2192";color:var(--vp-accent);font-weight:700}
+
+/* ── Custom account / sign in/up pages (with bg video) ──────────────────── */
+.maverick-auth{position:relative;min-height:70vh;display:grid;place-items:center;padding:3rem;overflow:hidden;text-align:center}
+.maverick-auth__bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.35;z-index:0}
+.maverick-auth__inner{position:relative;z-index:1;max-width:420px;width:100%}
+.maverick-auth__title{font-family:var(--mv-display);font-weight:800;font-size:2rem;color:var(--vp-text);margin:0 0 .5rem}
+.maverick-auth__form{display:flex;flex-direction:column;gap:.75rem;margin-top:1.25rem}
+
+/* ── Authors / FAQ / archive / all-posts pages ──────────────────────────── */
+.maverick-authors{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:2rem}
+.maverick-author{text-align:center;text-decoration:none}
+.maverick-author__avatar{width:120px;height:120px;border-radius:50%;object-fit:cover;margin:0 auto 1rem}
+.maverick-author__name{font-family:var(--mv-display);font-weight:800;font-size:1.2rem;color:var(--vp-text)}
+.maverick-author__role{font-size:.8rem;color:var(--vp-muted)}
+.maverick-faq{display:flex;flex-direction:column;gap:.75rem;max-width:46rem;margin:0 auto}
+.maverick-faq__item{border-bottom:1px solid color-mix(in srgb,var(--vp-muted) 18%,transparent)}
+.maverick-faq__item summary{cursor:pointer;list-style:none;padding:1.1rem 0;font-family:var(--mv-display);font-weight:700;font-size:1.1rem;color:var(--vp-text);display:flex;justify-content:space-between;align-items:center}
+.maverick-faq__item summary::after{content:"+";color:var(--vp-accent);font-size:1.4rem}
+.maverick-faq__item[open] summary::after{content:"\2212"}
+.maverick-faq__item p{padding:0 0 1.1rem;color:var(--vp-muted);line-height:1.6;margin:0}
+.maverick-archive__filter{display:flex;flex-wrap:wrap;gap:.5rem;margin-bottom:2rem}
+.maverick-archive__filter a{display:inline-flex;align-items:center;min-height:38px;padding:.4rem 1rem;font-size:.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;text-decoration:none;color:var(--vp-text);border:2px solid color-mix(in srgb,var(--vp-muted) 22%,transparent)}
+.maverick-archive__filter a:hover,.maverick-archive__filter a[aria-current="true"]{background:var(--vp-accent);color:#fff;border-color:var(--vp-accent)}
+.maverick-allposts{display:flex;flex-direction:column}
+.maverick-allposts__row{display:grid;grid-template-columns:auto 1fr auto;gap:1.5rem;align-items:baseline;padding:1.25rem 0;border-bottom:1px solid color-mix(in srgb,var(--vp-muted) 16%,transparent);text-decoration:none}
+.maverick-allposts__num{font-family:var(--mv-display);font-weight:800;color:var(--vp-muted);font-variant-numeric:tabular-nums}
+.maverick-allposts__title{font-family:var(--mv-display);font-weight:700;font-size:1.3rem;color:var(--vp-text)}
+.maverick-allposts__row:hover .maverick-allposts__title{color:var(--vp-accent)}
+.maverick-allposts__date{font-size:.8rem;color:var(--vp-muted);white-space:nowrap}
+
+/* ── Footer (creative footer = grouped columns) ─────────────────────────── */
+.maverick-footer{display:grid;grid-template-columns:1.6fr repeat(2,1fr);gap:2rem;padding:4rem 0 2rem;margin-top:4rem;border-top:3px solid var(--vp-text)}
+.maverick-footer--creative{grid-template-columns:1.4fr repeat(2,1fr)}
+.maverick-footer__brand{font-family:var(--mv-display);font-weight:800;font-size:1.6rem;color:var(--vp-text);text-decoration:none}
+.maverick-footer__desc{font-size:.9rem;line-height:1.6;color:var(--vp-muted);margin:.6rem 0 1rem;max-width:34ch}
+.maverick-footer__head{font-size:.72rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--vp-muted);margin:0 0 .75rem}
+.maverick-footer__link{display:block;font-size:.9rem;color:var(--vp-text);text-decoration:none;padding:.25rem 0}
+.maverick-footer__link:hover{color:var(--vp-accent)}
+.maverick-footer__bottom{grid-column:1/-1;padding-top:1.5rem;margin-top:1rem;border-top:1px solid color-mix(in srgb,var(--vp-muted) 16%,transparent);font-size:.8rem;color:var(--vp-muted)}
+
+/* ── Pagination ─────────────────────────────────────────────────────────── */
+.maverick-pagination{display:flex;align-items:center;justify-content:center;gap:.75rem;margin:4rem 0}
+.maverick-pagination a,.maverick-pagination span{min-height:44px;min-width:44px;display:inline-flex;align-items:center;justify-content:center;padding:.5rem 1.1rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;font-size:.78rem;text-decoration:none;color:var(--vp-text);border:2px solid color-mix(in srgb,var(--vp-muted) 25%,transparent)}
+.maverick-pagination a:hover{background:var(--vp-accent);color:#fff;border-color:var(--vp-accent)}
+
+/* ── Page load animations ───────────────────────────────────────────────── */
+.maverick-animate{opacity:0;transform:translateY(24px);animation:mv-rise .7s cubic-bezier(.2,.7,.2,1) forwards}
+.maverick-animate:nth-child(2){animation-delay:.08s}
+.maverick-animate:nth-child(3){animation-delay:.16s}
+.maverick-animate:nth-child(4){animation-delay:.24s}
+@keyframes mv-rise{to{opacity:1;transform:translateY(0)}}
+
+/* ── Responsive ─────────────────────────────────────────────────────────── */
+@media(max-width:900px){
+  .maverick-footer,.maverick-footer--creative{grid-template-columns:1fr 1fr}
+}
+@media(max-width:768px){
+  .maverick-nav{display:none}
+  .maverick-hero{min-height:62vh;padding:1.75rem}
+  .maverick-circle{width:130px;height:130px;padding:.85rem}
+  .maverick-allposts__row{grid-template-columns:1fr auto}
+  .maverick-allposts__num{display:none}
+}
+@media(max-width:480px){
+  .maverick-footer,.maverick-footer--creative{grid-template-columns:1fr}
+  .maverick-tiers,.maverick-grid{grid-template-columns:1fr}
+  .maverick-hero__actions,.maverick-auth__form{flex-direction:column}
+}
+
+/* ── Reduced motion (disable float / page animations) ───────────────────── */
+@media(prefers-reduced-motion:reduce){
+  .maverick-circle{animation:none}
+  .maverick-animate{opacity:1;transform:none;animation:none}
+  .maverick-btn,.maverick-nav__dropdown{transition:none}
+  .maverick-btn:hover{transform:none}
+  .maverick-slider{scroll-behavior:auto}
+}
+
+
+/* ============================================================================
+   Live public-site styling — overrides the real VayuPress markup (vayu-*).
+   Identity: bold statement — huge uppercase headings, sharp corners, heavy
+   borders, stark high-contrast cards.
+   ============================================================================ */
+.container{max-width:1000px}
+.vayu-nav{border-bottom:3px solid var(--vp-text);padding-bottom:1rem;margin-bottom:3rem}
+.vayu-nav-brand{font-weight:800;text-transform:uppercase;letter-spacing:.02em}
+.vayu-nav-links a{text-transform:uppercase;font-size:.78rem;font-weight:700;letter-spacing:.05em}
+.vayu-hero{padding:4rem 0 3rem}
+.vayu-hero-eyebrow{font-weight:800;letter-spacing:.18em}
+.vayu-hero h1{font-size:clamp(3rem,9vw,6rem);font-weight:800;letter-spacing:-.04em;line-height:.95;text-transform:uppercase;-webkit-text-fill-color:currentColor;background:none;color:var(--vp-text)}
+.vayu-hero-tagline{font-size:1.25rem;max-width:50ch}
+.vayu-stat-val{color:var(--vp-accent)}
+.vayu-section-label{font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:var(--vp-text)}
+.vayu-post-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:0;border-top:2px solid var(--vp-text)}
+.vayu-post-card{border:2px solid var(--vp-text);border-top:0;border-radius:0;padding:1.5rem}
+.vayu-post-card:hover{background:var(--vp-accent);transform:none}
+.vayu-post-card:hover .vayu-post-title,.vayu-post-card:hover .vayu-post-excerpt,.vayu-post-card:hover .vayu-post-meta{color:#fff}
+.vayu-post-title{font-size:1.5rem;font-weight:800;letter-spacing:-.02em;line-height:1.1;text-transform:uppercase}
+.vayu-post-arrow{display:none}
+.vayu-tag{border-radius:0;border:1.5px solid var(--vp-text);background:transparent;color:var(--vp-text);text-transform:uppercase;font-weight:700}
+article.vayu-prose h1,.vayu-article-header h1{font-size:clamp(2.6rem,7vw,4.4rem);font-weight:800;letter-spacing:-.04em;line-height:.98;text-transform:uppercase;-webkit-text-fill-color:currentColor;background:none;color:var(--vp-text)}
+.vayu-footer{border-top:3px solid var(--vp-text)}

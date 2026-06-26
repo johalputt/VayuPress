@@ -203,3 +203,63 @@ func (m *Maildir) deleteMessage(domain, username, folder, id string) error {
 	name = filepath.Base(name) // defense-in-depth: guarantee a single path element
 	return os.Remove(filepath.Join(m.folderDir(domain, username, folder), sub, name))
 }
+
+// splitMaildirFlags separates a Maildir filename into its base name and the
+// flag string after the ":2," info marker (empty when none).
+func splitMaildirFlags(name string) (base, flags string) {
+	if i := strings.Index(name, ":2,"); i >= 0 {
+		return name[:i], name[i+3:]
+	}
+	return name, ""
+}
+
+// markSeenFolder moves a message from new/ to cur/ within a folder and sets the
+// Maildir ":2,S" (Seen) flag, returning the new id. Already-seen messages are
+// returned unchanged.
+func (m *Maildir) markSeenFolder(domain, username, folder, id string) (string, error) {
+	sub, name, ok := strings.Cut(id, "/")
+	if !ok || (sub != "new" && sub != "cur") {
+		return id, errors.New("vayumail: invalid message id")
+	}
+	if name == "" || strings.ContainsAny(name, "/\\") || strings.Contains(name, "..") {
+		return id, errors.New("vayumail: invalid message id")
+	}
+	name = filepath.Base(name)
+	base, flags := splitMaildirFlags(name)
+	if sub == "cur" && strings.ContainsRune(flags, 'S') {
+		return id, nil
+	}
+	dir := m.folderDir(domain, username, folder)
+	if err := os.MkdirAll(filepath.Join(dir, "cur"), 0o700); err != nil {
+		return id, err
+	}
+	newName := base + ":2,S"
+	if err := os.Rename(filepath.Join(dir, sub, name), filepath.Join(dir, "cur", newName)); err != nil {
+		return id, err
+	}
+	return "cur/" + newName, nil
+}
+
+// markUnseenFolder moves a message back to new/ (clearing the Seen flag).
+func (m *Maildir) markUnseenFolder(domain, username, folder, id string) (string, error) {
+	sub, name, ok := strings.Cut(id, "/")
+	if !ok || (sub != "new" && sub != "cur") {
+		return id, errors.New("vayumail: invalid message id")
+	}
+	if name == "" || strings.ContainsAny(name, "/\\") || strings.Contains(name, "..") {
+		return id, errors.New("vayumail: invalid message id")
+	}
+	name = filepath.Base(name)
+	if sub == "new" {
+		return id, nil
+	}
+	base, _ := splitMaildirFlags(name)
+	dir := m.folderDir(domain, username, folder)
+	if err := os.MkdirAll(filepath.Join(dir, "new"), 0o700); err != nil {
+		return id, err
+	}
+	if err := os.Rename(filepath.Join(dir, "cur", name), filepath.Join(dir, "new", base)); err != nil {
+		return id, err
+	}
+	return "new/" + base, nil
+}

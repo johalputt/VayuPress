@@ -5,6 +5,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"html"
 	htmpl "html/template"
@@ -13,12 +14,19 @@ import (
 	netmail "net/mail"
 	"strings"
 
+	"github.com/microcosm-cc/bluemonday"
+
 	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/render"
 	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
 	vpgp "github.com/johalputt/vayupress/internal/vayuos/pgp"
 )
+
+// mailHTMLPolicy sanitises HTML mail bodies before they are rendered in the
+// reader view. UGCPolicy strips scripts, event handlers, and inline styles, so
+// the message can be shown without weakening the admin console's strict CSP.
+var mailHTMLPolicy = bluemonday.UGCPolicy()
 
 // ── Compose ──────────────────────────────────────────────────────────────────
 
@@ -60,6 +68,7 @@ func (a *App) handleVayuOSCompose(w http.ResponseWriter, r *http.Request) {
     <textarea class="input" rows="12" data-c-body placeholder="Write your message…">` + html.EscapeString(prefillBody) + `</textarea></label>
   <div class="vm-row">
     <button class="btn btn--primary" type="submit">Send</button>
+    <button class="btn" type="button" data-c-draft>Save as draft</button>
     <span class="muted text-sm" data-c-status></span>
   </div>
 </form></div>` + `<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail.js"></script>`)
@@ -77,6 +86,23 @@ func (a *App) handleVayuOSCompose(w http.ResponseWriter, r *http.Request) {
 // quoted text is readable.
 func (a *App) composePrefill(r *http.Request) (to, subject, bodyText string) {
 	q := r.URL.Query()
+	// Draft: reopen a saved draft verbatim (To/Subject/body) for editing.
+	if q.Get("draft") != "" {
+		user := strings.TrimSpace(q.Get("user"))
+		id := strings.TrimSpace(q.Get("id"))
+		if a.vayuMail == nil || user == "" || id == "" {
+			return "", "", ""
+		}
+		raw, err := a.vayuMail.ReadFolderMessage(user, "Drafts", id)
+		if err != nil {
+			return "", "", ""
+		}
+		if msg, perr := netmail.ReadMessage(bytes.NewReader(raw)); perr == nil {
+			b, _ := io.ReadAll(msg.Body)
+			return msg.Header.Get("To"), msg.Header.Get("Subject"), string(b)
+		}
+		return "", "", ""
+	}
 	reply := q.Get("reply") != ""
 	forward := q.Get("forward") != ""
 	if !reply && !forward {
@@ -171,12 +197,89 @@ func (a *App) handleVayuOSSend(w http.ResponseWriter, r *http.Request) {
 	if mu, err := (&vayuMailBridge{app: a}).GetUserByEmail(from); err == nil && mu != nil {
 		senderUserID = mu.UserID
 	}
-	id, err := a.vayuMail.Compose(r.Context(), from, to, in.Subject, in.Body, senderUserID)
+	// Add the sender's display name to the From header so recipients (and the
+	// Sent folder) show a friendly name instead of a bare address. The engine
+	// still uses the bare address for the SMTP envelope.
+	fromHeader := from
+	if name := a.senderDisplayName(r.Context(), from); name != "" {
+		fromHeader = (&netmail.Address{Name: name, Address: from}).String()
+	}
+	id, err := a.vayuMail.Compose(r.Context(), fromHeader, to, in.Subject, in.Body, senderUserID)
 	if err != nil {
 		writeAPIError(w, r, 500, "send-failed", err.Error(), "")
 		return
 	}
 	writeJSON(w, r, 200, map[string]interface{}{"queued": true, "id": id})
+}
+
+// handleVayuOSDraft saves a composed message into the sender's Drafts folder so
+// it can be reopened and finished later. CSRF-protected, admin-only.
+func (a *App) handleVayuOSDraft(w http.ResponseWriter, r *http.Request) {
+	if a.vayuMail == nil || !a.vayuMail.Config().Enabled {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", "VayuMail is not active", "")
+		return
+	}
+	var in struct {
+		From    string `json:"from"`
+		To      string `json:"to"`
+		Subject string `json:"subject"`
+		Body    string `json:"body"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&in); err != nil {
+		writeAPIError(w, r, 400, "invalid_json", err.Error(), "")
+		return
+	}
+	domain := a.vayuMail.Config().Domain
+	from := strings.TrimSpace(in.From)
+	if from == "" {
+		from = "postmaster@" + domain
+	}
+	var to []string
+	for _, t := range strings.Split(in.To, ",") {
+		if t = strings.TrimSpace(t); t != "" {
+			to = append(to, t)
+		}
+	}
+	fromHeader := from
+	if name := a.senderDisplayName(r.Context(), from); name != "" {
+		fromHeader = (&netmail.Address{Name: name, Address: from}).String()
+	}
+	id, err := a.vayuMail.SaveDraft(fromHeader, to, in.Subject, in.Body)
+	if err != nil {
+		writeAPIError(w, r, 500, "draft-failed", err.Error(), "")
+		return
+	}
+	writeJSON(w, r, 200, map[string]string{"saved": "Drafts", "id": id})
+}
+
+// senderDisplayName returns the friendly name to put in the From: header for a
+// sending address: the admin-managed mail account's full name when set, else
+// the matching CMS user's name. Empty when no name is known (the caller then
+// sends with the bare address, as before).
+func (a *App) senderDisplayName(ctx context.Context, emailAddr string) string {
+	emailAddr = strings.TrimSpace(emailAddr)
+	if emailAddr == "" {
+		return ""
+	}
+	if a.vayuMail != nil && a.vayuMail.Accounts() != nil {
+		if accs, err := a.vayuMail.Accounts().List(ctx); err == nil {
+			for _, ac := range accs {
+				if strings.EqualFold(ac.Email, emailAddr) && strings.TrimSpace(ac.FullName) != "" {
+					return strings.TrimSpace(ac.FullName)
+				}
+			}
+		}
+	}
+	if a.userStore != nil {
+		if users, err := a.userStore.List(ctx); err == nil {
+			for _, u := range users {
+				if strings.EqualFold(u.Email, emailAddr) && strings.TrimSpace(u.Name) != "" {
+					return strings.TrimSpace(u.Name)
+				}
+			}
+		}
+	}
+	return ""
 }
 
 // ── Message folder actions ───────────────────────────────────────────────────
@@ -192,6 +295,7 @@ func (a *App) handleVayuOSMessageAction(w http.ResponseWriter, r *http.Request) 
 		Folder string `json:"folder"`
 		To     string `json:"to"`     // target folder for move
 		Delete bool   `json:"delete"` // permanent delete
+		Mark   string `json:"mark"`   // "read" or "unread"
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64*1024)).Decode(&in); err != nil {
 		writeAPIError(w, r, 400, "invalid_json", err.Error(), "")
@@ -204,6 +308,23 @@ func (a *App) handleVayuOSMessageAction(w http.ResponseWriter, r *http.Request) 
 	from := in.Folder
 	if from == "" {
 		from = "Inbox"
+	}
+	if in.Mark == "read" || in.Mark == "unread" {
+		var (
+			newID string
+			err   error
+		)
+		if in.Mark == "read" {
+			newID, err = a.vayuMail.MarkRead(in.User, from, in.ID)
+		} else {
+			newID, err = a.vayuMail.MarkUnread(in.User, from, in.ID)
+		}
+		if err != nil {
+			writeAPIError(w, r, 500, "mark-failed", err.Error(), "")
+			return
+		}
+		writeJSON(w, r, 200, map[string]string{"marked": in.Mark, "id": newID})
+		return
 	}
 	if in.Delete {
 		if err := a.vayuMail.DeleteMessage(in.User, from, in.ID); err != nil {

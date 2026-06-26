@@ -1,8 +1,10 @@
 package mail
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/tls"
 	"database/sql"
 	"encoding/hex"
 	"errors"
@@ -23,6 +25,9 @@ type Engine struct {
 	accounts   *AccountStore
 	smtpd      *SMTPServer
 	imapd      *IMAPServer
+	submitd    *SMTPServer // authenticated submission (587)
+	imapsd     *IMAPServer // implicit-TLS IMAPS (993)
+	tlsConf    *tls.Config // shared STARTTLS / implicit-TLS config
 	decrypt    DecryptHook
 	inboundErr error
 	done       chan struct{}
@@ -74,6 +79,45 @@ func (e *Engine) MoveMessage(username, id, from, to string) error {
 	return e.maildir.MoveBetween(e.cfg.Domain, username, id, from, to)
 }
 
+// MarkRead flags a message as read (Maildir Seen) within a folder, returning
+// its new id.
+func (e *Engine) MarkRead(username, folder, id string) (string, error) {
+	if e.maildir == nil {
+		return id, errors.New("vayumail: not started")
+	}
+	return e.maildir.markSeenFolder(e.cfg.Domain, username, folder, id)
+}
+
+// MarkUnread clears the read flag, returning the message's new id.
+func (e *Engine) MarkUnread(username, folder, id string) (string, error) {
+	if e.maildir == nil {
+		return id, errors.New("vayumail: not started")
+	}
+	return e.maildir.markUnseenFolder(e.cfg.Domain, username, folder, id)
+}
+
+// SaveDraft files a composed message into the sender's Drafts folder and
+// returns its id, so it can be reopened in the composer and finished later.
+func (e *Engine) SaveDraft(from string, to []string, subject, body string) (string, error) {
+	if e.maildir == nil {
+		return "", errors.New("vayumail: not started")
+	}
+	local, _ := splitAddress(from)
+	raw := "From: " + from + "\r\nTo: " + strings.Join(to, ", ") + "\r\nSubject: " + subject +
+		"\r\nDate: " + time.Now().UTC().Format(time.RFC1123Z) + "\r\n\r\n" + body + "\r\n"
+	return e.maildir.DeliverTo(e.cfg.Domain, local, "Drafts", []byte(raw))
+}
+
+// Deliverability runs the live spam-prevention self-checks (DKIM published-key
+// vs signing-key, and reverse DNS/PTR vs hostname).
+func (e *Engine) Deliverability(ctx context.Context) []RecordHealth {
+	dkimName, dkimTXT := "", ""
+	if e.dkim != nil {
+		dkimName, dkimTXT = e.dkim.RecordName(), e.dkim.PublicTXT()
+	}
+	return Deliverability(ctx, e.cfg, dkimName, dkimTXT)
+}
+
 // DeleteMessage permanently removes a message from a folder.
 func (e *Engine) DeleteMessage(username, folder, id string) error {
 	if e.maildir == nil {
@@ -91,10 +135,9 @@ func (e *Engine) Compose(ctx context.Context, from string, to []string, subject,
 	}
 	// File a plain copy in the sender's Sent folder (best-effort).
 	if e.maildir != nil {
-		local := from
-		if i := strings.Index(local, "@"); i >= 0 {
-			local = local[:i]
-		}
+		// splitAddress tolerates a `"Name" <addr>` From, so the Sent copy is
+		// filed under the sender's bare local part, not the display name.
+		local, _ := splitAddress(from)
 		sent := "From: " + from + "\r\nTo: " + strings.Join(to, ", ") + "\r\nSubject: " + subject +
 			"\r\nDate: " + time.Now().UTC().Format(time.RFC1123Z) + "\r\n\r\n" + body + "\r\n"
 		_, _ = e.maildir.DeliverTo(e.cfg.Domain, local, "Sent", []byte(sent))
@@ -142,7 +185,16 @@ func (e *Engine) Start(ctx context.Context) error {
 	}
 	e.dkim = dk
 	e.maildir = NewMaildir(e.cfg.StorageDir + "/maildir")
-	q, err := NewQueue(e.db, e.cfg, NewMXDeliverer(e.cfg.Hostname, e.cfg.DeliveryTimeout))
+	// Outbound transport: an authenticated smarthost relay when configured
+	// (the relay's IP reputation carries deliverability), otherwise sovereign
+	// direct-to-MX. DKIM signing happens before the queue either way.
+	var deliver DeliverFunc
+	if e.cfg.RelayEnabled() {
+		deliver = NewRelayDeliverer(e.cfg, e.cfg.Hostname, e.cfg.DeliveryTimeout)
+	} else {
+		deliver = NewMXDeliverer(e.cfg.Hostname, e.cfg.DeliveryTimeout)
+	}
+	q, err := NewQueue(e.db, e.cfg, deliver)
 	if err != nil {
 		return fmt.Errorf("vayumail: queue init: %w", err)
 	}
@@ -162,32 +214,78 @@ func (e *Engine) Start(ctx context.Context) error {
 	// or a port already in use) is recorded and surfaced, but never fails engine
 	// startup, so outbound delivery and local loopback delivery stay available.
 	if e.cfg.InboundEnabled {
-		smtpd := NewSMTPServer(e.cfg, func(from string, rcpts []string, raw []byte) error {
-			var firstErr error
-			for _, rcpt := range rcpts {
-				if _, derr := e.DeliverInbound(rcpt, raw); derr != nil && firstErr == nil {
-					firstErr = derr
-				}
-			}
-			return firstErr
-		})
+		// Best-effort TLS for STARTTLS (SMTP/submission/IMAP) + implicit IMAPS.
+		if tc, terr := loadTLSConfig(e.cfg); terr == nil {
+			e.tlsConf = tc
+		} else {
+			e.inboundErr = fmt.Errorf("tls: %w", terr)
+		}
+
+		smtpd := NewSMTPServer(e.cfg, e.inboundDeliver).WithTLS(e.tlsConf)
 		if err := smtpd.Start(ctx); err != nil {
-			e.inboundErr = fmt.Errorf("smtp receive: %w", err)
+			e.inboundErr = errors.Join(e.inboundErr, fmt.Errorf("smtp receive: %w", err))
 		} else {
 			e.smtpd = smtpd
-			imapd := NewIMAPServer(e.cfg, e.bridge, e.maildir, e.decrypt)
-			if err := imapd.Start(ctx); err != nil {
-				e.inboundErr = fmt.Errorf("imap: %w", err)
-			} else {
-				e.imapd = imapd
+		}
+
+		imapd := NewIMAPServer(e.cfg, e.bridge, e.maildir, e.decrypt).WithTLS(e.tlsConf)
+		if err := imapd.Start(ctx); err != nil {
+			e.inboundErr = errors.Join(e.inboundErr, fmt.Errorf("imap: %w", err))
+		} else {
+			e.imapd = imapd
+		}
+
+		// Implicit-TLS IMAPS (993) and authenticated submission (587) require a
+		// TLS config; both are best-effort and never block startup.
+		if e.tlsConf != nil {
+			imapsd := NewIMAPServer(e.cfg, e.bridge, e.maildir, e.decrypt).WithImplicitTLS(e.tlsConf, e.cfg.IMAPSListen)
+			if err := imapsd.Start(ctx); err == nil {
+				e.imapsd = imapsd
+			}
+			if e.bridge != nil {
+				submitd := NewSubmissionServer(e.cfg, e.tlsConf, e.bridge.AuthUser, e.relayOutbound)
+				if err := submitd.Start(ctx); err == nil {
+					e.submitd = submitd
+				}
 			}
 		}
 	}
 	return nil
 }
 
+// inboundDeliver files each recipient's copy of a received message locally.
+func (e *Engine) inboundDeliver(_ string, rcpts []string, raw []byte) error {
+	var firstErr error
+	for _, rcpt := range rcpts {
+		if _, derr := e.DeliverInbound(rcpt, raw); derr != nil && firstErr == nil {
+			firstErr = derr
+		}
+	}
+	return firstErr
+}
+
+// relayOutbound enqueues an authenticated submission for MX delivery. The
+// envelope sender is reduced to a bare address.
+func (e *Engine) relayOutbound(from string, rcpts []string, raw []byte) error {
+	if e.queue == nil {
+		return errors.New("vayumail: queue unavailable")
+	}
+	_, err := e.queue.Enqueue(context.Background(), envelopeAddress(from), rcpts, raw)
+	return err
+}
+
 // InboundActive reports whether the inbound SMTP receive listener is running.
 func (e *Engine) InboundActive() bool { return e.smtpd != nil }
+
+// TLSActive reports whether STARTTLS/implicit-TLS is available to the listeners.
+func (e *Engine) TLSActive() bool { return e.tlsConf != nil }
+
+// SubmissionActive reports whether the authenticated submission (587) listener
+// is running.
+func (e *Engine) SubmissionActive() bool { return e.submitd != nil }
+
+// IMAPSActive reports whether the implicit-TLS IMAPS (993) listener is running.
+func (e *Engine) IMAPSActive() bool { return e.imapsd != nil }
 
 // InboundError returns the reason the inbound listeners could not start, or nil
 // when inbound is disabled or running. It lets the panel explain a failed bind
@@ -199,8 +297,14 @@ func (e *Engine) Stop(_ context.Context) error {
 	if e.smtpd != nil {
 		_ = e.smtpd.Stop(context.Background())
 	}
+	if e.submitd != nil {
+		_ = e.submitd.Stop(context.Background())
+	}
 	if e.imapd != nil {
 		_ = e.imapd.Stop(context.Background())
+	}
+	if e.imapsd != nil {
+		_ = e.imapsd.Stop(context.Background())
 	}
 	select {
 	case <-e.done:
@@ -281,23 +385,23 @@ func (e *Engine) SendMail(ctx context.Context, from string, to []string, subject
 		return 0, errors.New("vayumail: no recipients")
 	}
 
-	body := textBody
-	contentType := "text/plain; charset=utf-8"
+	text := textBody
+	html := htmlBody
 	pgpApplied := false
 
-	// PGP: encrypt to a single known recipient when possible (privacy by default).
+	// PGP: encrypt to a single known recipient when possible (privacy by
+	// default). An encrypted message is sent as a single ASCII-armored
+	// text/plain part — never alongside an HTML alternative.
 	if e.bridge != nil && len(to) == 1 {
 		if ct, ok := e.bridge.EncryptForRecipient([]byte(textBody), to[0]); ok && len(ct) > 0 {
-			body = string(ct)
-			contentType = "text/plain; charset=utf-8" // inline PGP/ASCII-armored
+			text = string(ct)
+			html = ""
 			pgpApplied = true
 		}
 	}
-	if !pgpApplied && htmlBody != "" {
-		body = htmlBody
-		contentType = "text/html; charset=utf-8"
-	}
 
+	// Ordered RFC 5322 headers. Date and Message-ID are mandatory for inbox
+	// placement; mailbox providers penalise their absence heavily.
 	headers := []HeaderField{
 		{Key: "From", Value: from},
 		{Key: "To", Value: strings.Join(to, ", ")},
@@ -305,20 +409,42 @@ func (e *Engine) SendMail(ctx context.Context, from string, to []string, subject
 		{Key: "Date", Value: time.Now().UTC().Format(time.RFC1123Z)},
 		{Key: "Message-ID", Value: e.messageID()},
 		{Key: "MIME-Version", Value: "1.0"},
-		{Key: "Content-Type", Value: contentType},
-	}
-	if pgpApplied {
-		headers = append(headers, HeaderField{Key: "X-VayuPGP", Value: "encrypted"})
 	}
 
-	dkimHeader, err := e.dkim.Sign(headers, []byte(body))
-	if err != nil {
-		return 0, fmt.Errorf("vayumail: dkim sign: %w", err)
+	var bodyBuf bytes.Buffer
+	switch {
+	case pgpApplied:
+		headers = append(headers,
+			HeaderField{Key: "Content-Type", Value: "text/plain; charset=utf-8"},
+			HeaderField{Key: "Content-Transfer-Encoding", Value: "8bit"},
+			HeaderField{Key: "X-VayuPGP", Value: "encrypted"},
+		)
+		bodyBuf.WriteString(normalizeCRLF(text))
+	case html != "" && text != "":
+		// Well-formed multipart/alternative (text first, HTML second) — the
+		// shape every mainstream MUA sends and that spam filters expect.
+		boundary := mimeBoundary()
+		headers = append(headers, HeaderField{Key: "Content-Type", Value: `multipart/alternative; boundary="` + boundary + `"`})
+		writeMIMEPart(&bodyBuf, boundary, "text/plain; charset=utf-8", text)
+		writeMIMEPart(&bodyBuf, boundary, "text/html; charset=utf-8", html)
+		bodyBuf.WriteString("--" + boundary + "--\r\n")
+	case html != "":
+		headers = append(headers,
+			HeaderField{Key: "Content-Type", Value: "text/html; charset=utf-8"},
+			HeaderField{Key: "Content-Transfer-Encoding", Value: "8bit"},
+		)
+		bodyBuf.WriteString(normalizeCRLF(html))
+	default:
+		headers = append(headers,
+			HeaderField{Key: "Content-Type", Value: "text/plain; charset=utf-8"},
+			HeaderField{Key: "Content-Transfer-Encoding", Value: "8bit"},
+		)
+		bodyBuf.WriteString(normalizeCRLF(text))
 	}
 
-	var raw strings.Builder
-	raw.WriteString(dkimHeader)
-	raw.WriteString("\r\n")
+	// Assemble the complete message (CRLF throughout), then DKIM-sign it as a
+	// whole so the signed bytes are exactly the bytes we transmit.
+	var raw bytes.Buffer
 	for _, h := range headers {
 		raw.WriteString(h.Key)
 		raw.WriteString(": ")
@@ -326,8 +452,12 @@ func (e *Engine) SendMail(ctx context.Context, from string, to []string, subject
 		raw.WriteString("\r\n")
 	}
 	raw.WriteString("\r\n")
-	raw.WriteString(body)
-	rawMsg := []byte(raw.String())
+	raw.Write(bodyBuf.Bytes())
+
+	rawMsg, err := e.dkim.SignMessage(raw.Bytes())
+	if err != nil {
+		return 0, fmt.Errorf("vayumail: dkim sign: %w", err)
+	}
 
 	// Split recipients into local mailboxes (delivered straight into the
 	// Maildir, so they appear in the recipient's Inbox) and remote addresses
@@ -345,7 +475,9 @@ func (e *Engine) SendMail(ctx context.Context, from string, to []string, subject
 		// queue id (the message is already in the recipient's Maildir).
 		return 0, nil
 	}
-	return e.queue.Enqueue(ctx, from, remote, rawMsg)
+	// The envelope sender (MAIL FROM) must be a bare address even when the
+	// From: header carries a display name like `"Ankush" <a@b>`.
+	return e.queue.Enqueue(ctx, envelopeAddress(from), remote, rawMsg)
 }
 
 // splitLocalRecipients partitions recipients into those served by this instance
@@ -381,4 +513,31 @@ func (e *Engine) messageID() string {
 	b := make([]byte, 12)
 	_, _ = rand.Read(b)
 	return "<" + hex.EncodeToString(b) + "@" + e.cfg.Domain + ">"
+}
+
+// mimeBoundary returns a unique multipart boundary token.
+func mimeBoundary() string {
+	b := make([]byte, 16)
+	_, _ = rand.Read(b)
+	return "vayu-" + hex.EncodeToString(b)
+}
+
+// normalizeCRLF rewrites bare LF and lone CR line endings to canonical CRLF so
+// the transmitted bytes match what DKIM canonicalization expects.
+func normalizeCRLF(s string) string {
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	s = strings.ReplaceAll(s, "\r", "\n")
+	return strings.ReplaceAll(s, "\n", "\r\n")
+}
+
+// writeMIMEPart appends one multipart/alternative body part (CRLF-terminated).
+func writeMIMEPart(buf *bytes.Buffer, boundary, contentType, content string) {
+	buf.WriteString("--" + boundary + "\r\n")
+	buf.WriteString("Content-Type: " + contentType + "\r\n")
+	buf.WriteString("Content-Transfer-Encoding: 8bit\r\n\r\n")
+	body := normalizeCRLF(content)
+	buf.WriteString(body)
+	if !strings.HasSuffix(body, "\r\n") {
+		buf.WriteString("\r\n")
+	}
 }

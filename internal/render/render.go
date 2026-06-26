@@ -174,9 +174,141 @@ type SiteSettings struct {
 	// operator. Empty means render the built-in default links.
 	NavJSON string
 
+	// FooterJSON is the raw JSON object describing the premium site footer
+	// (tagline, link columns, social links, legal links, copyright line). Empty
+	// renders a sensible default bottom bar.
+	FooterJSON string
+
 	// CommentsEnabled mirrors the feature.comments flag so the article template
 	// can render (or omit) the public comment widget.
 	CommentsEnabled bool
+}
+
+// FooterLink is a single labelled footer destination.
+type FooterLink struct {
+	Label string `json:"label"`
+	Href  string `json:"href"`
+}
+
+// FooterColumn is a titled group of footer links (e.g. "Company", "Resources").
+type FooterColumn struct {
+	Title string       `json:"title"`
+	Links []FooterLink `json:"links"`
+}
+
+// FooterConfig is the operator-editable shape of the public site footer. Every
+// part is optional; an empty config renders just the default copyright bar.
+type FooterConfig struct {
+	Tagline   string         `json:"tagline"`   // short blurb under the brand
+	Columns   []FooterColumn `json:"columns"`   // link columns
+	Social    []FooterLink   `json:"social"`    // social/profile links
+	Legal     []FooterLink   `json:"legal"`     // bottom-bar legal links (Privacy, Terms…)
+	Copyright string         `json:"copyright"` // {year} and {site} tokens are expanded
+}
+
+// footerLinkTags renders a slice of footer links to safe <a> tags. Labels are
+// HTML-escaped; hrefs are gated through safeNavHref (so javascript:/data: URLs
+// are dropped) and external links get rel="noopener noreferrer".
+func footerLinkTags(links []FooterLink) string {
+	var b strings.Builder
+	for _, l := range links {
+		label := strings.TrimSpace(l.Label)
+		href := strings.TrimSpace(l.Href)
+		if label == "" || href == "" || !safeNavHref(href) {
+			continue
+		}
+		rel := ""
+		if strings.HasPrefix(href, "http://") || strings.HasPrefix(href, "https://") {
+			rel = ` rel="noopener noreferrer"`
+		}
+		b.WriteString(`<a href="` + template.HTMLEscapeString(href) + `"` + rel + `>` + template.HTMLEscapeString(label) + `</a>`)
+	}
+	return b.String()
+}
+
+// footerHTML builds the premium public-site footer from the operator's
+// FooterConfig (stored as JSON on SiteSettings.FooterJSON). The output is fully
+// escaped/allowlisted markup. When no config is present it falls back to a clean
+// default bar with the brand, an auto-generated copyright line, a "Powered by
+// VayuPress" credit and the runtime badge — so every page always has a footer.
+func footerHTML(s SiteSettings) template.HTML {
+	brand := strings.TrimSpace(s.Name)
+	if brand == "" {
+		brand = "VayuPress"
+	}
+	var cfg FooterConfig
+	if strings.TrimSpace(s.FooterJSON) != "" {
+		_ = json.Unmarshal([]byte(s.FooterJSON), &cfg)
+	}
+
+	// Copyright line — expand {year}/{site} tokens; default when unset.
+	year := strconv.Itoa(time.Now().UTC().Year())
+	copyLine := strings.TrimSpace(cfg.Copyright)
+	if copyLine == "" {
+		copyLine = "© {year} {site}. All rights reserved."
+	}
+	copyLine = strings.ReplaceAll(copyLine, "{year}", year)
+	copyLine = strings.ReplaceAll(copyLine, "{site}", brand)
+
+	var b strings.Builder
+	b.WriteString(`<footer class="vayu-footer vayu-footer--premium">`)
+
+	// ── Top section: brand/tagline/social + link columns ──────────────────────
+	hasTop := strings.TrimSpace(cfg.Tagline) != "" || len(cfg.Columns) > 0 || len(cfg.Social) > 0
+	if hasTop {
+		b.WriteString(`<div class="vayu-footer-main">`)
+		b.WriteString(`<div class="vayu-footer-about">`)
+		b.WriteString(`<div class="vayu-footer-brand"><img src="/static/favicon-light.png" alt="" width="22" height="22">` + template.HTMLEscapeString(brand) + `</div>`)
+		if t := strings.TrimSpace(cfg.Tagline); t != "" {
+			b.WriteString(`<p class="vayu-footer-tagline">` + template.HTMLEscapeString(t) + `</p>`)
+		}
+		if social := footerLinkTags(cfg.Social); social != "" {
+			b.WriteString(`<div class="vayu-footer-social" aria-label="Social links">` + social + `</div>`)
+		}
+		b.WriteString(`</div>`) // .vayu-footer-about
+
+		if len(cfg.Columns) > 0 {
+			b.WriteString(`<div class="vayu-footer-cols">`)
+			for _, col := range cfg.Columns {
+				links := footerLinkTags(col.Links)
+				title := strings.TrimSpace(col.Title)
+				if links == "" && title == "" {
+					continue
+				}
+				b.WriteString(`<div class="vayu-footer-col">`)
+				if title != "" {
+					b.WriteString(`<div class="vayu-footer-col-title">` + template.HTMLEscapeString(title) + `</div>`)
+				}
+				if links != "" {
+					// Wrap each link in <li> for semantic list markup.
+					b.WriteString(`<ul class="vayu-footer-col-links">`)
+					for _, l := range col.Links {
+						tag := footerLinkTags([]FooterLink{l})
+						if tag != "" {
+							b.WriteString(`<li>` + tag + `</li>`)
+						}
+					}
+					b.WriteString(`</ul>`)
+				}
+				b.WriteString(`</div>`) // .vayu-footer-col
+			}
+			b.WriteString(`</div>`) // .vayu-footer-cols
+		}
+		b.WriteString(`</div>`) // .vayu-footer-main
+	}
+
+	// ── Bottom bar: copyright + legal links + powered-by + badge ──────────────
+	b.WriteString(`<div class="vayu-footer-bottom">`)
+	b.WriteString(`<span class="vayu-footer-copy">` + template.HTMLEscapeString(copyLine) + `</span>`)
+	if legal := footerLinkTags(cfg.Legal); legal != "" {
+		b.WriteString(`<nav class="vayu-footer-legal" aria-label="Legal">` + legal + `</nav>`)
+	}
+	b.WriteString(`<span class="vayu-footer-powered">Powered by <a href="https://vayupress.com" rel="noopener noreferrer">VayuPress</a></span>`)
+	b.WriteString(`<span class="vayu-footer-badge">runtime · governed</span>`)
+	b.WriteString(`</div>`) // .vayu-footer-bottom
+
+	b.WriteString(`</footer>`)
+	return template.HTML(b.String())
 }
 
 // NavItem is a single public navigation link (label + destination).
@@ -483,6 +615,7 @@ type articlePage struct {
 	VideoFacadeJSLink   template.HTML
 	CommentsJSLink      template.HTML
 	NavLinks            template.HTML
+	Footer              template.HTML
 	CommentsEnabled     bool
 	SiteName            string
 	Author              string
@@ -697,10 +830,7 @@ var articleTmpl = template.Must(template.New("article").Funcs(template.FuncMap{
 <ul class="vayu-related-list">{{range .Related}}<li><a href="/{{.Slug}}">{{.Title}}</a> <time>{{.CreatedAt | humanDate}}</time></li>{{end}}</ul>
 </section>{{end}}
 {{if .CommentsEnabled}}<section id="vayu-comments" class="vayu-comments" data-slug="{{.Slug}}" aria-label="Comments"></section>{{end}}
-<footer class="vayu-footer">
-  <span>By <strong>{{if .Author}}{{.Author}}{{else}}Ankush Choudhary Johal{{end}}</strong> · Powered by <a href="https://vayupress.com">VayuPress</a></span>
-  <span class="vayu-footer-badge">runtime · governed</span>
-</footer>
+{{.Footer}}
 </main></div>{{if .CommentsEnabled}}{{.CommentsJSLink}}{{end}}</body></html>`))
 
 // HomeArticle is a single entry rendered on the public homepage index.
@@ -727,6 +857,7 @@ type homePage struct {
 	Description         string
 	ShowMembership      bool
 	NavLinks            template.HTML
+	Footer              template.HTML
 	Articles            []HomeArticle
 	TotalCount          int
 }
@@ -785,10 +916,7 @@ var homeTmpl = template.Must(template.New("home").Funcs(homeFuncs).Parse(`<!DOCT
   <span class="vayu-post-arrow" aria-hidden="true">→</span>
 </a>{{end}}
 </div>{{else}}<div class="vayu-empty">No articles published yet. The runtime is live and waiting.</div>{{end}}
-<footer class="vayu-footer">
-  <div class="vayu-footer-brand"><img src="/static/favicon-light.png" alt="" width="20" height="20">VayuPress</div>
-  <span class="vayu-footer-badge">runtime · governed</span>
-</footer>
+{{.Footer}}
 </main>
 </div></body></html>`))
 
@@ -834,6 +962,7 @@ func RenderHome(domain, version string, articles []HomeArticle, totalCount int) 
 		Description:         s.Description,
 		ShowMembership:      s.ShowMembership,
 		NavLinks:            navLinksHTML(s.NavJSON),
+		Footer:              footerHTML(s),
 		Articles:            articles,
 		TotalCount:          totalCount,
 	})
@@ -894,6 +1023,7 @@ func RenderArticleWithLayout(a db.Article, layout ArticleLayoutType, related []R
 		CommentsEnabled:     s.CommentsEnabled,
 		SiteName:            s.Name,
 		Author:              s.Author,
+		Footer:              footerHTML(s),
 		SEODescription:      seoMeta.Description,
 		OGImage:             seoMeta.OGImage,
 		Related:             related,
@@ -1366,6 +1496,54 @@ h1, h2, h3, h4, h5, h6 {
   text-transform: uppercase;
   color: var(--pico-primary);
   opacity: 0.75;
+}
+
+/* Premium multi-column footer */
+.vayu-footer--premium { display: block; }
+.vayu-footer-main {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.2fr) 2fr;
+  gap: 2.5rem 3rem;
+  padding-bottom: 2rem;
+  margin-bottom: 1.5rem;
+  border-bottom: 1px solid var(--pico-muted-border-color);
+}
+.vayu-footer-about { max-width: 34ch; }
+.vayu-footer--premium .vayu-footer-brand { font-weight: 600; font-size: 1.05rem; color: var(--pico-color, inherit); }
+.vayu-footer-tagline { margin: 0.75rem 0 1rem; font-size: 0.9rem; line-height: 1.6; color: var(--pico-muted-color); }
+.vayu-footer-social { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.vayu-footer-social a {
+  font-size: 0.8rem; padding: 0.28rem 0.75rem; border-radius: 99px;
+  border: 1px solid var(--pico-muted-border-color); text-decoration: none;
+  transition: border-color 0.15s, color 0.15s;
+}
+.vayu-footer-social a:hover { border-color: var(--pico-primary); color: var(--pico-primary); }
+.vayu-footer-cols {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 1.5rem 2rem;
+}
+.vayu-footer-col-title {
+  font-size: 0.78rem; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.06em; margin-bottom: 0.8rem; opacity: 0.9;
+  color: var(--pico-color, inherit);
+}
+.vayu-footer-col-links { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.55rem; }
+.vayu-footer-col-links a { font-size: 0.875rem; text-decoration: none; }
+.vayu-footer-col-links a:hover { color: var(--pico-primary); }
+.vayu-footer-bottom {
+  display: flex; align-items: center; flex-wrap: wrap;
+  gap: 0.5rem 1.25rem; font-size: 0.8rem; color: var(--pico-muted-color);
+}
+.vayu-footer--premium .vayu-footer-copy { margin-right: auto; }
+.vayu-footer-legal { display: flex; flex-wrap: wrap; gap: 0.25rem 1.1rem; }
+.vayu-footer-legal a { text-decoration: none; }
+.vayu-footer-legal a:hover { color: var(--pico-primary); }
+.vayu-footer-powered { opacity: 0.85; }
+.vayu-footer--premium .vayu-footer-badge { margin-left: 0; }
+@media (max-width: 640px) {
+  .vayu-footer-main { grid-template-columns: 1fr; gap: 1.75rem; }
+  .vayu-footer--premium .vayu-footer-copy { margin-right: 0; width: 100%; }
 }
 
 /* ── Article header ─────────────────────────────────────────────────────── */

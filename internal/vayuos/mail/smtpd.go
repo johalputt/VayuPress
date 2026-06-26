@@ -3,6 +3,8 @@ package mail
 import (
 	"bufio"
 	"context"
+	"crypto/tls"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -16,21 +18,45 @@ import (
 // from is the envelope sender; rcpts are the (local) envelope recipients.
 type InboundHandler func(from string, rcpts []string, raw []byte) error
 
-// SMTPServer is a minimal RFC 5321 receive server. It accepts mail addressed to
-// the configured domain's local accounts and hands each message to a delivery
-// handler. It is started only when inbound mail is explicitly enabled.
+// AuthFunc verifies submission credentials (delegated to VayuPress accounts).
+type AuthFunc func(username, password string) (bool, error)
+
+// SMTPServer is a minimal RFC 5321 server. In its default (receive) mode it
+// accepts mail for the configured domain's local accounts and hands each
+// message to a delivery handler. In submission mode (RFC 6409) it requires
+// STARTTLS + AUTH and relays authenticated users' mail outbound. STARTTLS is
+// offered whenever a TLS config is attached.
 type SMTPServer struct {
-	cfg     Config
-	handler InboundHandler
-	ln      net.Listener
-	wg      sync.WaitGroup
-	mu      sync.Mutex
-	closed  bool
+	cfg        Config
+	handler    InboundHandler
+	listenAddr string
+	tls        *tls.Config
+	submission bool
+	auth       AuthFunc
+
+	ln     net.Listener
+	wg     sync.WaitGroup
+	mu     sync.Mutex
+	closed bool
 }
 
 // NewSMTPServer creates a receive server bound to cfg.SMTPListen.
 func NewSMTPServer(cfg Config, handler InboundHandler) *SMTPServer {
-	return &SMTPServer{cfg: cfg, handler: handler}
+	return &SMTPServer{cfg: cfg, handler: handler, listenAddr: cfg.SMTPListen}
+}
+
+// WithTLS attaches a TLS config, enabling the STARTTLS command. Returns the
+// server for chaining.
+func (s *SMTPServer) WithTLS(t *tls.Config) *SMTPServer {
+	s.tls = t
+	return s
+}
+
+// NewSubmissionServer creates an authenticated mail-submission server (RFC 6409)
+// bound to cfg.SubmissionListen. STARTTLS is required before AUTH, and only
+// authenticated senders may relay; relay delivers each accepted message.
+func NewSubmissionServer(cfg Config, t *tls.Config, auth AuthFunc, relay InboundHandler) *SMTPServer {
+	return &SMTPServer{cfg: cfg, handler: relay, listenAddr: cfg.SubmissionListen, tls: t, submission: true, auth: auth}
 }
 
 // Addr returns the actual listen address (useful when binding to :0 in tests).
@@ -45,9 +71,9 @@ func (s *SMTPServer) Addr() string {
 
 // Start begins listening and serving connections until Stop is called.
 func (s *SMTPServer) Start(_ context.Context) error {
-	ln, err := net.Listen("tcp", s.cfg.SMTPListen)
+	ln, err := net.Listen("tcp", s.listenAddr)
 	if err != nil {
-		return fmt.Errorf("vayumail: smtp listen %s: %w", s.cfg.SMTPListen, err)
+		return fmt.Errorf("vayumail: smtp listen %s: %w", s.listenAddr, err)
 	}
 	s.mu.Lock()
 	s.ln = ln
@@ -102,18 +128,39 @@ func (s *SMTPServer) hostname() string {
 	return "localhost"
 }
 
-// handle implements the SMTP conversation for one connection.
+// handle implements the SMTP conversation for one connection, supporting
+// STARTTLS upgrade and (in submission mode) AUTH PLAIN/LOGIN.
 func (s *SMTPServer) handle(conn net.Conn) {
 	defer conn.Close()
 	_ = conn.SetDeadline(time.Now().Add(5 * time.Minute))
-	br := bufio.NewReader(io.LimitReader(conn, s.cfg.MaxMessageBytes+1<<16))
-	bw := bufio.NewWriter(conn)
-	write := func(s string) { _, _ = bw.WriteString(s + "\r\n"); _ = bw.Flush() }
 
-	write("220 " + s.hostname() + " VayuMail ESMTP ready")
+	var (
+		br     *bufio.Reader
+		bw     *bufio.Writer
+		onTLS  bool
+		authed bool
+		helo   string
+		from   string
+		rcpts  []string
+	)
+	var clientIP net.IP
+	if ta, ok := conn.RemoteAddr().(*net.TCPAddr); ok {
+		clientIP = ta.IP
+	}
+	setup := func(c net.Conn) {
+		br = bufio.NewReader(io.LimitReader(c, s.cfg.MaxMessageBytes+1<<16))
+		bw = bufio.NewWriter(c)
+	}
+	setup(conn)
+	write := func(str string) { _, _ = bw.WriteString(str + "\r\n"); _ = bw.Flush() }
+	reset := func() { from, rcpts = "", nil }
 
-	var from string
-	var rcpts []string
+	role := "ESMTP"
+	if s.submission {
+		role = "Submission"
+	}
+	write("220 " + s.hostname() + " VayuMail " + role + " ready")
+
 	for {
 		line, err := br.ReadString('\n')
 		if err != nil {
@@ -123,14 +170,64 @@ func (s *SMTPServer) handle(conn net.Conn) {
 		cmd, arg := splitCmd(line)
 		switch cmd {
 		case "HELO":
+			helo = arg
 			write("250 " + s.hostname())
 		case "EHLO":
+			helo = arg
 			_, _ = bw.WriteString("250-" + s.hostname() + "\r\n")
 			_, _ = bw.WriteString("250-8BITMIME\r\n")
 			_, _ = bw.WriteString(fmt.Sprintf("250-SIZE %d\r\n", s.cfg.MaxMessageBytes))
+			if s.tls != nil && !onTLS {
+				_, _ = bw.WriteString("250-STARTTLS\r\n")
+			}
+			if s.submission && onTLS {
+				_, _ = bw.WriteString("250-AUTH PLAIN LOGIN\r\n")
+			}
 			_, _ = bw.WriteString("250 PIPELINING\r\n")
 			_ = bw.Flush()
+		case "STARTTLS":
+			if s.tls == nil {
+				write("454 4.7.0 TLS not available")
+				continue
+			}
+			if onTLS {
+				write("503 5.5.1 Already using TLS")
+				continue
+			}
+			write("220 2.0.0 Ready to start TLS")
+			tconn := tls.Server(conn, s.tls)
+			if herr := tconn.Handshake(); herr != nil {
+				return
+			}
+			conn = tconn
+			_ = conn.SetDeadline(time.Now().Add(5 * time.Minute))
+			setup(conn) // RFC 3207: discard prior state after the upgrade
+			onTLS, authed = true, false
+			reset()
+		case "AUTH":
+			if !s.submission {
+				write("502 5.5.1 AUTH not supported")
+				continue
+			}
+			if !onTLS {
+				write("538 5.7.11 Encryption required for AUTH")
+				continue
+			}
+			if authed {
+				write("503 5.5.1 Already authenticated")
+				continue
+			}
+			if s.runAuth(br, write, arg) {
+				authed = true
+				write("235 2.7.0 Authentication successful")
+			} else {
+				write("535 5.7.8 Authentication credentials invalid")
+			}
 		case "MAIL":
+			if s.submission && !authed {
+				write("530 5.7.0 Authentication required")
+				continue
+			}
 			from = extractAddr(arg)
 			rcpts = nil
 			write("250 2.1.0 Ok")
@@ -140,7 +237,13 @@ func (s *SMTPServer) handle(conn net.Conn) {
 				write("501 5.1.3 Bad recipient")
 				continue
 			}
-			if !s.recipientAccepted(addr) {
+			if s.submission {
+				if !authed {
+					write("530 5.7.0 Authentication required")
+					continue
+				}
+				// Authenticated submitters may relay to any recipient.
+			} else if !s.recipientAccepted(addr) {
 				write("550 5.7.1 Relay denied — recipient not local")
 				continue
 			}
@@ -158,15 +261,27 @@ func (s *SMTPServer) handle(conn net.Conn) {
 				return
 			}
 			if s.handler != nil {
-				if herr := s.handler(from, rcpts, raw); herr != nil {
-					write("451 4.3.0 Local delivery failed")
+				msg := raw
+				// Inbound (not submission): authenticate the sender and stamp an
+				// Authentication-Results header. A DMARC failure under an
+				// enforcing policy is flagged for the junk filter.
+				if !s.submission {
+					v := verifyInbound(s.hostname(), clientIP, helo, from, raw)
+					pre := v.authResultsHeader()
+					if v.Quarantine {
+						pre += "X-VayuMail-Auth-Quarantine: yes\r\n"
+					}
+					msg = append([]byte(pre), raw...)
+				}
+				if herr := s.handler(from, rcpts, msg); herr != nil {
+					write("451 4.3.0 Message handling failed")
 					continue
 				}
 			}
 			write("250 2.0.0 Ok: queued")
-			from, rcpts = "", nil
+			reset()
 		case "RSET":
-			from, rcpts = "", nil
+			reset()
 			write("250 2.0.0 Ok")
 		case "NOOP":
 			write("250 2.0.0 Ok")
@@ -179,6 +294,60 @@ func (s *SMTPServer) handle(conn net.Conn) {
 			write("502 5.5.2 Command not recognized")
 		}
 	}
+}
+
+// runAuth handles AUTH PLAIN / LOGIN, reading any continuation lines. It returns
+// true only when the bridge verifies the credentials.
+func (s *SMTPServer) runAuth(br *bufio.Reader, write func(string), arg string) bool {
+	if s.auth == nil {
+		return false
+	}
+	parts := strings.SplitN(strings.TrimSpace(arg), " ", 2)
+	mech := strings.ToUpper(strings.TrimSpace(parts[0]))
+	readB64 := func() string {
+		l, err := br.ReadString('\n')
+		if err != nil {
+			return ""
+		}
+		b, derr := base64.StdEncoding.DecodeString(strings.TrimSpace(l))
+		if derr != nil {
+			return ""
+		}
+		return string(b)
+	}
+	switch mech {
+	case "PLAIN":
+		var raw string
+		if len(parts) == 2 && strings.TrimSpace(parts[1]) != "" {
+			if b, err := base64.StdEncoding.DecodeString(strings.TrimSpace(parts[1])); err == nil {
+				raw = string(b)
+			}
+		} else {
+			write("334 ")
+			raw = readB64()
+		}
+		f := strings.Split(raw, "\x00") // authzid \0 authcid \0 passwd
+		if len(f) != 3 {
+			return false
+		}
+		return s.verify(f[1], f[2])
+	case "LOGIN":
+		write("334 " + base64.StdEncoding.EncodeToString([]byte("Username:")))
+		user := readB64()
+		write("334 " + base64.StdEncoding.EncodeToString([]byte("Password:")))
+		pass := readB64()
+		return s.verify(user, pass)
+	default:
+		return false
+	}
+}
+
+func (s *SMTPServer) verify(user, pass string) bool {
+	if user == "" || s.auth == nil {
+		return false
+	}
+	ok, err := s.auth(user, pass)
+	return err == nil && ok
 }
 
 // recipientAccepted enforces no open relay: only local domain recipients.
