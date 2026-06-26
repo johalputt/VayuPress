@@ -23,6 +23,14 @@
 
   function reload() { window.location.reload(); }
 
+  // Extracts a human message from an API JSON body. Errors use the shape
+  // {error:{code,message}}; success/other bodies may use {message}.
+  function errText(d) {
+    if (!d) { return ''; }
+    if (d.error && d.error.message) { return d.error.message; }
+    return d.message || '';
+  }
+
   // ── Tier editor modal ──────────────────────────────────────────────────
   var modal = document.getElementById('tier-modal');
   var form = document.getElementById('tier-form');
@@ -139,7 +147,7 @@
         return r.json().then(function (d) { return { ok: r.ok, d: d }; });
       }).then(function (res) {
         if (res.ok) { reload(); }
-        else if (status) { status.textContent = (res.d && (res.d.message || res.d.error)) || 'Could not create the account.'; }
+        else if (status) { status.textContent = errText(res.d) || 'Could not create the account.'; }
       }).catch(function () { if (status) { status.textContent = 'Network error.'; } });
     });
   }
@@ -151,7 +159,7 @@
         return r.json().then(function (d) { return { ok: r.ok, d: d }; });
       }).then(function (res) {
         if (res.ok) { reload(); }
-        else { sel.value = previous; alert((res.d && (res.d.message || res.d.error)) || 'Could not change the role.'); }
+        else { sel.value = previous; alert(errText(res.d) || 'Could not change the role.'); }
       }).catch(function () { sel.value = previous; });
     });
   });
@@ -182,7 +190,7 @@
         return r.json().then(function (d) { return { ok: r.ok, d: d }; });
       }).then(function (res) {
         if (res.ok) { reload(); }
-        else { alert((res.d && (res.d.message || res.d.error)) || 'Could not assign the mailbox.'); }
+        else { alert(errText(res.d) || 'Could not assign the mailbox.'); }
       }).catch(function () { alert('Network error.'); });
     });
   });
