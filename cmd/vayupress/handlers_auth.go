@@ -92,8 +92,12 @@ func (a *App) requireSessionOrAPIKey(next http.Handler) http.Handler {
 // holder who signed in through the membership portal. It returns a synthesized
 // admin-context user plus a mailOnly flag:
 //
-//   - administrator mail role → full VayuOS access (mailOnly = false)
-//   - any other mail role     → confined to the VayuMail surface (mailOnly = true)
+//   - administrator / editor / author → console access (mailOnly = false)
+//   - reviewer / mailbox / custom      → VayuMail surface only (mailOnly = true)
+//
+// The exact CMS capabilities of a console identity (admin vs editor vs author)
+// are enforced downstream by the existing isAdminRequest / role checks, exactly
+// as they are for a real CMS user of the same role.
 //
 // The synthesized user is never persisted; its ID is prefixed "vmail:" so it
 // can never collide with a real CMS user, and its MailAddress is set so the
@@ -110,26 +114,49 @@ func (a *App) resolveMailMember(r *http.Request) (u *users.User, mailOnly bool, 
 	if role == "" {
 		return nil, false, false // not a VayuMail account
 	}
+	cmsRole, console := mailConsoleAccess(role)
 	su := &users.User{
 		ID:          "vmail:" + m.Email,
 		Email:       m.Email,
 		Name:        m.DisplayName(),
 		MailAddress: m.Email,
+		Role:        cmsRole,
 	}
-	if role == vmail.RoleAdministrator {
-		su.Role = users.RoleAdmin
-		return su, false, true
-	}
-	// Every non-administrator mail role (mailbox/author/editor/reviewer) maps to
-	// a non-admin console identity that is locked to the mail surface.
-	su.Role = users.RoleAuthor
-	return su, true, true
+	// console == false means the holder is confined to the VayuMail surface.
+	return su, !console, true
 }
 
-// mailOnlyPathAllowed reports whether a mail-only (non-administrator) VayuMail
-// session may reach the given VayuOS path. Such sessions are restricted to the
-// VayuMail pages and the static assets those pages need; everything else is
-// redirected back to the inbox.
+// mailConsoleAccess maps a VayuMail account role to the CMS console role it
+// stands in for, and reports whether that role may use the wider VayuOS console
+// (true) or is confined to the VayuMail surface only (false).
+//
+//   - administrator → admin   : full console
+//   - editor        → editor  : console with editor capabilities
+//   - author        → author  : console with author capabilities
+//   - reviewer      → author  : VayuMail only (read-only role, no console write)
+//   - mailbox       → author  : VayuMail only (mail-only identity)
+//   - any custom    → author  : VayuMail only (conservative default)
+//
+// The CMS role assigned to a confined identity is irrelevant to what it can
+// reach (it is path-restricted to the mail surface), but a sensible default is
+// kept for the mailbox scoping that runs there.
+func mailConsoleAccess(mailRole string) (cmsRole string, console bool) {
+	switch mailRole {
+	case vmail.RoleAdministrator:
+		return users.RoleAdmin, true
+	case vmail.RoleEditor:
+		return users.RoleEditor, true
+	case vmail.RoleAuthor:
+		return users.RoleAuthor, true
+	default: // reviewer, mailbox, and any custom role
+		return users.RoleAuthor, false
+	}
+}
+
+// mailOnlyPathAllowed reports whether a mail-confined VayuMail session (a
+// reviewer / mailbox / custom role with no console access) may reach the given
+// VayuOS path. Such sessions are restricted to the VayuMail pages and the
+// static assets those pages need; everything else is redirected to the inbox.
 func mailOnlyPathAllowed(path string) bool {
 	switch {
 	case strings.HasPrefix(path, "/os/vayuos/mail"),

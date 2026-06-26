@@ -415,11 +415,11 @@ func (a *App) handleVayuOSAccounts(w http.ResponseWriter, r *http.Request) {
       <input class="input" type="text" data-a-name placeholder="Display name"></label>
     <label class="field"><span class="field-label">Role</span>
       <select class="input" data-a-role>
-        <option value="author" selected>Author (send + read)</option>
-        <option value="editor">Editor (send + delete)</option>
-        <option value="reviewer">Reviewer (read-only)</option>
+        <option value="author" selected>Author (mail + author console)</option>
+        <option value="editor">Editor (mail + editor console)</option>
+        <option value="reviewer">Reviewer (read-only, mail only)</option>
         <option value="mailbox">Mailbox (mail only, no console)</option>
-        <option value="administrator">Administrator (full)</option>
+        <option value="administrator">Administrator (full console)</option>
       </select></label>
     <label class="field vm-grow"><span class="field-label">Password (min 8)</span>
       <input class="input" type="password" data-a-pass placeholder="••••••••" required></label>

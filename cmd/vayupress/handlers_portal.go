@@ -79,9 +79,11 @@ func (a *App) handleMemberMe(w http.ResponseWriter, r *http.Request) {
 		// the portal can offer an "Open VayuMail" (or full console) shortcut.
 		if a.vayuMailLoginEnabled() {
 			if role := a.vayuMail.Accounts().RoleFor(r.Context(), m.Email); role != "" {
+				_, console := mailConsoleAccess(role)
 				mem["mail"] = map[string]interface{}{
-					"role":  role,
-					"admin": role == vmail.RoleAdministrator,
+					"role":    role,
+					"admin":   role == vmail.RoleAdministrator,
+					"console": console,
 				}
 			}
 		}
