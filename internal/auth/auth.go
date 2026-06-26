@@ -427,7 +427,17 @@ func ValidateCSRFToken(token string) bool {
 func CSRFTokenMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
-			if c, err := r.Cookie("vp_csrf"); err != nil || c.Value == "" {
+			// Re-issue the cookie when it is missing, empty, OR no longer valid.
+			// A token can become invalid after the CSRF secret rotates (every
+			// process restart) or after the 1h cookie lifetime. Without the
+			// validity check a *stale* cookie is left untouched, so reloading
+			// the page never recovers it and every subsequent POST 403s — the
+			// "session token expired — reload" loop the operator can't escape.
+			needsToken := true
+			if c, err := r.Cookie("vp_csrf"); err == nil && c.Value != "" && ValidateCSRFToken(c.Value) {
+				needsToken = false
+			}
+			if needsToken {
 				if token := GenerateCSRFToken(); token != "" {
 					http.SetCookie(w, &http.Cookie{Name: "vp_csrf", Value: token, Path: "/", SameSite: http.SameSiteStrictMode, HttpOnly: false, Secure: csrfCookieSecure(), MaxAge: 3600})
 				}

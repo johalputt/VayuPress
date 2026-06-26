@@ -150,3 +150,71 @@ func TestRequireAPIKeyEmptyConfigRejects(t *testing.T) {
 		}
 	}
 }
+
+
+// TestCSRFMiddlewareRefreshesStaleCookie guards the recovery path: a GET that
+// arrives with a stale/invalid vp_csrf cookie (e.g. after a CSRF-secret
+// rotation on restart) must be re-issued a fresh, valid token so that simply
+// reloading the page restores the ability to POST. Previously a present-but-
+// invalid cookie was left untouched, trapping the user in a 403 loop that the
+// "session token expired — reload" message could not resolve.
+func TestCSRFMiddlewareRefreshesStaleCookie(t *testing.T) {
+	handler := CSRFTokenMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+	}))
+
+	req := httptest.NewRequest("GET", "/os/vayuos/mail/compose", nil)
+	req.AddCookie(&http.Cookie{Name: "vp_csrf", Value: "stale-invalid-token"})
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	var issued string
+	for _, c := range rr.Result().Cookies() {
+		if c.Name == "vp_csrf" {
+			issued = c.Value
+		}
+	}
+	if issued == "" {
+		t.Fatal("a stale cookie should be replaced with a freshly issued token on GET")
+	}
+	if !ValidateCSRFToken(issued) {
+		t.Fatal("the re-issued token must be valid")
+	}
+}
+
+// TestCSRFMiddlewareKeepsValidCookie ensures a GET that already carries a valid
+// token is not needlessly re-issued one (stable token across page loads).
+func TestCSRFMiddlewareKeepsValidCookie(t *testing.T) {
+	handler := CSRFTokenMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+	}))
+
+	valid := GenerateCSRFToken()
+	req := httptest.NewRequest("GET", "/os/vayuos/mail/compose", nil)
+	req.AddCookie(&http.Cookie{Name: "vp_csrf", Value: valid})
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	for _, c := range rr.Result().Cookies() {
+		if c.Name == "vp_csrf" {
+			t.Fatalf("a valid cookie should be left untouched, but a new token was issued: %q", c.Value)
+		}
+	}
+}
+
+// TestCSRFMiddlewareBlocksStalePost confirms the POST path still rejects a
+// stale token (the security property is unchanged by the GET-refresh fix).
+func TestCSRFMiddlewareBlocksStalePost(t *testing.T) {
+	handler := CSRFTokenMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+	}))
+
+	req := httptest.NewRequest("POST", "/os/vayuos/mail/send", nil)
+	req.AddCookie(&http.Cookie{Name: "vp_csrf", Value: "stale-invalid-token"})
+	req.Header.Set("X-CSRF-Token", "stale-invalid-token")
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	if rr.Code != 403 {
+		t.Fatalf("stale token POST: want 403, got %d", rr.Code)
+	}
+}
