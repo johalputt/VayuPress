@@ -133,11 +133,40 @@
     });
   }
 
+  // Fill the live-countries table with a flag <img> + name + count.
+  function fillCountries(el, items) {
+    if (!el) return;
+    clear(el);
+    items = items || [];
+    if (!items.length) { emptyRow(el, 2, 'No location data (needs a geo-header proxy).'); return; }
+    items.forEach(function (c) {
+      var tr = document.createElement('tr');
+      var label = document.createElement('td');
+      label.className = 'row-title';
+      if (c.flag) {
+        var img = document.createElement('img');
+        img.className = 'vp-flag-img';
+        img.src = c.flag;
+        img.alt = '';
+        img.width = 20; img.height = 15;
+        img.loading = 'lazy';
+        label.appendChild(img);
+        label.appendChild(document.createTextNode(' '));
+      }
+      label.appendChild(document.createTextNode(c.name || c.code || '(unknown)'));
+      var n = document.createElement('td');
+      n.textContent = String(c.count || 0);
+      tr.appendChild(label);
+      tr.appendChild(n);
+      el.appendChild(tr);
+    });
+  }
+
   function render(data) {
     data = data || {};
     if (countEl) countEl.textContent = String(data.active_visitors || 0);
     fill(pagesEl, data.active_pages, 'path', 'No active visitors right now.');
-    fill(countriesEl, data.active_countries, 'label', 'No location data (needs a geo-header proxy).');
+    fillCountries(countriesEl, data.active_countries);
     fill(referrersEl, data.active_referrers, 'label', 'No referrers in the last 5 minutes.');
     if (updatedEl) {
       var t = new Date();

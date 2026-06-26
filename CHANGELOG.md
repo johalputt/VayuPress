@@ -20,10 +20,12 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
     **Active pages**, and **Referrers** — all refreshing every 10s and pausing
     when the browser tab is hidden. Backed by an extended `Store.Realtime`
     (active countries + referrers over the last 5 minutes).
-  - Country flags in server-rendered tables are wrapped in a `.vp-flag` span
-    with a colour-emoji font stack so they render wherever the OS ships flag
-    glyphs (macOS/iOS/Android/Linux); the full country name is always shown
-    alongside (Windows omits flag emoji from its system font by design).
+  - Country flags are now **real self-hosted SVG images** (the MIT-licensed
+    flag-icons set under `static/flags/`, served on demand from
+    `/os/static/flags/<cc>.svg`), so they render identically on every platform
+    — including Windows, which omits flag emoji from its system font. The full
+    country name is always shown alongside. No third-party requests; flags load
+    only when shown.
 
 - **Optional outbound smarthost relay (deliverability without losing
   sovereignty).** When `VAYUOS_MAIL_RELAY_HOST` is set, VayuMail delivers
