@@ -284,8 +284,8 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
       </div>
     </section>
 
-    <section class="cz-group cz-group--open">
-      <button type="button" class="cz-group__head" aria-expanded="true">Brand <span class="cz-group__hint">logo &amp; accent</span></button>
+    <section class="cz-group">
+      <button type="button" class="cz-group__head" aria-expanded="false">Brand <span class="cz-group__hint">logo &amp; accent</span></button>
       <div class="cz-group__body">
         <div class="cz-logo">
           <img id="brand-favicon-img" class="cz-logo__img" src="/favicon.ico?t=` + faviconBust + `" alt="Current site mark" width="44" height="44">
@@ -306,38 +306,38 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
       </div>
     </section>
 
-    <section class="cz-group cz-group--open">
-      <button type="button" class="cz-group__head" aria-expanded="true">Layout</button>
+    <section class="cz-group">
+      <button type="button" class="cz-group__head" aria-expanded="false">Layout</button>
       <div class="cz-group__body">
         <p class="text-sm muted mb-3">Reading width, corners, post-feed layout, header alignment and density.</p>
         <div class="theme-fields theme-fields--text">` + optionRowsByKeys("width", "corners", "feedlayout", "headeralign", "density") + `</div>
       </div>
     </section>
 
-    <section class="cz-group cz-group--open">
-      <button type="button" class="cz-group__head" aria-expanded="true">Typography &amp; fonts</button>
+    <section class="cz-group">
+      <button type="button" class="cz-group__head" aria-expanded="false">Typography &amp; fonts</button>
       <div class="cz-group__body">
         ` + fontPairSelectHTML() + `
         <div class="theme-fields theme-fields--text">` + optionRowsByKeys("headingcase", "headingscale") + typoRows + `</div>
       </div>
     </section>
 
-    <section class="cz-group cz-group--open">
-      <button type="button" class="cz-group__head" aria-expanded="true">Colours — dark mode</button>
+    <section class="cz-group">
+      <button type="button" class="cz-group__head" aria-expanded="false">Colours — dark mode</button>
       <div class="cz-group__body">
         <div class="theme-fields">` + darkRows + `</div>
       </div>
     </section>
 
-    <section class="cz-group cz-group--open">
-      <button type="button" class="cz-group__head" aria-expanded="true">Colours — light mode</button>
+    <section class="cz-group">
+      <button type="button" class="cz-group__head" aria-expanded="false">Colours — light mode</button>
       <div class="cz-group__body">
         <div class="theme-fields">` + lightRows + `</div>
       </div>
     </section>
 
-    <section class="cz-group cz-group--open">
-      <button type="button" class="cz-group__head" aria-expanded="true">Navigation <span class="cz-group__hint">live</span></button>
+    <section class="cz-group">
+      <button type="button" class="cz-group__head" aria-expanded="false">Navigation <span class="cz-group__hint">live</span></button>
       <div class="cz-group__body">
         <p class="text-sm muted mb-3">Edit the public site menu. Saved straight to your live site (the preview shows a representative menu).</p>
         <div id="cz-nav-rows" data-nav-editor></div>
@@ -350,8 +350,8 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
       </div>
     </section>
 
-    <section class="cz-group cz-group--open">
-      <button type="button" class="cz-group__head" aria-expanded="true">Custom CSS</button>
+    <section class="cz-group">
+      <button type="button" class="cz-group__head" aria-expanded="false">Custom CSS</button>
       <div class="cz-group__body">
         <div class="text-sm muted mb-3">Served same-origin via <code>/theme.css</code> (CSP-safe), appended after the theme styles. Max 64&nbsp;KB. Reflected live in the preview.</div>
         <textarea class="input theme-code" data-theme-css rows="10" maxlength="65536" spellcheck="false" placeholder="/* e.g. .vayu-post-title { letter-spacing: -0.02em; } */">` + html.EscapeString(val(settings.KeyThemeCustomCSS)) + `</textarea>
@@ -362,8 +362,8 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
       </div>
     </section>
 
-    <section class="cz-group cz-group--open">
-      <button type="button" class="cz-group__head" aria-expanded="true">Head &amp; SEO (meta)</button>
+    <section class="cz-group">
+      <button type="button" class="cz-group__head" aria-expanded="false">Head &amp; SEO (meta)</button>
       <div class="cz-group__body">
         <div class="text-sm muted mb-3">Rendered to a validated, escaped <code>&lt;meta&gt;</code> allowlist (raw &lt;head&gt; HTML is intentionally not accepted).</div>
         <div class="theme-fields theme-fields--text">
@@ -381,8 +381,8 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
       </div>
     </section>
 
-    <section class="cz-group cz-group--open">
-      <button type="button" class="cz-group__head" aria-expanded="true">Import / Export</button>
+    <section class="cz-group">
+      <button type="button" class="cz-group__head" aria-expanded="false">Import / Export</button>
       <div class="cz-group__body">
         <div class="text-sm muted mb-3">Download the full theme as JSON, or import one to apply it everywhere. Imported tokens are validated before they go live.</div>
         <div class="vm-row">
