@@ -35,6 +35,44 @@ func TestThemeOptionsApply(t *testing.T) {
 	}
 }
 
+// TestLayoutArchetypes proves (a) colour presets are tagged with an archetype so
+// applying them restyles layout, and (b) the archetype option emits its scoped
+// CSS through CompileCSS, while design themes keep their own CSS (no archetype).
+func TestLayoutArchetypes(t *testing.T) {
+	byName := map[string]theme.Tokens{}
+	for _, p := range theme.AllPresets() {
+		byName[p.Name] = p
+	}
+	// A colour preset carries an archetype option.
+	if got := byName["Aurora"].Options["archetype"]; got != "magazine" {
+		t.Errorf("Aurora archetype = %q, want magazine", got)
+	}
+	// A design theme keeps its own layout (no archetype tag).
+	if got := byName["Apex"].Options["archetype"]; got != "" {
+		t.Errorf("Apex should not be tagged with an archetype, got %q", got)
+	}
+
+	// The archetype option realises distinct layout CSS via CompileCSS.
+	g := theme.Gale()
+	g.Options = map[string]string{"archetype": "magazine"}
+	css, err := theme.CompileCSS(g)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	if !strings.Contains(css, "archetype: magazine") || !strings.Contains(css, ".vayu-post-list{display:grid") {
+		t.Errorf("magazine archetype CSS not applied")
+	}
+	// Each archetype produces different CSS.
+	seen := map[string]bool{}
+	for _, k := range []string{"minimal", "classic", "magazine", "editorial", "bold"} {
+		c := theme.ArchetypeCSS(k)
+		if c == "" || seen[c] {
+			t.Errorf("archetype %q has empty or duplicate CSS", k)
+		}
+		seen[c] = true
+	}
+}
+
 // TestArticleLayoutOptions proves the article-page options emit scoped CSS that
 // targets the real article markup (header, meta, related) — so they restyle
 // every post page, not just the homepage.
@@ -147,8 +185,8 @@ func TestPerThemeExtras(t *testing.T) {
 		t.Errorf("Apex should expose shared + extras (>=7), got %d", got)
 	}
 	// A theme with no extras keeps exactly the shared set.
-	if got := len(theme.OptionsFor("Default")); got != 16 {
-		t.Errorf("Default should expose exactly the 16 shared options, got %d", got)
+	if got := len(theme.OptionsFor("Default")); got != 19 {
+		t.Errorf("Default should expose exactly the 19 shared options, got %d", got)
 	}
 	if len(theme.PerThemeOptions()) == 0 {
 		t.Fatal("expected at least one per-theme option")

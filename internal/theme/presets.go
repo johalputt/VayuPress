@@ -261,8 +261,28 @@ func Sakura() Tokens {
 	}
 }
 
-// AllPresets returns a slice of all built-in presets in display order.
+// AllPresets returns a slice of all built-in presets in display order. Each
+// colour preset is tagged with a layout archetype (via the "archetype" option)
+// so applying it changes the whole layout — structure, cards, hero — not just
+// the palette. Design themes that ship their own component CSS keep it.
 func AllPresets() []Tokens {
+	list := allPresetsRaw()
+	for i := range list {
+		arch := archetypeForPreset(list[i].Name)
+		if arch == "" {
+			continue
+		}
+		if list[i].Options == nil {
+			list[i].Options = map[string]string{}
+		}
+		if list[i].Options["archetype"] == "" {
+			list[i].Options["archetype"] = arch
+		}
+	}
+	return list
+}
+
+func allPresetsRaw() []Tokens {
 	return []Tokens{
 		Default(),
 		Aurora(),

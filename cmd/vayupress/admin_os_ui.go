@@ -2275,6 +2275,7 @@ func (a *App) handleOSSettingsAPI(w http.ResponseWriter, r *http.Request) {
 			Tagline:         sv[settings.KeySiteTagline],
 			Description:     sv[settings.KeySiteDescription],
 			Author:          sv[settings.KeySiteAuthor],
+			AuthorBio:       sv[settings.KeyAuthorBio],
 			ShowMembership:  sv[settings.KeyMembershipButtons] == "true",
 			PrimaryLight:    sv[settings.KeyThemePrimaryLight],
 			PrimaryDark:     sv[settings.KeyThemePrimaryDark],

@@ -557,6 +557,23 @@
     }).catch(function (err) { if (heroToggleStatus) { heroToggleStatus.textContent = String(err.message || err); heroToggleStatus.className = 'text-xs status--danger'; } });
   });
 
+  // ── Author bio (saved to the live site on change) ───────────────────────────
+  var bioInput = document.getElementById('author-bio');
+  var bioStatus = document.getElementById('author-bio-status');
+  if (bioInput) bioInput.addEventListener('change', function () {
+    if (bioStatus) { bioStatus.textContent = 'Saving…'; bioStatus.className = 'theme-field__hint'; }
+    fetch('/os/api/settings', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
+      body: JSON.stringify({ key: 'site.author_bio', value: bioInput.value })
+    }).then(function (r) {
+      if (!r.ok) return r.json().then(function (e) { throw new Error((e.error && e.error.message) || e.error || ('save failed (' + r.status + ')')); });
+      return r.json();
+    }).then(function () {
+      if (bioStatus) { bioStatus.textContent = 'Saved · live on your posts'; bioStatus.className = 'theme-field__hint status--ok'; }
+      if (window.vpToast) window.vpToast('Author bio saved', 'ok');
+    }).catch(function (err) { if (bioStatus) { bioStatus.textContent = String(err.message || err); bioStatus.className = 'theme-field__hint status--danger'; } });
+  });
+
   // ── Navigation editor (saves nav.items straight to the live site) ───────────
   var navRows = document.getElementById('cz-nav-rows');
   var navAdd = document.getElementById('cz-nav-add');
