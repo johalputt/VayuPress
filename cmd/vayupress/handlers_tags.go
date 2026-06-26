@@ -17,6 +17,7 @@ import (
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/metrics"
 	"github.com/johalputt/vayupress/internal/render"
+	"github.com/johalputt/vayupress/internal/seo"
 )
 
 // handleTagIndex renders the public topic index (/tags): every distinct tag with
@@ -121,6 +122,7 @@ func (a *App) articlesByTag(ctx context.Context, tag string, max int) ([]render.
 
 	var out []render.HomeArticle
 	total := 0
+	author := render.GetActiveSettings().Author
 	for rows.Next() {
 		var ha render.HomeArticle
 		var content, tagsCSV string
@@ -141,6 +143,8 @@ func (a *App) articlesByTag(ctx context.Context, tag string, max int) ([]render.
 		if len(out) < max {
 			ha.Tags = api.SplitTags(tagsCSV)
 			ha.Excerpt = excerptFromHTML(content, 160)
+			ha.Image = seo.ExtractFirstImage(content)
+			ha.Author = author
 			out = append(out, ha)
 		}
 	}

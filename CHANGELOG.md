@@ -196,6 +196,18 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Fixed
 
+- **Home and topic post cards now show a clean title and excerpt instead of raw
+  markup.** A post whose body began with a `<style>` or `<script>` block leaked
+  its CSS/JS as the card "excerpt", because the plain-text helper stripped tags
+  but kept their inner text. A new `render.PlainText` removes non-rendered blocks
+  (`<style>`, `<script>`, `<head>`, `<noscript>`, `<template>`, `<svg>`) and HTML
+  comments in full before stripping the remaining tags, unescapes entities, and
+  tidies whitespace — so only readable body text reaches the card. The cards were
+  also redesigned: each is now a clean grid card showing the post's cover image
+  (the first image in the body, when present), a `date · author` line, the title,
+  and a three-line excerpt. Inline tag chips were removed from the cards for a
+  calmer, more readable feed. The same treatment applies to tag listing pages.
+
 - **Theme Studio: deploying a theme now restyles the whole public site, not just
   colours.** The token compiler bridges the active theme onto the variables the
   public templates actually read (`--bg`, `--surface`, `--text`, `--accent`,
