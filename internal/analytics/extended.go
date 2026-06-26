@@ -535,8 +535,11 @@ func (s *Store) CustomEvents(ctx context.Context, days int) ([]EventStat, error)
 
 // RealtimeStats holds live visitor data.
 type RealtimeStats struct {
-	ActiveVisitors int            `json:"active_visitors"`
-	ActivePages    []RealtimePage `json:"active_pages"`
+	ActiveVisitors  int            `json:"active_visitors"`
+	ActivePages     []RealtimePage `json:"active_pages"`
+	ActiveCountries []AudienceStat `json:"active_countries"`
+	ActiveReferrers []AudienceStat `json:"active_referrers"`
+	WindowMinutes   int            `json:"window_minutes"`
 }
 
 // RealtimePage is a page with active visitor count.
@@ -545,24 +548,55 @@ type RealtimePage struct {
 	Count int    `json:"count"`
 }
 
-// Realtime returns stats for the last 5 minutes.
+// Realtime returns stats for the last 5 minutes: active visitors, the pages
+// they're on, plus where they are (country) and how they arrived (referrer).
 func (s *Store) Realtime(ctx context.Context) (*RealtimeStats, error) {
 	since := time.Now().UTC().Add(-5 * time.Minute).Format("2006-01-02 15:04:05")
-	rs := &RealtimeStats{ActivePages: []RealtimePage{}}
+	rs := &RealtimeStats{
+		ActivePages:     []RealtimePage{},
+		ActiveCountries: []AudienceStat{},
+		ActiveReferrers: []AudienceStat{},
+		WindowMinutes:   5,
+	}
 	_ = s.db.QueryRowContext(ctx,
 		`SELECT COUNT(DISTINCT session_id) FROM analytics_pageviews WHERE created_at>=?`, since).
 		Scan(&rs.ActiveVisitors)
-	rows, err := s.db.QueryContext(ctx,
-		`SELECT url_path,COUNT(1) FROM analytics_pageviews WHERE created_at>=? GROUP BY url_path ORDER BY 2 DESC LIMIT 10`, since)
-	if err == nil {
-		defer rows.Close()
+
+	if rows, err := s.db.QueryContext(ctx,
+		`SELECT url_path,COUNT(1) FROM analytics_pageviews WHERE created_at>=? GROUP BY url_path ORDER BY 2 DESC LIMIT 10`, since); err == nil {
 		for rows.Next() {
 			var p RealtimePage
 			if err := rows.Scan(&p.Path, &p.Count); err == nil {
 				rs.ActivePages = append(rs.ActivePages, p)
 			}
 		}
+		rows.Close()
 	}
+
+	// Where active visitors are (proxy-supplied country only; empty otherwise).
+	if rows, err := s.db.QueryContext(ctx,
+		`SELECT s.country,COUNT(DISTINCT p.session_id) FROM analytics_pageviews p JOIN analytics_sessions s ON p.session_id=s.id WHERE p.created_at>=? AND s.country!='' GROUP BY s.country ORDER BY 2 DESC LIMIT 10`, since); err == nil {
+		for rows.Next() {
+			var a AudienceStat
+			if err := rows.Scan(&a.Label, &a.Count); err == nil {
+				rs.ActiveCountries = append(rs.ActiveCountries, a)
+			}
+		}
+		rows.Close()
+	}
+
+	// How active visitors arrived (referrer host, recorded at ingest).
+	if rows, err := s.db.QueryContext(ctx,
+		`SELECT referrer,COUNT(1) FROM analytics_pageviews WHERE created_at>=? AND referrer!='' GROUP BY referrer ORDER BY 2 DESC LIMIT 10`, since); err == nil {
+		for rows.Next() {
+			var a AudienceStat
+			if err := rows.Scan(&a.Label, &a.Count); err == nil {
+				rs.ActiveReferrers = append(rs.ActiveReferrers, a)
+			}
+		}
+		rows.Close()
+	}
+
 	return rs, nil
 }
 

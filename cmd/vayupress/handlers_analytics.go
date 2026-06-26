@@ -294,6 +294,14 @@ func (a *App) handleAnalyticsRealtime(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusInternalServerError, "db-error", err.Error(), "")
 		return
 	}
+	// Enrich raw ISO country codes into "🇺🇸 United States" for display. Done in
+	// the handler (cmd) layer because the country-name table lives here, keeping
+	// the analytics store free of presentation concerns.
+	if data != nil {
+		for i := range data.ActiveCountries {
+			data.ActiveCountries[i].Label = countryDisplay(data.ActiveCountries[i].Label)
+		}
+	}
 	writeJSON(w, r, http.StatusOK, data)
 }
 

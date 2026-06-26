@@ -46,11 +46,24 @@ func countryName(code string) string {
 }
 
 // countryDisplay returns "🇺🇸 United States" for a known code, falling back to
-// just the (uppercased) code when it is unknown or malformed.
+// just the (uppercased) code when it is unknown or malformed. Plain text — used
+// for JSON payloads (the realtime API) where the client sets textContent.
 func countryDisplay(code string) string {
 	name := countryName(code)
 	if flag := countryFlagEmoji(code); flag != "" {
 		return flag + " " + name
+	}
+	return name
+}
+
+// countryDisplayHTML is the HTML form used in server-rendered tables: the flag
+// emoji is wrapped in a <span class="vp-flag"> so CSS can apply an emoji font
+// stack (maximising the chance the glyph renders across platforms), and the
+// name is HTML-escaped.
+func countryDisplayHTML(code string) string {
+	name := html.EscapeString(countryName(code))
+	if flag := countryFlagEmoji(code); flag != "" {
+		return `<span class="vp-flag">` + flag + `</span> ` + name
 	}
 	return name
 }
@@ -146,7 +159,7 @@ func osCountryTable(items []analytics.AudienceStat) string {
 	}
 	rows := ""
 	for _, it := range items {
-		label := html.EscapeString(countryDisplay(it.Label))
+		label := countryDisplayHTML(it.Label)
 		if it.Label == "" {
 			label = "(unknown)"
 		}

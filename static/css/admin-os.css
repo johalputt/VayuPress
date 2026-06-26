@@ -2298,3 +2298,59 @@
   .vp-os .table-wrap { -webkit-overflow-scrolling: touch; }
   .vp-os .vm-stat { font-size: 1.35rem; }
 }
+
+
+/* ── VayuAnalytics: tabbed layout + premium live view ──────────────────────── */
+/* Tab bar (buttons). Reuses .tab styling; reset native <button> chrome and let
+   the bar scroll horizontally on small screens instead of wrapping awkwardly. */
+.vp-os .vm-analytics-tabs {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+.vp-os button.tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  color: var(--text-3);
+  font: inherit;
+  font-size: var(--text-sm);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+}
+.vp-os button.tab:hover { color: var(--text-2); }
+.vp-os button.tab.tab--active { color: var(--brand); border-bottom-color: var(--brand); }
+.vp-os .vm-tab-ico { font-size: 1em; line-height: 1; }
+.vp-os .vm-tab-panel { animation: vm-fade-in var(--t, 160ms) ease; }
+@keyframes vm-fade-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .vp-os .vm-tab-panel { animation: none; } }
+
+/* Live hero card — big active-visitor count. */
+.vp-os .vm-live-hero { text-align: left; }
+.vp-os .vm-live-count {
+  font-size: 3rem;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--brand);
+  font-variant-numeric: tabular-nums;
+}
+.vp-os .vm-live-pulse { color: var(--text-3); }
+
+/* Flag glyphs: prefer a colour-emoji font so country flags render where the OS
+   ships them (macOS/iOS/Android/Linux). Note: Windows omits flag emoji from
+   Segoe UI Emoji by design, so the country name is always shown alongside. */
+.vp-os .vp-flag,
+.vp-os [data-live-countries] .row-title {
+  font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Twemoji Mozilla", sans-serif;
+  font-style: normal;
+}
+.vp-os .vp-flag { margin-right: 0.15em; }
+
+@media (max-width: 860px) {
+  .vp-os .vm-live-grid { grid-template-columns: 1fr; }
+  .vp-os .vm-live-count { font-size: 2.4rem; }
+}
