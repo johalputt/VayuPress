@@ -214,6 +214,21 @@ func findPreset(name string) (theme.Tokens, bool) {
 // in-store live preview WITHOUT persisting it as the active theme. Same-origin,
 // text/css, no-store (it's a transient preview, never cached as the live theme).
 func (a *App) handleOSThemePreviewCSS(w http.ResponseWriter, r *http.Request) {
+	// Draft mode: serve a transient, pre-compiled stylesheet by id (the Studio's
+	// live preview). Falls through to preset mode otherwise (the Store preview).
+	if id := r.URL.Query().Get("draft"); id != "" {
+		css, ok := previewDraftGet(id)
+		if !ok {
+			http.Error(w, "preview expired", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "text/css; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		_, _ = io.WriteString(w, css)
+		return
+	}
+
 	tok, ok := findPreset(r.URL.Query().Get("preset"))
 	if !ok {
 		http.Error(w, "unknown preset", http.StatusNotFound)
@@ -243,36 +258,60 @@ func (a *App) handleOSThemePreviewCSS(w http.ResponseWriter, r *http.Request) {
 // the preview is a faithful, isolated render — never touching the live site.
 // CSP-safe: same-origin links only, no inline styles or scripts.
 func (a *App) handleOSThemePreview(w http.ResponseWriter, r *http.Request) {
-	tok, ok := findPreset(r.URL.Query().Get("preset"))
-	if !ok {
-		http.Error(w, "unknown preset", http.StatusNotFound)
-		return
-	}
-	// This page is designed to be embedded in the Theme Store's preview iframe,
-	// so relax the framing controls to SAME-ORIGIN ONLY. The strict global
-	// baseline is frame-ancestors 'none' + X-Frame-Options: DENY (set by
+	// This page is designed to be embedded in an admin preview iframe, so relax
+	// the framing controls to SAME-ORIGIN ONLY. The strict global baseline is
+	// frame-ancestors 'none' + X-Frame-Options: DENY (set by
 	// securityHeadersMiddleware before this handler runs); we override both so
 	// only our own admin page — and no third party — can frame the preview.
 	nonce := render.CSPNonce(r)
 	w.Header().Set("Content-Security-Policy",
 		strings.Replace(render.BuildCSP(nonce, nil), "frame-ancestors 'none'", "frame-ancestors 'self'", 1))
 	w.Header().Set("X-Frame-Options", "SAMEORIGIN")
-	en := html.EscapeString(tok.Name)
-	// Forward the preset + any customization options into the preview stylesheet
-	// link so the embedded sample renders with the operator's chosen options.
-	q := url.Values{}
-	q.Set("preset", tok.Name)
-	for _, k := range theme.OptionKeys() {
-		if v := r.URL.Query().Get(k); v != "" {
-			q.Set(k, v)
+
+	// Determine the stylesheet to apply: a live Studio draft (by id) or a named
+	// preset (the Store preview), optionally carrying customization options.
+	var cssHref, title string
+	if draft := r.URL.Query().Get("draft"); draft != "" {
+		if _, ok := previewDraftGet(draft); !ok {
+			http.Error(w, "preview expired", http.StatusNotFound)
+			return
 		}
+		cssHref = "/os/theme/preview.css?draft=" + url.QueryEscape(draft)
+		title = "Live preview"
+	} else {
+		tok, ok := findPreset(r.URL.Query().Get("preset"))
+		if !ok {
+			http.Error(w, "unknown preset", http.StatusNotFound)
+			return
+		}
+		q := url.Values{}
+		q.Set("preset", tok.Name)
+		for _, k := range theme.OptionKeys() {
+			if v := r.URL.Query().Get(k); v != "" {
+				q.Set(k, v)
+			}
+		}
+		cssHref = "/os/theme/preview.css?" + q.Encode()
+		title = tok.Name
 	}
+
+	// A tiny nonce'd script lets the parent Studio hot-swap the stylesheet (on a
+	// new draft) WITHOUT reloading the document — instant, flicker-free preview.
+	// It only accepts same-origin messages and only same-origin preview hrefs.
+	swap := `<script nonce="` + nonce + `">(function(){var l=document.getElementById('vayu-theme-css');` +
+		`function ok(h){return typeof h==='string'&&h.indexOf('/os/theme/preview.css?')===0;}` +
+		`window.addEventListener('message',function(e){if(e.origin!==location.origin)return;var d=e.data||{};` +
+		`if(d.type==='vayu-preview-css'&&ok(d.href)){var n=l.cloneNode(false);n.href=d.href;` +
+		`n.addEventListener('load',function(){if(l&&l!==n&&l.parentNode)l.parentNode.removeChild(l);l=n;});` +
+		`l.parentNode.insertBefore(n,l.nextSibling);}});` +
+		`try{if(window.parent&&window.parent!==window)window.parent.postMessage({type:'vayu-preview-ready'},location.origin);}catch(_){}})();</script>`
+
 	page := `<!doctype html><html lang="en"><head><meta charset="utf-8">` +
 		`<meta name="viewport" content="width=device-width, initial-scale=1">` +
-		`<title>Preview — ` + en + `</title>` +
+		`<title>Preview — ` + html.EscapeString(title) + `</title>` +
 		string(render.PicoCSSLink()) + string(render.CustomCSSLink()) + string(render.ArticleCSSLink()) +
-		`<link rel="stylesheet" href="/os/theme/preview.css?` + html.EscapeString(q.Encode()) + `">` +
-		`</head><body><div class="container">` + themePreviewSampleHTML() + `</div></body></html>`
+		`<link id="vayu-theme-css" rel="stylesheet" href="` + html.EscapeString(cssHref) + `">` +
+		`</head><body><div class="container">` + themePreviewSampleHTML() + `</div>` + swap + `</body></html>`
 	writeOSHTML(w, page)
 }
 

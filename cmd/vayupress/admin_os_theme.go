@@ -214,113 +214,123 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
 		textRow("RadiusLg", "Large radius", "0.75rem")
 
 	body := `<div class="page-header">
-  <h1>Theme Studio</h1>
+  <div>
+    <h1>Theme Studio</h1>
+    <p class="text-sm muted" data-active-preset-name>Current theme</p>
+  </div>
   <div class="page-actions">
     <span class="text-sm muted" data-theme-status>Loading…</span>
     <a class="btn btn--ghost btn--sm" href="/os/theme/store">Browse Theme Store</a>
-    <button type="button" class="btn btn--ghost btn--sm" data-theme-fullpreview>Full preview</button>
     <button type="button" class="btn btn--ghost btn--sm" data-theme-revert>Revert</button>
     <button type="button" class="btn btn--primary btn--sm" data-theme-apply>Apply theme</button>
   </div>
 </div>
 
-<div class="theme-studio" data-theme-studio>
-  <div class="theme-studio__main">
-    <div class="card mb-6">
-      <div class="card-title">Presets</div>
-      <div class="text-sm muted mb-3">Start from a built-in palette, then fine-tune any token below.</div>
-      <div class="theme-gallery" data-theme-presets aria-label="Theme presets">` + themePresetCards() + `</div>
-    </div>
+<div class="customizer" data-theme-studio>
+  <aside class="customizer__panel" aria-label="Theme controls">
 
-    <div class="card mb-6">
-      <div class="card-title">Customize</div>
-      <div class="text-sm muted mb-3">Tune any theme along these dimensions — applied site-wide on Apply. Use the colour pickers below for fine control.</div>
-      <div class="theme-fields theme-fields--text">` + themeOptionRows() + `</div>
-    </div>
-
-    <div class="card mb-6">
-      <div class="card-title">Dark mode colours</div>
-      <div class="theme-fields">` + darkRows + `</div>
-    </div>
-
-    <div class="card mb-6">
-      <div class="card-title">Light mode colours</div>
-      <div class="theme-fields">` + lightRows + `</div>
-    </div>
-
-    <div class="card">
-      <div class="card-title">Typography &amp; layout</div>
-      <div class="theme-fields theme-fields--text">` + typoRows + `</div>
-    </div>
-
-    <div class="card mb-6 mt-6">
-      <div class="card-title">Custom CSS</div>
-      <div class="text-sm muted mb-3">Served same-origin via <code>/theme.css</code> (CSP-safe) — appended after the theme styles. Max 64&nbsp;KB. Cannot reach external origins or run scripts.</div>
-      <textarea class="input theme-code" data-theme-css rows="12" maxlength="65536" spellcheck="false" placeholder="/* e.g. .post-title { letter-spacing: -0.02em; } */">` + html.EscapeString(val(settings.KeyThemeCustomCSS)) + `</textarea>
-    </div>
-
-    <div class="card">
-      <div class="card-title">Head &amp; SEO (meta)</div>
-      <div class="text-sm muted mb-3">Raw &lt;head&gt; HTML is intentionally not accepted (it could smuggle redirects/beacons past the CSP). These render to a validated, escaped <code>&lt;meta&gt;</code> allowlist.</div>
-      <div class="theme-fields theme-fields--text">
-        <label class="theme-field theme-field--text"><span class="theme-field__label">Keywords</span>
-          <input type="text" class="input" data-head="keywords" maxlength="256" value="` + html.EscapeString(val(settings.KeyHeadKeywords)) + `" placeholder="publishing, sovereignty"></label>
-        <label class="theme-field theme-field--text"><span class="theme-field__label">Theme colour (hex)</span>
-          <input type="text" class="input" data-head="theme_color" maxlength="7" value="` + html.EscapeString(val(settings.KeyHeadThemeColor)) + `" placeholder="#0d9488"></label>
-        <label class="theme-field theme-field--text"><span class="theme-field__label">Robots</span>
-          <select class="input" data-head="robots">` + robotsOptionsHTML(val(settings.KeyHeadRobots)) + `</select></label>
-        <label class="theme-field theme-field--text"><span class="theme-field__label">Google verification</span>
-          <input type="text" class="input" data-head="verify_google" maxlength="128" value="` + html.EscapeString(val(settings.KeyHeadVerifyGoogle)) + `" placeholder="google-site-verification token"></label>
-        <label class="theme-field theme-field--text"><span class="theme-field__label">Bing verification</span>
-          <input type="text" class="input" data-head="verify_bing" maxlength="128" value="` + html.EscapeString(val(settings.KeyHeadVerifyBing)) + `" placeholder="msvalidate.01 token"></label>
+    <details class="cz-group" open>
+      <summary class="cz-group__head">Presets <span class="cz-group__hint">start here</span></summary>
+      <div class="cz-group__body">
+        <p class="text-sm muted mb-3">Pick a starting design, then fine-tune anything below. The preview updates as you go.</p>
+        <div class="theme-gallery" data-theme-presets aria-label="Theme presets">` + themePresetCards() + `</div>
       </div>
-      <div class="vm-row">
-        <button type="button" class="btn btn--primary btn--sm" data-theme-code-save>Save CSS &amp; meta</button>
-        <span class="text-sm muted" data-theme-code-status></span>
-      </div>
-    </div>
+    </details>
 
-    <div class="card">
-      <div class="card-title">Import / Export theme</div>
-      <div class="text-sm muted mb-3">Download the full theme (palette, typography, custom CSS, meta) as a JSON file, or import one to apply it everywhere. Imported tokens are validated before they go live.</div>
-      <div class="vm-row">
-        <a class="btn btn--sm" href="/os/api/theme/export" download>Export theme JSON</a>
-        <input type="file" accept="application/json,.json" class="input" data-theme-import-file>
-        <button type="button" class="btn btn--primary btn--sm" data-theme-import>Import</button>
-        <span class="text-sm muted" data-theme-import-status></span>
+    <details class="cz-group" open>
+      <summary class="cz-group__head">Quick styles</summary>
+      <div class="cz-group__body">
+        <p class="text-sm muted mb-3">High-level controls that restyle the whole site — colour scheme, reading width, corners, density and more.</p>
+        <div class="theme-fields theme-fields--text">` + themeOptionRows() + `</div>
       </div>
-    </div>
-  </div>
+    </details>
 
-  <aside class="theme-studio__preview" aria-label="Live preview">
-    <div class="card-title">Live preview</div>
-    <div class="theme-prev" data-theme-preview>
-      <article class="theme-prev__article">
-        <h1 class="theme-prev__h1">The quick brown fox</h1>
-        <p class="theme-prev__p">VayuPress is a <strong>sovereign, observable</strong> publishing runtime. Every colour and typeface is a tunable token.</p>
-        <h2 class="theme-prev__h2">Getting started</h2>
-        <p class="theme-prev__p">Pick a preset, tweak a token, and click <em>Apply</em>. Changes reach <code class="theme-prev__code">/theme.css</code> immediately.</p>
-        <blockquote class="theme-prev__quote">Simplicity is the ultimate sophistication.</blockquote>
-        <p class="theme-prev__p"><a class="theme-prev__link" href="#">Read the documentation →</a></p>
-        <div class="theme-prev__chips">
-          <span class="theme-prev__chip theme-prev__chip--accent">accent</span>
-          <span class="theme-prev__chip theme-prev__chip--hi">highlight</span>
-          <span class="theme-prev__chip theme-prev__chip--green">success</span>
+    <details class="cz-group" open>
+      <summary class="cz-group__head">Colours — dark mode</summary>
+      <div class="cz-group__body">
+        <div class="theme-fields">` + darkRows + `</div>
+      </div>
+    </details>
+
+    <details class="cz-group">
+      <summary class="cz-group__head">Colours — light mode</summary>
+      <div class="cz-group__body">
+        <div class="theme-fields">` + lightRows + `</div>
+      </div>
+    </details>
+
+    <details class="cz-group">
+      <summary class="cz-group__head">Typography &amp; layout</summary>
+      <div class="cz-group__body">
+        <div class="theme-fields theme-fields--text">` + typoRows + `</div>
+      </div>
+    </details>
+
+    <details class="cz-group">
+      <summary class="cz-group__head">Custom CSS</summary>
+      <div class="cz-group__body">
+        <div class="text-sm muted mb-3">Served same-origin via <code>/theme.css</code> (CSP-safe), appended after the theme styles. Max 64&nbsp;KB. Reflected live in the preview.</div>
+        <textarea class="input theme-code" data-theme-css rows="10" maxlength="65536" spellcheck="false" placeholder="/* e.g. .vayu-post-title { letter-spacing: -0.02em; } */">` + html.EscapeString(val(settings.KeyThemeCustomCSS)) + `</textarea>
+        <div class="vm-row">
+          <button type="button" class="btn btn--primary btn--sm" data-theme-code-save>Save CSS &amp; meta</button>
+          <span class="text-sm muted" data-theme-code-status></span>
         </div>
-      </article>
-    </div>
-    <div class="text-xs muted mt-3">Preview reflects dark-mode tokens. Light-mode values apply on readers whose system is set to light.</div>
-  </aside>
-</div>
+      </div>
+    </details>
 
-<div class="store-preview" data-theme-preview-overlay hidden>
-  <div class="store-preview__bar">
-    <span class="store-preview__title" data-theme-preview-title>Full preview</span>
-    <span class="store-preview__spacer"></span>
-    <button type="button" class="btn btn--primary btn--sm" data-theme-preview-apply>Apply this theme</button>
-    <button type="button" class="store-preview__close" data-theme-preview-close aria-label="Close preview">&times;</button>
+    <details class="cz-group">
+      <summary class="cz-group__head">Head &amp; SEO (meta)</summary>
+      <div class="cz-group__body">
+        <div class="text-sm muted mb-3">Rendered to a validated, escaped <code>&lt;meta&gt;</code> allowlist (raw &lt;head&gt; HTML is intentionally not accepted).</div>
+        <div class="theme-fields theme-fields--text">
+          <label class="theme-field theme-field--text"><span class="theme-field__label">Keywords</span>
+            <input type="text" class="input" data-head="keywords" maxlength="256" value="` + html.EscapeString(val(settings.KeyHeadKeywords)) + `" placeholder="publishing, sovereignty"></label>
+          <label class="theme-field theme-field--text"><span class="theme-field__label">Theme colour (hex)</span>
+            <input type="text" class="input" data-head="theme_color" maxlength="7" value="` + html.EscapeString(val(settings.KeyHeadThemeColor)) + `" placeholder="#0d9488"></label>
+          <label class="theme-field theme-field--text"><span class="theme-field__label">Robots</span>
+            <select class="input" data-head="robots">` + robotsOptionsHTML(val(settings.KeyHeadRobots)) + `</select></label>
+          <label class="theme-field theme-field--text"><span class="theme-field__label">Google verification</span>
+            <input type="text" class="input" data-head="verify_google" maxlength="128" value="` + html.EscapeString(val(settings.KeyHeadVerifyGoogle)) + `" placeholder="token"></label>
+          <label class="theme-field theme-field--text"><span class="theme-field__label">Bing verification</span>
+            <input type="text" class="input" data-head="verify_bing" maxlength="128" value="` + html.EscapeString(val(settings.KeyHeadVerifyBing)) + `" placeholder="token"></label>
+        </div>
+      </div>
+    </details>
+
+    <details class="cz-group">
+      <summary class="cz-group__head">Import / Export</summary>
+      <div class="cz-group__body">
+        <div class="text-sm muted mb-3">Download the full theme as JSON, or import one to apply it everywhere. Imported tokens are validated before they go live.</div>
+        <div class="vm-row">
+          <a class="btn btn--sm" href="/os/api/theme/export" download>Export theme JSON</a>
+        </div>
+        <div class="vm-row mt-2">
+          <input type="file" accept="application/json,.json" class="input" data-theme-import-file>
+          <button type="button" class="btn btn--primary btn--sm" data-theme-import>Import</button>
+          <span class="text-sm muted" data-theme-import-status></span>
+        </div>
+      </div>
+    </details>
+  </aside>
+
+  <div class="customizer__stage">
+    <div class="customizer__toolbar">
+      <div class="cz-devices" role="group" aria-label="Preview device">
+        <button type="button" class="cz-device cz-device--active" data-theme-device="desktop" aria-pressed="true" title="Desktop">Desktop</button>
+        <button type="button" class="cz-device" data-theme-device="tablet" aria-pressed="false" title="Tablet">Tablet</button>
+        <button type="button" class="cz-device" data-theme-device="mobile" aria-pressed="false" title="Mobile">Mobile</button>
+      </div>
+      <span class="cz-toolbar-spacer"></span>
+      <span class="text-xs muted" data-theme-preview-status>Live preview</span>
+      <a class="btn btn--ghost btn--sm" data-theme-newtab href="#" target="_blank" rel="noopener">Open in new tab ↗</a>
+    </div>
+    <div class="customizer__viewport" data-theme-viewport data-device="desktop">
+      <div class="customizer__frame-wrap">
+        <iframe class="customizer__frame" data-theme-frame title="Live theme preview" referrerpolicy="no-referrer"></iframe>
+        <div class="customizer__frame-loading" data-theme-frame-loading>Building preview…</div>
+      </div>
+    </div>
   </div>
-  <iframe class="store-preview__frame" data-theme-preview-frame title="Full theme preview" loading="lazy" referrerpolicy="no-referrer"></iframe>
 </div>
 <script nonce="` + nonce + `" src="/os/static/js/admin-os-theme.js"></script>`
 
