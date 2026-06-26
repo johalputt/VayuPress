@@ -57,6 +57,7 @@ type tagPage struct {
 	ThemeCSSLink        template.HTML
 	HeadMeta            template.HTML
 	ThemeToggleJSLink   template.HTML
+	PostCardMediaJSLink template.HTML
 	SiteName            string
 	NavLinks            template.HTML
 	Footer              template.HTML
@@ -146,7 +147,7 @@ var tagPageTmpl = template.Must(template.New("tagpage").Funcs(tagFuncs).Parse(`<
 </div>{{else}}<div class="vayu-empty">No posts tagged “{{.Tag}}” yet.</div>{{end}}
 {{.Footer}}
 </main>
-</div></body></html>`))
+</div>{{.PostCardMediaJSLink}}</body></html>`))
 
 // RenderTagIndex renders the public topic-index page listing every tag with its
 // post count. tags should already be sorted by the caller (count desc, name asc).
@@ -187,6 +188,7 @@ func RenderTagPage(domain, version, tag string, articles []HomeArticle, totalCou
 		ThemeCSSLink:        ThemeCSSLink(),
 		HeadMeta:            headMetaHTML(s),
 		ThemeToggleJSLink:   ThemeToggleJSLink(),
+		PostCardMediaJSLink: PostCardMediaJSLink(),
 		SiteName:            s.Name,
 		NavLinks:            navLinksHTML(s.NavJSON),
 		Footer:              footerHTML(s),
