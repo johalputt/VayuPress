@@ -8,7 +8,775 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+
+- **VayuPortal — a clean, minimalist membership overlay for the public site.**
+  A floating launch button plus an accessible slide-in panel now lets readers
+  sign up, sign in, and manage their account without leaving the page they are
+  reading. It is a self-contained, dependency-free, same-origin script that
+  renders only when membership is enabled, transparently upgrades the existing
+  nav "Sign in" / "Sign up" links to open the panel in place, and reuses the
+  existing passwordless magic-link backend. Served at `/static/js/portal.js`
+  with styles in `/static/css/portal.css`; capability/auth state comes from the
+  new `GET /api/v1/members/me` endpoint.
+- **"Sign in with VayuMail" for readers.** Members who hold a VayuMail mailbox
+  can now sign in directly with their mailbox email and password via
+  `POST /api/v1/members/vayumail-login`, as an alternative to the emailed
+  sign-in link. Bad credentials return a uniform response so the endpoint cannot
+  enumerate addresses.
+- **Optional two-factor authentication (TOTP) for VayuMail accounts.**
+  Administrators can enrol any mail account in 2FA from
+  **VayuOS → Mail accounts** (scan/enter a secret, verify a code to turn it on,
+  or disable it). When enabled, the "Sign in with VayuMail" flow requires a
+  valid 6-digit code as a second factor. Uses the existing stdlib-only TOTP
+  implementation; secrets are stored per account and 2FA is only switched on
+  after a code is verified, so a half-finished enrolment can never lock anyone
+  out.
+
+### Security
+
+- **VayuMail is now role-scoped: non-admin staff can only operate their own
+  mailbox.** Previously any signed-in user could browse, read, search, and act
+  on any mailbox via the `?user=` parameter, and could open the mail-account
+  management screens. The webmail (inbox, message, search, compose, send, draft,
+  message actions) now locks non-admins to their assigned mailbox and rejects
+  cross-mailbox access; mail-account management (create/update/delete/list) is
+  restricted to administrators.
+
+- **Hardened the profile avatar preview against DOM-based injection (CodeQL:
+  "DOM text reinterpreted as HTML").** The live avatar preview assigned the raw
+  text field value to an element attribute; it now passes the value through a
+  protocol allowlist (`new URL` + http/https check) before touching the DOM, so
+  only safe image URLs are ever loaded. The server already validated avatar URLs
+  as `http(s)` on save — this closes the client-side path too.
+
+### Fixed
+
+- **VayuOS stylesheet/script updates now reach the browser immediately.** The
+  admin CSS/JS were cache-busted only by the release version, so iterative
+  changes within a build could be masked by a stale cached `admin-os.css`
+  (most visibly: the profile avatar preview rendering at full size). Assets are
+  now versioned by a short content hash, so an updated file is refetched as soon
+  as its content changes, while unchanged files stay cached.
+
+### Added
+
+- **Admins can assign a custom VayuMail mailbox to each team member, and staff
+  operate it from their own panel.** From **Members → Team & roles**, an admin
+  assigns a mailbox (`name@yourdomain` + password) to any admin/editor/author;
+  the address is linked to their account and the mailbox + PGP keypair are
+  provisioned automatically. Signed-in staff then use the VayuMail panel scoped
+  to their own mailbox — inbox, read, compose, reply/forward, and send all run
+  as their assigned address. The role↔mailbox mapping is admin→administrator,
+  editor→editor, author→author. New endpoint:
+  `POST /api/v1/admin/users/{email}/mailbox` (mirrored at `/os/api/...`),
+  admin-only and CSRF-protected. Migration `039-user-mailbox` links the address.
+
+- **Posts manager now paginates the full archive instead of capping at 500.**
+  The VayuOS Posts screen previously rendered a single hard `LIMIT 500` list, so
+  older posts beyond the 500th were unreachable. It now serves the archive in
+  pages of 100 (newest first on page 1) with a premium pager:
+  - **Page navigation** — First / Last, Prev / Next, a windowed run of numbered
+    pages around the current one, and **jump ±10 pages** controls for skating
+    through large archives. A "Go to page N of M" box jumps directly to any page.
+    Every control is a plain GET link/form, so navigation works without
+    JavaScript and stays within the strict CSP.
+  - **Find any post by time** — a time-range filter with quick presets (last 7 /
+    30 / 90 days, last 12 months) plus a custom **From / To** date range filters
+    posts by their created date so you can pull up a specific period instantly.
+  - **Server-side search & status tabs** — title/tag search and the
+    All / Published / Drafts tabs now filter across the entire archive (not just
+    the current page), and the tab counts reflect the active search/date filter.
+    A "showing X–Y of Z posts" summary keeps the position clear. All filters are
+    preserved in the URL, so a filtered view is shareable and survives reloads.
+
+- **Premium membership system — multi-tier plans, a member portal, and revenue
+  insight.** VayuPress memberships grow from a free/paid switch into a complete
+  membership product, all still sovereign and passwordless:
+  - **Priced subscription tiers** — operators define named plans with monthly
+    and/or yearly pricing, a description, and a benefit list. Two tiers ship
+    seeded (Free and Premium); add, edit, hide, or archive more from the Members
+    console. The built-in Free and Premium plans are protected from deletion.
+  - **Public pricing page (`/pricing`)** — a themed, responsive plan grid built
+    from the published tiers, with a JSON catalogue at `GET /api/v1/tiers` for
+    themes and integrations. Plans, prices, and benefits render server-side with
+    no inline styles, so the strict CSP is untouched.
+  - **Member portal (`/members/account`)** — signed-in readers see their plan
+    (with price/cadence), edit their display name, toggle the members newsletter,
+    and sign out. A dedicated sign-in page (`/members`) replaces the previously
+    dead "Sign in" link, and verifying a magic link now lands members in their
+    portal.
+  - **Richer member records** — members gain a display name, an operator note,
+    a newsletter preference, last-seen activity, and free-form **labels** for
+    segmentation. The Members console shows each member's tier (changeable
+    inline), labels (add/remove), last-seen, and join date.
+  - **Subscription state + MRR** — every paid grant or Stripe upgrade records a
+    subscription (tier, cadence, amount), so the console surfaces **Monthly
+    Recurring Revenue**, annual run-rate, paid/free split, active subscriptions,
+    and 30-day signups. Yearly plans are normalised to monthly; complimentary
+    (operator-granted) plans never inflate revenue.
+  - **Tier-aware paywall** — gated posts now show the cheapest paid plan's price
+    and benefits with a clear call to action, alongside the inline passwordless
+    sign-in form.
+  - **New admin/JSON API** — `GET/POST/PUT/DELETE /api/v1/admin/tiers[/{id}]`,
+    `GET /api/v1/admin/members/stats`, `GET /api/v1/admin/members/{email}`, and
+    `POST/DELETE /api/v1/admin/members/{email}/labels[/{label}]`, all
+    CSRF-protected on writes and mirrored under `/os/api/members/*` for the
+    session-authenticated console. The Stripe webhook continues to upgrade paid
+    members with no embedded payment SDK — it now also records the subscription.
+- **Team roles, staff mailboxes, and author profiles.** Membership now spans the
+  people who run the site, not just readers:
+  - **Roles** — accounts are **admin**, **editor**, or **author**. Admins manage
+    the team from the Members console: create accounts, change roles inline, and
+    remove people. The last remaining admin cannot be demoted, so a site can
+    never lock itself out of administration.
+  - **Sovereign staff mailboxes** — creating a team member auto-provisions a
+    VayuMail mailbox (`name@yourdomain`) and a PGP keypair when VayuMail is
+    active, giving authors and editors a real, self-hosted email address with no
+    third-party provider.
+  - **Author profiles** — every staff member edits their own public profile from
+    **My Profile**: a display name, a short bio (capped at 250 characters), an
+    avatar image, and social links (website, X, GitHub, LinkedIn, Mastodon,
+    Instagram, YouTube). Profiles render at **`/author/{id}`** as a themed,
+    indexable page. Social/avatar URLs are validated as `http(s)` and the public
+    page is escaped end to end. The signed-in member's avatar now appears in the
+    VayuOS sidebar (linking to the profile editor), and the editor shows a live,
+    fixed-size cropped circular thumbnail so large images never display at full
+    resolution.
+  - New CSRF-protected API: `PUT /api/v1/admin/users/{email}/role`, mirrored
+    (with the existing user create/list/delete) under `/os/api/users/*` for the
+    session-authenticated console, plus `POST /os/api/profile` for self-service
+    profile edits. Migration `038-user-profiles` adds the profile columns.
+
+### Added
+
+- **Browsable tag pages — clicking a tag now opens a real page.** Tag links on
+  posts pointed at `/tags/<tag>`, but no route served that path, so every tag
+  click fell through to the 404 page. VayuPress now ships a complete public
+  taxonomy:
+  - **`/tags` topic index** — a premium tag cloud listing every tag with its
+    published-post count, most-used first, styled with the existing theme tokens
+    so it adapts to every preset and light/dark mode.
+  - **`/tags/<tag>` listing** — each tag opens its own page listing the matching
+    posts (most recent first) with the same card layout as the homepage. Tag
+    matching is exact and case-insensitive (so `go` never collides with
+    `golang`), drafts are excluded, and a tag with no published posts returns a
+    proper 404 instead of an empty indexed page.
+  - Per-tag pages are disk-cached at `tags/<tag>.html` and invalidated
+    automatically when an article carrying that tag is created, updated, or
+    deleted (reusing the existing cache-purge path). The topic index renders
+    live so newly introduced tags appear immediately.
+  - Tag URLs are path-escaped end to end (links, canonical tags, and sitemap),
+    and both `/tags` and every `/tags/<tag>` page are now emitted in
+    `sitemap.xml` for discovery.
+
+- **VayuAnalytics gets a tabbed dashboard + a richer Live view.** The analytics
+  page was one long scroll; it is now split into client-side tabs (no reload):
+  Overview, Live, Pages, Audience, Geography, Campaigns, Events, Goals, Journey
+  and Export. The selected tab is remembered in the URL hash so refreshes and
+  shared links reopen it.
+  - **Live view is now real-time situational awareness:** a large active-visitor
+    counter plus three live panels — **Countries** (with flag + full name),
+    **Active pages**, and **Referrers** — all refreshing every 10s and pausing
+    when the browser tab is hidden. Backed by an extended `Store.Realtime`
+    (active countries + referrers over the last 5 minutes).
+  - Country flags are now **real self-hosted SVG images** (the MIT-licensed
+    flag-icons set under `static/flags/`, served on demand from
+    `/os/static/flags/<cc>.svg`), so they render identically on every platform
+    — including Windows, which omits flag emoji from its system font. The full
+    country name is always shown alongside. No third-party requests; flags load
+    only when shown.
+
+- **Optional outbound smarthost relay (deliverability without losing
+  sovereignty).** When `VAYUOS_MAIL_RELAY_HOST` is set, VayuMail delivers
+  outbound mail through an authenticated SMTP relay instead of direct-to-MX —
+  the pragmatic remedy for a fresh self-hosted IP that Gmail/Outlook still
+  spam-file for lack of sending reputation. The relay's established IP reputation
+  carries deliverability, while **inbound receive, IMAP, local delivery and DKIM
+  signing all remain self-hosted**, and VayuMail still DKIM-signs with the domain
+  key so DMARC stays aligned. STARTTLS (587) and implicit TLS (465) are
+  supported with `AUTH PLAIN`/`LOGIN`; encryption before AUTH is required by
+  default (`VAYUOS_MAIL_RELAY_TLS=off` to opt out on a trusted private network).
+  Credentials are read from the environment only and never persisted. Direct-to-
+  MX remains the default when no relay is configured. The deliverability panel
+  shows when a relay is active. See ADR-0085.
+
+- **Mailbox usability: drafts, mark-as-read, and a deliverability self-check.**
+  - **Drafts** — Compose now has a **Save as draft** button that files the
+    message into the sender's Drafts folder; opening a draft from the mailbox
+    reloads it in the composer to finish and send (`Engine.SaveDraft`).
+  - **Mark as read / unread** — the reader view has ✓ **Mark read** / **Mark
+    unread** actions and each Inbox row has a per-message read toggle, backed by
+    proper Maildir Seen-flag moves (`Engine.MarkRead` / `MarkUnread`).
+  - **Deliverability self-check** — the Mail & DNS panel now flags the common
+    reasons mail is marked as spam: a **DKIM key published in DNS that does not
+    match VayuMail's signing key**, and a **reverse-DNS (PTR) mismatch** against
+    the mail hostname (`Engine.Deliverability`).
+- **VayuAnalytics dashboard polish.** The privacy-first analytics page now reads
+  far more clearly at a glance:
+  - **Full country names + flag emoji.** Country breakdowns show e.g.
+    "🇺🇸 United States" instead of the raw `US` code. The mapping is render-only
+    (ISO 3166-1 alpha-2 → name, flag derived from Regional Indicator Symbols);
+    nothing extra is stored, so the no-GeoIP / no-PII guarantee is unchanged.
+  - **Period-over-period deltas** on the headline metrics (Unique visitors /
+    Visits / Pageviews / Bounce rate) — an up/down badge comparing the selected
+    window to the immediately-preceding window of equal length, powered by the
+    new `Store.OverviewBetween`. Colour semantics are inverted for bounce rate
+    (lower is better).
+  - **Cleaner page URLs** in Top pages and Visitor journey: query strings
+    stripped, percent-encoding decoded, long paths truncated with the full value
+    kept in a tooltip.
+  - **Friendlier empty states** for campaigns, countries, page views, referrers
+    and visitor journeys (actionable guidance instead of a bare "No data yet").
+  - **"Last updated" timestamp** in the page header, a **local-only privacy
+    footer**, a **loading cue** when switching the time range, and **mobile
+    single-column layout** with horizontally swipeable tables.
+- **TLS for mail (STARTTLS + IMAPS + authenticated submission).** The mail
+  listeners now offer encryption: **STARTTLS** on SMTP `:25`, the new
+  **submission** service `:587` (STARTTLS **required** before `AUTH PLAIN`/
+  `LOGIN`, then authenticated relay), and IMAP `:143`; plus implicit-TLS
+  **IMAPS** on `:993`. A CA-signed certificate can be supplied via
+  `VAYUOS_MAIL_TLS_CERT` / `VAYUOS_MAIL_TLS_KEY`; when unset, VayuMail generates
+  an in-memory self-signed certificate so opportunistic STARTTLS works
+  immediately. All TLS listeners are best-effort (a bind/cert failure is
+  surfaced in the health panel but never blocks outbound/local mail). The health
+  row now shows which secure listeners are active (`STARTTLS`, `submission:587`,
+  `IMAPS:993`).
+- **Inbound SPF / DKIM / DMARC verification.** Received mail is now
+  authenticated during the SMTP transaction: **SPF** (connecting IP vs the
+  envelope sender), **DKIM** (signature verification), and **DMARC** (policy +
+  identifier alignment with the From domain). The outcome is stamped as a
+  standard `Authentication-Results` header, and a DMARC failure under an
+  enforcing policy (`p=quarantine`/`p=reject`) is routed to **Junk** via the
+  existing local filter. All lookups are best-effort — a DNS error degrades to
+  `none`/`temperror` and never blocks delivery. Implemented with the vetted
+  `github.com/emersion/go-msgauth` (DKIM/DMARC) and `blitiri.com.ar/go/spf`
+  libraries (completes the ADR-0078 follow-up).
+- **Clean reader view for received mail.** The message page now shows a decoded
+  view — From / To / Cc / Subject / Date summary plus the rendered `text/plain`
+  body (or sanitised HTML when that's all a message carries) — instead of raw
+  MIME. A **"View raw source"** toggle reveals the full original headers/MIME on
+  demand. HTML is sanitised through a bluemonday UGC policy so it respects the
+  console's strict CSP. New `mail.ParseMessage` decodes multipart/alternative,
+  quoted-printable, base64, and RFC 2047 encoded-word headers.
+
+### Changed
+
+- **Inbound mail is now enabled by default.** Once a `DOMAIN` is configured, the
+  SMTP-receive + IMAP read listeners start automatically so the instance can
+  actually receive external mail; previously this required the easily-missed
+  `VAYUOS_MAIL_INBOUND=on` opt-in. Set `VAYUOS_MAIL_INBOUND=off` to run
+  outbound-only. Binding the mail ports is best-effort: a failed bind (e.g.
+  `:25` without privileges, or a port already in use) is recorded
+  (`Engine.InboundError`), surfaced in the VayuOS health panel **with an
+  actionable hint** (grant `CAP_NET_BIND_SERVICE`, or stop a conflicting MTA
+  like Postfix), and **never** fails engine startup — outbound and local
+  delivery stay available. Amends ADR-0078. The shipped `deploy/vayupress.service`
+  now grants `CAP_NET_BIND_SERVICE` so the non-root service can bind `:25`/`:143`.
+  (Receiving external mail still also requires port 25 reachable and MX/A DNS
+  records pointing at the host.)
+
+- **Outbound deliverability hardening (fewer messages in Gmail/Outlook spam).**
+  - **DKIM signing now uses the vetted `github.com/emersion/go-msgauth/dkim`
+    library** instead of a hand-rolled canonicalizer. A subtle canonicalization
+    bug is one of the most common reasons a message that "looks" signed still
+    fails verification at the receiver and is filed as spam; delegating to the
+    same battle-tested implementation already used for inbound verification
+    removes that entire class of risk. Signing remains relaxed/relaxed,
+    rsa-sha256, `d=` aligned to the From domain.
+  - **Well-formed MIME.** Messages with both a text and an HTML body are now sent
+    as a proper `multipart/alternative` (text part first, HTML second) — the
+    shape mainstream mail clients send and spam filters expect — with explicit
+    `Content-Transfer-Encoding` and canonical CRLF line endings throughout. The
+    inline PGP path is unchanged (a single ASCII-armored `text/plain` part).
+  - **Deliverability self-check** now also flags a **mail hostname that is not a
+    fully-qualified domain name** (announced in EHLO/HELO), alongside the
+    existing DKIM-key and reverse-DNS (PTR) checks.
+
+### Fixed
+
+- **Home and topic post cards now show a clean title and excerpt instead of raw
+  markup.** A post whose body began with a `<style>` or `<script>` block leaked
+  its CSS/JS as the card "excerpt", because the plain-text helper stripped tags
+  but kept their inner text. A new `render.PlainText` removes non-rendered blocks
+  (`<style>`, `<script>`, `<head>`, `<noscript>`, `<template>`, `<svg>`) and HTML
+  comments in full before stripping the remaining tags, unescapes entities, and
+  tidies whitespace — so only readable body text reaches the card. The cards were
+  also redesigned: each is now a clean grid card showing the post's cover image
+  (the first image in the body, when present), a `date · author` line, the title,
+  and a three-line excerpt. Inline tag chips were removed from the cards for a
+  calmer, more readable feed. The same treatment applies to tag listing pages.
+  - **The home page no longer lags behind after a redeploy.** Pre-rendered public
+    HTML (`home/index.html`, `tags/*.html`, `posts/*.html`) is now fingerprinted
+    with the renderer version and stylesheet hashes; on startup any cache produced
+    by an older renderer is cleared, so a redeploy always serves the current
+    design rather than a stale cached home page.
+  - **Broken cover images are hidden.** A small same-origin script (CSP-safe,
+    `script-src 'self'`) removes a card's cover image if it fails to load (or was
+    blocked), so an expired/broken image link never shows a broken-image icon.
+
+- **Theme Studio: deploying a theme now restyles the whole public site, not just
+  colours.** The token compiler bridges the active theme onto the variables the
+  public templates actually read (`--bg`, `--surface`, `--text`, `--accent`,
+  `--font`, `--max-w`, `--radius`), with explicit `[data-theme]` blocks so the
+  manual light/dark toggle re-themes the site too. The built-in design themes
+  (Gale, Zephyr, Dispatch, Vivid, Beacon) now style the real `vayu-*` markup, so
+  each visibly changes layout and typography rather than only recolouring. The
+  Theme Store "Customize" action no longer reverts to the active theme and
+  carries the selected theme's design through to Apply.
+- **Compose Send / Save-as-draft no longer fail with `403` after a while.** The
+  VayuOS panel pages did not re-issue the `vp_csrf` cookie, so once it expired
+  (1h) every panel POST (send, save draft, message/account actions) was rejected
+  as a CSRF failure. The VayuOS GET pages are now wrapped in the CSRF middleware
+  so each page load re-seeds the token, and a `403` now shows a clear
+  "reload the page" hint instead of a bare error.
+- **Outbound mail now carries the sender's display name.** Messages put a
+  friendly `From: "Full Name" <addr>` header (from the mail account's full name,
+  or the CMS user's name) so recipients see a name instead of a bare address.
+  The SMTP envelope (MAIL FROM) and the outbound queue still use the bare
+  address, and the DKIM signature is unaffected.
+
+- **Incoming mail now lands in the recipient's Inbox (local delivery loopback).**
+  Mail addressed to a mailbox served by this instance was only ever enqueued for
+  external MX relay, so it never appeared in the local recipient's Inbox even
+  though outbound delivery to remote servers worked. `Engine.SendMail` now
+  splits recipients: local-domain mailboxes (a CMS user or an admin-managed mail
+  account, resolved through the new `Bridge.IsLocalRecipient`) are delivered
+  straight into their Maildir via the existing inbound path — honouring the
+  heuristic junk filter — while only genuinely remote recipients are queued for
+  MX relay. When no bridge is wired the engine falls back to a domain-only check
+  matching the inbound SMTP relay policy.
+- **PGP keys now show for every mailbox.** Keypairs were auto-generated only for
+  CMS users at registration, so admin-managed mail accounts (and accounts that
+  pre-dated auto-keygen) had no key and the VayuPGP panel listed nothing for
+  them. A new idempotent `Bridge.EnsureKeypair` mints a key the first time and
+  reuses the existing one by email thereafter; it is invoked on mail-account
+  creation and from a non-blocking boot-time backfill that covers existing CMS
+  users and mail accounts. Transparent inbox decryption now resolves the
+  recipient through the key store (new `Bridge.DecryptForEmail`) rather than the
+  CMS user table, so it works for mail-only accounts too. Private keys remain
+  AES-256-GCM encrypted at rest.
+
+---
+
+## [1.14.0] — 2026-06-25
+
+**The Post Editor becomes the most powerful sovereign writing studio — without
+breaking the constitution (single binary, lightweight, privacy-first, strict CSP).**
+
+### Added
+
+- **Five new editor blocks**, each rendered and re-sanitised server-side by
+  `internal/blockrender` (bluemonday UGC policy — no raw-HTML escape hatch):
+  - **Table** — optional heading row plus body rows; cell text supports inline
+    Markdown (bold/italic/code/links).
+  - **Toggle** — a collapsible `<details>`/`<summary>` with an "expanded by
+    default" option.
+  - **Task list** — a checklist with per-item done states, rendered as a static
+    glyph (never a live `<input>` on the public page).
+  - **Math** — a LaTeX/expression block stored verbatim and shown in a styled,
+    dependency-free element (a theme may progressively enhance `.vp-math`).
+  - **Audio** — a self-hosted `<audio>` player whose `src` is **restricted to the
+    site's own `/media` path** (double-guarded by `safeMediaURL` and a bluemonday
+    `Matching` rule), so audio never triggers a third-party request.
+- **Drag-and-drop block reordering** plus keyboard `↑`/`↓` move buttons.
+- **Undo / redo** history for structural edits (native per-field text undo is
+  preserved — `Ctrl/Cmd+Z` is only intercepted outside an editable field).
+- **Live word count, character count and reading time** in the editor sidebar and
+  topbar.
+- **Focus mode** (`Ctrl/Cmd+.`) for distraction-free writing, and a **split-screen
+  live preview** that renders the sanitised published look beside the draft.
+- **Command palette** — the slash (`/`) menu is now grouped by category and fully
+  keyboard-navigable (↑/↓/Enter/Esc), and a global **`Ctrl/Cmd+K`** opens it from
+  anywhere.
+- **Markdown shortcut** — typing `- [ ]` or `* [ ]` (then a space) converts a paragraph into a task list.
+- Legacy **HTML import** now maps `<table>` → table blocks and `<details>` →
+  toggle blocks (`internal/blockrender/importer.go`), keeping "Convert to blocks"
+  lossless for more content.
+
+### Changed
+
+- The `osEditorBody` editor shell gained CSP-safe controls (focus/split buttons,
+  word-count chip, document-stats panel, undo/redo) — markup stays class-only with
+  no inline styles, scripts or external hosts (verified by `TestOSEditorBodyCSPSafe`).
+- The editor frontend (`static/js/admin-os-editor.js`) is rebuilt around the new
+  block model while preserving the save/preview/AI/history network contract and the
+  on-disk **block storage format (fully backward compatible)**.
+
+### Security
+
+- New blocks add **no new XSS surface**: the bluemonday policy was widened only to
+  the structural elements the renderer emits (tables, `details`/`summary`, a
+  local-only `<audio>`), and audio sources are constrained to the `/media` origin.
+  Regression tests cover table/cell XSS, task-list `<input>` suppression, math
+  escaping, and rejection of external/`javascript:` audio sources.
+
+### Tests
+
+- Added `internal/blockrender` unit tests for every new block type and its
+  sanitisation, and importer round-trip tests for tables and toggles.
+
+---
+
+## [1.13.0] — 2026-06-25
+
+**VayuMail towards Gmail-like usability — roles, Archive, and search.**
+
+### Added
+
+- **Role-based mail accounts.** Each admin-managed mailbox now carries a role —
+  **Administrator**, **Editor**, **Author**, **Reviewer** (read-only), or a
+  custom role. Roles are set on creation and editable inline in the Accounts
+  table. Permission helpers (`RoleCanSend`, `RoleCanDelete`,
+  `RoleCanManageAccounts`) gate per-account capabilities; account creation and
+  deletion remain restricted to the VayuPress admin session.
+- **Archive folder.** A first-class `Archive` folder alongside
+  Inbox/Sent/Drafts/Junk/Trash, with a one-click Archive action on any message.
+- **Mailbox full-text search.** A search box over a mailbox scans From / To /
+  Subject (with a body fallback) across all folders. The scan is bounded and
+  fully local — no external index, no extra services.
+
+### Notes
+
+- This is the foundational slice of the Gmail-like VayuMail roadmap. Threaded
+  conversations, rich HTML compose with attachments and scheduling, server-side
+  filters, vacation responder, and real-time notifications are tracked for
+  v1.14.0.
+
+---
+
+## [1.12.5] — 2026-06-25
+
+**Security: close the reflected-XSS path exposed by v1.12.4.**
+
+### Security
+
+- **VayuMail panel link parameters are now HTML-context safe.** Mailbox links
+  embedded `user`/`folder`/`id` values with `url.QueryEscape` only; once the
+  html/template passthrough was removed in v1.12.4, CodeQL traced those values
+  to the page sink (`go/reflected-xss`). A new `qparam` helper wraps the
+  query-escaped value with `html.EscapeString` (a no-op on that output) so it is
+  safe in both the URL and the surrounding HTML attribute, clearing the finding
+  without changing behaviour.
+
+---
+
+## [1.12.4] — 2026-06-25
+
+**Security: resolve the last CodeQL XSS finding.**
+
+### Security
+
+- **VayuOS trusted-HTML passthrough no longer routes through html/template.**
+  `renderTrustedHTML` previously executed a `{{.}}` template with a
+  `template.HTML` argument, which CodeQL flagged as an escaping bypass
+  (`go/html-template-escaping-bypass`, alert in admin_os_ui.go). The function is
+  a verbatim passthrough — every interpolated user value is already escaped via
+  html.EscapeString at construction — so it is now a direct string conversion
+  with byte-identical output, removing the html/template sink entirely.
+
+---
+
+## [1.12.3] — 2026-06-25
+
+**Security: fix CodeQL path-traversal and SSRF findings.**
+
+### Security
+
+- **Path traversal in the Maildir store (CWE-22).** Untrusted mailbox domain and
+  username values now pass through a single-segment sanitiser (filepath.Base of
+  a cleaned path) before being joined to the storage base, so a hostile value
+  can never escape it; message ids are additionally reduced with filepath.Base.
+  Resolves nine CodeQL "uncontrolled data in path expression" alerts under
+  internal/vayuos/mail.
+- **Server-side request forgery in WKD key discovery (CWE-918).** External
+  public-key lookup now validates the recipient domain against a strict
+  public-hostname allowlist — rejecting IP literals, localhost and numeric TLDs
+  — and URL-escapes the local part before building the request, so a crafted
+  recipient domain cannot point the request at internal hosts. Resolves the
+  critical CodeQL alert in internal/vayuos/pgp/wkd.go.
+
+### Tests
+
+- Added path-traversal and WKD-domain-validation regression tests.
+
+---
+
+## [1.12.2] — 2026-06-25
+
+**Dependency updates (clear security alerts).**
+
+### Security
+
+- **Upgraded dependencies to their latest published patch releases**:
+  `cloudflare/circl` v1.6.3 to v1.6.4, `dlclark/regexp2/v2` v2.2.1 to v2.2.2,
+  and `mattn/go-sqlite3` v1.14.46 to v1.14.47. Combined with the pinned
+  `go1.26.4` toolchain from v1.12.1, `govulncheck ./...` reports **no
+  vulnerabilities**. All other modules were already at their latest versions.
+
+---
+
+## [1.12.1] — 2026-06-25
+
+**CI fix + supply-chain hardening.**
+
+### Fixed
+
+- **CI markdown lint.** The v1.10.0 changelog entry used an empty link and code
+  spans with trailing spaces, failing the `lint-markdown` gate. Rewritten to
+  satisfy markdownlint (MD038/MD042) so CI is green again.
+
+### Security
+
+- **Pinned a patched Go toolchain** (`toolchain go1.26.4` in `go.mod`). Builds —
+  including the in-place `update-vayupress.sh` path on a server — now link the
+  fixed standard library, clearing the `crypto/tls`, `crypto/x509`,
+  `encoding/pem`, `net/url`, and `net/mail` advisories. `govulncheck ./...`
+  reports **no vulnerabilities**. Dependencies were already at their latest
+  published versions.
+
+---
+
+## [1.12.0] — 2026-06-25
+
+**Theme import / export in Theme Studio.**
+
+### Added
+
+- **Export theme.** Download the full active theme — design tokens
+  (palette/typography/layout) plus the site-wide custom CSS and head/SEO meta —
+  as a single portable JSON file from Theme Studio (`GET /os/api/theme/export`).
+- **Import theme.** Upload a previously exported theme JSON to apply it
+  everywhere (`POST /os/api/theme/import`). Imported tokens are **validated by
+  compiling them** before going live, custom CSS is capped at 16 KB, and head
+  meta is checked against the same escaped allowlist as the editor — so a bad
+  file can never break the site or bypass the CSP.
+
+---
+
+## [1.11.0] — 2026-06-25
+
+**Tumblr-style theme code editing in Theme Studio.**
+
+### Added
+
+- **Custom CSS editor in Theme Studio.** The VayuOS Theme Studio (`/os/theme`)
+  now has a full Custom CSS editor (monospace, 16 KB). Styles are served
+  same-origin via `/theme.css` — **CSP-safe** (`style-src 'self'`), no external
+  origins, no script execution — and apply to every public page on save.
+- **Head & SEO meta controls in Theme Studio.** Keywords, theme-colour,
+  robots directive, and Google/Bing verification tokens are editable inline.
+  Raw `<head>` HTML is deliberately rejected (it could smuggle redirects or
+  beacons past the CSP); fields render to a validated, escaped `<meta>`
+  allowlist. Saved via a new dedicated `POST /os/api/theme/code` endpoint that
+  only touches these keys (never the identity/palette settings).
+
+---
+
+## [1.10.0] — 2026-06-25
+
+**A Ghost-style writing experience for the VayuOS editor.**
+
+### Added
+
+- **Inline rich text.** Block text now renders Markdown inline — **bold**,
+  *italic*, `inline code`, links, and ~~strikethrough~~ — across
+  paragraphs, headings, quotes, callouts and list items. Output is still run
+  through the bluemonday UGC sanitizer (no new XSS surface).
+- **Selection formatting toolbar.** Select text in the editor and a floating bar
+  appears with Bold / Italic / Code / Strikethrough / Link, wrapping the
+  selection in the matching Markdown.
+- **Markdown shortcuts while typing.** At the start of a paragraph: `##` then a
+  space becomes a heading, `-` or `*` a bullet list, `1.` a numbered list, `>` a
+  quote, a triple-backtick fence a code block, `---` a divider — converted
+  instantly as you type.
+- **Continuous writing flow.** <kbd>Enter</kbd> creates the next block and
+  focuses it; <kbd>Shift+Enter</kbd> inserts a soft line break;
+  <kbd>Backspace</kbd> on an empty block removes it and returns focus to the
+  previous one. New/converted blocks autofocus.
+- **Filterable slash menu.** The `/` block palette now has a search box — type
+  to narrow the list and press <kbd>Enter</kbd> to insert the first match.
+- **Image paste & drag-and-drop.** Paste an image from the clipboard or drop an
+  image file onto the canvas to upload it (via the existing media pipeline) and
+  insert it inline.
+
+---
+
+## [1.9.3] — 2026-06-25
+
+**Fix: admin panel pages could show stale content after an update.**
+
+### Fixed
+
+- **VayuOS admin pages are now served with `Cache-Control: no-store`.** Admin
+  HTML previously carried no cache directives, so a browser (especially mobile)
+  or proxy could keep showing an old panel — e.g. the Analytics page appearing
+  "unchanged" after a deploy even though the new version was live. Admin pages
+  are dynamic and cheap to render, so they are now always served fresh; combined
+  with the v1.9.1 versioned (`?v=`) CSS/JS, deploys take effect immediately.
+
+---
+
+## [1.9.2] — 2026-06-25
+
+**Fix: SEO dashboard 502 on large sites.**
+
+### Fixed
+
+- **SEO page no longer times out (502) on large sites.** The content-quality
+  tallies (healthy / thin / missing-title) previously scanned every article
+  body (`LENGTH(content)` across all rows) on each page load — far too slow on
+  a 234k-post database, causing an nginx **502 Bad Gateway**. The scan now runs
+  as a single aggregate query in a **background goroutine**, cached for 15
+  minutes with throttled refresh, so the SEO page renders instantly and never
+  blocks the request path. Numbers show `…` on the very first view and fill in
+  within a few seconds.
+
+---
+
+## [1.9.1] — 2026-06-24
+
+**Analytics & mail polish — deeper insights and a more complete mailbox.**
+
+### Added
+
+- **VayuAnalytics — reporting period selector.** Choose any window from 24
+  hours up to **3 years** (24h / 7d / 30d / 90d / 6mo / 1y / 2y / 3y) on the
+  Analytics page; the selection flows through every card, the goals/journey
+  sections, and the export links.
+- **VayuAnalytics — conversion goals.** Define named goals as either a page
+  view (path, with a trailing-`*` prefix match) or a custom event; the panel
+  shows completions, unique converters, and conversion rate over the window.
+- **VayuAnalytics — visitor journey / path analysis.** Most common
+  page-to-page transitions with synthetic `(entry)`/`(exit)` markers; computed
+  on a bounded scan so it stays cheap on large datasets.
+- **VayuAnalytics — report export.** Download any report (overview, pages,
+  referrers, browsers, devices, OS, countries, regions, cities, UTM, events,
+  sessions, goals, journey) as **CSV or JSON**. Exports are computed locally
+  and contain no PII.
+- **VayuAnalytics — country/region/city.** Coarse location captured
+  **server-side from trusted reverse-proxy headers** (Cloudflare
+  `CF-IPCountry`/`CF-IPCity`, generic `X-Geo-*`, App Engine). VayuPress performs
+  **no GeoIP lookup, bundles no GeoIP database, and never stores an IP**;
+  Cloudflare `XX`/`T1` placeholders are dropped.
+- **VayuAnalytics — live panel.** A realtime card showing active visitors and
+  active pages, refreshing every 10s (pauses on a hidden tab); CSP-safe.
+- **VayuMail — built-in junk filter.** Fully-local heuristic scorer files
+  obvious spam straight into the recipient's Junk folder on inbound delivery
+  (no external services, no network calls); operator-toggleable.
+- **VayuMail — account management.** Set a new password or enable/disable an
+  existing mail account from the panel (disabled accounts keep their mailbox
+  but cannot authenticate).
+- **VayuMail — reply & forward.** Compose pre-filled server-side from the
+  selected message (original PGP-decrypted for the owner and quoted).
+
+### Fixed
+
+- **Admin-OS asset caching.** Versioned `?v=` query on the VayuOS CSS/JS so a
+  deploy always serves fresh panel assets instead of a stale 1-hour browser
+  cache.
+
+---
+
+## [1.9.0] — 2026-06-24
+
+**"Stable Private Email" — the inbound half of VayuMail.**
+
+### Added (v1.9.0 — "Stable Private Email")
+
+- **Inbound mail — receive side complete.** Local delivery into Maildir
+  (`Engine.DeliverInbound`), mailbox listing/read with path-traversal protection
+  (`Maildir.List` / `ReadRaw`), per-account inbox summaries (`Engine.Mailboxes`),
+  and a `/os/vayuos/mail/inbox` panel view.
+- **SMTP-receive server** (`smtpd.go`) — RFC 5321 listener (EHLO/MAIL/RCPT/DATA/
+  RSET/NOOP/QUIT), no-open-relay (only local-domain recipients accepted),
+  dot-unstuffing, size caps. Opt-in via `VAYUOS_MAIL_INBOUND=on`.
+- **IMAP read server** (`imapd.go`) — RFC 3501 subset (CAPABILITY, LOGIN via
+  VayuPress accounts, LIST, SELECT, FETCH incl. BODY[]/FLAGS/SIZE/INTERNALDATE,
+  STORE \Seen, NOOP, LOGOUT) so standard clients can read the Maildir.
+- **Transparent PGP decryption on read** — IMAP serves decrypted bodies to the
+  owning account when VayuPGP holds its key; best-effort, never blocks delivery.
+
+> The inbound listeners are a long-running daemon and therefore strictly
+> opt-in (`VAYUOS_MAIL_INBOUND=on`) per the Operational Simplicity Doctrine.
+
+---
+
+## [1.8.0] — 2026-06-24
+
+**Sovereignty release — VayuAnalytics, VayuOS Phase 2 (VayuMail + VayuPGP), and the Theme Studio Gallery.**
+
+The constitution evolves: _Complete digital sovereignty in one binary. Own your
+content. Own your communication. Own your infrastructure._ Publishing remains
+the core identity; VayuMail is the native sovereignty layer, VayuPGP the native
+privacy layer, and VayuOS the native control layer — all in the single binary.
+
+### Added
+
+- **VayuAnalytics** — privacy-first, cookieless, no-PII web analytics stored in
+  SQLite: overview, daily pageview series, top pages, referrers (reduced to
+  host), browsers/devices/OS buckets, UTM campaigns, custom events, realtime,
+  sessions, funnels, weekly retention cohorts, and revenue. Visitor/session
+  identity is derived **server-side** from a daily-rotating, crypto-random
+  salted hash of (IP + User-Agent + host); the raw IP and User-Agent are
+  **never stored**. Public tracking script (`/static/vp-analytics.js`) sets no
+  cookies and writes nothing to `localStorage`. Protected JSON API under
+  `/api/v1/analytics/*`.
+- **VayuPGP** (`internal/vayuos/pgp`) — native PGP on ProtonMail go-crypto:
+  Ed25519 (sign) + Curve25519 (encrypt) keypairs, 2-year expiry, private keys
+  **AES-256-GCM encrypted at rest** under a master-secret-derived key,
+  encrypt/decrypt/sign/verify, encrypt-and-sign, key rotation preserving old
+  messages (archived keys), revocation, import/export, and a **WKD server**
+  (RFC, advanced method) at `/.well-known/openpgpkey/`.
+- **VayuMail** (`internal/vayuos/mail`) — native outbound mail: RFC 6376 DKIM
+  signing (relaxed/relaxed, RSA-2048/SHA-256), direct-to-MX delivery with
+  opportunistic STARTTLS, durable SQLite retry queue with exponential backoff,
+  Maildir storage, MX/SPF/DKIM/DMARC record generation, live DNS health checks,
+  and automatic PGP encryption of outgoing mail via WKD discovery.
+- **VayuOS kernel** (`internal/vayuos/kernel`) — typed event bus
+  (`UserCreated → PGP keypair + mailbox`), ordered boot orchestrator (critical
+  steps abort, others degrade), and a health monitor.
+- **VayuOS panel** — `/os/vayuos` dashboard plus `/os/vayuos/pgp`,
+  `/os/vayuos/mail` (queue + DNS records + live health), `/os/vayuos/security`,
+  and `/os/api/vayuos/health` (JSON). All session-protected.
+- **Security-update watcher** (`internal/vayuos/secwatch`) — opt-in
+  (`VAYUOS_SECURITY_UPDATES=on`) advisory that compares the built versions of
+  security-critical crypto dependencies (go-crypto, CIRCL, …) against upstream
+  GitHub releases. Disabled by default; sends nothing about the site.
+- **Theme Studio Gallery** — 20+ presets including the new **Gale** (editorial
+  magazine) and **Zephyr** (bright creative) themes; per-preset embedded CSS now
+  reaches `/theme.css` via the CSP-safe Pico bridge; WCAG-AA contrast and ≥44px
+  touch targets.
+- Migrations `031`–`035` for the analytics session/pageview/event/funnel/revenue
+  tables (all indexed).
+- Dependencies: `github.com/ProtonMail/go-crypto` (Apache-2.0) and its transitive
+  `github.com/cloudflare/circl` (BSD-3-Clause).
+
+### Changed
+
+- Account creation now publishes a `UserCreated` event; with a domain configured
+  VayuOS auto-provisions the PGP keypair and Maildir mailbox.
+- Analytics retention janitor now also prunes detailed session/pageview/event
+  rows beyond `AnalyticsRetainDays` (data minimisation).
+
+### Security
+
+- No cookies, no `localStorage` identifiers, and no IP/User-Agent retention in
+  analytics. Public ingest is body-capped (8 KB) and per-IP rate-limited.
+- PGP private keys are AES-256-GCM encrypted at rest and never logged; logs
+  record only fingerprints. SMTP delivery uses STARTTLS (TLS ≥ 1.2).
+
+### Upgrade Notes
+
+- VayuMail activates only when a real `DOMAIN` is set (not `localhost`); until
+  then VayuOS runs in degraded mode and the rest of VayuPress is unaffected.
+- The PGP at-rest key is derived from `API_KEY`; keep it stable to retain access
+  to stored keypairs.
+
+### Scope
+
+- VayuMail v1.8.0 is the **outbound** sovereignty path. A full inbound MX + IMAP
+  server is a governed future milestone (Operational Simplicity Doctrine).
 
 ---
 

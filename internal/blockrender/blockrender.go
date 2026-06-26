@@ -10,6 +10,7 @@
 package blockrender
 
 import (
+	"bytes"
 	"encoding/json"
 	"html"
 	"regexp"
@@ -18,7 +19,41 @@ import (
 
 	"github.com/johalputt/vayupress/internal/diagram"
 	"github.com/microcosm-cc/bluemonday"
+	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/extension"
+	goldhtml "github.com/yuin/goldmark/renderer/html"
 )
+
+// inlineMD renders inline markdown (bold, italic, inline code, links,
+// strikethrough) inside block text. It is GFM-based but HTML-unsafe input is
+// escaped by goldmark and the assembled fragment is still run through the
+// bluemonday UGC policy below, so this never widens the XSS surface — it only
+// upgrades the previously plain-escaped text to safe rich inline HTML.
+var inlineMD = goldmark.New(
+	goldmark.WithExtensions(extension.Strikethrough, extension.Linkify),
+	goldmark.WithRendererOptions(goldhtml.WithHardWraps()),
+)
+
+// renderInlineHTML converts s to inline HTML (no enclosing block element). It is
+// used for the text of paragraph/heading/quote/callout/list blocks so authors
+// can use **bold**, *italic*, `code`, [links](url) and ~~strike~~. The caller
+// wraps the result in the appropriate block tag; bluemonday then sanitises the
+// whole fragment.
+func renderInlineHTML(s string) string {
+	if strings.TrimSpace(s) == "" {
+		return ""
+	}
+	var buf bytes.Buffer
+	if err := inlineMD.Convert([]byte(s), &buf); err != nil {
+		return html.EscapeString(s)
+	}
+	out := strings.TrimSpace(buf.String())
+	// Strip a single enclosing <p>…</p> so the text can be placed inside the
+	// caller's own block tag (heading, li, blockquote, …). Multi-paragraph text
+	// keeps its inner <p> boundaries, which remain valid after wrapping.
+	out = strings.TrimSuffix(strings.TrimPrefix(out, "<p>"), "</p>")
+	return out
+}
 
 // embedSrcRe is the closed allowlist for a video-facade iframe source: only the
 // cookie-free YouTube/Vimeo embed origins, with a constrained id. It is used
@@ -35,16 +70,54 @@ func safeEmbedSrc(s string) string {
 	return ""
 }
 
+// localMediaRe constrains a self-hosted media URL to the site's own /media path.
+// Audio/source elements may only ever point here — never at an external origin —
+// keeping playback privacy-preserving (no third-party request on page load).
+var localMediaRe = regexp.MustCompile(`^/media/[A-Za-z0-9][A-Za-z0-9._/-]*$`)
+
+// audioPreloadRe is the closed allowlist for the <audio preload> attribute.
+var audioPreloadRe = regexp.MustCompile(`^(none|metadata|auto)$`)
+
+// safeMediaURL returns s if it is a local /media URL, else "". It is applied
+// before emit and re-applied by the bluemonday Matching barrier below, so a
+// crafted block can never point an <audio> element off-site.
+func safeMediaURL(s string) string {
+	s = strings.TrimSpace(s)
+	if localMediaRe.MatchString(s) {
+		return s
+	}
+	return ""
+}
+
 // policy sanitises the assembled HTML. UGCPolicy allows a safe subset of tags
-// (p, headings, lists, blockquote, pre/code, a, img, em/strong, etc.) and
-// strips scripts, event handlers, and javascript: URLs. We additionally allow
-// class on div/span and the validated data-embed-src / data-embed-title on the
-// video-facade div (click-to-load — no iframe is present until the reader acts).
+// (p, headings, lists, blockquote, pre/code, a, img, em/strong, figure, etc.)
+// and strips scripts, event handlers, and javascript: URLs. We additionally
+// allow:
+//   - class on the structural elements our blocks emit (class can carry no
+//     script, so this only widens styling, never the XSS surface);
+//   - the validated data-embed-src / data-embed-title on the video-facade div
+//     (click-to-load — no iframe is present until the reader acts);
+//   - tables (table/thead/tbody/tr/th/td) for the table block;
+//   - details/summary for collapsible toggle blocks;
+//   - a self-hosted <audio> element whose src is restricted to the local /media
+//     path — never an external origin (privacy-first).
 var policy = func() *bluemonday.Policy {
 	p := bluemonday.UGCPolicy()
-	p.AllowAttrs("class").OnElements("div", "span", "pre")
+	p.AllowAttrs("class").OnElements(
+		"div", "span", "pre", "ul", "ol", "li", "figure", "figcaption",
+		"table", "thead", "tbody", "tr", "th", "td", "details", "summary", "audio")
 	p.AllowAttrs("data-embed-src").Matching(embedSrcRe).OnElements("div")
 	p.AllowAttrs("data-embed-title").OnElements("div")
+	// Table block.
+	p.AllowTables()
+	// Collapsible toggle block.
+	p.AllowElements("details", "summary")
+	p.AllowAttrs("open").OnElements("details")
+	// Self-hosted audio block (local /media only — never third-party).
+	p.AllowElements("audio")
+	p.AllowAttrs("controls").OnElements("audio")
+	p.AllowAttrs("preload").Matching(audioPreloadRe).OnElements("audio")
+	p.AllowAttrs("src").Matching(localMediaRe).OnElements("audio")
 	return p
 }()
 
@@ -66,6 +139,15 @@ type Block struct {
 	ThumbURL    string `json:"thumbURL,omitempty"` // local /media/... URL
 	Kind        string `json:"kind,omitempty"`     // embed: "link" (default) or "video"
 	EmbedSrc    string `json:"embedSrc,omitempty"` // video: cookie-free iframe URL (allowlisted)
+	// table block — Header is the optional first (heading) row; Rows are the body.
+	Header []string   `json:"header,omitempty"`
+	Rows   [][]string `json:"rows,omitempty"`
+	// tasklist block — Items holds each label; Checked the parallel done-state.
+	Checked []bool `json:"checked,omitempty"`
+	// toggle block — Summary is the clickable title, Text the body, Open the
+	// default expanded state.
+	Summary string `json:"summary,omitempty"`
+	Open    bool   `json:"open,omitempty"`
 }
 
 // Render parses a blocks JSON document and returns sanitised HTML plus a plain-
@@ -120,7 +202,7 @@ func renderBlock(b, plain *strings.Builder, blk Block) {
 		if strings.TrimSpace(blk.Text) == "" {
 			return
 		}
-		b.WriteString("<p>" + html.EscapeString(blk.Text) + "</p>")
+		b.WriteString("<p>" + renderInlineHTML(blk.Text) + "</p>")
 		plain.WriteString(blk.Text + " ")
 	case "heading":
 		lvl := blk.Level
@@ -128,10 +210,10 @@ func renderBlock(b, plain *strings.Builder, blk Block) {
 			lvl = 2
 		}
 		tag := "h" + strconv.Itoa(lvl)
-		b.WriteString("<" + tag + ">" + html.EscapeString(blk.Text) + "</" + tag + ">")
+		b.WriteString("<" + tag + ">" + renderInlineHTML(blk.Text) + "</" + tag + ">")
 		plain.WriteString(blk.Text + " ")
 	case "quote":
-		b.WriteString("<blockquote><p>" + html.EscapeString(blk.Text) + "</p></blockquote>")
+		b.WriteString("<blockquote><p>" + renderInlineHTML(blk.Text) + "</p></blockquote>")
 		plain.WriteString(blk.Text + " ")
 	case "code":
 		cls := ""
@@ -148,7 +230,7 @@ func renderBlock(b, plain *strings.Builder, blk Block) {
 		}
 		b.WriteString("<" + tag + ">")
 		for _, it := range blk.Items {
-			b.WriteString("<li>" + html.EscapeString(it) + "</li>")
+			b.WriteString("<li>" + renderInlineHTML(it) + "</li>")
 			plain.WriteString(it + " ")
 		}
 		b.WriteString("</" + tag + ">")
@@ -223,8 +305,95 @@ func renderBlock(b, plain *strings.Builder, blk Block) {
 		if tone != "" {
 			cls += " callout--" + tone
 		}
-		b.WriteString(`<div class="` + cls + `"><p>` + html.EscapeString(blk.Text) + `</p></div>`)
+		b.WriteString(`<div class="` + cls + `"><p>` + renderInlineHTML(blk.Text) + `</p></div>`)
 		plain.WriteString(blk.Text + " ")
+	case "table":
+		// A table renders an optional heading row plus body rows. Cell text goes
+		// through the inline-markdown pass (bold/links/code) and the whole table
+		// is still bluemonday-sanitised by the caller.
+		if len(blk.Header) == 0 && len(blk.Rows) == 0 {
+			return
+		}
+		b.WriteString(`<figure class="vp-table"><table>`)
+		if len(blk.Header) > 0 {
+			b.WriteString("<thead><tr>")
+			for _, h := range blk.Header {
+				b.WriteString("<th>" + renderInlineHTML(h) + "</th>")
+				plain.WriteString(h + " ")
+			}
+			b.WriteString("</tr></thead>")
+		}
+		b.WriteString("<tbody>")
+		for _, row := range blk.Rows {
+			b.WriteString("<tr>")
+			for _, cell := range row {
+				b.WriteString("<td>" + renderInlineHTML(cell) + "</td>")
+				plain.WriteString(cell + " ")
+			}
+			b.WriteString("</tr>")
+		}
+		b.WriteString("</tbody></table></figure>")
+	case "toggle":
+		// Collapsible <details>; Summary is the always-visible title.
+		summary := blk.Summary
+		if strings.TrimSpace(summary) == "" {
+			summary = "Details"
+		}
+		openAttr := ""
+		if blk.Open {
+			openAttr = " open"
+		}
+		b.WriteString(`<details class="vp-toggle"` + openAttr + `><summary>` + renderInlineHTML(summary) + `</summary>`)
+		b.WriteString(`<div class="vp-toggle__body">`)
+		if strings.TrimSpace(blk.Text) != "" {
+			b.WriteString("<p>" + renderInlineHTML(blk.Text) + "</p>")
+		}
+		b.WriteString(`</div></details>`)
+		plain.WriteString(summary + " " + blk.Text + " ")
+	case "tasklist":
+		// A checklist. Done items carry a modifier class; we render a static
+		// glyph box (no <input>) so the public page stays inert and unsanitised
+		// state can never leak through.
+		if len(blk.Items) == 0 {
+			return
+		}
+		b.WriteString(`<ul class="vp-tasks">`)
+		for i, it := range blk.Items {
+			cls := "vp-task"
+			if i < len(blk.Checked) && blk.Checked[i] {
+				cls += " vp-task--done"
+			}
+			b.WriteString(`<li class="` + cls + `"><span class="vp-task__box" aria-hidden="true"></span>`)
+			b.WriteString(`<span class="vp-task__text">` + renderInlineHTML(it) + `</span></li>`)
+			plain.WriteString(it + " ")
+		}
+		b.WriteString(`</ul>`)
+	case "math":
+		// Lightweight, dependency-free math: the LaTeX/expression source is
+		// escaped and preserved verbatim in a styled element. A theme may later
+		// progressively enhance .vp-math (e.g. an optional KaTeX layer) without
+		// changing stored content. No external request is made by default.
+		if strings.TrimSpace(blk.Text) == "" {
+			return
+		}
+		b.WriteString(`<div class="vp-math">` + html.EscapeString(blk.Text) + `</div>`)
+		plain.WriteString(blk.Text + " ")
+	case "audio":
+		// Self-hosted audio only: the src is restricted to the site's own /media
+		// path (double-guarded by safeMediaURL here and the policy Matching rule),
+		// so audio never triggers a third-party request.
+		src := safeMediaURL(blk.URL)
+		if src == "" {
+			return
+		}
+		b.WriteString(`<figure class="vp-audio"><audio controls preload="metadata" src="` + html.EscapeString(src) + `"></audio>`)
+		if blk.Alt != "" {
+			b.WriteString(`<figcaption>` + renderInlineHTML(blk.Alt) + `</figcaption>`)
+		}
+		b.WriteString(`</figure>`)
+		if blk.Alt != "" {
+			plain.WriteString(blk.Alt + " ")
+		}
 	default:
 		// Unknown/forward-compatible block: skip silently.
 	}

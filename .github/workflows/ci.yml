@@ -10,7 +10,9 @@ on:
 # branch) so CI minutes aren't spent on commits already overwritten.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Never cancel in-progress runs on the default branch, so main always gets a
+  # completed (green) check; still cancel redundant PR/branch runs to save CI.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
   contents: read

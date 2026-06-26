@@ -51,6 +51,17 @@ func TestThemeEditorCoversSettingsAllowlist(t *testing.T) {
 		// Navigation menu is managed through the VayuOS Navigation tab
 		// (/os/settings/navigation), not the legacy theme editor.
 		settings.KeyNavItems: true,
+		// Footer is managed through the VayuOS Footer tab
+		// (/os/settings/footer), not the legacy theme editor.
+		settings.KeyFooterConfig: true,
+		// Hero image is uploaded via the Theme Studio Hero control (multipart),
+		// not a text/colour field in the legacy theme editor.
+		settings.KeyThemeHeroImage:     true,
+		settings.KeyThemeHeroImageType: true,
+		// Social/share (OG) image is uploaded via the Theme Studio Site-basics
+		// control (multipart), not the legacy theme editor.
+		settings.KeyThemeOGImage:     true,
+		settings.KeyThemeOGImageType: true,
 	}
 	page := themeEditorPage(map[string]string{}, "NORMAL", "test-nonce", "")
 	for key := range settings.AllKeys {

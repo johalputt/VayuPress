@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"html"
 	"html/template"
 	"net/http"
 	"os"
@@ -74,7 +75,22 @@ func WithCSPNonce(ctx context.Context, nonce string) context.Context {
 var (
 	policy    *bluemonday.Policy
 	htmlTagRe = regexp.MustCompile(`<[^>]+>`)
-	cssHashes struct{ ArticleCSS, AdminCSS, HighContrastCSS, CustomCSS string }
+	// htmlBlockRes matches non-rendered blocks (script/style/head/etc.) including
+	// their inner text, so raw CSS/JS never leaks into plain-text excerpts. Go's
+	// RE2 engine has no backreferences, so each block type gets its own pattern.
+	htmlBlockRes = func() []*regexp.Regexp {
+		tags := []string{"script", "style", "head", "noscript", "template", "svg"}
+		res := make([]*regexp.Regexp, 0, len(tags))
+		for _, t := range tags {
+			res = append(res, regexp.MustCompile(`(?is)<`+t+`\b[^>]*>.*?</\s*`+t+`\s*>`))
+		}
+		return res
+	}()
+	htmlCommentRe = regexp.MustCompile(`(?s)<!--.*?-->`)
+	// spaceBeforePunctRe trims the stray space introduced when an inline tag
+	// (e.g. </strong>) sits directly before punctuation, keeping excerpts tidy.
+	spaceBeforePunctRe = regexp.MustCompile(`\s+([.,!?;:])`)
+	cssHashes          struct{ ArticleCSS, AdminCSS, HighContrastCSS, CustomCSS string }
 )
 
 // Init initializes the HTML sanitizer, compiles the template, writes CSS assets, and warms the cache.
@@ -174,9 +190,155 @@ type SiteSettings struct {
 	// operator. Empty means render the built-in default links.
 	NavJSON string
 
+	// FooterJSON is the raw JSON object describing the premium site footer
+	// (tagline, link columns, social links, legal links, copyright line). Empty
+	// renders a sensible default bottom bar.
+	FooterJSON string
+
+	// OGImage is the public path ("/theme-assets/og") of an operator-uploaded
+	// social/share image, or "" when none is set. Used as the og:image for the
+	// homepage and as the fallback og:image for articles without an inline image.
+	OGImage string
+
 	// CommentsEnabled mirrors the feature.comments flag so the article template
 	// can render (or omit) the public comment widget.
 	CommentsEnabled bool
+}
+
+// OGImagePath maps a stored OG-image setting value to the public URL the
+// templates link, or "" when no image is uploaded. Keeps the (potentially large)
+// base64 blob out of the rendered SiteSettings snapshot — only presence matters.
+func OGImagePath(stored string) string {
+	if strings.TrimSpace(stored) == "" {
+		return ""
+	}
+	return "/theme-assets/og"
+}
+
+// FooterLink is a single labelled footer destination.
+type FooterLink struct {
+	Label string `json:"label"`
+	Href  string `json:"href"`
+}
+
+// FooterColumn is a titled group of footer links (e.g. "Company", "Resources").
+type FooterColumn struct {
+	Title string       `json:"title"`
+	Links []FooterLink `json:"links"`
+}
+
+// FooterConfig is the operator-editable shape of the public site footer. Every
+// part is optional; an empty config renders just the default copyright bar.
+type FooterConfig struct {
+	Tagline   string         `json:"tagline"`   // short blurb under the brand
+	Columns   []FooterColumn `json:"columns"`   // link columns
+	Social    []FooterLink   `json:"social"`    // social/profile links
+	Legal     []FooterLink   `json:"legal"`     // bottom-bar legal links (Privacy, Terms…)
+	Copyright string         `json:"copyright"` // {year} and {site} tokens are expanded
+}
+
+// footerLinkTags renders a slice of footer links to safe <a> tags. Labels are
+// HTML-escaped; hrefs are gated through safeNavHref (so javascript:/data: URLs
+// are dropped) and external links get rel="noopener noreferrer".
+func footerLinkTags(links []FooterLink) string {
+	var b strings.Builder
+	for _, l := range links {
+		label := strings.TrimSpace(l.Label)
+		href := strings.TrimSpace(l.Href)
+		if label == "" || href == "" || !safeNavHref(href) {
+			continue
+		}
+		rel := ""
+		if strings.HasPrefix(href, "http://") || strings.HasPrefix(href, "https://") {
+			rel = ` rel="noopener noreferrer"`
+		}
+		b.WriteString(`<a href="` + template.HTMLEscapeString(href) + `"` + rel + `>` + template.HTMLEscapeString(label) + `</a>`)
+	}
+	return b.String()
+}
+
+// footerHTML builds the premium public-site footer from the operator's
+// FooterConfig (stored as JSON on SiteSettings.FooterJSON). The output is fully
+// escaped/allowlisted markup. When no config is present it falls back to a clean
+// default bar with the brand, an auto-generated copyright line, a "Powered by
+// VayuPress" credit and the runtime badge — so every page always has a footer.
+func footerHTML(s SiteSettings) template.HTML {
+	brand := strings.TrimSpace(s.Name)
+	if brand == "" {
+		brand = "VayuPress"
+	}
+	var cfg FooterConfig
+	if strings.TrimSpace(s.FooterJSON) != "" {
+		_ = json.Unmarshal([]byte(s.FooterJSON), &cfg)
+	}
+
+	// Copyright line — expand {year}/{site} tokens; default when unset.
+	year := strconv.Itoa(time.Now().UTC().Year())
+	copyLine := strings.TrimSpace(cfg.Copyright)
+	if copyLine == "" {
+		copyLine = "© {year} {site}. All rights reserved."
+	}
+	copyLine = strings.ReplaceAll(copyLine, "{year}", year)
+	copyLine = strings.ReplaceAll(copyLine, "{site}", brand)
+
+	var b strings.Builder
+	b.WriteString(`<footer class="vayu-footer vayu-footer--premium">`)
+
+	// ── Top section: brand/tagline/social + link columns ──────────────────────
+	hasTop := strings.TrimSpace(cfg.Tagline) != "" || len(cfg.Columns) > 0 || len(cfg.Social) > 0
+	if hasTop {
+		b.WriteString(`<div class="vayu-footer-main">`)
+		b.WriteString(`<div class="vayu-footer-about">`)
+		b.WriteString(`<div class="vayu-footer-brand"><img src="/static/favicon-light.png" alt="" width="22" height="22">` + template.HTMLEscapeString(brand) + `</div>`)
+		if t := strings.TrimSpace(cfg.Tagline); t != "" {
+			b.WriteString(`<p class="vayu-footer-tagline">` + template.HTMLEscapeString(t) + `</p>`)
+		}
+		if social := footerLinkTags(cfg.Social); social != "" {
+			b.WriteString(`<div class="vayu-footer-social" aria-label="Social links">` + social + `</div>`)
+		}
+		b.WriteString(`</div>`) // .vayu-footer-about
+
+		if len(cfg.Columns) > 0 {
+			b.WriteString(`<div class="vayu-footer-cols">`)
+			for _, col := range cfg.Columns {
+				links := footerLinkTags(col.Links)
+				title := strings.TrimSpace(col.Title)
+				if links == "" && title == "" {
+					continue
+				}
+				b.WriteString(`<div class="vayu-footer-col">`)
+				if title != "" {
+					b.WriteString(`<div class="vayu-footer-col-title">` + template.HTMLEscapeString(title) + `</div>`)
+				}
+				if links != "" {
+					// Wrap each link in <li> for semantic list markup.
+					b.WriteString(`<ul class="vayu-footer-col-links">`)
+					for _, l := range col.Links {
+						tag := footerLinkTags([]FooterLink{l})
+						if tag != "" {
+							b.WriteString(`<li>` + tag + `</li>`)
+						}
+					}
+					b.WriteString(`</ul>`)
+				}
+				b.WriteString(`</div>`) // .vayu-footer-col
+			}
+			b.WriteString(`</div>`) // .vayu-footer-cols
+		}
+		b.WriteString(`</div>`) // .vayu-footer-main
+	}
+
+	// ── Bottom bar: copyright + legal links + powered-by + badge ──────────────
+	b.WriteString(`<div class="vayu-footer-bottom">`)
+	b.WriteString(`<span class="vayu-footer-copy">` + template.HTMLEscapeString(copyLine) + `</span>`)
+	if legal := footerLinkTags(cfg.Legal); legal != "" {
+		b.WriteString(`<nav class="vayu-footer-legal" aria-label="Legal">` + legal + `</nav>`)
+	}
+	b.WriteString(`<span class="vayu-footer-powered">Powered by <a href="https://vayupress.com" rel="noopener noreferrer">VayuPress</a></span>`)
+	b.WriteString(`</div>`) // .vayu-footer-bottom
+
+	b.WriteString(`</footer>`)
+	return template.HTML(b.String())
 }
 
 // NavItem is a single public navigation link (label + destination).
@@ -444,6 +606,30 @@ func CommentsJSLink() template.HTML {
 	return template.HTML(`<script src="/static/js/comments.js?v=` + commentsJSHash + `" defer></script>`)
 }
 
+// PostCardMediaJS hides a post card's cover image when the image fails to load,
+// so a broken/expired image URL never renders a broken-image icon on the home
+// or tag listing pages. It wires an `error` handler on each card image and also
+// catches images that already failed before the script ran (complete but zero
+// natural width). Served same-origin → satisfies the strict `script-src 'self'`
+// CSP without a nonce (so it works in disk-cached pages).
+const PostCardMediaJS = `(function(){` +
+	`function hide(img){var t=img.closest&&img.closest('.vayu-post-thumb');var n=t||img;if(n&&n.parentNode){n.parentNode.removeChild(n);}}` +
+	`function wire(img){img.addEventListener('error',function(){hide(img);});if(img.complete&&img.naturalWidth===0){hide(img);}}` +
+	`function init(){var n=document.querySelectorAll('.vayu-post-thumb img');for(var i=0;i<n.length;i++){wire(n[i]);}}` +
+	`if(document.readyState!=='loading'){init();}else{document.addEventListener('DOMContentLoaded',init);}` +
+	`})();`
+
+// postCardMediaJSHash versions the script URL for cache-busting.
+var postCardMediaJSHash = func() string {
+	sum := sha256.Sum256([]byte(PostCardMediaJS))
+	return hex.EncodeToString(sum[:8])
+}()
+
+// PostCardMediaJSLink returns the <script> tag for the post-card image fallback.
+func PostCardMediaJSLink() template.HTML {
+	return template.HTML(`<script src="/static/js/post-card-media.js?v=` + postCardMediaJSHash + `" defer></script>`)
+}
+
 // headMetaHTML renders the declarative <head> capabilities to a safe, escaped
 // allowlist of <meta> tags. Values are validated on write (hex/token/allowlist)
 // and HTML-escaped here — defense in depth. No arbitrary operator markup ever
@@ -483,12 +669,16 @@ type articlePage struct {
 	VideoFacadeJSLink   template.HTML
 	CommentsJSLink      template.HTML
 	NavLinks            template.HTML
+	Footer              template.HTML
 	CommentsEnabled     bool
 	SiteName            string
 	Author              string
 	// SEO fields computed by internal/seo
 	SEODescription string
 	OGImage        string
+	// SiteOGImage is the operator's uploaded fallback share image (path), used
+	// for og:image when the article has no inline image of its own.
+	SiteOGImage string
 	// Related articles (same-tag suggestions)
 	Related []RelatedArticle
 }
@@ -655,20 +845,22 @@ var articleTmpl = template.Must(template.New("article").Funcs(template.FuncMap{
 <meta property="og:url" content="https://{{.Domain}}/{{.Slug}}">
 <meta property="og:site_name" content="{{if .SiteName}}{{.SiteName}}{{else}}{{.Domain}}{{end}}">
 <meta property="og:locale" content="en">
-{{if .OGImage}}<meta property="og:image" content="{{.OGImage}}">{{end}}
+{{if .OGImage}}<meta property="og:image" content="{{.OGImage}}">{{else if .SiteOGImage}}<meta property="og:image" content="https://{{.Domain}}{{.SiteOGImage}}">{{end}}
 <meta property="article:published_time" content="{{.CreatedAt | isoDate}}">
 <meta property="article:modified_time" content="{{.UpdatedAt | isoDate}}">
 {{range .Tags}}<meta property="article:tag" content="{{.}}">{{end}}
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="{{.Title}}">
 <meta name="twitter:description" content="{{if .SEODescription}}{{.SEODescription}}{{else}}{{trunc .Content 160}}{{end}}">
-{{if .OGImage}}<meta name="twitter:image" content="{{.OGImage}}">{{end}}
+{{if .OGImage}}<meta name="twitter:image" content="{{.OGImage}}">{{else if .SiteOGImage}}<meta name="twitter:image" content="https://{{.Domain}}{{.SiteOGImage}}">{{end}}
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"Article","headline":"{{.Title | jsonAttr}}","description":"{{if .SEODescription}}{{.SEODescription | jsonAttr}}{{else}}{{.Content | jsonAttr}}{{end}}","datePublished":"{{.CreatedAt | isoDate}}","dateModified":"{{.UpdatedAt | isoDate}}","url":"https://{{.Domain}}/{{.Slug}}","inLanguage":"en","author":{"@type":"Person","name":"Ankush Choudhary Johal","url":"https://{{.Domain}}/about"},"publisher":{"@type":"Organization","name":"VayuPress","url":"https://{{.Domain}}"}}</script>
 {{.PicoCSSLink}}{{.CustomCSSLink}}{{.ArticleCSSLink}}{{.HighContrastCSSLink}}{{.ThemeCSSLink}}<link rel="stylesheet" href="/static/chroma.css">{{.HeadMeta}}{{.ThemeToggleJSLink}}{{.VideoFacadeJSLink}}
 <link rel="manifest" href="/manifest.json">
 <link rel="icon" type="image/png" href="/static/favicon-dark.png" media="(prefers-color-scheme: light)">
 <link rel="icon" type="image/png" href="/static/favicon-light.png" media="(prefers-color-scheme: dark)">
 <link rel="icon" type="image/png" href="/static/favicon-light.png">
+<script defer src="/static/vp-analytics.js"></script>
+<script defer src="/static/js/portal.js"></script>
 </head><body>
 <a href="#main-content" class="skip-link">Skip to main content</a>
 <div class="container">
@@ -696,10 +888,7 @@ var articleTmpl = template.Must(template.New("article").Funcs(template.FuncMap{
 <ul class="vayu-related-list">{{range .Related}}<li><a href="/{{.Slug}}">{{.Title}}</a> <time>{{.CreatedAt | humanDate}}</time></li>{{end}}</ul>
 </section>{{end}}
 {{if .CommentsEnabled}}<section id="vayu-comments" class="vayu-comments" data-slug="{{.Slug}}" aria-label="Comments"></section>{{end}}
-<footer class="vayu-footer">
-  <span>By <strong>{{if .Author}}{{.Author}}{{else}}Ankush Choudhary Johal{{end}}</strong> · Powered by <a href="https://vayupress.com">VayuPress</a></span>
-  <span class="vayu-footer-badge">runtime · governed</span>
-</footer>
+{{.Footer}}
 </main></div>{{if .CommentsEnabled}}{{.CommentsJSLink}}{{end}}</body></html>`))
 
 // HomeArticle is a single entry rendered on the public homepage index.
@@ -707,6 +896,8 @@ type HomeArticle struct {
 	Title     string
 	Slug      string
 	Excerpt   string
+	Image     string // cover image URL (first image found in the post), optional
+	Author    string // display name shown on the card, optional
 	Tags      []string
 	CreatedAt time.Time
 }
@@ -721,11 +912,14 @@ type homePage struct {
 	ThemeCSSLink        template.HTML
 	HeadMeta            template.HTML
 	ThemeToggleJSLink   template.HTML
+	PostCardMediaJSLink template.HTML
 	SiteName            string
 	Tagline             string
 	Description         string
 	ShowMembership      bool
 	NavLinks            template.HTML
+	Footer              template.HTML
+	OGImage             string
 	Articles            []HomeArticle
 	TotalCount          int
 }
@@ -738,17 +932,20 @@ var homeFuncs = template.FuncMap{
 var homeTmpl = template.Must(template.New("home").Funcs(homeFuncs).Parse(`<!DOCTYPE html><html lang="en" data-theme="dark"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{if .SiteName}}{{.SiteName}}{{else}}{{.Domain}}{{end}}{{if .Tagline}} — {{.Tagline}}{{end}}</title>
-<meta name="description" content="VayuPress — a governed, adaptive publishing runtime. Durable by design, observable end to end.">
+<meta name="description" content="{{if .Description}}{{.Description}}{{else if .Tagline}}{{.Tagline}}{{else}}{{if .SiteName}}{{.SiteName}}{{else}}{{.Domain}}{{end}}{{end}}">
 <meta name="generator" content="VayuPress {{.Version}}">
 <link rel="canonical" href="https://{{.Domain}}/">
 <link rel="alternate" type="application/rss+xml" title="{{.Domain}} feed" href="/feed.xml">
 <meta property="og:type" content="website"><meta property="og:title" content="{{.Domain}}">
 <meta property="og:url" content="https://{{.Domain}}/">
+{{if .OGImage}}<meta property="og:image" content="https://{{.Domain}}{{.OGImage}}"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="https://{{.Domain}}{{.OGImage}}">{{end}}
 {{.PicoCSSLink}}{{.CustomCSSLink}}{{.ArticleCSSLink}}{{.HighContrastCSSLink}}{{.ThemeCSSLink}}{{.HeadMeta}}{{.ThemeToggleJSLink}}
 <link rel="manifest" href="/manifest.json">
 <link rel="icon" type="image/png" href="/static/favicon-dark.png" media="(prefers-color-scheme: light)">
 <link rel="icon" type="image/png" href="/static/favicon-light.png" media="(prefers-color-scheme: dark)">
 <link rel="icon" type="image/png" href="/static/favicon-light.png">
+<script defer src="/static/vp-analytics.js"></script>
+<script defer src="/static/js/portal.js"></script>
 </head><body>
 <a href="#main-content" class="skip-link">Skip to main content</a>
 <div class="container">
@@ -757,38 +954,29 @@ var homeTmpl = template.Must(template.New("home").Funcs(homeFuncs).Parse(`<!DOCT
   <div class="vayu-nav-links">
     {{.NavLinks}}
     <button type="button" id="vayu-theme-toggle" class="vayu-theme-toggle" aria-label="Toggle theme">☾</button>
-    {{if .ShowMembership}}<a href="/signup" class="vayu-nav-signin">Sign in</a>
+    {{if .ShowMembership}}<a href="/members" class="vayu-nav-signin">Sign in</a>
     <a href="/signup" class="vayu-nav-signup">Sign up</a>{{end}}
   </div>
-  <span class="vayu-nav-status"><span class="vayu-mode-dot"></span>runtime · normal</span>
 </nav>
 <main id="main-content">
-<section class="vayu-hero">
-  <span class="vayu-hero-eyebrow">{{if .SiteName}}{{.SiteName}}{{else}}Sovereign Publishing Runtime{{end}}</span>
-  <h1>{{if .Tagline}}{{.Tagline}}{{else}}Publishing as an<br>adaptive runtime.{{end}}</h1>
-  <p class="vayu-hero-tagline">{{if .Description}}{{.Description}}{{else}}Durable by design, observable end to end. Every write is queued, signed, and governed by a live operational state machine — not a CMS, a control plane.{{end}}</p>
-  <div class="vayu-stats">
-    <div><span class="vayu-stat-val">{{.TotalCount}}</span><span class="vayu-stat-label">Published</span></div>
-    <div><span class="vayu-stat-val">Ed25519</span><span class="vayu-stat-label">Signed</span></div>
-    <div><span class="vayu-stat-val">WAL</span><span class="vayu-stat-label">Durable</span></div>
-    <div><span class="vayu-stat-val">v{{.Version}}</span><span class="vayu-stat-label">Runtime</span></div>
-  </div>
-</section>
+{{if or .Tagline .Description}}<section class="vayu-hero">
+  {{if .Tagline}}<h1>{{.Tagline}}</h1>{{else}}<h1>{{.SiteName}}</h1>{{end}}
+  {{if .Description}}<p class="vayu-hero-tagline">{{.Description}}</p>{{end}}
+</section>{{end}}
 <div class="vayu-section-label">Latest writing</div>
 {{if .Articles}}<div class="vayu-post-list">
-{{range .Articles}}<a class="vayu-post-card" href="/{{.Slug}}">
-  <div class="vayu-post-meta"><time datetime="{{.CreatedAt | shortDate}}">{{.CreatedAt | humanDate}}</time>{{if .Tags}}<span>·</span><span>{{range $i, $t := .Tags}}{{if $i}} · {{end}}#{{$t}}{{end}}</span>{{end}}</div>
-  <div class="vayu-post-title">{{.Title}}</div>
-  {{if .Excerpt}}<div class="vayu-post-excerpt">{{.Excerpt}}</div>{{end}}
-  <span class="vayu-post-arrow" aria-hidden="true">→</span>
+{{range .Articles}}<a class="vayu-post-card{{if .Image}} vayu-post-card--media{{end}}" href="/{{.Slug}}">
+  {{if .Image}}<div class="vayu-post-thumb"><img src="{{.Image}}" alt="" loading="lazy" decoding="async"></div>{{end}}
+  <div class="vayu-post-body">
+    <div class="vayu-post-meta"><time datetime="{{.CreatedAt | shortDate}}">{{.CreatedAt | humanDate}}</time>{{if .Author}}<span class="vayu-post-dot" aria-hidden="true"></span><span class="vayu-post-author">{{.Author}}</span>{{end}}</div>
+    <h2 class="vayu-post-title">{{.Title}}</h2>
+    {{if .Excerpt}}<p class="vayu-post-excerpt">{{.Excerpt}}</p>{{end}}
+  </div>
 </a>{{end}}
-</div>{{else}}<div class="vayu-empty">No articles published yet. The runtime is live and waiting.</div>{{end}}
-<footer class="vayu-footer">
-  <div class="vayu-footer-brand"><img src="/static/favicon-light.png" alt="" width="20" height="20">VayuPress</div>
-  <span class="vayu-footer-badge">runtime · governed</span>
-</footer>
+</div>{{else}}<div class="vayu-empty">No posts yet.</div>{{end}}
+{{.Footer}}
 </main>
-</div></body></html>`))
+</div>{{.PostCardMediaJSLink}}</body></html>`))
 
 var notFoundTmpl = template.Must(template.New("404").Parse(`<!DOCTYPE html><html lang="en" data-theme="dark"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -798,6 +986,8 @@ var notFoundTmpl = template.Must(template.New("404").Parse(`<!DOCTYPE html><html
 <link rel="icon" type="image/png" href="/static/favicon-dark.png" media="(prefers-color-scheme: light)">
 <link rel="icon" type="image/png" href="/static/favicon-light.png" media="(prefers-color-scheme: dark)">
 <link rel="icon" type="image/png" href="/static/favicon-light.png">
+<script defer src="/static/vp-analytics.js"></script>
+<script defer src="/static/js/portal.js"></script>
 </head><body>
 <div class="container">
 <nav class="vayu-nav" aria-label="Primary">
@@ -826,11 +1016,14 @@ func RenderHome(domain, version string, articles []HomeArticle, totalCount int) 
 		ThemeCSSLink:        ThemeCSSLink(),
 		HeadMeta:            headMetaHTML(s),
 		ThemeToggleJSLink:   ThemeToggleJSLink(),
+		PostCardMediaJSLink: PostCardMediaJSLink(),
 		SiteName:            s.Name,
 		Tagline:             s.Tagline,
 		Description:         s.Description,
 		ShowMembership:      s.ShowMembership,
 		NavLinks:            navLinksHTML(s.NavJSON),
+		Footer:              footerHTML(s),
+		OGImage:             s.OGImage,
 		Articles:            articles,
 		TotalCount:          totalCount,
 	})
@@ -891,8 +1084,10 @@ func RenderArticleWithLayout(a db.Article, layout ArticleLayoutType, related []R
 		CommentsEnabled:     s.CommentsEnabled,
 		SiteName:            s.Name,
 		Author:              s.Author,
+		Footer:              footerHTML(s),
 		SEODescription:      seoMeta.Description,
 		OGImage:             seoMeta.OGImage,
+		SiteOGImage:         s.OGImage,
 		Related:             related,
 	}
 	if err := articleTmpl.Execute(&buf, data); err != nil {
@@ -1091,9 +1286,78 @@ func WarmCache(splitTags func(string) []string) {
 	logging.LogInfo("cache-warm", fmt.Sprintf("pre-rendered %d articles", count))
 }
 
+// cacheSchema is bumped whenever the public listing/article templates change in
+// a way the CSS content hashes do not already capture (e.g. markup-only edits).
+// It feeds the cache fingerprint below so such changes still invalidate stale
+// pre-rendered HTML on the next deploy.
+const cacheSchema = "2"
+
+// cacheFingerprint summarises everything baked into the running binary that
+// affects pre-rendered public HTML: the release version, the manual cache
+// schema, and the content hashes of every stylesheet. Any change flips the
+// fingerprint.
+func cacheFingerprint() string {
+	sum := sha256.Sum256([]byte(strings.Join([]string{
+		Version, cacheSchema,
+		cssHashes.ArticleCSS, cssHashes.CustomCSS,
+		cssHashes.HighContrastCSS, cssHashes.AdminCSS,
+	}, "|")))
+	return hex.EncodeToString(sum[:])
+}
+
+// ReconcileCacheVersion drops stale pre-rendered public HTML after a deploy.
+//
+// The on-disk cache (home/index.html, tags/*.html, posts/*.html) is produced by
+// the templates and stylesheets compiled into the running binary. When those
+// change — a new release, edited card markup, or restyled cards — the cached
+// HTML would otherwise keep serving the OLD design until each page is purged by
+// an unrelated event (e.g. an article edit). That is exactly why the home page
+// can lag behind the tag pages: the home cache is only invalidated on content
+// changes, so a redeploy alone never refreshes it.
+//
+// We persist the renderer fingerprint next to the cache. On startup, if it no
+// longer matches (or is absent), every cached public page is removed so the next
+// request regenerates it with the current templates and CSS. Pages are cheap to
+// rebuild on demand, so this is safe to run on every boot.
+//
+// Call after render.Version is set and WriteCSSAssets has run (Init), so the
+// version and CSS hashes are populated.
+func ReconcileCacheVersion() {
+	fp := cacheFingerprint()
+	stampPath := filepath.Join(config.Cfg.CacheDir, ".render-stamp")
+	if b, err := os.ReadFile(stampPath); err == nil && strings.TrimSpace(string(b)) == fp {
+		return // cache was produced by this exact renderer — keep it
+	}
+	for _, sub := range []string{"home", "tags", "posts"} {
+		os.RemoveAll(filepath.Join(config.Cfg.CacheDir, sub))
+	}
+	if err := os.MkdirAll(config.Cfg.CacheDir, 0o755); err == nil {
+		_ = os.WriteFile(stampPath, []byte(fp), 0o644)
+	}
+	logging.LogInfo("cache", "render fingerprint changed — cleared stale pre-rendered public HTML")
+}
+
 // StripHTML removes all HTML tags from s and returns plain text.
 func StripHTML(s string) string {
 	return htmlTagRe.ReplaceAllString(s, "")
+}
+
+// PlainText converts HTML content into readable plain text suitable for
+// excerpts and previews. Unlike StripHTML, it first removes non-rendered blocks
+// such as <style>, <script> and <head> (including their inner text) and HTML
+// comments, then strips the remaining tags, unescapes HTML entities, and
+// collapses whitespace. This guarantees that a post which begins with a
+// <style>…</style> or <script>…</script> block never leaks raw CSS/JS into its
+// card excerpt.
+func PlainText(s string) string {
+	s = htmlCommentRe.ReplaceAllString(s, " ")
+	for _, re := range htmlBlockRes {
+		s = re.ReplaceAllString(s, " ")
+	}
+	s = htmlTagRe.ReplaceAllString(s, " ")
+	s = html.UnescapeString(s)
+	s = strings.TrimSpace(strings.Join(strings.Fields(s), " "))
+	return spaceBeforePunctRe.ReplaceAllString(s, "$1")
 }
 
 // SanitizeHTML runs the bluemonday UGC policy over s.
@@ -1365,6 +1629,54 @@ h1, h2, h3, h4, h5, h6 {
   opacity: 0.75;
 }
 
+/* Premium multi-column footer */
+.vayu-footer--premium { display: block; }
+.vayu-footer-main {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.2fr) 2fr;
+  gap: 2.5rem 3rem;
+  padding-bottom: 2rem;
+  margin-bottom: 1.5rem;
+  border-bottom: 1px solid var(--pico-muted-border-color);
+}
+.vayu-footer-about { max-width: 34ch; }
+.vayu-footer--premium .vayu-footer-brand { font-weight: 600; font-size: 1.05rem; color: var(--pico-color, inherit); }
+.vayu-footer-tagline { margin: 0.75rem 0 1rem; font-size: 0.9rem; line-height: 1.6; color: var(--pico-muted-color); }
+.vayu-footer-social { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.vayu-footer-social a {
+  font-size: 0.8rem; padding: 0.28rem 0.75rem; border-radius: 99px;
+  border: 1px solid var(--pico-muted-border-color); text-decoration: none;
+  transition: border-color 0.15s, color 0.15s;
+}
+.vayu-footer-social a:hover { border-color: var(--pico-primary); color: var(--pico-primary); }
+.vayu-footer-cols {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 1.5rem 2rem;
+}
+.vayu-footer-col-title {
+  font-size: 0.78rem; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.06em; margin-bottom: 0.8rem; opacity: 0.9;
+  color: var(--pico-color, inherit);
+}
+.vayu-footer-col-links { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.55rem; }
+.vayu-footer-col-links a { font-size: 0.875rem; text-decoration: none; }
+.vayu-footer-col-links a:hover { color: var(--pico-primary); }
+.vayu-footer-bottom {
+  display: flex; align-items: center; flex-wrap: wrap;
+  gap: 0.5rem 1.25rem; font-size: 0.8rem; color: var(--pico-muted-color);
+}
+.vayu-footer--premium .vayu-footer-copy { margin-right: auto; }
+.vayu-footer-legal { display: flex; flex-wrap: wrap; gap: 0.25rem 1.1rem; }
+.vayu-footer-legal a { text-decoration: none; }
+.vayu-footer-legal a:hover { color: var(--pico-primary); }
+.vayu-footer-powered { opacity: 0.85; }
+.vayu-footer--premium .vayu-footer-badge { margin-left: 0; }
+@media (max-width: 640px) {
+  .vayu-footer-main { grid-template-columns: 1fr; gap: 1.75rem; }
+  .vayu-footer--premium .vayu-footer-copy { margin-right: 0; width: 100%; }
+}
+
 /* ── Article header ─────────────────────────────────────────────────────── */
 .vayu-article-header { margin-bottom: 2rem; }
 
@@ -1476,56 +1788,90 @@ h1, h2, h3, h4, h5, h6 {
   margin-bottom: 1.25rem;
 }
 
-.vayu-post-list { display: flex; flex-direction: column; gap: 0; }
+.vayu-post-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1.5rem;
+}
 
 .vayu-post-card {
-  display: block;
-  padding: 1.25rem 0;
-  border-bottom: 1px solid var(--pico-muted-border-color);
+  display: flex;
+  flex-direction: column;
+  background: var(--pico-card-background-color, var(--pico-background-color));
+  border: 1px solid var(--pico-muted-border-color);
+  border-radius: 14px;
+  overflow: hidden;
   text-decoration: none;
   color: var(--pico-color);
-  position: relative;
-  transition: padding-left 0.15s ease;
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
 }
 
-.vayu-post-card:hover { padding-left: 0.5rem; }
+.vayu-post-card:hover {
+  transform: translateY(-4px);
+  border-color: var(--pico-primary);
+  box-shadow: 0 14px 34px -16px rgba(0, 0, 0, 0.55);
+}
 .vayu-post-card:hover .vayu-post-title { color: var(--pico-primary); }
 
-.vayu-post-meta {
-  font-size: 0.82rem;
-  color: var(--pico-muted-color);
-  margin-bottom: 0.35rem;
+.vayu-post-thumb {
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  background: var(--pico-muted-border-color);
+}
+.vayu-post-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.3s ease;
+}
+.vayu-post-card:hover .vayu-post-thumb img { transform: scale(1.05); }
+
+.vayu-post-body {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  align-items: center;
+  flex-direction: column;
+  flex: 1;
+  padding: 1.25rem 1.35rem 1.4rem;
 }
 
+.vayu-post-meta {
+  font-size: 0.8rem;
+  color: var(--pico-muted-color);
+  margin-bottom: 0.55rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+.vayu-post-dot {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.55;
+}
+.vayu-post-author { font-weight: 500; }
+
 .vayu-post-title {
-  font-size: 1.125rem;
-  font-weight: 600;
+  font-size: 1.2rem;
+  font-weight: 700;
+  line-height: 1.3;
   letter-spacing: -0.01em;
+  margin: 0 0 0.5rem;
   transition: color 0.15s;
-  margin-bottom: 0.25rem;
 }
 
 .vayu-post-excerpt {
-  font-size: 0.9rem;
+  font-size: 0.92rem;
   color: var(--pico-muted-color);
-  line-height: 1.55;
+  line-height: 1.6;
+  margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
-
-.vayu-post-arrow {
-  position: absolute;
-  right: 0.25rem;
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--pico-muted-color);
-  opacity: 0;
-  transition: opacity 0.15s, right 0.15s;
-}
-
-.vayu-post-card:hover .vayu-post-arrow { opacity: 1; right: 0; }
 
 /* ── Empty state ────────────────────────────────────────────────────────── */
 .vayu-empty {
@@ -1556,6 +1902,57 @@ h1, h2, h3, h4, h5, h6 {
 @media (max-width: 600px) {
   .vayu-nav-links { gap: 0.75rem; }
   .vayu-stats { gap: 1rem 1.75rem; }
-  .vayu-post-arrow { display: none; }
+  .vayu-post-list { grid-template-columns: 1fr; gap: 1.1rem; }
 }
+
+/* ── Tag index (topic cloud) + tag-page back link ───────────────────────── */
+.vayu-tag-cloud {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+}
+
+.vayu-tag--cloud {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.9rem;
+  padding: 0.4em 0.75em;
+  border: 1px solid var(--pico-muted-border-color);
+  background: var(--pico-card-background-color, var(--pico-primary-focus));
+  line-height: 1.2;
+  transition: background 0.15s, border-color 0.15s, transform 0.15s;
+}
+
+.vayu-tag--cloud:hover {
+  border-color: var(--pico-primary);
+  transform: translateY(-1px);
+}
+
+.vayu-tag-count {
+  font-size: 0.72rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  min-width: 1.4em;
+  padding: 0.05em 0.4em;
+  text-align: center;
+  border-radius: 99px;
+  background: var(--pico-primary);
+  color: var(--pico-primary-inverse);
+}
+
+.vayu-tag--cloud:hover .vayu-tag-count {
+  background: var(--pico-primary-inverse);
+  color: var(--pico-primary);
+}
+
+.vayu-tag-back {
+  color: var(--pico-muted-color);
+  text-decoration: none;
+  font-weight: 600;
+  transition: color 0.15s;
+}
+
+.vayu-tag-back:hover { color: var(--pico-primary); text-decoration: none; }
 `

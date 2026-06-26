@@ -46,11 +46,29 @@ const (
 	KeyBrandFavicon     = "brand.favicon"      // base64-encoded PNG/ICO bytes
 	KeyBrandFaviconType = "brand.favicon_type" // "image/png" | "image/x-icon"
 
+	// KeyThemeHeroImage stores a base64-encoded hero/cover image (PNG/JPEG/WebP)
+	// shown behind the homepage hero when the "Hero background" option is set to
+	// Image. Served same-origin at /theme-assets/hero.
+	KeyThemeHeroImage     = "theme.hero_image"
+	KeyThemeHeroImageType = "theme.hero_image_type"
+
+	// KeyThemeOGImage stores a base64-encoded social/share image (PNG/JPEG/WebP)
+	// used as the og:image / twitter:image for the homepage and as the fallback
+	// for articles without an inline image. Served at /theme-assets/og.
+	KeyThemeOGImage     = "theme.og_image"
+	KeyThemeOGImageType = "theme.og_image_type"
+
 	// Navigation menu. A JSON array of {"label","href"} objects defining the
 	// public nav links (top of every page). When unset, a sensible default
 	// (Home / Feed / Console) is rendered. Operators add/remove items — internal
 	// pages or external/redirect links — from Settings → Navigation.
 	KeyNavItems = "nav.items"
+
+	// Footer. A JSON object describing the premium public-site footer: tagline,
+	// link columns, social links, legal links (Privacy/Terms…) and the copyright
+	// line. Edited in Settings → Footer. When unset, a clean default copyright
+	// bar is rendered.
+	KeyFooterConfig = "footer.config"
 
 	// Feature flags — operator-toggleable platform modules surfaced in the
 	// Tools & Plugins panel. Each value is "on" (default) or "off". Disabling a
@@ -105,7 +123,12 @@ var AllKeys = map[string]bool{
 	KeyHeadVerifyBing:     true,
 	KeyBrandFavicon:       true,
 	KeyBrandFaviconType:   true,
+	KeyThemeHeroImage:     true,
+	KeyThemeHeroImageType: true,
+	KeyThemeOGImage:       true,
+	KeyThemeOGImageType:   true,
 	KeyNavItems:           true,
+	KeyFooterConfig:       true,
 	KeyFeatureComments:    true,
 	KeyFeatureNewsletter:  true,
 	KeyFeatureWebmentions: true,
@@ -129,6 +152,10 @@ var Defaults = map[string]string{
 	KeyHeadVerifyBing:     "",
 	KeyBrandFavicon:       "",
 	KeyBrandFaviconType:   "",
+	KeyThemeHeroImage:     "",
+	KeyThemeHeroImageType: "",
+	KeyThemeOGImage:       "",
+	KeyThemeOGImageType:   "",
 	KeyFeatureComments:    "on",
 	KeyFeatureNewsletter:  "on",
 	KeyFeatureWebmentions: "on",

@@ -36,6 +36,7 @@ import (
 	"github.com/johalputt/vayupress/internal/mode"
 	"github.com/johalputt/vayupress/internal/provenance"
 	"github.com/johalputt/vayupress/internal/render"
+	"github.com/johalputt/vayupress/internal/seo"
 	"github.com/johalputt/vayupress/internal/severity"
 )
 
@@ -232,6 +233,7 @@ func (a *App) handleHome(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := dbpkg.DB.Query(`SELECT title,slug,content,tags,created_at FROM articles WHERE COALESCE(status,'published')='published' ORDER BY created_at DESC LIMIT 30`)
 	var articles []render.HomeArticle
+	author := render.GetActiveSettings().Author
 	if err == nil {
 		defer rows.Close()
 		for rows.Next() {
@@ -240,6 +242,8 @@ func (a *App) handleHome(w http.ResponseWriter, r *http.Request) {
 			if rows.Scan(&ha.Title, &ha.Slug, &content, &tagsStr, &ha.CreatedAt) == nil {
 				ha.Tags = api.SplitTags(tagsStr)
 				ha.Excerpt = excerptFromHTML(content, 160)
+				ha.Image = seo.ExtractFirstImage(content)
+				ha.Author = author
 				articles = append(articles, ha)
 			}
 		}
@@ -262,10 +266,11 @@ func (a *App) handleNotFound(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, render.Render404(config.Cfg.Domain, Version))
 }
 
-// excerptFromHTML strips tags and returns a trimmed plain-text excerpt.
+// excerptFromHTML returns a trimmed plain-text excerpt from HTML content. It
+// uses render.PlainText so non-rendered blocks (<style>, <script>, <head>) and
+// HTML comments are dropped entirely — only readable body text can appear.
 func excerptFromHTML(s string, n int) string {
-	s = render.StripHTML(s)
-	s = strings.TrimSpace(strings.Join(strings.Fields(s), " "))
+	s = render.PlainText(s)
 	if len(s) > n {
 		cut := s[:n]
 		if idx := strings.LastIndex(cut, " "); idx > n/2 {
@@ -336,7 +341,7 @@ func (a *App) handleArticlePage(w http.ResponseWriter, r *http.Request) {
 		if m := a.resolveMember(r); !authorizedFor(accessLevel, m) {
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			w.Header().Set("Cache-Control", "no-store")
-			fmt.Fprint(w, renderPaywall(art, accessLevel))
+			fmt.Fprint(w, a.renderPaywall(r, art, accessLevel))
 			return
 		}
 	}
@@ -377,32 +382,77 @@ func setEmbedCSP(w http.ResponseWriter, r *http.Request, origins []string) {
 	w.Header().Set(hdr, render.BuildCSP(render.CSPNonce(r), origins))
 }
 
-// renderPaywall builds a minimal, sovereign preview page for gated content: the
-// title, a short text excerpt, and a sign-in / subscribe call to action.
-func renderPaywall(art dbpkg.Article, level string) string {
+// renderPaywall builds a premium, sovereign preview page for gated content: the
+// title, a short text excerpt, and a tier-aware membership call to action. For
+// paid-only content it surfaces the cheapest paid plan's price and benefits and
+// links to the full pricing page; for members-only content it invites a free
+// sign-up. A passwordless email form lets existing members sign in inline.
+func (a *App) renderPaywall(r *http.Request, art dbpkg.Article, level string) string {
 	excerpt := htmlTagRe.ReplaceAllString(bluemonday.StrictPolicy().Sanitize(art.Content), "")
 	if len(excerpt) > 600 {
 		excerpt = excerpt[:600] + "…"
 	}
+	esc := html.EscapeString
+
 	cta := "This post is for members."
+	perks := ""
+	priceBlock := ""
+	joinHref := "/signup"
+	joinLabel := "Sign up free"
+
 	if level == members.AccessPaid {
 		cta = "This post is for paid members."
+		joinHref = "/pricing"
+		joinLabel = "See membership plans"
+		// Surface the cheapest active, public paid tier for price + benefits.
+		if a.members != nil {
+			if tiers, err := a.members.ListTiers(r.Context(), false); err == nil {
+				var best *members.Tier
+				for i := range tiers {
+					t := tiers[i]
+					if t.IsFree() {
+						continue
+					}
+					if best == nil || t.MonthlyCents < best.MonthlyCents {
+						best = &tiers[i]
+					}
+				}
+				if best != nil {
+					price := priceLabel(best.Currency, best.MonthlyCents)
+					per := "month"
+					if best.MonthlyCents == 0 && best.YearlyCents > 0 {
+						price, per = priceLabel(best.Currency, best.YearlyCents), "year"
+					}
+					priceBlock = `<p class="pw-price"><strong>` + esc(price) + `</strong> <span>/ ` + esc(per) + `</span></p>`
+					var lis string
+					for _, b := range best.Benefits {
+						lis += `<li>` + esc(b) + `</li>`
+					}
+					if lis != "" {
+						perks = `<ul class="pw-perks">` + lis + `</ul>`
+					}
+				}
+			}
+		}
 	}
-	esc := html.EscapeString
+
 	return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">` +
 		`<meta name="viewport" content="width=device-width, initial-scale=1">` +
 		`<title>` + esc(art.Title) + `</title>` +
 		`<link rel="stylesheet" href="/theme.css"><link rel="stylesheet" href="/static/css/article.css">` +
-		`<meta name="robots" content="noindex"></head><body><main class="article" style="max-width:42rem;margin:3rem auto;padding:0 1rem">` +
+		`<link rel="stylesheet" href="/static/css/signup.css">` +
+		`<meta name="robots" content="noindex"></head><body><main class="article pw-shell">` +
 		`<h1>` + esc(art.Title) + `</h1>` +
-		`<p style="opacity:.8">` + esc(excerpt) + `</p>` +
-		`<div style="margin-top:2rem;padding:1.5rem;border:1px solid rgba(128,128,128,.3);border-radius:12px;text-align:center">` +
-		`<p style="font-weight:600;margin:0 0 .75rem">` + esc(cta) + `</p>` +
-		`<form method="POST" action="/members/login" style="display:flex;gap:.5rem;justify-content:center;flex-wrap:wrap">` +
-		`<input type="email" name="email" required placeholder="you@example.com" style="padding:.5rem .75rem;border-radius:8px;border:1px solid rgba(128,128,128,.4)">` +
-		`<button type="submit" style="padding:.5rem 1rem;border-radius:8px">Email me a sign-in link</button>` +
+		`<p class="pw-excerpt">` + esc(excerpt) + `</p>` +
+		`<div class="pw-gate">` +
+		`<p class="pw-title">` + esc(cta) + `</p>` +
+		priceBlock + perks +
+		`<p><a class="pw-join" href="` + joinHref + `">` + esc(joinLabel) + ` →</a></p>` +
+		`<form class="pw-form" method="POST" action="/members/login">` +
+		`<input type="email" name="email" required placeholder="you@example.com">` +
+		`<button type="submit">Email me a sign-in link</button>` +
 		`</form>` +
-		`<p style="font-size:.8rem;opacity:.6;margin-top:.75rem">Already a member? Use the same link to sign in.</p>` +
+		`<p class="pw-hint">Already a member? Enter your email above to sign in.</p>` +
 		`</div></main></body></html>`
 }
 

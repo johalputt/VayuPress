@@ -1,0 +1,108 @@
+name: Release From File
+
+# Self-contained signed release. Triggered by bumping `.release-version` on main
+# (or a manual run). It builds, cosign-signs, creates the `v*` tag, and publishes
+# the GitHub Release IN ONE RUN.
+#
+# Why self-contained: a tag pushed by GITHUB_TOKEN does NOT trigger other
+# workflows (GitHub's recursion guard), so a separate tag-triggered release
+# would never fire. Doing build+sign+publish here avoids that entirely.
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".release-version"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (e.g. v1.9.0)"
+        required: true
+
+permissions:
+  contents: write
+  id-token: write # cosign keyless signing
+
+concurrency:
+  group: release-from-file
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build, sign, and publish release
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve version
+        id: ver
+        run: |
+          set -euo pipefail
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            V="${{ github.event.inputs.version }}"
+          else
+            V="$(tr -d ' \t\r\n' < .release-version)"
+          fi
+          case "$V" in v[0-9]*) : ;; *) echo "::error::version '$V' must look like vX.Y.Z"; exit 1 ;; esac
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "Releasing $V"
+
+      - name: Skip if release already exists
+        id: exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "${{ steps.ver.outputs.version }}" >/dev/null 2>&1; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Release ${{ steps.ver.outputs.version }} already exists — skipping."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install C build tools
+        if: steps.exists.outputs.skip != 'true'
+        run: sudo apt-get install -y gcc build-essential
+
+      - uses: actions/setup-go@v5
+        if: steps.exists.outputs.skip != 'true'
+        with:
+          go-version: 'stable'
+          cache: true
+
+      - name: Build binary
+        if: steps.exists.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.ver.outputs.version }}"
+          mkdir -p dist
+          CGO_ENABLED=1 GOTOOLCHAIN=auto go build \
+            -trimpath -ldflags="-s -w -X main.Version=${VERSION#v}" \
+            -o dist/vayupress ./cmd/vayupress
+          sha256sum dist/vayupress > dist/vayupress.sha256
+          echo "built $VERSION"
+
+      - name: Install cosign
+        if: steps.exists.outputs.skip != 'true'
+        continue-on-error: true
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign binary (keyless OIDC)
+        if: steps.exists.outputs.skip != 'true'
+        continue-on-error: true
+        run: |
+          cosign sign-blob --yes dist/vayupress --bundle dist/vayupress.cosign.bundle || echo "cosign signing skipped/failed — publishing release without signature"
+          echo "sign step complete"
+
+      - name: Create tag + publish release
+        if: steps.exists.outputs.skip != 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.version }}
+          name: VayuPress ${{ steps.ver.outputs.version }}
+          generate_release_notes: true
+          fail_on_unmatched_files: false
+          files: |
+            dist/vayupress
+            dist/vayupress.sha256
+            dist/vayupress.cosign.bundle

@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"regexp"
@@ -68,7 +69,7 @@ import (
 	"github.com/johalputt/vayupress/internal/ws"
 )
 
-var Version = "1.7.0"
+var Version = "1.13.0"
 var bootTime = time.Now()
 
 // Immutable package-level values (compiled once, never mutated).
@@ -143,8 +144,47 @@ func generateSitemap() {
 		xml.EscapeText(&locBuf, []byte(fmt.Sprintf("https://%s/%s", config.Cfg.Domain, slug))) //nolint:errcheck
 		fmt.Fprintf(&sb, "<url><loc>%s</loc><lastmod>%s</lastmod></url>", locBuf.String(), updated.Format("2006-01-02"))
 	}
+	sitemapAppendTagPages(&sb)
 	sb.WriteString("</urlset>")
 	render.CacheWrite("sitemap.xml", sb.String()) //nolint:errcheck
+}
+
+// sitemapAppendTagPages adds the topic index (/tags) and every per-tag listing
+// (/tags/<tag>) to the sitemap so search engines discover the taxonomy. Tags are
+// gathered from published articles, deduplicated case-insensitively, and the URL
+// path segment is escaped to match the live route's decoding.
+func sitemapAppendTagPages(sb *strings.Builder) {
+	rows, err := dbpkg.DB.Query(`SELECT tags FROM articles WHERE tags != '' AND COALESCE(status,'published')='published'`)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	seen := make(map[string]string) // lower(tag) -> first-seen display form
+	for rows.Next() {
+		var csv string
+		if rows.Scan(&csv) != nil {
+			continue
+		}
+		for _, t := range api.SplitTags(csv) {
+			t = strings.TrimSpace(t)
+			if t == "" {
+				continue
+			}
+			if _, ok := seen[strings.ToLower(t)]; !ok {
+				seen[strings.ToLower(t)] = t
+			}
+		}
+	}
+	// Topic index.
+	var idxBuf strings.Builder
+	xml.EscapeText(&idxBuf, []byte(fmt.Sprintf("https://%s/tags", config.Cfg.Domain))) //nolint:errcheck
+	fmt.Fprintf(sb, "<url><loc>%s</loc></url>", idxBuf.String())
+	for _, display := range seen {
+		var locBuf strings.Builder
+		loc := fmt.Sprintf("https://%s/tags/%s", config.Cfg.Domain, url.PathEscape(display))
+		xml.EscapeText(&locBuf, []byte(loc)) //nolint:errcheck
+		fmt.Fprintf(sb, "<url><loc>%s</loc></url>", locBuf.String())
+	}
 }
 
 func generateRSS() {
@@ -299,6 +339,8 @@ func main() {
 			VerifyGoogle:    sv[settings.KeyHeadVerifyGoogle],
 			VerifyBing:      sv[settings.KeyHeadVerifyBing],
 			NavJSON:         sv[settings.KeyNavItems],
+			FooterJSON:      sv[settings.KeyFooterConfig],
+			OGImage:         render.OGImagePath(sv[settings.KeyThemeOGImage]),
 			CommentsEnabled: sv[settings.KeyFeatureComments] != "off",
 		})
 	}
@@ -385,6 +427,10 @@ func main() {
 				if n, err := a.analytics.Purge(context.Background(), config.Cfg.AnalyticsRetainDays); err == nil && n > 0 {
 					logging.LogInfo("analytics", fmt.Sprintf("purged %d aggregate rows older than %dd", n, config.Cfg.AnalyticsRetainDays))
 				}
+				// VayuAnalytics: data-minimisation sweep of detailed session/pageview rows.
+				if n, err := a.analytics.PurgeOlderThan(context.Background(), config.Cfg.AnalyticsRetainDays); err == nil && n > 0 {
+					logging.LogInfo("analytics", fmt.Sprintf("purged %d detailed rows older than %dd", n, config.Cfg.AnalyticsRetainDays))
+				}
 			}
 		}
 	}()
@@ -410,6 +456,9 @@ func main() {
 			}
 		}
 	}()
+
+	// ── VayuOS control layer (Phase 2): Publishing · Mail · PGP ──────────────
+	a.bootVayuOS()
 
 	// Mode journal — durable SQLite-backed transition log (Ω6).
 	dbPath := config.EnvOr("DB_PATH", "./vayupress.db")
@@ -498,6 +547,11 @@ func main() {
 
 	// Wire render package version.
 	render.Version = Version
+
+	// Drop stale pre-rendered public HTML when the renderer changed (new release,
+	// edited templates, or restyled cards) so a redeploy always serves the
+	// current design instead of a cached older home/tag page.
+	render.ReconcileCacheVersion()
 
 	// Meilisearch startup — search service handles the circuit breaker internally.
 	if search.WaitReady(context.Background(), a.search, 12) {

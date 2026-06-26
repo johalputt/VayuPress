@@ -25,7 +25,10 @@ BIN_PATH="${BIN_PATH:-/usr/local/bin/vayupress}"
 STATIC_DIR="${STATIC_DIR:-/var/lib/vayupress/static}"
 GO_BIN="${GO_BIN:-/usr/local/go/bin/go}"
 SERVICE="${SERVICE:-vayupress}"
-ENGINE_VERSION="${ENGINE_VERSION:-1.7.0}"
+# Version is derived from the freshly-pulled source just before the build (see
+# below), so the binary always reports the version it was actually built from.
+# Override with ENGINE_VERSION=... if you need a custom stamp.
+ENGINE_VERSION="${ENGINE_VERSION:-}"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; NC='\033[0m'
 ok()   { echo -e "${GREEN}✅ $*${NC}"; }
@@ -45,6 +48,14 @@ git -C "$SRC_DIR" checkout "$BRANCH"
 git -C "$SRC_DIR" pull --ff-only origin "$BRANCH"
 NEW_SHA=$(git -C "$SRC_DIR" rev-parse --short HEAD)
 ok "At commit $NEW_SHA"
+
+# Derive the version from the freshly-pulled source unless overridden, so the
+# built binary reports the version it was actually built from.
+if [[ -z "$ENGINE_VERSION" ]]; then
+  ENGINE_VERSION="$(grep -oE 'var Version = "[0-9]+\.[0-9]+\.[0-9]+"' "$SRC_DIR/cmd/vayupress/main.go" 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+  ENGINE_VERSION="${ENGINE_VERSION:-dev}"
+fi
+info "Building version ${ENGINE_VERSION} (commit ${NEW_SHA})"
 
 # ── 2. Build to a temp path FIRST (never clobber a working binary on failure) ─
 TMP_BIN="$(mktemp /tmp/vayupress.XXXXXX)"
@@ -86,7 +97,32 @@ else
   warn "No docs/ dir in $SRC_DIR — ADR page may be empty."
 fi
 
-# ── 5. Restart and verify ────────────────────────────────────────────────────
+# ── 5. Back up the database (opt-in, consistent, never blocks) ───────────────
+# Disabled by default so the update is always fast and can never hang on a busy
+# live DB. Enable with BACKUP_DB=1 to take a consistent snapshot (sqlite3 online
+# backup) before the restart — recommended before migration-bearing releases.
+# A hard timeout guarantees it can never stall the update.
+DB_PATH="${DB_PATH:-/var/lib/vayupress/vayupress.db}"
+BACKUP_DB="${BACKUP_DB:-0}"
+BACKUP_TIMEOUT="${BACKUP_TIMEOUT:-120}"
+if [[ "$BACKUP_DB" == "1" ]]; then
+  if [[ -f "$DB_PATH" ]] && command -v sqlite3 >/dev/null 2>&1; then
+    BACKUP="${DB_PATH%.db}.backup-$(date +%Y%m%d-%H%M%S).db"
+    info "Backing up DB to $BACKUP (max ${BACKUP_TIMEOUT}s)..."
+    if timeout "$BACKUP_TIMEOUT" sqlite3 -cmd ".timeout 5000" "$DB_PATH" ".backup '$BACKUP'" 2>/dev/null; then
+      ok "DB backup written: $BACKUP ($(du -h "$BACKUP" | cut -f1))"
+    else
+      rm -f "$BACKUP"
+      warn "DB backup timed out/failed (continuing). Back up $DB_PATH manually if needed."
+    fi
+  else
+    warn "BACKUP_DB=1 but DB not found at $DB_PATH or sqlite3 missing — skipping backup."
+  fi
+else
+  info "DB backup skipped (set BACKUP_DB=1 to snapshot before updating)."
+fi
+
+# ── 6. Restart and verify ────────────────────────────────────────────────────
 info "Restarting $SERVICE..."
 systemctl restart "$SERVICE"
 sleep 2

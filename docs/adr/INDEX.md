@@ -10,6 +10,11 @@
 | ADR | Title | Status | Owner | Date |
 |-----|-------|--------|-------|------|
 | [ADR-0001](ADR-0001-sqlite-first.md) | SQLite-First Data Layer | Accepted | Core | 2024-01-01 |
+| [ADR-0076](ADR-0076-vayupgp-at-rest-keys.md) | VayuPGP — Keys Encrypted At Rest | Accepted | VayuOS | 2026-06-24 |
+| [ADR-0077](ADR-0077-vayumail-outbound-pure-go.md) | VayuMail Outbound — Pure-Go (No Mox Fork) | Accepted | VayuOS | 2026-06-24 |
+| [ADR-0078](ADR-0078-vayumail-inbound-optin.md) | VayuMail Inbound — Opt-In SMTP/IMAP | Accepted | VayuOS | 2026-06-24 |
+| [ADR-0079](ADR-0079-vayuanalytics-no-pii.md) | VayuAnalytics — No-PII Rotating Salt | Accepted | VayuOS | 2026-06-24 |
+| [ADR-0080](ADR-0080-security-update-watcher.md) | Security-Update Watcher — Opt-In | Accepted | VayuOS | 2026-06-24 |
 | [ADR-0002](ADR-0002-self-hosted-fonts.md) | Self-Hosted Fonts | Accepted | Core | 2024-01-01 |
 | [ADR-0032](ADR-0032-plugin-pool-waitgroup.md) | Plugin Pool WaitGroup | Accepted | Sandbox | — |
 | [ADR-0033](ADR-0033-wal-adaptive-checkpoint.md) | WAL Adaptive Checkpoint | Accepted | DB | — |
@@ -55,6 +60,11 @@
 | [ADR-0073](ADR-0073-convert-to-blocks.md) | Convert-to-Blocks (non-destructive import into block editor) | Accepted | Core | 2026-06-21 |
 | [ADR-0074](ADR-0074-plugin-interface-spec.md) | Formal Plugin Interface Specification (language-neutral, versioned contract) | Accepted | Security | 2026-06-21 |
 | [ADR-0075](ADR-0075-draft-publish-workflow.md) | Draft/Publish Workflow and Public-Surface Isolation | Accepted | Security | 2026-06-22 |
+| [ADR-0081](ADR-0081-editor-inline-markdown.md) | Block Editor Inline Rich Text via Markdown (goldmark + bluemonday) | Accepted | Core | 2026-06-25 |
+| [ADR-0082](ADR-0082-theme-studio-code-editor.md) | Theme Studio Code Editor, Head Meta, and Import/Export (CSP-safe) | Accepted | Core | 2026-06-25 |
+| [ADR-0083](ADR-0083-vayumail-roles-search.md) | VayuMail Role-Based Accounts and Local Mailbox Search | Accepted | Core | 2026-06-25 |
+| [ADR-0084](ADR-0084-vayumail-outbound-deliverability.md) | VayuMail Outbound Deliverability — Vetted DKIM Signing + Well-Formed MIME | Accepted | VayuOS | 2026-06-25 |
+| [ADR-0085](ADR-0085-vayumail-outbound-smarthost-relay.md) | VayuMail Optional Outbound Smarthost Relay | Accepted | VayuOS | 2026-06-25 |
 
 ---
 

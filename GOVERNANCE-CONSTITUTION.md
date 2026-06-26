@@ -35,6 +35,40 @@ VayuPress is **modern lightweight publishing infrastructure** for developers, wr
 - Operational simplicity (one binary, one command, one database)
 - **New**: Zero-trust security by default
 
+### **Sovereignty Vision (v1.8.0 amendment)**
+
+> **"Complete digital sovereignty in one binary.
+> Own your content. Own your communication. Own your infrastructure."**
+
+As of v1.8.0 the identity of VayuPress evolves from a publishing engine into a
+sovereignty engine, organised as four native layers — all compiled into the
+**single binary, single process, single config**:
+
+| Layer | Subsystem | Role |
+|-------|-----------|------|
+| **Publishing** | CMS core | Core identity — own your content |
+| **Mail** | VayuMail | Native sovereignty layer — own your communication |
+| **PGP** | VayuPGP | Native privacy layer — encryption by architecture |
+| **Control** | VayuOS | Native control layer — `/os/vayuos`, one console |
+
+**Governing clauses for the sovereignty layers (binding):**
+
+1. **One binary, one process.** VayuMail and VayuPGP MUST compile into the same
+   binary as VayuPress. No sidecars, no separate services, no second database.
+2. **Privacy by architecture.** PGP keypairs are generated automatically; private
+   keys are AES-256-GCM encrypted at rest and never logged or transmitted.
+3. **Licence chain stays clean.** Crypto rests on ProtonMail go-crypto
+   (Apache-2.0) and Cloudflare CIRCL (BSD-3-Clause). No GPL/AGPL/SSPL dependency
+   may ever be introduced.
+4. **No telemetry.** The security-update watcher is opt-in and disabled by
+   default; it fetches only public release metadata and transmits nothing about
+   the operator or their site.
+5. **Operational Simplicity Doctrine applies.** A full inbound MX + IMAP daemon
+   is a heavy, long-running listener; it is admitted only as a deliberately
+   governed future milestone. v1.8.0 ships the outbound sovereignty path
+   (submission, DKIM, queue, DNS, WKD, PGP) which adds no always-listening mail
+   daemon and stays within the single-VPS resource budget.
+
 ### **🚫 NON-GOALS (Permanent Exclusions)**
 VayuPress **will never become**:
 - A drag-and-drop builder

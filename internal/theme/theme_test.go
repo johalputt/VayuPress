@@ -52,14 +52,19 @@ func TestCompileCSSSanitizesFontInjection(t *testing.T) {
 	}
 }
 
-// TestPresetsAllValid verifies that each of the 8 built-in presets compiles
-// successfully with CompileCSS.
+// TestPresetsAllValid verifies that every built-in preset compiles successfully
+// with CompileCSS and that the gallery exposes the expected themes.
 func TestPresetsAllValid(t *testing.T) {
 	presets := theme.AllPresets()
-	if len(presets) != 8 {
-		t.Fatalf("expected 8 presets, got %d", len(presets))
+	if len(presets) < 8 {
+		t.Fatalf("expected at least 8 presets, got %d", len(presets))
 	}
+	seen := map[string]bool{}
 	for _, p := range presets {
+		if p.Name == "" {
+			t.Errorf("preset with empty name")
+		}
+		seen[p.Name] = true
 		css, err := theme.CompileCSS(p)
 		if err != nil {
 			t.Errorf("preset %q failed to compile: %v", p.Name, err)
@@ -70,6 +75,12 @@ func TestPresetsAllValid(t *testing.T) {
 		}
 		if !strings.Contains(css, ":root{") {
 			t.Errorf("preset %q CSS missing :root{ block", p.Name)
+		}
+	}
+	// Theme Studio Gallery additions must be present.
+	for _, want := range []string{"Default", "Gale", "Zephyr"} {
+		if !seen[want] {
+			t.Errorf("expected preset %q in gallery", want)
 		}
 	}
 }

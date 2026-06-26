@@ -61,10 +61,12 @@ func ImportHTML(content string) []Block {
 
 func isEmptyBlock(b Block) bool {
 	switch b.Type {
-	case "divider", "image", "embed":
+	case "divider", "image", "embed", "audio", "toggle":
 		return false
-	case "list":
+	case "list", "tasklist":
 		return len(b.Items) == 0
+	case "table":
+		return len(b.Header) == 0 && len(b.Rows) == 0
 	default:
 		return strings.TrimSpace(b.Text) == ""
 	}
@@ -117,6 +119,12 @@ func blocksFromNode(n *html.Node) []Block {
 
 	case atom.Hr:
 		return []Block{{Type: "divider"}}
+
+	case atom.Table:
+		return []Block{importTable(n)}
+
+	case atom.Details:
+		return []Block{importToggle(n)}
 
 	case atom.Img:
 		return []Block{imageBlock(n)}
@@ -190,6 +198,72 @@ func loneImage(n *html.Node) *Block {
 
 func imageBlock(n *html.Node) Block {
 	return Block{Type: "image", URL: attr(n, "src"), Alt: attr(n, "alt")}
+}
+
+// importTable converts a <table> into a table block. The first row that uses
+// <th> cells becomes the header; every other row becomes a body row. Cell text
+// is reduced to plain text (inline markup is re-applied on render).
+func importTable(n *html.Node) Block {
+	var header []string
+	var rows [][]string
+	var walk func(*html.Node)
+	walk = func(node *html.Node) {
+		for c := node.FirstChild; c != nil; c = c.NextSibling {
+			if c.Type != html.ElementNode {
+				continue
+			}
+			if c.DataAtom == atom.Tr {
+				var cells []string
+				isHeader := false
+				for cell := c.FirstChild; cell != nil; cell = cell.NextSibling {
+					if cell.Type != html.ElementNode {
+						continue
+					}
+					if cell.DataAtom == atom.Th || cell.DataAtom == atom.Td {
+						if cell.DataAtom == atom.Th {
+							isHeader = true
+						}
+						cells = append(cells, nodeText(cell))
+					}
+				}
+				if len(cells) == 0 {
+					continue
+				}
+				if isHeader && len(header) == 0 && len(rows) == 0 {
+					header = cells
+				} else {
+					rows = append(rows, cells)
+				}
+				continue
+			}
+			// Descend into thead/tbody/tfoot wrappers.
+			walk(c)
+		}
+	}
+	walk(n)
+	return Block{Type: "table", Header: header, Rows: rows}
+}
+
+// importToggle converts a <details> into a toggle block: the <summary> text
+// becomes the title, the remaining children become the body text.
+func importToggle(n *html.Node) Block {
+	summary := ""
+	var bodyParts []string
+	for c := n.FirstChild; c != nil; c = c.NextSibling {
+		if c.Type == html.ElementNode && c.DataAtom == atom.Summary {
+			summary = nodeText(c)
+			continue
+		}
+		if t := nodeText(c); t != "" {
+			bodyParts = append(bodyParts, t)
+		}
+	}
+	return Block{
+		Type:    "toggle",
+		Summary: summary,
+		Text:    strings.Join(bodyParts, "\n\n"),
+		Open:    hasAttr(n, "open"),
+	}
 }
 
 // listItems returns the trimmed text of each direct <li> child.
@@ -289,6 +363,16 @@ func attr(n *html.Node, key string) string {
 		}
 	}
 	return ""
+}
+
+// hasAttr reports whether the node carries a (possibly boolean) attribute.
+func hasAttr(n *html.Node, key string) bool {
+	for _, a := range n.Attr {
+		if a.Key == key {
+			return true
+		}
+	}
+	return false
 }
 
 func findBody(n *html.Node) *html.Node {

@@ -1,0 +1,3 @@
+-- The profile columns (avatar_url, bio, socials) are intentionally retained;
+-- SQLite DROP COLUMN support is version-dependent and these columns are
+-- harmless if the migration is rolled back.

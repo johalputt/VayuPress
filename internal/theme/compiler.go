@@ -6,13 +6,8 @@ import (
 	"strings"
 )
 
-// hexColorRe matches CSS hex colours: #rgb, #rrggbb, #rgba, #rrggbbaa.
-// Values that don't match are rejected so they can never break the served
-// stylesheet or carry injection payloads inside a CSS variable block.
 var hexColorRe = regexp.MustCompile(`^#[0-9a-fA-F]{3,8}$`)
 
-// validHex returns the value unchanged when it is a valid hex colour string,
-// or returns an empty string and a non-nil error when it is not.
 func validHex(field, value string) (string, error) {
 	v := strings.TrimSpace(value)
 	if v == "" {
@@ -24,12 +19,6 @@ func validHex(field, value string) (string, error) {
 	return v, nil
 }
 
-// safeFont strips characters that could escape the CSS variable value.
-// A font-family stack only ever needs letters, digits, spaces, commas,
-// hyphens, and dots, so every CSS-structural character — quotes,
-// backslash, angle-brackets, and crucially the block/declaration
-// punctuation ; { } ( ) : — is removed. Without that punctuation a value
-// cannot break out of the surrounding :root{ … } block to inject rules.
 func safeFont(s string) string {
 	var sb strings.Builder
 	for _, r := range s {
@@ -45,11 +34,8 @@ func safeFont(s string) string {
 	return sb.String()
 }
 
-// safeDimension allows only digits, dots, and a short set of CSS unit suffixes.
-// Anything that doesn't look like a CSS length/ratio is replaced with an empty string.
 func safeDimension(s string) string {
 	s = strings.TrimSpace(s)
-	// Allow e.g. "1rem", "1.6", "72ch", "0", "0.25rem", "1.0625rem"
 	allowed := regexp.MustCompile(`^[0-9]+(\.[0-9]+)?(rem|em|px|ch|%|vw|vh)?$`)
 	if allowed.MatchString(s) {
 		return s
@@ -57,11 +43,15 @@ func safeDimension(s string) string {
 	return ""
 }
 
-// CompileCSS converts a Tokens value into a minimal CSS block.
-// It validates every hex colour; non-hex values produce an error.
-// Font stacks and dimension values are sanitised to prevent injection.
+// CompileCSS converts Tokens into a CSS block with --vp-* variables plus a
+// Pico-bridge that maps --vp-* tokens to --pico-* variables so presets
+// actually change the public site appearance.
 func CompileCSS(t Tokens) (string, error) {
-	// Validate all hex colour fields.
+	// Realise theme-level customization options first: scheme/width/corners
+	// mutate the tokens below (so the choice flows through every bridge), and
+	// the rest return scoped CSS appended at the end.
+	optionCSS := applyThemeOptions(&t)
+
 	type colorField struct {
 		name string
 		ptr  *string
@@ -101,13 +91,147 @@ func CompileCSS(t Tokens) (string, error) {
 
 	var sb strings.Builder
 
-	// Dark-mode root (default)
+	// emit writes one fully-themed context. Crucially it sets THREE families of
+	// variables from the same token set so a deployed theme restyles the entire
+	// site — not just the Pico colour bridge:
+	//   1. --vp-*   : the design tokens used by per-theme component CSS.
+	//   2. --pico-* : the Pico base theme (admin, signup and Pico-based pages).
+	//   3. bare     : the names the PUBLIC stylesheet (article.css) actually
+	//                 reads — --bg/--surface/--text/--muted/--accent/--accent2/
+	//                 --hi/--green/--font/--mono/--max-w/--radius/--radius2 — so
+	//                 the public palette, typography, reading measure and corner
+	//                 radius all change on a theme switch (theme.css is loaded
+	//                 last, after article.css, so these overrides win).
+	emit := func(bg, surface, text, muted, accent, accent2, hi, green string) {
+		set := func(name, val string) {
+			if val != "" {
+				fmt.Fprintf(&sb, "%s:%s;", name, val)
+			}
+		}
+		// 1. --vp-* design tokens
+		set("--vp-bg", bg)
+		set("--vp-surface", surface)
+		set("--vp-text", text)
+		set("--vp-muted", muted)
+		set("--vp-accent", accent)
+		set("--vp-accent2", accent2)
+		set("--vp-hi", hi)
+		set("--vp-green", green)
+		set("--vp-font-sans", fontSans)
+		set("--vp-font-mono", fontMono)
+		set("--vp-font-size-base", fontSize)
+		set("--vp-line-height", lineH)
+		set("--vp-max-width", maxW)
+		set("--vp-radius-sm", radSm)
+		set("--vp-radius-lg", radLg)
+
+		// 2. Pico bridge
+		set("--pico-background-color", bg)
+		set("--pico-card-background-color", surface)
+		set("--pico-card-sectioning-background-color", surface)
+		set("--pico-code-background-color", surface)
+		if text != "" {
+			fmt.Fprintf(&sb, "--pico-color:%s;--pico-h1-color:%s;--pico-h2-color:%s;--pico-h3-color:%s;", text, text, text, text)
+		}
+		if muted != "" {
+			fmt.Fprintf(&sb, "--pico-muted-color:%s;--pico-muted-border-color:%s;", muted, muted)
+		}
+		if accent != "" {
+			fmt.Fprintf(&sb, "--pico-primary:%s;--pico-primary-hover:%s;--pico-a-color:%s;", accent, accent, accent)
+		}
+		if accent2 != "" {
+			fmt.Fprintf(&sb, "--vayu-accent:%s;--vayu-accent-hover:%s;", accent2, accent2)
+		}
+
+		// 3. Public-site variable bridge (article.css and friends)
+		set("--bg", bg)
+		set("--surface", surface)
+		set("--surface2", surface)
+		set("--text", text)
+		set("--muted", muted)
+		set("--accent", accent)
+		set("--accent2", accent2)
+		set("--hi", hi)
+		set("--green", green)
+		if muted != "" {
+			fmt.Fprintf(&sb, "--border:color-mix(in srgb,%s 22%%,transparent);--border2:color-mix(in srgb,%s 40%%,transparent);", muted, muted)
+		}
+		set("--font", fontSans)
+		set("--mono", fontMono)
+		set("--max-w", maxW)
+		set("--radius", radSm)
+		set("--radius2", radLg)
+	}
+
+	// Default (dark) under :root; light under the system media query — matching
+	// how the public stylesheet (article.css) is authored.
 	sb.WriteString(":root{")
+	emit(t.BgDark, t.SurfaceDark, t.TextDark, t.MutedDark, t.AccentDark, t.Accent2Dark, t.HiDark, t.GreenDark)
+	sb.WriteString("}")
+	sb.WriteString("@media(prefers-color-scheme:light){:root{")
+	emit(t.BgLight, t.SurfaceLight, t.TextLight, t.MutedLight, t.AccentLight, t.Accent2Light, t.HiLight, t.GreenDark)
+	sb.WriteString("}}")
+
+	// Manual sun/moon toggle: an explicit [data-theme] / [data-color-scheme]
+	// choice overrides the media query so the WHOLE site (public + Pico) flips,
+	// not just Pico pages.
+	sb.WriteString(`:root[data-theme="dark"],:root[data-color-scheme="dark"]{`)
+	emit(t.BgDark, t.SurfaceDark, t.TextDark, t.MutedDark, t.AccentDark, t.Accent2Dark, t.HiDark, t.GreenDark)
+	sb.WriteString("}")
+	sb.WriteString(`:root[data-theme="light"],:root[data-color-scheme="light"]{`)
+	emit(t.BgLight, t.SurfaceLight, t.TextLight, t.MutedLight, t.AccentLight, t.Accent2Light, t.HiLight, t.GreenDark)
+	sb.WriteString("}")
+
+	// Per-preset / per-site custom CSS is appended verbatim after the token
+	// blocks so presets like Gale and Zephyr can ship their own layout rules.
+	// It is served same-origin via /theme.css (CSP style-src 'self') and is
+	// validated/length-capped at the API boundary before it ever reaches here.
+	if cssExtra := strings.TrimSpace(t.CustomCSS); cssExtra != "" {
+		sb.WriteString("\n")
+		sb.WriteString(cssExtra)
+	}
+
+	// Theme-option scoped CSS (heading case / accent fill) — appended last so it
+	// overrides the component CSS above.
+	if optionCSS != "" {
+		sb.WriteString("\n")
+		sb.WriteString(optionCSS)
+	}
+
+	return sb.String(), nil
+}
+
+// CompileVPOnly returns --vp-* variables only (no Pico bridge) for the live preview panel.
+func CompileVPOnly(t Tokens) (string, error) {
+	type colorField struct {
+		name string
+		ptr  *string
+	}
+	fields := []colorField{
+		{"BgDark", &t.BgDark}, {"SurfaceDark", &t.SurfaceDark}, {"TextDark", &t.TextDark},
+		{"MutedDark", &t.MutedDark}, {"AccentDark", &t.AccentDark}, {"Accent2Dark", &t.Accent2Dark},
+		{"HiDark", &t.HiDark}, {"GreenDark", &t.GreenDark},
+		{"BgLight", &t.BgLight}, {"SurfaceLight", &t.SurfaceLight}, {"TextLight", &t.TextLight},
+		{"MutedLight", &t.MutedLight}, {"AccentLight", &t.AccentLight}, {"Accent2Light", &t.Accent2Light},
+		{"HiLight", &t.HiLight},
+	}
+	for _, f := range fields {
+		v, err := validHex(f.name, *f.ptr)
+		if err != nil {
+			return "", err
+		}
+		*f.ptr = v
+	}
+	fontSans := safeFont(t.FontSans)
+	fontMono := safeFont(t.FontMono)
+
+	var sb strings.Builder
 	writeVar := func(name, val string) {
 		if val != "" {
 			fmt.Fprintf(&sb, "--vp-%s:%s;", name, val)
 		}
 	}
+	sb.WriteString(":root{")
 	writeVar("bg", t.BgDark)
 	writeVar("surface", t.SurfaceDark)
 	writeVar("text", t.TextDark)
@@ -122,14 +246,7 @@ func CompileCSS(t Tokens) (string, error) {
 	if fontMono != "" {
 		fmt.Fprintf(&sb, "--vp-font-mono:%s;", fontMono)
 	}
-	writeVar("font-size-base", fontSize)
-	writeVar("line-height", lineH)
-	writeVar("max-width", maxW)
-	writeVar("radius-sm", radSm)
-	writeVar("radius-lg", radLg)
 	sb.WriteString("}")
-
-	// Light-mode override
 	sb.WriteString("@media(prefers-color-scheme:light){:root{")
 	writeVar("bg", t.BgLight)
 	writeVar("surface", t.SurfaceLight)
@@ -139,6 +256,5 @@ func CompileCSS(t Tokens) (string, error) {
 	writeVar("accent2", t.Accent2Light)
 	writeVar("hi", t.HiLight)
 	sb.WriteString("}}")
-
 	return sb.String(), nil
 }

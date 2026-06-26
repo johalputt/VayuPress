@@ -25,13 +25,18 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"html"
 	htmpl "html/template"
 	"net/http"
+	"net/url"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -42,6 +47,7 @@ import (
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/settings"
+	"github.com/johalputt/vayupress/internal/users"
 )
 
 // ── Static asset path ────────────────────────────────────────────────────────
@@ -67,10 +73,15 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 	r.Get("/os/static/js/admin-os.js", serveAdminOSAsset("js/admin-os.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-editor.js", serveAdminOSAsset("js/admin-os-editor.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-security.js", serveAdminOSAsset("js/admin-os-security.js", "application/javascript; charset=utf-8"))
+	r.Get("/os/static/js/admin-os-members.js", serveAdminOSAsset("js/admin-os-members.js", "application/javascript; charset=utf-8"))
+	r.Get("/os/static/js/admin-os-profile.js", serveAdminOSAsset("js/admin-os-profile.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-intel.js", serveAdminOSAsset("js/admin-os-intel.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-tools.js", serveAdminOSAsset("js/admin-os-tools.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-monitoring.js", serveAdminOSAsset("js/admin-os-monitoring.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-theme.js", serveAdminOSAsset("js/admin-os-theme.js", "application/javascript; charset=utf-8"))
+	r.Get("/os/static/js/theme-preview-frame.js", serveAdminOSAsset("js/theme-preview-frame.js", "application/javascript; charset=utf-8"))
+	r.Get("/os/static/js/admin-os-theme-store.js", serveAdminOSAsset("js/admin-os-theme-store.js", "application/javascript; charset=utf-8"))
+	r.Get("/os/static/js/admin-os-mail.js", serveAdminOSAsset("js/admin-os-mail.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/purify.min.js", serveAdminOSAsset("js/purify.min.js", "application/javascript; charset=utf-8"))
 
 	// Fonts — path-traversal prevented by switch allowlist (same pattern as v2).
@@ -90,6 +101,27 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		w.Header().Set("Content-Type", "font/woff2")
 		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 		http.ServeFile(w, req, filepath.Join(adminOSStaticDir(), "fonts", canon))
+	})
+
+	// Country flag SVGs (flag-icons, MIT) compiled into the binary and served
+	// on demand from /os/static/flags/<cc>.svg. Path-traversal is impossible:
+	// the filename is validated to be exactly a two-letter lowercase ISO code,
+	// and the bytes come from the embedded FS — never the live filesystem.
+	r.Get("/os/static/flags/{file}", func(w http.ResponseWriter, req *http.Request) {
+		file := chi.URLParam(req, "file")
+		if !isFlagFile(file) {
+			http.NotFound(w, req)
+			return
+		}
+		data, err := flagFS.ReadFile("flags/" + file)
+		if err != nil {
+			http.NotFound(w, req)
+			return
+		}
+		w.Header().Set("Content-Type", "image/svg+xml")
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		_, _ = w.Write(data)
 	})
 
 	// Public: login page and credential forms.
@@ -116,6 +148,24 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/media/upload", a.handleMediaUpload)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/media/import", a.handleMediaImport)
 		pr.Get("/os/members", a.handleOSMembers)
+		// Session-friendly membership management APIs (the /api/v1/admin/* originals
+		// require an API key; VayuOS operators hold a session cookie).
+		pr.Get("/os/api/members/stats", a.handleMemberStats)
+		pr.Get("/os/api/members/tiers", a.handleTierListAdmin)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/members/tiers", a.handleTierCreate)
+		pr.With(auth.CSRFTokenMiddleware).Put("/os/api/members/tiers/{id}", a.handleTierUpdate)
+		pr.With(auth.CSRFTokenMiddleware).Delete("/os/api/members/tiers/{id}", a.handleTierDelete)
+		pr.With(auth.CSRFTokenMiddleware).Put("/os/api/members/{email}/tier", a.handleMemberSetTier)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/members/{email}/labels", a.handleMemberLabelAdd)
+		pr.With(auth.CSRFTokenMiddleware).Delete("/os/api/members/{email}/labels/{label}", a.handleMemberLabelRemove)
+		// Self-service author profile + admin team/role management (session mirrors).
+		pr.Get("/os/profile", a.handleOSProfile)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/profile", a.handleProfileSave)
+		pr.Get("/os/api/users", a.handleUserList)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/users", a.handleUserCreate)
+		pr.With(auth.CSRFTokenMiddleware).Put("/os/api/users/{email}/role", a.handleUserSetRole)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/users/{email}/mailbox", a.handleAssignMailbox)
+		pr.With(auth.CSRFTokenMiddleware).Delete("/os/api/users/{email}", a.handleUserDelete)
 		pr.Get("/os/security", a.handleOSSecurity)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/totp/begin", a.handleOSTOTPBegin)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/totp/verify", a.handleOSTOTPVerify)
@@ -125,12 +175,19 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.Get("/os/monitoring", a.handleOSMonitoring)
 		pr.Get("/os/governance", a.handleOSGovernance)
 		pr.Get("/os/theme", a.handleOSTheme)
+		pr.Get("/os/theme/store", a.handleOSThemeStore)
+		pr.Get("/os/theme/preview", a.handleOSThemePreview)
+		pr.Get("/os/theme/preview.css", a.handleOSThemePreviewCSS)
 		// Session-friendly mirrors of the Theme Studio JSON API (the /api/v1/admin
 		// originals require an API key; os operators hold a session cookie).
 		pr.Get("/os/api/theme/presets", a.handleThemePresets)
 		pr.Get("/os/api/theme/tokens", a.handleThemeTokens)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/theme/preview", a.handleThemePreview)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/theme/preview-draft", a.handleOSThemePreviewDraft)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/theme/apply", a.handleThemeApply)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/theme/code", a.handleOSThemeCode)
+		pr.Get("/os/api/theme/export", a.handleOSThemeExport)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/theme/import", a.handleOSThemeImport)
 		// Session-friendly read-only mirrors of the operator JSON APIs (the
 		// /api/v1/admin/* originals require an API key; os operators hold a
 		// session cookie). Same handlers, no CSRF needed for GETs.
@@ -141,6 +198,33 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/tools/toggle", a.handleOSToolToggle)
 		pr.Get("/os/seo", a.handleOSSEONative)
 		pr.Get("/os/analytics", a.handleOSAnalytics)
+		// VayuAnalytics: export downloads + goal management (session-authed).
+		pr.Get("/os/api/analytics/export", a.handleAnalyticsExport)
+		pr.Get("/os/api/analytics/realtime", a.handleAnalyticsRealtime)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/analytics/goals", a.handleAnalyticsCreateGoal)
+		pr.With(auth.CSRFTokenMiddleware).Delete("/os/api/analytics/goals/{id}", a.handleAnalyticsDeleteGoal)
+		// VayuOS — native control layer (Phase 2): Publishing · Mail · PGP.
+		// GET pages are wrapped in CSRFTokenMiddleware so each load (re)issues the
+		// vp_csrf cookie the panel's POSTs read back; without this the token
+		// expires (1h) and Send / Save-as-draft / message actions start 403ing.
+		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayuos", a.handleVayuOSDashboard)
+		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayuos/pgp", a.handleVayuOSPGP)
+		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayuos/mail", a.handleVayuOSMail)
+		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayuos/mail/inbox", a.handleVayuOSInbox)
+		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayuos/mail/search", a.handleVayuOSSearch)
+		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayuos/mail/message", a.handleVayuOSMessage)
+		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayuos/mail/sent", a.handleVayuOSSent)
+		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayuos/mail/compose", a.handleVayuOSCompose)
+		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayuos/mail/accounts", a.handleVayuOSAccounts)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayuos/mail/send", a.handleVayuOSSend)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayuos/mail/draft", a.handleVayuOSDraft)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayuos/mail/message/action", a.handleVayuOSMessageAction)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayuos/mail/accounts/create", a.handleVayuOSAccountCreate)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayuos/mail/accounts/delete", a.handleVayuOSAccountDelete)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayuos/mail/accounts/update", a.handleVayuOSAccountUpdate)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayuos/mail/accounts/totp", a.handleVayuOSAccountTOTP)
+		pr.Get("/os/vayuos/security", a.handleVayuOSSecurity)
+		pr.Get("/os/api/vayuos/health", a.handleVayuOSHealthJSON)
 		pr.Get("/os/settings", a.handleOSSettings)
 		pr.Get("/os/settings/{group}", a.handleOSSettings)
 
@@ -153,6 +237,8 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		// original is in the API-key-only group, so a browser operator can't reach
 		// it. This mirror is gated by requireSessionOrAPIKey + CSRF.
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/branding/favicon", a.handleFaviconUpload)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/branding/hero", a.handleHeroUpload)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/branding/og", a.handleOGUpload)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/editor/save", a.handleOSEditorSave)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/editor/preview", a.handleOSEditorPreview)
 		// Session-friendly mirrors of the editor's block tools (the /api/v1/admin
@@ -202,6 +288,27 @@ func serveAdminOSAsset(rel, contentType string) http.HandlerFunc {
 	}
 }
 
+// assetVerCache memoises per-asset cache-busting tokens.
+var assetVerCache sync.Map // rel -> string
+
+// assetVer returns a cache-busting query value for a VayuOS static asset that
+// combines the release Version with a short content hash of the file. Because
+// it tracks file content, browsers refetch CSS/JS as soon as it actually
+// changes — even between builds that share the same release Version — while
+// still caching aggressively when nothing changed.
+func assetVer(rel string) string {
+	if v, ok := assetVerCache.Load(rel); ok {
+		return v.(string)
+	}
+	v := Version
+	if b, err := os.ReadFile(filepath.Join(adminOSStaticDir(), filepath.FromSlash(rel))); err == nil {
+		sum := sha256.Sum256(b)
+		v = Version + "-" + hex.EncodeToString(sum[:4])
+	}
+	assetVerCache.Store(rel, v)
+	return v
+}
+
 // ── Shared layout ────────────────────────────────────────────────────────────
 
 // navItem builds a sidebar nav link with an inline SVG icon.
@@ -238,6 +345,7 @@ var (
 	iconMonitoring = svgIcon("M2 10h3l2-5 3 11 3-8 2 2h3")
 	iconGovernance = svgIcon("M10 2l7 3v5c0 3.5-2.8 6.8-7 8-4.2-1.2-7-4.5-7-8V5l7-3zm0 5v6m-3-3h6")
 	iconTheme      = svgIcon("M10 2a8 8 0 100 16c1 0 1.5-.7 1.5-1.5 0-.4-.2-.8-.4-1-.3-.3-.4-.6-.4-1 0-.8.7-1.5 1.5-1.5H14a4 4 0 004-4c0-3.6-3.6-6.5-8-6.5zM5.5 10a1 1 0 110-2 1 1 0 010 2zm3-3a1 1 0 110-2 1 1 0 010 2zm5 0a1 1 0 110-2 1 1 0 010 2z")
+	iconThemeStore = svgIcon("M3 7l1.5-3h11L17 7M3 7h14M3 7v9a1 1 0 001 1h12a1 1 0 001-1V7M8 7v3a2 2 0 004 0V7")
 	iconModes      = svgIcon("M10 2l7 4v8l-7 4-7-4V6l7-4zm0 2.3L5 7v6l5 2.7L15 13V7l-5-2.7z")
 	iconPolicy     = svgIcon("M10 2l6 3v5c0 3.5-2.5 6.8-6 8-3.5-1.2-6-4.5-6-8V5l6-3zm-1 9l4-4-1.4-1.4L9 8.2 7.4 6.6 6 8l3 3z")
 	iconTopology   = svgIcon("M10 3a2 2 0 100 4 2 2 0 000-4zM4 13a2 2 0 100 4 2 2 0 000-4zm12 0a2 2 0 100 4 2 2 0 000-4zM10 7v3m0 0l-4 3m4-3l4 3")
@@ -246,19 +354,17 @@ var (
 	iconADR        = svgIcon("M5 3h7l3 3v11H5V3zm7 0v3h3M7 9h6m-6 3h6m-6 3h4")
 )
 
-// trustedHTMLPassthrough emits a pre-constructed HTML fragment verbatim. It
-// exists so the page body — assembled server-side from fixed templates with
-// every user value already escaped via html.EscapeString — flows through
-// html/template's escaping pipeline. Routing it through Execute gives static
-// analysers (CodeQL go/unsafe-quoting) the sanitiser barrier they require; at
-// runtime template.HTML is emitted byte-for-byte unchanged.
-var trustedHTMLPassthrough = htmpl.Must(htmpl.New("trusted").Parse(`{{.}}`))
-
+// renderTrustedHTML emits a pre-constructed, server-side HTML fragment verbatim.
+// The page body is assembled from fixed templates with every interpolated user
+// value escaped via html.EscapeString at construction, so it is already safe.
+//
+// It is intentionally a plain string conversion — NOT an html/template
+// execution. Passing a template.HTML value into html/template's Execute is what
+// CodeQL flags as an "escaping bypass" (go/html-template-escaping-bypass), and
+// since the passthrough emits the bytes unchanged either way, the direct
+// conversion is equivalent and keeps the data off the html/template sink.
 func renderTrustedHTML(h htmpl.HTML) string {
-	var b strings.Builder
-	// Execute on a constant template with a template.HTML argument cannot fail.
-	_ = trustedHTMLPassthrough.Execute(&b, h)
-	return b.String()
+	return string(h)
 }
 
 // adminOSLayout renders the shared chrome for VayuOS.
@@ -302,7 +408,7 @@ func adminOSShellHead(nonce, title, active string, settings *osSettings) string 
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>` + et + ` — ` + siteName + ` · VayuOS</title>
 <meta name="robots" content="noindex, nofollow">
-<link rel="stylesheet" href="/os/static/css/admin-os.css">
+<link rel="stylesheet" href="/os/static/css/admin-os.css?v=` + assetVer("css/admin-os.css") + `">
 <link rel="icon" type="image/png" href="/static/favicon-light.png">
 </head>
 <body class="vp-os" data-admin-theme="` + html.EscapeString(theme) + `">
@@ -330,11 +436,14 @@ func adminOSShellHead(nonce, title, active string, settings *osSettings) string 
     <div class="sidebar-section-label">Audience</div>
     ` + navItem("/os/members", "Members", "members", active, iconMembers) + `
     ` + navItem("/os/newsletter", "Newsletter", "newsletter", active, iconNewsletter) + `
+    ` + navItem("/os/profile", "My Profile", "profile", active, iconMembers) + `
 
     <div class="sidebar-section-label">Optimize</div>
     ` + navItem("/os/seo", "SEO", "seo", active, iconSEO) + `
     ` + navItem("/os/analytics", "Analytics", "analytics", active, iconAnalytics) + `
     ` + navItem("/os/theme", "Theme Studio", "theme", active, iconTheme) + `
+    ` + navItem("/os/theme/store", "Theme Store", "theme-store", active, iconThemeStore) + `
+    ` + navItem("/os/vayuos", "VayuMail", "vayuos", active, iconSecurity) + `
 
     <div class="sidebar-section-label">System</div>
     ` + navItem("/os/monitoring", "Monitoring", "monitoring", active, iconMonitoring) + `
@@ -353,13 +462,7 @@ func adminOSShellHead(nonce, title, active string, settings *osSettings) string 
     <div class="sidebar-spacer"></div>
   </nav>
   <div class="sidebar-footer">
-    <div class="sidebar-user">
-      <div class="avatar avatar--sm avatar--brand">A</div>
-      <div class="sidebar-user-info">
-        <div class="sidebar-user-name">Admin</div>
-        <div class="sidebar-user-role">Administrator</div>
-      </div>
-    </div>
+    ` + osSidebarUser(settings) + `
   </div>
 </aside>
 
@@ -455,6 +558,11 @@ window.vpPost=function(url,onok){fetch(url,{method:'POST',headers:{'Content-Type
 type osSettings struct {
 	SiteName   string
 	AdminTheme string
+	// Signed-in user, surfaced in the sidebar footer card.
+	UserID     string
+	UserName   string
+	UserRole   string
+	UserAvatar string
 }
 
 // getOSSettings loads settings needed for layout rendering.
@@ -464,7 +572,61 @@ func (a *App) getOSSettings(ctx context.Context) *osSettings {
 		s.SiteName = a.siteSettings.Get(ctx, settings.KeySiteName)
 		s.AdminTheme = a.siteSettings.Get(ctx, "admin.theme")
 	}
+	// Surface the authenticated user (if any) so the shell can show their
+	// avatar/name/role. The user is attached to the context by
+	// requireSessionOrAPIKey and already carries the profile fields.
+	if v := ctx.Value(ctxUserKey); v != nil {
+		if u, ok := v.(*users.User); ok && u != nil {
+			s.UserID = u.ID
+			s.UserName = u.Name
+			if s.UserName == "" {
+				s.UserName = authorFallbackName(u.Email)
+			}
+			s.UserRole = u.Role
+			s.UserAvatar = u.AvatarURL
+		}
+	}
 	return s
+}
+
+// roleDisplay returns a human label for a role slug.
+func roleDisplay(role string) string {
+	switch role {
+	case users.RoleAdmin:
+		return "Administrator"
+	case users.RoleEditor:
+		return "Editor"
+	case users.RoleAuthor:
+		return "Author"
+	case "":
+		return "Administrator"
+	default:
+		return strings.ToUpper(role[:1]) + role[1:]
+	}
+}
+
+// osSidebarUser renders the signed-in user card (avatar + name + role) shown at
+// the foot of the sidebar. It links to the self-service profile editor.
+func osSidebarUser(s *osSettings) string {
+	name, role, avatarURL := "Admin", "Administrator", ""
+	if s != nil {
+		if s.UserName != "" {
+			name = s.UserName
+		}
+		role = roleDisplay(s.UserRole)
+		avatarURL = s.UserAvatar
+	}
+	avatar := `<div class="avatar avatar--sm avatar--brand">` + html.EscapeString(initials(name, "")) + `</div>`
+	if avatarURL != "" {
+		avatar = `<img class="avatar avatar--sm" src="` + html.EscapeString(avatarURL) + `" alt="" width="28" height="28">`
+	}
+	return `<a class="sidebar-user" href="/os/profile" title="Edit your profile">
+      ` + avatar + `
+      <div class="sidebar-user-info">
+        <div class="sidebar-user-name">` + html.EscapeString(name) + `</div>
+        <div class="sidebar-user-role">` + html.EscapeString(role) + `</div>
+      </div>
+    </a>`
 }
 
 // writeOSHTML writes HTML with the standard os response headers and CSRF cookie.
@@ -478,6 +640,12 @@ func writeOSHTML(w http.ResponseWriter, body string) {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("X-Robots-Tag", "noindex")
+	// Admin pages must never be cached by the browser or any proxy/CDN —
+	// otherwise a stale panel (e.g. an old Analytics page) keeps showing after a
+	// deploy. These pages are dynamic and cheap to render, so always serve fresh.
+	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("Expires", "0")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(body))
 }
@@ -563,7 +731,7 @@ func osLoginPage(prefillEmail, errMsg string) string {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Sign in — VayuPress Admin</title>
 <meta name="robots" content="noindex, nofollow">
-<link rel="stylesheet" href="/os/static/css/admin-os.css">
+<link rel="stylesheet" href="/os/static/css/admin-os.css?v=` + assetVer("css/admin-os.css") + `">
 <link rel="icon" type="image/png" href="/static/favicon-light.png">
 </head>
 <body class="vp-os login-page">
@@ -837,6 +1005,12 @@ func (a *App) handleOSDashboard(w http.ResponseWriter, r *http.Request) {
 
 // ── Posts ────────────────────────────────────────────────────────────────────
 
+// osPostsPageSize is how many posts the manager shows per page. The newest
+// page (page 1) lists the latest osPostsPageSize posts; older posts live on
+// subsequent pages reachable via the pager. This replaces the old hard
+// `LIMIT 500` cap so every post is reachable regardless of archive size.
+const osPostsPageSize = 100
+
 func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
@@ -846,35 +1020,135 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 		http.SetCookie(w, &http.Cookie{Name: "vp_csrf", Value: token, Path: "/", SameSite: http.SameSiteStrictMode, HttpOnly: false, Secure: csrfCookieSecure(), MaxAge: 3600})
 	}
 
-	// All posts (drafts included) — the post manager shows everything; the
-	// public site never does.
+	// ── Parse filters from the query string ──────────────────────────────────
+	qv := r.URL.Query()
+	q := strings.TrimSpace(qv.Get("q"))
+	if len(q) > 120 {
+		q = q[:120]
+	}
+	status := qv.Get("status")
+	if status != "published" && status != "draft" {
+		status = "all"
+	}
+	period := qv.Get("period")
+	from := normalizeDateParam(qv.Get("from"))
+	to := normalizeDateParam(qv.Get("to"))
+	// A period preset is a shortcut for a created-at window. An explicit custom
+	// from/to range always wins; the preset only applies when no range is set.
+	if from == "" && to == "" {
+		if since := periodSince(period); since != "" {
+			from = since
+		} else {
+			period = "all"
+		}
+	} else {
+		period = "" // a custom range overrides the preset selector
+	}
+
+	// ── Shared filter predicate (search + date range), independent of the
+	// status tab so the tab counts reflect the active search/date filter. ──
+	where := []string{}
+	args := []any{}
+	if q != "" {
+		where = append(where, "(title LIKE ? OR COALESCE(tags,'') LIKE ?)")
+		like := "%" + q + "%"
+		args = append(args, like, like)
+	}
+	if from != "" {
+		where = append(where, "date(created_at) >= ?")
+		args = append(args, from)
+	}
+	if to != "" {
+		where = append(where, "date(created_at) <= ?")
+		args = append(args, to)
+	}
+	filterClause := ""
+	if len(where) > 0 {
+		filterClause = " WHERE " + strings.Join(where, " AND ")
+	}
+
+	// ── Status counts within the active filter ───────────────────────────────
+	allCount, published, drafts := 0, 0, 0
+	if dbpkg.DB != nil {
+		if rows, err := dbpkg.DB.QueryContext(r.Context(),
+			`SELECT COALESCE(status,'published') s, COUNT(1) c FROM articles`+filterClause+` GROUP BY s`, args...); err == nil {
+			for rows.Next() {
+				var s string
+				var c int
+				if rows.Scan(&s, &c) == nil {
+					allCount += c
+					if s == "draft" {
+						drafts += c
+					} else {
+						published += c
+					}
+				}
+			}
+			rows.Close()
+		}
+	}
+	total := allCount
+	switch status {
+	case "published":
+		total = published
+	case "draft":
+		total = drafts
+	}
+
+	// ── Pagination maths (100 per page; page clamped to a valid range) ────────
+	totalPages := (total + osPostsPageSize - 1) / osPostsPageSize
+	if totalPages < 1 {
+		totalPages = 1
+	}
+	page := 1
+	if p, err := strconv.Atoi(qv.Get("page")); err == nil && p > 1 {
+		page = p
+	}
+	if page > totalPages {
+		page = totalPages
+	}
+	offset := (page - 1) * osPostsPageSize
+
+	// ── Fetch the current page of posts (drafts included; the public site never
+	// surfaces drafts but the manager must). ──────────────────────────────────
 	type postRow struct {
 		Title, Slug, Status string
 		Tags                []string
 		Updated             time.Time
 	}
 	var posts []postRow
-	published, drafts := 0, 0
-	if rows, err := dbpkg.DB.QueryContext(r.Context(),
-		`SELECT title,slug,COALESCE(tags,''),updated_at,COALESCE(status,'published') FROM articles ORDER BY created_at DESC LIMIT 500`); err == nil {
-		defer rows.Close()
-		for rows.Next() {
-			var p postRow
-			var tagsCSV string
-			if rows.Scan(&p.Title, &p.Slug, &tagsCSV, &p.Updated, &p.Status) == nil {
-				p.Tags = splitCSVTags(tagsCSV)
-				posts = append(posts, p)
-				if p.Status == "draft" {
-					drafts++
-				} else {
-					published++
+	listWhere := append([]string{}, where...)
+	listArgs := append([]any{}, args...)
+	switch status {
+	case "published":
+		listWhere = append(listWhere, "COALESCE(status,'published')='published'")
+	case "draft":
+		listWhere = append(listWhere, "COALESCE(status,'published')='draft'")
+	}
+	listClause := ""
+	if len(listWhere) > 0 {
+		listClause = " WHERE " + strings.Join(listWhere, " AND ")
+	}
+	listArgs = append(listArgs, osPostsPageSize, offset)
+	if dbpkg.DB != nil {
+		if rows, err := dbpkg.DB.QueryContext(r.Context(),
+			`SELECT title,slug,COALESCE(tags,''),updated_at,COALESCE(status,'published') FROM articles`+listClause+` ORDER BY created_at DESC LIMIT ? OFFSET ?`, listArgs...); err == nil {
+			defer rows.Close()
+			for rows.Next() {
+				var p postRow
+				var tagsCSV string
+				if rows.Scan(&p.Title, &p.Slug, &tagsCSV, &p.Updated, &p.Status) == nil {
+					p.Tags = splitCSVTags(tagsCSV)
+					posts = append(posts, p)
 				}
 			}
 		}
 	}
 
+	filtersActive := q != "" || from != "" || to != "" || status != "all"
+
 	var body string
-	if len(posts) == 0 {
+	if allCount == 0 && !filtersActive {
 		body = `<div class="page-header"><h1>Posts</h1></div>
 <div class="card empty-state">
   <div class="empty-icon">✍️</div>
@@ -885,10 +1159,9 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 	} else {
 		rows := ""
 		for _, p := range posts {
-			tags, searchTags := "", ""
+			tags := ""
 			for _, t := range p.Tags {
 				tags += `<span class="chip chip--brand">#` + html.EscapeString(t) + `</span> `
-				searchTags += " " + t
 			}
 			esc := html.EscapeString(p.Slug)
 			isDraft := p.Status == "draft"
@@ -901,7 +1174,7 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 				// A draft is hidden from the public site (previewed in the editor).
 				viewBtn = ""
 			}
-			rows += `<tr data-post-row data-status="` + p.Status + `" data-search="` + html.EscapeString(strings.ToLower(p.Title+searchTags)) + `">
+			rows += `<tr data-post-row data-status="` + p.Status + `">
   <td class="row-title">
     <a href="/os/editor/` + esc + `">` + html.EscapeString(p.Title) + `</a>
     <div class="row-meta">/` + esc + `</div>
@@ -916,29 +1189,48 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
   </td>
 </tr>`
 		}
+
+		tableBlock := `<div class="table-wrap">
+    <table class="table">
+      <thead><tr><th>Title</th><th>Status</th><th>Tags</th><th>Updated</th><th></th></tr></thead>
+      <tbody>` + rows + `</tbody>
+    </table>
+  </div>`
+		if len(posts) == 0 {
+			tableBlock = `<div class="table-empty">No posts match your filter. <a href="/os/posts">Clear filters</a>.</div>`
+		}
+
+		shownFrom, shownTo := 0, 0
+		if len(posts) > 0 {
+			shownFrom = offset + 1
+			shownTo = offset + len(posts)
+		}
+
 		body = `<div class="page-header">
-  <h1>Posts <span class="count-pill">` + strconv.Itoa(len(posts)) + `</span></h1>
+  <h1>Posts <span class="count-pill">` + strconv.Itoa(allCount) + `</span></h1>
   <div class="page-actions">
     <a class="btn btn--primary" href="/os/editor">New Post</a>
   </div>
 </div>
 <div class="card">
   <div class="toolbar-row">
-    <input class="input search-input" type="search"
-      data-posts-search placeholder="Search by title or tag…" aria-label="Search posts">
+    <form class="posts-filter" method="GET" action="/os/posts" role="search">
+      <input type="hidden" name="status" value="` + html.EscapeString(status) + `">
+      <input class="input search-input" type="search" name="q" value="` + html.EscapeString(q) + `" placeholder="Search by title or tag…" aria-label="Search posts">
+      ` + osPostsPeriodSelect(period) + `
+      <label class="posts-filter-date">From <input class="input input--sm" type="date" name="from" value="` + html.EscapeString(from) + `" aria-label="From date"></label>
+      <label class="posts-filter-date">To <input class="input input--sm" type="date" name="to" value="` + html.EscapeString(to) + `" aria-label="To date"></label>
+      <button class="btn btn--ghost btn--sm" type="submit">Filter</button>
+      <a class="btn btn--ghost btn--sm" href="/os/posts">Clear</a>
+    </form>
     <div class="seg-filter" role="tablist" aria-label="Filter by status">
-      <button type="button" class="seg-btn is-active" data-status-filter="all">All <span class="muted">` + strconv.Itoa(len(posts)) + `</span></button>
-      <button type="button" class="seg-btn" data-status-filter="published">Published <span class="muted">` + strconv.Itoa(published) + `</span></button>
-      <button type="button" class="seg-btn" data-status-filter="draft">Drafts <span class="muted">` + strconv.Itoa(drafts) + `</span></button>
+      <a class="seg-btn` + osActiveCls(status == "all") + `" href="` + osPostsHref("all", q, from, to, period, 1) + `">All <span class="muted">` + strconv.Itoa(allCount) + `</span></a>
+      <a class="seg-btn` + osActiveCls(status == "published") + `" href="` + osPostsHref("published", q, from, to, period, 1) + `">Published <span class="muted">` + strconv.Itoa(published) + `</span></a>
+      <a class="seg-btn` + osActiveCls(status == "draft") + `" href="` + osPostsHref("draft", q, from, to, period, 1) + `">Drafts <span class="muted">` + strconv.Itoa(drafts) + `</span></a>
     </div>
   </div>
-  <div class="table-wrap">
-    <table class="table">
-      <thead><tr><th>Title</th><th>Status</th><th>Tags</th><th>Updated</th><th></th></tr></thead>
-      <tbody>` + rows + `</tbody>
-    </table>
-  </div>
-  <div class="table-empty" data-search-empty hidden>No posts match your filter.</div>
+  ` + tableBlock + `
+  ` + osPostsPager(status, q, from, to, period, page, totalPages, total, shownFrom, shownTo) + `
 </div>
 <div id="action-msg" role="status" aria-live="polite" class="action-msg"></div>
 <script nonce="` + nonce + `">
@@ -953,14 +1245,6 @@ document.querySelectorAll('[data-post-toggle]').forEach(function(b){
       .then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d};});})
       .then(function(res){if(res.ok){show(res.d.status==='published'?'Published':'Moved to draft',false);setTimeout(function(){location.reload();},500);}else{b.disabled=false;show(res.d.detail||res.d.title||'Error',true);}})
       .catch(function(e){b.disabled=false;show('Error: '+e,true);});
-  });
-});
-var rowsEl=document.querySelectorAll('[data-post-row]');
-function applyFilter(f){rowsEl.forEach(function(row){var st=row.getAttribute('data-status');row.hidden=(f!=='all'&&st!==f);});}
-document.querySelectorAll('[data-status-filter]').forEach(function(s){
-  s.addEventListener('click',function(){
-    document.querySelectorAll('[data-status-filter]').forEach(function(x){x.classList.remove('is-active');});
-    s.classList.add('is-active');applyFilter(s.getAttribute('data-status-filter'));
   });
 });
 })();
@@ -1104,6 +1388,204 @@ document.querySelectorAll('[data-comment-filter]').forEach(function(s){
 	writeOSHTML(w, adminOSLayout(nonce, "Comments", "comments", cfg, htmpl.HTML(body)))
 }
 
+// osActiveCls returns the " is-active" class suffix when active is true.
+func osActiveCls(active bool) string {
+	if active {
+		return " is-active"
+	}
+	return ""
+}
+
+// normalizeDateParam validates a YYYY-MM-DD date string, returning "" if it is
+// empty or malformed so an invalid value never reaches the SQL query.
+func normalizeDateParam(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+	if _, err := time.Parse("2006-01-02", s); err != nil {
+		return ""
+	}
+	return s
+}
+
+// periodSince maps a preset time-window key to an inclusive lower-bound date
+// (YYYY-MM-DD, UTC). An empty return means "all time" / unrecognised key.
+func periodSince(period string) string {
+	var days int
+	switch period {
+	case "7d":
+		days = 7
+	case "30d":
+		days = 30
+	case "90d":
+		days = 90
+	case "365d":
+		days = 365
+	default:
+		return ""
+	}
+	return time.Now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
+}
+
+// osPostsPeriodSelect renders the time-range preset dropdown with the active
+// option preselected.
+func osPostsPeriodSelect(period string) string {
+	opts := []struct{ Val, Label string }{
+		{"all", "Any time"},
+		{"7d", "Last 7 days"},
+		{"30d", "Last 30 days"},
+		{"90d", "Last 90 days"},
+		{"365d", "Last 12 months"},
+	}
+	cur := period
+	if cur == "" {
+		cur = "all"
+	}
+	out := `<select class="select select--inline" name="period" aria-label="Time range">`
+	for _, o := range opts {
+		sel := ""
+		if o.Val == cur {
+			sel = " selected"
+		}
+		out += `<option value="` + o.Val + `"` + sel + `>` + o.Label + `</option>`
+	}
+	out += `</select>`
+	return out
+}
+
+// osPostsHref builds a /os/posts URL that preserves the active filters while
+// overriding the status tab and target page. Default values are omitted so the
+// query string stays clean and shareable.
+func osPostsHref(status, q, from, to, period string, page int) string {
+	v := url.Values{}
+	if status != "" && status != "all" {
+		v.Set("status", status)
+	}
+	if q != "" {
+		v.Set("q", q)
+	}
+	if from != "" {
+		v.Set("from", from)
+	}
+	if to != "" {
+		v.Set("to", to)
+	}
+	if period != "" && period != "all" {
+		v.Set("period", period)
+	}
+	if page > 1 {
+		v.Set("page", strconv.Itoa(page))
+	}
+	if enc := v.Encode(); enc != "" {
+		return "/os/posts?" + enc
+	}
+	return "/os/posts"
+}
+
+// osPostsPager renders the premium pagination control: a "showing X–Y of Z"
+// summary, first/last + prev/next + ±10-page jump buttons, a windowed run of
+// page numbers, and a "go to page" form. All navigation is plain GET links so
+// it works without JavaScript and respects the strict CSP.
+func osPostsPager(status, q, from, to, period string, page, totalPages, total, shownFrom, shownTo int) string {
+	info := `<div class="pager-info">Showing <strong>` + strconv.Itoa(shownFrom) + `–` + strconv.Itoa(shownTo) +
+		`</strong> of <strong>` + strconv.Itoa(total) + `</strong> posts</div>`
+	if totalPages <= 1 {
+		return `<nav class="pager" aria-label="Posts pagination">` + info + `</nav>`
+	}
+
+	btn := func(label string, target int, disabled bool, extraCls string) string {
+		cls := "pager-btn"
+		if extraCls != "" {
+			cls += " " + extraCls
+		}
+		if disabled {
+			return `<span class="` + cls + ` is-disabled" aria-disabled="true">` + label + `</span>`
+		}
+		return `<a class="` + cls + `" href="` + osPostsHref(status, q, from, to, period, target) + `">` + label + `</a>`
+	}
+	num := func(i int) string {
+		if i == page {
+			return `<span class="pager-btn is-current" aria-current="page">` + strconv.Itoa(i) + `</span>`
+		}
+		return `<a class="pager-btn" href="` + osPostsHref(status, q, from, to, period, i) + `">` + strconv.Itoa(i) + `</a>`
+	}
+
+	prev10 := page - 10
+	if prev10 < 1 {
+		prev10 = 1
+	}
+	next10 := page + 10
+	if next10 > totalPages {
+		next10 = totalPages
+	}
+
+	controls := btn("« First", 1, page == 1, "")
+	if totalPages > 10 {
+		controls += btn("‹‹ 10", prev10, page == 1, "")
+	}
+	controls += btn("‹ Prev", page-1, page == 1, "")
+
+	start := page - 2
+	if start < 1 {
+		start = 1
+	}
+	end := page + 2
+	if end > totalPages {
+		end = totalPages
+	}
+	if start > 1 {
+		controls += num(1)
+		if start > 2 {
+			controls += `<span class="pager-gap">…</span>`
+		}
+	}
+	for i := start; i <= end; i++ {
+		controls += num(i)
+	}
+	if end < totalPages {
+		if end < totalPages-1 {
+			controls += `<span class="pager-gap">…</span>`
+		}
+		controls += num(totalPages)
+	}
+
+	controls += btn("Next ›", page+1, page == totalPages, "")
+	if totalPages > 10 {
+		controls += btn("10 ››", next10, page == totalPages, "")
+	}
+	controls += btn("Last »", totalPages, page == totalPages, "")
+
+	jump := `<form class="pager-jump" method="GET" action="/os/posts">`
+	if status != "all" {
+		jump += `<input type="hidden" name="status" value="` + html.EscapeString(status) + `">`
+	}
+	if q != "" {
+		jump += `<input type="hidden" name="q" value="` + html.EscapeString(q) + `">`
+	}
+	if from != "" {
+		jump += `<input type="hidden" name="from" value="` + html.EscapeString(from) + `">`
+	}
+	if to != "" {
+		jump += `<input type="hidden" name="to" value="` + html.EscapeString(to) + `">`
+	}
+	if period != "" && period != "all" {
+		jump += `<input type="hidden" name="period" value="` + html.EscapeString(period) + `">`
+	}
+	jump += `<label class="pager-jump-label">Go to page
+      <input class="input input--sm pager-jump-input" type="number" name="page" min="1" max="` + strconv.Itoa(totalPages) + `" value="` + strconv.Itoa(page) + `" aria-label="Page number">
+    </label>
+    <span class="pager-jump-total">of ` + strconv.Itoa(totalPages) + `</span>
+    <button class="btn btn--ghost btn--sm" type="submit">Go</button>
+  </form>`
+
+	return `<nav class="pager" aria-label="Posts pagination">
+  ` + info + `
+  <div class="pager-controls">` + controls + `</div>
+  ` + jump + `
+</nav>`
+}
+
 // ── Editor ───────────────────────────────────────────────────────────────────
 
 // handleOSEditor serves the post editor. To avoid any data loss during the
@@ -1176,6 +1658,7 @@ func (a *App) handleOSSettings(w http.ResponseWriter, r *http.Request) {
 	tabs := []struct{ Key, Label, Href string }{
 		{"general", "General", "/os/settings/general"},
 		{"navigation", "Navigation", "/os/settings/navigation"},
+		{"footer", "Footer", "/os/settings/footer"},
 		{"design", "Design", "/os/settings/design"},
 		{"members", "Members", "/os/settings/members"},
 		{"email", "Email", "/os/settings/email"},
@@ -1197,6 +1680,8 @@ func (a *App) handleOSSettings(w http.ResponseWriter, r *http.Request) {
 	switch group {
 	case "navigation":
 		groupBody = osSettingsNavigation(r.Context(), ss)
+	case "footer":
+		groupBody = osSettingsFooter(r.Context(), ss)
 	case "design":
 		groupBody = osSettingsDesign(r.Context(), ss)
 	case "members":
@@ -1336,7 +1821,85 @@ if(favRm)favRm.addEventListener('click',function(){
     .then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d};});})
     .then(function(res){favRm.disabled=false;if(res.ok){favSet('Default restored',false);favBust();if(favState)favState.textContent='Using the default mark.';}else{favSet(res.d.error||'Remove failed',true);}})
     .catch(function(e){favRm.disabled=false;favSet('Error: '+e,true);});
-});`
+});
+// Footer editor (Footer tab). Builds tagline/copyright/columns/social/legal and
+// keeps a hidden JSON input (footer.config) in sync for the generic Save.
+var footerInput=document.getElementById('footer-json-input');
+if(footerInput){
+  var fTagline=document.getElementById('footer-tagline');
+  var fCopyright=document.getElementById('footer-copyright');
+  var fCols=document.getElementById('footer-cols');
+  var fSocial=document.getElementById('footer-social');
+  var fLegal=document.getElementById('footer-legal');
+  function fLinkRow(label,href){
+    var row=document.createElement('div');row.setAttribute('data-f-link','');
+    row.style.cssText='display:flex;gap:.5rem;align-items:center;margin-bottom:.4rem';
+    var li=document.createElement('input');li.className='input';li.type='text';li.placeholder='Label';li.value=label||'';li.setAttribute('data-f-label','');li.style.flex='1';
+    var hi=document.createElement('input');hi.className='input';hi.type='text';hi.placeholder='/path, mailto: or https://…';hi.value=href||'';hi.setAttribute('data-f-href','');hi.style.flex='2';
+    var rm=document.createElement('button');rm.type='button';rm.className='btn btn--sm';rm.textContent='✕';
+    rm.addEventListener('click',function(){row.remove();footerSync();});
+    li.addEventListener('input',footerSync);hi.addEventListener('input',footerSync);
+    row.appendChild(li);row.appendChild(hi);row.appendChild(rm);
+    return row;
+  }
+  function fColCard(title,links){
+    var card=document.createElement('div');card.setAttribute('data-f-col','');
+    card.style.cssText='border:1px solid var(--border,#2a2a2a);border-radius:8px;padding:.75rem;margin-bottom:.75rem';
+    var head=document.createElement('div');head.style.cssText='display:flex;gap:.5rem;align-items:center;margin-bottom:.5rem';
+    var ti=document.createElement('input');ti.className='input';ti.type='text';ti.placeholder='Column title (e.g. Company)';ti.value=title||'';ti.setAttribute('data-f-col-title','');ti.style.flex='1';
+    ti.addEventListener('input',footerSync);
+    var rmc=document.createElement('button');rmc.type='button';rmc.className='btn btn--sm';rmc.textContent='Remove column';
+    rmc.addEventListener('click',function(){card.remove();footerSync();});
+    head.appendChild(ti);head.appendChild(rmc);
+    var linksWrap=document.createElement('div');linksWrap.setAttribute('data-f-col-links','');
+    (links||[]).forEach(function(l){linksWrap.appendChild(fLinkRow(l.label,l.href));});
+    var addL=document.createElement('button');addL.type='button';addL.className='btn btn--sm';addL.textContent='+ Add link';
+    addL.addEventListener('click',function(){linksWrap.appendChild(fLinkRow('',''));footerSync();});
+    card.appendChild(head);card.appendChild(linksWrap);card.appendChild(addL);
+    return card;
+  }
+  function fCollect(wrap){
+    var out=[];if(!wrap)return out;
+    wrap.querySelectorAll('[data-f-link]').forEach(function(row){
+      var l=row.querySelector('[data-f-label]').value.trim();
+      var h=row.querySelector('[data-f-href]').value.trim();
+      if(l&&h)out.push({label:l,href:h});
+    });
+    return out;
+  }
+  function footerSync(){
+    var cols=[];
+    if(fCols)fCols.querySelectorAll('[data-f-col]').forEach(function(card){
+      var t=card.querySelector('[data-f-col-title]').value.trim();
+      var links=fCollect(card.querySelector('[data-f-col-links]'));
+      if(t||links.length)cols.push({title:t,links:links});
+    });
+    footerInput.value=JSON.stringify({
+      tagline:fTagline?fTagline.value.trim():'',
+      copyright:fCopyright?fCopyright.value.trim():'',
+      columns:cols,
+      social:fCollect(fSocial),
+      legal:fCollect(fLegal)
+    });
+  }
+  (function(){
+    var seed={};try{seed=JSON.parse(footerInput.getAttribute('data-footer-seed')||'{}');}catch(e){seed={};}
+    if(fTagline)fTagline.value=seed.tagline||'';
+    if(fCopyright)fCopyright.value=seed.copyright||'';
+    if(fCols)(seed.columns||[]).forEach(function(c){fCols.appendChild(fColCard(c.title,c.links));});
+    if(fSocial)(seed.social||[]).forEach(function(l){fSocial.appendChild(fLinkRow(l.label,l.href));});
+    if(fLegal)(seed.legal||[]).forEach(function(l){fLegal.appendChild(fLinkRow(l.label,l.href));});
+    if(fTagline)fTagline.addEventListener('input',footerSync);
+    if(fCopyright)fCopyright.addEventListener('input',footerSync);
+    footerSync();
+  })();
+  var addCol=document.getElementById('footer-add-col');
+  if(addCol)addCol.addEventListener('click',function(){fCols.appendChild(fColCard('',[]));footerSync();});
+  var addSocial=document.getElementById('footer-add-social');
+  if(addSocial)addSocial.addEventListener('click',function(){fSocial.appendChild(fLinkRow('',''));footerSync();});
+  var addLegal=document.getElementById('footer-add-legal');
+  if(addLegal)addLegal.addEventListener('click',function(){fLegal.appendChild(fLinkRow('',''));footerSync();});
+}`
 
 	fullHTML := adminOSShellHead(nonce, "Settings", "settings", cfg) +
 		renderTrustedHTML(htmpl.HTML(body)) +
@@ -1394,6 +1957,49 @@ func osSettingsNavigation(ctx context.Context, ss *settings.Store) string {
 </div>`
 }
 
+// defaultFooterSeed pre-populates the footer editor for operators who have not
+// configured a footer yet, so they start from a premium layout (a link column,
+// Privacy/Terms legal links, copyright line) rather than a blank slate.
+const defaultFooterSeed = `{"tagline":"","copyright":"© {year} {site}. All rights reserved.","columns":[{"title":"Explore","links":[{"label":"Home","href":"/"},{"label":"Feed","href":"/feed.xml"}]}],"social":[],"legal":[{"label":"Privacy","href":"/privacy"},{"label":"Terms","href":"/terms"}]}`
+
+func osSettingsFooter(ctx context.Context, ss *settings.Store) string {
+	footerJSON := ""
+	if ss != nil {
+		footerJSON = ss.Get(ctx, settings.KeyFooterConfig)
+	}
+	if strings.TrimSpace(footerJSON) == "" {
+		footerJSON = defaultFooterSeed
+	}
+	esc := html.EscapeString(footerJSON)
+	return `<div class="settings-section">
+  <div class="settings-block-title">Premium footer</div>
+  <p class="text-sm muted mb-4">Build a rich footer for every public page: a brand tagline, multiple link columns, social links, a legal-links bar (Privacy, Terms…) and a copyright line. Hrefs accept internal paths (e.g. <code>/privacy</code>), feeds, <code>mailto:</code> or external URLs. Leave everything empty to fall back to a clean default copyright bar.</p>
+
+  <div class="field"><label class="field-label" for="footer-tagline">Footer tagline</label>
+    <input id="footer-tagline" class="input" type="text" placeholder="A short line shown under your brand"></div>
+
+  <div class="field"><label class="field-label" for="footer-copyright">Copyright line</label>
+    <input id="footer-copyright" class="input" type="text" placeholder="© {year} {site}. All rights reserved.">
+    <span class="field-hint">Use <code>{year}</code> for the current year and <code>{site}</code> for your site name.</span></div>
+
+  <div class="settings-block-title mt-4">Link columns</div>
+  <p class="text-sm muted mb-2">Grouped link lists (e.g. Explore, Company, Resources).</p>
+  <div id="footer-cols"></div>
+  <button type="button" class="btn btn--sm mt-2" id="footer-add-col">+ Add column</button>
+
+  <div class="settings-block-title mt-4">Social links</div>
+  <div id="footer-social"></div>
+  <button type="button" class="btn btn--sm mt-2" id="footer-add-social">+ Add social link</button>
+
+  <div class="settings-block-title mt-4">Legal links (bottom bar)</div>
+  <p class="text-sm muted mb-2">Shown in the footer's bottom bar next to the copyright — e.g. Privacy, Terms, Cookies.</p>
+  <div id="footer-legal"></div>
+  <button type="button" class="btn btn--sm mt-2" id="footer-add-legal">+ Add legal link</button>
+
+  <input type="hidden" id="footer-json-input" data-setting-key="` + settings.KeyFooterConfig + `" data-footer-seed="` + esc + `" value="` + esc + `">
+</div>`
+}
+
 func osSettingsDesign(ctx context.Context, ss *settings.Store) string {
 	primaryLight, primaryDark, customCSS := "#0f766e", "#2dd4bf", ""
 	faviconState := "Using the default mark."
@@ -1411,6 +2017,13 @@ func osSettingsDesign(ctx context.Context, ss *settings.Store) string {
 	}
 
 	return `<div class="settings-section">
+  <div class="settings-callout">
+    <strong>Design now lives in the Theme Studio.</strong>
+    <span class="text-sm muted">Logo, colours, layout, hero, fonts, navigation, article pages and the social share image are all edited there with a live preview.</span>
+    <a class="btn btn--primary btn--sm mt-2" href="/os/theme">Open Theme Studio →</a>
+  </div>
+</div>
+<div class="settings-section">
   <div class="settings-block-title">Branding</div>
   <div class="field">
     <label class="field-label">Logo &amp; favicon</label>
@@ -1663,6 +2276,8 @@ func (a *App) handleOSSettingsAPI(w http.ResponseWriter, r *http.Request) {
 			VerifyGoogle:    sv[settings.KeyHeadVerifyGoogle],
 			VerifyBing:      sv[settings.KeyHeadVerifyBing],
 			NavJSON:         sv[settings.KeyNavItems],
+			FooterJSON:      sv[settings.KeyFooterConfig],
+			OGImage:         render.OGImagePath(sv[settings.KeyThemeOGImage]),
 			CommentsEnabled: sv[settings.KeyFeatureComments] != "off",
 		})
 	}

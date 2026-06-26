@@ -16,8 +16,222 @@
 
 > **Adaptive publishing infrastructure for the sovereign web.**
 > SQLite-first, zero-trust, zero telemetry. Policy-governed runtime with adaptive system modes, sandboxed plugins, transactional event outbox, durable audit trail, and fault-tolerant federated publishing.
+>
+> **Complete digital sovereignty in one binary.**
+> _Own your content. Own your communication. Own your infrastructure._
+> Publishing is the core identity, **VayuMail** the native sovereignty layer, **VayuPGP** the native privacy layer, and **VayuOS** the native control layer — all in a single Go binary, single process, single config.
 
-## What's New in v1.7.0
+## What's New in v1.15.0
+
+> Full notes in [`CHANGELOG.md`](CHANGELOG.md)
+
+**A complete premium membership system — multi-tier plans, a member portal, and revenue insight.**
+
+- **Priced subscription tiers** — define named plans with monthly/yearly pricing
+  and a benefit list. Free and Premium ship seeded; add, edit, hide, or archive
+  more from the Members console.
+- **Public pricing page (`/pricing`)** — a themed plan grid built from your
+  published tiers, plus a JSON catalogue at `GET /api/v1/tiers`.
+- **Member portal (`/members/account`)** — signed-in readers see their plan,
+  edit their display name, toggle the members newsletter, and sign out. A proper
+  sign-in page now lives at `/members`.
+- **Richer members + labels** — display name, operator note, newsletter
+  preference, last-seen activity, and free-form labels for segmentation, all
+  manageable inline in the console.
+- **Revenue insight** — Monthly Recurring Revenue, annual run-rate, paid/free
+  split, active subscriptions, and 30-day signups, computed from per-member
+  subscription records (yearly normalised to monthly; complimentary grants
+  excluded).
+- **Tier-aware paywall** — gated posts surface the cheapest paid plan's price and
+  benefits beside the passwordless sign-in form.
+- **Team roles & author profiles** — admin/editor/author accounts with inline
+  role management in the Members console, auto-provisioned sovereign VayuMail
+  mailboxes for staff, and self-service author profiles (avatar, bio ≤250 chars,
+  social links) published at `/author/{id}`.
+- **Constitution-clean** — single Go binary, passwordless magic-link auth, no
+  embedded payment SDK (optional signed Stripe webhook only), strict CSP with no
+  inline styles, and fully backward-compatible access levels.
+
+## What's New in v1.14.0
+
+> Full notes in [`CHANGELOG.md`](CHANGELOG.md)
+
+**The most powerful sovereign Post Editor yet — beautiful, intelligent, and still lightweight.**
+
+- **Five new blocks** — **tables**, collapsible **toggles**, **task lists** (with
+  done states), **math** (LaTeX/expression), and self-hosted **audio** — joining
+  images, privacy-first video embeds, Mermaid diagrams, callouts and code. Every
+  block is still rendered and re-sanitised server-side (bluemonday); there is no
+  raw-HTML escape hatch and no new XSS surface. Audio is **local-only** (`/media`)
+  so playback never calls a third party.
+- **Block reordering** — drag the `⋮⋮` handle or use the `↑`/`↓` buttons, with an
+  **undo/redo** history for every structural change.
+- **Live writing stats** — word count, character count and reading time update as
+  you type.
+- **Focus mode** (`⌘.`/`Ctrl+.`) hides the chrome for distraction-free writing,
+  and a **split-screen live preview** renders the published look beside your draft.
+- **Command palette** — a categorised, keyboard-navigable slash menu plus a global
+  `⌘K`/`Ctrl+K` command menu put every block one keystroke away.
+- **Constitution-clean** — single Go binary, vanilla JS, strict CSP (no
+  `unsafe-inline`, no CDNs), and AI assistance remains strictly opt-in and off by
+  default. The block storage format is unchanged — fully backward compatible.
+
+## What's New in v1.13.0
+
+> Full notes in [`CHANGELOG.md`](CHANGELOG.md)
+
+**VayuMail moves toward a Gmail-like experience — still 100% sovereign.**
+
+- **Role-based mail accounts** — every mailbox has a role (Administrator,
+  Editor, Author, Reviewer / read-only, or custom). Roles are chosen on creation
+  and editable inline; account create/delete stays admin-only.
+- **Archive folder** — a first-class Archive alongside Inbox/Sent/Drafts/Junk/
+  Trash, with one-click archiving from any message.
+- **Mailbox full-text search** — search From / To / Subject (and body) across
+  all folders. Bounded and fully local — no external index, no extra services.
+
+> Foundational slice of the Gmail-like roadmap; threading, rich compose +
+> attachments, server-side filters, vacation responder and real-time
+> notifications are planned for v1.14.0.
+
+## What's New in v1.12.0
+
+> Full notes in [`CHANGELOG.md`](CHANGELOG.md)
+
+**Theme import / export.** Download your entire theme — design tokens
+(palette, typography, layout) plus the site-wide custom CSS and head/SEO meta —
+as one portable JSON file, and import it to apply it everywhere. Imported tokens
+are validated by compiling them before they go live, so a bad file can never
+break the site or bypass the CSP.
+
+## What's New in v1.11.0
+
+> Full notes in [`CHANGELOG.md`](CHANGELOG.md)
+
+**Tumblr-style theme code editing in Theme Studio.**
+
+- **Custom CSS editor** — a full monospace editor (16 KB) in Theme Studio.
+  Styles are served same-origin via `/theme.css` (CSP-safe — no inline styles,
+  no external origins, no scripts) and apply to every public page on save.
+- **Head & SEO meta** — keywords, theme-colour, robots directive, and
+  Google/Bing verification, editable inline. Raw `<head>` HTML is rejected;
+  fields render to a validated, escaped `<meta>` allowlist.
+
+## What's New in v1.10.0
+
+> Full notes in [`CHANGELOG.md`](CHANGELOG.md)
+
+**A Ghost-style writing experience for the VayuOS editor.**
+
+- **Inline rich text** — bold, italic, inline code, links and strikethrough
+  across paragraphs, headings, quotes, callouts and lists (still sanitised by
+  bluemonday — no new XSS surface).
+- **Selection toolbar** — select text for Bold / Italic / Code / Strike / Link.
+- **Markdown shortcuts** — `##` heading, `-` list, `1.` numbered, `>` quote,
+  a triple-backtick fence for code, `---` divider — converted as you type.
+- **Continuous flow** — Enter starts the next block, Shift+Enter a soft break,
+  Backspace removes an empty block; new blocks autofocus.
+- **Filterable slash menu** and **image paste / drag-and-drop upload**.
+
+## What's New in v1.9.1
+
+> Full notes in [`CHANGELOG.md`](CHANGELOG.md)
+
+**Deeper analytics and a more complete mailbox** — all still in one binary, privacy-first.
+
+- **VayuAnalytics — reporting periods up to 3 years.** Pick any window from 24h
+  to 3 years; it flows through every card, goals/journey, and exports.
+- **VayuAnalytics — conversion goals.** Track a page view or custom event as a
+  goal and see completions and conversion rate.
+- **VayuAnalytics — visitor journey.** Most common page-to-page paths with
+  `(entry)`/`(exit)` markers.
+- **VayuAnalytics — export.** Download any report as CSV or JSON (computed
+  locally, no PII).
+- **VayuAnalytics — country/region/city.** Read **server-side from your reverse
+  proxy** (e.g. Cloudflare `CF-IPCountry`/`CF-IPCity`, `X-Geo-*`). VayuPress does
+  **no GeoIP lookup, bundles no GeoIP database, and never stores an IP** — geo
+  shows only when your proxy supplies it.
+- **VayuAnalytics — live panel.** Active visitors and pages, refreshed every 10s.
+- **VayuMail — junk filter, account password/disable, reply & forward.** A
+  fully-local spam heuristic files junk on inbound; set or disable mailbox
+  passwords from the panel; reply/forward pre-filled from the original message.
+
+## What's New in v1.9.0
+
+> Full notes in [`CHANGELOG.md`](CHANGELOG.md) · architecture decisions in [`docs/adr/`](docs/adr/) (ADR-0076–0080) · roadmap in [`docs/ROADMAP-v1.9.md`](docs/ROADMAP-v1.9.md)
+
+**"Stable Private Email" — the inbound half of VayuMail.** v1.9.0 completes the
+receive side so VayuPress is a mailbox you can actually receive and read mail in,
+still inside one binary.
+
+- **SMTP-receive server** — a pure-Go RFC 5321 listener (EHLO/MAIL/RCPT/DATA/
+  RSET/NOOP/QUIT) that accepts mail only for your local domain (no open relay),
+  undoes dot-stuffing, and enforces size caps, delivering into Maildir.
+- **IMAP read server** — a pure-Go RFC 3501 subset (CAPABILITY, LOGIN via your
+  VayuPress account, LIST, SELECT, FETCH incl. `BODY[]`/FLAGS/SIZE/INTERNALDATE,
+  STORE `\Seen`, LOGOUT) so standard clients (Thunderbird, mobile) read the
+  Maildir.
+- **Transparent PGP decryption on read** — when VayuPGP holds the account's key,
+  IMAP serves the decrypted message body; best-effort, and it never blocks
+  delivery.
+- **Inbox panel** — `/os/vayuos/mail/inbox` shows per-account message/unseen
+  counts.
+- **On by default** — once a `DOMAIN` is configured the inbound SMTP/IMAP
+  listeners start automatically so the instance can receive external mail. Run
+  outbound-only with `VAYUOS_MAIL_INBOUND=off`. Binding the mail ports is
+  best-effort: if a port can't be opened (e.g. `:25` without privileges) the
+  engine records the reason, surfaces it in the panel, and keeps outbound and
+  local delivery running. Receiving external mail also requires port 25
+  reachable and MX/A DNS records pointing at the host.
+
+> **Scope:** inbound SPF/DKIM/DMARC verification, greylisting, and IMAPS/TLS
+> hardening are tracked as the next milestones in `docs/ROADMAP-v1.9.md`.
+
+## What's New in v1.8.0
+
+> Full notes in [`CHANGELOG.md`](CHANGELOG.md) · upgrade steps in [`docs/UPGRADING.md`](docs/UPGRADING.md)
+
+**Sovereignty release — VayuAnalytics, VayuOS Phase 2 (VayuMail + VayuPGP), and the Theme Studio Gallery.**
+
+- **VayuAnalytics — privacy-first, cookieless, no-PII web analytics.** Pageviews,
+  sessions, top pages, referrers, UTM campaigns, custom events, funnels,
+  retention cohorts and revenue — stored locally in SQLite. Visitor identity is
+  a **server-side daily-rotating salted hash**: no cookies, no `localStorage`,
+  no IP or User-Agent ever stored, no consent banner required, nothing to leak
+  on a database compromise. The public ingest endpoint is body-capped and
+  per-IP rate-limited; a retention sweeper enforces data minimisation.
+- **VayuPGP — native end-to-end PGP privacy layer** (built on ProtonMail
+  go-crypto). Ed25519 + Curve25519 keypairs auto-generated on account creation,
+  **private keys AES-256-GCM encrypted at rest** under a key derived from the
+  master secret (never logged, never leave the server), full
+  encrypt/decrypt/sign/verify, key rotation that preserves old messages, and a
+  **Web Key Directory (WKD)** served at `/.well-known/openpgpkey/` so any GPG
+  client can discover your keys.
+- **VayuMail — native outbound mail sovereignty layer.** RFC 6376 **DKIM
+  signing** (relaxed/relaxed, RSA-SHA256), **direct-to-MX delivery** with
+  opportunistic STARTTLS (no third-party relay), a durable SQLite retry queue,
+  Maildir storage, automatic **MX / SPF / DKIM / DMARC** record generation with
+  **live DNS health checks**, and automatic PGP encryption of outgoing mail when
+  a recipient key is discoverable. Mail never leaves your server unencrypted to
+  a third party.
+- **VayuOS control layer** — a typed event bus (account creation auto-provisions
+  a PGP keypair + mailbox), an ordered boot orchestrator with graceful
+  degradation, and a health monitor, all surfaced in the `/os/vayuos` console
+  (keys, mail queue, DNS health, security updates).
+- **Security-update watcher** — an **opt-in** (privacy-default-off) advisory that
+  tracks upstream security releases of the crypto dependencies powering VayuPGP
+  and VayuMail, surfacing available patches in the panel. It transmits nothing
+  about your site.
+- **Theme Studio Gallery** — expanded preset gallery (20+ themes incl. the new
+  **Gale** editorial and **Zephyr** bright-creative layouts) with a CSP-safe
+  Pico bridge so presets restyle the public site instantly, plus WCAG-AA
+  contrast and ≥44px touch targets.
+
+> **Scope note:** VayuMail v1.8.0 delivers the **outbound** sovereignty path
+> (submission, DKIM, queue, DNS, WKD, PGP). A full inbound MX + IMAP server is a
+> governed future milestone under the Operational Simplicity Doctrine.
+
+## Previously in v1.7.0
 
 > Full notes in [`CHANGELOG.md`](CHANGELOG.md) · upgrade steps in [`docs/UPGRADING.md`](docs/UPGRADING.md)
 
@@ -613,8 +827,11 @@ See [docs/architecture/system-modes.md](docs/architecture/system-modes.md).
 - **Sovereign AI writing assistant** — summarize / improve / titles / SEO /
   continue, powered by a **local** Ollama server (no hosted model, no telemetry).
   Suggest-only — never auto-edits. `POST /api/v1/admin/ai/assist`
-- **Memberships & paywalls** — passwordless magic-link reader login, per-article
-  access levels (public/members/paid) with preview + CTA, and an optional
+- **Memberships & paywalls** — passwordless magic-link reader login, **priced
+  multi-tier subscription plans** with a public pricing page (`/pricing`) and a
+  self-service member portal (`/members/account`), per-article access levels
+  (public/members/paid) with a tier-aware preview + CTA, member labels for
+  segmentation, Monthly Recurring Revenue reporting, and an optional
   signature-verified Stripe webhook for paid upgrades (no embedded payment SDK)
 
 ### Event-Driven Reliability (P20–P22)
@@ -761,9 +978,18 @@ trusted, and the strict CSP stays intact:
 | `GET` | `/api/v1/admin/ai/status` | AI assistant availability + supported ops |
 | `POST` | `/api/v1/admin/ai/assist` | Run a local-LLM writing operation (CSRF-protected) |
 | `POST` | `/api/v1/members/login` | Request a passwordless member sign-in link |
+| `GET` | `/members` · `/members/account` | Member sign-in page · self-service portal |
 | `GET` | `/members/verify` | Consume a magic link, start a member session |
+| `GET` | `/pricing` · `/api/v1/tiers` | Public pricing page · tier catalogue (JSON) |
 | `GET` | `/api/v1/admin/members` | List members + tier counts |
+| `GET` | `/api/v1/admin/members/stats` | Membership stats — MRR, tiers, growth |
+| `GET` | `/api/v1/admin/members/{email}` | Member detail + active subscription |
 | `PUT` | `/api/v1/admin/members/{email}/tier` | Set a member's tier (CSRF-protected) |
+| `POST`/`DELETE` | `/api/v1/admin/members/{email}/labels[/{label}]` | Add/remove a member label (CSRF-protected) |
+| `GET`/`POST`/`PUT`/`DELETE` | `/api/v1/admin/tiers[/{id}]` | Manage subscription tiers (writes CSRF-protected) |
+| `GET`/`POST`/`DELETE` | `/api/v1/admin/users[/{email}]` | List / create / remove team accounts (writes CSRF-protected) |
+| `PUT` | `/api/v1/admin/users/{email}/role` | Change a team member's role (CSRF-protected) |
+| `GET` | `/author/{id}` | Public author profile (avatar, bio, social links) |
 | `PUT` | `/api/v1/admin/articles/{slug}/access` | Set article access level (CSRF-protected) |
 | `POST` | `/api/v1/stripe/webhook` | Signed Stripe webhook → paid upgrades (optional) |
 

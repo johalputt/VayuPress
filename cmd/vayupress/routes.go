@@ -72,11 +72,19 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	r.Get("/static/js/theme-toggle.js", a.handleThemeToggleJS)
 	r.Get("/static/js/video-facade.js", a.handleVideoFacadeJS)
 	r.Get("/static/js/comments.js", a.handleCommentsJS)
+	r.Get("/static/js/post-card-media.js", a.handlePostCardMediaJS)
+	// VayuPortal — the reader membership overlay widget (same-origin → script-src 'self').
+	r.Get("/static/js/portal.js", a.handleMemberPortalJS)
 	// Favicon routes serve the operator's uploaded brand mark when one is stored
 	// (see /admin/theme branding), falling back to the embedded default per scheme.
 	r.Get("/static/favicon-dark.png", a.serveFavicon(faviconDarkPNG))
 	r.Get("/static/favicon-light.png", a.serveFavicon(faviconLightPNG))
 	r.Get("/favicon.ico", a.serveFavicon(faviconDarkPNG))
+	// Operator-uploaded hero/cover image (same-origin → img-src 'self'); 404s
+	// gracefully when none is set so the "Hero background: Image" option degrades.
+	r.Get("/theme-assets/hero", a.serveHeroImage)
+	// Operator-uploaded social/share image (og:image). 404s gracefully when unset.
+	r.Get("/theme-assets/og", a.serveOGImage)
 	// cssAllowlist maps the URL parameter to its canonical on-disk name.
 	// The path passed to http.ServeFile comes from the *value* (a string literal),
 	// not from the user-supplied key, so there is no path-traversal vector.
@@ -87,6 +95,7 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 		"pico.min.css":      "pico.min.css",
 		"custom.css":        "custom.css",
 		"signup.css":        "signup.css",
+		"portal.css":        "portal.css",
 	}
 	r.Get("/static/css/{file}", func(w http.ResponseWriter, r *http.Request) {
 		canon, ok := cssAllowlist[chi.URLParam(r, "file")]
@@ -135,12 +144,31 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	r.Get("/api/v1/newsletter/unsubscribe", a.handleNewsletterUnsubscribe)
 	r.Get("/api/v1/openapi.json", a.handleOpenAPISpec)
 
+	// VayuAnalytics — public ingest + tracking script (no auth; body-capped and per-IP rate-limited).
+	r.Post("/api/v1/analytics/collect", a.handleAnalyticsCollect)
+	r.Get("/static/vp-analytics.js", a.handleAnalyticsScript)
+
+	// VayuPGP Web Key Directory — public key discovery (RFC WKD advanced method).
+	r.Get("/.well-known/openpgpkey/*", a.handleWKD)
+
 	// Reader memberships (Tier 2) — public passwordless login + paywall.
 	r.Get("/signup", a.handleMemberSignup)
 	r.Post("/api/v1/members/login", a.handleMemberLogin)
 	r.Post("/members/login", a.handleMemberLogin) // HTML form variant from the paywall
 	r.Get("/members/verify", a.handleMemberVerify)
 	r.Post("/members/logout", a.handleMemberLogout)
+	// Premium membership: sign-in page, member portal/account, and the public
+	// pricing page + tier catalogue.
+	r.Get("/members", a.handleMemberSigninPage)
+	r.Get("/members/account", a.handleMemberAccount)
+	r.Post("/members/account", a.handleMemberAccountUpdate)
+	// VayuPortal overlay backend — capability snapshot + VayuMail credential login.
+	r.Get("/api/v1/members/me", a.handleMemberMe)
+	r.Post("/api/v1/members/vayumail-login", a.handleMemberVayuMailLogin)
+	r.Get("/pricing", a.handlePricingPage)
+	r.Get("/api/v1/tiers", a.handleTiersPublic)
+	// Public author profile pages.
+	r.Get("/author/{id}", a.handlePublicAuthor)
 	// Stripe webhook for paid upgrades — verified by signature, not API key.
 	r.Post("/api/v1/stripe/webhook", a.handleStripeWebhook)
 
@@ -176,10 +204,42 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 		// Multi-author accounts (Tier 1) — admin-role guarded.
 		r.Get("/api/v1/admin/users", a.handleUserList)
 		r.With(auth.CSRFTokenMiddleware).Post("/api/v1/admin/users", a.handleUserCreate)
+		r.With(auth.CSRFTokenMiddleware).Put("/api/v1/admin/users/{email}/role", a.handleUserSetRole)
+		r.With(auth.CSRFTokenMiddleware).Post("/api/v1/admin/users/{email}/mailbox", a.handleAssignMailbox)
 		r.With(auth.CSRFTokenMiddleware).Delete("/api/v1/admin/users/{email}", a.handleUserDelete)
 
 		// Privacy-first analytics (Tier 2).
 		r.Get("/api/v1/admin/analytics", a.handleAnalytics)
+
+		// VayuAnalytics — extended endpoints (Tier 2, protected).
+		r.Get("/api/v1/analytics/overview", a.handleAnalyticsOverview)
+		r.Get("/api/v1/analytics/pageviews", a.handleAnalyticsPageviews)
+		r.Get("/api/v1/analytics/pages", a.handleAnalyticsPages)
+		r.Get("/api/v1/analytics/referrers", a.handleAnalyticsReferrers)
+		r.Get("/api/v1/analytics/browsers", a.handleAnalyticsBrowsers)
+		r.Get("/api/v1/analytics/devices", a.handleAnalyticsDevices)
+		r.Get("/api/v1/analytics/os", a.handleAnalyticsOS)
+		r.Get("/api/v1/analytics/utm", a.handleAnalyticsUTM)
+		r.Get("/api/v1/analytics/events", a.handleAnalyticsEvents)
+		r.Get("/api/v1/analytics/realtime", a.handleAnalyticsRealtime)
+		r.Get("/api/v1/analytics/sessions", a.handleAnalyticsSessions)
+		r.Get("/api/v1/analytics/funnels", a.handleAnalyticsFunnels)
+		r.With(auth.CSRFTokenMiddleware).Post("/api/v1/analytics/funnels", a.handleAnalyticsCreateFunnel)
+		r.Get("/api/v1/analytics/funnels/{id}", a.handleAnalyticsGetFunnel)
+		r.Get("/api/v1/analytics/retention", a.handleAnalyticsRetention)
+		r.Get("/api/v1/analytics/revenue", a.handleAnalyticsRevenue)
+		r.With(auth.CSRFTokenMiddleware).Post("/api/v1/analytics/revenue", a.handleAnalyticsRecordRevenue)
+
+		// Goals (conversion targets) — list/create/delete + computed results.
+		r.Get("/api/v1/analytics/goals", a.handleAnalyticsGoals)
+		r.With(auth.CSRFTokenMiddleware).Post("/api/v1/analytics/goals", a.handleAnalyticsCreateGoal)
+		r.With(auth.CSRFTokenMiddleware).Delete("/api/v1/analytics/goals/{id}", a.handleAnalyticsDeleteGoal)
+
+		// Visitor journey / path-flow analysis.
+		r.Get("/api/v1/analytics/journey", a.handleAnalyticsJourney)
+
+		// Report export (CSV/JSON download) for every report.
+		r.Get("/api/v1/analytics/export", a.handleAnalyticsExport)
 
 		// AI writing assistant — local Ollama, opt-in (Tier 2).
 		r.Get("/api/v1/admin/ai/status", a.handleAIStatus)
@@ -187,9 +247,19 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 
 		// Reader memberships & paywalls (Tier 2) — admin management.
 		r.Get("/api/v1/admin/members", a.handleMemberListAdmin)
+		r.Get("/api/v1/admin/members/stats", a.handleMemberStats)
 		r.With(auth.CSRFTokenMiddleware).Put("/api/v1/admin/members/{email}/tier", a.handleMemberSetTier)
+		r.Get("/api/v1/admin/members/{email}", a.handleMemberDetail)
+		r.With(auth.CSRFTokenMiddleware).Post("/api/v1/admin/members/{email}/labels", a.handleMemberLabelAdd)
+		r.With(auth.CSRFTokenMiddleware).Delete("/api/v1/admin/members/{email}/labels/{label}", a.handleMemberLabelRemove)
 		r.Get("/api/v1/admin/articles/{slug}/access", a.handleArticleAccessGet)
 		r.With(auth.CSRFTokenMiddleware).Put("/api/v1/admin/articles/{slug}/access", a.handleArticleAccessSet)
+
+		// Membership tiers (premium plans) — list / create / update / archive.
+		r.Get("/api/v1/admin/tiers", a.handleTierListAdmin)
+		r.With(auth.CSRFTokenMiddleware).Post("/api/v1/admin/tiers", a.handleTierCreate)
+		r.With(auth.CSRFTokenMiddleware).Put("/api/v1/admin/tiers/{id}", a.handleTierUpdate)
+		r.With(auth.CSRFTokenMiddleware).Delete("/api/v1/admin/tiers/{id}", a.handleTierDelete)
 
 		// Outbound webhooks (Tier 2).
 		r.Get("/api/v1/admin/webhooks", a.handleWebhookList)
@@ -305,6 +375,12 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	a.registerAdminOSUIRoutes(r)
 
 	r.Get("/", a.handleHome)
+	// Public taxonomy pages — the topic index and per-tag listings. Registered
+	// before the single-segment "/{slug}" catch-all so "/tags" and "/tags/{tag}"
+	// resolve here instead of falling through to a 404 (the two-segment form
+	// previously matched no route).
+	r.Get("/tags", a.handleTagIndex)
+	r.Get("/tags/{tag}", a.handleTagPage)
 	r.NotFound(a.handleNotFound)
 	r.Get("/{slug}", a.handleArticlePage)
 }
