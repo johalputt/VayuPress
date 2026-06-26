@@ -144,5 +144,5 @@ func HasValidAPIKey(r *http.Request) bool {
 	if key == "" {
 		key = trimBearer(r.Header.Get("Authorization"))
 	}
-	return config.Cfg.APIKey != "" && constantTimeEqual(key, config.Cfg.APIKey)
+	return config.Cfg.APIKey != "" && constantTimeEqual(key, config.Cfg.APIKey) || verifyExtraAPIKey(key)
 }

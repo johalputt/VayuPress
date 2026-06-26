@@ -231,6 +231,18 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.Get("/os/settings", a.handleOSSettings)
 		pr.Get("/os/settings/{group}", a.handleOSSettings)
 
+		// API Keys console — VayuPress's own rotatable bearer tokens plus
+		// encrypted third-party service credentials (IndexNow, OpenRouter,
+		// Ollama, n8n, custom).
+		pr.Get("/os/apikeys", a.handleOSAPIKeys)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/apikeys/create", a.handleOSAPIKeyCreate)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/apikeys/rotate", a.handleOSAPIKeyRotate)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/apikeys/revoke", a.handleOSAPIKeyRevoke)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/apikeys/delete", a.handleOSAPIKeyDelete)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/credentials/save", a.handleOSCredentialSave)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/credentials/reveal", a.handleOSCredentialReveal)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/credentials/delete", a.handleOSCredentialDelete)
+
 		// CSRF-protected writes
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/seo/regenerate", a.handleSEORegenerate)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/settings", a.handleOSSettingsAPI)
@@ -453,6 +465,7 @@ func adminOSShellHead(nonce, title, active string, settings *osSettings) string 
     ` + navItem("/os/governance", "Governance", "governance", active, iconGovernance) + `
     ` + navItem("/os/tools", "Tools & Plugins", "tools", active, iconTools) + `
     ` + navItem("/os/settings", "Settings", "settings", active, iconSettings) + `
+    ` + navItem("/os/apikeys", "API Keys", "apikeys", active, iconKey) + `
     ` + navItem("/os/security", "Security", "security", active, iconSecurity) + `
 
     <div class="sidebar-section-label">Operations</div>
@@ -2241,6 +2254,7 @@ func (a *App) handleOSCmdIndex(w http.ResponseWriter, r *http.Request) {
 		{Label: "Email settings", Icon: "✉", Href: "/os/settings/email"},
 		{Label: "Members settings", Icon: "👥", Href: "/os/settings/members"},
 		{Label: "Security settings", Icon: "🔒", Href: "/os/settings/security"},
+		{Label: "API Keys", Icon: "🔑", Href: "/os/apikeys"},
 	}
 
 	w.Header().Set("Content-Type", "application/json")
