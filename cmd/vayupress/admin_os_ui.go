@@ -42,6 +42,7 @@ import (
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/settings"
+	"github.com/johalputt/vayupress/internal/users"
 )
 
 // ── Static asset path ────────────────────────────────────────────────────────
@@ -418,13 +419,7 @@ func adminOSShellHead(nonce, title, active string, settings *osSettings) string 
     <div class="sidebar-spacer"></div>
   </nav>
   <div class="sidebar-footer">
-    <div class="sidebar-user">
-      <div class="avatar avatar--sm avatar--brand">A</div>
-      <div class="sidebar-user-info">
-        <div class="sidebar-user-name">Admin</div>
-        <div class="sidebar-user-role">Administrator</div>
-      </div>
-    </div>
+    ` + osSidebarUser(settings) + `
   </div>
 </aside>
 
@@ -520,6 +515,11 @@ window.vpPost=function(url,onok){fetch(url,{method:'POST',headers:{'Content-Type
 type osSettings struct {
 	SiteName   string
 	AdminTheme string
+	// Signed-in user, surfaced in the sidebar footer card.
+	UserID     string
+	UserName   string
+	UserRole   string
+	UserAvatar string
 }
 
 // getOSSettings loads settings needed for layout rendering.
@@ -529,7 +529,61 @@ func (a *App) getOSSettings(ctx context.Context) *osSettings {
 		s.SiteName = a.siteSettings.Get(ctx, settings.KeySiteName)
 		s.AdminTheme = a.siteSettings.Get(ctx, "admin.theme")
 	}
+	// Surface the authenticated user (if any) so the shell can show their
+	// avatar/name/role. The user is attached to the context by
+	// requireSessionOrAPIKey and already carries the profile fields.
+	if v := ctx.Value(ctxUserKey); v != nil {
+		if u, ok := v.(*users.User); ok && u != nil {
+			s.UserID = u.ID
+			s.UserName = u.Name
+			if s.UserName == "" {
+				s.UserName = authorFallbackName(u.Email)
+			}
+			s.UserRole = u.Role
+			s.UserAvatar = u.AvatarURL
+		}
+	}
 	return s
+}
+
+// roleDisplay returns a human label for a role slug.
+func roleDisplay(role string) string {
+	switch role {
+	case users.RoleAdmin:
+		return "Administrator"
+	case users.RoleEditor:
+		return "Editor"
+	case users.RoleAuthor:
+		return "Author"
+	case "":
+		return "Administrator"
+	default:
+		return strings.ToUpper(role[:1]) + role[1:]
+	}
+}
+
+// osSidebarUser renders the signed-in user card (avatar + name + role) shown at
+// the foot of the sidebar. It links to the self-service profile editor.
+func osSidebarUser(s *osSettings) string {
+	name, role, avatarURL := "Admin", "Administrator", ""
+	if s != nil {
+		if s.UserName != "" {
+			name = s.UserName
+		}
+		role = roleDisplay(s.UserRole)
+		avatarURL = s.UserAvatar
+	}
+	avatar := `<div class="avatar avatar--sm avatar--brand">` + html.EscapeString(initials(name, "")) + `</div>`
+	if avatarURL != "" {
+		avatar = `<img class="avatar avatar--sm" src="` + html.EscapeString(avatarURL) + `" alt="" width="28" height="28">`
+	}
+	return `<a class="sidebar-user" href="/os/profile" title="Edit your profile">
+      ` + avatar + `
+      <div class="sidebar-user-info">
+        <div class="sidebar-user-name">` + html.EscapeString(name) + `</div>
+        <div class="sidebar-user-role">` + html.EscapeString(role) + `</div>
+      </div>
+    </a>`
 }
 
 // writeOSHTML writes HTML with the standard os response headers and CSRF cookie.

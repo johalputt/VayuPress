@@ -23,6 +23,30 @@
   }
   if (bio) { bio.addEventListener('input', updateCount); updateCount(); }
 
+  // Live avatar preview — reflects the URL into the fixed cropped thumbnail.
+  var avatarInput = form.querySelector('[data-p-avatar]');
+  var preview = form.querySelector('[data-avatar-preview]');
+  var emptyHint = form.querySelector('[data-avatar-empty]');
+  if (avatarInput && preview) {
+    avatarInput.addEventListener('input', function () {
+      var url = avatarInput.value.trim();
+      if (url) {
+        preview.src = url;
+        preview.removeAttribute('hidden');
+        if (emptyHint) { emptyHint.setAttribute('hidden', ''); }
+      } else {
+        preview.setAttribute('hidden', '');
+        preview.removeAttribute('src');
+        if (emptyHint) { emptyHint.removeAttribute('hidden'); }
+      }
+    });
+    // A broken image URL falls back to the "no photo" hint.
+    preview.addEventListener('error', function () {
+      preview.setAttribute('hidden', '');
+      if (emptyHint) { emptyHint.removeAttribute('hidden'); }
+    });
+  }
+
   form.addEventListener('submit', function (e) {
     e.preventDefault();
     var status = form.querySelector('[data-p-status]');

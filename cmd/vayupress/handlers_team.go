@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5"
 
@@ -43,10 +44,16 @@ func socialLabel(key string) string {
 			return p.Label
 		}
 	}
-	if key == "" {
+	return titleFirst(key)
+}
+
+// titleFirst upper-cases the first rune of s, preserving the remainder.
+func titleFirst(s string) string {
+	if s == "" {
 		return ""
 	}
-	return strings.ToUpper(key[:1]) + key[1:]
+	r, size := utf8.DecodeRuneInString(s)
+	return strings.ToUpper(string(r)) + s[size:]
 }
 
 // =============================================================================
@@ -144,10 +151,14 @@ func (a *App) handleOSProfile(w http.ResponseWriter, r *http.Request) {
       <input class="input" type="url" data-social="` + p.Key + `" value="` + esc(val) + `" placeholder="` + esc(p.Placeholder) + `"></label>`
 	}
 
-	avatarPreview := ""
+	avatarPreview := `<div class="pf-avatar-frame" data-avatar-frame>`
 	if u.AvatarURL != "" {
-		avatarPreview = `<img class="pf-avatar" src="` + esc(u.AvatarURL) + `" alt="Current avatar">`
+		avatarPreview += `<img class="pf-avatar" data-avatar-preview src="` + esc(u.AvatarURL) + `" alt="Your avatar">`
+	} else {
+		avatarPreview += `<img class="pf-avatar" data-avatar-preview alt="" hidden>` +
+			`<span class="pf-avatar-empty" data-avatar-empty>No photo</span>`
 	}
+	avatarPreview += `</div>`
 
 	body := `<div class="page-header"><h1>My profile</h1>
 <span class="muted text-sm">Your public author profile — shown at <a href="/author/` + esc(u.ID) + `">/author/` + esc(u.ID) + `</a></span></div>
@@ -155,14 +166,14 @@ func (a *App) handleOSProfile(w http.ResponseWriter, r *http.Request) {
   <form data-profile-form>
     <div class="pf-head">` + avatarPreview + `<div>
       <div class="muted text-sm">Signed in as</div>
-      <div class="row-title">` + esc(u.Email) + ` <span class="badge badge--ok">` + esc(u.Role) + `</span></div>
+      <div class="row-title">` + esc(u.Email) + ` <span class="badge badge--ok">` + esc(roleDisplay(u.Role)) + `</span></div>
     </div></div>
     <label class="field mt-4"><span class="field-label">Display name</span>
       <input class="input" type="text" data-p-name value="` + esc(u.Name) + `" maxlength="250" required></label>
     <label class="field mt-3"><span class="field-label">About you <span class="muted">(max 250 characters)</span></span>
       <textarea class="input" rows="3" data-p-bio maxlength="250" placeholder="A short bio shown on your public profile.">` + esc(u.Bio) + `</textarea>
       <span class="field-hint" data-bio-count></span></label>
-    <label class="field mt-3"><span class="field-label">Avatar image URL</span>
+    <label class="field mt-3"><span class="field-label">Avatar image URL <span class="muted">(shown cropped to a circular thumbnail)</span></span>
       <input class="input" type="url" data-p-avatar value="` + esc(u.AvatarURL) + `" placeholder="https://…/photo.jpg"></label>
     <div class="card-subtitle mt-4">Social links</div>
     ` + socialFields + `
@@ -389,9 +400,18 @@ func initials(name, email string) string {
 	if len(parts) == 0 {
 		return "?"
 	}
-	out := strings.ToUpper(parts[0][:1])
+	out := firstRuneUpper(parts[0])
 	if len(parts) > 1 {
-		out += strings.ToUpper(parts[len(parts)-1][:1])
+		out += firstRuneUpper(parts[len(parts)-1])
 	}
 	return out
+}
+
+// firstRuneUpper returns the first rune of s upper-cased (rune-safe, so it never
+// splits a multi-byte character).
+func firstRuneUpper(s string) string {
+	for _, r := range s {
+		return strings.ToUpper(string(r))
+	}
+	return ""
 }
