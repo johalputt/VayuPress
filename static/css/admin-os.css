@@ -1700,8 +1700,11 @@
 }
 @media (max-width: 1100px) { .vp-os .customizer__panel { height: auto; overflow: visible; } }
 
-/* Collapsible control groups. */
+/* Collapsible control groups. flex:0 0 auto stops a tall open section from being
+   squeezed (and clipped by overflow:hidden) to fit the panel — instead the panel
+   itself scrolls, so the whole section and all its controls are reachable. */
 .vp-os .cz-group {
+  flex: 0 0 auto;
   background: var(--bg-surface); border: 1px solid var(--border);
   border-radius: var(--r-lg); overflow: hidden;
 }
