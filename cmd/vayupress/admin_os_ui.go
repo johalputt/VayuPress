@@ -1076,6 +1076,7 @@ func (a *App) handleOSSettings(w http.ResponseWriter, r *http.Request) {
 	tabs := []struct{ Key, Label, Href string }{
 		{"general", "General", "/os/settings/general"},
 		{"navigation", "Navigation", "/os/settings/navigation"},
+		{"footer", "Footer", "/os/settings/footer"},
 		{"design", "Design", "/os/settings/design"},
 		{"members", "Members", "/os/settings/members"},
 		{"email", "Email", "/os/settings/email"},
@@ -1097,6 +1098,8 @@ func (a *App) handleOSSettings(w http.ResponseWriter, r *http.Request) {
 	switch group {
 	case "navigation":
 		groupBody = osSettingsNavigation(r.Context(), ss)
+	case "footer":
+		groupBody = osSettingsFooter(r.Context(), ss)
 	case "design":
 		groupBody = osSettingsDesign(r.Context(), ss)
 	case "members":
@@ -1236,7 +1239,85 @@ if(favRm)favRm.addEventListener('click',function(){
     .then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d};});})
     .then(function(res){favRm.disabled=false;if(res.ok){favSet('Default restored',false);favBust();if(favState)favState.textContent='Using the default mark.';}else{favSet(res.d.error||'Remove failed',true);}})
     .catch(function(e){favRm.disabled=false;favSet('Error: '+e,true);});
-});`
+});
+// Footer editor (Footer tab). Builds tagline/copyright/columns/social/legal and
+// keeps a hidden JSON input (footer.config) in sync for the generic Save.
+var footerInput=document.getElementById('footer-json-input');
+if(footerInput){
+  var fTagline=document.getElementById('footer-tagline');
+  var fCopyright=document.getElementById('footer-copyright');
+  var fCols=document.getElementById('footer-cols');
+  var fSocial=document.getElementById('footer-social');
+  var fLegal=document.getElementById('footer-legal');
+  function fLinkRow(label,href){
+    var row=document.createElement('div');row.setAttribute('data-f-link','');
+    row.style.cssText='display:flex;gap:.5rem;align-items:center;margin-bottom:.4rem';
+    var li=document.createElement('input');li.className='input';li.type='text';li.placeholder='Label';li.value=label||'';li.setAttribute('data-f-label','');li.style.flex='1';
+    var hi=document.createElement('input');hi.className='input';hi.type='text';hi.placeholder='/path, mailto: or https://…';hi.value=href||'';hi.setAttribute('data-f-href','');hi.style.flex='2';
+    var rm=document.createElement('button');rm.type='button';rm.className='btn btn--sm';rm.textContent='✕';
+    rm.addEventListener('click',function(){row.remove();footerSync();});
+    li.addEventListener('input',footerSync);hi.addEventListener('input',footerSync);
+    row.appendChild(li);row.appendChild(hi);row.appendChild(rm);
+    return row;
+  }
+  function fColCard(title,links){
+    var card=document.createElement('div');card.setAttribute('data-f-col','');
+    card.style.cssText='border:1px solid var(--border,#2a2a2a);border-radius:8px;padding:.75rem;margin-bottom:.75rem';
+    var head=document.createElement('div');head.style.cssText='display:flex;gap:.5rem;align-items:center;margin-bottom:.5rem';
+    var ti=document.createElement('input');ti.className='input';ti.type='text';ti.placeholder='Column title (e.g. Company)';ti.value=title||'';ti.setAttribute('data-f-col-title','');ti.style.flex='1';
+    ti.addEventListener('input',footerSync);
+    var rmc=document.createElement('button');rmc.type='button';rmc.className='btn btn--sm';rmc.textContent='Remove column';
+    rmc.addEventListener('click',function(){card.remove();footerSync();});
+    head.appendChild(ti);head.appendChild(rmc);
+    var linksWrap=document.createElement('div');linksWrap.setAttribute('data-f-col-links','');
+    (links||[]).forEach(function(l){linksWrap.appendChild(fLinkRow(l.label,l.href));});
+    var addL=document.createElement('button');addL.type='button';addL.className='btn btn--sm';addL.textContent='+ Add link';
+    addL.addEventListener('click',function(){linksWrap.appendChild(fLinkRow('',''));footerSync();});
+    card.appendChild(head);card.appendChild(linksWrap);card.appendChild(addL);
+    return card;
+  }
+  function fCollect(wrap){
+    var out=[];if(!wrap)return out;
+    wrap.querySelectorAll('[data-f-link]').forEach(function(row){
+      var l=row.querySelector('[data-f-label]').value.trim();
+      var h=row.querySelector('[data-f-href]').value.trim();
+      if(l&&h)out.push({label:l,href:h});
+    });
+    return out;
+  }
+  function footerSync(){
+    var cols=[];
+    if(fCols)fCols.querySelectorAll('[data-f-col]').forEach(function(card){
+      var t=card.querySelector('[data-f-col-title]').value.trim();
+      var links=fCollect(card.querySelector('[data-f-col-links]'));
+      if(t||links.length)cols.push({title:t,links:links});
+    });
+    footerInput.value=JSON.stringify({
+      tagline:fTagline?fTagline.value.trim():'',
+      copyright:fCopyright?fCopyright.value.trim():'',
+      columns:cols,
+      social:fCollect(fSocial),
+      legal:fCollect(fLegal)
+    });
+  }
+  (function(){
+    var seed={};try{seed=JSON.parse(footerInput.getAttribute('data-footer-seed')||'{}');}catch(e){seed={};}
+    if(fTagline)fTagline.value=seed.tagline||'';
+    if(fCopyright)fCopyright.value=seed.copyright||'';
+    if(fCols)(seed.columns||[]).forEach(function(c){fCols.appendChild(fColCard(c.title,c.links));});
+    if(fSocial)(seed.social||[]).forEach(function(l){fSocial.appendChild(fLinkRow(l.label,l.href));});
+    if(fLegal)(seed.legal||[]).forEach(function(l){fLegal.appendChild(fLinkRow(l.label,l.href));});
+    if(fTagline)fTagline.addEventListener('input',footerSync);
+    if(fCopyright)fCopyright.addEventListener('input',footerSync);
+    footerSync();
+  })();
+  var addCol=document.getElementById('footer-add-col');
+  if(addCol)addCol.addEventListener('click',function(){fCols.appendChild(fColCard('',[]));footerSync();});
+  var addSocial=document.getElementById('footer-add-social');
+  if(addSocial)addSocial.addEventListener('click',function(){fSocial.appendChild(fLinkRow('',''));footerSync();});
+  var addLegal=document.getElementById('footer-add-legal');
+  if(addLegal)addLegal.addEventListener('click',function(){fLegal.appendChild(fLinkRow('',''));footerSync();});
+}`
 
 	fullHTML := adminOSShellHead(nonce, "Settings", "settings", cfg) +
 		renderTrustedHTML(htmpl.HTML(body)) +
@@ -1291,6 +1372,49 @@ func osSettingsNavigation(ctx context.Context, ss *settings.Store) string {
   <button type="button" class="btn btn--sm mt-2" id="nav-add-btn">+ Add link</button>
   <input type="hidden" id="nav-json-input" data-setting-key="` + settings.KeyNavItems + `" value="` + html.EscapeString(navJSON) + `">
   <p class="field-hint mt-2">Leave the list empty and Save to restore the default Home / Feed / Console menu.</p>
+</div>`
+}
+
+// defaultFooterSeed pre-populates the footer editor for operators who have not
+// configured a footer yet, so they start from a premium layout (a link column,
+// Privacy/Terms legal links, copyright line) rather than a blank slate.
+const defaultFooterSeed = `{"tagline":"","copyright":"© {year} {site}. All rights reserved.","columns":[{"title":"Explore","links":[{"label":"Home","href":"/"},{"label":"Feed","href":"/feed.xml"}]}],"social":[],"legal":[{"label":"Privacy","href":"/privacy"},{"label":"Terms","href":"/terms"}]}`
+
+func osSettingsFooter(ctx context.Context, ss *settings.Store) string {
+	footerJSON := ""
+	if ss != nil {
+		footerJSON = ss.Get(ctx, settings.KeyFooterConfig)
+	}
+	if strings.TrimSpace(footerJSON) == "" {
+		footerJSON = defaultFooterSeed
+	}
+	esc := html.EscapeString(footerJSON)
+	return `<div class="settings-section">
+  <div class="settings-block-title">Premium footer</div>
+  <p class="text-sm muted mb-4">Build a rich footer for every public page: a brand tagline, multiple link columns, social links, a legal-links bar (Privacy, Terms…) and a copyright line. Hrefs accept internal paths (e.g. <code>/privacy</code>), feeds, <code>mailto:</code> or external URLs. Leave everything empty to fall back to a clean default copyright bar.</p>
+
+  <div class="field"><label class="field-label" for="footer-tagline">Footer tagline</label>
+    <input id="footer-tagline" class="input" type="text" placeholder="A short line shown under your brand"></div>
+
+  <div class="field"><label class="field-label" for="footer-copyright">Copyright line</label>
+    <input id="footer-copyright" class="input" type="text" placeholder="© {year} {site}. All rights reserved.">
+    <span class="field-hint">Use <code>{year}</code> for the current year and <code>{site}</code> for your site name.</span></div>
+
+  <div class="settings-block-title mt-4">Link columns</div>
+  <p class="text-sm muted mb-2">Grouped link lists (e.g. Explore, Company, Resources).</p>
+  <div id="footer-cols"></div>
+  <button type="button" class="btn btn--sm mt-2" id="footer-add-col">+ Add column</button>
+
+  <div class="settings-block-title mt-4">Social links</div>
+  <div id="footer-social"></div>
+  <button type="button" class="btn btn--sm mt-2" id="footer-add-social">+ Add social link</button>
+
+  <div class="settings-block-title mt-4">Legal links (bottom bar)</div>
+  <p class="text-sm muted mb-2">Shown in the footer's bottom bar next to the copyright — e.g. Privacy, Terms, Cookies.</p>
+  <div id="footer-legal"></div>
+  <button type="button" class="btn btn--sm mt-2" id="footer-add-legal">+ Add legal link</button>
+
+  <input type="hidden" id="footer-json-input" data-setting-key="` + settings.KeyFooterConfig + `" data-footer-seed="` + esc + `" value="` + esc + `">
 </div>`
 }
 
@@ -1563,6 +1687,7 @@ func (a *App) handleOSSettingsAPI(w http.ResponseWriter, r *http.Request) {
 			VerifyGoogle:    sv[settings.KeyHeadVerifyGoogle],
 			VerifyBing:      sv[settings.KeyHeadVerifyBing],
 			NavJSON:         sv[settings.KeyNavItems],
+			FooterJSON:      sv[settings.KeyFooterConfig],
 			CommentsEnabled: sv[settings.KeyFeatureComments] != "off",
 		})
 	}

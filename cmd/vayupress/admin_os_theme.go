@@ -418,6 +418,7 @@ func (a *App) handleOSThemeCode(w http.ResponseWriter, r *http.Request) {
 			VerifyGoogle:    nv[settings.KeyHeadVerifyGoogle],
 			VerifyBing:      nv[settings.KeyHeadVerifyBing],
 			NavJSON:         nv[settings.KeyNavItems],
+			FooterJSON:      nv[settings.KeyFooterConfig],
 			CommentsEnabled: nv[settings.KeyFeatureComments] != "off",
 		})
 	}
@@ -559,6 +560,7 @@ func (a *App) handleOSThemeImport(w http.ResponseWriter, r *http.Request) {
 			VerifyGoogle:    nv[settings.KeyHeadVerifyGoogle],
 			VerifyBing:      nv[settings.KeyHeadVerifyBing],
 			NavJSON:         nv[settings.KeyNavItems],
+			FooterJSON:      nv[settings.KeyFooterConfig],
 			CommentsEnabled: nv[settings.KeyFeatureComments] != "off",
 		})
 	}
