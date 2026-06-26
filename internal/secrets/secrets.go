@@ -6,13 +6,26 @@
 // Unlike VayuPress's own API keys (which are one-way hashed — see
 // internal/apikeys), these secrets must be recoverable in plaintext at runtime
 // so VayuPress can present them to the downstream service. They are therefore
-// sealed with AES-256-GCM under a key derived (domain-separated SHA-256) from
-// the VayuPress master secret (API_KEY) — the same at-rest scheme used by
-// VayuPGP (ADR-0076). The plaintext never touches disk and is never logged.
+// sealed with AES-256-GCM.
+//
+// Envelope encryption / automatic rotation
+// ----------------------------------------
+// Credentials are NOT encrypted directly with the API key. Instead a random,
+// persistent Data Encryption Key (DEK) — stored once in the secret_keyring
+// table — encrypts every credential. This deliberately decouples the at-rest
+// encryption from any authentication credential, so rotating the VayuPress API
+// key (or any issued key) never makes a stored secret undecryptable: nothing
+// has to be re-entered. Rotation is therefore 100% automated.
+//
+// The DEK itself is held directly in the keyring when no dedicated encryption
+// secret is configured (the default — fully self-managing), or wrapped by a Key
+// Encryption Key (KEK) derived from VAYU_SECRET when one is set, for
+// defence-in-depth. Because only the small DEK is wrapped, the encryption
+// secret can be changed in place via RewrapMaster without touching — or losing
+// — a single stored credential.
 package secrets
 
 import (
-	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
@@ -22,7 +35,10 @@ import (
 	"errors"
 	"io"
 	"strings"
+	"sync"
 	"time"
+
+	"context"
 )
 
 // Provider identifies the downstream service a credential targets. Known
@@ -44,6 +60,10 @@ var KnownProviders = map[string]bool{
 	ProviderCustom:     true,
 }
 
+// kekCheckPlain is sealed under the KEK so a wrong/changed VAYU_SECRET is
+// detected at boot instead of producing garbage decryptions.
+const kekCheckPlain = "vayusecrets-kek-check-v1"
+
 // ErrNotFound is returned when no credential matches the supplied id/provider.
 var ErrNotFound = errors.New("secrets: credential not found")
 
@@ -61,52 +81,65 @@ type Credential struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
-// Store seals/unseals service credentials in the service_credentials table.
+// Store seals/unseals service credentials in the service_credentials table
+// using a persistent DEK loaded from (or created in) the secret_keyring table.
 type Store struct {
-	db      *sql.DB
-	aeadKey [32]byte
+	db *sql.DB
+
+	kekSecret []byte // optional; derives the KEK that wraps the DEK at rest
+
+	once    sync.Once
+	dek     [32]byte
+	initErr error
 }
 
-// New creates a Store backed by db, deriving the at-rest AES key from
-// masterSecret. The derived key is held only in memory and never persisted.
-func New(db *sql.DB, masterSecret []byte) *Store {
-	s := &Store{db: db}
-	// Domain-separated derivation so this key is distinct from any other use of
-	// the master secret (e.g. the VayuPGP keystore). Never log the derived key.
-	s.aeadKey = sha256.Sum256(append([]byte("vayusecrets-store-v1\x00"), masterSecret...))
-	return s
+// New creates a Store backed by db. kekSecret is the optional encryption secret
+// (e.g. VAYU_SECRET) used to wrap the DEK at rest; pass nil/empty to let the
+// store self-manage the DEK (default). The keyring is initialised lazily on
+// first use.
+func New(db *sql.DB, kekSecret []byte) *Store {
+	return &Store{db: db, kekSecret: kekSecret}
 }
 
-func (s *Store) seal(plaintext []byte) (nonceHex, ctHex string, err error) {
-	block, err := aes.NewCipher(s.aeadKey[:])
+// deriveKEK turns an encryption secret into a 32-byte AES key (domain
+// separated, so it is distinct from any other use of the same secret).
+func deriveKEK(secret []byte) [32]byte {
+	return sha256.Sum256(append([]byte("vayusecrets-kek-v1\x00"), secret...))
+}
+
+// sealWith encrypts plaintext under key, returning "nonceHex.ctHex".
+func sealWith(key [32]byte, plaintext []byte) (string, error) {
+	block, err := aes.NewCipher(key[:])
 	if err != nil {
-		return "", "", err
+		return "", err
 	}
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
-		return "", "", err
+		return "", err
 	}
 	nonce := make([]byte, gcm.NonceSize())
 	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-		return "", "", err
+		return "", err
 	}
 	ct := gcm.Seal(nil, nonce, plaintext, nil)
-	return hex.EncodeToString(nonce), hex.EncodeToString(ct), nil
+	return hex.EncodeToString(nonce) + "." + hex.EncodeToString(ct), nil
 }
 
-func (s *Store) open(nonceHex, ctHex string) ([]byte, error) {
-	if nonceHex == "" && ctHex == "" {
-		return nil, nil
+// openWith decrypts a "nonceHex.ctHex" blob produced by sealWith.
+func openWith(key [32]byte, blob string) ([]byte, error) {
+	parts := strings.SplitN(blob, ".", 2)
+	if len(parts) != 2 {
+		return nil, errors.New("secrets: malformed sealed blob")
 	}
-	nonce, err := hex.DecodeString(nonceHex)
+	nonce, err := hex.DecodeString(parts[0])
 	if err != nil {
 		return nil, err
 	}
-	ct, err := hex.DecodeString(ctHex)
+	ct, err := hex.DecodeString(parts[1])
 	if err != nil {
 		return nil, err
 	}
-	block, err := aes.NewCipher(s.aeadKey[:])
+	block, err := aes.NewCipher(key[:])
 	if err != nil {
 		return nil, err
 	}
@@ -118,6 +151,117 @@ func (s *Store) open(nonceHex, ctHex string) ([]byte, error) {
 		return nil, errors.New("secrets: bad nonce length")
 	}
 	return gcm.Open(nil, nonce, ct, nil)
+}
+
+// ensure lazily loads or creates the keyring DEK exactly once.
+func (s *Store) ensure() error {
+	s.once.Do(func() { s.initErr = s.loadOrCreateKeyring() })
+	return s.initErr
+}
+
+func (s *Store) loadOrCreateKeyring() error {
+	var dekField, kekSrc, kekCheck string
+	err := s.db.QueryRow(`SELECT dek, kek_src, kek_check FROM secret_keyring WHERE id=1`).
+		Scan(&dekField, &kekSrc, &kekCheck)
+	hasKEK := len(s.kekSecret) > 0
+
+	if errors.Is(err, sql.ErrNoRows) {
+		// First boot: mint a fresh random DEK and persist it.
+		if _, err := io.ReadFull(rand.Reader, s.dek[:]); err != nil {
+			return err
+		}
+		if hasKEK {
+			kek := deriveKEK(s.kekSecret)
+			wrapped, err := sealWith(kek, s.dek[:])
+			if err != nil {
+				return err
+			}
+			check, err := sealWith(kek, []byte(kekCheckPlain))
+			if err != nil {
+				return err
+			}
+			_, err = s.db.Exec(`INSERT INTO secret_keyring(id, dek, kek_src, kek_check) VALUES(1,?,?,?)`, wrapped, "env", check)
+			return err
+		}
+		_, err = s.db.Exec(`INSERT INTO secret_keyring(id, dek, kek_src, kek_check) VALUES(1,?,?,?)`, hex.EncodeToString(s.dek[:]), "none", "")
+		return err
+	}
+	if err != nil {
+		return err
+	}
+
+	// Existing keyring.
+	switch kekSrc {
+	case "env":
+		if !hasKEK {
+			return errors.New("secrets: stored credentials are protected by VAYU_SECRET, which is not set")
+		}
+		kek := deriveKEK(s.kekSecret)
+		if _, err := openWith(kek, kekCheck); err != nil {
+			return errors.New("secrets: VAYU_SECRET does not match the stored encryption key")
+		}
+		dek, err := openWith(kek, dekField)
+		if err != nil {
+			return err
+		}
+		copy(s.dek[:], dek)
+		return nil
+	default: // "none"
+		raw, err := hex.DecodeString(dekField)
+		if err != nil {
+			return err
+		}
+		copy(s.dek[:], raw)
+		return nil
+	}
+}
+
+// RewrapMaster re-wraps the DEK under a new encryption secret without
+// re-encrypting (or losing) any stored credential. Pass nil/empty to store the
+// DEK directly. Safe to call at runtime; the in-memory DEK is unchanged.
+func (s *Store) RewrapMaster(newKEKSecret []byte) error {
+	if err := s.ensure(); err != nil {
+		return err
+	}
+	now := time.Now().UTC()
+	if len(newKEKSecret) > 0 {
+		kek := deriveKEK(newKEKSecret)
+		wrapped, err := sealWith(kek, s.dek[:])
+		if err != nil {
+			return err
+		}
+		check, err := sealWith(kek, []byte(kekCheckPlain))
+		if err != nil {
+			return err
+		}
+		if _, err := s.db.Exec(`UPDATE secret_keyring SET dek=?, kek_src='env', kek_check=?, rotated_at=? WHERE id=1`, wrapped, check, now); err != nil {
+			return err
+		}
+	} else {
+		if _, err := s.db.Exec(`UPDATE secret_keyring SET dek=?, kek_src='none', kek_check='', rotated_at=? WHERE id=1`, hex.EncodeToString(s.dek[:]), now); err != nil {
+			return err
+		}
+	}
+	s.kekSecret = newKEKSecret
+	return nil
+}
+
+// seal/open encrypt/decrypt a credential secret with the active DEK, returning
+// the separate nonce/ciphertext hex columns persisted per credential.
+func (s *Store) seal(plaintext []byte) (nonceHex, ctHex string, err error) {
+	blob, err := sealWith(s.dek, plaintext)
+	if err != nil {
+		return "", "", err
+	}
+	parts := strings.SplitN(blob, ".", 2)
+	return parts[0], parts[1], nil
+}
+
+func (s *Store) open(nonceHex, ctHex string) ([]byte, error) {
+	if nonceHex == "" && ctHex == "" {
+		return nil, nil
+	}
+	return openWith(s.dek, nonceHex+"."+ctHex)
 }
 
 // mask renders a non-reversible hint for a secret: the last 4 chars revealed,
@@ -144,6 +288,9 @@ func stableID(provider, label string) string {
 // existing sealed secret is preserved (so saving metadata doesn't wipe the key);
 // pass clearSecret=true to explicitly remove it.
 func (s *Store) Upsert(ctx context.Context, provider, label, endpoint, secret string, enabled, clearSecret bool) (string, error) {
+	if err := s.ensure(); err != nil {
+		return "", err
+	}
 	provider = strings.ToLower(strings.TrimSpace(provider))
 	if !KnownProviders[provider] {
 		return "", errors.New("secrets: unknown provider")
@@ -261,6 +408,9 @@ func (s *Store) List(ctx context.Context) ([]Credential, error) {
 // Reveal returns the decrypted secret for a single credential. Intended for an
 // explicit admin "reveal" action; callers must already be authenticated.
 func (s *Store) Reveal(ctx context.Context, id string) (string, error) {
+	if err := s.ensure(); err != nil {
+		return "", err
+	}
 	var nonceHex, ctHex string
 	err := s.db.QueryRowContext(ctx,
 		`SELECT secret_nonce, secret_ct FROM service_credentials WHERE id=?`, id,
@@ -282,6 +432,9 @@ func (s *Store) Reveal(ctx context.Context, id string) (string, error) {
 // enabled credential for a provider, or empty strings if none is configured.
 // This is the runtime accessor used by features such as IndexNow.
 func (s *Store) ProviderSecret(ctx context.Context, provider string) (secret, endpoint string) {
+	if err := s.ensure(); err != nil {
+		return "", ""
+	}
 	var nonceHex, ctHex, ep string
 	err := s.db.QueryRowContext(ctx,
 		`SELECT secret_nonce, secret_ct, endpoint FROM service_credentials

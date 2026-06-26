@@ -11,6 +11,11 @@ import (
 
 func newTestStore(t *testing.T) *Store {
 	t.Helper()
+	return New(newTestDB(t), nil)
+}
+
+func newTestDB(t *testing.T) *sql.DB {
+	t.Helper()
 	db, err := sql.Open("sqlite3", ":memory:")
 	if err != nil {
 		t.Fatalf("open: %v", err)
@@ -20,7 +25,11 @@ func newTestStore(t *testing.T) *Store {
 	if _, err := db.Exec(schema); err != nil {
 		t.Fatalf("schema: %v", err)
 	}
-	return New(db, []byte("test-master-secret"))
+	keyring := `CREATE TABLE secret_keyring(id INTEGER PRIMARY KEY,dek TEXT NOT NULL,kek_src TEXT NOT NULL DEFAULT 'none',kek_check TEXT NOT NULL DEFAULT '',created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,rotated_at DATETIME)`
+	if _, err := db.Exec(keyring); err != nil {
+		t.Fatalf("keyring schema: %v", err)
+	}
+	return db
 }
 
 func TestUpsertSealsAndReveals(t *testing.T) {
@@ -124,5 +133,80 @@ func TestListReportsMetadata(t *testing.T) {
 	}
 	if strings.Contains(c.Hint, "sk-or-test") {
 		t.Fatalf("hint must be masked, got %q", c.Hint)
+	}
+}
+
+// TestSecretsSurviveAcrossStores proves the DEK is persisted in the keyring, so
+// a brand-new Store on the same DB (as happens on restart, or after the auth
+// API key is rotated — which no longer touches encryption) can still decrypt.
+func TestSecretsSurviveAcrossStores(t *testing.T) {
+	db := newTestDB(t)
+	ctx := context.Background()
+	a := New(db, nil)
+	id, err := a.Upsert(ctx, ProviderIndexNow, "IndexNow", "", "key-survives-rotation", true, false)
+	if err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	// Simulate a restart / API-key rotation: a fresh store, no shared state.
+	b := New(db, nil)
+	got, err := b.Reveal(ctx, id)
+	if err != nil {
+		t.Fatalf("reveal from new store: %v", err)
+	}
+	if got != "key-survives-rotation" {
+		t.Fatalf("secret did not survive: %q", got)
+	}
+}
+
+// TestEnvWrappedKeyringRoundTrip checks the VAYU_SECRET-wrapped path.
+func TestEnvWrappedKeyringRoundTrip(t *testing.T) {
+	db := newTestDB(t)
+	ctx := context.Background()
+	a := New(db, []byte("vayu-secret-passphrase"))
+	id, err := a.Upsert(ctx, ProviderOpenRouter, "OpenRouter", "", "sk-or-wrapped", true, false)
+	if err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	// New store with the same secret can decrypt.
+	b := New(db, []byte("vayu-secret-passphrase"))
+	if got, err := b.Reveal(ctx, id); err != nil || got != "sk-or-wrapped" {
+		t.Fatalf("reveal with correct secret: got %q err %v", got, err)
+	}
+	// A store with the WRONG secret must fail to initialise the keyring.
+	c := New(db, []byte("wrong-secret"))
+	if _, err := c.Reveal(ctx, id); err == nil {
+		t.Fatal("expected failure decrypting with the wrong VAYU_SECRET")
+	}
+	// A store with NO secret must also fail (the keyring is env-wrapped).
+	d := New(db, nil)
+	if _, err := d.Reveal(ctx, id); err == nil {
+		t.Fatal("expected failure when VAYU_SECRET is missing")
+	}
+}
+
+// TestRewrapMasterMigratesWithoutDataLoss proves the encryption secret can be
+// changed in place (e.g. introducing or rotating VAYU_SECRET) with zero re-entry.
+func TestRewrapMasterMigratesWithoutDataLoss(t *testing.T) {
+	db := newTestDB(t)
+	ctx := context.Background()
+	a := New(db, nil) // start self-managed (no VAYU_SECRET)
+	id, err := a.Upsert(ctx, ProviderN8N, "n8n automation", "https://n8n.example/webhook", "tok-123", true, false)
+	if err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	// Operator introduces a dedicated encryption secret — re-wrap in place.
+	if err := a.RewrapMaster([]byte("new-vayu-secret")); err != nil {
+		t.Fatalf("rewrap: %v", err)
+	}
+	// The same store still reads the secret (DEK unchanged in memory).
+	if got, err := a.Reveal(ctx, id); err != nil || got != "tok-123" {
+		t.Fatalf("reveal after rewrap (same store): got %q err %v", got, err)
+	}
+	// And a fresh store with the new secret reads it; the old (no-secret) path fails.
+	if got, err := New(db, []byte("new-vayu-secret")).Reveal(ctx, id); err != nil || got != "tok-123" {
+		t.Fatalf("reveal after rewrap (new store, new secret): got %q err %v", got, err)
+	}
+	if _, err := New(db, nil).Reveal(ctx, id); err == nil {
+		t.Fatal("expected failure: keyring is now env-wrapped, so no-secret access must fail")
 	}
 }

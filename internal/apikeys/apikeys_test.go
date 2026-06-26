@@ -16,7 +16,7 @@ func newTestStore(t *testing.T) *Store {
 		t.Fatalf("open: %v", err)
 	}
 	t.Cleanup(func() { db.Close() })
-	schema := `CREATE TABLE vayu_api_keys(id TEXT PRIMARY KEY,label TEXT NOT NULL DEFAULT '',prefix TEXT NOT NULL DEFAULT '',key_hash TEXT NOT NULL,created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,last_used_at DATETIME,revoked INTEGER NOT NULL DEFAULT 0)`
+	schema := `CREATE TABLE vayu_api_keys(id TEXT PRIMARY KEY,label TEXT NOT NULL DEFAULT '',prefix TEXT NOT NULL DEFAULT '',key_hash TEXT NOT NULL,scope TEXT NOT NULL DEFAULT 'external',created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,last_used_at DATETIME,revoked INTEGER NOT NULL DEFAULT 0)`
 	if _, err := db.Exec(schema); err != nil {
 		t.Fatalf("schema: %v", err)
 	}
@@ -105,5 +105,72 @@ func TestRotateUnknownReturnsNotFound(t *testing.T) {
 	s := newTestStore(t)
 	if _, err := s.Rotate(context.Background(), "does-not-exist"); err != ErrNotFound {
 		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestEnsureInternalProvisionsAndPropagates(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	if err := s.EnsureInternal(ctx); err != nil {
+		t.Fatalf("ensure internal: %v", err)
+	}
+	raw := s.InternalKey()
+	if raw == "" {
+		t.Fatal("internal key should be available after EnsureInternal")
+	}
+	if !s.Verify(raw) {
+		t.Error("internal key should authenticate")
+	}
+	list, _ := s.List(ctx)
+	if len(list) != 1 || list[0].Scope != ScopeInternal || list[0].ID != InternalKeyID {
+		t.Fatalf("expected one internal key, got %+v", list)
+	}
+	// Rotation must propagate to InternalKey() live, and the old value dies.
+	newRaw, err := s.Rotate(ctx, InternalKeyID)
+	if err != nil {
+		t.Fatalf("rotate internal: %v", err)
+	}
+	if newRaw == raw {
+		t.Fatal("rotation should change the value")
+	}
+	if s.InternalKey() != newRaw {
+		t.Fatal("InternalKey() must reflect the rotated value immediately")
+	}
+	if s.Verify(raw) {
+		t.Error("old internal value must stop authenticating")
+	}
+	if !s.Verify(newRaw) {
+		t.Error("new internal value must authenticate")
+	}
+}
+
+func TestInternalKeyCannotBeRevokedOrDeleted(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	if err := s.EnsureInternal(ctx); err != nil {
+		t.Fatalf("ensure internal: %v", err)
+	}
+	if err := s.Revoke(ctx, InternalKeyID); err != ErrInternalProtected {
+		t.Fatalf("revoke internal: expected ErrInternalProtected, got %v", err)
+	}
+	if err := s.Delete(ctx, InternalKeyID); err != ErrInternalProtected {
+		t.Fatalf("delete internal: expected ErrInternalProtected, got %v", err)
+	}
+}
+
+func TestEnsureInternalIsIdempotentRow(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	_ = s.EnsureInternal(ctx)
+	_ = s.EnsureInternal(ctx)
+	list, _ := s.List(ctx)
+	count := 0
+	for _, k := range list {
+		if k.Scope == ScopeInternal {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("expected exactly one internal key row, got %d", count)
 	}
 }

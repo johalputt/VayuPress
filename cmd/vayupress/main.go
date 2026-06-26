@@ -323,14 +323,24 @@ func main() {
 
 	// Site settings store — warm cache and push initial values into the render pipeline.
 	a.siteSettings = settings.New(dbpkg.DB)
-	// API key management (migration 041): VayuPress's own rotatable bearer
-	// tokens plus encrypted-at-rest third-party service credentials. The secrets
-	// store derives its AES-256-GCM key from the master secret (API_KEY), the
-	// same at-rest scheme as VayuPGP (ADR-0076/0088). Register the issued-key
-	// verifier so DB-backed keys authenticate API requests alongside API_KEY.
+	// API key management (migration 041/042): VayuPress's own rotatable bearer
+	// tokens plus encrypted-at-rest third-party service credentials.
+	//
+	// The credential store uses envelope encryption: a persistent random DEK
+	// (in the secret_keyring table) protects every secret, so rotating the API
+	// key never makes a stored secret undecryptable — rotation is 100%
+	// automated, with nothing to re-enter. The DEK is, by default, self-managed;
+	// if VAYU_SECRET is set it additionally wraps the DEK for defence-in-depth.
+	// Note this is intentionally NOT config.Cfg.APIKey, which the operator may
+	// rotate freely.
 	a.apiKeys = apikeys.New(dbpkg.DB)
-	a.secrets = secrets.New(dbpkg.DB, []byte(config.Cfg.APIKey))
+	a.secrets = secrets.New(dbpkg.DB, []byte(config.EnvOr("VAYU_SECRET", "")))
 	auth.SetExtraAPIKeyVerifier(a.apiKeys.Verify)
+	// Auto-provision the internal/system key. Internal automation reads it live
+	// via a.InternalAPIKey(), so a rotation propagates with no manual step.
+	if err := a.apiKeys.EnsureInternal(context.Background()); err != nil {
+		logging.LogError("apikeys", "failed to provision internal system key", err.Error())
+	}
 	if sv, err := a.siteSettings.GetAll(context.Background()); err == nil {
 		render.SetActiveSettings(render.SiteSettings{
 			Name:            sv[settings.KeySiteName],

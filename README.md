@@ -38,6 +38,11 @@
   `/.well-known/<key>.txt` verification file is now served automatically),
   **OpenRouter**, **Local AI (Ollama)**, **n8n**, plus a **custom** option for
   anything else.
+- **Rotation is 100% automated.** Secrets are encrypted with a persistent
+  keyring key that is decoupled from your API keys, so rotating a key never
+  requires re-entering a stored secret. A dedicated **System** key is
+  auto-provisioned for internal use and propagates to internal consumers live on
+  rotation — zero configuration.
 
 ## What's New in v1.16.0
 
