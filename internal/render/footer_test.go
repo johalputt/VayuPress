@@ -19,8 +19,9 @@ func TestFooterDefaultBar(t *testing.T) {
 	if !strings.Contains(out, "Powered by") || !strings.Contains(out, "vayupress.com") {
 		t.Error("powered-by credit missing")
 	}
-	if !strings.Contains(out, "vayu-footer-badge") {
-		t.Error("runtime badge missing")
+	// The "runtime · governed" badge was intentionally removed from the footer.
+	if strings.Contains(out, "runtime · governed") {
+		t.Error("runtime badge should no longer render in the footer")
 	}
 	if strings.Contains(out, "vayu-footer-cols") {
 		t.Error("no columns should render for an empty config")

@@ -195,9 +195,24 @@ type SiteSettings struct {
 	// renders a sensible default bottom bar.
 	FooterJSON string
 
+	// OGImage is the public path ("/theme-assets/og") of an operator-uploaded
+	// social/share image, or "" when none is set. Used as the og:image for the
+	// homepage and as the fallback og:image for articles without an inline image.
+	OGImage string
+
 	// CommentsEnabled mirrors the feature.comments flag so the article template
 	// can render (or omit) the public comment widget.
 	CommentsEnabled bool
+}
+
+// OGImagePath maps a stored OG-image setting value to the public URL the
+// templates link, or "" when no image is uploaded. Keeps the (potentially large)
+// base64 blob out of the rendered SiteSettings snapshot — only presence matters.
+func OGImagePath(stored string) string {
+	if strings.TrimSpace(stored) == "" {
+		return ""
+	}
+	return "/theme-assets/og"
 }
 
 // FooterLink is a single labelled footer destination.
@@ -320,7 +335,6 @@ func footerHTML(s SiteSettings) template.HTML {
 		b.WriteString(`<nav class="vayu-footer-legal" aria-label="Legal">` + legal + `</nav>`)
 	}
 	b.WriteString(`<span class="vayu-footer-powered">Powered by <a href="https://vayupress.com" rel="noopener noreferrer">VayuPress</a></span>`)
-	b.WriteString(`<span class="vayu-footer-badge">runtime · governed</span>`)
 	b.WriteString(`</div>`) // .vayu-footer-bottom
 
 	b.WriteString(`</footer>`)
@@ -662,6 +676,9 @@ type articlePage struct {
 	// SEO fields computed by internal/seo
 	SEODescription string
 	OGImage        string
+	// SiteOGImage is the operator's uploaded fallback share image (path), used
+	// for og:image when the article has no inline image of its own.
+	SiteOGImage string
 	// Related articles (same-tag suggestions)
 	Related []RelatedArticle
 }
@@ -828,14 +845,14 @@ var articleTmpl = template.Must(template.New("article").Funcs(template.FuncMap{
 <meta property="og:url" content="https://{{.Domain}}/{{.Slug}}">
 <meta property="og:site_name" content="{{if .SiteName}}{{.SiteName}}{{else}}{{.Domain}}{{end}}">
 <meta property="og:locale" content="en">
-{{if .OGImage}}<meta property="og:image" content="{{.OGImage}}">{{end}}
+{{if .OGImage}}<meta property="og:image" content="{{.OGImage}}">{{else if .SiteOGImage}}<meta property="og:image" content="https://{{.Domain}}{{.SiteOGImage}}">{{end}}
 <meta property="article:published_time" content="{{.CreatedAt | isoDate}}">
 <meta property="article:modified_time" content="{{.UpdatedAt | isoDate}}">
 {{range .Tags}}<meta property="article:tag" content="{{.}}">{{end}}
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="{{.Title}}">
 <meta name="twitter:description" content="{{if .SEODescription}}{{.SEODescription}}{{else}}{{trunc .Content 160}}{{end}}">
-{{if .OGImage}}<meta name="twitter:image" content="{{.OGImage}}">{{end}}
+{{if .OGImage}}<meta name="twitter:image" content="{{.OGImage}}">{{else if .SiteOGImage}}<meta name="twitter:image" content="https://{{.Domain}}{{.SiteOGImage}}">{{end}}
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"Article","headline":"{{.Title | jsonAttr}}","description":"{{if .SEODescription}}{{.SEODescription | jsonAttr}}{{else}}{{.Content | jsonAttr}}{{end}}","datePublished":"{{.CreatedAt | isoDate}}","dateModified":"{{.UpdatedAt | isoDate}}","url":"https://{{.Domain}}/{{.Slug}}","inLanguage":"en","author":{"@type":"Person","name":"Ankush Choudhary Johal","url":"https://{{.Domain}}/about"},"publisher":{"@type":"Organization","name":"VayuPress","url":"https://{{.Domain}}"}}</script>
 {{.PicoCSSLink}}{{.CustomCSSLink}}{{.ArticleCSSLink}}{{.HighContrastCSSLink}}{{.ThemeCSSLink}}<link rel="stylesheet" href="/static/chroma.css">{{.HeadMeta}}{{.ThemeToggleJSLink}}{{.VideoFacadeJSLink}}
 <link rel="manifest" href="/manifest.json">
@@ -902,6 +919,7 @@ type homePage struct {
 	ShowMembership      bool
 	NavLinks            template.HTML
 	Footer              template.HTML
+	OGImage             string
 	Articles            []HomeArticle
 	TotalCount          int
 }
@@ -914,12 +932,13 @@ var homeFuncs = template.FuncMap{
 var homeTmpl = template.Must(template.New("home").Funcs(homeFuncs).Parse(`<!DOCTYPE html><html lang="en" data-theme="dark"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{if .SiteName}}{{.SiteName}}{{else}}{{.Domain}}{{end}}{{if .Tagline}} — {{.Tagline}}{{end}}</title>
-<meta name="description" content="VayuPress — a governed, adaptive publishing runtime. Durable by design, observable end to end.">
+<meta name="description" content="{{if .Description}}{{.Description}}{{else if .Tagline}}{{.Tagline}}{{else}}{{if .SiteName}}{{.SiteName}}{{else}}{{.Domain}}{{end}}{{end}}">
 <meta name="generator" content="VayuPress {{.Version}}">
 <link rel="canonical" href="https://{{.Domain}}/">
 <link rel="alternate" type="application/rss+xml" title="{{.Domain}} feed" href="/feed.xml">
 <meta property="og:type" content="website"><meta property="og:title" content="{{.Domain}}">
 <meta property="og:url" content="https://{{.Domain}}/">
+{{if .OGImage}}<meta property="og:image" content="https://{{.Domain}}{{.OGImage}}"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="https://{{.Domain}}{{.OGImage}}">{{end}}
 {{.PicoCSSLink}}{{.CustomCSSLink}}{{.ArticleCSSLink}}{{.HighContrastCSSLink}}{{.ThemeCSSLink}}{{.HeadMeta}}{{.ThemeToggleJSLink}}
 <link rel="manifest" href="/manifest.json">
 <link rel="icon" type="image/png" href="/static/favicon-dark.png" media="(prefers-color-scheme: light)">
@@ -938,20 +957,12 @@ var homeTmpl = template.Must(template.New("home").Funcs(homeFuncs).Parse(`<!DOCT
     {{if .ShowMembership}}<a href="/members" class="vayu-nav-signin">Sign in</a>
     <a href="/signup" class="vayu-nav-signup">Sign up</a>{{end}}
   </div>
-  <span class="vayu-nav-status"><span class="vayu-mode-dot"></span>runtime · normal</span>
 </nav>
 <main id="main-content">
-<section class="vayu-hero">
-  <span class="vayu-hero-eyebrow">{{if .SiteName}}{{.SiteName}}{{else}}Sovereign Publishing Runtime{{end}}</span>
-  <h1>{{if .Tagline}}{{.Tagline}}{{else}}Publishing as an<br>adaptive runtime.{{end}}</h1>
-  <p class="vayu-hero-tagline">{{if .Description}}{{.Description}}{{else}}Durable by design, observable end to end. Every write is queued, signed, and governed by a live operational state machine — not a CMS, a control plane.{{end}}</p>
-  <div class="vayu-stats">
-    <div><span class="vayu-stat-val">{{.TotalCount}}</span><span class="vayu-stat-label">Published</span></div>
-    <div><span class="vayu-stat-val">Ed25519</span><span class="vayu-stat-label">Signed</span></div>
-    <div><span class="vayu-stat-val">WAL</span><span class="vayu-stat-label">Durable</span></div>
-    <div><span class="vayu-stat-val">v{{.Version}}</span><span class="vayu-stat-label">Runtime</span></div>
-  </div>
-</section>
+{{if or .Tagline .Description}}<section class="vayu-hero">
+  {{if .Tagline}}<h1>{{.Tagline}}</h1>{{else}}<h1>{{.SiteName}}</h1>{{end}}
+  {{if .Description}}<p class="vayu-hero-tagline">{{.Description}}</p>{{end}}
+</section>{{end}}
 <div class="vayu-section-label">Latest writing</div>
 {{if .Articles}}<div class="vayu-post-list">
 {{range .Articles}}<a class="vayu-post-card{{if .Image}} vayu-post-card--media{{end}}" href="/{{.Slug}}">
@@ -962,7 +973,7 @@ var homeTmpl = template.Must(template.New("home").Funcs(homeFuncs).Parse(`<!DOCT
     {{if .Excerpt}}<p class="vayu-post-excerpt">{{.Excerpt}}</p>{{end}}
   </div>
 </a>{{end}}
-</div>{{else}}<div class="vayu-empty">No articles published yet. The runtime is live and waiting.</div>{{end}}
+</div>{{else}}<div class="vayu-empty">No posts yet.</div>{{end}}
 {{.Footer}}
 </main>
 </div>{{.PostCardMediaJSLink}}</body></html>`))
@@ -1012,6 +1023,7 @@ func RenderHome(domain, version string, articles []HomeArticle, totalCount int) 
 		ShowMembership:      s.ShowMembership,
 		NavLinks:            navLinksHTML(s.NavJSON),
 		Footer:              footerHTML(s),
+		OGImage:             s.OGImage,
 		Articles:            articles,
 		TotalCount:          totalCount,
 	})
@@ -1075,6 +1087,7 @@ func RenderArticleWithLayout(a db.Article, layout ArticleLayoutType, related []R
 		Footer:              footerHTML(s),
 		SEODescription:      seoMeta.Description,
 		OGImage:             seoMeta.OGImage,
+		SiteOGImage:         s.OGImage,
 		Related:             related,
 	}
 	if err := articleTmpl.Execute(&buf, data); err != nil {

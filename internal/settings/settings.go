@@ -52,6 +52,12 @@ const (
 	KeyThemeHeroImage     = "theme.hero_image"
 	KeyThemeHeroImageType = "theme.hero_image_type"
 
+	// KeyThemeOGImage stores a base64-encoded social/share image (PNG/JPEG/WebP)
+	// used as the og:image / twitter:image for the homepage and as the fallback
+	// for articles without an inline image. Served at /theme-assets/og.
+	KeyThemeOGImage     = "theme.og_image"
+	KeyThemeOGImageType = "theme.og_image_type"
+
 	// Navigation menu. A JSON array of {"label","href"} objects defining the
 	// public nav links (top of every page). When unset, a sensible default
 	// (Home / Feed / Console) is rendered. Operators add/remove items — internal
@@ -119,6 +125,8 @@ var AllKeys = map[string]bool{
 	KeyBrandFaviconType:   true,
 	KeyThemeHeroImage:     true,
 	KeyThemeHeroImageType: true,
+	KeyThemeOGImage:       true,
+	KeyThemeOGImageType:   true,
 	KeyNavItems:           true,
 	KeyFooterConfig:       true,
 	KeyFeatureComments:    true,
@@ -146,6 +154,8 @@ var Defaults = map[string]string{
 	KeyBrandFaviconType:   "",
 	KeyThemeHeroImage:     "",
 	KeyThemeHeroImageType: "",
+	KeyThemeOGImage:       "",
+	KeyThemeOGImageType:   "",
 	KeyFeatureComments:    "on",
 	KeyFeatureNewsletter:  "on",
 	KeyFeatureWebmentions: "on",

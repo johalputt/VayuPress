@@ -145,3 +145,118 @@ func (a *App) serveHeroImage(w http.ResponseWriter, r *http.Request) {
 	}
 	_, _ = w.Write(b)
 }
+
+// maxOGBytes caps an uploaded social/share image. 1.5 MB is generous for an
+// og:image (typically 1200×630) while keeping the base64 settings row bounded.
+const maxOGBytes = 1536 * 1024
+
+// handleOGUpload accepts a multipart social/share image (field "image") or a
+// removal (remove=1), validates by magic number, and persists it base64-encoded
+// in site_settings. CSRF-protected and mode-gated, mirroring the hero path.
+func (a *App) handleOGUpload(w http.ResponseWriter, r *http.Request) {
+	fail := func(code int, msg string) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(code)
+		json.NewEncoder(w).Encode(map[string]string{"error": msg}) //nolint:errcheck
+	}
+	ok := func(msg string) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(200)
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok", "message": msg}) //nolint:errcheck
+	}
+
+	cur := mode.Global.Current()
+	if cur == mode.ModeReadOnly || cur == mode.ModeQuarantined {
+		fail(503, "branding cannot be changed in "+string(cur)+" mode")
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxOGBytes+16*1024)
+	if err := r.ParseMultipartForm(maxOGBytes + 16*1024); err != nil {
+		fail(400, "could not read upload (max 1.5 MB): "+err.Error())
+		return
+	}
+
+	if r.FormValue("remove") == "1" {
+		if err := a.siteSettings.SetMany(r.Context(), map[string]string{
+			settings.KeyThemeOGImage:     "",
+			settings.KeyThemeOGImageType: "",
+		}); err != nil {
+			fail(500, "remove failed: "+err.Error())
+			return
+		}
+		logging.LogJSON(logging.LogFields{Level: "info", Component: "theme", Severity: "info", Msg: "og image removed", RequestID: getRequestID(r)})
+		ok("share image removed")
+		return
+	}
+
+	file, _, err := r.FormFile("image")
+	if err != nil {
+		fail(400, "no image file in upload")
+		return
+	}
+	defer file.Close() //nolint:errcheck
+
+	raw, err := io.ReadAll(io.LimitReader(file, maxOGBytes+1))
+	if err != nil {
+		fail(400, "could not read file: "+err.Error())
+		return
+	}
+	if len(raw) == 0 {
+		fail(400, "uploaded file is empty")
+		return
+	}
+	if len(raw) > maxOGBytes {
+		fail(400, "image exceeds the 1.5 MB limit")
+		return
+	}
+	mime, valid := detectHeroImageType(raw)
+	if !valid {
+		fail(400, "file is not a PNG, JPEG or WebP image")
+		return
+	}
+
+	if err := a.siteSettings.SetMany(r.Context(), map[string]string{
+		settings.KeyThemeOGImage:     base64.StdEncoding.EncodeToString(raw),
+		settings.KeyThemeOGImageType: mime,
+	}); err != nil {
+		fail(500, "save failed: "+err.Error())
+		return
+	}
+	logging.LogJSON(logging.LogFields{Level: "info", Component: "theme", Severity: "info", Msg: "og image uploaded", RequestID: getRequestID(r)})
+	ok("share image updated")
+}
+
+// serveOGImage serves the operator's uploaded social/share image (same-origin).
+// Returns 404 when none is set so the templates simply omit the og:image tag.
+func (a *App) serveOGImage(w http.ResponseWriter, r *http.Request) {
+	if a.siteSettings == nil {
+		http.NotFound(w, r)
+		return
+	}
+	enc := a.siteSettings.Get(r.Context(), settings.KeyThemeOGImage)
+	if enc == "" {
+		http.NotFound(w, r)
+		return
+	}
+	b, err := base64.StdEncoding.DecodeString(enc)
+	if err != nil || len(b) == 0 {
+		http.NotFound(w, r)
+		return
+	}
+	ct := a.siteSettings.Get(r.Context(), settings.KeyThemeOGImageType)
+	if ct == "" {
+		ct = "image/jpeg"
+	}
+	sum := sha256.Sum256(b)
+	etag := `"` + hex.EncodeToString(sum[:8]) + `"`
+	w.Header().Set("Content-Type", ct)
+	w.Header().Set("ETag", etag)
+	w.Header().Set("Cache-Control", "public, max-age=300")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	if r.Header.Get("If-None-Match") == etag {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+	_, _ = w.Write(b)
+}

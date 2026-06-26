@@ -152,6 +152,28 @@ func AllOptions() []Option {
 				{"hover", "Underline on hover"}, {"clean", "No underline"},
 			},
 		},
+		{
+			Key: "articlealign", Label: "Article header", Default: "default",
+			Help: "Alignment of the post title and meta on article pages.",
+			Choices: []OptionChoice{
+				{"default", "Theme default"}, {"left", "Left"}, {"center", "Centered"},
+			},
+		},
+		{
+			Key: "articlemeta", Label: "Article meta", Default: "default",
+			Help: "The date / read-time / tags line under a post title.",
+			Choices: []OptionChoice{
+				{"default", "Theme default"}, {"full", "Show all"},
+				{"notags", "Hide tags"}, {"hidden", "Hide meta"},
+			},
+		},
+		{
+			Key: "relatedposts", Label: "Related posts", Default: "default",
+			Help: "The related-articles list at the end of a post.",
+			Choices: []OptionChoice{
+				{"default", "Theme default"}, {"show", "Show"}, {"hidden", "Hide"},
+			},
+		},
 	}
 }
 
@@ -362,6 +384,23 @@ func applyThemeOptions(t *Tokens) string {
 		extra.WriteString("article.vayu-prose a,.vayu-prose a{text-decoration:none}article.vayu-prose a:hover,.vayu-prose a:hover{text-decoration:underline}")
 	case "clean":
 		extra.WriteString("article.vayu-prose a,.vayu-prose a{text-decoration:none}")
+	}
+
+	// ── Article page layout (operates on the real article markup) ─────────────
+	switch t.Options["articlealign"] {
+	case "left":
+		extra.WriteString(".vayu-article-header{text-align:left}")
+	case "center":
+		extra.WriteString(".vayu-article-header{text-align:center}.vayu-article-meta{justify-content:center}")
+	}
+	switch t.Options["articlemeta"] {
+	case "notags":
+		extra.WriteString(".vayu-article-meta a.vayu-tag{display:none}")
+	case "hidden":
+		extra.WriteString(".vayu-article-meta{display:none}")
+	}
+	if t.Options["relatedposts"] == "hidden" {
+		extra.WriteString(".vayu-related{display:none}")
 	}
 
 	// ── Per-theme extras ────────────────────────────────────────────────────

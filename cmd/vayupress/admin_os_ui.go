@@ -234,6 +234,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		// it. This mirror is gated by requireSessionOrAPIKey + CSRF.
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/branding/favicon", a.handleFaviconUpload)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/branding/hero", a.handleHeroUpload)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/branding/og", a.handleOGUpload)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/editor/save", a.handleOSEditorSave)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/editor/preview", a.handleOSEditorPreview)
 		// Session-friendly mirrors of the editor's block tools (the /api/v1/admin
@@ -1875,6 +1876,13 @@ func osSettingsDesign(ctx context.Context, ss *settings.Store) string {
 	}
 
 	return `<div class="settings-section">
+  <div class="settings-callout">
+    <strong>Design now lives in the Theme Studio.</strong>
+    <span class="text-sm muted">Logo, colours, layout, hero, fonts, navigation, article pages and the social share image are all edited there with a live preview.</span>
+    <a class="btn btn--primary btn--sm mt-2" href="/os/theme">Open Theme Studio →</a>
+  </div>
+</div>
+<div class="settings-section">
   <div class="settings-block-title">Branding</div>
   <div class="field">
     <label class="field-label">Logo &amp; favicon</label>
@@ -2128,6 +2136,7 @@ func (a *App) handleOSSettingsAPI(w http.ResponseWriter, r *http.Request) {
 			VerifyBing:      sv[settings.KeyHeadVerifyBing],
 			NavJSON:         sv[settings.KeyNavItems],
 			FooterJSON:      sv[settings.KeyFooterConfig],
+			OGImage:         render.OGImagePath(sv[settings.KeyThemeOGImage]),
 			CommentsEnabled: sv[settings.KeyFeatureComments] != "off",
 		})
 	}

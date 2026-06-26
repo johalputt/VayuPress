@@ -58,6 +58,10 @@ func TestThemeEditorCoversSettingsAllowlist(t *testing.T) {
 		// not a text/colour field in the legacy theme editor.
 		settings.KeyThemeHeroImage:     true,
 		settings.KeyThemeHeroImageType: true,
+		// Social/share (OG) image is uploaded via the Theme Studio Site-basics
+		// control (multipart), not the legacy theme editor.
+		settings.KeyThemeOGImage:     true,
+		settings.KeyThemeOGImageType: true,
 	}
 	page := themeEditorPage(map[string]string{}, "NORMAL", "test-nonce", "")
 	for key := range settings.AllKeys {

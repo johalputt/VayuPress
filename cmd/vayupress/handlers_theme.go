@@ -262,6 +262,7 @@ func (a *App) handleThemeReset(w http.ResponseWriter, r *http.Request) {
 			VerifyBing:      newVals[settings.KeyHeadVerifyBing],
 			NavJSON:         newVals[settings.KeyNavItems],
 			FooterJSON:      newVals[settings.KeyFooterConfig],
+			OGImage:         render.OGImagePath(newVals[settings.KeyThemeOGImage]),
 			CommentsEnabled: newVals[settings.KeyFeatureComments] != "off",
 		})
 	}
@@ -411,6 +412,7 @@ func (a *App) handleThemeSave(w http.ResponseWriter, r *http.Request) {
 			VerifyBing:      newVals[settings.KeyHeadVerifyBing],
 			NavJSON:         newVals[settings.KeyNavItems],
 			FooterJSON:      newVals[settings.KeyFooterConfig],
+			OGImage:         render.OGImagePath(newVals[settings.KeyThemeOGImage]),
 			CommentsEnabled: newVals[settings.KeyFeatureComments] != "off",
 		})
 	}
