@@ -2289,6 +2289,7 @@ func (a *App) handleOSSettingsAPI(w http.ResponseWriter, r *http.Request) {
 			NavJSON:         sv[settings.KeyNavItems],
 			FooterJSON:      sv[settings.KeyFooterConfig],
 			OGImage:         render.OGImagePath(sv[settings.KeyThemeOGImage]),
+			ShowHero:        sv[settings.KeyHomeHero] == "true",
 			CommentsEnabled: sv[settings.KeyFeatureComments] != "off",
 		})
 	}

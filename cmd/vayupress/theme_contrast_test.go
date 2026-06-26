@@ -62,6 +62,9 @@ func TestThemeEditorCoversSettingsAllowlist(t *testing.T) {
 		// control (multipart), not the legacy theme editor.
 		settings.KeyThemeOGImage:     true,
 		settings.KeyThemeOGImageType: true,
+		// The homepage-hero toggle lives in the Theme Studio Hero group
+		// (POST /os/api/settings), not the legacy theme editor.
+		settings.KeyHomeHero: true,
 	}
 	page := themeEditorPage(map[string]string{}, "NORMAL", "test-nonce", "")
 	for key := range settings.AllKeys {
