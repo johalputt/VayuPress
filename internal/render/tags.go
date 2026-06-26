@@ -135,11 +135,13 @@ var tagPageTmpl = template.Must(template.New("tagpage").Funcs(tagFuncs).Parse(`<
 </section>
 <div class="vayu-section-label"><a class="vayu-tag-back" href="/tags">← All topics</a></div>
 {{if .Articles}}<div class="vayu-post-list">
-{{range .Articles}}<a class="vayu-post-card" href="/{{.Slug}}">
-  <div class="vayu-post-meta"><time datetime="{{.CreatedAt | shortDate}}">{{.CreatedAt | humanDate}}</time>{{if .Tags}}<span>·</span><span>{{range $i, $t := .Tags}}{{if $i}} · {{end}}#{{$t}}{{end}}</span>{{end}}</div>
-  <div class="vayu-post-title">{{.Title}}</div>
-  {{if .Excerpt}}<div class="vayu-post-excerpt">{{.Excerpt}}</div>{{end}}
-  <span class="vayu-post-arrow" aria-hidden="true">→</span>
+{{range .Articles}}<a class="vayu-post-card{{if .Image}} vayu-post-card--media{{end}}" href="/{{.Slug}}">
+  {{if .Image}}<div class="vayu-post-thumb"><img src="{{.Image}}" alt="" loading="lazy" decoding="async"></div>{{end}}
+  <div class="vayu-post-body">
+    <div class="vayu-post-meta"><time datetime="{{.CreatedAt | shortDate}}">{{.CreatedAt | humanDate}}</time>{{if .Author}}<span class="vayu-post-dot" aria-hidden="true"></span><span class="vayu-post-author">{{.Author}}</span>{{end}}</div>
+    <h2 class="vayu-post-title">{{.Title}}</h2>
+    {{if .Excerpt}}<p class="vayu-post-excerpt">{{.Excerpt}}</p>{{end}}
+  </div>
 </a>{{end}}
 </div>{{else}}<div class="vayu-empty">No posts tagged “{{.Tag}}” yet.</div>{{end}}
 {{.Footer}}
