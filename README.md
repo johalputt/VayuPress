@@ -21,6 +21,30 @@
 > _Own your content. Own your communication. Own your infrastructure._
 > Publishing is the core identity, **VayuMail** the native sovereignty layer, **VayuPGP** the native privacy layer, and **VayuOS** the native control layer — all in a single Go binary, single process, single config.
 
+## What's New in v1.16.0
+
+> Full notes in [`CHANGELOG.md`](CHANGELOG.md)
+
+**Subscription Engine v2 — the Members tab is now a full revenue cockpit.**
+
+- **A real subscription dashboard.** Opening Members now leads with eight live
+  metrics: Monthly Recurring Revenue (with a 30-day net-movement trend), annual
+  run-rate, paid members (and how many are trialing), total members and 30-day
+  signups, free-to-paid **conversion rate**, 30-day **churn rate**, **ARPU**, and
+  estimated **lifetime value (LTV)**. See ADR-0087.
+- **Growth & revenue charts** — a dependency-free SVG sparkline of daily signups
+  plus a revenue-by-tier breakdown, right on the dashboard.
+- **Member activity feed** — signups, subscriptions, trials, upgrades,
+  cancellations, comps and failed payments stream into a per-member timeline and
+  a site-wide recent-activity feed.
+- **Free trials & graceful cancellations** — grant an N-day trial per tier (no
+  MRR until it converts) and cancel members at period end instead of instantly.
+- **One-click CSV export** of your whole audience, plus an instant **member
+  search** over email, name and labels.
+- **Optional Stripe price IDs per tier** and a richer webhook that reconciles
+  scheduled cancels, deletions and failed payments — still with no embedded
+  payment SDK.
+
 ## What's New in v1.15.0
 
 > Full notes in [`CHANGELOG.md`](CHANGELOG.md)
@@ -838,11 +862,14 @@ See [docs/architecture/system-modes.md](docs/architecture/system-modes.md).
   continue, powered by a **local** Ollama server (no hosted model, no telemetry).
   Suggest-only — never auto-edits. `POST /api/v1/admin/ai/assist`
 - **Memberships & paywalls** — passwordless magic-link reader login, **priced
-  multi-tier subscription plans** with a public pricing page (`/pricing`) and a
-  self-service member portal (`/members/account`), per-article access levels
-  (public/members/paid) with a tier-aware preview + CTA, member labels for
-  segmentation, Monthly Recurring Revenue reporting, and an optional
-  signature-verified Stripe webhook for paid upgrades (no embedded payment SDK)
+  multi-tier subscription plans** (with optional free trials) and a public
+  pricing page (`/pricing`), a self-service member portal (`/members/account`),
+  per-article access levels (public/members/paid) with a tier-aware preview +
+  CTA, member labels for segmentation, a **subscription dashboard** with MRR,
+  ARR, conversion, churn, ARPU, LTV, a growth sparkline, revenue-by-tier and a
+  member activity feed, **CSV export** + member search, graceful cancellations,
+  and an optional signature-verified Stripe webhook for paid upgrades (no
+  embedded payment SDK)
 
 ### Event-Driven Reliability (P20–P22)
 - Transactional outbox — events written atomically with article mutations
@@ -992,9 +1019,11 @@ trusted, and the strict CSP stays intact:
 | `GET` | `/members/verify` | Consume a magic link, start a member session |
 | `GET` | `/pricing` · `/api/v1/tiers` | Public pricing page · tier catalogue (JSON) |
 | `GET` | `/api/v1/admin/members` | List members + tier counts |
-| `GET` | `/api/v1/admin/members/stats` | Membership stats — MRR, tiers, growth |
-| `GET` | `/api/v1/admin/members/{email}` | Member detail + active subscription |
+| `GET` | `/api/v1/admin/members/stats` | Membership stats — MRR, ARR, conversion, churn, ARPU, LTV, growth, revenue-by-tier, activity |
+| `GET` | `/api/v1/admin/members/export.csv` | Export all members as CSV (backups / migration) |
+| `GET` | `/api/v1/admin/members/{email}` | Member detail + active subscription + activity timeline |
 | `PUT` | `/api/v1/admin/members/{email}/tier` | Set a member's tier (CSRF-protected) |
+| `PUT` | `/api/v1/admin/members/{email}/cancel` | Cancel a subscription — at period end, or `{immediate:true}` (CSRF-protected) |
 | `POST`/`DELETE` | `/api/v1/admin/members/{email}/labels[/{label}]` | Add/remove a member label (CSRF-protected) |
 | `GET`/`POST`/`PUT`/`DELETE` | `/api/v1/admin/tiers[/{id}]` | Manage subscription tiers (writes CSRF-protected) |
 | `GET`/`POST`/`DELETE` | `/api/v1/admin/users[/{email}]` | List / create / remove team accounts (writes CSRF-protected) |

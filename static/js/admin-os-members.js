@@ -46,6 +46,9 @@
     $('tier-yearly').value = data.yearly || 0;
     $('tier-currency').value = data.currency || 'USD';
     $('tier-visibility').value = data.visibility || 'public';
+    if ($('tier-trial')) { $('tier-trial').value = data.trial || 0; }
+    if ($('tier-stripe-monthly')) { $('tier-stripe-monthly').value = data.stripeMonthly || ''; }
+    if ($('tier-stripe-yearly')) { $('tier-stripe-yearly').value = data.stripeYearly || ''; }
     $('tier-benefits').value = data.benefits || '';
     if (titleEl) { titleEl.textContent = data.id ? 'Edit tier' : 'New tier'; }
     if (modal) { modal.removeAttribute('hidden'); }
@@ -79,6 +82,9 @@
         yearly_cents: parseInt($('tier-yearly').value, 10) || 0,
         currency: ($('tier-currency').value || 'USD').trim(),
         visibility: $('tier-visibility').value,
+        trial_days: $('tier-trial') ? (parseInt($('tier-trial').value, 10) || 0) : 0,
+        stripe_monthly_price: $('tier-stripe-monthly') ? $('tier-stripe-monthly').value.trim() : '',
+        stripe_yearly_price: $('tier-stripe-yearly') ? $('tier-stripe-yearly').value.trim() : '',
         benefits: benefits,
       };
       var method = id ? 'PUT' : 'POST';
@@ -129,6 +135,40 @@
       });
     });
   });
+
+  // ── Cancel a member's subscription ──────────────────────────────────────
+  // Default is a graceful cancellation at the end of the paid period; holding
+  // Shift while clicking revokes access immediately.
+  document.querySelectorAll('[data-cancel-member]').forEach(function (btn) {
+    btn.addEventListener('click', function (e) {
+      var immediate = !!e.shiftKey;
+      var email = btn.dataset.email;
+      var msg = immediate
+        ? 'Immediately cancel and revoke access for ' + email + '?'
+        : 'Cancel ' + email + ' at the end of their paid period? They keep access until then.\n\n(Hold Shift when clicking to cancel immediately.)';
+      if (!window.confirm(msg)) { return; }
+      api('PUT', '/os/api/members/' + encodeURIComponent(email) + '/cancel', { immediate: immediate }).then(function (r) {
+        if (r.ok) { reload(); } else { alert('Could not cancel the subscription.'); }
+      }).catch(function () { alert('Network error.'); });
+    });
+  });
+
+  // ── Client-side member search ───────────────────────────────────────────
+  var search = document.querySelector('[data-member-search]');
+  if (search) {
+    var rows = Array.prototype.slice.call(document.querySelectorAll('[data-member-row]'));
+    var emptyEl = document.querySelector('[data-members-empty]');
+    search.addEventListener('input', function () {
+      var q = search.value.trim().toLowerCase();
+      var shown = 0;
+      rows.forEach(function (row) {
+        var hit = !q || (row.dataset.search || '').indexOf(q) !== -1;
+        row.hidden = !hit;
+        if (hit) { shown++; }
+      });
+      if (emptyEl) { emptyEl.hidden = shown !== 0; }
+    });
+  }
 
   // ── Team & roles (admin only) ──────────────────────────────────────────
   var teamForm = document.querySelector('[data-new-user]');

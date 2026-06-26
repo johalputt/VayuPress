@@ -265,7 +265,10 @@ func (a *App) handleStripeWebhook(w http.ResponseWriter, r *http.Request) {
 				CustomerDetails struct {
 					Email string `json:"email"`
 				} `json:"customer_details"`
-				Customer string `json:"customer"`
+				Customer          string `json:"customer"`
+				ID                string `json:"id"`
+				Status            string `json:"status"`
+				CancelAtPeriodEnd bool   `json:"cancel_at_period_end"`
 			} `json:"object"`
 		} `json:"data"`
 	}
@@ -273,17 +276,45 @@ func (a *App) handleStripeWebhook(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad json", http.StatusBadRequest)
 		return
 	}
-	if evt.Type == "checkout.session.completed" {
-		email := evt.Data.Object.CustomerEmail
+	obj := evt.Data.Object
+	switch evt.Type {
+	case "checkout.session.completed":
+		email := obj.CustomerEmail
 		if email == "" {
-			email = evt.Data.Object.CustomerDetails.Email
+			email = obj.CustomerDetails.Email
 		}
 		if email != "" {
-			if err := a.members.UpgradeByEmail(r.Context(), email, evt.Data.Object.Customer); err != nil {
+			if err := a.members.UpgradeByEmail(r.Context(), email, obj.Customer); err != nil {
 				logging.LogError("stripe", "upgrade failed", err.Error())
 			} else {
 				logging.LogInfo("stripe", "member upgraded to paid: "+email)
 			}
+		}
+	case "customer.subscription.updated":
+		// A subscription flagged to cancel at period end → mirror that locally so
+		// the member keeps access until the period actually elapses.
+		if m, err := a.members.GetByStripeCustomer(r.Context(), obj.Customer); err == nil {
+			if obj.CancelAtPeriodEnd {
+				if err := a.members.ScheduleCancellation(r.Context(), m.ID); err != nil {
+					logging.LogError("stripe", "schedule cancel failed", err.Error())
+				}
+			}
+		}
+	case "customer.subscription.deleted":
+		// The subscription ended at Stripe → revoke access and drop to free.
+		if m, err := a.members.GetByStripeCustomer(r.Context(), obj.Customer); err == nil {
+			if err := a.members.CancelSubscription(r.Context(), m.ID); err != nil {
+				logging.LogError("stripe", "cancel failed", err.Error())
+			} else {
+				logging.LogInfo("stripe", "member subscription canceled: "+m.Email)
+			}
+		}
+	case "invoice.payment_failed":
+		// Record the failed payment on the member's timeline so operators can see
+		// at-risk members; access is not revoked on a single failure.
+		if m, err := a.members.GetByStripeCustomer(r.Context(), obj.Customer); err == nil {
+			_ = a.members.RecordEvent(r.Context(), m.ID, members.EventPaymentFailed, "stripe invoice", 0)
+			logging.LogInfo("stripe", "payment failed for member: "+m.Email)
 		}
 	}
 	w.WriteHeader(http.StatusOK)

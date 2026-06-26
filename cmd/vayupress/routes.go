@@ -248,7 +248,9 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 		// Reader memberships & paywalls (Tier 2) — admin management.
 		r.Get("/api/v1/admin/members", a.handleMemberListAdmin)
 		r.Get("/api/v1/admin/members/stats", a.handleMemberStats)
+		r.Get("/api/v1/admin/members/export.csv", a.handleMembersExportCSV)
 		r.With(auth.CSRFTokenMiddleware).Put("/api/v1/admin/members/{email}/tier", a.handleMemberSetTier)
+		r.With(auth.CSRFTokenMiddleware).Put("/api/v1/admin/members/{email}/cancel", a.handleMemberCancel)
 		r.Get("/api/v1/admin/members/{email}", a.handleMemberDetail)
 		r.With(auth.CSRFTokenMiddleware).Post("/api/v1/admin/members/{email}/labels", a.handleMemberLabelAdd)
 		r.With(auth.CSRFTokenMiddleware).Delete("/api/v1/admin/members/{email}/labels/{label}", a.handleMemberLabelRemove)
