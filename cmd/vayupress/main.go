@@ -299,6 +299,7 @@ func main() {
 			VerifyGoogle:    sv[settings.KeyHeadVerifyGoogle],
 			VerifyBing:      sv[settings.KeyHeadVerifyBing],
 			NavJSON:         sv[settings.KeyNavItems],
+			FooterJSON:      sv[settings.KeyFooterConfig],
 			CommentsEnabled: sv[settings.KeyFeatureComments] != "off",
 		})
 	}

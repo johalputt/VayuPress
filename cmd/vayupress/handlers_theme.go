@@ -252,6 +252,7 @@ func (a *App) handleThemeReset(w http.ResponseWriter, r *http.Request) {
 			VerifyGoogle:    newVals[settings.KeyHeadVerifyGoogle],
 			VerifyBing:      newVals[settings.KeyHeadVerifyBing],
 			NavJSON:         newVals[settings.KeyNavItems],
+			FooterJSON:      newVals[settings.KeyFooterConfig],
 			CommentsEnabled: newVals[settings.KeyFeatureComments] != "off",
 		})
 	}
@@ -400,6 +401,7 @@ func (a *App) handleThemeSave(w http.ResponseWriter, r *http.Request) {
 			VerifyGoogle:    newVals[settings.KeyHeadVerifyGoogle],
 			VerifyBing:      newVals[settings.KeyHeadVerifyBing],
 			NavJSON:         newVals[settings.KeyNavItems],
+			FooterJSON:      newVals[settings.KeyFooterConfig],
 			CommentsEnabled: newVals[settings.KeyFeatureComments] != "off",
 		})
 	}
