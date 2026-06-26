@@ -11,6 +11,13 @@
     return m ? m.pop() : '';
   }
 
+  // Extracts a human message from an API JSON body ({error:{message}} on error).
+  function errText(d) {
+    if (!d) { return ''; }
+    if (d.error && d.error.message) { return d.error.message; }
+    return d.message || '';
+  }
+
   var form = document.querySelector('[data-profile-form]');
   if (!form) { return; }
 
@@ -91,7 +98,7 @@
         if (status) { status.textContent = 'Saved.'; }
         window.setTimeout(function () { window.location.reload(); }, 400);
       } else {
-        if (status) { status.textContent = (res.d && (res.d.message || res.d.error)) || 'Could not save.'; }
+        if (status) { status.textContent = errText(res.d) || 'Could not save.'; }
       }
     }).catch(function () {
       if (status) { status.textContent = 'Network error.'; }

@@ -432,7 +432,7 @@
       .then(function (res) {
         favUp.disabled = false;
         if (res.ok) { favSet('Logo updated', 'ok'); favBust(); if (favState) favState.textContent = 'Custom logo active — live on your site.'; }
-        else { favSet((res.d && res.d.error) || 'Upload failed', 'danger'); }
+        else { favSet((res.d && res.d.error && res.d.error.message) || 'Upload failed', 'danger'); }
       }).catch(function (e) { favUp.disabled = false; favSet('Error: ' + e, 'danger'); });
   });
   if (favRm) favRm.addEventListener('click', function () {
@@ -443,7 +443,7 @@
       .then(function (res) {
         favRm.disabled = false;
         if (res.ok) { favSet('Default restored', 'ok'); favBust(); if (favState) favState.textContent = 'Using the default mark.'; }
-        else { favSet((res.d && res.d.error) || 'Remove failed', 'danger'); }
+        else { favSet((res.d && res.d.error && res.d.error.message) || 'Remove failed', 'danger'); }
       }).catch(function (e) { favRm.disabled = false; favSet('Error: ' + e, 'danger'); });
   });
 
