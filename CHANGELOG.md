@@ -59,7 +59,10 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
     avatar image, and social links (website, X, GitHub, LinkedIn, Mastodon,
     Instagram, YouTube). Profiles render at **`/author/{id}`** as a themed,
     indexable page. Social/avatar URLs are validated as `http(s)` and the public
-    page is escaped end to end.
+    page is escaped end to end. The signed-in member's avatar now appears in the
+    VayuOS sidebar (linking to the profile editor), and the editor shows a live,
+    fixed-size cropped circular thumbnail so large images never display at full
+    resolution.
   - New CSRF-protected API: `PUT /api/v1/admin/users/{email}/role`, mirrored
     (with the existing user create/list/delete) under `/os/api/users/*` for the
     session-authenticated console, plus `POST /os/api/profile` for self-service
