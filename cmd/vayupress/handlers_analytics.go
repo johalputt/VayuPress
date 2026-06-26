@@ -306,10 +306,15 @@ func (a *App) handleAnalyticsRealtime(w http.ResponseWriter, r *http.Request) {
 			resp.WindowMinutes = data.WindowMinutes
 		}
 		for _, c := range data.ActiveCountries {
+			name := countryName(c.Label)
+			if strings.TrimSpace(c.Label) == "" {
+				name = "Unknown"
+			}
 			resp.ActiveCountries = append(resp.ActiveCountries, realtimeCountry{
 				Code:  c.Label,
-				Name:  countryName(c.Label),
+				Name:  name,
 				Flag:  countryFlagURL(c.Label),
+				Label: name, // back-compat for older cached clients reading "label"
 				Count: c.Count,
 			})
 		}
@@ -321,7 +326,8 @@ func (a *App) handleAnalyticsRealtime(w http.ResponseWriter, r *http.Request) {
 type realtimeCountry struct {
 	Code  string `json:"code"`
 	Name  string `json:"name"`
-	Flag  string `json:"flag"` // served SVG URL, or "" when unavailable
+	Flag  string `json:"flag"`  // served SVG URL, or "" when unavailable
+	Label string `json:"label"` // = Name; kept so older cached JS still shows text
 	Count int    `json:"count"`
 }
 

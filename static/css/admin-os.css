@@ -2490,29 +2490,38 @@
 
 
 /* ── VayuAnalytics: tabbed layout + premium live view ──────────────────────── */
-/* Tab bar (buttons). Reuses .tab styling; reset native <button> chrome and let
-   the bar scroll horizontally on small screens instead of wrapping awkwardly. */
+/* Tab bar (buttons) — clean wrapping pills. Wraps onto multiple lines instead
+   of showing a horizontal scrollbar, so every section is reachable at a glance. */
 .vp-os .vm-analytics-tabs {
-  flex-wrap: nowrap;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: thin;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  border-bottom: none;
+  margin-bottom: var(--sp-5);
+  overflow: visible;
 }
 .vp-os button.tab {
-  background: none;
-  border: none;
-  border-bottom: 2px solid transparent;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-full);
   cursor: pointer;
   white-space: nowrap;
   color: var(--text-3);
   font: inherit;
   font-size: var(--text-sm);
+  font-weight: 500;
+  padding: 0.4rem 0.9rem;
   display: inline-flex;
   align-items: center;
-  gap: 0.35em;
+  gap: 0.4em;
+  transition: color var(--t-fast), background var(--t-fast), border-color var(--t-fast);
 }
-.vp-os button.tab:hover { color: var(--text-2); }
-.vp-os button.tab.tab--active { color: var(--brand); border-bottom-color: var(--brand); }
+.vp-os button.tab:hover { color: var(--text); border-color: var(--border-strong); }
+.vp-os button.tab.tab--active {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: #fff;
+}
 .vp-os .vm-tab-ico { font-size: 1em; line-height: 1; }
 .vp-os .vm-tab-panel { animation: vm-fade-in var(--t, 160ms) ease; }
 @keyframes vm-fade-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
@@ -2542,6 +2551,13 @@
   margin-right: 0.45em;
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.12);
   background: var(--bg-surface-2);
+}
+/* Neutral globe placeholder for visitors with no known country (no GeoIP). */
+.vp-os .vp-flag-unknown {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2399a' stroke-width='2'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18'/%3E%3C/svg%3E");
+  background-size: cover;
+  background-position: center;
+  box-shadow: none;
 }
 
 @media (max-width: 860px) {
