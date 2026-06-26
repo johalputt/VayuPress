@@ -184,6 +184,33 @@ func themeOptionRows() string {
 	return out
 }
 
+// fontPairSelectHTML renders a friendly "Font pairing" quick-set: each option
+// carries a sans + mono font stack (system/web-safe only — zero external
+// requests) that the Studio JS applies to the FontSans/FontMono tokens at once.
+// "Keep current" is the default so loading a preset doesn't force a pairing.
+func fontPairSelectHTML() string {
+	type pair struct{ Label, Sans, Mono string }
+	pairs := []pair{
+		{"Keep current", "", ""},
+		{"System UI", `system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif`, `ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`},
+		{"Modern (Inter-style)", `"Inter", system-ui, -apple-system, "Segoe UI", sans-serif`, `ui-monospace, SFMono-Regular, Menlo, monospace`},
+		{"Classic serif", `Georgia, Cambria, "Times New Roman", Times, serif`, `"Courier New", ui-monospace, monospace`},
+		{"Editorial serif", `"Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif`, `ui-monospace, Menlo, monospace`},
+		{"Humanist", `"Optima", Candara, "Segoe UI", "Helvetica Neue", sans-serif`, `ui-monospace, Menlo, monospace`},
+		{"Geometric", `"Avenir Next", "Century Gothic", Futura, system-ui, sans-serif`, `ui-monospace, Menlo, monospace`},
+		{"Monospace", `ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`, `ui-monospace, SFMono-Regular, Menlo, monospace`},
+	}
+	opts := ""
+	for _, p := range pairs {
+		opts += `<option value="` + html.EscapeString(p.Label) + `" data-sans="` + html.EscapeString(p.Sans) + `" data-mono="` + html.EscapeString(p.Mono) + `">` + html.EscapeString(p.Label) + `</option>`
+	}
+	return `<label class="theme-field theme-field--text mb-4">
+  <span class="theme-field__label">Font pairing <span class="cz-group__hint">quick set</span></span>
+  <select class="input" data-font-pair aria-label="Font pairing">` + opts + `</select>
+  <span class="theme-field__hint">Sets the body &amp; mono fonts in one click. Fine-tune the exact stacks below. All system/web-safe — no external fonts loaded.</span>
+</label>`
+}
+
 func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
@@ -262,6 +289,7 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
     <details class="cz-group">
       <summary class="cz-group__head">Typography &amp; layout</summary>
       <div class="cz-group__body">
+        ` + fontPairSelectHTML() + `
         <div class="theme-fields theme-fields--text">` + typoRows + `</div>
       </div>
     </details>

@@ -54,8 +54,11 @@
   // Preview pipeline state.
   var previewReady = false;     // iframe loaded + handshake received
   var framePointed = false;     // iframe.src set to a draft page at least once
-  var pendingHref = null;       // latest stylesheet href awaiting handshake
+  var useReload = false;        // fallback mode: reload the iframe instead of hot-swap
+  var pending = null;           // latest {pageURL, cssHref} awaiting handshake
   var debounceTimer = null;
+  var ackTimer = null;
+  var readyTimer = null;
   var reqSeq = 0;               // guards against out-of-order draft responses
 
   function setStatus(msg, kind) {
@@ -162,34 +165,65 @@
   function applyPreview(id, cssHref) {
     var pageURL = '/os/theme/preview?draft=' + encodeURIComponent(id);
     if (newTabLink) newTabLink.setAttribute('href', pageURL);
-    if (!framePointed) {
-      // First load: point the iframe at the draft preview page.
+
+    // Fallback mode (or first load): reload the iframe with the draft page —
+    // always works, even if cross-frame messaging is blocked.
+    if (useReload || !framePointed) {
       framePointed = true;
       if (frame) frame.src = pageURL;
-      // showLoading cleared on frame load handler below.
-    } else if (previewReady && frame && frame.contentWindow) {
+      if (!useReload) startReadyTimer(); // first load: detect a dead handshake
+      return;
+    }
+    // Hot-swap path: ask the iframe to swap its stylesheet (no flicker, keeps
+    // scroll). If the iframe doesn't acknowledge quickly, fall back to a reload.
+    if (previewReady && frame && frame.contentWindow) {
       frame.contentWindow.postMessage({ type: 'vayu-preview-css', href: cssHref }, location.origin);
-      pendingHref = null;
-      showLoading(false);
-      setPreviewStatus('Live preview');
+      startAckTimer(pageURL);
     } else {
-      // iframe still booting — flush once the ready handshake arrives.
-      pendingHref = cssHref;
+      pending = { pageURL: pageURL, cssHref: cssHref };
     }
   }
 
-  // Handshake + load wiring.
+  function startReadyTimer() {
+    clearTimeout(readyTimer);
+    readyTimer = setTimeout(function () {
+      if (previewReady) return;
+      // Handshake never arrived — the in-frame script is unavailable. Switch to
+      // reload mode permanently so changes still take effect.
+      useReload = true;
+      if (pending) { var p = pending; pending = null; if (frame) frame.src = p.pageURL; }
+    }, 2500);
+  }
+
+  function startAckTimer(pageURL) {
+    clearTimeout(ackTimer);
+    ackTimer = setTimeout(function () {
+      // No ack — assume messaging is unreliable and reload instead, now and on.
+      useReload = true;
+      if (frame) frame.src = pageURL;
+      showLoading(false);
+      setPreviewStatus('Live preview');
+    }, 900);
+  }
+
+  // Handshake + ack wiring.
   window.addEventListener('message', function (e) {
     if (e.origin !== location.origin) return;
     var d = e.data || {};
     if (d.type === 'vayu-preview-ready') {
       previewReady = true;
+      clearTimeout(readyTimer);
       showLoading(false);
       setPreviewStatus('Live preview');
-      if (pendingHref && frame && frame.contentWindow) {
-        frame.contentWindow.postMessage({ type: 'vayu-preview-css', href: pendingHref }, location.origin);
-        pendingHref = null;
+      if (pending && frame && frame.contentWindow) {
+        var p = pending; pending = null;
+        frame.contentWindow.postMessage({ type: 'vayu-preview-css', href: p.cssHref }, location.origin);
+        startAckTimer(p.pageURL);
       }
+    } else if (d.type === 'vayu-preview-ack') {
+      clearTimeout(ackTimer);
+      showLoading(false);
+      setPreviewStatus('Live preview');
     }
   });
   if (frame) {
@@ -219,6 +253,23 @@
     optInputs[key].addEventListener('change', function () { options[key] = optInputs[key].value; schedulePreview(); });
   });
   if (cssArea) cssArea.addEventListener('input', schedulePreview);
+
+  // Font pairing quick-set: applies a sans + mono stack to the FontSans/FontMono
+  // tokens at once, updates their text inputs, and refreshes the preview.
+  var fontPair = root.querySelector('[data-font-pair]');
+  if (fontPair) {
+    fontPair.addEventListener('change', function () {
+      var opt = fontPair.options[fontPair.selectedIndex];
+      if (!opt) return;
+      var sans = opt.getAttribute('data-sans') || '';
+      var mono = opt.getAttribute('data-mono') || '';
+      if (!sans) return; // "Keep current"
+      model.FontSans = sans;
+      if (inputs.FontSans) inputs.FontSans.value = sans;
+      if (mono) { model.FontMono = mono; if (inputs.FontMono) inputs.FontMono.value = mono; }
+      schedulePreview();
+    });
+  }
 
   // ── Gallery card clicks ────────────────────────────────────────────────────
   if (galleryEl) {
