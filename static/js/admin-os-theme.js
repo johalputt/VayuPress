@@ -238,6 +238,54 @@
     fetchTokens().then(function () { setStatus('Reverted to saved theme', 'ok'); });
   });
 
+  // ── Full preview overlay (real public markup, option-aware iframe) ──────────
+  // Unlike the small CSSOM panel (which can only show colour/corner changes at
+  // its size), this renders the actual home-page markup styled by the selected
+  // preset PLUS every customization option (density, heading size, width, …),
+  // so design/feature changes are visible exactly as readers would see them.
+  var fpBtn = document.querySelector('[data-theme-fullpreview]');
+  var fpOverlay = document.querySelector('[data-theme-preview-overlay]');
+  var fpFrame = fpOverlay && fpOverlay.querySelector('[data-theme-preview-frame]');
+  var fpTitle = fpOverlay && fpOverlay.querySelector('[data-theme-preview-title]');
+  var fpApply = fpOverlay && fpOverlay.querySelector('[data-theme-preview-apply]');
+  var fpClose = fpOverlay && fpOverlay.querySelector('[data-theme-preview-close]');
+
+  function previewURL() {
+    var name = activePresetName || 'Default';
+    var q = 'preset=' + encodeURIComponent(name);
+    Object.keys(options).forEach(function (k) {
+      var v = options[k];
+      if (v) q += '&' + encodeURIComponent(k) + '=' + encodeURIComponent(v);
+    });
+    return '/os/theme/preview?' + q;
+  }
+  function openFullPreview() {
+    if (!fpOverlay || !fpFrame) return;
+    fpFrame.src = previewURL();
+    if (fpTitle) fpTitle.textContent = 'Full preview — ' + (activePresetName || 'Default');
+    fpOverlay.hidden = false;
+    document.body.style.overflow = 'hidden';
+    if (fpClose) fpClose.focus();
+  }
+  function closeFullPreview() {
+    if (!fpOverlay) return;
+    fpOverlay.hidden = true;
+    if (fpFrame) fpFrame.src = 'about:blank';
+    document.body.style.overflow = '';
+  }
+  if (fpBtn) fpBtn.addEventListener('click', openFullPreview);
+  if (fpClose) fpClose.addEventListener('click', closeFullPreview);
+  if (fpOverlay) fpOverlay.addEventListener('click', function (e) {
+    if (e.target === fpOverlay) closeFullPreview();
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && fpOverlay && !fpOverlay.hidden) closeFullPreview();
+  });
+  if (fpApply) fpApply.addEventListener('click', function () {
+    apply();
+    closeFullPreview();
+  });
+
   // ── Custom CSS + Head/SEO code editor ───────────────────────────────────────
   var cssArea = root.querySelector('[data-theme-css]');
   var codeSaveBtn = root.querySelector('[data-theme-code-save]');

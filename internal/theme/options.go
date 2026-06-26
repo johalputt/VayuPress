@@ -148,6 +148,26 @@ var perThemeOptions = []ThemedOption{
 // Studio can render them and show/hide per the active theme.
 func PerThemeOptions() []ThemedOption { return perThemeOptions }
 
+// OptionKeys returns every option key (shared + per-theme), deduplicated. Used
+// to read option values from preview query strings.
+func OptionKeys() []string {
+	seen := map[string]bool{}
+	var keys []string
+	add := func(k string) {
+		if !seen[k] {
+			seen[k] = true
+			keys = append(keys, k)
+		}
+	}
+	for _, o := range AllOptions() {
+		add(o.Key)
+	}
+	for _, to := range perThemeOptions {
+		add(to.Option.Key)
+	}
+	return keys
+}
+
 // DefaultOptions returns the default value for every option key.
 func DefaultOptions() map[string]string {
 	out := make(map[string]string, len(AllOptions()))

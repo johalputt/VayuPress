@@ -219,6 +219,12 @@ func (a *App) handleOSThemePreviewCSS(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unknown preset", http.StatusNotFound)
 		return
 	}
+	// Apply any customization options carried on the query string so the preview
+	// faithfully reflects the operator's choices (scheme, width, corners, density,
+	// heading size, …) — the exact same Options layer CompileCSS realises live.
+	if opts := previewOptionsFromQuery(r); len(opts) > 0 {
+		tok.Options = opts
+	}
 	css, err := theme.CompileCSS(tok)
 	if err != nil {
 		http.Error(w, "theme compile error", http.StatusInternalServerError)
@@ -252,13 +258,38 @@ func (a *App) handleOSThemePreview(w http.ResponseWriter, r *http.Request) {
 		strings.Replace(render.BuildCSP(nonce, nil), "frame-ancestors 'none'", "frame-ancestors 'self'", 1))
 	w.Header().Set("X-Frame-Options", "SAMEORIGIN")
 	en := html.EscapeString(tok.Name)
+	// Forward the preset + any customization options into the preview stylesheet
+	// link so the embedded sample renders with the operator's chosen options.
+	q := url.Values{}
+	q.Set("preset", tok.Name)
+	for _, k := range theme.OptionKeys() {
+		if v := r.URL.Query().Get(k); v != "" {
+			q.Set(k, v)
+		}
+	}
 	page := `<!doctype html><html lang="en"><head><meta charset="utf-8">` +
 		`<meta name="viewport" content="width=device-width, initial-scale=1">` +
 		`<title>Preview — ` + en + `</title>` +
 		string(render.PicoCSSLink()) + string(render.CustomCSSLink()) + string(render.ArticleCSSLink()) +
-		`<link rel="stylesheet" href="/os/theme/preview.css?preset=` + url.QueryEscape(tok.Name) + `">` +
+		`<link rel="stylesheet" href="/os/theme/preview.css?` + html.EscapeString(q.Encode()) + `">` +
 		`</head><body><div class="container">` + themePreviewSampleHTML() + `</div></body></html>`
 	writeOSHTML(w, page)
+}
+
+// previewOptionsFromQuery extracts theme customization option values from the
+// request's query string, keyed by the canonical option keys. Returns nil when
+// no recognised option is present so callers can fall back to preset defaults.
+func previewOptionsFromQuery(r *http.Request) map[string]string {
+	var opts map[string]string
+	for _, k := range theme.OptionKeys() {
+		if v := r.URL.Query().Get(k); v != "" {
+			if opts == nil {
+				opts = map[string]string{}
+			}
+			opts[k] = v
+		}
+	}
+	return opts
 }
 
 // themePreviewSampleHTML returns representative home-page markup using the exact
