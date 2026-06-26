@@ -46,7 +46,9 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
     A "showing X–Y of Z posts" summary keeps the position clear. All filters are
     preserved in the URL, so a filtered view is shareable and survives reloads.
 
-
+- **Premium membership system — multi-tier plans, a member portal, and revenue
+  insight.** VayuPress memberships grow from a free/paid switch into a complete
+  membership product, all still sovereign and passwordless:
   - **Priced subscription tiers** — operators define named plans with monthly
     and/or yearly pricing, a description, and a benefit list. Two tiers ship
     seeded (Free and Premium); add, edit, hide, or archive more from the Members
