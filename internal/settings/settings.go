@@ -46,6 +46,12 @@ const (
 	KeyBrandFavicon     = "brand.favicon"      // base64-encoded PNG/ICO bytes
 	KeyBrandFaviconType = "brand.favicon_type" // "image/png" | "image/x-icon"
 
+	// KeyThemeHeroImage stores a base64-encoded hero/cover image (PNG/JPEG/WebP)
+	// shown behind the homepage hero when the "Hero background" option is set to
+	// Image. Served same-origin at /theme-assets/hero.
+	KeyThemeHeroImage     = "theme.hero_image"
+	KeyThemeHeroImageType = "theme.hero_image_type"
+
 	// Navigation menu. A JSON array of {"label","href"} objects defining the
 	// public nav links (top of every page). When unset, a sensible default
 	// (Home / Feed / Console) is rendered. Operators add/remove items — internal
@@ -111,6 +117,8 @@ var AllKeys = map[string]bool{
 	KeyHeadVerifyBing:     true,
 	KeyBrandFavicon:       true,
 	KeyBrandFaviconType:   true,
+	KeyThemeHeroImage:     true,
+	KeyThemeHeroImageType: true,
 	KeyNavItems:           true,
 	KeyFooterConfig:       true,
 	KeyFeatureComments:    true,
@@ -136,6 +144,8 @@ var Defaults = map[string]string{
 	KeyHeadVerifyBing:     "",
 	KeyBrandFavicon:       "",
 	KeyBrandFaviconType:   "",
+	KeyThemeHeroImage:     "",
+	KeyThemeHeroImageType: "",
 	KeyFeatureComments:    "on",
 	KeyFeatureNewsletter:  "on",
 	KeyFeatureWebmentions: "on",

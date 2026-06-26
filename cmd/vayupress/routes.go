@@ -78,6 +78,9 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	r.Get("/static/favicon-dark.png", a.serveFavicon(faviconDarkPNG))
 	r.Get("/static/favicon-light.png", a.serveFavicon(faviconLightPNG))
 	r.Get("/favicon.ico", a.serveFavicon(faviconDarkPNG))
+	// Operator-uploaded hero/cover image (same-origin → img-src 'self'); 404s
+	// gracefully when none is set so the "Hero background: Image" option degrades.
+	r.Get("/theme-assets/hero", a.serveHeroImage)
 	// cssAllowlist maps the URL parameter to its canonical on-disk name.
 	// The path passed to http.ServeFile comes from the *value* (a string literal),
 	// not from the user-supplied key, so there is no path-traversal vector.

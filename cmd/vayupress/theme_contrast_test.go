@@ -54,6 +54,10 @@ func TestThemeEditorCoversSettingsAllowlist(t *testing.T) {
 		// Footer is managed through the VayuOS Footer tab
 		// (/os/settings/footer), not the legacy theme editor.
 		settings.KeyFooterConfig: true,
+		// Hero image is uploaded via the Theme Studio Hero control (multipart),
+		// not a text/colour field in the legacy theme editor.
+		settings.KeyThemeHeroImage:     true,
+		settings.KeyThemeHeroImageType: true,
 	}
 	page := themeEditorPage(map[string]string{}, "NORMAL", "test-nonce", "")
 	for key := range settings.AllKeys {
