@@ -42,14 +42,26 @@ func (a *App) handleVayuOSCompose(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	domain := a.vayuMail.Config().Domain
-	// Sender selector: the configured mail accounts + a default postmaster.
-	fromOpts := `<option value="postmaster@` + html.EscapeString(domain) + `">postmaster@` + html.EscapeString(domain) + `</option>`
-	if a.vayuMail.Accounts() != nil {
-		if accs, err := a.vayuMail.Accounts().List(r.Context()); err == nil {
-			for _, ac := range accs {
-				fromOpts += `<option value="` + html.EscapeString(ac.Email) + `">` + html.EscapeString(ac.Email) + `</option>`
+	// Sender selector. Admins may send as any configured account (or postmaster);
+	// non-admin staff may only send from their own assigned mailbox.
+	fromOpts := ""
+	if a.isAdminRequest(r) {
+		fromOpts = `<option value="postmaster@` + html.EscapeString(domain) + `">postmaster@` + html.EscapeString(domain) + `</option>`
+		if a.vayuMail.Accounts() != nil {
+			if accs, err := a.vayuMail.Accounts().List(r.Context()); err == nil {
+				for _, ac := range accs {
+					fromOpts += `<option value="` + html.EscapeString(ac.Email) + `">` + html.EscapeString(ac.Email) + `</option>`
+				}
 			}
 		}
+	} else {
+		_, ownEmail := a.ownMailbox(r)
+		if ownEmail == "" {
+			body.WriteString(`<div class="empty-state">No mailbox has been assigned to your account yet. Ask an administrator to assign you an email address under <strong>Members → Team &amp; roles</strong>.</div>`)
+			writeOSHTML(w, adminOSLayout(nonce, "Compose", "vayuos", cfg, htmpl.HTML(body.String())))
+			return
+		}
+		fromOpts = `<option value="` + html.EscapeString(ownEmail) + `">` + html.EscapeString(ownEmail) + `</option>`
 	}
 
 	// Prefill (reply / forward / direct). Reply and forward load the original
@@ -88,7 +100,7 @@ func (a *App) composePrefill(r *http.Request) (to, subject, bodyText string) {
 	q := r.URL.Query()
 	// Draft: reopen a saved draft verbatim (To/Subject/body) for editing.
 	if q.Get("draft") != "" {
-		user := strings.TrimSpace(q.Get("user"))
+		user := a.scopedMailUser(r, q.Get("user"))
 		id := strings.TrimSpace(q.Get("id"))
 		if a.vayuMail == nil || user == "" || id == "" {
 			return "", "", ""
@@ -108,7 +120,7 @@ func (a *App) composePrefill(r *http.Request) (to, subject, bodyText string) {
 	if !reply && !forward {
 		return q.Get("to"), q.Get("subject"), q.Get("body")
 	}
-	user := strings.TrimSpace(q.Get("user"))
+	user := a.scopedMailUser(r, q.Get("user"))
 	folder := strings.TrimSpace(q.Get("folder"))
 	if folder == "" {
 		folder = "Inbox"
@@ -182,6 +194,15 @@ func (a *App) handleVayuOSSend(w http.ResponseWriter, r *http.Request) {
 	if from == "" {
 		from = "postmaster@" + domain
 	}
+	// Non-admin staff may only send from their own assigned mailbox.
+	if !a.isAdminRequest(r) {
+		_, ownEmail := a.ownMailbox(r)
+		if ownEmail == "" {
+			writeAPIError(w, r, http.StatusForbidden, "no-mailbox", "No mailbox is assigned to your account", "")
+			return
+		}
+		from = ownEmail
+	}
 	var to []string
 	for _, t := range strings.Split(in.To, ",") {
 		if t = strings.TrimSpace(t); t != "" {
@@ -233,6 +254,14 @@ func (a *App) handleVayuOSDraft(w http.ResponseWriter, r *http.Request) {
 	from := strings.TrimSpace(in.From)
 	if from == "" {
 		from = "postmaster@" + domain
+	}
+	if !a.isAdminRequest(r) {
+		_, ownEmail := a.ownMailbox(r)
+		if ownEmail == "" {
+			writeAPIError(w, r, http.StatusForbidden, "no-mailbox", "No mailbox is assigned to your account", "")
+			return
+		}
+		from = ownEmail
 	}
 	var to []string
 	for _, t := range strings.Split(in.To, ",") {
@@ -305,6 +334,14 @@ func (a *App) handleVayuOSMessageAction(w http.ResponseWriter, r *http.Request) 
 		writeAPIError(w, r, 400, "validation_error", "user and id are required", "")
 		return
 	}
+	// Non-admins may only act on messages in their own assigned mailbox.
+	if !a.isAdminRequest(r) {
+		local, _ := a.ownMailbox(r)
+		if local == "" || !strings.EqualFold(local, in.User) {
+			writeAPIError(w, r, http.StatusForbidden, "forbidden", "you can only manage your own mailbox", "")
+			return
+		}
+	}
 	from := in.Folder
 	if from == "" {
 		from = "Inbox"
@@ -353,6 +390,11 @@ func (a *App) handleVayuOSAccounts(w http.ResponseWriter, r *http.Request) {
 	var body strings.Builder
 	body.WriteString(`<div class="page-header"><h1>Mail accounts</h1><span class="muted text-sm">Admin-managed email IDs &amp; passwords (SMTP/IMAP login)</span></div>`)
 	body.WriteString(vayuosNav("accounts"))
+	if !a.isAdminRequest(r) {
+		body.WriteString(`<div class="empty-state">Mail-account management is available to administrators only. Your own mailbox is under <a href="/os/vayuos/mail/inbox">Mailbox</a>.</div>`)
+		writeOSHTML(w, adminOSLayout(nonce, "Mail accounts", "vayuos", cfg, htmpl.HTML(body.String())))
+		return
+	}
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled || a.vayuMail.Accounts() == nil {
 		body.WriteString(`<div class="empty-state">VayuMail is inactive. Set <code>DOMAIN</code> to manage mail accounts.</div>`)
 		writeOSHTML(w, adminOSLayout(nonce, "Mail accounts", "vayuos", cfg, htmpl.HTML(body.String())))
@@ -423,6 +465,10 @@ func (a *App) handleVayuOSAccounts(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleVayuOSAccountCreate(w http.ResponseWriter, r *http.Request) {
+	if !a.isAdminRequest(r) {
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", "admin role required", "")
+		return
+	}
 	if a.vayuMail == nil || a.vayuMail.Accounts() == nil {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", "VayuMail is not active", "")
 		return
@@ -471,6 +517,10 @@ func (a *App) handleVayuOSAccountCreate(w http.ResponseWriter, r *http.Request) 
 }
 
 func (a *App) handleVayuOSAccountDelete(w http.ResponseWriter, r *http.Request) {
+	if !a.isAdminRequest(r) {
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", "admin role required", "")
+		return
+	}
 	if a.vayuMail == nil || a.vayuMail.Accounts() == nil {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", "VayuMail is not active", "")
 		return
@@ -493,6 +543,10 @@ func (a *App) handleVayuOSAccountDelete(w http.ResponseWriter, r *http.Request) 
 // existing mail account. Exactly one of {password, active} should be provided
 // per call; both are honoured if present.
 func (a *App) handleVayuOSAccountUpdate(w http.ResponseWriter, r *http.Request) {
+	if !a.isAdminRequest(r) {
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", "admin role required", "")
+		return
+	}
 	if a.vayuMail == nil || a.vayuMail.Accounts() == nil {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", "VayuMail is not active", "")
 		return

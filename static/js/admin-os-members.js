@@ -164,4 +164,26 @@
       });
     });
   });
+
+  // Assign / change a member's VayuMail mailbox (custom email).
+  document.querySelectorAll('[data-assign-mailbox]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var domain = btn.dataset.domain || '';
+      var current = btn.dataset.current || '';
+      var suggestion = current ? current.split('@')[0] : (btn.dataset.email || '').split('@')[0];
+      var local = window.prompt('Mailbox name for this member (the part before @' + domain + '):', suggestion);
+      if (local === null) { return; }
+      local = local.trim();
+      if (!local) { alert('Enter a mailbox name.'); return; }
+      var pass = window.prompt('Set a password for ' + local + '@' + domain + ' (min 8 characters):', '');
+      if (pass === null) { return; }
+      if (pass.length < 8) { alert('Password must be at least 8 characters.'); return; }
+      api('POST', '/os/api/users/' + encodeURIComponent(btn.dataset.email) + '/mailbox', { local: local, pass: pass }).then(function (r) {
+        return r.json().then(function (d) { return { ok: r.ok, d: d }; });
+      }).then(function (res) {
+        if (res.ok) { reload(); }
+        else { alert((res.d && (res.d.message || res.d.error)) || 'Could not assign the mailbox.'); }
+      }).catch(function () { alert('Network error.'); });
+    });
+  });
 })();

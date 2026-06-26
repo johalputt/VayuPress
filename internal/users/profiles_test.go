@@ -65,6 +65,30 @@ func TestUpdateProfile(t *testing.T) {
 	}
 }
 
+func TestSetMailAddress(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	u, _ := s.Create(ctx, "staff@example.com", "Staff", "password123", RoleAuthor)
+	if err := s.SetMailAddress(ctx, u.ID, "Staff@Mail.Example.COM"); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := s.GetByID(ctx, u.ID)
+	if got.MailAddress != "staff@mail.example.com" {
+		t.Errorf("mail address = %q, want lowercased staff@mail.example.com", got.MailAddress)
+	}
+	if err := s.SetMailAddress(ctx, "missing", "x@y.com"); err == nil {
+		t.Error("setting mail address on unknown user should error")
+	}
+	// Clearing the address is allowed.
+	if err := s.SetMailAddress(ctx, u.ID, ""); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s.GetByID(ctx, u.ID)
+	if got.MailAddress != "" {
+		t.Errorf("mail address should be cleared, got %q", got.MailAddress)
+	}
+}
+
 func TestUpdateProfileValidation(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()

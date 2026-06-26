@@ -603,6 +603,17 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 	if folder == "" {
 		folder = "Inbox"
 	}
+	// Non-admin staff may only operate their own assigned mailbox — never browse
+	// or target another mailbox via ?user=.
+	if !a.isAdminRequest(r) {
+		local, _ := a.ownMailbox(r)
+		if local == "" {
+			body.WriteString(`<div class="empty-state">No mailbox has been assigned to your account yet. Ask an administrator to assign you an email address under <strong>Members → Team &amp; roles</strong>.</div>`)
+			writeOSHTML(w, adminOSLayout(nonce, "Mailbox", "vayuos", cfg, htmpl.HTML(body.String())))
+			return
+		}
+		user = local
+	}
 
 	if user == "" {
 		boxes, err := a.vayuMail.Mailboxes()
@@ -681,6 +692,10 @@ func (a *App) handleVayuOSSearch(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
 	user := strings.TrimSpace(r.URL.Query().Get("user"))
+	if !a.isAdminRequest(r) {
+		// Non-admins may only search their own assigned mailbox.
+		user, _ = a.ownMailbox(r)
+	}
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
 	var body strings.Builder
 	body.WriteString(`<div class="page-header"><h1>Search mail</h1><span class="muted text-sm">` + html.EscapeString(user+"@"+a.cfgDomain()) + `</span></div>`)
@@ -721,6 +736,10 @@ func (a *App) handleVayuOSMessage(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
 	user := strings.TrimSpace(r.URL.Query().Get("user"))
+	if !a.isAdminRequest(r) {
+		// Non-admins may only read messages in their own assigned mailbox.
+		user, _ = a.ownMailbox(r)
+	}
 	folder := strings.TrimSpace(r.URL.Query().Get("folder"))
 	if folder == "" {
 		folder = "Inbox"
@@ -822,6 +841,13 @@ func (a *App) handleVayuOSSent(w http.ResponseWriter, r *http.Request) {
 	body.WriteString(vayuosNav("outbox"))
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled {
 		body.WriteString(`<div class="empty-state">VayuMail is inactive. Set <code>DOMAIN</code> to activate outbound delivery.</div>`)
+		writeOSHTML(w, adminOSLayout(nonce, "Sent", "vayuos", cfg, htmpl.HTML(body.String())))
+		return
+	}
+	// The outbound delivery queue is server-wide; non-admins see their own sent
+	// mail in their mailbox's Sent folder instead.
+	if !a.isAdminRequest(r) {
+		body.WriteString(`<div class="empty-state">Your sent messages are in your mailbox under <a href="/os/vayuos/mail/inbox?folder=Sent">Mailbox → Sent</a>. The server-wide delivery queue is visible to administrators only.</div>`)
 		writeOSHTML(w, adminOSLayout(nonce, "Sent", "vayuos", cfg, htmpl.HTML(body.String())))
 		return
 	}

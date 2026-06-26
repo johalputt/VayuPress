@@ -194,6 +194,7 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 		r.Get("/api/v1/admin/users", a.handleUserList)
 		r.With(auth.CSRFTokenMiddleware).Post("/api/v1/admin/users", a.handleUserCreate)
 		r.With(auth.CSRFTokenMiddleware).Put("/api/v1/admin/users/{email}/role", a.handleUserSetRole)
+		r.With(auth.CSRFTokenMiddleware).Post("/api/v1/admin/users/{email}/mailbox", a.handleAssignMailbox)
 		r.With(auth.CSRFTokenMiddleware).Delete("/api/v1/admin/users/{email}", a.handleUserDelete)
 
 		// Privacy-first analytics (Tier 2).
