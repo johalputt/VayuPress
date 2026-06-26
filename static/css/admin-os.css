@@ -1818,6 +1818,16 @@
 .vp-os .store-card__deploy[data-store-active="true"] { opacity: 0.7; cursor: default; }
 .vp-os .store-empty { padding: 40px 0; text-align: center; color: var(--text-2); }
 
+/* ── Theme Store live preview overlay (isolated iframe) ────────────────────── */
+.vp-os .store-preview { position: fixed; inset: 0; z-index: 300; display: flex; flex-direction: column; background: rgba(0,0,0,0.62); }
+.vp-os .store-preview[hidden] { display: none; }
+.vp-os .store-preview__bar { display: flex; align-items: center; gap: 0.6rem; padding: 0.7rem 1rem; background: var(--bg-surface); border-bottom: 1px solid var(--border); }
+.vp-os .store-preview__title { font-weight: 700; color: var(--text); font-size: 0.95rem; }
+.vp-os .store-preview__spacer { flex: 1; }
+.vp-os .store-preview__close { display: grid; place-items: center; width: 38px; height: 38px; border: 0; border-radius: 8px; background: transparent; color: var(--text-2); font-size: 1.5rem; line-height: 1; cursor: pointer; }
+.vp-os .store-preview__close:hover { background: var(--bg-surface-2); color: var(--text); }
+.vp-os .store-preview__frame { flex: 1; width: 100%; border: 0; background: #fff; }
+
 .vp-os .theme-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; }
 .vp-os .theme-fields--text { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
 .vp-os .theme-field { display: flex; flex-direction: column; gap: 6px; }

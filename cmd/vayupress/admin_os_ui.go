@@ -124,6 +124,8 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.Get("/os/governance", a.handleOSGovernance)
 		pr.Get("/os/theme", a.handleOSTheme)
 		pr.Get("/os/theme/store", a.handleOSThemeStore)
+		pr.Get("/os/theme/preview", a.handleOSThemePreview)
+		pr.Get("/os/theme/preview.css", a.handleOSThemePreviewCSS)
 		// Session-friendly mirrors of the Theme Studio JSON API (the /api/v1/admin
 		// originals require an API key; os operators hold a session cookie).
 		pr.Get("/os/api/theme/presets", a.handleThemePresets)

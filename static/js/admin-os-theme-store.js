@@ -140,6 +140,52 @@
     });
   }
 
+  // ── 4. Live preview overlay (isolated iframe; never touches the live site) ──
+  var overlay = root.querySelector('[data-store-overlay]');
+  var frame = overlay && overlay.querySelector('[data-store-preview-frame]');
+  var pvTitle = overlay && overlay.querySelector('[data-store-preview-title]');
+  var pvDeploy = overlay && overlay.querySelector('[data-store-preview-deploy]');
+  var pvCustomize = overlay && overlay.querySelector('[data-store-preview-customize]');
+  var pvClose = overlay && overlay.querySelector('[data-store-preview-close]');
+  var previewName = '';
+
+  function openPreview(name) {
+    if (!overlay || !frame || !name) return;
+    previewName = name;
+    frame.src = '/os/theme/preview?preset=' + encodeURIComponent(name);
+    if (pvTitle) pvTitle.textContent = 'Preview — ' + name;
+    if (pvCustomize) pvCustomize.setAttribute('href', '/os/theme?load=' + encodeURIComponent(name));
+    overlay.hidden = false;
+    document.body.style.overflow = 'hidden';
+    if (pvClose) pvClose.focus();
+  }
+  function closePreview() {
+    if (!overlay) return;
+    overlay.hidden = true;
+    if (frame) frame.src = 'about:blank';
+    document.body.style.overflow = '';
+  }
+
+  if (grid) {
+    grid.addEventListener('click', function (e) {
+      var pv = e.target.closest('[data-store-preview]');
+      if (pv) { e.preventDefault(); openPreview(pv.getAttribute('data-store-preview')); }
+    });
+  }
+  if (pvClose) pvClose.addEventListener('click', closePreview);
+  if (overlay) overlay.addEventListener('click', function (e) {
+    // click on the dim backdrop (the overlay itself, not the bar/frame) closes
+    if (e.target === overlay) closePreview();
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && overlay && !overlay.hidden) closePreview();
+  });
+  if (pvDeploy) pvDeploy.addEventListener('click', function () {
+    if (!previewName) return;
+    deploy(previewName, pvDeploy);
+    closePreview();
+  });
+
   // ── Init ────────────────────────────────────────────────────────────────────
   applyFilters();
 })();
