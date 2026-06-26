@@ -218,6 +218,7 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
   <div class="page-actions">
     <span class="text-sm muted" data-theme-status>Loading…</span>
     <a class="btn btn--ghost btn--sm" href="/os/theme/store">Browse Theme Store</a>
+    <button type="button" class="btn btn--ghost btn--sm" data-theme-fullpreview>Full preview</button>
     <button type="button" class="btn btn--ghost btn--sm" data-theme-revert>Revert</button>
     <button type="button" class="btn btn--primary btn--sm" data-theme-apply>Apply theme</button>
   </div>
@@ -310,6 +311,16 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
     </div>
     <div class="text-xs muted mt-3">Preview reflects dark-mode tokens. Light-mode values apply on readers whose system is set to light.</div>
   </aside>
+</div>
+
+<div class="store-preview" data-theme-preview-overlay hidden>
+  <div class="store-preview__bar">
+    <span class="store-preview__title" data-theme-preview-title>Full preview</span>
+    <span class="store-preview__spacer"></span>
+    <button type="button" class="btn btn--primary btn--sm" data-theme-preview-apply>Apply this theme</button>
+    <button type="button" class="store-preview__close" data-theme-preview-close aria-label="Close preview">&times;</button>
+  </div>
+  <iframe class="store-preview__frame" data-theme-preview-frame title="Full theme preview" loading="lazy" referrerpolicy="no-referrer"></iframe>
 </div>
 <script nonce="` + nonce + `" src="/os/static/js/admin-os-theme.js"></script>`
 
