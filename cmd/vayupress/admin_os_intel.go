@@ -402,9 +402,32 @@ func osGeoSection(countries, regions, cities []analytics.AudienceStat) string {
 	}
 	return `<div class="grid grid-3">
   <div class="card"><div class="card-title">Countries</div>` + osCountryTable(countries) + `</div>
-  <div class="card"><div class="card-title">Regions</div>` + osAudienceTable(regions) + `</div>
-  <div class="card"><div class="card-title">Cities</div>` + osAudienceTable(cities) + `</div>
+  <div class="card"><div class="card-title">Regions</div>` + osGeoTable(regions, "region") + `</div>
+  <div class="card"><div class="card-title">Cities</div>` + osGeoTable(cities, "city") + `</div>
 </div>`
+}
+
+// osGeoTable renders a region/city breakdown. Unlike a plain audience table, its
+// empty state explains how to populate it (these fields need proxy location
+// headers that countries don't), so an operator who sees flags but blank
+// regions/cities knows exactly what to enable.
+func osGeoTable(items []analytics.AudienceStat, kind string) string {
+	if len(items) == 0 {
+		return `<div class="empty-state">No ` + html.EscapeString(kind) + ` data yet. ` +
+			`Countries come from <code>CF-IPCountry</code> (sent by Cloudflare on every plan), but ` +
+			html.EscapeString(kind) + `s need extra location headers: in Cloudflare enable ` +
+			`<strong>Rules → Settings → Add visitor location headers</strong> (adds <code>cf-region</code> &amp; <code>cf-ipcity</code>). ` +
+			`CloudFront, Vercel and Fastly geo headers, and generic <code>X-Geo-Region</code> / <code>X-Geo-City</code>, are also recognised.</div>`
+	}
+	rows := ""
+	for _, it := range items {
+		label := html.EscapeString(it.Label)
+		if it.Label == "" {
+			label = "(unknown)"
+		}
+		rows += `<tr><td class="row-title">` + label + `</td><td>` + strconv.Itoa(it.Count) + `</td></tr>`
+	}
+	return `<div class="table-wrap"><table class="table"><tbody>` + rows + `</tbody></table></div>`
 }
 
 // osGoalsSection renders the conversion-goals card: a create form, plus a table
