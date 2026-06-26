@@ -11,11 +11,8 @@ package main
 
 import (
 	"html"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 
 	"github.com/johalputt/vayupress/internal/analytics"
 )
@@ -45,31 +42,10 @@ func isFlagFile(name string) bool {
 	return true
 }
 
-// flagSet caches which flag SVGs exist on disk, so we never emit an <img> that
-// would 404 into a broken-image icon.
-var (
-	flagOnce sync.Once
-	flagSet  map[string]bool // nil ⇒ directory unreadable (optimistic fallback)
-)
-
+// flagAvailable reports whether an embedded flag SVG exists for the (lowercase)
+// two-letter code.
 func flagAvailable(lc string) bool {
-	flagOnce.Do(func() {
-		entries, err := os.ReadDir(filepath.Join(adminOSStaticDir(), "flags"))
-		if err != nil {
-			flagSet = nil
-			return
-		}
-		flagSet = make(map[string]bool, len(entries))
-		for _, e := range entries {
-			if n := e.Name(); isFlagFile(n) {
-				flagSet[strings.TrimSuffix(n, ".svg")] = true
-			}
-		}
-	})
-	if flagSet == nil {
-		return len(lc) == 2 // can't verify; assume present for valid codes
-	}
-	return flagSet[lc]
+	return flagCodeSet[lc]
 }
 
 // countryFlagURL returns the served path of a country's flag SVG, or "" when no

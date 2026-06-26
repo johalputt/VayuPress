@@ -94,19 +94,25 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		http.ServeFile(w, req, filepath.Join(adminOSStaticDir(), "fonts", canon))
 	})
 
-	// Country flag SVGs (self-hosted flag-icons, MIT). Served on demand so only
-	// the flags actually shown are fetched. Path-traversal is impossible: the
-	// filename is validated to be exactly a two-letter lowercase ISO code.
+	// Country flag SVGs (flag-icons, MIT) compiled into the binary and served
+	// on demand from /os/static/flags/<cc>.svg. Path-traversal is impossible:
+	// the filename is validated to be exactly a two-letter lowercase ISO code,
+	// and the bytes come from the embedded FS — never the live filesystem.
 	r.Get("/os/static/flags/{file}", func(w http.ResponseWriter, req *http.Request) {
 		file := chi.URLParam(req, "file")
 		if !isFlagFile(file) {
 			http.NotFound(w, req)
 			return
 		}
+		data, err := flagFS.ReadFile("flags/" + file)
+		if err != nil {
+			http.NotFound(w, req)
+			return
+		}
 		w.Header().Set("Content-Type", "image/svg+xml")
 		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
-		http.ServeFile(w, req, filepath.Join(adminOSStaticDir(), "flags", file))
+		_, _ = w.Write(data)
 	})
 
 	// Public: login page and credential forms.
