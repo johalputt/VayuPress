@@ -165,6 +165,22 @@ func themeOptionRows() string {
   <span class="theme-field__label">` + html.EscapeString(o.Label) + `</span>
   <select class="input" data-token-opt="` + html.EscapeString(o.Key) + `" aria-label="` + html.EscapeString(o.Label) + `">` + opts + `</select>` + hint + `</label>`
 	}
+	// Per-theme extras — rendered for every theme but shown/hidden by the Studio
+	// JS based on the active theme (data-opt-theme is a comma-separated list).
+	for _, to := range theme.PerThemeOptions() {
+		o := to.Option
+		opts := ""
+		for _, c := range o.Choices {
+			opts += `<option value="` + html.EscapeString(c.Value) + `">` + html.EscapeString(c.Label) + `</option>`
+		}
+		hint := ""
+		if o.Help != "" {
+			hint = `<span class="theme-field__hint">` + html.EscapeString(o.Help) + `</span>`
+		}
+		out += `<label class="theme-field theme-field--text" data-opt-theme="` + html.EscapeString(strings.Join(to.Themes, ",")) + `" hidden>
+  <span class="theme-field__label">` + html.EscapeString(o.Label) + `</span>
+  <select class="input" data-token-opt="` + html.EscapeString(o.Key) + `" aria-label="` + html.EscapeString(o.Label) + `">` + opts + `</select>` + hint + `</label>`
+	}
 	return out
 }
 

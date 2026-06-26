@@ -124,6 +124,7 @@
     if (activeNameEl) {
       activeNameEl.textContent = activePresetName ? 'Current theme: ' + activePresetName : 'Current theme';
     }
+    updateOptionVisibility();
     highlightActiveCard(activePresetName);
     paintPreview();
     paintOptionPreview();
@@ -159,6 +160,23 @@
       paintOptionPreview();
     });
   });
+
+  // Show only the per-theme extra options that apply to the active theme; hide
+  // (and reset) the rest so a hidden option never silently applies.
+  function updateOptionVisibility() {
+    Object.keys(optInputs).forEach(function (key) {
+      var el = optInputs[key];
+      var row = el.closest('[data-opt-theme]');
+      if (!row) return; // shared option — always visible
+      var themes = (row.getAttribute('data-opt-theme') || '').split(',');
+      var show = themes.indexOf(activePresetName) !== -1;
+      row.hidden = !show;
+      if (!show && el.options.length && el.value !== el.options[0].value) {
+        el.value = el.options[0].value;
+        options[key] = el.value;
+      }
+    });
+  }
 
   // ── Gallery card clicks ────────────────────────────────────────────────────
   if (galleryEl) {
