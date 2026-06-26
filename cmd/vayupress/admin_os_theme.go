@@ -209,8 +209,8 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
 
     <div class="card mb-6 mt-6">
       <div class="card-title">Custom CSS</div>
-      <div class="text-sm muted mb-3">Served same-origin via <code>/theme.css</code> (CSP-safe) — appended after the theme styles. Max 16&nbsp;KB. Cannot reach external origins or run scripts.</div>
-      <textarea class="input theme-code" data-theme-css rows="12" maxlength="16384" spellcheck="false" placeholder="/* e.g. .post-title { letter-spacing: -0.02em; } */">` + html.EscapeString(val(settings.KeyThemeCustomCSS)) + `</textarea>
+      <div class="text-sm muted mb-3">Served same-origin via <code>/theme.css</code> (CSP-safe) — appended after the theme styles. Max 64&nbsp;KB. Cannot reach external origins or run scripts.</div>
+      <textarea class="input theme-code" data-theme-css rows="12" maxlength="65536" spellcheck="false" placeholder="/* e.g. .post-title { letter-spacing: -0.02em; } */">` + html.EscapeString(val(settings.KeyThemeCustomCSS)) + `</textarea>
     </div>
 
     <div class="card">
@@ -291,15 +291,15 @@ func (a *App) handleOSThemeCode(w http.ResponseWriter, r *http.Request) {
 		VerifyGoogle string `json:"verify_google"`
 		VerifyBing   string `json:"verify_bing"`
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, 64*1024)
+	r.Body = http.MaxBytesReader(w, r.Body, 128*1024)
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeJSON(w, r, http.StatusBadRequest, map[string]string{"error": "invalid JSON: " + err.Error()})
 		return
 	}
 
 	css := strings.TrimSpace(body.CustomCSS)
-	if len(css) > 16*1024 {
-		writeJSON(w, r, http.StatusBadRequest, map[string]string{"error": "Custom CSS exceeds the 16 KB limit"})
+	if len(css) > 64*1024 {
+		writeJSON(w, r, http.StatusBadRequest, map[string]string{"error": "Custom CSS exceeds the 64 KB limit"})
 		return
 	}
 	keywords := strings.TrimSpace(body.Keywords)
@@ -441,8 +441,8 @@ func (a *App) handleOSThemeImport(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ccss := strings.TrimSpace(env.CustomCSS)
-	if len(ccss) > 16*1024 {
-		writeJSON(w, r, http.StatusBadRequest, map[string]string{"error": "custom CSS in file exceeds the 16 KB limit"})
+	if len(ccss) > 64*1024 {
+		writeJSON(w, r, http.StatusBadRequest, map[string]string{"error": "custom CSS in file exceeds the 64 KB limit"})
 		return
 	}
 	keywords := strings.TrimSpace(env.Head.Keywords)

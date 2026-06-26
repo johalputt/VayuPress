@@ -20,7 +20,10 @@ package main
 import (
 	"html"
 	htmpl "html/template"
+	"io"
 	"net/http"
+	"net/url"
+	"strings"
 
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/render"
@@ -63,6 +66,17 @@ func (a *App) handleOSThemeStore(w http.ResponseWriter, r *http.Request) {
   <div class="store-meta text-sm muted"><span data-store-count>` + intToStr(len(store)) + `</span> themes · deploy instantly · fully sovereign, no external assets</div>
   <div class="store-grid" data-store-grid>` + themeStoreCards(active) + `</div>
   <div class="store-empty" data-store-empty hidden>No themes match your filters.</div>
+</div>
+
+<div class="store-preview" data-store-overlay hidden>
+  <div class="store-preview__bar">
+    <span class="store-preview__title" data-store-preview-title>Preview</span>
+    <span class="store-preview__spacer"></span>
+    <button type="button" class="btn btn--primary btn--sm" data-store-preview-deploy>Deploy this theme</button>
+    <a class="btn btn--ghost btn--sm" data-store-preview-customize href="/os/theme">Customize</a>
+    <button type="button" class="store-preview__close" data-store-preview-close aria-label="Close preview">&times;</button>
+  </div>
+  <iframe class="store-preview__frame" data-store-preview-frame title="Live theme preview" loading="lazy" referrerpolicy="no-referrer"></iframe>
 </div>
 <script nonce="` + nonce + `" src="/os/static/js/admin-os-theme-store.js"></script>`
 
@@ -153,6 +167,7 @@ func themeStoreCard(e theme.StoreEntry, isActive bool) string {
     <div class="store-card__tags">` + tags + `</div>
     <div class="store-card__actions">
       ` + deploy + `
+      <button type="button" class="btn btn--ghost btn--sm" data-store-preview="` + name + `">Preview</button>
       <a class="btn btn--ghost btn--sm" href="/os/theme?load=` + name + `">Customize</a>
     </div>
   </div>
@@ -183,4 +198,93 @@ func intToStr(n int) string {
 		n /= 10
 	}
 	return digits
+}
+
+// findPreset returns the named preset (case-insensitive) and whether it exists.
+func findPreset(name string) (theme.Tokens, bool) {
+	for _, p := range theme.AllPresets() {
+		if strings.EqualFold(p.Name, name) {
+			return p, true
+		}
+	}
+	return theme.Tokens{}, false
+}
+
+// handleOSThemePreviewCSS serves a single theme's compiled stylesheet for the
+// in-store live preview WITHOUT persisting it as the active theme. Same-origin,
+// text/css, no-store (it's a transient preview, never cached as the live theme).
+func (a *App) handleOSThemePreviewCSS(w http.ResponseWriter, r *http.Request) {
+	tok, ok := findPreset(r.URL.Query().Get("preset"))
+	if !ok {
+		http.Error(w, "unknown preset", http.StatusNotFound)
+		return
+	}
+	css, err := theme.CompileCSS(tok)
+	if err != nil {
+		http.Error(w, "theme compile error", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/css; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	_, _ = io.WriteString(w, css)
+}
+
+// handleOSThemePreview renders a self-contained sample page using the real
+// public markup (the vayu-* classes) styled by the chosen theme, for display
+// inside the store's preview iframe. It links the same base stylesheets as the
+// live site (Pico, custom, article) and then the theme's preview.css last, so
+// the preview is a faithful, isolated render — never touching the live site.
+// CSP-safe: same-origin links only, no inline styles or scripts.
+func (a *App) handleOSThemePreview(w http.ResponseWriter, r *http.Request) {
+	tok, ok := findPreset(r.URL.Query().Get("preset"))
+	if !ok {
+		http.Error(w, "unknown preset", http.StatusNotFound)
+		return
+	}
+	// This page is designed to be embedded in the Theme Store's preview iframe,
+	// so relax the framing controls to SAME-ORIGIN ONLY. The strict global
+	// baseline is frame-ancestors 'none' + X-Frame-Options: DENY (set by
+	// securityHeadersMiddleware before this handler runs); we override both so
+	// only our own admin page — and no third party — can frame the preview.
+	nonce := render.CSPNonce(r)
+	w.Header().Set("Content-Security-Policy",
+		strings.Replace(render.BuildCSP(nonce, nil), "frame-ancestors 'none'", "frame-ancestors 'self'", 1))
+	w.Header().Set("X-Frame-Options", "SAMEORIGIN")
+	en := html.EscapeString(tok.Name)
+	page := `<!doctype html><html lang="en"><head><meta charset="utf-8">` +
+		`<meta name="viewport" content="width=device-width, initial-scale=1">` +
+		`<title>Preview — ` + en + `</title>` +
+		string(render.PicoCSSLink()) + string(render.CustomCSSLink()) + string(render.ArticleCSSLink()) +
+		`<link rel="stylesheet" href="/os/theme/preview.css?preset=` + url.QueryEscape(tok.Name) + `">` +
+		`</head><body><div class="container">` + themePreviewSampleHTML() + `</div></body></html>`
+	writeOSHTML(w, page)
+}
+
+// themePreviewSampleHTML returns representative home-page markup using the exact
+// vayu-* class names the public templates emit, so a theme's component CSS
+// (which targets those selectors) renders authentically in the preview.
+func themePreviewSampleHTML() string {
+	card := func(tag, title, excerpt, date string) string {
+		return `<a class="vayu-post-card" href="#">` +
+			`<div class="vayu-post-meta"><span>` + date + `</span><span class="vayu-post-dot"></span><span>` + tag + `</span></div>` +
+			`<div class="vayu-post-title">` + title + `</div>` +
+			`<div class="vayu-post-excerpt">` + excerpt + `</div>` +
+			`<span class="vayu-post-arrow">→</span></a>`
+	}
+	return `<nav class="vayu-nav"><a class="vayu-nav-brand" href="#">Your Publication</a>` +
+		`<div class="vayu-nav-links"><a href="#">Home</a><a href="#">Archive</a><a href="#">About</a></div></nav>` +
+		`<section class="vayu-hero"><div class="vayu-hero-eyebrow">Live preview</div>` +
+		`<h1>Words that move quietly, and land hard.</h1>` +
+		`<p class="vayu-hero-tagline">A sample of how your home page looks in this theme — typography, spacing, cards and accent colours, exactly as readers would see it.</p>` +
+		`<div class="vayu-stats"><div><div class="vayu-stat-val">128</div><div class="vayu-stat-label">Posts</div></div>` +
+		`<div><div class="vayu-stat-val">12k</div><div class="vayu-stat-label">Readers</div></div></div></section>` +
+		`<div class="vayu-section-label">Latest</div>` +
+		`<div class="vayu-post-list">` +
+		card("Essays", "The shape of a good idea", "Short, sharp, and built to be read on any device without friction.", "Jun 2026") +
+		card("Notes", "On writing less", "Concision is a feature. Here is what we cut, and why it mattered.", "May 2026") +
+		card("Field", "A quiet interface", "Design that gets out of the way so the words can do the work.", "Apr 2026") +
+		`</div>` +
+		`<footer class="vayu-footer"><span class="vayu-footer-brand">Your Publication</span>` +
+		`<span class="vayu-footer-badge">VayuPress</span></footer>`
 }
