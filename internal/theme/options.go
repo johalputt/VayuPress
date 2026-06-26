@@ -245,7 +245,7 @@ func applyThemeOptions(t *Tokens) string {
 	case "grid":
 		extra.WriteString(".vayu-post-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:1.5rem;align-items:start}")
 	case "cards":
-		extra.WriteString(".vayu-post-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:1.25rem;align-items:start}.vayu-post-card{border:1px solid var(--border,rgba(125,125,125,.22));border-radius:var(--radius2,12px);padding:1.25rem}")
+		extra.WriteString(".vayu-post-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:1.25rem;align-items:start}.vayu-post-card{border:1px solid var(--border,rgba(125,125,125,.22));border-radius:var(--radius2,12px);overflow:hidden}")
 	}
 	switch t.Options["headeralign"] {
 	case "left":
