@@ -8,8 +8,29 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [1.15.0] — 2026-06-26
+
 ### Added
 
+- **Theme Studio overhaul — applying a theme now restyles the *whole* public
+  site, not just colours.** Every built-in design theme (Gale, Zephyr, Dispatch,
+  Vivid, Beacon, Ripple, Maverick, Agora, Apex) now styles the real `vayu-*`
+  public markup across every section — navigation, homepage hero, post
+  list/cards (including cover-image cards), article body and headings, the
+  author box, related posts, the comments section, and the multi-column footer —
+  in that theme's own visual language. Switching themes visibly transforms the
+  entire blog. See ADR-0086.
+- **Layout archetypes for colour presets.** Each colour-only preset is assigned
+  a reusable layout archetype (Minimal / Classic / Magazine / Editorial / Bold)
+  carried as the new `archetype` customization option, so even a palette swap
+  changes structure, spacing, cards and hero — not just colour.
+- **Opt-in homepage hero for a clean homepage.** A new `home.hero` setting
+  (off by default) opens the homepage straight into the post list; the hero is
+  toggled from **Theme Studio → Hero section**.
+- **Theme Studio consolidation + uploads.** Design settings (logo, brand
+  colours, layout, fonts, hero, article-page options, and the social/OG share
+  image) are now edited in one place — the Theme Studio — with a live preview
+  and same-origin uploads; the Settings → Design tab points operators there.
 - **VayuPortal — a clean, minimalist membership overlay for the public site.**
   A floating launch button plus an accessible slide-in panel now lets readers
   sign up, sign in, and manage their account without leaving the page they are
@@ -70,6 +91,12 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Fixed
 
+- **Theme Studio gallery now always renders.** The Theme Studio page
+  (`/os/theme`) dereferenced the settings store without a nil-guard, so if the
+  store was not ready (startup race / init failure) the page panicked (HTTP 500)
+  and the theme gallery "did not show anywhere" while every other VayuOS page
+  kept working. The handler now falls back to defaults and always renders the
+  full Studio, including the gallery.
 - **VayuOS stylesheet/script updates now reach the browser immediately.** The
   admin CSS/JS were cache-busted only by the release version, so iterative
   changes within a build could be masked by a stale cached `admin-os.css`
