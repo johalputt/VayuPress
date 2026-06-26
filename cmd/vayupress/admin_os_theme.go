@@ -276,16 +276,16 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
 <div class="customizer" data-theme-studio>
   <aside class="customizer__panel" aria-label="Theme controls">
 
-    <details class="cz-group" open>
-      <summary class="cz-group__head">Presets <span class="cz-group__hint">start here</span></summary>
+    <section class="cz-group cz-group--open">
+      <button type="button" class="cz-group__head" aria-expanded="true">Presets <span class="cz-group__hint">start here</span></button>
       <div class="cz-group__body">
         <p class="text-sm muted mb-3">Pick a starting design, then fine-tune anything below. The preview updates as you go.</p>
         <div class="theme-gallery" data-theme-presets aria-label="Theme presets">` + themePresetCards() + `</div>
       </div>
-    </details>
+    </section>
 
-    <details class="cz-group" open>
-      <summary class="cz-group__head">Brand <span class="cz-group__hint">logo &amp; accent</span></summary>
+    <section class="cz-group cz-group--open">
+      <button type="button" class="cz-group__head" aria-expanded="true">Brand <span class="cz-group__hint">logo &amp; accent</span></button>
       <div class="cz-group__body">
         <div class="cz-logo">
           <img id="brand-favicon-img" class="cz-logo__img" src="/favicon.ico?t=` + faviconBust + `" alt="Current site mark" width="44" height="44">
@@ -304,40 +304,40 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
         <div class="theme-fields mt-4">` + brandRows + `</div>
         <div class="theme-fields theme-fields--text mt-3">` + optionRowsByKeys("scheme", "accentfill") + `</div>
       </div>
-    </details>
+    </section>
 
-    <details class="cz-group" open>
-      <summary class="cz-group__head">Layout</summary>
+    <section class="cz-group cz-group--open">
+      <button type="button" class="cz-group__head" aria-expanded="true">Layout</button>
       <div class="cz-group__body">
         <p class="text-sm muted mb-3">Reading width, corners, post-feed layout, header alignment and density.</p>
         <div class="theme-fields theme-fields--text">` + optionRowsByKeys("width", "corners", "feedlayout", "headeralign", "density") + `</div>
       </div>
-    </details>
+    </section>
 
-    <details class="cz-group">
-      <summary class="cz-group__head">Typography &amp; fonts</summary>
+    <section class="cz-group cz-group--open">
+      <button type="button" class="cz-group__head" aria-expanded="true">Typography &amp; fonts</button>
       <div class="cz-group__body">
         ` + fontPairSelectHTML() + `
         <div class="theme-fields theme-fields--text">` + optionRowsByKeys("headingcase", "headingscale") + typoRows + `</div>
       </div>
-    </details>
+    </section>
 
-    <details class="cz-group">
-      <summary class="cz-group__head">Colours — dark mode</summary>
+    <section class="cz-group cz-group--open">
+      <button type="button" class="cz-group__head" aria-expanded="true">Colours — dark mode</button>
       <div class="cz-group__body">
         <div class="theme-fields">` + darkRows + `</div>
       </div>
-    </details>
+    </section>
 
-    <details class="cz-group">
-      <summary class="cz-group__head">Colours — light mode</summary>
+    <section class="cz-group cz-group--open">
+      <button type="button" class="cz-group__head" aria-expanded="true">Colours — light mode</button>
       <div class="cz-group__body">
         <div class="theme-fields">` + lightRows + `</div>
       </div>
-    </details>
+    </section>
 
-    <details class="cz-group">
-      <summary class="cz-group__head">Navigation <span class="cz-group__hint">live</span></summary>
+    <section class="cz-group cz-group--open">
+      <button type="button" class="cz-group__head" aria-expanded="true">Navigation <span class="cz-group__hint">live</span></button>
       <div class="cz-group__body">
         <p class="text-sm muted mb-3">Edit the public site menu. Saved straight to your live site (the preview shows a representative menu).</p>
         <div id="cz-nav-rows" data-nav-editor></div>
@@ -348,10 +348,10 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
         </div>
         <input type="hidden" id="cz-nav-seed" value="` + navSeed + `">
       </div>
-    </details>
+    </section>
 
-    <details class="cz-group">
-      <summary class="cz-group__head">Custom CSS</summary>
+    <section class="cz-group cz-group--open">
+      <button type="button" class="cz-group__head" aria-expanded="true">Custom CSS</button>
       <div class="cz-group__body">
         <div class="text-sm muted mb-3">Served same-origin via <code>/theme.css</code> (CSP-safe), appended after the theme styles. Max 64&nbsp;KB. Reflected live in the preview.</div>
         <textarea class="input theme-code" data-theme-css rows="10" maxlength="65536" spellcheck="false" placeholder="/* e.g. .vayu-post-title { letter-spacing: -0.02em; } */">` + html.EscapeString(val(settings.KeyThemeCustomCSS)) + `</textarea>
@@ -360,10 +360,10 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
           <span class="text-sm muted" data-theme-code-status></span>
         </div>
       </div>
-    </details>
+    </section>
 
-    <details class="cz-group">
-      <summary class="cz-group__head">Head &amp; SEO (meta)</summary>
+    <section class="cz-group cz-group--open">
+      <button type="button" class="cz-group__head" aria-expanded="true">Head &amp; SEO (meta)</button>
       <div class="cz-group__body">
         <div class="text-sm muted mb-3">Rendered to a validated, escaped <code>&lt;meta&gt;</code> allowlist (raw &lt;head&gt; HTML is intentionally not accepted).</div>
         <div class="theme-fields theme-fields--text">
@@ -379,10 +379,10 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
             <input type="text" class="input" data-head="verify_bing" maxlength="128" value="` + html.EscapeString(val(settings.KeyHeadVerifyBing)) + `" placeholder="token"></label>
         </div>
       </div>
-    </details>
+    </section>
 
-    <details class="cz-group">
-      <summary class="cz-group__head">Import / Export</summary>
+    <section class="cz-group cz-group--open">
+      <button type="button" class="cz-group__head" aria-expanded="true">Import / Export</button>
       <div class="cz-group__body">
         <div class="text-sm muted mb-3">Download the full theme as JSON, or import one to apply it everywhere. Imported tokens are validated before they go live.</div>
         <div class="vm-row">
@@ -394,7 +394,7 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
           <span class="text-sm muted" data-theme-import-status></span>
         </div>
       </div>
-    </details>
+    </section>
   </aside>
 
   <div class="customizer__stage">
