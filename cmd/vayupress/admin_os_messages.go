@@ -40,7 +40,9 @@ func (a *App) handleOSMessages(w http.ResponseWriter, r *http.Request) {
 		q = q[:120]
 	}
 	unreadOnly := r.URL.Query().Get("unread") == "1"
-	filtersActive := q != "" || unreadOnly
+	from := normalizeDateParam(r.URL.Query().Get("from"))
+	to := normalizeDateParam(r.URL.Query().Get("to"))
+	filtersActive := q != "" || unreadOnly || from != "" || to != ""
 
 	type msgRow struct {
 		ID, Name, Email, Message, Page string
@@ -61,6 +63,14 @@ func (a *App) handleOSMessages(w http.ResponseWriter, r *http.Request) {
 		}
 		if unreadOnly {
 			where = append(where, "is_read=0")
+		}
+		if from != "" {
+			where = append(where, "date(created_at) >= ?")
+			args = append(args, from)
+		}
+		if to != "" {
+			where = append(where, "date(created_at) <= ?")
+			args = append(args, to)
 		}
 		clause := ""
 		if len(where) > 0 {
@@ -83,25 +93,42 @@ func (a *App) handleOSMessages(w http.ResponseWriter, r *http.Request) {
 
 	// Filter toolbar: a GET search form + an unread-only toggle link that
 	// preserves the current query. Plain links/forms → CSP-safe, JS-free.
-	unreadHref := "/os/messages"
+	// The unread toggle preserves the active search + date range. Build its href
+	// from the current params, flipping only the unread flag.
+	uv := url.Values{}
+	if q != "" {
+		uv.Set("q", q)
+	}
+	if from != "" {
+		uv.Set("from", from)
+	}
+	if to != "" {
+		uv.Set("to", to)
+	}
 	if !unreadOnly {
-		uv := url.Values{}
 		uv.Set("unread", "1")
-		if q != "" {
-			uv.Set("q", q)
-		}
-		unreadHref = "/os/messages?" + uv.Encode()
-	} else if q != "" {
-		unreadHref = "/os/messages?q=" + url.QueryEscape(q)
+	}
+	unreadHref := "/os/messages"
+	if enc := uv.Encode(); enc != "" {
+		unreadHref = "/os/messages?" + enc
 	}
 	unreadCls := "btn btn--ghost btn--sm"
 	if unreadOnly {
 		unreadCls = "btn btn--primary btn--sm"
 	}
+	// The unread flag rides the search form via a hidden field so a search keeps
+	// the unread filter on.
+	unreadHidden := ""
+	if unreadOnly {
+		unreadHidden = `<input type="hidden" name="unread" value="1">`
+	}
 	filterBar := `<div class="card"><div class="toolbar-row">
-  <form method="GET" action="/os/messages" class="vm-row" style="flex:1;gap:.5rem">
-    <input type="search" name="q" class="input" style="flex:1" value="` + html.EscapeString(q) + `" placeholder="Search name, email or message…" aria-label="Search messages">
-    <button type="submit" class="btn btn--sm">Search</button>
+  <form method="GET" action="/os/messages" class="vm-row" style="flex:1;gap:.5rem;flex-wrap:wrap">
+    ` + unreadHidden + `
+    <input type="search" name="q" class="input" style="flex:1;min-width:160px" value="` + html.EscapeString(q) + `" placeholder="Search name, email or message…" aria-label="Search messages">
+    <label class="text-xs muted">From <input type="date" name="from" class="input input--sm" value="` + html.EscapeString(from) + `" aria-label="From date"></label>
+    <label class="text-xs muted">To <input type="date" name="to" class="input input--sm" value="` + html.EscapeString(to) + `" aria-label="To date"></label>
+    <button type="submit" class="btn btn--sm">Apply</button>
   </form>
   <a class="` + unreadCls + `" href="` + unreadHref + `">Unread only</a>
   ` + filterClearLink(filtersActive) + `
