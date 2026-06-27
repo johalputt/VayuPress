@@ -1866,6 +1866,12 @@
 .vp-os .cz-group__body { display: none; padding: 4px 16px 16px; border-top: 1px solid var(--border); }
 .vp-os .cz-group--open > .cz-group__body { display: block; }
 
+/* Apply button "unsaved changes" state — a subtle ring so the operator knows a
+   live preview tweak still needs Applying to persist. */
+.vp-os .btn.is-dirty {
+  box-shadow: 0 0 0 2px var(--brand), 0 0 0 4px color-mix(in srgb, var(--brand) 35%, transparent);
+}
+
 /* Preview stage. */
 .vp-os .customizer__stage {
   display: flex; flex-direction: column;

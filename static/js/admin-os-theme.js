@@ -266,16 +266,34 @@
     }
   });
 
+  // ── Unsaved-changes (dirty) tracking ──────────────────────────────────────────
+  // A live preview is not the same as an applied theme: the operator must click
+  // Apply to persist. Reflect that on the Apply button + warn before leaving so
+  // tweaks are never silently lost. loadTokens()/revert call clearDirty().
+  var dirty = false;
+  function markDirty() {
+    if (dirty) return;
+    dirty = true;
+    if (applyBtn) { applyBtn.classList.add('is-dirty'); applyBtn.textContent = 'Apply theme •'; }
+  }
+  function clearDirty() {
+    dirty = false;
+    if (applyBtn) { applyBtn.classList.remove('is-dirty'); applyBtn.textContent = 'Apply theme'; }
+  }
+  window.addEventListener('beforeunload', function (e) {
+    if (dirty) { e.preventDefault(); e.returnValue = ''; }
+  });
+
   // ── Control change wiring ─────────────────────────────────────────────────────
   Object.keys(inputs).forEach(function (field) {
     var el = inputs[field];
     var evt = el.type === 'color' ? 'input' : 'change';
-    el.addEventListener(evt, function () { model[field] = el.value; schedulePreview(); });
+    el.addEventListener(evt, function () { model[field] = el.value; markDirty(); schedulePreview(); });
   });
   Object.keys(optInputs).forEach(function (key) {
-    optInputs[key].addEventListener('change', function () { options[key] = optInputs[key].value; schedulePreview(); });
+    optInputs[key].addEventListener('change', function () { options[key] = optInputs[key].value; markDirty(); schedulePreview(); });
   });
-  if (cssArea) cssArea.addEventListener('input', schedulePreview);
+  if (cssArea) cssArea.addEventListener('input', function () { markDirty(); schedulePreview(); });
 
   // Font pairing quick-set: applies a sans + mono stack to the FontSans/FontMono
   // tokens at once, updates their text inputs, and refreshes the preview.
@@ -290,6 +308,7 @@
       model.FontSans = sans;
       if (inputs.FontSans) inputs.FontSans.value = sans;
       if (mono) { model.FontMono = mono; if (inputs.FontMono) inputs.FontMono.value = mono; }
+      markDirty();
       schedulePreview();
     });
   }
@@ -304,6 +323,7 @@
       if (preset) {
         loadTokens(preset);
         setStatus('Preset "' + name + '" loaded — not yet applied', 'warn');
+        markDirty();
         schedulePreview();
       }
     });
@@ -324,6 +344,7 @@
       if (!r.ok) return r.json().then(function (e) { throw new Error((e.error && e.error.message) || ('apply failed (' + r.status + ')')); });
       return r.json();
     }).then(function (d) {
+      clearDirty();
       setStatus('Applied · ' + (d.name || '') + ' · ' + new Date().toLocaleTimeString(), 'ok');
       highlightActiveCard(d.name || '');
       if (activeNameEl) activeNameEl.textContent = 'Current theme: ' + (d.name || 'Custom');
@@ -344,7 +365,7 @@
 
   if (applyBtn) applyBtn.addEventListener('click', apply);
   if (revertBtn) revertBtn.addEventListener('click', function () {
-    fetchTokens().then(function () { setStatus('Reverted to saved theme', 'ok'); schedulePreview(); });
+    fetchTokens().then(function () { clearDirty(); setStatus('Reverted to saved theme', 'ok'); schedulePreview(); });
   });
 
   // ── Custom CSS + Head/SEO save ────────────────────────────────────────────────
