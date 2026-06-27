@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/signal"
 	"regexp"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -108,7 +109,18 @@ func newUUID() string {
 
 // =============================================================================
 // Sitemap / RSS / robots
+
 // =============================================================================
+
+// warmStartupDelay is how long the boot-time cache warm waits for the box to
+// settle before it starts the (paced) re-render. Tunable via VAYU_WARM_DELAY_SEC
+// (clamped to 0..600s); defaults to a gentle 4s.
+func warmStartupDelay() time.Duration {
+	if n, err := strconv.Atoi(config.EnvOr("VAYU_WARM_DELAY_SEC", "4")); err == nil && n >= 0 && n <= 600 {
+		return time.Duration(n) * time.Second
+	}
+	return 4 * time.Second
+}
 
 func generateSitemap() {
 	rows, err := dbpkg.DB.Query(`SELECT slug,updated_at FROM articles WHERE COALESCE(status,'published')='published' AND COALESCE(is_page,0)=0 ORDER BY updated_at DESC LIMIT 50000`)
@@ -573,16 +585,39 @@ func main() {
 	// current design instead of a cached older home/tag page.
 	render.ReconcileCacheVersion()
 
-	// Meilisearch startup — search service handles the circuit breaker internally.
-	if search.WaitReady(context.Background(), a.search, 12) {
-		logging.LogInfo("main", "Meilisearch ready")
-		search.ConfigureIndex(context.Background(), a.search)
-	} else {
-		logging.LogJSON(logging.LogFields{Level: "warn", Component: "main", Msg: "Meilisearch unavailable — SQLite search fallback active"})
-	}
-
+	// Meilisearch readiness runs in the BACKGROUND so the HTTP listener comes up
+	// immediately on (re)start instead of blocking behind the Meili probe. Search
+	// transparently uses its SQLite fallback until Meili is confirmed ready, so a
+	// restart never waits on it — this is the main reason a redeploy used to show
+	// a multi-second 502 window. WaitReady + ConfigureIndex now happen off the
+	// critical path.
 	go func() {
-		logging.LogInfo("cache-warm", "starting...")
+		if search.WaitReady(context.Background(), a.search, 12) {
+			logging.LogInfo("main", "Meilisearch ready")
+			search.ConfigureIndex(context.Background(), a.search)
+		} else {
+			logging.LogJSON(logging.LogFields{Level: "warn", Component: "main", Msg: "Meilisearch unavailable — SQLite search fallback active"})
+		}
+	}()
+
+	// Background cache warm + feed/sitemap generation. Deliberately gentle: it
+	// waits a few seconds for the box to settle after boot, then paces itself
+	// (render.WarmCache throttles per article) so re-rendering the public cache
+	// after a deploy never saturates a small VPS. Set VAYU_WARM_ON_BOOT=0 to skip
+	// it entirely (public pages then render lazily on first request). Tune the
+	// settle delay with VAYU_WARM_DELAY_SEC and the per-article pace with
+	// VAYU_WARM_THROTTLE_MS.
+	go func() {
+		if config.EnvOr("VAYU_WARM_ON_BOOT", "1") == "0" {
+			logging.LogInfo("cache-warm", "skipped on boot (VAYU_WARM_ON_BOOT=0)")
+			return
+		}
+		select {
+		case <-queue.DoneCh:
+			return
+		case <-time.After(warmStartupDelay()):
+		}
+		logging.LogInfo("cache-warm", "starting (throttled)...")
 		render.WarmCache(api.SplitTags)
 		generateSitemap()
 		generateRSS()

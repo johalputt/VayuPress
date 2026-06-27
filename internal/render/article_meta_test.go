@@ -95,3 +95,24 @@ func TestRenderArticleDefaultsUnchanged(t *testing.T) {
 		t.Error("default canonical missing")
 	}
 }
+
+// TestWarmThrottle verifies the cache-warm pacing reads its env override, clamps
+// out-of-range values, and falls back to the gentle default.
+func TestWarmThrottle(t *testing.T) {
+	t.Setenv("VAYU_WARM_THROTTLE_MS", "")
+	if got := warmThrottle(); got != 12*time.Millisecond {
+		t.Errorf("default: got %v, want 12ms", got)
+	}
+	t.Setenv("VAYU_WARM_THROTTLE_MS", "0")
+	if got := warmThrottle(); got != 0 {
+		t.Errorf("zero (disabled): got %v, want 0", got)
+	}
+	t.Setenv("VAYU_WARM_THROTTLE_MS", "40")
+	if got := warmThrottle(); got != 40*time.Millisecond {
+		t.Errorf("override: got %v, want 40ms", got)
+	}
+	t.Setenv("VAYU_WARM_THROTTLE_MS", "999999") // out of range → default
+	if got := warmThrottle(); got != 12*time.Millisecond {
+		t.Errorf("clamp: got %v, want default 12ms", got)
+	}
+}
