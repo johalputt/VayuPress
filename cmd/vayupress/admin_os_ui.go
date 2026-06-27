@@ -1004,9 +1004,21 @@ func (a *App) handleOSDashboard(w http.ResponseWriter, r *http.Request) {
         <svg viewBox="0 0 16 16" fill="none" width="16" height="16" aria-hidden="true"><path d="M2 3h12v2H2V3zm0 4h12v2H2V7zm0 4h8v2H2v-2z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>
       </div>
     </div>
-    <div class="stat-card__value">` + strconv.Itoa(snap.TotalArticles) + `</div>
+    <div class="stat-card__value">` + strconv.Itoa(snap.TotalArticles-snap.TotalPages) + `</div>
     <div class="stat-card__bottom">
-      <span class="muted text-xs">Published posts</span>
+      <span class="muted text-xs">Blog posts</span>
+    </div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-card__top">
+      <div class="stat-card__label">Pages</div>
+      <div class="stat-card__icon stat-card__icon--brand">
+        <svg viewBox="0 0 16 16" fill="none" width="16" height="16" aria-hidden="true"><path d="M4 2h6l3 3v9H4V2zm6 0v3h3M6 8h5M6 11h5" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>
+      </div>
+    </div>
+    <div class="stat-card__value">` + strconv.Itoa(snap.TotalPages) + `</div>
+    <div class="stat-card__bottom">
+      <a class="text-xs" href="/os/pages">Manage pages →</a>
     </div>
   </div>
   <div class="stat-card">

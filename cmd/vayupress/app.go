@@ -437,6 +437,7 @@ func (a *App) registerEventHandlers() {
 
 type adminMetricsSnapshot struct {
 	TotalArticles  int
+	TotalPages     int
 	PendingJobs    int
 	FailedJobs     int
 	CompletedJobs  int
@@ -463,6 +464,10 @@ func (a *App) collectAdminMetrics() {
 	snap := &adminMetricsSnapshot{SnapshotAt: time.Now().UTC()}
 	row := dbpkg.DB.QueryRow(`SELECT (SELECT COUNT(1) FROM articles),SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END),SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END),SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) FROM write_jobs`)
 	row.Scan(&snap.TotalArticles, &snap.PendingJobs, &snap.FailedJobs, &snap.CompletedJobs)
+	// Standalone pages (is_page=1) are tracked separately from blog posts so the
+	// dashboard can surface each count distinctly. Best-effort; a pre-045 schema
+	// without the column simply leaves the count at zero.
+	_ = dbpkg.DB.QueryRow(`SELECT COUNT(1) FROM articles WHERE COALESCE(is_page,0)=1`).Scan(&snap.TotalPages)
 	snap.StorageBytes = dbpkg.StorageUsedBytes()
 	snap.QuotaBytes = dbpkg.StorageQuotaBytes()
 	if snap.QuotaBytes > 0 {
