@@ -3,10 +3,12 @@
 //
 // Security posture (ADR-0068): the block document is operator-authored but may
 // embed pasted/interpolated content, so every text field is HTML-escaped at
-// emit time and the final HTML is run through a bluemonday UGC policy. The
-// renderer never trusts a block's "html" verbatim — there is no raw-HTML block
-// that bypasses sanitisation. This makes the stored content safe for the public
-// article template, feeds, and search snippets.
+// emit time and the final HTML is run through a bluemonday UGC policy. Even the
+// "html" and "markdown" cards are not exempt — their output is passed through
+// the same UGC policy as every other block, so they can enrich markup within
+// the safe allowlist but can never introduce scripts, event handlers, forms, or
+// javascript: URLs. This makes the stored content safe for the public article
+// template, feeds, and search snippets.
 package blockrender
 
 import (
@@ -32,6 +34,15 @@ import (
 var inlineMD = goldmark.New(
 	goldmark.WithExtensions(extension.Strikethrough, extension.Linkify),
 	goldmark.WithRendererOptions(goldhtml.WithHardWraps()),
+)
+
+// blockMD renders a full Markdown document (the "markdown" card): block-level
+// constructs (headings, lists, tables, blockquotes, code fences, task lists)
+// plus GFM inline. Its output is still run through the bluemonday UGC policy by
+// the caller, so untrusted/raw HTML inside the Markdown cannot widen the XSS
+// surface.
+var blockMD = goldmark.New(
+	goldmark.WithExtensions(extension.GFM),
 )
 
 // renderInlineHTML converts s to inline HTML (no enclosing block element). It is
@@ -132,6 +143,11 @@ type Block struct {
 	Alt   string   `json:"alt,omitempty"`   // image alt text
 	Lang  string   `json:"lang,omitempty"`  // code language hint
 	Style string   `json:"style,omitempty"` // list: "ordered"|"unordered"; callout: tone
+	// image block extras.
+	Caption string `json:"caption,omitempty"` // image / gallery caption
+	Width   string `json:"width,omitempty"`   // image layout: "wide" | "full" (else regular)
+	// gallery block — Images is an ordered list of local /media (or absolute) URLs.
+	Images []string `json:"images,omitempty"`
 	// embed block fields — resolved server-side at paste time, stored in the block document.
 	Title       string `json:"title,omitempty"`
 	Description string `json:"description,omitempty"`
@@ -238,11 +254,71 @@ func renderBlock(b, plain *strings.Builder, blk Block) {
 		if strings.TrimSpace(blk.URL) == "" {
 			return
 		}
-		b.WriteString(`<figure><img src="` + html.EscapeString(blk.URL) +
-			`" alt="` + html.EscapeString(blk.Alt) + `" loading="lazy"></figure>`)
+		figCls := "vp-figure"
+		switch safeLang(blk.Width) {
+		case "wide":
+			figCls += " vp-figure--wide"
+		case "full":
+			figCls += " vp-figure--full"
+		}
+		b.WriteString(`<figure class="` + figCls + `"><img src="` + html.EscapeString(blk.URL) +
+			`" alt="` + html.EscapeString(blk.Alt) + `" loading="lazy">`)
+		if strings.TrimSpace(blk.Caption) != "" {
+			b.WriteString(`<figcaption>` + renderInlineHTML(blk.Caption) + `</figcaption>`)
+			plain.WriteString(blk.Caption + " ")
+		}
+		b.WriteString(`</figure>`)
 		if blk.Alt != "" {
 			plain.WriteString(blk.Alt + " ")
 		}
+	case "gallery":
+		// A responsive image gallery (up to 9 images). Each image is a flex item
+		// whose width the public CSS balances per row; an optional shared caption
+		// follows. Only well-formed URLs are emitted; empties are skipped.
+		imgs := make([]string, 0, len(blk.Images))
+		for _, u := range blk.Images {
+			if strings.TrimSpace(u) != "" {
+				imgs = append(imgs, u)
+			}
+		}
+		if len(imgs) == 0 {
+			return
+		}
+		if len(imgs) > 9 {
+			imgs = imgs[:9]
+		}
+		b.WriteString(`<figure class="vp-gallery"><div class="vp-gallery__grid">`)
+		for _, u := range imgs {
+			b.WriteString(`<div class="vp-gallery__item"><img src="` + html.EscapeString(u) + `" alt="" loading="lazy"></div>`)
+		}
+		b.WriteString(`</div>`)
+		if strings.TrimSpace(blk.Caption) != "" {
+			b.WriteString(`<figcaption>` + renderInlineHTML(blk.Caption) + `</figcaption>`)
+			plain.WriteString(blk.Caption + " ")
+		}
+		b.WriteString(`</figure>`)
+	case "html":
+		// Raw-HTML card: the operator's markup is emitted as-is, then the caller's
+		// bluemonday UGC pass sanitises it exactly like every other block — so it
+		// can carry rich markup (links, lists, tables, images, formatting) but not
+		// scripts, event handlers, forms, or off-site iframes.
+		if strings.TrimSpace(blk.Text) == "" {
+			return
+		}
+		b.WriteString(`<div class="vp-html">` + blk.Text + `</div>`)
+	case "markdown":
+		// Markdown card: a full Markdown sub-document rendered to HTML and then
+		// UGC-sanitised by the caller.
+		if strings.TrimSpace(blk.Text) == "" {
+			return
+		}
+		var mdBuf bytes.Buffer
+		if err := blockMD.Convert([]byte(blk.Text), &mdBuf); err != nil {
+			b.WriteString(`<div class="vp-md"><p>` + html.EscapeString(blk.Text) + `</p></div>`)
+		} else {
+			b.WriteString(`<div class="vp-md">` + mdBuf.String() + `</div>`)
+		}
+		plain.WriteString(blk.Text + " ")
 	case "embed":
 		if strings.TrimSpace(blk.URL) == "" {
 			return

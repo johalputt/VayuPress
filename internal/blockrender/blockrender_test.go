@@ -371,3 +371,65 @@ func TestRenderAudioRejectsExternalSrc(t *testing.T) {
 		}
 	}
 }
+
+// TestRenderImageCaptionWidth verifies the image card emits a width class and a
+// caption figcaption.
+func TestRenderImageCaptionWidth(t *testing.T) {
+	out, _, err := Render(`[{"type":"image","url":"/media/x.png","alt":"a cat","caption":"A **cat**","width":"wide"}]`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`class="vp-figure vp-figure--wide"`, `alt="a cat"`, "<figcaption>", "<strong>cat</strong>"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("image render missing %q in %q", want, out)
+		}
+	}
+}
+
+// TestRenderGallery verifies a gallery renders a grid of images (capped at 9).
+func TestRenderGallery(t *testing.T) {
+	out, _, err := Render(`[{"type":"gallery","images":["/media/1.jpg","/media/2.jpg",""],"caption":"Trip"}]`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, `class="vp-gallery"`) || !strings.Contains(out, `vp-gallery__grid`) {
+		t.Errorf("gallery wrapper missing: %q", out)
+	}
+	if strings.Count(out, "<img ") != 2 { // the empty URL is skipped
+		t.Errorf("gallery should render 2 images, got %d: %q", strings.Count(out, "<img "), out)
+	}
+	if !strings.Contains(out, "Trip") {
+		t.Errorf("gallery caption missing: %q", out)
+	}
+}
+
+// TestRenderHTMLCardSanitised proves the HTML card keeps safe markup but strips
+// scripts/handlers via the shared UGC policy.
+func TestRenderHTMLCardSanitised(t *testing.T) {
+	out, _, err := Render(`[{"type":"html","text":"<p class=\"x\">Hi <a href=\"/a\">link</a></p><script>alert(1)</script><img src=x onerror=alert(2)>"}]`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, `class="vp-html"`) {
+		t.Errorf("html card wrapper missing: %q", out)
+	}
+	if !strings.Contains(out, `<a href="/a"`) {
+		t.Errorf("html card should keep safe links: %q", out)
+	}
+	if strings.Contains(out, "<script>") || strings.Contains(out, "onerror") {
+		t.Errorf("html card did not sanitise dangerous markup: %q", out)
+	}
+}
+
+// TestRenderMarkdownCard verifies a markdown card renders block-level Markdown.
+func TestRenderMarkdownCard(t *testing.T) {
+	out, _, err := Render("[{\"type\":\"markdown\",\"text\":\"## Title\\n\\n- one\\n- two\"}]")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`class="vp-md"`, "<h2", "Title", "<ul>", "<li>one</li>"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("markdown card missing %q in %q", want, out)
+		}
+	}
+}

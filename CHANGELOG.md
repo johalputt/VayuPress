@@ -10,6 +10,17 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Added
 
+- **Editor: image galleries, HTML & Markdown cards, and richer images.** The
+  block editor gains the remaining content cards: an **image gallery** (up to 9
+  images via upload or URL, rendered as a responsive grid with an optional
+  caption), an **HTML card** for custom markup (sanitised on save through the
+  same UGC policy as every block — rich markup is kept, scripts/handlers/forms
+  are stripped), and a **Markdown card** for authoring a block in full Markdown.
+  The image card now also supports a **caption** and a **width** option (regular,
+  wide, or full-width). Pasting a bare URL onto an empty line now
+  **auto-creates a bookmark/embed card** and unfurls it. Image captions
+  round-trip through the HTML importer.
+
 - **Editor: Post settings panel (publishing options).** A slide-out drawer
   (⚙ Settings in the toolbar, or `⌘⇧P`/`Ctrl+Shift+P`) puts everything that
   isn't the post body in one place: a **feature image** (URL or upload), the

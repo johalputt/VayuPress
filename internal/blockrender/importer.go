@@ -162,9 +162,11 @@ func paragraphsFromChildren(n *html.Node) []Block {
 }
 
 // loneImage returns an image block if n's only meaningful content is a single
-// <img> (optionally wrapped in <a> / <figure> with whitespace), else nil.
+// <img> (optionally wrapped in <a> / <figure> with whitespace), else nil. A
+// <figcaption> inside the wrapper is preserved as the image caption.
 func loneImage(n *html.Node) *Block {
 	var img *html.Node
+	var caption string
 	var foundText bool
 	var walk func(*html.Node)
 	walk = func(node *html.Node) {
@@ -181,7 +183,7 @@ func loneImage(n *html.Node) *Block {
 					}
 					img = c
 				} else if c.DataAtom == atom.Figcaption {
-					// captions are fine to ignore for the lone-image test
+					caption = nodeText(c) // preserved as the image caption
 				} else {
 					walk(c)
 				}
@@ -191,6 +193,7 @@ func loneImage(n *html.Node) *Block {
 	walk(n)
 	if img != nil && !foundText {
 		b := imageBlock(img)
+		b.Caption = caption
 		return &b
 	}
 	return nil
