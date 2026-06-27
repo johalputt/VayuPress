@@ -450,23 +450,51 @@ $$('[data-setting-key]').forEach(function (el) {
     return el;
   }
 
+  var allItems = [];
+  var search = $('[data-media-search]');
+  var emptyMsg = $('[data-media-empty]');
+  var typeFilter = 'all';
+
+  function applyFilter() {
+    while (grid.firstChild) grid.removeChild(grid.firstChild);
+    if (!allItems.length) {
+      var empty = document.createElement('div');
+      empty.className = 'empty-state';
+      empty.textContent = 'No media yet. Upload your first image or PDF.';
+      grid.appendChild(empty);
+      if (emptyMsg) emptyMsg.hidden = true;
+      return;
+    }
+    var q = (search && search.value || '').trim().toLowerCase();
+    var shown = allItems.filter(function (it) {
+      if (typeFilter === 'image' && it.isPdf) return false;
+      if (typeFilter === 'pdf' && !it.isPdf) return false;
+      if (q && (it.name || '').toLowerCase().indexOf(q) === -1) return false;
+      return true;
+    });
+    shown.forEach(function (it) { grid.appendChild(card(it)); });
+    if (emptyMsg) emptyMsg.hidden = shown.length > 0;
+  }
+
   function load() {
     fetch('/os/api/media', { headers: { 'Accept': 'application/json' } })
       .then(function (r) { return r.json(); })
       .then(function (data) {
-        while (grid.firstChild) grid.removeChild(grid.firstChild);
-        var items = (data && data.items) || [];
-        if (!items.length) {
-          var empty = document.createElement('div');
-          empty.className = 'empty-state';
-          empty.textContent = 'No media yet. Upload your first image or PDF.';
-          grid.appendChild(empty);
-          return;
-        }
-        items.forEach(function (it) { grid.appendChild(card(it)); });
+        allItems = (data && data.items) || [];
+        applyFilter();
       })
       .catch(function () { toast('Could not load media', 'error'); });
   }
+
+  if (search) search.addEventListener('input', applyFilter);
+  document.querySelectorAll('[data-media-filter]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      document.querySelectorAll('[data-media-filter]').forEach(function (x) { x.classList.remove('is-active'); });
+      b.classList.add('is-active');
+      typeFilter = b.getAttribute('data-media-filter');
+      applyFilter();
+    });
+  });
 
   function upload(file) {
     if (!file) return;

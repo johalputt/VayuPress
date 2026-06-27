@@ -90,6 +90,16 @@ func (a *App) handleOSMedia(w http.ResponseWriter, r *http.Request) {
   <input type="file" data-media-input accept="image/png,image/jpeg,image/gif,image/webp,application/pdf" hidden>
 </div>
 
+<div class="toolbar-row mt-3">
+  <input type="search" class="input" data-media-search placeholder="Search by filename…" aria-label="Search media" autocomplete="off" style="flex:1;min-width:160px">
+  <div class="seg-filter" role="group" aria-label="Filter by type">
+    <button type="button" class="seg-btn is-active" data-media-filter="all">All</button>
+    <button type="button" class="seg-btn" data-media-filter="image">Images</button>
+    <button type="button" class="seg-btn" data-media-filter="pdf">PDFs</button>
+  </div>
+</div>
+<div class="media-empty text-sm muted" data-media-empty hidden>No media match your search.</div>
+
 <div class="media-grid" data-media-grid aria-live="polite">
   <div class="skeleton skeleton--media"></div>
   <div class="skeleton skeleton--media"></div>
