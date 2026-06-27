@@ -161,6 +161,8 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		// require an API key; VayuOS operators hold a session cookie, so the browser
 		// Media library must POST here instead (same handlers, CSRF-protected).
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/media/upload", a.handleMediaUpload)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/media/delete", a.handleOSMediaDelete)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/media/alt", a.handleOSMediaAlt)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/media/import", a.handleMediaImport)
 		pr.Get("/os/members", a.handleOSMembers)
 		// Session-friendly membership management APIs (the /api/v1/admin/* originals

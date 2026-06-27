@@ -413,6 +413,17 @@ $$('[data-setting-key]').forEach(function (el) {
 
     var thumb = document.createElement('div');
     thumb.className = 'media-card__thumb';
+
+    // Selection checkbox for bulk delete.
+    var sel = document.createElement('input');
+    sel.type = 'checkbox';
+    sel.className = 'media-card__select';
+    sel.setAttribute('data-media-select', '');
+    sel.value = item.name;
+    sel.setAttribute('aria-label', 'Select ' + item.name);
+    sel.addEventListener('change', updateSelCount);
+    thumb.appendChild(sel);
+
     if (item.isPdf) {
       var badge = document.createElement('span');
       badge.className = 'media-card__pdf';
@@ -422,7 +433,7 @@ $$('[data-setting-key]').forEach(function (el) {
       var img = document.createElement('img');
       img.loading = 'lazy';
       img.src = item.url;
-      img.alt = item.name;
+      img.alt = item.alt || item.name;
       thumb.appendChild(img);
     }
     el.appendChild(thumb);
@@ -432,6 +443,28 @@ $$('[data-setting-key]').forEach(function (el) {
     var size = document.createElement('span');
     size.textContent = fmtSize(item.size) + ' · ' + relTime(item.mod);
     meta.appendChild(size);
+
+    // Alt-text editor (images only) — saves on blur.
+    if (!item.isPdf) {
+      var altI = document.createElement('input');
+      altI.type = 'text';
+      altI.className = 'media-card__alt';
+      altI.placeholder = 'Alt text…';
+      altI.value = item.alt || '';
+      altI.maxLength = 300;
+      altI.setAttribute('aria-label', 'Alt text for ' + item.name);
+      altI.addEventListener('blur', function () {
+        if (altI.value === (item.alt || '')) return;
+        item.alt = altI.value;
+        fetch('/os/api/media/alt', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': cookie('vp_csrf') },
+          body: JSON.stringify({ name: item.name, alt: altI.value }),
+        }).then(function (r) { toast(r.ok ? 'Alt text saved' : 'Could not save alt', r.ok ? 'ok' : 'error'); })
+          .catch(function () { toast('Network error', 'error'); });
+      });
+      meta.appendChild(altI);
+    }
 
     var copy = document.createElement('button');
     copy.type = 'button';
@@ -474,6 +507,7 @@ $$('[data-setting-key]').forEach(function (el) {
     });
     shown.forEach(function (it) { grid.appendChild(card(it)); });
     if (emptyMsg) emptyMsg.hidden = shown.length > 0;
+    updateSelCount();
   }
 
   function load() {
@@ -494,6 +528,33 @@ $$('[data-setting-key]').forEach(function (el) {
       typeFilter = b.getAttribute('data-media-filter');
       applyFilter();
     });
+  });
+
+  // ── Bulk delete ───────────────────────────────────────────────────────────
+  var delBtn = $('[data-media-delete-selected]');
+  var selCount = $('[data-media-sel-count]');
+  function selectedNames() {
+    return Array.prototype.slice.call(grid.querySelectorAll('[data-media-select]:checked')).map(function (c) { return c.value; });
+  }
+  function updateSelCount() {
+    var n = selectedNames().length;
+    if (selCount) selCount.textContent = String(n);
+    if (delBtn) delBtn.disabled = n === 0;
+  }
+  if (delBtn) delBtn.addEventListener('click', function () {
+    var names = selectedNames();
+    if (!names.length) return;
+    if (!window.confirm('Delete ' + names.length + ' file' + (names.length > 1 ? 's' : '') + '? This cannot be undone.')) return;
+    delBtn.disabled = true;
+    fetch('/os/api/media/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': cookie('vp_csrf') },
+      body: JSON.stringify({ names: names }),
+    }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (res) {
+        if (res.ok) { toast('Deleted ' + (res.j.deleted || 0), 'ok'); load(); }
+        else { delBtn.disabled = false; toast('Delete failed', 'error'); }
+      }).catch(function () { delBtn.disabled = false; toast('Network error', 'error'); });
   });
 
   function upload(file) {

@@ -58,6 +58,8 @@ func TestThemeEditorCoversSettingsAllowlist(t *testing.T) {
 		// surface, not the legacy theme editor.
 		settings.KeyContactEmail:     true,
 		settings.KeyContactAutoReply: true,
+		// Media alt-text map is managed in the Media library, not the theme editor.
+		settings.KeyMediaAlt: true,
 		// Hero image is uploaded via the Theme Studio Hero control (multipart),
 		// not a text/colour field in the legacy theme editor.
 		settings.KeyThemeHeroImage:     true,

@@ -1635,12 +1635,22 @@
   flex-direction: column;
 }
 .vp-os .media-card__thumb {
+  position: relative;
   aspect-ratio: 4 / 3;
   background: var(--bg-surface-3);
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
+}
+.vp-os .media-card__select {
+  position: absolute; top: 6px; left: 6px; z-index: 1;
+  width: 18px; height: 18px; cursor: pointer;
+}
+.vp-os .media-card__alt {
+  width: 100%; padding: 4px 6px; font-size: var(--text-xs);
+  border: 1px solid var(--border); border-radius: var(--r-sm);
+  background: var(--bg-surface); color: var(--text); font-family: inherit;
 }
 .vp-os .media-card__thumb img { width: 100%; height: 100%; object-fit: cover; }
 .vp-os .media-card__pdf { font-weight: 700; color: var(--danger); letter-spacing: 0.05em; }

@@ -91,6 +91,11 @@ const (
 	// is on by default once a recipient is configured.
 	KeyContactAutoReply = "contact.autoreply"
 
+	// KeyMediaAlt stores a JSON object mapping a content-addressed media filename
+	// to its operator-authored alt text, edited in the Media library. Used as the
+	// default alt when inserting that image. Absent keys simply have no default.
+	KeyMediaAlt = "media.alt"
+
 	// Feature flags — operator-toggleable platform modules surfaced in the
 	// Tools & Plugins panel. Each value is "on" (default) or "off". Disabling a
 	// flag turns the corresponding public surface off at the request boundary;
@@ -168,6 +173,7 @@ var RobotsOptions = map[string]bool{
 var AllKeys = map[string]bool{
 	KeyContactEmail:          true,
 	KeyContactAutoReply:      true,
+	KeyMediaAlt:              true,
 	KeySiteName:              true,
 	KeySiteTagline:           true,
 	KeySiteDescription:       true,
