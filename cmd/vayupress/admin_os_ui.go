@@ -692,7 +692,7 @@ func (a *App) getOSSettings(ctx context.Context) *osSettings {
 	// Unread contact messages drive the sidebar badge. Best-effort: any error
 	// (nil DB / missing table on a pre-046 schema) just leaves the badge off.
 	if dbpkg.DB != nil {
-		_ = dbpkg.DB.QueryRowContext(ctx, `SELECT COUNT(1) FROM contact_messages WHERE is_read=0`).Scan(&s.UnreadMessages)
+		_ = dbpkg.Reader().QueryRowContext(ctx, `SELECT COUNT(1) FROM contact_messages WHERE is_read=0`).Scan(&s.UnreadMessages)
 	}
 	// Surface the authenticated user (if any) so the shell can show their
 	// avatar/name/role. The user is attached to the context by
