@@ -258,7 +258,10 @@ func computeSEOStats() {
 	defer cancel()
 
 	var total, noTitle, thin int
-	err := dbpkg.DB.QueryRowContext(ctx,
+	// Read pool, not the writer connection: this scans content across the whole
+	// catalog (which can be hundreds of thousands of posts) and must never block
+	// writes/sessions. It is already cached + background-computed + time-limited.
+	err := dbpkg.Reader().QueryRowContext(ctx,
 		`SELECT COUNT(*),
 		        COALESCE(SUM(CASE WHEN TRIM(COALESCE(title,''))='' THEN 1 ELSE 0 END),0),
 		        COALESCE(SUM(CASE WHEN TRIM(COALESCE(title,''))<>'' AND LENGTH(COALESCE(content,''))<1500 THEN 1 ELSE 0 END),0)
