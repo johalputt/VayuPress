@@ -76,8 +76,14 @@ func (a *App) handleOSPages(w http.ResponseWriter, r *http.Request) {
   <input id="page-compose-input" class="quick-compose-input" type="text"
     placeholder="Add a page… type a title and press Enter" autocomplete="off"
     aria-label="Add a page: type a title and press Enter">
+  <select id="page-compose-template" class="input" aria-label="Page template" title="Start from a template">
+    <option value="blank">Blank page</option>
+    <option value="about">About</option>
+    <option value="contact">Contact</option>
+    <option value="faq">FAQ</option>
+  </select>
 </div>
-<div id="page-compose-status" class="text-sm muted" role="status" aria-live="polite"></div>`
+<div id="page-compose-status" class="text-sm muted" role="status" aria-live="polite">Pick a template, type a title, press Enter.</div>`
 
 	var body string
 	if len(pages) == 0 {
@@ -178,12 +184,47 @@ func pageFooterSelect(href, title string, cfg render.FooterConfig) string {
 		`" data-label="` + html.EscapeString(title) + `" aria-label="Footer placement for ` + html.EscapeString(title) + `">` + opts + `</select>`
 }
 
+// pageTemplateSeed returns starter HTML for a new page based on the chosen
+// template. The markup uses only tags the UGC sanitiser keeps (headings,
+// paragraphs, lists, links, emphasis), so it survives rendering and re-hydrates
+// cleanly in the editor. "blank" (or anything unknown) seeds an empty document —
+// a single space, which article validation requires and which renders to
+// nothing. The operator edits everything afterward; these are just scaffolds.
+func pageTemplateSeed(template string) string {
+	switch strings.ToLower(strings.TrimSpace(template)) {
+	case "about":
+		return `<h2>About us</h2>
+<p>Welcome! Tell your readers who you are, what you write about, and why it matters. A couple of short paragraphs is plenty to start.</p>
+<p>You can mention your background, what readers can expect, and how often you publish.</p>
+<h2>What we cover</h2>
+<ul><li>Topic one</li><li>Topic two</li><li>Topic three</li></ul>`
+	case "contact":
+		return `<h2>Get in touch</h2>
+<p>We'd love to hear from you. The best way to reach us is by email:</p>
+<p><strong>Email:</strong> <a href="mailto:hello@example.com">hello@example.com</a></p>
+<p>You can also find us on social media — replace these with your own links:</p>
+<ul><li><a href="https://example.com">Website</a></li><li><a href="https://twitter.com/">Twitter / X</a></li></ul>
+<p>We usually reply within a couple of business days.</p>`
+	case "faq":
+		return `<h2>Frequently asked questions</h2>
+<h3>What is this site about?</h3>
+<p>Answer the question here in a sentence or two.</p>
+<h3>How often do you publish?</h3>
+<p>Let readers know your cadence.</p>
+<h3>How can I get updates?</h3>
+<p>Point readers to your newsletter, feed, or social profiles.</p>`
+	default:
+		return " "
+	}
+}
+
 // handleOSQuickCreatePage creates an empty draft page (article flagged is_page)
 // from the Pages quick-create box and returns its slug so the client can open
 // the editor. Mirrors handleOSQuickCreatePost, then sets is_page=1.
 func (a *App) handleOSQuickCreatePage(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Title string `json:"title"`
+		Title    string `json:"title"`
+		Template string `json:"template"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "bad-json", "Invalid request body", "")
@@ -195,7 +236,7 @@ func (a *App) handleOSQuickCreatePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slug := a.uniqueArticleSlug(r.Context(), title)
-	if _, err := a.articles.Create(r.Context(), title, slug, " ", nil); err != nil {
+	if _, err := a.articles.Create(r.Context(), title, slug, pageTemplateSeed(body.Template), nil); err != nil {
 		writeAPIError(w, r, http.StatusInternalServerError, "create-error", err.Error(), "")
 		return
 	}
