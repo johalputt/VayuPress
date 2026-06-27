@@ -1339,6 +1339,7 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 				viewBtn = ""
 			}
 			rows += `<tr data-post-row data-status="` + p.Status + `">
+  <td><input type="checkbox" data-post-select value="` + esc + `" aria-label="Select ` + html.EscapeString(p.Title) + `"></td>
   <td class="row-title">
     <a href="/os/editor/` + esc + `">` + html.EscapeString(p.Title) + `</a>
     <div class="row-meta">/` + esc + `</div>
@@ -1357,7 +1358,7 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 
 		tableBlock := `<div class="table-wrap">
     <table class="table">
-      <thead><tr><th>Title</th><th>Status</th><th>Tags</th><th>Updated</th><th></th></tr></thead>
+      <thead><tr><th><input type="checkbox" data-post-select-all aria-label="Select all posts on this page"></th><th>Title</th><th>Status</th><th>Tags</th><th>Updated</th><th></th></tr></thead>
       <tbody>` + rows + `</tbody>
     </table>
   </div>`
@@ -1394,6 +1395,12 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
       <a class="seg-btn` + osActiveCls(status == "draft") + `" href="` + osPostsHref("draft", q, from, to, period, 1) + `">Drafts <span class="muted">` + strconv.Itoa(drafts) + `</span></a>
     </div>
   </div>
+  <div class="bulk-bar" data-post-bulkbar hidden>
+    <span class="text-sm"><span data-post-bulk-count>0</span> selected</span>
+    <button type="button" class="btn btn--ghost btn--sm" data-post-bulk="published">Publish</button>
+    <button type="button" class="btn btn--ghost btn--sm" data-post-bulk="draft">Unpublish</button>
+    <button type="button" class="btn btn--ghost btn--sm" data-post-bulk="delete">Delete</button>
+  </div>
   ` + tableBlock + `
   ` + osPostsPager(status, q, from, to, period, page, totalPages, total, shownFrom, shownTo) + `
 </div>
@@ -1421,6 +1428,27 @@ document.querySelectorAll('[data-post-delete]').forEach(function(b){
       .then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d};});})
       .then(function(res){if(res.ok){show('Deleted',false);var row=b.closest('[data-post-row]');if(row)row.remove();}else{b.disabled=false;show(res.d.detail||res.d.title||'Error',true);}})
       .catch(function(e){b.disabled=false;show('Error: '+e,true);});
+  });
+});
+// ── Bulk selection + actions ──────────────────────────────────────────────────
+var bulkBar=document.querySelector('[data-post-bulkbar]');
+var bulkCount=document.querySelector('[data-post-bulk-count]');
+var selectAll=document.querySelector('[data-post-select-all]');
+function selectedSlugs(){return Array.prototype.slice.call(document.querySelectorAll('[data-post-select]:checked')).map(function(c){return c.value;});}
+function refreshBulk(){var n=selectedSlugs().length;if(bulkCount)bulkCount.textContent=String(n);if(bulkBar)bulkBar.hidden=n===0;}
+document.querySelectorAll('[data-post-select]').forEach(function(c){c.addEventListener('change',refreshBulk);});
+if(selectAll)selectAll.addEventListener('change',function(){document.querySelectorAll('[data-post-select]').forEach(function(c){c.checked=selectAll.checked;});refreshBulk();});
+document.querySelectorAll('[data-post-bulk]').forEach(function(b){
+  b.addEventListener('click',function(){
+    var slugs=selectedSlugs();if(!slugs.length)return;
+    var act=b.getAttribute('data-post-bulk');
+    if(act==='delete'&&!window.confirm('Delete '+slugs.length+' post'+(slugs.length>1?'s':'')+'? This cannot be undone.'))return;
+    b.disabled=true;show(act==='delete'?'Deleting…':'Updating…',false);
+    var jobs=slugs.map(function(s){
+      if(act==='delete')return fetch('/os/api/posts/'+encodeURIComponent(s),{method:'DELETE',headers:{'X-CSRF-Token':csrf()}});
+      return fetch('/os/api/posts/status',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},body:JSON.stringify({slug:s,status:act})});
+    });
+    Promise.all(jobs).then(function(){show('Done — '+slugs.length+' updated',false);setTimeout(function(){location.reload();},500);}).catch(function(e){b.disabled=false;show('Error: '+e,true);});
   });
 });
 })();

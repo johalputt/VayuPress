@@ -259,6 +259,14 @@
 .vp-os .nav-link.active { background: var(--brand-dim); color: var(--brand); }
 .vp-os .nav-link svg { width: 16px; height: 16px; flex-shrink: 0; opacity: 0.8; }
 .vp-os .nav-link.active svg { opacity: 1; }
+/* Bulk action bar (Posts manager). */
+.vp-os .bulk-bar {
+  display: flex; align-items: center; gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3); margin: var(--sp-3) 0;
+  background: var(--bg-surface-2); border: 1px solid var(--border-strong); border-radius: var(--r-md);
+}
+.vp-os .bulk-bar[hidden] { display: none; }
+
 /* SEO search-result preview (post settings → Meta data & SEO). */
 .vp-os .seo-snippet {
   padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--r-md);
