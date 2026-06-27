@@ -93,6 +93,14 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Fixed
 
+- **Monitoring: a single-event budget no longer shows "at-risk" with zero
+  events.** The governance error-budget state used `consumed >= limit-1`, which
+  for a limit-1 budget (`integrity-exhaustion`, CRITICAL) is `0 >= 0` — so it
+  always read **at-risk** even with nothing recorded. A budget now reads
+  **healthy** until at least one event lands; `at-risk` still means "one event
+  from exhaustion." These budgets remain advisory — mode transitions are
+  operator-gated and never auto-applied.
+
 - **Backup export no longer downloads an empty (0-byte) archive.** The export
   now builds the snapshot to a temporary file *before* sending any response, so
   a failure returns a clear error instead of a truncated download; it serves the
