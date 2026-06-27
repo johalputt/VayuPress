@@ -52,7 +52,6 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   database handing queries a separate empty connection; the test DB is now
   pinned to a single connection.
 
-
 ### Added
 
 - **Monetization — a sovereign system for getting paid, with optional
