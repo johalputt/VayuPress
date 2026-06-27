@@ -109,3 +109,45 @@ func TestApplyPendingRestoreNoop(t *testing.T) {
 		t.Error("expected no restore when nothing is staged")
 	}
 }
+
+// TestExportSnapshotToFile mirrors the HTTP handler path (build the archive to a
+// real file first) and proves the archive is non-empty and re-importable.
+func TestExportSnapshotToFile(t *testing.T) {
+	dir := t.TempDir()
+	srcPath := filepath.Join(dir, "source.db")
+	db := newTestDB(t, srcPath)
+	defer db.Close()
+
+	archivePath := filepath.Join(dir, "backup.tar.gz")
+	f, err := os.Create(archivePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ExportSnapshot(context.Background(), f, db, srcPath, dir, "1.2.3"); err != nil {
+		f.Close()
+		t.Fatalf("ExportSnapshot to file: %v", err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	fi, err := os.Stat(archivePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi.Size() == 0 {
+		t.Fatal("archive file is empty")
+	}
+
+	rf, err := os.Open(archivePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rf.Close()
+	destPath := filepath.Join(dir, "restored.db")
+	if _, err := StageRestore(context.Background(), rf, destPath, dir); err != nil {
+		t.Fatalf("StageRestore from file: %v", err)
+	}
+	if _, err := os.Stat(destPath + PendingRestoreSuffix); err != nil {
+		t.Fatalf("pending restore not staged: %v", err)
+	}
+}

@@ -40,6 +40,8 @@ import (
 	"path/filepath"
 	"sort"
 	"time"
+
+	"github.com/johalputt/vayupress/internal/logging"
 )
 
 const (
@@ -88,8 +90,8 @@ func ExportSnapshot(ctx context.Context, w io.Writer, db *sql.DB, dbPath, tmpDir
 	// 1. Consistent, checkpointed standalone copy of the live DB.
 	tmpDB := filepath.Join(tmpDir, fmt.Sprintf("vp-export-%d.db", time.Now().UnixNano()))
 	_ = os.Remove(tmpDB) // VACUUM INTO refuses to overwrite an existing file
-	if _, err := db.ExecContext(ctx, "VACUUM INTO ?", tmpDB); err != nil {
-		return fmt.Errorf("update: vacuum into snapshot: %w", err)
+	if err := snapshotDBCopy(ctx, db, dbPath, tmpDB); err != nil {
+		return err
 	}
 	defer os.Remove(tmpDB)
 
@@ -290,6 +292,32 @@ func ApplyPendingRestore(dbPath, backupDir string) (bool, error) {
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────
+
+// snapshotDBCopy writes a standalone, consistent copy of the live database to
+// dest. It prefers SQLite's `VACUUM INTO`, which produces a fully checkpointed,
+// defragmented file from a read snapshot. If that fails for any reason (an older
+// SQLite build, a restricted/cross-device temp dir, etc.) it falls back to
+// checkpointing the WAL and copying the database file byte-for-byte, so an
+// export still succeeds rather than producing nothing.
+func snapshotDBCopy(ctx context.Context, db *sql.DB, dbPath, dest string) error {
+	if _, err := db.ExecContext(ctx, "VACUUM INTO ?", dest); err == nil {
+		return nil
+	} else {
+		vacErr := err
+		// Flush the WAL into the main file so the plain copy is as consistent as
+		// possible, then copy the database file.
+		_, _ = db.ExecContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)")
+		_ = os.Remove(dest)
+		if dbPath == "" {
+			return fmt.Errorf("update: vacuum into snapshot failed and no db path for fallback: %w", vacErr)
+		}
+		if cerr := copyFile(dbPath, dest, 0o644); cerr != nil {
+			return fmt.Errorf("update: snapshot db copy failed (vacuum: %v; copy: %w)", vacErr, cerr)
+		}
+		logging.LogInfo("update", "snapshot used checkpointed file-copy fallback (VACUUM INTO failed: "+vacErr.Error()+")")
+		return nil
+	}
+}
 
 // validateSQLiteDB opens path read-only and confirms it is an intact SQLite
 // database carrying the core VayuPress schema. This stops an operator from

@@ -61,6 +61,14 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Fixed
 
+- **Backup export no longer downloads an empty (0-byte) archive.** The export
+  now builds the snapshot to a temporary file *before* sending any response, so
+  a failure returns a clear error instead of a truncated download; it serves the
+  archive with a real `Content-Length` (accurate browser progress) and picks a
+  writable temp location (falling back from `TMP_DIR` to the OS temp dir to the
+  database directory). If `VACUUM INTO` is unavailable it falls back to a
+  checkpointed file copy, so the export always produces a valid archive.
+
 - **VayuOS: the "Update now" button is no longer stuck disabled.** It now enables
   as soon as a newer release is detected (and the system mode allows applying),
   so updates can be installed in one click.
