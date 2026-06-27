@@ -10,6 +10,18 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Fixed
 
+- **Opening the Posts or Pages tab no longer 502s on a large catalog.** Both
+  manager pages wrapped indexed columns in `COALESCE(...)`
+  (`GROUP BY COALESCE(status,'published')` on Posts; `WHERE COALESCE(is_page,0)=1`
+  with no `LIMIT` on Pages), which defeats `idx_articles_status` /
+  `idx_articles_is_page` and forces a full-table scan of the whole catalog on
+  every visit — at hundreds of thousands of posts that exceeds the request
+  timeout and the connection is dropped (502). Both columns are `NOT NULL` with
+  defaults, so the `COALESCE` was unnecessary: Posts now `GROUP BY status` (and
+  filters `status='draft'`/`'published'`) and Pages now query `WHERE is_page=1`
+  on the read pool with an explicit cap, so both render in milliseconds
+  regardless of catalog size.
+
 - **Large catalogs (100k+ posts) no longer stall VayuOS into 502s.** On a site
   with hundreds of thousands of articles, several read paths scanned the whole
   catalog on the single SQLite *writer* connection, so each scan blocked
