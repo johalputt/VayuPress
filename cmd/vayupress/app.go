@@ -463,15 +463,27 @@ type adminRecentArticle struct {
 
 func (a *App) collectAdminMetrics() {
 	snap := &adminMetricsSnapshot{SnapshotAt: time.Now().UTC()}
-	row := dbpkg.DB.QueryRow(`SELECT (SELECT COUNT(1) FROM articles),SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END),SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END),SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) FROM write_jobs`)
-	row.Scan(&snap.TotalArticles, &snap.PendingJobs, &snap.FailedJobs, &snap.CompletedJobs)
+	// Use the read pool, not the single writer connection, and index-only counts
+	// instead of a full-table SUM over write_jobs. Previously this ran every 30s
+	// as `SUM(CASE ...) FROM write_jobs` (a full scan reading every article_json
+	// blob) on dbpkg.DB — on a large queue table that scan monopolised the lone
+	// writer connection for seconds, stalling sessions/writes and causing
+	// intermittent 502s. Each COUNT below is served by idx_jobs_status.
+	rdb := dbpkg.Reader()
+	_ = rdb.QueryRow(`SELECT COUNT(1) FROM articles`).Scan(&snap.TotalArticles)
+	_ = rdb.QueryRow(`SELECT COUNT(1) FROM write_jobs WHERE status='pending'`).Scan(&snap.PendingJobs)
+	_ = rdb.QueryRow(`SELECT COUNT(1) FROM write_jobs WHERE status='failed'`).Scan(&snap.FailedJobs)
+	_ = rdb.QueryRow(`SELECT COUNT(1) FROM write_jobs WHERE status='completed'`).Scan(&snap.CompletedJobs)
 	// Standalone pages (is_page=1) are tracked separately from blog posts so the
 	// dashboard can surface each count distinctly. Best-effort; a pre-045 schema
 	// without the column simply leaves the count at zero.
-	_ = dbpkg.DB.QueryRow(`SELECT COUNT(1) FROM articles WHERE is_page=1`).Scan(&snap.TotalPages)
+	// is_page is NOT NULL DEFAULT 0 (migration 045), so `is_page=1` is exact and
+	// uses idx_articles_is_page — unlike COALESCE(is_page,0)=1, which forces a
+	// full scan of the whole catalog every 30s.
+	_ = rdb.QueryRow(`SELECT COUNT(1) FROM articles WHERE is_page=1`).Scan(&snap.TotalPages)
 	// Unread contact messages (best-effort; missing table on a pre-046 schema
 	// simply leaves the count at zero).
-	_ = dbpkg.DB.QueryRow(`SELECT COUNT(1) FROM contact_messages WHERE is_read=0`).Scan(&snap.UnreadMessages)
+	_ = rdb.QueryRow(`SELECT COUNT(1) FROM contact_messages WHERE is_read=0`).Scan(&snap.UnreadMessages)
 	snap.StorageBytes = dbpkg.StorageUsedBytes()
 	snap.QuotaBytes = dbpkg.StorageQuotaBytes()
 	if snap.QuotaBytes > 0 {
@@ -483,7 +495,7 @@ func (a *App) collectAdminMetrics() {
 	snap.HTTPP95 = metrics.HTTPLatency.Percentile(95)
 	snap.WriteP99 = metrics.QueueJobLatency.Percentile(99)
 	snap.RenderP99 = metrics.RenderLatency.Percentile(99)
-	rows, err := dbpkg.DB.Query(`SELECT title,slug,created_at FROM articles ORDER BY created_at DESC LIMIT 15`)
+	rows, err := rdb.Query(`SELECT title,slug,created_at FROM articles ORDER BY created_at DESC LIMIT 15`)
 	if err == nil {
 		defer rows.Close()
 		for rows.Next() {

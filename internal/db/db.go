@@ -251,6 +251,94 @@ func StartStuckJobReaper(doneCh <-chan struct{}) {
 	}()
 }
 
+// StartJobRetentionSweeper periodically prunes terminal write_jobs rows so the
+// queue table — and therefore the database file — cannot grow without bound.
+// Completed jobs are deleted after config.Cfg.JobRetentionHours; dead-letter and
+// quarantined jobs after config.Cfg.DeadJobRetentionDays. Deletes run in bounded
+// batches so each statement is short and never monopolises the single writer
+// connection (the root cause of the periodic stalls fixed alongside this).
+func StartJobRetentionSweeper(doneCh <-chan struct{}) {
+	go func() {
+		first := time.NewTimer(2 * time.Minute) // prune soon after start
+		defer first.Stop()
+		ticker := time.NewTicker(30 * time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-doneCh:
+				return
+			case <-first.C:
+				runJobRetention()
+			case <-ticker.C:
+				runJobRetention()
+			}
+		}
+	}()
+}
+
+func runJobRetention() {
+	n, err := PruneWriteJobsOnce()
+	if err != nil {
+		logging.LogError("queue-retention", "prune failed", err.Error())
+		return
+	}
+	if n > 0 {
+		logging.LogInfo("queue-retention", fmt.Sprintf("pruned %d terminal write_jobs", n))
+	}
+}
+
+// PruneWriteJobsOnce deletes completed jobs older than the configured retention
+// and dead-letter/quarantined jobs older than the dead-job retention, in bounded
+// batches. It returns the total number of rows removed. Pending and processing
+// jobs are never touched.
+func PruneWriteJobsOnce() (int64, error) {
+	if DB == nil {
+		return 0, nil
+	}
+	hours := config.Cfg.JobRetentionHours
+	if hours <= 0 {
+		hours = 24
+	}
+	days := config.Cfg.DeadJobRetentionDays
+	if days <= 0 {
+		days = 7
+	}
+	var total int64
+	n, err := pruneJobsBatched(
+		`DELETE FROM write_jobs WHERE id IN (SELECT id FROM write_jobs WHERE status='completed' AND created_at < datetime('now', ?) LIMIT ?)`,
+		fmt.Sprintf("-%d hours", hours))
+	total += n
+	if err != nil {
+		return total, err
+	}
+	n, err = pruneJobsBatched(
+		`DELETE FROM write_jobs WHERE id IN (SELECT id FROM write_jobs WHERE status IN ('dead_letter','quarantined') AND created_at < datetime('now', ?) LIMIT ?)`,
+		fmt.Sprintf("-%d days", days))
+	total += n
+	return total, err
+}
+
+// pruneJobsBatched runs query in batches of 5000 (query takes the cutoff and the
+// batch limit as bound parameters), pausing briefly between batches so other
+// writes can interleave on the single writer connection.
+func pruneJobsBatched(query, cutoff string) (int64, error) {
+	const batch = 5000
+	var total int64
+	for {
+		res, err := DB.Exec(query, cutoff, batch)
+		if err != nil {
+			return total, fmt.Errorf("prune write_jobs: %w", err)
+		}
+		n, _ := res.RowsAffected()
+		total += n
+		if n < batch {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	return total, nil
+}
+
 // InitStorageCachedBytes computes initial storage usage in the background.
 func InitStorageCachedBytes() {
 	go func() {

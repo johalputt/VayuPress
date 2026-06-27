@@ -1512,8 +1512,17 @@ const cacheSchema = "2"
 // schema, and the content hashes of every stylesheet. Any change flips the
 // fingerprint.
 func cacheFingerprint() string {
+	// IMPORTANT: this deliberately does NOT include the release Version. A new
+	// binary that does not change the public templates or stylesheets must NOT
+	// invalidate the pre-rendered cache — on a large catalog (hundreds of
+	// thousands of posts) that turned every update into a full re-render of every
+	// page, which is the opposite of what an update should do.
+	//
+	// Invalidation is driven only by things that actually change rendered output:
+	// the CSS content hashes (auto-detected) and cacheSchema. When a template
+	// change isn't captured by a CSS hash, bump cacheSchema to force a rebuild.
 	sum := sha256.Sum256([]byte(strings.Join([]string{
-		Version, cacheSchema,
+		cacheSchema,
 		cssHashes.ArticleCSS, cssHashes.CustomCSS,
 		cssHashes.HighContrastCSS, cssHashes.AdminCSS,
 	}, "|")))

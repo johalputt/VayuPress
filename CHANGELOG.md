@@ -8,6 +8,58 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Fixed
+
+- **The public site and VayuOS no longer hang after an update on a large
+  catalog.** Every public *cold-render* path ran a full-table scan over the
+  whole catalog on the single SQLite **writer** connection: the homepage and
+  tag-index `COUNT` (via `COALESCE(status,…)`/`COALESCE(is_page,0)`), and the
+  `tags LIKE '%…%'` scans behind related-posts, per-tag pages, and the search
+  reindex. When an update changes templates the pre-rendered cache is dropped,
+  so under real traffic every cold page render hammered that one connection with
+  a 234k-row scan — starving sessions, writes and admin requests until the whole
+  site (and VayuOS) appeared to hang. These reads now run on the **read pool**
+  and use the bare (indexed) `status`/`is_page` columns, so they never block the
+  writer connection and pages render without a full-table scan.
+
+- **Opening the Posts or Pages tab no longer 502s on a large catalog.** Both
+  manager pages wrapped indexed columns in `COALESCE(...)`
+  (`GROUP BY COALESCE(status,'published')` on Posts; `WHERE COALESCE(is_page,0)=1`
+  with no `LIMIT` on Pages), which defeats `idx_articles_status` /
+  `idx_articles_is_page` and forces a full-table scan of the whole catalog on
+  every visit — at hundreds of thousands of posts that exceeds the request
+  timeout and the connection is dropped (502). Both columns are `NOT NULL` with
+  defaults, so the `COALESCE` was unnecessary: Posts now `GROUP BY status` (and
+  filters `status='draft'`/`'published'`) and Pages now query `WHERE is_page=1`
+  on the read pool with an explicit cap, so both render in milliseconds
+  regardless of catalog size.
+
+- **Large catalogs (100k+ posts) no longer stall VayuOS into 502s.** On a site
+  with hundreds of thousands of articles, several read paths scanned the whole
+  catalog on the single SQLite *writer* connection, so each scan blocked
+  sessions, writes and admin pages until it finished. They now run on the
+  read-only connection pool (and use indexes where they didn't):
+  - the dashboard metrics `is_page` count uses `WHERE is_page=1`
+    (index-backed) instead of `COALESCE(is_page,0)=1` (full scan every 30s);
+  - the **Comments** page resolves slugs only for the posts referenced by the
+    comments shown, instead of loading every `id,slug` row into memory per view;
+  - the **SEO** content-quality scan, the **Posts** manager status counts and
+    listing, the dashboard publishing-trend sparkline, and the background
+    **sitemap/RSS** generators (including the per-publish tag scan) all moved to
+    the read pool, so they never contend with writes.
+
+- **Updating/restarting no longer rebuilds the entire pre-rendered site.** The
+  cache fingerprint that decides whether to drop the pre-rendered public HTML
+  included the release version, so **every update invalidated all cached pages**
+  — on a large catalog (100k–1M+ posts) that meant re-rendering the whole site
+  on each deploy. The fingerprint now tracks only what actually affects rendered
+  output (stylesheet content hashes + the manual `cacheSchema`), so a new binary
+  that doesn't change templates/CSS keeps the existing cache intact and serves
+  instantly after a restart. Genuine template/CSS changes still invalidate as
+  before. (Pages already render on-demand on a cache miss, so the one-time
+  fingerprint change when this ships rebuilds lazily per request rather than all
+  at once.)
+
 ## [2.0.0] — 2026-06-27
 
 > **The sovereign-publishing 2.0 release.** A ground-up block-editor overhaul
@@ -93,6 +145,14 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Fixed
 
+- **Monitoring: a single-event budget no longer shows "at-risk" with zero
+  events.** The governance error-budget state used `consumed >= limit-1`, which
+  for a limit-1 budget (`integrity-exhaustion`, CRITICAL) is `0 >= 0` — so it
+  always read **at-risk** even with nothing recorded. A budget now reads
+  **healthy** until at least one event lands; `at-risk` still means "one event
+  from exhaustion." These budgets remain advisory — mode transitions are
+  operator-gated and never auto-applied.
+
 - **Backup export no longer downloads an empty (0-byte) archive.** The export
   now builds the snapshot to a temporary file *before* sending any response, so
   a failure returns a clear error instead of a truncated download; it serves the
@@ -104,6 +164,21 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 - **VayuOS: the "Update now" button is no longer stuck disabled.** It now enables
   as soon as a newer release is detected (and the system mode allows applying),
   so updates can be installed in one click.
+
+- **Intermittent hangs / 502s under load, and an ever-growing database.** Two
+  compounding issues are fixed. (1) The `write_jobs` queue table was never
+  pruned, so completed jobs — each holding a full article snapshot — accumulated
+  indefinitely and could bloat the database to many gigabytes. A new retention
+  sweeper now deletes completed jobs after `QUEUE_JOB_RETENTION_HOURS` (default
+  24h) and dead-letter/quarantined jobs after `QUEUE_DEAD_JOB_RETENTION_DAYS`
+  (default 7d), in small batches. (2) The admin-metrics collector ran a
+  full-table `SUM(...) FROM write_jobs` scan every 30 seconds on the single
+  writer connection; on a large queue table that scan monopolised the connection
+  for seconds, stalling session lookups, writes and admin pages and surfacing as
+  intermittent gateway timeouts. The collector now runs index-only counts on the
+  read pool, so it never blocks writers. Operators with an already-bloated
+  database should prune completed jobs once and `VACUUM` to reclaim disk (see
+  UPGRADING notes).
 
 - **Editor: the writing canvas now scrolls.** The block canvas was clipped at
   the viewport edge, so a long post — or a single tall block — could not be

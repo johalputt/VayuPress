@@ -140,3 +140,29 @@ func statusByName(ss []Status, name string) Status {
 	}
 	return Status{}
 }
+
+// TestBudgetHealthyAtZero guards the fix for a limit-1 budget (integrity-
+// exhaustion) reading "at-risk" with zero events, and confirms multi-event
+// budgets still go healthy → at-risk → exhausted at the right thresholds.
+func TestBudgetHealthyAtZero(t *testing.T) {
+	l := NewLedger(DefaultRules())
+	now := time.Now()
+
+	// Limit-1 budget with no events must be healthy, not at-risk.
+	if st := statusByName(l.Status(now), "integrity-exhaustion"); st.State != "healthy" {
+		t.Fatalf("integrity-exhaustion at 0/1 = %s, want healthy", st.State)
+	}
+
+	// governance-breach (limit 3): healthy at 0 and 1, at-risk at 2.
+	if statusByName(l.Status(now), "governance-breach").State != "healthy" {
+		t.Fatal("governance-breach at 0/3 should be healthy")
+	}
+	l.Record(severity.Violation, now)
+	if statusByName(l.Status(now), "governance-breach").State != "healthy" {
+		t.Fatal("governance-breach at 1/3 should be healthy")
+	}
+	l.Record(severity.Violation, now)
+	if statusByName(l.Status(now), "governance-breach").State != "at-risk" {
+		t.Fatal("governance-breach at 2/3 should be at-risk")
+	}
+}

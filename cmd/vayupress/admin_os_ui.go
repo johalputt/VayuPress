@@ -929,7 +929,7 @@ func osPublishTrend(ctx context.Context, n int) []int {
 		return out
 	}
 	// Bucket per day for the window. SQLite date() truncates to YYYY-MM-DD.
-	rows, err := dbpkg.DB.QueryContext(ctx,
+	rows, err := dbpkg.Reader().QueryContext(ctx,
 		`SELECT date(created_at) d, COUNT(1) c
 		 FROM articles
 		 WHERE created_at >= date('now', ?)
@@ -1232,8 +1232,12 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 	// ── Status counts within the active filter ───────────────────────────────
 	allCount, published, drafts := 0, 0, 0
 	if dbpkg.DB != nil {
-		if rows, err := dbpkg.DB.QueryContext(r.Context(),
-			`SELECT COALESCE(status,'published') s, COUNT(1) c FROM articles`+filterClause+` GROUP BY s`, args...); err == nil {
+		// status is NOT NULL DEFAULT 'published' (migration 030), so we group by
+		// the bare column — `COALESCE(status,'published')` would defeat
+		// idx_articles_status and force a full-table scan (a 502-class stall on a
+		// large catalog). With no search/date filter this is an index-only count.
+		if rows, err := dbpkg.Reader().QueryContext(r.Context(),
+			`SELECT status s, COUNT(1) c FROM articles`+filterClause+` GROUP BY status`, args...); err == nil {
 			for rows.Next() {
 				var s string
 				var c int
@@ -1284,9 +1288,9 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 	listArgs := append([]any{}, args...)
 	switch status {
 	case "published":
-		listWhere = append(listWhere, "COALESCE(status,'published')='published'")
+		listWhere = append(listWhere, "status='published'")
 	case "draft":
-		listWhere = append(listWhere, "COALESCE(status,'published')='draft'")
+		listWhere = append(listWhere, "status='draft'")
 	}
 	listClause := ""
 	if len(listWhere) > 0 {
@@ -1294,7 +1298,7 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 	}
 	listArgs = append(listArgs, osPostsPageSize, offset)
 	if dbpkg.DB != nil {
-		if rows, err := dbpkg.DB.QueryContext(r.Context(),
+		if rows, err := dbpkg.Reader().QueryContext(r.Context(),
 			`SELECT title,slug,COALESCE(tags,''),updated_at,COALESCE(status,'published') FROM articles`+listClause+` ORDER BY created_at DESC LIMIT ? OFFSET ?`, listArgs...); err == nil {
 			defer rows.Close()
 			for rows.Next() {
@@ -1478,20 +1482,34 @@ func (a *App) handleOSComments(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Map article IDs to slugs so each comment links back to its post.
+	// Resolve slugs only for the articles referenced by the comments shown
+	// (≤500), via the read pool. At scale the catalog can hold hundreds of
+	// thousands of posts, so loading the entire id→slug map per page view — and
+	// on the single writer connection — does not scale.
+	all, _ := a.commentStore.ListAll(r.Context(), "all", 500)
 	slugByID := map[string]string{}
-	if rows, err := dbpkg.DB.QueryContext(r.Context(), `SELECT id, slug FROM articles`); err == nil {
-		defer rows.Close() //nolint:errcheck
-		for rows.Next() {
-			var id, slug string
-			if rows.Scan(&id, &slug) == nil {
-				slugByID[id] = slug
-			}
+	seenID := map[string]bool{}
+	ids := make([]any, 0, len(all))
+	for _, c := range all {
+		if c.ArticleID != "" && !seenID[c.ArticleID] {
+			seenID[c.ArticleID] = true
+			ids = append(ids, c.ArticleID)
 		}
-		_ = rows.Err() // best-effort id→slug map for comment links
+	}
+	if len(ids) > 0 {
+		ph := strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",")
+		if rows, err := dbpkg.Reader().QueryContext(r.Context(), `SELECT id, slug FROM articles WHERE id IN (`+ph+`)`, ids...); err == nil {
+			defer rows.Close() //nolint:errcheck
+			for rows.Next() {
+				var id, slug string
+				if rows.Scan(&id, &slug) == nil {
+					slugByID[id] = slug
+				}
+			}
+			_ = rows.Err() // best-effort id→slug map for comment links
+		}
 	}
 
-	all, _ := a.commentStore.ListAll(r.Context(), "all", 500)
 	var pending, approved int
 	rowsHTML := ""
 	for _, c := range all {
