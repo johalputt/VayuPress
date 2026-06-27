@@ -77,6 +77,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 	r.Get("/os/static/js/admin-os-newsletter.js", serveAdminOSAsset("js/admin-os-newsletter.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-profile.js", serveAdminOSAsset("js/admin-os-profile.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-intel.js", serveAdminOSAsset("js/admin-os-intel.js", "application/javascript; charset=utf-8"))
+	r.Get("/os/static/js/admin-os-pages.js", serveAdminOSAsset("js/admin-os-pages.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-tools.js", serveAdminOSAsset("js/admin-os-tools.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-monitoring.js", serveAdminOSAsset("js/admin-os-monitoring.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-theme.js", serveAdminOSAsset("js/admin-os-theme.js", "application/javascript; charset=utf-8"))
@@ -142,6 +143,10 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		// Session-friendly comment moderation. The /api/v1/admin/comments originals
 		// require an API key; VayuOS operators hold a session cookie.
 		pr.With(auth.CSRFTokenMiddleware).Put("/os/api/comments/{id}/status", a.handleCommentModerate)
+		// Custom pages — standalone articles flagged is_page (no post chrome),
+		// managed separately from the blog feed (Tumblr-style "Add a page").
+		pr.Get("/os/pages", a.handleOSPages)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/pages/quick-create", a.handleOSQuickCreatePage)
 		pr.Get("/os/media", a.handleOSMedia)
 		pr.Get("/os/api/media", a.handleOSMediaList)
 		// Session-friendly media upload + import. The /api/v1/admin/media originals
@@ -388,6 +393,7 @@ var (
 	iconDashboard  = svgIcon("M3 10.5L10 3l7 7.5M5 8.5V17h3.5v-4h3v4H15V8.5")
 	iconPosts      = svgIcon("M4 4h12v2H4V4zm0 4h12v2H4V8zm0 4h8v2H4v-2z")
 	iconComments   = svgIcon("M3 4h14v9H7l-4 3V4zm3 3h8M6 10h5")
+	iconPages      = svgIcon("M5 2h7l3 3v13H5V2zm7 0v3h3M7 9h6M7 12h6M7 15h4")
 	iconNewPost    = svgIcon("M10 4v12m-6-6h12")
 	iconMedia      = svgIcon("M3 5a2 2 0 012-2h10a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V5zm0 8l4-4 3 3 2-2 4 4")
 	iconMembers    = svgIcon("M13 6a3 3 0 11-6 0 3 3 0 016 0zm-9 10a6 6 0 1112 0H4z")
@@ -488,6 +494,7 @@ func adminOSShellHead(nonce, title, active string, settings *osSettings) string 
     ` + navItem("/os", "Dashboard", "dashboard", active, iconDashboard) + `
     ` + navItem("/os/posts", "Posts", "posts", active, iconPosts) + `
     ` + navItem("/os/comments", "Comments", "comments", active, iconComments) + `
+    ` + navItem("/os/pages", "Pages", "pages", active, iconPages) + `
     ` + navItem("/os/editor", "New Post", "editor", active, iconNewPost) + `
     ` + navItem("/os/media", "Media", "media", active, iconMedia) + `
 
@@ -1125,7 +1132,9 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 
 	// ── Shared filter predicate (search + date range), independent of the
 	// status tab so the tab counts reflect the active search/date filter. ──
-	where := []string{}
+	// Pages (is_page=1) are managed on /os/pages, not in the blog feed, so the
+	// Posts manager only ever lists real posts.
+	where := []string{"COALESCE(is_page,0)=0"}
 	args := []any{}
 	if q != "" {
 		where = append(where, "(title LIKE ? OR COALESCE(tags,'') LIKE ?)")
