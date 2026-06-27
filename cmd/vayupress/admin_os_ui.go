@@ -1867,6 +1867,21 @@ function doSave(){
 }
 if(saveBtn)saveBtn.addEventListener('click',doSave);
 if(saveBtnBar)saveBtnBar.addEventListener('click',doSave);
+// Reorder a row among its same-type siblings (dir<0 = up, dir>0 = down), then
+// resync the hidden JSON so the new order persists on Save. Shared by the nav
+// and footer link editors. CSP-safe: pure DOM, no inline handlers.
+function moveRow(row,dir,sync){
+  if(dir<0){var p=row.previousElementSibling;if(p)row.parentNode.insertBefore(row,p);}
+  else{var n=row.nextElementSibling;if(n)row.parentNode.insertBefore(n,row);}
+  if(sync)sync();
+}
+function reorderBtns(row,sync){
+  var up=document.createElement('button');up.type='button';up.className='btn btn--sm';up.textContent='↑';up.title='Move up';up.setAttribute('aria-label','Move up');
+  up.addEventListener('click',function(){moveRow(row,-1,sync);});
+  var dn=document.createElement('button');dn.type='button';dn.className='btn btn--sm';dn.textContent='↓';dn.title='Move down';dn.setAttribute('aria-label','Move down');
+  dn.addEventListener('click',function(){moveRow(row,1,sync);});
+  return[up,dn];
+}
 // Navigation menu editor (Navigation tab). Builds rows from nav.items JSON and
 // keeps a hidden input in sync so the generic Save picks it up.
 var navEditor=document.getElementById('nav-editor');
@@ -1890,7 +1905,9 @@ if(navEditor&&navHidden){
     var rm=document.createElement('button');rm.type='button';rm.className='btn btn--sm';rm.textContent='✕';
     rm.addEventListener('click',function(){row.remove();navSync();});
     li.addEventListener('input',navSync);hi.addEventListener('input',navSync);
-    row.appendChild(li);row.appendChild(hi);row.appendChild(rm);
+    row.appendChild(li);row.appendChild(hi);
+    var nb=reorderBtns(row,navSync);row.appendChild(nb[0]);row.appendChild(nb[1]);
+    row.appendChild(rm);
     return row;
   }
   (function(){
@@ -1943,7 +1960,9 @@ if(footerInput){
     var rm=document.createElement('button');rm.type='button';rm.className='btn btn--sm';rm.textContent='✕';
     rm.addEventListener('click',function(){row.remove();footerSync();});
     li.addEventListener('input',footerSync);hi.addEventListener('input',footerSync);
-    row.appendChild(li);row.appendChild(hi);row.appendChild(rm);
+    row.appendChild(li);row.appendChild(hi);
+    var fb=reorderBtns(row,footerSync);row.appendChild(fb[0]);row.appendChild(fb[1]);
+    row.appendChild(rm);
     return row;
   }
   function fColCard(title,links){
@@ -1954,7 +1973,9 @@ if(footerInput){
     ti.addEventListener('input',footerSync);
     var rmc=document.createElement('button');rmc.type='button';rmc.className='btn btn--sm';rmc.textContent='Remove column';
     rmc.addEventListener('click',function(){card.remove();footerSync();});
-    head.appendChild(ti);head.appendChild(rmc);
+    head.appendChild(ti);
+    var cb=reorderBtns(card,footerSync);head.appendChild(cb[0]);head.appendChild(cb[1]);
+    head.appendChild(rmc);
     var linksWrap=document.createElement('div');linksWrap.setAttribute('data-f-col-links','');
     (links||[]).forEach(function(l){linksWrap.appendChild(fLinkRow(l.label,l.href));});
     var addL=document.createElement('button');addL.type='button';addL.className='btn btn--sm';addL.textContent='+ Add link';
