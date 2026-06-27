@@ -741,6 +741,23 @@
   }
 
   // ── Gallery editor (up to 9 images) ─────────────────────────────────────────
+  // safeMediaURL is a strict allowlist for any URL that will be assigned to an
+  // <img> src or stored in the document: it permits http(s), protocol-relative
+  // (//host), site-relative (/path), and scheme-less relative paths, and rejects
+  // everything else — notably javascript:, data:, and vbscript: URLs — by
+  // returning ''. Control characters (which can smuggle a scheme past the check,
+  // e.g. "java\tscript:") are rejected outright. This is the client-side barrier;
+  // the server (blockrender) independently escapes/sanitises on render.
+  function safeMediaURL(u) {
+    u = (u == null ? '' : String(u)).trim();
+    if (!u) return '';
+    if (/[\u0000-\u001F\u007F]/.test(u)) return '';      // control chars
+    if (u.charAt(0) === '/') return u;                   // /path or //host
+    if (/^\.{1,2}\//.test(u)) return u;                  // ./x or ../x
+    if (/^[^:]+$/.test(u)) return u;                     // relative, no scheme
+    return /^https?:\/\//i.test(u) ? u : '';             // explicit http(s) only
+  }
+
   function buildGalleryField(block, idx) {
     block.images = block.images || [];
     var wrap = document.createElement('div');
@@ -752,7 +769,7 @@
       var cell = document.createElement('div');
       cell.className = 'eblock__gallery-cell';
       var img = document.createElement('img');
-      img.src = src;
+      img.src = safeMediaURL(src);
       img.alt = '';
       var del = document.createElement('button');
       del.type = 'button';
@@ -770,8 +787,8 @@
     ctl.className = 'eblock__row';
     var addUrl = mkInput('text', '', 'Image URL, then press Add');
     var addBtn = mkSmallBtn('+ Add URL', function () {
-      var v = addUrl.value.trim();
-      if (!v) return;
+      var v = safeMediaURL(addUrl.value);
+      if (!v) { setStatus('Enter a valid image URL (http(s) or a /media path)', 'warn'); return; }
       if (block.images.length >= 9) { setStatus('A gallery holds up to 9 images', 'warn'); return; }
       block.images.push(v);
       addUrl.value = '';
@@ -787,7 +804,7 @@
       var files = gFile.files ? Array.prototype.slice.call(gFile.files) : [];
       files.forEach(function (f) {
         if (block.images.length >= 9) return;
-        uploadInto(f, function (u) { if (block.images.length < 9) { block.images.push(u); structural(); } });
+        uploadInto(f, function (u) { var s = safeMediaURL(u); if (s && block.images.length < 9) { block.images.push(s); structural(); } });
       });
       gFile.value = '';
     });
@@ -1572,7 +1589,8 @@
   function updateFeaturePreview() {
     var url = pmVal(pm['feature-image']).trim();
     if (pm['feature-preview']) {
-      if (url) { pm['feature-preview'].src = url; pm['feature-preview'].hidden = false; }
+      var safe = safeMediaURL(url);
+      if (safe) { pm['feature-preview'].src = safe; pm['feature-preview'].hidden = false; }
       else { pm['feature-preview'].hidden = true; pm['feature-preview'].removeAttribute('src'); }
     }
     if (pm['feature-empty']) pm['feature-empty'].hidden = !!url;
