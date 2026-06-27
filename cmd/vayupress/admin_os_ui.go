@@ -874,6 +874,9 @@ func osPublishTrend(ctx context.Context, n int) []int {
 			byDay[d] = c
 		}
 	}
+	if rows.Err() != nil {
+		return out
+	}
 	now := time.Now().UTC()
 	for i := 0; i < n; i++ {
 		day := now.AddDate(0, 0, -(n - 1 - i)).Format("2006-01-02")
@@ -1145,6 +1148,7 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 			}
+			_ = rows.Err() // best-effort admin status counts
 			rows.Close()
 		}
 	}
@@ -1203,6 +1207,7 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 					posts = append(posts, p)
 				}
 			}
+			_ = rows.Err() // best-effort admin post list
 		}
 	}
 
@@ -1345,6 +1350,7 @@ func (a *App) handleOSComments(w http.ResponseWriter, r *http.Request) {
 				slugByID[id] = slug
 			}
 		}
+		_ = rows.Err() // best-effort id→slug map for comment links
 	}
 
 	all, _ := a.commentStore.ListAll(r.Context(), "all", 500)

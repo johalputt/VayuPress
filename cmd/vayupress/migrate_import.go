@@ -95,7 +95,7 @@ func runMigrateGhost(args []string) error {
 	dryRun := parseBoolFlag(args, "dry-run", false)
 	skipDrafts := parseBoolFlag(args, "skip-drafts", true)
 
-	raw, err := os.ReadFile(file)
+	raw, err := os.ReadFile(file) //nosec G703 -- operator-supplied CLI export path; the operator controls the host filesystem
 	if err != nil {
 		return fmt.Errorf("read export: %w", err)
 	}
@@ -181,7 +181,7 @@ func runMigrateWordPress(args []string) error {
 	dryRun := parseBoolFlag(args, "dry-run", false)
 	skipDrafts := parseBoolFlag(args, "skip-drafts", true)
 
-	raw, err := os.ReadFile(file)
+	raw, err := os.ReadFile(file) //nosec G703 -- operator-supplied CLI export path; the operator controls the host filesystem
 	if err != nil {
 		return fmt.Errorf("read export: %w", err)
 	}
@@ -211,7 +211,7 @@ func parseWXR(raw []byte) ([]importedPost, error) {
 		Items []wxrItem `xml:"channel>item"`
 	}
 	var doc wxr
-	if err := xml.Unmarshal(raw, &doc); err != nil {
+	if err := xml.Unmarshal(raw, &doc); err != nil { //nosec G709 -- decoding the operator's own export file (trusted CLI input); not network/untrusted data
 		return nil, fmt.Errorf("parse WXR XML: %w", err)
 	}
 	var out []importedPost

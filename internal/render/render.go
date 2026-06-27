@@ -1284,7 +1284,7 @@ func CachePurge(slug string, tags []string, generateSitemap, generateRSS, genera
 
 // WarmCache pre-renders the 1000 most recently updated articles that are not already cached.
 func WarmCache(splitTags func(string) []string) {
-	rows, err := db.DB.Query(`SELECT id,title,slug,content,tags,created_at,updated_at FROM articles WHERE COALESCE(status,'published')='published' ORDER BY updated_at DESC LIMIT 1000`)
+	rows, err := db.Reader().Query(`SELECT id,title,slug,content,tags,created_at,updated_at FROM articles WHERE COALESCE(status,'published')='published' ORDER BY updated_at DESC LIMIT 1000`)
 	if err != nil {
 		return
 	}
@@ -1306,7 +1306,7 @@ func WarmCache(splitTags func(string) []string) {
 		if err != nil {
 			continue
 		}
-		CacheWrite(filepath.Join("posts", a.Slug+".html"), html)
+		_ = CacheWrite(filepath.Join("posts", a.Slug+".html"), html)
 		count++
 	}
 	logging.LogInfo("cache-warm", fmt.Sprintf("pre-rendered %d articles", count))
@@ -1363,11 +1363,6 @@ func ReconcileCacheVersion() {
 	logging.LogInfo("cache", "render fingerprint changed — cleared stale pre-rendered public HTML")
 }
 
-// StripHTML removes all HTML tags from s and returns plain text.
-func StripHTML(s string) string {
-	return htmlTagRe.ReplaceAllString(s, "")
-}
-
 // PlainText converts HTML content into readable plain text suitable for
 // excerpts and previews. Unlike StripHTML, it first removes non-rendered blocks
 // such as <style>, <script> and <head> (including their inner text) and HTML
@@ -1384,14 +1379,6 @@ func PlainText(s string) string {
 	s = html.UnescapeString(s)
 	s = strings.TrimSpace(strings.Join(strings.Fields(s), " "))
 	return spaceBeforePunctRe.ReplaceAllString(s, "$1")
-}
-
-// SanitizeHTML runs the bluemonday UGC policy over s.
-func SanitizeHTML(s string) string {
-	if policy == nil {
-		return s
-	}
-	return policy.Sanitize(s)
 }
 
 // ── Minified CSS constants ────────────────────────────────────────────────────

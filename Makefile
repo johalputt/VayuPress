@@ -4,7 +4,7 @@
 .PHONY: help dev build sync sync-check test test-race test-integration lint vuln check-size \
         check-docs check-governance check-ethics check-security check-complexity \
         check-adrs test-migrations test-storage test-api-contracts bench \
-        dry-run clean
+        dry-run clean sec
 
 BINARY     := vayupress
 # P13: canonical buildable package — the deploy script heredoc is mirrored here
@@ -56,6 +56,11 @@ bench: ## Run performance benchmarks
 
 lint: ## Run golangci-lint (zero errors required)
 	golangci-lint run
+
+sec: ## Run gosec security scan (fail on HIGH severity + HIGH confidence)
+	gosec -severity high -confidence high \
+	  -exclude=G104,G115,G203,G301,G302,G304,G306,G705,G702,G703,G704,G709,G710 \
+	  -exclude-dir=docs ./...
 
 vuln: ## Run vulnerability scan (zero known CVEs required)
 	govulncheck ./...

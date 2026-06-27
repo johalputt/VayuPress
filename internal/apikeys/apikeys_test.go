@@ -15,6 +15,10 @@ func newTestStore(t *testing.T) *Store {
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
+	// Pin to a single connection: each :memory: connection is a *separate*
+	// database, so without this the pool can hand a query a fresh, empty DB and
+	// make writes invisible (a flake that surfaces under -race timing).
+	db.SetMaxOpenConns(1)
 	t.Cleanup(func() { db.Close() })
 	schema := `CREATE TABLE vayu_api_keys(id TEXT PRIMARY KEY,label TEXT NOT NULL DEFAULT '',prefix TEXT NOT NULL DEFAULT '',key_hash TEXT NOT NULL,scope TEXT NOT NULL DEFAULT 'external',created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,last_used_at DATETIME,revoked INTEGER NOT NULL DEFAULT 0)`
 	if _, err := db.Exec(schema); err != nil {

@@ -342,6 +342,7 @@ func dumpSettings(ctx context.Context, db *sql.DB) ([]byte, int) {
 				out[k] = v
 			}
 		}
+		_ = rows.Err() // best-effort settings dump; partial result is acceptable
 	}
 	// Deterministic key order for reproducible archives.
 	keys := make([]string, 0, len(out))

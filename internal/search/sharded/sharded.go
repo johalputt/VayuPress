@@ -86,6 +86,13 @@ func (si *ShardedIndex) Search(query string, limit int) ([]Result, error) {
 				results = append(results, r)
 				mu.Unlock()
 			}
+			if err := rows.Err(); err != nil {
+				mu.Lock()
+				if firstErr == nil {
+					firstErr = err
+				}
+				mu.Unlock()
+			}
 		}(s)
 	}
 	wg.Wait()

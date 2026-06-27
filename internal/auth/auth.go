@@ -12,6 +12,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"strconv"
@@ -25,6 +26,58 @@ import (
 	"github.com/johalputt/vayupress/internal/metrics"
 	"golang.org/x/crypto/argon2"
 )
+
+// ClientIP derives the real client IP from r, honouring X-Forwarded-For /
+// X-Real-IP **only** when the immediate peer (r.RemoteAddr) is a configured
+// trusted proxy (config.Cfg.TrustedProxies, default loopback). For a direct
+// connection from any other address the forwarding headers are ignored
+// entirely, so a client cannot spoof its IP to evade rate limiting / lockout or
+// impersonate a TRUSTED_IPS entry (audit F-3, GHSA-3fxj-6jh8-hvhx).
+//
+// When the peer is trusted, X-Real-IP wins; otherwise the right-most
+// X-Forwarded-For entry that is not itself a trusted proxy is used (the address
+// the outermost trusted proxy actually saw).
+func ClientIP(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	peer := net.ParseIP(strings.TrimSpace(host))
+	if peer == nil || !ipIsTrustedProxy(peer) {
+		return host // direct / untrusted peer: never trust forwarding headers
+	}
+	if xri := strings.TrimSpace(r.Header.Get("X-Real-IP")); xri != "" {
+		if ip := net.ParseIP(xri); ip != nil {
+			return xri
+		}
+	}
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		parts := strings.Split(xff, ",")
+		for i := len(parts) - 1; i >= 0; i-- {
+			cand := strings.TrimSpace(parts[i])
+			ip := net.ParseIP(cand)
+			if ip == nil {
+				continue
+			}
+			if ipIsTrustedProxy(ip) {
+				continue // skip our own proxy hops, keep walking left
+			}
+			return cand
+		}
+	}
+	return host
+}
+
+// ipIsTrustedProxy reports whether ip falls within any configured trusted-proxy
+// CIDR range.
+func ipIsTrustedProxy(ip net.IP) bool {
+	for _, n := range config.Cfg.TrustedProxies {
+		if n.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
 
 // ── Auth fail lockout (ADR-0021) ─────────────────────────────────────────────
 
@@ -127,10 +180,7 @@ func parseTrustedIPs() map[string]bool {
 // RateLimitMiddleware enforces 100 requests/hour per IP (trusted IPs bypassed).
 func RateLimitMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ip := r.RemoteAddr
-		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-			ip = strings.TrimSpace(strings.Split(xff, ",")[0])
-		}
+		ip := ClientIP(r)
 		if trustedIPs[ip] {
 			next.ServeHTTP(w, r)
 			return
@@ -330,38 +380,77 @@ func StartBucketSweeper(ctx context.Context) {
 
 // ── Argon2id credential hashing (P9) ─────────────────────────────────────────
 
+// Argon2id parameters (audit F-5). OWASP recommends a minimum of t=2 for a
+// 64 MiB configuration; we use t=3 for additional offline-cracking cost.
 const (
-	argonTime    = 1
+	argonTime    = 3
 	argonMemory  = 64 * 1024
 	argonThreads = 4
 	argonKeyLen  = 32
+
+	// legacyArgonTime is the time cost used before the F-5 bump. Encoded hashes
+	// produced then carry no parameter metadata (plain "salt$hash"), so they are
+	// verified with this value to remain valid without a migration.
+	legacyArgonTime = 1
+	// argonV2Prefix tags the parameterised encoding so future cost changes stay
+	// backward compatible: "argon2id$v=2$t=<N>$<salt>$<hash>".
+	argonV2Prefix = "argon2id"
 )
 
-// HashSecretArgon2id derives an Argon2id hash, returning a "salt$hash" base64 string.
+// HashSecretArgon2id derives an Argon2id hash. The returned string embeds the
+// time cost ("argon2id$v=2$t=<N>$<salt>$<hash>") so the parameters that
+// produced it are always available at verification time, allowing the cost to
+// be raised in future without invalidating stored hashes.
 func HashSecretArgon2id(secret string) (string, error) {
 	salt := make([]byte, 16)
 	if _, err := rand.Read(salt); err != nil {
 		return "", err
 	}
 	hash := argon2.IDKey([]byte(secret), salt, argonTime, argonMemory, argonThreads, argonKeyLen)
-	return base64.RawStdEncoding.EncodeToString(salt) + "$" + base64.RawStdEncoding.EncodeToString(hash), nil
+	return fmt.Sprintf("%s$v=2$t=%d$%s$%s",
+		argonV2Prefix, argonTime,
+		base64.RawStdEncoding.EncodeToString(salt),
+		base64.RawStdEncoding.EncodeToString(hash)), nil
 }
 
-// VerifySecretArgon2id performs a constant-time comparison of secret against an encoded hash.
+// VerifySecretArgon2id performs a constant-time comparison of secret against an
+// encoded hash. It accepts both the parameterised v2 form and the legacy
+// "salt$hash" form (verified with the legacy time cost), so hashes created
+// before the F-5 cost bump keep working.
 func VerifySecretArgon2id(secret, encoded string) bool {
-	parts := strings.SplitN(encoded, "$", 2)
-	if len(parts) != 2 {
-		return false
+	t := uint32(legacyArgonTime)
+	saltB64, hashB64 := "", ""
+
+	if strings.HasPrefix(encoded, argonV2Prefix+"$") {
+		// argon2id$v=2$t=<N>$<salt>$<hash>
+		parts := strings.Split(encoded, "$")
+		if len(parts) != 5 || parts[1] != "v=2" || !strings.HasPrefix(parts[2], "t=") {
+			return false
+		}
+		n, err := strconv.ParseUint(strings.TrimPrefix(parts[2], "t="), 10, 32)
+		if err != nil || n == 0 {
+			return false
+		}
+		t = uint32(n)
+		saltB64, hashB64 = parts[3], parts[4]
+	} else {
+		// Legacy: salt$hash
+		parts := strings.SplitN(encoded, "$", 2)
+		if len(parts) != 2 {
+			return false
+		}
+		saltB64, hashB64 = parts[0], parts[1]
 	}
-	salt, err := base64.RawStdEncoding.DecodeString(parts[0])
+
+	salt, err := base64.RawStdEncoding.DecodeString(saltB64)
 	if err != nil {
 		return false
 	}
-	want, err := base64.RawStdEncoding.DecodeString(parts[1])
+	want, err := base64.RawStdEncoding.DecodeString(hashB64)
 	if err != nil {
 		return false
 	}
-	got := argon2.IDKey([]byte(secret), salt, argonTime, argonMemory, argonThreads, argonKeyLen)
+	got := argon2.IDKey([]byte(secret), salt, t, argonMemory, argonThreads, argonKeyLen)
 	return hmac.Equal(got, want)
 }
 
@@ -379,7 +468,11 @@ func InitCSRFSecret() {
 	logging.LogInfo("csrf", "CSRF secret initialized (32 bytes)")
 }
 
-func csrfCookieSecure() bool {
+// CSRFCookieSecure reports whether auth/CSRF cookies should carry the Secure
+// attribute. It is the single source of truth shared by the auth package and
+// the cmd layer (audit F-7). Override with CSRF_SECURE_COOKIE=true|false;
+// otherwise Secure is set whenever the site is not served on localhost.
+func CSRFCookieSecure() bool {
 	if v := os.Getenv("CSRF_SECURE_COOKIE"); v != "" {
 		return v == "true"
 	}
@@ -439,7 +532,7 @@ func CSRFTokenMiddleware(next http.Handler) http.Handler {
 			}
 			if needsToken {
 				if token := GenerateCSRFToken(); token != "" {
-					http.SetCookie(w, &http.Cookie{Name: "vp_csrf", Value: token, Path: "/", SameSite: http.SameSiteStrictMode, HttpOnly: false, Secure: csrfCookieSecure(), MaxAge: 3600})
+					http.SetCookie(w, &http.Cookie{Name: "vp_csrf", Value: token, Path: "/", SameSite: http.SameSiteStrictMode, HttpOnly: false, Secure: CSRFCookieSecure(), MaxAge: 3600})
 				}
 			}
 			next.ServeHTTP(w, r)
@@ -499,12 +592,7 @@ func verifyExtraAPIKey(key string) bool {
 // RequireAPIKey is HTTP middleware that validates X-API-Key / Authorization: Bearer headers.
 func RequireAPIKey(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ip := r.RemoteAddr
-		if xri := r.Header.Get("X-Real-IP"); xri != "" {
-			ip = xri
-		} else if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-			ip = strings.TrimSpace(strings.Split(xff, ",")[0])
-		}
+		ip := ClientIP(r)
 		if locked, until := CheckAuthLockout(ip); locked {
 			retryAfter := int(time.Until(until).Seconds()) + 1
 			w.Header().Set("Retry-After", strconv.Itoa(retryAfter))

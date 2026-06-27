@@ -5,76 +5,55 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"net"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
 
+	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/metrics"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/resource"
+	"github.com/johalputt/vayupress/internal/safefetch"
 	"github.com/johalputt/vayupress/internal/trace"
 )
 
 // =============================================================================
 // SSRF protection (ADR-0009)
+//
+// The SSRF-safe outbound dialer now lives in internal/safefetch as the single
+// source of truth (safefetch.SafeTransport). It pins the validated IP at dial
+// time (closing the DNS-rebind window), never honours an environment proxy, and
+// refuses the full set of private/reserved ranges. The weaker, re-resolving
+// transport that previously lived here has been removed.
 // =============================================================================
 
-func isPrivateOrReservedIP(ip net.IP) bool {
-	if ip == nil {
-		return true
-	}
-	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() ||
-		ip.IsMulticast() || ip.IsUnspecified() || ip.IsPrivate() {
-		return true
-	}
-	if ip.Equal(net.ParseIP("169.254.169.254")) || ip.Equal(net.ParseIP("100.100.100.200")) {
-		return true
-	}
-	if v6 := ip.To16(); v6 != nil && ip.To4() == nil && (v6[0]&0xfe) == 0xfc {
-		return true
-	}
-	return false
+// internalServiceHosts are trusted, operator-configured loopback endpoints
+// (Meilisearch, a local AI runtime) that the shared outbound client is allowed
+// to reach even though they resolve to a private/loopback address. Webhook and
+// update traffic uses the same client, so this is the *only* private
+// destination any guarded outbound request may reach.
+var internalServiceHosts = []string{"127.0.0.1", "localhost", "::1"}
+
+// safeOutboundTransport builds the SSRF-hardened transport for the shared
+// outbound HTTP client (webhooks, update checks, AI/Meili service calls).
+func safeOutboundTransport() *http.Transport {
+	return safefetch.SafeTransport(safefetch.TransportOptions{AllowHosts: internalServiceHosts})
 }
 
-func ssrfSafeTransport() *http.Transport {
-	base := &net.Dialer{Timeout: 5 * time.Second, KeepAlive: 30 * time.Second}
-	return &http.Transport{
-		Proxy: http.ProxyFromEnvironment,
-		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			host, port, err := net.SplitHostPort(addr)
-			if err != nil {
-				return nil, err
-			}
-			ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
-			if err != nil {
-				return nil, err
-			}
-			for _, ipa := range ips {
-				if isPrivateOrReservedIP(ipa.IP) && !isAllowedInternalHost(host) {
-					return nil, fmt.Errorf("ssrf: refusing to connect to private/reserved IP %s (host %q)", ipa.IP, host)
-				}
-			}
-			return base.DialContext(ctx, network, net.JoinHostPort(host, port))
-		},
-		ForceAttemptHTTP2:     true,
-		MaxIdleConns:          100,
-		IdleConnTimeout:       90 * time.Second,
-		TLSHandshakeTimeout:   5 * time.Second,
-		ExpectContinueTimeout: 1 * time.Second,
-	}
-}
-
-func isAllowedInternalHost(host string) bool {
-	switch host {
-	case "127.0.0.1", "localhost", "::1":
-		return true
-	}
-	return false
+// realIPMiddleware normalises r.RemoteAddr to the real client IP using the
+// trusted-proxy-aware resolver (auth.ClientIP). It replaces chi's
+// middleware.RealIP, which trusts X-Forwarded-For / X-Real-IP unconditionally
+// and is therefore vulnerable to IP spoofing (GHSA-3fxj-6jh8-hvhx, audit F-3).
+// Forwarding headers are honoured only when the immediate peer is a configured
+// trusted proxy; otherwise RemoteAddr is left as the direct peer address.
+func realIPMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.RemoteAddr = auth.ClientIP(r)
+		next.ServeHTTP(w, r)
+	})
 }
 
 // =============================================================================
@@ -169,9 +148,8 @@ func securityHeadersMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// csrfCookieSecure delegates to the single auth-package implementation (audit
+// F-7) so the Secure-attribute policy is defined in exactly one place.
 func csrfCookieSecure() bool {
-	if v := os.Getenv("CSRF_SECURE_COOKIE"); v != "" {
-		return v == "true"
-	}
-	return config.Cfg.Domain != "localhost"
+	return auth.CSRFCookieSecure()
 }

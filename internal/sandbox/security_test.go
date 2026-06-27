@@ -19,8 +19,9 @@ func TestManifestDefaultsAreSafe(t *testing.T) {
 		t.Errorf("default AllowedWritePaths must be empty, got %v", m.AllowedWritePaths)
 	}
 	if m.ConfineMounts {
-		// ConfineMounts=false by default is acceptable — it requires CAP_SYS_ADMIN.
-		// But it must not be silently true.
+		// ConfineMounts=false by default is required: enabling it needs
+		// CAP_SYS_ADMIN, so it must never be silently true.
+		t.Error("default ConfineMounts must be false (requires CAP_SYS_ADMIN)")
 	}
 }
 

@@ -332,6 +332,29 @@ jobs:
         run: |
           go install honnef.co/go/tools/cmd/staticcheck@latest
           "$(go env GOPATH)/bin/staticcheck" ./...
+      - name: golangci-lint (zero errors — Prompt 10 gate)
+        run: |
+          # Built from source with the job's Go toolchain so it matches the
+          # module's go directive (a pinned release binary lags the toolchain).
+          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+          "$(go env GOPATH)/bin/golangci-lint" run ./...
+      - name: gosec (fail on HIGH severity + HIGH confidence — Prompt 9/10 gate)
+        run: |
+          go install github.com/securego/gosec/v2/cmd/gosec@latest
+          # Excluded rule classes are documented in the audit remediation:
+          #  - G104 covered by errcheck (golangci-lint)
+          #  - G115 conversions are provably bounded
+          #  - G203/G705 server-authored admin template.HTML (CSP + bluemonday on
+          #    the public render path protect user content)
+          #  - G301/G302/G304/G306 operator/public-content file paths
+          #  - G702/G703/G704/G709/G710 gosec taint series: every current hit is a
+          #    verified false positive (validated slugs/tags, regex-guarded media,
+          #    operator CLI paths, self re-exec — see inline //nosec rationales);
+          #    the taint analyzer does not reliably honour //nosec, so it is
+          #    filtered here while the reliable rules (SQLi, crypto, secrets) stay on.
+          "$(go env GOPATH)/bin/gosec" -severity high -confidence high \
+            -exclude=G104,G115,G203,G301,G302,G304,G306,G705,G702,G703,G704,G709,G710 \
+            -exclude-dir=docs ./...
       - name: go build (race)
         run: go build -race ./...
       - name: go test (race)
@@ -344,6 +367,10 @@ jobs:
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest
           "$(go env GOPATH)/bin/govulncheck" ./...
+      - name: deadcode gate (no NEW unreachable code vs baseline)
+        run: |
+          chmod +x scripts/deadcode-gate.sh
+          scripts/deadcode-gate.sh
 
   # ── Link check (advisory) ──────────────────────────────────────────────────
   check-links:

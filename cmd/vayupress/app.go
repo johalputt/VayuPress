@@ -365,7 +365,9 @@ func (a *App) registerEventHandlers() {
 			if dbpkg.DB.QueryRow(`SELECT id,title,slug,content,tags,created_at,updated_at FROM articles WHERE slug=?`, e.Slug).
 				Scan(&art.ID, &art.Title, &art.Slug, &art.Content, &tagsStr, &art.CreatedAt, &art.UpdatedAt) == nil {
 				art.Tags = api.SplitTags(tagsStr)
-				a.search.Index(ctx, art.ID, art.Title, art.Slug,
+				// Best-effort: search drift is healed by the periodic reconciler
+				// (SEARCH_RECONCILE_MIN), so an indexing error here is recoverable.
+				_ = a.search.Index(ctx, art.ID, art.Title, art.Slug,
 					htmlTagRe.ReplaceAllString(a.policy.Sanitize(art.Content), ""),
 					art.Tags, art.CreatedAt.Unix())
 			}
@@ -388,7 +390,9 @@ func (a *App) registerEventHandlers() {
 			if dbpkg.DB.QueryRow(`SELECT id,title,slug,content,tags,created_at,updated_at FROM articles WHERE slug=?`, e.Slug).
 				Scan(&art.ID, &art.Title, &art.Slug, &art.Content, &tagsStr, &art.CreatedAt, &art.UpdatedAt) == nil {
 				art.Tags = api.SplitTags(tagsStr)
-				a.search.Index(ctx, art.ID, art.Title, art.Slug,
+				// Best-effort: search drift is healed by the periodic reconciler
+				// (SEARCH_RECONCILE_MIN), so an indexing error here is recoverable.
+				_ = a.search.Index(ctx, art.ID, art.Title, art.Slug,
 					htmlTagRe.ReplaceAllString(a.policy.Sanitize(art.Content), ""),
 					art.Tags, art.CreatedAt.Unix())
 			}
@@ -405,7 +409,7 @@ func (a *App) registerEventHandlers() {
 	bus.Subscribe(events.ArticleDeleted{}, func(ctx context.Context, ev interface{}) {
 		e := ev.(events.ArticleDeleted)
 		go func() {
-			a.search.Delete(ctx, e.ID)
+			_ = a.search.Delete(ctx, e.ID)
 			a.purgeCloudflare(e.Slug)
 		}()
 		a.FireHook("article.delete", map[string]interface{}{"slug": e.Slug, "id": e.ID})

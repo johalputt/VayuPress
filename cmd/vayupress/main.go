@@ -4,7 +4,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -80,27 +79,6 @@ var bootTime = time.Now()
 var htmlTagRe = regexp.MustCompile(`<[^>]+>`)
 
 // =============================================================================
-// Magic-number file-type verification
-// =============================================================================
-
-var allowedMagicNumbers = map[string][]byte{
-	"image/jpeg":      {0xFF, 0xD8, 0xFF},
-	"image/png":       {0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A},
-	"image/gif":       {0x47, 0x49, 0x46, 0x38},
-	"image/webp":      {0x52, 0x49, 0x46, 0x46},
-	"application/pdf": {0x25, 0x50, 0x44, 0x46},
-}
-
-func verifyMagicNumber(data []byte) (string, error) {
-	for mime, sig := range allowedMagicNumbers {
-		if len(data) >= len(sig) && bytes.Equal(data[:len(sig)], sig) {
-			return mime, nil
-		}
-	}
-	return "", fmt.Errorf("file type not allowed: magic number does not match any permitted media type")
-}
-
-// =============================================================================
 // Response helpers (thin wrappers over internal/httputil)
 // =============================================================================
 
@@ -148,6 +126,7 @@ func generateSitemap() {
 		xml.EscapeText(&locBuf, []byte(fmt.Sprintf("https://%s/%s", config.Cfg.Domain, slug))) //nolint:errcheck
 		fmt.Fprintf(&sb, "<url><loc>%s</loc><lastmod>%s</lastmod></url>", locBuf.String(), updated.Format("2006-01-02"))
 	}
+	_ = rows.Err() // best-effort sitemap; regenerated on the next change
 	sitemapAppendTagPages(&sb)
 	sb.WriteString("</urlset>")
 	render.CacheWrite("sitemap.xml", sb.String()) //nolint:errcheck
@@ -179,6 +158,7 @@ func sitemapAppendTagPages(sb *strings.Builder) {
 			}
 		}
 	}
+	_ = rows.Err() // best-effort tag enumeration for the sitemap
 	// Topic index.
 	var idxBuf strings.Builder
 	xml.EscapeText(&idxBuf, []byte(fmt.Sprintf("https://%s/tags", config.Cfg.Domain))) //nolint:errcheck
@@ -215,6 +195,7 @@ func generateRSS() {
 		fmt.Fprintf(&items, "<item><title><![CDATA[%s]]></title><link>%s</link><guid isPermaLink=\"true\">%s</guid><pubDate>%s</pubDate><description><![CDATA[%s]]></description></item>",
 			safeTitle, linkBuf.String(), guidBuf.String(), created.Format(time.RFC1123Z), safePlain)
 	}
+	_ = rows.Err() // best-effort RSS feed; regenerated on the next change
 	rss := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel><title>%s</title><link>https://%s</link><description>%s</description>%s</channel></rss>`,
 		config.Cfg.Domain, config.Cfg.Domain, config.Cfg.Domain, items.String())
 	render.CacheWrite("feed.xml", rss) //nolint:errcheck
@@ -283,7 +264,7 @@ func main() {
 	// Initialise App — the single owner of all mutable runtime state (ADR-0046).
 	a := &App{
 		policy:         bluemonday.UGCPolicy(),
-		outboundClient: &http.Client{Timeout: 5 * time.Second, Transport: ssrfSafeTransport()},
+		outboundClient: &http.Client{Timeout: 5 * time.Second, Transport: safeOutboundTransport()},
 		pluginRegistry: plugins.NewRegistry(),
 		eventBus:       events.NewBus(),
 	}
@@ -760,6 +741,3 @@ func main() {
 		os.Exit(1)
 	}
 }
-
-// suppress unused import for verifyMagicNumber (kept for media upload endpoints)
-var _ = verifyMagicNumber

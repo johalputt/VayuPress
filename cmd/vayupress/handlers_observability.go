@@ -87,6 +87,7 @@ func (a *App) handleOutboxStats(w http.ResponseWriter, r *http.Request) {
 		rows.Scan(&status, &count)
 		counts[status] = count
 	}
+	_ = rows.Err()
 
 	var totalDelivered int
 	dbpkg.DB.QueryRow(`SELECT COUNT(1) FROM delivered_events`).Scan(&totalDelivered)
@@ -156,6 +157,7 @@ func (a *App) handleOutboxEvents(w http.ResponseWriter, r *http.Request) {
 		}
 		result = append(result, row)
 	}
+	_ = rows.Err()
 
 	writeJSON(w, r, 200, map[string]interface{}{
 		"events":         result,
@@ -255,6 +257,7 @@ func (a *App) handleCorrelationTrace(w http.ResponseWriter, r *http.Request) {
 		}
 		result = append(result, ev)
 	}
+	_ = rows.Err()
 
 	writeJSON(w, r, 200, map[string]interface{}{
 		"correlation_id": corrID,

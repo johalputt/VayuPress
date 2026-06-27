@@ -87,10 +87,14 @@ func (r *Relay) processOne() (empty bool) {
 	if parseErr := parseEnvelope(rec.payload, &env); parseErr == nil && env.EventID != "" {
 		// Check if this event_id has already been delivered.
 		var count int
-		r.db.QueryRow(`SELECT COUNT(1) FROM delivered_events WHERE event_id=?`, env.EventID).Scan(&count)
+		// Best-effort dedup probe: on Scan error count stays 0 and we fall
+		// through to dispatch (the delivered_events INSERT below is idempotent).
+		_ = r.db.QueryRow(`SELECT COUNT(1) FROM delivered_events WHERE event_id=?`, env.EventID).Scan(&count)
 		if count > 0 {
 			// Already delivered — mark outbox record as delivered and skip dispatch.
-			r.db.Exec(
+			// Status-update failures are safe: the record simply stays pending and
+			// is retried, then re-caught by this dedup guard.
+			_, _ = r.db.Exec(
 				`UPDATE event_outbox SET status='delivered', delivered_at=datetime('now') WHERE id=?`,
 				rec.id,
 			)
@@ -104,7 +108,7 @@ func (r *Relay) processOne() (empty bool) {
 	dispErr := r.dispatch(dispCtx, rec.eventType, rec.payload)
 	if dispErr != nil && errors.Is(dispErr, ErrPoisonEvent) {
 		logging.LogError("outbox", "poison event dead-lettered for "+rec.eventType, dispErr.Error())
-		r.db.Exec(
+		_, _ = r.db.Exec(
 			`UPDATE event_outbox SET status='dead_letter', dead_reason=? WHERE id=?`,
 			dispErr.Error(), rec.id,
 		)
@@ -112,7 +116,7 @@ func (r *Relay) processOne() (empty bool) {
 	}
 
 	if dispErr == nil {
-		r.db.Exec(
+		_, _ = r.db.Exec(
 			`UPDATE event_outbox SET status='delivered', delivered_at=datetime('now') WHERE id=?`,
 			rec.id,
 		)
@@ -136,12 +140,14 @@ func (r *Relay) processOne() (empty bool) {
 			backoff = maxBackoffSeconds
 		}
 		retryAt := time.Now().Add(time.Duration(backoff) * time.Second).UTC().Format("2006-01-02T15:04:05Z")
-		r.db.Exec(
+		// Best-effort: a failed status write leaves the row pending and it is
+		// retried on the next sweep, so the outcome is self-healing.
+		_, _ = r.db.Exec(
 			`UPDATE event_outbox SET retries=retries+1, retry_at=? WHERE id=?`,
 			retryAt, rec.id,
 		)
 	} else {
-		r.db.Exec(
+		_, _ = r.db.Exec(
 			`UPDATE event_outbox SET status='dead_letter', dead_reason=? WHERE id=?`,
 			dispErr.Error(), rec.id,
 		)

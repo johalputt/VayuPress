@@ -244,5 +244,5 @@ func (a *App) serveMedia(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Cache-Control", "public, immutable, max-age=31536000")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
-	http.ServeFile(w, r, filepath.Join(config.Cfg.MediaDir, name))
+	http.ServeFile(w, r, filepath.Join(config.Cfg.MediaDir, name)) //nosec G703 -- name validated by safeMediaName regex (no separators or dot segments); confined to MediaDir
 }

@@ -8,6 +8,51 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Security
+
+- **SSRF hardening — single, rebind-safe outbound path.** All server-side
+  outbound HTTP (webhooks, self-update downloads, AI/search service calls) now
+  flows through the consolidated `internal/safefetch` dialer, which validates
+  the host and **pins the resolved public IP at connect time** (closing the
+  DNS-rebinding window), never honours an environment proxy, and refuses the
+  full set of private/reserved ranges (RFC1918/ULA, loopback, link-local, cloud
+  metadata, CGNAT `100.64/10`, benchmarking, Class-E). The weaker re-resolving
+  transport has been removed and the duplicate IP-classification helper
+  de-duplicated.
+- **Spoof-resistant client-IP resolution.** Rate limiting, brute-force lockout,
+  and the `TRUSTED_IPS` allowlist now derive the client IP through a
+  trusted-proxy-aware resolver: `X-Forwarded-For` / `X-Real-IP` are honoured
+  **only** when the immediate peer is a configured `TRUSTED_PROXIES` entry
+  (default: loopback, matching the shipped same-host nginx). Direct clients can
+  no longer spoof these headers to evade limits or impersonate a trusted IP.
+  Replaces chi's spoofable `RealIP` middleware (GHSA-3fxj-6jh8-hvhx).
+- **Argon2id work factor raised** from t=1 to t=3 (OWASP-aligned) using a new
+  parameterised encoding (`argon2id$v=2$t=N$…`). Existing hashes remain valid —
+  legacy `salt$hash` values are verified with the original cost — so no
+  credential migration is required.
+- **Admin session cookie is now `SameSite=Strict`** (the reader/member
+  magic-link cookie stays `Lax` so email-link sign-in still works).
+
+### Changed
+
+- **SQLite read concurrency.** Read-only queries on hot public paths now run
+  against a dedicated WAL reader pool (`query_only`, sized to CPU count) while
+  writes stay on the single serialized writer, so reads no longer queue behind
+  the writer. In-memory test databases transparently fall back to the writer.
+- **CI now enforces the constitution's quality gates.** `golangci-lint` (zero
+  errors, via a committed `.golangci.yml`), `gosec` (fail on HIGH severity +
+  HIGH confidence), and a `deadcode` baseline gate (blocks *new* unreachable
+  code) run in CI alongside the existing `go vet` / `staticcheck` /
+  `govulncheck` checks. Numerous previously-unchecked database-write and
+  row-iteration errors are now handled or explicitly documented.
+
+### Fixed
+
+- **Flaky `apikeys` test under `-race`** caused by an unpinned shared `:memory:`
+  database handing queries a separate empty connection; the test DB is now
+  pinned to a single connection.
+
+
 ### Added
 
 - **Monetization — a sovereign system for getting paid, with optional

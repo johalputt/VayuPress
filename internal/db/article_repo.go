@@ -13,17 +13,31 @@ var ErrNotFound = errors.New("article not found")
 // sqliteArticleRepo is the SQLite implementation of api.ArticleRepository.
 // The interface is defined in internal/api; this concrete type satisfies it
 // via duck typing — no import of internal/api required.
-type sqliteArticleRepo struct{ db *sql.DB }
+//
+// Writes go to the serialized writer (db); read-only methods use reader() so
+// they fan across the WAL read pool instead of queuing behind writes (F-4).
+type sqliteArticleRepo struct {
+	db  *sql.DB
+	rdb *sql.DB
+}
 
 // NewArticleRepo returns a concrete article repository backed by the given DB.
 // The returned value satisfies api.ArticleRepository.
 func NewArticleRepo(db *sql.DB) *sqliteArticleRepo {
-	return &sqliteArticleRepo{db: db}
+	return &sqliteArticleRepo{db: db, rdb: Reader()}
+}
+
+// reader returns the read pool when configured, falling back to the writer.
+func (r *sqliteArticleRepo) reader() *sql.DB {
+	if r.rdb != nil {
+		return r.rdb
+	}
+	return r.db
 }
 
 func (r *sqliteArticleRepo) SlugExists(ctx context.Context, slug string) (bool, error) {
 	var n int
-	err := r.db.QueryRowContext(ctx, `SELECT COUNT(1) FROM articles WHERE slug=?`, slug).Scan(&n)
+	err := r.reader().QueryRowContext(ctx, `SELECT COUNT(1) FROM articles WHERE slug=?`, slug).Scan(&n)
 	return n > 0, err
 }
 
@@ -43,7 +57,7 @@ func (r *sqliteArticleRepo) Create(ctx context.Context, art Article) error {
 func (r *sqliteArticleRepo) Get(ctx context.Context, slug string) (Article, error) {
 	var art Article
 	var tagsCSV string
-	err := r.db.QueryRowContext(ctx,
+	err := r.reader().QueryRowContext(ctx,
 		`SELECT id,title,slug,content,tags,created_at,updated_at,COALESCE(status,'published') FROM articles WHERE slug=?`, slug,
 	).Scan(&art.ID, &art.Title, &art.Slug, &art.Content, &tagsCSV, &art.CreatedAt, &art.UpdatedAt, &art.Status)
 	if err == sql.ErrNoRows {
@@ -76,14 +90,14 @@ func (r *sqliteArticleRepo) List(ctx context.Context, page, limit int, tag strin
 	// List is the public-facing listing (JSON API): drafts are never included.
 	if tag != "" {
 		like := "%" + tag + "%"
-		r.db.QueryRowContext(ctx, `SELECT COUNT(1) FROM articles WHERE tags LIKE ? AND COALESCE(status,'published')='published'`, like).Scan(&total)
-		rows, err = r.db.QueryContext(ctx,
+		r.reader().QueryRowContext(ctx, `SELECT COUNT(1) FROM articles WHERE tags LIKE ? AND COALESCE(status,'published')='published'`, like).Scan(&total)
+		rows, err = r.reader().QueryContext(ctx,
 			`SELECT id,title,slug,content,tags,created_at,updated_at,COALESCE(status,'published') FROM articles WHERE tags LIKE ? AND COALESCE(status,'published')='published' ORDER BY created_at DESC LIMIT ? OFFSET ?`,
 			like, limit, (page-1)*limit,
 		)
 	} else {
-		r.db.QueryRowContext(ctx, `SELECT COUNT(1) FROM articles WHERE COALESCE(status,'published')='published'`).Scan(&total)
-		rows, err = r.db.QueryContext(ctx,
+		r.reader().QueryRowContext(ctx, `SELECT COUNT(1) FROM articles WHERE COALESCE(status,'published')='published'`).Scan(&total)
+		rows, err = r.reader().QueryContext(ctx,
 			`SELECT id,title,slug,content,tags,created_at,updated_at,COALESCE(status,'published') FROM articles WHERE COALESCE(status,'published')='published' ORDER BY created_at DESC LIMIT ? OFFSET ?`,
 			limit, (page-1)*limit,
 		)
@@ -100,11 +114,14 @@ func (r *sqliteArticleRepo) List(ctx context.Context, page, limit int, tag strin
 		a.Tags = splitCSV(tagsCSV)
 		result = append(result, a)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
 	return result, total, nil
 }
 
 func (r *sqliteArticleRepo) AllTagCSVs(ctx context.Context) ([]string, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT tags FROM articles WHERE tags != ''`)
+	rows, err := r.reader().QueryContext(ctx, `SELECT tags FROM articles WHERE tags != ''`)
 	if err != nil {
 		return nil, err
 	}
@@ -114,6 +131,9 @@ func (r *sqliteArticleRepo) AllTagCSVs(ctx context.Context) ([]string, error) {
 		var s string
 		rows.Scan(&s)
 		out = append(out, s)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	return out, nil
 }

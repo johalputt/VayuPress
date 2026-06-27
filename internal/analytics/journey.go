@@ -80,7 +80,6 @@ func (s *Store) PathFlows(ctx context.Context, days, limit int) ([]PathFlow, err
 				bump(prev, exitMarker)
 			}
 			curSession = sid
-			prev = ""
 			bump(entryMarker, path)
 		} else {
 			bump(prev, path)

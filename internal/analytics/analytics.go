@@ -102,6 +102,9 @@ func (s *Store) Since(ctx context.Context, days, limit int) (*Summary, error) {
 			}
 			sum.TopPages = append(sum.TopPages, p)
 		}
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
 	} else {
 		return nil, err
 	}
@@ -116,6 +119,9 @@ func (s *Store) Since(ctx context.Context, days, limit int) (*Summary, error) {
 			}
 			sum.Referrers = append(sum.Referrers, h)
 		}
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
 	} else {
 		return nil, err
 	}
@@ -129,6 +135,9 @@ func (s *Store) Since(ctx context.Context, days, limit int) (*Summary, error) {
 				return nil, err
 			}
 			sum.Daily = append(sum.Daily, d)
+		}
+		if err := rows.Err(); err != nil {
+			return nil, err
 		}
 	} else {
 		return nil, err

@@ -120,9 +120,6 @@ func parseStringFlag(args []string, name string, def string) string {
 		if strings.HasPrefix(a, prefix) {
 			return strings.TrimPrefix(a, prefix)
 		}
-		if a == "--"+name {
-			// next arg is value — this simple parser doesn't handle that form
-		}
 	}
 	return def
 }
@@ -146,10 +143,6 @@ func parseBoolFlag(args []string, name string, def bool) bool {
 
 func runMigrateMarkdown(args []string) error {
 	dir := parseStringFlag(args, "dir", "")
-	dbPath := parseStringFlag(args, "db", os.Getenv("VAYU_DB"))
-	if dbPath == "" {
-		dbPath = "vayupress.db"
-	}
 	dryRun := parseBoolFlag(args, "dry-run", false)
 	recursive := parseBoolFlag(args, "recursive", true)
 	skipDrafts := parseBoolFlag(args, "skip-drafts", true)
@@ -295,11 +288,11 @@ var goldMD = goldmark.New(
 )
 
 func parseMDFile(path string) (*mdDoc, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nosec G703 -- path is an operator-supplied CLI argument (vayupress migrate); the operator already controls the host filesystem
 	if err != nil {
 		return nil, fmt.Errorf("read: %w", err)
 	}
-	info, err := os.Stat(path)
+	info, err := os.Stat(path) //nosec G703 -- operator-supplied CLI path (see above)
 	if err != nil {
 		return nil, fmt.Errorf("stat: %w", err)
 	}

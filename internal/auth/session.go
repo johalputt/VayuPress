@@ -98,14 +98,20 @@ func (s *SessionStore) PurgeExpired(ctx context.Context) (int64, error) {
 }
 
 // SetSessionCookie writes the session cookie with hardened attributes.
+//
+// SameSite=Strict (audit F-6): the staff/admin session is only ever used for
+// same-site navigation within /os, so Strict gives the strongest CSRF posture
+// for these privileged, state-changing surfaces. (The reader/member cookie
+// stays Lax because it must survive the cross-site top-level navigation of a
+// magic-link click from an email client.)
 func SetSessionCookie(w http.ResponseWriter, token string) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     SessionCookie,
 		Value:    token,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   csrfCookieSecure(),
-		SameSite: http.SameSiteLaxMode,
+		Secure:   CSRFCookieSecure(),
+		SameSite: http.SameSiteStrictMode,
 		MaxAge:   int(DefaultSessionTTL.Seconds()),
 	})
 }
@@ -117,8 +123,8 @@ func ClearSessionCookie(w http.ResponseWriter) {
 		Value:    "",
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   csrfCookieSecure(),
-		SameSite: http.SameSiteLaxMode,
+		Secure:   CSRFCookieSecure(),
+		SameSite: http.SameSiteStrictMode,
 		MaxAge:   -1,
 	})
 }
