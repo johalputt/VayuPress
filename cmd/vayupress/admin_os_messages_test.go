@@ -22,3 +22,23 @@ func TestMessagesSurfaceRendersWithoutDB(t *testing.T) {
 		t.Error("Messages surface should show the empty state without a DB")
 	}
 }
+
+// TestMessagesCSVExportHeader proves the CSV export always emits the header row
+// with the right content-type/disposition, even with no DB.
+func TestMessagesCSVExportHeader(t *testing.T) {
+	a := &App{}
+	req := httptest.NewRequest("GET", "/os/api/messages/export.csv", nil)
+	rec := httptest.NewRecorder()
+
+	a.handleOSMessagesExportCSV(rec, req)
+
+	if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/csv") {
+		t.Errorf("content-type = %q, want text/csv", ct)
+	}
+	if cd := rec.Header().Get("Content-Disposition"); !strings.Contains(cd, "contact-messages.csv") {
+		t.Errorf("content-disposition = %q, want attachment filename", cd)
+	}
+	if !strings.Contains(rec.Body.String(), "created_at,name,email,page,ip,read,message") {
+		t.Errorf("CSV header row missing, got: %q", rec.Body.String())
+	}
+}

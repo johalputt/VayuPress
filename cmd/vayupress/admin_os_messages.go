@@ -11,6 +11,7 @@ package main
 // <script> carries the per-request nonce, every dynamic string is escaped.
 
 import (
+	"encoding/csv"
 	"html"
 	htmpl "html/template"
 	"net/http"
@@ -96,6 +97,7 @@ func (a *App) handleOSMessages(w http.ResponseWriter, r *http.Request) {
   <h1>Messages <span class="count-pill">` + intToStr(len(msgs)) + `</span></h1>
   <div class="page-actions">
     <span class="text-sm muted">` + intToStr(unread) + ` unread</span>
+    <a class="btn btn--ghost btn--sm" href="/os/api/messages/export.csv" download>Export CSV</a>
     <button type="button" class="btn btn--ghost btn--sm" data-msg-readall>Mark all read</button>
     <button type="button" class="btn btn--ghost btn--sm" data-msg-deleteread>Clear read</button>
   </div>
@@ -186,4 +188,39 @@ func (a *App) handleOSMessagesDeleteRead(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	writeJSON(w, r, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// handleOSMessagesExportCSV streams every contact message as a downloadable CSV
+// (RFC 4180 via encoding/csv, which quotes/escapes commas, quotes and newlines).
+func (a *App) handleOSMessagesExportCSV(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", `attachment; filename="contact-messages.csv"`)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+
+	cw := csv.NewWriter(w)
+	defer cw.Flush()
+	_ = cw.Write([]string{"created_at", "name", "email", "page", "ip", "read", "message"})
+	if dbpkg.DB == nil {
+		return
+	}
+	rows, err := dbpkg.DB.QueryContext(r.Context(),
+		`SELECT created_at,name,email,page,ip,is_read,message FROM contact_messages ORDER BY created_at DESC`)
+	if err != nil {
+		return
+	}
+	defer rows.Close() //nolint:errcheck
+	for rows.Next() {
+		var created time.Time
+		var name, eml, page, ip, msg string
+		var read int
+		if rows.Scan(&created, &name, &eml, &page, &ip, &read, &msg) != nil {
+			continue
+		}
+		readStr := "no"
+		if read != 0 {
+			readStr = "yes"
+		}
+		_ = cw.Write([]string{created.UTC().Format(time.RFC3339), name, eml, page, ip, readStr, msg})
+	}
+	_ = rows.Err()
 }
