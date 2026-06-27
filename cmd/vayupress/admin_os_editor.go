@@ -602,6 +602,15 @@ func osEditorBody(slug, title, blocksJSON string) string {
           <div class="pm-hint text-xs muted"><span data-pm-meta-description-count>0</span>/300 · defaults to the excerpt.</div>
         </div>
         <div class="pm-field">
+          <label class="pm-label">Search preview</label>
+          <div class="seo-snippet" data-seo-snippet aria-label="Google search result preview">
+            <div class="seo-snippet__url" data-seo-snippet-url></div>
+            <div class="seo-snippet__title" data-seo-snippet-title></div>
+            <div class="seo-snippet__desc" data-seo-snippet-desc></div>
+          </div>
+          <div class="pm-hint text-xs muted">Approximate Google result. Titles over ~60 and descriptions over ~160 characters may be truncated.</div>
+        </div>
+        <div class="pm-field">
           <label class="pm-label" for="pm-canonical">Canonical URL</label>
           <input class="pm-input" id="pm-canonical" type="url" data-pm-canonical placeholder="https://example.com/original-post">
           <div class="pm-hint text-xs muted">Set when this content was first published elsewhere.</div>

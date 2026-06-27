@@ -1604,6 +1604,27 @@
     if (pm['excerpt'] && pm['excerpt-count']) pm['excerpt-count'].textContent = String(pmVal(pm['excerpt']).length);
     if (pm['meta-title'] && pm['meta-title-count']) pm['meta-title-count'].textContent = String(pmVal(pm['meta-title']).length);
     if (pm['meta-description'] && pm['meta-description-count']) pm['meta-description-count'].textContent = String(pmVal(pm['meta-description']).length);
+    updateSeoSnippet();
+  }
+
+  // Live Google-result preview. Mirrors the renderer's fallback chain: SEO title
+  // → post title; SEO description → excerpt. URL uses the current slug.
+  var seoSnip = {
+    box: root.querySelector('[data-seo-snippet]'),
+    url: root.querySelector('[data-seo-snippet-url]'),
+    title: root.querySelector('[data-seo-snippet-title]'),
+    desc: root.querySelector('[data-seo-snippet-desc]'),
+  };
+  function clip(s, n) { s = (s || '').trim(); return s.length > n ? s.slice(0, n - 1).trim() + '…' : s; }
+  function updateSeoSnippet() {
+    if (!seoSnip.box) return;
+    var title = pmVal(pm['meta-title']).trim() || (titleEl ? titleEl.value.trim() : '') || 'Untitled post';
+    var desc = pmVal(pm['meta-description']).trim() || pmVal(pm['excerpt']).trim() || 'Add an SEO description or excerpt to control this text.';
+    var s = pmVal(pm['slug']).trim() || (slug || '');
+    var base = window.location.origin.replace(/^https?:\/\//, '');
+    seoSnip.url.textContent = base + ' › ' + (s || '…');
+    seoSnip.title.textContent = clip(title, 60);
+    seoSnip.desc.textContent = clip(desc, 160);
   }
 
   function updateFeaturePreview() {
@@ -1855,7 +1876,7 @@
   if (previewClose) previewClose.addEventListener('click', function () { previewModal.hidden = true; });
   if (historyBtn) historyBtn.addEventListener('click', openHistory);
   if (historyClose) historyClose.addEventListener('click', function () { historyModal.hidden = true; });
-  if (titleEl) titleEl.addEventListener('input', function () { updateStats(); scheduleAutosave(); });
+  if (titleEl) titleEl.addEventListener('input', function () { updateStats(); updateSeoSnippet(); scheduleAutosave(); });
   if (focusBtn) focusBtn.addEventListener('click', toggleFocus);
   if (splitBtn) splitBtn.addEventListener('click', toggleSplit);
   if (htmlBtn) htmlBtn.addEventListener('click', toggleHTML);
@@ -1905,6 +1926,7 @@
   if (pm['feature-image']) pm['feature-image'].addEventListener('input', function () { updateFeaturePreview(); scheduleAutosave(); });
   if (pm['feature-remove']) pm['feature-remove'].addEventListener('click', function () { pmSet(pm['feature-image'], ''); updateFeaturePreview(); scheduleAutosave(); });
   if (pm['slug-apply']) pm['slug-apply'].addEventListener('click', applySlug);
+  if (pm['slug']) pm['slug'].addEventListener('input', updateSeoSnippet);
   if (pm['tags-input']) {
     pm['tags-input'].addEventListener('keydown', function (e) {
       if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addTagsFromInput(); }
