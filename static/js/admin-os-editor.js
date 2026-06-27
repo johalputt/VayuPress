@@ -300,7 +300,7 @@
       }
       case 'image': {
         var url = mkInput('text', block.url || '', 'Image URL (https://…) or upload');
-        url.addEventListener('input', function () { block.url = url.value; touch(); });
+        url.addEventListener('input', function () { block.url = url.value; touch(); fillAltFromLibrary(url.value, alt, block); });
         var uprow = document.createElement('div');
         uprow.className = 'eblock__row';
         var upBtn = mkSmallBtn('⬆ Upload', function () { upFile.click(); });
@@ -310,7 +310,7 @@
         upFile.style.display = 'none';
         upFile.addEventListener('change', function () {
           if (upFile.files && upFile.files[0]) {
-            uploadInto(upFile.files[0], function (u) { block.url = u; url.value = u; touch(); });
+            uploadInto(upFile.files[0], function (u) { block.url = u; url.value = u; touch(); fillAltFromLibrary(u, alt, block); });
           }
           upFile.value = '';
         });
@@ -319,6 +319,8 @@
         uprow.appendChild(upFile);
         var alt = mkInput('text', block.alt || '', 'Alt text (described for accessibility)');
         alt.addEventListener('input', function () { block.alt = alt.value; touch(); });
+        // If the block already points at a library image with no alt, default it.
+        fillAltFromLibrary(block.url || '', alt, block);
         var cap = mkInput('text', block.caption || '', 'Caption (optional)');
         cap.addEventListener('input', function () { block.caption = cap.value; touch(); });
         var width = document.createElement('select');
@@ -709,6 +711,39 @@
         if (d && d.url) { cb(d.url); setStatus('Image uploaded', 'ok'); }
         else setStatus('Upload failed', 'danger');
       }).catch(function () { setStatus('Image upload failed', 'danger'); });
+  }
+
+  // ── Media alt-text defaults ─────────────────────────────────────────────────
+  // The Media library stores alt text per asset. When an image block points at a
+  // /media/<name> file and its alt is still blank, default it to the library's
+  // saved alt. The library listing is fetched once and cached.
+  var mediaAltMap = null;
+  function withMediaAlts(cb) {
+    if (mediaAltMap) { cb(mediaAltMap); return; }
+    fetch('/os/api/media', { headers: { 'Accept': 'application/json' } })
+      .then(function (r) { return r.ok ? r.json() : { items: [] }; })
+      .then(function (d) {
+        mediaAltMap = {};
+        ((d && d.items) || []).forEach(function (it) { if (it.alt) mediaAltMap[it.name] = it.alt; });
+        cb(mediaAltMap);
+      })
+      .catch(function () { mediaAltMap = {}; cb(mediaAltMap); });
+  }
+  function mediaNameFromURL(u) {
+    var m = /\/media\/([a-f0-9]{32}\.(?:png|jpg|gif|webp|pdf))(?:[?#]|$)/.exec(u || '');
+    return m ? m[1] : '';
+  }
+  // fillAltFromLibrary defaults a blank alt input from the saved library alt for
+  // the block's media URL. No-op if the alt already has a value.
+  function fillAltFromLibrary(urlStr, altInput, block) {
+    if (!altInput || altInput.value.trim()) return;
+    var name = mediaNameFromURL(urlStr);
+    if (!name) return;
+    withMediaAlts(function (map) {
+      if (altInput.value.trim()) return; // user may have typed meanwhile
+      var alt = map[name];
+      if (alt) { altInput.value = alt; block.alt = alt; touch(); }
+    });
   }
 
   // isLoneURL reports whether s is a single bare http(s) URL (no surrounding text).
