@@ -21,6 +21,25 @@
 > _Own your content. Own your communication. Own your infrastructure._
 > Publishing is the core identity, **VayuMail** the native sovereignty layer, **VayuPGP** the native privacy layer, and **VayuOS** the native control layer — all in a single Go binary, single process, single config.
 
+## What's New in v1.16.0
+
+> Full notes in [`CHANGELOG.md`](CHANGELOG.md)
+
+**A complete Newsletter console — the *Newsletter* tab now opens a real dashboard.**
+
+- **Audience health at a glance** — total / active / pending double-opt-in /
+  unsubscribed counts, 30-day new signups, a confirmation rate, and a
+  dependency-free growth sparkline.
+- **Subscriber management** — searchable table with status-segment tabs,
+  per-row delete (GDPR / spam cleanup), and one-click CSV export.
+- **Broadcast composer** — subject + plain text + optional HTML, a **send-test**
+  action, and a one-click send to every confirmed subscriber (with an automatic
+  unsubscribe link on every message).
+- **Persisted broadcast history** — every send is recorded with its audience
+  size and sent/failed tallies for real delivery insight.
+- **SMTP-aware** — the console clearly flags when SMTP isn't configured and
+  guards the send actions accordingly.
+
 ## What's New in v1.15.0
 
 > Full notes in [`CHANGELOG.md`](CHANGELOG.md)
@@ -786,7 +805,10 @@ See [docs/architecture/system-modes.md](docs/architecture/system-modes.md).
 - **Sovereign email & newsletter** — plain-SMTP delivery on the Go standard
   library (no third-party SDKs, no hosted senders), double opt-in confirmations,
   and one-click broadcasts with auto unsubscribe links; a safe no-op until
-  `SMTP_HOST` is set
+  `SMTP_HOST` is set. A full **Newsletter console** (`/os/newsletter`) adds
+  audience-health stats, a growth sparkline, a searchable subscriber table with
+  CSV export and delete, a broadcast composer with send-test, and a persisted
+  broadcast delivery history
 - **Automatic image optimization** — stdlib-only (no libvips/CGO) downscaling of
   oversized PNG/JPEG editor uploads with area-averaging resampling; GIF/WebP pass
   through untouched
@@ -972,6 +994,11 @@ trusted, and the strict CSP stays intact:
 | `GET` | `/api/v1/admin/search/drift` | Search-index vs article-store drift report |
 | `POST` | `/admin/search/reindex` | Rebuild the search index from the store (CSRF-protected) |
 | `POST` | `/api/v1/admin/newsletter/broadcast` | Email all confirmed subscribers (CSRF-protected) |
+| `GET` | `/os/api/newsletter/stats` | Newsletter audience stats + 30-day growth (session) |
+| `GET` | `/os/api/newsletter/export.csv` | Export all subscribers as CSV (session) |
+| `DELETE` | `/os/api/newsletter/subscribers/{id}` | Delete a subscriber (CSRF-protected) |
+| `POST` | `/os/api/newsletter/test` | Send a test broadcast to one address (CSRF-protected) |
+| `POST` | `/os/api/newsletter/broadcast` | Send a tracked broadcast to all confirmed subscribers (CSRF-protected) |
 | `GET` | `/api/v1/admin/schedule` | List staged scheduled posts |
 | `POST` | `/api/v1/admin/schedule` | Stage a future-dated post (CSRF-protected) |
 | `DELETE` | `/api/v1/admin/schedule/{id}` | Cancel a scheduled post (CSRF-protected) |

@@ -66,6 +66,7 @@
 | [ADR-0084](ADR-0084-vayumail-outbound-deliverability.md) | VayuMail Outbound Deliverability — Vetted DKIM Signing + Well-Formed MIME | Accepted | VayuOS | 2026-06-25 |
 | [ADR-0085](ADR-0085-vayumail-outbound-smarthost-relay.md) | VayuMail Optional Outbound Smarthost Relay | Accepted | VayuOS | 2026-06-25 |
 | [ADR-0086](ADR-0086-theme-whole-site-design.md) | Themes Restyle the Whole Public Site via Real Markup | Accepted | Core | 2026-06-26 |
+| [ADR-0088](ADR-0088-newsletter-console.md) | Newsletter Console — Operator Page, Subscriber Management & Tracked Broadcasts | Accepted | Core | 2026-06-26 |
 
 ---
 
