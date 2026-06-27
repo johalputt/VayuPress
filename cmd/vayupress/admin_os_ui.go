@@ -201,6 +201,18 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.Get("/os/api/tools", a.handleOSToolsList)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/tools/toggle", a.handleOSToolToggle)
 
+		// Monetization — payment order ledger + gateway config, and the
+		// activation-gated advertising surface.
+		pr.Get("/os/monetization", a.handleOSMonetization)
+		pr.Get("/os/api/orders", a.handleOSOrdersList)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/orders/{id}/paid", a.handleOSOrderMarkPaid)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/orders/{id}/cancel", a.handleOSOrderCancel)
+		pr.Get("/os/ads", a.handleOSAds)
+		pr.Get("/os/api/ads", a.handleOSAdsList)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/ads", a.handleOSAdCreate)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/ads/{id}/toggle", a.handleOSAdToggle)
+		pr.With(auth.CSRFTokenMiddleware).Delete("/os/api/ads/{id}", a.handleOSAdDelete)
+
 		// Update & Backup — one-click signature-verified self-update plus full
 		// site (database + settings) export/import. Writes are CSRF-protected and
 		// admin-role gated inside each handler; export/import lift the server
@@ -382,6 +394,8 @@ var (
 	iconReplay     = svgIcon("M4 10a6 6 0 116 6m-6-6l-2-2m2 2l2-2m-2 8v-2")
 	iconFaults     = svgIcon("M10 2l8 14H2L10 2zm0 5v4m0 3h.01")
 	iconADR        = svgIcon("M5 3h7l3 3v11H5V3zm7 0v3h3M7 9h6m-6 3h6m-6 3h4")
+	iconMoney      = svgIcon("M10 2v16M6.5 6.5h5a2 2 0 010 4h-3a2 2 0 000 4h5")
+	iconAds        = svgIcon("M3 5h14v8H3V5zm2 11h6M6 8h6m-6 2.5h4")
 )
 
 // renderTrustedHTML emits a pre-constructed, server-side HTML fragment verbatim.
@@ -467,6 +481,10 @@ func adminOSShellHead(nonce, title, active string, settings *osSettings) string 
     ` + navItem("/os/members", "Members", "members", active, iconMembers) + `
     ` + navItem("/os/newsletter", "Newsletter", "newsletter", active, iconNewsletter) + `
     ` + navItem("/os/profile", "My Profile", "profile", active, iconMembers) + `
+
+    <div class="sidebar-section-label">Monetization</div>
+    ` + navItem("/os/monetization", "Monetization", "monetization", active, iconMoney) + `
+    ` + navItem("/os/ads", "Advertising", "ads", active, iconAds) + `
 
     <div class="sidebar-section-label">Optimize</div>
     ` + navItem("/os/seo", "SEO", "seo", active, iconSEO) + `

@@ -414,3 +414,9 @@
 .au-social:hover { border-color: var(--su-accent); color: var(--su-accent-2); }
 
 .au-foot { margin: .5rem 0 0; font-size: .85rem; }
+
+
+/* ── Checkout (direct/offline payment) ──────────────────────────────────── */
+.co-instructions{white-space:pre-wrap;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.9rem;background:var(--su-surface,#0f172a);border:1px solid var(--su-border,rgba(125,125,125,.25));border-radius:10px;padding:1rem;margin:.75rem 0}
+.co-reference{font-size:1.4rem;text-align:center;margin:.5rem 0 1rem}
+.co-reference code{padding:.35rem .75rem;border-radius:8px;background:var(--su-surface,#0f172a);border:1px dashed var(--su-accent,#f59e0b);letter-spacing:.1em}

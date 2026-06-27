@@ -68,6 +68,21 @@ func TestThemeEditorCoversSettingsAllowlist(t *testing.T) {
 		// Author bio is edited in the Theme Studio Article-pages group
 		// (POST /os/api/settings), not the legacy theme editor.
 		settings.KeyAuthorBio: true,
+		// Monetization + advertising feature flags are toggled through the
+		// Tools & Plugins panel (POST /os/api/tools/toggle), and their config
+		// keys are edited in the VayuOS Monetization (/os/monetization) and
+		// Advertising (/os/ads) consoles (POST /os/api/settings) — not the
+		// legacy theme editor.
+		settings.KeyFeaturePayments:       true,
+		settings.KeyFeatureAds:            true,
+		settings.KeyFeatureGoogleAds:      true,
+		settings.KeyFeatureAffiliate:      true,
+		settings.KeyFeatureSponsors:       true,
+		settings.KeyPayDirectInstructions: true,
+		settings.KeyPayCurrency:           true,
+		settings.KeyPaySupportEmail:       true,
+		settings.KeyAdsenseClient:         true,
+		settings.KeyAffiliateDisclosure:   true,
 	}
 	page := themeEditorPage(map[string]string{}, "NORMAL", "test-nonce", "")
 	for key := range settings.AllKeys {

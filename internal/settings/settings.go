@@ -87,6 +87,40 @@ const (
 	KeyFeatureComments    = "feature.comments"    // public comment submission
 	KeyFeatureNewsletter  = "feature.newsletter"  // public newsletter subscribe
 	KeyFeatureWebmentions = "feature.webmentions" // inbound webmention receiver
+
+	// Monetization feature flags. Unlike the engagement flags above these
+	// default OFF: a site only starts taking payments or showing advertising
+	// once the operator explicitly switches the module on from Tools & Plugins,
+	// so a fresh install never surprises readers with a checkout or an advert.
+	KeyFeaturePayments  = "feature.payments"  // accept subscription payments (checkout)
+	KeyFeatureAds       = "feature.ads"       // render ad slots on public pages
+	KeyFeatureGoogleAds = "feature.googleads" // serve Google AdSense units in ad slots
+	KeyFeatureAffiliate = "feature.affiliate" // show the affiliate-disclosure banner
+	KeyFeatureSponsors  = "feature.sponsors"  // show the sponsor banner slot
+
+	// Monetization configuration (non-toggle settings).
+	//
+	// KeyPayDirectInstructions is the operator-authored payment instructions
+	// shown to a reader on the checkout page for the built-in direct/offline
+	// gateway (e.g. bank transfer details, a UPI id, a PayPal.me link). Plain
+	// multi-line text; rendered escaped.
+	KeyPayDirectInstructions = "monetization.direct_instructions"
+	// KeyPayCurrency is the ISO-4217 currency the checkout charges in (display
+	// + order records). Defaults to USD.
+	KeyPayCurrency = "monetization.currency"
+	// KeyPaySupportEmail is the reply-to address printed on payment emails and
+	// the checkout page so payers can reach a human. Falls back to SMTP From.
+	KeyPaySupportEmail = "monetization.support_email"
+
+	// Advertising configuration.
+	//
+	// KeyAdsenseClient is the Google AdSense publisher id ("ca-pub-…"); when set
+	// and the Google Ads module is on, ad slots of type "adsense" render real
+	// AdSense units and the page CSP is widened to admit Google's ad origins.
+	KeyAdsenseClient = "ads.adsense_client"
+	// KeyAffiliateDisclosure is the short disclosure text shown above content
+	// when the affiliate module is enabled (FTC-style "contains affiliate links").
+	KeyAffiliateDisclosure = "ads.affiliate_disclosure"
 )
 
 // FeatureKeys is the set of operator-toggleable feature flags. Each maps to a
@@ -95,6 +129,11 @@ var FeatureKeys = map[string]bool{
 	KeyFeatureComments:    true,
 	KeyFeatureNewsletter:  true,
 	KeyFeatureWebmentions: true,
+	KeyFeaturePayments:    true,
+	KeyFeatureAds:         true,
+	KeyFeatureGoogleAds:   true,
+	KeyFeatureAffiliate:   true,
+	KeyFeatureSponsors:    true,
 }
 
 // FeatureEnabled reports whether an operator-toggleable feature is on. An unset
@@ -115,63 +154,83 @@ var RobotsOptions = map[string]bool{
 
 // AllKeys is the canonical set of settings keys accepted by Set/SetMany.
 var AllKeys = map[string]bool{
-	KeySiteName:           true,
-	KeySiteTagline:        true,
-	KeySiteDescription:    true,
-	KeySiteAuthor:         true,
-	KeyMembershipButtons:  true,
-	KeyThemePrimaryLight:  true,
-	KeyThemePrimaryDark:   true,
-	KeyThemeAccentLight:   true,
-	KeyThemeAccentDark:    true,
-	KeyThemeCustomCSS:     true,
-	KeyHeadKeywords:       true,
-	KeyHeadThemeColor:     true,
-	KeyHeadRobots:         true,
-	KeyHeadVerifyGoogle:   true,
-	KeyHeadVerifyBing:     true,
-	KeyBrandFavicon:       true,
-	KeyBrandFaviconType:   true,
-	KeyThemeHeroImage:     true,
-	KeyThemeHeroImageType: true,
-	KeyThemeOGImage:       true,
-	KeyThemeOGImageType:   true,
-	KeyHomeHero:           true,
-	KeyAuthorBio:          true,
-	KeyNavItems:           true,
-	KeyFooterConfig:       true,
-	KeyFeatureComments:    true,
-	KeyFeatureNewsletter:  true,
-	KeyFeatureWebmentions: true,
+	KeySiteName:              true,
+	KeySiteTagline:           true,
+	KeySiteDescription:       true,
+	KeySiteAuthor:            true,
+	KeyMembershipButtons:     true,
+	KeyThemePrimaryLight:     true,
+	KeyThemePrimaryDark:      true,
+	KeyThemeAccentLight:      true,
+	KeyThemeAccentDark:       true,
+	KeyThemeCustomCSS:        true,
+	KeyHeadKeywords:          true,
+	KeyHeadThemeColor:        true,
+	KeyHeadRobots:            true,
+	KeyHeadVerifyGoogle:      true,
+	KeyHeadVerifyBing:        true,
+	KeyBrandFavicon:          true,
+	KeyBrandFaviconType:      true,
+	KeyThemeHeroImage:        true,
+	KeyThemeHeroImageType:    true,
+	KeyThemeOGImage:          true,
+	KeyThemeOGImageType:      true,
+	KeyHomeHero:              true,
+	KeyAuthorBio:             true,
+	KeyNavItems:              true,
+	KeyFooterConfig:          true,
+	KeyFeatureComments:       true,
+	KeyFeatureNewsletter:     true,
+	KeyFeatureWebmentions:    true,
+	KeyFeaturePayments:       true,
+	KeyFeatureAds:            true,
+	KeyFeatureGoogleAds:      true,
+	KeyFeatureAffiliate:      true,
+	KeyFeatureSponsors:       true,
+	KeyPayDirectInstructions: true,
+	KeyPayCurrency:           true,
+	KeyPaySupportEmail:       true,
+	KeyAdsenseClient:         true,
+	KeyAffiliateDisclosure:   true,
 }
 
 // Defaults are returned when no DB value exists for a key.
 var Defaults = map[string]string{
-	KeySiteName:           "VayuPress",
-	KeySiteTagline:        "Publishing as an adaptive runtime.",
-	KeySiteDescription:    "Durable by design, observable end to end.",
-	KeySiteAuthor:         "Ankush Choudhary Johal",
-	KeyThemePrimaryLight:  "#0f766e", // teal-700 — clears WCAG AA on the light bg
-	KeyThemePrimaryDark:   "#2dd4bf",
-	KeyThemeAccentLight:   "#f59e0b",
-	KeyThemeAccentDark:    "#fbbf24",
-	KeyThemeCustomCSS:     "",
-	KeyHeadKeywords:       "",
-	KeyHeadThemeColor:     "",
-	KeyHeadRobots:         "",
-	KeyHeadVerifyGoogle:   "",
-	KeyHeadVerifyBing:     "",
-	KeyBrandFavicon:       "",
-	KeyBrandFaviconType:   "",
-	KeyThemeHeroImage:     "",
-	KeyThemeHeroImageType: "",
-	KeyThemeOGImage:       "",
-	KeyThemeOGImageType:   "",
-	KeyHomeHero:           "",
-	KeyAuthorBio:          "",
-	KeyFeatureComments:    "on",
-	KeyFeatureNewsletter:  "on",
-	KeyFeatureWebmentions: "on",
+	KeySiteName:              "VayuPress",
+	KeySiteTagline:           "Publishing as an adaptive runtime.",
+	KeySiteDescription:       "Durable by design, observable end to end.",
+	KeySiteAuthor:            "Ankush Choudhary Johal",
+	KeyThemePrimaryLight:     "#0f766e", // teal-700 — clears WCAG AA on the light bg
+	KeyThemePrimaryDark:      "#2dd4bf",
+	KeyThemeAccentLight:      "#f59e0b",
+	KeyThemeAccentDark:       "#fbbf24",
+	KeyThemeCustomCSS:        "",
+	KeyHeadKeywords:          "",
+	KeyHeadThemeColor:        "",
+	KeyHeadRobots:            "",
+	KeyHeadVerifyGoogle:      "",
+	KeyHeadVerifyBing:        "",
+	KeyBrandFavicon:          "",
+	KeyBrandFaviconType:      "",
+	KeyThemeHeroImage:        "",
+	KeyThemeHeroImageType:    "",
+	KeyThemeOGImage:          "",
+	KeyThemeOGImageType:      "",
+	KeyHomeHero:              "",
+	KeyAuthorBio:             "",
+	KeyFeatureComments:       "on",
+	KeyFeatureNewsletter:     "on",
+	KeyFeatureWebmentions:    "on",
+	KeyFeaturePayments:       "off",
+	KeyFeatureAds:            "off",
+	KeyFeatureGoogleAds:      "off",
+	KeyFeatureAffiliate:      "off",
+	KeyFeatureSponsors:       "off",
+	KeyPayDirectInstructions: "",
+	KeyPayCurrency:           "USD",
+	KeyPaySupportEmail:       "",
+	KeyAdsenseClient:         "",
+	KeyAffiliateDisclosure:   "This post may contain affiliate links. We may earn a commission at no extra cost to you.",
 }
 
 // Store is a thread-safe settings store with an in-process read cache.

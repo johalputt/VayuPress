@@ -179,6 +179,13 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	// Stripe webhook for paid upgrades — verified by signature, not API key.
 	r.Post("/api/v1/stripe/webhook", a.handleStripeWebhook)
 
+	// Monetization — public checkout (built-in direct gateway) and the generic
+	// signed webhook any connected third-party payment processor can call. Both
+	// are no-ops until the Payments module is enabled / a gateway is configured.
+	r.Get("/checkout", a.handleCheckoutPage)
+	r.Post("/checkout", a.handleCheckoutPage)
+	r.Post("/api/v1/payments/webhook/{gateway}", a.handlePaymentWebhook)
+
 	// Protected admin + write API
 	r.Group(func(r chi.Router) {
 		r.Use(auth.RequireAPIKey, auth.RateLimitMiddleware)

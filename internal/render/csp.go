@@ -72,6 +72,68 @@ func validFrameOrigins(in []string) []string {
 // AllowedFrameOrigin reports whether origin is one of the vetted privacy origins.
 func AllowedFrameOrigin(origin string) bool { return allowedFrameOrigins[origin] }
 
+// ── Advertising network CSP (Google AdSense) ──────────────────────────────────
+//
+// Advertising via Google AdSense requires loading scripts and frames from a
+// fixed set of Google ad origins, which the strict baseline deliberately
+// forbids. BuildAdCSP returns a policy that admits ONLY those vetted origins,
+// in addition to any allowlisted video-embed frame origins. It is applied per
+// page, and only on pages that actually render an AdSense unit (the Google Ads
+// module is opt-in), so the baseline for every other page is untouched.
+
+// adScriptOrigins are the origins AdSense loads executable code from.
+var adScriptOrigins = []string{
+	"https://pagead2.googlesyndication.com",
+	"https://partner.googleadservices.com",
+	"https://tpc.googlesyndication.com",
+	"https://www.googletagservices.com",
+}
+
+// adFrameOrigins are the origins AdSense renders ad iframes from.
+var adFrameOrigins = []string{
+	"https://googleads.g.doubleclick.net",
+	"https://tpc.googlesyndication.com",
+	"https://www.google.com",
+}
+
+// adImgConnectOrigins are origins AdSense fetches images/beacons from.
+var adImgConnectOrigins = []string{
+	"https://pagead2.googlesyndication.com",
+	"https://googleads.g.doubleclick.net",
+	"https://tpc.googlesyndication.com",
+	"https://www.google.com",
+}
+
+// BuildAdCSP returns a Content-Security-Policy for a page that renders Google
+// AdSense, widening script-src, frame-src, img-src and connect-src to exactly
+// the vetted Google ad origins (and merging in any allowlisted video-embed
+// frame origins). 'self' and the per-request nonce are always preserved.
+func BuildAdCSP(nonce string, frameOrigins []string) string {
+	scriptSrc := "script-src 'self' 'nonce-" + nonce + "' " + strings.Join(adScriptOrigins, " ")
+	imgSrc := "img-src 'self' data: " + strings.Join(adImgConnectOrigins, " ")
+	connectSrc := "connect-src 'self' " + strings.Join(adImgConnectOrigins, " ")
+	frames := append([]string{}, adFrameOrigins...)
+	frames = append(frames, validFrameOrigins(frameOrigins)...)
+	frameSrc := "frame-src 'self' " + strings.Join(dedupeSorted(frames), " ")
+	return "default-src 'self'; font-src 'self'; style-src 'self'; " +
+		scriptSrc + "; " + imgSrc + "; " + connectSrc + "; " + frameSrc + "; " +
+		"frame-ancestors 'none'; base-uri 'self'; form-action 'self'; report-uri /csp-report"
+}
+
+// dedupeSorted returns the input de-duplicated and sorted (stable output).
+func dedupeSorted(in []string) []string {
+	seen := make(map[string]bool, len(in))
+	var out []string
+	for _, v := range in {
+		if v != "" && !seen[v] {
+			seen[v] = true
+			out = append(out, v)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
 // videoIDRe constrains a provider video id to a safe character set so a crafted
 // id can never break out of the constructed embed URL.
 var videoIDRe = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)

@@ -112,6 +112,36 @@ func (a *App) toolRegistry() []toolModule {
 			Desc:  "Signed event delivery to external endpoints with retries.",
 			ready: func(a *App) bool { return a.webhooks != nil },
 		},
+		{
+			ID: "payments", Name: "Payments & subscriptions", Category: "Monetization", Icon: "💳",
+			Desc:    "Accept paid memberships via a built-in direct gateway or any connected processor — with emailed receipts.",
+			FlagKey: settings.KeyFeaturePayments,
+			ready:   func(a *App) bool { return a.payments != nil && a.members != nil },
+		},
+		{
+			ID: "ads", Name: "Advertising", Category: "Monetization", Icon: "📣",
+			Desc:    "Show operator-managed ad slots on your posts — header, in-article, sidebar, or footer. Off until you enable it.",
+			FlagKey: settings.KeyFeatureAds,
+			ready:   func(a *App) bool { return a.ads != nil },
+		},
+		{
+			ID: "googleads", Name: "Google AdSense", Category: "Monetization", Icon: "🟢",
+			Desc:    "Optional: serve Google AdSense units in your ad slots. Requires a publisher id set in the Ads console.",
+			FlagKey: settings.KeyFeatureGoogleAds,
+			ready:   func(a *App) bool { return a.adsenseConfigured() },
+		},
+		{
+			ID: "affiliate", Name: "Affiliate disclosure", Category: "Monetization", Icon: "🔖",
+			Desc:    "Show an FTC-style affiliate-links disclosure banner above your posts. Edit the text in the Ads console.",
+			FlagKey: settings.KeyFeatureAffiliate,
+			ready:   func(a *App) bool { return a.siteSettings != nil },
+		},
+		{
+			ID: "sponsors", Name: "Sponsor banner", Category: "Monetization", Icon: "🤝",
+			Desc:    "Promote a sponsor using a dedicated header ad slot. Pairs with the Advertising module's sponsor placement.",
+			FlagKey: settings.KeyFeatureSponsors,
+			ready:   func(a *App) bool { return a.ads != nil },
+		},
 	}
 }
 
@@ -319,5 +349,8 @@ func (a *App) handleOSToolToggle(w http.ResponseWriter, r *http.Request) {
 	// Audit the operator action — toggling a public-facing feature is
 	// security-relevant, so leave a trail in the structured log.
 	logging.LogInfo("tools", "feature "+body.ID+" set to "+val)
+	// Toggling a public surface (ads, comments, payments…) can change the markup
+	// of every cached page, so drop the rendered cache to apply it immediately.
+	render.CachePurgeAll()
 	writeJSON(w, r, http.StatusOK, map[string]interface{}{"id": body.ID, "enabled": body.Enabled})
 }

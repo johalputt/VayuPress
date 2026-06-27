@@ -25,6 +25,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/microcosm-cc/bluemonday"
 
+	"github.com/johalputt/vayupress/internal/ads"
 	"github.com/johalputt/vayupress/internal/aiassist"
 	"github.com/johalputt/vayupress/internal/analytics"
 	"github.com/johalputt/vayupress/internal/api"
@@ -49,6 +50,7 @@ import (
 	"github.com/johalputt/vayupress/internal/mode"
 	"github.com/johalputt/vayupress/internal/newsletter"
 	"github.com/johalputt/vayupress/internal/outbox"
+	"github.com/johalputt/vayupress/internal/payments"
 	"github.com/johalputt/vayupress/internal/plugins"
 	"github.com/johalputt/vayupress/internal/policy"
 	"github.com/johalputt/vayupress/internal/preview"
@@ -434,6 +436,11 @@ func main() {
 
 	// Reader memberships & paywalls (Tier 2).
 	a.members = members.New(dbpkg.DB)
+	// Monetization (Tier 5): order ledger + advertising slots. Stores are always
+	// wired; the public surfaces stay dark until the operator enables the
+	// feature flags (feature.payments / feature.ads) in Tools & Plugins.
+	a.payments = payments.New(dbpkg.DB)
+	a.ads = ads.New(dbpkg.DB)
 	go func() {
 		ticker := time.NewTicker(1 * time.Hour)
 		defer ticker.Stop()

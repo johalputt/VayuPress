@@ -8,6 +8,65 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Added
+
+- **Monetization — a sovereign system for getting paid, with optional
+  advertising.** A new **Monetization** section in VayuOS (sidebar + command
+  palette) turns VayuPress into a complete earning platform without surrendering
+  the single-binary, zero-third-party-SDK posture. Everything is off by default
+  and only acts once the operator switches the relevant module on in *Tools &
+  Plugins*. See ADR-0090 (payments) and ADR-0091 (advertising).
+- **Payments & subscriptions — collect money with no embedded gateway.** A built
+  -in **direct / offline gateway** is the dependency-free way to get paid: the
+  operator publishes payment instructions (bank transfer, UPI, a payment link —
+  anything), the reader checks out and receives a short, quotable order
+  reference, pays out of band, and the operator confirms receipt with one click
+  in the **Monetization** console. Confirmation upgrades the member to the
+  chosen tier, records the subscription at its true cadence/amount, and emails
+  the payer a receipt — all idempotently. A new sovereign **order ledger**
+  (`payment_orders`) is the single source of truth for every checkout.
+- **Connect any third-party processor by signed webhook.** A generic, gateway
+  -agnostic webhook (`POST /api/v1/payments/webhook/{gateway}`) lets any external
+  payment processor confirm an order with a signature-verified event
+  (`X-VayuPress-Signature`, HMAC-SHA256). No card data ever touches the server
+  and no payment SDK is linked — the same pattern as the existing Stripe webhook,
+  generalised so no provider is special-cased.
+- **Confirmation emails to the payer.** Two new operator-customisable
+  transactional templates — *payment pending* (instructions + reference at
+  checkout) and *payment confirmed* (receipt on fulfilment) — are sent through
+  the existing sovereign SMTP sender, with safe built-in defaults.
+- **Public checkout page.** A clean, JavaScript-free `/checkout` flow (so it
+  satisfies the strict CSP and works for signed-out readers) collects the
+  payer's details, opens the order, and shows the payment instructions +
+  reference. The public pricing page's paid plans now link straight to it when
+  Payments is enabled.
+- **Advertising — operator-managed ad slots that only render when activated.** A
+  new **Advertising** console manages ad *slots* targeting page placements
+  (header, above/below the post, sidebar, footer) with three creative kinds:
+  same-origin **image + link** house ads, sanitised **HTML** creatives, and
+  **Google AdSense** units. Nothing renders until the **Advertising** module is
+  on *and* the individual slot is enabled, so a fresh install never shows an
+  advert unexpectedly.
+- **Google AdSense as an optional integration.** Surfaced as a toggleable module
+  in *Tools & Plugins*; set your publisher id in the Advertising console and add
+  slots of kind *AdSense*. Pages that actually render an AdSense unit
+  automatically widen **only that page's** Content-Security-Policy to admit the
+  vetted Google ad origins — every other page keeps the strict baseline.
+- **More monetization modules in Tools & Plugins.** *Affiliate disclosure* (an
+  FTC-style banner shown above posts) and a *Sponsor banner* placement join
+  Payments, Advertising and Google AdSense under a new **Monetization** category
+  in the plugin panel, each independently toggleable.
+
+### Security
+
+- All monetization writes are CSRF-protected and admin-gated; the connected
+  -gateway webhook is verified with a constant-time HMAC-SHA256 comparison and
+  its signing secret is stored encrypted at rest (AES-256-GCM) in the existing
+  credential store. Ad image/link URLs are scheme-validated (same-origin or
+  http(s) only) and HTML creatives are sanitised before emit, so a crafted
+  creative can never inject script. Order fulfilment is idempotent, so a
+  duplicate confirmation or replayed webhook never upgrades or emails twice.
+
 ## [1.18.0] — 2026-06-26
 
 ### Added

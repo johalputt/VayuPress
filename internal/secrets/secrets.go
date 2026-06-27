@@ -48,16 +48,27 @@ const (
 	ProviderN8N        = "n8n"
 	ProviderOllama     = "ollama"
 	ProviderOpenRouter = "openrouter"
-	ProviderCustom     = "custom"
+	// ProviderGoogleAds stores the Google AdSense account credential. The
+	// publisher id ("ca-pub-…") is held in site settings (it is not secret);
+	// this credential slot carries any private API token used for reporting and
+	// gates the integration's "configured" state.
+	ProviderGoogleAds = "googleads"
+	// ProviderPaymentGateway stores the shared signing secret for the generic
+	// third-party payment webhook (HMAC-SHA256 over the raw body). This lets any
+	// external processor confirm an order without an embedded payment SDK.
+	ProviderPaymentGateway = "payment_gateway"
+	ProviderCustom         = "custom"
 )
 
 // KnownProviders is the allowlist of provider slugs accepted on write.
 var KnownProviders = map[string]bool{
-	ProviderIndexNow:   true,
-	ProviderN8N:        true,
-	ProviderOllama:     true,
-	ProviderOpenRouter: true,
-	ProviderCustom:     true,
+	ProviderIndexNow:       true,
+	ProviderN8N:            true,
+	ProviderOllama:         true,
+	ProviderOpenRouter:     true,
+	ProviderGoogleAds:      true,
+	ProviderPaymentGateway: true,
+	ProviderCustom:         true,
 }
 
 // kekCheckPlain is sealed under the KEK so a wrong/changed VAYU_SECRET is
