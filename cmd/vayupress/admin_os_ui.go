@@ -377,14 +377,37 @@ func assetVer(rel string) string {
 
 // navItem builds a sidebar nav link with an inline SVG icon.
 func navItem(href, label, key, active, iconSVG string) string {
+	return navItemBadge(href, label, key, active, iconSVG, 0)
+}
+
+// navItemBadge is navItem with an optional unread-count pill. A count <= 0
+// renders no badge; counts over 99 cap at "99+" so the pill stays compact.
+func navItemBadge(href, label, key, active, iconSVG string, count int) string {
 	cls := "nav-link"
 	if key == active {
 		cls += " active"
 	}
+	badge := ""
+	if count > 0 {
+		txt := intToStr(count)
+		if count > 99 {
+			txt = "99+"
+		}
+		badge = `<span class="nav-badge" aria-label="` + txt + ` unread">` + txt + `</span>`
+	}
 	return `<a class="` + cls + `" href="` + href + `">` +
 		iconSVG +
 		html.EscapeString(label) +
+		badge +
 		`</a>`
+}
+
+// osUnread safely reads the unread-message count for the sidebar badge.
+func osUnread(s *osSettings) int {
+	if s == nil {
+		return 0
+	}
+	return s.UnreadMessages
 }
 
 // svgIcon returns a minimal inline SVG for the sidebar.
@@ -500,7 +523,7 @@ func adminOSShellHead(nonce, title, active string, settings *osSettings) string 
     ` + navItem("/os/posts", "Posts", "posts", active, iconPosts) + `
     ` + navItem("/os/comments", "Comments", "comments", active, iconComments) + `
     ` + navItem("/os/pages", "Pages", "pages", active, iconPages) + `
-    ` + navItem("/os/messages", "Messages", "messages", active, iconMessages) + `
+    ` + navItemBadge("/os/messages", "Messages", "messages", active, iconMessages, osUnread(settings)) + `
     ` + navItem("/os/editor", "New Post", "editor", active, iconNewPost) + `
     ` + navItem("/os/media", "Media", "media", active, iconMedia) + `
 
@@ -640,6 +663,8 @@ type osSettings struct {
 	UserName   string
 	UserRole   string
 	UserAvatar string
+	// UnreadMessages drives the sidebar badge on the Messages item.
+	UnreadMessages int
 }
 
 // getOSSettings loads settings needed for layout rendering.
@@ -648,6 +673,11 @@ func (a *App) getOSSettings(ctx context.Context) *osSettings {
 	if a.siteSettings != nil {
 		s.SiteName = a.siteSettings.Get(ctx, settings.KeySiteName)
 		s.AdminTheme = a.siteSettings.Get(ctx, "admin.theme")
+	}
+	// Unread contact messages drive the sidebar badge. Best-effort: any error
+	// (nil DB / missing table on a pre-046 schema) just leaves the badge off.
+	if dbpkg.DB != nil {
+		_ = dbpkg.DB.QueryRowContext(ctx, `SELECT COUNT(1) FROM contact_messages WHERE is_read=0`).Scan(&s.UnreadMessages)
 	}
 	// Surface the authenticated user (if any) so the shell can show their
 	// avatar/name/role. The user is attached to the context by
