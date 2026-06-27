@@ -91,4 +91,52 @@
         .catch(function (e) { t.disabled = false; setText(navStatus, 'Network error: ' + e); });
     });
   });
+
+  // ── Footer toggles ───────────────────────────────────────────────────────────
+  // Footer pages live in the footer config's "legal" bottom-bar links (where
+  // About / Privacy / Terms belong). We read the whole footer object, edit just
+  // the legal array, and POST it back through the shared settings endpoint.
+  var footerCfg = {};
+  if (seedEl) {
+    try { footerCfg = JSON.parse(seedEl.getAttribute('data-footer') || '{}') || {}; }
+    catch (_) { footerCfg = {}; }
+  }
+  if (typeof footerCfg !== 'object' || footerCfg === null) footerCfg = {};
+  if (!Array.isArray(footerCfg.legal)) footerCfg.legal = [];
+
+  var footerToggles = Array.prototype.slice.call(document.querySelectorAll('[data-page-footer]'));
+  footerToggles.forEach(function (t) {
+    var href = t.getAttribute('data-href');
+    t.checked = footerCfg.legal.some(function (it) { return it && it.href === href; });
+  });
+
+  function saveFooter() {
+    return fetch('/os/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf() },
+      body: JSON.stringify({ key: 'footer.config', value: JSON.stringify(footerCfg) }),
+    });
+  }
+
+  footerToggles.forEach(function (t) {
+    t.addEventListener('change', function () {
+      var href = t.getAttribute('data-href');
+      var label = t.getAttribute('data-label') || href;
+      if (t.checked) {
+        if (!footerCfg.legal.some(function (it) { return it && it.href === href; })) {
+          footerCfg.legal.push({ label: label, href: href });
+        }
+      } else {
+        footerCfg.legal = footerCfg.legal.filter(function (it) { return !(it && it.href === href); });
+      }
+      t.disabled = true;
+      setText(navStatus, 'Saving footer…');
+      saveFooter()
+        .then(function (r) {
+          t.disabled = false;
+          setText(navStatus, r.ok ? 'Footer updated' : 'Could not update footer');
+        })
+        .catch(function (e) { t.disabled = false; setText(navStatus, 'Network error: ' + e); });
+    });
+  });
 })();

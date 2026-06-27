@@ -1867,6 +1867,29 @@
   // Post settings panel wiring.
   hydrateSettings();
   if (settingsBtn) settingsBtn.addEventListener('click', toggleSettings);
+
+  // "＋ Page" — create a fresh standalone page and jump straight into it. Uses
+  // the same quick-create endpoint the Pages manager uses (server flags is_page).
+  var newPageBtn = root.querySelector('[data-editor-newpage]');
+  if (newPageBtn) {
+    newPageBtn.addEventListener('click', function () {
+      var title = (window.prompt('New page title', 'Untitled page') || '').trim();
+      if (!title) return;
+      newPageBtn.disabled = true;
+      fetch('/os/api/pages/quick-create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
+        body: JSON.stringify({ title: title }),
+      })
+        .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+        .then(function (res) {
+          if (res.ok && res.d.slug) { window.location.href = '/os/editor/' + res.d.slug; }
+          else { newPageBtn.disabled = false; window.alert((res.d && (res.d.detail || res.d.title)) || 'Could not create page'); }
+        })
+        .catch(function () { newPageBtn.disabled = false; window.alert('Network error'); });
+    });
+  }
+
   if (settingsClose) settingsClose.addEventListener('click', closeSettings);
   if (settingsBackdrop) settingsBackdrop.addEventListener('click', closeSettings);
   document.addEventListener('keydown', function (e) {

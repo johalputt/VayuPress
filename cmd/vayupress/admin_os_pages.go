@@ -42,9 +42,10 @@ func (a *App) handleOSPages(w http.ResponseWriter, r *http.Request) {
 		http.SetCookie(w, &http.Cookie{Name: "vp_csrf", Value: token, Path: "/", SameSite: http.SameSiteStrictMode, HttpOnly: false, Secure: csrfCookieSecure(), MaxAge: 3600})
 	}
 
-	navJSON := ""
+	navJSON, footerJSON := "", ""
 	if a.siteSettings != nil {
 		navJSON = a.siteSettings.Get(r.Context(), settings.KeyNavItems)
+		footerJSON = a.siteSettings.Get(r.Context(), settings.KeyFooterConfig)
 	}
 
 	type pageRow struct {
@@ -99,7 +100,8 @@ func (a *App) handleOSPages(w http.ResponseWriter, r *http.Request) {
   <td class="row-title"><a href="/os/editor/` + esc + `">` + html.EscapeString(p.Title) + `</a>
     <div class="row-meta">/` + esc + `</div></td>
   <td>` + statusPill + `</td>
-  <td><label class="cz-check"><input type="checkbox" data-page-nav data-href="` + html.EscapeString(href) + `" data-label="` + html.EscapeString(p.Title) + `"> In menu</label></td>
+  <td><label class="cz-check"><input type="checkbox" data-page-nav data-href="` + html.EscapeString(href) + `" data-label="` + html.EscapeString(p.Title) + `"> In menu</label>
+    <label class="cz-check mt-1"><input type="checkbox" data-page-footer data-href="` + html.EscapeString(href) + `" data-label="` + html.EscapeString(p.Title) + `"> In footer</label></td>
   <td class="row-actions">
     <a class="btn btn--ghost btn--sm" href="/os/editor/` + esc + `">Edit</a>
     ` + viewBtn + `
@@ -111,7 +113,7 @@ func (a *App) handleOSPages(w http.ResponseWriter, r *http.Request) {
 			create + `
 <div class="card">
   <div class="table-wrap"><table class="table">
-    <thead><tr><th>Title</th><th>Status</th><th>Navigation</th><th></th></tr></thead>
+    <thead><tr><th>Title</th><th>Status</th><th>Show in</th><th></th></tr></thead>
     <tbody>` + rows + `</tbody>
   </table></div>
 </div>
@@ -119,7 +121,7 @@ func (a *App) handleOSPages(w http.ResponseWriter, r *http.Request) {
 	}
 
 	body += `<script nonce="` + nonce + `" src="/os/static/js/admin-os-pages.js"></script>
-<span hidden id="page-nav-seed" data-nav="` + html.EscapeString(navJSON) + `"></span>`
+<span hidden id="page-nav-seed" data-nav="` + html.EscapeString(navJSON) + `" data-footer="` + html.EscapeString(footerJSON) + `"></span>`
 
 	writeOSHTML(w, adminOSLayout(nonce, "Pages", "pages", cfg, htmpl.HTML(body)))
 }
