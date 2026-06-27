@@ -46,7 +46,7 @@ func (a *App) handleTagIndex(w http.ResponseWriter, r *http.Request) {
 	})
 
 	var totalPosts int
-	dbpkg.DB.QueryRow(`SELECT COUNT(1) FROM articles WHERE COALESCE(status,'published')='published'`).Scan(&totalPosts)
+	dbpkg.Reader().QueryRow(`SELECT COUNT(1) FROM articles WHERE status='published'`).Scan(&totalPosts)
 
 	html, err := render.RenderTagIndex(config.Cfg.Domain, Version, infos, totalPosts)
 	if err != nil {
@@ -113,8 +113,8 @@ func (a *App) articlesByTag(ctx context.Context, tag string, max int) ([]render.
 	// Escape LIKE metacharacters so a tag value can never act as a wildcard.
 	esc := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(tag)
 	like := "%" + esc + "%"
-	q := `SELECT title,slug,content,tags,created_at FROM articles WHERE tags LIKE ? ESCAPE '\' AND COALESCE(status,'published')='published' ORDER BY created_at DESC LIMIT 5000`
-	rows, err := dbpkg.DB.QueryContext(ctx, q, like)
+	q := `SELECT title,slug,content,tags,created_at FROM articles WHERE tags LIKE ? ESCAPE '\' AND status='published' ORDER BY created_at DESC LIMIT 5000`
+	rows, err := dbpkg.Reader().QueryContext(ctx, q, like)
 	if err != nil {
 		return nil, 0
 	}

@@ -231,9 +231,15 @@ func (a *App) handleHome(w http.ResponseWriter, r *http.Request) {
 	atomic.AddInt64(&metrics.MetricCacheMisses, 1)
 
 	var total int
-	dbpkg.DB.QueryRow(`SELECT COUNT(1) FROM articles WHERE COALESCE(status,'published')='published' AND COALESCE(is_page,0)=0`).Scan(&total)
+	// Read pool + index-friendly predicates. `COALESCE(status,'published')` /
+	// `COALESCE(is_page,0)=0` defeat idx_articles_status / idx_articles_is_page
+	// and force a full-table scan; running them on the single writer connection
+	// serialised every cold homepage render (and everything else, including
+	// VayuOS) behind a 234k-row scan. status is NOT NULL DEFAULT 'published' and
+	// is_page is NOT NULL DEFAULT 0, so the bare columns are exact.
+	dbpkg.Reader().QueryRow(`SELECT COUNT(1) FROM articles WHERE status='published' AND is_page=0`).Scan(&total)
 
-	rows, err := dbpkg.DB.Query(`SELECT title,slug,content,tags,created_at,COALESCE(excerpt,''),COALESCE(feature_image,'') FROM articles WHERE COALESCE(status,'published')='published' AND COALESCE(is_page,0)=0 ORDER BY created_at DESC LIMIT 30`)
+	rows, err := dbpkg.Reader().Query(`SELECT title,slug,content,tags,created_at,COALESCE(excerpt,''),COALESCE(feature_image,'') FROM articles WHERE status='published' AND is_page=0 ORDER BY created_at DESC LIMIT 30`)
 	var articles []render.HomeArticle
 	author := render.GetActiveSettings().Author
 	if err == nil {
@@ -1468,8 +1474,8 @@ func (a *App) relatedArticles(ctx context.Context, currentSlug string, tags []st
 	args = append(args, currentSlug, overFetch)
 	// Related posts are a public surface — exclude drafts.
 	q := `SELECT title, slug, tags, created_at FROM articles WHERE (` +
-		strings.Join(clauses, " OR ") + `) AND slug != ? AND COALESCE(status,'published')='published' ORDER BY created_at DESC LIMIT ?`
-	rows, err := dbpkg.DB.QueryContext(ctx, q, args...)
+		strings.Join(clauses, " OR ") + `) AND slug != ? AND status='published' ORDER BY created_at DESC LIMIT ?`
+	rows, err := dbpkg.Reader().QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil
 	}
