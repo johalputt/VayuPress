@@ -65,8 +65,13 @@ func (a *App) handleOSPages(w http.ResponseWriter, r *http.Request) {
 	}
 	var pages []pageRow
 	if dbpkg.DB != nil {
-		if rows, err := dbpkg.DB.QueryContext(r.Context(),
-			`SELECT title,slug,COALESCE(status,'published'),updated_at FROM articles WHERE COALESCE(is_page,0)=1 ORDER BY updated_at DESC`); err == nil {
+		// is_page is NOT NULL DEFAULT 0 (migration 045): `is_page=1` uses
+		// idx_articles_is_page and reads only the (few) page rows. The previous
+		// `COALESCE(is_page,0)=1` with no LIMIT scanned the whole catalog on the
+		// writer connection — a 502-class stall once the catalog is large. Read
+		// pool + an explicit cap keep this O(pages), not O(catalog).
+		if rows, err := dbpkg.Reader().QueryContext(r.Context(),
+			`SELECT title,slug,status,updated_at FROM articles WHERE is_page=1 ORDER BY updated_at DESC LIMIT 1000`); err == nil {
 			defer rows.Close() //nolint:errcheck
 			for rows.Next() {
 				var p pageRow

@@ -1232,8 +1232,12 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 	// ── Status counts within the active filter ───────────────────────────────
 	allCount, published, drafts := 0, 0, 0
 	if dbpkg.DB != nil {
+		// status is NOT NULL DEFAULT 'published' (migration 030), so we group by
+		// the bare column — `COALESCE(status,'published')` would defeat
+		// idx_articles_status and force a full-table scan (a 502-class stall on a
+		// large catalog). With no search/date filter this is an index-only count.
 		if rows, err := dbpkg.Reader().QueryContext(r.Context(),
-			`SELECT COALESCE(status,'published') s, COUNT(1) c FROM articles`+filterClause+` GROUP BY s`, args...); err == nil {
+			`SELECT status s, COUNT(1) c FROM articles`+filterClause+` GROUP BY status`, args...); err == nil {
 			for rows.Next() {
 				var s string
 				var c int
@@ -1284,9 +1288,9 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 	listArgs := append([]any{}, args...)
 	switch status {
 	case "published":
-		listWhere = append(listWhere, "COALESCE(status,'published')='published'")
+		listWhere = append(listWhere, "status='published'")
 	case "draft":
-		listWhere = append(listWhere, "COALESCE(status,'published')='draft'")
+		listWhere = append(listWhere, "status='draft'")
 	}
 	listClause := ""
 	if len(listWhere) > 0 {
