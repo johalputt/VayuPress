@@ -621,6 +621,51 @@ func CommentsJSLink() template.HTML {
 	return template.HTML(`<script src="/static/js/comments.js?v=` + commentsJSHash + `" defer></script>`)
 }
 
+// ContactJS is the public contact-form widget. It builds the form via
+// createElement/textContent (strict CSP: script-src 'self', no inline, no eval)
+// and POSTs {name,email,message,website} to the same-origin /api/v1/contact
+// endpoint. "website" is a honeypot field hidden from humans; bots that fill it
+// are silently dropped server-side. Delivery goes to the operator's configured
+// contact address over the built-in VayuMail SMTP sender.
+const ContactJS = `(function(){` +
+	`var root=document.getElementById('vayu-contact');if(!root)return;` +
+	`var h=document.createElement('h2');h.className='vayu-contact-heading';h.textContent='Contact us';root.appendChild(h);` +
+	`var form=document.createElement('form');form.className='vayu-contact-form';form.setAttribute('novalidate','');` +
+	`function field(ph,type,req){var i=document.createElement(type==='textarea'?'textarea':'input');if(type!=='textarea')i.type=type;i.placeholder=ph;if(req)i.required=true;i.className='vayu-contact-input';return i;}` +
+	`var nameI=field('Your name','text',true);` +
+	`var emailI=field('Your email','email',true);` +
+	`var msgI=field('Your message…','textarea',true);` +
+	// Honeypot: visually hidden, off the tab order, autocomplete disabled.
+	`var hp=document.createElement('input');hp.type='text';hp.name='website';hp.className='vayu-contact-hp';hp.tabIndex=-1;hp.setAttribute('autocomplete','off');hp.setAttribute('aria-hidden','true');` +
+	`var btn=document.createElement('button');btn.type='submit';btn.className='vayu-contact-submit';btn.textContent='Send message';` +
+	`var status=document.createElement('span');status.className='vayu-contact-status';status.setAttribute('role','status');` +
+	`form.appendChild(nameI);form.appendChild(emailI);form.appendChild(msgI);form.appendChild(hp);` +
+	`var actions=document.createElement('div');actions.className='vayu-contact-actions';actions.appendChild(btn);actions.appendChild(status);form.appendChild(actions);` +
+	`form.addEventListener('submit',function(e){e.preventDefault();` +
+	`if(!nameI.value.trim()||!emailI.value.trim()||!msgI.value.trim()){status.textContent='Please fill in every field.';return;}` +
+	`btn.disabled=true;status.textContent='Sending…';` +
+	`fetch('/api/v1/contact',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:nameI.value.trim(),email:emailI.value.trim(),message:msgI.value.trim(),website:hp.value})})` +
+	`.then(function(r){return r.json().then(function(d){return{ok:r.ok,status:r.status,d:d};});})` +
+	`.then(function(res){btn.disabled=false;if(res.ok){nameI.value='';emailI.value='';msgI.value='';status.textContent='Thanks! Your message has been sent.';}else{status.textContent=(res.d&&res.d.error&&(res.d.error.message||res.d.error))||'Could not send — please try again.';}})` +
+	`.catch(function(){btn.disabled=false;status.textContent='Network error — please try again.';});});` +
+	`root.appendChild(form);` +
+	`})();`
+
+var contactJSHash = func() string {
+	sum := sha256.Sum256([]byte(ContactJS))
+	return hex.EncodeToString(sum[:8])
+}()
+
+// ContactJSLink returns the <script> tag for the public contact-form widget.
+func ContactJSLink() template.HTML {
+	return template.HTML(`<script src="/static/js/contact.js?v=` + contactJSHash + `" defer></script>`)
+}
+
+// contactFormMarker is the literal token operators place in a page's content to
+// render the contact form there. The render layer detects it, strips it from the
+// visible prose, and injects the CSP-safe widget container instead.
+const contactFormMarker = "[[contact-form]]"
+
 // PostCardMediaJS hides a post card's cover image when the image fails to load,
 // so a broken/expired image URL never renders a broken-image icon on the home
 // or tag listing pages. It wires an `error` handler on each card image and also
@@ -683,9 +728,11 @@ type articlePage struct {
 	ThemeToggleJSLink   template.HTML
 	VideoFacadeJSLink   template.HTML
 	CommentsJSLink      template.HTML
+	ContactJSLink       template.HTML
 	NavLinks            template.HTML
 	Footer              template.HTML
 	CommentsEnabled     bool
+	ContactForm         bool
 	SiteName            string
 	Author              string
 	AuthorBio           string
@@ -922,8 +969,9 @@ var articleTmpl = template.Must(template.New("article").Funcs(template.FuncMap{
 <ul class="vayu-related-list">{{range .Related}}<li><a href="/{{.Slug}}">{{.Title}}</a> <time>{{.CreatedAt | humanDate}}</time></li>{{end}}</ul>
 </section>{{end}}
 {{if .CommentsEnabled}}<section id="vayu-comments" class="vayu-comments" data-slug="{{.Slug}}" aria-label="Comments"></section>{{end}}
+{{if .ContactForm}}<section id="vayu-contact" class="vayu-contact" aria-label="Contact form"></section>{{end}}
 {{.Footer}}
-</main></div>{{if .CommentsEnabled}}{{.CommentsJSLink}}{{end}}</body></html>`))
+</main></div>{{if .CommentsEnabled}}{{.CommentsJSLink}}{{end}}{{if .ContactForm}}{{.ContactJSLink}}{{end}}</body></html>`))
 
 // HomeArticle is a single entry rendered on the public homepage index.
 type HomeArticle struct {
@@ -1152,6 +1200,13 @@ func RenderArticleWithLayout(a db.Article, layout ArticleLayoutType, related []R
 // options. It resolves each head/meta value once (override → derived → site
 // default) so the template stays a straight print of pre-computed fields.
 func RenderArticleWithMeta(a db.Article, layout ArticleLayoutType, related []RelatedArticle, ov ArticleMetaOverrides) (string, error) {
+	// Opt-in contact form: if the operator placed the marker in the content,
+	// strip it from the visible prose and flag the widget so the template injects
+	// the CSP-safe form container + loader instead.
+	hasContactForm := strings.Contains(a.Content, contactFormMarker)
+	if hasContactForm {
+		a.Content = strings.ReplaceAll(a.Content, contactFormMarker, "")
+	}
 	a.Content = renderContentHTML(a.Content)
 	start := time.Now()
 	var buf strings.Builder
@@ -1194,8 +1249,10 @@ func RenderArticleWithMeta(a db.Article, layout ArticleLayoutType, related []Rel
 		ThemeToggleJSLink:   ThemeToggleJSLink(),
 		VideoFacadeJSLink:   VideoFacadeJSLink(),
 		CommentsJSLink:      CommentsJSLink(),
+		ContactJSLink:       ContactJSLink(),
 		NavLinks:            navLinksHTML(s.NavJSON),
 		CommentsEnabled:     s.CommentsEnabled && !ov.IsPage,
+		ContactForm:         hasContactForm,
 		SiteName:            s.Name,
 		Author:              s.Author,
 		AuthorBio:           s.AuthorBio,

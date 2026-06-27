@@ -73,6 +73,7 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	r.Get("/static/js/theme-toggle.js", a.handleThemeToggleJS)
 	r.Get("/static/js/video-facade.js", a.handleVideoFacadeJS)
 	r.Get("/static/js/comments.js", a.handleCommentsJS)
+	r.Get("/static/js/contact.js", a.handleContactJS)
 	r.Get("/static/js/post-card-media.js", a.handlePostCardMediaJS)
 	// VayuPortal — the reader membership overlay widget (same-origin → script-src 'self').
 	r.Get("/static/js/portal.js", a.handleMemberPortalJS)
@@ -128,6 +129,7 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	r.Get("/api/v1/articles/{slug}/comments", a.handleCommentList)
 	r.Get("/api/v1/articles/{slug}/toc", a.handleArticleTOC)
 	r.Post("/api/v1/articles/{slug}/comments", a.handleCommentSubmit)
+	r.Post("/api/v1/contact", a.handleContactSubmit)
 	r.Get("/api/v1/search", a.handleSearch)
 	r.Get("/api/v1/tags", a.handleListTags)
 	r.Get("/api/v1/stats", a.handleStats)

@@ -42,10 +42,11 @@ func (a *App) handleOSPages(w http.ResponseWriter, r *http.Request) {
 		http.SetCookie(w, &http.Cookie{Name: "vp_csrf", Value: token, Path: "/", SameSite: http.SameSiteStrictMode, HttpOnly: false, Secure: csrfCookieSecure(), MaxAge: 3600})
 	}
 
-	navJSON, footerJSON := "", ""
+	navJSON, footerJSON, contactEmail := "", "", ""
 	if a.siteSettings != nil {
 		navJSON = a.siteSettings.Get(r.Context(), settings.KeyNavItems)
 		footerJSON = a.siteSettings.Get(r.Context(), settings.KeyFooterConfig)
+		contactEmail = a.siteSettings.Get(r.Context(), settings.KeyContactEmail)
 	}
 	var footerCfg render.FooterConfig
 	if strings.TrimSpace(footerJSON) != "" {
@@ -83,7 +84,18 @@ func (a *App) handleOSPages(w http.ResponseWriter, r *http.Request) {
     <option value="faq">FAQ</option>
   </select>
 </div>
-<div id="page-compose-status" class="text-sm muted" role="status" aria-live="polite">Pick a template, type a title, press Enter.</div>`
+<div id="page-compose-status" class="text-sm muted" role="status" aria-live="polite">Pick a template, type a title, press Enter.</div>
+<div class="card mt-3">
+  <div class="theme-field theme-field--text">
+    <span class="theme-field__label">Contact form recipient</span>
+    <div class="vm-row">
+      <input type="email" id="contact-email" class="input" style="flex:1" value="` + html.EscapeString(contactEmail) + `" placeholder="you@example.com" aria-label="Contact form recipient email">
+      <button type="button" class="btn btn--primary btn--sm" id="contact-email-save">Save</button>
+      <span id="contact-email-status" class="text-xs muted" role="status" aria-live="polite"></span>
+    </div>
+    <span class="theme-field__hint">Messages from any page containing the contact form are emailed here via VayuMail. Add the form to a page with the Contact template (or type <code>[[contact-form]]</code> in the page body).</span>
+  </div>
+</div>`
 
 	var body string
 	if len(pages) == 0 {
@@ -200,11 +212,9 @@ func pageTemplateSeed(template string) string {
 <ul><li>Topic one</li><li>Topic two</li><li>Topic three</li></ul>`
 	case "contact":
 		return `<h2>Get in touch</h2>
-<p>We'd love to hear from you. The best way to reach us is by email:</p>
-<p><strong>Email:</strong> <a href="mailto:hello@example.com">hello@example.com</a></p>
-<p>You can also find us on social media — replace these with your own links:</p>
-<ul><li><a href="https://example.com">Website</a></li><li><a href="https://twitter.com/">Twitter / X</a></li></ul>
-<p>We usually reply within a couple of business days.</p>`
+<p>We'd love to hear from you. Fill in the form below and we'll get back to you soon.</p>
+[[contact-form]]
+<p>Prefer email? Reach us at <a href="mailto:hello@example.com">hello@example.com</a>.</p>`
 	case "faq":
 		return `<h2>Frequently asked questions</h2>
 <h3>What is this site about?</h3>

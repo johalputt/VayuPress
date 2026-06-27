@@ -54,6 +54,9 @@ func TestThemeEditorCoversSettingsAllowlist(t *testing.T) {
 		// Footer is managed through the VayuOS Footer tab
 		// (/os/settings/footer), not the legacy theme editor.
 		settings.KeyFooterConfig: true,
+		// Contact-form recipient is set in the VayuOS Pages surface, not the
+		// legacy theme editor.
+		settings.KeyContactEmail: true,
 		// Hero image is uploaded via the Theme Studio Hero control (multipart),
 		// not a text/colour field in the legacy theme editor.
 		settings.KeyThemeHeroImage:     true,

@@ -79,6 +79,12 @@ const (
 	// bar is rendered.
 	KeyFooterConfig = "footer.config"
 
+	// Contact. The email address that public contact-form submissions are
+	// delivered to over the built-in VayuMail SMTP sender. When unset, the
+	// contact endpoint reports that contact is not configured. Set in the Pages
+	// surface. The form itself is opt-in per page via the [[contact-form]] marker.
+	KeyContactEmail = "contact.email"
+
 	// Feature flags — operator-toggleable platform modules surfaced in the
 	// Tools & Plugins panel. Each value is "on" (default) or "off". Disabling a
 	// flag turns the corresponding public surface off at the request boundary;
@@ -154,6 +160,7 @@ var RobotsOptions = map[string]bool{
 
 // AllKeys is the canonical set of settings keys accepted by Set/SetMany.
 var AllKeys = map[string]bool{
+	KeyContactEmail:          true,
 	KeySiteName:              true,
 	KeySiteTagline:           true,
 	KeySiteDescription:       true,

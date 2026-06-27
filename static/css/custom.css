@@ -262,6 +262,20 @@ textarea.vayu-comment-input { min-height: 6rem; resize: vertical; }
 .vayu-comment-gate { color: var(--pico-muted-color); margin: 0 0 0.6rem; }
 .vayu-comment-as { font-size: 0.85rem; color: var(--pico-muted-color); margin: 0 0 0.6rem; }
 
+/* Contact form widget (opt-in via the [[contact-form]] page marker) */
+.vayu-contact { margin: 2.5rem 0; }
+.vayu-contact-heading { font-size: 1.25rem; margin-bottom: 1rem; }
+.vayu-contact-form { display: flex; flex-direction: column; gap: 0.6rem; max-width: 40rem; }
+.vayu-contact-input { width: 100%; padding: 0.6rem 0.75rem; border: 1px solid var(--pico-muted-border-color); border-radius: 6px; background: var(--pico-background-color); color: inherit; font: inherit; }
+textarea.vayu-contact-input { min-height: 7rem; resize: vertical; }
+.vayu-contact-actions { display: flex; gap: 0.75rem; align-items: center; }
+.vayu-contact-submit { padding: 0.55rem 1.1rem; border: none; border-radius: 6px; background: var(--pico-primary); color: #fff; font: inherit; cursor: pointer; }
+.vayu-contact-submit:hover { filter: brightness(1.08); }
+.vayu-contact-submit:disabled { opacity: 0.6; cursor: default; }
+.vayu-contact-status { font-size: 0.85rem; color: var(--pico-muted-color); }
+/* Honeypot — visually removed but present for bots; never display to humans. */
+.vayu-contact-hp { position: absolute !important; left: -9999px !important; width: 1px; height: 1px; opacity: 0; }
+
 .vayu-footer-brand { display: flex; align-items: center; gap: 0.5rem; }
 
 .vayu-footer-badge {

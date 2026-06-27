@@ -157,6 +157,14 @@ func (a *App) handleCommentsJS(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, render.CommentsJS)
 }
 
+// handleContactJS serves the public contact-form widget (same-origin, strict
+// CSP). Static text, long-cached; the ?v= content hash busts stale copies.
+func (a *App) handleContactJS(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	fmt.Fprint(w, render.ContactJS)
+}
+
 // handlePostCardMediaJS serves the post-card cover-image fallback script, which
 // hides broken/expired cover images on the home and tag pages.
 // Same-origin static asset → satisfies `script-src 'self'` without a nonce.

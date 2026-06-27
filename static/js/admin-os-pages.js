@@ -46,6 +46,24 @@
     });
   }
 
+  // ── Contact recipient email ──────────────────────────────────────────────────
+  var contactInput = document.getElementById('contact-email');
+  var contactSave = document.getElementById('contact-email-save');
+  var contactStatus = document.getElementById('contact-email-status');
+  if (contactSave && contactInput) {
+    contactSave.addEventListener('click', function () {
+      contactSave.disabled = true;
+      setText(contactStatus, 'Saving…');
+      fetch('/os/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf() },
+        body: JSON.stringify({ key: 'contact.email', value: contactInput.value.trim() }),
+      })
+        .then(function (r) { contactSave.disabled = false; setText(contactStatus, r.ok ? 'Saved' : 'Could not save'); })
+        .catch(function (e) { contactSave.disabled = false; setText(contactStatus, 'Network error: ' + e); });
+    });
+  }
+
   // ── Navigation toggles ───────────────────────────────────────────────────────
   var navStatus = document.getElementById('page-nav-status');
   var seedEl = document.getElementById('page-nav-seed');
