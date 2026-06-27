@@ -47,6 +47,10 @@ func (a *App) handleOSPages(w http.ResponseWriter, r *http.Request) {
 		navJSON = a.siteSettings.Get(r.Context(), settings.KeyNavItems)
 		footerJSON = a.siteSettings.Get(r.Context(), settings.KeyFooterConfig)
 	}
+	var footerCfg render.FooterConfig
+	if strings.TrimSpace(footerJSON) != "" {
+		_ = json.Unmarshal([]byte(footerJSON), &footerCfg)
+	}
 
 	type pageRow struct {
 		Title, Slug, Status string
@@ -101,7 +105,8 @@ func (a *App) handleOSPages(w http.ResponseWriter, r *http.Request) {
     <div class="row-meta">/` + esc + `</div></td>
   <td>` + statusPill + `</td>
   <td><label class="cz-check"><input type="checkbox" data-page-nav data-href="` + html.EscapeString(href) + `" data-label="` + html.EscapeString(p.Title) + `"> In menu</label>
-    <label class="cz-check mt-1"><input type="checkbox" data-page-footer data-href="` + html.EscapeString(href) + `" data-label="` + html.EscapeString(p.Title) + `"> In footer</label></td>
+    <label class="theme-field theme-field--text mt-2"><span class="theme-field__label text-xs">Footer group</span>
+      ` + pageFooterSelect(href, p.Title, footerCfg) + `</label></td>
   <td class="row-actions">
     <a class="btn btn--ghost btn--sm" href="/os/editor/` + esc + `">Edit</a>
     ` + viewBtn + `
@@ -124,6 +129,53 @@ func (a *App) handleOSPages(w http.ResponseWriter, r *http.Request) {
 <span hidden id="page-nav-seed" data-nav="` + html.EscapeString(navJSON) + `" data-footer="` + html.EscapeString(footerJSON) + `"></span>`
 
 	writeOSHTML(w, adminOSLayout(nonce, "Pages", "pages", cfg, htmpl.HTML(body)))
+}
+
+// pageFooterSelect renders the per-page "Footer group" <select>: the page can be
+// left out of the footer, placed in the bottom-bar legal links, or filed under
+// any existing footer column — plus a default "Pages" group for first use. The
+// option matching the page's current placement is pre-selected (server-side) so
+// the control reflects live state without waiting on JS.
+func pageFooterSelect(href, title string, cfg render.FooterConfig) string {
+	// Current placement.
+	current := ""
+	for _, l := range cfg.Legal {
+		if l.Href == href {
+			current = "legal"
+		}
+	}
+	for _, col := range cfg.Columns {
+		for _, l := range col.Links {
+			if l.Href == href {
+				current = "col:" + col.Title
+			}
+		}
+	}
+	sel := func(v string) string {
+		if v == current {
+			return " selected"
+		}
+		return ""
+	}
+	opts := `<option value=""` + sel("") + `>Not in footer</option>`
+	opts += `<option value="legal"` + sel("legal") + `>Bottom bar</option>`
+	hasPages := false
+	for _, col := range cfg.Columns {
+		t := strings.TrimSpace(col.Title)
+		if t == "" {
+			continue
+		}
+		if t == "Pages" {
+			hasPages = true
+		}
+		v := "col:" + t
+		opts += `<option value="` + html.EscapeString(v) + `"` + sel(v) + `>` + html.EscapeString(t) + ` (column)</option>`
+	}
+	if !hasPages {
+		opts += `<option value="col:Pages"` + sel("col:Pages") + `>Pages (new column)</option>`
+	}
+	return `<select class="input" data-page-footer data-href="` + html.EscapeString(href) +
+		`" data-label="` + html.EscapeString(title) + `" aria-label="Footer placement for ` + html.EscapeString(title) + `">` + opts + `</select>`
 }
 
 // handleOSQuickCreatePage creates an empty draft page (article flagged is_page)
