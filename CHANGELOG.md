@@ -8,6 +8,20 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Fixed
+
+- **Updating/restarting no longer rebuilds the entire pre-rendered site.** The
+  cache fingerprint that decides whether to drop the pre-rendered public HTML
+  included the release version, so **every update invalidated all cached pages**
+  — on a large catalog (100k–1M+ posts) that meant re-rendering the whole site
+  on each deploy. The fingerprint now tracks only what actually affects rendered
+  output (stylesheet content hashes + the manual `cacheSchema`), so a new binary
+  that doesn't change templates/CSS keeps the existing cache intact and serves
+  instantly after a restart. Genuine template/CSS changes still invalidate as
+  before. (Pages already render on-demand on a cache miss, so the one-time
+  fingerprint change when this ships rebuilds lazily per request rather than all
+  at once.)
+
 ## [2.0.0] — 2026-06-27
 
 > **The sovereign-publishing 2.0 release.** A ground-up block-editor overhaul
