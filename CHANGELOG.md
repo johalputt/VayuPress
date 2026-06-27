@@ -8,6 +8,22 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Fixed
+
+- **Large catalogs (100k+ posts) no longer stall VayuOS into 502s.** On a site
+  with hundreds of thousands of articles, several read paths scanned the whole
+  catalog on the single SQLite *writer* connection, so each scan blocked
+  sessions, writes and admin pages until it finished. They now run on the
+  read-only connection pool (and use indexes where they didn't):
+  - the dashboard metrics `is_page` count uses `WHERE is_page=1`
+    (index-backed) instead of `COALESCE(is_page,0)=1` (full scan every 30s);
+  - the **Comments** page resolves slugs only for the posts referenced by the
+    comments shown, instead of loading every `id,slug` row into memory per view;
+  - the **SEO** content-quality scan, the **Posts** manager status counts and
+    listing, the dashboard publishing-trend sparkline, and the background
+    **sitemap/RSS** generators (including the per-publish tag scan) all moved to
+    the read pool, so they never contend with writes.
+
 ## [2.0.0] — 2026-06-27
 
 > **The sovereign-publishing 2.0 release.** A ground-up block-editor overhaul
