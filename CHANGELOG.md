@@ -8,6 +8,14 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [2.0.0] — 2026-06-27
+
+> **The sovereign-publishing 2.0 release.** A ground-up block-editor overhaul
+> with full publishing options, a complete in-house monetization system
+> (payments, subscriptions, advertising), major outbound/auth security
+> hardening, and smoother low-impact deploys — all still a single Go binary,
+> SQLite-first, with zero third-party SDKs and zero telemetry.
+
 ### Changed
 
 - **Smoother, lower-impact deploys and restarts.** Several changes make an
