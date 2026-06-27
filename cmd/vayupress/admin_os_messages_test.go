@@ -23,6 +23,28 @@ func TestMessagesSurfaceRendersWithoutDB(t *testing.T) {
 	}
 }
 
+// TestMessagesFilteredEmptyShowsToolbar proves that with an active search the
+// page shows the filter toolbar and the "no matching" state, not the pristine
+// "no messages yet" empty state.
+func TestMessagesFilteredEmptyShowsToolbar(t *testing.T) {
+	a := &App{}
+	req := httptest.NewRequest("GET", "/os/messages?q=alice", nil)
+	rec := httptest.NewRecorder()
+
+	a.handleOSMessages(rec, req)
+
+	body := rec.Body.String()
+	if !strings.Contains(body, `name="q"`) {
+		t.Error("filtered view should render the search box")
+	}
+	if !strings.Contains(body, "No matching messages") {
+		t.Error("filtered view with no results should show the no-match state")
+	}
+	if strings.Contains(body, "No messages yet") {
+		t.Error("filtered view must not show the pristine empty state")
+	}
+}
+
 // TestMessagesCSVExportHeader proves the CSV export always emits the header row
 // with the right content-type/disposition, even with no DB.
 func TestMessagesCSVExportHeader(t *testing.T) {

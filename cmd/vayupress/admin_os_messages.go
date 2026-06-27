@@ -15,6 +15,8 @@ import (
 	"html"
 	htmpl "html/template"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -31,25 +33,47 @@ func (a *App) handleOSMessages(w http.ResponseWriter, r *http.Request) {
 		http.SetCookie(w, &http.Cookie{Name: "vp_csrf", Value: token, Path: "/", SameSite: http.SameSiteStrictMode, HttpOnly: false, Secure: csrfCookieSecure(), MaxAge: 3600})
 	}
 
+	// Filters: free-text search across name/email/message, and an unread-only
+	// toggle. Both are applied in SQL so the list scales past the render cap.
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	if len(q) > 120 {
+		q = q[:120]
+	}
+	unreadOnly := r.URL.Query().Get("unread") == "1"
+	filtersActive := q != "" || unreadOnly
+
 	type msgRow struct {
 		ID, Name, Email, Message, Page string
 		Read                           bool
 		Created                        time.Time
 	}
 	var msgs []msgRow
-	unread := 0
+	unread := 0 // total unread, independent of the active filter (header + badge)
 	if dbpkg.DB != nil {
+		_ = dbpkg.DB.QueryRowContext(r.Context(), `SELECT COUNT(1) FROM contact_messages WHERE is_read=0`).Scan(&unread)
+
+		where := []string{}
+		args := []any{}
+		if q != "" {
+			where = append(where, "(name LIKE ? OR email LIKE ? OR message LIKE ?)")
+			like := "%" + q + "%"
+			args = append(args, like, like, like)
+		}
+		if unreadOnly {
+			where = append(where, "is_read=0")
+		}
+		clause := ""
+		if len(where) > 0 {
+			clause = " WHERE " + strings.Join(where, " AND ")
+		}
 		if rows, err := dbpkg.DB.QueryContext(r.Context(),
-			`SELECT id,name,email,message,page,is_read,created_at FROM contact_messages ORDER BY created_at DESC LIMIT 500`); err == nil {
+			`SELECT id,name,email,message,page,is_read,created_at FROM contact_messages`+clause+` ORDER BY created_at DESC LIMIT 500`, args...); err == nil {
 			defer rows.Close() //nolint:errcheck
 			for rows.Next() {
 				var m msgRow
 				var read int
 				if rows.Scan(&m.ID, &m.Name, &m.Email, &m.Message, &m.Page, &read, &m.Created) == nil {
 					m.Read = read != 0
-					if !m.Read {
-						unread++
-					}
 					msgs = append(msgs, m)
 				}
 			}
@@ -57,13 +81,44 @@ func (a *App) handleOSMessages(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Filter toolbar: a GET search form + an unread-only toggle link that
+	// preserves the current query. Plain links/forms → CSP-safe, JS-free.
+	unreadHref := "/os/messages"
+	if !unreadOnly {
+		uv := url.Values{}
+		uv.Set("unread", "1")
+		if q != "" {
+			uv.Set("q", q)
+		}
+		unreadHref = "/os/messages?" + uv.Encode()
+	} else if q != "" {
+		unreadHref = "/os/messages?q=" + url.QueryEscape(q)
+	}
+	unreadCls := "btn btn--ghost btn--sm"
+	if unreadOnly {
+		unreadCls = "btn btn--primary btn--sm"
+	}
+	filterBar := `<div class="card"><div class="toolbar-row">
+  <form method="GET" action="/os/messages" class="vm-row" style="flex:1;gap:.5rem">
+    <input type="search" name="q" class="input" style="flex:1" value="` + html.EscapeString(q) + `" placeholder="Search name, email or message…" aria-label="Search messages">
+    <button type="submit" class="btn btn--sm">Search</button>
+  </form>
+  <a class="` + unreadCls + `" href="` + unreadHref + `">Unread only</a>
+  ` + filterClearLink(filtersActive) + `
+</div></div>`
+
 	var body string
-	if len(msgs) == 0 {
+	if len(msgs) == 0 && !filtersActive {
 		body = `<div class="page-header"><h1>Messages</h1>
   <p class="text-sm muted">Submissions from your contact form land here — a durable record, even if email delivery fails.</p></div>
 <div class="card empty-state"><div class="empty-icon">📨</div>
   <div class="empty-title">No messages yet</div>
   <div class="empty-sub">When a visitor sends a message through a page's contact form, it appears here. Add a contact form from the Pages section.</div></div>`
+	} else if len(msgs) == 0 {
+		body = messagesHeader(0, unread) + filterBar +
+			`<div class="card empty-state"><div class="empty-icon">🔍</div>
+  <div class="empty-title">No matching messages</div>
+  <div class="empty-sub">No messages match your search or filter. <a href="/os/messages">Clear filters</a>.</div></div>`
 	} else {
 		rows := ""
 		for _, m := range msgs {
@@ -93,15 +148,7 @@ func (a *App) handleOSMessages(w http.ResponseWriter, r *http.Request) {
   </td>
 </tr>`
 		}
-		body = `<div class="page-header">
-  <h1>Messages <span class="count-pill">` + intToStr(len(msgs)) + `</span></h1>
-  <div class="page-actions">
-    <span class="text-sm muted">` + intToStr(unread) + ` unread</span>
-    <a class="btn btn--ghost btn--sm" href="/os/api/messages/export.csv" download>Export CSV</a>
-    <button type="button" class="btn btn--ghost btn--sm" data-msg-readall>Mark all read</button>
-    <button type="button" class="btn btn--ghost btn--sm" data-msg-deleteread>Clear read</button>
-  </div>
-</div>
+		body = messagesHeader(len(msgs), unread) + filterBar + `
 <div class="card"><div class="table-wrap"><table class="table">
   <thead><tr><th>From</th><th>Message</th><th>Page</th><th>When</th><th></th></tr></thead>
   <tbody>` + rows + `</tbody>
@@ -149,6 +196,28 @@ if(delRead)delRead.addEventListener('click',function(){
 	}
 
 	writeOSHTML(w, adminOSLayout(nonce, "Messages", "messages", cfg, htmpl.HTML(body)))
+}
+
+// messagesHeader renders the Messages page header with the count, unread tally
+// and the bulk/export actions. Shared by the list and filtered-empty views.
+func messagesHeader(count, unread int) string {
+	return `<div class="page-header">
+  <h1>Messages <span class="count-pill">` + intToStr(count) + `</span></h1>
+  <div class="page-actions">
+    <span class="text-sm muted">` + intToStr(unread) + ` unread</span>
+    <a class="btn btn--ghost btn--sm" href="/os/api/messages/export.csv" download>Export CSV</a>
+    <button type="button" class="btn btn--ghost btn--sm" data-msg-readall>Mark all read</button>
+    <button type="button" class="btn btn--ghost btn--sm" data-msg-deleteread>Clear read</button>
+  </div>
+</div>`
+}
+
+// filterClearLink renders a "Clear" link when any filter is active.
+func filterClearLink(active bool) string {
+	if !active {
+		return ""
+	}
+	return `<a class="btn btn--ghost btn--sm" href="/os/messages">Clear</a>`
 }
 
 // handleOSMessageRead marks a contact message read.
