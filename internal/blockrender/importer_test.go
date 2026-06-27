@@ -155,3 +155,33 @@ func TestImportTableAndToggle(t *testing.T) {
 		t.Fatalf("render of imported blocks failed: %v", err)
 	}
 }
+
+
+// TestImportHTMLPreservesInlineFormatting verifies that inline markup survives an
+// HTML → blocks conversion by being re-encoded as Markdown, so an HTML source
+// edit round-trips back to the same rendered output (no formatting is dropped).
+func TestImportHTMLPreservesInlineFormatting(t *testing.T) {
+	blocks := ImportHTML(`<p>A <strong>bold</strong>, <em>italic</em>, <code>x=1</code>, ` +
+		`<del>gone</del> and a <a href="/about">link</a>.</p>`)
+	if len(blocks) != 1 || blocks[0].Type != "paragraph" {
+		t.Fatalf("want single paragraph, got %+v", blocks)
+	}
+	got := blocks[0].Text
+	for _, want := range []string{"**bold**", "*italic*", "`x=1`", "~~gone~~", "[link](/about)"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("inline markdown %q missing from %q", want, got)
+		}
+	}
+
+	// And it renders back to rich HTML through the normal pipeline.
+	raw, _ := json.Marshal(blocks)
+	out, _, err := Render(string(raw))
+	if err != nil {
+		t.Fatalf("render failed: %v", err)
+	}
+	for _, want := range []string{"<strong>bold</strong>", "<em>italic</em>", "<code>x=1</code>", "href=\"/about\""} {
+		if !strings.Contains(out, want) {
+			t.Errorf("rendered output missing %q: %q", want, out)
+		}
+	}
+}

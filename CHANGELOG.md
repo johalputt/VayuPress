@@ -8,6 +8,26 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Added
+
+- **Editor: one-click HTML source mode.** A new **HTML** button in the editor
+  toolbar (or `⌘⇧H` / `Ctrl+Shift+H`) switches the writing surface to a raw HTML
+  source view and back. Switching out parses the HTML back into blocks through
+  the server-side importer, which now re-encodes inline `**bold**`, `*italic*`,
+  `` `code` ``, `~~strike~~` and `[links](url)` as Markdown — so a
+  visual → HTML → visual round-trip is lossless for common formatting. Saving
+  while in HTML mode applies the source first so no edit is lost. Backed by a new
+  `POST /os/api/editor/import` endpoint.
+
+### Fixed
+
+- **Editor: the writing canvas now scrolls.** The block canvas was clipped at
+  the viewport edge, so a long post — or a single tall block — could not be
+  scrolled into view. The editor shell is now a fixed-height grid with a correct
+  `min-height: 0` chain (shell → main → workspace → canvas), giving the canvas a
+  smooth internal scroll with generous trailing space, plus the focus-mode and
+  drag-and-drop highlight styles that were previously missing.
+
 ### Security
 
 - **SSRF hardening — single, rebind-safe outbound path.** All server-side

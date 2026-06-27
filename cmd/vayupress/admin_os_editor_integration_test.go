@@ -174,3 +174,46 @@ func TestOSEditorNativeCreatePath(t *testing.T) {
 	}
 	resp2.Body.Close()
 }
+
+
+// TestOSEditorImportHTML exercises the HTML source mode round-trip: posting raw
+// HTML to /os/api/editor/import returns a block document, and inline formatting
+// is preserved (re-encoded as Markdown) so a visual → HTML → visual switch does
+// not drop bold/links.
+func TestOSEditorImportHTML(t *testing.T) {
+	srv, key := newTestHarness(t)
+
+	csrf := auth.GenerateCSRFToken()
+	payload, _ := json.Marshal(map[string]string{
+		"html": `<h2>Title</h2><p>Some <strong>bold</strong> and a <a href="/x">link</a>.</p>`,
+	})
+	req, _ := http.NewRequest("POST", srv.URL+"/os/api/editor/import", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-API-Key", key)
+	req.Header.Set("X-CSRF-Token", csrf)
+	req.AddCookie(&http.Cookie{Name: "vp_csrf", Value: csrf})
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("import request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("import want 200, got %d", resp.StatusCode)
+	}
+	var out struct {
+		Blocks []map[string]interface{} `json:"blocks"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(out.Blocks) != 2 {
+		t.Fatalf("want 2 blocks, got %d: %+v", len(out.Blocks), out.Blocks)
+	}
+	if out.Blocks[0]["type"] != "heading" {
+		t.Errorf("block 0 type = %v, want heading", out.Blocks[0]["type"])
+	}
+	para, _ := out.Blocks[1]["text"].(string)
+	if !strings.Contains(para, "**bold**") || !strings.Contains(para, "[link](/x)") {
+		t.Errorf("inline formatting not preserved on import: %q", para)
+	}
+}
