@@ -8,6 +8,30 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Changed
+
+- **Smoother, lower-impact deploys and restarts.** Several changes make an
+  in-place update gentle on a small VPS and keep the public site responsive
+  throughout:
+  - The HTTP listener no longer blocks on the Meilisearch readiness probe at
+    startup — readiness now runs in the background and search uses its SQLite
+    fallback until Meili confirms ready. This removes the multi-second 502
+    window a restart could open while waiting on Meili.
+  - The post-deploy cache warm and the search reindex are now **paced** so they
+    no longer saturate a CPU after a restart. Tunable via
+    `VAYU_WARM_THROTTLE_MS`, `VAYU_WARM_DELAY_SEC`, `VAYU_REINDEX_THROTTLE_MS`,
+    and `VAYU_WARM_ON_BOOT=0` to skip boot warming entirely (pages then render
+    lazily on first request).
+  - `scripts/update-vayupress.sh` now builds at **idle CPU/IO priority with
+    capped parallelism** (so the still-running old binary and nginx stay
+    responsive during the compile), adds a **disk-space preflight**, and takes a
+    **timeout-bounded DB snapshot by default** before restarting (disable with
+    `BACKUP_DB=0`).
+  - The sample nginx config gains a dual-peer upstream + bounded
+    `proxy_next_upstream` retry so an in-flight idempotent request during a
+    sub-second restart is retried instead of surfacing a 502 (POSTs are never
+    retried).
+
 ### Added
 
 - **Editor: image galleries, HTML & Markdown cards, and richer images.** The

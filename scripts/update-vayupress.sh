@@ -58,9 +58,28 @@ fi
 info "Building version ${ENGINE_VERSION} (commit ${NEW_SHA})"
 
 # ── 2. Build to a temp path FIRST (never clobber a working binary on failure) ─
+# Disk preflight — a CGO build needs build-cache headroom; a full disk is the
+# single most common cause of a failed/half update (and of the live site dying).
+AVAIL_MB=$(df -Pm "$SRC_DIR" 2>/dev/null | awk 'NR==2{print $4+0}')
+if [[ "${AVAIL_MB:-0}" -lt 1200 ]]; then
+  die "Low disk: only ${AVAIL_MB}MB free at $SRC_DIR (need ~1.2GB for the build).
+  Free space and retry, e.g.:
+    sudo journalctl --vacuum-size=200M
+    \"$GO_BIN\" clean -cache"
+fi
+
+# Build at IDLE CPU/IO priority with capped parallelism so the LIVE site (served
+# by the still-running old binary) and nginx stay responsive during the compile.
+# This is what keeps a deploy from spiking a small VPS into 502s. Override the
+# core count with BUILD_JOBS=N if you want it faster (at the cost of headroom).
+CORES="$(nproc 2>/dev/null || echo 1)"
+BUILD_JOBS="${BUILD_JOBS:-$(( CORES >= 2 ? CORES / 2 : 1 ))}"
+NICE_CMD=(nice -n 19)
+if command -v ionice >/dev/null 2>&1; then NICE_CMD=(ionice -c3 nice -n 19); fi
 TMP_BIN="$(mktemp /tmp/vayupress.XXXXXX)"
-info "Building binary (CGO enabled)..."
-if ! (cd "$SRC_DIR" && CGO_ENABLED=1 "$GO_BIN" build \
+info "Building binary at low priority (CGO, ${BUILD_JOBS}/${CORES} cores)..."
+if ! (cd "$SRC_DIR" && "${NICE_CMD[@]}" env CGO_ENABLED=1 "GOMAXPROCS=${BUILD_JOBS}" \
+        "$GO_BIN" build -p "$BUILD_JOBS" \
         -ldflags="-s -w -X main.Version=${ENGINE_VERSION}" \
         -o "$TMP_BIN" ./cmd/vayupress/); then
   rm -f "$TMP_BIN"
@@ -97,13 +116,13 @@ else
   warn "No docs/ dir in $SRC_DIR — ADR page may be empty."
 fi
 
-# ── 5. Back up the database (opt-in, consistent, never blocks) ───────────────
-# Disabled by default so the update is always fast and can never hang on a busy
-# live DB. Enable with BACKUP_DB=1 to take a consistent snapshot (sqlite3 online
-# backup) before the restart — recommended before migration-bearing releases.
-# A hard timeout guarantees it can never stall the update.
+# ── 5. Back up the database (default ON, consistent, never blocks) ───────────
+# A consistent snapshot (sqlite3 online backup) is taken before the restart so a
+# migration-bearing release always has a rollback point. A hard timeout
+# guarantees it can never stall the update — on a busy/large DB it simply warns
+# and continues. Disable with BACKUP_DB=0 if you manage backups elsewhere.
 DB_PATH="${DB_PATH:-/var/lib/vayupress/vayupress.db}"
-BACKUP_DB="${BACKUP_DB:-0}"
+BACKUP_DB="${BACKUP_DB:-1}"
 BACKUP_TIMEOUT="${BACKUP_TIMEOUT:-120}"
 if [[ "$BACKUP_DB" == "1" ]]; then
   if [[ -f "$DB_PATH" ]] && command -v sqlite3 >/dev/null 2>&1; then

@@ -3,6 +3,9 @@ package main
 import (
 	"context"
 	"net/http"
+	"os"
+	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -28,6 +31,7 @@ type reindexResult struct {
 // search index converge to the article store regardless of prior drift.
 func (a *App) reindexAllArticles(ctx context.Context) (*reindexResult, error) {
 	start := time.Now()
+	throttle := reindexThrottle()
 	res := &reindexResult{RanAt: start.UTC()}
 	rows, err := dbpkg.DB.QueryContext(ctx,
 		`SELECT id,title,slug,content,tags,created_at FROM articles WHERE COALESCE(status,'published')='published' ORDER BY created_at ASC`)
@@ -52,12 +56,33 @@ func (a *App) reindexAllArticles(ctx context.Context) (*reindexResult, error) {
 			continue
 		}
 		res.Indexed++
+		// Pace indexing so a full rebuild stays gentle on both the VPS CPU and the
+		// Meilisearch process. Respects context cancellation. Tunable via
+		// VAYU_REINDEX_THROTTLE_MS.
+		if throttle > 0 {
+			select {
+			case <-ctx.Done():
+			case <-time.After(throttle):
+			}
+		}
 	}
 	if rowsErr := rows.Err(); rowsErr != nil {
 		return res, rowsErr
 	}
 	res.DurationMs = time.Since(start).Milliseconds()
 	return res, nil
+}
+
+// reindexThrottle is the per-document pause during a full search rebuild.
+// Tunable via VAYU_REINDEX_THROTTLE_MS (clamped 0..5000ms); defaults to a gentle
+// 6ms so a rebuild never saturates the CPU or hammers Meilisearch.
+func reindexThrottle() time.Duration {
+	if v := strings.TrimSpace(os.Getenv("VAYU_REINDEX_THROTTLE_MS")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 && n <= 5000 {
+			return time.Duration(n) * time.Millisecond
+		}
+	}
+	return 6 * time.Millisecond
 }
 
 // startSearchReconciler runs a periodic background drift check and, when the
