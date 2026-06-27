@@ -101,6 +101,31 @@ func (a *App) handleContactSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Auto-reply to the visitor (best-effort; never fails their request). Enabled
+	// by default — only an explicit "off" suppresses it.
+	if a.siteSettings == nil || a.siteSettings.Get(r.Context(), settings.KeyContactAutoReply) != "off" {
+		siteName := r.Host
+		if a.siteSettings != nil {
+			if n := strings.TrimSpace(a.siteSettings.Get(r.Context(), settings.KeySiteName)); n != "" {
+				siteName = n
+			}
+		}
+		reply := "Hi " + name + ",\n\n" +
+			"Thanks for getting in touch — we've received your message and will get back to you soon.\n\n" +
+			"For your records, here's what you sent:\n\n" +
+			message + "\n\n" +
+			"— " + siteName + "\n"
+		if err := a.mailer.Send(email.Message{
+			To:      from,
+			Subject: "We got your message — " + siteName,
+			Text:    reply,
+		}); err != nil {
+			// A failed confirmation must not fail the visitor's submission — the
+			// operator already has the message. Log and move on.
+			logging.LogError("contact", "auto-reply failed", err.Error())
+		}
+	}
+
 	logging.LogJSON(logging.LogFields{
 		Level: "info", Component: "contact", Severity: "info",
 		Msg: "contact message delivered", RequestID: getRequestID(r),

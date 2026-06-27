@@ -64,6 +64,23 @@
     });
   }
 
+  // Auto-reply toggle (stored as contact.autoreply on/off).
+  var autoReply = document.getElementById('contact-autoreply');
+  var autoReplyStatus = document.getElementById('contact-autoreply-status');
+  if (autoReply) {
+    autoReply.addEventListener('change', function () {
+      autoReply.disabled = true;
+      setText(autoReplyStatus, 'Saving…');
+      fetch('/os/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf() },
+        body: JSON.stringify({ key: 'contact.autoreply', value: autoReply.checked ? 'on' : 'off' }),
+      })
+        .then(function (r) { autoReply.disabled = false; setText(autoReplyStatus, r.ok ? 'Saved' : 'Could not save'); })
+        .catch(function (e) { autoReply.disabled = false; setText(autoReplyStatus, 'Network error: ' + e); });
+    });
+  }
+
   // ── Navigation toggles ───────────────────────────────────────────────────────
   var navStatus = document.getElementById('page-nav-status');
   var seedEl = document.getElementById('page-nav-seed');

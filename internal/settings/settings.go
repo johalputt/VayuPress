@@ -85,6 +85,12 @@ const (
 	// surface. The form itself is opt-in per page via the [[contact-form]] marker.
 	KeyContactEmail = "contact.email"
 
+	// KeyContactAutoReply toggles the confirmation email sent back to a visitor
+	// after they submit the contact form ("thanks, we got your message"). Any
+	// value other than "off" (including unset) counts as enabled, so auto-reply
+	// is on by default once a recipient is configured.
+	KeyContactAutoReply = "contact.autoreply"
+
 	// Feature flags — operator-toggleable platform modules surfaced in the
 	// Tools & Plugins panel. Each value is "on" (default) or "off". Disabling a
 	// flag turns the corresponding public surface off at the request boundary;
@@ -161,6 +167,7 @@ var RobotsOptions = map[string]bool{
 // AllKeys is the canonical set of settings keys accepted by Set/SetMany.
 var AllKeys = map[string]bool{
 	KeyContactEmail:          true,
+	KeyContactAutoReply:      true,
 	KeySiteName:              true,
 	KeySiteTagline:           true,
 	KeySiteDescription:       true,

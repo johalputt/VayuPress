@@ -31,6 +31,12 @@ func TestPagesSurfaceRendersWithoutStores(t *testing.T) {
 	if !strings.Contains(body, "page-compose-template") {
 		t.Error("Pages surface is missing the template selector")
 	}
+	if !strings.Contains(body, "contact-email") {
+		t.Error("Pages surface is missing the contact recipient field")
+	}
+	if !strings.Contains(body, "contact-autoreply") {
+		t.Error("Pages surface is missing the auto-reply toggle")
+	}
 }
 
 // TestPageTemplateSeed verifies each known template seeds non-empty starter
