@@ -23,6 +23,7 @@ import (
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/render"
+	"github.com/johalputt/vayupress/internal/settings"
 )
 
 // handleOSSEONative renders the native os SEO dashboard: artefact freshness plus
@@ -41,6 +42,33 @@ func (a *App) handleOSSEONative(w http.ResponseWriter, r *http.Request) {
 	smOK, smWhen := artefact("sitemap.xml")
 	feedOK, feedWhen := artefact("feed.xml")
 	robotsOK, robotsWhen := artefact("robots.txt")
+
+	// Inputs for the health checks: sitemap age, robots.txt body, head robots
+	// directive and the canonical domain.
+	var sitemapAge time.Duration
+	if fi, err := os.Stat(filepath.Join(config.Cfg.CacheDir, "sitemap.xml")); err == nil {
+		sitemapAge = time.Since(fi.ModTime())
+	}
+	robotsBody := ""
+	if b, err := os.ReadFile(filepath.Join(config.Cfg.CacheDir, "robots.txt")); err == nil {
+		robotsBody = string(b)
+	}
+	headRobots := ""
+	if a.siteSettings != nil {
+		headRobots = a.siteSettings.Get(r.Context(), settings.KeyHeadRobots)
+	}
+	checks := evaluateSEOHealth(smOK, sitemapAge, robotsOK, robotsBody, headRobots, config.Cfg.Domain)
+	checksRows := ""
+	for _, c := range checks {
+		pill := `<span class="badge badge--ok">✓ Pass</span>`
+		if !c.OK && c.Warn {
+			pill = `<span class="badge badge--warn">! Check</span>`
+		} else if !c.OK {
+			pill = `<span class="badge badge--danger">✕ Issue</span>`
+		}
+		checksRows += `<tr><td>` + html.EscapeString(c.Label) + `</td><td>` + pill +
+			`<div class="text-xs muted mt-1">` + html.EscapeString(c.Detail) + `</div></td></tr>`
+	}
 
 	// Per-article readiness. On large sites (hundreds of thousands of posts)
 	// scanning every body to measure content length is expensive, so it is
@@ -87,9 +115,93 @@ func (a *App) handleOSSEONative(w http.ResponseWriter, r *http.Request) {
   </table></div>
   <div class="seo-status mt-3" data-seo-status hidden></div>
 </div>
+
+<div class="card mt-6">
+  <div class="card-title">Health checks</div>
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th>Check</th><th>Result</th></tr></thead>
+    <tbody>` + checksRows + `</tbody>
+  </table></div>
+</div>
 <script nonce="` + nonce + `" src="/os/static/js/admin-os-intel.js"></script>`
 
 	writeOSHTML(w, adminOSLayout(nonce, "SEO", "seo", cfg, htmpl.HTML(body)))
+}
+
+// seoCheck is one SEO health finding. OK = pass; Warn = advisory; otherwise it
+// is a hard problem (red). Detail explains the finding and the fix.
+type seoCheck struct {
+	Label  string
+	OK     bool
+	Warn   bool
+	Detail string
+}
+
+// evaluateSEOHealth runs the actionable SEO checks against the current site
+// state. It is a pure function (no I/O) so it is straightforward to unit-test;
+// the handler gathers the inputs and renders the results.
+func evaluateSEOHealth(sitemapOK bool, sitemapAge time.Duration, robotsOK bool, robotsBody, headRobots, domain string) []seoCheck {
+	var out []seoCheck
+
+	out = append(out, seoCheck{
+		Label: "Sitemap generated", OK: sitemapOK,
+		Detail: ternary(sitemapOK, "sitemap.xml is present and submitted to search engines via robots.txt.",
+			"sitemap.xml has not been generated yet — click “Regenerate artefacts”."),
+	})
+	if sitemapOK {
+		stale := sitemapAge > 7*24*time.Hour
+		out = append(out, seoCheck{
+			Label: "Sitemap fresh", OK: !stale, Warn: stale,
+			Detail: ternary(stale, "sitemap.xml is over a week old; regenerate so new posts are discoverable.",
+				"sitemap.xml was refreshed within the last week."),
+		})
+	}
+
+	out = append(out, seoCheck{
+		Label: "robots.txt present", OK: robotsOK,
+		Detail: ternary(robotsOK, "robots.txt is served and points crawlers at your sitemap.",
+			"robots.txt is missing — regenerate artefacts to create it."),
+	})
+
+	// A site-wide "Disallow: /" blocks all crawling — a critical, easy-to-miss
+	// mistake. Detect it on any user-agent block.
+	blocked := false
+	for _, line := range strings.Split(robotsBody, "\n") {
+		if strings.EqualFold(strings.TrimSpace(line), "disallow: /") {
+			blocked = true
+			break
+		}
+	}
+	out = append(out, seoCheck{
+		Label: "Crawling allowed", OK: !blocked,
+		Detail: ternary(blocked, "robots.txt contains “Disallow: /”, which blocks search engines from your whole site.",
+			"robots.txt does not block crawling of the site."),
+	})
+
+	noindex := strings.Contains(strings.ToLower(headRobots), "noindex")
+	out = append(out, seoCheck{
+		Label: "Indexing enabled", OK: !noindex,
+		Detail: ternary(noindex, "The site-wide robots meta is set to noindex (Theme Studio → Head & SEO), so pages won’t be indexed.",
+			"The site-wide robots directive allows indexing."),
+	})
+
+	d := strings.TrimSpace(domain)
+	badDomain := d == "" || strings.HasPrefix(d, "localhost") || strings.HasPrefix(d, "127.0.0.1")
+	out = append(out, seoCheck{
+		Label: "Canonical domain set", OK: !badDomain, Warn: badDomain,
+		Detail: ternary(badDomain, "The site domain looks unset or local; canonical URLs and share links need a real domain.",
+			"Canonical URLs use "+d+"."),
+	})
+
+	return out
+}
+
+// ternary returns a when cond, else b — a tiny readability helper for the checks.
+func ternary(cond bool, a, b string) string {
+	if cond {
+		return a
+	}
+	return b
 }
 
 // ── SEO stats cache ──────────────────────────────────────────────────────────
