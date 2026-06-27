@@ -553,6 +553,7 @@ func main() {
 	dbpkg.InitStorageCachedBytes()
 	dbpkg.StartWALCheckpointGoroutine(queue.DoneCh)
 	dbpkg.StartStuckJobReaper(queue.DoneCh)
+	dbpkg.StartJobRetentionSweeper(queue.DoneCh)
 	a.startMetricsSnapshotCollector()
 	a.startSearchReconciler(queue.DoneCh)
 	a.startScheduler(queue.DoneCh)
