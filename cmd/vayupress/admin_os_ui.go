@@ -147,6 +147,10 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		// managed separately from the blog feed (Tumblr-style "Add a page").
 		pr.Get("/os/pages", a.handleOSPages)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/pages/quick-create", a.handleOSQuickCreatePage)
+		// Contact-form inbox — durable record of public contact submissions.
+		pr.Get("/os/messages", a.handleOSMessages)
+		pr.With(auth.CSRFTokenMiddleware).Put("/os/api/messages/{id}/read", a.handleOSMessageRead)
+		pr.With(auth.CSRFTokenMiddleware).Delete("/os/api/messages/{id}", a.handleOSMessageDelete)
 		pr.Get("/os/media", a.handleOSMedia)
 		pr.Get("/os/api/media", a.handleOSMediaList)
 		// Session-friendly media upload + import. The /api/v1/admin/media originals
@@ -394,6 +398,7 @@ var (
 	iconPosts      = svgIcon("M4 4h12v2H4V4zm0 4h12v2H4V8zm0 4h8v2H4v-2z")
 	iconComments   = svgIcon("M3 4h14v9H7l-4 3V4zm3 3h8M6 10h5")
 	iconPages      = svgIcon("M5 2h7l3 3v13H5V2zm7 0v3h3M7 9h6M7 12h6M7 15h4")
+	iconMessages   = svgIcon("M2 4h16v10H6l-4 3V4zm3 4h10M5 11h7")
 	iconNewPost    = svgIcon("M10 4v12m-6-6h12")
 	iconMedia      = svgIcon("M3 5a2 2 0 012-2h10a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V5zm0 8l4-4 3 3 2-2 4 4")
 	iconMembers    = svgIcon("M13 6a3 3 0 11-6 0 3 3 0 016 0zm-9 10a6 6 0 1112 0H4z")
@@ -495,6 +500,7 @@ func adminOSShellHead(nonce, title, active string, settings *osSettings) string 
     ` + navItem("/os/posts", "Posts", "posts", active, iconPosts) + `
     ` + navItem("/os/comments", "Comments", "comments", active, iconComments) + `
     ` + navItem("/os/pages", "Pages", "pages", active, iconPages) + `
+    ` + navItem("/os/messages", "Messages", "messages", active, iconMessages) + `
     ` + navItem("/os/editor", "New Post", "editor", active, iconNewPost) + `
     ` + navItem("/os/media", "Media", "media", active, iconMedia) + `
 

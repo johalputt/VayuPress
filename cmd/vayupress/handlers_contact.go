@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/email"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/settings"
@@ -83,6 +84,17 @@ func (a *App) handleContactSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Persist the message first so it survives even if SMTP delivery fails — the
+	// /os inbox is the durable record. Best-effort: a storage hiccup must not
+	// block delivery of an otherwise-valid message.
+	if dbpkg.DB != nil {
+		if _, err := dbpkg.WDB.ExecContext(r.Context(),
+			`INSERT INTO contact_messages(id,name,email,message,page,ip,is_read,created_at) VALUES(?,?,?,?,?,?,0,?)`,
+			newUUID(), name, from, message, contactPageRef(r), ip, time.Now().UTC()); err != nil {
+			logging.LogError("contact", "persist failed", err.Error())
+		}
+	}
+
 	// Plain-text body; the sender sanitises control characters. The visitor's
 	// address goes in the body (the From header stays the site's own identity so
 	// SPF/DKIM remain valid); operators just hit reply to the quoted address.
@@ -143,6 +155,26 @@ func clientIPForContact(r *http.Request) string {
 		return host
 	}
 	return r.RemoteAddr
+}
+
+// contactPageRef records which page the message was sent from, for the admin
+// inbox. It uses the Referer path (same-origin only); anything else yields "".
+func contactPageRef(r *http.Request) string {
+	ref := r.Referer()
+	if ref == "" {
+		return ""
+	}
+	if i := strings.Index(ref, "://"); i >= 0 {
+		rest := ref[i+3:]
+		if slash := strings.IndexByte(rest, '/'); slash >= 0 {
+			p := rest[slash:]
+			if len(p) > 200 {
+				p = p[:200]
+			}
+			return p
+		}
+	}
+	return ""
 }
 
 // looksLikeEmail is a deliberately permissive sanity check (exactly one '@', a
