@@ -239,6 +239,25 @@ func (a *App) handleOSEditorConvert(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleOSEditorImport converts an editor-supplied HTML string into a block
+// document and returns it, without persisting anything. It backs the editor's
+// one-click HTML source mode: the operator edits raw HTML and, on switching back
+// to the visual canvas, that HTML is parsed into blocks here. The conversion is
+// the same conservative importer used for legacy posts and now preserves inline
+// formatting (bold / italic / code / strike / links) as Markdown, so a
+// visual → HTML → visual round-trip is lossless for common formatting.
+func (a *App) handleOSEditorImport(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		HTML string `json:"html"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "bad-json", "Invalid request body", "")
+		return
+	}
+	blocks := blockrender.ImportHTML(body.HTML)
+	writeJSON(w, r, http.StatusOK, map[string]interface{}{"blocks": blocks})
+}
+
 // handleOSEditorPreview renders a block document to sanitised HTML without
 // persisting anything — used by the editor's live preview pane.
 func (a *App) handleOSEditorPreview(w http.ResponseWriter, r *http.Request) {
@@ -348,6 +367,7 @@ var osEditorHeadTmpl = htmpl.Must(htmpl.New("oseditorhead").Parse(
       <span class="editor-wordcount" data-editor-wordcount aria-live="polite"></span>
       <button type="button" class="btn btn--ghost btn--sm" data-editor-focus-btn title="Focus mode (Ctrl/Cmd+.)">Focus</button>
       <button type="button" class="btn btn--ghost btn--sm" data-editor-split-btn title="Toggle live preview">Split</button>
+      <button type="button" class="btn btn--ghost btn--sm" data-editor-html-btn title="Edit HTML source (Ctrl/Cmd+Shift+H)" aria-pressed="false">HTML</button>
       <button type="button" class="btn btn--ghost btn--sm" data-editor-preview-btn>Preview</button>
       <button type="button" class="btn btn--primary btn--sm" data-editor-save>Save</button>
     </div>
@@ -360,6 +380,13 @@ var osEditorHeadTmpl = htmpl.Must(htmpl.New("oseditorhead").Parse(
         <div class="editor-live-head">Live preview</div>
         <article class="editor-live-body article" data-editor-live-body></article>
       </aside>
+      <section class="editor-html" data-editor-html-panel hidden aria-label="HTML source editor">
+        <div class="editor-html-head">
+          <span class="editor-html-title">HTML source</span>
+          <span class="editor-html-hint text-xs muted">Edit raw HTML — switch back to apply it to your blocks.</span>
+        </div>
+        <textarea class="editor-html-area" data-editor-html-area spellcheck="false" autocomplete="off" autocapitalize="off" wrap="soft" aria-label="HTML source"></textarea>
+      </section>
     </div>
   </div>`))
 
@@ -392,6 +419,7 @@ func osEditorBody(slug, title, blocksJSON string) string {
     <div class="editor-hint text-xs muted mt-2">Select text for <strong>bold</strong>/<em>italic</em>/link, or use <kbd>**bold**</kbd>, <kbd>*italic*</kbd>, <kbd>[text](url)</kbd>. Drag or paste an image to upload.</div>
     <div class="editor-hint text-xs muted mt-2">Reorder blocks by dragging <kbd>⋮⋮</kbd> or with the <kbd>↑</kbd>/<kbd>↓</kbd> buttons. <kbd>⌘.</kbd> toggles focus mode.</div>
     <div class="editor-hint text-xs muted mt-2"><kbd>Enter</kbd> new block · <kbd>Shift+Enter</kbd> line break · <kbd>⌘S</kbd> / <kbd>Ctrl+S</kbd> to save.</div>
+    <div class="editor-hint text-xs muted mt-2"><kbd>HTML</kbd> in the toolbar (<kbd>⌘⇧H</kbd>) switches to a raw HTML source editor and back — formatting is preserved both ways.</div>
   </aside>
   <div class="editor-preview-modal" data-editor-preview hidden role="dialog" aria-modal="true" aria-label="Preview">
     <div class="editor-preview-panel">

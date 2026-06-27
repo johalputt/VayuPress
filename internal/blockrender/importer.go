@@ -295,21 +295,60 @@ func codeLang(pre *html.Node) string {
 	return ""
 }
 
-// nodeText returns the collapsed plain-text content of a node.
+// nodeText returns the collapsed text content of a node, re-encoding recognised
+// inline elements as the lightweight Markdown the block model uses (**bold**,
+// *italic*, `code`, ~~strike~~, [text](url)). This keeps an HTML → blocks → HTML
+// round-trip lossless for common inline formatting: the editor's HTML source
+// mode and the legacy "convert to blocks" path both rely on it, and renderInline
+// reverses the mapping on output. Unrecognised wrappers contribute their text.
 func nodeText(n *html.Node) string {
 	var sb strings.Builder
 	var walk func(*html.Node)
+	walkKids := func(node *html.Node) {
+		for c := node.FirstChild; c != nil; c = c.NextSibling {
+			walk(c)
+		}
+	}
 	walk = func(node *html.Node) {
 		if node.Type == html.TextNode {
 			sb.WriteString(node.Data)
 			return
 		}
-		if node.Type == html.ElementNode && node.DataAtom == atom.Br {
-			sb.WriteString("\n")
+		if node.Type != html.ElementNode {
+			walkKids(node)
 			return
 		}
-		for c := node.FirstChild; c != nil; c = c.NextSibling {
-			walk(c)
+		switch node.DataAtom {
+		case atom.Br:
+			sb.WriteString("\n")
+		case atom.Strong, atom.B:
+			sb.WriteString("**")
+			walkKids(node)
+			sb.WriteString("**")
+		case atom.Em, atom.I:
+			sb.WriteString("*")
+			walkKids(node)
+			sb.WriteString("*")
+		case atom.Code:
+			sb.WriteString("`")
+			walkKids(node)
+			sb.WriteString("`")
+		case atom.Del, atom.S, atom.Strike:
+			sb.WriteString("~~")
+			walkKids(node)
+			sb.WriteString("~~")
+		case atom.A:
+			if href := strings.TrimSpace(attr(node, "href")); href != "" {
+				sb.WriteString("[")
+				walkKids(node)
+				sb.WriteString("](")
+				sb.WriteString(href)
+				sb.WriteString(")")
+			} else {
+				walkKids(node)
+			}
+		default:
+			walkKids(node)
 		}
 	}
 	walk(n)

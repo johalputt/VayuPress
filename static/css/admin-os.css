@@ -1175,40 +1175,10 @@
 }
 .vp-os .login-panel.shake { animation: vp3-shake 0.4s ease; }
 
-/* ── Editor page (Phase 3 scaffolding) ───────────────────────── */
-.vp-os .editor-shell {
-  display: flex;
-  height: calc(100vh - var(--topbar-h));
-  overflow: hidden;
-}
-.vp-os .editor-canvas {
-  flex: 1;
-  overflow-y: auto;
-  padding: var(--sp-10) var(--sp-8);
-}
-.vp-os .editor-title-input {
-  width: 100%;
-  background: none;
-  border: none;
-  outline: none;
-  font-family: var(--font-head);
-  font-size: var(--text-3xl);
-  font-weight: 700;
-  color: var(--text);
-  margin-bottom: var(--sp-6);
-  resize: none;
-}
-.vp-os .editor-title-input::placeholder { color: var(--text-3); }
-.vp-os .editor-sidebar-right {
-  width: 280px;
-  border-left: 1px solid var(--border);
-  background: var(--bg-surface);
-  overflow-y: auto;
-  padding: var(--sp-5);
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-5);
-}
+/* ── Editor page ─────────────────────────────────────────────── */
+/* Layout for the block editor lives in the "Block editor" section below; the
+   earlier scaffolding rules were superseded and removed to avoid cascade
+   conflicts that broke canvas scrolling. */
 
 /* ── Notification bell badge ─────────────────────────────────── */
 .vp-os .notif-btn { position: relative; }
@@ -1312,12 +1282,18 @@
   .vp-os .sidebar-overlay.open { display: block; }
 }
 
-/* ── Block editor (Phase 3, ADR-0068) ──────────────────────────────────────── */
+/* ── Block editor (ADR-0068) ───────────────────────────────────────────────── */
+/* The shell is a two-column grid (writing surface + tool sidebar) with a fixed
+   topbar row. It is sized to the viewport beneath the sticky admin topbar so the
+   writing column scrolls internally instead of letting the whole page grow —
+   this is what lets a long post (or a single tall block) scroll smoothly. */
 .vp-os .editor-shell {
   display: grid;
-  grid-template-columns: 1fr 240px;
-  gap: var(--sp-6);
-  align-items: start;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: var(--sp-4) var(--sp-6);
+  height: calc(100vh - var(--topbar-h) - 2 * var(--sp-6));
+  min-height: 520px;
 }
 .vp-os .editor-topbar {
   grid-column: 1 / -1;
@@ -1325,18 +1301,34 @@
   align-items: center;
   justify-content: space-between;
   padding: var(--sp-3) var(--sp-4);
-  border-bottom: 1px solid var(--border);
+  border: 1px solid var(--border);
   background: var(--bg-surface);
-  border-radius: var(--r-md) var(--r-md) 0 0;
+  border-radius: var(--r-md);
   gap: var(--sp-3);
 }
-.vp-os .editor-topbar-actions { display: flex; gap: var(--sp-2); }
+.vp-os .editor-topbar-actions { display: flex; align-items: center; gap: var(--sp-2); }
 .vp-os .editor-topbar-status { font-size: var(--text-xs); color: var(--text-2); }
 .vp-os .editor-topbar-status--ok   { color: var(--color-success, #22c55e); }
 .vp-os .editor-topbar-status--warn { color: var(--color-warn, #f59e0b); }
 .vp-os .editor-topbar-status--error { color: var(--color-danger, #ef4444); }
-.vp-os .editor-main { min-width: 0; }
+.vp-os .editor-wordcount { font-size: var(--text-xs); color: var(--text-3); margin-right: var(--sp-2); }
+/* Active state for the toolbar toggle buttons (Focus / Split / HTML). */
+.vp-os .editor-topbar-actions .btn.is-active {
+  background: var(--brand-dim);
+  color: var(--brand);
+  border-color: var(--brand);
+}
+
+/* Writing column — owns the scroll. */
+.vp-os .editor-main {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
 .vp-os .editor-title {
+  flex: 0 0 auto;
   width: 100%;
   border: none;
   background: transparent;
@@ -1344,11 +1336,112 @@
   font-family: var(--font-display, inherit);
   font-size: 2rem;
   font-weight: 700;
-  padding: var(--sp-2) 0;
-  margin-bottom: var(--sp-4);
+  padding: var(--sp-2) var(--sp-4) 0;
+  margin: 0 0 var(--sp-2);
   outline: none;
 }
 .vp-os .editor-title::placeholder { color: var(--text-3); }
+
+.vp-os .editor-workspace {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  gap: var(--sp-5);
+  overflow: hidden;
+}
+.vp-os .editor-canvas {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scroll-behavior: smooth;
+  /* Generous trailing space so the final block can scroll up into view and the
+     caret never sits jammed against the bottom edge. */
+  padding: var(--sp-2) var(--sp-4) 35vh;
+}
+/* Thin, unobtrusive scrollbar for the writing surface. */
+.vp-os .editor-canvas { scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
+.vp-os .editor-canvas::-webkit-scrollbar { width: 10px; }
+.vp-os .editor-canvas::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: var(--r-full); border: 3px solid transparent; background-clip: content-box; }
+.vp-os .editor-canvas::-webkit-scrollbar-thumb:hover { background: var(--text-3); background-clip: content-box; }
+
+/* Split live-preview pane — scrolls independently of the canvas. */
+.vp-os .editor-live {
+  flex: 1 1 50%;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--bg-surface);
+  overflow: hidden;
+}
+.vp-os .editor-live[hidden] { display: none; }
+.vp-os .editor-live-head {
+  flex: 0 0 auto;
+  padding: var(--sp-2) var(--sp-4);
+  border-bottom: 1px solid var(--border);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-3);
+}
+.vp-os .editor-live-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: var(--sp-5) var(--sp-6); }
+
+/* HTML source mode — fills the writing column and scrolls on its own. */
+.vp-os .editor-html {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--bg-surface);
+  overflow: hidden;
+}
+.vp-os .editor-html[hidden] { display: none; }
+.vp-os .editor-html-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-4);
+  border-bottom: 1px solid var(--border);
+}
+.vp-os .editor-html-title {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-3);
+}
+.vp-os .editor-html-area {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  resize: none;
+  border: none;
+  outline: none;
+  background: var(--bg-base);
+  color: var(--text);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.85rem;
+  line-height: 1.7;
+  tab-size: 2;
+  padding: var(--sp-4) var(--sp-5);
+  overflow-y: auto;
+  white-space: pre;
+}
+/* When HTML mode is on, hide the block canvas (the column shows the source). */
+.vp-os .editor-shell.is-html .editor-canvas { display: none; }
+
 .vp-os .editor-canvas { display: flex; flex-direction: column; gap: var(--sp-2); }
 
 .vp-os .eblock {
@@ -1400,8 +1493,8 @@
 .vp-os .eblock__divider { border: none; border-top: 2px dashed var(--border); margin: var(--sp-2) 0; }
 
 .vp-os .editor-sidebar {
-  position: sticky;
-  top: var(--sp-4);
+  min-height: 0;
+  overflow-y: auto;
   background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: var(--r-md);
@@ -1476,8 +1569,13 @@
 .vp-os .editor-preview-body { padding: var(--sp-6); overflow-y: auto; }
 
 @media (max-width: 900px) {
-  .vp-os .editor-shell { grid-template-columns: 1fr; }
-  .vp-os .editor-sidebar { position: static; }
+  /* On small screens let the page scroll naturally rather than locking the
+     editor to the viewport height. */
+  .vp-os .editor-shell { grid-template-columns: 1fr; height: auto; min-height: 0; }
+  .vp-os .editor-main { overflow: visible; }
+  .vp-os .editor-canvas { overflow-y: visible; padding-bottom: var(--sp-10); }
+  .vp-os .editor-workspace { flex-direction: column; overflow: visible; }
+  .vp-os .editor-sidebar { position: static; overflow: visible; }
 }
 
 /* ── Media library (Phase 4, ADR-0068) ─────────────────────────────────────── */
@@ -2277,6 +2375,26 @@
   .vp-os .live-dot { animation: none; }
 }
 
+
+/* ── Editor: focus (distraction-free) mode & drop states ─────────────────── */
+/* Focus mode hides the tool sidebar and widens the writing column so nothing
+   competes with the prose; the topbar stays for quick exit (⌘. toggles it). */
+.vp-os .editor-shell.is-focus { grid-template-columns: minmax(0, 1fr); }
+.vp-os .editor-shell.is-focus .editor-sidebar { display: none; }
+.vp-os .editor-shell.is-focus .editor-canvas { padding-left: max(var(--sp-4), calc((100% - 820px) / 2)); padding-right: max(var(--sp-4), calc((100% - 820px) / 2)); }
+.vp-os .editor-shell.is-focus .editor-title { max-width: 820px; margin-left: auto; margin-right: auto; padding-left: var(--sp-1); }
+
+/* Dimming the non-active blocks in focus mode keeps the eye on the current line
+   without hiding context. */
+.vp-os .editor-shell.is-focus .eblock { transition: opacity var(--t-fast); }
+
+/* Image paste / drag-and-drop target highlight on the canvas. */
+.vp-os .editor-canvas.is-dragover {
+  outline: 2px dashed var(--brand);
+  outline-offset: -8px;
+  background: var(--brand-dim);
+  border-radius: var(--r-md);
+}
 
 /* ── Editor: inline formatting toolbar (floating on text selection) ───────── */
 .vp-os .fmt-bar {

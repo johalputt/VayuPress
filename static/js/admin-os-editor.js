@@ -39,6 +39,9 @@
   // v1.14.0 chrome (optional — guarded everywhere so older shells still work).
   var focusBtn = root.querySelector('[data-editor-focus-btn]');
   var splitBtn = root.querySelector('[data-editor-split-btn]');
+  var htmlBtn = root.querySelector('[data-editor-html-btn]');
+  var htmlPanel = root.querySelector('[data-editor-html-panel]');
+  var htmlArea = root.querySelector('[data-editor-html-area]');
   var wordCountEl = root.querySelector('[data-editor-wordcount]');
   var liveEl = root.querySelector('[data-editor-live]');
   var liveBody = root.querySelector('[data-editor-live-body]');
@@ -677,7 +680,7 @@
   }
 
   // tryParagraphShortcut turns leading Markdown markers in a paragraph into the
-  // matching block as soon as the trigger space is typed (Ghost-style).
+  // matching block as soon as the trigger space is typed.
   function tryParagraphShortcut(idx, el) {
     var v = el.value;
     var m;
@@ -716,7 +719,7 @@
     return false;
   }
 
-  // onTextKey gives text blocks a continuous, Ghost-like flow.
+  // onTextKey gives text blocks a continuous, document-like writing flow.
   function onTextKey(idx) {
     return function (e) {
       var el = e.target;
@@ -1134,6 +1137,13 @@
       if (titleEl) titleEl.focus();
       return;
     }
+    // In HTML mode the source is authoritative — parse it into blocks first so
+    // the save reflects the operator's raw edits.
+    if (htmlMode) { applyHTMLSource().then(performSave).catch(function () { setStatus('Could not parse HTML', 'danger'); }); return; }
+    performSave();
+  }
+
+  function performSave() {
     setStatus('Saving…');
     fetch('/os/api/editor/save', {
       method: 'POST',
@@ -1184,6 +1194,10 @@
   }
 
   function preview() {
+    if (htmlMode) { applyHTMLSource().then(doPreview).catch(function () { setStatus('Preview failed', 'danger'); }); return; }
+    doPreview();
+  }
+  function doPreview() {
     setStatus('Rendering preview…');
     fetchPreview().then(function (data) {
       renderSanitized(previewBody, data.html || '');
@@ -1194,6 +1208,7 @@
 
   var splitOn = false, livePreviewTimer = null;
   function toggleSplit() {
+    if (htmlMode) { exitHTMLMode(); }
     splitOn = !splitOn;
     root.classList.toggle('is-split', splitOn);
     if (liveEl) liveEl.hidden = !splitOn;
@@ -1218,6 +1233,73 @@
     focusOn = !focusOn;
     root.classList.toggle('is-focus', focusOn);
     if (focusBtn) focusBtn.classList.toggle('is-active', focusOn);
+  }
+
+  // ── HTML source mode (one-click round-trip) ────────────────────────────────
+  // The HTML editor lets an operator edit the rendered HTML directly. Entering
+  // it asks the server to render the current blocks to sanitised HTML; leaving
+  // it parses that HTML back into blocks (server-side importer, which preserves
+  // inline formatting as Markdown). A visual → HTML → visual round-trip is
+  // therefore lossless for common formatting. Saving while in HTML mode applies
+  // the source first so no edit is lost.
+  var htmlMode = false, htmlBusy = false;
+  function enterHTMLMode() {
+    if (!htmlPanel || !htmlArea || htmlBusy) return;
+    htmlBusy = true;
+    setStatus('Loading HTML…');
+    // HTML mode and split preview are mutually exclusive.
+    if (splitOn) toggleSplit();
+    fetchPreview().then(function (data) {
+      htmlArea.value = data.html || '';
+      htmlMode = true;
+      root.classList.add('is-html');
+      htmlPanel.hidden = false;
+      if (htmlBtn) { htmlBtn.classList.add('is-active'); htmlBtn.setAttribute('aria-pressed', 'true'); }
+      setStatus('Editing HTML', 'ok');
+      setTimeout(function () { htmlArea.focus(); }, 0);
+      htmlBusy = false;
+    }).catch(function () {
+      setStatus('Could not load HTML', 'danger');
+      htmlBusy = false;
+    });
+  }
+  // applyHTMLSource parses the textarea HTML into blocks and returns a Promise
+  // that resolves once `blocks` has been replaced. Used on exit and before save.
+  function applyHTMLSource() {
+    if (!htmlArea) return Promise.resolve();
+    return fetch('/os/api/editor/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
+      body: JSON.stringify({ html: htmlArea.value })
+    }).then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+      .then(function (d) {
+        var next = (d && d.blocks) || [];
+        blocks = (Array.isArray(next) && next.length) ? next : [{ type: 'paragraph', text: '' }];
+      });
+  }
+  function exitHTMLMode() {
+    if (!htmlMode || htmlBusy) { return Promise.resolve(); }
+    htmlBusy = true;
+    setStatus('Applying HTML…');
+    return applyHTMLSource().then(function () {
+      htmlMode = false;
+      root.classList.remove('is-html');
+      if (htmlPanel) htmlPanel.hidden = true;
+      if (htmlBtn) { htmlBtn.classList.remove('is-active'); htmlBtn.setAttribute('aria-pressed', 'false'); }
+      renderCanvas();
+      commitNow();
+      updateStats();
+      scheduleAutosave();
+      scheduleLivePreview();
+      setStatus('Applied', 'ok');
+      htmlBusy = false;
+    }).catch(function () {
+      setStatus('Could not parse HTML', 'danger');
+      htmlBusy = false;
+    });
+  }
+  function toggleHTML() {
+    if (htmlMode) { exitHTMLMode(); } else { enterHTMLMode(); }
   }
 
   // ── Inline formatting toolbar (floating on text selection) ──────────────────
@@ -1369,6 +1451,11 @@
   if (titleEl) titleEl.addEventListener('input', function () { updateStats(); scheduleAutosave(); });
   if (focusBtn) focusBtn.addEventListener('click', toggleFocus);
   if (splitBtn) splitBtn.addEventListener('click', toggleSplit);
+  if (htmlBtn) htmlBtn.addEventListener('click', toggleHTML);
+  if (htmlArea) htmlArea.addEventListener('input', function () {
+    setStatus('Editing HTML…');
+    if (slug) scheduleAutosave();
+  });
   if (undoBtn) undoBtn.addEventListener('click', undo);
   if (redoBtn) redoBtn.addEventListener('click', redo);
 
@@ -1378,7 +1465,8 @@
     if (!meta) return;
     var k = e.key.toLowerCase();
     if (k === 's') { e.preventDefault(); save(); return; }
-    if (k === 'k') { e.preventDefault(); openPalette(focusedBlockIdx(), focusedBlockIdx() - 1); return; }
+    if (k === 'h' && e.shiftKey) { e.preventDefault(); toggleHTML(); return; }
+    if (k === 'k') { e.preventDefault(); if (htmlMode) return; openPalette(focusedBlockIdx(), focusedBlockIdx() - 1); return; }
     if (e.key === '.') { e.preventDefault(); toggleFocus(); return; }
     if (k === 'z') {
       var ae = document.activeElement;
