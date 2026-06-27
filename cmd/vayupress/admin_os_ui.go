@@ -149,6 +149,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/pages/quick-create", a.handleOSQuickCreatePage)
 		// Contact-form inbox — durable record of public contact submissions.
 		pr.Get("/os/messages", a.handleOSMessages)
+		pr.Get("/os/messages/{id}", a.handleOSMessageDetail)
 		pr.With(auth.CSRFTokenMiddleware).Put("/os/api/messages/{id}/read", a.handleOSMessageRead)
 		pr.With(auth.CSRFTokenMiddleware).Delete("/os/api/messages/{id}", a.handleOSMessageDelete)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/messages/read-all", a.handleOSMessagesReadAll)

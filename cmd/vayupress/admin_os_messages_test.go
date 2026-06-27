@@ -45,6 +45,23 @@ func TestMessagesFilteredEmptyShowsToolbar(t *testing.T) {
 	}
 }
 
+// TestMessageDetailNotFound proves the detail view degrades to a not-found card
+// (not a panic) when the message/DB is absent.
+func TestMessageDetailNotFound(t *testing.T) {
+	a := &App{}
+	req := httptest.NewRequest("GET", "/os/messages/does-not-exist", nil)
+	rec := httptest.NewRecorder()
+
+	a.handleOSMessageDetail(rec, req)
+
+	if rec.Code != 200 {
+		t.Fatalf("detail status = %d, want 200", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "Message not found") {
+		t.Error("missing message should render the not-found state")
+	}
+}
+
 // TestMessagesCSVExportHeader proves the CSV export always emits the header row
 // with the right content-type/disposition, even with no DB.
 func TestMessagesCSVExportHeader(t *testing.T) {

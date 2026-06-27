@@ -163,7 +163,7 @@ func (a *App) handleOSMessages(w http.ResponseWriter, r *http.Request) {
 				readBtn = `<button type="button" class="btn btn--ghost btn--sm" data-msg-read data-id="` + html.EscapeString(m.ID) + `">Mark read</button>`
 			}
 			rows += `<tr data-msg-row>
-  <td class="` + rowCls + `">` + pill + `<strong>` + html.EscapeString(m.Name) + `</strong>
+  <td class="` + rowCls + `">` + pill + `<a href="/os/messages/` + html.EscapeString(m.ID) + `"><strong>` + html.EscapeString(m.Name) + `</strong></a>
     <div class="row-meta"><a href="mailto:` + html.EscapeString(m.Email) + `">` + html.EscapeString(m.Email) + `</a></div></td>
   <td style="white-space:pre-wrap;max-width:40ch">` + html.EscapeString(m.Message) + `</td>
   <td>` + pageCell + `</td>
@@ -223,6 +223,89 @@ if(delRead)delRead.addEventListener('click',function(){
 	}
 
 	writeOSHTML(w, adminOSLayout(nonce, "Messages", "messages", cfg, htmpl.HTML(body)))
+}
+
+// handleOSMessageDetail shows a single contact message in full, and marks it
+// read on open so the badge/count stay accurate. Reply/delete actions are
+// surfaced; delete redirects back to the inbox.
+func (a *App) handleOSMessageDetail(w http.ResponseWriter, r *http.Request) {
+	nonce := render.CSPNonce(r)
+	cfg := a.getOSSettings(r.Context())
+	id := chi.URLParam(r, "id")
+
+	if token := auth.GenerateCSRFToken(); token != "" {
+		http.SetCookie(w, &http.Cookie{Name: "vp_csrf", Value: token, Path: "/", SameSite: http.SameSiteStrictMode, HttpOnly: false, Secure: csrfCookieSecure(), MaxAge: 3600})
+	}
+
+	var name, eml, msg, page, ip string
+	var created time.Time
+	var read int
+	found := false
+	if dbpkg.DB != nil {
+		if err := dbpkg.DB.QueryRowContext(r.Context(),
+			`SELECT name,email,message,page,ip,is_read,created_at FROM contact_messages WHERE id=?`, id).
+			Scan(&name, &eml, &msg, &page, &ip, &read, &created); err == nil {
+			found = true
+		}
+	}
+	if !found {
+		body := `<div class="page-header"><h1>Message</h1></div>
+<div class="card empty-state"><div class="empty-icon">🔍</div>
+  <div class="empty-title">Message not found</div>
+  <div class="empty-sub">It may have been deleted. <a href="/os/messages">Back to inbox</a>.</div></div>`
+		writeOSHTML(w, adminOSLayout(nonce, "Message", "messages", cfg, htmpl.HTML(body)))
+		return
+	}
+
+	// Opening a message marks it read (best-effort).
+	if read == 0 {
+		_, _ = dbpkg.WDB.ExecContext(r.Context(), `UPDATE contact_messages SET is_read=1 WHERE id=?`, id)
+	}
+
+	pageRow := ""
+	if page != "" {
+		pageRow = `<div class="kv-row"><span class="kv-key">Page</span><span class="kv-val"><a href="` + html.EscapeString(page) + `" target="_blank" rel="noopener">` + html.EscapeString(page) + `</a></span></div>`
+	}
+	ipRow := ""
+	if ip != "" {
+		ipRow = `<div class="kv-row"><span class="kv-key">IP</span><span class="kv-val">` + html.EscapeString(ip) + `</span></div>`
+	}
+	replyURL := "mailto:" + html.EscapeString(eml) + "?subject=" + url.QueryEscape("Re: your message") +
+		"&body=" + url.QueryEscape("\n\n— On "+created.UTC().Format("2 Jan 2006")+", "+name+" wrote:\n> "+msg)
+
+	body := `<div class="page-header">
+  <div><h1>Message from ` + html.EscapeString(name) + `</h1>
+    <p class="text-sm muted">` + created.UTC().Format("2 Jan 2006 15:04 MST") + `</p></div>
+  <div class="page-actions">
+    <a class="btn btn--ghost btn--sm" href="/os/messages">← Inbox</a>
+    <a class="btn btn--primary btn--sm" href="` + replyURL + `">Reply</a>
+    <button type="button" class="btn btn--ghost btn--sm" data-msg-detail-delete data-id="` + html.EscapeString(id) + `">Delete</button>
+  </div>
+</div>
+<div class="card">
+  <div class="kv-row"><span class="kv-key">From</span><span class="kv-val"><strong>` + html.EscapeString(name) + `</strong> &lt;<a href="mailto:` + html.EscapeString(eml) + `">` + html.EscapeString(eml) + `</a>&gt;</span></div>
+  ` + pageRow + ipRow + `
+</div>
+<div class="card">
+  <div class="text-sm muted mb-2">Message</div>
+  <div style="white-space:pre-wrap;line-height:1.6">` + html.EscapeString(msg) + `</div>
+</div>
+<div id="msg-status" class="text-sm muted" role="status" aria-live="polite"></div>
+<script nonce="` + nonce + `">
+(function(){'use strict';
+function csrf(){var m=document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);return m?decodeURIComponent(m[1]):'';}
+var b=document.querySelector('[data-msg-detail-delete]');
+if(b)b.addEventListener('click',function(){
+  if(!window.confirm('Delete this message? This cannot be undone.'))return;
+  b.disabled=true;
+  fetch('/os/api/messages/'+encodeURIComponent(b.getAttribute('data-id')),{method:'DELETE',headers:{'X-CSRF-Token':csrf()}})
+    .then(function(r){if(r.ok){window.location.href='/os/messages';}else{b.disabled=false;var s=document.getElementById('msg-status');if(s)s.textContent='Could not delete';}})
+    .catch(function(e){b.disabled=false;var s=document.getElementById('msg-status');if(s)s.textContent='Error: '+e;});
+});
+})();
+</script>`
+
+	writeOSHTML(w, adminOSLayout(nonce, "Message", "messages", cfg, htmpl.HTML(body)))
 }
 
 // messagesHeader renders the Messages page header with the count, unread tally
