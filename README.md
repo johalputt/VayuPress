@@ -21,6 +21,38 @@
 > _Own your content. Own your communication. Own your infrastructure._
 > Publishing is the core identity, **VayuMail** the native sovereignty layer, **VayuPGP** the native privacy layer, and **VayuOS** the native control layer — all in a single Go binary, single process, single config.
 
+## What's New in v2.0.0
+
+> Full notes in [`CHANGELOG.md`](CHANGELOG.md) · architecture decision in
+> [`docs/adr/ADR-0092`](docs/adr/ADR-0092-block-editor-v2-and-low-impact-deploys.md)
+
+**The sovereign-publishing 2.0 release — a ground-up editor overhaul, an
+in-house way to get paid, and updates that no longer wobble the server.**
+
+- **A best-in-class block editor.** The writing canvas now scrolls smoothly, and
+  the toolbar gains **one-click HTML source mode** (lossless visual ↔ HTML
+  round-trip), an **image gallery** card (up to 9 images), **HTML** and
+  **Markdown** cards (sanitised on save), image **captions** and **width**
+  (regular / wide / full), and **auto-bookmarking** when you paste a URL.
+- **A full Post settings panel (publishing options).** Feature image, post
+  URL/slug (with safe rename), publish date, custom excerpt, a tag editor, SEO
+  meta title + description, canonical URL, Open Graph / Twitter social cards, and
+  **Feature this post** / **Turn into a page** toggles — all flowing into the
+  rendered `<head>`, social cards, and JSON-LD.
+- **Monetization — get paid without surrendering sovereignty.** A dependency-free
+  **direct/offline payments** gateway with a sovereign order ledger, a generic
+  **signed-webhook** path for any external processor (no card data, no SDK),
+  payer receipt emails, a JS-free public `/checkout`, and an operator-managed
+  **advertising** console (house image ads, sanitised HTML creatives, optional
+  Google AdSense) — everything off by default.
+- **Major security hardening.** A single rebind-safe outbound dialer
+  (`internal/safefetch`), spoof-resistant client-IP resolution, Argon2id raised
+  to OWASP `t=3`, and a `SameSite=Strict` admin cookie.
+- **Buttery-smooth updates.** The HTTP listener no longer blocks on Meilisearch
+  at startup, post-deploy cache-warm and search reindex are paced, and the
+  updater builds at idle priority with a disk preflight and an automatic
+  pre-update DB snapshot.
+
 ## What's New in v1.19.0
 
 > Full notes in [`CHANGELOG.md`](CHANGELOG.md)
