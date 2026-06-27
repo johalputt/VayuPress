@@ -266,6 +266,39 @@
     }
   });
 
+  // ── Quick-jump chip bar ───────────────────────────────────────────────────────
+  // The customizer has many sections; a sticky row of section chips lets the
+  // operator open and scroll to any one without hunting. Built from the section
+  // headers so it always matches them. CSP-safe: DOM-built, no inline handlers.
+  (function buildJump() {
+    var groups = Array.prototype.slice.call(panel.querySelectorAll('.cz-group'));
+    if (groups.length < 4) return;
+    var bar = document.createElement('div');
+    bar.className = 'cz-jump';
+    groups.forEach(function (g) {
+      var head = g.querySelector('.cz-group__head');
+      if (!head) return;
+      var label = head.firstChild ? head.firstChild.textContent.trim() : (head.textContent || '').trim();
+      if (!label) return;
+      var chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'cz-jump__chip';
+      chip.textContent = label;
+      chip.addEventListener('click', function () {
+        panel.querySelectorAll('.cz-group').forEach(function (x) {
+          x.classList.remove('cz-group--open');
+          var hh = x.querySelector('.cz-group__head');
+          if (hh) hh.setAttribute('aria-expanded', 'false');
+        });
+        g.classList.add('cz-group--open');
+        head.setAttribute('aria-expanded', 'true');
+        if (g.scrollIntoView) g.scrollIntoView({ block: 'start' });
+      });
+      bar.appendChild(chip);
+    });
+    panel.insertBefore(bar, panel.firstChild);
+  })();
+
   // ── Unsaved-changes (dirty) tracking ──────────────────────────────────────────
   // A live preview is not the same as an applied theme: the operator must click
   // Apply to persist. Reflect that on the Apply button + warn before leaving so

@@ -1888,6 +1888,21 @@
 .vp-os .cz-group__body { display: none; padding: 4px 16px 16px; border-top: 1px solid var(--border); }
 .vp-os .cz-group--open > .cz-group__body { display: block; }
 
+/* Customizer quick-jump chip bar — sticky section navigator. */
+.vp-os .cz-jump {
+  position: sticky; top: 0; z-index: 3;
+  display: flex; flex-wrap: wrap; gap: 6px;
+  padding: 8px; margin-bottom: 4px;
+  background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--r-md);
+}
+.vp-os .cz-jump__chip {
+  font-size: 0.72rem; font-weight: 600; line-height: 1;
+  padding: 5px 9px; cursor: pointer; color: var(--text-2);
+  background: var(--bg-surface-2); border: 1px solid var(--border);
+  border-radius: var(--r-full); transition: color .12s, border-color .12s, background .12s;
+}
+.vp-os .cz-jump__chip:hover { color: #fff; background: var(--brand); border-color: var(--brand); }
+
 /* Apply button "unsaved changes" state — a subtle ring so the operator knows a
    live preview tweak still needs Applying to persist. */
 .vp-os .btn.is-dirty {
