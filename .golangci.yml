@@ -1,0 +1,66 @@
+# golangci-lint configuration (Prompt 10 — automated quality gate).
+#
+# Built against golangci-lint v2.x. The goal is a MEANINGFUL zero-error gate:
+# this curated set catches real bugs, unchecked DB-write/search errors, leaked
+# HTTP bodies, and ineffectual assignments. gosec runs as a separate CI step
+# (see .github/workflows/ci.yml) with its own documented exclusions.
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  default: none
+  enable:
+    - errcheck      # unchecked errors (writes, indexing — see exclusions for cleanup)
+    - govet         # suspicious constructs
+    - ineffassign   # ineffectual assignments
+    - staticcheck   # SA*/S1* correctness (ST*/QF* style categories disabled below)
+    - unused        # dead unexported symbols
+    - bodyclose     # unclosed HTTP response bodies (FD exhaustion)
+    - rowserrcheck  # unchecked sql.Rows.Err()
+    - unconvert     # redundant type conversions
+    - misspell      # comment/string typos
+
+  settings:
+    staticcheck:
+      # Keep SA* (correctness) and S1* (simplify); drop the purely stylistic
+      # ST* (stylecheck) and QF* (quickfix) categories — they add churn without
+      # catching bugs.
+      checks:
+        - "all"
+        - "-ST1*"
+        - "-QF*"
+
+  exclusions:
+    generated: lax
+    rules:
+      # Example plugins under docs/ are illustrative, not shipped in the binary.
+      - path: docs/plugins/examples/
+        linters: [errcheck, bodyclose]
+      # Tests may take shortcuts (unchecked Close/Setenv).
+      - path: _test\.go
+        linters: [errcheck, bodyclose]
+      # The realtime analytics dashboard aggregates ~13 independent panels with
+      # best-effort reads; a mid-scan error just yields a slightly shorter panel
+      # (authoritative data stays in SQLite). Per-panel rows.Err handling adds
+      # churn without protecting a data path. Core data-path loops (article repo,
+      # search, sharded search, analytics summary) ARE rows.Err-checked.
+      - path: internal/analytics/extended\.go
+        linters: [rowserrcheck]
+      # Conventional fire-and-forget calls whose error cannot be usefully acted
+      # on at the call site: resource cleanup (Close/Rollback), best-effort
+      # filesystem teardown, writes to an http.ResponseWriter / stdout, and
+      # best-effort metric/health Scans. DB writes (Exec) and search indexing
+      # are deliberately NOT excluded — those are checked in code.
+      - linters: [errcheck]
+        source: '\.(Close|Rollback)\('
+      - linters: [errcheck]
+        text: 'Error return value of `(fmt\.(Fprint|Fprintf|Fprintln|Sscanf)|os\.(Remove|RemoveAll|MkdirAll))` is not checked'
+      - linters: [errcheck]
+        text: 'Error return value of `[^`]*\.(Write|Encode|Scan)` is not checked'
+
+formatters:
+  enable:
+    - gofmt

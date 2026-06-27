@@ -144,6 +144,9 @@ func (s *meiliService) fallback(ctx context.Context, q string, limit int) (Resul
 		h.Tags = splitCSV(tagsCSV)
 		hits = append(hits, h)
 	}
+	if err := rows.Err(); err != nil {
+		return Result{}, fmt.Errorf("search fallback rows: %w", err)
+	}
 	if hits == nil {
 		hits = []Hit{}
 	}
@@ -243,12 +246,12 @@ func ConfigureIndex(ctx context.Context, svc Service) {
 	if !ok {
 		return
 	}
-	ms.do(ctx, "PATCH", "/indexes/articles/settings", map[string]interface{}{
+	_ = ms.do(ctx, "PATCH", "/indexes/articles/settings", map[string]interface{}{
 		"rankingRules":         []string{"words", "proximity", "attribute", "sort", "exactness"},
 		"searchableAttributes": []string{"title", "tags", "content"},
 		"filterableAttributes": []string{"tags", "created_at"},
 		"sortableAttributes":   []string{"created_at", "updated_at"},
-	}) //nolint:errcheck
+	})
 }
 
 // WaitReady blocks until Meilisearch responds to /health or maxAttempts is

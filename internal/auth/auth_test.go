@@ -1,12 +1,16 @@
 package auth
 
 import (
+	"encoding/base64"
+	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
 	"github.com/johalputt/vayupress/internal/config"
+	"golang.org/x/crypto/argon2"
 )
 
 func init() {
@@ -107,6 +111,7 @@ func TestRequireAPIKeyMissing(t *testing.T) {
 		w.WriteHeader(200)
 	}))
 	req := httptest.NewRequest("GET", "/", nil)
+	req.RemoteAddr = "198.51.100.10:1234" // distinct from lockout tests (TEST-NET-2)
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
 	if rr.Code != 401 {
@@ -119,6 +124,7 @@ func TestRequireAPIKeyValid(t *testing.T) {
 		w.WriteHeader(200)
 	}))
 	req := httptest.NewRequest("GET", "/", nil)
+	req.RemoteAddr = "198.51.100.11:1234"
 	req.Header.Set("X-API-Key", "test-key-abc")
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
@@ -138,8 +144,9 @@ func TestRequireAPIKeyEmptyConfigRejects(t *testing.T) {
 	handler := RequireAPIKey(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(200)
 	}))
-	for _, presented := range []string{"", "anything"} {
+	for i, presented := range []string{"", "anything"} {
 		req := httptest.NewRequest("GET", "/", nil)
+		req.RemoteAddr = fmt.Sprintf("198.51.100.%d:1234", 20+i)
 		if presented != "" {
 			req.Header.Set("X-API-Key", presented)
 		}
@@ -148,6 +155,62 @@ func TestRequireAPIKeyEmptyConfigRejects(t *testing.T) {
 		if rr.Code != 401 {
 			t.Fatalf("empty configured key with presented=%q: want 401, got %d", presented, rr.Code)
 		}
+	}
+}
+
+// TestClientIPIgnoresSpoofedHeadersFromUntrustedPeer verifies the F-3 fix: a
+// direct connection (peer not in TrustedProxies) cannot spoof its IP via
+// X-Forwarded-For / X-Real-IP, so the real peer address is used for rate
+// limiting and lockout keying.
+func TestClientIPIgnoresSpoofedHeadersFromUntrustedPeer(t *testing.T) {
+	prev := config.Cfg.TrustedProxies
+	_, loop, _ := net.ParseCIDR("127.0.0.0/8")
+	config.Cfg.TrustedProxies = []*net.IPNet{loop}
+	defer func() { config.Cfg.TrustedProxies = prev }()
+
+	// Untrusted direct peer trying to spoof headers → headers ignored.
+	req := httptest.NewRequest("GET", "/", nil)
+	req.RemoteAddr = "203.0.113.7:5555"
+	req.Header.Set("X-Forwarded-For", "10.0.0.9")
+	req.Header.Set("X-Real-IP", "10.0.0.9")
+	if got := ClientIP(req); got != "203.0.113.7" {
+		t.Fatalf("untrusted peer: want real peer 203.0.113.7, got %q", got)
+	}
+
+	// Trusted proxy (loopback) → forwarding header is honoured.
+	req2 := httptest.NewRequest("GET", "/", nil)
+	req2.RemoteAddr = "127.0.0.1:5555"
+	req2.Header.Set("X-Forwarded-For", "198.51.100.42")
+	if got := ClientIP(req2); got != "198.51.100.42" {
+		t.Fatalf("trusted proxy: want forwarded 198.51.100.42, got %q", got)
+	}
+
+	// Trusted proxy with a spoofed extra hop prepended → right-most untrusted
+	// entry (the address the proxy actually saw) wins.
+	req3 := httptest.NewRequest("GET", "/", nil)
+	req3.RemoteAddr = "127.0.0.1:5555"
+	req3.Header.Set("X-Forwarded-For", "9.9.9.9, 198.51.100.42, 127.0.0.1")
+	if got := ClientIP(req3); got != "198.51.100.42" {
+		t.Fatalf("chained proxy: want 198.51.100.42, got %q", got)
+	}
+}
+
+// TestArgon2idLegacyHashStillVerifies ensures the F-5 cost bump did not break
+// pre-existing hashes stored in the old parameter-less "salt$hash" form.
+func TestArgon2idLegacyHashStillVerifies(t *testing.T) {
+	secret := "legacy-secret"
+	salt := make([]byte, 16)
+	for i := range salt {
+		salt[i] = byte(i)
+	}
+	// Reproduce the legacy encoding (time cost = 1, no parameter metadata).
+	h := argon2.IDKey([]byte(secret), salt, legacyArgonTime, argonMemory, argonThreads, argonKeyLen)
+	legacy := base64.RawStdEncoding.EncodeToString(salt) + "$" + base64.RawStdEncoding.EncodeToString(h)
+	if !VerifySecretArgon2id(secret, legacy) {
+		t.Fatal("legacy salt$hash encoding must still verify after the cost bump")
+	}
+	if VerifySecretArgon2id("wrong", legacy) {
+		t.Fatal("legacy verify must reject a wrong secret")
 	}
 }
 

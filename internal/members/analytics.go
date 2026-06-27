@@ -105,6 +105,7 @@ func (s *Store) Stats(ctx context.Context) (*Stats, error) {
 			mrr += sub.MonthlyValueCents()
 			currencyVotes[currency]++
 		}
+		_ = subRows.Err() // best-effort revenue stats; partial result is acceptable
 		subRows.Close()
 		best := 0
 		for c, v := range currencyVotes {

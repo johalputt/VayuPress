@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -77,6 +78,9 @@ func (directWriter) Enqueue(_ context.Context, art dbpkg.Article, op string) err
 
 var _ queue.Writer = directWriter{}
 
+// testClientSeq generates a distinct simulated client IP per test request.
+var testClientSeq int64
+
 // newTestHarness spins up a full HTTP test server backed by a temp SQLite DB.
 // Callers must call the returned cleanup func when the test ends.
 func newTestHarness(t *testing.T) (*httptest.Server, string) {
@@ -134,6 +138,13 @@ func doRequest(t *testing.T, srv *httptest.Server, method, path string, apiKey s
 	if apiKey != "" {
 		req.Header.Set("X-API-Key", apiKey)
 	}
+	// The harness connects from 127.0.0.1 — a default trusted proxy — so set a
+	// distinct X-Forwarded-For per request to mirror real traffic arriving via
+	// the localhost reverse proxy. Without it, every request would share the
+	// single 127.0.0.1 per-IP rate-limit/lockout bucket and conflate unrelated
+	// requests (auth.ClientIP keys on host, not the ephemeral source port).
+	seq := atomic.AddInt64(&testClientSeq, 1)
+	req.Header.Set("X-Forwarded-For", fmt.Sprintf("203.0.%d.%d", (seq/254)%254, seq%254+1))
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}

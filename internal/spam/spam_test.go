@@ -19,9 +19,9 @@ func TestClassify_SpamKeywords(t *testing.T) {
 func TestClassify_ExcessiveLinks(t *testing.T) {
 	body := "Check https://a.com and https://b.com and https://c.com for deals"
 	s := Classify("user", body)
-	if s.IsSpam(0.5) {
-		// 3 links but not necessarily over threshold with good content
-	}
+	// We don't assert on the overall spam verdict here (3 links may sit below
+	// the threshold once content quality is factored in); the signal check below
+	// is the real assertion.
 	found := false
 	for _, sig := range s.Signals {
 		if sig == "excessive-links" {

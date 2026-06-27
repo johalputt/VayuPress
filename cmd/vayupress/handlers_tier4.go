@@ -149,6 +149,7 @@ func (a *App) loadEmailTemplateOverrides() {
 		}
 		a.emailTmpl.Set(emailtmpl.Kind(kind), subject, text, html)
 	}
+	_ = rows.Err()
 }
 
 // renderEmail renders a transactional email via the in-memory template store.
@@ -257,6 +258,7 @@ func (a *App) loadI18nFromDB() {
 		}
 		byLang[lang][key] = value
 	}
+	_ = rows.Err()
 	for lang, msgs := range byLang {
 		a.i18n.SetLanguage(lang, msgs)
 	}

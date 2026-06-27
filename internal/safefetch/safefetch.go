@@ -105,15 +105,56 @@ func New(opts Options) *Client {
 	return c
 }
 
-// transport returns an http.Transport whose dialer resolves the host and
-// connects to a validated public IP directly. Because every redirect hop opens
-// a fresh connection through this same dialer, the guard re-runs on each hop.
+// transport returns the SSRF-safe transport used by the GET Client. It is the
+// strictest configuration (no allow-listed internal hosts): the pre-flight
+// validatePublicHost guard already rejects loopback/private hosts before any
+// connection, and the dialer re-enforces that against the pinned IP on every
+// redirect hop.
 func (c *Client) transport() *http.Transport {
-	base := &net.Dialer{Timeout: 5 * time.Second, KeepAlive: 30 * time.Second}
+	return SafeTransport(TransportOptions{})
+}
+
+// TransportOptions configures SafeTransport.
+type TransportOptions struct {
+	// AllowHosts lists hostnames / IP literals that may resolve to a private or
+	// reserved address. Use it only for trusted, operator-configured internal
+	// services — e.g. a loopback Meilisearch or Ollama endpoint. Matching is
+	// exact and case-insensitive on the request host. Leave empty for the
+	// strictest behaviour (refuse every private/reserved destination).
+	AllowHosts []string
+	// DialTimeout overrides the per-connection dial timeout (default 5s).
+	DialTimeout time.Duration
+}
+
+// SafeTransport returns an *http.Transport suitable for an arbitrary-method
+// http.Client (POST webhooks, update downloads, internal service calls) that
+// still enforces the SSRF guard: it resolves the host, refuses
+// private/reserved destinations (except AllowHosts), pins the validated IP at
+// dial time to close the DNS-rebinding / TOCTOU window, and never honours an
+// environment proxy.
+//
+// This is the single source of truth for the server-side outbound dialer — it
+// replaces the weaker, re-resolving transport that previously lived in
+// cmd/vayupress/middleware.go (ADR-0009).
+func SafeTransport(opts TransportOptions) *http.Transport {
+	allow := make(map[string]bool, len(opts.AllowHosts))
+	for _, h := range opts.AllowHosts {
+		allow[strings.ToLower(strings.TrimSpace(h))] = true
+	}
+	dt := opts.DialTimeout
+	if dt <= 0 {
+		dt = 5 * time.Second
+	}
+	base := &net.Dialer{Timeout: dt, KeepAlive: 30 * time.Second}
 	dial := func(ctx context.Context, network, addr string) (net.Conn, error) {
 		host, port, err := net.SplitHostPort(addr)
 		if err != nil {
 			return nil, err
+		}
+		// Trusted internal service (e.g. localhost Meilisearch/Ollama): dial as
+		// given, without the public-IP requirement.
+		if allow[strings.ToLower(host)] {
+			return base.DialContext(ctx, network, addr)
 		}
 		ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
 		if err != nil {
@@ -135,12 +176,19 @@ func (c *Client) transport() *http.Transport {
 		DialTLSContext:        nil,
 		TLSClientConfig:       &tls.Config{MinVersion: tls.VersionTLS12},
 		ForceAttemptHTTP2:     true,
-		MaxIdleConns:          32,
-		IdleConnTimeout:       60 * time.Second,
+		MaxIdleConns:          100,
+		IdleConnTimeout:       90 * time.Second,
 		TLSHandshakeTimeout:   5 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
 	}
 }
+
+// IsPrivateOrReservedIP reports whether ip must never be the target of a
+// server-side outbound connection (loopback, link-local, multicast,
+// unspecified, RFC1918/ULA private, cloud metadata endpoints, CGNAT, Class-E,
+// and other reserved ranges). Exported so callers share one definition rather
+// than maintaining drift-prone copies. A nil IP is treated as blocked.
+func IsPrivateOrReservedIP(ip net.IP) bool { return isPrivateOrReservedIP(ip) }
 
 // Get fetches rawURL with the SSRF guard, scheme allowlist, size cap, and time
 // budget applied. The returned Result.Body is at most MaxBytes long.

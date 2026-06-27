@@ -2,8 +2,10 @@ package config
 
 import (
 	"log"
+	"net"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -71,6 +73,14 @@ var Cfg struct {
 
 	// Stripe webhook signing secret for paid-member upgrades. Empty = disabled.
 	StripeWebhookSecret string
+
+	// TrustedProxies is the set of CIDR ranges whose X-Forwarded-For /
+	// X-Real-IP headers are honoured when deriving the real client IP. Requests
+	// arriving directly from any other address have their forwarding headers
+	// ignored, so a client cannot spoof its IP to evade rate limiting / lockout
+	// or impersonate a TRUSTED_IPS entry. Defaults to loopback because the
+	// shipped deployment runs nginx on the same host.
+	TrustedProxies []*net.IPNet
 }
 
 func Load() {
@@ -119,6 +129,35 @@ func Load() {
 	Cfg.AIURL = EnvOr("VAYU_AI_URL", "")
 	Cfg.AIModel = EnvOr("VAYU_AI_MODEL", "llama3.2")
 	Cfg.StripeWebhookSecret = EnvOr("STRIPE_WEBHOOK_SECRET", "")
+	Cfg.TrustedProxies = parseCIDRs(EnvOr("TRUSTED_PROXIES", "127.0.0.0/8,::1/128"))
+}
+
+// parseCIDRs parses a comma-separated list of CIDR ranges, skipping any that
+// fail to parse (logged, not fatal — a malformed entry must not break startup).
+func parseCIDRs(s string) []*net.IPNet {
+	var nets []*net.IPNet
+	for _, part := range strings.Split(s, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		// Accept a bare IP by promoting it to a single-host CIDR.
+		if !strings.Contains(part, "/") {
+			if ip := net.ParseIP(part); ip != nil {
+				if ip.To4() != nil {
+					part += "/32"
+				} else {
+					part += "/128"
+				}
+			}
+		}
+		if _, n, err := net.ParseCIDR(part); err == nil {
+			nets = append(nets, n)
+		} else {
+			log.Printf(`{"level":"warn","component":"config","msg":"ignoring invalid TRUSTED_PROXIES entry","entry":"%s"}`, part)
+		}
+	}
+	return nets
 }
 
 func MustEnv(k string) string {

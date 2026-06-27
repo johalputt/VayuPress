@@ -19,10 +19,11 @@ import (
 func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	r.Use(
 		requestIDMiddleware,
-		//lint:ignore SA1019 RealIP is used intentionally; VayuPress runs behind a
-		// trusted reverse proxy (nginx/Caddy) that sets X-Forwarded-For, so the
-		// spoofing concern in the deprecation note does not apply to this topology.
-		chimw.RealIP,
+		// Proxy-aware client-IP resolution (audit F-3). Replaces chi's
+		// middleware.RealIP, which trusts forwarding headers unconditionally and
+		// is vulnerable to IP spoofing; realIPMiddleware honours them only from
+		// configured trusted proxies (TRUSTED_PROXIES, default loopback).
+		realIPMiddleware,
 		structuredLoggerMiddleware,
 		chimw.Recoverer,
 		chimw.Timeout(30*time.Second),

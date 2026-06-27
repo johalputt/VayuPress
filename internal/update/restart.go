@@ -41,7 +41,7 @@ func Relaunch(beforeExec func()) error {
 		beforeExec()
 	}
 	logging.LogInfo("update", "re-executing "+exe+" to activate update")
-	return syscall.Exec(exe, os.Args, os.Environ())
+	return syscall.Exec(exe, os.Args, os.Environ()) //nosec G702 -- re-exec of our own resolved binary (os.Executable); arguments are this process's own, not external input
 }
 
 // ScheduleRestart performs Relaunch after delay, off the calling goroutine, so

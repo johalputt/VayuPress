@@ -80,12 +80,15 @@ func processOneJob(workerID int) (empty bool) {
 	if err != nil {
 		return true
 	}
-	dbpkg.WDB.Exec(`UPDATE write_jobs SET status='processing' WHERE id=?`, job.ID)
+	// Best-effort status transitions throughout this worker: failures are
+	// self-healing via StartStuckJobReaper (resets stale 'processing' rows) and
+	// the retry/backoff path below, so they are intentionally not error-checked.
+	_, _ = dbpkg.WDB.Exec(`UPDATE write_jobs SET status='processing' WHERE id=?`, job.ID)
 	jobStart := time.Now()
 	var a dbpkg.Article
 	if err := json.Unmarshal([]byte(job.ArticleJSON), &a); err != nil {
 		logging.LogError("worker", fmt.Sprintf("worker-%d bad JSON job %d", workerID, job.ID), err.Error())
-		dbpkg.WDB.Exec(`UPDATE write_jobs SET status='dead_letter',dead_reason='parse_error' WHERE id=?`, job.ID)
+		_, _ = dbpkg.WDB.Exec(`UPDATE write_jobs SET status='dead_letter',dead_reason='parse_error' WHERE id=?`, job.ID)
 		return false
 	}
 	var execErr error
@@ -132,7 +135,7 @@ func processOneJob(workerID int) (empty bool) {
 			atomic.AddInt64(&metrics.MetricArticlesDeleted, 1)
 		}
 	default:
-		dbpkg.WDB.Exec(`UPDATE write_jobs SET status='dead_letter',dead_reason='unknown_op' WHERE id=?`, job.ID)
+		_, _ = dbpkg.WDB.Exec(`UPDATE write_jobs SET status='dead_letter',dead_reason='unknown_op' WHERE id=?`, job.ID)
 		return false
 	}
 	if execErr != nil {
@@ -144,9 +147,9 @@ func processOneJob(workerID int) (empty bool) {
 				backoffSeconds = maxBackoffSeconds
 			}
 			nextRetry := time.Now().Add(time.Duration(backoffSeconds) * time.Second).UTC().Format("2006-01-02T15:04:05Z")
-			dbpkg.WDB.Exec(`UPDATE write_jobs SET status='pending',retries=retries+1,retry_at=? WHERE id=?`, nextRetry, job.ID)
+			_, _ = dbpkg.WDB.Exec(`UPDATE write_jobs SET status='pending',retries=retries+1,retry_at=? WHERE id=?`, nextRetry, job.ID)
 		} else {
-			dbpkg.WDB.Exec(`UPDATE write_jobs SET status='dead_letter',dead_reason='max_retries' WHERE id=?`, job.ID)
+			_, _ = dbpkg.WDB.Exec(`UPDATE write_jobs SET status='dead_letter',dead_reason='max_retries' WHERE id=?`, job.ID)
 			atomic.AddInt64(&metrics.MetricQueueFailed, 1)
 			atomic.AddInt64(&metrics.MetricDeadLetterJobs, 1)
 		}
@@ -170,7 +173,7 @@ func processOneJob(workerID int) (empty bool) {
 			}
 		}
 	}
-	dbpkg.DB.Exec(`UPDATE write_jobs SET status='completed' WHERE id=?`, job.ID)
+	_, _ = dbpkg.DB.Exec(`UPDATE write_jobs SET status='completed' WHERE id=?`, job.ID)
 	atomic.AddInt64(&metrics.MetricQueueProcessed, 1)
 	metrics.QueueJobLatency.Record(time.Since(jobStart))
 	var qDepth int
@@ -259,9 +262,10 @@ func HandleQueueReplay(w http.ResponseWriter, r *http.Request, writeJSON func(ht
 			replayIDs = append(replayIDs, id)
 		}
 	}
+	_ = rows.Err() // best-effort batch; the next replay sweep picks up any remainder
 	rows.Close()
 	for _, id := range quarantineIDs {
-		dbpkg.WDB.Exec(`UPDATE write_jobs SET status='quarantined' WHERE id=?`, id)
+		_, _ = dbpkg.WDB.Exec(`UPDATE write_jobs SET status='quarantined' WHERE id=?`, id)
 		atomic.AddInt64(&metrics.MetricPoisonJobsQuarantined, 1)
 		logging.LogJSON(logging.LogFields{Level: "warn", Component: "queue-replay", Msg: fmt.Sprintf("job %d quarantined after %d replays (ADR-0035)", id, config.Cfg.MaxReplayCount)})
 	}

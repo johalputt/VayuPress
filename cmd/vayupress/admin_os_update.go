@@ -225,7 +225,7 @@ func dashOr(s string) string {
 // handleOSUpdateCheck queries GitHub for the latest release (read-only). It
 // records the check in update_history, matching the CLI `update check`.
 func (a *App) handleOSUpdateCheck(w http.ResponseWriter, r *http.Request) {
-	client := &http.Client{Timeout: 30 * time.Second, Transport: ssrfSafeTransport()}
+	client := &http.Client{Timeout: 30 * time.Second, Transport: safeOutboundTransport()}
 	rel, err := update.CheckLatest(r.Context(), client, updateOwner, updateRepo)
 	if err != nil {
 		writeAPIError(w, r, http.StatusBadGateway, "check-failed", err.Error(), "")
@@ -287,7 +287,7 @@ func (a *App) handleOSUpdateApply(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// A generous timeout: release binaries can be large and links slow.
-	client := &http.Client{Timeout: 15 * time.Minute, Transport: ssrfSafeTransport()}
+	client := &http.Client{Timeout: 15 * time.Minute, Transport: safeOutboundTransport()}
 	opt := update.ApplyOptions{
 		Current:    Version,
 		DryRun:     body.DryRun,

@@ -317,7 +317,9 @@ func (s *Store) Count(ctx context.Context) (map[string]int, error) {
 	for rows.Next() {
 		var tier string
 		var n int
-		rows.Scan(&tier, &n)
+		if err := rows.Scan(&tier, &n); err != nil {
+			return nil, err
+		}
 		out[tier] = n
 	}
 	return out, rows.Err()

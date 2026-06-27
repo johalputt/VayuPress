@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"runtime"
 	"sort"
 	"strings"
 	"sync/atomic"
@@ -38,8 +39,30 @@ type Article struct {
 	Status string `json:"status,omitempty"`
 }
 
-// DB is the package-level database connection.
+// DB is the package-level database connection. It is the single, serialized
+// writer (MaxOpenConns=1) — SQLite permits only one writer at a time, and
+// pinning the writer to one connection keeps the WAL write path lock-free and
+// SQLITE_BUSY-free.
 var DB *sql.DB
+
+// RDB is the read-only connection pool (audit F-4). SQLite in WAL mode allows
+// one writer to run concurrently with many readers, so read traffic is fanned
+// across several connections here instead of queuing behind the single writer.
+// It is opened query_only as defense-in-depth: a stray write routed through the
+// read path fails fast rather than silently contending with the writer. RDB is
+// nil for in-memory databases (tests), where Reader() falls back to DB because
+// each :memory: connection is a distinct database.
+var RDB *sql.DB
+
+// Reader returns the connection used for read-only queries: the dedicated read
+// pool when available, otherwise the writer connection. Callers that only
+// SELECT should prefer Reader() so reads do not serialize behind writes.
+func Reader() *sql.DB {
+	if RDB != nil {
+		return RDB
+	}
+	return DB
+}
 
 // WDB is the wrapped DB that records write latency metrics.
 var WDB wrappedDB
@@ -108,7 +131,50 @@ func Init() error {
 	if err := verifyMigrationChecksums(); err != nil {
 		return fmt.Errorf("migration drift: %w", err)
 	}
+	if err := openReadPool(); err != nil {
+		return fmt.Errorf("read pool: %w", err)
+	}
 	logging.LogInfo("db", "ready — WAL+PRAGMAs enforced, migrations+checksums verified (ADR-0033/0034)")
+	return nil
+}
+
+// isMemoryDB reports whether path refers to a SQLite in-memory database. Each
+// connection to such a database is distinct, so a separate read pool cannot be
+// opened against it.
+func isMemoryDB(path string) bool {
+	return path == ":memory:" ||
+		strings.HasPrefix(path, "file::memory:") ||
+		strings.Contains(path, "mode=memory")
+}
+
+// openReadPool opens the read-only connection pool (RDB) against the same
+// on-disk database file as the writer. It is a no-op for in-memory databases,
+// where Reader() transparently falls back to the writer connection.
+func openReadPool() error {
+	if isMemoryDB(config.Cfg.DBPath) {
+		return nil
+	}
+	// query_only + the read-relevant PRAGMAs applied per connection by the
+	// driver. No mmap_size here: it is a writer-side optimisation and not a
+	// recognised DSN parameter.
+	rdsn := config.Cfg.DBPath + "?_journal_mode=WAL&_busy_timeout=5000&_foreign_keys=on&_synchronous=NORMAL&_query_only=true&_cache_size=-65536"
+	rdb, err := sql.Open("sqlite3", rdsn)
+	if err != nil {
+		return fmt.Errorf("open: %w", err)
+	}
+	n := runtime.NumCPU()
+	if n < 4 {
+		n = 4
+	}
+	rdb.SetMaxOpenConns(n)
+	rdb.SetMaxIdleConns(n)
+	rdb.SetConnMaxLifetime(0)
+	if err := rdb.Ping(); err != nil {
+		_ = rdb.Close()
+		return fmt.Errorf("ping: %w", err)
+	}
+	RDB = rdb
+	logging.LogInfo("db", fmt.Sprintf("read pool ready — %d WAL reader connections (query_only) [F-4]", n))
 	return nil
 }
 
@@ -221,7 +287,7 @@ func walkDir(root string, fn func(int64)) error {
 	for _, e := range entries {
 		path := root + "/" + e.Name()
 		if e.IsDir() {
-			walkDir(path, fn)
+			_ = walkDir(path, fn)
 			continue
 		}
 		if fi, err := e.Info(); err == nil {
@@ -439,6 +505,9 @@ func verifyMigrationChecksums() error {
 			logging.LogJSON(logging.LogFields{Level: "error", Component: "migrations", Msg: fmt.Sprintf("CHECKSUM DRIFT: %s stored=%s expected=%s", version, storedChecksum[:8], expected[:8])})
 			drifted = append(drifted, version)
 		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("verifyMigrationChecksums iterate: %w", err)
 	}
 	if len(drifted) > 0 {
 		return fmt.Errorf("migration drift detected: %s — startup halted (ADR-0034)", strings.Join(drifted, ", "))
