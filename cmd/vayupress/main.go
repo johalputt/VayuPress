@@ -111,7 +111,7 @@ func newUUID() string {
 // =============================================================================
 
 func generateSitemap() {
-	rows, err := dbpkg.DB.Query(`SELECT slug,updated_at FROM articles WHERE COALESCE(status,'published')='published' ORDER BY updated_at DESC LIMIT 50000`)
+	rows, err := dbpkg.DB.Query(`SELECT slug,updated_at FROM articles WHERE COALESCE(status,'published')='published' AND COALESCE(is_page,0)=0 ORDER BY updated_at DESC LIMIT 50000`)
 	if err != nil {
 		return
 	}
@@ -172,7 +172,7 @@ func sitemapAppendTagPages(sb *strings.Builder) {
 }
 
 func generateRSS() {
-	rows, err := dbpkg.DB.Query(`SELECT title,slug,content,created_at FROM articles WHERE COALESCE(status,'published')='published' ORDER BY created_at DESC LIMIT 50`)
+	rows, err := dbpkg.DB.Query(`SELECT title,slug,content,created_at FROM articles WHERE COALESCE(status,'published')='published' AND COALESCE(is_page,0)=0 ORDER BY created_at DESC LIMIT 50`)
 	if err != nil {
 		return
 	}

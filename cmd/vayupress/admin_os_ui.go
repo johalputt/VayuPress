@@ -295,6 +295,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/editor/save", a.handleOSEditorSave)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/editor/preview", a.handleOSEditorPreview)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/editor/import", a.handleOSEditorImport)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/editor/slug", a.handleOSEditorSlug)
 		// Session-friendly mirrors of the editor's block tools (the /api/v1/admin
 		// originals require an API key; os operators hold a session cookie).
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/embed/unfurl", a.handleEmbedUnfurl)
@@ -1684,11 +1685,13 @@ func (a *App) handleOSEditor(w http.ResponseWriter, r *http.Request) {
 		defer cancel()
 		art, err := a.articles.Get(ctx, slug)
 		if err == nil {
+			meta := loadPostMeta(r.Context(), slug)
+			metaScript := osEditorMetaScript(slug, art.Status, art.CreatedAt, art.Tags, meta)
 			blocksJSON := loadBlocksJSON(r.Context(), slug)
 			hasBlocks := strings.TrimSpace(blocksJSON) != "" && strings.TrimSpace(blocksJSON) != "[]"
 			emptyDraft := strings.TrimSpace(art.Content) == ""
 			if hasBlocks || emptyDraft {
-				body := osEditorBody(slug, art.Title, blocksJSON)
+				body := osEditorBody(slug, art.Title, blocksJSON) + metaScript
 				body += `
 <script nonce="` + nonce + `" src="/os/static/js/admin-os-editor.js"></script>`
 				writeOSHTML(w, adminOSLayout(nonce, "Edit Post", "editor", cfg, htmpl.HTML(body)))
@@ -1705,7 +1708,7 @@ func (a *App) handleOSEditor(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				raw = []byte("[]")
 			}
-			body := osEditorBody(slug, art.Title, string(raw))
+			body := osEditorBody(slug, art.Title, string(raw)) + metaScript
 			body += `
 <script nonce="` + nonce + `" src="/os/static/js/admin-os-editor.js"></script>`
 			writeOSHTML(w, adminOSLayout(nonce, "Edit Post", "editor", cfg, htmpl.HTML(body)))
@@ -1716,7 +1719,7 @@ func (a *App) handleOSEditor(w http.ResponseWriter, r *http.Request) {
 	// Brand-new post: the native block editor owns the create path (v1.6.0).
 	// It hydrates with an empty document and an empty slug; the first Save POSTs
 	// to /os/api/editor/save, which creates the article and returns its slug.
-	body := osEditorBody("", "", "[]")
+	body := osEditorBody("", "", "[]") + osEditorMetaScript("", "", time.Time{}, nil, PostMeta{})
 	body += `
 <script nonce="` + nonce + `" src="/os/static/js/admin-os-editor.js"></script>`
 	writeOSHTML(w, adminOSLayout(nonce, "New Post", "editor", cfg, htmpl.HTML(body)))

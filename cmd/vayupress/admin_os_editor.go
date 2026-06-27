@@ -23,6 +23,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/johalputt/vayupress/internal/blockrender"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/render"
 )
 
@@ -55,9 +56,12 @@ func persistBlocksJSON(ctx context.Context, slug, blocksJSON string) error {
 // then stores the raw blocks for re-hydration.
 func (a *App) handleOSEditorSave(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Slug   string            `json:"slug"`
-		Title  string            `json:"title"`
-		Blocks []json.RawMessage `json:"blocks"`
+		Slug        string            `json:"slug"`
+		Title       string            `json:"title"`
+		Blocks      []json.RawMessage `json:"blocks"`
+		Tags        []string          `json:"tags"`
+		PublishDate string            `json:"publishDate"`
+		Meta        *PostMeta         `json:"meta"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "bad-json", "Invalid request body", "")
@@ -65,6 +69,16 @@ func (a *App) handleOSEditorSave(w http.ResponseWriter, r *http.Request) {
 	}
 	slug := strings.TrimSpace(body.Slug)
 	isNew := slug == ""
+
+	// Normalise tags: trim, drop blanks. A nil slice leaves tags unchanged on
+	// update; a non-nil (possibly empty) slice replaces them (allows clearing).
+	var tags []string
+	if body.Tags != nil {
+		tags = splitCSVTags(strings.Join(body.Tags, ","))
+		if tags == nil {
+			tags = []string{}
+		}
+	}
 
 	// Re-marshal the blocks array to a canonical JSON string for storage+render.
 	blocksJSON := "[]"
@@ -98,7 +112,7 @@ func (a *App) handleOSEditorSave(w http.ResponseWriter, r *http.Request) {
 		if strings.TrimSpace(seed) == "" {
 			seed = " "
 		}
-		if _, err := a.articles.Create(r.Context(), title, slug, seed, nil); err != nil {
+		if _, err := a.articles.Create(r.Context(), title, slug, seed, tags); err != nil {
 			writeAPIError(w, r, http.StatusInternalServerError, "create-error", err.Error(), "")
 			return
 		}
@@ -106,6 +120,7 @@ func (a *App) handleOSEditorSave(w http.ResponseWriter, r *http.Request) {
 			writeAPIError(w, r, http.StatusInternalServerError, "persist-error", err.Error(), "")
 			return
 		}
+		a.applyPostExtras(r.Context(), slug, body.Meta, body.PublishDate, tags)
 		writeJSON(w, r, http.StatusOK, map[string]string{"status": "created", "slug": slug})
 		return
 	}
@@ -115,7 +130,7 @@ func (a *App) handleOSEditorSave(w http.ResponseWriter, r *http.Request) {
 	if title != "" {
 		titlePtr = &title
 	}
-	if _, err := a.articles.Update(r.Context(), slug, titlePtr, &contentHTML, nil); err != nil {
+	if _, err := a.articles.Update(r.Context(), slug, titlePtr, &contentHTML, tags); err != nil {
 		writeAPIError(w, r, http.StatusInternalServerError, "update-error", err.Error(), "")
 		return
 	}
@@ -126,7 +141,49 @@ func (a *App) handleOSEditorSave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	a.applyPostExtras(r.Context(), slug, body.Meta, body.PublishDate, tags)
 	writeJSON(w, r, http.StatusOK, map[string]string{"status": "saved", "slug": slug})
+}
+
+// applyPostExtras persists the publishing-options side-car (PostMeta), an
+// optional publish-date override, and purges the public caches so the article's
+// head metadata / share cards refresh immediately. Each step is best-effort and
+// independent of the queued content write (they touch disjoint columns).
+func (a *App) applyPostExtras(ctx context.Context, slug string, meta *PostMeta, publishDate string, tags []string) {
+	if meta != nil {
+		if err := savePostMeta(ctx, slug, *meta); err != nil {
+			logging.LogError("os-editor", "save post meta failed", err.Error())
+		}
+	}
+	if t, ok := parsePublishDate(publishDate); ok {
+		if err := setPublishDate(ctx, slug, t); err != nil {
+			logging.LogError("os-editor", "set publish date failed", err.Error())
+		}
+	}
+	// Refresh the public surfaces (article page head meta, home cards, feeds).
+	render.CachePurge(slug, tags, generateSitemap, generateRSS, generateRobots)
+}
+
+// parsePublishDate accepts the editor's datetime-local value (and a few common
+// variants), interpreting a bare wall-clock time as UTC. A blank or unparseable
+// value returns ok=false so the existing created_at is left untouched.
+func parsePublishDate(s string) (time.Time, bool) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return time.Time{}, false
+	}
+	for _, layout := range []string{
+		time.RFC3339,
+		"2006-01-02T15:04:05",
+		"2006-01-02T15:04",
+		"2006-01-02 15:04:05",
+		"2006-01-02",
+	} {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t.UTC(), true
+		}
+	}
+	return time.Time{}, false
 }
 
 // handleOSPostStatus publishes or unpublishes (drafts) an article from the post
@@ -369,6 +426,7 @@ var osEditorHeadTmpl = htmpl.Must(htmpl.New("oseditorhead").Parse(
       <button type="button" class="btn btn--ghost btn--sm" data-editor-split-btn title="Toggle live preview">Split</button>
       <button type="button" class="btn btn--ghost btn--sm" data-editor-html-btn title="Edit HTML source (Ctrl/Cmd+Shift+H)" aria-pressed="false">HTML</button>
       <button type="button" class="btn btn--ghost btn--sm" data-editor-preview-btn>Preview</button>
+      <button type="button" class="btn btn--ghost btn--sm" data-editor-settings-btn title="Post settings (Ctrl/Cmd+Shift+P)" aria-pressed="false">⚙ Settings</button>
       <button type="button" class="btn btn--primary btn--sm" data-editor-save>Save</button>
     </div>
   </div>
@@ -389,6 +447,39 @@ var osEditorHeadTmpl = htmpl.Must(htmpl.New("oseditorhead").Parse(
       </section>
     </div>
   </div>`))
+
+// osEditorMetaTmpl emits the publishing-options hydration document in the same
+// JSON-in-script context the block document uses: html/template escapes the
+// HTML-significant bytes so the values cannot break out of <script>, while
+// JSON.parse reverses the escaping client-side.
+var osEditorMetaTmpl = htmpl.Must(htmpl.New("oseditormeta").Parse(
+	`<script type="application/json" id="vp-editor-meta">{{.Meta}}</script>`))
+
+// osEditorMetaScript serialises a post's settings (tags, publish date, status,
+// and the PostMeta side-car) for the editor's Post-settings panel to hydrate.
+func osEditorMetaScript(slug, status string, createdAt time.Time, tags []string, m PostMeta) string {
+	if tags == nil {
+		tags = []string{}
+	}
+	pub := ""
+	if !createdAt.IsZero() {
+		pub = createdAt.UTC().Format("2006-01-02T15:04")
+	}
+	payload := struct {
+		Slug        string   `json:"slug"`
+		Status      string   `json:"status"`
+		Tags        []string `json:"tags"`
+		PublishDate string   `json:"publishDate"`
+		PostMeta
+	}{Slug: slug, Status: status, Tags: tags, PublishDate: pub, PostMeta: m}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		raw = []byte("{}")
+	}
+	var sb strings.Builder
+	_ = osEditorMetaTmpl.Execute(&sb, struct{ Meta json.RawMessage }{json.RawMessage(raw)})
+	return sb.String()
+}
 
 func osEditorBody(slug, title, blocksJSON string) string {
 	if strings.TrimSpace(blocksJSON) == "" {
@@ -420,6 +511,7 @@ func osEditorBody(slug, title, blocksJSON string) string {
     <div class="editor-hint text-xs muted mt-2">Reorder blocks by dragging <kbd>⋮⋮</kbd> or with the <kbd>↑</kbd>/<kbd>↓</kbd> buttons. <kbd>⌘.</kbd> toggles focus mode.</div>
     <div class="editor-hint text-xs muted mt-2"><kbd>Enter</kbd> new block · <kbd>Shift+Enter</kbd> line break · <kbd>⌘S</kbd> / <kbd>Ctrl+S</kbd> to save.</div>
     <div class="editor-hint text-xs muted mt-2"><kbd>HTML</kbd> in the toolbar (<kbd>⌘⇧H</kbd>) switches to a raw HTML source editor and back — formatting is preserved both ways.</div>
+    <div class="editor-hint text-xs muted mt-2"><kbd>⚙ Settings</kbd> (<kbd>⌘⇧P</kbd>) opens post settings: feature image, URL, publish date, excerpt, tags, SEO &amp; social cards.</div>
   </aside>
   <div class="editor-preview-modal" data-editor-preview hidden role="dialog" aria-modal="true" aria-label="Preview">
     <div class="editor-preview-panel">
@@ -442,5 +534,91 @@ func osEditorBody(slug, title, blocksJSON string) string {
       </div>
     </div>
   </div>
+  <div class="editor-settings-backdrop" data-editor-settings-backdrop hidden></div>
+  <aside class="editor-settings" data-editor-settings hidden role="dialog" aria-modal="true" aria-label="Post settings">
+    <div class="editor-settings-head">
+      <span class="editor-settings-title">Post settings</span>
+      <button type="button" class="btn--icon" data-editor-settings-close aria-label="Close post settings">✕</button>
+    </div>
+    <div class="editor-settings-body">
+      <div class="pm-field">
+        <label class="pm-label">Feature image</label>
+        <div class="pm-feature" data-pm-feature>
+          <img class="pm-feature-preview" data-pm-feature-preview alt="" hidden>
+          <div class="pm-feature-empty" data-pm-feature-empty>No feature image</div>
+        </div>
+        <div class="pm-row">
+          <input class="pm-input" type="text" data-pm-feature-image placeholder="Image URL or upload…">
+          <button type="button" class="btn btn--ghost btn--xs" data-pm-feature-upload>Upload</button>
+          <button type="button" class="btn btn--ghost btn--xs" data-pm-feature-remove>Remove</button>
+        </div>
+        <input type="file" accept="image/*" data-pm-feature-file hidden>
+      </div>
+
+      <div class="pm-field">
+        <label class="pm-label" for="pm-slug">Post URL</label>
+        <div class="pm-row">
+          <span class="pm-prefix" data-pm-slug-prefix>/</span>
+          <input class="pm-input" id="pm-slug" type="text" data-pm-slug placeholder="post-url-slug">
+          <button type="button" class="btn btn--ghost btn--xs" data-pm-slug-apply>Update</button>
+        </div>
+        <div class="pm-hint text-xs muted" data-pm-slug-status>The slug is set automatically from the title on first save.</div>
+      </div>
+
+      <div class="pm-field">
+        <label class="pm-label" for="pm-publish-date">Publish date</label>
+        <input class="pm-input" id="pm-publish-date" type="datetime-local" data-pm-publish-date>
+      </div>
+
+      <div class="pm-field">
+        <label class="pm-label" for="pm-excerpt">Excerpt</label>
+        <textarea class="pm-input pm-textarea" id="pm-excerpt" rows="3" maxlength="300" data-pm-excerpt placeholder="A short summary used on cards, feeds, and search results…"></textarea>
+        <div class="pm-hint text-xs muted"><span data-pm-excerpt-count>0</span>/300 · falls back to the first lines of the post when left blank.</div>
+      </div>
+
+      <div class="pm-field">
+        <label class="pm-label">Tags</label>
+        <div class="pm-tags" data-pm-tags-list></div>
+        <input class="pm-input" type="text" data-pm-tags-input placeholder="Type a tag and press Enter…">
+      </div>
+
+      <div class="pm-field pm-toggles">
+        <label class="pm-check"><input type="checkbox" data-pm-featured> <span>Feature this post</span></label>
+        <label class="pm-check"><input type="checkbox" data-pm-is-page> <span>Turn this post into a page</span></label>
+        <div class="pm-hint text-xs muted">Pages are standalone (no date, tags, or author) and are kept out of the home feed, RSS, and sitemap.</div>
+      </div>
+
+      <details class="pm-group" open>
+        <summary class="pm-group-title">Meta data &amp; SEO</summary>
+        <div class="pm-field">
+          <label class="pm-label" for="pm-meta-title">SEO title</label>
+          <input class="pm-input" id="pm-meta-title" type="text" maxlength="120" data-pm-meta-title placeholder="Custom title for search engines…">
+          <div class="pm-hint text-xs muted"><span data-pm-meta-title-count>0</span>/120 · defaults to the post title.</div>
+        </div>
+        <div class="pm-field">
+          <label class="pm-label" for="pm-meta-description">SEO description</label>
+          <textarea class="pm-input pm-textarea" id="pm-meta-description" rows="3" maxlength="300" data-pm-meta-description placeholder="Custom description for search engines…"></textarea>
+          <div class="pm-hint text-xs muted"><span data-pm-meta-description-count>0</span>/300 · defaults to the excerpt.</div>
+        </div>
+        <div class="pm-field">
+          <label class="pm-label" for="pm-canonical">Canonical URL</label>
+          <input class="pm-input" id="pm-canonical" type="url" data-pm-canonical placeholder="https://example.com/original-post">
+          <div class="pm-hint text-xs muted">Set when this content was first published elsewhere.</div>
+        </div>
+      </details>
+
+      <details class="pm-group">
+        <summary class="pm-group-title">Social sharing cards</summary>
+        <div class="pm-subhead">Facebook / Open Graph</div>
+        <div class="pm-field"><label class="pm-label" for="pm-og-title">Title</label><input class="pm-input" id="pm-og-title" type="text" data-pm-og-title placeholder="Defaults to the SEO title…"></div>
+        <div class="pm-field"><label class="pm-label" for="pm-og-description">Description</label><textarea class="pm-input pm-textarea" id="pm-og-description" rows="2" data-pm-og-description placeholder="Defaults to the SEO description…"></textarea></div>
+        <div class="pm-field"><label class="pm-label" for="pm-og-image">Image URL</label><input class="pm-input" id="pm-og-image" type="text" data-pm-og-image placeholder="Defaults to the feature image…"></div>
+        <div class="pm-subhead">Twitter / X</div>
+        <div class="pm-field"><label class="pm-label" for="pm-twitter-title">Title</label><input class="pm-input" id="pm-twitter-title" type="text" data-pm-twitter-title placeholder="Defaults to the Open Graph title…"></div>
+        <div class="pm-field"><label class="pm-label" for="pm-twitter-description">Description</label><textarea class="pm-input pm-textarea" id="pm-twitter-description" rows="2" data-pm-twitter-description placeholder="Defaults to the Open Graph description…"></textarea></div>
+        <div class="pm-field"><label class="pm-label" for="pm-twitter-image">Image URL</label><input class="pm-input" id="pm-twitter-image" type="text" data-pm-twitter-image placeholder="Defaults to the Open Graph image…"></div>
+      </details>
+    </div>
+  </aside>
 </div>`
 }

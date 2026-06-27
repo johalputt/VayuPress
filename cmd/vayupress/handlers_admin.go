@@ -231,20 +231,30 @@ func (a *App) handleHome(w http.ResponseWriter, r *http.Request) {
 	atomic.AddInt64(&metrics.MetricCacheMisses, 1)
 
 	var total int
-	dbpkg.DB.QueryRow(`SELECT COUNT(1) FROM articles WHERE COALESCE(status,'published')='published'`).Scan(&total)
+	dbpkg.DB.QueryRow(`SELECT COUNT(1) FROM articles WHERE COALESCE(status,'published')='published' AND COALESCE(is_page,0)=0`).Scan(&total)
 
-	rows, err := dbpkg.DB.Query(`SELECT title,slug,content,tags,created_at FROM articles WHERE COALESCE(status,'published')='published' ORDER BY created_at DESC LIMIT 30`)
+	rows, err := dbpkg.DB.Query(`SELECT title,slug,content,tags,created_at,COALESCE(excerpt,''),COALESCE(feature_image,'') FROM articles WHERE COALESCE(status,'published')='published' AND COALESCE(is_page,0)=0 ORDER BY created_at DESC LIMIT 30`)
 	var articles []render.HomeArticle
 	author := render.GetActiveSettings().Author
 	if err == nil {
 		defer rows.Close()
 		for rows.Next() {
 			var ha render.HomeArticle
-			var content, tagsStr string
-			if rows.Scan(&ha.Title, &ha.Slug, &content, &tagsStr, &ha.CreatedAt) == nil {
+			var content, tagsStr, excerpt, featureImg string
+			if rows.Scan(&ha.Title, &ha.Slug, &content, &tagsStr, &ha.CreatedAt, &excerpt, &featureImg) == nil {
 				ha.Tags = api.SplitTags(tagsStr)
-				ha.Excerpt = excerptFromHTML(content, 160)
-				ha.Image = seo.ExtractFirstImage(content)
+				// Prefer the operator's custom excerpt / feature image; fall back
+				// to values derived from the content when they are unset.
+				if strings.TrimSpace(excerpt) != "" {
+					ha.Excerpt = excerpt
+				} else {
+					ha.Excerpt = excerptFromHTML(content, 160)
+				}
+				if strings.TrimSpace(featureImg) != "" {
+					ha.Image = featureImg
+				} else {
+					ha.Image = seo.ExtractFirstImage(content)
+				}
 				ha.Author = author
 				articles = append(articles, ha)
 			}
@@ -351,7 +361,22 @@ func (a *App) handleArticlePage(w http.ResponseWriter, r *http.Request) {
 
 	layout := render.DetectLayout(art, r, isAdmin)
 	related := a.relatedArticles(r.Context(), art.Slug, art.Tags, 4)
-	htmlOut, err := render.RenderArticleWithLayout(art, layout, related)
+	pm := loadPostMeta(r.Context(), art.Slug)
+	htmlOut, err := render.RenderArticleWithMeta(art, layout, related, render.ArticleMetaOverrides{
+		Excerpt:            pm.Excerpt,
+		FeatureImage:       pm.FeatureImage,
+		MetaTitle:          pm.MetaTitle,
+		MetaDescription:    pm.MetaDescription,
+		CanonicalURL:       pm.CanonicalURL,
+		OGTitle:            pm.OGTitle,
+		OGDescription:      pm.OGDescription,
+		OGImage:            pm.OGImage,
+		TwitterTitle:       pm.TwitterTitle,
+		TwitterDescription: pm.TwitterDescription,
+		TwitterImage:       pm.TwitterImage,
+		Featured:           pm.Featured,
+		IsPage:             pm.IsPage,
+	})
 	if err != nil {
 		http.Error(w, "render error", 500)
 		return

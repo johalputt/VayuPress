@@ -10,6 +10,21 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Added
 
+- **Editor: Post settings panel (publishing options).** A slide-out drawer
+  (⚙ Settings in the toolbar, or `⌘⇧P`/`Ctrl+Shift+P`) puts everything that
+  isn't the post body in one place: a **feature image** (URL or upload), the
+  **post URL / slug** (with a safe rename that repoints links), an explicit
+  **publish date**, a custom **excerpt**, a **tag** editor, **SEO** meta title
+  and description, a **canonical URL**, **social cards** (Open Graph + Twitter
+  title/description/image), and **Feature this post** / **Turn into a page**
+  toggles. Every field is optional and falls back to the previous derived
+  default, so existing posts are unchanged until something is set explicitly.
+  These flow into the rendered article `<head>` (title, description, canonical,
+  og:* and twitter:* tags, JSON-LD) and body (hero feature image); pages drop
+  the post chrome and are kept out of the home feed, RSS, and sitemap. Backed by
+  new `articles` columns (migration 045) and the `POST /os/api/editor/import`
+  and `POST /os/api/editor/slug` endpoints.
+
 - **Editor: one-click HTML source mode.** A new **HTML** button in the editor
   toolbar (or `⌘⇧H` / `Ctrl+Shift+H`) switches the writing surface to a raw HTML
   source view and back. Switching out parses the HTML back into blocks through
