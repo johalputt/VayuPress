@@ -233,6 +233,7 @@ func (a *App) handlePricingPage(w http.ResponseWriter, r *http.Request) {
 	if a.members != nil {
 		tiers, _ = a.members.ListTiers(r.Context(), false)
 	}
+	payEnabled := a.paymentsEnabled(r.Context())
 
 	cards := ""
 	for i := range tiers {
@@ -262,6 +263,13 @@ func (a *App) handlePricingPage(w http.ResponseWriter, r *http.Request) {
 		cta := `<a class="pr-cta" href="/signup">Get started</a>`
 		if !t.IsFree() {
 			cta = `<a class="pr-cta pr-cta--primary" href="/signup">Become a member</a>`
+			if payEnabled {
+				cadence := "monthly"
+				if t.MonthlyCents == 0 && t.YearlyCents > 0 {
+					cadence = "yearly"
+				}
+				cta = `<a class="pr-cta pr-cta--primary" href="/checkout?tier=` + esc(t.Slug) + `&amp;cadence=` + cadence + `">Subscribe</a>`
+			}
 		}
 		cards += `<article class="pr-card` + featured + `">
       <h2 class="pr-name">` + esc(t.Name) + `</h2>

@@ -28,6 +28,13 @@ const (
 	MagicLink         Kind = "magic_link"
 	CommentApproved   Kind = "comment_approved"
 	NewsletterConfirm Kind = "newsletter_confirm"
+	// PaymentPending is sent when a reader checks out via the direct/offline
+	// gateway: it carries the order reference, amount, and the operator's
+	// payment instructions so the payer knows exactly how to pay.
+	PaymentPending Kind = "payment_pending"
+	// PaymentConfirmed is the receipt sent once an order is marked paid: it
+	// confirms the tier the payer now has access to and the amount received.
+	PaymentConfirmed Kind = "payment_confirmed"
 )
 
 // Rendered is the output of a template: a subject plus text and HTML bodies.
@@ -61,6 +68,16 @@ var defaults = map[Kind]templateSet{
 		Subject: "Confirm your subscription",
 		Text:    "Confirm your subscription to {{.Domain}} by opening this link:\r\n\r\n{{.Link}}",
 		HTML:    `<p>Confirm your subscription to <strong>{{.Domain}}</strong>:</p><p><a href="{{.Link}}">Confirm subscription</a></p>`,
+	},
+	PaymentPending: {
+		Subject: "Complete your {{.TierName}} membership — order {{.Reference}}",
+		Text:    "Hi {{.Name}},\r\n\r\nThank you for subscribing to the {{.TierName}} plan on {{.Domain}}.\r\n\r\nAmount due: {{.Amount}} {{.Currency}} ({{.Cadence}})\r\nOrder reference: {{.Reference}}\r\n\r\nPlease complete your payment using the instructions below and quote your order reference so we can match it to your account:\r\n\r\n{{.Instructions}}\r\n\r\nAccess unlocks as soon as we confirm your payment. If you have any questions, reply to this email.",
+		HTML:    `<p>Hi <strong>{{.Name}}</strong>,</p><p>Thank you for subscribing to the <strong>{{.TierName}}</strong> plan on {{.Domain}}.</p><p><strong>Amount due:</strong> {{.Amount}} {{.Currency}} ({{.Cadence}})<br><strong>Order reference:</strong> {{.Reference}}</p><p>Please complete your payment using the instructions below and quote your order reference so we can match it to your account:</p><pre style="white-space:pre-wrap;background:#f6f6f6;padding:12px;border-radius:6px">{{.Instructions}}</pre><p style="color:#888;font-size:13px">Access unlocks as soon as we confirm your payment. If you have any questions, just reply to this email.</p>`,
+	},
+	PaymentConfirmed: {
+		Subject: "Payment received — welcome to {{.TierName}}",
+		Text:    "Hi {{.Name}},\r\n\r\nWe've received your payment of {{.Amount}} {{.Currency}} for the {{.TierName}} plan on {{.Domain}}. Your membership is now active and all {{.TierName}} content is unlocked.\r\n\r\nOrder reference: {{.Reference}}\r\n\r\nManage your membership any time: {{.Link}}\r\n\r\nThank you for your support!",
+		HTML:    `<p>Hi <strong>{{.Name}}</strong>,</p><p>We've received your payment of <strong>{{.Amount}} {{.Currency}}</strong> for the <strong>{{.TierName}}</strong> plan on {{.Domain}}. Your membership is now active and all {{.TierName}} content is unlocked.</p><p><strong>Order reference:</strong> {{.Reference}}</p><p><a href="{{.Link}}">Manage your membership</a></p><p>Thank you for your support!</p>`,
 	},
 }
 

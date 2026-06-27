@@ -14,3 +14,16 @@
 .vayu-author-avatar{flex:0 0 auto;width:48px;height:48px;border-radius:50%;object-fit:cover;background:var(--surface2,#1a2233)}
 .vayu-author-name{font-weight:700;color:var(--text,#e5e7eb)}
 .vayu-author-bio{margin:.25rem 0 0;font-size:.95rem;color:var(--muted,#9aa4b2);line-height:1.55}
+
+
+/* ── Advertising surface (activation-gated; injected only when the Ads module
+   is on). All styles live here so the strict style-src 'self' CSP holds — no
+   inline styles ever reach the page. ───────────────────────────────────── */
+.vp-ads{display:flex;flex-direction:column;gap:var(--sp3,1rem);margin:var(--sp5,2.5rem) 0}
+.vp-ad-slot{position:relative;text-align:center}
+.vp-ad-slot::before{content:"Advertisement";display:block;font-size:.65rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted,#9aa4b2);margin-bottom:.35rem}
+.vp-ad__link{display:inline-block;line-height:0}
+.vp-ad__img{max-width:100%;height:auto;border-radius:var(--radius2,12px)}
+.vp-ad__html{display:block}
+.vp-ad__adsense{display:block;min-height:1px}
+.vp-affiliate-disclosure{margin:0 0 var(--sp4,1.25rem);padding:.6rem .9rem;font-size:.85rem;color:var(--muted,#9aa4b2);background:var(--surface,#111827);border:1px solid var(--border2,rgba(125,125,125,.25));border-left:3px solid var(--accent,#f59e0b);border-radius:var(--radius,8px)}

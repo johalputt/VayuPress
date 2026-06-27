@@ -13,6 +13,7 @@ import (
 
 	"github.com/microcosm-cc/bluemonday"
 
+	"github.com/johalputt/vayupress/internal/ads"
 	"github.com/johalputt/vayupress/internal/aiassist"
 	"github.com/johalputt/vayupress/internal/analytics"
 	"github.com/johalputt/vayupress/internal/api"
@@ -32,6 +33,7 @@ import (
 	"github.com/johalputt/vayupress/internal/metrics"
 	"github.com/johalputt/vayupress/internal/mode"
 	"github.com/johalputt/vayupress/internal/newsletter"
+	"github.com/johalputt/vayupress/internal/payments"
 	"github.com/johalputt/vayupress/internal/plugins"
 	"github.com/johalputt/vayupress/internal/preview"
 	"github.com/johalputt/vayupress/internal/queue"
@@ -138,6 +140,12 @@ type App struct {
 
 	// Reader memberships & paywalls (Tier 2).
 	members *members.Store
+
+	// Monetization (Tier 5): sovereign payment order ledger + gateway registry,
+	// and the activation-gated advertising surface. Both are off by default and
+	// only act once the operator enables the corresponding module.
+	payments *payments.Store
+	ads      *ads.Store
 
 	// Read-only public GraphQL API (Tier 4).
 	graphql *graphqlapi.Service

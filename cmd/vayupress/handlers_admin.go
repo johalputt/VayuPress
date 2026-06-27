@@ -24,6 +24,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/microcosm-cc/bluemonday"
 
+	"github.com/johalputt/vayupress/internal/ads"
 	"github.com/johalputt/vayupress/internal/api"
 	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/budget"
@@ -37,6 +38,7 @@ import (
 	"github.com/johalputt/vayupress/internal/provenance"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/seo"
+	"github.com/johalputt/vayupress/internal/settings"
 	"github.com/johalputt/vayupress/internal/severity"
 )
 
@@ -353,19 +355,27 @@ func (a *App) handleArticlePage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "render error", 500)
 		return
 	}
+	// Monetization: inject activation-gated ad slots + the affiliate disclosure.
+	// Pages that render a Google AdSense unit must not be disk-cached (they need
+	// the widened ad CSP applied per request) and are served no-store.
+	nonce := render.CSPNonce(r)
+	htmlOut, usesAdSense := a.injectArticleAds(r.Context(), nonce, htmlOut)
 	// Detect click-to-load video facades in the rendered body and narrowly
 	// extend frame-src for this page only (admin/non-embed pages stay locked).
 	embedOrigins := render.FrameOriginsInHTML(art.Content)
 	// Never cache gated articles to disk — access must be re-checked each request.
-	if layout == render.ArticleLayoutDefault && !gated {
+	if layout == render.ArticleLayoutDefault && !gated && !usesAdSense {
 		render.CacheWrite(filepath.Join("posts", slug+".html"), htmlOut) //nolint:errcheck
 		render.CacheWriteCSPSidecar(slug, embedOrigins)
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if gated {
+	if gated || usesAdSense {
 		w.Header().Set("Cache-Control", "no-store")
 	}
-	if len(embedOrigins) > 0 {
+	switch {
+	case usesAdSense:
+		setAdCSP(w, r, embedOrigins)
+	case len(embedOrigins) > 0:
 		setEmbedCSP(w, r, embedOrigins)
 	}
 	fmt.Fprint(w, htmlOut)
@@ -380,6 +390,86 @@ func setEmbedCSP(w http.ResponseWriter, r *http.Request, origins []string) {
 		hdr = "Content-Security-Policy-Report-Only"
 	}
 	w.Header().Set(hdr, render.BuildCSP(render.CSPNonce(r), origins))
+}
+
+// setAdCSP overwrites the per-request CSP with one that admits the vetted Google
+// AdSense origins (plus any video-embed frame origins). Applied only to pages
+// that actually render an AdSense unit, so every other page keeps the strict
+// baseline.
+func setAdCSP(w http.ResponseWriter, r *http.Request, frameOrigins []string) {
+	hdr := "Content-Security-Policy"
+	if config.Cfg.CSPReportOnly {
+		hdr = "Content-Security-Policy-Report-Only"
+	}
+	w.Header().Set(hdr, render.BuildAdCSP(render.CSPNonce(r), frameOrigins))
+}
+
+// injectArticleAds weaves the activation-gated advertising surface into a
+// rendered article: header / above-post / below-post / footer ad slots and the
+// affiliate-disclosure banner. It returns the augmented HTML and whether any
+// Google AdSense unit was emitted (so the caller can widen the CSP + skip the
+// disk cache). When neither the Ads nor Affiliate module is enabled it is a
+// no-op and returns the input unchanged.
+func (a *App) injectArticleAds(ctx context.Context, nonce, htmlOut string) (string, bool) {
+	adsOn := a.adsEnabled(ctx)
+	affOn := a.affiliateEnabled(ctx)
+	if !adsOn && !affOn || a.ads == nil {
+		if !affOn {
+			return htmlOut, false
+		}
+	}
+
+	cfg := ads.RenderConfig{
+		GoogleAdsEnabled: a.googleAdsEnabled(ctx),
+		AdsenseClient:    a.adsenseClient(ctx),
+		Nonce:            nonce,
+		Sanitize:         a.policy.Sanitize,
+	}
+
+	var header, above, below, footer string
+	usesAdSense := false
+	if adsOn && a.ads != nil {
+		renderPlacement := func(placement string) string {
+			slots, err := a.ads.EnabledByPlacement(ctx, placement)
+			if err != nil || len(slots) == 0 {
+				return ""
+			}
+			if ads.HasAdSense(slots, cfg) {
+				usesAdSense = true
+			}
+			return ads.Render(slots, cfg)
+		}
+		header = renderPlacement(ads.PlacementHeader)
+		above = renderPlacement(ads.PlacementAbovePost)
+		below = renderPlacement(ads.PlacementBelowPost)
+		footer = renderPlacement(ads.PlacementFooter)
+	}
+
+	// Affiliate disclosure renders above the article body, before any above-post
+	// ad, when the module is enabled and disclosure text is set.
+	if affOn && a.siteSettings != nil {
+		if txt := strings.TrimSpace(a.siteSettings.Get(ctx, settings.KeyAffiliateDisclosure)); txt != "" {
+			above = `<div class="vp-affiliate-disclosure" role="note">` + html.EscapeString(txt) + `</div>` + above
+		}
+	}
+
+	if header != "" {
+		htmlOut = strings.Replace(htmlOut, `<main id="main-content">`, `<main id="main-content">`+header, 1)
+	}
+	if above != "" {
+		htmlOut = strings.Replace(htmlOut, `<div class="content" itemprop="articleBody">`, above+`<div class="content" itemprop="articleBody">`, 1)
+	}
+	if below != "" {
+		htmlOut = strings.Replace(htmlOut, `</article>`, `</article>`+below, 1)
+	}
+	if footer != "" {
+		htmlOut = strings.Replace(htmlOut, `</main></div>`, footer+`</main></div>`, 1)
+	}
+	if usesAdSense {
+		loader := ads.AdSenseLoader(nonce, cfg.AdsenseClient)
+		htmlOut = strings.Replace(htmlOut, `</head>`, loader+`</head>`, 1)
+	}
+	return htmlOut, usesAdSense
 }
 
 // renderPaywall builds a premium, sovereign preview page for gated content: the
