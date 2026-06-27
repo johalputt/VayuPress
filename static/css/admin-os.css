@@ -1916,6 +1916,33 @@
 .vp-os .cz-nav-row input[data-nav-label] { flex: 1; min-width: 0; }
 .vp-os .cz-nav-row input[data-nav-href] { flex: 2; min-width: 0; }
 
+/* ── Tumblr-style sliding toggle switches (customizer checkboxes) ──────────────
+   The native checkbox is repainted as an iOS/Tumblr pill switch via the CSSOM
+   appearance reset — no JS, no inline styles, CSP-safe. Label text sits on the
+   left, the switch on the right, mirroring the reference theme editor. */
+.vp-os .cz-check {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  flex: 1 1 auto; min-width: 0;
+  font-size: 0.9rem; font-weight: 600; color: var(--text);
+  cursor: pointer; user-select: none;
+}
+.vp-os .cz-check input[type="checkbox"] {
+  appearance: none; -webkit-appearance: none;
+  order: 2; flex: 0 0 auto; position: relative;
+  width: 42px; height: 24px; margin: 0; cursor: pointer;
+  background: var(--bg-surface-2); border: 1px solid var(--border);
+  border-radius: var(--r-full); transition: background .16s, border-color .16s;
+}
+.vp-os .cz-check input[type="checkbox"]::after {
+  content: ""; position: absolute; top: 2px; left: 2px;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.35);
+  transition: transform .16s;
+}
+.vp-os .cz-check input[type="checkbox"]:checked { background: var(--brand); border-color: var(--brand); }
+.vp-os .cz-check input[type="checkbox"]:checked::after { transform: translateX(18px); }
+.vp-os .cz-check input[type="checkbox"]:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+
 
 .vp-os .theme-presets { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 12px; }
 .vp-os .theme-preset {

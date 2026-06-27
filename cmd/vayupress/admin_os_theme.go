@@ -300,10 +300,10 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
       </div>
     </section>
 
-    <section class="cz-group">
-      <button type="button" class="cz-group__head" aria-expanded="false">Site basics <span class="cz-group__hint">global</span></button>
+    <section class="cz-group cz-group--open">
+      <button type="button" class="cz-group__head" aria-expanded="true">Appearance <span class="cz-group__hint">start here</span></button>
       <div class="cz-group__body">
-        <p class="text-sm muted mb-3">Global settings that stay fixed when you switch themes — logo, social share image and membership buttons.</p>
+        <p class="text-sm muted mb-3">The essentials — logo, social share image and the Sign in / Sign up buttons. These stay fixed when you switch themes.</p>
         <div class="cz-logo">
           <img id="brand-favicon-img" class="cz-logo__img" src="/favicon.ico?t=` + faviconBust + `" alt="Current site mark" width="44" height="44">
           <div class="cz-logo__meta">
@@ -339,8 +339,8 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
       </div>
     </section>
 
-    <section class="cz-group">
-      <button type="button" class="cz-group__head" aria-expanded="false">Brand colours <span class="cz-group__hint">theme</span></button>
+    <section class="cz-group cz-group--open">
+      <button type="button" class="cz-group__head" aria-expanded="true">Brand colours <span class="cz-group__hint">theme</span></button>
       <div class="cz-group__body">
         <p class="text-sm muted mb-3">Accent colours and colour scheme for the active theme.</p>
         <div class="theme-fields">` + brandRows + `</div>
