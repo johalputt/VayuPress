@@ -156,7 +156,6 @@ func TestImportTableAndToggle(t *testing.T) {
 	}
 }
 
-
 // TestImportHTMLPreservesInlineFormatting verifies that inline markup survives an
 // HTML → blocks conversion by being re-encoded as Markdown, so an HTML source
 // edit round-trips back to the same rendered output (no formatting is dropped).

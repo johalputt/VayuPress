@@ -62,9 +62,12 @@
     { type: 'quote', label: 'Quote', icon: '"', hint: 'Block quote', cat: 'Basic' },
     { type: 'divider', label: 'Divider', icon: '―', hint: 'Horizontal rule', cat: 'Basic' },
     { type: 'image', label: 'Image', icon: '🖼', hint: 'Image by URL or upload', cat: 'Media' },
+    { type: 'gallery', label: 'Gallery', icon: '▦', hint: 'Responsive image gallery (up to 9)', cat: 'Media' },
     { type: 'audio', label: 'Audio', icon: '♪', hint: 'Self-hosted audio player', cat: 'Media' },
     { type: 'embed', label: 'Embed / Link card', icon: '🔗', hint: 'Unfurl a URL (privacy-first)', cat: 'Embeds' },
     { type: 'diagram', label: 'Diagram', icon: '🔀', hint: 'Mermaid flowchart / sequence → SVG', cat: 'Embeds' },
+    { type: 'markdown', label: 'Markdown', icon: 'M↓', hint: 'Write a block in Markdown', cat: 'Advanced' },
+    { type: 'html', label: 'HTML', icon: '<>', hint: 'Custom HTML (sanitised on save)', cat: 'Advanced' },
     { type: 'code', label: 'Code', icon: '</>', hint: 'Code block with language hint', cat: 'Advanced' },
     { type: 'callout', label: 'Callout', icon: '!', hint: 'Highlighted note', cat: 'Advanced' },
     { type: 'table', label: 'Table', icon: '⊞', hint: 'Rows & columns', cat: 'Advanced' },
@@ -126,6 +129,8 @@
           (b.rows || []).map(function (r) { return (r || []).join(' '); }).join(' ');
       case 'toggle':
         return (b.summary || '') + ' ' + (b.text || '');
+      case 'gallery':
+        return b.caption || '';
       default:
         return b.text || '';
     }
@@ -294,12 +299,63 @@
         break;
       }
       case 'image': {
-        var url = mkInput('text', block.url || '', 'Image URL (https://…)');
+        var url = mkInput('text', block.url || '', 'Image URL (https://…) or upload');
         url.addEventListener('input', function () { block.url = url.value; touch(); });
+        var uprow = document.createElement('div');
+        uprow.className = 'eblock__row';
+        var upBtn = mkSmallBtn('⬆ Upload', function () { upFile.click(); });
+        var upFile = document.createElement('input');
+        upFile.type = 'file';
+        upFile.accept = 'image/*';
+        upFile.style.display = 'none';
+        upFile.addEventListener('change', function () {
+          if (upFile.files && upFile.files[0]) {
+            uploadInto(upFile.files[0], function (u) { block.url = u; url.value = u; touch(); });
+          }
+          upFile.value = '';
+        });
+        uprow.appendChild(url);
+        uprow.appendChild(upBtn);
+        uprow.appendChild(upFile);
         var alt = mkInput('text', block.alt || '', 'Alt text (described for accessibility)');
         alt.addEventListener('input', function () { block.alt = alt.value; touch(); });
-        field.appendChild(url);
+        var cap = mkInput('text', block.caption || '', 'Caption (optional)');
+        cap.addEventListener('input', function () { block.caption = cap.value; touch(); });
+        var width = document.createElement('select');
+        width.className = 'eblock__level';
+        [['', 'Regular width'], ['wide', 'Wide'], ['full', 'Full width']].forEach(function (o) {
+          var opt = document.createElement('option');
+          opt.value = o[0];
+          opt.textContent = o[1];
+          if ((block.width || '') === o[0]) opt.selected = true;
+          width.appendChild(opt);
+        });
+        width.addEventListener('change', function () { block.width = width.value; touch(); });
+        field.appendChild(uprow);
         field.appendChild(alt);
+        field.appendChild(cap);
+        field.appendChild(width);
+        break;
+      }
+      case 'gallery': {
+        field.appendChild(buildGalleryField(block, idx));
+        break;
+      }
+      case 'html': {
+        var htmlSrc = mkTextarea(block.text || '', '<div>Custom HTML…</div>');
+        htmlSrc.className += ' eblock__code';
+        htmlSrc.addEventListener('input', function () { block.text = htmlSrc.value; autoGrow(htmlSrc); touch(); });
+        field.appendChild(htmlSrc);
+        field.appendChild(mkHint('Custom HTML is sanitised on save (scripts, forms, and inline handlers are removed). Use it for rich markup like styled blocks or buttons-as-links.'));
+        setTimeout(function () { autoGrow(htmlSrc); }, 0);
+        break;
+      }
+      case 'markdown': {
+        var mdSrc = mkTextarea(block.text || '', '## Write in Markdown\\n\\n- lists, **bold**, [links](url), tables…');
+        mdSrc.className += ' eblock__code';
+        mdSrc.addEventListener('input', function () { block.text = mdSrc.value; autoGrow(mdSrc); touch(); });
+        field.appendChild(mdSrc);
+        setTimeout(function () { autoGrow(mdSrc); }, 0);
         break;
       }
       case 'audio': {
@@ -467,6 +523,21 @@
           touch();
         });
         t.addEventListener('keydown', onTextKey(idx));
+        if (block.type === 'paragraph') {
+          t.addEventListener('paste', function (e) {
+            // Pasting a lone URL onto an empty paragraph turns it into a
+            // bookmark / embed card and unfurls it (matches the "paste any URL"
+            // flow). Anything else pastes normally.
+            if (t.value.trim() !== '') return;
+            var clip = (e.clipboardData && e.clipboardData.getData('text/plain')) || '';
+            clip = clip.trim();
+            if (isLoneURL(clip)) {
+              e.preventDefault();
+              convertBlock(idx, { type: 'embed', url: clip, title: '', description: '', provider: '', thumbURL: '' });
+              setTimeout(function () { unfurlEmbedAt(idx, clip); }, 0);
+            }
+          });
+        }
         field.appendChild(t);
         if (block.type === 'callout') {
           var tone = mkInput('text', block.style || 'info', 'Tone (info, warn, success)');
@@ -624,6 +695,113 @@
     b.textContent = label;
     b.addEventListener('click', onClick);
     return b;
+  }
+
+  // uploadInto uploads a file to the media library and calls cb(url) on success.
+  // Shared by the image card's Upload button and the gallery editor.
+  function uploadInto(file, cb) {
+    var fd = new FormData();
+    fd.append('file', file);
+    setStatus('Uploading image…');
+    fetch('/os/api/media/upload', { method: 'POST', headers: { 'X-CSRF-Token': csrfToken() }, body: fd })
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+      .then(function (d) {
+        if (d && d.url) { cb(d.url); setStatus('Image uploaded', 'ok'); }
+        else setStatus('Upload failed', 'danger');
+      }).catch(function () { setStatus('Image upload failed', 'danger'); });
+  }
+
+  // isLoneURL reports whether s is a single bare http(s) URL (no surrounding text).
+  function isLoneURL(s) {
+    return /^https?:\/\/\S+$/.test(s) && !/\s/.test(s);
+  }
+
+  // unfurlEmbedAt resolves a URL's metadata server-side and fills the embed block
+  // at idx (used by the slash "Embed" card and by auto-embed on URL paste).
+  function unfurlEmbedAt(idx, url) {
+    var b = blocks[idx];
+    if (!b || b.type !== 'embed') return;
+    setStatus('Fetching…');
+    fetch('/os/api/embed/unfurl', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
+      body: JSON.stringify({ url: url })
+    }).then(function (r) { return r.json(); }).then(function (data) {
+      if (data.error) { setStatus('Embed: ' + data.error, 'warn'); return; }
+      b.url = data.url || url;
+      b.title = data.title || '';
+      b.description = data.description || '';
+      b.provider = data.provider || '';
+      b.thumbURL = data.thumbURL || '';
+      b.kind = data.kind || 'link';
+      b.embedSrc = data.embedSrc || '';
+      structural();
+      setStatus('Embed added', 'ok');
+    }).catch(function () { setStatus('Could not fetch URL', 'danger'); });
+  }
+
+  // ── Gallery editor (up to 9 images) ─────────────────────────────────────────
+  function buildGalleryField(block, idx) {
+    block.images = block.images || [];
+    var wrap = document.createElement('div');
+    wrap.className = 'eblock__gallery';
+
+    var grid = document.createElement('div');
+    grid.className = 'eblock__gallery-grid';
+    block.images.forEach(function (src, i) {
+      var cell = document.createElement('div');
+      cell.className = 'eblock__gallery-cell';
+      var img = document.createElement('img');
+      img.src = src;
+      img.alt = '';
+      var del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'eblock__gallery-del';
+      del.textContent = '×';
+      del.title = 'Remove image';
+      del.addEventListener('click', function () { block.images.splice(i, 1); structural(); });
+      cell.appendChild(img);
+      cell.appendChild(del);
+      grid.appendChild(cell);
+    });
+    wrap.appendChild(grid);
+
+    var ctl = document.createElement('div');
+    ctl.className = 'eblock__row';
+    var addUrl = mkInput('text', '', 'Image URL, then press Add');
+    var addBtn = mkSmallBtn('+ Add URL', function () {
+      var v = addUrl.value.trim();
+      if (!v) return;
+      if (block.images.length >= 9) { setStatus('A gallery holds up to 9 images', 'warn'); return; }
+      block.images.push(v);
+      addUrl.value = '';
+      structural();
+    });
+    var upBtn = mkSmallBtn('⬆ Upload', function () { gFile.click(); });
+    var gFile = document.createElement('input');
+    gFile.type = 'file';
+    gFile.accept = 'image/*';
+    gFile.multiple = true;
+    gFile.style.display = 'none';
+    gFile.addEventListener('change', function () {
+      var files = gFile.files ? Array.prototype.slice.call(gFile.files) : [];
+      files.forEach(function (f) {
+        if (block.images.length >= 9) return;
+        uploadInto(f, function (u) { if (block.images.length < 9) { block.images.push(u); structural(); } });
+      });
+      gFile.value = '';
+    });
+    ctl.appendChild(addUrl);
+    ctl.appendChild(addBtn);
+    ctl.appendChild(upBtn);
+    ctl.appendChild(gFile);
+    wrap.appendChild(ctl);
+
+    var cap = mkInput('text', block.caption || '', 'Gallery caption (optional)');
+    cap.addEventListener('input', function () { block.caption = cap.value; touch(); });
+    wrap.appendChild(cap);
+    wrap.appendChild(mkHint('Up to 9 images, shown as a responsive grid. Drag images into the editor or use Upload.'));
+    return wrap;
   }
 
   function placeholderFor(type) {
@@ -795,10 +973,13 @@
     if (type === 'tasklist') return { type: 'tasklist', items: [''], checked: [false] };
     if (type === 'heading') return { type: 'heading', level: 2, text: '' };
     if (type === 'divider') return { type: 'divider' };
-    if (type === 'image') return { type: 'image', url: '', alt: '' };
+    if (type === 'image') return { type: 'image', url: '', alt: '', caption: '', width: '' };
+    if (type === 'gallery') return { type: 'gallery', images: [], caption: '' };
     if (type === 'audio') return { type: 'audio', url: '', alt: '' };
     if (type === 'embed') return { type: 'embed', url: '', title: '', description: '', provider: '', thumbURL: '' };
     if (type === 'code') return { type: 'code', lang: '', text: '' };
+    if (type === 'html') return { type: 'html', text: '' };
+    if (type === 'markdown') return { type: 'markdown', text: '' };
     if (type === 'diagram') return { type: 'diagram', text: '' };
     if (type === 'callout') return { type: 'callout', style: 'info', text: '' };
     if (type === 'table') return { type: 'table', header: ['Column 1', 'Column 2'], rows: [['', ''], ['', '']] };

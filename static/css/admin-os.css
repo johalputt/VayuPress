@@ -2922,3 +2922,38 @@
 @media (max-width: 600px) {
   .vp-os .editor-settings { width: 100vw; }
 }
+
+
+/* ── Editor: image card row, gallery editor ──────────────────────────────── */
+.vp-os .eblock__row { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+.vp-os .eblock__row .eblock__input { flex: 1 1 200px; }
+
+.vp-os .eblock__gallery { display: flex; flex-direction: column; gap: var(--sp-2); }
+.vp-os .eblock__gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: var(--sp-2);
+}
+.vp-os .eblock__gallery-cell {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  border-radius: var(--r-sm);
+  overflow: hidden;
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+}
+.vp-os .eblock__gallery-cell img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.vp-os .eblock__gallery-del {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: var(--r-full);
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  cursor: pointer;
+  line-height: 1;
+}
+.vp-os .eblock__gallery-del:hover { background: var(--color-danger, #ef4444); }
