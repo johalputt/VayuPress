@@ -99,7 +99,6 @@ therefore atomic and recoverable even if the process dies mid-restore.
 - No new third-party dependencies: snapshots use only `archive/tar`,
   `compress/gzip`, `database/sql`, and `crypto/sha256`.
 
-
 ## Revision — one-click apply gating (post-release)
 
 The first cut reused the CLI's strict `PreflightApply` for the web button, which
