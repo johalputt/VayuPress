@@ -31,7 +31,7 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   toggles. Every field is optional and falls back to the previous derived
   default, so existing posts are unchanged until something is set explicitly.
   These flow into the rendered article `<head>` (title, description, canonical,
-  og:* and twitter:* tags, JSON-LD) and body (hero feature image); pages drop
+  `og:*` and `twitter:*` tags, JSON-LD) and body (hero feature image); pages drop
   the post chrome and are kept out of the home feed, RSS, and sitemap. Backed by
   new `articles` columns (migration 045) and the `POST /os/api/editor/import`
   and `POST /os/api/editor/slug` endpoints.
