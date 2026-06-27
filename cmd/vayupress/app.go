@@ -438,6 +438,7 @@ func (a *App) registerEventHandlers() {
 type adminMetricsSnapshot struct {
 	TotalArticles  int
 	TotalPages     int
+	UnreadMessages int
 	PendingJobs    int
 	FailedJobs     int
 	CompletedJobs  int
@@ -468,6 +469,9 @@ func (a *App) collectAdminMetrics() {
 	// dashboard can surface each count distinctly. Best-effort; a pre-045 schema
 	// without the column simply leaves the count at zero.
 	_ = dbpkg.DB.QueryRow(`SELECT COUNT(1) FROM articles WHERE COALESCE(is_page,0)=1`).Scan(&snap.TotalPages)
+	// Unread contact messages (best-effort; missing table on a pre-046 schema
+	// simply leaves the count at zero).
+	_ = dbpkg.DB.QueryRow(`SELECT COUNT(1) FROM contact_messages WHERE is_read=0`).Scan(&snap.UnreadMessages)
 	snap.StorageBytes = dbpkg.StorageUsedBytes()
 	snap.QuotaBytes = dbpkg.StorageQuotaBytes()
 	if snap.QuotaBytes > 0 {

@@ -405,6 +405,14 @@ func navItemBadge(href, label, key, active, iconSVG string, count int) string {
 		`</a>`
 }
 
+// unreadMessagesLabel is the dashboard Messages-card footer link text.
+func unreadMessagesLabel(unread int) string {
+	if unread > 0 {
+		return "Unread — open inbox →"
+	}
+	return "Open inbox →"
+}
+
 // osUnread safely reads the unread-message count for the sidebar badge.
 func osUnread(s *osSettings) int {
 	if s == nil {
@@ -1058,6 +1066,18 @@ func (a *App) handleOSDashboard(w http.ResponseWriter, r *http.Request) {
     <div class="stat-card__value">` + strconv.Itoa(snap.TotalPages) + `</div>
     <div class="stat-card__bottom">
       <a class="text-xs" href="/os/pages">Manage pages →</a>
+    </div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-card__top">
+      <div class="stat-card__label">Messages</div>
+      <div class="stat-card__icon stat-card__icon--accent">
+        <svg viewBox="0 0 16 16" fill="none" width="16" height="16" aria-hidden="true"><path d="M2 4h12v8H5l-3 2V4zm2 3h8M4 9h5" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>
+      </div>
+    </div>
+    <div class="stat-card__value">` + strconv.Itoa(snap.UnreadMessages) + `</div>
+    <div class="stat-card__bottom">
+      <a class="text-xs" href="/os/messages">` + unreadMessagesLabel(snap.UnreadMessages) + `</a>
     </div>
   </div>
   <div class="stat-card">
