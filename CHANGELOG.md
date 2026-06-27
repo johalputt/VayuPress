@@ -10,6 +10,18 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Fixed
 
+- **The public site and VayuOS no longer hang after an update on a large
+  catalog.** Every public *cold-render* path ran a full-table scan over the
+  whole catalog on the single SQLite **writer** connection: the homepage and
+  tag-index `COUNT` (via `COALESCE(status,…)`/`COALESCE(is_page,0)`), and the
+  `tags LIKE '%…%'` scans behind related-posts, per-tag pages, and the search
+  reindex. When an update changes templates the pre-rendered cache is dropped,
+  so under real traffic every cold page render hammered that one connection with
+  a 234k-row scan — starving sessions, writes and admin requests until the whole
+  site (and VayuOS) appeared to hang. These reads now run on the **read pool**
+  and use the bare (indexed) `status`/`is_page` columns, so they never block the
+  writer connection and pages render without a full-table scan.
+
 - **Opening the Posts or Pages tab no longer 502s on a large catalog.** Both
   manager pages wrapped indexed columns in `COALESCE(...)`
   (`GROUP BY COALESCE(status,'published')` on Posts; `WHERE COALESCE(is_page,0)=1`
