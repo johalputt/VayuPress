@@ -36,6 +36,7 @@ import (
 	htmpl "html/template"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -417,32 +418,98 @@ func (a *App) handleOSUpdateHistory(w http.ResponseWriter, r *http.Request) {
 
 // ── Backup / export / import ───────────────────────────────────────────────
 
-// handleOSBackupExport streams a full snapshot (.tar.gz) download. The write
-// deadline is lifted so arbitrarily large databases export without timing out,
-// and the DB is copied with VACUUM INTO + io.Copy, so memory use is constant.
+// snapshotTmpDir returns a directory the service can actually write large
+// temporary backup files into, trying the configured TMP_DIR first, then the OS
+// temp dir, then the database's own directory (guaranteed writable, since the DB
+// lives there). This prevents export failures when TMP_DIR is unset or not
+// writable under a hardened service sandbox.
+func snapshotTmpDir() string {
+	for _, d := range []string{config.Cfg.TmpDir, os.TempDir(), filepath.Dir(config.Cfg.DBPath)} {
+		if strings.TrimSpace(d) == "" {
+			continue
+		}
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			continue
+		}
+		probe, err := os.CreateTemp(d, ".vp-probe-*")
+		if err != nil {
+			continue
+		}
+		name := probe.Name()
+		_ = probe.Close()
+		_ = os.Remove(name)
+		return d
+	}
+	return os.TempDir()
+}
+
+// handleOSBackupExport builds a full snapshot (.tar.gz) and serves it as a
+// download. The archive is built to a temp file FIRST so that any failure
+// returns a clean JSON error instead of a truncated 0-byte download; it is then
+// served with http.ServeContent, which sets a real Content-Length (so the
+// browser shows accurate progress) and streams from disk in constant memory
+// regardless of size. The write deadline is lifted for large transfers.
 func (a *App) handleOSBackupExport(w http.ResponseWriter, r *http.Request) {
 	if !a.isAdminRequest(r) {
 		writeAPIError(w, r, http.StatusForbidden, "forbidden", "admin role required", "")
 		return
 	}
-	// Lift the server WriteTimeout for this streamed, potentially long response.
-	if rc := http.NewResponseController(w); rc != nil {
-		_ = rc.SetWriteDeadline(time.Time{})
+
+	tmpDir := snapshotTmpDir()
+	archive, err := os.CreateTemp(tmpDir, "vp-backup-*.tar.gz")
+	if err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "tmp-error",
+			"Could not create a temporary file for the backup: "+err.Error(), "")
+		return
+	}
+	archivePath := archive.Name()
+	defer os.Remove(archivePath)
+
+	// Build the whole archive before sending any response header.
+	exportErr := update.ExportSnapshot(r.Context(), archive, dbpkg.DB, config.Cfg.DBPath, tmpDir, Version)
+	closeErr := archive.Close()
+	if exportErr != nil {
+		logging.LogError("update", "snapshot export failed", exportErr.Error())
+		writeAPIError(w, r, http.StatusInternalServerError, "export-failed", "Backup failed: "+exportErr.Error(), "")
+		return
+	}
+	if closeErr != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "export-failed", "Backup failed while flushing: "+closeErr.Error(), "")
+		return
+	}
+
+	f, err := os.Open(archivePath)
+	if err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "export-failed", "Backup file unreadable: "+err.Error(), "")
+		return
+	}
+	defer f.Close()
+	fi, err := f.Stat()
+	if err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "export-failed", err.Error(), "")
+		return
+	}
+	if fi.Size() == 0 {
+		writeAPIError(w, r, http.StatusInternalServerError, "export-empty", "Backup produced an empty archive.", "")
+		return
 	}
 
 	filename := fmt.Sprintf("vayupress-backup-v%s-%s.tar.gz", Version, time.Now().UTC().Format("20060102T150405Z"))
+	// Lift the server WriteTimeout for a potentially large download.
+	if rc := http.NewResponseController(w); rc != nil {
+		_ = rc.SetWriteDeadline(time.Time{})
+	}
 	w.Header().Set("Content-Type", "application/gzip")
 	w.Header().Set("Content-Disposition", `attachment; filename="`+filename+`"`)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Cache-Control", "no-store")
 
-	if err := update.ExportSnapshot(r.Context(), w, dbpkg.DB, config.Cfg.DBPath, config.Cfg.TmpDir, Version); err != nil {
-		// The response stream has very likely started, so we cannot send a clean
-		// JSON error — log it and let the truncated download signal failure.
-		logging.LogError("update", "snapshot export failed", err.Error())
-		return
-	}
-	dbpkg.AuditLog("backup.export", dbpkg.AuditActor(r), filename, "full snapshot exported via VayuOS")
+	dbpkg.AuditLog("backup.export", dbpkg.AuditActor(r), filename,
+		fmt.Sprintf("full snapshot exported via VayuOS (%d bytes)", fi.Size()))
+
+	// ServeContent sets Content-Length, supports range/resume, and streams the
+	// file from disk — constant memory, no size limit.
+	http.ServeContent(w, r, filename, fi.ModTime(), f)
 }
 
 // handleOSBackupImport accepts a multipart upload of a snapshot, validates it,
@@ -477,7 +544,10 @@ func (a *App) handleOSBackupImport(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		found = true
-		manifest, err = update.StageRestore(r.Context(), part, config.Cfg.DBPath, config.Cfg.TmpDir)
+		// Pass an empty tmpDir so StageRestore extracts into the database's own
+		// directory — same filesystem as the pending-restore target, so the final
+		// swap is an atomic rename rather than a cross-device copy.
+		manifest, err = update.StageRestore(r.Context(), part, config.Cfg.DBPath, "")
 		_ = part.Close()
 		if err != nil {
 			writeAPIError(w, r, http.StatusBadRequest, "restore-invalid", err.Error(), "")
