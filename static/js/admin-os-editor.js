@@ -758,6 +758,26 @@
     return /^https?:\/\//i.test(u) ? u : '';             // explicit http(s) only
   }
 
+  // safeImgSrc is the barrier used at every point a value is assigned to an
+  // <img> src. It resolves the (possibly relative) value against the current
+  // origin with the URL parser and returns the parsed .href ONLY when the
+  // resulting scheme is http(s); javascript:/data:/vbscript: and malformed
+  // inputs yield ''. Returning the parser's normalised href — rather than the
+  // raw string — behind an explicit protocol check makes this an effective
+  // sanitiser for the "DOM text reinterpreted as HTML" data flow, including
+  // values rehydrated from the saved document.
+  function safeImgSrc(u) {
+    u = (u == null ? '' : String(u)).trim();
+    if (!u) return '';
+    try {
+      var parsed = new URL(u, window.location.origin);
+      if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+        return parsed.href;
+      }
+    } catch (e) { /* malformed URL → unsafe */ }
+    return '';
+  }
+
   function buildGalleryField(block, idx) {
     block.images = block.images || [];
     var wrap = document.createElement('div');
@@ -769,7 +789,7 @@
       var cell = document.createElement('div');
       cell.className = 'eblock__gallery-cell';
       var img = document.createElement('img');
-      img.src = safeMediaURL(src);
+      img.src = safeImgSrc(src);
       img.alt = '';
       var del = document.createElement('button');
       del.type = 'button';
@@ -1589,7 +1609,7 @@
   function updateFeaturePreview() {
     var url = pmVal(pm['feature-image']).trim();
     if (pm['feature-preview']) {
-      var safe = safeMediaURL(url);
+      var safe = safeImgSrc(url);
       if (safe) { pm['feature-preview'].src = safe; pm['feature-preview'].hidden = false; }
       else { pm['feature-preview'].hidden = true; pm['feature-preview'].removeAttribute('src'); }
     }
