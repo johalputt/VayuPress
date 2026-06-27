@@ -111,6 +111,38 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   creative can never inject script. Order fulfilment is idempotent, so a
   duplicate confirmation or replayed webhook never upgrades or emails twice.
 
+## [1.19.0] — 2026-06-26
+
+### Added
+
+- **Newsletter console (`/os/newsletter`) — a full operator console where the
+  sidebar item previously dead-ended.** Clicking *Newsletter* now opens a real
+  dashboard instead of a missing page. See ADR-0090.
+- **Audience health at a glance** — total subscribers, active (confirmed),
+  pending double-opt-in, unsubscribed, 30-day new signups, and a confirmation
+  rate, with a dependency-free 30-day growth sparkline.
+- **Subscriber management** — a searchable table with status-segment tabs
+  (All / Active / Pending / Unsubscribed), instant client-side search, per-row
+  delete (GDPR erasure / spam cleanup), and one-click CSV export of the full
+  list.
+- **Broadcast composer** — compose a subject, plain-text body and optional HTML,
+  send a **test message** to any address first, then send to every confirmed
+  subscriber. An unsubscribe link is appended to every message automatically.
+- **Persisted broadcast history** — each send is recorded with its audience
+  size and final sent/failed tallies (table `newsletter_broadcasts`), surfaced
+  as a delivery-history table so operators can see what went out and how it did.
+- **SMTP status awareness** — the console clearly indicates when SMTP is not
+  configured and disables sending until it is, while still allowing signups and
+  confirmations.
+- New session-authed endpoints under `/os/api/newsletter/*`
+  (`stats`, `subscribers`, `broadcasts`, `export.csv`, delete, `test`,
+  `broadcast`) so a browser operator no longer needs an API key.
+
+### Upgrade Notes
+
+- Migration `044-newsletter-broadcasts` adds the broadcast-history table. It is
+  additive and backward-compatible; existing subscribers are untouched.
+
 ## [1.18.0] — 2026-06-26
 
 ### Added

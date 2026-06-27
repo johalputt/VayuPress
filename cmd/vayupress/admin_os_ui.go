@@ -74,6 +74,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 	r.Get("/os/static/js/admin-os-editor.js", serveAdminOSAsset("js/admin-os-editor.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-security.js", serveAdminOSAsset("js/admin-os-security.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-members.js", serveAdminOSAsset("js/admin-os-members.js", "application/javascript; charset=utf-8"))
+	r.Get("/os/static/js/admin-os-newsletter.js", serveAdminOSAsset("js/admin-os-newsletter.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-profile.js", serveAdminOSAsset("js/admin-os-profile.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-intel.js", serveAdminOSAsset("js/admin-os-intel.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-tools.js", serveAdminOSAsset("js/admin-os-tools.js", "application/javascript; charset=utf-8"))
@@ -162,6 +163,17 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Put("/os/api/members/{email}/cancel", a.handleMemberCancel)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/members/{email}/labels", a.handleMemberLabelAdd)
 		pr.With(auth.CSRFTokenMiddleware).Delete("/os/api/members/{email}/labels/{label}", a.handleMemberLabelRemove)
+		// Newsletter console — the operator page plus session-friendly management
+		// APIs (the /api/v1/admin/newsletter/* originals require an API key; os
+		// operators hold a session cookie). Writes are CSRF-protected.
+		pr.Get("/os/newsletter", a.handleOSNewsletter)
+		pr.Get("/os/api/newsletter/stats", a.handleOSNewsletterStats)
+		pr.Get("/os/api/newsletter/subscribers", a.handleOSNewsletterSubscribers)
+		pr.Get("/os/api/newsletter/broadcasts", a.handleOSNewsletterBroadcasts)
+		pr.Get("/os/api/newsletter/export.csv", a.handleOSNewsletterExport)
+		pr.With(auth.CSRFTokenMiddleware).Delete("/os/api/newsletter/subscribers/{id}", a.handleOSNewsletterDelete)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/newsletter/test", a.handleOSNewsletterSendTest)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/newsletter/broadcast", a.handleOSNewsletterBroadcastSend)
 		// Self-service author profile + admin team/role management (session mirrors).
 		pr.Get("/os/profile", a.handleOSProfile)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/profile", a.handleProfileSave)
