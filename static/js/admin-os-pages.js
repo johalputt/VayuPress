@@ -19,6 +19,7 @@
 
   // ── Quick-create ───────────────────────────────────────────────────────────
   var input = document.getElementById('page-compose-input');
+  var templateSel = document.getElementById('page-compose-template');
   var createStatus = document.getElementById('page-compose-status');
   if (input) {
     input.addEventListener('keydown', function (e) {
@@ -30,7 +31,7 @@
       fetch('/os/api/pages/quick-create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf() },
-        body: JSON.stringify({ title: title }),
+        body: JSON.stringify({ title: title, template: templateSel ? templateSel.value : 'blank' }),
       })
         .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
         .then(function (res) {

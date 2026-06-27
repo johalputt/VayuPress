@@ -28,4 +28,28 @@ func TestPagesSurfaceRendersWithoutStores(t *testing.T) {
 	if !strings.Contains(body, "admin-os-pages.js") {
 		t.Error("Pages surface is missing its controller script")
 	}
+	if !strings.Contains(body, "page-compose-template") {
+		t.Error("Pages surface is missing the template selector")
+	}
+}
+
+// TestPageTemplateSeed verifies each known template seeds non-empty starter
+// content using only sanitiser-safe tags, and that blank/unknown collapse to the
+// single-space empty document article validation requires.
+func TestPageTemplateSeed(t *testing.T) {
+	for _, tpl := range []string{"about", "contact", "faq"} {
+		got := pageTemplateSeed(tpl)
+		if strings.TrimSpace(got) == "" {
+			t.Errorf("template %q seeded empty content", tpl)
+		}
+		if !strings.Contains(got, "<h2>") {
+			t.Errorf("template %q missing a heading", tpl)
+		}
+		if strings.Contains(got, "<form") || strings.Contains(got, "<script") {
+			t.Errorf("template %q contains markup the UGC sanitiser strips", tpl)
+		}
+	}
+	if pageTemplateSeed("blank") != " " || pageTemplateSeed("nonsense") != " " {
+		t.Error("blank/unknown templates must seed a single space")
+	}
 }
