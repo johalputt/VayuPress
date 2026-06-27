@@ -105,6 +105,21 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   as soon as a newer release is detected (and the system mode allows applying),
   so updates can be installed in one click.
 
+- **Intermittent hangs / 502s under load, and an ever-growing database.** Two
+  compounding issues are fixed. (1) The `write_jobs` queue table was never
+  pruned, so completed jobs — each holding a full article snapshot — accumulated
+  indefinitely and could bloat the database to many gigabytes. A new retention
+  sweeper now deletes completed jobs after `QUEUE_JOB_RETENTION_HOURS` (default
+  24h) and dead-letter/quarantined jobs after `QUEUE_DEAD_JOB_RETENTION_DAYS`
+  (default 7d), in small batches. (2) The admin-metrics collector ran a
+  full-table `SUM(...) FROM write_jobs` scan every 30 seconds on the single
+  writer connection; on a large queue table that scan monopolised the connection
+  for seconds, stalling session lookups, writes and admin pages and surfacing as
+  intermittent gateway timeouts. The collector now runs index-only counts on the
+  read pool, so it never blocks writers. Operators with an already-bloated
+  database should prune completed jobs once and `VACUUM` to reclaim disk (see
+  UPGRADING notes).
+
 - **Editor: the writing canvas now scrolls.** The block canvas was clipped at
   the viewport edge, so a long post — or a single tall block — could not be
   scrolled into view. The editor shell is now a fixed-height grid with a correct
