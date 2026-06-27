@@ -160,7 +160,12 @@ func (l *Ledger) Status(now time.Time) []Status {
 		switch {
 		case consumed >= r.Limit:
 			state, recommended = "exhausted", r.OnExhaust.String()
-		case r.Limit > 0 && consumed >= r.Limit-1:
+		case consumed > 0 && consumed >= r.Limit-1:
+			// "at-risk" means one event away from exhaustion AND something has
+			// already been consumed. Requiring consumed>0 stops a limit-1 budget
+			// (e.g. integrity-exhaustion) from reporting at-risk while it has had
+			// zero events — previously `consumed >= Limit-1` was `0 >= 0`, so such
+			// a budget could never show healthy.
 			state = "at-risk"
 		}
 
