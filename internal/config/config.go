@@ -33,16 +33,21 @@ var Cfg struct {
 	TmpDir              string
 	QueueSaturationWarn int
 	QueueHardLimit      int // reject new jobs above this depth (backpressure)
-	PluginTimeoutMS     int // per-plugin execution budget in milliseconds
-	PluginMaxConcurrent int // max simultaneous plugin executions
-	MaintenanceMode     bool
-	CSPReportOnly       bool // send Content-Security-Policy-Report-Only (staging) instead of enforcing
-	GovernanceActuation bool // when true, exhausted governance budgets drive automatic mode escalation (default off)
-	VacuumCooldownMin   int
-	MaxReplayCount      int
-	ReplayBatchLimit    int
-	WALSizeThresholdMB  int
-	PprofRateLimit      int
+	// Queue retention: terminal write_jobs rows are pruned so the queue table
+	// (and the database file) cannot grow without bound. Completed jobs are kept
+	// for JobRetentionHours; dead-letter/quarantined jobs for DeadJobRetentionDays.
+	JobRetentionHours    int
+	DeadJobRetentionDays int
+	PluginTimeoutMS      int // per-plugin execution budget in milliseconds
+	PluginMaxConcurrent  int // max simultaneous plugin executions
+	MaintenanceMode      bool
+	CSPReportOnly        bool // send Content-Security-Policy-Report-Only (staging) instead of enforcing
+	GovernanceActuation  bool // when true, exhausted governance budgets drive automatic mode escalation (default off)
+	VacuumCooldownMin    int
+	MaxReplayCount       int
+	ReplayBatchLimit     int
+	WALSizeThresholdMB   int
+	PprofRateLimit       int
 	// SearchReconcileMin is the interval, in minutes, between background search
 	// drift checks. 0 disables the periodic reconciler entirely.
 	SearchReconcileMin int
@@ -103,6 +108,8 @@ func Load() {
 	Cfg.CacheMaxSizeGB = int64(GetEnvAsInt("CACHE_MAX_SIZE_GB", 10))
 	Cfg.QueueSaturationWarn = GetEnvAsInt("QUEUE_SATURATION_WARN", 100)
 	Cfg.QueueHardLimit = GetEnvAsInt("QUEUE_HARD_LIMIT", 1000)
+	Cfg.JobRetentionHours = GetEnvAsInt("QUEUE_JOB_RETENTION_HOURS", 24)
+	Cfg.DeadJobRetentionDays = GetEnvAsInt("QUEUE_DEAD_JOB_RETENTION_DAYS", 7)
 	Cfg.PluginTimeoutMS = GetEnvAsInt("PLUGIN_TIMEOUT_MS", 2000)
 	Cfg.PluginMaxConcurrent = GetEnvAsInt("PLUGIN_MAX_CONCURRENT", 8)
 	st := GetEnvAsInt("SMOKE_TEST_TIMEOUT", 30)
