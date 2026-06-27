@@ -24,6 +24,7 @@ import (
 	"github.com/johalputt/vayupress/internal/blockrender"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/logging"
+	"github.com/johalputt/vayupress/internal/mode"
 	"github.com/johalputt/vayupress/internal/render"
 )
 
@@ -217,6 +218,43 @@ func (a *App) handleOSPostStatus(w http.ResponseWriter, r *http.Request) {
 	// an unpublish disappears — and a publish appears — without delay.
 	render.CachePurge(slug, splitCSVTags(tagsCSV), generateSitemap, generateRSS, generateRobots)
 	writeJSON(w, r, http.StatusOK, map[string]string{"status": status, "slug": slug})
+}
+
+// handleOSPostDelete permanently removes a post (or page) from the VayuOS
+// manager. It is synchronous so the list reflects the deletion immediately:
+// the article row carries its own blocks_json + publishing-options columns, so
+// the row delete cleans those up; its comments are removed too. Public caches
+// (article page, home, tags, sitemap, feed) are purged so the post disappears
+// from the live site at once. Refused in read-only / quarantined mode.
+func (a *App) handleOSPostDelete(w http.ResponseWriter, r *http.Request) {
+	if cur := mode.Global.Current(); cur == mode.ModeReadOnly || cur == mode.ModeQuarantined {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "read-only", "posts cannot be deleted in "+string(cur)+" mode", "")
+		return
+	}
+	slug := strings.TrimSpace(chi.URLParam(r, "slug"))
+	if slug == "" {
+		writeAPIError(w, r, http.StatusBadRequest, "bad-input", "a slug is required", "")
+		return
+	}
+	var id, tagsCSV string
+	if err := dbpkg.DB.QueryRowContext(r.Context(), `SELECT id,COALESCE(tags,'') FROM articles WHERE slug=?`, slug).Scan(&id, &tagsCSV); err != nil {
+		writeAPIError(w, r, http.StatusNotFound, "not-found", "No post with that slug", "")
+		return
+	}
+	if _, err := dbpkg.WDB.Exec(`DELETE FROM articles WHERE slug=?`, slug); err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "delete-error", err.Error(), "")
+		return
+	}
+	// Best-effort cleanup of the post's comments (orphans otherwise).
+	_, _ = dbpkg.WDB.Exec(`DELETE FROM comments WHERE article_id=?`, id)
+
+	render.CachePurge(slug, splitCSVTags(tagsCSV), generateSitemap, generateRSS, generateRobots)
+	dbpkg.AuditLog("article.delete", dbpkg.AuditActor(r), slug, "id="+id)
+	logging.LogJSON(logging.LogFields{
+		Level: "info", Component: "editor", Severity: "info",
+		Msg: "post deleted: " + slug, RequestID: getRequestID(r),
+	})
+	writeJSON(w, r, http.StatusOK, map[string]string{"status": "deleted", "slug": slug})
 }
 
 // splitCSVTags splits a stored comma-separated tag string into a slice.

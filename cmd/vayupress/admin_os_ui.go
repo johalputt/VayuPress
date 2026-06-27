@@ -301,6 +301,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/settings", a.handleOSSettingsAPI)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/posts/quick-create", a.handleOSQuickCreatePost)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/posts/status", a.handleOSPostStatus)
+		pr.With(auth.CSRFTokenMiddleware).Delete("/os/api/posts/{slug}", a.handleOSPostDelete)
 		// Session-friendly branding (favicon) upload — the /admin/theme/favicon
 		// original is in the API-key-only group, so a browser operator can't reach
 		// it. This mirror is gated by requireSessionOrAPIKey + CSRF.
@@ -1349,6 +1350,7 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
     <a class="btn btn--ghost btn--sm" href="/os/editor/` + esc + `">Edit</a>
     ` + viewBtn + `
     <button type="button" class="btn btn--ghost btn--sm" data-post-toggle data-slug="` + esc + `" data-to="` + toggleTo + `">` + toggleLabel + `</button>
+    <button type="button" class="btn btn--ghost btn--sm" data-post-delete data-slug="` + esc + `" data-title="` + html.EscapeString(p.Title) + `">Delete</button>
   </td>
 </tr>`
 		}
@@ -1407,6 +1409,17 @@ document.querySelectorAll('[data-post-toggle]').forEach(function(b){
     fetch('/os/api/posts/status',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},body:JSON.stringify({slug:b.getAttribute('data-slug'),status:b.getAttribute('data-to')})})
       .then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d};});})
       .then(function(res){if(res.ok){show(res.d.status==='published'?'Published':'Moved to draft',false);setTimeout(function(){location.reload();},500);}else{b.disabled=false;show(res.d.detail||res.d.title||'Error',true);}})
+      .catch(function(e){b.disabled=false;show('Error: '+e,true);});
+  });
+});
+document.querySelectorAll('[data-post-delete]').forEach(function(b){
+  b.addEventListener('click',function(){
+    var t=b.getAttribute('data-title')||'this post';
+    if(!window.confirm('Delete "'+t+'"? This permanently removes the post and its comments and cannot be undone.'))return;
+    b.disabled=true;
+    fetch('/os/api/posts/'+encodeURIComponent(b.getAttribute('data-slug')),{method:'DELETE',headers:{'X-CSRF-Token':csrf()}})
+      .then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d};});})
+      .then(function(res){if(res.ok){show('Deleted',false);var row=b.closest('[data-post-row]');if(row)row.remove();}else{b.disabled=false;show(res.d.detail||res.d.title||'Error',true);}})
       .catch(function(e){b.disabled=false;show('Error: '+e,true);});
   });
 });

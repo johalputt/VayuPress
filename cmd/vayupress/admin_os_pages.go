@@ -138,6 +138,7 @@ func (a *App) handleOSPages(w http.ResponseWriter, r *http.Request) {
   <td class="row-actions">
     <a class="btn btn--ghost btn--sm" href="/os/editor/` + esc + `">Edit</a>
     ` + viewBtn + `
+    <button type="button" class="btn btn--ghost btn--sm" data-page-delete data-slug="` + esc + `" data-title="` + html.EscapeString(p.Title) + `">Delete</button>
   </td>
 </tr>`
 		}
