@@ -37,6 +37,22 @@ func TestContactValidation(t *testing.T) {
 	}
 }
 
+func TestPageSlugFromPath(t *testing.T) {
+	cases := map[string]string{
+		"/contact":         "contact",
+		"/contact?ref=nav": "contact",
+		"/about/":          "about",
+		"/":                "",
+		"":                 "",
+		"/a/b":             "", // multi-segment is not a page slug
+	}
+	for in, want := range cases {
+		if got := pageSlugFromPath(in); got != want {
+			t.Errorf("pageSlugFromPath(%q)=%q, want %q", in, got, want)
+		}
+	}
+}
+
 func TestLooksLikeEmail(t *testing.T) {
 	good := []string{"a@b.com", "x.y@sub.domain.io"}
 	bad := []string{"", "no-at", "a@b", "a b@c.com", "a@@b.com"}

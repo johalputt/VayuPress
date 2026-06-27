@@ -9,6 +9,7 @@ package main
 // the built-in VayuMail SMTP sender (a.mailer). No third-party form service.
 
 import (
+	"context"
 	"net"
 	"net/http"
 	"strings"
@@ -17,6 +18,7 @@ import (
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/email"
 	"github.com/johalputt/vayupress/internal/logging"
+	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/settings"
 )
 
@@ -34,6 +36,7 @@ func (a *App) handleContactSubmit(w http.ResponseWriter, r *http.Request) {
 		Email   string `json:"email"`
 		Message string `json:"message"`
 		Website string `json:"website"` // honeypot
+		Page    string `json:"page"`    // path of the page the form is on
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 16*1024)
 	if err := readJSONDirect(r, &body); err != nil {
@@ -90,7 +93,7 @@ func (a *App) handleContactSubmit(w http.ResponseWriter, r *http.Request) {
 	if dbpkg.DB != nil {
 		if _, err := dbpkg.WDB.ExecContext(r.Context(),
 			`INSERT INTO contact_messages(id,name,email,message,page,ip,is_read,created_at) VALUES(?,?,?,?,?,?,0,?)`,
-			newUUID(), name, from, message, contactPageRef(r), ip, time.Now().UTC()); err != nil {
+			newUUID(), name, from, message, firstNonEmptyContact(body.Page, contactPageRef(r)), ip, time.Now().UTC()); err != nil {
 			logging.LogError("contact", "persist failed", err.Error())
 		}
 	}
@@ -122,8 +125,15 @@ func (a *App) handleContactSubmit(w http.ResponseWriter, r *http.Request) {
 				siteName = n
 			}
 		}
+		// Per-page custom confirmation, if the page's marker carries one
+		// ([[contact-form: …]]); otherwise the default line. The page content is
+		// the single source of truth, re-parsed here at submit time.
+		intro := "Thanks for getting in touch — we've received your message and will get back to you soon."
+		if custom := a.pageContactReply(r.Context(), pageSlugFromPath(firstNonEmptyContact(body.Page, contactPageRef(r)))); custom != "" {
+			intro = custom
+		}
 		reply := "Hi " + name + ",\n\n" +
-			"Thanks for getting in touch — we've received your message and will get back to you soon.\n\n" +
+			intro + "\n\n" +
 			"For your records, here's what you sent:\n\n" +
 			message + "\n\n" +
 			"— " + siteName + "\n"
@@ -175,6 +185,46 @@ func contactPageRef(r *http.Request) string {
 		}
 	}
 	return ""
+}
+
+// firstNonEmptyContact returns the first non-blank trimmed string.
+func firstNonEmptyContact(vals ...string) string {
+	for _, v := range vals {
+		if s := strings.TrimSpace(v); s != "" {
+			return s
+		}
+	}
+	return ""
+}
+
+// pageSlugFromPath turns a same-origin path ("/contact", "/contact?x=1") into a
+// bare slug ("contact"). Returns "" for the empty/root path or anything with a
+// slash inside the slug (only single-segment page slugs are valid here).
+func pageSlugFromPath(path string) string {
+	p := strings.TrimSpace(path)
+	if i := strings.IndexAny(p, "?#"); i >= 0 {
+		p = p[:i]
+	}
+	p = strings.Trim(p, "/")
+	if p == "" || strings.Contains(p, "/") {
+		return ""
+	}
+	return p
+}
+
+// pageContactReply loads a page's content by slug and returns its per-page
+// custom contact auto-reply (the [[contact-form: …]] message), or "" when the
+// slug is unknown or the marker carries no custom text.
+func (a *App) pageContactReply(ctx context.Context, slug string) string {
+	if slug == "" || dbpkg.DB == nil {
+		return ""
+	}
+	var content string
+	if err := dbpkg.DB.QueryRowContext(ctx, `SELECT content FROM articles WHERE slug=?`, slug).Scan(&content); err != nil {
+		return ""
+	}
+	custom, _ := render.ParseContactForm(content)
+	return custom
 }
 
 // looksLikeEmail is a deliberately permissive sanity check (exactly one '@', a

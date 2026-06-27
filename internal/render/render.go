@@ -644,7 +644,7 @@ const ContactJS = `(function(){` +
 	`form.addEventListener('submit',function(e){e.preventDefault();` +
 	`if(!nameI.value.trim()||!emailI.value.trim()||!msgI.value.trim()){status.textContent='Please fill in every field.';return;}` +
 	`btn.disabled=true;status.textContent='Sending…';` +
-	`fetch('/api/v1/contact',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:nameI.value.trim(),email:emailI.value.trim(),message:msgI.value.trim(),website:hp.value})})` +
+	`fetch('/api/v1/contact',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:nameI.value.trim(),email:emailI.value.trim(),message:msgI.value.trim(),website:hp.value,page:location.pathname})})` +
 	`.then(function(r){return r.json().then(function(d){return{ok:r.ok,status:r.status,d:d};});})` +
 	`.then(function(res){btn.disabled=false;if(res.ok){nameI.value='';emailI.value='';msgI.value='';status.textContent='Thanks! Your message has been sent.';}else{status.textContent=(res.d&&res.d.error&&(res.d.error.message||res.d.error))||'Could not send — please try again.';}})` +
 	`.catch(function(){btn.disabled=false;status.textContent='Network error — please try again.';});});` +
@@ -661,10 +661,24 @@ func ContactJSLink() template.HTML {
 	return template.HTML(`<script src="/static/js/contact.js?v=` + contactJSHash + `" defer></script>`)
 }
 
-// contactFormMarker is the literal token operators place in a page's content to
-// render the contact form there. The render layer detects it, strips it from the
-// visible prose, and injects the CSP-safe widget container instead.
-const contactFormMarker = "[[contact-form]]"
+// contactFormRe matches the contact-form marker an operator places in a page's
+// content. The bare form [[contact-form]] uses the default auto-reply; the
+// extended form [[contact-form: your message ]] sets a per-page custom auto-reply
+// (captured in group 1). The render layer strips the whole match and injects the
+// widget; the contact endpoint re-parses the page content to recover the custom
+// reply at submit time, so the page is the single source of truth.
+var contactFormRe = regexp.MustCompile(`\[\[contact-form(?::([^\]]*))?\]\]`)
+
+// ParseContactForm reports whether content contains a contact-form marker and
+// returns any per-page custom auto-reply message (trimmed; empty when the bare
+// marker is used). Shared by the renderer and the contact submit handler.
+func ParseContactForm(content string) (custom string, present bool) {
+	m := contactFormRe.FindStringSubmatch(content)
+	if m == nil {
+		return "", false
+	}
+	return strings.TrimSpace(m[1]), true
+}
 
 // PostCardMediaJS hides a post card's cover image when the image fails to load,
 // so a broken/expired image URL never renders a broken-image icon on the home
@@ -1203,9 +1217,9 @@ func RenderArticleWithMeta(a db.Article, layout ArticleLayoutType, related []Rel
 	// Opt-in contact form: if the operator placed the marker in the content,
 	// strip it from the visible prose and flag the widget so the template injects
 	// the CSP-safe form container + loader instead.
-	hasContactForm := strings.Contains(a.Content, contactFormMarker)
+	_, hasContactForm := ParseContactForm(a.Content)
 	if hasContactForm {
-		a.Content = strings.ReplaceAll(a.Content, contactFormMarker, "")
+		a.Content = contactFormRe.ReplaceAllString(a.Content, "")
 	}
 	a.Content = renderContentHTML(a.Content)
 	start := time.Now()

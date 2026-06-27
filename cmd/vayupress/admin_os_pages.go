@@ -99,7 +99,7 @@ func (a *App) handleOSPages(w http.ResponseWriter, r *http.Request) {
       <button type="button" class="btn btn--primary btn--sm" id="contact-email-save">Save</button>
       <span id="contact-email-status" class="text-xs muted" role="status" aria-live="polite"></span>
     </div>
-    <span class="theme-field__hint">Messages from any page containing the contact form are emailed here via VayuMail. Add the form to a page with the Contact template (or type <code>[[contact-form]]</code> in the page body).</span>
+    <span class="theme-field__hint">Messages from any page containing the contact form are emailed here via VayuMail. Add the form to a page with the Contact template (or type <code>[[contact-form]]</code> in the page body). For a custom confirmation on a specific page, use <code>[[contact-form: your thank-you message]]</code>.</span>
     <div class="vm-row mt-2">
       <label class="cz-check"><input type="checkbox" id="contact-autoreply"` + autoReplyChecked + `> Send visitors an auto-reply confirmation</label>
       <span id="contact-autoreply-status" class="text-xs muted" role="status" aria-live="polite"></span>
@@ -223,7 +223,7 @@ func pageTemplateSeed(template string) string {
 	case "contact":
 		return `<h2>Get in touch</h2>
 <p>We'd love to hear from you. Fill in the form below and we'll get back to you soon.</p>
-[[contact-form]]
+[[contact-form: Thanks for reaching out — we've received your message and usually reply within one business day.]]
 <p>Prefer email? Reach us at <a href="mailto:hello@example.com">hello@example.com</a>.</p>`
 	case "faq":
 		return `<h2>Frequently asked questions</h2>

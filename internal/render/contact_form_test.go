@@ -50,3 +50,16 @@ func TestContactMarkerInjectsWidget(t *testing.T) {
 		t.Error("a page without the marker must not get the contact widget")
 	}
 }
+
+// TestParseContactForm covers the bare, custom and absent marker forms.
+func TestParseContactForm(t *testing.T) {
+	if c, ok := ParseContactForm("<p>hi</p>[[contact-form]]"); !ok || c != "" {
+		t.Errorf("bare marker: got (%q,%v), want (\"\",true)", c, ok)
+	}
+	if c, ok := ParseContactForm("[[contact-form:  We reply in a day.  ]]"); !ok || c != "We reply in a day." {
+		t.Errorf("custom marker: got (%q,%v), want (\"We reply in a day.\",true)", c, ok)
+	}
+	if c, ok := ParseContactForm("<p>no marker here</p>"); ok || c != "" {
+		t.Errorf("absent marker: got (%q,%v), want (\"\",false)", c, ok)
+	}
+}
