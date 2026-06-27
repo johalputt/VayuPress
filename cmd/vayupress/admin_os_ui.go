@@ -151,6 +151,8 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.Get("/os/messages", a.handleOSMessages)
 		pr.With(auth.CSRFTokenMiddleware).Put("/os/api/messages/{id}/read", a.handleOSMessageRead)
 		pr.With(auth.CSRFTokenMiddleware).Delete("/os/api/messages/{id}", a.handleOSMessageDelete)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/messages/read-all", a.handleOSMessagesReadAll)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/messages/delete-read", a.handleOSMessagesDeleteRead)
 		pr.Get("/os/media", a.handleOSMedia)
 		pr.Get("/os/api/media", a.handleOSMediaList)
 		// Session-friendly media upload + import. The /api/v1/admin/media originals

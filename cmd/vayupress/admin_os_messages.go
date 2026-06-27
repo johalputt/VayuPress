@@ -94,7 +94,11 @@ func (a *App) handleOSMessages(w http.ResponseWriter, r *http.Request) {
 		}
 		body = `<div class="page-header">
   <h1>Messages <span class="count-pill">` + intToStr(len(msgs)) + `</span></h1>
-  <div class="page-actions"><span class="text-sm muted">` + intToStr(unread) + ` unread</span></div>
+  <div class="page-actions">
+    <span class="text-sm muted">` + intToStr(unread) + ` unread</span>
+    <button type="button" class="btn btn--ghost btn--sm" data-msg-readall>Mark all read</button>
+    <button type="button" class="btn btn--ghost btn--sm" data-msg-deleteread>Clear read</button>
+  </div>
 </div>
 <div class="card"><div class="table-wrap"><table class="table">
   <thead><tr><th>From</th><th>Message</th><th>Page</th><th>When</th><th></th></tr></thead>
@@ -123,6 +127,21 @@ document.querySelectorAll('[data-msg-delete]').forEach(function(b){
       .catch(function(e){b.disabled=false;show('Error: '+e);});
   });
 });
+var readAll=document.querySelector('[data-msg-readall]');
+if(readAll)readAll.addEventListener('click',function(){
+  readAll.disabled=true;show('Marking all read…');
+  fetch('/os/api/messages/read-all',{method:'POST',headers:{'X-CSRF-Token':csrf()}})
+    .then(function(r){if(r.ok){location.reload();}else{readAll.disabled=false;show('Could not update');}})
+    .catch(function(e){readAll.disabled=false;show('Error: '+e);});
+});
+var delRead=document.querySelector('[data-msg-deleteread]');
+if(delRead)delRead.addEventListener('click',function(){
+  if(!window.confirm('Delete all messages already marked read? This cannot be undone.'))return;
+  delRead.disabled=true;show('Clearing read…');
+  fetch('/os/api/messages/delete-read',{method:'POST',headers:{'X-CSRF-Token':csrf()}})
+    .then(function(r){if(r.ok){location.reload();}else{delRead.disabled=false;show('Could not clear');}})
+    .catch(function(e){delRead.disabled=false;show('Error: '+e);});
+});
 })();
 </script>`
 	}
@@ -144,6 +163,25 @@ func (a *App) handleOSMessageRead(w http.ResponseWriter, r *http.Request) {
 func (a *App) handleOSMessageDelete(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if _, err := dbpkg.WDB.ExecContext(r.Context(), `DELETE FROM contact_messages WHERE id=?`, id); err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "db-error", err.Error(), "")
+		return
+	}
+	writeJSON(w, r, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// handleOSMessagesReadAll marks every message read in one go.
+func (a *App) handleOSMessagesReadAll(w http.ResponseWriter, r *http.Request) {
+	if _, err := dbpkg.WDB.ExecContext(r.Context(), `UPDATE contact_messages SET is_read=1 WHERE is_read=0`); err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "db-error", err.Error(), "")
+		return
+	}
+	writeJSON(w, r, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// handleOSMessagesDeleteRead clears out every already-read message (an
+// "empty trash" for processed submissions). Unread messages are kept.
+func (a *App) handleOSMessagesDeleteRead(w http.ResponseWriter, r *http.Request) {
+	if _, err := dbpkg.WDB.ExecContext(r.Context(), `DELETE FROM contact_messages WHERE is_read=1`); err != nil {
 		writeAPIError(w, r, http.StatusInternalServerError, "db-error", err.Error(), "")
 		return
 	}
