@@ -45,7 +45,25 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   while in HTML mode applies the source first so no edit is lost. Backed by a new
   `POST /os/api/editor/import` endpoint.
 
+### Changed
+
+- **VayuOS one-click update now works without pre-arming.** The **Update now**
+  button used to be disabled (showing a not-allowed cursor) unless both
+  `VAYU_SELFUPDATE_ENABLED=true` and a pinned `VAYU_RELEASE_PUBKEY` were set, so
+  an operator could see an available update but not install it. An authenticated
+  admin clicking *Update* is now treated as the explicit opt-in: the release is
+  **always SHA-256 checksum verified**, and the Ed25519 **signature is still
+  required whenever a release key is pinned** (`VAYU_RELEASE_PUBKEY`) — pinning a
+  key upgrades verification rather than being a prerequisite. Applies are still
+  admin-gated, CSRF-protected, refused in read-only/quarantined/maintenance
+  modes, and audit-logged. The strict CLI path (`vayupress update apply`) is
+  unchanged and still requires the opt-in flag and a pinned key. See ADR-0089.
+
 ### Fixed
+
+- **VayuOS: the "Update now" button is no longer stuck disabled.** It now enables
+  as soon as a newer release is detected (and the system mode allows applying),
+  so updates can be installed in one click.
 
 - **Editor: the writing canvas now scrolls.** The block canvas was clipped at
   the viewport edge, so a long post — or a single tall block — could not be

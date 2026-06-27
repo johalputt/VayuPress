@@ -98,3 +98,30 @@ therefore atomic and recoverable even if the process dies mid-restore.
   the update-backups directory is the recovery path if a wrong file is imported.
 - No new third-party dependencies: snapshots use only `archive/tar`,
   `compress/gzip`, `database/sql`, and `crypto/sha256`.
+
+
+## Revision — one-click apply gating (post-release)
+
+The first cut reused the CLI's strict `PreflightApply` for the web button, which
+requires both `VAYU_SELFUPDATE_ENABLED=true` and a pinned `VAYU_RELEASE_PUBKEY`.
+In practice this left the **Update now** button disabled on a default install:
+operators could see an available release but not install it, defeating the
+one-click goal.
+
+Decision: the authenticated admin UI now gates apply with `PreflightMode` (mode
+check only) instead of the full env opt-in. An admin's explicit, role-checked
+click is the opt-in. Verification is unchanged in spirit but tiered:
+
+- The SHA-256 **checksum is always verified** (`ApplyVerified` requires the
+  `.sha256` asset and a matching digest before any write).
+- The Ed25519 **signature is still mandatory whenever a release key is pinned**
+  (`VAYU_RELEASE_PUBKEY`). With a key set, a missing or bad `.sig` fails the
+  apply exactly as before.
+- When **no key is pinned**, the UI passes `ApplyOptions.AllowUnsigned=true` so
+  the install proceeds on checksum verification alone. The strict CLI path leaves
+  `AllowUnsigned=false`, so `vayupress update apply` still refuses an unsigned
+  release and still requires the env opt-in — its threat model is unchanged.
+
+Net effect: one-click updates work out of the box (checksum-verified, HTTPS
+fetch, automatic DB backup, atomic swap, self-restart, audit-logged), and pinning
+a release key strictly upgrades that to checksum+signature verification.
