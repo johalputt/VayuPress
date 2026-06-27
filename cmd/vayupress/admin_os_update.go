@@ -18,11 +18,12 @@ package main
 //      deadlines lifted, so there is no size limit — a multi-gigabyte site moves
 //      in constant memory.
 //
-// Security posture (unchanged from ADR-0064): the apply path still requires the
-// operator opt-in (VAYU_SELFUPDATE_ENABLED=true) and a pinned release public
-// key (VAYU_RELEASE_PUBKEY); it refuses in read-only/quarantined/maintenance
-// modes. Every action here is admin-role gated, CSRF-protected on writes, and
-// recorded in the WORM audit log and the update_history table.
+// Security posture: an apply is admin-role gated and CSRF-protected (an
+// authenticated admin clicking Update is the explicit opt-in), and is refused in
+// read-only/quarantined/maintenance modes. The downloaded release is ALWAYS
+// SHA-256 checksum verified; if a release signing key is pinned
+// (VAYU_RELEASE_PUBKEY) the Ed25519 signature is additionally required. Every
+// action is recorded in the WORM audit log and the update_history table.
 //
 // CSP posture is identical to the rest of VayuOS: no inline styles, the only
 // inline <script> carries the per-request nonce, all interpolated values are
@@ -75,40 +76,37 @@ func (a *App) handleOSUpdate(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
 
-	enabled, hasKey := selfUpdateConfigured()
+	_, hasKey := selfUpdateConfigured()
 	curMode := string(mode.Global.Current())
-	canApply := enabled && hasKey
+	modeOK := update.PreflightMode(curMode) == nil
 
-	// Pre-render the configuration banner so the operator knows exactly what (if
-	// anything) is missing before one-click updates can run.
+	// Pre-render a banner explaining the current verification posture. One-click
+	// apply works for an authenticated admin; pinning a release key only upgrades
+	// verification from checksum to checksum+signature.
 	var banner string
 	switch {
-	case canApply:
+	case !modeOK:
 		banner = `<div class="settings-callout">
-    <strong>One-click updates are armed.</strong>
-    <span class="text-sm muted">Releases are verified against the pinned signing key before anything is written, your database is backed up automatically, and the service re-launches itself to finish.</span>
+    <strong>Updates are paused.</strong>
+    <span class="text-sm muted">The system is in <code>` + html.EscapeString(curMode) + `</code> mode, which blocks changing the binary. Checking for updates and backups still work; updates resume automatically once the system returns to normal.</span>
+  </div>`
+	case hasKey:
+		banner = `<div class="settings-callout">
+    <strong>One-click updates are armed (signature-verified).</strong>
+    <span class="text-sm muted">Releases are verified by SHA-256 checksum <em>and</em> Ed25519 signature against your pinned release key, your database is backed up automatically, and the service re-launches itself to finish.</span>
   </div>`
 	default:
-		var missing []string
-		if !enabled {
-			missing = append(missing, `<code>VAYU_SELFUPDATE_ENABLED=true</code>`)
-		}
-		if !hasKey {
-			missing = append(missing, `<code>VAYU_RELEASE_PUBKEY</code> (the pinned Ed25519 release key)`)
-		}
 		banner = `<div class="settings-callout">
-    <strong>One-click apply is not armed yet.</strong>
-    <span class="text-sm muted">Checking for updates and full backups work now. To enable verified one-click installs, set ` +
-			strings.Join(missing, " and ") + ` in the environment and restart once. This is a one-time setup, not a per-update step.</span>
+    <strong>One-click updates are ready.</strong>
+    <span class="text-sm muted">Click <em>Update now</em> to install the latest release: the download is SHA-256 checksum verified, your database is backed up automatically, the binary is swapped atomically, and the service restarts. For an extra layer, pin a release signing key in <code>VAYU_RELEASE_PUBKEY</code> to also require Ed25519 signature verification.</span>
   </div>`
 	}
 
 	historyRows := a.updateHistoryRowsHTML(r)
 
-	applyDisabled := ""
-	if !canApply {
-		applyDisabled = " disabled"
-	}
+	// Start disabled; the on-load check enables it only when an update is
+	// actually available and the mode allows applying.
+	applyDisabled := " disabled"
 
 	body := `<div class="page-header">
   <h1>Update &amp; Backup</h1>
@@ -239,13 +237,15 @@ func (a *App) handleOSUpdateCheck(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	enabled, hasKey := selfUpdateConfigured()
+	modeOK := update.PreflightMode(string(mode.Global.Current())) == nil
 	writeJSON(w, r, http.StatusOK, map[string]interface{}{
 		"current":   Version,
 		"latest":    rel.Version,
 		"available": available,
 		"notes":     rel.Notes,
 		"url":       rel.URL,
-		"canApply":  enabled && hasKey,
+		"canApply":  modeOK,
+		"signed":    hasKey,
 		"enabled":   enabled,
 		"hasKey":    hasKey,
 		"mode":      string(mode.Global.Current()),
@@ -266,10 +266,13 @@ func (a *App) handleOSUpdateApply(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = json.NewDecoder(r.Body).Decode(&body) // empty body → zero-value defaults
 
-	enabled := os.Getenv("VAYU_SELFUPDATE_ENABLED") == "true"
 	pubKey := os.Getenv("VAYU_RELEASE_PUBKEY")
 	curMode := string(mode.Global.Current())
-	if err := update.PreflightApply(enabled, curMode, pubKey); err != nil {
+	// The caller is an authenticated admin who explicitly clicked Update — that
+	// is the opt-in. We only refuse in modes that forbid mutating the binary.
+	// Verification still happens in ApplyVerified: checksum always, plus Ed25519
+	// signature when a release key is pinned (AllowUnsigned covers the no-key case).
+	if err := update.PreflightMode(curMode); err != nil {
 		writeAPIError(w, r, http.StatusPreconditionFailed, "preflight", err.Error(), "")
 		return
 	}
@@ -289,12 +292,13 @@ func (a *App) handleOSUpdateApply(w http.ResponseWriter, r *http.Request) {
 	// A generous timeout: release binaries can be large and links slow.
 	client := &http.Client{Timeout: 15 * time.Minute, Transport: safeOutboundTransport()}
 	opt := update.ApplyOptions{
-		Current:    Version,
-		DryRun:     body.DryRun,
-		PubKeyHex:  pubKey,
-		DBPath:     config.Cfg.DBPath,
-		BackupDir:  config.Cfg.CacheDir + "/update-backups",
-		BinaryPath: binPath,
+		Current:       Version,
+		DryRun:        body.DryRun,
+		PubKeyHex:     pubKey,
+		DBPath:        config.Cfg.DBPath,
+		BackupDir:     config.Cfg.CacheDir + "/update-backups",
+		BinaryPath:    binPath,
+		AllowUnsigned: true, // admin-initiated; checksum-verified when no key is pinned
 	}
 	newVersion, err := update.ApplyVerified(r.Context(), client, updateOwner, updateRepo, opt, st)
 	if err != nil {

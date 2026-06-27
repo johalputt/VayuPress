@@ -96,12 +96,14 @@
         if (applyBtn) {
           applyBtn.disabled = !(d.canApply && d.available);
         }
-        if (d.available && !d.canApply) {
-          setMsg(msgEl, 'A new release is available. Arm one-click apply (see the note above) to install it from here.', false);
-        } else if (d.available) {
-          setMsg(msgEl, 'Version ' + d.latest + ' is ready to install.', false);
-        } else {
+        if (!d.available) {
           setMsg(msgEl, 'You are running the latest release.', false);
+        } else if (!d.canApply) {
+          setMsg(msgEl, 'Version ' + d.latest + ' is available, but updates are paused while the system mode is ' + (d.mode || 'restricted') + '.', false);
+        } else if (d.signed) {
+          setMsg(msgEl, 'Version ' + d.latest + ' is ready to install (checksum + signature verified).', false);
+        } else {
+          setMsg(msgEl, 'Version ' + d.latest + ' is ready to install (checksum verified).', false);
         }
       })
       .catch(function (e) { setMsg(msgEl, 'Error: ' + e, true); })

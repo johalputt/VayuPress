@@ -21,6 +21,14 @@ type ApplyOptions struct {
 	DBPath     string
 	BackupDir  string
 	BinaryPath string // path to the currently-running binary to replace (os.Executable())
+
+	// AllowUnsigned permits applying a release using SHA-256 checksum
+	// verification alone when no pinned release public key is configured
+	// (PubKeyHex is empty). When a pinned key IS present the Ed25519 signature is
+	// always required regardless of this flag. The CLI leaves this false
+	// (strict, signature-mandatory); the authenticated admin UI sets it so an
+	// operator can update in one click without first provisioning a signing key.
+	AllowUnsigned bool
 }
 
 // Guard injects a mode lookup so apply can refuse in unsafe modes.
@@ -28,15 +36,13 @@ type Guard struct {
 	CurrentMode func() string
 }
 
-// PreflightApply runs all safety gates and returns an error if apply must not
-// proceed:
-//   - VAYU_SELFUPDATE_ENABLED must be "true" (enabled==true)
-//   - mode must not be read-only / quarantined / maintenance
-//   - pinned pubkey must be present
-func PreflightApply(enabled bool, currentMode string, pubKeyHex string) error {
-	if !enabled {
-		return errors.New("update: apply refused — set VAYU_SELFUPDATE_ENABLED=true to opt in")
-	}
+// PreflightMode refuses an apply when the runtime is in a mode that forbids
+// mutating the binary (read-only, quarantined, maintenance). It is the subset of
+// PreflightApply that the authenticated admin UI enforces: an operator's
+// explicit, admin-role-checked click is itself the opt-in, so the env flag and a
+// pinned key are not required there (verification still happens in
+// ApplyVerified — checksum always, signature when a key is pinned).
+func PreflightMode(currentMode string) error {
 	switch strings.ToLower(strings.TrimSpace(currentMode)) {
 	case "read-only", "readonly":
 		return errors.New("update: apply refused — system mode is read-only")
@@ -44,6 +50,24 @@ func PreflightApply(enabled bool, currentMode string, pubKeyHex string) error {
 		return errors.New("update: apply refused — system mode is quarantined")
 	case "maintenance":
 		return errors.New("update: apply refused — system mode is maintenance")
+	}
+	return nil
+}
+
+// PreflightApply runs all safety gates and returns an error if apply must not
+// proceed:
+//   - VAYU_SELFUPDATE_ENABLED must be "true" (enabled==true)
+//   - mode must not be read-only / quarantined / maintenance
+//   - pinned pubkey must be present
+//
+// This is the strict gate used by the CLI. The admin UI uses PreflightMode plus
+// ApplyOptions.AllowUnsigned instead.
+func PreflightApply(enabled bool, currentMode string, pubKeyHex string) error {
+	if !enabled {
+		return errors.New("update: apply refused — set VAYU_SELFUPDATE_ENABLED=true to opt in")
+	}
+	if err := PreflightMode(currentMode); err != nil {
+		return err
 	}
 	if strings.TrimSpace(pubKeyHex) == "" {
 		return errors.New("update: apply refused — pinned release public key (VAYU_RELEASE_PUBKEY) is empty")
@@ -69,36 +93,55 @@ func ApplyVerified(ctx context.Context, client *http.Client, owner, repo string,
 		return "", fmt.Errorf("update: no newer release available (current=%s latest=%s)", opt.Current, rel.Version)
 	}
 
+	// Verification policy: the SHA-256 checksum is ALWAYS verified. The Ed25519
+	// signature is required whenever a release key is pinned; if none is pinned,
+	// apply proceeds on checksum alone only when the caller opted in
+	// (AllowUnsigned, i.e. an authenticated admin clicking Update).
+	verifySig := strings.TrimSpace(opt.PubKeyHex) != ""
+	if !verifySig && !opt.AllowUnsigned {
+		return "", errors.New("update: apply refused — pinned release public key (VAYU_RELEASE_PUBKEY) is empty")
+	}
+
 	binAsset := findAsset(rel.Assets, []string{".sig", ".sha256"}, true)
-	sigAsset := findAsset(rel.Assets, []string{".sig"}, false)
 	sumAsset := findAsset(rel.Assets, []string{".sha256"}, false)
-	if binAsset == nil || sigAsset == nil || sumAsset == nil {
-		return "", fmt.Errorf("update: release %s missing binary, .sig, or .sha256 asset", rel.Version)
+	if binAsset == nil || sumAsset == nil {
+		return "", fmt.Errorf("update: release %s missing binary or .sha256 asset", rel.Version)
+	}
+	var sigAsset *Asset
+	if verifySig {
+		sigAsset = findAsset(rel.Assets, []string{".sig"}, false)
+		if sigAsset == nil {
+			return "", fmt.Errorf("update: release %s missing .sig asset (required because a release public key is pinned)", rel.Version)
+		}
 	}
 
 	binData, err := download(ctx, client, binAsset.DownloadURL)
 	if err != nil {
 		return "", fmt.Errorf("update: download binary: %w", err)
 	}
-	sigData, err := download(ctx, client, sigAsset.DownloadURL)
-	if err != nil {
-		return "", fmt.Errorf("update: download sig: %w", err)
-	}
 	sumData, err := download(ctx, client, sumAsset.DownloadURL)
 	if err != nil {
 		return "", fmt.Errorf("update: download checksum: %w", err)
 	}
 
-	// Verify checksum, then signature — both must pass before any write.
+	// Checksum must pass before any signature check or write.
 	expectedHex := firstHexToken(string(sumData))
 	if err := VerifyChecksum(binData, expectedHex); err != nil {
 		return "", err
 	}
-	if err := VerifySignature(opt.PubKeyHex, binData, strings.TrimSpace(string(sigData))); err != nil {
-		return "", err
-	}
 
-	logging.LogInfo("update", fmt.Sprintf("verified release %s (checksum + Ed25519 signature OK)", rel.Version))
+	if verifySig {
+		sigData, derr := download(ctx, client, sigAsset.DownloadURL)
+		if derr != nil {
+			return "", fmt.Errorf("update: download sig: %w", derr)
+		}
+		if err := VerifySignature(opt.PubKeyHex, binData, strings.TrimSpace(string(sigData))); err != nil {
+			return "", err
+		}
+		logging.LogInfo("update", fmt.Sprintf("verified release %s (checksum + Ed25519 signature OK)", rel.Version))
+	} else {
+		logging.LogInfo("update", fmt.Sprintf("verified release %s (SHA-256 checksum OK; signature check skipped — no pinned release key)", rel.Version))
+	}
 
 	if opt.DryRun {
 		logging.LogInfo("update", "dry-run — verification passed, binary NOT replaced")

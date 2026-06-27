@@ -125,3 +125,77 @@ func TestApplyVerifiedBadSignature(t *testing.T) {
 		t.Fatalf("expected signature failure, got %v", err)
 	}
 }
+
+func TestPreflightMode(t *testing.T) {
+	for _, m := range []string{"read-only", "readonly", "quarantined", "maintenance"} {
+		if err := PreflightMode(m); err == nil {
+			t.Errorf("mode %q should be refused", m)
+		}
+	}
+	for _, m := range []string{"normal", "degraded", "recovery", ""} {
+		if err := PreflightMode(m); err != nil {
+			t.Errorf("mode %q should be allowed: %v", m, err)
+		}
+	}
+}
+
+// TestApplyVerifiedUnsignedAllowed proves an admin-initiated apply (AllowUnsigned)
+// succeeds on checksum verification alone when no release key is pinned and the
+// release ships no .sig asset.
+func TestApplyVerifiedUnsignedAllowed(t *testing.T) {
+	binary := []byte("\x7fELF unsigned payload")
+	sum := sha256.Sum256(binary)
+	sumHex := hex.EncodeToString(sum[:])
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/repos/o/r/releases/latest", func(w http.ResponseWriter, r *http.Request) {
+		base := "http://" + r.Host
+		rel := map[string]any{
+			"tag_name": "v3.0.0",
+			"assets": []map[string]any{
+				{"name": "b.tar.gz", "browser_download_url": base + "/bin"},
+				{"name": "b.sha256", "browser_download_url": base + "/sum"},
+			},
+		}
+		_ = json.NewEncoder(w).Encode(rel)
+	})
+	mux.HandleFunc("/bin", func(w http.ResponseWriter, r *http.Request) { w.Write(binary) })
+	mux.HandleFunc("/sum", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(sumHex + "  b.tar.gz\n")) })
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	client := &http.Client{Timeout: 5 * time.Second, Transport: rewriteTransport{target: srv.URL}}
+	opt := ApplyOptions{Current: "v1.0.0", DryRun: true, AllowUnsigned: true} // no PubKeyHex
+	v, err := ApplyVerified(context.Background(), client, "o", "r", opt, nil)
+	if err != nil {
+		t.Fatalf("unsigned dry-run should pass with AllowUnsigned: %v", err)
+	}
+	if v != "v3.0.0" {
+		t.Errorf("version = %q", v)
+	}
+}
+
+// TestApplyVerifiedUnsignedRefusedWithoutOptIn proves the strict CLI path still
+// refuses an unsigned release when no key is pinned and AllowUnsigned is false.
+func TestApplyVerifiedUnsignedRefusedWithoutOptIn(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/repos/o/r/releases/latest", func(w http.ResponseWriter, r *http.Request) {
+		base := "http://" + r.Host
+		rel := map[string]any{
+			"tag_name": "v3.0.0",
+			"assets": []map[string]any{
+				{"name": "b.tar.gz", "browser_download_url": base + "/bin"},
+				{"name": "b.sha256", "browser_download_url": base + "/sum"},
+			},
+		}
+		_ = json.NewEncoder(w).Encode(rel)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	client := &http.Client{Timeout: 5 * time.Second, Transport: rewriteTransport{target: srv.URL}}
+	opt := ApplyOptions{Current: "v1.0.0", DryRun: true} // no key, AllowUnsigned=false
+	if _, err := ApplyVerified(context.Background(), client, "o", "r", opt, nil); err == nil {
+		t.Fatal("expected refusal when unsigned and not opted in")
+	}
+}
