@@ -1128,7 +1128,15 @@
   }
 
   function payload() {
-    return JSON.stringify({ slug: slug, title: titleEl ? titleEl.value : '', blocks: blocks });
+    var p = { slug: slug, title: titleEl ? titleEl.value : '', blocks: blocks };
+    // Only send publishing-options fields once the panel has hydrated, so an
+    // older/incomplete shell can never accidentally clear tags or metadata.
+    if (metaHydrated) {
+      p.tags = pmTags.slice();
+      p.publishDate = pm['publish-date'] ? pm['publish-date'].value : '';
+      p.meta = collectMeta();
+    }
+    return JSON.stringify(p);
   }
 
   function save() {
@@ -1157,6 +1165,7 @@
         slug = data.slug;
         if (root) root.setAttribute('data-slug', slug);
         try { history.replaceState({}, '', '/os/editor/' + encodeURIComponent(slug)); } catch (e) {}
+        if (typeof pmSet === 'function') { pmSet(pm['slug'], slug); syncSlugUI(); }
       }
       setStatus('Saved · ' + new Date().toLocaleTimeString(), 'ok');
       if (window.vpToast) window.vpToast('Post saved', 'ok');
@@ -1300,6 +1309,185 @@
   }
   function toggleHTML() {
     if (htmlMode) { exitHTMLMode(); } else { enterHTMLMode(); }
+  }
+
+  // ── Post settings panel (publishing options) ────────────────────────────────
+  // A slide-out drawer for everything that is not the post body: feature image,
+  // URL slug, publish date, excerpt, tags, SEO meta, social cards, and the
+  // featured / page flags. Values hydrate from the <script id="vp-editor-meta">
+  // document and are sent back inside the save payload (tags + publishDate +
+  // meta). The slug is renamed out-of-band via /os/api/editor/slug so it never
+  // races the queued content write.
+  var settingsBtn = root.querySelector('[data-editor-settings-btn]');
+  var settingsPanel = root.querySelector('[data-editor-settings]');
+  var settingsBackdrop = root.querySelector('[data-editor-settings-backdrop]');
+  var settingsClose = root.querySelector('[data-editor-settings-close]');
+  var pm = {};
+  ['feature-image', 'feature-preview', 'feature-empty', 'feature-upload', 'feature-remove', 'feature-file',
+    'slug', 'slug-apply', 'slug-prefix', 'slug-status', 'publish-date', 'excerpt', 'excerpt-count',
+    'tags-input', 'tags-list', 'featured', 'is-page',
+    'meta-title', 'meta-title-count', 'meta-description', 'meta-description-count', 'canonical',
+    'og-title', 'og-description', 'og-image', 'twitter-title', 'twitter-description', 'twitter-image'
+  ].forEach(function (k) { pm[k] = root.querySelector('[data-pm-' + k + ']'); });
+  var pmTags = [];
+  var metaHydrated = false;
+
+  function pmVal(el) { return el ? (el.value || '') : ''; }
+  function pmSet(el, v) { if (el) el.value = v == null ? '' : String(v); }
+
+  function hydrateSettings() {
+    var el = document.getElementById('vp-editor-meta');
+    if (!el) return;
+    var data = {};
+    try { data = JSON.parse(el.textContent.trim() || '{}'); } catch (e) { data = {}; }
+    metaHydrated = true;
+    pmTags = Array.isArray(data.tags) ? data.tags.slice() : [];
+    pmSet(pm['excerpt'], data.excerpt);
+    pmSet(pm['feature-image'], data.featureImage);
+    pmSet(pm['meta-title'], data.metaTitle);
+    pmSet(pm['meta-description'], data.metaDescription);
+    pmSet(pm['canonical'], data.canonicalURL);
+    pmSet(pm['og-title'], data.ogTitle);
+    pmSet(pm['og-description'], data.ogDescription);
+    pmSet(pm['og-image'], data.ogImage);
+    pmSet(pm['twitter-title'], data.twitterTitle);
+    pmSet(pm['twitter-description'], data.twitterDescription);
+    pmSet(pm['twitter-image'], data.twitterImage);
+    pmSet(pm['publish-date'], data.publishDate);
+    pmSet(pm['slug'], data.slug || slug);
+    if (pm['featured']) pm['featured'].checked = !!data.featured;
+    if (pm['is-page']) pm['is-page'].checked = !!data.isPage;
+    syncSlugUI();
+    updateFeaturePreview();
+    renderTags();
+    updateCounters();
+  }
+
+  // collectMeta mirrors the server PostMeta JSON tags.
+  function collectMeta() {
+    return {
+      excerpt: pmVal(pm['excerpt']),
+      featureImage: pmVal(pm['feature-image']),
+      metaTitle: pmVal(pm['meta-title']),
+      metaDescription: pmVal(pm['meta-description']),
+      canonicalURL: pmVal(pm['canonical']),
+      ogTitle: pmVal(pm['og-title']),
+      ogDescription: pmVal(pm['og-description']),
+      ogImage: pmVal(pm['og-image']),
+      twitterTitle: pmVal(pm['twitter-title']),
+      twitterDescription: pmVal(pm['twitter-description']),
+      twitterImage: pmVal(pm['twitter-image']),
+      featured: !!(pm['featured'] && pm['featured'].checked),
+      isPage: !!(pm['is-page'] && pm['is-page'].checked)
+    };
+  }
+
+  function updateCounters() {
+    if (pm['excerpt'] && pm['excerpt-count']) pm['excerpt-count'].textContent = String(pmVal(pm['excerpt']).length);
+    if (pm['meta-title'] && pm['meta-title-count']) pm['meta-title-count'].textContent = String(pmVal(pm['meta-title']).length);
+    if (pm['meta-description'] && pm['meta-description-count']) pm['meta-description-count'].textContent = String(pmVal(pm['meta-description']).length);
+  }
+
+  function updateFeaturePreview() {
+    var url = pmVal(pm['feature-image']).trim();
+    if (pm['feature-preview']) {
+      if (url) { pm['feature-preview'].src = url; pm['feature-preview'].hidden = false; }
+      else { pm['feature-preview'].hidden = true; pm['feature-preview'].removeAttribute('src'); }
+    }
+    if (pm['feature-empty']) pm['feature-empty'].hidden = !!url;
+  }
+
+  function uploadFeatureImage(file) {
+    var fd = new FormData();
+    fd.append('file', file);
+    setStatus('Uploading image…');
+    fetch('/os/api/media/upload', { method: 'POST', headers: { 'X-CSRF-Token': csrfToken() }, body: fd })
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+      .then(function (d) {
+        if (d && d.url) { pmSet(pm['feature-image'], d.url); updateFeaturePreview(); setStatus('Feature image set', 'ok'); scheduleAutosave(); }
+        else setStatus('Upload failed', 'danger');
+      }).catch(function () { setStatus('Feature image upload failed', 'danger'); });
+  }
+
+  // Tags chip editor.
+  function renderTags() {
+    if (!pm['tags-list']) return;
+    while (pm['tags-list'].firstChild) pm['tags-list'].removeChild(pm['tags-list'].firstChild);
+    pmTags.forEach(function (t, i) {
+      var chip = document.createElement('span');
+      chip.className = 'pm-tag';
+      var label = document.createElement('span');
+      label.textContent = t;
+      var x = document.createElement('button');
+      x.type = 'button';
+      x.className = 'pm-tag-x';
+      x.textContent = '×';
+      x.setAttribute('aria-label', 'Remove tag ' + t);
+      x.addEventListener('click', function () { pmTags.splice(i, 1); renderTags(); scheduleAutosave(); });
+      chip.appendChild(label);
+      chip.appendChild(x);
+      pm['tags-list'].appendChild(chip);
+    });
+  }
+  function addTagsFromInput() {
+    if (!pm['tags-input']) return;
+    var raw = pm['tags-input'].value || '';
+    raw.split(',').forEach(function (part) {
+      part = part.trim();
+      if (part && pmTags.indexOf(part) < 0) pmTags.push(part);
+    });
+    pm['tags-input'].value = '';
+    renderTags();
+    scheduleAutosave();
+  }
+
+  // Slug rename (out-of-band; only for saved posts).
+  function syncSlugUI() {
+    var saved = !!slug;
+    if (pm['slug-apply']) pm['slug-apply'].disabled = !saved;
+    if (pm['slug-status']) {
+      pm['slug-status'].textContent = saved
+        ? 'Changing the URL updates every link to this post.'
+        : 'The slug is set automatically from the title on first save.';
+    }
+  }
+  function applySlug() {
+    if (!slug) { setStatus('Save the post before changing its URL', 'warn'); return; }
+    var next = (pmVal(pm['slug']) || '').trim();
+    if (!next || next === slug) return;
+    setStatus('Updating URL…');
+    fetch('/os/api/editor/slug', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
+      body: JSON.stringify({ slug: slug, newSlug: next })
+    }).then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+      .then(function (d) {
+        if (d && d.slug) {
+          slug = d.slug;
+          if (root) root.setAttribute('data-slug', slug);
+          pmSet(pm['slug'], slug);
+          try { history.replaceState({}, '', '/os/editor/' + encodeURIComponent(slug)); } catch (e) {}
+          setStatus('URL updated · /' + slug, 'ok');
+        }
+      }).catch(function () { setStatus('Could not update URL', 'danger'); });
+  }
+
+  function openSettings() {
+    if (!settingsPanel) return;
+    settingsPanel.hidden = false;
+    if (settingsBackdrop) settingsBackdrop.hidden = false;
+    root.classList.add('is-settings');
+    if (settingsBtn) { settingsBtn.classList.add('is-active'); settingsBtn.setAttribute('aria-pressed', 'true'); }
+  }
+  function closeSettings() {
+    if (!settingsPanel) return;
+    settingsPanel.hidden = true;
+    if (settingsBackdrop) settingsBackdrop.hidden = true;
+    root.classList.remove('is-settings');
+    if (settingsBtn) { settingsBtn.classList.remove('is-active'); settingsBtn.setAttribute('aria-pressed', 'false'); }
+  }
+  function toggleSettings() {
+    if (settingsPanel && settingsPanel.hidden) openSettings(); else closeSettings();
   }
 
   // ── Inline formatting toolbar (floating on text selection) ──────────────────
@@ -1456,6 +1644,43 @@
     setStatus('Editing HTML…');
     if (slug) scheduleAutosave();
   });
+
+  // Post settings panel wiring.
+  hydrateSettings();
+  if (settingsBtn) settingsBtn.addEventListener('click', toggleSettings);
+  if (settingsClose) settingsClose.addEventListener('click', closeSettings);
+  if (settingsBackdrop) settingsBackdrop.addEventListener('click', closeSettings);
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && settingsPanel && !settingsPanel.hidden) closeSettings();
+  });
+  if (pm['feature-upload'] && pm['feature-file']) {
+    pm['feature-upload'].addEventListener('click', function () { pm['feature-file'].click(); });
+    pm['feature-file'].addEventListener('change', function () {
+      if (pm['feature-file'].files && pm['feature-file'].files[0]) uploadFeatureImage(pm['feature-file'].files[0]);
+      pm['feature-file'].value = '';
+    });
+  }
+  if (pm['feature-image']) pm['feature-image'].addEventListener('input', function () { updateFeaturePreview(); scheduleAutosave(); });
+  if (pm['feature-remove']) pm['feature-remove'].addEventListener('click', function () { pmSet(pm['feature-image'], ''); updateFeaturePreview(); scheduleAutosave(); });
+  if (pm['slug-apply']) pm['slug-apply'].addEventListener('click', applySlug);
+  if (pm['tags-input']) {
+    pm['tags-input'].addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addTagsFromInput(); }
+      else if (e.key === 'Backspace' && pm['tags-input'].value === '' && pmTags.length) { pmTags.pop(); renderTags(); scheduleAutosave(); }
+    });
+    pm['tags-input'].addEventListener('blur', addTagsFromInput);
+  }
+  // Counters + autosave for any text/checkbox edit inside the panel.
+  if (settingsPanel) {
+    settingsPanel.addEventListener('input', function (e) {
+      if (e.target === pm['slug'] || e.target === pm['tags-input']) return; // handled separately
+      updateCounters();
+      scheduleAutosave();
+    });
+    settingsPanel.addEventListener('change', function (e) {
+      if (e.target === pm['featured'] || e.target === pm['is-page']) scheduleAutosave();
+    });
+  }
   if (undoBtn) undoBtn.addEventListener('click', undo);
   if (redoBtn) redoBtn.addEventListener('click', redo);
 
@@ -1466,6 +1691,7 @@
     var k = e.key.toLowerCase();
     if (k === 's') { e.preventDefault(); save(); return; }
     if (k === 'h' && e.shiftKey) { e.preventDefault(); toggleHTML(); return; }
+    if (k === 'p' && e.shiftKey) { e.preventDefault(); toggleSettings(); return; }
     if (k === 'k') { e.preventDefault(); if (htmlMode) return; openPalette(focusedBlockIdx(), focusedBlockIdx() - 1); return; }
     if (e.key === '.') { e.preventDefault(); toggleFocus(); return; }
     if (k === 'z') {

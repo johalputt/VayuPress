@@ -4,6 +4,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -175,7 +176,6 @@ func TestOSEditorNativeCreatePath(t *testing.T) {
 	resp2.Body.Close()
 }
 
-
 // TestOSEditorImportHTML exercises the HTML source mode round-trip: posting raw
 // HTML to /os/api/editor/import returns a block document, and inline formatting
 // is preserved (re-encoded as Markdown) so a visual → HTML → visual switch does
@@ -215,5 +215,109 @@ func TestOSEditorImportHTML(t *testing.T) {
 	para, _ := out.Blocks[1]["text"].(string)
 	if !strings.Contains(para, "**bold**") || !strings.Contains(para, "[link](/x)") {
 		t.Errorf("inline formatting not preserved on import: %q", para)
+	}
+}
+
+// TestOSEditorSavePersistsPublishingOptions verifies the editor save path stores
+// the Post-settings side-car (PostMeta) and the publish-date override alongside
+// the block document.
+func TestOSEditorSavePersistsPublishingOptions(t *testing.T) {
+	srv, key := newTestHarness(t)
+
+	doRequest(t, srv, "POST", "/api/v1/articles", key, map[string]interface{}{
+		"title": "Draft", "slug": "meta-post", "content": "seed", "tags": []string{},
+	})
+
+	csrf := auth.GenerateCSRFToken()
+	payload, _ := json.Marshal(map[string]interface{}{
+		"slug":  "meta-post",
+		"title": "Meta Post",
+		"blocks": []map[string]interface{}{
+			{"type": "paragraph", "text": "Body"},
+		},
+		"tags":        []string{"go", "web"},
+		"publishDate": "2030-01-02T03:04",
+		"meta": map[string]interface{}{
+			"excerpt":      "Short summary",
+			"metaTitle":    "SEO Title",
+			"canonicalURL": "https://x.example/y",
+			"ogImage":      "/media/share.jpg",
+			"featured":     true,
+			"isPage":       true,
+		},
+	})
+	req, _ := http.NewRequest("POST", srv.URL+"/os/api/editor/save", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-API-Key", key)
+	req.Header.Set("X-CSRF-Token", csrf)
+	req.AddCookie(&http.Cookie{Name: "vp_csrf", Value: csrf})
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("save request: %v", err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf("save want 200, got %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	// PostMeta columns are written synchronously, so they are readable at once.
+	pm := loadPostMeta(context.Background(), "meta-post")
+	if pm.Excerpt != "Short summary" {
+		t.Errorf("excerpt: got %q", pm.Excerpt)
+	}
+	if pm.MetaTitle != "SEO Title" {
+		t.Errorf("metaTitle: got %q", pm.MetaTitle)
+	}
+	if pm.CanonicalURL != "https://x.example/y" {
+		t.Errorf("canonicalURL: got %q", pm.CanonicalURL)
+	}
+	if pm.OGImage != "/media/share.jpg" {
+		t.Errorf("ogImage: got %q", pm.OGImage)
+	}
+	if !pm.Featured || !pm.IsPage {
+		t.Errorf("flags: featured=%v isPage=%v, want both true", pm.Featured, pm.IsPage)
+	}
+}
+
+// TestOSEditorSlugRename verifies the dedicated rename endpoint moves a post to a
+// new (slugified, uniquified) URL and the old URL stops resolving.
+func TestOSEditorSlugRename(t *testing.T) {
+	srv, key := newTestHarness(t)
+
+	doRequest(t, srv, "POST", "/api/v1/articles", key, map[string]interface{}{
+		"title": "Old", "slug": "old-slug", "content": "seed", "tags": []string{},
+	})
+
+	csrf := auth.GenerateCSRFToken()
+	payload, _ := json.Marshal(map[string]string{"slug": "old-slug", "newSlug": "Brand New Title!"})
+	req, _ := http.NewRequest("POST", srv.URL+"/os/api/editor/slug", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-API-Key", key)
+	req.Header.Set("X-CSRF-Token", csrf)
+	req.AddCookie(&http.Cookie{Name: "vp_csrf", Value: csrf})
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("slug request: %v", err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf("slug rename want 200, got %d", resp.StatusCode)
+	}
+	var out struct{ Slug string }
+	json.NewDecoder(resp.Body).Decode(&out)
+	resp.Body.Close()
+	if out.Slug != "brand-new-title" {
+		t.Fatalf("renamed slug: got %q, want brand-new-title", out.Slug)
+	}
+
+	// New URL resolves, old one is gone.
+	if r := doRequest(t, srv, "GET", "/api/v1/articles/brand-new-title", key, nil); r.StatusCode != 200 {
+		t.Errorf("new slug GET want 200, got %d", r.StatusCode)
+	} else {
+		r.Body.Close()
+	}
+	if r := doRequest(t, srv, "GET", "/api/v1/articles/old-slug", key, nil); r.StatusCode == 200 {
+		t.Error("old slug should no longer resolve")
+	} else {
+		r.Body.Close()
 	}
 }

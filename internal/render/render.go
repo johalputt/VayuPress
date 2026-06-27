@@ -695,6 +695,16 @@ type articlePage struct {
 	// SiteOGImage is the operator's uploaded fallback share image (path), used
 	// for og:image when the article has no inline image of its own.
 	SiteOGImage string
+	// Per-post publishing options (resolved override → derived → site default).
+	TitleTag           string // full <title> text
+	Canonical          string // absolute canonical URL
+	OGTitle            string
+	OGDescription      string
+	TwitterTitle       string
+	TwitterDescription string
+	TwitterImageURL    string
+	FeatureImage       string // absolute URL; rendered as a hero image when set
+	IsPage             bool   // true → render without post chrome (date/tags/related)
 	// Related articles (same-tag suggestions)
 	Related []RelatedArticle
 }
@@ -851,13 +861,13 @@ var articleTmpl = template.Must(template.New("article").Funcs(template.FuncMap{
 	"humanDate": func(t time.Time) string { return t.Format("2 January 2006") },
 }).Parse(`<!DOCTYPE html><html lang="en" data-theme="dark"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{.Title}} — {{.Domain}}</title>
-<meta name="description" content="{{if .SEODescription}}{{.SEODescription}}{{else}}{{trunc .Content 160}}{{end}}">
+<title>{{.TitleTag}}</title>
+<meta name="description" content="{{.SEODescription}}">
 <meta name="generator" content="VayuPress {{.Version}}">
-<link rel="canonical" href="https://{{.Domain}}/{{.Slug}}">
+<link rel="canonical" href="{{.Canonical}}">
 <meta property="og:type" content="article">
-<meta property="og:title" content="{{.Title}}">
-<meta property="og:description" content="{{if .SEODescription}}{{.SEODescription}}{{else}}{{trunc .Content 160}}{{end}}">
+<meta property="og:title" content="{{.OGTitle}}">
+<meta property="og:description" content="{{.OGDescription}}">
 <meta property="og:url" content="https://{{.Domain}}/{{.Slug}}">
 <meta property="og:site_name" content="{{if .SiteName}}{{.SiteName}}{{else}}{{.Domain}}{{end}}">
 <meta property="og:locale" content="en">
@@ -866,10 +876,10 @@ var articleTmpl = template.Must(template.New("article").Funcs(template.FuncMap{
 <meta property="article:modified_time" content="{{.UpdatedAt | isoDate}}">
 {{range .Tags}}<meta property="article:tag" content="{{.}}">{{end}}
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="{{.Title}}">
-<meta name="twitter:description" content="{{if .SEODescription}}{{.SEODescription}}{{else}}{{trunc .Content 160}}{{end}}">
-{{if .OGImage}}<meta name="twitter:image" content="{{.OGImage}}">{{else if .SiteOGImage}}<meta name="twitter:image" content="https://{{.Domain}}{{.SiteOGImage}}">{{end}}
-<script type="application/ld+json">{"@context":"https://schema.org","@type":"Article","headline":"{{.Title | jsonAttr}}","description":"{{if .SEODescription}}{{.SEODescription | jsonAttr}}{{else}}{{.Content | jsonAttr}}{{end}}","datePublished":"{{.CreatedAt | isoDate}}","dateModified":"{{.UpdatedAt | isoDate}}","url":"https://{{.Domain}}/{{.Slug}}","inLanguage":"en","author":{"@type":"Person","name":"Ankush Choudhary Johal","url":"https://{{.Domain}}/about"},"publisher":{"@type":"Organization","name":"VayuPress","url":"https://{{.Domain}}"}}</script>
+<meta name="twitter:title" content="{{.TwitterTitle}}">
+<meta name="twitter:description" content="{{.TwitterDescription}}">
+{{if .TwitterImageURL}}<meta name="twitter:image" content="{{.TwitterImageURL}}">{{end}}
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"Article","headline":"{{.Title | jsonAttr}}","description":"{{.SEODescription | jsonAttr}}","datePublished":"{{.CreatedAt | isoDate}}","dateModified":"{{.UpdatedAt | isoDate}}","url":"{{.Canonical}}","inLanguage":"en","author":{"@type":"Person","name":"Ankush Choudhary Johal","url":"https://{{.Domain}}/about"},"publisher":{"@type":"Organization","name":"VayuPress","url":"https://{{.Domain}}"}}</script>
 {{.PicoCSSLink}}{{.CustomCSSLink}}{{.ArticleCSSLink}}{{.HighContrastCSSLink}}{{.ThemeCSSLink}}<link rel="stylesheet" href="/static/chroma.css">{{.HeadMeta}}{{.ThemeToggleJSLink}}{{.VideoFacadeJSLink}}
 <link rel="manifest" href="/manifest.json">
 <link rel="icon" type="image/png" href="/static/favicon-dark.png" media="(prefers-color-scheme: light)">
@@ -890,23 +900,24 @@ var articleTmpl = template.Must(template.New("article").Funcs(template.FuncMap{
 <main id="main-content">
 <article class="vayu-prose" itemscope itemtype="https://schema.org/BlogPosting">
 <header class="vayu-article-header">
+{{if .FeatureImage}}<img class="vayu-feature-image" src="{{.FeatureImage}}" alt="" loading="eager">{{end}}
 <h1 itemprop="headline">{{.Title}}</h1>
-<div class="vayu-article-meta">
+{{if not .IsPage}}<div class="vayu-article-meta">
   <time itemprop="datePublished" datetime="{{.CreatedAt | shortDate}}">{{.CreatedAt | humanDate}}</time>
   <span>· {{.Content | readTime}} min read</span>
   {{if .Tags}}<span aria-label="Tags">{{range .Tags}}<a class="vayu-tag" href="/tags/{{.}}" rel="tag">#{{.}}</a> {{end}}</span>{{end}}
-</div>
+</div>{{end}}
 </header>
 <div class="content" itemprop="articleBody">{{.Content | safeHTML}}</div>
 </article>
-{{if .Author}}<aside class="vayu-author-box" aria-label="About the author">
+{{if and .Author (not .IsPage)}}<aside class="vayu-author-box" aria-label="About the author">
 <img class="vayu-author-avatar" src="/favicon.ico" alt="" width="48" height="48">
 <div class="vayu-author-info">
   <div class="vayu-author-name">{{.Author}}</div>
   {{if .AuthorBio}}<p class="vayu-author-bio">{{.AuthorBio}}</p>{{end}}
 </div>
 </aside>{{end}}
-{{if .Related}}<section class="vayu-related" aria-label="Related articles">
+{{if and .Related (not .IsPage)}}<section class="vayu-related" aria-label="Related articles">
 <h2 class="vayu-related-heading">Related articles</h2>
 <ul class="vayu-related-list">{{range .Related}}<li><a href="/{{.Slug}}">{{.Title}}</a> <time>{{.CreatedAt | humanDate}}</time></li>{{end}}</ul>
 </section>{{end}}
@@ -1083,17 +1094,95 @@ func RenderArticle(a db.Article) (string, error) {
 	return RenderArticleWithLayout(a, ArticleLayoutDefault, nil)
 }
 
+// ArticleMetaOverrides carries the per-post publishing options (the editor's
+// "Post settings" panel) into the renderer. Every field is optional: a blank
+// value falls back to the derived default, so a post that sets nothing renders
+// exactly as before. Values are plain strings/booleans and are emitted through
+// html/template, so they cannot break out of their attribute/JSON context.
+type ArticleMetaOverrides struct {
+	Excerpt            string
+	FeatureImage       string
+	MetaTitle          string
+	MetaDescription    string
+	CanonicalURL       string
+	OGTitle            string
+	OGDescription      string
+	OGImage            string
+	TwitterTitle       string
+	TwitterDescription string
+	TwitterImage       string
+	Featured           bool
+	IsPage             bool
+}
+
+// firstNonEmpty returns the first argument that is non-blank after trimming.
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if strings.TrimSpace(v) != "" {
+			return strings.TrimSpace(v)
+		}
+	}
+	return ""
+}
+
+// absoluteURL resolves an operator-supplied image/URL for a social meta tag:
+// absolute URLs pass through; a site-root path is prefixed with the canonical
+// origin; anything else (including blank) yields "".
+func absoluteURL(domain, v string) string {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return ""
+	}
+	if strings.HasPrefix(v, "http://") || strings.HasPrefix(v, "https://") {
+		return v
+	}
+	if strings.HasPrefix(v, "/") {
+		return "https://" + domain + v
+	}
+	return v
+}
+
 // RenderArticleWithLayout sanitizes content, applies syntax highlighting, executes the template,
 // and records render latency. related is an optional list of same-tag suggestions.
 func RenderArticleWithLayout(a db.Article, layout ArticleLayoutType, related []RelatedArticle) (string, error) {
+	return RenderArticleWithMeta(a, layout, related, ArticleMetaOverrides{})
+}
+
+// RenderArticleWithMeta is RenderArticleWithLayout plus the per-post publishing
+// options. It resolves each head/meta value once (override → derived → site
+// default) so the template stays a straight print of pre-computed fields.
+func RenderArticleWithMeta(a db.Article, layout ArticleLayoutType, related []RelatedArticle, ov ArticleMetaOverrides) (string, error) {
 	a.Content = renderContentHTML(a.Content)
 	start := time.Now()
 	var buf strings.Builder
 	s := getActiveSettings()
 	seoMeta := seo.Compute(a.Title, a.Slug, a.Content, a.CreatedAt, a.UpdatedAt, config.Cfg.Domain, s.Name)
+	domain := config.Cfg.Domain
+
+	// Description: explicit meta description → custom excerpt → derived.
+	desc := firstNonEmpty(ov.MetaDescription, ov.Excerpt, seoMeta.Description)
+	// Title tag: explicit meta title → "Title — Domain".
+	titleTag := firstNonEmpty(ov.MetaTitle)
+	if titleTag == "" {
+		titleTag = a.Title + " — " + domain
+	}
+	// Canonical: explicit override → site canonical for this slug.
+	canonical := firstNonEmpty(ov.CanonicalURL)
+	if canonical == "" {
+		canonical = "https://" + domain + "/" + a.Slug
+	}
+	// Share image: per-post OG image → feature image → derived → site default.
+	ogImage := firstNonEmpty(
+		absoluteURL(domain, ov.OGImage),
+		absoluteURL(domain, ov.FeatureImage),
+		seoMeta.OGImage,
+		absoluteURL(domain, s.OGImage),
+	)
+	twImage := firstNonEmpty(absoluteURL(domain, ov.TwitterImage), ogImage)
+
 	data := articlePage{
 		Article:             a,
-		Domain:              config.Cfg.Domain,
+		Domain:              domain,
 		Version:             Version,
 		Layout:              layout,
 		PicoCSSLink:         PicoCSSLink(),
@@ -1106,15 +1195,25 @@ func RenderArticleWithLayout(a db.Article, layout ArticleLayoutType, related []R
 		VideoFacadeJSLink:   VideoFacadeJSLink(),
 		CommentsJSLink:      CommentsJSLink(),
 		NavLinks:            navLinksHTML(s.NavJSON),
-		CommentsEnabled:     s.CommentsEnabled,
+		CommentsEnabled:     s.CommentsEnabled && !ov.IsPage,
 		SiteName:            s.Name,
 		Author:              s.Author,
 		AuthorBio:           s.AuthorBio,
 		Footer:              footerHTML(s),
-		SEODescription:      seoMeta.Description,
-		OGImage:             seoMeta.OGImage,
+		SEODescription:      desc,
+		OGImage:             ogImage,
 		SiteOGImage:         s.OGImage,
 		Related:             related,
+		// Publishing-options-derived fields.
+		TitleTag:           titleTag,
+		Canonical:          canonical,
+		OGTitle:            firstNonEmpty(ov.OGTitle, ov.MetaTitle, a.Title),
+		OGDescription:      firstNonEmpty(ov.OGDescription, desc),
+		TwitterTitle:       firstNonEmpty(ov.TwitterTitle, ov.OGTitle, ov.MetaTitle, a.Title),
+		TwitterDescription: firstNonEmpty(ov.TwitterDescription, ov.OGDescription, desc),
+		TwitterImageURL:    twImage,
+		FeatureImage:       absoluteURL(domain, ov.FeatureImage),
+		IsPage:             ov.IsPage,
 	}
 	if err := articleTmpl.Execute(&buf, data); err != nil {
 		return "", fmt.Errorf("template: %w", err)
@@ -1692,6 +1791,15 @@ h1, h2, h3, h4, h5, h6 {
 
 /* ── Article header ─────────────────────────────────────────────────────── */
 .vayu-article-header { margin-bottom: 2rem; }
+
+.vayu-feature-image {
+  display: block;
+  width: 100%;
+  max-height: 460px;
+  object-fit: cover;
+  border-radius: 12px;
+  margin-bottom: 1.5rem;
+}
 
 .vayu-article-header h1 {
   font-size: clamp(1.75rem, 4vw, 2.75rem);
