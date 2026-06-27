@@ -1209,7 +1209,7 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 	// status tab so the tab counts reflect the active search/date filter. ──
 	// Pages (is_page=1) are managed on /os/pages, not in the blog feed, so the
 	// Posts manager only ever lists real posts.
-	where := []string{"COALESCE(is_page,0)=0"}
+	where := []string{"is_page=0"}
 	args := []any{}
 	if q != "" {
 		where = append(where, "(title LIKE ? OR COALESCE(tags,'') LIKE ?)")

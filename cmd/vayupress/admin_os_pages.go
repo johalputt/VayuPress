@@ -66,7 +66,7 @@ func (a *App) handleOSPages(w http.ResponseWriter, r *http.Request) {
 	var pages []pageRow
 	if dbpkg.DB != nil {
 		if rows, err := dbpkg.DB.QueryContext(r.Context(),
-			`SELECT title,slug,COALESCE(status,'published'),updated_at FROM articles WHERE COALESCE(is_page,0)=1 ORDER BY updated_at DESC`); err == nil {
+			`SELECT title,slug,COALESCE(status,'published'),updated_at FROM articles WHERE is_page=1 ORDER BY updated_at DESC`); err == nil {
 			defer rows.Close() //nolint:errcheck
 			for rows.Next() {
 				var p pageRow

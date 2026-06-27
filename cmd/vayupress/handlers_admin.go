@@ -231,9 +231,9 @@ func (a *App) handleHome(w http.ResponseWriter, r *http.Request) {
 	atomic.AddInt64(&metrics.MetricCacheMisses, 1)
 
 	var total int
-	dbpkg.DB.QueryRow(`SELECT COUNT(1) FROM articles WHERE COALESCE(status,'published')='published' AND COALESCE(is_page,0)=0`).Scan(&total)
+	dbpkg.DB.QueryRow(`SELECT COUNT(1) FROM articles WHERE COALESCE(status,'published')='published' AND is_page=0`).Scan(&total)
 
-	rows, err := dbpkg.DB.Query(`SELECT title,slug,content,tags,created_at,COALESCE(excerpt,''),COALESCE(feature_image,'') FROM articles WHERE COALESCE(status,'published')='published' AND COALESCE(is_page,0)=0 ORDER BY created_at DESC LIMIT 30`)
+	rows, err := dbpkg.DB.Query(`SELECT title,slug,content,tags,created_at,COALESCE(excerpt,''),COALESCE(feature_image,'') FROM articles WHERE COALESCE(status,'published')='published' AND is_page=0 ORDER BY created_at DESC LIMIT 30`)
 	var articles []render.HomeArticle
 	author := render.GetActiveSettings().Author
 	if err == nil {

@@ -468,7 +468,7 @@ func (a *App) collectAdminMetrics() {
 	// Standalone pages (is_page=1) are tracked separately from blog posts so the
 	// dashboard can surface each count distinctly. Best-effort; a pre-045 schema
 	// without the column simply leaves the count at zero.
-	_ = dbpkg.DB.QueryRow(`SELECT COUNT(1) FROM articles WHERE COALESCE(is_page,0)=1`).Scan(&snap.TotalPages)
+	_ = dbpkg.DB.QueryRow(`SELECT COUNT(1) FROM articles WHERE is_page=1`).Scan(&snap.TotalPages)
 	// Unread contact messages (best-effort; missing table on a pre-046 schema
 	// simply leaves the count at zero).
 	_ = dbpkg.DB.QueryRow(`SELECT COUNT(1) FROM contact_messages WHERE is_read=0`).Scan(&snap.UnreadMessages)
