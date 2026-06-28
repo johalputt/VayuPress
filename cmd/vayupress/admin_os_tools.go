@@ -22,9 +22,11 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/plugins"
 	"github.com/johalputt/vayupress/internal/render"
+	"github.com/johalputt/vayupress/internal/search"
 	"github.com/johalputt/vayupress/internal/settings"
 )
 
@@ -86,6 +88,14 @@ func (a *App) toolRegistry() []toolModule {
 			ID: "analytics", Name: "Privacy analytics", Category: "Insight", Icon: "📈",
 			Desc:  "Cookieless, self-hosted pageview and referrer analytics.",
 			ready: func(a *App) bool { return a.analytics != nil },
+		},
+		{
+			ID: "meilisearch", Name: "Meilisearch", Category: "Insight", Icon: "🔍",
+			Desc:    "Use an external Meilisearch engine for instant, typo-tolerant full-text search. When off — or when no Meilisearch host is configured — VayuPress uses its built-in SQLite search.",
+			FlagKey: settings.KeyFeatureMeili,
+			// "Ready" means a Meilisearch host is actually configured; otherwise the
+			// module shows Inactive (search still works via the SQLite fallback).
+			ready: func(a *App) bool { return strings.TrimSpace(config.Cfg.MeiliHost) != "" },
 		},
 		{
 			ID: "members", Name: "Memberships", Category: "Insight", Icon: "👥",
@@ -345,6 +355,12 @@ func (a *App) handleOSToolToggle(w http.ResponseWriter, r *http.Request) {
 	if err := a.siteSettings.SetMany(r.Context(), map[string]string{flag: val}); err != nil {
 		writeAPIError(w, r, http.StatusInternalServerError, "settings-error", err.Error(), "")
 		return
+	}
+	// Apply runtime side-effects for flags that gate a live subsystem, so the
+	// change takes effect immediately without a restart. Meilisearch: flip the
+	// search backend gate (off → SQLite engine only).
+	if flag == settings.KeyFeatureMeili {
+		search.SetMeiliEnabled(body.Enabled)
 	}
 	// Audit the operator action — toggling a public-facing feature is
 	// security-relevant, so leave a trail in the structured log.

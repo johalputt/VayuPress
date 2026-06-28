@@ -10,6 +10,14 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Added
 
+- **Meilisearch is now an operator toggle in Tools & Plugins.** Search has a new
+  "Meilisearch" module switch: turn it **on** to use an external Meilisearch
+  engine for instant, typo-tolerant full-text search (used when a host is
+  configured and healthy), or **off** to force VayuPress's built-in SQLite
+  search even when a Meilisearch host is set. The change applies immediately
+  (no restart); the card shows *Inactive* when no `MEILI_HOST` is configured so
+  it's clear search is running on the SQLite engine. Defaults on, preserving the
+  previous auto-detect behaviour.
 - **Homepage pagination.** The public homepage now exposes the full archive
   instead of only the latest posts: a Newer/Older pager appears under the feed
   and deeper pages live at `/page/2`, `/page/3`, … (page 1 stays canonical at
@@ -44,6 +52,12 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Fixed
 
+- **ADR Registry now lists every ADR.** The registry read `docs/adr` only from
+  disk, so on a box updated via the one-click binary self-update (which never
+  refreshes on-disk docs) the list was frozen at whatever shipped with the
+  original install — e.g. stopping at ADR-0046. The ADR docs are now embedded in
+  the binary and the registry lists the union of the embedded set and any
+  on-disk copies, so every ADR (and each new one) always appears after an update.
 - **VayuOS Posts tab no longer returns intermittent 502s.** The `/os/posts`
   handler now runs its list/count queries under an 8s request-bounded context
   and degrades gracefully (a retryable notice on a fully-rendered page) instead

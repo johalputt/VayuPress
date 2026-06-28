@@ -20,3 +20,14 @@ import "embed"
 //
 //go:embed static
 var StaticFS embed.FS
+
+// DocsADRFS holds the repository docs/adr directory, embedded at build time so
+// the VayuOS ADR Registry always lists every Architecture Decision Record
+// shipped with the running binary. Before this was embedded, the registry read
+// docs/adr straight from disk; a one-click binary self-update (ADR-0099) never
+// refreshed those on-disk files, so a box provisioned at an older release kept
+// showing a frozen, truncated ADR list. Embedding makes the binary the single
+// source of truth (mirroring StaticFS). Members are rooted at "docs/adr/".
+//
+//go:embed docs/adr
+var DocsADRFS embed.FS
