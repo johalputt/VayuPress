@@ -81,6 +81,14 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Fixed
 
+- **Sign-in / welcome / newsletter emails are now readable, not a PGP blob.**
+  Transactional mail routed through VayuMail was being auto-PGP-encrypted whenever
+  the recipient had a published key, so the message arrived as an unreadable
+  `-----BEGIN PGP MESSAGE-----` block and the magic sign-in link couldn't be used.
+  System mail now sends via a dedicated, never-encrypted path (`SendSystemMail`),
+  while person-to-person mail composed in VayuMail still encrypts as before.
+  The sender identity is also branded with the site's own name (or domain) for
+  uniqueness instead of a generic default.
 - **ADR Registry now lists every ADR.** The registry read `docs/adr` only from
   disk, so on a box updated via the one-click binary self-update (which never
   refreshes on-disk docs) the list was frozen at whatever shipped with the

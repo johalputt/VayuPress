@@ -496,6 +496,21 @@ func (e *Engine) QueueStatus(ctx context.Context) (*QueueStatus, *SMTPStats, err
 // key is known), DKIM-signs it, and enqueues it for delivery. senderUserID is
 // used for PGP signing/encryption context; pass "" to skip PGP.
 func (e *Engine) SendMail(ctx context.Context, from string, to []string, subject, htmlBody, textBody, senderUserID string) (int64, error) {
+	return e.sendMail(ctx, from, to, subject, htmlBody, textBody, senderUserID, true)
+}
+
+// SendSystemMail sends transactional / system mail — sign-in (magic) links,
+// welcome, newsletter confirmations, comment and payment notices. Unlike
+// SendMail it is NEVER PGP-encrypted: the recipient must be able to READ the
+// link even when they have a published PGP key (otherwise the message arrives
+// as an unreadable "-----BEGIN PGP MESSAGE-----" blob). It is still DKIM-signed,
+// queued for durable delivery, and local-loopback aware.
+func (e *Engine) SendSystemMail(ctx context.Context, from string, to []string, subject, htmlBody, textBody string) (int64, error) {
+	return e.sendMail(ctx, from, to, subject, htmlBody, textBody, "", false)
+}
+
+func (e *Engine) sendMail(ctx context.Context, from string, to []string, subject, htmlBody, textBody, senderUserID string, allowPGP bool) (int64, error) {
+	_ = senderUserID // reserved for PGP signing context
 	if e.queue == nil || e.dkim == nil {
 		return 0, errors.New("vayumail: not started")
 	}
@@ -508,9 +523,9 @@ func (e *Engine) SendMail(ctx context.Context, from string, to []string, subject
 	pgpApplied := false
 
 	// PGP: encrypt to a single known recipient when possible (privacy by
-	// default). An encrypted message is sent as a single ASCII-armored
-	// text/plain part — never alongside an HTML alternative.
-	if e.bridge != nil && len(to) == 1 {
+	// default) — but ONLY for person-to-person mail. System/transactional mail
+	// (allowPGP=false) is never encrypted so its links stay readable.
+	if allowPGP && e.bridge != nil && len(to) == 1 {
 		if ct, ok := e.bridge.EncryptForRecipient([]byte(textBody), to[0]); ok && len(ct) > 0 {
 			text = string(ct)
 			html = ""

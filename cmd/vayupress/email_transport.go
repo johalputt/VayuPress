@@ -29,18 +29,19 @@ func (a *App) sendViaVayuMail(m email.Message) error {
 		return errors.New("no mail transport: set SMTP_HOST, or set DOMAIN to enable VayuMail")
 	}
 	// senderUserID "" skips PGP; transactional mail is sent from the site, not a
-	// keyed mailbox. SendMail DKIM-signs and enqueues for durable delivery.
-	_, err := a.vayuMail.SendMail(context.Background(), a.transactionalFrom(), []string{m.To}, m.Subject, m.HTML, m.Text, "")
+	// keyed mailbox. SendSystemMail DKIM-signs and enqueues but never encrypts,
+	// so sign-in links and the welcome message arrive as readable text/HTML
+	// (not a PGP blob) even when the recipient has a published key.
+	_, err := a.vayuMail.SendSystemMail(context.Background(), a.transactionalFrom(), []string{m.To}, m.Subject, m.HTML, m.Text)
 	return err
 }
 
-// transactionalFrom returns the From header for system mail. An operator-set
-// SMTP_FROM always wins; otherwise it builds "<Site name> <noreply@domain>" from
-// the VayuMail domain so DKIM signs for a domain the engine is authoritative for.
+// transactionalFrom returns the From header for system mail. It is branded with
+// the operator's own site name and domain for uniqueness — "<Site name>
+// <noreply@domain>", or "<domain> <noreply@domain>" when no site name is set —
+// rather than a generic product name. An explicitly customised SMTP_FROM (i.e.
+// anything other than the built-in default) still wins.
 func (a *App) transactionalFrom() string {
-	if f := strings.TrimSpace(config.Cfg.SMTPFrom); f != "" {
-		return f
-	}
 	domain := strings.TrimSpace(config.Cfg.Domain)
 	if a.vayuMail != nil {
 		if d := strings.TrimSpace(a.vayuMail.Config().Domain); d != "" {
@@ -50,9 +51,16 @@ func (a *App) transactionalFrom() string {
 	if domain == "" {
 		domain = "localhost"
 	}
-	addr := "noreply@" + domain
-	if name := strings.TrimSpace(render.GetActiveSettings().Name); name != "" {
-		return name + " <" + addr + ">"
+	// Honour an operator-customised SMTP_FROM, but ignore the built-in default
+	// so transactional mail carries the site's own identity, not a generic name.
+	builtinDefault := "VayuPress <noreply@" + strings.TrimSpace(config.Cfg.Domain) + ">"
+	if f := strings.TrimSpace(config.Cfg.SMTPFrom); f != "" && f != builtinDefault {
+		return f
 	}
-	return addr
+	addr := "noreply@" + domain
+	name := strings.TrimSpace(render.GetActiveSettings().Name)
+	if name == "" {
+		name = domain // domain as the display name keeps the sender unique per site
+	}
+	return name + " <" + addr + ">"
 }
