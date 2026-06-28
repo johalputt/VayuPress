@@ -128,6 +128,18 @@ smooth, incremental updates (no site-wide rebuilds).
 
 ### Fixed
 
+- **VayuMail mail-app connectivity ("could not open connection to server").** A
+  mail client failing to connect is almost always a blocked/closed port, not a
+  password problem: the non-root VayuPress service cannot bind the privileged
+  mail ports (25/110/143/587/993/995) without `CAP_NET_BIND_SERVICE`, and the
+  host/cloud firewall must allow them. VayuPress now logs a loud, actionable
+  warning at startup when the inbound listeners fail to bind (instead of failing
+  silently), and a new one-shot `deploy/vayumail-setup.sh` grants the capability
+  via a systemd drop-in (works regardless of how old the installed unit is),
+  opens the firewall (ufw/firewalld), restarts, verifies the listeners, and
+  reminds you to add the `mail.<domain>` DNS record and point VayuMail at a
+  trusted TLS cert (mobile clients like the Gmail app require a CA-signed cert).
+
 - **ADR Registry now shows every record (duplicate ADR-0079 resolved).** Two
   different ADRs had both been numbered 0079 (VayuMail Transport Security and
   VayuAnalytics), and the registry de-duplicated by number — so one real decision
