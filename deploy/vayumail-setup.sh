@@ -13,10 +13,16 @@
 # matter how old your installed unit is) and your firewall, then restarts the
 # service and verifies the listeners. It also reminds you about DNS + TLS.
 #
+# It also provisions a trusted Let's Encrypt TLS certificate for mail.<domain>
+# (mobile clients such as the Gmail app refuse the self-signed fallback) and
+# wires it into the service — fully automatic and best-effort.
+#
 # Usage:  sudo bash deploy/vayumail-setup.sh
 #
-# Override the service name or domain if needed:
+# Override the service/domain/TLS behaviour if needed:
 #   SERVICE=vayupress MAIL_DOMAIN=mail.example.com sudo -E bash deploy/vayumail-setup.sh
+#   MAIL_CERT_EMAIL=admin@example.com sudo -E bash deploy/vayumail-setup.sh
+#   MAIL_TLS=off sudo -E bash deploy/vayumail-setup.sh    # skip cert provisioning
 
 set -euo pipefail
 
@@ -61,7 +67,104 @@ else
   warn "No active ufw/firewalld detected. If a host or CLOUD firewall (AWS/GCP/Oracle/etc.) is in front of this VPS, open inbound TCP ${MAIL_PORTS[*]} there manually."
 fi
 
-# ── 3) Restart and verify ───────────────────────────────────────────────────
+# ── 3) Provision a trusted TLS certificate (Let's Encrypt) ──────────────────
+# Mobile clients (the Gmail app, Apple Mail) refuse VayuMail's self-signed
+# fallback certificate, so a CA-signed cert for mail.<domain> is required for
+# them to connect. This step is automatic and best-effort: it resolves your mail
+# hostname, obtains a certificate with certbot, wires VAYUOS_MAIL_TLS_CERT/KEY
+# into the service environment, and installs a renewal hook that restarts the
+# service so a renewed cert is picked up. Set MAIL_TLS=off to skip entirely.
+MAIL_TLS="${MAIL_TLS:-auto}"
+
+# Locate the service's EnvironmentFile (where we read DOMAIN and write the TLS
+# vars). Prefer what the unit actually loads, then common locations.
+ENV_FILE="$(systemctl show "$SERVICE" -p EnvironmentFiles --value 2>/dev/null | awk '{print $1; exit}')"
+if [[ -z "${ENV_FILE:-}" || ! -f "${ENV_FILE:-}" ]]; then
+  for c in /etc/vayupress/env /etc/default/vayupress /etc/vayupress/vayupress.env; do
+    [[ -f "$c" ]] && ENV_FILE="$c" && break
+  done
+fi
+
+# Resolve the mail hostname: explicit MAIL_DOMAIN wins, else mail.<DOMAIN> where
+# DOMAIN is taken from the environment or the service EnvironmentFile.
+DOMAIN="${DOMAIN:-}"
+if [[ -z "$DOMAIN" && -n "${ENV_FILE:-}" && -f "${ENV_FILE:-}" ]]; then
+  DOMAIN="$(grep -E '^DOMAIN=' "$ENV_FILE" | tail -1 | cut -d= -f2-)"
+  DOMAIN="${DOMAIN//\"/}"; DOMAIN="${DOMAIN//\'/}"; DOMAIN="${DOMAIN// /}"; DOMAIN="${DOMAIN%$'\r'}"
+fi
+MAIL_HOST="${MAIL_DOMAIN:-}"
+[[ -z "$MAIL_HOST" && -n "$DOMAIN" ]] && MAIL_HOST="mail.${DOMAIN}"
+
+if [[ "$MAIL_TLS" == "off" ]]; then
+  info "MAIL_TLS=off — skipping TLS certificate provisioning."
+elif [[ -z "$MAIL_HOST" ]]; then
+  warn "Could not determine your mail hostname (no DOMAIN found) — skipping TLS automation."
+  warn "Re-run with:  MAIL_DOMAIN=mail.example.com sudo -E bash deploy/vayumail-setup.sh"
+else
+  CERT_LIVE="/etc/letsencrypt/live/${MAIL_HOST}"
+  if [[ -f "${CERT_LIVE}/fullchain.pem" ]]; then
+    ok "Existing Let's Encrypt certificate found for ${MAIL_HOST}."
+  else
+    if ! command -v certbot >/dev/null 2>&1; then
+      info "Installing certbot..."
+      if command -v apt-get >/dev/null 2>&1; then
+        apt-get update -y >/dev/null 2>&1 || true; apt-get install -y certbot >/dev/null 2>&1 || true
+      elif command -v dnf >/dev/null 2>&1; then
+        dnf install -y certbot >/dev/null 2>&1 || true
+      elif command -v yum >/dev/null 2>&1; then
+        yum install -y certbot >/dev/null 2>&1 || true
+      fi
+    fi
+    if ! command -v certbot >/dev/null 2>&1; then
+      warn "certbot is not installed and could not be installed automatically — skipping TLS."
+      warn "Install certbot and re-run, or set the cert paths manually (see the note below)."
+    else
+      CERT_EMAIL="${MAIL_CERT_EMAIL:-admin@${DOMAIN:-$MAIL_HOST}}"
+      info "Obtaining a Let's Encrypt certificate for ${MAIL_HOST} (contact: ${CERT_EMAIL})..."
+      info "This needs inbound port 80 reachable on ${MAIL_HOST} for the HTTP-01 challenge."
+      if command -v nginx >/dev/null 2>&1 && systemctl is-active --quiet nginx 2>/dev/null; then
+        # nginx holds :80 — briefly stop it for the standalone HTTP-01 challenge,
+        # then bring it straight back (a few seconds of downtime, one time).
+        certbot certonly --standalone --non-interactive --agree-tos -m "$CERT_EMAIL" \
+          -d "$MAIL_HOST" --http-01-port 80 \
+          --pre-hook "systemctl stop nginx" --post-hook "systemctl start nginx" \
+          || warn "certbot failed — see /var/log/letsencrypt/letsencrypt.log (is ${MAIL_HOST} DNS pointing here and port 80 open?)"
+      else
+        certbot certonly --standalone --non-interactive --agree-tos -m "$CERT_EMAIL" -d "$MAIL_HOST" \
+          || warn "certbot failed — see /var/log/letsencrypt/letsencrypt.log (is ${MAIL_HOST} DNS pointing here and port 80 open?)"
+      fi
+    fi
+  fi
+
+  # Wire the cert into the service environment and install a renewal hook.
+  if [[ -f "${CERT_LIVE}/fullchain.pem" ]]; then
+    if [[ -z "${ENV_FILE:-}" || ! -f "${ENV_FILE:-}" ]]; then
+      ENV_FILE="/etc/vayupress/env"
+      mkdir -p /etc/vayupress
+      touch "$ENV_FILE"
+      warn "No service EnvironmentFile was found; wrote TLS vars to ${ENV_FILE}."
+      warn "Make sure your unit loads it (add  EnvironmentFile=${ENV_FILE}  to the [Service] section)."
+    fi
+    if ! grep -q '^VAYUOS_MAIL_TLS_CERT=' "$ENV_FILE"; then
+      printf 'VAYUOS_MAIL_TLS_CERT=%s/fullchain.pem\n' "$CERT_LIVE" >> "$ENV_FILE"
+      printf 'VAYUOS_MAIL_TLS_KEY=%s/privkey.pem\n'   "$CERT_LIVE" >> "$ENV_FILE"
+      ok "Wired VAYUOS_MAIL_TLS_CERT/KEY into ${ENV_FILE}."
+    else
+      ok "VAYUOS_MAIL_TLS_CERT is already set in ${ENV_FILE} — left as-is."
+    fi
+    HOOK_DIR="/etc/letsencrypt/renewal-hooks/deploy"
+    mkdir -p "$HOOK_DIR"
+    cat > "${HOOK_DIR}/restart-${SERVICE}.sh" <<EOF
+#!/bin/bash
+# Restart ${SERVICE} after a Let's Encrypt renewal so VayuMail loads the new cert.
+systemctl restart ${SERVICE}
+EOF
+    chmod +x "${HOOK_DIR}/restart-${SERVICE}.sh"
+    ok "Installed auto-renewal restart hook for ${SERVICE}."
+  fi
+fi
+
+# ── 4) Restart and verify ───────────────────────────────────────────────────
 info "Restarting ${SERVICE}..."
 systemctl restart "$SERVICE"
 sleep 2
@@ -87,13 +190,18 @@ else
 fi
 
 echo
-info "Two things this script can't do for you:"
+info "One thing this script can't do for you:"
 echo "   • DNS — your mail client connects to mail.<domain>. Add a DNS A record:"
 echo "       mail.<your-domain>  →  this server's public IP"
-echo "   • TLS — mobile clients (incl. the Gmail app) require a TRUSTED certificate."
-echo "     Point VayuMail at your Let's Encrypt cert in /etc/vayupress/env (or your EnvironmentFile):"
-echo "       VAYUOS_MAIL_TLS_CERT=/etc/letsencrypt/live/mail.<domain>/fullchain.pem"
-echo "       VAYUOS_MAIL_TLS_KEY=/etc/letsencrypt/live/mail.<domain>/privkey.pem"
-echo "     then: systemctl restart ${SERVICE}"
+echo
+if [[ "${MAIL_TLS:-auto}" != "off" && -n "${MAIL_HOST:-}" && -f "/etc/letsencrypt/live/${MAIL_HOST}/fullchain.pem" ]]; then
+  ok "TLS: a trusted certificate for ${MAIL_HOST} is installed and wired in — mobile mail apps should connect."
+else
+  warn "TLS: no trusted certificate is active yet, so VayuMail is using a self-signed fallback that mobile apps (e.g. the Gmail app) will reject."
+  echo "     Once mail.<domain> DNS points here and port 80 is reachable, re-run this script, or set manually:"
+  echo "       VAYUOS_MAIL_TLS_CERT=/etc/letsencrypt/live/mail.<domain>/fullchain.pem"
+  echo "       VAYUOS_MAIL_TLS_KEY=/etc/letsencrypt/live/mail.<domain>/privkey.pem"
+  echo "     then: systemctl restart ${SERVICE}"
+fi
 echo
 info "Client settings are also shown in VayuOS → VayuMail → Connect (with live status)."
