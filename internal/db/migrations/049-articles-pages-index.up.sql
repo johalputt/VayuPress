@@ -1,0 +1,12 @@
+-- Composite index for the Pages manager (/os/pages), which lists pages with
+-- `WHERE is_page=1 ORDER BY updated_at DESC`. The single-column idx_articles_is_page
+-- can satisfy the filter but then forces a temp-b-tree sort of every matching row
+-- to honour the ORDER BY. idx_articles_pagefeed orders by created_at, not
+-- updated_at, so it does not help here. This composite serves the filter AND the
+-- recency order directly from the index, so the Pages manager reads straight from
+-- the index with no sort step — keeping it fast even if a site accumulates many
+-- pages. is_page is NOT NULL DEFAULT 0, so the index is dense and exact.
+--
+-- IMPORTANT: the migration runner executes ONE statement per line, so this must
+-- stay on a single line.
+CREATE INDEX IF NOT EXISTS idx_articles_pages ON articles(is_page, updated_at DESC);
