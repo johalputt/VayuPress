@@ -579,6 +579,9 @@ var (
 	iconADR        = svgIcon("M5 3h7l3 3v11H5V3zm7 0v3h3M7 9h6m-6 3h6m-6 3h4")
 	iconMoney      = svgIcon("M10 2v16M6.5 6.5h5a2 2 0 010 4h-3a2 2 0 000 4h5")
 	iconAds        = svgIcon("M3 5h14v8H3V5zm2 11h6M6 8h6m-6 2.5h4")
+	// iconApps is the mobile bottom-nav "Menu" affordance — a 2x2 grid that
+	// reads as "all sections", opening the full role-scoped drawer.
+	iconApps = svgIcon("M3 3h6v6H3V3zm8 0h6v6h-6V3zM3 11h6v6H3v-6zm8 0h6v6h-6v-6z")
 )
 
 // renderTrustedHTML emits a pre-constructed, server-side HTML fragment verbatim.
@@ -652,7 +655,7 @@ func adminOSShellHead(nonce, title, active string, settings *osSettings) string 
 
 <div class="shell">
 <!-- ── Sidebar ──────────────────────────────────────────────── -->
-<aside class="sidebar" aria-label="Admin navigation">
+<aside id="vp-sidebar" class="sidebar" aria-label="Admin navigation">
   <div class="sidebar-brand">
     <img src="/static/favicon-light.png" alt="" width="28" height="28">
     <span class="sidebar-brand-name">` + siteName + `</span>
@@ -670,7 +673,7 @@ func adminOSShellHead(nonce, title, active string, settings *osSettings) string 
 <!-- ── Main ─────────────────────────────────────────────────── -->
 <div class="main">
   <header class="topbar" role="banner">
-    <button type="button" class="menu-toggle btn--icon" data-action="toggle-sidebar" aria-label="Toggle sidebar">
+    <button type="button" class="menu-toggle btn--icon" data-action="toggle-sidebar" aria-label="Toggle navigation menu" aria-controls="vp-sidebar" aria-expanded="false">
       <svg viewBox="0 0 20 20" fill="none" width="20" height="20" aria-hidden="true"><path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
     </button>
     <span class="topbar-title">` + et + `</span>
@@ -709,23 +712,24 @@ window.vpPost=function(url,onok){fetch(url,{method:'POST',headers:{'Content-Type
 </div><!-- .main -->
 </div><!-- .shell -->
 ` + ops + `
-<!-- Bottom nav for mobile -->
+<!-- Bottom nav for mobile — quick links + a Menu button that opens the full,
+     role-scoped drawer so every section is reachable like a native app. -->
 <nav class="bottom-nav" aria-label="Mobile navigation">
-  <a class="bottom-nav-item" href="/os">
+  <a class="bottom-nav-item" href="/os" data-nav="/os">
     ` + iconDashboard + `<span>Home</span>
   </a>
-  <a class="bottom-nav-item" href="/os/posts">
+  <a class="bottom-nav-item" href="/os/posts" data-nav="/os/posts">
     ` + iconPosts + `<span>Posts</span>
   </a>
-  <a class="bottom-nav-item" href="/os/editor">
+  <a class="bottom-nav-item bottom-nav-item--accent" href="/os/editor" data-nav="/os/editor">
     ` + iconNewPost + `<span>Write</span>
   </a>
-  <a class="bottom-nav-item" href="/os/members">
-    ` + iconMembers + `<span>Members</span>
+  <a class="bottom-nav-item" href="/os/messages" data-nav="/os/messages">
+    ` + iconMessages + `<span>Inbox</span>
   </a>
-  <a class="bottom-nav-item" href="/os/settings">
-    ` + iconSettings + `<span>Settings</span>
-  </a>
+  <button type="button" class="bottom-nav-item" data-action="toggle-sidebar" aria-controls="vp-sidebar" aria-expanded="false" aria-label="Open menu">
+    ` + iconApps + `<span>Menu</span>
+  </button>
 </nav>
 
 <!-- Command palette -->
