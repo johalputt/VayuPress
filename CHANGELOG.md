@@ -10,6 +10,13 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Added
 
+- **The ADR Registry is now readable.** The ADR tab (`/os/adr`) previously listed
+  the architecture decision records as static, non-clickable rows with no way to
+  open them. Each row is now a link to a read view that renders the record's
+  Markdown to HTML (GFM: headings, tables, code, links), sanitised with the same
+  UGC policy as published content. The list is sorted newest-first and the
+  registry's own `INDEX.md` is no longer counted as a record.
+
 - **Startup index self-check guards against full-scan regressions.** VayuPress
   depends on every hot read being index-backed to serve 1M+ posts on a small VPS,
   but a future change could silently reintroduce a full-table scan that only
