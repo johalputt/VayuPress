@@ -526,11 +526,18 @@ func buildComponentTable(comps []secwatch.Component) string {
 	var sb strings.Builder
 	sb.WriteString(`<div class="card"><div class="card-title">Tracked dependencies</div><div class="table-wrap"><table class="table"><thead><tr><th>Component</th><th>Current</th><th>Latest</th><th>Status</th></tr></thead><tbody>`)
 	for _, c := range comps {
-		status := `<span class="badge badge--ok">up to date</span>`
-		if c.UpdateAvailable {
-			status = `<span class="badge badge--warn">update available</span>`
-		}
 		latest := c.Latest
+		var status string
+		switch {
+		case c.UpdateAvailable:
+			status = `<span class="badge badge--warn">update available</span>`
+		case latest == "":
+			// No upstream version known — the watcher is disabled or the check
+			// failed. Don't claim "up to date" when we haven't actually compared.
+			status = `<span class="muted text-sm">not checked</span>`
+		default:
+			status = `<span class="badge badge--ok">up to date</span>`
+		}
 		if latest == "" {
 			latest = "—"
 		}
