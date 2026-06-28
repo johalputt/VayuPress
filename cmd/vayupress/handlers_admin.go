@@ -224,27 +224,70 @@ func (a *App) handleAdminCachePurge(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, 200, map[string]interface{}{"message": "cache purged", "purge_type": purgeType, "purged": purged, "request_id": rid})
 }
 
-// handleHome renders the public homepage index from the most recent articles.
-// It serves a cached copy when present and regenerates on cache miss.
+// homeFeedPageSize is the number of posts shown per homepage feed page.
+const homeFeedPageSize = 30
+
+// handleHome renders the first page of the public homepage index.
 func (a *App) handleHome(w http.ResponseWriter, r *http.Request) {
-	cachePath := filepath.Join(config.Cfg.CacheDir, "home", "index.html")
-	if fi, err := os.Stat(cachePath); err == nil && render.CacheEntryFresh(fi) {
-		atomic.AddInt64(&metrics.MetricCacheHits, 1)
-		http.ServeFile(w, r, cachePath)
+	a.renderHomeAt(w, r, 1)
+}
+
+// handleHomePaged renders /page/{n} of the homepage feed (n ≥ 2). Page 1 is
+// canonical at "/", so /page/1 permanently redirects there.
+func (a *App) handleHomePaged(w http.ResponseWriter, r *http.Request) {
+	n, err := strconv.Atoi(chi.URLParam(r, "page"))
+	if err != nil || n < 1 {
+		a.handleNotFound(w, r)
 		return
 	}
-	atomic.AddInt64(&metrics.MetricCacheMisses, 1)
+	if n == 1 {
+		http.Redirect(w, r, "/", http.StatusMovedPermanently)
+		return
+	}
+	a.renderHomeAt(w, r, n)
+}
+
+// renderHomeAt renders page (1-based) of the homepage feed. The hot first page
+// is cached (home/index.html); deeper pages render live — one indexed COUNT plus
+// one 30-row indexed query — which keeps them cheap and sidesteps paged-cache
+// invalidation. Out-of-range pages return the branded 404.
+func (a *App) renderHomeAt(w http.ResponseWriter, r *http.Request, page int) {
+	if page < 1 {
+		page = 1
+	}
+	useCache := page == 1
+	if useCache {
+		cachePath := filepath.Join(config.Cfg.CacheDir, "home", "index.html")
+		if fi, err := os.Stat(cachePath); err == nil && render.CacheEntryFresh(fi) {
+			atomic.AddInt64(&metrics.MetricCacheHits, 1)
+			http.ServeFile(w, r, cachePath)
+			return
+		}
+		atomic.AddInt64(&metrics.MetricCacheMisses, 1)
+	}
 
 	var total int
 	// Read pool + index-friendly predicates. `COALESCE(status,'published')` /
-	// `COALESCE(is_page,0)=0` defeat idx_articles_status / idx_articles_is_page
+	// `COALESCE(is_page,0)=0` defeat idx_articles_status / idx_articles_pagefeed
 	// and force a full-table scan; running them on the single writer connection
 	// serialised every cold homepage render (and everything else, including
 	// VayuOS) behind a 234k-row scan. status is NOT NULL DEFAULT 'published' and
 	// is_page is NOT NULL DEFAULT 0, so the bare columns are exact.
 	dbpkg.Reader().QueryRow(`SELECT COUNT(1) FROM articles WHERE status='published' AND is_page=0`).Scan(&total)
 
-	rows, err := dbpkg.Reader().Query(`SELECT title,slug,content,tags,created_at,COALESCE(excerpt,''),COALESCE(feature_image,'') FROM articles WHERE status='published' AND is_page=0 ORDER BY created_at DESC LIMIT 30`)
+	totalPages := (total + homeFeedPageSize - 1) / homeFeedPageSize
+	if totalPages < 1 {
+		totalPages = 1
+	}
+	// A deep page beyond the feed has no content — 404 rather than show an empty
+	// list, so crawlers don't index ghost pages.
+	if page > totalPages {
+		a.handleNotFound(w, r)
+		return
+	}
+	offset := (page - 1) * homeFeedPageSize
+
+	rows, err := dbpkg.Reader().Query(`SELECT title,slug,content,tags,created_at,COALESCE(excerpt,''),COALESCE(feature_image,'') FROM articles WHERE status='published' AND is_page=0 ORDER BY created_at DESC LIMIT ? OFFSET ?`, homeFeedPageSize, offset)
 	var articles []render.HomeArticle
 	author := render.GetActiveSettings().Author
 	if err == nil {
@@ -273,12 +316,14 @@ func (a *App) handleHome(w http.ResponseWriter, r *http.Request) {
 		_ = rows.Err()
 	}
 
-	html, err := render.RenderHome(config.Cfg.Domain, Version, articles, total)
+	html, err := render.RenderHome(config.Cfg.Domain, Version, articles, total, page, totalPages)
 	if err != nil {
 		http.Error(w, "render error", 500)
 		return
 	}
-	render.CacheWrite(filepath.Join("home", "index.html"), html) //nolint:errcheck
+	if useCache {
+		render.CacheWrite(filepath.Join("home", "index.html"), html) //nolint:errcheck
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	fmt.Fprint(w, html)
 }

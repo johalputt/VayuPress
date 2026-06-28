@@ -3271,3 +3271,10 @@
 @media (prefers-reduced-motion: reduce) {
   .vp-os .sidebar { transition: none; }
 }
+
+
+/* Transient "couldn't load" notice on list pages (e.g. Posts under DB load). */
+.vp-os .load-notice {
+  border-left: 3px solid var(--warn);
+  background: var(--warn-dim);
+}

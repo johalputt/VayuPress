@@ -10,6 +10,12 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Added
 
+- **Homepage pagination.** The public homepage now exposes the full archive
+  instead of only the latest posts: a Newer/Older pager appears under the feed
+  and deeper pages live at `/page/2`, `/page/3`, … (page 1 stays canonical at
+  `/`). Each page emits `rel=prev`/`rel=next` and a page-aware canonical for
+  clean SEO, out-of-range pages return the branded 404, and only the hot first
+  page is cached so the rest stay fresh with no extra invalidation.
 - **VayuOS is now a fully mobile, app-like admin experience.** The panel adapts
   to phones the way a native app would: a wide tap-to-close navigation drawer
   (opened from the topbar hamburger *or* a new **Menu** button in the bottom bar)
@@ -38,6 +44,11 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Fixed
 
+- **VayuOS Posts tab no longer returns intermittent 502s.** The `/os/posts`
+  handler now runs its list/count queries under an 8s request-bounded context
+  and degrades gracefully (a retryable notice on a fully-rendered page) instead
+  of hanging until the upstream proxy returns a gateway error when the database
+  is briefly busy on a large catalog.
 - **"Couldn't open connection to server" is now diagnosable.** The most common
   cause is a reachable mail port serving an untrusted **self-signed** certificate
   that mobile apps silently reject — the connection and TLS handshake succeed, but
