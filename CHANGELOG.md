@@ -128,7 +128,15 @@ smooth, incremental updates (no site-wide rebuilds).
 
 ### Fixed
 
-### Fixed
+- **ADR Registry now shows every record (duplicate ADR-0079 resolved).** Two
+  different ADRs had both been numbered 0079 (VayuMail Transport Security and
+  VayuAnalytics), and the registry de-duplicated by number — so one real decision
+  record was hidden, and the visible count looked short. The VayuAnalytics record
+  is renumbered to **ADR-0097** (0079 stays the VayuMail transport ADR that
+  ADR-0084 already references), INDEX.md is corrected, and the registry no longer
+  de-dupes by number, so every distinct ADR file is listed. Note: ADR numbers are
+  not contiguous (0003–0031 and 0091 were never assigned), so the highest number
+  being 0096/0097 does not imply that many records exist.
 
 - **One-click update no longer shows a scary "Unexpected token '<'" error.** When
   you install an update from VayuOS, the service restarts to activate the new

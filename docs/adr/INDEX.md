@@ -11,6 +11,7 @@
 |-----|-------|--------|-------|------|
 | [ADR-0001](ADR-0001-sqlite-first.md) | SQLite-First Data Layer | Accepted | Core | 2024-01-01 |
 | [ADR-0098](ADR-0098-role-scoped-vayuos-access.md) | Role-Scoped VayuOS Access for VayuMail Accounts | Accepted | VayuOS | 2026-06-28 |
+| [ADR-0097](ADR-0097-vayuanalytics-no-pii.md) | VayuAnalytics — No-PII Rotating Salt | Accepted | VayuOS | 2026-06-24 |
 | [ADR-0096](ADR-0096-vayumail-imap-pop3-clients.md) | Real Mail-Client Access (IMAP + POP3) | Accepted | VayuOS | 2026-06-28 |
 | [ADR-0093](ADR-0093-indexed-tag-membership.md) | Indexed Tag Membership (article_tags join table) | Accepted | Core | 2026-06-28 |
 | [ADR-0095](ADR-0095-index-self-check-and-pages-index.md) | Startup Index Self-Check & Pages Composite Index | Accepted | Core | 2026-06-28 |
@@ -22,7 +23,7 @@
 | [ADR-0076](ADR-0076-vayupgp-at-rest-keys.md) | VayuPGP — Keys Encrypted At Rest | Accepted | VayuOS | 2026-06-24 |
 | [ADR-0077](ADR-0077-vayumail-outbound-pure-go.md) | VayuMail Outbound — Pure-Go (No Mox Fork) | Accepted | VayuOS | 2026-06-24 |
 | [ADR-0078](ADR-0078-vayumail-inbound-optin.md) | VayuMail Inbound — Opt-In SMTP/IMAP | Accepted | VayuOS | 2026-06-24 |
-| [ADR-0079](ADR-0079-vayuanalytics-no-pii.md) | VayuAnalytics — No-PII Rotating Salt | Accepted | VayuOS | 2026-06-24 |
+| [ADR-0079](ADR-0079-vayumail-transport-security-and-inbound-auth.md) | VayuMail Transport Security (TLS) + Inbound Authentication (SPF/DKIM/DMARC) | Accepted | VayuOS | 2026-06-25 |
 | [ADR-0080](ADR-0080-security-update-watcher.md) | Security-Update Watcher — Opt-In | Accepted | VayuOS | 2026-06-24 |
 | [ADR-0002](ADR-0002-self-hosted-fonts.md) | Self-Hosted Fonts | Accepted | Core | 2024-01-01 |
 | [ADR-0032](ADR-0032-plugin-pool-waitgroup.md) | Plugin Pool WaitGroup | Accepted | Sandbox | — |
