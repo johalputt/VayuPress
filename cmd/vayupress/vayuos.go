@@ -243,6 +243,22 @@ func (a *App) bootVayuOS() {
 		logging.LogError("vayuos", "VayuOS boot failed", err.Error())
 	}
 
+	// Surface a loud, actionable warning at startup when the inbound mail
+	// listeners could not bind. Otherwise the only symptom is a silent "could
+	// not open connection to server" in the operator's mail app: the privileged
+	// mail ports (25/110/143/587/993/995) require CAP_NET_BIND_SERVICE for the
+	// non-root service, plus an open firewall and a mail.<domain> DNS record.
+	if a.vayuMail != nil && a.vayuMail.Config().Enabled && a.vayuMail.Config().InboundEnabled {
+		if err := a.vayuMail.InboundError(); err != nil {
+			logging.LogError("vayuos",
+				"VayuMail inbound listeners did not all bind — mail clients may fail to connect (run deploy/vayumail-setup.sh)",
+				err.Error()+inboundHint(err))
+		} else if a.vayuMail.InboundActive() {
+			logging.LogInfo("vayuos",
+				"VayuMail inbound listening — also ensure the host/cloud firewall allows TCP 25/143/993/110/995/587 and mail."+a.vayuMail.Config().Domain+" resolves to this server")
+		}
+	}
+
 	// Health checks surfaced at /os/api/vayuos/health.
 	a.vayuHealth.Register("vayupgp", func() (bool, string) {
 		if a.vayuPGP == nil {
