@@ -10,6 +10,7 @@
 | ADR | Title | Status | Owner | Date |
 |-----|-------|--------|-------|------|
 | [ADR-0001](ADR-0001-sqlite-first.md) | SQLite-First Data Layer | Accepted | Core | 2024-01-01 |
+| [ADR-0098](ADR-0098-role-scoped-vayuos-access.md) | Role-Scoped VayuOS Access for VayuMail Accounts | Accepted | VayuOS | 2026-06-28 |
 | [ADR-0097](ADR-0097-vayuanalytics-no-pii.md) | VayuAnalytics — No-PII Rotating Salt | Accepted | VayuOS | 2026-06-24 |
 | [ADR-0096](ADR-0096-vayumail-imap-pop3-clients.md) | Real Mail-Client Access (IMAP + POP3) | Accepted | VayuOS | 2026-06-28 |
 | [ADR-0093](ADR-0093-indexed-tag-membership.md) | Indexed Tag Membership (article_tags join table) | Accepted | Core | 2026-06-28 |

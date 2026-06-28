@@ -426,6 +426,93 @@ func osUnread(s *osSettings) int {
 	return s.UnreadMessages
 }
 
+// osSidebarNav builds the role-scoped sidebar. A mail-only session (mailbox /
+// reviewer role) sees only its Mailbox and Profile; console sessions see only
+// the sections their access level permits. The visibility rule is exactly the
+// route guard (osPathMinLevel) so what is shown is precisely what is reachable —
+// hidden items are also blocked server-side.
+func osSidebarNav(active string, s *osSettings) string {
+	lvl := accessAdmin
+	mailOnly := false
+	if s != nil {
+		lvl = s.AccessLevel
+		mailOnly = s.MailOnly
+	}
+	if mailOnly {
+		return `<div class="sidebar-section-label">Mail</div>` +
+			navItem("/os/vayuos/mail/inbox", "Mailbox", "vayuos", active, iconSecurity) +
+			navItem("/os/profile", "My Profile", "profile", active, iconMembers)
+	}
+
+	var b strings.Builder
+	// gate returns the item only when this access level can reach its href.
+	gate := func(item, href string) string {
+		if lvl < osPathMinLevel(href) {
+			return ""
+		}
+		return item
+	}
+	section := func(label string, items ...string) {
+		shown := make([]string, 0, len(items))
+		for _, it := range items {
+			if it != "" {
+				shown = append(shown, it)
+			}
+		}
+		if len(shown) == 0 {
+			return
+		}
+		b.WriteString(`<div class="sidebar-section-label">` + label + `</div>`)
+		for _, it := range shown {
+			b.WriteString(it)
+		}
+	}
+
+	section("Content",
+		gate(navItem("/os", "Dashboard", "dashboard", active, iconDashboard), "/os"),
+		gate(navItem("/os/posts", "Posts", "posts", active, iconPosts), "/os/posts"),
+		gate(navItem("/os/comments", "Comments", "comments", active, iconComments), "/os/comments"),
+		gate(navItem("/os/pages", "Pages", "pages", active, iconPages), "/os/pages"),
+		gate(navItemBadge("/os/messages", "Messages", "messages", active, iconMessages, osUnread(s)), "/os/messages"),
+		gate(navItem("/os/editor", "New Post", "editor", active, iconNewPost), "/os/editor"),
+		gate(navItem("/os/media", "Media", "media", active, iconMedia), "/os/media"),
+	)
+	section("Audience",
+		gate(navItem("/os/members", "Members", "members", active, iconMembers), "/os/members"),
+		gate(navItem("/os/newsletter", "Newsletter", "newsletter", active, iconNewsletter), "/os/newsletter"),
+		navItem("/os/profile", "My Profile", "profile", active, iconMembers),
+	)
+	section("Monetization",
+		gate(navItem("/os/monetization", "Monetization", "monetization", active, iconMoney), "/os/monetization"),
+		gate(navItem("/os/ads", "Advertising", "ads", active, iconAds), "/os/ads"),
+	)
+	section("Optimize",
+		gate(navItem("/os/seo", "SEO", "seo", active, iconSEO), "/os/seo"),
+		gate(navItem("/os/analytics", "Analytics", "analytics", active, iconAnalytics), "/os/analytics"),
+		gate(navItem("/os/theme", "Theme Studio", "theme", active, iconTheme), "/os/theme"),
+		gate(navItem("/os/theme/store", "Theme Store", "theme-store", active, iconThemeStore), "/os/theme/store"),
+		navItem("/os/vayuos", "VayuMail", "vayuos", active, iconSecurity),
+	)
+	section("System",
+		gate(navItem("/os/monitoring", "Monitoring", "monitoring", active, iconMonitoring), "/os/monitoring"),
+		gate(navItem("/os/governance", "Governance", "governance", active, iconGovernance), "/os/governance"),
+		gate(navItem("/os/tools", "Tools & Plugins", "tools", active, iconTools), "/os/tools"),
+		gate(navItem("/os/update", "Update & Backup", "update", active, iconUpdate), "/os/update"),
+		gate(navItem("/os/settings", "Settings", "settings", active, iconSettings), "/os/settings"),
+		gate(navItem("/os/apikeys", "API Keys", "apikeys", active, iconKey), "/os/apikeys"),
+		gate(navItem("/os/security", "Security", "security", active, iconSecurity), "/os/security"),
+	)
+	section("Operations",
+		gate(navItem("/os/modes", "System Modes", "modes", active, iconModes), "/os/modes"),
+		gate(navItem("/os/policy", "Policy Inspector", "policy", active, iconPolicy), "/os/policy"),
+		gate(navItem("/os/topology", "Topology", "topology", active, iconTopology), "/os/topology"),
+		gate(navItem("/os/replay", "Replay Explorer", "replay", active, iconReplay), "/os/replay"),
+		gate(navItem("/os/faults", "Fault Engine", "faults", active, iconFaults), "/os/faults"),
+		gate(navItem("/os/adr", "ADR Registry", "adrs", active, iconADR), "/os/adr"),
+	)
+	return b.String()
+}
+
 // svgIcon returns a minimal inline SVG for the sidebar.
 // Using path data keeps us CDN-free and avoids an extra HTTP round-trip.
 func svgIcon(path string) string {
@@ -509,6 +596,12 @@ func adminOSShellHead(nonce, title, active string, settings *osSettings) string 
       <kbd>⌘K</kbd>
     </button>`
 
+	// Mail-only sessions cannot create posts; hide the topbar shortcut for them.
+	newPostBtn := `<a class="btn btn--primary btn--sm" href="/os/editor">New Post</a>`
+	if settings != nil && settings.MailOnly {
+		newPostBtn = ""
+	}
+
 	return `<!DOCTYPE html>
 <html lang="en" data-theme="` + html.EscapeString(theme) + `">
 <head>
@@ -534,47 +627,7 @@ func adminOSShellHead(nonce, title, active string, settings *osSettings) string 
     <span class="sidebar-brand-os">VayuOS</span>
   </div>
   <nav class="sidebar-nav" aria-label="Primary">
-    <div class="sidebar-section-label">Content</div>
-    ` + navItem("/os", "Dashboard", "dashboard", active, iconDashboard) + `
-    ` + navItem("/os/posts", "Posts", "posts", active, iconPosts) + `
-    ` + navItem("/os/comments", "Comments", "comments", active, iconComments) + `
-    ` + navItem("/os/pages", "Pages", "pages", active, iconPages) + `
-    ` + navItemBadge("/os/messages", "Messages", "messages", active, iconMessages, osUnread(settings)) + `
-    ` + navItem("/os/editor", "New Post", "editor", active, iconNewPost) + `
-    ` + navItem("/os/media", "Media", "media", active, iconMedia) + `
-
-    <div class="sidebar-section-label">Audience</div>
-    ` + navItem("/os/members", "Members", "members", active, iconMembers) + `
-    ` + navItem("/os/newsletter", "Newsletter", "newsletter", active, iconNewsletter) + `
-    ` + navItem("/os/profile", "My Profile", "profile", active, iconMembers) + `
-
-    <div class="sidebar-section-label">Monetization</div>
-    ` + navItem("/os/monetization", "Monetization", "monetization", active, iconMoney) + `
-    ` + navItem("/os/ads", "Advertising", "ads", active, iconAds) + `
-
-    <div class="sidebar-section-label">Optimize</div>
-    ` + navItem("/os/seo", "SEO", "seo", active, iconSEO) + `
-    ` + navItem("/os/analytics", "Analytics", "analytics", active, iconAnalytics) + `
-    ` + navItem("/os/theme", "Theme Studio", "theme", active, iconTheme) + `
-    ` + navItem("/os/theme/store", "Theme Store", "theme-store", active, iconThemeStore) + `
-    ` + navItem("/os/vayuos", "VayuMail", "vayuos", active, iconSecurity) + `
-
-    <div class="sidebar-section-label">System</div>
-    ` + navItem("/os/monitoring", "Monitoring", "monitoring", active, iconMonitoring) + `
-    ` + navItem("/os/governance", "Governance", "governance", active, iconGovernance) + `
-    ` + navItem("/os/tools", "Tools & Plugins", "tools", active, iconTools) + `
-    ` + navItem("/os/update", "Update & Backup", "update", active, iconUpdate) + `
-    ` + navItem("/os/settings", "Settings", "settings", active, iconSettings) + `
-    ` + navItem("/os/apikeys", "API Keys", "apikeys", active, iconKey) + `
-    ` + navItem("/os/security", "Security", "security", active, iconSecurity) + `
-
-    <div class="sidebar-section-label">Operations</div>
-    ` + navItem("/os/modes", "System Modes", "modes", active, iconModes) + `
-    ` + navItem("/os/policy", "Policy Inspector", "policy", active, iconPolicy) + `
-    ` + navItem("/os/topology", "Topology", "topology", active, iconTopology) + `
-    ` + navItem("/os/replay", "Replay Explorer", "replay", active, iconReplay) + `
-    ` + navItem("/os/faults", "Fault Engine", "faults", active, iconFaults) + `
-    ` + navItem("/os/adr", "ADR Registry", "adrs", active, iconADR) + `
+    ` + osSidebarNav(active, settings) + `
     <div class="sidebar-spacer"></div>
   </nav>
   <div class="sidebar-footer">
@@ -591,7 +644,7 @@ func adminOSShellHead(nonce, title, active string, settings *osSettings) string 
     <span class="topbar-title">` + et + `</span>
     <span class="topbar-spacer"></span>
     ` + cmdHint + `
-    <a class="btn btn--primary btn--sm" href="/os/editor">New Post</a>
+    ` + newPostBtn + `
     <form method="POST" action="/os/logout">
       <button type="submit" class="btn btn--ghost btn--sm">Sign out</button>
     </form>
@@ -679,6 +732,10 @@ type osSettings struct {
 	UserName   string
 	UserRole   string
 	UserAvatar string
+	// MailOnly / AccessLevel drive role-scoped sidebar visibility and match the
+	// route guard in requireSessionOrAPIKey (hidden == unreachable).
+	MailOnly    bool
+	AccessLevel int
 	// UnreadMessages drives the sidebar badge on the Messages item.
 	UnreadMessages int
 }
@@ -698,6 +755,7 @@ func (a *App) getOSSettings(ctx context.Context) *osSettings {
 	// Surface the authenticated user (if any) so the shell can show their
 	// avatar/name/role. The user is attached to the context by
 	// requireSessionOrAPIKey and already carries the profile fields.
+	s.AccessLevel = accessAdmin // legacy API-key / no-session callers are admin-equivalent
 	if v := ctx.Value(ctxUserKey); v != nil {
 		if u, ok := v.(*users.User); ok && u != nil {
 			s.UserID = u.ID
@@ -707,6 +765,10 @@ func (a *App) getOSSettings(ctx context.Context) *osSettings {
 			}
 			s.UserRole = u.Role
 			s.UserAvatar = u.AvatarURL
+			if mo, ok := ctx.Value(ctxMailOnlyKey).(bool); ok && mo {
+				s.MailOnly = true
+			}
+			s.AccessLevel = accessLevelFor(u.Role, s.MailOnly)
 		}
 	}
 	return s
@@ -806,6 +868,24 @@ func (a *App) handleOSLoginSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 	u, err := a.userStore.Authenticate(r.Context(), email, pass)
 	if err != nil {
+		// Fall back to a VayuMail account login (mailbox / author / editor / etc.),
+		// so those email accounts can sign in from the same website login button.
+		if addr, mok, totpMissing := a.authMailAccount(r.Context(), email, pass, r.FormValue("totp")); mok {
+			token, terr := a.sessions.Create(r.Context(), "vmail:"+addr)
+			if terr != nil {
+				http.Error(w, "could not start session", http.StatusInternalServerError)
+				return
+			}
+			auth.RecordAuthSuccess(ip)
+			auth.SetSessionCookie(w, token)
+			http.Redirect(w, r, "/os", http.StatusSeeOther)
+			return
+		} else if totpMissing {
+			auth.RecordAuthFailure(ip)
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_, _ = w.Write([]byte(osLoginPage(email, "Enter the 6-digit code from your authenticator app, then re-enter your password.")))
+			return
+		}
 		auth.RecordAuthFailure(ip)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_, _ = w.Write([]byte(osLoginPage(email, "Invalid email or password.")))

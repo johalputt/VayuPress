@@ -18,6 +18,18 @@ smooth, incremental updates (no site-wide rebuilds).
 
 ### Added
 
+- **Role-scoped login for VayuMail accounts (5 roles).** The email accounts you
+  create under VayuMail (administrator / editor / author / reviewer / mailbox)
+  can now sign in from the website login button and use VayuOS scoped to their
+  role — and only their role. A **mailbox** (and reviewer) account is confined to
+  the VayuMail surface: it lands on its inbox and the rest of the console is both
+  hidden from the sidebar and blocked server-side. **author** sees only content
+  authoring (Dashboard, Posts, New Post, Media, Mail, Profile); **editor** adds
+  content management (Comments, Pages, SEO, Analytics, Theme, Messages);
+  **administrator** gets the full console. The sidebar now renders per role
+  (hidden == unreachable: the same policy guards the routes), and deleting or
+  deactivating an account immediately invalidates its web session. See ADR-0098.
+
 - **VayuMail "Connect" tab — one-glance mail-app setup + live status.** A new
   Connect tab in the VayuMail console shows the exact IMAP/POP3/SMTP server,
   ports and username needed to add a mailbox to any standard app (Gmail, Apple
