@@ -89,11 +89,16 @@ func (r *sqliteArticleRepo) List(ctx context.Context, page, limit int, tag strin
 	var err error
 	// List is the public-facing listing (JSON API): drafts are never included.
 	if tag != "" {
-		like := "%" + tag + "%"
-		r.reader().QueryRowContext(ctx, `SELECT COUNT(1) FROM articles WHERE tags LIKE ? AND COALESCE(status,'published')='published'`, like).Scan(&total)
+		// Resolve membership through the indexed article_tags join table rather
+		// than a `tags LIKE '%..%'` scan, so tag-filtered listings stay fast at
+		// scale. tag_norm is the lower-cased form; match case-insensitively.
+		// CROSS JOIN pins the tag table as the driver — an always-indexed lookup,
+		// never a full articles scan even when the tag is very common.
+		norm := strings.ToLower(strings.TrimSpace(tag))
+		r.reader().QueryRowContext(ctx, `SELECT COUNT(1) FROM article_tags t CROSS JOIN articles a ON a.id=t.article_id WHERE t.tag_norm=? AND COALESCE(a.status,'published')='published'`, norm).Scan(&total)
 		rows, err = r.reader().QueryContext(ctx,
-			`SELECT id,title,slug,content,tags,created_at,updated_at,COALESCE(status,'published') FROM articles WHERE tags LIKE ? AND COALESCE(status,'published')='published' ORDER BY created_at DESC LIMIT ? OFFSET ?`,
-			like, limit, (page-1)*limit,
+			`SELECT a.id,a.title,a.slug,a.content,a.tags,a.created_at,a.updated_at,COALESCE(a.status,'published') FROM article_tags t CROSS JOIN articles a ON a.id=t.article_id WHERE t.tag_norm=? AND COALESCE(a.status,'published')='published' ORDER BY t.created_at DESC LIMIT ? OFFSET ?`,
+			norm, limit, (page-1)*limit,
 		)
 	} else {
 		r.reader().QueryRowContext(ctx, `SELECT COUNT(1) FROM articles WHERE COALESCE(status,'published')='published'`).Scan(&total)
@@ -120,17 +125,22 @@ func (r *sqliteArticleRepo) List(ctx context.Context, page, limit int, tag strin
 	return result, total, nil
 }
 
-func (r *sqliteArticleRepo) AllTagCSVs(ctx context.Context) ([]string, error) {
-	rows, err := r.reader().QueryContext(ctx, `SELECT tags FROM articles WHERE tags != ''`)
+func (r *sqliteArticleRepo) TagCounts(ctx context.Context) (map[string]int, error) {
+	rows, err := r.reader().QueryContext(ctx, `SELECT tag, COUNT(1) FROM article_tags GROUP BY tag`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []string
+	out := make(map[string]int)
 	for rows.Next() {
-		var s string
-		rows.Scan(&s)
-		out = append(out, s)
+		var tag string
+		var n int
+		if err := rows.Scan(&tag, &n); err != nil {
+			continue
+		}
+		if tag != "" {
+			out[tag] += n
+		}
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

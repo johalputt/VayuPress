@@ -215,17 +215,9 @@ func (s *ArticleService) List(ctx context.Context, page, limit int, tag string) 
 
 // ListTags returns all distinct tag names with counts across all articles.
 func (s *ArticleService) ListTags(ctx context.Context) ([]TagCount, error) {
-	csvs, err := s.Repo.AllTagCSVs(ctx)
+	tagCount, err := s.Repo.TagCounts(ctx)
 	if err != nil {
 		return nil, err
-	}
-	tagCount := make(map[string]int)
-	for _, csv := range csvs {
-		for _, t := range SplitTags(csv) {
-			if t != "" {
-				tagCount[t]++
-			}
-		}
 	}
 	result := make([]TagCount, 0, len(tagCount))
 	for t, c := range tagCount {
