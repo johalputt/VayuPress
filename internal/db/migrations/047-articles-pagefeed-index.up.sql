@@ -1,0 +1,17 @@
+-- Composite index for the Posts manager, homepage and feed queries, which all
+-- filter on is_page AND status (and order by recency). Without it, predicates
+-- like `WHERE is_page=0 GROUP BY status` or `WHERE status='published' AND
+-- is_page=0` can only use a single-column index and must then read every row to
+-- evaluate the other column — a full-table scan that, on a large catalog
+-- (hundreds of thousands of posts), exceeds the request timeout and surfaces as
+-- a 502 when opening the Posts tab. With this covering index the counts are
+-- index-only and the listings are index-ordered, so they stay fast at 1M+ posts.
+--
+-- Column order matters: (is_page, status) serves the equality filters and the
+-- GROUP BY status, and the trailing created_at lets the published/draft listings
+-- read straight from the index in recency order. is_page and status are both
+-- NOT NULL, so the index is dense and exact.
+--
+-- IMPORTANT: the migration runner executes ONE statement per line, so this must
+-- stay on a single line.
+CREATE INDEX IF NOT EXISTS idx_articles_pagefeed ON articles(is_page, status, created_at DESC);
