@@ -541,6 +541,28 @@ func (a *App) handleVayuOSConnect(w http.ResponseWriter, r *http.Request) {
 	}
 	body.WriteString(`</div>`)
 
+	// ── TLS certificate trust ────────────────────────────────────────────────
+	// A reachable port with an untrusted (self-signed) certificate is the most
+	// common cause of a mail app's "Couldn't open connection to server": the
+	// connection and TLS handshake succeed, but the client rejects the
+	// certificate. Surface this prominently with the exact remediation.
+	if a.vayuMail.TLSActive() && !a.vayuMail.TLSTrusted() {
+		body.WriteString(`<div class="card" style="border-left:4px solid #d9534f"><div class="card-title">⚠ Mail apps will reject this connection</div>`)
+		body.WriteString(`<p class="text-sm">VayuMail is serving a <strong>self-signed TLS certificate</strong>. ` +
+			`Mobile and desktop mail apps (the Gmail app, Apple Mail, Thunderbird, Outlook) refuse self-signed certificates and report ` +
+			`<em>"Couldn't open connection to server"</em> — even though the ports above are online.</p>`)
+		body.WriteString(`<p class="text-sm">Install a trusted certificate using any one of:</p>`)
+		body.WriteString(`<ul class="text-sm">` +
+			`<li><strong>Automatic (recommended):</strong> set <code>VAYUOS_MAIL_TLS_ACME=on</code> (and optionally <code>VAYUOS_MAIL_ACME_EMAIL=you@` + html.EscapeString(mc.Domain) + `</code>), ensure port 80 on <code>` + hHost + `</code> is reachable, then restart. VayuMail obtains and auto-renews a Let's Encrypt certificate itself.</li>` +
+			`<li><strong>Guided script:</strong> run <code>sudo bash deploy/vayumail-setup.sh</code> on the server.</li>` +
+			`<li><strong>Manual:</strong> set <code>VAYUOS_MAIL_TLS_CERT</code> and <code>VAYUOS_MAIL_TLS_KEY</code> to a CA-signed pair, then restart.</li>` +
+			`</ul>`)
+		body.WriteString(`</div>`)
+	} else if a.vayuMail.TLSActive() && a.vayuMail.TLSTrusted() {
+		body.WriteString(`<div class="card"><div class="card-title">TLS certificate</div>`)
+		body.WriteString(`<p class="text-sm">A trusted certificate is active — mail apps can connect over SSL/TLS. <span class="muted">(` + html.EscapeString(a.vayuMail.TLSNote()) + `)</span></p></div>`)
+	}
+
 	// ── Recommended settings ─────────────────────────────────────────────────
 	body.WriteString(`<div class="card"><div class="card-title">Recommended settings</div>`)
 	body.WriteString(`<div class="table-wrap"><table class="table"><tbody>`)

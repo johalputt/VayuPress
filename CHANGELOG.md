@@ -8,6 +8,37 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Added
+
+- **Native automatic mail TLS certificates (ACME / Let's Encrypt).** VayuMail can
+  now obtain and auto-renew a trusted certificate for `mail.<domain>` on its own —
+  no external certbot run and no shell script. Set `VAYUOS_MAIL_TLS_ACME=on` (and
+  optionally `VAYUOS_MAIL_ACME_EMAIL`) and, once port 80 is reachable for the mail
+  hostname, the certificate is issued in the background, cached under
+  `<storage>/mail/acme`, and shared by every mail TLS listener (IMAPS 993, POP3S
+  995, submission 587, and STARTTLS on 25/143/110). This is the foolproof path for
+  real mail apps: mobile/desktop clients (the Gmail app, Apple Mail, Thunderbird,
+  Outlook) reject the self-signed fallback but accept the ACME certificate. New
+  env vars: `VAYUOS_MAIL_TLS_ACME`, `VAYUOS_MAIL_ACME_EMAIL`,
+  `VAYUOS_MAIL_ACME_HTTP_ADDR` (default `:80`), `VAYUOS_MAIL_ACME_CACHE`,
+  `VAYUOS_MAIL_ACME_DIRECTORY`, `VAYUOS_MAIL_ACME_HOSTS`. While issuance settles,
+  the listeners keep answering with the self-signed fallback so opportunistic
+  STARTTLS between mail servers is never interrupted.
+
+### Fixed
+
+- **"Couldn't open connection to server" is now diagnosable.** The most common
+  cause is a reachable mail port serving an untrusted **self-signed** certificate
+  that mobile apps silently reject — the connection and TLS handshake succeed, but
+  the client refuses the certificate. VayuMail now detects the active certificate's
+  provenance and surfaces it: VayuOS → VayuMail → **Connect** shows a prominent
+  warning (with exact remediation) when the certificate is self-signed, and the
+  server logs a loud, actionable error at startup.
+- **Implicit-TLS listener bind failures are no longer swallowed.** Failures to
+  bind IMAPS (993), POP3S (995) or submission (587) are now recorded and surfaced
+  via the inbound-error channel (alongside the existing SMTP/IMAP/POP3 reporting)
+  instead of being silently dropped, so an unreachable SSL port can be explained.
+
 ## [2.3.0] — 2026-06-28
 
 ### Highlights
