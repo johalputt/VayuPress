@@ -4,6 +4,9 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/johalputt/vayupress/internal/config"
+	dbpkg "github.com/johalputt/vayupress/internal/db"
 )
 
 func postContact(t *testing.T, jsonBody string) *httptest.ResponseRecorder {
@@ -34,6 +37,35 @@ func TestContactValidation(t *testing.T) {
 	}
 	if rec := postContact(t, `{"name":"A","email":"not-an-email","message":"hi"}`); rec.Code != 400 {
 		t.Errorf("bad email = %d, want 400", rec.Code)
+	}
+}
+
+// TestContactStoredWithoutEmailDelivery proves a valid submission is accepted and
+// persisted to the /os inbox even when no mailer/SMTP is configured — the form
+// must not fail the visitor just because email delivery is unavailable.
+func TestContactStoredWithoutEmailDelivery(t *testing.T) {
+	config.Cfg.DBPath = ":memory:"
+	if err := dbpkg.Init(); err != nil {
+		t.Fatalf("db init: %v", err)
+	}
+	// App with NO mailer and NO site settings → email delivery is unconfigured.
+	a := &App{}
+	req := httptest.NewRequest("POST", "/api/v1/contact",
+		strings.NewReader(`{"name":"Jane","email":"jane@example.com","message":"Hello there"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "198.51.100.42:5555" // fresh IP, independent of the shared limiter
+	rec := httptest.NewRecorder()
+	a.handleContactSubmit(rec, req)
+
+	if rec.Code != 200 {
+		t.Fatalf("submit without mailer = %d, want 200 (message must still be stored); body=%s", rec.Code, rec.Body.String())
+	}
+	var n int
+	if err := dbpkg.DB.QueryRow(`SELECT COUNT(1) FROM contact_messages WHERE email='jane@example.com'`).Scan(&n); err != nil {
+		t.Fatalf("query inbox: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("stored messages = %d, want 1 (form must persist to the inbox even without email delivery)", n)
 	}
 }
 
