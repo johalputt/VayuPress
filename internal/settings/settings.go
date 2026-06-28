@@ -105,13 +105,20 @@ const (
 	KeyFeatureNewsletter  = "feature.newsletter"  // public newsletter subscribe
 	KeyFeatureWebmentions = "feature.webmentions" // inbound webmention receiver
 
-	// KeyFeatureMeili toggles the external Meilisearch backend. Default ON
-	// (preserving the historical auto-detect behaviour): when on, search uses
+	// KeyFeatureMeili toggles the external Meilisearch backend. Default ON	// (preserving the historical auto-detect behaviour): when on, search uses
 	// Meilisearch if it is configured and healthy and otherwise transparently
 	// falls back to the built-in SQLite engine. Turning it OFF forces the SQLite
 	// engine unconditionally, even when a Meilisearch host is configured — the
 	// operator-facing "disable Meilisearch" switch.
 	KeyFeatureMeili = "feature.meili"
+
+	// KeyFeatureTrending toggles the public "Trending & pinned posts" widget
+	// shown on the homepage and at the bottom of every post. Default ON. When
+	// off, the /api/trending endpoint reports disabled and the client-side widget
+	// removes itself. Trending posts are the most-viewed in the last 7/30 days
+	// per the built-in cookieless analytics; pinned posts are the operator's
+	// featured posts (see the editor "Feature this post" toggle), capped at 4.
+	KeyFeatureTrending = "feature.trending"
 
 	// Monetization feature flags. Unlike the engagement flags above these
 	// default OFF: a site only starts taking payments or showing advertising
@@ -155,6 +162,7 @@ var FeatureKeys = map[string]bool{
 	KeyFeatureNewsletter:  true,
 	KeyFeatureWebmentions: true,
 	KeyFeatureMeili:       true,
+	KeyFeatureTrending:    true,
 	KeyFeaturePayments:    true,
 	KeyFeatureAds:         true,
 	KeyFeatureGoogleAds:   true,
@@ -212,6 +220,7 @@ var AllKeys = map[string]bool{
 	KeyFeatureNewsletter:     true,
 	KeyFeatureWebmentions:    true,
 	KeyFeatureMeili:          true,
+	KeyFeatureTrending:       true,
 	KeyFeaturePayments:       true,
 	KeyFeatureAds:            true,
 	KeyFeatureGoogleAds:      true,

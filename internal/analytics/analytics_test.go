@@ -82,3 +82,60 @@ func TestPurge(t *testing.T) {
 		t.Errorf("purged %d rows, want 1", n)
 	}
 }
+
+// TestTrendingArticles verifies the trending query ranks published, non-page
+// articles by view total over the window, joins back the title/image from the
+// path, and excludes drafts, pages, and unknown paths.
+func TestTrendingArticles(t *testing.T) {
+	s := newTestStore(t)
+	// Minimal articles table for the join (columns the query reads).
+	if _, err := s.db.Exec(`CREATE TABLE articles(
+		slug TEXT PRIMARY KEY, title TEXT NOT NULL DEFAULT '',
+		feature_image TEXT, status TEXT NOT NULL DEFAULT 'published',
+		is_page INTEGER NOT NULL DEFAULT 0, created_at DATETIME)`); err != nil {
+		t.Fatal(err)
+	}
+	rows := [][3]string{
+		{"alpha", "Alpha", "published"}, // most views
+		{"bravo", "Bravo", "published"}, // fewer views
+		{"draft", "Draft", "draft"},     // excluded: not published
+	}
+	for i, r := range rows {
+		if _, err := s.db.Exec(`INSERT INTO articles(slug,title,feature_image,status,is_page,created_at) VALUES(?,?,?,?,0,?)`,
+			r[0], r[1], "/img/"+r[0]+".jpg", r[2], "2026-06-2"+itoa(i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A page (excluded) + an orphan path with no article (excluded).
+	s.db.Exec(`INSERT INTO articles(slug,title,status,is_page,created_at) VALUES('about','About','published',1,'2026-06-01')`)
+
+	ctx := context.Background()
+	for i := 0; i < 5; i++ {
+		s.Record(ctx, "/alpha", "")
+	}
+	for i := 0; i < 2; i++ {
+		s.Record(ctx, "/bravo", "")
+	}
+	s.Record(ctx, "/draft", "") // draft — must not appear
+	s.Record(ctx, "/about", "") // page — must not appear
+	s.Record(ctx, "/ghost", "") // no matching article — must not appear
+
+	got, err := s.TrendingArticles(ctx, 7, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected 2 trending posts, got %d: %+v", len(got), got)
+	}
+	if got[0].Slug != "alpha" || got[0].Views != 5 {
+		t.Errorf("rank 1 should be alpha/5, got %+v", got[0])
+	}
+	if got[1].Slug != "bravo" || got[1].Views != 2 {
+		t.Errorf("rank 2 should be bravo/2, got %+v", got[1])
+	}
+	if got[0].Title != "Alpha" || got[0].Image != "/img/alpha.jpg" {
+		t.Errorf("join did not supply title/image: %+v", got[0])
+	}
+}
+
+func itoa(i int) string { return string(rune('0' + i)) }

@@ -10,6 +10,13 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Added
 
+- **Trending & pinned posts.** The homepage and the bottom of every post now show
+  a Trending widget — the most-viewed posts over the **last 7 and 30 days** (a
+  tab switches between them), drawn from the built-in cookieless analytics — plus
+  your **Pinned** posts. Pin a post with the editor's "Feature this post" toggle
+  (up to 4 are shown). It's served by a cached, public `/api/trending` JSON
+  endpoint and hydrated client-side, so it stays fresh without invalidating the
+  page cache, and it can be turned on/off from **Tools & Plugins** (on by default).
 - **Meilisearch is now an operator toggle in Tools & Plugins.** Search has a new
   "Meilisearch" module switch: turn it **on** to use an external Meilisearch
   engine for instant, typo-tolerant full-text search (used when a host is

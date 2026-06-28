@@ -397,6 +397,9 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	// Paginated homepage feed: /page/2, /page/3, … (page 1 is canonical at "/").
 	// Two-segment, so it never collides with the single-segment "/{slug}".
 	r.Get("/page/{page}", a.handleHomePaged)
+	// Public, cookieless JSON for the Trending & pinned-posts widget on the
+	// homepage and under every post (hydrated client-side by trending.js).
+	r.Get("/api/trending", a.handleTrendingJSON)
 	// Public taxonomy pages — the topic index and per-tag listings. Registered
 	// before the single-segment "/{slug}" catch-all so "/tags" and "/tags/{tag}"
 	// resolve here instead of falling through to a 404 (the two-segment form
