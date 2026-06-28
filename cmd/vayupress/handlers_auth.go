@@ -83,7 +83,7 @@ func osPathInArea(path, area string) bool {
 // areas are gated, so adding a benign page never accidentally locks it out.
 func osPathMinLevel(path string) int {
 	adminAreas := []string{
-		"settings", "security", "apikeys", "update", "monitoring", "governance",
+		"settings", "security", "apikeys", "update", "storage", "monitoring", "governance",
 		"tools", "modes", "policy", "topology", "replay", "faults", "adr",
 		"members", "newsletter", "monetization", "ads",
 	}

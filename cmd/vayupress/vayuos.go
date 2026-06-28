@@ -421,6 +421,7 @@ func (a *App) handleWKD(w http.ResponseWriter, r *http.Request) {
 func (a *App) handleVayuOSDashboard(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
+	admin := a.isAdminRequest(r)
 	snap := a.vayuHealth.Snapshot()
 	var rows strings.Builder
 	for _, c := range snap.Components {
@@ -430,23 +431,38 @@ func (a *App) handleVayuOSDashboard(w http.ResponseWriter, r *http.Request) {
 		}
 		rows.WriteString(`<tr><td>` + html.EscapeString(c.Name) + `</td><td>` + badge + `</td><td class="muted">` + html.EscapeString(c.Detail) + `</td></tr>`)
 	}
+	// Infrastructure cards (PGP keys, DKIM/DNS, security updates) and the
+	// subsystem-health table expose operational detail the four non-admin roles
+	// do not need, so they are administrator-only.
+	infraCards, healthCard := "", ""
+	if admin {
+		infraCards = `
+  <div class="card"><div class="card-title">Privacy (VayuPGP)</div><p class="muted">End-to-end PGP, keys encrypted at rest, WKD published.</p><a class="btn" href="/os/vayuos/pgp">Manage keys</a></div>
+  <div class="card"><div class="card-title">Sovereignty (VayuMail)</div><p class="muted">DKIM-signed outbound mail, direct-to-MX, DNS health.</p><a class="btn" href="/os/vayuos/mail">Mail &amp; DNS</a></div>
+  <div class="card"><div class="card-title">Security updates</div><p class="muted">Track upstream PGP/crypto security releases.</p><a class="btn" href="/os/vayuos/security">Updates</a></div>`
+		healthCard = `
+<div class="card"><div class="card-title">Subsystem health</div>
+<div class="table-wrap"><table class="table"><thead><tr><th>Component</th><th>Status</th><th>Detail</th></tr></thead><tbody>` + rows.String() + `</tbody></table></div></div>`
+	}
 	body := `<div class="page-header"><h1>VayuMail</h1>
-<span class="muted text-sm">Native mail sovereignty + privacy — Mail · Inbox · Sent · PGP · DNS</span></div>` + vayuosNav("overview") + `
+<span class="muted text-sm">Your mailboxes — read, compose and connect mail apps</span></div>` + vayuosNav("overview", admin) + `
 <div class="grid grid-3">
   <div class="card"><div class="card-title">Inbox</div><p class="muted">Read mail received into your mailboxes (Maildir).</p><a class="btn" href="/os/vayuos/mail/inbox">Open inbox</a></div>
   <div class="card"><div class="card-title">Sent</div><p class="muted">Outbound delivery queue with per-message status.</p><a class="btn" href="/os/vayuos/mail/sent">View sent</a></div>
-  <div class="card"><div class="card-title">Privacy (VayuPGP)</div><p class="muted">End-to-end PGP, keys encrypted at rest, WKD published.</p><a class="btn" href="/os/vayuos/pgp">Manage keys</a></div>
-  <div class="card"><div class="card-title">Sovereignty (VayuMail)</div><p class="muted">DKIM-signed outbound mail, direct-to-MX, DNS health.</p><a class="btn" href="/os/vayuos/mail">Mail &amp; DNS</a></div>
-  <div class="card"><div class="card-title">Security updates</div><p class="muted">Track upstream PGP/crypto security releases.</p><a class="btn" href="/os/vayuos/security">Updates</a></div>
-</div>
-<div class="card"><div class="card-title">Subsystem health</div>
-<div class="table-wrap"><table class="table"><thead><tr><th>Component</th><th>Status</th><th>Detail</th></tr></thead><tbody>` + rows.String() + `</tbody></table></div></div>`
+  <div class="card"><div class="card-title">Connect a mail app</div><p class="muted">IMAP/POP3/SMTP settings for the Gmail app, Apple Mail and more.</p><a class="btn" href="/os/vayuos/mail/connect">Connect</a></div>` + infraCards + `
+</div>` + healthCard
 	writeOSHTML(w, adminOSLayout(nonce, "VayuMail", "vayuos", cfg, htmpl.HTML(body)))
 }
 
 func (a *App) handleVayuOSPGP(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
+	// PGP key material is administrator-only — the four non-admin roles never
+	// see it (redirected to their inbox).
+	if !a.isAdminRequest(r) {
+		a.denyAccess(w, r, "/os/vayuos/mail/inbox")
+		return
+	}
 	keys, _ := a.vayuPGP.ListKeys()
 	var rows strings.Builder
 	for _, k := range keys {
@@ -462,7 +478,7 @@ func (a *App) handleVayuOSPGP(w http.ResponseWriter, r *http.Request) {
 		rows.WriteString(`<tr><td colspan="4" class="muted">No keys yet — keys are generated automatically when accounts are created.</td></tr>`)
 	}
 	body := `<div class="page-header"><h1>VayuPGP keys</h1>
-<span class="muted text-sm">Ed25519 + Curve25519 · private keys AES-256-GCM encrypted at rest · published via WKD</span></div>` + vayuosNav("pgp") + `
+<span class="muted text-sm">Ed25519 + Curve25519 · private keys AES-256-GCM encrypted at rest · published via WKD</span></div>` + vayuosNav("pgp", true) + `
 <div class="card"><div class="card-title">Keypairs</div>
 <div class="table-wrap"><table class="table"><thead><tr><th>Email</th><th>Fingerprint</th><th>State</th><th>Expires</th></tr></thead><tbody>` + rows.String() + `</tbody></table></div></div>
 <div class="card"><div class="card-title">Web Key Directory</div><p class="muted">External clients discover these keys at <code>/.well-known/openpgpkey/</code> (advanced method).</p></div>`
@@ -472,10 +488,16 @@ func (a *App) handleVayuOSPGP(w http.ResponseWriter, r *http.Request) {
 func (a *App) handleVayuOSMail(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
+	// The DKIM/SPF/DMARC records, live DNS health and deliverability self-check
+	// are infrastructure detail — administrator-only.
+	if !a.isAdminRequest(r) {
+		a.denyAccess(w, r, "/os/vayuos/mail/inbox")
+		return
+	}
 	mc := a.vayuMail.Config()
 	var body strings.Builder
 	body.WriteString(`<div class="page-header"><h1>VayuMail</h1><span class="muted text-sm">Native outbound mail sovereignty</span></div>`)
-	body.WriteString(vayuosNav("mail"))
+	body.WriteString(vayuosNav("mail", true))
 	if !mc.Enabled {
 		body.WriteString(`<div class="empty-state">VayuMail is inactive. Set your domain (DOMAIN env / first-boot wizard) to activate DKIM signing and outbound delivery.</div>`)
 		writeOSHTML(w, adminOSLayout(nonce, "VayuMail", "vayuos", cfg, htmpl.HTML(body.String())))
@@ -520,10 +542,15 @@ func (a *App) handleVayuOSMail(w http.ResponseWriter, r *http.Request) {
 func (a *App) handleVayuOSSecurity(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
+	// The dependency security-update watcher is administrator-only.
+	if !a.isAdminRequest(r) {
+		a.denyAccess(w, r, "/os/vayuos/mail/inbox")
+		return
+	}
 	rep, _ := a.vayuSec.Check(r.Context())
 	var body strings.Builder
 	body.WriteString(`<div class="page-header"><h1>Security updates</h1><span class="muted text-sm">Upstream PGP &amp; crypto dependency monitoring</span></div>`)
-	body.WriteString(vayuosNav("security"))
+	body.WriteString(vayuosNav("security", true))
 	if !rep.Enabled {
 		body.WriteString(`<div class="empty-state">The security-update watcher is disabled by default (privacy first). Enable it by setting <code>VAYUOS_SECURITY_UPDATES=on</code>. It fetches only public release metadata from GitHub and never transmits anything about your site.</div>`)
 		// Still show the pinned versions (read from build info, no network).
@@ -568,22 +595,33 @@ func (a *App) handleVayuOSHealthJSON(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, http.StatusOK, a.vayuHealth.Snapshot())
 }
 
-// vayuosNav renders the VayuOS sub-navigation shown on every VayuOS page.
-func vayuosNav(active string) string {
-	items := []struct{ key, label, href string }{
-		{"overview", "Overview", "/os/vayuos"},
-		{"compose", "Compose", "/os/vayuos/mail/compose"},
-		{"mailbox", "Mailbox", "/os/vayuos/mail/inbox"},
-		{"accounts", "Accounts", "/os/vayuos/mail/accounts"},
-		{"connect", "Connect", "/os/vayuos/mail/connect"},
-		{"outbox", "Outbox", "/os/vayuos/mail/sent"},
-		{"pgp", "PGP Keys", "/os/vayuos/pgp"},
-		{"mail", "DNS", "/os/vayuos/mail"},
-		{"security", "Security", "/os/vayuos/security"},
+// vayuosNav renders the VayuOS sub-navigation shown on every VayuOS page. The
+// admin flag gates the tabs that expose infrastructure detail — PGP keys, the
+// DNS records, the security-update watcher and account management — so the four
+// non-admin roles (editor, author, reviewer, mailbox) only ever see the mail
+// surface they actually use (Overview, Compose, Mailbox, Connect, Outbox).
+func vayuosNav(active string, admin bool) string {
+	type navTab struct {
+		key, label, href string
+		adminOnly        bool
+	}
+	items := []navTab{
+		{"overview", "Overview", "/os/vayuos", false},
+		{"compose", "Compose", "/os/vayuos/mail/compose", false},
+		{"mailbox", "Mailbox", "/os/vayuos/mail/inbox", false},
+		{"accounts", "Accounts", "/os/vayuos/mail/accounts", true},
+		{"connect", "Connect", "/os/vayuos/mail/connect", false},
+		{"outbox", "Outbox", "/os/vayuos/mail/sent", false},
+		{"pgp", "PGP Keys", "/os/vayuos/pgp", true},
+		{"mail", "DNS", "/os/vayuos/mail", true},
+		{"security", "Security", "/os/vayuos/security", true},
 	}
 	var sb strings.Builder
 	sb.WriteString(`<div class="vmtabs">`)
 	for _, it := range items {
+		if it.adminOnly && !admin {
+			continue
+		}
 		cls := "tab"
 		if it.key == active {
 			cls = "tab tab--active"
@@ -622,7 +660,7 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 	cfg := a.getOSSettings(r.Context())
 	var body strings.Builder
 	body.WriteString(`<div class="page-header"><h1>Mailbox</h1><span class="muted text-sm">Received &amp; filed mail (Maildir)</span></div>`)
-	body.WriteString(vayuosNav("mailbox"))
+	body.WriteString(vayuosNav("mailbox", a.isAdminRequest(r)))
 
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled {
 		body.WriteString(`<div class="empty-state">VayuMail is inactive. Set <code>DOMAIN</code> to a real domain to provision mailboxes. The inbound SMTP/IMAP listener runs by default once a domain is set (disable with <code>VAYUOS_MAIL_INBOUND=off</code>); receiving external mail also needs port 25 reachable and MX/A DNS records pointing at this host.</div>`)
@@ -731,7 +769,7 @@ func (a *App) handleVayuOSSearch(w http.ResponseWriter, r *http.Request) {
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
 	var body strings.Builder
 	body.WriteString(`<div class="page-header"><h1>Search mail</h1><span class="muted text-sm">` + html.EscapeString(user+"@"+a.cfgDomain()) + `</span></div>`)
-	body.WriteString(vayuosNav("mailbox"))
+	body.WriteString(vayuosNav("mailbox", a.isAdminRequest(r)))
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled || user == "" {
 		body.WriteString(`<div class="empty-state">VayuMail is inactive or no mailbox selected. <a href="/os/vayuos/mail/inbox">Back to Mailbox</a></div>`)
 		writeOSHTML(w, adminOSLayout(nonce, "Search mail", "vayuos", cfg, htmpl.HTML(body.String())))
@@ -779,7 +817,7 @@ func (a *App) handleVayuOSMessage(w http.ResponseWriter, r *http.Request) {
 	id := strings.TrimSpace(r.URL.Query().Get("id"))
 	var body strings.Builder
 	body.WriteString(`<div class="page-header"><h1>Message</h1><span class="muted text-sm">` + html.EscapeString(user+"@"+a.cfgDomain()) + ` · ` + html.EscapeString(folder) + `</span></div>`)
-	body.WriteString(vayuosNav("mailbox"))
+	body.WriteString(vayuosNav("mailbox", a.isAdminRequest(r)))
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled || user == "" || id == "" {
 		body.WriteString(`<div class="empty-state">Message not available. <a href="/os/vayuos/mail/inbox">Back to Mailbox</a></div>`)
 		writeOSHTML(w, adminOSLayout(nonce, "Message", "vayuos", cfg, htmpl.HTML(body.String())))
@@ -870,7 +908,7 @@ func (a *App) handleVayuOSSent(w http.ResponseWriter, r *http.Request) {
 	cfg := a.getOSSettings(r.Context())
 	var body strings.Builder
 	body.WriteString(`<div class="page-header"><h1>Outbox</h1><span class="muted text-sm">Outbound delivery queue</span></div>`)
-	body.WriteString(vayuosNav("outbox"))
+	body.WriteString(vayuosNav("outbox", a.isAdminRequest(r)))
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled {
 		body.WriteString(`<div class="empty-state">VayuMail is inactive. Set <code>DOMAIN</code> to activate outbound delivery.</div>`)
 		writeOSHTML(w, adminOSLayout(nonce, "Sent", "vayuos", cfg, htmpl.HTML(body.String())))

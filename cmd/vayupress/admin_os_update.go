@@ -71,6 +71,30 @@ func selfUpdateConfigured() (enabled bool, hasKey bool) {
 	return os.Getenv("VAYU_SELFUPDATE_ENABLED") == "true", strings.TrimSpace(os.Getenv("VAYU_RELEASE_PUBKEY")) != ""
 }
 
+// binaryDirWritable returns an empty string when the directory holding binPath
+// can be written (so the atomic binary swap can create its temp file there), or
+// a short human reason when it cannot. It probes by actually creating and
+// removing a temp file — the only reliable test across permission bits, a
+// read-only mount, and a systemd ProtectSystem sandbox.
+func binaryDirWritable(binPath string) string {
+	dir := filepath.Dir(binPath)
+	f, err := os.CreateTemp(dir, ".vayupress-write-probe-*")
+	if err != nil {
+		if os.IsPermission(err) {
+			return "permission denied writing to " + dir + "."
+		}
+		msg := err.Error()
+		if strings.Contains(msg, "read-only") {
+			return dir + " is mounted read-only."
+		}
+		return "could not write to " + dir + " (" + msg + ")."
+	}
+	name := f.Name()
+	_ = f.Close()
+	_ = os.Remove(name)
+	return ""
+}
+
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 func (a *App) handleOSUpdate(w http.ResponseWriter, r *http.Request) {
@@ -283,6 +307,16 @@ func (a *App) handleOSUpdateApply(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusInternalServerError, "exe-error", err.Error(), "")
 		return
 	}
+	// Preflight: the binary's own directory must be writable, or the atomic swap
+	// will fail. The most common cause on a hardened deployment is the systemd
+	// sandbox (ProtectSystem=strict/full) making /usr/local/bin read-only — which
+	// otherwise surfaces as a confusing mid-update failure. Fail fast with the fix.
+	if why := binaryDirWritable(binPath); why != "" {
+		writeAPIError(w, r, http.StatusPreconditionFailed, "binary-readonly",
+			"Cannot install the update because the binary location is not writable: "+why+
+				" Make "+filepath.Dir(binPath)+" writable by the service (e.g. add it to the systemd unit's ReadWritePaths=, or relax ProtectSystem=), then retry. Until then, update from the shell with scripts/update-vayupress.sh.", "")
+		return
+	}
 
 	st := a.updateStore
 	var histID int64
@@ -328,7 +362,7 @@ func (a *App) handleOSUpdateApply(w http.ResponseWriter, r *http.Request) {
 	logging.LogInfo("update", "applied "+newVersion+" via VayuOS admin")
 
 	if body.Restart {
-		update.ScheduleRestart(1500*time.Millisecond, restartCleanup)
+		update.ScheduleRestartExec(binPath, 1500*time.Millisecond, restartCleanup)
 		writeJSON(w, r, http.StatusOK, map[string]interface{}{
 			"status": "updated-restarting", "version": newVersion,
 			"note": "Update installed. The service is re-launching to activate v" + newVersion + ".",
@@ -387,7 +421,7 @@ func (a *App) handleOSUpdateRollback(w http.ResponseWriter, r *http.Request) {
 		_ = st.MarkComplete(r.Context(), histID, "rolled_back", "rolled back from "+Version)
 	}
 	dbpkg.AuditLog("update.rollback", dbpkg.AuditActor(r), "", "rolled back binary via VayuOS")
-	update.ScheduleRestart(1200*time.Millisecond, restartCleanup)
+	update.ScheduleRestartExec(binPath, 1200*time.Millisecond, restartCleanup)
 	writeJSON(w, r, http.StatusOK, map[string]interface{}{"status": "rolled-back-restarting"})
 }
 

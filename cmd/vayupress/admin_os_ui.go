@@ -87,6 +87,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 	r.Get("/os/static/js/admin-os-theme-store.js", serveAdminOSAsset("js/admin-os-theme-store.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-mail.js", serveAdminOSAsset("js/admin-os-mail.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-update.js", serveAdminOSAsset("js/admin-os-update.js", "application/javascript; charset=utf-8"))
+	r.Get("/os/static/js/admin-os-storage.js", serveAdminOSAsset("js/admin-os-storage.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/purify.min.js", serveAdminOSAsset("js/purify.min.js", "application/javascript; charset=utf-8"))
 
 	// Fonts — path-traversal prevented by switch allowlist (same pattern as v2).
@@ -254,6 +255,14 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/update/rollback", a.handleOSUpdateRollback)
 		pr.Get("/os/api/backup/export", a.handleOSBackupExport)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/backup/import", a.handleOSBackupImport)
+
+		// Storage & System — admin-only resource usage (RAM/disk) plus managed
+		// files (backups/logs/temp) with per-file download + delete. The
+		// download/delete validate the path against the live managed-file set, so
+		// path traversal is impossible and the live DB can never be touched.
+		pr.Get("/os/storage", a.handleOSStorage)
+		pr.Get("/os/api/storage/download", a.handleOSStorageDownload)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/storage/delete", a.handleOSStorageDelete)
 		pr.Get("/os/seo", a.handleOSSEONative)
 		pr.Get("/os/analytics", a.handleOSAnalytics)
 		// VayuAnalytics: export downloads + goal management (session-authed).
@@ -519,6 +528,7 @@ func osSidebarNav(active string, s *osSettings) string {
 		gate(navItem("/os/governance", "Governance", "governance", active, iconGovernance), "/os/governance"),
 		gate(navItem("/os/tools", "Tools & Plugins", "tools", active, iconTools), "/os/tools"),
 		gate(navItem("/os/update", "Update & Backup", "update", active, iconUpdate), "/os/update"),
+		gate(navItem("/os/storage", "Storage & System", "storage", active, iconStorage), "/os/storage"),
 		gate(navItem("/os/settings", "Settings", "settings", active, iconSettings), "/os/settings"),
 		gate(navItem("/os/apikeys", "API Keys", "apikeys", active, iconKey), "/os/apikeys"),
 		gate(navItem("/os/security", "Security", "security", active, iconSecurity), "/os/security"),
@@ -556,6 +566,7 @@ var (
 	iconSecurity   = svgIcon("M10 2l6 3v5c0 3.5-2.5 6.8-6 8-3.5-1.2-6-4.5-6-8V5l6-3z")
 	iconTools      = svgIcon("M12.5 3.5a3 3 0 00-3.9 3.9l-5.1 5.1 2 2 5.1-5.1a3 3 0 003.9-3.9l-2 2-2-2 2-2z")
 	iconUpdate     = svgIcon("M3 10a7 7 0 0112-4.9L17 7m0 0V3m0 4h-4M17 10a7 7 0 01-12 4.9L3 13m0 0v4m0-4h4")
+	iconStorage    = svgIcon("M3 5a2 2 0 012-2h10a2 2 0 012 2v2H3V5zm0 4h14v6a2 2 0 01-2 2H5a2 2 0 01-2-2V9zm3 3h2")
 	iconMonitoring = svgIcon("M2 10h3l2-5 3 11 3-8 2 2h3")
 	iconGovernance = svgIcon("M10 2l7 3v5c0 3.5-2.8 6.8-7 8-4.2-1.2-7-4.5-7-8V5l7-3zm0 5v6m-3-3h6")
 	iconTheme      = svgIcon("M10 2a8 8 0 100 16c1 0 1.5-.7 1.5-1.5 0-.4-.2-.8-.4-1-.3-.3-.4-.6-.4-1 0-.8.7-1.5 1.5-1.5H14a4 4 0 004-4c0-3.6-3.6-6.5-8-6.5zM5.5 10a1 1 0 110-2 1 1 0 010 2zm3-3a1 1 0 110-2 1 1 0 010 2zm5 0a1 1 0 110-2 1 1 0 010 2z")
