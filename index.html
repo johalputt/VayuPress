@@ -30,7 +30,7 @@
   <script type="application/ld+json">
   {"@context":"https://schema.org","@type":"SoftwareApplication","name":"VayuPress",
    "applicationCategory":"DeveloperApplication","operatingSystem":"Linux",
-   "softwareVersion":"2.2.0","description":"A sovereign, single-VPS publishing engine: own your content (Publishing), your communication (VayuMail), and your privacy (VayuPGP) — one Go binary, zero telemetry.",
+   "softwareVersion":"2.3.0","description":"A sovereign, single-VPS publishing engine: own your content (Publishing), your communication (VayuMail), and your privacy (VayuPGP) — one Go binary, zero telemetry.",
    "url":"https://vayupress.com/","license":"https://www.apache.org/licenses/LICENSE-2.0",
    "offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},
    "author":{"@type":"Organization","name":"VayuPress","email":"hello@vayupress.com"}}
@@ -87,7 +87,7 @@
         <img src="assets/mark-dark.png" alt="VayuPress mark"
              class="brand-mark h-7 w-auto transition-transform duration-300 group-hover:scale-110" />
         <span class="font-display font-semibold text-white tracking-tight hidden sm:block">VayuPress</span>
-        <span class="hidden sm:inline text-[10px] text-teal-300 font-mono border border-teal-800/60 rounded px-1.5 py-0.5 leading-none">v2.2.0</span>
+        <span class="hidden sm:inline text-[10px] text-teal-300 font-mono border border-teal-800/60 rounded px-1.5 py-0.5 leading-none">v2.3.0</span>
       </a>
 
       <!-- desktop links -->
@@ -124,7 +124,7 @@
             <span class="absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-75 animate-ping"></span>
             <span class="relative inline-flex rounded-full w-1.5 h-1.5 bg-teal-400"></span>
           </span>
-          v2.2.0 · One-click update now updates <em>everything</em> — the admin CSS/JS ship inside the binary and refresh on boot, so installing from VayuOS advances the binary, database migrations and every admin asset together with nothing left half-applied; the updater always picks the correct release artefact (skips signature/checksum sidecars, matches your OS/arch); and VayuMail gains automatic Let's Encrypt TLS in the setup script so the Gmail app, Apple Mail, Thunderbird and Outlook connect without a self-signed-cert rejection
+          v2.3.0 · One-click update now reliably activates the new version (re-execs the exact freshly-written binary, with a writable-location preflight), a new admin-only Storage &amp; System panel shows RAM and disk/NVMe usage and lets you download or delete backups, logs and temp files to reclaim space without the shell, and PGP keys plus DKIM/SPF/DMARC DNS detail are now locked to administrators (the editor, author, reviewer and mailbox roles see only their mailbox surface)
         </div>
 
         <h1 class="font-display font-bold tracking-tightest text-white leading-[0.93] mb-7
