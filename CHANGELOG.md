@@ -8,6 +8,17 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Added
+
+- **Startup index self-check guards against full-scan regressions.** VayuPress
+  depends on every hot read being index-backed to serve 1M+ posts on a small VPS,
+  but a future change could silently reintroduce a full-table scan that only
+  surfaces as a 502 once the catalog is large. A read-only self-check now runs
+  `EXPLAIN QUERY PLAN` on a curated list of the hottest reads shortly after boot
+  and logs a loud warning (and bumps a metric) if any resolves to a full table
+  scan instead of an index search/scan. It never blocks startup and skips queries
+  whose tables don't exist on a partial schema.
+
 ### Changed
 
 - **Updates and theme changes no longer rebuild the whole site.** Previously, a
@@ -24,6 +35,34 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   only stale pages, paced in the background. This is the incremental-update
   behaviour VayuPress exists to provide: changing one thing rebuilds one thing,
   not the whole site.
+
+- **Pages manager reads straight from an index (no sort step).** The Pages
+  manager (`/os/pages`) lists pages with `WHERE is_page=1 ORDER BY updated_at
+  DESC`. The single-column `is_page` index satisfied the filter but then forced a
+  temp-b-tree sort of every matching row; `idx_articles_pagefeed` orders by
+  `created_at`, not `updated_at`, so it did not help. New migration 049 adds
+  `idx_articles_pages(is_page, updated_at DESC)`, which serves both the filter and
+  the recency order from the index, so the Pages tab stays fast even with many
+  pages. Proven with `EXPLAIN QUERY PLAN` (temp b-tree eliminated).
+
+- **Tag lookups are now indexed instead of full-scanning the catalog.** Tags are
+  stored on each article as one comma-separated string, so "find posts with tag
+  X" (per-tag page, related posts, the topic index, and the JSON list tag filter)
+  could only be answered with `tags LIKE '%X%'` — a predicate that cannot use an
+  index and therefore reads **every** row of the (multi-GB) articles table. At
+  hundreds of thousands of posts that scan exceeds the request timeout and shows
+  up as a 502. New migration 048 adds a normalised `article_tags(article_id, tag,
+  tag_norm, created_at)` join table, kept exactly in sync inside the same
+  transaction as every article create/update/delete, plus a one-time, resumable,
+  **batched** background backfill for existing posts (so a low-RAM VPS holding a
+  large database is never blocked). All four lookups were rewritten to resolve
+  membership through the indexed table; `EXPLAIN QUERY PLAN` confirms each is now
+  an indexed range scan whose cost is bounded by how many posts carry the tag
+  (not by the table size) — and a `CROSS JOIN` pins the tag table as the driver
+  so the planner can never fall back to a full articles scan when a tag is very
+  common. The topic index count became a single `GROUP BY tag` over a covering
+  index instead of loading every article's tags into memory. Verified fast for
+  both rare and very common tags on a 100k-row synthetic catalog.
 
 ### Fixed
 

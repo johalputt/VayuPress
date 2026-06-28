@@ -1441,40 +1441,46 @@ func (a *App) handleFaultStatus(w http.ResponseWriter, r *http.Request) {
 // relatedArticles returns up to limit articles that share at least one tag with
 // the current article, most recent first. The current slug is excluded.
 //
-// Tags are stored as a comma-separated string. A coarse SQL LIKE pre-filter
-// narrows candidates cheaply; exact, comma-delimited token matching is then done
-// in Go so a tag like "go" does not spuriously match "golang", and so a tag that
-// happens to contain LIKE metacharacters ("%", "_") cannot widen the match. We
-// over-fetch (limit*4, capped) before the precise filter to avoid missing rows.
+// Membership is resolved through the indexed article_tags join table (migration
+// 048): the wanted tags are matched by their normalised (lower-cased) form via
+// the tag_norm index, then joined to the articles primary key. This replaces the
+// previous `tags LIKE '%..%'` pre-filter that full-scanned the articles table,
+// so related posts stay fast at 1M+ posts. SELECT DISTINCT collapses the case
+// where an article matches several of the wanted tags.
 func (a *App) relatedArticles(ctx context.Context, currentSlug string, tags []string, limit int) []render.RelatedArticle {
 	if len(tags) == 0 || dbpkg.DB == nil {
 		return nil
 	}
-	want := make(map[string]struct{}, len(tags))
-	args := []interface{}{}
-	clauses := []string{}
+	norms := make([]string, 0, len(tags))
+	seen := make(map[string]struct{}, len(tags))
 	for _, t := range tags {
-		t = strings.TrimSpace(t)
-		if t == "" {
+		n := strings.ToLower(strings.TrimSpace(t))
+		if n == "" {
 			continue
 		}
-		want[strings.ToLower(t)] = struct{}{}
-		// Escape LIKE metacharacters so a tag value cannot act as a wildcard.
-		esc := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(t)
-		clauses = append(clauses, `tags LIKE ? ESCAPE '\'`)
-		args = append(args, "%"+esc+"%")
+		if _, dup := seen[n]; dup {
+			continue
+		}
+		seen[n] = struct{}{}
+		norms = append(norms, n)
 	}
-	if len(clauses) == 0 {
+	if len(norms) == 0 {
 		return nil
 	}
-	overFetch := limit * 4
-	if overFetch > 200 {
-		overFetch = 200
+	args := make([]interface{}, 0, len(norms)+2)
+	placeholders := make([]string, 0, len(norms))
+	for _, n := range norms {
+		placeholders = append(placeholders, "?")
+		args = append(args, n)
 	}
-	args = append(args, currentSlug, overFetch)
+	args = append(args, currentSlug, limit)
 	// Related posts are a public surface — exclude drafts.
-	q := `SELECT title, slug, tags, created_at FROM articles WHERE (` +
-		strings.Join(clauses, " OR ") + `) AND slug != ? AND status='published' ORDER BY created_at DESC LIMIT ?`
+	// CROSS JOIN pins article_tags as the driving table so the query is always
+	// an indexed tag lookup (cost bounded by how many posts carry these tags),
+	// never a full scan of the articles table — which the planner could otherwise
+	// choose when one of the tags is very common, reintroducing the 502.
+	q := `SELECT DISTINCT a.title, a.slug, a.created_at FROM article_tags t CROSS JOIN articles a ON a.id=t.article_id WHERE t.tag_norm IN (` +
+		strings.Join(placeholders, ",") + `) AND a.slug != ? AND a.status='published' ORDER BY t.created_at DESC LIMIT ?`
 	rows, err := dbpkg.Reader().QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil
@@ -1483,19 +1489,7 @@ func (a *App) relatedArticles(ctx context.Context, currentSlug string, tags []st
 	var out []render.RelatedArticle
 	for rows.Next() {
 		var ra render.RelatedArticle
-		var tagsCSV string
-		if err := rows.Scan(&ra.Title, &ra.Slug, &tagsCSV, &ra.CreatedAt); err != nil {
-			continue
-		}
-		// Precise token match: at least one tag must equal a wanted tag.
-		match := false
-		for _, t := range strings.Split(tagsCSV, ",") {
-			if _, ok := want[strings.ToLower(strings.TrimSpace(t))]; ok {
-				match = true
-				break
-			}
-		}
-		if !match {
+		if err := rows.Scan(&ra.Title, &ra.Slug, &ra.CreatedAt); err != nil {
 			continue
 		}
 		out = append(out, ra)

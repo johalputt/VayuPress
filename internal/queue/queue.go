@@ -99,6 +99,10 @@ func processOneJob(workerID int) (empty bool) {
 				a.ID, a.Title, a.Slug, a.Content, strings.Join(a.Tags, ","), a.CreatedAt, a.UpdatedAt); err != nil {
 				return err
 			}
+			// Keep the indexed tag-membership table in sync within the same tx.
+			if err := dbpkg.SyncArticleTagsByIDTx(tx, a.ID, a.CreatedAt, a.Tags); err != nil {
+				return err
+			}
 			if err := writeOutboxEvent(tx, "article.created.v1", events.ArticleCreated{ID: a.ID, Slug: a.Slug, Tags: a.Tags}, fmt.Sprintf("%d", job.ID), job.CorrelationID); err != nil {
 				return err
 			}
@@ -113,6 +117,10 @@ func processOneJob(workerID int) (empty bool) {
 				a.Title, a.Content, strings.Join(a.Tags, ","), a.UpdatedAt, a.Slug); err != nil {
 				return err
 			}
+			// Resolve the id by slug inside the tx and rewrite its tag membership.
+			if err := dbpkg.SyncArticleTagsBySlugTx(tx, a.Slug, a.Tags); err != nil {
+				return err
+			}
 			if err := writeOutboxEvent(tx, "article.updated.v1", events.ArticleUpdated{ID: a.ID, Slug: a.Slug, Tags: a.Tags}, fmt.Sprintf("%d", job.ID), job.CorrelationID); err != nil {
 				return err
 			}
@@ -123,6 +131,10 @@ func processOneJob(workerID int) (empty bool) {
 		}
 	case "delete":
 		execErr = dbpkg.RunInTx(context.Background(), dbpkg.DB, func(tx *sql.Tx) error {
+			// Remove tag membership before the row disappears (slug must still resolve).
+			if err := dbpkg.DeleteArticleTagsBySlugTx(tx, a.Slug); err != nil {
+				return err
+			}
 			if _, err := tx.Exec(`DELETE FROM articles WHERE slug=?`, a.Slug); err != nil {
 				return err
 			}
