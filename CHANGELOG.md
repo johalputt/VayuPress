@@ -107,6 +107,16 @@ smooth, incremental updates (no site-wide rebuilds).
 
 ### Fixed
 
+- **One-click update no longer shows a scary "Unexpected token '<'" error.** When
+  you install an update from VayuOS, the service restarts to activate the new
+  binary — so the apply request (and the auto-check that runs when the panel
+  reloads) can briefly receive an nginx 502/504 HTML page instead of JSON. The UI
+  called `response.json()` on that and surfaced `SyntaxError: Unexpected token
+  '<'`, making a successful update look like a failure. The Update panel now reads
+  responses defensively and treats a non-JSON or dropped response after
+  apply/rollback as the expected restart (waiting for the service to return),
+  while genuine pre-restart errors still report their JSON message.
+
 - **The contact form no longer fails when email delivery isn't configured.** A
   page using the Contact template ([[contact-form]]) rejected every submission
   with "Email delivery is not configured on this site" unless VayuMail/SMTP was
