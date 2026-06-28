@@ -555,6 +555,7 @@ func main() {
 	dbpkg.StartStuckJobReaper(queue.DoneCh)
 	dbpkg.StartJobRetentionSweeper(queue.DoneCh)
 	dbpkg.StartArticleTagsBackfill(queue.DoneCh)
+	dbpkg.StartIndexSelfCheck(queue.DoneCh)
 	a.startMetricsSnapshotCollector()
 	a.startSearchReconciler(queue.DoneCh)
 	a.startScheduler(queue.DoneCh)
