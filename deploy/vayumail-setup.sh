@@ -17,6 +17,14 @@
 # (mobile clients such as the Gmail app refuse the self-signed fallback) and
 # wires it into the service — fully automatic and best-effort.
 #
+# TIP: VayuPress can now provision and auto-renew the mail certificate itself,
+# with no certbot, via native ACME. If port 80 on mail.<domain> is reachable,
+# you can skip the certbot path here and instead set in /etc/vayupress/env:
+#     VAYUOS_MAIL_TLS_ACME=on
+#     VAYUOS_MAIL_ACME_EMAIL=admin@<domain>
+# then restart the service. This script's capability + firewall fixes (below)
+# are still useful either way.
+#
 # Usage:  sudo bash deploy/vayumail-setup.sh
 #
 # Override the service/domain/TLS behaviour if needed:

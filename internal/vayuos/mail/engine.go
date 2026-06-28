@@ -9,6 +9,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net"
+	"net/http"
 	"strings"
 	"time"
 )
@@ -25,12 +27,14 @@ type Engine struct {
 	accounts   *AccountStore
 	smtpd      *SMTPServer
 	imapd      *IMAPServer
-	submitd    *SMTPServer // authenticated submission (587)
-	imapsd     *IMAPServer // implicit-TLS IMAPS (993)
-	pop3d      *POP3Server // POP3 (110, STLS)
-	pop3sd     *POP3Server // implicit-TLS POP3S (995)
-	uids       *UIDStore   // persistent IMAP UID/UIDVALIDITY
-	tlsConf    *tls.Config // shared STARTTLS / implicit-TLS config
+	submitd    *SMTPServer  // authenticated submission (587)
+	imapsd     *IMAPServer  // implicit-TLS IMAPS (993)
+	pop3d      *POP3Server  // POP3 (110, STLS)
+	pop3sd     *POP3Server  // implicit-TLS POP3S (995)
+	uids       *UIDStore    // persistent IMAP UID/UIDVALIDITY
+	tlsConf    *tls.Config  // shared STARTTLS / implicit-TLS config
+	tlsProv    *tlsProvider // provenance/diagnostics for tlsConf
+	acmeHTTP   *http.Server // ACME HTTP-01 challenge responder (ACME mode only)
 	decrypt    DecryptHook
 	inboundErr error
 	done       chan struct{}
@@ -226,8 +230,21 @@ func (e *Engine) Start(ctx context.Context) error {
 	// startup, so outbound delivery and local loopback delivery stay available.
 	if e.cfg.InboundEnabled {
 		// Best-effort TLS for STARTTLS (SMTP/submission/IMAP) + implicit IMAPS.
-		if tc, terr := loadTLSConfig(e.cfg); terr == nil {
-			e.tlsConf = tc
+		// buildTLSProvider selects, in priority order: an operator-supplied
+		// certificate, native ACME auto-provisioning, then a self-signed
+		// fallback. Only the first two are trusted by real mail clients; the
+		// engine surfaces the active mode so the panel can warn when mobile
+		// apps (the Gmail app, Apple Mail) would reject the connection.
+		if tp, terr := buildTLSProvider(e.cfg); terr == nil {
+			e.tlsProv = tp
+			e.tlsConf = tp.config
+			// In ACME mode, serve the HTTP-01 challenge responder and kick off
+			// issuance in the background so the trusted certificate is cached
+			// before the first client connects.
+			if tp.mode == tlsModeACME {
+				e.startACMEChallengeServer(tp)
+				tp.warmUp(ctx)
+			}
 		} else {
 			e.inboundErr = fmt.Errorf("tls: %w", terr)
 		}
@@ -255,20 +272,28 @@ func (e *Engine) Start(ctx context.Context) error {
 		}
 
 		// Implicit-TLS IMAPS (993) and authenticated submission (587) require a
-		// TLS config; both are best-effort and never block startup.
+		// TLS config; all three below are best-effort and never block startup,
+		// but a failed bind is now recorded in inboundErr (rather than silently
+		// dropped) so the panel and logs can explain why a client can't connect.
 		if e.tlsConf != nil {
 			imapsd := NewIMAPServer(e.cfg, e.bridge, e.maildir, e.decrypt).WithImplicitTLS(e.tlsConf, e.cfg.IMAPSListen).WithUIDStore(e.uids)
-			if err := imapsd.Start(ctx); err == nil {
+			if err := imapsd.Start(ctx); err != nil {
+				e.inboundErr = errors.Join(e.inboundErr, fmt.Errorf("imaps (993): %w", err))
+			} else {
 				e.imapsd = imapsd
 			}
 			// Implicit-TLS POP3S (995).
 			pop3sd := NewPOP3Server(e.cfg, e.bridge, e.maildir, e.decrypt).WithImplicitTLS(e.tlsConf, e.cfg.POP3SListen)
-			if err := pop3sd.Start(ctx); err == nil {
+			if err := pop3sd.Start(ctx); err != nil {
+				e.inboundErr = errors.Join(e.inboundErr, fmt.Errorf("pop3s (995): %w", err))
+			} else {
 				e.pop3sd = pop3sd
 			}
 			if e.bridge != nil {
 				submitd := NewSubmissionServer(e.cfg, e.tlsConf, e.bridge.AuthUser, e.relayOutbound)
-				if err := submitd.Start(ctx); err == nil {
+				if err := submitd.Start(ctx); err != nil {
+					e.inboundErr = errors.Join(e.inboundErr, fmt.Errorf("submission (587): %w", err))
+				} else {
 					e.submitd = submitd
 				}
 			}
@@ -304,6 +329,57 @@ func (e *Engine) InboundActive() bool { return e.smtpd != nil }
 // TLSActive reports whether STARTTLS/implicit-TLS is available to the listeners.
 func (e *Engine) TLSActive() bool { return e.tlsConf != nil }
 
+// TLSMode reports the provenance of the certificate the mail listeners present:
+// "static" (operator-provided), "acme" (auto-provisioned), "selfsigned" (the
+// in-memory fallback), or "none" when TLS is unavailable.
+func (e *Engine) TLSMode() string {
+	if e.tlsProv == nil {
+		return string(tlsModeNone)
+	}
+	return string(e.tlsProv.mode)
+}
+
+// TLSTrusted reports whether the active certificate is one mainstream mail
+// clients (the Gmail app, Apple Mail, Thunderbird, Outlook) will accept without
+// a manual exception. A false value is the usual cause of a client's "Couldn't
+// open connection to server" — the ports are up, but the certificate is the
+// self-signed fallback that mobile apps reject.
+func (e *Engine) TLSTrusted() bool { return e.tlsProv != nil && e.tlsProv.trusted() }
+
+// TLSNote returns a short human-readable explanation of the active TLS mode,
+// for display in the operator panel.
+func (e *Engine) TLSNote() string {
+	if e.tlsProv == nil {
+		return "TLS not initialised"
+	}
+	return e.tlsProv.note
+}
+
+// startACMEChallengeServer serves the ACME HTTP-01 challenge responder on
+// cfg.ACMEHTTPAddr (default :80). Issuance and renewal depend on it being
+// reachable from the public internet on port 80 for the mail hostname. Binding
+// is best-effort: a failure (e.g. :80 already held by a reverse proxy) is
+// recorded in inboundErr with remediation guidance, never fatal.
+func (e *Engine) startACMEChallengeServer(tp *tlsProvider) {
+	if tp == nil || tp.httpHandler == nil {
+		return
+	}
+	addr := e.cfg.ACMEHTTPAddr
+	if addr == "" {
+		addr = ":80"
+	}
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		e.inboundErr = errors.Join(e.inboundErr, fmt.Errorf(
+			"acme http-01 listener %s (a trusted certificate cannot be issued until port 80 is reachable for %s — free the port, point a reverse proxy's /.well-known/acme-challenge/ at it, or set VAYUOS_MAIL_ACME_HTTP_ADDR): %w",
+			addr, e.cfg.Hostname, err))
+		return
+	}
+	srv := &http.Server{Handler: tp.httpHandler, ReadHeaderTimeout: 10 * time.Second}
+	e.acmeHTTP = srv
+	go func() { _ = srv.Serve(ln) }()
+}
+
 // SubmissionActive reports whether the authenticated submission (587) listener
 // is running.
 func (e *Engine) SubmissionActive() bool { return e.submitd != nil }
@@ -327,6 +403,9 @@ func (e *Engine) InboundError() error { return e.inboundErr }
 
 // Stop halts the retry worker.
 func (e *Engine) Stop(_ context.Context) error {
+	if e.acmeHTTP != nil {
+		_ = e.acmeHTTP.Close()
+	}
 	if e.smtpd != nil {
 		_ = e.smtpd.Stop(context.Background())
 	}

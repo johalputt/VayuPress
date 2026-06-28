@@ -21,6 +21,7 @@ require (
 require (
 	github.com/cloudflare/circl v1.6.4 // indirect
 	github.com/dlclark/regexp2/v2 v2.2.2 // indirect
+	golang.org/x/text v0.38.0 // indirect
 )
 
 require (

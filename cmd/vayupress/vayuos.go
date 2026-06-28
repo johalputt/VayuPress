@@ -210,6 +210,26 @@ func (a *App) bootVayuOS() {
 		// generates an in-memory self-signed cert so STARTTLS still works.
 		mailCfg.TLSCertFile = config.EnvOr("VAYUOS_MAIL_TLS_CERT", "")
 		mailCfg.TLSKeyFile = config.EnvOr("VAYUOS_MAIL_TLS_KEY", "")
+		// Native ACME (Let's Encrypt) auto-provisioning. When no static cert is
+		// set and VAYUOS_MAIL_TLS_ACME=on, VayuMail obtains and auto-renews a
+		// trusted certificate for mail.<domain> itself — no certbot, no shell
+		// script — so mobile mail apps (the Gmail app, Apple Mail) connect. The
+		// HTTP-01 challenge is answered on VAYUOS_MAIL_ACME_HTTP_ADDR (default
+		// :80); on a bare VPS this just works.
+		if strings.EqualFold(config.EnvOr("VAYUOS_MAIL_TLS_ACME", "off"), "on") {
+			mailCfg.ACMEEnabled = true
+			mailCfg.ACMEEmail = config.EnvOr("VAYUOS_MAIL_ACME_EMAIL", "")
+			mailCfg.ACMECacheDir = config.EnvOr("VAYUOS_MAIL_ACME_CACHE", "")
+			mailCfg.ACMEHTTPAddr = config.EnvOr("VAYUOS_MAIL_ACME_HTTP_ADDR", ":80")
+			mailCfg.ACMEDirectoryURL = config.EnvOr("VAYUOS_MAIL_ACME_DIRECTORY", "")
+			if extra := config.EnvOr("VAYUOS_MAIL_ACME_HOSTS", ""); extra != "" {
+				for _, h := range strings.Split(extra, ",") {
+					if h = strings.TrimSpace(h); h != "" {
+						mailCfg.ACMEExtraHosts = append(mailCfg.ACMEExtraHosts, h)
+					}
+				}
+			}
+		}
 	}
 	// Optional outbound smarthost relay. Sovereign direct-to-MX stays the
 	// default; setting VAYUOS_MAIL_RELAY_HOST routes outbound through an
@@ -256,6 +276,15 @@ func (a *App) bootVayuOS() {
 		} else if a.vayuMail.InboundActive() {
 			logging.LogInfo("vayuos",
 				"VayuMail inbound listening — also ensure the host/cloud firewall allows TCP 25/143/993/110/995/587 and mail."+a.vayuMail.Config().Domain+" resolves to this server")
+		}
+		// A reachable port with an untrusted (self-signed) certificate is the
+		// most common reason a mobile mail app reports "Couldn't open connection
+		// to server": the TCP/TLS layer connects, but the client rejects the
+		// certificate. Make this explicit and actionable at startup.
+		if a.vayuMail.TLSActive() && !a.vayuMail.TLSTrusted() {
+			logging.LogError("vayuos",
+				"VayuMail is serving a SELF-SIGNED certificate — mobile mail apps (Gmail, Apple Mail) will refuse to connect",
+				"enable automatic certificates with VAYUOS_MAIL_TLS_ACME=on, run deploy/vayumail-setup.sh, or set VAYUOS_MAIL_TLS_CERT/VAYUOS_MAIL_TLS_KEY, then restart ("+a.vayuMail.TLSNote()+")")
 		}
 	}
 
