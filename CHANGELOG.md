@@ -10,6 +10,17 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Added
 
+- **VayuOS is now a fully mobile, app-like admin experience.** The panel adapts
+  to phones the way a native app would: a wide tap-to-close navigation drawer
+  (opened from the topbar hamburger *or* a new **Menu** button in the bottom bar)
+  exposes every section, an app-style bottom bar gives one-tap access to Home,
+  Posts, Write and Inbox with an active-route highlight, and its quick links are
+  filtered to match the signed-in role (you never see a link you can't open).
+  Comfortable 44px touch targets on touch devices, safe-area insets so the bottom
+  bar clears the iPhone home indicator, dynamic-viewport (`dvh`) heights, and
+  16px form fields (no more iOS focus-zoom) round out the feel. Wide data tables
+  now fold into clean, labelled cards on small screens instead of forcing a
+  horizontal scroll — applied automatically across the whole panel.
 - **Native automatic mail TLS certificates (ACME / Let's Encrypt).** VayuMail can
   now obtain and auto-renew a trusted certificate for `mail.<domain>` on its own —
   no external certbot run and no shell script. Set `VAYUOS_MAIL_TLS_ACME=on` (and

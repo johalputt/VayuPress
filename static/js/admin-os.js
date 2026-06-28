@@ -74,30 +74,106 @@ function toast(msg, kind) {
 }
 window.vpToast = toast;
 
-/* ── Sidebar toggle (mobile) ─────────────────────────────────── */
+/* ── Sidebar drawer (mobile) ─────────────────────────────────
+   Single source of truth for the slide-in nav. Binds every toggle (the topbar
+   hamburger AND the bottom-bar "Menu" button — anything matching .menu-toggle
+   or [data-action="toggle-sidebar"]). The drawer closes on overlay tap, on Esc,
+   when a nav link is followed, and when the viewport grows back to desktop.
+   Keeping all toggles here avoids the previous double-handling (a second
+   document-level handler that cancelled the open). */
 (function initSidebar() {
-  var btn = $('.menu-toggle');
   var sidebar = $('.sidebar');
+  if (!sidebar) return;
   var overlay = $('.sidebar-overlay');
-  if (!btn || !sidebar) return;
+  var toggles = $$('.menu-toggle, [data-action="toggle-sidebar"]');
 
+  function setExpanded(v) {
+    toggles.forEach(function (b) { b.setAttribute('aria-expanded', v ? 'true' : 'false'); });
+  }
   function open() {
     sidebar.classList.add('open');
     if (overlay) overlay.classList.add('open');
     document.body.style.overflow = 'hidden';
+    setExpanded(true);
   }
   function close() {
     sidebar.classList.remove('open');
     if (overlay) overlay.classList.remove('open');
     document.body.style.overflow = '';
+    setExpanded(false);
+  }
+  function toggle() { sidebar.classList.contains('open') ? close() : open(); }
+
+  toggles.forEach(function (b) {
+    on(b, 'click', function (e) { e.preventDefault(); toggle(); });
+  });
+  if (overlay) on(overlay, 'click', close);
+  $$('.sidebar .nav-link').forEach(function (a) { on(a, 'click', close); });
+  on(document, 'keydown', function (e) { if (e.key === 'Escape') close(); });
+
+  // Collapse the drawer (and unlock scroll) when returning to the desktop layout.
+  var mq = window.matchMedia('(min-width: 769px)');
+  var onChange = function (e) { if (e.matches) close(); };
+  if (mq.addEventListener) mq.addEventListener('change', onChange);
+  else if (mq.addListener) mq.addListener(onChange);
+})();
+
+/* ── Bottom bar: active state + role-aware quick links ───────
+   The drawer is already role-scoped server-side; mirror that on the bottom bar
+   by hiding any quick link whose destination isn't present in the sidebar for
+   this session. Then highlight the item matching the current route. The "Menu"
+   button (no data-nav) is always kept. */
+(function initBottomNav() {
+  var nav = $('.bottom-nav');
+  if (!nav) return;
+  var items = $$('.bottom-nav-item[data-nav]', nav);
+  if (!items.length) return;
+
+  var sideHrefs = $$('.sidebar .nav-link').map(function (a) { return a.getAttribute('href'); });
+  // Only filter when we actually have a sidebar to compare against.
+  if (sideHrefs.length) {
+    items.forEach(function (it) {
+      var href = it.getAttribute('data-nav');
+      if (href && sideHrefs.indexOf(href) === -1) it.hidden = true;
+    });
   }
 
-  btn.addEventListener('click', function () {
-    sidebar.classList.contains('open') ? close() : open();
+  var path = location.pathname;
+  var best = null, bestLen = -1;
+  items.forEach(function (it) {
+    if (it.hidden) return;
+    var href = it.getAttribute('data-nav');
+    if (!href) return;
+    var match = path === href || (href !== '/os' && path.indexOf(href) === 0);
+    if (match && href.length > bestLen) { best = it; bestLen = href.length; }
   });
-  if (overlay) overlay.addEventListener('click', close);
-  document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape') close();
+  if (best) best.setAttribute('aria-current', 'page');
+})();
+
+/* ── Responsive data tables → cards ──────────────────────────
+   Generic, zero-config: for every .table-wrap > table.table, copy each column
+   header into its body cells as data-label and flag the wrapper .vp-stackable.
+   CSS then folds the table into labelled cards on phones. Skips tables that opt
+   out (data-no-stack), have fewer than two columns, or lead with a selection
+   checkbox (management grids that read better as a horizontal scroll). */
+(function initResponsiveTables() {
+  $$('.table-wrap > table.table').forEach(function (table) {
+    var wrap = table.parentElement;
+    if (wrap.hasAttribute('data-no-stack') || table.hasAttribute('data-no-stack')) return;
+
+    var heads = $$('thead th', table);
+    if (heads.length < 2) return;
+    if (heads[0].querySelector('input')) return; // select-all column → keep scroll
+
+    var labels = heads.map(function (th) { return th.textContent.trim(); });
+    $$('tbody tr', table).forEach(function (tr) {
+      var cells = tr.children;
+      if (cells.length !== labels.length) return; // colspan / empty-state rows
+      for (var i = 0; i < cells.length; i++) {
+        if (!cells[i].hasAttribute('data-label')) cells[i].setAttribute('data-label', labels[i]);
+      }
+    });
+    wrap.classList.add('vp-stackable');
   });
 })();
 
@@ -295,16 +371,16 @@ window.vpToast = toast;
   });
 })();
 
-/* ── Data-action dispatcher ──────────────────────────────────── */
+/* ── Data-action dispatcher ──────────────────────────────────
+   Generic click router for [data-action] buttons. Note: 'toggle-sidebar' is
+   intentionally NOT handled here — initSidebar binds those elements directly so
+   the drawer open/close (with overlay + scroll-lock) has a single owner. */
 document.addEventListener('click', function (e) {
   var el = e.target.closest('[data-action]');
   if (!el) return;
   var action = el.dataset.action;
   var actions = {
-    'toggle-sidebar': function () {
-      var sidebar = $('.sidebar');
-      if (sidebar) sidebar.classList.toggle('open');
-    },
+    // (room for future generic actions)
   };
   if (actions[action]) { e.preventDefault(); actions[action](el); }
 });
