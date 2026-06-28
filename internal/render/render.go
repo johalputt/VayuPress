@@ -956,6 +956,9 @@ var articleTmpl = template.Must(template.New("article").Funcs(template.FuncMap{
   <a href="/" class="vayu-nav-brand"><img src="/static/favicon-light.png" alt="" width="24" height="24">{{if .SiteName}}{{.SiteName}}{{else}}VayuPress{{end}}</a>
   <div class="vayu-nav-links">
     {{.NavLinks}}
+    <form class="vayu-search" method="get" action="/search" role="search">
+      <input class="vayu-search-input" type="search" name="q" placeholder="Search…" aria-label="Search posts">
+    </form>
     <button type="button" id="vayu-theme-toggle" class="vayu-theme-toggle" aria-label="Toggle theme">☾</button>
   </div>
 </nav>
@@ -1062,6 +1065,9 @@ var homeTmpl = template.Must(template.New("home").Funcs(homeFuncs).Parse(`<!DOCT
   <a href="/" class="vayu-nav-brand"><img src="/static/favicon-light.png" alt="" width="24" height="24">{{if .SiteName}}{{.SiteName}}{{else}}VayuPress{{end}}</a>
   <div class="vayu-nav-links">
     {{.NavLinks}}
+    <form class="vayu-search" method="get" action="/search" role="search">
+      <input class="vayu-search-input" type="search" name="q" placeholder="Search…" aria-label="Search posts">
+    </form>
     <button type="button" id="vayu-theme-toggle" class="vayu-theme-toggle" aria-label="Toggle theme">☾</button>
     {{if .ShowMembership}}<a href="/members" class="vayu-nav-signin">Sign in</a>
     <a href="/signup" class="vayu-nav-signup">Sign up</a>{{end}}
@@ -1174,6 +1180,99 @@ func RenderHome(domain, version string, articles []HomeArticle, totalCount, page
 		PrevURL:             prevURL,
 		NextURL:             nextURL,
 		Canonical:           canonical,
+	})
+	return buf.String(), err
+}
+
+// SearchHit is a single public search result row.
+type SearchHit struct {
+	Title     string
+	Slug      string
+	Tags      []string
+	CreatedAt time.Time
+}
+
+type searchPage struct {
+	Domain              string
+	Version             string
+	PicoCSSLink         template.HTML
+	CustomCSSLink       template.HTML
+	ArticleCSSLink      template.HTML
+	HighContrastCSSLink template.HTML
+	ThemeCSSLink        template.HTML
+	HeadMeta            template.HTML
+	ThemeToggleJSLink   template.HTML
+	SiteName            string
+	NavLinks            template.HTML
+	Footer              template.HTML
+	Query               string
+	Hits                []SearchHit
+}
+
+var searchTmpl = template.Must(template.New("search").Funcs(homeFuncs).Parse(`<!DOCTYPE html><html lang="en" data-theme="dark"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{if .Query}}Search: {{.Query}} — {{end}}{{if .SiteName}}{{.SiteName}}{{else}}{{.Domain}}{{end}}</title>
+<meta name="robots" content="noindex,follow">
+<meta name="generator" content="VayuPress {{.Version}}">
+{{.PicoCSSLink}}{{.CustomCSSLink}}{{.ArticleCSSLink}}{{.HighContrastCSSLink}}{{.ThemeCSSLink}}{{.HeadMeta}}{{.ThemeToggleJSLink}}
+<link rel="icon" type="image/png" href="/static/favicon-light.png">
+</head><body>
+<a href="#main-content" class="skip-link">Skip to main content</a>
+<div class="container">
+<nav class="vayu-nav" aria-label="Primary">
+  <a href="/" class="vayu-nav-brand"><img src="/static/favicon-light.png" alt="" width="24" height="24">{{if .SiteName}}{{.SiteName}}{{else}}VayuPress{{end}}</a>
+  <div class="vayu-nav-links">
+    {{.NavLinks}}
+    <form class="vayu-search" method="get" action="/search" role="search">
+      <input class="vayu-search-input" type="search" name="q" placeholder="Search…" aria-label="Search posts" value="{{.Query}}">
+    </form>
+    <button type="button" id="vayu-theme-toggle" class="vayu-theme-toggle" aria-label="Toggle theme">☾</button>
+  </div>
+</nav>
+<main id="main-content">
+<section class="vayu-hero"><h1>Search</h1>
+<form class="vayu-search vayu-search--page" method="get" action="/search" role="search">
+  <input class="vayu-search-input" type="search" name="q" placeholder="Search posts…" aria-label="Search posts" value="{{.Query}}" autofocus>
+  <button type="submit" class="vayu-search-btn">Search</button>
+</form></section>
+{{if .Query}}
+  {{if .Hits}}<div class="vayu-section-label">{{len .Hits}} result{{if ne (len .Hits) 1}}s{{end}} for “{{.Query}}”</div>
+  <div class="vayu-post-list">
+  {{range .Hits}}<a class="vayu-post-card" href="/{{.Slug}}">
+    <div class="vayu-post-body">
+      <div class="vayu-post-meta"><time datetime="{{.CreatedAt | shortDate}}">{{.CreatedAt | humanDate}}</time></div>
+      <h2 class="vayu-post-title">{{.Title}}</h2>
+      {{if .Tags}}<div class="vayu-post-meta">{{range .Tags}}<span class="vayu-tag">#{{.}}</span> {{end}}</div>{{end}}
+    </div>
+  </a>{{end}}
+  </div>
+  {{else}}<div class="vayu-empty">No posts found for “{{.Query}}”. Try a different word.</div>{{end}}
+{{else}}<div class="vayu-empty">Type a word above to search the site.</div>{{end}}
+{{.Footer}}
+</main>
+</div></body></html>`))
+
+// RenderSearch renders the public search results page for query, listing hits.
+// Results pages are marked noindex (thin, query-dependent) but follow links so
+// the linked posts are still discoverable.
+func RenderSearch(domain, version, query string, hits []SearchHit) (string, error) {
+	var buf strings.Builder
+	s := getActiveSettings()
+	err := searchTmpl.Execute(&buf, searchPage{
+		Domain:              domain,
+		Version:             version,
+		PicoCSSLink:         PicoCSSLink(),
+		CustomCSSLink:       CustomCSSLink(),
+		ArticleCSSLink:      ArticleCSSLink(),
+		HighContrastCSSLink: HighContrastCSSLink(),
+		ThemeCSSLink:        ThemeCSSLink(),
+		HeadMeta:            headMetaHTML(s),
+		ThemeToggleJSLink:   ThemeToggleJSLink(),
+		SiteName:            s.Name,
+		NavLinks:            navLinksHTML(s.NavJSON),
+		Footer:              footerHTML(s),
+		Query:               query,
+		Hits:                hits,
 	})
 	return buf.String(), err
 }
@@ -2203,6 +2302,39 @@ h1, h2, h3, h4, h5, h6 {
   text-align: center;
   color: var(--pico-muted-color);
   font-size: 0.9375rem;
+}
+
+/* ── Pagination (homepage feed: Newer / Older) ──────────────────────────── */
+/* ── Site search box (public nav + /search page) ────────────────────────── */
+.vayu-search { display: inline-flex; align-items: center; margin: 0; }
+.vayu-search-input {
+  min-width: 0;
+  width: 9rem;
+  max-width: 16rem;
+  padding: 0.4rem 0.7rem;
+  font: inherit;
+  font-size: 0.9rem;
+  color: inherit;
+  background: var(--pico-card-background-color, transparent);
+  border: 1px solid var(--border, rgba(125, 125, 125, 0.28));
+  border-radius: 999px;
+  transition: border-color 0.15s, width 0.15s;
+}
+.vayu-search-input:focus { outline: none; border-color: var(--pico-primary, currentColor); }
+.vayu-search--page { width: 100%; gap: 0.6rem; margin-top: 1rem; }
+.vayu-search--page .vayu-search-input { flex: 1; width: auto; max-width: none; }
+.vayu-search-btn {
+  padding: 0.5rem 1.1rem;
+  font: inherit;
+  font-weight: 600;
+  color: #fff;
+  background: var(--pico-primary, #0284c7);
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+}
+@media (max-width: 600px) {
+  .vayu-search-input { width: 100%; max-width: none; }
 }
 
 /* ── Pagination (homepage feed: Newer / Older) ──────────────────────────── */

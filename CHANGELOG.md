@@ -10,6 +10,19 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Added
 
+- **Site search box on the public website.** The public nav now carries a search
+  box, and a new `/search` page renders results server-side (crawlable, no JS
+  required) using the same engine as the API — Meilisearch when enabled and
+  reachable, otherwise the built-in SQLite search. So readers can actually search
+  the site, and the Meilisearch toggle now has a visible front-end.
+- **Pin a post directly from the Posts manager.** Each row in VayuOS → Posts now
+  has a one-click **Pin/Unpin** button and a 📌 Pinned badge (backed by
+  `POST /os/api/posts/pin`, flipping the same `featured` flag as the editor).
+  Pinned posts immediately surface in the Trending & pinned widget on the
+  homepage and under every post (the trending cache + public caches are purged on
+  pin/unpin). This is also what makes the trending/pinned widget visible — pin a
+  few posts and they appear right away, while the 7/30-day trending list fills in
+  from analytics as views accrue.
 - **Transactional email now sends through the built-in VayuMail engine.** On a
   deployment with no external SMTP configured, sign-in (magic link), welcome,
   newsletter double-opt-in, comment and payment emails were silently dropped.

@@ -329,6 +329,35 @@ func (a *App) renderHomeAt(w http.ResponseWriter, r *http.Request, page int) {
 	fmt.Fprint(w, html)
 }
 
+// handleSearchPage renders the public search results page. It backs the site
+// search box (nav + /search) using the same engine as the API — Meilisearch
+// when enabled and reachable, otherwise the built-in SQLite search — so visitors
+// get a real, server-rendered (crawlable, JS-free) results list.
+func (a *App) handleSearchPage(w http.ResponseWriter, r *http.Request) {
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	if len(q) > 120 {
+		q = q[:120]
+	}
+	var hits []render.SearchHit
+	if q != "" && a.search != nil {
+		ctx, cancel := context.WithTimeout(r.Context(), 6*time.Second)
+		defer cancel()
+		if res, err := a.search.Search(ctx, q, 30); err == nil {
+			for _, h := range res.Hits {
+				hits = append(hits, render.SearchHit{Title: h.Title, Slug: h.Slug, Tags: h.Tags, CreatedAt: h.CreatedAt})
+			}
+		}
+	}
+	out, err := render.RenderSearch(config.Cfg.Domain, Version, q, hits)
+	if err != nil {
+		http.Error(w, "render error", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("X-Robots-Tag", "noindex")
+	fmt.Fprint(w, out)
+}
+
 // handleNotFound renders the branded 404 page.
 func (a *App) handleNotFound(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")

@@ -220,6 +220,44 @@ func (a *App) handleOSPostStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, http.StatusOK, map[string]string{"status": status, "slug": slug})
 }
 
+// handleOSPostPin pins or unpins (features) a post directly from the manager,
+// flipping the same `featured` flag the editor exposes as "Feature this post".
+// Pinned posts surface in the public Trending & pinned widget (homepage + under
+// every post), so we drop the trending cache and purge public caches so the
+// change appears immediately.
+func (a *App) handleOSPostPin(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Slug   string `json:"slug"`
+		Pinned bool   `json:"pinned"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "bad-json", "Invalid request body", "")
+		return
+	}
+	slug := strings.TrimSpace(body.Slug)
+	if slug == "" {
+		writeAPIError(w, r, http.StatusBadRequest, "bad-input", "a slug is required", "")
+		return
+	}
+	var tagsCSV string
+	if err := dbpkg.DB.QueryRowContext(r.Context(), `SELECT COALESCE(tags,'') FROM articles WHERE slug=?`, slug).Scan(&tagsCSV); err != nil {
+		writeAPIError(w, r, http.StatusNotFound, "not-found", "No article with that slug", "")
+		return
+	}
+	featured := 0
+	if body.Pinned {
+		featured = 1
+	}
+	if _, err := dbpkg.WDB.Exec(`UPDATE articles SET featured=?, updated_at=? WHERE slug=?`, featured, time.Now().UTC(), slug); err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "update-error", err.Error(), "")
+		return
+	}
+	// Refresh the public surfaces and the memoised trending/pinned payload.
+	invalidateTrendingCache()
+	render.CachePurge(slug, splitCSVTags(tagsCSV), generateSitemap, generateRSS, generateRobots)
+	writeJSON(w, r, http.StatusOK, map[string]bool{"pinned": body.Pinned})
+}
+
 // handleOSPostDelete permanently removes a post (or page) from the VayuOS
 // manager. It is synchronous so the list reflects the deletion immediately:
 // the article row carries its own blocks_json + publishing-options columns, so

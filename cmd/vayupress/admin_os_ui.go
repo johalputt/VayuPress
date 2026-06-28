@@ -313,6 +313,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/settings", a.handleOSSettingsAPI)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/posts/quick-create", a.handleOSQuickCreatePost)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/posts/status", a.handleOSPostStatus)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/posts/pin", a.handleOSPostPin)
 		pr.With(auth.CSRFTokenMiddleware).Delete("/os/api/posts/{slug}", a.handleOSPostDelete)
 		// Session-friendly branding (favicon) upload — the /admin/theme/favicon
 		// original is in the API-key-only group, so a browser operator can't reach
@@ -1410,6 +1411,7 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 		Title, Slug, Status string
 		Tags                []string
 		Updated             time.Time
+		Featured            bool
 	}
 	var posts []postRow
 	listWhere := append([]string{}, where...)
@@ -1427,13 +1429,15 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 	listArgs = append(listArgs, osPostsPageSize, offset)
 	if dbpkg.DB != nil {
 		if rows, err := dbpkg.Reader().QueryContext(ctx,
-			`SELECT title,slug,COALESCE(tags,''),updated_at,COALESCE(status,'published') FROM articles`+listClause+` ORDER BY created_at DESC LIMIT ? OFFSET ?`, listArgs...); err == nil {
+			`SELECT title,slug,COALESCE(tags,''),updated_at,COALESCE(status,'published'),COALESCE(featured,0) FROM articles`+listClause+` ORDER BY created_at DESC LIMIT ? OFFSET ?`, listArgs...); err == nil {
 			defer rows.Close()
 			for rows.Next() {
 				var p postRow
 				var tagsCSV string
-				if rows.Scan(&p.Title, &p.Slug, &tagsCSV, &p.Updated, &p.Status) == nil {
+				var featured int
+				if rows.Scan(&p.Title, &p.Slug, &tagsCSV, &p.Updated, &p.Status, &featured) == nil {
 					p.Tags = splitCSVTags(tagsCSV)
+					p.Featured = featured != 0
 					posts = append(posts, p)
 				}
 			}
@@ -1480,10 +1484,18 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 				// A draft is hidden from the public site (previewed in the editor).
 				viewBtn = ""
 			}
-			rows += `<tr data-post-row data-status="` + p.Status + `">
+			// Pin (featured) state — drives the trending/pinned widgets on the
+			// public site. Pinning toggles the same `featured` flag as the editor.
+			pinLabel, pinTo := "Pin", "1"
+			pinnedBadge := ""
+			if p.Featured {
+				pinLabel, pinTo = "Unpin", "0"
+				pinnedBadge = ` <span class="chip" title="Pinned to the homepage and trending widget">📌 Pinned</span>`
+			}
+			rows += `<tr data-post-row data-status="` + p.Status + `" data-featured="` + pinTo + `">
   <td><input type="checkbox" data-post-select value="` + esc + `" aria-label="Select ` + html.EscapeString(p.Title) + `"></td>
   <td class="row-title">
-    <a href="/os/editor/` + esc + `">` + html.EscapeString(p.Title) + `</a>
+    <a href="/os/editor/` + esc + `">` + html.EscapeString(p.Title) + `</a>` + pinnedBadge + `
     <div class="row-meta">/` + esc + `</div>
   </td>
   <td>` + statusPill + `</td>
@@ -1492,6 +1504,7 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
   <td class="row-actions">
     <a class="btn btn--ghost btn--sm" href="/os/editor/` + esc + `">Edit</a>
     ` + viewBtn + `
+    <button type="button" class="btn btn--ghost btn--sm" data-post-pin data-slug="` + esc + `" data-to="` + pinTo + `">` + pinLabel + `</button>
     <button type="button" class="btn btn--ghost btn--sm" data-post-toggle data-slug="` + esc + `" data-to="` + toggleTo + `">` + toggleLabel + `</button>
     <button type="button" class="btn btn--ghost btn--sm" data-post-delete data-slug="` + esc + `" data-title="` + html.EscapeString(p.Title) + `">Delete</button>
   </td>
@@ -1552,6 +1565,15 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 function csrf(){var m=document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);return m?m[1]:'';}
 var msg=document.getElementById('action-msg');
 function show(t,e){if(!msg)return;msg.textContent=t;msg.classList.toggle('is-error',!!e);msg.classList.add('visible');}
+document.querySelectorAll('[data-post-pin]').forEach(function(b){
+  b.addEventListener('click',function(){
+    b.disabled=true;
+    fetch('/os/api/posts/pin',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},body:JSON.stringify({slug:b.getAttribute('data-slug'),pinned:b.getAttribute('data-to')==='1'})})
+      .then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d};});})
+      .then(function(res){if(res.ok){show(res.d.pinned?'Pinned':'Unpinned',false);setTimeout(function(){location.reload();},500);}else{b.disabled=false;show(res.d.detail||res.d.title||'Error',true);}})
+      .catch(function(e){b.disabled=false;show('Error: '+e,true);});
+  });
+});
 document.querySelectorAll('[data-post-toggle]').forEach(function(b){
   b.addEventListener('click',function(){
     b.disabled=true;

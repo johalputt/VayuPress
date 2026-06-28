@@ -400,6 +400,9 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	// Public, cookieless JSON for the Trending & pinned-posts widget on the
 	// homepage and under every post (hydrated client-side by trending.js).
 	r.Get("/api/trending", a.handleTrendingJSON)
+	// Public site search page (the nav search box submits here). chi matches this
+	// static route ahead of the "/{slug}" catch-all.
+	r.Get("/search", a.handleSearchPage)
 	// Public taxonomy pages — the topic index and per-tag listings. Registered
 	// before the single-segment "/{slug}" catch-all so "/tags" and "/tags/{tag}"
 	// resolve here instead of falling through to a 404 (the two-segment form
