@@ -86,10 +86,16 @@ func (a *App) handleMemberLogin(w http.ResponseWriter, r *http.Request) {
 	email := strings.TrimSpace(strings.ToLower(emailRaw))
 
 	// Always behave the same way regardless of whether the email is known, so
-	// the endpoint cannot enumerate members.
+	// the endpoint cannot enumerate members. A brand-new address additionally
+	// gets a one-time welcome email alongside its sign-in link.
+	_, getErr := a.members.Get(r.Context(), email)
+	isNew := getErr != nil
 	if _, err := a.members.Upsert(r.Context(), email); err == nil {
 		if token, err := a.members.CreateLoginToken(r.Context(), email); err == nil {
 			go a.sendMemberMagicLink(email, token)
+		}
+		if isNew {
+			go a.sendMemberWelcome(email)
 		}
 	}
 	if formPost {
@@ -113,6 +119,22 @@ func (a *App) sendMemberMagicLink(addr, token string) {
 	})
 	if err := a.mailer.Send(email.Message{To: addr, Subject: msg.Subject, Text: msg.Text, HTML: msg.HTML}); err != nil {
 		logging.LogError("members", "magic link email failed", err.Error())
+	}
+}
+
+// sendMemberWelcome emails a one-time welcome to a newly signed-up member,
+// honouring any operator-customised Welcome template (Tier 4). It carries no
+// token — it is purely a greeting — and is sent in addition to the sign-in link.
+func (a *App) sendMemberWelcome(addr string) {
+	if a.mailer == nil {
+		return
+	}
+	msg := a.renderEmail(emailtmpl.Welcome, map[string]interface{}{
+		"Domain": config.Cfg.Domain,
+		"Link":   "https://" + config.Cfg.Domain + "/members/account",
+	})
+	if err := a.mailer.Send(email.Message{To: addr, Subject: msg.Subject, Text: msg.Text, HTML: msg.HTML}); err != nil {
+		logging.LogError("members", "welcome email failed", err.Error())
 	}
 }
 

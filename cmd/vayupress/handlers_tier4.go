@@ -59,6 +59,7 @@ func (a *App) broadcastEvent(eventType string, payload interface{}) {
 func (a *App) handleEmailTemplateList(w http.ResponseWriter, r *http.Request) {
 	kinds := []emailtmpl.Kind{
 		emailtmpl.MagicLink,
+		emailtmpl.Welcome,
 		emailtmpl.CommentApproved,
 		emailtmpl.NewsletterConfirm,
 	}
@@ -98,6 +99,7 @@ func (a *App) handleEmailTemplateSet(w http.ResponseWriter, r *http.Request) {
 	kind := emailtmpl.Kind(chi.URLParam(r, "kind"))
 	validKinds := map[emailtmpl.Kind]bool{
 		emailtmpl.MagicLink:         true,
+		emailtmpl.Welcome:           true,
 		emailtmpl.CommentApproved:   true,
 		emailtmpl.NewsletterConfirm: true,
 	}
