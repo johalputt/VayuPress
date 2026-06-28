@@ -8,6 +8,30 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Fixed
+
+- **Mail apps can finally connect to VayuMail behind a reverse proxy (IMAP/SMTP
+  TLS).** When nginx (or any proxy) already owns ports 80/443, VayuMail's native
+  ACME could not complete its HTTP-01 challenge, so it silently fell back to a
+  **self-signed certificate** on the mail ports — which mobile and desktop mail
+  apps (the Gmail app, Apple Mail, Thunderbird, Outlook) reject with *"Couldn't
+  open connection to server"*, even though 993/143/587 were online. Three changes
+  make trusted certificates reliable in this very common topology:
+  - **Operator/Let's Encrypt certificates now hot-reload.** A file-based
+    certificate (`VAYUOS_MAIL_TLS_CERT`/`VAYUOS_MAIL_TLS_KEY`) is served through a
+    reloading loader that picks up a renewed certificate on disk within ~30s, on
+    the next handshake — **no service restart required**. Previously a renewed
+    cert kept serving the stale copy until the next restart, a silent path back to
+    an eventually-expired certificate.
+  - **New `deploy/nginx-vayumail.conf`** adds the missing `server_name
+    mail.<domain>` :80 vhost that serves the ACME challenge from the shared
+    `/var/cache/vayupress` webroot, so `certbot --webroot -d mail.<domain>`
+    succeeds and auto-renews with **zero nginx downtime** (the existing site vhost
+    only answered for the apex/`www` host, so mail-host challenges 404'd).
+  - **`deploy/vayumail-setup.sh` is now webroot-first.** It installs the mail
+    vhost, issues the certificate over the webroot with no downtime, and only
+    falls back to a brief standalone stop/start if that path is unavailable.
+
 ### Added
 
 - **Site search box on the public website.** The public nav now carries a search
