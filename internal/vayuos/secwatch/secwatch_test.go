@@ -55,6 +55,43 @@ func TestDetectsUpdate(t *testing.T) {
 	}
 }
 
+func TestShortNameSkipsMajorSuffix(t *testing.T) {
+	t.Parallel()
+	cases := map[string]string{
+		"github.com/go-chi/chi/v5":           "chi",
+		"github.com/ProtonMail/go-crypto":    "go-crypto",
+		"github.com/cloudflare/circl":        "circl",
+		"github.com/mattn/go-sqlite3":        "go-sqlite3",
+		"github.com/microcosm-cc/bluemonday": "bluemonday",
+		"example.com/foo/v10":                "foo",
+	}
+	for module, want := range cases {
+		if got := shortName(module); got != want {
+			t.Errorf("shortName(%q) = %q, want %q", module, got, want)
+		}
+	}
+}
+
+func TestIsNewer(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		latest, current string
+		want            bool
+	}{
+		{"v1.4.2", "v1.4.1", true},
+		{"v2.0.0", "v1.9.9", true},
+		{"v1.14.47", "v1.14.47", false}, // equal → not newer
+		{"v1.4.0", "v1.4.1", false},     // older → not newer
+		{"v1.6.4", "v1.6.4", false},
+		{"v5.3.0", "v5.3.0", false},
+	}
+	for _, c := range cases {
+		if got := isNewer(c.latest, c.current); got != c.want {
+			t.Errorf("isNewer(%q,%q) = %v, want %v", c.latest, c.current, got, c.want)
+		}
+	}
+}
+
 func TestNormalizeVer(t *testing.T) {
 	t.Parallel()
 	if normalizeVer("v1.4.1") != normalizeVer("1.4.1") {

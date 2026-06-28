@@ -136,6 +136,16 @@ smooth, incremental updates (no site-wide rebuilds).
   apply/rollback as the expected restart (waiting for the service to return),
   while genuine pre-restart errors still report their JSON message.
 
+- **Security-updates tab: clearer dependency names and honest status.** The
+  tracked-dependencies table showed `chi/v5` as the meaningless component name
+  `v5` (it used the last module-path element), and marked every row a green "up
+  to date" even when the watcher was disabled and the latest version was unknown.
+  Component names now skip the major-version suffix (so it reads `chi`), a row
+  whose upstream version hasn't been fetched shows a neutral **"not checked"**
+  instead of a false "up to date", and "update available" is now decided by a
+  semver-aware comparison (only when the upstream release is actually newer),
+  removing false positives on pinned/pseudo-versions.
+
 - **The contact form no longer fails when email delivery isn't configured.** A
   page using the Contact template ([[contact-form]]) rejected every submission
   with "Email delivery is not configured on this site" unless VayuMail/SMTP was
