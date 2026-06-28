@@ -82,3 +82,45 @@ func TestHomepagePagination(t *testing.T) {
 		}
 	}
 }
+
+// TestHomepageHasSearchBox confirms the public nav exposes a search box wired to
+// the /search page.
+func TestHomepageHasSearchBox(t *testing.T) {
+	SetActiveSettings(SiteSettings{Name: "Acme"})
+	t.Cleanup(func() { SetActiveSettings(SiteSettings{}) })
+	out, err := RenderHome("example.com", "1.0.0", nil, 0, 1, 1)
+	if err != nil {
+		t.Fatalf("RenderHome: %v", err)
+	}
+	for _, want := range []string{`class="vayu-search"`, `action="/search"`, `name="q"`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("homepage nav missing search box element %q", want)
+		}
+	}
+}
+
+// TestRenderSearch verifies the results page lists hits and prefills the query,
+// and shows a friendly empty state for a no-match query.
+func TestRenderSearch(t *testing.T) {
+	SetActiveSettings(SiteSettings{Name: "Acme"})
+	t.Cleanup(func() { SetActiveSettings(SiteSettings{}) })
+
+	hits := []SearchHit{{Title: "Hello World", Slug: "hello-world"}}
+	out, err := RenderSearch("example.com", "1.0.0", "hello", hits)
+	if err != nil {
+		t.Fatalf("RenderSearch: %v", err)
+	}
+	for _, want := range []string{"Hello World", `href="/hello-world"`, `value="hello"`, "noindex"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("search page missing %q", want)
+		}
+	}
+
+	empty, err := RenderSearch("example.com", "1.0.0", "zzz", nil)
+	if err != nil {
+		t.Fatalf("RenderSearch empty: %v", err)
+	}
+	if !strings.Contains(empty, "No posts found") {
+		t.Error("expected an empty-state message for a no-match query")
+	}
+}
