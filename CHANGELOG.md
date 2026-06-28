@@ -51,6 +51,16 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Fixed
 
+- **The contact form no longer fails when email delivery isn't configured.** A
+  page using the Contact template ([[contact-form]]) rejected every submission
+  with "Email delivery is not configured on this site" unless VayuMail/SMTP was
+  set up — so visitors on a site without outbound email saw an error and their
+  message was lost, even though it could have been stored. Submissions are now
+  always saved to the Messages inbox (the durable record the operator reads in
+  `/os/messages`); emailing the operator and auto-replying to the visitor are
+  best-effort and only happen when a contact address and mailer are configured. A
+  submission is refused only if it can be neither stored nor emailed.
+
 - **Opening the Posts tab no longer 502s on a large catalog (the real fix).** The
   Posts manager counts posts with `SELECT status, COUNT(1) FROM articles WHERE
   is_page=0 GROUP BY status`, and the homepage/feeds filter on `is_page` **and**

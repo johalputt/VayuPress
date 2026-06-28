@@ -73,84 +73,103 @@ func (a *App) handleContactSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Recipient must be configured by the operator.
-	recipient := ""
-	if a.siteSettings != nil {
-		recipient = strings.TrimSpace(a.siteSettings.Get(r.Context(), settings.KeyContactEmail))
-	}
-	if recipient == "" {
-		writeAPIError(w, r, http.StatusServiceUnavailable, "contact-unconfigured", "Contact form is not configured yet", "")
-		return
-	}
-	if a.mailer == nil || !a.mailer.Enabled() {
-		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-unconfigured", "Email delivery is not configured on this site", "")
-		return
-	}
-
-	// Persist the message first so it survives even if SMTP delivery fails — the
-	// /os inbox is the durable record. Best-effort: a storage hiccup must not
-	// block delivery of an otherwise-valid message.
+	// Persist the message first — the /os inbox (Messages tab) is the durable
+	// record of every submission. Emailing the operator and auto-replying to the
+	// visitor are best-effort niceties layered on top: a site WITHOUT VayuMail/
+	// SMTP configured still collects contact messages, and the operator reads them
+	// in the Messages tab. (Previously the handler refused the whole submission
+	// when email delivery wasn't configured, so visitors saw an error and the
+	// message was lost — even though it could have been stored.)
+	persisted := false
 	if dbpkg.DB != nil {
 		if _, err := dbpkg.WDB.ExecContext(r.Context(),
 			`INSERT INTO contact_messages(id,name,email,message,page,ip,is_read,created_at) VALUES(?,?,?,?,?,?,0,?)`,
 			newUUID(), name, from, message, firstNonEmptyContact(body.Page, contactPageRef(r)), ip, time.Now().UTC()); err != nil {
 			logging.LogError("contact", "persist failed", err.Error())
+		} else {
+			persisted = true
 		}
 	}
 
-	// Plain-text body; the sender sanitises control characters. The visitor's
-	// address goes in the body (the From header stays the site's own identity so
-	// SPF/DKIM remain valid); operators just hit reply to the quoted address.
-	text := "New contact-form message\n\n" +
-		"From: " + name + " <" + from + ">\n" +
-		"Site: " + r.Host + "\n\n" +
-		message + "\n"
+	// The operator's contact address + an enabled mailer are needed only to EMAIL
+	// the submission, not to accept it.
+	recipient := ""
+	if a.siteSettings != nil {
+		recipient = strings.TrimSpace(a.siteSettings.Get(r.Context(), settings.KeyContactEmail))
+	}
+	mailReady := recipient != "" && a.mailer != nil && a.mailer.Enabled()
 
-	if err := a.mailer.Send(email.Message{
-		To:      recipient,
-		Subject: "Contact form: " + name,
-		Text:    text,
-	}); err != nil {
-		logging.LogError("contact", "delivery failed", err.Error())
-		writeAPIError(w, r, http.StatusBadGateway, "send-failed", "Could not send your message — please try again later", "")
+	// If the message could be neither stored nor emailed it would simply be lost,
+	// so only then refuse it (telling the visitor to reach out another way).
+	if !persisted && !mailReady {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "contact-unavailable",
+			"This site can't receive contact messages right now — please contact the site owner directly.", "")
 		return
 	}
 
-	// Auto-reply to the visitor (best-effort; never fails their request). Enabled
-	// by default — only an explicit "off" suppresses it.
-	if a.siteSettings == nil || a.siteSettings.Get(r.Context(), settings.KeyContactAutoReply) != "off" {
-		siteName := r.Host
-		if a.siteSettings != nil {
-			if n := strings.TrimSpace(a.siteSettings.Get(r.Context(), settings.KeySiteName)); n != "" {
-				siteName = n
+	if mailReady {
+		// Plain-text body; the sender sanitises control characters. The visitor's
+		// address goes in the body (the From header stays the site's own identity
+		// so SPF/DKIM remain valid); operators just hit reply to the quoted address.
+		text := "New contact-form message\n\n" +
+			"From: " + name + " <" + from + ">\n" +
+			"Site: " + r.Host + "\n\n" +
+			message + "\n"
+
+		if err := a.mailer.Send(email.Message{
+			To:      recipient,
+			Subject: "Contact form: " + name,
+			Text:    text,
+		}); err != nil {
+			logging.LogError("contact", "delivery failed", err.Error())
+			// The message is already in the inbox, so a delivery failure must not
+			// fail the visitor. Only when nothing was persisted do we surface it.
+			if !persisted {
+				writeAPIError(w, r, http.StatusBadGateway, "send-failed", "Could not send your message — please try again later", "")
+				return
 			}
 		}
-		// Per-page custom confirmation, if the page's marker carries one
-		// ([[contact-form: …]]); otherwise the default line. The page content is
-		// the single source of truth, re-parsed here at submit time.
-		intro := "Thanks for getting in touch — we've received your message and will get back to you soon."
-		if custom := a.pageContactReply(r.Context(), pageSlugFromPath(firstNonEmptyContact(body.Page, contactPageRef(r)))); custom != "" {
-			intro = custom
-		}
-		reply := "Hi " + name + ",\n\n" +
-			intro + "\n\n" +
-			"For your records, here's what you sent:\n\n" +
-			message + "\n\n" +
-			"— " + siteName + "\n"
-		if err := a.mailer.Send(email.Message{
-			To:      from,
-			Subject: "We got your message — " + siteName,
-			Text:    reply,
-		}); err != nil {
-			// A failed confirmation must not fail the visitor's submission — the
-			// operator already has the message. Log and move on.
-			logging.LogError("contact", "auto-reply failed", err.Error())
+
+		// Auto-reply to the visitor (best-effort; never fails their request).
+		// Enabled by default — only an explicit "off" suppresses it.
+		if a.siteSettings == nil || a.siteSettings.Get(r.Context(), settings.KeyContactAutoReply) != "off" {
+			siteName := r.Host
+			if a.siteSettings != nil {
+				if n := strings.TrimSpace(a.siteSettings.Get(r.Context(), settings.KeySiteName)); n != "" {
+					siteName = n
+				}
+			}
+			// Per-page custom confirmation, if the page's marker carries one
+			// ([[contact-form: …]]); otherwise the default line. The page content is
+			// the single source of truth, re-parsed here at submit time.
+			intro := "Thanks for getting in touch — we've received your message and will get back to you soon."
+			if custom := a.pageContactReply(r.Context(), pageSlugFromPath(firstNonEmptyContact(body.Page, contactPageRef(r)))); custom != "" {
+				intro = custom
+			}
+			reply := "Hi " + name + ",\n\n" +
+				intro + "\n\n" +
+				"For your records, here's what you sent:\n\n" +
+				message + "\n\n" +
+				"— " + siteName + "\n"
+			if err := a.mailer.Send(email.Message{
+				To:      from,
+				Subject: "We got your message — " + siteName,
+				Text:    reply,
+			}); err != nil {
+				// A failed confirmation must not fail the visitor's submission — the
+				// operator already has the message. Log and move on.
+				logging.LogError("contact", "auto-reply failed", err.Error())
+			}
 		}
 	}
 
+	outcome := "stored to inbox"
+	if mailReady {
+		outcome = "stored and emailed"
+	}
 	logging.LogJSON(logging.LogFields{
 		Level: "info", Component: "contact", Severity: "info",
-		Msg: "contact message delivered", RequestID: getRequestID(r),
+		Msg: "contact message " + outcome, RequestID: getRequestID(r),
 	})
 	writeJSON(w, r, http.StatusOK, map[string]string{"status": "ok"})
 }
