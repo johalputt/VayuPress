@@ -70,6 +70,12 @@ func (a *App) toolRegistry() []toolModule {
 			ready:   func(a *App) bool { return a.webmentionStore != nil },
 		},
 		{
+			ID: "trending", Name: "Trending & pinned posts", Category: "Engagement", Icon: "🔥",
+			Desc:    "Show a trending-posts widget (most-viewed over the last 7/30 days, from the built-in analytics) plus your pinned posts on the homepage and under every post. Pin a post with “Feature this post” in the editor.",
+			FlagKey: settings.KeyFeatureTrending,
+			ready:   func(a *App) bool { return a.analytics != nil },
+		},
+		{
 			ID: "collections", Name: "Collections", Category: "Content", Icon: "📚",
 			Desc:  "Group posts into ordered series and reading lists.",
 			ready: func(a *App) bool { return a.collectionStore != nil },

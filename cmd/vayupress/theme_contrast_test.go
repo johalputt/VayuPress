@@ -86,7 +86,9 @@ func TestThemeEditorCoversSettingsAllowlist(t *testing.T) {
 		settings.KeyFeatureSponsors:  true,
 		// The Meilisearch backend is toggled in Tools & Plugins, not the theme
 		// editor.
-		settings.KeyFeatureMeili:          true,
+		settings.KeyFeatureMeili: true,
+		// The Trending & pinned-posts widget is toggled in Tools & Plugins.
+		settings.KeyFeatureTrending:       true,
 		settings.KeyPayDirectInstructions: true,
 		settings.KeyPayCurrency:           true,
 		settings.KeyPaySupportEmail:       true,

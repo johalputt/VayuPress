@@ -54,6 +54,53 @@ type PathCount struct {
 	Views int64  `json:"views"`
 }
 
+// TrendingArticle is a published article ranked by its view total over a window,
+// joined back from the analytics path ("/<slug>") to the article record so the
+// caller gets a ready-to-render title and cover image.
+type TrendingArticle struct {
+	Slug  string `json:"slug"`
+	Title string `json:"title"`
+	Image string `json:"image"`
+	Views int64  `json:"views"`
+}
+
+// TrendingArticles returns the most-viewed published, non-page articles over the
+// trailing `days` days (inclusive of today), highest first. Views come from the
+// cookieless daily aggregate (analytics_daily, path "/<slug>"); the join to
+// articles filters to live posts and supplies the title + feature image. Ties
+// break by recency so a fresh post outranks an equally-viewed older one.
+func (s *Store) TrendingArticles(ctx context.Context, days, limit int) ([]TrendingArticle, error) {
+	if days <= 0 {
+		days = 7
+	}
+	if limit <= 0 {
+		limit = 10
+	}
+	from := time.Now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT a.slug, a.title, COALESCE(a.feature_image,''), SUM(d.views) AS v
+		FROM analytics_daily d
+		JOIN articles a ON a.slug = SUBSTR(d.path, 2)
+		WHERE d.day >= ? AND d.path LIKE '/%'
+		  AND a.status = 'published' AND a.is_page = 0
+		GROUP BY a.slug, a.title, a.feature_image
+		ORDER BY v DESC, a.created_at DESC
+		LIMIT ?`, from, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]TrendingArticle, 0, limit)
+	for rows.Next() {
+		var t TrendingArticle
+		if err := rows.Scan(&t.Slug, &t.Title, &t.Image, &t.Views); err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
 // HostCount is a referrer host with its hit total over the queried window.
 type HostCount struct {
 	Host string `json:"host"`

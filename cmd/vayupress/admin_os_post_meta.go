@@ -95,6 +95,11 @@ func savePostMeta(ctx context.Context, slug string, m PostMeta) error {
 		strings.TrimSpace(m.OGTitle), strings.TrimSpace(m.OGDescription), strings.TrimSpace(m.OGImage),
 		strings.TrimSpace(m.TwitterTitle), strings.TrimSpace(m.TwitterDescription), strings.TrimSpace(m.TwitterImage),
 		featured, isPage, slug)
+	if err == nil {
+		// A pin/unpin (featured) change must surface promptly in the public
+		// Trending & pinned widget, so drop its memoised payload.
+		invalidateTrendingCache()
+	}
 	return err
 }
 

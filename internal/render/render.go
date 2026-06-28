@@ -985,8 +985,9 @@ var articleTmpl = template.Must(template.New("article").Funcs(template.FuncMap{
 </section>{{end}}
 {{if .CommentsEnabled}}<section id="vayu-comments" class="vayu-comments" data-slug="{{.Slug}}" aria-label="Comments"></section>{{end}}
 {{if .ContactForm}}<section id="vayu-contact" class="vayu-contact" aria-label="Contact form"></section>{{end}}
+{{if not .IsPage}}<section class="vayu-trending" data-vayu-trending hidden aria-label="Trending and pinned posts"></section>{{end}}
 {{.Footer}}
-</main></div>{{if .CommentsEnabled}}{{.CommentsJSLink}}{{end}}{{if .ContactForm}}{{.ContactJSLink}}{{end}}</body></html>`))
+</main></div>{{if .CommentsEnabled}}{{.CommentsJSLink}}{{end}}{{if .ContactForm}}{{.ContactJSLink}}{{end}}{{if not .IsPage}}<script defer src="/static/js/trending.js"></script>{{end}}</body></html>`))
 
 // HomeArticle is a single entry rendered on the public homepage index.
 type HomeArticle struct {
@@ -1087,9 +1088,10 @@ var homeTmpl = template.Must(template.New("home").Funcs(homeFuncs).Parse(`<!DOCT
   <span class="vayu-page-status">Page {{.Page}} of {{.TotalPages}}</span>
   {{if .HasNext}}<a class="vayu-page-link" rel="next" href="{{.NextURL}}">Older →</a>{{else}}<span class="vayu-page-link is-disabled" aria-disabled="true">Older →</span>{{end}}
 </nav>{{end}}{{else}}<div class="vayu-empty">No posts yet.</div>{{end}}
+<section class="vayu-trending" data-vayu-trending hidden aria-label="Trending and pinned posts"></section>
 {{.Footer}}
 </main>
-</div>{{.PostCardMediaJSLink}}</body></html>`))
+</div>{{.PostCardMediaJSLink}}<script defer src="/static/js/trending.js"></script></body></html>`))
 
 var notFoundTmpl = template.Must(template.New("404").Parse(`<!DOCTYPE html><html lang="en" data-theme="dark"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2242,6 +2244,101 @@ h1, h2, h3, h4, h5, h6 {
 }
 @media (max-width: 480px) {
   .vayu-page-status { display: none; }
+}
+
+/* ── Trending & pinned posts widget (hydrated by /static/js/trending.js) ──── */
+.vayu-trending {
+  margin: 2.5rem 0 1rem;
+  padding-top: 1.75rem;
+  border-top: 1px solid var(--border, rgba(125, 125, 125, 0.16));
+}
+.vayu-trending[hidden] { display: none; }
+.vayu-trending-group { margin-bottom: 1.75rem; }
+.vayu-trending-group:last-child { margin-bottom: 0; }
+.vayu-trending-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+.vayu-trending-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--pico-muted-color);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.vayu-trending-tabs { display: inline-flex; gap: 0.4rem; }
+.vayu-trending-tab {
+  min-height: 36px;
+  padding: 0.3rem 0.8rem;
+  border: 1px solid var(--border, rgba(125, 125, 125, 0.28));
+  border-radius: 999px;
+  background: transparent;
+  color: var(--pico-muted-color);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.vayu-trending-tab[aria-selected="true"] {
+  color: var(--pico-primary, currentColor);
+  border-color: var(--pico-primary, currentColor);
+}
+.vayu-trending-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 1rem;
+}
+.vayu-trending-card {
+  display: flex;
+  gap: 0.8rem;
+  align-items: center;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--border, rgba(125, 125, 125, 0.16));
+  border-radius: var(--radius2, 10px);
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.15s, transform 0.1s;
+}
+.vayu-trending-card:hover { border-color: var(--pico-primary, currentColor); }
+.vayu-trending-card:active { transform: translateY(1px); }
+.vayu-trending-rank {
+  flex: 0 0 auto;
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: var(--pico-primary, currentColor);
+  min-width: 1.4em;
+  text-align: center;
+}
+.vayu-trending-thumb {
+  flex: 0 0 auto;
+  width: 48px;
+  height: 48px;
+  border-radius: 8px;
+  object-fit: cover;
+  background: var(--border, rgba(125, 125, 125, 0.16));
+}
+.vayu-trending-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.vayu-trending-pin {
+  flex: 0 0 auto;
+  font-size: 0.85rem;
+  color: var(--pico-primary, currentColor);
 }
 
 /* ── Error pages ────────────────────────────────────────────────────────── */
