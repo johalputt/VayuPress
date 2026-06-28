@@ -8,6 +8,23 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Changed
+
+- **Updates and theme changes no longer rebuild the whole site.** Previously, a
+  deploy that changed the templates/CSS (renderer fingerprint) deleted the entire
+  pre-rendered cache (`home/`, `tags/`, `posts/`) on startup, and every global
+  theme/identity save wiped it too — so on a large catalog the next wave of
+  traffic re-rendered hundreds of thousands of pages at once (a thundering herd
+  that pegs CPU and stalls the box). Invalidation is now **lazy and per-page**:
+  each cached file is checked against a persisted "staleness cutoff" when it is
+  served, and only a page that is actually requested after a renderer/theme change
+  is re-rendered (and re-stamped). A plain restart, or a deploy that doesn't touch
+  templates/CSS, now invalidates **nothing** (a legacy cache from the previous
+  scheme is preserved as-is on first upgrade). The cache-warmer likewise refreshes
+  only stale pages, paced in the background. This is the incremental-update
+  behaviour VayuPress exists to provide: changing one thing rebuilds one thing,
+  not the whole site.
+
 ### Fixed
 
 - **Opening the Posts tab no longer 502s on a large catalog (the real fix).** The

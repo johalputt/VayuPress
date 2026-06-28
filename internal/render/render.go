@@ -19,6 +19,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	chromahtml "github.com/alecthomas/chroma/v2/formatters/html"
@@ -1382,29 +1383,78 @@ func CacheReadCSPSidecar(slug string) []string {
 	return strings.Fields(string(b))
 }
 
-// CachePurgeAll removes every rendered HTML fragment (home, all posts, all tag
-// pages) so they regenerate with current site settings. Used when a global
-// change — e.g. a theme/identity update — affects the markup of every page.
-func CachePurgeAll() {
-	os.Remove(filepath.Join(config.Cfg.CacheDir, "home", "index.html"))
-	for _, sub := range []string{"posts", "tags"} {
-		dir := filepath.Join(config.Cfg.CacheDir, sub)
-		entries, err := os.ReadDir(dir)
-		if err != nil {
-			continue
-		}
-		for _, e := range entries {
-			if e.IsDir() || !strings.HasSuffix(e.Name(), ".html") {
-				continue
-			}
-			if fi, ferr := e.Info(); ferr == nil {
-				db.UpdateStorageDelta(-fi.Size())
-			}
-			os.Remove(filepath.Join(dir, e.Name()))
-			// Drop the matching CSP sidecar (posts/<slug>.csp) if present.
-			os.Remove(filepath.Join(dir, strings.TrimSuffix(e.Name(), ".html")+".csp"))
+// ── Lazy, per-page cache invalidation ─────────────────────────────────────────
+//
+// Rather than deleting the whole pre-rendered cache when the renderer changes (a
+// new binary with edited templates/CSS, or a global theme/identity save), we keep
+// the files and track a single "staleness cutoff" instant. A cached page is fresh
+// only if it was written at or after that cutoff; a stale page is re-rendered on
+// its next request and re-stamped (its mtime advances past the cutoff). This turns
+// a global invalidation from an `os.RemoveAll` that forces a site-wide re-render
+// herd into a lazy, per-page refresh that costs one render per page actually
+// requested — essential when the catalog holds 1M+ posts on a small VPS.
+
+// staleBeforeNano is the cutoff as Unix nanoseconds. Read on every cache serve,
+// written only at startup (ReconcileCacheVersion) and on a global purge. A very
+// negative value (the zero time) means "no cutoff — every cached page is fresh".
+var staleBeforeNano int64
+
+func setStaleCutoff(t time.Time) { atomic.StoreInt64(&staleBeforeNano, t.UnixNano()) }
+
+// CacheEntryFresh reports whether a cached file (described by fi) was rendered at
+// or after the current staleness cutoff. Serve paths must treat a stale entry as
+// a miss and re-render it, so a renderer change or a global purge refreshes each
+// page lazily on its next request instead of wiping the whole cache at once.
+func CacheEntryFresh(fi os.FileInfo) bool {
+	if fi == nil {
+		return false
+	}
+	return fi.ModTime().UnixNano() >= atomic.LoadInt64(&staleBeforeNano)
+}
+
+func renderStampPath() string { return filepath.Join(config.Cfg.CacheDir, ".render-stamp") }
+
+// readRenderStamp parses the on-disk stamp: line 1 is the renderer fingerprint,
+// optional line 2 is the cutoff instant (RFC3339). A legacy single-line stamp
+// (fingerprint only) parses with a zero cutoff, which keeps the existing cache.
+func readRenderStamp(path string) (fp string, since time.Time, ok bool) {
+	b, err := os.ReadFile(path) //nosec G304 -- path is the fixed .render-stamp under CacheDir
+	if err != nil {
+		return "", time.Time{}, false
+	}
+	lines := strings.Split(strings.TrimSpace(string(b)), "\n")
+	fp = strings.TrimSpace(lines[0])
+	if fp == "" {
+		return "", time.Time{}, false
+	}
+	if len(lines) >= 2 {
+		if t, perr := time.Parse(time.RFC3339Nano, strings.TrimSpace(lines[1])); perr == nil {
+			since = t
 		}
 	}
+	return fp, since, true
+}
+
+func writeRenderStamp(path, fp string, since time.Time) {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return
+	}
+	_ = os.WriteFile(path, []byte(fp+"\n"+since.UTC().Format(time.RFC3339Nano)+"\n"), 0o644) //nolint:errcheck
+}
+
+// CachePurgeAll marks every rendered public page (home, all posts, all tag pages)
+// stale so each re-renders with current site settings on its next request. Used
+// after a global change — e.g. a theme/identity update — that affects the markup
+// of every page. It advances (and persists) the staleness cutoff instead of
+// deleting the cache, so the refresh happens lazily, one page per request, rather
+// than wiping everything and triggering a site-wide re-render herd. Persisting the
+// cutoff means a restart right after the change keeps the pages stale (the
+// renderer fingerprint is unchanged by a settings save, so it cannot be relied on
+// to invalidate them).
+func CachePurgeAll() {
+	now := time.Now()
+	setStaleCutoff(now)
+	writeRenderStamp(renderStampPath(), cacheFingerprint(), now)
 }
 
 // CachePurgePost removes just the cached HTML for a single article slug. Used
@@ -1470,7 +1520,7 @@ func WarmCache(splitTags func(string) []string) {
 			continue
 		}
 		dest := filepath.Join(config.Cfg.CacheDir, "posts", a.Slug+".html")
-		if _, err := os.Stat(dest); err == nil {
+		if fi, err := os.Stat(dest); err == nil && CacheEntryFresh(fi) {
 			continue
 		}
 		html, err := RenderArticle(a)
@@ -1529,36 +1579,41 @@ func cacheFingerprint() string {
 	return hex.EncodeToString(sum[:])
 }
 
-// ReconcileCacheVersion drops stale pre-rendered public HTML after a deploy.
+// ReconcileCacheVersion refreshes stale pre-rendered public HTML after a deploy.
 //
 // The on-disk cache (home/index.html, tags/*.html, posts/*.html) is produced by
 // the templates and stylesheets compiled into the running binary. When those
-// change — a new release, edited card markup, or restyled cards — the cached
+// change — a new release with edited card markup or restyled cards — the cached
 // HTML would otherwise keep serving the OLD design until each page is purged by
-// an unrelated event (e.g. an article edit). That is exactly why the home page
-// can lag behind the tag pages: the home cache is only invalidated on content
-// changes, so a redeploy alone never refreshes it.
+// an unrelated event (e.g. an article edit).
 //
-// We persist the renderer fingerprint next to the cache. On startup, if it no
-// longer matches (or is absent), every cached public page is removed so the next
-// request regenerates it with the current templates and CSS. Pages are cheap to
-// rebuild on demand, so this is safe to run on every boot.
+// We persist the renderer fingerprint (and the instant it last changed) next to
+// the cache. On startup, if the fingerprint still matches, the cache is kept and
+// the previous cutoff is restored — a plain restart, or a deploy that does not
+// touch templates/CSS, invalidates nothing. If it changed (or no stamp exists),
+// the staleness cutoff advances to now: cached pages are NOT deleted, each simply
+// re-renders on its next request. This makes a deploy refresh pages lazily, one
+// per request, instead of wiping the whole cache and forcing a site-wide
+// re-render herd — which on a large catalog (1M+ posts) is exactly the behaviour
+// VayuPress exists to avoid.
 //
 // Call after render.Version is set and WriteCSSAssets has run (Init), so the
 // version and CSS hashes are populated.
 func ReconcileCacheVersion() {
 	fp := cacheFingerprint()
-	stampPath := filepath.Join(config.Cfg.CacheDir, ".render-stamp")
-	if b, err := os.ReadFile(stampPath); err == nil && strings.TrimSpace(string(b)) == fp {
-		return // cache was produced by this exact renderer — keep it
+	stampPath := renderStampPath()
+	if old, since, ok := readRenderStamp(stampPath); ok && old == fp {
+		// Same renderer as the last boot — keep every cached page and honour the
+		// cutoff from when the fingerprint last changed (zero = all fresh). A
+		// legacy single-line stamp parses with a zero cutoff, so upgrading to this
+		// scheme preserves an existing, valid cache instead of rebuilding it.
+		setStaleCutoff(since)
+		return
 	}
-	for _, sub := range []string{"home", "tags", "posts"} {
-		os.RemoveAll(filepath.Join(config.Cfg.CacheDir, sub))
-	}
-	if err := os.MkdirAll(config.Cfg.CacheDir, 0o755); err == nil {
-		_ = os.WriteFile(stampPath, []byte(fp), 0o644)
-	}
-	logging.LogInfo("cache", "render fingerprint changed — cleared stale pre-rendered public HTML")
+	now := time.Now()
+	setStaleCutoff(now)
+	writeRenderStamp(stampPath, fp, now)
+	logging.LogInfo("cache", "render fingerprint changed — cached pages will refresh lazily, one per request")
 }
 
 // PlainText converts HTML content into readable plain text suitable for
