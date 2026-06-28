@@ -58,20 +58,7 @@ func (g gqlResolver) Articles(ctx context.Context, tag string, limit, offset int
 }
 
 func (g gqlResolver) Tags(ctx context.Context) (map[string]int, error) {
-	csvs, err := g.a.articles.Repo.AllTagCSVs(ctx)
-	if err != nil {
-		return nil, err
-	}
-	counts := map[string]int{}
-	for _, csv := range csvs {
-		for _, t := range strings.Split(csv, ",") {
-			t = strings.TrimSpace(t)
-			if t != "" {
-				counts[t]++
-			}
-		}
-	}
-	return counts, nil
+	return g.a.articles.Repo.TagCounts(ctx)
 }
 
 func (g gqlResolver) Search(ctx context.Context, query string, limit int) ([]dbpkg.Article, error) {
