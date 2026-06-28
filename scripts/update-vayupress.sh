@@ -109,9 +109,14 @@ DOCS_DEST="${DOCS_DEST:-/var/lib/vayupress/docs}"
 if [[ -d "$SRC_DIR/docs" ]]; then
   info "Refreshing docs in $DOCS_DEST..."
   mkdir -p "$DOCS_DEST"
+  # Mirror the repo's ADR directory exactly: remove the destination adr/ first so
+  # ADRs that were renamed or removed upstream (and any old auto-generated stubs)
+  # do not linger and inflate/duplicate the registry. A plain `cp` never deletes,
+  # which is why the on-disk registry could drift away from the shipped set.
+  rm -rf "$DOCS_DEST/adr"
   cp -r "$SRC_DIR/docs/." "$DOCS_DEST/"
   chown -R www-data:www-data "$DOCS_DEST" 2>/dev/null || true
-  ok "Docs refreshed (ADR registry will populate)."
+  ok "Docs refreshed (ADR registry mirrors the shipped set)."
 else
   warn "No docs/ dir in $SRC_DIR — ADR page may be empty."
 fi

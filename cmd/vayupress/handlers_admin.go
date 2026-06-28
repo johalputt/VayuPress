@@ -677,6 +677,7 @@ func (a *App) handleAdminADR(w http.ResponseWriter, r *http.Request) {
 
 	type adrEntry struct{ Filename, Number, Title string }
 	var adrs []adrEntry
+	seen := make(map[string]bool) // de-dupe by ADR number (guards against stale/renamed duplicates)
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
 			continue
@@ -700,6 +701,11 @@ func (a *App) handleAdminADR(w http.ResponseWriter, r *http.Request) {
 			number = parts[0]
 			title = strings.ReplaceAll(strings.SplitN(name, "-", 2)[1], "-", " ")
 		}
+		key := strings.ToLower(number)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
 		adrs = append(adrs, adrEntry{e.Name(), number, title})
 	}
 	// Newest first so the most recent decisions are at the top.
@@ -893,47 +899,6 @@ func (a *App) handleRunBenchmark(w http.ResponseWriter, r *http.Request) {
 // =============================================================================
 // ADR document writing
 // =============================================================================
-
-func writeADRs(docsDir string) {
-	adrDir := filepath.Join(docsDir, "adr")
-	if err := os.MkdirAll(adrDir, 0755); err != nil {
-		return
-	}
-	now := time.Now().Format("2006-01-02")
-	adrs := map[string]string{
-		"ADR-0032-plugin-pool-concurrency-hardening.md":     "# ADR-0032: Plugin Pool Concurrency Hardening\n\n**Status**: Accepted\n**Date**: " + now + "\n\n## Problem\nP7 plugin pool had goroutine leak risk on shutdown.\n\n## Decision\npluginCtx/pluginCancel + workerPluginWg + per-goroutine recover().\n",
-		"ADR-0033-wal-adaptive-checkpoint.md":               "# ADR-0033: WAL Adaptive Checkpoint Strategy\n\n**Status**: Accepted\n**Date**: " + now + "\n\n## Decision\nAdaptive WAL checkpoint based on WAL_SIZE_THRESHOLD_MB.\n",
-		"ADR-0034-migration-checksum-drift-verification.md": "# ADR-0034: Migration Checksum Drift Verification\n\n**Status**: Accepted\n**Date**: " + now + "\n\n## Decision\nverifyMigrationChecksums() called at startup.\n",
-		"ADR-0035-dead-letter-replay-safety.md":             "# ADR-0035: Dead-Letter Queue Replay Safety Controls\n\n**Status**: Accepted\n**Date**: " + now + "\n\n## Decision\nReplay limited to REPLAY_BATCH_LIMIT; quarantine after MAX_REPLAY_COUNT.\n",
-		"ADR-0036-csp-nonce-template-helpers.md":            "# ADR-0036: CSP Nonce Centralized Template Helpers\n\n**Status**: Accepted\n**Date**: " + now + "\n\n## Decision\nrender.CSPNonce(r) canonical nonce accessor.\n",
-		"ADR-0037-pprof-explicit-handler-hardening.md":      "# ADR-0037: Pprof Explicit Handler Registration\n\n**Status**: Accepted\n**Date**: " + now + "\n\n## Decision\nExplicit pprofMux; rate-limited; no DefaultServeMux.\n",
-		"ADR-0038-vacuum-rate-limiting.md":                  "# ADR-0038: VACUUM Rate Limiting\n\n**Status**: Accepted\n**Date**: " + now + "\n\n## Decision\nCooldown + write-threshold guard.\n",
-		"ADR-0039-deploy-sourced-components.md":             "# ADR-0039: Deploy Script Sourced Components\n\n**Status**: Accepted\n**Date**: " + now + "\n",
-		"ADR-0040-config-versioning.md":                     "# ADR-0040: Config Versioning\n\n**Status**: Accepted\n**Date**: " + now + "\n",
-		"ADR-0041-structured-health-contracts.md":           "# ADR-0041: Structured Health Contracts\n\n**Status**: Accepted\n**Date**: " + now + "\n",
-		"ADR-0042-backup-restore-automation.md":             "# ADR-0042: Backup Restore Automation\n\n**Status**: Accepted\n**Date**: " + now + "\n",
-		"ADR-0043-integration-test-failure-modes.md":        "# ADR-0043: Integration Test Failure Mode Coverage\n\n**Status**: Accepted\n**Date**: " + now + "\n",
-		"ADR-0045-internal-package-decomposition.md":        "# ADR-0045: Internal Package Decomposition (P14)\n\n**Status**: Accepted\n**Date**: " + now + "\n\n## Decision\nSplit main.go into internal/* packages: logging, config, metrics, db, auth, render, queue, health.\n",
-	}
-	for filename, content := range adrs {
-		// Skip if an ADR with this number already exists under ANY filename.
-		// Several of these bootstrap stubs were later rewritten as canonical,
-		// hand-authored ADRs with better slugs (e.g. ADR-0032-plugin-pool-
-		// waitgroup.md). Matching only the exact stub name would recreate the
-		// obsolete stub every boot, producing duplicate ADR numbers in the
-		// registry. Glob on the "ADR-NNNN-" prefix so the canonical file wins.
-		num := filename[:len("ADR-0000")] // e.g. "ADR-0032"
-		if existing, _ := filepath.Glob(filepath.Join(adrDir, num+"-*.md")); len(existing) > 0 {
-			continue
-		}
-		path := filepath.Join(adrDir, filename)
-		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
-			logging.LogError("adr", "write failed: "+filename, err.Error())
-		} else {
-			logging.LogInfo("adr", "written: "+filename)
-		}
-	}
-}
 
 // =============================================================================
 // Admin dashboard
