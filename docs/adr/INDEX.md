@@ -10,6 +10,7 @@
 | ADR | Title | Status | Owner | Date |
 |-----|-------|--------|-------|------|
 | [ADR-0001](ADR-0001-sqlite-first.md) | SQLite-First Data Layer | Accepted | Core | 2024-01-01 |
+| [ADR-0099](ADR-0099-self-contained-one-click-update.md) | Self-Contained One-Click Update — Embedded Admin Assets + Arch-Aware Release Selection | Accepted | VayuOS | 2026-06-28 |
 | [ADR-0098](ADR-0098-role-scoped-vayuos-access.md) | Role-Scoped VayuOS Access for VayuMail Accounts | Accepted | VayuOS | 2026-06-28 |
 | [ADR-0097](ADR-0097-vayuanalytics-no-pii.md) | VayuAnalytics — No-PII Rotating Salt | Accepted | VayuOS | 2026-06-24 |
 | [ADR-0096](ADR-0096-vayumail-imap-pop3-clients.md) | Real Mail-Client Access (IMAP + POP3) | Accepted | VayuOS | 2026-06-28 |

@@ -287,6 +287,11 @@ func main() {
 	auth.StartBucketSweeper(context.Background())
 
 	staticDir := config.EnvOr("STATIC_DIR", "/var/www/vayupress/static")
+	// Refresh the admin CSS/JS that ship inside this binary into STATIC_DIR
+	// BEFORE render.Init (which writes the authoritative minified public-site
+	// CSS). This makes a one-click self-update — which replaces only the binary —
+	// also update every admin asset, with no separate file-copy step (ADR-0099).
+	syncEmbeddedStatic(staticDir)
 	render.Init(staticDir)
 
 	docsDir := config.EnvOr("VAYU_DOCS_DIR", "/var/www/vayupress/docs")
