@@ -13,8 +13,10 @@ import (
 	"io"
 	"net/http"
 	"net/http/pprof"
+	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -23,6 +25,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/microcosm-cc/bluemonday"
+	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/extension"
+	"github.com/yuin/goldmark/parser"
 
 	"github.com/johalputt/vayupress/internal/ads"
 	"github.com/johalputt/vayupress/internal/api"
@@ -676,6 +681,10 @@ func (a *App) handleAdminADR(w http.ResponseWriter, r *http.Request) {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
 			continue
 		}
+		// INDEX.md is the registry's own table of contents, not an ADR.
+		if strings.EqualFold(e.Name(), "INDEX.md") {
+			continue
+		}
 		name := strings.TrimSuffix(e.Name(), ".md")
 		// Filenames look like "ADR-0001-sqlite-first" or "0001-some-title".
 		// Treat the leading "<id>" or "<prefix>-<id>" as the number and the
@@ -693,11 +702,41 @@ func (a *App) handleAdminADR(w http.ResponseWriter, r *http.Request) {
 		}
 		adrs = append(adrs, adrEntry{e.Name(), number, title})
 	}
+	// Newest first so the most recent decisions are at the top.
+	sort.Slice(adrs, func(i, j int) bool { return adrs[i].Filename > adrs[j].Filename })
+
+	// Read view: ?doc=<filename> renders a single ADR's content. The requested
+	// filename is matched against the directory listing (an allowlist), so no
+	// caller-supplied path can escape the ADR directory.
+	if doc := r.URL.Query().Get("doc"); doc != "" {
+		var match *adrEntry
+		for i := range adrs {
+			if adrs[i].Filename == doc {
+				match = &adrs[i]
+				break
+			}
+		}
+		if match == nil {
+			a.handleNotFound(w, r)
+			return
+		}
+		raw, rerr := os.ReadFile(filepath.Join(adrDir, match.Filename)) //nosec G304 -- filename matched against the directory allowlist above
+		if rerr != nil {
+			a.handleNotFound(w, r)
+			return
+		}
+		nonce := a.writeConsoleShellHead(w, r, "adrs", match.Number, match.Title)
+		fmt.Fprint(w, `<div class="adr-doc-actions"><a class="btn btn--ghost" href="/os/adr">&larr; Back to ADR Registry</a></div>`)
+		fmt.Fprintf(w, `<article class="adr-doc card">%s</article>`, renderMarkdownDocument(raw))
+		writeConsoleShellFoot(w, nonce, "")
+		return
+	}
 
 	nonce := a.writeConsoleShellHead(w, r, "adrs", "ADR Registry", fmt.Sprintf("%d architecture decision records", len(adrs)))
 	fmt.Fprintf(w, `<div class="adr-list">`)
 	for _, adr := range adrs {
-		fmt.Fprintf(w, `<div class="adr-row"><span class="adr-number">%s</span><span class="adr-title">%s</span><span class="adr-badge s-ok">Accepted</span></div>`,
+		fmt.Fprintf(w, `<a class="adr-row" href="/os/adr?doc=%s"><span class="adr-number">%s</span><span class="adr-title">%s</span><span class="adr-badge s-ok">Read</span></a>`,
+			template.HTMLEscapeString(url.QueryEscape(adr.Filename)),
 			template.HTMLEscapeString(adr.Number), template.HTMLEscapeString(adr.Title))
 	}
 	if len(adrs) == 0 {
@@ -705,6 +744,24 @@ func (a *App) handleAdminADR(w http.ResponseWriter, r *http.Request) {
 	}
 	fmt.Fprint(w, `</div>`)
 	writeConsoleShellFoot(w, nonce, "")
+}
+
+// renderMarkdownDocument converts an ADR markdown file to sanitised HTML for the
+// read view. goldmark (GFM) renders the markdown; bluemonday's UGC policy then
+// strips anything unsafe, so the rendered registry can never become an injection
+// surface even though ADRs are operator-authored.
+func renderMarkdownDocument(md []byte) template.HTML {
+	gm := goldmark.New(
+		goldmark.WithExtensions(extension.GFM, extension.Table),
+		goldmark.WithParserOptions(parser.WithAutoHeadingID()),
+	)
+	var buf strings.Builder
+	if err := gm.Convert(md, &buf); err != nil {
+		// Fall back to escaped plain text rather than failing the page.
+		return template.HTML("<pre>" + template.HTMLEscapeString(string(md)) + "</pre>") //nolint:gosec // escaped above
+	}
+	safe := bluemonday.UGCPolicy().Sanitize(buf.String())
+	return template.HTML(safe) //nolint:gosec // sanitised by bluemonday UGC policy
 }
 
 func (a *App) handleHealthBenchmarks(w http.ResponseWriter, r *http.Request) {
