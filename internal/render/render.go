@@ -1020,6 +1020,14 @@ type homePage struct {
 	ShowHero            bool
 	Articles            []HomeArticle
 	TotalCount          int
+	// Pagination across the public homepage feed.
+	Page       int
+	TotalPages int
+	HasPrev    bool
+	HasNext    bool
+	PrevURL    string
+	NextURL    string
+	Canonical  string // canonical path for this page: "/" or "/page/N"
 }
 
 var homeFuncs = template.FuncMap{
@@ -1032,10 +1040,12 @@ var homeTmpl = template.Must(template.New("home").Funcs(homeFuncs).Parse(`<!DOCT
 <title>{{if .SiteName}}{{.SiteName}}{{else}}{{.Domain}}{{end}}{{if .Tagline}} — {{.Tagline}}{{end}}</title>
 <meta name="description" content="{{if .Description}}{{.Description}}{{else if .Tagline}}{{.Tagline}}{{else}}{{if .SiteName}}{{.SiteName}}{{else}}{{.Domain}}{{end}}{{end}}">
 <meta name="generator" content="VayuPress {{.Version}}">
-<link rel="canonical" href="https://{{.Domain}}/">
+<link rel="canonical" href="https://{{.Domain}}{{.Canonical}}">{{if .HasPrev}}
+<link rel="prev" href="https://{{.Domain}}{{.PrevURL}}">{{end}}{{if .HasNext}}
+<link rel="next" href="https://{{.Domain}}{{.NextURL}}">{{end}}
 <link rel="alternate" type="application/rss+xml" title="{{.Domain}} feed" href="/feed.xml">
 <meta property="og:type" content="website"><meta property="og:title" content="{{.Domain}}">
-<meta property="og:url" content="https://{{.Domain}}/">
+<meta property="og:url" content="https://{{.Domain}}{{.Canonical}}">
 {{if .OGImage}}<meta property="og:image" content="https://{{.Domain}}{{.OGImage}}"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="https://{{.Domain}}{{.OGImage}}">{{end}}
 {{.PicoCSSLink}}{{.CustomCSSLink}}{{.ArticleCSSLink}}{{.HighContrastCSSLink}}{{.ThemeCSSLink}}{{.HeadMeta}}{{.ThemeToggleJSLink}}
 <link rel="manifest" href="/manifest.json">
@@ -1071,7 +1081,12 @@ var homeTmpl = template.Must(template.New("home").Funcs(homeFuncs).Parse(`<!DOCT
     {{if .Excerpt}}<p class="vayu-post-excerpt">{{.Excerpt}}</p>{{end}}
   </div>
 </a>{{end}}
-</div>{{else}}<div class="vayu-empty">No posts yet.</div>{{end}}
+</div>
+{{if gt .TotalPages 1}}<nav class="vayu-pagination" aria-label="Pagination">
+  {{if .HasPrev}}<a class="vayu-page-link" rel="prev" href="{{.PrevURL}}">← Newer</a>{{else}}<span class="vayu-page-link is-disabled" aria-disabled="true">← Newer</span>{{end}}
+  <span class="vayu-page-status">Page {{.Page}} of {{.TotalPages}}</span>
+  {{if .HasNext}}<a class="vayu-page-link" rel="next" href="{{.NextURL}}">Older →</a>{{else}}<span class="vayu-page-link is-disabled" aria-disabled="true">Older →</span>{{end}}
+</nav>{{end}}{{else}}<div class="vayu-empty">No posts yet.</div>{{end}}
 {{.Footer}}
 </main>
 </div>{{.PostCardMediaJSLink}}</body></html>`))
@@ -1100,10 +1115,35 @@ var notFoundTmpl = template.Must(template.New("404").Parse(`<!DOCTYPE html><html
 </div></main>
 </div></body></html>`))
 
-// RenderHome renders the public homepage index from recent articles.
-func RenderHome(domain, version string, articles []HomeArticle, totalCount int) (string, error) {
+// RenderHome renders the public homepage index from recent articles. page is
+// 1-based and totalPages is the number of pages across the published feed; when
+// totalPages > 1 a Newer/Older pager is rendered and rel=prev/next + a
+// page-aware canonical are emitted for SEO.
+func RenderHome(domain, version string, articles []HomeArticle, totalCount, page, totalPages int) (string, error) {
 	var buf strings.Builder
 	s := getActiveSettings()
+	if page < 1 {
+		page = 1
+	}
+	if totalPages < 1 {
+		totalPages = 1
+	}
+	canonical := "/"
+	if page > 1 {
+		canonical = "/page/" + strconv.Itoa(page)
+	}
+	hasPrev, hasNext := page > 1, page < totalPages
+	prevURL, nextURL := "", ""
+	if hasPrev {
+		if page-1 <= 1 {
+			prevURL = "/" // page 1 lives at the site root, not /page/1
+		} else {
+			prevURL = "/page/" + strconv.Itoa(page-1)
+		}
+	}
+	if hasNext {
+		nextURL = "/page/" + strconv.Itoa(page+1)
+	}
 	err := homeTmpl.Execute(&buf, homePage{
 		Domain:              domain,
 		Version:             version,
@@ -1122,9 +1162,16 @@ func RenderHome(domain, version string, articles []HomeArticle, totalCount int) 
 		NavLinks:            navLinksHTML(s.NavJSON),
 		Footer:              footerHTML(s),
 		OGImage:             s.OGImage,
-		ShowHero:            s.ShowHero,
+		ShowHero:            s.ShowHero && page == 1, // hero only on the first page
 		Articles:            articles,
 		TotalCount:          totalCount,
+		Page:                page,
+		TotalPages:          totalPages,
+		HasPrev:             hasPrev,
+		HasNext:             hasNext,
+		PrevURL:             prevURL,
+		NextURL:             nextURL,
+		Canonical:           canonical,
 	})
 	return buf.String(), err
 }
@@ -2154,6 +2201,47 @@ h1, h2, h3, h4, h5, h6 {
   text-align: center;
   color: var(--pico-muted-color);
   font-size: 0.9375rem;
+}
+
+/* ── Pagination (homepage feed: Newer / Older) ──────────────────────────── */
+.vayu-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 2.5rem 0 1rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border, rgba(125, 125, 125, 0.16));
+}
+.vayu-page-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0.5rem 1.1rem;
+  border: 1px solid var(--border, rgba(125, 125, 125, 0.28));
+  border-radius: var(--radius2, 10px);
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--pico-color, inherit);
+  text-decoration: none;
+  transition: border-color 0.15s, background 0.15s, transform 0.1s;
+}
+.vayu-page-link:hover {
+  border-color: var(--pico-primary, currentColor);
+  text-decoration: none;
+}
+.vayu-page-link:active { transform: translateY(1px); }
+.vayu-page-link.is-disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+.vayu-page-status {
+  font-size: 0.85rem;
+  color: var(--pico-muted-color);
+  white-space: nowrap;
+}
+@media (max-width: 480px) {
+  .vayu-page-status { display: none; }
 }
 
 /* ── Error pages ────────────────────────────────────────────────────────── */

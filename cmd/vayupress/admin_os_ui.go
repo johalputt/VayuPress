@@ -1347,13 +1347,22 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// ── Status counts within the active filter ───────────────────────────────
+	// A bounded context so a slow or contended query can never hang the request
+	// until the upstream proxy gives up — the cause of the intermittent 502 on
+	// large catalogs. On deadline the queries return an error and the handler
+	// degrades to a friendly, retryable page (HTTP 200) instead of a gateway
+	// error.
+	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
+	defer cancel()
+	loadErr := false
+
 	allCount, published, drafts := 0, 0, 0
 	if dbpkg.DB != nil {
 		// status is NOT NULL DEFAULT 'published' (migration 030), so we group by
 		// the bare column — `COALESCE(status,'published')` would defeat
 		// idx_articles_status and force a full-table scan (a 502-class stall on a
 		// large catalog). With no search/date filter this is an index-only count.
-		if rows, err := dbpkg.Reader().QueryContext(r.Context(),
+		if rows, err := dbpkg.Reader().QueryContext(ctx,
 			`SELECT status s, COUNT(1) c FROM articles`+filterClause+` GROUP BY status`, args...); err == nil {
 			for rows.Next() {
 				var s string
@@ -1369,6 +1378,8 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 			}
 			_ = rows.Err() // best-effort admin status counts
 			rows.Close()
+		} else {
+			loadErr = true
 		}
 	}
 	total := allCount
@@ -1415,7 +1426,7 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 	}
 	listArgs = append(listArgs, osPostsPageSize, offset)
 	if dbpkg.DB != nil {
-		if rows, err := dbpkg.Reader().QueryContext(r.Context(),
+		if rows, err := dbpkg.Reader().QueryContext(ctx,
 			`SELECT title,slug,COALESCE(tags,''),updated_at,COALESCE(status,'published') FROM articles`+listClause+` ORDER BY created_at DESC LIMIT ? OFFSET ?`, listArgs...); err == nil {
 			defer rows.Close()
 			for rows.Next() {
@@ -1427,13 +1438,23 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			_ = rows.Err() // best-effort admin post list
+		} else {
+			loadErr = true
 		}
 	}
 
 	filtersActive := q != "" || from != "" || to != "" || status != "all"
 
+	// When a query times out or errors we never want to mislead the operator
+	// with the "No posts yet" empty state; instead we render the manager shell
+	// with a non-blocking retry notice so the page always loads.
+	notice := ""
+	if loadErr {
+		notice = `<div class="card load-notice"><strong>Couldn't load everything just now</strong> — the database was busy. <a href="/os/posts">Retry</a>.</div>`
+	}
+
 	var body string
-	if allCount == 0 && !filtersActive {
+	if allCount == 0 && !filtersActive && !loadErr {
 		body = `<div class="page-header"><h1>Posts</h1></div>
 <div class="card empty-state">
   <div class="empty-icon">✍️</div>
@@ -1493,7 +1514,7 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 			shownTo = offset + len(posts)
 		}
 
-		body = `<div class="page-header">
+		body = notice + `<div class="page-header">
   <h1>Posts <span class="count-pill">` + strconv.Itoa(allCount) + `</span></h1>
   <div class="page-actions">
     <a class="btn btn--primary" href="/os/editor">New Post</a>

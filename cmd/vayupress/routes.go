@@ -394,6 +394,9 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	a.registerAdminOSUIRoutes(r)
 
 	r.Get("/", a.handleHome)
+	// Paginated homepage feed: /page/2, /page/3, … (page 1 is canonical at "/").
+	// Two-segment, so it never collides with the single-segment "/{slug}".
+	r.Get("/page/{page}", a.handleHomePaged)
 	// Public taxonomy pages — the topic index and per-tag listings. Registered
 	// before the single-segment "/{slug}" catch-all so "/tags" and "/tags/{tag}"
 	// resolve here instead of falling through to a 404 (the two-segment form

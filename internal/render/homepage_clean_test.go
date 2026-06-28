@@ -12,7 +12,7 @@ func TestHomepageCleanByDefault(t *testing.T) {
 	SetActiveSettings(SiteSettings{Name: "Acme", Tagline: "A tagline", Description: "A description"})
 	t.Cleanup(func() { SetActiveSettings(SiteSettings{}) })
 
-	out, err := RenderHome("example.com", "1.0.0", nil, 0)
+	out, err := RenderHome("example.com", "1.0.0", nil, 0, 1, 1)
 	if err != nil {
 		t.Fatalf("RenderHome: %v", err)
 	}
@@ -34,7 +34,7 @@ func TestHomepageHeroOptIn(t *testing.T) {
 	SetActiveSettings(SiteSettings{Name: "Acme", Tagline: "Welcome", Description: "Words.", ShowHero: true})
 	t.Cleanup(func() { SetActiveSettings(SiteSettings{}) })
 
-	out, err := RenderHome("example.com", "1.0.0", nil, 0)
+	out, err := RenderHome("example.com", "1.0.0", nil, 0, 1, 1)
 	if err != nil {
 		t.Fatalf("RenderHome: %v", err)
 	}
@@ -43,5 +43,42 @@ func TestHomepageHeroOptIn(t *testing.T) {
 	}
 	if !strings.Contains(out, "Welcome") {
 		t.Error("hero should show the tagline as the headline")
+	}
+}
+
+// TestHomepagePagination verifies the feed pager: absent on a single page,
+// present with Newer/Older links + a page-aware canonical when multi-page.
+func TestHomepagePagination(t *testing.T) {
+	SetActiveSettings(SiteSettings{Name: "Acme"})
+	t.Cleanup(func() { SetActiveSettings(SiteSettings{}) })
+
+	arts := []HomeArticle{{Title: "A", Slug: "a"}}
+
+	// Single page → no pagination control.
+	out, err := RenderHome("example.com", "1.0.0", arts, 1, 1, 1)
+	if err != nil {
+		t.Fatalf("RenderHome: %v", err)
+	}
+	if strings.Contains(out, "vayu-pagination") {
+		t.Error("single-page feed must not render a pager")
+	}
+
+	// Page 2 of 3 → pager with a Newer link back to "/", an Older link to
+	// /page/3, a page-aware canonical, and rel=prev/next hints.
+	out2, err := RenderHome("example.com", "1.0.0", arts, 90, 2, 3)
+	if err != nil {
+		t.Fatalf("RenderHome page 2: %v", err)
+	}
+	for _, want := range []string{
+		"vayu-pagination",
+		"Page 2 of 3",
+		`href="/page/3"`,
+		`<link rel="canonical" href="https://example.com/page/2">`,
+		`<link rel="prev" href="https://example.com/">`,
+		`<link rel="next" href="https://example.com/page/3">`,
+	} {
+		if !strings.Contains(out2, want) {
+			t.Errorf("page 2 output missing %q", want)
+		}
 	}
 }
