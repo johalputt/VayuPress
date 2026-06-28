@@ -11,6 +11,7 @@ import (
 	"html"
 	"html/template"
 	"io"
+	"io/fs"
 	"net/http"
 	"net/http/pprof"
 	"net/url"
@@ -710,54 +711,79 @@ func resolveADRDir() string {
 	return candidates[0]
 }
 
+// adrFilenames returns every ADR markdown filename available, unioning the
+// on-disk docs/adr directory (deploy/operator-managed) with the copy embedded
+// in the binary. Embedding guarantees the registry shows every ADR shipped with
+// the running build even when the on-disk docs are stale — the previous cause
+// of the list stopping at an old number after a binary-only self-update. The
+// registry's own INDEX.md is excluded.
+func adrFilenames(adrDir string) []string {
+	set := map[string]bool{}
+	add := func(name string) {
+		if strings.HasSuffix(name, ".md") && !strings.EqualFold(name, "INDEX.md") {
+			set[name] = true
+		}
+	}
+	if entries, err := os.ReadDir(adrDir); err == nil {
+		for _, e := range entries {
+			if !e.IsDir() {
+				add(e.Name())
+			}
+		}
+	}
+	if entries, err := fs.ReadDir(embeddedADRFS, "."); err == nil {
+		for _, e := range entries {
+			if !e.IsDir() {
+				add(e.Name())
+			}
+		}
+	}
+	out := make([]string, 0, len(set))
+	for n := range set {
+		out = append(out, n)
+	}
+	return out
+}
+
+// readADRFile returns the bytes of one ADR, preferring the on-disk copy (so a
+// site can locally amend an ADR) and falling back to the embedded copy. The
+// filename must already have been validated against adrFilenames (an allowlist).
+func readADRFile(adrDir, filename string) ([]byte, error) {
+	if b, err := os.ReadFile(filepath.Join(adrDir, filename)); err == nil { //nosec G304 -- filename allow-listed by caller
+		return b, nil
+	}
+	return fs.ReadFile(embeddedADRFS, filename)
+}
+
 func (a *App) handleAdminADR(w http.ResponseWriter, r *http.Request) {
 	adrDir := resolveADRDir()
-	entries, err := os.ReadDir(adrDir)
-	if err != nil {
-		nonce := a.writeConsoleShellHead(w, r, "adrs", "ADR Registry", "Architecture Decision Records")
-		fmt.Fprint(w, `<div class="empty-state"><div class="empty-icon">≡</div><div class="empty-title">No ADR directory found</div><div class="empty-sub">Set VAYU_DOCS_DIR to a directory containing an adr/ subdirectory.</div></div>`)
-		writeConsoleShellFoot(w, nonce, "")
-		return
-	}
 
 	type adrEntry struct{ Filename, Number, Title string }
 	var adrs []adrEntry
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
-			continue
-		}
-		// INDEX.md is the registry's own table of contents, not an ADR.
-		if strings.EqualFold(e.Name(), "INDEX.md") {
-			continue
-		}
-		name := strings.TrimSuffix(e.Name(), ".md")
+	for _, name := range adrFilenames(adrDir) {
+		base := strings.TrimSuffix(name, ".md")
 		// Filenames look like "ADR-0001-sqlite-first" or "0001-some-title".
 		// Treat the leading "<id>" or "<prefix>-<id>" as the number and the
 		// remainder as a human-readable title.
-		number := name
-		title := name
-		parts := strings.SplitN(name, "-", 3)
+		number := base
+		title := base
+		parts := strings.SplitN(base, "-", 3)
 		switch {
 		case len(parts) >= 3 && strings.EqualFold(parts[0], "ADR"):
 			number = parts[0] + "-" + parts[1]
 			title = strings.ReplaceAll(parts[2], "-", " ")
 		case len(parts) >= 2:
 			number = parts[0]
-			title = strings.ReplaceAll(strings.SplitN(name, "-", 2)[1], "-", " ")
+			title = strings.ReplaceAll(strings.SplitN(base, "-", 2)[1], "-", " ")
 		}
-		// Every distinct ADR file is listed. We intentionally do NOT de-duplicate
-		// by number: two different ADRs must never share a number, but if one ever
-		// slips through, hiding it here would make a real decision record silently
-		// vanish from the registry. Stale duplicates are prevented at the source
-		// instead (the deploy mirrors docs/adr exactly).
-		adrs = append(adrs, adrEntry{e.Name(), number, title})
+		adrs = append(adrs, adrEntry{name, number, title})
 	}
 	// Newest first so the most recent decisions are at the top.
 	sort.Slice(adrs, func(i, j int) bool { return adrs[i].Filename > adrs[j].Filename })
 
 	// Read view: ?doc=<filename> renders a single ADR's content. The requested
-	// filename is matched against the directory listing (an allowlist), so no
-	// caller-supplied path can escape the ADR directory.
+	// filename is matched against the listing (an allowlist), so no
+	// caller-supplied path can escape the ADR sources.
 	if doc := r.URL.Query().Get("doc"); doc != "" {
 		var match *adrEntry
 		for i := range adrs {
@@ -770,7 +796,7 @@ func (a *App) handleAdminADR(w http.ResponseWriter, r *http.Request) {
 			a.handleNotFound(w, r)
 			return
 		}
-		raw, rerr := os.ReadFile(filepath.Join(adrDir, match.Filename)) //nosec G304 -- filename matched against the directory allowlist above
+		raw, rerr := readADRFile(adrDir, match.Filename)
 		if rerr != nil {
 			a.handleNotFound(w, r)
 			return

@@ -105,6 +105,14 @@ const (
 	KeyFeatureNewsletter  = "feature.newsletter"  // public newsletter subscribe
 	KeyFeatureWebmentions = "feature.webmentions" // inbound webmention receiver
 
+	// KeyFeatureMeili toggles the external Meilisearch backend. Default ON
+	// (preserving the historical auto-detect behaviour): when on, search uses
+	// Meilisearch if it is configured and healthy and otherwise transparently
+	// falls back to the built-in SQLite engine. Turning it OFF forces the SQLite
+	// engine unconditionally, even when a Meilisearch host is configured — the
+	// operator-facing "disable Meilisearch" switch.
+	KeyFeatureMeili = "feature.meili"
+
 	// Monetization feature flags. Unlike the engagement flags above these
 	// default OFF: a site only starts taking payments or showing advertising
 	// once the operator explicitly switches the module on from Tools & Plugins,
@@ -146,6 +154,7 @@ var FeatureKeys = map[string]bool{
 	KeyFeatureComments:    true,
 	KeyFeatureNewsletter:  true,
 	KeyFeatureWebmentions: true,
+	KeyFeatureMeili:       true,
 	KeyFeaturePayments:    true,
 	KeyFeatureAds:         true,
 	KeyFeatureGoogleAds:   true,
@@ -202,6 +211,7 @@ var AllKeys = map[string]bool{
 	KeyFeatureComments:       true,
 	KeyFeatureNewsletter:     true,
 	KeyFeatureWebmentions:    true,
+	KeyFeatureMeili:          true,
 	KeyFeaturePayments:       true,
 	KeyFeatureAds:            true,
 	KeyFeatureGoogleAds:      true,

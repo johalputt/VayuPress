@@ -79,8 +79,23 @@ func NewMeiliService(client *http.Client, db *sql.DB) Service {
 	return &meiliService{cb: cb, client: client, db: db}
 }
 
+// meiliEnabled gates whether the Meilisearch backend is used at all. It is set
+// at boot and whenever the operator flips the Tools & Plugins toggle. When
+// false, Search() always uses the SQLite fallback and Index() is a no-op, so
+// the built-in engine serves every query regardless of Meilisearch config.
+// Default ON to preserve the historical auto-detect behaviour.
+var meiliEnabled atomic.Bool
+
+func init() { meiliEnabled.Store(true) }
+
+// SetMeiliEnabled turns the Meilisearch backend on or off at runtime.
+func SetMeiliEnabled(v bool) { meiliEnabled.Store(v) }
+
+// MeiliEnabled reports whether the Meilisearch backend is currently allowed.
+func MeiliEnabled() bool { return meiliEnabled.Load() }
+
 func (s *meiliService) Search(ctx context.Context, q string, limit int) (Result, error) {
-	if s.cb == nil || s.cb.State() != gobreaker.StateClosed {
+	if !meiliEnabled.Load() || s.cb == nil || s.cb.State() != gobreaker.StateClosed {
 		return s.fallback(ctx, q, limit)
 	}
 	body, _ := json.Marshal(map[string]interface{}{
@@ -154,6 +169,11 @@ func (s *meiliService) fallback(ctx context.Context, q string, limit int) (Resul
 }
 
 func (s *meiliService) Index(ctx context.Context, id, title, slug, content string, tags []string, createdAt int64) error {
+	// When the operator has disabled Meilisearch, never push documents to it;
+	// the SQLite fallback queries the articles table directly and needs no index.
+	if !meiliEnabled.Load() {
+		return nil
+	}
 	doc := map[string]interface{}{
 		"id": id, "title": title, "slug": slug,
 		"content":    content,

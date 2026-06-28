@@ -79,11 +79,14 @@ func TestThemeEditorCoversSettingsAllowlist(t *testing.T) {
 		// keys are edited in the VayuOS Monetization (/os/monetization) and
 		// Advertising (/os/ads) consoles (POST /os/api/settings) — not the
 		// legacy theme editor.
-		settings.KeyFeaturePayments:       true,
-		settings.KeyFeatureAds:            true,
-		settings.KeyFeatureGoogleAds:      true,
-		settings.KeyFeatureAffiliate:      true,
-		settings.KeyFeatureSponsors:       true,
+		settings.KeyFeaturePayments:  true,
+		settings.KeyFeatureAds:       true,
+		settings.KeyFeatureGoogleAds: true,
+		settings.KeyFeatureAffiliate: true,
+		settings.KeyFeatureSponsors:  true,
+		// The Meilisearch backend is toggled in Tools & Plugins, not the theme
+		// editor.
+		settings.KeyFeatureMeili:          true,
 		settings.KeyPayDirectInstructions: true,
 		settings.KeyPayCurrency:           true,
 		settings.KeyPaySupportEmail:       true,

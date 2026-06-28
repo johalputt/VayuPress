@@ -30,6 +30,20 @@ func staticSub() fs.FS {
 	return sub
 }
 
+// embeddedADRFS is the repository docs/adr tree compiled into the binary,
+// re-rooted so lookups use bare filenames (e.g. "ADR-0100-foo.md"). It is the
+// always-complete source for the VayuOS ADR Registry, unioned with whatever is
+// on disk so the list is never truncated by a stale on-disk docs copy.
+var embeddedADRFS = adrSub()
+
+func adrSub() fs.FS {
+	sub, err := fs.Sub(rootassets.DocsADRFS, "docs/adr")
+	if err != nil {
+		return rootassets.DocsADRFS
+	}
+	return sub
+}
+
 // syncEmbeddedStatic writes every asset embedded in the binary into staticDir,
 // (re)writing a file only when its bytes differ from what is already on disk.
 // It is safe to call on every boot: files VayuPress does not ship are left

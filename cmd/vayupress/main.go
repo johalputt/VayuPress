@@ -543,6 +543,12 @@ func main() {
 
 	// Wire search service (ADR-0050).
 	a.search = search.NewMeiliService(a.outboundClient, dbpkg.DB)
+	// Honour the operator's Meilisearch toggle (Tools & Plugins). Default ON;
+	// when off, search uses the built-in SQLite engine and never calls
+	// Meilisearch — even if a host is configured.
+	if a.siteSettings != nil {
+		search.SetMeiliEnabled(a.siteSettings.FeatureEnabled(context.Background(), settings.KeyFeatureMeili))
+	}
 
 	// Tier 4 services: GraphQL, live collaboration stream, email templates, i18n.
 	a.initGraphQL()
@@ -603,6 +609,10 @@ func main() {
 	// a multi-second 502 window. WaitReady + ConfigureIndex now happen off the
 	// critical path.
 	go func() {
+		if !search.MeiliEnabled() {
+			logging.LogInfo("main", "Meilisearch disabled by operator — using built-in SQLite search")
+			return
+		}
 		if search.WaitReady(context.Background(), a.search, 12) {
 			logging.LogInfo("main", "Meilisearch ready")
 			search.ConfigureIndex(context.Background(), a.search)
