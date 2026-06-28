@@ -126,6 +126,7 @@ func (a *App) pinnedItems(ctx context.Context, limit int) []trendingItem {
 			out = append(out, it)
 		}
 	}
+	_ = rows.Err() // best-effort widget data; partial results are acceptable
 	return out
 }
 
