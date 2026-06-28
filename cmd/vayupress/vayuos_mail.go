@@ -36,7 +36,7 @@ func (a *App) handleVayuOSCompose(w http.ResponseWriter, r *http.Request) {
 	cfg := a.getOSSettings(r.Context())
 	var body strings.Builder
 	body.WriteString(`<div class="page-header"><h1>Compose</h1><span class="muted text-sm">Send DKIM-signed mail (auto-PGP-encrypted when the recipient key is known)</span></div>`)
-	body.WriteString(vayuosNav("compose"))
+	body.WriteString(vayuosNav("compose", a.isAdminRequest(r)))
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled {
 		body.WriteString(`<div class="empty-state">VayuMail is inactive. Set <code>DOMAIN</code> to enable outbound delivery.</div>`)
 		writeOSHTML(w, adminOSLayout(nonce, "Compose", "vayuos", cfg, htmpl.HTML(body.String())))
@@ -390,7 +390,7 @@ func (a *App) handleVayuOSAccounts(w http.ResponseWriter, r *http.Request) {
 	cfg := a.getOSSettings(r.Context())
 	var body strings.Builder
 	body.WriteString(`<div class="page-header"><h1>Mail accounts</h1><span class="muted text-sm">Admin-managed email IDs &amp; passwords (SMTP/IMAP login)</span></div>`)
-	body.WriteString(vayuosNav("accounts"))
+	body.WriteString(vayuosNav("accounts", a.isAdminRequest(r)))
 	if !a.isAdminRequest(r) {
 		body.WriteString(`<div class="empty-state">Mail-account management is available to administrators only. Your own mailbox is under <a href="/os/vayuos/mail/inbox">Mailbox</a>.</div>`)
 		writeOSHTML(w, adminOSLayout(nonce, "Mail accounts", "vayuos", cfg, htmpl.HTML(body.String())))
@@ -495,7 +495,7 @@ func (a *App) handleVayuOSConnect(w http.ResponseWriter, r *http.Request) {
 	cfg := a.getOSSettings(r.Context())
 	var body strings.Builder
 	body.WriteString(`<div class="page-header"><h1>Connect a mail app</h1><span class="muted text-sm">IMAP / POP3 / SMTP settings for Gmail, Apple Mail, Thunderbird, Outlook…</span></div>`)
-	body.WriteString(vayuosNav("connect"))
+	body.WriteString(vayuosNav("connect", a.isAdminRequest(r)))
 
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled {
 		body.WriteString(`<div class="empty-state">VayuMail is inactive. Set <code>DOMAIN</code> to enable mailboxes and mail-client access.</div>`)

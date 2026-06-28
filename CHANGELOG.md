@@ -8,6 +8,46 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Added
+
+- **Storage & System panel (VayuOS → Storage & System, administrators only).** A
+  new admin page shows how much RAM and disk the system is using — system memory
+  (used/total), the VayuPress process's own memory, and the disk/NVMe usage of
+  the filesystem holding the database, plus the on-disk footprint of the
+  database, render cache, media library and pre-update backups. It also lists the
+  files VayuPress creates over time — **database backups** (including the
+  automatic pre-update snapshots), **log files** and **temporary files** — each
+  with its size and age and a one-click **Download** (to keep a copy off-server)
+  or **Delete** (single or bulk, to reclaim space). Downloads and deletes are
+  validated against the live set of managed files, so the live database and its
+  WAL can never be served or removed and path traversal is impossible. The whole
+  page and its APIs are administrator-only. See ADR-0100.
+
+### Changed
+
+- **Infrastructure detail is now administrator-only in VayuMail.** PGP keys, the
+  DKIM/SPF/DMARC records and live DNS health, the deliverability self-check, the
+  dependency security-update watcher, and mail-account management are hidden from
+  the four non-admin roles (editor, author, reviewer, mailbox) — both removed
+  from the VayuMail tabs/dashboard and blocked server-side (a non-admin is
+  redirected to their inbox). Those roles now see only the mail surface they use:
+  Overview, Compose, Mailbox, Connect and Outbox. See ADR-0100.
+
+### Fixed
+
+- **One-click update now actually activates the new version.** After installing
+  an update from VayuOS the service restarted but could come back on the *old*
+  version (then prompt to update again). The cause: immediately after the binary
+  was swapped, the in-process restart re-derived its target from
+  `os.Executable()`, which the kernel reports as `"…/vayupress (deleted)"` (the
+  old, now-unlinked inode) — so it failed to launch the new file. The restart now
+  re-execs the exact path the update just wrote (and strips a stray `(deleted)`
+  marker as a safeguard), so the new binary takes over in place with the PID
+  preserved. In addition, the update now **pre-checks that the binary's directory
+  is writable** and, if not (most often a systemd `ProtectSystem` sandbox making
+  `/usr/local/bin` read-only), fails fast with the exact fix instead of a
+  confusing mid-update failure. See ADR-0100.
+
 ## [2.2.0] — 2026-06-28
 
 ### Highlights
