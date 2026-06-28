@@ -291,7 +291,10 @@ func main() {
 
 	docsDir := config.EnvOr("VAYU_DOCS_DIR", "/var/www/vayupress/docs")
 	os.MkdirAll(docsDir, 0755)
-	writeADRs(docsDir)
+	// ADRs are shipped as canonical files under docs/adr and synced to the docs
+	// location by the deploy script; the registry reads them straight from disk.
+	// (We no longer write bootstrap stub ADRs here — they produced duplicate ADR
+	// numbers alongside the canonical files and polluted the registry.)
 
 	if os.Getenv("VAYU_PLUGINS_ENABLED") == "true" {
 		a.pluginManager.Start(plugins.DefaultPoolSize, plugins.DefaultQueueDepth)
