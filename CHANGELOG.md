@@ -8,6 +8,14 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [2.2.0] — 2026-06-28
+
+### Highlights
+
+A truly one-click update — installing from VayuOS now advances the binary, the
+embedded migrations **and** the admin assets together — plus automatic Let's
+Encrypt TLS for VayuMail so mobile mail apps (the Gmail app, Apple Mail) connect.
+
 ### Changed
 
 - **One-click update now updates everything, not just the binary.** The VayuOS
@@ -23,6 +31,20 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   is missing or read-only, the panel now serves these assets straight from the
   binary as a fallback, so VayuOS always loads correctly after an update. See
   ADR-0099.
+
+### Added
+
+- **Automatic TLS for VayuMail (Let's Encrypt) in the setup script.**
+  `deploy/vayumail-setup.sh` now provisions a trusted certificate end to end:
+  it resolves your mail hostname (`mail.<domain>` from the service environment,
+  or `MAIL_DOMAIN=`), installs certbot if needed, obtains the certificate over
+  the HTTP-01 challenge (briefly freeing port 80 when nginx holds it), wires
+  `VAYUOS_MAIL_TLS_CERT`/`VAYUOS_MAIL_TLS_KEY` into the service environment, and
+  installs a renewal deploy-hook that restarts the service so a renewed cert is
+  loaded. This closes the last gap that made mobile mail apps (the Gmail app,
+  Apple Mail) refuse to connect — they reject VayuMail's self-signed fallback.
+  Best-effort and idempotent; set `MAIL_TLS=off` to skip, or
+  `MAIL_CERT_EMAIL=` to set the registration contact.
 
 ### Fixed
 

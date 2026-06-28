@@ -21,6 +21,29 @@
 > _Own your content. Own your communication. Own your infrastructure._
 > Publishing is the core identity, **VayuMail** the native sovereignty layer, **VayuPGP** the native privacy layer, and **VayuOS** the native control layer — all in a single Go binary, single process, single config.
 
+## What's New in v2.2.0
+
+> Full notes in [`CHANGELOG.md`](CHANGELOG.md) · architecture decision in
+> [`docs/adr/ADR-0099`](docs/adr/ADR-0099-self-contained-one-click-update.md)
+
+**A truly one-click update — and VayuMail that just connects from mobile mail apps.**
+
+- **One click updates *everything*, not just the binary.** The VayuOS self-update
+  replaces the running binary and restarts — and now the admin CSS/JS ship
+  *inside* that binary and are written to `STATIC_DIR` automatically on boot. So
+  an in-app update advances the binary, the database migrations, **and** every
+  admin asset together, with nothing left half-applied and no separate file
+  copy. If `STATIC_DIR` is unavailable, the panel serves those assets straight
+  from the binary, so VayuOS always loads correctly after an update.
+- **The updater always installs the right artefact.** Release-asset selection now
+  skips checksum/signature/SBOM sidecars (so the `.cosign.bundle` can never be
+  mistaken for the binary) and matches the running OS/architecture for
+  multi-platform releases.
+- **Automatic TLS for VayuMail.** `deploy/vayumail-setup.sh` now provisions a
+  trusted Let's Encrypt certificate for `mail.<domain>`, wires it into the
+  service, and installs an auto-renewal restart hook — so the Gmail app, Apple
+  Mail, Thunderbird and Outlook connect without the self-signed-cert rejection.
+
 ## What's New in v2.1.0
 
 > Full notes in [`CHANGELOG.md`](CHANGELOG.md) · architecture decisions in
