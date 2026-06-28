@@ -20,11 +20,11 @@ func testTLSConfig(t *testing.T) *tls.Config {
 	t.Helper()
 	cfg := DefaultConfig()
 	cfg.Hostname = "mail.test"
-	tc, err := loadTLSConfig(cfg)
+	p, err := buildTLSProvider(cfg)
 	if err != nil {
-		t.Fatalf("loadTLSConfig: %v", err)
+		t.Fatalf("buildTLSProvider: %v", err)
 	}
-	return tc
+	return p.config
 }
 
 func testEngineConfig() Config {

@@ -217,35 +217,9 @@ func acmeHosts(cfg Config) []string {
 	return out
 }
 
-// loadTLSConfig builds the TLS configuration used by the SMTP/submission/IMAP
-// listeners. It prefers an operator-provided certificate (cfg.TLSCertFile +
-// cfg.TLSKeyFile, e.g. a Let's Encrypt pair); when none is configured it falls
-// back to an in-memory self-signed certificate for cfg.Hostname. A self-signed
-// cert is sufficient for opportunistic STARTTLS — sending MTAs encrypt without
-// verifying — and lets the receive side offer TLS immediately, while operators
-// can drop in a CA-signed cert (or enable ACME) for verified client use.
-//
-// It is retained for callers/tests that only need the *tls.Config; the engine
-// uses buildTLSProvider so it can also drive ACME and diagnostics.
-func loadTLSConfig(cfg Config) (*tls.Config, error) {
-	var cert tls.Certificate
-	var err error
-	if cfg.TLSCertFile != "" && cfg.TLSKeyFile != "" {
-		cert, err = tls.LoadX509KeyPair(cfg.TLSCertFile, cfg.TLSKeyFile)
-		if err != nil {
-			return nil, fmt.Errorf("vayumail: load TLS keypair: %w", err)
-		}
-	} else {
-		cert, err = selfSignedCert(cfg.Hostname)
-		if err != nil {
-			return nil, fmt.Errorf("vayumail: self-signed cert: %w", err)
-		}
-	}
-	return &tls.Config{
-		Certificates: []tls.Certificate{cert},
-		MinVersion:   tls.VersionTLS12,
-	}, nil
-}
+// loadTLSConfig is intentionally removed: the engine now uses buildTLSProvider,
+// which supersedes it (static cert, ACME, and the self-signed fallback). Tests
+// obtain a *tls.Config via buildTLSProvider(...).config.
 
 // selfSignedCert mints a short-lived in-memory ECDSA certificate for host. The
 // private key never touches disk.
