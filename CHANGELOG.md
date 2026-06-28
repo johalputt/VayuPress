@@ -8,6 +8,15 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [2.3.0] — 2026-06-28
+
+### Highlights
+
+A one-click update that reliably activates the new version, a new admin-only
+**Storage & System** panel to see RAM/disk usage and clean up backups, logs and
+temp files without the shell, and PGP/DNS infrastructure detail locked to
+administrators.
+
 ### Added
 
 - **Storage & System panel (VayuOS → Storage & System, administrators only).** A

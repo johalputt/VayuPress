@@ -21,6 +21,29 @@
 > _Own your content. Own your communication. Own your infrastructure._
 > Publishing is the core identity, **VayuMail** the native sovereignty layer, **VayuPGP** the native privacy layer, and **VayuOS** the native control layer — all in a single Go binary, single process, single config.
 
+## What's New in v2.3.0
+
+> Full notes in [`CHANGELOG.md`](CHANGELOG.md) · architecture decision in
+> [`docs/adr/ADR-0100`](docs/adr/ADR-0100-storage-panel-update-activation-infra-rbac.md)
+
+**Updates that actually take effect, a way to see and reclaim disk from the
+admin, and infrastructure detail locked to administrators.**
+
+- **One-click update reliably activates the new version.** Installing from
+  VayuOS could restart but come back on the old version (then ask to update
+  again); the restart now re-execs the exact binary the update just wrote, so the
+  new version takes over in place. If the binary location isn't writable (a
+  hardened systemd sandbox), the update now says so up front with the fix.
+- **Storage & System panel (administrators only).** See how much RAM and
+  disk/NVMe the system is using, plus the on-disk footprint of the database,
+  cache, media and backups — and list the backups, logs and temporary files
+  VayuPress has created, with one-click download or delete (single or bulk) to
+  reclaim space. The live database can never be touched from here.
+- **PGP & DNS detail is administrator-only.** PGP keys, the DKIM/SPF/DMARC
+  records and DNS health, the deliverability self-check, security updates and
+  account management are hidden from the editor, author, reviewer and mailbox
+  roles — they see only the mailbox surface they use.
+
 ## What's New in v2.2.0
 
 > Full notes in [`CHANGELOG.md`](CHANGELOG.md) · architecture decision in
