@@ -552,6 +552,7 @@ func vayuosNav(active string) string {
 		{"compose", "Compose", "/os/vayuos/mail/compose"},
 		{"mailbox", "Mailbox", "/os/vayuos/mail/inbox"},
 		{"accounts", "Accounts", "/os/vayuos/mail/accounts"},
+		{"connect", "Connect", "/os/vayuos/mail/connect"},
 		{"outbox", "Outbox", "/os/vayuos/mail/sent"},
 		{"pgp", "PGP Keys", "/os/vayuos/pgp"},
 		{"mail", "DNS", "/os/vayuos/mail"},

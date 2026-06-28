@@ -18,6 +18,15 @@ smooth, incremental updates (no site-wide rebuilds).
 
 ### Added
 
+- **VayuMail "Connect" tab — one-glance mail-app setup + live status.** A new
+  Connect tab in the VayuMail console shows the exact IMAP/POP3/SMTP server,
+  ports and username needed to add a mailbox to any standard app (Gmail, Apple
+  Mail, Thunderbird, Outlook): IMAP `993` SSL / `143` STARTTLS, POP3 `995` SSL /
+  `110` STLS, SMTP submission `587` STARTTLS (auth required), username = full
+  email, password = the mailbox password. It also reports the live online/offline
+  status of every mail listener (and any bind error), and lists per-mailbox
+  settings so each account can be set up by copying the values.
+
 - **VayuMail now works with real mail apps over IMAP and POP3.** You can add a
   VayuMail mailbox to the Gmail app, Apple Mail, Thunderbird, Outlook, or any
   standard client and read/send mail like any hosted provider. The IMAP server
