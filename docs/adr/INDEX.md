@@ -13,6 +13,7 @@
 | [ADR-0093](ADR-0093-indexed-tag-membership.md) | Indexed Tag Membership (article_tags join table) | Accepted | Core | 2026-06-28 |
 | [ADR-0095](ADR-0095-index-self-check-and-pages-index.md) | Startup Index Self-Check & Pages Composite Index | Accepted | Core | 2026-06-28 |
 | [ADR-0092](ADR-0092-block-editor-v2-and-low-impact-deploys.md) | Block Editor v2 — Publishing Options, Content Cards & Low-Impact Deploys | Accepted | VayuOS | 2026-06-27 |
+| [ADR-0094](ADR-0094-lazy-per-page-cache-invalidation.md) | Lazy, Per-Page Cache Invalidation | Accepted | Core | 2026-06-28 |
 | [ADR-0090](ADR-0090-newsletter-console.md) | Newsletter Console — Operator Page, Subscriber Management & Tracked Broadcasts | Accepted | VayuOS | 2026-06-26 |
 | [ADR-0089](ADR-0089-vayuos-one-click-update-and-backup.md) | VayuOS One-Click Update & Full Backup/Restore | Accepted | VayuOS | 2026-06-26 |
 | [ADR-0088](ADR-0088-api-keys-and-encrypted-credentials.md) | API Key Console & Encrypted Third-Party Credentials | Accepted | VayuOS | 2026-06-26 |

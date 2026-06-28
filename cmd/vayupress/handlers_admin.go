@@ -223,7 +223,7 @@ func (a *App) handleAdminCachePurge(w http.ResponseWriter, r *http.Request) {
 // It serves a cached copy when present and regenerates on cache miss.
 func (a *App) handleHome(w http.ResponseWriter, r *http.Request) {
 	cachePath := filepath.Join(config.Cfg.CacheDir, "home", "index.html")
-	if _, err := os.Stat(cachePath); err == nil {
+	if fi, err := os.Stat(cachePath); err == nil && render.CacheEntryFresh(fi) {
 		atomic.AddInt64(&metrics.MetricCacheHits, 1)
 		http.ServeFile(w, r, cachePath)
 		return
@@ -329,7 +329,7 @@ func (a *App) handleArticlePage(w http.ResponseWriter, r *http.Request) {
 
 	cachePath := filepath.Join(config.Cfg.CacheDir, "posts", slug+".html")
 	if !gated && (!isAdmin || r.URL.Query().Get("layout") == "") {
-		if _, err := os.Stat(cachePath); err == nil { //nosec G703 -- slug validated by api.IsValidSlug; path confined to CacheDir/posts
+		if fi, err := os.Stat(cachePath); err == nil && render.CacheEntryFresh(fi) { //nosec G703 -- slug validated by api.IsValidSlug; path confined to CacheDir/posts
 			atomic.AddInt64(&metrics.MetricCacheHits, 1)
 			// Re-apply the per-page video-embed CSP for cached pages that carry a
 			// facade (recorded in a sidecar at render time) before serving.

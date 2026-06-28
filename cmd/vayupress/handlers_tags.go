@@ -73,7 +73,7 @@ func (a *App) handleTagPage(w http.ResponseWriter, r *http.Request) {
 	cacheRel, cacheable := render.TagPageCacheRel(tag)
 	if cacheable {
 		cachePath := filepath.Join(config.Cfg.CacheDir, filepath.FromSlash(cacheRel))
-		if _, err := os.Stat(cachePath); err == nil { //nosec G703 -- cacheRel sanitised by TagPageCacheRel (rejects unsafe path components); tag length-bounded; path confined to CacheDir
+		if fi, err := os.Stat(cachePath); err == nil && render.CacheEntryFresh(fi) { //nosec G703 -- cacheRel sanitised by TagPageCacheRel (rejects unsafe path components); tag length-bounded; path confined to CacheDir
 			atomic.AddInt64(&metrics.MetricCacheHits, 1)
 			http.ServeFile(w, r, cachePath) //nosec G703 -- path confined to CacheDir; tag sanitised by TagPageCacheRel
 			return
