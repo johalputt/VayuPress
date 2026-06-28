@@ -10,6 +10,20 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Fixed
 
+- **Opening the Posts tab no longer 502s on a large catalog (the real fix).** The
+  Posts manager counts posts with `SELECT status, COUNT(1) FROM articles WHERE
+  is_page=0 GROUP BY status`, and the homepage/feeds filter on `is_page` **and**
+  `status` together. No existing index covered both columns, so SQLite found the
+  rows with one single-column index and then read **every** row to evaluate the
+  other column (a temp-b-tree `GROUP BY` over the whole catalog) — a full scan
+  that exceeds the request timeout and returns 502 at hundreds of thousands of
+  posts. New migration 047 adds a composite index
+  `idx_articles_pagefeed(is_page, status, created_at DESC)`; `EXPLAIN QUERY PLAN`
+  confirms the counts become **covering, index-only** (no temp b-tree, no table
+  reads) and the published/draft listings read straight from the index in
+  recency order — so the Posts tab, homepage and feed counts stay fast at 1M+
+  posts. The index builds once on the next start.
+
 - **The public site and VayuOS no longer hang after an update on a large
   catalog.** Every public *cold-render* path ran a full-table scan over the
   whole catalog on the single SQLite **writer** connection: the homepage and
