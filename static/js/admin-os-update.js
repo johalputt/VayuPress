@@ -21,6 +21,25 @@
     return m ? decodeURIComponent(m[1]) : '';
   }
 
+  // readResponse reads a fetch Response defensively. The server (or the reverse
+  // proxy in front of it) can return a NON-JSON body — an nginx 502/504 HTML
+  // page while the service is restarting mid-update, or a login page if the
+  // session lapsed. Calling r.json() on that throws "Unexpected token '<'", so we
+  // read the text first and only parse when it is actually JSON. Returns
+  // { ok, status, isJSON, d }.
+  function readResponse(r) {
+    return r.text().then(function (t) {
+      var d = {};
+      var isJSON = false;
+      if (t) {
+        try { d = JSON.parse(t); isJSON = true; } catch (e) { isJSON = false; }
+      } else {
+        isJSON = true; // empty body is acceptable (treated as {})
+      }
+      return { ok: r.ok, status: r.status, isJSON: isJSON, d: d };
+    });
+  }
+
   var card = document.querySelector('[data-update-card]');
   if (!card) return;
 
@@ -72,9 +91,15 @@
   function doCheck() {
     if (checkBtn) checkBtn.disabled = true;
     setMsg(msgEl, 'Checking GitHub for the latest release…', false);
-    fetch('/os/api/update/check', { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
-      .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+    fetch('/os/api/update/check', { headers: { 'X-Requested-With': 'XMLHttpRequest' }, cache: 'no-store' })
+      .then(readResponse)
       .then(function (res) {
+        if (!res.isJSON) {
+          // HTML/empty body → the update service is unreachable (often a brief
+          // window while it restarts behind the proxy). Don't surface raw HTML.
+          setMsg(msgEl, 'The update service is unavailable right now — it may be restarting. Try Check again in a moment.', true);
+          return;
+        }
         if (!res.ok) {
           setMsg(msgEl, res.d.detail || res.d.title || 'Check failed', true);
           return;
@@ -106,7 +131,7 @@
           setMsg(msgEl, 'Version ' + d.latest + ' is ready to install (checksum verified).', false);
         }
       })
-      .catch(function (e) { setMsg(msgEl, 'Error: ' + e, true); })
+      .catch(function () { setMsg(msgEl, 'Could not reach the update service — check your connection and try again.', true); })
       .finally(function () { if (checkBtn) checkBtn.disabled = false; });
   }
 
@@ -123,21 +148,32 @@
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf() },
       body: JSON.stringify({ restart: true })
     })
-      .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+      .then(readResponse)
       .then(function (res) {
-        if (!res.ok) {
+        // A genuine, pre-restart failure (e.g. checksum/signature, paused mode)
+        // comes back as a JSON error — show it and re-enable the buttons.
+        if (res.isJSON && !res.ok) {
           setMsg(msgEl, res.d.detail || res.d.title || 'Update failed', true);
           if (applyBtn) applyBtn.disabled = false;
           if (checkBtn) checkBtn.disabled = false;
           return;
         }
-        setMsg(msgEl, 'Installed v' + (res.d.version || '') + '. Restarting to activate…', false);
+        // Otherwise the update was accepted. Whether we got the JSON success body
+        // or a non-JSON body (the service already cycled behind the proxy, or a
+        // gateway timeout while it installs+restarts), the right thing is to wait
+        // for the service to come back — NOT to report an error.
+        if (res.isJSON && res.ok && res.d.version) {
+          setMsg(msgEl, 'Installed v' + res.d.version + '. Restarting to activate…', false);
+        } else {
+          setMsg(msgEl, 'Update applied — the service is restarting to activate it…', false);
+        }
         waitForRestartThenReload(msgEl);
       })
-      .catch(function (e) {
-        setMsg(msgEl, 'Error: ' + e, true);
-        if (applyBtn) applyBtn.disabled = false;
-        if (checkBtn) checkBtn.disabled = false;
+      .catch(function () {
+        // A dropped connection right after POSTing is the expected restart, not a
+        // failure — wait for the service to return rather than alarming the user.
+        setMsg(msgEl, 'The service is restarting to finish the update…', false);
+        waitForRestartThenReload(msgEl);
       });
   }
 
@@ -152,18 +188,21 @@
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf() }
     })
-      .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+      .then(readResponse)
       .then(function (res) {
-        if (!res.ok) {
+        if (res.isJSON && !res.ok) {
           setMsg(msgEl, res.d.detail || res.d.title || 'Rollback failed', true);
           if (rollbackBtn) rollbackBtn.disabled = false;
           return;
         }
+        // Accepted (JSON success or a non-JSON body from the cycling service) →
+        // wait for the restart rather than reporting a false error.
+        setMsg(msgEl, 'Rolled back — the service is restarting…', false);
         waitForRestartThenReload(msgEl);
       })
-      .catch(function (e) {
-        setMsg(msgEl, 'Error: ' + e, true);
-        if (rollbackBtn) rollbackBtn.disabled = false;
+      .catch(function () {
+        setMsg(msgEl, 'The service is restarting to finish the rollback…', false);
+        waitForRestartThenReload(msgEl);
       });
   }
 

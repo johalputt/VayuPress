@@ -311,6 +311,9 @@ func (e *Engine) SubmissionActive() bool { return e.submitd != nil }
 // IMAPSActive reports whether the implicit-TLS IMAPS (993) listener is running.
 func (e *Engine) IMAPSActive() bool { return e.imapsd != nil }
 
+// IMAPActive reports whether the plaintext/STARTTLS IMAP (143) listener is running.
+func (e *Engine) IMAPActive() bool { return e.imapd != nil }
+
 // POP3Active reports whether the POP3 (110) listener is running.
 func (e *Engine) POP3Active() bool { return e.pop3d != nil }
 

@@ -8,7 +8,24 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [2.1.0] — 2026-06-28
+
+### Highlights
+
+VayuMail becomes a real mail provider you can use from the apps you already
+have, and the engine is hardened to run a 1M-post catalogue on a small VPS with
+smooth, incremental updates (no site-wide rebuilds).
+
 ### Added
+
+- **VayuMail "Connect" tab — one-glance mail-app setup + live status.** A new
+  Connect tab in the VayuMail console shows the exact IMAP/POP3/SMTP server,
+  ports and username needed to add a mailbox to any standard app (Gmail, Apple
+  Mail, Thunderbird, Outlook): IMAP `993` SSL / `143` STARTTLS, POP3 `995` SSL /
+  `110` STLS, SMTP submission `587` STARTTLS (auth required), username = full
+  email, password = the mailbox password. It also reports the live online/offline
+  status of every mail listener (and any bind error), and lists per-mailbox
+  settings so each account can be set up by copying the values.
 
 - **VayuMail now works with real mail apps over IMAP and POP3.** You can add a
   VayuMail mailbox to the Gmail app, Apple Mail, Thunderbird, Outlook, or any
@@ -98,6 +115,18 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   both rare and very common tags on a 100k-row synthetic catalog.
 
 ### Fixed
+
+### Fixed
+
+- **One-click update no longer shows a scary "Unexpected token '<'" error.** When
+  you install an update from VayuOS, the service restarts to activate the new
+  binary — so the apply request (and the auto-check that runs when the panel
+  reloads) can briefly receive an nginx 502/504 HTML page instead of JSON. The UI
+  called `response.json()` on that and surfaced `SyntaxError: Unexpected token
+  '<'`, making a successful update look like a failure. The Update panel now reads
+  responses defensively and treats a non-JSON or dropped response after
+  apply/rollback as the expected restart (waiting for the service to return),
+  while genuine pre-restart errors still report their JSON message.
 
 - **Security-updates tab: clearer dependency names and honest status.** The
   tracked-dependencies table showed `chi/v5` as the meaningless component name
