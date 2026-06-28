@@ -204,6 +204,8 @@ func (a *App) bootVayuOS() {
 		mailCfg.IMAPListen = config.EnvOr("VAYUOS_MAIL_IMAP_LISTEN", ":143")
 		mailCfg.SubmissionListen = config.EnvOr("VAYUOS_MAIL_SUBMISSION_LISTEN", ":587")
 		mailCfg.IMAPSListen = config.EnvOr("VAYUOS_MAIL_IMAPS_LISTEN", ":993")
+		mailCfg.POP3Listen = config.EnvOr("VAYUOS_MAIL_POP3_LISTEN", ":110")
+		mailCfg.POP3SListen = config.EnvOr("VAYUOS_MAIL_POP3S_LISTEN", ":995")
 		// Optional CA-signed cert (e.g. Let's Encrypt). When unset, VayuMail
 		// generates an in-memory self-signed cert so STARTTLS still works.
 		mailCfg.TLSCertFile = config.EnvOr("VAYUOS_MAIL_TLS_CERT", "")
@@ -263,6 +265,12 @@ func (a *App) bootVayuOS() {
 				}
 				if a.vayuMail.IMAPSActive() {
 					extras = append(extras, "IMAPS:993")
+				}
+				if a.vayuMail.POP3Active() {
+					extras = append(extras, "POP3:110")
+				}
+				if a.vayuMail.POP3SActive() {
+					extras = append(extras, "POP3S:995")
 				}
 				msg := "outbound + DKIM active; inbound SMTP/IMAP listening"
 				if len(extras) > 0 {

@@ -10,6 +10,27 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Added
 
+- **VayuMail now works with real mail apps over IMAP and POP3.** You can add a
+  VayuMail mailbox to the Gmail app, Apple Mail, Thunderbird, Outlook, or any
+  standard client and read/send mail like any hosted provider. The IMAP server
+  was rebuilt to a full RFC 3501 service: persistent, stable UIDs and per-folder
+  UIDVALIDITY (so clients sync incrementally instead of re-downloading on every
+  reconnect), all standard folders exposed via LIST/LSUB with SPECIAL-USE
+  (Inbox/Sent/Drafts/Archive/Junk/Trash), SELECT/EXAMINE of any folder, full UID
+  FETCH (FLAGS, UID, RFC822.SIZE, INTERNALDATE, ENVELOPE, BODYSTRUCTURE, and
+  BODY[…] section/partial fetch with a MIME walker), STORE flag updates
+  (\Seen/\Answered/\Flagged/\Deleted/\Draft mapped to Maildir flags), APPEND
+  (so a client's Sent/Drafts copies are saved server-side), COPY, MOVE (RFC
+  6851), EXPUNGE, a SEARCH subset, IDLE (RFC 2177) push, NAMESPACE, and
+  AUTHENTICATE PLAIN (SASL-IR) alongside LOGIN. A brand-new **POP3** server
+  (STLS on 110, implicit TLS on 995) provides USER/PASS, STAT, LIST, UIDL, RETR,
+  TOP, DELE, RSET, NOOP and QUIT for download-style clients. UIDs/UIDVALIDITY are
+  persisted in SQLite; transparent PGP decryption is applied on read for both
+  protocols. Listen addresses are configurable via `VAYUOS_MAIL_IMAP_LISTEN`,
+  `VAYUOS_MAIL_IMAPS_LISTEN`, `VAYUOS_MAIL_POP3_LISTEN`, `VAYUOS_MAIL_POP3S_LISTEN`,
+  and all listeners remain best-effort (a bind failure never blocks startup).
+  See ADR-0096.
+
 - **The ADR Registry is now readable and shows the true, complete set.** The ADR
   tab (`/os/adr`) previously listed the architecture decision records as static,
   non-clickable rows with no way to open them. Each row is now a link to a read
