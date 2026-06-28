@@ -677,7 +677,6 @@ func (a *App) handleAdminADR(w http.ResponseWriter, r *http.Request) {
 
 	type adrEntry struct{ Filename, Number, Title string }
 	var adrs []adrEntry
-	seen := make(map[string]bool) // de-dupe by ADR number (guards against stale/renamed duplicates)
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
 			continue
@@ -701,11 +700,11 @@ func (a *App) handleAdminADR(w http.ResponseWriter, r *http.Request) {
 			number = parts[0]
 			title = strings.ReplaceAll(strings.SplitN(name, "-", 2)[1], "-", " ")
 		}
-		key := strings.ToLower(number)
-		if seen[key] {
-			continue
-		}
-		seen[key] = true
+		// Every distinct ADR file is listed. We intentionally do NOT de-duplicate
+		// by number: two different ADRs must never share a number, but if one ever
+		// slips through, hiding it here would make a real decision record silently
+		// vanish from the registry. Stale duplicates are prevented at the source
+		// instead (the deploy mirrors docs/adr exactly).
 		adrs = append(adrs, adrEntry{e.Name(), number, title})
 	}
 	// Newest first so the most recent decisions are at the top.
