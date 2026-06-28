@@ -8,6 +8,14 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [2.1.0] — 2026-06-28
+
+### Highlights
+
+VayuMail becomes a real mail provider you can use from the apps you already
+have, and the engine is hardened to run a 1M-post catalogue on a small VPS with
+smooth, incremental updates (no site-wide rebuilds).
+
 ### Added
 
 - **VayuMail now works with real mail apps over IMAP and POP3.** You can add a

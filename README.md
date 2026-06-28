@@ -21,6 +21,40 @@
 > _Own your content. Own your communication. Own your infrastructure._
 > Publishing is the core identity, **VayuMail** the native sovereignty layer, **VayuPGP** the native privacy layer, and **VayuOS** the native control layer — all in a single Go binary, single process, single config.
 
+## What's New in v2.1.0
+
+> Full notes in [`CHANGELOG.md`](CHANGELOG.md) · architecture decisions in
+> [`docs/adr/ADR-0096`](docs/adr/ADR-0096-vayumail-imap-pop3-clients.md),
+> [`ADR-0093`](docs/adr/ADR-0093-indexed-tag-membership.md),
+> [`ADR-0094`](docs/adr/ADR-0094-lazy-per-page-cache-invalidation.md) and
+> [`ADR-0095`](docs/adr/ADR-0095-index-self-check-and-pages-index.md)
+
+**Use VayuMail from real mail apps, and run a million posts on a small VPS with
+updates that never rebuild the whole site.**
+
+- **VayuMail works with the apps you already use (IMAP + POP3).** Add your
+  mailbox to the Gmail app, Apple Mail, Thunderbird or Outlook and read/send like
+  any provider. The IMAP server is now a full RFC 3501 service with persistent,
+  stable UIDs + per-folder UIDVALIDITY (so clients sync incrementally), all
+  folders via SPECIAL-USE (Inbox/Sent/Drafts/Archive/Junk/Trash), FETCH with
+  ENVELOPE/BODYSTRUCTURE/BODY[…], flag updates, APPEND (sent-mail capture),
+  COPY/MOVE/EXPUNGE, SEARCH, IDLE and SASL PLAIN — plus a brand-new POP3 server
+  (STLS on 110, implicit TLS on 995).
+- **Enterprise-grade at 1M+ posts on a low VPS.** Tag lookups (per-tag page,
+  related posts, topic index, JSON filter) now use an indexed `article_tags`
+  join table instead of full-table `LIKE` scans; the Posts and Pages managers are
+  index-served; and a startup self-check runs `EXPLAIN QUERY PLAN` on the hot
+  reads to catch any future full-scan regression.
+- **Updates and theme changes never rebuild the whole site.** Pre-rendered pages
+  are invalidated lazily and per-page against a persisted fingerprint, so a
+  deploy or theme save refreshes only the pages actually requested — no
+  site-wide re-render herd.
+- **The ADR Registry is readable.** The `/os/adr` tab renders each architecture
+  decision record as sanitised HTML, and mirrors exactly the shipped set.
+- **The contact form works without outbound email.** Submissions are always saved
+  to the Messages inbox; emailing the operator and the visitor auto-reply are
+  best-effort when a mailer is configured.
+
 ## What's New in v2.0.0
 
 > Full notes in [`CHANGELOG.md`](CHANGELOG.md) · architecture decision in

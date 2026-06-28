@@ -24,6 +24,12 @@ func newInboundEngine(t *testing.T, smtpListen, imapListen string) *Engine {
 	cfg.InboundEnabled = true
 	cfg.SMTPListen = smtpListen
 	cfg.IMAPListen = imapListen
+	// Use ephemeral ports for the POP3 listeners too, so the test never tries to
+	// bind privileged :110/:995 (which fails as non-root in CI). The plaintext
+	// POP3 bind is recorded in InboundError just like SMTP/IMAP, so it must be a
+	// free port for the "starts cleanly" assertion to hold.
+	cfg.POP3Listen = "127.0.0.1:0"
+	cfg.POP3SListen = "127.0.0.1:0"
 	e := NewEngine(&cfg, nil, db)
 	if err := e.Start(context.Background()); err != nil {
 		t.Fatalf("start: %v", err)
