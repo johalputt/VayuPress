@@ -8,6 +8,34 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Changed
+
+- **One-click update now updates everything, not just the binary.** The VayuOS
+  self-update replaces the running executable and re-execs to activate it — but
+  the admin panel's CSS/JavaScript were served from `STATIC_DIR` on disk and
+  refreshed by a *separate* file-copy step, so a one-click update could leave the
+  new binary paired with stale `admin-os.css`/`admin-os-*.js` until someone
+  re-copied them by hand. Those admin assets are now **compiled into the binary**
+  and written to `STATIC_DIR` automatically on boot (only when their bytes
+  changed), so installing an update from the panel updates the binary, the
+  embedded database migrations (already run on start) **and** every admin asset
+  together — with no command line and nothing left half-applied. If `STATIC_DIR`
+  is missing or read-only, the panel now serves these assets straight from the
+  binary as a fallback, so VayuOS always loads correctly after an update. See
+  ADR-0099.
+
+### Fixed
+
+- **Self-update now always picks the correct release binary.** The updater chose
+  the download as "the first release asset that isn't a `.sig`/`.sha256`", which
+  could match the `*.cosign.bundle` signature artefact attached to every release
+  (the update would then fail checksum verification and never complete). Asset
+  selection now explicitly skips checksum/signature/SBOM sidecars and, when a
+  release ships builds for multiple platforms, picks the one matching the running
+  OS and architecture (with common arch aliases like `amd64`↔`x86_64`,
+  `arm64`↔`aarch64`); the matching `.sha256`/`.sig` is resolved to the chosen
+  binary. Single-binary releases (VayuPress's own) are unaffected. See ADR-0099.
+
 ## [2.1.0] — 2026-06-28
 
 ### Highlights

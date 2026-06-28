@@ -24,12 +24,14 @@ package main
 // GraphQL admin, command palette, and all remaining intelligence features.
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"html"
 	htmpl "html/template"
+	"io/fs"
 	"net/http"
 	"net/url"
 	"os"
@@ -356,7 +358,20 @@ func serveAdminOSAsset(rel, contentType string) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		w.Header().Set("Content-Type", contentType)
 		w.Header().Set("Cache-Control", "public, max-age=3600")
-		http.ServeFile(w, req, filepath.Join(adminOSStaticDir(), filepath.FromSlash(rel)))
+		diskPath := filepath.Join(adminOSStaticDir(), filepath.FromSlash(rel))
+		if _, err := os.Stat(diskPath); err == nil {
+			http.ServeFile(w, req, diskPath)
+			return
+		}
+		// The on-disk copy is missing — e.g. STATIC_DIR was never provisioned, or
+		// is read-only under a hardened service sandbox so syncEmbeddedStatic
+		// could not write it. Serve the copy compiled into the binary so the
+		// panel always works, even immediately after a one-click self-update.
+		if data, err := fs.ReadFile(embeddedStaticFS, rel); err == nil {
+			http.ServeContent(w, req, filepath.Base(rel), time.Time{}, bytes.NewReader(data))
+			return
+		}
+		http.NotFound(w, req)
 	}
 }
 
@@ -373,7 +388,13 @@ func assetVer(rel string) string {
 		return v.(string)
 	}
 	v := Version
-	if b, err := os.ReadFile(filepath.Join(adminOSStaticDir(), filepath.FromSlash(rel))); err == nil {
+	b, err := os.ReadFile(filepath.Join(adminOSStaticDir(), filepath.FromSlash(rel)))
+	if err != nil {
+		// Fall back to the embedded copy so the cache-buster still tracks the
+		// shipped asset content when STATIC_DIR is unavailable (ADR-0099).
+		b, err = fs.ReadFile(embeddedStaticFS, rel)
+	}
+	if err == nil {
 		sum := sha256.Sum256(b)
 		v = Version + "-" + hex.EncodeToString(sum[:4])
 	}
