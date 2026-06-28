@@ -10,6 +10,15 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Added
 
+- **Transactional email now sends through the built-in VayuMail engine.** On a
+  deployment with no external SMTP configured, sign-in (magic link), welcome,
+  newsletter double-opt-in, comment and payment emails were silently dropped.
+  They are now delivered via VayuMail — DKIM-signed and queued on its durable,
+  retried outbound queue — whenever a `DOMAIN` is set (external `SMTP_HOST`
+  still takes priority when present). A new **welcome email** (its own
+  operator-editable template) is sent to each newly signed-up member alongside
+  their sign-in link, and the welcome template joins the magic-link and
+  newsletter-confirm templates in the admin email-template editor.
 - **Trending & pinned posts.** The homepage and the bottom of every post now show
   a Trending widget — the most-viewed posts over the **last 7 and 30 days** (a
   tab switches between them), drawn from the built-in cookieless analytics — plus

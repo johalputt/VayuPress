@@ -414,7 +414,12 @@ func main() {
 	if a.mailer.Enabled() {
 		logging.LogInfo("email", "SMTP delivery configured — host="+config.Cfg.SMTPHost)
 	} else {
-		logging.LogInfo("email", "SMTP not configured — email delivery disabled (set SMTP_HOST to enable)")
+		// No external SMTP: fall back to the built-in VayuMail engine so
+		// transactional mail (sign-in links, welcome, newsletter confirmations)
+		// still sends on a sovereign single-binary deployment. The closure reads
+		// a.vayuMail lazily at send time (it is wired later in boot).
+		a.mailer.SetFallback(a.sendViaVayuMail)
+		logging.LogInfo("email", "SMTP not configured — transactional mail will be delivered via the built-in VayuMail engine when DOMAIN is set")
 	}
 
 	// Scheduled publishing (Tier 1).

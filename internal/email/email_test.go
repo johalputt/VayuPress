@@ -100,3 +100,60 @@ func TestRedactEmail(t *testing.T) {
 		t.Errorf("redactEmail should keep domain: %q", got)
 	}
 }
+
+// When SMTP is unconfigured but a fallback transport (VayuMail) is wired, Send
+// must deliver through the fallback, sanitising the body exactly as the SMTP
+// path does (so a malicious HTML payload can never reach the transport).
+func TestSendUsesFallbackWhenSMTPDisabled(t *testing.T) {
+	s := New(Config{}) // empty Host → SMTP disabled
+	if s.Enabled() {
+		t.Fatal("sender should be SMTP-disabled with empty host")
+	}
+	if s.Active() {
+		t.Fatal("sender should be inactive before a fallback is wired")
+	}
+
+	var got Message
+	calls := 0
+	s.SetFallback(func(m Message) error { calls++; got = m; return nil })
+
+	if !s.Active() {
+		t.Fatal("sender should be active once a fallback is wired")
+	}
+	err := s.Send(Message{
+		To:      "reader@example.com",
+		Subject: "Your sign-in link",
+		Text:    "open the link",
+		HTML:    `<a href="https://x/y">Sign in</a><script>steal()</script>`,
+	})
+	if err != nil {
+		t.Fatalf("Send via fallback: %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("fallback should be called exactly once, got %d", calls)
+	}
+	if got.To != "reader@example.com" || got.Subject != "Your sign-in link" {
+		t.Fatalf("fallback received wrong message: %+v", got)
+	}
+	if strings.Contains(strings.ToLower(got.HTML), "<script") {
+		t.Errorf("HTML reaching the transport must be sanitised, got %q", got.HTML)
+	}
+}
+
+// Without SMTP and without a fallback, Send is a safe no-op (upstream flows are
+// never broken on an unconfigured deployment).
+func TestSendNoOpWithoutTransport(t *testing.T) {
+	s := New(Config{})
+	if err := s.Send(Message{To: "a@b.com", Subject: "x", Text: "y"}); err != nil {
+		t.Fatalf("no-op send should not error: %v", err)
+	}
+}
+
+// The fallback path still rejects an invalid recipient before handing off.
+func TestSendFallbackValidatesRecipient(t *testing.T) {
+	s := New(Config{})
+	s.SetFallback(func(Message) error { return nil })
+	if err := s.Send(Message{To: "not-an-email", Subject: "x", Text: "y"}); err == nil {
+		t.Error("expected an invalid-recipient error on the fallback path")
+	}
+}

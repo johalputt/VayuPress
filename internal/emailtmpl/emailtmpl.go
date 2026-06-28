@@ -28,6 +28,9 @@ const (
 	MagicLink         Kind = "magic_link"
 	CommentApproved   Kind = "comment_approved"
 	NewsletterConfirm Kind = "newsletter_confirm"
+	// Welcome is sent to a new member the first time they confirm their email
+	// (the sign-up welcome). It is informational only — it carries no token.
+	Welcome Kind = "welcome"
 	// PaymentPending is sent when a reader checks out via the direct/offline
 	// gateway: it carries the order reference, amount, and the operator's
 	// payment instructions so the payer knows exactly how to pay.
@@ -68,6 +71,11 @@ var defaults = map[Kind]templateSet{
 		Subject: "Confirm your subscription",
 		Text:    "Confirm your subscription to {{.Domain}} by opening this link:\r\n\r\n{{.Link}}",
 		HTML:    `<p>Confirm your subscription to <strong>{{.Domain}}</strong>:</p><p><a href="{{.Link}}">Confirm subscription</a></p>`,
+	},
+	Welcome: {
+		Subject: "Welcome to {{.Domain}}",
+		Text:    "Hi,\r\n\r\nWelcome to {{.Domain}} — your account is ready.\r\n\r\nVisit {{.Link}} to read the latest and manage your account.\r\n\r\nThanks for joining!",
+		HTML:    `<p>Welcome to <strong>{{.Domain}}</strong> — your account is ready.</p><p><a href="{{.Link}}">Visit {{.Domain}}</a> any time to read the latest and manage your account.</p><p>Thanks for joining!</p>`,
 	},
 	PaymentPending: {
 		Subject: "Complete your {{.TierName}} membership — order {{.Reference}}",
