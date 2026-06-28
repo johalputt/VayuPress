@@ -27,6 +27,9 @@ type Engine struct {
 	imapd      *IMAPServer
 	submitd    *SMTPServer // authenticated submission (587)
 	imapsd     *IMAPServer // implicit-TLS IMAPS (993)
+	pop3d      *POP3Server // POP3 (110, STLS)
+	pop3sd     *POP3Server // implicit-TLS POP3S (995)
+	uids       *UIDStore   // persistent IMAP UID/UIDVALIDITY
 	tlsConf    *tls.Config // shared STARTTLS / implicit-TLS config
 	decrypt    DecryptHook
 	inboundErr error
@@ -208,6 +211,14 @@ func (e *Engine) Start(ctx context.Context) error {
 		return fmt.Errorf("vayumail: accounts init: %w", aerr)
 	}
 
+	// Persistent IMAP UID / UIDVALIDITY store (so real clients sync incrementally
+	// instead of re-downloading on every reconnect).
+	if us, uerr := NewUIDStore(e.db); uerr == nil {
+		e.uids = us
+	} else {
+		return fmt.Errorf("vayumail: uid store init: %w", uerr)
+	}
+
 	// Inbound receive side. Enabled by default so a configured domain can
 	// receive external mail; disabled with VAYUOS_MAIL_INBOUND=off. Binding the
 	// mail ports is best-effort — a bind failure (e.g. :25 without privileges,
@@ -228,19 +239,32 @@ func (e *Engine) Start(ctx context.Context) error {
 			e.smtpd = smtpd
 		}
 
-		imapd := NewIMAPServer(e.cfg, e.bridge, e.maildir, e.decrypt).WithTLS(e.tlsConf)
+		imapd := NewIMAPServer(e.cfg, e.bridge, e.maildir, e.decrypt).WithTLS(e.tlsConf).WithUIDStore(e.uids)
 		if err := imapd.Start(ctx); err != nil {
 			e.inboundErr = errors.Join(e.inboundErr, fmt.Errorf("imap: %w", err))
 		} else {
 			e.imapd = imapd
 		}
 
+		// POP3 (110) with STLS when TLS is available. Best-effort, never fatal.
+		pop3d := NewPOP3Server(e.cfg, e.bridge, e.maildir, e.decrypt).WithTLS(e.tlsConf)
+		if err := pop3d.Start(ctx); err != nil {
+			e.inboundErr = errors.Join(e.inboundErr, fmt.Errorf("pop3: %w", err))
+		} else {
+			e.pop3d = pop3d
+		}
+
 		// Implicit-TLS IMAPS (993) and authenticated submission (587) require a
 		// TLS config; both are best-effort and never block startup.
 		if e.tlsConf != nil {
-			imapsd := NewIMAPServer(e.cfg, e.bridge, e.maildir, e.decrypt).WithImplicitTLS(e.tlsConf, e.cfg.IMAPSListen)
+			imapsd := NewIMAPServer(e.cfg, e.bridge, e.maildir, e.decrypt).WithImplicitTLS(e.tlsConf, e.cfg.IMAPSListen).WithUIDStore(e.uids)
 			if err := imapsd.Start(ctx); err == nil {
 				e.imapsd = imapsd
+			}
+			// Implicit-TLS POP3S (995).
+			pop3sd := NewPOP3Server(e.cfg, e.bridge, e.maildir, e.decrypt).WithImplicitTLS(e.tlsConf, e.cfg.POP3SListen)
+			if err := pop3sd.Start(ctx); err == nil {
+				e.pop3sd = pop3sd
 			}
 			if e.bridge != nil {
 				submitd := NewSubmissionServer(e.cfg, e.tlsConf, e.bridge.AuthUser, e.relayOutbound)
@@ -287,6 +311,12 @@ func (e *Engine) SubmissionActive() bool { return e.submitd != nil }
 // IMAPSActive reports whether the implicit-TLS IMAPS (993) listener is running.
 func (e *Engine) IMAPSActive() bool { return e.imapsd != nil }
 
+// POP3Active reports whether the POP3 (110) listener is running.
+func (e *Engine) POP3Active() bool { return e.pop3d != nil }
+
+// POP3SActive reports whether the implicit-TLS POP3S (995) listener is running.
+func (e *Engine) POP3SActive() bool { return e.pop3sd != nil }
+
 // InboundError returns the reason the inbound listeners could not start, or nil
 // when inbound is disabled or running. It lets the panel explain a failed bind
 // (e.g. ":25 without privileges") without taking down outbound mail.
@@ -305,6 +335,12 @@ func (e *Engine) Stop(_ context.Context) error {
 	}
 	if e.imapsd != nil {
 		_ = e.imapsd.Stop(context.Background())
+	}
+	if e.pop3d != nil {
+		_ = e.pop3d.Stop(context.Background())
+	}
+	if e.pop3sd != nil {
+		_ = e.pop3sd.Stop(context.Background())
 	}
 	select {
 	case <-e.done:

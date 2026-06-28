@@ -10,6 +10,7 @@
 | ADR | Title | Status | Owner | Date |
 |-----|-------|--------|-------|------|
 | [ADR-0001](ADR-0001-sqlite-first.md) | SQLite-First Data Layer | Accepted | Core | 2024-01-01 |
+| [ADR-0096](ADR-0096-vayumail-imap-pop3-clients.md) | Real Mail-Client Access (IMAP + POP3) | Accepted | VayuOS | 2026-06-28 |
 | [ADR-0093](ADR-0093-indexed-tag-membership.md) | Indexed Tag Membership (article_tags join table) | Accepted | Core | 2026-06-28 |
 | [ADR-0095](ADR-0095-index-self-check-and-pages-index.md) | Startup Index Self-Check & Pages Composite Index | Accepted | Core | 2026-06-28 |
 | [ADR-0092](ADR-0092-block-editor-v2-and-low-impact-deploys.md) | Block Editor v2 — Publishing Options, Content Cards & Low-Impact Deploys | Accepted | VayuOS | 2026-06-27 |

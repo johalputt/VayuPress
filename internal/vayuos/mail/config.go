@@ -61,6 +61,11 @@ type Config struct {
 	// SMTPListen / IMAPListen are the bind addresses for the receive servers.
 	SMTPListen string
 	IMAPListen string
+	// POP3Listen / POP3SListen are the POP3 (110, STLS) and implicit-TLS POP3S
+	// (995) bind addresses. POP3 serves the INBOX only (download-and-keep/delete);
+	// IMAP is the richer multi-folder protocol.
+	POP3Listen  string
+	POP3SListen string
 
 	// TLS. When TLSCertFile/TLSKeyFile are set they are used for STARTTLS
 	// (SMTP :25, submission :587, IMAP :143) and implicit TLS (IMAPS :993).
@@ -129,6 +134,8 @@ func DefaultConfig() Config {
 		InboundEnabled:    true, // on by default; disable with VAYUOS_MAIL_INBOUND=off
 		SMTPListen:        ":25",
 		IMAPListen:        ":143",
+		POP3Listen:        ":110",
+		POP3SListen:       ":995",
 		SubmissionListen:  ":587",
 		IMAPSListen:       ":993",
 		MaxMessageBytes:   25 * 1024 * 1024, // 25 MiB
