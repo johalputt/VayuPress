@@ -42,7 +42,7 @@ strict CSP. Apache-2.0. **Current version: `2.4.0`** (`cmd/vayupress/main.go`).
   branch AND `main`. `main` moves fast (other agents/CI merge) — expect to
   fetch/merge before pushing; resolve by preferring the more thorough fix.
 - **Before pushing Go changes:** `gofmt -w`, `go build ./...`, `go vet ./cmd/vayupress/`,
-  `go test ./... ` must be clean.
+  `go test ./...` must be clean.
 - **CSP is strict:** no inline `<script>`/`<style>` except a nonce'd inline
   script; no `eval`; all JS served same-origin (`/os/static/js/*` from disk, or
   a Go const served via a handler). No external CDNs. SVG image uploads refused.
@@ -80,6 +80,5 @@ strict CSP. Apache-2.0. **Current version: `2.4.0`** (`cmd/vayupress/main.go`).
   actionable **health checks** (`evaluateSEOHealth`: sitemap fresh, robots
   present, `Disallow: /`, site-wide `noindex`, canonical domain).
 - **Theme Studio** `/os/theme` — Tumblr-style: toggle switches, appearance-first
-  layout, sticky quick-jump section navigator, unsaved-changes (dirty) indicator
-  + leave guard. Theme Store at `/os/theme/store`.
-</content>
+  layout, sticky quick-jump section navigator, an unsaved-changes (dirty)
+  indicator and a leave guard. Theme Store at `/os/theme/store`.
