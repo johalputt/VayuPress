@@ -68,7 +68,7 @@ type App struct {
 	// Article business logic
 	articles *api.ArticleService
 
-	// Search service (Meilisearch + SQLite fallback)
+	// Search service (VayuFind — built-in, dependency-free)
 	search search.Service
 
 	// Domain event bus

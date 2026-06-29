@@ -22,7 +22,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/plugins"
 	"github.com/johalputt/vayupress/internal/render"
@@ -96,12 +95,10 @@ func (a *App) toolRegistry() []toolModule {
 			ready: func(a *App) bool { return a.analytics != nil },
 		},
 		{
-			ID: "meilisearch", Name: "Meilisearch", Category: "Insight", Icon: "🔍",
-			Desc:    "Use an external Meilisearch engine for instant, typo-tolerant full-text search. When off — or when no Meilisearch host is configured — VayuPress uses its built-in SQLite search.",
-			FlagKey: settings.KeyFeatureMeili,
-			// "Ready" means a Meilisearch host is actually configured; otherwise the
-			// module shows Inactive (search still works via the SQLite fallback).
-			ready: func(a *App) bool { return strings.TrimSpace(config.Cfg.MeiliHost) != "" },
+			ID: "search", Name: "Search", Category: "Insight", Icon: "🔍",
+			Desc:    "VayuFind — the built-in, instant site search. A Ctrl/⌘-K search box opens a fast, typo-friendly overlay that filters a cached index entirely in the browser. Zero external services. Turn off to hide the search box and the /search page.",
+			FlagKey: settings.KeyFeatureSearch,
+			ready:   func(a *App) bool { return a.search != nil },
 		},
 		{
 			ID: "members", Name: "Memberships", Category: "Insight", Icon: "👥",
@@ -363,12 +360,10 @@ func (a *App) handleOSToolToggle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Apply runtime side-effects for flags that gate a live subsystem, so the
-	// change takes effect immediately without a restart. Meilisearch: flip the
-	// search backend gate (off → SQLite engine only).
-	if flag == settings.KeyFeatureMeili {
-		search.SetMeiliEnabled(body.Enabled)
-		// The public search box is tied to the Meilisearch toggle, so show/hide it
-		// to match. CachePurgeAll below re-renders cached pages without/with it.
+	// change takes effect immediately without a restart. Search: flip the
+	// built-in engine on/off and show/hide the public search box & modal.
+	if flag == settings.KeyFeatureSearch {
+		search.SetEnabled(body.Enabled)
 		render.SetSearchEnabled(body.Enabled)
 	}
 	// Audit the operator action — toggling a public-facing feature is

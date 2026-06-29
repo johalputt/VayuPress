@@ -6,8 +6,8 @@
 #      docs/INSTALLATION.md). VayuPress itself speaks plain HTTP on :8080 and
 #      expects to sit behind a trusted proxy that sets X-Forwarded-For.
 #
-# Meilisearch is OPTIONAL — VayuPress falls back to SQLite full-text search if
-# it is absent. Uncomment the `meilisearch` service to enable richer search.
+# Search is built in (VayuFind, ADR-0101) — there is no external search service
+# to run. The single binary is the whole deployment.
 
 services:
   vayupress:
@@ -23,9 +23,6 @@ services:
       API_KEY: ${API_KEY:?set API_KEY in .env}
       DOMAIN: ${DOMAIN:-localhost}
       PORT: "8080"
-      # Optional Meilisearch wiring (matches the commented service below):
-      # MEILI_HOST: http://meilisearch:7700
-      # MEILI_MASTER_KEY: ${MEILI_MASTER_KEY}
     volumes:
       - vayupress-data:/var/lib/vayupress     # SQLite DB + uploaded media
       - vayupress-cache:/var/cache/vayupress  # rendered HTML / sitemap / feed
@@ -36,16 +33,6 @@ services:
       retries: 3
       start_period: 10s
 
-  # meilisearch:
-  #   image: getmeili/meilisearch:v1.6
-  #   restart: unless-stopped
-  #   environment:
-  #     MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:?set MEILI_MASTER_KEY in .env}
-  #     MEILI_NO_ANALYTICS: "true"
-  #   volumes:
-  #     - meili-data:/meili_data
-
 volumes:
   vayupress-data:
   vayupress-cache:
-  # meili-data:

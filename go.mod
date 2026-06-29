@@ -14,7 +14,6 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.47
 	github.com/microcosm-cc/bluemonday v1.0.27
 	github.com/rs/cors v1.11.1
-	github.com/sony/gobreaker v1.0.0
 	golang.org/x/crypto v0.53.0
 )
 

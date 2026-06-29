@@ -11,7 +11,6 @@
 #    SQLite3        — primary database (CGO_ENABLED=1)
 #    Nginx          — reverse proxy + TLS termination
 #    Certbot        — Let's Encrypt HTTPS (optional)
-#    Meilisearch    — full-text search
 #    UFW            — host firewall
 #    Fail2ban       — brute-force protection
 #    Systemd        — process supervision
@@ -23,7 +22,7 @@
 #  CPU    : 4 vCPU minimum
 #  Disk   : 50 GB minimum NVMe
 #  Access : Root or sudo
-#  Network: Outbound HTTPS (GitHub, Go module proxy, Meilisearch CDN)
+#  Network: Outbound HTTPS (GitHub, Go module proxy)
 #
 #  USAGE
 #  ────────────────────────────────────────────────────────────────────────────
@@ -69,9 +68,7 @@ MAINTENANCE_MODE=false
 BACKUP_RETAIN_DAYS=30         # days to keep database backups before pruning
 STORAGE_QUOTA_GB=200          # alert threshold in GB for data directory
 
-# Meilisearch
-MEILI_DIR="/var/lib/meilisearch"
-MEILI_MASTER_KEY=""           # set a strong random value: openssl rand -hex 32
+# Search is built in (VayuFind, ADR-0101) — no external search service.
 
 # Go toolchain — minimum acceptable major.minor (patch is irrelevant)
 GO_MIN_MAJOR=1
@@ -153,10 +150,6 @@ gen_secret() {
 if [[ -z "$API_KEY" ]]; then
   API_KEY="${API_KEY:-$(gen_secret)}"
   warn "API_KEY was unset — generated a random one. It will be saved to /etc/vayupress/env (chmod 600)."
-fi
-if [[ -z "$MEILI_MASTER_KEY" ]]; then
-  MEILI_MASTER_KEY="${MEILI_MASTER_KEY:-$(gen_secret)}"
-  warn "MEILI_MASTER_KEY was unset — generated a random one. It will be saved to /etc/vayupress/env (chmod 600)."
 fi
 
 info "Pre-flight checks passed."
@@ -358,8 +351,6 @@ PLUGIN_MAX_CONCURRENT=${PLUGIN_MAX_CONCURRENT}
 PLUGIN_TIMEOUT_MS=${PLUGIN_TIMEOUT_MS}
 WAL_SIZE_THRESHOLD_MB=${WAL_SIZE_THRESHOLD_MB}
 MAINTENANCE_MODE=${MAINTENANCE_MODE}
-MEILISEARCH_URL=http://127.0.0.1:7700
-MEILISEARCH_KEY=${MEILI_MASTER_KEY}
 ENV
   run chmod 600 /etc/vayupress/env
   ok "Runtime config written to /etc/vayupress/env"
@@ -374,8 +365,7 @@ cat > /etc/systemd/system/vayupress.service <<SYSTEMD
 [Unit]
 Description=VayuPress CMS Engine ${ENGINE_VERSION}
 Documentation=https://github.com/johalputt/vayupress
-After=network.target meilisearch.service
-Wants=meilisearch.service
+After=network.target
 
 [Service]
 Type=simple
@@ -400,58 +390,6 @@ SYSTEMD
 
 run systemctl daemon-reload
 ok "Systemd service written."
-
-# =============================================================================
-# ── MEILISEARCH ───────────────────────────────────────────────────────────────
-# =============================================================================
-
-if ! command -v meilisearch &>/dev/null; then
-  info "Installing Meilisearch (MUSL static build — works on Ubuntu 20.04 / GLIBC 2.31)..."
-  # The default install.meilisearch.com binary is dynamically linked and requires
-  # GLIBC 2.32+, which Ubuntu 20.04 does not provide. The x86_64-linux-musl build
-  # is statically linked and has no GLIBC dependency at all.
-  MEILI_VER=$(curl -fsSL "https://api.github.com/repos/meilisearch/meilisearch/releases/latest" \
-    | python3 -c "import sys,json; print(json.load(sys.stdin)['tag_name'])")
-  MEILI_URL="https://github.com/meilisearch/meilisearch/releases/download/${MEILI_VER}/meilisearch-linux-amd64-musl"
-  info "Downloading Meilisearch ${MEILI_VER} (musl)..."
-  run curl -fsSL -o /tmp/meilisearch "${MEILI_URL}"
-  run chmod +x /tmp/meilisearch
-  run mv /tmp/meilisearch /usr/local/bin/meilisearch
-fi
-
-run useradd -r -s /bin/false meilisearch 2>/dev/null || true
-run mkdir -p "${MEILI_DIR}/data" /var/log/meilisearch
-run chown -R meilisearch:meilisearch "${MEILI_DIR}" /var/log/meilisearch
-
-cat > /etc/systemd/system/meilisearch.service <<MEILI_SVC
-[Unit]
-Description=Meilisearch Search Engine
-After=network.target
-
-[Service]
-User=meilisearch
-Group=meilisearch
-ExecStart=/usr/local/bin/meilisearch \
-    --db-path ${MEILI_DIR}/data \
-    --env production \
-    --master-key ${MEILI_MASTER_KEY} \
-    --http-addr 127.0.0.1:7700
-Restart=always
-RestartSec=5s
-NoNewPrivileges=yes
-PrivateTmp=yes
-ReadWritePaths=${MEILI_DIR} /var/log/meilisearch
-StandardOutput=append:/var/log/meilisearch/meilisearch.log
-StandardError=append:/var/log/meilisearch/meilisearch.log
-
-[Install]
-WantedBy=multi-user.target
-MEILI_SVC
-
-run systemctl daemon-reload
-run systemctl enable meilisearch
-run systemctl restart meilisearch
-ok "Meilisearch configured and started."
 
 # =============================================================================
 # ── FILE PERMISSIONS ──────────────────────────────────────────────────────────

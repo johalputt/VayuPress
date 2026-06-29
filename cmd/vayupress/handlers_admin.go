@@ -330,11 +330,11 @@ func (a *App) renderHomeAt(w http.ResponseWriter, r *http.Request, page int) {
 }
 
 // handleSearchPage renders the public search results page. It backs the site
-// search box (nav + /search) using the same engine as the API — Meilisearch
-// when enabled and reachable, otherwise the built-in SQLite search — so visitors
-// get a real, server-rendered (crawlable, JS-free) results list.
+// search box (nav + /search) using VayuFind, the built-in engine — so visitors
+// get a real, server-rendered (crawlable, JS-free) results list even without
+// the instant modal.
 func (a *App) handleSearchPage(w http.ResponseWriter, r *http.Request) {
-	// Search is tied to the Meilisearch toggle — when it's off, the public search
+	// Search is tied to the Search toggle — when it's off, the public search
 	// box is hidden and this page 404s rather than offering hidden search.
 	if !render.SearchEnabled() {
 		a.handleNotFound(w, r)

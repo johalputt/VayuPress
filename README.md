@@ -128,10 +128,15 @@ in-house way to get paid, and updates that no longer wobble the server.**
 - **Major security hardening.** A single rebind-safe outbound dialer
   (`internal/safefetch`), spoof-resistant client-IP resolution, Argon2id raised
   to OWASP `t=3`, and a `SameSite=Strict` admin cookie.
-- **Buttery-smooth updates.** The HTTP listener no longer blocks on Meilisearch
-  at startup, post-deploy cache-warm and search reindex are paced, and the
-  updater builds at idle priority with a disk preflight and an automatic
-  pre-update DB snapshot.
+- **Built-in instant search (VayuFind).** A sovereign, dependency-free search
+  engine inside the binary — no external service. A `Ctrl`/`⌘`-`K` overlay dims
+  and blurs the page and filters results as you type, from a compact cached
+  index, with a no-JavaScript `/search` fallback. See
+  [ADR-0101](docs/adr/ADR-0101-builtin-search-vayufind.md).
+- **Buttery-smooth updates.** The HTTP listener comes up immediately at startup
+  (no external search probe), post-deploy cache-warm and search reindex are
+  paced, and the updater builds at idle priority with a disk preflight and an
+  automatic pre-update DB snapshot.
 
 ## What's New in v1.19.0
 
@@ -888,9 +893,9 @@ VayuPress ("Vayu" — Sanskrit for wind/speed) is governed publishing infrastruc
               +--------------------------+---------------------------+
               |                          |                           |
    +----------v----------+  +-----------v---------+  +-------------v------+
-   |  Meilisearch        |  |  Isso               |  |  fail2ban / UFW    |
-   |  (optional search)  |  |  (self-hosted       |  |  (firewall)        |
-   |  <50ms p95          |  |   comments)         |  |                    |
+   |  VayuFind           |  |  Isso               |  |  fail2ban / UFW    |
+   |  (built-in search)  |  |  (self-hosted       |  |  (firewall)        |
+   |  in-process         |  |   comments)         |  |                    |
    +---------------------+  +---------------------+  +--------------------+
 ```
 
@@ -970,7 +975,7 @@ See [docs/architecture/system-modes.md](docs/architecture/system-modes.md).
 | `internal/render` | Article renderer, cache writer, CSS asset generator |
 | `internal/resource` | Semaphore-based concurrency limiters, resource watchdog |
 | `internal/sandbox` | Subprocess IPC pool, Linux seccomp/namespaces, capability enforcement |
-| `internal/search` | FTS5 + semantic search, Meilisearch client, sharded index |
+| `internal/search` | VayuFind — built-in in-memory index, field-weighted scorer, cached client snapshot |
 | `internal/signing` | Ed25519 article signing and verification |
 | `internal/slo` | SLO error budget tracking — rolling windows, exhaustion signals |
 | `internal/storage` | Content-addressed storage, IPFS stubs |
@@ -1141,7 +1146,7 @@ trusted, and the strict CSP stays intact:
 | `GET` | `/api/articles/{slug}` | Get article by slug |
 | `PUT` | `/api/articles/{slug}` | Update article |
 | `DELETE` | `/api/articles/{slug}` | Delete article |
-| `GET` | `/api/search?q=...` | Full-text search (Meilisearch or SQLite fallback) |
+| `GET` | `/api/search?q=...` | Full-text search (VayuFind — built-in engine) |
 | `GET`/`POST` | `/api/v1/graphql` | Read-only GraphQL content API (query-only — no mutations) (ADR-0067) |
 | `GET` | `/api/v1/i18n/{lang}` | Merged i18n message bundle for a language (public) |
 | `GET` | `/api/v1/stream` | Real-time SSE feed of article events (API-key-gated) |
@@ -1153,7 +1158,7 @@ trusted, and the strict CSP stays intact:
 | `GET` | `/health/ready` | Readiness probe |
 | `GET` | `/health/dependencies` | Dependency health (DB, search, queue) |
 | `GET` | `/health/storage` | Storage quota and utilization |
-| `GET` | `/health/search` | Meilisearch status and circuit-breaker state |
+| `GET` | `/health/search` | Built-in search (VayuFind) status + indexed document count |
 | `GET` | `/health/queue` | Write queue depth and worker stats |
 | `GET` | `/health/ethics` | Machine-readable ethics compliance |
 | `GET` | `/sitemap.xml` | Auto-generated XML sitemap |
@@ -1375,7 +1380,7 @@ bash scripts/deploy-vayupress.sh --dry-run
 bash scripts/deploy-vayupress.sh --upgrade
 ```
 
-The deploy script handles: Go toolchain, CGO/SQLite3, binary build, Nginx with TLS and CSP, systemd service, Meilisearch (optional), nightly backup cron, fail2ban rules.
+The deploy script handles: Go toolchain, CGO/SQLite3, binary build, Nginx with TLS and CSP, systemd service, nightly backup cron, fail2ban rules.
 
 ### Manual Build
 
@@ -1414,8 +1419,6 @@ make build test lint    # all-in-one
 | `VAYU_PLUGIN_TIMEOUT_MS` | `2000` | Per-hook execution timeout |
 | `VAYU_PLUGIN_MAX_CONCURRENT` | `8` | Max concurrent plugin executions |
 | `STATIC_DIR` | `/var/www/vayupress/static` | Static asset output directory |
-| `MEILI_URL` | `http://127.0.0.1:7700` | Meilisearch base URL |
-| `MEILI_MASTER_KEY` | — | Meilisearch master key |
 
 ---
 

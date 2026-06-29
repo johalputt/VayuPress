@@ -27,8 +27,9 @@ type reindexResult struct {
 }
 
 // reindexAllArticles streams every article from the store and re-indexes it into
-// the search backend. It is the rebuild half of the reconciler: it makes the
-// search index converge to the article store regardless of prior drift.
+// the search engine. With the built-in VayuFind engine this is a fast in-memory
+// rebuild; it is the convergence half of the reconciler, making the index match
+// the article store regardless of any prior drift.
 func (a *App) reindexAllArticles(ctx context.Context) (*reindexResult, error) {
 	start := time.Now()
 	throttle := reindexThrottle()
@@ -75,7 +76,7 @@ func (a *App) reindexAllArticles(ctx context.Context) (*reindexResult, error) {
 
 // reindexThrottle is the per-document pause during a full search rebuild.
 // Tunable via VAYU_REINDEX_THROTTLE_MS (clamped 0..5000ms); defaults to a gentle
-// 6ms so a rebuild never saturates the CPU or hammers Meilisearch.
+// 6ms so a rebuild never saturates the CPU.
 func reindexThrottle() time.Duration {
 	if v := strings.TrimSpace(os.Getenv("VAYU_REINDEX_THROTTLE_MS")); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n >= 0 && n <= 5000 {
