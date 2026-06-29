@@ -306,6 +306,24 @@ func (a *App) pingIndexNow(slug string) {
 	if indexNowKey == "" {
 		return
 	}
+	// Only announce URLs that are actually public. A draft (or a not-yet-published
+	// post) returns 404/noindex, so pinging it wastes the submission and can train
+	// search engines on a dead URL. This single guard makes every caller correct —
+	// create, update, and the publish toggle — without each having to re-check.
+	if dbpkg.DB != nil {
+		var status string
+		if err := dbpkg.Reader().QueryRow(
+			`SELECT COALESCE(status,'published') FROM articles WHERE slug=?`, slug).Scan(&status); err != nil {
+			return // unknown slug → nothing public to announce
+		}
+		if status != "published" {
+			logging.LogJSON(logging.LogFields{
+				Level: "info", Component: "indexnow", Severity: "info",
+				Msg: "submission skipped — post is not published", Path: slug, Error: status,
+			})
+			return
+		}
+	}
 	// Governance: IndexNow is an outbound mutation announcement. Suppress it in
 	// any mode where the system has withdrawn from normal write/federation
 	// activity, and journal the suppression so the timeline stays truthful.

@@ -217,6 +217,14 @@ func (a *App) handleOSPostStatus(w http.ResponseWriter, r *http.Request) {
 	// Purge public caches (article page, homepage, tag pages, sitemap, feed) so
 	// an unpublish disappears — and a publish appears — without delay.
 	render.CachePurge(slug, splitCSVTags(tagsCSV), generateSitemap, generateRSS, generateRobots)
+	// Publishing a (previously draft) post makes its URL public for the first
+	// time — announce it to IndexNow so search engines crawl it promptly. The
+	// status-toggle path emits no ArticleUpdated event, so without this a newly
+	// published post would never be submitted. pingIndexNow re-checks that the
+	// post is published, so unpublishing never pings.
+	if status == "published" {
+		go a.pingIndexNow(slug)
+	}
 	writeJSON(w, r, http.StatusOK, map[string]string{"status": status, "slug": slug})
 }
 
