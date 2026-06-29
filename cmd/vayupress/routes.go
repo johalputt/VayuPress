@@ -160,6 +160,11 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	// VayuPGP Web Key Directory — public key discovery (RFC WKD advanced method).
 	r.Get("/.well-known/openpgpkey/*", a.handleWKD)
 
+	// Mozilla Autoconfig — Thunderbird and K-9 / Thunderbird-for-Android fetch
+	// this to set up a mailbox from just the email address (no manual server
+	// entry). Public; contains only hostnames/ports, never a secret.
+	r.Get("/.well-known/autoconfig/mail/config-v1.1.xml", a.handleMailAutoconfig)
+
 	// IndexNow key verification file. Search engines fetch
 	// /.well-known/<key>.txt and expect the body to equal <key>. We serve it
 	// dynamically from the active IndexNow key (managed in the VayuOS API Keys

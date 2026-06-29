@@ -17,6 +17,7 @@ import (
 	"github.com/microcosm-cc/bluemonday"
 
 	"github.com/johalputt/vayupress/internal/auth"
+	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/totp"
@@ -485,6 +486,66 @@ func mailPort(listen, def string) string {
 	return def
 }
 
+// handleMailAutoconfig serves the Mozilla Autoconfig document so Thunderbird and
+// K-9 / Thunderbird-for-Android configure an account from just the email address
+// + password (no manual host/port entry). It is public and unauthenticated by
+// design — it contains only the same server hostnames/ports already printed on
+// the Connect tab, never any secret. Served at
+// /.well-known/autoconfig/mail/config-v1.1.xml on the site's own (trusted-cert)
+// domain, which is where these clients look first.
+func (a *App) handleMailAutoconfig(w http.ResponseWriter, r *http.Request) {
+	if a.vayuMail == nil {
+		http.NotFound(w, r)
+		return
+	}
+	mc := a.vayuMail.Config()
+	domain := strings.TrimSpace(mc.Domain)
+	if domain == "" {
+		domain = config.Cfg.Domain
+	}
+	host := strings.TrimSpace(mc.Hostname)
+	if host == "" {
+		host = "mail." + domain
+	}
+	imaps := mailPort(mc.IMAPSListen, "993")
+	pop3s := mailPort(mc.POP3SListen, "995")
+	sub := mailPort(mc.SubmissionListen, "587")
+
+	esc := func(s string) string { return html.EscapeString(s) }
+	xml := `<?xml version="1.0" encoding="UTF-8"?>
+<clientConfig version="1.1">
+  <emailProvider id="` + esc(domain) + `">
+    <domain>` + esc(domain) + `</domain>
+    <displayName>` + esc(domain) + ` Mail</displayName>
+    <displayShortName>` + esc(domain) + `</displayShortName>
+    <incomingServer type="imap">
+      <hostname>` + esc(host) + `</hostname>
+      <port>` + esc(imaps) + `</port>
+      <socketType>SSL</socketType>
+      <authentication>password-cleartext</authentication>
+      <username>%EMAILADDRESS%</username>
+    </incomingServer>
+    <incomingServer type="pop3">
+      <hostname>` + esc(host) + `</hostname>
+      <port>` + esc(pop3s) + `</port>
+      <socketType>SSL</socketType>
+      <authentication>password-cleartext</authentication>
+      <username>%EMAILADDRESS%</username>
+    </incomingServer>
+    <outgoingServer type="smtp">
+      <hostname>` + esc(host) + `</hostname>
+      <port>` + esc(sub) + `</port>
+      <socketType>STARTTLS</socketType>
+      <authentication>password-cleartext</authentication>
+      <username>%EMAILADDRESS%</username>
+    </outgoingServer>
+  </emailProvider>
+</clientConfig>`
+	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=3600")
+	_, _ = w.Write([]byte(xml))
+}
+
 // handleVayuOSConnect renders the "Connect" tab: ready-to-use IMAP/POP3/SMTP
 // client settings for each mailbox (so any standard mail app — Gmail, Apple
 // Mail, Thunderbird, Outlook — can be set up by copying the values), plus the
@@ -579,6 +640,38 @@ func (a *App) handleVayuOSConnect(w http.ResponseWriter, r *http.Request) {
 		}
 		body.WriteString(`</div>`)
 	}
+
+	// ── Recommended apps ──────────────────────────────────────────────────────
+	// Free, opt-in recommendations for two excellent open-source mail clients
+	// that share VayuPress's sovereign, FOSS ethos. Plain external links only —
+	// CSP-safe (no third-party assets are loaded).
+	body.WriteString(`<div class="card"><div class="card-title">Recommended mail apps (open source)</div>`)
+	body.WriteString(`<div class="vm-grid-2">`)
+	body.WriteString(`<div>` +
+		`<div class="text-sm"><strong>K-9 Mail</strong> — Android. Clean, fast IMAP/POP3 client (now Thunderbird for Android).</div>` +
+		`<div class="vm-row mt-1">` +
+		`<a class="btn btn--primary btn--sm" href="https://k9mail.app/" target="_blank" rel="noopener noreferrer">Website ↗</a>` +
+		`<a class="btn btn--ghost btn--sm" href="https://play.google.com/store/apps/details?id=com.fsck.k9" target="_blank" rel="noopener noreferrer">Play ↗</a>` +
+		`<a class="btn btn--ghost btn--sm" href="https://f-droid.org/packages/com.fsck.k9/" target="_blank" rel="noopener noreferrer">F-Droid ↗</a>` +
+		`</div></div>`)
+	body.WriteString(`<div>` +
+		`<div class="text-sm"><strong>Thunderbird</strong> — Windows / macOS / Linux. The classic free, open-source desktop mail client.</div>` +
+		`<div class="vm-row mt-1">` +
+		`<a class="btn btn--primary btn--sm" href="https://www.thunderbird.net/" target="_blank" rel="noopener noreferrer">Website ↗</a>` +
+		`<a class="btn btn--ghost btn--sm" href="https://www.thunderbird.net/download/" target="_blank" rel="noopener noreferrer">Download ↗</a>` +
+		`</div></div>`)
+	body.WriteString(`</div>`)
+	body.WriteString(`<p class="muted text-xs mt-2">Both are open source (Apache-2.0 / MPL-2.0) — the same FOSS spirit as VayuPress. Apple Mail and Outlook also work with the settings below. With <strong>auto-config</strong> (below), these clients set themselves up from just your email address — no manual server entry. With the trusted certificate active there is no security warning to accept.</p>`)
+	body.WriteString(`</div>`)
+
+	// ── Instant setup (Mozilla Autoconfig) ────────────────────────────────────
+	// Thunderbird and K-9/Thunderbird-for-Android auto-discover server settings
+	// from a per-domain autoconfig XML: the user types only their email address
+	// and password, and the client fills in IMAP/SMTP host, ports and security.
+	body.WriteString(`<div class="card"><div class="card-title">Instant setup — no manual server entry</div>`)
+	body.WriteString(`<p class="text-sm">Thunderbird and K-9 support <strong>auto-config</strong>: in the client, choose <em>Add account</em>, enter your <span class="mono">you@` + html.EscapeString(mc.Domain) + `</span> address and mailbox password, and it fills in every server setting automatically from this site. No host/port typing.</p>`)
+	body.WriteString(`<p class="muted text-xs">Served at <span class="mono">https://` + html.EscapeString(mc.Domain) + `/.well-known/autoconfig/mail/config-v1.1.xml</span>. If your client asks, the incoming server is <span class="mono">` + hHost + `</span> (IMAP 993 SSL) and outgoing is <span class="mono">` + hHost + `</span> (SMTP 587 STARTTLS).</p>`)
+	body.WriteString(`</div>`)
 
 	// ── Recommended settings ─────────────────────────────────────────────────
 	body.WriteString(`<div class="card"><div class="card-title">Recommended settings</div>`)

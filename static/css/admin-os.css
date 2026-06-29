@@ -2439,6 +2439,7 @@
 .vmtabs .tab { padding: .5rem .85rem; }
 .vm-row { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; margin-top: .75rem; }
 .vm-row--end { align-items: flex-end; }
+.vm-grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; }
 .vm-actions { display: flex; gap: .5rem; flex-wrap: wrap; margin-bottom: .75rem; }
 .vm-grow { flex: 1 1 12rem; }
 .vm-suffix { color: var(--os-muted, #8a8f98); font-size: .85rem; margin-left: .35rem; }
