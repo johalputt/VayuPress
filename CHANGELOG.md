@@ -8,6 +8,8 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [2.5.2] - 2026-06-29
+
 ### Fixed
 
 - **One-click update no longer fails on large databases.** The in-app pre-update

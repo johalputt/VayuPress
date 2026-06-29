@@ -21,6 +21,21 @@
 > _Own your content. Own your communication. Own your infrastructure._
 > Publishing is the core identity, **VayuMail** the native sovereignty layer, **VayuPGP** the native privacy layer, and **VayuOS** the native control layer — all in a single Go binary, single process, single config.
 
+## What's New in v2.5.2
+
+> Full notes in [`CHANGELOG.md`](CHANGELOG.md)
+
+**One-click updates now work on large databases.**
+
+- The in-app pre-update backup gzipped the whole database inside the update
+  request, which on a multi-GB site could overload a small VPS and make every
+  update fail or hang. The **"Back up the database first"** checkbox now defaults
+  **off** above 2 GiB (with an inline explanation), and the apply endpoint
+  refuses the inline backup fast with an actionable message instead of hanging.
+  A binary update never rewrites your database and the previous binary is kept
+  for rollback, so updating with the backup off is safe — Export or snapshot
+  first if you want a copy.
+
 ## What's New in v2.5.1
 
 > Full notes in [`CHANGELOG.md`](CHANGELOG.md) · architecture decision in
