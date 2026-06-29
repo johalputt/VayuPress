@@ -14,7 +14,7 @@ func newTestStore(t *testing.T) *Store {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = db.Exec(`CREATE TABLE users(id TEXT PRIMARY KEY,email TEXT NOT NULL UNIQUE,name TEXT NOT NULL DEFAULT '',password_hash TEXT NOT NULL,role TEXT NOT NULL DEFAULT 'author',created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,last_login DATETIME,totp_secret TEXT NOT NULL DEFAULT '',totp_enabled INTEGER NOT NULL DEFAULT 0,avatar_url TEXT NOT NULL DEFAULT '',bio TEXT NOT NULL DEFAULT '',socials TEXT NOT NULL DEFAULT '{}',mail_address TEXT NOT NULL DEFAULT '')`)
+	_, err = db.Exec(`CREATE TABLE users(id TEXT PRIMARY KEY,email TEXT NOT NULL UNIQUE,name TEXT NOT NULL DEFAULT '',password_hash TEXT NOT NULL,role TEXT NOT NULL DEFAULT 'author',created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,last_login DATETIME,totp_secret TEXT NOT NULL DEFAULT '',totp_enabled INTEGER NOT NULL DEFAULT 0,avatar_url TEXT NOT NULL DEFAULT '',bio TEXT NOT NULL DEFAULT '',socials TEXT NOT NULL DEFAULT '{}',mail_address TEXT NOT NULL DEFAULT '',must_change_password INTEGER NOT NULL DEFAULT 0)`)
 	if err != nil {
 		t.Fatal(err)
 	}

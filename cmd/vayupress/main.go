@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -97,6 +98,58 @@ func writeAPIError(w http.ResponseWriter, r *http.Request, code int, errCode, ms
 
 func readJSONDirect(r *http.Request, v interface{}) error {
 	return httputil.DecodeJSON(r, v)
+}
+
+// bootstrapDefaultAdmin creates a ready-to-use administrator on a brand-new
+// install so the operator can log in immediately without the CLI. The account is
+// admin@<domain> with a strong random password and the must-change-password flag
+// set (the console forces a new password on first login). The credentials are
+// written to a root-only file next to the database AND logged once, so they are
+// easy to find however the operator runs the service.
+func (a *App) bootstrapDefaultAdmin(ctx context.Context) {
+	domain := strings.TrimSpace(config.Cfg.Domain)
+	if domain == "" || domain == "localhost" {
+		domain = "localhost"
+	}
+	email := "admin@" + domain
+	pass := generateInitialPassword()
+	if _, err := a.userStore.CreateBootstrapAdmin(ctx, email, "Administrator", pass); err != nil {
+		logging.LogError("users", "default admin bootstrap failed", err.Error())
+		logging.LogInfo("users", "create one manually: vayupress user add <email> <password> --admin")
+		return
+	}
+
+	// Persist the credentials to a root-only file beside the DB so they survive a
+	// scrolled-past log. Best-effort: a write failure still leaves them in the log.
+	credPath := filepath.Join(filepath.Dir(config.Cfg.DBPath), "initial-admin.txt")
+	content := "VayuPress initial administrator (CHANGE THE PASSWORD ON FIRST LOGIN)\n" +
+		"URL:      /os/login\n" +
+		"Email:    " + email + "\n" +
+		"Password: " + pass + "\n"
+	if err := os.WriteFile(credPath, []byte(content), 0o600); err != nil {
+		credPath = "(could not write file: " + err.Error() + ")"
+	}
+
+	logging.LogInfo("users", "════════════════════════════════════════════════════════")
+	logging.LogInfo("users", "Default admin created — sign in at /os/login and change the password")
+	logging.LogInfo("users", "  Email:    "+email)
+	logging.LogInfo("users", "  Password: "+pass)
+	logging.LogInfo("users", "  Saved to: "+credPath)
+	logging.LogInfo("users", "════════════════════════════════════════════════════════")
+}
+
+// generateInitialPassword returns a strong, readable 20-character random password
+// (no ambiguous characters) for the bootstrapped admin.
+func generateInitialPassword() string {
+	const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789"
+	b := make([]byte, 20)
+	if _, err := rand.Read(b); err != nil {
+		return "vayupress-" + hex.EncodeToString([]byte(time.Now().String()))[:12]
+	}
+	for i := range b {
+		b[i] = alphabet[int(b[i])%len(alphabet)]
+	}
+	return string(b)
 }
 
 func newUUID() string {
@@ -484,7 +537,7 @@ func main() {
 	a.userStore = users.New(dbpkg.DB)
 	a.sessions = auth.NewSessionStore(dbpkg.DB)
 	if n, err := a.userStore.Count(context.Background()); err == nil && n == 0 {
-		logging.LogInfo("users", "no accounts yet — bootstrap one with: vayupress user add <email> <password> [--admin]")
+		a.bootstrapDefaultAdmin(context.Background())
 	}
 	// Periodic expired-session sweep.
 	go func() {

@@ -164,6 +164,24 @@ func (a *App) requireSessionOrAPIKey(next http.Handler) http.Handler {
 // its allowed home and return 403 JSON to API/XHR callers — so a record/area a
 // role cannot use is both hidden (nav) and unreachable (here).
 func (a *App) serveWithAccess(w http.ResponseWriter, r *http.Request, next http.Handler, u *users.User, mailOnly bool) {
+	// Forced password change: a bootstrapped default admin must set a new password
+	// before reaching anything else. Allow only the change-password page itself,
+	// logout and static assets; redirect everything else there. Browser nav gets a
+	// redirect; API/XHR gets 403 so a stale tab can't keep mutating.
+	if u.MustChangePassword && !forcedChangePathAllowed(r.URL.Path) {
+		if strings.Contains(r.Header.Get("Accept"), "application/json") ||
+			r.Header.Get("X-Requested-With") == "XMLHttpRequest" {
+			writeAPIError(w, r, http.StatusForbidden, "password-change-required", "Set a new password to continue.", "")
+			return
+		}
+		ctx := context.WithValue(r.Context(), ctxUserKey, u)
+		if r.URL.Path != "/os/change-password" {
+			http.Redirect(w, r, "/os/change-password", http.StatusSeeOther)
+			return
+		}
+		next.ServeHTTP(w, r.WithContext(ctx))
+		return
+	}
 	level := accessLevelFor(u.Role, mailOnly)
 	if mailOnly {
 		if !mailOnlyPathAllowed(r.URL.Path) {
@@ -180,6 +198,18 @@ func (a *App) serveWithAccess(w http.ResponseWriter, r *http.Request, next http.
 		ctx = context.WithValue(ctx, ctxMailOnlyKey, true)
 	}
 	next.ServeHTTP(w, r.WithContext(ctx))
+}
+
+// forcedChangePathAllowed lists the paths reachable while a user must change
+// their password — the change page itself, logout, and static assets — so the
+// forced-change redirect can never lock the operator out of the very page that
+// clears the flag.
+func forcedChangePathAllowed(path string) bool {
+	switch path {
+	case "/os/change-password", "/os/logout":
+		return true
+	}
+	return strings.HasPrefix(path, "/os/static/")
 }
 
 // denyAccess refuses an in-policy-but-out-of-scope request: 403 JSON for

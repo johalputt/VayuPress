@@ -63,6 +63,9 @@ type User struct {
 	MailAddress string            `json:"mail_address,omitempty"`
 	CreatedAt   time.Time         `json:"created_at"`
 	LastLogin   *time.Time        `json:"last_login,omitempty"`
+	// MustChangePassword is set on a bootstrapped default admin; the console
+	// forces a password change before anything else until it is cleared.
+	MustChangePassword bool `json:"must_change_password,omitempty"`
 }
 
 // Store manages user accounts in SQLite.
@@ -104,6 +107,22 @@ func (s *Store) Create(ctx context.Context, email, name, password, role string) 
 	return &User{ID: id, Email: email, Name: strings.TrimSpace(name), Role: role, CreatedAt: time.Now().UTC()}, nil
 }
 
+// CreateBootstrapAdmin creates the first administrator on a fresh install with
+// the must-change-password flag set, so the operator is forced to replace the
+// auto-generated default password on first login. It behaves like Create but
+// pins the admin role and the flag.
+func (s *Store) CreateBootstrapAdmin(ctx context.Context, email, name, password string) (*User, error) {
+	u, err := s.Create(ctx, email, name, password, RoleAdmin)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := s.db.ExecContext(ctx, `UPDATE users SET must_change_password=1 WHERE id=?`, u.ID); err != nil {
+		return nil, err
+	}
+	u.MustChangePassword = true
+	return u, nil
+}
+
 // Authenticate verifies email + password and returns the user on success. The
 // Argon2id verification runs even when the email is unknown (against a decoy)
 // to keep the response time independent of account existence.
@@ -133,20 +152,22 @@ func (s *Store) Authenticate(ctx context.Context, email, password string) (*User
 }
 
 // profileCols is the SELECT list for reads that include public profile fields.
-const profileCols = `id,email,name,role,avatar_url,bio,socials,mail_address,created_at,last_login`
+const profileCols = `id,email,name,role,avatar_url,bio,socials,mail_address,created_at,last_login,COALESCE(must_change_password,0)`
 
 // scanUserProfile reads a row selected with profileCols.
 func scanUserProfile(sc interface{ Scan(...interface{}) error }) (*User, error) {
 	var u User
 	var avatar, bio, socials, mailAddr string
 	var lastLogin sql.NullTime
-	if err := sc.Scan(&u.ID, &u.Email, &u.Name, &u.Role, &avatar, &bio, &socials, &mailAddr, &u.CreatedAt, &lastLogin); err != nil {
+	var mustChange int
+	if err := sc.Scan(&u.ID, &u.Email, &u.Name, &u.Role, &avatar, &bio, &socials, &mailAddr, &u.CreatedAt, &lastLogin, &mustChange); err != nil {
 		return nil, err
 	}
 	u.AvatarURL = avatar
 	u.Bio = bio
 	u.Socials = decodeSocials(socials)
 	u.MailAddress = mailAddr
+	u.MustChangePassword = mustChange != 0
 	if lastLogin.Valid {
 		u.LastLogin = &lastLogin.Time
 	}
@@ -287,7 +308,7 @@ func (s *Store) SetPassword(ctx context.Context, email, password string) error {
 		return err
 	}
 	res, err := s.db.ExecContext(ctx,
-		`UPDATE users SET password_hash=? WHERE email=?`, hash, strings.TrimSpace(strings.ToLower(email)))
+		`UPDATE users SET password_hash=?, must_change_password=0 WHERE email=?`, hash, strings.TrimSpace(strings.ToLower(email)))
 	if err != nil {
 		return err
 	}

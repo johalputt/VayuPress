@@ -141,6 +141,8 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 
 		// Pages
 		pr.Get("/os", a.handleOSDashboard)
+		pr.Get("/os/change-password", a.handleOSChangePassword)
+		pr.Post("/os/change-password", a.handleOSChangePasswordSubmit)
 		pr.Get("/os/posts", a.handleOSPosts)
 		pr.Get("/os/comments", a.handleOSComments)
 		// Session-friendly comment moderation. The /api/v1/admin/comments originals
@@ -946,6 +948,82 @@ func (a *App) handleOSLoginSubmit(w http.ResponseWriter, r *http.Request) {
 	a.userStore.TouchLastLogin(r.Context(), u.ID)
 	auth.SetSessionCookie(w, token)
 	http.Redirect(w, r, "/os", http.StatusSeeOther)
+}
+
+// handleOSChangePassword renders the forced first-login password-change page for
+// a bootstrapped default admin. Reached via the serveWithAccess gate.
+func (a *App) handleOSChangePassword(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+	em := ""
+	if u != nil {
+		em = u.Email
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = w.Write([]byte(osChangePasswordPage(em, "")))
+}
+
+// handleOSChangePasswordSubmit sets a new password for the signed-in user and
+// clears the must-change flag, then sends them to the console. New password must
+// be ≥8 chars and match the confirmation.
+func (a *App) handleOSChangePasswordSubmit(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+	if u == nil || a.userStore == nil {
+		http.Redirect(w, r, "/os/login", http.StatusSeeOther)
+		return
+	}
+	_ = r.ParseForm()
+	pass := r.FormValue("password")
+	confirm := r.FormValue("confirm")
+	render := func(msg string) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte(osChangePasswordPage(u.Email, msg)))
+	}
+	if len(pass) < 8 {
+		render("Password must be at least 8 characters.")
+		return
+	}
+	if pass != confirm {
+		render("The two passwords do not match.")
+		return
+	}
+	if err := a.userStore.SetPassword(r.Context(), u.Email, pass); err != nil {
+		render("Could not update the password: " + err.Error())
+		return
+	}
+	dbpkg.AuditLog("user.password_change", u.Email, "", "forced first-login change")
+	http.Redirect(w, r, "/os", http.StatusSeeOther)
+}
+
+// osChangePasswordPage renders the forced password-change form. Self-contained
+// (reuses the login page chrome); the only inline script is the nonce'd one in
+// the shared shell, so no CSP exception is needed.
+func osChangePasswordPage(email, msg string) string {
+	banner := ""
+	if msg != "" {
+		banner = `<div class="login-error">` + html.EscapeString(msg) + `</div>`
+	}
+	return `<!DOCTYPE html><html lang="en" data-theme="dark"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Set a new password — VayuOS</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="stylesheet" href="/os/static/css/admin-os.css?v=` + assetVer("css/admin-os.css") + `">
+</head><body class="vp-os login-body">
+<div class="login-card">
+  <div class="login-brand">VayuOS</div>
+  <h1 class="login-title">Set a new password</h1>
+  <p class="text-sm muted">You're signing in with the default administrator password. Choose a new password to continue.</p>
+  ` + banner + `
+  <form class="login-form" method="POST" action="/os/change-password" novalidate>
+    <label class="field-label">Account</label>
+    <input class="input" type="email" value="` + html.EscapeString(email) + `" readonly>
+    <label class="field-label mt-2" for="cp-pass">New password</label>
+    <input id="cp-pass" class="input" type="password" name="password" required minlength="8" autocomplete="new-password" placeholder="At least 8 characters">
+    <label class="field-label mt-2" for="cp-confirm">Confirm new password</label>
+    <input id="cp-confirm" class="input" type="password" name="confirm" required minlength="8" autocomplete="new-password" placeholder="Re-enter the password">
+    <button class="btn btn--primary mt-3" type="submit">Save &amp; continue</button>
+  </form>
+</div>
+</body></html>`
 }
 
 func (a *App) handleOSLogout(w http.ResponseWriter, r *http.Request) {
