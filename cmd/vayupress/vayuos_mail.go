@@ -670,7 +670,20 @@ func (a *App) handleVayuOSConnect(w http.ResponseWriter, r *http.Request) {
 	// and password, and the client fills in IMAP/SMTP host, ports and security.
 	body.WriteString(`<div class="card"><div class="card-title">Instant setup — no manual server entry</div>`)
 	body.WriteString(`<p class="text-sm">Thunderbird and K-9 support <strong>auto-config</strong>: in the client, choose <em>Add account</em>, enter your <span class="mono">you@` + html.EscapeString(mc.Domain) + `</span> address and mailbox password, and it fills in every server setting automatically from this site. No host/port typing.</p>`)
-	body.WriteString(`<p class="muted text-xs">Served at <span class="mono">https://` + html.EscapeString(mc.Domain) + `/.well-known/autoconfig/mail/config-v1.1.xml</span>. If your client asks, the incoming server is <span class="mono">` + hHost + `</span> (IMAP 993 SSL) and outgoing is <span class="mono">` + hHost + `</span> (SMTP 587 STARTTLS).</p>`)
+	body.WriteString(`<p class="muted text-xs">Served at <span class="mono">https://` + html.EscapeString(mc.Domain) + `/.well-known/autoconfig/mail/config-v1.1.xml</span>. If your client asks, the incoming server is <span class="mono">` + hHost + `</span> (IMAP ` + imapsPort + ` SSL) and outgoing is <span class="mono">` + hHost + `</span> (SMTP ` + subPort + ` STARTTLS).</p>`)
+	// Convenience QR: scan with a phone camera to read the server settings on the
+	// device (host/ports/username — never a password). Inline data: PNG, CSP-safe.
+	settingsText := "VayuMail · " + mc.Domain + "\n" +
+		"IMAP: " + host + ":" + mailPort(mc.IMAPSListen, "993") + " (SSL)\n" +
+		"POP3: " + host + ":" + mailPort(mc.POP3SListen, "995") + " (SSL)\n" +
+		"SMTP: " + host + ":" + mailPort(mc.SubmissionListen, "587") + " (STARTTLS)\n" +
+		"Username: your full email address"
+	if uri := qrDataURI(settingsText); uri != "" {
+		body.WriteString(`<div class="vm-row"><div>` +
+			`<img src="` + uri + `" alt="Mail server settings QR" width="160" height="160" style="background:#fff;padding:8px;border-radius:8px">` +
+			`<div class="text-xs muted mt-1" style="max-width:170px">Scan with your phone camera to read the server settings (no password).</div>` +
+			`</div></div>`)
+	}
 	body.WriteString(`</div>`)
 
 	// ── Recommended settings ─────────────────────────────────────────────────

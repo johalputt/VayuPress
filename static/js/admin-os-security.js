@@ -27,6 +27,7 @@
   var enrollBox = card.querySelector('[data-totp-enroll]');
   var keyEl = card.querySelector('[data-totp-key]');
   var uriEl = card.querySelector('[data-totp-uri]');
+  var qrEl = card.querySelector('[data-totp-qr]');
   var codeEl = card.querySelector('[data-totp-code]');
   var verifyBtn = card.querySelector('[data-totp-verify]');
   var disableBtn = card.querySelector('[data-totp-disable]');
@@ -39,6 +40,10 @@
           if (!data.secret) { toast(data.message || 'Could not start 2FA', 'error'); return; }
           if (keyEl) keyEl.textContent = data.secret;
           if (uriEl) uriEl.setAttribute('href', data.uri);
+          if (qrEl) {
+            if (data.qr) { qrEl.src = data.qr; qrEl.style.display = ''; }
+            else { qrEl.style.display = 'none'; }
+          }
           if (enrollBox) enrollBox.hidden = false;
           beginBtn.disabled = true;
           if (codeEl) codeEl.focus();

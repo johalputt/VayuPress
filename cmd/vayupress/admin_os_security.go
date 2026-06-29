@@ -327,10 +327,11 @@ func (a *App) handleOSSecurity(w http.ResponseWriter, r *http.Request) {
   </div>
   <div class="totp-enroll" data-totp-enroll hidden>
     <div class="section-divider"></div>
-    <div class="settings-block-title">Scan or enter this key</div>
-    <p class="text-sm muted">Add this account to your authenticator app, then enter the 6-digit code to confirm.</p>
-    <div class="totp-key"><code data-totp-key class="font-mono"></code></div>
-    <div class="totp-uri text-xs muted"><a data-totp-uri href="#" rel="noopener">Open in authenticator</a></div>
+    <div class="settings-block-title">Scan this QR with your authenticator app</div>
+    <p class="text-sm muted">Open Google Authenticator, Aegis, 1Password, etc., tap “add / scan QR”, point it at the code below, then enter the 6-digit code to confirm. Can't scan? Enter the key manually.</p>
+    <img data-totp-qr alt="2FA setup QR code" width="180" height="180" style="background:#fff;padding:8px;border-radius:8px;display:none">
+    <div class="totp-key mt-2">Manual key: <code data-totp-key class="font-mono"></code></div>
+    <div class="totp-uri text-xs muted"><a data-totp-uri href="#" rel="noopener">Open in authenticator app ↗</a></div>
     <div class="field mt-3">
       <label class="field-label" for="totp-code">Verification code</label>
       <input id="totp-code" class="input" type="text" inputmode="numeric" autocomplete="one-time-code"
@@ -365,7 +366,7 @@ func (a *App) handleOSTOTPBegin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	uri := totp.ProvisioningURI(secret, "VayuPress", u.Email)
-	writeJSON(w, r, http.StatusOK, map[string]string{"secret": secret, "uri": uri})
+	writeJSON(w, r, http.StatusOK, map[string]string{"secret": secret, "uri": uri, "qr": qrDataURI(uri)})
 }
 
 // handleOSTOTPVerify checks the submitted code against the pending secret and,

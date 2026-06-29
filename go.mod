@@ -15,6 +15,7 @@ require (
 	github.com/microcosm-cc/bluemonday v1.0.27
 	github.com/rs/cors v1.11.1
 	golang.org/x/crypto v0.53.0
+	rsc.io/qr v0.2.0
 )
 
 require (
