@@ -92,11 +92,10 @@
 
       <!-- desktop links -->
       <div class="hidden md:flex items-center gap-8 text-sm text-gray-400">
+        <a href="#why"        class="nav-link hover:text-white transition-colors">Why</a>
         <a href="#features"   class="nav-link hover:text-white transition-colors">Features</a>
-        <a href="#gallery"    class="nav-link hover:text-white transition-colors">Gallery</a>
-        <a href="#philosophy" class="nav-link hover:text-white transition-colors">Philosophy</a>
         <a href="#compare"    class="nav-link hover:text-white transition-colors">Compare</a>
-        <a href="#tools"      class="nav-link hover:text-white transition-colors">Tools</a>
+        <a href="#gallery"    class="nav-link hover:text-white transition-colors">Gallery</a>
         <a href="#quickstart" class="nav-link hover:text-white transition-colors">Quick start</a>
         <a href="about.html"  class="nav-link hover:text-white transition-colors">About</a>
       </div>
@@ -124,7 +123,7 @@
             <span class="absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-75 animate-ping"></span>
             <span class="relative inline-flex rounded-full w-1.5 h-1.5 bg-teal-400"></span>
           </span>
-          v2.5.0 · Unified VayuMail + CMS identity (one account, readable /author/&lt;name&gt; URLs), a default admin created on install with a forced first-login password change, a full contact-form + Messages inbox, and one-tap mail setup via Autoconfig &amp; QR for Thunderbird/K-9 — plus faster large-catalogue performance
+          One binary · zero telemetry · Apache-2.0
         </div>
 
         <h1 class="font-display font-bold tracking-tightest text-white leading-[0.93] mb-7
@@ -176,8 +175,8 @@
             <div class="text-xs text-gray-500 mt-0.5">to first deploy</div>
           </div>
           <div>
-            <div class="font-display text-xl sm:text-2xl font-bold text-white">80</div>
-            <div class="text-xs text-gray-500 mt-0.5">design decisions</div>
+            <div class="font-display text-xl sm:text-2xl font-bold text-white">Zero</div>
+            <div class="text-xs text-gray-500 mt-0.5">trackers on readers</div>
           </div>
           <div>
             <div class="font-display text-xl sm:text-2xl font-bold text-white">Apache-2.0</div>
@@ -240,6 +239,44 @@
       </template>
     </div>
   </div>
+
+  <!-- ══════════════ WHY ══════════════ -->
+  <section id="why" class="relative py-24 sm:py-28 lg:py-32">
+    <div class="max-w-5xl mx-auto px-6">
+      <header class="max-w-3xl mb-14 sm:mb-16" data-reveal>
+        <p class="text-teal-400 font-mono text-xs mb-4 tracking-[0.25em] uppercase">Why it exists</p>
+        <h2 class="font-display text-3xl sm:text-4xl lg:text-5xl font-bold text-white tracking-tight leading-[1.1]">
+          You don't own your blog today.
+          <span class="text-gray-600 block mt-1">You rent it.</span>
+        </h2>
+        <p class="mt-6 text-base sm:text-lg text-gray-400 leading-relaxed">
+          WordPress needs a dozen plugins. Ghost pushes you to its hosting.
+          Substack owns your audience. Google watches your readers. Every layer
+          is a landlord. VayuPress is the opposite bet: your content, your mail,
+          and your readers' privacy, in <span class="text-gray-100 font-medium">one binary you run yourself</span> —
+          nothing phones home, nothing is rented, nothing can be taken away.
+        </p>
+      </header>
+
+      <div class="grid sm:grid-cols-3 gap-4 sm:gap-5">
+        <div data-reveal class="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-6">
+          <div class="text-2xl mb-3" aria-hidden="true">📦</div>
+          <h3 class="font-display text-lg font-semibold text-white mb-2">Own your content</h3>
+          <p class="text-sm text-gray-400 leading-relaxed">A real publishing engine — block editor, themes, media, SEO — with every post in your own SQLite file. No SaaS, no export wall.</p>
+        </div>
+        <div data-reveal style="--d:60ms" class="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-6">
+          <div class="text-2xl mb-3" aria-hidden="true">✉️</div>
+          <h3 class="font-display text-lg font-semibold text-white mb-2">Own your mail</h3>
+          <p class="text-sm text-gray-400 leading-relaxed">A native DKIM-signing mail server and IMAP inbox are built into the binary — send and receive from your own domain, no third-party relay.</p>
+        </div>
+        <div data-reveal style="--d:120ms" class="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-6">
+          <div class="text-2xl mb-3" aria-hidden="true">🔐</div>
+          <h3 class="font-display text-lg font-semibold text-white mb-2">Own your privacy</h3>
+          <p class="text-sm text-gray-400 leading-relaxed">End-to-end PGP, encrypted keys at rest, and zero trackers on your readers. The only outbound calls are the ones you configure.</p>
+        </div>
+      </div>
+    </div>
+  </section>
 
   <!-- ══════════════ FEATURES ══════════════ -->
   <section id="features" class="relative py-24 sm:py-28 lg:py-36">
@@ -516,7 +553,7 @@
         <p class="text-teal-400 font-mono text-xs mb-4 tracking-[0.25em] uppercase">Companion tools</p>
         <h2 class="font-display text-3xl sm:text-4xl lg:text-5xl font-bold text-white tracking-tight leading-tight">
           Bring your content with you.
-          <span class="text-gray-600 block mt-1">Migration, made gentle.</span>
+          <span class="text-gray-600 block mt-1">Leave anytime, too.</span>
         </h2>
       </header>
 
@@ -616,8 +653,8 @@
 
       <!-- tip -->
       <div data-reveal class="mt-8 sm:mt-10 rounded-xl border border-saffron-600/20 bg-saffron-600/[0.06] p-5 sm:p-6">
-        <p class="text-sm text-saffron-300 font-mono font-medium mb-1.5">Tip · opt-in governance actuation</p>
-        <p class="text-sm text-gray-400 leading-relaxed">Set <code class="text-gray-100 font-mono bg-white/[0.06] px-1 py-0.5 rounded text-xs">GOVERNANCE_ACTUATION=true</code> to enable the gated budget actuator (Ω12) — automatic, graph-respecting mode escalation when error budgets exhaust.</p>
+        <p class="text-sm text-saffron-300 font-mono font-medium mb-1.5">Tip · go live with a domain</p>
+        <p class="text-sm text-gray-400 leading-relaxed">Put VayuPress behind nginx with a free Let's Encrypt certificate, point your domain at the VPS, and you have publishing, mail and PGP on your own name — see the <a href="https://github.com/johalputt/VayuPress/blob/main/docs/INSTALLATION.md" target="_blank" rel="noopener" class="text-gray-100 underline decoration-saffron-500/40 hover:decoration-saffron-400">installation guide</a>.</p>
       </div>
     </div>
   </section>
