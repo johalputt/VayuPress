@@ -50,7 +50,7 @@ strict CSP. Apache-2.0. **Current version: `2.5.0`** (`cmd/vayupress/main.go`).
   writes). Every `AllKeys` key must appear in the legacy theme editor OR the
   `outOfBand` map in `theme_contrast_test.go` (drift-guard test).
 - **Migrations:** `internal/db/migrations/NNN-name.up/down.sql`, **one statement
-  per line** (the runner splits on newlines). Latest: `046-contact-messages`.
+  per line** (the runner splits on newlines). Latest: `053-member-reply-notify`.
 - **JS sanity:** `node -e "new Function(require('fs').readFileSync('<file>','utf8'))"`
   to parse-check before committing (no JS test runner).
 - Do NOT put the model id, secrets, or the push token in committed files.

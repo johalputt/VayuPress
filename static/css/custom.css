@@ -240,27 +240,53 @@ h1, h2, h3, h4, h5, h6 {
 .vayu-footer a { color: var(--pico-muted-color); }
 .vayu-footer a:hover { color: var(--pico-primary); }
 
-/* Comments widget */
+/* Comments widget — blends with the active theme via Pico custom properties. */
 .vayu-comments { margin-top: 3rem; padding-top: 2rem; border-top: 1px solid var(--pico-muted-border-color); }
-.vayu-comment-heading { font-size: 1.25rem; margin-bottom: 1.25rem; }
+.vayu-comment-heading { font-size: 1.3rem; margin-bottom: 1.25rem; display: flex; align-items: center; gap: .5rem; }
 .vayu-comment-list { display: flex; flex-direction: column; gap: 1rem; margin-bottom: 2rem; }
-.vayu-comment { padding: 1rem; border: 1px solid var(--pico-muted-border-color); border-radius: 8px; background: var(--pico-card-background-color, transparent); }
-.vayu-comment-meta { display: flex; gap: 0.75rem; align-items: baseline; margin-bottom: 0.35rem; }
+.vayu-comment {
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--pico-muted-border-color);
+  border-radius: 14px;
+  background: var(--pico-card-background-color, var(--pico-background-color));
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.vayu-comment:hover { border-color: var(--pico-primary); box-shadow: 0 2px 14px rgba(0,0,0,.06); }
+.vayu-comment-meta { display: flex; gap: 0.6rem; align-items: center; margin-bottom: 0.5rem; }
+.vayu-comment-avatar {
+  flex: 0 0 auto; width: 2rem; height: 2rem; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: .85rem; font-weight: 700; color: #fff;
+  background: var(--pico-primary); line-height: 1;
+}
 .vayu-comment-author { font-weight: 600; }
-.vayu-comment-date { font-size: 0.8rem; color: var(--pico-muted-color); }
-.vayu-comment-body { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.vayu-comment-date { font-size: 0.78rem; color: var(--pico-muted-color); margin-left: auto; }
+.vayu-comment-body { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.55; }
 .vayu-comment-empty { color: var(--pico-muted-color); }
+.vayu-comment-bar { margin-top: .55rem; }
+.vayu-comment-reply-btn {
+  background: none; border: none; padding: .15rem .25rem; cursor: pointer; font: inherit;
+  font-size: .82rem; font-weight: 600; color: var(--pico-primary);
+}
+.vayu-comment-reply-btn:hover { text-decoration: underline; }
+.vayu-comment-replyform:empty { margin: 0; }
+.vayu-comment-replyform { margin-top: .6rem; }
+/* Threaded replies: indented and tinted so the hierarchy reads at a glance. */
+.vayu-comment-replies { margin-top: .8rem; padding-left: 1rem; border-left: 2px solid var(--pico-muted-border-color); display: flex; flex-direction: column; gap: .7rem; }
+.vayu-comment--reply { border-radius: 12px; background: var(--pico-background-color); }
+.vayu-comment--reply .vayu-comment-avatar { width: 1.7rem; height: 1.7rem; font-size: .75rem; background: var(--vayu-accent, var(--pico-primary)); }
 .vayu-comment-form { display: flex; flex-direction: column; gap: 0.6rem; max-width: 40rem; }
-.vayu-comment-input { width: 100%; padding: 0.6rem 0.75rem; border: 1px solid var(--pico-muted-border-color); border-radius: 6px; background: var(--pico-background-color); color: inherit; font: inherit; }
-textarea.vayu-comment-input { min-height: 6rem; resize: vertical; }
+.vayu-comment-input { width: 100%; padding: 0.6rem 0.75rem; border: 1px solid var(--pico-muted-border-color); border-radius: 10px; background: var(--pico-background-color); color: inherit; font: inherit; }
+.vayu-comment-input:focus { outline: none; border-color: var(--pico-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--pico-primary) 22%, transparent); }
+textarea.vayu-comment-input { min-height: 5.5rem; resize: vertical; }
 .vayu-comment-actions { display: flex; gap: 0.75rem; align-items: center; }
-.vayu-comment-submit { padding: 0.55rem 1.1rem; border: none; border-radius: 6px; background: var(--pico-primary); color: #fff; font: inherit; cursor: pointer; }
+.vayu-comment-submit { padding: 0.55rem 1.2rem; border: none; border-radius: 999px; background: var(--pico-primary); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
 .vayu-comment-submit:hover { filter: brightness(1.08); }
 .vayu-comment-submit:disabled { opacity: 0.6; cursor: default; }
 .vayu-comment-status { font-size: 0.85rem; color: var(--pico-muted-color); }
-.vayu-comment-compose { margin-top: 1rem; }
-.vayu-comment-gate { color: var(--pico-muted-color); margin: 0 0 0.6rem; }
-.vayu-comment-as { font-size: 0.85rem; color: var(--pico-muted-color); margin: 0 0 0.6rem; }
+.vayu-comment-compose { margin-top: 1.25rem; padding: 1.1rem 1.2rem; border: 1px solid var(--pico-muted-border-color); border-radius: 14px; background: var(--pico-card-background-color, transparent); }
+.vayu-comment-gate { color: var(--pico-muted-color); margin: 0 0 0.7rem; }
+.vayu-comment-as { font-size: 0.85rem; color: var(--pico-muted-color); margin: 0 0 0.6rem; font-weight: 600; }
 
 /* Contact form widget (opt-in via the [[contact-form]] page marker) */
 .vayu-contact { margin: 2.5rem 0; }

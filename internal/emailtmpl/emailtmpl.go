@@ -27,6 +27,7 @@ type Kind string
 const (
 	MagicLink         Kind = "magic_link"
 	CommentApproved   Kind = "comment_approved"
+	CommentReply      Kind = "comment_reply"
 	NewsletterConfirm Kind = "newsletter_confirm"
 	// Welcome is sent to a new member the first time they confirm their email
 	// (the sign-up welcome). It is informational only — it carries no token.
@@ -86,6 +87,31 @@ var defaults = map[Kind]templateSet{
 		Subject: "Your comment is live",
 		Text:    "Hi {{.Author}},\r\n\r\nYour comment on {{.Link}} has been approved and is now live.\r\n\r\nThank you for contributing!",
 		HTML:    `<p>Hi <strong>{{.Author}}</strong>,</p><p>Your comment on <a href="{{.Link}}">{{.Slug}}</a> has been approved and is now live.</p><p>Thank you for contributing!</p>`,
+	},
+	CommentReply: {
+		Subject: "💬 {{.Replier}} replied to your comment",
+		Text:    "Hi {{.Author}}! 👋\r\n\r\nGood news — {{.Replier}} just replied to your comment on “{{.Title}}”. 🎉\r\n\r\nThey said:\r\n“{{.Reply}}”\r\n\r\n👉 Read it and reply back: {{.Link}}\r\n\r\nYou're receiving this because you turned on reply notifications. You can turn them off any time from your account. 🔕",
+		HTML: `<div style="margin:0;padding:0;background:#f4f6fb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
+  <div style="max-width:480px;margin:0 auto;padding:32px 20px">
+    <div style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(20,30,60,0.08)">
+      <div style="background:linear-gradient(135deg,#0ea5e9,#6366f1);padding:32px;text-align:center">
+        <div style="font-size:42px;line-height:1">💬</div>
+        <h1 style="margin:10px 0 0;color:#ffffff;font-size:21px;font-weight:700">You have a new reply</h1>
+      </div>
+      <div style="padding:32px">
+        <p style="margin:0 0 14px;color:#1f2937;font-size:16px">Hi {{.Author}}! 👋</p>
+        <p style="margin:0 0 18px;color:#4b5563;font-size:15px;line-height:1.6"><strong>{{.Replier}}</strong> just replied to your comment on “<strong>{{.Title}}</strong>”. 🎉</p>
+        <blockquote style="margin:0 0 22px;padding:14px 16px;background:#f3f4f6;border-left:4px solid #6366f1;border-radius:8px;color:#374151;font-size:15px;line-height:1.5">{{.Reply}}</blockquote>
+        <div style="text-align:center;margin:0 0 8px">
+          <a href="{{.Link}}" style="display:inline-block;background:linear-gradient(135deg,#0ea5e9,#6366f1);color:#ffffff;text-decoration:none;font-weight:600;font-size:16px;padding:13px 34px;border-radius:999px">↩️ Read &amp; reply</a>
+        </div>
+      </div>
+      <div style="padding:16px 32px;background:#f9fafb;border-top:1px solid #eef0f4">
+        <p style="margin:0;color:#9ca3af;font-size:12px;line-height:1.5">🔕 You're getting this because reply notifications are on. Turn them off any time in your account settings.</p>
+      </div>
+    </div>
+  </div>
+</div>`,
 	},
 	NewsletterConfirm: {
 		Subject: "Confirm your subscription",

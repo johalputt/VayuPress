@@ -62,6 +62,39 @@ func (s *Store) Subscribe(ctx context.Context, email string) (*Subscriber, bool,
 	return &Subscriber{ID: id, Email: email, Status: "active", Token: token, SubscribedAt: time.Now()}, true, nil
 }
 
+// SubscribeConfirmed adds (or reactivates) a subscriber that is already
+// confirmed and active — used when an authenticated member opts in from their
+// account portal, where ownership of the address is already established so the
+// double opt-in email is unnecessary.
+func (s *Store) SubscribeConfirmed(ctx context.Context, email string) error {
+	email = strings.TrimSpace(strings.ToLower(email))
+	if _, err := mail.ParseAddress(email); err != nil {
+		return fmt.Errorf("invalid email: %w", err)
+	}
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE newsletter_subscribers SET status='active',confirmed=1,unsubscribed_at=NULL WHERE email=?`, email)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n > 0 {
+		return nil
+	}
+	_, err = s.db.ExecContext(ctx,
+		`INSERT INTO newsletter_subscribers(id,email,token,status,confirmed) VALUES(?,?,?, 'active',1)`,
+		newID(), email, newToken())
+	return err
+}
+
+// UnsubscribeEmail marks a subscriber inactive by their email address — the
+// account-portal counterpart to the token-based Unsubscribe.
+func (s *Store) UnsubscribeEmail(ctx context.Context, email string) error {
+	now := time.Now().UTC().Format(time.RFC3339)
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE newsletter_subscribers SET status='inactive',unsubscribed_at=? WHERE email=?`,
+		now, strings.TrimSpace(strings.ToLower(email)))
+	return err
+}
+
 // Confirm marks a subscriber as confirmed using their token.
 func (s *Store) Confirm(ctx context.Context, token string) error {
 	res, err := s.db.ExecContext(ctx,

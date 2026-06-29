@@ -61,6 +61,7 @@ func (a *App) handleEmailTemplateList(w http.ResponseWriter, r *http.Request) {
 		emailtmpl.MagicLink,
 		emailtmpl.Welcome,
 		emailtmpl.CommentApproved,
+		emailtmpl.CommentReply,
 		emailtmpl.NewsletterConfirm,
 	}
 	type entry struct {
@@ -101,6 +102,7 @@ func (a *App) handleEmailTemplateSet(w http.ResponseWriter, r *http.Request) {
 		emailtmpl.MagicLink:         true,
 		emailtmpl.Welcome:           true,
 		emailtmpl.CommentApproved:   true,
+		emailtmpl.CommentReply:      true,
 		emailtmpl.NewsletterConfirm: true,
 	}
 	if !validKinds[kind] {

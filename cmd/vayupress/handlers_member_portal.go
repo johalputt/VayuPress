@@ -138,6 +138,10 @@ func (a *App) handleMemberAccount(w http.ResponseWriter, r *http.Request) {
 	if m.NewsletterOptIn {
 		newsletterChecked = " checked"
 	}
+	replyChecked := ""
+	if m.ReplyNotify {
+		replyChecked = " checked"
+	}
 
 	upgradeCTA := ""
 	if !m.IsPaid() {
@@ -181,10 +185,16 @@ func (a *App) handleMemberAccount(w http.ResponseWriter, r *http.Request) {
         <label for="ma-name">Display name</label>
         <input id="ma-name" type="text" name="name" value="` + esc(m.Name) + `" placeholder="Your name" maxlength="120">
       </div>
+      <h3 class="ma-subhead">🔔 Notifications</h3>
+      <label class="ma-check">
+        <input type="checkbox" name="reply_notify" value="1"` + replyChecked + `>
+        <span>💬 Email me when someone replies to my comment</span>
+      </label>
       <label class="ma-check">
         <input type="checkbox" name="newsletter" value="1"` + newsletterChecked + `>
-        <span>Email me new posts and the members newsletter</span>
+        <span>📰 Send me new posts and the members newsletter</span>
       </label>
+      <p class="ma-hint">You're in control — change these any time, or unsubscribe with one click from any email.</p>
       <button class="su-btn" type="submit">Save changes</button>
     </form>
   </section>
@@ -213,7 +223,19 @@ func (a *App) handleMemberAccountUpdate(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "could not save", http.StatusInternalServerError)
 		return
 	}
-	_ = a.members.SetNewsletterOptIn(r.Context(), m.Email, r.PostFormValue("newsletter") == "1")
+	newsletterOn := r.PostFormValue("newsletter") == "1"
+	_ = a.members.SetNewsletterOptIn(r.Context(), m.Email, newsletterOn)
+	_ = a.members.SetReplyNotify(r.Context(), m.Email, r.PostFormValue("reply_notify") == "1")
+	// Keep the public newsletter subscriber list in sync so the member actually
+	// receives (or stops receiving) broadcasts. As an authenticated member their
+	// address is already verified, so we subscribe them confirmed — no opt-in.
+	if a.newsletterStore != nil {
+		if newsletterOn {
+			_ = a.newsletterStore.SubscribeConfirmed(r.Context(), m.Email)
+		} else {
+			_ = a.newsletterStore.UnsubscribeEmail(r.Context(), m.Email)
+		}
+	}
 	http.Redirect(w, r, "/members/account?saved=1", http.StatusSeeOther)
 }
 

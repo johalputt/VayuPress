@@ -254,7 +254,9 @@
 }
 .ma-field input[type=text]:focus { border-color: var(--su-accent); box-shadow: 0 0 0 3px rgba(99,102,241,.25); }
 
-.ma-check { display: flex; align-items: center; gap: .6rem; margin: 1rem 0; font-size: .92rem; }
+.ma-check { display: flex; align-items: center; gap: .6rem; margin: .7rem 0; font-size: .92rem; }
+.ma-subhead { margin: 1.4rem 0 .4rem; font-size: .82rem; text-transform: uppercase; letter-spacing: .06em; color: var(--su-muted, #6b7280); }
+.ma-hint { margin: .6rem 0 1rem; font-size: .82rem; color: var(--su-muted, #6b7280); }
 
 .su-btn--inline { display: inline-block; width: auto; text-decoration: none; }
 

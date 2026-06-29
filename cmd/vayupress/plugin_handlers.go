@@ -110,9 +110,10 @@ func (a *App) handleCommentSubmit(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 
 	var body struct {
-		Author string `json:"author"`
-		Email  string `json:"email"`
-		Body   string `json:"body"`
+		Author   string `json:"author"`
+		Email    string `json:"email"`
+		Body     string `json:"body"`
+		ParentID string `json:"parent_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "bad-json", "Invalid request body", "")
@@ -139,7 +140,18 @@ func (a *App) handleCommentSubmit(w http.ResponseWriter, r *http.Request) {
 		ip = strings.Split(fwd, ",")[0]
 	}
 
-	c, err := a.commentStore.Submit(r.Context(), articleID, author, member.Email, body.Body, ip)
+	// A reply must point at an existing comment on the same article, so a thread
+	// can't be forged across articles. An unknown parent is treated as not-found.
+	parentID := strings.TrimSpace(body.ParentID)
+	if parentID != "" {
+		parent, perr := a.commentStore.Get(r.Context(), parentID)
+		if perr != nil || parent.ArticleID != articleID {
+			writeAPIError(w, r, http.StatusBadRequest, "bad-parent", "The comment you replied to does not exist", "")
+			return
+		}
+	}
+
+	c, err := a.commentStore.SubmitReply(r.Context(), articleID, parentID, author, member.Email, body.Body, ip)
 	if err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "comment-error", err.Error(), "")
 		return
@@ -186,9 +198,11 @@ func (a *App) handleCommentModerate(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusBadRequest, "moderate-error", err.Error(), "")
 		return
 	}
-	// Email the commenter when their comment is approved.
+	// Email the commenter when their comment is approved, and — if it is a reply —
+	// notify the parent comment's author that they got a response.
 	if body.Status == "approved" {
-		go a.notifyCommentApproved(r.Context(), id)
+		go a.notifyCommentApproved(context.WithoutCancel(r.Context()), id)
+		go a.notifyCommentReply(context.WithoutCancel(r.Context()), id)
 	}
 	writeJSON(w, r, http.StatusOK, map[string]string{"status": body.Status})
 }
@@ -730,5 +744,54 @@ func (a *App) notifyCommentApproved(ctx context.Context, commentID string) {
 		HTML:    msg.HTML,
 	}); err != nil {
 		logging.LogError("comments", "approval email failed", err.Error())
+	}
+}
+
+// notifyCommentReply emails the author of a parent comment when a reply to it is
+// approved, provided that author is a member who has reply notifications on. It
+// is a no-op for top-level comments, self-replies, or members who opted out.
+func (a *App) notifyCommentReply(ctx context.Context, replyID string) {
+	if a.mailer == nil || a.commentStore == nil || a.members == nil {
+		return
+	}
+	reply, err := a.commentStore.Get(ctx, replyID)
+	if err != nil || reply.ParentID == "" {
+		return
+	}
+	parent, err := a.commentStore.Get(ctx, reply.ParentID)
+	if err != nil || parent.Email == "" {
+		return
+	}
+	// Don't email someone for replying to their own comment.
+	if strings.EqualFold(parent.Email, reply.Email) {
+		return
+	}
+	// Respect the parent author's notification preference (members only).
+	pm, err := a.members.Get(ctx, parent.Email)
+	if err != nil || !pm.ReplyNotify {
+		return
+	}
+
+	var slug, title string
+	_ = dbpkg.Reader().QueryRowContext(ctx,
+		`SELECT slug,COALESCE(title,'') FROM articles WHERE id=?`, reply.ArticleID).Scan(&slug, &title)
+	if title == "" {
+		title = slug
+	}
+	link := "https://" + config.Cfg.Domain + "/" + slug + "#comments"
+	msg := a.renderEmail(emailtmpl.CommentReply, map[string]interface{}{
+		"Author":  parent.Author,
+		"Replier": reply.Author,
+		"Title":   title,
+		"Reply":   reply.Body,
+		"Link":    link,
+	})
+	if err := a.mailer.Send(email.Message{
+		To:      parent.Email,
+		Subject: msg.Subject,
+		Text:    msg.Text,
+		HTML:    msg.HTML,
+	}); err != nil {
+		logging.LogError("comments", "reply notification email failed", err.Error())
 	}
 }

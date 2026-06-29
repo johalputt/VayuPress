@@ -53,6 +53,7 @@ type Member struct {
 	Tier            string     `json:"tier"`
 	Status          string     `json:"status"`
 	NewsletterOptIn bool       `json:"newsletter_opt_in"`
+	ReplyNotify     bool       `json:"reply_notify"`
 	StripeCustomer  string     `json:"-"`
 	Labels          []string   `json:"labels,omitempty"`
 	LastSeenAt      *time.Time `json:"last_seen_at,omitempty"`
@@ -88,7 +89,7 @@ type Store struct{ db *sql.DB }
 func New(db *sql.DB) *Store { return &Store{db: db} }
 
 // memberCols is the canonical SELECT column list for scanning into a Member.
-const memberCols = `id,email,name,note,tier,status,newsletter_opt_in,stripe_customer,last_seen_at,created_at`
+const memberCols = `id,email,name,note,tier,status,newsletter_opt_in,reply_notify,stripe_customer,last_seen_at,created_at`
 
 // scanner is satisfied by both *sql.Row and *sql.Rows.
 type scanner interface {
@@ -99,14 +100,15 @@ type scanner interface {
 func scanMember(sc scanner) (*Member, error) {
 	var m Member
 	var note, stripe string
-	var optIn int
+	var optIn, replyNotify int
 	var lastSeen sql.NullTime
-	if err := sc.Scan(&m.ID, &m.Email, &m.Name, &note, &m.Tier, &m.Status, &optIn, &stripe, &lastSeen, &m.CreatedAt); err != nil {
+	if err := sc.Scan(&m.ID, &m.Email, &m.Name, &note, &m.Tier, &m.Status, &optIn, &replyNotify, &stripe, &lastSeen, &m.CreatedAt); err != nil {
 		return nil, err
 	}
 	m.Note = note
 	m.StripeCustomer = stripe
 	m.NewsletterOptIn = optIn != 0
+	m.ReplyNotify = replyNotify != 0
 	if lastSeen.Valid {
 		t := lastSeen.Time.UTC()
 		m.LastSeenAt = &t
@@ -260,6 +262,19 @@ func (s *Store) SetNewsletterOptIn(ctx context.Context, email string, on bool) e
 	}
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE members SET newsletter_opt_in=? WHERE email=?`,
+		v, strings.TrimSpace(strings.ToLower(email)))
+	return err
+}
+
+// SetReplyNotify toggles whether a member is emailed when someone replies to
+// their comment.
+func (s *Store) SetReplyNotify(ctx context.Context, email string, on bool) error {
+	v := 0
+	if on {
+		v = 1
+	}
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE members SET reply_notify=? WHERE email=?`,
 		v, strings.TrimSpace(strings.ToLower(email)))
 	return err
 }
