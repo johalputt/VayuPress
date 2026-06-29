@@ -8,6 +8,18 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Fixed
+
+- **One-click update no longer fails on large databases.** The in-app pre-update
+  backup gzips the whole database inside the update request, which on a multi-GB
+  database could swap-thrash a small VPS and make every update attempt fail or
+  hang. The "Back up the database first" checkbox now defaults **off** when the
+  database exceeds 2 GiB (with an inline explanation), and the apply endpoint
+  refuses the inline backup fast — before downloading anything — when the DB is
+  that large, telling the operator to untick it or snapshot/Export first. A
+  binary update never rewrites the database and the previous binary is kept for
+  rollback, so updating with the backup off is safe.
+
 ## [2.5.1] - 2026-06-29
 
 ### Added

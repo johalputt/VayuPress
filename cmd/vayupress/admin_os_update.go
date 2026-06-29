@@ -95,6 +95,28 @@ func binaryDirWritable(binPath string) string {
 	return ""
 }
 
+// inlineBackupMaxBytes bounds the database size for which the in-app, in-request
+// pre-update backup (a synchronous gzip of the whole DB) is offered. Above this,
+// gzipping the database inside the update request would read the entire file and
+// thrash a memory-constrained single-VPS host into swap — exactly the failure
+// mode that made one-click updates fail on large catalogues. Past this size the
+// operator should snapshot during a quiet window (stop · cp · start) or use the
+// Export button, then update with the backup unticked: a binary update never
+// rewrites the database and the previous binary is kept as <binary>.bak.
+const inlineBackupMaxBytes = 2 << 30 // 2 GiB
+
+// dbSizeBytes returns the on-disk size of the live database file (0 if unknown).
+func dbSizeBytes() int64 {
+	if config.Cfg.DBPath == "" {
+		return 0
+	}
+	fi, err := os.Stat(config.Cfg.DBPath)
+	if err != nil {
+		return 0
+	}
+	return fi.Size()
+}
+
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 func (a *App) handleOSUpdate(w http.ResponseWriter, r *http.Request) {
@@ -129,6 +151,17 @@ func (a *App) handleOSUpdate(w http.ResponseWriter, r *http.Request) {
 
 	historyRows := a.updateHistoryRowsHTML(r)
 
+	// The in-app pre-update backup gzips the whole database inside the request,
+	// which is unsafe on a large DB (it can swap-thrash a small VPS). For a large
+	// DB, default the checkbox OFF and explain the safe path; otherwise keep it on.
+	dbSize := dbSizeBytes()
+	backupChecked := " checked"
+	backupNote := `Recommended for most sites. A binary update never changes your database and the previous binary is kept for rollback, so you can safely untick this — handy for very large databases where a full snapshot is slow. For a downloadable copy, use Export below.`
+	if dbSize > inlineBackupMaxBytes {
+		backupChecked = ""
+		backupNote = `Your database is large (` + html.EscapeString(humanBytes(dbSize)) + `), so the in-app backup is turned off by default — gzipping a database this size inside the update can overload the server. A binary update never changes your database and the previous binary is kept for rollback. To keep a copy, snapshot it during a quiet window or use Export below <strong>before</strong> updating.`
+	}
+
 	// Start disabled; the on-load check enables it only when an update is
 	// actually available and the mode allows applying.
 	applyDisabled := " disabled"
@@ -160,9 +193,9 @@ func (a *App) handleOSUpdate(w http.ResponseWriter, r *http.Request) {
   </div>
   <div class="update-notes" data-update-notes hidden></div>
   <label class="cz-check mt-4" style="justify-content:flex-start;gap:10px">
-    <input type="checkbox" data-update-backup checked> Back up the database first
+    <input type="checkbox" data-update-backup` + backupChecked + `> Back up the database first
   </label>
-  <div class="text-xs muted mb-2">Recommended for most sites. A binary update never changes your database and the previous binary is kept for rollback, so you can safely untick this — handy for very large databases where a full snapshot is slow. For a downloadable copy, use Export below.</div>
+  <div class="text-xs muted mb-2">` + backupNote + `</div>
   <div class="theme-actions mt-2" data-actions-wrap>
     <button type="button" class="btn btn--ghost btn--sm" data-update-check>Check for updates</button>
     <button type="button" class="btn btn--primary btn--sm" data-update-apply` + applyDisabled + `>Update now</button>
@@ -299,6 +332,22 @@ func (a *App) handleOSUpdateApply(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = json.NewDecoder(r.Body).Decode(&body) // empty body → zero-value defaults
 	backup := body.Backup == nil || *body.Backup
+
+	// Guard against the most common one-click-update failure on large catalogues:
+	// the in-request gzip of a multi-GB database reads the whole file and can
+	// swap-thrash a memory-constrained VPS, so the update appears to fail (or
+	// hangs) every time. Refuse the inline backup fast — before downloading or
+	// touching anything — with the safe path, rather than attempting it. The
+	// binary is left untouched, so retrying with backup off succeeds.
+	if backup && !body.DryRun {
+		if sz := dbSizeBytes(); sz > inlineBackupMaxBytes {
+			writeAPIError(w, r, http.StatusPreconditionFailed, "backup-too-large",
+				"Your database is "+humanBytes(sz)+", which is too large to back up safely from inside the update — gzipping it here can overload the server. "+
+					"Untick “Back up the database first” and click Update now (a binary update never changes your database, and the previous binary is kept for rollback), "+
+					"or take a snapshot during a quiet window / use Export first, then update.", "")
+			return
+		}
+	}
 
 	pubKey := os.Getenv("VAYU_RELEASE_PUBKEY")
 	curMode := string(mode.Global.Current())
