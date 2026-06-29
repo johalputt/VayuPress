@@ -89,9 +89,27 @@ jobs:
           fetch-depth: 0
       - name: Scan for secrets with TruffleHog (filesystem mode)
         run: |
-          curl -sSfL https://raw.githubusercontent.com/trufflesecurity/trufflehog/main/scripts/install.sh \
-            | sh -s -- -b /usr/local/bin
-          trufflehog filesystem . --only-verified --fail
+          # The upstream install script occasionally 404s on the release asset
+          # (a transient GitHub-release issue), which used to fail this job for a
+          # reason unrelated to the code. Retry the install, then fall back to the
+          # official Docker image (reliably available on the runner). Either way
+          # the scan still runs with identical semantics (--only-verified --fail).
+          install_ok=0
+          for i in 1 2 3; do
+            if curl -sSfL https://raw.githubusercontent.com/trufflesecurity/trufflehog/main/scripts/install.sh \
+                 | sh -s -- -b /usr/local/bin; then
+              install_ok=1; break
+            fi
+            echo "trufflehog install attempt $i failed; retrying in 5s…"; sleep 5
+          done
+          if [ "$install_ok" = "1" ] && command -v trufflehog >/dev/null 2>&1; then
+            trufflehog filesystem . --only-verified --fail
+          else
+            echo "Install script unavailable — using the official Docker image."
+            docker run --rm -v "$PWD:/repo" \
+              ghcr.io/trufflesecurity/trufflehog:latest \
+              filesystem /repo --only-verified --fail
+          fi
           echo "✅ No verified secrets detected."
 
   # ── P9/P10: License compliance (FAIL if GPL/AGPL detected) ───────────────
