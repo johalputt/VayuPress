@@ -89,26 +89,36 @@ jobs:
           fetch-depth: 0
       - name: Scan for secrets with TruffleHog (filesystem mode)
         run: |
-          # The upstream install script occasionally 404s on the release asset
-          # (a transient GitHub-release issue), which used to fail this job for a
-          # reason unrelated to the code. Retry the install, then fall back to the
-          # official Docker image (reliably available on the runner). Either way
-          # the scan still runs with identical semantics (--only-verified --fail).
-          install_ok=0
+          # The upstream install script intermittently 404s on the release asset
+          # (a transient GitHub-release issue) and used to fail this job for a
+          # reason unrelated to the code. Prefer the official Docker image (pulls
+          # reliably on the runner); the install script is only a fallback.
+          #
+          # IMPORTANT: only the *pull/install* is retried. The actual scan runs
+          # exactly once and its exit code is authoritative — trufflehog returns
+          # 183 when verified secrets are found, so retries can never mask a real
+          # detection. Semantics are unchanged: filesystem . --only-verified --fail.
+          IMAGE="ghcr.io/trufflesecurity/trufflehog:latest"
+          pulled=0
           for i in 1 2 3; do
-            if curl -sSfL https://raw.githubusercontent.com/trufflesecurity/trufflehog/main/scripts/install.sh \
-                 | sh -s -- -b /usr/local/bin; then
-              install_ok=1; break
-            fi
-            echo "trufflehog install attempt $i failed; retrying in 5s…"; sleep 5
+            if docker pull -q "$IMAGE"; then pulled=1; break; fi
+            echo "image pull attempt $i failed; retrying in 5s…"; sleep 5
           done
-          if [ "$install_ok" = "1" ] && command -v trufflehog >/dev/null 2>&1; then
-            trufflehog filesystem . --only-verified --fail
-          else
-            echo "Install script unavailable — using the official Docker image."
-            docker run --rm -v "$PWD:/repo" \
-              ghcr.io/trufflesecurity/trufflehog:latest \
+          if [ "$pulled" = "1" ]; then
+            docker run --rm -v "$PWD:/repo" -w /repo "$IMAGE" \
               filesystem /repo --only-verified --fail
+          else
+            echo "Docker image unavailable — falling back to the install script."
+            install_ok=0
+            for i in 1 2 3; do
+              if curl -sSfL https://raw.githubusercontent.com/trufflesecurity/trufflehog/main/scripts/install.sh \
+                   | sh -s -- -b /usr/local/bin; then
+                install_ok=1; break
+              fi
+              echo "install attempt $i failed; retrying in 5s…"; sleep 5
+            done
+            [ "$install_ok" = "1" ] || { echo "Could not obtain trufflehog by any method"; exit 1; }
+            trufflehog filesystem . --only-verified --fail
           fi
           echo "✅ No verified secrets detected."
 
