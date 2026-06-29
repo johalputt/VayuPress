@@ -8,6 +8,58 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [2.5.1] - 2026-06-29
+
+### Added
+
+- **Threaded comment replies.** Readers can reply to a specific comment; the
+  public widget renders one level of indented replies with per-comment reply
+  forms. Backed by a new `comments.parent_id` column (migration `052`); a reply
+  must point at an existing comment on the same article.
+- **Reply notifications.** When a reply is approved, the author of the parent
+  comment is emailed (new operator-editable `comment_reply` template) — only if
+  they are a member with reply notifications on and it isn't a self-reply. New
+  `members.reply_notify` preference (migration `053`, default on).
+- **Member Activity tab.** The VayuPortal account panel gains a "Your comments"
+  view listing a member's own comments with a live / awaiting-review / not-
+  approved status badge, linking back to each thread
+  (`GET /api/v1/members/comments`, served from the read pool).
+- **Member Notifications settings.** The account portal adds a Notifications
+  section: toggle reply-notification emails and the newsletter. Saving the
+  newsletter toggle now syncs the public subscriber list (subscribed *confirmed*
+  — no double opt-in, since the member is already verified — or unsubscribed) so
+  the choice affects real broadcasts.
+- **Beautiful welcome & sign-in emails.** The `magic_link` and `welcome` emails
+  are redesigned as polished, emoji-rich HTML cards. A brand-new member now
+  receives the welcome email **in addition** to their sign-in link.
+
+### Changed
+
+- **Signed-in nav.** When a member is signed in, the public "Sign in / Sign up"
+  links collapse to the member's name, which opens the account panel (with
+  sign-out). Logged-out behaviour is unchanged.
+- **VayuMail sign-in shows the console immediately.** The portal's VayuMail login
+  response now carries the mailbox role, so the "Open VayuOS console" (or "Open
+  VayuMail") shortcut appears at login instead of only after a page reload.
+- **Comments restyled to match the theme.** The comment section now inherits the
+  active theme's colours via Pico custom properties — avatars, rounded cards,
+  hover lift and indented reply threads — in both light and dark mode.
+- **Website decluttered.** The marketing site leads with *why VayuPress exists*,
+  drops version stamps from every feature, and trims the feature wall, comparison
+  table, tool list and screenshot gallery to what a visitor actually needs.
+
+### Fixed
+
+- **IndexNow only pings published posts.** Auto-submission now verifies an
+  article is `published` (via the read pool) before pinging, and a publish
+  transition triggers a ping — so drafts and unpublishes never reach IndexNow.
+
+### Upgrade Notes
+
+- Two additive, defaulted migrations apply automatically (`052-comment-parent`,
+  `053-member-reply-notify`); no operator action is required. Existing members
+  default to reply notifications **on** and can opt out from their account portal.
+
 ## [2.5.0] - 2026-06-29
 
 ### Added

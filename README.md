@@ -21,12 +21,34 @@
 > _Own your content. Own your communication. Own your infrastructure._
 > Publishing is the core identity, **VayuMail** the native sovereignty layer, **VayuPGP** the native privacy layer, and **VayuOS** the native control layer — all in a single Go binary, single process, single config.
 
-## What's New in v2.5.0
+## What's New in v2.5.1
 
 > Full notes in [`CHANGELOG.md`](CHANGELOG.md) · architecture decision in
-> [`docs/adr/ADR-0102`](docs/adr/ADR-0102-unified-identity-and-bootstrap-admin.md)
+> [`docs/adr/ADR-0103`](docs/adr/ADR-0103-member-experience-and-threaded-comments.md)
 
-**One identity, zero-friction onboarding, and a complete contact stack.**
+**A warmer membership experience — conversations that continue, and readers who
+feel like members.**
+
+- **Threaded comment replies, theme-blended.** Reply to a specific comment;
+  replies render indented and inherit the active theme (avatars, rounded cards,
+  threads) in light and dark.
+- **Reply notifications.** When someone replies to your comment, you get a
+  beautiful email — opt-out per member, never for self-replies.
+- **A member account that does more.** A signed-in reader sees their name and
+  sign-out in the nav (not "Sign in / Sign up"), an **Activity** tab listing
+  their own comments and status, and a **Notifications** section to control reply
+  emails and newsletter membership in one place.
+- **VayuMail sign-in shows the console instantly.** Logging in with a mailbox now
+  surfaces the "Open VayuOS console" shortcut at login, not after a reload.
+- **Beautiful welcome & sign-in emails.** New members get a warm welcome
+  alongside their sign-in link; both emails are redesigned, emoji-rich cards.
+- **IndexNow only pings published posts**, and a cleaner, less-bloated
+  marketing site that leads with *why VayuPress exists*.
+
+### Previously in v2.5.0 — one identity, zero-friction onboarding, a complete contact stack
+
+> Architecture decision in
+> [`docs/adr/ADR-0102`](docs/adr/ADR-0102-unified-identity-and-bootstrap-admin.md)
 
 - **Unified VayuMail + CMS identity.** A staff member with both a CMS account and
   a VayuMail mailbox at the same address is now one account — profiles save and
