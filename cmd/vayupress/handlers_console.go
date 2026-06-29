@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"html"
@@ -254,14 +253,12 @@ func (a *App) handleTopologyPage(w http.ResponseWriter, r *http.Request) {
 	if cur == mode.ModeDegraded {
 		fedStatus = "warn"
 	}
-	searchStatus := "warn"
-	searchSub := "SQLite fallback"
-	if a.search != nil {
-		ctx, cancel := context.WithTimeout(r.Context(), 350*time.Millisecond)
-		if a.search.Ping(ctx) == nil {
-			searchStatus, searchSub = "ok", "Meilisearch"
-		}
-		cancel()
+	searchStatus := "ok"
+	searchSub := "VayuFind (built-in)"
+	if a.search == nil {
+		searchStatus, searchSub = "warn", "unavailable"
+	} else if n, err := a.search.DocCount(r.Context()); err == nil {
+		searchSub = fmt.Sprintf("VayuFind · %d indexed", n)
 	}
 	var faultTotal int64
 	for _, rule := range fault.DefaultRules() {

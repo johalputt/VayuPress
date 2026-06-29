@@ -876,6 +876,266 @@ func TrendingJSLink() template.HTML {
 	return template.HTML(`<script src="/static/js/trending.js?v=` + trendingJSHash + `" defer></script>`)
 }
 
+// SearchModalJS powers VayuFind's instant search overlay — the Ghost-style
+// modal that opens from the nav search box (or Ctrl/⌘-K, or "/"). It is
+// sovereign · zero-CDN · strict-CSP: no inline styles (all classes live in the
+// stylesheet), no eval, and every result node is built with
+// createElement/textContent so a malicious title can never become markup.
+//
+// It downloads ONE compact index (/api/search-index.json, content-hash cached)
+// the first time the overlay opens, then filters entirely in the browser — no
+// per-keystroke server round-trips. The ranking mirrors the Go scorer: every
+// query term must match (AND), with title ≫ tags ≫ excerpt weighting.
+//
+// Progressive enhancement: the nav <form> still submits to /search when
+// JavaScript is unavailable, so search degrades gracefully.
+const SearchModalJS = `(function () {
+  'use strict';
+
+  var forms = Array.prototype.slice.call(document.querySelectorAll('form[data-vayu-search]'));
+  if (!forms.length) return;
+
+  var overlay, input, list, status, posts = null, loading = false, items = [], active = -1, t0;
+
+  function tokenize(q) {
+    return (q || '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+  }
+  function wordHit(hay, term) {
+    var i = hay.indexOf(term);
+    while (i !== -1) {
+      var l = i === 0 || !/[a-z0-9]/.test(hay[i - 1]);
+      var e = i + term.length;
+      var r = e >= hay.length || !/[a-z0-9]/.test(hay[e]);
+      if (l && r) return true;
+      i = hay.indexOf(term, i + 1);
+    }
+    return false;
+  }
+  function score(p, terms) {
+    var title = p._t, tags = p._g, text = p._x, total = 0;
+    for (var i = 0; i < terms.length; i++) {
+      var term = terms[i], s = 0;
+      if (title.indexOf(term) === 0) s = 60;
+      else if (wordHit(title, term)) s = 45;
+      else if (title.indexOf(term) !== -1) s = 30;
+      if (wordHit(tags, term)) s += 25;
+      else if (tags.indexOf(term) !== -1) s += 12;
+      if (s === 0) {
+        if (wordHit(text, term)) s = 8;
+        else if (text.indexOf(term) !== -1) s = 4;
+      }
+      if (s === 0) return 0;
+      total += s;
+    }
+    return total;
+  }
+
+  function ensureBuilt() {
+    if (overlay) return;
+    overlay = document.createElement('div');
+    overlay.className = 'vayu-search-modal';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.setAttribute('aria-label', 'Search');
+
+    var backdrop = document.createElement('div');
+    backdrop.className = 'vayu-search-backdrop';
+    backdrop.addEventListener('click', close);
+
+    var panel = document.createElement('div');
+    panel.className = 'vayu-search-panel';
+
+    var bar = document.createElement('div');
+    bar.className = 'vayu-search-bar';
+    var icon = document.createElement('span');
+    icon.className = 'vayu-search-icon';
+    icon.setAttribute('aria-hidden', 'true');
+    icon.textContent = '\uD83D\uDD0D';
+    input = document.createElement('input');
+    input.type = 'search';
+    input.className = 'vayu-search-field';
+    input.setAttribute('placeholder', 'Search posts\u2026');
+    input.setAttribute('aria-label', 'Search posts');
+    input.setAttribute('autocomplete', 'off');
+    input.setAttribute('spellcheck', 'false');
+    var esc = document.createElement('button');
+    esc.type = 'button';
+    esc.className = 'vayu-search-esc';
+    esc.textContent = 'Esc';
+    esc.addEventListener('click', close);
+    bar.appendChild(icon);
+    bar.appendChild(input);
+    bar.appendChild(esc);
+
+    list = document.createElement('div');
+    list.className = 'vayu-search-results';
+    status = document.createElement('div');
+    status.className = 'vayu-search-status';
+    status.textContent = 'Type to search';
+
+    panel.appendChild(bar);
+    panel.appendChild(status);
+    panel.appendChild(list);
+    overlay.appendChild(backdrop);
+    overlay.appendChild(panel);
+    document.body.appendChild(overlay);
+
+    input.addEventListener('input', onInput);
+    input.addEventListener('keydown', onKey);
+  }
+
+  function load() {
+    if (posts || loading) return;
+    loading = true;
+    fetch('/api/search-index.json', { headers: { Accept: 'application/json' } })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) {
+        loading = false;
+        if (!data || !data.posts) { status.textContent = 'Search is unavailable'; return; }
+        posts = data.posts.map(function (p) {
+          p._t = (p.t || '').toLowerCase();
+          p._g = (p.g || []).join(' ').toLowerCase();
+          p._x = p._t + '\n' + p._g + '\n' + (p.e || '').toLowerCase();
+          return p;
+        });
+        if (input.value) onInput();
+      })
+      .catch(function () { loading = false; status.textContent = 'Search is unavailable'; });
+  }
+
+  function open(prefill) {
+    ensureBuilt();
+    load();
+    document.documentElement.classList.add('vayu-modal-open');
+    overlay.classList.add('is-open');
+    if (prefill) input.value = prefill;
+    active = -1;
+    setTimeout(function () { input.focus(); if (input.value) onInput(); }, 0);
+  }
+  function close() {
+    if (!overlay) return;
+    overlay.classList.remove('is-open');
+    document.documentElement.classList.remove('vayu-modal-open');
+  }
+
+  function onInput() {
+    clearTimeout(t0);
+    t0 = setTimeout(render, 60);
+  }
+
+  function render() {
+    if (!posts) return;
+    var q = input.value.trim();
+    var terms = tokenize(q);
+    list.textContent = '';
+    items = [];
+    active = -1;
+    if (!terms.length) { status.textContent = 'Type to search'; return; }
+    var scored = [];
+    for (var i = 0; i < posts.length; i++) {
+      var sc = score(posts[i], terms);
+      if (sc > 0) scored.push([sc, posts[i]]);
+    }
+    scored.sort(function (a, b) { return b[0] - a[0] || (b[1].d - a[1].d); });
+    scored = scored.slice(0, 8);
+    if (!scored.length) { status.textContent = 'No results for \u201C' + q + '\u201D'; return; }
+    status.textContent = scored.length + (scored.length === 1 ? ' result' : ' results');
+    for (var j = 0; j < scored.length; j++) {
+      list.appendChild(item(scored[j][1], terms));
+    }
+    if (items.length) setActive(0);
+  }
+
+  function item(p, terms) {
+    var a = document.createElement('a');
+    a.className = 'vayu-search-result';
+    a.href = '/' + p.u;
+    var title = document.createElement('div');
+    title.className = 'vayu-search-result-title';
+    highlight(title, p.t || p.u, terms);
+    var ex = document.createElement('div');
+    ex.className = 'vayu-search-result-excerpt';
+    ex.textContent = p.e || '';
+    a.appendChild(title);
+    if (p.e) a.appendChild(ex);
+    a.addEventListener('mouseenter', function () { setActive(items.indexOf(a)); });
+    items.push(a);
+    return a;
+  }
+
+  // highlight builds matched/unmatched text nodes safely (no innerHTML).
+  function highlight(el, text, terms) {
+    var lower = text.toLowerCase(), ranges = [];
+    terms.forEach(function (term) {
+      var i = lower.indexOf(term);
+      while (i !== -1) { ranges.push([i, i + term.length]); i = lower.indexOf(term, i + 1); }
+    });
+    if (!ranges.length) { el.textContent = text; return; }
+    ranges.sort(function (a, b) { return a[0] - b[0]; });
+    var merged = [ranges[0]];
+    for (var k = 1; k < ranges.length; k++) {
+      var last = merged[merged.length - 1];
+      if (ranges[k][0] <= last[1]) last[1] = Math.max(last[1], ranges[k][1]);
+      else merged.push(ranges[k]);
+    }
+    var pos = 0;
+    merged.forEach(function (r) {
+      if (r[0] > pos) el.appendChild(document.createTextNode(text.slice(pos, r[0])));
+      var m = document.createElement('mark');
+      m.textContent = text.slice(r[0], r[1]);
+      el.appendChild(m);
+      pos = r[1];
+    });
+    if (pos < text.length) el.appendChild(document.createTextNode(text.slice(pos)));
+  }
+
+  function setActive(i) {
+    if (active >= 0 && items[active]) items[active].classList.remove('is-active');
+    active = i;
+    if (items[active]) {
+      items[active].classList.add('is-active');
+      items[active].scrollIntoView({ block: 'nearest' });
+    }
+  }
+
+  function onKey(e) {
+    if (e.key === 'ArrowDown') { e.preventDefault(); if (items.length) setActive((active + 1) % items.length); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); if (items.length) setActive((active - 1 + items.length) % items.length); }
+    else if (e.key === 'Enter') { if (active >= 0 && items[active]) { e.preventDefault(); window.location.href = items[active].href; } }
+    else if (e.key === 'Escape') { e.preventDefault(); close(); }
+  }
+
+  forms.forEach(function (form) {
+    var field = form.querySelector('input[type="search"]');
+    function trigger(e) { e.preventDefault(); open(field ? field.value : ''); }
+    form.addEventListener('submit', trigger);
+    if (field) {
+      field.addEventListener('focus', trigger);
+      field.addEventListener('click', trigger);
+    }
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if ((e.key === 'k' || e.key === 'K') && (e.metaKey || e.ctrlKey)) { e.preventDefault(); open(''); }
+    else if (e.key === '/' && !/^(INPUT|TEXTAREA|SELECT)$/.test((e.target.tagName || '')) && !(overlay && overlay.classList.contains('is-open'))) {
+      e.preventDefault(); open('');
+    }
+  });
+})();
+`
+
+// searchModalJSHash versions the modal script URL for cache-busting.
+var searchModalJSHash = func() string {
+	sum := sha256.Sum256([]byte(SearchModalJS))
+	return hex.EncodeToString(sum[:8])
+}()
+
+// SearchModalJSLink returns the content-hashed <script> tag for the VayuFind
+// instant-search modal.
+func SearchModalJSLink() template.HTML {
+	return template.HTML(`<script src="/static/js/search.js?v=` + searchModalJSHash + `" defer></script>`)
+}
+
 // headMetaHTML renders the declarative <head> capabilities to a safe, escaped
 // allowlist of <meta> tags. Values are validated on write (hex/token/allowlist)
 // and HTML-escaped here — defense in depth. No arbitrary operator markup ever
@@ -945,6 +1205,9 @@ type articlePage struct {
 	// TrendingJSLink is the content-hashed <script> tag that hydrates the
 	// trending/pinned widget under each post (empty for standalone pages).
 	TrendingJSLink template.HTML
+	// SearchModalJSLink is the content-hashed <script> tag for the VayuFind
+	// instant-search modal (shown only when search is enabled).
+	SearchModalJSLink template.HTML
 }
 
 // RelatedArticle is a lightweight record used in the article footer suggestions.
@@ -1132,7 +1395,7 @@ var articleTmpl = template.Must(template.New("article").Funcs(template.FuncMap{
   <a href="/" class="vayu-nav-brand"><img src="/static/favicon-light.png" alt="" width="24" height="24">{{if .SiteName}}{{.SiteName}}{{else}}VayuPress{{end}}</a>
   <div class="vayu-nav-links">
     {{.NavLinks}}
-    {{if .ShowSearch}}<form class="vayu-search" method="get" action="/search" role="search">
+    {{if .ShowSearch}}<form class="vayu-search" method="get" action="/search" role="search" data-vayu-search>
       <input class="vayu-search-input" type="search" name="q" placeholder="Search…" aria-label="Search posts">
     </form>{{end}}
     <button type="button" id="vayu-theme-toggle" class="vayu-theme-toggle" aria-label="Toggle theme">☾</button>
@@ -1166,7 +1429,7 @@ var articleTmpl = template.Must(template.New("article").Funcs(template.FuncMap{
 {{if .ContactForm}}<section id="vayu-contact" class="vayu-contact" aria-label="Contact form"></section>{{end}}
 {{if not .IsPage}}<section class="vayu-trending" data-vayu-trending hidden aria-label="Trending and pinned posts"></section>{{end}}
 {{.Footer}}
-</main></div>{{if .CommentsEnabled}}{{.CommentsJSLink}}{{end}}{{if .ContactForm}}{{.ContactJSLink}}{{end}}{{if not .IsPage}}{{.TrendingJSLink}}{{end}}</body></html>`))
+</main></div>{{if .CommentsEnabled}}{{.CommentsJSLink}}{{end}}{{if .ContactForm}}{{.ContactJSLink}}{{end}}{{if not .IsPage}}{{.TrendingJSLink}}{{end}}{{if .ShowSearch}}{{.SearchModalJSLink}}{{end}}</body></html>`))
 
 // HomeArticle is a single entry rendered on the public homepage index.
 type HomeArticle struct {
@@ -1212,6 +1475,9 @@ type homePage struct {
 	// TrendingJSLink is the content-hashed <script> tag that hydrates the
 	// trending/pinned widget on the homepage.
 	TrendingJSLink template.HTML
+	// SearchModalJSLink is the content-hashed <script> tag for the VayuFind
+	// instant-search modal (shown only when search is enabled).
+	SearchModalJSLink template.HTML
 }
 
 var homeFuncs = template.FuncMap{
@@ -1245,7 +1511,7 @@ var homeTmpl = template.Must(template.New("home").Funcs(homeFuncs).Parse(`<!DOCT
   <a href="/" class="vayu-nav-brand"><img src="/static/favicon-light.png" alt="" width="24" height="24">{{if .SiteName}}{{.SiteName}}{{else}}VayuPress{{end}}</a>
   <div class="vayu-nav-links">
     {{.NavLinks}}
-    {{if .ShowSearch}}<form class="vayu-search" method="get" action="/search" role="search">
+    {{if .ShowSearch}}<form class="vayu-search" method="get" action="/search" role="search" data-vayu-search>
       <input class="vayu-search-input" type="search" name="q" placeholder="Search…" aria-label="Search posts">
     </form>{{end}}
     <button type="button" id="vayu-theme-toggle" class="vayu-theme-toggle" aria-label="Toggle theme">☾</button>
@@ -1277,7 +1543,7 @@ var homeTmpl = template.Must(template.New("home").Funcs(homeFuncs).Parse(`<!DOCT
 <section class="vayu-trending" data-vayu-trending hidden aria-label="Trending and pinned posts"></section>
 {{.Footer}}
 </main>
-</div>{{.PostCardMediaJSLink}}{{.TrendingJSLink}}</body></html>`))
+</div>{{.PostCardMediaJSLink}}{{.TrendingJSLink}}{{if .ShowSearch}}{{.SearchModalJSLink}}{{end}}</body></html>`))
 
 var notFoundTmpl = template.Must(template.New("404").Parse(`<!DOCTYPE html><html lang="en" data-theme="dark"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -1362,6 +1628,7 @@ func RenderHome(domain, version string, articles []HomeArticle, totalCount, page
 		Canonical:           canonical,
 		ShowSearch:          searchEnabled.Load(),
 		TrendingJSLink:      TrendingJSLink(),
+		SearchModalJSLink:   SearchModalJSLink(),
 	})
 	return buf.String(), err
 }
@@ -1620,6 +1887,7 @@ func RenderArticleWithMeta(a db.Article, layout ArticleLayoutType, related []Rel
 		IsPage:             ov.IsPage,
 		ShowSearch:         searchEnabled.Load(),
 		TrendingJSLink:     TrendingJSLink(),
+		SearchModalJSLink:  SearchModalJSLink(),
 	}
 	if err := articleTmpl.Execute(&buf, data); err != nil {
 		return "", fmt.Errorf("template: %w", err)
@@ -2521,6 +2789,99 @@ h1, h2, h3, h4, h5, h6 {
 }
 @media (max-width: 600px) {
   .vayu-search-input { width: 100%; max-width: none; }
+}
+
+/* ── VayuFind instant search modal (Ghost-style overlay) ─────────────────── */
+.vayu-modal-open { overflow: hidden; }
+.vayu-search-modal { position: fixed; inset: 0; z-index: 1000; display: none; }
+.vayu-search-modal.is-open { display: block; }
+.vayu-search-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(8, 10, 14, 0.5);
+  backdrop-filter: blur(7px);
+  -webkit-backdrop-filter: blur(7px);
+  animation: vayu-search-fade 0.16s ease;
+}
+.vayu-search-panel {
+  position: relative;
+  width: min(40rem, calc(100% - 2rem));
+  margin: 9vh auto 0;
+  background: var(--pico-card-background-color, #14161c);
+  border: 1px solid var(--border, rgba(125, 125, 125, 0.22));
+  border-radius: 14px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+  animation: vayu-search-rise 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.vayu-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid var(--border, rgba(125, 125, 125, 0.18));
+}
+.vayu-search-icon { font-size: 1.05rem; opacity: 0.7; }
+.vayu-search-field {
+  flex: 1;
+  min-width: 0;
+  padding: 0.35rem 0;
+  font: inherit;
+  font-size: 1.05rem;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  outline: none;
+}
+.vayu-search-esc {
+  flex: none;
+  padding: 0.2rem 0.5rem;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--muted, #8a93a6);
+  background: var(--border, rgba(125, 125, 125, 0.16));
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.vayu-search-status {
+  padding: 0.5rem 1.1rem;
+  font-size: 0.75rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--muted, #8a93a6);
+}
+.vayu-search-results { max-height: min(56vh, 30rem); overflow-y: auto; padding: 0.25rem; }
+.vayu-search-result {
+  display: block;
+  padding: 0.6rem 0.85rem;
+  border-radius: 9px;
+  color: inherit;
+  text-decoration: none;
+}
+.vayu-search-result.is-active { background: var(--pico-primary, #0284c7); color: #fff; }
+.vayu-search-result.is-active .vayu-search-result-excerpt { color: rgba(255, 255, 255, 0.82); }
+.vayu-search-result-title { font-weight: 600; font-size: 0.98rem; }
+.vayu-search-result-title mark { background: transparent; color: var(--pico-primary, #38bdf8); font-weight: 700; padding: 0; }
+.vayu-search-result.is-active .vayu-search-result-title mark { color: #fff; text-decoration: underline; }
+.vayu-search-result-excerpt {
+  margin-top: 0.15rem;
+  font-size: 0.85rem;
+  color: var(--muted, #8a93a6);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@keyframes vayu-search-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes vayu-search-rise { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) {
+  .vayu-search-backdrop, .vayu-search-panel { animation: none; }
+}
+@media (max-width: 600px) {
+  .vayu-search-panel { margin-top: 0; width: 100%; min-height: 100%; border-radius: 0; border: 0; }
+  .vayu-search-results { max-height: calc(100vh - 8rem); }
 }
 
 /* ── Pagination (homepage feed: Newer / Older) ──────────────────────────── */

@@ -161,3 +161,33 @@ func TestHomepageTrendingWidgetWired(t *testing.T) {
 		t.Error("trending widget script must not use a bare, unversioned URL (CDN-cacheable 404)")
 	}
 }
+
+// TestHomepageSearchModalWired verifies the VayuFind instant-search modal is
+// wired when search is enabled: the nav form carries the data-vayu-search hook
+// and the versioned modal script is referenced; both vanish when search is off.
+func TestHomepageSearchModalWired(t *testing.T) {
+	SetActiveSettings(SiteSettings{Name: "Acme"})
+	t.Cleanup(func() { SetActiveSettings(SiteSettings{}) })
+
+	SetSearchEnabled(true)
+	on, err := RenderHome("example.com", "1.0.0", nil, 0, 1, 1)
+	if err != nil {
+		t.Fatalf("RenderHome: %v", err)
+	}
+	if !strings.Contains(on, "data-vayu-search") {
+		t.Error("nav search form must carry the data-vayu-search modal hook when enabled")
+	}
+	if !strings.Contains(on, `src="/static/js/search.js?v=`) {
+		t.Error("homepage must reference the versioned search modal script when enabled")
+	}
+
+	SetSearchEnabled(false)
+	t.Cleanup(func() { SetSearchEnabled(true) })
+	off, err := RenderHome("example.com", "1.0.0", nil, 0, 1, 1)
+	if err != nil {
+		t.Fatalf("RenderHome(off): %v", err)
+	}
+	if strings.Contains(off, "data-vayu-search") || strings.Contains(off, "/static/js/search.js") {
+		t.Error("search modal must be absent when search is disabled")
+	}
+}

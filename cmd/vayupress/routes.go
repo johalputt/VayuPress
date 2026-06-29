@@ -78,6 +78,9 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	// Trending & pinned posts widget (hydrates [data-vayu-trending] from
 	// /api/trending). Same-origin → script-src 'self', no nonce.
 	r.Get("/static/js/trending.js", a.handleTrendingWidgetJS)
+	// VayuFind instant-search modal (hydrates from /api/search-index.json).
+	// Same-origin → script-src 'self', no nonce.
+	r.Get("/static/js/search.js", a.handleSearchWidgetJS)
 	// VayuPortal — the reader membership overlay widget (same-origin → script-src 'self').
 	r.Get("/static/js/portal.js", a.handleMemberPortalJS)
 	// Favicon routes serve the operator's uploaded brand mark when one is stored
@@ -403,6 +406,9 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	// Public, cookieless JSON for the Trending & pinned-posts widget on the
 	// homepage and under every post (hydrated client-side by trending.js).
 	r.Get("/api/trending", a.handleTrendingJSON)
+	// Public, cookieless compact index for the VayuFind instant-search modal
+	// (downloaded once, filtered client-side; ETag-revalidated).
+	r.Get("/api/search-index.json", a.handleSearchIndex)
 	// Public site search page (the nav search box submits here). chi matches this
 	// static route ahead of the "/{slug}" catch-all.
 	r.Get("/search", a.handleSearchPage)

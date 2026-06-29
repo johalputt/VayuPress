@@ -1,6 +1,6 @@
 # ADR-0050 — Persistence & Transport Maturity (P19)
 
-**Status:** Accepted  
+**Status:** Accepted (the Meilisearch portion is superseded by [ADR-0101](ADR-0101-builtin-search-vayufind.md), which replaces the external backend with the built-in VayuFind engine)  
 **Date:** 2026-06-12  
 **Supersedes:** Direct `*sql.DB` field on `ArticleService`, string-keyed `FireHookFn`, embedded Meilisearch logic in `App`
 

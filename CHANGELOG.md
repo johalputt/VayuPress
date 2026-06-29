@@ -8,6 +8,42 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-06-29
+
+### Added
+
+- **VayuFind — built-in instant search (replaces Meilisearch).** Search is now a
+  sovereign, dependency-free engine inside the binary — no external service to
+  run. Clicking the nav search box (or pressing `Ctrl`/`⌘`-`K`, or `/`) opens a
+  clean, Ghost-style **overlay**: the page dims and blurs behind a centred panel
+  that filters results **as you type**, with keyboard navigation and match
+  highlighting. It is extremely light: the browser downloads **one compact,
+  content-hashed index** the first time the overlay opens and then filters
+  entirely client-side, so there is **zero server work per keystroke**. The
+  index is maintained **incrementally** — each publish/edit/delete updates only
+  that entry rather than rebuilding everything — and is served with an `ETag` so
+  a browser/CDN re-fetches it only when posts actually change. Ranking is
+  field-weighted (title ≫ tags ≫ excerpt) with prefix/whole-word boosts and
+  recency tie-breaking. Strict CSP is preserved (same-origin versioned script,
+  no inline styles, no `eval`, results built with `textContent`). The
+  server-rendered `/search` page remains as a no-JavaScript fallback. See
+  [ADR-0101](docs/adr/ADR-0101-builtin-search-vayufind.md).
+
+### Changed
+
+- **Tools & Plugins:** the "Meilisearch" module is now simply **"Search"** — a
+  single on/off switch (`feature.search`, default on) for VayuFind. Turning it
+  off hides the search box and modal and makes `/search` return 404.
+
+### Removed
+
+- **External Meilisearch backend and its dependency.** VayuPress no longer
+  shells out to a Meilisearch process; the `getmeili/meilisearch` service has
+  been removed from `docker-compose.yml`, the `gobreaker` dependency is gone, and
+  `MEILI_HOST` / `MEILI_MASTER_KEY` are ignored. No operator action is required;
+  the `feature.meili` flag is deprecated. (`vayupress_meili_errors_total` is kept
+  for dashboard compatibility and now counts built-in index errors.)
+
 ### Fixed
 
 - **Trending and pinned posts never appeared on the public site.** The widget
@@ -19,8 +55,8 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   (`/static/js/trending.js?v=<hash>`), so both the Trending (7/30-day) and
   Pinned lists render, and a proxy can never pin a stale copy again. A
   regression test locks in the versioned reference.
-- **The public search box now honours the Meilisearch toggle.** Turning
-  Meilisearch off in Tools & Plugins hides the nav search box across the
+- **The public search box now honours the Search toggle.** Turning search
+  off in Tools & Plugins hides the nav search box across the
   homepage and post pages and makes `/search` return 404; turning it on restores
   them. The page cache is bumped so cached pages re-render to match the toggle.
 

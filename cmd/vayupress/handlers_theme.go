@@ -185,6 +185,15 @@ func (a *App) handleTrendingWidgetJS(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, render.TrendingJS)
 }
 
+// handleSearchWidgetJS serves the VayuFind instant-search modal script. Same
+// pattern as the other public scripts: a content-versioned, same-origin asset
+// that satisfies script-src 'self' without a nonce.
+func (a *App) handleSearchWidgetJS(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	fmt.Fprint(w, render.SearchModalJS)
+}
+
 // handleThemeGet renders the admin theme-editor page.
 func (a *App) handleThemeGet(w http.ResponseWriter, r *http.Request) {
 	vals, err := a.siteSettings.GetAll(r.Context())

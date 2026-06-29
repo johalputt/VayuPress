@@ -73,7 +73,7 @@ import (
 	"github.com/johalputt/vayupress/internal/ws"
 )
 
-var Version = "2.3.0"
+var Version = "2.4.0"
 var bootTime = time.Now()
 
 // Immutable package-level values (compiled once, never mutated).
@@ -546,15 +546,20 @@ func main() {
 		},
 	}
 
-	// Wire search service (ADR-0050).
-	a.search = search.NewMeiliService(a.outboundClient, dbpkg.DB)
-	// Honour the operator's Meilisearch toggle (Tools & Plugins). Default ON;
-	// when off, search uses the built-in SQLite engine and never calls
-	// Meilisearch — even if a host is configured.
+	// Wire search service — VayuFind, the built-in dependency-free engine
+	// (ADR-0050/0101). Load the index once from the article store; thereafter it
+	// is maintained incrementally by the article event handlers.
+	a.search = search.NewService(dbpkg.DB)
+	if err := a.search.Load(context.Background()); err != nil {
+		logging.LogError("search", "initial index load failed (search will populate as content changes)", err.Error())
+	}
+	// Honour the operator's Search toggle (Tools & Plugins). Default ON; when
+	// off, search returns no results and the public box/modal are hidden.
 	if a.siteSettings != nil {
-		search.SetMeiliEnabled(a.siteSettings.FeatureEnabled(context.Background(), settings.KeyFeatureMeili))
-		// The public search box is tied to the Meilisearch toggle.
-		render.SetSearchEnabled(a.siteSettings.FeatureEnabled(context.Background(), settings.KeyFeatureMeili))
+		searchOn := a.siteSettings.FeatureEnabled(context.Background(), settings.KeyFeatureSearch)
+		search.SetEnabled(searchOn)
+		// The public search box/modal visibility tracks the same toggle.
+		render.SetSearchEnabled(searchOn)
 	}
 
 	// Tier 4 services: GraphQL, live collaboration stream, email templates, i18n.
@@ -608,25 +613,6 @@ func main() {
 	// edited templates, or restyled cards) so a redeploy always serves the
 	// current design instead of a cached older home/tag page.
 	render.ReconcileCacheVersion()
-
-	// Meilisearch readiness runs in the BACKGROUND so the HTTP listener comes up
-	// immediately on (re)start instead of blocking behind the Meili probe. Search
-	// transparently uses its SQLite fallback until Meili is confirmed ready, so a
-	// restart never waits on it — this is the main reason a redeploy used to show
-	// a multi-second 502 window. WaitReady + ConfigureIndex now happen off the
-	// critical path.
-	go func() {
-		if !search.MeiliEnabled() {
-			logging.LogInfo("main", "Meilisearch disabled by operator — using built-in SQLite search")
-			return
-		}
-		if search.WaitReady(context.Background(), a.search, 12) {
-			logging.LogInfo("main", "Meilisearch ready")
-			search.ConfigureIndex(context.Background(), a.search)
-		} else {
-			logging.LogJSON(logging.LogFields{Level: "warn", Component: "main", Msg: "Meilisearch unavailable — SQLite search fallback active"})
-		}
-	}()
 
 	// Background cache warm + feed/sitemap generation. Deliberately gentle: it
 	// waits a few seconds for the box to settle after boot, then paces itself
