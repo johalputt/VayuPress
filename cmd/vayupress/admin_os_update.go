@@ -118,12 +118,12 @@ func (a *App) handleOSUpdate(w http.ResponseWriter, r *http.Request) {
 	case hasKey:
 		banner = `<div class="settings-callout">
     <strong>One-click updates are armed (signature-verified).</strong>
-    <span class="text-sm muted">Releases are verified by SHA-256 checksum <em>and</em> Ed25519 signature against your pinned release key, your database is backed up automatically, and the service re-launches itself to finish.</span>
+    <span class="text-sm muted">Releases are verified by SHA-256 checksum <em>and</em> Ed25519 signature against your pinned release key, then the binary is swapped atomically and the service re-launches itself to finish. A database backup before updating is optional (see the checkbox below).</span>
   </div>`
 	default:
 		banner = `<div class="settings-callout">
     <strong>One-click updates are ready.</strong>
-    <span class="text-sm muted">Click <em>Update now</em> to install the latest release: the download is SHA-256 checksum verified, your database is backed up automatically, the binary is swapped atomically, and the service restarts. For an extra layer, pin a release signing key in <code>VAYU_RELEASE_PUBKEY</code> to also require Ed25519 signature verification.</span>
+    <span class="text-sm muted">Click <em>Update now</em> to install the latest release: the download is SHA-256 checksum verified, the binary is swapped atomically, and the service restarts. A pre-update database backup is optional (checkbox below). For an extra layer, pin a release signing key in <code>VAYU_RELEASE_PUBKEY</code> to also require Ed25519 signature verification.</span>
   </div>`
 	}
 
@@ -159,7 +159,11 @@ func (a *App) handleOSUpdate(w http.ResponseWriter, r *http.Request) {
     </div>
   </div>
   <div class="update-notes" data-update-notes hidden></div>
-  <div class="theme-actions mt-4" data-actions-wrap>
+  <label class="cz-check mt-4" style="justify-content:flex-start;gap:10px">
+    <input type="checkbox" data-update-backup checked> Back up the database first
+  </label>
+  <div class="text-xs muted mb-2">Recommended for most sites. A binary update never changes your database and the previous binary is kept for rollback, so you can safely untick this — handy for very large databases where a full snapshot is slow. For a downloadable copy, use Export below.</div>
+  <div class="theme-actions mt-2" data-actions-wrap>
     <button type="button" class="btn btn--ghost btn--sm" data-update-check>Check for updates</button>
     <button type="button" class="btn btn--primary btn--sm" data-update-apply` + applyDisabled + `>Update now</button>
     <button type="button" class="btn btn--ghost btn--sm" data-update-rollback>Roll back</button>
@@ -285,11 +289,16 @@ func (a *App) handleOSUpdateApply(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusForbidden, "forbidden", "admin role required", "")
 		return
 	}
+	// Backup defaults to ON when the field is absent, so older callers / the CLI
+	// keep their safe behaviour; the VayuOS panel sends it explicitly from the
+	// operator's checkbox. A pointer lets us tell "omitted" from "false".
 	var body struct {
-		DryRun  bool `json:"dryRun"`
-		Restart bool `json:"restart"`
+		DryRun  bool  `json:"dryRun"`
+		Restart bool  `json:"restart"`
+		Backup  *bool `json:"backup"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&body) // empty body → zero-value defaults
+	backup := body.Backup == nil || *body.Backup
 
 	pubKey := os.Getenv("VAYU_RELEASE_PUBKEY")
 	curMode := string(mode.Global.Current())
@@ -330,17 +339,33 @@ func (a *App) handleOSUpdateApply(w http.ResponseWriter, r *http.Request) {
 		Current:       Version,
 		DryRun:        body.DryRun,
 		PubKeyHex:     pubKey,
-		DBPath:        config.Cfg.DBPath,
-		BackupDir:     config.Cfg.CacheDir + "/update-backups",
 		BinaryPath:    binPath,
 		AllowUnsigned: true, // admin-initiated; checksum-verified when no key is pinned
+	}
+	// Pre-update database backup is the operator's choice. When enabled we point
+	// ApplyVerified at the DB so it snapshots before swapping the binary; when
+	// disabled we leave DBPath empty so it skips the backup entirely. A binary
+	// update never rewrites the database, and the previous binary is always kept
+	// as <binary>.bak for instant rollback, so skipping is safe — and it avoids a
+	// slow/failing snapshot stalling the update on very large databases.
+	if backup {
+		opt.DBPath = config.Cfg.DBPath
+		opt.BackupDir = config.Cfg.CacheDir + "/update-backups"
 	}
 	newVersion, err := update.ApplyVerified(r.Context(), client, updateOwner, updateRepo, opt, st)
 	if err != nil {
 		if st != nil && histID > 0 {
 			_ = st.MarkComplete(r.Context(), histID, "failed", err.Error())
 		}
-		writeAPIError(w, r, http.StatusBadGateway, "apply-failed", err.Error(), "")
+		msg := err.Error()
+		// Make the most common, recoverable failure self-explanatory: the
+		// pre-update backup couldn't be written (slow/large DB, low space). The
+		// binary was NOT touched, so the operator can simply retry without backup.
+		if backup && strings.Contains(msg, "backup") {
+			msg = "The pre-update database backup could not be completed, so the update was not applied (your binary is unchanged). " +
+				"Untick “Back up the database first” and try again — a binary update never modifies your database, and the previous binary is kept for rollback — or take a backup from the Export section first. Original error: " + msg
+		}
+		writeAPIError(w, r, http.StatusBadGateway, "apply-failed", msg, "")
 		return
 	}
 

@@ -137,16 +137,21 @@
 
   // ── Apply update (one-click, auto-restart) ──────────────────────────────────
   function doApply() {
-    if (!window.confirm('Install the latest release now? Your database is backed up automatically and the service will restart to finish. This usually takes under a minute.')) {
+    var backupEl = document.querySelector('[data-update-backup]');
+    var doBackup = !backupEl || backupEl.checked;
+    var prompt = doBackup
+      ? 'Install the latest release now? Your database will be backed up first, then the service restarts to finish. This usually takes under a minute (longer for very large databases).'
+      : 'Install the latest release now WITHOUT a database backup? A binary update does not change your database, and the previous binary is kept for rollback. The service will restart to finish.';
+    if (!window.confirm(prompt)) {
       return;
     }
     if (applyBtn) applyBtn.disabled = true;
     if (checkBtn) checkBtn.disabled = true;
-    setMsg(msgEl, 'Downloading and verifying the release… do not close this tab.', false);
+    setMsg(msgEl, doBackup ? 'Backing up, downloading and verifying the release… do not close this tab.' : 'Downloading and verifying the release… do not close this tab.', false);
     fetch('/os/api/update/apply', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf() },
-      body: JSON.stringify({ restart: true })
+      body: JSON.stringify({ restart: true, backup: doBackup })
     })
       .then(readResponse)
       .then(function (res) {
