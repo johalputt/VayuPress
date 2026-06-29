@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/crypto/acme"
@@ -67,15 +68,23 @@ func (p *tlsProvider) trusted() bool { return p != nil && p.mode.trusted() }
 // is recorded in the provider note rather than aborting mail startup.
 func buildTLSProvider(cfg Config) (*tlsProvider, error) {
 	// 1) Operator-supplied certificate wins outright.
+	//
+	// The keypair is served through a hot-reloading loader rather than baked
+	// into Certificates once at boot. This makes the certbot/Let's Encrypt path
+	// genuinely "set and forget": when the certificate is renewed on disk (every
+	// ~60 days) VayuMail picks up the new files on the next handshake, with NO
+	// restart required. Previously a renewed certificate kept serving the stale
+	// (eventually expired) copy until the operator remembered to restart — a
+	// silent path back to "Couldn't open connection to server".
 	if cfg.TLSCertFile != "" && cfg.TLSKeyFile != "" {
-		cert, err := tls.LoadX509KeyPair(cfg.TLSCertFile, cfg.TLSKeyFile)
+		rc, err := newReloadingCert(cfg.TLSCertFile, cfg.TLSKeyFile)
 		if err != nil {
 			return nil, fmt.Errorf("vayumail: load TLS keypair: %w", err)
 		}
 		return &tlsProvider{
-			config: &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12},
+			config: &tls.Config{GetCertificate: rc.getCertificate, MinVersion: tls.VersionTLS12},
 			mode:   tlsModeStatic,
-			note:   "using operator-provided certificate (" + cfg.TLSCertFile + ")",
+			note:   "using operator-provided certificate (" + cfg.TLSCertFile + "); auto-reloads on renewal",
 		}, nil
 	}
 
@@ -111,6 +120,104 @@ func selfSignedProvider(cfg Config) (*tlsProvider, error) {
 		mode:   tlsModeSelfSigned,
 		note:   "no trusted certificate configured; mail clients will reject this self-signed certificate",
 	}, nil
+}
+
+// reloadingCert serves an operator-supplied (e.g. certbot/Let's Encrypt) keypair
+// from disk and transparently reloads it when the underlying files change. It is
+// wired into tls.Config.GetCertificate so every mail TLS listener
+// (993/995/465 implicit TLS and STARTTLS on 25/143/110/587) picks up a renewed
+// certificate on the next handshake — no process restart, no expired-cert
+// outage. Reload attempts are throttled (reloadCheckEvery) so a busy server
+// does not stat the filesystem on every handshake, and a failed reload (e.g.
+// certbot mid-write) keeps serving the last-good certificate.
+type reloadingCert struct {
+	certFile, keyFile string
+
+	mu        sync.RWMutex
+	cached    *tls.Certificate
+	certMod   time.Time
+	keyMod    time.Time
+	lastCheck time.Time
+}
+
+// reloadCheckEvery bounds how often the cert files are stat-ed for changes.
+const reloadCheckEvery = 30 * time.Second
+
+// newReloadingCert loads the keypair once (failing fast if it is missing or
+// malformed) and returns a loader ready to serve and hot-reload it.
+func newReloadingCert(certFile, keyFile string) (*reloadingCert, error) {
+	rc := &reloadingCert{certFile: certFile, keyFile: keyFile}
+	if err := rc.reload(); err != nil {
+		return nil, err
+	}
+	return rc, nil
+}
+
+// reload reads the keypair from disk and atomically swaps it in. On any error
+// the previously cached certificate is left untouched.
+func (rc *reloadingCert) reload() error {
+	cert, err := tls.LoadX509KeyPair(rc.certFile, rc.keyFile)
+	if err != nil {
+		return err
+	}
+	var certMod, keyMod time.Time
+	if fi, serr := os.Stat(rc.certFile); serr == nil {
+		certMod = fi.ModTime()
+	}
+	if fi, serr := os.Stat(rc.keyFile); serr == nil {
+		keyMod = fi.ModTime()
+	}
+	rc.mu.Lock()
+	rc.cached = &cert
+	rc.certMod, rc.keyMod, rc.lastCheck = certMod, keyMod, time.Now()
+	rc.mu.Unlock()
+	return nil
+}
+
+// getCertificate is the tls.Config.GetCertificate callback. It serves the
+// cached certificate, reloading first if the files changed since the last check
+// (rate-limited by reloadCheckEvery).
+func (rc *reloadingCert) getCertificate(*tls.ClientHelloInfo) (*tls.Certificate, error) {
+	rc.maybeReload()
+	rc.mu.RLock()
+	defer rc.mu.RUnlock()
+	return rc.cached, nil
+}
+
+// maybeReload reloads the keypair when either file's modification time has
+// changed, at most once per reloadCheckEvery window. A failed reload keeps the
+// last-good certificate (so a partial certbot write never breaks TLS).
+func (rc *reloadingCert) maybeReload() {
+	rc.mu.RLock()
+	since := time.Since(rc.lastCheck)
+	prevCertMod, prevKeyMod := rc.certMod, rc.keyMod
+	rc.mu.RUnlock()
+	if since < reloadCheckEvery {
+		return
+	}
+
+	ci, errC := os.Stat(rc.certFile)
+	ki, errK := os.Stat(rc.keyFile)
+	if errC != nil || errK != nil {
+		// Files temporarily unavailable (e.g. mid-renewal). Keep serving the
+		// cached cert; just bump lastCheck so we retry next window.
+		rc.mu.Lock()
+		rc.lastCheck = time.Now()
+		rc.mu.Unlock()
+		return
+	}
+	if ci.ModTime().Equal(prevCertMod) && ki.ModTime().Equal(prevKeyMod) {
+		rc.mu.Lock()
+		rc.lastCheck = time.Now()
+		rc.mu.Unlock()
+		return
+	}
+	if err := rc.reload(); err != nil {
+		// Keep the old certificate; retry on the next window.
+		rc.mu.Lock()
+		rc.lastCheck = time.Now()
+		rc.mu.Unlock()
+	}
 }
 
 // newACMEProvider configures autocert for the mail hostname(s). On a hard

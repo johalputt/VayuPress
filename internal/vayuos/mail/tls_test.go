@@ -361,3 +361,64 @@ func writeTestKeypair(t *testing.T, certFile, keyFile, host string) {
 		t.Fatalf("write key: %v", err)
 	}
 }
+
+// A static (operator-supplied) keypair must be served through GetCertificate so
+// it can be hot-reloaded, and must transparently pick up a renewed certificate
+// on disk without a restart (the certbot/Let's Encrypt renewal path).
+func TestReloadingStaticCert(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	certFile := filepath.Join(dir, "cert.pem")
+	keyFile := filepath.Join(dir, "key.pem")
+	writeTestKeypair(t, certFile, keyFile, "mail.test")
+
+	cfg := DefaultConfig()
+	cfg.Hostname = "mail.test"
+	cfg.TLSCertFile = certFile
+	cfg.TLSKeyFile = keyFile
+	p, err := buildTLSProvider(cfg)
+	if err != nil {
+		t.Fatalf("buildTLSProvider: %v", err)
+	}
+	if p.config.GetCertificate == nil {
+		t.Fatal("static provider must serve via GetCertificate for hot-reload")
+	}
+	first, err := p.config.GetCertificate(&tls.ClientHelloInfo{ServerName: "mail.test"})
+	if err != nil || first == nil {
+		t.Fatalf("GetCertificate: %v", err)
+	}
+
+	rc, err := newReloadingCert(certFile, keyFile)
+	if err != nil {
+		t.Fatalf("newReloadingCert: %v", err)
+	}
+	before, _ := rc.getCertificate(nil)
+	if before == nil || len(before.Certificate) == 0 {
+		t.Fatal("expected an initial certificate")
+	}
+	beforeDER := string(before.Certificate[0])
+
+	// Simulate a renewal: write a brand-new keypair (fresh key + cert) to the
+	// same paths and force an immediate re-check by ageing lastCheck past the
+	// throttle window.
+	time.Sleep(10 * time.Millisecond)
+	writeTestKeypair(t, certFile, keyFile, "mail.test")
+	// Guarantee a detectably different modification time regardless of the
+	// filesystem's mtime granularity.
+	bump := time.Now().Add(5 * time.Second)
+	_ = os.Chtimes(certFile, bump, bump)
+	_ = os.Chtimes(keyFile, bump, bump)
+	rc.mu.Lock()
+	rc.lastCheck = time.Now().Add(-time.Hour)
+	rc.mu.Unlock()
+
+	after, err := rc.getCertificate(nil)
+	if err != nil || after == nil || len(after.Certificate) == 0 {
+		t.Fatalf("getCertificate after reload: %v", err)
+	}
+	// The reloaded certificate must differ from the original on disk, proving
+	// the hot-reload fired (a fresh keypair was generated each write).
+	if string(after.Certificate[0]) == beforeDER {
+		t.Fatal("expected the certificate to be reloaded from disk after renewal")
+	}
+}
