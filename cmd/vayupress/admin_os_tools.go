@@ -367,6 +367,9 @@ func (a *App) handleOSToolToggle(w http.ResponseWriter, r *http.Request) {
 	// search backend gate (off → SQLite engine only).
 	if flag == settings.KeyFeatureMeili {
 		search.SetMeiliEnabled(body.Enabled)
+		// The public search box is tied to the Meilisearch toggle, so show/hide it
+		// to match. CachePurgeAll below re-renders cached pages without/with it.
+		render.SetSearchEnabled(body.Enabled)
 	}
 	// Audit the operator action — toggling a public-facing feature is
 	// security-relevant, so leave a trail in the structured log.

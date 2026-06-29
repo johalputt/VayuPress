@@ -75,6 +75,9 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	r.Get("/static/js/comments.js", a.handleCommentsJS)
 	r.Get("/static/js/contact.js", a.handleContactJS)
 	r.Get("/static/js/post-card-media.js", a.handlePostCardMediaJS)
+	// Trending & pinned posts widget (hydrates [data-vayu-trending] from
+	// /api/trending). Same-origin → script-src 'self', no nonce.
+	r.Get("/static/js/trending.js", a.handleTrendingWidgetJS)
 	// VayuPortal — the reader membership overlay widget (same-origin → script-src 'self').
 	r.Get("/static/js/portal.js", a.handleMemberPortalJS)
 	// Favicon routes serve the operator's uploaded brand mark when one is stored

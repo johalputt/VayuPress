@@ -10,6 +10,20 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Fixed
 
+- **Trending and pinned posts never appeared on the public site.** The widget
+  markup and `/api/trending` endpoint shipped, but the browser script that
+  hydrates them — `/static/js/trending.js` — had **no server route**, so it
+  returned 404 and the widget stayed hidden (a CDN had also cached that 404 on
+  the bare, unversioned URL). The script is now served from a single source of
+  truth (`render.TrendingJS`) at a **content-versioned** URL
+  (`/static/js/trending.js?v=<hash>`), so both the Trending (7/30-day) and
+  Pinned lists render, and a proxy can never pin a stale copy again. A
+  regression test locks in the versioned reference.
+- **The public search box now honours the Meilisearch toggle.** Turning
+  Meilisearch off in Tools & Plugins hides the nav search box across the
+  homepage and post pages and makes `/search` return 404; turning it on restores
+  them. The page cache is bumped so cached pages re-render to match the toggle.
+
 - **Mail apps can finally connect to VayuMail behind a reverse proxy (IMAP/SMTP
   TLS).** When nginx (or any proxy) already owns ports 80/443, VayuMail's native
   ACME could not complete its HTTP-01 challenge, so it silently fell back to a

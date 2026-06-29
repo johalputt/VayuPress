@@ -84,10 +84,13 @@ func TestHomepagePagination(t *testing.T) {
 }
 
 // TestHomepageHasSearchBox confirms the public nav exposes a search box wired to
-// the /search page.
+// the /search page when search is enabled, and hides it when disabled (the box
+// is tied to the Meilisearch toggle).
 func TestHomepageHasSearchBox(t *testing.T) {
 	SetActiveSettings(SiteSettings{Name: "Acme"})
 	t.Cleanup(func() { SetActiveSettings(SiteSettings{}) })
+
+	SetSearchEnabled(true)
 	out, err := RenderHome("example.com", "1.0.0", nil, 0, 1, 1)
 	if err != nil {
 		t.Fatalf("RenderHome: %v", err)
@@ -96,6 +99,16 @@ func TestHomepageHasSearchBox(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("homepage nav missing search box element %q", want)
 		}
+	}
+
+	SetSearchEnabled(false)
+	t.Cleanup(func() { SetSearchEnabled(true) })
+	off, err := RenderHome("example.com", "1.0.0", nil, 0, 1, 1)
+	if err != nil {
+		t.Fatalf("RenderHome (search off): %v", err)
+	}
+	if strings.Contains(off, `class="vayu-search"`) {
+		t.Error("search box must be hidden when search is disabled")
 	}
 }
 
@@ -122,5 +135,29 @@ func TestRenderSearch(t *testing.T) {
 	}
 	if !strings.Contains(empty, "No posts found") {
 		t.Error("expected an empty-state message for a no-match query")
+	}
+}
+
+// TestHomepageTrendingWidgetWired guards the fix for the trending & pinned-posts
+// widget that silently never loaded: the homepage must carry the widget
+// container AND reference the widget script through a CONTENT-VERSIONED URL.
+// The bare, unversioned /static/js/trending.js had no server route (404) and a
+// CDN had cached that 404, so neither trending nor pinned posts ever rendered.
+func TestHomepageTrendingWidgetWired(t *testing.T) {
+	SetActiveSettings(SiteSettings{Name: "Acme"})
+	t.Cleanup(func() { SetActiveSettings(SiteSettings{}) })
+
+	out, err := RenderHome("example.com", "1.0.0", nil, 0, 1, 1)
+	if err != nil {
+		t.Fatalf("RenderHome: %v", err)
+	}
+	if !strings.Contains(out, "data-vayu-trending") {
+		t.Error("homepage must include the trending/pinned widget container")
+	}
+	if !strings.Contains(out, `src="/static/js/trending.js?v=`) {
+		t.Error("homepage must reference the content-versioned trending widget script")
+	}
+	if strings.Contains(out, `src="/static/js/trending.js"`) {
+		t.Error("trending widget script must not use a bare, unversioned URL (CDN-cacheable 404)")
 	}
 }

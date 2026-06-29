@@ -334,6 +334,12 @@ func (a *App) renderHomeAt(w http.ResponseWriter, r *http.Request, page int) {
 // when enabled and reachable, otherwise the built-in SQLite search — so visitors
 // get a real, server-rendered (crawlable, JS-free) results list.
 func (a *App) handleSearchPage(w http.ResponseWriter, r *http.Request) {
+	// Search is tied to the Meilisearch toggle — when it's off, the public search
+	// box is hidden and this page 404s rather than offering hidden search.
+	if !render.SearchEnabled() {
+		a.handleNotFound(w, r)
+		return
+	}
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
 	if len(q) > 120 {
 		q = q[:120]
