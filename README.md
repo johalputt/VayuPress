@@ -21,6 +21,33 @@
 > _Own your content. Own your communication. Own your infrastructure._
 > Publishing is the core identity, **VayuMail** the native sovereignty layer, **VayuPGP** the native privacy layer, and **VayuOS** the native control layer — all in a single Go binary, single process, single config.
 
+## What's New in v2.4.0
+
+> Full notes in [`CHANGELOG.md`](CHANGELOG.md) · architecture decision in
+> [`docs/adr/ADR-0101`](docs/adr/ADR-0101-builtin-search-vayufind.md)
+
+**Built-in instant search (VayuFind) — and external Meilisearch is gone.**
+
+- **VayuFind — sovereign, in-binary search.** Search is now a dependency-free
+  engine inside the single binary; there is no second service to install, secure,
+  or run. It is fast and light: the browser downloads **one compact, cached
+  index** the first time you search and then filters **entirely client-side**, so
+  there is **zero server work per keystroke**. The index is maintained
+  **incrementally** — each publish/edit/delete updates only that entry instead of
+  rebuilding everything.
+- **A clean, focused search experience.** Click the search box or press
+  `Ctrl`/`⌘`-`K` (or `/`) and a minimalist overlay opens: the page dims and blurs
+  behind a centred panel that filters results **as you type**, with keyboard
+  navigation and match highlighting. Ranking is field-weighted (title ≫ tags ≫
+  excerpt). The server-rendered `/search` page remains as a no-JavaScript
+  fallback, and strict CSP is preserved throughout.
+- **One on/off switch.** A single **Search** toggle in Tools & Plugins
+  (`feature.search`) turns it on or off; off hides the box and modal and makes
+  `/search` return 404.
+- **Meilisearch removed.** The external Meilisearch backend, its dependency, and
+  the docker-compose/deploy-script wiring are gone. No operator action is
+  required.
+
 ## What's New in v2.3.0
 
 > Full notes in [`CHANGELOG.md`](CHANGELOG.md) · architecture decision in
