@@ -553,6 +553,8 @@ func main() {
 	// Meilisearch — even if a host is configured.
 	if a.siteSettings != nil {
 		search.SetMeiliEnabled(a.siteSettings.FeatureEnabled(context.Background(), settings.KeyFeatureMeili))
+		// The public search box is tied to the Meilisearch toggle.
+		render.SetSearchEnabled(a.siteSettings.FeatureEnabled(context.Background(), settings.KeyFeatureMeili))
 	}
 
 	// Tier 4 services: GraphQL, live collaboration stream, email templates, i18n.

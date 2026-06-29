@@ -429,6 +429,20 @@ func SetActiveSettings(s SiteSettings) {
 	activeSettingsMu.Unlock()
 }
 
+// searchEnabled gates whether the public site search box (nav + /search page) is
+// shown. It is tied to the Meilisearch toggle: turning Meilisearch off hides the
+// search box entirely. Default on. Set at boot and whenever the operator flips
+// the toggle; the page cache is purged on toggle so cached pages re-render.
+var searchEnabled atomic.Bool
+
+func init() { searchEnabled.Store(true) }
+
+// SetSearchEnabled shows/hides the public search box.
+func SetSearchEnabled(v bool) { searchEnabled.Store(v) }
+
+// SearchEnabled reports whether the public search box/page is currently shown.
+func SearchEnabled() bool { return searchEnabled.Load() }
+
 // GetActiveSettings returns a copy of the current active settings (exported for callers outside this package).
 func GetActiveSettings() SiteSettings { return getActiveSettings() }
 
@@ -705,6 +719,163 @@ func PostCardMediaJSLink() template.HTML {
 	return template.HTML(`<script src="/static/js/post-card-media.js?v=` + postCardMediaJSHash + `" defer></script>`)
 }
 
+// TrendingJS hydrates every [data-vayu-trending] section (homepage + bottom of
+// each post) from the public /api/trending endpoint. Sovereign · zero-CDN ·
+// strict-CSP: no inline styles, no eval, all DOM built with
+// createElement/textContent so a malicious title can never become markup. The
+// lists are served as JSON (pages themselves are disk-cached), so the widget is
+// always fresh without cache churn. Served same-origin from this constant →
+// satisfies `script-src 'self'` without a nonce (works in disk-cached pages).
+//
+// NOTE: this is the single source of truth for the widget script. It is served
+// at /static/js/trending.js (see handleTrendingWidgetJS) with a content-hashed
+// ?v= query so a CDN/proxy can never pin a stale copy — historically the bare,
+// unversioned URL let Cloudflare cache a 404 from before the script existed,
+// which silently broke the trending AND pinned-posts widgets site-wide.
+const TrendingJS = `(function () {
+  'use strict';
+
+  var sections = Array.prototype.slice.call(
+    document.querySelectorAll('[data-vayu-trending]')
+  );
+  if (!sections.length) return;
+
+  fetch('/api/trending', { headers: { Accept: 'application/json' } })
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (data) {
+      if (!data || !data.enabled) return;
+      var windows = data.windows || {};
+      var pinned = data.pinned || [];
+      var has7 = (windows['7'] || []).length > 0;
+      var has30 = (windows['30'] || []).length > 0;
+      if (!pinned.length && !has7 && !has30) return; // nothing to show
+      sections.forEach(function (section) {
+        renderInto(section, pinned, windows);
+        section.removeAttribute('hidden');
+      });
+    })
+    .catch(function () { /* network/parse error — leave the section hidden */ });
+
+  function card(item, rank, isPin) {
+    var a = document.createElement('a');
+    a.className = 'vayu-trending-card';
+    a.href = '/' + item.slug;
+
+    var badge = document.createElement('span');
+    if (isPin) {
+      badge.className = 'vayu-trending-pin';
+      badge.textContent = '\uD83D\uDCCC'; // 📌
+      badge.setAttribute('aria-hidden', 'true');
+    } else {
+      badge.className = 'vayu-trending-rank';
+      badge.textContent = String(rank);
+      badge.setAttribute('aria-hidden', 'true');
+    }
+    a.appendChild(badge);
+
+    if (item.image) {
+      var img = document.createElement('img');
+      img.className = 'vayu-trending-thumb';
+      img.src = item.image;
+      img.alt = '';
+      img.loading = 'lazy';
+      img.decoding = 'async';
+      a.appendChild(img);
+    }
+
+    var title = document.createElement('span');
+    title.className = 'vayu-trending-title';
+    title.textContent = item.title || item.slug;
+    a.appendChild(title);
+    return a;
+  }
+
+  function listEl(items, isPin) {
+    var list = document.createElement('div');
+    list.className = 'vayu-trending-list';
+    items.forEach(function (it, i) { list.appendChild(card(it, i + 1, isPin)); });
+    return list;
+  }
+
+  function group(labelText, icon) {
+    var g = document.createElement('div');
+    g.className = 'vayu-trending-group';
+    var head = document.createElement('div');
+    head.className = 'vayu-trending-head';
+    var label = document.createElement('span');
+    label.className = 'vayu-trending-label';
+    label.textContent = icon + ' ' + labelText;
+    head.appendChild(label);
+    g.appendChild(head);
+    return { group: g, head: head };
+  }
+
+  function renderInto(section, pinned, windows) {
+    section.textContent = ''; // idempotent: clear any prior render
+
+    if (pinned.length) {
+      var p = group('Pinned', '\uD83D\uDCCC');
+      p.group.appendChild(listEl(pinned, true));
+      section.appendChild(p.group);
+    }
+
+    var win7 = windows['7'] || [];
+    var win30 = windows['30'] || [];
+    if (!win7.length && !win30.length) return;
+
+    var t = group('Trending', '\uD83D\uDD25'); // 🔥
+    var tabs = document.createElement('div');
+    tabs.className = 'vayu-trending-tabs';
+    tabs.setAttribute('role', 'tablist');
+
+    var listWrap = document.createElement('div');
+
+    function show(days) {
+      var items = days === 30 ? win30 : win7;
+      listWrap.textContent = '';
+      listWrap.appendChild(listEl(items, false));
+      Array.prototype.forEach.call(tabs.children, function (b) {
+        b.setAttribute('aria-selected', b.getAttribute('data-w') === String(days) ? 'true' : 'false');
+      });
+    }
+
+    function tab(days, text, enabled) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'vayu-trending-tab';
+      b.setAttribute('role', 'tab');
+      b.setAttribute('data-w', String(days));
+      b.textContent = text;
+      if (!enabled) { b.disabled = true; }
+      b.addEventListener('click', function () { if (!b.disabled) show(days); });
+      return b;
+    }
+
+    tabs.appendChild(tab(7, 'Last 7 days', win7.length > 0));
+    tabs.appendChild(tab(30, 'Last 30 days', win30.length > 0));
+    t.head.appendChild(tabs);
+
+    t.group.appendChild(listWrap);
+    section.appendChild(t.group);
+
+    show(win7.length ? 7 : 30);
+  }
+})();
+`
+
+// trendingJSHash versions the widget script URL for cache-busting.
+var trendingJSHash = func() string {
+	sum := sha256.Sum256([]byte(TrendingJS))
+	return hex.EncodeToString(sum[:8])
+}()
+
+// TrendingJSLink returns the content-hashed <script> tag for the trending/pinned
+// widget. The ?v= hash guarantees a CDN/proxy fetches a fresh copy whenever the
+// script changes (and bypasses any previously cached 404 on the bare URL).
+func TrendingJSLink() template.HTML {
+	return template.HTML(`<script src="/static/js/trending.js?v=` + trendingJSHash + `" defer></script>`)
+}
+
 // headMetaHTML renders the declarative <head> capabilities to a safe, escaped
 // allowlist of <meta> tags. Values are validated on write (hex/token/allowlist)
 // and HTML-escaped here — defense in depth. No arbitrary operator markup ever
@@ -769,6 +940,11 @@ type articlePage struct {
 	IsPage             bool   // true → render without post chrome (date/tags/related)
 	// Related articles (same-tag suggestions)
 	Related []RelatedArticle
+	// ShowSearch gates the public search box in the nav (tied to the Meili toggle).
+	ShowSearch bool
+	// TrendingJSLink is the content-hashed <script> tag that hydrates the
+	// trending/pinned widget under each post (empty for standalone pages).
+	TrendingJSLink template.HTML
 }
 
 // RelatedArticle is a lightweight record used in the article footer suggestions.
@@ -956,9 +1132,9 @@ var articleTmpl = template.Must(template.New("article").Funcs(template.FuncMap{
   <a href="/" class="vayu-nav-brand"><img src="/static/favicon-light.png" alt="" width="24" height="24">{{if .SiteName}}{{.SiteName}}{{else}}VayuPress{{end}}</a>
   <div class="vayu-nav-links">
     {{.NavLinks}}
-    <form class="vayu-search" method="get" action="/search" role="search">
+    {{if .ShowSearch}}<form class="vayu-search" method="get" action="/search" role="search">
       <input class="vayu-search-input" type="search" name="q" placeholder="Search…" aria-label="Search posts">
-    </form>
+    </form>{{end}}
     <button type="button" id="vayu-theme-toggle" class="vayu-theme-toggle" aria-label="Toggle theme">☾</button>
   </div>
 </nav>
@@ -990,7 +1166,7 @@ var articleTmpl = template.Must(template.New("article").Funcs(template.FuncMap{
 {{if .ContactForm}}<section id="vayu-contact" class="vayu-contact" aria-label="Contact form"></section>{{end}}
 {{if not .IsPage}}<section class="vayu-trending" data-vayu-trending hidden aria-label="Trending and pinned posts"></section>{{end}}
 {{.Footer}}
-</main></div>{{if .CommentsEnabled}}{{.CommentsJSLink}}{{end}}{{if .ContactForm}}{{.ContactJSLink}}{{end}}{{if not .IsPage}}<script defer src="/static/js/trending.js"></script>{{end}}</body></html>`))
+</main></div>{{if .CommentsEnabled}}{{.CommentsJSLink}}{{end}}{{if .ContactForm}}{{.ContactJSLink}}{{end}}{{if not .IsPage}}{{.TrendingJSLink}}{{end}}</body></html>`))
 
 // HomeArticle is a single entry rendered on the public homepage index.
 type HomeArticle struct {
@@ -1032,6 +1208,10 @@ type homePage struct {
 	PrevURL    string
 	NextURL    string
 	Canonical  string // canonical path for this page: "/" or "/page/N"
+	ShowSearch bool   // show the public search box (tied to the Meili toggle)
+	// TrendingJSLink is the content-hashed <script> tag that hydrates the
+	// trending/pinned widget on the homepage.
+	TrendingJSLink template.HTML
 }
 
 var homeFuncs = template.FuncMap{
@@ -1065,9 +1245,9 @@ var homeTmpl = template.Must(template.New("home").Funcs(homeFuncs).Parse(`<!DOCT
   <a href="/" class="vayu-nav-brand"><img src="/static/favicon-light.png" alt="" width="24" height="24">{{if .SiteName}}{{.SiteName}}{{else}}VayuPress{{end}}</a>
   <div class="vayu-nav-links">
     {{.NavLinks}}
-    <form class="vayu-search" method="get" action="/search" role="search">
+    {{if .ShowSearch}}<form class="vayu-search" method="get" action="/search" role="search">
       <input class="vayu-search-input" type="search" name="q" placeholder="Search…" aria-label="Search posts">
-    </form>
+    </form>{{end}}
     <button type="button" id="vayu-theme-toggle" class="vayu-theme-toggle" aria-label="Toggle theme">☾</button>
     {{if .ShowMembership}}<a href="/members" class="vayu-nav-signin">Sign in</a>
     <a href="/signup" class="vayu-nav-signup">Sign up</a>{{end}}
@@ -1097,7 +1277,7 @@ var homeTmpl = template.Must(template.New("home").Funcs(homeFuncs).Parse(`<!DOCT
 <section class="vayu-trending" data-vayu-trending hidden aria-label="Trending and pinned posts"></section>
 {{.Footer}}
 </main>
-</div>{{.PostCardMediaJSLink}}<script defer src="/static/js/trending.js"></script></body></html>`))
+</div>{{.PostCardMediaJSLink}}{{.TrendingJSLink}}</body></html>`))
 
 var notFoundTmpl = template.Must(template.New("404").Parse(`<!DOCTYPE html><html lang="en" data-theme="dark"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -1180,6 +1360,8 @@ func RenderHome(domain, version string, articles []HomeArticle, totalCount, page
 		PrevURL:             prevURL,
 		NextURL:             nextURL,
 		Canonical:           canonical,
+		ShowSearch:          searchEnabled.Load(),
+		TrendingJSLink:      TrendingJSLink(),
 	})
 	return buf.String(), err
 }
@@ -1207,6 +1389,7 @@ type searchPage struct {
 	Footer              template.HTML
 	Query               string
 	Hits                []SearchHit
+	ShowSearch          bool
 }
 
 var searchTmpl = template.Must(template.New("search").Funcs(homeFuncs).Parse(`<!DOCTYPE html><html lang="en" data-theme="dark"><head>
@@ -1273,6 +1456,7 @@ func RenderSearch(domain, version, query string, hits []SearchHit) (string, erro
 		Footer:              footerHTML(s),
 		Query:               query,
 		Hits:                hits,
+		ShowSearch:          searchEnabled.Load(),
 	})
 	return buf.String(), err
 }
@@ -1434,6 +1618,8 @@ func RenderArticleWithMeta(a db.Article, layout ArticleLayoutType, related []Rel
 		TwitterImageURL:    twImage,
 		FeatureImage:       absoluteURL(domain, ov.FeatureImage),
 		IsPage:             ov.IsPage,
+		ShowSearch:         searchEnabled.Load(),
+		TrendingJSLink:     TrendingJSLink(),
 	}
 	if err := articleTmpl.Execute(&buf, data); err != nil {
 		return "", fmt.Errorf("template: %w", err)
@@ -1703,7 +1889,7 @@ func warmThrottle() time.Duration {
 // a way the CSS content hashes do not already capture (e.g. markup-only edits).
 // It feeds the cache fingerprint below so such changes still invalidate stale
 // pre-rendered HTML on the next deploy.
-const cacheSchema = "2"
+const cacheSchema = "3"
 
 // cacheFingerprint summarises everything baked into the running binary that
 // affects pre-rendered public HTML: the release version, the manual cache
