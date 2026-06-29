@@ -559,9 +559,9 @@ func (a *App) handleVayuOSConnect(w http.ResponseWriter, r *http.Request) {
 			body.WriteString(`<p class="text-sm muted">Built-in ACME could not run: ` + html.EscapeString(acmeErr) +
 				` — port 80 is almost certainly already used by your website's nginx, so VayuMail cannot answer the Let's Encrypt challenge itself.</p>`)
 		}
-		body.WriteString(`<p class="text-sm">The easiest fix on a server that already runs nginx (like this one) is the guided script — it issues a real Let's Encrypt certificate for <code>` + hHost + `</code> <em>through</em> nginx (no port conflict) and wires it in automatically:</p>`)
-		body.WriteString(`<pre class="mono text-sm" style="white-space:pre-wrap;background:var(--bg-surface-2);padding:10px;border-radius:8px">cd /tmp/VayuPress &amp;&amp; sudo bash deploy/vayumail-setup.sh</pre>`)
-		body.WriteString(`<p class="text-sm">It auto-renews. Alternatives:</p>`)
+		body.WriteString(`<p class="text-sm"><strong>This is a one-time step and is SEPARATE from updating VayuPress</strong> — the update command only swaps the binary; it never provisions the mail certificate. Run this once on the server (it issues a real Let's Encrypt certificate for <code>` + hHost + `</code> through nginx, makes it readable by the mail service, and wires it in):</p>`)
+		body.WriteString(`<pre class="mono text-sm" style="white-space:pre-wrap;background:var(--bg-surface-2);padding:10px;border-radius:8px">cd /tmp/VayuPress &amp;&amp; git pull origin main &amp;&amp; sudo bash deploy/vayumail-setup.sh</pre>`)
+		body.WriteString(`<p class="text-sm">Then reload this page. It auto-renews and is auto-discovered on restart (no env vars needed). If the script reports a DNS or port-80 problem, fix that and re-run it. Alternatives:</p>`)
 		body.WriteString(`<ul class="text-sm">` +
 			`<li><strong>Built-in ACME (only if port 80 is free):</strong> set <code>VAYUOS_MAIL_TLS_ACME=on</code> and <code>VAYUOS_MAIL_ACME_EMAIL=you@` + html.EscapeString(mc.Domain) + `</code>, then restart. On this box nginx owns port 80, so use the script above instead — or point a free port via <code>VAYUOS_MAIL_ACME_HTTP_ADDR=127.0.0.1:8081</code> and proxy <code>` + hHost + `/.well-known/acme-challenge/</code> to it in nginx.</li>` +
 			`<li><strong>Manual / existing certbot cert:</strong> set <code>VAYUOS_MAIL_TLS_CERT</code> and <code>VAYUOS_MAIL_TLS_KEY</code> to a CA-signed pair (e.g. <code>/etc/letsencrypt/live/` + hHost + `/fullchain.pem</code> and <code>privkey.pem</code>), then restart. VayuMail hot-reloads on renewal.</li>` +

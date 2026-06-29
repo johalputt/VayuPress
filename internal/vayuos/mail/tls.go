@@ -104,6 +104,25 @@ func buildTLSProvider(cfg Config) (*tlsProvider, error) {
 		}, nil
 	}
 
+	// 1b) Auto-discover a certbot/Let's Encrypt certificate on disk when no
+	// explicit cert is configured. This is the "full-proof" path: once a cert
+	// exists for the mail host (issued by deploy/vayumail-setup.sh or any certbot
+	// run), VayuMail finds and uses it with NO env vars to set — and it keeps
+	// working across restarts and env resets because the files are re-probed each
+	// boot. Only readable candidates are accepted, so a root-only key is skipped
+	// in favour of the service-readable copy the setup script writes.
+	if cfg.TLSCertFile == "" && cfg.TLSKeyFile == "" {
+		if certPath, keyPath := discoverMailCert(cfg.Hostname); certPath != "" {
+			if rc, err := newReloadingCert(certPath, keyPath); err == nil {
+				return &tlsProvider{
+					config: &tls.Config{GetCertificate: rc.getCertificate, MinVersion: tls.VersionTLS12},
+					mode:   tlsModeStatic,
+					note:   "auto-discovered trusted certificate at " + certPath + "; auto-reloads on renewal",
+				}, nil
+			}
+		}
+	}
+
 	// 2) Native ACME (Let's Encrypt) auto-provisioning.
 	if cfg.ACMEEnabled {
 		if p, err := newACMEProvider(cfg); err == nil {
@@ -123,6 +142,51 @@ func buildTLSProvider(cfg Config) (*tlsProvider, error) {
 
 	// 3) Self-signed fallback.
 	return selfSignedProvider(cfg)
+}
+
+// discoverMailCert returns the first readable (fullchain, privkey) pair for the
+// mail host from well-known locations, or ("","") when none is usable. It
+// prefers the service-readable copy written by deploy/vayumail-setup.sh, then
+// the raw Let's Encrypt live directory (often root-only, hence checked second).
+// "Readable" is verified by actually opening the files, so a root:root 0600 key
+// the non-root service cannot read is correctly skipped.
+func discoverMailCert(host string) (certPath, keyPath string) {
+	return pickReadableCert(mailCertCandidates(host))
+}
+
+// mailCertCandidates lists the (fullchain, privkey) locations probed for the
+// mail host, most-preferred (service-readable copy) first.
+func mailCertCandidates(host string) [][2]string {
+	host = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(host)), ".")
+	candidates := [][2]string{
+		{"/var/lib/vayupress/mailcert/fullchain.pem", "/var/lib/vayupress/mailcert/privkey.pem"},
+	}
+	if host != "" && host != "localhost" {
+		base := "/etc/letsencrypt/live/" + host
+		candidates = append(candidates, [2]string{base + "/fullchain.pem", base + "/privkey.pem"})
+	}
+	return candidates
+}
+
+// pickReadableCert returns the first candidate whose both files are readable.
+func pickReadableCert(candidates [][2]string) (certPath, keyPath string) {
+	for _, c := range candidates {
+		if fileReadable(c[0]) && fileReadable(c[1]) {
+			return c[0], c[1]
+		}
+	}
+	return "", ""
+}
+
+// fileReadable reports whether path exists and can actually be opened for
+// reading by this process (the only reliable check across permission bits).
+func fileReadable(path string) bool {
+	f, err := os.Open(path) //nolint:gosec // fixed, non-user paths probed for readability
+	if err != nil {
+		return false
+	}
+	_ = f.Close()
+	return true
 }
 
 // selfSignedProvider mints the in-memory self-signed fallback config.
