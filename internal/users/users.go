@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"net/mail"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -53,10 +54,14 @@ func ValidRole(role string) bool {
 
 // User is an account record. The password hash is never serialised to JSON.
 type User struct {
-	ID          string            `json:"id"`
-	Email       string            `json:"email"`
-	Name        string            `json:"name"`
-	Role        string            `json:"role"`
+	ID    string `json:"id"`
+	Email string `json:"email"`
+	Name  string `json:"name"`
+	Role  string `json:"role"`
+	// Username is the human-readable public handle used in /author/<username>.
+	// Falls back to the ID in links when empty (e.g. a pre-051 account before
+	// backfill).
+	Username    string            `json:"username,omitempty"`
 	AvatarURL   string            `json:"avatar_url,omitempty"`
 	Bio         string            `json:"bio,omitempty"`
 	Socials     map[string]string `json:"socials,omitempty"`
@@ -104,7 +109,10 @@ func (s *Store) Create(ctx context.Context, email, name, password, role string) 
 		}
 		return nil, fmt.Errorf("create user: %w", err)
 	}
-	return &User{ID: id, Email: email, Name: strings.TrimSpace(name), Role: role, CreatedAt: time.Now().UTC()}, nil
+	// Assign a public handle for /author/<username>. Best-effort: a link falls
+	// back to the ID if this somehow fails.
+	uname, _ := s.SetUsername(ctx, id, deriveUsername(email, name))
+	return &User{ID: id, Email: email, Name: strings.TrimSpace(name), Role: role, Username: uname, CreatedAt: time.Now().UTC()}, nil
 }
 
 // CreateBootstrapAdmin creates the first administrator on a fresh install with
@@ -152,7 +160,7 @@ func (s *Store) Authenticate(ctx context.Context, email, password string) (*User
 }
 
 // profileCols is the SELECT list for reads that include public profile fields.
-const profileCols = `id,email,name,role,avatar_url,bio,socials,mail_address,created_at,last_login,COALESCE(must_change_password,0)`
+const profileCols = `id,email,name,role,avatar_url,bio,socials,mail_address,created_at,last_login,COALESCE(must_change_password,0),COALESCE(username,'')`
 
 // scanUserProfile reads a row selected with profileCols.
 func scanUserProfile(sc interface{ Scan(...interface{}) error }) (*User, error) {
@@ -160,7 +168,8 @@ func scanUserProfile(sc interface{ Scan(...interface{}) error }) (*User, error) 
 	var avatar, bio, socials, mailAddr string
 	var lastLogin sql.NullTime
 	var mustChange int
-	if err := sc.Scan(&u.ID, &u.Email, &u.Name, &u.Role, &avatar, &bio, &socials, &mailAddr, &u.CreatedAt, &lastLogin, &mustChange); err != nil {
+	var username string
+	if err := sc.Scan(&u.ID, &u.Email, &u.Name, &u.Role, &avatar, &bio, &socials, &mailAddr, &u.CreatedAt, &lastLogin, &mustChange, &username); err != nil {
 		return nil, err
 	}
 	u.AvatarURL = avatar
@@ -168,6 +177,7 @@ func scanUserProfile(sc interface{ Scan(...interface{}) error }) (*User, error) 
 	u.Socials = decodeSocials(socials)
 	u.MailAddress = mailAddr
 	u.MustChangePassword = mustChange != 0
+	u.Username = username
 	if lastLogin.Valid {
 		u.LastLogin = &lastLogin.Time
 	}
@@ -184,6 +194,102 @@ func (s *Store) GetByID(ctx context.Context, id string) (*User, error) {
 func (s *Store) GetByEmail(ctx context.Context, email string) (*User, error) {
 	return scanUserProfile(s.db.QueryRowContext(ctx,
 		`SELECT `+profileCols+` FROM users WHERE email=?`, strings.TrimSpace(strings.ToLower(email))))
+}
+
+// GetByUsername returns the user with the given public handle (case-insensitive).
+func (s *Store) GetByUsername(ctx context.Context, username string) (*User, error) {
+	username = normalizeUsername(username)
+	if username == "" {
+		return nil, fmt.Errorf("empty username")
+	}
+	return scanUserProfile(s.db.QueryRowContext(ctx,
+		`SELECT `+profileCols+` FROM users WHERE username=?`, username))
+}
+
+// SetUsername assigns a public handle to a user, uniquifying it (-2, -3, …) if
+// it collides. Returns the handle actually stored.
+func (s *Store) SetUsername(ctx context.Context, id, desired string) (string, error) {
+	base := normalizeUsername(desired)
+	if base == "" {
+		base = "user"
+	}
+	for i := 0; i < 100; i++ {
+		cand := base
+		if i > 0 {
+			cand = base + "-" + strconv.Itoa(i+1)
+		}
+		// Skip if taken by another user.
+		var other string
+		err := s.db.QueryRowContext(ctx, `SELECT id FROM users WHERE username=?`, cand).Scan(&other)
+		if err == sql.ErrNoRows || other == id {
+			if _, uerr := s.db.ExecContext(ctx, `UPDATE users SET username=? WHERE id=?`, cand, id); uerr != nil {
+				return "", uerr
+			}
+			return cand, nil
+		}
+		if err != nil {
+			return "", err
+		}
+	}
+	return "", fmt.Errorf("could not find a free username for %q", base)
+}
+
+// BackfillUsernames assigns a derived handle to every account that lacks one
+// (e.g. accounts created before migration 051). Cheap — staff counts are small —
+// and idempotent, so it is safe to run at every startup.
+func (s *Store) BackfillUsernames(ctx context.Context) {
+	rows, err := s.db.QueryContext(ctx, `SELECT id,email,name FROM users WHERE COALESCE(username,'')=''`)
+	if err != nil {
+		return
+	}
+	type todo struct{ id, email, name string }
+	var list []todo
+	for rows.Next() {
+		var t todo
+		if rows.Scan(&t.id, &t.email, &t.name) == nil {
+			list = append(list, t)
+		}
+	}
+	_ = rows.Err()
+	rows.Close()
+	for _, t := range list {
+		_, _ = s.SetUsername(ctx, t.id, deriveUsername(t.email, t.name))
+	}
+}
+
+// deriveUsername proposes a handle from the email local-part (preferred) or the
+// display name.
+func deriveUsername(email, name string) string {
+	if i := strings.IndexByte(email, '@'); i > 0 {
+		if u := normalizeUsername(email[:i]); u != "" {
+			return u
+		}
+	}
+	if u := normalizeUsername(name); u != "" {
+		return u
+	}
+	return "user"
+}
+
+// normalizeUsername lowercases and keeps only [a-z0-9-], collapsing runs of
+// other characters to a single dash and trimming leading/trailing dashes.
+func normalizeUsername(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	var b strings.Builder
+	lastDash := false
+	for _, r := range s {
+		switch {
+		case (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9'):
+			b.WriteRune(r)
+			lastDash = false
+		default:
+			if !lastDash && b.Len() > 0 {
+				b.WriteByte('-')
+				lastDash = true
+			}
+		}
+	}
+	return strings.Trim(b.String(), "-")
 }
 
 // List returns all users ordered by creation time, including profile fields.

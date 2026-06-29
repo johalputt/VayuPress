@@ -42,6 +42,18 @@ var socialPlatforms = []struct{ Key, Label, Placeholder string }{
 	{"youtube", "YouTube", "https://youtube.com/@you"},
 }
 
+// authorSlug returns the public handle used in /author/<slug> for a user: the
+// human-readable username when set, else the opaque id (back-compat).
+func authorSlug(u *users.User) string {
+	if u == nil {
+		return ""
+	}
+	if u.Username != "" {
+		return u.Username
+	}
+	return u.ID
+}
+
 func socialLabel(key string) string {
 	for _, p := range socialPlatforms {
 		if p.Key == key {
@@ -295,7 +307,7 @@ func (a *App) handleOSProfile(w http.ResponseWriter, r *http.Request) {
 	avatarPreview += `</div>`
 
 	body := `<div class="page-header"><h1>My profile</h1>
-<span class="muted text-sm">Your public author profile — shown at <a href="/author/` + esc(u.ID) + `">/author/` + esc(u.ID) + `</a></span></div>
+<span class="muted text-sm">Your public author profile — shown at <a href="/author/` + esc(authorSlug(u)) + `">/author/` + esc(authorSlug(u)) + `</a></span></div>
 <div class="card">
   <form data-profile-form>
     <div class="pf-head">` + avatarPreview + `<div>
@@ -313,7 +325,7 @@ func (a *App) handleOSProfile(w http.ResponseWriter, r *http.Request) {
     ` + socialFields + `
     <div class="vm-row mt-4">
       <button class="btn btn--primary" type="submit">Save profile</button>
-      <a class="btn" href="/author/` + esc(u.ID) + `" target="_blank" rel="noopener">View public profile ↗</a>
+      <a class="btn" href="/author/` + esc(authorSlug(u)) + `" target="_blank" rel="noopener">View public profile ↗</a>
       <span class="muted text-sm" data-p-status></span>
     </div>
   </form>
@@ -397,7 +409,7 @@ func (a *App) teamCardHTML(r *http.Request) string {
 			}
 		}
 		rows += `<tr>
-  <td class="row-title"><a href="/author/` + esc(u.ID) + `" target="_blank" rel="noopener">` + esc(u.Email) + `</a></td>
+  <td class="row-title"><a href="/author/` + esc(authorSlug(&u)) + `" target="_blank" rel="noopener">` + esc(u.Email) + `</a></td>
   <td>` + name + `</td>
   <td><select class="select input--sm" data-user-role data-email="` + esc(u.Email) + `">` + roleOptions(u.Role) + `</select></td>
   <td>` + mailbox + `</td>
@@ -458,7 +470,13 @@ func (a *App) handlePublicAuthor(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	u, err := a.userStore.GetByID(r.Context(), chi.URLParam(r, "id"))
+	// Resolve by human-readable username first (/author/ankush), then fall back to
+	// the opaque id (/author/<hash>) so existing links keep working.
+	key := chi.URLParam(r, "id")
+	u, err := a.userStore.GetByUsername(r.Context(), key)
+	if err != nil || u == nil {
+		u, err = a.userStore.GetByID(r.Context(), key)
+	}
 	if err != nil || u == nil {
 		http.NotFound(w, r)
 		return

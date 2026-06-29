@@ -539,6 +539,9 @@ func main() {
 	if n, err := a.userStore.Count(context.Background()); err == nil && n == 0 {
 		a.bootstrapDefaultAdmin(context.Background())
 	}
+	// Backfill human-readable author handles for any pre-051 accounts so every
+	// staff member has a /author/<username> URL. Idempotent + cheap.
+	a.userStore.BackfillUsernames(context.Background())
 	// Periodic expired-session sweep.
 	go func() {
 		ticker := time.NewTicker(1 * time.Hour)
