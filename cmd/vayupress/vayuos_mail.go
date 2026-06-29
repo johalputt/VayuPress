@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	netmail "net/mail"
+	"strconv"
 	"strings"
 
 	"github.com/microcosm-cc/bluemonday"
@@ -727,7 +728,37 @@ func (a *App) handleVayuOSConnect(w http.ResponseWriter, r *http.Request) {
 	}
 	body.WriteString(`</tbody></table></div></div>`)
 
+	// ── Scan-to-import account QR (Thunderbird / K-9) ─────────────────────────
+	// Thunderbird for Android / K-9 can create an account by scanning a QR
+	// (Add account → Scan QR code). We emit one import QR per active mailbox; the
+	// password is never encoded, so the client asks for it after importing the
+	// IMAP + SMTP servers. Auto-config above is the always-works fallback.
+	if len(emails) > 0 {
+		ip := portInt(mc.IMAPSListen, 993)
+		sp := portInt(mc.SubmissionListen, 587)
+		body.WriteString(`<div class="card"><div class="card-title">Scan to import account — Thunderbird / K-9</div>`)
+		body.WriteString(`<p class="text-sm">In <strong>Thunderbird for Android</strong> or <strong>K-9 Mail</strong>, tap <em>Add account → Scan QR code</em> and point it at a code below — it sets up that mailbox's IMAP &amp; SMTP servers in one step. You'll be asked for the mailbox password (we never put a password in a QR).</p>`)
+		body.WriteString(`<div class="vm-grid-2">`)
+		for _, em := range emails {
+			if uri := thunderbirdAccountQR(em, host, ip, sp); uri != "" {
+				body.WriteString(`<div><img src="` + uri + `" alt="Import QR for ` + html.EscapeString(em) + `" width="170" height="170" style="background:#fff;padding:8px;border-radius:8px"><div class="text-xs mono mt-1">` + html.EscapeString(em) + `</div></div>`)
+			}
+		}
+		body.WriteString(`</div>`)
+		body.WriteString(`<p class="muted text-xs mt-2">Uses Thunderbird's account-QR format. If a scan doesn't import on your version, use auto-config above (just enter your email + password) — that always works.</p>`)
+		body.WriteString(`</div>`)
+	}
+
 	writeOSHTML(w, adminOSLayout(nonce, "Connect a mail app", "vayuos", cfg, htmpl.HTML(body.String())))
+}
+
+// portInt extracts the numeric port from a listen address (":993" → 993),
+// falling back to def when absent or unparseable.
+func portInt(listen string, def int) int {
+	if p, err := strconv.Atoi(mailPort(listen, "")); err == nil && p > 0 {
+		return p
+	}
+	return def
 }
 
 func (a *App) handleVayuOSAccountCreate(w http.ResponseWriter, r *http.Request) {
