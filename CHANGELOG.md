@@ -8,6 +8,69 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [2.5.0] - 2026-06-29
+
+### Added
+
+- **Pages** — standalone pages (About, Contact, Privacy…) managed at `/os/pages`,
+  separate from the blog feed. Quick-create with starter templates
+  (Blank/About/Contact/FAQ), per-page "in menu" and footer-group placement, an
+  inline "＋ Page" button in the editor, and delete.
+- **Contact form + Messages inbox.** Opt-in per page via the `[[contact-form]]`
+  marker (or `[[contact-form: custom reply]]`). Submissions are validated,
+  honeypot-screened, rate-limited, **persisted to a `contact_messages` inbox**,
+  emailed to the operator via VayuMail, and acknowledged with an auto-reply.
+  `/os/messages` adds search, unread/date filters, bulk actions, CSV export, a
+  per-message detail view, a sidebar unread badge and a dashboard card.
+- **Delete posts & pages** with bulk publish/unpublish/delete on the Posts
+  manager.
+- **Media** — search + type filter, bulk delete, and per-asset **alt text**
+  (auto-applied as the editor's default alt for `/media/…` images).
+- **SEO** — `BlogPosting` JSON-LD now uses the real site author/name + image, a
+  live **Google snippet preview** in the editor, and actionable **health checks**
+  (sitemap freshness, robots, site-wide noindex, canonical domain).
+- **Theme Studio** — Tumblr-style refresh: toggle switches, appearance-first
+  layout, a sticky quick-jump section navigator, and an unsaved-changes indicator
+  with a leave guard.
+- **VayuMail** — recommends K-9 Mail & Thunderbird, serves **Mozilla Autoconfig**
+  (`/.well-known/autoconfig/mail/config-v1.1.xml`) so clients set up from just an
+  email address, and shows **QR codes** for scan-to-import (Thunderbird/K-9) and
+  for **2FA** enrolment.
+- **Default administrator on install.** A fresh database auto-creates
+  `admin@<domain>` with a strong random password (written to a root-only
+  `initial-admin.txt` and logged once), and the console **forces a password
+  change on first login** — no CLI needed to start. See
+  [ADR-0102](docs/adr/ADR-0102-unified-identity-and-bootstrap-admin.md).
+- **Human-readable author URLs** — `/author/<username>` (derived from the email
+  local-part, uniquified) instead of the opaque id; old id links still resolve.
+
+### Changed
+
+- **Unified VayuMail + CMS identity.** A staff member who has both a CMS account
+  and a VayuMail mailbox at the same address is now **one identity**: signing in
+  via the mailbox resolves to the persisted CMS account, so the profile is
+  editable and the public author URL is stable (previously a throwaway
+  `vmail:<email>` identity blocked profile saves). See
+  [ADR-0102](docs/adr/ADR-0102-unified-identity-and-bootstrap-admin.md).
+- **One-click update — optional database backup.** The pre-update snapshot is now
+  a checkbox (default on); unticking it skips the backup so a large database can
+  no longer stall or fail the update, with clearer failure messages.
+
+### Fixed
+
+- **Large-catalogue performance.** Several hot-path queries (homepage, sitemap,
+  RSS, dashboard, Posts/Pages) wrapped indexed columns in `COALESCE(...)`,
+  defeating `idx_articles_is_page`/`idx_articles_status` and full-scanning the
+  whole catalogue on the single writer connection — which thrashed a
+  memory-constrained host into swap. They now use the read pool and bare indexed
+  columns (`is_page=0`/`status='published'`).
+- **VayuMail TLS now works for the non-root service.** Let's Encrypt keys are
+  root-only, so the service silently fell back to self-signed; `vayumail-setup.sh`
+  now copies the certificate to a service-readable location, VayuMail
+  auto-discovers it, and the Connect tab surfaces the precise reason on failure.
+- **Reverse-DNS (PTR) check** now passes when any of the host's IPs maps back to
+  the mail hostname (it previously tested only the first, mixing IPv4/IPv6).
+
 ## [2.4.0] - 2026-06-29
 
 ### Added

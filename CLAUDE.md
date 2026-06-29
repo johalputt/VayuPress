@@ -1,7 +1,7 @@
 # VayuPress — project memory
 
 Sovereign, zero-telemetry CMS. Single Go binary, SQLite (WAL), chi router,
-strict CSP. Apache-2.0. **Current version: `2.4.0`** (`cmd/vayupress/main.go`).
+strict CSP. Apache-2.0. **Current version: `2.5.0`** (`cmd/vayupress/main.go`).
 
 ## Production deployment (johal.in)
 

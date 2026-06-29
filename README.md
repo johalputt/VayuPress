@@ -21,12 +21,30 @@
 > _Own your content. Own your communication. Own your infrastructure._
 > Publishing is the core identity, **VayuMail** the native sovereignty layer, **VayuPGP** the native privacy layer, and **VayuOS** the native control layer — all in a single Go binary, single process, single config.
 
-## What's New in v2.4.0
+## What's New in v2.5.0
 
 > Full notes in [`CHANGELOG.md`](CHANGELOG.md) · architecture decision in
-> [`docs/adr/ADR-0101`](docs/adr/ADR-0101-builtin-search-vayufind.md)
+> [`docs/adr/ADR-0102`](docs/adr/ADR-0102-unified-identity-and-bootstrap-admin.md)
 
-**Built-in instant search (VayuFind) — and external Meilisearch is gone.**
+**One identity, zero-friction onboarding, and a complete contact stack.**
+
+- **Unified VayuMail + CMS identity.** A staff member with both a CMS account and
+  a VayuMail mailbox at the same address is now one account — profiles save and
+  the public author page lives at a stable, readable **`/author/<username>`**.
+- **Works the moment you install.** A fresh database auto-creates an
+  `admin@<domain>` account with a random password (saved to a root-only file +
+  logged) and forces a password change on first login — no CLI step.
+- **Pages, contact forms & a Messages inbox.** Standalone pages with templates,
+  an opt-in `[[contact-form]]` that emails you and an auto-reply to visitors, and
+  a searchable/filterable inbox with CSV export and a sidebar badge.
+- **Mail just connects.** VayuMail serves Mozilla **Autoconfig** and **QR codes**
+  so Thunderbird/K-9 set up from an email address or a single scan; the
+  setup script now makes the Let's Encrypt cert readable by the service.
+- **Faster at scale & robust SEO/Media/Theme tooling.** Hot-path queries no
+  longer full-scan a large catalogue; plus JSON-LD/snippet/health-check SEO,
+  Media alt-text & bulk delete, and a Tumblr-style Theme Studio.
+
+### Previously in v2.4.0 — built-in instant search (VayuFind), external Meilisearch removed
 
 - **VayuFind — sovereign, in-binary search.** Search is now a dependency-free
   engine inside the single binary; there is no second service to install, secure,

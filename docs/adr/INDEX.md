@@ -10,6 +10,7 @@
 | ADR | Title | Status | Owner | Date |
 |-----|-------|--------|-------|------|
 | [ADR-0001](ADR-0001-sqlite-first.md) | SQLite-First Data Layer | Accepted | Core | 2024-01-01 |
+| [ADR-0102](ADR-0102-unified-identity-and-bootstrap-admin.md) | Unified VayuMail + CMS Identity, Bootstrap Admin, Author Handles | Accepted | Core | 2026-06-29 |
 | [ADR-0101](ADR-0101-builtin-search-vayufind.md) | VayuFind — Built-in Search, Replacing External Meilisearch | Accepted | Core | 2026-06-29 |
 | [ADR-0100](ADR-0100-storage-panel-update-activation-infra-rbac.md) | Storage & System Panel, Reliable Self-Update Activation, Admin-Only Infrastructure Detail | Accepted | VayuOS | 2026-06-28 |
 | [ADR-0099](ADR-0099-self-contained-one-click-update.md) | Self-Contained One-Click Update — Embedded Admin Assets + Arch-Aware Release Selection | Accepted | VayuOS | 2026-06-28 |
