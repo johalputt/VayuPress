@@ -100,6 +100,26 @@ if [[ -z "$DOMAIN" && -n "${ENV_FILE:-}" && -f "${ENV_FILE:-}" ]]; then
   DOMAIN="$(grep -E '^DOMAIN=' "$ENV_FILE" | tail -1 | cut -d= -f2-)"
   DOMAIN="${DOMAIN//\"/}"; DOMAIN="${DOMAIN//\'/}"; DOMAIN="${DOMAIN// /}"; DOMAIN="${DOMAIN%$'\r'}"
 fi
+# Fallback domain auto-detection so the script "just works" even when DOMAIN is
+# not in the EnvironmentFile: (a) an existing non-mail Let's Encrypt certificate
+# (your website's cert), then (b) the first real server_name in the nginx config.
+if [[ -z "$DOMAIN" ]]; then
+  if [[ -d /etc/letsencrypt/live ]]; then
+    for d in /etc/letsencrypt/live/*/; do
+      name="$(basename "$d")"
+      [[ "$name" == "README" ]] && continue
+      [[ "$name" == mail.* ]] && continue        # skip the mail host itself
+      [[ "$name" == *.*    ]] || continue        # must look like a domain
+      DOMAIN="$name"; break
+    done
+  fi
+fi
+if [[ -z "$DOMAIN" ]] && command -v nginx >/dev/null 2>&1; then
+  DOMAIN="$(nginx -T 2>/dev/null | grep -hoE '^[[:space:]]*server_name[[:space:]]+[^;]+' \
+    | tr ' ' '\n' | grep -E '^[a-z0-9.-]+\.[a-z]{2,}$' | grep -vE '^(mail|www)\.' | head -1 || true)"
+fi
+[[ -n "$DOMAIN" ]] && info "Using domain: ${DOMAIN}"
+
 MAIL_HOST="${MAIL_DOMAIN:-}"
 [[ -z "$MAIL_HOST" && -n "$DOMAIN" ]] && MAIL_HOST="mail.${DOMAIN}"
 
@@ -112,6 +132,37 @@ else
   CERT_LIVE="/etc/letsencrypt/live/${MAIL_HOST}"
   if [[ -f "${CERT_LIVE}/fullchain.pem" ]]; then
     ok "Existing Let's Encrypt certificate found for ${MAIL_HOST}."
+  else
+    # ── DNS preflight ───────────────────────────────────────────────────────
+    # The #1 reason certbot fails (and burns a rate-limit) is mail.<domain> not
+    # yet pointing at this server. Check the A record against our public IP and,
+    # on a mismatch, print the exact record to add and SKIP the certbot attempt.
+    SERVER_IP="$( { curl -fsS --max-time 5 https://api.ipify.org 2>/dev/null \
+      || curl -fsS --max-time 5 https://ifconfig.me 2>/dev/null \
+      || hostname -I 2>/dev/null | awk '{print $1}'; } || true )"
+    MAIL_IP="$(getent ahostsv4 "$MAIL_HOST" 2>/dev/null | awk '{print $1; exit}' || true)"
+    if [[ -z "$MAIL_IP" ]] && command -v dig >/dev/null 2>&1; then
+      MAIL_IP="$(dig +short A "$MAIL_HOST" 2>/dev/null | tail -1 || true)"
+    fi
+    if [[ -n "$SERVER_IP" && -n "$MAIL_IP" && "$MAIL_IP" != "$SERVER_IP" ]]; then
+      warn "DNS for ${MAIL_HOST} points at ${MAIL_IP}, but this server is ${SERVER_IP}."
+      warn "Add/fix this DNS A record, wait a few minutes, then re-run:"
+      echo "       ${MAIL_HOST}.  →  ${SERVER_IP}"
+      warn "Skipping the certificate request until DNS matches (avoids a Let's Encrypt rate-limit)."
+      MAIL_TLS="dns-pending"
+    elif [[ -z "$MAIL_IP" ]]; then
+      warn "${MAIL_HOST} does not resolve yet. Add a DNS A record, wait, then re-run:"
+      echo "       ${MAIL_HOST}.  →  ${SERVER_IP:-<this server public IP>}"
+      warn "Skipping the certificate request until DNS resolves."
+      MAIL_TLS="dns-pending"
+    else
+      ok "DNS check: ${MAIL_HOST} resolves to this server (${SERVER_IP:-?})."
+    fi
+  fi
+  if [[ "$MAIL_TLS" == "dns-pending" ]]; then
+    : # DNS not ready — fall through to the wiring/summary without calling certbot.
+  elif [[ -f "${CERT_LIVE}/fullchain.pem" ]]; then
+    : # already issued above
   else
     if ! command -v certbot >/dev/null 2>&1; then
       info "Installing certbot..."
