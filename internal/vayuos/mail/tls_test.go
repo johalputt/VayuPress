@@ -3,9 +3,14 @@ package mail
 import (
 	"bufio"
 	"context"
+	"crypto/ecdsa"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/base64"
+	"encoding/pem"
 	"net"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -15,11 +20,11 @@ func testTLSConfig(t *testing.T) *tls.Config {
 	t.Helper()
 	cfg := DefaultConfig()
 	cfg.Hostname = "mail.test"
-	tc, err := loadTLSConfig(cfg)
+	p, err := buildTLSProvider(cfg)
 	if err != nil {
-		t.Fatalf("loadTLSConfig: %v", err)
+		t.Fatalf("buildTLSProvider: %v", err)
 	}
-	return tc
+	return p.config
 }
 
 func testEngineConfig() Config {
@@ -241,5 +246,179 @@ func TestIMAPStartTLS(t *testing.T) {
 	tconn.Write([]byte("b CAPABILITY\r\n"))
 	if l, _ := tbr.ReadString('\n'); !strings.Contains(l, "IMAP4rev1") {
 		t.Fatalf("post-TLS CAPABILITY failed: %q", l)
+	}
+}
+
+// buildTLSProvider must report the self-signed fallback as untrusted so the
+// panel/logs can warn that mail clients will reject the connection.
+func TestTLSProviderSelfSignedUntrusted(t *testing.T) {
+	t.Parallel()
+	cfg := DefaultConfig()
+	cfg.Hostname = "mail.test"
+	p, err := buildTLSProvider(cfg)
+	if err != nil {
+		t.Fatalf("buildTLSProvider: %v", err)
+	}
+	if p.mode != tlsModeSelfSigned {
+		t.Fatalf("expected selfsigned mode, got %q", p.mode)
+	}
+	if p.trusted() {
+		t.Fatal("self-signed certificate must not be reported as trusted")
+	}
+	if p.config == nil || len(p.config.Certificates) != 1 {
+		t.Fatal("self-signed provider must carry exactly one certificate")
+	}
+}
+
+// An operator-supplied keypair must be selected and reported as trusted.
+func TestTLSProviderStaticTrusted(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	certFile := filepath.Join(dir, "cert.pem")
+	keyFile := filepath.Join(dir, "key.pem")
+	writeTestKeypair(t, certFile, keyFile, "mail.test")
+
+	cfg := DefaultConfig()
+	cfg.Hostname = "mail.test"
+	cfg.TLSCertFile = certFile
+	cfg.TLSKeyFile = keyFile
+	p, err := buildTLSProvider(cfg)
+	if err != nil {
+		t.Fatalf("buildTLSProvider: %v", err)
+	}
+	if p.mode != tlsModeStatic || !p.trusted() {
+		t.Fatalf("expected trusted static mode, got %q trusted=%v", p.mode, p.trusted())
+	}
+}
+
+// With ACME enabled and a valid hostname, the provider must be in ACME mode,
+// expose an HTTP-01 challenge handler, and carry an autocert manager.
+func TestTLSProviderACMEMode(t *testing.T) {
+	t.Parallel()
+	cfg := DefaultConfig()
+	cfg.Hostname = "mail.test"
+	cfg.StorageDir = t.TempDir()
+	cfg.ACMEEnabled = true
+	cfg.ACMEDirectoryURL = "https://acme.example.invalid/directory" // never contacted here
+	p, err := buildTLSProvider(cfg)
+	if err != nil {
+		t.Fatalf("buildTLSProvider: %v", err)
+	}
+	if p.mode != tlsModeACME {
+		t.Fatalf("expected acme mode, got %q", p.mode)
+	}
+	if !p.trusted() {
+		t.Fatal("acme mode must be reported as trusted")
+	}
+	if p.manager == nil || p.httpHandler == nil {
+		t.Fatal("acme provider must carry a manager and HTTP-01 handler")
+	}
+	if p.config == nil || p.config.GetCertificate == nil {
+		t.Fatal("acme provider config must set GetCertificate")
+	}
+	// The wrapped GetCertificate must serve the self-signed fallback (rather
+	// than error) for a normal client hello while issuance is unavailable, so
+	// the listeners keep answering.
+	cert, gerr := p.config.GetCertificate(&tls.ClientHelloInfo{ServerName: "mail.test"})
+	if gerr != nil || cert == nil {
+		t.Fatalf("expected self-signed fallback, got cert=%v err=%v", cert, gerr)
+	}
+}
+
+// ACME enabled but no usable hostname must degrade to the self-signed fallback
+// rather than fail mail startup.
+func TestTLSProviderACMENoHostFallsBack(t *testing.T) {
+	t.Parallel()
+	cfg := DefaultConfig()
+	cfg.Hostname = "" // no hostname to certify
+	cfg.StorageDir = t.TempDir()
+	cfg.ACMEEnabled = true
+	p, err := buildTLSProvider(cfg)
+	if err != nil {
+		t.Fatalf("buildTLSProvider should not hard-fail: %v", err)
+	}
+	if p.mode != tlsModeSelfSigned {
+		t.Fatalf("expected selfsigned fallback, got %q", p.mode)
+	}
+}
+
+func writeTestKeypair(t *testing.T, certFile, keyFile, host string) {
+	t.Helper()
+	cert, err := selfSignedCert(host)
+	if err != nil {
+		t.Fatalf("selfSignedCert: %v", err)
+	}
+	cpem := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Certificate[0]})
+	keyDER, err := x509.MarshalECPrivateKey(cert.PrivateKey.(*ecdsa.PrivateKey))
+	if err != nil {
+		t.Fatalf("marshal key: %v", err)
+	}
+	kpem := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER})
+	if err := os.WriteFile(certFile, cpem, 0o600); err != nil {
+		t.Fatalf("write cert: %v", err)
+	}
+	if err := os.WriteFile(keyFile, kpem, 0o600); err != nil {
+		t.Fatalf("write key: %v", err)
+	}
+}
+
+// A static (operator-supplied) keypair must be served through GetCertificate so
+// it can be hot-reloaded, and must transparently pick up a renewed certificate
+// on disk without a restart (the certbot/Let's Encrypt renewal path).
+func TestReloadingStaticCert(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	certFile := filepath.Join(dir, "cert.pem")
+	keyFile := filepath.Join(dir, "key.pem")
+	writeTestKeypair(t, certFile, keyFile, "mail.test")
+
+	cfg := DefaultConfig()
+	cfg.Hostname = "mail.test"
+	cfg.TLSCertFile = certFile
+	cfg.TLSKeyFile = keyFile
+	p, err := buildTLSProvider(cfg)
+	if err != nil {
+		t.Fatalf("buildTLSProvider: %v", err)
+	}
+	if p.config.GetCertificate == nil {
+		t.Fatal("static provider must serve via GetCertificate for hot-reload")
+	}
+	first, err := p.config.GetCertificate(&tls.ClientHelloInfo{ServerName: "mail.test"})
+	if err != nil || first == nil {
+		t.Fatalf("GetCertificate: %v", err)
+	}
+
+	rc, err := newReloadingCert(certFile, keyFile)
+	if err != nil {
+		t.Fatalf("newReloadingCert: %v", err)
+	}
+	before, _ := rc.getCertificate(nil)
+	if before == nil || len(before.Certificate) == 0 {
+		t.Fatal("expected an initial certificate")
+	}
+	beforeDER := string(before.Certificate[0])
+
+	// Simulate a renewal: write a brand-new keypair (fresh key + cert) to the
+	// same paths and force an immediate re-check by ageing lastCheck past the
+	// throttle window.
+	time.Sleep(10 * time.Millisecond)
+	writeTestKeypair(t, certFile, keyFile, "mail.test")
+	// Guarantee a detectably different modification time regardless of the
+	// filesystem's mtime granularity.
+	bump := time.Now().Add(5 * time.Second)
+	_ = os.Chtimes(certFile, bump, bump)
+	_ = os.Chtimes(keyFile, bump, bump)
+	rc.mu.Lock()
+	rc.lastCheck = time.Now().Add(-time.Hour)
+	rc.mu.Unlock()
+
+	after, err := rc.getCertificate(nil)
+	if err != nil || after == nil || len(after.Certificate) == 0 {
+		t.Fatalf("getCertificate after reload: %v", err)
+	}
+	// The reloaded certificate must differ from the original on disk, proving
+	// the hot-reload fired (a fresh keypair was generated each write).
+	if string(after.Certificate[0]) == beforeDER {
+		t.Fatal("expected the certificate to be reloaded from disk after renewal")
 	}
 }

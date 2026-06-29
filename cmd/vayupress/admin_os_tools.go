@@ -25,6 +25,7 @@ import (
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/plugins"
 	"github.com/johalputt/vayupress/internal/render"
+	"github.com/johalputt/vayupress/internal/search"
 	"github.com/johalputt/vayupress/internal/settings"
 )
 
@@ -68,6 +69,12 @@ func (a *App) toolRegistry() []toolModule {
 			ready:   func(a *App) bool { return a.webmentionStore != nil },
 		},
 		{
+			ID: "trending", Name: "Trending & pinned posts", Category: "Engagement", Icon: "🔥",
+			Desc:    "Show a trending-posts widget (most-viewed over the last 7/30 days, from the built-in analytics) plus your pinned posts on the homepage and under every post. Pin a post with “Feature this post” in the editor.",
+			FlagKey: settings.KeyFeatureTrending,
+			ready:   func(a *App) bool { return a.analytics != nil },
+		},
+		{
 			ID: "collections", Name: "Collections", Category: "Content", Icon: "📚",
 			Desc:  "Group posts into ordered series and reading lists.",
 			ready: func(a *App) bool { return a.collectionStore != nil },
@@ -86,6 +93,12 @@ func (a *App) toolRegistry() []toolModule {
 			ID: "analytics", Name: "Privacy analytics", Category: "Insight", Icon: "📈",
 			Desc:  "Cookieless, self-hosted pageview and referrer analytics.",
 			ready: func(a *App) bool { return a.analytics != nil },
+		},
+		{
+			ID: "search", Name: "Search", Category: "Insight", Icon: "🔍",
+			Desc:    "VayuFind — the built-in, instant site search. A Ctrl/⌘-K search box opens a fast, typo-friendly overlay that filters a cached index entirely in the browser. Zero external services. Turn off to hide the search box and the /search page.",
+			FlagKey: settings.KeyFeatureSearch,
+			ready:   func(a *App) bool { return a.search != nil },
 		},
 		{
 			ID: "members", Name: "Memberships", Category: "Insight", Icon: "👥",
@@ -345,6 +358,13 @@ func (a *App) handleOSToolToggle(w http.ResponseWriter, r *http.Request) {
 	if err := a.siteSettings.SetMany(r.Context(), map[string]string{flag: val}); err != nil {
 		writeAPIError(w, r, http.StatusInternalServerError, "settings-error", err.Error(), "")
 		return
+	}
+	// Apply runtime side-effects for flags that gate a live subsystem, so the
+	// change takes effect immediately without a restart. Search: flip the
+	// built-in engine on/off and show/hide the public search box & modal.
+	if flag == settings.KeyFeatureSearch {
+		search.SetEnabled(body.Enabled)
+		render.SetSearchEnabled(body.Enabled)
 	}
 	// Audit the operator action — toggling a public-facing feature is
 	// security-relevant, so leave a trail in the structured log.

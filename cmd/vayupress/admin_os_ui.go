@@ -24,12 +24,14 @@ package main
 // GraphQL admin, command palette, and all remaining intelligence features.
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"html"
 	htmpl "html/template"
+	"io/fs"
 	"net/http"
 	"net/url"
 	"os"
@@ -85,6 +87,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 	r.Get("/os/static/js/admin-os-theme-store.js", serveAdminOSAsset("js/admin-os-theme-store.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-mail.js", serveAdminOSAsset("js/admin-os-mail.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-update.js", serveAdminOSAsset("js/admin-os-update.js", "application/javascript; charset=utf-8"))
+	r.Get("/os/static/js/admin-os-storage.js", serveAdminOSAsset("js/admin-os-storage.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/purify.min.js", serveAdminOSAsset("js/purify.min.js", "application/javascript; charset=utf-8"))
 
 	// Fonts — path-traversal prevented by switch allowlist (same pattern as v2).
@@ -252,6 +255,14 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/update/rollback", a.handleOSUpdateRollback)
 		pr.Get("/os/api/backup/export", a.handleOSBackupExport)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/backup/import", a.handleOSBackupImport)
+
+		// Storage & System — admin-only resource usage (RAM/disk) plus managed
+		// files (backups/logs/temp) with per-file download + delete. The
+		// download/delete validate the path against the live managed-file set, so
+		// path traversal is impossible and the live DB can never be touched.
+		pr.Get("/os/storage", a.handleOSStorage)
+		pr.Get("/os/api/storage/download", a.handleOSStorageDownload)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/storage/delete", a.handleOSStorageDelete)
 		pr.Get("/os/seo", a.handleOSSEONative)
 		pr.Get("/os/analytics", a.handleOSAnalytics)
 		// VayuAnalytics: export downloads + goal management (session-authed).
@@ -272,6 +283,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayuos/mail/sent", a.handleVayuOSSent)
 		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayuos/mail/compose", a.handleVayuOSCompose)
 		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayuos/mail/accounts", a.handleVayuOSAccounts)
+		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayuos/mail/connect", a.handleVayuOSConnect)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayuos/mail/send", a.handleVayuOSSend)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayuos/mail/draft", a.handleVayuOSDraft)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayuos/mail/message/action", a.handleVayuOSMessageAction)
@@ -301,6 +313,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/settings", a.handleOSSettingsAPI)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/posts/quick-create", a.handleOSQuickCreatePost)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/posts/status", a.handleOSPostStatus)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/posts/pin", a.handleOSPostPin)
 		pr.With(auth.CSRFTokenMiddleware).Delete("/os/api/posts/{slug}", a.handleOSPostDelete)
 		// Session-friendly branding (favicon) upload — the /admin/theme/favicon
 		// original is in the API-key-only group, so a browser operator can't reach
@@ -355,7 +368,20 @@ func serveAdminOSAsset(rel, contentType string) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		w.Header().Set("Content-Type", contentType)
 		w.Header().Set("Cache-Control", "public, max-age=3600")
-		http.ServeFile(w, req, filepath.Join(adminOSStaticDir(), filepath.FromSlash(rel)))
+		diskPath := filepath.Join(adminOSStaticDir(), filepath.FromSlash(rel))
+		if _, err := os.Stat(diskPath); err == nil {
+			http.ServeFile(w, req, diskPath)
+			return
+		}
+		// The on-disk copy is missing — e.g. STATIC_DIR was never provisioned, or
+		// is read-only under a hardened service sandbox so syncEmbeddedStatic
+		// could not write it. Serve the copy compiled into the binary so the
+		// panel always works, even immediately after a one-click self-update.
+		if data, err := fs.ReadFile(embeddedStaticFS, rel); err == nil {
+			http.ServeContent(w, req, filepath.Base(rel), time.Time{}, bytes.NewReader(data))
+			return
+		}
+		http.NotFound(w, req)
 	}
 }
 
@@ -372,7 +398,13 @@ func assetVer(rel string) string {
 		return v.(string)
 	}
 	v := Version
-	if b, err := os.ReadFile(filepath.Join(adminOSStaticDir(), filepath.FromSlash(rel))); err == nil {
+	b, err := os.ReadFile(filepath.Join(adminOSStaticDir(), filepath.FromSlash(rel)))
+	if err != nil {
+		// Fall back to the embedded copy so the cache-buster still tracks the
+		// shipped asset content when STATIC_DIR is unavailable (ADR-0099).
+		b, err = fs.ReadFile(embeddedStaticFS, rel)
+	}
+	if err == nil {
 		sum := sha256.Sum256(b)
 		v = Version + "-" + hex.EncodeToString(sum[:4])
 	}
@@ -425,6 +457,94 @@ func osUnread(s *osSettings) int {
 	return s.UnreadMessages
 }
 
+// osSidebarNav builds the role-scoped sidebar. A mail-only session (mailbox /
+// reviewer role) sees only its Mailbox and Profile; console sessions see only
+// the sections their access level permits. The visibility rule is exactly the
+// route guard (osPathMinLevel) so what is shown is precisely what is reachable —
+// hidden items are also blocked server-side.
+func osSidebarNav(active string, s *osSettings) string {
+	lvl := accessAdmin
+	mailOnly := false
+	if s != nil {
+		lvl = s.AccessLevel
+		mailOnly = s.MailOnly
+	}
+	if mailOnly {
+		return `<div class="sidebar-section-label">Mail</div>` +
+			navItem("/os/vayuos/mail/inbox", "Mailbox", "vayuos", active, iconSecurity) +
+			navItem("/os/profile", "My Profile", "profile", active, iconMembers)
+	}
+
+	var b strings.Builder
+	// gate returns the item only when this access level can reach its href.
+	gate := func(item, href string) string {
+		if lvl < osPathMinLevel(href) {
+			return ""
+		}
+		return item
+	}
+	section := func(label string, items ...string) {
+		shown := make([]string, 0, len(items))
+		for _, it := range items {
+			if it != "" {
+				shown = append(shown, it)
+			}
+		}
+		if len(shown) == 0 {
+			return
+		}
+		b.WriteString(`<div class="sidebar-section-label">` + label + `</div>`)
+		for _, it := range shown {
+			b.WriteString(it)
+		}
+	}
+
+	section("Content",
+		gate(navItem("/os", "Dashboard", "dashboard", active, iconDashboard), "/os"),
+		gate(navItem("/os/posts", "Posts", "posts", active, iconPosts), "/os/posts"),
+		gate(navItem("/os/comments", "Comments", "comments", active, iconComments), "/os/comments"),
+		gate(navItem("/os/pages", "Pages", "pages", active, iconPages), "/os/pages"),
+		gate(navItemBadge("/os/messages", "Messages", "messages", active, iconMessages, osUnread(s)), "/os/messages"),
+		gate(navItem("/os/editor", "New Post", "editor", active, iconNewPost), "/os/editor"),
+		gate(navItem("/os/media", "Media", "media", active, iconMedia), "/os/media"),
+	)
+	section("Audience",
+		gate(navItem("/os/members", "Members", "members", active, iconMembers), "/os/members"),
+		gate(navItem("/os/newsletter", "Newsletter", "newsletter", active, iconNewsletter), "/os/newsletter"),
+		navItem("/os/profile", "My Profile", "profile", active, iconMembers),
+	)
+	section("Monetization",
+		gate(navItem("/os/monetization", "Monetization", "monetization", active, iconMoney), "/os/monetization"),
+		gate(navItem("/os/ads", "Advertising", "ads", active, iconAds), "/os/ads"),
+	)
+	section("Optimize",
+		gate(navItem("/os/seo", "SEO", "seo", active, iconSEO), "/os/seo"),
+		gate(navItem("/os/analytics", "Analytics", "analytics", active, iconAnalytics), "/os/analytics"),
+		gate(navItem("/os/theme", "Theme Studio", "theme", active, iconTheme), "/os/theme"),
+		gate(navItem("/os/theme/store", "Theme Store", "theme-store", active, iconThemeStore), "/os/theme/store"),
+		navItem("/os/vayuos", "VayuMail", "vayuos", active, iconSecurity),
+	)
+	section("System",
+		gate(navItem("/os/monitoring", "Monitoring", "monitoring", active, iconMonitoring), "/os/monitoring"),
+		gate(navItem("/os/governance", "Governance", "governance", active, iconGovernance), "/os/governance"),
+		gate(navItem("/os/tools", "Tools & Plugins", "tools", active, iconTools), "/os/tools"),
+		gate(navItem("/os/update", "Update & Backup", "update", active, iconUpdate), "/os/update"),
+		gate(navItem("/os/storage", "Storage & System", "storage", active, iconStorage), "/os/storage"),
+		gate(navItem("/os/settings", "Settings", "settings", active, iconSettings), "/os/settings"),
+		gate(navItem("/os/apikeys", "API Keys", "apikeys", active, iconKey), "/os/apikeys"),
+		gate(navItem("/os/security", "Security", "security", active, iconSecurity), "/os/security"),
+	)
+	section("Operations",
+		gate(navItem("/os/modes", "System Modes", "modes", active, iconModes), "/os/modes"),
+		gate(navItem("/os/policy", "Policy Inspector", "policy", active, iconPolicy), "/os/policy"),
+		gate(navItem("/os/topology", "Topology", "topology", active, iconTopology), "/os/topology"),
+		gate(navItem("/os/replay", "Replay Explorer", "replay", active, iconReplay), "/os/replay"),
+		gate(navItem("/os/faults", "Fault Engine", "faults", active, iconFaults), "/os/faults"),
+		gate(navItem("/os/adr", "ADR Registry", "adrs", active, iconADR), "/os/adr"),
+	)
+	return b.String()
+}
+
 // svgIcon returns a minimal inline SVG for the sidebar.
 // Using path data keeps us CDN-free and avoids an extra HTTP round-trip.
 func svgIcon(path string) string {
@@ -447,6 +567,7 @@ var (
 	iconSecurity   = svgIcon("M10 2l6 3v5c0 3.5-2.5 6.8-6 8-3.5-1.2-6-4.5-6-8V5l6-3z")
 	iconTools      = svgIcon("M12.5 3.5a3 3 0 00-3.9 3.9l-5.1 5.1 2 2 5.1-5.1a3 3 0 003.9-3.9l-2 2-2-2 2-2z")
 	iconUpdate     = svgIcon("M3 10a7 7 0 0112-4.9L17 7m0 0V3m0 4h-4M17 10a7 7 0 01-12 4.9L3 13m0 0v4m0-4h4")
+	iconStorage    = svgIcon("M3 5a2 2 0 012-2h10a2 2 0 012 2v2H3V5zm0 4h14v6a2 2 0 01-2 2H5a2 2 0 01-2-2V9zm3 3h2")
 	iconMonitoring = svgIcon("M2 10h3l2-5 3 11 3-8 2 2h3")
 	iconGovernance = svgIcon("M10 2l7 3v5c0 3.5-2.8 6.8-7 8-4.2-1.2-7-4.5-7-8V5l7-3zm0 5v6m-3-3h6")
 	iconTheme      = svgIcon("M10 2a8 8 0 100 16c1 0 1.5-.7 1.5-1.5 0-.4-.2-.8-.4-1-.3-.3-.4-.6-.4-1 0-.8.7-1.5 1.5-1.5H14a4 4 0 004-4c0-3.6-3.6-6.5-8-6.5zM5.5 10a1 1 0 110-2 1 1 0 010 2zm3-3a1 1 0 110-2 1 1 0 010 2zm5 0a1 1 0 110-2 1 1 0 010 2z")
@@ -459,6 +580,9 @@ var (
 	iconADR        = svgIcon("M5 3h7l3 3v11H5V3zm7 0v3h3M7 9h6m-6 3h6m-6 3h4")
 	iconMoney      = svgIcon("M10 2v16M6.5 6.5h5a2 2 0 010 4h-3a2 2 0 000 4h5")
 	iconAds        = svgIcon("M3 5h14v8H3V5zm2 11h6M6 8h6m-6 2.5h4")
+	// iconApps is the mobile bottom-nav "Menu" affordance — a 2x2 grid that
+	// reads as "all sections", opening the full role-scoped drawer.
+	iconApps = svgIcon("M3 3h6v6H3V3zm8 0h6v6h-6V3zM3 11h6v6H3v-6zm8 0h6v6h-6v-6z")
 )
 
 // renderTrustedHTML emits a pre-constructed, server-side HTML fragment verbatim.
@@ -508,6 +632,12 @@ func adminOSShellHead(nonce, title, active string, settings *osSettings) string 
       <kbd>⌘K</kbd>
     </button>`
 
+	// Mail-only sessions cannot create posts; hide the topbar shortcut for them.
+	newPostBtn := `<a class="btn btn--primary btn--sm" href="/os/editor">New Post</a>`
+	if settings != nil && settings.MailOnly {
+		newPostBtn = ""
+	}
+
 	return `<!DOCTYPE html>
 <html lang="en" data-theme="` + html.EscapeString(theme) + `">
 <head>
@@ -526,54 +656,14 @@ func adminOSShellHead(nonce, title, active string, settings *osSettings) string 
 
 <div class="shell">
 <!-- ── Sidebar ──────────────────────────────────────────────── -->
-<aside class="sidebar" aria-label="Admin navigation">
+<aside id="vp-sidebar" class="sidebar" aria-label="Admin navigation">
   <div class="sidebar-brand">
     <img src="/static/favicon-light.png" alt="" width="28" height="28">
     <span class="sidebar-brand-name">` + siteName + `</span>
     <span class="sidebar-brand-os">VayuOS</span>
   </div>
   <nav class="sidebar-nav" aria-label="Primary">
-    <div class="sidebar-section-label">Content</div>
-    ` + navItem("/os", "Dashboard", "dashboard", active, iconDashboard) + `
-    ` + navItem("/os/posts", "Posts", "posts", active, iconPosts) + `
-    ` + navItem("/os/comments", "Comments", "comments", active, iconComments) + `
-    ` + navItem("/os/pages", "Pages", "pages", active, iconPages) + `
-    ` + navItemBadge("/os/messages", "Messages", "messages", active, iconMessages, osUnread(settings)) + `
-    ` + navItem("/os/editor", "New Post", "editor", active, iconNewPost) + `
-    ` + navItem("/os/media", "Media", "media", active, iconMedia) + `
-
-    <div class="sidebar-section-label">Audience</div>
-    ` + navItem("/os/members", "Members", "members", active, iconMembers) + `
-    ` + navItem("/os/newsletter", "Newsletter", "newsletter", active, iconNewsletter) + `
-    ` + navItem("/os/profile", "My Profile", "profile", active, iconMembers) + `
-
-    <div class="sidebar-section-label">Monetization</div>
-    ` + navItem("/os/monetization", "Monetization", "monetization", active, iconMoney) + `
-    ` + navItem("/os/ads", "Advertising", "ads", active, iconAds) + `
-
-    <div class="sidebar-section-label">Optimize</div>
-    ` + navItem("/os/seo", "SEO", "seo", active, iconSEO) + `
-    ` + navItem("/os/analytics", "Analytics", "analytics", active, iconAnalytics) + `
-    ` + navItem("/os/theme", "Theme Studio", "theme", active, iconTheme) + `
-    ` + navItem("/os/theme/store", "Theme Store", "theme-store", active, iconThemeStore) + `
-    ` + navItem("/os/vayuos", "VayuMail", "vayuos", active, iconSecurity) + `
-
-    <div class="sidebar-section-label">System</div>
-    ` + navItem("/os/monitoring", "Monitoring", "monitoring", active, iconMonitoring) + `
-    ` + navItem("/os/governance", "Governance", "governance", active, iconGovernance) + `
-    ` + navItem("/os/tools", "Tools & Plugins", "tools", active, iconTools) + `
-    ` + navItem("/os/update", "Update & Backup", "update", active, iconUpdate) + `
-    ` + navItem("/os/settings", "Settings", "settings", active, iconSettings) + `
-    ` + navItem("/os/apikeys", "API Keys", "apikeys", active, iconKey) + `
-    ` + navItem("/os/security", "Security", "security", active, iconSecurity) + `
-
-    <div class="sidebar-section-label">Operations</div>
-    ` + navItem("/os/modes", "System Modes", "modes", active, iconModes) + `
-    ` + navItem("/os/policy", "Policy Inspector", "policy", active, iconPolicy) + `
-    ` + navItem("/os/topology", "Topology", "topology", active, iconTopology) + `
-    ` + navItem("/os/replay", "Replay Explorer", "replay", active, iconReplay) + `
-    ` + navItem("/os/faults", "Fault Engine", "faults", active, iconFaults) + `
-    ` + navItem("/os/adr", "ADR Registry", "adrs", active, iconADR) + `
+    ` + osSidebarNav(active, settings) + `
     <div class="sidebar-spacer"></div>
   </nav>
   <div class="sidebar-footer">
@@ -584,13 +674,13 @@ func adminOSShellHead(nonce, title, active string, settings *osSettings) string 
 <!-- ── Main ─────────────────────────────────────────────────── -->
 <div class="main">
   <header class="topbar" role="banner">
-    <button type="button" class="menu-toggle btn--icon" data-action="toggle-sidebar" aria-label="Toggle sidebar">
+    <button type="button" class="menu-toggle btn--icon" data-action="toggle-sidebar" aria-label="Toggle navigation menu" aria-controls="vp-sidebar" aria-expanded="false">
       <svg viewBox="0 0 20 20" fill="none" width="20" height="20" aria-hidden="true"><path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
     </button>
     <span class="topbar-title">` + et + `</span>
     <span class="topbar-spacer"></span>
     ` + cmdHint + `
-    <a class="btn btn--primary btn--sm" href="/os/editor">New Post</a>
+    ` + newPostBtn + `
     <form method="POST" action="/os/logout">
       <button type="submit" class="btn btn--ghost btn--sm">Sign out</button>
     </form>
@@ -623,23 +713,24 @@ window.vpPost=function(url,onok){fetch(url,{method:'POST',headers:{'Content-Type
 </div><!-- .main -->
 </div><!-- .shell -->
 ` + ops + `
-<!-- Bottom nav for mobile -->
+<!-- Bottom nav for mobile — quick links + a Menu button that opens the full,
+     role-scoped drawer so every section is reachable like a native app. -->
 <nav class="bottom-nav" aria-label="Mobile navigation">
-  <a class="bottom-nav-item" href="/os">
+  <a class="bottom-nav-item" href="/os" data-nav="/os">
     ` + iconDashboard + `<span>Home</span>
   </a>
-  <a class="bottom-nav-item" href="/os/posts">
+  <a class="bottom-nav-item" href="/os/posts" data-nav="/os/posts">
     ` + iconPosts + `<span>Posts</span>
   </a>
-  <a class="bottom-nav-item" href="/os/editor">
+  <a class="bottom-nav-item bottom-nav-item--accent" href="/os/editor" data-nav="/os/editor">
     ` + iconNewPost + `<span>Write</span>
   </a>
-  <a class="bottom-nav-item" href="/os/members">
-    ` + iconMembers + `<span>Members</span>
+  <a class="bottom-nav-item" href="/os/messages" data-nav="/os/messages">
+    ` + iconMessages + `<span>Inbox</span>
   </a>
-  <a class="bottom-nav-item" href="/os/settings">
-    ` + iconSettings + `<span>Settings</span>
-  </a>
+  <button type="button" class="bottom-nav-item" data-action="toggle-sidebar" aria-controls="vp-sidebar" aria-expanded="false" aria-label="Open menu">
+    ` + iconApps + `<span>Menu</span>
+  </button>
 </nav>
 
 <!-- Command palette -->
@@ -678,6 +769,10 @@ type osSettings struct {
 	UserName   string
 	UserRole   string
 	UserAvatar string
+	// MailOnly / AccessLevel drive role-scoped sidebar visibility and match the
+	// route guard in requireSessionOrAPIKey (hidden == unreachable).
+	MailOnly    bool
+	AccessLevel int
 	// UnreadMessages drives the sidebar badge on the Messages item.
 	UnreadMessages int
 }
@@ -697,6 +792,7 @@ func (a *App) getOSSettings(ctx context.Context) *osSettings {
 	// Surface the authenticated user (if any) so the shell can show their
 	// avatar/name/role. The user is attached to the context by
 	// requireSessionOrAPIKey and already carries the profile fields.
+	s.AccessLevel = accessAdmin // legacy API-key / no-session callers are admin-equivalent
 	if v := ctx.Value(ctxUserKey); v != nil {
 		if u, ok := v.(*users.User); ok && u != nil {
 			s.UserID = u.ID
@@ -706,6 +802,10 @@ func (a *App) getOSSettings(ctx context.Context) *osSettings {
 			}
 			s.UserRole = u.Role
 			s.UserAvatar = u.AvatarURL
+			if mo, ok := ctx.Value(ctxMailOnlyKey).(bool); ok && mo {
+				s.MailOnly = true
+			}
+			s.AccessLevel = accessLevelFor(u.Role, s.MailOnly)
 		}
 	}
 	return s
@@ -805,6 +905,24 @@ func (a *App) handleOSLoginSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 	u, err := a.userStore.Authenticate(r.Context(), email, pass)
 	if err != nil {
+		// Fall back to a VayuMail account login (mailbox / author / editor / etc.),
+		// so those email accounts can sign in from the same website login button.
+		if addr, mok, totpMissing := a.authMailAccount(r.Context(), email, pass, r.FormValue("totp")); mok {
+			token, terr := a.sessions.Create(r.Context(), "vmail:"+addr)
+			if terr != nil {
+				http.Error(w, "could not start session", http.StatusInternalServerError)
+				return
+			}
+			auth.RecordAuthSuccess(ip)
+			auth.SetSessionCookie(w, token)
+			http.Redirect(w, r, "/os", http.StatusSeeOther)
+			return
+		} else if totpMissing {
+			auth.RecordAuthFailure(ip)
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_, _ = w.Write([]byte(osLoginPage(email, "Enter the 6-digit code from your authenticator app, then re-enter your password.")))
+			return
+		}
 		auth.RecordAuthFailure(ip)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_, _ = w.Write([]byte(osLoginPage(email, "Invalid email or password.")))
@@ -1230,13 +1348,22 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// ── Status counts within the active filter ───────────────────────────────
+	// A bounded context so a slow or contended query can never hang the request
+	// until the upstream proxy gives up — the cause of the intermittent 502 on
+	// large catalogs. On deadline the queries return an error and the handler
+	// degrades to a friendly, retryable page (HTTP 200) instead of a gateway
+	// error.
+	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
+	defer cancel()
+	loadErr := false
+
 	allCount, published, drafts := 0, 0, 0
 	if dbpkg.DB != nil {
 		// status is NOT NULL DEFAULT 'published' (migration 030), so we group by
 		// the bare column — `COALESCE(status,'published')` would defeat
 		// idx_articles_status and force a full-table scan (a 502-class stall on a
 		// large catalog). With no search/date filter this is an index-only count.
-		if rows, err := dbpkg.Reader().QueryContext(r.Context(),
+		if rows, err := dbpkg.Reader().QueryContext(ctx,
 			`SELECT status s, COUNT(1) c FROM articles`+filterClause+` GROUP BY status`, args...); err == nil {
 			for rows.Next() {
 				var s string
@@ -1252,6 +1379,8 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 			}
 			_ = rows.Err() // best-effort admin status counts
 			rows.Close()
+		} else {
+			loadErr = true
 		}
 	}
 	total := allCount
@@ -1282,6 +1411,7 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 		Title, Slug, Status string
 		Tags                []string
 		Updated             time.Time
+		Featured            bool
 	}
 	var posts []postRow
 	listWhere := append([]string{}, where...)
@@ -1298,25 +1428,37 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 	}
 	listArgs = append(listArgs, osPostsPageSize, offset)
 	if dbpkg.DB != nil {
-		if rows, err := dbpkg.Reader().QueryContext(r.Context(),
-			`SELECT title,slug,COALESCE(tags,''),updated_at,COALESCE(status,'published') FROM articles`+listClause+` ORDER BY created_at DESC LIMIT ? OFFSET ?`, listArgs...); err == nil {
+		if rows, err := dbpkg.Reader().QueryContext(ctx,
+			`SELECT title,slug,COALESCE(tags,''),updated_at,COALESCE(status,'published'),COALESCE(featured,0) FROM articles`+listClause+` ORDER BY created_at DESC LIMIT ? OFFSET ?`, listArgs...); err == nil {
 			defer rows.Close()
 			for rows.Next() {
 				var p postRow
 				var tagsCSV string
-				if rows.Scan(&p.Title, &p.Slug, &tagsCSV, &p.Updated, &p.Status) == nil {
+				var featured int
+				if rows.Scan(&p.Title, &p.Slug, &tagsCSV, &p.Updated, &p.Status, &featured) == nil {
 					p.Tags = splitCSVTags(tagsCSV)
+					p.Featured = featured != 0
 					posts = append(posts, p)
 				}
 			}
 			_ = rows.Err() // best-effort admin post list
+		} else {
+			loadErr = true
 		}
 	}
 
 	filtersActive := q != "" || from != "" || to != "" || status != "all"
 
+	// When a query times out or errors we never want to mislead the operator
+	// with the "No posts yet" empty state; instead we render the manager shell
+	// with a non-blocking retry notice so the page always loads.
+	notice := ""
+	if loadErr {
+		notice = `<div class="card load-notice"><strong>Couldn't load everything just now</strong> — the database was busy. <a href="/os/posts">Retry</a>.</div>`
+	}
+
 	var body string
-	if allCount == 0 && !filtersActive {
+	if allCount == 0 && !filtersActive && !loadErr {
 		body = `<div class="page-header"><h1>Posts</h1></div>
 <div class="card empty-state">
   <div class="empty-icon">✍️</div>
@@ -1342,10 +1484,18 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 				// A draft is hidden from the public site (previewed in the editor).
 				viewBtn = ""
 			}
-			rows += `<tr data-post-row data-status="` + p.Status + `">
+			// Pin (featured) state — drives the trending/pinned widgets on the
+			// public site. Pinning toggles the same `featured` flag as the editor.
+			pinLabel, pinTo := "Pin", "1"
+			pinnedBadge := ""
+			if p.Featured {
+				pinLabel, pinTo = "Unpin", "0"
+				pinnedBadge = ` <span class="chip" title="Pinned to the homepage and trending widget">📌 Pinned</span>`
+			}
+			rows += `<tr data-post-row data-status="` + p.Status + `" data-featured="` + pinTo + `">
   <td><input type="checkbox" data-post-select value="` + esc + `" aria-label="Select ` + html.EscapeString(p.Title) + `"></td>
   <td class="row-title">
-    <a href="/os/editor/` + esc + `">` + html.EscapeString(p.Title) + `</a>
+    <a href="/os/editor/` + esc + `">` + html.EscapeString(p.Title) + `</a>` + pinnedBadge + `
     <div class="row-meta">/` + esc + `</div>
   </td>
   <td>` + statusPill + `</td>
@@ -1354,6 +1504,7 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
   <td class="row-actions">
     <a class="btn btn--ghost btn--sm" href="/os/editor/` + esc + `">Edit</a>
     ` + viewBtn + `
+    <button type="button" class="btn btn--ghost btn--sm" data-post-pin data-slug="` + esc + `" data-to="` + pinTo + `">` + pinLabel + `</button>
     <button type="button" class="btn btn--ghost btn--sm" data-post-toggle data-slug="` + esc + `" data-to="` + toggleTo + `">` + toggleLabel + `</button>
     <button type="button" class="btn btn--ghost btn--sm" data-post-delete data-slug="` + esc + `" data-title="` + html.EscapeString(p.Title) + `">Delete</button>
   </td>
@@ -1376,7 +1527,7 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 			shownTo = offset + len(posts)
 		}
 
-		body = `<div class="page-header">
+		body = notice + `<div class="page-header">
   <h1>Posts <span class="count-pill">` + strconv.Itoa(allCount) + `</span></h1>
   <div class="page-actions">
     <a class="btn btn--primary" href="/os/editor">New Post</a>
@@ -1414,6 +1565,15 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 function csrf(){var m=document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);return m?m[1]:'';}
 var msg=document.getElementById('action-msg');
 function show(t,e){if(!msg)return;msg.textContent=t;msg.classList.toggle('is-error',!!e);msg.classList.add('visible');}
+document.querySelectorAll('[data-post-pin]').forEach(function(b){
+  b.addEventListener('click',function(){
+    b.disabled=true;
+    fetch('/os/api/posts/pin',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},body:JSON.stringify({slug:b.getAttribute('data-slug'),pinned:b.getAttribute('data-to')==='1'})})
+      .then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d};});})
+      .then(function(res){if(res.ok){show(res.d.pinned?'Pinned':'Unpinned',false);setTimeout(function(){location.reload();},500);}else{b.disabled=false;show(res.d.detail||res.d.title||'Error',true);}})
+      .catch(function(e){b.disabled=false;show('Error: '+e,true);});
+  });
+});
 document.querySelectorAll('[data-post-toggle]').forEach(function(b){
   b.addEventListener('click',function(){
     b.disabled=true;

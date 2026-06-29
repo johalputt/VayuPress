@@ -124,7 +124,7 @@ func (w *Watcher) Check(ctx context.Context) (*Report, error) {
 			continue
 		}
 		c.Latest = latest
-		if latest != "" && normalizeVer(latest) != normalizeVer(c.Current) {
+		if latest != "" && isNewer(latest, c.Current) {
 			c.UpdateAvailable = true
 			rep.UpdatesAvailable++
 			c.Note = "newer upstream release available"
@@ -197,9 +197,70 @@ func itoa(n int) string {
 	return string(b[i:])
 }
 
+// shortName derives a human-friendly component name from a module path. It skips
+// a trailing semantic-import major-version element (e.g. ".../chi/v5" → "chi")
+// so the UI shows "chi" rather than the meaningless "v5".
 func shortName(module string) string {
 	parts := strings.Split(module, "/")
-	return parts[len(parts)-1]
+	last := parts[len(parts)-1]
+	if len(parts) >= 2 && isMajorSuffix(last) {
+		last = parts[len(parts)-2]
+	}
+	return last
+}
+
+// isMajorSuffix reports whether a path element is a Go module major-version
+// suffix like "v2", "v5", "v10".
+func isMajorSuffix(s string) bool {
+	if len(s) < 2 || s[0] != 'v' {
+		return false
+	}
+	for _, r := range s[1:] {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// isNewer reports whether the latest version is strictly greater than current,
+// using a tolerant dotted-numeric (semver-ish) comparison. This avoids the false
+// "update available" a plain inequality produced when the built version was a
+// pseudo-version or otherwise differed without being older.
+func isNewer(latest, current string) bool {
+	lv, cv := splitVer(latest), splitVer(current)
+	for i := 0; i < len(lv) || i < len(cv); i++ {
+		var a, b int
+		if i < len(lv) {
+			a = lv[i]
+		}
+		if i < len(cv) {
+			b = cv[i]
+		}
+		if a != b {
+			return a > b
+		}
+	}
+	return false
+}
+
+// splitVer parses a version into its numeric components (major, minor, patch…),
+// stripping the leading "v" and any pre-release/build metadata.
+func splitVer(v string) []int {
+	v = normalizeVer(v)
+	parts := strings.Split(v, ".")
+	out := make([]int, 0, len(parts))
+	for _, p := range parts {
+		n := 0
+		for _, r := range p {
+			if r < '0' || r > '9' {
+				break
+			}
+			n = n*10 + int(r-'0')
+		}
+		out = append(out, n)
+	}
+	return out
 }
 
 // normalizeVer trims a leading v and any build/pre-release metadata for a

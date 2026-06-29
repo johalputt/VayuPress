@@ -105,6 +105,29 @@ const (
 	KeyFeatureNewsletter  = "feature.newsletter"  // public newsletter subscribe
 	KeyFeatureWebmentions = "feature.webmentions" // inbound webmention receiver
 
+	// KeyFeatureSearch toggles VayuFind, the built-in site search (the nav search
+	// box, the instant search modal, and the server-rendered /search page).
+	// Default ON. When off, the search box/modal are hidden, /search returns 404,
+	// and the search engine returns no results. This is the operator's single
+	// "search on/off" switch — VayuPress has no external search dependency.
+	KeyFeatureSearch = "feature.search"
+
+	// KeyFeatureMeili is the legacy external-Meilisearch toggle.
+	//
+	// Deprecated: the external Meilisearch backend was removed in favour of the
+	// built-in VayuFind engine (see KeyFeatureSearch / ADR-0101). The constant is
+	// retained only so older stored values and references still resolve; it is no
+	// longer a live toggle and is not shown in Tools & Plugins.
+	KeyFeatureMeili = "feature.meili"
+
+	// KeyFeatureTrending toggles the public "Trending & pinned posts" widget
+	// shown on the homepage and at the bottom of every post. Default ON. When
+	// off, the /api/trending endpoint reports disabled and the client-side widget
+	// removes itself. Trending posts are the most-viewed in the last 7/30 days
+	// per the built-in cookieless analytics; pinned posts are the operator's
+	// featured posts (see the editor "Feature this post" toggle), capped at 4.
+	KeyFeatureTrending = "feature.trending"
+
 	// Monetization feature flags. Unlike the engagement flags above these
 	// default OFF: a site only starts taking payments or showing advertising
 	// once the operator explicitly switches the module on from Tools & Plugins,
@@ -146,6 +169,8 @@ var FeatureKeys = map[string]bool{
 	KeyFeatureComments:    true,
 	KeyFeatureNewsletter:  true,
 	KeyFeatureWebmentions: true,
+	KeyFeatureSearch:      true,
+	KeyFeatureTrending:    true,
 	KeyFeaturePayments:    true,
 	KeyFeatureAds:         true,
 	KeyFeatureGoogleAds:   true,
@@ -202,6 +227,8 @@ var AllKeys = map[string]bool{
 	KeyFeatureComments:       true,
 	KeyFeatureNewsletter:     true,
 	KeyFeatureWebmentions:    true,
+	KeyFeatureSearch:         true,
+	KeyFeatureTrending:       true,
 	KeyFeaturePayments:       true,
 	KeyFeatureAds:            true,
 	KeyFeatureGoogleAds:      true,
@@ -241,6 +268,7 @@ var Defaults = map[string]string{
 	KeyFeatureComments:       "on",
 	KeyFeatureNewsletter:     "on",
 	KeyFeatureWebmentions:    "on",
+	KeyFeatureSearch:         "on",
 	KeyFeaturePayments:       "off",
 	KeyFeatureAds:            "off",
 	KeyFeatureGoogleAds:      "off",

@@ -3,6 +3,8 @@ package mail
 import (
 	"context"
 	"database/sql"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -173,5 +175,61 @@ func TestIsLocalRecipientNoBridgeDomainFallback(t *testing.T) {
 	}
 	if e.isLocalRecipient("anyone@elsewhere.test") {
 		t.Fatalf("foreign-domain address must not be local")
+	}
+}
+
+// encryptingBridge is a loopbackBridge whose recipients all have a "PGP key", so
+// EncryptForRecipient always returns ciphertext. It lets the test prove that
+// SendMail encrypts (person-to-person) while SendSystemMail never does.
+type encryptingBridge struct{ loopbackBridge }
+
+func (encryptingBridge) EncryptForRecipient([]byte, string) ([]byte, bool) {
+	return []byte("-----BEGIN PGP MESSAGE-----\nCIPHERTEXT\n-----END PGP MESSAGE-----"), true
+}
+
+func readMaildirRaw(t *testing.T, root string) string {
+	t.Helper()
+	var sb strings.Builder
+	_ = filepath.Walk(root, func(p string, info os.FileInfo, err error) error {
+		if err == nil && !info.IsDir() {
+			if b, e := os.ReadFile(p); e == nil {
+				sb.Write(b)
+				sb.WriteString("\n")
+			}
+		}
+		return nil
+	})
+	return sb.String()
+}
+
+// SendSystemMail must never PGP-encrypt, even when the recipient has a key, so a
+// sign-in link stays readable. SendMail (person-to-person) must still encrypt.
+func TestSendSystemMailNeverEncrypted(t *testing.T) {
+	t.Parallel()
+	bridge := encryptingBridge{loopbackBridge{localSet: map[string]bool{"bob@example.com": true}}}
+	e := newLoopbackEngine(t, bridge)
+
+	// Person-to-person mail to a keyed recipient → encrypted (control case).
+	if _, err := e.SendMail(context.Background(), "alice@example.com",
+		[]string{"bob@example.com"}, "Secret", "", "secret body", ""); err != nil {
+		t.Fatalf("SendMail: %v", err)
+	}
+	// Transactional sign-in mail to the SAME recipient → must stay readable.
+	const link = "https://example.com/members/verify?token=abc123"
+	if _, err := e.SendSystemMail(context.Background(), "Acme <noreply@example.com>",
+		[]string{"bob@example.com"}, "Your sign-in link",
+		`<a href="`+link+`">Sign in</a>`, "Sign in: "+link); err != nil {
+		t.Fatalf("SendSystemMail: %v", err)
+	}
+
+	raw := readMaildirRaw(t, e.cfg.StorageDir)
+	// The encrypted control message is present (proves the bridge encrypts).
+	if !strings.Contains(raw, "X-VayuPGP") {
+		t.Fatal("expected the person-to-person SendMail to be PGP-encrypted")
+	}
+	// The system mail's link must be present in cleartext, and it must not have
+	// been turned into a PGP blob.
+	if !strings.Contains(raw, link) {
+		t.Error("system mail sign-in link should be delivered in readable text")
 	}
 }

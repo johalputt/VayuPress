@@ -62,6 +62,12 @@ type Message struct {
 type Sender struct {
 	cfg     Config
 	enabled bool
+	// fallback, when set, delivers a message through an alternative transport
+	// (the built-in VayuMail engine) whenever external SMTP is NOT configured.
+	// This is what lets transactional mail (sign-in links, welcome, newsletter
+	// confirmations) actually send on a sovereign single-binary deployment that
+	// runs its own mail server instead of relaying through a third-party SMTP.
+	fallback func(Message) error
 }
 
 // New constructs a Sender from cfg. When cfg.Host is empty the returned Sender
@@ -83,6 +89,16 @@ func New(cfg Config) *Sender {
 // status in admin UIs, but Send is always safe to call.
 func (s *Sender) Enabled() bool { return s.enabled }
 
+// SetFallback installs an alternative transport used when external SMTP is not
+// configured. Passing a non-nil function turns the Sender from a no-op into a
+// working transport backed by that function (the VayuMail engine), so callers
+// keep using Send unchanged.
+func (s *Sender) SetFallback(fn func(Message) error) { s.fallback = fn }
+
+// Active reports whether mail can actually be delivered — either external SMTP
+// is configured, or a fallback transport (VayuMail) is wired.
+func (s *Sender) Active() bool { return s.enabled || s.fallback != nil }
+
 // From returns the configured From header (useful for building links/footers).
 func (s *Sender) From() string { return s.cfg.From }
 
@@ -92,9 +108,34 @@ func (s *Sender) From() string { return s.cfg.From }
 // host and should be surfaced/retried by the caller.
 func (s *Sender) Send(msg Message) error {
 	if !s.enabled {
+		// No external SMTP. If a fallback transport (VayuMail) is wired, deliver
+		// through it — sanitising exactly as the SMTP path does so the body is
+		// safe regardless of transport. Otherwise no-op so upstream flows aren't
+		// broken on a deployment with neither configured.
+		if s.fallback != nil {
+			to := sanitizeHeader(msg.To)
+			if _, err := mailParse(to); err != nil {
+				return fmt.Errorf("email: invalid recipient: %w", err)
+			}
+			msg.To = to
+			msg.HTML = emailHTMLPolicy.Sanitize(msg.HTML)
+			msg.Text = stripControl(msg.Text)
+			if err := s.fallback(msg); err != nil {
+				logging.LogJSON(logging.LogFields{
+					Level: "error", Component: "email", Severity: "error",
+					Msg: "fallback (VayuMail) delivery failed", Path: redactEmail(to), Error: err.Error(),
+				})
+				return err
+			}
+			logging.LogJSON(logging.LogFields{
+				Level: "info", Component: "email", Severity: "info",
+				Msg: "delivered via VayuMail: " + sanitizeHeader(msg.Subject), Path: redactEmail(to),
+			})
+			return nil
+		}
 		logging.LogJSON(logging.LogFields{
 			Level: "info", Component: "email", Severity: "info",
-			Msg: "SMTP not configured — skipping delivery", Path: redactEmail(msg.To),
+			Msg: "no mail transport configured — skipping delivery (set SMTP_HOST or DOMAIN to enable VayuMail)", Path: redactEmail(msg.To),
 		})
 		return nil
 	}

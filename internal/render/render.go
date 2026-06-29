@@ -19,6 +19,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	chromahtml "github.com/alecthomas/chroma/v2/formatters/html"
@@ -428,6 +429,20 @@ func SetActiveSettings(s SiteSettings) {
 	activeSettingsMu.Unlock()
 }
 
+// searchEnabled gates whether the public site search box (nav + /search page) is
+// shown. It is tied to the Meilisearch toggle: turning Meilisearch off hides the
+// search box entirely. Default on. Set at boot and whenever the operator flips
+// the toggle; the page cache is purged on toggle so cached pages re-render.
+var searchEnabled atomic.Bool
+
+func init() { searchEnabled.Store(true) }
+
+// SetSearchEnabled shows/hides the public search box.
+func SetSearchEnabled(v bool) { searchEnabled.Store(v) }
+
+// SearchEnabled reports whether the public search box/page is currently shown.
+func SearchEnabled() bool { return searchEnabled.Load() }
+
 // GetActiveSettings returns a copy of the current active settings (exported for callers outside this package).
 func GetActiveSettings() SiteSettings { return getActiveSettings() }
 
@@ -704,6 +719,423 @@ func PostCardMediaJSLink() template.HTML {
 	return template.HTML(`<script src="/static/js/post-card-media.js?v=` + postCardMediaJSHash + `" defer></script>`)
 }
 
+// TrendingJS hydrates every [data-vayu-trending] section (homepage + bottom of
+// each post) from the public /api/trending endpoint. Sovereign · zero-CDN ·
+// strict-CSP: no inline styles, no eval, all DOM built with
+// createElement/textContent so a malicious title can never become markup. The
+// lists are served as JSON (pages themselves are disk-cached), so the widget is
+// always fresh without cache churn. Served same-origin from this constant →
+// satisfies `script-src 'self'` without a nonce (works in disk-cached pages).
+//
+// NOTE: this is the single source of truth for the widget script. It is served
+// at /static/js/trending.js (see handleTrendingWidgetJS) with a content-hashed
+// ?v= query so a CDN/proxy can never pin a stale copy — historically the bare,
+// unversioned URL let Cloudflare cache a 404 from before the script existed,
+// which silently broke the trending AND pinned-posts widgets site-wide.
+const TrendingJS = `(function () {
+  'use strict';
+
+  var sections = Array.prototype.slice.call(
+    document.querySelectorAll('[data-vayu-trending]')
+  );
+  if (!sections.length) return;
+
+  fetch('/api/trending', { headers: { Accept: 'application/json' } })
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (data) {
+      if (!data || !data.enabled) return;
+      var windows = data.windows || {};
+      var pinned = data.pinned || [];
+      var has7 = (windows['7'] || []).length > 0;
+      var has30 = (windows['30'] || []).length > 0;
+      if (!pinned.length && !has7 && !has30) return; // nothing to show
+      sections.forEach(function (section) {
+        renderInto(section, pinned, windows);
+        section.removeAttribute('hidden');
+      });
+    })
+    .catch(function () { /* network/parse error — leave the section hidden */ });
+
+  function card(item, rank, isPin) {
+    var a = document.createElement('a');
+    a.className = 'vayu-trending-card';
+    a.href = '/' + item.slug;
+
+    var badge = document.createElement('span');
+    if (isPin) {
+      badge.className = 'vayu-trending-pin';
+      badge.textContent = '\uD83D\uDCCC'; // 📌
+      badge.setAttribute('aria-hidden', 'true');
+    } else {
+      badge.className = 'vayu-trending-rank';
+      badge.textContent = String(rank);
+      badge.setAttribute('aria-hidden', 'true');
+    }
+    a.appendChild(badge);
+
+    if (item.image) {
+      var img = document.createElement('img');
+      img.className = 'vayu-trending-thumb';
+      img.src = item.image;
+      img.alt = '';
+      img.loading = 'lazy';
+      img.decoding = 'async';
+      a.appendChild(img);
+    }
+
+    var title = document.createElement('span');
+    title.className = 'vayu-trending-title';
+    title.textContent = item.title || item.slug;
+    a.appendChild(title);
+    return a;
+  }
+
+  function listEl(items, isPin) {
+    var list = document.createElement('div');
+    list.className = 'vayu-trending-list';
+    items.forEach(function (it, i) { list.appendChild(card(it, i + 1, isPin)); });
+    return list;
+  }
+
+  function group(labelText, icon) {
+    var g = document.createElement('div');
+    g.className = 'vayu-trending-group';
+    var head = document.createElement('div');
+    head.className = 'vayu-trending-head';
+    var label = document.createElement('span');
+    label.className = 'vayu-trending-label';
+    label.textContent = icon + ' ' + labelText;
+    head.appendChild(label);
+    g.appendChild(head);
+    return { group: g, head: head };
+  }
+
+  function renderInto(section, pinned, windows) {
+    section.textContent = ''; // idempotent: clear any prior render
+
+    if (pinned.length) {
+      var p = group('Pinned', '\uD83D\uDCCC');
+      p.group.appendChild(listEl(pinned, true));
+      section.appendChild(p.group);
+    }
+
+    var win7 = windows['7'] || [];
+    var win30 = windows['30'] || [];
+    if (!win7.length && !win30.length) return;
+
+    var t = group('Trending', '\uD83D\uDD25'); // 🔥
+    var tabs = document.createElement('div');
+    tabs.className = 'vayu-trending-tabs';
+    tabs.setAttribute('role', 'tablist');
+
+    var listWrap = document.createElement('div');
+
+    function show(days) {
+      var items = days === 30 ? win30 : win7;
+      listWrap.textContent = '';
+      listWrap.appendChild(listEl(items, false));
+      Array.prototype.forEach.call(tabs.children, function (b) {
+        b.setAttribute('aria-selected', b.getAttribute('data-w') === String(days) ? 'true' : 'false');
+      });
+    }
+
+    function tab(days, text, enabled) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'vayu-trending-tab';
+      b.setAttribute('role', 'tab');
+      b.setAttribute('data-w', String(days));
+      b.textContent = text;
+      if (!enabled) { b.disabled = true; }
+      b.addEventListener('click', function () { if (!b.disabled) show(days); });
+      return b;
+    }
+
+    tabs.appendChild(tab(7, 'Last 7 days', win7.length > 0));
+    tabs.appendChild(tab(30, 'Last 30 days', win30.length > 0));
+    t.head.appendChild(tabs);
+
+    t.group.appendChild(listWrap);
+    section.appendChild(t.group);
+
+    show(win7.length ? 7 : 30);
+  }
+})();
+`
+
+// trendingJSHash versions the widget script URL for cache-busting.
+var trendingJSHash = func() string {
+	sum := sha256.Sum256([]byte(TrendingJS))
+	return hex.EncodeToString(sum[:8])
+}()
+
+// TrendingJSLink returns the content-hashed <script> tag for the trending/pinned
+// widget. The ?v= hash guarantees a CDN/proxy fetches a fresh copy whenever the
+// script changes (and bypasses any previously cached 404 on the bare URL).
+func TrendingJSLink() template.HTML {
+	return template.HTML(`<script src="/static/js/trending.js?v=` + trendingJSHash + `" defer></script>`)
+}
+
+// SearchModalJS powers VayuFind's instant search overlay — the Ghost-style
+// modal that opens from the nav search box (or Ctrl/⌘-K, or "/"). It is
+// sovereign · zero-CDN · strict-CSP: no inline styles (all classes live in the
+// stylesheet), no eval, and every result node is built with
+// createElement/textContent so a malicious title can never become markup.
+//
+// It downloads ONE compact index (/api/search-index.json, content-hash cached)
+// the first time the overlay opens, then filters entirely in the browser — no
+// per-keystroke server round-trips. The ranking mirrors the Go scorer: every
+// query term must match (AND), with title ≫ tags ≫ excerpt weighting.
+//
+// Progressive enhancement: the nav <form> still submits to /search when
+// JavaScript is unavailable, so search degrades gracefully.
+const SearchModalJS = `(function () {
+  'use strict';
+
+  var forms = Array.prototype.slice.call(document.querySelectorAll('form[data-vayu-search]'));
+  if (!forms.length) return;
+
+  var overlay, input, list, status, posts = null, loading = false, items = [], active = -1, t0;
+
+  function tokenize(q) {
+    return (q || '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+  }
+  function wordHit(hay, term) {
+    var i = hay.indexOf(term);
+    while (i !== -1) {
+      var l = i === 0 || !/[a-z0-9]/.test(hay[i - 1]);
+      var e = i + term.length;
+      var r = e >= hay.length || !/[a-z0-9]/.test(hay[e]);
+      if (l && r) return true;
+      i = hay.indexOf(term, i + 1);
+    }
+    return false;
+  }
+  function score(p, terms) {
+    var title = p._t, tags = p._g, text = p._x, total = 0;
+    for (var i = 0; i < terms.length; i++) {
+      var term = terms[i], s = 0;
+      if (title.indexOf(term) === 0) s = 60;
+      else if (wordHit(title, term)) s = 45;
+      else if (title.indexOf(term) !== -1) s = 30;
+      if (wordHit(tags, term)) s += 25;
+      else if (tags.indexOf(term) !== -1) s += 12;
+      if (s === 0) {
+        if (wordHit(text, term)) s = 8;
+        else if (text.indexOf(term) !== -1) s = 4;
+      }
+      if (s === 0) return 0;
+      total += s;
+    }
+    return total;
+  }
+
+  function ensureBuilt() {
+    if (overlay) return;
+    overlay = document.createElement('div');
+    overlay.className = 'vayu-search-modal';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.setAttribute('aria-label', 'Search');
+
+    var backdrop = document.createElement('div');
+    backdrop.className = 'vayu-search-backdrop';
+    backdrop.addEventListener('click', close);
+
+    var panel = document.createElement('div');
+    panel.className = 'vayu-search-panel';
+
+    var bar = document.createElement('div');
+    bar.className = 'vayu-search-bar';
+    var icon = document.createElement('span');
+    icon.className = 'vayu-search-icon';
+    icon.setAttribute('aria-hidden', 'true');
+    icon.textContent = '\uD83D\uDD0D';
+    input = document.createElement('input');
+    input.type = 'search';
+    input.className = 'vayu-search-field';
+    input.setAttribute('placeholder', 'Search posts\u2026');
+    input.setAttribute('aria-label', 'Search posts');
+    input.setAttribute('autocomplete', 'off');
+    input.setAttribute('spellcheck', 'false');
+    var esc = document.createElement('button');
+    esc.type = 'button';
+    esc.className = 'vayu-search-esc';
+    esc.textContent = 'Esc';
+    esc.addEventListener('click', close);
+    bar.appendChild(icon);
+    bar.appendChild(input);
+    bar.appendChild(esc);
+
+    list = document.createElement('div');
+    list.className = 'vayu-search-results';
+    status = document.createElement('div');
+    status.className = 'vayu-search-status';
+    status.textContent = 'Type to search';
+
+    panel.appendChild(bar);
+    panel.appendChild(status);
+    panel.appendChild(list);
+    overlay.appendChild(backdrop);
+    overlay.appendChild(panel);
+    document.body.appendChild(overlay);
+
+    input.addEventListener('input', onInput);
+    input.addEventListener('keydown', onKey);
+  }
+
+  function load() {
+    if (posts || loading) return;
+    loading = true;
+    fetch('/api/search-index.json', { headers: { Accept: 'application/json' } })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) {
+        loading = false;
+        if (!data || !data.posts) { status.textContent = 'Search is unavailable'; return; }
+        posts = data.posts.map(function (p) {
+          p._t = (p.t || '').toLowerCase();
+          p._g = (p.g || []).join(' ').toLowerCase();
+          p._x = p._t + '\n' + p._g + '\n' + (p.e || '').toLowerCase();
+          return p;
+        });
+        if (input.value) onInput();
+      })
+      .catch(function () { loading = false; status.textContent = 'Search is unavailable'; });
+  }
+
+  function open(prefill) {
+    ensureBuilt();
+    load();
+    document.documentElement.classList.add('vayu-modal-open');
+    overlay.classList.add('is-open');
+    if (prefill) input.value = prefill;
+    active = -1;
+    setTimeout(function () { input.focus(); if (input.value) onInput(); }, 0);
+  }
+  function close() {
+    if (!overlay) return;
+    overlay.classList.remove('is-open');
+    document.documentElement.classList.remove('vayu-modal-open');
+  }
+
+  function onInput() {
+    clearTimeout(t0);
+    t0 = setTimeout(render, 60);
+  }
+
+  function render() {
+    if (!posts) return;
+    var q = input.value.trim();
+    var terms = tokenize(q);
+    list.textContent = '';
+    items = [];
+    active = -1;
+    if (!terms.length) { status.textContent = 'Type to search'; return; }
+    var scored = [];
+    for (var i = 0; i < posts.length; i++) {
+      var sc = score(posts[i], terms);
+      if (sc > 0) scored.push([sc, posts[i]]);
+    }
+    scored.sort(function (a, b) { return b[0] - a[0] || (b[1].d - a[1].d); });
+    scored = scored.slice(0, 8);
+    if (!scored.length) { status.textContent = 'No results for \u201C' + q + '\u201D'; return; }
+    status.textContent = scored.length + (scored.length === 1 ? ' result' : ' results');
+    for (var j = 0; j < scored.length; j++) {
+      list.appendChild(item(scored[j][1], terms));
+    }
+    if (items.length) setActive(0);
+  }
+
+  function item(p, terms) {
+    var a = document.createElement('a');
+    a.className = 'vayu-search-result';
+    a.href = '/' + p.u;
+    var title = document.createElement('div');
+    title.className = 'vayu-search-result-title';
+    highlight(title, p.t || p.u, terms);
+    var ex = document.createElement('div');
+    ex.className = 'vayu-search-result-excerpt';
+    ex.textContent = p.e || '';
+    a.appendChild(title);
+    if (p.e) a.appendChild(ex);
+    a.addEventListener('mouseenter', function () { setActive(items.indexOf(a)); });
+    items.push(a);
+    return a;
+  }
+
+  // highlight builds matched/unmatched text nodes safely (no innerHTML).
+  function highlight(el, text, terms) {
+    var lower = text.toLowerCase(), ranges = [];
+    terms.forEach(function (term) {
+      var i = lower.indexOf(term);
+      while (i !== -1) { ranges.push([i, i + term.length]); i = lower.indexOf(term, i + 1); }
+    });
+    if (!ranges.length) { el.textContent = text; return; }
+    ranges.sort(function (a, b) { return a[0] - b[0]; });
+    var merged = [ranges[0]];
+    for (var k = 1; k < ranges.length; k++) {
+      var last = merged[merged.length - 1];
+      if (ranges[k][0] <= last[1]) last[1] = Math.max(last[1], ranges[k][1]);
+      else merged.push(ranges[k]);
+    }
+    var pos = 0;
+    merged.forEach(function (r) {
+      if (r[0] > pos) el.appendChild(document.createTextNode(text.slice(pos, r[0])));
+      var m = document.createElement('mark');
+      m.textContent = text.slice(r[0], r[1]);
+      el.appendChild(m);
+      pos = r[1];
+    });
+    if (pos < text.length) el.appendChild(document.createTextNode(text.slice(pos)));
+  }
+
+  function setActive(i) {
+    if (active >= 0 && items[active]) items[active].classList.remove('is-active');
+    active = i;
+    if (items[active]) {
+      items[active].classList.add('is-active');
+      items[active].scrollIntoView({ block: 'nearest' });
+    }
+  }
+
+  function onKey(e) {
+    if (e.key === 'ArrowDown') { e.preventDefault(); if (items.length) setActive((active + 1) % items.length); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); if (items.length) setActive((active - 1 + items.length) % items.length); }
+    else if (e.key === 'Enter') { if (active >= 0 && items[active]) { e.preventDefault(); window.location.href = items[active].href; } }
+    else if (e.key === 'Escape') { e.preventDefault(); close(); }
+  }
+
+  forms.forEach(function (form) {
+    var field = form.querySelector('input[type="search"]');
+    function trigger(e) { e.preventDefault(); open(field ? field.value : ''); }
+    form.addEventListener('submit', trigger);
+    if (field) {
+      field.addEventListener('focus', trigger);
+      field.addEventListener('click', trigger);
+    }
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if ((e.key === 'k' || e.key === 'K') && (e.metaKey || e.ctrlKey)) { e.preventDefault(); open(''); }
+    else if (e.key === '/' && !/^(INPUT|TEXTAREA|SELECT)$/.test((e.target.tagName || '')) && !(overlay && overlay.classList.contains('is-open'))) {
+      e.preventDefault(); open('');
+    }
+  });
+})();
+`
+
+// searchModalJSHash versions the modal script URL for cache-busting.
+var searchModalJSHash = func() string {
+	sum := sha256.Sum256([]byte(SearchModalJS))
+	return hex.EncodeToString(sum[:8])
+}()
+
+// SearchModalJSLink returns the content-hashed <script> tag for the VayuFind
+// instant-search modal.
+func SearchModalJSLink() template.HTML {
+	return template.HTML(`<script src="/static/js/search.js?v=` + searchModalJSHash + `" defer></script>`)
+}
+
 // headMetaHTML renders the declarative <head> capabilities to a safe, escaped
 // allowlist of <meta> tags. Values are validated on write (hex/token/allowlist)
 // and HTML-escaped here — defense in depth. No arbitrary operator markup ever
@@ -768,6 +1200,14 @@ type articlePage struct {
 	IsPage             bool   // true → render without post chrome (date/tags/related)
 	// Related articles (same-tag suggestions)
 	Related []RelatedArticle
+	// ShowSearch gates the public search box in the nav (tied to the Meili toggle).
+	ShowSearch bool
+	// TrendingJSLink is the content-hashed <script> tag that hydrates the
+	// trending/pinned widget under each post (empty for standalone pages).
+	TrendingJSLink template.HTML
+	// SearchModalJSLink is the content-hashed <script> tag for the VayuFind
+	// instant-search modal (shown only when search is enabled).
+	SearchModalJSLink template.HTML
 }
 
 // RelatedArticle is a lightweight record used in the article footer suggestions.
@@ -955,6 +1395,9 @@ var articleTmpl = template.Must(template.New("article").Funcs(template.FuncMap{
   <a href="/" class="vayu-nav-brand"><img src="/static/favicon-light.png" alt="" width="24" height="24">{{if .SiteName}}{{.SiteName}}{{else}}VayuPress{{end}}</a>
   <div class="vayu-nav-links">
     {{.NavLinks}}
+    {{if .ShowSearch}}<form class="vayu-search" method="get" action="/search" role="search" data-vayu-search>
+      <input class="vayu-search-input" type="search" name="q" placeholder="Search…" aria-label="Search posts">
+    </form>{{end}}
     <button type="button" id="vayu-theme-toggle" class="vayu-theme-toggle" aria-label="Toggle theme">☾</button>
   </div>
 </nav>
@@ -984,8 +1427,9 @@ var articleTmpl = template.Must(template.New("article").Funcs(template.FuncMap{
 </section>{{end}}
 {{if .CommentsEnabled}}<section id="vayu-comments" class="vayu-comments" data-slug="{{.Slug}}" aria-label="Comments"></section>{{end}}
 {{if .ContactForm}}<section id="vayu-contact" class="vayu-contact" aria-label="Contact form"></section>{{end}}
+{{if not .IsPage}}<section class="vayu-trending" data-vayu-trending hidden aria-label="Trending and pinned posts"></section>{{end}}
 {{.Footer}}
-</main></div>{{if .CommentsEnabled}}{{.CommentsJSLink}}{{end}}{{if .ContactForm}}{{.ContactJSLink}}{{end}}</body></html>`))
+</main></div>{{if .CommentsEnabled}}{{.CommentsJSLink}}{{end}}{{if .ContactForm}}{{.ContactJSLink}}{{end}}{{if not .IsPage}}{{.TrendingJSLink}}{{end}}{{if .ShowSearch}}{{.SearchModalJSLink}}{{end}}</body></html>`))
 
 // HomeArticle is a single entry rendered on the public homepage index.
 type HomeArticle struct {
@@ -1019,6 +1463,21 @@ type homePage struct {
 	ShowHero            bool
 	Articles            []HomeArticle
 	TotalCount          int
+	// Pagination across the public homepage feed.
+	Page       int
+	TotalPages int
+	HasPrev    bool
+	HasNext    bool
+	PrevURL    string
+	NextURL    string
+	Canonical  string // canonical path for this page: "/" or "/page/N"
+	ShowSearch bool   // show the public search box (tied to the Meili toggle)
+	// TrendingJSLink is the content-hashed <script> tag that hydrates the
+	// trending/pinned widget on the homepage.
+	TrendingJSLink template.HTML
+	// SearchModalJSLink is the content-hashed <script> tag for the VayuFind
+	// instant-search modal (shown only when search is enabled).
+	SearchModalJSLink template.HTML
 }
 
 var homeFuncs = template.FuncMap{
@@ -1031,10 +1490,12 @@ var homeTmpl = template.Must(template.New("home").Funcs(homeFuncs).Parse(`<!DOCT
 <title>{{if .SiteName}}{{.SiteName}}{{else}}{{.Domain}}{{end}}{{if .Tagline}} — {{.Tagline}}{{end}}</title>
 <meta name="description" content="{{if .Description}}{{.Description}}{{else if .Tagline}}{{.Tagline}}{{else}}{{if .SiteName}}{{.SiteName}}{{else}}{{.Domain}}{{end}}{{end}}">
 <meta name="generator" content="VayuPress {{.Version}}">
-<link rel="canonical" href="https://{{.Domain}}/">
+<link rel="canonical" href="https://{{.Domain}}{{.Canonical}}">{{if .HasPrev}}
+<link rel="prev" href="https://{{.Domain}}{{.PrevURL}}">{{end}}{{if .HasNext}}
+<link rel="next" href="https://{{.Domain}}{{.NextURL}}">{{end}}
 <link rel="alternate" type="application/rss+xml" title="{{.Domain}} feed" href="/feed.xml">
 <meta property="og:type" content="website"><meta property="og:title" content="{{.Domain}}">
-<meta property="og:url" content="https://{{.Domain}}/">
+<meta property="og:url" content="https://{{.Domain}}{{.Canonical}}">
 {{if .OGImage}}<meta property="og:image" content="https://{{.Domain}}{{.OGImage}}"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="https://{{.Domain}}{{.OGImage}}">{{end}}
 {{.PicoCSSLink}}{{.CustomCSSLink}}{{.ArticleCSSLink}}{{.HighContrastCSSLink}}{{.ThemeCSSLink}}{{.HeadMeta}}{{.ThemeToggleJSLink}}
 <link rel="manifest" href="/manifest.json">
@@ -1050,6 +1511,9 @@ var homeTmpl = template.Must(template.New("home").Funcs(homeFuncs).Parse(`<!DOCT
   <a href="/" class="vayu-nav-brand"><img src="/static/favicon-light.png" alt="" width="24" height="24">{{if .SiteName}}{{.SiteName}}{{else}}VayuPress{{end}}</a>
   <div class="vayu-nav-links">
     {{.NavLinks}}
+    {{if .ShowSearch}}<form class="vayu-search" method="get" action="/search" role="search" data-vayu-search>
+      <input class="vayu-search-input" type="search" name="q" placeholder="Search…" aria-label="Search posts">
+    </form>{{end}}
     <button type="button" id="vayu-theme-toggle" class="vayu-theme-toggle" aria-label="Toggle theme">☾</button>
     {{if .ShowMembership}}<a href="/members" class="vayu-nav-signin">Sign in</a>
     <a href="/signup" class="vayu-nav-signup">Sign up</a>{{end}}
@@ -1070,10 +1534,16 @@ var homeTmpl = template.Must(template.New("home").Funcs(homeFuncs).Parse(`<!DOCT
     {{if .Excerpt}}<p class="vayu-post-excerpt">{{.Excerpt}}</p>{{end}}
   </div>
 </a>{{end}}
-</div>{{else}}<div class="vayu-empty">No posts yet.</div>{{end}}
+</div>
+{{if gt .TotalPages 1}}<nav class="vayu-pagination" aria-label="Pagination">
+  {{if .HasPrev}}<a class="vayu-page-link" rel="prev" href="{{.PrevURL}}">← Newer</a>{{else}}<span class="vayu-page-link is-disabled" aria-disabled="true">← Newer</span>{{end}}
+  <span class="vayu-page-status">Page {{.Page}} of {{.TotalPages}}</span>
+  {{if .HasNext}}<a class="vayu-page-link" rel="next" href="{{.NextURL}}">Older →</a>{{else}}<span class="vayu-page-link is-disabled" aria-disabled="true">Older →</span>{{end}}
+</nav>{{end}}{{else}}<div class="vayu-empty">No posts yet.</div>{{end}}
+<section class="vayu-trending" data-vayu-trending hidden aria-label="Trending and pinned posts"></section>
 {{.Footer}}
 </main>
-</div>{{.PostCardMediaJSLink}}</body></html>`))
+</div>{{.PostCardMediaJSLink}}{{.TrendingJSLink}}{{if .ShowSearch}}{{.SearchModalJSLink}}{{end}}</body></html>`))
 
 var notFoundTmpl = template.Must(template.New("404").Parse(`<!DOCTYPE html><html lang="en" data-theme="dark"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -1099,10 +1569,35 @@ var notFoundTmpl = template.Must(template.New("404").Parse(`<!DOCTYPE html><html
 </div></main>
 </div></body></html>`))
 
-// RenderHome renders the public homepage index from recent articles.
-func RenderHome(domain, version string, articles []HomeArticle, totalCount int) (string, error) {
+// RenderHome renders the public homepage index from recent articles. page is
+// 1-based and totalPages is the number of pages across the published feed; when
+// totalPages > 1 a Newer/Older pager is rendered and rel=prev/next + a
+// page-aware canonical are emitted for SEO.
+func RenderHome(domain, version string, articles []HomeArticle, totalCount, page, totalPages int) (string, error) {
 	var buf strings.Builder
 	s := getActiveSettings()
+	if page < 1 {
+		page = 1
+	}
+	if totalPages < 1 {
+		totalPages = 1
+	}
+	canonical := "/"
+	if page > 1 {
+		canonical = "/page/" + strconv.Itoa(page)
+	}
+	hasPrev, hasNext := page > 1, page < totalPages
+	prevURL, nextURL := "", ""
+	if hasPrev {
+		if page-1 <= 1 {
+			prevURL = "/" // page 1 lives at the site root, not /page/1
+		} else {
+			prevURL = "/page/" + strconv.Itoa(page-1)
+		}
+	}
+	if hasNext {
+		nextURL = "/page/" + strconv.Itoa(page+1)
+	}
 	err := homeTmpl.Execute(&buf, homePage{
 		Domain:              domain,
 		Version:             version,
@@ -1121,9 +1616,114 @@ func RenderHome(domain, version string, articles []HomeArticle, totalCount int) 
 		NavLinks:            navLinksHTML(s.NavJSON),
 		Footer:              footerHTML(s),
 		OGImage:             s.OGImage,
-		ShowHero:            s.ShowHero,
+		ShowHero:            s.ShowHero && page == 1, // hero only on the first page
 		Articles:            articles,
 		TotalCount:          totalCount,
+		Page:                page,
+		TotalPages:          totalPages,
+		HasPrev:             hasPrev,
+		HasNext:             hasNext,
+		PrevURL:             prevURL,
+		NextURL:             nextURL,
+		Canonical:           canonical,
+		ShowSearch:          searchEnabled.Load(),
+		TrendingJSLink:      TrendingJSLink(),
+		SearchModalJSLink:   SearchModalJSLink(),
+	})
+	return buf.String(), err
+}
+
+// SearchHit is a single public search result row.
+type SearchHit struct {
+	Title     string
+	Slug      string
+	Tags      []string
+	CreatedAt time.Time
+}
+
+type searchPage struct {
+	Domain              string
+	Version             string
+	PicoCSSLink         template.HTML
+	CustomCSSLink       template.HTML
+	ArticleCSSLink      template.HTML
+	HighContrastCSSLink template.HTML
+	ThemeCSSLink        template.HTML
+	HeadMeta            template.HTML
+	ThemeToggleJSLink   template.HTML
+	SiteName            string
+	NavLinks            template.HTML
+	Footer              template.HTML
+	Query               string
+	Hits                []SearchHit
+	ShowSearch          bool
+}
+
+var searchTmpl = template.Must(template.New("search").Funcs(homeFuncs).Parse(`<!DOCTYPE html><html lang="en" data-theme="dark"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{if .Query}}Search: {{.Query}} — {{end}}{{if .SiteName}}{{.SiteName}}{{else}}{{.Domain}}{{end}}</title>
+<meta name="robots" content="noindex,follow">
+<meta name="generator" content="VayuPress {{.Version}}">
+{{.PicoCSSLink}}{{.CustomCSSLink}}{{.ArticleCSSLink}}{{.HighContrastCSSLink}}{{.ThemeCSSLink}}{{.HeadMeta}}{{.ThemeToggleJSLink}}
+<link rel="icon" type="image/png" href="/static/favicon-light.png">
+</head><body>
+<a href="#main-content" class="skip-link">Skip to main content</a>
+<div class="container">
+<nav class="vayu-nav" aria-label="Primary">
+  <a href="/" class="vayu-nav-brand"><img src="/static/favicon-light.png" alt="" width="24" height="24">{{if .SiteName}}{{.SiteName}}{{else}}VayuPress{{end}}</a>
+  <div class="vayu-nav-links">
+    {{.NavLinks}}
+    <form class="vayu-search" method="get" action="/search" role="search">
+      <input class="vayu-search-input" type="search" name="q" placeholder="Search…" aria-label="Search posts" value="{{.Query}}">
+    </form>
+    <button type="button" id="vayu-theme-toggle" class="vayu-theme-toggle" aria-label="Toggle theme">☾</button>
+  </div>
+</nav>
+<main id="main-content">
+<section class="vayu-hero"><h1>Search</h1>
+<form class="vayu-search vayu-search--page" method="get" action="/search" role="search">
+  <input class="vayu-search-input" type="search" name="q" placeholder="Search posts…" aria-label="Search posts" value="{{.Query}}" autofocus>
+  <button type="submit" class="vayu-search-btn">Search</button>
+</form></section>
+{{if .Query}}
+  {{if .Hits}}<div class="vayu-section-label">{{len .Hits}} result{{if ne (len .Hits) 1}}s{{end}} for “{{.Query}}”</div>
+  <div class="vayu-post-list">
+  {{range .Hits}}<a class="vayu-post-card" href="/{{.Slug}}">
+    <div class="vayu-post-body">
+      <div class="vayu-post-meta"><time datetime="{{.CreatedAt | shortDate}}">{{.CreatedAt | humanDate}}</time></div>
+      <h2 class="vayu-post-title">{{.Title}}</h2>
+      {{if .Tags}}<div class="vayu-post-meta">{{range .Tags}}<span class="vayu-tag">#{{.}}</span> {{end}}</div>{{end}}
+    </div>
+  </a>{{end}}
+  </div>
+  {{else}}<div class="vayu-empty">No posts found for “{{.Query}}”. Try a different word.</div>{{end}}
+{{else}}<div class="vayu-empty">Type a word above to search the site.</div>{{end}}
+{{.Footer}}
+</main>
+</div></body></html>`))
+
+// RenderSearch renders the public search results page for query, listing hits.
+// Results pages are marked noindex (thin, query-dependent) but follow links so
+// the linked posts are still discoverable.
+func RenderSearch(domain, version, query string, hits []SearchHit) (string, error) {
+	var buf strings.Builder
+	s := getActiveSettings()
+	err := searchTmpl.Execute(&buf, searchPage{
+		Domain:              domain,
+		Version:             version,
+		PicoCSSLink:         PicoCSSLink(),
+		CustomCSSLink:       CustomCSSLink(),
+		ArticleCSSLink:      ArticleCSSLink(),
+		HighContrastCSSLink: HighContrastCSSLink(),
+		ThemeCSSLink:        ThemeCSSLink(),
+		HeadMeta:            headMetaHTML(s),
+		ThemeToggleJSLink:   ThemeToggleJSLink(),
+		SiteName:            s.Name,
+		NavLinks:            navLinksHTML(s.NavJSON),
+		Footer:              footerHTML(s),
+		Query:               query,
+		Hits:                hits,
+		ShowSearch:          searchEnabled.Load(),
 	})
 	return buf.String(), err
 }
@@ -1285,6 +1885,9 @@ func RenderArticleWithMeta(a db.Article, layout ArticleLayoutType, related []Rel
 		TwitterImageURL:    twImage,
 		FeatureImage:       absoluteURL(domain, ov.FeatureImage),
 		IsPage:             ov.IsPage,
+		ShowSearch:         searchEnabled.Load(),
+		TrendingJSLink:     TrendingJSLink(),
+		SearchModalJSLink:  SearchModalJSLink(),
 	}
 	if err := articleTmpl.Execute(&buf, data); err != nil {
 		return "", fmt.Errorf("template: %w", err)
@@ -1382,29 +1985,78 @@ func CacheReadCSPSidecar(slug string) []string {
 	return strings.Fields(string(b))
 }
 
-// CachePurgeAll removes every rendered HTML fragment (home, all posts, all tag
-// pages) so they regenerate with current site settings. Used when a global
-// change — e.g. a theme/identity update — affects the markup of every page.
-func CachePurgeAll() {
-	os.Remove(filepath.Join(config.Cfg.CacheDir, "home", "index.html"))
-	for _, sub := range []string{"posts", "tags"} {
-		dir := filepath.Join(config.Cfg.CacheDir, sub)
-		entries, err := os.ReadDir(dir)
-		if err != nil {
-			continue
-		}
-		for _, e := range entries {
-			if e.IsDir() || !strings.HasSuffix(e.Name(), ".html") {
-				continue
-			}
-			if fi, ferr := e.Info(); ferr == nil {
-				db.UpdateStorageDelta(-fi.Size())
-			}
-			os.Remove(filepath.Join(dir, e.Name()))
-			// Drop the matching CSP sidecar (posts/<slug>.csp) if present.
-			os.Remove(filepath.Join(dir, strings.TrimSuffix(e.Name(), ".html")+".csp"))
+// ── Lazy, per-page cache invalidation ─────────────────────────────────────────
+//
+// Rather than deleting the whole pre-rendered cache when the renderer changes (a
+// new binary with edited templates/CSS, or a global theme/identity save), we keep
+// the files and track a single "staleness cutoff" instant. A cached page is fresh
+// only if it was written at or after that cutoff; a stale page is re-rendered on
+// its next request and re-stamped (its mtime advances past the cutoff). This turns
+// a global invalidation from an `os.RemoveAll` that forces a site-wide re-render
+// herd into a lazy, per-page refresh that costs one render per page actually
+// requested — essential when the catalog holds 1M+ posts on a small VPS.
+
+// staleBeforeNano is the cutoff as Unix nanoseconds. Read on every cache serve,
+// written only at startup (ReconcileCacheVersion) and on a global purge. A very
+// negative value (the zero time) means "no cutoff — every cached page is fresh".
+var staleBeforeNano int64
+
+func setStaleCutoff(t time.Time) { atomic.StoreInt64(&staleBeforeNano, t.UnixNano()) }
+
+// CacheEntryFresh reports whether a cached file (described by fi) was rendered at
+// or after the current staleness cutoff. Serve paths must treat a stale entry as
+// a miss and re-render it, so a renderer change or a global purge refreshes each
+// page lazily on its next request instead of wiping the whole cache at once.
+func CacheEntryFresh(fi os.FileInfo) bool {
+	if fi == nil {
+		return false
+	}
+	return fi.ModTime().UnixNano() >= atomic.LoadInt64(&staleBeforeNano)
+}
+
+func renderStampPath() string { return filepath.Join(config.Cfg.CacheDir, ".render-stamp") }
+
+// readRenderStamp parses the on-disk stamp: line 1 is the renderer fingerprint,
+// optional line 2 is the cutoff instant (RFC3339). A legacy single-line stamp
+// (fingerprint only) parses with a zero cutoff, which keeps the existing cache.
+func readRenderStamp(path string) (fp string, since time.Time, ok bool) {
+	b, err := os.ReadFile(path) //nosec G304 -- path is the fixed .render-stamp under CacheDir
+	if err != nil {
+		return "", time.Time{}, false
+	}
+	lines := strings.Split(strings.TrimSpace(string(b)), "\n")
+	fp = strings.TrimSpace(lines[0])
+	if fp == "" {
+		return "", time.Time{}, false
+	}
+	if len(lines) >= 2 {
+		if t, perr := time.Parse(time.RFC3339Nano, strings.TrimSpace(lines[1])); perr == nil {
+			since = t
 		}
 	}
+	return fp, since, true
+}
+
+func writeRenderStamp(path, fp string, since time.Time) {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return
+	}
+	_ = os.WriteFile(path, []byte(fp+"\n"+since.UTC().Format(time.RFC3339Nano)+"\n"), 0o644) //nolint:errcheck
+}
+
+// CachePurgeAll marks every rendered public page (home, all posts, all tag pages)
+// stale so each re-renders with current site settings on its next request. Used
+// after a global change — e.g. a theme/identity update — that affects the markup
+// of every page. It advances (and persists) the staleness cutoff instead of
+// deleting the cache, so the refresh happens lazily, one page per request, rather
+// than wiping everything and triggering a site-wide re-render herd. Persisting the
+// cutoff means a restart right after the change keeps the pages stale (the
+// renderer fingerprint is unchanged by a settings save, so it cannot be relied on
+// to invalidate them).
+func CachePurgeAll() {
+	now := time.Now()
+	setStaleCutoff(now)
+	writeRenderStamp(renderStampPath(), cacheFingerprint(), now)
 }
 
 // CachePurgePost removes just the cached HTML for a single article slug. Used
@@ -1470,7 +2122,7 @@ func WarmCache(splitTags func(string) []string) {
 			continue
 		}
 		dest := filepath.Join(config.Cfg.CacheDir, "posts", a.Slug+".html")
-		if _, err := os.Stat(dest); err == nil {
+		if fi, err := os.Stat(dest); err == nil && CacheEntryFresh(fi) {
 			continue
 		}
 		html, err := RenderArticle(a)
@@ -1505,7 +2157,7 @@ func warmThrottle() time.Duration {
 // a way the CSS content hashes do not already capture (e.g. markup-only edits).
 // It feeds the cache fingerprint below so such changes still invalidate stale
 // pre-rendered HTML on the next deploy.
-const cacheSchema = "2"
+const cacheSchema = "3"
 
 // cacheFingerprint summarises everything baked into the running binary that
 // affects pre-rendered public HTML: the release version, the manual cache
@@ -1529,36 +2181,41 @@ func cacheFingerprint() string {
 	return hex.EncodeToString(sum[:])
 }
 
-// ReconcileCacheVersion drops stale pre-rendered public HTML after a deploy.
+// ReconcileCacheVersion refreshes stale pre-rendered public HTML after a deploy.
 //
 // The on-disk cache (home/index.html, tags/*.html, posts/*.html) is produced by
 // the templates and stylesheets compiled into the running binary. When those
-// change — a new release, edited card markup, or restyled cards — the cached
+// change — a new release with edited card markup or restyled cards — the cached
 // HTML would otherwise keep serving the OLD design until each page is purged by
-// an unrelated event (e.g. an article edit). That is exactly why the home page
-// can lag behind the tag pages: the home cache is only invalidated on content
-// changes, so a redeploy alone never refreshes it.
+// an unrelated event (e.g. an article edit).
 //
-// We persist the renderer fingerprint next to the cache. On startup, if it no
-// longer matches (or is absent), every cached public page is removed so the next
-// request regenerates it with the current templates and CSS. Pages are cheap to
-// rebuild on demand, so this is safe to run on every boot.
+// We persist the renderer fingerprint (and the instant it last changed) next to
+// the cache. On startup, if the fingerprint still matches, the cache is kept and
+// the previous cutoff is restored — a plain restart, or a deploy that does not
+// touch templates/CSS, invalidates nothing. If it changed (or no stamp exists),
+// the staleness cutoff advances to now: cached pages are NOT deleted, each simply
+// re-renders on its next request. This makes a deploy refresh pages lazily, one
+// per request, instead of wiping the whole cache and forcing a site-wide
+// re-render herd — which on a large catalog (1M+ posts) is exactly the behaviour
+// VayuPress exists to avoid.
 //
 // Call after render.Version is set and WriteCSSAssets has run (Init), so the
 // version and CSS hashes are populated.
 func ReconcileCacheVersion() {
 	fp := cacheFingerprint()
-	stampPath := filepath.Join(config.Cfg.CacheDir, ".render-stamp")
-	if b, err := os.ReadFile(stampPath); err == nil && strings.TrimSpace(string(b)) == fp {
-		return // cache was produced by this exact renderer — keep it
+	stampPath := renderStampPath()
+	if old, since, ok := readRenderStamp(stampPath); ok && old == fp {
+		// Same renderer as the last boot — keep every cached page and honour the
+		// cutoff from when the fingerprint last changed (zero = all fresh). A
+		// legacy single-line stamp parses with a zero cutoff, so upgrading to this
+		// scheme preserves an existing, valid cache instead of rebuilding it.
+		setStaleCutoff(since)
+		return
 	}
-	for _, sub := range []string{"home", "tags", "posts"} {
-		os.RemoveAll(filepath.Join(config.Cfg.CacheDir, sub))
-	}
-	if err := os.MkdirAll(config.Cfg.CacheDir, 0o755); err == nil {
-		_ = os.WriteFile(stampPath, []byte(fp), 0o644)
-	}
-	logging.LogInfo("cache", "render fingerprint changed — cleared stale pre-rendered public HTML")
+	now := time.Now()
+	setStaleCutoff(now)
+	writeRenderStamp(stampPath, fp, now)
+	logging.LogInfo("cache", "render fingerprint changed — cached pages will refresh lazily, one per request")
 }
 
 // PlainText converts HTML content into readable plain text suitable for
@@ -2099,6 +2756,268 @@ h1, h2, h3, h4, h5, h6 {
   text-align: center;
   color: var(--pico-muted-color);
   font-size: 0.9375rem;
+}
+
+/* ── Pagination (homepage feed: Newer / Older) ──────────────────────────── */
+/* ── Site search box (public nav + /search page) ────────────────────────── */
+.vayu-search { display: inline-flex; align-items: center; margin: 0; }
+.vayu-search-input {
+  min-width: 0;
+  width: 9rem;
+  max-width: 16rem;
+  padding: 0.4rem 0.7rem;
+  font: inherit;
+  font-size: 0.9rem;
+  color: inherit;
+  background: var(--pico-card-background-color, transparent);
+  border: 1px solid var(--border, rgba(125, 125, 125, 0.28));
+  border-radius: 999px;
+  transition: border-color 0.15s, width 0.15s;
+}
+.vayu-search-input:focus { outline: none; border-color: var(--pico-primary, currentColor); }
+.vayu-search--page { width: 100%; gap: 0.6rem; margin-top: 1rem; }
+.vayu-search--page .vayu-search-input { flex: 1; width: auto; max-width: none; }
+.vayu-search-btn {
+  padding: 0.5rem 1.1rem;
+  font: inherit;
+  font-weight: 600;
+  color: #fff;
+  background: var(--pico-primary, #0284c7);
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+}
+@media (max-width: 600px) {
+  .vayu-search-input { width: 100%; max-width: none; }
+}
+
+/* ── VayuFind instant search modal (Ghost-style overlay) ─────────────────── */
+.vayu-modal-open { overflow: hidden; }
+.vayu-search-modal { position: fixed; inset: 0; z-index: 1000; display: none; }
+.vayu-search-modal.is-open { display: block; }
+.vayu-search-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(8, 10, 14, 0.5);
+  backdrop-filter: blur(7px);
+  -webkit-backdrop-filter: blur(7px);
+  animation: vayu-search-fade 0.16s ease;
+}
+.vayu-search-panel {
+  position: relative;
+  width: min(40rem, calc(100% - 2rem));
+  margin: 9vh auto 0;
+  background: var(--pico-card-background-color, #14161c);
+  border: 1px solid var(--border, rgba(125, 125, 125, 0.22));
+  border-radius: 14px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+  animation: vayu-search-rise 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.vayu-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid var(--border, rgba(125, 125, 125, 0.18));
+}
+.vayu-search-icon { font-size: 1.05rem; opacity: 0.7; }
+.vayu-search-field {
+  flex: 1;
+  min-width: 0;
+  padding: 0.35rem 0;
+  font: inherit;
+  font-size: 1.05rem;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  outline: none;
+}
+.vayu-search-esc {
+  flex: none;
+  padding: 0.2rem 0.5rem;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--muted, #8a93a6);
+  background: var(--border, rgba(125, 125, 125, 0.16));
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.vayu-search-status {
+  padding: 0.5rem 1.1rem;
+  font-size: 0.75rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--muted, #8a93a6);
+}
+.vayu-search-results { max-height: min(56vh, 30rem); overflow-y: auto; padding: 0.25rem; }
+.vayu-search-result {
+  display: block;
+  padding: 0.6rem 0.85rem;
+  border-radius: 9px;
+  color: inherit;
+  text-decoration: none;
+}
+.vayu-search-result.is-active { background: var(--pico-primary, #0284c7); color: #fff; }
+.vayu-search-result.is-active .vayu-search-result-excerpt { color: rgba(255, 255, 255, 0.82); }
+.vayu-search-result-title { font-weight: 600; font-size: 0.98rem; }
+.vayu-search-result-title mark { background: transparent; color: var(--pico-primary, #38bdf8); font-weight: 700; padding: 0; }
+.vayu-search-result.is-active .vayu-search-result-title mark { color: #fff; text-decoration: underline; }
+.vayu-search-result-excerpt {
+  margin-top: 0.15rem;
+  font-size: 0.85rem;
+  color: var(--muted, #8a93a6);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@keyframes vayu-search-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes vayu-search-rise { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) {
+  .vayu-search-backdrop, .vayu-search-panel { animation: none; }
+}
+@media (max-width: 600px) {
+  .vayu-search-panel { margin-top: 0; width: 100%; min-height: 100%; border-radius: 0; border: 0; }
+  .vayu-search-results { max-height: calc(100vh - 8rem); }
+}
+
+/* ── Pagination (homepage feed: Newer / Older) ──────────────────────────── */
+.vayu-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 2.5rem 0 1rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border, rgba(125, 125, 125, 0.16));
+}
+.vayu-page-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0.5rem 1.1rem;
+  border: 1px solid var(--border, rgba(125, 125, 125, 0.28));
+  border-radius: var(--radius2, 10px);
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--pico-color, inherit);
+  text-decoration: none;
+  transition: border-color 0.15s, background 0.15s, transform 0.1s;
+}
+.vayu-page-link:hover {
+  border-color: var(--pico-primary, currentColor);
+  text-decoration: none;
+}
+.vayu-page-link:active { transform: translateY(1px); }
+.vayu-page-link.is-disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+.vayu-page-status {
+  font-size: 0.85rem;
+  color: var(--pico-muted-color);
+  white-space: nowrap;
+}
+@media (max-width: 480px) {
+  .vayu-page-status { display: none; }
+}
+
+/* ── Trending & pinned posts widget (hydrated by /static/js/trending.js) ──── */
+.vayu-trending {
+  margin: 2.5rem 0 1rem;
+  padding-top: 1.75rem;
+  border-top: 1px solid var(--border, rgba(125, 125, 125, 0.16));
+}
+.vayu-trending[hidden] { display: none; }
+.vayu-trending-group { margin-bottom: 1.75rem; }
+.vayu-trending-group:last-child { margin-bottom: 0; }
+.vayu-trending-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+.vayu-trending-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--pico-muted-color);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.vayu-trending-tabs { display: inline-flex; gap: 0.4rem; }
+.vayu-trending-tab {
+  min-height: 36px;
+  padding: 0.3rem 0.8rem;
+  border: 1px solid var(--border, rgba(125, 125, 125, 0.28));
+  border-radius: 999px;
+  background: transparent;
+  color: var(--pico-muted-color);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.vayu-trending-tab[aria-selected="true"] {
+  color: var(--pico-primary, currentColor);
+  border-color: var(--pico-primary, currentColor);
+}
+.vayu-trending-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 1rem;
+}
+.vayu-trending-card {
+  display: flex;
+  gap: 0.8rem;
+  align-items: center;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--border, rgba(125, 125, 125, 0.16));
+  border-radius: var(--radius2, 10px);
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.15s, transform 0.1s;
+}
+.vayu-trending-card:hover { border-color: var(--pico-primary, currentColor); }
+.vayu-trending-card:active { transform: translateY(1px); }
+.vayu-trending-rank {
+  flex: 0 0 auto;
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: var(--pico-primary, currentColor);
+  min-width: 1.4em;
+  text-align: center;
+}
+.vayu-trending-thumb {
+  flex: 0 0 auto;
+  width: 48px;
+  height: 48px;
+  border-radius: 8px;
+  object-fit: cover;
+  background: var(--border, rgba(125, 125, 125, 0.16));
+}
+.vayu-trending-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.vayu-trending-pin {
+  flex: 0 0 auto;
+  font-size: 0.85rem;
+  color: var(--pico-primary, currentColor);
 }
 
 /* ── Error pages ────────────────────────────────────────────────────────── */

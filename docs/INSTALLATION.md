@@ -63,14 +63,16 @@ Expected: `{"status":"ok"}` from both endpoints.
 
 1. System dependencies (curl, wget, git, nginx, sqlite3, certbot, fail2ban, ufw)
 2. Go 1.22.5
-3. Meilisearch (optional search subsystem)
-4. Isso (self-hosted comments)
-5. Self-hosted fonts (Inter, IBM Plex Mono)
-6. VayuPress Go application
-7. Systemd services (vayupress, meilisearch, isso)
-8. Nginx config with TLS (Let's Encrypt via Certbot)
-9. UFW firewall (ports 22, 80, 443)
-10. Logrotate, cron jobs (backup, orphan cleanup, restore validation)
+3. Isso (self-hosted comments)
+4. Self-hosted fonts (Inter, IBM Plex Mono)
+5. VayuPress Go application
+6. Systemd services (vayupress, isso)
+7. Nginx config with TLS (Let's Encrypt via Certbot)
+8. UFW firewall (ports 22, 80, 443)
+9. Logrotate, cron jobs (backup, orphan cleanup, restore validation)
+
+> Search is built in (VayuFind, ADR-0101) — there is no external search service
+> to install or run.
 
 ## Directory Layout
 
@@ -92,8 +94,6 @@ Expected: `{"status":"ok"}` from both endpoints.
 | `DB_PATH`             | `/var/lib/vayupress/vayupress.db`   | SQLite database path               |
 | `CACHE_DIR`           | `/var/cache/vayupress`         | Rendered HTML cache directory      |
 | `MEDIA_DIR`           | `/var/lib/vayupress/media`     | Editor image uploads (served at `/media/`) |
-| `MEILI_HOST`          | `http://localhost:7700`        | Meilisearch URL                    |
-| `MEILI_MASTER_KEY`    | (generated)                    | Meilisearch master key             |
 | `DOMAIN`              | `localhost`                    | Public domain                      |
 | `PORT`                | `8080`                         | HTTP listen port                   |
 | `WORKER_COUNT`        | `3`                            | Write queue workers                |
@@ -329,10 +329,9 @@ deployments, rebuild and recreate: `docker compose up -d --build`. See
 ## Uninstall
 
 ```bash
-sudo systemctl stop vayupress meilisearch isso
-sudo systemctl disable vayupress meilisearch isso
+sudo systemctl stop vayupress isso
+sudo systemctl disable vayupress isso
 sudo rm -f /etc/systemd/system/vayupress.service
-sudo rm -f /etc/systemd/system/meilisearch.service
 sudo rm -f /etc/systemd/system/isso.service
 # Optionally remove data:
 # sudo rm -rf /var/lib/vayupress /var/cache/vayupress /var/log/vayupress

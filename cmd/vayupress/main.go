@@ -73,7 +73,7 @@ import (
 	"github.com/johalputt/vayupress/internal/ws"
 )
 
-var Version = "2.0.0"
+var Version = "2.4.0"
 var bootTime = time.Now()
 
 // Immutable package-level values (compiled once, never mutated).
@@ -287,11 +287,19 @@ func main() {
 	auth.StartBucketSweeper(context.Background())
 
 	staticDir := config.EnvOr("STATIC_DIR", "/var/www/vayupress/static")
+	// Refresh the admin CSS/JS that ship inside this binary into STATIC_DIR
+	// BEFORE render.Init (which writes the authoritative minified public-site
+	// CSS). This makes a one-click self-update — which replaces only the binary —
+	// also update every admin asset, with no separate file-copy step (ADR-0099).
+	syncEmbeddedStatic(staticDir)
 	render.Init(staticDir)
 
 	docsDir := config.EnvOr("VAYU_DOCS_DIR", "/var/www/vayupress/docs")
 	os.MkdirAll(docsDir, 0755)
-	writeADRs(docsDir)
+	// ADRs are shipped as canonical files under docs/adr and synced to the docs
+	// location by the deploy script; the registry reads them straight from disk.
+	// (We no longer write bootstrap stub ADRs here — they produced duplicate ADR
+	// numbers alongside the canonical files and polluted the registry.)
 
 	if os.Getenv("VAYU_PLUGINS_ENABLED") == "true" {
 		a.pluginManager.Start(plugins.DefaultPoolSize, plugins.DefaultQueueDepth)
@@ -406,7 +414,12 @@ func main() {
 	if a.mailer.Enabled() {
 		logging.LogInfo("email", "SMTP delivery configured — host="+config.Cfg.SMTPHost)
 	} else {
-		logging.LogInfo("email", "SMTP not configured — email delivery disabled (set SMTP_HOST to enable)")
+		// No external SMTP: fall back to the built-in VayuMail engine so
+		// transactional mail (sign-in links, welcome, newsletter confirmations)
+		// still sends on a sovereign single-binary deployment. The closure reads
+		// a.vayuMail lazily at send time (it is wired later in boot).
+		a.mailer.SetFallback(a.sendViaVayuMail)
+		logging.LogInfo("email", "SMTP not configured — transactional mail will be delivered via the built-in VayuMail engine when DOMAIN is set")
 	}
 
 	// Scheduled publishing (Tier 1).
@@ -533,8 +546,21 @@ func main() {
 		},
 	}
 
-	// Wire search service (ADR-0050).
-	a.search = search.NewMeiliService(a.outboundClient, dbpkg.DB)
+	// Wire search service — VayuFind, the built-in dependency-free engine
+	// (ADR-0050/0101). Load the index once from the article store; thereafter it
+	// is maintained incrementally by the article event handlers.
+	a.search = search.NewService(dbpkg.DB)
+	if err := a.search.Load(context.Background()); err != nil {
+		logging.LogError("search", "initial index load failed (search will populate as content changes)", err.Error())
+	}
+	// Honour the operator's Search toggle (Tools & Plugins). Default ON; when
+	// off, search returns no results and the public box/modal are hidden.
+	if a.siteSettings != nil {
+		searchOn := a.siteSettings.FeatureEnabled(context.Background(), settings.KeyFeatureSearch)
+		search.SetEnabled(searchOn)
+		// The public search box/modal visibility tracks the same toggle.
+		render.SetSearchEnabled(searchOn)
+	}
 
 	// Tier 4 services: GraphQL, live collaboration stream, email templates, i18n.
 	a.initGraphQL()
@@ -554,6 +580,8 @@ func main() {
 	dbpkg.StartWALCheckpointGoroutine(queue.DoneCh)
 	dbpkg.StartStuckJobReaper(queue.DoneCh)
 	dbpkg.StartJobRetentionSweeper(queue.DoneCh)
+	dbpkg.StartArticleTagsBackfill(queue.DoneCh)
+	dbpkg.StartIndexSelfCheck(queue.DoneCh)
 	a.startMetricsSnapshotCollector()
 	a.startSearchReconciler(queue.DoneCh)
 	a.startScheduler(queue.DoneCh)
@@ -585,21 +613,6 @@ func main() {
 	// edited templates, or restyled cards) so a redeploy always serves the
 	// current design instead of a cached older home/tag page.
 	render.ReconcileCacheVersion()
-
-	// Meilisearch readiness runs in the BACKGROUND so the HTTP listener comes up
-	// immediately on (re)start instead of blocking behind the Meili probe. Search
-	// transparently uses its SQLite fallback until Meili is confirmed ready, so a
-	// restart never waits on it — this is the main reason a redeploy used to show
-	// a multi-second 502 window. WaitReady + ConfigureIndex now happen off the
-	// critical path.
-	go func() {
-		if search.WaitReady(context.Background(), a.search, 12) {
-			logging.LogInfo("main", "Meilisearch ready")
-			search.ConfigureIndex(context.Background(), a.search)
-		} else {
-			logging.LogJSON(logging.LogFields{Level: "warn", Component: "main", Msg: "Meilisearch unavailable — SQLite search fallback active"})
-		}
-	}()
 
 	// Background cache warm + feed/sitemap generation. Deliberately gentle: it
 	// waits a few seconds for the box to settle after boot, then paces itself

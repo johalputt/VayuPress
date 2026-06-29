@@ -34,6 +34,7 @@ var (
 	MetricVacuumRejected          int64
 	MetricHealthDegradedEvents    int64
 	MetricCSPViolations           int64
+	MetricFullScanWarnings        int64
 
 	WorkerLiveness     int64
 	WorkerLastActivity sync.Map

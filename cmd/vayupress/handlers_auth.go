@@ -18,6 +18,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/johalputt/vayupress/internal/auth"
+	"github.com/johalputt/vayupress/internal/totp"
 	"github.com/johalputt/vayupress/internal/users"
 	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
 )
@@ -30,6 +31,75 @@ const ctxUserKey ctxKey = "vp_user"
 // VayuMail mailbox login that is NOT an administrator — such sessions are
 // confined to the VayuMail surface (see requireSessionOrAPIKey).
 const ctxMailOnlyKey ctxKey = "vp_mail_only"
+
+// ctxAccessKey carries the resolved console access level (see access* below).
+const ctxAccessKey ctxKey = "vp_access"
+
+// Console access levels, in ascending capability. Every authenticated /os
+// request is assigned one; the sidebar nav and the route guard both consult it
+// so "what you can see" exactly matches "what you can reach".
+//
+//   - accessMailOnly: mailbox / reviewer roles — confined to the VayuMail surface.
+//   - accessAuthor  : author — own content (Posts, New Post, Media), Profile, Mail.
+//   - accessEditor  : editor — + Comments, Pages, SEO, Analytics, Theme, Messages.
+//   - accessAdmin   : administrator — the full console (Members, Newsletter,
+//     Monetization, System, Operations, Settings, Security, API Keys, Update…).
+const (
+	accessMailOnly = iota
+	accessAuthor
+	accessEditor
+	accessAdmin
+)
+
+// accessLevelFor maps a (CMS) role + mail-only flag to a console access level.
+func accessLevelFor(role string, mailOnly bool) int {
+	if mailOnly {
+		return accessMailOnly
+	}
+	switch role {
+	case users.RoleAdmin:
+		return accessAdmin
+	case users.RoleEditor:
+		return accessEditor
+	default:
+		return accessAuthor
+	}
+}
+
+// osPathInArea reports whether an /os path belongs to a feature area, matching
+// both the page (`/os/<area>`) and its API actions (`/os/api/<area>`).
+func osPathInArea(path, area string) bool {
+	for _, base := range []string{"/os/" + area, "/os/api/" + area} {
+		if path == base || strings.HasPrefix(path, base+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+// osPathMinLevel returns the minimum console access level required to open an
+// /os path. Content pages (Dashboard, Posts, editor, Media, Profile, VayuMail)
+// are the permissive author-level default; only the editor- and admin-sensitive
+// areas are gated, so adding a benign page never accidentally locks it out.
+func osPathMinLevel(path string) int {
+	adminAreas := []string{
+		"settings", "security", "apikeys", "update", "storage", "monitoring", "governance",
+		"tools", "modes", "policy", "topology", "replay", "faults", "adr",
+		"members", "newsletter", "monetization", "ads",
+	}
+	editorAreas := []string{"comments", "pages", "seo", "analytics", "theme", "messages"}
+	for _, a := range adminAreas {
+		if osPathInArea(path, a) {
+			return accessAdmin
+		}
+	}
+	for _, a := range editorAreas {
+		if osPathInArea(path, a) {
+			return accessEditor
+		}
+	}
+	return accessAuthor
+}
 
 // currentUser returns the authenticated user attached to the request, if any.
 func currentUser(r *http.Request) *users.User {
@@ -51,31 +121,30 @@ func (a *App) requireSessionOrAPIKey(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		if a.sessions != nil && a.userStore != nil {
+		if a.sessions != nil {
 			if token := auth.SessionTokenFromRequest(r); token != "" {
 				if uid, err := a.sessions.Validate(r.Context(), token); err == nil {
-					if u, err := a.userStore.GetByID(r.Context(), uid); err == nil {
-						ctx := context.WithValue(r.Context(), ctxUserKey, u)
-						next.ServeHTTP(w, r.WithContext(ctx))
-						return
+					// A VayuMail account session carries a "vmail:" id; resolve it to a
+					// synthesized, role-scoped identity. A real CMS user session resolves
+					// against the user store.
+					if email, isMail := strings.CutPrefix(uid, "vmail:"); isMail {
+						if u, mailOnly, ok := a.resolveMailSessionUser(r.Context(), email); ok {
+							a.serveWithAccess(w, r, next, u, mailOnly)
+							return
+						}
+					} else if a.userStore != nil {
+						if u, err := a.userStore.GetByID(r.Context(), uid); err == nil {
+							a.serveWithAccess(w, r, next, u, false)
+							return
+						}
 					}
 				}
 			}
 		}
 		// Fallback: a reader who signed in with their VayuMail mailbox (via the
 		// membership portal) may open VayuMail according to that account's role.
-		// Administrators get the full console; every other mail role is confined
-		// to the VayuMail surface ("only mail → only VayuMail").
 		if u, mailOnly, ok := a.resolveMailMember(r); ok {
-			if mailOnly && !mailOnlyPathAllowed(r.URL.Path) {
-				http.Redirect(w, r, "/os/vayuos/mail/inbox", http.StatusSeeOther)
-				return
-			}
-			ctx := context.WithValue(r.Context(), ctxUserKey, u)
-			if mailOnly {
-				ctx = context.WithValue(ctx, ctxMailOnlyKey, true)
-			}
-			next.ServeHTTP(w, r.WithContext(ctx))
+			a.serveWithAccess(w, r, next, u, mailOnly)
 			return
 		}
 		// Unauthenticated.
@@ -86,6 +155,69 @@ func (a *App) requireSessionOrAPIKey(next http.Handler) http.Handler {
 		}
 		http.Redirect(w, r, "/os/login", http.StatusSeeOther)
 	})
+}
+
+// serveWithAccess enforces the role-scoped access policy for an authenticated
+// request, then forwards it with the user + access level attached to the
+// context. A mail-only session is confined to the VayuMail surface; a console
+// session is blocked from areas above its level. Denials redirect a browser to
+// its allowed home and return 403 JSON to API/XHR callers — so a record/area a
+// role cannot use is both hidden (nav) and unreachable (here).
+func (a *App) serveWithAccess(w http.ResponseWriter, r *http.Request, next http.Handler, u *users.User, mailOnly bool) {
+	level := accessLevelFor(u.Role, mailOnly)
+	if mailOnly {
+		if !mailOnlyPathAllowed(r.URL.Path) {
+			a.denyAccess(w, r, "/os/vayuos/mail/inbox")
+			return
+		}
+	} else if level < osPathMinLevel(r.URL.Path) {
+		a.denyAccess(w, r, "/os")
+		return
+	}
+	ctx := context.WithValue(r.Context(), ctxUserKey, u)
+	ctx = context.WithValue(ctx, ctxAccessKey, level)
+	if mailOnly {
+		ctx = context.WithValue(ctx, ctxMailOnlyKey, true)
+	}
+	next.ServeHTTP(w, r.WithContext(ctx))
+}
+
+// denyAccess refuses an in-policy-but-out-of-scope request: 403 JSON for
+// API/XHR callers, otherwise a redirect to the caller's allowed home.
+func (a *App) denyAccess(w http.ResponseWriter, r *http.Request, home string) {
+	if strings.Contains(r.Header.Get("Accept"), "application/json") ||
+		r.Header.Get("X-Requested-With") == "XMLHttpRequest" {
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", "your role does not have access to this area", "")
+		return
+	}
+	http.Redirect(w, r, home, http.StatusSeeOther)
+}
+
+// resolveMailSessionUser resolves a VayuMail account (by email, from a "vmail:"
+// session) to a synthesized, role-scoped identity. It returns ok=false if the
+// account no longer exists or has been deactivated (HashFor only returns a hash
+// for active accounts), so deleting/disabling an account immediately invalidates
+// its web sessions.
+func (a *App) resolveMailSessionUser(ctx context.Context, email string) (u *users.User, mailOnly bool, ok bool) {
+	if a.vayuMail == nil || !a.vayuMail.Config().Enabled || a.vayuMail.Accounts() == nil {
+		return nil, false, false
+	}
+	if a.vayuMail.Accounts().HashFor(ctx, email) == "" {
+		return nil, false, false // deleted or deactivated
+	}
+	role := a.vayuMail.Accounts().RoleFor(ctx, email)
+	if role == "" {
+		return nil, false, false
+	}
+	cmsRole, console := mailConsoleAccess(role)
+	su := &users.User{
+		ID:          "vmail:" + email,
+		Email:       email,
+		Name:        authorFallbackName(email),
+		MailAddress: email,
+		Role:        cmsRole,
+	}
+	return su, !console, true
 }
 
 // resolveMailMember attempts to authenticate the request as a VayuMail mailbox
@@ -159,7 +291,9 @@ func mailConsoleAccess(mailRole string) (cmsRole string, console bool) {
 // static assets those pages need; everything else is redirected to the inbox.
 func mailOnlyPathAllowed(path string) bool {
 	switch {
-	case strings.HasPrefix(path, "/os/vayuos/mail"),
+	case path == "/os/profile" || strings.HasPrefix(path, "/os/profile/"),
+		path == "/os/logout",
+		strings.HasPrefix(path, "/os/vayuos/mail"),
 		strings.HasPrefix(path, "/os/static"),
 		strings.HasPrefix(path, "/os/api/vayuos"):
 		return true
@@ -167,8 +301,31 @@ func mailOnlyPathAllowed(path string) bool {
 	return false
 }
 
+// authMailAccount verifies a VayuMail account's email+password (active accounts
+// only) and, when the account has 2FA enabled, its TOTP code. It returns the
+// normalized email, whether authentication fully succeeded, and whether a TOTP
+// code was required but absent/invalid (so the form can prompt for it).
+func (a *App) authMailAccount(ctx context.Context, email, pass, code string) (addr string, ok bool, totpMissing bool) {
+	if a.vayuMail == nil || !a.vayuMail.Config().Enabled || a.vayuMail.Accounts() == nil {
+		return "", false, false
+	}
+	addr = strings.ToLower(strings.TrimSpace(email))
+	if addr != "" && !strings.Contains(addr, "@") {
+		addr += "@" + a.vayuMail.Config().Domain
+	}
+	hash := a.vayuMail.Accounts().HashFor(ctx, addr)
+	if hash == "" || !auth.VerifySecretArgon2id(pass, hash) {
+		return addr, false, false
+	}
+	if secret, enabled := a.vayuMail.Accounts().TOTPStatus(ctx, addr); enabled && secret != "" {
+		if !totp.Validate(secret, code) {
+			return addr, false, true
+		}
+	}
+	return addr, true, false
+}
+
 // loginClientIP returns the client IP used to key login brute-force lockout.
-// chi's RealIP middleware has already normalised r.RemoteAddr to the real
 // client address (honouring X-Forwarded-For behind the trusted proxy); we strip
 // any trailing port so direct and proxied connections key consistently.
 func loginClientIP(r *http.Request) string {

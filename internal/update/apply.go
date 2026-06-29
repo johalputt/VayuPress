@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/johalputt/vayupress/internal/logging"
@@ -102,16 +103,19 @@ func ApplyVerified(ctx context.Context, client *http.Client, owner, repo string,
 		return "", errors.New("update: apply refused — pinned release public key (VAYU_RELEASE_PUBKEY) is empty")
 	}
 
-	binAsset := findAsset(rel.Assets, []string{".sig", ".sha256"}, true)
-	sumAsset := findAsset(rel.Assets, []string{".sha256"}, false)
-	if binAsset == nil || sumAsset == nil {
-		return "", fmt.Errorf("update: release %s missing binary or .sha256 asset", rel.Version)
+	binAsset := selectBinaryAsset(rel.Assets, runtime.GOOS, runtime.GOARCH)
+	if binAsset == nil {
+		return "", fmt.Errorf("update: release %s has no installable binary asset", rel.Version)
+	}
+	sumAsset := selectChecksumAsset(rel.Assets, binAsset.Name)
+	if sumAsset == nil {
+		return "", fmt.Errorf("update: release %s is missing a .sha256 checksum for %s", rel.Version, binAsset.Name)
 	}
 	var sigAsset *Asset
 	if verifySig {
-		sigAsset = findAsset(rel.Assets, []string{".sig"}, false)
+		sigAsset = selectSignatureAsset(rel.Assets, binAsset.Name)
 		if sigAsset == nil {
-			return "", fmt.Errorf("update: release %s missing .sig asset (required because a release public key is pinned)", rel.Version)
+			return "", fmt.Errorf("update: release %s missing a .sig asset for %s (required because a release public key is pinned)", rel.Version, binAsset.Name)
 		}
 	}
 
@@ -250,25 +254,118 @@ func download(ctx context.Context, client *http.Client, url string) ([]byte, err
 	return io.ReadAll(io.LimitReader(resp.Body, 512<<20)) // 512 MiB cap
 }
 
-// findAsset returns the first asset whose name matches the criteria. When
-// exclude is true, suffixes is treated as a deny-list (return first asset that
-// matches none); otherwise suffixes is an allow-list.
-func findAsset(assets []Asset, suffixes []string, exclude bool) *Asset {
+// metadataAssetSuffixes lists the non-executable artefacts that are commonly
+// attached to a release alongside the binary (checksums, signatures, SBOMs,
+// notes). None of these may ever be mistaken for the binary to install.
+var metadataAssetSuffixes = []string{
+	".sha256", ".sha512", ".sha1", ".md5",
+	".sig", ".asc", ".pem", ".pub", ".cert", ".crt",
+	".bundle", ".sbom", ".spdx", ".json", ".cdx",
+	".txt", ".md", ".sum",
+}
+
+// isMetadataAsset reports whether name is a release sidecar rather than the
+// executable itself.
+func isMetadataAsset(name string) bool {
+	n := strings.ToLower(name)
+	for _, s := range metadataAssetSuffixes {
+		if strings.HasSuffix(n, s) {
+			return true
+		}
+	}
+	return false
+}
+
+// archAliases maps a Go GOARCH to the substrings release artefacts commonly use
+// for the same architecture, so a download matches whatever naming a release
+// adopts.
+var archAliases = map[string][]string{
+	"amd64":   {"amd64", "x86_64", "x64"},
+	"arm64":   {"arm64", "aarch64"},
+	"arm":     {"armv7", "armv6", "armhf", "arm"},
+	"386":     {"386", "i386", "x86"},
+	"ppc64le": {"ppc64le"},
+	"s390x":   {"s390x"},
+	"riscv64": {"riscv64"},
+}
+
+// selectBinaryAsset chooses the release asset that is the executable for the
+// running platform. It first discards every checksum/signature/SBOM sidecar,
+// then — when a release ships builds for several platforms — prefers the asset
+// whose name advertises the running GOOS and GOARCH so the correct build is
+// installed. When exactly one binary candidate remains it is returned as-is,
+// which keeps single-binary releases (VayuPress's own) working unchanged.
+func selectBinaryAsset(assets []Asset, goos, goarch string) *Asset {
+	cands := make([]*Asset, 0, len(assets))
 	for i := range assets {
-		name := strings.ToLower(assets[i].Name)
-		matched := false
-		for _, s := range suffixes {
-			if strings.HasSuffix(name, s) {
-				matched = true
-				break
+		if isMetadataAsset(assets[i].Name) {
+			continue
+		}
+		cands = append(cands, &assets[i])
+	}
+	if len(cands) == 0 {
+		return nil
+	}
+	if len(cands) == 1 {
+		return cands[0]
+	}
+
+	wantArch := archAliases[goarch]
+	if len(wantArch) == 0 {
+		wantArch = []string{goarch}
+	}
+	var osOnlyMatch *Asset
+	for _, a := range cands {
+		n := strings.ToLower(a.Name)
+		if goos != "" && !strings.Contains(n, goos) {
+			continue
+		}
+		if osOnlyMatch == nil {
+			osOnlyMatch = a
+		}
+		for _, al := range wantArch {
+			if strings.Contains(n, al) {
+				return a // exact OS + arch match
 			}
 		}
-		if exclude && !matched {
+	}
+	if osOnlyMatch != nil {
+		return osOnlyMatch // right OS, arch not encoded in the name
+	}
+	return cands[0] // no platform hints in any name — best effort
+}
+
+// selectChecksumAsset finds the .sha256 file that verifies the chosen binary.
+// It prefers an exact "<binary>.sha256" sibling and otherwise falls back to the
+// sole .sha256 asset when a release ships just one.
+func selectChecksumAsset(assets []Asset, binaryName string) *Asset {
+	return selectSidecar(assets, binaryName, ".sha256")
+}
+
+// selectSignatureAsset finds the Ed25519 .sig file for the chosen binary, with
+// the same exact-sibling-then-sole-asset preference as selectChecksumAsset.
+func selectSignatureAsset(assets []Asset, binaryName string) *Asset {
+	return selectSidecar(assets, binaryName, ".sig")
+}
+
+// selectSidecar returns the asset named "<binaryName><suffix>" if present, else
+// the only asset carrying suffix when a release ships exactly one.
+func selectSidecar(assets []Asset, binaryName, suffix string) *Asset {
+	want := strings.ToLower(binaryName) + suffix
+	var sole *Asset
+	count := 0
+	for i := range assets {
+		n := strings.ToLower(assets[i].Name)
+		if n == want {
 			return &assets[i]
 		}
-		if !exclude && matched {
-			return &assets[i]
+		if strings.HasSuffix(n, suffix) {
+			sole = &assets[i]
+			count++
 		}
+	}
+	if count == 1 {
+		return sole
 	}
 	return nil
 }

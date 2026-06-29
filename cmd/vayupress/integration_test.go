@@ -5,6 +5,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -41,12 +42,16 @@ func (n *noopSearch) Index(_ context.Context, _, _, _, _ string, _ []string, _ i
 func (n *noopSearch) Delete(_ context.Context, _ string) error { return nil }
 func (n *noopSearch) Ping(_ context.Context) error             { return nil }
 func (n *noopSearch) DocCount(_ context.Context) (int, error)  { return 0, nil }
+func (n *noopSearch) Snapshot() ([]byte, string)               { return []byte(`{"v":"0","posts":[]}`), "0" }
+func (n *noopSearch) Load(_ context.Context) error             { return nil }
 
 // directWriter inserts/updates/deletes directly into the articles table so
-// integration tests can read back results without running the queue worker.
+// integration tests can read back results without running the queue worker. It
+// mirrors the worker's transactional article_tags sync so tag lookups behave
+// exactly as they do in production.
 type directWriter struct{}
 
-func (directWriter) Enqueue(_ context.Context, art dbpkg.Article, op string) error {
+func (directWriter) Enqueue(ctx context.Context, art dbpkg.Article, op string) error {
 	tagsCSV := ""
 	for i, t := range art.Tags {
 		if i > 0 {
@@ -56,22 +61,35 @@ func (directWriter) Enqueue(_ context.Context, art dbpkg.Article, op string) err
 	}
 	switch op {
 	case "insert":
-		_, err := dbpkg.DB.Exec(
-			`INSERT INTO articles(id,title,slug,content,tags,created_at,updated_at) VALUES(?,?,?,?,?,?,?)`,
-			art.ID, art.Title, art.Slug, art.Content, tagsCSV,
-			art.CreatedAt.Format(time.RFC3339), art.UpdatedAt.Format(time.RFC3339),
-		)
-		return err
+		return dbpkg.RunInTx(ctx, dbpkg.DB, func(tx *sql.Tx) error {
+			if _, err := tx.Exec(
+				`INSERT INTO articles(id,title,slug,content,tags,created_at,updated_at) VALUES(?,?,?,?,?,?,?)`,
+				art.ID, art.Title, art.Slug, art.Content, tagsCSV,
+				art.CreatedAt.Format(time.RFC3339), art.UpdatedAt.Format(time.RFC3339),
+			); err != nil {
+				return err
+			}
+			return dbpkg.SyncArticleTagsByIDTx(tx, art.ID, art.CreatedAt, art.Tags)
+		})
 	case "update":
-		_, err := dbpkg.DB.Exec(
-			`UPDATE articles SET title=?,content=?,tags=?,updated_at=? WHERE slug=?`,
-			art.Title, art.Content, tagsCSV,
-			art.UpdatedAt.Format(time.RFC3339), art.Slug,
-		)
-		return err
+		return dbpkg.RunInTx(ctx, dbpkg.DB, func(tx *sql.Tx) error {
+			if _, err := tx.Exec(
+				`UPDATE articles SET title=?,content=?,tags=?,updated_at=? WHERE slug=?`,
+				art.Title, art.Content, tagsCSV,
+				art.UpdatedAt.Format(time.RFC3339), art.Slug,
+			); err != nil {
+				return err
+			}
+			return dbpkg.SyncArticleTagsBySlugTx(tx, art.Slug, art.Tags)
+		})
 	case "delete":
-		_, err := dbpkg.DB.Exec(`DELETE FROM articles WHERE slug=?`, art.Slug)
-		return err
+		return dbpkg.RunInTx(ctx, dbpkg.DB, func(tx *sql.Tx) error {
+			if err := dbpkg.DeleteArticleTagsBySlugTx(tx, art.Slug); err != nil {
+				return err
+			}
+			_, err := tx.Exec(`DELETE FROM articles WHERE slug=?`, art.Slug)
+			return err
+		})
 	}
 	return fmt.Errorf("unknown op: %s", op)
 }

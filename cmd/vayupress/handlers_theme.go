@@ -174,6 +174,26 @@ func (a *App) handlePostCardMediaJS(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, render.PostCardMediaJS)
 }
 
+// handleTrendingWidgetJS serves the public Trending & pinned posts widget script
+// that hydrates [data-vayu-trending] sections from /api/trending. Same-origin
+// static asset → satisfies `script-src 'self'` without a nonce. This route was
+// previously missing, so the bare /static/js/trending.js 404'd and the widget
+// never loaded — taking the trending AND pinned-posts lists down with it.
+func (a *App) handleTrendingWidgetJS(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	fmt.Fprint(w, render.TrendingJS)
+}
+
+// handleSearchWidgetJS serves the VayuFind instant-search modal script. Same
+// pattern as the other public scripts: a content-versioned, same-origin asset
+// that satisfies script-src 'self' without a nonce.
+func (a *App) handleSearchWidgetJS(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	fmt.Fprint(w, render.SearchModalJS)
+}
+
 // handleThemeGet renders the admin theme-editor page.
 func (a *App) handleThemeGet(w http.ResponseWriter, r *http.Request) {
 	vals, err := a.siteSettings.GetAll(r.Context())

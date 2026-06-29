@@ -61,6 +61,11 @@ type Config struct {
 	// SMTPListen / IMAPListen are the bind addresses for the receive servers.
 	SMTPListen string
 	IMAPListen string
+	// POP3Listen / POP3SListen are the POP3 (110, STLS) and implicit-TLS POP3S
+	// (995) bind addresses. POP3 serves the INBOX only (download-and-keep/delete);
+	// IMAP is the richer multi-folder protocol.
+	POP3Listen  string
+	POP3SListen string
 
 	// TLS. When TLSCertFile/TLSKeyFile are set they are used for STARTTLS
 	// (SMTP :25, submission :587, IMAP :143) and implicit TLS (IMAPS :993).
@@ -69,6 +74,36 @@ type Config struct {
 	// MTAs use opportunistic TLS and do not verify the certificate).
 	TLSCertFile string
 	TLSKeyFile  string
+
+	// ── Native ACME (Let's Encrypt) auto-provisioning ───────────────────────
+	// When ACMEEnabled is true and no static TLSCertFile is configured,
+	// VayuMail obtains and auto-renews a CA-signed certificate for Hostname
+	// (and any ACMEExtraHosts) directly — no external certbot, no shell script.
+	// This is the foolproof path for real mail clients: mobile apps (the Gmail
+	// app, Apple Mail) reject the self-signed fallback, but accept the trusted
+	// ACME certificate. Certificates are cached on disk (ACMECacheDir) so they
+	// survive restarts and are shared by every mail TLS listener
+	// (993/995/587 + STARTTLS on 25/143/110).
+	//
+	// The ACME HTTP-01 challenge is answered on ACMEHTTPAddr (default :80). On a
+	// bare VPS this "just works". When a reverse proxy already owns :80, either
+	// point ACMEHTTPAddr at a free port and proxy /.well-known/acme-challenge/
+	// to it, or keep using a static cert / certbot instead.
+	ACMEEnabled bool
+	// ACMEEmail is the ACME account contact address (recommended; used for
+	// expiry notices). Empty registers an anonymous account.
+	ACMEEmail string
+	// ACMECacheDir is where issued certificates and the account key are cached.
+	// Defaults to <StorageDir>/acme when empty.
+	ACMECacheDir string
+	// ACMEHTTPAddr is the bind address for the HTTP-01 challenge responder.
+	ACMEHTTPAddr string
+	// ACMEDirectoryURL overrides the ACME directory (e.g. the Let's Encrypt
+	// staging endpoint for testing). Empty uses the production directory.
+	ACMEDirectoryURL string
+	// ACMEExtraHosts are additional hostnames to include on the certificate
+	// (beyond Hostname), for operators serving multiple mail names.
+	ACMEExtraHosts []string
 	// SubmissionListen is the authenticated mail-submission bind address (587).
 	SubmissionListen string
 	// IMAPSListen is the implicit-TLS IMAP bind address (993).
@@ -129,11 +164,15 @@ func DefaultConfig() Config {
 		InboundEnabled:    true, // on by default; disable with VAYUOS_MAIL_INBOUND=off
 		SMTPListen:        ":25",
 		IMAPListen:        ":143",
+		POP3Listen:        ":110",
+		POP3SListen:       ":995",
 		SubmissionListen:  ":587",
 		IMAPSListen:       ":993",
 		MaxMessageBytes:   25 * 1024 * 1024, // 25 MiB
 		JunkFilterEnabled: true,             // local heuristic, no external services
 		RelayPort:         587,              // standard authenticated submission port
 		RelayRequireTLS:   true,             // never AUTH over plaintext by default
+		ACMEEnabled:       false,            // opt-in; off by default to preserve the zero-config self-signed boot
+		ACMEHTTPAddr:      ":80",            // standard HTTP-01 challenge port
 	}
 }

@@ -75,6 +75,12 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	r.Get("/static/js/comments.js", a.handleCommentsJS)
 	r.Get("/static/js/contact.js", a.handleContactJS)
 	r.Get("/static/js/post-card-media.js", a.handlePostCardMediaJS)
+	// Trending & pinned posts widget (hydrates [data-vayu-trending] from
+	// /api/trending). Same-origin → script-src 'self', no nonce.
+	r.Get("/static/js/trending.js", a.handleTrendingWidgetJS)
+	// VayuFind instant-search modal (hydrates from /api/search-index.json).
+	// Same-origin → script-src 'self', no nonce.
+	r.Get("/static/js/search.js", a.handleSearchWidgetJS)
 	// VayuPortal — the reader membership overlay widget (same-origin → script-src 'self').
 	r.Get("/static/js/portal.js", a.handleMemberPortalJS)
 	// Favicon routes serve the operator's uploaded brand mark when one is stored
@@ -394,6 +400,18 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	a.registerAdminOSUIRoutes(r)
 
 	r.Get("/", a.handleHome)
+	// Paginated homepage feed: /page/2, /page/3, … (page 1 is canonical at "/").
+	// Two-segment, so it never collides with the single-segment "/{slug}".
+	r.Get("/page/{page}", a.handleHomePaged)
+	// Public, cookieless JSON for the Trending & pinned-posts widget on the
+	// homepage and under every post (hydrated client-side by trending.js).
+	r.Get("/api/trending", a.handleTrendingJSON)
+	// Public, cookieless compact index for the VayuFind instant-search modal
+	// (downloaded once, filtered client-side; ETag-revalidated).
+	r.Get("/api/search-index.json", a.handleSearchIndex)
+	// Public site search page (the nav search box submits here). chi matches this
+	// static route ahead of the "/{slug}" catch-all.
+	r.Get("/search", a.handleSearchPage)
 	// Public taxonomy pages — the topic index and per-tag listings. Registered
 	// before the single-segment "/{slug}" catch-all so "/tags" and "/tags/{tag}"
 	// resolve here instead of falling through to a 404 (the two-segment form

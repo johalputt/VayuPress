@@ -21,6 +21,113 @@
 > _Own your content. Own your communication. Own your infrastructure._
 > Publishing is the core identity, **VayuMail** the native sovereignty layer, **VayuPGP** the native privacy layer, and **VayuOS** the native control layer — all in a single Go binary, single process, single config.
 
+## What's New in v2.4.0
+
+> Full notes in [`CHANGELOG.md`](CHANGELOG.md) · architecture decision in
+> [`docs/adr/ADR-0101`](docs/adr/ADR-0101-builtin-search-vayufind.md)
+
+**Built-in instant search (VayuFind) — and external Meilisearch is gone.**
+
+- **VayuFind — sovereign, in-binary search.** Search is now a dependency-free
+  engine inside the single binary; there is no second service to install, secure,
+  or run. It is fast and light: the browser downloads **one compact, cached
+  index** the first time you search and then filters **entirely client-side**, so
+  there is **zero server work per keystroke**. The index is maintained
+  **incrementally** — each publish/edit/delete updates only that entry instead of
+  rebuilding everything.
+- **A clean, focused search experience.** Click the search box or press
+  `Ctrl`/`⌘`-`K` (or `/`) and a minimalist overlay opens: the page dims and blurs
+  behind a centred panel that filters results **as you type**, with keyboard
+  navigation and match highlighting. Ranking is field-weighted (title ≫ tags ≫
+  excerpt). The server-rendered `/search` page remains as a no-JavaScript
+  fallback, and strict CSP is preserved throughout.
+- **One on/off switch.** A single **Search** toggle in Tools & Plugins
+  (`feature.search`) turns it on or off; off hides the box and modal and makes
+  `/search` return 404.
+- **Meilisearch removed.** The external Meilisearch backend, its dependency, and
+  the docker-compose/deploy-script wiring are gone. No operator action is
+  required.
+
+## What's New in v2.3.0
+
+> Full notes in [`CHANGELOG.md`](CHANGELOG.md) · architecture decision in
+> [`docs/adr/ADR-0100`](docs/adr/ADR-0100-storage-panel-update-activation-infra-rbac.md)
+
+**Updates that actually take effect, a way to see and reclaim disk from the
+admin, and infrastructure detail locked to administrators.**
+
+- **One-click update reliably activates the new version.** Installing from
+  VayuOS could restart but come back on the old version (then ask to update
+  again); the restart now re-execs the exact binary the update just wrote, so the
+  new version takes over in place. If the binary location isn't writable (a
+  hardened systemd sandbox), the update now says so up front with the fix.
+- **Storage & System panel (administrators only).** See how much RAM and
+  disk/NVMe the system is using, plus the on-disk footprint of the database,
+  cache, media and backups — and list the backups, logs and temporary files
+  VayuPress has created, with one-click download or delete (single or bulk) to
+  reclaim space. The live database can never be touched from here.
+- **PGP & DNS detail is administrator-only.** PGP keys, the DKIM/SPF/DMARC
+  records and DNS health, the deliverability self-check, security updates and
+  account management are hidden from the editor, author, reviewer and mailbox
+  roles — they see only the mailbox surface they use.
+
+## What's New in v2.2.0
+
+> Full notes in [`CHANGELOG.md`](CHANGELOG.md) · architecture decision in
+> [`docs/adr/ADR-0099`](docs/adr/ADR-0099-self-contained-one-click-update.md)
+
+**A truly one-click update — and VayuMail that just connects from mobile mail apps.**
+
+- **One click updates *everything*, not just the binary.** The VayuOS self-update
+  replaces the running binary and restarts — and now the admin CSS/JS ship
+  *inside* that binary and are written to `STATIC_DIR` automatically on boot. So
+  an in-app update advances the binary, the database migrations, **and** every
+  admin asset together, with nothing left half-applied and no separate file
+  copy. If `STATIC_DIR` is unavailable, the panel serves those assets straight
+  from the binary, so VayuOS always loads correctly after an update.
+- **The updater always installs the right artefact.** Release-asset selection now
+  skips checksum/signature/SBOM sidecars (so the `.cosign.bundle` can never be
+  mistaken for the binary) and matches the running OS/architecture for
+  multi-platform releases.
+- **Automatic TLS for VayuMail.** `deploy/vayumail-setup.sh` now provisions a
+  trusted Let's Encrypt certificate for `mail.<domain>`, wires it into the
+  service, and installs an auto-renewal restart hook — so the Gmail app, Apple
+  Mail, Thunderbird and Outlook connect without the self-signed-cert rejection.
+
+## What's New in v2.1.0
+
+> Full notes in [`CHANGELOG.md`](CHANGELOG.md) · architecture decisions in
+> [`docs/adr/ADR-0096`](docs/adr/ADR-0096-vayumail-imap-pop3-clients.md),
+> [`ADR-0093`](docs/adr/ADR-0093-indexed-tag-membership.md),
+> [`ADR-0094`](docs/adr/ADR-0094-lazy-per-page-cache-invalidation.md) and
+> [`ADR-0095`](docs/adr/ADR-0095-index-self-check-and-pages-index.md)
+
+**Use VayuMail from real mail apps, and run a million posts on a small VPS with
+updates that never rebuild the whole site.**
+
+- **VayuMail works with the apps you already use (IMAP + POP3).** Add your
+  mailbox to the Gmail app, Apple Mail, Thunderbird or Outlook and read/send like
+  any provider. The IMAP server is now a full RFC 3501 service with persistent,
+  stable UIDs + per-folder UIDVALIDITY (so clients sync incrementally), all
+  folders via SPECIAL-USE (Inbox/Sent/Drafts/Archive/Junk/Trash), FETCH with
+  ENVELOPE/BODYSTRUCTURE/BODY[…], flag updates, APPEND (sent-mail capture),
+  COPY/MOVE/EXPUNGE, SEARCH, IDLE and SASL PLAIN — plus a brand-new POP3 server
+  (STLS on 110, implicit TLS on 995).
+- **Enterprise-grade at 1M+ posts on a low VPS.** Tag lookups (per-tag page,
+  related posts, topic index, JSON filter) now use an indexed `article_tags`
+  join table instead of full-table `LIKE` scans; the Posts and Pages managers are
+  index-served; and a startup self-check runs `EXPLAIN QUERY PLAN` on the hot
+  reads to catch any future full-scan regression.
+- **Updates and theme changes never rebuild the whole site.** Pre-rendered pages
+  are invalidated lazily and per-page against a persisted fingerprint, so a
+  deploy or theme save refreshes only the pages actually requested — no
+  site-wide re-render herd.
+- **The ADR Registry is readable.** The `/os/adr` tab renders each architecture
+  decision record as sanitised HTML, and mirrors exactly the shipped set.
+- **The contact form works without outbound email.** Submissions are always saved
+  to the Messages inbox; emailing the operator and the visitor auto-reply are
+  best-effort when a mailer is configured.
+
 ## What's New in v2.0.0
 
 > Full notes in [`CHANGELOG.md`](CHANGELOG.md) · architecture decision in
@@ -48,10 +155,15 @@ in-house way to get paid, and updates that no longer wobble the server.**
 - **Major security hardening.** A single rebind-safe outbound dialer
   (`internal/safefetch`), spoof-resistant client-IP resolution, Argon2id raised
   to OWASP `t=3`, and a `SameSite=Strict` admin cookie.
-- **Buttery-smooth updates.** The HTTP listener no longer blocks on Meilisearch
-  at startup, post-deploy cache-warm and search reindex are paced, and the
-  updater builds at idle priority with a disk preflight and an automatic
-  pre-update DB snapshot.
+- **Built-in instant search (VayuFind).** A sovereign, dependency-free search
+  engine inside the binary — no external service. A `Ctrl`/`⌘`-`K` overlay dims
+  and blurs the page and filters results as you type, from a compact cached
+  index, with a no-JavaScript `/search` fallback. See
+  [ADR-0101](docs/adr/ADR-0101-builtin-search-vayufind.md).
+- **Buttery-smooth updates.** The HTTP listener comes up immediately at startup
+  (no external search probe), post-deploy cache-warm and search reindex are
+  paced, and the updater builds at idle priority with a disk preflight and an
+  automatic pre-update DB snapshot.
 
 ## What's New in v1.19.0
 
@@ -808,9 +920,9 @@ VayuPress ("Vayu" — Sanskrit for wind/speed) is governed publishing infrastruc
               +--------------------------+---------------------------+
               |                          |                           |
    +----------v----------+  +-----------v---------+  +-------------v------+
-   |  Meilisearch        |  |  Isso               |  |  fail2ban / UFW    |
-   |  (optional search)  |  |  (self-hosted       |  |  (firewall)        |
-   |  <50ms p95          |  |   comments)         |  |                    |
+   |  VayuFind           |  |  Isso               |  |  fail2ban / UFW    |
+   |  (built-in search)  |  |  (self-hosted       |  |  (firewall)        |
+   |  in-process         |  |   comments)         |  |                    |
    +---------------------+  +---------------------+  +--------------------+
 ```
 
@@ -890,7 +1002,7 @@ See [docs/architecture/system-modes.md](docs/architecture/system-modes.md).
 | `internal/render` | Article renderer, cache writer, CSS asset generator |
 | `internal/resource` | Semaphore-based concurrency limiters, resource watchdog |
 | `internal/sandbox` | Subprocess IPC pool, Linux seccomp/namespaces, capability enforcement |
-| `internal/search` | FTS5 + semantic search, Meilisearch client, sharded index |
+| `internal/search` | VayuFind — built-in in-memory index, field-weighted scorer, cached client snapshot |
 | `internal/signing` | Ed25519 article signing and verification |
 | `internal/slo` | SLO error budget tracking — rolling windows, exhaustion signals |
 | `internal/storage` | Content-addressed storage, IPFS stubs |
@@ -1061,7 +1173,7 @@ trusted, and the strict CSP stays intact:
 | `GET` | `/api/articles/{slug}` | Get article by slug |
 | `PUT` | `/api/articles/{slug}` | Update article |
 | `DELETE` | `/api/articles/{slug}` | Delete article |
-| `GET` | `/api/search?q=...` | Full-text search (Meilisearch or SQLite fallback) |
+| `GET` | `/api/search?q=...` | Full-text search (VayuFind — built-in engine) |
 | `GET`/`POST` | `/api/v1/graphql` | Read-only GraphQL content API (query-only — no mutations) (ADR-0067) |
 | `GET` | `/api/v1/i18n/{lang}` | Merged i18n message bundle for a language (public) |
 | `GET` | `/api/v1/stream` | Real-time SSE feed of article events (API-key-gated) |
@@ -1073,7 +1185,7 @@ trusted, and the strict CSP stays intact:
 | `GET` | `/health/ready` | Readiness probe |
 | `GET` | `/health/dependencies` | Dependency health (DB, search, queue) |
 | `GET` | `/health/storage` | Storage quota and utilization |
-| `GET` | `/health/search` | Meilisearch status and circuit-breaker state |
+| `GET` | `/health/search` | Built-in search (VayuFind) status + indexed document count |
 | `GET` | `/health/queue` | Write queue depth and worker stats |
 | `GET` | `/health/ethics` | Machine-readable ethics compliance |
 | `GET` | `/sitemap.xml` | Auto-generated XML sitemap |
@@ -1295,7 +1407,7 @@ bash scripts/deploy-vayupress.sh --dry-run
 bash scripts/deploy-vayupress.sh --upgrade
 ```
 
-The deploy script handles: Go toolchain, CGO/SQLite3, binary build, Nginx with TLS and CSP, systemd service, Meilisearch (optional), nightly backup cron, fail2ban rules.
+The deploy script handles: Go toolchain, CGO/SQLite3, binary build, Nginx with TLS and CSP, systemd service, nightly backup cron, fail2ban rules.
 
 ### Manual Build
 
@@ -1334,8 +1446,6 @@ make build test lint    # all-in-one
 | `VAYU_PLUGIN_TIMEOUT_MS` | `2000` | Per-hook execution timeout |
 | `VAYU_PLUGIN_MAX_CONCURRENT` | `8` | Max concurrent plugin executions |
 | `STATIC_DIR` | `/var/www/vayupress/static` | Static asset output directory |
-| `MEILI_URL` | `http://127.0.0.1:7700` | Meilisearch base URL |
-| `MEILI_MASTER_KEY` | — | Meilisearch master key |
 
 ---
 

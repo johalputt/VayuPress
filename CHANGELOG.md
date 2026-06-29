@@ -8,7 +8,468 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-06-29
+
+### Added
+
+- **VayuFind — built-in instant search (replaces Meilisearch).** Search is now a
+  sovereign, dependency-free engine inside the binary — no external service to
+  run. Clicking the nav search box (or pressing `Ctrl`/`⌘`-`K`, or `/`) opens a
+  clean, Ghost-style **overlay**: the page dims and blurs behind a centred panel
+  that filters results **as you type**, with keyboard navigation and match
+  highlighting. It is extremely light: the browser downloads **one compact,
+  content-hashed index** the first time the overlay opens and then filters
+  entirely client-side, so there is **zero server work per keystroke**. The
+  index is maintained **incrementally** — each publish/edit/delete updates only
+  that entry rather than rebuilding everything — and is served with an `ETag` so
+  a browser/CDN re-fetches it only when posts actually change. Ranking is
+  field-weighted (title ≫ tags ≫ excerpt) with prefix/whole-word boosts and
+  recency tie-breaking. Strict CSP is preserved (same-origin versioned script,
+  no inline styles, no `eval`, results built with `textContent`). The
+  server-rendered `/search` page remains as a no-JavaScript fallback. See
+  [ADR-0101](docs/adr/ADR-0101-builtin-search-vayufind.md).
+
+### Changed
+
+- **Tools & Plugins:** the "Meilisearch" module is now simply **"Search"** — a
+  single on/off switch (`feature.search`, default on) for VayuFind. Turning it
+  off hides the search box and modal and makes `/search` return 404.
+
+### Removed
+
+- **External Meilisearch backend and its dependency.** VayuPress no longer
+  shells out to a Meilisearch process; the `getmeili/meilisearch` service has
+  been removed from `docker-compose.yml`, the `gobreaker` dependency is gone, and
+  `MEILI_HOST` / `MEILI_MASTER_KEY` are ignored. No operator action is required;
+  the `feature.meili` flag is deprecated. (`vayupress_meili_errors_total` is kept
+  for dashboard compatibility and now counts built-in index errors.)
+
 ### Fixed
+
+- **Trending and pinned posts never appeared on the public site.** The widget
+  markup and `/api/trending` endpoint shipped, but the browser script that
+  hydrates them — `/static/js/trending.js` — had **no server route**, so it
+  returned 404 and the widget stayed hidden (a CDN had also cached that 404 on
+  the bare, unversioned URL). The script is now served from a single source of
+  truth (`render.TrendingJS`) at a **content-versioned** URL
+  (`/static/js/trending.js?v=<hash>`), so both the Trending (7/30-day) and
+  Pinned lists render, and a proxy can never pin a stale copy again. A
+  regression test locks in the versioned reference.
+- **The public search box now honours the Search toggle.** Turning search
+  off in Tools & Plugins hides the nav search box across the
+  homepage and post pages and makes `/search` return 404; turning it on restores
+  them. The page cache is bumped so cached pages re-render to match the toggle.
+
+- **Mail apps can finally connect to VayuMail behind a reverse proxy (IMAP/SMTP
+  TLS).** When nginx (or any proxy) already owns ports 80/443, VayuMail's native
+  ACME could not complete its HTTP-01 challenge, so it silently fell back to a
+  **self-signed certificate** on the mail ports — which mobile and desktop mail
+  apps (the Gmail app, Apple Mail, Thunderbird, Outlook) reject with *"Couldn't
+  open connection to server"*, even though 993/143/587 were online. Three changes
+  make trusted certificates reliable in this very common topology:
+  - **Operator/Let's Encrypt certificates now hot-reload.** A file-based
+    certificate (`VAYUOS_MAIL_TLS_CERT`/`VAYUOS_MAIL_TLS_KEY`) is served through a
+    reloading loader that picks up a renewed certificate on disk within ~30s, on
+    the next handshake — **no service restart required**. Previously a renewed
+    cert kept serving the stale copy until the next restart, a silent path back to
+    an eventually-expired certificate.
+  - **New `deploy/nginx-vayumail.conf`** adds the missing `server_name
+    mail.<domain>` :80 vhost that serves the ACME challenge from the shared
+    `/var/cache/vayupress` webroot, so `certbot --webroot -d mail.<domain>`
+    succeeds and auto-renews with **zero nginx downtime** (the existing site vhost
+    only answered for the apex/`www` host, so mail-host challenges 404'd).
+  - **`deploy/vayumail-setup.sh` is now webroot-first.** It installs the mail
+    vhost, issues the certificate over the webroot with no downtime, and only
+    falls back to a brief standalone stop/start if that path is unavailable.
+
+### Added
+
+- **Site search box on the public website.** The public nav now carries a search
+  box, and a new `/search` page renders results server-side (crawlable, no JS
+  required) using the same engine as the API — Meilisearch when enabled and
+  reachable, otherwise the built-in SQLite search. So readers can actually search
+  the site, and the Meilisearch toggle now has a visible front-end.
+- **Pin a post directly from the Posts manager.** Each row in VayuOS → Posts now
+  has a one-click **Pin/Unpin** button and a 📌 Pinned badge (backed by
+  `POST /os/api/posts/pin`, flipping the same `featured` flag as the editor).
+  Pinned posts immediately surface in the Trending & pinned widget on the
+  homepage and under every post (the trending cache + public caches are purged on
+  pin/unpin). This is also what makes the trending/pinned widget visible — pin a
+  few posts and they appear right away, while the 7/30-day trending list fills in
+  from analytics as views accrue.
+- **Transactional email now sends through the built-in VayuMail engine.** On a
+  deployment with no external SMTP configured, sign-in (magic link), welcome,
+  newsletter double-opt-in, comment and payment emails were silently dropped.
+  They are now delivered via VayuMail — DKIM-signed and queued on its durable,
+  retried outbound queue — whenever a `DOMAIN` is set (external `SMTP_HOST`
+  still takes priority when present). A new **welcome email** (its own
+  operator-editable template) is sent to each newly signed-up member alongside
+  their sign-in link, and the welcome template joins the magic-link and
+  newsletter-confirm templates in the admin email-template editor.
+- **Trending & pinned posts.** The homepage and the bottom of every post now show
+  a Trending widget — the most-viewed posts over the **last 7 and 30 days** (a
+  tab switches between them), drawn from the built-in cookieless analytics — plus
+  your **Pinned** posts. Pin a post with the editor's "Feature this post" toggle
+  (up to 4 are shown). It's served by a cached, public `/api/trending` JSON
+  endpoint and hydrated client-side, so it stays fresh without invalidating the
+  page cache, and it can be turned on/off from **Tools & Plugins** (on by default).
+- **Meilisearch is now an operator toggle in Tools & Plugins.** Search has a new
+  "Meilisearch" module switch: turn it **on** to use an external Meilisearch
+  engine for instant, typo-tolerant full-text search (used when a host is
+  configured and healthy), or **off** to force VayuPress's built-in SQLite
+  search even when a Meilisearch host is set. The change applies immediately
+  (no restart); the card shows *Inactive* when no `MEILI_HOST` is configured so
+  it's clear search is running on the SQLite engine. Defaults on, preserving the
+  previous auto-detect behaviour.
+- **Homepage pagination.** The public homepage now exposes the full archive
+  instead of only the latest posts: a Newer/Older pager appears under the feed
+  and deeper pages live at `/page/2`, `/page/3`, … (page 1 stays canonical at
+  `/`). Each page emits `rel=prev`/`rel=next` and a page-aware canonical for
+  clean SEO, out-of-range pages return the branded 404, and only the hot first
+  page is cached so the rest stay fresh with no extra invalidation.
+- **VayuOS is now a fully mobile, app-like admin experience.** The panel adapts
+  to phones the way a native app would: a wide tap-to-close navigation drawer
+  (opened from the topbar hamburger *or* a new **Menu** button in the bottom bar)
+  exposes every section, an app-style bottom bar gives one-tap access to Home,
+  Posts, Write and Inbox with an active-route highlight, and its quick links are
+  filtered to match the signed-in role (you never see a link you can't open).
+  Comfortable 44px touch targets on touch devices, safe-area insets so the bottom
+  bar clears the iPhone home indicator, dynamic-viewport (`dvh`) heights, and
+  16px form fields (no more iOS focus-zoom) round out the feel. Wide data tables
+  now fold into clean, labelled cards on small screens instead of forcing a
+  horizontal scroll — applied automatically across the whole panel.
+- **Native automatic mail TLS certificates (ACME / Let's Encrypt).** VayuMail can
+  now obtain and auto-renew a trusted certificate for `mail.<domain>` on its own —
+  no external certbot run and no shell script. Set `VAYUOS_MAIL_TLS_ACME=on` (and
+  optionally `VAYUOS_MAIL_ACME_EMAIL`) and, once port 80 is reachable for the mail
+  hostname, the certificate is issued in the background, cached under
+  `<storage>/mail/acme`, and shared by every mail TLS listener (IMAPS 993, POP3S
+  995, submission 587, and STARTTLS on 25/143/110). This is the foolproof path for
+  real mail apps: mobile/desktop clients (the Gmail app, Apple Mail, Thunderbird,
+  Outlook) reject the self-signed fallback but accept the ACME certificate. New
+  env vars: `VAYUOS_MAIL_TLS_ACME`, `VAYUOS_MAIL_ACME_EMAIL`,
+  `VAYUOS_MAIL_ACME_HTTP_ADDR` (default `:80`), `VAYUOS_MAIL_ACME_CACHE`,
+  `VAYUOS_MAIL_ACME_DIRECTORY`, `VAYUOS_MAIL_ACME_HOSTS`. While issuance settles,
+  the listeners keep answering with the self-signed fallback so opportunistic
+  STARTTLS between mail servers is never interrupted.
+
+### Fixed
+
+- **Sign-in / welcome / newsletter emails are now readable, not a PGP blob.**
+  Transactional mail routed through VayuMail was being auto-PGP-encrypted whenever
+  the recipient had a published key, so the message arrived as an unreadable
+  `-----BEGIN PGP MESSAGE-----` block and the magic sign-in link couldn't be used.
+  System mail now sends via a dedicated, never-encrypted path (`SendSystemMail`),
+  while person-to-person mail composed in VayuMail still encrypts as before.
+  The sender identity is also branded with the site's own name (or domain) for
+  uniqueness instead of a generic default.
+- **ADR Registry now lists every ADR.** The registry read `docs/adr` only from
+  disk, so on a box updated via the one-click binary self-update (which never
+  refreshes on-disk docs) the list was frozen at whatever shipped with the
+  original install — e.g. stopping at ADR-0046. The ADR docs are now embedded in
+  the binary and the registry lists the union of the embedded set and any
+  on-disk copies, so every ADR (and each new one) always appears after an update.
+- **VayuOS Posts tab no longer returns intermittent 502s.** The `/os/posts`
+  handler now runs its list/count queries under an 8s request-bounded context
+  and degrades gracefully (a retryable notice on a fully-rendered page) instead
+  of hanging until the upstream proxy returns a gateway error when the database
+  is briefly busy on a large catalog.
+- **"Couldn't open connection to server" is now diagnosable.** The most common
+  cause is a reachable mail port serving an untrusted **self-signed** certificate
+  that mobile apps silently reject — the connection and TLS handshake succeed, but
+  the client refuses the certificate. VayuMail now detects the active certificate's
+  provenance and surfaces it: VayuOS → VayuMail → **Connect** shows a prominent
+  warning (with exact remediation) when the certificate is self-signed, and the
+  server logs a loud, actionable error at startup.
+- **Implicit-TLS listener bind failures are no longer swallowed.** Failures to
+  bind IMAPS (993), POP3S (995) or submission (587) are now recorded and surfaced
+  via the inbound-error channel (alongside the existing SMTP/IMAP/POP3 reporting)
+  instead of being silently dropped, so an unreachable SSL port can be explained.
+
+## [2.3.0] — 2026-06-28
+
+### Highlights
+
+A one-click update that reliably activates the new version, a new admin-only
+**Storage & System** panel to see RAM/disk usage and clean up backups, logs and
+temp files without the shell, and PGP/DNS infrastructure detail locked to
+administrators.
+
+### Added
+
+- **Storage & System panel (VayuOS → Storage & System, administrators only).** A
+  new admin page shows how much RAM and disk the system is using — system memory
+  (used/total), the VayuPress process's own memory, and the disk/NVMe usage of
+  the filesystem holding the database, plus the on-disk footprint of the
+  database, render cache, media library and pre-update backups. It also lists the
+  files VayuPress creates over time — **database backups** (including the
+  automatic pre-update snapshots), **log files** and **temporary files** — each
+  with its size and age and a one-click **Download** (to keep a copy off-server)
+  or **Delete** (single or bulk, to reclaim space). Downloads and deletes are
+  validated against the live set of managed files, so the live database and its
+  WAL can never be served or removed and path traversal is impossible. The whole
+  page and its APIs are administrator-only. See ADR-0100.
+
+### Changed
+
+- **Infrastructure detail is now administrator-only in VayuMail.** PGP keys, the
+  DKIM/SPF/DMARC records and live DNS health, the deliverability self-check, the
+  dependency security-update watcher, and mail-account management are hidden from
+  the four non-admin roles (editor, author, reviewer, mailbox) — both removed
+  from the VayuMail tabs/dashboard and blocked server-side (a non-admin is
+  redirected to their inbox). Those roles now see only the mail surface they use:
+  Overview, Compose, Mailbox, Connect and Outbox. See ADR-0100.
+
+### Fixed
+
+- **One-click update now actually activates the new version.** After installing
+  an update from VayuOS the service restarted but could come back on the *old*
+  version (then prompt to update again). The cause: immediately after the binary
+  was swapped, the in-process restart re-derived its target from
+  `os.Executable()`, which the kernel reports as `"…/vayupress (deleted)"` (the
+  old, now-unlinked inode) — so it failed to launch the new file. The restart now
+  re-execs the exact path the update just wrote (and strips a stray `(deleted)`
+  marker as a safeguard), so the new binary takes over in place with the PID
+  preserved. In addition, the update now **pre-checks that the binary's directory
+  is writable** and, if not (most often a systemd `ProtectSystem` sandbox making
+  `/usr/local/bin` read-only), fails fast with the exact fix instead of a
+  confusing mid-update failure. See ADR-0100.
+
+## [2.2.0] — 2026-06-28
+
+### Highlights
+
+A truly one-click update — installing from VayuOS now advances the binary, the
+embedded migrations **and** the admin assets together — plus automatic Let's
+Encrypt TLS for VayuMail so mobile mail apps (the Gmail app, Apple Mail) connect.
+
+### Changed
+
+- **One-click update now updates everything, not just the binary.** The VayuOS
+  self-update replaces the running executable and re-execs to activate it — but
+  the admin panel's CSS/JavaScript were served from `STATIC_DIR` on disk and
+  refreshed by a *separate* file-copy step, so a one-click update could leave the
+  new binary paired with stale `admin-os.css`/`admin-os-*.js` until someone
+  re-copied them by hand. Those admin assets are now **compiled into the binary**
+  and written to `STATIC_DIR` automatically on boot (only when their bytes
+  changed), so installing an update from the panel updates the binary, the
+  embedded database migrations (already run on start) **and** every admin asset
+  together — with no command line and nothing left half-applied. If `STATIC_DIR`
+  is missing or read-only, the panel now serves these assets straight from the
+  binary as a fallback, so VayuOS always loads correctly after an update. See
+  ADR-0099.
+
+### Added
+
+- **Automatic TLS for VayuMail (Let's Encrypt) in the setup script.**
+  `deploy/vayumail-setup.sh` now provisions a trusted certificate end to end:
+  it resolves your mail hostname (`mail.<domain>` from the service environment,
+  or `MAIL_DOMAIN=`), installs certbot if needed, obtains the certificate over
+  the HTTP-01 challenge (briefly freeing port 80 when nginx holds it), wires
+  `VAYUOS_MAIL_TLS_CERT`/`VAYUOS_MAIL_TLS_KEY` into the service environment, and
+  installs a renewal deploy-hook that restarts the service so a renewed cert is
+  loaded. This closes the last gap that made mobile mail apps (the Gmail app,
+  Apple Mail) refuse to connect — they reject VayuMail's self-signed fallback.
+  Best-effort and idempotent; set `MAIL_TLS=off` to skip, or
+  `MAIL_CERT_EMAIL=` to set the registration contact.
+
+### Fixed
+
+- **Self-update now always picks the correct release binary.** The updater chose
+  the download as "the first release asset that isn't a `.sig`/`.sha256`", which
+  could match the `*.cosign.bundle` signature artefact attached to every release
+  (the update would then fail checksum verification and never complete). Asset
+  selection now explicitly skips checksum/signature/SBOM sidecars and, when a
+  release ships builds for multiple platforms, picks the one matching the running
+  OS and architecture (with common arch aliases like `amd64`↔`x86_64`,
+  `arm64`↔`aarch64`); the matching `.sha256`/`.sig` is resolved to the chosen
+  binary. Single-binary releases (VayuPress's own) are unaffected. See ADR-0099.
+
+## [2.1.0] — 2026-06-28
+
+### Highlights
+
+VayuMail becomes a real mail provider you can use from the apps you already
+have, and the engine is hardened to run a 1M-post catalogue on a small VPS with
+smooth, incremental updates (no site-wide rebuilds).
+
+### Added
+
+- **Role-scoped login for VayuMail accounts (5 roles).** The email accounts you
+  create under VayuMail (administrator / editor / author / reviewer / mailbox)
+  can now sign in from the website login button and use VayuOS scoped to their
+  role — and only their role. A **mailbox** (and reviewer) account is confined to
+  the VayuMail surface: it lands on its inbox and the rest of the console is both
+  hidden from the sidebar and blocked server-side. **author** sees only content
+  authoring (Dashboard, Posts, New Post, Media, Mail, Profile); **editor** adds
+  content management (Comments, Pages, SEO, Analytics, Theme, Messages);
+  **administrator** gets the full console. The sidebar now renders per role
+  (hidden == unreachable: the same policy guards the routes), and deleting or
+  deactivating an account immediately invalidates its web session. See ADR-0098.
+
+- **VayuMail "Connect" tab — one-glance mail-app setup + live status.** A new
+  Connect tab in the VayuMail console shows the exact IMAP/POP3/SMTP server,
+  ports and username needed to add a mailbox to any standard app (Gmail, Apple
+  Mail, Thunderbird, Outlook): IMAP `993` SSL / `143` STARTTLS, POP3 `995` SSL /
+  `110` STLS, SMTP submission `587` STARTTLS (auth required), username = full
+  email, password = the mailbox password. It also reports the live online/offline
+  status of every mail listener (and any bind error), and lists per-mailbox
+  settings so each account can be set up by copying the values.
+
+- **VayuMail now works with real mail apps over IMAP and POP3.** You can add a
+  VayuMail mailbox to the Gmail app, Apple Mail, Thunderbird, Outlook, or any
+  standard client and read/send mail like any hosted provider. The IMAP server
+  was rebuilt to a full RFC 3501 service: persistent, stable UIDs and per-folder
+  UIDVALIDITY (so clients sync incrementally instead of re-downloading on every
+  reconnect), all standard folders exposed via LIST/LSUB with SPECIAL-USE
+  (Inbox/Sent/Drafts/Archive/Junk/Trash), SELECT/EXAMINE of any folder, full UID
+  FETCH (FLAGS, UID, RFC822.SIZE, INTERNALDATE, ENVELOPE, BODYSTRUCTURE, and
+  BODY[…] section/partial fetch with a MIME walker), STORE flag updates
+  (\Seen/\Answered/\Flagged/\Deleted/\Draft mapped to Maildir flags), APPEND
+  (so a client's Sent/Drafts copies are saved server-side), COPY, MOVE (RFC
+  6851), EXPUNGE, a SEARCH subset, IDLE (RFC 2177) push, NAMESPACE, and
+  AUTHENTICATE PLAIN (SASL-IR) alongside LOGIN. A brand-new **POP3** server
+  (STLS on 110, implicit TLS on 995) provides USER/PASS, STAT, LIST, UIDL, RETR,
+  TOP, DELE, RSET, NOOP and QUIT for download-style clients. UIDs/UIDVALIDITY are
+  persisted in SQLite; transparent PGP decryption is applied on read for both
+  protocols. Listen addresses are configurable via `VAYUOS_MAIL_IMAP_LISTEN`,
+  `VAYUOS_MAIL_IMAPS_LISTEN`, `VAYUOS_MAIL_POP3_LISTEN`, `VAYUOS_MAIL_POP3S_LISTEN`,
+  and all listeners remain best-effort (a bind failure never blocks startup).
+  See ADR-0096.
+
+- **The ADR Registry is now readable and shows the true, complete set.** The ADR
+  tab (`/os/adr`) previously listed the architecture decision records as static,
+  non-clickable rows with no way to open them. Each row is now a link to a read
+  view that renders the record's Markdown to HTML (GFM: headings, tables, code,
+  links), sanitised with the same UGC policy as published content. The list is
+  sorted newest-first, de-duplicated by ADR number, and the registry's own
+  `INDEX.md` is no longer counted as a record. The boot-time generator that wrote
+  ~13 stub ADRs was removed (it produced duplicate ADR numbers alongside the
+  canonical files), and the deploy now mirrors the shipped `docs/adr` exactly
+  (pruning renamed/removed/stale files) so the registry reflects precisely the
+  ADRs that ship with the running build — no missing entries, no stale leftovers.
+
+- **Startup index self-check guards against full-scan regressions.** VayuPress
+  depends on every hot read being index-backed to serve 1M+ posts on a small VPS,
+  but a future change could silently reintroduce a full-table scan that only
+  surfaces as a 502 once the catalog is large. A read-only self-check now runs
+  `EXPLAIN QUERY PLAN` on a curated list of the hottest reads shortly after boot
+  and logs a loud warning (and bumps a metric) if any resolves to a full table
+  scan instead of an index search/scan. It never blocks startup and skips queries
+  whose tables don't exist on a partial schema.
+
+### Changed
+
+- **Updates and theme changes no longer rebuild the whole site.** Previously, a
+  deploy that changed the templates/CSS (renderer fingerprint) deleted the entire
+  pre-rendered cache (`home/`, `tags/`, `posts/`) on startup, and every global
+  theme/identity save wiped it too — so on a large catalog the next wave of
+  traffic re-rendered hundreds of thousands of pages at once (a thundering herd
+  that pegs CPU and stalls the box). Invalidation is now **lazy and per-page**:
+  each cached file is checked against a persisted "staleness cutoff" when it is
+  served, and only a page that is actually requested after a renderer/theme change
+  is re-rendered (and re-stamped). A plain restart, or a deploy that doesn't touch
+  templates/CSS, now invalidates **nothing** (a legacy cache from the previous
+  scheme is preserved as-is on first upgrade). The cache-warmer likewise refreshes
+  only stale pages, paced in the background. This is the incremental-update
+  behaviour VayuPress exists to provide: changing one thing rebuilds one thing,
+  not the whole site.
+
+- **Pages manager reads straight from an index (no sort step).** The Pages
+  manager (`/os/pages`) lists pages with `WHERE is_page=1 ORDER BY updated_at
+  DESC`. The single-column `is_page` index satisfied the filter but then forced a
+  temp-b-tree sort of every matching row; `idx_articles_pagefeed` orders by
+  `created_at`, not `updated_at`, so it did not help. New migration 049 adds
+  `idx_articles_pages(is_page, updated_at DESC)`, which serves both the filter and
+  the recency order from the index, so the Pages tab stays fast even with many
+  pages. Proven with `EXPLAIN QUERY PLAN` (temp b-tree eliminated).
+
+- **Tag lookups are now indexed instead of full-scanning the catalog.** Tags are
+  stored on each article as one comma-separated string, so "find posts with tag
+  X" (per-tag page, related posts, the topic index, and the JSON list tag filter)
+  could only be answered with `tags LIKE '%X%'` — a predicate that cannot use an
+  index and therefore reads **every** row of the (multi-GB) articles table. At
+  hundreds of thousands of posts that scan exceeds the request timeout and shows
+  up as a 502. New migration 048 adds a normalised `article_tags(article_id, tag,
+  tag_norm, created_at)` join table, kept exactly in sync inside the same
+  transaction as every article create/update/delete, plus a one-time, resumable,
+  **batched** background backfill for existing posts (so a low-RAM VPS holding a
+  large database is never blocked). All four lookups were rewritten to resolve
+  membership through the indexed table; `EXPLAIN QUERY PLAN` confirms each is now
+  an indexed range scan whose cost is bounded by how many posts carry the tag
+  (not by the table size) — and a `CROSS JOIN` pins the tag table as the driver
+  so the planner can never fall back to a full articles scan when a tag is very
+  common. The topic index count became a single `GROUP BY tag` over a covering
+  index instead of loading every article's tags into memory. Verified fast for
+  both rare and very common tags on a 100k-row synthetic catalog.
+
+### Fixed
+
+- **VayuMail mail-app connectivity ("could not open connection to server").** A
+  mail client failing to connect is almost always a blocked/closed port, not a
+  password problem: the non-root VayuPress service cannot bind the privileged
+  mail ports (25/110/143/587/993/995) without `CAP_NET_BIND_SERVICE`, and the
+  host/cloud firewall must allow them. VayuPress now logs a loud, actionable
+  warning at startup when the inbound listeners fail to bind (instead of failing
+  silently), and a new one-shot `deploy/vayumail-setup.sh` grants the capability
+  via a systemd drop-in (works regardless of how old the installed unit is),
+  opens the firewall (ufw/firewalld), restarts, verifies the listeners, and
+  reminds you to add the `mail.<domain>` DNS record and point VayuMail at a
+  trusted TLS cert (mobile clients like the Gmail app require a CA-signed cert).
+
+- **ADR Registry now shows every record (duplicate ADR-0079 resolved).** Two
+  different ADRs had both been numbered 0079 (VayuMail Transport Security and
+  VayuAnalytics), and the registry de-duplicated by number — so one real decision
+  record was hidden, and the visible count looked short. The VayuAnalytics record
+  is renumbered to **ADR-0097** (0079 stays the VayuMail transport ADR that
+  ADR-0084 already references), INDEX.md is corrected, and the registry no longer
+  de-dupes by number, so every distinct ADR file is listed. Note: ADR numbers are
+  not contiguous (0003–0031 and 0091 were never assigned), so the highest number
+  being 0096/0097 does not imply that many records exist.
+
+- **One-click update no longer shows a scary "Unexpected token '<'" error.** When
+  you install an update from VayuOS, the service restarts to activate the new
+  binary — so the apply request (and the auto-check that runs when the panel
+  reloads) can briefly receive an nginx 502/504 HTML page instead of JSON. The UI
+  called `response.json()` on that and surfaced `SyntaxError: Unexpected token
+  '<'`, making a successful update look like a failure. The Update panel now reads
+  responses defensively and treats a non-JSON or dropped response after
+  apply/rollback as the expected restart (waiting for the service to return),
+  while genuine pre-restart errors still report their JSON message.
+
+- **Security-updates tab: clearer dependency names and honest status.** The
+  tracked-dependencies table showed `chi/v5` as the meaningless component name
+  `v5` (it used the last module-path element), and marked every row a green "up
+  to date" even when the watcher was disabled and the latest version was unknown.
+  Component names now skip the major-version suffix (so it reads `chi`), a row
+  whose upstream version hasn't been fetched shows a neutral **"not checked"**
+  instead of a false "up to date", and "update available" is now decided by a
+  semver-aware comparison (only when the upstream release is actually newer),
+  removing false positives on pinned/pseudo-versions.
+
+- **The contact form no longer fails when email delivery isn't configured.** A
+  page using the Contact template ([[contact-form]]) rejected every submission
+  with "Email delivery is not configured on this site" unless VayuMail/SMTP was
+  set up — so visitors on a site without outbound email saw an error and their
+  message was lost, even though it could have been stored. Submissions are now
+  always saved to the Messages inbox (the durable record the operator reads in
+  `/os/messages`); emailing the operator and auto-replying to the visitor are
+  best-effort and only happen when a contact address and mailer are configured. A
+  submission is refused only if it can be neither stored nor emailed.
+
+- **Opening the Posts tab no longer 502s on a large catalog (the real fix).** The
+  Posts manager counts posts with `SELECT status, COUNT(1) FROM articles WHERE
+  is_page=0 GROUP BY status`, and the homepage/feeds filter on `is_page` **and**
+  `status` together. No existing index covered both columns, so SQLite found the
+  rows with one single-column index and then read **every** row to evaluate the
+  other column (a temp-b-tree `GROUP BY` over the whole catalog) — a full scan
+  that exceeds the request timeout and returns 502 at hundreds of thousands of
+  posts. New migration 047 adds a composite index
+  `idx_articles_pagefeed(is_page, status, created_at DESC)`; `EXPLAIN QUERY PLAN`
+  confirms the counts become **covering, index-only** (no temp b-tree, no table
+  reads) and the published/draft listings read straight from the index in
+  recency order — so the Posts tab, homepage and feed counts stay fast at 1M+
+  posts. The index builds once on the next start.
 
 - **The public site and VayuOS no longer hang after an update on a large
   catalog.** Every public *cold-render* path ran a full-table scan over the

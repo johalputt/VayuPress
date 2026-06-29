@@ -18,7 +18,8 @@ type ArticleRepository interface {
 	// List returns up to limit articles starting at page (1-indexed), optionally
 	// filtered by tag, plus the total count.
 	List(ctx context.Context, page, limit int, tag string) (articles []dbpkg.Article, total int, err error)
-	// AllTagCSVs returns the raw tags column (comma-separated) for every article
-	// that has at least one tag. The service is responsible for parsing and counting.
-	AllTagCSVs(ctx context.Context) ([]string, error)
+	// TagCounts returns each distinct tag mapped to the number of articles using
+	// it, resolved from the indexed article_tags join table so it never has to
+	// scan or load the whole articles table.
+	TagCounts(ctx context.Context) (map[string]int, error)
 }

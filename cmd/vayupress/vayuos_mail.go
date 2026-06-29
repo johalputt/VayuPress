@@ -36,7 +36,7 @@ func (a *App) handleVayuOSCompose(w http.ResponseWriter, r *http.Request) {
 	cfg := a.getOSSettings(r.Context())
 	var body strings.Builder
 	body.WriteString(`<div class="page-header"><h1>Compose</h1><span class="muted text-sm">Send DKIM-signed mail (auto-PGP-encrypted when the recipient key is known)</span></div>`)
-	body.WriteString(vayuosNav("compose"))
+	body.WriteString(vayuosNav("compose", a.isAdminRequest(r)))
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled {
 		body.WriteString(`<div class="empty-state">VayuMail is inactive. Set <code>DOMAIN</code> to enable outbound delivery.</div>`)
 		writeOSHTML(w, adminOSLayout(nonce, "Compose", "vayuos", cfg, htmpl.HTML(body.String())))
@@ -390,7 +390,7 @@ func (a *App) handleVayuOSAccounts(w http.ResponseWriter, r *http.Request) {
 	cfg := a.getOSSettings(r.Context())
 	var body strings.Builder
 	body.WriteString(`<div class="page-header"><h1>Mail accounts</h1><span class="muted text-sm">Admin-managed email IDs &amp; passwords (SMTP/IMAP login)</span></div>`)
-	body.WriteString(vayuosNav("accounts"))
+	body.WriteString(vayuosNav("accounts", a.isAdminRequest(r)))
 	if !a.isAdminRequest(r) {
 		body.WriteString(`<div class="empty-state">Mail-account management is available to administrators only. Your own mailbox is under <a href="/os/vayuos/mail/inbox">Mailbox</a>.</div>`)
 		writeOSHTML(w, adminOSLayout(nonce, "Mail accounts", "vayuos", cfg, htmpl.HTML(body.String())))
@@ -472,6 +472,139 @@ func (a *App) handleVayuOSAccounts(w http.ResponseWriter, r *http.Request) {
 	body.WriteString(`</tbody></table></div></div>`)
 	body.WriteString(`<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail.js"></script>`)
 	writeOSHTML(w, adminOSLayout(nonce, "Mail accounts", "vayuos", cfg, htmpl.HTML(body.String())))
+}
+
+// mailPort extracts the port from a listen address (":993", "127.0.0.1:993"),
+// falling back to def when the address binds an ephemeral/zero port.
+func mailPort(listen, def string) string {
+	if i := strings.LastIndexByte(listen, ':'); i >= 0 && i < len(listen)-1 {
+		if p := listen[i+1:]; p != "" && p != "0" {
+			return p
+		}
+	}
+	return def
+}
+
+// handleVayuOSConnect renders the "Connect" tab: ready-to-use IMAP/POP3/SMTP
+// client settings for each mailbox (so any standard mail app — Gmail, Apple
+// Mail, Thunderbird, Outlook — can be set up by copying the values), plus the
+// live up/down status of each mail listener so the operator can see at a glance
+// whether the server side of the connection is reachable.
+func (a *App) handleVayuOSConnect(w http.ResponseWriter, r *http.Request) {
+	nonce := render.CSPNonce(r)
+	cfg := a.getOSSettings(r.Context())
+	var body strings.Builder
+	body.WriteString(`<div class="page-header"><h1>Connect a mail app</h1><span class="muted text-sm">IMAP / POP3 / SMTP settings for Gmail, Apple Mail, Thunderbird, Outlook…</span></div>`)
+	body.WriteString(vayuosNav("connect", a.isAdminRequest(r)))
+
+	if a.vayuMail == nil || !a.vayuMail.Config().Enabled {
+		body.WriteString(`<div class="empty-state">VayuMail is inactive. Set <code>DOMAIN</code> to enable mailboxes and mail-client access.</div>`)
+		writeOSHTML(w, adminOSLayout(nonce, "Connect a mail app", "vayuos", cfg, htmpl.HTML(body.String())))
+		return
+	}
+
+	mc := a.vayuMail.Config()
+	host := mc.Hostname
+	if host == "" {
+		host = "mail." + mc.Domain
+	}
+	hHost := html.EscapeString(host)
+	imapsPort := html.EscapeString(mailPort(mc.IMAPSListen, "993"))
+	imapPort := html.EscapeString(mailPort(mc.IMAPListen, "143"))
+	pop3sPort := html.EscapeString(mailPort(mc.POP3SListen, "995"))
+	pop3Port := html.EscapeString(mailPort(mc.POP3Listen, "110"))
+	subPort := html.EscapeString(mailPort(mc.SubmissionListen, "587"))
+	smtpPort := html.EscapeString(mailPort(mc.SMTPListen, "25"))
+
+	// ── Live service status ──────────────────────────────────────────────────
+	badge := func(up bool) string {
+		if up {
+			return `<span class="badge badge--ok">online</span>`
+		}
+		return `<span class="badge badge--warn">offline</span>`
+	}
+	body.WriteString(`<div class="card"><div class="card-title">Service status</div>`)
+	body.WriteString(`<div class="table-wrap"><table class="table"><thead><tr><th>Service</th><th>Address</th><th>Status</th></tr></thead><tbody>`)
+	row := func(label, addr string, up bool) {
+		body.WriteString(`<tr><td>` + label + `</td><td class="mono text-sm">` + addr + `</td><td>` + badge(up) + `</td></tr>`)
+	}
+	row("IMAP · SSL", hHost+":"+imapsPort, a.vayuMail.IMAPSActive())
+	row("IMAP · STARTTLS", hHost+":"+imapPort, a.vayuMail.IMAPActive())
+	row("POP3 · SSL", hHost+":"+pop3sPort, a.vayuMail.POP3SActive())
+	row("POP3 · STLS", hHost+":"+pop3Port, a.vayuMail.POP3Active())
+	row("SMTP submission · STARTTLS", hHost+":"+subPort, a.vayuMail.SubmissionActive())
+	row("SMTP receive", hHost+":"+smtpPort, a.vayuMail.InboundActive())
+	body.WriteString(`</tbody></table></div>`)
+	if err := a.vayuMail.InboundError(); err != nil {
+		body.WriteString(`<p class="muted text-sm">Some listeners are not bound: ` + html.EscapeString(err.Error()) +
+			`. Ensure the ports are free and the service may bind them (grant CAP_NET_BIND_SERVICE for ports below 1024, or point the VAYUOS_MAIL_*_LISTEN vars at high ports), then restart.</p>`)
+	}
+	body.WriteString(`</div>`)
+
+	// ── TLS certificate trust ────────────────────────────────────────────────
+	// A reachable port with an untrusted (self-signed) certificate is the most
+	// common cause of a mail app's "Couldn't open connection to server": the
+	// connection and TLS handshake succeed, but the client rejects the
+	// certificate. Surface this prominently with the exact remediation.
+	if a.vayuMail.TLSActive() && !a.vayuMail.TLSTrusted() {
+		body.WriteString(`<div class="card" style="border-left:4px solid #d9534f"><div class="card-title">⚠ Mail apps will reject this connection</div>`)
+		body.WriteString(`<p class="text-sm">VayuMail is serving a <strong>self-signed TLS certificate</strong>. ` +
+			`Mobile and desktop mail apps (the Gmail app, Apple Mail, Thunderbird, Outlook) refuse self-signed certificates and report ` +
+			`<em>"Couldn't open connection to server"</em> — even though the ports above are online.</p>`)
+		body.WriteString(`<p class="text-sm">Install a trusted certificate using any one of:</p>`)
+		body.WriteString(`<ul class="text-sm">` +
+			`<li><strong>Automatic (recommended):</strong> set <code>VAYUOS_MAIL_TLS_ACME=on</code> (and optionally <code>VAYUOS_MAIL_ACME_EMAIL=you@` + html.EscapeString(mc.Domain) + `</code>), ensure port 80 on <code>` + hHost + `</code> is reachable, then restart. VayuMail obtains and auto-renews a Let's Encrypt certificate itself.</li>` +
+			`<li><strong>Guided script:</strong> run <code>sudo bash deploy/vayumail-setup.sh</code> on the server.</li>` +
+			`<li><strong>Manual:</strong> set <code>VAYUOS_MAIL_TLS_CERT</code> and <code>VAYUOS_MAIL_TLS_KEY</code> to a CA-signed pair, then restart.</li>` +
+			`</ul>`)
+		body.WriteString(`</div>`)
+	} else if a.vayuMail.TLSActive() && a.vayuMail.TLSTrusted() {
+		body.WriteString(`<div class="card"><div class="card-title">TLS certificate</div>`)
+		body.WriteString(`<p class="text-sm">A trusted certificate is active — mail apps can connect over SSL/TLS. <span class="muted">(` + html.EscapeString(a.vayuMail.TLSNote()) + `)</span></p></div>`)
+	}
+
+	// ── Recommended settings ─────────────────────────────────────────────────
+	body.WriteString(`<div class="card"><div class="card-title">Recommended settings</div>`)
+	body.WriteString(`<div class="table-wrap"><table class="table"><tbody>`)
+	body.WriteString(`<tr><th>Incoming · IMAP (recommended)</th><td class="mono text-sm">` + hHost + `</td><td>port ` + imapsPort + ` · SSL/TLS</td></tr>`)
+	body.WriteString(`<tr><th>Incoming · IMAP (alternative)</th><td class="mono text-sm">` + hHost + `</td><td>port ` + imapPort + ` · STARTTLS</td></tr>`)
+	body.WriteString(`<tr><th>Incoming · POP3</th><td class="mono text-sm">` + hHost + `</td><td>port ` + pop3sPort + ` SSL · or ` + pop3Port + ` STLS</td></tr>`)
+	body.WriteString(`<tr><th>Outgoing · SMTP</th><td class="mono text-sm">` + hHost + `</td><td>port ` + subPort + ` · STARTTLS · authentication required</td></tr>`)
+	body.WriteString(`<tr><th>Username</th><td colspan="2">your full email address (e.g. <span class="mono">you@` + html.EscapeString(mc.Domain) + `</span>)</td></tr>`)
+	body.WriteString(`<tr><th>Password</th><td colspan="2">your mailbox password (set under <a href="/os/vayuos/mail/accounts">Accounts</a>)</td></tr>`)
+	body.WriteString(`</tbody></table></div>`)
+	body.WriteString(`<p class="muted text-sm">IMAP keeps mail in sync across all your devices; POP3 downloads to a single device. Prefer the SSL ports where your app supports them.</p></div>`)
+
+	// ── Per-mailbox quick setup ──────────────────────────────────────────────
+	var emails []string
+	if a.isAdminRequest(r) && a.vayuMail.Accounts() != nil {
+		if accs, err := a.vayuMail.Accounts().List(r.Context()); err == nil {
+			for _, ac := range accs {
+				if ac.Active {
+					emails = append(emails, ac.Email)
+				}
+			}
+		}
+	} else if _, own := a.ownMailbox(r); own != "" {
+		emails = append(emails, own)
+	}
+
+	body.WriteString(`<div class="card"><div class="card-title">Per-mailbox setup</div>`)
+	body.WriteString(`<p class="muted text-sm">Use the email address as the <strong>username</strong> for all three protocols; the password is that mailbox's own password.</p>`)
+	body.WriteString(`<div class="table-wrap"><table class="table"><thead><tr><th>Mailbox (username)</th><th>IMAP</th><th>POP3</th><th>SMTP (send)</th></tr></thead><tbody>`)
+	if len(emails) == 0 {
+		body.WriteString(`<tr><td colspan="4" class="muted">No active mailboxes yet. Create one under <a href="/os/vayuos/mail/accounts">Accounts</a>.</td></tr>`)
+	}
+	for _, em := range emails {
+		e := html.EscapeString(em)
+		body.WriteString(`<tr><td class="mono">` + e + `</td>` +
+			`<td class="text-sm">` + hHost + `:` + imapsPort + ` SSL</td>` +
+			`<td class="text-sm">` + hHost + `:` + pop3sPort + ` SSL</td>` +
+			`<td class="text-sm">` + hHost + `:` + subPort + ` STARTTLS</td></tr>`)
+	}
+	body.WriteString(`</tbody></table></div></div>`)
+
+	writeOSHTML(w, adminOSLayout(nonce, "Connect a mail app", "vayuos", cfg, htmpl.HTML(body.String())))
 }
 
 func (a *App) handleVayuOSAccountCreate(w http.ResponseWriter, r *http.Request) {

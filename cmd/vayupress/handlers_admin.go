@@ -11,10 +11,13 @@ import (
 	"html"
 	"html/template"
 	"io"
+	"io/fs"
 	"net/http"
 	"net/http/pprof"
+	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -23,6 +26,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/microcosm-cc/bluemonday"
+	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/extension"
+	"github.com/yuin/goldmark/parser"
 
 	"github.com/johalputt/vayupress/internal/ads"
 	"github.com/johalputt/vayupress/internal/api"
@@ -219,27 +225,70 @@ func (a *App) handleAdminCachePurge(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, 200, map[string]interface{}{"message": "cache purged", "purge_type": purgeType, "purged": purged, "request_id": rid})
 }
 
-// handleHome renders the public homepage index from the most recent articles.
-// It serves a cached copy when present and regenerates on cache miss.
+// homeFeedPageSize is the number of posts shown per homepage feed page.
+const homeFeedPageSize = 30
+
+// handleHome renders the first page of the public homepage index.
 func (a *App) handleHome(w http.ResponseWriter, r *http.Request) {
-	cachePath := filepath.Join(config.Cfg.CacheDir, "home", "index.html")
-	if _, err := os.Stat(cachePath); err == nil {
-		atomic.AddInt64(&metrics.MetricCacheHits, 1)
-		http.ServeFile(w, r, cachePath)
+	a.renderHomeAt(w, r, 1)
+}
+
+// handleHomePaged renders /page/{n} of the homepage feed (n ≥ 2). Page 1 is
+// canonical at "/", so /page/1 permanently redirects there.
+func (a *App) handleHomePaged(w http.ResponseWriter, r *http.Request) {
+	n, err := strconv.Atoi(chi.URLParam(r, "page"))
+	if err != nil || n < 1 {
+		a.handleNotFound(w, r)
 		return
 	}
-	atomic.AddInt64(&metrics.MetricCacheMisses, 1)
+	if n == 1 {
+		http.Redirect(w, r, "/", http.StatusMovedPermanently)
+		return
+	}
+	a.renderHomeAt(w, r, n)
+}
+
+// renderHomeAt renders page (1-based) of the homepage feed. The hot first page
+// is cached (home/index.html); deeper pages render live — one indexed COUNT plus
+// one 30-row indexed query — which keeps them cheap and sidesteps paged-cache
+// invalidation. Out-of-range pages return the branded 404.
+func (a *App) renderHomeAt(w http.ResponseWriter, r *http.Request, page int) {
+	if page < 1 {
+		page = 1
+	}
+	useCache := page == 1
+	if useCache {
+		cachePath := filepath.Join(config.Cfg.CacheDir, "home", "index.html")
+		if fi, err := os.Stat(cachePath); err == nil && render.CacheEntryFresh(fi) {
+			atomic.AddInt64(&metrics.MetricCacheHits, 1)
+			http.ServeFile(w, r, cachePath)
+			return
+		}
+		atomic.AddInt64(&metrics.MetricCacheMisses, 1)
+	}
 
 	var total int
 	// Read pool + index-friendly predicates. `COALESCE(status,'published')` /
-	// `COALESCE(is_page,0)=0` defeat idx_articles_status / idx_articles_is_page
+	// `COALESCE(is_page,0)=0` defeat idx_articles_status / idx_articles_pagefeed
 	// and force a full-table scan; running them on the single writer connection
 	// serialised every cold homepage render (and everything else, including
 	// VayuOS) behind a 234k-row scan. status is NOT NULL DEFAULT 'published' and
 	// is_page is NOT NULL DEFAULT 0, so the bare columns are exact.
 	dbpkg.Reader().QueryRow(`SELECT COUNT(1) FROM articles WHERE status='published' AND is_page=0`).Scan(&total)
 
-	rows, err := dbpkg.Reader().Query(`SELECT title,slug,content,tags,created_at,COALESCE(excerpt,''),COALESCE(feature_image,'') FROM articles WHERE status='published' AND is_page=0 ORDER BY created_at DESC LIMIT 30`)
+	totalPages := (total + homeFeedPageSize - 1) / homeFeedPageSize
+	if totalPages < 1 {
+		totalPages = 1
+	}
+	// A deep page beyond the feed has no content — 404 rather than show an empty
+	// list, so crawlers don't index ghost pages.
+	if page > totalPages {
+		a.handleNotFound(w, r)
+		return
+	}
+	offset := (page - 1) * homeFeedPageSize
+
+	rows, err := dbpkg.Reader().Query(`SELECT title,slug,content,tags,created_at,COALESCE(excerpt,''),COALESCE(feature_image,'') FROM articles WHERE status='published' AND is_page=0 ORDER BY created_at DESC LIMIT ? OFFSET ?`, homeFeedPageSize, offset)
 	var articles []render.HomeArticle
 	author := render.GetActiveSettings().Author
 	if err == nil {
@@ -268,14 +317,51 @@ func (a *App) handleHome(w http.ResponseWriter, r *http.Request) {
 		_ = rows.Err()
 	}
 
-	html, err := render.RenderHome(config.Cfg.Domain, Version, articles, total)
+	html, err := render.RenderHome(config.Cfg.Domain, Version, articles, total, page, totalPages)
 	if err != nil {
 		http.Error(w, "render error", 500)
 		return
 	}
-	render.CacheWrite(filepath.Join("home", "index.html"), html) //nolint:errcheck
+	if useCache {
+		render.CacheWrite(filepath.Join("home", "index.html"), html) //nolint:errcheck
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	fmt.Fprint(w, html)
+}
+
+// handleSearchPage renders the public search results page. It backs the site
+// search box (nav + /search) using VayuFind, the built-in engine — so visitors
+// get a real, server-rendered (crawlable, JS-free) results list even without
+// the instant modal.
+func (a *App) handleSearchPage(w http.ResponseWriter, r *http.Request) {
+	// Search is tied to the Search toggle — when it's off, the public search
+	// box is hidden and this page 404s rather than offering hidden search.
+	if !render.SearchEnabled() {
+		a.handleNotFound(w, r)
+		return
+	}
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	if len(q) > 120 {
+		q = q[:120]
+	}
+	var hits []render.SearchHit
+	if q != "" && a.search != nil {
+		ctx, cancel := context.WithTimeout(r.Context(), 6*time.Second)
+		defer cancel()
+		if res, err := a.search.Search(ctx, q, 30); err == nil {
+			for _, h := range res.Hits {
+				hits = append(hits, render.SearchHit{Title: h.Title, Slug: h.Slug, Tags: h.Tags, CreatedAt: h.CreatedAt})
+			}
+		}
+	}
+	out, err := render.RenderSearch(config.Cfg.Domain, Version, q, hits)
+	if err != nil {
+		http.Error(w, "render error", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("X-Robots-Tag", "noindex")
+	fmt.Fprint(w, out)
 }
 
 // handleNotFound renders the branded 404 page.
@@ -329,7 +415,7 @@ func (a *App) handleArticlePage(w http.ResponseWriter, r *http.Request) {
 
 	cachePath := filepath.Join(config.Cfg.CacheDir, "posts", slug+".html")
 	if !gated && (!isAdmin || r.URL.Query().Get("layout") == "") {
-		if _, err := os.Stat(cachePath); err == nil { //nosec G703 -- slug validated by api.IsValidSlug; path confined to CacheDir/posts
+		if fi, err := os.Stat(cachePath); err == nil && render.CacheEntryFresh(fi) { //nosec G703 -- slug validated by api.IsValidSlug; path confined to CacheDir/posts
 			atomic.AddInt64(&metrics.MetricCacheHits, 1)
 			// Re-apply the per-page video-embed CSP for cached pages that carry a
 			// facade (recorded in a sidecar at render time) before serving.
@@ -660,44 +746,108 @@ func resolveADRDir() string {
 	return candidates[0]
 }
 
+// adrFilenames returns every ADR markdown filename available, unioning the
+// on-disk docs/adr directory (deploy/operator-managed) with the copy embedded
+// in the binary. Embedding guarantees the registry shows every ADR shipped with
+// the running build even when the on-disk docs are stale — the previous cause
+// of the list stopping at an old number after a binary-only self-update. The
+// registry's own INDEX.md is excluded.
+func adrFilenames(adrDir string) []string {
+	set := map[string]bool{}
+	add := func(name string) {
+		if strings.HasSuffix(name, ".md") && !strings.EqualFold(name, "INDEX.md") {
+			set[name] = true
+		}
+	}
+	if entries, err := os.ReadDir(adrDir); err == nil {
+		for _, e := range entries {
+			if !e.IsDir() {
+				add(e.Name())
+			}
+		}
+	}
+	if entries, err := fs.ReadDir(embeddedADRFS, "."); err == nil {
+		for _, e := range entries {
+			if !e.IsDir() {
+				add(e.Name())
+			}
+		}
+	}
+	out := make([]string, 0, len(set))
+	for n := range set {
+		out = append(out, n)
+	}
+	return out
+}
+
+// readADRFile returns the bytes of one ADR, preferring the on-disk copy (so a
+// site can locally amend an ADR) and falling back to the embedded copy. The
+// filename must already have been validated against adrFilenames (an allowlist).
+func readADRFile(adrDir, filename string) ([]byte, error) {
+	if b, err := os.ReadFile(filepath.Join(adrDir, filename)); err == nil { //nosec G304 -- filename allow-listed by caller
+		return b, nil
+	}
+	return fs.ReadFile(embeddedADRFS, filename)
+}
+
 func (a *App) handleAdminADR(w http.ResponseWriter, r *http.Request) {
 	adrDir := resolveADRDir()
-	entries, err := os.ReadDir(adrDir)
-	if err != nil {
-		nonce := a.writeConsoleShellHead(w, r, "adrs", "ADR Registry", "Architecture Decision Records")
-		fmt.Fprint(w, `<div class="empty-state"><div class="empty-icon">≡</div><div class="empty-title">No ADR directory found</div><div class="empty-sub">Set VAYU_DOCS_DIR to a directory containing an adr/ subdirectory.</div></div>`)
-		writeConsoleShellFoot(w, nonce, "")
-		return
-	}
 
 	type adrEntry struct{ Filename, Number, Title string }
 	var adrs []adrEntry
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
-			continue
-		}
-		name := strings.TrimSuffix(e.Name(), ".md")
+	for _, name := range adrFilenames(adrDir) {
+		base := strings.TrimSuffix(name, ".md")
 		// Filenames look like "ADR-0001-sqlite-first" or "0001-some-title".
 		// Treat the leading "<id>" or "<prefix>-<id>" as the number and the
 		// remainder as a human-readable title.
-		number := name
-		title := name
-		parts := strings.SplitN(name, "-", 3)
+		number := base
+		title := base
+		parts := strings.SplitN(base, "-", 3)
 		switch {
 		case len(parts) >= 3 && strings.EqualFold(parts[0], "ADR"):
 			number = parts[0] + "-" + parts[1]
 			title = strings.ReplaceAll(parts[2], "-", " ")
 		case len(parts) >= 2:
 			number = parts[0]
-			title = strings.ReplaceAll(strings.SplitN(name, "-", 2)[1], "-", " ")
+			title = strings.ReplaceAll(strings.SplitN(base, "-", 2)[1], "-", " ")
 		}
-		adrs = append(adrs, adrEntry{e.Name(), number, title})
+		adrs = append(adrs, adrEntry{name, number, title})
+	}
+	// Newest first so the most recent decisions are at the top.
+	sort.Slice(adrs, func(i, j int) bool { return adrs[i].Filename > adrs[j].Filename })
+
+	// Read view: ?doc=<filename> renders a single ADR's content. The requested
+	// filename is matched against the listing (an allowlist), so no
+	// caller-supplied path can escape the ADR sources.
+	if doc := r.URL.Query().Get("doc"); doc != "" {
+		var match *adrEntry
+		for i := range adrs {
+			if adrs[i].Filename == doc {
+				match = &adrs[i]
+				break
+			}
+		}
+		if match == nil {
+			a.handleNotFound(w, r)
+			return
+		}
+		raw, rerr := readADRFile(adrDir, match.Filename)
+		if rerr != nil {
+			a.handleNotFound(w, r)
+			return
+		}
+		nonce := a.writeConsoleShellHead(w, r, "adrs", match.Number, match.Title)
+		fmt.Fprint(w, `<div class="adr-doc-actions"><a class="btn btn--ghost" href="/os/adr">&larr; Back to ADR Registry</a></div>`)
+		fmt.Fprintf(w, `<article class="adr-doc card">%s</article>`, renderMarkdownDocument(raw))
+		writeConsoleShellFoot(w, nonce, "")
+		return
 	}
 
 	nonce := a.writeConsoleShellHead(w, r, "adrs", "ADR Registry", fmt.Sprintf("%d architecture decision records", len(adrs)))
 	fmt.Fprintf(w, `<div class="adr-list">`)
 	for _, adr := range adrs {
-		fmt.Fprintf(w, `<div class="adr-row"><span class="adr-number">%s</span><span class="adr-title">%s</span><span class="adr-badge s-ok">Accepted</span></div>`,
+		fmt.Fprintf(w, `<a class="adr-row" href="/os/adr?doc=%s"><span class="adr-number">%s</span><span class="adr-title">%s</span><span class="adr-badge s-ok">Read</span></a>`,
+			template.HTMLEscapeString(url.QueryEscape(adr.Filename)),
 			template.HTMLEscapeString(adr.Number), template.HTMLEscapeString(adr.Title))
 	}
 	if len(adrs) == 0 {
@@ -705,6 +855,24 @@ func (a *App) handleAdminADR(w http.ResponseWriter, r *http.Request) {
 	}
 	fmt.Fprint(w, `</div>`)
 	writeConsoleShellFoot(w, nonce, "")
+}
+
+// renderMarkdownDocument converts an ADR markdown file to sanitised HTML for the
+// read view. goldmark (GFM) renders the markdown; bluemonday's UGC policy then
+// strips anything unsafe, so the rendered registry can never become an injection
+// surface even though ADRs are operator-authored.
+func renderMarkdownDocument(md []byte) template.HTML {
+	gm := goldmark.New(
+		goldmark.WithExtensions(extension.GFM, extension.Table),
+		goldmark.WithParserOptions(parser.WithAutoHeadingID()),
+	)
+	var buf strings.Builder
+	if err := gm.Convert(md, &buf); err != nil {
+		// Fall back to escaped plain text rather than failing the page.
+		return template.HTML("<pre>" + template.HTMLEscapeString(string(md)) + "</pre>") //nolint:gosec // escaped above
+	}
+	safe := bluemonday.UGCPolicy().Sanitize(buf.String())
+	return template.HTML(safe) //nolint:gosec // sanitised by bluemonday UGC policy
 }
 
 func (a *App) handleHealthBenchmarks(w http.ResponseWriter, r *http.Request) {
@@ -836,47 +1004,6 @@ func (a *App) handleRunBenchmark(w http.ResponseWriter, r *http.Request) {
 // =============================================================================
 // ADR document writing
 // =============================================================================
-
-func writeADRs(docsDir string) {
-	adrDir := filepath.Join(docsDir, "adr")
-	if err := os.MkdirAll(adrDir, 0755); err != nil {
-		return
-	}
-	now := time.Now().Format("2006-01-02")
-	adrs := map[string]string{
-		"ADR-0032-plugin-pool-concurrency-hardening.md":     "# ADR-0032: Plugin Pool Concurrency Hardening\n\n**Status**: Accepted\n**Date**: " + now + "\n\n## Problem\nP7 plugin pool had goroutine leak risk on shutdown.\n\n## Decision\npluginCtx/pluginCancel + workerPluginWg + per-goroutine recover().\n",
-		"ADR-0033-wal-adaptive-checkpoint.md":               "# ADR-0033: WAL Adaptive Checkpoint Strategy\n\n**Status**: Accepted\n**Date**: " + now + "\n\n## Decision\nAdaptive WAL checkpoint based on WAL_SIZE_THRESHOLD_MB.\n",
-		"ADR-0034-migration-checksum-drift-verification.md": "# ADR-0034: Migration Checksum Drift Verification\n\n**Status**: Accepted\n**Date**: " + now + "\n\n## Decision\nverifyMigrationChecksums() called at startup.\n",
-		"ADR-0035-dead-letter-replay-safety.md":             "# ADR-0035: Dead-Letter Queue Replay Safety Controls\n\n**Status**: Accepted\n**Date**: " + now + "\n\n## Decision\nReplay limited to REPLAY_BATCH_LIMIT; quarantine after MAX_REPLAY_COUNT.\n",
-		"ADR-0036-csp-nonce-template-helpers.md":            "# ADR-0036: CSP Nonce Centralized Template Helpers\n\n**Status**: Accepted\n**Date**: " + now + "\n\n## Decision\nrender.CSPNonce(r) canonical nonce accessor.\n",
-		"ADR-0037-pprof-explicit-handler-hardening.md":      "# ADR-0037: Pprof Explicit Handler Registration\n\n**Status**: Accepted\n**Date**: " + now + "\n\n## Decision\nExplicit pprofMux; rate-limited; no DefaultServeMux.\n",
-		"ADR-0038-vacuum-rate-limiting.md":                  "# ADR-0038: VACUUM Rate Limiting\n\n**Status**: Accepted\n**Date**: " + now + "\n\n## Decision\nCooldown + write-threshold guard.\n",
-		"ADR-0039-deploy-sourced-components.md":             "# ADR-0039: Deploy Script Sourced Components\n\n**Status**: Accepted\n**Date**: " + now + "\n",
-		"ADR-0040-config-versioning.md":                     "# ADR-0040: Config Versioning\n\n**Status**: Accepted\n**Date**: " + now + "\n",
-		"ADR-0041-structured-health-contracts.md":           "# ADR-0041: Structured Health Contracts\n\n**Status**: Accepted\n**Date**: " + now + "\n",
-		"ADR-0042-backup-restore-automation.md":             "# ADR-0042: Backup Restore Automation\n\n**Status**: Accepted\n**Date**: " + now + "\n",
-		"ADR-0043-integration-test-failure-modes.md":        "# ADR-0043: Integration Test Failure Mode Coverage\n\n**Status**: Accepted\n**Date**: " + now + "\n",
-		"ADR-0045-internal-package-decomposition.md":        "# ADR-0045: Internal Package Decomposition (P14)\n\n**Status**: Accepted\n**Date**: " + now + "\n\n## Decision\nSplit main.go into internal/* packages: logging, config, metrics, db, auth, render, queue, health.\n",
-	}
-	for filename, content := range adrs {
-		// Skip if an ADR with this number already exists under ANY filename.
-		// Several of these bootstrap stubs were later rewritten as canonical,
-		// hand-authored ADRs with better slugs (e.g. ADR-0032-plugin-pool-
-		// waitgroup.md). Matching only the exact stub name would recreate the
-		// obsolete stub every boot, producing duplicate ADR numbers in the
-		// registry. Glob on the "ADR-NNNN-" prefix so the canonical file wins.
-		num := filename[:len("ADR-0000")] // e.g. "ADR-0032"
-		if existing, _ := filepath.Glob(filepath.Join(adrDir, num+"-*.md")); len(existing) > 0 {
-			continue
-		}
-		path := filepath.Join(adrDir, filename)
-		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
-			logging.LogError("adr", "write failed: "+filename, err.Error())
-		} else {
-			logging.LogInfo("adr", "written: "+filename)
-		}
-	}
-}
 
 // =============================================================================
 // Admin dashboard
@@ -1441,40 +1568,46 @@ func (a *App) handleFaultStatus(w http.ResponseWriter, r *http.Request) {
 // relatedArticles returns up to limit articles that share at least one tag with
 // the current article, most recent first. The current slug is excluded.
 //
-// Tags are stored as a comma-separated string. A coarse SQL LIKE pre-filter
-// narrows candidates cheaply; exact, comma-delimited token matching is then done
-// in Go so a tag like "go" does not spuriously match "golang", and so a tag that
-// happens to contain LIKE metacharacters ("%", "_") cannot widen the match. We
-// over-fetch (limit*4, capped) before the precise filter to avoid missing rows.
+// Membership is resolved through the indexed article_tags join table (migration
+// 048): the wanted tags are matched by their normalised (lower-cased) form via
+// the tag_norm index, then joined to the articles primary key. This replaces the
+// previous `tags LIKE '%..%'` pre-filter that full-scanned the articles table,
+// so related posts stay fast at 1M+ posts. SELECT DISTINCT collapses the case
+// where an article matches several of the wanted tags.
 func (a *App) relatedArticles(ctx context.Context, currentSlug string, tags []string, limit int) []render.RelatedArticle {
 	if len(tags) == 0 || dbpkg.DB == nil {
 		return nil
 	}
-	want := make(map[string]struct{}, len(tags))
-	args := []interface{}{}
-	clauses := []string{}
+	norms := make([]string, 0, len(tags))
+	seen := make(map[string]struct{}, len(tags))
 	for _, t := range tags {
-		t = strings.TrimSpace(t)
-		if t == "" {
+		n := strings.ToLower(strings.TrimSpace(t))
+		if n == "" {
 			continue
 		}
-		want[strings.ToLower(t)] = struct{}{}
-		// Escape LIKE metacharacters so a tag value cannot act as a wildcard.
-		esc := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(t)
-		clauses = append(clauses, `tags LIKE ? ESCAPE '\'`)
-		args = append(args, "%"+esc+"%")
+		if _, dup := seen[n]; dup {
+			continue
+		}
+		seen[n] = struct{}{}
+		norms = append(norms, n)
 	}
-	if len(clauses) == 0 {
+	if len(norms) == 0 {
 		return nil
 	}
-	overFetch := limit * 4
-	if overFetch > 200 {
-		overFetch = 200
+	args := make([]interface{}, 0, len(norms)+2)
+	placeholders := make([]string, 0, len(norms))
+	for _, n := range norms {
+		placeholders = append(placeholders, "?")
+		args = append(args, n)
 	}
-	args = append(args, currentSlug, overFetch)
+	args = append(args, currentSlug, limit)
 	// Related posts are a public surface — exclude drafts.
-	q := `SELECT title, slug, tags, created_at FROM articles WHERE (` +
-		strings.Join(clauses, " OR ") + `) AND slug != ? AND status='published' ORDER BY created_at DESC LIMIT ?`
+	// CROSS JOIN pins article_tags as the driving table so the query is always
+	// an indexed tag lookup (cost bounded by how many posts carry these tags),
+	// never a full scan of the articles table — which the planner could otherwise
+	// choose when one of the tags is very common, reintroducing the 502.
+	q := `SELECT DISTINCT a.title, a.slug, a.created_at FROM article_tags t CROSS JOIN articles a ON a.id=t.article_id WHERE t.tag_norm IN (` +
+		strings.Join(placeholders, ",") + `) AND a.slug != ? AND a.status='published' ORDER BY t.created_at DESC LIMIT ?`
 	rows, err := dbpkg.Reader().QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil
@@ -1483,19 +1616,7 @@ func (a *App) relatedArticles(ctx context.Context, currentSlug string, tags []st
 	var out []render.RelatedArticle
 	for rows.Next() {
 		var ra render.RelatedArticle
-		var tagsCSV string
-		if err := rows.Scan(&ra.Title, &ra.Slug, &tagsCSV, &ra.CreatedAt); err != nil {
-			continue
-		}
-		// Precise token match: at least one tag must equal a wanted tag.
-		match := false
-		for _, t := range strings.Split(tagsCSV, ",") {
-			if _, ok := want[strings.ToLower(strings.TrimSpace(t))]; ok {
-				match = true
-				break
-			}
-		}
-		if !match {
+		if err := rows.Scan(&ra.Title, &ra.Slug, &ra.CreatedAt); err != nil {
 			continue
 		}
 		out = append(out, ra)

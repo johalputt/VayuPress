@@ -3049,3 +3049,232 @@
   line-height: 1;
 }
 .vp-os .eblock__gallery-del:hover { background: var(--color-danger, #ef4444); }
+
+
+/* ── ADR Registry ────────────────────────────────────────────── */
+.vp-os .adr-list { display: flex; flex-direction: column; gap: 6px; }
+.vp-os a.adr-row {
+  display: flex; align-items: center; gap: 14px;
+  padding: 11px 14px;
+  background: var(--bg-surface); border: 1px solid var(--border);
+  border-radius: var(--r-md); text-decoration: none; color: var(--text);
+  transition: border-color .12s ease, transform .12s ease, background .12s ease;
+}
+.vp-os a.adr-row:hover {
+  border-color: var(--accent); background: var(--bg-surface-3, var(--bg-surface));
+  transform: translateY(-1px); text-decoration: none;
+}
+.vp-os .adr-row .adr-number {
+  font: 700 11px var(--font-mono); letter-spacing: .04em; color: var(--accent);
+  white-space: nowrap; min-width: 84px;
+}
+.vp-os .adr-row .adr-title { flex: 1; font-size: 13px; color: var(--text); text-transform: capitalize; }
+.vp-os .adr-row .adr-badge {
+  font: 700 8px var(--font-mono); letter-spacing: .06em; text-transform: uppercase;
+  padding: 3px 9px; border-radius: 100px; white-space: nowrap;
+  background: rgba(16,185,129,.1); color: var(--ok);
+}
+
+/* ADR read view */
+.vp-os .adr-doc-actions { margin-bottom: 14px; }
+.vp-os article.adr-doc {
+  padding: 24px 28px; line-height: 1.65; color: var(--text-1, var(--text));
+  font-size: 14px; max-width: 920px;
+}
+.vp-os article.adr-doc h1,
+.vp-os article.adr-doc h2,
+.vp-os article.adr-doc h3,
+.vp-os article.adr-doc h4 { color: var(--text); line-height: 1.3; margin: 1.4em 0 .6em; }
+.vp-os article.adr-doc h1 { font-size: 22px; }
+.vp-os article.adr-doc h2 { font-size: 18px; border-bottom: 1px solid var(--border); padding-bottom: .3em; }
+.vp-os article.adr-doc h3 { font-size: 15px; }
+.vp-os article.adr-doc p,
+.vp-os article.adr-doc ul,
+.vp-os article.adr-doc ol { margin: .7em 0; color: var(--text-2); }
+.vp-os article.adr-doc li { margin: .3em 0; }
+.vp-os article.adr-doc a { color: var(--accent); }
+.vp-os article.adr-doc strong { color: var(--text); }
+.vp-os article.adr-doc code {
+  font: 400 12px var(--font-mono); background: rgba(99,102,241,.08);
+  border: 1px solid var(--border); border-radius: var(--r-sm); padding: 1px 5px;
+}
+.vp-os article.adr-doc pre {
+  background: var(--bg-surface); border: 1px solid var(--border);
+  border-radius: var(--r-md); padding: 14px 16px; overflow-x: auto; margin: 1em 0;
+}
+.vp-os article.adr-doc pre code { background: none; border: none; padding: 0; }
+.vp-os article.adr-doc blockquote {
+  border-left: 3px solid var(--accent); margin: 1em 0; padding: .2em 0 .2em 14px;
+  color: var(--text-2);
+}
+.vp-os article.adr-doc table { border-collapse: collapse; width: 100%; margin: 1em 0; font-size: 13px; }
+.vp-os article.adr-doc th,
+.vp-os article.adr-doc td { border: 1px solid var(--border); padding: 7px 10px; text-align: left; }
+.vp-os article.adr-doc th { background: var(--bg-surface); color: var(--text); }
+
+
+
+/* ============================================================================
+   VayuOS — Mobile app experience (responsive enhancement layer)
+   Loaded last so it refines the base rules above. Goals: native-app feel on
+   phones — comfortable touch targets, safe-area awareness, no iOS focus-zoom,
+   a wide tap-to-close drawer, an app-style bottom bar, and wide data tables
+   that fold into readable cards instead of forcing a horizontal scroll.
+   ========================================================================== */
+
+/* Kill the grey tap flash and stop accidental horizontal scrolling. */
+.vp-os { -webkit-tap-highlight-color: transparent; }
+.vp-os .main { max-width: 100%; overflow-x: hidden; }
+.vp-os .content { max-width: 1280px; min-width: 0; }
+
+/* Dynamic viewport units where supported, so the mobile browser's collapsing
+   address bar never clips the drawer or shell. */
+@supports (height: 100dvh) {
+  .vp-os .sidebar { height: 100dvh; }
+  .vp-os .shell { min-height: 100dvh; }
+}
+
+/* ── Touch targets ─────────────────────────────────────────────
+   Only on real touch / coarse-pointer devices, so the desktop density is
+   untouched. 44px is the Apple/Android minimum comfortable hit area. */
+@media (hover: none) and (pointer: coarse) {
+  .vp-os .nav-link { min-height: 44px; }
+  .vp-os .btn { min-height: 40px; display: inline-flex; align-items: center; justify-content: center; }
+  .vp-os .btn--sm { min-height: 38px; }
+  .vp-os .table .row-actions a,
+  .vp-os .table .row-actions button {
+    min-height: 36px; display: inline-flex; align-items: center;
+  }
+  /* Slightly larger form controls are easier to hit. */
+  .vp-os input:not([type="checkbox"]):not([type="radio"]),
+  .vp-os select,
+  .vp-os textarea { min-height: 42px; }
+}
+
+/* ── Phone layout (≤768px) ─────────────────────────────────────
+   Refines the existing mobile block: a wider drawer, no iOS focus-zoom,
+   a compact topbar, and safe-area-aware spacing. */
+@media (max-width: 768px) {
+  /* A roomier, app-style slide-in drawer. */
+  .vp-os .sidebar {
+    width: min(86vw, 320px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  /* 16px is the threshold below which iOS Safari auto-zooms on focus; pin all
+     text inputs to it so tapping a field never jumps the layout. */
+  .vp-os input,
+  .vp-os select,
+  .vp-os textarea { font-size: 16px; }
+
+  /* Compact, single-line topbar that never overflows. */
+  .vp-os .topbar { gap: var(--sp-2); padding: 0 var(--sp-3); }
+  .vp-os .topbar-title {
+    font-size: var(--text-base);
+    min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .vp-os .topbar .btn--sm { padding: var(--sp-2) var(--sp-3); }
+
+  /* Let dense control rows wrap instead of overflowing. */
+  .vp-os .toolbar-row,
+  .vp-os .card-head,
+  .vp-os .bulk-bar { flex-wrap: wrap; }
+  .vp-os .toolbar-row > .input,
+  .vp-os .toolbar-row > input[type="search"],
+  .vp-os .toolbar-row > select { flex: 1 1 100%; width: 100%; }
+
+  /* Comfortable card padding on small screens. */
+  .vp-os .content { padding: var(--sp-4) var(--sp-3); }
+  .vp-os .card { padding: var(--sp-4); }
+}
+
+/* ── App-style bottom bar ──────────────────────────────────────
+   The shared bottom nav is shown ≤768px. Make it safe-area aware, give it
+   clear active state, and respect items hidden by the role filter (JS). */
+@media (max-width: 768px) {
+  .vp-os .bottom-nav {
+    height: auto;
+    min-height: 56px;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    box-shadow: 0 -1px 0 var(--border), var(--sh);
+  }
+  .vp-os .bottom-nav-item {
+    min-height: 56px;
+    border: none; background: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .vp-os .bottom-nav-item.active,
+  .vp-os .bottom-nav-item[aria-current="page"] { color: var(--brand); }
+  .vp-os .bottom-nav-item--accent { color: var(--brand); }
+  .vp-os .bottom-nav-item--accent svg { opacity: 1; }
+  /* Items the role filter removes must collapse (the base rule sets flex). */
+  .vp-os .bottom-nav-item[hidden] { display: none; }
+  /* Clear the fixed bar + the home-indicator inset. */
+  .vp-os .content { padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px)); }
+}
+
+/* ── Responsive data tables → cards (≤640px) ───────────────────
+   JS (initResponsiveTables) stamps each cell with data-label from its column
+   header and flags qualifying wrappers with .vp-stackable. Here we fold those
+   tables into labelled cards so wide tables stay readable without a horizontal
+   scrollbar. Tables that opt out ([data-no-stack]) or have a selection column
+   keep the normal swipe-scroll behaviour. */
+@media (max-width: 640px) {
+  .vp-os .table-wrap.vp-stackable { overflow-x: visible; }
+  .vp-os .table-wrap.vp-stackable > table,
+  .vp-os .table-wrap.vp-stackable > table > tbody,
+  .vp-os .table-wrap.vp-stackable > table > tbody > tr,
+  .vp-os .table-wrap.vp-stackable > table > tbody > tr > td { display: block; width: 100%; }
+
+  /* Visually hide column headers but keep them for assistive tech. */
+  .vp-os .table-wrap.vp-stackable > table > thead {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+  }
+
+  .vp-os .table-wrap.vp-stackable > table > tbody > tr {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    padding: var(--sp-1) var(--sp-3);
+    margin-bottom: var(--sp-3);
+  }
+  .vp-os .table-wrap.vp-stackable > table > tbody > tr:hover { background: var(--bg-surface); }
+
+  .vp-os .table-wrap.vp-stackable > table > tbody > tr > td {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: var(--sp-4);
+    padding: var(--sp-2) 0;
+    border: none;
+    border-bottom: 1px solid var(--border);
+    text-align: right;
+    white-space: normal;
+  }
+  .vp-os .table-wrap.vp-stackable > table > tbody > tr > td:last-child { border-bottom: none; }
+
+  /* The column label, pulled from the header by JS. */
+  .vp-os .table-wrap.vp-stackable > table > tbody > tr > td[data-label]::before {
+    content: attr(data-label);
+    flex: 0 0 40%;
+    text-align: left;
+    font-size: var(--text-xs); font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--text-3);
+  }
+  /* Action cells (blank header) span full width and right-align their buttons. */
+  .vp-os .table-wrap.vp-stackable > table > tbody > tr > td[data-label=""]::before { content: none; }
+  .vp-os .table-wrap.vp-stackable .row-actions { text-align: right; }
+  .vp-os .table-wrap.vp-stackable .row-meta { text-align: right; }
+}
+
+/* Honour reduced-motion: drop the drawer slide for users who ask for it. */
+@media (prefers-reduced-motion: reduce) {
+  .vp-os .sidebar { transition: none; }
+}
+
+
+/* Transient "couldn't load" notice on list pages (e.g. Posts under DB load). */
+.vp-os .load-notice {
+  border-left: 3px solid var(--warn);
+  background: var(--warn-dim);
+}

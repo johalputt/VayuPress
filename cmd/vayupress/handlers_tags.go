@@ -73,7 +73,7 @@ func (a *App) handleTagPage(w http.ResponseWriter, r *http.Request) {
 	cacheRel, cacheable := render.TagPageCacheRel(tag)
 	if cacheable {
 		cachePath := filepath.Join(config.Cfg.CacheDir, filepath.FromSlash(cacheRel))
-		if _, err := os.Stat(cachePath); err == nil { //nosec G703 -- cacheRel sanitised by TagPageCacheRel (rejects unsafe path components); tag length-bounded; path confined to CacheDir
+		if fi, err := os.Stat(cachePath); err == nil && render.CacheEntryFresh(fi) { //nosec G703 -- cacheRel sanitised by TagPageCacheRel (rejects unsafe path components); tag length-bounded; path confined to CacheDir
 			atomic.AddInt64(&metrics.MetricCacheHits, 1)
 			http.ServeFile(w, r, cachePath) //nosec G703 -- path confined to CacheDir; tag sanitised by TagPageCacheRel
 			return
@@ -101,27 +101,38 @@ func (a *App) handleTagPage(w http.ResponseWriter, r *http.Request) {
 }
 
 // articlesByTag returns the published articles tagged exactly with tag (case-
-// insensitive), most recent first, plus the precise total match count. The SQL
-// LIKE filter is only a coarse pre-filter — a substring match would wrongly pair
-// "go" with "golang" — so each candidate is re-checked token-by-token in Go, the
-// same precise-matching strategy used by relatedArticles. At most `max` articles
-// are materialised for the page; total still reflects every match.
+// insensitive), most recent first, plus the precise total match count. Membership
+// is resolved through the indexed article_tags join table (migration 048): the
+// tag_norm index turns this into a point lookup plus a primary-key join, so it
+// stays fast at 1M+ posts instead of full-scanning the articles table with a
+// `tags LIKE '%..%'` predicate. At most `max` articles are materialised for the
+// page; total still reflects every published match.
 func (a *App) articlesByTag(ctx context.Context, tag string, max int) ([]render.HomeArticle, int) {
 	if dbpkg.DB == nil {
 		return nil, 0
 	}
-	// Escape LIKE metacharacters so a tag value can never act as a wildcard.
-	esc := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(tag)
-	like := "%" + esc + "%"
-	q := `SELECT title,slug,content,tags,created_at FROM articles WHERE tags LIKE ? ESCAPE '\' AND status='published' ORDER BY created_at DESC LIMIT 5000`
-	rows, err := dbpkg.Reader().QueryContext(ctx, q, like)
-	if err != nil {
+	norm := strings.ToLower(strings.TrimSpace(tag))
+	if norm == "" {
 		return nil, 0
+	}
+
+	var total int
+	dbpkg.Reader().QueryRowContext(ctx,
+		`SELECT COUNT(1) FROM article_tags t CROSS JOIN articles a ON a.id=t.article_id WHERE t.tag_norm=? AND a.status='published'`,
+		norm,
+	).Scan(&total)
+	if total == 0 {
+		return nil, 0
+	}
+
+	q := `SELECT a.title,a.slug,a.content,a.tags,a.created_at FROM article_tags t CROSS JOIN articles a ON a.id=t.article_id WHERE t.tag_norm=? AND a.status='published' ORDER BY t.created_at DESC LIMIT ?`
+	rows, err := dbpkg.Reader().QueryContext(ctx, q, norm, max)
+	if err != nil {
+		return nil, total
 	}
 	defer rows.Close()
 
 	var out []render.HomeArticle
-	total := 0
 	author := render.GetActiveSettings().Author
 	for rows.Next() {
 		var ha render.HomeArticle
@@ -129,24 +140,11 @@ func (a *App) articlesByTag(ctx context.Context, tag string, max int) ([]render.
 		if err := rows.Scan(&ha.Title, &ha.Slug, &content, &tagsCSV, &ha.CreatedAt); err != nil {
 			continue
 		}
-		matched := false
-		for _, t := range api.SplitTags(tagsCSV) {
-			if strings.EqualFold(strings.TrimSpace(t), tag) {
-				matched = true
-				break
-			}
-		}
-		if !matched {
-			continue
-		}
-		total++
-		if len(out) < max {
-			ha.Tags = api.SplitTags(tagsCSV)
-			ha.Excerpt = excerptFromHTML(content, 160)
-			ha.Image = seo.ExtractFirstImage(content)
-			ha.Author = author
-			out = append(out, ha)
-		}
+		ha.Tags = api.SplitTags(tagsCSV)
+		ha.Excerpt = excerptFromHTML(content, 160)
+		ha.Image = seo.ExtractFirstImage(content)
+		ha.Author = author
+		out = append(out, ha)
 	}
 	_ = rows.Err()
 	return out, total

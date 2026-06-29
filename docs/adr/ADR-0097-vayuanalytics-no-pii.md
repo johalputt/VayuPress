@@ -1,4 +1,4 @@
-# ADR-0079: VayuAnalytics — Server-Side Rotating-Salt, No-PII Model
+# ADR-0097: VayuAnalytics — Server-Side Rotating-Salt, No-PII Model
 
 **Status**: Accepted  
 **Date**: 2026-06-24  

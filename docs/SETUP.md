@@ -30,7 +30,7 @@ curl -sSL https://raw.githubusercontent.com/johalputt/vayupress/main/scripts/dep
 | Go 1.22       | Application runtime                  |
 | Nginx         | Static file serving + TLS            |
 | SQLite        | Primary database (WAL mode)          |
-| Meilisearch   | Optional full-text search            |
+| VayuFind      | Built-in instant full-text search    |
 | Isso          | Self-hosted comment server           |
 | Certbot       | Automatic Let's Encrypt TLS          |
 | fail2ban      | Brute-force protection               |

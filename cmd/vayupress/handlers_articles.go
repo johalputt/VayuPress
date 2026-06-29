@@ -134,3 +134,24 @@ func (a *App) handleSearch(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, r, 200, res)
 }
+
+// handleSearchIndex serves the compact VayuFind client index consumed by the
+// instant-search modal. Cookieless and cacheable: the content-hash version is
+// sent as a strong ETag so browsers/CDNs revalidate cheaply and only
+// re-download the index when the published-post set actually changes.
+func (a *App) handleSearchIndex(w http.ResponseWriter, r *http.Request) {
+	if a.search == nil {
+		writeJSON(w, r, 200, map[string]interface{}{"v": "0", "posts": []interface{}{}})
+		return
+	}
+	payload, version := a.search.Snapshot()
+	etag := `"` + version + `"`
+	if r.Header.Get("If-None-Match") == etag {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("ETag", etag)
+	w.Header().Set("Cache-Control", "public, max-age=60, must-revalidate")
+	_, _ = w.Write(payload)
+}
