@@ -7,10 +7,10 @@ import (
 
 func TestNormalizeAndDeriveUsername(t *testing.T) {
 	cases := map[string]string{
-		"Ankush":         "ankush",
-		"ankush.kumar":   "ankush-kumar",
+		"Ankush":          "ankush",
+		"ankush.kumar":    "ankush-kumar",
 		"  Hello  World ": "hello-world",
-		"@@@":            "",
+		"@@@":             "",
 	}
 	for in, want := range cases {
 		if got := normalizeUsername(in); got != want {
