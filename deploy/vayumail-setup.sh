@@ -256,26 +256,45 @@ NGINX
       warn "No service EnvironmentFile was found; wrote TLS vars to ${ENV_FILE}."
       warn "Make sure your unit loads it (add  EnvironmentFile=${ENV_FILE}  to the [Service] section)."
     fi
-    if ! grep -q '^VAYUOS_MAIL_TLS_CERT=' "$ENV_FILE"; then
-      printf 'VAYUOS_MAIL_TLS_CERT=%s/fullchain.pem\n' "$CERT_LIVE" >> "$ENV_FILE"
-      printf 'VAYUOS_MAIL_TLS_KEY=%s/privkey.pem\n'   "$CERT_LIVE" >> "$ENV_FILE"
-      ok "Wired VAYUOS_MAIL_TLS_CERT/KEY into ${ENV_FILE}."
-    else
-      ok "VAYUOS_MAIL_TLS_CERT is already set in ${ENV_FILE} — left as-is."
-    fi
+
+    # ── Make the certificate readable by the NON-ROOT service ────────────────
+    # This is the step that makes TLS actually work: Let's Encrypt stores
+    # privkey.pem as root:root 0600, but VayuMail runs as a non-root user and
+    # cannot read it — so pointing the env vars straight at /etc/letsencrypt
+    # leaves the service falling back to self-signed. We copy fullchain+privkey
+    # into a service-owned directory and point the env vars there; the renewal
+    # hook re-copies so it stays current. (Copying the key off the LE tree is the
+    # standard, portable fix — no group/ACL juggling that varies by distro.)
+    SVC_USER="$(systemctl show "$SERVICE" -p User --value 2>/dev/null)"
+    [[ -z "$SVC_USER" || "$SVC_USER" == "root" ]] && SVC_USER="www-data"
+    SVC_GROUP="$(id -gn "$SVC_USER" 2>/dev/null || echo "$SVC_USER")"
+    CERT_DEST="/var/lib/vayupress/mailcert"
+    mkdir -p "$CERT_DEST"
+    cp -L "${CERT_LIVE}/fullchain.pem" "${CERT_DEST}/fullchain.pem"
+    cp -L "${CERT_LIVE}/privkey.pem"   "${CERT_DEST}/privkey.pem"
+    chown -R "${SVC_USER}:${SVC_GROUP}" "$CERT_DEST" 2>/dev/null || true
+    chmod 0750 "$CERT_DEST"; chmod 0640 "${CERT_DEST}/fullchain.pem" "${CERT_DEST}/privkey.pem"
+    ok "Copied certificate to ${CERT_DEST} readable by ${SVC_USER}."
+
+    # Point the env vars at the readable copies (replace any prior values).
+    sed -i '/^VAYUOS_MAIL_TLS_CERT=/d;/^VAYUOS_MAIL_TLS_KEY=/d' "$ENV_FILE" 2>/dev/null || true
+    printf 'VAYUOS_MAIL_TLS_CERT=%s/fullchain.pem\n' "$CERT_DEST" >> "$ENV_FILE"
+    printf 'VAYUOS_MAIL_TLS_KEY=%s/privkey.pem\n'    "$CERT_DEST" >> "$ENV_FILE"
+    ok "Wired VAYUOS_MAIL_TLS_CERT/KEY (→ ${CERT_DEST}) into ${ENV_FILE}."
+
     HOOK_DIR="/etc/letsencrypt/renewal-hooks/deploy"
     mkdir -p "$HOOK_DIR"
     cat > "${HOOK_DIR}/restart-${SERVICE}.sh" <<EOF
 #!/bin/bash
-# Reload ${SERVICE} after a Let's Encrypt renewal. VayuMail now HOT-RELOADS the
-# certificate from disk on the next handshake, so this hook is belt-and-braces:
-# even without it, a renewed cert is picked up automatically within ~30s and
-# with zero connection drops. The restart is harmless and guarantees an
-# immediate swap.
+# After a Let's Encrypt renewal: refresh the service-readable copy, then reload
+# ${SERVICE}. VayuMail also HOT-RELOADS from disk within ~30s, so the restart is
+# belt-and-braces for an immediate, zero-drop swap.
+install -o "${SVC_USER}" -g "${SVC_GROUP}" -m 0640 "${CERT_LIVE}/fullchain.pem" "${CERT_DEST}/fullchain.pem" 2>/dev/null || true
+install -o "${SVC_USER}" -g "${SVC_GROUP}" -m 0640 "${CERT_LIVE}/privkey.pem"   "${CERT_DEST}/privkey.pem"   2>/dev/null || true
 systemctl restart ${SERVICE}
 EOF
     chmod +x "${HOOK_DIR}/restart-${SERVICE}.sh"
-    ok "Installed auto-renewal restart hook for ${SERVICE} (cert is also hot-reloaded live)."
+    ok "Installed auto-renewal hook for ${SERVICE} (re-copies cert + restarts; also hot-reloaded live)."
   fi
 fi
 

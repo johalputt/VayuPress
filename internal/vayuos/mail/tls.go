@@ -79,7 +79,23 @@ func buildTLSProvider(cfg Config) (*tlsProvider, error) {
 	if cfg.TLSCertFile != "" && cfg.TLSKeyFile != "" {
 		rc, err := newReloadingCert(cfg.TLSCertFile, cfg.TLSKeyFile)
 		if err != nil {
-			return nil, fmt.Errorf("vayumail: load TLS keypair: %w", err)
+			// A configured-but-unreadable certificate is the single most common
+			// "I set the cert and it's still self-signed" trap: Let's Encrypt
+			// stores privkey.pem as root:root 0600, but VayuMail runs as a non-root
+			// service, so LoadX509KeyPair fails with permission denied. Rather than
+			// hard-fail mail startup, degrade to the self-signed fallback and record
+			// the exact reason + fix so it surfaces on the Connect tab.
+			fb, ferr := selfSignedProvider(cfg)
+			if ferr != nil {
+				return nil, fmt.Errorf("vayumail: load TLS keypair: %w", err)
+			}
+			reason := err.Error()
+			if os.IsPermission(err) || strings.Contains(reason, "permission denied") {
+				reason = "the mail service user cannot read " + cfg.TLSKeyFile +
+					" (Let's Encrypt keys are root-only by default). Re-run deploy/vayumail-setup.sh, which copies the certificate to a service-readable location"
+			}
+			fb.note = "configured TLS certificate could not be loaded: " + reason + "; using self-signed fallback"
+			return fb, nil
 		}
 		return &tlsProvider{
 			config: &tls.Config{GetCertificate: rc.getCertificate, MinVersion: tls.VersionTLS12},

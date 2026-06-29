@@ -162,15 +162,41 @@ func Deliverability(ctx context.Context, cfg Config, dkimName, dkimTXT string) [
 	}
 
 	// Reverse DNS (PTR) vs the mail hostname.
+	//
+	// cfg.Hostname usually resolves to BOTH an A (IPv4) and AAAA (IPv6) address,
+	// and a VPS often only has the PTR set on one of them (or one has propagated
+	// and the other not yet). Checking just the first address therefore produced
+	// false "mismatch" reports. Instead we reverse-resolve EVERY forward IP and
+	// pass when ANY of them maps back to the hostname (forward-confirmed rDNS on
+	// at least one address is what mail receivers accept). The message lists what
+	// was actually found so a real mismatch is still actionable.
 	ptr := RecordHealth{Type: "PTR", Name: cfg.Hostname, Message: "could not resolve reverse DNS"}
 	if ips, err := r.LookupHost(ctx, cfg.Hostname); err == nil && len(ips) > 0 {
-		if names, err := r.LookupAddr(ctx, ips[0]); err == nil && len(names) > 0 {
-			ptr.Found = strings.TrimSuffix(names[0], ".")
-			if strings.EqualFold(ptr.Found, cfg.Hostname) {
-				ptr.OK, ptr.Message = true, "ok"
-			} else {
-				ptr.Message = "reverse DNS does not match " + cfg.Hostname + " — set rDNS/PTR at your VPS provider; Gmail/Outlook penalise a mismatch"
+		var found []string
+		matched := false
+		for _, ip := range ips {
+			names, lerr := r.LookupAddr(ctx, ip)
+			if lerr != nil || len(names) == 0 {
+				continue
 			}
+			for _, n := range names {
+				n = strings.TrimSuffix(n, ".")
+				found = append(found, ip+"→"+n)
+				if strings.EqualFold(n, cfg.Hostname) {
+					matched = true
+				}
+			}
+		}
+		if len(found) > 0 {
+			ptr.Found = strings.Join(found, ", ")
+		}
+		switch {
+		case matched:
+			ptr.OK, ptr.Message = true, "ok"
+		case len(found) > 0:
+			ptr.Message = "reverse DNS does not match " + cfg.Hostname + " — set rDNS/PTR for your sending IP(s) at your VPS provider (allow a few minutes to propagate); Gmail/Outlook penalise a mismatch"
+		default:
+			ptr.Message = "no reverse DNS (PTR) found for " + cfg.Hostname + "'s IP(s) — set rDNS/PTR at your VPS provider"
 		}
 	}
 	out = append(out, ptr)
