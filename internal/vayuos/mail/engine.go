@@ -35,9 +35,23 @@ type Engine struct {
 	tlsConf    *tls.Config  // shared STARTTLS / implicit-TLS config
 	tlsProv    *tlsProvider // provenance/diagnostics for tlsConf
 	acmeHTTP   *http.Server // ACME HTTP-01 challenge responder (ACME mode only)
+	acmeErr    error        // ACME HTTP-01 listener bind error (e.g. :80 in use)
 	decrypt    DecryptHook
 	inboundErr error
 	done       chan struct{}
+}
+
+// ACMEChallengeError returns the reason the ACME HTTP-01 challenge responder
+// could not start (most often: port 80 is already held by a reverse proxy such
+// as nginx), or "" when ACME is not in use or the responder is healthy. When
+// non-empty in ACME mode it means a trusted certificate cannot be issued/renewed
+// until the operator frees port 80 or forwards the challenge — so mail clients
+// keep getting the self-signed fallback.
+func (e *Engine) ACMEChallengeError() string {
+	if e.acmeErr == nil {
+		return ""
+	}
+	return e.acmeErr.Error()
 }
 
 // Accounts returns the admin-managed mail account store (nil until Start).
@@ -370,6 +384,7 @@ func (e *Engine) startACMEChallengeServer(tp *tlsProvider) {
 	}
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
+		e.acmeErr = fmt.Errorf("could not bind %s for the ACME HTTP-01 challenge: %v", addr, err)
 		e.inboundErr = errors.Join(e.inboundErr, fmt.Errorf(
 			"acme http-01 listener %s (a trusted certificate cannot be issued until port 80 is reachable for %s — free the port, point a reverse proxy's /.well-known/acme-challenge/ at it, or set VAYUOS_MAIL_ACME_HTTP_ADDR): %w",
 			addr, e.cfg.Hostname, err))

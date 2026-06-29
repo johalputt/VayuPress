@@ -292,6 +292,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayuos/mail/accounts/update", a.handleVayuOSAccountUpdate)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayuos/mail/accounts/totp", a.handleVayuOSAccountTOTP)
 		pr.Get("/os/vayuos/security", a.handleVayuOSSecurity)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/vayuos/security/check", a.handleVayuOSSecurityCheck)
 		pr.Get("/os/api/vayuos/health", a.handleVayuOSHealthJSON)
 		pr.Get("/os/settings", a.handleOSSettings)
 		pr.Get("/os/settings/{group}", a.handleOSSettings)

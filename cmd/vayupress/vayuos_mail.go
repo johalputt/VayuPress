@@ -546,21 +546,38 @@ func (a *App) handleVayuOSConnect(w http.ResponseWriter, r *http.Request) {
 	// common cause of a mail app's "Couldn't open connection to server": the
 	// connection and TLS handshake succeed, but the client rejects the
 	// certificate. Surface this prominently with the exact remediation.
+	acmeErr := a.vayuMail.ACMEChallengeError()
 	if a.vayuMail.TLSActive() && !a.vayuMail.TLSTrusted() {
 		body.WriteString(`<div class="card" style="border-left:4px solid #d9534f"><div class="card-title">⚠ Mail apps will reject this connection</div>`)
-		body.WriteString(`<p class="text-sm">VayuMail is serving a <strong>self-signed TLS certificate</strong>. ` +
-			`Mobile and desktop mail apps (the Gmail app, Apple Mail, Thunderbird, Outlook) refuse self-signed certificates and report ` +
-			`<em>"Couldn't open connection to server"</em> — even though the ports above are online.</p>`)
-		body.WriteString(`<p class="text-sm">Install a trusted certificate using any one of:</p>`)
+		body.WriteString(`<p class="text-sm">VayuMail is serving a <strong>self-signed TLS certificate</strong>, so mobile and desktop mail apps ` +
+			`(the Gmail app, Apple Mail, Thunderbird, Outlook) report <em>"Couldn't open connection to server"</em> — even though the ports above are online.</p>`)
+		// Surface the exact reason the engine recorded, so the operator isn't guessing.
+		if note := a.vayuMail.TLSNote(); note != "" {
+			body.WriteString(`<p class="text-sm muted">Reason: ` + html.EscapeString(note) + `</p>`)
+		}
+		if acmeErr != "" {
+			body.WriteString(`<p class="text-sm muted">Built-in ACME could not run: ` + html.EscapeString(acmeErr) +
+				` — port 80 is almost certainly already used by your website's nginx, so VayuMail cannot answer the Let's Encrypt challenge itself.</p>`)
+		}
+		body.WriteString(`<p class="text-sm">The easiest fix on a server that already runs nginx (like this one) is the guided script — it issues a real Let's Encrypt certificate for <code>` + hHost + `</code> <em>through</em> nginx (no port conflict) and wires it in automatically:</p>`)
+		body.WriteString(`<pre class="mono text-sm" style="white-space:pre-wrap;background:var(--bg-surface-2);padding:10px;border-radius:8px">cd /tmp/VayuPress &amp;&amp; sudo bash deploy/vayumail-setup.sh</pre>`)
+		body.WriteString(`<p class="text-sm">It auto-renews. Alternatives:</p>`)
 		body.WriteString(`<ul class="text-sm">` +
-			`<li><strong>Automatic (recommended):</strong> set <code>VAYUOS_MAIL_TLS_ACME=on</code> (and optionally <code>VAYUOS_MAIL_ACME_EMAIL=you@` + html.EscapeString(mc.Domain) + `</code>), ensure port 80 on <code>` + hHost + `</code> is reachable, then restart. VayuMail obtains and auto-renews a Let's Encrypt certificate itself.</li>` +
-			`<li><strong>Guided script:</strong> run <code>sudo bash deploy/vayumail-setup.sh</code> on the server.</li>` +
-			`<li><strong>Manual:</strong> set <code>VAYUOS_MAIL_TLS_CERT</code> and <code>VAYUOS_MAIL_TLS_KEY</code> to a CA-signed pair, then restart.</li>` +
+			`<li><strong>Built-in ACME (only if port 80 is free):</strong> set <code>VAYUOS_MAIL_TLS_ACME=on</code> and <code>VAYUOS_MAIL_ACME_EMAIL=you@` + html.EscapeString(mc.Domain) + `</code>, then restart. On this box nginx owns port 80, so use the script above instead — or point a free port via <code>VAYUOS_MAIL_ACME_HTTP_ADDR=127.0.0.1:8081</code> and proxy <code>` + hHost + `/.well-known/acme-challenge/</code> to it in nginx.</li>` +
+			`<li><strong>Manual / existing certbot cert:</strong> set <code>VAYUOS_MAIL_TLS_CERT</code> and <code>VAYUOS_MAIL_TLS_KEY</code> to a CA-signed pair (e.g. <code>/etc/letsencrypt/live/` + hHost + `/fullchain.pem</code> and <code>privkey.pem</code>), then restart. VayuMail hot-reloads on renewal.</li>` +
 			`</ul>`)
+		body.WriteString(`<p class="text-sm muted">Also make sure DNS has an A record for <code>` + hHost + `</code> pointing at this server, and that ports 25/143/993/587/995/110 are open in your firewall (the script handles the firewall + privileged-port binding too).</p>`)
 		body.WriteString(`</div>`)
 	} else if a.vayuMail.TLSActive() && a.vayuMail.TLSTrusted() {
 		body.WriteString(`<div class="card"><div class="card-title">TLS certificate</div>`)
-		body.WriteString(`<p class="text-sm">A trusted certificate is active — mail apps can connect over SSL/TLS. <span class="muted">(` + html.EscapeString(a.vayuMail.TLSNote()) + `)</span></p></div>`)
+		body.WriteString(`<p class="text-sm">A trusted certificate is active — mail apps can connect over SSL/TLS. <span class="muted">(` + html.EscapeString(a.vayuMail.TLSNote()) + `)</span></p>`)
+		// Even in ACME mode, warn if the challenge responder can't bind — renewals
+		// will eventually fail and the cert will expire back into self-signed.
+		if acmeErr != "" {
+			body.WriteString(`<p class="text-sm" style="color:#d9844f">⚠ Auto-renewal may fail: ` + html.EscapeString(acmeErr) +
+				` (port 80 is held by another service). Switch to the guided script (<code>sudo bash deploy/vayumail-setup.sh</code>), which renews through nginx, to avoid the certificate expiring.</p>`)
+		}
+		body.WriteString(`</div>`)
 	}
 
 	// ── Recommended settings ─────────────────────────────────────────────────

@@ -576,22 +576,62 @@ func (a *App) handleVayuOSSecurity(w http.ResponseWriter, r *http.Request) {
 		a.denyAccess(w, r, "/os/vayuos/mail/inbox")
 		return
 	}
-	rep, _ := a.vayuSec.Check(r.Context())
+	// Prefer the most recent live report (e.g. after a "Check now"); otherwise do
+	// the env-gated check (no network when disabled).
+	rep := a.vayuSec.Last()
+	if rep == nil {
+		rep, _ = a.vayuSec.Check(r.Context())
+	}
+
+	// CSRF token so the inline "Check now" control can POST.
+	if token := auth.GenerateCSRFToken(); token != "" {
+		http.SetCookie(w, &http.Cookie{Name: "vp_csrf", Value: token, Path: "/", SameSite: http.SameSiteStrictMode, HttpOnly: false, Secure: csrfCookieSecure(), MaxAge: 3600})
+	}
+
 	var body strings.Builder
-	body.WriteString(`<div class="page-header"><h1>Security updates</h1><span class="muted text-sm">Upstream PGP &amp; crypto dependency monitoring</span></div>`)
+	body.WriteString(`<div class="page-header"><h1>Security updates</h1>
+  <div class="page-actions">
+    <span class="muted text-sm">Upstream PGP &amp; crypto dependency monitoring</span>
+    <button type="button" class="btn btn--primary btn--sm" data-sec-check>Check now</button>
+    <span class="text-xs muted" data-sec-status role="status" aria-live="polite"></span>
+  </div>
+</div>`)
 	body.WriteString(vayuosNav("security", true))
 	if !rep.Enabled {
-		body.WriteString(`<div class="empty-state">The security-update watcher is disabled by default (privacy first). Enable it by setting <code>VAYUOS_SECURITY_UPDATES=on</code>. It fetches only public release metadata from GitHub and never transmits anything about your site.</div>`)
-		// Still show the pinned versions (read from build info, no network).
-		body.WriteString(buildComponentTable(rep.Components))
-		writeOSHTML(w, adminOSLayout(nonce, "Security updates", "vayuos", cfg, htmpl.HTML(body.String())))
-		return
-	}
-	if rep.UpdatesAvailable > 0 {
+		body.WriteString(`<div class="empty-state">Automatic background checks are off by default (privacy first) — VayuPress never reaches out on its own. Click <strong>Check now</strong> above for a one-time, on-demand check (it fetches only public release metadata from GitHub and sends nothing about your site). To run checks automatically, set <code>VAYUOS_SECURITY_UPDATES=on</code> and restart.</div>`)
+	} else if rep.UpdatesAvailable > 0 {
 		body.WriteString(`<div class="warn-box">` + itoaSafe(rep.UpdatesAvailable) + ` security-relevant update(s) available. ` + html.EscapeString(rep.UpgradeHint) + `</div>`)
 	}
 	body.WriteString(buildComponentTable(rep.Components))
+	body.WriteString(`<script nonce="` + nonce + `">
+(function(){'use strict';
+function csrf(){var m=document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);return m?decodeURIComponent(m[1]):'';}
+var b=document.querySelector('[data-sec-check]'),s=document.querySelector('[data-sec-status]');
+if(b)b.addEventListener('click',function(){
+  b.disabled=true;if(s)s.textContent='Checking upstream releases…';
+  fetch('/os/api/vayuos/security/check',{method:'POST',headers:{'X-CSRF-Token':csrf()}})
+    .then(function(r){if(r.ok){location.reload();}else{b.disabled=false;if(s)s.textContent='Check failed.';}})
+    .catch(function(e){b.disabled=false;if(s)s.textContent='Network error: '+e;});
+});
+})();
+</script>`)
 	writeOSHTML(w, adminOSLayout(nonce, "Security updates", "vayuos", cfg, htmpl.HTML(body.String())))
+}
+
+// handleVayuOSSecurityCheck performs an on-demand upstream security check
+// (admin-initiated; the click is the consent), even when automatic checking is
+// disabled. Returns the report as JSON; the page reloads to show it.
+func (a *App) handleVayuOSSecurityCheck(w http.ResponseWriter, r *http.Request) {
+	if !a.isAdminRequest(r) {
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", "admin role required", "")
+		return
+	}
+	rep, err := a.vayuSec.CheckNow(r.Context())
+	if err != nil {
+		writeAPIError(w, r, http.StatusBadGateway, "check-failed", err.Error(), "")
+		return
+	}
+	writeJSON(w, r, http.StatusOK, map[string]interface{}{"updatesAvailable": rep.UpdatesAvailable})
 }
 
 func buildComponentTable(comps []secwatch.Component) string {

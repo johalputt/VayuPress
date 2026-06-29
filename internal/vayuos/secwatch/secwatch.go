@@ -111,11 +111,26 @@ func (w *Watcher) Components() []Component {
 // compares it to the built version. When disabled it returns a report with
 // Enabled=false and performs no network I/O.
 func (w *Watcher) Check(ctx context.Context) (*Report, error) {
-	rep := &Report{Enabled: w.enabled, CheckedAt: time.Now().UTC(), Components: w.Components()}
 	if !w.enabled {
+		rep := &Report{Enabled: false, CheckedAt: time.Now().UTC(), Components: w.Components()}
 		w.store(rep)
 		return rep, nil
 	}
+	return w.runCheck(ctx), nil
+}
+
+// CheckNow performs a live upstream check regardless of the enabled flag. It is
+// for an explicit, admin-initiated request from the panel: the operator's click
+// is the consent. The Enabled env flag still governs automatic/background
+// checks, but it must not block a human asking "check right now".
+func (w *Watcher) CheckNow(ctx context.Context) (*Report, error) {
+	return w.runCheck(ctx), nil
+}
+
+// runCheck fetches the latest upstream release for each tracked dependency and
+// compares it to the built version, storing and returning the report.
+func (w *Watcher) runCheck(ctx context.Context) *Report {
+	rep := &Report{Enabled: true, CheckedAt: time.Now().UTC(), Components: w.Components()}
 	for i := range rep.Components {
 		c := &rep.Components[i]
 		latest, err := w.latestRelease(ctx, c.Repo)
@@ -136,7 +151,7 @@ func (w *Watcher) Check(ctx context.Context) (*Report, error) {
 		rep.UpgradeHint = "Run `go get -u <module>@latest && go build ./...` then redeploy to apply security patches."
 	}
 	w.store(rep)
-	return rep, nil
+	return rep
 }
 
 // Last returns the most recent report, if any.
