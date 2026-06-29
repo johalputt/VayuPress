@@ -137,6 +137,7 @@ const PortalJS = `(function () {
       '<div class="vp-portal-plan-name">' + esc(plan) + '</div></div>' +
       '<div class="vp-portal-actions">' +
       mailBtn +
+      '<button type="button" class="vp-portal-btn vp-portal-btn--ghost" data-vp-go="activity">💬 Your comments</button>' +
       '<a class="vp-portal-btn vp-portal-btn--ghost" href="/members/account">Manage account</a>' +
       (m.paid ? '' : '<a class="vp-portal-btn" href="/pricing">See membership plans</a>') +
       '<button type="button" class="vp-portal-btn vp-portal-btn--ghost" data-vp-logout>Sign out</button>' +
@@ -144,10 +145,58 @@ const PortalJS = `(function () {
       '<div class="vp-portal-msg" aria-live="polite"></div>';
   }
 
+  // Activity view: the member's own comments with their moderation status, so a
+  // commenter can see where they replied and whether each is live or pending.
+  function viewActivity() {
+    return '<button type="button" class="vp-portal-link vp-portal-back" data-vp-go="account">&larr; Back</button>' +
+      '<h2 class="vp-portal-title">Your activity</h2>' +
+      '<p class="vp-portal-sub">Comments you have posted and their status.</p>' +
+      '<div class="vp-portal-activity" data-vp-activity><div class="vp-portal-activity-loading">Loading your comments…</div></div>';
+  }
+
+  function statusBadge(s) {
+    var map = {
+      approved: ['✅ Live', 'ok'],
+      pending: ['⏳ Awaiting review', 'pending'],
+      rejected: ['🚫 Not approved', 'err'],
+      spam: ['🚫 Not approved', 'err']
+    };
+    var e = map[s] || ['•', 'ok'];
+    return '<span class="vp-portal-badge vp-portal-badge--' + e[1] + '">' + e[0] + '</span>';
+  }
+
+  function loadActivity() {
+    var box = body.querySelector('[data-vp-activity]');
+    if (!box) { return; }
+    fetch('/api/v1/members/comments', { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+      .then(function (r) { return r.ok ? r.json() : { comments: [] }; })
+      .then(function (d) {
+        var list = (d && d.comments) || [];
+        if (!list.length) {
+          box.innerHTML = '<div class="vp-portal-activity-empty">📝 You haven\'t commented yet. Join a conversation on any story!</div>';
+          return;
+        }
+        var html = '';
+        list.forEach(function (c) {
+          var where = c.title || c.slug || 'a post';
+          var link = c.slug ? '/' + esc(c.slug) + '#comments' : '#';
+          var when = (c.created_at || '').slice(0, 10);
+          html += '<div class="vp-portal-activity-item">' +
+            '<div class="vp-portal-activity-head">' + statusBadge(c.status) +
+            '<span class="vp-portal-activity-when">' + esc(when) + '</span></div>' +
+            '<div class="vp-portal-activity-body">' + esc(c.body || '') + '</div>' +
+            '<a class="vp-portal-activity-link" href="' + link + '">on “' + esc(where) + '” →</a>' +
+            '</div>';
+        });
+        box.innerHTML = html;
+      })
+      .catch(function () { box.innerHTML = '<div class="vp-portal-activity-empty">Could not load your activity.</div>'; });
+  }
+
   function render() {
     if (!body) { return; }
     var content;
-    if (state.auth) { content = viewAccount(); }
+    if (state.auth) { content = (view === 'activity') ? viewActivity() : viewAccount(); }
     else if (view === 'signin') { content = viewSignin(); }
     else if (view === 'vayumail') { content = viewVayuMail(false); }
     else { content = viewSignup(); }
@@ -226,6 +275,8 @@ const PortalJS = `(function () {
       });
     }
 
+    if (state.auth && view === 'activity') { loadActivity(); }
+
     var out = body.querySelector('[data-vp-logout]');
     if (out) {
       out.addEventListener('click', function () {
@@ -285,11 +336,23 @@ const PortalJS = `(function () {
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && overlay.classList.contains('is-open')) { close(); } });
     document.body.appendChild(overlay);
 
-    // Upgrade existing nav Sign in / Sign up links to open the panel in-page.
     var si = document.querySelector('.vayu-nav-signin');
-    if (si) { si.addEventListener('click', function (e) { e.preventDefault(); open('signin'); }); }
     var su = document.querySelector('.vayu-nav-signup');
-    if (su) { su.addEventListener('click', function (e) { e.preventDefault(); open('signup'); }); }
+    if (state.auth && state.member) {
+      // Signed in: drop the "Sign up" link and turn "Sign in" into the member's
+      // name, which opens the account panel (with logout) instead of navigating.
+      if (su && su.parentNode) { su.parentNode.removeChild(su); }
+      if (si) {
+        si.classList.add('vayu-nav-member');
+        si.textContent = '👤 ' + (state.member.name || 'Account');
+        si.setAttribute('href', '/members/account');
+        si.addEventListener('click', function (e) { e.preventDefault(); open('account'); });
+      }
+    } else {
+      // Logged out: upgrade the nav Sign in / Sign up links to open the panel.
+      if (si) { si.addEventListener('click', function (e) { e.preventDefault(); open('signin'); }); }
+      if (su) { su.addEventListener('click', function (e) { e.preventDefault(); open('signup'); }); }
+    }
   }
 
   function ensureCSS() {

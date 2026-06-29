@@ -80,6 +80,49 @@ func (s *Store) ListAll(ctx context.Context, status string, limit int) ([]Commen
 	return s.list(ctx, q, args...)
 }
 
+// MemberComment is one of a member's own comments, joined to its article's slug
+// and title so the reader-facing activity view can link back to each thread.
+type MemberComment struct {
+	Comment
+	Slug  string `json:"slug"`
+	Title string `json:"title"`
+}
+
+// ListByEmail returns a member's own comments (any status) newest-first, joined
+// to the article slug/title for linking. The read pool is passed in explicitly
+// so this SELECT never runs on the single writer connection (scale rule). The
+// comments table is small, so the email filter scan is cheap; the article join
+// is an indexed primary-key lookup.
+func (s *Store) ListByEmail(ctx context.Context, reader *sql.DB, email string, limit int) ([]MemberComment, error) {
+	if strings.TrimSpace(email) == "" {
+		return nil, nil
+	}
+	if limit <= 0 || limit > 200 {
+		limit = 100
+	}
+	rows, err := reader.QueryContext(ctx,
+		`SELECT c.id,c.article_id,c.author,c.email,c.body,c.status,c.created_at,
+		        COALESCE(a.slug,''),COALESCE(a.title,'')
+		   FROM comments c LEFT JOIN articles a ON a.id=c.article_id
+		  WHERE c.email=? ORDER BY c.created_at DESC LIMIT ?`,
+		strings.ToLower(strings.TrimSpace(email)), limit)
+	if err != nil {
+		return nil, fmt.Errorf("comments by email: %w", err)
+	}
+	defer rows.Close()
+	var out []MemberComment
+	for rows.Next() {
+		var c MemberComment
+		var createdRaw string
+		if err := rows.Scan(&c.ID, &c.ArticleID, &c.Author, &c.Email, &c.Body, &c.Status, &createdRaw, &c.Slug, &c.Title); err != nil {
+			return nil, err
+		}
+		c.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdRaw)
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
 // Moderate updates the status of a comment.
 func (s *Store) Moderate(ctx context.Context, id, status string) error {
 	if status != StatusApproved && status != StatusRejected && status != StatusSpam {

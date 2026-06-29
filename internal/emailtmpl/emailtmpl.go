@@ -58,9 +58,29 @@ type templateSet struct {
 // against the per-kind data maps documented at each call site.
 var defaults = map[Kind]templateSet{
 	MagicLink: {
-		Subject: "Your sign-in link",
-		Text:    "Sign in to {{.Domain}} by opening this link (valid {{.TTLMinutes}} minutes):\r\n\r\n{{.Link}}\r\n\r\nIf you did not request this, you can ignore this email.",
-		HTML:    `<p>Sign in to <strong>{{.Domain}}</strong>:</p><p><a href="{{.Link}}">Sign in</a> (valid {{.TTLMinutes}} minutes)</p><p style="color:#888;font-size:13px">If you did not request this, you can ignore this email.</p>`,
+		Subject: "🔑 Your magic sign-in link for {{.Domain}}",
+		Text:    "Hi there! 👋\r\n\r\nHere's your magic link to sign in to {{.Domain}} — no password needed. ✨\r\n\r\n👉 {{.Link}}\r\n\r\n⏳ This link is valid for {{.TTLMinutes}} minutes and can be used once.\r\n\r\nIf you didn't request this, you can safely ignore this email. 🛡️\r\n\r\nSee you inside! 🚀",
+		HTML: `<div style="margin:0;padding:0;background:#f4f6fb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
+  <div style="max-width:480px;margin:0 auto;padding:32px 20px">
+    <div style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(20,30,60,0.08)">
+      <div style="background:linear-gradient(135deg,#6366f1,#8b5cf6);padding:36px 32px;text-align:center">
+        <div style="font-size:44px;line-height:1">🔑</div>
+        <h1 style="margin:12px 0 0;color:#ffffff;font-size:22px;font-weight:700">Your magic sign-in link</h1>
+      </div>
+      <div style="padding:32px">
+        <p style="margin:0 0 16px;color:#1f2937;font-size:16px">Hi there! 👋</p>
+        <p style="margin:0 0 24px;color:#4b5563;font-size:15px;line-height:1.6">Tap the button below to sign in to <strong>{{.Domain}}</strong> — no password needed. ✨</p>
+        <div style="text-align:center;margin:0 0 24px">
+          <a href="{{.Link}}" style="display:inline-block;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#ffffff;text-decoration:none;font-weight:600;font-size:16px;padding:14px 36px;border-radius:999px">🚀 Sign in now</a>
+        </div>
+        <p style="margin:0 0 8px;color:#6b7280;font-size:13px;text-align:center">⏳ Valid for {{.TTLMinutes}} minutes · one-time use</p>
+      </div>
+      <div style="padding:18px 32px;background:#f9fafb;border-top:1px solid #eef0f4">
+        <p style="margin:0;color:#9ca3af;font-size:12px;line-height:1.5">🛡️ If you didn't request this, you can safely ignore this email — no one can sign in without the link.</p>
+      </div>
+    </div>
+  </div>
+</div>`,
 	},
 	CommentApproved: {
 		Subject: "Your comment is live",
@@ -73,9 +93,34 @@ var defaults = map[Kind]templateSet{
 		HTML:    `<p>Confirm your subscription to <strong>{{.Domain}}</strong>:</p><p><a href="{{.Link}}">Confirm subscription</a></p>`,
 	},
 	Welcome: {
-		Subject: "Welcome to {{.Domain}}",
-		Text:    "Hi,\r\n\r\nWelcome to {{.Domain}} — your account is ready.\r\n\r\nVisit {{.Link}} to read the latest and manage your account.\r\n\r\nThanks for joining!",
-		HTML:    `<p>Welcome to <strong>{{.Domain}}</strong> — your account is ready.</p><p><a href="{{.Link}}">Visit {{.Domain}}</a> any time to read the latest and manage your account.</p><p>Thanks for joining!</p>`,
+		Subject: "🎉 Welcome to {{.Domain}} — you're officially in!",
+		Text:    "🎉 Welcome aboard!\r\n\r\nYou're officially a member of {{.Domain}} — we're so glad you're here. 💜\r\n\r\nHere's what you can do now:\r\n📰 Read the latest stories\r\n🔖 Save and manage your account\r\n💬 Join the conversation in the comments\r\n\r\n👉 Open your account: {{.Link}}\r\n\r\nWhenever you want to sign in, just enter your email and we'll send you a magic link. 🔑✨\r\n\r\nThanks for joining — you're awesome! 🚀",
+		HTML: `<div style="margin:0;padding:0;background:#f4f6fb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
+  <div style="max-width:480px;margin:0 auto;padding:32px 20px">
+    <div style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(20,30,60,0.08)">
+      <div style="background:linear-gradient(135deg,#ec4899,#8b5cf6);padding:40px 32px;text-align:center">
+        <div style="font-size:48px;line-height:1">🎉</div>
+        <h1 style="margin:12px 0 4px;color:#ffffff;font-size:24px;font-weight:700">Welcome aboard!</h1>
+        <p style="margin:0;color:rgba(255,255,255,0.9);font-size:15px">You're officially a member of {{.Domain}} 💜</p>
+      </div>
+      <div style="padding:32px">
+        <p style="margin:0 0 18px;color:#4b5563;font-size:15px;line-height:1.6">We're so glad you're here. Here's what you can do now:</p>
+        <table style="width:100%;border-collapse:collapse;margin:0 0 24px">
+          <tr><td style="padding:8px 0;font-size:15px;color:#1f2937">📰&nbsp;&nbsp;Read the latest stories</td></tr>
+          <tr><td style="padding:8px 0;font-size:15px;color:#1f2937">🔖&nbsp;&nbsp;Save and manage your account</td></tr>
+          <tr><td style="padding:8px 0;font-size:15px;color:#1f2937">💬&nbsp;&nbsp;Join the conversation in the comments</td></tr>
+        </table>
+        <div style="text-align:center;margin:0 0 20px">
+          <a href="{{.Link}}" style="display:inline-block;background:linear-gradient(135deg,#ec4899,#8b5cf6);color:#ffffff;text-decoration:none;font-weight:600;font-size:16px;padding:14px 36px;border-radius:999px">✨ Open your account</a>
+        </div>
+        <p style="margin:0;color:#6b7280;font-size:13px;text-align:center;line-height:1.6">🔑 To sign in any time, just enter your email and we'll send you a magic link — no password to remember!</p>
+      </div>
+      <div style="padding:18px 32px;background:#f9fafb;border-top:1px solid #eef0f4;text-align:center">
+        <p style="margin:0;color:#9ca3af;font-size:12px">Thanks for joining — you're awesome! 🚀</p>
+      </div>
+    </div>
+  </div>
+</div>`,
 	},
 	PaymentPending: {
 		Subject: "Complete your {{.TierName}} membership — order {{.Reference}}",

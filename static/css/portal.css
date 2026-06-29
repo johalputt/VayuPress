@@ -236,3 +236,29 @@
   .vp-portal-panel { max-width: 100%; padding: 2.5rem 1.4rem; }
   .vp-portal-trigger { right: 1rem; bottom: 1rem; }
 }
+
+/* ── Activity (your comments) ──────────────────────────────────────────────── */
+.vp-portal-back { display: inline-block; margin-bottom: .6rem; }
+.vp-portal-activity { display: flex; flex-direction: column; gap: .75rem; margin-top: .4rem; }
+.vp-portal-activity-loading,
+.vp-portal-activity-empty { color: var(--vpp-muted); font-size: .9rem; text-align: center; padding: 1.4rem .5rem; }
+.vp-portal-activity-item {
+  border: 1px solid var(--vpp-border);
+  border-radius: 12px;
+  padding: .8rem .9rem;
+  background: var(--vpp-bg);
+}
+.vp-portal-activity-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: .4rem; }
+.vp-portal-activity-when { color: var(--vpp-muted); font-size: .78rem; }
+.vp-portal-activity-body {
+  font-size: .92rem; line-height: 1.45; color: var(--vpp-text);
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+.vp-portal-activity-link { display: inline-block; margin-top: .45rem; font-size: .82rem; text-decoration: none; color: var(--vpp-accent, #6366f1); }
+.vp-portal-badge { font-size: .74rem; font-weight: 600; padding: .15rem .5rem; border-radius: 999px; }
+.vp-portal-badge--ok { background: #e7f6ec; color: #1a7f43; }
+.vp-portal-badge--pending { background: #fff4e0; color: #9a6700; }
+.vp-portal-badge--err { background: #fde8e8; color: #b42318; }
+
+/* Signed-in nav name (replaces Sign in / Sign up). */
+.vayu-nav-member { font-weight: 600; }

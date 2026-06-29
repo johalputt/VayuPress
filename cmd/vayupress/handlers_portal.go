@@ -22,6 +22,7 @@ import (
 
 	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/config"
+	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/members"
 	"github.com/johalputt/vayupress/internal/render"
@@ -69,27 +70,56 @@ func (a *App) handleMemberMe(w http.ResponseWriter, r *http.Request) {
 	}
 	if m := a.resolveMember(r); m != nil {
 		resp["authenticated"] = true
-		mem := map[string]interface{}{
-			"email": m.Email,
-			"name":  m.DisplayName(),
-			"tier":  m.Tier,
-			"paid":  m.IsPaid(),
-		}
-		// When this member also holds a VayuMail mailbox, advertise the role so
-		// the portal can offer an "Open VayuMail" (or full console) shortcut.
-		if a.vayuMailLoginEnabled() {
-			if role := a.vayuMail.Accounts().RoleFor(r.Context(), m.Email); role != "" {
-				_, console := mailConsoleAccess(role)
-				mem["mail"] = map[string]interface{}{
-					"role":    role,
-					"admin":   role == vmail.RoleAdministrator,
-					"console": console,
-				}
-			}
-		}
-		resp["member"] = mem
+		resp["member"] = a.memberSnapshot(r, m)
 	}
 	writeJSON(w, r, http.StatusOK, resp)
+}
+
+// memberSnapshot builds the public member object the portal renders. When the
+// member also holds a VayuMail mailbox it advertises the role so the portal can
+// offer an "Open VayuMail" (or full VayuOS console) shortcut — used by both the
+// /me snapshot and the VayuMail login response so the console button appears
+// immediately after signing in, not only after a page reload.
+func (a *App) memberSnapshot(r *http.Request, m *members.Member) map[string]interface{} {
+	mem := map[string]interface{}{
+		"email": m.Email,
+		"name":  m.DisplayName(),
+		"tier":  m.Tier,
+		"paid":  m.IsPaid(),
+	}
+	if a.vayuMailLoginEnabled() {
+		if role := a.vayuMail.Accounts().RoleFor(r.Context(), m.Email); role != "" {
+			_, console := mailConsoleAccess(role)
+			mem["mail"] = map[string]interface{}{
+				"role":    role,
+				"admin":   role == vmail.RoleAdministrator,
+				"console": console,
+			}
+		}
+	}
+	return mem
+}
+
+// handleMemberComments returns the signed-in member's own comments (any status),
+// newest first, so the portal's Activity tab can show them where they commented
+// and whether each is still pending review or live. Reads via the read pool.
+func (a *App) handleMemberComments(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	m := a.resolveMember(r)
+	if m == nil {
+		writeAPIError(w, r, http.StatusUnauthorized, "not-signed-in", "Sign in to view your activity", "")
+		return
+	}
+	if a.commentStore == nil {
+		writeJSON(w, r, http.StatusOK, map[string]interface{}{"comments": []interface{}{}})
+		return
+	}
+	list, err := a.commentStore.ListByEmail(r.Context(), dbpkg.Reader(), m.Email, 100)
+	if err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "db-error", "Could not load your activity", "")
+		return
+	}
+	writeJSON(w, r, http.StatusOK, map[string]interface{}{"comments": list, "count": len(list)})
 }
 
 // handleMemberVayuMailLogin authenticates a reader against a VayuMail mailbox
@@ -165,12 +195,7 @@ func (a *App) handleMemberVayuMailLogin(w http.ResponseWriter, r *http.Request) 
 	logging.LogInfo("members", "member signed in via VayuMail: "+m.Email)
 	writeJSON(w, r, http.StatusOK, map[string]interface{}{
 		"authenticated": true,
-		"member": map[string]interface{}{
-			"email": m.Email,
-			"name":  m.DisplayName(),
-			"tier":  m.Tier,
-			"paid":  m.IsPaid(),
-		},
+		"member":        a.memberSnapshot(r, m),
 	})
 }
 

@@ -185,6 +185,7 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	r.Post("/members/account", a.handleMemberAccountUpdate)
 	// VayuPortal overlay backend — capability snapshot + VayuMail credential login.
 	r.Get("/api/v1/members/me", a.handleMemberMe)
+	r.Get("/api/v1/members/comments", a.handleMemberComments)
 	r.Post("/api/v1/members/vayumail-login", a.handleMemberVayuMailLogin)
 	r.Get("/pricing", a.handlePricingPage)
 	r.Get("/api/v1/tiers", a.handleTiersPublic)
