@@ -210,6 +210,21 @@ func (a *App) resolveMailSessionUser(ctx context.Context, email string) (u *user
 		return nil, false, false
 	}
 	cmsRole, console := mailConsoleAccess(role)
+
+	// Identity unification: if a real CMS account exists with this email, log in
+	// as THAT persisted user — same profile, same stable /author/<id> URL,
+	// editable profile — rather than a throwaway "vmail:" identity. The mailbox
+	// and the CMS account are then one and the same person. The mailbox's role
+	// still governs whether this session reaches the console (mailOnly).
+	if console && a.userStore != nil {
+		if cu, err := a.userStore.GetByEmail(ctx, email); err == nil && cu != nil {
+			if cu.MailAddress == "" {
+				cu.MailAddress = email
+			}
+			return cu, false, true
+		}
+	}
+
 	su := &users.User{
 		ID:          "vmail:" + email,
 		Email:       email,
@@ -247,6 +262,16 @@ func (a *App) resolveMailMember(r *http.Request) (u *users.User, mailOnly bool, 
 		return nil, false, false // not a VayuMail account
 	}
 	cmsRole, console := mailConsoleAccess(role)
+	// Identity unification (see resolveMailSessionUser): prefer the persisted CMS
+	// account with this email for a console-capable holder, so it's one identity.
+	if console && a.userStore != nil {
+		if cu, err := a.userStore.GetByEmail(r.Context(), m.Email); err == nil && cu != nil {
+			if cu.MailAddress == "" {
+				cu.MailAddress = m.Email
+			}
+			return cu, false, true
+		}
+	}
 	su := &users.User{
 		ID:          "vmail:" + m.Email,
 		Email:       m.Email,
