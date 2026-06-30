@@ -8,6 +8,8 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [2.6.0] - 2026-06-30
+
 ### Added
 
 - **Per-mailbox storage quotas.** An administrator can allot how much space each
@@ -41,6 +43,13 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   `VAYUOS_MAIL_HOSTNAME` at a covered name, or reissue the cert to include the
   mail host). (Mobile IMAP folder discovery itself was already fixed via
   extended-LIST/ENABLE support, in v2.5.3.)
+- **"Check for updates" no longer fails with a bare "unable to check".** The
+  update checker now points at the canonical repository name (avoiding a 301
+  redirect on every API call that could fail under the SSRF-guarded transport),
+  reports GitHub API rate limiting (the 60-requests/hour unauthenticated cap)
+  with a clear, actionable message, falls back to the releases list when
+  `releases/latest` is unavailable, and accepts an optional `VAYU_UPDATE_TOKEN`
+  (or `GITHUB_TOKEN`) to raise the rate limit to 5000/hour.
 
 ### Security
 
@@ -54,16 +63,6 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   accounts can be downgraded from the role dropdown on the Mail accounts page.
   (The per-mailbox scoping that already stopped one user reading another's mail
   is unchanged; this closes the over-broad *visibility* gap.)
-
-### Fixed
-
-- **"Check for updates" no longer fails with a bare "unable to check".** The
-  update checker now points at the canonical repository name (avoiding a 301
-  redirect on every API call that could fail under the SSRF-guarded transport),
-  reports GitHub API rate limiting (the 60-requests/hour unauthenticated cap)
-  with a clear, actionable message, falls back to the releases list when
-  `releases/latest` is unavailable, and accepts an optional `VAYU_UPDATE_TOKEN`
-  (or `GITHUB_TOKEN`) to raise the rate limit to 5000/hour.
 
 ## [2.5.4] - 2026-06-30
 
