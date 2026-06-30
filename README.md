@@ -21,6 +21,19 @@
 > _Own your content. Own your communication. Own your infrastructure._
 > Publishing is the core identity, **VayuMail** the native sovereignty layer, **VayuPGP** the native privacy layer, and **VayuOS** the native control layer — all in a single Go binary, single process, single config.
 
+## What's New in v2.5.3
+
+> Full notes in [`CHANGELOG.md`](CHANGELOG.md)
+
+**VayuMail IMAP syncs in Thunderbird for Android / K-9.**
+
+- Modern clients discover folders with extended-LIST syntax
+  (`LIST (SUBSCRIBED) "" "*" RETURN (SPECIAL-USE)`). The server mistook the
+  selection option for the mailbox pattern, so `LIST` returned no INBOX and the
+  client synced nothing. LIST/LSUB now parse extended-LIST correctly, the
+  `ENABLE` command is acknowledged instead of rejected, and the server
+  advertises `LIST-EXTENDED`.
+
 ## What's New in v2.5.2
 
 > Full notes in [`CHANGELOG.md`](CHANGELOG.md)

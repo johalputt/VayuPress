@@ -8,6 +8,8 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [2.5.3] - 2026-06-29
+
 ### Fixed
 
 - **VayuMail IMAP now syncs in Thunderbird for Android / K-9.** Modern clients
