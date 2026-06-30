@@ -8,6 +8,19 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Fixed
+
+- **VayuMail IMAP now syncs in Thunderbird for Android / K-9.** Modern clients
+  discover folders with RFC 5258 extended-LIST syntax (e.g.
+  `LIST (SUBSCRIBED) "" "*" RETURN (SPECIAL-USE)`). The server mistook the
+  leading `(SUBSCRIBED)` selection option for the mailbox pattern, so LIST
+  returned only the hierarchy delimiter and no INBOX — the client found no
+  folders and synced nothing. LIST/LSUB now parse the selection-options and
+  `RETURN (...)` groups correctly, and the server advertises `LIST-EXTENDED`.
+- **IMAP `ENABLE` is now supported.** Thunderbird for Android / K-9 send `ENABLE`
+  during setup; it previously returned `BAD`, which some clients treat as a fatal
+  handshake error. The server now acknowledges it (RFC 5161).
+
 ## [2.5.2] - 2026-06-29
 
 ### Fixed

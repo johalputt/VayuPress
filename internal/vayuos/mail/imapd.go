@@ -200,6 +200,13 @@ func (s *IMAPServer) handle(conn net.Conn) {
 		case "NAMESPACE":
 			line(`* NAMESPACE (("" "/")) NIL NIL`)
 			line(tag + " OK NAMESPACE completed")
+		case "ENABLE":
+			// RFC 5161. Modern clients (Thunderbird for Android / K-9) send ENABLE
+			// during setup. We have no optional extensions to turn on, so we
+			// acknowledge with an empty enabled list rather than a BAD, which some
+			// clients treat as a fatal handshake error and then never sync.
+			line("* ENABLED")
+			line(tag + " OK ENABLE completed")
 		case "LOGIN":
 			s.doLogin(line, sess, tag, arg)
 		case "AUTHENTICATE":
@@ -250,7 +257,7 @@ func (s *IMAPServer) handle(conn net.Conn) {
 }
 
 func (s *IMAPServer) capabilities(onTLS bool) string {
-	c := "IMAP4rev1 LITERAL+ SASL-IR AUTH=PLAIN IDLE NAMESPACE UIDPLUS MOVE SPECIAL-USE CHILDREN UNSELECT"
+	c := "IMAP4rev1 LITERAL+ SASL-IR AUTH=PLAIN IDLE ENABLE NAMESPACE UIDPLUS MOVE LIST-EXTENDED SPECIAL-USE CHILDREN UNSELECT"
 	if s.tls != nil && !onTLS {
 		c += " STARTTLS"
 	}
@@ -350,12 +357,9 @@ func (s *IMAPServer) doList(line func(string), sess *imapSession, tag, cmd, arg 
 		line(tag + " NO Not authenticated")
 		return
 	}
-	args := tokenizeQuoted(arg)
-	pattern := ""
-	if len(args) >= 2 {
-		pattern = args[1]
-	}
+	reference, pattern := parseListArgs(arg)
 	// `LIST "" ""` is a request for the hierarchy delimiter only.
+	_ = reference
 	if pattern == "" {
 		line(`* ` + cmd + ` (\Noselect) "/" ""`)
 		line(tag + " OK " + cmd + " completed")
@@ -1155,6 +1159,42 @@ func parseLoginArgs(arg string) (user, pass string) {
 // tokenizeQuoted splits a string into space-separated tokens, treating
 // double-quoted spans as single tokens and PRESERVING empty quoted strings
 // (e.g. the `""` reference in `LIST "" "*"`).
+// parseListArgs extracts the reference name and mailbox pattern from a LIST/LSUB
+// argument, tolerating RFC 5258 extended-LIST syntax that modern clients
+// (Thunderbird for Android / K-9) use:
+//
+//	LIST "" "*"
+//	LIST (SUBSCRIBED) "" "*"
+//	LIST "" "*" RETURN (SPECIAL-USE)
+//	LIST (SUBSCRIBED REMOTE) "" "%" RETURN (CHILDREN SPECIAL-USE)
+//
+// A leading "(...)" selection-options group and a trailing "RETURN (...)" group
+// are dropped, so the reference and pattern are read from the right tokens. The
+// previous parser treated the selection-options group as the reference, leaving
+// the pattern empty — which made LIST return only the hierarchy delimiter and no
+// INBOX, so clients found no folders and never synced.
+func parseListArgs(arg string) (reference, pattern string) {
+	arg = strings.TrimSpace(arg)
+	// Drop a leading parenthesised selection-options group: "(SUBSCRIBED) ...".
+	if strings.HasPrefix(arg, "(") {
+		if i := strings.IndexByte(arg, ')'); i >= 0 {
+			arg = strings.TrimSpace(arg[i+1:])
+		}
+	}
+	// Drop a trailing "RETURN (...)" group (case-insensitive).
+	if i := strings.Index(strings.ToUpper(arg), " RETURN "); i >= 0 {
+		arg = strings.TrimSpace(arg[:i])
+	}
+	toks := tokenizeQuoted(arg)
+	if len(toks) >= 1 {
+		reference = toks[0]
+	}
+	if len(toks) >= 2 {
+		pattern = toks[1]
+	}
+	return reference, pattern
+}
+
 func tokenizeQuoted(s string) []string {
 	var out []string
 	i, n := 0, len(s)

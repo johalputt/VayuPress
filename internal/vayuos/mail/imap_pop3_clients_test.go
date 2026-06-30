@@ -199,6 +199,31 @@ func TestIMAPFetchEnvelopeBodystructure(t *testing.T) {
 	mustContain(t, resp, "ENVELOPE", "Structured Mail", "alice", "BODYSTRUCTURE", `"TEXT" "PLAIN"`)
 }
 
+// TestIMAPThunderbirdAndroidSync reproduces the command sequence the new
+// Thunderbird for Android / K-9 uses on first sync: ENABLE, then extended-LIST
+// with a (SUBSCRIBED) selection option and a RETURN (SPECIAL-USE) group, then
+// SELECT INBOX and a UID fetch. Before the extended-LIST fix, the selection
+// option was mistaken for the pattern, LIST returned no INBOX, and the client
+// synced nothing.
+func TestIMAPThunderbirdAndroidSync(t *testing.T) {
+	t.Parallel()
+	srv, md := newTestIMAP(t)
+	_, _ = md.Deliver("example.com", "bob", []byte("From: a@partner.test\r\nSubject: Hello TfA\r\n\r\nbody\r\n"))
+
+	resp := converse(t, srv.Addr(),
+		"a LOGIN bob pw",
+		"b ENABLE UTF8=ACCEPT",
+		`c LIST (SUBSCRIBED) "" "*" RETURN (SPECIAL-USE)`,
+		`d LIST "" "*" RETURN (SPECIAL-USE)`,
+		"e SELECT INBOX",
+		"f UID FETCH 1:* (UID FLAGS)",
+		"g LOGOUT")
+	mustContain(t, resp,
+		"b OK ENABLE completed",
+		`"INBOX"`, "c OK LIST completed",
+		"1 EXISTS", "UID 1")
+}
+
 func TestIMAPAuthenticatePlain(t *testing.T) {
 	t.Parallel()
 	srv, _ := newTestIMAP(t)
