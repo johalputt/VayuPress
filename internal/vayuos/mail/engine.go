@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/tls"
+	"crypto/x509"
 	"database/sql"
 	"encoding/hex"
 	"errors"
@@ -376,6 +377,64 @@ func (e *Engine) TLSNote() string {
 		return "TLS not initialised"
 	}
 	return e.tlsProv.note
+}
+
+// TLSCertHosts returns the DNS names the served leaf certificate is valid for.
+// Empty when TLS is unavailable or the certificate can't be parsed. Used to warn
+// when the certificate doesn't cover the hostname clients are told to connect to
+// — a silent failure on strict mobile apps (the Gmail app, which validates from
+// Google's servers, and Thunderbird for Android), while desktop clients let the
+// user click through the mismatch.
+func (e *Engine) TLSCertHosts() []string {
+	if e.tlsConf == nil {
+		return nil
+	}
+	var cert *tls.Certificate
+	if e.tlsConf.GetCertificate != nil {
+		if c, err := e.tlsConf.GetCertificate(&tls.ClientHelloInfo{ServerName: e.cfg.Hostname}); err == nil {
+			cert = c
+		}
+	}
+	if cert == nil && len(e.tlsConf.Certificates) > 0 {
+		cert = &e.tlsConf.Certificates[0]
+	}
+	if cert == nil || len(cert.Certificate) == 0 {
+		return nil
+	}
+	leaf := cert.Leaf
+	if leaf == nil {
+		parsed, err := x509.ParseCertificate(cert.Certificate[0])
+		if err != nil {
+			return nil
+		}
+		leaf = parsed
+	}
+	return leaf.DNSNames
+}
+
+// TLSCertCovers reports whether the served certificate is valid for host,
+// honouring a single leading "*." wildcard (RFC 6125), case-insensitively.
+func (e *Engine) TLSCertCovers(host string) bool {
+	host = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(host), "."))
+	if host == "" {
+		return false
+	}
+	for _, n := range e.TLSCertHosts() {
+		n = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(n), "."))
+		if n == host {
+			return true
+		}
+		if strings.HasPrefix(n, "*.") {
+			// "*.example.com" matches one label to the left (foo.example.com).
+			if suffix := n[1:]; strings.HasSuffix(host, suffix) {
+				label := host[:len(host)-len(suffix)]
+				if label != "" && !strings.Contains(label, ".") {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 // startACMEChallengeServer serves the ACME HTTP-01 challenge responder on

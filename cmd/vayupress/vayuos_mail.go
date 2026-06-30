@@ -670,6 +670,19 @@ func (a *App) handleVayuOSConnect(w http.ResponseWriter, r *http.Request) {
 	} else if a.vayuMail.TLSActive() && a.vayuMail.TLSTrusted() {
 		body.WriteString(`<div class="card"><div class="card-title">TLS certificate</div>`)
 		body.WriteString(`<p class="text-sm">A trusted certificate is active — mail apps can connect over SSL/TLS. <span class="muted">(` + html.EscapeString(a.vayuMail.TLSNote()) + `)</span></p>`)
+		// Hostname-match check: a trusted cert that does NOT cover the hostname
+		// clients are told to use is the classic "desktop syncs, mobile doesn't"
+		// trap — desktop Thunderbird lets the user accept the mismatch, but the
+		// Gmail app (validating from Google's servers) and Thunderbird for Android
+		// silently refuse. Surface the mismatch and the exact connect hostname.
+		if covered := a.vayuMail.TLSCertHosts(); len(covered) > 0 && !a.vayuMail.TLSCertCovers(host) {
+			body.WriteString(`<p class="text-sm" style="color:#d9844f">⚠ The certificate does <strong>not</strong> cover <code>` + hHost + `</code>, the server your apps are told to connect to. Desktop apps let you accept this, but the <strong>Gmail app and Thunderbird for Android refuse it</strong> — which is why mobile won't sync.</p>`)
+			body.WriteString(`<p class="text-sm">This certificate is valid for: <code>` + html.EscapeString(strings.Join(covered, "</code>, <code>")) + `</code>.</p>`)
+			body.WriteString(`<p class="text-sm"><strong>Fix it one of two ways:</strong></p><ul class="text-sm">`)
+			body.WriteString(`<li>Set the mail hostname to a name the certificate already covers — e.g. <code>VAYUOS_MAIL_HOSTNAME=` + html.EscapeString(covered[0]) + `</code> — and restart, so Connect/Autoconfig hand clients the matching name; or</li>`)
+			body.WriteString(`<li>Reissue the certificate to include <code>` + hHost + `</code> (e.g. <code>sudo bash deploy/vayumail-setup.sh</code>, or add <code>-d ` + hHost + `</code> to your certbot command), then restart.</li>`)
+			body.WriteString(`</ul>`)
+		}
 		// Even in ACME mode, warn if the challenge responder can't bind — renewals
 		// will eventually fail and the cert will expire back into self-signed.
 		if acmeErr != "" {
