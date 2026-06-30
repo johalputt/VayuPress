@@ -51,7 +51,10 @@ import (
 
 const (
 	updateOwner = "johalputt"
-	updateRepo  = "vayupress"
+	// Canonical repository name. GitHub renamed the repo to "VayuPress"; using the
+	// canonical case avoids a 301 redirect on every releases-API call (which, with
+	// the SSRF-guarded outbound transport, could make the update check fail).
+	updateRepo = "VayuPress"
 )
 
 // restartCleanup flushes and closes the database immediately before a re-exec
@@ -285,9 +288,20 @@ func dashOr(s string) string {
 // handleOSUpdateCheck queries GitHub for the latest release (read-only). It
 // records the check in update_history, matching the CLI `update check`.
 func (a *App) handleOSUpdateCheck(w http.ResponseWriter, r *http.Request) {
+	// An optional GitHub token raises the API rate limit (60→5000/hour), so a box
+	// that checks often no longer gets a confusing "unable to check".
+	if update.AuthToken == "" {
+		if t := strings.TrimSpace(os.Getenv("VAYU_UPDATE_TOKEN")); t != "" {
+			update.AuthToken = t
+		} else if t := strings.TrimSpace(os.Getenv("GITHUB_TOKEN")); t != "" {
+			update.AuthToken = t
+		}
+	}
 	client := &http.Client{Timeout: 30 * time.Second, Transport: safeOutboundTransport()}
 	rel, err := update.CheckLatest(r.Context(), client, updateOwner, updateRepo)
 	if err != nil {
+		// Surface the underlying reason (rate limit, network, etc.) verbatim so the
+		// panel shows something actionable instead of a bare "unable to check".
 		writeAPIError(w, r, http.StatusBadGateway, "check-failed", err.Error(), "")
 		return
 	}

@@ -8,6 +8,16 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Fixed
+
+- **"Check for updates" no longer fails with a bare "unable to check".** The
+  update checker now points at the canonical repository name (avoiding a 301
+  redirect on every API call that could fail under the SSRF-guarded transport),
+  reports GitHub API rate limiting (the 60-requests/hour unauthenticated cap)
+  with a clear, actionable message, falls back to the releases list when
+  `releases/latest` is unavailable, and accepts an optional `VAYU_UPDATE_TOKEN`
+  (or `GITHUB_TOKEN`) to raise the rate limit to 5000/hour.
+
 ## [2.5.4] - 2026-06-30
 
 ### Fixed
