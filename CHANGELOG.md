@@ -8,6 +8,18 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Fixed
+
+- **Mobile mail apps that wouldn't sync now have a clear cause surfaced.** When a
+  trusted mail certificate is active but does **not** cover the hostname clients
+  are told to connect to, desktop apps let the user accept the mismatch while the
+  Gmail app and Thunderbird for Android silently refuse — the "desktop syncs,
+  mobile doesn't" trap. The Connect tab now detects this, lists the names the
+  certificate is actually valid for, and gives the exact fix (point
+  `VAYUOS_MAIL_HOSTNAME` at a covered name, or reissue the cert to include the
+  mail host). (Mobile IMAP folder discovery itself was already fixed via
+  extended-LIST/ENABLE support, in v2.5.3.)
+
 ### Security
 
 - **Mail accounts are mail-only by default (least privilege).** Creating a
