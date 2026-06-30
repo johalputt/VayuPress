@@ -21,6 +21,23 @@
 > _Own your content. Own your communication. Own your infrastructure._
 > Publishing is the core identity, **VayuMail** the native sovereignty layer, **VayuPGP** the native privacy layer, and **VayuOS** the native control layer — all in a single Go binary, single process, single config.
 
+## What's New in v2.6.0
+
+> Full notes in [`CHANGELOG.md`](CHANGELOG.md)
+
+**Mail matures: per-mailbox storage quotas, mobile sync, and a stricter role model.**
+
+- **Per-mailbox storage quotas** — admins allot space per account (MB; 0 =
+  unlimited); over-quota delivery is refused and sending/drafts are blocked when
+  full, with a usage bar on each user's Mailbox page.
+- **Thunderbird for Android / K-9 now syncs** — the IMAP server advertises
+  `\Subscribed` and accepts `SUBSCRIBE`, which those clients require.
+- **Clear cause for mobile TLS failures** — the Connect tab warns when the mail
+  certificate doesn't cover the hostname clients connect to.
+- **Mail accounts are mail-only by default** (least privilege) — console access
+  must be granted deliberately.
+- **"Check for updates"** is robust against rate limits and the renamed repo.
+
 ## What's New in v2.5.4
 
 > Full notes in [`CHANGELOG.md`](CHANGELOG.md)
