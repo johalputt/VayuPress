@@ -10,6 +10,14 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Fixed
 
+- **Thunderbird for Android / K-9 now syncs its inbox.** These clients only sync
+  folders they see as **subscribed** and explicitly `SUBSCRIBE` to folders during
+  setup. The IMAP server kept no subscription state, so it advertised no
+  `\Subscribed` flag (the client treated every folder as unsubscribed and synced
+  nothing) and replied `BAD` to `SUBSCRIBE` (which K-9 treats as fatal).
+  LIST/LSUB now advertise `\Subscribed` for every standard folder, and
+  `SUBSCRIBE`/`UNSUBSCRIBE` are accepted as no-ops. (Gmail and desktop
+  Thunderbird were unaffected and already worked.)
 - **Mobile mail apps that wouldn't sync now have a clear cause surfaced.** When a
   trusted mail certificate is active but does **not** cover the hostname clients
   are told to connect to, desktop apps let the user accept the mismatch while the

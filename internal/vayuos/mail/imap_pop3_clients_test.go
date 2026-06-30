@@ -215,12 +215,16 @@ func TestIMAPThunderbirdAndroidSync(t *testing.T) {
 		"b ENABLE UTF8=ACCEPT",
 		`c LIST (SUBSCRIBED) "" "*" RETURN (SPECIAL-USE)`,
 		`d LIST "" "*" RETURN (SPECIAL-USE)`,
-		"e SELECT INBOX",
-		"f UID FETCH 1:* (UID FLAGS)",
-		"g LOGOUT")
+		`e LSUB "" "*"`,
+		`f SUBSCRIBE "INBOX"`,
+		"g SELECT INBOX",
+		"h UID FETCH 1:* (UID FLAGS)",
+		"i LOGOUT")
 	mustContain(t, resp,
 		"b OK ENABLE completed",
 		`"INBOX"`, "c OK LIST completed",
+		`\Subscribed`,             // K-9/TfA only syncs folders it sees as subscribed
+		"f OK SUBSCRIBE completed", // explicit SUBSCRIBE must not be a fatal BAD
 		"1 EXISTS", "UID 1")
 }
 

@@ -213,6 +213,17 @@ func (s *IMAPServer) handle(conn net.Conn) {
 			s.doAuthenticate(br, w, line, sess, tag, arg)
 		case "LIST", "LSUB":
 			s.doList(line, sess, tag, cmd, arg)
+		case "SUBSCRIBE", "UNSUBSCRIBE":
+			// We don't track per-folder subscriptions — every standard folder is
+			// always listed and treated as subscribed (see doList). Some clients
+			// (notably Thunderbird for Android / K-9) explicitly SUBSCRIBE to a
+			// folder during setup and treat a BAD reply as fatal, then never sync.
+			// Acknowledge as a no-op when authenticated.
+			if !sess.authed() {
+				line(tag + " NO Not authenticated")
+			} else {
+				line(tag + " OK " + cmd + " completed")
+			}
 		case "STATUS":
 			s.doStatus(line, sess, tag, arg)
 		case "SELECT", "EXAMINE":
@@ -365,6 +376,11 @@ func (s *IMAPServer) doList(line func(string), sess *imapSession, tag, cmd, arg 
 		line(tag + " OK " + cmd + " completed")
 		return
 	}
+	// Every standard folder is treated as subscribed (we keep no per-folder
+	// subscription state). Advertise \Subscribed for LSUB and for an extended
+	// LIST that asks about subscriptions — otherwise Thunderbird for Android /
+	// K-9, which only syncs folders it sees as subscribed, would sync nothing.
+	subscribed := strings.EqualFold(cmd, "LSUB") || strings.Contains(strings.ToUpper(arg), "SUBSCRIBED")
 	for _, f := range StandardFolders {
 		name := f
 		if strings.EqualFold(f, "Inbox") {
@@ -373,7 +389,11 @@ func (s *IMAPServer) doList(line func(string), sess *imapSession, tag, cmd, arg 
 		if !mailboxMatches(pattern, name) {
 			continue
 		}
-		line("* " + cmd + " (" + folderAttrs(f) + `) "/" "` + name + `"`)
+		attrs := folderAttrs(f)
+		if subscribed {
+			attrs = `\Subscribed ` + attrs
+		}
+		line("* " + cmd + " (" + attrs + `) "/" "` + name + `"`)
 	}
 	line(tag + " OK " + cmd + " completed")
 }
