@@ -787,9 +787,33 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
   <button class="btn" type="submit">Search</button>
 </form>`)
 	body.WriteString(folderTabs(user, folder))
-	body.WriteString(`<div class="table-wrap"><table class="table"><thead><tr><th>From</th><th>Subject</th><th>Date</th><th></th></tr></thead><tbody>`)
+	isDrafts := strings.EqualFold(folder, "Drafts")
+	// Bulk action bar — selection drives mark-read / pin / move / delete across
+	// many messages at once (wired in admin-os-mail.js). Drafts open in the
+	// composer, so bulk acts there are limited to delete.
+	if len(msgs) > 0 {
+		bar := `<div class="vm-bulk" data-mail-bulk data-user="` + html.EscapeString(user) + `" data-folder="` + html.EscapeString(folder) + `" hidden>`
+		bar += `<span class="text-sm muted" data-bulk-count>0 selected</span>`
+		if !isDrafts {
+			bar += `<button class="btn btn--sm" data-bulk-action="read">Mark read</button>`
+			bar += `<button class="btn btn--sm" data-bulk-action="unread">Mark unread</button>`
+			bar += `<button class="btn btn--sm" data-bulk-action="pin">📌 Pin</button>`
+			bar += `<span class="vm-move"><select class="input input--sm" data-bulk-move aria-label="Move selected to folder"><option value="">Move to…</option>`
+			for _, f := range vmail.StandardFolders {
+				if strings.EqualFold(f, folder) {
+					continue
+				}
+				bar += `<option value="` + html.EscapeString(f) + `">` + html.EscapeString(f) + `</option>`
+			}
+			bar += `</select></span>`
+		}
+		bar += `<button class="btn btn--sm btn--danger" data-bulk-action="delete">Delete</button>`
+		bar += `</div>`
+		body.WriteString(bar)
+	}
+	body.WriteString(`<div class="table-wrap"><table class="table" data-mail-list data-user="` + html.EscapeString(user) + `" data-folder="` + html.EscapeString(folder) + `"><thead><tr><th class="vm-check"><input type="checkbox" data-mail-check-all aria-label="Select all"></th><th></th><th>From</th><th>Subject</th><th>Date</th><th></th></tr></thead><tbody>`)
 	if len(msgs) == 0 {
-		body.WriteString(`<tr><td colspan="4" class="muted">No messages in ` + html.EscapeString(folder) + `.</td></tr>`)
+		body.WriteString(`<tr><td colspan="6" class="muted">No messages in ` + html.EscapeString(folder) + `.</td></tr>`)
 	}
 	for _, m := range msgs {
 		subj := m.Subject
@@ -797,29 +821,35 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 			subj = "(no subject)"
 		}
 		who := m.From
-		if strings.EqualFold(folder, "Sent") || strings.EqualFold(folder, "Drafts") {
+		if strings.EqualFold(folder, "Sent") || isDrafts {
 			who = "→ " + m.To
 		}
 		// Drafts reopen in the composer; everything else opens the reader view.
 		link := "/os/vayuos/mail/message?user=" + qparam(user) + "&folder=" + qparam(folder) + "&id=" + qparam(m.ID)
-		if strings.EqualFold(folder, "Drafts") {
+		if isDrafts {
 			link = "/os/vayuos/mail/compose?draft=1&user=" + qparam(user) + "&id=" + qparam(m.ID)
 		}
 		seen := ""
+		if !m.Seen && !strings.EqualFold(folder, "Sent") && !isDrafts {
+			seen = ` <span class="badge badge--ok">new</span>`
+		}
+		// Pin toggle (Maildir Flagged) — a filled marker when pinned.
+		pinVal, pinIcon := "1", "📌"
+		if m.Flagged {
+			pinVal, pinIcon = "0", "📍"
+		}
+		pin := `<button class="btn btn--sm btn--ghost" data-mail-pin-row="` + pinVal + `" data-user="` + html.EscapeString(user) + `" data-folder="` + html.EscapeString(folder) + `" data-id="` + html.EscapeString(m.ID) + `" aria-label="Pin">` + pinIcon + `</button>`
+		// Read/unread toggle (only meaningful for received folders).
 		tick := ""
-		if strings.EqualFold(folder, "Inbox") {
-			if !m.Seen {
-				seen = ` <span class="badge badge--ok">new</span>`
-			}
-			// Read/unread toggle (a tick when read).
-			mark := "read"
-			label := "Mark read"
+		if !strings.EqualFold(folder, "Sent") && !isDrafts {
+			mark, label := "read", "Mark read"
 			if m.Seen {
 				mark, label = "unread", "✓ read"
 			}
 			tick = `<button class="btn btn--sm" data-mail-mark-row="` + mark + `" data-user="` + html.EscapeString(user) + `" data-folder="` + html.EscapeString(folder) + `" data-id="` + html.EscapeString(m.ID) + `">` + label + `</button>`
 		}
-		body.WriteString(`<tr><td class="text-sm">` + html.EscapeString(who) + `</td><td><a href="` + link + `">` + html.EscapeString(subj) + `</a>` + seen + `</td><td class="muted text-sm">` + m.Date.Format("2006-01-02 15:04") + `</td><td class="text-sm">` + tick + `</td></tr>`)
+		check := `<input type="checkbox" class="vm-check-row" data-mail-check value="` + html.EscapeString(m.ID) + `" aria-label="Select message">`
+		body.WriteString(`<tr><td class="vm-check">` + check + `</td><td class="text-sm">` + pin + `</td><td class="text-sm">` + html.EscapeString(who) + `</td><td><a href="` + link + `">` + html.EscapeString(subj) + `</a>` + seen + `</td><td class="muted text-sm">` + m.Date.Format("2006-01-02 15:04") + `</td><td class="text-sm">` + tick + `</td></tr>`)
 	}
 	body.WriteString(`</tbody></table></div></div>`)
 	body.WriteString(`<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail.js"></script>`)
@@ -898,6 +928,14 @@ func (a *App) handleVayuOSMessage(w http.ResponseWriter, r *http.Request) {
 		writeOSHTML(w, adminOSLayout(nonce, "Message", "vayuos", cfg, htmpl.HTML(body.String())))
 		return
 	}
+	// Opening a message marks it read (Maildir Seen), like every mail client.
+	// Drafts/Sent are authored, not received, so they are left untouched. The
+	// rename can change the id, so we use the returned one for the actions below.
+	if !strings.EqualFold(folder, "Drafts") && !strings.EqualFold(folder, "Sent") {
+		if nid, merr := a.vayuMail.MarkRead(user, folder, id); merr == nil && nid != "" {
+			id = nid
+		}
+	}
 	back := "/os/vayuos/mail/inbox?user=" + qparam(user) + "&folder=" + qparam(folder)
 	// Reply / Forward open the composer pre-filled from this message (server-side).
 	q := "user=" + qparam(user) + "&folder=" + qparam(folder) + "&id=" + qparam(id)
@@ -909,17 +947,38 @@ func (a *App) handleVayuOSMessage(w http.ResponseWriter, r *http.Request) {
 	actions += `<a class="btn" href="` + forwardLink + `">Forward</a>`
 	actions += `<button class="btn" data-mail-mark="read">✓ Mark read</button>`
 	actions += `<button class="btn" data-mail-mark="unread">Mark unread</button>`
+	// Pin / unpin (Maildir Flagged). The current pin state is read from disk.
+	pinned := false
+	if msgs, lerr := a.vayuMail.ListFolder(user, folder); lerr == nil {
+		for _, mm := range msgs {
+			if mm.ID == id {
+				pinned = mm.Flagged
+				break
+			}
+		}
+	}
+	if pinned {
+		actions += `<button class="btn" data-mail-pin="0">📌 Unpin</button>`
+	} else {
+		actions += `<button class="btn" data-mail-pin="1">📌 Pin</button>`
+	}
 	if !strings.EqualFold(folder, "Junk") {
 		actions += `<button class="btn" data-mail-move="Junk">Mark as Junk</button>`
-	}
-	if !strings.EqualFold(folder, "Archive") {
-		actions += `<button class="btn" data-mail-move="Archive">Archive</button>`
 	}
 	if !strings.EqualFold(folder, "Trash") {
 		actions += `<button class="btn" data-mail-move="Trash">Move to Trash</button>`
 	} else {
 		actions += `<button class="btn" data-mail-move="Inbox">Restore to Inbox</button>`
 	}
+	// General "Move to folder" picker (covers every standard folder).
+	actions += `<span class="vm-move"><select class="input input--sm" data-mail-move-select aria-label="Move to folder"><option value="">Move to…</option>`
+	for _, f := range vmail.StandardFolders {
+		if strings.EqualFold(f, folder) {
+			continue
+		}
+		actions += `<option value="` + html.EscapeString(f) + `">` + html.EscapeString(f) + `</option>`
+	}
+	actions += `</select></span>`
 	actions += `<button class="btn btn--danger" data-mail-delete>Delete permanently</button></div>`
 	// Clean reader view: decoded headers + body, with a raw-source toggle.
 	pm := vmail.ParseMessage(raw)

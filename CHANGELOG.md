@@ -8,6 +8,26 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Fixed
+
+- **Mailbox "Mark as read" no longer 500s.** A message id goes stale the instant
+  the message is read, flagged, or moved (its Maildir file moves `new/`→`cur/` or
+  its flag suffix changes). The panel held the old id, so the next action joined
+  a path that no longer existed and failed with a 500. Mark/move/delete/read now
+  resolve the message by its stable base name across `new/` and `cur/`.
+
+### Added
+
+- **Mail auto-marks read on open.** Opening a received message marks it read,
+  like any mail client (Drafts/Sent are left untouched).
+- **Pin (flag) messages.** Pin/unpin from the message view or the list (Maildir
+  `F` flag); pinning is independent of read state.
+- **Move mail between any folders.** The message view gains a "Move to…" folder
+  picker covering every standard folder (not just Junk/Trash/Archive).
+- **Bulk mailbox actions.** Select multiple messages in the list to mark
+  read/unread, pin, move to a folder, or delete in one go, with a select-all box.
+  One stale id no longer fails the whole batch.
+
 ## [2.5.3] - 2026-06-29
 
 ### Fixed

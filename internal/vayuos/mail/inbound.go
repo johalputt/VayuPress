@@ -21,6 +21,7 @@ type StoredMessage struct {
 	Date    time.Time `json:"date"`
 	Size    int64     `json:"size"`
 	Seen    bool      `json:"seen"`
+	Flagged bool      `json:"flagged"` // Maildir 'F' flag — surfaced as "pinned" in the panel
 }
 
 // List returns the messages in an account's mailbox (new + cur), newest first.

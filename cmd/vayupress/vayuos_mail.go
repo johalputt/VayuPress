@@ -322,19 +322,30 @@ func (a *App) handleVayuOSMessageAction(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	var in struct {
-		User   string `json:"user"`
-		ID     string `json:"id"`
-		Folder string `json:"folder"`
-		To     string `json:"to"`     // target folder for move
-		Delete bool   `json:"delete"` // permanent delete
-		Mark   string `json:"mark"`   // "read" or "unread"
+		User   string   `json:"user"`
+		ID     string   `json:"id"`
+		IDs    []string `json:"ids"` // bulk: apply the action to each id
+		Folder string   `json:"folder"`
+		To     string   `json:"to"`     // target folder for move
+		Delete bool     `json:"delete"` // permanent delete
+		Mark   string   `json:"mark"`   // "read" or "unread"
+		Pin    *bool    `json:"pin"`    // pin (true) / unpin (false)
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64*1024)).Decode(&in); err != nil {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 256*1024)).Decode(&in); err != nil {
 		writeAPIError(w, r, 400, "invalid_json", err.Error(), "")
 		return
 	}
-	if in.User == "" || in.ID == "" {
-		writeAPIError(w, r, 400, "validation_error", "user and id are required", "")
+	// Accept either a single id or a list; the list is the bulk path.
+	ids := in.IDs
+	if len(ids) == 0 && in.ID != "" {
+		ids = []string{in.ID}
+	}
+	if in.User == "" || len(ids) == 0 {
+		writeAPIError(w, r, 400, "validation_error", "user and id(s) are required", "")
+		return
+	}
+	if len(ids) > 500 {
+		writeAPIError(w, r, 400, "too_many", "at most 500 messages per request", "")
 		return
 	}
 	// Non-admins may only act on messages in their own assigned mailbox.
@@ -349,40 +360,65 @@ func (a *App) handleVayuOSMessageAction(w http.ResponseWriter, r *http.Request) 
 	if from == "" {
 		from = "Inbox"
 	}
-	if in.Mark == "read" || in.Mark == "unread" {
-		var (
-			newID string
-			err   error
-		)
-		if in.Mark == "read" {
-			newID, err = a.vayuMail.MarkRead(in.User, from, in.ID)
-		} else {
-			newID, err = a.vayuMail.MarkUnread(in.User, from, in.ID)
+
+	// One operation, applied to every id. We collect per-message failures rather
+	// than aborting the whole batch, so one stale id can't fail a bulk action.
+	var lastID, action string
+	failed := 0
+	apply := func(id string) error {
+		switch {
+		case in.Mark == "read":
+			nid, err := a.vayuMail.MarkRead(in.User, from, id)
+			lastID, action = nid, "read"
+			return err
+		case in.Mark == "unread":
+			nid, err := a.vayuMail.MarkUnread(in.User, from, id)
+			lastID, action = nid, "unread"
+			return err
+		case in.Pin != nil:
+			nid, err := a.vayuMail.SetPinned(in.User, from, id, *in.Pin)
+			lastID = nid
+			if *in.Pin {
+				action = "pinned"
+			} else {
+				action = "unpinned"
+			}
+			return err
+		case in.Delete:
+			action = "deleted"
+			return a.vayuMail.DeleteMessage(in.User, from, id)
+		default:
+			target := in.To
+			if target == "" {
+				target = "Trash"
+			}
+			action = "moved"
+			return a.vayuMail.MoveMessage(in.User, id, from, target)
 		}
-		if err != nil {
-			writeAPIError(w, r, 500, "mark-failed", err.Error(), "")
-			return
+	}
+	var firstErr string
+	for _, id := range ids {
+		if err := apply(id); err != nil {
+			failed++
+			if firstErr == "" {
+				firstErr = err.Error()
+			}
 		}
-		writeJSON(w, r, 200, map[string]string{"marked": in.Mark, "id": newID})
+	}
+	// A whole-batch failure (e.g. every id stale) is a real error; partial
+	// failures are reported but still 200 so the UI can refresh.
+	if failed == len(ids) {
+		writeAPIError(w, r, 500, "action-failed", firstErr, "")
 		return
 	}
-	if in.Delete {
-		if err := a.vayuMail.DeleteMessage(in.User, from, in.ID); err != nil {
-			writeAPIError(w, r, 500, "delete-failed", err.Error(), "")
-			return
-		}
-		writeJSON(w, r, 200, map[string]bool{"deleted": true})
-		return
+	resp := map[string]interface{}{"action": action, "count": len(ids) - failed, "failed": failed}
+	if len(ids) == 1 && lastID != "" {
+		resp["id"] = lastID
 	}
-	target := in.To
-	if target == "" {
-		target = "Trash"
+	if in.To != "" {
+		resp["moved_to"] = in.To
 	}
-	if err := a.vayuMail.MoveMessage(in.User, in.ID, from, target); err != nil {
-		writeAPIError(w, r, 500, "move-failed", err.Error(), "")
-		return
-	}
-	writeJSON(w, r, 200, map[string]string{"moved_to": target})
+	writeJSON(w, r, 200, resp)
 }
 
 // ── Admin mail accounts (email + password) ───────────────────────────────────

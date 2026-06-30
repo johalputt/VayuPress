@@ -117,6 +117,15 @@ func (e *Engine) MarkUnread(username, folder, id string) (string, error) {
 	return e.maildir.markUnseenFolder(e.cfg.Domain, username, folder, id)
 }
 
+// SetPinned flags (or unflags) a message with the Maildir 'F' flag, surfaced in
+// the panel as "pinned", returning the message's new id.
+func (e *Engine) SetPinned(username, folder, id string, pinned bool) (string, error) {
+	if e.maildir == nil {
+		return id, errors.New("vayumail: not started")
+	}
+	return e.maildir.setFlagFolder(e.cfg.Domain, username, folder, id, 'F', pinned)
+}
+
 // SaveDraft files a composed message into the sender's Drafts folder and
 // returns its id, so it can be reopened in the composer and finished later.
 func (e *Engine) SaveDraft(from string, to []string, subject, body string) (string, error) {

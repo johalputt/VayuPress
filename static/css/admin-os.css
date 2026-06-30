@@ -2440,7 +2440,15 @@
 .vm-row { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; margin-top: .75rem; }
 .vm-row--end { align-items: flex-end; }
 .vm-grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; }
-.vm-actions { display: flex; gap: .5rem; flex-wrap: wrap; margin-bottom: .75rem; }
+.vm-actions { display: flex; gap: .5rem; flex-wrap: wrap; margin-bottom: .75rem; align-items: center; }
+.vm-bulk { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; margin: .5rem 0 .75rem; padding: .5rem .75rem; border: 1px solid var(--os-border, #2a2f3a); border-radius: 8px; background: var(--os-surface-2, rgba(255,255,255,.03)); }
+.vm-bulk[hidden] { display: none; }
+.vm-move { display: inline-flex; align-items: center; }
+.input--sm { padding: .25rem .5rem; font-size: .85rem; height: auto; width: auto; }
+.vm-check { width: 1px; white-space: nowrap; text-align: center; }
+.vm-check-row, .vm-check input[type=checkbox] { cursor: pointer; }
+.btn--ghost { background: transparent; border-color: transparent; padding-left: .4rem; padding-right: .4rem; }
+.btn--ghost:hover { background: var(--os-surface-2, rgba(255,255,255,.06)); }
 .vm-grow { flex: 1 1 12rem; }
 .vm-suffix { color: var(--os-muted, #8a8f98); font-size: .85rem; margin-left: .35rem; }
 .vm-pre { white-space: pre-wrap; word-break: break-word; font-size: 13px; line-height: 1.5; max-height: 65vh; overflow: auto; margin: 0; }

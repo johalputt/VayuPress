@@ -99,7 +99,12 @@ func (m *Maildir) ListFolder(domain, username, folder string) ([]StoredMessage, 
 			if err != nil {
 				continue
 			}
-			sm := StoredMessage{ID: sub + "/" + e.Name(), Size: info.Size(), Seen: sub == "cur", Date: info.ModTime()}
+			_, fl := splitMaildirFlags(e.Name())
+			sm := StoredMessage{
+				ID: sub + "/" + e.Name(), Size: info.Size(), Date: info.ModTime(),
+				Seen:    strings.ContainsRune(fl, 'S'),
+				Flagged: strings.ContainsRune(fl, 'F'),
+			}
 			if raw, err := os.ReadFile(filepath.Join(dir, sub, e.Name())); err == nil {
 				if msg, perr := mail.ReadMessage(bytes.NewReader(raw)); perr == nil {
 					sm.From = msg.Header.Get("From")
@@ -117,16 +122,13 @@ func (m *Maildir) ListFolder(domain, username, folder string) ([]StoredMessage, 
 	return out, nil
 }
 
-// ReadRawFolder returns the raw bytes of a message in a folder.
+// ReadRawFolder returns the raw bytes of a message in a folder, tolerating a
+// stale id (sub/flags changed since it was issued) via resolveMessage.
 func (m *Maildir) ReadRawFolder(domain, username, folder, id string) ([]byte, error) {
-	sub, name, ok := strings.Cut(id, "/")
-	if !ok || (sub != "new" && sub != "cur") {
-		return nil, errors.New("vayumail: invalid message id")
+	sub, name, err := m.resolveMessage(domain, username, folder, id)
+	if err != nil {
+		return nil, err
 	}
-	if name == "" || strings.ContainsAny(name, "/\\") || strings.Contains(name, "..") {
-		return nil, errors.New("vayumail: invalid message id")
-	}
-	name = filepath.Base(name) // defense-in-depth: guarantee a single path element
 	return os.ReadFile(filepath.Join(m.folderDir(domain, username, folder), sub, name))
 }
 
@@ -193,14 +195,10 @@ func (m *Maildir) MoveBetween(domain, username, id, from, to string) error {
 
 // deleteMessage removes a message file from a folder.
 func (m *Maildir) deleteMessage(domain, username, folder, id string) error {
-	sub, name, ok := strings.Cut(id, "/")
-	if !ok || (sub != "new" && sub != "cur") {
-		return errors.New("vayumail: invalid message id")
+	sub, name, err := m.resolveMessage(domain, username, folder, id)
+	if err != nil {
+		return err
 	}
-	if name == "" || strings.ContainsAny(name, "/\\") || strings.Contains(name, "..") {
-		return errors.New("vayumail: invalid message id")
-	}
-	name = filepath.Base(name) // defense-in-depth: guarantee a single path element
 	return os.Remove(filepath.Join(m.folderDir(domain, username, folder), sub, name))
 }
 
@@ -213,53 +211,154 @@ func splitMaildirFlags(name string) (base, flags string) {
 	return name, ""
 }
 
-// markSeenFolder moves a message from new/ to cur/ within a folder and sets the
-// Maildir ":2,S" (Seen) flag, returning the new id. Already-seen messages are
-// returned unchanged.
-func (m *Maildir) markSeenFolder(domain, username, folder, id string) (string, error) {
-	sub, name, ok := strings.Cut(id, "/")
-	if !ok || (sub != "new" && sub != "cur") {
-		return id, errors.New("vayumail: invalid message id")
+// addFlag returns flags with f present, keeping the set unique and ASCII-sorted
+// as the Maildir spec requires.
+func addFlag(flags string, f rune) string {
+	return sortFlags(strings.Map(dropRune(f), flags) + string(f))
+}
+
+// removeFlag returns flags with every occurrence of f removed.
+func removeFlag(flags string, f rune) string { return sortFlags(strings.Map(dropRune(f), flags)) }
+
+func dropRune(f rune) func(rune) rune {
+	return func(r rune) rune {
+		if r == f {
+			return -1
+		}
+		return r
 	}
-	if name == "" || strings.ContainsAny(name, "/\\") || strings.Contains(name, "..") {
-		return id, errors.New("vayumail: invalid message id")
+}
+
+func sortFlags(flags string) string {
+	rs := []rune(flags)
+	sort.Slice(rs, func(i, j int) bool { return rs[i] < rs[j] })
+	return string(rs)
+}
+
+// resolveMessage finds the on-disk file for a message id within a folder,
+// tolerating a stale sub (new/ vs cur/) or a stale flag suffix. A client's id
+// goes stale the instant a message is read (new→cur), flagged, or moved, and a
+// naive path join would then fail with ENOENT — which surfaced as a 500 on
+// "mark as read". This matches by the Maildir base name (the unique part before
+// ":2,"), checking the exact name first, then scanning cur/ and new/.
+func (m *Maildir) resolveMessage(domain, username, folder, id string) (sub, name string, err error) {
+	raw := id
+	if _, after, ok := strings.Cut(id, "/"); ok {
+		raw = after
 	}
-	name = filepath.Base(name)
-	base, flags := splitMaildirFlags(name)
-	if sub == "cur" && strings.ContainsRune(flags, 'S') {
-		return id, nil
+	raw = filepath.Base(raw)
+	if raw == "" || raw == "." || strings.Contains(raw, "..") {
+		return "", "", errors.New("vayumail: invalid message id")
 	}
 	dir := m.folderDir(domain, username, folder)
+	for _, s := range []string{"cur", "new"} {
+		if _, e := os.Stat(filepath.Join(dir, s, raw)); e == nil {
+			return s, raw, nil
+		}
+	}
+	base, _ := splitMaildirFlags(raw)
+	for _, s := range []string{"cur", "new"} {
+		entries, e := os.ReadDir(filepath.Join(dir, s))
+		if e != nil {
+			continue
+		}
+		for _, ent := range entries {
+			if ent.IsDir() {
+				continue
+			}
+			if b, _ := splitMaildirFlags(ent.Name()); b == base {
+				return s, ent.Name(), nil
+			}
+		}
+	}
+	return "", "", errors.New("vayumail: message not found")
+}
+
+// setFlagFolder adds or removes a single Maildir flag (e.g. 'F' for pinned) on a
+// message, preserving its other flags and its seen state. Flagged messages live
+// in cur/ (where the info part is allowed); clearing the last flag returns the
+// file to new/.
+func (m *Maildir) setFlagFolder(domain, username, folder, id string, flag rune, on bool) (string, error) {
+	sub, name, err := m.resolveMessage(domain, username, folder, id)
+	if err != nil {
+		return id, err
+	}
+	base, flags := splitMaildirFlags(name)
+	var nf string
+	if on {
+		nf = addFlag(flags, flag)
+	} else {
+		nf = removeFlag(flags, flag)
+	}
+	dir := m.folderDir(domain, username, folder)
+	if nf == "" {
+		if err := os.MkdirAll(filepath.Join(dir, "new"), 0o700); err != nil {
+			return id, err
+		}
+		if err := os.Rename(filepath.Join(dir, sub, name), filepath.Join(dir, "new", base)); err != nil {
+			return id, err
+		}
+		return "new/" + base, nil
+	}
 	if err := os.MkdirAll(filepath.Join(dir, "cur"), 0o700); err != nil {
 		return id, err
 	}
-	newName := base + ":2,S"
+	newName := base + ":2," + nf
 	if err := os.Rename(filepath.Join(dir, sub, name), filepath.Join(dir, "cur", newName)); err != nil {
 		return id, err
 	}
 	return "cur/" + newName, nil
 }
 
-// markUnseenFolder moves a message back to new/ (clearing the Seen flag).
-func (m *Maildir) markUnseenFolder(domain, username, folder, id string) (string, error) {
-	sub, name, ok := strings.Cut(id, "/")
-	if !ok || (sub != "new" && sub != "cur") {
-		return id, errors.New("vayumail: invalid message id")
+// markSeenFolder moves a message from new/ to cur/ within a folder and sets the
+// Maildir ":2,S" (Seen) flag, returning the new id. Already-seen messages are
+// returned unchanged.
+func (m *Maildir) markSeenFolder(domain, username, folder, id string) (string, error) {
+	sub, name, err := m.resolveMessage(domain, username, folder, id)
+	if err != nil {
+		return id, err
 	}
-	if name == "" || strings.ContainsAny(name, "/\\") || strings.Contains(name, "..") {
-		return id, errors.New("vayumail: invalid message id")
+	base, flags := splitMaildirFlags(name)
+	if sub == "cur" && strings.ContainsRune(flags, 'S') {
+		return "cur/" + name, nil
 	}
-	name = filepath.Base(name)
-	if sub == "new" {
-		return id, nil
-	}
-	base, _ := splitMaildirFlags(name)
 	dir := m.folderDir(domain, username, folder)
-	if err := os.MkdirAll(filepath.Join(dir, "new"), 0o700); err != nil {
+	if err := os.MkdirAll(filepath.Join(dir, "cur"), 0o700); err != nil {
 		return id, err
 	}
-	if err := os.Rename(filepath.Join(dir, "cur", name), filepath.Join(dir, "new", base)); err != nil {
+	newName := base + ":2," + addFlag(flags, 'S') // preserve other flags (e.g. F = pinned)
+	if err := os.Rename(filepath.Join(dir, sub, name), filepath.Join(dir, "cur", newName)); err != nil {
 		return id, err
 	}
-	return "new/" + base, nil
+	return "cur/" + newName, nil
+}
+
+// markUnseenFolder clears the Seen flag, keeping any other flags (so a pinned
+// message stays pinned) — back to new/ only when no flags remain.
+func (m *Maildir) markUnseenFolder(domain, username, folder, id string) (string, error) {
+	sub, name, err := m.resolveMessage(domain, username, folder, id)
+	if err != nil {
+		return id, err
+	}
+	base, flags := splitMaildirFlags(name)
+	if sub == "new" || !strings.ContainsRune(flags, 'S') {
+		// Already unseen; normalise the returned id to the resolved file.
+		return sub + "/" + name, nil
+	}
+	nf := removeFlag(flags, 'S')
+	dir := m.folderDir(domain, username, folder)
+	if nf == "" {
+		if err := os.MkdirAll(filepath.Join(dir, "new"), 0o700); err != nil {
+			return id, err
+		}
+		if err := os.Rename(filepath.Join(dir, sub, name), filepath.Join(dir, "new", base)); err != nil {
+			return id, err
+		}
+		return "new/" + base, nil
+	}
+	newName := base + ":2," + nf
+	if err := os.Rename(filepath.Join(dir, sub, name), filepath.Join(dir, "cur", newName)); err != nil {
+		return id, err
+	}
+	return "cur/" + newName, nil
 }

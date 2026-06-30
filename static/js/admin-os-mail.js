@@ -213,6 +213,28 @@
       });
     });
 
+    actions.querySelectorAll('[data-mail-pin]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var pin = btn.getAttribute('data-mail-pin') === '1';
+        postJSON('/os/vayuos/mail/message/action', { user: user, id: id, folder: folder, pin: pin }).then(function (res) {
+          if (res.ok) window.location.reload();
+          else window.alert('Pin failed: ' + ((res.body && res.body.message) || res.status));
+        });
+      });
+    });
+
+    var moveSel = actions.querySelector('[data-mail-move-select]');
+    if (moveSel) {
+      moveSel.addEventListener('change', function () {
+        var target = moveSel.value;
+        if (!target) return;
+        postJSON('/os/vayuos/mail/message/action', { user: user, id: id, folder: folder, to: target }).then(function (res) {
+          if (res.ok) window.location.href = backFolder(folder);
+          else { moveSel.value = ''; window.alert('Move failed: ' + ((res.body && res.body.message) || res.status)); }
+        });
+      });
+    }
+
     var del = actions.querySelector('[data-mail-delete]');
     if (del) {
       del.addEventListener('click', function () {
@@ -238,6 +260,74 @@
       });
     });
   });
+
+  // ── Mailbox list: per-row pin toggle ─────────────────────────────────────────
+  document.querySelectorAll('[data-mail-pin-row]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      postJSON('/os/vayuos/mail/message/action', {
+        user: btn.getAttribute('data-user'),
+        folder: btn.getAttribute('data-folder'),
+        id: btn.getAttribute('data-id'),
+        pin: btn.getAttribute('data-mail-pin-row') === '1',
+      }).then(function (res) {
+        if (res.ok) window.location.reload();
+        else window.alert('Pin failed: ' + ((res.body && res.body.message) || res.status));
+      });
+    });
+  });
+
+  // ── Mailbox list: bulk selection + bulk actions ──────────────────────────────
+  var bulk = document.querySelector('[data-mail-bulk]');
+  var listTable = document.querySelector('[data-mail-list]');
+  if (bulk && listTable) {
+    var bUser = bulk.getAttribute('data-user');
+    var bFolder = bulk.getAttribute('data-folder');
+    var countEl = bulk.querySelector('[data-bulk-count]');
+    var checks = function () { return Array.prototype.slice.call(listTable.querySelectorAll('[data-mail-check]')); };
+    var selectedIds = function () { return checks().filter(function (c) { return c.checked; }).map(function (c) { return c.value; }); };
+    var refresh = function () {
+      var n = selectedIds().length;
+      if (countEl) countEl.textContent = n + ' selected';
+      if (n > 0) bulk.removeAttribute('hidden'); else bulk.setAttribute('hidden', '');
+      var all = listTable.querySelector('[data-mail-check-all]');
+      if (all) all.checked = n > 0 && n === checks().length;
+    };
+    var allBox = listTable.querySelector('[data-mail-check-all]');
+    if (allBox) {
+      allBox.addEventListener('change', function () {
+        checks().forEach(function (c) { c.checked = allBox.checked; });
+        refresh();
+      });
+    }
+    checks().forEach(function (c) { c.addEventListener('change', refresh); });
+
+    var runBulk = function (payload, confirmMsg) {
+      var ids = selectedIds();
+      if (!ids.length) return;
+      if (confirmMsg && !window.confirm(confirmMsg.replace('{n}', ids.length))) return;
+      payload.user = bUser; payload.folder = bFolder; payload.ids = ids;
+      postJSON('/os/vayuos/mail/message/action', payload).then(function (res) {
+        if (res.ok) window.location.reload();
+        else window.alert('Action failed: ' + ((res.body && res.body.message) || res.status));
+      });
+    };
+    bulk.querySelectorAll('[data-bulk-action]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var a = btn.getAttribute('data-bulk-action');
+        if (a === 'read' || a === 'unread') runBulk({ mark: a });
+        else if (a === 'pin') runBulk({ pin: true });
+        else if (a === 'delete') runBulk({ delete: true }, 'Permanently delete {n} message(s)?');
+      });
+    });
+    var bulkMove = bulk.querySelector('[data-bulk-move]');
+    if (bulkMove) {
+      bulkMove.addEventListener('change', function () {
+        if (!bulkMove.value) return;
+        runBulk({ to: bulkMove.value });
+      });
+    }
+    refresh();
+  }
 
   // ── Message raw-source toggle ────────────────────────────────────────────────
   var rawBtn = document.querySelector('[data-mail-raw-toggle]');
