@@ -107,6 +107,13 @@
     });
   });
 
+  // ── Mailbox storage bar: apply width via CSSOM (CSP blocks inline styles) ────
+  document.querySelectorAll('[data-quota-pct]').forEach(function (el) {
+    var pct = parseInt(el.getAttribute('data-quota-pct'), 10);
+    if (isNaN(pct)) pct = 0;
+    el.style.width = Math.max(0, Math.min(100, pct)) + '%';
+  });
+
   // ── Set mailbox storage quota (MB; 0 = unlimited) ────────────────────────────
   document.querySelectorAll('[data-acct-quota-save]').forEach(function (btn) {
     btn.addEventListener('click', function () {

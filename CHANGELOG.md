@@ -13,9 +13,12 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 - **Per-mailbox storage quotas.** An administrator can allot how much space each
   mail account may use, from the Mail accounts page — set a quota (in MB; 0 =
   unlimited) when creating an account or inline per account, with live usage
-  shown next to it. Inbound delivery that would push a mailbox over its quota is
-  refused (the sending server gets a temporary failure and retries/bounces)
-  rather than letting the mailbox grow without bound. New `quota_bytes` column on
+  shown next to it. Enforcement covers every way a mailbox grows: inbound
+  delivery over quota is refused (the sending server gets a temporary failure and
+  retries/bounces), and sending mail or saving a draft is blocked when the
+  mailbox is full (both file a copy into the mailbox). Each user also sees a
+  storage usage bar on their own Mailbox page (green → amber → red as it fills),
+  with a clear "mailbox full" warning at the limit. New `quota_bytes` column on
   `vayumail_accounts` (defaults to 0/unlimited, so existing accounts are
   unchanged).
 

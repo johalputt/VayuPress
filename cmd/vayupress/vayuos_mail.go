@@ -216,6 +216,12 @@ func (a *App) handleVayuOSSend(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, 400, "validation_error", "at least one recipient is required", "")
 		return
 	}
+	// Sending files a copy into the sender's Sent folder, so refuse when the
+	// mailbox is already at/over its storage quota.
+	if a.vayuMail.MailboxOverQuota(from) {
+		writeAPIError(w, r, 400, "over-quota", "Your mailbox is full (storage quota reached). Delete some mail or ask an administrator to raise your quota, then try again.", "")
+		return
+	}
 	// Resolve the sender's PGP userID (best-effort) for signing/encryption.
 	senderUserID := ""
 	if mu, err := (&vayuMailBridge{app: a}).GetUserByEmail(from); err == nil && mu != nil {
@@ -271,6 +277,11 @@ func (a *App) handleVayuOSDraft(w http.ResponseWriter, r *http.Request) {
 		if t = strings.TrimSpace(t); t != "" {
 			to = append(to, t)
 		}
+	}
+	// Saving a draft files it into the Drafts folder, so refuse when full.
+	if a.vayuMail.MailboxOverQuota(from) {
+		writeAPIError(w, r, 400, "over-quota", "Your mailbox is full (storage quota reached). Delete some mail or ask an administrator to raise your quota.", "")
+		return
 	}
 	fromHeader := from
 	if name := a.senderDisplayName(r.Context(), from); name != "" {
@@ -511,7 +522,7 @@ func (a *App) handleVayuOSAccounts(w http.ResponseWriter, r *http.Request) {
 			quotaMB = ac.QuotaBytes / (1024 * 1024)
 		}
 		storage := `<span class="muted text-sm">` + strconv.FormatFloat(usedMB, 'f', 1, 64) + ` / </span>` +
-			`<input class="input input--sm" style="width:6rem" type="number" min="0" step="1" value="` + strconv.FormatInt(quotaMB, 10) + `" data-acct-quota="` + html.EscapeString(ac.Email) + `" aria-label="Quota in MB (0 = unlimited)">` +
+			`<input class="input input--sm vm-quota-input" type="number" min="0" step="1" value="` + strconv.FormatInt(quotaMB, 10) + `" data-acct-quota="` + html.EscapeString(ac.Email) + `" aria-label="Quota in MB (0 = unlimited)">` +
 			`<button class="btn btn--sm" data-acct-quota-save="` + html.EscapeString(ac.Email) + `">Save</button>`
 		body.WriteString(`<tr><td>` + html.EscapeString(ac.Email) + `</td><td>` + html.EscapeString(ac.FullName) + `</td><td>` + roleSel + `</td><td class="vm-row">` + storage + `</td><td>` + status + `</td><td>` + twofa + `</td><td class="muted text-sm">` + ac.CreatedAt.Format("2006-01-02") + `</td><td class="vm-row">` +
 			`<button class="btn" data-acct-pass="` + html.EscapeString(ac.Email) + `">Set password</button>` +

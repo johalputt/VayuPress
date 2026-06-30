@@ -2444,6 +2444,14 @@
 .vm-bulk { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; margin: .5rem 0 .75rem; padding: .5rem .75rem; border: 1px solid var(--os-border, #2a2f3a); border-radius: 8px; background: var(--os-surface-2, rgba(255,255,255,.03)); }
 .vm-bulk[hidden] { display: none; }
 .vm-move { display: inline-flex; align-items: center; }
+.vm-quota-input { width: 6rem; }
+.vm-quota { margin: .25rem 0 .75rem; }
+.vm-quota-meta { margin-bottom: .3rem; }
+.vm-quota-track { height: 8px; border-radius: 999px; background: var(--os-border, #2a2f3a); overflow: hidden; max-width: 28rem; }
+.vm-quota-fill { height: 100%; width: 0; border-radius: 999px; transition: width .3s ease; background: #4f7d5a; }
+.vm-quota-fill--warn { background: #d9844f; }
+.vm-quota-fill--full { background: #d9534f; }
+.vm-quota-full { color: #d9534f; margin-top: .35rem; }
 .input--sm { padding: .25rem .5rem; font-size: .85rem; height: auto; width: auto; }
 .vm-check { width: 1px; white-space: nowrap; text-align: center; }
 .vm-check-row, .vm-check input[type=checkbox] { cursor: pointer; }

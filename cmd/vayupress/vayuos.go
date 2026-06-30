@@ -781,6 +781,35 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	body.WriteString(`<div class="card"><div class="card-title">` + html.EscapeString(user+"@"+domain) + ` · <a href="/os/vayuos/mail/inbox">all mailboxes</a></div>`)
+	// Storage usage bar: how much of the mailbox quota is in use (0 = unlimited).
+	// The fill width/level is applied by admin-os-mail.js from data-* attributes
+	// (CSSOM), since the strict admin CSP (style-src 'self') blocks inline styles.
+	{
+		email := user + "@" + domain
+		used := a.vayuMail.MailboxUsage(email)
+		quota := a.vayuMail.MailboxQuota(email)
+		if quota > 0 {
+			pct := int(float64(used) / float64(quota) * 100)
+			if pct > 100 {
+				pct = 100
+			}
+			level := "ok"
+			if pct >= 90 {
+				level = "full"
+			} else if pct >= 75 {
+				level = "warn"
+			}
+			body.WriteString(`<div class="vm-quota"><div class="vm-quota-meta text-sm muted">Storage: ` +
+				html.EscapeString(humanBytes(used)) + ` of ` + html.EscapeString(humanBytes(quota)) + ` used (` + itoaSafe(pct) + `%)</div>` +
+				`<div class="vm-quota-track"><div class="vm-quota-fill vm-quota-fill--` + level + `" data-quota-pct="` + itoaSafe(pct) + `"></div></div>`)
+			if pct >= 100 {
+				body.WriteString(`<div class="vm-quota-full text-sm">⚠ Your mailbox is full — incoming mail may be rejected and you can't send until you free space.</div>`)
+			}
+			body.WriteString(`</div>`)
+		} else {
+			body.WriteString(`<div class="vm-quota text-sm muted">Storage used: ` + html.EscapeString(humanBytes(used)) + ` · quota: unlimited</div>`)
+		}
+	}
 	body.WriteString(`<form class="vm-search" method="get" action="/os/vayuos/mail/search">
   <input type="hidden" name="user" value="` + html.EscapeString(user) + `">
   <input class="input" type="search" name="q" placeholder="Search mail (from, subject, body)…" aria-label="Search mail">

@@ -134,6 +134,25 @@ func (e *Engine) MailboxUsage(email string) int64 {
 	return e.maildir.AccountSize(domain, local)
 }
 
+// MailboxQuota returns an account's storage limit in bytes (0 = unlimited).
+func (e *Engine) MailboxQuota(email string) int64 {
+	if e.accounts == nil {
+		return 0
+	}
+	return e.accounts.QuotaFor(context.Background(), email)
+}
+
+// MailboxOverQuota reports whether a mailbox has reached or exceeded its storage
+// quota — used to block sending/draft-saving (both file a copy into the
+// mailbox) once it is full. Always false when no quota is set (0 = unlimited).
+func (e *Engine) MailboxOverQuota(email string) bool {
+	q := e.MailboxQuota(email)
+	if q <= 0 {
+		return false
+	}
+	return e.MailboxUsage(email) >= q
+}
+
 // SetPinned flags (or unflags) a message with the Maildir 'F' flag, surfaced in
 // the panel as "pinned", returning the message's new id.
 func (e *Engine) SetPinned(username, folder, id string, pinned bool) (string, error) {
