@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"net/mail"
 	"os"
 	"path/filepath"
@@ -89,6 +90,17 @@ func (e *Engine) DeliverInbound(recipientEmail string, raw []byte) (string, erro
 	}
 	if domain == "" {
 		domain = e.cfg.Domain
+	}
+	// Enforce the mailbox storage quota (0 = unlimited). A delivery that would
+	// push the account over its limit is refused, so the sending server gets a
+	// clear failure rather than the mailbox silently ballooning. Checked before
+	// the junk filter so an over-quota account can't be filled with junk either.
+	if e.accounts != nil {
+		if quota := e.accounts.QuotaFor(context.Background(), local+"@"+domain); quota > 0 {
+			if e.maildir.AccountSize(domain, local)+int64(len(raw)) > quota {
+				return "", fmt.Errorf("vayumail: mailbox %s@%s is over its storage quota", local, domain)
+			}
+		}
 	}
 	// Built-in heuristic junk filter (fully local — no external services). Mail
 	// scoring at or above the threshold is filed straight into the recipient's

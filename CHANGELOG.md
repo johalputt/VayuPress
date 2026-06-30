@@ -8,6 +8,17 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Added
+
+- **Per-mailbox storage quotas.** An administrator can allot how much space each
+  mail account may use, from the Mail accounts page — set a quota (in MB; 0 =
+  unlimited) when creating an account or inline per account, with live usage
+  shown next to it. Inbound delivery that would push a mailbox over its quota is
+  refused (the sending server gets a temporary failure and retries/bounces)
+  rather than letting the mailbox grow without bound. New `quota_bytes` column on
+  `vayumail_accounts` (defaults to 0/unlimited, so existing accounts are
+  unchanged).
+
 ### Fixed
 
 - **Thunderbird for Android / K-9 now syncs its inbox.** These clients only sync

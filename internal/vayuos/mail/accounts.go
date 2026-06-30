@@ -80,6 +80,7 @@ type Account struct {
 	Role        string    `json:"role"`
 	Active      bool      `json:"active"`
 	TOTPEnabled bool      `json:"totp_enabled"`
+	QuotaBytes  int64     `json:"quota_bytes"` // mailbox storage limit; 0 = unlimited
 	CreatedAt   time.Time `json:"created_at"`
 }
 
@@ -114,12 +115,43 @@ func NewAccountStore(db *sql.DB) (*AccountStore, error) {
 	for _, stmt := range []string{
 		`ALTER TABLE vayumail_accounts ADD COLUMN totp_secret TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE vayumail_accounts ADD COLUMN totp_enabled INTEGER NOT NULL DEFAULT 0`,
+		// Per-mailbox storage quota in bytes; 0 means unlimited. Existing accounts
+		// default to unlimited so the migration changes no behaviour.
+		`ALTER TABLE vayumail_accounts ADD COLUMN quota_bytes INTEGER NOT NULL DEFAULT 0`,
 	} {
 		if _, err := db.Exec(stmt); err != nil && !strings.Contains(err.Error(), "duplicate column") {
 			return s, err
 		}
 	}
 	return s, nil
+}
+
+// SetQuota sets an account's mailbox storage limit in bytes (0 = unlimited).
+func (s *AccountStore) SetQuota(ctx context.Context, email string, bytes int64) error {
+	if s.db == nil {
+		return errors.New("vayumail: no storage")
+	}
+	if bytes < 0 {
+		bytes = 0
+	}
+	res, err := s.db.ExecContext(ctx, `UPDATE vayumail_accounts SET quota_bytes=? WHERE email=?`, bytes, normEmail(email))
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return errors.New("no such account")
+	}
+	return nil
+}
+
+// QuotaFor returns an account's storage limit in bytes (0 = unlimited / unknown).
+func (s *AccountStore) QuotaFor(ctx context.Context, email string) int64 {
+	if s.db == nil {
+		return 0
+	}
+	var q int64
+	_ = s.db.QueryRowContext(ctx, `SELECT quota_bytes FROM vayumail_accounts WHERE email=?`, normEmail(email)).Scan(&q)
+	return q
 }
 
 func normEmail(e string) string { return strings.ToLower(strings.TrimSpace(e)) }
@@ -235,7 +267,7 @@ func (s *AccountStore) List(ctx context.Context) ([]Account, error) {
 	if s.db == nil {
 		return out, nil
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT email,full_name,role,active,totp_enabled,created_at FROM vayumail_accounts ORDER BY email`)
+	rows, err := s.db.QueryContext(ctx, `SELECT email,full_name,role,active,totp_enabled,quota_bytes,created_at FROM vayumail_accounts ORDER BY email`)
 	if err != nil {
 		return nil, err
 	}
@@ -243,7 +275,7 @@ func (s *AccountStore) List(ctx context.Context) ([]Account, error) {
 	for rows.Next() {
 		var a Account
 		var active, totpEnabled int
-		if err := rows.Scan(&a.Email, &a.FullName, &a.Role, &active, &totpEnabled, &a.CreatedAt); err != nil {
+		if err := rows.Scan(&a.Email, &a.FullName, &a.Role, &active, &totpEnabled, &a.QuotaBytes, &a.CreatedAt); err != nil {
 			return nil, err
 		}
 		a.Active = active == 1

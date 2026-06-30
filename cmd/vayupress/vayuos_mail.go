@@ -460,6 +460,8 @@ func (a *App) handleVayuOSAccounts(w http.ResponseWriter, r *http.Request) {
         <option value="administrator">Administrator — full console</option>
       </select>
       <span class="vm-suffix">Mail-only roles see just their own mailbox — no other tabs, no other inboxes.</span></label>
+    <label class="field"><span class="field-label">Quota (MB, 0 = unlimited)</span>
+      <input class="input" type="number" min="0" step="1" data-a-quota placeholder="0" value="0"></label>
     <label class="field vm-grow"><span class="field-label">Password (min 8)</span>
       <input class="input" type="password" data-a-pass placeholder="••••••••" required></label>
     <button class="btn btn--primary" type="submit">Create</button>
@@ -468,9 +470,9 @@ func (a *App) handleVayuOSAccounts(w http.ResponseWriter, r *http.Request) {
 </form></div>`)
 
 	// Existing accounts.
-	body.WriteString(`<div class="card"><div class="card-title">Accounts</div><div class="table-wrap"><table class="table"><thead><tr><th>Email</th><th>Name</th><th>Role</th><th>Status</th><th>2FA</th><th>Created</th><th></th></tr></thead><tbody>`)
+	body.WriteString(`<div class="card"><div class="card-title">Accounts</div><div class="table-wrap"><table class="table"><thead><tr><th>Email</th><th>Name</th><th>Role</th><th>Storage (used / quota MB)</th><th>Status</th><th>2FA</th><th>Created</th><th></th></tr></thead><tbody>`)
 	if len(accs) == 0 {
-		body.WriteString(`<tr><td colspan="7" class="muted">No mail accounts yet.</td></tr>`)
+		body.WriteString(`<tr><td colspan="8" class="muted">No mail accounts yet.</td></tr>`)
 	}
 	for _, ac := range accs {
 		status := `<span class="badge badge--ok">active</span>`
@@ -502,7 +504,16 @@ func (a *App) handleVayuOSAccounts(w http.ResponseWriter, r *http.Request) {
 			twofa = `<span class="badge badge--ok">on</span>`
 			twofaBtn = `<button class="btn" data-acct-2fa-disable="` + html.EscapeString(ac.Email) + `">Disable 2FA</button>`
 		}
-		body.WriteString(`<tr><td>` + html.EscapeString(ac.Email) + `</td><td>` + html.EscapeString(ac.FullName) + `</td><td>` + roleSel + `</td><td>` + status + `</td><td>` + twofa + `</td><td class="muted text-sm">` + ac.CreatedAt.Format("2006-01-02") + `</td><td class="vm-row">` +
+		// Storage: live usage vs the editable quota (MB; 0 = unlimited).
+		usedMB := float64(a.vayuMail.MailboxUsage(ac.Email)) / (1024 * 1024)
+		quotaMB := int64(0)
+		if ac.QuotaBytes > 0 {
+			quotaMB = ac.QuotaBytes / (1024 * 1024)
+		}
+		storage := `<span class="muted text-sm">` + strconv.FormatFloat(usedMB, 'f', 1, 64) + ` / </span>` +
+			`<input class="input input--sm" style="width:6rem" type="number" min="0" step="1" value="` + strconv.FormatInt(quotaMB, 10) + `" data-acct-quota="` + html.EscapeString(ac.Email) + `" aria-label="Quota in MB (0 = unlimited)">` +
+			`<button class="btn btn--sm" data-acct-quota-save="` + html.EscapeString(ac.Email) + `">Save</button>`
+		body.WriteString(`<tr><td>` + html.EscapeString(ac.Email) + `</td><td>` + html.EscapeString(ac.FullName) + `</td><td>` + roleSel + `</td><td class="vm-row">` + storage + `</td><td>` + status + `</td><td>` + twofa + `</td><td class="muted text-sm">` + ac.CreatedAt.Format("2006-01-02") + `</td><td class="vm-row">` +
 			`<button class="btn" data-acct-pass="` + html.EscapeString(ac.Email) + `">Set password</button>` +
 			twofaBtn +
 			`<button class="btn" data-acct-toggle="` + html.EscapeString(ac.Email) + `" data-active="` + toggleActive + `">` + toggleLabel + `</button>` +
@@ -821,10 +832,11 @@ func (a *App) handleVayuOSAccountCreate(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	var in struct {
-		Local string `json:"local"`
-		Name  string `json:"name"`
-		Pass  string `json:"pass"`
-		Role  string `json:"role"`
+		Local   string   `json:"local"`
+		Name    string   `json:"name"`
+		Pass    string   `json:"pass"`
+		Role    string   `json:"role"`
+		QuotaMB *float64 `json:"quota_mb"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64*1024)).Decode(&in); err != nil {
 		writeAPIError(w, r, 400, "invalid_json", err.Error(), "")
@@ -848,6 +860,10 @@ func (a *App) handleVayuOSAccountCreate(w http.ResponseWriter, r *http.Request) 
 	if err := a.vayuMail.Accounts().Create(r.Context(), email, hash, in.Name, in.Role); err != nil {
 		writeAPIError(w, r, 400, "create-failed", err.Error(), "")
 		return
+	}
+	// Optional storage quota (MB) set at creation; 0/absent = unlimited.
+	if in.QuotaMB != nil && *in.QuotaMB > 0 {
+		_ = a.vayuMail.Accounts().SetQuota(r.Context(), email, int64(*in.QuotaMB*1024*1024))
 	}
 	// Provision the Maildir folders for the new address.
 	_ = a.vayuMail.CreateMailbox("", local)
@@ -899,10 +915,11 @@ func (a *App) handleVayuOSAccountUpdate(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	var in struct {
-		Email  string `json:"email"`
-		Pass   string `json:"pass"`
-		Active *bool  `json:"active"`
-		Role   string `json:"role"`
+		Email   string   `json:"email"`
+		Pass    string   `json:"pass"`
+		Active  *bool    `json:"active"`
+		Role    string   `json:"role"`
+		QuotaMB *float64 `json:"quota_mb"` // mailbox storage limit in MB; 0 = unlimited
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64*1024)).Decode(&in); err != nil {
 		writeAPIError(w, r, 400, "invalid_json", err.Error(), "")
@@ -911,6 +928,16 @@ func (a *App) handleVayuOSAccountUpdate(w http.ResponseWriter, r *http.Request) 
 	if strings.TrimSpace(in.Email) == "" {
 		writeAPIError(w, r, 400, "validation_error", "email is required", "")
 		return
+	}
+	if in.QuotaMB != nil {
+		bytes := int64(*in.QuotaMB * 1024 * 1024)
+		if bytes < 0 {
+			bytes = 0
+		}
+		if err := a.vayuMail.Accounts().SetQuota(r.Context(), in.Email, bytes); err != nil {
+			writeAPIError(w, r, 400, "update-failed", err.Error(), "")
+			return
+		}
 	}
 	if in.Pass != "" {
 		if len(in.Pass) < 8 {

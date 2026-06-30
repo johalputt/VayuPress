@@ -118,6 +118,22 @@ func (e *Engine) MarkUnread(username, folder, id string) (string, error) {
 	return e.maildir.markUnseenFolder(e.cfg.Domain, username, folder, id)
 }
 
+// MailboxUsage returns the total bytes a mailbox occupies across all folders,
+// for quota display in the admin panel.
+func (e *Engine) MailboxUsage(email string) int64 {
+	if e.maildir == nil {
+		return 0
+	}
+	local, domain := splitAddress(email)
+	if domain == "" {
+		domain = e.cfg.Domain
+	}
+	if local == "" {
+		return 0
+	}
+	return e.maildir.AccountSize(domain, local)
+}
+
 // SetPinned flags (or unflags) a message with the Maildir 'F' flag, surfaced in
 // the panel as "pinned", returning the message's new id.
 func (e *Engine) SetPinned(username, folder, id string, pinned bool) (string, error) {

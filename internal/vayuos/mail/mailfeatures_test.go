@@ -1,6 +1,7 @@
 package mail
 
 import (
+	"context"
 	"strings"
 	"testing"
 )
@@ -131,5 +132,39 @@ func TestDKIMPValue(t *testing.T) {
 	}
 	if dkimPValue("v=DKIM1; k=rsa") != "" {
 		t.Errorf("expected empty p for record without p=")
+	}
+}
+
+// TestMailboxQuotaEnforced verifies inbound delivery is refused once an account
+// is at/over its storage quota, and unlimited (0) never blocks.
+func TestMailboxQuotaEnforced(t *testing.T) {
+	t.Parallel()
+	e := newLoopbackEngine(t, nil)
+	ctx := context.Background()
+	if err := e.Accounts().Create(ctx, "cap@example.com", "hash", "Cap", RoleMailbox); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	// 2 KB quota.
+	if err := e.Accounts().SetQuota(ctx, "cap@example.com", 2048); err != nil {
+		t.Fatalf("set quota: %v", err)
+	}
+	small := []byte(crlf("From: a@p.test\nTo: cap@example.com\nSubject: ok\n\n" + "x" + "\n"))
+	if _, err := e.DeliverInbound("cap@example.com", small); err != nil {
+		t.Fatalf("small delivery under quota should succeed: %v", err)
+	}
+	big := make([]byte, 4096)
+	for i := range big {
+		big[i] = 'y'
+	}
+	raw := append([]byte(crlf("From: a@p.test\nTo: cap@example.com\nSubject: big\n\n")), big...)
+	if _, err := e.DeliverInbound("cap@example.com", raw); err == nil {
+		t.Fatalf("delivery over quota must be refused")
+	}
+	// Unlimited (0) never blocks.
+	if err := e.Accounts().SetQuota(ctx, "cap@example.com", 0); err != nil {
+		t.Fatalf("clear quota: %v", err)
+	}
+	if _, err := e.DeliverInbound("cap@example.com", raw); err != nil {
+		t.Fatalf("unlimited quota should never block: %v", err)
 	}
 }

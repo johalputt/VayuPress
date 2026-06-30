@@ -89,6 +89,7 @@
       postJSON('/os/vayuos/mail/accounts/create', {
         local: local, name: val(acctForm, '[data-a-name]'), pass: pass,
         role: val(acctForm, '[data-a-role]'),
+        quota_mb: parseFloat(val(acctForm, '[data-a-quota]')) || 0,
       }).then(function (res) {
         if (res.ok) { window.location.reload(); }
         else if (aStatus) aStatus.textContent = 'Failed: ' + ((res.body && res.body.message) || res.status);
@@ -102,6 +103,22 @@
       var email = sel.getAttribute('data-acct-role');
       postJSON('/os/vayuos/mail/accounts/update', { email: email, role: sel.value }).then(function (res) {
         if (!res.ok) window.alert('Role update failed: ' + ((res.body && res.body.message) || res.status));
+      });
+    });
+  });
+
+  // ── Set mailbox storage quota (MB; 0 = unlimited) ────────────────────────────
+  document.querySelectorAll('[data-acct-quota-save]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var email = btn.getAttribute('data-acct-quota-save');
+      var input = document.querySelector('[data-acct-quota="' + (window.CSS && CSS.escape ? CSS.escape(email) : email) + '"]');
+      var mb = input ? (parseFloat(input.value) || 0) : 0;
+      if (mb < 0) mb = 0;
+      btn.disabled = true;
+      postJSON('/os/vayuos/mail/accounts/update', { email: email, quota_mb: mb }).then(function (res) {
+        btn.disabled = false;
+        if (res.ok) { btn.textContent = 'Saved ✓'; setTimeout(function () { btn.textContent = 'Save'; }, 1500); }
+        else window.alert('Quota update failed: ' + ((res.body && res.body.message) || res.status));
       });
     });
   });
