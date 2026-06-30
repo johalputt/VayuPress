@@ -223,7 +223,7 @@ func TestIMAPThunderbirdAndroidSync(t *testing.T) {
 	mustContain(t, resp,
 		"b OK ENABLE completed",
 		`"INBOX"`, "c OK LIST completed",
-		`\Subscribed`,             // K-9/TfA only syncs folders it sees as subscribed
+		`\Subscribed`,              // K-9/TfA only syncs folders it sees as subscribed
 		"f OK SUBSCRIBE completed", // explicit SUBSCRIBE must not be a fatal BAD
 		"1 EXISTS", "UID 1")
 }
