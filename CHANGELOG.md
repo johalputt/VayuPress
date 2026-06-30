@@ -8,6 +8,8 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [2.5.4] - 2026-06-30
+
 ### Fixed
 
 - **Mailbox "Mark as read" no longer 500s.** A message id goes stale the instant

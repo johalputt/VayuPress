@@ -21,6 +21,18 @@
 > _Own your content. Own your communication. Own your infrastructure._
 > Publishing is the core identity, **VayuMail** the native sovereignty layer, **VayuPGP** the native privacy layer, and **VayuOS** the native control layer — all in a single Go binary, single process, single config.
 
+## What's New in v2.5.4
+
+> Full notes in [`CHANGELOG.md`](CHANGELOG.md)
+
+**A real mailbox — mark-read that works, plus pin, move and bulk actions.**
+
+- The panel's "Mark as read" returned a 500 because a message id went stale the
+  moment its Maildir file moved on read; actions now resolve a message by its
+  stable name, so mark/move/delete/read never fail on a stale id.
+- Messages auto-mark read when opened, you can **pin** (flag) them, **move**
+  between any folders, and **bulk** mark-read/pin/move/delete from the list.
+
 ## What's New in v2.5.3
 
 > Full notes in [`CHANGELOG.md`](CHANGELOG.md)
