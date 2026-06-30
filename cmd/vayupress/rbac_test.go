@@ -4,7 +4,32 @@ import (
 	"testing"
 
 	"github.com/johalputt/vayupress/internal/users"
+	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
 )
+
+// TestMailConsoleAccessStrict locks in that only the explicit console roles
+// (administrator/editor/author) grant VayuOS console access; mailbox, reviewer,
+// an empty role, and any custom role are confined to the VayuMail surface
+// (mailOnly). This prevents a mail-only account from seeing other tabs.
+func TestMailConsoleAccessStrict(t *testing.T) {
+	cases := []struct {
+		mailRole    string
+		wantConsole bool
+	}{
+		{vmail.RoleAdministrator, true},
+		{vmail.RoleEditor, true},
+		{vmail.RoleAuthor, true},
+		{vmail.RoleReviewer, false},
+		{vmail.RoleMailbox, false},
+		{"", false},
+		{"automation", false}, // custom role
+	}
+	for _, c := range cases {
+		if _, console := mailConsoleAccess(c.mailRole); console != c.wantConsole {
+			t.Errorf("mailConsoleAccess(%q) console=%v want %v", c.mailRole, console, c.wantConsole)
+		}
+	}
+}
 
 func TestAccessLevelFor(t *testing.T) {
 	cases := []struct {

@@ -29,11 +29,12 @@ func TestAccountRoles(t *testing.T) {
 	s := newAcctStore(t)
 	ctx := context.Background()
 
-	// Create with explicit roles + a default (empty -> author) + a custom role.
+	// Create with explicit roles + a default (empty -> mailbox, least privilege)
+	// + a custom role.
 	cases := map[string]string{
 		"boss@x.test":   RoleAdministrator,
 		"ed@x.test":     RoleEditor,
-		"writer@x.test": "", // -> author
+		"writer@x.test": "", // -> mailbox (least-privilege default)
 		"ro@x.test":     RoleReviewer,
 		"bot@x.test":    "automation", // custom
 	}
@@ -45,7 +46,7 @@ func TestAccountRoles(t *testing.T) {
 
 	want := map[string]string{
 		"boss@x.test": RoleAdministrator, "ed@x.test": RoleEditor,
-		"writer@x.test": RoleAuthor, "ro@x.test": RoleReviewer, "bot@x.test": "automation",
+		"writer@x.test": RoleMailbox, "ro@x.test": RoleReviewer, "bot@x.test": "automation",
 	}
 	for email, exp := range want {
 		if got := s.RoleFor(ctx, email); got != exp {
@@ -104,8 +105,11 @@ func TestRolePermissionHelpers(t *testing.T) {
 	if normRole("  EDITOR ") != RoleEditor {
 		t.Errorf("normRole should lowercase/trim")
 	}
-	if normRole("bad role!") != RoleAuthor {
-		t.Errorf("invalid custom role should fall back to author")
+	if normRole("bad role!") != RoleMailbox {
+		t.Errorf("invalid custom role should fall back to mailbox (least privilege)")
+	}
+	if normRole("") != RoleMailbox {
+		t.Errorf("empty role should fall back to mailbox (least privilege)")
 	}
 	if !IsBuiltinRole("Author") || IsBuiltinRole("automation") {
 		t.Errorf("IsBuiltinRole wrong")

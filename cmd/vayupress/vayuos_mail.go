@@ -453,12 +453,13 @@ func (a *App) handleVayuOSAccounts(w http.ResponseWriter, r *http.Request) {
       <input class="input" type="text" data-a-name placeholder="Display name"></label>
     <label class="field"><span class="field-label">Role</span>
       <select class="input" data-a-role>
-        <option value="author" selected>Author (mail + author console)</option>
-        <option value="editor">Editor (mail + editor console)</option>
-        <option value="reviewer">Reviewer (read-only, mail only)</option>
-        <option value="mailbox">Mailbox (mail only, no console)</option>
-        <option value="administrator">Administrator (full console)</option>
-      </select></label>
+        <option value="mailbox" selected>Mailbox — mail only, no console (default)</option>
+        <option value="reviewer">Reviewer — read-only, mail only</option>
+        <option value="author">Author — mail + author console</option>
+        <option value="editor">Editor — mail + editor console</option>
+        <option value="administrator">Administrator — full console</option>
+      </select>
+      <span class="vm-suffix">Mail-only roles see just their own mailbox — no other tabs, no other inboxes.</span></label>
     <label class="field vm-grow"><span class="field-label">Password (min 8)</span>
       <input class="input" type="password" data-a-pass placeholder="••••••••" required></label>
     <button class="btn btn--primary" type="submit">Create</button>

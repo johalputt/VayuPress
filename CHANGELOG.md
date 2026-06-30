@@ -8,6 +8,19 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Security
+
+- **Mail accounts are mail-only by default (least privilege).** Creating a
+  VayuMail account defaulted to the *author* role, which carries author **console**
+  access — so a mailbox meant for mail-only use also showed content tabs. New
+  accounts now default to the **mailbox** role (mail only, no console, own inbox
+  only), an unspecified/invalid role falls back to mailbox instead of author, and
+  the create form lists mail-only roles first with a note. Only an explicitly
+  chosen administrator/editor/author role grants console access. Existing
+  accounts can be downgraded from the role dropdown on the Mail accounts page.
+  (The per-mailbox scoping that already stopped one user reading another's mail
+  is unchanged; this closes the over-broad *visibility* gap.)
+
 ### Fixed
 
 - **"Check for updates" no longer fails with a bare "unable to check".** The

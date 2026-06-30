@@ -35,11 +35,13 @@ var builtinRoleSet = map[string]bool{
 // IsBuiltinRole reports whether r is one of the first-class roles.
 func IsBuiltinRole(r string) bool { return builtinRoleSet[strings.ToLower(strings.TrimSpace(r))] }
 
-// normRole normalises a role string and falls back to author when empty/invalid.
+// normRole normalises a role string and falls back to the least-privilege
+// mailbox role when empty/invalid, so an unspecified role never silently grants
+// console access (security: console roles must be chosen deliberately).
 func normRole(r string) string {
 	r = strings.ToLower(strings.TrimSpace(r))
 	if r == "" {
-		return RoleAuthor
+		return RoleMailbox
 	}
 	if builtinRoleSet[r] {
 		return r
@@ -47,7 +49,7 @@ func normRole(r string) string {
 	// Custom role: allow a conservative identifier charset only.
 	for _, c := range r {
 		if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-' || c == '_') {
-			return RoleAuthor
+			return RoleMailbox
 		}
 	}
 	if len(r) > 32 {
