@@ -239,6 +239,9 @@ var AllKeys = map[string]bool{
 	KeyPaySupportEmail:       true,
 	KeyAdsenseClient:         true,
 	KeyAffiliateDisclosure:   true,
+	// admin.theme is the operator's VayuOS console colour theme (light/dark/auto),
+	// persisted from the topbar theme toggle rather than the theme editor form.
+	"admin.theme": true,
 }
 
 // Defaults are returned when no DB value exists for a key.

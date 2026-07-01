@@ -7,7 +7,10 @@
 (function () {
   'use strict';
   var KEY = 'vp-os-theme';
-  var root = document.documentElement;
+  // The theme attribute must live on the .vp-os element itself (the <body> on
+  // these pages) so the .vp-os[data-theme] token overrides win over the base
+  // .vp-os tokens; setting it on an ancestor would be shadowed.
+  var root = document.body || document.documentElement;
 
   function get() {
     try { return localStorage.getItem(KEY) || 'auto'; } catch (e) { return 'auto'; }

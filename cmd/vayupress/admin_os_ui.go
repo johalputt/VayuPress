@@ -620,7 +620,7 @@ func adminOSLayout(nonce, title, active string, settings *osSettings, bodyHTML h
 // adminOSShellFoot.
 func adminOSShellHead(nonce, title, active string, settings *osSettings) string {
 	et := html.EscapeString(title)
-	theme := "dark"
+	theme := "auto" // follow the operating system by default (clean/light on light OS)
 	if settings != nil && settings.AdminTheme != "" {
 		theme = settings.AdminTheme
 	}
@@ -642,7 +642,7 @@ func adminOSShellHead(nonce, title, active string, settings *osSettings) string 
 	}
 
 	return `<!DOCTYPE html>
-<html lang="en" data-theme="` + html.EscapeString(theme) + `">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -651,7 +651,7 @@ func adminOSShellHead(nonce, title, active string, settings *osSettings) string 
 <link rel="stylesheet" href="/os/static/css/admin-os.css?v=` + assetVer("css/admin-os.css") + `">
 <link rel="icon" type="image/png" href="/static/favicon-light.png">
 </head>
-<body class="vp-os" data-admin-theme="` + html.EscapeString(theme) + `">
+<body class="vp-os" data-theme="` + html.EscapeString(theme) + `" data-admin-theme="` + html.EscapeString(theme) + `">
 <a href="#main-content" class="skip-link">Skip to main content</a>
 
 <!-- Sidebar overlay for mobile tap-to-close -->
@@ -684,6 +684,9 @@ func adminOSShellHead(nonce, title, active string, settings *osSettings) string 
     <span class="topbar-spacer"></span>
     ` + cmdHint + `
     ` + newPostBtn + `
+    <button type="button" class="btn--icon topbar-theme-btn" aria-label="Toggle colour theme (light / dark / auto)" title="Colour theme">
+      <svg viewBox="0 0 20 20" width="18" height="18" fill="none" aria-hidden="true"><path d="M10 2v16M10 2a8 8 0 000 16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="10" cy="10" r="8" stroke="currentColor" stroke-width="1.5"/></svg>
+    </button>
     <form method="POST" action="/os/logout">
       <button type="submit" class="btn btn--ghost btn--sm">Sign out</button>
     </form>
@@ -1096,7 +1099,7 @@ func osLoginPage(prefillEmail, errMsg string) string {
 // theme defaults to "auto" (follows the OS) and is switchable via os-theme.js.
 func authPageShell(title, inner string) string {
 	return `<!DOCTYPE html>
-<html lang="en" class="vp-os" data-theme="auto">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -1104,9 +1107,8 @@ func authPageShell(title, inner string) string {
 <meta name="robots" content="noindex, nofollow">
 <link rel="stylesheet" href="/os/static/css/admin-os.css?v=` + assetVer("css/admin-os.css") + `">
 <link rel="icon" type="image/png" href="/static/favicon-light.png">
-<script src="/os/static/js/os-theme.js?v=` + assetVer("js/os-theme.js") + `"></script>
 </head>
-<body class="vp-os auth-page">
+<body class="vp-os auth-page" data-theme="auto">
   <div class="theme-switch" role="group" aria-label="Colour theme">
     <button type="button" class="theme-opt" data-set-theme="light" aria-label="Light" title="Light">☀</button>
     <button type="button" class="theme-opt" data-set-theme="dark" aria-label="Dark" title="Dark">☾</button>
@@ -1114,6 +1116,7 @@ func authPageShell(title, inner string) string {
   </div>
   <main class="auth-col">` + inner + `
   </main>
+<script src="/os/static/js/os-theme.js?v=` + assetVer("js/os-theme.js") + `"></script>
 </body></html>`
 }
 

@@ -94,6 +94,9 @@ func TestThemeEditorCoversSettingsAllowlist(t *testing.T) {
 		settings.KeyPaySupportEmail:       true,
 		settings.KeyAdsenseClient:         true,
 		settings.KeyAffiliateDisclosure:   true,
+		// The VayuOS console colour theme is set from the topbar theme toggle
+		// (POST /os/api/settings), not the legacy public-site theme editor.
+		"admin.theme": true,
 	}
 	page := themeEditorPage(map[string]string{}, "NORMAL", "test-nonce", "")
 	for key := range settings.AllKeys {

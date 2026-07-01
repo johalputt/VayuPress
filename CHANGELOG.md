@@ -29,7 +29,15 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   forced-password-change pages are now a single centered card on a clean
   background (no gradients, no animation), with an unobtrusive **light / dark /
   auto** theme switch (auto follows the operating system, and is the default).
-  Fixed the token bug where "auto" was always light instead of following the OS.
+- **The whole VayuOS console now themes correctly, and defaults to auto.**
+  Fixed a long-standing bug where the admin theme never applied — `data-theme`
+  sat on `<html>` while the `.vp-os` tokens were on `<body>`, so the console was
+  stuck dark regardless of the setting. The theme attribute now lives on the
+  `.vp-os` element, a **light / dark / auto** toggle was added to the topbar (it
+  persists to `admin.theme`), the default is **auto** (follows the OS), and
+  "auto" genuinely follows the system instead of always being light. Converted
+  the remaining hardcoded dark surface/border colours to theme tokens so light
+  mode renders cleanly.
 
 ## [2.6.0] - 2026-06-30
 

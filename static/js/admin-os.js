@@ -13,19 +13,21 @@ const on = (el, ev, fn) => el && el.addEventListener(ev, fn);
 
 /* ── Theme ───────────────────────────────────────────────────── */
 (function initTheme() {
-  const root = document.documentElement;
-  // Theme is written as data-admin-theme on <body> by Go (from settings).
-  // We mirror it to <html data-theme> for CSS selectors.
-  const pref = document.body.dataset.adminTheme || 'dark';
-  root.dataset.theme = pref;
+  // The theme attribute lives on the .vp-os element itself (<body>), so the
+  // .vp-os[data-theme] token overrides win over the base .vp-os tokens. Go
+  // renders data-theme + data-admin-theme on <body>; default to auto (follows
+  // the OS). The toggle cycles light → dark → auto and persists to settings.
+  const el = document.body;
+  if (!el.dataset.theme) { el.dataset.theme = el.dataset.adminTheme || 'auto'; }
 
   const btn = $('.topbar-theme-btn');
   if (!btn) return;
+  btn.title = 'Theme: ' + el.dataset.theme;
   btn.addEventListener('click', function () {
-    const themes = ['dark', 'light', 'auto'];
-    const cur = themes.indexOf(root.dataset.theme);
+    const themes = ['light', 'dark', 'auto'];
+    const cur = themes.indexOf(el.dataset.theme);
     const next = themes[(cur + 1) % themes.length];
-    root.dataset.theme = next;
+    el.dataset.theme = next;
     btn.title = 'Theme: ' + next;
     // Persist via API (fire-and-forget)
     const csrf = cookie('vp_csrf');
