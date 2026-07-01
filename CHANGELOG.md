@@ -8,6 +8,21 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Added
+
+- **True one-command install.** `deploy-vayupress.sh` now takes `DOMAIN`/`EMAIL`
+  from the environment (or prompts for them) and generates the API key
+  automatically — no file editing. It obtains a single Let's Encrypt certificate
+  covering the site **and `mail.<domain>`** (so the built-in mail server is
+  trusted by phones), copies it to a service-readable path with an auto-renewal
+  hook, grants the service `CAP_NET_BIND_SERVICE` and opens the firewall for the
+  mail ports (so VayuMail works out of the box), and prints the auto-created
+  administrator credentials at the end. Installation docs rewritten so a
+  non-technical operator can deploy with one command and then run everything from
+  the VayuOS web console — no further terminal use. The first admin is
+  `admin@<domain>` with a strong random password and a forced change on first
+  login.
+
 ### Changed
 
 - **Redesigned sign-in — clean, calm, minimalist.** The VayuOS login and

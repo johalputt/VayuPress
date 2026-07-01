@@ -43,9 +43,14 @@ ENGINE_VERSION="1.7.0"
 REPO_URL="https://github.com/johalputt/vayupress.git"
 REPO_BRANCH="main"
 
-DOMAIN="vayupress.com"
-EMAIL="admin@vayupress.com"
-WORKER_COUNT=4
+# Domain, contact email and API key are taken from the environment when set, so
+# the whole install is one command with no file editing:
+#   sudo DOMAIN=example.com EMAIL=you@example.com bash scripts/deploy-vayupress.sh
+# If DOMAIN/EMAIL are left at the defaults and a terminal is attached, the script
+# prompts for them. A strong API key is generated automatically when unset.
+DOMAIN="${DOMAIN:-vayupress.com}"
+EMAIL="${EMAIL:-admin@vayupress.com}"
+WORKER_COUNT="${WORKER_COUNT:-4}"
 
 # Directories
 INSTALL_DIR="/opt/vayupress"
@@ -56,7 +61,7 @@ STATIC_DIR="/var/lib/vayupress/static"
 BACKUP_DIR="/var/backups/vayupress"
 
 # VayuPress runtime config (written to /etc/vayupress/env)
-API_KEY=""                    # set a strong random value: openssl rand -hex 32
+API_KEY="${API_KEY:-}"        # auto-generated below when empty (openssl rand -hex 32)
 DB_PATH="${DATA_DIR}/vayupress.db"
 QUEUE_HARD_LIMIT=1000
 PLUGIN_MAX_CONCURRENT=8
@@ -88,6 +93,29 @@ for arg in "$@"; do
     *) echo "Unknown argument: $arg" >&2; exit 1 ;;
   esac
 done
+
+# One-command friendliness: if the domain/email are still the placeholder values
+# and we have an interactive terminal, ask for them. Non-interactive callers must
+# pass DOMAIN=/EMAIL= in the environment (documented above).
+if [[ "$DRY_RUN" != true && -t 0 ]]; then
+  if [[ "$DOMAIN" == "vayupress.com" ]]; then
+    read -rp "Your domain (e.g. example.com), or leave blank for localhost: " _d
+    [[ -n "$_d" ]] && DOMAIN="$_d"
+    [[ -z "$_d" ]] && DOMAIN="localhost"
+  fi
+  if [[ "$EMAIL" == "admin@vayupress.com" && "$DOMAIN" != "localhost" ]]; then
+    read -rp "Contact email for Let's Encrypt (e.g. you@${DOMAIN}): " _e
+    [[ -n "$_e" ]] && EMAIL="$_e"
+  fi
+fi
+# Recompute values derived from DOMAIN after any prompt/env override.
+[[ "$EMAIL" == "admin@vayupress.com" && "$DOMAIN" != "localhost" ]] && EMAIL="admin@${DOMAIN}"
+DB_PATH="${DATA_DIR}/vayupress.db"
+# Generate a strong API key automatically when the operator didn't supply one, so
+# there is no manual "set API_KEY" step.
+if [[ -z "$API_KEY" ]]; then
+  API_KEY="$(openssl rand -hex 32 2>/dev/null || head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+fi
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; NC='\033[0m'
 ok()   { echo -e "${GREEN}✅ $*${NC}"; }
@@ -380,6 +408,11 @@ TimeoutStopSec=90
 NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectSystem=full
+# Let the non-root service bind the privileged mail ports (25/110/143/465/587/
+# 993/995) so VayuMail works without a proxy. Ambient caps apply even with
+# NoNewPrivileges. This is the only elevated capability granted.
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_BIND_SERVICE
 ReadWritePaths=${DATA_DIR} ${LOG_DIR} ${CACHE_DIR} ${STATIC_DIR} ${BACKUP_DIR}
 StandardOutput=append:${LOG_DIR}/vayupress.log
 StandardError=append:${LOG_DIR}/vayupress.error.log
@@ -589,15 +622,46 @@ if [[ -n "$DOMAIN" && "$DOMAIN" != "localhost" ]]; then
     run nginx -t
     run systemctl reload nginx
 
+    # One certificate covering the site AND the mail host (mail.<domain>), so
+    # VayuMail is trusted by strict mobile clients (the Gmail app, K-9). The mail
+    # SAN is best-effort: if mail.<domain> DNS isn't set yet, retry without it so
+    # the web cert still succeeds.
+    run certbot certonly --webroot \
+      -w "${CACHE_DIR}" \
+      -d "${DOMAIN}" -d "www.${DOMAIN}" -d "mail.${DOMAIN}" \
+      --email "${EMAIL}" --agree-tos --non-interactive || \
     run certbot certonly --webroot \
       -w "${CACHE_DIR}" \
       -d "${DOMAIN}" -d "www.${DOMAIN}" \
       --email "${EMAIL}" --agree-tos --non-interactive || \
       warn "Certbot failed — site will run HTTP only until cert is obtained.
-  After DNS propagates, re-run: sudo certbot certonly --webroot -w ${CACHE_DIR} -d ${DOMAIN} -d www.${DOMAIN} --email ${EMAIL} --agree-tos --non-interactive
+  After DNS propagates, re-run: sudo certbot certonly --webroot -w ${CACHE_DIR} -d ${DOMAIN} -d www.${DOMAIN} -d mail.${DOMAIN} --email ${EMAIL} --agree-tos --non-interactive
   Then: sudo nginx -t && sudo systemctl reload nginx"
   else
     ok "TLS certificate already exists for ${DOMAIN}."
+  fi
+
+  # Make the certificate readable by the non-root mail service and keep it fresh:
+  # copy it to a service-owned directory now, and install a certbot deploy hook so
+  # every renewal re-copies + restarts VayuPress. VayuMail auto-discovers this
+  # path, so IMAP/POP3/SMTP present a trusted cert with no extra configuration.
+  if [[ -f "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" ]]; then
+    run mkdir -p "${DATA_DIR}/mailcert"
+    run install -m 0644 "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" "${DATA_DIR}/mailcert/fullchain.pem"
+    run install -m 0640 "/etc/letsencrypt/live/${DOMAIN}/privkey.pem"   "${DATA_DIR}/mailcert/privkey.pem"
+    run chown -R vayupress:vayupress "${DATA_DIR}/mailcert"
+    run mkdir -p /etc/letsencrypt/renewal-hooks/deploy
+    cat > /etc/letsencrypt/renewal-hooks/deploy/vayupress-mailcert.sh <<HOOK
+#!/usr/bin/env bash
+# Re-copy the renewed certificate to the VayuMail-readable location and restart.
+set -e
+install -m 0644 "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" "${DATA_DIR}/mailcert/fullchain.pem"
+install -m 0640 "/etc/letsencrypt/live/${DOMAIN}/privkey.pem"   "${DATA_DIR}/mailcert/privkey.pem"
+chown -R vayupress:vayupress "${DATA_DIR}/mailcert"
+systemctl try-restart vayupress 2>/dev/null || true
+HOOK
+    run chmod +x /etc/letsencrypt/renewal-hooks/deploy/vayupress-mailcert.sh
+    ok "Mail certificate installed for mail.${DOMAIN} (auto-renews)."
   fi
 fi
 
@@ -615,6 +679,11 @@ run ufw default allow outgoing 2>/dev/null || true
 run ufw allow 22/tcp  comment 'SSH'
 run ufw allow 80/tcp  comment 'HTTP'
 run ufw allow 443/tcp comment 'HTTPS'
+# VayuMail ports so mail apps (and other servers) can reach the built-in mail
+# server: SMTP(25), submission(465/587), IMAP(143/993), POP3(110/995).
+for p in 25 110 143 465 587 993 995; do
+  run ufw allow "${p}/tcp" comment 'VayuMail'
+done
 run ufw --force enable
 ok "Firewall configured."
 
@@ -729,15 +798,31 @@ echo -e "${GREEN}═════════════════════
 echo -e "${GREEN}  VayuPress ${ENGINE_VERSION} deployed successfully!${NC}"
 echo -e "${GREEN}════════════════════════════════════════════════════════════${NC}"
 echo ""
-echo "  URL:    http://${DOMAIN}:8080 (HTTPS if certbot succeeded)"
+echo "  Admin:  https://${DOMAIN}/os/login"
 echo "  Health: curl http://127.0.0.1:8080/health"
 echo "  Logs:   journalctl -u vayupress -f"
 echo "  Config: /etc/vayupress/env"
 echo "  Data:   ${DATA_DIR}"
 echo ""
-echo "  Next steps:"
-echo "    1. Verify health:  curl -s http://127.0.0.1:8080/health | python3 -m json.tool"
-echo "    2. Configure DNS to point ${DOMAIN} at this server's IP"
-echo "    3. Re-run with no args after DNS propagates (certbot will obtain TLS)"
-echo "    4. For upgrades: sudo ./deploy-vayupress.sh --upgrade"
+
+# Surface the auto-created administrator so the operator can sign in immediately.
+# On first login VayuPress forces a password change. Everything else is done from
+# the VayuOS web console — no more terminal needed.
+CRED_FILE="${DATA_DIR}/initial-admin.txt"
+if [[ -f "$CRED_FILE" ]]; then
+  echo -e "${CYAN}  ── Sign in to VayuOS ─────────────────────────────────────${NC}"
+  sed 's/^/  /' "$CRED_FILE"
+  echo "  (You'll be asked to set a new password on first login.)"
+  echo ""
+elif ! $UPGRADE; then
+  echo "  Admin credentials will be written to ${CRED_FILE} on first start"
+  echo "  and printed in the log: journalctl -u vayupress | grep -A4 'Default admin'"
+  echo ""
+fi
+
+echo "  From here, do EVERYTHING from the web console at https://${DOMAIN}/os —"
+echo "  posts, themes, mail accounts, updates, backups. No terminal required."
+echo ""
+echo "  DNS to set (A records → this server's IP):  ${DOMAIN}, www.${DOMAIN}, mail.${DOMAIN}"
+echo "  Upgrades later: one click in VayuOS → Update & Backup (or --upgrade here)."
 echo ""

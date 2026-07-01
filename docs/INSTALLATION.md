@@ -10,42 +10,89 @@
 | Disk     | 50 GB NVMe  | 250 GB NVMe |
 | Access   | Root / sudo | Root / sudo |
 
-## Quick Install (Recommended)
+## Install in one command
+
+You need a fresh **Ubuntu 24.04** server and a **domain name**. That's it.
+
+**Step 1 — point your domain at the server.** In your DNS provider, create three
+**A records** pointing at your server's IP address:
+
+| Type | Name              | Value            |
+|------|-------------------|------------------|
+| A    | `example.com`     | your server's IP |
+| A    | `www.example.com` | your server's IP |
+| A    | `mail.example.com`| your server's IP |
+
+(Replace `example.com` with your domain. The `mail.` record lets VayuPress run
+your email.)
+
+**Step 2 — run one command** on the server (SSH in as root or a sudo user):
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/johalputt/vayupress/main/scripts/deploy-vayupress.sh | bash
+curl -sSL https://raw.githubusercontent.com/johalputt/VayuPress/main/scripts/deploy-vayupress.sh \
+  | sudo DOMAIN=example.com EMAIL=you@example.com bash
 ```
 
-## Manual Install
-
-### 1. Clone the repository
+Replace `example.com` and `you@example.com` with your own. Prefer to be asked
+instead? Just run it and it will prompt you:
 
 ```bash
-git clone https://github.com/johalputt/vayupress.git
-cd vayupress
+curl -sSLo install.sh https://raw.githubusercontent.com/johalputt/VayuPress/main/scripts/deploy-vayupress.sh
+sudo bash install.sh          # asks for your domain + email
 ```
 
-### 2. Configure
+The installer does **everything** automatically — no other terminal commands are
+ever needed:
 
-Edit `scripts/deploy-vayupress.sh` and set:
+- installs all dependencies (Go, nginx, SQLite, certbot, firewall);
+- builds and starts VayuPress as a hardened system service;
+- gets **free Let's Encrypt HTTPS certificates** for `example.com`, `www.example.com`
+  **and `mail.example.com`** (so the built-in mail server is trusted by phones);
+- opens the firewall for web **and** mail, and lets the service run your mail
+  ports — so VayuMail works out of the box;
+- generates a strong API key for you;
+- creates your **administrator account** and prints the password at the end.
 
-```bash
-DOMAIN="yourdomain.com"
-EMAIL="admin@yourdomain.com"
-WORKER_COUNT=3
-STORAGE_QUOTA_GB=200
+**Step 3 — sign in.** When it finishes, it prints something like:
+
+```text
+  ── Sign in to VayuOS ─────────────────────────────────────
+  URL:      /os/login
+  Email:    admin@example.com
+  Password: <a strong random password>
+  (You'll be asked to set a new password on first login.)
 ```
 
-### 3. Run the deploy script
+Open **`https://example.com/os`**, sign in with that email and password, and
+choose your own password when prompted. **From now on you control everything —
+posts, themes, mail accounts, updates, backups — from the web console. You never
+need the terminal again.** (One-click updates live under **Update & Backup** in
+VayuOS.)
+
+> Lost the password? It's also saved on the server at
+> `/var/lib/vayupress/initial-admin.txt` (readable by root only), and printed in
+> the log: `journalctl -u vayupress | grep -A4 'Default admin'`.
+
+### If a certificate didn't issue
+
+Certificates need your DNS to be pointing at the server first. If you ran the
+installer before DNS propagated, just re-run it once DNS is live — it will pick
+up where it left off and obtain the certificates.
+
+## Manual / advanced install
+
+Clone the repo and run the same script from disk. Domain, email, worker count
+and API key can all be passed in the environment (no file editing needed):
 
 ```bash
-sudo ./scripts/deploy-vayupress.sh
+git clone https://github.com/johalputt/VayuPress.git && cd VayuPress
+sudo DOMAIN=example.com EMAIL=you@example.com ./scripts/deploy-vayupress.sh
 ```
 
 Options:
 ```bash
-sudo ./scripts/deploy-vayupress.sh --dry-run  # Validate only, no changes
-sudo ./scripts/deploy-vayupress.sh --upgrade  # Upgrade existing installation
+sudo ./scripts/deploy-vayupress.sh --dry-run  # validate only, no changes
+sudo ./scripts/deploy-vayupress.sh --upgrade  # upgrade an existing install
 ```
 
 ### 4. Verify
