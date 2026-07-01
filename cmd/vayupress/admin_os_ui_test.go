@@ -70,7 +70,7 @@ func TestOSSparkline(t *testing.T) {
 // TestOSEditorBodyCSPSafe verifies the block-editor shell is CSP-clean and
 // escapes the slug, title, and embedded blocks JSON.
 func TestOSEditorBodyCSPSafe(t *testing.T) {
-	out := osEditorBody(`slug"<x>`, `T"<i>`, `[{"type":"paragraph","text":"<script>x</script>"}]`)
+	out := osEditorBody(`slug"<x>`, `T"<i>`, `[{"type":"paragraph","text":"<script>x</script>"}]`, "")
 	assertCSPSafe(t, "osEditorBody", out)
 	if strings.Contains(out, "<script>x</script>") {
 		t.Error("editor body did not escape blocks JSON content")

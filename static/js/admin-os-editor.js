@@ -1578,7 +1578,7 @@
   var pm = {};
   ['feature-image', 'feature-preview', 'feature-empty', 'feature-upload', 'feature-remove', 'feature-file',
     'slug', 'slug-apply', 'slug-prefix', 'slug-status', 'publish-date', 'excerpt', 'excerpt-count',
-    'tags-input', 'tags-list', 'featured', 'is-page',
+    'tags-input', 'tags-list', 'featured', 'is-page', 'author',
     'meta-title', 'meta-title-count', 'meta-description', 'meta-description-count', 'canonical',
     'og-title', 'og-description', 'og-image', 'twitter-title', 'twitter-description', 'twitter-image'
   ].forEach(function (k) { pm[k] = root.querySelector('[data-pm-' + k + ']'); });
@@ -1610,6 +1610,7 @@
     pmSet(pm['slug'], data.slug || slug);
     if (pm['featured']) pm['featured'].checked = !!data.featured;
     if (pm['is-page']) pm['is-page'].checked = !!data.isPage;
+    if (pm['author'] && data.authorId) pmSet(pm['author'], data.authorId);
     syncSlugUI();
     updateFeaturePreview();
     renderTags();
@@ -1631,7 +1632,8 @@
       twitterDescription: pmVal(pm['twitter-description']),
       twitterImage: pmVal(pm['twitter-image']),
       featured: !!(pm['featured'] && pm['featured'].checked),
-      isPage: !!(pm['is-page'] && pm['is-page'].checked)
+      isPage: !!(pm['is-page'] && pm['is-page'].checked),
+      authorId: pmVal(pm['author'])
     };
   }
 

@@ -18,6 +18,8 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   back to the site-wide author, so the existing catalogue is unchanged. The
   primary author's page keeps using the proven, index-friendly query (safe on a
   234k-post site); secondary authors filter on the indexed `author_id` column.
+  The editor's Post-settings panel now has an **Author picker** (a select of all
+  staff users) so an operator can reassign a post's byline at any time.
 
 ## [2.7.0] - 2026-06-30
 

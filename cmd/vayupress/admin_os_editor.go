@@ -14,6 +14,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	htmlpkg "html"
 	htmpl "html/template"
 	"net/http"
 	"strconv"
@@ -27,6 +28,33 @@ import (
 	"github.com/johalputt/vayupress/internal/mode"
 	"github.com/johalputt/vayupress/internal/render"
 )
+
+// authorSelectOptions renders <option> tags for every staff user, marking
+// selectedID as selected, for the editor's Author picker. Empty when there is no
+// user store.
+func (a *App) authorSelectOptions(ctx context.Context, selectedID string) string {
+	if a.userStore == nil {
+		return ""
+	}
+	list, err := a.userStore.List(ctx)
+	if err != nil {
+		return ""
+	}
+	var sb strings.Builder
+	for i := range list {
+		u := &list[i]
+		name := strings.TrimSpace(u.Name)
+		if name == "" {
+			name = authorFallbackName(u.Email)
+		}
+		sel := ""
+		if u.ID == selectedID {
+			sel = " selected"
+		}
+		sb.WriteString(`<option value="` + htmlpkg.EscapeString(u.ID) + `"` + sel + `>` + htmlpkg.EscapeString(name) + `</option>`)
+	}
+	return sb.String()
+}
 
 // currentUserIDOf returns the signed-in CMS user's id for the request, or "" for
 // an API-key/anonymous caller. Used to attribute a new post to its author.
@@ -585,7 +613,7 @@ func osEditorMetaScript(slug, status string, createdAt time.Time, tags []string,
 	return sb.String()
 }
 
-func osEditorBody(slug, title, blocksJSON string) string {
+func osEditorBody(slug, title, blocksJSON, authorOptions string) string {
 	if strings.TrimSpace(blocksJSON) == "" {
 		blocksJSON = "[]"
 	}
@@ -672,6 +700,12 @@ func osEditorBody(slug, title, blocksJSON string) string {
       <div class="pm-field">
         <label class="pm-label" for="pm-publish-date">Publish date</label>
         <input class="pm-input" id="pm-publish-date" type="datetime-local" data-pm-publish-date>
+      </div>
+
+      <div class="pm-field">
+        <label class="pm-label" for="pm-author">Author</label>
+        <select class="pm-input" id="pm-author" data-pm-author>` + authorOptions + `</select>
+        <div class="pm-hint text-xs muted">Attributed automatically to whoever creates the post; change it here to credit a different author.</div>
       </div>
 
       <div class="pm-field">
