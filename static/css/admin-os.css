@@ -101,9 +101,10 @@
   --topbar-h:  56px;
 }
 
-/* Light mode override */
-.vp-os[data-theme="light"],
-.vp-os[data-theme="auto"] {
+/* Light mode override. "auto" is intentionally NOT forced light here — it
+   follows the system via the prefers-color-scheme media query below, so a
+   dark-preference OS keeps the dark base tokens. */
+.vp-os[data-theme="light"] {
   --bg-base:      #f8fafc;
   --bg-surface:   #ffffff;
   --bg-surface-2: #f1f5f9;
@@ -1116,98 +1117,92 @@
 .vp-os .settings-row-hint { font-size: var(--text-xs); color: var(--text-3); margin-top: 2px; }
 
 /* ── Login page ──────────────────────────────────────────────── */
-.vp-os.login-page { display: flex; min-height: 100vh; overflow: hidden; }
-.vp-os .login-hero {
-  flex: 1.6;
-  background: var(--bg-surface);
-  position: relative;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  padding: var(--sp-10);
-}
-.vp-os .login-hero-bg {
-  position: absolute; inset: 0; z-index: 0;
-  background:
-    radial-gradient(ellipse 60% 60% at 20% 40%, rgba(14,165,233,0.18) 0%, transparent 70%),
-    radial-gradient(ellipse 50% 50% at 80% 70%, rgba(167,139,250,0.14) 0%, transparent 70%),
-    radial-gradient(ellipse 40% 40% at 50% 20%, rgba(52,211,153,0.10) 0%, transparent 70%);
-  animation: vp3-mesh-drift 18s ease-in-out infinite alternate;
-}
-@keyframes vp3-mesh-drift {
-  0%   { transform: translate(0, 0) scale(1); }
-  33%  { transform: translate(20px, -10px) scale(1.02); }
-  66%  { transform: translate(-15px, 15px) scale(0.98); }
-  100% { transform: translate(10px, -5px) scale(1.01); }
-}
-.vp-os .login-hero-grid {
-  position: absolute; inset: 0; z-index: 0;
-  background-image:
-    linear-gradient(var(--border) 1px, transparent 1px),
-    linear-gradient(90deg, var(--border) 1px, transparent 1px);
-  background-size: 48px 48px;
-  opacity: 0.4;
-}
-.vp-os .login-hero-content { position: relative; z-index: 1; }
-.vp-os .login-hero-brand {
+/* ── Auth pages (sign-in, change-password) ────────────────────────
+   Calm, minimalist, Ghost-style: a single centered card on a clean
+   background. Light by default (follows the OS via data-theme="auto");
+   an unobtrusive switch offers light / dark / auto. No gradients. */
+.vp-os.auth-page {
+  min-height: 100vh;
   display: flex;
   align-items: center;
-  gap: var(--sp-3);
-  font-family: var(--font-head);
-  font-size: var(--text-xl);
-  font-weight: 700;
-  color: var(--text);
-}
-.vp-os .login-hero-brand img { width: 36px; height: 36px; border-radius: var(--r-sm); }
-.vp-os .login-hero-tagline-wrap { position: relative; z-index: 1; }
-.vp-os .login-hero-headline {
-  font-family: var(--font-head);
-  font-size: var(--text-3xl);
-  font-weight: 700;
-  line-height: 1.2;
-  color: var(--text);
-  margin-bottom: var(--sp-4);
-}
-.vp-os .login-hero-sub { font-size: var(--text-base); color: var(--text-2); line-height: 1.7; max-width: 400px; }
-
-.vp-os .login-panel {
-  width: 460px;
-  min-width: 380px;
+  justify-content: center;
+  padding: 1.5rem;
   background: var(--bg-base);
+}
+.vp-os .auth-col {
+  width: 100%;
+  max-width: 380px;
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  padding: var(--sp-12) var(--sp-10);
+  align-items: stretch;
 }
-.vp-os .login-card-title {
+.vp-os .login-brandline {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
   font-family: var(--font-head);
-  font-size: var(--text-2xl);
+  font-weight: 700;
+  font-size: 1.1rem;
+  color: var(--text);
+  margin-bottom: 1.4rem;
+  letter-spacing: -0.01em;
+}
+.vp-os .login-brandline img { width: 30px; height: 30px; border-radius: 8px; }
+.vp-os .login-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 2.25rem 2rem;
+  box-shadow: 0 1px 2px rgba(15,23,42,0.04), 0 10px 34px rgba(15,23,42,0.07);
+}
+.vp-os .login-title {
+  font-family: var(--font-head);
+  font-size: 1.5rem;
   font-weight: 700;
   color: var(--text);
-  margin-bottom: var(--sp-2);
+  text-align: center;
+  letter-spacing: -0.02em;
+  margin: 0 0 0.35rem;
 }
-.vp-os .login-card-sub { font-size: var(--text-sm); color: var(--text-3); margin-bottom: var(--sp-8); }
-.vp-os .login-form { display: flex; flex-direction: column; gap: var(--sp-4); }
-.vp-os .login-form .btn--primary { margin-top: var(--sp-2); justify-content: center; padding: 0.75rem 1rem; font-size: var(--text-base); }
-.vp-os .login-footer { margin-top: var(--sp-8); font-size: var(--text-xs); color: var(--text-3); text-align: center; }
+.vp-os .login-sub { font-size: 0.9rem; color: var(--text-3); text-align: center; margin: 0 0 1.6rem; }
+.vp-os .login-form { display: flex; flex-direction: column; gap: 1.05rem; }
+.vp-os .login-form .field { display: flex; flex-direction: column; gap: 0.4rem; }
+.vp-os .login-hint { color: var(--text-3); font-weight: 400; font-size: 0.75rem; }
+.vp-os .login-submit { margin-top: 0.4rem; justify-content: center; width: 100%; padding: 0.72rem 1rem; font-size: 0.95rem; border-radius: 10px; }
+.vp-os .login-footer { margin-top: 1.4rem; font-size: 0.75rem; color: var(--text-3); text-align: center; }
 .vp-os .login-error {
-  padding: var(--sp-3) var(--sp-4);
+  padding: 0.7rem 0.9rem;
   background: var(--danger-dim);
   border: 1px solid var(--danger);
-  border-radius: var(--r-sm);
+  border-radius: 10px;
   color: var(--danger);
-  font-size: var(--text-sm);
-  margin-bottom: var(--sp-4);
+  font-size: 0.85rem;
+  margin-bottom: 1.1rem;
 }
 
-/* Login shake animation on error */
-@keyframes vp3-shake {
-  0%, 100% { transform: translateX(0); }
-  20%, 60%  { transform: translateX(-6px); }
-  40%, 80%  { transform: translateX(6px); }
+/* Theme switch (top-right) — small segmented control. */
+.vp-os .theme-switch {
+  position: fixed;
+  top: 1rem; right: 1rem;
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  box-shadow: 0 1px 3px rgba(15,23,42,0.06);
 }
-.vp-os .login-panel.shake { animation: vp3-shake 0.4s ease; }
+.vp-os .theme-opt {
+  width: 30px; height: 30px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: none; background: transparent; cursor: pointer;
+  border-radius: 999px; font-size: 0.9rem; line-height: 1;
+  color: var(--text-2);
+  transition: background var(--t-fast, 120ms) ease, color var(--t-fast, 120ms) ease;
+}
+.vp-os .theme-opt:hover { color: var(--text); background: var(--bg-surface-2); }
+.vp-os .theme-opt[aria-pressed="true"] { background: var(--brand-dim); color: var(--brand); }
 
 /* ── Editor page ─────────────────────────────────────────────── */
 /* Layout for the block editor lives in the "Block editor" section below; the
@@ -1246,8 +1241,9 @@
 }
 @media (max-width: 900px) {
   .vp-os .settings-grid { grid-template-columns: 1fr; }
-  .vp-os .login-hero { display: none; }
-  .vp-os .login-panel { width: 100%; min-width: 0; padding: var(--sp-8) var(--sp-6); justify-content: center; }
+}
+@media (max-width: 480px) {
+  .vp-os .login-card { padding: 1.8rem 1.3rem; }
 }
 @media (max-width: 768px) {
   .vp-os .sidebar {

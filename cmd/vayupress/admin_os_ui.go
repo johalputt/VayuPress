@@ -1000,30 +1000,33 @@ func (a *App) handleOSChangePasswordSubmit(w http.ResponseWriter, r *http.Reques
 func osChangePasswordPage(email, msg string) string {
 	banner := ""
 	if msg != "" {
-		banner = `<div class="login-error">` + html.EscapeString(msg) + `</div>`
+		banner = `<div class="login-error" role="alert">` + html.EscapeString(msg) + `</div>`
 	}
-	return `<!DOCTYPE html><html lang="en" data-theme="dark"><head><meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Set a new password — VayuOS</title>
-<meta name="robots" content="noindex, nofollow">
-<link rel="stylesheet" href="/os/static/css/admin-os.css?v=` + assetVer("css/admin-os.css") + `">
-</head><body class="vp-os login-body">
-<div class="login-card">
-  <div class="login-brand">VayuOS</div>
-  <h1 class="login-title">Set a new password</h1>
-  <p class="text-sm muted">You're signing in with the default administrator password. Choose a new password to continue.</p>
-  ` + banner + `
-  <form class="login-form" method="POST" action="/os/change-password" novalidate>
-    <label class="field-label">Account</label>
-    <input class="input" type="email" value="` + html.EscapeString(email) + `" readonly>
-    <label class="field-label mt-2" for="cp-pass">New password</label>
-    <input id="cp-pass" class="input" type="password" name="password" required minlength="8" autocomplete="new-password" placeholder="At least 8 characters">
-    <label class="field-label mt-2" for="cp-confirm">Confirm new password</label>
-    <input id="cp-confirm" class="input" type="password" name="confirm" required minlength="8" autocomplete="new-password" placeholder="Re-enter the password">
-    <button class="btn btn--primary mt-3" type="submit">Save &amp; continue</button>
-  </form>
-</div>
-</body></html>`
+	return authPageShell("Set a new password — VayuOS", `
+  <div class="login-brandline">
+    <img src="/static/favicon-light.png" alt="" width="30" height="30">
+    <span>VayuPress</span>
+  </div>
+  <div class="login-card">
+    <h1 class="login-title">Set a new password</h1>
+    <p class="login-sub">You're signing in with the default administrator password. Choose a new one to continue.</p>
+    `+banner+`
+    <form class="login-form" method="POST" action="/os/change-password" novalidate>
+      <div class="field">
+        <label class="field-label" for="cp-email">Account</label>
+        <input id="cp-email" class="input" type="email" value="`+html.EscapeString(email)+`" readonly>
+      </div>
+      <div class="field">
+        <label class="field-label" for="cp-pass">New password</label>
+        <input id="cp-pass" class="input" type="password" name="password" required minlength="8" autocomplete="new-password" placeholder="At least 8 characters">
+      </div>
+      <div class="field">
+        <label class="field-label" for="cp-confirm">Confirm new password</label>
+        <input id="cp-confirm" class="input" type="password" name="confirm" required minlength="8" autocomplete="new-password" placeholder="Re-enter the password">
+      </div>
+      <button class="btn btn--primary login-submit" type="submit">Save &amp; continue</button>
+    </form>
+  </div>`)
 }
 
 func (a *App) handleOSLogout(w http.ResponseWriter, r *http.Request) {
@@ -1047,71 +1050,70 @@ func (a *App) handleOSLogout(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/os/login", http.StatusSeeOther)
 }
 
-// osLoginPage builds the full login page HTML. It uses a split-viewport layout:
-// left hero panel (animated gradient mesh) + right form panel.
+// osLoginPage builds the sign-in page: a single, calm, centered card on a clean
+// background (light by default, following the OS) with an unobtrusive
+// light/dark/auto theme switch. No gradients, no animation — minimalist premium.
 func osLoginPage(prefillEmail, errMsg string) string {
 	errHTML := ""
 	if errMsg != "" {
 		errHTML = `<div class="login-error" role="alert">` + html.EscapeString(errMsg) + `</div>`
 	}
+	return authPageShell("Sign in — VayuPress", `
+  <div class="login-brandline">
+    <img src="/static/favicon-light.png" alt="" width="30" height="30">
+    <span>VayuPress</span>
+  </div>
+  <div class="login-card">
+    <h1 class="login-title">Welcome back</h1>
+    <p class="login-sub">Sign in to your dashboard</p>
+    `+errHTML+`
+    <form class="login-form" method="POST" action="/os/login" novalidate>
+      <div class="field">
+        <label class="field-label" for="login-email">Email</label>
+        <input id="login-email" class="input" type="email" name="email"
+          value="`+html.EscapeString(prefillEmail)+`"
+          placeholder="you@example.com" autocomplete="username" required autofocus>
+      </div>
+      <div class="field">
+        <label class="field-label" for="login-password">Password</label>
+        <input id="login-password" class="input" type="password" name="password"
+          placeholder="Your password" autocomplete="current-password" required>
+      </div>
+      <div class="field">
+        <label class="field-label" for="login-totp">Two-factor code <span class="login-hint">optional</span></label>
+        <input id="login-totp" class="input" type="text" name="totp"
+          inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000">
+      </div>
+      <button type="submit" class="btn btn--primary login-submit">Sign in</button>
+    </form>
+  </div>
+  <div class="login-footer">Sovereign · zero-telemetry · yours completely</div>`)
+}
+
+// authPageShell wraps the calm auth-page layout (theme toggle + centered column)
+// shared by the sign-in and change-password pages. The .vp-os class and the
+// data-theme attribute both sit on <html> so the token overrides apply; the
+// theme defaults to "auto" (follows the OS) and is switchable via os-theme.js.
+func authPageShell(title, inner string) string {
 	return `<!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="en" class="vp-os" data-theme="auto">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Sign in — VayuPress Admin</title>
+<title>` + html.EscapeString(title) + `</title>
 <meta name="robots" content="noindex, nofollow">
 <link rel="stylesheet" href="/os/static/css/admin-os.css?v=` + assetVer("css/admin-os.css") + `">
 <link rel="icon" type="image/png" href="/static/favicon-light.png">
+<script src="/os/static/js/os-theme.js?v=` + assetVer("js/os-theme.js") + `"></script>
 </head>
-<body class="vp-os login-page">
-
-<!-- Hero panel -->
-<div class="login-hero" aria-hidden="true">
-  <div class="login-hero-bg"></div>
-  <div class="login-hero-grid"></div>
-  <div class="login-hero-content">
-    <div class="login-hero-brand">
-      <img src="/static/favicon-light.png" alt="" width="36" height="36">
-      <span>VayuPress</span>
-    </div>
+<body class="vp-os auth-page">
+  <div class="theme-switch" role="group" aria-label="Colour theme">
+    <button type="button" class="theme-opt" data-set-theme="light" aria-label="Light" title="Light">☀</button>
+    <button type="button" class="theme-opt" data-set-theme="dark" aria-label="Dark" title="Dark">☾</button>
+    <button type="button" class="theme-opt" data-set-theme="auto" aria-label="Auto (match system)" title="Auto">◐</button>
   </div>
-  <div class="login-hero-tagline-wrap">
-    <div class="login-hero-headline">Publishing that belongs to you.</div>
-    <div class="login-hero-sub">Sovereign, single-binary, zero third-party dependencies. More powerful than Ghost. More private than Substack. Yours completely.</div>
-  </div>
-</div>
-
-<!-- Form panel -->
-<div class="login-panel">
-  <div class="login-card-title">Welcome back</div>
-  <div class="login-card-sub">Sign in to your VayuPress dashboard</div>
-  ` + errHTML + `
-  <form class="login-form" method="POST" action="/os/login" novalidate>
-    <div class="field">
-      <label class="field-label" for="login-email">Email</label>
-      <input id="login-email" class="input" type="email" name="email"
-        value="` + html.EscapeString(prefillEmail) + `"
-        placeholder="you@example.com" autocomplete="username"
-        required autofocus>
-    </div>
-    <div class="field">
-      <label class="field-label" for="login-password">Password</label>
-      <input id="login-password" class="input" type="password" name="password"
-        placeholder="••••••••" autocomplete="current-password" required>
-    </div>
-    <div class="field">
-      <label class="field-label" for="login-totp">Two-factor code <span class="muted text-xs">(if enabled)</span></label>
-      <input id="login-totp" class="input" type="text" name="totp"
-        inputmode="numeric" autocomplete="one-time-code" maxlength="6"
-        placeholder="000000">
-    </div>
-    <button type="submit" class="btn btn--primary">Sign in</button>
-  </form>
-  <div class="login-footer">VayuPress VayuOS · CSP-strict · Zero-telemetry</div>
-</div>
-
-<script src="/os/static/js/admin-os.js"></script>
+  <main class="auth-col">` + inner + `
+  </main>
 </body></html>`
 }
 

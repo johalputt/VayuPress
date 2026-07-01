@@ -8,6 +8,14 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Changed
+
+- **Redesigned sign-in — clean, calm, minimalist.** The VayuOS login and
+  forced-password-change pages are now a single centered card on a clean
+  background (no gradients, no animation), with an unobtrusive **light / dark /
+  auto** theme switch (auto follows the operating system, and is the default).
+  Fixed the token bug where "auto" was always light instead of following the OS.
+
 ## [2.6.0] - 2026-06-30
 
 ### Added
