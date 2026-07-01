@@ -47,9 +47,9 @@ func (r *sqliteArticleRepo) Create(ctx context.Context, art Article) error {
 		status = "published"
 	}
 	_, err := r.db.ExecContext(ctx,
-		`INSERT INTO articles(id,title,slug,content,tags,created_at,updated_at,status) VALUES(?,?,?,?,?,?,?,?)`,
+		`INSERT INTO articles(id,title,slug,content,tags,created_at,updated_at,status,author_id) VALUES(?,?,?,?,?,?,?,?,?)`,
 		art.ID, art.Title, art.Slug, art.Content,
-		strings.Join(art.Tags, ","), art.CreatedAt, art.UpdatedAt, status,
+		strings.Join(art.Tags, ","), art.CreatedAt, art.UpdatedAt, status, art.AuthorID,
 	)
 	return err
 }
@@ -58,8 +58,8 @@ func (r *sqliteArticleRepo) Get(ctx context.Context, slug string) (Article, erro
 	var art Article
 	var tagsCSV string
 	err := r.reader().QueryRowContext(ctx,
-		`SELECT id,title,slug,content,tags,created_at,updated_at,COALESCE(status,'published') FROM articles WHERE slug=?`, slug,
-	).Scan(&art.ID, &art.Title, &art.Slug, &art.Content, &tagsCSV, &art.CreatedAt, &art.UpdatedAt, &art.Status)
+		`SELECT id,title,slug,content,tags,created_at,updated_at,COALESCE(status,'published'),COALESCE(author_id,'') FROM articles WHERE slug=?`, slug,
+	).Scan(&art.ID, &art.Title, &art.Slug, &art.Content, &tagsCSV, &art.CreatedAt, &art.UpdatedAt, &art.Status, &art.AuthorID)
 	if err == sql.ErrNoRows {
 		return art, ErrNotFound
 	}

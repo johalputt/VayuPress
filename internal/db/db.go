@@ -37,6 +37,9 @@ type Article struct {
 	// Status is "published" (publicly visible) or "draft" (visible only inside
 	// VayuOS). Empty is treated as "published" for backward compatibility.
 	Status string `json:"status,omitempty"`
+	// AuthorID is the staff user this article is attributed to. Empty falls back
+	// to the site-wide author at render time (multi-author, ADR).
+	AuthorID string `json:"author_id,omitempty"`
 }
 
 // DB is the package-level database connection. It is the single, serialized

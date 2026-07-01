@@ -12,6 +12,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"html"
 	htmpl "html/template"
@@ -523,9 +524,25 @@ func (a *App) handlePublicAuthor(w http.ResponseWriter, r *http.Request) {
 	// The author's recent published posts. VayuPress is single-author per site
 	// (posts aren't tagged with an author id), so this lists the site's published
 	// posts — read pool + indexed predicate + LIMIT (scale-safe).
+	// Posts by this author. The site's primary author owns the (huge) legacy set
+	// of posts with no explicit author_id, so for them we use the proven,
+	// index-friendly "all published" query. Secondary authors filter on the
+	// indexed author_id column (they have few posts) — scale-safe on 234k rows.
+	siteAuthor := strings.TrimSpace(render.GetActiveSettings().Author)
+	isPrimary := siteAuthor != "" && strings.EqualFold(strings.TrimSpace(u.Name), siteAuthor)
 	postsHTML := `<p class="au-posts-empty">No posts published yet.</p>`
-	if rows, qerr := dbpkg.Reader().QueryContext(r.Context(),
-		`SELECT title,slug,created_at,COALESCE(excerpt,'') FROM articles WHERE status='published' AND is_page=0 ORDER BY created_at DESC LIMIT 60`); qerr == nil {
+	var (
+		rows *sql.Rows
+		qerr error
+	)
+	if isPrimary {
+		rows, qerr = dbpkg.Reader().QueryContext(r.Context(),
+			`SELECT title,slug,created_at,COALESCE(excerpt,'') FROM articles WHERE status='published' AND is_page=0 ORDER BY created_at DESC LIMIT 60`)
+	} else {
+		rows, qerr = dbpkg.Reader().QueryContext(r.Context(),
+			`SELECT title,slug,created_at,COALESCE(excerpt,'') FROM articles WHERE author_id=? AND status='published' AND is_page=0 ORDER BY created_at DESC LIMIT 60`, u.ID)
+	}
+	if qerr == nil {
 		defer rows.Close()
 		list := ""
 		n := 0
@@ -620,6 +637,35 @@ func (a *App) installAuthorResolver() {
 		cache[key] = [2]string{slug, avatar}
 		mu.Unlock()
 		return slug, avatar
+	}
+
+	// Per-post author id → (name, slug, avatar) for multi-author bylines, cached.
+	var mu2 sync.RWMutex
+	byID := map[string][3]string{}
+	render.AuthorByIDFn = func(id string) (string, string, string) {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			return "", "", ""
+		}
+		mu2.RLock()
+		if v, ok := byID[id]; ok {
+			mu2.RUnlock()
+			return v[0], v[1], v[2]
+		}
+		mu2.RUnlock()
+		name, slug, avatar := "", "", ""
+		if u, err := a.userStore.GetByID(context.Background(), id); err == nil && u != nil {
+			name = strings.TrimSpace(u.Name)
+			if name == "" {
+				name = authorFallbackName(u.Email)
+			}
+			slug = authorSlug(u)
+			avatar = u.AvatarURL
+		}
+		mu2.Lock()
+		byID[id] = [3]string{name, slug, avatar}
+		mu2.Unlock()
+		return name, slug, avatar
 	}
 }
 

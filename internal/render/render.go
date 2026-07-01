@@ -168,6 +168,12 @@ func CustomCSSLink() template.HTML { return CSSLink("custom.css", cssHashes.Cust
 // picture. Set by the cmd layer at startup (it holds the user store). Nil-safe.
 var AuthorInfoFn func(name string) (slug, avatar string)
 
+// AuthorByIDFn resolves a per-post author id (articles.author_id) to the
+// author's display name, public slug and avatar. When an article has an author
+// id it wins over the site-wide author, enabling multi-author bylines. Empty id
+// or unknown user falls back to the site author. Set by the cmd layer. Nil-safe.
+var AuthorByIDFn func(id string) (name, slug, avatar string)
+
 // SiteSettings holds operator-configurable values that are injected into every
 // public page render. The zero value is safe and falls back to Pico defaults.
 type SiteSettings struct {
@@ -1935,8 +1941,16 @@ func RenderArticleWithMeta(a db.Article, layout ArticleLayoutType, related []Rel
 		TrendingJSLink:     TrendingJSLink(),
 		SearchModalJSLink:  SearchModalJSLink(),
 	}
-	// Resolve the author's public profile (slug + avatar) for the byline link.
-	if AuthorInfoFn != nil && data.Author != "" {
+	// Per-post author (multi-author) wins over the site-wide author; empty/unknown
+	// falls back to the site author resolved by name below.
+	if a.AuthorID != "" && AuthorByIDFn != nil {
+		if nm, sl, av := AuthorByIDFn(a.AuthorID); nm != "" {
+			data.Author, data.AuthorSlug, data.AuthorAvatar = nm, sl, av
+		}
+	}
+	// Resolve the author's public profile (slug + avatar) for the byline link
+	// when it wasn't already set from the per-post author.
+	if data.AuthorSlug == "" && AuthorInfoFn != nil && data.Author != "" {
 		data.AuthorSlug, data.AuthorAvatar = AuthorInfoFn(data.Author)
 	}
 	if err := articleTmpl.Execute(&buf, data); err != nil {

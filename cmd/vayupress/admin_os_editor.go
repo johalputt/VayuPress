@@ -28,6 +28,15 @@ import (
 	"github.com/johalputt/vayupress/internal/render"
 )
 
+// currentUserIDOf returns the signed-in CMS user's id for the request, or "" for
+// an API-key/anonymous caller. Used to attribute a new post to its author.
+func currentUserIDOf(r *http.Request) string {
+	if u := currentUser(r); u != nil {
+		return u.ID
+	}
+	return ""
+}
+
 // loadBlocksJSON returns the stored block document for a slug, or "" if the
 // article predates the block editor (or does not exist).
 func loadBlocksJSON(ctx context.Context, slug string) string {
@@ -121,7 +130,7 @@ func (a *App) handleOSEditorSave(w http.ResponseWriter, r *http.Request) {
 			writeAPIError(w, r, http.StatusInternalServerError, "persist-error", err.Error(), "")
 			return
 		}
-		a.applyPostExtras(r.Context(), slug, body.Meta, body.PublishDate, tags)
+		a.applyPostExtras(r.Context(), slug, body.Meta, body.PublishDate, tags, currentUserIDOf(r))
 		writeJSON(w, r, http.StatusOK, map[string]string{"status": "created", "slug": slug})
 		return
 	}
@@ -142,7 +151,7 @@ func (a *App) handleOSEditorSave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	a.applyPostExtras(r.Context(), slug, body.Meta, body.PublishDate, tags)
+	a.applyPostExtras(r.Context(), slug, body.Meta, body.PublishDate, tags, currentUserIDOf(r))
 	writeJSON(w, r, http.StatusOK, map[string]string{"status": "saved", "slug": slug})
 }
 
@@ -150,8 +159,18 @@ func (a *App) handleOSEditorSave(w http.ResponseWriter, r *http.Request) {
 // optional publish-date override, and purges the public caches so the article's
 // head metadata / share cards refresh immediately. Each step is best-effort and
 // independent of the queued content write (they touch disjoint columns).
-func (a *App) applyPostExtras(ctx context.Context, slug string, meta *PostMeta, publishDate string, tags []string) {
+func (a *App) applyPostExtras(ctx context.Context, slug string, meta *PostMeta, publishDate string, tags []string, editorID string) {
 	if meta != nil {
+		// Multi-author attribution: keep any author already assigned; otherwise
+		// attribute the post to whoever is editing it (never re-attribute an
+		// already-owned post, and never blank it out when the client omits it).
+		if strings.TrimSpace(meta.AuthorID) == "" {
+			if existing := loadPostMeta(ctx, slug).AuthorID; existing != "" {
+				meta.AuthorID = existing
+			} else {
+				meta.AuthorID = editorID
+			}
+		}
 		if err := savePostMeta(ctx, slug, *meta); err != nil {
 			logging.LogError("os-editor", "save post meta failed", err.Error())
 		}

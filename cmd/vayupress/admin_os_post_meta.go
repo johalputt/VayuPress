@@ -41,6 +41,7 @@ type PostMeta struct {
 	TwitterImage       string `json:"twitterImage"`
 	Featured           bool   `json:"featured"`
 	IsPage             bool   `json:"isPage"`
+	AuthorID           string `json:"authorId"` // multi-author attribution (staff user id)
 }
 
 // loadPostMeta reads the publishing-options columns for a slug. A missing row or
@@ -56,13 +57,13 @@ func loadPostMeta(ctx context.Context, slug string) PostMeta {
 		COALESCE(meta_title,''), COALESCE(meta_description,''), COALESCE(canonical_url,''),
 		COALESCE(og_title,''), COALESCE(og_description,''), COALESCE(og_image,''),
 		COALESCE(twitter_title,''), COALESCE(twitter_description,''), COALESCE(twitter_image,''),
-		COALESCE(featured,0), COALESCE(is_page,0)
+		COALESCE(featured,0), COALESCE(is_page,0), COALESCE(author_id,'')
 		FROM articles WHERE slug = ?`, slug).Scan(
 		&m.Excerpt, &m.FeatureImage,
 		&m.MetaTitle, &m.MetaDescription, &m.CanonicalURL,
 		&m.OGTitle, &m.OGDescription, &m.OGImage,
 		&m.TwitterTitle, &m.TwitterDescription, &m.TwitterImage,
-		&featured, &isPage,
+		&featured, &isPage, &m.AuthorID,
 	)
 	m.Featured = featured != 0
 	m.IsPage = isPage != 0
@@ -88,13 +89,13 @@ func savePostMeta(ctx context.Context, slug string, m PostMeta) error {
 		meta_title=?, meta_description=?, canonical_url=?,
 		og_title=?, og_description=?, og_image=?,
 		twitter_title=?, twitter_description=?, twitter_image=?,
-		featured=?, is_page=?
+		featured=?, is_page=?, author_id=?
 		WHERE slug=?`,
 		strings.TrimSpace(m.Excerpt), strings.TrimSpace(m.FeatureImage),
 		strings.TrimSpace(m.MetaTitle), strings.TrimSpace(m.MetaDescription), strings.TrimSpace(m.CanonicalURL),
 		strings.TrimSpace(m.OGTitle), strings.TrimSpace(m.OGDescription), strings.TrimSpace(m.OGImage),
 		strings.TrimSpace(m.TwitterTitle), strings.TrimSpace(m.TwitterDescription), strings.TrimSpace(m.TwitterImage),
-		featured, isPage, slug)
+		featured, isPage, strings.TrimSpace(m.AuthorID), slug)
 	if err == nil {
 		// A pin/unpin (featured) change must surface promptly in the public
 		// Trending & pinned widget, so drop its memoised payload.

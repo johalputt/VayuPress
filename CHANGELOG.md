@@ -8,6 +8,17 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Added
+
+- **Multi-author.** Articles can now be attributed to individual staff users
+  (`articles.author_id`, migration `054`, indexed). The public byline and author
+  page reflect the **per-post author** — the byline links to that author and the
+  author page lists that author's posts. A post is attributed to whoever creates
+  it (never re-attributed on later edits), and posts with no explicit author fall
+  back to the site-wide author, so the existing catalogue is unchanged. The
+  primary author's page keeps using the proven, index-friendly query (safe on a
+  234k-post site); secondary authors filter on the indexed `author_id` column.
+
 ## [2.7.0] - 2026-06-30
 
 ### Added
