@@ -108,6 +108,15 @@ if [[ "$DRY_RUN" != true && -t 0 ]]; then
     [[ -n "$_e" ]] && EMAIL="$_e"
   fi
 fi
+# Safety: refuse to install for the placeholder domain when we couldn't ask
+# (e.g. `curl … | bash` with no DOMAIN=). Better to stop with instructions than
+# silently deploy + request a certificate for someone else's domain.
+if [[ "$DRY_RUN" != true && "$DOMAIN" == "vayupress.com" && ! -t 0 ]]; then
+  die "No domain provided. Re-run with your domain, e.g.:
+  curl -sSL <url> | sudo DOMAIN=example.com EMAIL=you@example.com bash
+Or download it and run interactively so it can prompt:
+  curl -sSLo install.sh <url> && sudo bash install.sh"
+fi
 # Recompute values derived from DOMAIN after any prompt/env override.
 [[ "$EMAIL" == "admin@vayupress.com" && "$DOMAIN" != "localhost" ]] && EMAIL="admin@${DOMAIN}"
 DB_PATH="${DATA_DIR}/vayupress.db"
@@ -649,7 +658,7 @@ if [[ -n "$DOMAIN" && "$DOMAIN" != "localhost" ]]; then
     run mkdir -p "${DATA_DIR}/mailcert"
     run install -m 0644 "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" "${DATA_DIR}/mailcert/fullchain.pem"
     run install -m 0640 "/etc/letsencrypt/live/${DOMAIN}/privkey.pem"   "${DATA_DIR}/mailcert/privkey.pem"
-    run chown -R vayupress:vayupress "${DATA_DIR}/mailcert"
+    run chown -R www-data:www-data "${DATA_DIR}/mailcert"
     run mkdir -p /etc/letsencrypt/renewal-hooks/deploy
     cat > /etc/letsencrypt/renewal-hooks/deploy/vayupress-mailcert.sh <<HOOK
 #!/usr/bin/env bash
@@ -657,7 +666,7 @@ if [[ -n "$DOMAIN" && "$DOMAIN" != "localhost" ]]; then
 set -e
 install -m 0644 "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" "${DATA_DIR}/mailcert/fullchain.pem"
 install -m 0640 "/etc/letsencrypt/live/${DOMAIN}/privkey.pem"   "${DATA_DIR}/mailcert/privkey.pem"
-chown -R vayupress:vayupress "${DATA_DIR}/mailcert"
+chown -R www-data:www-data "${DATA_DIR}/mailcert"
 systemctl try-restart vayupress 2>/dev/null || true
 HOOK
     run chmod +x /etc/letsencrypt/renewal-hooks/deploy/vayupress-mailcert.sh
