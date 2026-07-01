@@ -11,18 +11,21 @@ package main
 // /author/{id} for readers.
 
 import (
+	"context"
 	"encoding/json"
 	"html"
 	htmpl "html/template"
 	"net/http"
 	"sort"
 	"strings"
+	"sync"
 	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5"
 
 	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/config"
+	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/users"
@@ -517,6 +520,38 @@ func (a *App) handlePublicAuthor(w http.ResponseWriter, r *http.Request) {
 		socials = `<div class="au-socials">` + links + `</div>`
 	}
 
+	// The author's recent published posts. VayuPress is single-author per site
+	// (posts aren't tagged with an author id), so this lists the site's published
+	// posts — read pool + indexed predicate + LIMIT (scale-safe).
+	postsHTML := `<p class="au-posts-empty">No posts published yet.</p>`
+	if rows, qerr := dbpkg.Reader().QueryContext(r.Context(),
+		`SELECT title,slug,created_at,COALESCE(excerpt,'') FROM articles WHERE status='published' AND is_page=0 ORDER BY created_at DESC LIMIT 60`); qerr == nil {
+		defer rows.Close()
+		list := ""
+		n := 0
+		for rows.Next() {
+			var title, slug, created, excerpt string
+			if rows.Scan(&title, &slug, &created, &excerpt) != nil {
+				continue
+			}
+			date := created
+			if len(date) >= 10 {
+				date = date[:10]
+			}
+			ex := ""
+			if excerpt != "" {
+				ex = `<p class="au-post-excerpt">` + esc(excerpt) + `</p>`
+			}
+			list += `<a class="au-post" href="/` + esc(slug) + `">` +
+				`<span class="au-post-date">` + esc(date) + `</span>` +
+				`<span class="au-post-title">` + esc(title) + `</span>` + ex + `</a>`
+			n++
+		}
+		if n > 0 {
+			postsHTML = `<div class="au-posts">` + list + `</div>`
+		}
+	}
+
 	page := `<!DOCTYPE html><html lang="en"><head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -525,19 +560,67 @@ func (a *App) handlePublicAuthor(w http.ResponseWriter, r *http.Request) {
 <link rel="stylesheet" href="/theme.css">
 <link rel="stylesheet" href="/static/css/signup.css">
 <link rel="icon" type="image/png" href="/static/favicon-light.png">
+<script src="/static/js/theme-toggle.js" defer></script>
 </head>
-<body class="su-body">
-<main class="au-shell" id="main-content">
-  <article class="au-card">
+<body class="su-body au-page">
+<button type="button" id="vayu-theme-toggle" class="vayu-theme-toggle au-theme-toggle" aria-label="Toggle theme">☾</button>
+<main class="au-wrap" id="main-content">
+  <header class="au-hero">
     ` + avatar + `
-    <h1 class="au-name">` + name + `</h1>
-    <p class="au-role">` + esc(roleLabel) + `</p>
-    ` + bio + socials + `
-    <p class="au-foot"><a class="su-link" href="/">← Back to ` + brand + `</a></p>
-  </article>
+    <div class="au-hero-info">
+      <h1 class="au-name">` + name + `</h1>
+      <p class="au-role">` + esc(roleLabel) + `</p>
+      ` + bio + socials + `
+    </div>
+  </header>
+  <section class="au-posts-section" aria-label="Posts by ` + name + `">
+    <div class="au-posts-head"><span class="au-posts-label">Posts</span></div>
+    ` + postsHTML + `
+  </section>
+  <p class="au-foot"><a class="su-link" href="/">← Back to ` + brand + `</a></p>
 </main>
 </body></html>`
 	_, _ = w.Write([]byte(page))
+}
+
+// installAuthorResolver wires render.AuthorInfoFn so the public article byline
+// can link to /author/<slug> with the author's avatar. It matches the byline's
+// display name (the site author setting) to a staff user by name (case-
+// insensitive), returning that user's public handle + avatar. Results are cached
+// per name so a busy render path never re-queries; the cache is small (the
+// number of distinct author names) and refreshed on restart.
+func (a *App) installAuthorResolver() {
+	if a.userStore == nil {
+		return
+	}
+	var mu sync.RWMutex
+	cache := map[string][2]string{}
+	render.AuthorInfoFn = func(name string) (string, string) {
+		key := strings.ToLower(strings.TrimSpace(name))
+		if key == "" {
+			return "", ""
+		}
+		mu.RLock()
+		if v, ok := cache[key]; ok {
+			mu.RUnlock()
+			return v[0], v[1]
+		}
+		mu.RUnlock()
+		slug, avatar := "", ""
+		if list, err := a.userStore.List(context.Background()); err == nil {
+			for i := range list {
+				if strings.EqualFold(strings.TrimSpace(list[i].Name), key) {
+					slug = authorSlug(&list[i])
+					avatar = list[i].AvatarURL
+					break
+				}
+			}
+		}
+		mu.Lock()
+		cache[key] = [2]string{slug, avatar}
+		mu.Unlock()
+		return slug, avatar
+	}
 }
 
 // authorFallbackName returns a friendly name from an email local part.

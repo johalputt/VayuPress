@@ -606,3 +606,11 @@ textarea.vayu-contact-input { min-height: 7rem; resize: vertical; }
 }
 
 .vayu-tag-back:hover { color: var(--pico-primary); text-decoration: none; }
+
+/* Ghost-style author byline under the post title */
+.vayu-byline { display: flex; align-items: center; gap: .55rem; margin: .1rem 0 .9rem; }
+.vayu-byline-link { display: flex; align-items: center; gap: .55rem; text-decoration: none; color: inherit; }
+.vayu-byline-avatar { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; flex: 0 0 auto; background: var(--surface2, #1a2233); }
+.vayu-byline-avatar--ph { display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: .85rem; color: #fff; background: var(--accent, #6366f1); }
+.vayu-byline-name { font-weight: 600; font-size: .92rem; color: var(--text); }
+.vayu-byline-link:hover .vayu-byline-name { color: var(--accent2, #818cf8); }

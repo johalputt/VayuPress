@@ -542,6 +542,9 @@ func main() {
 	// Backfill human-readable author handles for any pre-051 accounts so every
 	// staff member has a /author/<username> URL. Idempotent + cheap.
 	a.userStore.BackfillUsernames(context.Background())
+	// Resolve the article byline's author name → public profile slug + avatar so
+	// the byline can link to /author/<slug> with a picture. Cached per name.
+	a.installAuthorResolver()
 	// Periodic expired-session sweep.
 	go func() {
 		ticker := time.NewTicker(1 * time.Hour)

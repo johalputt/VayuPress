@@ -422,3 +422,47 @@
 .co-instructions{white-space:pre-wrap;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.9rem;background:var(--su-surface,#0f172a);border:1px solid var(--su-border,rgba(125,125,125,.25));border-radius:10px;padding:1rem;margin:.75rem 0}
 .co-reference{font-size:1.4rem;text-align:center;margin:.5rem 0 1rem}
 .co-reference code{padding:.35rem .75rem;border-radius:8px;background:var(--su-surface,#0f172a);border:1px dashed var(--su-accent,#f59e0b);letter-spacing:.1em}
+
+/* ── Light / dark theme support (toggle sets [data-theme] on <html>) ─────── */
+html[data-theme="light"] {
+  --su-bg: #f7f8fa;
+  --su-surface: #ffffff;
+  --su-surface-2: #f1f3f7;
+  --su-border: rgba(15, 23, 42, .10);
+  --su-text: #0f172a;
+  --su-muted: #5b6472;
+  --su-accent: #4f46e5;
+  --su-accent-2: #6366f1;
+}
+/* Floating theme toggle (author + auth pages) */
+.vayu-theme-toggle.au-theme-toggle {
+  position: fixed; top: 1rem; right: 1rem; z-index: 20;
+  width: 38px; height: 38px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--su-surface); color: var(--su-text);
+  border: 1px solid var(--su-border); cursor: pointer;
+  font-size: 1rem; line-height: 1; transition: background .15s, color .15s;
+}
+.vayu-theme-toggle.au-theme-toggle:hover { background: var(--su-surface-2); }
+
+/* ── Author page — minimalist, elegant (clean, no gradient) ──────────────── */
+.su-body.au-page { background: var(--su-bg); display: block; }
+.au-wrap { width: 100%; max-width: 44rem; margin: 0 auto; padding: 3.5rem 1.25rem 4rem; }
+.au-hero { display: flex; gap: 1.25rem; align-items: center; padding-bottom: 1.75rem; border-bottom: 1px solid var(--su-border); margin-bottom: 2rem; }
+.au-hero .au-avatar, .au-hero .au-avatar--placeholder { width: 80px; height: 80px; flex: 0 0 auto; margin: 0; }
+.au-hero-info { min-width: 0; }
+.au-page .au-name { font-size: 1.7rem; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 .2rem; text-align: left; }
+.au-page .au-role { text-align: left; margin: 0 0 .5rem; }
+.au-page .au-bio { text-align: left; margin: .35rem 0 .6rem; max-width: none; color: var(--su-muted); line-height: 1.6; }
+.au-page .au-socials { justify-content: flex-start; margin-top: .3rem; }
+.au-posts-head { margin: 0 0 1rem; }
+.au-posts-label { font-size: .72rem; text-transform: uppercase; letter-spacing: .12em; color: var(--su-muted); font-weight: 600; }
+.au-posts { display: flex; flex-direction: column; }
+.au-post { display: block; padding: 1.1rem 0; border-bottom: 1px solid var(--su-border); text-decoration: none; color: inherit; transition: padding-left .18s ease; }
+.au-post:hover { padding-left: .5rem; }
+.au-post-date { display: block; font-size: .74rem; color: var(--su-muted); font-variant-numeric: tabular-nums; margin-bottom: .2rem; }
+.au-post-title { display: block; font-size: 1.12rem; font-weight: 600; color: var(--su-text); line-height: 1.35; }
+.au-post:hover .au-post-title { color: var(--su-accent); }
+.au-post-excerpt { margin: .35rem 0 0; font-size: .92rem; color: var(--su-muted); line-height: 1.55; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.au-posts-empty { color: var(--su-muted); font-size: .95rem; padding: 1rem 0; }
+.au-page .au-foot { margin-top: 2rem; text-align: center; }

@@ -10,6 +10,22 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Added
 
+- **Ghost-style author byline + author page with posts.** Posts now show the
+  author as a clean byline (avatar + name) directly **under the title**, linking
+  to the author's page; the old author box after the post body is removed. The
+  public **author page is redesigned** — a minimalist header (avatar, role, bio,
+  socials) followed by a list of that author's posts — so clicking a byline opens
+  the author and their writing. A light/dark toggle is available on the author
+  page too.
+
+### Changed
+
+- **Public light/dark theme toggle now actually switches the whole page.** The
+  toggle button existed but only part of the page responded to it — the article
+  tokens (background, text, accents) reacted to the OS setting, not the button.
+  Article CSS now responds to the `[data-theme]` attribute the toggle sets, so
+  light/dark applies to the entire article. Clean, no gradients.
+
 - **Colourful analytics charts (still zero third-party, GDPR-safe).** The
   Analytics console now visualises the existing no-PII data with server-rendered,
   CSP-safe charts instead of plain tables: a two-series **traffic chart**
