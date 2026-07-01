@@ -8,6 +8,8 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [2.7.0] - 2026-06-30
+
 ### Added
 
 - **Ghost-style author byline + author page with posts.** Posts now show the
