@@ -11,10 +11,7 @@ package main
 
 import (
 	"html"
-	"strconv"
 	"strings"
-
-	"github.com/johalputt/vayupress/internal/analytics"
 )
 
 // countryName resolves an ISO 3166-1 alpha-2 code to a full English country
@@ -159,22 +156,4 @@ func init() {
 	for k, v := range more {
 		countryNames[k] = v
 	}
-}
-
-// osCountryTable renders the country breakdown with a flag emoji and full
-// country name instead of the raw ISO code. It mirrors osAudienceTable's markup
-// so it slots into the same card. Falls back to a friendly empty state.
-func osCountryTable(items []analytics.AudienceStat) string {
-	if len(items) == 0 {
-		return `<div class="empty-state">No country data yet. Front your site with a proxy that sets a geo header (e.g. Cloudflare's <code>CF-IPCountry</code>) to see where visitors come from.</div>`
-	}
-	rows := ""
-	for _, it := range items {
-		label := countryDisplayHTML(it.Label)
-		if it.Label == "" {
-			label = "(unknown)"
-		}
-		rows += `<tr><td class="row-title">` + label + `</td><td>` + strconv.Itoa(it.Count) + `</td></tr>`
-	}
-	return `<div class="table-wrap"><table class="table"><tbody>` + rows + `</tbody></table></div>`
 }

@@ -3291,3 +3291,58 @@
   border-left: 3px solid var(--warn);
   background: var(--warn-dim);
 }
+
+/* ── Analytics charts (server-rendered SVG, CSP-safe) ─────────────── */
+.vp-os {
+  --chart-1: #0ea5e9; --chart-2: #a78bfa; --chart-3: #22c55e; --chart-4: #f59e0b;
+  --chart-5: #ec4899; --chart-6: #ef4444; --chart-7: #06b6d4; --chart-8: #8b5cf6;
+}
+/* Horizontal bar list */
+.vp-os .vp-bars { display: flex; flex-direction: column; gap: .7rem; }
+.vp-os .vp-bar { display: grid; grid-template-columns: 1fr auto; gap: .2rem .75rem; align-items: baseline; }
+.vp-os .vp-bar__label { font-size: .85rem; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.vp-os .vp-bar__label a { color: inherit; text-decoration: none; }
+.vp-os .vp-bar__label a:hover { color: var(--brand); text-decoration: underline; }
+.vp-os .vp-bar__val { font-variant-numeric: tabular-nums; font-weight: 600; font-size: .85rem; color: var(--text); white-space: nowrap; }
+.vp-os .vp-bar__pct { color: var(--text-3); font-weight: 400; margin-left: .4rem; }
+.vp-os .vp-bar__track { grid-column: 1 / -1; height: 8px; border-radius: 999px; background: var(--bg-surface-2); overflow: hidden; }
+.vp-os .vp-bar__fill { display: block; height: 100%; border-radius: 999px; background: var(--chart-1); transition: width .4s ease; }
+.vp-os .vp-bar--c1 .vp-bar__fill { background: var(--chart-1); }
+.vp-os .vp-bar--c2 .vp-bar__fill { background: var(--chart-2); }
+.vp-os .vp-bar--c3 .vp-bar__fill { background: var(--chart-3); }
+.vp-os .vp-bar--c4 .vp-bar__fill { background: var(--chart-4); }
+.vp-os .vp-bar--c5 .vp-bar__fill { background: var(--chart-5); }
+.vp-os .vp-bar--c6 .vp-bar__fill { background: var(--chart-6); }
+.vp-os .vp-bar--c7 .vp-bar__fill { background: var(--chart-7); }
+.vp-os .vp-bar--c8 .vp-bar__fill { background: var(--chart-8); }
+
+/* Donut chart + legend */
+.vp-os .vp-donut-wrap { display: flex; gap: 1.4rem; align-items: center; flex-wrap: wrap; }
+.vp-os .vp-donut { width: 128px; height: 128px; flex: 0 0 auto; transform: rotate(0deg); }
+.vp-os .vp-donut__track { fill: none; stroke: var(--bg-surface-2); stroke-width: 5; }
+.vp-os .vp-donut__seg { fill: none; stroke-width: 5; }
+.vp-os .vp-legend { display: flex; flex-direction: column; gap: .45rem; min-width: 140px; flex: 1 1 auto; }
+.vp-os .vp-legend__item { display: flex; align-items: center; gap: .5rem; font-size: .85rem; color: var(--text-2); }
+.vp-os .vp-legend__dot { width: 10px; height: 10px; border-radius: 3px; flex: 0 0 auto; }
+.vp-os .vp-legend__label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1 1 auto; }
+.vp-os .vp-legend__val { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--text); }
+.vp-os .donut-c1, .vp-os .legend-c1 { stroke: var(--chart-1); background: var(--chart-1); }
+.vp-os .donut-c2, .vp-os .legend-c2 { stroke: var(--chart-2); background: var(--chart-2); }
+.vp-os .donut-c3, .vp-os .legend-c3 { stroke: var(--chart-3); background: var(--chart-3); }
+.vp-os .donut-c4, .vp-os .legend-c4 { stroke: var(--chart-4); background: var(--chart-4); }
+.vp-os .donut-c5, .vp-os .legend-c5 { stroke: var(--chart-5); background: var(--chart-5); }
+.vp-os .donut-c6, .vp-os .legend-c6 { stroke: var(--chart-6); background: var(--chart-6); }
+.vp-os .donut-c7, .vp-os .legend-c7 { stroke: var(--chart-7); background: var(--chart-7); }
+.vp-os .donut-c8, .vp-os .legend-c8 { stroke: var(--chart-8); background: var(--chart-8); }
+
+/* Two-series trend chart */
+.vp-os .vp-trend { margin-top: .25rem; }
+.vp-os .vp-trend-legend { display: flex; gap: 1.2rem; margin-bottom: .6rem; font-size: .8rem; color: var(--text-2); }
+.vp-os .vp-trend-svg { width: 100%; height: 180px; display: block; overflow: visible; }
+.vp-os .chart-grid { stroke: var(--border); stroke-width: 1; }
+.vp-os .vp-trend-area { fill: var(--brand-dim); opacity: .5; }
+.vp-os .vp-trend-line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.vp-os .vp-trend-line--pv { stroke: var(--chart-1); }
+.vp-os .vp-trend-line--vis { stroke: var(--chart-2); stroke-dasharray: 4 3; }
+.vp-os .chart-axis { fill: var(--text-3); font-size: 10px; }
+.vp-os .chart-axis--end { text-anchor: end; }

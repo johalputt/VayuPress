@@ -10,6 +10,17 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Added
 
+- **Colourful analytics charts (still zero third-party, GDPR-safe).** The
+  Analytics console now visualises the existing no-PII data with server-rendered,
+  CSP-safe charts instead of plain tables: a two-series **traffic chart**
+  (pageviews + unique visitors with gridlines), a **device donut**, and colour
+  **bar charts** for top pages, referrers, browsers, operating systems,
+  campaign sources, custom events and geography (with country flags). An 8-colour
+  palette that adapts to light/dark, share percentages, and thousands-separated
+  counts make the numbers easy to read at a glance. Everything is drawn as static
+  SVG/HTML with CSS classes (no external JS, no CDNs, no inline styles), so the
+  strict admin CSP and the cookieless/aggregate privacy posture are unchanged.
+
 - **True one-command install.** `deploy-vayupress.sh` now takes `DOMAIN`/`EMAIL`
   from the environment (or prompts for them) and generates the API key
   automatically — no file editing. It obtains a single Let's Encrypt certificate

@@ -323,23 +323,17 @@ func (a *App) handleOSAnalytics(w http.ResponseWriter, r *http.Request) {
 <div class="sparkline-wrap">` + osSparkline(vals) + `</div></div>`
 	}
 
-	pages := `<div class="empty-state">No page views recorded yet. They'll appear here as visitors browse your site.</div>`
-	if len(sum.TopPages) > 0 {
-		rows := ""
-		for _, p := range sum.TopPages {
-			rows += `<tr><td class="row-title">` + osPrettyPath(p.Path) + `</td><td>` + strconv.FormatInt(p.Views, 10) + `</td></tr>`
-		}
-		pages = `<div class="table-wrap"><table class="table"><thead><tr><th>Page</th><th>Views</th></tr></thead><tbody>` + rows + `</tbody></table></div>`
+	pageBars := make([]osChartBar, 0, len(sum.TopPages))
+	for _, p := range sum.TopPages {
+		pageBars = append(pageBars, osChartBar{Label: prettyPathText(p.Path), Value: int(p.Views), Href: p.Path})
 	}
+	pages := osBarList(pageBars, "No page views recorded yet. They'll appear here as visitors browse your site.")
 
-	refs := `<div class="empty-state">No referrers recorded yet. Links from other sites will show up here.</div>`
-	if len(sum.Referrers) > 0 {
-		rows := ""
-		for _, h := range sum.Referrers {
-			rows += `<tr><td class="row-title">` + html.EscapeString(h.Host) + `</td><td>` + strconv.FormatInt(h.Hits, 10) + `</td></tr>`
-		}
-		refs = `<div class="table-wrap"><table class="table"><thead><tr><th>Referrer</th><th>Hits</th></tr></thead><tbody>` + rows + `</tbody></table></div>`
+	refBars := make([]osChartBar, 0, len(sum.Referrers))
+	for _, h := range sum.Referrers {
+		refBars = append(refBars, osChartBar{Label: h.Host, Value: int(h.Hits)})
 	}
+	refs := osBarList(refBars, "No referrers recorded yet. Links from other sites will show up here.")
 
 	// ── VayuAnalytics extended insights (v1.8.0): audience, engagement, events ──
 	ctx := r.Context()
@@ -393,8 +387,16 @@ func (a *App) handleOSAnalytics(w http.ResponseWriter, r *http.Request) {
 	// period selector above applies to every tab.
 	metricsIntro := `<p class="muted text-sm mb-3">Cookieless, no-PII (server-side daily-rotating salted hash). Populates as visitors hit your site.</p>`
 
-	overviewPanel := metricsIntro + overviewCard + spark
-	if overviewCard == "" && spark == "" {
+	// Richer two-series traffic chart (pageviews + unique visitors) when the
+	// detailed series is available; fall back to the daily-views sparkline.
+	series, _ := a.analytics.PageviewSeries(ctx, days)
+	chart := spark
+	if len(series) > 0 {
+		chart = `<div class="card mb-6"><div class="card-title">Traffic — ` + periodLabel + `</div>` +
+			osTrendChart(series, "Traffic over "+periodLabel) + `</div>`
+	}
+	overviewPanel := metricsIntro + overviewCard + chart
+	if overviewCard == "" && chart == "" {
 		overviewPanel = metricsIntro + `<div class="empty-state">No visits in this period yet.</div>`
 	}
 
@@ -404,13 +406,28 @@ func (a *App) handleOSAnalytics(w http.ResponseWriter, r *http.Request) {
 </div>`
 
 	audiencePanel := `<div class="grid grid-3">
-  <div class="card"><div class="card-title">Devices</div>` + osAudienceTable(devices) + `</div>
-  <div class="card"><div class="card-title">Browsers</div>` + osAudienceTable(browsers) + `</div>
-  <div class="card"><div class="card-title">Operating systems</div>` + osAudienceTable(oses) + `</div>
+  <div class="card"><div class="card-title">Devices</div>` + osDonut(osSegsFromAudience(devices), "No device data yet.") + `</div>
+  <div class="card"><div class="card-title">Browsers</div>` + osBarList(osBarsFromAudience(browsers), "No browser data yet.") + `</div>
+  <div class="card"><div class="card-title">Operating systems</div>` + osBarList(osBarsFromAudience(oses), "No OS data yet.") + `</div>
 </div>`
 
-	campaignsPanel := `<div class="card"><div class="card-title">Campaign sources (UTM)</div>` + utmRows + `</div>`
-	eventsPanel := `<div class="card"><div class="card-title">Custom events</div>` + osEventTable(events) + `</div>`
+	utmSourceBars := make([]osChartBar, 0, len(utm))
+	for _, u := range utm {
+		src := u.Source
+		if src == "" {
+			src = "(direct)"
+		}
+		utmSourceBars = append(utmSourceBars, osChartBar{Label: src, Value: u.Count})
+	}
+	campaignsPanel := `<div class="grid grid-2">
+  <div class="card"><div class="card-title">Top sources</div>` + osBarList(utmSourceBars, "No campaign traffic yet.") + `</div>
+  <div class="card"><div class="card-title">Campaigns (UTM)</div>` + utmRows + `</div>
+</div>`
+	eventBars := make([]osChartBar, 0, len(events))
+	for _, e := range events {
+		eventBars = append(eventBars, osChartBar{Label: e.Name, Value: e.Count})
+	}
+	eventsPanel := `<div class="card"><div class="card-title">Custom events</div>` + osBarList(eventBars, "No custom events yet. Track actions with the data-vp-event attribute or window.VayuPress.track().") + `</div>`
 
 	tabs := []struct{ id, label, icon, body string }{
 		{"overview", "Overview", "📊", overviewPanel},
@@ -515,10 +532,28 @@ func osGeoSection(countries, regions, cities []analytics.AudienceStat) string {
 		return `<div class="card"><div class="card-title">Locations</div>
 <div class="empty-state">No location data yet. VayuPress does no GeoIP lookups (privacy by design); to see countries/cities, front your site with a proxy that sets geo headers — e.g. Cloudflare's <code>CF-IPCountry</code> (country, all plans) and <code>CF-IPCity</code> (city, where available), or any <code>X-Geo-Country</code> / <code>X-Geo-City</code> header.</div></div>`
 	}
+	// Countries as a colour bar list with full country names; regions/cities keep
+	// their setup-guidance empty states when no proxy location headers are present.
+	countryBars := make([]osChartBar, 0, len(countries))
+	for _, c := range countries {
+		name := countryName(c.Label)
+		if name == "" {
+			name = c.Label
+		}
+		countryBars = append(countryBars, osChartBar{Label: name, LabelHTML: countryDisplayHTML(c.Label), Value: c.Count})
+	}
+	regionCard := osGeoTable(regions, "region")
+	if len(regions) > 0 {
+		regionCard = osBarList(osBarsFromAudience(regions), "")
+	}
+	cityCard := osGeoTable(cities, "city")
+	if len(cities) > 0 {
+		cityCard = osBarList(osBarsFromAudience(cities), "")
+	}
 	return `<div class="grid grid-3">
-  <div class="card"><div class="card-title">Countries</div>` + osCountryTable(countries) + `</div>
-  <div class="card"><div class="card-title">Regions</div>` + osGeoTable(regions, "region") + `</div>
-  <div class="card"><div class="card-title">Cities</div>` + osGeoTable(cities, "city") + `</div>
+  <div class="card"><div class="card-title">Countries</div>` + osBarList(countryBars, "No country data yet.") + `</div>
+  <div class="card"><div class="card-title">Regions</div>` + regionCard + `</div>
+  <div class="card"><div class="card-title">Cities</div>` + cityCard + `</div>
 </div>`
 }
 
@@ -714,32 +749,4 @@ func osPrettyPath(p string) string {
 // page, reassuring operators that nothing leaves their server.
 func osPrivacyNote() string {
 	return `<p class="vm-privacy-note muted text-sm">🔒 All analytics are computed and stored locally on your own server. No cookies, no PII, no third-party requests — your data never leaves this instance.</p>`
-}
-
-// osAudienceTable renders a label/count breakdown (devices, browsers, OS).
-func osAudienceTable(items []analytics.AudienceStat) string {
-	if len(items) == 0 {
-		return `<div class="empty-state">No data yet.</div>`
-	}
-	rows := ""
-	for _, it := range items {
-		label := it.Label
-		if label == "" {
-			label = "(unknown)"
-		}
-		rows += `<tr><td class="row-title">` + html.EscapeString(label) + `</td><td>` + strconv.Itoa(it.Count) + `</td></tr>`
-	}
-	return `<div class="table-wrap"><table class="table"><tbody>` + rows + `</tbody></table></div>`
-}
-
-// osEventTable renders custom-event counts.
-func osEventTable(items []analytics.EventStat) string {
-	if len(items) == 0 {
-		return `<div class="empty-state">No custom events yet. Fire them with <code>VayuPress.track('name')</code> or <code>data-vp-event</code> attributes.</div>`
-	}
-	rows := ""
-	for _, it := range items {
-		rows += `<tr><td class="row-title">` + html.EscapeString(it.Name) + `</td><td>` + strconv.Itoa(it.Count) + `</td></tr>`
-	}
-	return `<div class="table-wrap"><table class="table"><thead><tr><th>Event</th><th>Count</th></tr></thead><tbody>` + rows + `</tbody></table></div>`
 }
