@@ -44,6 +44,22 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   controls appear only on hover, and an elegant full-canvas drop indicator for
   drag-and-drop image upload (drop/paste-to-upload already built in).
 
+- **VayuMail: clean namespace, rotating setup QR, app passwords.** The whole
+  mail panel moved to a clean **`/os/vayumail`** namespace (inbox, compose,
+  accounts, connect, sent, PGP, security; DKIM/DNS at `/os/vayumail/dns`) —
+  every legacy `/os/vayuos/*` URL 308-redirects so nothing breaks. The Connect
+  tab gains a **rotating device setup QR**: one tap mints a per-device **app
+  password** (Argon2id-hashed, shown exactly once) wrapped in a scannable QR
+  with all server settings — a phone signs in from one scan without ever
+  seeing the mailbox's main password, and rotating instantly revokes the
+  previous QR, so even a photographed code goes stale. App passwords
+  authenticate IMAP/POP3/SMTP alongside the main password and are revocable
+  per device. CSRF now also accepts a `csrf_token` form field (same
+  double-submit + HMAC checks) so secure no-JS forms work. PGP remains
+  automatic end-to-end: keys are auto-generated per mailbox, person-to-person
+  sends auto-encrypt when the recipient's key is known, and IMAP decrypts
+  transparently for the owner.
+
 ## [2.7.0] - 2026-06-30
 
 ### Added

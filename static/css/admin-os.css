@@ -3396,3 +3396,34 @@
   border-radius: var(--r-md);
   background: var(--brand-dim);
 }
+
+/* ── VayuMail: rotating setup QR + refined mail surface ──────────────────────
+   Clean, modern-minimalist presentation: generous whitespace, flat surfaces,
+   no gradients. The QR page is a single calm card built to be scanned. */
+.vp-os .vm-qr-card { max-width: 46rem; }
+.vp-os .vm-qr-hero { display: flex; gap: var(--sp-6); align-items: flex-start; flex-wrap: wrap; }
+.vp-os .vm-qr-img {
+  background: #fff;
+  padding: 12px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+  flex: 0 0 auto;
+}
+.vp-os .vm-qr-info { flex: 1 1 240px; min-width: 0; }
+.vp-os .vm-qr-email { font-size: var(--text-sm); color: var(--text-2); margin-bottom: var(--sp-2); overflow-wrap: anywhere; }
+.vp-os .vm-qr-pass {
+  font-size: 1.15rem;
+  letter-spacing: 0.04em;
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--bg-surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  display: inline-block;
+  margin-bottom: var(--sp-3);
+  user-select: all;
+  overflow-wrap: anywhere;
+}
+.vp-os .vm-qr-launch { flex-wrap: wrap; gap: var(--sp-2); }
+.vp-os .vm-qr-launch form { margin: 0; }
+/* Mail list rows: calmer separators, roomier touch targets. */
+.vp-os .vm-list .vm-row-item { padding-block: 0.65rem; }

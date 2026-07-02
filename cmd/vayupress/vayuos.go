@@ -55,6 +55,14 @@ func (b *vayuMailBridge) AuthUser(username, password string) (bool, error) {
 				return true, nil
 			}
 		}
+		// 3) Device app passwords (rotating setup-QR credentials). Verified last
+		// so the main password stays the fast path; a mailbox has at most a
+		// handful of these.
+		for _, h := range b.app.vayuMail.Accounts().AppPasswordHashes(context.Background(), addr) {
+			if auth.VerifySecretArgon2id(password, h) {
+				return true, nil
+			}
+		}
 	}
 	return false, nil
 }

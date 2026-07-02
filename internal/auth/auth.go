@@ -540,6 +540,12 @@ func CSRFTokenMiddleware(next http.Handler) http.Handler {
 		}
 		if r.Method == http.MethodPost || r.Method == http.MethodPut || r.Method == http.MethodDelete {
 			headerToken := r.Header.Get("X-CSRF-Token")
+			// Plain HTML forms cannot set headers: accept the token as a form
+			// field too (same double-submit + HMAC checks apply). Only parsed for
+			// form-encoded bodies, so JSON payloads are never consumed here.
+			if headerToken == "" && strings.HasPrefix(r.Header.Get("Content-Type"), "application/x-www-form-urlencoded") {
+				headerToken = r.PostFormValue("csrf_token")
+			}
 			cookieToken := ""
 			if c, err := r.Cookie("vp_csrf"); err == nil {
 				cookieToken = c.Value
