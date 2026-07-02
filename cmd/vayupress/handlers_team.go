@@ -564,6 +564,7 @@ func (a *App) handlePublicAuthor(w http.ResponseWriter, r *http.Request) {
 				`<span class="au-post-title">` + esc(title) + `</span>` + ex + `</a>`
 			n++
 		}
+		_ = rows.Err()
 		if n > 0 {
 			postsHTML = `<div class="au-posts">` + list + `</div>`
 		}
