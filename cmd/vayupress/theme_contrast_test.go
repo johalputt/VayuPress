@@ -71,6 +71,11 @@ func TestThemeEditorCoversSettingsAllowlist(t *testing.T) {
 		// The homepage-hero toggle lives in the Theme Studio Hero group
 		// (POST /os/api/settings), not the legacy theme editor.
 		settings.KeyHomeHero: true,
+		// Business-website mode, template and content are managed in the VayuOS
+		// Website studio (/os/website), not the legacy theme editor.
+		settings.KeySiteMode:    true,
+		settings.KeyBizTemplate: true,
+		settings.KeyBizContent:  true,
 		// Author bio is edited in the Theme Studio Article-pages group
 		// (POST /os/api/settings), not the legacy theme editor.
 		settings.KeyAuthorBio: true,

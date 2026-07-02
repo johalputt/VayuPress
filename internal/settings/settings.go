@@ -21,6 +21,14 @@ const (
 	// "true" (as written by the settings toggle) enables it.
 	KeyMembershipButtons = "site.membership_buttons"
 
+	// Business-website mode (VayuOS → Website). KeySiteMode selects what the
+	// root domain serves: "" / "blog" keeps the blog at the root (the historic
+	// behaviour — existing installs never change on update), "business" serves
+	// the business site at the root with the blog at blog.<domain>.
+	KeySiteMode    = "site.mode"
+	KeyBizTemplate = "biz.template" // active business template key
+	KeyBizContent  = "biz.content"  // business-site content (JSON)
+
 	KeyThemePrimaryLight = "theme.primary_light"
 	KeyThemePrimaryDark  = "theme.primary_dark"
 	KeyThemeAccentLight  = "theme.accent_light"
@@ -239,6 +247,9 @@ var AllKeys = map[string]bool{
 	KeyPaySupportEmail:       true,
 	KeyAdsenseClient:         true,
 	KeyAffiliateDisclosure:   true,
+	KeySiteMode:              true,
+	KeyBizTemplate:           true,
+	KeyBizContent:            true,
 	// admin.theme is the operator's VayuOS console colour theme (light/dark/auto),
 	// persisted from the topbar theme toggle rather than the theme editor form.
 	"admin.theme": true,

@@ -85,7 +85,7 @@ func osPathMinLevel(path string) int {
 	adminAreas := []string{
 		"settings", "security", "apikeys", "update", "storage", "monitoring", "governance",
 		"tools", "modes", "policy", "topology", "replay", "faults", "adr",
-		"members", "newsletter", "monetization", "ads",
+		"members", "newsletter", "monetization", "ads", "website",
 	}
 	editorAreas := []string{"comments", "pages", "seo", "analytics", "theme", "messages"}
 	for _, a := range adminAreas {

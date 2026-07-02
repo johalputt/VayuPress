@@ -228,8 +228,14 @@ func (a *App) handleAdminCachePurge(w http.ResponseWriter, r *http.Request) {
 // homeFeedPageSize is the number of posts shown per homepage feed page.
 const homeFeedPageSize = 30
 
-// handleHome renders the first page of the public homepage index.
+// handleHome renders the first page of the public homepage index — or, when
+// the operator has chosen business mode in VayuOS → Website, the business
+// website (the blog then serves from blog.<domain>).
 func (a *App) handleHome(w http.ResponseWriter, r *http.Request) {
+	if a.bizRootActive(r) {
+		a.handleBizSite(w, r)
+		return
+	}
 	a.renderHomeAt(w, r, 1)
 }
 

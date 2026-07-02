@@ -3427,3 +3427,28 @@
 .vp-os .vm-qr-launch form { margin: 0; }
 /* Mail list rows: calmer separators, roomier touch targets. */
 .vp-os .vm-list .vm-row-item { padding-block: 0.65rem; }
+
+/* ── Website studio (business site) ─────────────────────────────────────────*/
+.vp-os .biz-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: var(--sp-3); }
+.vp-os .biz-card {
+  text-align: left;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--bg-surface);
+  padding: var(--sp-4);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  transition: border-color var(--t-fast);
+}
+.vp-os .biz-card:hover { border-color: var(--brand); }
+.vp-os .biz-card--active { border-color: var(--brand); background: var(--brand-dim); }
+.vp-os .biz-card-cat { font-size: var(--text-xs); letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-3); }
+.vp-os .biz-card-name { font-weight: 700; font-size: var(--text-lg); color: var(--text); }
+.vp-os .biz-card-tag { line-height: 1.45; }
+.vp-os .vb-mode { display: block; padding: var(--sp-2) 0; cursor: pointer; }
+.vp-os .biz-form { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-5); }
+.vp-os .biz-form-col { display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; }
+.vp-os .biz-form .pm-label { margin-top: var(--sp-2); }
+@media (max-width: 800px) { .vp-os .biz-form { grid-template-columns: 1fr; } }

@@ -406,6 +406,9 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	a.registerAdminOSUIRoutes(r)
 
 	r.Get("/", a.handleHome)
+	// Business website: always previewable at /site; served at "/" in business mode.
+	r.Get("/site", a.handleBizSite)
+	r.Get("/site.css", a.handleBizSiteCSS)
 	// Paginated homepage feed: /page/2, /page/3, … (page 1 is canonical at "/").
 	// Two-segment, so it never collides with the single-segment "/{slug}".
 	r.Get("/page/{page}", a.handleHomePaged)

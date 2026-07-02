@@ -151,6 +151,8 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		// Custom pages — standalone articles flagged is_page (no post chrome),
 		// managed separately from the blog feed (Tumblr-style "Add a page").
 		pr.Get("/os/pages", a.handleOSPages)
+		pr.Get("/os/website", a.handleOSWebsite)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/website/save", a.handleOSWebsiteSave)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/pages/quick-create", a.handleOSQuickCreatePage)
 		// Contact-form inbox — durable record of public contact submissions.
 		pr.Get("/os/messages", a.handleOSMessages)
@@ -513,6 +515,7 @@ func osSidebarNav(active string, s *osSettings) string {
 		gate(navItem("/os/posts", "Posts", "posts", active, iconPosts), "/os/posts"),
 		gate(navItem("/os/comments", "Comments", "comments", active, iconComments), "/os/comments"),
 		gate(navItem("/os/pages", "Pages", "pages", active, iconPages), "/os/pages"),
+		gate(navItem("/os/website", "Website", "website", active, iconPages), "/os/website"),
 		gate(navItemBadge("/os/messages", "Messages", "messages", active, iconMessages, osUnread(s)), "/os/messages"),
 		gate(navItem("/os/editor", "New Post", "editor", active, iconNewPost), "/os/editor"),
 		gate(navItem("/os/media", "Media", "media", active, iconMedia), "/os/media"),
