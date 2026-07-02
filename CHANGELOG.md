@@ -60,6 +60,27 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   sends auto-encrypt when the recipient's key is known, and IMAP decrypts
   transparently for the owner.
 
+- **Business websites (VayuOS → Website).** VayuPress now serves a full
+  business website alongside the blog and VayuMail: **11 elegant templates**
+  (restaurant, café, shop, portfolio, agency, school, clinic, salon, gym,
+  professional firm, hotel) — modern-minimalist, flat colour, system fonts,
+  zero gradients. Deploy, edit content (about, offerings with prices, gallery,
+  hours, contact) and switch designs entirely from VayuOS, with a live preview
+  at `/site`. **Hosting topology is the operator's explicit choice** and
+  updates never change it: the default keeps the blog at the root (existing
+  installs are untouched); business mode serves the website at `domain.com`,
+  the blog at `blog.domain.com`, and mail at `mail.domain.com`. The installer
+  now issues one Let's Encrypt certificate covering the root, `www.`, `blog.`
+  and `mail.` hosts (with graceful fallbacks) and renews it automatically —
+  no terminal needed after setup.
+- **Operator-only encrypted backups.** `vayupress backup` / `vayupress
+  restore` capture the entire data directory — database, settings, media,
+  VayuMail maildirs, PGP key store — as a single file encrypted with
+  **AES-256-GCM keyed by Argon2id** from a passphrase only the operator
+  knows. Every chunk is independently authenticated: a copied backup is
+  unreadable and tamper-evident with any modern tool; the wrong passphrase
+  restores nothing. Verified by round-trip, tamper and leak tests.
+
 ## [2.7.0] - 2026-06-30
 
 ### Added

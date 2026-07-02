@@ -321,6 +321,17 @@ func main() {
 		os.Exit(0)
 	}
 
+	// backup / restore subcommands: operator-only encrypted backups (see
+	// internal/backup and cmd/vayupress/backup_cli.go).
+	if len(os.Args) > 1 && (os.Args[1] == "backup" || os.Args[1] == "restore") {
+		config.Load()
+		if err := runBackupCLI(os.Args[1], os.Args[2:], os.Stdout); err != nil {
+			fmt.Fprintln(os.Stderr, os.Args[1]+":", err)
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
+
 	logging.LogInfo("main", fmt.Sprintf("VayuPress v%s starting — P1–P26 active", Version))
 	config.Load()
 	logging.LogInfo("main", fmt.Sprintf("domain=%s port=%s workers=%d config_version=%s maintenance=%v",

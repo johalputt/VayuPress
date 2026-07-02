@@ -478,7 +478,7 @@ cat > /etc/nginx/sites-available/vayupress <<NGINX
 server {
     listen 80;
     listen [::]:80;
-    server_name ${DOMAIN} www.${DOMAIN};
+    server_name ${DOMAIN} www.${DOMAIN} blog.${DOMAIN};
 
     # Certbot webroot: served from filesystem, not proxied to VayuPress.
     # Required both for initial certificate issuance and for renewals.
@@ -497,7 +497,7 @@ server {
 server {
     listen 443 ssl http2;
     listen [::]:443 ssl http2;
-    server_name ${DOMAIN} www.${DOMAIN};
+    server_name ${DOMAIN} www.${DOMAIN} blog.${DOMAIN};
 
     # TLS — populated by certbot after first run
     ssl_certificate     /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
@@ -635,6 +635,15 @@ if [[ -n "$DOMAIN" && "$DOMAIN" != "localhost" ]]; then
     # VayuMail is trusted by strict mobile clients (the Gmail app, K-9). The mail
     # SAN is best-effort: if mail.<domain> DNS isn't set yet, retry without it so
     # the web cert still succeeds.
+    # Preferred: one certificate covering the site, www, the blog subdomain
+    # (business-website mode serves the blog at blog.<domain>) and the mail
+    # host. Each fallback drops the SAN whose DNS may not exist yet, so the
+    # web certificate always succeeds. Certbot auto-renews via its systemd
+    # timer — no terminal needed ever again.
+    run certbot certonly --webroot \
+      -w "${CACHE_DIR}" \
+      -d "${DOMAIN}" -d "www.${DOMAIN}" -d "blog.${DOMAIN}" -d "mail.${DOMAIN}" \
+      --email "${EMAIL}" --agree-tos --non-interactive || \
     run certbot certonly --webroot \
       -w "${CACHE_DIR}" \
       -d "${DOMAIN}" -d "www.${DOMAIN}" -d "mail.${DOMAIN}" \
@@ -644,7 +653,7 @@ if [[ -n "$DOMAIN" && "$DOMAIN" != "localhost" ]]; then
       -d "${DOMAIN}" -d "www.${DOMAIN}" \
       --email "${EMAIL}" --agree-tos --non-interactive || \
       warn "Certbot failed — site will run HTTP only until cert is obtained.
-  After DNS propagates, re-run: sudo certbot certonly --webroot -w ${CACHE_DIR} -d ${DOMAIN} -d www.${DOMAIN} -d mail.${DOMAIN} --email ${EMAIL} --agree-tos --non-interactive
+  After DNS propagates, re-run: sudo certbot certonly --webroot -w ${CACHE_DIR} -d ${DOMAIN} -d www.${DOMAIN} -d blog.${DOMAIN} -d mail.${DOMAIN} --email ${EMAIL} --agree-tos --non-interactive
   Then: sudo nginx -t && sudo systemctl reload nginx"
   else
     ok "TLS certificate already exists for ${DOMAIN}."
