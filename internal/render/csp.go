@@ -32,8 +32,13 @@ var allowedFrameOrigins = func() map[string]bool {
 }()
 
 // cspBaseline is the strict policy applied to every response. %s is the nonce.
+//
+// img-src admits any https: origin so operators can hotlink images by URL
+// (Unsplash, Pixabay, …) straight from the editor. Images are passive,
+// non-executable content — scripts, styles, frames and fetches all remain
+// locked to 'self', so this does not weaken the execution sandbox.
 const cspBaseline = "default-src 'self'; font-src 'self'; style-src 'self'; " +
-	"script-src 'self' 'nonce-%s'; img-src 'self' data:; connect-src 'self'; " +
+	"script-src 'self' 'nonce-%s'; img-src 'self' data: https:; connect-src 'self'; " +
 	"frame-ancestors 'none'; base-uri 'self'; form-action 'self'; report-uri /csp-report"
 
 // BuildCSP returns the page Content-Security-Policy for the given nonce. When
@@ -110,7 +115,7 @@ var adImgConnectOrigins = []string{
 // frame origins). 'self' and the per-request nonce are always preserved.
 func BuildAdCSP(nonce string, frameOrigins []string) string {
 	scriptSrc := "script-src 'self' 'nonce-" + nonce + "' " + strings.Join(adScriptOrigins, " ")
-	imgSrc := "img-src 'self' data: " + strings.Join(adImgConnectOrigins, " ")
+	imgSrc := "img-src 'self' data: https: " + strings.Join(adImgConnectOrigins, " ")
 	connectSrc := "connect-src 'self' " + strings.Join(adImgConnectOrigins, " ")
 	frames := append([]string{}, adFrameOrigins...)
 	frames = append(frames, validFrameOrigins(frameOrigins)...)

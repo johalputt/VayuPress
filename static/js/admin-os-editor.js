@@ -61,7 +61,7 @@
     { type: 'tasklist', label: 'Task list', icon: '☑', hint: 'Checklist with done states', cat: 'Basic' },
     { type: 'quote', label: 'Quote', icon: '"', hint: 'Block quote', cat: 'Basic' },
     { type: 'divider', label: 'Divider', icon: '―', hint: 'Horizontal rule', cat: 'Basic' },
-    { type: 'image', label: 'Image', icon: '🖼', hint: 'Image by URL or upload', cat: 'Media' },
+    { type: 'image', label: 'Image', icon: '🖼', hint: 'Upload, drag & drop, or paste any image link (Unsplash, Pixabay, …)', cat: 'Media' },
     { type: 'gallery', label: 'Gallery', icon: '▦', hint: 'Responsive image gallery (up to 9)', cat: 'Media' },
     { type: 'audio', label: 'Audio', icon: '♪', hint: 'Self-hosted audio player', cat: 'Media' },
     { type: 'embed', label: 'Embed / Link card', icon: '🔗', hint: 'Unfurl a URL (privacy-first)', cat: 'Embeds' },
@@ -299,7 +299,7 @@
         break;
       }
       case 'image': {
-        var url = mkInput('text', block.url || '', 'Image URL (https://…) or upload');
+        var url = mkInput('text', block.url || '', 'Paste any image link (Unsplash, Pixabay, /media/…) or upload');
         url.addEventListener('input', function () { block.url = url.value; touch(); fillAltFromLibrary(url.value, alt, block); });
         var uprow = document.createElement('div');
         uprow.className = 'eblock__row';
@@ -1401,6 +1401,8 @@
     // In HTML mode the source is authoritative — parse it into blocks first so
     // the save reflects the operator's raw edits.
     if (htmlMode) { applyHTMLSource().then(performSave).catch(function () { setStatus('Could not parse HTML', 'danger'); }); return; }
+    // In Markdown mode the source is likewise authoritative.
+    if (mdMode) { applyMDSource(); }
     performSave();
   }
 
@@ -1457,6 +1459,7 @@
 
   function preview() {
     if (htmlMode) { applyHTMLSource().then(doPreview).catch(function () { setStatus('Preview failed', 'danger'); }); return; }
+    if (mdMode) { applyMDSource(); }
     doPreview();
   }
   function doPreview() {
@@ -1471,6 +1474,7 @@
   var splitOn = false, livePreviewTimer = null;
   function toggleSplit() {
     if (htmlMode) { exitHTMLMode(); }
+    if (mdMode) { exitMDMode(); }
     splitOn = !splitOn;
     root.classList.toggle('is-split', splitOn);
     if (liveEl) liveEl.hidden = !splitOn;
@@ -1509,7 +1513,8 @@
     if (!htmlPanel || !htmlArea || htmlBusy) return;
     htmlBusy = true;
     setStatus('Loading HTML…');
-    // HTML mode and split preview are mutually exclusive.
+    // HTML mode, Markdown mode and split preview are mutually exclusive.
+    if (mdMode) exitMDMode();
     if (splitOn) toggleSplit();
     fetchPreview().then(function (data) {
       htmlArea.value = data.html || '';
@@ -1562,6 +1567,174 @@
   }
   function toggleHTML() {
     if (htmlMode) { exitHTMLMode(); } else { enterHTMLMode(); }
+  }
+
+  // ── Markdown source mode (whole-document round-trip) ───────────────────────
+  // Like HTML mode, but the source of truth is Markdown. Entering serialises the
+  // block document to Markdown; leaving parses it back into blocks. Standard
+  // blocks (text, headings, lists, quotes, code, images, dividers) round-trip as
+  // clean Markdown; rich blocks (galleries, embeds, tables, …) are carried in an
+  // inert sentinel comment so NOTHING is ever lost in the round-trip.
+  var mdBtn = root.querySelector('[data-editor-md-btn]');
+  var mdPanel = root.querySelector('[data-editor-md-panel]');
+  var mdArea = root.querySelector('[data-editor-md-area]');
+  var mdMode = false;
+
+  function mdSentinel(block) {
+    return '<!--vp:' + encodeURIComponent(JSON.stringify(block)) + '-->';
+  }
+  function mdFromBlocks(list) {
+    var out = [];
+    (list || []).forEach(function (b) {
+      switch (b.type) {
+        case 'paragraph': out.push(b.text || ''); break;
+        case 'heading': {
+          var lvl = Math.min(Math.max(parseInt(b.level, 10) || 2, 1), 6);
+          out.push(new Array(lvl + 1).join('#') + ' ' + (b.text || ''));
+          break;
+        }
+        case 'list': out.push((b.items || []).map(function (it) { return '- ' + it; }).join('\n')); break;
+        case 'ordered': out.push((b.items || []).map(function (it, i) { return (i + 1) + '. ' + it; }).join('\n')); break;
+        case 'tasklist': out.push((b.items || []).map(function (it, i) {
+          return '- [' + ((b.checked || [])[i] ? 'x' : ' ') + '] ' + it;
+        }).join('\n')); break;
+        case 'quote': out.push((b.text || '').split('\n').map(function (l) { return '> ' + l; }).join('\n')); break;
+        case 'divider': out.push('---'); break;
+        case 'code': out.push('```' + (b.lang || '') + '\n' + (b.text || '') + '\n```'); break;
+        case 'markdown': out.push(b.text || ''); break;
+        case 'html': out.push(b.text || ''); break;
+        case 'image': {
+          // Plain images become pure Markdown; captioned/sized ones keep their
+          // extras via the sentinel so the round-trip stays lossless.
+          if ((b.caption || '') === '' && (b.width || '') === '') {
+            out.push('![' + (b.alt || '') + '](' + (b.url || '') + ')');
+          } else {
+            out.push(mdSentinel(b));
+          }
+          break;
+        }
+        default: out.push(mdSentinel(b));
+      }
+    });
+    return out.join('\n\n') + '\n';
+  }
+
+  function blocksFromMD(src) {
+    var lines = String(src || '').replace(/\r\n?/g, '\n').split('\n');
+    var out = [];
+    var para = [];
+    function flushPara() {
+      if (!para.length) return;
+      var text = para.join('\n').trim();
+      para = [];
+      if (!text) return;
+      var sm = text.match(/^<!--vp:([^>]*)-->$/);
+      if (sm) {
+        try { out.push(JSON.parse(decodeURIComponent(sm[1]))); return; } catch (e) { /* fall through as text */ }
+      }
+      if (text.charAt(0) === '<') { out.push({ type: 'html', text: text }); return; }
+      out.push({ type: 'paragraph', text: text });
+    }
+    var i = 0;
+    while (i < lines.length) {
+      var line = lines[i];
+      var m;
+      if (/^\s*$/.test(line)) { flushPara(); i++; continue; }
+      // Fenced code
+      if ((m = line.match(/^```(\S*)\s*$/)) && !para.length) {
+        var lang = m[1] || '';
+        var buf = [];
+        i++;
+        while (i < lines.length && !/^```\s*$/.test(lines[i])) { buf.push(lines[i]); i++; }
+        i++; // closing fence
+        out.push({ type: 'code', lang: lang, text: buf.join('\n') });
+        continue;
+      }
+      // Heading
+      if ((m = line.match(/^(#{1,6})\s+(.*)$/)) && !para.length) {
+        flushPara();
+        out.push({ type: 'heading', level: m[1].length, text: m[2] });
+        i++; continue;
+      }
+      // Divider
+      if (/^(-{3,}|\*{3,}|_{3,})\s*$/.test(line) && !para.length) {
+        flushPara(); out.push({ type: 'divider' }); i++; continue;
+      }
+      // Image on its own line
+      if ((m = line.match(/^!\[([^\]]*)\]\(([^)\s]+)\)\s*$/)) && !para.length) {
+        flushPara(); out.push({ type: 'image', url: m[2], alt: m[1] }); i++; continue;
+      }
+      // Task list
+      if (/^[-*+]\s+\[( |x|X)\]\s+/.test(line) && !para.length) {
+        var titems = [], tchecked = [];
+        while (i < lines.length && (m = lines[i].match(/^[-*+]\s+\[( |x|X)\]\s+(.*)$/))) {
+          titems.push(m[2]); tchecked.push(/x/i.test(m[1])); i++;
+        }
+        out.push({ type: 'tasklist', items: titems, checked: tchecked });
+        continue;
+      }
+      // Bullet list
+      if (/^[-*+]\s+/.test(line) && !para.length) {
+        var bitems = [];
+        while (i < lines.length && (m = lines[i].match(/^[-*+]\s+(.*)$/))) { bitems.push(m[1]); i++; }
+        out.push({ type: 'list', items: bitems });
+        continue;
+      }
+      // Ordered list
+      if (/^\d+[.)]\s+/.test(line) && !para.length) {
+        var oitems = [];
+        while (i < lines.length && (m = lines[i].match(/^\d+[.)]\s+(.*)$/))) { oitems.push(m[1]); i++; }
+        out.push({ type: 'ordered', items: oitems });
+        continue;
+      }
+      // Quote
+      if (/^>\s?/.test(line) && !para.length) {
+        var qlines = [];
+        while (i < lines.length && /^>\s?/.test(lines[i])) { qlines.push(lines[i].replace(/^>\s?/, '')); i++; }
+        out.push({ type: 'quote', text: qlines.join('\n') });
+        continue;
+      }
+      para.push(line);
+      i++;
+    }
+    flushPara();
+    return out.length ? out : [{ type: 'paragraph', text: '' }];
+  }
+
+  function enterMDMode() {
+    if (!mdPanel || !mdArea || mdMode) return;
+    // Leaving HTML mode parses the source asynchronously — wait for the blocks
+    // to be up to date before serialising them to Markdown.
+    if (htmlMode) { exitHTMLMode().then(enterMDMode); return; }
+    if (splitOn) toggleSplit();
+    mdArea.value = mdFromBlocks(blocks);
+    mdMode = true;
+    root.classList.add('is-html');
+    mdPanel.hidden = false;
+    if (mdBtn) { mdBtn.classList.add('is-active'); mdBtn.setAttribute('aria-pressed', 'true'); }
+    setStatus('Editing Markdown', 'ok');
+    setTimeout(function () { mdArea.focus(); }, 0);
+  }
+  function applyMDSource() {
+    if (!mdArea) return;
+    blocks = blocksFromMD(mdArea.value);
+  }
+  function exitMDMode() {
+    if (!mdMode) return;
+    applyMDSource();
+    mdMode = false;
+    root.classList.remove('is-html');
+    if (mdPanel) mdPanel.hidden = true;
+    if (mdBtn) { mdBtn.classList.remove('is-active'); mdBtn.setAttribute('aria-pressed', 'false'); }
+    renderCanvas();
+    commitNow();
+    updateStats();
+    scheduleAutosave();
+    scheduleLivePreview();
+    setStatus('Applied', 'ok');
+  }
+  function toggleMD() {
+    if (mdMode) { exitMDMode(); } else { enterMDMode(); }
   }
 
   // ── Post settings panel (publishing options) ────────────────────────────────
@@ -1917,6 +2090,7 @@
   if (focusBtn) focusBtn.addEventListener('click', toggleFocus);
   if (splitBtn) splitBtn.addEventListener('click', toggleSplit);
   if (htmlBtn) htmlBtn.addEventListener('click', toggleHTML);
+  if (mdBtn) mdBtn.addEventListener('click', toggleMD);
   if (htmlArea) htmlArea.addEventListener('input', function () {
     setStatus('Editing HTML…');
     if (slug) scheduleAutosave();
@@ -1992,8 +2166,9 @@
     var k = e.key.toLowerCase();
     if (k === 's') { e.preventDefault(); save(); return; }
     if (k === 'h' && e.shiftKey) { e.preventDefault(); toggleHTML(); return; }
+    if (k === 'm' && e.shiftKey) { e.preventDefault(); toggleMD(); return; }
     if (k === 'p' && e.shiftKey) { e.preventDefault(); toggleSettings(); return; }
-    if (k === 'k') { e.preventDefault(); if (htmlMode) return; openPalette(focusedBlockIdx(), focusedBlockIdx() - 1); return; }
+    if (k === 'k') { e.preventDefault(); if (htmlMode || mdMode) return; openPalette(focusedBlockIdx(), focusedBlockIdx() - 1); return; }
     if (e.key === '.') { e.preventDefault(); toggleFocus(); return; }
     if (k === 'z') {
       var ae = document.activeElement;

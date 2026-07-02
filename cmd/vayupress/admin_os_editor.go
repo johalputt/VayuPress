@@ -555,6 +555,7 @@ var osEditorHeadTmpl = htmpl.Must(htmpl.New("oseditorhead").Parse(
       <span class="editor-wordcount" data-editor-wordcount aria-live="polite"></span>
       <button type="button" class="btn btn--ghost btn--sm" data-editor-focus-btn title="Focus mode (Ctrl/Cmd+.)">Focus</button>
       <button type="button" class="btn btn--ghost btn--sm" data-editor-split-btn title="Toggle live preview">Split</button>
+      <button type="button" class="btn btn--ghost btn--sm" data-editor-md-btn title="Edit the whole post as Markdown (Ctrl/Cmd+Shift+M)" aria-pressed="false">Markdown</button>
       <button type="button" class="btn btn--ghost btn--sm" data-editor-html-btn title="Edit HTML source (Ctrl/Cmd+Shift+H)" aria-pressed="false">HTML</button>
       <button type="button" class="btn btn--ghost btn--sm" data-editor-preview-btn>Preview</button>
       <button type="button" class="btn btn--ghost btn--sm" data-editor-settings-btn title="Post settings (Ctrl/Cmd+Shift+P)" aria-pressed="false">⚙ Settings</button>
@@ -576,6 +577,13 @@ var osEditorHeadTmpl = htmpl.Must(htmpl.New("oseditorhead").Parse(
           <span class="editor-html-hint text-xs muted">Edit raw HTML — switch back to apply it to your blocks.</span>
         </div>
         <textarea class="editor-html-area" data-editor-html-area spellcheck="false" autocomplete="off" autocapitalize="off" wrap="soft" aria-label="HTML source"></textarea>
+      </section>
+      <section class="editor-html editor-md" data-editor-md-panel hidden aria-label="Markdown source editor">
+        <div class="editor-html-head">
+          <span class="editor-html-title">Markdown</span>
+          <span class="editor-html-hint text-xs muted">Write the whole post in Markdown — switch back to apply it to your blocks.</span>
+        </div>
+        <textarea class="editor-html-area" data-editor-md-area spellcheck="false" autocomplete="off" autocapitalize="off" wrap="soft" aria-label="Markdown source"></textarea>
       </section>
     </div>
   </div>`))
@@ -642,7 +650,7 @@ func osEditorBody(slug, title, blocksJSON, authorOptions string) string {
     <div class="editor-hint text-xs muted mt-2">Select text for <strong>bold</strong>/<em>italic</em>/link, or use <kbd>**bold**</kbd>, <kbd>*italic*</kbd>, <kbd>[text](url)</kbd>. Drag or paste an image to upload.</div>
     <div class="editor-hint text-xs muted mt-2">Reorder blocks by dragging <kbd>⋮⋮</kbd> or with the <kbd>↑</kbd>/<kbd>↓</kbd> buttons. <kbd>⌘.</kbd> toggles focus mode.</div>
     <div class="editor-hint text-xs muted mt-2"><kbd>Enter</kbd> new block · <kbd>Shift+Enter</kbd> line break · <kbd>⌘S</kbd> / <kbd>Ctrl+S</kbd> to save.</div>
-    <div class="editor-hint text-xs muted mt-2"><kbd>HTML</kbd> in the toolbar (<kbd>⌘⇧H</kbd>) switches to a raw HTML source editor and back — formatting is preserved both ways.</div>
+    <div class="editor-hint text-xs muted mt-2"><kbd>Markdown</kbd> (<kbd>⌘⇧M</kbd>) edits the whole post as Markdown; <kbd>HTML</kbd> (<kbd>⌘⇧H</kbd>) as raw HTML — both round-trip back to blocks losslessly.</div>
     <div class="editor-hint text-xs muted mt-2"><kbd>⚙ Settings</kbd> (<kbd>⌘⇧P</kbd>) opens post settings: feature image, URL, publish date, excerpt, tags, SEO &amp; social cards.</div>
   </aside>
   <div class="editor-preview-modal" data-editor-preview hidden role="dialog" aria-modal="true" aria-label="Preview">

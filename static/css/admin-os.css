@@ -3346,3 +3346,53 @@
 .vp-os .vp-trend-line--vis { stroke: var(--chart-2); stroke-dasharray: 4 3; }
 .vp-os .chart-axis { fill: var(--text-3); font-size: 10px; }
 .vp-os .chart-axis--end { text-anchor: end; }
+
+/* ── Editor: Ghost-style writing surface ─────────────────────────────────────
+   A calm, centered, chrome-free writing measure. Block controls stay invisible
+   until the writer reaches for them; text sits at a book-like size on a quiet
+   surface. Overrides the utilitarian editor defaults above (same specificity,
+   later in the cascade). */
+.vp-os .editor-title {
+  max-width: 46rem;
+  margin-left: auto;
+  margin-right: auto;
+  font-size: 2.6rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  padding-top: var(--sp-4);
+}
+.vp-os .editor-canvas { align-items: stretch; }
+.vp-os .eblock {
+  width: 100%;
+  max-width: calc(46rem + 32px + var(--sp-2));
+  margin-left: auto;
+  margin-right: auto;
+}
+.vp-os .eblock:hover { background: transparent; }
+.vp-os .eblock:focus-within { background: transparent; }
+.vp-os .eblock__btn {
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-3);
+  border-radius: var(--r-sm);
+}
+.vp-os .eblock__btn:hover { background: var(--bg-surface-2); color: var(--text); }
+.vp-os .eblock__text, .vp-os .eblock__input {
+  font-size: 1.05rem;
+  line-height: 1.7;
+}
+.vp-os .eblock__text:focus, .vp-os .eblock__input:focus {
+  border-color: transparent;
+  background: var(--bg-surface-2);
+}
+.vp-os .eblock__heading { font-size: 1.55rem; letter-spacing: -0.015em; line-height: 1.25; }
+.vp-os .eblock__code, .vp-os .eblock__lang { font-size: 0.9rem; }
+.vp-os .eblock--quote .eblock__text { border-left: 3px solid var(--border-strong); }
+/* Elegant file-drop affordance over the whole canvas. */
+.vp-os .editor-canvas.is-dragover {
+  outline: 2px dashed var(--brand);
+  outline-offset: -6px;
+  border-radius: var(--r-md);
+  background: var(--brand-dim);
+}

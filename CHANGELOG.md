@@ -32,6 +32,18 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   the type personality along with the palette. Studio + Store previews pick the
   new option up automatically through the existing options pipeline.
 
+- **Ghost-class editor.** The post editor gains a whole-document **Markdown
+  mode** (`⌘⇧M`, toolbar button) alongside the HTML source mode: standard blocks
+  serialise to clean Markdown and parse back losslessly; rich blocks (galleries,
+  embeds, tables, …) ride an inert sentinel so a Markdown round-trip never loses
+  anything. **Images by link now work end-to-end** — paste any https image URL
+  (Unsplash, Pixabay, …) into an image block and it renders on the live site
+  (public CSP `img-src` now admits `https:`; scripts/styles/frames stay locked
+  to `'self'`). The writing surface was restyled Ghost-clean: centered 46rem
+  measure, larger serif-ready title, book-size text, chrome-free blocks whose
+  controls appear only on hover, and an elegant full-canvas drop indicator for
+  drag-and-drop image upload (drop/paste-to-upload already built in).
+
 ## [2.7.0] - 2026-06-30
 
 ### Added
