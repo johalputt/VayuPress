@@ -8,6 +8,8 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [2.8.0] - 2026-07-02
+
 ### Added
 
 - **Multi-author.** Articles can now be attributed to individual staff users

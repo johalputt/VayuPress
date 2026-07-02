@@ -21,6 +21,36 @@
 > _Own your content. Own your communication. Own your infrastructure._
 > Publishing is the core identity, **VayuMail** the native sovereignty layer, **VayuPGP** the native privacy layer, and **VayuOS** the native control layer — all in a single Go binary, single process, single config.
 
+## What's New in v2.8.0
+
+> Full notes in [`CHANGELOG.md`](CHANGELOG.md)
+
+**A business website engine, a Ghost-class editor, whole-site themes, a cleaner
+VayuMail, and encrypted backups.**
+
+- **Business websites (VayuOS → Website).** Serve a real website at your domain
+  alongside the blog and mail: **11 elegant, modern-minimalist templates**
+  (restaurant, café, shop, portfolio, agency, school, clinic, salon, gym,
+  professional firm, hotel), edited entirely from VayuOS with a live preview.
+  Hosting topology is **your explicit choice and never changed by an update** —
+  keep the blog at the root, or serve the website there with the blog at
+  `blog.<domain>` and mail at `mail.<domain>`. The installer gets Let's Encrypt
+  certificates for all of them automatically.
+- **Ghost-class editor.** Whole-document **Markdown mode** and **HTML mode**
+  alongside blocks (lossless round-trips), **image by drag/drop/paste or any
+  https link** (Unsplash, Pixabay, …), and a calm, centered writing surface.
+- **Multi-author.** Per-post bylines and author pages, with an author picker in
+  the editor.
+- **Whole-site themes + typography.** Every theme restyles the entire site (nav,
+  hero, feed, article, footer) in a clean Ghost-like aesthetic, with a new
+  system-font **Typography** option.
+- **VayuMail: clean `/os/vayumail` namespace + rotating setup QR.** Connect a
+  phone in one scan with a per-device app password you can revoke any time —
+  never your real password; old URLs redirect so nothing breaks.
+- **Operator-only encrypted backups.** `vayupress backup` / `restore` produce a
+  single **AES-256-GCM + Argon2id** archive of everything (DB, settings, media,
+  mailboxes, PGP keys) — useless to anyone without your passphrase.
+
 ## What's New in v2.6.0
 
 > Full notes in [`CHANGELOG.md`](CHANGELOG.md)

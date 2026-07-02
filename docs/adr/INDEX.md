@@ -10,6 +10,9 @@
 | ADR | Title | Status | Owner | Date |
 |-----|-------|--------|-------|------|
 | [ADR-0001](ADR-0001-sqlite-first.md) | SQLite-First Data Layer | Accepted | Core | 2024-01-01 |
+| [ADR-0106](ADR-0106-vayumail-namespace-rotating-qr.md) | VayuMail Clean Namespace, Rotating Setup QR & Device App Passwords | Accepted | Core | 2026-07-02 |
+| [ADR-0105](ADR-0105-encrypted-operator-backups.md) | Operator-Only Encrypted Backups (AES-256-GCM + Argon2id) | Accepted | Core | 2026-07-02 |
+| [ADR-0104](ADR-0104-business-websites-host-topology.md) | Business Websites & Operator-Chosen Host Topology | Accepted | Core | 2026-07-02 |
 | [ADR-0103](ADR-0103-member-experience-and-threaded-comments.md) | Member Experience — Welcome Emails, Account Surfaces, Threaded Comments & Reply Notifications | Accepted | Core | 2026-06-29 |
 | [ADR-0102](ADR-0102-unified-identity-and-bootstrap-admin.md) | Unified VayuMail + CMS Identity, Bootstrap Admin, Author Handles | Accepted | Core | 2026-06-29 |
 | [ADR-0101](ADR-0101-builtin-search-vayufind.md) | VayuFind — Built-in Search, Replacing External Meilisearch | Accepted | Core | 2026-06-29 |
