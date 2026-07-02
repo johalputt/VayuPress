@@ -185,8 +185,8 @@ func TestPerThemeExtras(t *testing.T) {
 		t.Errorf("Apex should expose shared + extras (>=7), got %d", got)
 	}
 	// A theme with no extras keeps exactly the shared set.
-	if got := len(theme.OptionsFor("Default")); got != 19 {
-		t.Errorf("Default should expose exactly the 19 shared options, got %d", got)
+	if got, want := len(theme.OptionsFor("Default")), len(theme.AllOptions()); got != want {
+		t.Errorf("Default should expose exactly the %d shared options, got %d", want, got)
 	}
 	if len(theme.PerThemeOptions()) == 0 {
 		t.Fatal("expected at least one per-theme option")

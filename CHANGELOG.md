@@ -20,6 +20,17 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   234k-post site); secondary authors filter on the indexed `author_id` column.
   The editor's Post-settings panel now has an **Author picker** (a select of all
   staff users) so an operator can reassign a post's byline at any time.
+- **Themes now transform the whole design.** Every gallery theme changes the
+  entire site — navigation, hero, post feed, article pages, and footer — not
+  just colours. The five layout archetypes (Minimal / Classic / Magazine /
+  Editorial / Bold) were rebuilt as full-site, Ghost-style designs: flat colour,
+  hairline rules, generous whitespace — **zero gradients, zero neon**. A new
+  **Typography** design option (`fontpair`) gives every theme a selectable
+  typographic voice — Elegant (serif headings + sans body), Literary, Modern,
+  Humanist, Grotesk, Typewriter — using **system fonts only** (no CDNs), and
+  each colour preset ships its own default pairing, so deploying a theme changes
+  the type personality along with the palette. Studio + Store previews pick the
+  new option up automatically through the existing options pipeline.
 
 ## [2.7.0] - 2026-06-30
 

@@ -269,14 +269,18 @@ func AllPresets() []Tokens {
 	list := allPresetsRaw()
 	for i := range list {
 		arch := archetypeForPreset(list[i].Name)
-		if arch == "" {
+		pair := fontPairForPreset(list[i].Name)
+		if arch == "" && pair == "" {
 			continue
 		}
 		if list[i].Options == nil {
 			list[i].Options = map[string]string{}
 		}
-		if list[i].Options["archetype"] == "" {
+		if arch != "" && list[i].Options["archetype"] == "" {
 			list[i].Options["archetype"] = arch
+		}
+		if pair != "" && list[i].Options["fontpair"] == "" {
+			list[i].Options["fontpair"] = pair
 		}
 	}
 	return list

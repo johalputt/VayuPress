@@ -61,6 +61,11 @@ func AllOptions() []Option {
 			Choices: ArchetypeChoices(),
 		},
 		{
+			Key: "fontpair", Label: "Typography", Default: "default",
+			Help:    "The site's typographic voice — headings and body together. System fonts only, zero external requests.",
+			Choices: FontPairChoices(),
+		},
+		{
 			Key: "scheme", Label: "Color scheme", Default: "default",
 			Help: "Re-tint the accent across the whole site.",
 			Choices: []OptionChoice{
@@ -297,6 +302,20 @@ func applyThemeOptions(t *Tokens) string {
 			t.AccentDark, t.Accent2Dark = p.AccentDark, p.Accent2Dark
 		}
 	}
+	// Typography pairing: the body stack flows through Tokens.FontSans (and so
+	// every bridge — --vp-font-sans, --font, Pico), the display stack via scoped
+	// CSS collected below.
+	var fontPairCSS string
+	if v := t.Options["fontpair"]; v != "" && v != "default" {
+		if p, ok := fontPairs[v]; ok {
+			if p.Body != "" {
+				t.FontSans = p.Body
+			}
+			if p.Display != "" {
+				fontPairCSS = displayFontSelectors + "{font-family:" + p.Display + "}"
+			}
+		}
+	}
 	switch t.Options["width"] {
 	case "narrow":
 		t.MaxWidth = "40rem"
@@ -320,6 +339,11 @@ func applyThemeOptions(t *Tokens) string {
 	// background, density, …) layer on top of and refine the archetype.
 	if arch := t.Options["archetype"]; arch != "" && arch != "default" {
 		extra.WriteString(ArchetypeCSS(arch))
+	}
+	// Typography pairing display CSS lands after the archetype so the chosen
+	// voice wins over any archetype heading tweaks.
+	if fontPairCSS != "" {
+		extra.WriteString(fontPairCSS)
 	}
 	if t.Options["headingcase"] == "uppercase" {
 		extra.WriteString(headingSelectors + "{text-transform:uppercase;letter-spacing:-.01em}")
