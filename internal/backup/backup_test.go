@@ -1,11 +1,15 @@
 package backup
 
 import (
+	"archive/tar"
 	"bytes"
+	"compress/gzip"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
 	"errors"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -93,30 +97,83 @@ func TestNotABackup(t *testing.T) {
 	}
 }
 
-func TestSafeJoinRejectsTraversal(t *testing.T) {
-	dest := filepath.Clean("/srv/vayudata")
-	// Entries that must be rejected — ".." traversal escapes the destination.
-	for _, bad := range []string{
-		"../escape", "../../etc/passwd", "a/../../etc/passwd", "..",
-	} {
-		if got, ok := safeJoin(dest, bad); ok {
-			t.Errorf("safeJoin accepted traversal path %q → %q", bad, got)
+// sealTar builds a valid encrypted backup whose archive contains exactly the
+// given entries (name→content). It reuses the production encryption path, so a
+// crafted entry name lets us drive Extract's Zip-Slip guard end-to-end.
+func sealTar(t *testing.T, passphrase string, entries map[string]string) []byte {
+	t.Helper()
+	salt := make([]byte, saltLen)
+	if _, err := rand.Read(salt); err != nil {
+		t.Fatal(err)
+	}
+	block, err := aes.NewCipher(deriveKey(passphrase, salt))
+	if err != nil {
+		t.Fatal(err)
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	buf.WriteString(magic)
+	buf.Write(salt)
+	enc := &encWriter{w: &buf, gcm: gcm, buf: make([]byte, 0, chunkSize)}
+	gz := gzip.NewWriter(enc)
+	tw := tar.NewWriter(gz)
+	for name, content := range entries {
+		if err := tw.WriteHeader(&tar.Header{Name: name, Mode: 0o600, Size: int64(len(content)), Typeflag: tar.TypeReg}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tw.Write([]byte(content)); err != nil {
+			t.Fatal(err)
 		}
 	}
-	// Legitimate entries that must be accepted. Note: filepath.Join treats an
-	// absolute-looking entry name as a relative component, so "/etc/passwd"
-	// lands safely inside dest rather than escaping — accepting it is correct.
-	for _, good := range []string{
-		"vayupress.db", "vayudata/mail/inbox.eml", "a/b/c.txt", "./x", "/etc/passwd",
-	} {
-		target, ok := safeJoin(dest, good)
-		if !ok {
-			t.Errorf("safeJoin rejected safe path %q", good)
-			continue
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := enc.flush(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+// TestExtractRejectsTraversal drives the real Extract path with archives whose
+// entry names try to escape the destination via "..", and confirms nothing is
+// written outside it (Zip-Slip / CodeQL go/zipslip).
+func TestExtractRejectsTraversal(t *testing.T) {
+	const pw = "pw"
+	for _, bad := range []string{"../escape.txt", "../../etc/evil", "a/../../escape", "sub/../../../escape"} {
+		dest := t.TempDir()
+		archive := sealTar(t, pw, map[string]string{bad: "OWNED"})
+		err := Extract(bytes.NewReader(archive), pw, dest)
+		if err == nil {
+			t.Errorf("Extract accepted traversal entry %q", bad)
 		}
-		if target != dest && !strings.HasPrefix(target, dest+string(os.PathSeparator)) {
-			t.Errorf("safeJoin returned out-of-tree target %q for %q", target, good)
+		// Belt-and-braces: assert nothing landed outside dest either way.
+		parent := filepath.Dir(dest)
+		for _, leaked := range []string{"escape.txt", "evil", "escape"} {
+			if _, statErr := os.Stat(filepath.Join(parent, leaked)); statErr == nil {
+				t.Errorf("entry %q escaped the destination: %s written", bad, filepath.Join(parent, leaked))
+			}
 		}
+	}
+}
+
+// TestExtractAllowsContainedAbsoluteNames confirms an absolute-looking entry is
+// safely contained under dest (filepath.Join treats it as relative), not rejected.
+func TestExtractAllowsContainedAbsoluteNames(t *testing.T) {
+	const pw = "pw"
+	dest := t.TempDir()
+	archive := sealTar(t, pw, map[string]string{"/etc/passwd": "contained", "a/b.txt": "ok"})
+	if err := Extract(bytes.NewReader(archive), pw, dest); err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	got, err := os.ReadFile(filepath.Join(dest, "etc", "passwd"))
+	if err != nil || string(got) != "contained" {
+		t.Fatalf("absolute-looking entry not contained under dest: %q err=%v", got, err)
 	}
 }
 

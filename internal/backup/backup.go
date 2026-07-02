@@ -219,18 +219,6 @@ func (d *decReader) Read(p []byte) (int, error) {
 	return n, nil
 }
 
-// safeJoin resolves an archive entry name against destDir and returns the
-// target path only if it stays strictly inside destDir. Checking the *joined*
-// path (rather than the raw name) defeats "..", absolute paths and traversal
-// alike — the canonical Zip-Slip defence. destDir must already be cleaned.
-func safeJoin(destDir, name string) (string, bool) {
-	target := filepath.Join(destDir, filepath.FromSlash(name))
-	if target == destDir || strings.HasPrefix(target, destDir+string(os.PathSeparator)) {
-		return target, true
-	}
-	return "", false
-}
-
 // Extract restores an encrypted backup from r into destDir (created if
 // missing). Paths are sanitised so a crafted archive can never escape destDir.
 func Extract(r io.Reader, passphrase, destDir string) error {
@@ -267,10 +255,12 @@ func Extract(r io.Reader, passphrase, destDir string) error {
 		if err != nil {
 			return fmt.Errorf("backup: archive read: %w", err)
 		}
-		// Zip-Slip guard: resolve the entry against destDir and require the
-		// result to stay strictly inside destDir.
-		target, ok := safeJoin(destDir, hdr.Name)
-		if !ok {
+		// Zip-Slip guard (kept inline, next to the file ops it protects): resolve
+		// the entry against the cleaned destDir and require the joined path to
+		// stay strictly inside it. Validating the *joined* result — not the raw
+		// name — defeats "..", absolute paths and crafted names alike.
+		target := filepath.Join(destDir, filepath.FromSlash(hdr.Name))
+		if target != destDir && !strings.HasPrefix(target, destDir+string(os.PathSeparator)) {
 			return fmt.Errorf("backup: unsafe path %q in archive", hdr.Name)
 		}
 		switch hdr.Typeflag {

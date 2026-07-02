@@ -8,6 +8,16 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Security
+
+- **Backup restore Zip-Slip guard is now inline (CodeQL).** The containment
+  check was moved from a helper back into `Extract`, directly next to the file
+  operations it protects and gating the exact resolved path — the pattern
+  CodeQL's `go/zipslip` recognises as a sanitizer. Behaviour is unchanged (the
+  v2.8.1 fix already blocked traversal); this clears the static-analysis alert
+  and adds an end-to-end test that drives `Extract` with crafted `..` archive
+  entries and asserts nothing is written outside the destination.
+
 ## [2.8.1] - 2026-07-02
 
 ### Security
