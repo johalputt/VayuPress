@@ -185,7 +185,7 @@ func (a *App) serveWithAccess(w http.ResponseWriter, r *http.Request, next http.
 	level := accessLevelFor(u.Role, mailOnly)
 	if mailOnly {
 		if !mailOnlyPathAllowed(r.URL.Path) {
-			a.denyAccess(w, r, "/os/vayuos/mail/inbox")
+			a.denyAccess(w, r, "/os/vayumail/inbox")
 			return
 		}
 	} else if level < osPathMinLevel(r.URL.Path) {
@@ -348,7 +348,7 @@ func mailOnlyPathAllowed(path string) bool {
 	switch {
 	case path == "/os/profile" || strings.HasPrefix(path, "/os/profile/"),
 		path == "/os/logout",
-		strings.HasPrefix(path, "/os/vayuos/mail"),
+		strings.HasPrefix(path, "/os/vayumail"),
 		strings.HasPrefix(path, "/os/static"),
 		strings.HasPrefix(path, "/os/api/vayuos"):
 		return true

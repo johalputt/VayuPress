@@ -447,6 +447,28 @@ func (a *App) handleWKD(w http.ResponseWriter, r *http.Request) {
 
 // ── Panel pages ──────────────────────────────────────────────────────────────
 
+// redirectLegacyVayuOS maps the pre-2.8 /os/vayuos/* URLs onto the clean
+// /os/vayumail/* namespace. 308 preserves the method so old POST endpoints
+// (send, draft, account actions) keep working through the redirect too.
+func redirectLegacyVayuOS(w http.ResponseWriter, r *http.Request) {
+	p := r.URL.Path
+	var next string
+	switch {
+	case p == "/os/vayuos" || p == "/os/vayuos/":
+		next = "/os/vayumail"
+	case p == "/os/vayuos/mail" || p == "/os/vayuos/mail/":
+		next = "/os/vayumail/dns"
+	case strings.HasPrefix(p, "/os/vayuos/mail/"):
+		next = "/os/vayumail/" + strings.TrimPrefix(p, "/os/vayuos/mail/")
+	default:
+		next = "/os/vayumail/" + strings.TrimPrefix(p, "/os/vayuos/")
+	}
+	if q := r.URL.RawQuery; q != "" {
+		next += "?" + q
+	}
+	http.Redirect(w, r, next, http.StatusPermanentRedirect)
+}
+
 func (a *App) handleVayuOSDashboard(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
@@ -466,9 +488,9 @@ func (a *App) handleVayuOSDashboard(w http.ResponseWriter, r *http.Request) {
 	infraCards, healthCard := "", ""
 	if admin {
 		infraCards = `
-  <div class="card"><div class="card-title">Privacy (VayuPGP)</div><p class="muted">End-to-end PGP, keys encrypted at rest, WKD published.</p><a class="btn" href="/os/vayuos/pgp">Manage keys</a></div>
-  <div class="card"><div class="card-title">Sovereignty (VayuMail)</div><p class="muted">DKIM-signed outbound mail, direct-to-MX, DNS health.</p><a class="btn" href="/os/vayuos/mail">Mail &amp; DNS</a></div>
-  <div class="card"><div class="card-title">Security updates</div><p class="muted">Track upstream PGP/crypto security releases.</p><a class="btn" href="/os/vayuos/security">Updates</a></div>`
+  <div class="card"><div class="card-title">Privacy (VayuPGP)</div><p class="muted">End-to-end PGP, keys encrypted at rest, WKD published.</p><a class="btn" href="/os/vayumail/pgp">Manage keys</a></div>
+  <div class="card"><div class="card-title">Sovereignty (VayuMail)</div><p class="muted">DKIM-signed outbound mail, direct-to-MX, DNS health.</p><a class="btn" href="/os/vayumail/dns">Mail &amp; DNS</a></div>
+  <div class="card"><div class="card-title">Security updates</div><p class="muted">Track upstream PGP/crypto security releases.</p><a class="btn" href="/os/vayumail/security">Updates</a></div>`
 		healthCard = `
 <div class="card"><div class="card-title">Subsystem health</div>
 <div class="table-wrap"><table class="table"><thead><tr><th>Component</th><th>Status</th><th>Detail</th></tr></thead><tbody>` + rows.String() + `</tbody></table></div></div>`
@@ -476,9 +498,9 @@ func (a *App) handleVayuOSDashboard(w http.ResponseWriter, r *http.Request) {
 	body := `<div class="page-header"><h1>VayuMail</h1>
 <span class="muted text-sm">Your mailboxes — read, compose and connect mail apps</span></div>` + vayuosNav("overview", admin) + `
 <div class="grid grid-3">
-  <div class="card"><div class="card-title">Inbox</div><p class="muted">Read mail received into your mailboxes (Maildir).</p><a class="btn" href="/os/vayuos/mail/inbox">Open inbox</a></div>
-  <div class="card"><div class="card-title">Sent</div><p class="muted">Outbound delivery queue with per-message status.</p><a class="btn" href="/os/vayuos/mail/sent">View sent</a></div>
-  <div class="card"><div class="card-title">Connect a mail app</div><p class="muted">IMAP/POP3/SMTP settings for the Gmail app, Apple Mail and more.</p><a class="btn" href="/os/vayuos/mail/connect">Connect</a></div>` + infraCards + `
+  <div class="card"><div class="card-title">Inbox</div><p class="muted">Read mail received into your mailboxes (Maildir).</p><a class="btn" href="/os/vayumail/inbox">Open inbox</a></div>
+  <div class="card"><div class="card-title">Sent</div><p class="muted">Outbound delivery queue with per-message status.</p><a class="btn" href="/os/vayumail/sent">View sent</a></div>
+  <div class="card"><div class="card-title">Connect a mail app</div><p class="muted">IMAP/POP3/SMTP settings for the Gmail app, Apple Mail and more.</p><a class="btn" href="/os/vayumail/connect">Connect</a></div>` + infraCards + `
 </div>` + healthCard
 	writeOSHTML(w, adminOSLayout(nonce, "VayuMail", "vayuos", cfg, htmpl.HTML(body)))
 }
@@ -489,7 +511,7 @@ func (a *App) handleVayuOSPGP(w http.ResponseWriter, r *http.Request) {
 	// PGP key material is administrator-only — the four non-admin roles never
 	// see it (redirected to their inbox).
 	if !a.isAdminRequest(r) {
-		a.denyAccess(w, r, "/os/vayuos/mail/inbox")
+		a.denyAccess(w, r, "/os/vayumail/inbox")
 		return
 	}
 	keys, _ := a.vayuPGP.ListKeys()
@@ -520,7 +542,7 @@ func (a *App) handleVayuOSMail(w http.ResponseWriter, r *http.Request) {
 	// The DKIM/SPF/DMARC records, live DNS health and deliverability self-check
 	// are infrastructure detail — administrator-only.
 	if !a.isAdminRequest(r) {
-		a.denyAccess(w, r, "/os/vayuos/mail/inbox")
+		a.denyAccess(w, r, "/os/vayumail/inbox")
 		return
 	}
 	mc := a.vayuMail.Config()
@@ -573,7 +595,7 @@ func (a *App) handleVayuOSSecurity(w http.ResponseWriter, r *http.Request) {
 	cfg := a.getOSSettings(r.Context())
 	// The dependency security-update watcher is administrator-only.
 	if !a.isAdminRequest(r) {
-		a.denyAccess(w, r, "/os/vayuos/mail/inbox")
+		a.denyAccess(w, r, "/os/vayumail/inbox")
 		return
 	}
 	// Prefer the most recent live report (e.g. after a "Check now"); otherwise do
@@ -675,15 +697,15 @@ func vayuosNav(active string, admin bool) string {
 		adminOnly        bool
 	}
 	items := []navTab{
-		{"overview", "Overview", "/os/vayuos", false},
-		{"compose", "Compose", "/os/vayuos/mail/compose", false},
-		{"mailbox", "Mailbox", "/os/vayuos/mail/inbox", false},
-		{"accounts", "Accounts", "/os/vayuos/mail/accounts", true},
-		{"connect", "Connect", "/os/vayuos/mail/connect", false},
-		{"outbox", "Outbox", "/os/vayuos/mail/sent", false},
-		{"pgp", "PGP Keys", "/os/vayuos/pgp", true},
-		{"mail", "DNS", "/os/vayuos/mail", true},
-		{"security", "Security", "/os/vayuos/security", true},
+		{"overview", "Overview", "/os/vayumail", false},
+		{"compose", "Compose", "/os/vayumail/compose", false},
+		{"mailbox", "Mailbox", "/os/vayumail/inbox", false},
+		{"accounts", "Accounts", "/os/vayumail/accounts", true},
+		{"connect", "Connect", "/os/vayumail/connect", false},
+		{"outbox", "Outbox", "/os/vayumail/sent", false},
+		{"pgp", "PGP Keys", "/os/vayumail/pgp", true},
+		{"mail", "DNS", "/os/vayumail/dns", true},
+		{"security", "Security", "/os/vayumail/security", true},
 	}
 	var sb strings.Builder
 	sb.WriteString(`<div class="vmtabs">`)
@@ -716,7 +738,7 @@ func folderTabs(user, active string) string {
 		if strings.EqualFold(f, active) {
 			cls = "tab tab--active"
 		}
-		href := "/os/vayuos/mail/inbox?user=" + qparam(user) + "&folder=" + qparam(f)
+		href := "/os/vayumail/inbox?user=" + qparam(user) + "&folder=" + qparam(f)
 		sb.WriteString(`<a class="` + cls + `" href="` + href + `">` + f + `</a>`)
 	}
 	sb.WriteString(`</div>`)
@@ -763,11 +785,11 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 		}
 		body.WriteString(`<div class="card"><div class="card-title">Mailboxes</div><div class="table-wrap"><table class="table"><thead><tr><th>Mailbox</th><th>Inbox messages</th><th>Unseen</th></tr></thead><tbody>`)
 		if len(boxes) == 0 {
-			body.WriteString(`<tr><td colspan="3" class="muted">No mailboxes yet. Create one under <a href="/os/vayuos/mail/accounts">Accounts</a>, or one is provisioned when a CMS account is created.</td></tr>`)
+			body.WriteString(`<tr><td colspan="3" class="muted">No mailboxes yet. Create one under <a href="/os/vayumail/accounts">Accounts</a>, or one is provisioned when a CMS account is created.</td></tr>`)
 		}
 		for _, b := range boxes {
 			addr := b.Username + "@" + domain
-			body.WriteString(`<tr><td><a href="/os/vayuos/mail/inbox?user=` + qparam(b.Username) + `">` + html.EscapeString(addr) + `</a></td><td>` + itoaSafe(b.Total) + `</td><td>` + itoaSafe(b.Unseen) + `</td></tr>`)
+			body.WriteString(`<tr><td><a href="/os/vayumail/inbox?user=` + qparam(b.Username) + `">` + html.EscapeString(addr) + `</a></td><td>` + itoaSafe(b.Total) + `</td><td>` + itoaSafe(b.Unseen) + `</td></tr>`)
 		}
 		body.WriteString(`</tbody></table></div></div>`)
 		writeOSHTML(w, adminOSLayout(nonce, "Mailbox", "vayuos", cfg, htmpl.HTML(body.String())))
@@ -780,7 +802,7 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 		writeOSHTML(w, adminOSLayout(nonce, "Mailbox", "vayuos", cfg, htmpl.HTML(body.String())))
 		return
 	}
-	body.WriteString(`<div class="card"><div class="card-title">` + html.EscapeString(user+"@"+domain) + ` · <a href="/os/vayuos/mail/inbox">all mailboxes</a></div>`)
+	body.WriteString(`<div class="card"><div class="card-title">` + html.EscapeString(user+"@"+domain) + ` · <a href="/os/vayumail/inbox">all mailboxes</a></div>`)
 	// Storage usage bar: how much of the mailbox quota is in use (0 = unlimited).
 	// The fill width/level is applied by admin-os-mail.js from data-* attributes
 	// (CSSOM), since the strict admin CSP (style-src 'self') blocks inline styles.
@@ -810,7 +832,7 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 			body.WriteString(`<div class="vm-quota text-sm muted">Storage used: ` + html.EscapeString(humanBytes(used)) + ` · quota: unlimited</div>`)
 		}
 	}
-	body.WriteString(`<form class="vm-search" method="get" action="/os/vayuos/mail/search">
+	body.WriteString(`<form class="vm-search" method="get" action="/os/vayumail/search">
   <input type="hidden" name="user" value="` + html.EscapeString(user) + `">
   <input class="input" type="search" name="q" placeholder="Search mail (from, subject, body)…" aria-label="Search mail">
   <button class="btn" type="submit">Search</button>
@@ -854,9 +876,9 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 			who = "→ " + m.To
 		}
 		// Drafts reopen in the composer; everything else opens the reader view.
-		link := "/os/vayuos/mail/message?user=" + qparam(user) + "&folder=" + qparam(folder) + "&id=" + qparam(m.ID)
+		link := "/os/vayumail/message?user=" + qparam(user) + "&folder=" + qparam(folder) + "&id=" + qparam(m.ID)
 		if isDrafts {
-			link = "/os/vayuos/mail/compose?draft=1&user=" + qparam(user) + "&id=" + qparam(m.ID)
+			link = "/os/vayumail/compose?draft=1&user=" + qparam(user) + "&id=" + qparam(m.ID)
 		}
 		seen := ""
 		if !m.Seen && !strings.EqualFold(folder, "Sent") && !isDrafts {
@@ -899,12 +921,12 @@ func (a *App) handleVayuOSSearch(w http.ResponseWriter, r *http.Request) {
 	body.WriteString(`<div class="page-header"><h1>Search mail</h1><span class="muted text-sm">` + html.EscapeString(user+"@"+a.cfgDomain()) + `</span></div>`)
 	body.WriteString(vayuosNav("mailbox", a.isAdminRequest(r)))
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled || user == "" {
-		body.WriteString(`<div class="empty-state">VayuMail is inactive or no mailbox selected. <a href="/os/vayuos/mail/inbox">Back to Mailbox</a></div>`)
+		body.WriteString(`<div class="empty-state">VayuMail is inactive or no mailbox selected. <a href="/os/vayumail/inbox">Back to Mailbox</a></div>`)
 		writeOSHTML(w, adminOSLayout(nonce, "Search mail", "vayuos", cfg, htmpl.HTML(body.String())))
 		return
 	}
-	body.WriteString(`<div class="card"><div class="card-title"><a href="/os/vayuos/mail/inbox?user=` + qparam(user) + `">← ` + html.EscapeString(user+"@"+a.cfgDomain()) + `</a></div>`)
-	body.WriteString(`<form class="vm-search" method="get" action="/os/vayuos/mail/search">
+	body.WriteString(`<div class="card"><div class="card-title"><a href="/os/vayumail/inbox?user=` + qparam(user) + `">← ` + html.EscapeString(user+"@"+a.cfgDomain()) + `</a></div>`)
+	body.WriteString(`<form class="vm-search" method="get" action="/os/vayumail/search">
   <input type="hidden" name="user" value="` + html.EscapeString(user) + `">
   <input class="input" type="search" name="q" value="` + html.EscapeString(q) + `" placeholder="Search mail…" aria-label="Search mail">
   <button class="btn btn--primary" type="submit">Search</button>
@@ -920,7 +942,7 @@ func (a *App) handleVayuOSSearch(w http.ResponseWriter, r *http.Request) {
 			if subj == "" {
 				subj = "(no subject)"
 			}
-			link := "/os/vayuos/mail/message?user=" + qparam(user) + "&folder=" + qparam(m.Folder) + "&id=" + qparam(m.ID)
+			link := "/os/vayumail/message?user=" + qparam(user) + "&folder=" + qparam(m.Folder) + "&id=" + qparam(m.ID)
 			body.WriteString(`<tr><td><span class="badge">` + html.EscapeString(m.Folder) + `</span></td><td class="text-sm">` + html.EscapeString(m.From) + `</td><td><a href="` + link + `">` + html.EscapeString(subj) + `</a></td><td class="muted text-sm">` + m.Date.Format("2006-01-02 15:04") + `</td></tr>`)
 		}
 		body.WriteString(`</tbody></table></div>`)
@@ -947,13 +969,13 @@ func (a *App) handleVayuOSMessage(w http.ResponseWriter, r *http.Request) {
 	body.WriteString(`<div class="page-header"><h1>Message</h1><span class="muted text-sm">` + html.EscapeString(user+"@"+a.cfgDomain()) + ` · ` + html.EscapeString(folder) + `</span></div>`)
 	body.WriteString(vayuosNav("mailbox", a.isAdminRequest(r)))
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled || user == "" || id == "" {
-		body.WriteString(`<div class="empty-state">Message not available. <a href="/os/vayuos/mail/inbox">Back to Mailbox</a></div>`)
+		body.WriteString(`<div class="empty-state">Message not available. <a href="/os/vayumail/inbox">Back to Mailbox</a></div>`)
 		writeOSHTML(w, adminOSLayout(nonce, "Message", "vayuos", cfg, htmpl.HTML(body.String())))
 		return
 	}
 	raw, err := a.vayuMail.ReadFolderMessage(user, folder, id)
 	if err != nil {
-		body.WriteString(`<div class="empty-state">Could not read message: ` + html.EscapeString(err.Error()) + ` <a href="/os/vayuos/mail/inbox?user=` + qparam(user) + `">Back</a></div>`)
+		body.WriteString(`<div class="empty-state">Could not read message: ` + html.EscapeString(err.Error()) + ` <a href="/os/vayumail/inbox?user=` + qparam(user) + `">Back</a></div>`)
 		writeOSHTML(w, adminOSLayout(nonce, "Message", "vayuos", cfg, htmpl.HTML(body.String())))
 		return
 	}
@@ -965,11 +987,11 @@ func (a *App) handleVayuOSMessage(w http.ResponseWriter, r *http.Request) {
 			id = nid
 		}
 	}
-	back := "/os/vayuos/mail/inbox?user=" + qparam(user) + "&folder=" + qparam(folder)
+	back := "/os/vayumail/inbox?user=" + qparam(user) + "&folder=" + qparam(folder)
 	// Reply / Forward open the composer pre-filled from this message (server-side).
 	q := "user=" + qparam(user) + "&folder=" + qparam(folder) + "&id=" + qparam(id)
-	replyLink := "/os/vayuos/mail/compose?reply=1&" + q
-	forwardLink := "/os/vayuos/mail/compose?forward=1&" + q
+	replyLink := "/os/vayumail/compose?reply=1&" + q
+	forwardLink := "/os/vayumail/compose?forward=1&" + q
 	// Action buttons (POST via admin-os-mail.js, CSRF-protected).
 	actions := `<div class="vm-actions" data-mail-actions data-user="` + html.EscapeString(user) + `" data-folder="` + html.EscapeString(folder) + `" data-id="` + html.EscapeString(id) + `">`
 	actions += `<a class="btn btn--primary" href="` + replyLink + `">Reply</a>`
@@ -1074,7 +1096,7 @@ func (a *App) handleVayuOSSent(w http.ResponseWriter, r *http.Request) {
 	// The outbound delivery queue is server-wide; non-admins see their own sent
 	// mail in their mailbox's Sent folder instead.
 	if !a.isAdminRequest(r) {
-		body.WriteString(`<div class="empty-state">Your sent messages are in your mailbox under <a href="/os/vayuos/mail/inbox?folder=Sent">Mailbox → Sent</a>. The server-wide delivery queue is visible to administrators only.</div>`)
+		body.WriteString(`<div class="empty-state">Your sent messages are in your mailbox under <a href="/os/vayumail/inbox?folder=Sent">Mailbox → Sent</a>. The server-wide delivery queue is visible to administrators only.</div>`)
 		writeOSHTML(w, adminOSLayout(nonce, "Sent", "vayuos", cfg, htmpl.HTML(body.String())))
 		return
 	}

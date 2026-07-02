@@ -54,16 +54,16 @@ func TestAccessLevelFor(t *testing.T) {
 func TestOSPathMinLevel(t *testing.T) {
 	cases := map[string]int{
 		// Author-level content (also covers the API action paths).
-		"/os":                   accessAuthor,
-		"/os/posts":             accessAuthor,
-		"/os/editor":            accessAuthor,
-		"/os/editor/my-post":    accessAuthor,
-		"/os/media":             accessAuthor,
-		"/os/api/media/upload":  accessAuthor,
-		"/os/api/editor/save":   accessAuthor,
-		"/os/api/posts/status":  accessAuthor,
-		"/os/profile":           accessAuthor,
-		"/os/vayuos/mail/inbox": accessAuthor,
+		"/os":                  accessAuthor,
+		"/os/posts":            accessAuthor,
+		"/os/editor":           accessAuthor,
+		"/os/editor/my-post":   accessAuthor,
+		"/os/media":            accessAuthor,
+		"/os/api/media/upload": accessAuthor,
+		"/os/api/editor/save":  accessAuthor,
+		"/os/api/posts/status": accessAuthor,
+		"/os/profile":          accessAuthor,
+		"/os/vayumail/inbox":   accessAuthor,
 		// Editor-level.
 		"/os/comments":    accessEditor,
 		"/os/pages":       accessEditor,
@@ -87,7 +87,7 @@ func TestOSPathMinLevel(t *testing.T) {
 
 func TestMailOnlyPathAllowed(t *testing.T) {
 	allowed := []string{
-		"/os/vayuos/mail/inbox", "/os/vayuos/mail/message", "/os/profile",
+		"/os/vayumail/inbox", "/os/vayumail/message", "/os/profile",
 		"/os/logout", "/os/static/css/admin-os.css", "/os/api/vayuos/health",
 	}
 	for _, p := range allowed {

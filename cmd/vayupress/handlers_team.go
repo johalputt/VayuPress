@@ -429,7 +429,7 @@ func (a *App) teamCardHTML(r *http.Request) string {
 
 	mailNote := `Set <code>DOMAIN</code> to auto-provision a sovereign VayuMail mailbox for each new account.`
 	if a.vayuMail != nil && a.vayuMail.Config().Enabled {
-		mailNote = `New accounts are auto-provisioned a sovereign VayuMail mailbox (<code>name@` + esc(a.vayuMail.Config().Domain) + `</code>) and a PGP keypair. Manage mailboxes &amp; passwords under <a href="/os/vayuos/accounts">VayuMail → Mail accounts</a>.`
+		mailNote = `New accounts are auto-provisioned a sovereign VayuMail mailbox (<code>name@` + esc(a.vayuMail.Config().Domain) + `</code>) and a PGP keypair. Manage mailboxes &amp; passwords under <a href="/os/vayumail/accounts">VayuMail → Mail accounts</a>.`
 	}
 
 	return `<div class="card mb-6">

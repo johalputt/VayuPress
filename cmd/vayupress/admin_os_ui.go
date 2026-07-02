@@ -276,24 +276,29 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		// GET pages are wrapped in CSRFTokenMiddleware so each load (re)issues the
 		// vp_csrf cookie the panel's POSTs read back; without this the token
 		// expires (1h) and Send / Save-as-draft / message actions start 403ing.
-		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayuos", a.handleVayuOSDashboard)
-		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayuos/pgp", a.handleVayuOSPGP)
-		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayuos/mail", a.handleVayuOSMail)
-		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayuos/mail/inbox", a.handleVayuOSInbox)
-		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayuos/mail/search", a.handleVayuOSSearch)
-		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayuos/mail/message", a.handleVayuOSMessage)
-		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayuos/mail/sent", a.handleVayuOSSent)
-		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayuos/mail/compose", a.handleVayuOSCompose)
-		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayuos/mail/accounts", a.handleVayuOSAccounts)
-		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayuos/mail/connect", a.handleVayuOSConnect)
-		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayuos/mail/send", a.handleVayuOSSend)
-		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayuos/mail/draft", a.handleVayuOSDraft)
-		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayuos/mail/message/action", a.handleVayuOSMessageAction)
-		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayuos/mail/accounts/create", a.handleVayuOSAccountCreate)
-		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayuos/mail/accounts/delete", a.handleVayuOSAccountDelete)
-		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayuos/mail/accounts/update", a.handleVayuOSAccountUpdate)
-		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayuos/mail/accounts/totp", a.handleVayuOSAccountTOTP)
-		pr.Get("/os/vayuos/security", a.handleVayuOSSecurity)
+		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail", a.handleVayuOSDashboard)
+		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/pgp", a.handleVayuOSPGP)
+		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/dns", a.handleVayuOSMail)
+		// Legacy /os/vayuos/* URLs (pre-2.8 layout) redirect permanently to the
+		// clean /os/vayumail/* namespace so bookmarks and muscle memory keep working.
+		pr.Get("/os/vayuos", redirectLegacyVayuOS)
+		pr.Get("/os/vayuos/*", redirectLegacyVayuOS)
+		pr.Post("/os/vayuos/*", redirectLegacyVayuOS)
+		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/inbox", a.handleVayuOSInbox)
+		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/search", a.handleVayuOSSearch)
+		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/message", a.handleVayuOSMessage)
+		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/sent", a.handleVayuOSSent)
+		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/compose", a.handleVayuOSCompose)
+		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/accounts", a.handleVayuOSAccounts)
+		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/connect", a.handleVayuOSConnect)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/send", a.handleVayuOSSend)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/draft", a.handleVayuOSDraft)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/message/action", a.handleVayuOSMessageAction)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/accounts/create", a.handleVayuOSAccountCreate)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/accounts/delete", a.handleVayuOSAccountDelete)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/accounts/update", a.handleVayuOSAccountUpdate)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/accounts/totp", a.handleVayuOSAccountTOTP)
+		pr.Get("/os/vayumail/security", a.handleVayuOSSecurity)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/vayuos/security/check", a.handleVayuOSSecurityCheck)
 		pr.Get("/os/api/vayuos/health", a.handleVayuOSHealthJSON)
 		pr.Get("/os/settings", a.handleOSSettings)
@@ -474,7 +479,7 @@ func osSidebarNav(active string, s *osSettings) string {
 	}
 	if mailOnly {
 		return `<div class="sidebar-section-label">Mail</div>` +
-			navItem("/os/vayuos/mail/inbox", "Mailbox", "vayuos", active, iconSecurity) +
+			navItem("/os/vayumail/inbox", "Mailbox", "vayuos", active, iconSecurity) +
 			navItem("/os/profile", "My Profile", "profile", active, iconMembers)
 	}
 
@@ -525,7 +530,7 @@ func osSidebarNav(active string, s *osSettings) string {
 		gate(navItem("/os/analytics", "Analytics", "analytics", active, iconAnalytics), "/os/analytics"),
 		gate(navItem("/os/theme", "Theme Studio", "theme", active, iconTheme), "/os/theme"),
 		gate(navItem("/os/theme/store", "Theme Store", "theme-store", active, iconThemeStore), "/os/theme/store"),
-		navItem("/os/vayuos", "VayuMail", "vayuos", active, iconSecurity),
+		navItem("/os/vayumail", "VayuMail", "vayuos", active, iconSecurity),
 	)
 	section("System",
 		gate(navItem("/os/monitoring", "Monitoring", "monitoring", active, iconMonitoring), "/os/monitoring"),

@@ -50,10 +50,10 @@
       var f = composeFields();
       if (!f.to) { if (cStatus) cStatus.textContent = 'Add at least one recipient.'; return; }
       if (cStatus) cStatus.textContent = 'Sending…';
-      postJSON('/os/vayuos/mail/send', f).then(function (res) {
+      postJSON('/os/vayumail/send', f).then(function (res) {
         if (res.ok) {
           if (cStatus) cStatus.textContent = 'Queued for delivery ✓';
-          setTimeout(function () { window.location.href = '/os/vayuos/mail/sent'; }, 700);
+          setTimeout(function () { window.location.href = '/os/vayumail/sent'; }, 700);
         } else {
           if (cStatus) cStatus.textContent = 'Failed: ' + errText(res);
         }
@@ -64,10 +64,10 @@
       draftBtn.addEventListener('click', function () {
         var f = composeFields();
         if (cStatus) cStatus.textContent = 'Saving draft…';
-        postJSON('/os/vayuos/mail/draft', f).then(function (res) {
+        postJSON('/os/vayumail/draft', f).then(function (res) {
           if (res.ok) {
             if (cStatus) cStatus.textContent = 'Saved to Drafts ✓';
-            setTimeout(function () { window.location.href = '/os/vayuos/mail/inbox?user=' + encodeURIComponent((f.from.match(/[^<@\s]+(?=@)/) || [''])[0]) + '&folder=Drafts'; }, 700);
+            setTimeout(function () { window.location.href = '/os/vayumail/inbox?user=' + encodeURIComponent((f.from.match(/[^<@\s]+(?=@)/) || [''])[0]) + '&folder=Drafts'; }, 700);
           } else if (cStatus) {
             cStatus.textContent = 'Draft failed: ' + errText(res);
           }
@@ -86,7 +86,7 @@
       var pass = val(acctForm, '[data-a-pass]');
       if (!local || pass.length < 8) { if (aStatus) aStatus.textContent = 'Address and an 8+ character password are required.'; return; }
       if (aStatus) aStatus.textContent = 'Creating…';
-      postJSON('/os/vayuos/mail/accounts/create', {
+      postJSON('/os/vayumail/accounts/create', {
         local: local, name: val(acctForm, '[data-a-name]'), pass: pass,
         role: val(acctForm, '[data-a-role]'),
         quota_mb: parseFloat(val(acctForm, '[data-a-quota]')) || 0,
@@ -101,7 +101,7 @@
   document.querySelectorAll('[data-acct-role]').forEach(function (sel) {
     sel.addEventListener('change', function () {
       var email = sel.getAttribute('data-acct-role');
-      postJSON('/os/vayuos/mail/accounts/update', { email: email, role: sel.value }).then(function (res) {
+      postJSON('/os/vayumail/accounts/update', { email: email, role: sel.value }).then(function (res) {
         if (!res.ok) window.alert('Role update failed: ' + ((res.body && res.body.message) || res.status));
       });
     });
@@ -122,7 +122,7 @@
       var mb = input ? (parseFloat(input.value) || 0) : 0;
       if (mb < 0) mb = 0;
       btn.disabled = true;
-      postJSON('/os/vayuos/mail/accounts/update', { email: email, quota_mb: mb }).then(function (res) {
+      postJSON('/os/vayumail/accounts/update', { email: email, quota_mb: mb }).then(function (res) {
         btn.disabled = false;
         if (res.ok) { btn.textContent = 'Saved ✓'; setTimeout(function () { btn.textContent = 'Save'; }, 1500); }
         else window.alert('Quota update failed: ' + ((res.body && res.body.message) || res.status));
@@ -135,7 +135,7 @@
     btn.addEventListener('click', function () {
       var email = btn.getAttribute('data-acct-delete');
       if (!window.confirm('Delete mail account ' + email + '? This cannot be undone.')) return;
-      postJSON('/os/vayuos/mail/accounts/delete', { email: email }).then(function (res) {
+      postJSON('/os/vayumail/accounts/delete', { email: email }).then(function (res) {
         if (res.ok) window.location.reload();
         else window.alert('Delete failed: ' + ((res.body && res.body.message) || res.status));
       });
@@ -149,7 +149,7 @@
       var pass = window.prompt('New password for ' + email + ' (min 8 characters):');
       if (pass === null) return;
       if (pass.length < 8) { window.alert('Password must be at least 8 characters.'); return; }
-      postJSON('/os/vayuos/mail/accounts/update', { email: email, pass: pass }).then(function (res) {
+      postJSON('/os/vayumail/accounts/update', { email: email, pass: pass }).then(function (res) {
         if (res.ok) window.alert('Password updated for ' + email);
         else window.alert('Update failed: ' + ((res.body && res.body.message) || res.status));
       });
@@ -163,7 +163,7 @@
       var active = btn.getAttribute('data-active') === 'true';
       var verb = active ? 'Enable' : 'Disable';
       if (!window.confirm(verb + ' mail account ' + email + '?')) return;
-      postJSON('/os/vayuos/mail/accounts/update', { email: email, active: active }).then(function (res) {
+      postJSON('/os/vayumail/accounts/update', { email: email, active: active }).then(function (res) {
         if (res.ok) window.location.reload();
         else window.alert('Update failed: ' + ((res.body && res.body.message) || res.status));
       });
@@ -175,7 +175,7 @@
   document.querySelectorAll('[data-acct-2fa-enable]').forEach(function (btn) {
     btn.addEventListener('click', function () {
       var email = btn.getAttribute('data-acct-2fa-enable');
-      postJSON('/os/vayuos/mail/accounts/totp', { email: email, action: 'begin' }).then(function (res) {
+      postJSON('/os/vayumail/accounts/totp', { email: email, action: 'begin' }).then(function (res) {
         if (!res.ok || !res.body || !res.body.secret) {
           window.alert('Could not start 2FA setup: ' + errText(res));
           return;
@@ -189,7 +189,7 @@
         );
         var code = window.prompt('Enter the current 6-digit code from your authenticator for ' + email + ':');
         if (code === null) return;
-        postJSON('/os/vayuos/mail/accounts/totp', { email: email, action: 'verify', code: (code || '').trim() }).then(function (vr) {
+        postJSON('/os/vayumail/accounts/totp', { email: email, action: 'verify', code: (code || '').trim() }).then(function (vr) {
           if (vr.ok) { window.alert('Two-factor authentication is now ON for ' + email); window.location.reload(); }
           else window.alert('Verification failed: ' + errText(vr));
         });
@@ -202,7 +202,7 @@
     btn.addEventListener('click', function () {
       var email = btn.getAttribute('data-acct-2fa-disable');
       if (!window.confirm('Turn OFF two-factor authentication for ' + email + '?')) return;
-      postJSON('/os/vayuos/mail/accounts/totp', { email: email, action: 'disable' }).then(function (res) {
+      postJSON('/os/vayumail/accounts/totp', { email: email, action: 'disable' }).then(function (res) {
         if (res.ok) window.location.reload();
         else window.alert('Update failed: ' + errText(res));
       });
@@ -215,12 +215,12 @@
     var user = actions.getAttribute('data-user');
     var folder = actions.getAttribute('data-folder');
     var id = actions.getAttribute('data-id');
-    var backFolder = function (f) { return '/os/vayuos/mail/inbox?user=' + encodeURIComponent(user) + '&folder=' + encodeURIComponent(f); };
+    var backFolder = function (f) { return '/os/vayumail/inbox?user=' + encodeURIComponent(user) + '&folder=' + encodeURIComponent(f); };
 
     actions.querySelectorAll('[data-mail-move]').forEach(function (btn) {
       btn.addEventListener('click', function () {
         var target = btn.getAttribute('data-mail-move');
-        postJSON('/os/vayuos/mail/message/action', { user: user, id: id, folder: folder, to: target }).then(function (res) {
+        postJSON('/os/vayumail/message/action', { user: user, id: id, folder: folder, to: target }).then(function (res) {
           if (res.ok) window.location.href = backFolder(folder);
           else window.alert('Move failed: ' + ((res.body && res.body.message) || res.status));
         });
@@ -230,7 +230,7 @@
     actions.querySelectorAll('[data-mail-mark]').forEach(function (btn) {
       btn.addEventListener('click', function () {
         var mark = btn.getAttribute('data-mail-mark');
-        postJSON('/os/vayuos/mail/message/action', { user: user, id: id, folder: folder, mark: mark }).then(function (res) {
+        postJSON('/os/vayumail/message/action', { user: user, id: id, folder: folder, mark: mark }).then(function (res) {
           if (res.ok) window.location.href = backFolder(folder);
           else window.alert('Mark failed: ' + ((res.body && res.body.message) || res.status));
         });
@@ -240,7 +240,7 @@
     actions.querySelectorAll('[data-mail-pin]').forEach(function (btn) {
       btn.addEventListener('click', function () {
         var pin = btn.getAttribute('data-mail-pin') === '1';
-        postJSON('/os/vayuos/mail/message/action', { user: user, id: id, folder: folder, pin: pin }).then(function (res) {
+        postJSON('/os/vayumail/message/action', { user: user, id: id, folder: folder, pin: pin }).then(function (res) {
           if (res.ok) window.location.reload();
           else window.alert('Pin failed: ' + ((res.body && res.body.message) || res.status));
         });
@@ -252,7 +252,7 @@
       moveSel.addEventListener('change', function () {
         var target = moveSel.value;
         if (!target) return;
-        postJSON('/os/vayuos/mail/message/action', { user: user, id: id, folder: folder, to: target }).then(function (res) {
+        postJSON('/os/vayumail/message/action', { user: user, id: id, folder: folder, to: target }).then(function (res) {
           if (res.ok) window.location.href = backFolder(folder);
           else { moveSel.value = ''; window.alert('Move failed: ' + ((res.body && res.body.message) || res.status)); }
         });
@@ -263,7 +263,7 @@
     if (del) {
       del.addEventListener('click', function () {
         if (!window.confirm('Permanently delete this message?')) return;
-        postJSON('/os/vayuos/mail/message/action', { user: user, id: id, folder: folder, delete: true }).then(function (res) {
+        postJSON('/os/vayumail/message/action', { user: user, id: id, folder: folder, delete: true }).then(function (res) {
           if (res.ok) window.location.href = backFolder(folder);
           else window.alert('Delete failed: ' + ((res.body && res.body.message) || res.status));
         });
@@ -273,7 +273,7 @@
   // ── Mailbox list: per-row read/unread toggle ─────────────────────────────────
   document.querySelectorAll('[data-mail-mark-row]').forEach(function (btn) {
     btn.addEventListener('click', function () {
-      postJSON('/os/vayuos/mail/message/action', {
+      postJSON('/os/vayumail/message/action', {
         user: btn.getAttribute('data-user'),
         folder: btn.getAttribute('data-folder'),
         id: btn.getAttribute('data-id'),
@@ -288,7 +288,7 @@
   // ── Mailbox list: per-row pin toggle ─────────────────────────────────────────
   document.querySelectorAll('[data-mail-pin-row]').forEach(function (btn) {
     btn.addEventListener('click', function () {
-      postJSON('/os/vayuos/mail/message/action', {
+      postJSON('/os/vayumail/message/action', {
         user: btn.getAttribute('data-user'),
         folder: btn.getAttribute('data-folder'),
         id: btn.getAttribute('data-id'),
@@ -330,7 +330,7 @@
       if (!ids.length) return;
       if (confirmMsg && !window.confirm(confirmMsg.replace('{n}', ids.length))) return;
       payload.user = bUser; payload.folder = bFolder; payload.ids = ids;
-      postJSON('/os/vayuos/mail/message/action', payload).then(function (res) {
+      postJSON('/os/vayumail/message/action', payload).then(function (res) {
         if (res.ok) window.location.reload();
         else window.alert('Action failed: ' + ((res.body && res.body.message) || res.status));
       });

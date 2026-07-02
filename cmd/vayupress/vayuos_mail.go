@@ -441,7 +441,7 @@ func (a *App) handleVayuOSAccounts(w http.ResponseWriter, r *http.Request) {
 	body.WriteString(`<div class="page-header"><h1>Mail accounts</h1><span class="muted text-sm">Admin-managed email IDs &amp; passwords (SMTP/IMAP login)</span></div>`)
 	body.WriteString(vayuosNav("accounts", a.isAdminRequest(r)))
 	if !a.isAdminRequest(r) {
-		body.WriteString(`<div class="empty-state">Mail-account management is available to administrators only. Your own mailbox is under <a href="/os/vayuos/mail/inbox">Mailbox</a>.</div>`)
+		body.WriteString(`<div class="empty-state">Mail-account management is available to administrators only. Your own mailbox is under <a href="/os/vayumail/inbox">Mailbox</a>.</div>`)
 		writeOSHTML(w, adminOSLayout(nonce, "Mail accounts", "vayuos", cfg, htmpl.HTML(body.String())))
 		return
 	}
@@ -767,7 +767,7 @@ func (a *App) handleVayuOSConnect(w http.ResponseWriter, r *http.Request) {
 	body.WriteString(`<tr><th>Incoming · POP3</th><td class="mono text-sm">` + hHost + `</td><td>port ` + pop3sPort + ` SSL · or ` + pop3Port + ` STLS</td></tr>`)
 	body.WriteString(`<tr><th>Outgoing · SMTP</th><td class="mono text-sm">` + hHost + `</td><td>port ` + subPort + ` · STARTTLS · authentication required</td></tr>`)
 	body.WriteString(`<tr><th>Username</th><td colspan="2">your full email address (e.g. <span class="mono">you@` + html.EscapeString(mc.Domain) + `</span>)</td></tr>`)
-	body.WriteString(`<tr><th>Password</th><td colspan="2">your mailbox password (set under <a href="/os/vayuos/mail/accounts">Accounts</a>)</td></tr>`)
+	body.WriteString(`<tr><th>Password</th><td colspan="2">your mailbox password (set under <a href="/os/vayumail/accounts">Accounts</a>)</td></tr>`)
 	body.WriteString(`</tbody></table></div>`)
 	body.WriteString(`<p class="muted text-sm">IMAP keeps mail in sync across all your devices; POP3 downloads to a single device. Prefer the SSL ports where your app supports them.</p></div>`)
 
@@ -789,7 +789,7 @@ func (a *App) handleVayuOSConnect(w http.ResponseWriter, r *http.Request) {
 	body.WriteString(`<p class="muted text-sm">Use the email address as the <strong>username</strong> for all three protocols; the password is that mailbox's own password.</p>`)
 	body.WriteString(`<div class="table-wrap"><table class="table"><thead><tr><th>Mailbox (username)</th><th>IMAP</th><th>POP3</th><th>SMTP (send)</th></tr></thead><tbody>`)
 	if len(emails) == 0 {
-		body.WriteString(`<tr><td colspan="4" class="muted">No active mailboxes yet. Create one under <a href="/os/vayuos/mail/accounts">Accounts</a>.</td></tr>`)
+		body.WriteString(`<tr><td colspan="4" class="muted">No active mailboxes yet. Create one under <a href="/os/vayumail/accounts">Accounts</a>.</td></tr>`)
 	}
 	for _, em := range emails {
 		e := html.EscapeString(em)
