@@ -255,12 +255,19 @@ func Extract(r io.Reader, passphrase, destDir string) error {
 		if err != nil {
 			return fmt.Errorf("backup: archive read: %w", err)
 		}
-		// Zip-Slip guard (kept inline, next to the file ops it protects): resolve
-		// the entry against the cleaned destDir and require the joined path to
-		// stay strictly inside it. Validating the *joined* result — not the raw
-		// name — defeats "..", absolute paths and crafted names alike.
-		target := filepath.Join(destDir, filepath.FromSlash(hdr.Name))
-		if target != destDir && !strings.HasPrefix(target, destDir+string(os.PathSeparator)) {
+		// Skip degenerate root entries so the containment guard below can be a
+		// single, unconditional check on the resolved path.
+		name := filepath.Clean(filepath.FromSlash(hdr.Name))
+		if name == "." || name == string(os.PathSeparator) {
+			continue
+		}
+		// Zip-Slip guard (inline, next to the file ops it protects, in the exact
+		// canonical form): the resolved path MUST live under destDir. Validating
+		// the *joined* result — not the raw name — defeats "..", absolute paths
+		// and crafted names alike.
+		destPrefix := destDir + string(os.PathSeparator)
+		target := filepath.Join(destDir, name)
+		if !strings.HasPrefix(target, destPrefix) {
 			return fmt.Errorf("backup: unsafe path %q in archive", hdr.Name)
 		}
 		switch hdr.Typeflag {
