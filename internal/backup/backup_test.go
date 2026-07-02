@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -89,6 +90,33 @@ func TestNotABackup(t *testing.T) {
 	err := Extract(bytes.NewReader([]byte("hello world, not a backup")), "pw", t.TempDir())
 	if !errors.Is(err, ErrNotBackup) {
 		t.Fatalf("want ErrNotBackup, got %v", err)
+	}
+}
+
+func TestSafeJoinRejectsTraversal(t *testing.T) {
+	dest := filepath.Clean("/srv/vayudata")
+	// Entries that must be rejected — ".." traversal escapes the destination.
+	for _, bad := range []string{
+		"../escape", "../../etc/passwd", "a/../../etc/passwd", "..",
+	} {
+		if got, ok := safeJoin(dest, bad); ok {
+			t.Errorf("safeJoin accepted traversal path %q → %q", bad, got)
+		}
+	}
+	// Legitimate entries that must be accepted. Note: filepath.Join treats an
+	// absolute-looking entry name as a relative component, so "/etc/passwd"
+	// lands safely inside dest rather than escaping — accepting it is correct.
+	for _, good := range []string{
+		"vayupress.db", "vayudata/mail/inbox.eml", "a/b/c.txt", "./x", "/etc/passwd",
+	} {
+		target, ok := safeJoin(dest, good)
+		if !ok {
+			t.Errorf("safeJoin rejected safe path %q", good)
+			continue
+		}
+		if target != dest && !strings.HasPrefix(target, dest+string(os.PathSeparator)) {
+			t.Errorf("safeJoin returned out-of-tree target %q for %q", target, good)
+		}
 	}
 }
 

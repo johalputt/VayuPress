@@ -8,6 +8,18 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [2.8.1] - 2026-07-02
+
+### Security
+
+- **Backup restore: hardened against path traversal ("Zip Slip").** The
+  encrypted-backup extractor now resolves each archive entry against the
+  destination and requires the *joined* path to stay strictly inside it
+  (`safeJoin`), instead of a string check on the raw entry name. This defeats
+  `..` traversal, absolute paths and crafted names alike, so a malicious backup
+  can never write outside the restore directory. Regression test added.
+  (Reported by CodeQL in `internal/backup/backup.go`.)
+
 ## [2.8.0] - 2026-07-02
 
 ### Added
