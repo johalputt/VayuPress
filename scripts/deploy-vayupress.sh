@@ -422,7 +422,10 @@ ProtectSystem=full
 # NoNewPrivileges. This is the only elevated capability granted.
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 AmbientCapabilities=CAP_NET_BIND_SERVICE
-ReadWritePaths=${DATA_DIR} ${LOG_DIR} ${CACHE_DIR} ${STATIC_DIR} ${BACKUP_DIR}
+# /usr/local/bin is writable so the in-app one-click updater can atomically
+# swap its own binary under ProtectSystem=full; without it every in-app
+# update is denied and fails.
+ReadWritePaths=${DATA_DIR} ${LOG_DIR} ${CACHE_DIR} ${STATIC_DIR} ${BACKUP_DIR} /usr/local/bin
 StandardOutput=append:${LOG_DIR}/vayupress.log
 StandardError=append:${LOG_DIR}/vayupress.error.log
 

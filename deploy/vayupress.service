@@ -45,8 +45,10 @@ PrivateTmp=yes
 PrivateDevices=yes
 ProtectSystem=strict
 ProtectHome=yes
-# Paths that must be writable
-ReadWritePaths=/var/lib/vayupress /var/cache/vayupress /tmp
+# Paths that must be writable. /usr/local/bin is included so the in-app
+# one-click updater can atomically swap its own binary under ProtectSystem —
+# without it the swap is denied and every in-app update fails.
+ReadWritePaths=/var/lib/vayupress /var/cache/vayupress /tmp /usr/local/bin
 NoNewPrivileges=yes
 
 # ── Capabilities ───────────────────────────────────────────────────────────

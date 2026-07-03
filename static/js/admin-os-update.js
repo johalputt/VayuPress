@@ -40,6 +40,21 @@
     });
   }
 
+  // errText pulls the human-readable message out of a response. The API returns
+  // errors as {"error":{"code,message,...}}, so the message lives at
+  // d.error.message — earlier code read d.detail/d.title, which never existed,
+  // collapsing every failure to a bare fallback. Fall back through the older
+  // shapes and finally to a caller-supplied default.
+  function errText(res, fallback) {
+    var d = (res && res.d) || {};
+    if (d.error && d.error.message) return d.error.message;
+    if (d.message) return d.message;
+    if (d.detail) return d.detail;
+    if (d.title) return d.title;
+    if (res && res.status) return fallback + ' (HTTP ' + res.status + ')';
+    return fallback;
+  }
+
   var card = document.querySelector('[data-update-card]');
   if (!card) return;
 
@@ -101,7 +116,7 @@
           return;
         }
         if (!res.ok) {
-          setMsg(msgEl, res.d.detail || res.d.title || 'Check failed', true);
+          setMsg(msgEl, errText(res, 'Check failed'), true);
           return;
         }
         var d = res.d;
@@ -158,7 +173,7 @@
         // A genuine, pre-restart failure (e.g. checksum/signature, paused mode)
         // comes back as a JSON error — show it and re-enable the buttons.
         if (res.isJSON && !res.ok) {
-          setMsg(msgEl, res.d.detail || res.d.title || 'Update failed', true);
+          setMsg(msgEl, errText(res, 'Update failed'), true);
           if (applyBtn) applyBtn.disabled = false;
           if (checkBtn) checkBtn.disabled = false;
           return;
@@ -196,7 +211,7 @@
       .then(readResponse)
       .then(function (res) {
         if (res.isJSON && !res.ok) {
-          setMsg(msgEl, res.d.detail || res.d.title || 'Rollback failed', true);
+          setMsg(msgEl, errText(res, 'Rollback failed'), true);
           if (rollbackBtn) rollbackBtn.disabled = false;
           return;
         }
@@ -261,7 +276,7 @@
         setMsg(backupMsg, 'Backup validated. Restoring and restarting…', false);
         waitForRestartThenReload(backupMsg);
       } else {
-        setMsg(backupMsg, d.detail || d.title || ('Restore failed (HTTP ' + xhr.status + ')'), true);
+        setMsg(backupMsg, errText({ d: d, status: xhr.status }, 'Restore failed'), true);
         if (importBtn) importBtn.disabled = false;
       }
     };

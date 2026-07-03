@@ -92,6 +92,31 @@ install -m 0755 "$TMP_BIN" "$BIN_PATH"
 rm -f "$TMP_BIN"
 ok "Installed new binary at $BIN_PATH"
 
+# ── 3b. Make the binary directory writable to the service ─────────────────────
+# The service runs sandboxed (ProtectSystem=full/strict), which makes the
+# binary's directory read-only unless it is in ReadWritePaths. Without that, the
+# in-app one-click updater cannot atomically swap the binary and every in-app
+# update fails. Install an idempotent drop-in that adds the binary dir to
+# ReadWritePaths, then reload systemd so the change takes effect on restart.
+# This is what makes in-app updates seamless on existing installs.
+BIN_DIR="$(dirname "$BIN_PATH")"
+DROPIN_DIR="/etc/systemd/system/${SERVICE}.service.d"
+DROPIN="${DROPIN_DIR}/10-writable-bin.conf"
+if [[ -d /etc/systemd/system ]] && command -v systemctl >/dev/null 2>&1; then
+  if [[ ! -f "$DROPIN" ]] || ! grep -q "ReadWritePaths=${BIN_DIR}" "$DROPIN" 2>/dev/null; then
+    mkdir -p "$DROPIN_DIR"
+    cat > "$DROPIN" <<DROPIN_EOF
+# Installed by update-vayupress.sh so the in-app one-click updater can swap the
+# binary under ProtectSystem. Safe and idempotent; remove to disable in-app
+# binary updates.
+[Service]
+ReadWritePaths=${BIN_DIR}
+DROPIN_EOF
+    systemctl daemon-reload 2>/dev/null || true
+    ok "Enabled in-app updates (writable ${BIN_DIR} via systemd drop-in)."
+  fi
+fi
+
 # ── 4. Refresh static assets (CSS/JS/fonts) into STATIC_DIR ───────────────────
 if [[ -d "$SRC_DIR/static" ]]; then
   info "Refreshing static assets in $STATIC_DIR..."

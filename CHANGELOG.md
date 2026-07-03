@@ -8,6 +8,21 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Fixed
+
+- **One-click update no longer fails silently.** Two problems made the in-app
+  "Update now" button appear to fail every time. (1) The panel read the error
+  message from the wrong JSON field (`detail`/`title`, which never existed), so
+  every failure collapsed to a bare "Update failed" with no reason — it now
+  reads the real `error.message`, surfacing the actual cause and its fix
+  (across check, apply, rollback and restore). (2) The sandboxed service runs
+  with `ProtectSystem=full`/`strict` and a `ReadWritePaths` that excluded the
+  binary's own directory, so the atomic self-swap into `/usr/local/bin` was
+  denied. The service unit and installer now grant the binary directory as
+  writable, and `update-vayupress.sh` installs an idempotent systemd drop-in
+  (`ReadWritePaths=<bindir>`) so existing installs get seamless in-app updates
+  after the next run — no manual terminal steps thereafter.
+
 ### Security
 
 - **Backup restore Zip-Slip guard is now inline (CodeQL).** The containment
