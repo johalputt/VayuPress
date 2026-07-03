@@ -25,9 +25,20 @@
 
 > Full notes in [`CHANGELOG.md`](CHANGELOG.md)
 
-**A business website engine, a Ghost-class editor, whole-site themes, a cleaner
-VayuMail, and encrypted backups.**
+**One command stands up your whole online presence — website + blog + PGP mail,
+plus an official mobile app — with a Ghost-class editor, whole-site themes, and
+encrypted backups.**
 
+- **📱 VayuMail Mobile (Android).** The official app —
+  [johalputt/VayuMail-Mobile](https://github.com/johalputt/VayuMail-Mobile) —
+  reads and sends your PGP-encrypted mail from your own domain. Connect it in
+  **one scan**: the admin's rotating setup QR carries a per-device app password
+  (never your real password, revocable any time), and the app is signed in to
+  IMAP & SMTP instantly.
+- **One-click stack.** Point `yourdomain.com` at a single VPS and one install
+  command gives you a business **website**, a **blog** (`blog.yourdomain.com`),
+  and a sovereign **mail server with automatic PGP** (`mail.yourdomain.com`) —
+  each with a free Let's Encrypt certificate issued and renewed automatically.
 - **Business websites (VayuOS → Website).** Serve a real website at your domain
   alongside the blog and mail: **11 elegant, modern-minimalist templates**
   (restaurant, café, shop, portfolio, agency, school, clinic, salon, gym,
@@ -1516,6 +1527,25 @@ CLI. See [docs/UPGRADING.md](docs/UPGRADING.md),
 | CPU | 4 vCPU minimum, 6 vCPU recommended |
 | Disk | 50 GB NVMe minimum, 250 GB for 1M+ posts with media |
 | Access | Root or sudo for deploy script |
+
+### Recommended hosting — a VPS with open mail ports
+
+VayuMail delivers mail **directly to recipients' servers**, so your VPS must
+allow outbound **port 25** and give you a clean, unblocked IP — otherwise mail
+silently fails or lands in spam. Most big clouds (AWS, GCP, Oracle, DigitalOcean)
+block port 25 by default, which makes them a poor fit for self-hosted mail.
+
+**We recommend [Contabo](https://contabo.com/) — the "VPS 10" tier** (≈6 vCPU /
+12 GB RAM / NVMe): all ports (25/465/587/143/993/110/995) are open with **no
+restriction**, so VayuMail gets a **high-quality IP and clean deliverability**,
+and the specs comfortably run the whole website + blog + mail + PGP stack on one
+box. After you provision it, point `yourdomain.com`, `blog.yourdomain.com` and
+`mail.yourdomain.com` at the server and run the deploy script — Let's Encrypt
+certificates for all three are issued and renewed automatically.
+
+> Whatever host you pick, confirm outbound port 25 is open and set a **PTR /
+> reverse-DNS** record for the IP to your mail hostname — both matter for
+> inbox placement. Contabo lets you set the PTR from its control panel.
 
 ---
 

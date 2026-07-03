@@ -8,6 +8,15 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Changed
+
+- **Docs & site: VayuMail Mobile + one-click-stack showcase.** The README and
+  marketing site now feature the official Android app
+  ([johalputt/VayuMail-Mobile](https://github.com/johalputt/VayuMail-Mobile)) and
+  an elegant "one command → website + blog + PGP mail + mobile app" showcase, and
+  the README recommends a VPS with open mail ports (Contabo VPS 10) for clean
+  mail deliverability.
+
 ### Fixed
 
 - **One-click update no longer fails silently.** Two problems made the in-app

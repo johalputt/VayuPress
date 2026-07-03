@@ -93,6 +93,7 @@
       <!-- desktop links -->
       <div class="hidden md:flex items-center gap-8 text-sm text-gray-400">
         <a href="#why"        class="nav-link hover:text-white transition-colors">Why</a>
+        <a href="#stack"      class="nav-link hover:text-white transition-colors">The stack</a>
         <a href="#features"   class="nav-link hover:text-white transition-colors">Features</a>
         <a href="#compare"    class="nav-link hover:text-white transition-colors">Compare</a>
         <a href="#gallery"    class="nav-link hover:text-white transition-colors">Gallery</a>
@@ -275,6 +276,80 @@
           <p class="text-sm text-gray-400 leading-relaxed">End-to-end PGP, encrypted keys at rest, and zero trackers on your readers. The only outbound calls are the ones you configure.</p>
         </div>
       </div>
+    </div>
+  </section>
+
+  <!-- ══════════════ THE STACK (one command) ══════════════ -->
+  <section id="stack" class="relative py-24 sm:py-28 lg:py-32 bg-white/[0.015] border-y border-white/[0.06] overflow-hidden">
+    <div class="glow-hero-2" aria-hidden="true"></div>
+    <div class="max-w-6xl mx-auto px-6">
+      <header class="max-w-3xl mb-14 sm:mb-16" data-reveal>
+        <p class="text-teal-400 font-mono text-xs mb-4 tracking-[0.25em] uppercase">One command · the whole stack</p>
+        <h2 class="font-display text-3xl sm:text-4xl lg:text-5xl font-bold text-white tracking-tight leading-[1.1]">
+          Your domain. A website, a blog, encrypted mail —
+          <span class="text-gray-500">and an app in your pocket.</span>
+        </h2>
+        <p class="mt-6 text-base sm:text-lg text-gray-400 leading-relaxed">
+          Point <span class="font-mono text-gray-200">yourdomain.com</span> at one VPS, run one install command, and
+          VayuPress stands up your entire online presence — a business
+          <span class="text-gray-100 font-medium">website</span>, a <span class="text-gray-100 font-medium">blog</span>,
+          and a sovereign <span class="text-gray-100 font-medium">mail server with automatic PGP</span> — each on its own
+          subdomain, each with a free Let's Encrypt certificate issued and renewed for you. Then read and send that mail
+          from the <span class="text-gray-100 font-medium">official VayuMail app</span> on Android.
+        </p>
+      </header>
+
+      <!-- Domain → three hosts -->
+      <div class="grid sm:grid-cols-3 gap-4 sm:gap-5" data-reveal>
+        <div class="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-6 flex flex-col">
+          <div class="text-2xl mb-3" aria-hidden="true">🏪</div>
+          <div class="font-mono text-xs text-teal-300 mb-1">yourdomain.com</div>
+          <h3 class="font-display text-lg font-semibold text-white mb-2">Business website</h3>
+          <p class="text-sm text-gray-400 leading-relaxed">Eleven elegant templates — restaurant, shop, studio, clinic, school, portfolio and more. Edit every word from the admin, switch designs live.</p>
+        </div>
+        <div class="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-6 flex flex-col" style="--d:60ms">
+          <div class="text-2xl mb-3" aria-hidden="true">✍️</div>
+          <div class="font-mono text-xs text-teal-300 mb-1">blog.yourdomain.com</div>
+          <h3 class="font-display text-lg font-semibold text-white mb-2">Your blog</h3>
+          <p class="text-sm text-gray-400 leading-relaxed">The full publishing engine — Ghost-class editor, whole-site themes, members and analytics. Or keep the blog at the root; it's your call, and updates never change it.</p>
+        </div>
+        <div class="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-6 flex flex-col" style="--d:120ms">
+          <div class="text-2xl mb-3" aria-hidden="true">🔐</div>
+          <div class="font-mono text-xs text-teal-300 mb-1">mail.yourdomain.com</div>
+          <h3 class="font-display text-lg font-semibold text-white mb-2">Encrypted mail</h3>
+          <p class="text-sm text-gray-400 leading-relaxed">A DKIM-signing mail server with automatic end-to-end PGP — keys generated per mailbox, messages encrypted when the recipient's key is known.</p>
+        </div>
+      </div>
+
+      <!-- Mobile app spotlight -->
+      <div data-reveal style="--d:160ms"
+           class="mt-5 rounded-2xl border border-teal-500/20 bg-gradient-to-br from-teal-500/[0.06] to-transparent p-6 sm:p-8 flex flex-col sm:flex-row sm:items-center gap-6">
+        <div class="shrink-0 grid place-items-center w-16 h-16 rounded-2xl bg-teal-500/10 border border-teal-400/20 text-3xl" aria-hidden="true">📱</div>
+        <div class="flex-1">
+          <div class="flex items-center gap-2 mb-1">
+            <h3 class="font-display text-xl font-semibold text-white">VayuMail for Android</h3>
+            <span class="text-[10px] font-mono uppercase tracking-wider text-teal-300 border border-teal-700/60 rounded px-1.5 py-0.5">Official app</span>
+          </div>
+          <p class="text-sm text-gray-400 leading-relaxed">
+            Connect a phone in one scan — the admin shows a rotating setup QR that carries a per-device app password (never your real password),
+            so the app signs in to IMAP &amp; SMTP instantly. Read, write and send PGP-encrypted mail from your own domain, on the go.
+          </p>
+        </div>
+        <div class="shrink-0 flex sm:flex-col gap-2.5">
+          <a href="https://github.com/johalputt/VayuMail-Mobile" target="_blank" rel="noopener"
+             class="inline-flex items-center justify-center gap-2 rounded-xl bg-teal-500 hover:bg-teal-400 text-gray-950 font-semibold text-sm px-4 py-2.5 transition-colors">
+            Get the app ↗
+          </a>
+          <a href="https://github.com/johalputt/VayuMail-Mobile/releases" target="_blank" rel="noopener"
+             class="inline-flex items-center justify-center gap-2 rounded-xl border border-white/15 hover:border-white/30 text-gray-200 text-sm px-4 py-2.5 transition-colors">
+            Download APK
+          </a>
+        </div>
+      </div>
+
+      <p class="mt-6 text-sm text-gray-500 leading-relaxed" data-reveal>
+        Open source, zero telemetry, all on your own name — nothing rented, nothing phoning home.
+      </p>
     </div>
   </section>
 
