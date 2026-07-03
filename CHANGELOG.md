@@ -8,6 +8,38 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Added
+
+- **Self-hosted HTMX in the binary (no CDN).** [htmx](https://htmx.org) 2.0.4
+  (0BSD) is now vendored at `static/js/htmx.min.js`, compiled into the binary via
+  the module-root `//go:embed static` → `StaticFS` and written to `STATIC_DIR` on
+  boot (`syncEmbeddedStatic`), so it ships inside the executable and survives a
+  binary-only self-update with no separate asset copy (ADR-0099). It is served
+  same-origin at `/static/js/htmx.min.js` by `handleHTMXJS` (mirroring the theme
+  scripts: `application/javascript`, long-cached, content-hash cache-buster), so
+  it satisfies the strict `script-src 'self'` CSP with **no nonce and no external
+  host**. The VayuOS admin layout loads it deferred and sets
+  `<meta name="htmx-config" content='{"includeIndicatorStyles":false}'>` so htmx
+  never injects an indicator `<style>` — `style-src 'self'` stays intact. First
+  use: the Members "Recent activity" card gains an `hx-get` Refresh button that
+  live-reloads just the feed fragment (`/os/members/activity`) with no page
+  reload and no bespoke JavaScript; without htmx the card still renders the
+  server-side feed, so it degrades gracefully. See
+  [ADR-0107](docs/adr/ADR-0107-self-hosted-htmx.md).
+
+### Verified
+
+- **WKD PGP interop (VayuPress ↔ VayuMail-Mobile).** Confirmed the Web Key
+  Directory **direct method** — `/.well-known/openpgpkey/hu/<hash>?l=<local>`,
+  with no domain path segment — is mounted on the public router. The
+  `/.well-known/openpgpkey/*` wildcard route reaches `ServeWKD`, which matches on
+  the `/hu/` path segment, so both the direct method and the advanced method
+  (`/.well-known/openpgpkey/<domain>/hu/<hash>`) resolve, along with the WKD
+  `policy` file. Added `TestWKDDirectMethodServesKey`, an end-to-end check that a
+  generated key is discoverable at the exact URL VayuMail-Mobile fetches and that
+  the served bytes parse back into the expected OpenPGP identity. No app change
+  needed on either side.
+
 ### Changed
 
 - **Docs & site: VayuMail Mobile + one-click-stack showcase.** The README and

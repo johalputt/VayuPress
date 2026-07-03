@@ -129,7 +129,13 @@ Key decisions:
 
 Vendored frontend assets (self-hosted, no CDN): DOMPurify
 (`static/js/purify.min.js`, Apache-2.0/MPL-2.0) sanitizes the Admin v2 editor
-preview; Pico CSS (`static/css/pico.min.css`, MIT) styles the public site. See
-[NOTICE](../NOTICE) for attribution. VayuPress itself is Apache-2.0 licensed.
+preview; htmx (`static/js/htmx.min.js`, 0BSD) drives hx-* progressive
+enhancement in the VayuOS admin panel; Pico CSS (`static/css/pico.min.css`, MIT)
+styles the public site. Every one is compiled into the binary via the module
+root `//go:embed static` (StaticFS), mirrored to STATIC_DIR on boot
+(`syncEmbeddedStatic`, ADR-0099), and served same-origin so the strict CSP
+(`script-src 'self'`, `style-src 'self'`) holds with no nonce and no external
+request. See [NOTICE](../NOTICE) for attribution. VayuPress itself is Apache-2.0
+licensed. See [ADR-0107](adr/ADR-0107-self-hosted-htmx.md) for the HTMX decision.
 
 No frontend framework. Public paths: HTMX + Alpine.js only.

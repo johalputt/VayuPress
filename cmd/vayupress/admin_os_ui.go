@@ -172,6 +172,8 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/media/alt", a.handleOSMediaAlt)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/media/import", a.handleMediaImport)
 		pr.Get("/os/members", a.handleOSMembers)
+		// HTMX fragment: live-refresh the Members "Recent activity" feed.
+		pr.Get("/os/members/activity", a.handleOSMembersActivityFragment)
 		// Session-friendly membership management APIs (the /api/v1/admin/* originals
 		// require an API key; VayuOS operators hold a session cookie).
 		pr.Get("/os/api/members/stats", a.handleMemberStats)
@@ -657,6 +659,9 @@ func adminOSShellHead(nonce, title, active string, settings *osSettings) string 
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>` + et + ` — ` + siteName + ` · VayuOS</title>
 <meta name="robots" content="noindex, nofollow">
+<!-- HTMX runtime config: skip the injected indicator <style> so we never need
+     style-src 'unsafe-inline' — the strict admin CSP (style-src 'self') stays intact. -->
+<meta name="htmx-config" content='{"includeIndicatorStyles":false}'>
 <link rel="stylesheet" href="/os/static/css/admin-os.css?v=` + assetVer("css/admin-os.css") + `">
 <link rel="icon" type="image/png" href="/static/favicon-light.png">
 </head>
@@ -769,6 +774,10 @@ window.vpPost=function(url,onok){fetch(url,{method:'POST',headers:{'Content-Type
 <!-- Toast container -->
 <div class="toast-container" aria-live="polite" aria-atomic="true"></div>
 
+<!-- Self-hosted HTMX (static/js/htmx.min.js) — embedded in the binary, served
+     same-origin so it satisfies script-src 'self' with no nonce and no external
+     host. Deferred so hx-* attributes are wired after the document parses. -->
+<script src="/static/js/htmx.min.js?v=` + assetVer("js/htmx.min.js") + `" defer></script>
 <!-- Bootstrap (nonce-gated, reads data-admin-theme from body) -->
 <script src="/os/static/js/purify.min.js"></script>
 <script nonce="` + nonce + `" src="/os/static/js/admin-os.js"></script>
