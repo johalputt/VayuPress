@@ -27,6 +27,19 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   server-side feed, so it degrades gracefully. See
   [ADR-0107](docs/adr/ADR-0107-self-hosted-htmx.md).
 
+### Verified
+
+- **WKD PGP interop (VayuPress ↔ VayuMail-Mobile).** Confirmed the Web Key
+  Directory **direct method** — `/.well-known/openpgpkey/hu/<hash>?l=<local>`,
+  with no domain path segment — is mounted on the public router. The
+  `/.well-known/openpgpkey/*` wildcard route reaches `ServeWKD`, which matches on
+  the `/hu/` path segment, so both the direct method and the advanced method
+  (`/.well-known/openpgpkey/<domain>/hu/<hash>`) resolve, along with the WKD
+  `policy` file. Added `TestWKDDirectMethodServesKey`, an end-to-end check that a
+  generated key is discoverable at the exact URL VayuMail-Mobile fetches and that
+  the served bytes parse back into the expected OpenPGP identity. No app change
+  needed on either side.
+
 ### Changed
 
 - **Docs & site: VayuMail Mobile + one-click-stack showcase.** The README and
