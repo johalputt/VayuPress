@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"io/fs"
 	"math"
 	"net/http"
 	"regexp"
@@ -192,6 +193,25 @@ func (a *App) handleSearchWidgetJS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
 	w.Header().Set("Cache-Control", "public, max-age=86400")
 	fmt.Fprint(w, render.SearchModalJS)
+}
+
+// handleHTMXJS serves the self-hosted HTMX library at /static/js/htmx.min.js.
+// The file is compiled into the binary via the module-root StaticFS embed and
+// mirrored to STATIC_DIR on boot by syncEmbeddedStatic (ADR-0099), so it ships
+// inside the executable and survives a binary-only self-update with no separate
+// asset copy. Serving it same-origin satisfies the strict `script-src 'self'`
+// CSP WITHOUT a nonce and WITHOUT any external host, so the admin panel can use
+// hx-* progressive enhancement while staying entirely CDN-free. Headers mirror
+// handleThemeToggleJS (long cache; the ?v= content hash busts stale copies).
+func (a *App) handleHTMXJS(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	data, err := fs.ReadFile(embeddedStaticFS, "js/htmx.min.js")
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	_, _ = w.Write(data)
 }
 
 // handleThemeGet renders the admin theme-editor page.

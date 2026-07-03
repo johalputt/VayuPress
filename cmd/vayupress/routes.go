@@ -71,6 +71,10 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	r.Get("/theme.css", a.handleThemeCSS)
 	// Public theme toggle script (same-origin → script-src 'self', no nonce).
 	r.Get("/static/js/theme-toggle.js", a.handleThemeToggleJS)
+	// Self-hosted HTMX (embedded in the binary via StaticFS, written to
+	// STATIC_DIR on boot). Same-origin → satisfies script-src 'self' with no
+	// nonce and no external host; powers hx-* progressive enhancement in VayuOS.
+	r.Get("/static/js/htmx.min.js", a.handleHTMXJS)
 	r.Get("/static/js/video-facade.js", a.handleVideoFacadeJS)
 	r.Get("/static/js/comments.js", a.handleCommentsJS)
 	r.Get("/static/js/contact.js", a.handleContactJS)

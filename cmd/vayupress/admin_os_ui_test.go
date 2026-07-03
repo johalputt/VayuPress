@@ -2,6 +2,8 @@ package main
 
 import (
 	htmpl "html/template"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,6 +26,37 @@ func TestOSLayoutCSPSafe(t *testing.T) {
 	}
 	if !strings.Contains(out, "Demo") {
 		t.Error("os layout did not render site name")
+	}
+	// Self-hosted HTMX must be wired same-origin (script-src 'self'), deferred,
+	// and configured to skip its injected indicator <style> so style-src 'self'
+	// is never violated.
+	if !strings.Contains(out, `<script src="/static/js/htmx.min.js?v=`) || !strings.Contains(out, `" defer></script>`) {
+		t.Error("os layout missing deferred same-origin HTMX script tag")
+	}
+	if !strings.Contains(out, `<meta name="htmx-config" content='{"includeIndicatorStyles":false}'>`) {
+		t.Error("os layout missing htmx-config meta (indicator styles must stay off for CSP)")
+	}
+}
+
+// TestHTMXAssetServed verifies the self-hosted HTMX library is compiled into the
+// binary (via StaticFS) and served at /static/js/htmx.min.js with a JavaScript
+// content type — same-origin, no CDN, satisfying script-src 'self'.
+func TestHTMXAssetServed(t *testing.T) {
+	a := &App{}
+	req := httptest.NewRequest(http.MethodGet, "/static/js/htmx.min.js", nil)
+	rec := httptest.NewRecorder()
+	a.handleHTMXJS(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("handleHTMXJS status = %d, want 200", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "application/javascript; charset=utf-8" {
+		t.Errorf("handleHTMXJS content-type = %q, want application/javascript", ct)
+	}
+	if !strings.Contains(rec.Body.String(), "htmx") {
+		t.Error("handleHTMXJS did not serve the HTMX library body")
+	}
+	if rec.Body.Len() < 10000 {
+		t.Errorf("handleHTMXJS body too small (%d bytes) — asset likely not embedded", rec.Body.Len())
 	}
 }
 

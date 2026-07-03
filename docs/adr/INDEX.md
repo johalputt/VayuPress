@@ -10,6 +10,7 @@
 | ADR | Title | Status | Owner | Date |
 |-----|-------|--------|-------|------|
 | [ADR-0001](ADR-0001-sqlite-first.md) | SQLite-First Data Layer | Accepted | Core | 2024-01-01 |
+| [ADR-0107](ADR-0107-self-hosted-htmx.md) | Self-Hosted HTMX in the VayuPress Binary | Accepted | VayuOS | 2026-07-03 |
 | [ADR-0106](ADR-0106-vayumail-namespace-rotating-qr.md) | VayuMail Clean Namespace, Rotating Setup QR & Device App Passwords | Accepted | Core | 2026-07-02 |
 | [ADR-0105](ADR-0105-encrypted-operator-backups.md) | Operator-Only Encrypted Backups (AES-256-GCM + Argon2id) | Accepted | Core | 2026-07-02 |
 | [ADR-0104](ADR-0104-business-websites-host-topology.md) | Business Websites & Operator-Chosen Host Topology | Accepted | Core | 2026-07-02 |

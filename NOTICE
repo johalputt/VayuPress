@@ -17,6 +17,14 @@ license. The project's Apache-2.0 license does not alter those terms.
   https://github.com/cure53/DOMPurify
   Full license text: static/js/purify.LICENSE
 
+* htmx (static/js/htmx.min.js)
+  Copyright (c) htmx contributors
+  Licensed under the Zero-Clause BSD (0BSD) License. Self-hosted, compiled into
+  the binary and served same-origin (script-src 'self') so the VayuOS admin
+  panel gets hx-* progressive enhancement with no CDN and no external requests.
+  https://github.com/bigskysoftware/htmx
+  Full license text: static/js/htmx.LICENSE
+
 * Pico CSS (static/css/pico.min.css)
   Copyright (c) Pico CSS contributors
   Licensed under the MIT License.

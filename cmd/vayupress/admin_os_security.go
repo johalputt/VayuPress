@@ -112,8 +112,15 @@ func (a *App) handleOSMembers(w http.ResponseWriter, r *http.Request) {
 </div>`
 
 	// ── Recent activity feed ──────────────────────────────────────────────────
-	activityCard := `<div class="card mb-6"><h2 class="card-title">Recent activity</h2>` +
-		activityFeedHTML(activity, stats.Currency) + `</div>`
+	// Progressively enhanced with HTMX: the Refresh button live-reloads only the
+	// feed fragment from /os/members/activity (hx-get → innerHTML swap) with no
+	// page reload and no bespoke JavaScript. Without HTMX the card still renders
+	// the server-side feed, so the page degrades gracefully.
+	activityCard := `<div class="card mb-6">
+  <h2 class="card-title">Recent activity</h2>
+  <button type="button" class="btn btn--ghost btn--sm mb-4" hx-get="/os/members/activity" hx-target="#os-activity-feed" hx-swap="innerHTML" hx-indicator="#os-activity-feed" aria-label="Refresh activity feed">↻ Refresh</button>
+  <div id="os-activity-feed">` + activityFeedHTML(activity, stats.Currency) + `</div>
+</div>`
 
 	// ── Tiers card ──────────────────────────────────────────────────────────
 	tierRows := ""
@@ -283,6 +290,25 @@ func (a *App) handleOSMembers(w http.ResponseWriter, r *http.Request) {
 		`<script nonce="` + nonce + `" src="/os/static/js/admin-os-members.js?v=` + assetVer("js/admin-os-members.js") + `"></script>`
 
 	writeOSHTML(w, adminOSLayout(nonce, "Members", "members", cfg, htmpl.HTML(body)))
+}
+
+// handleOSMembersActivityFragment returns just the recent-activity feed as an
+// HTML fragment, for the HTMX-powered Refresh button on the Members page
+// (hx-get → innerHTML swap into #os-activity-feed). It is a read-only GET, so
+// no CSRF token is required; the enclosing pr routes already require a session.
+func (a *App) handleOSMembersActivityFragment(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if a.members == nil {
+		fmt.Fprint(w, `<div class="empty-state">Memberships are not enabled on this instance.</div>`)
+		return
+	}
+	ctx := r.Context()
+	currency := "USD"
+	if stats, _ := a.members.Stats(ctx); stats != nil && stats.Currency != "" {
+		currency = stats.Currency
+	}
+	activity, _ := a.members.RecentEvents(ctx, 12)
+	fmt.Fprint(w, activityFeedHTML(activity, currency))
 }
 
 // ── Security page (TOTP) ────────────────────────────────────────────────────
