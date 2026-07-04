@@ -8,6 +8,28 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [2.9.2] — 2026-07-04
+
+### Fixed
+- **Live analytics now shows real countries on CDN-less sovereign
+  deployments** (previously every visitor read as *Unknown*). Country was only
+  ever populated from a reverse-proxy geo header (`CF-IPCountry` and friends);
+  a bare-VPS deployment with no CDN injects none, so the live map stayed empty.
+  It is not a regression — the geo code was byte-identical across releases — but
+  it made the sovereign default look broken.
+
+### Added
+- **Offline, embedded IP→country resolution** (`internal/geoip`, backed by the
+  compiled-in `github.com/phuslu/iploc` table). When no proxy header supplies a
+  country, the visitor country is resolved in-process from the trusted-proxy-aware
+  client IP. It performs **no network I/O and contacts no third party** — the
+  no-telemetry / no-phone-home posture is unchanged — and the visitor IP is used
+  **only** for the lookup and **never stored** (analytics keeps the country code
+  alone). Proxy headers still take precedence when present; region/city remain
+  header-only. Operators who want nothing derived from the IP set
+  `ANALYTICS_GEOIP=off`, restoring the prior behaviour exactly. See the
+  *Amendment 2026-07-04* to [ADR-0097](docs/adr/ADR-0097-vayuanalytics-no-pii.md).
+
 ## [2.9.1] — 2026-07-04
 
 ### Security
