@@ -1981,18 +1981,13 @@ func (a *App) handleOSCommentModerateFragment(w http.ResponseWriter, r *http.Req
 		go a.notifyCommentApproved(context.WithoutCancel(r.Context()), id)
 		go a.notifyCommentReply(context.WithoutCancel(r.Context()), id)
 	}
-	// Recompute pending/approved for the out-of-band count badges. Only these two
-	// change on a status move; the All total is unaffected.
+	// Recompute pending/approved for the out-of-band count badges via the store's
+	// GROUP BY count (accurate on any size catalog and cheaper than re-listing).
+	// Only these two change on a status move; the All total is unaffected.
 	pending, approved := 0, 0
-	if all, err := a.commentStore.ListAll(r.Context(), "all", 500); err == nil {
-		for _, c := range all {
-			switch c.Status {
-			case "pending":
-				pending++
-			case "approved":
-				approved++
-			}
-		}
+	if counts, err := a.commentStore.Count(r.Context()); err == nil {
+		pending = int(counts["pending"])
+		approved = int(counts["approved"])
 	}
 	idEsc := html.EscapeString(id)
 	p, ap := strconv.Itoa(pending), strconv.Itoa(approved)
