@@ -42,6 +42,14 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   writes pass the same `CSRFTokenMiddleware` as the `fetch()` controls — the
   strict admin CSP (`script-src 'self'`, `style-src 'self'`) is unchanged.
 
+- **CI now runs the integration test suite.** The `-tags integration` suite
+  (real-DB handler tests) previously never ran in CI — it wasn't even compiled.
+  After unbreaking its build, CI gained a dedicated `go test -tags integration
+  ./...` step, so the HTMX fragment endpoints, editor save/create paths and other
+  DB-backed flows are now guarded on every push. (It runs without `-race`
+  because the shared test harness mutates the process-global config per test, a
+  harness-only race that never occurs in production; the race-clean unit suite
+  still runs under `-race`.)
 - **Operator metrics for content operations.** Three new counters —
   `comments_moderated`, `post_status_toggles`, `post_pin_toggles` — are exported
   on the JSON stats and Prometheus `/metrics` endpoints. They count every action
