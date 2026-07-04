@@ -27,6 +27,7 @@ import (
 	"github.com/johalputt/vayupress/internal/events"
 	"github.com/johalputt/vayupress/internal/plugins"
 	"github.com/johalputt/vayupress/internal/queue"
+	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/search"
 )
 
@@ -113,16 +114,13 @@ func newTestHarness(t *testing.T) (*httptest.Server, string) {
 	os.Setenv("STORAGE_QUOTA_GB", "10")
 	config.Load()
 
-	// CachePurge fires goroutines that write sitemap/feed/robots to CacheDir.
-	// Point CacheDir at a standalone dir (not the auto-removed t.TempDir) so those
-	// fire-and-forget writes can never race the framework's temp-dir cleanup — a
-	// latent flake for every integration test that creates/updates/moderates
-	// content. The standalone dir is removed best-effort (errors ignored, since a
-	// straggler write there is harmless and never fails the test).
-	if cd, err := os.MkdirTemp("", "vpcache"); err == nil {
-		config.Cfg.CacheDir = cd
-		t.Cleanup(func() { _ = os.RemoveAll(cd) })
-	}
+	// Drain CachePurge's async sitemap/feed/robots writers at the end of each
+	// test. Registered before the temp-dir cleanup (which t.TempDir queued
+	// earlier) so it runs first (LIFO): the fire-and-forget writers finish before
+	// the temp dir is removed AND before the next test's config.Load mutates the
+	// process-global config.Cfg — closing a data race the -race detector would
+	// otherwise flag across the integration suite.
+	t.Cleanup(render.WaitForPurges)
 
 	if err := dbpkg.Init(); err != nil {
 		t.Fatalf("db init: %v", err)

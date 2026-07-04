@@ -103,6 +103,16 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   server-side feed, so it degrades gracefully. See
   [ADR-0107](docs/adr/ADR-0107-self-hosted-htmx.md).
 
+- **Integration test suite is race-clean and runs under `-race` in CI.**
+  `render.CachePurge` fires the sitemap/feed/robots regenerations as
+  fire-and-forget goroutines; across the integration suite those could outlive a
+  test and race the next test's `config.Load` (and the temp-dir cleanup) — a
+  harness-level data race. They are now tracked in a WaitGroup with a
+  `render.WaitForPurges()` drain that `newTestHarness` calls on teardown, so
+  every test's async writers finish deterministically before the next begins.
+  Production behaviour is unchanged (it never waits). The CI integration step now
+  runs with `-race`.
+
 ### Security
 
 - **Reflected-XSS hardening on the HTMX fragment endpoints (CodeQL #43).** The
