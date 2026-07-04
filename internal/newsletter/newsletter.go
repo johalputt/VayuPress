@@ -164,12 +164,12 @@ func (s *Store) Count(ctx context.Context) (map[string]int64, error) {
 
 func newID() string {
 	b := make([]byte, 12)
-	rand.Read(b)
+	_, _ = rand.Read(b)
 	return hex.EncodeToString(b)
 }
 
 func newToken() string {
 	b := make([]byte, 24)
-	rand.Read(b)
+	_, _ = rand.Read(b)
 	return hex.EncodeToString(b)
 }

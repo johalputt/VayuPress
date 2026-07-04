@@ -129,6 +129,6 @@ func (s *Store) list(ctx context.Context, where string, args ...interface{}) ([]
 
 func newID() string {
 	b := make([]byte, 12)
-	rand.Read(b)
+	_, _ = rand.Read(b)
 	return hex.EncodeToString(b)
 }

@@ -8,6 +8,29 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [2.9.1] — 2026-07-04
+
+### Security
+- **Reflected-XSS fully closed on the HTMX comment-moderation fragment
+  (CodeQL #43).** The moderation `status` was still written into the row's
+  `data-status="…"` attribute without escaping — CodeQL does not credit the
+  `status != "…"` equality guard, so `r.FormValue("status")` traced to the
+  response as reflected XSS. The handler now maps the status to a compile-time
+  constant (`canonicalCommentStatus`) — so the reflected value is provably not
+  request-derived — and `osCommentPill` escapes it in both the attribute and the
+  text. Combined with the existing hex-only comment-id allowlist, no request
+  input reaches the fragment unescaped.
+
+### Fixed
+- **CI: `golangci-lint` step restored.** `go.mod` pinned `toolchain go1.26.4`,
+  which `golangci-lint@latest` (built with Go 1.25) refuses to lint —
+  "the Go language version used to build golangci-lint is lower than the targeted
+  Go version (1.26.4)" — failing the lint job outright. Lowered the toolchain to
+  `go1.25.1` (the module only requires `go 1.25.0`; build and full test suites
+  pass unchanged), and cleared the `errcheck` findings the linter then surfaced
+  (unchecked `crypto/rand.Read` across collections, preview, webmention,
+  scheduler, members, webhooks, newsletter). `golangci-lint run ./...` is clean.
+
 ## [2.9.0] — 2026-07-04
 
 Self-hosted HTMX in the binary with CSP-clean progressive enhancement across the

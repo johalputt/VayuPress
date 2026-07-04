@@ -31,7 +31,7 @@ func New(secret string) *Signer {
 	if secret == "" {
 		// Fallback to a random ephemeral secret (tokens won't survive restarts).
 		b := make([]byte, 32)
-		rand.Read(b)
+		_, _ = rand.Read(b)
 		secret = hex.EncodeToString(b)
 	}
 	return &Signer{secret: []byte(secret)}

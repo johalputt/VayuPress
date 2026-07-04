@@ -2,7 +2,7 @@ module github.com/johalputt/vayupress
 
 go 1.25.0
 
-toolchain go1.26.4
+toolchain go1.25.1
 
 require (
 	blitiri.com.ar/go/spf v1.5.1
