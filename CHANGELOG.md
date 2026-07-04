@@ -42,6 +42,13 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   writes pass the same `CSRFTokenMiddleware` as the `fetch()` controls — the
   strict admin CSP (`script-src 'self'`, `style-src 'self'`) is unchanged.
 
+- **Operator metrics for content operations.** Three new counters —
+  `comments_moderated`, `post_status_toggles`, `post_pin_toggles` — are exported
+  on the JSON stats and Prometheus `/metrics` endpoints. They count every action
+  regardless of path (HTMX fragment, JSON API, or bulk), incremented at the
+  chokepoints (`comments.Moderate` for moderation; the post handlers for
+  publish/pin), so operator dashboards can track editorial activity. (HTTP-level
+  tracing, latency histograms and structured logs already covered the endpoints.)
 - **Admin HTMX actions are announced to assistive tech (WCAG 2.2 AA).** A
   visually-hidden `aria-live` region (`#vp-live`) plus an `htmx:afterRequest`
   handler announce the outcome of every `hx-*` action ("Change saved." /

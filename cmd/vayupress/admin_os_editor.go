@@ -20,12 +20,14 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/johalputt/vayupress/internal/blockrender"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/logging"
+	"github.com/johalputt/vayupress/internal/metrics"
 	"github.com/johalputt/vayupress/internal/mode"
 	"github.com/johalputt/vayupress/internal/render"
 )
@@ -273,6 +275,7 @@ func (a *App) handleOSPostStatus(w http.ResponseWriter, r *http.Request) {
 	if status == "published" {
 		go a.pingIndexNow(slug)
 	}
+	atomic.AddInt64(&metrics.MetricPostStatusToggles, 1)
 	writeJSON(w, r, http.StatusOK, map[string]string{"status": status, "slug": slug})
 }
 
@@ -305,6 +308,7 @@ func (a *App) handleOSPostToggleFragment(w http.ResponseWriter, r *http.Request)
 	if status == "published" {
 		go a.pingIndexNow(slug)
 	}
+	atomic.AddInt64(&metrics.MetricPostStatusToggles, 1)
 	esc := htmlpkg.EscapeString(slug)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	fmt.Fprint(w, osPostStatusButton(esc, status)+osPostStatusOOB(esc, status))
@@ -341,6 +345,7 @@ func (a *App) handleOSPostPinFragment(w http.ResponseWriter, r *http.Request) {
 	// reflects the change immediately.
 	invalidateTrendingCache()
 	render.CachePurge(slug, splitCSVTags(tagsCSV), generateSitemap, generateRSS, generateRobots)
+	atomic.AddInt64(&metrics.MetricPostPinToggles, 1)
 	esc := htmlpkg.EscapeString(slug)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	fmt.Fprint(w, osPostPinButton(esc, featured)+osPostPinBadge(esc, featured, true))
@@ -381,6 +386,7 @@ func (a *App) handleOSPostPin(w http.ResponseWriter, r *http.Request) {
 	// Refresh the public surfaces and the memoised trending/pinned payload.
 	invalidateTrendingCache()
 	render.CachePurge(slug, splitCSVTags(tagsCSV), generateSitemap, generateRSS, generateRobots)
+	atomic.AddInt64(&metrics.MetricPostPinToggles, 1)
 	writeJSON(w, r, http.StatusOK, map[string]bool{"pinned": body.Pinned})
 }
 
