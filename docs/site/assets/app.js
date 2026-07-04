@@ -122,11 +122,16 @@ CGO_ENABLED=1 go build -o vayupress ./cmd/vayupress
 STATIC_DIR=./static VAYU_DOCS_DIR=./docs ./vayupress --port 8080`,
 
     /* ── data ── */
+    // Hero pillar chips — the whole platform at a glance.
+    pillars: [
+      'Website', 'Blog', 'PGP Mail', 'Mobile App', 'Analytics', 'VayuOS',
+    ],
+
     trustBadges: [
       'single-VPS deploy',
       'SQLite-durable',
       'zero third-party trackers',
-      'own your content · mail · PGP',
+      'website · blog · mail · app',
       'native mail + E2E PGP',
       'Apache-2.0 licensed',
     ],
