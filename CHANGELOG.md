@@ -39,6 +39,13 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   generated key is discoverable at the exact URL VayuMail-Mobile fetches and that
   the served bytes parse back into the expected OpenPGP identity. No app change
   needed on either side.
+- **WKD hash contract locked with VayuMail-Mobile.** Added
+  `internal/vayuos/pgp/wkd_contract_test.go`, an expanded known-answer vector
+  table for the published WKD path hash that is kept byte-for-byte identical to
+  the client's `test/wkd_contract_test.go`. VayuPress publishes a key at
+  `/hu/<hash>` and the app looks it up at a hash it computes with its own
+  z-base-32/SHA-1 code; the shared table turns any drift between the two into a
+  red build on whichever side moved, rather than silent key-discovery breakage.
 
 ### Changed
 
