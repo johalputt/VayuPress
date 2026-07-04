@@ -164,7 +164,57 @@ var (
 	rateMu      sync.Mutex
 	rateBuckets = make(map[string]*ipBucket)
 	trustedIPs  = parseTrustedIPs()
+
+	// Separate, more generous bucket set for the unauthenticated public
+	// discovery endpoints (WKD, mail autoconfig). Kept apart from the API limiter
+	// so the two never share a budget.
+	discoveryMu      sync.Mutex
+	discoveryBuckets = make(map[string]*ipBucket)
+	// discoveryLimit is requests per 10-minute window per IP. The default is
+	// deliberately high so ordinary mail-client key discovery is never throttled;
+	// it exists to cap abusive enumeration / DoS of the O(keys) WKD scan.
+	discoveryLimit = config.GetEnvAsInt("DISCOVERY_RATE_LIMIT", 240)
 )
+
+// PublicDiscoveryRateLimit throttles the unauthenticated .well-known discovery
+// endpoints per client IP. The WKD handler scans the whole keystore on every
+// request, so an unbounded query rate is a DoS amplifier. The limit is generous
+// (default 240 / 10 min) so legitimate discovery is unaffected; trusted IPs
+// bypass it entirely. Unlike the API limiter it answers with a bare
+// 429 + Retry-After, since these endpoints serve binary/XML/JSON to arbitrary
+// clients rather than the JSON API error envelope.
+func PublicDiscoveryRateLimit(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ip := ClientIP(r)
+		if trustedIPs[ip] {
+			next.ServeHTTP(w, r)
+			return
+		}
+		discoveryMu.Lock()
+		b, ok := discoveryBuckets[ip]
+		if !ok || time.Now().After(b.resetAt) {
+			b = &ipBucket{1, time.Now().Add(10 * time.Minute)}
+			discoveryBuckets[ip] = b
+		} else {
+			b.count++
+		}
+		allowed := b.count <= discoveryLimit
+		resetAt := b.resetAt
+		discoveryMu.Unlock()
+		if !allowed {
+			retry := int(time.Until(resetAt).Seconds()) + 1
+			if retry < 1 {
+				retry = 1
+			}
+			w.Header().Set("Retry-After", strconv.Itoa(retry))
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			w.WriteHeader(http.StatusTooManyRequests)
+			_, _ = w.Write([]byte("rate limit exceeded\n"))
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
 
 func parseTrustedIPs() map[string]bool {
 	m := make(map[string]bool)
@@ -340,6 +390,13 @@ func StartBucketSweeper(ctx context.Context) {
 					}
 				}
 				rateMu.Unlock()
+				discoveryMu.Lock()
+				for ip, b := range discoveryBuckets {
+					if now.After(b.resetAt) {
+						delete(discoveryBuckets, ip)
+					}
+				}
+				discoveryMu.Unlock()
 				pprofLimiters.Range(func(k, v interface{}) bool {
 					if b, ok := v.(*pprofBucket); ok {
 						b.mu.Lock()

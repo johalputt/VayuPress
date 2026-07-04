@@ -95,6 +95,19 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   server-side feed, so it degrades gracefully. See
   [ADR-0107](docs/adr/ADR-0107-self-hosted-htmx.md).
 
+### Security
+
+- **Public discovery endpoints are rate-limited (DoS hardening).** The
+  unauthenticated `.well-known` discovery routes — WKD
+  (`/.well-known/openpgpkey/*`), the Mozilla mail autoconfig XML, and the
+  first-party `vayumail/autoconfig.json` — are now throttled per client IP via a
+  dedicated, generous limiter (default 240 requests / 10 min, override with
+  `DISCOVERY_RATE_LIMIT`; trusted IPs bypass). The WKD handler scans the whole
+  keystore per request, so an unbounded query rate was a DoS amplifier; the cap
+  is high enough that ordinary mail-client key discovery is never affected, and
+  over-budget callers get a plain `429` with `Retry-After`. Bucket memory is
+  bounded by the existing sweeper.
+
 ### Verified
 
 - **WKD PGP interop (VayuPress ↔ VayuMail-Mobile).** Confirmed the Web Key

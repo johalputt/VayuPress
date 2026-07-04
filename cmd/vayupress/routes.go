@@ -162,17 +162,20 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	r.Get("/static/vp-analytics.js", a.handleAnalyticsScript)
 
 	// VayuPGP Web Key Directory — public key discovery (RFC WKD advanced method).
-	r.Get("/.well-known/openpgpkey/*", a.handleWKD)
+	// Rate-limited: the handler scans the whole keystore per request, so an
+	// unbounded query rate is a DoS amplifier (generous per-IP cap, legit
+	// discovery unaffected).
+	r.With(auth.PublicDiscoveryRateLimit).Get("/.well-known/openpgpkey/*", a.handleWKD)
 
 	// Mozilla Autoconfig — Thunderbird and K-9 / Thunderbird-for-Android fetch
 	// this to set up a mailbox from just the email address (no manual server
 	// entry). Public; contains only hostnames/ports, never a secret.
-	r.Get("/.well-known/autoconfig/mail/config-v1.1.xml", a.handleMailAutoconfig)
+	r.With(auth.PublicDiscoveryRateLimit).Get("/.well-known/autoconfig/mail/config-v1.1.xml", a.handleMailAutoconfig)
 	// First-party VayuMail autoconfig (JSON). The VayuMail app fetches this to
 	// onboard by email address alone. Public; same public server coordinates as
 	// the Mozilla XML above, never a secret. Two path segments under
 	// /.well-known/, so it does not collide with the /{file} catch-all below.
-	r.Get("/.well-known/vayumail/autoconfig.json", a.handleVayuMailAutoconfigJSON)
+	r.With(auth.PublicDiscoveryRateLimit).Get("/.well-known/vayumail/autoconfig.json", a.handleVayuMailAutoconfigJSON)
 
 	// IndexNow key verification file. Search engines fetch
 	// /.well-known/<key>.txt and expect the body to equal <key>. We serve it
