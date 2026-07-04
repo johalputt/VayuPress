@@ -50,7 +50,7 @@ func Country(ip string) string {
 		parsed.IsUnspecified() || parsed.IsLinkLocalUnicast() {
 		return ""
 	}
-	code := strings.ToUpper(string(iploc.Country(parsed)))
+	code := strings.ToUpper(iploc.Country(parsed))
 	if len(code) != 2 || code == "ZZ" || code == "XX" {
 		return ""
 	}
