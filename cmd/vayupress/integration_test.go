@@ -113,6 +113,17 @@ func newTestHarness(t *testing.T) (*httptest.Server, string) {
 	os.Setenv("STORAGE_QUOTA_GB", "10")
 	config.Load()
 
+	// CachePurge fires goroutines that write sitemap/feed/robots to CacheDir.
+	// Point CacheDir at a standalone dir (not the auto-removed t.TempDir) so those
+	// fire-and-forget writes can never race the framework's temp-dir cleanup — a
+	// latent flake for every integration test that creates/updates/moderates
+	// content. The standalone dir is removed best-effort (errors ignored, since a
+	// straggler write there is harmless and never fails the test).
+	if cd, err := os.MkdirTemp("", "vpcache"); err == nil {
+		config.Cfg.CacheDir = cd
+		t.Cleanup(func() { _ = os.RemoveAll(cd) })
+	}
+
 	if err := dbpkg.Init(); err != nil {
 		t.Fatalf("db init: %v", err)
 	}

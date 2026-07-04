@@ -133,6 +133,9 @@ func (a *App) handleStats(w http.ResponseWriter, r *http.Request) {
 			"poison_jobs_quarantined":  atomic.LoadInt64(&metrics.MetricPoisonJobsQuarantined),
 			"pprof_accesses":           atomic.LoadInt64(&metrics.MetricPprofAccesses),
 			"vacuum_rejected":          atomic.LoadInt64(&metrics.MetricVacuumRejected),
+			"comments_moderated":       atomic.LoadInt64(&metrics.MetricCommentsModerated),
+			"post_status_toggles":      atomic.LoadInt64(&metrics.MetricPostStatusToggles),
+			"post_pin_toggles":         atomic.LoadInt64(&metrics.MetricPostPinToggles),
 		},
 		"latency_ms": map[string]interface{}{
 			"http_p95": metrics.HTTPLatency.Percentile(95), "http_p99": metrics.HTTPLatency.Percentile(99),
@@ -168,7 +171,9 @@ func (a *App) handleMetrics(w http.ResponseWriter, r *http.Request) {
 			"vayupress_migration_drift_detected_total %d\nvayupress_poison_jobs_quarantined_total %d\n"+
 			"vayupress_pprof_accesses_total %d\nvayupress_vacuum_rejected_total %d\n"+
 			"vayupress_health_degraded_events_total %d\nvayupress_csp_violations_total %d\n"+
-			"vayupress_governance_budgets_exhausted %d\n",
+			"vayupress_governance_budgets_exhausted %d\n"+
+			"vayupress_comments_moderated_total %d\nvayupress_post_status_toggles_total %d\n"+
+			"vayupress_post_pin_toggles_total %d\n",
 		time.Since(bootTime).Seconds(), totalArticles,
 		atomic.LoadInt64(&metrics.MetricArticlesCreated), atomic.LoadInt64(&metrics.MetricArticlesUpdated), atomic.LoadInt64(&metrics.MetricArticlesDeleted),
 		atomic.LoadInt64(&metrics.MetricQueueProcessed), atomic.LoadInt64(&metrics.MetricQueueFailed), atomic.LoadInt64(&metrics.MetricQueueStuckResets),
@@ -181,6 +186,8 @@ func (a *App) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		atomic.LoadInt64(&metrics.MetricPprofAccesses), atomic.LoadInt64(&metrics.MetricVacuumRejected),
 		atomic.LoadInt64(&metrics.MetricHealthDegradedEvents), atomic.LoadInt64(&metrics.MetricCSPViolations),
 		budget.Global.ExhaustedCount(time.Now()),
+		atomic.LoadInt64(&metrics.MetricCommentsModerated), atomic.LoadInt64(&metrics.MetricPostStatusToggles),
+		atomic.LoadInt64(&metrics.MetricPostPinToggles),
 	)
 	fmt.Fprint(w, metrics.HTTPLatency.Prometheus("vayupress_http_request_duration_seconds", "HTTP latency"))
 	fmt.Fprint(w, metrics.RenderLatency.Prometheus("vayupress_render_duration_seconds", "Render latency"))

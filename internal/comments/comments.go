@@ -9,7 +9,10 @@ import (
 	"encoding/hex"
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"time"
+
+	"github.com/johalputt/vayupress/internal/metrics"
 )
 
 // Status constants for comment moderation.
@@ -156,6 +159,9 @@ func (s *Store) Moderate(ctx context.Context, id, status string) error {
 	if n == 0 {
 		return fmt.Errorf("comment %q not found", id)
 	}
+	// Count every moderation action here (the single chokepoint), so the metric
+	// reflects the HTMX fragment, the JSON API and any future path uniformly.
+	atomic.AddInt64(&metrics.MetricCommentsModerated, 1)
 	return nil
 }
 

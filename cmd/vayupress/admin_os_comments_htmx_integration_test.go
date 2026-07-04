@@ -7,12 +7,14 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
 
 	"github.com/johalputt/vayupress/internal/comments"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/metrics"
 )
 
 // TestOSCommentModerateFragment drives the HTMX moderation endpoint against a
@@ -31,6 +33,7 @@ func TestOSCommentModerateFragment(t *testing.T) {
 		t.Fatalf("insert: %v", err)
 	}
 
+	before := atomic.LoadInt64(&metrics.MetricCommentsModerated)
 	a := &App{commentStore: store}
 	req := httptest.NewRequest(http.MethodPost, "/os/api/comments/"+id+"/status-fragment", strings.NewReader("status=approved"))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -63,6 +66,9 @@ func TestOSCommentModerateFragment(t *testing.T) {
 	}
 	if st != "approved" {
 		t.Errorf("persisted status = %q, want approved", st)
+	}
+	if atomic.LoadInt64(&metrics.MetricCommentsModerated) <= before {
+		t.Error("MetricCommentsModerated did not increment")
 	}
 
 	// Invalid status is rejected before any store call.

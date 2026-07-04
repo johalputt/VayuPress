@@ -36,6 +36,13 @@ var (
 	MetricCSPViolations           int64
 	MetricFullScanWarnings        int64
 
+	// Content-operations counters (operator dashboards): each admin moderation or
+	// publishing action, counted regardless of whether it came via the HTMX
+	// fragment controls or the JSON API / bulk paths.
+	MetricCommentsModerated int64 // approve / reject / spam actions
+	MetricPostStatusToggles int64 // publish / unpublish transitions
+	MetricPostPinToggles    int64 // pin / unpin transitions
+
 	WorkerLiveness     int64
 	WorkerLastActivity sync.Map
 	WorkerWg           sync.WaitGroup
