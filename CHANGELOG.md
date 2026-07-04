@@ -10,6 +10,17 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Changed
 
+- **Comments manager: moderation is now an in-place HTMX update (no page
+  reload).** Approve/Reject/Spam were a `fetch()` that reloaded the whole page.
+  They now POST to a new `POST /os/api/comments/{id}/status-fragment` that
+  moderates the comment and returns an HTML fragment — the row's new action
+  buttons (main swap) plus **out-of-band** updates of its status pill and the
+  pending/approved counts. The status filter reads each row's live status from
+  its pill (`data-status`) and re-applies on `htmx:afterSwap`, so a moderated
+  row moves to the right tab instantly. Because the buttons/pill depend only on
+  `(id, status)`, the endpoint re-renders them without re-fetching the comment.
+  The JSON `PUT /os/api/comments/{id}/status` endpoint remains for API clients;
+  CSRF and the strict CSP are unchanged.
 - **Posts manager: publish/unpublish is now an in-place HTMX update (no page
   reload).** The Publish/Unpublish button on `/os/posts` was a `fetch()` that
   reloaded the entire page on success. It now uses HTMX: the button POSTs to a

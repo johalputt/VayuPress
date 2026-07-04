@@ -148,6 +148,10 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		// Session-friendly comment moderation. The /api/v1/admin/comments originals
 		// require an API key; VayuOS operators hold a session cookie.
 		pr.With(auth.CSRFTokenMiddleware).Put("/os/api/comments/{id}/status", a.handleCommentModerate)
+		// HTMX in-place moderation: returns an HTML fragment (new action buttons +
+		// out-of-band status pill and pending/approved counts) instead of JSON, so
+		// the Comments manager updates the row without a full-page reload.
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/comments/{id}/status-fragment", a.handleOSCommentModerateFragment)
 		// Custom pages — standalone articles flagged is_page (no post chrome),
 		// managed separately from the blog feed (Tumblr-style "Add a page").
 		pr.Get("/os/pages", a.handleOSPages)
@@ -1756,6 +1760,45 @@ document.querySelectorAll('[data-post-bulk]').forEach(function(b){
 
 // ── Comments moderation ──────────────────────────────────────────────────────
 
+// osCommentPill renders a comment's status badge. It carries a stable per-id id
+// and a data-status attribute so the client-side status filter can read the live
+// status after an HTMX moderation swap. When oob is true it is emitted as an
+// out-of-band swap so the fragment endpoint can update the pill in place. idEsc
+// and status must already be safe (escaped id; status from the validated enum).
+func osCommentPill(idEsc, status string, oob bool) string {
+	cls := "status-pill"
+	switch status {
+	case "approved":
+		cls = "status-pill status-pill--live"
+	case "pending":
+		cls = "status-pill status-pill--draft"
+	}
+	oobAttr := ""
+	if oob {
+		oobAttr = ` hx-swap-oob="true"`
+	}
+	return `<span class="` + cls + `" id="cpill-` + idEsc + `" data-status="` + status + `"` + oobAttr + `>● ` + html.EscapeString(status) + `</span>`
+}
+
+// osCommentActions renders the moderation buttons for a comment in its CURRENT
+// status (the action matching the current status is omitted). Each button is
+// HTMX-driven: it POSTs the new status to the fragment endpoint and swaps the
+// row's action cell in place, so moderation needs no full-page reload. The
+// buttons depend only on (id, status), so the fragment endpoint can re-render
+// them without re-fetching the comment. idEsc must already be HTML-escaped.
+func osCommentActions(idEsc, status string) string {
+	btn := func(to, label, cls string) string {
+		if status == to {
+			return ""
+		}
+		return `<button type="button" class="btn ` + cls + ` btn--sm"` +
+			` hx-post="/os/api/comments/` + idEsc + `/status-fragment"` +
+			` hx-vals='{"status":"` + to + `"}'` +
+			` hx-target="#cact-` + idEsc + `" hx-swap="innerHTML">` + label + `</button> `
+	}
+	return btn("approved", "Approve", "btn--primary") + btn("rejected", "Reject", "btn--ghost") + btn("spam", "Spam", "btn--ghost")
+}
+
 func (a *App) handleOSComments(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
@@ -1812,39 +1855,23 @@ func (a *App) handleOSComments(w http.ResponseWriter, r *http.Request) {
 		case "approved":
 			approved++
 		}
-		pill := `<span class="status-pill">` + html.EscapeString(c.Status) + `</span>`
-		switch c.Status {
-		case "approved":
-			pill = `<span class="status-pill status-pill--live">● approved</span>`
-		case "pending":
-			pill = `<span class="status-pill status-pill--draft">● pending</span>`
-		case "rejected", "spam":
-			pill = `<span class="status-pill">● ` + html.EscapeString(c.Status) + `</span>`
-		}
+		idEsc := html.EscapeString(c.ID)
 		slug := slugByID[c.ArticleID]
 		postCell := html.EscapeString(slug)
 		if slug != "" {
 			postCell = `<a href="/` + html.EscapeString(slug) + `" target="_blank" rel="noopener">/` + html.EscapeString(slug) + `</a>`
 		}
-		// Action buttons depend on current status.
-		actions := ""
-		if c.Status != "approved" {
-			actions += `<button type="button" class="btn btn--primary btn--sm" data-comment-action data-id="` + html.EscapeString(c.ID) + `" data-to="approved">Approve</button> `
-		}
-		if c.Status != "rejected" {
-			actions += `<button type="button" class="btn btn--ghost btn--sm" data-comment-action data-id="` + html.EscapeString(c.ID) + `" data-to="rejected">Reject</button> `
-		}
-		if c.Status != "spam" {
-			actions += `<button type="button" class="btn btn--ghost btn--sm" data-comment-action data-id="` + html.EscapeString(c.ID) + `" data-to="spam">Spam</button>`
-		}
-		rowsHTML += `<tr data-comment-row data-status="` + c.Status + `">
+		// The status filter reads data-status off the pill (updated in place by the
+		// HTMX moderation swap), not off the <tr>, so a moderated row re-filters
+		// correctly without a full-page reload.
+		rowsHTML += `<tr data-comment-row>
   <td class="row-title"><strong>` + html.EscapeString(c.Author) + `</strong>
     <div class="row-meta">` + html.EscapeString(c.Email) + `</div></td>
   <td>` + html.EscapeString(c.Body) + `</td>
   <td>` + postCell + `</td>
-  <td>` + pill + `</td>
+  <td>` + osCommentPill(idEsc, c.Status, false) + `</td>
   <td class="muted text-sm">` + c.CreatedAt.UTC().Format("2 Jan 2006 15:04") + `</td>
-  <td class="row-actions">` + actions + `</td>
+  <td class="row-actions" id="cact-` + idEsc + `">` + osCommentActions(idEsc, c.Status) + `</td>
 </tr>`
 	}
 
@@ -1856,14 +1883,14 @@ func (a *App) handleOSComments(w http.ResponseWriter, r *http.Request) {
 	} else {
 		body = `<div class="page-header">
   <h1>Comments <span class="count-pill">` + strconv.Itoa(len(all)) + `</span></h1>
-  <div class="page-actions"><span class="text-sm muted">` + strconv.Itoa(pending) + ` pending · ` + strconv.Itoa(approved) + ` approved</span></div>
+  <div class="page-actions"><span class="text-sm muted"><span id="cc-sum-pending">` + strconv.Itoa(pending) + `</span> pending · <span id="cc-sum-approved">` + strconv.Itoa(approved) + `</span> approved</span></div>
 </div>
 <div class="card">
   <div class="toolbar-row">
     <div class="seg-filter" role="tablist" aria-label="Filter by status">
       <button type="button" class="seg-btn is-active" data-comment-filter="all">All <span class="muted">` + strconv.Itoa(len(all)) + `</span></button>
-      <button type="button" class="seg-btn" data-comment-filter="pending">Pending <span class="muted">` + strconv.Itoa(pending) + `</span></button>
-      <button type="button" class="seg-btn" data-comment-filter="approved">Approved <span class="muted">` + strconv.Itoa(approved) + `</span></button>
+      <button type="button" class="seg-btn" data-comment-filter="pending">Pending <span class="muted" id="cc-pending">` + strconv.Itoa(pending) + `</span></button>
+      <button type="button" class="seg-btn" data-comment-filter="approved">Approved <span class="muted" id="cc-approved">` + strconv.Itoa(approved) + `</span></button>
     </div>
   </div>
   <div class="table-wrap">
@@ -1877,31 +1904,84 @@ func (a *App) handleOSComments(w http.ResponseWriter, r *http.Request) {
 <div id="action-msg" role="status" aria-live="polite" class="action-msg"></div>
 <script nonce="` + nonce + `">
 (function(){'use strict';
-function csrf(){var m=document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);return m?m[1]:'';}
-var msg=document.getElementById('action-msg');
-function show(t,e){if(!msg)return;msg.textContent=t;msg.classList.toggle('is-error',!!e);msg.classList.add('visible');}
-document.querySelectorAll('[data-comment-action]').forEach(function(b){
-  b.addEventListener('click',function(){
-    b.disabled=true;
-    fetch('/os/api/comments/'+encodeURIComponent(b.getAttribute('data-id'))+'/status',{method:'PUT',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},body:JSON.stringify({status:b.getAttribute('data-to')})})
-      .then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d};});})
-      .then(function(res){if(res.ok){show('Comment '+b.getAttribute('data-to'),false);setTimeout(function(){location.reload();},400);}else{b.disabled=false;show(res.d.detail||res.d.title||res.d.error||'Error',true);}})
-      .catch(function(e){b.disabled=false;show('Error: '+e,true);});
+// Moderation is HTMX-driven (hx-post → swap the row's action cell + out-of-band
+// pill and counts); see osCommentActions and handleOSCommentModerateFragment.
+// The filter reads each row's live status from its pill's data-status (updated
+// by the swap) and re-applies after every HTMX swap so a moderated row moves to
+// the right tab without a page reload.
+var activeFilter='all';
+function applyFilter(){
+  document.querySelectorAll('[data-comment-row]').forEach(function(row){
+    var pill=row.querySelector('[data-status]');
+    var st=pill?pill.getAttribute('data-status'):'';
+    row.hidden=(activeFilter!=='all'&&st!==activeFilter);
   });
-});
-var rowsEl=document.querySelectorAll('[data-comment-row]');
+}
 document.querySelectorAll('[data-comment-filter]').forEach(function(s){
   s.addEventListener('click',function(){
     document.querySelectorAll('[data-comment-filter]').forEach(function(x){x.classList.remove('is-active');});
     s.classList.add('is-active');
-    var f=s.getAttribute('data-comment-filter');
-    rowsEl.forEach(function(row){row.hidden=(f!=='all'&&row.getAttribute('data-status')!==f);});
+    activeFilter=s.getAttribute('data-comment-filter');
+    applyFilter();
   });
 });
+document.body.addEventListener('htmx:afterSwap',applyFilter);
 })();
 </script>`
 	}
 	writeOSHTML(w, adminOSLayout(nonce, "Comments", "comments", cfg, htmpl.HTML(body)))
+}
+
+// handleOSCommentModerateFragment is the HTMX counterpart to handleCommentModerate:
+// it moderates a comment and returns an HTML fragment — the row's new action
+// buttons (main swap) plus out-of-band updates of its status pill and the
+// pending/approved counts — so the Comments manager updates in place with no
+// full-page reload. CSRF is enforced by the route's CSRFTokenMiddleware (the
+// admin layout mirrors the vp_csrf cookie into the X-CSRF-Token header for every
+// hx-* request). The JSON PUT endpoint remains for API clients.
+func (a *App) handleOSCommentModerateFragment(w http.ResponseWriter, r *http.Request) {
+	if a.commentStore == nil {
+		http.Error(w, "comments not initialised", http.StatusServiceUnavailable)
+		return
+	}
+	id := chi.URLParam(r, "id")
+	status := strings.TrimSpace(r.FormValue("status"))
+	if id == "" || (status != "approved" && status != "rejected" && status != "spam") {
+		http.Error(w, "id and a valid status (approved|rejected|spam) are required", http.StatusBadRequest)
+		return
+	}
+	if err := a.commentStore.Moderate(r.Context(), id, status); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	// Mirror the JSON path's side effects: notify on approval.
+	if status == "approved" {
+		go a.notifyCommentApproved(context.WithoutCancel(r.Context()), id)
+		go a.notifyCommentReply(context.WithoutCancel(r.Context()), id)
+	}
+	// Recompute pending/approved for the out-of-band count badges. Only these two
+	// change on a status move; the All total is unaffected.
+	pending, approved := 0, 0
+	if all, err := a.commentStore.ListAll(r.Context(), "all", 500); err == nil {
+		for _, c := range all {
+			switch c.Status {
+			case "pending":
+				pending++
+			case "approved":
+				approved++
+			}
+		}
+	}
+	idEsc := html.EscapeString(id)
+	p, ap := strconv.Itoa(pending), strconv.Itoa(approved)
+	frag := osCommentActions(idEsc, status) +
+		osCommentPill(idEsc, status, true) +
+		`<span id="cc-pending" class="muted" hx-swap-oob="true">` + p + `</span>` +
+		`<span id="cc-approved" class="muted" hx-swap-oob="true">` + ap + `</span>` +
+		`<span id="cc-sum-pending" hx-swap-oob="true">` + p + `</span>` +
+		`<span id="cc-sum-approved" hx-swap-oob="true">` + ap + `</span>`
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = w.Write([]byte(frag))
 }
 
 // osActiveCls returns the " is-active" class suffix when active is true.
