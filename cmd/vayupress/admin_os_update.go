@@ -98,6 +98,23 @@ func binaryDirWritable(binPath string) string {
 	return ""
 }
 
+// updateReadonlyHelp builds the operator-facing message shown when the running
+// binary sits in a directory the service cannot write. It names the real cause
+// (a root-owned / read-only binary location) and the permanent, enterprise fix
+// (run from a service-owned directory) rather than the incomplete
+// "add ReadWritePaths" advice — ReadWritePaths only relaxes systemd's sandbox and
+// still leaves a root-owned /usr/local/bin unwritable by the non-root service.
+func updateReadonlyHelp(realPath, why string) string {
+	return "Cannot install the update because the binary location is not writable: " + why +
+		" VayuPress is running from " + realPath + ", which the service account cannot write to" +
+		" (typically /usr/local/bin — root-owned, and read-only under systemd ProtectSystem)." +
+		" The permanent fix is to run VayuPress from a service-owned directory so one-click updates just work:" +
+		" re-run scripts/deploy-vayupress.sh (it installs the binary to /var/lib/vayupress/bin and symlinks" +
+		" /usr/local/bin/vayupress to it), or move the binary into /var/lib/vayupress/bin yourself, chown it to the" +
+		" service user, and point the systemd unit's ExecStart at it. Until then, update from the shell with" +
+		" scripts/update-vayupress.sh."
+}
+
 // inlineBackupMaxBytes bounds the database size for which the in-app, in-request
 // pre-update backup (a synchronous gzip of the whole DB) is offered. Above this,
 // gzipping the database inside the update request would read the entire file and
@@ -379,14 +396,19 @@ func (a *App) handleOSUpdateApply(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusInternalServerError, "exe-error", err.Error(), "")
 		return
 	}
-	// Preflight: the binary's own directory must be writable, or the atomic swap
-	// will fail. The most common cause on a hardened deployment is the systemd
-	// sandbox (ProtectSystem=strict/full) making /usr/local/bin read-only — which
-	// otherwise surfaces as a confusing mid-update failure. Fail fast with the fix.
-	if why := binaryDirWritable(binPath); why != "" {
+	// Follow symlinks to the real file. An enterprise deployment runs VayuPress
+	// from a service-owned writable directory (e.g. /var/lib/vayupress/bin) and
+	// exposes /usr/local/bin/vayupress as a symlink to it, so the atomic swap must
+	// target the resolved file, never the symlink.
+	realPath := update.ResolveInstallPath(binPath)
+	// Preflight: the real binary's directory must be writable by the service
+	// account, or the atomic swap will fail. The classic cause is running from a
+	// root-owned /usr/local/bin (which the non-root service cannot write, and
+	// which systemd ProtectSystem also mounts read-only) — fail fast with the
+	// permanent fix rather than a confusing mid-update error.
+	if why := binaryDirWritable(realPath); why != "" {
 		writeAPIError(w, r, http.StatusPreconditionFailed, "binary-readonly",
-			"Cannot install the update because the binary location is not writable: "+why+
-				" Make "+filepath.Dir(binPath)+" writable by the service (e.g. add it to the systemd unit's ReadWritePaths=, or relax ProtectSystem=), then retry. Until then, update from the shell with scripts/update-vayupress.sh.", "")
+			updateReadonlyHelp(realPath, why), "")
 		return
 	}
 
@@ -402,8 +424,8 @@ func (a *App) handleOSUpdateApply(w http.ResponseWriter, r *http.Request) {
 		Current:       Version,
 		DryRun:        body.DryRun,
 		PubKeyHex:     pubKey,
-		BinaryPath:    binPath,
-		AllowUnsigned: true, // admin-initiated; checksum-verified when no key is pinned
+		BinaryPath:    realPath, // swap the resolved real file, not a launch-time symlink
+		AllowUnsigned: true,     // admin-initiated; checksum-verified when no key is pinned
 	}
 	// Pre-update database backup is the operator's choice. When enabled we point
 	// ApplyVerified at the DB so it snapshots before swapping the binary; when
@@ -450,7 +472,7 @@ func (a *App) handleOSUpdateApply(w http.ResponseWriter, r *http.Request) {
 	logging.LogInfo("update", "applied "+newVersion+" via VayuOS admin")
 
 	if body.Restart {
-		update.ScheduleRestartExec(binPath, 1500*time.Millisecond, restartCleanup)
+		update.ScheduleRestartExec(realPath, 1500*time.Millisecond, restartCleanup)
 		writeJSON(w, r, http.StatusOK, map[string]interface{}{
 			"status": "updated-restarting", "version": newVersion,
 			"note": "Update installed. The service is re-launching to activate v" + newVersion + ".",
@@ -487,7 +509,10 @@ func (a *App) handleOSUpdateRollback(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusInternalServerError, "exe-error", err.Error(), "")
 		return
 	}
-	bak := binPath + ".bak"
+	// The prior apply kept the old binary as <realfile>.bak next to the resolved
+	// real file, so resolve symlinks before locating and restoring it.
+	realPath := update.ResolveInstallPath(binPath)
+	bak := realPath + ".bak"
 	if _, err := os.Stat(bak); err != nil {
 		writeAPIError(w, r, http.StatusNotFound, "no-rollback", "No rollback artifact found — nothing to roll back to.", "")
 		return
@@ -498,7 +523,7 @@ func (a *App) handleOSUpdateRollback(w http.ResponseWriter, r *http.Request) {
 	if st != nil {
 		histID, _ = st.Log(r.Context(), update.Record{ToVersion: Version, Status: "started", Detail: "rollback (via VayuOS)"})
 	}
-	if err := os.Rename(bak, binPath); err != nil {
+	if err := os.Rename(bak, realPath); err != nil {
 		if st != nil && histID > 0 {
 			_ = st.MarkComplete(r.Context(), histID, "failed", "rollback: "+err.Error())
 		}
@@ -509,7 +534,7 @@ func (a *App) handleOSUpdateRollback(w http.ResponseWriter, r *http.Request) {
 		_ = st.MarkComplete(r.Context(), histID, "rolled_back", "rolled back from "+Version)
 	}
 	dbpkg.AuditLog("update.rollback", dbpkg.AuditActor(r), "", "rolled back binary via VayuOS")
-	update.ScheduleRestartExec(binPath, 1200*time.Millisecond, restartCleanup)
+	update.ScheduleRestartExec(realPath, 1200*time.Millisecond, restartCleanup)
 	writeJSON(w, r, http.StatusOK, map[string]interface{}{"status": "rolled-back-restarting"})
 }
 

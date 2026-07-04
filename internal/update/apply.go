@@ -175,6 +175,26 @@ func ApplyVerified(ctx context.Context, client *http.Client, owner, repo string,
 	return rel.Version, nil
 }
 
+// ResolveInstallPath returns the real on-disk path of the binary to replace,
+// following symlinks. An enterprise deployment runs VayuPress from a
+// service-owned, writable directory (e.g. /var/lib/vayupress/bin/vayupress) and
+// exposes /usr/local/bin/vayupress as a convenience symlink to it. In that
+// layout the atomic swap must target the resolved real file in the writable
+// directory — replacing the symlink itself would fail on a read-only /usr and
+// would not update the running binary. A "(deleted)" marker (left after a prior
+// swap unlinked the old inode) is stripped first; on any error the input path is
+// returned unchanged so single-file layouts behave exactly as before.
+func ResolveInstallPath(execPath string) string {
+	p := strings.TrimSuffix(strings.TrimSpace(execPath), " (deleted)")
+	if p == "" {
+		return execPath
+	}
+	if resolved, err := filepath.EvalSymlinks(p); err == nil {
+		return resolved
+	}
+	return p
+}
+
 // atomicReplace writes data to a temp file in the same dir, makes it executable,
 // keeps the old binary as <target>.bak, then os.Rename over the target. Falls
 // back to copy+chmod if rename fails (e.g. cross-device).

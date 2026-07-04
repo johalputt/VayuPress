@@ -9,6 +9,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -197,5 +199,40 @@ func TestApplyVerifiedUnsignedRefusedWithoutOptIn(t *testing.T) {
 	opt := ApplyOptions{Current: "v1.0.0", DryRun: true} // no key, AllowUnsigned=false
 	if _, err := ApplyVerified(context.Background(), client, "o", "r", opt, nil); err == nil {
 		t.Fatal("expected refusal when unsigned and not opted in")
+	}
+}
+
+func TestResolveInstallPath(t *testing.T) {
+	dir := t.TempDir()
+	real := filepath.Join(dir, "vayupress")
+	if err := os.WriteFile(real, []byte("bin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, "vayupress-link")
+	if err := os.Symlink(real, link); err != nil {
+		t.Skipf("symlinks unsupported: %v", err)
+	}
+
+	// A symlink resolves to the real file (so the atomic swap targets the
+	// writable file, not the symlink).
+	if got := ResolveInstallPath(link); got != real {
+		t.Errorf("ResolveInstallPath(symlink) = %q, want %q", got, real)
+	}
+	// A plain real path is returned unchanged.
+	if got := ResolveInstallPath(real); got != real {
+		t.Errorf("ResolveInstallPath(real) = %q, want %q", got, real)
+	}
+	// A "(deleted)" marker (left after a prior swap) is stripped before resolving.
+	if got := ResolveInstallPath(real + " (deleted)"); got != real {
+		t.Errorf("ResolveInstallPath(deleted) = %q, want %q", got, real)
+	}
+	// A non-existent path can't be resolved and is returned as-is.
+	missing := filepath.Join(dir, "does-not-exist")
+	if got := ResolveInstallPath(missing); got != missing {
+		t.Errorf("ResolveInstallPath(missing) = %q, want %q", got, missing)
+	}
+	// Empty input is returned unchanged.
+	if got := ResolveInstallPath(""); got != "" {
+		t.Errorf("ResolveInstallPath(\"\") = %q, want \"\"", got)
 	}
 }
