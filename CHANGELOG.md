@@ -97,6 +97,13 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Security
 
+- **WKD responses are cacheable + conditionally revalidated.** The Web Key
+  Directory handler now emits a strong `ETag` (over the key bytes) and a
+  `Cache-Control: public, max-age=3600`, and honours `If-None-Match` with a
+  `304 Not Modified`. Clients (and other MUAs doing key discovery) stop
+  refetching the full key on every lookup; correctness across key rotation is
+  preserved because a changed key yields a changed ETag, so a revalidation
+  returns the new key rather than a stale one.
 - **Public discovery endpoints are rate-limited (DoS hardening).** The
   unauthenticated `.well-known` discovery routes — WKD
   (`/.well-known/openpgpkey/*`), the Mozilla mail autoconfig XML, and the
