@@ -36,6 +36,13 @@ func TestOSLayoutCSPSafe(t *testing.T) {
 	if !strings.Contains(out, `<meta name="htmx-config" content='{"includeIndicatorStyles":false}'>`) {
 		t.Error("os layout missing htmx-config meta (indicator styles must stay off for CSP)")
 	}
+	// HTMX writes must never fail silently: the layout wires the CSRF header shim
+	// and an error handler that surfaces failures via the toast API.
+	for _, want := range []string{"htmx:configRequest", "htmx:responseError", "htmx:sendError", "window.vpToast"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("os layout missing HTMX glue %q (CSRF + failure feedback)", want)
+		}
+	}
 }
 
 // TestHTMXAssetServed verifies the self-hosted HTMX library is compiled into the
