@@ -19,6 +19,7 @@ func TestOSPostPinControls(t *testing.T) {
 		`hx-vals='{"pinned":"1"}'`,
 		`hx-target="this"`,
 		`hx-swap="outerHTML"`,
+		`hx-disabled-elt="this"`,
 		`>Pin</button>`,
 	} {
 		if !strings.Contains(unp, want) {

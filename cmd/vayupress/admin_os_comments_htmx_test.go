@@ -36,6 +36,7 @@ func TestOSCommentControls(t *testing.T) {
 		`hx-vals='{"status":"approved"}'`,
 		`hx-vals='{"status":"rejected"}'`,
 		`hx-vals='{"status":"spam"}'`,
+		`hx-disabled-elt="this"`,
 		">Approve</button>", ">Reject</button>", ">Spam</button>",
 	} {
 		if !strings.Contains(act, want) {

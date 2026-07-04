@@ -26,6 +26,7 @@ func TestOSPostStatusControls(t *testing.T) {
 		`hx-vals='{"status":"draft"}'`,
 		`hx-target="this"`,
 		`hx-swap="outerHTML"`,
+		`hx-disabled-elt="this"`,
 		`>Unpublish</button>`,
 	} {
 		if !strings.Contains(pub, want) {

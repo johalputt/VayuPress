@@ -42,6 +42,11 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   writes pass the same `CSRFTokenMiddleware` as the `fetch()` controls — the
   strict admin CSP (`script-src 'self'`, `style-src 'self'`) is unchanged.
 
+- **Admin HTMX writes are double-submit-safe.** Every `hx-*` action button
+  (publish/unpublish, pin/unpin, comment moderation, activity refresh) now
+  carries `hx-disabled-elt="this"`, so it disables itself while the request is
+  in flight — a fast double-click can no longer fire two writes, and the greyed
+  button is a clear "working…" cue.
 - **Admin HTMX actions never fail silently.** The admin layout now wires a
   global `htmx:responseError` / `htmx:sendError` handler that surfaces any failed
   `hx-*` write (CSRF expiry, 5xx, dropped connection) as an error toast via the

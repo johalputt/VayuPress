@@ -118,7 +118,7 @@ func (a *App) handleOSMembers(w http.ResponseWriter, r *http.Request) {
 	// the server-side feed, so the page degrades gracefully.
 	activityCard := `<div class="card mb-6">
   <h2 class="card-title">Recent activity</h2>
-  <button type="button" class="btn btn--ghost btn--sm mb-4" hx-get="/os/members/activity" hx-target="#os-activity-feed" hx-swap="innerHTML" hx-indicator="#os-activity-feed" aria-label="Refresh activity feed">↻ Refresh</button>
+  <button type="button" class="btn btn--ghost btn--sm mb-4" hx-get="/os/members/activity" hx-target="#os-activity-feed" hx-swap="innerHTML" hx-indicator="#os-activity-feed" hx-disabled-elt="this" aria-label="Refresh activity feed">↻ Refresh</button>
   <div id="os-activity-feed">` + activityFeedHTML(activity, stats.Currency) + `</div>
 </div>`
 
