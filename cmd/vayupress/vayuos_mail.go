@@ -608,6 +608,82 @@ func (a *App) handleMailAutoconfig(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte(xml))
 }
 
+// VayuMailAutoconfigSchema versions the first-party autoconfig JSON. VayuMail
+// clients read this to confirm they understand the document shape before
+// trusting it. The value is pinned by a contract test shared with the
+// VayuMail-Mobile client (autoconfig_contract_test.go on both sides) — bump it
+// only alongside a coordinated client change.
+const VayuMailAutoconfigSchema = "vayumail-autoconfig/1"
+
+// vayuMailAutoconfig is the first-party mail-autoconfiguration document served
+// at /.well-known/vayumail/autoconfig.json. It carries the same public server
+// hostnames/ports as the Mozilla/Thunderbird XML (handleMailAutoconfig) but in
+// an easy-to-parse JSON the VayuMail app consumes to set up an account from just
+// an email address. It contains no secrets — only what the Connect tab already
+// prints.
+type vayuMailAutoconfig struct {
+	Schema          string               `json:"schema"`
+	Domain          string               `json:"domain"`
+	DisplayName     string               `json:"displayName"`
+	IMAP            vayuMailServerConfig `json:"imap"`
+	POP3            vayuMailServerConfig `json:"pop3"`
+	SMTP            vayuMailServerConfig `json:"smtp"`
+	UsernameIsEmail bool                 `json:"usernameIsEmail"`
+	Auth            string               `json:"auth"`
+	WKD             bool                 `json:"wkd"`
+}
+
+// vayuMailServerConfig is one server endpoint in the autoconfig document. TLS is
+// "tls" (implicit, from the first byte) or "starttls" (upgrade), matching the
+// VayuMail client's account.TLSMode values verbatim.
+type vayuMailServerConfig struct {
+	Host string `json:"host"`
+	Port int    `json:"port"`
+	TLS  string `json:"tls"`
+}
+
+// buildVayuMailAutoconfig derives the autoconfig document from the running mail
+// server configuration. Kept separate from the handler so the contract test can
+// assert the emitted shape without spinning up HTTP.
+func (a *App) buildVayuMailAutoconfig() vayuMailAutoconfig {
+	mc := a.vayuMail.Config()
+	domain := strings.TrimSpace(mc.Domain)
+	if domain == "" {
+		domain = config.Cfg.Domain
+	}
+	host := strings.TrimSpace(mc.Hostname)
+	if host == "" {
+		host = "mail." + domain
+	}
+	atoi := func(s string) int { n, _ := strconv.Atoi(s); return n }
+	return vayuMailAutoconfig{
+		Schema:          VayuMailAutoconfigSchema,
+		Domain:          domain,
+		DisplayName:     domain + " Mail",
+		IMAP:            vayuMailServerConfig{Host: host, Port: atoi(mailPort(mc.IMAPSListen, "993")), TLS: "tls"},
+		POP3:            vayuMailServerConfig{Host: host, Port: atoi(mailPort(mc.POP3SListen, "995")), TLS: "tls"},
+		SMTP:            vayuMailServerConfig{Host: host, Port: atoi(mailPort(mc.SubmissionListen, "587")), TLS: "starttls"},
+		UsernameIsEmail: true,
+		Auth:            "password",
+		WKD:             true,
+	}
+}
+
+// handleVayuMailAutoconfigJSON serves the first-party autoconfig JSON. Public and
+// unauthenticated by design (same rationale as handleMailAutoconfig): it exposes
+// only public server coordinates, never a secret. VayuMail-Mobile fetches it at
+// https://<domain>/.well-known/vayumail/autoconfig.json to onboard by email.
+func (a *App) handleVayuMailAutoconfigJSON(w http.ResponseWriter, r *http.Request) {
+	if a.vayuMail == nil {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=3600")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	_ = json.NewEncoder(w).Encode(a.buildVayuMailAutoconfig())
+}
+
 // handleVayuOSConnect renders the "Connect" tab: ready-to-use IMAP/POP3/SMTP
 // client settings for each mailbox (so any standard mail app — Gmail, Apple
 // Mail, Thunderbird, Outlook — can be set up by copying the values), plus the

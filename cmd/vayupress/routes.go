@@ -168,6 +168,11 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	// this to set up a mailbox from just the email address (no manual server
 	// entry). Public; contains only hostnames/ports, never a secret.
 	r.Get("/.well-known/autoconfig/mail/config-v1.1.xml", a.handleMailAutoconfig)
+	// First-party VayuMail autoconfig (JSON). The VayuMail app fetches this to
+	// onboard by email address alone. Public; same public server coordinates as
+	// the Mozilla XML above, never a secret. Two path segments under
+	// /.well-known/, so it does not collide with the /{file} catch-all below.
+	r.Get("/.well-known/vayumail/autoconfig.json", a.handleVayuMailAutoconfigJSON)
 
 	// IndexNow key verification file. Search engines fetch
 	// /.well-known/<key>.txt and expect the body to equal <key>. We serve it

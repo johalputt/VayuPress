@@ -14,6 +14,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	htmlpkg "html"
 	htmpl "html/template"
 	"net/http"
@@ -273,6 +274,40 @@ func (a *App) handleOSPostStatus(w http.ResponseWriter, r *http.Request) {
 		go a.pingIndexNow(slug)
 	}
 	writeJSON(w, r, http.StatusOK, map[string]string{"status": status, "slug": slug})
+}
+
+// handleOSPostToggleFragment is the HTMX counterpart to handleOSPostStatus: it
+// flips a single post's published/draft status and returns an HTML fragment —
+// the flipped toggle button plus an out-of-band update of that row's status pill
+// — so the Posts manager updates the row in place with no full-page reload. The
+// JSON handler above stays in use for the bulk actions. CSRF is enforced by the
+// route's CSRFTokenMiddleware (the admin layout mirrors the vp_csrf cookie into
+// the X-CSRF-Token header for every hx-* request).
+func (a *App) handleOSPostToggleFragment(w http.ResponseWriter, r *http.Request) {
+	slug := strings.TrimSpace(chi.URLParam(r, "slug"))
+	status := strings.TrimSpace(r.FormValue("status"))
+	if slug == "" || (status != "published" && status != "draft") {
+		http.Error(w, "slug and a valid status (published|draft) are required", http.StatusBadRequest)
+		return
+	}
+	var tagsCSV string
+	if err := dbpkg.DB.QueryRowContext(r.Context(), `SELECT COALESCE(tags,'') FROM articles WHERE slug=?`, slug).Scan(&tagsCSV); err != nil {
+		http.Error(w, "no article with that slug", http.StatusNotFound)
+		return
+	}
+	if _, err := dbpkg.WDB.Exec(`UPDATE articles SET status=?, updated_at=? WHERE slug=?`, status, time.Now().UTC(), slug); err != nil {
+		http.Error(w, "update failed", http.StatusInternalServerError)
+		return
+	}
+	// Same cache-purge + IndexNow behaviour as the JSON path, so an unpublish
+	// disappears (and a publish appears + is announced) without delay.
+	render.CachePurge(slug, splitCSVTags(tagsCSV), generateSitemap, generateRSS, generateRobots)
+	if status == "published" {
+		go a.pingIndexNow(slug)
+	}
+	esc := htmlpkg.EscapeString(slug)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprint(w, osPostStatusButton(esc, status)+osPostStatusOOB(esc, status))
 }
 
 // handleOSPostPin pins or unpins (features) a post directly from the manager,

@@ -8,8 +8,33 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Changed
+
+- **Posts manager: publish/unpublish is now an in-place HTMX update (no page
+  reload).** The Publish/Unpublish button on `/os/posts` was a `fetch()` that
+  reloaded the entire page on success. It now uses HTMX: the button POSTs to a
+  new `POST /os/api/posts/{slug}/status-fragment` endpoint that flips the status
+  and returns an HTML fragment — the flipped button plus an **out-of-band** swap
+  of that row's status pill — so only the affected row updates, instantly, with
+  no full reload. The change is surgical: the JSON `/os/api/posts/status`
+  endpoint still backs the bulk actions, and pin/delete/select are untouched. A
+  nonce-gated `htmx:configRequest` shim mirrors the existing double-submit CSRF
+  cookie into the `X-CSRF-Token` header for every admin `hx-*` request, so HTMX
+  writes pass the same `CSRFTokenMiddleware` as the `fetch()` controls — the
+  strict admin CSP (`script-src 'self'`, `style-src 'self'`) is unchanged.
+
 ### Added
 
+- **First-party VayuMail autoconfig (JSON) for email-only onboarding.** New
+  public endpoint `GET /.well-known/vayumail/autoconfig.json` publishes the mail
+  server's own IMAP/POP3/SMTP coordinates (host, ports, TLS mode) as an
+  easy-to-parse JSON — the same public settings as the existing Mozilla/
+  Thunderbird XML (`/.well-known/autoconfig/mail/config-v1.1.xml`), but shaped
+  for the VayuMail app, which fetches it to configure an account from just an
+  email address. No secrets (same data as the Connect tab); long-cached; `404`s
+  when VayuMail is inactive. The document shape is versioned
+  (`vayumail-autoconfig/1`) and pinned byte-for-byte to the VayuMail-Mobile
+  client by a shared contract test, so server and app can never silently drift.
 - **Self-hosted HTMX in the binary (no CDN).** [htmx](https://htmx.org) 2.0.4
   (0BSD) is now vendored at `static/js/htmx.min.js`, compiled into the binary via
   the module-root `//go:embed static` → `StaticFS` and written to `STATIC_DIR` on
