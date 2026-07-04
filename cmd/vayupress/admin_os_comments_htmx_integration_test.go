@@ -25,7 +25,7 @@ func TestOSCommentModerateFragment(t *testing.T) {
 	_, _ = newTestHarness(t) // initialises config, DB and the CSRF secret
 
 	store := comments.New(dbpkg.DB)
-	const id = "cmt-1"
+	const id = "abcdef0123456789abcdef01"
 	if _, err := dbpkg.DB.Exec(
 		`INSERT INTO comments(id,article_id,author,email,body,status) VALUES(?,?,?,?,?,?)`,
 		id, "art-1", "Reader", "r@example.com", "nice post", "pending",
@@ -53,7 +53,7 @@ func TestOSCommentModerateFragment(t *testing.T) {
 	}
 	for _, want := range []string{
 		`data-status="approved"`, `hx-swap-oob="true"`,
-		`id="cpill-cmt-1"`, `id="cc-pending"`, `id="cc-approved"`,
+		`id="cpill-` + id + `"`, `id="cc-pending"`, `id="cc-approved"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("fragment missing %q in:\n%s", want, body)
@@ -81,5 +81,20 @@ func TestOSCommentModerateFragment(t *testing.T) {
 	a.handleOSCommentModerateFragment(bad, breq)
 	if bad.Code != http.StatusBadRequest {
 		t.Errorf("bad status = %d, want 400", bad.Code)
+	}
+
+	// A malicious id (non-hex) is rejected before any reflection (XSS guard).
+	xss := httptest.NewRecorder()
+	xreq := httptest.NewRequest(http.MethodPost, "/os/api/comments/x/status-fragment", strings.NewReader("status=approved"))
+	xreq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	xrctx := chi.NewRouteContext()
+	xrctx.URLParams.Add("id", `abc"><script>alert(1)</script>`)
+	xreq = xreq.WithContext(context.WithValue(xreq.Context(), chi.RouteCtxKey, xrctx))
+	a.handleOSCommentModerateFragment(xss, xreq)
+	if xss.Code != http.StatusBadRequest {
+		t.Errorf("malicious id got %d, want 400", xss.Code)
+	}
+	if strings.Contains(xss.Body.String(), "<script>") {
+		t.Errorf("response reflected the malicious id: %s", xss.Body.String())
 	}
 }

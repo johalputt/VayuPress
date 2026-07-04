@@ -105,6 +105,14 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Security
 
+- **Reflected-XSS hardening on the HTMX fragment endpoints (CodeQL #43).** The
+  comment-moderation and post publish/pin fragment endpoints echo their path
+  parameter (comment id / slug) into the returned HTML. On top of HTML-escaping,
+  the id/slug is now validated against a strict allowlist *before* it is used or
+  reflected — comment ids must be hex (`^[0-9a-f]{1,64}$`), slugs must pass
+  `api.IsValidSlug` — so any value carrying HTML/URL/CSS metacharacters is
+  rejected with `400` at the source. Tests assert a `<script>` / `<img onerror>`
+  payload is rejected on every fragment endpoint and never reflected.
 - **WKD responses are cacheable + conditionally revalidated.** The Web Key
   Directory handler now emits a strong `ETag` (over the key bytes) and a
   `Cache-Control: public, max-age=3600`, and honours `If-None-Match` with a
