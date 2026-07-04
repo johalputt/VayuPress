@@ -82,7 +82,7 @@ sudo ./scripts/deploy-vayupress.sh
 
 The installer provisions the binary, systemd service, Nginx, and Let's Encrypt certificates for your website, blog, and mail hostnames. A fresh install auto-creates an `admin@yourdomain` account (random password, saved to a root-only file) and forces a password change on first sign-in — no extra CLI step.
 
-Runs comfortably on a single **12 GB RAM / 6 vCPU / 250 GB NVMe** VPS.
+Runs comfortably on a single **8 GB RAM / 4 vCPU / 50 GB NVMe** VPS.
 
 ---
 
