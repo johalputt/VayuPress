@@ -42,6 +42,13 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   writes pass the same `CSRFTokenMiddleware` as the `fetch()` controls — the
   strict admin CSP (`script-src 'self'`, `style-src 'self'`) is unchanged.
 
+- **Admin HTMX actions never fail silently.** The admin layout now wires a
+  global `htmx:responseError` / `htmx:sendError` handler that surfaces any failed
+  `hx-*` write (CSRF expiry, 5xx, dropped connection) as an error toast via the
+  existing toast API — restoring the failure feedback the pre-HTMX `fetch()`
+  controls had. Nonce-gated alongside the CSRF header shim, so the strict CSP is
+  unchanged.
+
 ### Added
 
 - **First-party VayuMail autoconfig (JSON) for email-only onboarding.** New

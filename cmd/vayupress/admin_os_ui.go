@@ -789,11 +789,19 @@ window.vpPost=function(url,onok){fetch(url,{method:'POST',headers:{'Content-Type
      same-origin so it satisfies script-src 'self' with no nonce and no external
      host. Deferred so hx-* attributes are wired after the document parses. -->
 <script src="/static/js/htmx.min.js?v=` + assetVer("js/htmx.min.js") + `" defer></script>
-<!-- CSRF for HTMX: mirror the double-submit cookie into the X-CSRF-Token header
-     on every hx-* mutating request, so admin HTMX POST/DELETE pass the same
-     CSRFTokenMiddleware the fetch() controls already use. Nonce-gated → CSP-safe. -->
+<!-- HTMX glue (nonce-gated → CSP-safe):
+     1. CSRF — mirror the double-submit vp_csrf cookie into the X-CSRF-Token
+        header on every hx-* mutating request, so admin HTMX POST/DELETE pass the
+        same CSRFTokenMiddleware the fetch() controls already use.
+     2. Failure feedback — surface any HTTP or network error from an hx-* request
+        as a toast, so a failed publish/pin/moderate never fails silently. -->
 <script nonce="` + nonce + `">
-(function(){var b=document.body;if(!b)return;b.addEventListener('htmx:configRequest',function(e){var m=document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);if(m)e.detail.headers['X-CSRF-Token']=m[1];});})();
+(function(){var b=document.body;if(!b)return;
+b.addEventListener('htmx:configRequest',function(e){var m=document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);if(m)e.detail.headers['X-CSRF-Token']=m[1];});
+function vpHtmxFail(){if(window.vpToast)window.vpToast('Action failed — please try again.','error');}
+b.addEventListener('htmx:responseError',vpHtmxFail);
+b.addEventListener('htmx:sendError',vpHtmxFail);
+})();
 </script>
 <!-- Bootstrap (nonce-gated, reads data-admin-theme from body) -->
 <script src="/os/static/js/purify.min.js"></script>
