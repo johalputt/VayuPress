@@ -387,6 +387,13 @@ jobs:
         run: go build -race ./...
       - name: go test (race)
         run: go test -race ./... -count=1
+      # Integration tests run without -race: they mutate the process-global
+      # config.Cfg per test (config.Load) while prior tests' fire-and-forget
+      # cache-purge goroutines may still read it — a test-harness-only race that
+      # never occurs in production (config.Load runs once at startup). The
+      # race-clean unit suite above already runs under -race.
+      - name: go test (integration)
+        run: go test -tags integration ./... -count=1
       - name: architecture layer validator
         run: go test ./internal/archcheck/ -v -count=1
       - name: compatibility golden tests
