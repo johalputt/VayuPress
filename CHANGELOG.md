@@ -10,6 +10,16 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ### Added
 
+- **First-party VayuMail autoconfig (JSON) for email-only onboarding.** New
+  public endpoint `GET /.well-known/vayumail/autoconfig.json` publishes the mail
+  server's own IMAP/POP3/SMTP coordinates (host, ports, TLS mode) as an
+  easy-to-parse JSON — the same public settings as the existing Mozilla/
+  Thunderbird XML (`/.well-known/autoconfig/mail/config-v1.1.xml`), but shaped
+  for the VayuMail app, which fetches it to configure an account from just an
+  email address. No secrets (same data as the Connect tab); long-cached; `404`s
+  when VayuMail is inactive. The document shape is versioned
+  (`vayumail-autoconfig/1`) and pinned byte-for-byte to the VayuMail-Mobile
+  client by a shared contract test, so server and app can never silently drift.
 - **Self-hosted HTMX in the binary (no CDN).** [htmx](https://htmx.org) 2.0.4
   (0BSD) is now vendored at `static/js/htmx.min.js`, compiled into the binary via
   the module-root `//go:embed static` → `StaticFS` and written to `STATIC_DIR` on
