@@ -1803,6 +1803,24 @@ document.querySelectorAll('[data-post-bulk]').forEach(function(b){
 // (reflected XSS, CodeQL go/reflected-xss).
 var commentIDRe = regexp.MustCompile(`^[0-9a-f]{1,64}$`)
 
+// canonicalCommentStatus maps a requested moderation status to a fixed,
+// compile-time constant (or "" if unrecognised). Returning a literal — rather
+// than the request string — means the value later reflected into the moderation
+// fragment is provably not request-tainted, which removes the reflected-XSS
+// flow at the source (defence in depth alongside output escaping).
+func canonicalCommentStatus(s string) string {
+	switch strings.TrimSpace(s) {
+	case "approved":
+		return "approved"
+	case "rejected":
+		return "rejected"
+	case "spam":
+		return "spam"
+	default:
+		return ""
+	}
+}
+
 // osCommentPill renders a comment's status badge. It carries a stable per-id id
 // and a data-status attribute so the client-side status filter can read the live
 // status after an HTMX moderation swap. When oob is true it is emitted as an
@@ -1820,7 +1838,11 @@ func osCommentPill(idEsc, status string, oob bool) string {
 	if oob {
 		oobAttr = ` hx-swap-oob="true"`
 	}
-	return `<span class="` + cls + `" id="cpill-` + idEsc + `" data-status="` + status + `"` + oobAttr + `>● ` + html.EscapeString(status) + `</span>`
+	// status is escaped in BOTH the attribute and the text: it reaches here from
+	// request input on the moderation-fragment path, and an unescaped reflection
+	// (even of a validated value) is a reflected-XSS sink (CodeQL go/reflected-xss).
+	esc := html.EscapeString(status)
+	return `<span class="` + cls + `" id="cpill-` + idEsc + `" data-status="` + esc + `"` + oobAttr + `>● ` + esc + `</span>`
 }
 
 // osCommentActions renders the moderation buttons for a comment in its CURRENT
@@ -1988,11 +2010,13 @@ func (a *App) handleOSCommentModerateFragment(w http.ResponseWriter, r *http.Req
 		return
 	}
 	id := chi.URLParam(r, "id")
-	status := strings.TrimSpace(r.FormValue("status"))
-	// Strict allowlist on the id before it is used or reflected: reject anything
-	// that is not a well-formed comment id, closing the reflected-XSS vector at
-	// the source (the id is later echoed into the response fragment).
-	if !commentIDRe.MatchString(id) || (status != "approved" && status != "rejected" && status != "spam") {
+	// Map the requested status to a compile-time constant rather than passing the
+	// request string through: the value later reflected into the response fragment
+	// is then provably untainted (not request-derived), closing the reflected-XSS
+	// vector at the source. Likewise the id is constrained to a well-formed comment
+	// id (hex) before it is used or echoed.
+	status := canonicalCommentStatus(r.FormValue("status"))
+	if !commentIDRe.MatchString(id) || status == "" {
 		http.Error(w, "a valid comment id and status (approved|rejected|spam) are required", http.StatusBadRequest)
 		return
 	}

@@ -44,3 +44,15 @@ func TestPostFragmentsRejectMaliciousSlug(t *testing.T) {
 		}
 	}
 }
+
+// TestCommentPillEscapesStatus verifies the moderation pill never reflects a raw
+// status into the data-status attribute (reflected-XSS regression guard).
+func TestCommentPillEscapesStatus(t *testing.T) {
+	out := osCommentPill("abc123", `x"><script>alert(1)</script>`, true)
+	if strings.Contains(out, "<script>") || strings.Contains(out, `data-status="x">`) {
+		t.Errorf("osCommentPill reflected a raw status: %s", out)
+	}
+	if canonicalCommentStatus("bogus") != "" || canonicalCommentStatus("approved") != "approved" {
+		t.Error("canonicalCommentStatus must map only the known enum")
+	}
+}
