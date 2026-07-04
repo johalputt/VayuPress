@@ -8,6 +8,15 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [2.9.0] — 2026-07-04
+
+Self-hosted HTMX in the binary with CSP-clean progressive enhancement across the
+VayuOS admin panel; a first-party mail-autoconfig endpoint plus verified/hardened
+WKD interop with VayuMail-Mobile; and a round of security and enterprise-grade
+hardening (reflected-XSS fix, discovery-endpoint rate limiting, WKD caching,
+double-submit guards, accessibility announcements, operator metrics, and a
+race-clean integration suite in CI).
+
 ### Changed
 
 - **Comments manager: moderation is now an in-place HTMX update (no page
