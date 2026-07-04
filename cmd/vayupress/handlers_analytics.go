@@ -12,6 +12,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/johalputt/vayupress/internal/analytics"
+	"github.com/johalputt/vayupress/internal/auth"
+	"github.com/johalputt/vayupress/internal/geoip"
 )
 
 // ── Ingest rate limiting ─────────────────────────────────────────────────────
@@ -142,12 +144,16 @@ func (a *App) handleAnalyticsCollect(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// geoFromHeaders extracts coarse visitor location from trusted reverse-proxy
-// headers. VayuPress performs no GeoIP lookup and bundles no GeoIP database; if
-// the operator fronts VayuPress with a proxy that injects these headers (e.g.
-// Cloudflare's CF-IPCountry), the data is recorded — otherwise it stays empty.
-// No IP is ever stored. Country is normalised to an uppercase ISO alpha-2 code;
-// Cloudflare's "XX"/"T1" placeholders (unknown / Tor) are dropped.
+// geoFromHeaders extracts coarse visitor location. It prefers trusted
+// reverse-proxy headers (e.g. Cloudflare's CF-IPCountry) when the operator
+// fronts VayuPress with a CDN. When no proxy header supplies a country — the
+// common case for a sovereign VPS deployment with no CDN — it falls back to an
+// offline, embedded IP→country lookup (internal/geoip), so live analytics show
+// real countries out of the box with no external service and no GeoIP database
+// to download. Region/city still come only from proxy headers. No IP is ever
+// stored; the fallback uses the trusted-proxy-aware client IP purely for an
+// in-process lookup. Country is an uppercase ISO alpha-2 code; Cloudflare's
+// "XX"/"T1" placeholders (unknown / Tor) are dropped.
 func geoFromHeaders(r *http.Request) analytics.GeoInfo {
 	pick := func(keys ...string) string {
 		for _, k := range keys {
@@ -175,6 +181,12 @@ func geoFromHeaders(r *http.Request) analytics.GeoInfo {
 	))
 	if country == "XX" || country == "T1" || len(country) != 2 {
 		country = ""
+	}
+	// No proxy supplied a usable country: resolve it offline from the real
+	// client IP (trusted-proxy-aware), so sovereign self-hosters without a CDN
+	// still see countries. The IP is used only for this lookup, never stored.
+	if country == "" {
+		country = geoip.Country(auth.ClientIP(r))
 	}
 	region := decode(pick(
 		"CF-Region",                             // Cloudflare (full name, e.g. "California")
