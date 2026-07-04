@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/johalputt/vayupress/internal/api"
 	"github.com/johalputt/vayupress/internal/blockrender"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/logging"
@@ -289,8 +290,9 @@ func (a *App) handleOSPostStatus(w http.ResponseWriter, r *http.Request) {
 func (a *App) handleOSPostToggleFragment(w http.ResponseWriter, r *http.Request) {
 	slug := strings.TrimSpace(chi.URLParam(r, "slug"))
 	status := strings.TrimSpace(r.FormValue("status"))
-	if slug == "" || (status != "published" && status != "draft") {
-		http.Error(w, "slug and a valid status (published|draft) are required", http.StatusBadRequest)
+	// Strict slug allowlist before the slug is used or reflected into the fragment.
+	if !api.IsValidSlug(slug) || (status != "published" && status != "draft") {
+		http.Error(w, "a valid slug and status (published|draft) are required", http.StatusBadRequest)
 		return
 	}
 	var tagsCSV string
@@ -323,8 +325,9 @@ func (a *App) handleOSPostToggleFragment(w http.ResponseWriter, r *http.Request)
 func (a *App) handleOSPostPinFragment(w http.ResponseWriter, r *http.Request) {
 	slug := strings.TrimSpace(chi.URLParam(r, "slug"))
 	pinned := strings.TrimSpace(r.FormValue("pinned"))
-	if slug == "" || (pinned != "0" && pinned != "1") {
-		http.Error(w, "slug and pinned (0|1) are required", http.StatusBadRequest)
+	// Strict slug allowlist before the slug is used or reflected into the fragment.
+	if !api.IsValidSlug(slug) || (pinned != "0" && pinned != "1") {
+		http.Error(w, "a valid slug and pinned (0|1) are required", http.StatusBadRequest)
 		return
 	}
 	var tagsCSV string

@@ -36,6 +36,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -1795,6 +1796,13 @@ document.querySelectorAll('[data-post-bulk]').forEach(function(b){
 
 // ── Comments moderation ──────────────────────────────────────────────────────
 
+// commentIDRe is the strict allowlist for a comment id. Comment ids are
+// generated as 24 lowercase hex chars (comments.newID), so a value outside this
+// set is invalid input — validating against it before the id is ever reflected
+// into the moderation fragment removes any HTML/URL/CSS-injection vector
+// (reflected XSS, CodeQL go/reflected-xss).
+var commentIDRe = regexp.MustCompile(`^[0-9a-f]{1,64}$`)
+
 // osCommentPill renders a comment's status badge. It carries a stable per-id id
 // and a data-status attribute so the client-side status filter can read the live
 // status after an HTMX moderation swap. When oob is true it is emitted as an
@@ -1981,8 +1989,11 @@ func (a *App) handleOSCommentModerateFragment(w http.ResponseWriter, r *http.Req
 	}
 	id := chi.URLParam(r, "id")
 	status := strings.TrimSpace(r.FormValue("status"))
-	if id == "" || (status != "approved" && status != "rejected" && status != "spam") {
-		http.Error(w, "id and a valid status (approved|rejected|spam) are required", http.StatusBadRequest)
+	// Strict allowlist on the id before it is used or reflected: reject anything
+	// that is not a well-formed comment id, closing the reflected-XSS vector at
+	// the source (the id is later echoed into the response fragment).
+	if !commentIDRe.MatchString(id) || (status != "approved" && status != "rejected" && status != "spam") {
+		http.Error(w, "a valid comment id and status (approved|rejected|spam) are required", http.StatusBadRequest)
 		return
 	}
 	if err := a.commentStore.Moderate(r.Context(), id, status); err != nil {
