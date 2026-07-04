@@ -42,6 +42,11 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   writes pass the same `CSRFTokenMiddleware` as the `fetch()` controls — the
   strict admin CSP (`script-src 'self'`, `style-src 'self'`) is unchanged.
 
+- **Admin HTMX actions are announced to assistive tech (WCAG 2.2 AA).** A
+  visually-hidden `aria-live` region (`#vp-live`) plus an `htmx:afterRequest`
+  handler announce the outcome of every `hx-*` action ("Change saved." /
+  "Content refreshed."), so screen-reader users get the same confirmation sighted
+  users get from the in-place update.
 - **Admin HTMX writes are double-submit-safe.** Every `hx-*` action button
   (publish/unpublish, pin/unpin, comment moderation, activity refresh) now
   carries `hx-disabled-elt="this"`, so it disables itself while the request is
