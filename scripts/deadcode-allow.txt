@@ -154,6 +154,7 @@ internal/registry/registry.go: unreachable func: Registry.Register
 internal/render/csp.go: unreachable func: AllowedFrameOrigin
 internal/render/portal.go: unreachable func: PortalJSLink
 internal/render/render.go: unreachable func: AdminCSSLink
+internal/render/render.go: unreachable func: WaitForPurges
 internal/resource/resource.go: unreachable func: Watchdog.Watch
 internal/safefetch/safefetch.go: unreachable func: IsPrivateOrReservedIP
 internal/sandbox/capability_enforcer.go: unreachable func: EnforceCapabilities
