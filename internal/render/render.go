@@ -2157,16 +2157,33 @@ func CachePurge(slug string, tags []string, generateSitemap, generateRSS, genera
 			os.Remove(tagFile)
 		}
 	}
-	if generateSitemap != nil {
-		go generateSitemap()
-	}
-	if generateRSS != nil {
-		go generateRSS()
-	}
-	if generateRobots != nil {
-		go generateRobots()
-	}
+	// The sitemap/feed/robots regenerations are fired asynchronously so a content
+	// write never blocks on them. They are tracked in purgeWG purely so tests can
+	// drain them deterministically (WaitForPurges) — production never waits.
+	spawnPurge(generateSitemap)
+	spawnPurge(generateRSS)
+	spawnPurge(generateRobots)
 }
+
+// purgeWG tracks in-flight async cache regenerations spawned by CachePurge.
+var purgeWG sync.WaitGroup
+
+func spawnPurge(fn func()) {
+	if fn == nil {
+		return
+	}
+	purgeWG.Add(1)
+	go func() {
+		defer purgeWG.Done()
+		fn()
+	}()
+}
+
+// WaitForPurges blocks until every async cache regeneration spawned by
+// CachePurge has finished. It exists for deterministic test teardown (so the
+// fire-and-forget writes cannot race a test's temp-dir cleanup or the next
+// test's config reload); production code never calls it.
+func WaitForPurges() { purgeWG.Wait() }
 
 // WarmCache pre-renders the 1000 most recently updated articles that are not already cached.
 func WarmCache(splitTags func(string) []string) {
