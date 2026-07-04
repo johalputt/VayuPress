@@ -21,9 +21,19 @@
 > _Own your content. Own your communication. Own your infrastructure._
 > Publishing is the core identity, **VayuMail** the native sovereignty layer, **VayuPGP** the native privacy layer, and **VayuOS** the native control layer — all in a single Go binary, single process, single config.
 
-## What's New in v2.8.0
+## What's New in v2.9.0
 
 > Full notes in [`CHANGELOG.md`](CHANGELOG.md)
+
+**HTMX is now self-hosted inside the binary** (no CDN) and drives CSP-clean,
+in-place admin interactions — publish/unpublish, pin/unpin and comment
+moderation update their row with no page reload, double-submit-guarded and
+announced to assistive tech. A new **first-party mail-autoconfig endpoint** lets
+the VayuMail app set up an account from just an email address, and the
+VayuPress ↔ VayuMail **PGP/WKD interop is verified and hardened** (rate-limited
+discovery, cacheable WKD with ETags, reflected-XSS fix, address-verified key
+discovery). See [ADR-0107](docs/adr/ADR-0107-self-hosted-htmx.md) and
+[ADR-0108](docs/adr/ADR-0108-vayumail-autoconfig-and-discovery-hardening.md).
 
 **One command stands up your whole online presence — website + blog + PGP mail,
 plus an official mobile app — with a Ghost-class editor, whole-site themes, and
