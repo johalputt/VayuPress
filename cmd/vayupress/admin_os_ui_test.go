@@ -43,6 +43,14 @@ func TestOSLayoutCSPSafe(t *testing.T) {
 			t.Errorf("os layout missing HTMX glue %q (CSRF + failure feedback)", want)
 		}
 	}
+	// Accessibility: an aria-live region + an afterRequest handler announce HTMX
+	// outcomes to assistive tech (WCAG 2.2 AA).
+	if !strings.Contains(out, `id="vp-live"`) || !strings.Contains(out, `aria-live="polite"`) {
+		t.Error("os layout missing the vp-live aria-live announce region")
+	}
+	if !strings.Contains(out, "htmx:afterRequest") {
+		t.Error("os layout missing the htmx:afterRequest announce handler")
+	}
 }
 
 // TestHTMXAssetServed verifies the self-hosted HTMX library is compiled into the

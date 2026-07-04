@@ -785,6 +785,10 @@ window.vpPost=function(url,onok){fetch(url,{method:'POST',headers:{'Content-Type
 <!-- Toast container -->
 <div class="toast-container" aria-live="polite" aria-atomic="true"></div>
 
+<!-- Screen-reader announce region for HTMX outcomes (WCAG 2.2 AA). Visually
+     hidden; the nonce-gated glue script updates it after each hx-* request. -->
+<div id="vp-live" class="vp-sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+
 <!-- Self-hosted HTMX (static/js/htmx.min.js) — embedded in the binary, served
      same-origin so it satisfies script-src 'self' with no nonce and no external
      host. Deferred so hx-* attributes are wired after the document parses. -->
@@ -801,6 +805,7 @@ b.addEventListener('htmx:configRequest',function(e){var m=document.cookie.match(
 function vpHtmxFail(){if(window.vpToast)window.vpToast('Action failed — please try again.','error');}
 b.addEventListener('htmx:responseError',vpHtmxFail);
 b.addEventListener('htmx:sendError',vpHtmxFail);
+b.addEventListener('htmx:afterRequest',function(e){var d=e.detail;if(!d||!d.successful)return;var l=document.getElementById('vp-live');if(!l)return;var v=(d.requestConfig&&(d.requestConfig.verb||'')).toLowerCase();l.textContent='';l.textContent=(v==='get'?'Content refreshed.':'Change saved.');});
 })();
 </script>
 <!-- Bootstrap (nonce-gated, reads data-admin-theme from body) -->
@@ -1438,7 +1443,7 @@ func osPostStatusButton(slugEsc, status string) string {
 	return `<button type="button" class="btn btn--ghost btn--sm"` +
 		` hx-post="/os/api/posts/` + slugEsc + `/status-fragment"` +
 		` hx-vals='{"status":"` + to + `"}'` +
-		` hx-target="this" hx-swap="outerHTML">` + label + `</button>`
+		` hx-target="this" hx-swap="outerHTML" hx-disabled-elt="this">` + label + `</button>`
 }
 
 // osPostStatusOOB renders the out-of-band status-pill update the fragment
@@ -1460,7 +1465,7 @@ func osPostPinButton(slugEsc string, featured bool) string {
 	return `<button type="button" class="btn btn--ghost btn--sm"` +
 		` hx-post="/os/api/posts/` + slugEsc + `/pin-fragment"` +
 		` hx-vals='{"pinned":"` + to + `"}'` +
-		` hx-target="this" hx-swap="outerHTML">` + label + `</button>`
+		` hx-target="this" hx-swap="outerHTML" hx-disabled-elt="this">` + label + `</button>`
 }
 
 // osPostPinBadge renders the pinned indicator next to a post's title, keyed by a
@@ -1824,7 +1829,7 @@ func osCommentActions(idEsc, status string) string {
 		return `<button type="button" class="btn ` + cls + ` btn--sm"` +
 			` hx-post="/os/api/comments/` + idEsc + `/status-fragment"` +
 			` hx-vals='{"status":"` + to + `"}'` +
-			` hx-target="#cact-` + idEsc + `" hx-swap="innerHTML">` + label + `</button> `
+			` hx-target="#cact-` + idEsc + `" hx-swap="innerHTML" hx-disabled-elt="this">` + label + `</button> `
 	}
 	return btn("approved", "Approve", "btn--primary") + btn("rejected", "Reject", "btn--ghost") + btn("spam", "Spam", "btn--ghost")
 }
