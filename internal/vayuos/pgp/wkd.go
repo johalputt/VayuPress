@@ -3,6 +3,8 @@ package pgp
 import (
 	"bytes"
 	"crypto/sha1"
+	"crypto/sha256"
+	"encoding/hex"
 	"io"
 	"net"
 	"net/http"
@@ -139,8 +141,21 @@ func (e *Engine) ServeWKD(domain string) http.Handler {
 				http.Error(w, "wkd key error", http.StatusInternalServerError)
 				return
 			}
+			// Strong ETag over the key bytes lets clients revalidate cheaply. It
+			// stays correct across key rotation (ADR-0076): when the key changes the
+			// bytes change, so the ETag changes and a revalidation returns the new
+			// key rather than a stale one. A modest max-age caps how long a client
+			// may serve a cached copy before revalidating.
+			sum := sha256.Sum256(bin)
+			etag := `"` + hex.EncodeToString(sum[:16]) + `"`
 			w.Header().Set("Content-Type", "application/octet-stream")
 			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Cache-Control", "public, max-age=3600")
+			w.Header().Set("ETag", etag)
+			if r.Header.Get("If-None-Match") == etag {
+				w.WriteHeader(http.StatusNotModified)
+				return
+			}
 			_, _ = w.Write(bin)
 			return
 		}
