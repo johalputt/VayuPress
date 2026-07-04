@@ -326,6 +326,10 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/settings", a.handleOSSettingsAPI)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/posts/quick-create", a.handleOSQuickCreatePost)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/posts/status", a.handleOSPostStatus)
+		// HTMX in-place publish/unpublish toggle: returns an HTML row fragment
+		// (flipped button + out-of-band status pill) instead of JSON, so the
+		// Posts manager updates the row without a full-page reload.
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/posts/{slug}/status-fragment", a.handleOSPostToggleFragment)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/posts/pin", a.handleOSPostPin)
 		pr.With(auth.CSRFTokenMiddleware).Delete("/os/api/posts/{slug}", a.handleOSPostDelete)
 		// Session-friendly branding (favicon) upload — the /admin/theme/favicon
@@ -778,6 +782,12 @@ window.vpPost=function(url,onok){fetch(url,{method:'POST',headers:{'Content-Type
      same-origin so it satisfies script-src 'self' with no nonce and no external
      host. Deferred so hx-* attributes are wired after the document parses. -->
 <script src="/static/js/htmx.min.js?v=` + assetVer("js/htmx.min.js") + `" defer></script>
+<!-- CSRF for HTMX: mirror the double-submit cookie into the X-CSRF-Token header
+     on every hx-* mutating request, so admin HTMX POST/DELETE pass the same
+     CSRFTokenMiddleware the fetch() controls already use. Nonce-gated → CSP-safe. -->
+<script nonce="` + nonce + `">
+(function(){var b=document.body;if(!b)return;b.addEventListener('htmx:configRequest',function(e){var m=document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);if(m)e.detail.headers['X-CSRF-Token']=m[1];});})();
+</script>
 <!-- Bootstrap (nonce-gated, reads data-admin-theme from body) -->
 <script src="/os/static/js/purify.min.js"></script>
 <script nonce="` + nonce + `" src="/os/static/js/admin-os.js"></script>
@@ -1391,6 +1401,38 @@ func (a *App) handleOSDashboard(w http.ResponseWriter, r *http.Request) {
 // `LIMIT 500` cap so every post is reachable regardless of archive size.
 const osPostsPageSize = 100
 
+// osPostStatusPill renders the status badge shown in the Posts manager for a
+// post's current status ("draft" → Draft, anything else → Published).
+func osPostStatusPill(status string) string {
+	if status == "draft" {
+		return `<span class="status-pill status-pill--draft">● Draft</span>`
+	}
+	return `<span class="status-pill status-pill--live">● Published</span>`
+}
+
+// osPostStatusButton renders the HTMX publish/unpublish toggle for a post in its
+// CURRENT status. Clicking it POSTs the opposite status to the fragment endpoint
+// (handleOSPostToggleFragment), which returns the flipped button plus an
+// out-of-band swap of the status pill — so the row updates in place with no
+// full-page reload. slugEsc must already be HTML-escaped by the caller.
+func osPostStatusButton(slugEsc, status string) string {
+	label, to := "Unpublish", "draft"
+	if status == "draft" {
+		label, to = "Publish", "published"
+	}
+	return `<button type="button" class="btn btn--ghost btn--sm"` +
+		` hx-post="/os/api/posts/` + slugEsc + `/status-fragment"` +
+		` hx-vals='{"status":"` + to + `"}'` +
+		` hx-target="this" hx-swap="outerHTML">` + label + `</button>`
+}
+
+// osPostStatusOOB renders the out-of-band status-pill update the fragment
+// endpoint returns alongside the flipped button, keyed by the row's stable
+// per-slug id so HTMX swaps only that cell.
+func osPostStatusOOB(slugEsc, status string) string {
+	return `<span id="post-status-` + slugEsc + `" hx-swap-oob="true">` + osPostStatusPill(status) + `</span>`
+}
+
 func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
@@ -1577,12 +1619,8 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 			}
 			esc := html.EscapeString(p.Slug)
 			isDraft := p.Status == "draft"
-			statusPill := `<span class="status-pill status-pill--live">● Published</span>`
-			toggleLabel, toggleTo := "Unpublish", "draft"
 			viewBtn := `<a class="btn btn--ghost btn--sm" href="/` + esc + `" target="_blank" rel="noopener">View ↗</a>`
 			if isDraft {
-				statusPill = `<span class="status-pill status-pill--draft">● Draft</span>`
-				toggleLabel, toggleTo = "Publish", "published"
 				// A draft is hidden from the public site (previewed in the editor).
 				viewBtn = ""
 			}
@@ -1600,14 +1638,14 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
     <a href="/os/editor/` + esc + `">` + html.EscapeString(p.Title) + `</a>` + pinnedBadge + `
     <div class="row-meta">/` + esc + `</div>
   </td>
-  <td>` + statusPill + `</td>
+  <td><span id="post-status-` + esc + `">` + osPostStatusPill(p.Status) + `</span></td>
   <td>` + tags + `</td>
   <td class="muted text-sm">` + p.Updated.UTC().Format("2 Jan 2006") + `</td>
   <td class="row-actions">
     <a class="btn btn--ghost btn--sm" href="/os/editor/` + esc + `">Edit</a>
     ` + viewBtn + `
     <button type="button" class="btn btn--ghost btn--sm" data-post-pin data-slug="` + esc + `" data-to="` + pinTo + `">` + pinLabel + `</button>
-    <button type="button" class="btn btn--ghost btn--sm" data-post-toggle data-slug="` + esc + `" data-to="` + toggleTo + `">` + toggleLabel + `</button>
+    ` + osPostStatusButton(esc, p.Status) + `
     <button type="button" class="btn btn--ghost btn--sm" data-post-delete data-slug="` + esc + `" data-title="` + html.EscapeString(p.Title) + `">Delete</button>
   </td>
 </tr>`
@@ -1676,15 +1714,8 @@ document.querySelectorAll('[data-post-pin]').forEach(function(b){
       .catch(function(e){b.disabled=false;show('Error: '+e,true);});
   });
 });
-document.querySelectorAll('[data-post-toggle]').forEach(function(b){
-  b.addEventListener('click',function(){
-    b.disabled=true;
-    fetch('/os/api/posts/status',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},body:JSON.stringify({slug:b.getAttribute('data-slug'),status:b.getAttribute('data-to')})})
-      .then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d};});})
-      .then(function(res){if(res.ok){show(res.d.status==='published'?'Published':'Moved to draft',false);setTimeout(function(){location.reload();},500);}else{b.disabled=false;show(res.d.detail||res.d.title||'Error',true);}})
-      .catch(function(e){b.disabled=false;show('Error: '+e,true);});
-  });
-});
+// Publish/unpublish is HTMX-driven (hx-post → out-of-band row update); see
+// osPostStatusButton and handleOSPostToggleFragment. No JS handler needed here.
 document.querySelectorAll('[data-post-delete]').forEach(function(b){
   b.addEventListener('click',function(){
     var t=b.getAttribute('data-title')||'this post';

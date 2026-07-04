@@ -8,6 +8,21 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Changed
+
+- **Posts manager: publish/unpublish is now an in-place HTMX update (no page
+  reload).** The Publish/Unpublish button on `/os/posts` was a `fetch()` that
+  reloaded the entire page on success. It now uses HTMX: the button POSTs to a
+  new `POST /os/api/posts/{slug}/status-fragment` endpoint that flips the status
+  and returns an HTML fragment — the flipped button plus an **out-of-band** swap
+  of that row's status pill — so only the affected row updates, instantly, with
+  no full reload. The change is surgical: the JSON `/os/api/posts/status`
+  endpoint still backs the bulk actions, and pin/delete/select are untouched. A
+  nonce-gated `htmx:configRequest` shim mirrors the existing double-submit CSRF
+  cookie into the `X-CSRF-Token` header for every admin `hx-*` request, so HTMX
+  writes pass the same `CSRFTokenMiddleware` as the `fetch()` controls — the
+  strict admin CSP (`script-src 'self'`, `style-src 'self'`) is unchanged.
+
 ### Added
 
 - **First-party VayuMail autoconfig (JSON) for email-only onboarding.** New
