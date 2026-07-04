@@ -13,7 +13,14 @@ Type=simple
 User=vayupress
 Group=vayupress
 EnvironmentFile=/etc/vayupress/env
-ExecStart=/usr/local/bin/vayupress
+# Run the binary from a service-owned, writable directory so the in-app
+# one-click updater can atomically swap it in place. /usr/local/bin/vayupress is
+# kept as a convenience symlink to this path for shell use. Installing the binary
+# directly in /usr/local/bin instead makes self-update fail: that directory is
+# root-owned and read-only under ProtectSystem, so the non-root service cannot
+# write it (a ReadWritePaths grant relaxes systemd's sandbox but not the Unix
+# ownership).
+ExecStart=/var/lib/vayupress/bin/vayupress
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=always
 RestartSec=5
@@ -45,10 +52,12 @@ PrivateTmp=yes
 PrivateDevices=yes
 ProtectSystem=strict
 ProtectHome=yes
-# Paths that must be writable. /usr/local/bin is included so the in-app
-# one-click updater can atomically swap its own binary under ProtectSystem —
-# without it the swap is denied and every in-app update fails.
-ReadWritePaths=/var/lib/vayupress /var/cache/vayupress /tmp /usr/local/bin
+# Paths that must be writable. The binary lives under /var/lib/vayupress/bin (a
+# subdirectory of the writable state directory), so the in-app one-click updater
+# swaps it atomically with no extra grant. /usr/local/bin is intentionally NOT
+# listed: it is root-owned, so a ReadWritePaths grant alone would still leave it
+# unwritable by the non-root service.
+ReadWritePaths=/var/lib/vayupress /var/cache/vayupress /tmp
 NoNewPrivileges=yes
 
 # ── Capabilities ───────────────────────────────────────────────────────────

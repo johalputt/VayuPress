@@ -55,6 +55,11 @@ WORKER_COUNT="${WORKER_COUNT:-4}"
 # Directories
 INSTALL_DIR="/opt/vayupress"
 DATA_DIR="/var/lib/vayupress"
+# The running binary lives in a service-owned, writable directory (a subdir of
+# DATA_DIR) so the in-app one-click updater can atomically swap it. /usr/local/bin
+# is root-owned and read-only under systemd hardening, so a binary installed there
+# can never self-update — the classic "binary location is not writable" failure.
+BIN_DIR="${DATA_DIR}/bin"
 LOG_DIR="/var/log/vayupress"
 CACHE_DIR="/var/cache/vayupress"
 STATIC_DIR="/var/lib/vayupress/static"
@@ -334,7 +339,7 @@ fi
 # =============================================================================
 
 info "Creating directory layout..."
-run mkdir -p "${INSTALL_DIR}" "${DATA_DIR}" "${LOG_DIR}" "${CACHE_DIR}" "${STATIC_DIR}" "${BACKUP_DIR}"
+run mkdir -p "${INSTALL_DIR}" "${DATA_DIR}" "${BIN_DIR}" "${LOG_DIR}" "${CACHE_DIR}" "${STATIC_DIR}" "${BACKUP_DIR}"
 run mkdir -p /etc/vayupress
 ok "Directories created."
 
@@ -362,9 +367,14 @@ info "Building VayuPress binary..."
 run bash -c "cd '${INSTALL_DIR}' && \
   CGO_ENABLED=1 go build \
     -ldflags='-s -w -X main.Version=${ENGINE_VERSION}' \
-    -o /usr/local/bin/vayupress \
+    -o '${BIN_DIR}/vayupress' \
     ./cmd/vayupress/"
-ok "Binary built: /usr/local/bin/vayupress"
+run chmod 0755 "${BIN_DIR}/vayupress"
+# Expose the service-owned binary on PATH via a symlink, so shell commands
+# (scripts/update-vayupress.sh, `vayupress --version`) resolve it while the
+# service runs it from the writable directory it can self-update in place.
+run ln -sf "${BIN_DIR}/vayupress" /usr/local/bin/vayupress
+ok "Binary built: ${BIN_DIR}/vayupress (symlinked at /usr/local/bin/vayupress)"
 
 # =============================================================================
 # ── RUNTIME CONFIGURATION ─────────────────────────────────────────────────────
@@ -409,7 +419,7 @@ Type=simple
 User=www-data
 Group=www-data
 EnvironmentFile=/etc/vayupress/env
-ExecStart=/usr/local/bin/vayupress
+ExecStart=${BIN_DIR}/vayupress
 WorkingDirectory=${DATA_DIR}
 Restart=always
 RestartSec=5s
@@ -422,10 +432,11 @@ ProtectSystem=full
 # NoNewPrivileges. This is the only elevated capability granted.
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 AmbientCapabilities=CAP_NET_BIND_SERVICE
-# /usr/local/bin is writable so the in-app one-click updater can atomically
-# swap its own binary under ProtectSystem=full; without it every in-app
-# update is denied and fails.
-ReadWritePaths=${DATA_DIR} ${LOG_DIR} ${CACHE_DIR} ${STATIC_DIR} ${BACKUP_DIR} /usr/local/bin
+# The binary runs from ${BIN_DIR} (a subdirectory of the writable ${DATA_DIR}),
+# so the in-app one-click updater can atomically swap it with no extra grant.
+# /usr/local/bin is deliberately NOT listed: it is root-owned, so even with a
+# ReadWritePaths grant the non-root service still could not write there.
+ReadWritePaths=${DATA_DIR} ${LOG_DIR} ${CACHE_DIR} ${STATIC_DIR} ${BACKUP_DIR}
 StandardOutput=append:${LOG_DIR}/vayupress.log
 StandardError=append:${LOG_DIR}/vayupress.error.log
 

@@ -21,7 +21,14 @@ set -euo pipefail
 
 SRC_DIR="${SRC_DIR:-/tmp/VayuPress}"
 BRANCH="${BRANCH:-main}"
-BIN_PATH="${BIN_PATH:-/usr/local/bin/vayupress}"
+# The binary lives in a service-owned, writable directory so the in-app one-click
+# updater can atomically swap it. /usr/local/bin/vayupress is kept as a symlink to
+# it for shell use. (Installing directly in /usr/local/bin breaks self-update: it
+# is root-owned and read-only under the service sandbox.)
+BIN_DIR="${BIN_DIR:-/var/lib/vayupress/bin}"
+BIN_PATH="${BIN_PATH:-${BIN_DIR}/vayupress}"
+LINK_PATH="${LINK_PATH:-/usr/local/bin/vayupress}"
+SERVICE_USER="${SERVICE_USER:-www-data}"
 STATIC_DIR="${STATIC_DIR:-/var/lib/vayupress/static}"
 GO_BIN="${GO_BIN:-/usr/local/go/bin/go}"
 SERVICE="${SERVICE:-vayupress}"
@@ -88,33 +95,47 @@ fi
 ok "Build succeeded ($(du -h "$TMP_BIN" | cut -f1))"
 
 # ── 3. Swap the binary in atomically ─────────────────────────────────────────
+# Install into the service-owned writable directory and own it to the service
+# user, so both this script AND the in-app one-click updater can replace it.
+mkdir -p "$BIN_DIR"
 install -m 0755 "$TMP_BIN" "$BIN_PATH"
 rm -f "$TMP_BIN"
+chown "${SERVICE_USER}:${SERVICE_USER}" "$BIN_PATH" 2>/dev/null || true
 ok "Installed new binary at $BIN_PATH"
 
-# ── 3b. Make the binary directory writable to the service ─────────────────────
-# The service runs sandboxed (ProtectSystem=full/strict), which makes the
-# binary's directory read-only unless it is in ReadWritePaths. Without that, the
-# in-app one-click updater cannot atomically swap the binary and every in-app
-# update fails. Install an idempotent drop-in that adds the binary dir to
-# ReadWritePaths, then reload systemd so the change takes effect on restart.
-# This is what makes in-app updates seamless on existing installs.
-BIN_DIR="$(dirname "$BIN_PATH")"
-DROPIN_DIR="/etc/systemd/system/${SERVICE}.service.d"
-DROPIN="${DROPIN_DIR}/10-writable-bin.conf"
-if [[ -d /etc/systemd/system ]] && command -v systemctl >/dev/null 2>&1; then
-  if [[ ! -f "$DROPIN" ]] || ! grep -q "ReadWritePaths=${BIN_DIR}" "$DROPIN" 2>/dev/null; then
-    mkdir -p "$DROPIN_DIR"
-    cat > "$DROPIN" <<DROPIN_EOF
-# Installed by update-vayupress.sh so the in-app one-click updater can swap the
-# binary under ProtectSystem. Safe and idempotent; remove to disable in-app
-# binary updates.
-[Service]
-ReadWritePaths=${BIN_DIR}
-DROPIN_EOF
-    systemctl daemon-reload 2>/dev/null || true
-    ok "Enabled in-app updates (writable ${BIN_DIR} via systemd drop-in)."
+# ── 3b. Point /usr/local/bin at the writable binary (migrate legacy installs) ─
+# Older installs placed a real binary at /usr/local/bin/vayupress, which the
+# non-root service cannot self-update (root-owned + read-only under the sandbox).
+# Replace it with a symlink to the writable copy: shell commands still resolve
+# `vayupress` on PATH, and — because ExecStart resolves the symlink at launch —
+# os.Executable() reports the writable target, so in-app updates work in place.
+if [[ "$LINK_PATH" != "$BIN_PATH" ]]; then
+  if [[ -e "$LINK_PATH" && ! -L "$LINK_PATH" ]]; then
+    warn "Replacing legacy binary at $LINK_PATH with a symlink to $BIN_PATH."
   fi
+  ln -sfn "$BIN_PATH" "$LINK_PATH"
+  ok "Symlinked $LINK_PATH → $BIN_PATH"
+fi
+
+# ── 3c. Ensure the running unit executes the writable path ────────────────────
+# If the unit still has ExecStart=/usr/local/bin/vayupress AND that path is a
+# real file (not our symlink), install an idempotent drop-in so systemd launches
+# the writable binary directly. When /usr/local/bin/vayupress is our symlink this
+# is unnecessary (the symlink resolves to the writable file), so we skip it.
+DROPIN_DIR="/etc/systemd/system/${SERVICE}.service.d"
+DROPIN="${DROPIN_DIR}/10-exec-writable-bin.conf"
+if [[ -d /etc/systemd/system ]] && command -v systemctl >/dev/null 2>&1; then
+  mkdir -p "$DROPIN_DIR"
+  cat > "$DROPIN" <<DROPIN_EOF
+# Installed by update-vayupress.sh: run the binary from the service-owned,
+# writable directory so the in-app one-click updater can swap it in place.
+# Safe and idempotent.
+[Service]
+ExecStart=
+ExecStart=${BIN_PATH}
+DROPIN_EOF
+  systemctl daemon-reload 2>/dev/null || true
+  ok "Configured systemd to run the writable binary at ${BIN_PATH}."
 fi
 
 # ── 4. Refresh static assets (CSS/JS/fonts) into STATIC_DIR ───────────────────

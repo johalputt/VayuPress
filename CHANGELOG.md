@@ -8,6 +8,35 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [2.9.3] — 2026-07-04
+
+### Fixed
+- **One-click updates now work on a hardened, non-root deployment** — the
+  "Cannot install the update because the binary location is not writable:
+  permission denied writing to /usr/local/bin" failure is resolved. The binary
+  ran from root-owned `/usr/local/bin`, which the non-root service can never
+  write: `ReadWritePaths=/usr/local/bin` only relaxes systemd's sandbox (MAC),
+  not the Unix ownership (DAC), so the atomic self-swap was always denied.
+
+### Changed
+- **The binary now runs from a service-owned writable directory**
+  (`/var/lib/vayupress/bin/vayupress`), with `/usr/local/bin/vayupress` kept as a
+  convenience symlink. The atomic self-swap needs no elevated permission and no
+  sandbox exception. `scripts/deploy-vayupress.sh` and
+  `scripts/update-vayupress.sh` install into this layout and migrate legacy
+  installs (replace the real `/usr/local/bin` binary with the symlink and, via a
+  systemd drop-in, repoint `ExecStart` at the writable path). The reference
+  `deploy/vayupress.service` and its `ReadWritePaths` were updated to match.
+- **The updater is symlink-aware** (`update.ResolveInstallPath`): the swap, the
+  `.bak` rollback artifact, the writability preflight, and the post-update
+  re-exec all target the resolved real file, never a launch-time symlink — so
+  the symlink layout updates in place with no ownership or sandbox change.
+- **Clearer failure guidance.** When the binary still sits in a directory the
+  service cannot write, the admin UI now states the real cause and the permanent
+  fix (run from a service-owned directory / re-run the installer) instead of the
+  incomplete "add ReadWritePaths" advice. See
+  [ADR-0109](docs/adr/ADR-0109-writable-binary-location-for-self-update.md).
+
 ## [2.9.2] — 2026-07-04
 
 ### Fixed
