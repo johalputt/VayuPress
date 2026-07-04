@@ -334,6 +334,9 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		// (flipped button + out-of-band status pill) instead of JSON, so the
 		// Posts manager updates the row without a full-page reload.
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/posts/{slug}/status-fragment", a.handleOSPostToggleFragment)
+		// HTMX in-place pin/unpin: returns the flipped pin button + an out-of-band
+		// "Pinned" badge, so the row updates without a full-page reload.
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/posts/{slug}/pin-fragment", a.handleOSPostPinFragment)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/posts/pin", a.handleOSPostPin)
 		pr.With(auth.CSRFTokenMiddleware).Delete("/os/api/posts/{slug}", a.handleOSPostDelete)
 		// Session-friendly branding (favicon) upload — the /admin/theme/favicon
@@ -1437,6 +1440,36 @@ func osPostStatusOOB(slugEsc, status string) string {
 	return `<span id="post-status-` + slugEsc + `" hx-swap-oob="true">` + osPostStatusPill(status) + `</span>`
 }
 
+// osPostPinButton renders the HTMX pin/unpin toggle for a post in its CURRENT
+// featured state. Clicking it POSTs the opposite state to the pin-fragment
+// endpoint, which returns the flipped button plus an out-of-band swap of the
+// row's "📌 Pinned" badge. slugEsc must already be HTML-escaped.
+func osPostPinButton(slugEsc string, featured bool) string {
+	label, to := "Pin", "1"
+	if featured {
+		label, to = "Unpin", "0"
+	}
+	return `<button type="button" class="btn btn--ghost btn--sm"` +
+		` hx-post="/os/api/posts/` + slugEsc + `/pin-fragment"` +
+		` hx-vals='{"pinned":"` + to + `"}'` +
+		` hx-target="this" hx-swap="outerHTML">` + label + `</button>`
+}
+
+// osPostPinBadge renders the pinned indicator next to a post's title, keyed by a
+// stable per-slug id so the pin toggle can update it out-of-band. It is always
+// emitted (empty when unpinned) so the OOB target exists for a later pin.
+func osPostPinBadge(slugEsc string, featured, oob bool) string {
+	inner := ""
+	if featured {
+		inner = ` <span class="chip" title="Pinned to the homepage and trending widget">📌 Pinned</span>`
+	}
+	oobAttr := ""
+	if oob {
+		oobAttr = ` hx-swap-oob="true"`
+	}
+	return `<span id="ppin-` + slugEsc + `"` + oobAttr + `>` + inner + `</span>`
+}
+
 func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
@@ -1629,17 +1662,13 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 				viewBtn = ""
 			}
 			// Pin (featured) state — drives the trending/pinned widgets on the
-			// public site. Pinning toggles the same `featured` flag as the editor.
-			pinLabel, pinTo := "Pin", "1"
-			pinnedBadge := ""
-			if p.Featured {
-				pinLabel, pinTo = "Unpin", "0"
-				pinnedBadge = ` <span class="chip" title="Pinned to the homepage and trending widget">📌 Pinned</span>`
-			}
-			rows += `<tr data-post-row data-status="` + p.Status + `" data-featured="` + pinTo + `">
+			// public site. Pinning toggles the same `featured` flag as the editor;
+			// both the button and the badge update in place via HTMX (osPostPinButton
+			// / handleOSPostPinFragment), so no full-page reload.
+			rows += `<tr data-post-row>
   <td><input type="checkbox" data-post-select value="` + esc + `" aria-label="Select ` + html.EscapeString(p.Title) + `"></td>
   <td class="row-title">
-    <a href="/os/editor/` + esc + `">` + html.EscapeString(p.Title) + `</a>` + pinnedBadge + `
+    <a href="/os/editor/` + esc + `">` + html.EscapeString(p.Title) + `</a>` + osPostPinBadge(esc, p.Featured, false) + `
     <div class="row-meta">/` + esc + `</div>
   </td>
   <td><span id="post-status-` + esc + `">` + osPostStatusPill(p.Status) + `</span></td>
@@ -1648,7 +1677,7 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
   <td class="row-actions">
     <a class="btn btn--ghost btn--sm" href="/os/editor/` + esc + `">Edit</a>
     ` + viewBtn + `
-    <button type="button" class="btn btn--ghost btn--sm" data-post-pin data-slug="` + esc + `" data-to="` + pinTo + `">` + pinLabel + `</button>
+    ` + osPostPinButton(esc, p.Featured) + `
     ` + osPostStatusButton(esc, p.Status) + `
     <button type="button" class="btn btn--ghost btn--sm" data-post-delete data-slug="` + esc + `" data-title="` + html.EscapeString(p.Title) + `">Delete</button>
   </td>
@@ -1709,15 +1738,8 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 function csrf(){var m=document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);return m?m[1]:'';}
 var msg=document.getElementById('action-msg');
 function show(t,e){if(!msg)return;msg.textContent=t;msg.classList.toggle('is-error',!!e);msg.classList.add('visible');}
-document.querySelectorAll('[data-post-pin]').forEach(function(b){
-  b.addEventListener('click',function(){
-    b.disabled=true;
-    fetch('/os/api/posts/pin',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},body:JSON.stringify({slug:b.getAttribute('data-slug'),pinned:b.getAttribute('data-to')==='1'})})
-      .then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d};});})
-      .then(function(res){if(res.ok){show(res.d.pinned?'Pinned':'Unpinned',false);setTimeout(function(){location.reload();},500);}else{b.disabled=false;show(res.d.detail||res.d.title||'Error',true);}})
-      .catch(function(e){b.disabled=false;show('Error: '+e,true);});
-  });
-});
+// Pin/unpin is HTMX-driven (hx-post → out-of-band button + badge update); see
+// osPostPinButton and handleOSPostPinFragment. No JS handler needed here.
 // Publish/unpublish is HTMX-driven (hx-post → out-of-band row update); see
 // osPostStatusButton and handleOSPostToggleFragment. No JS handler needed here.
 document.querySelectorAll('[data-post-delete]').forEach(function(b){

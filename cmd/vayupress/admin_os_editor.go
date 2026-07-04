@@ -310,6 +310,42 @@ func (a *App) handleOSPostToggleFragment(w http.ResponseWriter, r *http.Request)
 	fmt.Fprint(w, osPostStatusButton(esc, status)+osPostStatusOOB(esc, status))
 }
 
+// handleOSPostPinFragment is the HTMX counterpart to handleOSPostPin: it flips a
+// post's featured (pinned) flag and returns an HTML fragment — the flipped pin
+// button plus an out-of-band update of the row's "📌 Pinned" badge — so the
+// Posts manager updates in place with no full-page reload. The JSON handler
+// below stays in use for the bulk/editor paths. CSRF is enforced by the route's
+// CSRFTokenMiddleware.
+func (a *App) handleOSPostPinFragment(w http.ResponseWriter, r *http.Request) {
+	slug := strings.TrimSpace(chi.URLParam(r, "slug"))
+	pinned := strings.TrimSpace(r.FormValue("pinned"))
+	if slug == "" || (pinned != "0" && pinned != "1") {
+		http.Error(w, "slug and pinned (0|1) are required", http.StatusBadRequest)
+		return
+	}
+	var tagsCSV string
+	if err := dbpkg.DB.QueryRowContext(r.Context(), `SELECT COALESCE(tags,'') FROM articles WHERE slug=?`, slug).Scan(&tagsCSV); err != nil {
+		http.Error(w, "no article with that slug", http.StatusNotFound)
+		return
+	}
+	featured := pinned == "1"
+	f := 0
+	if featured {
+		f = 1
+	}
+	if _, err := dbpkg.WDB.Exec(`UPDATE articles SET featured=?, updated_at=? WHERE slug=?`, f, time.Now().UTC(), slug); err != nil {
+		http.Error(w, "update failed", http.StatusInternalServerError)
+		return
+	}
+	// Same public-surface refresh as the JSON path so the trending/pinned widget
+	// reflects the change immediately.
+	invalidateTrendingCache()
+	render.CachePurge(slug, splitCSVTags(tagsCSV), generateSitemap, generateRSS, generateRobots)
+	esc := htmlpkg.EscapeString(slug)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprint(w, osPostPinButton(esc, featured)+osPostPinBadge(esc, featured, true))
+}
+
 // handleOSPostPin pins or unpins (features) a post directly from the manager,
 // flipping the same `featured` flag the editor exposes as "Feature this post".
 // Pinned posts surface in the public Trending & pinned widget (homepage + under

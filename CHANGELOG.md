@@ -21,6 +21,14 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   `(id, status)`, the endpoint re-renders them without re-fetching the comment.
   The JSON `PUT /os/api/comments/{id}/status` endpoint remains for API clients;
   CSRF and the strict CSP are unchanged.
+- **Posts manager: pin/unpin is now an in-place HTMX update (no page reload).**
+  The Pin/Unpin control matched the publish toggle's old behaviour (`fetch()` +
+  full-page reload). It now POSTs to `POST /os/api/posts/{slug}/pin-fragment`,
+  which flips the `featured` flag and returns the flipped button plus an
+  **out-of-band** update of the row's "📌 Pinned" badge — so every single-post
+  action on the page (publish, pin) updates its row in place. The JSON
+  `/os/api/posts/pin` endpoint remains for the editor/bulk paths; CSRF and the
+  strict CSP are unchanged.
 - **Posts manager: publish/unpublish is now an in-place HTMX update (no page
   reload).** The Publish/Unpublish button on `/os/posts` was a `fetch()` that
   reloaded the entire page on success. It now uses HTMX: the button POSTs to a
