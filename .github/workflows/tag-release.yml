@@ -76,11 +76,24 @@ jobs:
           set -euo pipefail
           VERSION="${{ steps.ver.outputs.version }}"
           mkdir -p dist
+          # Build a FULLY STATIC binary so the release runs on any Linux
+          # regardless of glibc version. The runner uses a new glibc (2.39); a
+          # dynamically-linked CGO binary would crash on older servers (e.g.
+          # Ubuntu 20.04 / glibc 2.31) with "GLIBC_2.34 not found" — which broke
+          # in-app one-click updates that download this binary. netgo+osusergo
+          # use Go's pure-Go DNS/user resolvers (no glibc NSS at runtime), and
+          # -extldflags=-static links libc/sqlite statically.
           CGO_ENABLED=1 GOTOOLCHAIN=auto go build \
-            -trimpath -ldflags="-s -w -X main.Version=${VERSION#v}" \
+            -trimpath -tags "netgo osusergo sqlite_omit_load_extension" \
+            -ldflags="-s -w -linkmode external -extldflags '-static' -X main.Version=${VERSION#v}" \
             -o dist/vayupress ./cmd/vayupress
+          file dist/vayupress
+          # Fail the build if the binary is not statically linked.
+          if file dist/vayupress | grep -q "dynamically linked"; then
+            echo "::error::release binary is dynamically linked — it would crash on older glibc"; exit 1
+          fi
           sha256sum dist/vayupress > dist/vayupress.sha256
-          echo "built $VERSION"
+          echo "built $VERSION (static)"
 
       - name: Install cosign
         if: steps.exists.outputs.skip != 'true'

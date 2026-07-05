@@ -57,9 +57,17 @@ NEW_SHA=$(git -C "$SRC_DIR" rev-parse --short HEAD)
 ok "At commit $NEW_SHA"
 
 # Derive the version from the freshly-pulled source unless overridden, so the
-# built binary reports the version it was actually built from.
+# built binary reports the version it was actually built from. The canonical
+# source of truth is the .release-version file (e.g. "v2.9.5") — the same file CI
+# stamps releases from — NOT the fallback default in main.go, which lags behind
+# and is the reason a shell-built binary used to report a stale old version.
 if [[ -z "$ENGINE_VERSION" ]]; then
-  ENGINE_VERSION="$(grep -oE 'var Version = "[0-9]+\.[0-9]+\.[0-9]+"' "$SRC_DIR/cmd/vayupress/main.go" 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+  if [[ -s "$SRC_DIR/.release-version" ]]; then
+    ENGINE_VERSION="$(tr -d 'vV \t\r\n' < "$SRC_DIR/.release-version")"
+  fi
+  if [[ -z "$ENGINE_VERSION" ]]; then
+    ENGINE_VERSION="$(grep -oE 'var Version = "[0-9]+\.[0-9]+\.[0-9]+"' "$SRC_DIR/cmd/vayupress/main.go" 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+  fi
   ENGINE_VERSION="${ENGINE_VERSION:-dev}"
 fi
 info "Building version ${ENGINE_VERSION} (commit ${NEW_SHA})"

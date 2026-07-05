@@ -22,11 +22,22 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME}"
           mkdir -p dist
+          # Build a FULLY STATIC binary so the release runs on any Linux
+          # regardless of glibc. A dynamically-linked CGO binary built on the
+          # runner's new glibc crashes on older servers (e.g. Ubuntu 20.04) and
+          # breaks the in-app one-click updater that downloads it. netgo+osusergo
+          # use Go's pure resolvers (no glibc NSS); -extldflags=-static links
+          # libc/sqlite statically.
           CGO_ENABLED=1 GOTOOLCHAIN=auto go build \
-            -trimpath -ldflags="-s -w -X main.Version=${VERSION#v}" \
+            -trimpath -tags "netgo osusergo sqlite_omit_load_extension" \
+            -ldflags="-s -w -linkmode external -extldflags '-static' -X main.Version=${VERSION#v}" \
             -o dist/vayupress ./cmd/vayupress
+          file dist/vayupress
+          if file dist/vayupress | grep -q "dynamically linked"; then
+            echo "::error::release binary is dynamically linked — it would crash on older glibc"; exit 1
+          fi
           sha256sum dist/vayupress > dist/vayupress.sha256
-          echo "✅ built $VERSION"
+          echo "✅ built $VERSION (static)"
       - name: Install cosign
         continue-on-error: true
         uses: sigstore/cosign-installer@v3
