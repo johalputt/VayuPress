@@ -8,12 +8,45 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.0.0] — 2026-07-05
+
+**VayuPress is a complete sovereign platform — website, blog, and private PGP
+mail with an official mobile app — and the update system is now enterprise-grade
+end to end.** This milestone consolidates the 2.9.x line: it hardens self-update
+into something that works reliably on real, large, older servers, and closes the
+last operational gaps found in production.
+
+### Fixed
+- **Admin actions no longer fail with "CSRF token missing or invalid" after a
+  restart or self-update.** The CSRF secret was regenerated on every process
+  start and never persisted, so every restart — including the one the in-app
+  updater performs — invalidated all outstanding tokens, and the next click (e.g.
+  **Update now**) was rejected. The secret is now **persisted beside the database**
+  (`.vayu-csrf-secret`, override with `VAYU_CSRF_SECRET_FILE`) so tokens stay
+  valid across restarts. Falls back to a per-process secret if the file can't be
+  written.
+
 ### Changed
-- **Release workflows now publish semver pre-release tags (those containing a
-  hyphen, e.g. `v2.9.10-rc1`) as GitHub pre-releases**, so they appear only in the
-  in-app updater's "Include pre-release & development builds" channel and never in
-  the stable channel. This makes the pre-release update option testable — before
-  this, no pre-release existed, so the checkbox had nothing to offer.
+- **Release workflows publish semver pre-release tags** (those with a hyphen,
+  e.g. `v3.0.1-rc1`) as GitHub pre-releases, so they appear only in the updater's
+  "Include pre-release & development builds" channel, never in stable.
+
+### Summary of the 2.9.x hardening rolled into 3.0.0
+- **2.9.2** — offline, embedded IP→country lookup so live analytics show real
+  countries on CDN-less deployments (no external GeoIP, IP never stored).
+- **2.9.3–2.9.4** — one-click update runs the binary from a service-owned writable
+  directory (and owns the *directory*, not just the file), so the atomic self-swap
+  works under systemd hardening; plus an opt-in pre-release/development channel.
+- **2.9.5** — release binaries are **fully static**, so a downloaded update runs
+  on any Linux glibc (fixed a 502 on Ubuntu 20.04).
+- **2.9.6** — the updater writes a **known-good systemd unit** every run
+  (healing drift), **auto-rolls-back** a genuinely failed start, and logs to
+  journald.
+- **2.9.7–2.9.8** — the search index loads in the **background from the read
+  pool**, so the web listener binds in ~1s regardless of database size (fixed a
+  multi-minute startup 502 on a 12.7 GB database).
+- **2.9.9** — the search index is **persisted and restored incrementally**, so a
+  restart/update reconciles only what changed instead of rebuilding from scratch.
 
 ## [2.9.9] — 2026-07-05
 

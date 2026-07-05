@@ -15,6 +15,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -515,14 +516,50 @@ func VerifySecretArgon2id(secret, encoded string) bool {
 
 var csrfSecret []byte
 
-// InitCSRFSecret generates a fresh 32-byte CSRF secret for this process run.
+// csrfSecretPath returns the file the CSRF secret is persisted to, or "" when no
+// stable location is known (then the secret is per-process). Override with
+// VAYU_CSRF_SECRET_FILE; otherwise it lives beside the database — a stable,
+// service-owned, private location.
+func csrfSecretPath() string {
+	if p := strings.TrimSpace(os.Getenv("VAYU_CSRF_SECRET_FILE")); p != "" {
+		return p
+	}
+	if db := strings.TrimSpace(config.Cfg.DBPath); db != "" {
+		return filepath.Join(filepath.Dir(db), ".vayu-csrf-secret")
+	}
+	return ""
+}
+
+// InitCSRFSecret loads the persisted 32-byte CSRF secret, or generates and
+// persists one on first run. Persisting is essential: without it the secret is
+// regenerated on every process start, so every restart — including the one the
+// in-app self-update performs — invalidates every outstanding CSRF token and the
+// next admin action fails with "CSRF token missing or invalid". A stable secret
+// keeps tokens valid across restarts. Falls back to a per-process secret if the
+// file cannot be read or written (e.g. read-only dir), preserving old behaviour.
 func InitCSRFSecret() {
+	path := csrfSecretPath()
+	if path != "" {
+		if b, err := os.ReadFile(path); err == nil && len(b) >= 32 {
+			csrfSecret = b[:32]
+			logging.LogInfo("csrf", "CSRF secret loaded from "+path+" (stable across restarts)")
+			return
+		}
+	}
 	csrfSecret = make([]byte, 32)
 	if _, err := rand.Read(csrfSecret); err != nil {
 		logging.LogError("csrf", "failed to generate CSRF secret", err.Error())
 		os.Exit(1)
 	}
-	logging.LogInfo("csrf", "CSRF secret initialized (32 bytes)")
+	if path != "" {
+		if err := os.WriteFile(path, csrfSecret, 0o600); err != nil {
+			logging.LogError("csrf", "could not persist CSRF secret — tokens will reset on restart", err.Error())
+		} else {
+			logging.LogInfo("csrf", "CSRF secret generated and persisted to "+path)
+		}
+	} else {
+		logging.LogInfo("csrf", "CSRF secret initialized (per-process; set VAYU_CSRF_SECRET_FILE to persist)")
+	}
 }
 
 // CSRFCookieSecure reports whether auth/CSRF cookies should carry the Secure
