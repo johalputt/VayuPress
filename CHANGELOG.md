@@ -8,6 +8,21 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.2.0] — 2026-07-05
+
+### Security
+- **2FA step-up before minting a device credential.** When a mailbox has
+  two-factor authentication enabled, generating or rotating its **device setup
+  QR / app password** now requires a fresh authenticator code — even from an
+  authenticated admin session. App passwords sign in to IMAP/POP3/SMTP and
+  deliberately bypass the account's interactive 2FA (those protocols cannot
+  prompt for a second factor), so the enforcement point is credential
+  *issuance*: the same model Google and Microsoft use. The code is verified with
+  `totp.Validate` **before** any existing credential is revoked, so a wrong or
+  missing code never kills the current QR, and a successful step-up is recorded
+  in the audit log (`vayumail.qr.2fa_ok`). Revoking a credential never needs a
+  code. Mailboxes without 2FA are unchanged.
+
 ## [3.1.0] — 2026-07-05
 
 ### Added

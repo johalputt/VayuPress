@@ -1295,6 +1295,36 @@ func (a *App) canManageMailbox(r *http.Request, email string) bool {
 	return own != "" && strings.EqualFold(own, email)
 }
 
+// render2FASetupQRChallenge asks for a fresh TOTP code before a 2FA-protected
+// mailbox will mint a device credential (setup QR / app password). App passwords
+// bypass the mailbox's main password on IMAP/SMTP/POP3, so issuing one is a
+// security-sensitive step-up: an admin session alone is not enough when the
+// mailbox owner has enabled 2FA. The form re-POSTs to the same endpoint with the
+// original email + act=rotate plus the six-digit code; badCode marks a retry.
+func (a *App) render2FASetupQRChallenge(w http.ResponseWriter, r *http.Request, email string, badCode bool) {
+	nonce := render.CSPNonce(r)
+	cfg := a.getOSSettings(r.Context())
+	he := html.EscapeString(email)
+
+	var body strings.Builder
+	body.WriteString(`<div class="page-header"><h1>Confirm with 2FA</h1><span class="muted text-sm">Second factor required to mint a device credential</span></div>`)
+	body.WriteString(vayuosNav("connect", a.isAdminRequest(r)))
+	body.WriteString(`<div class="card" style="max-width:460px">`)
+	body.WriteString(`<p class="text-sm">Two-factor authentication is active for <strong class="mono">` + he + `</strong>. A device setup QR carries an app password that signs in to IMAP, POP3 and SMTP, so issuing one requires your current authenticator code — even from an admin session.</p>`)
+	if badCode {
+		body.WriteString(`<p class="text-sm" style="color:var(--danger,#c0392b)">That code was incorrect or expired. Open your authenticator and enter the current 6-digit code.</p>`)
+	}
+	body.WriteString(`<form method="post" action="/os/vayumail/connect/qr">` + csrfFieldFor(w, r))
+	body.WriteString(`<input type="hidden" name="email" value="` + he + `"><input type="hidden" name="act" value="rotate">`)
+	body.WriteString(`<label class="field"><span class="field-label">Authenticator code</span>`)
+	body.WriteString(`<input class="input mono" type="text" name="totp" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]*" maxlength="6" placeholder="123456" autofocus required></label>`)
+	body.WriteString(`<div class="vm-row mt-2">`)
+	body.WriteString(`<button class="btn btn--primary btn--sm" type="submit">Confirm &amp; generate QR</button>`)
+	body.WriteString(`<a class="btn btn--ghost btn--sm" href="/os/vayumail/connect">Cancel</a>`)
+	body.WriteString(`</div></form></div>`)
+	writeOSHTML(w, adminOSLayout(nonce, "Confirm with 2FA", "vayuos", cfg, htmpl.HTML(body.String())))
+}
+
 // handleVayuOSSetupQR issues or revokes a mailbox's setup-QR app password.
 //
 //	POST /os/vayumail/connect/qr  (form: email, act=rotate|revoke)
@@ -1316,6 +1346,22 @@ func (a *App) handleVayuOSSetupQR(w http.ResponseWriter, r *http.Request) {
 	if email == "" || accts.RoleFor(r.Context(), email) == "" || !a.canManageMailbox(r, email) {
 		a.denyAccess(w, r, "/os/vayumail/connect")
 		return
+	}
+	// Enterprise 2FA gate: when the mailbox has TOTP enabled, minting a device
+	// credential (the setup QR / app password, which bypasses the main password on
+	// IMAP/SMTP/POP3) requires a fresh second factor — otherwise a stolen admin
+	// session could silently issue app passwords that sidestep the account's 2FA.
+	// The check runs BEFORE the existing credential is touched, so a wrong/absent
+	// code never revokes the current QR. Revoking never needs a code.
+	if act == "rotate" {
+		if secret, enabled := accts.TOTPStatus(r.Context(), email); enabled {
+			code := strings.TrimSpace(r.FormValue("totp"))
+			if secret == "" || !totp.Validate(secret, code) {
+				a.render2FASetupQRChallenge(w, r, email, code != "")
+				return
+			}
+			dbpkg.AuditLog("vayumail.qr.2fa_ok", dbpkg.AuditActor(r), email, "")
+		}
 	}
 	const qrLabel = "setup-qr"
 	// Either action retires every previous setup-QR credential for the mailbox.
