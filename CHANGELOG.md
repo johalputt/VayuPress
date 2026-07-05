@@ -8,6 +8,20 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [2.9.8] — 2026-07-05
+
+### Fixed
+- **Large sites now actually bind the listener at startup** (completes the
+  v2.9.7 fix). Backgrounding the search-index load was not enough: `search.Load`
+  read from the **single writer connection** (`db.SetMaxOpenConns(1)`), so its
+  multi-minute full scan of every published article monopolised the one writer
+  connection and the main startup thread then **blocked on its next write**
+  (`UPDATE write_jobs`) — the process hung at "mode journal open" and the web
+  listener never came up. Search now reads from the **read pool**
+  (`db.Reader()`, several `query_only` connections), so the scan runs without
+  blocking writes and the listener binds in about a second on a database of any
+  size. Search is read-only, so this is safe.
+
 ## [2.9.7] — 2026-07-05
 
 ### Fixed
