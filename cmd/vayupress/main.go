@@ -74,7 +74,11 @@ import (
 	"github.com/johalputt/vayupress/internal/ws"
 )
 
-var Version = "2.8.1"
+// Version is the fallback build version. CI stamps the real version via
+// -ldflags "-X main.Version=<.release-version>", and scripts/update-vayupress.sh
+// reads .release-version too — keep this in sync with .release-version so an
+// un-stamped `go build` still reports an honest version.
+var Version = "2.9.5"
 var bootTime = time.Now()
 
 // Immutable package-level values (compiled once, never mutated).

@@ -8,6 +8,25 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [2.9.5] — 2026-07-05
+
+### Fixed
+- **In-app one-click update no longer takes the site down with a 502 on older
+  Linux.** Release binaries were built on the CI runner's new glibc (2.39) with
+  **dynamic** CGO linking, so the binary the in-app updater downloads crashed on
+  startup on an older server (e.g. Ubuntu 20.04 / glibc 2.31) — nginx then
+  returned 502. Release binaries are now **fully statically linked**
+  (`-linkmode external -extldflags -static` with the `netgo`/`osusergo` tags so
+  DNS and user lookups use Go's pure-Go resolvers, plus
+  `sqlite_omit_load_extension`), so a downloaded release runs on **any** Linux
+  regardless of glibc. Both release workflows now also fail the build if the
+  produced binary is not static.
+- **Shell updater reported a stale version** (e.g. "Building version 2.8.1").
+  `scripts/update-vayupress.sh` derived the version from the fallback default in
+  `main.go`, which lags behind. It now reads the canonical `.release-version`
+  file — the same source of truth CI stamps releases from — and the `main.go`
+  fallback default is kept in sync.
+
 ## [2.9.4] — 2026-07-05
 
 ### Fixed
