@@ -8,6 +8,28 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [2.9.9] — 2026-07-05
+
+### Added
+- **The search index is now persisted and restored incrementally — no full
+  rebuild on restart or update.** Previously the in-memory VayuFind index was
+  rebuilt from scratch on every boot by scanning every published article (minutes
+  on a large store). It now saves a snapshot (`$CACHE_DIR/search-index.gob`) and,
+  on start, **restores it and reconciles only what changed** — re-indexing just
+  new/modified articles and dropping removed ones via a cheap id+timestamp scan
+  (no content re-read). A full rebuild happens only when there is no usable
+  snapshot. Snapshots refresh every `VAYU_SEARCH_SAVE_MIN` minutes (default 10)
+  and on shutdown. Safe by construction: any snapshot problem falls back to the
+  same full rebuild as before, so persistence can never make search worse. See
+  [ADR-0110](docs/adr/ADR-0110-incremental-search-index-persistence.md).
+
+### Note
+- This completes the "only process what's new on update" goal alongside the parts
+  that were already incremental: migrations apply only new migrations, the render
+  cache invalidates lazily per-page (ADR-0094), the search index is maintained
+  incrementally by article event handlers, and the Go build recompiles only
+  changed packages. Sitemap/RSS are generated on demand from an indexed query.
+
 ## [2.9.8] — 2026-07-05
 
 ### Fixed

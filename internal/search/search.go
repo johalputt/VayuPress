@@ -18,11 +18,14 @@
 package search
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"database/sql"
+	"encoding/gob"
 	"encoding/hex"
 	"encoding/json"
+	"os"
 	"regexp"
 	"sort"
 	"strings"
@@ -68,6 +71,15 @@ type Service interface {
 	// Load (re)builds the entire index from the article store. Run once at boot
 	// and by the reconciler; never on the per-document hot path.
 	Load(ctx context.Context) error
+	// SaveIndex persists the current index to path so the next start can restore
+	// it instead of rescanning the whole store. Cheap (reads id+updated_at only).
+	SaveIndex(ctx context.Context, path string) error
+	// LoadIndex restores the index from path and reconciles ONLY the articles that
+	// changed since it was saved — no full rescan. Returns (false, nil) when there
+	// is no usable snapshot, so the caller falls back to a full Load. Any snapshot
+	// problem returns false: the snapshot is a pure optimisation and can never make
+	// search worse than a rebuild.
+	LoadIndex(ctx context.Context, path string) (bool, error)
 }
 
 // =============================================================================
@@ -226,6 +238,192 @@ func (s *builtinService) Load(ctx context.Context) error {
 	s.mu.Unlock()
 	s.snap.Store(nil)
 	return nil
+}
+
+// ── Incremental persistence (ADR-0110) ───────────────────────────────────────
+//
+// The in-memory index is rebuilt from scratch on every boot by Load, which scans
+// every published article — minutes of work on a large store. SaveIndex/LoadIndex
+// persist the index so a restart or version update RESTORES it and reconciles
+// only what changed, instead of rebuilding. It is defensive by construction: any
+// problem with the snapshot makes LoadIndex report "no snapshot" so the caller
+// does the same full Load as before — persistence can never make search worse.
+
+const persistVersion = 2
+
+// persistDoc is the on-disk form of an indexed document. Lowercased match fields
+// are recomputed on restore (not stored), and UpdatedAt lets a later load detect
+// which articles changed.
+type persistDoc struct {
+	ID, Title, Slug, Excerpt string
+	Tags                     []string
+	CreatedAt, UpdatedAt     int64
+}
+
+type persistedIndex struct {
+	Version int
+	Docs    []persistDoc
+}
+
+// publishedFilter is the WHERE clause selecting exactly the documents the index
+// holds (published, non-page articles), shared by Load, SaveIndex and LoadIndex.
+const publishedFilter = `COALESCE(status,'published')='published' AND COALESCE(is_page,0)=0`
+
+// SaveIndex writes the current index to path atomically, stamping each document
+// with its article's updated_at (read via a cheap id+timestamp scan — no content)
+// so LoadIndex can reconcile only what changed.
+func (s *builtinService) SaveIndex(ctx context.Context, path string) error {
+	if strings.TrimSpace(path) == "" {
+		return nil
+	}
+	upd := make(map[string]int64, 1024)
+	if rows, err := s.db.QueryContext(ctx, `SELECT id,updated_at FROM articles WHERE `+publishedFilter); err == nil {
+		for rows.Next() {
+			var id string
+			var t time.Time
+			if rows.Scan(&id, &t) == nil {
+				upd[id] = t.Unix()
+			}
+		}
+		_ = rows.Err()
+		rows.Close()
+	}
+	s.mu.RLock()
+	docs := make([]persistDoc, 0, len(s.byID))
+	for _, d := range s.byID {
+		docs = append(docs, persistDoc{
+			ID: d.ID, Title: d.Title, Slug: d.Slug, Excerpt: d.Excerpt,
+			Tags: d.Tags, CreatedAt: d.CreatedAt, UpdatedAt: upd[d.ID],
+		})
+	}
+	s.mu.RUnlock()
+
+	var buf bytes.Buffer
+	if err := gob.NewEncoder(&buf).Encode(persistedIndex{Version: persistVersion, Docs: docs}); err != nil {
+		return err
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, buf.Bytes(), 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path) // atomic replace
+}
+
+// LoadIndex restores the index from path, then reconciles only changed/new/removed
+// articles. See the doc comment on the interface method for the fallback contract.
+func (s *builtinService) LoadIndex(ctx context.Context, path string) (bool, error) {
+	if strings.TrimSpace(path) == "" {
+		return false, nil
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false, nil // no snapshot yet → caller does a full Load
+	}
+	var pi persistedIndex
+	if err := gob.NewDecoder(bytes.NewReader(data)).Decode(&pi); err != nil || pi.Version != persistVersion {
+		return false, nil // unreadable/old-format snapshot → full Load
+	}
+
+	restored := make(map[string]*doc, len(pi.Docs))
+	savedUpd := make(map[string]int64, len(pi.Docs))
+	for i := range pi.Docs {
+		p := pi.Docs[i]
+		restored[p.ID] = docFromPersist(p)
+		savedUpd[p.ID] = p.UpdatedAt
+	}
+
+	// Cheap delta scan: current published id+updated_at (no content read).
+	rows, err := s.db.QueryContext(ctx, `SELECT id,updated_at FROM articles WHERE `+publishedFilter)
+	if err != nil {
+		return false, nil // cannot verify deltas → fall back to full Load
+	}
+	current := make(map[string]struct{}, len(restored))
+	var changed []string
+	for rows.Next() {
+		var id string
+		var t time.Time
+		if rows.Scan(&id, &t) != nil {
+			continue
+		}
+		current[id] = struct{}{}
+		if old, ok := savedUpd[id]; !ok || t.Unix() != old {
+			changed = append(changed, id) // new or modified since the snapshot
+		}
+	}
+	if rerr := rows.Err(); rerr != nil {
+		rows.Close()
+		return false, nil // incomplete delta scan → fall back to a full Load
+	}
+	rows.Close()
+
+	// Drop documents that are no longer published (deleted/unpublished).
+	for id := range restored {
+		if _, ok := current[id]; !ok {
+			delete(restored, id)
+		}
+	}
+
+	// Publish the restored set immediately — search is live now, from the snapshot.
+	s.mu.Lock()
+	s.byID = restored
+	s.mu.Unlock()
+	s.snap.Store(nil)
+
+	// Fetch content and (re)index ONLY the changed/new articles.
+	s.reindexByIDs(ctx, changed)
+	return true, nil
+}
+
+// reindexByIDs fetches full content for the given ids and (re)indexes them, in
+// bounded chunks so the IN(...) placeholder list stays small.
+func (s *builtinService) reindexByIDs(ctx context.Context, ids []string) {
+	const chunk = 400
+	for start := 0; start < len(ids); start += chunk {
+		end := start + chunk
+		if end > len(ids) {
+			end = len(ids)
+		}
+		batch := ids[start:end]
+		placeholders := strings.TrimSuffix(strings.Repeat("?,", len(batch)), ",")
+		args := make([]interface{}, len(batch))
+		for i, v := range batch {
+			args[i] = v
+		}
+		rows, err := s.db.QueryContext(ctx,
+			`SELECT id,title,slug,content,tags,created_at FROM articles WHERE id IN (`+placeholders+`)`, args...)
+		if err != nil {
+			continue
+		}
+		for rows.Next() {
+			var id, title, slug, content, tagsCSV string
+			var created time.Time
+			if rows.Scan(&id, &title, &slug, &content, &tagsCSV, &created) != nil {
+				continue
+			}
+			d := makeDoc(id, title, slug, content, splitCSV(tagsCSV), created.Unix())
+			s.mu.Lock()
+			s.byID[id] = d
+			s.mu.Unlock()
+		}
+		_ = rows.Err()
+		rows.Close()
+	}
+	if len(ids) > 0 {
+		s.snap.Store(nil)
+	}
+}
+
+// docFromPersist rebuilds an in-memory doc (with its precomputed lowercase match
+// fields) from the persisted form.
+func docFromPersist(p persistDoc) *doc {
+	d := &doc{
+		ID: p.ID, Title: p.Title, Slug: p.Slug, Excerpt: p.Excerpt,
+		Tags: p.Tags, CreatedAt: p.CreatedAt,
+		titleLower: strings.ToLower(p.Title),
+		tagsLower:  strings.ToLower(strings.Join(p.Tags, " ")),
+	}
+	d.textLower = d.titleLower + "\n" + d.tagsLower + "\n" + strings.ToLower(p.Excerpt)
+	return d
 }
 
 // scored pairs a document with its relevance score for sorting.

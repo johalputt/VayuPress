@@ -78,7 +78,7 @@ import (
 // -ldflags "-X main.Version=<.release-version>", and scripts/update-vayupress.sh
 // reads .release-version too — keep this in sync with .release-version so an
 // un-stamped `go build` still reports an honest version.
-var Version = "2.9.8"
+var Version = "2.9.9"
 var bootTime = time.Now()
 
 // Immutable package-level values (compiled once, never mutated).
@@ -177,6 +177,16 @@ func warmStartupDelay() time.Duration {
 		return time.Duration(n) * time.Second
 	}
 	return 4 * time.Second
+}
+
+// searchSaveInterval is how often the persisted search index snapshot is
+// refreshed so a restart reconciles only recent changes. Tunable via
+// VAYU_SEARCH_SAVE_MIN (clamped to 1..1440 minutes); defaults to 10 minutes.
+func searchSaveInterval() time.Duration {
+	if n, err := strconv.Atoi(config.EnvOr("VAYU_SEARCH_SAVE_MIN", "10")); err == nil && n >= 1 && n <= 1440 {
+		return time.Duration(n) * time.Minute
+	}
+	return 10 * time.Minute
 }
 
 func generateSitemap() {
@@ -634,13 +644,35 @@ func main() {
 	// below) — so the listener never bound and the site 502'd. The read pool has
 	// several query_only connections, so the scan runs without blocking writes.
 	a.search = search.NewService(dbpkg.Reader())
+	searchIdxPath := filepath.Join(config.Cfg.CacheDir, "search-index.gob")
 	go func() {
 		start := time.Now()
-		if err := a.search.Load(context.Background()); err != nil {
+		// Prefer restoring the persisted index and reconciling only what changed
+		// (incremental) — a full rescan of every article runs only when there is no
+		// usable snapshot (ADR-0110). Either way this is off the startup path.
+		if ok, _ := a.search.LoadIndex(context.Background(), searchIdxPath); ok {
+			logging.LogInfo("search", fmt.Sprintf("search index restored + reconciled (%dms)", time.Since(start).Milliseconds()))
+		} else if err := a.search.Load(context.Background()); err != nil {
 			logging.LogError("search", "initial index load failed (search will populate as content changes)", err.Error())
 			return
+		} else {
+			logging.LogInfo("search", fmt.Sprintf("search index built (%dms)", time.Since(start).Milliseconds()))
 		}
-		logging.LogInfo("search", fmt.Sprintf("search index loaded (%dms)", time.Since(start).Milliseconds()))
+		// Persist now (so the very next start is incremental) and refresh the
+		// snapshot periodically + on shutdown; the in-memory index is kept current
+		// by the article event handlers between saves.
+		_ = a.search.SaveIndex(context.Background(), searchIdxPath)
+		t := time.NewTicker(searchSaveInterval())
+		defer t.Stop()
+		for {
+			select {
+			case <-queue.DoneCh:
+				_ = a.search.SaveIndex(context.Background(), searchIdxPath)
+				return
+			case <-t.C:
+				_ = a.search.SaveIndex(context.Background(), searchIdxPath)
+			}
+		}
 	}()
 	// Honour the operator's Search toggle (Tools & Plugins). Default ON; when
 	// off, search returns no results and the public box/modal are hidden.
