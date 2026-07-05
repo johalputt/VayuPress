@@ -34,8 +34,10 @@ func (c *countingSearch) DocCount(_ context.Context) (int, error)  { return c.do
 // Snapshot and Load complete the search.Service interface (the built-in engine
 // grew these for the client index payload and the boot/reconciler rebuild).
 // Mirrors the noopSearch double so this file compiles under -tags integration.
-func (c *countingSearch) Snapshot() ([]byte, string)   { return []byte(`{"v":"0","posts":[]}`), "0" }
-func (c *countingSearch) Load(_ context.Context) error { return nil }
+func (c *countingSearch) Snapshot() ([]byte, string)                          { return []byte(`{"v":"0","posts":[]}`), "0" }
+func (c *countingSearch) Load(_ context.Context) error                        { return nil }
+func (c *countingSearch) SaveIndex(_ context.Context, _ string) error         { return nil }
+func (c *countingSearch) LoadIndex(_ context.Context, _ string) (bool, error) { return false, nil }
 
 func TestSearchDriftEndpoint(t *testing.T) {
 	srv, key := newTestHarness(t)
