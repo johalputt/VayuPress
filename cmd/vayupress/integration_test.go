@@ -40,11 +40,13 @@ func (n *noopSearch) Search(_ context.Context, _ string, _ int) (search.Result, 
 func (n *noopSearch) Index(_ context.Context, _, _, _, _ string, _ []string, _ int64) error {
 	return nil
 }
-func (n *noopSearch) Delete(_ context.Context, _ string) error { return nil }
-func (n *noopSearch) Ping(_ context.Context) error             { return nil }
-func (n *noopSearch) DocCount(_ context.Context) (int, error)  { return 0, nil }
-func (n *noopSearch) Snapshot() ([]byte, string)               { return []byte(`{"v":"0","posts":[]}`), "0" }
-func (n *noopSearch) Load(_ context.Context) error             { return nil }
+func (n *noopSearch) Delete(_ context.Context, _ string) error            { return nil }
+func (n *noopSearch) Ping(_ context.Context) error                        { return nil }
+func (n *noopSearch) DocCount(_ context.Context) (int, error)             { return 0, nil }
+func (n *noopSearch) Snapshot() ([]byte, string)                          { return []byte(`{"v":"0","posts":[]}`), "0" }
+func (n *noopSearch) Load(_ context.Context) error                        { return nil }
+func (n *noopSearch) SaveIndex(_ context.Context, _ string) error         { return nil }
+func (n *noopSearch) LoadIndex(_ context.Context, _ string) (bool, error) { return false, nil }
 
 // directWriter inserts/updates/deletes directly into the articles table so
 // integration tests can read back results without running the queue worker. It
