@@ -30,6 +30,11 @@ type ApplyOptions struct {
 	// (strict, signature-mandatory); the authenticated admin UI sets it so an
 	// operator can update in one click without first provisioning a signing key.
 	AllowUnsigned bool
+
+	// IncludePrerelease opts into the development channel: GitHub pre-releases
+	// (unreleased builds) become eligible for install, not just stable releases.
+	// Verification is unchanged — checksum always, signature when a key is pinned.
+	IncludePrerelease bool
 }
 
 // Guard injects a mode lookup so apply can refuse in unsafe modes.
@@ -86,7 +91,7 @@ func ApplyVerified(ctx context.Context, client *http.Client, owner, repo string,
 		return "", fmt.Errorf("update: nil http client")
 	}
 
-	rel, err := CheckLatest(ctx, client, owner, repo)
+	rel, err := CheckLatestChannel(ctx, client, owner, repo, opt.IncludePrerelease)
 	if err != nil {
 		return "", err
 	}

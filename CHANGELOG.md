@@ -8,6 +8,31 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [2.9.4] — 2026-07-05
+
+### Fixed
+- **One-click update failed with "permission denied writing to
+  /var/lib/vayupress/bin" even after moving to the writable layout.** The v2.9.3
+  installers chowned the binary *file* to the service user but not its
+  *directory*. The atomic swap creates a temp file in that directory and renames
+  it over the binary, so it needs write permission on the **directory** — a
+  root-owned directory blocks the swap regardless of the file's owner.
+  `scripts/deploy-vayupress.sh` and `scripts/update-vayupress.sh` now chown the
+  binary **directory** (`/var/lib/vayupress/bin`) to the service user, the
+  reference `deploy/vayupress.service` gains `StateDirectory=vayupress` so
+  systemd guarantees that ownership, and the in-app error now prints the exact
+  one-line fix (`sudo chown -R <user>:<user> <dir>`) instead of generic advice.
+
+### Added
+- **Pre-release / development update channel.** A new *"Include pre-release &
+  development builds"* checkbox on the Update & Backup panel makes the update
+  check and one-click apply also consider the newest **unreleased** GitHub
+  pre-release, not just stable releases — useful for early testing. Off by
+  default; verification is unchanged (SHA-256 checksum always, Ed25519 signature
+  when a release key is pinned). Backed by `update.CheckLatestChannel` and
+  `ApplyOptions.IncludePrerelease`. See
+  [ADR-0109](docs/adr/ADR-0109-writable-binary-location-for-self-update.md).
+
 ## [2.9.3] — 2026-07-04
 
 ### Fixed

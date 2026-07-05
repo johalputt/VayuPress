@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -77,6 +78,45 @@ func TestCheckLatest(t *testing.T) {
 	}
 	if rel.Published.IsZero() {
 		t.Error("published time not parsed")
+	}
+}
+
+func TestCheckLatestChannel(t *testing.T) {
+	// `releases/latest` 404s (GitHub never returns a pre-release there); the list
+	// carries a newer pre-release (v1.3.0-rc1) above the newest stable (v1.2.0).
+	list := `[
+		{"tag_name":"v1.3.0-rc1","prerelease":true,"draft":false,"published_at":"2026-02-01T00:00:00Z",
+		 "assets":[{"name":"vayupress-linux-amd64.tar.gz","browser_download_url":"https://example/rc.tar.gz","size":10}]},
+		{"tag_name":"v1.2.0","prerelease":false,"draft":false,"published_at":"2026-01-01T00:00:00Z",
+		 "assets":[{"name":"vayupress-linux-amd64.tar.gz","browser_download_url":"https://example/stable.tar.gz","size":20}]}
+	]`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/releases/latest") {
+			w.WriteHeader(404)
+			return
+		}
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte(list))
+	}))
+	defer srv.Close()
+	client := &http.Client{Timeout: 5 * time.Second, Transport: rewriteTransport{target: srv.URL}}
+
+	// Stable channel skips the pre-release.
+	rel, err := CheckLatestChannel(context.Background(), client, "o", "r", false)
+	if err != nil {
+		t.Fatalf("stable channel: %v", err)
+	}
+	if rel.Version != "v1.2.0" {
+		t.Errorf("stable channel version = %q, want v1.2.0", rel.Version)
+	}
+
+	// Development channel offers the newer pre-release.
+	rel, err = CheckLatestChannel(context.Background(), client, "o", "r", true)
+	if err != nil {
+		t.Fatalf("dev channel: %v", err)
+	}
+	if rel.Version != "v1.3.0-rc1" {
+		t.Errorf("dev channel version = %q, want v1.3.0-rc1", rel.Version)
 	}
 }
 

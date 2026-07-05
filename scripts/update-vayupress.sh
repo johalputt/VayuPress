@@ -95,13 +95,17 @@ fi
 ok "Build succeeded ($(du -h "$TMP_BIN" | cut -f1))"
 
 # ── 3. Swap the binary in atomically ─────────────────────────────────────────
-# Install into the service-owned writable directory and own it to the service
-# user, so both this script AND the in-app one-click updater can replace it.
+# Install into the service-owned writable directory. The in-app one-click
+# updater swaps the binary by creating a temp file in this DIRECTORY and renaming
+# it over the binary, so the DIRECTORY (not just the file) must be owned by the
+# service user — otherwise the swap fails with "permission denied writing to
+# <dir>". chown the directory AND the binary to the service user.
 mkdir -p "$BIN_DIR"
 install -m 0755 "$TMP_BIN" "$BIN_PATH"
 rm -f "$TMP_BIN"
-chown "${SERVICE_USER}:${SERVICE_USER}" "$BIN_PATH" 2>/dev/null || true
-ok "Installed new binary at $BIN_PATH"
+chown "${SERVICE_USER}:${SERVICE_USER}" "$BIN_DIR" "$BIN_PATH" 2>/dev/null || true
+chmod 0755 "$BIN_DIR"
+ok "Installed new binary at $BIN_PATH (dir owned by ${SERVICE_USER}, so in-app updates work)"
 
 # ── 3b. Point /usr/local/bin at the writable binary (migrate legacy installs) ─
 # Older installs placed a real binary at /usr/local/bin/vayupress, which the

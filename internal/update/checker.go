@@ -83,6 +83,22 @@ func CheckLatest(ctx context.Context, client *http.Client, owner, repo string) (
 	return rel2, nil
 }
 
+// CheckLatestChannel is CheckLatest with an explicit release channel. When
+// includePrerelease is true, GitHub pre-releases (the "development" channel) are
+// considered too, so an operator can opt into the newest *unreleased* build;
+// when false it is identical to CheckLatest and returns only stable releases.
+// GitHub's `releases/latest` endpoint never returns a pre-release, so the
+// development channel always consults the full releases list.
+func CheckLatestChannel(ctx context.Context, client *http.Client, owner, repo string, includePrerelease bool) (*Release, error) {
+	if !includePrerelease {
+		return CheckLatest(ctx, client, owner, repo)
+	}
+	if client == nil {
+		return nil, fmt.Errorf("update: nil http client")
+	}
+	return latestFromListChannel(ctx, client, owner, repo, true)
+}
+
 // errRateLimited marks a GitHub rate-limit (403/429) so callers can stop early.
 var errRateLimited = errors.New("update: GitHub API rate limit reached (60 requests/hour for unauthenticated checks). Wait an hour and try again, or set VAYU_UPDATE_TOKEN to a GitHub token to raise the limit")
 
@@ -136,6 +152,14 @@ func getRelease(ctx context.Context, client *http.Client, url string) (*Release,
 // latestFromList GETs the releases list and returns the newest non-draft,
 // non-prerelease by semver — the fallback when `releases/latest` 404s.
 func latestFromList(ctx context.Context, client *http.Client, owner, repo string) (*Release, error) {
+	return latestFromListChannel(ctx, client, owner, repo, false)
+}
+
+// latestFromListChannel returns the newest non-draft release by semver. When
+// includePrerelease is false, pre-releases are skipped (stable channel); when
+// true they are eligible (development channel). GitHub returns the list
+// newest-first, so on a semver tie the more recently published build wins.
+func latestFromListChannel(ctx context.Context, client *http.Client, owner, repo string, includePrerelease bool) (*Release, error) {
 	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases?per_page=30", owner, repo)
 	resp, err := githubGet(ctx, client, url)
 	if err != nil {
@@ -155,7 +179,10 @@ func latestFromList(ctx context.Context, client *http.Client, owner, repo string
 	}
 	var best *Release
 	for i := range list {
-		if list[i].Draft || list[i].Prerelease || list[i].TagName == "" {
+		if list[i].Draft || list[i].TagName == "" {
+			continue
+		}
+		if list[i].Prerelease && !includePrerelease {
 			continue
 		}
 		cand := decodeRelease(list[i].ghRelease)
@@ -164,6 +191,9 @@ func latestFromList(ctx context.Context, client *http.Client, owner, repo string
 		}
 	}
 	if best == nil {
+		if includePrerelease {
+			return nil, fmt.Errorf("update: no releases found (including pre-releases)")
+		}
 		return nil, fmt.Errorf("update: no published releases found")
 	}
 	return best, nil

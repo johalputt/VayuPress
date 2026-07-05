@@ -52,6 +52,12 @@ PrivateTmp=yes
 PrivateDevices=yes
 ProtectSystem=strict
 ProtectHome=yes
+# StateDirectory makes systemd create and OWN /var/lib/vayupress as the service
+# user on every start — so the binary directory (/var/lib/vayupress/bin) is
+# service-owned and the in-app one-click updater can create its temp file and
+# rename it over the binary. Ownership (DAC), not just a sandbox grant (MAC), is
+# what the atomic swap needs.
+StateDirectory=vayupress
 # Paths that must be writable. The binary lives under /var/lib/vayupress/bin (a
 # subdirectory of the writable state directory), so the in-app one-click updater
 # swaps it atomically with no extra grant. /usr/local/bin is intentionally NOT

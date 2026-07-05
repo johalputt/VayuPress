@@ -36,6 +36,7 @@ import (
 	htmpl "html/template"
 	"net/http"
 	"os"
+	"os/user"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -105,14 +106,29 @@ func binaryDirWritable(binPath string) string {
 // "add ReadWritePaths" advice — ReadWritePaths only relaxes systemd's sandbox and
 // still leaves a root-owned /usr/local/bin unwritable by the non-root service.
 func updateReadonlyHelp(realPath, why string) string {
-	return "Cannot install the update because the binary location is not writable: " + why +
-		" VayuPress is running from " + realPath + ", which the service account cannot write to" +
-		" (typically /usr/local/bin — root-owned, and read-only under systemd ProtectSystem)." +
-		" The permanent fix is to run VayuPress from a service-owned directory so one-click updates just work:" +
-		" re-run scripts/deploy-vayupress.sh (it installs the binary to /var/lib/vayupress/bin and symlinks" +
-		" /usr/local/bin/vayupress to it), or move the binary into /var/lib/vayupress/bin yourself, chown it to the" +
-		" service user, and point the systemd unit's ExecStart at it. Until then, update from the shell with" +
-		" scripts/update-vayupress.sh."
+	dir := filepath.Dir(realPath)
+	user := serviceUserGuess()
+	// The atomic swap creates a temp file in the binary's directory and renames it
+	// over the binary, so it needs write permission on the DIRECTORY, not the file.
+	// The usual cause now is that the directory is owned by root while the service
+	// runs as a non-root user — fixable with a single chown, no re-deploy needed.
+	return "Cannot install the update because the binary's directory is not writable by the service: " + why +
+		" VayuPress runs from " + realPath + " as user “" + user + "”, but the directory " + dir +
+		" is not owned by that user, so the service cannot create the temporary file the atomic swap needs." +
+		" Fix it once with:  sudo chown -R " + user + ":" + user + " " + dir +
+		"  (a ReadWritePaths grant is not enough — that relaxes systemd's sandbox, not the Unix ownership)." +
+		" Then click Update now again. Alternatively, run scripts/update-vayupress.sh, which now sets this" +
+		" ownership for you. If the path above is under /usr (e.g. /usr/local/bin), move the binary into" +
+		" /var/lib/vayupress/bin instead — /usr is root-owned and read-only under systemd ProtectSystem."
+}
+
+// serviceUserGuess returns the OS user the process runs as, for the chown hint.
+// Falls back to "vayupress" (the documented service account) when unknown.
+func serviceUserGuess() string {
+	if u, err := user.Current(); err == nil && strings.TrimSpace(u.Username) != "" {
+		return u.Username
+	}
+	return "vayupress"
 }
 
 // inlineBackupMaxBytes bounds the database size for which the in-app, in-request
@@ -216,6 +232,10 @@ func (a *App) handleOSUpdate(w http.ResponseWriter, r *http.Request) {
     <input type="checkbox" data-update-backup` + backupChecked + `> Back up the database first
   </label>
   <div class="text-xs muted mb-2">` + backupNote + `</div>
+  <label class="cz-check mt-2" style="justify-content:flex-start;gap:10px">
+    <input type="checkbox" data-update-prerelease> Include pre-release &amp; development builds
+  </label>
+  <div class="text-xs muted mb-2">Off installs only stable, signed releases. Turn on to also offer the newest <strong>unreleased</strong> pre-release build when one is published — useful for early testing. Verification is unchanged (checksum always, signature when a release key is pinned).</div>
   <div class="theme-actions mt-2" data-actions-wrap>
     <button type="button" class="btn btn--ghost btn--sm" data-update-check>Check for updates</button>
     <button type="button" class="btn btn--primary btn--sm" data-update-apply` + applyDisabled + `>Update now</button>
@@ -314,8 +334,9 @@ func (a *App) handleOSUpdateCheck(w http.ResponseWriter, r *http.Request) {
 			update.AuthToken = t
 		}
 	}
+	includePre := isTruthyParam(r.URL.Query().Get("prerelease"))
 	client := &http.Client{Timeout: 30 * time.Second, Transport: safeOutboundTransport()}
-	rel, err := update.CheckLatest(r.Context(), client, updateOwner, updateRepo)
+	rel, err := update.CheckLatestChannel(r.Context(), client, updateOwner, updateRepo, includePre)
 	if err != nil {
 		// Surface the underlying reason (rate limit, network, etc.) verbatim so the
 		// panel shows something actionable instead of a bare "unable to check".
@@ -332,17 +353,28 @@ func (a *App) handleOSUpdateCheck(w http.ResponseWriter, r *http.Request) {
 	enabled, hasKey := selfUpdateConfigured()
 	modeOK := update.PreflightMode(string(mode.Global.Current())) == nil
 	writeJSON(w, r, http.StatusOK, map[string]interface{}{
-		"current":   Version,
-		"latest":    rel.Version,
-		"available": available,
-		"notes":     rel.Notes,
-		"url":       rel.URL,
-		"canApply":  modeOK,
-		"signed":    hasKey,
-		"enabled":   enabled,
-		"hasKey":    hasKey,
-		"mode":      string(mode.Global.Current()),
+		"current":    Version,
+		"latest":     rel.Version,
+		"available":  available,
+		"notes":      rel.Notes,
+		"url":        rel.URL,
+		"canApply":   modeOK,
+		"signed":     hasKey,
+		"enabled":    enabled,
+		"hasKey":     hasKey,
+		"mode":       string(mode.Global.Current()),
+		"prerelease": includePre,
 	})
+}
+
+// isTruthyParam reports whether a query/form value means "on" (1/true/yes/on).
+func isTruthyParam(v string) bool {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
 }
 
 // handleOSUpdateApply verifies and installs the latest release. With
@@ -357,9 +389,10 @@ func (a *App) handleOSUpdateApply(w http.ResponseWriter, r *http.Request) {
 	// keep their safe behaviour; the VayuOS panel sends it explicitly from the
 	// operator's checkbox. A pointer lets us tell "omitted" from "false".
 	var body struct {
-		DryRun  bool  `json:"dryRun"`
-		Restart bool  `json:"restart"`
-		Backup  *bool `json:"backup"`
+		DryRun     bool  `json:"dryRun"`
+		Restart    bool  `json:"restart"`
+		Backup     *bool `json:"backup"`
+		Prerelease bool  `json:"prerelease"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&body) // empty body → zero-value defaults
 	backup := body.Backup == nil || *body.Backup
@@ -421,11 +454,12 @@ func (a *App) handleOSUpdateApply(w http.ResponseWriter, r *http.Request) {
 	// A generous timeout: release binaries can be large and links slow.
 	client := &http.Client{Timeout: 15 * time.Minute, Transport: safeOutboundTransport()}
 	opt := update.ApplyOptions{
-		Current:       Version,
-		DryRun:        body.DryRun,
-		PubKeyHex:     pubKey,
-		BinaryPath:    realPath, // swap the resolved real file, not a launch-time symlink
-		AllowUnsigned: true,     // admin-initiated; checksum-verified when no key is pinned
+		Current:           Version,
+		DryRun:            body.DryRun,
+		PubKeyHex:         pubKey,
+		BinaryPath:        realPath, // swap the resolved real file, not a launch-time symlink
+		AllowUnsigned:     true,     // admin-initiated; checksum-verified when no key is pinned
+		IncludePrerelease: body.Prerelease,
 	}
 	// Pre-update database backup is the operator's choice. When enabled we point
 	// ApplyVerified at the DB so it snapshots before swapping the binary; when

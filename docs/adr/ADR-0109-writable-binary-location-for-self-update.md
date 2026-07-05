@@ -65,3 +65,20 @@ self-swap needs no elevated permission and no sandbox exception.**
   once to migrate to the symlink layout; until then the UI explains the manual
   move. The change is backward-compatible — a single-file, non-symlinked layout
   still swaps in place exactly as before whenever that directory is writable.
+
+## Amendment 2026-07-05 — directory ownership, and a development channel
+
+Two follow-ups after real-world deployment:
+
+- **The binary *directory* must be owned by the service user, not just the
+  file.** The atomic swap creates a temp file in the directory and renames it
+  over the binary, so `os.Rename` needs write permission on the **directory**
+  (DAC). The v2.9.3 installers chowned only the binary file, so a root-owned
+  `/var/lib/vayupress/bin` still blocked the swap. Fixed: both installers now
+  `chown` the directory to the service user; the reference unit adds
+  `StateDirectory=vayupress` (systemd owns the state dir as the service user on
+  every start); and the in-app error prints the exact `chown` one-liner.
+- **Optional development channel.** `update.CheckLatestChannel` and
+  `ApplyOptions.IncludePrerelease` add an opt-in path that also considers GitHub
+  pre-releases (unreleased builds), surfaced as a checkbox on the Update panel.
+  Verification is unchanged; the stable channel remains the default.
