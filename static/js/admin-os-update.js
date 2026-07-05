@@ -103,10 +103,16 @@
   }
 
   // ── Check for updates ──────────────────────────────────────────────────────
+  function prereleaseOn() {
+    var el = document.querySelector('[data-update-prerelease]');
+    return !!(el && el.checked);
+  }
+
   function doCheck() {
     if (checkBtn) checkBtn.disabled = true;
     setMsg(msgEl, 'Checking GitHub for the latest release…', false);
-    fetch('/os/api/update/check', { headers: { 'X-Requested-With': 'XMLHttpRequest' }, cache: 'no-store' })
+    var checkURL = '/os/api/update/check' + (prereleaseOn() ? '?prerelease=1' : '');
+    fetch(checkURL, { headers: { 'X-Requested-With': 'XMLHttpRequest' }, cache: 'no-store' })
       .then(readResponse)
       .then(function (res) {
         if (!res.isJSON) {
@@ -140,10 +146,10 @@
           setMsg(msgEl, 'You are running the latest release.', false);
         } else if (!d.canApply) {
           setMsg(msgEl, 'Version ' + d.latest + ' is available, but updates are paused while the system mode is ' + (d.mode || 'restricted') + '.', false);
-        } else if (d.signed) {
-          setMsg(msgEl, 'Version ' + d.latest + ' is ready to install (checksum + signature verified).', false);
         } else {
-          setMsg(msgEl, 'Version ' + d.latest + ' is ready to install (checksum verified).', false);
+          var chan = d.prerelease ? ' pre-release build' : '';
+          var verify = d.signed ? 'checksum + signature verified' : 'checksum verified';
+          setMsg(msgEl, 'Version ' + d.latest + chan + ' is ready to install (' + verify + ').', false);
         }
       })
       .catch(function () { setMsg(msgEl, 'Could not reach the update service — check your connection and try again.', true); })
@@ -166,7 +172,7 @@
     fetch('/os/api/update/apply', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf() },
-      body: JSON.stringify({ restart: true, backup: doBackup })
+      body: JSON.stringify({ restart: true, backup: doBackup, prerelease: prereleaseOn() })
     })
       .then(readResponse)
       .then(function (res) {

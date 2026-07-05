@@ -370,6 +370,13 @@ run bash -c "cd '${INSTALL_DIR}' && \
     -o '${BIN_DIR}/vayupress' \
     ./cmd/vayupress/"
 run chmod 0755 "${BIN_DIR}/vayupress"
+# Own the binary AND its directory to the service user now. The in-app one-click
+# updater swaps the binary by creating a temp file in this directory and renaming
+# it over the binary, so the DIRECTORY must be service-owned or the swap fails
+# with "permission denied writing to ${BIN_DIR}". (The blanket chown below also
+# covers it, but doing it here keeps one-click updates working even if the layout
+# is customised.)
+run chown -R www-data:www-data "${BIN_DIR}"
 # Expose the service-owned binary on PATH via a symlink, so shell commands
 # (scripts/update-vayupress.sh, `vayupress --version`) resolve it while the
 # service runs it from the writable directory it can self-update in place.
