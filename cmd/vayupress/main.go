@@ -78,7 +78,7 @@ import (
 // -ldflags "-X main.Version=<.release-version>", and scripts/update-vayupress.sh
 // reads .release-version too — keep this in sync with .release-version so an
 // un-stamped `go build` still reports an honest version.
-var Version = "2.9.6"
+var Version = "2.9.7"
 var bootTime = time.Now()
 
 // Immutable package-level values (compiled once, never mutated).
@@ -621,12 +621,21 @@ func main() {
 	}
 
 	// Wire search service — VayuFind, the built-in dependency-free engine
-	// (ADR-0050/0101). Load the index once from the article store; thereafter it
-	// is maintained incrementally by the article event handlers.
+	// (ADR-0050/0101). Load the index in the BACKGROUND: on a large article store
+	// this full scan can take minutes, and running it synchronously here delayed
+	// the HTTP listener (below) from binding — so the site returned 502 for the
+	// whole load and a slow-but-healthy start looked like a crash. Search returns
+	// empty until the first load completes, then serves normally and is maintained
+	// incrementally by the article event handlers.
 	a.search = search.NewService(dbpkg.DB)
-	if err := a.search.Load(context.Background()); err != nil {
-		logging.LogError("search", "initial index load failed (search will populate as content changes)", err.Error())
-	}
+	go func() {
+		start := time.Now()
+		if err := a.search.Load(context.Background()); err != nil {
+			logging.LogError("search", "initial index load failed (search will populate as content changes)", err.Error())
+			return
+		}
+		logging.LogInfo("search", fmt.Sprintf("search index loaded (%dms)", time.Since(start).Milliseconds()))
+	}()
 	// Honour the operator's Search toggle (Tools & Plugins). Default ON; when
 	// off, search returns no results and the public box/modal are hidden.
 	if a.siteSettings != nil {
