@@ -8,6 +8,26 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.1.0] — 2026-07-05
+
+### Added
+- **Rich mail composer — Cc, Bcc, Reply-To, and file attachments.** The VayuOS
+  Compose form gains show-on-demand **Cc/Bcc** and **Reply-To** fields and a
+  **multiple-file attachment** picker. Attachments are assembled into a proper
+  `multipart/mixed`, DKIM-signed message; Bcc recipients receive the mail without
+  appearing in the headers; the exact assembled message (with attachments) is
+  filed in Sent. Total attachment size is capped at a **generous 50 MB by
+  default** — above Gmail's 25 MB and Outlook's 20 MB — tunable with
+  `VAYUMAIL_MAX_ATTACH_MB`. Filenames are sanitised against header injection, and
+  the send endpoint accepts multipart uploads (with the same CSRF + per-mailbox
+  sender rules) or the legacy JSON body. PGP auto-encryption still applies to a
+  single-recipient, no-attachment message.
+
+### Note
+- The **"CSRF token missing or invalid"** error when refreshing the setup QR (or
+  clicking Update) is resolved by the persisted CSRF secret shipped in v3.0.0 —
+  update to v3.0.0+ so tokens survive the restart.
+
 ## [3.0.0] — 2026-07-05
 
 **VayuPress is a complete sovereign platform — website, blog, and private PGP

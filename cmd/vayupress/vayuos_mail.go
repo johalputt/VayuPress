@@ -79,10 +79,24 @@ func (a *App) handleVayuOSCompose(w http.ResponseWriter, r *http.Request) {
     <select class="input" data-c-from>` + fromOpts + `</select></label>
   <label class="field"><span class="field-label">To (comma-separated)</span>
     <input class="input" type="text" data-c-to placeholder="someone@example.com" value="` + html.EscapeString(prefillTo) + `" required></label>
+  <div class="vm-row" style="gap:8px;margin:0 0 10px">
+    <button class="btn btn--sm" type="button" data-c-toggle-cc>Cc/Bcc</button>
+    <button class="btn btn--sm" type="button" data-c-toggle-reply>Reply-To</button>
+  </div>
+  <label class="field" data-c-cc-field hidden><span class="field-label">Cc (comma-separated)</span>
+    <input class="input" type="text" data-c-cc placeholder="cc@example.com"></label>
+  <label class="field" data-c-bcc-field hidden><span class="field-label">Bcc (comma-separated)</span>
+    <input class="input" type="text" data-c-bcc placeholder="bcc@example.com"></label>
+  <label class="field" data-c-reply-field hidden><span class="field-label">Reply-To</span>
+    <input class="input" type="text" data-c-reply placeholder="reply@example.com"></label>
   <label class="field"><span class="field-label">Subject</span>
     <input class="input" type="text" data-c-subject placeholder="Subject" value="` + html.EscapeString(prefillSubject) + `"></label>
   <label class="field"><span class="field-label">Message</span>
     <textarea class="input" rows="12" data-c-body placeholder="Write your message…">` + html.EscapeString(prefillBody) + `</textarea></label>
+  <label class="field"><span class="field-label">Attachments</span>
+    <input class="input" type="file" data-c-files multiple>
+    <span class="muted text-xs">Up to ` + strconv.Itoa(composeMaxAttachMB()) + ` MB total — more than most providers allow.</span></label>
+  <div data-c-attach-list class="vm-attach-list text-sm muted"></div>
   <div class="vm-row">
     <button class="btn btn--primary" type="submit">Send</button>
     <button class="btn" type="button" data-c-draft>Save as draft</button>
@@ -179,21 +193,80 @@ func ensurePrefix(s, prefix string) string {
 	return prefix + s
 }
 
+// composeMaxAttachMB is the total attachment budget for a single message, in MB.
+// Generous by design (default 50 MB, above Gmail's 25 / Outlook's 20); override
+// with VAYUMAIL_MAX_ATTACH_MB.
+func composeMaxAttachMB() int {
+	if n := config.GetEnvAsInt("VAYUMAIL_MAX_ATTACH_MB", 50); n >= 1 {
+		return n
+	}
+	return 1
+}
+
 func (a *App) handleVayuOSSend(w http.ResponseWriter, r *http.Request) {
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", "VayuMail is not active", "")
 		return
 	}
+	// Accept EITHER multipart/form-data (when the composer has attachments) or the
+	// legacy JSON body. maxAttachMB bounds total attachment bytes — generous by
+	// design (default 50 MB, above Gmail's 25 MB / Outlook's 20 MB), tunable via
+	// VAYUMAIL_MAX_ATTACH_MB.
+	maxAttachMB := int64(composeMaxAttachMB())
+	maxAttachBytes := maxAttachMB << 20
+
 	var in struct {
-		From    string `json:"from"`
-		To      string `json:"to"`
-		Subject string `json:"subject"`
-		Body    string `json:"body"`
+		From, To, CC, BCC, ReplyTo, Subject, Body string
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&in); err != nil {
-		writeAPIError(w, r, 400, "invalid_json", err.Error(), "")
-		return
+	var attachments []vmail.Attachment
+
+	if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
+		// Cap the whole request at the attachment budget + 1 MB of text/fields.
+		r.Body = http.MaxBytesReader(w, r.Body, maxAttachBytes+(1<<20))
+		if err := r.ParseMultipartForm(8 << 20); err != nil {
+			writeAPIError(w, r, 400, "attach-too-large", "The message (with attachments) exceeds the "+strconv.FormatInt(maxAttachMB, 10)+" MB limit.", "")
+			return
+		}
+		in.From = r.FormValue("from")
+		in.To = r.FormValue("to")
+		in.CC = r.FormValue("cc")
+		in.BCC = r.FormValue("bcc")
+		in.ReplyTo = r.FormValue("replyTo")
+		in.Subject = r.FormValue("subject")
+		in.Body = r.FormValue("body")
+		var total int64
+		if r.MultipartForm != nil {
+			for _, fhs := range r.MultipartForm.File["attachments"] {
+				total += fhs.Size
+				if total > maxAttachBytes {
+					writeAPIError(w, r, 400, "attach-too-large", "Attachments exceed the "+strconv.FormatInt(maxAttachMB, 10)+" MB total limit.", "")
+					return
+				}
+				f, ferr := fhs.Open()
+				if ferr != nil {
+					writeAPIError(w, r, 400, "attach-read", "Could not read an attachment.", "")
+					return
+				}
+				data, rerr := io.ReadAll(io.LimitReader(f, maxAttachBytes+1))
+				f.Close()
+				if rerr != nil {
+					writeAPIError(w, r, 400, "attach-read", "Could not read an attachment.", "")
+					return
+				}
+				attachments = append(attachments, vmail.Attachment{
+					Filename:    fhs.Filename,
+					ContentType: fhs.Header.Get("Content-Type"),
+					Data:        data,
+				})
+			}
+		}
+	} else {
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&in); err != nil {
+			writeAPIError(w, r, 400, "invalid_json", err.Error(), "")
+			return
+		}
 	}
+
 	domain := a.vayuMail.Config().Domain
 	from := strings.TrimSpace(in.From)
 	if from == "" {
@@ -208,13 +281,19 @@ func (a *App) handleVayuOSSend(w http.ResponseWriter, r *http.Request) {
 		}
 		from = ownEmail
 	}
-	var to []string
-	for _, t := range strings.Split(in.To, ",") {
-		if t = strings.TrimSpace(t); t != "" {
-			to = append(to, t)
+	splitAddrs := func(s string) []string {
+		var out []string
+		for _, t := range strings.Split(s, ",") {
+			if t = strings.TrimSpace(t); t != "" {
+				out = append(out, t)
+			}
 		}
+		return out
 	}
-	if len(to) == 0 {
+	to := splitAddrs(in.To)
+	cc := splitAddrs(in.CC)
+	bcc := splitAddrs(in.BCC)
+	if len(to)+len(cc)+len(bcc) == 0 {
 		writeAPIError(w, r, 400, "validation_error", "at least one recipient is required", "")
 		return
 	}
@@ -236,12 +315,22 @@ func (a *App) handleVayuOSSend(w http.ResponseWriter, r *http.Request) {
 	if name := a.senderDisplayName(r.Context(), from); name != "" {
 		fromHeader = (&netmail.Address{Name: name, Address: from}).String()
 	}
-	id, err := a.vayuMail.Compose(r.Context(), fromHeader, to, in.Subject, in.Body, senderUserID)
+	id, err := a.vayuMail.ComposeRich(r.Context(), vmail.ComposeMessage{
+		From:         fromHeader,
+		To:           to,
+		CC:           cc,
+		BCC:          bcc,
+		ReplyTo:      strings.TrimSpace(in.ReplyTo),
+		Subject:      in.Subject,
+		Body:         in.Body,
+		Attachments:  attachments,
+		SenderUserID: senderUserID,
+	})
 	if err != nil {
 		writeAPIError(w, r, 500, "send-failed", err.Error(), "")
 		return
 	}
-	writeJSON(w, r, 200, map[string]interface{}{"queued": true, "id": id})
+	writeJSON(w, r, 200, map[string]interface{}{"queued": true, "id": id, "attachments": len(attachments)})
 }
 
 // handleVayuOSDraft saves a composed message into the sender's Drafts folder so
