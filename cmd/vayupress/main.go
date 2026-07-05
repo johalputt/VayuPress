@@ -78,7 +78,7 @@ import (
 // -ldflags "-X main.Version=<.release-version>", and scripts/update-vayupress.sh
 // reads .release-version too — keep this in sync with .release-version so an
 // un-stamped `go build` still reports an honest version.
-var Version = "2.9.7"
+var Version = "2.9.8"
 var bootTime = time.Now()
 
 // Immutable package-level values (compiled once, never mutated).
@@ -627,7 +627,13 @@ func main() {
 	// whole load and a slow-but-healthy start looked like a crash. Search returns
 	// empty until the first load completes, then serves normally and is maintained
 	// incrementally by the article event handlers.
-	a.search = search.NewService(dbpkg.DB)
+	// Read from the READ POOL, never the single writer connection. The initial
+	// Load scans every published article, which on a large database takes minutes;
+	// on the writer (SetMaxOpenConns(1)) that scan would monopolise the one writer
+	// connection and block the main startup thread's next write (UPDATE write_jobs
+	// below) — so the listener never bound and the site 502'd. The read pool has
+	// several query_only connections, so the scan runs without blocking writes.
+	a.search = search.NewService(dbpkg.Reader())
 	go func() {
 		start := time.Now()
 		if err := a.search.Load(context.Background()); err != nil {
