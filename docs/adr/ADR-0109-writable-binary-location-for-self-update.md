@@ -82,3 +82,24 @@ Two follow-ups after real-world deployment:
   `ApplyOptions.IncludePrerelease` add an opt-in path that also considers GitHub
   pre-releases (unreleased builds), surfaced as a checkbox on the Update panel.
   Verification is unchanged; the stable channel remains the default.
+
+## Amendment 2026-07-05 (2) — heal unit drift and never leave a site down
+
+A real deployment surfaced a second failure mode: a binary that ran fine by hand
+crash-looped under systemd because the box still carried an **old, drifted unit**
+(a `1.7.0`-era unit whose `ProtectSystem` sandbox / limits predated features the
+current binary needs). The process exited right after startup and the site 502'd.
+
+The updater is now self-healing:
+
+- **`scripts/update-vayupress.sh` writes a complete, known-good systemd unit on
+  every run** (correct `ReadWritePaths` incl. `STATIC_DIR`, `CAP_NET_BIND_SERVICE`,
+  `StateDirectory=vayupress`, no stale `MemoryMax`/`SystemCallFilter`), backing up
+  the prior unit. The runtime can no longer drift away from what the binary needs.
+- **Automatic rollback:** after restart it polls `/health/live` for up to 45s and,
+  if the new version never becomes healthy, restores the previous binary and
+  restarts — the site returns on the last-known-good version instead of
+  crash-looping.
+- **journald logging** (`StandardOutput/Error=journal`) in both units, so the next
+  startup failure is visible with `journalctl -u vayupress` rather than hidden in
+  an append-only file.

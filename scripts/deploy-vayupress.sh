@@ -439,13 +439,19 @@ ProtectSystem=full
 # NoNewPrivileges. This is the only elevated capability granted.
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 AmbientCapabilities=CAP_NET_BIND_SERVICE
-# The binary runs from ${BIN_DIR} (a subdirectory of the writable ${DATA_DIR}),
-# so the in-app one-click updater can atomically swap it with no extra grant.
+# systemd creates and OWNS the state dir as the service user every start, so the
+# binary directory stays writable for the in-app one-click updater.
+StateDirectory=vayupress
+# EVERY directory the binary writes at startup/runtime must be listed, or a
+# ProtectSystem sandbox denies the write and the process exits. STATIC_DIR is
+# essential — the binary syncs its embedded admin assets there on boot.
 # /usr/local/bin is deliberately NOT listed: it is root-owned, so even with a
 # ReadWritePaths grant the non-root service still could not write there.
 ReadWritePaths=${DATA_DIR} ${LOG_DIR} ${CACHE_DIR} ${STATIC_DIR} ${BACKUP_DIR}
-StandardOutput=append:${LOG_DIR}/vayupress.log
-StandardError=append:${LOG_DIR}/vayupress.error.log
+# Log to journald so a startup failure is visible via 'journalctl -u vayupress'.
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=vayupress
 
 [Install]
 WantedBy=multi-user.target

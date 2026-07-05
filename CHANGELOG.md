@@ -8,6 +8,32 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [2.9.6] — 2026-07-05
+
+### Fixed
+- **Update no longer leaves a site crash-looping when the systemd unit has
+  drifted.** A binary that runs fine by hand but exits under systemd is almost
+  always a stale/hand-edited unit whose `ProtectSystem` sandbox omits a
+  directory the current binary writes at startup — most often `STATIC_DIR`,
+  where the binary syncs its embedded admin assets on boot. The sandbox denied
+  that write and the process exited right after "mode journal open", so the site
+  502'd even though the binary was healthy. `scripts/update-vayupress.sh` now
+  writes a **complete, known-good systemd unit on every update** (correct
+  `ReadWritePaths` incl. `STATIC_DIR`, `CAP_NET_BIND_SERVICE`,
+  `StateDirectory=vayupress`), backing up the previous one, so the runtime can
+  never drift away from what the binary needs.
+
+### Added
+- **Automatic rollback on a failed update.** After restarting, the shell updater
+  polls `/health/live` for up to 45s; if the new version never becomes healthy it
+  **restores the previous binary and restarts automatically**, bringing the site
+  back on the last-known-good version instead of crash-looping, then reports the
+  failure for offline investigation. An update can no longer leave a site down.
+- **Service logs now go to journald** (`StandardOutput/Error=journal`,
+  `SyslogIdentifier=vayupress`) in both the deploy and update units, so a startup
+  failure is visible with `journalctl -u vayupress` instead of hidden in a file —
+  the observability gap that made this class of failure hard to diagnose.
+
 ## [2.9.5] — 2026-07-05
 
 ### Fixed

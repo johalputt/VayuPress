@@ -29,9 +29,16 @@ BIN_DIR="${BIN_DIR:-/var/lib/vayupress/bin}"
 BIN_PATH="${BIN_PATH:-${BIN_DIR}/vayupress}"
 LINK_PATH="${LINK_PATH:-/usr/local/bin/vayupress}"
 SERVICE_USER="${SERVICE_USER:-www-data}"
-STATIC_DIR="${STATIC_DIR:-/var/lib/vayupress/static}"
+DATA_DIR="${DATA_DIR:-/var/lib/vayupress}"
+STATIC_DIR="${STATIC_DIR:-${DATA_DIR}/static}"
+LOG_DIR="${LOG_DIR:-/var/log/vayupress}"
+CACHE_DIR="${CACHE_DIR:-/var/cache/vayupress}"
+BACKUP_DIR="${BACKUP_DIR:-/var/backups/vayupress}"
 GO_BIN="${GO_BIN:-/usr/local/go/bin/go}"
 SERVICE="${SERVICE:-vayupress}"
+UNIT_PATH="${UNIT_PATH:-/etc/systemd/system/${SERVICE}.service}"
+HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:8080/health/live}"
+HEALTH_WAIT="${HEALTH_WAIT:-45}"
 # Version is derived from the freshly-pulled source just before the build (see
 # below), so the binary always reports the version it was actually built from.
 # Override with ENGINE_VERSION=... if you need a custom stamp.
@@ -109,6 +116,10 @@ ok "Build succeeded ($(du -h "$TMP_BIN" | cut -f1))"
 # service user — otherwise the swap fails with "permission denied writing to
 # <dir>". chown the directory AND the binary to the service user.
 mkdir -p "$BIN_DIR"
+# Keep the outgoing binary so a failed update can auto-roll-back to it (§6).
+if [[ -f "$BIN_PATH" ]]; then
+  cp -a "$BIN_PATH" "${BIN_PATH}.prev" 2>/dev/null || true
+fi
 install -m 0755 "$TMP_BIN" "$BIN_PATH"
 rm -f "$TMP_BIN"
 chown "${SERVICE_USER}:${SERVICE_USER}" "$BIN_DIR" "$BIN_PATH" 2>/dev/null || true
@@ -129,25 +140,64 @@ if [[ "$LINK_PATH" != "$BIN_PATH" ]]; then
   ok "Symlinked $LINK_PATH → $BIN_PATH"
 fi
 
-# ── 3c. Ensure the running unit executes the writable path ────────────────────
-# If the unit still has ExecStart=/usr/local/bin/vayupress AND that path is a
-# real file (not our symlink), install an idempotent drop-in so systemd launches
-# the writable binary directly. When /usr/local/bin/vayupress is our symlink this
-# is unnecessary (the symlink resolves to the writable file), so we skip it.
-DROPIN_DIR="/etc/systemd/system/${SERVICE}.service.d"
-DROPIN="${DROPIN_DIR}/10-exec-writable-bin.conf"
+# ── 3c. Install/refresh the canonical systemd unit (heals drifted units) ──────
+# The #1 cause of "runs fine by hand but crash-loops under systemd" is a stale or
+# hand-edited unit whose ProtectSystem sandbox omits a directory the current
+# binary writes at startup — most often STATIC_DIR, where the binary syncs its
+# embedded admin assets on boot. The sandbox denies that write and the process
+# exits (after logging "mode journal open"), so the site 502s while `run by hand`
+# as root works. Rather than patch one directive via a drop-in, we write a
+# complete, known-good unit on every update so the runtime cannot drift away from
+# what the binary needs. The previous unit is backed up; operator customisations
+# belong in drop-ins under ${SERVICE}.service.d/, which still layer on top.
 if [[ -d /etc/systemd/system ]] && command -v systemctl >/dev/null 2>&1; then
-  mkdir -p "$DROPIN_DIR"
-  cat > "$DROPIN" <<DROPIN_EOF
-# Installed by update-vayupress.sh: run the binary from the service-owned,
-# writable directory so the in-app one-click updater can swap it in place.
-# Safe and idempotent.
+  if [[ -f "$UNIT_PATH" ]]; then
+    cp -a "$UNIT_PATH" "${UNIT_PATH}.prev" 2>/dev/null || true
+  fi
+  # Drop our own older ExecStart-only drop-ins; the full unit supersedes them and
+  # a lingering "ExecStart=" reset from them could otherwise blank the command.
+  rm -f "/etc/systemd/system/${SERVICE}.service.d/10-exec-writable-bin.conf" \
+        "/etc/systemd/system/${SERVICE}.service.d/10-writable-bin.conf" 2>/dev/null || true
+  cat > "$UNIT_PATH" <<UNIT_EOF
+[Unit]
+Description=VayuPress CMS Engine ${ENGINE_VERSION}
+Documentation=https://github.com/johalputt/vayupress
+After=network.target
+
 [Service]
-ExecStart=
+Type=simple
+User=${SERVICE_USER}
+Group=${SERVICE_USER}
+EnvironmentFile=/etc/vayupress/env
 ExecStart=${BIN_PATH}
-DROPIN_EOF
+WorkingDirectory=${DATA_DIR}
+Restart=always
+RestartSec=5s
+TimeoutStopSec=90
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+# Bind the privileged mail ports (25/110/143/465/587/993/995) as a non-root user.
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+# systemd creates and OWNS the state dir as the service user every start, so the
+# binary directory is writable and the in-app one-click updater can swap in place.
+StateDirectory=vayupress
+# EVERY directory the binary writes at startup/runtime must be listed here, or a
+# ProtectSystem sandbox denies the write and the process exits. STATIC_DIR is
+# essential — the binary syncs its embedded admin assets there on boot.
+ReadWritePaths=${DATA_DIR} ${LOG_DIR} ${CACHE_DIR} ${STATIC_DIR} ${BACKUP_DIR}
+# Log to journald so a startup failure is visible with 'journalctl -u vayupress'
+# instead of hidden in a file — the observability gap that made this hard to debug.
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=vayupress
+
+[Install]
+WantedBy=multi-user.target
+UNIT_EOF
   systemctl daemon-reload 2>/dev/null || true
-  ok "Configured systemd to run the writable binary at ${BIN_PATH}."
+  ok "Installed canonical systemd unit at ${UNIT_PATH} (logs now go to journald)."
 fi
 
 # ── 4. Refresh static assets (CSS/JS/fonts) into STATIC_DIR ───────────────────
@@ -204,28 +254,48 @@ else
   info "DB backup skipped (set BACKUP_DB=1 to snapshot before updating)."
 fi
 
-# ── 6. Restart and verify ────────────────────────────────────────────────────
+# ── 6. Restart, verify health, and AUTO-ROLLBACK on failure ───────────────────
+# An update must never leave the site down. We restart, then poll the health
+# endpoint for up to HEALTH_WAIT seconds (large databases warm slowly). If the
+# new version never becomes healthy, we automatically restore the previous binary
+# and restart, so the site comes back on the last-known-good version instead of
+# crash-looping — then report loudly so the operator can investigate offline.
 info "Restarting $SERVICE..."
-systemctl restart "$SERVICE"
-sleep 2
+systemctl restart "$SERVICE" || true
 
-if ! systemctl is-active --quiet "$SERVICE"; then
-  echo ""
-  warn "Service is NOT active after restart. Last 30 log lines:"
-  journalctl -u "$SERVICE" -n 30 --no-pager || true
-  die "Service failed to start — see logs above."
-fi
-ok "Service is active."
-
-# Probe the local health endpoint (best-effort).
-for i in $(seq 1 10); do
-  if curl -sf http://127.0.0.1:8080/health >/dev/null 2>&1; then
-    ok "Health check passed."
+healthy=0
+for _ in $(seq 1 "$HEALTH_WAIT"); do
+  if systemctl is-active --quiet "$SERVICE" && curl -sf "$HEALTH_URL" >/dev/null 2>&1; then
+    healthy=1
     break
   fi
   sleep 1
-  [[ $i -eq 10 ]] && warn "Health check did not respond in 10s — check journalctl -u $SERVICE."
 done
+
+if [[ "$healthy" == "1" ]]; then
+  ok "Health check passed — VayuPress ${ENGINE_VERSION} is live."
+else
+  echo ""
+  warn "New version did not become healthy in ${HEALTH_WAIT}s. Recent logs:"
+  journalctl -u "$SERVICE" -n 25 --no-pager 2>/dev/null || true
+  if [[ -f "${BIN_PATH}.prev" ]]; then
+    warn "Auto-rolling back to the previous binary so your site comes back up…"
+    cp -a "${BIN_PATH}.prev" "$BIN_PATH" 2>/dev/null || true
+    chown "${SERVICE_USER}:${SERVICE_USER}" "$BIN_PATH" 2>/dev/null || true
+    # Keep the freshly-written canonical unit (it is a fix, not a regression); it
+    # is a superset of permissions, so the previous binary runs cleanly under it.
+    systemctl restart "$SERVICE" || true
+    for _ in $(seq 1 15); do
+      systemctl is-active --quiet "$SERVICE" && curl -sf "$HEALTH_URL" >/dev/null 2>&1 && { healthy=1; break; }
+      sleep 1
+    done
+  fi
+  if [[ "$healthy" == "1" ]]; then
+    die "Update FAILED and was ROLLED BACK — your site is back up on the previous version. The new build did not start; check 'journalctl -u $SERVICE' for the reason, then re-run once fixed."
+  else
+    die "Update FAILED and rollback did NOT restore health — investigate now: 'journalctl -u $SERVICE -n 60 --no-pager'."
+  fi
+fi
 
 echo ""
 echo -e "${GREEN}════════════════════════════════════════════════════════════${NC}"
