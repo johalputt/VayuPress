@@ -263,9 +263,19 @@ fi
 info "Restarting $SERVICE..."
 systemctl restart "$SERVICE" || true
 
+# Poll until healthy, OR the process actually exits (a real crash). We DISTINGUISH
+# the two: a service that is still active but not yet answering /health is merely
+# starting slowly (a large database warms the caches/search index in the
+# background) — that is NOT a reason to roll back a good binary. We only roll back
+# when the process has genuinely exited/failed.
 healthy=0
+crashed=0
 for _ in $(seq 1 "$HEALTH_WAIT"); do
-  if systemctl is-active --quiet "$SERVICE" && curl -sf "$HEALTH_URL" >/dev/null 2>&1; then
+  if ! systemctl is-active --quiet "$SERVICE"; then
+    crashed=1
+    break
+  fi
+  if curl -sf "$HEALTH_URL" >/dev/null 2>&1; then
     healthy=1
     break
   fi
@@ -274,27 +284,34 @@ done
 
 if [[ "$healthy" == "1" ]]; then
   ok "Health check passed — VayuPress ${ENGINE_VERSION} is live."
-else
+elif [[ "$crashed" == "1" && -f "${BIN_PATH}.prev" ]]; then
   echo ""
-  warn "New version did not become healthy in ${HEALTH_WAIT}s. Recent logs:"
+  warn "New version exited on startup (a real failure). Recent logs:"
   journalctl -u "$SERVICE" -n 25 --no-pager 2>/dev/null || true
-  if [[ -f "${BIN_PATH}.prev" ]]; then
-    warn "Auto-rolling back to the previous binary so your site comes back up…"
-    cp -a "${BIN_PATH}.prev" "$BIN_PATH" 2>/dev/null || true
-    chown "${SERVICE_USER}:${SERVICE_USER}" "$BIN_PATH" 2>/dev/null || true
-    # Keep the freshly-written canonical unit (it is a fix, not a regression); it
-    # is a superset of permissions, so the previous binary runs cleanly under it.
-    systemctl restart "$SERVICE" || true
-    for _ in $(seq 1 15); do
-      systemctl is-active --quiet "$SERVICE" && curl -sf "$HEALTH_URL" >/dev/null 2>&1 && { healthy=1; break; }
-      sleep 1
-    done
-  fi
+  warn "Auto-rolling back to the previous binary so your site comes back up…"
+  cp -a "${BIN_PATH}.prev" "$BIN_PATH" 2>/dev/null || true
+  chown "${SERVICE_USER}:${SERVICE_USER}" "$BIN_PATH" 2>/dev/null || true
+  # Keep the freshly-written canonical unit (a fix, not a regression); it is a
+  # superset of permissions, so the previous binary runs cleanly under it.
+  systemctl restart "$SERVICE" || true
+  for _ in $(seq 1 20); do
+    systemctl is-active --quiet "$SERVICE" && curl -sf "$HEALTH_URL" >/dev/null 2>&1 && { healthy=1; break; }
+    sleep 1
+  done
   if [[ "$healthy" == "1" ]]; then
-    die "Update FAILED and was ROLLED BACK — your site is back up on the previous version. The new build did not start; check 'journalctl -u $SERVICE' for the reason, then re-run once fixed."
+    die "Update FAILED and was ROLLED BACK — your site is back on the previous version. Check 'journalctl -u $SERVICE' for why the new build exited, then re-run once fixed."
   else
     die "Update FAILED and rollback did NOT restore health — investigate now: 'journalctl -u $SERVICE -n 60 --no-pager'."
   fi
+else
+  # Still ACTIVE but not answering yet — a slow first start on a large database.
+  # Leave it running (do NOT roll back a healthy binary); it will finish warming
+  # and start serving shortly.
+  echo ""
+  warn "VayuPress ${ENGINE_VERSION} is running but not answering /health yet after ${HEALTH_WAIT}s."
+  warn "On a large database the first start warms the search index in the background,"
+  warn "so this is normal — leaving it running. Watch it come up with:"
+  echo "    journalctl -u $SERVICE -f    (wait for 'listening on :')"
 fi
 
 echo ""

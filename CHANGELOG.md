@@ -8,6 +8,28 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [2.9.7] — 2026-07-05
+
+### Fixed
+- **Large sites no longer 502 for minutes on every start (and no longer look
+  like a crash).** The built-in search index (VayuFind) was loaded
+  **synchronously at startup by scanning every published article** — on a large
+  database (e.g. 12.7 GB) that took *minutes*, and it ran **before the HTTP
+  listener bound**, so the site returned 502 the whole time and a perfectly
+  healthy, slow-starting process looked like a failed update. The index now loads
+  in a **background goroutine**, so the web listener binds within a second
+  regardless of database size; search returns empty for the brief moment until
+  the first load finishes, then serves normally (it is maintained incrementally
+  thereafter). Diagnosed from a real deployment where the process sat at "mode
+  journal open" for 6 minutes and was killed by `systemctl` (signal=TERM), not by
+  OOM — RAM was 90% free.
+- **The updater no longer rolls back a slow-but-healthy start.**
+  `scripts/update-vayupress.sh` now distinguishes a process that has genuinely
+  **exited** (a real crash → roll back) from one that is **still running but not
+  yet answering** `/health` (a large DB warming up → leave it running). It only
+  auto-rolls-back on an actual exit, and otherwise reports that the service is
+  coming up.
+
 ## [2.9.6] — 2026-07-05
 
 ### Fixed
