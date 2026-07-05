@@ -8,6 +8,13 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Changed
+- **Release workflows now publish semver pre-release tags (those containing a
+  hyphen, e.g. `v2.9.10-rc1`) as GitHub pre-releases**, so they appear only in the
+  in-app updater's "Include pre-release & development builds" channel and never in
+  the stable channel. This makes the pre-release update option testable — before
+  this, no pre-release existed, so the checkbox had nothing to offer.
+
 ## [2.9.9] — 2026-07-05
 
 ### Added

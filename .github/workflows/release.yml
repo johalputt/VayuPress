@@ -50,6 +50,11 @@ jobs:
       - name: Upload release assets
         uses: softprops/action-gh-release@v2
         with:
+          # A semver pre-release tag (one containing a hyphen, e.g. v2.9.10-rc1)
+          # is published as a GitHub *pre-release*, so it only appears in the
+          # updater's "Include pre-release & development builds" channel and never
+          # in the stable channel.
+          prerelease: ${{ contains(github.ref_name, '-') }}
           fail_on_unmatched_files: false
           files: |
             dist/vayupress
