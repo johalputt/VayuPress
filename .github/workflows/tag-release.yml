@@ -113,6 +113,9 @@ jobs:
         with:
           tag_name: ${{ steps.ver.outputs.version }}
           name: VayuPress ${{ steps.ver.outputs.version }}
+          # Publish as a pre-release when the version carries a pre-release suffix
+          # (e.g. 2.9.10-rc1), so it only shows in the updater's dev channel.
+          prerelease: ${{ contains(steps.ver.outputs.version, '-') }}
           generate_release_notes: true
           fail_on_unmatched_files: false
           files: |
