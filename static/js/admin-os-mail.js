@@ -37,10 +37,39 @@
   var compose = document.querySelector('form[data-mail-compose]');
   if (compose) {
     var cStatus = compose.querySelector('[data-c-status]');
+    var filesEl = compose.querySelector('[data-c-files]');
+
+    // Reveal Cc/Bcc and Reply-To on demand (kept out of the way by default).
+    var toggle = function (btnSel, fieldSels) {
+      var btn = compose.querySelector(btnSel);
+      if (!btn) return;
+      btn.addEventListener('click', function () {
+        fieldSels.forEach(function (s) {
+          var el = compose.querySelector(s);
+          if (el) el.hidden = !el.hidden;
+        });
+      });
+    };
+    toggle('[data-c-toggle-cc]', ['[data-c-cc-field]', '[data-c-bcc-field]']);
+    toggle('[data-c-toggle-reply]', ['[data-c-reply-field]']);
+
+    // Show chosen attachment names.
+    var attachList = compose.querySelector('[data-c-attach-list]');
+    if (filesEl && attachList) {
+      filesEl.addEventListener('change', function () {
+        var names = [];
+        for (var i = 0; i < filesEl.files.length; i++) { names.push(filesEl.files[i].name); }
+        attachList.textContent = names.length ? ('Attached: ' + names.join(', ')) : '';
+      });
+    }
+
     var composeFields = function () {
       return {
         from: val(compose, '[data-c-from]'),
         to: val(compose, '[data-c-to]'),
+        cc: val(compose, '[data-c-cc]'),
+        bcc: val(compose, '[data-c-bcc]'),
+        replyTo: val(compose, '[data-c-reply]'),
         subject: val(compose, '[data-c-subject]'),
         body: val(compose, '[data-c-body]'),
       };
@@ -48,16 +77,32 @@
     compose.addEventListener('submit', function (e) {
       e.preventDefault();
       var f = composeFields();
-      if (!f.to) { if (cStatus) cStatus.textContent = 'Add at least one recipient.'; return; }
+      if (!f.to && !f.cc && !f.bcc) { if (cStatus) cStatus.textContent = 'Add at least one recipient.'; return; }
       if (cStatus) cStatus.textContent = 'Sending…';
-      postJSON('/os/vayumail/send', f).then(function (res) {
+      var hasFiles = filesEl && filesEl.files && filesEl.files.length > 0;
+      var done = function (res) {
         if (res.ok) {
           if (cStatus) cStatus.textContent = 'Queued for delivery ✓';
           setTimeout(function () { window.location.href = '/os/vayumail/sent'; }, 700);
         } else {
           if (cStatus) cStatus.textContent = 'Failed: ' + errText(res);
         }
-      });
+      };
+      if (hasFiles) {
+        // Multipart send (carries the attachments). CSRF via header, same as JSON.
+        var fd = new FormData();
+        Object.keys(f).forEach(function (k) { fd.append(k, f[k] || ''); });
+        for (var i = 0; i < filesEl.files.length; i++) { fd.append('attachments', filesEl.files[i]); }
+        fetch('/os/vayumail/send', {
+          method: 'POST',
+          headers: { 'X-CSRF-Token': cookie('vp_csrf') },
+          body: fd,
+        }).then(function (r) {
+          return r.json().catch(function () { return {}; }).then(function (b) { return { ok: r.ok, status: r.status, body: b }; });
+        }).then(done);
+      } else {
+        postJSON('/os/vayumail/send', f).then(done);
+      }
     });
     var draftBtn = compose.querySelector('[data-c-draft]');
     if (draftBtn) {

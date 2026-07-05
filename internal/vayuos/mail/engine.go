@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"database/sql"
+	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -209,6 +210,163 @@ func (e *Engine) Compose(ctx context.Context, from string, to []string, subject,
 		_, _ = e.maildir.DeliverTo(e.cfg.Domain, local, "Sent", []byte(sent))
 	}
 	return id, nil
+}
+
+// Attachment is a file attached to an outgoing message.
+type Attachment struct {
+	Filename    string
+	ContentType string // defaults to application/octet-stream
+	Data        []byte
+}
+
+// ComposeMessage carries the fields of a rich outgoing message.
+type ComposeMessage struct {
+	From         string
+	To, CC, BCC  []string
+	ReplyTo      string
+	Subject      string
+	Body         string
+	Attachments  []Attachment
+	SenderUserID string
+}
+
+// ComposeRich sends a message with optional Cc/Bcc/Reply-To and file
+// attachments, then files a copy in the sender's Sent folder. Bcc recipients
+// receive the mail but never appear in the headers. When attachments are present
+// the message is assembled as multipart/mixed; PGP auto-encryption is applied
+// only for a single-recipient, no-attachment, no-Cc/Bcc message (encrypting a
+// multipart body is out of scope for the composer). DKIM signing, local loopback
+// delivery and MX queueing match the plain send path.
+func (e *Engine) ComposeRich(ctx context.Context, m ComposeMessage) (int64, error) {
+	if e.queue == nil || e.dkim == nil {
+		return 0, errors.New("vayumail: not started")
+	}
+	all := make([]string, 0, len(m.To)+len(m.CC)+len(m.BCC))
+	all = append(all, m.To...)
+	all = append(all, m.CC...)
+	all = append(all, m.BCC...)
+	if len(all) == 0 {
+		return 0, errors.New("vayumail: no recipients")
+	}
+
+	text := m.Body
+	pgpApplied := false
+	if len(m.Attachments) == 0 && len(m.CC) == 0 && len(m.BCC) == 0 &&
+		e.bridge != nil && len(m.To) == 1 {
+		if ct, ok := e.bridge.EncryptForRecipient([]byte(m.Body), m.To[0]); ok && len(ct) > 0 {
+			text = string(ct)
+			pgpApplied = true
+		}
+	}
+
+	headers := []HeaderField{
+		{Key: "From", Value: m.From},
+		{Key: "To", Value: strings.Join(m.To, ", ")},
+	}
+	if len(m.CC) > 0 {
+		headers = append(headers, HeaderField{Key: "Cc", Value: strings.Join(m.CC, ", ")})
+	}
+	if strings.TrimSpace(m.ReplyTo) != "" {
+		headers = append(headers, HeaderField{Key: "Reply-To", Value: strings.TrimSpace(m.ReplyTo)})
+	}
+	headers = append(headers,
+		HeaderField{Key: "Subject", Value: m.Subject},
+		HeaderField{Key: "Date", Value: time.Now().UTC().Format(time.RFC1123Z)},
+		HeaderField{Key: "Message-ID", Value: e.messageID()},
+		HeaderField{Key: "MIME-Version", Value: "1.0"},
+	)
+
+	var bodyBuf bytes.Buffer
+	switch {
+	case pgpApplied:
+		headers = append(headers,
+			HeaderField{Key: "Content-Type", Value: "text/plain; charset=utf-8"},
+			HeaderField{Key: "Content-Transfer-Encoding", Value: "8bit"},
+			HeaderField{Key: "X-VayuPGP", Value: "encrypted"},
+		)
+		bodyBuf.WriteString(normalizeCRLF(text))
+	case len(m.Attachments) > 0:
+		boundary := mimeBoundary()
+		headers = append(headers, HeaderField{Key: "Content-Type", Value: `multipart/mixed; boundary="` + boundary + `"`})
+		writeMIMEPart(&bodyBuf, boundary, "text/plain; charset=utf-8", text)
+		for _, at := range m.Attachments {
+			writeAttachmentPart(&bodyBuf, boundary, at)
+		}
+		bodyBuf.WriteString("--" + boundary + "--\r\n")
+	default:
+		headers = append(headers,
+			HeaderField{Key: "Content-Type", Value: "text/plain; charset=utf-8"},
+			HeaderField{Key: "Content-Transfer-Encoding", Value: "8bit"},
+		)
+		bodyBuf.WriteString(normalizeCRLF(text))
+	}
+
+	var raw bytes.Buffer
+	for _, h := range headers {
+		raw.WriteString(h.Key)
+		raw.WriteString(": ")
+		raw.WriteString(h.Value)
+		raw.WriteString("\r\n")
+	}
+	raw.WriteString("\r\n")
+	raw.Write(bodyBuf.Bytes())
+
+	rawMsg, err := e.dkim.SignMessage(raw.Bytes())
+	if err != nil {
+		return 0, fmt.Errorf("vayumail: dkim sign: %w", err)
+	}
+
+	// File the exact assembled message in the sender's Sent folder (best-effort)
+	// so attachments, Cc and the real body are preserved there.
+	if e.maildir != nil {
+		if local, _ := splitAddress(m.From); local != "" {
+			_, _ = e.maildir.DeliverTo(e.cfg.Domain, local, "Sent", rawMsg)
+		}
+	}
+
+	localRcpt, remoteRcpt := e.splitLocalRecipients(all)
+	for _, rcpt := range localRcpt {
+		if _, derr := e.DeliverInbound(rcpt, rawMsg); derr != nil {
+			return 0, fmt.Errorf("vayumail: local delivery to %s: %w", rcpt, derr)
+		}
+	}
+	if len(remoteRcpt) == 0 {
+		return 0, nil
+	}
+	return e.queue.Enqueue(ctx, envelopeAddress(m.From), remoteRcpt, rawMsg)
+}
+
+// writeAttachmentPart appends one base64 MIME attachment part (RFC 2045).
+func writeAttachmentPart(buf *bytes.Buffer, boundary string, at Attachment) {
+	ct := strings.TrimSpace(at.ContentType)
+	if ct == "" {
+		ct = "application/octet-stream"
+	}
+	name := mimeSanitizeFilename(at.Filename)
+	buf.WriteString("--" + boundary + "\r\n")
+	buf.WriteString("Content-Type: " + ct + "; name=\"" + name + "\"\r\n")
+	buf.WriteString("Content-Transfer-Encoding: base64\r\n")
+	buf.WriteString("Content-Disposition: attachment; filename=\"" + name + "\"\r\n\r\n")
+	enc := base64.StdEncoding.EncodeToString(at.Data)
+	for i := 0; i < len(enc); i += 76 { // wrap at 76 columns
+		end := i + 76
+		if end > len(enc) {
+			end = len(enc)
+		}
+		buf.WriteString(enc[i:end])
+		buf.WriteString("\r\n")
+	}
+}
+
+// mimeSanitizeFilename strips characters that would break a quoted MIME filename
+// or enable header injection.
+func mimeSanitizeFilename(s string) string {
+	s = strings.NewReplacer("\"", "", "\r", "", "\n", "", "\\", "").Replace(s)
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return "attachment"
+	}
+	return s
 }
 
 // SetDecryptHook installs a transform applied to messages before they are
