@@ -305,95 +305,120 @@ func (a *App) handleOSShield(w http.ResponseWriter, r *http.Request) {
 		days = v
 	}
 
-	var b strings.Builder
-	b.WriteString(`<div class="page-header"><h1>Bot Shield &amp; Analytics</h1><span class="muted text-sm">Sovereign bot protection · cookieless engagement analytics · GDPR by design</span></div>`)
-
-	// Protection + resilience controls (all live — no restart).
 	cur := vayushield.Settings{PoWThreshold: 0.4, JSThreshold: 0.6, BlockThreshold: 0.8, RatePerMinute: 120, Burst: 60, AutoBlockJailMinutes: 10, UnderAttackRPS: 200}
-	var st vayushield.Status
+	var stt vayushield.Status
 	if a.vayuShield != nil {
 		cur = a.vayuShield.CurrentSettings()
-		st = a.vayuShield.Status()
+		stt = a.vayuShield.Status()
 	}
 	beaconOn := a.siteSettings == nil || a.siteSettings.Get(r.Context(), settings.KeyAnalyticsBeacon) != "off"
-	status := `<span class="badge badge--warn">disabled</span>`
+
+	var b strings.Builder
+	b.WriteString(`<style nonce="` + nonce + `">` + shieldPanelCSS + `</style>`)
+	b.WriteString(`<div class="page-header"><h1>Bot Shield &amp; Analytics</h1><span class="muted text-sm">Sovereign bot protection · cookieless analytics · GDPR by design</span></div>`)
+
+	// ── Status hero ──────────────────────────────────────────────────────────
+	dot, word := "", "Off"
 	if cur.Enabled {
-		status = `<span class="badge badge--ok">active</span>`
+		dot, word = " on", "Protected"
 	}
-	underAttack := "no"
-	if st.UnderAttack {
-		underAttack = `<strong style="color:#f43f5e">yes</strong>`
+	if stt.UnderAttack {
+		dot, word = " attack", "Under attack"
 	}
-	b.WriteString(`<div class="card"><div class="card-title">Protection &amp; resilience</div>`)
-	b.WriteString(`<p class="muted text-sm">Bot protection: ` + status + ` · under attack: ` + underAttack +
-		` · in-flight: ` + strconv.FormatInt(st.InFlight, 10) + ` · blocklisted IPs: ` + strconv.Itoa(st.Blocklisted) +
-		` · ~` + strconv.FormatInt(st.RPS, 10) + ` req/s.</p>`)
-	b.WriteString(`<p class="muted text-sm">Everything below defaults <strong>off</strong> and applies <strong>instantly, no restart</strong>. Good bots (search engines) and AI agents (ChatGPT, Claude, Perplexity) are always allowed and counted separately — never blocked. Verified visitors are never rate-limited or shed.</p>`)
-	b.WriteString(`<form id="shield-settings" onsubmit="return false;">`)
+	activeVisitors := int64(0)
+	if a.vaEngagement != nil {
+		if rt, err := a.vaEngagement.Realtime(r.Context(), 5); err == nil {
+			activeVisitors = rt.ActiveVisitors
+		}
+	}
+	b.WriteString(`<div class="card vs-hero"><div class="vs-title"><span class="vs-dot` + dot + `"></span>Bot protection — ` + word + `</div><div class="vs-metrics">`)
+	b.WriteString(vsMetric(strconv.FormatInt(activeVisitors, 10), "Visitors now"))
+	b.WriteString(vsMetric(strconv.FormatInt(stt.RPS, 10), "Requests/sec"))
+	b.WriteString(vsMetric(strconv.FormatInt(stt.InFlight, 10), "In-flight"))
+	b.WriteString(vsMetric(strconv.Itoa(stt.Blocklisted), "Blocked IPs"))
+	b.WriteString(`</div></div>`)
 
-	b.WriteString(`<div class="card-title" style="margin-top:.5rem">Bot protection</div>`)
-	b.WriteString(shToggle("sh_enabled", "Enable bot protection", cur.Enabled, "classify every client and run the PoW → JS → block ladder for suspicious ones"))
-	b.WriteString(shNum("sh_pow", "PoW threshold", ftoa2(cur.PoWThreshold), "score ≥ this (0–1) gets a silent proof-of-work"))
-	b.WriteString(shNum("sh_js", "JS-challenge threshold", ftoa2(cur.JSThreshold), "score ≥ this gets a JS interstitial"))
-	b.WriteString(shNum("sh_block", "Block threshold", ftoa2(cur.BlockThreshold), "score ≥ this is blocked"))
-	b.WriteString(shToggle("sh_tarpit", "Tarpit worst offenders", cur.Tarpit, "delay + garble instead of a clean 403"))
+	// ── Settings (HTMX: posts the form, server replies HX-Refresh to reflect the
+	// applied state; no custom JS). Advanced fields reveal via CSS when a feature
+	// is switched on. ─────────────────────────────────────────────────────────
+	b.WriteString(`<form class="card" hx-post="/os/api/shield/settings" hx-swap="none">`)
+	b.WriteString(`<div class="card-title">Protection</div>`)
+	b.WriteString(`<p class="muted text-sm" style="margin:-.25rem 0 .25rem">Everything applies instantly — no restart. Search engines and AI assistants (ChatGPT, Claude, Perplexity) are always allowed and counted separately; verified visitors are never throttled.</p>`)
 
-	b.WriteString(`<div class="card-title" style="margin-top:.75rem">Availability / anti-DDoS (in-binary, Tier 1)</div>`)
-	b.WriteString(shToggle("sh_ratelimit", "Per-IP rate limiting", cur.RateLimit, "generous token bucket; verified visitors exempt"))
-	b.WriteString(shNum("sh_rpm", "Requests / minute per IP", strconv.Itoa(cur.RatePerMinute), "sustained rate"))
-	b.WriteString(shNum("sh_burst", "Burst", strconv.Itoa(cur.Burst), "short spikes allowed before throttling"))
-	b.WriteString(shToggle("sh_loadshed", "Load shedding", cur.LoadShed, "return 503 cheaply when the server is saturated"))
-	b.WriteString(shNum("sh_maxinflight", "Max concurrent requests", strconv.Itoa(cur.MaxInFlight), "0 = unlimited"))
-	b.WriteString(shToggle("sh_autoblock", "Auto-block flooding IPs", cur.AutoBlock, "jail IPs that relentlessly breach the rate limit"))
-	b.WriteString(shNum("sh_jail", "Jail minutes", strconv.Itoa(cur.AutoBlockJailMinutes), "how long a jailed IP stays blocked"))
-	b.WriteString(shToggle("sh_underattack", "Adaptive under-attack mode", cur.UnderAttack, "auto-tighten thresholds during a flood, relax when it passes"))
-	b.WriteString(shNum("sh_rps", "Attack RPS threshold", strconv.Itoa(cur.UnderAttackRPS), "global requests/second that trips attack mode"))
+	b.WriteString(`<div class="vs-feat">`)
+	b.WriteString(vsRow("sh_enabled", "Bot protection", "Classify every visitor and challenge the suspicious ones — a silent proof-of-work, then a JS check, then a block.", cur.Enabled, true))
+	b.WriteString(`<div class="vs-adv">`)
+	b.WriteString(vsField("sh_pow", "Challenge at score ≥", ftoa2(cur.PoWThreshold)))
+	b.WriteString(vsField("sh_js", "JS check at ≥", ftoa2(cur.JSThreshold)))
+	b.WriteString(vsField("sh_block", "Block at ≥", ftoa2(cur.BlockThreshold)))
+	b.WriteString(`<div class="vs-field vs-field--tog">` + vsToggle("sh_tarpit", cur.Tarpit, false) + `<label for="sh_tarpit">Tarpit the worst offenders</label></div>`)
+	b.WriteString(`</div></div>`)
 
-	b.WriteString(`<div class="card-title" style="margin-top:.75rem">Analytics</div>`)
-	b.WriteString(shToggle("sh_beacon", "Engagement beacon", beaconOn, "time-on-page + scroll depth on public pages; cookieless, no PII"))
+	b.WriteString(`<div class="card-title" style="margin-top:1.25rem">Availability &amp; anti-DDoS</div>`)
 
-	b.WriteString(`<div style="margin-top:1rem"><button class="btn btn--primary" id="shield-save" type="button">Save &amp; apply</button></div>`)
-	b.WriteString(`</form></div>`)
+	b.WriteString(`<div class="vs-feat">`)
+	b.WriteString(vsRow("sh_ratelimit", "Rate limiting", "Cap requests per IP with a generous burst. Verified visitors are exempt.", cur.RateLimit, true))
+	b.WriteString(`<div class="vs-adv">` + vsField("sh_rpm", "Requests / minute", strconv.Itoa(cur.RatePerMinute)) + vsField("sh_burst", "Burst", strconv.Itoa(cur.Burst)) + `</div></div>`)
 
-	// Tier 2 / Tier 3 — network hardening that lives below the app and therefore
-	// ships as sovereign scripts rather than runtime toggles (they need root /
-	// the reverse proxy). Honest about the volumetric limit.
-	b.WriteString(`<div class="card"><div class="card-title">Network hardening (Tier 2 &amp; 3)</div>`)
-	b.WriteString(`<p class="muted text-sm">The switches above are VayuShield's in-binary (Tier 1) defenses. Floods that saturate the network are stopped <em>below</em> the application — shipped as sovereign scripts (they need root or the reverse proxy, so they are configured on the server, not toggled here):</p>`)
-	b.WriteString(`<ul class="muted text-sm"><li><strong>Tier 2 · kernel/OS:</strong> <code>bash deploy/vayushield-firewall.sh apply</code> — nftables per-IP connection + rate limits and SYN-flood cookies.</li>`)
-	b.WriteString(`<li><strong>Tier 3 · edge:</strong> <code>deploy/nginx-vayushield.conf</code> — per-IP request/connection shaping and slow-loris timeouts at the reverse proxy.</li></ul>`)
-	b.WriteString(`<p class="muted text-sm">A true volumetric flood that saturates your uplink can only be absorbed by anycast/scrubbing capacity no single host can provide; Tiers 1–2 handle the attacks a typical publisher actually faces, entirely sovereignly.</p></div>`)
+	b.WriteString(`<div class="vs-feat">`)
+	b.WriteString(vsRow("sh_loadshed", "Load shedding", "Return a cheap 503 when the server is saturated, protecting it from collapse.", cur.LoadShed, true))
+	b.WriteString(`<div class="vs-adv">` + vsField("sh_maxinflight", "Max concurrent (0 = unlimited)", strconv.Itoa(cur.MaxInFlight)) + `</div></div>`)
 
-	// Bot signature intelligence.
+	b.WriteString(`<div class="vs-feat">`)
+	b.WriteString(vsRow("sh_autoblock", "Auto-block abusive IPs", "Temporarily jail IPs that relentlessly breach the rate limit.", cur.AutoBlock, true))
+	b.WriteString(`<div class="vs-adv">` + vsField("sh_jail", "Jail for (minutes)", strconv.Itoa(cur.AutoBlockJailMinutes)) + `</div></div>`)
+
+	b.WriteString(`<div class="vs-feat">`)
+	b.WriteString(vsRow("sh_underattack", "Adaptive under-attack mode", "Automatically tighten challenge thresholds during a flood and relax when it passes.", cur.UnderAttack, true))
+	b.WriteString(`<div class="vs-adv">` + vsField("sh_rps", "Trip at (requests/sec)", strconv.Itoa(cur.UnderAttackRPS)) + `</div></div>`)
+
+	b.WriteString(`<div class="card-title" style="margin-top:1.25rem">Analytics</div>`)
+	b.WriteString(`<div class="vs-feat">`)
+	b.WriteString(vsRow("sh_beacon", "Engagement analytics", "Measure time-on-page and scroll depth on public pages. Cookieless, no PII.", beaconOn, false))
+	b.WriteString(`</div>`)
+
+	b.WriteString(`<div class="vs-save"><button class="btn btn--primary" type="submit">Save &amp; apply</button><span class="muted text-sm">Applies live to every request.</span></div>`)
+	b.WriteString(`</form>`)
+
+	// Network hardening (Tier 2/3) — server-level, collapsed by default.
+	b.WriteString(`<details class="card"><summary class="card-title" style="cursor:pointer">Network hardening (Tier 2 &amp; 3) — server-level</summary>`)
+	b.WriteString(`<p class="muted text-sm">The switches above are the in-binary (Tier 1) defenses. Floods that saturate the network are stopped <em>below</em> the app, as sovereign scripts (they need root or the reverse proxy):</p>`)
+	b.WriteString(`<ul class="muted text-sm"><li><strong>Tier 2 · kernel:</strong> <code>bash deploy/vayushield-firewall.sh apply</code> — nftables per-IP limits + SYN-flood cookies.</li>`)
+	b.WriteString(`<li><strong>Tier 3 · edge:</strong> <code>deploy/nginx-vayushield.conf</code> — per-IP shaping + slow-loris timeouts at the reverse proxy.</li></ul>`)
+	b.WriteString(`<p class="muted text-sm">A true volumetric flood can only be absorbed by anycast/scrubbing capacity no single host provides; Tiers 1–2 handle what a typical publisher actually faces.</p></details>`)
+
+	// ── Bot intelligence ──────────────────────────────────────────────────────
 	if a.vayuShield != nil && a.vayuShield.BotStore() != nil {
-		if st, err := a.vayuShield.BotStore().Stats(r.Context()); err == nil {
-			b.WriteString(`<div class="card"><div class="card-title">Signature database</div><div class="grid grid-3">`)
-			b.WriteString(shieldStatCard("Total signatures", st.Total))
-			b.WriteString(shieldStatCard("Learned (24h)", st.LearnedLast24h))
-			b.WriteString(shieldStatCard("Pending review", st.PendingReview))
-			b.WriteString(`</div><p class="muted text-sm">By class: `)
+		if s, err := a.vayuShield.BotStore().Stats(r.Context()); err == nil {
+			b.WriteString(`<div class="card"><div class="card-title">Bot signatures</div><div class="vs-stats">`)
+			b.WriteString(vsStat(strconv.FormatInt(s.Total, 10), "Total signatures"))
+			b.WriteString(vsStat(strconv.FormatInt(s.LearnedLast24h, 10), "Learned (24h)"))
+			b.WriteString(vsStat(strconv.FormatInt(s.PendingReview, 10), "Pending review"))
+			b.WriteString(`</div><div class="vs-pills">`)
 			for _, k := range []string{"bad_bot", "good_bot", "ai_agent", "human", "unknown"} {
-				b.WriteString(html.EscapeString(k) + "=" + strconv.FormatInt(st.ByClass[k], 10) + " ")
+				b.WriteString(`<span class="vs-pill">` + html.EscapeString(k) + ` · ` + strconv.FormatInt(s.ByClass[k], 10) + `</span>`)
 			}
-			b.WriteString(`</p><p><a class="btn" href="/os/api/shield/export" download="vayushield-signatures.json">Export learned signatures</a></p></div>`)
+			b.WriteString(`</div><p style="margin-top:.85rem"><a class="btn btn--sm" href="/os/api/shield/export" download="vayushield-signatures.json">Export signatures</a></p></div>`)
 		}
 
-		// Operator review queue.
 		if q, err := a.vayuShield.BotStore().ReviewQueue(r.Context(), 25); err == nil {
-			b.WriteString(`<div class="card"><div class="card-title">Review queue — unverified candidates</div>`)
+			b.WriteString(`<div class="card"><div class="card-title">Review queue</div>`)
 			if len(q) == 0 {
-				b.WriteString(`<p class="muted">No candidates awaiting review.</p>`)
+				b.WriteString(`<p class="muted text-sm">No candidates awaiting review.</p>`)
 			} else {
-				b.WriteString(`<div class="table-wrap"><table class="table"><thead><tr><th>Fingerprint</th><th>UA family</th><th>Seen</th><th>Confidence</th><th>Actions</th></tr></thead><tbody>`)
+				b.WriteString(`<div class="table-wrap"><table class="table"><thead><tr><th>Fingerprint</th><th>Client</th><th>Seen</th><th>Confidence</th><th></th></tr></thead><tbody>`)
 				for _, sg := range q {
 					fp := sg.FingerprintHash
-					if len(fp) > 16 {
-						fp = fp[:16]
+					if len(fp) > 14 {
+						fp = fp[:14]
 					}
-					idAttr := strconv.FormatInt(sg.ID, 10)
-					b.WriteString(`<tr><td class="mono text-sm">` + html.EscapeString(fp) + `…</td><td>` + html.EscapeString(sg.UserAgentPattern) + `</td><td>` + strconv.FormatInt(sg.RequestCount, 10) + `</td><td>` + ftoa2(sg.Confidence) + `</td>` +
-						`<td><button class="btn btn--sm btn--danger" data-shield-verify="` + idAttr + `" data-class="bad_bot">Confirm bot</button> ` +
-						`<button class="btn btn--sm" data-shield-dismiss="` + idAttr + `">Dismiss</button></td></tr>`)
+					id := strconv.FormatInt(sg.ID, 10)
+					// HTMX: on a 2xx the row is deleted; CSRF header is added by the
+					// shell's htmx:configRequest hook.
+					b.WriteString(`<tr><td class="mono text-sm">` + html.EscapeString(fp) + `…</td><td>` + html.EscapeString(sg.UserAgentPattern) + `</td><td>` + strconv.FormatInt(sg.RequestCount, 10) + `</td><td>` + ftoa2(sg.Confidence) + `</td><td style="white-space:nowrap">` +
+						`<button class="btn btn--sm btn--danger" hx-post="/os/api/shield/verify" hx-vals='{"id":"` + id + `","classification":"bad_bot"}' hx-target="closest tr" hx-swap="delete">Confirm bot</button> ` +
+						`<button class="btn btn--sm" hx-post="/os/api/shield/dismiss" hx-vals='{"id":"` + id + `"}' hx-target="closest tr" hx-swap="delete">Dismiss</button>` +
+						`</td></tr>`)
 				}
 				b.WriteString(`</tbody></table></div>`)
 			}
@@ -401,74 +426,45 @@ func (a *App) handleOSShield(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Engagement analytics.
+	// ── Engagement analytics ──────────────────────────────────────────────────
 	if a.vaEngagement != nil {
 		if ov, err := a.vaEngagement.Overview(r.Context(), days); err == nil {
-			b.WriteString(`<div class="card"><div class="card-title">Engagement — last ` + strconv.Itoa(days) + ` days (human traffic)</div><div class="grid grid-3">`)
-			b.WriteString(shieldStatCard("Views", ov.Views))
-			b.WriteString(shieldStatCard("Unique sessions", ov.UniqueSessions))
-			b.WriteString(shieldStatCard("Bot views (excluded)", ov.BotViews))
-			b.WriteString(`</div><p class="muted text-sm">Avg time ` + ftoa2(ov.AvgTimeSeconds) + `s · avg scroll ` + ftoa2(ov.AvgScrollPct) + `% · engagement ` + pct(ov.EngagementRate) + ` · bounce ` + pct(ov.BounceRate) + ` · new ` + strconv.FormatInt(ov.NewSessions, 10) + ` / returning ` + strconv.FormatInt(ov.ReturningSessions, 10) + `</p></div>`)
+			b.WriteString(`<div class="card"><div class="card-title">Engagement — last ` + strconv.Itoa(days) + ` days</div><div class="vs-stats">`)
+			b.WriteString(vsStat(strconv.FormatInt(ov.Views, 10), "Human views"))
+			b.WriteString(vsStat(strconv.FormatInt(ov.UniqueSessions, 10), "Unique sessions"))
+			b.WriteString(vsStat(pct(ov.EngagementRate), "Engagement"))
+			b.WriteString(vsStat(pct(ov.BounceRate), "Bounce"))
+			b.WriteString(vsStat(ftoa2(ov.AvgTimeSeconds)+"s", "Avg time"))
+			b.WriteString(vsStat(strconv.FormatInt(ov.BotViews, 10), "Bot views (excluded)"))
+			b.WriteString(`</div></div>`)
 		}
 		if srcs, err := a.vaEngagement.SourceBreakdown(r.Context(), days); err == nil && len(srcs) > 0 {
-			b.WriteString(`<div class="card"><div class="card-title">Traffic sources</div><div class="table-wrap"><table class="table"><thead><tr><th>Source</th><th>Views</th><th>Sessions</th><th>Avg time (s)</th><th>Avg scroll</th><th>Engagement</th></tr></thead><tbody>`)
+			b.WriteString(`<div class="card"><div class="card-title">Traffic sources</div><div class="table-wrap"><table class="table"><thead><tr><th>Source</th><th>Views</th><th>Sessions</th><th>Avg time</th><th>Avg scroll</th><th>Engagement</th></tr></thead><tbody>`)
 			for _, s := range srcs {
-				b.WriteString(`<tr><td>` + html.EscapeString(s.Category) + `</td><td>` + strconv.FormatInt(s.Views, 10) + `</td><td>` + strconv.FormatInt(s.Sessions, 10) + `</td><td>` + ftoa2(s.AvgTimeSeconds) + `</td><td>` + ftoa2(s.AvgScrollPct) + `%</td><td>` + pct(s.EngagementRate) + `</td></tr>`)
+				b.WriteString(`<tr><td>` + html.EscapeString(s.Category) + `</td><td>` + strconv.FormatInt(s.Views, 10) + `</td><td>` + strconv.FormatInt(s.Sessions, 10) + `</td><td>` + ftoa2(s.AvgTimeSeconds) + `s</td><td>` + ftoa2(s.AvgScrollPct) + `%</td><td>` + pct(s.EngagementRate) + `</td></tr>`)
 			}
 			b.WriteString(`</tbody></table></div></div>`)
 		}
 		if ai, err := a.vaEngagement.AITraffic(r.Context(), days); err == nil {
 			b.WriteString(`<div class="card"><div class="card-title">AI-assisted discovery vs organic search</div>`)
-			b.WriteString(`<p class="muted">AI traffic share: <strong>` + ftoa2(ai.AISharePercent) + `%</strong> of human views. ` +
-				`AI-referred engagement ` + pct(ai.AISummary.EngagementRate) + ` (avg ` + ftoa2(ai.AISummary.AvgTimeSeconds) + `s) vs organic ` + pct(ai.OrganicSummary.EngagementRate) + ` (avg ` + ftoa2(ai.OrganicSummary.AvgTimeSeconds) + `s).</p>`)
+			b.WriteString(`<p class="muted text-sm">AI traffic is <strong>` + ftoa2(ai.AISharePercent) + `%</strong> of human views · AI engagement ` + pct(ai.AISummary.EngagementRate) + ` (avg ` + ftoa2(ai.AISummary.AvgTimeSeconds) + `s) vs organic ` + pct(ai.OrganicSummary.EngagementRate) + ` (avg ` + ftoa2(ai.OrganicSummary.AvgTimeSeconds) + `s).</p>`)
 			if len(ai.BySystem) > 0 {
-				b.WriteString(`<div class="table-wrap"><table class="table"><thead><tr><th>AI system</th><th>Views</th><th>Avg time (s)</th><th>Engagement</th></tr></thead><tbody>`)
+				b.WriteString(`<div class="table-wrap"><table class="table"><thead><tr><th>AI system</th><th>Views</th><th>Avg time</th><th>Engagement</th></tr></thead><tbody>`)
 				for _, s := range ai.BySystem {
-					b.WriteString(`<tr><td>` + html.EscapeString(s.Detail) + `</td><td>` + strconv.FormatInt(s.Views, 10) + `</td><td>` + ftoa2(s.AvgTimeSeconds) + `</td><td>` + pct(s.EngagementRate) + `</td></tr>`)
+					b.WriteString(`<tr><td>` + html.EscapeString(s.Detail) + `</td><td>` + strconv.FormatInt(s.Views, 10) + `</td><td>` + ftoa2(s.AvgTimeSeconds) + `s</td><td>` + pct(s.EngagementRate) + `</td></tr>`)
 				}
 				b.WriteString(`</tbody></table></div>`)
 			}
 			b.WriteString(`</div>`)
 		}
 		if pages, err := a.vaEngagement.TopPages(r.Context(), days, 10); err == nil && len(pages) > 0 {
-			b.WriteString(`<div class="card"><div class="card-title">Top pages by views</div><div class="table-wrap"><table class="table"><thead><tr><th>Page</th><th>Views</th><th>Avg time (s)</th><th>Engagement</th></tr></thead><tbody>`)
+			b.WriteString(`<div class="card"><div class="card-title">Top pages</div><div class="table-wrap"><table class="table"><thead><tr><th>Page</th><th>Views</th><th>Avg time</th><th>Engagement</th></tr></thead><tbody>`)
 			for _, p := range pages {
-				b.WriteString(`<tr><td>` + html.EscapeString(p.Path) + `</td><td>` + strconv.FormatInt(p.Views, 10) + `</td><td>` + ftoa2(p.AvgTimeSeconds) + `</td><td>` + pct(p.EngagementRate) + `</td></tr>`)
+				b.WriteString(`<tr><td>` + html.EscapeString(p.Path) + `</td><td>` + strconv.FormatInt(p.Views, 10) + `</td><td>` + ftoa2(p.AvgTimeSeconds) + `s</td><td>` + pct(p.EngagementRate) + `</td></tr>`)
 			}
 			b.WriteString(`</tbody></table></div></div>`)
 		}
-		if rt, err := a.vaEngagement.Realtime(r.Context(), 5); err == nil {
-			b.WriteString(`<div class="card"><div class="card-title">Live now</div><p class="muted">Active visitors (last 5 min): <strong>` + strconv.FormatInt(rt.ActiveVisitors, 10) + `</strong> · bots active: ` + strconv.FormatInt(rt.BotsActive, 10) + ` · active pages: ` + strconv.Itoa(len(rt.ActivePages)) + `</p></div>`)
-		}
 	}
-
-	// Inline controls (CSP-safe: nonce-gated, same-origin fetch with CSRF header).
-	b.WriteString(`<div id="shield-msg" role="status" aria-live="polite" class="action-msg"></div>
-<script nonce="` + nonce + `">
-(function(){'use strict';
-function csrf(){var m=document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);return m?m[1]:'';}
-var msg=document.getElementById('shield-msg');
-function show(t,e){if(!msg)return;msg.textContent=t;msg.classList.toggle('is-error',!!e);msg.classList.add('visible');}
-function post(url,body){return fetch(url,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},body:JSON.stringify(body)});}
-document.querySelectorAll('[data-shield-verify]').forEach(function(btn){btn.addEventListener('click',function(){
-  post('/os/api/shield/verify',{id:parseInt(btn.getAttribute('data-shield-verify'),10),classification:btn.getAttribute('data-class'),notes:'confirmed via panel'})
-   .then(function(r){if(r.ok){show('Signature confirmed',false);var row=btn.closest('tr');if(row)row.remove();}else{show('Failed',true);}});
-});});
-document.querySelectorAll('[data-shield-dismiss]').forEach(function(btn){btn.addEventListener('click',function(){
-  post('/os/api/shield/dismiss',{id:parseInt(btn.getAttribute('data-shield-dismiss'),10)})
-   .then(function(r){if(r.ok){show('Dismissed',false);var row=btn.closest('tr');if(row)row.remove();}else{show('Failed',true);}});
-});});
-var saveBtn=document.getElementById('shield-save');
-if(saveBtn){saveBtn.addEventListener('click',function(){
-  function ck(id){var e=document.getElementById(id);return !!(e&&e.checked);}
-  function nv(id){var e=document.getElementById(id);return e?e.value:'';}
-  saveBtn.disabled=true;show('Saving…',false);
-  post('/os/api/shield/settings',{enabled:ck('sh_enabled'),pow:nv('sh_pow'),js:nv('sh_js'),block:nv('sh_block'),tarpit:ck('sh_tarpit'),ratelimit:ck('sh_ratelimit'),rpm:nv('sh_rpm'),burst:nv('sh_burst'),loadshed:ck('sh_loadshed'),max_inflight:nv('sh_maxinflight'),autoblock:ck('sh_autoblock'),jail_minutes:nv('sh_jail'),underattack:ck('sh_underattack'),underattack_rps:nv('sh_rps'),beacon:ck('sh_beacon')})
-   .then(function(r){saveBtn.disabled=false;if(r.ok){show('Saved & applied',false);setTimeout(function(){location.reload();},600);}else{show('Save failed',true);}})
-   .catch(function(){saveBtn.disabled=false;show('Network error',true);});
-});}
-})();
-</script>`)
 
 	writeOSHTML(w, adminOSLayout(nonce, "Bot Shield & Analytics", "shield", cfg, htmpl.HTML(b.String())))
 }
@@ -479,26 +475,22 @@ func (a *App) handleOSShieldVerify(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "shield-disabled", "VayuShield not initialized", "")
 		return
 	}
-	var req struct {
-		ID             int64  `json:"id"`
-		Classification string `json:"classification"`
-		Notes          string `json:"notes"`
-	}
-	if err := readCappedJSON(w, r, 8*1024, &req); err != nil || req.ID <= 0 {
-		writeAPIError(w, r, http.StatusBadRequest, "bad-request", "id and classification required", "")
+	id, _ := strconv.ParseInt(strings.TrimSpace(r.PostFormValue("id")), 10, 64)
+	if id <= 0 {
+		writeAPIError(w, r, http.StatusBadRequest, "bad-request", "id required", "")
 		return
 	}
-	class := botdb.Classification(req.Classification)
+	class := botdb.Classification(r.PostFormValue("classification"))
 	switch class {
 	case botdb.ClassBadBot, botdb.ClassGoodBot, botdb.ClassAIAgent, botdb.ClassHuman:
 	default:
 		class = botdb.ClassBadBot
 	}
-	if err := a.vayuShield.BotStore().Verify(r.Context(), req.ID, class, req.Notes); err != nil {
+	if err := a.vayuShield.BotStore().Verify(r.Context(), id, class, "confirmed via panel"); err != nil {
 		writeAPIError(w, r, http.StatusInternalServerError, "db-error", err.Error(), "")
 		return
 	}
-	writeJSON(w, r, http.StatusOK, map[string]bool{"verified": true})
+	w.WriteHeader(http.StatusNoContent) // HTMX hx-swap="delete" removes the row on 2xx
 }
 
 // handleOSShieldDismiss deletes a learned candidate the operator judged benign.
@@ -507,18 +499,16 @@ func (a *App) handleOSShieldDismiss(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "shield-disabled", "VayuShield not initialized", "")
 		return
 	}
-	var req struct {
-		ID int64 `json:"id"`
-	}
-	if err := readCappedJSON(w, r, 8*1024, &req); err != nil || req.ID <= 0 {
+	id, _ := strconv.ParseInt(strings.TrimSpace(r.PostFormValue("id")), 10, 64)
+	if id <= 0 {
 		writeAPIError(w, r, http.StatusBadRequest, "bad-request", "id required", "")
 		return
 	}
-	if err := a.vayuShield.BotStore().Dismiss(r.Context(), req.ID); err != nil {
+	if err := a.vayuShield.BotStore().Dismiss(r.Context(), id); err != nil {
 		writeAPIError(w, r, http.StatusInternalServerError, "db-error", err.Error(), "")
 		return
 	}
-	writeJSON(w, r, http.StatusOK, map[string]bool{"dismissed": true})
+	w.WriteHeader(http.StatusNoContent) // HTMX hx-swap="delete" removes the row on 2xx
 }
 
 // handleOSShieldExport streams the community signature export file.
@@ -544,78 +534,125 @@ func (a *App) handleOSShieldSettings(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "shield-disabled", "VayuShield not initialized", "")
 		return
 	}
-	var req struct {
-		Enabled        bool   `json:"enabled"`
-		PoW            string `json:"pow"`
-		JS             string `json:"js"`
-		Block          string `json:"block"`
-		Tarpit         bool   `json:"tarpit"`
-		RateLimit      bool   `json:"ratelimit"`
-		RPM            string `json:"rpm"`
-		Burst          string `json:"burst"`
-		LoadShed       bool   `json:"loadshed"`
-		MaxInFlight    string `json:"max_inflight"`
-		AutoBlock      bool   `json:"autoblock"`
-		JailMinutes    string `json:"jail_minutes"`
-		UnderAttack    bool   `json:"underattack"`
-		UnderAttackRPS string `json:"underattack_rps"`
-		Beacon         bool   `json:"beacon"`
-	}
-	if err := readCappedJSON(w, r, 8*1024, &req); err != nil {
-		writeAPIError(w, r, http.StatusBadRequest, "bad-request", "invalid settings payload", "")
+	if err := r.ParseForm(); err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "bad-request", "invalid form", "")
 		return
 	}
-	bs := func(v bool) string {
-		if v {
+	// HTMX submits the settings form url-encoded. A checkbox appears in the form
+	// body only when it is checked, so presence == on. Numeric fields submit
+	// their value even while their advanced block is CSS-hidden.
+	bs := func(field string) string {
+		if r.PostFormValue(field) != "" {
 			return "on"
 		}
 		return "off"
 	}
-	// Numeric fields are stored as trimmed strings; shieldSettings parses them
-	// with safe fallbacks and ApplySettings clamps thresholds to (0,1].
+	num := func(field string) string { return strings.TrimSpace(r.PostFormValue(field)) }
+	// shieldSettings parses the numeric strings with safe fallbacks and
+	// ApplySettings clamps thresholds to (0,1].
 	kv := map[string]string{
-		settings.KeyShieldEnabled:        bs(req.Enabled),
-		settings.KeyShieldPoW:            strings.TrimSpace(req.PoW),
-		settings.KeyShieldJS:             strings.TrimSpace(req.JS),
-		settings.KeyShieldBlock:          strings.TrimSpace(req.Block),
-		settings.KeyShieldTarpit:         bs(req.Tarpit),
-		settings.KeyShieldRateLimit:      bs(req.RateLimit),
-		settings.KeyShieldRateRPM:        strings.TrimSpace(req.RPM),
-		settings.KeyShieldBurst:          strings.TrimSpace(req.Burst),
-		settings.KeyShieldLoadShed:       bs(req.LoadShed),
-		settings.KeyShieldMaxInFlight:    strings.TrimSpace(req.MaxInFlight),
-		settings.KeyShieldAutoBlock:      bs(req.AutoBlock),
-		settings.KeyShieldJailMinutes:    strings.TrimSpace(req.JailMinutes),
-		settings.KeyShieldUnderAttack:    bs(req.UnderAttack),
-		settings.KeyShieldUnderAttackRPS: strings.TrimSpace(req.UnderAttackRPS),
-		settings.KeyAnalyticsBeacon:      bs(req.Beacon),
+		settings.KeyShieldEnabled:        bs("sh_enabled"),
+		settings.KeyShieldPoW:            num("sh_pow"),
+		settings.KeyShieldJS:             num("sh_js"),
+		settings.KeyShieldBlock:          num("sh_block"),
+		settings.KeyShieldTarpit:         bs("sh_tarpit"),
+		settings.KeyShieldRateLimit:      bs("sh_ratelimit"),
+		settings.KeyShieldRateRPM:        num("sh_rpm"),
+		settings.KeyShieldBurst:          num("sh_burst"),
+		settings.KeyShieldLoadShed:       bs("sh_loadshed"),
+		settings.KeyShieldMaxInFlight:    num("sh_maxinflight"),
+		settings.KeyShieldAutoBlock:      bs("sh_autoblock"),
+		settings.KeyShieldJailMinutes:    num("sh_jail"),
+		settings.KeyShieldUnderAttack:    bs("sh_underattack"),
+		settings.KeyShieldUnderAttackRPS: num("sh_rps"),
+		settings.KeyAnalyticsBeacon:      bs("sh_beacon"),
 	}
 	if err := a.siteSettings.SetMany(r.Context(), kv); err != nil {
 		writeAPIError(w, r, http.StatusInternalServerError, "db-error", err.Error(), "")
 		return
 	}
 	a.vayuShield.ApplySettings(a.shieldSettings(r.Context()))
-	writeJSON(w, r, http.StatusOK, map[string]bool{"saved": true})
+	// Ask HTMX to reload so the panel reflects the freshly-applied state.
+	w.Header().Set("HX-Refresh", "true")
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-func shieldStatCard(label string, v int64) string {
-	return `<div class="card"><div class="card-title">` + html.EscapeString(label) + `</div><div class="vm-stat">` + strconv.FormatInt(v, 10) + `</div></div>`
-}
+// shieldPanelCSS styles the Bot Shield console: real toggle switches, feature
+// rows with progressive disclosure (advanced fields reveal via a pure-CSS :has()
+// rule only when a feature is switched on), stat cards and a status hero. There
+// is no custom JavaScript — actions use HTMX (see the review-queue buttons and
+// the settings form), and disclosure is CSS-only.
+const shieldPanelCSS = `
+.vs-hero{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:1rem}
+.vs-title{display:flex;align-items:center;gap:.6rem;font-size:1.1rem;font-weight:600}
+.vs-dot{width:11px;height:11px;border-radius:50%;background:#64748b;flex:none}
+.vs-dot.on{background:#22c55e;box-shadow:0 0 0 4px rgba(34,197,94,.15)}
+.vs-dot.attack{background:#f43f5e;box-shadow:0 0 0 4px rgba(244,63,94,.18)}
+.vs-metrics{display:flex;gap:1.75rem;flex-wrap:wrap}
+.vs-metric .n{font-size:1.5rem;font-weight:700;line-height:1}
+.vs-metric .l{font-size:.68rem;letter-spacing:.05em;text-transform:uppercase;color:#94a3b8;margin-top:.3rem}
+.vs-feat{border-top:1px solid rgba(148,163,184,.12)}
+.vs-feat:first-of-type{border-top:0}
+.vs-row{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:.9rem 0}
+.vs-row-title{font-weight:600}
+.vs-row-desc{color:#94a3b8;font-size:.85rem;margin-top:.15rem;max-width:64ch}
+.vs-switch{position:relative;display:inline-block;width:46px;height:26px;flex:none}
+.vs-switch input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer;z-index:1}
+.vs-slider{position:absolute;inset:0;background:#334155;border-radius:999px;transition:.18s}
+.vs-slider::before{content:"";position:absolute;height:20px;width:20px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.18s}
+.vs-switch input:checked+.vs-slider{background:#14b8a6}
+.vs-switch input:checked+.vs-slider::before{transform:translateX(20px)}
+.vs-adv{display:none;flex-wrap:wrap;gap:1rem;padding:.85rem 1rem;margin:0 0 .9rem;background:rgba(148,163,184,.06);border-radius:10px}
+.vs-feat:has(input[data-master]:checked) .vs-adv{display:flex}
+.vs-field{display:flex;flex-direction:column;gap:.3rem}
+.vs-field label{font-size:.7rem;letter-spacing:.03em;text-transform:uppercase;color:#94a3b8}
+.vs-field input[type=number]{width:8rem;background:#0b0f14;border:1px solid rgba(148,163,184,.25);color:#e5e7eb;border-radius:8px;padding:.45rem .6rem}
+.vs-field--tog{flex-direction:row;align-items:center;gap:.6rem}
+.vs-field--tog label{text-transform:none;font-size:.9rem;color:#e5e7eb}
+.vs-save{position:sticky;bottom:0;display:flex;align-items:center;gap:1rem;padding:.9rem 0;margin-top:.5rem}
+.vs-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.75rem}
+.vs-stat{background:rgba(148,163,184,.06);border:1px solid rgba(148,163,184,.12);border-radius:12px;padding:.9rem 1rem}
+.vs-stat .n{font-size:1.7rem;font-weight:700;line-height:1}
+.vs-stat .l{font-size:.68rem;letter-spacing:.05em;text-transform:uppercase;color:#94a3b8;margin-top:.4rem}
+.vs-pills{display:flex;flex-wrap:wrap;gap:.4rem;margin-top:.6rem}
+.vs-pill{font-size:.75rem;padding:.25rem .6rem;border-radius:999px;background:rgba(148,163,184,.12);color:#cbd5e1}
+`
 
-// shToggle renders a labelled checkbox row for the settings form.
-func shToggle(id, label string, checked bool, hint string) string {
+// vsToggle renders a real toggle switch. master=true marks it as the control
+// that reveals its sibling .vs-adv block via the CSS :has() rule.
+func vsToggle(id string, on, master bool) string {
 	c := ""
-	if checked {
+	if on {
 		c = " checked"
 	}
-	return `<label style="display:block;margin:.4rem 0"><input type="checkbox" id="` + id + `"` + c + `> <strong>` + html.EscapeString(label) + `</strong> <span class="muted text-sm">— ` + html.EscapeString(hint) + `</span></label>`
+	m := ""
+	if master {
+		m = " data-master"
+	}
+	return `<label class="vs-switch"><input type="checkbox" id="` + id + `" name="` + id + `"` + c + m + `><span class="vs-slider"></span></label>`
 }
 
-// shNum renders a labelled numeric input row for the settings form.
-func shNum(id, label, val, hint string) string {
-	return `<label style="display:block;margin:.4rem 0"><span>` + html.EscapeString(label) + `:</span> <input type="number" id="` + id + `" value="` + html.EscapeString(val) + `" step="any" min="0" style="width:6.5rem"> <span class="muted text-sm">— ` + html.EscapeString(hint) + `</span></label>`
+// vsRow renders a feature row: title + one-line description on the left, a
+// toggle switch on the right.
+func vsRow(id, title, desc string, on, master bool) string {
+	return `<div class="vs-row"><div><div class="vs-row-title">` + html.EscapeString(title) + `</div><div class="vs-row-desc">` + html.EscapeString(desc) + `</div></div>` + vsToggle(id, on, master) + `</div>`
+}
+
+// vsField renders a compact labelled number input for a feature's advanced area.
+func vsField(id, label, val string) string {
+	return `<div class="vs-field"><label for="` + id + `">` + html.EscapeString(label) + `</label><input type="number" id="` + id + `" name="` + id + `" value="` + html.EscapeString(val) + `" step="any" min="0"></div>`
+}
+
+// vsStat renders a stat card (big number + label).
+func vsStat(n, label string) string {
+	return `<div class="vs-stat"><div class="n">` + html.EscapeString(n) + `</div><div class="l">` + html.EscapeString(label) + `</div></div>`
+}
+
+// vsMetric renders a compact hero metric (big number + label).
+func vsMetric(n, label string) string {
+	return `<div class="vs-metric"><div class="n">` + html.EscapeString(n) + `</div><div class="l">` + html.EscapeString(label) + `</div></div>`
 }
 
 func ftoa2(f float64) string { return strconv.FormatFloat(f, 'f', 2, 64) }
