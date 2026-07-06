@@ -14,6 +14,7 @@ import (
 	"github.com/johalputt/vayupress/internal/analytics"
 	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/geoip"
+	"github.com/johalputt/vayupress/internal/settings"
 )
 
 // ── Ingest rate limiting ─────────────────────────────────────────────────────
@@ -86,6 +87,12 @@ if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded'
 document.addEventListener('click',function(e){var el=e.target.closest('[data-vp-event]');if(!el)return;var n=el.getAttribute('data-vp-event');var d={};Array.from(el.attributes).forEach(function(a){if(a.name.indexOf('data-vp-')===0&&a.name!=='data-vp-event'){d[a.name.slice(8)]=a.value}});send(base(2,n,d))});
 window.VayuPress=window.VayuPress||{};window.VayuPress.track=function(n,d){send(base(2,n,d||{}))};
 }();`)
+	// VayuAnalytics Enterprise engagement beacon (time on page / scroll depth).
+	// Appended to the already-injected analytics script — cookieless, no PII —
+	// so it needs no extra <script> tag in the theme. Operator-toggleable.
+	if a.siteSettings != nil && a.siteSettings.Get(r.Context(), settings.KeyAnalyticsBeacon) != "off" {
+		fmt.Fprint(w, vaEngagementJS)
+	}
 }
 
 // ── Legacy privacy-first summary (unchanged) ─────────────────────────────────

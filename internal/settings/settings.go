@@ -169,6 +169,32 @@ const (
 	// KeyAffiliateDisclosure is the short disclosure text shown above content
 	// when the affiliate module is enabled (FTC-style "contains affiliate links").
 	KeyAffiliateDisclosure = "ads.affiliate_disclosure"
+
+	// VayuShield — bot protection + Tier-1 (in-binary) DDoS resilience. All of
+	// these are operator-toggleable live from VayuOS → Bot Shield & Analytics
+	// with no restart. Booleans are "on"/"off"; shield.enabled and every
+	// resilience toggle default OFF so a fresh install never challenges or
+	// throttles a real visitor until the operator explicitly opts in.
+	KeyShieldEnabled        = "shield.enabled"         // bot classification + challenge ladder
+	KeyShieldPoW            = "shield.pow_threshold"   // score >= this -> silent proof-of-work
+	KeyShieldJS             = "shield.js_threshold"    // score >= this -> JS interstitial
+	KeyShieldBlock          = "shield.block_threshold" // score >= this -> hard block
+	KeyShieldTarpit         = "shield.tarpit"          // block -> tarpit the worst offenders
+	KeyShieldRateLimit      = "shield.ratelimit"       // per-IP token-bucket rate limiting
+	KeyShieldRateRPM        = "shield.rate_rpm"        // sustained per-IP requests/minute
+	KeyShieldBurst          = "shield.burst"           // per-IP burst ceiling
+	KeyShieldLoadShed       = "shield.loadshed"        // in-flight concurrency cap (503 when full)
+	KeyShieldMaxInFlight    = "shield.max_inflight"    // max concurrent requests (0 = unlimited)
+	KeyShieldAutoBlock      = "shield.autoblock"       // auto-jail IPs that keep breaching the limit
+	KeyShieldJailMinutes    = "shield.jail_minutes"    // how long an auto-jailed IP stays blocked
+	KeyShieldUnderAttack    = "shield.underattack"     // adaptive: tighten thresholds during a flood
+	KeyShieldUnderAttackRPS = "shield.underattack_rps" // global RPS that trips attack mode
+
+	// KeyAnalyticsBeacon toggles the VayuAnalytics engagement beacon (time on
+	// page / scroll depth) injected on public pages. Default ON — it is
+	// cookieless and stores no PII, the same posture as the existing view
+	// analytics, so it is safe to enable by default.
+	KeyAnalyticsBeacon = "analytics.beacon"
 )
 
 // FeatureKeys is the set of operator-toggleable feature flags. Each maps to a
@@ -253,6 +279,22 @@ var AllKeys = map[string]bool{
 	// admin.theme is the operator's VayuOS console colour theme (light/dark/auto),
 	// persisted from the topbar theme toggle rather than the theme editor form.
 	"admin.theme": true,
+	// VayuShield + VayuAnalytics runtime toggles.
+	KeyShieldEnabled:        true,
+	KeyShieldPoW:            true,
+	KeyShieldJS:             true,
+	KeyShieldBlock:          true,
+	KeyShieldTarpit:         true,
+	KeyShieldRateLimit:      true,
+	KeyShieldRateRPM:        true,
+	KeyShieldBurst:          true,
+	KeyShieldLoadShed:       true,
+	KeyShieldMaxInFlight:    true,
+	KeyShieldAutoBlock:      true,
+	KeyShieldJailMinutes:    true,
+	KeyShieldUnderAttack:    true,
+	KeyShieldUnderAttackRPS: true,
+	KeyAnalyticsBeacon:      true,
 }
 
 // Defaults are returned when no DB value exists for a key.
@@ -293,6 +335,21 @@ var Defaults = map[string]string{
 	KeyPaySupportEmail:       "",
 	KeyAdsenseClient:         "",
 	KeyAffiliateDisclosure:   "This post may contain affiliate links. We may earn a commission at no extra cost to you.",
+	KeyShieldEnabled:         "off",
+	KeyShieldPoW:             "0.4",
+	KeyShieldJS:              "0.6",
+	KeyShieldBlock:           "0.8",
+	KeyShieldTarpit:          "off",
+	KeyShieldRateLimit:       "off",
+	KeyShieldRateRPM:         "120",
+	KeyShieldBurst:           "60",
+	KeyShieldLoadShed:        "off",
+	KeyShieldMaxInFlight:     "0",
+	KeyShieldAutoBlock:       "off",
+	KeyShieldJailMinutes:     "10",
+	KeyShieldUnderAttack:     "off",
+	KeyShieldUnderAttackRPS:  "200",
+	KeyAnalyticsBeacon:       "on",
 }
 
 // Store is a thread-safe settings store with an in-process read cache.

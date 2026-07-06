@@ -23,14 +23,17 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"html"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/johalputt/vayupress/internal/vayushield/botdb"
 	"github.com/johalputt/vayupress/internal/vayushield/challenge"
 	"github.com/johalputt/vayupress/internal/vayushield/fingerprint"
+	"github.com/johalputt/vayupress/internal/vayushield/resilience"
 	"github.com/johalputt/vayupress/internal/vayushield/scorer"
 )
 
@@ -80,9 +83,51 @@ type Config struct {
 	Now       func() time.Time
 }
 
-// Manager is the live bot-protection engine.
+// liveConfig is the runtime-tunable subset of the shield, swapped atomically so
+// the request hot path reads it lock-free. Operators change these from the
+// VayuOS panel with no restart.
+type liveConfig struct {
+	enabled        bool    // bot classification + challenge ladder
+	pow, js, block float64 // challenge score thresholds
+	tarpit         bool    // Block -> Tarpit for the worst offenders
+	rateLimit      bool    // per-IP token-bucket rate limiting
+	loadShed       bool    // in-flight concurrency cap (503 when saturated)
+	autoBlock      bool    // auto-jail IPs that keep breaching the rate limit
+	underAttack    bool    // adaptive: tighten thresholds during a flood
+}
+
+// Settings is the full operator-tunable configuration, persisted by the cmd
+// layer and applied live via ApplySettings.
+type Settings struct {
+	Enabled                                   bool
+	PoWThreshold, JSThreshold, BlockThreshold float64
+	Tarpit                                    bool
+	RateLimit                                 bool
+	RatePerMinute                             int // sustained per-IP requests/min
+	Burst                                     int // per-IP burst ceiling
+	LoadShed                                  bool
+	MaxInFlight                               int // 0 = unlimited
+	AutoBlock                                 bool
+	AutoBlockJailMinutes                      int
+	UnderAttack                               bool
+	UnderAttackRPS                            int // global RPS that trips attack mode
+}
+
+// Manager is the live bot-protection + resilience engine.
 type Manager struct {
 	cfg Config
+
+	liveCfg     atomic.Pointer[liveConfig]
+	curSettings atomic.Pointer[Settings]
+
+	// Tier-1 resilience primitives (cheap, always allocated; only consulted when
+	// their toggle is on).
+	limiter    *resilience.Limiter // per-IP request rate
+	violation  *resilience.Limiter // per-IP rate-limit-breach meter -> auto-jail
+	inflight   *resilience.InFlight
+	blocklist  *resilience.Blocklist
+	controller *resilience.Controller
+	jailTTLns  atomic.Int64
 
 	ipMu   sync.Mutex
 	ipSalt []byte
@@ -119,8 +164,135 @@ func New(cfg Config) *Manager {
 		cfg.ClientIP = func(r *http.Request) string { return r.RemoteAddr }
 	}
 	m := &Manager{cfg: cfg}
+	m.limiter = resilience.NewLimiter(2, 60, 200000)           // 120 rpm, burst 60
+	m.violation = resilience.NewLimiter(20.0/60.0, 20, 200000) // ~20 breaches/min -> jail
+	m.inflight = &resilience.InFlight{}
+	m.blocklist = resilience.NewBlocklist()
+	m.controller = &resilience.Controller{}
+	m.jailTTLns.Store(int64(10 * time.Minute))
+	// Seed the live config from the constructor Config (challenge tunables on,
+	// resilience toggles off — all opt-in).
+	m.ApplySettings(Settings{
+		Enabled:              cfg.Enabled,
+		PoWThreshold:         cfg.PoWThreshold,
+		JSThreshold:          cfg.JSThreshold,
+		BlockThreshold:       cfg.BlockThreshold,
+		Tarpit:               cfg.TarpitEnabled,
+		RatePerMinute:        120,
+		Burst:                60,
+		AutoBlockJailMinutes: 10,
+		UnderAttackRPS:       200,
+	})
 	m.rotateIPSalt(cfg.Now().UTC())
 	return m
+}
+
+// ApplySettings atomically swaps in a new runtime configuration — no restart.
+// Numeric parameters are pushed into the resilience primitives; the boolean
+// snapshot is published for the hot path to read lock-free.
+func (m *Manager) ApplySettings(s Settings) {
+	clamp := func(f, def float64) float64 {
+		if f <= 0 || f > 1 {
+			return def
+		}
+		return f
+	}
+	rpm := s.RatePerMinute
+	if rpm <= 0 {
+		rpm = 120
+	}
+	burst := s.Burst
+	if burst <= 0 {
+		burst = 60
+	}
+	m.limiter.SetRate(float64(rpm)/60.0, float64(burst))
+	m.inflight.SetMax(int64(s.MaxInFlight))
+	rps := int64(0)
+	if s.UnderAttack {
+		rps = int64(s.UnderAttackRPS)
+		if rps <= 0 {
+			rps = 200
+		}
+	}
+	m.controller.SetThreshold(rps)
+	jm := s.AutoBlockJailMinutes
+	if jm <= 0 {
+		jm = 10
+	}
+	m.jailTTLns.Store(int64(time.Duration(jm) * time.Minute))
+
+	m.liveCfg.Store(&liveConfig{
+		enabled:     s.Enabled,
+		pow:         clamp(s.PoWThreshold, 0.4),
+		js:          clamp(s.JSThreshold, 0.6),
+		block:       clamp(s.BlockThreshold, 0.8),
+		tarpit:      s.Tarpit,
+		rateLimit:   s.RateLimit,
+		loadShed:    s.LoadShed,
+		autoBlock:   s.AutoBlock,
+		underAttack: s.UnderAttack,
+	})
+	// Preserve the resolved numeric fields for the dashboard.
+	s.PoWThreshold = clamp(s.PoWThreshold, 0.4)
+	s.JSThreshold = clamp(s.JSThreshold, 0.6)
+	s.BlockThreshold = clamp(s.BlockThreshold, 0.8)
+	s.RatePerMinute, s.Burst, s.AutoBlockJailMinutes = rpm, burst, jm
+	m.curSettings.Store(&s)
+}
+
+// CurrentSettings returns the effective settings (for rendering the panel).
+func (m *Manager) CurrentSettings() Settings {
+	if s := m.curSettings.Load(); s != nil {
+		return *s
+	}
+	return Settings{}
+}
+
+func (m *Manager) live() *liveConfig {
+	if lc := m.liveCfg.Load(); lc != nil {
+		return lc
+	}
+	return &liveConfig{}
+}
+
+func (m *Manager) jailTTL() time.Duration {
+	if d := m.jailTTLns.Load(); d > 0 {
+		return time.Duration(d)
+	}
+	return 10 * time.Minute
+}
+
+// Status is a live snapshot of the resilience meters for the dashboard.
+type Status struct {
+	UnderAttack bool  `json:"under_attack"`
+	RPS         int64 `json:"rps"`
+	InFlight    int64 `json:"in_flight"`
+	Blocklisted int   `json:"blocklisted"`
+}
+
+// Status returns the current resilience meters.
+func (m *Manager) Status() Status {
+	return Status{
+		UnderAttack: m.controller.UnderAttack(),
+		RPS:         m.controller.RPS(),
+		InFlight:    m.inflight.Current(),
+		Blocklisted: m.blocklist.Len(),
+	}
+}
+
+func (m *Manager) onEvent(a Action, score float64) {
+	if m.cfg.OnEvent != nil {
+		m.cfg.OnEvent(a, score)
+	}
+}
+
+// ipOnly strips a port from a host:port client address so the rate limiter and
+// blocklist key on the IP alone.
+func ipOnly(s string) string {
+	if h, _, err := net.SplitHostPort(s); err == nil {
+		return h
+	}
+	return s
 }
 
 // Verdict is the full classification result for a request, exposed so the
@@ -183,7 +355,8 @@ func (m *Manager) signals(r *http.Request) (fingerprint.Signals, bool) {
 // Decide maps a verdict to an Action, honouring bypass rules and an existing
 // valid session token.
 func (m *Manager) Decide(r *http.Request, v Verdict) Action {
-	if !m.cfg.Enabled {
+	lc := m.live()
+	if !lc.enabled {
 		return ActionAllow
 	}
 	if m.isBypassed(r) {
@@ -201,16 +374,32 @@ func (m *Manager) Decide(r *http.Request, v Verdict) Action {
 	if m.hasValidSession(r) {
 		return ActionAllow
 	}
+	pow, js, block := lc.pow, lc.js, lc.block
+	// Adaptive "under attack" mode: during a flood, tighten the thresholds so
+	// borderline traffic is challenged rather than served, and relax the moment
+	// the flood subsides. Verified visitors and good bots already returned above,
+	// so this only ever tightens the screening of unknown clients.
+	if lc.underAttack && m.controller.UnderAttack() {
+		if pow > 0.25 {
+			pow = 0.25
+		}
+		if js > 0.5 {
+			js = 0.5
+		}
+		if block > 0.7 {
+			block = 0.7
+		}
+	}
 	score := v.Result.BotScore
 	switch {
-	case score >= m.cfg.BlockThreshold:
-		if m.cfg.TarpitEnabled {
+	case score >= block:
+		if lc.tarpit {
 			return ActionTarpit
 		}
 		return ActionBlock
-	case score >= m.cfg.JSThreshold:
+	case score >= js:
 		return ActionChallengeJS
-	case score >= m.cfg.PoWThreshold:
+	case score >= pow:
 		return ActionChallengePoW
 	default:
 		return ActionAllow
@@ -254,19 +443,75 @@ func VerdictFrom(ctx context.Context) (Verdict, bool) {
 	return v, ok
 }
 
-// Middleware wraps next with bot classification, challenge issuance and
-// learning. When disabled it is a transparent pass-through.
+// Middleware wraps next with the resilience gates and the bot classification /
+// challenge ladder. It is ordered cheapest-first so that under load the vast
+// majority of abusive requests are dropped with an O(1) check *before* any
+// expensive work (fingerprinting, rendering, SQLite):
+//
+//	blocklist → load-shed → rate-limit → (classify → challenge)
+//
+// Verified visitors (a valid signed session token, unspoofable) bypass the
+// rate-limit and load-shed gates so a real reader is never throttled. When
+// everything is disabled it is a transparent pass-through with near-zero cost.
 func (m *Manager) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !m.cfg.Enabled {
+		lc := m.live()
+		resilienceActive := lc.rateLimit || lc.loadShed || lc.autoBlock || lc.underAttack
+		if !lc.enabled && !resilienceActive {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if m.isBypassed(r) {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		ipKey := ipOnly(m.cfg.ClientIP(r))
+
+		// 1. Blocklist — the cheapest possible gate for a known-abusive IP.
+		if lc.autoBlock && m.blocklist.Blocked(ipKey) {
+			m.onEvent(ActionBlock, 1.0)
+			m.serveThrottled(w, http.StatusTooManyRequests, "blocked", "10")
+			return
+		}
+
+		// A previously-verified visitor is exempt from the availability gates —
+		// their signed token cannot be spoofed, so they can never be throttled.
+		verified := m.hasValidSession(r)
+
+		// 2. Load shedding — protect the process from collapse under saturation.
+		if lc.loadShed && !verified {
+			if !m.inflight.Acquire() {
+				m.serveThrottled(w, http.StatusServiceUnavailable, "load-shed", "5")
+				return
+			}
+			defer m.inflight.Release()
+		}
+
+		// 3. Attack meter (lock-free) drives adaptive under-attack mode.
+		if lc.underAttack {
+			m.controller.Observe()
+		}
+
+		// 4. Per-IP rate limit — generous burst, so a normal reader never trips it.
+		if lc.rateLimit && !verified && !m.limiter.Allow(ipKey) {
+			if lc.autoBlock && !m.violation.Allow(ipKey) {
+				// This IP keeps breaching the limit — jail it for a while.
+				m.blocklist.Block(ipKey, m.jailTTL())
+			}
+			m.onEvent(ActionBlock, 1.0)
+			m.serveThrottled(w, http.StatusTooManyRequests, "rate-limited", "10")
+			return
+		}
+
+		// 5. Bot classification + challenge ladder (only when enabled).
+		if !lc.enabled {
 			next.ServeHTTP(w, r)
 			return
 		}
 		v := m.Classify(r)
 		action := m.Decide(r, v)
-		if m.cfg.OnEvent != nil {
-			m.cfg.OnEvent(action, v.Result.BotScore)
-		}
+		m.onEvent(action, v.Result.BotScore)
 
 		// Learn: a strongly bot-like but as-yet unclassified fingerprint becomes
 		// an auto-learned candidate for later operator review / auto-promotion.
@@ -288,6 +533,15 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 			m.serveBlock(w, r, v)
 		}
 	})
+}
+
+// serveThrottled writes a small, cheap rejection (429/503) with a Retry-After.
+func (m *Manager) serveThrottled(w http.ResponseWriter, code int, reason, retryAfter string) {
+	w.Header().Set("Retry-After", retryAfter)
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("X-VayuShield", reason)
+	w.WriteHeader(code)
+	_, _ = w.Write([]byte("Request rejected by VayuShield (" + reason + "). Please retry shortly."))
 }
 
 // maybeLearn records a bot-like unknown fingerprint as an auto-learned candidate.

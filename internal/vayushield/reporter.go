@@ -81,13 +81,8 @@ func (m *Manager) StartReporter(done <-chan struct{}, interval time.Duration, re
 	}()
 }
 
-// Enabled reports whether bot protection is active.
-func (m *Manager) Enabled() bool { return m.cfg.Enabled }
-
-// EffectiveThresholds returns the active PoW/JS/block score thresholds.
-func (m *Manager) EffectiveThresholds() (pow, js, block float64) {
-	return m.cfg.PoWThreshold, m.cfg.JSThreshold, m.cfg.BlockThreshold
-}
+// Enabled reports whether bot protection (the challenge ladder) is active.
+func (m *Manager) Enabled() bool { return m.live().enabled }
 
 // BotStore returns the adaptive learning store (may be nil).
 func (m *Manager) BotStore() *botdb.Store { return m.cfg.Bots }

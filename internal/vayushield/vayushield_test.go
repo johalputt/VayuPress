@@ -9,7 +9,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/johalputt/vayupress/internal/vayushield/botdb"
 	"github.com/johalputt/vayupress/internal/vayushield/challenge"
+	"github.com/johalputt/vayupress/internal/vayushield/scorer"
 )
 
 func newTestManager(enabled bool) *Manager {
@@ -209,4 +211,146 @@ func minInt(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// ── Live config + Tier-1 resilience ──────────────────────────────────────────
+
+func TestApplySettingsLiveToggle(t *testing.T) {
+	m := New(Config{Enabled: false, Signer: challenge.NewSigner([]byte("s"))})
+	if m.Enabled() {
+		t.Fatal("should start disabled")
+	}
+	m.ApplySettings(Settings{Enabled: true, PoWThreshold: 0.4, JSThreshold: 0.6, BlockThreshold: 0.8})
+	if !m.Enabled() {
+		t.Fatal("live enable failed")
+	}
+	m.ApplySettings(Settings{Enabled: false})
+	if m.Enabled() {
+		t.Fatal("live disable failed")
+	}
+}
+
+func TestRateLimitBlocksFlood(t *testing.T) {
+	m := New(Config{ClientIP: func(r *http.Request) string { return "9.9.9.9:1" }})
+	// Challenges OFF; only per-IP rate limiting on: burst 2, 1/min sustained.
+	m.ApplySettings(Settings{Enabled: false, RateLimit: true, RatePerMinute: 1, Burst: 2})
+	var ok, throttled int
+	for i := 0; i < 6; i++ {
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/post", nil)
+		req.Header.Set("User-Agent", "Mozilla/5.0 Chrome/130 Safari/537.36")
+		m.Middleware(okHandler()).ServeHTTP(rr, req)
+		switch rr.Code {
+		case 200:
+			ok++
+		case http.StatusTooManyRequests:
+			throttled++
+		}
+	}
+	if ok != 2 {
+		t.Fatalf("burst should allow exactly 2, got %d", ok)
+	}
+	if throttled != 4 {
+		t.Fatalf("rest should be 429, got %d throttled", throttled)
+	}
+}
+
+func TestVerifiedSessionBypassesRateLimit(t *testing.T) {
+	signer := challenge.NewSigner([]byte("s"))
+	m := New(Config{Signer: signer, ClientIP: func(r *http.Request) string { return "8.8.8.8:2" }})
+	m.ApplySettings(Settings{Enabled: false, RateLimit: true, RatePerMinute: 1, Burst: 1})
+	tok, _ := signer.IssueSession(time.Hour)
+	for i := 0; i < 10; i++ {
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/post", nil)
+		req.Header.Set("User-Agent", "Mozilla/5.0 Chrome/130 Safari/537.36")
+		req.AddCookie(m.SessionCookie(tok))
+		m.Middleware(okHandler()).ServeHTTP(rr, req)
+		if rr.Code != 200 {
+			t.Fatalf("verified visitor must never be rate-limited, got %d on request %d", rr.Code, i)
+		}
+	}
+}
+
+func TestLoadShedRejectsWhenSaturated(t *testing.T) {
+	m := New(Config{ClientIP: func(r *http.Request) string { return "7.7.7.7:3" }})
+	m.ApplySettings(Settings{Enabled: false, LoadShed: true, MaxInFlight: 1})
+
+	inHandler := make(chan struct{})
+	release := make(chan struct{})
+	slow := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		close(inHandler)
+		<-release
+		w.WriteHeader(200)
+	})
+	mw := m.Middleware(slow)
+
+	// Request 1 occupies the single in-flight slot.
+	done := make(chan int, 1)
+	go func() {
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/post", nil)
+		req.Header.Set("User-Agent", "Mozilla/5.0 Chrome/130 Safari/537.36")
+		mw.ServeHTTP(rr, req)
+		done <- rr.Code
+	}()
+	<-inHandler // ensure request 1 is inside the handler holding the slot
+
+	// Request 2 must be shed with 503.
+	rr2 := httptest.NewRecorder()
+	req2 := httptest.NewRequest("GET", "/post", nil)
+	req2.Header.Set("User-Agent", "Mozilla/5.0 Chrome/130 Safari/537.36")
+	mw.ServeHTTP(rr2, req2)
+	if rr2.Code != http.StatusServiceUnavailable {
+		t.Fatalf("saturated server should shed with 503, got %d", rr2.Code)
+	}
+
+	close(release)
+	if code := <-done; code != 200 {
+		t.Fatalf("request 1 should complete 200, got %d", code)
+	}
+}
+
+func TestAutoBlockJailsFloodingIP(t *testing.T) {
+	m := New(Config{ClientIP: func(r *http.Request) string { return "6.6.6.6:4" }})
+	m.ApplySettings(Settings{Enabled: false, RateLimit: true, RatePerMinute: 1, Burst: 1, AutoBlock: true, AutoBlockJailMinutes: 5})
+	// Hammer well past the ~20-breach jail meter.
+	for i := 0; i < 40; i++ {
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/post", nil)
+		req.Header.Set("User-Agent", "curl/8")
+		m.Middleware(okHandler()).ServeHTTP(rr, req)
+	}
+	if m.Status().Blocklisted == 0 {
+		t.Fatal("a relentlessly flooding IP should have been auto-jailed")
+	}
+}
+
+func TestUnderAttackTightensThresholds(t *testing.T) {
+	m := New(Config{Signer: challenge.NewSigner([]byte("s"))})
+	m.ApplySettings(Settings{Enabled: true, PoWThreshold: 0.4, JSThreshold: 0.6, BlockThreshold: 0.8, UnderAttack: true, UnderAttackRPS: 1})
+	// A borderline unknown client scoring 0.30 — below the normal 0.40 PoW gate.
+	v := Verdict{Result: scorer.Result{BotScore: 0.30, ClientType: botdb.TypeUnknown}}
+	req := httptest.NewRequest("GET", "/post", nil)
+	if a := m.Decide(req, v); a != ActionAllow {
+		t.Fatalf("at normal load a 0.30 score should be allowed, got %v", a)
+	}
+	// Trip the attack meter (threshold 1 rps).
+	m.controller.Observe()
+	m.controller.Observe()
+	if a := m.Decide(req, v); a != ActionChallengePoW {
+		t.Fatalf("under attack a 0.30 score should be challenged, got %v", a)
+	}
+}
+
+func TestResilienceOffIsPassThrough(t *testing.T) {
+	m := New(Config{ClientIP: func(r *http.Request) string { return "5.5.5.5:5" }})
+	// Everything off — even a blatant bot UA passes (nothing is active).
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/post", nil)
+	req.Header.Set("User-Agent", "sqlmap/1.7")
+	m.Middleware(okHandler()).ServeHTTP(rr, req)
+	if rr.Code != 200 {
+		t.Fatalf("all-off shield must pass through, got %d", rr.Code)
+	}
 }

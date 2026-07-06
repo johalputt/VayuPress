@@ -30,6 +30,7 @@ import (
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/queue"
 	"github.com/johalputt/vayupress/internal/render"
+	"github.com/johalputt/vayupress/internal/settings"
 	"github.com/johalputt/vayupress/internal/severity"
 	"github.com/johalputt/vayupress/internal/vayuanalytics/classifier"
 	vagdpr "github.com/johalputt/vayupress/internal/vayuanalytics/gdpr"
@@ -51,20 +52,14 @@ func (a *App) bootVayuShield() {
 	a.vaSessions = vasession.NewHasher()
 	a.vaEngagement = vastore.New(dbpkg.DB)
 
-	enabled := shieldEnvBool("VAYUSHIELD", false)
 	bots := botdb.New(dbpkg.DB)
 	signer := challenge.NewSigner([]byte(config.Cfg.APIKey))
 
 	a.vayuShield = vayushield.New(vayushield.Config{
-		Enabled:        enabled,
-		Static:         botdb.NewStaticDB(),
-		Bots:           bots,
-		Signer:         signer,
-		DB:             dbpkg.DB,
-		PoWThreshold:   shieldEnvFloat("VAYUSHIELD_POW_THRESHOLD", 0.4),
-		JSThreshold:    shieldEnvFloat("VAYUSHIELD_JS_THRESHOLD", 0.6),
-		BlockThreshold: shieldEnvFloat("VAYUSHIELD_BLOCK_THRESHOLD", 0.8),
-		TarpitEnabled:  shieldEnvBool("VAYUSHIELD_TARPIT", false),
+		Static: botdb.NewStaticDB(),
+		Bots:   bots,
+		Signer: signer,
+		DB:     dbpkg.DB,
 		// The admin panel, API, feeds, health/metrics and the shield's own
 		// endpoints are never challenged.
 		BypassPrefixes:    []string{"/os", "/api", "/admin", "/debug", "/health", "/metrics", "/__vayushield", "/__vayuanalytics", "/.well-known"},
@@ -75,20 +70,27 @@ func (a *App) bootVayuShield() {
 		OnEvent:           a.vayuShieldOnEvent,
 	})
 
-	if enabled {
+	// Apply the operator's persisted settings (bot protection + Tier-1 resilience
+	// toggles). All default OFF; the panel writes these and applies them live, so
+	// nothing here throttles or challenges a real visitor until opted in.
+	a.vayuShield.ApplySettings(a.shieldSettings(context.Background()))
+
+	if a.vayuShield.Enabled() {
 		logging.LogInfo("vayushield", "bot protection ENABLED — PoW→JS→block→tarpit ladder + adaptive learning active")
-		a.vayuShield.StartReporter(queue.DoneCh, 24*time.Hour, config.Cfg.AnalyticsRetainDays, func(res vayushield.LearningResult, err error) {
-			if err != nil {
-				logging.LogError("vayushield", "learning cycle failed", err.Error())
-				return
-			}
-			if res.Promoted > 0 || res.Purged > 0 {
-				logging.LogInfo("vayushield", fmt.Sprintf("learning cycle: promoted %d signature(s), purged %d stale", res.Promoted, res.Purged))
-			}
-		})
 	} else {
-		logging.LogInfo("vayushield", "bot protection disabled (default) — set VAYUSHIELD=on to enable; analytics ingestion remains active")
+		logging.LogInfo("vayushield", "bot protection disabled — enable it in VayuOS → Bot Shield & Analytics (no restart needed)")
 	}
+	// The learning/purge reporter always runs (cheap 24h ticker) so the adaptive
+	// database stays curated regardless of the current toggle state.
+	a.vayuShield.StartReporter(queue.DoneCh, 24*time.Hour, config.Cfg.AnalyticsRetainDays, func(res vayushield.LearningResult, err error) {
+		if err != nil {
+			logging.LogError("vayushield", "learning cycle failed", err.Error())
+			return
+		}
+		if res.Promoted > 0 || res.Purged > 0 {
+			logging.LogInfo("vayushield", fmt.Sprintf("learning cycle: promoted %d signature(s), purged %d stale", res.Promoted, res.Purged))
+		}
+	})
 
 	// VayuAnalytics data-retention sweep (daily), mirroring the legacy analytics purge.
 	go func() {
@@ -306,18 +308,61 @@ func (a *App) handleOSShield(w http.ResponseWriter, r *http.Request) {
 	var b strings.Builder
 	b.WriteString(`<div class="page-header"><h1>Bot Shield &amp; Analytics</h1><span class="muted text-sm">Sovereign bot protection · cookieless engagement analytics · GDPR by design</span></div>`)
 
-	// Protection status.
+	// Protection + resilience controls (all live — no restart).
+	cur := vayushield.Settings{PoWThreshold: 0.4, JSThreshold: 0.6, BlockThreshold: 0.8, RatePerMinute: 120, Burst: 60, AutoBlockJailMinutes: 10, UnderAttackRPS: 200}
+	var st vayushield.Status
+	if a.vayuShield != nil {
+		cur = a.vayuShield.CurrentSettings()
+		st = a.vayuShield.Status()
+	}
+	beaconOn := a.siteSettings == nil || a.siteSettings.Get(r.Context(), settings.KeyAnalyticsBeacon) != "off"
 	status := `<span class="badge badge--warn">disabled</span>`
-	if a.vayuShield != nil && a.vayuShield.Enabled() {
+	if cur.Enabled {
 		status = `<span class="badge badge--ok">active</span>`
 	}
-	pow, js, block := 0.4, 0.6, 0.8
-	if a.vayuShield != nil {
-		pow, js, block = a.vayuShield.EffectiveThresholds()
+	underAttack := "no"
+	if st.UnderAttack {
+		underAttack = `<strong style="color:#f43f5e">yes</strong>`
 	}
-	b.WriteString(`<div class="card"><div class="card-title">Protection</div><p class="muted">Status: ` + status +
-		` · Challenge thresholds — PoW ≥ ` + ftoa2(pow) + `, JS ≥ ` + ftoa2(js) + `, block ≥ ` + ftoa2(block) + `</p>` +
-		`<p class="muted text-sm">Enable with <code>VAYUSHIELD=on</code>. Good bots (search engines) and AI agents (ChatGPT, Claude, Perplexity) are always allowed and counted separately — never blocked.</p></div>`)
+	b.WriteString(`<div class="card"><div class="card-title">Protection &amp; resilience</div>`)
+	b.WriteString(`<p class="muted text-sm">Bot protection: ` + status + ` · under attack: ` + underAttack +
+		` · in-flight: ` + strconv.FormatInt(st.InFlight, 10) + ` · blocklisted IPs: ` + strconv.Itoa(st.Blocklisted) +
+		` · ~` + strconv.FormatInt(st.RPS, 10) + ` req/s.</p>`)
+	b.WriteString(`<p class="muted text-sm">Everything below defaults <strong>off</strong> and applies <strong>instantly, no restart</strong>. Good bots (search engines) and AI agents (ChatGPT, Claude, Perplexity) are always allowed and counted separately — never blocked. Verified visitors are never rate-limited or shed.</p>`)
+	b.WriteString(`<form id="shield-settings" onsubmit="return false;">`)
+
+	b.WriteString(`<div class="card-title" style="margin-top:.5rem">Bot protection</div>`)
+	b.WriteString(shToggle("sh_enabled", "Enable bot protection", cur.Enabled, "classify every client and run the PoW → JS → block ladder for suspicious ones"))
+	b.WriteString(shNum("sh_pow", "PoW threshold", ftoa2(cur.PoWThreshold), "score ≥ this (0–1) gets a silent proof-of-work"))
+	b.WriteString(shNum("sh_js", "JS-challenge threshold", ftoa2(cur.JSThreshold), "score ≥ this gets a JS interstitial"))
+	b.WriteString(shNum("sh_block", "Block threshold", ftoa2(cur.BlockThreshold), "score ≥ this is blocked"))
+	b.WriteString(shToggle("sh_tarpit", "Tarpit worst offenders", cur.Tarpit, "delay + garble instead of a clean 403"))
+
+	b.WriteString(`<div class="card-title" style="margin-top:.75rem">Availability / anti-DDoS (in-binary, Tier 1)</div>`)
+	b.WriteString(shToggle("sh_ratelimit", "Per-IP rate limiting", cur.RateLimit, "generous token bucket; verified visitors exempt"))
+	b.WriteString(shNum("sh_rpm", "Requests / minute per IP", strconv.Itoa(cur.RatePerMinute), "sustained rate"))
+	b.WriteString(shNum("sh_burst", "Burst", strconv.Itoa(cur.Burst), "short spikes allowed before throttling"))
+	b.WriteString(shToggle("sh_loadshed", "Load shedding", cur.LoadShed, "return 503 cheaply when the server is saturated"))
+	b.WriteString(shNum("sh_maxinflight", "Max concurrent requests", strconv.Itoa(cur.MaxInFlight), "0 = unlimited"))
+	b.WriteString(shToggle("sh_autoblock", "Auto-block flooding IPs", cur.AutoBlock, "jail IPs that relentlessly breach the rate limit"))
+	b.WriteString(shNum("sh_jail", "Jail minutes", strconv.Itoa(cur.AutoBlockJailMinutes), "how long a jailed IP stays blocked"))
+	b.WriteString(shToggle("sh_underattack", "Adaptive under-attack mode", cur.UnderAttack, "auto-tighten thresholds during a flood, relax when it passes"))
+	b.WriteString(shNum("sh_rps", "Attack RPS threshold", strconv.Itoa(cur.UnderAttackRPS), "global requests/second that trips attack mode"))
+
+	b.WriteString(`<div class="card-title" style="margin-top:.75rem">Analytics</div>`)
+	b.WriteString(shToggle("sh_beacon", "Engagement beacon", beaconOn, "time-on-page + scroll depth on public pages; cookieless, no PII"))
+
+	b.WriteString(`<div style="margin-top:1rem"><button class="btn btn--primary" id="shield-save" type="button">Save &amp; apply</button></div>`)
+	b.WriteString(`</form></div>`)
+
+	// Tier 2 / Tier 3 — network hardening that lives below the app and therefore
+	// ships as sovereign scripts rather than runtime toggles (they need root /
+	// the reverse proxy). Honest about the volumetric limit.
+	b.WriteString(`<div class="card"><div class="card-title">Network hardening (Tier 2 &amp; 3)</div>`)
+	b.WriteString(`<p class="muted text-sm">The switches above are VayuShield's in-binary (Tier 1) defenses. Floods that saturate the network are stopped <em>below</em> the application — shipped as sovereign scripts (they need root or the reverse proxy, so they are configured on the server, not toggled here):</p>`)
+	b.WriteString(`<ul class="muted text-sm"><li><strong>Tier 2 · kernel/OS:</strong> <code>bash deploy/vayushield-firewall.sh apply</code> — nftables per-IP connection + rate limits and SYN-flood cookies.</li>`)
+	b.WriteString(`<li><strong>Tier 3 · edge:</strong> <code>deploy/nginx-vayushield.conf</code> — per-IP request/connection shaping and slow-loris timeouts at the reverse proxy.</li></ul>`)
+	b.WriteString(`<p class="muted text-sm">A true volumetric flood that saturates your uplink can only be absorbed by anycast/scrubbing capacity no single host can provide; Tiers 1–2 handle the attacks a typical publisher actually faces, entirely sovereignly.</p></div>`)
 
 	// Bot signature intelligence.
 	if a.vayuShield != nil && a.vayuShield.BotStore() != nil {
@@ -413,6 +458,15 @@ document.querySelectorAll('[data-shield-dismiss]').forEach(function(btn){btn.add
   post('/os/api/shield/dismiss',{id:parseInt(btn.getAttribute('data-shield-dismiss'),10)})
    .then(function(r){if(r.ok){show('Dismissed',false);var row=btn.closest('tr');if(row)row.remove();}else{show('Failed',true);}});
 });});
+var saveBtn=document.getElementById('shield-save');
+if(saveBtn){saveBtn.addEventListener('click',function(){
+  function ck(id){var e=document.getElementById(id);return !!(e&&e.checked);}
+  function nv(id){var e=document.getElementById(id);return e?e.value:'';}
+  saveBtn.disabled=true;show('Saving…',false);
+  post('/os/api/shield/settings',{enabled:ck('sh_enabled'),pow:nv('sh_pow'),js:nv('sh_js'),block:nv('sh_block'),tarpit:ck('sh_tarpit'),ratelimit:ck('sh_ratelimit'),rpm:nv('sh_rpm'),burst:nv('sh_burst'),loadshed:ck('sh_loadshed'),max_inflight:nv('sh_maxinflight'),autoblock:ck('sh_autoblock'),jail_minutes:nv('sh_jail'),underattack:ck('sh_underattack'),underattack_rps:nv('sh_rps'),beacon:ck('sh_beacon')})
+   .then(function(r){saveBtn.disabled=false;if(r.ok){show('Saved & applied',false);setTimeout(function(){location.reload();},600);}else{show('Save failed',true);}})
+   .catch(function(){saveBtn.disabled=false;show('Network error',true);});
+});}
 })();
 </script>`)
 
@@ -483,10 +537,85 @@ func (a *App) handleOSShieldExport(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(data)
 }
 
+// handleOSShieldSettings persists the operator's protection + resilience toggles
+// and applies them to the live Manager immediately (no restart).
+func (a *App) handleOSShieldSettings(w http.ResponseWriter, r *http.Request) {
+	if a.vayuShield == nil || a.siteSettings == nil {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "shield-disabled", "VayuShield not initialized", "")
+		return
+	}
+	var req struct {
+		Enabled        bool   `json:"enabled"`
+		PoW            string `json:"pow"`
+		JS             string `json:"js"`
+		Block          string `json:"block"`
+		Tarpit         bool   `json:"tarpit"`
+		RateLimit      bool   `json:"ratelimit"`
+		RPM            string `json:"rpm"`
+		Burst          string `json:"burst"`
+		LoadShed       bool   `json:"loadshed"`
+		MaxInFlight    string `json:"max_inflight"`
+		AutoBlock      bool   `json:"autoblock"`
+		JailMinutes    string `json:"jail_minutes"`
+		UnderAttack    bool   `json:"underattack"`
+		UnderAttackRPS string `json:"underattack_rps"`
+		Beacon         bool   `json:"beacon"`
+	}
+	if err := readCappedJSON(w, r, 8*1024, &req); err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "bad-request", "invalid settings payload", "")
+		return
+	}
+	bs := func(v bool) string {
+		if v {
+			return "on"
+		}
+		return "off"
+	}
+	// Numeric fields are stored as trimmed strings; shieldSettings parses them
+	// with safe fallbacks and ApplySettings clamps thresholds to (0,1].
+	kv := map[string]string{
+		settings.KeyShieldEnabled:        bs(req.Enabled),
+		settings.KeyShieldPoW:            strings.TrimSpace(req.PoW),
+		settings.KeyShieldJS:             strings.TrimSpace(req.JS),
+		settings.KeyShieldBlock:          strings.TrimSpace(req.Block),
+		settings.KeyShieldTarpit:         bs(req.Tarpit),
+		settings.KeyShieldRateLimit:      bs(req.RateLimit),
+		settings.KeyShieldRateRPM:        strings.TrimSpace(req.RPM),
+		settings.KeyShieldBurst:          strings.TrimSpace(req.Burst),
+		settings.KeyShieldLoadShed:       bs(req.LoadShed),
+		settings.KeyShieldMaxInFlight:    strings.TrimSpace(req.MaxInFlight),
+		settings.KeyShieldAutoBlock:      bs(req.AutoBlock),
+		settings.KeyShieldJailMinutes:    strings.TrimSpace(req.JailMinutes),
+		settings.KeyShieldUnderAttack:    bs(req.UnderAttack),
+		settings.KeyShieldUnderAttackRPS: strings.TrimSpace(req.UnderAttackRPS),
+		settings.KeyAnalyticsBeacon:      bs(req.Beacon),
+	}
+	if err := a.siteSettings.SetMany(r.Context(), kv); err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "db-error", err.Error(), "")
+		return
+	}
+	a.vayuShield.ApplySettings(a.shieldSettings(r.Context()))
+	writeJSON(w, r, http.StatusOK, map[string]bool{"saved": true})
+}
+
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 func shieldStatCard(label string, v int64) string {
 	return `<div class="card"><div class="card-title">` + html.EscapeString(label) + `</div><div class="vm-stat">` + strconv.FormatInt(v, 10) + `</div></div>`
+}
+
+// shToggle renders a labelled checkbox row for the settings form.
+func shToggle(id, label string, checked bool, hint string) string {
+	c := ""
+	if checked {
+		c = " checked"
+	}
+	return `<label style="display:block;margin:.4rem 0"><input type="checkbox" id="` + id + `"` + c + `> <strong>` + html.EscapeString(label) + `</strong> <span class="muted text-sm">— ` + html.EscapeString(hint) + `</span></label>`
+}
+
+// shNum renders a labelled numeric input row for the settings form.
+func shNum(id, label, val, hint string) string {
+	return `<label style="display:block;margin:.4rem 0"><span>` + html.EscapeString(label) + `:</span> <input type="number" id="` + id + `" value="` + html.EscapeString(val) + `" step="any" min="0" style="width:6.5rem"> <span class="muted text-sm">— ` + html.EscapeString(hint) + `</span></label>`
 }
 
 func ftoa2(f float64) string { return strconv.FormatFloat(f, 'f', 2, 64) }
@@ -547,17 +676,41 @@ func shieldEnvBool(key string, def bool) bool {
 	}
 }
 
-// shieldEnvFloat reads a float env value with a default and [0,1] clamp.
-func shieldEnvFloat(key string, def float64) float64 {
-	v := strings.TrimSpace(config.EnvOr(key, ""))
-	if v == "" {
+// shieldSettings reads the operator's persisted VayuShield + resilience
+// configuration from the settings store into a vayushield.Settings value. The
+// legacy VAYUSHIELD / VAYUSHIELD_TARPIT env vars act as an OR-default so an
+// operator who set them before the panel existed stays enabled.
+func (a *App) shieldSettings(ctx context.Context) vayushield.Settings {
+	g := func(k string) string { return a.siteSettings.Get(ctx, k) }
+	on := func(k string) bool { return g(k) == "on" }
+	fnum := func(k string, def float64) float64 {
+		if v, err := strconv.ParseFloat(strings.TrimSpace(g(k)), 64); err == nil {
+			return v
+		}
 		return def
 	}
-	f, err := strconv.ParseFloat(v, 64)
-	if err != nil || f < 0 || f > 1 {
+	inum := func(k string, def int) int {
+		if v, err := strconv.Atoi(strings.TrimSpace(g(k))); err == nil {
+			return v
+		}
 		return def
 	}
-	return f
+	return vayushield.Settings{
+		Enabled:              on(settings.KeyShieldEnabled) || shieldEnvBool("VAYUSHIELD", false),
+		PoWThreshold:         fnum(settings.KeyShieldPoW, 0.4),
+		JSThreshold:          fnum(settings.KeyShieldJS, 0.6),
+		BlockThreshold:       fnum(settings.KeyShieldBlock, 0.8),
+		Tarpit:               on(settings.KeyShieldTarpit) || shieldEnvBool("VAYUSHIELD_TARPIT", false),
+		RateLimit:            on(settings.KeyShieldRateLimit),
+		RatePerMinute:        inum(settings.KeyShieldRateRPM, 120),
+		Burst:                inum(settings.KeyShieldBurst, 60),
+		LoadShed:             on(settings.KeyShieldLoadShed),
+		MaxInFlight:          inum(settings.KeyShieldMaxInFlight, 0),
+		AutoBlock:            on(settings.KeyShieldAutoBlock),
+		AutoBlockJailMinutes: inum(settings.KeyShieldJailMinutes, 10),
+		UnderAttack:          on(settings.KeyShieldUnderAttack),
+		UnderAttackRPS:       inum(settings.KeyShieldUnderAttackRPS, 200),
+	}
 }
 
 // readCappedJSON decodes a size-capped JSON request body into v.
