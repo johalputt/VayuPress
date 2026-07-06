@@ -8,6 +8,43 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.7.0] — 2026-07-06
+
+### Added
+- **VayuShield Tier-1 resilience (in-binary DDoS / abuse defense).** New
+  `internal/vayushield/resilience` package adds cheap, O(1)-per-request
+  availability defenses that run *before* any expensive work (fingerprinting,
+  rendering, SQLite), so legitimate traffic stays fast while abuse is shed early:
+  a sharded per-IP token-bucket **rate limiter**, an **in-flight concurrency
+  gate** for load shedding (cheap 503 when saturated), an auto-expiring TTL
+  **blocklist** that jails IPs which relentlessly breach the limit, and a
+  lock-free **RPS controller** that drives an **adaptive under-attack mode**
+  (auto-tightening challenge thresholds during a flood and relaxing when it
+  passes). The middleware is ordered blocklist → load-shed → rate-limit →
+  classify, and **verified visitors (signed session token) are never rate-limited
+  or shed** — a real reader is never blocked.
+- **Live, no-restart operator controls in VayuOS.** The **Bot Shield & Analytics**
+  panel now has on/off toggles and tunables for every defense — bot protection
+  and its PoW/JS/block thresholds, tarpit, per-IP rate limiting, load shedding,
+  auto-blocklist, adaptive under-attack mode, and the engagement beacon — all
+  persisted to settings and applied to the live engine atomically with no
+  restart. A live status line shows under-attack state, in-flight requests,
+  blocklisted IPs and current RPS. Everything defaults **off**.
+- **Engagement analytics now populate.** The VayuAnalytics engagement beacon
+  (time-on-page, scroll depth) is injected on public pages by piggybacking the
+  already-loaded analytics script (cookieless, no PII, operator-toggleable), so
+  the dashboard's engagement, source-breakdown and AI-vs-search reports fill in.
+- **Tier 2 & 3 network hardening (sovereign scripts).** `deploy/vayushield-firewall.sh`
+  (nftables per-IP connection/rate limits + SYN-flood cookies) and
+  `deploy/nginx-vayushield.conf` (edge per-IP request/connection shaping +
+  slow-loris timeouts). The panel documents them and is honest that a true
+  volumetric flood needs anycast/scrubbing capacity no single host can provide.
+
+### Notes
+- All new protections are opt-in and default off; the legacy `VAYUSHIELD=on`
+  env var still force-enables bot protection. See ADR-0112 for the tiered design
+  and the deliberate capability boundary.
+
 ## [3.6.0] — 2026-07-06
 
 ### Added
