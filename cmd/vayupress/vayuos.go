@@ -37,6 +37,11 @@ import (
 // PGP). It never stores plaintext passwords or private keys.
 type vayuMailBridge struct{ app *App }
 
+// mailAuthThrottle slows repeated failed mailbox logins (IMAP/SMTP/POP3) to
+// defeat online password guessing, without ever locking a real user out — see
+// vmail.AuthThrottle. Shared across all three protocol servers.
+var mailAuthThrottle = vmail.NewAuthThrottle()
+
 func (b *vayuMailBridge) AuthUser(username, password string) (bool, error) {
 	ctx := context.Background()
 	domain := b.app.vayuMail.Config().Domain
@@ -44,6 +49,26 @@ func (b *vayuMailBridge) AuthUser(username, password string) (bool, error) {
 	if !strings.Contains(addr, "@") {
 		addr = username + "@" + domain
 	}
+	// Brute-force throttle: an account under attack accrues a short, decaying
+	// delay before each attempt, so guessing is slowed to a crawl while a
+	// correct password still authenticates (just a little slower). Cleared on
+	// success below.
+	if d := mailAuthThrottle.Delay(addr); d > 0 {
+		time.Sleep(d)
+	}
+	ok := b.verifyCredential(ctx, addr, password)
+	if ok {
+		mailAuthThrottle.Success(addr)
+	} else {
+		mailAuthThrottle.Fail(addr)
+	}
+	return ok, nil
+}
+
+// verifyCredential checks a mailbox password against every accepted credential
+// (CMS account password, mail-account password, and device app passwords),
+// honouring the optional app-password-only 2FA enforcement.
+func (b *vayuMailBridge) verifyCredential(ctx context.Context, addr, password string) bool {
 	// Device app-password hashes for this mailbox (the rotating setup-QR
 	// credentials). Fetched up front so the enforcement decision can require a
 	// working alternative to exist before it ever retires the main password.
@@ -70,14 +95,14 @@ func (b *vayuMailBridge) AuthUser(username, password string) (bool, error) {
 		// 1) CMS users (full VayuPress accounts).
 		if b.app.userStore != nil {
 			if _, err := b.app.userStore.Authenticate(ctx, addr, password); err == nil {
-				return true, nil
+				return true
 			}
 		}
 		// 2) Admin-managed mail-only accounts (email + password).
 		if b.app.vayuMail != nil && b.app.vayuMail.Accounts() != nil {
 			if hash := b.app.vayuMail.Accounts().HashFor(ctx, addr); hash != "" {
 				if auth.VerifySecretArgon2id(password, hash) {
-					return true, nil
+					return true
 				}
 			}
 		}
@@ -88,10 +113,10 @@ func (b *vayuMailBridge) AuthUser(username, password string) (bool, error) {
 	// last so the main password stays the fast path.
 	for _, h := range appPwHashes {
 		if auth.VerifySecretArgon2id(password, h) {
-			return true, nil
+			return true
 		}
 	}
-	return false, nil
+	return false
 }
 
 // vayuMail2FAEnforce reports whether the optional "app-password only" 2FA

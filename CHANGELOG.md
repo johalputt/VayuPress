@@ -8,6 +8,22 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.5.0] — 2026-07-06
+
+### Security
+- **Brute-force throttling on mail authentication.** IMAP, SMTP and POP3 logins
+  now share a per-mailbox throttle (`vmail.AuthThrottle`) that defeats online
+  password guessing: each failed attempt on an account accrues a short,
+  time-decaying delay before the next attempt (capped at 2s), so a guessing
+  attack drops from thousands of tries per second to well under one — while a
+  legitimate user with a typo waits only a few hundred milliseconds. It is
+  deliberately a **delay, never a hard lockout**: a correct password always still
+  authenticates (throttling is cleared instantly on success), and failures decay
+  on their own, so an attacker can never use it to lock a real user out. The
+  tracked set is bounded so a flood of distinct usernames cannot exhaust memory.
+  Combined with the opt-in app-password-only 2FA enforcement (v3.4.x), this makes
+  a stolen or guessed password effectively useless for reaching a mailbox.
+
 ## [3.4.1] — 2026-07-06
 
 ### Fixed
