@@ -45,23 +45,6 @@ const (
 	ActionTarpit                     // Level 4 — operator-enabled deliberate delay
 )
 
-func (a Action) String() string {
-	switch a {
-	case ActionAllow:
-		return "allow"
-	case ActionChallengePoW:
-		return "pow"
-	case ActionChallengeJS:
-		return "js"
-	case ActionBlock:
-		return "block"
-	case ActionTarpit:
-		return "tarpit"
-	default:
-		return "unknown"
-	}
-}
-
 // Config configures a Manager. Only Enabled + at least a StaticDB are required;
 // everything else degrades gracefully.
 type Config struct {

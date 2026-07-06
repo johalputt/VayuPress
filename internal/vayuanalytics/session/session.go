@@ -79,10 +79,3 @@ func (h *Hasher) Session(ip, ua, lang string, now time.Time) string {
 	sum := mac.Sum(nil)
 	return hex.EncodeToString(sum[:])
 }
-
-// Day returns the UTC day string the current salt belongs to (for tests/metrics).
-func (h *Hasher) Day() string {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	return h.day
-}

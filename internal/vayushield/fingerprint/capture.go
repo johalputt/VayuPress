@@ -131,11 +131,3 @@ func (s *Store) Get(remoteAddr string) (Signals, bool) {
 	}
 	return e.sig, true
 }
-
-// Len returns the number of live (possibly expired) entries — exposed for tests
-// and memory-pressure metrics.
-func (s *Store) Len() int {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return len(s.m)
-}

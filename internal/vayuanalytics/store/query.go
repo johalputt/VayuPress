@@ -226,41 +226,49 @@ func (s *Store) Realtime(ctx context.Context, windowMinutes int) (*Realtime, err
 		windowMinutes = 5
 	}
 	since := time.Now().UTC().Add(-time.Duration(windowMinutes) * time.Minute)
-	rt := &Realtime{WindowMinutes: windowMinutes, ByCountry: map[string]int64{}, BySource: map[string]int64{}}
+	rt := &Realtime{WindowMinutes: windowMinutes}
 	_ = s.db.QueryRowContext(ctx, `SELECT COUNT(DISTINCT session_hash) FROM vayuanalytics_sessions WHERE entry_time>=? AND `+human+``, since).Scan(&rt.ActiveVisitors)
 	_ = s.db.QueryRowContext(ctx, `SELECT COUNT(DISTINCT session_hash) FROM vayuanalytics_sessions WHERE entry_time>=? AND NOT (`+human+`)`, since).Scan(&rt.BotsActive)
 
-	if rows, err := s.db.QueryContext(ctx, `SELECT COALESCE(NULLIF(country_code,''),'??'), COUNT(1) FROM vayuanalytics_sessions WHERE entry_time>=? AND `+human+` GROUP BY country_code`, since); err == nil {
-		for rows.Next() {
-			var c string
-			var n int64
-			if rows.Scan(&c, &n) == nil {
-				rt.ByCountry[c] = n
-			}
-		}
-		rows.Close()
-	}
-	if rows, err := s.db.QueryContext(ctx, `SELECT source_category, COUNT(1) FROM vayuanalytics_sessions WHERE entry_time>=? AND `+human+` GROUP BY source_category`, since); err == nil {
-		for rows.Next() {
-			var c string
-			var n int64
-			if rows.Scan(&c, &n) == nil {
-				rt.BySource[c] = n
-			}
-		}
-		rows.Close()
-	}
-	if rows, err := s.db.QueryContext(ctx, `SELECT page_path, COUNT(1), COALESCE(AVG(time_on_page_seconds),0), COALESCE(AVG(scroll_depth_percent),0), 0 FROM vayuanalytics_sessions WHERE entry_time>=? AND `+human+` GROUP BY page_path ORDER BY COUNT(1) DESC LIMIT 20`, since); err == nil {
+	rt.ByCountry = s.groupCount(ctx, `SELECT COALESCE(NULLIF(country_code,''),'??'), COUNT(1) FROM vayuanalytics_sessions WHERE entry_time>=? AND `+human+` GROUP BY country_code`, since)
+	rt.BySource = s.groupCount(ctx, `SELECT source_category, COUNT(1) FROM vayuanalytics_sessions WHERE entry_time>=? AND `+human+` GROUP BY source_category`, since)
+
+	if rows, err := s.db.QueryContext(ctx, `SELECT page_path, COUNT(1), COALESCE(AVG(time_on_page_seconds),0), COALESCE(AVG(scroll_depth_percent),0) FROM vayuanalytics_sessions WHERE entry_time>=? AND `+human+` GROUP BY page_path ORDER BY COUNT(1) DESC LIMIT 20`, since); err == nil {
 		for rows.Next() {
 			var p PageStat
-			var z int64
-			if rows.Scan(&p.Path, &p.Views, &p.AvgTimeSeconds, &p.AvgScrollPct, &z) == nil {
+			if err := rows.Scan(&p.Path, &p.Views, &p.AvgTimeSeconds, &p.AvgScrollPct); err == nil {
 				rt.ActivePages = append(rt.ActivePages, p)
 			}
 		}
-		rows.Close()
+		// Best-effort panel (authoritative data stays in SQLite); still check Err.
+		_ = rows.Err()
+		_ = rows.Close()
 	}
 	return rt, nil
+}
+
+// groupCount runs a "SELECT key, COUNT(1) ... GROUP BY key" query bound to a
+// single time parameter and returns the key→count map. Errors yield an empty
+// map (a realtime panel is best-effort). rows.Err() is always checked.
+func (s *Store) groupCount(ctx context.Context, query string, since time.Time) map[string]int64 {
+	out := map[string]int64{}
+	rows, err := s.db.QueryContext(ctx, query, since)
+	if err != nil {
+		return out
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var k string
+		var n int64
+		if err := rows.Scan(&k, &n); err != nil {
+			return out
+		}
+		out[k] = n
+	}
+	if err := rows.Err(); err != nil {
+		return out
+	}
+	return out
 }
 
 func round2(f float64) float64 {

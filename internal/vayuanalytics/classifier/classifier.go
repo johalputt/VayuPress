@@ -215,9 +215,3 @@ func campaignDetail(utm UTM) string {
 	}
 	return ""
 }
-
-// IsAISystem reports whether a referrer host is a known AI system (helper for
-// the shield/analytics bridge).
-func IsAISystem(host string) (string, bool) {
-	return matchHost(strings.ToLower(host), aiSystems)
-}

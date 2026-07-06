@@ -1,6 +1,7 @@
 package vayushield
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -104,7 +105,7 @@ func TestPoWEndToEndSessionBypass(t *testing.T) {
 		t.Fatal("solve failed")
 	}
 	// 2) Verify and mint a session token.
-	tok, ok := m.VerifyPoW(nil, pow, nonce) //nolint:staticcheck // ctx nil ok for this path
+	tok, ok := m.VerifyPoW(context.Background(), pow, nonce)
 	if !ok {
 		t.Fatal("VerifyPoW should succeed for a valid solution")
 	}

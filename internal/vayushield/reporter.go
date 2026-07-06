@@ -7,7 +7,7 @@ import (
 	"github.com/johalputt/vayupress/internal/vayushield/botdb"
 )
 
-// LearningResult summarises one run of the 24-hour learning cycle.
+// LearningResult summarizes one run of the 24-hour learning cycle.
 type LearningResult struct {
 	Promoted int64 `json:"promoted"` // unknown candidates promoted to bad_bot
 	Purged   int64 `json:"purged"`   // stale low-value signatures removed
