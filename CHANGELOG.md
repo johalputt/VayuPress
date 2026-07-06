@@ -8,6 +8,19 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.8.1] — 2026-07-06
+
+Maintenance micro release. No behavioural changes — it reissues the v3.8.0 line
+as a fresh signed build so operators can pull it through the in-app updater and
+so the Bot Shield & Analytics console-styling fix is guaranteed to be present in
+the running binary.
+
+### Fixed
+- Ensures the Bot Shield & Analytics console renders with its full stylesheet
+  (real toggle switches, status hero, stat cards, CSS-only `:has()` disclosure)
+  by shipping the v3.8.0 CSP-safe external-stylesheet fix in a clean tagged
+  build. See 3.8.0 for the details of that fix.
+
 ## [3.8.0] — 2026-07-06
 
 ### Changed
