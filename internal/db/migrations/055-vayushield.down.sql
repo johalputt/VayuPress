@@ -1,0 +1,10 @@
+DROP INDEX IF EXISTS idx_blocked_review;
+DROP INDEX IF EXISTS idx_blocked_created;
+DROP TABLE IF EXISTS vayushield_blocked;
+DROP INDEX IF EXISTS idx_challenges_type;
+DROP INDEX IF EXISTS idx_challenges_created;
+DROP TABLE IF EXISTS vayushield_challenges;
+DROP INDEX IF EXISTS idx_signatures_review;
+DROP INDEX IF EXISTS idx_signatures_classification;
+DROP INDEX IF EXISTS idx_signatures_fingerprint;
+DROP TABLE IF EXISTS vayushield_signatures;
