@@ -46,10 +46,13 @@ import (
 	"github.com/johalputt/vayupress/internal/social"
 	"github.com/johalputt/vayupress/internal/update"
 	"github.com/johalputt/vayupress/internal/users"
+	vasession "github.com/johalputt/vayupress/internal/vayuanalytics/session"
+	vastore "github.com/johalputt/vayupress/internal/vayuanalytics/store"
 	vkernel "github.com/johalputt/vayupress/internal/vayuos/kernel"
 	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
 	vpgp "github.com/johalputt/vayupress/internal/vayuos/pgp"
 	"github.com/johalputt/vayupress/internal/vayuos/secwatch"
+	"github.com/johalputt/vayupress/internal/vayushield"
 	"github.com/johalputt/vayupress/internal/versions"
 	"github.com/johalputt/vayupress/internal/webhooks"
 	"github.com/johalputt/vayupress/internal/webmention"
@@ -162,6 +165,14 @@ type App struct {
 	vayuPGP    *vpgp.Engine
 	vayuMail   *vmail.Engine
 	vayuSec    *secwatch.Watcher
+
+	// VayuShield + VayuAnalytics Enterprise — sovereign bot protection and
+	// cookieless engagement analytics. vayuShield is always non-nil once
+	// bootVayuShield runs (its Middleware is a transparent pass-through when
+	// protection is disabled), so callers need no nil-guard beyond the boot check.
+	vayuShield   *vayushield.Manager
+	vaEngagement *vastore.Store
+	vaSessions   *vasession.Hasher
 }
 
 // startScheduler runs the background ticker that promotes due scheduled posts to

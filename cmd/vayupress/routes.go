@@ -33,6 +33,14 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	if a.redirectMgr != nil {
 		r.Use(a.redirectMgr.Middleware)
 	}
+	// VayuShield bot protection — classifies every request and issues the
+	// escalating challenge ladder. A transparent pass-through when protection is
+	// disabled (VAYUSHIELD=off, the default) and for all bypassed prefixes
+	// (/os, /api, feeds, health). Registered before routing so it can short
+	// -circuit a blocked/challenged request before any handler runs.
+	if a.vayuShield != nil {
+		r.Use(a.vayuShield.Middleware)
+	}
 	r.Use(cors.New(cors.Options{
 		AllowedOrigins:   []string{"https://" + config.Cfg.Domain},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
@@ -160,6 +168,17 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	// VayuAnalytics — public ingest + tracking script (no auth; body-capped and per-IP rate-limited).
 	r.Post("/api/v1/analytics/collect", a.handleAnalyticsCollect)
 	r.Get("/static/vp-analytics.js", a.handleAnalyticsScript)
+
+	// VayuShield challenge surface + VayuAnalytics Enterprise engagement beacons
+	// (all public, body-capped, per-IP rate-limited, cookieless/no-PII). The PoW
+	// solver script and the engagement beacon are served same-origin to satisfy
+	// script-src 'self'. The privacy report documents the GDPR posture.
+	r.Get("/__vayushield/challenge.js", a.handleVayuShieldJS)
+	r.Post("/__vayushield/pow", a.handleVayuShieldPoW)
+	r.Post("/__vayuanalytics/enter", a.handleVAEnter)
+	r.Post("/__vayuanalytics/event", a.handleVAEvent)
+	r.Get("/static/js/vp-engagement.js", a.handleVAEngagementJS)
+	r.Get("/.well-known/privacy-report.json", a.handlePrivacyReport)
 
 	// VayuPGP Web Key Directory — public key discovery (RFC WKD advanced method).
 	// Rate-limited: the handler scans the whole keystore per request, so an

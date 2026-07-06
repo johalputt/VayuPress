@@ -71,6 +71,11 @@ func DefaultRules() []Rule {
 		{Name: "degradation-debt", Tracks: severity.Warn, Limit: 5, Window: 10 * time.Minute, OnExhaust: severity.Notice},
 		{Name: "governance-breach", Tracks: severity.Violation, Limit: 3, Window: 10 * time.Minute, OnExhaust: severity.Escalation},
 		{Name: "integrity-exhaustion", Tracks: severity.Critical, Limit: 1, Window: time.Hour, OnExhaust: severity.Containment},
+		// bot-attack-intensity: sustained VayuShield hard-blocks are a WARN-level
+		// degraded condition. VayuShield throttles its charges (at most one per
+		// window bucket per process), so this exhausts only under a genuine
+		// coordinated attack, at which point it recommends NOTICE for the operator.
+		{Name: "bot-attack-intensity", Tracks: severity.Warn, Limit: 20, Window: 10 * time.Minute, OnExhaust: severity.Notice},
 	}
 }
 

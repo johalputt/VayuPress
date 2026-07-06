@@ -281,6 +281,11 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.Get("/os/api/analytics/realtime", a.handleAnalyticsRealtime)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/analytics/goals", a.handleAnalyticsCreateGoal)
 		pr.With(auth.CSRFTokenMiddleware).Delete("/os/api/analytics/goals/{id}", a.handleAnalyticsDeleteGoal)
+		// VayuShield — Bot Shield & Analytics operator panel (admin-gated).
+		pr.Get("/os/shield", a.handleOSShield)
+		pr.Get("/os/api/shield/export", a.handleOSShieldExport)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/shield/verify", a.handleOSShieldVerify)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/shield/dismiss", a.handleOSShieldDismiss)
 		// VayuOS — native control layer (Phase 2): Publishing · Mail · PGP.
 		// GET pages are wrapped in CSRFTokenMiddleware so each load (re)issues the
 		// vp_csrf cookie the panel's POSTs read back; without this the token
@@ -546,6 +551,7 @@ func osSidebarNav(active string, s *osSettings) string {
 	section("Optimize",
 		gate(navItem("/os/seo", "SEO", "seo", active, iconSEO), "/os/seo"),
 		gate(navItem("/os/analytics", "Analytics", "analytics", active, iconAnalytics), "/os/analytics"),
+		gate(navItem("/os/shield", "Bot Shield", "shield", active, iconSecurity), "/os/shield"),
 		gate(navItem("/os/theme", "Theme Studio", "theme", active, iconTheme), "/os/theme"),
 		gate(navItem("/os/theme/store", "Theme Store", "theme-store", active, iconThemeStore), "/os/theme/store"),
 		navItem("/os/vayumail", "VayuMail", "vayuos", active, iconSecurity),

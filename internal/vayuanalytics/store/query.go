@@ -1,0 +1,268 @@
+package store
+
+import (
+	"context"
+	"time"
+)
+
+// fromDay returns the inclusive lower-bound day string for a trailing window.
+func fromTime(days int) time.Time {
+	if days <= 0 {
+		days = 30
+	}
+	return time.Now().UTC().AddDate(0, 0, -(days - 1)).Truncate(24 * time.Hour)
+}
+
+// Overview is the headline human-traffic summary for the dashboard.
+type Overview struct {
+	Days              int     `json:"days"`
+	Views             int64   `json:"views"`           // human page views
+	UniqueSessions    int64   `json:"unique_sessions"` // distinct human session hashes
+	NewSessions       int64   `json:"new_sessions"`
+	ReturningSessions int64   `json:"returning_sessions"`
+	AvgTimeSeconds    float64 `json:"avg_time_seconds"`
+	AvgScrollPct      float64 `json:"avg_scroll_percent"`
+	EngagementRate    float64 `json:"engagement_rate"` // engaged / views
+	BounceRate        float64 `json:"bounce_rate"`
+	BotViews          int64   `json:"bot_views"` // shown separately, never mixed in
+}
+
+// human is the SQL predicate for real (non-bot) traffic.
+const human = `client_type NOT IN ('BadBot','GoodBot','AIAgent','Headless')`
+
+// Overview computes the headline metrics over the trailing window.
+func (s *Store) Overview(ctx context.Context, days int) (*Overview, error) {
+	from := fromTime(days)
+	o := &Overview{Days: days}
+	var engaged, bounced int64
+	if err := s.db.QueryRowContext(ctx, `SELECT
+COALESCE(SUM(CASE WHEN `+human+` THEN 1 ELSE 0 END),0),
+COALESCE(COUNT(DISTINCT CASE WHEN `+human+` THEN session_hash END),0),
+COALESCE(SUM(CASE WHEN `+human+` AND is_new_session=1 THEN 1 ELSE 0 END),0),
+COALESCE(SUM(CASE WHEN NOT (`+human+`) THEN 1 ELSE 0 END),0),
+COALESCE(AVG(CASE WHEN `+human+` THEN time_on_page_seconds END),0),
+COALESCE(AVG(CASE WHEN `+human+` THEN scroll_depth_percent END),0),
+COALESCE(SUM(CASE WHEN `+human+` AND engaged=1 THEN 1 ELSE 0 END),0),
+COALESCE(SUM(CASE WHEN `+human+` AND bounce=1 THEN 1 ELSE 0 END),0)
+FROM vayuanalytics_sessions WHERE entry_time>=?`, from).Scan(
+		&o.Views, &o.UniqueSessions, &o.NewSessions, &o.BotViews,
+		&o.AvgTimeSeconds, &o.AvgScrollPct, &engaged, &bounced); err != nil {
+		return nil, err
+	}
+	o.ReturningSessions = o.UniqueSessions - o.NewSessions
+	if o.ReturningSessions < 0 {
+		o.ReturningSessions = 0
+	}
+	if o.Views > 0 {
+		o.EngagementRate = round2(float64(engaged) / float64(o.Views))
+		o.BounceRate = round2(float64(bounced) / float64(o.Views))
+	}
+	o.AvgTimeSeconds = round2(o.AvgTimeSeconds)
+	o.AvgScrollPct = round2(o.AvgScrollPct)
+	return o, nil
+}
+
+// SourceStat is one traffic-source row with engagement quality.
+type SourceStat struct {
+	Category       string  `json:"category"`
+	Detail         string  `json:"detail,omitempty"`
+	Views          int64   `json:"views"`
+	Sessions       int64   `json:"sessions"`
+	AvgTimeSeconds float64 `json:"avg_time_seconds"`
+	AvgScrollPct   float64 `json:"avg_scroll_percent"`
+	EngagementRate float64 `json:"engagement_rate"`
+}
+
+// SourceBreakdown returns human traffic grouped by source category with the
+// engagement quality of each — the data behind the source pie + comparison.
+func (s *Store) SourceBreakdown(ctx context.Context, days int) ([]SourceStat, error) {
+	from := fromTime(days)
+	rows, err := s.db.QueryContext(ctx, `SELECT source_category,
+COUNT(1), COUNT(DISTINCT session_hash),
+COALESCE(AVG(time_on_page_seconds),0), COALESCE(AVG(scroll_depth_percent),0),
+COALESCE(SUM(engaged),0)
+FROM vayuanalytics_sessions WHERE entry_time>=? AND `+human+`
+GROUP BY source_category ORDER BY COUNT(1) DESC`, from)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []SourceStat
+	for rows.Next() {
+		var st SourceStat
+		var engaged int64
+		if err := rows.Scan(&st.Category, &st.Views, &st.Sessions, &st.AvgTimeSeconds, &st.AvgScrollPct, &engaged); err != nil {
+			return nil, err
+		}
+		if st.Views > 0 {
+			st.EngagementRate = round2(float64(engaged) / float64(st.Views))
+		}
+		st.AvgTimeSeconds = round2(st.AvgTimeSeconds)
+		st.AvgScrollPct = round2(st.AvgScrollPct)
+		out = append(out, st)
+	}
+	return out, rows.Err()
+}
+
+// AITrafficReport contrasts AI-assisted discovery against organic search — the
+// signature VayuAnalytics insight publishers cannot get elsewhere.
+type AITrafficReport struct {
+	BySystem       []SourceStat `json:"by_system"`        // per AI system
+	AISummary      SourceStat   `json:"ai_summary"`       // all AI-assisted combined
+	OrganicSummary SourceStat   `json:"organic_summary"`  // all organic search combined
+	AISharePercent float64      `json:"ai_share_percent"` // AI views / total human views
+}
+
+// AITraffic computes the AI-vs-organic comparison over the trailing window.
+func (s *Store) AITraffic(ctx context.Context, days int) (*AITrafficReport, error) {
+	from := fromTime(days)
+	rep := &AITrafficReport{}
+	// Per-AI-system breakdown.
+	rows, err := s.db.QueryContext(ctx, `SELECT source_detail,
+COUNT(1), COUNT(DISTINCT session_hash),
+COALESCE(AVG(time_on_page_seconds),0), COALESCE(AVG(scroll_depth_percent),0),
+COALESCE(SUM(engaged),0)
+FROM vayuanalytics_sessions WHERE entry_time>=? AND source_category='ai_assisted' AND `+human+`
+GROUP BY source_detail ORDER BY COUNT(1) DESC`, from)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var st SourceStat
+		var engaged int64
+		if err := rows.Scan(&st.Detail, &st.Views, &st.Sessions, &st.AvgTimeSeconds, &st.AvgScrollPct, &engaged); err != nil {
+			return nil, err
+		}
+		st.Category = "ai_assisted"
+		if st.Views > 0 {
+			st.EngagementRate = round2(float64(engaged) / float64(st.Views))
+		}
+		st.AvgTimeSeconds = round2(st.AvgTimeSeconds)
+		st.AvgScrollPct = round2(st.AvgScrollPct)
+		rep.BySystem = append(rep.BySystem, st)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rep.AISummary = s.categorySummary(ctx, from, "ai_assisted")
+	rep.OrganicSummary = s.categorySummary(ctx, from, "organic")
+	var totalHuman int64
+	_ = s.db.QueryRowContext(ctx, `SELECT COUNT(1) FROM vayuanalytics_sessions WHERE entry_time>=? AND `+human+``, from).Scan(&totalHuman)
+	if totalHuman > 0 {
+		rep.AISharePercent = round2(float64(rep.AISummary.Views) / float64(totalHuman) * 100)
+	}
+	return rep, nil
+}
+
+func (s *Store) categorySummary(ctx context.Context, from time.Time, category string) SourceStat {
+	st := SourceStat{Category: category}
+	var engaged int64
+	_ = s.db.QueryRowContext(ctx, `SELECT COUNT(1), COUNT(DISTINCT session_hash),
+COALESCE(AVG(time_on_page_seconds),0), COALESCE(AVG(scroll_depth_percent),0), COALESCE(SUM(engaged),0)
+FROM vayuanalytics_sessions WHERE entry_time>=? AND source_category=? AND `+human+``,
+		from, category).Scan(&st.Views, &st.Sessions, &st.AvgTimeSeconds, &st.AvgScrollPct, &engaged)
+	if st.Views > 0 {
+		st.EngagementRate = round2(float64(engaged) / float64(st.Views))
+	}
+	st.AvgTimeSeconds = round2(st.AvgTimeSeconds)
+	st.AvgScrollPct = round2(st.AvgScrollPct)
+	return st
+}
+
+// PageStat is one page ranked by engagement.
+type PageStat struct {
+	Path           string  `json:"path"`
+	Views          int64   `json:"views"`
+	AvgTimeSeconds float64 `json:"avg_time_seconds"`
+	AvgScrollPct   float64 `json:"avg_scroll_percent"`
+	EngagementRate float64 `json:"engagement_rate"`
+}
+
+// TopPages returns the most-viewed human pages with their engagement quality.
+func (s *Store) TopPages(ctx context.Context, days, limit int) ([]PageStat, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 20
+	}
+	from := fromTime(days)
+	rows, err := s.db.QueryContext(ctx, `SELECT page_path,
+COUNT(1), COALESCE(AVG(time_on_page_seconds),0), COALESCE(AVG(scroll_depth_percent),0), COALESCE(SUM(engaged),0)
+FROM vayuanalytics_sessions WHERE entry_time>=? AND `+human+`
+GROUP BY page_path ORDER BY COUNT(1) DESC LIMIT ?`, from, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []PageStat
+	for rows.Next() {
+		var p PageStat
+		var engaged int64
+		if err := rows.Scan(&p.Path, &p.Views, &p.AvgTimeSeconds, &p.AvgScrollPct, &engaged); err != nil {
+			return nil, err
+		}
+		if p.Views > 0 {
+			p.EngagementRate = round2(float64(engaged) / float64(p.Views))
+		}
+		p.AvgTimeSeconds = round2(p.AvgTimeSeconds)
+		p.AvgScrollPct = round2(p.AvgScrollPct)
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+// Realtime is the live-activity snapshot.
+type Realtime struct {
+	WindowMinutes  int              `json:"window_minutes"`
+	ActiveVisitors int64            `json:"active_visitors"`
+	ActivePages    []PageStat       `json:"active_pages"`
+	ByCountry      map[string]int64 `json:"by_country"`
+	BySource       map[string]int64 `json:"by_source"`
+	BotsActive     int64            `json:"bots_active"`
+}
+
+// Realtime returns activity within the trailing windowMinutes (default 5).
+func (s *Store) Realtime(ctx context.Context, windowMinutes int) (*Realtime, error) {
+	if windowMinutes <= 0 {
+		windowMinutes = 5
+	}
+	since := time.Now().UTC().Add(-time.Duration(windowMinutes) * time.Minute)
+	rt := &Realtime{WindowMinutes: windowMinutes, ByCountry: map[string]int64{}, BySource: map[string]int64{}}
+	_ = s.db.QueryRowContext(ctx, `SELECT COUNT(DISTINCT session_hash) FROM vayuanalytics_sessions WHERE entry_time>=? AND `+human+``, since).Scan(&rt.ActiveVisitors)
+	_ = s.db.QueryRowContext(ctx, `SELECT COUNT(DISTINCT session_hash) FROM vayuanalytics_sessions WHERE entry_time>=? AND NOT (`+human+`)`, since).Scan(&rt.BotsActive)
+
+	if rows, err := s.db.QueryContext(ctx, `SELECT COALESCE(NULLIF(country_code,''),'??'), COUNT(1) FROM vayuanalytics_sessions WHERE entry_time>=? AND `+human+` GROUP BY country_code`, since); err == nil {
+		for rows.Next() {
+			var c string
+			var n int64
+			if rows.Scan(&c, &n) == nil {
+				rt.ByCountry[c] = n
+			}
+		}
+		rows.Close()
+	}
+	if rows, err := s.db.QueryContext(ctx, `SELECT source_category, COUNT(1) FROM vayuanalytics_sessions WHERE entry_time>=? AND `+human+` GROUP BY source_category`, since); err == nil {
+		for rows.Next() {
+			var c string
+			var n int64
+			if rows.Scan(&c, &n) == nil {
+				rt.BySource[c] = n
+			}
+		}
+		rows.Close()
+	}
+	if rows, err := s.db.QueryContext(ctx, `SELECT page_path, COUNT(1), COALESCE(AVG(time_on_page_seconds),0), COALESCE(AVG(scroll_depth_percent),0), 0 FROM vayuanalytics_sessions WHERE entry_time>=? AND `+human+` GROUP BY page_path ORDER BY COUNT(1) DESC LIMIT 20`, since); err == nil {
+		for rows.Next() {
+			var p PageStat
+			var z int64
+			if rows.Scan(&p.Path, &p.Views, &p.AvgTimeSeconds, &p.AvgScrollPct, &z) == nil {
+				rt.ActivePages = append(rt.ActivePages, p)
+			}
+		}
+		rows.Close()
+	}
+	return rt, nil
+}
+
+func round2(f float64) float64 {
+	return float64(int64(f*100+0.5)) / 100
+}

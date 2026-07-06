@@ -589,6 +589,9 @@ func main() {
 	// ── VayuOS control layer (Phase 2): Publishing · Mail · PGP ──────────────
 	a.bootVayuOS()
 
+	// ── VayuShield + VayuAnalytics Enterprise: bot protection + engagement ───
+	a.bootVayuShield()
+
 	// Mode journal — durable SQLite-backed transition log (Ω6).
 	dbPath := config.EnvOr("DB_PATH", "./vayupress.db")
 	modeJournalPath := dbPath + ".modes"
