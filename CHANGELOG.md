@@ -8,6 +8,22 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.4.1] — 2026-07-06
+
+### Fixed
+- **Mail sync restored — the v3.4.0 2FA enforcement is now off by default and
+  lockout-proof.** In v3.4.0 the "app-password only" rule rejected the mailbox
+  password for IMAP/SMTP/POP3 as soon as 2FA was enabled — which silently broke
+  sync for anyone whose mail app still logged in with that password (it could not
+  authenticate, so no mail arrived and manual sync failed). That was too
+  aggressive. The enforcement is now **opt-in** (`VAYUMAIL_2FA_ENFORCE=1`, off by
+  default, so passwords authenticate exactly as before) **and lockout-proof even
+  when enabled**: it only retires the password once an app password actually
+  exists for the mailbox, so there is always a working credential. To adopt the
+  app-password model deliberately: mint a Device setup QR (VayuOS → Connect,
+  which shows an app password and requires your 2FA code), set that app password
+  in your mail app, then set `VAYUMAIL_2FA_ENFORCE=1`.
+
 ## [3.4.0] — 2026-07-06
 
 ### Security

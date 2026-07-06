@@ -14,6 +14,7 @@ import (
 	htmpl "html/template"
 	"net/http"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -43,16 +44,29 @@ func (b *vayuMailBridge) AuthUser(username, password string) (bool, error) {
 	if !strings.Contains(addr, "@") {
 		addr = username + "@" + domain
 	}
-	// Enterprise 2FA enforcement (the "app-password only" model): when 2FA is
-	// enabled for this identity — on the mailbox OR the CMS account — the plain
-	// login/mailbox password no longer authenticates IMAP/SMTP/POP3. These
-	// protocols cannot prompt for a second factor, so the enforcement point is
-	// the credential: the client must use a rotating setup-QR app password, and
-	// minting one already requires a fresh 2FA code (handleVayuOSSetupQR). This
-	// matches how Gmail/Outlook treat app passwords. Without 2FA, all paths work.
-	twoFA := b.twoFactorEnabled(ctx, addr)
+	// Device app-password hashes for this mailbox (the rotating setup-QR
+	// credentials). Fetched up front so the enforcement decision can require a
+	// working alternative to exist before it ever retires the main password.
+	var appPwHashes []string
+	if b.app.vayuMail != nil && b.app.vayuMail.Accounts() != nil {
+		appPwHashes = b.app.vayuMail.Accounts().AppPasswordHashes(ctx, addr)
+	}
 
-	if !twoFA {
+	// Optional "app-password only" 2FA enforcement (Gmail/Outlook model): when
+	// enabled for this identity, the plain login/mailbox password stops
+	// authenticating IMAP/SMTP/POP3 and the client must use an app password
+	// (minting one already requires a fresh 2FA code). IMAP/SMTP/POP3 cannot
+	// prompt for a second factor, so the credential IS the enforcement point.
+	//
+	// This is OFF by default and lockout-proof: it only applies when the
+	// operator opts in (VAYUMAIL_2FA_ENFORCE=1) AND the mailbox has 2FA AND at
+	// least one app password already exists — so there is always a working
+	// credential and a password login can never be silently locked out. Any
+	// other case (no opt-in, no 2FA, no app password yet) keeps the password
+	// working exactly as before.
+	enforce := vayuMail2FAEnforce() && len(appPwHashes) > 0 && b.twoFactorEnabled(ctx, addr)
+
+	if !enforce {
 		// 1) CMS users (full VayuPress accounts).
 		if b.app.userStore != nil {
 			if _, err := b.app.userStore.Authenticate(ctx, addr, password); err == nil {
@@ -69,18 +83,27 @@ func (b *vayuMailBridge) AuthUser(username, password string) (bool, error) {
 		}
 	}
 
-	// 3) Device app passwords (rotating setup-QR credentials). Always accepted —
-	// they are the required credential when 2FA is on, and a convenience device
-	// credential when it is off. Verified last so the main password stays the
-	// fast path; a mailbox has at most a handful of these.
-	if b.app.vayuMail != nil && b.app.vayuMail.Accounts() != nil {
-		for _, h := range b.app.vayuMail.Accounts().AppPasswordHashes(ctx, addr) {
-			if auth.VerifySecretArgon2id(password, h) {
-				return true, nil
-			}
+	// 3) Device app passwords — always accepted (the required credential when
+	// enforcement is on, a convenience device credential otherwise). Verified
+	// last so the main password stays the fast path.
+	for _, h := range appPwHashes {
+		if auth.VerifySecretArgon2id(password, h) {
+			return true, nil
 		}
 	}
 	return false, nil
+}
+
+// vayuMail2FAEnforce reports whether the optional "app-password only" 2FA
+// enforcement is switched on. It is OFF unless VAYUMAIL_2FA_ENFORCE is a truthy
+// value (1/true/yes/on), so a mailbox with 2FA keeps accepting its password
+// until the operator deliberately opts in.
+func vayuMail2FAEnforce() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("VAYUMAIL_2FA_ENFORCE"))) {
+	case "1", "true", "yes", "on":
+		return true
+	}
+	return false
 }
 
 // twoFactorEnabled reports whether 2FA is active for the identity behind addr,
