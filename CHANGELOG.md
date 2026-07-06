@@ -26,6 +26,13 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   applied state, and the signature review-queue Confirm/Dismiss actions post via
   `hx-post` with `hx-swap="delete"`. The inline `fetch` script was removed and
   the shield settings/verify/dismiss handlers now parse url-encoded form values.
+- **Console styles moved to the external stylesheet.** The redesigned console's
+  styles now live in `admin-os.css` (served same-origin), using the VayuOS design
+  tokens, so they satisfy the strict admin CSP (`style-src 'self'`, ADR-0036). The
+  first cut shipped them in an inline `<style>` block, which the policy blocks —
+  the panel rendered unstyled (raw checkboxes, no cards). All inline `style="…"`
+  attributes were removed too, and the toggle switches, stat cards, status hero
+  and `:has()` disclosure now render correctly in both light and dark themes.
 
 ### Fixed
 - **Engagement beacon page-enter fetch.** Added a `.catch` so a transient

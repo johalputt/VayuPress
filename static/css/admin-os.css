@@ -3458,3 +3458,111 @@
 .vp-os .biz-form-col { display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; }
 .vp-os .biz-form .pm-label { margin-top: var(--sp-2); }
 @media (max-width: 800px) { .vp-os .biz-form { grid-template-columns: 1fr; } }
+
+
+/* ============================================================
+   Bot Shield & Analytics console (VayuShield / VayuAnalytics)
+   Strict-CSP safe: all rules are classes served from this same
+   -origin stylesheet (style-src 'self'); no inline <style>/style=.
+   Toggle switches, :has() progressive disclosure, stat cards.
+   ============================================================ */
+
+/* Vertical rhythm between the console's cards/forms/details. */
+.vp-os .vs-page { display: flex; flex-direction: column; gap: var(--sp-5); }
+
+/* ── Status hero ─────────────────────────────────────────────── */
+.vp-os .vs-hero {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-5);
+  background: linear-gradient(135deg, var(--bg-surface), var(--bg-surface-2));
+}
+.vp-os .vs-title {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  font-family: var(--font-head);
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--text);
+}
+.vp-os .vs-dot { width: 12px; height: 12px; border-radius: var(--r-full); background: var(--text-3); flex: none; }
+.vp-os .vs-dot.on { background: var(--ok); box-shadow: 0 0 0 4px var(--ok-dim); }
+.vp-os .vs-dot.attack { background: var(--danger); box-shadow: 0 0 0 4px var(--danger-dim); animation: vs-pulse 1.4s ease-in-out infinite; }
+@keyframes vs-pulse { 0%, 100% { box-shadow: 0 0 0 4px var(--danger-dim); } 50% { box-shadow: 0 0 0 8px transparent; } }
+.vp-os .vs-metrics { display: flex; gap: var(--sp-8); flex-wrap: wrap; }
+.vp-os .vs-metric .n { font-family: var(--font-head); font-size: var(--text-2xl); font-weight: 700; line-height: 1; color: var(--text); }
+.vp-os .vs-metric .l { font-size: var(--text-xs); letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-2); margin-top: var(--sp-1); }
+
+/* Lead paragraph under a card-title; section divider within a card. */
+.vp-os .vs-lead { margin: calc(-1 * var(--sp-2)) 0 var(--sp-3); }
+.vp-os .vs-section { margin-top: var(--sp-6); padding-top: var(--sp-5); border-top: 1px solid var(--border); }
+
+/* ── Feature rows ────────────────────────────────────────────── */
+.vp-os .vs-feat { border-top: 1px solid var(--border); }
+.vp-os .vs-feat:first-of-type { border-top: 0; }
+.vp-os .vs-row { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4); padding: var(--sp-4) 0; }
+.vp-os .vs-row-title { font-weight: 600; color: var(--text); }
+.vp-os .vs-row-desc { color: var(--text-2); font-size: var(--text-sm); margin-top: var(--sp-1); max-width: 64ch; }
+
+/* ── Toggle switch ───────────────────────────────────────────── */
+.vp-os .vs-switch { position: relative; display: inline-block; width: 44px; height: 24px; flex: none; }
+.vp-os .vs-switch input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; z-index: 1; }
+.vp-os .vs-slider { position: absolute; inset: 0; background: var(--bg-surface-3); border: 1px solid var(--border-strong); border-radius: var(--r-full); transition: background var(--t), border-color var(--t); }
+.vp-os .vs-slider::before { content: ""; position: absolute; height: 18px; width: 18px; left: 2px; top: 2px; background: var(--text-2); border-radius: 50%; transition: transform var(--t), background var(--t); }
+.vp-os .vs-switch input:checked + .vs-slider { background: var(--brand); border-color: var(--brand); }
+.vp-os .vs-switch input:checked + .vs-slider::before { transform: translateX(20px); background: #fff; }
+.vp-os .vs-switch input:focus-visible + .vs-slider { box-shadow: 0 0 0 3px var(--brand-glow); }
+
+/* ── Advanced disclosure (revealed only when its master toggle is on) ── */
+.vp-os .vs-adv {
+  display: none;
+  flex-wrap: wrap;
+  gap: var(--sp-4);
+  padding: var(--sp-4);
+  margin: 0 0 var(--sp-4);
+  background: var(--bg-surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+}
+.vp-os .vs-feat:has(input[data-master]:checked) .vs-adv { display: flex; }
+.vp-os .vs-field { display: flex; flex-direction: column; gap: var(--sp-2); }
+.vp-os .vs-field label { font-size: var(--text-xs); letter-spacing: 0.03em; text-transform: uppercase; color: var(--text-2); }
+.vp-os .vs-field input[type="number"] {
+  width: 8rem;
+  background: var(--bg-base);
+  border: 1px solid var(--border-strong);
+  color: var(--text);
+  border-radius: var(--r-sm);
+  padding: var(--sp-2) var(--sp-3);
+  font-family: var(--font-mono);
+}
+.vp-os .vs-field input[type="number"]:focus { outline: none; border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-glow); }
+.vp-os .vs-field--tog { flex-direction: row; align-items: center; gap: var(--sp-3); }
+.vp-os .vs-field--tog label { text-transform: none; font-size: var(--text-sm); color: var(--text); }
+
+/* ── Save bar ────────────────────────────────────────────────── */
+.vp-os .vs-save { display: flex; align-items: center; gap: var(--sp-4); padding-top: var(--sp-5); margin-top: var(--sp-4); border-top: 1px solid var(--border); flex-wrap: wrap; }
+
+/* ── Network hardening <details> ─────────────────────────────── */
+.vp-os .vs-summary { cursor: pointer; margin-bottom: 0; -webkit-user-select: none; user-select: none; }
+.vp-os details[open] .vs-summary { margin-bottom: var(--sp-4); }
+
+/* ── Stat cards ──────────────────────────────────────────────── */
+.vp-os .vs-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--sp-3); }
+.vp-os .vs-stat { background: var(--bg-surface-2); border: 1px solid var(--border); border-radius: var(--r); padding: var(--sp-4); }
+.vp-os .vs-stat .n { font-family: var(--font-head); font-size: var(--text-xl); font-weight: 700; line-height: 1; color: var(--text); }
+.vp-os .vs-stat .l { font-size: var(--text-xs); letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-2); margin-top: var(--sp-2); }
+
+/* ── Class pills / misc ──────────────────────────────────────── */
+.vp-os .vs-pills { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-3); }
+.vp-os .vs-pill { font-size: var(--text-xs); padding: var(--sp-1) var(--sp-3); border-radius: var(--r-full); background: var(--bg-surface-3); color: var(--text-2); border: 1px solid var(--border); }
+.vp-os .vs-export { margin-top: var(--sp-4); }
+.vp-os .vs-actions { white-space: nowrap; }
+
+@media (max-width: 640px) {
+  .vp-os .vs-metrics { gap: var(--sp-5); }
+  .vp-os .vs-row { flex-wrap: wrap; }
+}
