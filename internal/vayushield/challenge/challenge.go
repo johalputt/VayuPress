@@ -40,13 +40,15 @@ type Signer struct {
 	key []byte
 }
 
-// NewSigner derives a challenge signer from a secret. The secret is hashed so
-// any length is accepted and the raw secret is never held verbatim.
+// NewSigner derives a challenge signer from a secret. The key is derived with
+// HMAC (the secret is the HMAC key, never hashed as message data), which accepts
+// any secret length, is domain-separated by a fixed label, and does not hold the
+// raw secret verbatim — the appropriate construction for deriving a MAC key from
+// a high-entropy application secret.
 func NewSigner(secret []byte) *Signer {
-	sum := sha256.Sum256(append([]byte("vayushield/challenge/v1"), secret...))
-	k := make([]byte, len(sum))
-	copy(k, sum[:])
-	return &Signer{key: k}
+	kdf := hmac.New(sha256.New, secret)
+	kdf.Write([]byte("vayushield/challenge/v1"))
+	return &Signer{key: kdf.Sum(nil)}
 }
 
 func (s *Signer) mac(msg []byte) []byte {

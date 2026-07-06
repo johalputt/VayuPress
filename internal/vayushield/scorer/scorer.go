@@ -93,7 +93,7 @@ func Score(in Input) Result {
 	}
 
 	// 3) Heuristic scoring for unknown clients.
-	var score float64 = 0.25
+	score := 0.25
 	reasons := []string{}
 	s := in.Signals
 	fam := uaFamily(s.UserAgent)

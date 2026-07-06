@@ -3,6 +3,7 @@ package vayushield
 import (
 	"context"
 	"encoding/json"
+	htmlpkg "html"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -181,22 +182,23 @@ func TestOnEventInvoked(t *testing.T) {
 	}
 }
 
-// Sanity: the PoW payload embedded in the interstitial is valid JSON.
+// Sanity: the PoW payload embedded in the interstitial (via html/template) is
+// valid JSON once the browser decodes the attribute.
 func TestInterstitialEmbedsValidChallenge(t *testing.T) {
 	p := challenge.PoW{Salt: "abc", Difficulty: 4, Expires: 123, Sig: "sig"}
 	b, _ := json.Marshal(p)
 	htmlOut := interstitialHTML(string(b))
-	// Extract the data-challenge attribute payload and ensure it round-trips.
-	i := strings.Index(htmlOut, "data-challenge='")
+	const attr = `data-challenge="`
+	i := strings.Index(htmlOut, attr)
 	if i < 0 {
 		t.Fatal("no challenge attribute")
 	}
-	rest := htmlOut[i+len("data-challenge='"):]
-	j := strings.Index(rest, "'")
-	payload := rest[:j]
-	// Attribute is HTML-escaped; unescape the minimal entities we produce.
-	payload = strings.ReplaceAll(payload, "&#34;", `"`)
-	payload = strings.ReplaceAll(payload, "&amp;", "&")
+	rest := htmlOut[i+len(attr):]
+	j := strings.Index(rest, `"`) // first raw quote is the attribute terminator
+	if j < 0 {
+		t.Fatal("unterminated data-challenge attribute")
+	}
+	payload := htmlpkg.UnescapeString(rest[:j]) // browsers decode HTML entities
 	var got challenge.PoW
 	if err := json.Unmarshal([]byte(payload), &got); err != nil {
 		t.Fatalf("embedded challenge not valid JSON: %v (%s)", err, payload)

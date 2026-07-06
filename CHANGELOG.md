@@ -8,6 +8,26 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.7.1] — 2026-07-06
+
+### Fixed
+- **CI Native-Go gate (staticcheck).** Cleared the two staticcheck findings that
+  were failing the gate: `ST1023` (redundant explicit type in a `var`
+  declaration in the bot scorer) and `SA4000` (a test asserted two acquisitions
+  with an identical expression on both sides of `||`).
+
+### Security
+- **Hardened challenge key derivation (CodeQL: weak hashing on sensitive data).**
+  The VayuShield challenge signer now derives its key with HMAC — the secret is
+  the HMAC key, never hashed as message data — instead of `sha256.Sum256(secret)`.
+  This is the correct construction for deriving a MAC key from a high-entropy
+  application secret and clears the alert.
+- **Removed manual HTML quoting in the challenge interstitial (CodeQL: unsafe
+  quoting).** The signed proof-of-work challenge is now injected with
+  `html/template` (context-aware auto-escaping) instead of hand-quoted attribute
+  concatenation. The value was already server-generated, so this is
+  defense-in-depth, and it clears the Critical alert.
+
 ## [3.7.0] — 2026-07-06
 
 ### Added
