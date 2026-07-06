@@ -257,3 +257,23 @@ internal/trace/trace.go: unreachable func: CausationID
 internal/vayuos/mail/accounts.go: unreachable func: RoleCanDelete
 internal/vayuos/mail/accounts.go: unreachable func: RoleCanManageAccounts
 internal/vayuos/mail/accounts.go: unreachable func: RoleCanSend
+
+#
+# VayuShield + VayuAnalytics — forward-looking / operator-reserved surface that
+# is compiled and unit-tested but not yet reachable from main:
+#  - TLS ClientHello capture (fingerprint.NewStore/Store.Put/FromClientHello):
+#    active only when VayuPress terminates TLS in-process; today TLS is
+#    terminated upstream (nginx), so the capture store is dormant infrastructure.
+#  - Solve: the reference proof-of-work solver (clients solve in JS; server only
+#    verifies) — kept as a public API and used by the test suite.
+#  - VerdictFrom: reads the middleware's classification off the request context,
+#    reserved for public-render-path analytics attribution.
+#  - botdb Store.Import / Store.ReportFalsePositive: operator community-import and
+#    false-positive review, wired into VayuOS in a follow-up.
+internal/vayushield/challenge/challenge.go: unreachable func: Solve
+internal/vayushield/vayushield.go: unreachable func: VerdictFrom
+internal/vayushield/botdb/store.go: unreachable func: Store.Import
+internal/vayushield/botdb/store.go: unreachable func: Store.ReportFalsePositive
+internal/vayushield/fingerprint/capture.go: unreachable func: NewStore
+internal/vayushield/fingerprint/capture.go: unreachable func: Store.Put
+internal/vayushield/fingerprint/capture.go: unreachable func: FromClientHello

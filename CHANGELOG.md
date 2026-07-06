@@ -8,6 +8,47 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.6.0] — 2026-07-06
+
+### Added
+- **VayuShield — sovereign bot protection.** A pure-Go, zero-CGo, zero-dependency
+  bot-defense engine built into the single binary, replacing Cloudflare Bot
+  Management without any third-party service or external network call. It
+  fingerprints each client from its TLS ClientHello (JA3 and JA4), the presence
+  of a 2026 post-quantum key share (X25519MLKEM768), the HTTP/2 SETTINGS frame
+  (Go's default 65535 window vs a real browser's), and header/pseudo-header
+  order, then combines those with a static and self-learning User-Agent database
+  into an explainable composite `BotScore` and a `ClientType`
+  (Human / GoodBot / BadBot / AIAgent / Headless / Unknown). Suspicious traffic
+  is met with an escalating challenge ladder — a silent SHA-256 proof-of-work,
+  then a JavaScript interstitial, then a hard block, then an optional tarpit —
+  while verified visitors carry a signed, PII-free session token. Search-engine
+  crawlers and AI assistants (GPTBot, ClaudeBot, PerplexityBot, …) are always
+  allowed and counted separately, never blocked. A background reporter promotes
+  recurring bot-like fingerprints to a review queue, and signature sets can be
+  exported/imported to share with the community. Off by default (`VAYUSHIELD=on`
+  to enable).
+- **VayuAnalytics Enterprise — cookieless engagement analytics.** Extends the
+  privacy-first analytics with real engagement quality — time on page, scroll
+  depth, engagement and bounce rates — and classifies every visit by traffic
+  source, including a first-class **AI-assisted discovery** category that shows
+  how readers arriving from ChatGPT, Claude, Perplexity, Copilot and Gemini
+  compare to organic search. Sessions are a daily-rotating salted hash of
+  request attributes (never a stored IP or cookie), so the whole system remains
+  GDPR-compliant by design; a machine-readable disclosure is published at
+  `/.well-known/privacy-report.json`. A new VayuOS **Bot Shield & Analytics**
+  panel surfaces the signature review queue, engagement metrics, top pages,
+  live activity and the AI-vs-search comparison.
+- **Governance.** New `bot-attack-intensity` error-budget (WARN) so a sustained
+  bot attack is visible to the governance layer, charged with throttling so
+  normal traffic never exhausts it.
+
+### Upgrade Notes
+- Two new migrations (`055`, `056`) add the `vayushield_*` and
+  `vayuanalytics_sessions` tables; they apply automatically on first start and
+  require no action. Bot protection stays disabled until you set `VAYUSHIELD=on`.
+  See ADR-0111 for the full design and rationale.
+
 ## [3.5.0] — 2026-07-06
 
 ### Security

@@ -208,7 +208,7 @@ func (a *App) handleVAEnter(w http.ResponseWriter, r *http.Request) {
 	utm := parseUTM(req.Q)
 	class := classifier.Classify(req.R, config.Cfg.Domain, utm, isBot)
 	// A human arriving via an AI assistant is AI-assisted discovery even if the
-	// referrer host was not in the classifier's list but the shield recognised it.
+	// referrer host was not in the classifier's list but the shield recognized it.
 	if !isBot && verdict.AIReferrer != "" && class.Category != classifier.AIAssisted {
 		class.Category = classifier.AIAssisted
 		class.Detail = verdict.AIReferrer
@@ -385,6 +385,16 @@ func (a *App) handleOSShield(w http.ResponseWriter, r *http.Request) {
 			}
 			b.WriteString(`</div>`)
 		}
+		if pages, err := a.vaEngagement.TopPages(r.Context(), days, 10); err == nil && len(pages) > 0 {
+			b.WriteString(`<div class="card"><div class="card-title">Top pages by views</div><div class="table-wrap"><table class="table"><thead><tr><th>Page</th><th>Views</th><th>Avg time (s)</th><th>Engagement</th></tr></thead><tbody>`)
+			for _, p := range pages {
+				b.WriteString(`<tr><td>` + html.EscapeString(p.Path) + `</td><td>` + strconv.FormatInt(p.Views, 10) + `</td><td>` + ftoa2(p.AvgTimeSeconds) + `</td><td>` + pct(p.EngagementRate) + `</td></tr>`)
+			}
+			b.WriteString(`</tbody></table></div></div>`)
+		}
+		if rt, err := a.vaEngagement.Realtime(r.Context(), 5); err == nil {
+			b.WriteString(`<div class="card"><div class="card-title">Live now</div><p class="muted">Active visitors (last 5 min): <strong>` + strconv.FormatInt(rt.ActiveVisitors, 10) + `</strong> · bots active: ` + strconv.FormatInt(rt.BotsActive, 10) + ` · active pages: ` + strconv.Itoa(len(rt.ActivePages)) + `</p></div>`)
+		}
 	}
 
 	// Inline controls (CSP-safe: nonce-gated, same-origin fetch with CSRF header).
@@ -412,7 +422,7 @@ document.querySelectorAll('[data-shield-dismiss]').forEach(function(btn){btn.add
 // handleOSShieldVerify marks a learned candidate as operator-verified.
 func (a *App) handleOSShieldVerify(w http.ResponseWriter, r *http.Request) {
 	if a.vayuShield == nil || a.vayuShield.BotStore() == nil {
-		writeAPIError(w, r, http.StatusServiceUnavailable, "shield-disabled", "VayuShield not initialised", "")
+		writeAPIError(w, r, http.StatusServiceUnavailable, "shield-disabled", "VayuShield not initialized", "")
 		return
 	}
 	var req struct {
@@ -440,7 +450,7 @@ func (a *App) handleOSShieldVerify(w http.ResponseWriter, r *http.Request) {
 // handleOSShieldDismiss deletes a learned candidate the operator judged benign.
 func (a *App) handleOSShieldDismiss(w http.ResponseWriter, r *http.Request) {
 	if a.vayuShield == nil || a.vayuShield.BotStore() == nil {
-		writeAPIError(w, r, http.StatusServiceUnavailable, "shield-disabled", "VayuShield not initialised", "")
+		writeAPIError(w, r, http.StatusServiceUnavailable, "shield-disabled", "VayuShield not initialized", "")
 		return
 	}
 	var req struct {
@@ -460,7 +470,7 @@ func (a *App) handleOSShieldDismiss(w http.ResponseWriter, r *http.Request) {
 // handleOSShieldExport streams the community signature export file.
 func (a *App) handleOSShieldExport(w http.ResponseWriter, r *http.Request) {
 	if a.vayuShield == nil || a.vayuShield.BotStore() == nil {
-		writeAPIError(w, r, http.StatusServiceUnavailable, "shield-disabled", "VayuShield not initialised", "")
+		writeAPIError(w, r, http.StatusServiceUnavailable, "shield-disabled", "VayuShield not initialized", "")
 		return
 	}
 	data, err := a.vayuShield.BotStore().Export(r.Context())

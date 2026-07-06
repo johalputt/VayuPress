@@ -37,22 +37,6 @@ const (
 	TypeUnknown  ClientType = "Unknown"
 )
 
-// ClientTypeFor maps a persisted classification to its runtime ClientType.
-func ClientTypeFor(c Classification) ClientType {
-	switch c {
-	case ClassHuman:
-		return TypeHuman
-	case ClassGoodBot:
-		return TypeGoodBot
-	case ClassBadBot:
-		return TypeBadBot
-	case ClassAIAgent:
-		return TypeAIAgent
-	default:
-		return TypeUnknown
-	}
-}
-
 // Signature is one static, compiled-in bot definition.
 type Signature struct {
 	Name           string         // canonical bot name
@@ -177,11 +161,4 @@ func (d *StaticDB) MatchReferrerAI(referrerHost string) (string, bool) {
 		}
 	}
 	return "", false
-}
-
-// Signatures returns a copy of all static signatures (for the VayuOS allowlist UI).
-func (d *StaticDB) Signatures() []Signature {
-	out := make([]Signature, len(d.all))
-	copy(out, d.all)
-	return out
 }

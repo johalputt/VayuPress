@@ -43,8 +43,6 @@ func TestSaltRotationBreaksCrossDayLink(t *testing.T) {
 	// Force day 1.
 	h.mu.Lock()
 	h.day = "2026-07-06"
-	salt1 := make([]byte, len(h.salt))
-	copy(salt1, h.salt)
 	h.mu.Unlock()
 	d1 := h.Session("1.2.3.4", "Chrome", "en", time.Date(2026, 7, 6, 10, 0, 0, 0, time.UTC))
 	// Advance to next day — should rotate salt and change the hash for the same visitor.
@@ -52,8 +50,11 @@ func TestSaltRotationBreaksCrossDayLink(t *testing.T) {
 	if d1 == d2 {
 		t.Fatal("cross-day sessions must not correlate (salt rotates)")
 	}
-	if h.Day() != "2026-07-07" {
-		t.Fatalf("expected day rotation, got %s", h.Day())
+	h.mu.Lock()
+	gotDay := h.day
+	h.mu.Unlock()
+	if gotDay != "2026-07-07" {
+		t.Fatalf("expected day rotation, got %s", gotDay)
 	}
 }
 

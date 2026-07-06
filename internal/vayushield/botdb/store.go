@@ -154,7 +154,7 @@ func (s *Store) Dismiss(ctx context.Context, id int64) error {
 	return err
 }
 
-// Stats summarises the signature database for the dashboard.
+// Stats summarizes the signature database for the dashboard.
 type Stats struct {
 	Total          int64            `json:"total"`
 	ByClass        map[string]int64 `json:"by_class"`
@@ -217,7 +217,7 @@ type CommunitySigEntry struct {
 	Confidence        float64        `json:"confidence"`
 }
 
-// Export serialises operator-verified and high-confidence auto-learned
+// Export serializes operator-verified and high-confidence auto-learned
 // signatures as a community file, with all IP data stripped.
 func (s *Store) Export(ctx context.Context) ([]byte, error) {
 	rows, err := s.db.QueryContext(ctx,
@@ -251,7 +251,7 @@ func (s *Store) Import(ctx context.Context, data []byte) (int, error) {
 		return 0, fmt.Errorf("parse community file: %w", err)
 	}
 	if cf.Format != "vayushield-signatures" {
-		return 0, fmt.Errorf("unrecognised community file format %q", cf.Format)
+		return 0, fmt.Errorf("unrecognized community file format %q", cf.Format)
 	}
 	now := time.Now().UTC()
 	n := 0
