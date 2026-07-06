@@ -732,5 +732,5 @@ window.addEventListener('scroll',onScroll,{passive:true});
 window.addEventListener('click',onInteract);
 document.addEventListener('visibilitychange',function(){if(document.visibilityState==='hidden')send();});
 window.addEventListener('pagehide',send);
-try{fetch('/__vayuanalytics/enter',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({p:location.pathname,q:location.search,r:document.referrer||''}),keepalive:true});}catch(e){}
+try{fetch('/__vayuanalytics/enter',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({p:location.pathname,q:location.search,r:document.referrer||''}),keepalive:true}).catch(function(){});}catch(e){}
 })();`
