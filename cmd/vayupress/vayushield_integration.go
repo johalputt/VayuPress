@@ -313,8 +313,12 @@ func (a *App) handleOSShield(w http.ResponseWriter, r *http.Request) {
 	}
 	beaconOn := a.siteSettings == nil || a.siteSettings.Get(r.Context(), settings.KeyAnalyticsBeacon) != "off"
 
+	// Styles live in the external admin-os.css (served same-origin) so they
+	// satisfy the strict admin CSP (style-src 'self', ADR-0036) — inline <style>
+	// blocks and style="" attributes are blocked by policy, so every rule here is
+	// a class defined in the stylesheet. .vs-page gives the cards vertical rhythm.
 	var b strings.Builder
-	b.WriteString(`<style nonce="` + nonce + `">` + shieldPanelCSS + `</style>`)
+	b.WriteString(`<div class="vs-page">`)
 	b.WriteString(`<div class="page-header"><h1>Bot Shield &amp; Analytics</h1><span class="muted text-sm">Sovereign bot protection · cookieless analytics · GDPR by design</span></div>`)
 
 	// ── Status hero ──────────────────────────────────────────────────────────
@@ -343,7 +347,7 @@ func (a *App) handleOSShield(w http.ResponseWriter, r *http.Request) {
 	// is switched on. ─────────────────────────────────────────────────────────
 	b.WriteString(`<form class="card" hx-post="/os/api/shield/settings" hx-swap="none">`)
 	b.WriteString(`<div class="card-title">Protection</div>`)
-	b.WriteString(`<p class="muted text-sm" style="margin:-.25rem 0 .25rem">Everything applies instantly — no restart. Search engines and AI assistants (ChatGPT, Claude, Perplexity) are always allowed and counted separately; verified visitors are never throttled.</p>`)
+	b.WriteString(`<p class="muted text-sm vs-lead">Everything applies instantly — no restart. Search engines and AI assistants (ChatGPT, Claude, Perplexity) are always allowed and counted separately; verified visitors are never throttled.</p>`)
 
 	b.WriteString(`<div class="vs-feat">`)
 	b.WriteString(vsRow("sh_enabled", "Bot protection", "Classify every visitor and challenge the suspicious ones — a silent proof-of-work, then a JS check, then a block.", cur.Enabled, true))
@@ -354,7 +358,7 @@ func (a *App) handleOSShield(w http.ResponseWriter, r *http.Request) {
 	b.WriteString(`<div class="vs-field vs-field--tog">` + vsToggle("sh_tarpit", cur.Tarpit, false) + `<label for="sh_tarpit">Tarpit the worst offenders</label></div>`)
 	b.WriteString(`</div></div>`)
 
-	b.WriteString(`<div class="card-title" style="margin-top:1.25rem">Availability &amp; anti-DDoS</div>`)
+	b.WriteString(`<div class="card-title vs-section">Availability &amp; anti-DDoS</div>`)
 
 	b.WriteString(`<div class="vs-feat">`)
 	b.WriteString(vsRow("sh_ratelimit", "Rate limiting", "Cap requests per IP with a generous burst. Verified visitors are exempt.", cur.RateLimit, true))
@@ -372,7 +376,7 @@ func (a *App) handleOSShield(w http.ResponseWriter, r *http.Request) {
 	b.WriteString(vsRow("sh_underattack", "Adaptive under-attack mode", "Automatically tighten challenge thresholds during a flood and relax when it passes.", cur.UnderAttack, true))
 	b.WriteString(`<div class="vs-adv">` + vsField("sh_rps", "Trip at (requests/sec)", strconv.Itoa(cur.UnderAttackRPS)) + `</div></div>`)
 
-	b.WriteString(`<div class="card-title" style="margin-top:1.25rem">Analytics</div>`)
+	b.WriteString(`<div class="card-title vs-section">Analytics</div>`)
 	b.WriteString(`<div class="vs-feat">`)
 	b.WriteString(vsRow("sh_beacon", "Engagement analytics", "Measure time-on-page and scroll depth on public pages. Cookieless, no PII.", beaconOn, false))
 	b.WriteString(`</div>`)
@@ -381,7 +385,7 @@ func (a *App) handleOSShield(w http.ResponseWriter, r *http.Request) {
 	b.WriteString(`</form>`)
 
 	// Network hardening (Tier 2/3) — server-level, collapsed by default.
-	b.WriteString(`<details class="card"><summary class="card-title" style="cursor:pointer">Network hardening (Tier 2 &amp; 3) — server-level</summary>`)
+	b.WriteString(`<details class="card"><summary class="card-title vs-summary">Network hardening (Tier 2 &amp; 3) — server-level</summary>`)
 	b.WriteString(`<p class="muted text-sm">The switches above are the in-binary (Tier 1) defenses. Floods that saturate the network are stopped <em>below</em> the app, as sovereign scripts (they need root or the reverse proxy):</p>`)
 	b.WriteString(`<ul class="muted text-sm"><li><strong>Tier 2 · kernel:</strong> <code>bash deploy/vayushield-firewall.sh apply</code> — nftables per-IP limits + SYN-flood cookies.</li>`)
 	b.WriteString(`<li><strong>Tier 3 · edge:</strong> <code>deploy/nginx-vayushield.conf</code> — per-IP shaping + slow-loris timeouts at the reverse proxy.</li></ul>`)
@@ -398,7 +402,7 @@ func (a *App) handleOSShield(w http.ResponseWriter, r *http.Request) {
 			for _, k := range []string{"bad_bot", "good_bot", "ai_agent", "human", "unknown"} {
 				b.WriteString(`<span class="vs-pill">` + html.EscapeString(k) + ` · ` + strconv.FormatInt(s.ByClass[k], 10) + `</span>`)
 			}
-			b.WriteString(`</div><p style="margin-top:.85rem"><a class="btn btn--sm" href="/os/api/shield/export" download="vayushield-signatures.json">Export signatures</a></p></div>`)
+			b.WriteString(`</div><p class="vs-export"><a class="btn btn--sm" href="/os/api/shield/export" download="vayushield-signatures.json">Export signatures</a></p></div>`)
 		}
 
 		if q, err := a.vayuShield.BotStore().ReviewQueue(r.Context(), 25); err == nil {
@@ -415,7 +419,7 @@ func (a *App) handleOSShield(w http.ResponseWriter, r *http.Request) {
 					id := strconv.FormatInt(sg.ID, 10)
 					// HTMX: on a 2xx the row is deleted; CSRF header is added by the
 					// shell's htmx:configRequest hook.
-					b.WriteString(`<tr><td class="mono text-sm">` + html.EscapeString(fp) + `…</td><td>` + html.EscapeString(sg.UserAgentPattern) + `</td><td>` + strconv.FormatInt(sg.RequestCount, 10) + `</td><td>` + ftoa2(sg.Confidence) + `</td><td style="white-space:nowrap">` +
+					b.WriteString(`<tr><td class="font-mono text-sm">` + html.EscapeString(fp) + `…</td><td>` + html.EscapeString(sg.UserAgentPattern) + `</td><td>` + strconv.FormatInt(sg.RequestCount, 10) + `</td><td>` + ftoa2(sg.Confidence) + `</td><td class="vs-actions">` +
 						`<button class="btn btn--sm btn--danger" hx-post="/os/api/shield/verify" hx-vals='{"id":"` + id + `","classification":"bad_bot"}' hx-target="closest tr" hx-swap="delete">Confirm bot</button> ` +
 						`<button class="btn btn--sm" hx-post="/os/api/shield/dismiss" hx-vals='{"id":"` + id + `"}' hx-target="closest tr" hx-swap="delete">Dismiss</button>` +
 						`</td></tr>`)
@@ -466,6 +470,7 @@ func (a *App) handleOSShield(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	b.WriteString(`</div>`) // .vs-page
 	writeOSHTML(w, adminOSLayout(nonce, "Bot Shield & Analytics", "shield", cfg, htmpl.HTML(b.String())))
 }
 
@@ -578,47 +583,6 @@ func (a *App) handleOSShieldSettings(w http.ResponseWriter, r *http.Request) {
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────
-
-// shieldPanelCSS styles the Bot Shield console: real toggle switches, feature
-// rows with progressive disclosure (advanced fields reveal via a pure-CSS :has()
-// rule only when a feature is switched on), stat cards and a status hero. There
-// is no custom JavaScript — actions use HTMX (see the review-queue buttons and
-// the settings form), and disclosure is CSS-only.
-const shieldPanelCSS = `
-.vs-hero{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:1rem}
-.vs-title{display:flex;align-items:center;gap:.6rem;font-size:1.1rem;font-weight:600}
-.vs-dot{width:11px;height:11px;border-radius:50%;background:#64748b;flex:none}
-.vs-dot.on{background:#22c55e;box-shadow:0 0 0 4px rgba(34,197,94,.15)}
-.vs-dot.attack{background:#f43f5e;box-shadow:0 0 0 4px rgba(244,63,94,.18)}
-.vs-metrics{display:flex;gap:1.75rem;flex-wrap:wrap}
-.vs-metric .n{font-size:1.5rem;font-weight:700;line-height:1}
-.vs-metric .l{font-size:.68rem;letter-spacing:.05em;text-transform:uppercase;color:#94a3b8;margin-top:.3rem}
-.vs-feat{border-top:1px solid rgba(148,163,184,.12)}
-.vs-feat:first-of-type{border-top:0}
-.vs-row{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:.9rem 0}
-.vs-row-title{font-weight:600}
-.vs-row-desc{color:#94a3b8;font-size:.85rem;margin-top:.15rem;max-width:64ch}
-.vs-switch{position:relative;display:inline-block;width:46px;height:26px;flex:none}
-.vs-switch input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer;z-index:1}
-.vs-slider{position:absolute;inset:0;background:#334155;border-radius:999px;transition:.18s}
-.vs-slider::before{content:"";position:absolute;height:20px;width:20px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.18s}
-.vs-switch input:checked+.vs-slider{background:#14b8a6}
-.vs-switch input:checked+.vs-slider::before{transform:translateX(20px)}
-.vs-adv{display:none;flex-wrap:wrap;gap:1rem;padding:.85rem 1rem;margin:0 0 .9rem;background:rgba(148,163,184,.06);border-radius:10px}
-.vs-feat:has(input[data-master]:checked) .vs-adv{display:flex}
-.vs-field{display:flex;flex-direction:column;gap:.3rem}
-.vs-field label{font-size:.7rem;letter-spacing:.03em;text-transform:uppercase;color:#94a3b8}
-.vs-field input[type=number]{width:8rem;background:#0b0f14;border:1px solid rgba(148,163,184,.25);color:#e5e7eb;border-radius:8px;padding:.45rem .6rem}
-.vs-field--tog{flex-direction:row;align-items:center;gap:.6rem}
-.vs-field--tog label{text-transform:none;font-size:.9rem;color:#e5e7eb}
-.vs-save{position:sticky;bottom:0;display:flex;align-items:center;gap:1rem;padding:.9rem 0;margin-top:.5rem}
-.vs-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.75rem}
-.vs-stat{background:rgba(148,163,184,.06);border:1px solid rgba(148,163,184,.12);border-radius:12px;padding:.9rem 1rem}
-.vs-stat .n{font-size:1.7rem;font-weight:700;line-height:1}
-.vs-stat .l{font-size:.68rem;letter-spacing:.05em;text-transform:uppercase;color:#94a3b8;margin-top:.4rem}
-.vs-pills{display:flex;flex-wrap:wrap;gap:.4rem;margin-top:.6rem}
-.vs-pill{font-size:.75rem;padding:.25rem .6rem;border-radius:999px;background:rgba(148,163,184,.12);color:#cbd5e1}
-`
 
 // vsToggle renders a real toggle switch. master=true marks it as the control
 // that reveals its sibling .vs-adv block via the CSS :has() rule.
