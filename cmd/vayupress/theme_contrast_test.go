@@ -102,6 +102,26 @@ func TestThemeEditorCoversSettingsAllowlist(t *testing.T) {
 		// The VayuOS console colour theme is set from the topbar theme toggle
 		// (POST /os/api/settings), not the legacy public-site theme editor.
 		"admin.theme": true,
+		// VayuShield DDoS/bot-defence toggles and thresholds are managed in the
+		// VayuShield console (/os/shield, POST /os/api/settings), not the legacy
+		// theme editor.
+		settings.KeyShieldEnabled:        true,
+		settings.KeyShieldPoW:            true,
+		settings.KeyShieldJS:             true,
+		settings.KeyShieldBlock:          true,
+		settings.KeyShieldTarpit:         true,
+		settings.KeyShieldRateLimit:      true,
+		settings.KeyShieldRateRPM:        true,
+		settings.KeyShieldBurst:          true,
+		settings.KeyShieldLoadShed:       true,
+		settings.KeyShieldMaxInFlight:    true,
+		settings.KeyShieldAutoBlock:      true,
+		settings.KeyShieldJailMinutes:    true,
+		settings.KeyShieldUnderAttack:    true,
+		settings.KeyShieldUnderAttackRPS: true,
+		// The VayuAnalytics engagement beacon is toggled in Tools & Plugins /
+		// the Analytics console, not the theme editor.
+		settings.KeyAnalyticsBeacon: true,
 	}
 	page := themeEditorPage(map[string]string{}, "NORMAL", "test-nonce", "")
 	for key := range settings.AllKeys {
