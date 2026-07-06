@@ -37,34 +37,69 @@ import (
 type vayuMailBridge struct{ app *App }
 
 func (b *vayuMailBridge) AuthUser(username, password string) (bool, error) {
+	ctx := context.Background()
 	domain := b.app.vayuMail.Config().Domain
 	addr := username
 	if !strings.Contains(addr, "@") {
 		addr = username + "@" + domain
 	}
-	// 1) CMS users (full VayuPress accounts).
-	if b.app.userStore != nil {
-		if _, err := b.app.userStore.Authenticate(context.Background(), addr, password); err == nil {
-			return true, nil
-		}
-	}
-	// 2) Admin-managed mail-only accounts (email + password).
-	if b.app.vayuMail != nil && b.app.vayuMail.Accounts() != nil {
-		if hash := b.app.vayuMail.Accounts().HashFor(context.Background(), addr); hash != "" {
-			if auth.VerifySecretArgon2id(password, hash) {
+	// Enterprise 2FA enforcement (the "app-password only" model): when 2FA is
+	// enabled for this identity — on the mailbox OR the CMS account — the plain
+	// login/mailbox password no longer authenticates IMAP/SMTP/POP3. These
+	// protocols cannot prompt for a second factor, so the enforcement point is
+	// the credential: the client must use a rotating setup-QR app password, and
+	// minting one already requires a fresh 2FA code (handleVayuOSSetupQR). This
+	// matches how Gmail/Outlook treat app passwords. Without 2FA, all paths work.
+	twoFA := b.twoFactorEnabled(ctx, addr)
+
+	if !twoFA {
+		// 1) CMS users (full VayuPress accounts).
+		if b.app.userStore != nil {
+			if _, err := b.app.userStore.Authenticate(ctx, addr, password); err == nil {
 				return true, nil
 			}
 		}
-		// 3) Device app passwords (rotating setup-QR credentials). Verified last
-		// so the main password stays the fast path; a mailbox has at most a
-		// handful of these.
-		for _, h := range b.app.vayuMail.Accounts().AppPasswordHashes(context.Background(), addr) {
+		// 2) Admin-managed mail-only accounts (email + password).
+		if b.app.vayuMail != nil && b.app.vayuMail.Accounts() != nil {
+			if hash := b.app.vayuMail.Accounts().HashFor(ctx, addr); hash != "" {
+				if auth.VerifySecretArgon2id(password, hash) {
+					return true, nil
+				}
+			}
+		}
+	}
+
+	// 3) Device app passwords (rotating setup-QR credentials). Always accepted —
+	// they are the required credential when 2FA is on, and a convenience device
+	// credential when it is off. Verified last so the main password stays the
+	// fast path; a mailbox has at most a handful of these.
+	if b.app.vayuMail != nil && b.app.vayuMail.Accounts() != nil {
+		for _, h := range b.app.vayuMail.Accounts().AppPasswordHashes(ctx, addr) {
 			if auth.VerifySecretArgon2id(password, h) {
 				return true, nil
 			}
 		}
 	}
 	return false, nil
+}
+
+// twoFactorEnabled reports whether 2FA is active for the identity behind addr,
+// checking both the VayuMail mailbox and the CMS account (a mailbox may be
+// either). Either one being enabled enforces the app-password-only policy.
+func (b *vayuMailBridge) twoFactorEnabled(ctx context.Context, addr string) bool {
+	if b.app.vayuMail != nil && b.app.vayuMail.Accounts() != nil {
+		if _, enabled := b.app.vayuMail.Accounts().TOTPStatus(ctx, addr); enabled {
+			return true
+		}
+	}
+	if b.app.userStore != nil {
+		if u, err := b.app.userStore.GetByEmail(ctx, addr); err == nil && u != nil {
+			if _, enabled, terr := b.app.userStore.TOTPStatus(ctx, u.ID); terr == nil && enabled {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (b *vayuMailBridge) GetUserByEmail(emailAddr string) (*vmail.MailUser, error) {

@@ -8,6 +8,28 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.4.0] — 2026-07-06
+
+### Security
+- **2FA is now enforced on mail-app connections (app-password-only model).** When
+  two-factor authentication is enabled for an identity — on the VayuMail mailbox
+  *or* the CMS account behind it — the plain login/mailbox password **no longer
+  authenticates IMAP, SMTP or POP3**. Those protocols cannot prompt for a second
+  factor, so the enforcement point is the credential: the client must connect
+  with a **rotating setup-QR app password**, and minting one already requires a
+  fresh 2FA code (shipped in v3.2.0). This is the model Gmail and Outlook use,
+  and it makes "connecting the app requires 2FA" actually true end-to-end. The
+  check is conservative and fail-open: an account **without** 2FA is completely
+  unaffected (its password works exactly as before), and any lookup error falls
+  back to allowing the password rather than locking anyone out.
+
+### Upgrade Notes
+- **If you use 2FA and connect a mail app with your mailbox password, it will
+  stop authenticating after this update — this is intended.** Reconnect the app
+  using a **Device setup QR / app password**: VayuOS → Connect → "Device setup
+  QR", enter your 2FA code, and scan (or paste the app password). Accounts
+  without 2FA need no change.
+
 ## [3.3.0] — 2026-07-06
 
 ### Added
