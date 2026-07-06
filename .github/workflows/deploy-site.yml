@@ -1,10 +1,17 @@
 name: deploy-site
 
-# Publishes the marketing/docs site (docs/site/) to the gh-pages branch, which
-# serves vayupress.com. Runs automatically whenever the site source changes on
-# main, and can be triggered by hand. Mirrors the repo's existing convention of
-# pushing with the built-in GITHUB_TOKEN (see screenshots.yml) rather than a
-# third-party deploy action — sovereign, no external dependencies.
+# Publishes the marketing/docs site (docs/site/) to GitHub Pages using the
+# official first-class Pages deployment (upload-pages-artifact + deploy-pages),
+# deploying straight to the `github-pages` environment. This replaces the older
+# gh-pages branch-push: that method's auto "pages build and deployment" deploy
+# stage was being rejected by the environment's branch-protection rule (only the
+# build stage passed → the red "2/3" on the bot commit), even though the site
+# kept serving. The Actions deploy runs as one clean, green job.
+#
+# ONE-TIME SETTING REQUIRED: Settings → Pages → Build and deployment → Source =
+# "GitHub Actions" (instead of "Deploy from a branch"). The custom domain
+# (vayupress.com) is carried through docs/site/CNAME in the uploaded artifact,
+# so it keeps working; leave it set under Settings → Pages → Custom domain.
 on:
   push:
     branches: [main]
@@ -15,84 +22,62 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+  pages: write
+  id-token: write
 
-# Never let two deploys race the gh-pages branch.
+# Allow one concurrent Pages deployment; do not cancel an in-progress production
+# deploy (GitHub Pages best practice).
 concurrency:
-  group: deploy-site
-  cancel-in-progress: true
+  group: pages
+  cancel-in-progress: false
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout main (full history for branch push)
+      - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Publish docs/site to gh-pages
-        env:
-          GIT_AUTHOR_NAME: "github-actions[bot]"
-          GIT_AUTHOR_EMAIL: "github-actions[bot]@users.noreply.github.com"
-          GIT_COMMITTER_NAME: "github-actions[bot]"
-          GIT_COMMITTER_EMAIL: "github-actions[bot]@users.noreply.github.com"
+      - name: Assemble site payload
         run: |
           set -euo pipefail
-
           SRC="docs/site"
           if [ ! -f "$SRC/index.html" ]; then
             echo "::error::$SRC/index.html not found — nothing to deploy"
             exit 1
           fi
-
-          # Stage the site payload outside the repo so a branch switch can't
-          # clobber it. Preserve .nojekyll and copy docs/screenshots/ NOW while
-          # we are still on main (after the branch switch the workspace reflects
-          # gh-pages and docs/screenshots/ no longer exists).
-          STAGE="$(mktemp -d)"
-          cp -r "$SRC"/. "$STAGE"/
+          rm -rf _site
+          mkdir -p _site
+          # Copy the site (includes CNAME so the custom domain is preserved).
+          cp -r "$SRC"/. _site/
           # README.md is source-only; it should not ship to the live site.
-          rm -f "$STAGE/README.md"
-          touch "$STAGE/.nojekyll"
-
-          # Copy all screenshots from main into stage BEFORE the branch switch.
-          mkdir -p "$STAGE/screenshots"
-          if [ -d "docs/screenshots" ]; then
-            cp docs/screenshots/*.png "$STAGE/screenshots/" 2>/dev/null || true
+          rm -f _site/README.md
+          # Disable Jekyll processing (serve files verbatim).
+          touch _site/.nojekyll
+          # Bundle the screenshots referenced by the site.
+          mkdir -p _site/screenshots
+          if [ -d docs/screenshots ]; then
+            cp docs/screenshots/*.png _site/screenshots/ 2>/dev/null || true
           fi
+          echo "Assembled _site:"
+          ls -la _site
 
-          SHA="$(git rev-parse --short HEAD)"
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
 
-          # Check out (or create) gh-pages.
-          git fetch origin gh-pages --depth=1 || true
-          if git show-ref --verify --quiet refs/remotes/origin/gh-pages; then
-            git checkout -B gh-pages origin/gh-pages
-          else
-            git checkout --orphan gh-pages
-            git rm -rf . >/dev/null 2>&1 || true
-          fi
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
 
-          # Carry forward any screenshots that exist only on gh-pages (legacy
-          # PNGs not yet regenerated into docs/screenshots/ on main). Already-
-          # staged files from docs/screenshots/ take precedence (newer).
-          if [ -d screenshots ]; then
-            for f in screenshots/*.png; do
-              [ -f "$STAGE/$f" ] || cp "$f" "$STAGE/$f"
-            done
-          fi
-
-          # Replace tracked content with the staged payload.
-          # Keep .git; remove everything else, then copy the staged site in.
-          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
-          cp -r "$STAGE"/. ./
-
-          git add -A
-          if git diff --cached --quiet; then
-            echo "No site changes to deploy."
-            exit 0
-          fi
-
-          git commit -m "Deploy site from main@${SHA}"
-          git push origin gh-pages
-          echo "Deployed docs/site -> gh-pages (main@${SHA})."
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
