@@ -30,7 +30,7 @@
   <script type="application/ld+json">
   {"@context":"https://schema.org","@type":"SoftwareApplication","name":"VayuPress",
    "applicationCategory":"DeveloperApplication","operatingSystem":"Linux",
-   "softwareVersion":"2.9.3","description":"A sovereign, single-VPS platform in one Go binary: a business website, a blog, and a private PGP mail server (VayuMail) with an official mobile app, plus cookieless analytics and one control panel (VayuOS). Zero telemetry.",
+   "softwareVersion":"3.8.0","description":"A sovereign, single-VPS platform in one Go binary: a business website, a blog, and a private PGP mail server (VayuMail) with an official mobile app, plus built-in bot protection (VayuShield), cookieless analytics and one control panel (VayuOS). Zero telemetry.",
    "url":"https://vayupress.com/","license":"https://www.apache.org/licenses/LICENSE-2.0",
    "offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},
    "author":{"@type":"Organization","name":"VayuPress","email":"hello@vayupress.com"}}
@@ -216,7 +216,7 @@
             <div x-show="t>=5" x-transition.opacity.duration.300ms class="text-emerald-400">✓ VayuMail · <span class="text-teal-300">mail.yourdomain.com</span> · DKIM + IMAP</div>
             <div x-show="t>=6" x-transition.opacity.duration.300ms class="text-emerald-400">✓ VayuPGP · Ed25519 keystore (AES-256 at rest)</div>
             <div x-show="t>=7" x-transition.opacity.duration.300ms class="text-emerald-400">✓ WKD published · scan QR to pair the app</div>
-            <div x-show="t>=8" x-transition.opacity.duration.300ms class="text-emerald-400">✓ VayuAnalytics · cookieless · no PII</div>
+            <div x-show="t>=8" x-transition.opacity.duration.300ms class="text-emerald-400">✓ VayuShield + VayuAnalytics · bot protection · cookieless</div>
             <div x-show="t>=9" x-transition.opacity.duration.300ms class="text-saffron-300 font-medium pt-2">
               VayuOS online · your whole stack is live <span class="cursor" aria-hidden="true">▊</span>
             </div>

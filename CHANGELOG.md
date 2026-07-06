@@ -8,6 +8,45 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.8.0] — 2026-07-06
+
+### Changed
+- **Redesigned the Bot Shield & Analytics console.** The VayuOS security &
+  analytics panel is rebuilt from a dense wall of raw checkboxes into a clean,
+  Cloudflare-style console: a status hero with a live state dot
+  (Off / Protected / Under attack) and live metrics (visitors now, requests/sec,
+  in-flight, blocked IPs); real toggle switches, each a titled row with a
+  one-line description; and the advanced numeric knobs (thresholds, requests/min,
+  jail minutes, …) tucked into a sibling panel that reveals only when its feature
+  is switched on. Controls are grouped into Protection, Availability & anti-DDoS,
+  and Analytics, with a collapsed section for server-level Tier 2/3 hardening.
+- **No custom JavaScript in the console.** All interactivity is now HTMX +
+  CSS-only progressive disclosure (`:has()`): the settings form posts via
+  `hx-post` and the server replies `HX-Refresh` so the panel re-renders in its
+  applied state, and the signature review-queue Confirm/Dismiss actions post via
+  `hx-post` with `hx-swap="delete"`. The inline `fetch` script was removed and
+  the shield settings/verify/dismiss handlers now parse url-encoded form values.
+
+### Fixed
+- **Engagement beacon page-enter fetch.** Added a `.catch` so a transient
+  network/HTTP failure on the analytics page-enter beacon can never surface as an
+  unhandled promise rejection (which would appear as a browser console error and
+  could lower a Lighthouse best-practices score). The endpoint returns 204
+  normally; this is pure defense-in-depth.
+
+### CI / Build
+- **GitHub Pages now deploys via the official Actions Pages flow.** The
+  marketing/docs site publishes with `actions/upload-pages-artifact` +
+  `actions/deploy-pages` straight to the `github-pages` environment, replacing
+  the older `gh-pages` branch push whose auto "pages build and deployment" stage
+  was rejected by the environment's branch-protection rule. Requires the one-time
+  repository setting **Settings → Pages → Source = "GitHub Actions"**. The
+  `vayupress.com` custom domain is carried through `docs/site/CNAME` in the
+  uploaded artifact and keeps working.
+- **Theme-editor settings-coverage test** now allowlists the VayuShield `shield.*`
+  and `analytics.beacon` console keys (managed in `/os/shield`, not the theme
+  editor), and `main.go`'s `Version` is kept in lockstep with `.release-version`.
+
 ## [3.7.1] — 2026-07-06
 
 ### Fixed
