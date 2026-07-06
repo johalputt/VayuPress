@@ -16,13 +16,14 @@
 package vayushield
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
-	"html"
+	"html/template"
 	"net"
 	"net/http"
 	"strings"
@@ -758,8 +759,12 @@ func uaFamily(ua string) string {
 
 // ── Static challenge/block HTML ───────────────────────────────────────────────
 
-func interstitialHTML(challengeJSON string) string {
-	return `<!doctype html><html lang="en"><head><meta charset="utf-8">
+// interstitialTmpl renders the challenge interstitial. Using html/template
+// (context-aware auto-escaping) rather than manual string quoting means the
+// signed challenge JSON is escaped correctly for the data-attribute context —
+// no possibility of breaking out of the attribute regardless of its contents.
+var interstitialTmpl = template.Must(template.New("vayushield-interstitial").Parse(
+	`<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Verifying your browser…</title>
 <meta name="robots" content="noindex">
@@ -768,11 +773,18 @@ func interstitialHTML(challengeJSON string) string {
 <h1 style="font-size:1.25rem">Verifying your browser…</h1>
 <p style="color:#94a3b8">This automatic check protects the site from bots. It takes a moment and requires no interaction.</p>
 <noscript><p style="color:#f59e0b">JavaScript is required to complete this check.</p></noscript>
-<div id="vayushield-pow" data-challenge='` + html.EscapeString(challengeJSON) + `'></div>
+<div id="vayushield-pow" data-challenge="{{.Challenge}}"></div>
 <p id="vayushield-status" style="color:#64748b;font-size:.85rem">Working…</p>
 </main>
 <script src="/__vayushield/challenge.js"></script>
-</body></html>`
+</body></html>`))
+
+func interstitialHTML(challengeJSON string) string {
+	var buf bytes.Buffer
+	if err := interstitialTmpl.Execute(&buf, struct{ Challenge string }{Challenge: challengeJSON}); err != nil {
+		return ""
+	}
+	return buf.String()
 }
 
 const blockHTML = `<!doctype html><html lang="en"><head><meta charset="utf-8">

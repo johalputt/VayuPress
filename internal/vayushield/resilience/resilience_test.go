@@ -83,7 +83,9 @@ func TestLimiterLiveRateChange(t *testing.T) {
 func TestInFlightLoadShed(t *testing.T) {
 	var f InFlight
 	f.SetMax(2)
-	if !f.Acquire() || !f.Acquire() {
+	first := f.Acquire()
+	second := f.Acquire()
+	if !first || !second {
 		t.Fatal("first two acquires should succeed")
 	}
 	if f.Acquire() {
