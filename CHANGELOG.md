@@ -8,6 +8,29 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.3.0] — 2026-07-06
+
+### Added
+- **Continuous, polite cache warmer — drives the render cache toward a 100% hit
+  ratio.** The public render cache is populated lazily, so the first visitor to
+  any new or edited page pays the render cost and every page has a cold window.
+  A new background warmer (`startCacheWarmer`) closes that window: it walks
+  published pages and, for any whose cache entry is **missing or stale**, drives
+  the *real* render handler once to prime the file — so the next real visitor is
+  a cache hit. It is deliberately **incremental** (only missing/stale entries;
+  never a full rebuild — a page already cached is skipped, and after an
+  invalidation entries are re-warmed a few at a time), **polite** (one page at a
+  time with a pause between each, on the read pool, off the hot path; a
+  steady-state pass stops early once it meets a run of already-fresh pages, so it
+  does almost nothing), and **invisible** (warmer requests record no analytics
+  and do not count toward the hit/miss ratio, so the numbers reflect real
+  visitors). Unlike the existing boot-time warm it runs **continuously** (default
+  every 5 min), covers the **homepage** as well as posts, has **no 1000-article
+  cap**, and produces cache files identical to a real request (it goes through
+  the handler, not a separate render path). Tunable via `VAYUPRESS_CACHE_WARM=0`
+  (disable), `VAYUPRESS_CACHE_WARM_DELAY_MS` (per-page pause, default 250ms), and
+  `VAYUPRESS_CACHE_WARM_INTERVAL` (re-scan period, default 5m, min 1m).
+
 ## [3.2.0] — 2026-07-05
 
 ### Security

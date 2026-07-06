@@ -78,7 +78,7 @@ import (
 // -ldflags "-X main.Version=<.release-version>", and scripts/update-vayupress.sh
 // reads .release-version too — keep this in sync with .release-version so an
 // un-stamped `go build` still reports an honest version.
-var Version = "3.2.0"
+var Version = "3.3.0"
 var bootTime = time.Now()
 
 // Immutable package-level values (compiled once, never mutated).
@@ -706,6 +706,7 @@ func main() {
 	a.startMetricsSnapshotCollector()
 	a.startSearchReconciler(queue.DoneCh)
 	a.startScheduler(queue.DoneCh)
+	a.startCacheWarmer(queue.DoneCh)
 
 	// Wire queue injections.
 	queue.RenderFn = render.RenderArticle
