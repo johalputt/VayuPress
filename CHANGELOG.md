@@ -8,6 +8,23 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.9.3] — 2026-07-07
+
+Final read-routing pass: the remaining public and background reads no longer use
+the single SQLite writer connection.
+
+### Changed
+- **Public API and background reads moved to the WAL read pool.** The public
+  comment API (article-exists checks, approved-comment listing), the article
+  table-of-contents endpoint, the health `stats`/`metrics` counters, the
+  comment-approval notification lookup, and the background search-reindex and
+  social-share reads all read via the single writer connection. They now use the
+  read pool (`dbpkg.Reader()`), so public traffic and post-publish background
+  work no longer contend with writes on the one writer. Writes stay on the
+  writer; WAL preserves read-your-writes. (Maintenance paths that must observe
+  the primary — e.g. `PRAGMA integrity_check` before a vacuum — deliberately
+  remain on the writer.)
+
 ## [3.9.2] — 2026-07-07
 
 Completes the VayuOS enterprise-grade hardening: VayuShield's per-request writes

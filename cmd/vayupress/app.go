@@ -240,7 +240,7 @@ func (a *App) shareToSocial(slug string) {
 	}
 	go func() {
 		var title string
-		if err := dbpkg.DB.QueryRow(`SELECT title FROM articles WHERE slug=?`, slug).Scan(&title); err != nil {
+		if err := dbpkg.Reader().QueryRow(`SELECT title FROM articles WHERE slug=?`, slug).Scan(&title); err != nil {
 			return
 		}
 		link := "https://" + config.Cfg.Domain + "/" + slug
@@ -391,7 +391,7 @@ func (a *App) registerEventHandlers() {
 		go func() {
 			var art dbpkg.Article
 			var tagsStr string
-			if dbpkg.DB.QueryRow(`SELECT id,title,slug,content,tags,created_at,updated_at FROM articles WHERE slug=?`, e.Slug).
+			if dbpkg.Reader().QueryRow(`SELECT id,title,slug,content,tags,created_at,updated_at FROM articles WHERE slug=?`, e.Slug).
 				Scan(&art.ID, &art.Title, &art.Slug, &art.Content, &tagsStr, &art.CreatedAt, &art.UpdatedAt) == nil {
 				art.Tags = api.SplitTags(tagsStr)
 				// Best-effort: search drift is healed by the periodic reconciler
@@ -416,7 +416,7 @@ func (a *App) registerEventHandlers() {
 		go func() {
 			var art dbpkg.Article
 			var tagsStr string
-			if dbpkg.DB.QueryRow(`SELECT id,title,slug,content,tags,created_at,updated_at FROM articles WHERE slug=?`, e.Slug).
+			if dbpkg.Reader().QueryRow(`SELECT id,title,slug,content,tags,created_at,updated_at FROM articles WHERE slug=?`, e.Slug).
 				Scan(&art.ID, &art.Title, &art.Slug, &art.Content, &tagsStr, &art.CreatedAt, &art.UpdatedAt) == nil {
 				art.Tags = api.SplitTags(tagsStr)
 				// Best-effort: search drift is healed by the periodic reconciler

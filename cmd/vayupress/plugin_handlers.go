@@ -130,7 +130,7 @@ func (a *App) handleCommentSubmit(w http.ResponseWriter, r *http.Request) {
 	// Resolve article ID from slug. Drafts are not public, so commenting on one
 	// returns the same not-found as a non-existent slug (no existence leak).
 	var articleID string
-	if err := dbpkg.DB.QueryRowContext(r.Context(), `SELECT id FROM articles WHERE slug=? AND COALESCE(status,'published')='published'`, slug).Scan(&articleID); err != nil {
+	if err := dbpkg.Reader().QueryRowContext(r.Context(), `SELECT id FROM articles WHERE slug=? AND COALESCE(status,'published')='published'`, slug).Scan(&articleID); err != nil {
 		writeAPIError(w, r, http.StatusNotFound, "article-not-found", "No article with that slug", "")
 		return
 	}
@@ -168,7 +168,7 @@ func (a *App) handleCommentList(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	// Drafts are not public — listing comments for one returns not-found.
 	var articleID string
-	if err := dbpkg.DB.QueryRowContext(r.Context(), `SELECT id FROM articles WHERE slug=? AND COALESCE(status,'published')='published'`, slug).Scan(&articleID); err != nil {
+	if err := dbpkg.Reader().QueryRowContext(r.Context(), `SELECT id FROM articles WHERE slug=? AND COALESCE(status,'published')='published'`, slug).Scan(&articleID); err != nil {
 		writeAPIError(w, r, http.StatusNotFound, "article-not-found", "No article with that slug", "")
 		return
 	}
@@ -237,7 +237,7 @@ func (a *App) handleVersionList(w http.ResponseWriter, r *http.Request) {
 	}
 	slug := chi.URLParam(r, "slug")
 	var articleID string
-	if err := dbpkg.DB.QueryRowContext(r.Context(), `SELECT id FROM articles WHERE slug=?`, slug).Scan(&articleID); err != nil {
+	if err := dbpkg.Reader().QueryRowContext(r.Context(), `SELECT id FROM articles WHERE slug=?`, slug).Scan(&articleID); err != nil {
 		writeAPIError(w, r, http.StatusNotFound, "article-not-found", "No article with that slug", "")
 		return
 	}
@@ -707,7 +707,7 @@ func (a *App) handleRedirectDelete(w http.ResponseWriter, r *http.Request) {
 func (a *App) handleArticleTOC(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	var content string
-	if err := dbpkg.DB.QueryRowContext(r.Context(), `SELECT content FROM articles WHERE slug=?`, slug).Scan(&content); err != nil {
+	if err := dbpkg.Reader().QueryRowContext(r.Context(), `SELECT content FROM articles WHERE slug=?`, slug).Scan(&content); err != nil {
 		writeAPIError(w, r, http.StatusNotFound, "not-found", "Article not found", "")
 		return
 	}
@@ -723,7 +723,7 @@ func (a *App) notifyCommentApproved(ctx context.Context, commentID string) {
 		return
 	}
 	var author, addr, articleSlug string
-	err := dbpkg.DB.QueryRowContext(ctx,
+	err := dbpkg.Reader().QueryRowContext(ctx,
 		`SELECT c.author, c.email, a.slug
 		   FROM comments c
 		   JOIN articles a ON a.id = c.article_id
