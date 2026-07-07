@@ -2,6 +2,8 @@ package search
 
 import (
 	"context"
+	"encoding/json"
+	"strconv"
 	"testing"
 )
 
@@ -66,5 +68,62 @@ func TestSnapshotVersionSensitiveToContentEdits(t *testing.T) {
 	// Identical content must produce an identical version (deterministic ETag).
 	if v := versionAfter("Original title", "original body text", []string{"alpha"}); v != base {
 		t.Errorf("identical content must yield a stable version: %q != %q", v, base)
+	}
+}
+
+// TestSnapshotCapsToRecentWindow locks in the L2b change: the client index ships
+// at most clientSnapshotMax of the newest posts and reports the true total, while
+// the server-side index still holds every post so /search covers the full
+// archive. This is the invariant behind the modal's "search the full archive"
+// escalation.
+func TestSnapshotCapsToRecentWindow(t *testing.T) {
+	SetEnabled(true)
+	s := NewService(nil)
+
+	n := clientSnapshotMax + 25
+	for i := 0; i < n; i++ {
+		id := strconv.Itoa(i)
+		// createdAt = i, so a higher index is a newer post. "u<id>" is a unique
+		// body token so a later search can target one specific (old) post.
+		if err := s.Index(context.Background(), id, "Post "+id, "post-"+id, "body u"+id, nil, int64(i)); err != nil {
+			t.Fatalf("Index(%s): %v", id, err)
+		}
+	}
+
+	payload, _ := s.Snapshot()
+	var idx clientIndex
+	if err := json.Unmarshal(payload, &idx); err != nil {
+		t.Fatalf("snapshot is not valid JSON: %v", err)
+	}
+	if idx.N != n {
+		t.Errorf("reported total N = %d, want %d", idx.N, n)
+	}
+	if len(idx.Posts) != clientSnapshotMax {
+		t.Fatalf("client index size = %d, want cap %d", len(idx.Posts), clientSnapshotMax)
+	}
+	// The window must be the NEWEST posts, sorted newest-first.
+	if idx.Posts[0].U != "post-"+strconv.Itoa(n-1) {
+		t.Errorf("newest post should be first in the client index, got %q", idx.Posts[0].U)
+	}
+	// The oldest posts must be excluded from the (capped) client index...
+	for _, p := range idx.Posts {
+		if p.U == "post-0" {
+			t.Error("oldest post must not appear in the capped client index")
+		}
+	}
+	// ...but the SERVER index must still hold every post so /search covers the
+	// full archive.
+	if c, _ := s.DocCount(context.Background()); c != n {
+		t.Errorf("server index DocCount = %d, want all %d (full-archive coverage)", c, n)
+	}
+	res, _ := s.Search(context.Background(), "u0", 5)
+	found := false
+	for _, h := range res.Hits {
+		if h.Slug == "post-0" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("server search must still find an old post that is excluded from the capped client index")
 	}
 }
