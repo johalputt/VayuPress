@@ -116,14 +116,25 @@ func (s *Store) TrendingArticlesByViews(ctx context.Context, days, limit int) ([
 		limit = 10
 	}
 	from := time.Now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
+	// Aggregate pageviews per url_path FIRST, then join to articles. Each article
+	// maps to exactly one url_path ("/<slug>", slug being UNIQUE), so grouping by
+	// url_path is identical to grouping by article — but this shape lets the hot
+	// inner scan be served index-only by idx_apv_trending (event_type, created_at,
+	// url_path) and probes the articles slug index once per distinct path instead
+	// of once per pageview row. On a large event log under a cold cache this is
+	// the difference between an index range scan and a full-table scan with a
+	// row fetch per view.
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT a.slug, a.title, COALESCE(a.feature_image,''), COUNT(1) AS v
-		FROM analytics_pageviews d
-		JOIN articles a ON a.slug = SUBSTR(d.url_path, 2)
-		WHERE d.created_at >= ? AND d.event_type = 1 AND d.url_path LIKE '/%'
-		  AND a.status = 'published' AND a.is_page = 0
-		GROUP BY a.slug, a.title, a.feature_image
-		ORDER BY v DESC, a.created_at DESC
+		SELECT a.slug, a.title, COALESCE(a.feature_image,''), pv.v
+		FROM (
+			SELECT url_path, COUNT(1) AS v
+			FROM analytics_pageviews
+			WHERE event_type = 1 AND created_at >= ? AND url_path LIKE '/%'
+			GROUP BY url_path
+		) pv
+		JOIN articles a ON a.slug = SUBSTR(pv.url_path, 2)
+		WHERE a.status = 'published' AND a.is_page = 0
+		ORDER BY pv.v DESC, a.created_at DESC
 		LIMIT ?`, from, limit)
 	if err != nil {
 		return nil, err
