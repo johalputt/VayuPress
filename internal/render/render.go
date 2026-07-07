@@ -1413,6 +1413,7 @@ func ChromaCSS() string {
 }
 
 var articleTmpl = template.Must(template.New("article").Funcs(template.FuncMap{
+	"blogBase": BlogBase,
 	"trunc": func(s string, n int) string {
 		s = regexp.MustCompile(`<[^>]+>`).ReplaceAllString(s, "")
 		s = strings.TrimSpace(s)
@@ -1482,7 +1483,7 @@ var articleTmpl = template.Must(template.New("article").Funcs(template.FuncMap{
 <a href="#main-content" class="skip-link">Skip to main content</a>
 <div class="container">
 <nav class="vayu-nav" aria-label="Primary">
-  <a href="/" class="vayu-nav-brand"><img src="/static/favicon-light.png" alt="" width="24" height="24">{{if .SiteName}}{{.SiteName}}{{else}}VayuPress{{end}}</a>
+  <a href="{{blogBase}}" class="vayu-nav-brand"><img src="/static/favicon-light.png" alt="" width="24" height="24">{{if .SiteName}}{{.SiteName}}{{else}}VayuPress{{end}}</a>
   <div class="vayu-nav-links">
     {{.NavLinks}}
     {{if .ShowSearch}}<form class="vayu-search" method="get" action="/search" role="search" data-vayu-search>
@@ -1569,9 +1570,48 @@ type homePage struct {
 	SearchModalJSLink template.HTML
 }
 
+// blogBasePath is the URL prefix at which the blog is served. It is "/" in the
+// historic layouts (blog at the root, or blog on its own subdomain) and "/blog"
+// in the "business_subpath" site mode, where the business site owns "/" and the
+// blog index lives at /blog with posts still at /slug. Set once at boot and on a
+// Website-settings save; read from templates via the blogBase func and from
+// RenderHome for canonical/pagination URLs.
+var blogBasePath atomic.Value // string
+
+// SetBlogBase sets the blog base path ("/" or "/blog"). Empty normalises to "/".
+func SetBlogBase(p string) {
+	p = strings.TrimSpace(p)
+	if p == "" {
+		p = "/"
+	}
+	blogBasePath.Store(p)
+}
+
+// BlogBase returns the configured blog base path, defaulting to "/".
+func BlogBase() string {
+	if v, ok := blogBasePath.Load().(string); ok && v != "" {
+		return v
+	}
+	return "/"
+}
+
+// blogPageURL builds the URL for page n of the blog index under the active base:
+// page 1 is the base itself ("/" or "/blog"); deeper pages append /page/N.
+func blogPageURL(n int) string {
+	base := BlogBase()
+	if n <= 1 {
+		return base
+	}
+	if base == "/" {
+		return "/page/" + strconv.Itoa(n)
+	}
+	return base + "/page/" + strconv.Itoa(n)
+}
+
 var homeFuncs = template.FuncMap{
 	"humanDate": func(t time.Time) string { return t.Format("2 January 2006") },
 	"shortDate": func(t time.Time) string { return t.UTC().Format("2006-01-02") },
+	"blogBase":  BlogBase,
 }
 
 var homeTmpl = template.Must(template.New("home").Funcs(homeFuncs).Parse(`<!DOCTYPE html><html lang="en" data-theme="dark"><head>
@@ -1597,7 +1637,7 @@ var homeTmpl = template.Must(template.New("home").Funcs(homeFuncs).Parse(`<!DOCT
 <a href="#main-content" class="skip-link">Skip to main content</a>
 <div class="container">
 <nav class="vayu-nav" aria-label="Primary">
-  <a href="/" class="vayu-nav-brand"><img src="/static/favicon-light.png" alt="" width="24" height="24">{{if .SiteName}}{{.SiteName}}{{else}}VayuPress{{end}}</a>
+  <a href="{{blogBase}}" class="vayu-nav-brand"><img src="/static/favicon-light.png" alt="" width="24" height="24">{{if .SiteName}}{{.SiteName}}{{else}}VayuPress{{end}}</a>
   <div class="vayu-nav-links">
     {{.NavLinks}}
     {{if .ShowSearch}}<form class="vayu-search" method="get" action="/search" role="search" data-vayu-search>
@@ -1634,7 +1674,7 @@ var homeTmpl = template.Must(template.New("home").Funcs(homeFuncs).Parse(`<!DOCT
 </main>
 </div>{{.PostCardMediaJSLink}}{{.TrendingJSLink}}{{if .ShowSearch}}{{.SearchModalJSLink}}{{end}}</body></html>`))
 
-var notFoundTmpl = template.Must(template.New("404").Parse(`<!DOCTYPE html><html lang="en" data-theme="dark"><head>
+var notFoundTmpl = template.Must(template.New("404").Funcs(homeFuncs).Parse(`<!DOCTYPE html><html lang="en" data-theme="dark"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>404 — {{.Domain}}</title><meta name="robots" content="noindex">
 <meta name="generator" content="VayuPress {{.Version}}">
@@ -1647,14 +1687,14 @@ var notFoundTmpl = template.Must(template.New("404").Parse(`<!DOCTYPE html><html
 </head><body>
 <div class="container">
 <nav class="vayu-nav" aria-label="Primary">
-  <a href="/" class="vayu-nav-brand"><img src="/static/favicon-light.png" alt="" width="24" height="24">{{if .SiteName}}{{.SiteName}}{{else}}VayuPress{{end}}</a>
+  <a href="{{blogBase}}" class="vayu-nav-brand"><img src="/static/favicon-light.png" alt="" width="24" height="24">{{if .SiteName}}{{.SiteName}}{{else}}VayuPress{{end}}</a>
   <div class="vayu-nav-links">{{.NavLinks}}<button type="button" id="vayu-theme-toggle" class="vayu-theme-toggle" aria-label="Toggle theme">☾</button></div>
 </nav>
 <main id="main-content"><div class="vayu-err">
   <div class="vayu-err-code">404</div>
   <div class="vayu-err-msg">This route resolves to nothing.</div>
   <div class="vayu-err-sub">The requested resource is not in the published set.</div>
-  <a href="/">← Return to index</a>
+  <a href="{{blogBase}}">← Return to index</a>
 </div></main>
 </div></body></html>`))
 
@@ -1671,21 +1711,17 @@ func RenderHome(domain, version string, articles []HomeArticle, totalCount, page
 	if totalPages < 1 {
 		totalPages = 1
 	}
-	canonical := "/"
-	if page > 1 {
-		canonical = "/page/" + strconv.Itoa(page)
-	}
+	// Canonical + pager URLs are built under the active blog base so they are
+	// correct whether the blog lives at "/" (blog / subdomain modes) or at
+	// "/blog" (business_subpath mode). Page 1 lives at the base itself.
+	canonical := blogPageURL(page)
 	hasPrev, hasNext := page > 1, page < totalPages
 	prevURL, nextURL := "", ""
 	if hasPrev {
-		if page-1 <= 1 {
-			prevURL = "/" // page 1 lives at the site root, not /page/1
-		} else {
-			prevURL = "/page/" + strconv.Itoa(page-1)
-		}
+		prevURL = blogPageURL(page - 1)
 	}
 	if hasNext {
-		nextURL = "/page/" + strconv.Itoa(page+1)
+		nextURL = blogPageURL(page + 1)
 	}
 	err := homeTmpl.Execute(&buf, homePage{
 		Domain:              domain,
@@ -1759,7 +1795,7 @@ var searchTmpl = template.Must(template.New("search").Funcs(homeFuncs).Parse(`<!
 <a href="#main-content" class="skip-link">Skip to main content</a>
 <div class="container">
 <nav class="vayu-nav" aria-label="Primary">
-  <a href="/" class="vayu-nav-brand"><img src="/static/favicon-light.png" alt="" width="24" height="24">{{if .SiteName}}{{.SiteName}}{{else}}VayuPress{{end}}</a>
+  <a href="{{blogBase}}" class="vayu-nav-brand"><img src="/static/favicon-light.png" alt="" width="24" height="24">{{if .SiteName}}{{.SiteName}}{{else}}VayuPress{{end}}</a>
   <div class="vayu-nav-links">
     {{.NavLinks}}
     <form class="vayu-search" method="get" action="/search" role="search">

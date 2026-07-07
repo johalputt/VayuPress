@@ -696,6 +696,9 @@ func main() {
 		search.SetEnabled(searchOn)
 		// The public search box/modal visibility tracks the same toggle.
 		render.SetSearchEnabled(searchOn)
+		// Blog base path: "/blog" in business_subpath mode (website at "/"),
+		// "/" otherwise. Governs blog canonical/pagination/nav URLs.
+		render.SetBlogBase(blogBaseForMode(strings.TrimSpace(a.siteSettings.Get(context.Background(), settings.KeySiteMode))))
 	}
 
 	// Tier 4 services: GraphQL, live collaboration stream, email templates, i18n.
