@@ -314,12 +314,21 @@ func (a *App) renderHomeAt(w http.ResponseWriter, r *http.Request, page int) {
 	warm := isCacheWarm(r)
 	if useCache {
 		cachePath := filepath.Join(config.Cfg.CacheDir, "home", "index.html")
-		if fi, err := os.Stat(cachePath); err == nil && render.CacheEntryFresh(fi) {
-			if !warm {
-				atomic.AddInt64(&metrics.MetricCacheHits, 1)
+		if fi, err := os.Stat(cachePath); err == nil {
+			fresh := render.CacheEntryFresh(fi)
+			// Stale-while-revalidate (see handleArticlePage): serve the stale
+			// homepage immediately and refresh it off the request path so a
+			// global invalidation never blocks the busiest page on a re-render.
+			if fresh || !warm {
+				if !warm {
+					atomic.AddInt64(&metrics.MetricCacheHits, 1)
+					if !fresh {
+						swrRefresh("home", func() { a.warmHome(context.Background()) })
+					}
+				}
+				http.ServeFile(w, r, cachePath)
+				return
 			}
-			http.ServeFile(w, r, cachePath)
-			return
 		}
 		if !warm {
 			atomic.AddInt64(&metrics.MetricCacheMisses, 1)
@@ -481,17 +490,31 @@ func (a *App) handleArticlePage(w http.ResponseWriter, r *http.Request) {
 
 	cachePath := filepath.Join(config.Cfg.CacheDir, "posts", slug+".html")
 	if !gated && (!isAdmin || r.URL.Query().Get("layout") == "") {
-		if fi, err := os.Stat(cachePath); err == nil && render.CacheEntryFresh(fi) { //nosec G703 -- slug validated by api.IsValidSlug; path confined to CacheDir/posts
-			if !warm {
-				atomic.AddInt64(&metrics.MetricCacheHits, 1)
+		if fi, err := os.Stat(cachePath); err == nil { //nosec G703 -- slug validated by api.IsValidSlug; path confined to CacheDir/posts
+			fresh := render.CacheEntryFresh(fi)
+			// Stale-while-revalidate: a real visitor never blocks on a stale page.
+			// A fresh entry is served as-is; a stale-but-present entry is served
+			// immediately AND scheduled for a bounded, single-flighted background
+			// re-render, so a site-wide invalidation (a deploy that changes the
+			// renderer fingerprint, or a theme/identity save) can never trigger a
+			// synchronous re-render herd. The internal cache-warm probe is the one
+			// caller that must actually re-render a stale entry, so it falls
+			// through to the synchronous render path below.
+			if fresh || !warm {
+				if !warm {
+					atomic.AddInt64(&metrics.MetricCacheHits, 1)
+					if !fresh {
+						swrRefresh("post:"+slug, func() { a.warmArticle(context.Background(), slug) })
+					}
+				}
+				// Re-apply the per-page video-embed CSP for cached pages that carry
+				// a facade (recorded in a sidecar at render time) before serving.
+				if origins := render.CacheReadCSPSidecar(slug); len(origins) > 0 {
+					setEmbedCSP(w, r, origins)
+				}
+				http.ServeFile(w, r, cachePath) //nosec G703 -- slug validated by api.IsValidSlug; path confined to CacheDir/posts
+				return
 			}
-			// Re-apply the per-page video-embed CSP for cached pages that carry a
-			// facade (recorded in a sidecar at render time) before serving.
-			if origins := render.CacheReadCSPSidecar(slug); len(origins) > 0 {
-				setEmbedCSP(w, r, origins)
-			}
-			http.ServeFile(w, r, cachePath) //nosec G703 -- slug validated by api.IsValidSlug; path confined to CacheDir/posts
-			return
 		}
 	}
 	if !warm {
@@ -499,7 +522,10 @@ func (a *App) handleArticlePage(w http.ResponseWriter, r *http.Request) {
 	}
 	var art dbpkg.Article
 	var tagsStr string
-	if err := dbpkg.DB.QueryRow(`SELECT id,title,slug,content,tags,created_at,updated_at,COALESCE(status,'published') FROM articles WHERE slug=?`, slug).Scan(&art.ID, &art.Title, &art.Slug, &art.Content, &tagsStr, &art.CreatedAt, &art.UpdatedAt, &art.Status); err == sql.ErrNoRows {
+	// Public reads use the WAL reader pool, never the single writer connection:
+	// a cold-cache render must not serialise behind (and stall) writes, analytics
+	// inserts, WAL checkpoints or the VayuOS admin path on the one writer conn.
+	if err := dbpkg.Reader().QueryRow(`SELECT id,title,slug,content,tags,created_at,updated_at,COALESCE(status,'published') FROM articles WHERE slug=?`, slug).Scan(&art.ID, &art.Title, &art.Slug, &art.Content, &tagsStr, &art.CreatedAt, &art.UpdatedAt, &art.Status); err == sql.ErrNoRows {
 		a.handleNotFound(w, r)
 		return
 	}

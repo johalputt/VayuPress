@@ -8,6 +8,45 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.8.9] — 2026-07-07
+
+Performance/reliability fix: eliminates the cache-invalidation "thundering herd"
+that made routine updates briefly slow the whole site (VayuOS included) and
+return intermittent 502s. Updates are now latency-neutral by design.
+
+### Fixed
+- **Stale-while-revalidate for the public page cache — no more re-render herd
+  after a deploy.** The render cache is invalidated lazily: any global change (a
+  deploy that edits templates/CSS or bumps the cache schema, or a theme/identity
+  save) marks every pre-rendered page stale on its next request. Previously the
+  serve path re-rendered a stale page *synchronously, on the request goroutine*.
+  That is fine for one page, but after a global invalidation the entire catalog
+  is stale at once: under real traffic (and crawlers walking the long tail)
+  hundreds of cold renders fired concurrently, saturated the CPU and serialised
+  on the single SQLite writer — tail latency blew out to tens of seconds
+  (HTTP p95 pinned at the histogram ceiling) and nginx returned 502s until the
+  cache re-warmed. The serve path now returns the stale bytes **immediately** and
+  re-renders the page **off the request path**, single-flighted per page and
+  globally bounded (default `max(2, NumCPU/2)`, env `VAYU_SWR_MAX`). A
+  cache-invalidating update is now latency-neutral: visitors keep getting instant
+  (briefly stale) pages while the cache catches up a few renders at a time.
+  Truly-missing entries (a freshly published/edited post, whose cache file is
+  deleted) still render synchronously, so content edits appear immediately.
+- **Public post reads no longer serialise on the single writer connection.** The
+  article handler read the post row via the writer connection (`MaxOpenConns=1`)
+  instead of the WAL reader pool, so a cold-cache render competed with — and
+  stalled behind — writes, analytics inserts, WAL checkpoints and the VayuOS
+  admin path on the one writer. It now uses the reader pool, matching the
+  homepage. This is why the admin panel specifically felt slow under a
+  cold-cache storm.
+
+### Notes
+- Recommended follow-ups (not in this release): the public "Trending" query
+  joins the pageview log on a substring of the URL path, which cannot use an
+  index — worth normalising to an indexed slug on a large analytics table; and
+  the on-disk backup files created by the deploy/cron scripts should be rotated
+  (the in-binary write-queue already prunes itself).
+
 ## [3.8.8] — 2026-07-07
 
 A cache-invalidation fix so the Trending strip (and the always-show related
