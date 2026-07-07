@@ -72,6 +72,20 @@ func TestRenderSections(t *testing.T) {
 	}
 }
 
+// TestStylesheetIsCacheBustedByTemplate proves the /site.css link is versioned
+// by the active template key, so switching designs busts the cached stylesheet
+// and the new look applies immediately (regression guard for the design-switch
+// bug where a cached /site.css kept the previous design).
+func TestStylesheetIsCacheBustedByTemplate(t *testing.T) {
+	for _, tpl := range All() {
+		out := Render(tpl, tpl.Defaults, "/")
+		want := `href="/site.css?v=` + tpl.Key + `"`
+		if !strings.Contains(out, want) {
+			t.Errorf("%s: stylesheet link not cache-busted by template key (want %q)", tpl.Key, want)
+		}
+	}
+}
+
 // TestParseContent tolerates junk and round-trips fields.
 func TestParseContent(t *testing.T) {
 	if c := ParseContent(""); c.Name != "" {
