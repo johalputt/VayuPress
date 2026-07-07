@@ -8,6 +8,34 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.8.5] — 2026-07-07
+
+Theme release: a premium blog theme that matches the vayupress.com website, plus
+a Website preview fix. See ADR-0116.
+
+### Added
+- **Vayu — a flagship blog theme that matches vayupress.com.** Deep cosmic
+  “ink” canvas with teal + saffron accents, gradient display headings, glassy
+  post cards with a teal glow-lift, gradient-bordered code blocks and a refined
+  reading experience, in light and dark. Deploy it in one click from VayuOS →
+  Theme Store (Flagship) so your blog and website share one identity. Pure CSS,
+  no JavaScript.
+- **Self-hosted display font (sovereign, fast).** Vayu’s Space Grotesk headings
+  are served from the binary at `/static/fonts` (latin-subset woff2, ~13 KB per
+  weight, `font-display: swap`) — no Google Fonts, no CDN, no external request —
+  so the theme stays 100/100-fast and privacy-preserving under `font-src 'self'`.
+  Space Grotesk is OFL-1.1; attributed in `NOTICE` with the license at
+  `static/fonts/OFL.txt`. (ADR-0116)
+
+### Fixed
+- **Website design “Preview” now shows the design you selected**, not always the
+  default. `/site` honours `?preview=<design>` and the studio’s Preview button
+  follows the selected card, so you can preview a design before saving.
+
+### Upgrade Notes
+- No action required. Apply the Vayu theme from VayuOS → Theme Store when you
+  want the website look on your blog; existing themes are unchanged.
+
 ## [3.8.4] — 2026-07-07
 
 Website release: a fixed design picker, a new single-domain website+blog layout,

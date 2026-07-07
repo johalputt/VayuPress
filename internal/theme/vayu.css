@@ -9,9 +9,17 @@
    appended after the token variables, so it wins over the base article.css.
    ============================================================================ */
 
+/* Self-hosted Space Grotesk (OFL) for pixel-identical display headings — served
+   same-origin from /static/fonts (CSP font-src 'self'), latin subset, ~13 KB per
+   weight, font-display:swap so text is always instantly visible (never render-
+   blocking). No Google Fonts, no CDN, no external request. */
+@font-face { font-family: "Space Grotesk"; font-style: normal; font-weight: 500; font-display: swap; src: url("/static/fonts/space-grotesk-latin-500.woff2") format("woff2"); }
+@font-face { font-family: "Space Grotesk"; font-style: normal; font-weight: 600; font-display: swap; src: url("/static/fonts/space-grotesk-latin-600.woff2") format("woff2"); }
+@font-face { font-family: "Space Grotesk"; font-style: normal; font-weight: 700; font-display: swap; src: url("/static/fonts/space-grotesk-latin-700.woff2") format("woff2"); }
+
 :root {
-  /* Display face for headings/brand: uses Space Grotesk if locally installed,
-     otherwise the same crisp system sans as the body — never downloaded. */
+  /* Display face for headings/brand: the self-hosted Space Grotesk above, with
+     a crisp system sans fallback shown instantly while the tiny font loads. */
   --vayu-display: "Space Grotesk", var(--font, Inter), system-ui, -apple-system, "Segoe UI", sans-serif;
   /* The brand gradient (teal → saffron) reused across headings, rules and CTAs. */
   --vayu-grad: linear-gradient(108deg, var(--hi, #5eead4) 0%, var(--accent, #2dd4bf) 42%, var(--accent2, #f59e0b) 118%);

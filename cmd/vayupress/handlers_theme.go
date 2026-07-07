@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/mode"
@@ -211,6 +212,36 @@ func (a *App) handleHTMXJS(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	_, _ = w.Write(data)
+}
+
+// fontAllowlist is the set of self-hosted web fonts served at /static/fonts.
+// It is a strict allowlist (no arbitrary filenames) so the route can never read
+// anything but these vetted, OFL-licensed woff2 files from the embedded FS.
+var fontAllowlist = map[string]bool{
+	"space-grotesk-latin-500.woff2": true,
+	"space-grotesk-latin-600.woff2": true,
+	"space-grotesk-latin-700.woff2": true,
+}
+
+// handleStaticFont serves an allowlisted, self-hosted woff2 web font from the
+// embedded StaticFS at /static/fonts/{file}. Same-origin (CSP font-src 'self'),
+// immutable long-cache; used by the Vayu theme's @font-face. No external/CDN
+// font request is ever made.
+func (a *App) handleStaticFont(w http.ResponseWriter, r *http.Request) {
+	file := chi.URLParam(r, "file")
+	if !fontAllowlist[file] {
+		http.NotFound(w, r)
+		return
+	}
+	data, err := fs.ReadFile(embeddedStaticFS, "fonts/"+file)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", "font/woff2")
+	w.Header().Set("Cache-Control", "public, immutable, max-age=31536000")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
 	_, _ = w.Write(data)
 }
 

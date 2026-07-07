@@ -99,6 +99,9 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	// (see /admin/theme branding), falling back to the embedded default per scheme.
 	r.Get("/static/favicon-dark.png", a.serveFavicon(faviconDarkPNG))
 	r.Get("/static/favicon-light.png", a.serveFavicon(faviconLightPNG))
+	// Self-hosted web fonts (OFL Space Grotesk) for the Vayu theme — same-origin
+	// (CSP font-src 'self'), embedded in the binary, allowlisted filenames only.
+	r.Get("/static/fonts/{file}", a.handleStaticFont)
 	r.Get("/favicon.ico", a.serveFavicon(faviconDarkPNG))
 	// Operator-uploaded hero/cover image (same-origin → img-src 'self'); 404s
 	// gracefully when none is set so the "Hero background: Image" option degrades.
