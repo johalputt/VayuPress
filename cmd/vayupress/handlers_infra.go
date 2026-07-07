@@ -112,9 +112,9 @@ func (a *App) handleCSPReport(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) handleStats(w http.ResponseWriter, r *http.Request) {
 	var totalArticles, pendingJobs, failedJobs int
-	dbpkg.DB.QueryRow(`SELECT COUNT(1) FROM articles`).Scan(&totalArticles)
-	dbpkg.DB.QueryRow(`SELECT COUNT(1) FROM write_jobs WHERE status='pending'`).Scan(&pendingJobs)
-	dbpkg.DB.QueryRow(`SELECT COUNT(1) FROM write_jobs WHERE status='failed'`).Scan(&failedJobs)
+	dbpkg.Reader().QueryRow(`SELECT COUNT(1) FROM articles`).Scan(&totalArticles)
+	dbpkg.Reader().QueryRow(`SELECT COUNT(1) FROM write_jobs WHERE status='pending'`).Scan(&pendingJobs)
+	dbpkg.Reader().QueryRow(`SELECT COUNT(1) FROM write_jobs WHERE status='failed'`).Scan(&failedJobs)
 	used := dbpkg.StorageUsedBytes()
 	quota := dbpkg.StorageQuotaBytes()
 	writeJSON(w, r, 200, map[string]interface{}{
@@ -155,7 +155,7 @@ func (a *App) handleQueueReplay(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	var totalArticles int
-	dbpkg.DB.QueryRow(`SELECT COUNT(1) FROM articles`).Scan(&totalArticles)
+	dbpkg.Reader().QueryRow(`SELECT COUNT(1) FROM articles`).Scan(&totalArticles)
 	var ms runtime.MemStats
 	runtime.ReadMemStats(&ms)
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4")
