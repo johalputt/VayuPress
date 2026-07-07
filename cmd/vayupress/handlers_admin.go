@@ -1645,55 +1645,85 @@ func (a *App) handleFaultStatus(w http.ResponseWriter, r *http.Request) {
 // so related posts stay fast at 1M+ posts. SELECT DISTINCT collapses the case
 // where an article matches several of the wanted tags.
 func (a *App) relatedArticles(ctx context.Context, currentSlug string, tags []string, limit int) []render.RelatedArticle {
-	if len(tags) == 0 || dbpkg.DB == nil {
+	if dbpkg.DB == nil || limit <= 0 {
 		return nil
 	}
+	seenSlug := map[string]struct{}{currentSlug: {}}
+	var out []render.RelatedArticle
+
+	// 1. Prefer posts that share a tag with the current one (indexed tag lookup).
 	norms := make([]string, 0, len(tags))
-	seen := make(map[string]struct{}, len(tags))
+	seenTag := make(map[string]struct{}, len(tags))
 	for _, t := range tags {
 		n := strings.ToLower(strings.TrimSpace(t))
 		if n == "" {
 			continue
 		}
-		if _, dup := seen[n]; dup {
+		if _, dup := seenTag[n]; dup {
 			continue
 		}
-		seen[n] = struct{}{}
+		seenTag[n] = struct{}{}
 		norms = append(norms, n)
 	}
-	if len(norms) == 0 {
-		return nil
-	}
-	args := make([]interface{}, 0, len(norms)+2)
-	placeholders := make([]string, 0, len(norms))
-	for _, n := range norms {
-		placeholders = append(placeholders, "?")
-		args = append(args, n)
-	}
-	args = append(args, currentSlug, limit)
-	// Related posts are a public surface — exclude drafts.
-	// CROSS JOIN pins article_tags as the driving table so the query is always
-	// an indexed tag lookup (cost bounded by how many posts carry these tags),
-	// never a full scan of the articles table — which the planner could otherwise
-	// choose when one of the tags is very common, reintroducing the 502.
-	q := `SELECT DISTINCT a.title, a.slug, a.created_at FROM article_tags t CROSS JOIN articles a ON a.id=t.article_id WHERE t.tag_norm IN (` +
-		strings.Join(placeholders, ",") + `) AND a.slug != ? AND a.status='published' ORDER BY t.created_at DESC LIMIT ?`
-	rows, err := dbpkg.Reader().QueryContext(ctx, q, args...)
-	if err != nil {
-		return nil
-	}
-	defer rows.Close()
-	var out []render.RelatedArticle
-	for rows.Next() {
-		var ra render.RelatedArticle
-		if err := rows.Scan(&ra.Title, &ra.Slug, &ra.CreatedAt); err != nil {
-			continue
+	if len(norms) > 0 {
+		args := make([]interface{}, 0, len(norms)+2)
+		placeholders := make([]string, 0, len(norms))
+		for _, n := range norms {
+			placeholders = append(placeholders, "?")
+			args = append(args, n)
 		}
-		out = append(out, ra)
-		if len(out) >= limit {
-			break
+		args = append(args, currentSlug, limit)
+		// CROSS JOIN pins article_tags as the driving table so the query is always
+		// an indexed tag lookup (cost bounded by how many posts carry these tags),
+		// never a full scan of the articles table — which the planner could otherwise
+		// choose when one of the tags is very common, reintroducing the 502.
+		q := `SELECT DISTINCT a.title, a.slug, a.created_at FROM article_tags t CROSS JOIN articles a ON a.id=t.article_id WHERE t.tag_norm IN (` +
+			strings.Join(placeholders, ",") + `) AND a.slug != ? AND a.status='published' ORDER BY t.created_at DESC LIMIT ?`
+		if rows, err := dbpkg.Reader().QueryContext(ctx, q, args...); err == nil {
+			for rows.Next() {
+				var ra render.RelatedArticle
+				if rows.Scan(&ra.Title, &ra.Slug, &ra.CreatedAt) != nil {
+					continue
+				}
+				if _, dup := seenSlug[ra.Slug]; dup {
+					continue
+				}
+				seenSlug[ra.Slug] = struct{}{}
+				out = append(out, ra)
+				if len(out) >= limit {
+					break
+				}
+			}
+			_ = rows.Err()
+			rows.Close()
 		}
 	}
-	_ = rows.Err()
+
+	// 2. Top up with the most-recent published posts so the "Related articles"
+	//    section always has suggestions — even for an untagged post, or a young
+	//    blog where nothing yet shares a tag. Tag matches keep priority; recent
+	//    posts only fill the remaining slots.
+	if len(out) < limit {
+		if rows, err := dbpkg.Reader().QueryContext(ctx,
+			`SELECT title, slug, created_at FROM articles WHERE status='published' AND is_page=0 AND slug != ? ORDER BY created_at DESC LIMIT ?`,
+			currentSlug, limit*4); err == nil {
+			for rows.Next() {
+				var ra render.RelatedArticle
+				if rows.Scan(&ra.Title, &ra.Slug, &ra.CreatedAt) != nil {
+					continue
+				}
+				if _, dup := seenSlug[ra.Slug]; dup {
+					continue
+				}
+				seenSlug[ra.Slug] = struct{}{}
+				out = append(out, ra)
+				if len(out) >= limit {
+					break
+				}
+			}
+			_ = rows.Err()
+			rows.Close()
+		}
+	}
 	return out
 }
