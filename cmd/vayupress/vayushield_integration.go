@@ -51,6 +51,12 @@ import (
 func (a *App) bootVayuShield() {
 	a.vaSessions = vasession.NewHasher()
 	a.vaEngagement = vastore.New(dbpkg.DB)
+	// Persist engagement beacons on a bounded, batched background writer instead
+	// of one synchronous writer transaction per page view. This is the fix for
+	// the post-restart VayuOS 502s: the beacon storm (enter + event on every
+	// public view) no longer saturates the single SQLite writer, so the dynamic
+	// admin panel stays responsive while caches warm.
+	a.vaEngagement.StartIngest(queue.DoneCh)
 
 	bots := botdb.New(dbpkg.DB)
 	signer := challenge.NewSigner([]byte(config.Cfg.APIKey))
@@ -217,7 +223,9 @@ func (a *App) handleVAEnter(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sess := a.vaSessions.Session(realIP, ua, lang, now)
-	_ = a.vaEngagement.RecordEnter(r.Context(), vastore.EnterInput{
+	// Enqueue for batched, off-request-path persistence so a page view never
+	// blocks on — or saturates — the single SQLite writer (see store.StartIngest).
+	a.vaEngagement.QueueEnter(vastore.EnterInput{
 		SessionHash: sess,
 		PagePath:    path,
 		Class:       class,
@@ -258,7 +266,7 @@ func (a *App) handleVAEvent(w http.ResponseWriter, r *http.Request) {
 	}
 	now := time.Now().UTC()
 	sess := a.vaSessions.Session(auth.ClientIP(r), r.UserAgent(), r.Header.Get("Accept-Language"), now)
-	_ = a.vaEngagement.RecordBeacon(r.Context(), vastore.BeaconInput{
+	a.vaEngagement.QueueBeacon(vastore.BeaconInput{
 		SessionHash:  sess,
 		PagePath:     path,
 		TimeOnPage:   req.T,
