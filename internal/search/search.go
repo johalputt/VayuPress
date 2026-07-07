@@ -575,8 +575,18 @@ type clientPost struct {
 
 type clientIndex struct {
 	V     string       `json:"v"`
+	N     int          `json:"n"` // total published posts (may exceed len(Posts) when capped)
 	Posts []clientPost `json:"posts"`
 }
+
+// clientSnapshotMax bounds how many of the most-recent posts are shipped in the
+// downloadable client search index (see Snapshot). The in-browser modal gives
+// instant, zero-latency search over this recent window; the full archive stays
+// searchable server-side via /search (which scans the complete in-memory index),
+// surfaced by the modal's "search the full archive" action. Capping keeps both
+// the client download and the resident server snapshot small and bounded no
+// matter how large the corpus grows. (client-perf / RAM audit 2026-07 / L2b)
+const clientSnapshotMax = 5000
 
 // Snapshot returns the memoised client index payload, rebuilding it only when a
 // mutation has invalidated it. When search is disabled it reports an empty
@@ -602,7 +612,15 @@ func (s *builtinService) Snapshot() ([]byte, string) {
 	}
 	s.mu.RUnlock()
 
+	total := len(docs)
 	sort.Slice(docs, func(i, j int) bool { return docs[i].CreatedAt > docs[j].CreatedAt })
+
+	// Ship only the most-recent clientSnapshotMax posts to the browser. The full
+	// archive remains searchable server-side via /search; the modal offers a
+	// one-click jump there when total exceeds what it holds locally. (L2b)
+	if len(docs) > clientSnapshotMax {
+		docs = docs[:clientSnapshotMax]
+	}
 
 	// Build the post slice and a content version in a single pass. The version
 	// must stay fully content-sensitive (a title/excerpt/tag/date edit has to
@@ -637,9 +655,14 @@ func (s *builtinService) Snapshot() ([]byte, string) {
 		hw(nbuf[:])
 		hw(recSep)
 	}
+	// Fold the total post count into the version so the client re-fetches when
+	// the corpus crosses the cap boundary (its full-archive hint depends on the
+	// total), even if the recent window's contents are otherwise unchanged.
+	binary.LittleEndian.PutUint64(nbuf[:], uint64(total))
+	hw(nbuf[:])
 	sum := h.Sum(nil)
 	version := hex.EncodeToString(sum[:8])
-	payload, _ := json.Marshal(clientIndex{V: version, Posts: posts})
+	payload, _ := json.Marshal(clientIndex{V: version, N: total, Posts: posts})
 
 	snap := &snapshot{payload: payload, version: version}
 	s.snap.Store(snap)

@@ -931,6 +931,12 @@ func TrendingJSLink() template.HTML {
 // per-keystroke server round-trips. The ranking mirrors the Go scorer: every
 // query term must match (AND), with title ≫ tags ≫ excerpt weighting.
 //
+// The index ships only the most-recent posts (see clientSnapshotMax) so the
+// download stays small on large sites; when the corpus is larger than that
+// window the modal shows a "search the full archive" row that jumps to the
+// server-rendered /search page (which searches every post). This keeps instant
+// search fast and cheap while leaving no post unreachable.
+//
 // Progressive enhancement: the nav <form> still submits to /search when
 // JavaScript is unavailable, so search degrades gracefully.
 const SearchModalJS = `(function () {
@@ -939,7 +945,7 @@ const SearchModalJS = `(function () {
   var forms = Array.prototype.slice.call(document.querySelectorAll('form[data-vayu-search]'));
   if (!forms.length) return;
 
-  var overlay, input, list, status, posts = null, loading = false, items = [], active = -1, t0;
+  var overlay, input, list, status, posts = null, loading = false, items = [], active = -1, t0, total = 0, capped = false;
 
   function tokenize(q) {
     return (q || '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
@@ -1042,6 +1048,10 @@ const SearchModalJS = `(function () {
           p._x = p._t + '\n' + p._g + '\n' + (p.e || '').toLowerCase();
           return p;
         });
+        // The index ships only the most-recent posts; total tells us the whole
+        // corpus size so we can offer a jump to the server-side full archive.
+        total = data.n || posts.length;
+        capped = total > posts.length;
         if (input.value) onInput();
       })
       .catch(function () { loading = false; status.textContent = 'Search is unavailable'; });
@@ -1082,12 +1092,39 @@ const SearchModalJS = `(function () {
     }
     scored.sort(function (a, b) { return b[0] - a[0] || (b[1].d - a[1].d); });
     scored = scored.slice(0, 8);
-    if (!scored.length) { status.textContent = 'No results for \u201C' + q + '\u201D'; return; }
-    status.textContent = scored.length + (scored.length === 1 ? ' result' : ' results');
     for (var j = 0; j < scored.length; j++) {
       list.appendChild(item(scored[j][1], terms));
     }
+    appendArchiveLink(q);
+    if (!scored.length) {
+      status.textContent = capped
+        ? 'No matches in recent posts \u2014 search the full archive'
+        : 'No results for \u201C' + q + '\u201D';
+    } else {
+      status.textContent = scored.length + (scored.length === 1 ? ' result' : ' results') + (capped ? ' in recent posts' : '');
+    }
     if (items.length) setActive(0);
+  }
+
+  // appendArchiveLink offers a one-click jump to the server-rendered /search
+  // page — which searches EVERY post — whenever the local index holds only a
+  // recent window of a larger corpus. It costs the server nothing until a
+  // visitor actually chooses it, and it keeps every post reachable from the
+  // instant modal. It is a normal result row, so arrow keys and Enter work.
+  function appendArchiveLink(q) {
+    if (!q || !capped) return;
+    var a = document.createElement('a');
+    a.className = 'vayu-search-result vayu-search-all';
+    a.href = '/search?q=' + encodeURIComponent(q);
+    var title = document.createElement('div');
+    title.className = 'vayu-search-result-title';
+    title.textContent = total
+      ? ('Search all ' + total.toLocaleString() + ' posts for \u201C' + q + '\u201D \u2192')
+      : ('Search the full archive for \u201C' + q + '\u201D \u2192');
+    a.appendChild(title);
+    a.addEventListener('mouseenter', function () { setActive(items.indexOf(a)); });
+    list.appendChild(a);
+    items.push(a);
   }
 
   function item(p, terms) {
@@ -2947,6 +2984,9 @@ h1, h2, h3, h4, h5, h6 {
 .vayu-search-result-title { font-weight: 600; font-size: 0.98rem; }
 .vayu-search-result-title mark { background: transparent; color: var(--pico-primary, #38bdf8); font-weight: 700; padding: 0; }
 .vayu-search-result.is-active .vayu-search-result-title mark { color: #fff; text-decoration: underline; }
+.vayu-search-all { border-top: 1px solid var(--border, #1e2840); margin-top: 0.25rem; }
+.vayu-search-all .vayu-search-result-title { font-size: 0.9rem; color: var(--pico-primary, #38bdf8); }
+.vayu-search-all.is-active .vayu-search-result-title { color: #fff; }
 .vayu-search-result-excerpt {
   margin-top: 0.15rem;
   font-size: 0.85rem;
