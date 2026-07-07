@@ -232,6 +232,10 @@ const homeFeedPageSize = 30
 // the operator has chosen business mode in VayuOS → Website, the business
 // website (the blog then serves from blog.<domain>).
 func (a *App) handleHome(w http.ResponseWriter, r *http.Request) {
+	// Custom uploaded website (if selected + deployed) owns the root.
+	if a.serveCustomIfActive(w, r, "/") {
+		return
+	}
 	if a.bizRootActive(r) {
 		a.handleBizSite(w, r)
 		return
@@ -421,6 +425,12 @@ func (a *App) handleSearchPage(w http.ResponseWriter, r *http.Request) {
 
 // handleNotFound renders the branded 404 page.
 func (a *App) handleNotFound(w http.ResponseWriter, r *http.Request) {
+	// In custom-site mode, a path that matches no post or reserved route may be a
+	// page/asset of the uploaded bundle (e.g. /about, /assets/app.css). Serve it
+	// from the bundle before falling back to the branded 404.
+	if r.Method == http.MethodGet && a.serveCustomIfActive(w, r, r.URL.Path) {
+		return
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusNotFound)
 	fmt.Fprint(w, render.Render404(config.Cfg.Domain, Version))
