@@ -1,0 +1,11 @@
+-- Speeds the public "Trending" query (analytics.TrendingArticlesByViews) and the
+-- admin "Top pages" aggregation. Both scan analytics_pageviews filtered by
+-- event_type + a created_at window and read url_path. Without a covering index
+-- SQLite range-scans idx_apv_created (created_at only) and fetches the main-table
+-- row for every pageview just to read url_path/event_type — costly on a large
+-- event log, and especially so under a cold page cache. This composite index
+-- lets that driving scan be index-only: equality on event_type, range on
+-- created_at, with url_path carried in the index for the SUBSTR join. Purely
+-- additive (no data change). The migration runner executes ONE statement per
+-- line, so keep each statement on a single line.
+CREATE INDEX IF NOT EXISTS idx_apv_trending ON analytics_pageviews(event_type, created_at, url_path);

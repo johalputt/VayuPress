@@ -8,6 +8,33 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.8.10] — 2026-07-07
+
+Two enterprise follow-ups to the v3.8.9 performance work: the public "Trending"
+query is now index-only, and pre-update backups no longer accumulate without
+bound.
+
+### Fixed
+- **"Trending" no longer full-scans the pageview log.** The public trending
+  widget (and the same trailing-window aggregation behind the admin "Top pages"
+  panel) ranked posts by scanning `analytics_pageviews` and, lacking a covering
+  index, fetched a table row per pageview just to read `url_path` — slow on a
+  large event log and especially under a cold cache. A new composite index
+  `idx_apv_trending(event_type, created_at, url_path)` (migration 057) plus a
+  rewritten query that aggregates per path first, then joins the (unique,
+  indexed) article slug, make the hot scan **index-only** (`SEARCH … USING
+  COVERING INDEX`). Results are identical; a regression test asserts the plan
+  stays index-only. Purely additive — no data change.
+- **Pre-update backups are now rotated.** The self-update engine writes a
+  `backup-<db>-<timestamp>.tar.gz` snapshot before replacing the binary but
+  never pruned old ones, so they accumulated on disk across updates. It now
+  keeps the newest N per database (default 5, `VAYU_UPDATE_BACKUP_KEEP`),
+  scoped per-database so it can never touch another DB's backups, and
+  best-effort so pruning can never fail the backup it follows. `deploy/migrate.sh`
+  gets the same rotation for its `.bak.<timestamp>` snapshots
+  (`VAYUPRESS_BACKUP_KEEP`, default 5). Existing files remain deletable in one
+  click from VayuOS → Storage.
+
 ## [3.8.9] — 2026-07-07
 
 Performance/reliability fix: eliminates the cache-invalidation "thundering herd"
