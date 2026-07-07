@@ -8,6 +8,30 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.9.1] — 2026-07-07
+
+The real fix for the post-restart VayuOS 502s: **the always-on analytics
+beacons were doing synchronous writes on the single SQLite writer for every
+public page view.** They are now batched and written off the request path.
+
+### Fixed
+- **Engagement beacons no longer saturate the writer after a restart.** Every
+  public page view fires two beacons — a page-enter (on load) and an engagement
+  event (on exit) — and each was persisted **synchronously on the single writer
+  connection** (`RecordEnter` = a `SELECT COUNT` + `INSERT`; `RecordBeacon` = an
+  `UPDATE`). Under real traffic that is a storm of tiny fsync'd transactions
+  which, right after a cold restart, pegs the one writer and bloats the WAL — so
+  the whole database slows and the *dynamic* VayuOS pages exceed the 30s server
+  write timeout and return **502**, while the public site (served from the HTML
+  cache, no database) stays fast. Beacons are now **enqueued on a bounded buffer
+  and flushed by a single background goroutine in batched transactions** (~1/sec
+  or every 256 events), collapsing hundreds of tiny writes into a handful and
+  keeping the writer free for everything else. The write is off the request path
+  entirely (the beacon returns immediately), and it is best-effort: under an
+  extreme flood, events past the buffer are dropped (and counted) rather than
+  allowed to block a request or overwhelm the database. This is the write-side
+  companion to v3.9.0 (which moved the admin *auth reads* to the read pool).
+
 ## [3.9.0] — 2026-07-07
 
 Resolves the last post-update symptom: **VayuOS was returning 502 for the first
