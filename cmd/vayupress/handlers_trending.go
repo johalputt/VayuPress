@@ -56,6 +56,19 @@ var (
 	trendingMu     sync.Mutex
 	trendingCache  *trendingPayload
 	trendingExpiry time.Time
+	// trendingComputing is the single-flight guard: exactly one goroutine may be
+	// recomputing the payload at a time. Without it, a burst of widget fetches
+	// after a restart (the in-process memo starts empty) or a cache expiry each
+	// ran the trending queries concurrently and saturated the read pool — the
+	// recurring "502 for ~10 minutes after an update" the memo could not absorb
+	// because it is lost on every restart.
+	trendingComputing bool
+	// trendingGen is bumped on every invalidation (pin/unpin). A recompute that
+	// started before an invalidation must not overwrite the cache with data that
+	// predates the change, so it only stores its result if the generation is
+	// unchanged — otherwise a pin toggle during an in-flight compute could be
+	// masked for a full TTL.
+	trendingGen uint64
 )
 
 // invalidateTrendingCache drops the memoised payload so the next request rebuilds
@@ -63,6 +76,8 @@ var (
 func invalidateTrendingCache() {
 	trendingMu.Lock()
 	trendingCache = nil
+	trendingExpiry = time.Time{}
+	trendingGen++
 	trendingMu.Unlock()
 }
 
@@ -80,17 +95,73 @@ func (a *App) handleTrendingJSON(w http.ResponseWriter, r *http.Request) {
 	}
 
 	trendingMu.Lock()
-	if trendingCache != nil && time.Now().Before(trendingExpiry) {
+	fresh := trendingCache != nil && time.Now().Before(trendingExpiry)
+	if fresh {
 		cached := *trendingCache
 		trendingMu.Unlock()
-		w.Header().Set("Cache-Control", "public, max-age=300")
-		writeJSON(w, r, http.StatusOK, cached)
+		a.writeTrending(w, r, cached)
 		return
+	}
+	// Not fresh (cold after a restart, or expired). Single-flight the recompute so
+	// a burst of widget fetches can never run the trending queries concurrently
+	// and saturate the read pool. Exactly one goroutine computes; everyone else is
+	// served instantly from the last good payload (stale-while-revalidate) or,
+	// on a truly cold start, a cheap pinned+recent "warming" payload — nobody
+	// blocks on the DB behind the herd.
+	stale := trendingCache
+	iCompute := !trendingComputing
+	if iCompute {
+		trendingComputing = true
 	}
 	trendingMu.Unlock()
 
-	// Bounded so a slow DB can never hang the page's widget fetch.
-	ctx, cancel := context.WithTimeout(r.Context(), 6*time.Second)
+	if !iCompute {
+		if stale != nil {
+			a.writeTrending(w, r, *stale)
+		} else {
+			a.writeTrending(w, r, a.trendingWarming(r))
+		}
+		return
+	}
+
+	// This request owns the (single) recompute.
+	if stale != nil {
+		// Serve the stale payload immediately and refresh off the request path so
+		// this caller never blocks on the DB either.
+		go a.recomputeTrending()
+		a.writeTrending(w, r, *stale)
+		return
+	}
+	// Cold start: compute inline so the first caller gets real data; all the
+	// concurrent callers during this window took the warming path above.
+	a.writeTrending(w, r, a.recomputeTrending())
+}
+
+// writeTrending sends a trending payload with the standard short public cache
+// header (browsers/proxies can reuse it for a few minutes).
+func (a *App) writeTrending(w http.ResponseWriter, r *http.Request, p trendingPayload) {
+	w.Header().Set("Cache-Control", "public, max-age=300")
+	writeJSON(w, r, http.StatusOK, p)
+}
+
+// recomputeTrending rebuilds the payload from analytics, stores it with the
+// right TTL, releases the single-flight guard, and returns it. It uses a
+// detached, bounded context so a client disconnecting mid-flight cannot cancel
+// the shared cache fill, and it always clears the guard — even on panic — so a
+// failed compute can never wedge trending in the "computing" state forever.
+func (a *App) recomputeTrending() trendingPayload {
+	trendingMu.Lock()
+	gen := trendingGen
+	trendingMu.Unlock()
+
+	defer func() {
+		trendingMu.Lock()
+		trendingComputing = false
+		trendingMu.Unlock()
+		_ = recover() // a background render/query panic must never crash the process
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
 	defer cancel()
 
 	// Trending = most-viewed posts over the trailing 7 (and 30) days from the
@@ -115,18 +186,34 @@ func (a *App) handleTrendingJSON(w http.ResponseWriter, r *http.Request) {
 		Pinned:  a.pinnedItems(ctx, trendingPinnedLimit),
 		Windows: map[string][]trendingItem{"7": seven, "30": thirty},
 	}
-
 	ttl := trendingCacheTTL
 	if fallback {
 		ttl = trendingFallbackTTL
 	}
 	trendingMu.Lock()
-	trendingCache = &payload
-	trendingExpiry = time.Now().Add(ttl)
+	// Only publish if no invalidation (pin/unpin) landed while we were computing;
+	// otherwise our result predates the change and would mask it for a full TTL.
+	if trendingGen == gen {
+		trendingCache = &payload
+		trendingExpiry = time.Now().Add(ttl)
+	}
 	trendingMu.Unlock()
+	return payload
+}
 
-	w.Header().Set("Cache-Control", "public, max-age=300")
-	writeJSON(w, r, http.StatusOK, payload)
+// trendingWarming builds a cheap payload from only indexed queries (pinned +
+// most-recent posts, no analytics aggregation) to serve during the brief cold
+// window while the first real recompute is in flight. It never runs the heavy
+// trending queries, so a cold-start herd cannot saturate the DB.
+func (a *App) trendingWarming(r *http.Request) trendingPayload {
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	defer cancel()
+	recent := a.recentItems(ctx, trendingWindowLimit)
+	return trendingPayload{
+		Enabled: true,
+		Pinned:  a.pinnedItems(ctx, trendingPinnedLimit),
+		Windows: map[string][]trendingItem{"7": recent, "30": recent},
+	}
 }
 
 // pinnedItems returns the operator's pinned (featured) published posts, newest

@@ -8,6 +8,33 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.8.11] — 2026-07-07
+
+The missing piece of the post-update 502 fix: the public "Trending" JSON
+endpoint now single-flights its compute, so a restart can no longer trigger a
+read-pool herd.
+
+### Fixed
+- **`/api/trending` no longer stampedes the database after a restart.** Every
+  public page (the homepage and every post) fetches this endpoint client-side,
+  and its payload is memoised in-process. But the memo is lost on every restart,
+  and the compute held no single-flight — so immediately after an update, a
+  burst of concurrent widget fetches each ran the trending queries at the same
+  time and saturated the SQLite read pool, stalling *all* reads (public pages
+  and VayuOS alike) and returning 502s for several minutes until the storm
+  cleared. This recurred on every restart because the memo starts empty. The
+  endpoint now:
+  - **single-flights** the recompute (exactly one runs at a time);
+  - serves the **last good payload** immediately while a refresh runs in the
+    background (stale-while-revalidate);
+  - on a truly cold start, serves a **cheap "warming" payload** (pinned +
+    most-recent posts, using only indexed lookups — no analytics aggregation)
+    to everyone except the single computing request, so the widget still renders
+    and nobody queues behind the heavy query.
+  A generation counter ensures a pin/unpin during an in-flight compute is never
+  masked. Together with the v3.8.9 page-cache stale-while-revalidate and the
+  v3.8.10 covering index, updates are now smooth end to end.
+
 ## [3.8.10] — 2026-07-07
 
 Two enterprise follow-ups to the v3.8.9 performance work: the public "Trending"
