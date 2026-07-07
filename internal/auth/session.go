@@ -31,13 +31,36 @@ const DefaultSessionTTL = 7 * 24 * time.Hour
 // token is stored, so a database leak cannot be replayed as a live session —
 // the raw token exists only in the user's cookie.
 type SessionStore struct {
-	db  *sql.DB
-	ttl time.Duration
+	db     *sql.DB // writer: session create/destroy/purge
+	reader *sql.DB // read pool: session validation (runs on every admin request)
+	ttl    time.Duration
 }
 
-// NewSessionStore creates a SessionStore with the default TTL.
+// NewSessionStore creates a SessionStore with the default TTL. Reads default to
+// the same handle as writes; call UseReader to point the hot validation path at
+// a dedicated read pool.
 func NewSessionStore(db *sql.DB) *SessionStore {
-	return &SessionStore{db: db, ttl: DefaultSessionTTL}
+	return &SessionStore{db: db, reader: db, ttl: DefaultSessionTTL}
+}
+
+// UseReader routes read-only session queries (Validate) at a dedicated read
+// pool instead of the single writer connection. Validate runs on EVERY VayuOS
+// admin request, so on a saturated writer (busy_timeout waits) it otherwise
+// serialises the whole admin panel behind unrelated writes — the cause of
+// admin-only 502s after a restart while the public site (read pool + cache)
+// stays fast. Writes stay on the writer; WAL gives the reader read-your-writes,
+// so a freshly created session validates immediately. A nil reader is ignored.
+func (s *SessionStore) UseReader(reader *sql.DB) {
+	if reader != nil {
+		s.reader = reader
+	}
+}
+
+func (s *SessionStore) readDB() *sql.DB {
+	if s.reader != nil {
+		return s.reader
+	}
+	return s.db
 }
 
 // Create issues a new session for userID and returns the raw token to set in the
@@ -66,7 +89,7 @@ func (s *SessionStore) Validate(ctx context.Context, token string) (string, erro
 	}
 	var userID string
 	var expires time.Time
-	err := s.db.QueryRowContext(ctx,
+	err := s.readDB().QueryRowContext(ctx,
 		`SELECT user_id,expires_at FROM sessions WHERE token_hash=?`, hashToken(token)).
 		Scan(&userID, &expires)
 	if err != nil {

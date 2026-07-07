@@ -74,10 +74,32 @@ type User struct {
 }
 
 // Store manages user accounts in SQLite.
-type Store struct{ db *sql.DB }
+type Store struct {
+	db     *sql.DB // writer: account create/update/delete
+	reader *sql.DB // read pool: hot read paths (GetByID runs on every admin request)
+}
 
-// New creates a Store.
-func New(db *sql.DB) *Store { return &Store{db: db} }
+// New creates a Store. Reads default to the same handle as writes; call
+// UseReader to point the hot read paths at a dedicated read pool.
+func New(db *sql.DB) *Store { return &Store{db: db, reader: db} }
+
+// UseReader routes the hot read path (GetByID, which the admin auth middleware
+// runs on every request) at a dedicated read pool instead of the single writer
+// connection, so account lookups do not serialise behind writes on a saturated
+// writer (the admin-only-502-after-restart failure). Writes stay on the writer;
+// WAL gives the reader read-your-writes. A nil reader is ignored.
+func (s *Store) UseReader(reader *sql.DB) {
+	if reader != nil {
+		s.reader = reader
+	}
+}
+
+func (s *Store) readDB() *sql.DB {
+	if s.reader != nil {
+		return s.reader
+	}
+	return s.db
+}
 
 // Create inserts a new user with the given credentials. Role defaults to
 // "author" when empty and must be a recognised role otherwise.
@@ -186,7 +208,7 @@ func scanUserProfile(sc interface{ Scan(...interface{}) error }) (*User, error) 
 
 // GetByID returns the user with the given id, including profile fields.
 func (s *Store) GetByID(ctx context.Context, id string) (*User, error) {
-	return scanUserProfile(s.db.QueryRowContext(ctx,
+	return scanUserProfile(s.readDB().QueryRowContext(ctx,
 		`SELECT `+profileCols+` FROM users WHERE id=?`, id))
 }
 

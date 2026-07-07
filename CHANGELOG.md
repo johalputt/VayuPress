@@ -8,6 +8,32 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.9.0] — 2026-07-07
+
+Resolves the last post-update symptom: **VayuOS was returning 502 for the first
+several minutes after a restart while the public blog stayed fast.** Root-caused
+to the admin authentication gate reading from the single SQLite writer
+connection.
+
+### Fixed
+- **VayuOS no longer 502s after a restart while the writer warms up.** Every
+  admin request passes through an auth gate that did *two* reads — session
+  validation and the account lookup — on the **single writer connection**
+  (`SetMaxOpenConns(1)`). Right after a restart the writer is briefly saturated
+  (cold page cache, the analytics INSERTs driven by live public traffic, the
+  write-queue drain, WAL checkpoints, the one-time tag backfill), so under
+  `busy_timeout` each of those auth reads could wait seconds. With the server's
+  30s write timeout, admin requests that piled up behind the writer were cut
+  off mid-response and surfaced as **502 Bad Gateway** — whereas the public site
+  never hit it, because pages are served from the on-disk cache and the separate
+  WAL read pool. The auth gate now reads sessions and accounts from the **read
+  pool** (`dbpkg.Reader()`), so admin authentication is decoupled from writer
+  load and the panel stays reachable during the warm-up window. Writes still go
+  to the writer, and WAL guarantees read-your-writes, so a fresh login validates
+  immediately. This completes the update-reliability series (v3.8.9 page-cache
+  stale-while-revalidate, v3.8.10 covering index + backup rotation, v3.8.11
+  single-flight trending, and now the admin auth gate).
+
 ## [3.8.11] — 2026-07-07
 
 The missing piece of the post-update 502 fix: the public "Trending" JSON
