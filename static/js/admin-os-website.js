@@ -86,4 +86,46 @@
       })
       .catch(function (code) { setStatus('Save failed (' + code + ')', false); });
   });
+
+  // ── Custom build: deploy .zip / roll back ───────────────────────────────────
+  var deployStatus = document.querySelector('[data-biz-deploy-status]');
+  function setDeploy(msg, ok) {
+    if (!deployStatus) return;
+    deployStatus.textContent = msg;
+    deployStatus.style.color = ok ? '' : 'var(--color-danger, #ef4444)';
+  }
+  function errMsg(j, fallback) {
+    return (j && j.error && j.error.message) ? j.error.message : fallback;
+  }
+  var deployBtn = document.querySelector('[data-biz-deploy]');
+  var zipInput = document.querySelector('[data-biz-zip]');
+  if (deployBtn && zipInput) deployBtn.addEventListener('click', function () {
+    var f = zipInput.files && zipInput.files[0];
+    if (!f) { setDeploy('Choose a .zip file first', false); return; }
+    var fd = new FormData();
+    fd.append('bundle', f);
+    setDeploy('Uploading & validating…', true);
+    fetch('/os/api/website/custom-upload', {
+      method: 'POST', headers: { 'X-CSRF-Token': csrf() }, body: fd
+    }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (res) {
+        if (!res.ok) { setDeploy(errMsg(res.j, 'Deploy failed'), false); return; }
+        setDeploy('Deployed ' + (res.j.files || '') + ' files \u2713 — select \u201CCustom uploaded website\u201D above, then Save & publish', true);
+        if (window.vpToast) window.vpToast('Custom build deployed', 'ok');
+      })
+      .catch(function () { setDeploy('Deploy failed (network)', false); });
+  });
+  var rollbackBtn = document.querySelector('[data-biz-rollback]');
+  if (rollbackBtn) rollbackBtn.addEventListener('click', function () {
+    setDeploy('Rolling back…', true);
+    fetch('/os/api/website/custom-rollback', {
+      method: 'POST', headers: { 'X-CSRF-Token': csrf() }
+    }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (res) {
+        if (!res.ok) { setDeploy(errMsg(res.j, 'Rollback failed'), false); return; }
+        setDeploy('Rolled back \u2713 — reload to refresh details', true);
+        if (window.vpToast) window.vpToast('Rolled back', 'ok');
+      })
+      .catch(function () { setDeploy('Rollback failed (network)', false); });
+  });
 })();

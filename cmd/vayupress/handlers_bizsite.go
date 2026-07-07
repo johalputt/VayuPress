@@ -14,6 +14,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"html"
 	htmpl "html/template"
 	"io"
@@ -23,6 +24,7 @@ import (
 
 	"github.com/johalputt/vayupress/internal/bizsite"
 	"github.com/johalputt/vayupress/internal/config"
+	"github.com/johalputt/vayupress/internal/customsite"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/settings"
 )
@@ -142,7 +144,28 @@ func (a *App) handleOSWebsite(w http.ResponseWriter, r *http.Request) {
 		b.WriteString(` checked`)
 	}
 	b.WriteString(`> <strong>Website at the root, blog at /blog</strong> <span class="muted text-sm">— ` + he(domain) + ` is your business site, the blog homepage is ` + he(domain) + `/blog, and every existing post keeps its ` + he(domain) + `/slug URL. One domain, no subdomain or extra certificate needed.</span></label>`)
-	b.WriteString(`<p class="muted text-xs mt-2">The subdomain option points <span class="mono">` + he(domain) + `</span>, <span class="mono">blog.` + he(domain) + `</span> and <span class="mono">mail.` + he(domain) + `</span> at this server; the installer issues and renews Let&#39;s Encrypt certificates for all three automatically. The <span class="mono">/blog</span> option needs only <span class="mono">` + he(domain) + `</span>.</p></div>`)
+	b.WriteString(`<label class="vb-mode"><input type="radio" name="biz-mode" value="custom"`)
+	if mode == "custom" {
+		b.WriteString(` checked`)
+	}
+	b.WriteString(`> <strong>Custom uploaded website</strong> <span class="muted text-sm">— serve your own static site (built by hand or with AI, uploaded below) at ` + he(domain) + `; the blog stays at ` + he(domain) + `/blog and posts keep their ` + he(domain) + `/slug URLs</span></label>`)
+	b.WriteString(`<p class="muted text-xs mt-2">The subdomain option points <span class="mono">` + he(domain) + `</span>, <span class="mono">blog.` + he(domain) + `</span> and <span class="mono">mail.` + he(domain) + `</span> at this server; the installer issues and renews Let&#39;s Encrypt certificates for all three automatically. The <span class="mono">/blog</span> and custom options need only <span class="mono">` + he(domain) + `</span>.</p></div>`)
+
+	// Custom build deploy card.
+	cm := customsite.ReadManifest(customSiteDir())
+	customDeployed := customsite.Deployed(customSiteDir())
+	b.WriteString(`<div class="card"><div class="card-title">Deploy a custom build</div>`)
+	b.WriteString(`<p class="text-sm muted">Upload a complete static website as a <span class="mono">.zip</span> — it must contain <span class="mono">index.html</span> at its root and reference assets with relative paths. It goes live at <span class="mono">` + he(domain) + `</span> once you choose <strong>Custom uploaded website</strong> above and Save &amp; publish. Building with an AI assistant? <a href="/os/api/website/custom-guide">Download the build guide ↓</a></p>`)
+	if customDeployed {
+		b.WriteString(`<p class="text-sm">Current build: <strong>` + fmt.Sprintf("%d", cm.Files) + `</strong> files, ` + fmt.Sprintf("%.1f", float64(cm.Bytes)/(1024*1024)) + ` MiB` +
+			`, deployed <span class="mono">` + he(cm.DeployedAt.Format("2006-01-02 15:04")) + ` UTC</span>.</p>`)
+	}
+	b.WriteString(`<div class="biz-deploy"><input type="file" accept=".zip,application/zip" data-biz-zip class="input">` +
+		`<button type="button" class="btn btn--primary btn--sm" data-biz-deploy>Deploy .zip</button>`)
+	if cm.HasPrev {
+		b.WriteString(`<button type="button" class="btn btn--ghost btn--sm" data-biz-rollback>Roll back</button>`)
+	}
+	b.WriteString(`<span class="text-sm muted" data-biz-deploy-status></span></div></div>`)
 
 	// Template gallery.
 	b.WriteString(`<div class="card"><div class="card-title">Choose a design — ` + he(activeTpl.Name) + ` is active</div><div class="biz-grid">`)
@@ -216,10 +239,14 @@ func (a *App) handleOSWebsiteSave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch body.Mode {
-	case "", "blog", "business", "business_subpath":
+	case "", "blog", "business", "business_subpath", "custom":
 		// ok
 	default:
-		writeAPIError(w, r, http.StatusBadRequest, "validation_error", "mode must be blog, business or business_subpath", "")
+		writeAPIError(w, r, http.StatusBadRequest, "validation_error", "mode must be blog, business, business_subpath or custom", "")
+		return
+	}
+	if body.Mode == "custom" && !customsite.Deployed(customSiteDir()) {
+		writeAPIError(w, r, http.StatusBadRequest, "no_custom_bundle", "Deploy a custom website .zip before switching to custom mode.", "")
 		return
 	}
 	tpl := bizsite.ByKey(body.Template) // unknown keys fall back to the first template
@@ -248,7 +275,9 @@ func (a *App) handleOSWebsiteSave(w http.ResponseWriter, r *http.Request) {
 // blogBaseForMode maps a site mode to the blog's URL base path: "/blog" for the
 // business_subpath mode (website at "/", blog under /blog), "/" otherwise.
 func blogBaseForMode(mode string) string {
-	if mode == "business_subpath" {
+	// Both the /blog subpath mode and the custom-website mode keep the website at
+	// "/" and move the blog to /blog (posts stay at /slug).
+	if mode == "business_subpath" || mode == "custom" {
 		return "/blog"
 	}
 	return "/"
