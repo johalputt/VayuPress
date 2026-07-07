@@ -88,6 +88,16 @@ func Deploy(base string, zipData []byte) (Manifest, error) {
 	if err := os.MkdirAll(staging, 0o755); err != nil {
 		return Manifest{}, fmt.Errorf("create staging: %w", err)
 	}
+	// Confine ALL extraction to the staging directory via an OS-level root
+	// (os.Root, Go 1.24+). Every create/mkdir through it is refused by the
+	// kernel if it would escape the root — through "..", an absolute path, or a
+	// symlink — so a hostile zip entry name can never write outside staging
+	// (defeats Zip Slip at the syscall boundary, not just by string checks).
+	root, err := os.OpenRoot(staging)
+	if err != nil {
+		return Manifest{}, fmt.Errorf("open staging root: %w", err)
+	}
+	defer root.Close()
 	// On any error below, don't leave a half-written staging dir around.
 	success := false
 	defer func() {
@@ -125,16 +135,14 @@ func Deploy(base string, zipData []byte) (Manifest, error) {
 			return Manifest{}, fmt.Errorf("bundle has too many files (limit %d)", MaxFiles)
 		}
 
-		dest := filepath.Join(staging, filepath.FromSlash(rel))
-		// Defence in depth: the resolved path must stay within staging.
-		if !withinDir(staging, dest) {
-			return Manifest{}, fmt.Errorf("rejected file %q: path escapes the site directory", name)
+		// Create parent directories and the file THROUGH the confined root, so
+		// containment is enforced by the OS regardless of the entry name.
+		if dir := path.Dir(rel); dir != "." {
+			if err := root.MkdirAll(dir, 0o755); err != nil {
+				return Manifest{}, fmt.Errorf("mkdir for %q: %w", rel, err)
+			}
 		}
-		if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
-			return Manifest{}, fmt.Errorf("mkdir for %q: %w", rel, err)
-		}
-
-		written, err := extractOne(f, dest, MaxTotalBytes-total)
+		written, err := extractOne(root, rel, f, MaxTotalBytes-total)
 		if err != nil {
 			return Manifest{}, err
 		}
@@ -182,18 +190,20 @@ func Deploy(base string, zipData []byte) (Manifest, error) {
 	return m, nil
 }
 
-// extractOne copies a single zip entry to dest, refusing to write more than
-// remaining bytes (a hard stop against a lying UncompressedSize64 / zip bomb).
-func extractOne(f *zip.File, dest string, remaining int64) (int64, error) {
+// extractOne copies a single zip entry to rel within the confined root,
+// refusing to write more than remaining bytes (a hard stop against a lying
+// UncompressedSize64 / zip bomb). Writing via root.Create guarantees the file
+// cannot land outside the root, whatever rel resolves to.
+func extractOne(root *os.Root, rel string, f *zip.File, remaining int64) (int64, error) {
 	rc, err := f.Open()
 	if err != nil {
 		return 0, fmt.Errorf("open %q in zip: %w", f.Name, err)
 	}
 	defer rc.Close()
 
-	out, err := os.OpenFile(dest, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
+	out, err := root.Create(rel)
 	if err != nil {
-		return 0, fmt.Errorf("create %q: %w", dest, err)
+		return 0, fmt.Errorf("create %q: %w", rel, err)
 	}
 	defer out.Close()
 
@@ -204,7 +214,7 @@ func extractOne(f *zip.File, dest string, remaining int64) (int64, error) {
 	}
 	n, err := io.Copy(out, io.LimitReader(rc, limit))
 	if err != nil {
-		return n, fmt.Errorf("write %q: %w", dest, err)
+		return n, fmt.Errorf("write %q: %w", rel, err)
 	}
 	if n > remaining {
 		return n, errors.New("bundle exceeds the total size limit")
@@ -240,16 +250,6 @@ func safeRel(name string) (string, error) {
 		return "", fmt.Errorf("rejected entry %q: path traversal", name)
 	}
 	return cleaned, nil
-}
-
-// withinDir reports whether target is inside dir (after cleaning).
-func withinDir(dir, target string) bool {
-	dir = filepath.Clean(dir)
-	target = filepath.Clean(target)
-	if target == dir {
-		return true
-	}
-	return strings.HasPrefix(target, dir+string(os.PathSeparator))
 }
 
 // Rollback swaps the current and previous deployments. It errors if there is no
@@ -295,30 +295,37 @@ func Deployed(base string) bool {
 func Serve(w http.ResponseWriter, r *http.Request, base, urlPath string) bool {
 	current, _, _ := dirs(base)
 
-	clean := path.Clean("/" + strings.TrimPrefix(urlPath, "/"))
-	if strings.Contains(clean, "..") { // paranoia; path.Clean already resolves these
+	// Open the live bundle as a confined OS root: every lookup below is enforced
+	// by the kernel to stay inside it, so an attacker-controlled URL path can
+	// never reach a file outside the deployed bundle (no traversal, no symlink
+	// escape). Missing deployment → no root → 404 fallback.
+	root, err := os.OpenRoot(current)
+	if err != nil {
 		return false
 	}
-	rel := strings.TrimPrefix(clean, "/")
+	defer root.Close()
+
+	rel := strings.TrimPrefix(path.Clean("/"+strings.TrimPrefix(urlPath, "/")), "/")
 	if rel == "" {
 		rel = "index.html"
 	}
 
-	full := filepath.Join(current, filepath.FromSlash(rel))
-	if !withinDir(current, full) {
-		return false
-	}
-
-	fi, err := os.Stat(full)
+	fi, err := root.Stat(rel)
 	if err == nil && fi.IsDir() {
-		full = filepath.Join(full, "index.html")
-		fi, err = os.Stat(full)
+		rel = path.Join(rel, "index.html")
+		fi, err = root.Stat(rel)
 	}
 	if err != nil || !fi.Mode().IsRegular() {
 		return false
 	}
 
-	ct := mime.TypeByExtension(filepath.Ext(full))
+	f, err := root.Open(rel)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+
+	ct := mime.TypeByExtension(path.Ext(rel))
 	if ct == "" {
 		ct = "application/octet-stream"
 	}
@@ -326,12 +333,14 @@ func Serve(w http.ResponseWriter, r *http.Request, base, urlPath string) bool {
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	// Static bundle assets are safe to cache briefly; HTML is revalidated so a
 	// redeploy shows promptly.
-	if strings.HasSuffix(full, ".html") || strings.HasSuffix(full, ".htm") {
+	if strings.HasSuffix(rel, ".html") || strings.HasSuffix(rel, ".htm") {
 		w.Header().Set("Cache-Control", "public, max-age=60, must-revalidate")
 	} else {
 		w.Header().Set("Cache-Control", "public, max-age=3600")
 	}
-	http.ServeFile(w, r, full)
+	// Serve from the already-open, root-confined file handle — no path is passed
+	// to the filesystem here — with Range / If-Modified-Since support.
+	http.ServeContent(w, r, rel, fi.ModTime(), f)
 	return true
 }
 

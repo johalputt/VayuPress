@@ -32,6 +32,14 @@ a Website preview fix. See ADR-0116.
   default. `/site` honours `?preview=<design>` and the studio’s Preview button
   follows the selected card, so you can preview a design before saving.
 
+### Security
+- **Harden the custom-website deploy against path traversal / Zip Slip.** The
+  `.zip` extractor and the static file server now confine every filesystem
+  operation to an OS-level directory root (`os.Root`, Go 1.24+): the kernel
+  refuses any read or write that would escape the deployed bundle — via `..`, an
+  absolute path, or a symlink — in addition to the existing string-level checks.
+  Resolves CodeQL alerts #46, #47 and #48. No behavioural change.
+
 ### Upgrade Notes
 - No action required. Apply the Vayu theme from VayuOS → Theme Store when you
   want the website look on your blog; existing themes are unchanged.
