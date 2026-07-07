@@ -187,9 +187,14 @@ func (a *App) trendingItems(ctx context.Context, days, limit int) []trendingItem
 	if a.analytics == nil {
 		return out
 	}
-	arts, err := a.analytics.TrendingArticles(ctx, days, limit)
-	if err != nil {
-		return out
+	// Prefer the SAME source the admin Analytics "Top pages" panel uses (the
+	// per-pageview event log) so the public Trending list matches it exactly.
+	// Fall back to the daily aggregate only if that log has no data yet.
+	arts, err := a.analytics.TrendingArticlesByViews(ctx, days, limit)
+	if err != nil || len(arts) == 0 {
+		if fb, ferr := a.analytics.TrendingArticles(ctx, days, limit); ferr == nil {
+			arts = fb
+		}
 	}
 	for _, t := range arts {
 		out = append(out, trendingItem{Slug: t.Slug, Title: t.Title, Image: t.Image, Views: t.Views})
