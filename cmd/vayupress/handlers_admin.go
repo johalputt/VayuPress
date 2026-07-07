@@ -247,8 +247,52 @@ func (a *App) handleHomePaged(w http.ResponseWriter, r *http.Request) {
 		a.handleNotFound(w, r)
 		return
 	}
+	// business_subpath mode: the blog and its pagination live under /blog, so
+	// /page/N is not canonical — redirect it to the /blog equivalent.
+	if render.BlogBase() == "/blog" {
+		if n == 1 {
+			http.Redirect(w, r, "/blog", http.StatusMovedPermanently)
+		} else {
+			http.Redirect(w, r, "/blog/page/"+strconv.Itoa(n), http.StatusMovedPermanently)
+		}
+		return
+	}
 	if n == 1 {
 		http.Redirect(w, r, "/", http.StatusMovedPermanently)
+		return
+	}
+	a.renderHomeAt(w, r, n)
+}
+
+// handleBlogIndex serves the blog homepage at /blog. In business_subpath mode it
+// renders page 1 of the feed; in every other mode the blog is at "/" and "/blog"
+// is just a normal slug, so it is served as an article (preserving any post
+// actually slugged "blog").
+func (a *App) handleBlogIndex(w http.ResponseWriter, r *http.Request) {
+	if render.BlogBase() != "/blog" {
+		if rctx := chi.RouteContext(r.Context()); rctx != nil {
+			rctx.URLParams.Add("slug", "blog")
+		}
+		a.handleArticlePage(w, r)
+		return
+	}
+	a.renderHomeAt(w, r, 1)
+}
+
+// handleBlogPaged serves /blog/page/N in business_subpath mode (page 1 redirects
+// to /blog); in other modes /blog/* is not a blog surface, so it 404s.
+func (a *App) handleBlogPaged(w http.ResponseWriter, r *http.Request) {
+	if render.BlogBase() != "/blog" {
+		a.handleNotFound(w, r)
+		return
+	}
+	n, err := strconv.Atoi(chi.URLParam(r, "page"))
+	if err != nil || n < 1 {
+		a.handleNotFound(w, r)
+		return
+	}
+	if n == 1 {
+		http.Redirect(w, r, "/blog", http.StatusMovedPermanently)
 		return
 	}
 	a.renderHomeAt(w, r, n)

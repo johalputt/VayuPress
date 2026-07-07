@@ -443,6 +443,12 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	// Paginated homepage feed: /page/2, /page/3, … (page 1 is canonical at "/").
 	// Two-segment, so it never collides with the single-segment "/{slug}".
 	r.Get("/page/{page}", a.handleHomePaged)
+	// business_subpath mode: the website owns "/", so the blog homepage lives at
+	// /blog and its pagination at /blog/page/N — while posts keep their /slug
+	// URLs. chi matches the static "/blog" ahead of "/{slug}"; in other modes
+	// these handlers serve "/blog" as a normal article slug / 404 (see handlers).
+	r.Get("/blog", a.handleBlogIndex)
+	r.Get("/blog/page/{page}", a.handleBlogPaged)
 	// Public, cookieless JSON for the Trending & pinned-posts widget on the
 	// homepage and under every post (hydrated client-side by trending.js).
 	r.Get("/api/trending", a.handleTrendingJSON)

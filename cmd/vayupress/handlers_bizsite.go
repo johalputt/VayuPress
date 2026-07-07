@@ -49,25 +49,38 @@ func (a *App) bizSettings(r *http.Request) (mode string, tpl bizsite.Template, c
 // blog subdomain, so blog.<domain> keeps serving the blog feed).
 func (a *App) bizRootActive(r *http.Request) bool {
 	mode, _, _ := a.bizSettings(r)
-	if mode != "business" {
+	switch mode {
+	case "business_subpath":
+		// Website owns "/" on every host; the blog lives at /blog on the SAME
+		// domain (no subdomain), with posts still at /slug. Always active.
+		return true
+	case "business":
+		// Website owns the root domain; the blog moves to blog.<domain>, so the
+		// business site must NOT take over the blog subdomain.
+		domain := strings.TrimSpace(config.Cfg.Domain)
+		if domain == "" {
+			return true // no domain configured: single-host install, honour the mode
+		}
+		host := r.Host
+		if h, _, err := net.SplitHostPort(host); err == nil {
+			host = h
+		}
+		host = strings.ToLower(strings.TrimSuffix(host, "."))
+		return !strings.HasPrefix(host, "blog.")
+	default:
 		return false
 	}
-	domain := strings.TrimSpace(config.Cfg.Domain)
-	if domain == "" {
-		return true // no domain configured: single-host install, honour the mode
-	}
-	host := r.Host
-	if h, _, err := net.SplitHostPort(host); err == nil {
-		host = h
-	}
-	host = strings.ToLower(strings.TrimSuffix(host, "."))
-	return !strings.HasPrefix(host, "blog.")
 }
 
 // bizBlogURL is where the blog lives from the business site's point of view.
 func bizBlogURL(mode string) string {
-	if mode == "business" && strings.TrimSpace(config.Cfg.Domain) != "" {
-		return "https://blog." + config.Cfg.Domain + "/"
+	switch mode {
+	case "business_subpath":
+		return "/blog" // same domain, blog under /blog
+	case "business":
+		if strings.TrimSpace(config.Cfg.Domain) != "" {
+			return "https://blog." + config.Cfg.Domain + "/"
+		}
 	}
 	return "/"
 }
@@ -124,7 +137,12 @@ func (a *App) handleOSWebsite(w http.ResponseWriter, r *http.Request) {
 		b.WriteString(` checked`)
 	}
 	b.WriteString(`> <strong>Business website at the root</strong> <span class="muted text-sm">— ` + he(domain) + ` is your business site; the blog lives at blog.` + he(domain) + `</span></label>`)
-	b.WriteString(`<p class="muted text-xs mt-2">Point <span class="mono">` + he(domain) + `</span>, <span class="mono">blog.` + he(domain) + `</span> and <span class="mono">mail.` + he(domain) + `</span> at this server; the installer issues and renews Let&#39;s Encrypt certificates for all three automatically.</p></div>`)
+	b.WriteString(`<label class="vb-mode"><input type="radio" name="biz-mode" value="business_subpath"`)
+	if mode == "business_subpath" {
+		b.WriteString(` checked`)
+	}
+	b.WriteString(`> <strong>Website at the root, blog at /blog</strong> <span class="muted text-sm">— ` + he(domain) + ` is your business site, the blog homepage is ` + he(domain) + `/blog, and every existing post keeps its ` + he(domain) + `/slug URL. One domain, no subdomain or extra certificate needed.</span></label>`)
+	b.WriteString(`<p class="muted text-xs mt-2">The subdomain option points <span class="mono">` + he(domain) + `</span>, <span class="mono">blog.` + he(domain) + `</span> and <span class="mono">mail.` + he(domain) + `</span> at this server; the installer issues and renews Let&#39;s Encrypt certificates for all three automatically. The <span class="mono">/blog</span> option needs only <span class="mono">` + he(domain) + `</span>.</p></div>`)
 
 	// Template gallery.
 	b.WriteString(`<div class="card"><div class="card-title">Choose a design — ` + he(activeTpl.Name) + ` is active</div><div class="biz-grid">`)
@@ -197,8 +215,11 @@ func (a *App) handleOSWebsiteSave(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusBadRequest, "bad-json", "Invalid request body", "")
 		return
 	}
-	if body.Mode != "blog" && body.Mode != "business" && body.Mode != "" {
-		writeAPIError(w, r, http.StatusBadRequest, "validation_error", "mode must be blog or business", "")
+	switch body.Mode {
+	case "", "blog", "business", "business_subpath":
+		// ok
+	default:
+		writeAPIError(w, r, http.StatusBadRequest, "validation_error", "mode must be blog, business or business_subpath", "")
 		return
 	}
 	tpl := bizsite.ByKey(body.Template) // unknown keys fall back to the first template
@@ -220,5 +241,15 @@ func (a *App) handleOSWebsiteSave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	render.CachePurgeAll()
+	render.SetBlogBase(blogBaseForMode(body.Mode))
 	writeJSON(w, r, http.StatusOK, map[string]string{"status": "ok", "template": tpl.Key, "mode": body.Mode})
+}
+
+// blogBaseForMode maps a site mode to the blog's URL base path: "/blog" for the
+// business_subpath mode (website at "/", blog under /blog), "/" otherwise.
+func blogBaseForMode(mode string) string {
+	if mode == "business_subpath" {
+		return "/blog"
+	}
+	return "/"
 }
