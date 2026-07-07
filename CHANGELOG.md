@@ -8,6 +8,40 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.8.4] — 2026-07-07
+
+Website release: a fixed design picker, a new single-domain website+blog layout,
+and one-click custom-website deploys. See ADR-0114 and ADR-0115.
+
+### Added
+- **Website at the root, blog at `/blog` (new site mode).** A business website
+  can now own the domain root with the blog homepage at `<domain>/blog` on the
+  **same** domain — no subdomain, no extra certificate — and **every existing
+  post keeps its `<domain>/slug` URL unchanged**. Pagination lives at
+  `/blog/page/N`; the legacy `/page/N` redirects there. (ADR-0115)
+- **One-click custom website deploy.** Upload a static site as a `.zip` in
+  VayuOS → Website and serve it at the domain root — built by hand or with an AI
+  assistant, no build step. The upload is validated with defence in depth
+  (path-traversal/zip-slip proof, symlink rejection, a static-asset extension
+  allowlist, per-file/total/file-count caps, zip-bomb-resistant extraction, a
+  required root `index.html`), activated atomically, and revertible with
+  one-click **Roll back**. A downloadable **AI build guide** states exactly the
+  rules so any assistant can produce a compliant bundle. The blog stays at
+  `/blog` and posts at `/slug`. (ADR-0114)
+
+### Fixed
+- **The Website design picker could not select a design.** The studio's script
+  (`admin-os-website.js`) was referenced but its serve route was never
+  registered, so it 404'd — design cards did not respond, the content fields did
+  not hydrate, and Save did nothing. The route is now registered.
+- **Switching design now applies immediately.** The business-site stylesheet is
+  cache-busted per template (`/site.css?v=<template>`), so changing the design no
+  longer keeps serving the previous design's CSS from cache.
+
+### Upgrade Notes
+- No action required. New modes are opt-in from VayuOS → Website; existing
+  installs keep their current layout and all post URLs are unchanged.
+
 ## [3.8.3] — 2026-07-07
 
 Search memory + client-payload release, completing the memory-footprint work
