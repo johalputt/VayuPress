@@ -91,14 +91,45 @@ func bizBlogURL(mode string) string {
 // always-available preview).
 func (a *App) handleBizSite(w http.ResponseWriter, r *http.Request) {
 	mode, tpl, content := a.bizSettings(r)
+	// Live preview: the VayuOS "Preview" button passes ?preview=<design> so an
+	// operator can see a design they have SELECTED but not yet saved. Unknown
+	// keys are ignored (fall back to the saved/active design).
+	if pv, ok := previewTemplate(r); ok {
+		tpl = pv
+	}
 	page := bizsite.Render(tpl, content, bizBlogURL(mode))
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = io.WriteString(w, page)
 }
 
+// previewTemplate returns a known design named by the request's ?preview= (or
+// the ?v= cache-bust the preview page carries) so a live preview shows the
+// selected-but-unsaved design. It returns ok=false when neither names a real
+// design, so the caller keeps the saved/active design.
+func previewTemplate(r *http.Request) (bizsite.Template, bool) {
+	for _, key := range []string{
+		strings.TrimSpace(r.URL.Query().Get("preview")),
+		strings.TrimSpace(r.URL.Query().Get("v")),
+	} {
+		if key == "" {
+			continue
+		}
+		if t := bizsite.ByKey(key); t.Key == key { // ByKey falls back to the first design for unknown keys
+			return t, true
+		}
+	}
+	return bizsite.Template{}, false
+}
+
 // handleBizSiteCSS serves the business site's stylesheet (base + template).
 func (a *App) handleBizSiteCSS(w http.ResponseWriter, r *http.Request) {
 	_, tpl, _ := a.bizSettings(r)
+	// Serve the previewed design's stylesheet when one is requested (the preview
+	// page links /site.css?v=<design>) so the preview's markup and CSS always
+	// match; otherwise the saved/active design.
+	if pv, ok := previewTemplate(r); ok {
+		tpl = pv
+	}
 	w.Header().Set("Content-Type", "text/css; charset=utf-8")
 	w.Header().Set("Cache-Control", "public, max-age=300")
 	_, _ = io.WriteString(w, bizsite.CSS(tpl))
@@ -123,7 +154,7 @@ func (a *App) handleOSWebsite(w http.ResponseWriter, r *http.Request) {
 	var b strings.Builder
 	b.WriteString(`<div class="page-header"><div><h1>Website</h1>` +
 		`<p class="text-sm muted">A business website at your domain — blog at blog.` + he(domain) + `, mail at mail.` + he(domain) + `. Deploy, edit and switch designs from here.</p></div>` +
-		`<div class="page-actions"><a class="btn btn--ghost btn--sm" href="/site" target="_blank" rel="noopener">Preview ↗</a>` +
+		`<div class="page-actions"><a class="btn btn--ghost btn--sm" data-biz-preview href="/site?preview=` + he(activeTpl.Key) + `" target="_blank" rel="noopener">Preview ↗</a>` +
 		`<button class="btn btn--primary btn--sm" data-biz-save>Save &amp; publish</button></div></div>`)
 
 	// Hosting mode — explicit, never changed by updates.
