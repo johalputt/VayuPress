@@ -8,6 +8,40 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.9.2] — 2026-07-07
+
+Completes the VayuOS enterprise-grade hardening: VayuShield's per-request writes
+are now batched off the request path, and the remaining admin-panel reads no
+longer touch the single writer connection. Combined with v3.9.0–v3.9.1, VayuOS
+is fully decoupled from writer contention — for both authentication and page
+loads — even under a bot flood.
+
+### Changed
+- **VayuShield writes are now batched and asynchronous.** Bot-protection
+  telemetry — adaptive-signature learning (`Observe`), plus challenge and block
+  records — was written synchronously on the single SQLite writer for each
+  suspicious request. Under a bot flood (exactly when the shield is working
+  hardest) that storm of tiny transactions could saturate the writer and take
+  VayuOS down with it. These writes now go through a bounded, batched background
+  writer (new `internal/dbbatch`): one transaction per flush, non-blocking on
+  the request path, and best-effort (shed and counted under an extreme flood
+  rather than allowed to block or overwhelm the database). Bot protection is
+  now a net-zero cost to the writer under attack.
+- **Remaining VayuOS admin reads moved to the read pool.** The block editor
+  (blocks/tags/version lookups), the Messages inbox (list, detail, unread count,
+  CSV export), the per-post publishing-options load, and the observability
+  console (outbox stats, event list/detail, correlation trace) read via the
+  single writer connection, so a busy writer made those pages slow. They now use
+  the WAL read pool (writes stay on the writer; WAL preserves read-your-writes),
+  so no admin page serialises behind writes.
+
+### Reliability series
+This closes the update/restart-resilience work: v3.8.9 (page-cache
+stale-while-revalidate) → v3.8.10 (covering index + backup rotation) → v3.8.11
+(single-flight trending) → v3.9.0 (admin auth reads off the writer) → v3.9.1
+(analytics beacons batched) → v3.9.2 (VayuShield writes batched + admin reads off
+the writer).
+
 ## [3.9.1] — 2026-07-07
 
 The real fix for the post-restart VayuOS 502s: **the always-on analytics

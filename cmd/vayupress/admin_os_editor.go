@@ -76,7 +76,7 @@ func loadBlocksJSON(ctx context.Context, slug string) string {
 		return ""
 	}
 	var bj string
-	_ = dbpkg.DB.QueryRowContext(ctx,
+	_ = dbpkg.Reader().QueryRowContext(ctx,
 		`SELECT COALESCE(blocks_json,'') FROM articles WHERE slug = ?`, slug).Scan(&bj)
 	return bj
 }
@@ -257,7 +257,7 @@ func (a *App) handleOSPostStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var tagsCSV string
-	if err := dbpkg.DB.QueryRowContext(r.Context(), `SELECT COALESCE(tags,'') FROM articles WHERE slug=?`, slug).Scan(&tagsCSV); err != nil {
+	if err := dbpkg.Reader().QueryRowContext(r.Context(), `SELECT COALESCE(tags,'') FROM articles WHERE slug=?`, slug).Scan(&tagsCSV); err != nil {
 		writeAPIError(w, r, http.StatusNotFound, "not-found", "No article with that slug", "")
 		return
 	}
@@ -296,7 +296,7 @@ func (a *App) handleOSPostToggleFragment(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	var tagsCSV string
-	if err := dbpkg.DB.QueryRowContext(r.Context(), `SELECT COALESCE(tags,'') FROM articles WHERE slug=?`, slug).Scan(&tagsCSV); err != nil {
+	if err := dbpkg.Reader().QueryRowContext(r.Context(), `SELECT COALESCE(tags,'') FROM articles WHERE slug=?`, slug).Scan(&tagsCSV); err != nil {
 		http.Error(w, "no article with that slug", http.StatusNotFound)
 		return
 	}
@@ -331,7 +331,7 @@ func (a *App) handleOSPostPinFragment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var tagsCSV string
-	if err := dbpkg.DB.QueryRowContext(r.Context(), `SELECT COALESCE(tags,'') FROM articles WHERE slug=?`, slug).Scan(&tagsCSV); err != nil {
+	if err := dbpkg.Reader().QueryRowContext(r.Context(), `SELECT COALESCE(tags,'') FROM articles WHERE slug=?`, slug).Scan(&tagsCSV); err != nil {
 		http.Error(w, "no article with that slug", http.StatusNotFound)
 		return
 	}
@@ -374,7 +374,7 @@ func (a *App) handleOSPostPin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var tagsCSV string
-	if err := dbpkg.DB.QueryRowContext(r.Context(), `SELECT COALESCE(tags,'') FROM articles WHERE slug=?`, slug).Scan(&tagsCSV); err != nil {
+	if err := dbpkg.Reader().QueryRowContext(r.Context(), `SELECT COALESCE(tags,'') FROM articles WHERE slug=?`, slug).Scan(&tagsCSV); err != nil {
 		writeAPIError(w, r, http.StatusNotFound, "not-found", "No article with that slug", "")
 		return
 	}
@@ -410,7 +410,7 @@ func (a *App) handleOSPostDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var id, tagsCSV string
-	if err := dbpkg.DB.QueryRowContext(r.Context(), `SELECT id,COALESCE(tags,'') FROM articles WHERE slug=?`, slug).Scan(&id, &tagsCSV); err != nil {
+	if err := dbpkg.Reader().QueryRowContext(r.Context(), `SELECT id,COALESCE(tags,'') FROM articles WHERE slug=?`, slug).Scan(&id, &tagsCSV); err != nil {
 		writeAPIError(w, r, http.StatusNotFound, "not-found", "No post with that slug", "")
 		return
 	}
@@ -582,7 +582,7 @@ func (a *App) handleOSEditorVersionList(w http.ResponseWriter, r *http.Request) 
 	}
 	slug := chi.URLParam(r, "slug")
 	var articleID string
-	if err := dbpkg.DB.QueryRowContext(r.Context(), `SELECT id FROM articles WHERE slug=?`, slug).Scan(&articleID); err != nil {
+	if err := dbpkg.Reader().QueryRowContext(r.Context(), `SELECT id FROM articles WHERE slug=?`, slug).Scan(&articleID); err != nil {
 		writeAPIError(w, r, http.StatusNotFound, "article-not-found", "No article with that slug", "")
 		return
 	}

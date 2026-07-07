@@ -70,7 +70,29 @@ const autoPromoteThreshold = 5
 // (capped at 0.95) so persistent bot-like fingerprints rise in confidence
 // without operator action, while operator-verified rows are left untouched.
 func (s *Store) Observe(ctx context.Context, o Observation) error {
-	if s == nil || s.db == nil || o.FingerprintHash == "" {
+	if s == nil || s.db == nil {
+		return nil
+	}
+	return observe(ctx, s.db, o)
+}
+
+// ObserveTx performs the same fingerprint upsert against a caller-owned execer
+// (a *sql.Tx), so per-request learning can be batched off the request path by
+// the async writer instead of hitting the single SQLite writer synchronously.
+func (s *Store) ObserveTx(ctx context.Context, e execer, o Observation) error {
+	if s == nil {
+		return nil
+	}
+	return observe(ctx, e, o)
+}
+
+// execer is satisfied by both *sql.DB and *sql.Tx.
+type execer interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
+
+func observe(ctx context.Context, e execer, o Observation) error {
+	if e == nil || o.FingerprintHash == "" {
 		return nil
 	}
 	now := time.Now().UTC()
@@ -85,7 +107,7 @@ func (s *Store) Observe(ctx context.Context, o Observation) error {
 	if o.AutoLearned {
 		auto = 1
 	}
-	_, err := s.db.ExecContext(ctx, `INSERT INTO vayushield_signatures
+	_, err := e.ExecContext(ctx, `INSERT INTO vayushield_signatures
 (fingerprint_hash,ja3_hash,ja4_hash,http2_settings_hash,header_order_hash,user_agent_pattern,ip_range_hint,post_quantum_present,classification,bot_name,confidence,first_seen,last_seen,request_count,auto_learned)
 VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,1,?)
 ON CONFLICT(fingerprint_hash) DO UPDATE SET

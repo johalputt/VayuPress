@@ -31,6 +31,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/johalputt/vayupress/internal/dbbatch"
 	"github.com/johalputt/vayupress/internal/vayushield/botdb"
 	"github.com/johalputt/vayupress/internal/vayushield/challenge"
 	"github.com/johalputt/vayupress/internal/vayushield/fingerprint"
@@ -133,6 +134,50 @@ type Manager struct {
 	ipMu   sync.Mutex
 	ipSalt []byte
 	ipDay  string
+
+	// asyncW batches VayuShield's best-effort DB writes (learning upserts,
+	// challenge/block records) off the request path so a bot flood — the very
+	// situation the shield exists for — cannot saturate the single SQLite writer
+	// and take VayuOS down. nil until StartAsyncWrites; writes then fall back to
+	// synchronous execution.
+	asyncW *dbbatch.Writer
+}
+
+// StartAsyncWrites launches the batched background writer for VayuShield's
+// telemetry. Call once at boot with the process shutdown channel. Until called,
+// telemetry writes run synchronously (as before).
+func (m *Manager) StartAsyncWrites(done <-chan struct{}) {
+	if m == nil || m.cfg.DB == nil || m.asyncW != nil {
+		return
+	}
+	m.asyncW = dbbatch.New(m.cfg.DB, 8192, 256, time.Second)
+	go m.asyncW.Run(done)
+}
+
+// AsyncWritesDropped reports telemetry writes shed under overload (observability).
+func (m *Manager) AsyncWritesDropped() int64 {
+	if m == nil {
+		return 0
+	}
+	return m.asyncW.Dropped()
+}
+
+// recordExec runs a best-effort telemetry write: batched off the request path
+// when the async writer is running (using the batch's own context, since the
+// request context is gone by flush time), else synchronously on the caller's
+// context. Errors are ignored — telemetry must never fail a request.
+func (m *Manager) recordExec(ctx context.Context, query string, args ...any) {
+	if m.cfg.DB == nil {
+		return
+	}
+	if m.asyncW != nil {
+		m.asyncW.Submit(func(bctx context.Context, tx *sql.Tx) error {
+			_, err := tx.ExecContext(bctx, query, args...)
+			return err
+		})
+		return
+	}
+	_, _ = m.cfg.DB.ExecContext(ctx, query, args...)
 }
 
 // New constructs a Manager, applying defaults.
@@ -551,7 +596,7 @@ func (m *Manager) maybeLearn(ctx context.Context, v Verdict) {
 		return
 	}
 	if v.Result.BotScore > 0.75 && v.Result.ClientType == botdb.TypeUnknown {
-		_ = m.cfg.Bots.Observe(ctx, botdb.Observation{
+		obs := botdb.Observation{
 			FingerprintHash:   v.Composite.FingerprintHash,
 			JA3:               v.Composite.JA3,
 			JA4:               v.Composite.JA4,
@@ -562,7 +607,16 @@ func (m *Manager) maybeLearn(ctx context.Context, v Verdict) {
 			Classification:    botdb.ClassUnknown,
 			Confidence:        0.6,
 			AutoLearned:       true,
-		})
+		}
+		// Batch the learning upsert off the request path when the async writer is
+		// running (so a bot flood cannot serialise on the single writer).
+		if m.asyncW != nil {
+			m.asyncW.Submit(func(bctx context.Context, tx *sql.Tx) error {
+				return m.cfg.Bots.ObserveTx(bctx, tx, obs)
+			})
+			return
+		}
+		_ = m.cfg.Bots.Observe(ctx, obs)
 	}
 }
 
@@ -695,7 +749,7 @@ func (m *Manager) recordChallenge(r *http.Request, v Verdict, ctype, outcome str
 	if m.cfg.CountryFn != nil {
 		country = m.cfg.CountryFn(ip)
 	}
-	_, _ = m.cfg.DB.ExecContext(r.Context(), `INSERT INTO vayushield_challenges
+	m.recordExec(r.Context(), `INSERT INTO vayushield_challenges
 (session_hash,challenge_type,bot_score,fingerprint_hash,outcome,time_to_solve_ms,ip_hash,country_code)
 VALUES('',?,?,?,?,?,?,?)`,
 		ctype, v.Result.BotScore, v.Composite.FingerprintHash, outcome, solveMS, m.hashIP(ip), country)
@@ -718,7 +772,7 @@ func (m *Manager) recordBlock(r *http.Request, v Verdict) {
 	if len(ua) > 512 {
 		ua = ua[:512]
 	}
-	_, _ = m.cfg.DB.ExecContext(r.Context(), `INSERT INTO vayushield_blocked
+	m.recordExec(r.Context(), `INSERT INTO vayushield_blocked
 (fingerprint_hash,ja3_hash,ip_hash,user_agent,request_path,block_reason,bot_score,country_code)
 VALUES(?,?,?,?,?,?,?,?)`,
 		v.Composite.FingerprintHash, v.Composite.JA3, m.hashIP(ip), ua, r.URL.Path, reason, v.Result.BotScore, country)

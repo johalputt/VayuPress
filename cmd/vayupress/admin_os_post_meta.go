@@ -52,7 +52,7 @@ func loadPostMeta(ctx context.Context, slug string) PostMeta {
 		return m
 	}
 	var featured, isPage int
-	_ = dbpkg.DB.QueryRowContext(ctx, `SELECT
+	_ = dbpkg.Reader().QueryRowContext(ctx, `SELECT
 		COALESCE(excerpt,''), COALESCE(feature_image,''),
 		COALESCE(meta_title,''), COALESCE(meta_description,''), COALESCE(canonical_url,''),
 		COALESCE(og_title,''), COALESCE(og_description,''), COALESCE(og_image,''),
