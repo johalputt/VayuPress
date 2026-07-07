@@ -5,8 +5,35 @@ import (
 	"bytes"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 )
+
+// TestOSRootConfinesWrites documents the OS-level barrier the extractor and
+// server now rely on (Go 1.24 os.Root): the kernel refuses any create that
+// would escape the root — via traversal or an absolute path — so Zip Slip /
+// path traversal is impossible even if a name slipped past the string checks.
+func TestOSRootConfinesWrites(t *testing.T) {
+	dir := t.TempDir()
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+
+	for _, escape := range []string{"../escape.txt", "../../escape.txt", "/tmp/vayu-escape.txt"} {
+		if f, err := root.Create(escape); err == nil {
+			_ = f.Close()
+			t.Errorf("os.Root allowed an escaping write to %q", escape)
+		}
+	}
+	// A normal in-root create still works.
+	f, err := root.Create("ok.txt")
+	if err != nil {
+		t.Fatalf("root.Create(ok.txt): %v", err)
+	}
+	_ = f.Close()
+}
 
 // zipOf builds an in-memory .zip from name→content pairs.
 func zipOf(t *testing.T, files map[string]string) []byte {
