@@ -29,6 +29,9 @@ var agoraCSS string
 //go:embed apex.css
 var apexCSS string
 
+//go:embed vayu.css
+var vayuCSS string
+
 // Default returns the Default preset — neutral dark/light tones.
 func Default() Tokens {
 	return Tokens{
@@ -319,6 +322,7 @@ func allPresetsRaw() []Tokens {
 		Maverick(),
 		Agora(),
 		Apex(),
+		Vayu(),
 	}
 }
 
@@ -664,5 +668,22 @@ func Apex() Tokens {
 		FontSans: "Inter, system-ui, -apple-system, 'Segoe UI', sans-serif", FontMono: "IBM Plex Mono, ui-monospace, monospace",
 		FontSizeBase: "1.0625rem", LineHeight: "1.65", MaxWidth: "46rem", RadiusSm: "0.5rem", RadiusLg: "1.25rem",
 		CustomCSS: apexCSS,
+	}
+}
+
+// Vayu — the theme that mirrors the vayupress.com flagship site: a deep cosmic
+// "ink" canvas lit with bright teal and saffron, gradient display headings, and
+// glassy cards with a teal glow-lift. One-click "same as the website" design.
+// Pure CSS, system fonts (Space Grotesk used only if locally present) — no web
+// fonts, no JS, no external requests, so it stays 100/100-fast and sovereign.
+func Vayu() Tokens {
+	return Tokens{
+		Name: "Vayu", BgDark: "#04060d", SurfaceDark: "#0a1020", TextDark: "#e5e7eb",
+		MutedDark: "#94a3b8", AccentDark: "#2dd4bf", Accent2Dark: "#f59e0b", HiDark: "#5eead4", GreenDark: "#34d399",
+		BgLight: "#f7fafc", SurfaceLight: "#ffffff", TextLight: "#0a1020", MutedLight: "#52627a",
+		AccentLight: "#0d9488", Accent2Light: "#d97706", HiLight: "#0f766e",
+		FontSans: "Inter, system-ui, -apple-system, Segoe UI, sans-serif", FontMono: "JetBrains Mono, IBM Plex Mono, ui-monospace, monospace",
+		FontSizeBase: "1.0625rem", LineHeight: "1.7", MaxWidth: "44rem", RadiusSm: "0.5rem", RadiusLg: "0.875rem",
+		CustomCSS: vayuCSS,
 	}
 }

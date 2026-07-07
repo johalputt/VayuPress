@@ -240,6 +240,12 @@ var catalogMeta = map[string]ThemeMeta{
 		Tags:        []string{"flagship", "premium", "multipurpose", "bento", "gradient", "configurable"},
 		Category:    CatFlagship,
 	},
+	"Vayu": {
+		Tagline:     "Match your site — the vayupress.com look for your blog.",
+		Description: "The flagship theme that mirrors vayupress.com: a deep cosmic \u201cink\u201d canvas lit with bright teal and saffron, gradient display headings, glassy post cards with a teal glow-lift, an underlined nav, gradient-bordered code blocks and a refined reading experience. Deploy it in one click so your blog and website share one identity. Pure CSS with a system-font stack \u2014 no web fonts, no JavaScript, no external requests \u2014 so it stays blazing fast (100/100 PageSpeed) and fully sovereign, in light and dark.",
+		Tags:        []string{"flagship", "teal", "saffron", "cosmic", "gradient", "fast", "brand"},
+		Category:    CatFlagship,
+	},
 }
 
 // Meta returns the store metadata for a theme by name. When no explicit entry
