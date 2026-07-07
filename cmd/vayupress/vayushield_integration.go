@@ -81,6 +81,12 @@ func (a *App) bootVayuShield() {
 	// nothing here throttles or challenges a real visitor until opted in.
 	a.vayuShield.ApplySettings(a.shieldSettings(context.Background()))
 
+	// Persist the shield's learning + challenge/block records on a bounded,
+	// batched background writer instead of one synchronous writer transaction per
+	// suspicious request. Under a bot flood — exactly when the shield is busiest —
+	// this keeps the single SQLite writer free so VayuOS stays responsive.
+	a.vayuShield.StartAsyncWrites(queue.DoneCh)
+
 	if a.vayuShield.Enabled() {
 		logging.LogInfo("vayushield", "bot protection ENABLED — PoW→JS→block→tarpit ladder + adaptive learning active")
 	} else {

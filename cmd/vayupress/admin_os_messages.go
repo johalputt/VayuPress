@@ -52,7 +52,7 @@ func (a *App) handleOSMessages(w http.ResponseWriter, r *http.Request) {
 	var msgs []msgRow
 	unread := 0 // total unread, independent of the active filter (header + badge)
 	if dbpkg.DB != nil {
-		_ = dbpkg.DB.QueryRowContext(r.Context(), `SELECT COUNT(1) FROM contact_messages WHERE is_read=0`).Scan(&unread)
+		_ = dbpkg.Reader().QueryRowContext(r.Context(), `SELECT COUNT(1) FROM contact_messages WHERE is_read=0`).Scan(&unread)
 
 		where := []string{}
 		args := []any{}
@@ -76,7 +76,7 @@ func (a *App) handleOSMessages(w http.ResponseWriter, r *http.Request) {
 		if len(where) > 0 {
 			clause = " WHERE " + strings.Join(where, " AND ")
 		}
-		if rows, err := dbpkg.DB.QueryContext(r.Context(),
+		if rows, err := dbpkg.Reader().QueryContext(r.Context(),
 			`SELECT id,name,email,message,page,is_read,created_at FROM contact_messages`+clause+` ORDER BY created_at DESC LIMIT 500`, args...); err == nil {
 			defer rows.Close() //nolint:errcheck
 			for rows.Next() {
@@ -242,7 +242,7 @@ func (a *App) handleOSMessageDetail(w http.ResponseWriter, r *http.Request) {
 	var read int
 	found := false
 	if dbpkg.DB != nil {
-		if err := dbpkg.DB.QueryRowContext(r.Context(),
+		if err := dbpkg.Reader().QueryRowContext(r.Context(),
 			`SELECT name,email,message,page,ip,is_read,created_at FROM contact_messages WHERE id=?`, id).
 			Scan(&name, &eml, &msg, &page, &ip, &read, &created); err == nil {
 			found = true
@@ -382,7 +382,7 @@ func (a *App) handleOSMessagesExportCSV(w http.ResponseWriter, r *http.Request) 
 	if dbpkg.DB == nil {
 		return
 	}
-	rows, err := dbpkg.DB.QueryContext(r.Context(),
+	rows, err := dbpkg.Reader().QueryContext(r.Context(),
 		`SELECT created_at,name,email,page,ip,is_read,message FROM contact_messages ORDER BY created_at DESC`)
 	if err != nil {
 		return
