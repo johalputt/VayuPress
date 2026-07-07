@@ -101,6 +101,45 @@ func (s *Store) TrendingArticles(ctx context.Context, days, limit int) ([]Trendi
 	return out, rows.Err()
 }
 
+// TrendingArticlesByViews returns the most-viewed published, non-page articles
+// over the trailing `days` days using the SAME source as the admin Analytics
+// "Top pages" panel — the per-pageview event log (analytics_pageviews,
+// event_type=1) — so the public "Trending" widget shows exactly the top pages
+// the operator sees there, restricted to real posts. Highest pageviews first;
+// ties break by recency. Returns an empty (not nil) slice when there is no data
+// so the caller can fall back cleanly.
+func (s *Store) TrendingArticlesByViews(ctx context.Context, days, limit int) ([]TrendingArticle, error) {
+	if days <= 0 {
+		days = 7
+	}
+	if limit <= 0 {
+		limit = 10
+	}
+	from := time.Now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT a.slug, a.title, COALESCE(a.feature_image,''), COUNT(1) AS v
+		FROM analytics_pageviews d
+		JOIN articles a ON a.slug = SUBSTR(d.url_path, 2)
+		WHERE d.created_at >= ? AND d.event_type = 1 AND d.url_path LIKE '/%'
+		  AND a.status = 'published' AND a.is_page = 0
+		GROUP BY a.slug, a.title, a.feature_image
+		ORDER BY v DESC, a.created_at DESC
+		LIMIT ?`, from, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]TrendingArticle, 0, limit)
+	for rows.Next() {
+		var t TrendingArticle
+		if err := rows.Scan(&t.Slug, &t.Title, &t.Image, &t.Views); err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
 // HostCount is a referrer host with its hit total over the queried window.
 type HostCount struct {
 	Host string `json:"host"`
