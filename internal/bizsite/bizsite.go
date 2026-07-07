@@ -82,7 +82,11 @@ func Render(t Template, c Content, blogURL string) string {
 	b.WriteString(`<meta name="viewport" content="width=device-width, initial-scale=1">`)
 	b.WriteString(`<title>` + esc(name) + ` — ` + esc(c.Tagline) + `</title>`)
 	b.WriteString(`<meta name="description" content="` + esc(c.Tagline) + `">`)
-	b.WriteString(`<link rel="stylesheet" href="/site.css">`)
+	// Version the stylesheet URL by the active template key so switching designs
+	// busts the browser/CDN cache immediately — /site.css is cacheable but its
+	// contents change with the template, and without this a design change would
+	// keep serving the previous design's CSS until the cache expired.
+	b.WriteString(`<link rel="stylesheet" href="/site.css?v=` + esc(t.Key) + `">`)
 	b.WriteString(`</head><body class="vb vb--` + esc(t.Key) + `">`)
 
 	// Nav
