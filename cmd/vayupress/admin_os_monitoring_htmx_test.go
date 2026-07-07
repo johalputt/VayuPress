@@ -25,9 +25,12 @@ func TestMonBudgetID(t *testing.T) {
 			t.Errorf("monBudgetID(%q) = %q, want %q", in, got, want)
 		}
 	}
-	// Determinism: same input always yields the same id (page render == poll).
-	if monBudgetID("Write queue") != monBudgetID("Write queue") {
-		t.Error("monBudgetID is not deterministic")
+	// Determinism: the id computed at full-page render time must equal the id
+	// computed on a later poll for the same budget, or OOB swaps miss.
+	first := monBudgetID("Write queue")
+	second := monBudgetID("Write queue")
+	if first != second {
+		t.Errorf("monBudgetID not deterministic: %q vs %q", first, second)
 	}
 }
 
