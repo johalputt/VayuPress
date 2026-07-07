@@ -2311,7 +2311,13 @@ func warmThrottle() time.Duration {
 // a way the CSS content hashes do not already capture (e.g. markup-only edits).
 // It feeds the cache fingerprint below so such changes still invalidate stale
 // pre-rendered HTML on the next deploy.
-const cacheSchema = "3"
+//
+// v4: the "Trending & pinned posts" strip and the always-show related section
+// were added to the article template as markup-only edits, so posts cached by
+// an older binary kept serving HTML without them. Bumping the schema forces
+// every cached post to re-render (lazily, one per request) on the next deploy
+// so the trending/related sections finally appear under existing posts.
+const cacheSchema = "4"
 
 // cacheFingerprint summarises everything baked into the running binary that
 // affects pre-rendered public HTML: the release version, the manual cache
