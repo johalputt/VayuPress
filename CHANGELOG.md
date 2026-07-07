@@ -8,6 +8,32 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.8.6] — 2026-07-07
+
+Post-page polish and a trending-source correction so the public "Trending"
+widget matches the admin analytics the operator actually sees.
+
+### Fixed
+- **Post byline now respects the chosen title alignment.** When a post/theme is
+  set to centre-align, the author byline and meta row centre with the title
+  instead of hanging to one side. (#224)
+- **Related and Trending sections always render after a post.** They previously
+  disappeared when a post had no same-tag siblings; they now fall back
+  gracefully (related → recent posts, trending → recent posts) so every article
+  ends with onward-reading links. (#224)
+- **Trending is now sourced from the same analytics as the admin "Top pages"
+  panel.** The widget previously ranked posts from the daily aggregate
+  (`analytics_daily`), which could diverge from VayuOS → Analytics → Pages. It
+  now computes the trailing-7-day most-viewed posts from the per-pageview event
+  log (`analytics_pageviews`, `event_type=1`) — the exact source and window of
+  that panel — joined to published, non-page articles, and falls back to the
+  daily aggregate (then recent posts) only when the pageview log is empty.
+
+### Changed
+- Trending reflects the last 7 days of real page views and auto-refreshes daily
+  (24h cache; 1h while a fallback source is in use), so "Trending" means
+  "top pages, last 7 days" and stays current without a scheduler.
+
 ## [3.8.5] — 2026-07-07
 
 Theme release: a premium blog theme that matches the vayupress.com website, plus
