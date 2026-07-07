@@ -8,6 +8,28 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.8.7] — 2026-07-07
+
+A Theme Studio control for the Trending strip, and fully responsive post
+content — tables, code, and images now adapt cleanly to any screen.
+
+### Added
+- **"Trending posts" toggle in Theme Studio → Article pages.** Sitting right
+  next to "Related posts", it lets you show or hide the trending & pinned strip
+  at the end of a post per theme (Theme default / Show / Hide). Pure scoped CSS,
+  no JavaScript, no server round-trip.
+
+### Changed
+- **Post content is now fully responsive on every screen.** Wide tables scroll
+  horizontally within the reading column instead of overflowing the page, and
+  gain readable borders, padded cells, a header tint and zebra rows; images
+  keep their aspect ratio (`height:auto`); long URLs, inline code and
+  unbreakable words wrap instead of forcing a horizontal scrollbar; code blocks
+  stay inside the viewport. A tablet/mobile breakpoint (≤768px) tunes the base
+  font, heading sizes, code padding and table cell padding, and stacks the
+  related-articles list for small screens. Reader typography and speed are
+  unchanged on desktop.
+
 ## [3.8.6] — 2026-07-07
 
 Post-page polish and a trending-source correction so the public "Trending"

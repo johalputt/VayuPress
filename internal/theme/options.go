@@ -185,6 +185,13 @@ func AllOptions() []Option {
 			},
 		},
 		{
+			Key: "trendingposts", Label: "Trending posts", Default: "default",
+			Help: "The trending & pinned posts strip at the end of a post.",
+			Choices: []OptionChoice{
+				{"default", "Theme default"}, {"show", "Show"}, {"hidden", "Hide"},
+			},
+		},
+		{
 			Key: "authorbox", Label: "Author box", Default: "default",
 			Help: "An author card at the end of each post (uses the site author + bio).",
 			Choices: []OptionChoice{
@@ -453,6 +460,9 @@ func applyThemeOptions(t *Tokens) string {
 	}
 	if t.Options["relatedposts"] == "hidden" {
 		extra.WriteString(".vayu-related{display:none}")
+	}
+	if t.Options["trendingposts"] == "hidden" {
+		extra.WriteString(".vayu-trending{display:none}")
 	}
 	if t.Options["authorbox"] == "hidden" {
 		extra.WriteString(".vayu-author-box{display:none}")
