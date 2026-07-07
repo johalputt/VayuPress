@@ -8,6 +8,24 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.8.8] — 2026-07-07
+
+A cache-invalidation fix so the Trending strip (and the always-show related
+section) finally appear under posts that were published before those features
+shipped.
+
+### Fixed
+- **Trending & related now show on existing posts after an upgrade.** Public
+  post pages are cached to disk and only re-render when the renderer
+  fingerprint changes (CSS hashes + a cache schema), not on template markup
+  alone. The "Trending & pinned posts" strip and the always-show related
+  section were added as markup-only template edits, so posts cached by an older
+  binary kept serving HTML without them — the sections appeared only on newly
+  edited posts. Bumping the cache schema (v3 → v4) flips the fingerprint, so on
+  the next deploy every cached post re-renders lazily (one per request, no
+  site-wide re-render herd) and the Trending/Related sections show up under
+  posts that were published earlier.
+
 ## [3.8.7] — 2026-07-07
 
 A Theme Studio control for the Trending strip, and fully responsive post
