@@ -79,7 +79,7 @@ import (
 // -ldflags "-X main.Version=<.release-version>", and scripts/update-vayupress.sh
 // reads .release-version too — keep this in sync with .release-version so an
 // un-stamped `go build` still reports an honest version.
-var Version = "3.8.11"
+var Version = "3.9.0"
 var bootTime = time.Now()
 
 // Immutable package-level values (compiled once, never mutated).
@@ -564,9 +564,15 @@ func main() {
 		}
 	}()
 
-	// Multi-author accounts + login sessions (Tier 1).
+	// Multi-author accounts + login sessions (Tier 1). Writes go to the single
+	// writer connection, but the per-request auth reads (session validation +
+	// account lookup, which run on EVERY VayuOS admin request) use the read pool
+	// so the admin panel never serialises behind a saturated writer — the
+	// admin-only 502s after a restart while the public site stayed fast.
 	a.userStore = users.New(dbpkg.DB)
+	a.userStore.UseReader(dbpkg.Reader())
 	a.sessions = auth.NewSessionStore(dbpkg.DB)
+	a.sessions.UseReader(dbpkg.Reader())
 	if n, err := a.userStore.Count(context.Background()); err == nil && n == 0 {
 		a.bootstrapDefaultAdmin(context.Background())
 	}
