@@ -8,6 +8,38 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.8.3] — 2026-07-07
+
+Search memory + client-payload release, completing the memory-footprint work
+started in 3.8.2 (see ADR-0113). The instant-search index is now a bounded
+recent window instead of the whole corpus, so the browser download and the
+resident server snapshot stay small on large sites — with no post made
+unreachable and no change to ranking.
+
+### Changed
+- **Instant-search index ships only the most-recent posts (default 5,000).** The
+  Ctrl/⌘-K modal still filters entirely in the browser with zero per-keystroke
+  server round-trips, now over a recent window rather than every post — so the
+  downloaded index drops from tens of MB to a few MB on large sites. The
+  server-side index stays complete.
+- The client search payload now reports the total post count so the modal knows
+  when the corpus is larger than the window it holds.
+
+### Added
+- **"Search the full archive" escalation.** When the corpus is larger than the
+  local window (or a recent-only search finds nothing), the modal shows a
+  keyboard-navigable row that jumps to the server-rendered `/search` page, which
+  searches every post. The server is only touched when a visitor chooses it, so
+  as-you-type search stays instant and costs the server nothing.
+- **ADR-0113 — Memory-Footprint Budget & Search-Index Windowing**, recording the
+  SQLite page-cache sizing, search-index trim, single-pass snapshot, cgroup soft
+  memory limit (3.8.2) and the client-index windowing (3.8.3).
+
+### Upgrade Notes
+- No action required. `/search`, `/api/v1/search` and GraphQL search remain
+  full-corpus; only the downloadable instant-search index is windowed. The
+  window size is a build-time constant (`clientSnapshotMax`).
+
 ## [3.8.2] — 2026-07-07
 
 Memory-footprint release. A RAM audit found that steady-state RSS on large
