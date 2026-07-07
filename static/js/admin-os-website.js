@@ -47,13 +47,23 @@
     if (radio.value === state.mode || (state.mode === '' && radio.value === 'blog')) radio.checked = true;
     radio.addEventListener('change', function () { if (radio.checked) state.mode = radio.value; });
   });
+  // Keep the "Preview" button pointed at the currently-selected design, so an
+  // operator can preview a design before saving it (via /site?preview=<key>).
+  var previewLink = document.querySelector('[data-biz-preview]');
+  function updatePreviewLink() {
+    if (previewLink && state.template) {
+      previewLink.setAttribute('href', '/site?preview=' + encodeURIComponent(state.template));
+    }
+  }
+  updatePreviewLink();
   document.querySelectorAll('[data-biz-template]').forEach(function (card) {
     card.addEventListener('click', function () {
       state.template = card.getAttribute('data-biz-template');
       document.querySelectorAll('[data-biz-template]').forEach(function (c) {
         c.classList.toggle('biz-card--active', c === card);
       });
-      setStatus('Design selected — Save & publish to apply', true);
+      updatePreviewLink();
+      setStatus('Design selected — Preview it, or Save & publish to apply', true);
     });
   });
 
