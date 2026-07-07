@@ -8,6 +8,44 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.8.2] — 2026-07-07
+
+Memory-footprint release. A RAM audit found that steady-state RSS on large
+stores was dominated by SQLite's per-connection page cache (multiplied across
+the reader pool) and by redundant copies in the in-memory search index — not by
+any leak. This release cuts both with no change to features, reliability, search
+results, UI, or measured latency. On a large store the steady RSS drops by
+roughly 200–400 MB depending on core count; the in-memory search index and the
+resident client-search snapshot remain and are the subject of a later change.
+
+### Changed
+- **SQLite page cache right-sized (largest saving).** SQLite's page cache is
+  per-connection and the read pool opens one connection per CPU, so a 64 MB
+  cache multiplied to 256–512 MB across the pool. The writer now uses 32 MB and
+  each reader 16 MB. `mmap_size` (512 MB) is unchanged, so hot database pages
+  stay resident in the shared OS page cache and query latency is unaffected —
+  the private per-connection caches were largely redundant with mmap.
+- **Search index no longer stores a redundant lowercase copy.** Each indexed
+  document kept a `title + tags + excerpt` lowercase haystack in addition to the
+  separate lowercase title and tags. Since the excerpt fallback only runs after
+  title and tags have already been checked, the document now keeps only a
+  lowercase *excerpt*. Ranking is byte-for-byte identical.
+- **Client search-index snapshot builds in a single pass.** The content version
+  is now computed with a streaming hash while the payload is assembled, instead
+  of serialising the whole index to JSON a second time purely to hash it. This
+  removes a large short-lived allocation (and the hash over it) from every
+  snapshot rebuild. The version stays fully content-sensitive.
+
+### Added
+- **cgroup-aware soft memory limit.** On startup the process now sets a Go
+  memory soft-limit at 90% of the detected cgroup memory limit (containers /
+  `systemd MemoryMax=`), keeping steady RSS bounded and reducing OOM-kill risk
+  under load. An explicit `GOMEMLIMIT` is always honoured; bare hosts with no
+  cgroup limit are unaffected.
+- The boot-time search index build now returns its large, short-lived scan
+  working set to the OS immediately once the live index is in place, removing
+  the post-restart RSS spike.
+
 ## [3.8.1] — 2026-07-06
 
 Maintenance micro release. No behavioural changes — it reissues the v3.8.0 line

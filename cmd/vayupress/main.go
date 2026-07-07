@@ -17,6 +17,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"regexp"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"syscall"
@@ -78,7 +79,7 @@ import (
 // -ldflags "-X main.Version=<.release-version>", and scripts/update-vayupress.sh
 // reads .release-version too — keep this in sync with .release-version so an
 // un-stamped `go build` still reports an honest version.
-var Version = "3.8.1"
+var Version = "3.8.2"
 var bootTime = time.Now()
 
 // Immutable package-level values (compiled once, never mutated).
@@ -290,6 +291,11 @@ func generateRobots() {
 
 func main() {
 	log.SetFlags(0)
+
+	// Give the GC a memory ceiling to aim at (cgroup-aware; honours an explicit
+	// GOMEMLIMIT). Keeps steady RSS bounded and avoids OOM-kill overshoot on
+	// containers/VPS. No-op on bare hosts with no cgroup limit. (RAM audit 2026-07)
+	applyMemorySoftLimit()
 
 	// CLI subcommands run before the server boots. `vayupress update <check|apply|history>`
 	// is the ONLY path that can apply a binary update — it is gated, signature-verified,
@@ -661,6 +667,12 @@ func main() {
 		} else {
 			logging.LogInfo("search", fmt.Sprintf("search index built (%dms)", time.Since(start).Milliseconds()))
 		}
+		// The initial Load/reconcile scans published articles into a large,
+		// short-lived working set (the old map, scan buffers, decoded rows). Now
+		// that the live index is in place, hand that transient memory back to the
+		// OS immediately instead of waiting for a later GC to release it lazily —
+		// this is the boot-time RSS spike operators saw after a restart. (L4)
+		debug.FreeOSMemory()
 		// Persist now (so the very next start is incremental) and refresh the
 		// snapshot periodically + on shutdown; the in-memory index is kept current
 		// by the article event handlers between saves.

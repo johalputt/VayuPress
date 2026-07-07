@@ -22,9 +22,11 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
+	"encoding/binary"
 	"encoding/gob"
 	"encoding/hex"
 	"encoding/json"
+	"io"
 	"os"
 	"regexp"
 	"sort"
@@ -107,9 +109,13 @@ type doc struct {
 	Tags      []string
 	CreatedAt int64
 
-	titleLower string
-	tagsLower  string
-	textLower  string // title + tags + excerpt, lowercased — the match haystack
+	titleLower   string
+	tagsLower    string
+	excerptLower string // excerpt lowercased — the excerpt-only fallback haystack
+	// (title and tags are matched via titleLower/tagsLower above, so the excerpt
+	// fallback never needs them folded in; storing only the excerpt here instead
+	// of a title+tags+excerpt concatenation drops the largest redundant copy from
+	// every indexed doc without changing any ranking. RAM audit 2026-07 / L2a)
 }
 
 // snapshot is the memoised client payload + its content version.
@@ -149,7 +155,7 @@ func makeDoc(id, title, slug, content string, tags []string, createdAt int64) *d
 		titleLower: strings.ToLower(title),
 		tagsLower:  strings.ToLower(tagsJoined),
 	}
-	d.textLower = d.titleLower + "\n" + d.tagsLower + "\n" + strings.ToLower(ex)
+	d.excerptLower = strings.ToLower(ex)
 	return d
 }
 
@@ -422,7 +428,7 @@ func docFromPersist(p persistDoc) *doc {
 		titleLower: strings.ToLower(p.Title),
 		tagsLower:  strings.ToLower(strings.Join(p.Tags, " ")),
 	}
-	d.textLower = d.titleLower + "\n" + d.tagsLower + "\n" + strings.ToLower(p.Excerpt)
+	d.excerptLower = strings.ToLower(p.Excerpt)
 	return d
 }
 
@@ -516,9 +522,9 @@ func scoreDoc(d *doc, terms []string) int {
 			termScore += 12
 		}
 		if termScore == 0 { // not in title or tags — try the excerpt
-			if wordHit(d.textLower, t) {
+			if wordHit(d.excerptLower, t) {
 				termScore = 8
-			} else if strings.Contains(d.textLower, t) {
+			} else if strings.Contains(d.excerptLower, t) {
 				termScore = 4
 			}
 		}
@@ -598,13 +604,40 @@ func (s *builtinService) Snapshot() ([]byte, string) {
 
 	sort.Slice(docs, func(i, j int) bool { return docs[i].CreatedAt > docs[j].CreatedAt })
 
+	// Build the post slice and a content version in a single pass. The version
+	// must stay fully content-sensitive (a title/excerpt/tag/date edit has to
+	// bump it so browsers/CDNs re-fetch), but we no longer marshal the entire
+	// index to JSON *twice* — once to hash, once to serve. Instead we fold the
+	// same fields into a streaming SHA-256 as we build the slice, then marshal
+	// the payload exactly once. On a large store this removes an ~O(index-size)
+	// transient JSON blob (and the hash over it) from every rebuild. (L3)
 	posts := make([]clientPost, 0, len(docs))
+	h := sha256.New()
+	// hash.Hash.Write never returns an error; these helpers discard the
+	// (n, err) results so the intent stays readable and errcheck stays happy.
+	hw := func(b []byte) { _, _ = h.Write(b) }
+	hs := func(s string) { _, _ = io.WriteString(h, s) }
+	fieldSep := []byte{0x1f} // unit separator between fields
+	tagSep := []byte{0x1e}   // record separator between tags
+	recSep := []byte{0x00}   // NUL between documents
+	var nbuf [8]byte
 	for _, d := range docs {
 		posts = append(posts, clientPost{T: d.Title, U: d.Slug, E: d.Excerpt, G: d.Tags, D: d.CreatedAt})
+		hs(d.Title)
+		hw(fieldSep)
+		hs(d.Slug)
+		hw(fieldSep)
+		hs(d.Excerpt)
+		hw(fieldSep)
+		for _, g := range d.Tags {
+			hs(g)
+			hw(tagSep)
+		}
+		binary.LittleEndian.PutUint64(nbuf[:], uint64(d.CreatedAt))
+		hw(nbuf[:])
+		hw(recSep)
 	}
-	// Hash the post set (pre-version) for a stable content version.
-	raw, _ := json.Marshal(posts)
-	sum := sha256.Sum256(raw)
+	sum := h.Sum(nil)
 	version := hex.EncodeToString(sum[:8])
 	payload, _ := json.Marshal(clientIndex{V: version, Posts: posts})
 
