@@ -30,7 +30,13 @@ import (
 const (
 	trendingPinnedLimit = 4
 	trendingWindowLimit = 10
-	trendingCacheTTL    = 5 * time.Minute
+	// The trending ranking is a trailing-7-day analytics window recomputed on a
+	// daily cadence, so the list stays stable through the day and refreshes at
+	// least every 24 hours. Pin/unpin invalidates it immediately regardless.
+	trendingCacheTTL = 24 * time.Hour
+	// When analytics has no views yet and we fall back to recent posts, refresh
+	// much sooner so real trending takes over as soon as views arrive.
+	trendingFallbackTTL = 1 * time.Hour
 )
 
 type trendingItem struct {
@@ -87,18 +93,36 @@ func (a *App) handleTrendingJSON(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 6*time.Second)
 	defer cancel()
 
+	// Trending = most-viewed posts over the trailing 7 (and 30) days from the
+	// cookieless analytics. On a young or low-traffic site there may be no views
+	// yet, which would leave the widget empty; fall back to the most-recent posts
+	// so the section always shows, and cache that fallback only briefly so real
+	// analytics trending takes over as soon as views arrive.
+	seven := a.trendingItems(ctx, 7, trendingWindowLimit)
+	thirty := a.trendingItems(ctx, 30, trendingWindowLimit)
+	fallback := false
+	if len(seven) == 0 {
+		seven = a.recentItems(ctx, trendingWindowLimit)
+		fallback = true
+	}
+	if len(thirty) == 0 {
+		thirty = a.recentItems(ctx, trendingWindowLimit)
+		fallback = true
+	}
+
 	payload := trendingPayload{
 		Enabled: true,
 		Pinned:  a.pinnedItems(ctx, trendingPinnedLimit),
-		Windows: map[string][]trendingItem{
-			"7":  a.trendingItems(ctx, 7, trendingWindowLimit),
-			"30": a.trendingItems(ctx, 30, trendingWindowLimit),
-		},
+		Windows: map[string][]trendingItem{"7": seven, "30": thirty},
 	}
 
+	ttl := trendingCacheTTL
+	if fallback {
+		ttl = trendingFallbackTTL
+	}
 	trendingMu.Lock()
 	trendingCache = &payload
-	trendingExpiry = time.Now().Add(trendingCacheTTL)
+	trendingExpiry = time.Now().Add(ttl)
 	trendingMu.Unlock()
 
 	w.Header().Set("Cache-Control", "public, max-age=300")
@@ -127,6 +151,32 @@ func (a *App) pinnedItems(ctx context.Context, limit int) []trendingItem {
 		}
 	}
 	_ = rows.Err() // best-effort widget data; partial results are acceptable
+	return out
+}
+
+// recentItems returns the most-recent published, non-page posts as trending
+// items — the fallback used when analytics has no views in the window yet, so
+// the widget always renders something instead of hiding itself.
+func (a *App) recentItems(ctx context.Context, limit int) []trendingItem {
+	out := []trendingItem{}
+	if dbpkg.DB == nil {
+		return out
+	}
+	rows, err := dbpkg.Reader().QueryContext(ctx,
+		`SELECT slug, title, COALESCE(feature_image,'') FROM articles
+		 WHERE status = 'published' AND is_page = 0
+		 ORDER BY created_at DESC LIMIT ?`, limit)
+	if err != nil {
+		return out
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var it trendingItem
+		if rows.Scan(&it.Slug, &it.Title, &it.Image) == nil {
+			out = append(out, it)
+		}
+	}
+	_ = rows.Err() // best-effort widget data
 	return out
 }
 

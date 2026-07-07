@@ -92,6 +92,15 @@ func TestArticleLayoutOptions(t *testing.T) {
 			t.Errorf("article-option CSS missing %q", want)
 		}
 	}
+
+	// Centre alignment must also centre the byline (author) row, not just the
+	// title — the byline is a flex row, so text-align alone leaves it on the left.
+	g3 := theme.Gale()
+	g3.Options = map[string]string{"articlealign": "center"}
+	css3, _ := theme.CompileCSS(g3)
+	if !strings.Contains(css3, ".vayu-byline{justify-content:center}") {
+		t.Errorf("center alignment must centre the byline (author) row, got: %s", css3)
+	}
 	// "notags" hides only the tag links, not the whole meta line.
 	g2 := theme.Gale()
 	g2.Options = map[string]string{"articlemeta": "notags"}

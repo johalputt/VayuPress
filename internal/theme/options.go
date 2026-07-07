@@ -440,7 +440,10 @@ func applyThemeOptions(t *Tokens) string {
 	case "left":
 		extra.WriteString(".vayu-article-header{text-align:left}")
 	case "center":
-		extra.WriteString(".vayu-article-header{text-align:center}.vayu-article-meta{justify-content:center}")
+		// Centre the whole header: the title text, the meta row AND the byline.
+		// The byline and meta are flex rows, so text-align alone leaves them on
+		// the left — they need justify-content to actually centre.
+		extra.WriteString(".vayu-article-header{text-align:center}.vayu-article-meta{justify-content:center}.vayu-byline{justify-content:center}")
 	}
 	switch t.Options["articlemeta"] {
 	case "notags":
