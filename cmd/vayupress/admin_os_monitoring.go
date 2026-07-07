@@ -68,13 +68,13 @@ func (a *App) handleOSMonitoring(w http.ResponseWriter, r *http.Request) {
 	// ── System mode ──────────────────────────────────────────────────────────
 	cur := mode.Global.Current()
 	transitions := len(mode.Global.History())
-	modeCard := `<div class="card mb-6" data-mon-mode-card>
+	modeCard := `<div class="card mb-6">
   <div class="flex justify-between items-center">
     <div>
       <div class="card-title">System mode</div>
       <div class="text-sm muted">` + strconv.Itoa(transitions) + ` recorded transition(s)</div>
     </div>
-    <span class="tool-status ` + modeStateClass(cur) + `" data-mon-mode>` + html.EscapeString(string(cur)) + `</span>
+    <span aria-live="polite">` + monModePill(cur, false) + `</span>
   </div>
 </div>`
 
@@ -118,17 +118,17 @@ func (a *App) handleOSMonitoring(w http.ResponseWriter, r *http.Request) {
 	// ── Governance budgets ───────────────────────────────────────────────────
 	rows := ""
 	for _, b := range budget.Global.Status(time.Now()) {
-		rows += `<tr data-mon-budget="` + html.EscapeString(b.Name) + `">
+		rows += `<tr>
   <td class="row-title">` + html.EscapeString(b.Name) + `<div class="row-meta">tracks ` + html.EscapeString(b.Tracks) + `</div></td>
   <td class="muted text-sm">` + strconv.Itoa(b.Consumed) + ` / ` + strconv.Itoa(b.Limit) + `</td>
-  <td><span class="tool-status ` + budgetStateClass(b.State) + `" data-mon-budget-state>` + html.EscapeString(b.State) + `</span></td>
+  <td>` + monBudgetStatePill(b.Name, b.State, false) + `</td>
 </tr>`
 	}
 	budgetsCard := `<div class="card mb-6">
   <div class="card-title">Governance error budgets</div>
   <div class="table-wrap"><table class="table">
     <thead><tr><th>Budget</th><th>Consumed</th><th>State</th></tr></thead>
-    <tbody data-mon-budgets>` + rows + `</tbody>
+    <tbody aria-live="polite">` + rows + `</tbody>
   </table></div>
   <div class="text-xs muted mt-3">Accounting + recommendation — mode transitions are operator-gated, never auto-applied.</div>
 </div>`
@@ -149,11 +149,16 @@ func (a *App) handleOSMonitoring(w http.ResponseWriter, r *http.Request) {
 		link("/os/adr", "ADR registry", "Browse the architecture decision record index.") +
 		`</div>`
 
+	// The page renders a complete server-side snapshot above. This invisible
+	// HTMX poller keeps an open dashboard fresh: every 5s it GETs the live
+	// endpoint, which returns out-of-band fragments that swap the mode pill,
+	// each budget state pill, and the "updated" stamp in place — no client JS.
+	poller := `<div hx-get="/os/monitoring/live" hx-trigger="every 5s" hx-swap="none" aria-hidden="true"></div>`
+
 	body := `<div class="page-header">
   <h1>Monitoring</h1>
-  <div class="page-actions"><span class="text-sm muted" data-mon-updated>live</span></div>
-</div>` + modeCard + perf + storageJobs + budgetsCard + consoles + `
-<script nonce="` + nonce + `" src="/os/static/js/admin-os-monitoring.js"></script>`
+  <div class="page-actions">` + monUpdatedStamp(time.Now(), false) + `</div>
+</div>` + poller + modeCard + perf + storageJobs + budgetsCard + consoles
 
 	writeOSHTML(w, adminOSLayout(nonce, "Monitoring", "monitoring", cfg, htmpl.HTML(body)))
 }
