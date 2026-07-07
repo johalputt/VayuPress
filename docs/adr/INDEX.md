@@ -10,6 +10,7 @@
 | ADR | Title | Status | Owner | Date |
 |-----|-------|--------|-------|------|
 | [ADR-0001](ADR-0001-sqlite-first.md) | SQLite-First Data Layer | Accepted | Core | 2024-01-01 |
+| [ADR-0115](ADR-0115-website-at-root-blog-subpath.md) | Website at Root with the Blog under /blog (single-domain) | Accepted | VayuOS | 2026-07-07 |
 | [ADR-0114](ADR-0114-custom-website-zip-deploy.md) | One-Click Custom Website (.zip) Deploy | Accepted | VayuOS | 2026-07-07 |
 | [ADR-0113](ADR-0113-memory-footprint-budget-and-search-index-windowing.md) | Memory-Footprint Budget & Search-Index Windowing | Accepted | Core | 2026-07-07 |
 | [ADR-0112](ADR-0112-vayushield-resilience-tiers.md) | VayuShield Resilience Tiers & Live Operator Controls | Accepted | VayuOS | 2026-07-06 |
