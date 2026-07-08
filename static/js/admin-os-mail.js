@@ -121,6 +121,17 @@
     }
   }
 
+  // Enterprise feedback: a non-blocking toast (from the admin shell) instead of
+  // a blocking alert() dialog. Falls back to alert() only if the shell toast is
+  // somehow unavailable.
+  function acctToast(msg, isErr) {
+    if (window.vpToast) { window.vpToast(msg, isErr ? 'error' : 'success'); }
+    else { window.alert(msg); }
+  }
+  // Soft reload after a state change that touches several cells (status/2FA
+  // badges + button labels), giving the toast a moment to show first.
+  function acctReload() { setTimeout(function () { window.location.reload(); }, 550); }
+
   // ── Create mail account ──────────────────────────────────────────────────────
   var acctForm = document.querySelector('form[data-acct-create]');
   if (acctForm) {
@@ -136,18 +147,20 @@
         role: val(acctForm, '[data-a-role]'),
         quota_mb: parseFloat(val(acctForm, '[data-a-quota]')) || 0,
       }).then(function (res) {
-        if (res.ok) { window.location.reload(); }
-        else if (aStatus) aStatus.textContent = 'Failed: ' + ((res.body && res.body.message) || res.status);
+        if (res.ok) { acctToast('Mailbox ' + local + ' created'); acctReload(); }
+        else if (aStatus) aStatus.textContent = 'Failed: ' + errText(res);
       });
     });
   }
 
-  // ── Change account role ──────────────────────────────────────────────────────
+  // ── Change account role (reverts the select on failure) ──────────────────────
   document.querySelectorAll('[data-acct-role]').forEach(function (sel) {
+    var prev = sel.value;
     sel.addEventListener('change', function () {
       var email = sel.getAttribute('data-acct-role');
       postJSON('/os/vayumail/accounts/update', { email: email, role: sel.value }).then(function (res) {
-        if (!res.ok) window.alert('Role update failed: ' + ((res.body && res.body.message) || res.status));
+        if (res.ok) { acctToast('Role updated for ' + email); prev = sel.value; }
+        else { sel.value = prev; acctToast('Role update failed: ' + errText(res), true); }
       });
     });
   });
@@ -170,19 +183,23 @@
       postJSON('/os/vayumail/accounts/update', { email: email, quota_mb: mb }).then(function (res) {
         btn.disabled = false;
         if (res.ok) { btn.textContent = 'Saved ✓'; setTimeout(function () { btn.textContent = 'Save'; }, 1500); }
-        else window.alert('Quota update failed: ' + ((res.body && res.body.message) || res.status));
+        else acctToast('Quota update failed: ' + errText(res), true);
       });
     });
   });
 
-  // ── Delete mail account ──────────────────────────────────────────────────────
+  // ── Delete mail account (removes the row in place) ───────────────────────────
   document.querySelectorAll('[data-acct-delete]').forEach(function (btn) {
     btn.addEventListener('click', function () {
       var email = btn.getAttribute('data-acct-delete');
       if (!window.confirm('Delete mail account ' + email + '? This cannot be undone.')) return;
+      btn.disabled = true;
       postJSON('/os/vayumail/accounts/delete', { email: email }).then(function (res) {
-        if (res.ok) window.location.reload();
-        else window.alert('Delete failed: ' + ((res.body && res.body.message) || res.status));
+        if (res.ok) {
+          acctToast('Deleted ' + email);
+          var row = btn.closest('tr, [data-acct-row]');
+          if (row && row.parentNode) { row.parentNode.removeChild(row); } else { acctReload(); }
+        } else { btn.disabled = false; acctToast('Delete failed: ' + errText(res), true); }
       });
     });
   });
@@ -193,10 +210,10 @@
       var email = btn.getAttribute('data-acct-pass');
       var pass = window.prompt('New password for ' + email + ' (min 8 characters):');
       if (pass === null) return;
-      if (pass.length < 8) { window.alert('Password must be at least 8 characters.'); return; }
+      if (pass.length < 8) { acctToast('Password must be at least 8 characters.', true); return; }
       postJSON('/os/vayumail/accounts/update', { email: email, pass: pass }).then(function (res) {
-        if (res.ok) window.alert('Password updated for ' + email);
-        else window.alert('Update failed: ' + ((res.body && res.body.message) || res.status));
+        if (res.ok) acctToast('Password updated for ' + email);
+        else acctToast('Update failed: ' + errText(res), true);
       });
     });
   });
@@ -209,8 +226,8 @@
       var verb = active ? 'Enable' : 'Disable';
       if (!window.confirm(verb + ' mail account ' + email + '?')) return;
       postJSON('/os/vayumail/accounts/update', { email: email, active: active }).then(function (res) {
-        if (res.ok) window.location.reload();
-        else window.alert('Update failed: ' + ((res.body && res.body.message) || res.status));
+        if (res.ok) { acctToast((active ? 'Enabled ' : 'Disabled ') + email); acctReload(); }
+        else acctToast('Update failed: ' + errText(res), true);
       });
     });
   });
@@ -222,7 +239,7 @@
       var email = btn.getAttribute('data-acct-2fa-enable');
       postJSON('/os/vayumail/accounts/totp', { email: email, action: 'begin' }).then(function (res) {
         if (!res.ok || !res.body || !res.body.secret) {
-          window.alert('Could not start 2FA setup: ' + errText(res));
+          acctToast('Could not start 2FA setup: ' + errText(res), true);
           return;
         }
         // Show the secret + otpauth URI so it can be added to an authenticator
@@ -235,8 +252,8 @@
         var code = window.prompt('Enter the current 6-digit code from your authenticator for ' + email + ':');
         if (code === null) return;
         postJSON('/os/vayumail/accounts/totp', { email: email, action: 'verify', code: (code || '').trim() }).then(function (vr) {
-          if (vr.ok) { window.alert('Two-factor authentication is now ON for ' + email); window.location.reload(); }
-          else window.alert('Verification failed: ' + errText(vr));
+          if (vr.ok) { acctToast('Two-factor authentication is now ON for ' + email); acctReload(); }
+          else acctToast('Verification failed: ' + errText(vr), true);
         });
       });
     });
@@ -248,8 +265,8 @@
       var email = btn.getAttribute('data-acct-2fa-disable');
       if (!window.confirm('Turn OFF two-factor authentication for ' + email + '?')) return;
       postJSON('/os/vayumail/accounts/totp', { email: email, action: 'disable' }).then(function (res) {
-        if (res.ok) window.location.reload();
-        else window.alert('Update failed: ' + errText(res));
+        if (res.ok) { acctToast('Two-factor disabled for ' + email); acctReload(); }
+        else acctToast('Update failed: ' + errText(res), true);
       });
     });
   });
