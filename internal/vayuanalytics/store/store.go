@@ -40,13 +40,37 @@ type execer interface {
 // allowed to block a request or melt the database.
 type Store struct {
 	db      *sql.DB
+	reader  *sql.DB          // dashboard read pool; falls back to db. Set via UseReader.
 	ingest  chan ingestEvent // nil until StartIngest; then the async batch path
 	dropped atomic.Int64
 }
 
 // New constructs a Store. Until StartIngest is called, QueueEnter/QueueBeacon
 // fall back to synchronous writes (so tests and one-off callers still persist).
-func New(db *sql.DB) *Store { return &Store{db: db} }
+func New(db *sql.DB) *Store { return &Store{db: db, reader: db} }
+
+// UseReader routes the dashboard read queries (all of query.go) at a dedicated
+// read pool instead of the single writer connection. The analytics dashboards
+// run a dozen heavy aggregate scans over the ever-growing vayuanalytics_sessions
+// table; on the writer they serialise behind the beacon write stream and each
+// other, so opening the Analytics / Bot Shield panel could exceed the 30s server
+// timeout and 502. Writes (beacon ingest, purge) stay on the writer; WAL gives
+// the reader read-your-writes (a ~1s batch-flush lag is fine for a dashboard). A
+// nil reader is ignored.
+func (s *Store) UseReader(reader *sql.DB) {
+	if reader != nil {
+		s.reader = reader
+	}
+}
+
+// readDB returns the handle for dashboard reads: the dedicated read pool when
+// set, otherwise the writer.
+func (s *Store) readDB() *sql.DB {
+	if s.reader != nil {
+		return s.reader
+	}
+	return s.db
+}
 
 // EnterInput is a page-enter event (fired immediately on page load).
 type EnterInput struct {

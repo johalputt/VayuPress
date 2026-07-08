@@ -47,7 +47,7 @@ func (s *Store) PathFlows(ctx context.Context, days, limit int) ([]PathFlow, err
 	from := time.Now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
 
 	// Ordered by session then time so consecutive rows form each visitor's path.
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.readDB().QueryContext(ctx,
 		`SELECT session_id, url_path FROM analytics_pageviews
 		 WHERE created_at>=? AND event_type=1
 		 ORDER BY session_id, created_at, id

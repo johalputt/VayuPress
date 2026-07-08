@@ -511,6 +511,11 @@ func main() {
 
 	// Privacy-first analytics + outbound webhooks + social posting (Tier 2).
 	a.analytics = analytics.New(dbpkg.DB)
+	// Route the admin Analytics panel's heavy aggregate reads at the WAL read
+	// pool so they never serialise behind the pageview write stream on the single
+	// writer connection (which made the Analytics tab 502). Writes stay on the
+	// writer; WAL preserves read-your-writes.
+	a.analytics.UseReader(dbpkg.Reader())
 	a.webhooks = webhooks.New(dbpkg.DB, a.outboundClient)
 	a.social = social.New(social.MastodonConfig{
 		Instance: config.Cfg.MastodonInstance,

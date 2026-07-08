@@ -14,6 +14,18 @@ the symptoms of — has been found and fixed: **the SQLite WAL grew without boun
 because checkpoints were being starved by the read pool.**
 
 ### Fixed
+- **Analytics & Bot Shield admin panels 502 (dashboard reads ran on the single
+  writer).** Both analytics stores were constructed on the writer connection
+  (`analytics.New(dbpkg.DB)`, `vastore.New(dbpkg.DB)`), so opening the Analytics
+  or Bot Shield & Analytics panel fired a dozen heavy aggregate scans
+  (`GROUP BY`, `COUNT(DISTINCT)`, `AVG`) over the ever-growing
+  `analytics_daily`/`analytics_pageviews`/`vayuanalytics_sessions` tables — all
+  serialised on the one writer connection, behind the pageview/beacon write
+  stream — and blew past the 30s server timeout into a 502. Both stores now route
+  their **read/report queries** at the WAL read pool via a new `UseReader`
+  (writes stay on the writer; WAL preserves read-your-writes). Verified no
+  read-your-writes hazard: neither store uses explicit transactions, so every
+  `Query`/`QueryRow` is a plain SELECT safe on the read pool.
 - **VayuOS 502 under read-pool starvation (capacity + checkpoint stalls).**
   Follow-up hardening after the WAL-growth fix, from production diagnosis:
   - **Read pool enlarged and made tunable.** The pool was `NumCPU` connections

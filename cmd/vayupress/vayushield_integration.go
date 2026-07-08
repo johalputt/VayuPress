@@ -51,6 +51,12 @@ import (
 func (a *App) bootVayuShield() {
 	a.vaSessions = vasession.NewHasher()
 	a.vaEngagement = vastore.New(dbpkg.DB)
+	// Dashboard reads (Overview, sources, AI traffic, top pages, realtime) run a
+	// dozen heavy aggregate scans over the ever-growing vayuanalytics_sessions
+	// table. Route them at the WAL read pool so opening the Bot Shield / Analytics
+	// panel never serialises behind the beacon write stream on the single writer
+	// connection (which made those panels 502). Writes stay on the writer.
+	a.vaEngagement.UseReader(dbpkg.Reader())
 	// Persist engagement beacons on a bounded, batched background writer instead
 	// of one synchronous writer transaction per page view. This is the fix for
 	// the post-restart VayuOS 502s: the beacon storm (enter + event on every

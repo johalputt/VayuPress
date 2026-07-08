@@ -67,7 +67,7 @@ func (s *Store) CreateGoal(ctx context.Context, name, kind, target string) (stri
 
 // ListGoals returns all goal definitions, newest first.
 func (s *Store) ListGoals(ctx context.Context) ([]Goal, error) {
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.readDB().QueryContext(ctx,
 		`SELECT id,name,kind,target,created_at FROM analytics_goals ORDER BY created_at DESC`)
 	if err != nil {
 		return nil, err
@@ -111,7 +111,7 @@ func (s *Store) GoalResults(ctx context.Context, days int) ([]GoalResult, error)
 
 	// Denominator: distinct visitors active in the window.
 	totalVisitors := 0
-	_ = s.db.QueryRowContext(ctx,
+	_ = s.readDB().QueryRowContext(ctx,
 		`SELECT COUNT(DISTINCT visitor_id) FROM analytics_sessions WHERE created_at>=?`, from).
 		Scan(&totalVisitors)
 
@@ -137,7 +137,7 @@ func (s *Store) GoalResults(ctx context.Context, days int) ([]GoalResult, error)
 			}
 		}
 
-		_ = s.db.QueryRowContext(ctx,
+		_ = s.readDB().QueryRowContext(ctx,
 			`SELECT COUNT(1), COUNT(DISTINCT s.visitor_id)
 			 FROM analytics_pageviews p JOIN analytics_sessions s ON p.session_id=s.id
 			 WHERE p.created_at>=? AND `+where, from, arg).
