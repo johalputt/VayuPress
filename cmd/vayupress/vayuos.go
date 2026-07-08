@@ -16,6 +16,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -705,7 +706,8 @@ func (a *App) handleVayuOSSecurity(w http.ResponseWriter, r *http.Request) {
 	body.WriteString(`<div class="page-header"><h1>Security updates</h1>
   <div class="page-actions">
     <span class="muted text-sm">Upstream PGP &amp; crypto dependency monitoring</span>
-    <button type="button" class="btn btn--primary btn--sm" data-sec-check>Check now</button>
+    <button type="button" class="btn btn--sm" data-sec-check>Check now</button>
+    <a class="btn btn--primary btn--sm" href="/os/update">Update VayuPress →</a>
     <span class="text-xs muted" data-sec-status role="status" aria-live="polite"></span>
   </div>
 </div>`)
@@ -716,6 +718,16 @@ func (a *App) handleVayuOSSecurity(w http.ResponseWriter, r *http.Request) {
 		body.WriteString(`<div class="warn-box">` + itoaSafe(rep.UpdatesAvailable) + ` security-relevant update(s) available. ` + html.EscapeString(rep.UpgradeHint) + `</div>`)
 	}
 	body.WriteString(buildComponentTable(rep.Components))
+	// One-click dependency update. VayuPress is a single static binary with its
+	// dependencies compiled in, so "updating dependencies" means installing the
+	// latest signed release (built with the patched dependencies) — there is no
+	// separate go-get/rebuild step on the server. The button links to the
+	// one-click self-updater (checksum + Ed25519 verified, atomic swap,
+	// auto-rollback), the safe enterprise path to apply these patches.
+	body.WriteString(`<div class="card"><div class="card-title">Apply updates (one click)</div>
+<p class="text-sm muted">VayuPress ships as one self-contained, statically-linked binary, so security patches to the PGP/crypto libraries above are delivered <strong>inside a signed release</strong> — installing the latest release applies them. There is no separate dependency-fetch/rebuild step to run on your server.</p>
+<p><a class="btn btn--primary btn--sm" href="/os/update">Update VayuPress now →</a></p>
+<p class="text-xs muted">The updater verifies the download by SHA-256 checksum (and Ed25519 signature when a release key is pinned), backs up the database, swaps the binary atomically, and rolls back automatically if the new build fails to start.</p></div>`)
 	body.WriteString(`<script nonce="` + nonce + `">
 (function(){'use strict';
 function csrf(){var m=document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);return m?decodeURIComponent(m[1]):'';}
@@ -1172,54 +1184,154 @@ func (a *App) cfgDomain() string {
 	return ""
 }
 
-// handleVayuOSSent lists recent outbound messages from the delivery queue.
+// handleVayuOSSent lists recent outbound messages from the delivery queue, with
+// per-message Resend/Delete and a Retry-all-failed action. The body is an HTMX
+// fragment that auto-refreshes (delivery state changes on its own) and re-renders
+// in place after an action — no full-page reload.
 func (a *App) handleVayuOSSent(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
+	// A CSRF cookie so the Resend/Delete/Retry HTMX POSTs pass the middleware.
+	if token := auth.GenerateCSRFToken(); token != "" {
+		http.SetCookie(w, &http.Cookie{Name: "vp_csrf", Value: token, Path: "/", SameSite: http.SameSiteStrictMode, HttpOnly: false, Secure: csrfCookieSecure(), MaxAge: 3600})
+	}
 	var body strings.Builder
-	body.WriteString(`<div class="page-header"><h1>Outbox</h1><span class="muted text-sm">Outbound delivery queue</span></div>`)
+	body.WriteString(`<div class="page-header"><h1>Outbox</h1><span class="muted text-sm">Outbound delivery queue — auto-retries with backoff until sent · one-click Resend</span></div>`)
 	body.WriteString(vayuosNav("outbox", a.isAdminRequest(r)))
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled {
 		body.WriteString(`<div class="empty-state">VayuMail is inactive. Set <code>DOMAIN</code> to activate outbound delivery.</div>`)
-		writeOSHTML(w, adminOSLayout(nonce, "Sent", "vayuos", cfg, htmpl.HTML(body.String())))
+		writeOSHTML(w, adminOSLayout(nonce, "Outbox", "vayuos", cfg, htmpl.HTML(body.String())))
 		return
 	}
 	// The outbound delivery queue is server-wide; non-admins see their own sent
 	// mail in their mailbox's Sent folder instead.
 	if !a.isAdminRequest(r) {
 		body.WriteString(`<div class="empty-state">Your sent messages are in your mailbox under <a href="/os/vayumail/inbox?folder=Sent">Mailbox → Sent</a>. The server-wide delivery queue is visible to administrators only.</div>`)
-		writeOSHTML(w, adminOSLayout(nonce, "Sent", "vayuos", cfg, htmpl.HTML(body.String())))
+		writeOSHTML(w, adminOSLayout(nonce, "Outbox", "vayuos", cfg, htmpl.HTML(body.String())))
 		return
 	}
-	sent, err := a.vayuMail.Sent(r.Context(), 100)
+	body.WriteString(`<div id="vm-outbox-body" hx-get="/os/vayumail/outbox/fragment" hx-trigger="every 15s" hx-swap="innerHTML">`)
+	body.WriteString(a.vayuOutboxBody(r.Context()))
+	body.WriteString(`</div>`)
+	writeOSHTML(w, adminOSLayout(nonce, "Outbox", "vayuos", cfg, htmpl.HTML(body.String())))
+}
+
+// vayuOutboxBody renders the outbound-queue table (counters + per-message
+// Resend/Delete + Retry-all-failed). Returned on page load and as the HTMX
+// fragment after an action or on the auto-refresh poll.
+func (a *App) vayuOutboxBody(ctx context.Context) string {
+	var b strings.Builder
+	sent, err := a.vayuMail.Sent(ctx, 100)
 	if err != nil {
-		body.WriteString(`<div class="empty-state">Could not read outbound queue: ` + html.EscapeString(err.Error()) + `</div>`)
-		writeOSHTML(w, adminOSLayout(nonce, "Sent", "vayuos", cfg, htmpl.HTML(body.String())))
-		return
+		b.WriteString(`<div class="empty-state">Could not read outbound queue: ` + html.EscapeString(err.Error()) + `</div>`)
+		return b.String()
 	}
-	body.WriteString(`<div class="card"><div class="card-title">Recent outbound</div><div class="table-wrap"><table class="table"><thead><tr><th>To</th><th>Subject</th><th>Status</th><th>When</th></tr></thead><tbody>`)
+	var pending, failed, delivered int
+	for _, s := range sent {
+		switch s.State {
+		case "pending":
+			pending++
+		case "failed":
+			failed++
+		case "delivered":
+			delivered++
+		}
+	}
+	b.WriteString(`<div class="vm-row vm-row--end">`)
+	b.WriteString(`<span class="muted text-sm vm-grow">` + itoaSafe(pending) + ` pending · ` + itoaSafe(failed) + ` failed · ` + itoaSafe(delivered) + ` delivered <span class="text-xs">(latest ` + itoaSafe(len(sent)) + `)</span></span>`)
+	b.WriteString(`<button type="button" class="btn btn--sm" hx-get="/os/vayumail/outbox/fragment" hx-target="#vm-outbox-body" hx-swap="innerHTML">↻ Refresh</button>`)
+	if failed > 0 {
+		b.WriteString(`<button type="button" class="btn btn--sm btn--primary" hx-post="/os/vayumail/outbox/action" hx-vals='{"action":"retry-all"}' hx-target="#vm-outbox-body" hx-swap="innerHTML">Retry all failed (` + itoaSafe(failed) + `)</button>`)
+	}
+	b.WriteString(`</div>`)
+
+	b.WriteString(`<div class="card"><div class="card-title">Recent outbound</div><div class="table-wrap"><table class="table"><thead><tr><th>To</th><th>Subject</th><th>Status</th><th>Tries</th><th>Last error</th><th>When</th><th></th></tr></thead><tbody>`)
 	if len(sent) == 0 {
-		body.WriteString(`<tr><td colspan="4" class="muted">Nothing sent yet. Mail sent through VayuMail (DKIM-signed, direct-to-MX) appears here with delivery status.</td></tr>`)
+		b.WriteString(`<tr><td colspan="7" class="muted">Nothing sent yet. Mail sent through VayuMail (DKIM-signed, direct-to-MX) appears here; VayuPress keeps retrying with backoff until it sends.</td></tr>`)
 	}
 	for _, s := range sent {
 		subj := s.Subject
 		if subj == "" {
 			subj = "(no subject)"
 		}
-		badge := `<span class="badge badge--ok">` + html.EscapeString(s.State) + `</span>`
-		if s.State == "failed" {
+		badge := `<span class="badge badge--ok">delivered</span>`
+		switch s.State {
+		case "failed":
 			badge = `<span class="badge badge--warn">failed</span>`
-		} else if s.State == "pending" {
+		case "pending":
 			badge = `<span class="badge">pending</span>`
 		}
 		when := s.CreatedAt
 		if len(when) > 19 {
 			when = when[:19]
 		}
-		body.WriteString(`<tr><td class="text-sm">` + html.EscapeString(strings.Join(s.To, ", ")) + `</td><td>` + html.EscapeString(subj) + `</td><td>` + badge + `</td><td class="muted text-sm">` + html.EscapeString(when) + `</td></tr>`)
+		lastErr := s.LastError
+		if len(lastErr) > 90 {
+			lastErr = lastErr[:90] + "…"
+		}
+		id := strconv.FormatInt(s.ID, 10)
+		actions := ""
+		if s.State == "failed" || s.State == "pending" {
+			actions += `<button type="button" class="btn btn--xs btn--primary" hx-post="/os/vayumail/outbox/action" hx-vals='{"action":"resend","id":"` + id + `"}' hx-target="#vm-outbox-body" hx-swap="innerHTML">Resend</button> `
+		}
+		actions += `<button type="button" class="btn btn--xs btn--danger" hx-post="/os/vayumail/outbox/action" hx-vals='{"action":"delete","id":"` + id + `"}' hx-target="#vm-outbox-body" hx-swap="innerHTML">Delete</button>`
+		b.WriteString(`<tr><td class="text-sm">` + html.EscapeString(strings.Join(s.To, ", ")) + `</td><td>` + html.EscapeString(subj) + `</td><td>` + badge + `</td><td class="text-sm">` + itoaSafe(s.Attempts) + `</td><td class="muted text-xs">` + html.EscapeString(lastErr) + `</td><td class="muted text-sm">` + html.EscapeString(when) + `</td><td class="row-actions">` + actions + `</td></tr>`)
 	}
-	body.WriteString(`</tbody></table></div></div>`)
-	writeOSHTML(w, adminOSLayout(nonce, "Sent", "vayuos", cfg, htmpl.HTML(body.String())))
+	b.WriteString(`</tbody></table></div></div>`)
+	return b.String()
+}
+
+// handleVayuOSOutboxFragment returns the outbox body for HTMX auto-refresh.
+func (a *App) handleVayuOSOutboxFragment(w http.ResponseWriter, r *http.Request) {
+	if a.vayuMail == nil || !a.vayuMail.Config().Enabled || !a.isAdminRequest(r) {
+		writeOSFragment(w, `<div class="empty-state">Outbox unavailable.</div>`)
+		return
+	}
+	writeOSFragment(w, a.vayuOutboxBody(r.Context()))
+}
+
+// handleVayuOSOutboxAction performs a Resend / Delete / Retry-all on the
+// outbound queue and returns the refreshed outbox body (HTMX swaps it in place).
+func (a *App) handleVayuOSOutboxAction(w http.ResponseWriter, r *http.Request) {
+	if a.vayuMail == nil || !a.vayuMail.Config().Enabled {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", "VayuMail is not active", "")
+		return
+	}
+	if !a.isAdminRequest(r) {
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", "admin role required", "")
+		return
+	}
+	switch strings.TrimSpace(r.PostFormValue("action")) {
+	case "resend":
+		id, _ := strconv.ParseInt(strings.TrimSpace(r.PostFormValue("id")), 10, 64)
+		if id <= 0 {
+			writeAPIError(w, r, http.StatusBadRequest, "bad-request", "id required", "")
+			return
+		}
+		if err := a.vayuMail.ResendQueued(r.Context(), id); err != nil {
+			writeAPIError(w, r, http.StatusInternalServerError, "resend-failed", err.Error(), "")
+			return
+		}
+	case "delete":
+		id, _ := strconv.ParseInt(strings.TrimSpace(r.PostFormValue("id")), 10, 64)
+		if id <= 0 {
+			writeAPIError(w, r, http.StatusBadRequest, "bad-request", "id required", "")
+			return
+		}
+		if err := a.vayuMail.DeleteQueued(r.Context(), id); err != nil {
+			writeAPIError(w, r, http.StatusInternalServerError, "delete-failed", err.Error(), "")
+			return
+		}
+	case "retry-all":
+		if _, err := a.vayuMail.RetryAllFailed(r.Context()); err != nil {
+			writeAPIError(w, r, http.StatusInternalServerError, "retry-failed", err.Error(), "")
+			return
+		}
+	default:
+		writeAPIError(w, r, http.StatusBadRequest, "bad-request", "unknown action", "")
+		return
+	}
+	writeOSFragment(w, a.vayuOutboxBody(r.Context()))
 }
 
 func itoaSafe(n int) string { return fmt.Sprintf("%d", n) }

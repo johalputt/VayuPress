@@ -10,6 +10,7 @@
 | ADR | Title | Status | Owner | Date |
 |-----|-------|--------|-------|------|
 | [ADR-0001](ADR-0001-sqlite-first.md) | SQLite-First Data Layer | Accepted | Core | 2024-01-01 |
+| [ADR-0124](ADR-0124-vayumail-outbound-reliability.md) | VayuMail Outbound Reliability — Resend, Retry-Until-Sent & One-Click Dependency Updates | Accepted | VayuOS | 2026-07-08 |
 | [ADR-0123](ADR-0123-vayushield-privileged-agent.md) | In-Panel Tier 2/3 Activation via Unprivileged Intent + Root Reconcile Agent | Accepted | VayuOS | 2026-07-08 |
 | [ADR-0122](ADR-0122-network-hardening-tiers-ui.md) | Network-Hardening Tiers in VayuOS — Explanation, Copy-Command UX & Privilege Boundary | Accepted | VayuOS | 2026-07-08 |
 | [ADR-0121](ADR-0121-gdpr-safe-visitor-location.md) | GDPR-Safe Visitor Location (No IP) for Messages, Comments & Members | Accepted | VayuOS | 2026-07-08 |
