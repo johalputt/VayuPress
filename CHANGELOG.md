@@ -8,6 +8,37 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.9.5] — 2026-07-08
+
+The Analytics and Bot Shield panels no longer compute their heavy reports on the
+request goroutine — so they can never block into a 502, no matter how large the
+analytics tables grow or how much load the box is under. This is the same
+principle that already keeps the Monitoring tab instant (a background snapshot),
+generalised to every heavy operator dashboard.
+
+### Fixed
+- **Analytics & Bot Shield 502 on large analytics tables (heavy reports moved
+  off the request path).** Even after the dedicated admin DB lane (v3.9.4), these
+  two panels could still time out: the Analytics tab fires ~a dozen aggregate
+  scans (`COUNT(DISTINCT)`, `GROUP BY`, `AVG`) and the Bot Shield tab several
+  more, all **synchronously on the request goroutine**. On a site with millions
+  of analytics rows the combined scan time exceeded the 30s server write timeout
+  → 502 — isolation can't fix a query that is simply slow. These sections are now
+  computed by a **background, single-flighted, TTL-cached fragment builder**
+  (`admin_dashcache.go`) with a bounded compute deadline, and a **startup warmer**
+  keeps the default (30-day) window hot. A page request now returns the
+  last-known fragment instantly (or a lightweight "assembling…" placeholder only
+  in the brief cold window right after a restart) and never waits on a scan. The
+  Bot Shield status, settings, signature and review-queue controls stay fully
+  synchronous, so the operator can always see status and change settings
+  instantly.
+
+### Changed
+- Analytics/Bot Shield report freshness is now bounded by a short cache TTL
+  (default 90s, kept hot by the warmer). This is intentional — a report tolerates
+  being a few seconds stale — and collapses repeated tab opens to at most one
+  heavy scan per window per TTL instead of one per page load.
+
 ## [3.9.4] — 2026-07-08
 
 VayuOS is now **hard-isolated from public load**: the admin console runs on its

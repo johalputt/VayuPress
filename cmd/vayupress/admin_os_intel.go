@@ -303,13 +303,35 @@ func (a *App) handleOSAnalytics(w http.ResponseWriter, r *http.Request) {
 	// Selected reporting period (default 30 days, up to 3 years).
 	days, periodLabel := analyticsPeriod(r)
 
-	sum, err := a.analytics.Since(r.Context(), days, 10)
-	if err != nil || sum == nil {
-		body := `<div class="page-header"><h1>Analytics</h1></div>` +
+	// The Analytics report runs ~a dozen aggregate scans over large tables. It is
+	// computed OFF the request path and cached (admin_dashcache.go) so this tab
+	// can never block a request into a 502; a startup warmer keeps the default
+	// window hot. The nonce'd tabs script is appended per-request (never cached).
+	frag, ready := adminDash.get("analytics:"+strconv.Itoa(days), analyticsFragmentTTL, func(ctx context.Context) string {
+		return a.renderAnalyticsBody(ctx, days, periodLabel)
+	})
+	if !ready {
+		frag = `<div class="page-header"><h1>Analytics</h1></div>` + osPeriodSelector(days) +
+			`<div class="empty-state">Assembling analytics over ` + html.EscapeString(periodLabel) + `… this runs in the background and will appear on reload in a few seconds.</div>`
+	}
+	body := frag + "\n" + `<script nonce="` + nonce + `" src="/os/static/js/admin-os-intel.js?v=` + Version + `"></script>`
+	writeOSHTML(w, adminOSLayout(nonce, "Analytics", "analytics", cfg, htmpl.HTML(body)))
+}
+
+// renderAnalyticsBody builds the Analytics page body (everything except the
+// per-request nonce'd tabs script). It runs the heavy aggregate queries, so it
+// is only ever invoked from the background fragment cache — never inline on a
+// request. Returns "" on a hard query error so the cache retries rather than
+// caching an empty report.
+func (a *App) renderAnalyticsBody(ctx context.Context, days int, periodLabel string) string {
+	sum, err := a.analytics.Since(ctx, days, 10)
+	if err != nil {
+		return ""
+	}
+	if sum == nil {
+		return `<div class="page-header"><h1>Analytics</h1></div>` +
 			osPeriodSelector(days) +
 			`<div class="empty-state">No analytics data yet.</div>`
-		writeOSHTML(w, adminOSLayout(nonce, "Analytics", "analytics", cfg, htmpl.HTML(body)))
-		return
 	}
 
 	// Sparkline of daily views (reuse the dashboard renderer).
@@ -336,7 +358,6 @@ func (a *App) handleOSAnalytics(w http.ResponseWriter, r *http.Request) {
 	refs := osBarList(refBars, "No referrers recorded yet. Links from other sites will show up here.")
 
 	// ── VayuAnalytics extended insights (v1.8.0): audience, engagement, events ──
-	ctx := r.Context()
 	ov, _ := a.analytics.OverviewSince(ctx, days)
 	// Previous equal-length window, for period-over-period % deltas on the
 	// headline metrics. Bounds are date strings; the current window starts at
@@ -458,10 +479,9 @@ func (a *App) handleOSAnalytics(w http.ResponseWriter, r *http.Request) {
 
 	body := `<div class="page-header"><h1>Analytics</h1>
   <span class="muted text-sm">` + strconv.FormatInt(sum.TotalViews, 10) + ` views · ` + periodLabel + ` · updated ` + now.Format("2006-01-02 15:04") + ` UTC</span>
-</div>` + osPeriodSelector(days) + nav + panels + osPrivacyNote() + `
-<script nonce="` + nonce + `" src="/os/static/js/admin-os-intel.js?v=` + Version + `"></script>`
+</div>` + osPeriodSelector(days) + nav + panels + osPrivacyNote()
 
-	writeOSHTML(w, adminOSLayout(nonce, "Analytics", "analytics", cfg, htmpl.HTML(body)))
+	return body
 }
 
 // analyticsPeriodOptions defines the selectable reporting windows, in days.
@@ -471,6 +491,17 @@ var analyticsPeriodOptions = []struct {
 }{
 	{1, "24 hours"}, {7, "7 days"}, {30, "30 days"}, {90, "90 days"},
 	{180, "6 months"}, {365, "1 year"}, {730, "2 years"}, {1095, "3 years"},
+}
+
+// analyticsLabelForDays returns the human label for a whitelisted window, used
+// by the background dashboard warmer (which computes the default window).
+func analyticsLabelForDays(days int) string {
+	for _, o := range analyticsPeriodOptions {
+		if o.Days == days {
+			return o.Label
+		}
+	}
+	return strconv.Itoa(days) + " days"
 }
 
 // analyticsPeriod resolves the ?days= query param to a whitelisted window,
