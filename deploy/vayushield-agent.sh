@@ -33,16 +33,41 @@ write_state() { # $1=tier tag, $2=state word — best-effort.
   printf '%s' "$2" >"${CONTROL_DIR}/$1.state" 2>/dev/null || true
 }
 
+# write_reason extracts a short, human-readable failure reason from a captured
+# log ($2) into <control>/<tag>.reason so the panel can show WHY a tier errored
+# instead of a bare "check the log". Best-effort.
+write_reason() { # $1=tier tag, $2=log file
+  [ -d "$CONTROL_DIR" ] || return 0
+  local line=""
+  if [ -s "$2" ]; then
+    line="$(grep -iE 'error|not installed|rejected|denied|fail|permission|no such' "$2" 2>/dev/null | tail -n 1)"
+    [ -z "$line" ] && line="$(tail -n 1 "$2" 2>/dev/null)"
+  fi
+  printf '%s' "${line:0:200}" >"${CONTROL_DIR}/$1.reason" 2>/dev/null || true
+}
+
+clear_reason() { # $1=tier tag
+  [ -d "$CONTROL_DIR" ] || return 0
+  : >"${CONTROL_DIR}/$1.reason" 2>/dev/null || true
+}
+
 reconcile_tier2() {
   local want=0 active=0
   [ -f "${CONTROL_DIR}/tier2.want" ] && want=1
   nft list table inet vayushield >/dev/null 2>&1 && active=1
   if [ "$want" = 1 ] && [ "$active" = 0 ]; then
     write_state tier2 applying
-    if [ -x "$FIREWALL" ] || [ -f "$FIREWALL" ]; then
-      if bash "$FIREWALL" apply >/dev/null 2>&1; then write_state tier2 active; else write_state tier2 error; fi
+    if [ -f "$FIREWALL" ]; then
+      if bash "$FIREWALL" apply >"${CONTROL_DIR}/tier2.log" 2>&1; then
+        write_state tier2 active
+        clear_reason tier2
+      else
+        write_state tier2 error
+        write_reason tier2 "${CONTROL_DIR}/tier2.log"
+      fi
     else
       write_state tier2 error
+      printf '%s' "firewall script not found at ${FIREWALL}" >"${CONTROL_DIR}/tier2.reason" 2>/dev/null || true
     fi
   elif [ "$want" = 0 ] && [ "$active" = 1 ]; then
     write_state tier2 removing
@@ -62,13 +87,16 @@ reconcile_tier3() {
   if [ "$want" = 1 ] && [ "$active" = 0 ]; then
     write_state tier3 applying
     # Install the vetted conf, validate, then reload. If validation fails, roll
-    # the file back so nginx is never left broken.
-    if [ -f "$NGINX_CONF_SRC" ] && cp -f "$NGINX_CONF_SRC" "$NGINX_CONF_DST" 2>/dev/null && nginx -t >/dev/null 2>&1 && systemctl reload nginx >/dev/null 2>&1; then
+    # the file back so nginx is never left broken. Output is captured so the
+    # panel can show the reason on failure.
+    if [ -f "$NGINX_CONF_SRC" ] && cp -f "$NGINX_CONF_SRC" "$NGINX_CONF_DST" >"${CONTROL_DIR}/tier3.log" 2>&1 && nginx -t >>"${CONTROL_DIR}/tier3.log" 2>&1 && systemctl reload nginx >>"${CONTROL_DIR}/tier3.log" 2>&1; then
       write_state tier3 active
+      clear_reason tier3
     else
       rm -f "$NGINX_CONF_DST" 2>/dev/null || true
       systemctl reload nginx >/dev/null 2>&1 || true
       write_state tier3 error
+      write_reason tier3 "${CONTROL_DIR}/tier3.log"
     fi
   elif [ "$want" = 0 ] && [ "$active" = 1 ]; then
     write_state tier3 removing
