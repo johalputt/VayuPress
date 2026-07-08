@@ -2564,6 +2564,46 @@
   .vp-os .vm-msg-body { max-width: none; }
 }
 
+/* ── VayuMail composer (v-compose) ─────────────────────────────────────────── */
+.vp-os .vm-row--tight { margin: 0 0 .65rem; }
+.vp-os .vm-compose-actions { align-items: center; }
+
+.vp-os .vm-chips {
+  display: flex; flex-wrap: wrap; gap: .35rem; align-items: center;
+  padding: .3rem .4rem; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--bg-surface); min-height: 2.4rem;
+}
+.vp-os .vm-chips:focus-within { border-color: var(--accent); }
+.vp-os .vm-chip {
+  display: inline-flex; align-items: center; gap: .3rem; max-width: 100%;
+  padding: .12rem .2rem .12rem .55rem; font-size: .8rem; line-height: 1.4;
+  background: var(--bg-surface-3); border-radius: 999px;
+}
+.vp-os .vm-chip > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vp-os .vm-chip--bad { background: var(--danger-dim); color: var(--danger); }
+.vp-os .vm-chip-x {
+  border: 0; background: transparent; color: inherit; cursor: pointer;
+  font-size: 1.05rem; line-height: 1; padding: 0 .25rem; border-radius: 999px;
+}
+.vp-os .vm-chip-x:hover { background: rgba(127, 127, 127, .25); }
+.vp-os .vm-chip-input {
+  flex: 1 1 9rem; min-width: 9rem; border: 0; outline: none; background: transparent;
+  color: var(--text); font-size: var(--text-sm); padding: .25rem;
+}
+
+.vp-os .vm-dropzone {
+  border: 1.5px dashed var(--border-strong); border-radius: 10px;
+  padding: .85rem 1rem; text-align: center; margin-bottom: .5rem;
+  transition: border-color .15s ease, background .15s ease;
+}
+.vp-os .vm-dropzone--over { border-color: var(--accent); background: var(--accent-dim); }
+.vp-os .vm-dropzone-hint { display: block; margin-top: .3rem; }
+.vp-os .vm-attach-tray { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: .85rem; }
+
+.vp-os .vm-pgp-hint { font-size: .72rem; color: var(--text-3); margin-left: auto; }
+.vp-os .vm-pgp-hint--enc { color: var(--ok); }
+@media (max-width: 640px) { .vp-os .vm-pgp-hint { margin-left: 0; flex-basis: 100%; } }
+
 
 /* Live analytics indicator — pulsing dot next to the "Live" card title. */
 .vp-os .live-dot {

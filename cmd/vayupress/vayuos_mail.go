@@ -75,28 +75,41 @@ func (a *App) handleVayuOSCompose(w http.ResponseWriter, r *http.Request) {
 <form data-mail-compose>
   <label class="field"><span class="field-label">From</span>
     <select class="input" data-c-from>` + fromOpts + `</select></label>
-  <label class="field"><span class="field-label">To (comma-separated)</span>
-    <input class="input" type="text" data-c-to placeholder="someone@example.com" value="` + html.EscapeString(prefillTo) + `" required></label>
-  <div class="vm-row" style="gap:8px;margin:0 0 10px">
+
+  <label class="field"><span class="field-label">To</span>
+    <div class="vm-chips" data-c-chips="to"><input type="text" class="vm-chip-input" data-c-chip-input placeholder="name@example.com" autocomplete="off" aria-label="To recipients"></div></label>
+  <input type="hidden" data-c-to value="` + html.EscapeString(prefillTo) + `">
+
+  <div class="vm-row vm-row--tight">
     <button class="btn btn--sm" type="button" data-c-toggle-cc>Cc/Bcc</button>
     <button class="btn btn--sm" type="button" data-c-toggle-reply>Reply-To</button>
+    <span class="vm-pgp-hint" data-c-pgp aria-live="polite"></span>
   </div>
-  <label class="field" data-c-cc-field hidden><span class="field-label">Cc (comma-separated)</span>
-    <input class="input" type="text" data-c-cc placeholder="cc@example.com"></label>
-  <label class="field" data-c-bcc-field hidden><span class="field-label">Bcc (comma-separated)</span>
-    <input class="input" type="text" data-c-bcc placeholder="bcc@example.com"></label>
+
+  <label class="field" data-c-cc-field hidden><span class="field-label">Cc</span>
+    <div class="vm-chips" data-c-chips="cc"><input type="text" class="vm-chip-input" data-c-chip-input placeholder="cc@example.com" autocomplete="off" aria-label="Cc recipients"></div></label>
+  <input type="hidden" data-c-cc>
+  <label class="field" data-c-bcc-field hidden><span class="field-label">Bcc</span>
+    <div class="vm-chips" data-c-chips="bcc"><input type="text" class="vm-chip-input" data-c-chip-input placeholder="bcc@example.com" autocomplete="off" aria-label="Bcc recipients"></div></label>
+  <input type="hidden" data-c-bcc>
   <label class="field" data-c-reply-field hidden><span class="field-label">Reply-To</span>
     <input class="input" type="text" data-c-reply placeholder="reply@example.com"></label>
+
   <label class="field"><span class="field-label">Subject</span>
     <input class="input" type="text" data-c-subject placeholder="Subject" value="` + html.EscapeString(prefillSubject) + `"></label>
   <label class="field"><span class="field-label">Message</span>
     <textarea class="input" rows="12" data-c-body placeholder="Write your message…">` + html.EscapeString(prefillBody) + `</textarea></label>
-  <label class="field"><span class="field-label">Attachments</span>
-    <input class="input" type="file" data-c-files multiple>
-    <span class="muted text-xs">Up to ` + strconv.Itoa(composeMaxAttachMB()) + ` MB total — more than most providers allow.</span></label>
-  <div data-c-attach-list class="vm-attach-list text-sm muted"></div>
-  <div class="vm-row">
-    <button class="btn btn--primary" type="submit">Send</button>
+
+  <span class="field-label">Attachments</span>
+  <div class="vm-dropzone" data-c-dropzone>
+    <span class="muted text-sm">Drag &amp; drop files here, or </span><button class="btn btn--sm" type="button" data-c-attach-btn>Browse…</button>
+    <span class="muted text-xs vm-dropzone-hint">Up to ` + strconv.Itoa(composeMaxAttachMB()) + ` MB total — more than most providers allow.</span>
+    <input type="file" data-c-files multiple hidden>
+  </div>
+  <div class="vm-attach-tray" data-c-attach-list></div>
+
+  <div class="vm-row vm-compose-actions">
+    <button class="btn btn--primary" type="submit" data-c-send>Send</button>
     <button class="btn" type="button" data-c-draft>Save as draft</button>
     <span class="muted text-sm" data-c-status></span>
   </div>
