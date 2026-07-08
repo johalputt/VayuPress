@@ -8,6 +8,26 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.9.15] — 2026-07-08
+
+Applies the pending dependency update surfaced on the Security tab, and fixes the
+misleading "Latest" column that could show a version *older* than the one built.
+
+### Security
+- **Updated `go-chi/chi` v5.3.0 → v5.3.1.** This is the dependency the
+  Security-updates panel flagged as "update available"; it now ships in the
+  binary, so a one-click update applies it.
+
+### Fixed
+- **Security tab "Latest" column is now accurate.** The watcher read GitHub's
+  `releases/latest`, which lags for dependencies that tag versions without
+  cutting a GitHub Release — so it displayed a "Latest" *older* than "Current"
+  (e.g. `go-sqlite3` latest `v1.14.16` vs current `v1.14.47`, `bluemonday`
+  `v1.0.26` vs `v1.0.27`). It now reads the **highest semantic-version tag** (the
+  real source of truth for Go modules), so "Latest" is always ≥ "Current" and the
+  up-to-date / update-available status is correct. Falls back to the release API
+  when a repo publishes no version tags.
+
 ## [3.9.14] — 2026-07-08
 
 First step of the VayuMail enterprise overhaul: the Outbox becomes a real
