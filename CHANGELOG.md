@@ -8,6 +8,43 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.9.10] — 2026-07-08
+
+Bot Shield console polish: the stray floating Refresh button is gone, the Refresh
+control is redesigned, and the Network hardening section now explains Tier 2/3 in
+plain language with copy-paste commands. See ADR-0122.
+
+### Changed
+- **Engagement analytics is now a single, tidy collapsible card.** Its four
+  reports (Engagement, Traffic sources, AI-assisted discovery, Top pages) were
+  previously separate cards with the section's Refresh button floating *outside*
+  any card. They are now flattened into one "Engagement analytics" disclosure
+  with a light rule between reports, and the Refresh control sits neatly inside
+  it — consistent with every other section.
+- **Redesigned the per-section Refresh control.** It is now a subtle rounded pill
+  whose ↻ icon spins while the fetch is in flight (pure CSS `htmx-request`
+  state), instead of a plain button — clearer feedback, cleaner look. Still HTMX,
+  still no page reload.
+- **Network hardening (Tier 2 & 3) is now self-explanatory.** The section spells
+  out what each tier is, and — importantly — that they **improve** performance
+  rather than degrade it: Tier 2 (nftables) drops floods **in the Linux kernel**
+  before a packet reaches VayuPress, and Tier 3 (nginx) shapes abuse **at the
+  edge**, so both *reduce* load on VayuOS and the site under attack while leaving
+  legitimate visitors untouched. Each tier shows its exact command with a
+  **one-click Copy** button (same-origin, nonce-gated — strict admin CSP intact).
+
+### Notes
+- **Why Tier 2/3 aren't a one-click toggle in the panel.** VayuPress runs as an
+  *unprivileged* service by design and deliberately cannot touch the kernel
+  firewall or reload nginx — that isolation is what stops a web-app compromise
+  from escalating to root. Applying them needs root, so it stays an operator
+  action (copy the command, paste once over SSH; both are idempotent and
+  reversible — `… remove` for the firewall, delete the conf + reload for nginx).
+  A genuine in-panel switch is possible via a small one-time **privileged helper**
+  (a root service that runs only these vetted, argument-free scripts on request);
+  the section now says so, and it can be added on request. This performance-and-
+  privilege rationale is recorded in ADR-0122.
+
 ## [3.9.9] — 2026-07-08
 
 GDPR-safe visitor location across the operator console: **no raw IP is ever

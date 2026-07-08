@@ -3549,9 +3549,30 @@
 /* ── Network hardening <details> ─────────────────────────────── */
 .vp-os .vs-summary { cursor: pointer; margin-bottom: 0; -webkit-user-select: none; user-select: none; }
 .vp-os details[open] .vs-summary { margin-bottom: var(--sp-4); }
-/* Per-section HTMX "Refresh" control — a right-aligned toolbar at the top of a
-   refreshable section body. */
+/* Per-section HTMX "Refresh" control — a right-aligned pill at the top of a
+   refreshable section body; its icon spins while the fetch is in flight. */
 .vp-os .vs-sec-tools { display: flex; justify-content: flex-end; margin-bottom: var(--sp-3); }
+.vp-os .vs-refresh-btn { display: inline-flex; align-items: center; gap: 0.4em; font-size: var(--text-xs); font-weight: 600; color: var(--text-2); background: var(--bg-surface-2); border: 1px solid var(--border); border-radius: var(--r-full); padding: 0.3rem 0.75rem; cursor: pointer; line-height: 1; transition: color var(--t-fast), border-color var(--t-fast), background var(--t-fast); }
+.vp-os .vs-refresh-btn:hover { color: var(--brand); border-color: var(--brand); background: var(--bg-surface-3); }
+.vp-os .vs-refresh-btn:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.vp-os .vs-refresh-ico { display: inline-block; font-size: 1.05em; line-height: 1; }
+.vp-os .vs-refresh-btn.htmx-request { opacity: 0.7; pointer-events: none; }
+.vp-os .vs-refresh-btn.htmx-request .vs-refresh-ico { animation: vs-spin 0.7s linear infinite; }
+@keyframes vs-spin { to { transform: rotate(360deg); } }
+
+/* Flattened engagement sub-sections inside the single "Engagement analytics"
+   card — a light top rule instead of a nested card per report. */
+.vp-os .vs-subsection { margin-top: var(--sp-5); padding-top: var(--sp-4); border-top: 1px solid var(--border); }
+.vp-os .vs-subsection:first-of-type { margin-top: var(--sp-2); padding-top: 0; border-top: 0; }
+
+/* Tier 2/3 network-hardening blocks + copy-command control. */
+.vp-os .vs-tier { margin: var(--sp-4) 0; padding: var(--sp-4); border: 1px solid var(--border); border-radius: var(--r); background: var(--bg-surface-2); }
+.vp-os .vs-tier-head { font-weight: 700; color: var(--text); margin-bottom: var(--sp-2); }
+.vp-os .vs-cmd { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; margin: var(--sp-2) 0; }
+.vp-os .vs-cmd code { flex: 1 1 auto; min-width: 0; overflow-x: auto; white-space: pre; background: var(--bg-surface-3); border: 1px solid var(--border); border-radius: var(--r); padding: 0.45rem 0.6rem; font-size: var(--text-xs); }
+.vp-os .vs-copy-btn { flex: none; font-size: var(--text-xs); font-weight: 600; color: var(--text-2); background: var(--bg-surface-2); border: 1px solid var(--border); border-radius: var(--r); padding: 0.45rem 0.8rem; cursor: pointer; transition: color var(--t-fast), border-color var(--t-fast); }
+.vp-os .vs-copy-btn:hover { color: var(--brand); border-color: var(--brand); }
+.vp-os .vs-copy-btn.is-copied { color: var(--brand); border-color: var(--brand); }
 
 /* ── Stat cards ──────────────────────────────────────────────── */
 .vp-os .vs-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--sp-3); }

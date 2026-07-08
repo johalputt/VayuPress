@@ -366,10 +366,20 @@ func (a *App) handleOSShield(w http.ResponseWriter, r *http.Request) {
 
 	// Network hardening (Tier 2/3) — server-level, collapsed by default.
 	b.WriteString(`<details class="card"><summary class="card-title vs-summary">Network hardening (Tier 2 &amp; 3) — server-level</summary>`)
-	b.WriteString(`<p class="muted text-sm">The switches above are the in-binary (Tier 1) defenses. Floods that saturate the network are stopped <em>below</em> the app, as sovereign scripts (they need root or the reverse proxy):</p>`)
-	b.WriteString(`<ul class="muted text-sm"><li><strong>Tier 2 · kernel:</strong> <code>bash deploy/vayushield-firewall.sh apply</code> — nftables per-IP limits + SYN-flood cookies.</li>`)
-	b.WriteString(`<li><strong>Tier 3 · edge:</strong> <code>deploy/nginx-vayushield.conf</code> — per-IP shaping + slow-loris timeouts at the reverse proxy.</li></ul>`)
-	b.WriteString(`<p class="muted text-sm">A true volumetric flood can only be absorbed by anycast/scrubbing capacity no single host provides; Tiers 1–2 handle what a typical publisher actually faces.</p></details>`)
+	b.WriteString(`<p class="muted text-sm">The toggles above are <strong>Tier 1</strong> — VayuShield's in-binary defenses (bot scoring, challenges, rate-limiting, load-shedding). They are always safe to run from here because they live <em>inside</em> VayuPress. <strong>Tier 2</strong> and <strong>Tier 3</strong> sit <em>below</em> and <em>in front of</em> the app, where only the operating system and the reverse proxy can act.</p>`)
+
+	b.WriteString(`<div class="vs-tier"><div class="vs-tier-head">🛡️ Tier 2 · Kernel firewall (nftables)</div>`)
+	b.WriteString(`<p class="muted text-sm">Enforces per-IP connection/packet rate limits and SYN-flood cookies <strong>inside the Linux kernel</strong>, so a flood is dropped before a packet ever reaches VayuPress. Because abuse is discarded that early, this <strong>lowers</strong> the load on VayuOS and your site under attack — it makes them faster, not slower, and legitimate visitors see no measurable cost.</p>`)
+	b.WriteString(`<div class="vs-cmd"><code id="vs-cmd-t2">sudo bash deploy/vayushield-firewall.sh apply</code><button type="button" class="vs-copy-btn" data-copy="vs-cmd-t2">Copy</button></div>`)
+	b.WriteString(`<p class="muted text-xs">Check with <code>… status</code>; undo with <code>… remove</code>. Idempotent and reversible.</p></div>`)
+
+	b.WriteString(`<div class="vs-tier"><div class="vs-tier-head">🌐 Tier 3 · Edge shaping (nginx)</div>`)
+	b.WriteString(`<p class="muted text-sm">Per-IP request/connection shaping and slow-loris timeouts at the reverse proxy, so abusive HTTP is absorbed at the edge. Like Tier 2 it protects capacity — only abuse is throttled; normal requests pass untouched.</p>`)
+	b.WriteString(`<div class="vs-cmd"><code id="vs-cmd-t3">sudo cp deploy/nginx-vayushield.conf /etc/nginx/conf.d/ &amp;&amp; sudo nginx -t &amp;&amp; sudo systemctl reload nginx</code><button type="button" class="vs-copy-btn" data-copy="vs-cmd-t3">Copy</button></div>`)
+	b.WriteString(`<p class="muted text-xs">Reversible: remove the file and reload nginx.</p></div>`)
+
+	b.WriteString(`<p class="muted text-sm"><strong>Why isn't this a one-click switch here?</strong> By design VayuPress runs as an <em>unprivileged</em> service — it deliberately cannot touch the kernel firewall or reload nginx, and that isolation is exactly what stops a web-app compromise from escalating to root. Applying Tier 2/3 needs root, so it stays an operator action: copy a command above and paste it once over SSH (both are idempotent and reversible). A true in-panel toggle is possible via a small, one-time <strong>privileged helper</strong> (a root service that applies only these vetted scripts on request, taking no input from the web app) — say the word and it can be added.</p>`)
+	b.WriteString(`<p class="muted text-sm">A true volumetric flood still needs anycast/scrubbing capacity no single host provides; Tiers 1–3 handle what a typical publisher actually faces.</p></details>`)
 
 	// ── Bot intelligence — collapsible + individually refreshable. Both bodies
 	// also listen for vs-refresh-sig (fired after a Confirm/Dismiss) so their
@@ -394,10 +404,27 @@ func (a *App) handleOSShield(w http.ResponseWriter, r *http.Request) {
 	// path and cached (admin_dashcache.go) so this panel can never block into a
 	// 502. The group refreshes in place via its own ↻ Refresh button. ──────────
 	if a.vaEngagement != nil {
-		b.WriteString(`<div id="vs-body-engagement">`)
+		b.WriteString(`<details class="card"><summary class="card-title vs-summary">Engagement analytics</summary><div id="vs-body-engagement">`)
 		b.WriteString(a.shieldEngagementBody(r.Context(), days))
-		b.WriteString(`</div>`)
+		b.WriteString(`</div></details>`)
 	}
+
+	// Copy-to-clipboard for the Tier 2/3 commands. Same-origin, nonce-gated
+	// (satisfies the strict admin CSP, ADR-0036); purely a convenience so the
+	// operator can paste the exact command instead of typing it.
+	b.WriteString(`<script nonce="` + nonce + `">
+(function(){'use strict';
+document.querySelectorAll('.vs-copy-btn').forEach(function(btn){
+  btn.addEventListener('click',function(){
+    var el=document.getElementById(btn.getAttribute('data-copy'));
+    if(!el)return;
+    var text=(el.textContent||'').trim();
+    var done=function(){var o=btn.textContent;btn.textContent='Copied ✓';btn.classList.add('is-copied');setTimeout(function(){btn.textContent=o;btn.classList.remove('is-copied');},1500);};
+    if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(done).catch(done);}else{done();}
+  });
+});
+})();
+</script>`)
 
 	b.WriteString(`</div>`) // .vs-page
 	writeOSHTML(w, adminOSLayout(nonce, "Bot Shield & Analytics", "shield", cfg, htmpl.HTML(b.String())))
@@ -414,7 +441,7 @@ func shieldDays(r *http.Request) int {
 // vsRefresh renders a small right-aligned button that reloads ONLY the given
 // section body in place via HTMX — no page reload and no custom JS.
 func vsRefresh(section, bodyID, query string) string {
-	return `<div class="vs-sec-tools"><button type="button" class="btn btn--sm" hx-get="/os/shield/section/` + section + query + `" hx-target="#` + bodyID + `" hx-swap="innerHTML">↻ Refresh</button></div>`
+	return `<div class="vs-sec-tools"><button type="button" class="vs-refresh-btn" hx-get="/os/shield/section/` + section + query + `" hx-target="#` + bodyID + `" hx-swap="innerHTML" aria-label="Refresh this section" title="Refresh"><span class="vs-refresh-ico" aria-hidden="true">↻</span><span>Refresh</span></button></div>`
 }
 
 // shieldCurrentSettings returns the live shield settings, or sensible defaults
@@ -570,7 +597,7 @@ func (a *App) shieldEngagementBody(ctx context.Context, days int) string {
 	}); ready {
 		b.WriteString(eng)
 	} else {
-		b.WriteString(`<details class="card"><summary class="card-title vs-summary">Engagement — last ` + strconv.Itoa(days) + ` days</summary><p class="muted text-sm">Assembling analytics… computed in the background; click ↻ Refresh in a few seconds.</p></details>`)
+		b.WriteString(`<p class="muted text-sm">Assembling analytics… computed in the background; click ↻ Refresh in a few seconds.</p>`)
 	}
 	return b.String()
 }
@@ -619,24 +646,24 @@ func (a *App) renderShieldEngagement(ctx context.Context, days int) string {
 	}
 	var b strings.Builder
 	if ov, err := a.vaEngagement.Overview(ctx, days); err == nil {
-		b.WriteString(`<details class="card"><summary class="card-title vs-summary">Engagement — last ` + strconv.Itoa(days) + ` days</summary><div class="vs-stats">`)
+		b.WriteString(`<div class="vs-subsection"><div class="card-title vs-section">Engagement — last ` + strconv.Itoa(days) + ` days</div><div class="vs-stats">`)
 		b.WriteString(vsStat(strconv.FormatInt(ov.Views, 10), "Human views"))
 		b.WriteString(vsStat(strconv.FormatInt(ov.UniqueSessions, 10), "Unique sessions"))
 		b.WriteString(vsStat(pct(ov.EngagementRate), "Engagement"))
 		b.WriteString(vsStat(pct(ov.BounceRate), "Bounce"))
 		b.WriteString(vsStat(ftoa2(ov.AvgTimeSeconds)+"s", "Avg time"))
 		b.WriteString(vsStat(strconv.FormatInt(ov.BotViews, 10), "Bot views (excluded)"))
-		b.WriteString(`</div></details>`)
+		b.WriteString(`</div></div>`)
 	}
 	if srcs, err := a.vaEngagement.SourceBreakdown(ctx, days); err == nil && len(srcs) > 0 {
-		b.WriteString(`<details class="card"><summary class="card-title vs-summary">Traffic sources</summary><div class="table-wrap"><table class="table"><thead><tr><th>Source</th><th>Views</th><th>Sessions</th><th>Avg time</th><th>Avg scroll</th><th>Engagement</th></tr></thead><tbody>`)
+		b.WriteString(`<div class="vs-subsection"><div class="card-title vs-section">Traffic sources</div><div class="table-wrap"><table class="table"><thead><tr><th>Source</th><th>Views</th><th>Sessions</th><th>Avg time</th><th>Avg scroll</th><th>Engagement</th></tr></thead><tbody>`)
 		for _, s := range srcs {
 			b.WriteString(`<tr><td>` + html.EscapeString(s.Category) + `</td><td>` + strconv.FormatInt(s.Views, 10) + `</td><td>` + strconv.FormatInt(s.Sessions, 10) + `</td><td>` + ftoa2(s.AvgTimeSeconds) + `s</td><td>` + ftoa2(s.AvgScrollPct) + `%</td><td>` + pct(s.EngagementRate) + `</td></tr>`)
 		}
-		b.WriteString(`</tbody></table></div></details>`)
+		b.WriteString(`</tbody></table></div></div>`)
 	}
 	if ai, err := a.vaEngagement.AITraffic(ctx, days); err == nil {
-		b.WriteString(`<details class="card"><summary class="card-title vs-summary">AI-assisted discovery vs organic search</summary>`)
+		b.WriteString(`<div class="vs-subsection"><div class="card-title vs-section">AI-assisted discovery vs organic search</div>`)
 		b.WriteString(`<p class="muted text-sm">AI traffic is <strong>` + ftoa2(ai.AISharePercent) + `%</strong> of human views · AI engagement ` + pct(ai.AISummary.EngagementRate) + ` (avg ` + ftoa2(ai.AISummary.AvgTimeSeconds) + `s) vs organic ` + pct(ai.OrganicSummary.EngagementRate) + ` (avg ` + ftoa2(ai.OrganicSummary.AvgTimeSeconds) + `s).</p>`)
 		if len(ai.BySystem) > 0 {
 			b.WriteString(`<div class="table-wrap"><table class="table"><thead><tr><th>AI system</th><th>Views</th><th>Avg time</th><th>Engagement</th></tr></thead><tbody>`)
@@ -645,14 +672,14 @@ func (a *App) renderShieldEngagement(ctx context.Context, days int) string {
 			}
 			b.WriteString(`</tbody></table></div>`)
 		}
-		b.WriteString(`</details>`)
+		b.WriteString(`</div>`)
 	}
 	if pages, err := a.vaEngagement.TopPages(ctx, days, 10); err == nil && len(pages) > 0 {
-		b.WriteString(`<details class="card"><summary class="card-title vs-summary">Top pages</summary><div class="table-wrap"><table class="table"><thead><tr><th>Page</th><th>Views</th><th>Avg time</th><th>Engagement</th></tr></thead><tbody>`)
+		b.WriteString(`<div class="vs-subsection"><div class="card-title vs-section">Top pages</div><div class="table-wrap"><table class="table"><thead><tr><th>Page</th><th>Views</th><th>Avg time</th><th>Engagement</th></tr></thead><tbody>`)
 		for _, p := range pages {
 			b.WriteString(`<tr><td>` + html.EscapeString(p.Path) + `</td><td>` + strconv.FormatInt(p.Views, 10) + `</td><td>` + ftoa2(p.AvgTimeSeconds) + `s</td><td>` + pct(p.EngagementRate) + `</td></tr>`)
 		}
-		b.WriteString(`</tbody></table></div></details>`)
+		b.WriteString(`</tbody></table></div></div>`)
 	}
 	return b.String()
 }
