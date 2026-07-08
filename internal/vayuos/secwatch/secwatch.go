@@ -133,7 +133,7 @@ func (w *Watcher) runCheck(ctx context.Context) *Report {
 	rep := &Report{Enabled: true, CheckedAt: time.Now().UTC(), Components: w.Components()}
 	for i := range rep.Components {
 		c := &rep.Components[i]
-		latest, err := w.latestRelease(ctx, c.Repo)
+		latest, err := w.latestVersion(ctx, c.Repo)
 		if err != nil {
 			c.Note = "check failed: " + err.Error()
 			continue
@@ -169,6 +169,51 @@ func (w *Watcher) store(r *Report) {
 
 type ghRelease struct {
 	TagName string `json:"tag_name"`
+}
+
+type ghTag struct {
+	Name string `json:"name"`
+}
+
+// latestVersion returns the highest semantic-version TAG for a repo. Tags are
+// the source of truth for Go modules: GitHub's "releases/latest" lags for repos
+// that tag versions without cutting a GitHub Release (e.g. mattn/go-sqlite3,
+// microcosm-cc/bluemonday), which made the panel show a "Latest" OLDER than the
+// built "Current". When no v-prefixed tag is found we fall back to the release.
+func (w *Watcher) latestVersion(ctx context.Context, repo string) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, w.apiBase+"/repos/"+repo+"/tags?per_page=100", nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("User-Agent", "VayuPress-SecWatch")
+	resp, err := w.client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode != http.StatusOK {
+		return w.latestRelease(ctx, repo) // fall back (e.g. rate-limit shape differs)
+	}
+	var tags []ghTag
+	if err := json.Unmarshal(body, &tags); err != nil {
+		return "", err
+	}
+	best := ""
+	for _, t := range tags {
+		name := strings.TrimSpace(t.Name)
+		if len(name) < 2 || name[0] != 'v' {
+			continue // only vX.Y.Z release tags
+		}
+		if best == "" || isNewer(name, best) {
+			best = name
+		}
+	}
+	if best == "" {
+		return w.latestRelease(ctx, repo)
+	}
+	return best, nil
 }
 
 func (w *Watcher) latestRelease(ctx context.Context, repo string) (string, error) {
