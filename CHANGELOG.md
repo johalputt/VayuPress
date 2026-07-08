@@ -8,6 +8,51 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.9.6] — 2026-07-08
+
+VayuShield goes from "detect and block per request" to "detect once, block
+thereafter": a bad bot is now jailed the moment it is caught, so its very next
+request is dropped instantly — and every detection grows the signature database
+and is recorded to an operator-visible block list. Blocked/bad-bot traffic is
+kept out of analytics. All of it stays GDPR-clean (hashed IPs, in-memory jail,
+no PII).
+
+### Added
+- **Auto-block detected bad bots ("detect once, block thereafter").** When
+  VayuShield blocks (or tarpits) a bad actor and auto-block is enabled, the
+  source IP is now jailed in the O(1) in-memory blocklist, so the very next
+  request from it is dropped immediately by the cheap blocklist gate — without
+  re-running classification. GDPR: the jailed IP lives only in memory on a
+  short, auto-expiring TTL (a security legitimate-interest measure, never written
+  to disk).
+- **The signature database now grows from real detections.** Every block folds
+  the client's fingerprint into `vayushield_signatures` as an auto-learned
+  `bad_bot` candidate (operator-reviewable), so the bot knowledge base is no
+  longer limited to the static seed list + the previous narrow "unknown,
+  score>0.75" learning path (which could sit idle for days). Only derived
+  sub-hashes and a coarse UA family are stored — never an IP or the full UA.
+- **Operator-visible bot block list.** A new "Recent blocks" card on the Bot
+  Shield & Analytics panel lists recent hard blocks (time, truncated UA, path,
+  reason, score, country, and the salted **hashed** IP) from `vayushield_blocked`.
+
+### Changed
+- **Blocked / bad-bot traffic is excluded from analytics.** The engagement
+  beacon now records nothing when a request classifies as a bad bot (blocked
+  bots already never render a beacon; this also drops any bad bot that still
+  fired one, e.g. a headless scraper). The block itself is recorded to the
+  VayuShield block list, not the engagement analytics.
+
+### Fixed
+- **Trending & pinned widget not appearing under existing posts (operational,
+  not a code change).** The widget markup and its content-versioned script are
+  present in the article template for every post, the feature toggle purges the
+  render cache, and the cache schema was already bumped so posts re-render with
+  it. When it still does not show, the cause is a stale copy cached **upstream**
+  (browser or CDN) — the same class of issue as the historical Cloudflare-cached
+  `trending.js` 404. Resolve it by hard-refreshing (Ctrl/Cmd+Shift+R), purging
+  the CDN/Cloudflare cache, and confirming "Trending & pinned posts" is enabled
+  in VayuOS → Tools & Plugins.
+
 ## [3.9.5] — 2026-07-08
 
 The Analytics and Bot Shield panels no longer compute their heavy reports on the
