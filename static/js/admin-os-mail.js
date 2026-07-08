@@ -520,4 +520,131 @@
       }
     });
   }
+
+  // ── Keyboard shortcuts + help overlay ────────────────────────────────────────
+  // Gmail/Superhuman-style single-key navigation. Shortcuts are ignored while
+  // typing in a field. "?" opens a help overlay (native popover when available,
+  // a positioned fallback otherwise). All CSP-safe — no inline handlers/styles.
+  (function () {
+    function typing() {
+      var el = document.activeElement;
+      return el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable);
+    }
+    var help = null;
+    function buildHelp() {
+      if (help) return help;
+      help = document.createElement('div');
+      help.className = 'vm-help';
+      help.setAttribute('role', 'dialog');
+      help.setAttribute('aria-label', 'Keyboard shortcuts');
+      try { help.setAttribute('popover', 'auto'); } catch (e) { /* older browser */ }
+      var pairs = [
+        ['Compose', 'c'], ['Search / focus search', '/'], ['Open message', 'Enter · o'],
+        ['Move down · up', 'j · k'], ['Select', 'x'], ['Toggle read', 'u'], ['Pin', 's'],
+        ['Archive', 'e'], ['Junk', '!'], ['Delete', '#'],
+        ['Reply · Forward (reader)', 'r · f'], ['Next · prev (reader)', 'j · k'], ['This help', '?']
+      ];
+      var h = '<div class="vm-help-title">Keyboard shortcuts</div><div class="vm-help-grid">';
+      pairs.forEach(function (p) { h += '<span></span><span class="vm-kbd"></span>'; });
+      help.innerHTML = h;
+      var spans = help.querySelectorAll('.vm-help-grid > span');
+      pairs.forEach(function (p, i) { spans[i * 2].textContent = p[0]; spans[i * 2 + 1].textContent = p[1]; });
+      var foot = document.createElement('div');
+      foot.className = 'vm-help-foot muted text-xs';
+      foot.textContent = 'Press Esc or ? to close';
+      help.appendChild(foot);
+      (document.querySelector('.vp-os') || document.body).appendChild(help);
+      return help;
+    }
+    function helpOpen() { return help && ((help.matches && help.matches(':popover-open')) || help.classList.contains('vm-help--open')); }
+    function toggleHelp() {
+      var el = buildHelp();
+      if (helpOpen()) { if (el.hidePopover) { try { el.hidePopover(); return; } catch (e) {} } el.classList.remove('vm-help--open'); return; }
+      if (typeof el.showPopover === 'function') { try { el.showPopover(); return; } catch (e) {} }
+      el.classList.add('vm-help--open');
+    }
+
+    var focusIdx = -1;
+    function rows() { return Array.prototype.slice.call(document.querySelectorAll('#vm-inbox-body tbody tr.vm-row-item')); }
+    function paint() {
+      var rs = rows();
+      rs.forEach(function (r, i) { if (i === focusIdx) r.classList.add('vm-focus'); else r.classList.remove('vm-focus'); });
+      if (focusIdx >= 0 && rs[focusIdx]) rs[focusIdx].scrollIntoView({ block: 'nearest' });
+    }
+    function move(delta) {
+      var rs = rows(); if (!rs.length) return;
+      focusIdx = focusIdx < 0 ? 0 : focusIdx + delta;
+      if (focusIdx < 0) focusIdx = 0;
+      if (focusIdx > rs.length - 1) focusIdx = rs.length - 1;
+      paint();
+    }
+    function focusedRow() { var rs = rows(); return focusIdx >= 0 ? rs[focusIdx] : null; }
+    function clickIn(root, sel) { if (!root) return; var el = root.querySelector(sel); if (el) el.click(); }
+    function selectFocused() {
+      var row = focusedRow(); if (!row) return;
+      var cb = row.querySelector('[data-vm-check]');
+      if (cb && !cb.checked) { cb.checked = true; cb.dispatchEvent(new Event('change', { bubbles: true })); }
+    }
+    function bulkDelete() {
+      var bar = document.querySelector('[data-vm-bulkbar]'); if (!bar) return;
+      var btns = bar.querySelectorAll('button[hx-vals]');
+      for (var i = 0; i < btns.length; i++) {
+        if ((btns[i].getAttribute('hx-vals') || '').indexOf('"delete"') >= 0) { btns[i].click(); return; }
+      }
+    }
+    function bulkMove(folder) {
+      var sel = document.querySelector('[data-vm-bulkbar] select[name="to"]');
+      if (sel) { sel.value = folder; sel.dispatchEvent(new Event('change', { bubbles: true })); }
+    }
+    function inboxAction(kind) {
+      var row = focusedRow(); if (!row) return;
+      if (kind === 'read') { clickIn(row, '.row-actions button'); return; }
+      if (kind === 'pin') { clickIn(row, 'button[title="Pin"]'); return; }
+      selectFocused();
+      if (kind === 'delete') { bulkDelete(); return; }
+      bulkMove(kind === 'archive' ? 'Archive' : 'Junk');
+    }
+
+    document.addEventListener('keydown', function (e) {
+      if (e.altKey || e.ctrlKey || e.metaKey) return;
+      if (e.key === 'Escape' && helpOpen()) { toggleHelp(); return; }
+      if (typing()) return;
+      if (e.key === '?') { e.preventDefault(); toggleHelp(); return; }
+      if (e.key === 'c') { window.location.href = '/os/vayumail/compose'; return; }
+      if (e.key === '/') {
+        var s = document.querySelector('input[type="search"][name="q"]');
+        if (s) { e.preventDefault(); s.focus(); } else { window.location.href = '/os/vayumail/search'; }
+        return;
+      }
+      var reader = document.querySelector('[data-mail-actions]');
+      if (reader) {
+        switch (e.key) {
+          case 'r': clickIn(reader, 'a[href*="reply=1"]'); return;
+          case 'f': clickIn(reader, 'a[href*="forward=1"]'); return;
+          case 'u': clickIn(reader, '[data-mail-mark="unread"]'); return;
+          case '#': clickIn(reader, '[data-mail-delete]'); return;
+          case 'e': { var ms = reader.querySelector('[data-mail-move-select]'); if (ms) { ms.value = 'Archive'; ms.dispatchEvent(new Event('change', { bubbles: true })); } return; }
+          case 'j': clickIn(document, '.vm-reader-nav a[title="Next message"]'); return;
+          case 'k': clickIn(document, '.vm-reader-nav a[title="Previous message"]'); return;
+        }
+        return;
+      }
+      if (document.getElementById('vm-inbox-body')) {
+        switch (e.key) {
+          case 'j': e.preventDefault(); move(1); return;
+          case 'k': e.preventDefault(); move(-1); return;
+          case 'o': case 'Enter': clickIn(focusedRow(), '.vm-subj a'); return;
+          case 'x': e.preventDefault(); selectFocused(); return;
+          case 'u': inboxAction('read'); return;
+          case 's': inboxAction('pin'); return;
+          case 'e': inboxAction('archive'); return;
+          case '!': inboxAction('junk'); return;
+          case '#': inboxAction('delete'); return;
+        }
+      }
+    });
+    document.body.addEventListener('htmx:afterSwap', function (e) {
+      if (e.target && e.target.id === 'vm-inbox-body') focusIdx = -1;
+    });
+  })();
 })();
