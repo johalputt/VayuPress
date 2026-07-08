@@ -79,7 +79,7 @@ import (
 // -ldflags "-X main.Version=<.release-version>", and scripts/update-vayupress.sh
 // reads .release-version too — keep this in sync with .release-version so an
 // un-stamped `go build` still reports an honest version.
-var Version = "3.9.3"
+var Version = "3.9.4"
 var bootTime = time.Now()
 
 // Immutable package-level values (compiled once, never mutated).
@@ -515,7 +515,11 @@ func main() {
 	// pool so they never serialise behind the pageview write stream on the single
 	// writer connection (which made the Analytics tab 502). Writes stay on the
 	// writer; WAL preserves read-your-writes.
-	a.analytics.UseReader(dbpkg.Reader())
+	// The admin Analytics panel reads run on the DEDICATED admin pool so they are
+	// isolated from public/bot read load. (The only public consumer, the trending
+	// widget, is memoised ~24h and single-flighted, so it borrows this pool at
+	// most once a day — negligible.)
+	a.analytics.UseReader(dbpkg.AdminReader())
 	a.webhooks = webhooks.New(dbpkg.DB, a.outboundClient)
 	a.social = social.New(social.MastodonConfig{
 		Instance: config.Cfg.MastodonInstance,
@@ -571,13 +575,16 @@ func main() {
 
 	// Multi-author accounts + login sessions (Tier 1). Writes go to the single
 	// writer connection, but the per-request auth reads (session validation +
-	// account lookup, which run on EVERY VayuOS admin request) use the read pool
-	// so the admin panel never serialises behind a saturated writer — the
-	// admin-only 502s after a restart while the public site stayed fast.
+	// account lookup, which run on EVERY VayuOS admin request) use the DEDICATED
+	// ADMIN read pool. This is the isolation guarantee: even if the public read
+	// pool is fully saturated by a bot flood or a cold-cache render storm, the
+	// admin auth gate draws from its own reserved connections, so VayuOS always
+	// authenticates and loads — the public side can never take the control plane
+	// down with it.
 	a.userStore = users.New(dbpkg.DB)
-	a.userStore.UseReader(dbpkg.Reader())
+	a.userStore.UseReader(dbpkg.AdminReader())
 	a.sessions = auth.NewSessionStore(dbpkg.DB)
-	a.sessions.UseReader(dbpkg.Reader())
+	a.sessions.UseReader(dbpkg.AdminReader())
 	if n, err := a.userStore.Count(context.Background()); err == nil && n == 0 {
 		a.bootstrapDefaultAdmin(context.Background())
 	}
