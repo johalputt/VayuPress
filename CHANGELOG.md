@@ -8,6 +8,32 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.9.19] — 2026-07-08
+
+Second screen of the VayuMail redesign: the **message reader** is rebuilt into a
+clean, modern reading view with real attachment downloads, quote folding and
+keyboard-free next/previous navigation.
+
+### Added
+- **Attachment downloads.** Messages now list their attachments (name, type and
+  size) as chips; clicking one streams a safe, forced download. Attachments are
+  PGP-decrypted first, so encrypted mail's files download in the clear. New
+  endpoint `GET /os/vayumail/attachment`.
+- **Previous / next navigation** between messages in the folder, without
+  returning to the list.
+- **Collapsible quoted text.** Reply history is folded behind a “Show quoted
+  text” toggle so the new content is what you read first.
+- **PGP badge** on messages that still carry PGP armor (encrypted or signed).
+- **Print** button for a clean printout of the message.
+
+### Changed
+- **Redesigned reader.** A sender avatar and tidy header card (From, To, Cc,
+  Date), an icon action toolbar (Reply, Forward, Mark unread, Pin, Junk, Trash,
+  Move, Delete), and a readable body column.
+- **Smoother actions.** Move, Junk, Trash and Delete now show a toast and
+  advance to the next message (or back to the folder) instead of always jumping
+  back; Pin toggles in place; Mark unread returns to the folder.
+
 ## [3.9.18] — 2026-07-08
 
 First screen of the VayuMail world-class redesign: the **Mailbox (Inbox)** is now

@@ -2514,6 +2514,56 @@
   color: #fff; background: var(--accent); border-radius: 999px;
 }
 
+/* ── VayuMail message reader (v-reader) ────────────────────────────────────── */
+.vp-os .vm-reader-top { display: flex; align-items: center; justify-content: space-between; gap: .5rem; margin-bottom: .6rem; }
+.vp-os .vm-reader-nav { display: inline-flex; gap: .25rem; }
+.vp-os .vm-reader-nav [aria-disabled="true"] { opacity: .4; pointer-events: none; }
+
+.vp-os .vm-msg-head { padding: .75rem 0 .85rem; border-bottom: 1px solid var(--border); margin-bottom: 1rem; }
+.vp-os .vm-msg-subject { font-size: var(--text-xl); font-weight: 700; line-height: 1.3; margin-bottom: .6rem; }
+.vp-os .vm-msg-from-row { display: flex; align-items: flex-start; gap: .65rem; }
+.vp-os .vm-msg-from-row .vm-av { width: 38px; height: 38px; font-size: .82rem; }
+.vp-os .vm-msg-from-meta { min-width: 0; }
+.vp-os .vm-msg-fromname { overflow-wrap: anywhere; }
+
+.vp-os .vm-pgp { display: inline-block; vertical-align: middle; margin-left: .5rem; padding: .1rem .45rem; font-size: .7rem; font-weight: 600; border-radius: 999px; }
+.vp-os .vm-pgp--enc { color: var(--accent); background: var(--accent-dim); }
+.vp-os .vm-pgp--sig { color: var(--ok); background: var(--ok-dim); }
+
+.vp-os .vm-attach { margin: 0 0 1rem; }
+.vp-os .vm-attach-list { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .4rem; }
+.vp-os .vm-attach-chip {
+  display: inline-flex; align-items: center; gap: .5rem; max-width: 22rem;
+  padding: .4rem .65rem; border: 1px solid var(--border); border-radius: 10px;
+  background: var(--bg-surface-2); color: var(--text); text-decoration: none;
+  transition: border-color .15s ease, background .15s ease;
+}
+.vp-os .vm-attach-chip:hover { border-color: var(--accent); background: var(--bg-surface-3); }
+.vp-os .vm-attach-ico { font-size: 1.1rem; flex: 0 0 auto; }
+.vp-os .vm-attach-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vp-os .vm-attach-size { color: var(--text-3); font-size: .72rem; flex: 0 0 auto; }
+
+.vp-os .vm-msg-body { line-height: 1.6; max-width: 70ch; }
+.vp-os .vm-html { line-height: 1.6; overflow-wrap: anywhere; }
+.vp-os .vm-html img { max-width: 100%; height: auto; }
+.vp-os .vm-html a { color: var(--accent); }
+
+.vp-os .vm-quote { margin-top: .5rem; }
+.vp-os .vm-quote > summary {
+  cursor: pointer; display: inline-block; list-style: none;
+  padding: .1rem .55rem; border-radius: 999px; font-size: .72rem;
+  color: var(--text-2); background: var(--bg-surface-2); border: 1px solid var(--border);
+  user-select: none;
+}
+.vp-os .vm-quote > summary::-webkit-details-marker { display: none; }
+.vp-os .vm-quote[open] > summary { margin-bottom: .5rem; }
+.vp-os .vm-pre--quoted { color: var(--text-2); border-left: 2px solid var(--border-strong); padding-left: .75rem; }
+
+@media print {
+  .vp-os .vm-reader-top, .vp-os .vm-actions, .vp-os .vm-rawwrap, .vp-os .vm-poller { display: none !important; }
+  .vp-os .vm-msg-body { max-width: none; }
+}
+
 
 /* Live analytics indicator — pulsing dot next to the "Live" card title. */
 .vp-os .live-dot {

@@ -277,60 +277,78 @@
     var user = actions.getAttribute('data-user');
     var folder = actions.getAttribute('data-folder');
     var id = actions.getAttribute('data-id');
-    var backFolder = function (f) { return '/os/vayumail/inbox?user=' + encodeURIComponent(user) + '&folder=' + encodeURIComponent(f); };
+    var backURL = actions.getAttribute('data-back') || '/os/vayumail/inbox';
+    var nextURL = actions.getAttribute('data-next') || '';
+    // After a message leaves the folder (move/junk/trash/delete) continue to the
+    // next message if there is one, otherwise fall back to the folder list.
+    var advance = function () { window.location.href = nextURL || backURL; };
 
+    // Move / Junk / Trash / Restore buttons.
     actions.querySelectorAll('[data-mail-move]').forEach(function (btn) {
       btn.addEventListener('click', function () {
         var target = btn.getAttribute('data-mail-move');
+        btn.disabled = true;
         postJSON('/os/vayumail/message/action', { user: user, id: id, folder: folder, to: target }).then(function (res) {
-          if (res.ok) window.location.href = backFolder(folder);
-          else window.alert('Move failed: ' + ((res.body && res.body.message) || res.status));
+          if (res.ok) { acctToast('Moved to ' + target); advance(); }
+          else { btn.disabled = false; acctToast('Move failed: ' + errText(res), true); }
         });
       });
     });
 
+    // Mark unread → drop the Seen flag and return to the folder (Gmail-style).
     actions.querySelectorAll('[data-mail-mark]').forEach(function (btn) {
       btn.addEventListener('click', function () {
         var mark = btn.getAttribute('data-mail-mark');
         postJSON('/os/vayumail/message/action', { user: user, id: id, folder: folder, mark: mark }).then(function (res) {
-          if (res.ok) window.location.href = backFolder(folder);
-          else window.alert('Mark failed: ' + ((res.body && res.body.message) || res.status));
+          if (res.ok) { acctToast(mark === 'unread' ? 'Marked unread' : 'Marked read'); window.location.href = backURL; }
+          else acctToast('Mark failed: ' + errText(res), true);
         });
       });
     });
 
+    // Pin / unpin — flips in place (stay on the message).
     actions.querySelectorAll('[data-mail-pin]').forEach(function (btn) {
       btn.addEventListener('click', function () {
         var pin = btn.getAttribute('data-mail-pin') === '1';
         postJSON('/os/vayumail/message/action', { user: user, id: id, folder: folder, pin: pin }).then(function (res) {
-          if (res.ok) window.location.reload();
-          else window.alert('Pin failed: ' + ((res.body && res.body.message) || res.status));
+          if (res.ok) {
+            acctToast(pin ? 'Pinned' : 'Unpinned');
+            btn.setAttribute('data-mail-pin', pin ? '0' : '1');
+            btn.textContent = pin ? '📌 Unpin' : '📌 Pin';
+          } else acctToast('Pin failed: ' + errText(res), true);
         });
       });
     });
 
+    // Move-to-folder picker.
     var moveSel = actions.querySelector('[data-mail-move-select]');
     if (moveSel) {
       moveSel.addEventListener('change', function () {
         var target = moveSel.value;
         if (!target) return;
         postJSON('/os/vayumail/message/action', { user: user, id: id, folder: folder, to: target }).then(function (res) {
-          if (res.ok) window.location.href = backFolder(folder);
-          else { moveSel.value = ''; window.alert('Move failed: ' + ((res.body && res.body.message) || res.status)); }
+          if (res.ok) { acctToast('Moved to ' + target); advance(); }
+          else { moveSel.value = ''; acctToast('Move failed: ' + errText(res), true); }
         });
       });
     }
 
+    // Delete permanently.
     var del = actions.querySelector('[data-mail-delete]');
     if (del) {
       del.addEventListener('click', function () {
         if (!window.confirm('Permanently delete this message?')) return;
+        del.disabled = true;
         postJSON('/os/vayumail/message/action', { user: user, id: id, folder: folder, delete: true }).then(function (res) {
-          if (res.ok) window.location.href = backFolder(folder);
-          else window.alert('Delete failed: ' + ((res.body && res.body.message) || res.status));
+          if (res.ok) { acctToast('Deleted'); advance(); }
+          else { del.disabled = false; acctToast('Delete failed: ' + errText(res), true); }
         });
       });
     }
+
+    // Print the message.
+    var printBtn = actions.querySelector('[data-mail-print]');
+    if (printBtn) { printBtn.addEventListener('click', function () { window.print(); }); }
   }
   // ── Mailbox list: selection (event-delegated, survives HTMX swaps) ───────────
   // Row and bulk actions are pure HTMX: they POST to /os/vayumail/inbox/action

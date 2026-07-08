@@ -1348,6 +1348,48 @@ func (a *App) handleVayuOSSearch(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleVayuOSMessage shows a single message with Junk/Trash/Delete actions.
+// splitQuoted separates the freshly-written part of a plain-text reply from the
+// quoted history beneath it, so the reader can collapse the quote (like Gmail's
+// "…"). It returns (text, "") when there is no clear quote boundary or nothing
+// above it, so a message is never hidden entirely.
+func splitQuoted(text string) (main, quoted string) {
+	lines := strings.Split(text, "\n")
+	cut := -1
+	for i, ln := range lines {
+		t := strings.TrimSpace(ln)
+		if strings.HasPrefix(t, ">") ||
+			(strings.HasPrefix(t, "On ") && strings.HasSuffix(t, "wrote:")) ||
+			t == "-----Original Message-----" ||
+			strings.HasPrefix(t, "-------- Forwarded message") {
+			cut = i
+			break
+		}
+	}
+	if cut < 1 {
+		return text, ""
+	}
+	main = strings.Join(lines[:cut], "\n")
+	if strings.TrimSpace(main) == "" {
+		return text, ""
+	}
+	return main, strings.Join(lines[cut:], "\n")
+}
+
+// mailPGPBadge returns a small badge when the raw message still carries PGP
+// armor — i.e. it is encrypted (and could not be decrypted for this mailbox) or
+// carries an inline signature. Successfully decrypted mail shows no armor and
+// therefore no badge.
+func mailPGPBadge(raw []byte) string {
+	rs := string(raw)
+	switch {
+	case strings.Contains(rs, "-----BEGIN PGP MESSAGE-----"):
+		return ` <span class="vm-pgp vm-pgp--enc" title="PGP-encrypted message">🔒 Encrypted</span>`
+	case strings.Contains(rs, "-----BEGIN PGP SIGNED MESSAGE-----"), strings.Contains(rs, "-----BEGIN PGP SIGNATURE-----"):
+		return ` <span class="vm-pgp vm-pgp--sig" title="Carries a PGP signature">✓ Signed</span>`
+	}
+	return ""
+}
+
 func (a *App) handleVayuOSMessage(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
@@ -1375,93 +1417,149 @@ func (a *App) handleVayuOSMessage(w http.ResponseWriter, r *http.Request) {
 		writeOSHTML(w, adminOSLayout(nonce, "Message", "vayuos", cfg, htmpl.HTML(body.String())))
 		return
 	}
+	received := !strings.EqualFold(folder, "Drafts") && !strings.EqualFold(folder, "Sent")
 	// Opening a message marks it read (Maildir Seen), like every mail client.
 	// Drafts/Sent are authored, not received, so they are left untouched. The
 	// rename can change the id, so we use the returned one for the actions below.
-	if !strings.EqualFold(folder, "Drafts") && !strings.EqualFold(folder, "Sent") {
+	if received {
 		if nid, merr := a.vayuMail.MarkRead(user, folder, id); merr == nil && nid != "" {
 			id = nid
 		}
 	}
 	back := "/os/vayumail/inbox?user=" + qparam(user) + "&folder=" + qparam(folder)
-	// Reply / Forward open the composer pre-filled from this message (server-side).
-	q := "user=" + qparam(user) + "&folder=" + qparam(folder) + "&id=" + qparam(id)
-	replyLink := "/os/vayumail/compose?reply=1&" + q
-	forwardLink := "/os/vayumail/compose?forward=1&" + q
-	// Action buttons (POST via admin-os-mail.js, CSRF-protected).
-	actions := `<div class="vm-actions" data-mail-actions data-user="` + html.EscapeString(user) + `" data-folder="` + html.EscapeString(folder) + `" data-id="` + html.EscapeString(id) + `">`
-	actions += `<a class="btn btn--primary" href="` + replyLink + `">Reply</a>`
-	actions += `<a class="btn" href="` + forwardLink + `">Forward</a>`
-	actions += `<button class="btn" data-mail-mark="read">✓ Mark read</button>`
-	actions += `<button class="btn" data-mail-mark="unread">Mark unread</button>`
-	// Pin / unpin (Maildir Flagged). The current pin state is read from disk.
+	msgURL := func(mid string) string {
+		return "/os/vayumail/message?user=" + qparam(user) + "&folder=" + qparam(folder) + "&id=" + qparam(mid)
+	}
+	// Pin state + prev/next neighbours (one folder scan, using the post-MarkRead id).
 	pinned := false
+	var prevURL, nextURL string
 	if msgs, lerr := a.vayuMail.ListFolder(user, folder); lerr == nil {
-		for _, mm := range msgs {
+		for i, mm := range msgs {
 			if mm.ID == id {
 				pinned = mm.Flagged
+				if i > 0 {
+					prevURL = msgURL(msgs[i-1].ID)
+				}
+				if i+1 < len(msgs) {
+					nextURL = msgURL(msgs[i+1].ID)
+				}
 				break
 			}
 		}
 	}
-	if pinned {
-		actions += `<button class="btn" data-mail-pin="0">📌 Unpin</button>`
-	} else {
-		actions += `<button class="btn" data-mail-pin="1">📌 Pin</button>`
-	}
-	if !strings.EqualFold(folder, "Junk") {
-		actions += `<button class="btn" data-mail-move="Junk">Mark as Junk</button>`
-	}
-	if !strings.EqualFold(folder, "Trash") {
-		actions += `<button class="btn" data-mail-move="Trash">Move to Trash</button>`
-	} else {
-		actions += `<button class="btn" data-mail-move="Inbox">Restore to Inbox</button>`
-	}
-	// General "Move to folder" picker (covers every standard folder).
-	actions += `<span class="vm-move"><select class="input input--sm" data-mail-move-select aria-label="Move to folder"><option value="">Move to…</option>`
-	for _, f := range vmail.StandardFolders {
-		if strings.EqualFold(f, folder) {
-			continue
-		}
-		actions += `<option value="` + html.EscapeString(f) + `">` + html.EscapeString(f) + `</option>`
-	}
-	actions += `</select></span>`
-	actions += `<button class="btn btn--danger" data-mail-delete>Delete permanently</button></div>`
-	// Clean reader view: decoded headers + body, with a raw-source toggle.
+	q := "user=" + qparam(user) + "&folder=" + qparam(folder) + "&id=" + qparam(id)
+	replyLink := "/os/vayumail/compose?reply=1&" + q
+	forwardLink := "/os/vayumail/compose?forward=1&" + q
+
 	pm := vmail.ParseMessage(raw)
 	subj := strings.TrimSpace(pm.Subject)
 	if subj == "" {
 		subj = "(no subject)"
 	}
+
 	var card strings.Builder
-	card.WriteString(`<div class="card"><div class="card-title"><a href="` + back + `">← Back to ` + html.EscapeString(folder) + `</a></div>`)
-	card.WriteString(actions)
-	// Header summary (long technical headers are hidden behind "raw source").
-	card.WriteString(`<div class="vm-msg-head"><div class="card-title">` + html.EscapeString(subj) + `</div>`)
-	hdrRow := func(label, value string) {
+	card.WriteString(`<div class="card vm-reader">`)
+
+	// Top bar: back + prev/next navigation.
+	card.WriteString(`<div class="vm-reader-top"><a class="btn btn--ghost btn--sm" href="` + back + `">← ` + html.EscapeString(folder) + `</a><span class="vm-reader-nav">`)
+	if prevURL != "" {
+		card.WriteString(`<a class="btn btn--xs" href="` + prevURL + `" title="Previous message" aria-label="Previous message">‹</a>`)
+	} else {
+		card.WriteString(`<span class="btn btn--xs" aria-disabled="true">‹</span>`)
+	}
+	if nextURL != "" {
+		card.WriteString(`<a class="btn btn--xs" href="` + nextURL + `" title="Next message" aria-label="Next message">›</a>`)
+	} else {
+		card.WriteString(`<span class="btn btn--xs" aria-disabled="true">›</span>`)
+	}
+	card.WriteString(`</span></div>`)
+
+	// Action toolbar (icon + label). POST actions run via admin-os-mail.js.
+	nextAttr := ""
+	if nextURL != "" {
+		nextAttr = `" data-next="` + html.EscapeString(nextURL)
+	}
+	card.WriteString(`<div class="vm-actions" data-mail-actions data-user="` + html.EscapeString(user) + `" data-folder="` + html.EscapeString(folder) + `" data-id="` + html.EscapeString(id) + `" data-back="` + html.EscapeString(back) + nextAttr + `">`)
+	card.WriteString(`<a class="btn btn--primary btn--sm" href="` + replyLink + `">↩ Reply</a>`)
+	card.WriteString(`<a class="btn btn--sm" href="` + forwardLink + `">↪ Forward</a>`)
+	if received {
+		card.WriteString(`<button type="button" class="btn btn--sm" data-mail-mark="unread">✉ Mark unread</button>`)
+	}
+	if pinned {
+		card.WriteString(`<button type="button" class="btn btn--sm" data-mail-pin="0">📌 Unpin</button>`)
+	} else {
+		card.WriteString(`<button type="button" class="btn btn--sm" data-mail-pin="1">📌 Pin</button>`)
+	}
+	if !strings.EqualFold(folder, "Junk") {
+		card.WriteString(`<button type="button" class="btn btn--sm" data-mail-move="Junk">⚠ Junk</button>`)
+	}
+	if !strings.EqualFold(folder, "Trash") {
+		card.WriteString(`<button type="button" class="btn btn--sm" data-mail-move="Trash">🗑 Trash</button>`)
+	} else {
+		card.WriteString(`<button type="button" class="btn btn--sm" data-mail-move="Inbox">↧ Restore</button>`)
+	}
+	card.WriteString(`<span class="vm-move"><select class="input input--sm" data-mail-move-select aria-label="Move to folder"><option value="">Move to…</option>`)
+	for _, f := range vmail.StandardFolders {
+		if strings.EqualFold(f, folder) {
+			continue
+		}
+		card.WriteString(`<option value="` + html.EscapeString(f) + `">` + html.EscapeString(f) + `</option>`)
+	}
+	card.WriteString(`</select></span>`)
+	card.WriteString(`<button type="button" class="btn btn--sm" data-mail-print>🖨 Print</button>`)
+	card.WriteString(`<button type="button" class="btn btn--sm btn--danger" data-mail-delete>🗑 Delete</button></div>`)
+
+	// Header card: subject + PGP badge, sender avatar, addresses and date.
+	fromName, fromAddr := mailParseFrom(pm.From)
+	if fromName == "" {
+		fromName = fromAddr
+	}
+	card.WriteString(`<div class="vm-msg-head"><div class="vm-msg-subject">` + html.EscapeString(subj) + mailPGPBadge(raw) + `</div>`)
+	card.WriteString(`<div class="vm-msg-from-row">` + mailAvatar(pm.From) + `<div class="vm-msg-from-meta">`)
+	card.WriteString(`<div class="vm-msg-fromname"><strong>` + html.EscapeString(fromName) + `</strong>`)
+	if fromAddr != "" && fromAddr != fromName {
+		card.WriteString(` <span class="muted text-sm">&lt;` + html.EscapeString(fromAddr) + `&gt;</span>`)
+	}
+	card.WriteString(`</div>`)
+	metaRow := func(label, value string) {
 		if strings.TrimSpace(value) == "" {
 			return
 		}
 		card.WriteString(`<div class="muted text-sm"><strong>` + label + `:</strong> ` + html.EscapeString(value) + `</div>`)
 	}
-	hdrRow("From", pm.From)
-	hdrRow("To", pm.To)
-	hdrRow("Cc", pm.Cc)
-	hdrRow("Date", pm.Date)
-	card.WriteString(`</div>`)
-	// Body: prefer decoded text/plain; else sanitised HTML; else raw fallback.
+	metaRow("To", pm.To)
+	metaRow("Cc", pm.Cc)
+	metaRow("Date", pm.Date)
+	card.WriteString(`</div></div></div>`)
+
+	// Attachments.
+	if len(pm.Attachments) > 0 {
+		card.WriteString(`<div class="vm-attach"><div class="text-sm muted">📎 ` + itoaSafe(len(pm.Attachments)) + ` attachment(s)</div><div class="vm-attach-list">`)
+		for _, att := range pm.Attachments {
+			dl := "/os/vayumail/attachment?user=" + qparam(user) + "&folder=" + qparam(folder) + "&id=" + qparam(id) + "&idx=" + itoaSafe(att.Index)
+			card.WriteString(`<a class="vm-attach-chip" href="` + dl + `" download><span class="vm-attach-ico">📄</span><span class="vm-attach-name">` + html.EscapeString(att.Filename) + `</span><span class="vm-attach-size">` + html.EscapeString(humanBytes(att.Size)) + `</span></a>`)
+		}
+		card.WriteString(`</div></div>`)
+	}
+
+	// Body: decoded text/plain (with collapsible quote) → sanitised HTML → raw.
 	card.WriteString(`<div class="vm-msg-body">`)
 	switch {
 	case strings.TrimSpace(pm.Text) != "":
-		card.WriteString(`<pre class="vm-pre">` + html.EscapeString(pm.Text) + `</pre>`)
+		main, quoted := splitQuoted(pm.Text)
+		card.WriteString(`<pre class="vm-pre">` + html.EscapeString(main) + `</pre>`)
+		if quoted != "" {
+			card.WriteString(`<details class="vm-quote"><summary>Show quoted text</summary><pre class="vm-pre vm-pre--quoted">` + html.EscapeString(quoted) + `</pre></details>`)
+		}
 	case strings.TrimSpace(pm.HTML) != "":
 		card.WriteString(`<div class="vm-html">` + mailHTMLPolicy.Sanitize(pm.HTML) + `</div>`)
 	default:
 		card.WriteString(`<pre class="vm-pre">` + html.EscapeString(string(raw)) + `</pre>`)
 	}
 	card.WriteString(`</div>`)
+
 	// Raw source, hidden by default, toggled by admin-os-mail.js (CSP-safe).
-	card.WriteString(`<div class="vm-rawwrap"><button class="btn" type="button" data-mail-raw-toggle>View raw source</button>`)
+	card.WriteString(`<div class="vm-rawwrap"><button class="btn btn--sm btn--ghost" type="button" data-mail-raw-toggle>View raw source</button>`)
 	card.WriteString(`<pre class="vm-pre vm-raw" data-mail-raw hidden>` + html.EscapeString(string(raw)) + `</pre></div>`)
 	card.WriteString(`</div>`)
 	body.WriteString(card.String())
