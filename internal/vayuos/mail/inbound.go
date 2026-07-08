@@ -152,6 +152,49 @@ func (e *Engine) Sent(ctx context.Context, limit int) ([]SentInfo, error) {
 	return e.queue.Recent(ctx, limit)
 }
 
+// kickDelivery runs one delivery pass off the request path so a manual
+// Resend/Retry is acted on immediately instead of waiting for the 30s worker.
+func (e *Engine) kickDelivery() {
+	if e.queue == nil {
+		return
+	}
+	go func() { _, _, _ = e.queue.ProcessDue(context.Background(), time.Now()) }()
+}
+
+// ResendQueued requeues one outbound message and triggers an immediate delivery
+// attempt — the one-click "Resend" for a failed or pending message.
+func (e *Engine) ResendQueued(ctx context.Context, id int64) error {
+	if e.queue == nil {
+		return errors.New("vayumail: not started")
+	}
+	if err := e.queue.Requeue(ctx, id); err != nil {
+		return err
+	}
+	e.kickDelivery()
+	return nil
+}
+
+// RetryAllFailed requeues every failed outbound message and triggers an
+// immediate delivery pass. Returns how many were requeued.
+func (e *Engine) RetryAllFailed(ctx context.Context) (int, error) {
+	if e.queue == nil {
+		return 0, errors.New("vayumail: not started")
+	}
+	n, err := e.queue.RequeueAllFailed(ctx)
+	if err == nil && n > 0 {
+		e.kickDelivery()
+	}
+	return n, err
+}
+
+// DeleteQueued removes an outbound message from the queue.
+func (e *Engine) DeleteQueued(ctx context.Context, id int64) error {
+	if e.queue == nil {
+		return errors.New("vayumail: not started")
+	}
+	return e.queue.Delete(ctx, id)
+}
+
 func splitAddress(addr string) (local, domain string) {
 	addr = strings.TrimSpace(addr)
 	// Tolerate "Name <user@host>" form.

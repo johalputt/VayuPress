@@ -8,6 +8,39 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.9.14] — 2026-07-08
+
+First step of the VayuMail enterprise overhaul: the Outbox becomes a real
+delivery cockpit (resend, retry-until-sent, live HTMX status), and dependency
+security patches are one click to apply. See ADR-0124.
+
+### Added
+- **Outbox: one-click Resend + Retry-all-failed.** The Outbox now shows each
+  message's delivery **status, try count and last error**, with a **Resend**
+  button per failed/pending message and a **Retry all failed** action. A Resend
+  requeues the message and triggers an immediate delivery attempt (it no longer
+  waits for the 30s worker tick). Backed by new durable-queue operations
+  (`Requeue`, `RequeueAllFailed`, `Delete`) — a message that exhausted its
+  retries during a transient outage can be sent again with one click.
+- **The Outbox is now live (HTMX).** The table auto-refreshes every 15s and
+  re-renders in place after any action — no full-page reload — reusing the same
+  lightweight, CSP-safe HTMX pattern as the Bot Shield console.
+- **One-click dependency update on the Security tab.** Because VayuPress is a
+  single statically-linked binary (dependencies compiled in), security patches to
+  the PGP/crypto libraries ship *inside a signed release* — the Security-updates
+  panel now has an **Update VayuPress now** button that runs the verified
+  one-click self-updater (SHA-256 + Ed25519, atomic swap, auto-rollback) to apply
+  them. It also makes clear there is no separate `go get`/rebuild step to run on
+  the server.
+
+### Changed
+- **"Keep trying until it sends" auto-retry is more generous.** The outbound
+  queue's default max attempts rose from 12 to **20**; with the existing
+  exponential backoff (2m → … → capped at 6h) a transient delivery problem is
+  retried automatically for **~4+ days** before the message is marked failed and
+  offered for one-click Resend — so a brief recipient/DNS/greylisting outage no
+  longer needs any manual action.
+
 ## [3.9.13] — 2026-07-08
 
 Makes Tier 2 (kernel firewall) actually turn on with one click and, when it

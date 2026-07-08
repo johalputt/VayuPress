@@ -172,6 +172,43 @@ func (q *Queue) Recent(ctx context.Context, limit int) ([]SentInfo, error) {
 	return out, rows.Err()
 }
 
+// Requeue resets a single message back to 'pending' for immediate re-delivery —
+// the one-click "Resend". It clears the error and restores a fresh attempt
+// budget, so a message that exhausted its retries during a transient outage (or
+// one still pending) can be sent again with one click. next_attempt is set to
+// now so the next worker pass (or an immediate ProcessDue) picks it up.
+func (q *Queue) Requeue(ctx context.Context, id int64) error {
+	res, err := q.db.ExecContext(ctx,
+		`UPDATE vayumail_queue SET state='pending', attempts=0, last_error='', max_attempts=?, next_attempt=? WHERE id=?`,
+		q.cfg.QueueMaxAttempts, time.Now().UTC(), id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("no outbound message with id %d", id)
+	}
+	return nil
+}
+
+// RequeueAllFailed resets every 'failed' message back to 'pending' and returns
+// how many were requeued — the "Retry all failed" action.
+func (q *Queue) RequeueAllFailed(ctx context.Context) (int, error) {
+	res, err := q.db.ExecContext(ctx,
+		`UPDATE vayumail_queue SET state='pending', attempts=0, last_error='', max_attempts=?, next_attempt=? WHERE state='failed'`,
+		q.cfg.QueueMaxAttempts, time.Now().UTC())
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	return int(n), nil
+}
+
+// Delete removes a message from the outbound queue (abandon a send).
+func (q *Queue) Delete(ctx context.Context, id int64) error {
+	_, err := q.db.ExecContext(ctx, `DELETE FROM vayumail_queue WHERE id=?`, id)
+	return err
+}
+
 // Status returns counters for the VayuOS panel.
 func (q *Queue) Status(ctx context.Context) (*QueueStatus, *SMTPStats, error) {
 	st := &QueueStatus{CheckedAt: time.Now().UTC()}

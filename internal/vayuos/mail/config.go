@@ -155,7 +155,7 @@ func DefaultConfig() Config {
 		Enabled:           false, // enabled by the first-boot wizard once a domain is set
 		DKIMSelector:      "vayu",
 		StorageDir:        "./vayudata/mail",
-		QueueMaxAttempts:  12,
+		QueueMaxAttempts:  20, // generous auto-retry ("keep trying until it sends"): 2m→4m→…→6h cap, ~4+ days before it's marked failed and offered for one-click Resend
 		QueueBaseBackoff:  2 * time.Minute,
 		DeliveryTimeout:   30 * time.Second,
 		DKIMEnabled:       true,

@@ -163,3 +163,80 @@ func TestPlannedRecords(t *testing.T) {
 		t.Fatalf("missing records: mx=%v spf=%v dkim=%v dmarc=%v", haveMX, haveSPF, haveDKIM, haveDMARC)
 	}
 }
+
+// TestQueueResendAndDelete proves the one-click Resend requeues a failed message
+// (which then delivers), that requeuing an unknown id errors, and that Delete
+// removes a message.
+func TestQueueResendAndDelete(t *testing.T) {
+	t.Parallel()
+	db, _ := sql.Open("sqlite3", ":memory:")
+	db.SetMaxOpenConns(1)
+	defer db.Close()
+	cfg := DefaultConfig()
+	cfg.QueueMaxAttempts = 1
+	cfg.QueueBaseBackoff = time.Millisecond
+	fail := true
+	q, _ := NewQueue(db, cfg, func(_ context.Context, _ string, _ []string, _ []byte) error {
+		if fail {
+			return errors.New("hard fail")
+		}
+		return nil
+	})
+	id, _ := q.Enqueue(context.Background(), "a@b.com", []string{"c@d.com"}, []byte("x"))
+	_, _, _ = q.ProcessDue(context.Background(), time.Now())
+	if st, _, _ := q.Status(context.Background()); st.Failed != 1 {
+		t.Fatalf("want 1 failed, got %d", st.Failed)
+	}
+	// Resend requeues it; let delivery succeed this time.
+	fail = false
+	if err := q.Requeue(context.Background(), id); err != nil {
+		t.Fatalf("requeue: %v", err)
+	}
+	if st, _, _ := q.Status(context.Background()); st.Pending != 1 || st.Failed != 0 {
+		t.Fatalf("after requeue pending=%d failed=%d", st.Pending, st.Failed)
+	}
+	if d, _, _ := q.ProcessDue(context.Background(), time.Now()); d != 1 {
+		t.Fatalf("want 1 delivered after resend, got %d", d)
+	}
+	// Requeue of an unknown id is an error.
+	if err := q.Requeue(context.Background(), 999999); err == nil {
+		t.Fatal("expected error requeuing unknown id")
+	}
+	// Delete removes a queued message.
+	id2, _ := q.Enqueue(context.Background(), "a@b.com", []string{"e@f.com"}, []byte("y"))
+	if err := q.Delete(context.Background(), id2); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if st, _, _ := q.Status(context.Background()); st.Pending != 0 {
+		t.Fatalf("after delete pending=%d", st.Pending)
+	}
+}
+
+// TestQueueRequeueAllFailed proves "Retry all failed" resets every failed
+// message back to pending.
+func TestQueueRequeueAllFailed(t *testing.T) {
+	t.Parallel()
+	db, _ := sql.Open("sqlite3", ":memory:")
+	db.SetMaxOpenConns(1)
+	defer db.Close()
+	cfg := DefaultConfig()
+	cfg.QueueMaxAttempts = 1
+	cfg.QueueBaseBackoff = time.Millisecond
+	q, _ := NewQueue(db, cfg, func(_ context.Context, _ string, _ []string, _ []byte) error {
+		return errors.New("x")
+	})
+	for i := 0; i < 3; i++ {
+		_, _ = q.Enqueue(context.Background(), "a@b.com", []string{"c@d.com"}, []byte("z"))
+	}
+	_, _, _ = q.ProcessDue(context.Background(), time.Now())
+	if st, _, _ := q.Status(context.Background()); st.Failed != 3 {
+		t.Fatalf("want 3 failed, got %d", st.Failed)
+	}
+	n, err := q.RequeueAllFailed(context.Background())
+	if err != nil || n != 3 {
+		t.Fatalf("requeue all: n=%d err=%v", n, err)
+	}
+	if st, _, _ := q.Status(context.Background()); st.Pending != 3 || st.Failed != 0 {
+		t.Fatalf("after requeue-all pending=%d failed=%d", st.Pending, st.Failed)
+	}
+}
