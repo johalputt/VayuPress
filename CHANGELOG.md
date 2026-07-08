@@ -8,6 +8,33 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.9.13] — 2026-07-08
+
+Makes Tier 2 (kernel firewall) actually turn on with one click and, when it
+can't, says exactly why — diagnosed from a real deployment where the toggle
+errored simply because `nftables` wasn't installed and the reason was hidden.
+
+### Fixed
+- **Tier 2 now auto-installs its dependency (`nftables`).** Enabling the kernel
+  firewall inherently needs `nft`; on a host without it the apply failed with a
+  hidden `nft: command not found`. `vayushield-firewall.sh` now installs nftables
+  automatically (best-effort across apt/dnf/yum/apk/zypper) before applying, so
+  turning Tier 2 on from the panel just works. If it truly can't be installed, it
+  prints the exact manual command instead of failing silently.
+- **The panel now shows *why* a tier failed.** The reconcile agent captures the
+  script's output and records a short reason; the Network hardening section shows
+  it inline (e.g. "Error: nftables … is not installed") instead of a generic
+  "check the agent log", and offers a **Retry** button.
+- **Per-IP concurrent-connection rule hardened.** The firewall now validates the
+  whole ruleset with `nft -c` before applying (so a bad rule is reported and
+  nothing is half-applied), and the concurrent-connection cap uses a keyed meter
+  (`ip saddr ct count over N`) — a portable, genuinely per-IP form — instead of a
+  bare `ct count over N` that some `nft` versions reject and that wasn't per-IP.
+
+### Added
+- `vayushield-firewall.sh` and the reconcile agent now write a per-tier log
+  (`<control>/tierN.log`) and a short reason (`tierN.reason`) that the panel reads.
+
 ## [3.9.12] — 2026-07-08
 
 Makes the Tier 2/3 helper install obvious and one-command, and fixes the

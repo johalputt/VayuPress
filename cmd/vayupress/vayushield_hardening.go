@@ -16,6 +16,7 @@ package main
 // live state and to know whether the helper is installed.
 
 import (
+	"html"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -59,6 +60,16 @@ func shieldTierWanted(tier int) bool {
 // "inactive", "applying", "removing", "error", or "" (unknown / no agent).
 func shieldTierState(tier int) string {
 	b, err := os.ReadFile(filepath.Join(shieldControlDir(), "tier"+strconv.Itoa(tier)+".state"))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(b))
+}
+
+// shieldTierReason returns the agent-recorded short failure reason for a tier
+// (from tierN.reason), so the panel can show WHY a tier errored.
+func shieldTierReason(tier int) string {
+	b, err := os.ReadFile(filepath.Join(shieldControlDir(), "tier"+strconv.Itoa(tier)+".reason"))
 	if err != nil {
 		return ""
 	}
@@ -151,9 +162,17 @@ func shieldTierRow(tier int, title, desc string) string {
 		pill = `<span class="vs-hard-state is-work">◐ Turning off…</span>`
 		btn = ""
 	case "error":
-		pill = `<span class="vs-hard-state is-err">✕ Error — check the agent log</span>`
+		reason := shieldTierReason(tier)
+		label := "Error — check the agent log"
+		if reason != "" {
+			if len(reason) > 160 {
+				reason = reason[:160] + "…"
+			}
+			label = "Error: " + reason
+		}
+		pill = `<span class="vs-hard-state is-err">✕ ` + html.EscapeString(label) + `</span>`
 		if wanted {
-			btn = shieldTierBtn(tier, "disable", "Turn off", "btn--sm")
+			btn = shieldTierBtn(tier, "disable", "Turn off", "btn--sm") + ` ` + shieldTierBtn(tier, "enable", "Retry", "btn--sm")
 		} else {
 			btn = shieldTierBtn(tier, "enable", "Retry", "btn--sm")
 		}

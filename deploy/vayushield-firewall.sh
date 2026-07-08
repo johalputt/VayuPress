@@ -49,16 +49,39 @@ EOF
 }
 
 apply_nft() {
+  # Tier 2 inherently needs nftables. If it's missing, install it automatically
+  # (best-effort, across the common package managers) so enabling Tier 2 is truly
+  # one action; fall back to a clear manual message if that isn't possible.
+  if ! command -v nft >/dev/null 2>&1; then
+    echo "• nftables ('nft') not found — attempting to install it…"
+    if command -v apt-get >/dev/null 2>&1; then
+      DEBIAN_FRONTEND=noninteractive apt-get update -qq >/dev/null 2>&1 || true
+      DEBIAN_FRONTEND=noninteractive apt-get install -y nftables >/dev/null 2>&1 || true
+    elif command -v dnf >/dev/null 2>&1; then
+      dnf install -y nftables >/dev/null 2>&1 || true
+    elif command -v yum >/dev/null 2>&1; then
+      yum install -y nftables >/dev/null 2>&1 || true
+    elif command -v apk >/dev/null 2>&1; then
+      apk add --no-cache nftables >/dev/null 2>&1 || true
+    elif command -v zypper >/dev/null 2>&1; then
+      zypper --non-interactive install nftables >/dev/null 2>&1 || true
+    fi
+  fi
+  if ! command -v nft >/dev/null 2>&1; then
+    echo "error: nftables ('nft') is not installed and could not be installed automatically." >&2
+    echo "  Install it manually, then retry (from the panel or CLI):" >&2
+    echo "    Debian/Ubuntu:  apt-get install -y nftables" >&2
+    echo "    RHEL/Fedora:    dnf install -y nftables" >&2
+    return 1
+  fi
   echo "• installing nftables table '${TABLE}'…"
-  nft delete table inet "${TABLE}" 2>/dev/null || true
-  nft -f - <<EOF
+  local rules
+  rules="$(mktemp)"
+  # Per-IP concurrent connections are limited with a keyed meter (ip saddr) — the
+  # portable idiom; a bare "ct count over N" is not per-IP and is rejected by some
+  # nft versions. The rate limiter above already uses the same meter mechanism.
+  cat >"$rules" <<EOF
 table inet ${TABLE} {
-  # Per-source-IP concurrent connection counter.
-  set conncount {
-    type ipv4_addr
-    flags dynamic
-  }
-
   chain input {
     type filter hook input priority -10; policy accept;
 
@@ -76,10 +99,24 @@ table inet ${TABLE} {
     tcp dport ${HTTP_PORTS} ct state new drop
 
     # Per-IP concurrent-connection cap to the web ports.
-    tcp dport ${HTTP_PORTS} ct state new ct count over ${CONN_LIMIT} drop
+    tcp dport ${HTTP_PORTS} ct state new meter vs_conn { ip saddr ct count over ${CONN_LIMIT} } drop
   }
 }
 EOF
+  # Validate first so a syntax error is reported clearly and nothing is applied
+  # half-way (the existing state is left intact on failure).
+  if ! nft -c -f "$rules" 2>&1; then
+    rm -f "$rules"
+    echo "error: nftables rejected the ruleset (see the message above); no changes applied." >&2
+    return 1
+  fi
+  nft delete table inet "${TABLE}" 2>/dev/null || true
+  if ! nft -f "$rules" 2>&1; then
+    rm -f "$rules"
+    echo "error: failed to load the nftables ruleset." >&2
+    return 1
+  fi
+  rm -f "$rules"
   echo "• nftables rules installed."
 }
 
