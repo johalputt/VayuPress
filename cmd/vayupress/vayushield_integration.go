@@ -226,6 +226,16 @@ func (a *App) handleVAEnter(w http.ResponseWriter, r *http.Request) {
 	isBot := verdict.Result.ClientType == botdb.TypeBadBot || verdict.Result.ClientType == botdb.TypeHeadless ||
 		verdict.Result.ClientType == botdb.TypeGoodBot || verdict.Result.ClientType == botdb.TypeAIAgent
 
+	// A bad bot must never pollute analytics. Blocked bad bots never render (so
+	// never reach this beacon); this additionally drops any bad bot that still
+	// managed to fire a beacon — e.g. a headless scraper that executed the page
+	// JS. The detection/block itself is recorded in the VayuShield block list
+	// (vayushield_blocked), not in the engagement analytics.
+	if verdict.Result.ClientType == botdb.TypeBadBot {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
 	utm := parseUTM(req.Q)
 	class := classifier.Classify(req.R, config.Cfg.Domain, utm, isBot)
 	// A human arriving via an AI assistant is AI-assisted discovery even if the
@@ -451,6 +461,10 @@ func (a *App) handleOSShield(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// ── Recent blocks — the operator-visible bot block list. Fast indexed query
+	// (idx_blocked_created), served synchronously on the admin lane. ───────────
+	b.WriteString(a.renderRecentBlocks(r.Context()))
+
 	// ── Engagement analytics ──────────────────────────────────────────────────
 	// These are heavy aggregate scans over the large vayuanalytics_sessions
 	// table. They are computed OFF the request path and cached (admin_dashcache.go)
@@ -516,6 +530,52 @@ func (a *App) renderShieldEngagement(ctx context.Context, days int) string {
 			b.WriteString(`<tr><td>` + html.EscapeString(p.Path) + `</td><td>` + strconv.FormatInt(p.Views, 10) + `</td><td>` + ftoa2(p.AvgTimeSeconds) + `s</td><td>` + pct(p.EngagementRate) + `</td></tr>`)
 		}
 		b.WriteString(`</tbody></table></div></div>`)
+	}
+	return b.String()
+}
+
+// renderRecentBlocks renders the operator-visible bot block list — the most
+// recent hard blocks recorded in vayushield_blocked. GDPR: the IP is a salted,
+// daily-rotating hash (never stored or shown in the clear); the full User-Agent
+// is not PII and is truncated for display. Best-effort; an empty/failed query
+// yields a friendly empty-state card.
+func (a *App) renderRecentBlocks(ctx context.Context) string {
+	if dbpkg.DB == nil {
+		return ""
+	}
+	empty := `<div class="card"><div class="card-title">Recent blocks — bot block list</div><p class="muted text-sm">No bots have been blocked yet. When VayuShield blocks a bad bot it is recorded here and its IP is jailed so the next request is dropped instantly.</p></div>`
+	rows, err := dbpkg.AdminReader().QueryContext(ctx,
+		`SELECT created_at, COALESCE(user_agent,''), COALESCE(request_path,''), COALESCE(block_reason,''), bot_score, COALESCE(country_code,''), COALESCE(ip_hash,'')
+		 FROM vayushield_blocked ORDER BY created_at DESC LIMIT 50`)
+	if err != nil {
+		return empty
+	}
+	defer rows.Close()
+	var b strings.Builder
+	n := 0
+	b.WriteString(`<div class="card"><div class="card-title">Recent blocks — bot block list</div>`)
+	b.WriteString(`<p class="muted text-sm">Every hard block is recorded here (the IP is a salted daily-rotating hash — never stored in the clear). Auto-blocked IPs are also jailed in memory, so repeat requests are dropped instantly without re-classification.</p>`)
+	b.WriteString(`<div class="table-wrap"><table class="table"><thead><tr><th>When (UTC)</th><th>User-Agent</th><th>Path</th><th>Reason</th><th>Score</th><th>Country</th><th>IP (hashed)</th></tr></thead><tbody>`)
+	for rows.Next() {
+		var when time.Time
+		var ua, path, reason, country, iphash string
+		var score float64
+		if rows.Scan(&when, &ua, &path, &reason, &score, &country, &iphash) != nil {
+			continue
+		}
+		if len(ua) > 60 {
+			ua = ua[:60]
+		}
+		if len(iphash) > 12 {
+			iphash = iphash[:12]
+		}
+		b.WriteString(`<tr><td>` + when.UTC().Format("2006-01-02 15:04") + `</td><td class="text-sm">` + html.EscapeString(ua) + `</td><td class="text-sm">` + html.EscapeString(path) + `</td><td class="text-sm">` + html.EscapeString(reason) + `</td><td>` + ftoa2(score) + `</td><td>` + html.EscapeString(country) + `</td><td class="font-mono text-sm">` + html.EscapeString(iphash) + `…</td></tr>`)
+		n++
+	}
+	_ = rows.Err()
+	b.WriteString(`</tbody></table></div></div>`)
+	if n == 0 {
+		return empty
 	}
 	return b.String()
 }

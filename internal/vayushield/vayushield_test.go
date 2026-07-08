@@ -356,3 +356,49 @@ func TestResilienceOffIsPassThrough(t *testing.T) {
 		t.Fatalf("all-off shield must pass through, got %d", rr.Code)
 	}
 }
+
+// TestBadBotAutoJailedOnBlock proves the "detect once, block thereafter"
+// behaviour: a bad bot is hard-blocked (403) AND its IP is jailed, so the very
+// next request from that IP is dropped by the O(1) blocklist gate (429) without
+// re-running classification.
+func TestBadBotAutoJailedOnBlock(t *testing.T) {
+	m := newTestManager(true)
+	m.ApplySettings(Settings{Enabled: true, AutoBlock: true})
+	h := m.Middleware(okHandler())
+
+	rr1 := httptest.NewRecorder()
+	req1 := httptest.NewRequest("GET", "/post", nil)
+	req1.Header.Set("User-Agent", "sqlmap/1.7")
+	h.ServeHTTP(rr1, req1)
+	if rr1.Code != http.StatusForbidden {
+		t.Fatalf("first bad-bot request should be blocked (403), got %d", rr1.Code)
+	}
+
+	rr2 := httptest.NewRecorder()
+	req2 := httptest.NewRequest("GET", "/post", nil)
+	req2.Header.Set("User-Agent", "sqlmap/1.7")
+	h.ServeHTTP(rr2, req2)
+	if rr2.Code != http.StatusTooManyRequests {
+		t.Fatalf("second request from a jailed bad-bot IP should be dropped by the blocklist (429), got %d", rr2.Code)
+	}
+}
+
+// TestBadBotNotJailedWhenAutoBlockOff confirms the jail respects the operator's
+// auto-block toggle: with auto-block off, a bad bot is still blocked per request
+// but its IP is not added to the persistent blocklist.
+func TestBadBotNotJailedWhenAutoBlockOff(t *testing.T) {
+	m := newTestManager(true)
+	m.ApplySettings(Settings{Enabled: true, AutoBlock: false})
+	h := m.Middleware(okHandler())
+
+	rr1 := httptest.NewRecorder()
+	req1 := httptest.NewRequest("GET", "/post", nil)
+	req1.Header.Set("User-Agent", "sqlmap/1.7")
+	h.ServeHTTP(rr1, req1)
+	if rr1.Code != http.StatusForbidden {
+		t.Fatalf("bad bot should still be blocked (403), got %d", rr1.Code)
+	}
+	if m.blocklist.Len() != 0 {
+		t.Fatalf("with auto-block off, the bad-bot IP must not be jailed; blocklist len=%d", m.blocklist.Len())
+	}
+}

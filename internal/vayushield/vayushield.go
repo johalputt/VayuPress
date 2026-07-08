@@ -600,8 +600,15 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 		case ActionChallengeJS:
 			m.serveChallenge(w, r, v, challenge.HardDifficulty)
 		case ActionTarpit:
+			// A confirmed bad actor (score ≥ block threshold, tarpit variant).
+			m.jailBadActor(r.Context(), ipKey, lc.autoBlock, v)
 			m.serveTarpit(w, r, v, next)
 		case ActionBlock:
+			// A confirmed bad actor: jail the IP so the VERY NEXT request from it
+			// is dropped by the O(1) blocklist gate above — without re-running
+			// classification — and fold its fingerprint into the signature
+			// knowledge base so the bot database grows from real detections.
+			m.jailBadActor(r.Context(), ipKey, lc.autoBlock, v)
 			m.serveBlock(w, r, v)
 		}
 	})
@@ -644,6 +651,46 @@ func (m *Manager) maybeLearn(ctx context.Context, v Verdict) {
 		}
 		_ = m.cfg.Bots.Observe(ctx, obs)
 	}
+}
+
+// jailBadActor reacts to a confirmed bad-actor verdict (score >= block). When
+// auto-block is enabled it jails the source IP in the O(1) in-memory blocklist,
+// so the NEXT request from that IP is dropped immediately by the blocklist gate
+// without re-running the classifier — "detect once, block thereafter". It also
+// folds the client's fingerprint into the signature knowledge base as an
+// auto-learned bad_bot candidate (operator-reviewable), so the bot database
+// grows from real detections instead of only from the static seed list.
+//
+// GDPR: the jailed IP lives only in memory on a short, auto-expiring TTL (a
+// security legitimate-interest measure, never written to disk); the learned
+// signature stores only derived sub-hashes plus a coarse UA family — never an IP
+// or the full User-Agent.
+func (m *Manager) jailBadActor(ctx context.Context, ipKey string, autoBlock bool, v Verdict) {
+	if autoBlock && ipKey != "" {
+		m.blocklist.Block(ipKey, m.jailTTL())
+	}
+	if m.cfg.Bots == nil || v.Composite.FingerprintHash == "" {
+		return
+	}
+	obs := botdb.Observation{
+		FingerprintHash:   v.Composite.FingerprintHash,
+		JA3:               v.Composite.JA3,
+		JA4:               v.Composite.JA4,
+		HTTP2SettingsHash: v.Composite.HTTP2SettingsHash,
+		HeaderOrderHash:   v.Composite.HeaderOrderHash,
+		UserAgentPattern:  uaFamily(v.Signals.UserAgent),
+		PostQuantum:       v.Composite.PostQuantum,
+		Classification:    botdb.ClassBadBot,
+		Confidence:        0.7,
+		AutoLearned:       true,
+	}
+	if m.asyncW != nil {
+		m.asyncW.Submit(func(bctx context.Context, tx *sql.Tx) error {
+			return m.cfg.Bots.ObserveTx(bctx, tx, obs)
+		})
+		return
+	}
+	_ = m.cfg.Bots.Observe(ctx, obs)
 }
 
 // hashIP returns a daily-rotating salted hash of ip — never a plaintext IP.
