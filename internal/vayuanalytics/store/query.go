@@ -35,7 +35,7 @@ func (s *Store) Overview(ctx context.Context, days int) (*Overview, error) {
 	from := fromTime(days)
 	o := &Overview{Days: days}
 	var engaged, bounced int64
-	if err := s.db.QueryRowContext(ctx, `SELECT
+	if err := s.readDB().QueryRowContext(ctx, `SELECT
 COALESCE(SUM(CASE WHEN `+human+` THEN 1 ELSE 0 END),0),
 COALESCE(COUNT(DISTINCT CASE WHEN `+human+` THEN session_hash END),0),
 COALESCE(SUM(CASE WHEN `+human+` AND is_new_session=1 THEN 1 ELSE 0 END),0),
@@ -77,7 +77,7 @@ type SourceStat struct {
 // engagement quality of each — the data behind the source pie + comparison.
 func (s *Store) SourceBreakdown(ctx context.Context, days int) ([]SourceStat, error) {
 	from := fromTime(days)
-	rows, err := s.db.QueryContext(ctx, `SELECT source_category,
+	rows, err := s.readDB().QueryContext(ctx, `SELECT source_category,
 COUNT(1), COUNT(DISTINCT session_hash),
 COALESCE(AVG(time_on_page_seconds),0), COALESCE(AVG(scroll_depth_percent),0),
 COALESCE(SUM(engaged),0)
@@ -118,7 +118,7 @@ func (s *Store) AITraffic(ctx context.Context, days int) (*AITrafficReport, erro
 	from := fromTime(days)
 	rep := &AITrafficReport{}
 	// Per-AI-system breakdown.
-	rows, err := s.db.QueryContext(ctx, `SELECT source_detail,
+	rows, err := s.readDB().QueryContext(ctx, `SELECT source_detail,
 COUNT(1), COUNT(DISTINCT session_hash),
 COALESCE(AVG(time_on_page_seconds),0), COALESCE(AVG(scroll_depth_percent),0),
 COALESCE(SUM(engaged),0)
@@ -148,7 +148,7 @@ GROUP BY source_detail ORDER BY COUNT(1) DESC`, from)
 	rep.AISummary = s.categorySummary(ctx, from, "ai_assisted")
 	rep.OrganicSummary = s.categorySummary(ctx, from, "organic")
 	var totalHuman int64
-	_ = s.db.QueryRowContext(ctx, `SELECT COUNT(1) FROM vayuanalytics_sessions WHERE entry_time>=? AND `+human+``, from).Scan(&totalHuman)
+	_ = s.readDB().QueryRowContext(ctx, `SELECT COUNT(1) FROM vayuanalytics_sessions WHERE entry_time>=? AND `+human+``, from).Scan(&totalHuman)
 	if totalHuman > 0 {
 		rep.AISharePercent = round2(float64(rep.AISummary.Views) / float64(totalHuman) * 100)
 	}
@@ -158,7 +158,7 @@ GROUP BY source_detail ORDER BY COUNT(1) DESC`, from)
 func (s *Store) categorySummary(ctx context.Context, from time.Time, category string) SourceStat {
 	st := SourceStat{Category: category}
 	var engaged int64
-	_ = s.db.QueryRowContext(ctx, `SELECT COUNT(1), COUNT(DISTINCT session_hash),
+	_ = s.readDB().QueryRowContext(ctx, `SELECT COUNT(1), COUNT(DISTINCT session_hash),
 COALESCE(AVG(time_on_page_seconds),0), COALESCE(AVG(scroll_depth_percent),0), COALESCE(SUM(engaged),0)
 FROM vayuanalytics_sessions WHERE entry_time>=? AND source_category=? AND `+human+``,
 		from, category).Scan(&st.Views, &st.Sessions, &st.AvgTimeSeconds, &st.AvgScrollPct, &engaged)
@@ -185,7 +185,7 @@ func (s *Store) TopPages(ctx context.Context, days, limit int) ([]PageStat, erro
 		limit = 20
 	}
 	from := fromTime(days)
-	rows, err := s.db.QueryContext(ctx, `SELECT page_path,
+	rows, err := s.readDB().QueryContext(ctx, `SELECT page_path,
 COUNT(1), COALESCE(AVG(time_on_page_seconds),0), COALESCE(AVG(scroll_depth_percent),0), COALESCE(SUM(engaged),0)
 FROM vayuanalytics_sessions WHERE entry_time>=? AND `+human+`
 GROUP BY page_path ORDER BY COUNT(1) DESC LIMIT ?`, from, limit)
@@ -227,13 +227,13 @@ func (s *Store) Realtime(ctx context.Context, windowMinutes int) (*Realtime, err
 	}
 	since := time.Now().UTC().Add(-time.Duration(windowMinutes) * time.Minute)
 	rt := &Realtime{WindowMinutes: windowMinutes}
-	_ = s.db.QueryRowContext(ctx, `SELECT COUNT(DISTINCT session_hash) FROM vayuanalytics_sessions WHERE entry_time>=? AND `+human+``, since).Scan(&rt.ActiveVisitors)
-	_ = s.db.QueryRowContext(ctx, `SELECT COUNT(DISTINCT session_hash) FROM vayuanalytics_sessions WHERE entry_time>=? AND NOT (`+human+`)`, since).Scan(&rt.BotsActive)
+	_ = s.readDB().QueryRowContext(ctx, `SELECT COUNT(DISTINCT session_hash) FROM vayuanalytics_sessions WHERE entry_time>=? AND `+human+``, since).Scan(&rt.ActiveVisitors)
+	_ = s.readDB().QueryRowContext(ctx, `SELECT COUNT(DISTINCT session_hash) FROM vayuanalytics_sessions WHERE entry_time>=? AND NOT (`+human+`)`, since).Scan(&rt.BotsActive)
 
 	rt.ByCountry = s.groupCount(ctx, `SELECT COALESCE(NULLIF(country_code,''),'??'), COUNT(1) FROM vayuanalytics_sessions WHERE entry_time>=? AND `+human+` GROUP BY country_code`, since)
 	rt.BySource = s.groupCount(ctx, `SELECT source_category, COUNT(1) FROM vayuanalytics_sessions WHERE entry_time>=? AND `+human+` GROUP BY source_category`, since)
 
-	if rows, err := s.db.QueryContext(ctx, `SELECT page_path, COUNT(1), COALESCE(AVG(time_on_page_seconds),0), COALESCE(AVG(scroll_depth_percent),0) FROM vayuanalytics_sessions WHERE entry_time>=? AND `+human+` GROUP BY page_path ORDER BY COUNT(1) DESC LIMIT 20`, since); err == nil {
+	if rows, err := s.readDB().QueryContext(ctx, `SELECT page_path, COUNT(1), COALESCE(AVG(time_on_page_seconds),0), COALESCE(AVG(scroll_depth_percent),0) FROM vayuanalytics_sessions WHERE entry_time>=? AND `+human+` GROUP BY page_path ORDER BY COUNT(1) DESC LIMIT 20`, since); err == nil {
 		for rows.Next() {
 			var p PageStat
 			if err := rows.Scan(&p.Path, &p.Views, &p.AvgTimeSeconds, &p.AvgScrollPct); err == nil {
@@ -252,7 +252,7 @@ func (s *Store) Realtime(ctx context.Context, windowMinutes int) (*Realtime, err
 // map (a realtime panel is best-effort). rows.Err() is always checked.
 func (s *Store) groupCount(ctx context.Context, query string, since time.Time) map[string]int64 {
 	out := map[string]int64{}
-	rows, err := s.db.QueryContext(ctx, query, since)
+	rows, err := s.readDB().QueryContext(ctx, query, since)
 	if err != nil {
 		return out
 	}

@@ -18,10 +18,36 @@ import (
 )
 
 // Store aggregates page views in SQLite.
-type Store struct{ db *sql.DB }
+type Store struct {
+	db     *sql.DB
+	reader *sql.DB // dashboard/report read pool; falls back to db. Set via UseReader.
+}
 
 // New creates a Store.
-func New(db *sql.DB) *Store { return &Store{db: db} }
+func New(db *sql.DB) *Store { return &Store{db: db, reader: db} }
+
+// UseReader routes the report/dashboard read queries at a dedicated read pool
+// instead of the single writer connection. The admin Analytics panel runs many
+// heavy aggregate scans (Since, OverviewSince/Between, Devices, Browsers, OS,
+// CustomEvents, PageviewSeries, TopPages, realtime) over the growing
+// analytics_daily/analytics_pageviews tables; on the writer they serialise
+// behind the pageview write stream and each other, so the panel could exceed the
+// 30s server timeout and 502. Writes (Record, Purge) stay on the writer; WAL
+// gives the reader read-your-writes. A nil reader is ignored.
+func (s *Store) UseReader(reader *sql.DB) {
+	if reader != nil {
+		s.reader = reader
+	}
+}
+
+// readDB returns the handle for read-only report queries: the dedicated read
+// pool when set, otherwise the writer.
+func (s *Store) readDB() *sql.DB {
+	if s.reader != nil {
+		return s.reader
+	}
+	return s.db
+}
 
 // Record increments the view counter for path on today's date and, when a
 // same-site-external referrer is supplied, the counter for its host. Both writes
@@ -77,7 +103,7 @@ func (s *Store) TrendingArticles(ctx context.Context, days, limit int) ([]Trendi
 		limit = 10
 	}
 	from := time.Now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.readDB().QueryContext(ctx, `
 		SELECT a.slug, a.title, COALESCE(a.feature_image,''), SUM(d.views) AS v
 		FROM analytics_daily d
 		JOIN articles a ON a.slug = SUBSTR(d.path, 2)
@@ -124,7 +150,7 @@ func (s *Store) TrendingArticlesByViews(ctx context.Context, days, limit int) ([
 	// of once per pageview row. On a large event log under a cold cache this is
 	// the difference between an index range scan and a full-table scan with a
 	// row fetch per view.
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.readDB().QueryContext(ctx, `
 		SELECT a.slug, a.title, COALESCE(a.feature_image,''), pv.v
 		FROM (
 			SELECT url_path, COUNT(1) AS v
@@ -184,12 +210,12 @@ func (s *Store) Since(ctx context.Context, days, limit int) (*Summary, error) {
 	from := time.Now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
 	sum := &Summary{Days: days}
 
-	if err := s.db.QueryRowContext(ctx,
+	if err := s.readDB().QueryRowContext(ctx,
 		`SELECT COALESCE(SUM(views),0) FROM analytics_daily WHERE day>=?`, from).Scan(&sum.TotalViews); err != nil {
 		return nil, err
 	}
 
-	if rows, err := s.db.QueryContext(ctx,
+	if rows, err := s.readDB().QueryContext(ctx,
 		`SELECT path,SUM(views) v FROM analytics_daily WHERE day>=? GROUP BY path ORDER BY v DESC LIMIT ?`, from, limit); err == nil {
 		defer rows.Close()
 		for rows.Next() {
@@ -206,7 +232,7 @@ func (s *Store) Since(ctx context.Context, days, limit int) (*Summary, error) {
 		return nil, err
 	}
 
-	if rows, err := s.db.QueryContext(ctx,
+	if rows, err := s.readDB().QueryContext(ctx,
 		`SELECT host,SUM(hits) h FROM analytics_referrers WHERE day>=? GROUP BY host ORDER BY h DESC LIMIT ?`, from, limit); err == nil {
 		defer rows.Close()
 		for rows.Next() {
@@ -223,7 +249,7 @@ func (s *Store) Since(ctx context.Context, days, limit int) (*Summary, error) {
 		return nil, err
 	}
 
-	if rows, err := s.db.QueryContext(ctx,
+	if rows, err := s.readDB().QueryContext(ctx,
 		`SELECT day,SUM(views) v FROM analytics_daily WHERE day>=? GROUP BY day ORDER BY day`, from); err == nil {
 		defer rows.Close()
 		for rows.Next() {

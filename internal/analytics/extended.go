@@ -194,7 +194,7 @@ func (s *Store) Collect(ctx context.Context, req CollectRequest, ip, ua string) 
 	// reverse-proxy headers (see CollectRequest.Geo); VayuPress itself performs
 	// no GeoIP lookups and retains no IP.
 	var exists string
-	_ = s.db.QueryRowContext(ctx, `SELECT id FROM analytics_sessions WHERE id=?`, sid).Scan(&exists)
+	_ = s.readDB().QueryRowContext(ctx, `SELECT id FROM analytics_sessions WHERE id=?`, sid).Scan(&exists)
 	if exists == "" {
 		if _, err := s.db.ExecContext(ctx,
 			`INSERT OR IGNORE INTO analytics_sessions(id,visitor_id,browser,os,device,screen,language,country,region,city,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
@@ -264,15 +264,15 @@ func (s *Store) OverviewSince(ctx context.Context, days int) (*Overview, error) 
 	from := time.Now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
 	o := &Overview{}
 	// Pageviews and visits (sessions).
-	_ = s.db.QueryRowContext(ctx,
+	_ = s.readDB().QueryRowContext(ctx,
 		`SELECT COUNT(1),COUNT(DISTINCT session_id) FROM analytics_pageviews WHERE created_at>=?`, from).
 		Scan(&o.TotalPageviews, &o.TotalVisits)
 	// Unique visitors counts distinct visitor_id (NOT sessions).
-	_ = s.db.QueryRowContext(ctx,
+	_ = s.readDB().QueryRowContext(ctx,
 		`SELECT COUNT(DISTINCT visitor_id) FROM analytics_sessions WHERE created_at>=?`, from).
 		Scan(&o.UniqueVisitors)
 	// Bounce rate: share of sessions with exactly one pageview.
-	_ = s.db.QueryRowContext(ctx,
+	_ = s.readDB().QueryRowContext(ctx,
 		`SELECT COALESCE(AVG(CASE WHEN v.cnt=1 THEN 100.0 ELSE 0.0 END),0) FROM (SELECT session_id,COUNT(1) cnt FROM analytics_pageviews WHERE created_at>=? GROUP BY session_id) v`, from).
 		Scan(&o.BounceRate)
 	return o, nil
@@ -284,13 +284,13 @@ func (s *Store) OverviewSince(ctx context.Context, days int) (*Overview, error) 
 // caller fetch the immediately-preceding window of equal length.
 func (s *Store) OverviewBetween(ctx context.Context, fromInclusive, toExclusive string) (*Overview, error) {
 	o := &Overview{}
-	_ = s.db.QueryRowContext(ctx,
+	_ = s.readDB().QueryRowContext(ctx,
 		`SELECT COUNT(1),COUNT(DISTINCT session_id) FROM analytics_pageviews WHERE created_at>=? AND created_at<?`, fromInclusive, toExclusive).
 		Scan(&o.TotalPageviews, &o.TotalVisits)
-	_ = s.db.QueryRowContext(ctx,
+	_ = s.readDB().QueryRowContext(ctx,
 		`SELECT COUNT(DISTINCT visitor_id) FROM analytics_sessions WHERE created_at>=? AND created_at<?`, fromInclusive, toExclusive).
 		Scan(&o.UniqueVisitors)
-	_ = s.db.QueryRowContext(ctx,
+	_ = s.readDB().QueryRowContext(ctx,
 		`SELECT COALESCE(AVG(CASE WHEN v.cnt=1 THEN 100.0 ELSE 0.0 END),0) FROM (SELECT session_id,COUNT(1) cnt FROM analytics_pageviews WHERE created_at>=? AND created_at<? GROUP BY session_id) v`, fromInclusive, toExclusive).
 		Scan(&o.BounceRate)
 	return o, nil
@@ -311,7 +311,7 @@ func (s *Store) PageviewSeries(ctx context.Context, days int) ([]DayPageviews, e
 		days = 14
 	}
 	from := time.Now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.readDB().QueryContext(ctx,
 		`SELECT DATE(created_at) as d,COUNT(1),COUNT(DISTINCT session_id) FROM analytics_pageviews WHERE created_at>=? GROUP BY d ORDER BY d`, from)
 	if err != nil {
 		return nil, err
@@ -346,7 +346,7 @@ func (s *Store) TopPages(ctx context.Context, days, limit int) ([]PageStat, erro
 		limit = 20
 	}
 	from := time.Now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.readDB().QueryContext(ctx,
 		`SELECT url_path,COUNT(1) as pv,COUNT(DISTINCT session_id) as uv FROM analytics_pageviews WHERE created_at>=? AND event_type=1 GROUP BY url_path ORDER BY pv DESC LIMIT ?`, from, limit)
 	if err != nil {
 		return nil, err
@@ -381,7 +381,7 @@ func (s *Store) TopReferrers(ctx context.Context, days, limit int) ([]ReferrerSt
 		limit = 20
 	}
 	from := time.Now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.readDB().QueryContext(ctx,
 		`SELECT referrer,COUNT(1) as cnt FROM analytics_pageviews WHERE created_at>=? AND referrer!='' GROUP BY referrer ORDER BY cnt DESC LIMIT ?`, from, limit)
 	if err != nil {
 		return nil, err
@@ -450,7 +450,7 @@ func (s *Store) audienceSince(ctx context.Context, column string, days int) ([]A
 		column = "browser"
 	}
 	from := time.Now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.readDB().QueryContext(ctx,
 		`SELECT `+column+`,COUNT(DISTINCT visitor_id) FROM analytics_sessions WHERE created_at>=? AND `+column+`!='' GROUP BY `+column+` ORDER BY 2 DESC LIMIT 100`, from)
 	if err != nil {
 		return nil, err
@@ -483,7 +483,7 @@ func (s *Store) UTMStats(ctx context.Context, days int) ([]UTMStat, error) {
 		days = 14
 	}
 	from := time.Now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.readDB().QueryContext(ctx,
 		`SELECT utm_source,utm_medium,utm_campaign,COUNT(1) FROM analytics_pageviews WHERE created_at>=? AND (utm_source!='' OR utm_medium!='' OR utm_campaign!='') GROUP BY utm_source,utm_medium,utm_campaign ORDER BY 4 DESC LIMIT 50`, from)
 	if err != nil {
 		return nil, err
@@ -514,7 +514,7 @@ func (s *Store) CustomEvents(ctx context.Context, days int) ([]EventStat, error)
 		days = 14
 	}
 	from := time.Now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.readDB().QueryContext(ctx,
 		`SELECT event_name,COUNT(1) FROM analytics_pageviews WHERE created_at>=? AND event_type=2 AND event_name!='' GROUP BY event_name ORDER BY 2 DESC LIMIT 50`, from)
 	if err != nil {
 		return nil, err
@@ -558,11 +558,11 @@ func (s *Store) Realtime(ctx context.Context) (*RealtimeStats, error) {
 		ActiveReferrers: []AudienceStat{},
 		WindowMinutes:   5,
 	}
-	_ = s.db.QueryRowContext(ctx,
+	_ = s.readDB().QueryRowContext(ctx,
 		`SELECT COUNT(DISTINCT session_id) FROM analytics_pageviews WHERE created_at>=?`, since).
 		Scan(&rs.ActiveVisitors)
 
-	if rows, err := s.db.QueryContext(ctx,
+	if rows, err := s.readDB().QueryContext(ctx,
 		`SELECT url_path,COUNT(1) FROM analytics_pageviews WHERE created_at>=? GROUP BY url_path ORDER BY 2 DESC LIMIT 10`, since); err == nil {
 		for rows.Next() {
 			var p RealtimePage
@@ -574,7 +574,7 @@ func (s *Store) Realtime(ctx context.Context) (*RealtimeStats, error) {
 	}
 
 	// Where active visitors are (proxy-supplied country only; empty otherwise).
-	if rows, err := s.db.QueryContext(ctx,
+	if rows, err := s.readDB().QueryContext(ctx,
 		`SELECT s.country,COUNT(DISTINCT p.session_id) FROM analytics_pageviews p JOIN analytics_sessions s ON p.session_id=s.id WHERE p.created_at>=? AND s.country!='' GROUP BY s.country ORDER BY 2 DESC LIMIT 10`, since); err == nil {
 		for rows.Next() {
 			var a AudienceStat
@@ -590,7 +590,7 @@ func (s *Store) Realtime(ctx context.Context) (*RealtimeStats, error) {
 	// silently dropping them. VayuPress does no GeoIP — country is only known
 	// when a reverse proxy sets a geo header.
 	var unknownCountry int
-	_ = s.db.QueryRowContext(ctx,
+	_ = s.readDB().QueryRowContext(ctx,
 		`SELECT COUNT(DISTINCT p.session_id) FROM analytics_pageviews p JOIN analytics_sessions s ON p.session_id=s.id WHERE p.created_at>=? AND COALESCE(s.country,'')=''`, since).
 		Scan(&unknownCountry)
 	if unknownCountry > 0 {
@@ -598,7 +598,7 @@ func (s *Store) Realtime(ctx context.Context) (*RealtimeStats, error) {
 	}
 
 	// How active visitors arrived (referrer host, recorded at ingest).
-	if rows, err := s.db.QueryContext(ctx,
+	if rows, err := s.readDB().QueryContext(ctx,
 		`SELECT referrer,COUNT(1) FROM analytics_pageviews WHERE created_at>=? AND referrer!='' GROUP BY referrer ORDER BY 2 DESC LIMIT 10`, since); err == nil {
 		for rows.Next() {
 			var a AudienceStat
@@ -635,7 +635,7 @@ func (s *Store) RecentSessions(ctx context.Context, days, limit int) ([]SessionI
 		limit = 50
 	}
 	from := time.Now().UTC().AddDate(0, 0, -days).Format("2006-01-02")
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.readDB().QueryContext(ctx,
 		`SELECT s.id,s.visitor_id,s.browser,s.os,s.device,s.country,s.created_at,COUNT(p.id) FROM analytics_sessions s LEFT JOIN analytics_pageviews p ON s.id=p.session_id WHERE s.created_at>=? GROUP BY s.id ORDER BY s.created_at DESC LIMIT ?`, from, limit)
 	if err != nil {
 		return nil, err
@@ -694,7 +694,7 @@ func (s *Store) CreateFunnel(ctx context.Context, name string, steps []FunnelSte
 func (s *Store) GetFunnel(ctx context.Context, id string) (*Funnel, []FunnelResult, error) {
 	var f Funnel
 	var stepsJSON string
-	err := s.db.QueryRowContext(ctx,
+	err := s.readDB().QueryRowContext(ctx,
 		`SELECT id,name,steps_json,time_window,created_at FROM analytics_funnels WHERE id=?`, id).
 		Scan(&f.ID, &f.Name, &stepsJSON, &f.TimeWindow, &f.CreatedAt)
 	if err != nil {
@@ -707,7 +707,7 @@ func (s *Store) GetFunnel(ctx context.Context, id string) (*Funnel, []FunnelResu
 	totalVisitors := 0
 	for i, step := range f.Steps {
 		var cnt int
-		_ = s.db.QueryRowContext(ctx,
+		_ = s.readDB().QueryRowContext(ctx,
 			`SELECT COUNT(DISTINCT session_id) FROM analytics_pageviews WHERE created_at>=? AND url_path=? AND event_type=1`,
 			since, normalizePathExtended(step.URLPath)).Scan(&cnt)
 		if i == 0 {
@@ -724,7 +724,7 @@ func (s *Store) GetFunnel(ctx context.Context, id string) (*Funnel, []FunnelResu
 
 // ListFunnels returns all funnel definitions.
 func (s *Store) ListFunnels(ctx context.Context) ([]Funnel, error) {
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.readDB().QueryContext(ctx,
 		`SELECT id,name,time_window,created_at FROM analytics_funnels ORDER BY created_at DESC`)
 	if err != nil {
 		return nil, err
@@ -762,7 +762,7 @@ func (s *Store) Retention(ctx context.Context, weeks int) ([]CohortRow, error) {
 	if weeks <= 0 || weeks > maxRetentionWeeks {
 		weeks = maxRetentionWeeks
 	}
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.readDB().QueryContext(ctx,
 		`SELECT visitor_id, DATE(created_at) FROM analytics_sessions ORDER BY created_at DESC LIMIT 50000`)
 	if err != nil {
 		return nil, err
@@ -858,11 +858,11 @@ func (s *Store) RevenueStats(ctx context.Context, days int) (map[string]interfac
 	var totalRevenue float64
 	var totalTransactions int
 	var avgOrderValue float64
-	_ = s.db.QueryRowContext(ctx,
+	_ = s.readDB().QueryRowContext(ctx,
 		`SELECT COALESCE(SUM(amount),0),COUNT(1),COALESCE(AVG(amount),0) FROM analytics_revenue WHERE created_at>=?`, from).
 		Scan(&totalRevenue, &totalTransactions, &avgOrderValue)
 
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.readDB().QueryContext(ctx,
 		`SELECT DATE(created_at),SUM(amount),COUNT(1),AVG(amount),MAX(currency) FROM analytics_revenue WHERE created_at>=? GROUP BY DATE(created_at) ORDER BY DATE(created_at)`, from)
 	daily := []RevenueStat{}
 	if err == nil {
