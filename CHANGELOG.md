@@ -8,6 +8,46 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.9.7] — 2026-07-08
+
+Hot-path latency calibration and tail-latency hardening. This is a deliberately
+**incremental** release: profiling confirmed the request hot path was already
+lean (a cached page serve does no per-request database work), so rather than
+overclaim a dramatic speed-up, this trims fixed per-request overhead, closes a
+slow-client denial-of-service vector that could inflate the P95/P99 tail under
+attack, and adds a permanent benchmark regression guard. See ADR-0119 for the
+latency budget, the measurements, and the levers deliberately **not** pulled
+(and why).
+
+### Changed
+- **Leaner per-request tracing on the always-on observability middleware.** The
+  root HTTP span that wraps every request previously recorded a
+  `runtime.NumGoroutine()` probe (which briefly locks the Go scheduler) and
+  formatted two attributes with reflection-based `fmt.Sprintf` — on *every*
+  request. The goroutine probe is removed from the per-request span (live
+  goroutine count is still exposed as a gauge at
+  `/api/v1/admin/resource/stats`), and status formatting now uses `strconv.Itoa`.
+  Measured effect on the request-ID + tracing/logging middleware:
+  **~4 210 ns/op → ~4 020 ns/op (~4–5% faster)** on the benchmark box, with no
+  loss of observability. Fewer per-request allocations also means marginally
+  less GC pressure, which is what smooths the rare P95/P99 spikes.
+
+### Security
+- **Slow-loris / oversized-header hardening on the HTTP server.** The server now
+  sets `ReadHeaderTimeout` (10s) so a client cannot hold a connection — and a
+  server goroutine — open indefinitely during the header phase (a classic
+  slow-loris vector that starves legitimate requests and inflates tail latency),
+  and `MaxHeaderBytes` (1 MB) to reject oversized header floods before they
+  allocate. Normal clients on a bad network are unaffected.
+
+### CI / Build
+- **Benchmark regression guard for the hot path.** A new
+  `BenchmarkObservabilityMiddleware` measures the fixed per-request overhead of
+  the request-ID + tracing/logging middleware with a reusable, allocation-free
+  `ResponseWriter`, so a future change that reintroduces per-request allocations
+  or an expensive probe on the hot path shows up as a measurable regression
+  rather than a silent tail-latency creep.
+
 ## [3.9.6] — 2026-07-08
 
 VayuShield goes from "detect and block per request" to "detect once, block

@@ -79,7 +79,7 @@ import (
 // -ldflags "-X main.Version=<.release-version>", and scripts/update-vayupress.sh
 // reads .release-version too — keep this in sync with .release-version so an
 // un-stamped `go build` still reports an honest version.
-var Version = "3.9.6"
+var Version = "3.9.7"
 var bootTime = time.Now()
 
 // Immutable package-level values (compiled once, never mutated).
@@ -874,11 +874,19 @@ func main() {
 	a.registerRoutes(r, staticDir)
 
 	srv := &http.Server{
-		Addr:         ":" + config.Cfg.Port,
-		Handler:      r,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 30 * time.Second,
-		IdleTimeout:  120 * time.Second,
+		Addr:        ":" + config.Cfg.Port,
+		Handler:     r,
+		ReadTimeout: 15 * time.Second,
+		// ReadHeaderTimeout bounds how long a client may take to send the request
+		// headers. Without it a slow-loris client can hold a connection (and a
+		// server goroutine) open indefinitely during the header phase, starving
+		// legitimate requests and inflating tail latency. 10s is generous for a
+		// real client on a bad network yet closes the slow-loris vector.
+		ReadHeaderTimeout: 10 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		// Reject oversized header floods (a cheap DoS) before they allocate.
+		MaxHeaderBytes: 1 << 20, // 1 MB
 	}
 
 	sigCh := make(chan os.Signal, 1)
