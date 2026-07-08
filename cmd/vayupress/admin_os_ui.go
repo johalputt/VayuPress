@@ -308,6 +308,8 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.Get("/os/vayuos/*", redirectLegacyVayuOS)
 		pr.Post("/os/vayuos/*", redirectLegacyVayuOS)
 		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/inbox", a.handleVayuOSInbox)
+		pr.Get("/os/vayumail/inbox/fragment", a.handleVayuOSInboxFragment)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/inbox/action", a.handleVayuOSInboxAction)
 		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/search", a.handleVayuOSSearch)
 		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/message", a.handleVayuOSMessage)
 		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/sent", a.handleVayuOSSent)

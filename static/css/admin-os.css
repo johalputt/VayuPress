@@ -2466,6 +2466,54 @@
 .vm-section-title { margin-top: 1.5rem; }
 .vm-break { word-break: break-all; }
 
+/* ── VayuMail inbox — sticky toolbar, avatars, list polish (v-inbox) ───────── */
+.vp-os .vm-poller { display: none; }
+.vp-os .vm-toolbar {
+  position: sticky; top: 0; z-index: 6;
+  display: flex; align-items: center; justify-content: space-between;
+  gap: .75rem; flex-wrap: wrap;
+  padding: .55rem .7rem; margin: 0 0 .6rem;
+  background: var(--bg-glass); backdrop-filter: blur(10px);
+  border: 1px solid var(--border); border-radius: 12px;
+}
+.vp-os .vm-toolbar-id { display: flex; align-items: center; gap: .55rem; min-width: 0; }
+.vp-os .vm-toolbar-meta { display: flex; flex-direction: column; line-height: 1.25; min-width: 0; }
+.vp-os .vm-toolbar-meta strong { overflow-wrap: anywhere; }
+.vp-os .vm-toolbar-actions { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.vp-os .vm-toolbar-actions .vm-search { margin: 0; }
+
+.vp-os .vm-av {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; border-radius: 50%; flex: 0 0 auto;
+  font-size: .72rem; font-weight: 700; letter-spacing: .02em;
+  color: #fff; text-transform: uppercase; user-select: none;
+}
+.vp-os .vm-av--0 { background: #6366f1; }
+.vp-os .vm-av--1 { background: #0ea5e9; }
+.vp-os .vm-av--2 { background: #10b981; }
+.vp-os .vm-av--3 { background: #f59e0b; }
+.vp-os .vm-av--4 { background: #ec4899; }
+.vp-os .vm-av--5 { background: #8b5cf6; }
+
+.vp-os .vm-list td { vertical-align: middle; }
+.vp-os .vm-from { display: flex; align-items: center; gap: .55rem; min-width: 0; text-decoration: none; color: var(--text); }
+.vp-os .vm-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 15rem; }
+.vp-os .vm-subj a { color: var(--text); text-decoration: none; }
+.vp-os .vm-subj a:hover { text-decoration: underline; }
+.vp-os .vm-date { white-space: nowrap; }
+.vp-os tr.vm-unread .vm-name,
+.vp-os tr.vm-unread .vm-subj a { font-weight: 700; }
+.vp-os tr.vm-unread .vm-subj a::before {
+  content: ""; display: inline-block; width: 7px; height: 7px;
+  border-radius: 50%; background: var(--accent);
+  margin-right: .5rem; vertical-align: middle;
+}
+.vp-os .vm-tab-badge {
+  display: inline-block; min-width: 1.15rem; padding: 0 .32rem; margin-left: .3rem;
+  font-size: .68rem; font-weight: 700; line-height: 1.15rem; text-align: center;
+  color: #fff; background: var(--accent); border-radius: 999px;
+}
+
 
 /* Live analytics indicator — pulsing dot next to the "Live" card title. */
 .vp-os .live-dot {
