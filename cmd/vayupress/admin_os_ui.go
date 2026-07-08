@@ -287,6 +287,8 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Delete("/os/api/analytics/goals/{id}", a.handleAnalyticsDeleteGoal)
 		// VayuShield — Bot Shield & Analytics operator panel (admin-gated).
 		pr.Get("/os/shield", a.handleOSShield)
+		// Per-section HTMX fragment refresh (no whole-page reload).
+		pr.Get("/os/shield/section/{name}", a.handleOSShieldSection)
 		pr.Get("/os/api/shield/export", a.handleOSShieldExport)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/shield/verify", a.handleOSShieldVerify)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/shield/dismiss", a.handleOSShieldDismiss)
