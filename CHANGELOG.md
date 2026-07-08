@@ -8,6 +8,38 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.9.16] — 2026-07-08
+
+Simplifies the **Connect** tab: the device‑setup‑QR system is removed (it was the
+source of a broken "Rotate" button), the tab now recommends the official
+**VayuMail mobile app**, and manual setup + auto‑config are the supported path.
+
+### Removed
+- **Device‑setup‑QR system (and the broken Rotate button).** The rotating
+  app‑password QR and the "scan‑to‑import account" QR are gone. Their **Rotate**
+  button POSTed a server‑rendered form whose embedded CSRF token could diverge
+  from the live cookie (the page's CSRF middleware rotated it), so clicking it
+  navigated to a raw `{"error":"csrf_invalid"}` page and never rotated the QR.
+  Manual server settings and auto‑config cover setup, so the whole QR flow —
+  including the `POST /os/vayumail/connect/qr` endpoint and the app‑password
+  minting it performed — was removed rather than patched.
+
+### Changed
+- **Connect tab redesigned around the VayuMail mobile app.** The third‑party
+  "Recommended mail apps (K‑9 / Thunderbird)" card is replaced by an **official
+  VayuMail Mobile** card (download + source links). "Instant setup" now points at
+  both the Mozilla autoconfig XML and the `/.well-known/vayumail/autoconfig.json`
+  the app reads, and notes any standard client (Apple Mail, Gmail app, Outlook,
+  Thunderbird) also works with the manual settings. Service status, the TLS‑trust
+  guidance, Recommended settings, and Per‑mailbox setup are unchanged.
+
+### Upgrade Notes
+- Mail apps connect with the **mailbox's own password** (shown under Accounts) —
+  the per‑device app‑password QR is no longer issued. If you had enabled the
+  opt‑in `VAYUMAIL_2FA_ENFORCE`, note that device app passwords are no longer
+  minted here; connect with the mailbox password (2FA still protects the web
+  console and interactive sign‑in).
+
 ## [3.9.15] — 2026-07-08
 
 Applies the pending dependency update surfaced on the Security tab, and fixes the

@@ -6,7 +6,6 @@ package main
 import (
 	"bytes"
 	"context"
-	cryptorand "crypto/rand"
 	"encoding/json"
 	"html"
 	htmpl "html/template"
@@ -20,7 +19,6 @@ import (
 
 	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/config"
-	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/totp"
@@ -881,27 +879,16 @@ func (a *App) handleVayuOSConnect(w http.ResponseWriter, r *http.Request) {
 		body.WriteString(`</div>`)
 	}
 
-	// ── Recommended apps ──────────────────────────────────────────────────────
-	// Free, opt-in recommendations for two excellent open-source mail clients
-	// that share VayuPress's sovereign, FOSS ethos. Plain external links only —
+	// ── Recommended app: VayuMail Mobile ──────────────────────────────────────
+	// VayuPress's own official mobile client. Plain external links only —
 	// CSP-safe (no third-party assets are loaded).
-	body.WriteString(`<div class="card"><div class="card-title">Recommended mail apps (open source)</div>`)
-	body.WriteString(`<div class="vm-grid-2">`)
-	body.WriteString(`<div>` +
-		`<div class="text-sm"><strong>K-9 Mail</strong> — Android. Clean, fast IMAP/POP3 client (now Thunderbird for Android).</div>` +
-		`<div class="vm-row mt-1">` +
-		`<a class="btn btn--primary btn--sm" href="https://k9mail.app/" target="_blank" rel="noopener noreferrer">Website ↗</a>` +
-		`<a class="btn btn--ghost btn--sm" href="https://play.google.com/store/apps/details?id=com.fsck.k9" target="_blank" rel="noopener noreferrer">Play ↗</a>` +
-		`<a class="btn btn--ghost btn--sm" href="https://f-droid.org/packages/com.fsck.k9/" target="_blank" rel="noopener noreferrer">F-Droid ↗</a>` +
-		`</div></div>`)
-	body.WriteString(`<div>` +
-		`<div class="text-sm"><strong>Thunderbird</strong> — Windows / macOS / Linux. The classic free, open-source desktop mail client.</div>` +
-		`<div class="vm-row mt-1">` +
-		`<a class="btn btn--primary btn--sm" href="https://www.thunderbird.net/" target="_blank" rel="noopener noreferrer">Website ↗</a>` +
-		`<a class="btn btn--ghost btn--sm" href="https://www.thunderbird.net/download/" target="_blank" rel="noopener noreferrer">Download ↗</a>` +
-		`</div></div>`)
-	body.WriteString(`</div>`)
-	body.WriteString(`<p class="muted text-xs mt-2">Both are open source (Apache-2.0 / MPL-2.0) — the same FOSS spirit as VayuPress. Apple Mail and Outlook also work with the settings below. With <strong>auto-config</strong> (below), these clients set themselves up from just your email address — no manual server entry. With the trusted certificate active there is no security warning to accept.</p>`)
+	body.WriteString(`<div class="card"><div class="card-title">📱 VayuMail — the official mobile app</div>`)
+	body.WriteString(`<p class="text-sm">The easiest way to use your mailboxes on the go. <strong>VayuMail Mobile</strong> is VayuPress's own open-source app: it sets up from just your email address and password (no server typing), talks IMAP/SMTP straight to this server, and understands the built-in PGP so your mail stays end-to-end encrypted on your phone.</p>`)
+	body.WriteString(`<div class="vm-row mt-1">` +
+		`<a class="btn btn--primary btn--sm" href="https://github.com/johalputt/VayuMail-Mobile/releases" target="_blank" rel="noopener noreferrer">Download app ↗</a>` +
+		`<a class="btn btn--ghost btn--sm" href="https://github.com/johalputt/VayuMail-Mobile" target="_blank" rel="noopener noreferrer">Source ↗</a>` +
+		`</div>`)
+	body.WriteString(`<p class="muted text-xs mt-2">Prefer another client? Any standard mail app (Apple Mail, the Gmail app, Outlook, Thunderbird) also connects using the manual settings below. With the trusted certificate active there is no security warning to accept.</p>`)
 	body.WriteString(`</div>`)
 
 	// ── Instant setup (Mozilla Autoconfig) ────────────────────────────────────
@@ -909,21 +896,8 @@ func (a *App) handleVayuOSConnect(w http.ResponseWriter, r *http.Request) {
 	// from a per-domain autoconfig XML: the user types only their email address
 	// and password, and the client fills in IMAP/SMTP host, ports and security.
 	body.WriteString(`<div class="card"><div class="card-title">Instant setup — no manual server entry</div>`)
-	body.WriteString(`<p class="text-sm">Thunderbird and K-9 support <strong>auto-config</strong>: in the client, choose <em>Add account</em>, enter your <span class="mono">you@` + html.EscapeString(mc.Domain) + `</span> address and mailbox password, and it fills in every server setting automatically from this site. No host/port typing.</p>`)
-	body.WriteString(`<p class="muted text-xs">Served at <span class="mono">https://` + html.EscapeString(mc.Domain) + `/.well-known/autoconfig/mail/config-v1.1.xml</span>. If your client asks, the incoming server is <span class="mono">` + hHost + `</span> (IMAP ` + imapsPort + ` SSL) and outgoing is <span class="mono">` + hHost + `</span> (SMTP ` + subPort + ` STARTTLS).</p>`)
-	// Convenience QR: scan with a phone camera to read the server settings on the
-	// device (host/ports/username — never a password). Inline data: PNG, CSP-safe.
-	settingsText := "VayuMail · " + mc.Domain + "\n" +
-		"IMAP: " + host + ":" + mailPort(mc.IMAPSListen, "993") + " (SSL)\n" +
-		"POP3: " + host + ":" + mailPort(mc.POP3SListen, "995") + " (SSL)\n" +
-		"SMTP: " + host + ":" + mailPort(mc.SubmissionListen, "587") + " (STARTTLS)\n" +
-		"Username: your full email address"
-	if uri := qrDataURI(settingsText); uri != "" {
-		body.WriteString(`<div class="vm-row"><div>` +
-			`<img src="` + uri + `" alt="Mail server settings QR" width="160" height="160" style="background:#fff;padding:8px;border-radius:8px">` +
-			`<div class="text-xs muted mt-1" style="max-width:170px">Scan with your phone camera to read the server settings (no password).</div>` +
-			`</div></div>`)
-	}
+	body.WriteString(`<p class="text-sm">The VayuMail app and most standard clients <strong>auto-configure</strong> from just your email address: choose <em>Add account</em>, enter your <span class="mono">you@` + html.EscapeString(mc.Domain) + `</span> address and mailbox password, and every server setting is filled in for you — no host/port typing.</p>`)
+	body.WriteString(`<p class="muted text-xs">Published at <span class="mono">https://` + html.EscapeString(mc.Domain) + `/.well-known/autoconfig/mail/config-v1.1.xml</span> and <span class="mono">/.well-known/vayumail/autoconfig.json</span> (the VayuMail app reads the latter). If a client asks, the incoming server is <span class="mono">` + hHost + `</span> (IMAP ` + imapsPort + ` SSL) and outgoing is <span class="mono">` + hHost + `</span> (SMTP ` + subPort + ` STARTTLS).</p>`)
 	body.WriteString(`</div>`)
 
 	// ── Recommended settings ─────────────────────────────────────────────────
@@ -967,56 +941,7 @@ func (a *App) handleVayuOSConnect(w http.ResponseWriter, r *http.Request) {
 	}
 	body.WriteString(`</tbody></table></div></div>`)
 
-	// ── Rotating device setup QR (app passwords) ──────────────────────────────
-	// One tap mints a device credential and shows it once as a scannable QR;
-	// rotating mints a fresh one and instantly kills the old — a photographed QR
-	// goes stale. The mailbox's main password never appears in any QR.
-	if len(emails) > 0 {
-		body.WriteString(`<div class="card"><div class="card-title">Device setup QR — rotating</div>`)
-		body.WriteString(`<p class="text-sm">Generate a <strong>rotating setup QR</strong> for a mailbox: it carries a one-time <strong>app password</strong> (device credential) plus every server setting, so a phone signs in from one scan — without ever typing or exposing the mailbox&#39;s main password. Rotate whenever you like; the previous QR is revoked instantly.</p>`)
-		body.WriteString(`<div class="vm-row vm-qr-launch">`)
-		for _, em := range emails {
-			he := html.EscapeString(em)
-			body.WriteString(`<form method="post" action="/os/vayumail/connect/qr">` + csrfFieldFor(w, r) +
-				`<input type="hidden" name="email" value="` + he + `"><input type="hidden" name="act" value="rotate">` +
-				`<button class="btn btn--primary btn--sm" type="submit">⟳ Setup QR · ` + he + `</button></form>`)
-		}
-		body.WriteString(`</div>`)
-		body.WriteString(`<p class="muted text-xs mt-2">App passwords are stored only as Argon2id hashes and are revocable per device. Rotating or revoking never touches the mailbox&#39;s main password.</p>`)
-		body.WriteString(`</div>`)
-	}
-
-	// ── Scan-to-import account QR (Thunderbird / K-9) ─────────────────────────
-	// Thunderbird for Android / K-9 can create an account by scanning a QR
-	// (Add account → Scan QR code). We emit one import QR per active mailbox; the
-	// password is never encoded, so the client asks for it after importing the
-	// IMAP + SMTP servers. Auto-config above is the always-works fallback.
-	if len(emails) > 0 {
-		ip := portInt(mc.IMAPSListen, 993)
-		sp := portInt(mc.SubmissionListen, 587)
-		body.WriteString(`<div class="card"><div class="card-title">Scan to import account — Thunderbird / K-9</div>`)
-		body.WriteString(`<p class="text-sm">In <strong>Thunderbird for Android</strong> or <strong>K-9 Mail</strong>, tap <em>Add account → Scan QR code</em> and point it at a code below — it sets up that mailbox's IMAP &amp; SMTP servers in one step. You'll be asked for the mailbox password (we never put a password in a QR).</p>`)
-		body.WriteString(`<div class="vm-grid-2">`)
-		for _, em := range emails {
-			if uri := thunderbirdAccountQR(em, host, ip, sp); uri != "" {
-				body.WriteString(`<div><img src="` + uri + `" alt="Import QR for ` + html.EscapeString(em) + `" width="170" height="170" style="background:#fff;padding:8px;border-radius:8px"><div class="text-xs mono mt-1">` + html.EscapeString(em) + `</div></div>`)
-			}
-		}
-		body.WriteString(`</div>`)
-		body.WriteString(`<p class="muted text-xs mt-2">Uses Thunderbird's account-QR format. If a scan doesn't import on your version, use auto-config above (just enter your email + password) — that always works.</p>`)
-		body.WriteString(`</div>`)
-	}
-
 	writeOSHTML(w, adminOSLayout(nonce, "Connect a mail app", "vayuos", cfg, htmpl.HTML(body.String())))
-}
-
-// portInt extracts the numeric port from a listen address (":993" → 993),
-// falling back to def when absent or unparseable.
-func portInt(listen string, def int) int {
-	if p, err := strconv.Atoi(mailPort(listen, "")); err == nil && p > 0 {
-		return p
-	}
-	return def
 }
 
 func (a *App) handleVayuOSAccountCreate(w http.ResponseWriter, r *http.Request) {
@@ -1240,177 +1165,4 @@ func (a *App) handleVayuOSAccountTOTP(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeAPIError(w, r, 400, "validation_error", "unknown action", "")
 	}
-}
-
-// ── Rotating setup QR (device app passwords) ─────────────────────────────────
-
-// mailHostname returns the hostname mail clients should connect to.
-func mailHostname(mc vmail.Config) string {
-	if h := strings.TrimSpace(mc.Hostname); h != "" {
-		return h
-	}
-	return "mail." + mc.Domain
-}
-
-// csrfFieldFor returns a hidden csrf_token input for a server-rendered form,
-// issuing (and setting) a fresh token when the request lacks a valid cookie so
-// the double-submit pair always matches on the following POST.
-func csrfFieldFor(w http.ResponseWriter, r *http.Request) string {
-	tok := ""
-	if c, err := r.Cookie("vp_csrf"); err == nil && c.Value != "" && auth.ValidateCSRFToken(c.Value) {
-		tok = c.Value
-	}
-	if tok == "" {
-		tok = auth.GenerateCSRFToken()
-		http.SetCookie(w, &http.Cookie{Name: "vp_csrf", Value: tok, Path: "/", SameSite: http.SameSiteStrictMode, Secure: auth.CSRFCookieSecure(), MaxAge: 3600})
-	}
-	return `<input type="hidden" name="csrf_token" value="` + html.EscapeString(tok) + `">`
-}
-
-// newAppPassword returns a fresh device credential: five groups of four
-// characters from an unambiguous alphabet (no 0/O/1/l), ~103 bits of entropy.
-func newAppPassword() string {
-	const alphabet = "abcdefghjkmnpqrstuvwxyz23456789"
-	buf := make([]byte, 20)
-	if _, err := cryptorand.Read(buf); err != nil {
-		return ""
-	}
-	var sb strings.Builder
-	for i, b := range buf {
-		if i > 0 && i%4 == 0 {
-			sb.WriteByte('-')
-		}
-		sb.WriteByte(alphabet[int(b)%len(alphabet)])
-	}
-	return sb.String()
-}
-
-// canManageMailbox reports whether the request may generate/revoke credentials
-// for the mailbox: admins for any account, staff for their own linked mailbox.
-func (a *App) canManageMailbox(r *http.Request, email string) bool {
-	if a.isAdminRequest(r) {
-		return true
-	}
-	_, own := a.ownMailbox(r)
-	return own != "" && strings.EqualFold(own, email)
-}
-
-// render2FASetupQRChallenge asks for a fresh TOTP code before a 2FA-protected
-// mailbox will mint a device credential (setup QR / app password). App passwords
-// bypass the mailbox's main password on IMAP/SMTP/POP3, so issuing one is a
-// security-sensitive step-up: an admin session alone is not enough when the
-// mailbox owner has enabled 2FA. The form re-POSTs to the same endpoint with the
-// original email + act=rotate plus the six-digit code; badCode marks a retry.
-func (a *App) render2FASetupQRChallenge(w http.ResponseWriter, r *http.Request, email string, badCode bool) {
-	nonce := render.CSPNonce(r)
-	cfg := a.getOSSettings(r.Context())
-	he := html.EscapeString(email)
-
-	var body strings.Builder
-	body.WriteString(`<div class="page-header"><h1>Confirm with 2FA</h1><span class="muted text-sm">Second factor required to mint a device credential</span></div>`)
-	body.WriteString(vayuosNav("connect", a.isAdminRequest(r)))
-	body.WriteString(`<div class="card" style="max-width:460px">`)
-	body.WriteString(`<p class="text-sm">Two-factor authentication is active for <strong class="mono">` + he + `</strong>. A device setup QR carries an app password that signs in to IMAP, POP3 and SMTP, so issuing one requires your current authenticator code — even from an admin session.</p>`)
-	if badCode {
-		body.WriteString(`<p class="text-sm" style="color:var(--danger,#c0392b)">That code was incorrect or expired. Open your authenticator and enter the current 6-digit code.</p>`)
-	}
-	body.WriteString(`<form method="post" action="/os/vayumail/connect/qr">` + csrfFieldFor(w, r))
-	body.WriteString(`<input type="hidden" name="email" value="` + he + `"><input type="hidden" name="act" value="rotate">`)
-	body.WriteString(`<label class="field"><span class="field-label">Authenticator code</span>`)
-	body.WriteString(`<input class="input mono" type="text" name="totp" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]*" maxlength="6" placeholder="123456" autofocus required></label>`)
-	body.WriteString(`<div class="vm-row mt-2">`)
-	body.WriteString(`<button class="btn btn--primary btn--sm" type="submit">Confirm &amp; generate QR</button>`)
-	body.WriteString(`<a class="btn btn--ghost btn--sm" href="/os/vayumail/connect">Cancel</a>`)
-	body.WriteString(`</div></form></div>`)
-	writeOSHTML(w, adminOSLayout(nonce, "Confirm with 2FA", "vayuos", cfg, htmpl.HTML(body.String())))
-}
-
-// handleVayuOSSetupQR issues or revokes a mailbox's setup-QR app password.
-//
-//	POST /os/vayumail/connect/qr  (form: email, act=rotate|revoke)
-//
-// "rotate" revokes the previous setup-QR credential and mints a new one — the
-// old QR (even photographed) goes dead the moment a new one exists. The fresh
-// credential is shown exactly once, on the returned page, as a scannable QR +
-// copyable app password; only its Argon2id hash is stored.
-func (a *App) handleVayuOSSetupQR(w http.ResponseWriter, r *http.Request) {
-	nonce := render.CSPNonce(r)
-	cfg := a.getOSSettings(r.Context())
-	if a.vayuMail == nil || !a.vayuMail.Config().Enabled || a.vayuMail.Accounts() == nil {
-		http.Redirect(w, r, "/os/vayumail/connect", http.StatusSeeOther)
-		return
-	}
-	email := strings.ToLower(strings.TrimSpace(r.FormValue("email")))
-	act := r.FormValue("act")
-	accts := a.vayuMail.Accounts()
-	if email == "" || accts.RoleFor(r.Context(), email) == "" || !a.canManageMailbox(r, email) {
-		a.denyAccess(w, r, "/os/vayumail/connect")
-		return
-	}
-	// Enterprise 2FA gate: when the mailbox has TOTP enabled, minting a device
-	// credential (the setup QR / app password, which bypasses the main password on
-	// IMAP/SMTP/POP3) requires a fresh second factor — otherwise a stolen admin
-	// session could silently issue app passwords that sidestep the account's 2FA.
-	// The check runs BEFORE the existing credential is touched, so a wrong/absent
-	// code never revokes the current QR. Revoking never needs a code.
-	if act == "rotate" {
-		if secret, enabled := accts.TOTPStatus(r.Context(), email); enabled {
-			code := strings.TrimSpace(r.FormValue("totp"))
-			if secret == "" || !totp.Validate(secret, code) {
-				a.render2FASetupQRChallenge(w, r, email, code != "")
-				return
-			}
-			dbpkg.AuditLog("vayumail.qr.2fa_ok", dbpkg.AuditActor(r), email, "")
-		}
-	}
-	const qrLabel = "setup-qr"
-	// Either action retires every previous setup-QR credential for the mailbox.
-	_ = accts.DeleteAppPasswordsByLabel(r.Context(), email, qrLabel)
-	if act != "rotate" {
-		dbpkg.AuditLog("vayumail.qr.revoke", dbpkg.AuditActor(r), email, "")
-		http.Redirect(w, r, "/os/vayumail/connect", http.StatusSeeOther)
-		return
-	}
-	plain := newAppPassword()
-	hash, err := auth.HashSecretArgon2id(plain)
-	if plain == "" || err != nil {
-		a.denyAccess(w, r, "/os/vayumail/connect")
-		return
-	}
-	if _, err := accts.CreateAppPassword(r.Context(), email, qrLabel, hash); err != nil {
-		a.denyAccess(w, r, "/os/vayumail/connect")
-		return
-	}
-	dbpkg.AuditLog("vayumail.qr.rotate", dbpkg.AuditActor(r), email, "")
-
-	mc := a.vayuMail.Config()
-	host := mailHostname(mc)
-	qrText := "VayuMail setup\n" +
-		"Username: " + email + "\n" +
-		"Password: " + plain + "\n" +
-		"IMAP: " + host + ":" + mailPort(mc.IMAPSListen, "993") + " (SSL)\n" +
-		"SMTP: " + host + ":" + mailPort(mc.SubmissionListen, "587") + " (STARTTLS)\n" +
-		"POP3: " + host + ":" + mailPort(mc.POP3SListen, "995") + " (SSL)"
-	uri := qrDataURI(qrText)
-	he := html.EscapeString(email)
-
-	var body strings.Builder
-	body.WriteString(`<div class="page-header"><h1>Device setup QR</h1><span class="muted text-sm">Shown once — rotate any time to kill this credential</span></div>`)
-	body.WriteString(vayuosNav("connect", a.isAdminRequest(r)))
-	body.WriteString(`<div class="card vm-qr-card">`)
-	body.WriteString(`<div class="vm-qr-hero">`)
-	if uri != "" {
-		body.WriteString(`<img class="vm-qr-img" src="` + uri + `" alt="Setup QR for ` + he + `" width="220" height="220">`)
-	}
-	body.WriteString(`<div class="vm-qr-info">`)
-	body.WriteString(`<div class="vm-qr-email mono">` + he + `</div>`)
-	body.WriteString(`<div class="vm-qr-pass mono" aria-label="App password">` + html.EscapeString(plain) + `</div>`)
-	body.WriteString(`<p class="text-sm">Scan with your phone camera, or type the app password into any mail app. It signs in to IMAP, POP3 and SMTP for <strong>` + he + `</strong> — the mailbox's main password stays untouched and secret.</p>`)
-	body.WriteString(`<p class="muted text-xs">This is the only time the password is shown; only a hash is stored. Rotating issues a fresh one and instantly revokes this QR — even a photo of it becomes useless.</p>`)
-	body.WriteString(`<div class="vm-row mt-2">`)
-	body.WriteString(`<form method="post" action="/os/vayumail/connect/qr">` + csrfFieldFor(w, r) + `<input type="hidden" name="email" value="` + he + `"><input type="hidden" name="act" value="rotate"><button class="btn btn--primary btn--sm" type="submit">↻ Rotate now</button></form>`)
-	body.WriteString(`<form method="post" action="/os/vayumail/connect/qr">` + csrfFieldFor(w, r) + `<input type="hidden" name="email" value="` + he + `"><input type="hidden" name="act" value="revoke"><button class="btn btn--ghost btn--sm" type="submit">Revoke</button></form>`)
-	body.WriteString(`<a class="btn btn--ghost btn--sm" href="/os/vayumail/connect">Back to Connect</a>`)
-	body.WriteString(`</div></div></div></div>`)
-	writeOSHTML(w, adminOSLayout(nonce, "Device setup QR", "vayuos", cfg, htmpl.HTML(body.String())))
 }
