@@ -8,6 +8,34 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.9.20] — 2026-07-08
+
+Third screen of the VayuMail redesign: the **composer** becomes a modern,
+forgiving writing surface with recipient chips, a drag-and-drop attachment tray
+and automatic draft saving.
+
+### Added
+- **Recipient chips.** Type an address and press Enter (or comma) to turn it
+  into a chip; invalid addresses are flagged, chips are removable, and Backspace
+  deletes the last one. Applies to To, Cc and Bcc.
+- **Drag-and-drop attachments.** Drop files onto the composer (or Browse); each
+  shows as a chip with its size and a one-click remove — including the ability
+  to remove a single file before sending (a plain file input can't do that).
+- **Autosave drafts.** The message is saved to Drafts automatically as you
+  write and replaces the previous autosave, so Drafts never fills with copies;
+  sending clears the autosaved draft.
+- **Encryption indicator.** A live hint shows whether the message is PGP-
+  eligible (a single recipient, no Cc/Bcc, no attachments) or will be sent
+  DKIM-signed.
+
+### Changed
+- The Send button now shows a sending state and reports success or failure with
+  a toast.
+
+### Fixed
+- Removed an inline `style` attribute on the composer that the strict admin
+  Content-Security-Policy blocked, so the Cc/Bcc row now spaces correctly.
+
 ## [3.9.19] — 2026-07-08
 
 Second screen of the VayuMail redesign: the **message reader** is rebuilt into a

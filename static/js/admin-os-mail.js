@@ -37,31 +37,126 @@
   var compose = document.querySelector('form[data-mail-compose]');
   if (compose) {
     var cStatus = compose.querySelector('[data-c-status]');
-    var filesEl = compose.querySelector('[data-c-files]');
+    var sendBtn = compose.querySelector('[data-c-send]');
+    var EMAIL_RE = /^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/;
+    function localPart(addr) { var m = (addr || '').match(/[^<@\s]+(?=@)/); return m ? m[0] : ''; }
 
     // Reveal Cc/Bcc and Reply-To on demand (kept out of the way by default).
     var toggle = function (btnSel, fieldSels) {
       var btn = compose.querySelector(btnSel);
       if (!btn) return;
       btn.addEventListener('click', function () {
-        fieldSels.forEach(function (s) {
-          var el = compose.querySelector(s);
-          if (el) el.hidden = !el.hidden;
-        });
+        fieldSels.forEach(function (s) { var el = compose.querySelector(s); if (el) el.hidden = !el.hidden; });
       });
     };
     toggle('[data-c-toggle-cc]', ['[data-c-cc-field]', '[data-c-bcc-field]']);
     toggle('[data-c-toggle-reply]', ['[data-c-reply-field]']);
 
-    // Show chosen attachment names.
-    var attachList = compose.querySelector('[data-c-attach-list]');
-    if (filesEl && attachList) {
-      filesEl.addEventListener('change', function () {
-        var names = [];
-        for (var i = 0; i < filesEl.files.length; i++) { names.push(filesEl.files[i].name); }
-        attachList.textContent = names.length ? ('Attached: ' + names.join(', ')) : '';
+    // Recipient chips: type an address + Enter/comma → a chip; invalid ones are
+    // flagged; the comma-joined value is mirrored into the hidden data-c-<field>
+    // input so the send/draft payloads are unchanged.
+    function setupChips(field) {
+      var container = compose.querySelector('[data-c-chips="' + field + '"]');
+      var hidden = compose.querySelector('[data-c-' + field + ']');
+      if (!container || !hidden) return;
+      var input = container.querySelector('[data-c-chip-input]');
+      var list = [];
+      function render() {
+        container.querySelectorAll('.vm-chip').forEach(function (c) { c.remove(); });
+        list.forEach(function (addr, i) {
+          var chip = document.createElement('span');
+          chip.className = 'vm-chip' + (EMAIL_RE.test(addr) ? '' : ' vm-chip--bad');
+          if (!EMAIL_RE.test(addr)) chip.title = 'This does not look like a valid email address';
+          var label = document.createElement('span'); label.textContent = addr;
+          var x = document.createElement('button');
+          x.type = 'button'; x.className = 'vm-chip-x'; x.setAttribute('aria-label', 'Remove ' + addr); x.textContent = '×';
+          x.addEventListener('click', function () { list.splice(i, 1); render(); sync(); });
+          chip.appendChild(label); chip.appendChild(x);
+          container.insertBefore(chip, input);
+        });
+      }
+      function sync() { hidden.value = list.join(', '); updatePGP(); }
+      function addFromText(text) {
+        (text || '').split(/[,;\n]/).forEach(function (t) { t = t.trim(); if (t && list.indexOf(t) === -1) list.push(t); });
+      }
+      input.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ',' || e.key === ';') {
+          e.preventDefault();
+          if (input.value.trim()) { addFromText(input.value); input.value = ''; render(); sync(); }
+        } else if (e.key === 'Backspace' && !input.value && list.length) {
+          list.pop(); render(); sync();
+        }
+      });
+      input.addEventListener('blur', function () {
+        if (input.value.trim()) { addFromText(input.value); input.value = ''; render(); sync(); }
+      });
+      if (hidden.value.trim()) { addFromText(hidden.value); render(); sync(); } // prefill (reply/forward)
+    }
+    setupChips('to'); setupChips('cc'); setupChips('bcc');
+
+    // Attachment tray: array-backed so files can be removed and drag-dropped
+    // (an <input type=file> FileList is immutable). The send handler builds the
+    // multipart body from this array.
+    var filesEl = compose.querySelector('[data-c-files]');
+    var dropzone = compose.querySelector('[data-c-dropzone]');
+    var tray = compose.querySelector('[data-c-attach-list]');
+    var browseBtn = compose.querySelector('[data-c-attach-btn]');
+    var composeFiles = [];
+    function humanSize(n) {
+      if (n < 1024) return n + ' B';
+      if (n < 1048576) return (n / 1024).toFixed(1) + ' KB';
+      return (n / 1048576).toFixed(1) + ' MB';
+    }
+    function renderFiles() {
+      if (!tray) return;
+      tray.textContent = '';
+      composeFiles.forEach(function (f, i) {
+        var chip = document.createElement('span');
+        chip.className = 'vm-attach-chip';
+        var ico = document.createElement('span'); ico.className = 'vm-attach-ico'; ico.textContent = '📄';
+        var name = document.createElement('span'); name.className = 'vm-attach-name'; name.textContent = f.name;
+        var size = document.createElement('span'); size.className = 'vm-attach-size'; size.textContent = humanSize(f.size);
+        var x = document.createElement('button');
+        x.type = 'button'; x.className = 'vm-chip-x'; x.setAttribute('aria-label', 'Remove ' + f.name); x.textContent = '×';
+        x.addEventListener('click', function () { composeFiles.splice(i, 1); renderFiles(); updatePGP(); });
+        chip.appendChild(ico); chip.appendChild(name); chip.appendChild(size); chip.appendChild(x);
+        tray.appendChild(chip);
       });
     }
+    function addFiles(fileList) {
+      for (var i = 0; i < fileList.length; i++) composeFiles.push(fileList[i]);
+      renderFiles(); updatePGP();
+    }
+    if (browseBtn && filesEl) browseBtn.addEventListener('click', function () { filesEl.click(); });
+    if (filesEl) filesEl.addEventListener('change', function () { addFiles(filesEl.files); filesEl.value = ''; });
+    if (dropzone) {
+      ['dragenter', 'dragover'].forEach(function (ev) {
+        dropzone.addEventListener(ev, function (e) { e.preventDefault(); dropzone.classList.add('vm-dropzone--over'); });
+      });
+      ['dragleave', 'drop'].forEach(function (ev) {
+        dropzone.addEventListener(ev, function (e) { e.preventDefault(); dropzone.classList.remove('vm-dropzone--over'); });
+      });
+      dropzone.addEventListener('drop', function (e) { if (e.dataTransfer && e.dataTransfer.files) addFiles(e.dataTransfer.files); });
+    }
+
+    // PGP eligibility hint — reflects the engine's rule (single recipient, no
+    // Cc/Bcc, no attachments) client-side; the actual encryption still depends
+    // on the recipient's key being on file.
+    var pgpHint = compose.querySelector('[data-c-pgp]');
+    function countAddrs(v) { return (v || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean).length; }
+    function updatePGP() {
+      if (!pgpHint) return;
+      var to = countAddrs(val(compose, '[data-c-to]')), cc = countAddrs(val(compose, '[data-c-cc]')), bcc = countAddrs(val(compose, '[data-c-bcc]'));
+      if (to + cc + bcc === 0) { pgpHint.textContent = ''; pgpHint.className = 'vm-pgp-hint'; return; }
+      if (to === 1 && cc === 0 && bcc === 0 && composeFiles.length === 0) {
+        pgpHint.textContent = '🔒 PGP-eligible — encrypts if the recipient key is on file';
+        pgpHint.className = 'vm-pgp-hint vm-pgp-hint--enc';
+      } else {
+        pgpHint.textContent = '🔓 DKIM-signed (PGP needs one recipient, no Cc/Bcc, no attachments)';
+        pgpHint.className = 'vm-pgp-hint';
+      }
+    }
+    updatePGP();
 
     var composeFields = function () {
       return {
@@ -74,51 +169,76 @@
         body: val(compose, '[data-c-body]'),
       };
     };
+
+    // Draft: manual save + a debounced autosave that REPLACES the previous
+    // autosaved draft (delete-then-save) so Drafts never fills with copies.
+    var draftId = '';
+    var lastSavedSig = '';
+    var autosaveTimer = null;
+    function saveDraft(silent) {
+      var f = composeFields();
+      if (!f.to && !f.subject && !f.body) return;
+      var sig = f.to + '|' + f.subject + '|' + f.body;
+      if (silent && sig === lastSavedSig) return;
+      lastSavedSig = sig;
+      if (!silent && cStatus) cStatus.textContent = 'Saving draft…';
+      var prev = draftId, user = localPart(f.from);
+      postJSON('/os/vayumail/draft', f).then(function (res) {
+        if (res.ok) {
+          draftId = (res.body && res.body.id) || '';
+          if (prev && user && prev !== draftId) {
+            postJSON('/os/vayumail/message/action', { user: user, folder: 'Drafts', id: prev, delete: true });
+          }
+          if (cStatus) cStatus.textContent = silent ? 'Draft saved' : 'Saved to Drafts ✓';
+        } else if (!silent && cStatus) {
+          cStatus.textContent = 'Draft failed: ' + errText(res);
+        }
+      });
+    }
+    function stopAutosave() { if (autosaveTimer) { clearInterval(autosaveTimer); autosaveTimer = null; } }
+    autosaveTimer = setInterval(function () { saveDraft(true); }, 20000);
+
+    var draftBtn = compose.querySelector('[data-c-draft]');
+    if (draftBtn) {
+      draftBtn.addEventListener('click', function () {
+        stopAutosave();
+        saveDraft(false);
+        var f = composeFields();
+        setTimeout(function () { window.location.href = '/os/vayumail/inbox?user=' + encodeURIComponent(localPart(f.from)) + '&folder=Drafts'; }, 700);
+      });
+    }
+
     compose.addEventListener('submit', function (e) {
       e.preventDefault();
       var f = composeFields();
       if (!f.to && !f.cc && !f.bcc) { if (cStatus) cStatus.textContent = 'Add at least one recipient.'; return; }
       if (cStatus) cStatus.textContent = 'Sending…';
-      var hasFiles = filesEl && filesEl.files && filesEl.files.length > 0;
+      if (sendBtn) sendBtn.disabled = true;
       var done = function (res) {
+        if (sendBtn) sendBtn.disabled = false;
         if (res.ok) {
+          stopAutosave();
+          // Sent — clear the autosaved draft copy, like every mail client.
+          if (draftId) { postJSON('/os/vayumail/message/action', { user: localPart(f.from), folder: 'Drafts', id: draftId, delete: true }); }
           if (cStatus) cStatus.textContent = 'Queued for delivery ✓';
-          setTimeout(function () { window.location.href = '/os/vayumail/sent'; }, 700);
+          acctToast('Message queued for delivery');
+          setTimeout(function () { window.location.href = '/os/vayumail/sent'; }, 650);
         } else {
           if (cStatus) cStatus.textContent = 'Failed: ' + errText(res);
+          acctToast('Send failed: ' + errText(res), true);
         }
       };
-      if (hasFiles) {
-        // Multipart send (carries the attachments). CSRF via header, same as JSON.
+      if (composeFiles.length > 0) {
         var fd = new FormData();
         Object.keys(f).forEach(function (k) { fd.append(k, f[k] || ''); });
-        for (var i = 0; i < filesEl.files.length; i++) { fd.append('attachments', filesEl.files[i]); }
-        fetch('/os/vayumail/send', {
-          method: 'POST',
-          headers: { 'X-CSRF-Token': cookie('vp_csrf') },
-          body: fd,
-        }).then(function (r) {
-          return r.json().catch(function () { return {}; }).then(function (b) { return { ok: r.ok, status: r.status, body: b }; });
-        }).then(done);
+        composeFiles.forEach(function (file) { fd.append('attachments', file); });
+        fetch('/os/vayumail/send', { method: 'POST', headers: { 'X-CSRF-Token': cookie('vp_csrf') }, body: fd })
+          .then(function (r) { return r.json().catch(function () { return {}; }).then(function (b) { return { ok: r.ok, status: r.status, body: b }; }); })
+          .then(done);
       } else {
         postJSON('/os/vayumail/send', f).then(done);
       }
     });
-    var draftBtn = compose.querySelector('[data-c-draft]');
-    if (draftBtn) {
-      draftBtn.addEventListener('click', function () {
-        var f = composeFields();
-        if (cStatus) cStatus.textContent = 'Saving draft…';
-        postJSON('/os/vayumail/draft', f).then(function (res) {
-          if (res.ok) {
-            if (cStatus) cStatus.textContent = 'Saved to Drafts ✓';
-            setTimeout(function () { window.location.href = '/os/vayumail/inbox?user=' + encodeURIComponent((f.from.match(/[^<@\s]+(?=@)/) || [''])[0]) + '&folder=Drafts'; }, 700);
-          } else if (cStatus) {
-            cStatus.textContent = 'Draft failed: ' + errText(res);
-          }
-        });
-      });
-    }
   }
 
   // Enterprise feedback: a non-blocking toast (from the admin shell) instead of
