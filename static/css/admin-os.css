@@ -3574,6 +3574,16 @@
 .vp-os .vs-copy-btn:hover { color: var(--brand); border-color: var(--brand); }
 .vp-os .vs-copy-btn.is-copied { color: var(--brand); border-color: var(--brand); }
 
+/* Tier 2/3 in-panel toggle rows: title/description on the left, live state pill
+   + on/off button on the right. */
+.vp-os .vs-hard-row { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--sp-4); flex-wrap: wrap; }
+.vp-os .vs-hard-ctl { display: flex; align-items: center; gap: var(--sp-3); flex: none; }
+.vp-os .vs-hard-state { font-size: var(--text-xs); font-weight: 700; white-space: nowrap; }
+.vp-os .vs-hard-state.is-on { color: #16a34a; }
+.vp-os .vs-hard-state.is-off { color: var(--text-3); }
+.vp-os .vs-hard-state.is-work { color: #d97706; }
+.vp-os .vs-hard-state.is-err { color: #dc2626; }
+
 /* ── Stat cards ──────────────────────────────────────────────── */
 .vp-os .vs-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--sp-3); }
 .vp-os .vs-stat { background: var(--bg-surface-2); border: 1px solid var(--border); border-radius: var(--r); padding: var(--sp-4); }

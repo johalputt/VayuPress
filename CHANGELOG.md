@@ -8,6 +8,42 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.9.11] — 2026-07-08
+
+Tier 2/3 network hardening is now a **real on/off switch inside VayuOS** — no
+terminal — while VayuPress itself stays completely unprivileged. This is done
+with a tiny root **reconcile agent** that is installed automatically the next
+time you update; see ADR-0123 for the privilege-separation design.
+
+### Added
+- **In-panel Tier 2/3 toggles (VayuOS → Bot Shield → Network hardening).** When
+  the helper agent is present, each tier shows a live status pill (Inactive /
+  Applying… / Active / Error) and an on/off button; flipping it applies or
+  reverts the hardening within a few seconds and the section refreshes itself in
+  place (HTMX, no page reload). No terminal, no copied commands.
+- **Privileged reconcile agent (`deploy/vayushield-agent.sh` +
+  `vayushield-agent.service`).** A minimal root service — deliberately separate
+  from the unprivileged `vayupress` service — that watches an intent flag the web
+  app writes and runs **only** the fixed, vetted scripts
+  (`vayushield-firewall.sh`, the nginx edge conf). It takes **no argument or
+  content** from the web app (it acts purely on a flag file's presence), so there
+  is no command-injection surface. It writes back a status + heartbeat the panel
+  reads. It does nothing until you flip a toggle.
+- **Automatic, zero-extra-terminal install.** `scripts/update-vayupress.sh` now
+  installs/refreshes the agent (to `/usr/local/lib/vayushield` + a systemd unit)
+  on every run — so after your next normal update the toggles are live. Set
+  `VAYUSHIELD_AGENT=0` to skip. Until the agent is present, the panel clearly
+  says so and still offers the copy-paste commands as a fallback.
+
+### Security
+- **The web app gains no new privilege.** VayuPress stays unprivileged
+  (`ProtectSystem=strict`, no `CAP_NET_ADMIN`); its only action is creating or
+  removing an empty flag file in a directory it owns. All privileged work
+  (nftables, nginx reload) happens in the isolated root agent, which trusts none
+  of the web app's input. A bad nginx conf is validated (`nginx -t`) and rolled
+  back before reload, so a toggle can never take the site down. Fully reversible
+  from the panel. See ADR-0123.
+
 ## [3.9.10] — 2026-07-08
 
 Bot Shield console polish: the stray floating Refresh button is gone, the Refresh

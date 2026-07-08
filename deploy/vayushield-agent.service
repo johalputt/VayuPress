@@ -1,0 +1,37 @@
+# VayuShield Tier 2/3 reconcile agent — privileged helper (ADR-0123).
+#
+# Installed automatically by scripts/update-vayupress.sh. Runs as root because
+# applying the kernel firewall (nftables) and reloading nginx require it — this
+# is DELIBERATELY separate from the unprivileged vayupress service, so the web
+# app never gains these privileges. The agent runs ONLY the fixed, vetted,
+# root-owned scripts in /usr/local/lib/vayushield and takes no input from the
+# web app (it acts on the mere presence of flag files it does not trust as
+# commands). It does nothing until the operator flips a Tier 2/3 toggle in VayuOS.
+#
+# Copy to /etc/systemd/system/vayushield-agent.service, then:
+#   systemctl daemon-reload && systemctl enable --now vayushield-agent
+
+[Unit]
+Description=VayuShield Tier 2/3 hardening reconcile agent (privileged)
+After=network-online.target nginx.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/lib/vayushield/vayushield-agent.sh
+Restart=always
+RestartSec=5
+# Root is required to program nftables and reload nginx; this is the whole point
+# of keeping it out of the unprivileged vayupress service.
+User=root
+Environment=VAYUSHIELD_CONTROL_DIR=/var/lib/vayupress/vayushield-control
+Environment=VAYUSHIELD_LIB_DIR=/usr/local/lib/vayushield
+# Minimal, non-blocking hardening (must retain the ability to run nft + reload).
+NoNewPrivileges=no
+ProtectHome=yes
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=vayushield-agent
+
+[Install]
+WantedBy=multi-user.target

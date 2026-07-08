@@ -364,22 +364,12 @@ func (a *App) handleOSShield(w http.ResponseWriter, r *http.Request) {
 	b.WriteString(a.shieldProtectionBody(r.Context()))
 	b.WriteString(`</div></form></details>`)
 
-	// Network hardening (Tier 2/3) — server-level, collapsed by default.
-	b.WriteString(`<details class="card"><summary class="card-title vs-summary">Network hardening (Tier 2 &amp; 3) — server-level</summary>`)
-	b.WriteString(`<p class="muted text-sm">The toggles above are <strong>Tier 1</strong> — VayuShield's in-binary defenses (bot scoring, challenges, rate-limiting, load-shedding). They are always safe to run from here because they live <em>inside</em> VayuPress. <strong>Tier 2</strong> and <strong>Tier 3</strong> sit <em>below</em> and <em>in front of</em> the app, where only the operating system and the reverse proxy can act.</p>`)
-
-	b.WriteString(`<div class="vs-tier"><div class="vs-tier-head">🛡️ Tier 2 · Kernel firewall (nftables)</div>`)
-	b.WriteString(`<p class="muted text-sm">Enforces per-IP connection/packet rate limits and SYN-flood cookies <strong>inside the Linux kernel</strong>, so a flood is dropped before a packet ever reaches VayuPress. Because abuse is discarded that early, this <strong>lowers</strong> the load on VayuOS and your site under attack — it makes them faster, not slower, and legitimate visitors see no measurable cost.</p>`)
-	b.WriteString(`<div class="vs-cmd"><code id="vs-cmd-t2">sudo bash deploy/vayushield-firewall.sh apply</code><button type="button" class="vs-copy-btn" data-copy="vs-cmd-t2">Copy</button></div>`)
-	b.WriteString(`<p class="muted text-xs">Check with <code>… status</code>; undo with <code>… remove</code>. Idempotent and reversible.</p></div>`)
-
-	b.WriteString(`<div class="vs-tier"><div class="vs-tier-head">🌐 Tier 3 · Edge shaping (nginx)</div>`)
-	b.WriteString(`<p class="muted text-sm">Per-IP request/connection shaping and slow-loris timeouts at the reverse proxy, so abusive HTTP is absorbed at the edge. Like Tier 2 it protects capacity — only abuse is throttled; normal requests pass untouched.</p>`)
-	b.WriteString(`<div class="vs-cmd"><code id="vs-cmd-t3">sudo cp deploy/nginx-vayushield.conf /etc/nginx/conf.d/ &amp;&amp; sudo nginx -t &amp;&amp; sudo systemctl reload nginx</code><button type="button" class="vs-copy-btn" data-copy="vs-cmd-t3">Copy</button></div>`)
-	b.WriteString(`<p class="muted text-xs">Reversible: remove the file and reload nginx.</p></div>`)
-
-	b.WriteString(`<p class="muted text-sm"><strong>Why isn't this a one-click switch here?</strong> By design VayuPress runs as an <em>unprivileged</em> service — it deliberately cannot touch the kernel firewall or reload nginx, and that isolation is exactly what stops a web-app compromise from escalating to root. Applying Tier 2/3 needs root, so it stays an operator action: copy a command above and paste it once over SSH (both are idempotent and reversible). A true in-panel toggle is possible via a small, one-time <strong>privileged helper</strong> (a root service that applies only these vetted scripts on request, taking no input from the web app) — say the word and it can be added.</p>`)
-	b.WriteString(`<p class="muted text-sm">A true volumetric flood still needs anycast/scrubbing capacity no single host provides; Tiers 1–3 handle what a typical publisher actually faces.</p></details>`)
+	// Network hardening (Tier 2/3) — collapsible; the body is an HTMX fragment so
+	// its live state updates in place and, when the privileged agent is installed,
+	// the operator flips Tier 2/3 on/off right here with no terminal.
+	b.WriteString(`<details class="card"><summary class="card-title vs-summary">Network hardening (Tier 2 &amp; 3) — server-level</summary><div id="vs-body-hardening" hx-get="/os/shield/section/hardening" hx-trigger="every 10s" hx-swap="innerHTML">`)
+	b.WriteString(a.shieldHardeningBody())
+	b.WriteString(`</div></details>`)
 
 	// ── Bot intelligence — collapsible + individually refreshable. Both bodies
 	// also listen for vs-refresh-sig (fired after a Confirm/Dismiss) so their
@@ -619,6 +609,8 @@ func (a *App) handleOSShieldSection(w http.ResponseWriter, r *http.Request) {
 		out = a.shieldBlocksBody(r.Context())
 	case "engagement":
 		out = a.shieldEngagementBody(r.Context(), shieldDays(r))
+	case "hardening":
+		out = a.shieldHardeningBody()
 	default:
 		http.NotFound(w, r)
 		return
