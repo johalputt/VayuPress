@@ -1006,7 +1006,7 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 		body.WriteString(`<tr><td class="vm-check">` + check + `</td><td class="text-sm">` + pin + `</td><td class="text-sm">` + html.EscapeString(who) + `</td><td><a href="` + link + `">` + html.EscapeString(subj) + `</a>` + seen + `</td><td class="muted text-sm">` + m.Date.Format("2006-01-02 15:04") + `</td><td class="text-sm">` + tick + `</td></tr>`)
 	}
 	body.WriteString(`</tbody></table></div></div>`)
-	body.WriteString(`<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail.js"></script>`)
+	body.WriteString(`<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail.js?v=` + assetVer("js/admin-os-mail.js") + `"></script>`)
 	writeOSHTML(w, adminOSLayout(nonce, "Mailbox", "vayuos", cfg, htmpl.HTML(body.String())))
 }
 
@@ -1172,7 +1172,7 @@ func (a *App) handleVayuOSMessage(w http.ResponseWriter, r *http.Request) {
 	card.WriteString(`<pre class="vm-pre vm-raw" data-mail-raw hidden>` + html.EscapeString(string(raw)) + `</pre></div>`)
 	card.WriteString(`</div>`)
 	body.WriteString(card.String())
-	body.WriteString(`<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail.js"></script>`)
+	body.WriteString(`<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail.js?v=` + assetVer("js/admin-os-mail.js") + `"></script>`)
 	writeOSHTML(w, adminOSLayout(nonce, "Message", "vayuos", cfg, htmpl.HTML(body.String())))
 }
 

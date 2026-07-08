@@ -8,6 +8,29 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.9.17] — 2026-07-08
+
+Enterprise polish for the VayuMail **Accounts** tab: account actions now give
+non‑blocking feedback and update the table in place instead of firing browser
+`alert()` dialogs and hard page reloads.
+
+### Changed
+- **Account actions use toast notifications, not `alert()`.** Create, role
+  change, quota, password, enable/disable and 2FA actions now report success and
+  failure through the VayuOS shell toast (`vpToast`), falling back to `alert()`
+  only if the toast helper is unavailable.
+- **Delete removes the row in place.** Deleting a mailbox now drops its table
+  row immediately after a successful call instead of reloading the whole page.
+- **Role change reverts on failure.** If a role update is rejected, the role
+  select snaps back to its previous value so the UI never shows a change the
+  server did not accept.
+
+### Fixed
+- **Stale `admin-os-mail.js` after upgrades.** All four VayuMail script tags
+  (Inbox, Message, Compose, Accounts) now carry a content‑hash cache‑buster, so
+  browsers pick up the latest account‑management script immediately after a
+  release instead of serving a cached copy.
+
 ## [3.9.16] — 2026-07-08
 
 Simplifies the **Connect** tab: the device‑setup‑QR system is removed (it was the
