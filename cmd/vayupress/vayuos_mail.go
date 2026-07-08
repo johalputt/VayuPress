@@ -521,6 +521,76 @@ func (a *App) handleVayuOSMessageAction(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, r, 200, resp)
 }
 
+// mailSafeFilename strips path components and header-breaking characters from
+// an attachment filename so it is safe to place in a Content-Disposition header.
+func mailSafeFilename(s string) string {
+	s = strings.TrimSpace(s)
+	if i := strings.LastIndexAny(s, `/\`); i >= 0 {
+		s = s[i+1:]
+	}
+	s = strings.Map(func(r rune) rune {
+		if r < 0x20 || r == '"' || r == '\\' {
+			return '_'
+		}
+		return r
+	}, s)
+	if s == "" {
+		return "attachment"
+	}
+	return s
+}
+
+// handleVayuOSAttachment streams a single attachment from a stored message as a
+// forced download. The message is PGP-decrypted (ReadFolderMessage) before the
+// MIME part is extracted, so encrypted mail's attachments download in the clear.
+func (a *App) handleVayuOSAttachment(w http.ResponseWriter, r *http.Request) {
+	if a.vayuMail == nil || !a.vayuMail.Config().Enabled {
+		http.Error(w, "VayuMail is not active", http.StatusServiceUnavailable)
+		return
+	}
+	user := strings.TrimSpace(r.URL.Query().Get("user"))
+	folder := strings.TrimSpace(r.URL.Query().Get("folder"))
+	if folder == "" {
+		folder = "Inbox"
+	}
+	id := strings.TrimSpace(r.URL.Query().Get("id"))
+	idx, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("idx")))
+	// Non-admins may only download from their own assigned mailbox.
+	if !a.isAdminRequest(r) {
+		local, _ := a.ownMailbox(r)
+		if local == "" || !strings.EqualFold(local, user) {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		user = local
+	}
+	if user == "" || id == "" {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	raw, err := a.vayuMail.ReadFolderMessage(user, folder, id)
+	if err != nil {
+		http.Error(w, "message not found", http.StatusNotFound)
+		return
+	}
+	fn, ctype, data, ok := vmail.ExtractAttachment(raw, idx)
+	if !ok {
+		http.Error(w, "attachment not found", http.StatusNotFound)
+		return
+	}
+	if ctype == "" {
+		ctype = "application/octet-stream"
+	}
+	// Force a download (never inline-render, so a text/html attachment cannot
+	// script), and forbid content-type sniffing.
+	w.Header().Set("Content-Type", ctype)
+	w.Header().Set("Content-Disposition", `attachment; filename="`+mailSafeFilename(fn)+`"`)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
+	w.Header().Set("Cache-Control", "private, no-store")
+	_, _ = w.Write(data)
+}
+
 // ── Admin mail accounts (email + password) ───────────────────────────────────
 
 func (a *App) handleVayuOSAccounts(w http.ResponseWriter, r *http.Request) {
