@@ -8,6 +8,21 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.9.21] — 2026-07-08
+
+Fourth screen of the VayuMail redesign: **mail search** gains a real filter bar
+and instant, as-you-type results.
+
+### Added
+- **Filter bar** — refine a search by folder, sender (“From contains”), date
+  range (after / before) and unread-only, all combinable.
+- **Instant results.** Results update as you type or change a filter
+  (debounced) and swap in place over HTMX — no page reload or extra click.
+- **Match highlighting.** Search terms are highlighted in the sender and
+  subject of each result.
+- Results now show sender avatars, names and relative times, with a live
+  result count.
+
 ## [3.9.20] — 2026-07-08
 
 Third screen of the VayuMail redesign: the **composer** becomes a modern,
