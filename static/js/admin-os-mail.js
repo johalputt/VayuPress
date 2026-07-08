@@ -332,88 +332,41 @@
       });
     }
   }
-  // ── Mailbox list: per-row read/unread toggle ─────────────────────────────────
-  document.querySelectorAll('[data-mail-mark-row]').forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      postJSON('/os/vayumail/message/action', {
-        user: btn.getAttribute('data-user'),
-        folder: btn.getAttribute('data-folder'),
-        id: btn.getAttribute('data-id'),
-        mark: btn.getAttribute('data-mail-mark-row'),
-      }).then(function (res) {
-        if (res.ok) window.location.reload();
-        else window.alert('Mark failed: ' + ((res.body && res.body.message) || res.status));
-      });
-    });
-  });
-
-  // ── Mailbox list: per-row pin toggle ─────────────────────────────────────────
-  document.querySelectorAll('[data-mail-pin-row]').forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      postJSON('/os/vayumail/message/action', {
-        user: btn.getAttribute('data-user'),
-        folder: btn.getAttribute('data-folder'),
-        id: btn.getAttribute('data-id'),
-        pin: btn.getAttribute('data-mail-pin-row') === '1',
-      }).then(function (res) {
-        if (res.ok) window.location.reload();
-        else window.alert('Pin failed: ' + ((res.body && res.body.message) || res.status));
-      });
-    });
-  });
-
-  // ── Mailbox list: bulk selection + bulk actions ──────────────────────────────
-  var bulk = document.querySelector('[data-mail-bulk]');
-  var listTable = document.querySelector('[data-mail-list]');
-  if (bulk && listTable) {
-    var bUser = bulk.getAttribute('data-user');
-    var bFolder = bulk.getAttribute('data-folder');
-    var countEl = bulk.querySelector('[data-bulk-count]');
-    var checks = function () { return Array.prototype.slice.call(listTable.querySelectorAll('[data-mail-check]')); };
-    var selectedIds = function () { return checks().filter(function (c) { return c.checked; }).map(function (c) { return c.value; }); };
-    var refresh = function () {
-      var n = selectedIds().length;
-      if (countEl) countEl.textContent = n + ' selected';
-      if (n > 0) bulk.removeAttribute('hidden'); else bulk.setAttribute('hidden', '');
-      var all = listTable.querySelector('[data-mail-check-all]');
-      if (all) all.checked = n > 0 && n === checks().length;
-    };
-    var allBox = listTable.querySelector('[data-mail-check-all]');
-    if (allBox) {
-      allBox.addEventListener('change', function () {
-        checks().forEach(function (c) { c.checked = allBox.checked; });
-        refresh();
-      });
+  // ── Mailbox list: selection (event-delegated, survives HTMX swaps) ───────────
+  // Row and bulk actions are pure HTMX: they POST to /os/vayumail/inbox/action
+  // and swap #vm-inbox-body in place. This module only drives the selection
+  // affordance — the "N selected" count, the select-all box, and showing or
+  // hiding the bulk bar. It listens on document so it keeps working after the
+  // inbox fragment is swapped (the once-loaded script never re-runs).
+  (function () {
+    function boxes() { return Array.prototype.slice.call(document.querySelectorAll('[data-vm-check]')); }
+    function sync() {
+      var list = boxes();
+      var n = list.filter(function (c) { return c.checked; }).length;
+      var count = document.querySelector('[data-vm-bulkcount]');
+      var bar = document.querySelector('[data-vm-bulkbar]');
+      var all = document.querySelector('[data-vm-check-all]');
+      if (count) count.textContent = n + ' selected';
+      if (bar) { if (n > 0) bar.removeAttribute('hidden'); else bar.setAttribute('hidden', ''); }
+      if (all) all.checked = list.length > 0 && n === list.length;
     }
-    checks().forEach(function (c) { c.addEventListener('change', refresh); });
-
-    var runBulk = function (payload, confirmMsg) {
-      var ids = selectedIds();
-      if (!ids.length) return;
-      if (confirmMsg && !window.confirm(confirmMsg.replace('{n}', ids.length))) return;
-      payload.user = bUser; payload.folder = bFolder; payload.ids = ids;
-      postJSON('/os/vayumail/message/action', payload).then(function (res) {
-        if (res.ok) window.location.reload();
-        else window.alert('Action failed: ' + ((res.body && res.body.message) || res.status));
-      });
-    };
-    bulk.querySelectorAll('[data-bulk-action]').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        var a = btn.getAttribute('data-bulk-action');
-        if (a === 'read' || a === 'unread') runBulk({ mark: a });
-        else if (a === 'pin') runBulk({ pin: true });
-        else if (a === 'delete') runBulk({ delete: true }, 'Permanently delete {n} message(s)?');
-      });
+    document.addEventListener('change', function (e) {
+      var t = e.target;
+      if (!t || !t.matches) return;
+      if (t.matches('[data-vm-check-all]')) {
+        var on = t.checked;
+        boxes().forEach(function (c) { c.checked = on; });
+        sync();
+      } else if (t.matches('[data-vm-check]')) {
+        sync();
+      }
     });
-    var bulkMove = bulk.querySelector('[data-bulk-move]');
-    if (bulkMove) {
-      bulkMove.addEventListener('change', function () {
-        if (!bulkMove.value) return;
-        runBulk({ to: bulkMove.value });
-      });
-    }
-    refresh();
-  }
+    // Each inbox swap replaces the rows (selection resets) — re-sync the bar.
+    document.body.addEventListener('htmx:afterSwap', function (e) {
+      if (e.target && e.target.id === 'vm-inbox-body') sync();
+    });
+    sync();
+  })();
 
   // ── Message raw-source toggle ────────────────────────────────────────────────
   var rawBtn = document.querySelector('[data-mail-raw-toggle]');

@@ -833,25 +833,185 @@ func vayuosNav(active string, admin bool) string {
 // (CodeQL go/reflected-xss) the HTML-context sanitiser barrier it recognises.
 func qparam(s string) string { return html.EscapeString(url.QueryEscape(s)) }
 
-func folderTabs(user, active string) string {
+// ── VayuMail inbox helpers ───────────────────────────────────────────────────
+
+// mailParseFrom splits a raw From/To header ("Display Name <addr@host>" or a
+// bare address) into a display name and address. Best-effort, allocation-light.
+func mailParseFrom(raw string) (name, addr string) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", ""
+	}
+	if i := strings.LastIndex(raw, "<"); i >= 0 {
+		if j := strings.Index(raw[i:], ">"); j > 0 {
+			addr = strings.TrimSpace(raw[i+1 : i+j])
+			name = strings.Trim(strings.TrimSpace(raw[:i]), `"'`)
+			return name, addr
+		}
+	}
+	return "", raw
+}
+
+// mailDisplay returns the best human label for a sender/recipient: the display
+// name when present, otherwise the address.
+func mailDisplay(raw string) string {
+	name, addr := mailParseFrom(raw)
+	if name != "" {
+		return name
+	}
+	if addr != "" {
+		return addr
+	}
+	return raw
+}
+
+// mailInitials returns 1–2 uppercase initials for the avatar chip.
+func mailInitials(raw string) string {
+	name, addr := mailParseFrom(raw)
+	src := name
+	if src == "" {
+		src = addr
+	}
+	src = strings.TrimSpace(src)
+	if src == "" {
+		return "?"
+	}
+	if parts := strings.Fields(src); len(parts) >= 2 {
+		return strings.ToUpper(string([]rune(parts[0])[:1]) + string([]rune(parts[1])[:1]))
+	}
+	r := []rune(src)
+	if len(r) >= 2 {
+		return strings.ToUpper(string(r[:2]))
+	}
+	return strings.ToUpper(string(r[:1]))
+}
+
+// mailAvatarIdx maps a seed deterministically to one of the avatar palette
+// classes (0–5) via an FNV-1a hash.
+func mailAvatarIdx(seed string) int {
+	var h uint32 = 2166136261
+	for i := 0; i < len(seed); i++ {
+		h ^= uint32(seed[i])
+		h *= 16777619
+	}
+	return int(h % 6)
+}
+
+// mailAvatar renders the colored initials chip for a sender/recipient.
+func mailAvatar(raw string) string {
+	_, addr := mailParseFrom(raw)
+	seed := addr
+	if seed == "" {
+		seed = raw
+	}
+	return `<span class="vm-av vm-av--` + itoaSafe(mailAvatarIdx(seed)) + `" aria-hidden="true">` + html.EscapeString(mailInitials(raw)) + `</span>`
+}
+
+// mailRelTime renders a compact relative timestamp ("just now", "5m", "3h",
+// "2d", "Jan 2") with the absolute time as a tooltip.
+func mailRelTime(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	abs := t.Format("2006-01-02 15:04")
+	d := time.Since(t)
+	var rel string
+	switch {
+	case d < time.Minute:
+		rel = "just now"
+	case d < time.Hour:
+		rel = itoaSafe(int(d.Minutes())) + "m"
+	case d < 24*time.Hour:
+		rel = itoaSafe(int(d.Hours())) + "h"
+	case d < 7*24*time.Hour:
+		rel = itoaSafe(int(d.Hours()/24)) + "d"
+	default:
+		rel = t.Format("Jan 2")
+	}
+	return `<span title="` + abs + `">` + rel + `</span>`
+}
+
+// jsonAttrEscape escapes a value for embedding inside a single-quoted hx-vals
+// JSON attribute: JSON-escape backslash/quote, then HTML-escape & and ' so it
+// can never break out of the attribute.
+func jsonAttrEscape(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `"`, `\"`)
+	s = strings.ReplaceAll(s, "&", "&amp;")
+	s = strings.ReplaceAll(s, "'", "&#39;")
+	return s
+}
+
+// hxVals builds an hx-vals='{...}' attribute from alternating key/value pairs.
+func hxVals(pairs ...string) string {
 	var sb strings.Builder
-	sb.WriteString(`<div class="vmtabs">`)
-	for _, f := range []string{"Inbox", "Sent", "Drafts", "Archive", "Junk", "Trash"} {
+	sb.WriteString(`hx-vals='{`)
+	for i := 0; i+1 < len(pairs); i += 2 {
+		if i > 0 {
+			sb.WriteString(",")
+		}
+		sb.WriteString(`"` + pairs[i] + `":"` + jsonAttrEscape(pairs[i+1]) + `"`)
+	}
+	sb.WriteString(`}'`)
+	return sb.String()
+}
+
+// folderUnread returns the unseen-message count for the folders where "unread"
+// is meaningful (received mail), so the folder tabs can show live badges. Sent
+// and Drafts are authored, not received, so they are skipped.
+func (a *App) folderUnread(user string) map[string]int {
+	counts := map[string]int{}
+	if a.vayuMail == nil {
+		return counts
+	}
+	for _, f := range []string{"Inbox", "Junk"} {
+		msgs, err := a.vayuMail.ListFolder(user, f)
+		if err != nil {
+			continue
+		}
+		n := 0
+		for _, m := range msgs {
+			if !m.Seen {
+				n++
+			}
+		}
+		if n > 0 {
+			counts[f] = n
+		}
+	}
+	return counts
+}
+
+func folderTabs(user, active string, counts map[string]int) string {
+	var sb strings.Builder
+	sb.WriteString(`<div class="vmtabs" role="tablist">`)
+	for _, f := range vmail.StandardFolders {
 		cls := "tab"
 		if strings.EqualFold(f, active) {
 			cls = "tab tab--active"
 		}
-		href := "/os/vayumail/inbox?user=" + qparam(user) + "&folder=" + qparam(f)
-		sb.WriteString(`<a class="` + cls + `" href="` + href + `">` + f + `</a>`)
+		full := "/os/vayumail/inbox?user=" + qparam(user) + "&folder=" + qparam(f)
+		frag := "/os/vayumail/inbox/fragment?user=" + qparam(user) + "&folder=" + qparam(f)
+		badge := ""
+		if n := counts[f]; n > 0 {
+			badge = ` <span class="vm-tab-badge">` + itoaSafe(n) + `</span>`
+		}
+		sb.WriteString(`<a class="` + cls + `" href="` + full + `" hx-get="` + frag + `" hx-target="#vm-inbox-body" hx-swap="innerHTML" hx-push-url="` + full + `">` + f + badge + `</a>`)
 	}
 	sb.WriteString(`</div>`)
 	return sb.String()
 }
 
 // handleVayuOSInbox lists mailboxes, or (with ?user=) the messages in a folder.
+// The folder view is an HTMX fragment (#vm-inbox-body) that swaps in place for
+// every action, folder switch, and the live new-mail poll — no full-page reload.
 func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
+	// CSRF cookie so the HTMX row/bulk POSTs pass the double-submit middleware.
+	if token := auth.GenerateCSRFToken(); token != "" {
+		http.SetCookie(w, &http.Cookie{Name: "vp_csrf", Value: token, Path: "/", SameSite: http.SameSiteStrictMode, HttpOnly: false, Secure: csrfCookieSecure(), MaxAge: 3600})
+	}
 	var body strings.Builder
 	body.WriteString(`<div class="page-header"><h1>Mailbox</h1><span class="muted text-sm">Received &amp; filed mail (Maildir)</span></div>`)
 	body.WriteString(vayuosNav("mailbox", a.isAdminRequest(r)))
@@ -886,88 +1046,122 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 			writeOSHTML(w, adminOSLayout(nonce, "Mailbox", "vayuos", cfg, htmpl.HTML(body.String())))
 			return
 		}
-		body.WriteString(`<div class="card"><div class="card-title">Mailboxes</div><div class="table-wrap"><table class="table"><thead><tr><th>Mailbox</th><th>Inbox messages</th><th>Unseen</th></tr></thead><tbody>`)
+		body.WriteString(`<div class="card"><div class="card-title">Mailboxes</div><div class="table-wrap"><table class="table vm-list"><thead><tr><th>Mailbox</th><th>Inbox</th><th>Unseen</th></tr></thead><tbody>`)
 		if len(boxes) == 0 {
 			body.WriteString(`<tr><td colspan="3" class="muted">No mailboxes yet. Create one under <a href="/os/vayumail/accounts">Accounts</a>, or one is provisioned when a CMS account is created.</td></tr>`)
 		}
-		for _, b := range boxes {
-			addr := b.Username + "@" + domain
-			body.WriteString(`<tr><td><a href="/os/vayumail/inbox?user=` + qparam(b.Username) + `">` + html.EscapeString(addr) + `</a></td><td>` + itoaSafe(b.Total) + `</td><td>` + itoaSafe(b.Unseen) + `</td></tr>`)
+		for _, bx := range boxes {
+			addr := bx.Username + "@" + domain
+			unseen := ""
+			if bx.Unseen > 0 {
+				unseen = `<span class="vm-tab-badge">` + itoaSafe(bx.Unseen) + `</span>`
+			}
+			body.WriteString(`<tr><td><a class="vm-from" href="/os/vayumail/inbox?user=` + qparam(bx.Username) + `">` + mailAvatar(addr) + `<span class="vm-name">` + html.EscapeString(addr) + `</span></a></td><td>` + itoaSafe(bx.Total) + `</td><td>` + unseen + `</td></tr>`)
 		}
 		body.WriteString(`</tbody></table></div></div>`)
 		writeOSHTML(w, adminOSLayout(nonce, "Mailbox", "vayuos", cfg, htmpl.HTML(body.String())))
 		return
 	}
 
+	// Folder view — HTMX fragment container. Every action, folder switch and the
+	// live new-mail poll swap #vm-inbox-body in place (no full reload). The poll
+	// element lives inside the fragment (see vayuInboxBody) so it always carries
+	// the folder currently being viewed.
+	body.WriteString(`<div id="vm-inbox-body">`)
+	body.WriteString(a.vayuInboxBody(user, folder))
+	body.WriteString(`</div>`)
+	body.WriteString(`<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail.js?v=` + assetVer("js/admin-os-mail.js") + `"></script>`)
+	writeOSHTML(w, adminOSLayout(nonce, "Mailbox", "vayuos", cfg, htmpl.HTML(body.String())))
+}
+
+// vayuInboxBody renders the folder view (toolbar + quota + tabs + message list)
+// as an HTMX fragment. It is returned on page load and swapped into
+// #vm-inbox-body on the new-mail poll, after any row/bulk action, and on folder
+// switch — so the mailbox never does a jarring full-page reload.
+func (a *App) vayuInboxBody(user, folder string) string {
+	domain := a.vayuMail.Config().Domain
+	mbox := user + "@" + domain
+	var b strings.Builder
+
+	// Live new-mail poll. It lives inside the fragment (re-rendered on every
+	// swap) so it always targets the folder currently in view — a poll bound to
+	// the outer wrapper would keep reloading the folder that was first opened.
+	frag := "/os/vayumail/inbox/fragment?user=" + qparam(user) + "&folder=" + qparam(folder)
+	b.WriteString(`<div class="vm-poller" aria-hidden="true" hx-get="` + frag + `" hx-trigger="every 90s" hx-target="#vm-inbox-body" hx-swap="innerHTML"></div>`)
+
+	// Sticky toolbar: mailbox identity + Compose + search.
+	b.WriteString(`<div class="vm-toolbar">`)
+	b.WriteString(`<div class="vm-toolbar-id">` + mailAvatar(mbox) + `<div class="vm-toolbar-meta"><strong>` + html.EscapeString(mbox) + `</strong><a class="text-sm muted" href="/os/vayumail/inbox">All mailboxes</a></div></div>`)
+	b.WriteString(`<div class="vm-toolbar-actions">`)
+	b.WriteString(`<a class="btn btn--primary btn--sm" href="/os/vayumail/compose?user=` + qparam(user) + `">✎ Compose</a>`)
+	b.WriteString(`<form class="vm-search" method="get" action="/os/vayumail/search"><input type="hidden" name="user" value="` + html.EscapeString(user) + `"><input class="input input--sm" type="search" name="q" placeholder="Search mail…" aria-label="Search mail"><button class="btn btn--sm" type="submit">Search</button></form>`)
+	b.WriteString(`</div></div>`)
+
+	// Storage quota bar (fill width applied by admin-os-mail.js via CSSOM).
+	used := a.vayuMail.MailboxUsage(mbox)
+	quota := a.vayuMail.MailboxQuota(mbox)
+	if quota > 0 {
+		pct := int(float64(used) / float64(quota) * 100)
+		if pct > 100 {
+			pct = 100
+		}
+		level := "ok"
+		if pct >= 90 {
+			level = "full"
+		} else if pct >= 75 {
+			level = "warn"
+		}
+		b.WriteString(`<div class="vm-quota"><div class="vm-quota-meta text-sm muted">Storage: ` + html.EscapeString(humanBytes(used)) + ` of ` + html.EscapeString(humanBytes(quota)) + ` used (` + itoaSafe(pct) + `%)</div><div class="vm-quota-track"><div class="vm-quota-fill vm-quota-fill--` + level + `" data-quota-pct="` + itoaSafe(pct) + `"></div></div>`)
+		if pct >= 100 {
+			b.WriteString(`<div class="vm-quota-full text-sm">⚠ Your mailbox is full — incoming mail may be rejected and you can't send until you free space.</div>`)
+		}
+		b.WriteString(`</div>`)
+	}
+
+	// Folder tabs with live unread badges (HTMX folder switching).
+	b.WriteString(folderTabs(user, folder, a.folderUnread(user)))
+
 	msgs, err := a.vayuMail.ListFolder(user, folder)
 	if err != nil {
-		body.WriteString(`<div class="empty-state">Could not read folder: ` + html.EscapeString(err.Error()) + `</div>`)
-		writeOSHTML(w, adminOSLayout(nonce, "Mailbox", "vayuos", cfg, htmpl.HTML(body.String())))
-		return
+		b.WriteString(`<div class="empty-state">Could not read folder: ` + html.EscapeString(err.Error()) + `</div>`)
+		return b.String()
 	}
-	body.WriteString(`<div class="card"><div class="card-title">` + html.EscapeString(user+"@"+domain) + ` · <a href="/os/vayumail/inbox">all mailboxes</a></div>`)
-	// Storage usage bar: how much of the mailbox quota is in use (0 = unlimited).
-	// The fill width/level is applied by admin-os-mail.js from data-* attributes
-	// (CSSOM), since the strict admin CSP (style-src 'self') blocks inline styles.
-	{
-		email := user + "@" + domain
-		used := a.vayuMail.MailboxUsage(email)
-		quota := a.vayuMail.MailboxQuota(email)
-		if quota > 0 {
-			pct := int(float64(used) / float64(quota) * 100)
-			if pct > 100 {
-				pct = 100
-			}
-			level := "ok"
-			if pct >= 90 {
-				level = "full"
-			} else if pct >= 75 {
-				level = "warn"
-			}
-			body.WriteString(`<div class="vm-quota"><div class="vm-quota-meta text-sm muted">Storage: ` +
-				html.EscapeString(humanBytes(used)) + ` of ` + html.EscapeString(humanBytes(quota)) + ` used (` + itoaSafe(pct) + `%)</div>` +
-				`<div class="vm-quota-track"><div class="vm-quota-fill vm-quota-fill--` + level + `" data-quota-pct="` + itoaSafe(pct) + `"></div></div>`)
-			if pct >= 100 {
-				body.WriteString(`<div class="vm-quota-full text-sm">⚠ Your mailbox is full — incoming mail may be rejected and you can't send until you free space.</div>`)
-			}
-			body.WriteString(`</div>`)
-		} else {
-			body.WriteString(`<div class="vm-quota text-sm muted">Storage used: ` + html.EscapeString(humanBytes(used)) + ` · quota: unlimited</div>`)
-		}
-	}
-	body.WriteString(`<form class="vm-search" method="get" action="/os/vayumail/search">
-  <input type="hidden" name="user" value="` + html.EscapeString(user) + `">
-  <input class="input" type="search" name="q" placeholder="Search mail (from, subject, body)…" aria-label="Search mail">
-  <button class="btn" type="submit">Search</button>
-</form>`)
-	body.WriteString(folderTabs(user, folder))
 	isDrafts := strings.EqualFold(folder, "Drafts")
-	// Bulk action bar — selection drives mark-read / pin / move / delete across
-	// many messages at once (wired in admin-os-mail.js). Drafts open in the
-	// composer, so bulk acts there are limited to delete.
+	isSent := strings.EqualFold(folder, "Sent")
+	received := !isDrafts && !isSent
+
+	// Scope inputs (user+folder) are included by the bulk POSTs via hx-include
+	// alongside the checked row ids. Selection state (count + show/hide of the
+	// bulk bar) is managed by delegated JS that survives HTMX swaps.
+	b.WriteString(`<input type="hidden" name="user" value="` + html.EscapeString(user) + `" data-vm-scope><input type="hidden" name="folder" value="` + html.EscapeString(folder) + `" data-vm-scope>`)
 	if len(msgs) > 0 {
-		bar := `<div class="vm-bulk" data-mail-bulk data-user="` + html.EscapeString(user) + `" data-folder="` + html.EscapeString(folder) + `" hidden>`
-		bar += `<span class="text-sm muted" data-bulk-count>0 selected</span>`
-		if !isDrafts {
-			bar += `<button class="btn btn--sm" data-bulk-action="read">Mark read</button>`
-			bar += `<button class="btn btn--sm" data-bulk-action="unread">Mark unread</button>`
-			bar += `<button class="btn btn--sm" data-bulk-action="pin">📌 Pin</button>`
-			bar += `<span class="vm-move"><select class="input input--sm" data-bulk-move aria-label="Move selected to folder"><option value="">Move to…</option>`
+		inc := ` hx-include="[data-vm-scope],[data-vm-check]:checked" hx-target="#vm-inbox-body" hx-swap="innerHTML"`
+		b.WriteString(`<div class="vm-bulk" data-vm-bulkbar hidden><span class="text-sm muted" data-vm-bulkcount>0 selected</span>`)
+		if received {
+			b.WriteString(`<button type="button" class="btn btn--sm" hx-post="/os/vayumail/inbox/action" hx-vals='{"action":"mark","mark":"read"}'` + inc + `>Mark read</button>`)
+			b.WriteString(`<button type="button" class="btn btn--sm" hx-post="/os/vayumail/inbox/action" hx-vals='{"action":"mark","mark":"unread"}'` + inc + `>Mark unread</button>`)
+			b.WriteString(`<button type="button" class="btn btn--sm" hx-post="/os/vayumail/inbox/action" hx-vals='{"action":"pin","pin":"1"}'` + inc + `>📌 Pin</button>`)
+			b.WriteString(`<span class="vm-move"><select class="input input--sm" name="to" aria-label="Move selected to folder" hx-post="/os/vayumail/inbox/action" hx-trigger="change" hx-vals='{"action":"move"}'` + inc + `><option value="">Move to…</option>`)
 			for _, f := range vmail.StandardFolders {
 				if strings.EqualFold(f, folder) {
 					continue
 				}
-				bar += `<option value="` + html.EscapeString(f) + `">` + html.EscapeString(f) + `</option>`
+				b.WriteString(`<option value="` + html.EscapeString(f) + `">` + html.EscapeString(f) + `</option>`)
 			}
-			bar += `</select></span>`
+			b.WriteString(`</select></span>`)
 		}
-		bar += `<button class="btn btn--sm btn--danger" data-bulk-action="delete">Delete</button>`
-		bar += `</div>`
-		body.WriteString(bar)
+		b.WriteString(`<button type="button" class="btn btn--sm btn--danger" hx-post="/os/vayumail/inbox/action" hx-vals='{"action":"delete"}' hx-confirm="Permanently delete the selected message(s)?"` + inc + `>Delete</button>`)
+		b.WriteString(`</div>`)
 	}
-	body.WriteString(`<div class="table-wrap"><table class="table" data-mail-list data-user="` + html.EscapeString(user) + `" data-folder="` + html.EscapeString(folder) + `"><thead><tr><th class="vm-check"><input type="checkbox" data-mail-check-all aria-label="Select all"></th><th></th><th>From</th><th>Subject</th><th>Date</th><th></th></tr></thead><tbody>`)
+
+	// Message list.
+	fromLabel := "From"
+	if !received {
+		fromLabel = "To"
+	}
+	b.WriteString(`<div class="table-wrap"><table class="table vm-list"><thead><tr><th class="vm-check"><input type="checkbox" data-vm-check-all aria-label="Select all"></th><th></th><th>` + fromLabel + `</th><th>Subject</th><th>Date</th><th></th></tr></thead><tbody>`)
 	if len(msgs) == 0 {
-		body.WriteString(`<tr><td colspan="6" class="muted">No messages in ` + html.EscapeString(folder) + `.</td></tr>`)
+		b.WriteString(`<tr><td colspan="6" class="muted">No messages in ` + html.EscapeString(folder) + `.</td></tr>`)
 	}
 	for _, m := range msgs {
 		subj := m.Subject
@@ -975,39 +1169,138 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 			subj = "(no subject)"
 		}
 		who := m.From
-		if strings.EqualFold(folder, "Sent") || isDrafts {
-			who = "→ " + m.To
+		if !received {
+			who = m.To
 		}
-		// Drafts reopen in the composer; everything else opens the reader view.
 		link := "/os/vayumail/message?user=" + qparam(user) + "&folder=" + qparam(folder) + "&id=" + qparam(m.ID)
 		if isDrafts {
 			link = "/os/vayumail/compose?draft=1&user=" + qparam(user) + "&id=" + qparam(m.ID)
 		}
-		seen := ""
-		if !m.Seen && !strings.EqualFold(folder, "Sent") && !isDrafts {
-			seen = ` <span class="badge badge--ok">new</span>`
+		rowCls := "vm-row-item"
+		if !m.Seen && received {
+			rowCls += " vm-unread"
 		}
-		// Pin toggle (Maildir Flagged) — a filled marker when pinned.
 		pinVal, pinIcon := "1", "📌"
 		if m.Flagged {
 			pinVal, pinIcon = "0", "📍"
 		}
-		pin := `<button class="btn btn--sm btn--ghost" data-mail-pin-row="` + pinVal + `" data-user="` + html.EscapeString(user) + `" data-folder="` + html.EscapeString(folder) + `" data-id="` + html.EscapeString(m.ID) + `" aria-label="Pin">` + pinIcon + `</button>`
-		// Read/unread toggle (only meaningful for received folders).
+		pin := `<button type="button" class="btn btn--xs btn--ghost" title="Pin" hx-post="/os/vayumail/inbox/action" ` + hxVals("action", "pin", "pin", pinVal, "user", user, "folder", folder, "id", m.ID) + ` hx-target="#vm-inbox-body" hx-swap="innerHTML">` + pinIcon + `</button>`
 		tick := ""
-		if !strings.EqualFold(folder, "Sent") && !isDrafts {
+		if received {
 			mark, label := "read", "Mark read"
 			if m.Seen {
 				mark, label = "unread", "✓ read"
 			}
-			tick = `<button class="btn btn--sm" data-mail-mark-row="` + mark + `" data-user="` + html.EscapeString(user) + `" data-folder="` + html.EscapeString(folder) + `" data-id="` + html.EscapeString(m.ID) + `">` + label + `</button>`
+			tick = `<button type="button" class="btn btn--xs" hx-post="/os/vayumail/inbox/action" ` + hxVals("action", "mark", "mark", mark, "user", user, "folder", folder, "id", m.ID) + ` hx-target="#vm-inbox-body" hx-swap="innerHTML">` + label + `</button>`
 		}
-		check := `<input type="checkbox" class="vm-check-row" data-mail-check value="` + html.EscapeString(m.ID) + `" aria-label="Select message">`
-		body.WriteString(`<tr><td class="vm-check">` + check + `</td><td class="text-sm">` + pin + `</td><td class="text-sm">` + html.EscapeString(who) + `</td><td><a href="` + link + `">` + html.EscapeString(subj) + `</a>` + seen + `</td><td class="muted text-sm">` + m.Date.Format("2006-01-02 15:04") + `</td><td class="text-sm">` + tick + `</td></tr>`)
+		check := `<input type="checkbox" class="vm-check-row" name="id" value="` + html.EscapeString(m.ID) + `" data-vm-check aria-label="Select message">`
+		b.WriteString(`<tr class="` + rowCls + `"><td class="vm-check">` + check + `</td><td>` + pin + `</td><td><div class="vm-from">` + mailAvatar(who) + `<span class="vm-name" title="` + html.EscapeString(who) + `">` + html.EscapeString(mailDisplay(who)) + `</span></div></td><td class="vm-subj"><a href="` + link + `">` + html.EscapeString(subj) + `</a></td><td class="muted text-sm vm-date">` + mailRelTime(m.Date) + `</td><td class="row-actions">` + tick + `</td></tr>`)
 	}
-	body.WriteString(`</tbody></table></div></div>`)
-	body.WriteString(`<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail.js?v=` + assetVer("js/admin-os-mail.js") + `"></script>`)
-	writeOSHTML(w, adminOSLayout(nonce, "Mailbox", "vayuos", cfg, htmpl.HTML(body.String())))
+	b.WriteString(`</tbody></table></div>`)
+	return b.String()
+}
+
+// handleVayuOSInboxFragment returns the inbox folder view for HTMX (new-mail
+// poll, folder switch, post-action refresh).
+func (a *App) handleVayuOSInboxFragment(w http.ResponseWriter, r *http.Request) {
+	if a.vayuMail == nil || !a.vayuMail.Config().Enabled {
+		writeOSFragment(w, `<div class="empty-state">VayuMail is inactive.</div>`)
+		return
+	}
+	user := strings.TrimSpace(r.URL.Query().Get("user"))
+	folder := strings.TrimSpace(r.URL.Query().Get("folder"))
+	if folder == "" {
+		folder = "Inbox"
+	}
+	if !a.isAdminRequest(r) {
+		local, _ := a.ownMailbox(r)
+		if local == "" {
+			writeOSFragment(w, `<div class="empty-state">No mailbox has been assigned to your account.</div>`)
+			return
+		}
+		user = local
+	}
+	if user == "" {
+		writeOSFragment(w, `<div class="empty-state">No mailbox selected.</div>`)
+		return
+	}
+	writeOSFragment(w, a.vayuInboxBody(user, folder))
+}
+
+// handleVayuOSInboxAction applies a mark / pin / move / delete to one message
+// (single-row action carries its id in hx-vals) or many (bulk carries the
+// checked row ids), then returns the refreshed inbox body for HTMX to swap in.
+func (a *App) handleVayuOSInboxAction(w http.ResponseWriter, r *http.Request) {
+	if a.vayuMail == nil || !a.vayuMail.Config().Enabled {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", "VayuMail is not active", "")
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "bad-request", "invalid form", "")
+		return
+	}
+	user := strings.TrimSpace(r.PostFormValue("user"))
+	folder := strings.TrimSpace(r.PostFormValue("folder"))
+	if folder == "" {
+		folder = "Inbox"
+	}
+	if !a.isAdminRequest(r) {
+		local, _ := a.ownMailbox(r)
+		if local == "" || !strings.EqualFold(local, user) {
+			writeAPIError(w, r, http.StatusForbidden, "forbidden", "you can only manage your own mailbox", "")
+			return
+		}
+		user = local
+	}
+	if user == "" {
+		writeAPIError(w, r, http.StatusBadRequest, "validation_error", "user is required", "")
+		return
+	}
+	// De-duplicate the selected ids (a per-row action carries one id in hx-vals;
+	// bulk carries the checked checkboxes, all named "id").
+	seen := map[string]bool{}
+	var ids []string
+	for _, id := range r.Form["id"] {
+		id = strings.TrimSpace(id)
+		if id != "" && !seen[id] {
+			seen[id] = true
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) > 500 {
+		ids = ids[:500]
+	}
+	action := strings.TrimSpace(r.PostFormValue("action"))
+	apply := func(id string) error {
+		switch action {
+		case "mark":
+			if r.PostFormValue("mark") == "unread" {
+				_, err := a.vayuMail.MarkUnread(user, folder, id)
+				return err
+			}
+			_, err := a.vayuMail.MarkRead(user, folder, id)
+			return err
+		case "pin":
+			_, err := a.vayuMail.SetPinned(user, folder, id, r.PostFormValue("pin") == "1")
+			return err
+		case "delete":
+			return a.vayuMail.DeleteMessage(user, folder, id)
+		case "move":
+			to := strings.TrimSpace(r.PostFormValue("to"))
+			if to == "" {
+				return nil
+			}
+			return a.vayuMail.MoveMessage(user, id, folder, to)
+		default:
+			return fmt.Errorf("unknown action")
+		}
+	}
+	// Best-effort per message: a single stale id must not fail the whole batch;
+	// the refreshed fragment reflects whatever changed.
+	for _, id := range ids {
+		_ = apply(id)
+	}
+	writeOSFragment(w, a.vayuInboxBody(user, folder))
 }
 
 // handleVayuOSSearch runs a bounded full-text search across a mailbox's folders.

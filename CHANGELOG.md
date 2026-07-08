@@ -8,6 +8,33 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.9.18] — 2026-07-08
+
+First screen of the VayuMail world-class redesign: the **Mailbox (Inbox)** is now
+fully seamless. Every action swaps in place over HTMX — no more full-page
+reloads — and the list gains sender avatars, names, relative times and live
+per-folder unread badges.
+
+### Changed
+- **Seamless mailbox actions (HTMX).** Mark read/unread, pin, move and delete —
+  per-row and in bulk — now update the list in place instead of reloading the
+  whole page, matching the Outbox. Folder switching is also an in-place swap.
+- **Redesigned message rows.** Each row shows a colored initials avatar, the
+  sender's display name, a compact relative time (`2h`, `3d`) with the full
+  timestamp on hover, and unread mail is bolded with an accent dot.
+- **Live new mail.** The open mailbox refreshes itself on a background poll, so
+  newly arrived mail appears without a manual reload.
+- **Sticky toolbar** with the mailbox identity, a one-click **Compose** button
+  and search that stays in view while scrolling.
+
+### Added
+- **Per-folder unread badges** on the folder tabs (Inbox, Junk) and on the
+  all-mailboxes list.
+
+### Fixed
+- Bulk selection now survives the in-place refresh (event-delegated), so the
+  selection toolbar keeps working after every swap.
+
 ## [3.9.17] — 2026-07-08
 
 Enterprise polish for the VayuMail **Accounts** tab: account actions now give
