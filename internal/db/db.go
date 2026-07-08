@@ -68,6 +68,29 @@ func Reader() *sql.DB {
 	return DB
 }
 
+// ARDB is the DEDICATED admin/VayuOS read pool — physically separate from the
+// public read pool (RDB). This is the isolation guarantee that keeps VayuOS
+// responsive "under any load": the public site, a bot/crawler flood, and a
+// cold-cache render storm all contend on RDB, and no matter how saturated RDB
+// gets, the admin console's own reads (the auth gate on every /os request, plus
+// the analytics/monitoring dashboards) draw from ARDB and are never queued
+// behind public traffic. A blocked public pool can no longer take the operator's
+// control plane down with it. nil for in-memory DBs, where AdminReader() falls
+// back to Reader()/DB.
+var ARDB *sql.DB
+
+// AdminReader returns the connection pool reserved for VayuOS/admin reads: the
+// dedicated admin pool when available, otherwise the public read pool (or the
+// writer for in-memory DBs). Admin-only read paths — the session/user auth gate
+// and the operator dashboards — should use this so they are isolated from public
+// read contention.
+func AdminReader() *sql.DB {
+	if ARDB != nil {
+		return ARDB
+	}
+	return Reader()
+}
+
 // WDB is the wrapped DB that records write latency metrics.
 var WDB wrappedDB
 
@@ -148,6 +171,9 @@ func Init() error {
 	if err := openReadPool(); err != nil {
 		return fmt.Errorf("read pool: %w", err)
 	}
+	if err := openAdminReadPool(); err != nil {
+		return fmt.Errorf("admin read pool: %w", err)
+	}
 	logging.LogInfo("db", "ready — WAL+PRAGMAs enforced, migrations+checksums verified (ADR-0033/0034)")
 	return nil
 }
@@ -205,6 +231,28 @@ func readPoolSize() int {
 	return n
 }
 
+// adminPoolSize returns how many connections the dedicated admin read pool
+// (ARDB) opens. It is small on purpose: the admin console has at most a handful
+// of concurrent operators, and a dashboard panel fires its ~dozen aggregate
+// queries sequentially, so a modest, RESERVED pool keeps VayuOS instant without
+// wasting memory. Its whole value is being separate from the public pool, not
+// large. Tunable via VAYU_ADMIN_POOL_SIZE (clamped 2..64).
+func adminPoolSize() int {
+	if v := strings.TrimSpace(os.Getenv("VAYU_ADMIN_POOL_SIZE")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 2 && n <= 64 {
+			return n
+		}
+	}
+	n := runtime.NumCPU()
+	if n < 8 {
+		n = 8
+	}
+	if n > 16 {
+		n = 16
+	}
+	return n
+}
+
 // openReadPool opens the read-only connection pool (RDB) against the same
 // on-disk database file as the writer. It is a no-op for in-memory databases,
 // where Reader() transparently falls back to the writer connection.
@@ -257,6 +305,36 @@ func openReadPool() error {
 	}
 	RDB = rdb
 	logging.LogInfo("db", fmt.Sprintf("read pool ready — %d WAL reader connections (query_only) [F-4]", n))
+	return nil
+}
+
+// openAdminReadPool opens the DEDICATED admin/VayuOS read pool (ARDB) against the
+// same on-disk database file. It is identical in kind to the public read pool
+// (query_only, recycled connections, WAL) but physically separate and reserved
+// for the admin console, so operator reads never queue behind a public read
+// flood. No-op for in-memory databases (AdminReader falls back to Reader/DB).
+func openAdminReadPool() error {
+	if isMemoryDB(config.Cfg.DBPath) {
+		return nil
+	}
+	rdsn := config.Cfg.DBPath + "?_journal_mode=WAL&_busy_timeout=5000&_foreign_keys=on&_synchronous=NORMAL&_query_only=true&_cache_size=-8192"
+	ardb, err := sql.Open("sqlite3", rdsn)
+	if err != nil {
+		return fmt.Errorf("open: %w", err)
+	}
+	n := adminPoolSize()
+	ardb.SetMaxOpenConns(n)
+	ardb.SetMaxIdleConns(n)
+	// Same recycling discipline as the public pool so admin readers never pin the
+	// WAL snapshot and block checkpointing (see openReadPool for the rationale).
+	ardb.SetConnMaxLifetime(readPoolConnMaxLifetime)
+	ardb.SetConnMaxIdleTime(readPoolConnMaxIdleTime)
+	if err := ardb.Ping(); err != nil {
+		_ = ardb.Close()
+		return fmt.Errorf("ping: %w", err)
+	}
+	ARDB = ardb
+	logging.LogInfo("db", fmt.Sprintf("admin read pool ready — %d reserved WAL reader connections (query_only)", n))
 	return nil
 }
 

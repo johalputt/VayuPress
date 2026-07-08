@@ -26,6 +26,7 @@ import (
 	"html/template"
 	"net"
 	"net/http"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -236,6 +237,21 @@ func New(cfg Config) *Manager {
 // ApplySettings atomically swaps in a new runtime configuration — no restart.
 // Numeric parameters are pushed into the resilience primitives; the boolean
 // snapshot is published for the hot path to read lock-free.
+// defaultMaxInFlight is the capacity-derived concurrency ceiling used when
+// load-shedding is enabled without an explicit cap. It scales with the host so a
+// bigger box tolerates a larger legitimate burst, with a generous floor so small
+// sites are not throttled under normal traffic. Only saturating floods hit it.
+func defaultMaxInFlight() int {
+	n := runtime.NumCPU() * 64
+	if n < 256 {
+		n = 256
+	}
+	if n > 2048 {
+		n = 2048
+	}
+	return n
+}
+
 func (m *Manager) ApplySettings(s Settings) {
 	clamp := func(f, def float64) float64 {
 		if f <= 0 || f > 1 {
@@ -252,7 +268,17 @@ func (m *Manager) ApplySettings(s Settings) {
 		burst = 60
 	}
 	m.limiter.SetRate(float64(rpm)/60.0, float64(burst))
-	m.inflight.SetMax(int64(s.MaxInFlight))
+	// In-flight load-shed cap. If shedding is enabled but the operator left the
+	// cap at 0, do NOT leave the gate disabled (0 = unlimited = no protection) —
+	// derive a generous, capacity-based ceiling so a flood is shed with a cheap
+	// 503 before the render/SQLite path collapses. It is high enough that normal
+	// bursts pass untouched, and only expensive uncached public work ever reaches
+	// this gate (verified sessions and bypassed prefixes like /os are exempt).
+	maxInFlight := int64(s.MaxInFlight)
+	if s.LoadShed && maxInFlight <= 0 {
+		maxInFlight = int64(defaultMaxInFlight())
+	}
+	m.inflight.SetMax(maxInFlight)
 	rps := int64(0)
 	if s.UnderAttack {
 		rps = int64(s.UnderAttackRPS)

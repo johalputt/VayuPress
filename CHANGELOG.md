@@ -8,10 +8,35 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
-The actual root cause behind the recurring "VayuOS returns 502 after running for
-a while" reports — the one the v3.8.9–v3.9.3 read-routing passes kept treating
-the symptoms of — has been found and fixed: **the SQLite WAL grew without bound
-because checkpoints were being starved by the read pool.**
+## [3.9.4] — 2026-07-08
+
+VayuOS is now **hard-isolated from public load**: the admin console runs on its
+own reserved database connections, so no bot flood, cold-cache render storm, or
+public read burst can ever starve it. Combined with the WAL/read-pool fixes from
+this cycle, the control plane stays responsive under any load — while the bot
+shield sheds abusive traffic before it can touch the render/DB path. This is the
+release that turns the "VayuOS 502 under load" saga into a closed chapter.
+
+### Added
+- **Dedicated admin database lane (VayuOS isolation) — the core guarantee.**
+  VayuOS now reads through its OWN reserved WAL connection pool
+  (`AdminReader()`/`ARDB`), physically separate from the public read pool. The
+  per-request auth gate (session validation + user lookup, on every `/os`
+  request) and the operator dashboards (Analytics, Bot Shield & Analytics,
+  monitoring) all draw from this lane. So no matter how saturated the public pool
+  gets — a bot flood, a diffuse crawler mix, a cold-cache render storm — the
+  control plane keeps guaranteed capacity and VayuOS always authenticates and
+  loads. It is small and reserved by design (default `max(8, NumCPU)`, capped at
+  16, recycled like the public pool), and tunable via `VAYU_ADMIN_POOL_SIZE`.
+  Together with `/os` being exempt from VayuShield challenges, the admin surface
+  is now doubly isolated from public traffic.
+- **Load-shedding now protects out of the box.** Enabling VayuShield load
+  shedding without setting an explicit "max concurrent" previously left the gate
+  disabled (`0 = unlimited = no protection`). It now derives a generous,
+  capacity-based ceiling (`max(256, NumCPU×64)`) so a saturating flood is shed
+  with a cheap 503 *before* the render/SQLite path collapses, while normal
+  bursts pass untouched. Verified (signed-session) visitors and bypassed
+  prefixes (`/os`, `/api`, health/metrics) are never shed.
 
 ### Fixed
 - **Analytics & Bot Shield admin panels 502 (dashboard reads ran on the single
@@ -79,6 +104,23 @@ because checkpoints were being starved by the read pool.**
   `sql.Rows`/`sql.Stmt`). An unclosed rows leaks a pooled connection and, in WAL
   mode, pins a read snapshot — precisely the failure class above — so it is now
   enforced.
+
+### Upgrade Notes
+- **Updater parity (built-in one-click vs. manual script).** The two update
+  paths now converge on this release: the in-app one-click updater installs the
+  published, checksum/signature-verified release binary, and
+  `scripts/update-vayupress.sh` rebuilds the same source — both land on v3.9.4.
+  The earlier divergence (a manual `git pull` "recreating" files the one-click
+  updater never applied) happened because `main` moved forward without a version
+  bump, so no release was cut and the one-click updater had nothing newer to
+  install. Going forward, shipping = bumping `.release-version`, which triggers
+  the self-contained signed release workflow; keep using that and both updaters
+  stay in lockstep.
+- **New tunables (all optional, safe defaults):** `VAYU_ADMIN_POOL_SIZE`
+  (reserved admin read connections, default `max(8, NumCPU)`),
+  `VAYU_READ_POOL_SIZE` (public read pool, default `NumCPU×4`). No config or
+  migration changes are required to benefit from the isolation and load-shed
+  fixes.
 
 ## [3.9.3] — 2026-07-07
 
