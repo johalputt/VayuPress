@@ -452,47 +452,72 @@ func (a *App) handleOSShield(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// ── Engagement analytics ──────────────────────────────────────────────────
+	// These are heavy aggregate scans over the large vayuanalytics_sessions
+	// table. They are computed OFF the request path and cached (admin_dashcache.go)
+	// so this panel can never block a request into a 502; the fast controls above
+	// (status, settings, signatures, review queue) always render instantly, and a
+	// startup warmer keeps the default window hot.
 	if a.vaEngagement != nil {
-		if ov, err := a.vaEngagement.Overview(r.Context(), days); err == nil {
-			b.WriteString(`<div class="card"><div class="card-title">Engagement — last ` + strconv.Itoa(days) + ` days</div><div class="vs-stats">`)
-			b.WriteString(vsStat(strconv.FormatInt(ov.Views, 10), "Human views"))
-			b.WriteString(vsStat(strconv.FormatInt(ov.UniqueSessions, 10), "Unique sessions"))
-			b.WriteString(vsStat(pct(ov.EngagementRate), "Engagement"))
-			b.WriteString(vsStat(pct(ov.BounceRate), "Bounce"))
-			b.WriteString(vsStat(ftoa2(ov.AvgTimeSeconds)+"s", "Avg time"))
-			b.WriteString(vsStat(strconv.FormatInt(ov.BotViews, 10), "Bot views (excluded)"))
-			b.WriteString(`</div></div>`)
-		}
-		if srcs, err := a.vaEngagement.SourceBreakdown(r.Context(), days); err == nil && len(srcs) > 0 {
-			b.WriteString(`<div class="card"><div class="card-title">Traffic sources</div><div class="table-wrap"><table class="table"><thead><tr><th>Source</th><th>Views</th><th>Sessions</th><th>Avg time</th><th>Avg scroll</th><th>Engagement</th></tr></thead><tbody>`)
-			for _, s := range srcs {
-				b.WriteString(`<tr><td>` + html.EscapeString(s.Category) + `</td><td>` + strconv.FormatInt(s.Views, 10) + `</td><td>` + strconv.FormatInt(s.Sessions, 10) + `</td><td>` + ftoa2(s.AvgTimeSeconds) + `s</td><td>` + ftoa2(s.AvgScrollPct) + `%</td><td>` + pct(s.EngagementRate) + `</td></tr>`)
-			}
-			b.WriteString(`</tbody></table></div></div>`)
-		}
-		if ai, err := a.vaEngagement.AITraffic(r.Context(), days); err == nil {
-			b.WriteString(`<div class="card"><div class="card-title">AI-assisted discovery vs organic search</div>`)
-			b.WriteString(`<p class="muted text-sm">AI traffic is <strong>` + ftoa2(ai.AISharePercent) + `%</strong> of human views · AI engagement ` + pct(ai.AISummary.EngagementRate) + ` (avg ` + ftoa2(ai.AISummary.AvgTimeSeconds) + `s) vs organic ` + pct(ai.OrganicSummary.EngagementRate) + ` (avg ` + ftoa2(ai.OrganicSummary.AvgTimeSeconds) + `s).</p>`)
-			if len(ai.BySystem) > 0 {
-				b.WriteString(`<div class="table-wrap"><table class="table"><thead><tr><th>AI system</th><th>Views</th><th>Avg time</th><th>Engagement</th></tr></thead><tbody>`)
-				for _, s := range ai.BySystem {
-					b.WriteString(`<tr><td>` + html.EscapeString(s.Detail) + `</td><td>` + strconv.FormatInt(s.Views, 10) + `</td><td>` + ftoa2(s.AvgTimeSeconds) + `s</td><td>` + pct(s.EngagementRate) + `</td></tr>`)
-				}
-				b.WriteString(`</tbody></table></div>`)
-			}
-			b.WriteString(`</div>`)
-		}
-		if pages, err := a.vaEngagement.TopPages(r.Context(), days, 10); err == nil && len(pages) > 0 {
-			b.WriteString(`<div class="card"><div class="card-title">Top pages</div><div class="table-wrap"><table class="table"><thead><tr><th>Page</th><th>Views</th><th>Avg time</th><th>Engagement</th></tr></thead><tbody>`)
-			for _, p := range pages {
-				b.WriteString(`<tr><td>` + html.EscapeString(p.Path) + `</td><td>` + strconv.FormatInt(p.Views, 10) + `</td><td>` + ftoa2(p.AvgTimeSeconds) + `s</td><td>` + pct(p.EngagementRate) + `</td></tr>`)
-			}
-			b.WriteString(`</tbody></table></div></div>`)
+		if eng, ready := adminDash.get("shield-engagement:"+strconv.Itoa(days), analyticsFragmentTTL, func(ctx context.Context) string {
+			return a.renderShieldEngagement(ctx, days)
+		}); ready {
+			b.WriteString(eng)
+		} else {
+			b.WriteString(`<div class="card"><div class="card-title">Engagement — last ` + strconv.Itoa(days) + ` days</div><p class="muted text-sm">Assembling analytics… computed in the background; reload in a few seconds.</p></div>`)
 		}
 	}
 
 	b.WriteString(`</div>`) // .vs-page
 	writeOSHTML(w, adminOSLayout(nonce, "Bot Shield & Analytics", "shield", cfg, htmpl.HTML(b.String())))
+}
+
+// renderShieldEngagement builds the engagement-analytics cards for the Bot
+// Shield panel. It runs the heavy aggregate queries, so it is only ever invoked
+// from the background fragment cache — never inline on a request. Best-effort:
+// each card renders independently; returns "" only if nothing could be built
+// (so the cache retries instead of caching an empty section).
+func (a *App) renderShieldEngagement(ctx context.Context, days int) string {
+	if a.vaEngagement == nil {
+		return ""
+	}
+	var b strings.Builder
+	if ov, err := a.vaEngagement.Overview(ctx, days); err == nil {
+		b.WriteString(`<div class="card"><div class="card-title">Engagement — last ` + strconv.Itoa(days) + ` days</div><div class="vs-stats">`)
+		b.WriteString(vsStat(strconv.FormatInt(ov.Views, 10), "Human views"))
+		b.WriteString(vsStat(strconv.FormatInt(ov.UniqueSessions, 10), "Unique sessions"))
+		b.WriteString(vsStat(pct(ov.EngagementRate), "Engagement"))
+		b.WriteString(vsStat(pct(ov.BounceRate), "Bounce"))
+		b.WriteString(vsStat(ftoa2(ov.AvgTimeSeconds)+"s", "Avg time"))
+		b.WriteString(vsStat(strconv.FormatInt(ov.BotViews, 10), "Bot views (excluded)"))
+		b.WriteString(`</div></div>`)
+	}
+	if srcs, err := a.vaEngagement.SourceBreakdown(ctx, days); err == nil && len(srcs) > 0 {
+		b.WriteString(`<div class="card"><div class="card-title">Traffic sources</div><div class="table-wrap"><table class="table"><thead><tr><th>Source</th><th>Views</th><th>Sessions</th><th>Avg time</th><th>Avg scroll</th><th>Engagement</th></tr></thead><tbody>`)
+		for _, s := range srcs {
+			b.WriteString(`<tr><td>` + html.EscapeString(s.Category) + `</td><td>` + strconv.FormatInt(s.Views, 10) + `</td><td>` + strconv.FormatInt(s.Sessions, 10) + `</td><td>` + ftoa2(s.AvgTimeSeconds) + `s</td><td>` + ftoa2(s.AvgScrollPct) + `%</td><td>` + pct(s.EngagementRate) + `</td></tr>`)
+		}
+		b.WriteString(`</tbody></table></div></div>`)
+	}
+	if ai, err := a.vaEngagement.AITraffic(ctx, days); err == nil {
+		b.WriteString(`<div class="card"><div class="card-title">AI-assisted discovery vs organic search</div>`)
+		b.WriteString(`<p class="muted text-sm">AI traffic is <strong>` + ftoa2(ai.AISharePercent) + `%</strong> of human views · AI engagement ` + pct(ai.AISummary.EngagementRate) + ` (avg ` + ftoa2(ai.AISummary.AvgTimeSeconds) + `s) vs organic ` + pct(ai.OrganicSummary.EngagementRate) + ` (avg ` + ftoa2(ai.OrganicSummary.AvgTimeSeconds) + `s).</p>`)
+		if len(ai.BySystem) > 0 {
+			b.WriteString(`<div class="table-wrap"><table class="table"><thead><tr><th>AI system</th><th>Views</th><th>Avg time</th><th>Engagement</th></tr></thead><tbody>`)
+			for _, s := range ai.BySystem {
+				b.WriteString(`<tr><td>` + html.EscapeString(s.Detail) + `</td><td>` + strconv.FormatInt(s.Views, 10) + `</td><td>` + ftoa2(s.AvgTimeSeconds) + `s</td><td>` + pct(s.EngagementRate) + `</td></tr>`)
+			}
+			b.WriteString(`</tbody></table></div>`)
+		}
+		b.WriteString(`</div>`)
+	}
+	if pages, err := a.vaEngagement.TopPages(ctx, days, 10); err == nil && len(pages) > 0 {
+		b.WriteString(`<div class="card"><div class="card-title">Top pages</div><div class="table-wrap"><table class="table"><thead><tr><th>Page</th><th>Views</th><th>Avg time</th><th>Engagement</th></tr></thead><tbody>`)
+		for _, p := range pages {
+			b.WriteString(`<tr><td>` + html.EscapeString(p.Path) + `</td><td>` + strconv.FormatInt(p.Views, 10) + `</td><td>` + ftoa2(p.AvgTimeSeconds) + `s</td><td>` + pct(p.EngagementRate) + `</td></tr>`)
+		}
+		b.WriteString(`</tbody></table></div></div>`)
+	}
+	return b.String()
 }
 
 // handleOSShieldVerify marks a learned candidate as operator-verified.
