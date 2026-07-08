@@ -230,6 +230,18 @@ func openReadPool() error {
 }
 
 // StartWALCheckpointGoroutine runs adaptive WAL checkpoints in the background (ADR-0033).
+//
+// Strategy: use PASSIVE by default — it never blocks readers or the writer,
+// just checkpoints whatever frames it can. Combined with read-pool connection
+// recycling (ConnMaxLifetime/ConnMaxIdleTime), PASSIVE is enough to keep the
+// WAL bounded: recycled connections release their read snapshots, allowing the
+// next PASSIVE run to checkpoint past them. Only when the WAL exceeds the
+// configured threshold (indicating recycling alone isn't keeping up, e.g. under
+// a sustained write flood) do we escalate to TRUNCATE, which requires an
+// exclusive lock and MAY briefly stall readers — but only in this emergency
+// path, not every tick. This avoids the 502 that a blanket TRUNCATE caused
+// under continuous traffic (it blocked the writer for busy_timeout seconds
+// waiting for readers to release).
 func StartWALCheckpointGoroutine(doneCh <-chan struct{}) {
 	go func() {
 		ticker := time.NewTicker(walCheckpointInterval)
@@ -240,30 +252,26 @@ func StartWALCheckpointGoroutine(doneCh <-chan struct{}) {
 				return
 			case <-ticker.C:
 				walMB := walFileSizeMB()
-				// TRUNCATE both checkpoints all committed frames AND resets the
-				// -wal file to zero bytes, so the WAL cannot grow without bound.
-				// (The old PASSIVE default never truncated and gave up the instant
-				// a reader was active — which, with the persistent read pool, let
-				// the WAL balloon into the multi-GB range and stall the admin panel
-				// into 502s.) Read-pool connection recycling (see openReadPool)
-				// supplies the reader-free windows TRUNCATE needs to complete; if a
-				// reader is momentarily active TRUNCATE degrades gracefully to a
-				// partial checkpoint and the next tick finishes the job.
+				checkpointMode := "PASSIVE"
 				if walMB > float64(config.Cfg.WALSizeThresholdMB) {
+					// WAL is oversized despite recycling — escalate to TRUNCATE
+					// to forcibly reclaim it. This will briefly block readers but
+					// only in this degraded case (not every tick).
+					checkpointMode = "TRUNCATE"
 					atomic.AddInt64(&metrics.MetricWALAdaptiveCheckpoints, 1)
-					logging.LogJSON(logging.LogFields{Level: "warn", Component: "wal", Msg: fmt.Sprintf("WAL %.1fMB > threshold %dMB — TRUNCATE checkpoint", walMB, config.Cfg.WALSizeThresholdMB)})
+					logging.LogJSON(logging.LogFields{Level: "warn", Component: "wal", Msg: fmt.Sprintf("WAL %.1fMB > threshold %dMB — escalating to TRUNCATE", walMB, config.Cfg.WALSizeThresholdMB)})
 				}
 				start := time.Now()
 				var pagesWritten int
-				err := DB.QueryRow(`PRAGMA wal_checkpoint(TRUNCATE)`).Scan(new(int), new(int), &pagesWritten)
+				err := DB.QueryRow(fmt.Sprintf("PRAGMA wal_checkpoint(%s)", checkpointMode)).Scan(new(int), new(int), &pagesWritten)
 				if err != nil {
 					logging.LogError("wal", "checkpoint error", err.Error())
 				} else {
 					elapsed := time.Since(start)
 					atomic.AddInt64(&metrics.MetricWALCheckpoints, 1)
 					atomic.AddInt64(&metrics.MetricWALCheckpointDurationMS, elapsed.Milliseconds())
-					logging.LogInfo("wal", fmt.Sprintf("checkpoint(TRUNCATE) pages=%d dur=%dms total=%d",
-						pagesWritten, elapsed.Milliseconds(), atomic.LoadInt64(&metrics.MetricWALCheckpoints)))
+					logging.LogInfo("wal", fmt.Sprintf("checkpoint(%s) pages=%d dur=%dms wal=%.1fMB total=%d",
+						checkpointMode, pagesWritten, elapsed.Milliseconds(), walMB, atomic.LoadInt64(&metrics.MetricWALCheckpoints)))
 				}
 			}
 		}
