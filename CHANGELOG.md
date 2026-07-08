@@ -8,6 +8,30 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.9.12] — 2026-07-08
+
+Makes the Tier 2/3 helper install obvious and one-command, and fixes the
+confusing "installed automatically the next time you update" message (which did
+not account for the **in-app one-click updater being unable to install a root
+service**). Follow-up to v3.9.11 / ADR-0123.
+
+### Added
+- **`deploy/vayushield-agent.sh install|uninstall|status` subcommands.** The
+  agent can now bootstrap itself from your checkout with a single root command —
+  `sudo bash deploy/vayushield-agent.sh install` — instead of only via the shell
+  updater. It copies the vetted scripts to `/usr/local/lib/vayushield`, installs
+  the systemd unit, and starts it. `uninstall` removes the unit; `status` shows
+  it. (The default, no-arg invocation still runs the daemon, so the unit is
+  unchanged.)
+
+### Changed
+- **Clearer "one-time setup" panel message.** The Network hardening section now
+  states plainly that the **in-app one-click updater cannot install the helper**
+  (it is unprivileged by design), and shows a single copy-paste command to enable
+  the in-panel switches — `cd <checkout> && git pull && sudo bash
+  deploy/vayushield-agent.sh install` — with a hint for locating the checkout and
+  an uninstall command. The manual per-tier fallback commands remain.
+
 ## [3.9.11] — 2026-07-08
 
 Tier 2/3 network hardening is now a **real on/off switch inside VayuOS** — no

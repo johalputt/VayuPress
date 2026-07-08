@@ -82,12 +82,58 @@ reconcile_tier3() {
   fi
 }
 
-echo "vayushield-agent: watching ${CONTROL_DIR} (poll ${POLL}s)"
-while true; do
-  if [ -d "$CONTROL_DIR" ]; then
-    printf '%s' "$(date -u +%s)" >"${CONTROL_DIR}/agent.alive" 2>/dev/null || true
-    reconcile_tier2
-    reconcile_tier3
+run_agent() {
+  echo "vayushield-agent: watching ${CONTROL_DIR} (poll ${POLL}s)"
+  while true; do
+    if [ -d "$CONTROL_DIR" ]; then
+      printf '%s' "$(date -u +%s)" >"${CONTROL_DIR}/agent.alive" 2>/dev/null || true
+      reconcile_tier2
+      reconcile_tier3
+    fi
+    sleep "$POLL"
+  done
+}
+
+# install_agent bootstraps the helper from the deploy/ dir this script lives in:
+# it copies the vetted scripts to LIB_DIR, installs the systemd unit, and starts
+# it. Run once as root from your VayuPress checkout:
+#   sudo bash deploy/vayushield-agent.sh install
+install_agent() {
+  if [ "$(id -u)" -ne 0 ]; then
+    echo "error: run as root — sudo bash $0 install" >&2
+    exit 1
   fi
-  sleep "$POLL"
-done
+  local src
+  src="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  echo "• installing VayuShield agent from ${src}…"
+  install -d -m 0755 "$LIB_DIR"
+  install -m 0755 "${src}/vayushield-firewall.sh" "${LIB_DIR}/vayushield-firewall.sh"
+  install -m 0755 "${src}/vayushield-agent.sh" "${LIB_DIR}/vayushield-agent.sh"
+  if [ -f "${src}/nginx-vayushield.conf" ]; then
+    install -m 0644 "${src}/nginx-vayushield.conf" "${LIB_DIR}/nginx-vayushield.conf"
+  fi
+  install -m 0644 "${src}/vayushield-agent.service" /etc/systemd/system/vayushield-agent.service
+  systemctl daemon-reload
+  systemctl enable --now vayushield-agent
+  echo "✓ VayuShield agent installed and started."
+  echo "  Toggle Tier 2/3 from VayuOS → Bot Shield → Network hardening (hard-refresh the page)."
+}
+
+uninstall_agent() {
+  if [ "$(id -u)" -ne 0 ]; then
+    echo "error: run as root" >&2
+    exit 1
+  fi
+  systemctl disable --now vayushield-agent 2>/dev/null || true
+  rm -f /etc/systemd/system/vayushield-agent.service
+  systemctl daemon-reload 2>/dev/null || true
+  echo "✓ VayuShield agent removed. Any applied Tier 2/3 rules are left as-is — turn them off in the panel first, or run vayushield-firewall.sh remove."
+}
+
+case "${1:-run}" in
+  run) run_agent ;;
+  install) install_agent ;;
+  uninstall) uninstall_agent ;;
+  status) systemctl status vayushield-agent --no-pager 2>/dev/null || echo "agent not installed" ;;
+  *) echo "usage: $0 [run|install|uninstall|status]" >&2; exit 2 ;;
+esac
