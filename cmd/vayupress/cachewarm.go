@@ -135,20 +135,36 @@ func (a *App) warmPass(ctx context.Context) {
 		}
 	}
 
-	rows, err := dbpkg.Reader().Query(`SELECT slug FROM articles WHERE status='published' AND is_page=0 ORDER BY created_at DESC`)
+	// Materialise the slug list up front and release the read-pool connection
+	// immediately. Previously this held the cursor (and, in WAL mode, an open
+	// read transaction pinning the WAL snapshot) open for the ENTIRE pass — which,
+	// with the per-page render + 250ms pause, is minutes on a large catalog. That
+	// tied up a scarce read-pool connection (and blocked WAL checkpointing) the
+	// whole time. Loading slugs into memory first keeps the DB connection held
+	// only for the length of the scan, not the whole warm pass.
+	slugs, err := func() ([]string, error) {
+		rows, err := dbpkg.Reader().Query(`SELECT slug FROM articles WHERE status='published' AND is_page=0 ORDER BY created_at DESC`)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+		var out []string
+		for rows.Next() {
+			var slug string
+			if rows.Scan(&slug) == nil {
+				out = append(out, slug)
+			}
+		}
+		return out, rows.Err()
+	}()
 	if err != nil {
 		return
 	}
-	defer rows.Close()
 
 	fresh := 0
-	for rows.Next() {
+	for _, slug := range slugs {
 		if ctx.Err() != nil {
 			return
-		}
-		var slug string
-		if rows.Scan(&slug) != nil {
-			continue
 		}
 		if cacheFresh(filepath.Join("posts", slug+".html")) {
 			// Newest-first: a run of already-warm pages means the tail is warm too.
@@ -165,7 +181,6 @@ func (a *App) warmPass(ctx context.Context) {
 			}
 		}
 	}
-	_ = rows.Err()
 	if warmed > 0 {
 		logging.LogInfo("cachewarm", "primed "+strconv.Itoa(warmed)+" page(s)")
 	}

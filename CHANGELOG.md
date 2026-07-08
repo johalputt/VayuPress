@@ -14,6 +14,29 @@ the symptoms of — has been found and fixed: **the SQLite WAL grew without boun
 because checkpoints were being starved by the read pool.**
 
 ### Fixed
+- **VayuOS 502 under read-pool starvation (capacity + checkpoint stalls).**
+  Follow-up hardening after the WAL-growth fix, from production diagnosis:
+  - **Read pool enlarged and made tunable.** The pool was `NumCPU` connections
+    (e.g. 6). Because the bottleneck under load is read *concurrency* (not CPU),
+    a modest burst of uncached requests — a diffuse crawler mix, or a cold cache
+    right after restart — drained the pool, and every uncached read then queued
+    behind it, including the VayuOS auth gate, which timed out into 502 while the
+    cache-served public site stayed fast. The pool now defaults to `NumCPU × 4`
+    (min 24, max 64) with a smaller per-connection page cache (8 MB) to offset
+    the memory, and is tunable via `VAYU_READ_POOL_SIZE`.
+  - **Background WAL checkpoint is now always `PASSIVE`.** The adaptive path
+    escalated to `TRUNCATE`/`RESTART` whenever the WAL exceeded the threshold —
+    but those modes take an exclusive lock that, under continuous read traffic,
+    stalls every reader for up to `busy_timeout` (5s) on each checkpoint tick.
+    `PASSIVE` never blocks; connection recycling still lets it reclaim the WAL in
+    reader-free windows, and `journal_size_limit` caps the file size.
+  - **Cache warmer no longer holds a read connection across the whole pass.** It
+    streamed a cursor over every published article while rendering each page with
+    inter-page pauses, pinning one pool connection (and a WAL read snapshot) for
+    minutes on a large catalog. It now materialises the slug list up front and
+    releases the connection immediately.
+
+### Fixed (WAL growth — prior)
 - **Unbounded WAL growth / checkpoint starvation (root cause of the VayuOS
   502s).** The read pool (`RDB`) was created with `SetConnMaxLifetime(0)`, so its
   `NumCPU` (min 4) connections were **never recycled**. In WAL mode a checkpoint

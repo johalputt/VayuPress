@@ -12,6 +12,7 @@ import (
 	"os"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -176,6 +177,34 @@ const (
 	walCheckpointInterval = 60 * time.Second
 )
 
+// readPoolSize returns how many connections the WAL read pool opens.
+//
+// SQLite in WAL mode allows many concurrent readers, and the bottleneck under
+// load is read CONCURRENCY, not CPU. With only NumCPU connections a burst of
+// uncached requests — a bot/crawler flood, or a cold cache right after a
+// restart — drains the pool, and then EVERY uncached read queues behind it,
+// including the VayuOS admin auth gate, which times out and returns 502 while
+// the cache-served public site stays fast. Defaulting well above NumCPU keeps
+// the admin panel reachable under public read floods. Tunable via
+// VAYU_READ_POOL_SIZE (clamped 4..256). Each connection costs at most ~8 MB of
+// page cache (see the DSN _cache_size), and that is allocated lazily, so the
+// realistic memory cost is far below the worst case.
+func readPoolSize() int {
+	if v := strings.TrimSpace(os.Getenv("VAYU_READ_POOL_SIZE")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 4 && n <= 256 {
+			return n
+		}
+	}
+	n := runtime.NumCPU() * 4
+	if n < 24 {
+		n = 24
+	}
+	if n > 64 {
+		n = 64
+	}
+	return n
+}
+
 // openReadPool opens the read-only connection pool (RDB) against the same
 // on-disk database file as the writer. It is a no-op for in-memory databases,
 // where Reader() transparently falls back to the writer connection.
@@ -193,15 +222,17 @@ func openReadPool() error {
 	// pages resident in the shared OS page cache, so 16 MB of private b-tree
 	// cache per reader is enough for typical query working sets with no
 	// measurable latency change. (RAM audit 2026-07)
-	rdsn := config.Cfg.DBPath + "?_journal_mode=WAL&_busy_timeout=5000&_foreign_keys=on&_synchronous=NORMAL&_query_only=true&_cache_size=-16384"
+	// Per-connection page cache reduced to 8 MB (from 16 MB): the pool now opens
+	// many more connections (see readPoolSize) and SQLite's cache is
+	// per-connection, so a smaller private cache keeps total heap in check while
+	// mmap_size on the writer keeps hot pages resident in the shared OS page
+	// cache. Point-lookup readers rarely fill even 8 MB.
+	rdsn := config.Cfg.DBPath + "?_journal_mode=WAL&_busy_timeout=5000&_foreign_keys=on&_synchronous=NORMAL&_query_only=true&_cache_size=-8192"
 	rdb, err := sql.Open("sqlite3", rdsn)
 	if err != nil {
 		return fmt.Errorf("open: %w", err)
 	}
-	n := runtime.NumCPU()
-	if n < 4 {
-		n = 4
-	}
+	n := readPoolSize()
 	rdb.SetMaxOpenConns(n)
 	rdb.SetMaxIdleConns(n)
 	// CRITICAL — WAL reclamation. Read-pool connections MUST be recycled, never
@@ -252,26 +283,32 @@ func StartWALCheckpointGoroutine(doneCh <-chan struct{}) {
 				return
 			case <-ticker.C:
 				walMB := walFileSizeMB()
-				checkpointMode := "PASSIVE"
-				if walMB > float64(config.Cfg.WALSizeThresholdMB) {
-					// WAL is oversized despite recycling — escalate to TRUNCATE
-					// to forcibly reclaim it. This will briefly block readers but
-					// only in this degraded case (not every tick).
-					checkpointMode = "TRUNCATE"
-					atomic.AddInt64(&metrics.MetricWALAdaptiveCheckpoints, 1)
-					logging.LogJSON(logging.LogFields{Level: "warn", Component: "wal", Msg: fmt.Sprintf("WAL %.1fMB > threshold %dMB — escalating to TRUNCATE", walMB, config.Cfg.WALSizeThresholdMB)})
-				}
+				// ALWAYS PASSIVE. PASSIVE never takes an exclusive lock, so it
+				// never blocks a reader or the writer. Under a write-heavy load
+				// (e.g. the analytics-beacon stream on every page view) the WAL
+				// naturally sits near journal_size_limit (64 MB) — that is bounded
+				// and completely fine. The previous TRUNCATE/RESTART escalation
+				// tried to force the WAL smaller, but those modes need an exclusive
+				// lock and, under continuous read traffic, stall EVERY reader for
+				// up to busy_timeout (5s) each tick — which starved the dynamic
+				// VayuOS admin into 502s. Connection recycling (openReadPool)
+				// already provides reader-free windows in which even a PASSIVE
+				// checkpoint resets the WAL back down to journal_size_limit, so we
+				// never need the blocking modes on a timer.
 				start := time.Now()
 				var pagesWritten int
-				err := DB.QueryRow(fmt.Sprintf("PRAGMA wal_checkpoint(%s)", checkpointMode)).Scan(new(int), new(int), &pagesWritten)
+				err := DB.QueryRow(`PRAGMA wal_checkpoint(PASSIVE)`).Scan(new(int), new(int), &pagesWritten)
 				if err != nil {
 					logging.LogError("wal", "checkpoint error", err.Error())
 				} else {
 					elapsed := time.Since(start)
 					atomic.AddInt64(&metrics.MetricWALCheckpoints, 1)
 					atomic.AddInt64(&metrics.MetricWALCheckpointDurationMS, elapsed.Milliseconds())
-					logging.LogInfo("wal", fmt.Sprintf("checkpoint(%s) pages=%d dur=%dms wal=%.1fMB total=%d",
-						checkpointMode, pagesWritten, elapsed.Milliseconds(), walMB, atomic.LoadInt64(&metrics.MetricWALCheckpoints)))
+					if walMB > float64(config.Cfg.WALSizeThresholdMB) {
+						atomic.AddInt64(&metrics.MetricWALAdaptiveCheckpoints, 1)
+					}
+					logging.LogInfo("wal", fmt.Sprintf("checkpoint(PASSIVE) pages=%d dur=%dms wal=%.1fMB total=%d",
+						pagesWritten, elapsed.Milliseconds(), walMB, atomic.LoadInt64(&metrics.MetricWALCheckpoints)))
 				}
 			}
 		}
