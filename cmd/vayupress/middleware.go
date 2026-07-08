@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
@@ -15,7 +16,6 @@ import (
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/metrics"
 	"github.com/johalputt/vayupress/internal/render"
-	"github.com/johalputt/vayupress/internal/resource"
 	"github.com/johalputt/vayupress/internal/safefetch"
 	"github.com/johalputt/vayupress/internal/trace"
 )
@@ -95,17 +95,22 @@ func getRequestID(r *http.Request) string {
 
 func structuredLoggerMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Root HTTP span: wraps the entire request lifecycle.
+		// Root HTTP span: wraps the entire request lifecycle. Kept deliberately
+		// lean — this runs on EVERY request, so it avoids reflection-based
+		// formatting (fmt.Sprintf) and the per-request runtime.NumGoroutine()
+		// scheduler probe that used to be recorded as a span attribute (live
+		// goroutine count is exposed as a gauge via /api/v1/admin/resource/stats
+		// instead). Fewer per-request allocations = less GC pressure = a tighter
+		// P95/P99 tail.
 		ctx, span := trace.Start(r.Context(), "http."+r.Method+" "+r.URL.Path)
 		span.SetAttribute("http.method", r.Method)
 		span.SetAttribute("http.path", r.URL.Path)
 		span.SetAttribute("http.remote_addr", r.RemoteAddr)
-		span.SetAttribute("runtime.goroutines", fmt.Sprintf("%d", resource.GoroutineCount()))
 
 		ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
 		next.ServeHTTP(ww, r.WithContext(ctx))
 
-		span.SetAttribute("http.status", fmt.Sprintf("%d", ww.Status()))
+		span.SetAttribute("http.status", strconv.Itoa(ww.Status()))
 		if ww.Status() >= 500 {
 			span.Status = trace.StatusError
 		}
