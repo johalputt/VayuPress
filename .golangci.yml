@@ -63,6 +63,14 @@ linters:
         text: 'Error return value of `(fmt\.(Fprint|Fprintf|Fprintln|Sscanf)|os\.(Remove|RemoveAll|MkdirAll))` is not checked'
       - linters: [errcheck]
         text: 'Error return value of `[^`]*\.(Write|Encode|Scan)` is not checked'
+      # sqlclosecheck: keep the high-value detection — a *genuinely unclosed*
+      # sql.Rows/sql.Stmt leaks a pooled connection and, in WAL mode, pins a read
+      # snapshot so the WAL can never be checkpointed (the failure class behind
+      # the VayuOS 502s) — but do not force `defer`-style Close on the many call
+      # sites that already close correctly right after their loop (continue/break,
+      # no early return). The "not closed" finding still fails the build.
+      - linters: [sqlclosecheck]
+        text: 'Close should use defer'
 
 formatters:
   enable:
