@@ -8,6 +8,43 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.9.8] — 2026-07-08
+
+A cleaner, calmer, and more responsive Bot Shield & Analytics console: every
+section below the status hero is now a click-to-expand panel, and each section
+updates **individually via HTMX** — no more reloading the whole page. Both the
+collapse mechanism (native HTML `<details>/<summary>`, the same one the "Network
+hardening" section already used) and the partial updates (HTMX, already loaded
+on every admin page) add **no new JavaScript**, so the strict admin CSP
+(`script-src 'self'`, `style-src 'self'`, ADR-0036) is untouched. See ADR-0120.
+
+### Changed
+- **Collapsible sections on the Bot Shield & Analytics page.** The header and the
+  live status hero (protection state + real-time metrics) stay always visible;
+  **Protection & settings**, **Bot signatures**, **Review queue**, **Recent
+  blocks**, and each engagement-analytics card (Engagement, Traffic sources,
+  AI-assisted discovery, Top pages) — as well as the existing **Network
+  hardening** panel — are now collapsed by default and expand on click. It is a
+  native `<details>` element reusing the existing `.vs-summary` styling — no
+  JavaScript.
+- **Each section now updates in place via HTMX — the whole page never reloads.**
+  - The **live status hero** polls itself every 10 seconds (and immediately after
+    a settings save), so "Visitors now", requests/sec, in-flight and blocked-IP
+    counts stay current on their own.
+  - **Bot signatures**, **Review queue**, **Recent blocks**, and the
+    **Engagement** group each carry a small **↻ Refresh** control that reloads
+    only that section's body.
+  - **Saving Protection & settings** no longer forces a full-page reload
+    (`HX-Refresh`); the server now fires a targeted `HX-Trigger` so only the
+    status hero and the settings body refresh in place to show the applied state.
+  - **Confirming or dismissing** a review-queue candidate removes its row and
+    refreshes the signature counts + queue in place (via an `HX-Trigger`), so the
+    "Pending review" figure stays accurate without a reload.
+  - Backed by a new `GET /os/shield/section/{name}` fragment endpoint (admin-gated)
+    that returns just one section's HTML; the heavy engagement analytics still
+    come from the off-request background cache, so a refresh can never block into
+    a 502.
+
 ## [3.9.7] — 2026-07-08
 
 Hot-path latency calibration and tail-latency hardening. This is a deliberately

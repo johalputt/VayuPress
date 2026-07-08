@@ -3549,6 +3549,9 @@
 /* ── Network hardening <details> ─────────────────────────────── */
 .vp-os .vs-summary { cursor: pointer; margin-bottom: 0; -webkit-user-select: none; user-select: none; }
 .vp-os details[open] .vs-summary { margin-bottom: var(--sp-4); }
+/* Per-section HTMX "Refresh" control — a right-aligned toolbar at the top of a
+   refreshable section body. */
+.vp-os .vs-sec-tools { display: flex; justify-content: flex-end; margin-bottom: var(--sp-3); }
 
 /* ── Stat cards ──────────────────────────────────────────────── */
 .vp-os .vs-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--sp-3); }
