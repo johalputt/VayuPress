@@ -160,6 +160,22 @@ func isMemoryDB(path string) bool {
 		strings.Contains(path, "mode=memory")
 }
 
+const (
+	// readPoolConnMaxLifetime retires each read-pool connection after this long
+	// so no reader can hold a WAL read-mark indefinitely. This is what lets the
+	// background checkpoint periodically find a reader-free moment and fully
+	// reset/truncate the -wal file (see openReadPool for the full rationale).
+	readPoolConnMaxLifetime = 3 * time.Minute
+	// readPoolConnMaxIdleTime closes idle read-pool connections sooner, so quiet
+	// periods leave no lingering reader pinning the WAL snapshot.
+	readPoolConnMaxIdleTime = 45 * time.Second
+	// walCheckpointInterval is how often the background TRUNCATE checkpoint runs.
+	// It is deliberately tighter than the old 5-minute cadence: TRUNCATE is cheap
+	// when the WAL is already small, and a shorter interval keeps the WAL bounded
+	// between checkpoints even under heavy write bursts.
+	walCheckpointInterval = 60 * time.Second
+)
+
 // openReadPool opens the read-only connection pool (RDB) against the same
 // on-disk database file as the writer. It is a no-op for in-memory databases,
 // where Reader() transparently falls back to the writer connection.
@@ -188,7 +204,22 @@ func openReadPool() error {
 	}
 	rdb.SetMaxOpenConns(n)
 	rdb.SetMaxIdleConns(n)
-	rdb.SetConnMaxLifetime(0)
+	// CRITICAL — WAL reclamation. Read-pool connections MUST be recycled, never
+	// held open forever. In WAL mode a checkpoint can only reset/truncate the
+	// -wal file when NO connection is holding an older read snapshot. With a pool
+	// of never-recycled readers (the previous SetConnMaxLifetime(0)) under
+	// continuous traffic there is almost always a live reader, so the checkpoint
+	// can never reset the WAL: it grows without bound until reads crawl and the
+	// dynamic VayuOS admin exceeds its timeout (502) — while the cache-served
+	// public site, which touches no DB, stays fast. That is the true root cause
+	// of the recurring post-restart/after-hours VayuOS 502s (every prior release
+	// only moved more reads onto this pool, worsening the starvation). Retiring
+	// connections on a bounded lifetime/idle window guarantees recurring moments
+	// with no live reader, letting the checkpointer (now TRUNCATE — see
+	// StartWALCheckpointGoroutine) fully reclaim the WAL. Empirically this bounds
+	// a WAL that otherwise reached multi-GB under sustained load to a few dozen MB.
+	rdb.SetConnMaxLifetime(readPoolConnMaxLifetime)
+	rdb.SetConnMaxIdleTime(readPoolConnMaxIdleTime)
 	if err := rdb.Ping(); err != nil {
 		_ = rdb.Close()
 		return fmt.Errorf("ping: %w", err)
@@ -201,37 +232,38 @@ func openReadPool() error {
 // StartWALCheckpointGoroutine runs adaptive WAL checkpoints in the background (ADR-0033).
 func StartWALCheckpointGoroutine(doneCh <-chan struct{}) {
 	go func() {
-		ticker := time.NewTicker(5 * time.Minute)
+		ticker := time.NewTicker(walCheckpointInterval)
 		defer ticker.Stop()
-		adaptiveBackoff := false
 		for {
 			select {
 			case <-doneCh:
 				return
 			case <-ticker.C:
 				walMB := walFileSizeMB()
-				checkpointMode := "PASSIVE"
+				// TRUNCATE both checkpoints all committed frames AND resets the
+				// -wal file to zero bytes, so the WAL cannot grow without bound.
+				// (The old PASSIVE default never truncated and gave up the instant
+				// a reader was active — which, with the persistent read pool, let
+				// the WAL balloon into the multi-GB range and stall the admin panel
+				// into 502s.) Read-pool connection recycling (see openReadPool)
+				// supplies the reader-free windows TRUNCATE needs to complete; if a
+				// reader is momentarily active TRUNCATE degrades gracefully to a
+				// partial checkpoint and the next tick finishes the job.
 				if walMB > float64(config.Cfg.WALSizeThresholdMB) {
-					checkpointMode = "RESTART"
 					atomic.AddInt64(&metrics.MetricWALAdaptiveCheckpoints, 1)
-					logging.LogJSON(logging.LogFields{Level: "warn", Component: "wal", Msg: fmt.Sprintf("WAL %.1fMB > threshold %dMB — RESTART checkpoint", walMB, config.Cfg.WALSizeThresholdMB)})
-					adaptiveBackoff = true
-				} else if adaptiveBackoff {
-					adaptiveBackoff = false
-					logging.LogInfo("wal", "adaptive backoff tick — skipping checkpoint")
-					continue
+					logging.LogJSON(logging.LogFields{Level: "warn", Component: "wal", Msg: fmt.Sprintf("WAL %.1fMB > threshold %dMB — TRUNCATE checkpoint", walMB, config.Cfg.WALSizeThresholdMB)})
 				}
 				start := time.Now()
 				var pagesWritten int
-				err := DB.QueryRow(fmt.Sprintf("PRAGMA wal_checkpoint(%s)", checkpointMode)).Scan(new(int), new(int), &pagesWritten)
+				err := DB.QueryRow(`PRAGMA wal_checkpoint(TRUNCATE)`).Scan(new(int), new(int), &pagesWritten)
 				if err != nil {
 					logging.LogError("wal", "checkpoint error", err.Error())
 				} else {
 					elapsed := time.Since(start)
 					atomic.AddInt64(&metrics.MetricWALCheckpoints, 1)
 					atomic.AddInt64(&metrics.MetricWALCheckpointDurationMS, elapsed.Milliseconds())
-					logging.LogInfo("wal", fmt.Sprintf("checkpoint(%s) pages=%d dur=%dms total=%d",
-						checkpointMode, pagesWritten, elapsed.Milliseconds(), atomic.LoadInt64(&metrics.MetricWALCheckpoints)))
+					logging.LogInfo("wal", fmt.Sprintf("checkpoint(TRUNCATE) pages=%d dur=%dms total=%d",
+						pagesWritten, elapsed.Milliseconds(), atomic.LoadInt64(&metrics.MetricWALCheckpoints)))
 				}
 			}
 		}
