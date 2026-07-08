@@ -221,6 +221,7 @@ func (a *App) handleOSMembers(w http.ResponseWriter, r *http.Request) {
   <td>` + badge + `</td>
   <td><select class="select input--sm" data-member-tier data-email="` + esc(m.Email) + `">` + tierOptions(m.Tier) + `</select></td>
   <td>` + labelChips + `</td>
+  <td class="text-sm">` + geoDisplayHTML(m.Country, m.City) + `</td>
   <td class="row-meta">` + lastSeen + `</td>
   <td class="row-meta">` + m.CreatedAt.UTC().Format("2 Jan 2006") + `</td>
   <td class="row-actions">` + actions + `</td>
@@ -229,7 +230,7 @@ func (a *App) handleOSMembers(w http.ResponseWriter, r *http.Request) {
 	membersTable := `<div class="empty-state">No members yet.</div>`
 	if rows != "" {
 		membersTable = `<div class="table-wrap"><table class="table">
-  <thead><tr><th>Email</th><th>Name</th><th>Tier</th><th>Plan</th><th>Labels</th><th>Last seen</th><th>Joined</th><th></th></tr></thead>
+  <thead><tr><th>Email</th><th>Name</th><th>Tier</th><th>Plan</th><th>Labels</th><th>Location</th><th>Last seen</th><th>Joined</th><th></th></tr></thead>
   <tbody data-members-body>` + rows + `</tbody></table></div>`
 	}
 	membersCard := `<div class="card">

@@ -77,7 +77,7 @@ func TestMessagesCSVExportHeader(t *testing.T) {
 	if cd := rec.Header().Get("Content-Disposition"); !strings.Contains(cd, "contact-messages.csv") {
 		t.Errorf("content-disposition = %q, want attachment filename", cd)
 	}
-	if !strings.Contains(rec.Body.String(), "created_at,name,email,page,ip,read,message") {
+	if !strings.Contains(rec.Body.String(), "created_at,name,email,page,country,region,city,read,message") {
 		t.Errorf("CSV header row missing, got: %q", rec.Body.String())
 	}
 }

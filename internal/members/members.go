@@ -56,6 +56,9 @@ type Member struct {
 	ReplyNotify     bool       `json:"reply_notify"`
 	StripeCustomer  string     `json:"-"`
 	Labels          []string   `json:"labels,omitempty"`
+	Country         string     `json:"country,omitempty"` // ISO alpha-2, GDPR-safe (no IP stored)
+	Region          string     `json:"region,omitempty"`
+	City            string     `json:"city,omitempty"`
 	LastSeenAt      *time.Time `json:"last_seen_at,omitempty"`
 	CreatedAt       time.Time  `json:"created_at"`
 }
@@ -89,7 +92,7 @@ type Store struct{ db *sql.DB }
 func New(db *sql.DB) *Store { return &Store{db: db} }
 
 // memberCols is the canonical SELECT column list for scanning into a Member.
-const memberCols = `id,email,name,note,tier,status,newsletter_opt_in,reply_notify,stripe_customer,last_seen_at,created_at`
+const memberCols = `id,email,name,note,tier,status,newsletter_opt_in,reply_notify,stripe_customer,last_seen_at,created_at,country,region,city`
 
 // scanner is satisfied by both *sql.Row and *sql.Rows.
 type scanner interface {
@@ -102,7 +105,7 @@ func scanMember(sc scanner) (*Member, error) {
 	var note, stripe string
 	var optIn, replyNotify int
 	var lastSeen sql.NullTime
-	if err := sc.Scan(&m.ID, &m.Email, &m.Name, &note, &m.Tier, &m.Status, &optIn, &replyNotify, &stripe, &lastSeen, &m.CreatedAt); err != nil {
+	if err := sc.Scan(&m.ID, &m.Email, &m.Name, &note, &m.Tier, &m.Status, &optIn, &replyNotify, &stripe, &lastSeen, &m.CreatedAt, &m.Country, &m.Region, &m.City); err != nil {
 		return nil, err
 	}
 	m.Note = note
@@ -277,6 +280,18 @@ func (s *Store) SetReplyNotify(ctx context.Context, email string, on bool) error
 		`UPDATE members SET reply_notify=? WHERE email=?`,
 		v, strings.TrimSpace(strings.ToLower(email)))
 	return err
+}
+
+// SetGeoIfEmpty records a member's coarse, GDPR-safe location (country/region/
+// city — never an IP) the first time it becomes known, and never overwrites an
+// existing value. Best-effort: a failure never blocks sign-in.
+func (s *Store) SetGeoIfEmpty(ctx context.Context, id, country, region, city string) {
+	if id == "" || (country == "" && region == "" && city == "") {
+		return
+	}
+	_, _ = s.db.ExecContext(ctx,
+		`UPDATE members SET country=?,region=?,city=? WHERE id=? AND country='' AND region='' AND city=''`,
+		country, region, city, id)
 }
 
 // TouchLastSeen records the member's most recent activity. Best-effort.

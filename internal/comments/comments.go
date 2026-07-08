@@ -33,7 +33,9 @@ type Comment struct {
 	Email     string    `json:"email,omitempty"`
 	Body      string    `json:"body"`
 	Status    string    `json:"status"`
-	IP        string    `json:"ip,omitempty"`
+	Country   string    `json:"country,omitempty"` // ISO alpha-2 (GDPR-safe; no IP stored)
+	Region    string    `json:"region,omitempty"`
+	City      string    `json:"city,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
@@ -43,14 +45,17 @@ type Store struct{ db *sql.DB }
 // New creates a Store.
 func New(db *sql.DB) *Store { return &Store{db: db} }
 
-// Submit creates a new top-level comment in pending status.
-func (s *Store) Submit(ctx context.Context, articleID, author, email, body, ip string) (*Comment, error) {
-	return s.SubmitReply(ctx, articleID, "", author, email, body, ip)
+// Submit creates a new top-level comment in pending status. Location is coarse
+// (country/region/city) and GDPR-safe — the caller resolves it without storing
+// any IP.
+func (s *Store) Submit(ctx context.Context, articleID, author, email, body, country, region, city string) (*Comment, error) {
+	return s.SubmitReply(ctx, articleID, "", author, email, body, country, region, city)
 }
 
 // SubmitReply creates a new comment in pending status, optionally as a threaded
-// reply to parentID (empty for a top-level comment).
-func (s *Store) SubmitReply(ctx context.Context, articleID, parentID, author, email, body, ip string) (*Comment, error) {
+// reply to parentID (empty for a top-level comment). country/region/city are the
+// coarse, GDPR-safe location captured at submit time (no IP is stored).
+func (s *Store) SubmitReply(ctx context.Context, articleID, parentID, author, email, body, country, region, city string) (*Comment, error) {
 	if strings.TrimSpace(body) == "" {
 		return nil, fmt.Errorf("comment body is empty")
 	}
@@ -59,14 +64,14 @@ func (s *Store) SubmitReply(ctx context.Context, articleID, parentID, author, em
 	}
 	id := newID()
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO comments(id,article_id,parent_id,author,email,body,ip) VALUES(?,?,?,?,?,?,?)`,
-		id, articleID, parentID, author, email, body, ip)
+		`INSERT INTO comments(id,article_id,parent_id,author,email,body,country,region,city) VALUES(?,?,?,?,?,?,?,?,?)`,
+		id, articleID, parentID, author, email, body, country, region, city)
 	if err != nil {
 		return nil, fmt.Errorf("comments submit: %w", err)
 	}
 	return &Comment{
 		ID: id, ArticleID: articleID, ParentID: parentID, Author: author, Email: email,
-		Body: body, Status: StatusPending, IP: ip, CreatedAt: time.Now(),
+		Body: body, Status: StatusPending, Country: country, Region: region, City: city, CreatedAt: time.Now(),
 	}, nil
 }
 
@@ -192,7 +197,7 @@ func (s *Store) Count(ctx context.Context) (map[string]int64, error) {
 
 func (s *Store) list(ctx context.Context, whereClause string, args ...interface{}) ([]Comment, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id,article_id,parent_id,author,email,body,status,ip,created_at FROM comments `+whereClause,
+		`SELECT id,article_id,parent_id,author,email,body,status,country,region,city,created_at FROM comments `+whereClause,
 		args...)
 	if err != nil {
 		return nil, fmt.Errorf("comments list: %w", err)
@@ -202,7 +207,7 @@ func (s *Store) list(ctx context.Context, whereClause string, args ...interface{
 	for rows.Next() {
 		var c Comment
 		var createdRaw string
-		if err := rows.Scan(&c.ID, &c.ArticleID, &c.ParentID, &c.Author, &c.Email, &c.Body, &c.Status, &c.IP, &createdRaw); err != nil {
+		if err := rows.Scan(&c.ID, &c.ArticleID, &c.ParentID, &c.Author, &c.Email, &c.Body, &c.Status, &c.Country, &c.Region, &c.City, &createdRaw); err != nil {
 			return nil, err
 		}
 		c.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdRaw)

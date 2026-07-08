@@ -8,6 +8,52 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.9.9] — 2026-07-08
+
+GDPR-safe visitor location across the operator console: **no raw IP is ever
+stored or shown** for contact messages or comments any more. Instead, every
+message, comment, and member now carries a coarse, privacy-safe location —
+country (with a self-hosted flag) plus city/region where the reverse proxy
+supplies it — the same no-PII approach VayuAnalytics already uses. Historical
+IPs are purged on upgrade. See ADR-0121.
+
+### Security / Privacy
+- **Contact messages no longer store or display an IP address.** The Messages
+  inbox previously showed the sender's raw IP on the detail view — personal data
+  under GDPR. That is removed. At submit time VayuPress now resolves a coarse
+  location (country offline via the embedded table; region/city only from
+  trusted proxy headers) and stores **only** that — the IP is used purely
+  in-process for rate limiting and is never persisted. Migration `058` **purges
+  the IP from every existing contact message and comment** (data minimisation),
+  and the CSV export drops the `ip` column in favour of `country,region,city`.
+- **Comments store a coarse location instead of an IP.** The comments table's
+  raw `ip` is replaced by `country/region/city`, captured (no IP stored) when a
+  member posts.
+
+### Added
+- **Country + city + flag on Messages, Comments, and Members.** All three VayuOS
+  consoles now show a GDPR-safe **Location** column/row — a self-hosted SVG flag
+  + full country name, with the city appended when known (identical rendering to
+  the analytics dashboard, so nothing extra is downloaded and no emoji-font gap
+  on Windows). A new member's join location is captured once, at sign-in
+  (magic-link or VayuMail portal), and never overwritten.
+- Reusable `geoDisplayHTML(country, city)` helper (renders flag + country + city,
+  or a muted "Unknown"), shared across the three consoles.
+
+### Notes
+- **Analytics region/city was already wired** (captured from proxy headers via
+  the same path as country, and rendered in the Locations card). When a region
+  or city shows blank it is because the proxy isn't sending those headers:
+  VayuPress does no city-level GeoIP lookup (privacy by design, and no city
+  database is shipped). The dashboard's Regions/Cities empty state already names
+  the exact fix — in Cloudflare enable **Rules → Settings → Add visitor location
+  headers** (adds `cf-region` and `cf-ipcity`); CloudFront/Vercel/Fastly and
+  generic `X-Geo-*` headers are also recognised.
+- Collapsible `<details>` + per-section HTMX refresh remains best suited to the
+  multi-section Bot Shield console (v3.9.8); Messages, Comments, and Members are
+  single-table views, so this release focuses their improvement on the location
+  data itself rather than adding disclosure panels that would not reduce clutter.
+
 ## [3.9.8] — 2026-07-08
 
 A cleaner, calmer, and more responsive Bot Shield & Analytics console: every

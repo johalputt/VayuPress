@@ -46,6 +46,7 @@ func (a *App) handleOSMessages(w http.ResponseWriter, r *http.Request) {
 
 	type msgRow struct {
 		ID, Name, Email, Message, Page string
+		Country, City                  string
 		Read                           bool
 		Created                        time.Time
 	}
@@ -77,12 +78,12 @@ func (a *App) handleOSMessages(w http.ResponseWriter, r *http.Request) {
 			clause = " WHERE " + strings.Join(where, " AND ")
 		}
 		if rows, err := dbpkg.Reader().QueryContext(r.Context(),
-			`SELECT id,name,email,message,page,is_read,created_at FROM contact_messages`+clause+` ORDER BY created_at DESC LIMIT 500`, args...); err == nil {
+			`SELECT id,name,email,message,page,country,city,is_read,created_at FROM contact_messages`+clause+` ORDER BY created_at DESC LIMIT 500`, args...); err == nil {
 			defer rows.Close() //nolint:errcheck
 			for rows.Next() {
 				var m msgRow
 				var read int
-				if rows.Scan(&m.ID, &m.Name, &m.Email, &m.Message, &m.Page, &read, &m.Created) == nil {
+				if rows.Scan(&m.ID, &m.Name, &m.Email, &m.Message, &m.Page, &m.Country, &m.City, &read, &m.Created) == nil {
 					m.Read = read != 0
 					msgs = append(msgs, m)
 				}
@@ -167,6 +168,7 @@ func (a *App) handleOSMessages(w http.ResponseWriter, r *http.Request) {
     <div class="row-meta"><a href="mailto:` + html.EscapeString(m.Email) + `">` + html.EscapeString(m.Email) + `</a></div></td>
   <td style="white-space:pre-wrap;max-width:40ch">` + html.EscapeString(m.Message) + `</td>
   <td>` + pageCell + `</td>
+  <td class="text-sm">` + geoDisplayHTML(m.Country, m.City) + `</td>
   <td class="muted text-sm">` + m.Created.UTC().Format("2 Jan 2006 15:04") + `</td>
   <td class="row-actions">
     <a class="btn btn--ghost btn--sm" href="mailto:` + html.EscapeString(m.Email) + `?subject=Re:%20your%20message">Reply</a>
@@ -177,7 +179,7 @@ func (a *App) handleOSMessages(w http.ResponseWriter, r *http.Request) {
 		}
 		body = messagesHeader(len(msgs), unread) + filterBar + `
 <div class="card"><div class="table-wrap"><table class="table">
-  <thead><tr><th>From</th><th>Message</th><th>Page</th><th>When</th><th></th></tr></thead>
+  <thead><tr><th>From</th><th>Message</th><th>Page</th><th>Location</th><th>When</th><th></th></tr></thead>
   <tbody>` + rows + `</tbody>
 </table></div></div>
 <div id="msg-status" class="text-sm muted" role="status" aria-live="polite"></div>
@@ -237,14 +239,14 @@ func (a *App) handleOSMessageDetail(w http.ResponseWriter, r *http.Request) {
 		http.SetCookie(w, &http.Cookie{Name: "vp_csrf", Value: token, Path: "/", SameSite: http.SameSiteStrictMode, HttpOnly: false, Secure: csrfCookieSecure(), MaxAge: 3600})
 	}
 
-	var name, eml, msg, page, ip string
+	var name, eml, msg, page, country, region, city string
 	var created time.Time
 	var read int
 	found := false
 	if dbpkg.DB != nil {
 		if err := dbpkg.Reader().QueryRowContext(r.Context(),
-			`SELECT name,email,message,page,ip,is_read,created_at FROM contact_messages WHERE id=?`, id).
-			Scan(&name, &eml, &msg, &page, &ip, &read, &created); err == nil {
+			`SELECT name,email,message,page,country,region,city,is_read,created_at FROM contact_messages WHERE id=?`, id).
+			Scan(&name, &eml, &msg, &page, &country, &region, &city, &read, &created); err == nil {
 			found = true
 		}
 	}
@@ -266,10 +268,13 @@ func (a *App) handleOSMessageDetail(w http.ResponseWriter, r *http.Request) {
 	if page != "" {
 		pageRow = `<div class="kv-row"><span class="kv-key">Page</span><span class="kv-val"><a href="` + html.EscapeString(page) + `" target="_blank" rel="noopener">` + html.EscapeString(page) + `</a></span></div>`
 	}
-	ipRow := ""
-	if ip != "" {
-		ipRow = `<div class="kv-row"><span class="kv-key">IP</span><span class="kv-val">` + html.EscapeString(ip) + `</span></div>`
+	// GDPR-safe location instead of a raw IP: coarse country + city + region,
+	// captured at submit time (no IP is ever stored or shown).
+	locVal := geoDisplayHTML(country, city)
+	if strings.TrimSpace(region) != "" && strings.TrimSpace(city) == "" && strings.TrimSpace(country) != "" {
+		locVal = countryDisplayHTML(country) + ` <span class="muted">· ` + html.EscapeString(region) + `</span>`
 	}
+	ipRow := `<div class="kv-row"><span class="kv-key">Location</span><span class="kv-val">` + locVal + `</span></div>`
 	replyURL := "mailto:" + html.EscapeString(eml) + "?subject=" + url.QueryEscape("Re: your message") +
 		"&body=" + url.QueryEscape("\n\n— On "+created.UTC().Format("2 Jan 2006")+", "+name+" wrote:\n> "+msg)
 
@@ -378,28 +383,28 @@ func (a *App) handleOSMessagesExportCSV(w http.ResponseWriter, r *http.Request) 
 
 	cw := csv.NewWriter(w)
 	defer cw.Flush()
-	_ = cw.Write([]string{"created_at", "name", "email", "page", "ip", "read", "message"})
+	_ = cw.Write([]string{"created_at", "name", "email", "page", "country", "region", "city", "read", "message"})
 	if dbpkg.DB == nil {
 		return
 	}
 	rows, err := dbpkg.Reader().QueryContext(r.Context(),
-		`SELECT created_at,name,email,page,ip,is_read,message FROM contact_messages ORDER BY created_at DESC`)
+		`SELECT created_at,name,email,page,country,region,city,is_read,message FROM contact_messages ORDER BY created_at DESC`)
 	if err != nil {
 		return
 	}
 	defer rows.Close() //nolint:errcheck
 	for rows.Next() {
 		var created time.Time
-		var name, eml, page, ip, msg string
+		var name, eml, page, country, region, city, msg string
 		var read int
-		if rows.Scan(&created, &name, &eml, &page, &ip, &read, &msg) != nil {
+		if rows.Scan(&created, &name, &eml, &page, &country, &region, &city, &read, &msg) != nil {
 			continue
 		}
 		readStr := "no"
 		if read != 0 {
 			readStr = "yes"
 		}
-		_ = cw.Write([]string{created.UTC().Format(time.RFC3339), name, eml, page, ip, readStr, msg})
+		_ = cw.Write([]string{created.UTC().Format(time.RFC3339), name, eml, page, country, region, city, readStr, msg})
 	}
 	_ = rows.Err()
 }

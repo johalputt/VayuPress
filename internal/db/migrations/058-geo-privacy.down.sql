@@ -1,0 +1,9 @@
+ALTER TABLE contact_messages DROP COLUMN country;
+ALTER TABLE contact_messages DROP COLUMN region;
+ALTER TABLE contact_messages DROP COLUMN city;
+ALTER TABLE comments DROP COLUMN country;
+ALTER TABLE comments DROP COLUMN region;
+ALTER TABLE comments DROP COLUMN city;
+ALTER TABLE members DROP COLUMN country;
+ALTER TABLE members DROP COLUMN region;
+ALTER TABLE members DROP COLUMN city;

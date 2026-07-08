@@ -10,6 +10,7 @@
 | ADR | Title | Status | Owner | Date |
 |-----|-------|--------|-------|------|
 | [ADR-0001](ADR-0001-sqlite-first.md) | SQLite-First Data Layer | Accepted | Core | 2024-01-01 |
+| [ADR-0121](ADR-0121-gdpr-safe-visitor-location.md) | GDPR-Safe Visitor Location (No IP) for Messages, Comments & Members | Accepted | VayuOS | 2026-07-08 |
 | [ADR-0120](ADR-0120-collapsible-htmx-shield-console.md) | Collapsible, HTMX-Live Bot Shield & Analytics Console | Accepted | VayuOS | 2026-07-08 |
 | [ADR-0119](ADR-0119-hot-path-latency-budget.md) | Hot-Path Latency Budget & Tail-Latency Posture | Accepted | Core | 2026-07-08 |
 | [ADR-0118](ADR-0118-vayushield-auto-block-and-learning.md) | VayuShield Auto-Block, Detection-Driven Learning & Analytics Exclusion | Accepted | Core | 2026-07-08 |

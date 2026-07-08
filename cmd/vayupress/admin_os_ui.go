@@ -1947,6 +1947,7 @@ func (a *App) handleOSComments(w http.ResponseWriter, r *http.Request) {
     <div class="row-meta">` + html.EscapeString(c.Email) + `</div></td>
   <td>` + html.EscapeString(c.Body) + `</td>
   <td>` + postCell + `</td>
+  <td class="text-sm">` + geoDisplayHTML(c.Country, c.City) + `</td>
   <td>` + osCommentPill(idEsc, c.Status, false) + `</td>
   <td class="muted text-sm">` + c.CreatedAt.UTC().Format("2 Jan 2006 15:04") + `</td>
   <td class="row-actions" id="cact-` + idEsc + `">` + osCommentActions(idEsc, c.Status) + `</td>
@@ -1973,7 +1974,7 @@ func (a *App) handleOSComments(w http.ResponseWriter, r *http.Request) {
   </div>
   <div class="table-wrap">
     <table class="table">
-      <thead><tr><th>Author</th><th>Comment</th><th>Post</th><th>Status</th><th>When</th><th></th></tr></thead>
+      <thead><tr><th>Author</th><th>Comment</th><th>Post</th><th>Location</th><th>Status</th><th>When</th><th></th></tr></thead>
       <tbody>` + rowsHTML + `</tbody>
     </table>
   </div>
