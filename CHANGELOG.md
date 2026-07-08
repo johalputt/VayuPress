@@ -31,14 +31,14 @@ IPs are purged on upgrade. See ADR-0121.
   member posts.
 
 ### Added
-- **Country + city + flag on Messages, Comments, and Members.** All three VayuOS
+- **Country, city and flag on Messages, Comments, and Members.** All three VayuOS
   consoles now show a GDPR-safe **Location** column/row — a self-hosted SVG flag
-  + full country name, with the city appended when known (identical rendering to
+  with the full country name, plus the city when known (identical rendering to
   the analytics dashboard, so nothing extra is downloaded and no emoji-font gap
   on Windows). A new member's join location is captured once, at sign-in
   (magic-link or VayuMail portal), and never overwritten.
-- Reusable `geoDisplayHTML(country, city)` helper (renders flag + country + city,
-  or a muted "Unknown"), shared across the three consoles.
+- Reusable `geoDisplayHTML(country, city)` helper (renders the flag, country and
+  city, or a muted "Unknown"), shared across the three consoles.
 
 ### Notes
 - **Analytics region/city was already wired** (captured from proxy headers via
