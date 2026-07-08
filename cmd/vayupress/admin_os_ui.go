@@ -293,6 +293,8 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/shield/verify", a.handleOSShieldVerify)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/shield/dismiss", a.handleOSShieldDismiss)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/shield/settings", a.handleOSShieldSettings)
+		// Tier 2/3 in-panel toggle — records intent (a flag file); a root agent applies it.
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/shield/tier", a.handleOSShieldTier)
 		// VayuOS — native control layer (Phase 2): Publishing · Mail · PGP.
 		// GET pages are wrapped in CSRFTokenMiddleware so each load (re)issues the
 		// vp_csrf cookie the panel's POSTs read back; without this the token

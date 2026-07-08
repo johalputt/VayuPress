@@ -229,6 +229,36 @@ else
   warn "No docs/ dir in $SRC_DIR — ADR page may be empty."
 fi
 
+# ── 4b. Install/refresh the VayuShield privileged reconcile agent ────────────
+# This tiny root service is what makes the Tier 2/3 network-hardening a one-click
+# switch in VayuOS WITHOUT giving the (unprivileged) web app any privilege: the
+# panel only writes an intent flag; this agent applies the fixed, vetted scripts.
+# See deploy/vayushield-agent.sh + ADR-0123. Idempotent and best-effort — a
+# failure here never blocks the update, and the agent does nothing until an
+# operator flips a toggle. Set VAYUSHIELD_AGENT=0 to skip.
+VAYUSHIELD_AGENT="${VAYUSHIELD_AGENT:-1}"
+VS_LIB_DIR="${VS_LIB_DIR:-/usr/local/lib/vayushield}"
+VS_CONTROL_DIR="${VS_CONTROL_DIR:-${DATA_DIR}/vayushield-control}"
+if [[ "$VAYUSHIELD_AGENT" == "1" ]] && command -v systemctl >/dev/null 2>&1 && [[ -f "$SRC_DIR/deploy/vayushield-agent.sh" ]]; then
+  info "Installing/refreshing the VayuShield Tier 2/3 helper agent…"
+  install -d -m 0755 "$VS_LIB_DIR" 2>/dev/null || true
+  install -m 0755 "$SRC_DIR/deploy/vayushield-firewall.sh" "$VS_LIB_DIR/vayushield-firewall.sh" 2>/dev/null || true
+  install -m 0755 "$SRC_DIR/deploy/vayushield-agent.sh"    "$VS_LIB_DIR/vayushield-agent.sh"    2>/dev/null || true
+  if [[ -f "$SRC_DIR/deploy/nginx-vayushield.conf" ]]; then
+    install -m 0644 "$SRC_DIR/deploy/nginx-vayushield.conf" "$VS_LIB_DIR/nginx-vayushield.conf" 2>/dev/null || true
+  fi
+  # The control dir is owned by the service user so the unprivileged app can write
+  # intent flags; the root agent only reads them and writes status/heartbeat.
+  install -d -m 0750 -o "$SERVICE_USER" -g "$SERVICE_USER" "$VS_CONTROL_DIR" 2>/dev/null || install -d -m 0750 "$VS_CONTROL_DIR" 2>/dev/null || true
+  if install -m 0644 "$SRC_DIR/deploy/vayushield-agent.service" /etc/systemd/system/vayushield-agent.service 2>/dev/null; then
+    systemctl daemon-reload 2>/dev/null || true
+    systemctl enable --now vayushield-agent 2>/dev/null || true
+    ok "VayuShield helper agent installed — Tier 2/3 can now be toggled from VayuOS → Bot Shield → Network hardening."
+  else
+    warn "Could not install the VayuShield agent unit (need root?) — Tier 2/3 stay manual for now."
+  fi
+fi
+
 # ── 5. Back up the database (default ON, consistent, never blocks) ───────────
 # A consistent snapshot (sqlite3 online backup) is taken before the restart so a
 # migration-bearing release always has a rollback point. A hard timeout
