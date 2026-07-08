@@ -8,6 +8,43 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+The actual root cause behind the recurring "VayuOS returns 502 after running for
+a while" reports — the one the v3.8.9–v3.9.3 read-routing passes kept treating
+the symptoms of — has been found and fixed: **the SQLite WAL grew without bound
+because checkpoints were being starved by the read pool.**
+
+### Fixed
+- **Unbounded WAL growth / checkpoint starvation (root cause of the VayuOS
+  502s).** The read pool (`RDB`) was created with `SetConnMaxLifetime(0)`, so its
+  `NumCPU` (min 4) connections were **never recycled**. In WAL mode a checkpoint
+  can only reset/truncate the `-wal` file when *no* connection is holding an
+  older read snapshot; with a pool of permanent readers under continuous traffic
+  there is almost always a live reader, so the background checkpoint — which ran
+  in `PASSIVE` mode and therefore never truncated the file — could essentially
+  never reclaim the WAL. The `-wal` file grew monotonically; reads got steadily
+  slower (each read scans an ever-larger WAL) until the dynamic VayuOS admin
+  exceeded its request timeout and nginx returned **502**, while the public blog
+  (served from the on-disk HTML cache, touching no DB) stayed fast. This is also
+  why every previous "move another read off the writer" release made it *worse*,
+  not better — each one added load to the very pool that was starving the
+  checkpoint. Two changes fix it at the source:
+  - Read-pool connections are now recycled on a bounded lifetime/idle window
+    (`SetConnMaxLifetime`/`SetConnMaxIdleTime`), guaranteeing recurring moments
+    with no live reader so the checkpoint can complete.
+  - The background checkpoint now runs `wal_checkpoint(TRUNCATE)` (resets the
+    `-wal` file to zero bytes) on a tighter cadence instead of `PASSIVE`.
+
+  In a sustained read+write reproduction the previous configuration drove the
+  WAL to multiple gigabytes within seconds; with this fix it stays bounded to a
+  few dozen megabytes.
+
+### Changed
+- **CI: `sqlclosecheck` added to the lint gate.** The lint config already ran
+  `rowserrcheck` (unchecked `rows.Err()`) but not `sqlclosecheck` (unclosed
+  `sql.Rows`/`sql.Stmt`). An unclosed rows leaks a pooled connection and, in WAL
+  mode, pins a read snapshot — precisely the failure class above — so it is now
+  enforced.
+
 ## [3.9.3] — 2026-07-07
 
 Final read-routing pass: the remaining public and background reads no longer use

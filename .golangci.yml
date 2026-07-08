@@ -20,6 +20,9 @@ linters:
     - unused        # dead unexported symbols
     - bodyclose     # unclosed HTTP response bodies (FD exhaustion)
     - rowserrcheck  # unchecked sql.Rows.Err()
+    - sqlclosecheck # unclosed sql.Rows/sql.Stmt (leaks a pooled connection and,
+                    # in WAL mode, pins a read snapshot so the WAL can never be
+                    # checkpointed — the class of bug behind the VayuOS 502s)
     - unconvert     # redundant type conversions
     - misspell      # comment/string typos
 
