@@ -135,10 +135,9 @@ func (a *App) handleCommentSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ip := r.RemoteAddr
-	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
-		ip = strings.Split(fwd, ",")[0]
-	}
+	// GDPR: never store the commenter's IP. Resolve a coarse, privacy-safe
+	// location (country offline; region/city from trusted proxy headers) instead.
+	geo := geoFromHeaders(r)
 
 	// A reply must point at an existing comment on the same article, so a thread
 	// can't be forged across articles. An unknown parent is treated as not-found.
@@ -151,7 +150,7 @@ func (a *App) handleCommentSubmit(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	c, err := a.commentStore.SubmitReply(r.Context(), articleID, parentID, author, member.Email, body.Body, ip)
+	c, err := a.commentStore.SubmitReply(r.Context(), articleID, parentID, author, member.Email, body.Body, geo.Country, geo.Region, geo.City)
 	if err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "comment-error", err.Error(), "")
 		return

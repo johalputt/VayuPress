@@ -80,11 +80,15 @@ func (a *App) handleContactSubmit(w http.ResponseWriter, r *http.Request) {
 	// in the Messages tab. (Previously the handler refused the whole submission
 	// when email delivery wasn't configured, so visitors saw an error and the
 	// message was lost — even though it could have been stored.)
+	// GDPR: we never store the raw IP. Resolve a coarse country (offline) and
+	// region/city (from trusted proxy headers, when present) at submit time and
+	// store only those; the IP above is used purely in-process for rate limiting.
+	geo := geoFromHeaders(r)
 	persisted := false
 	if dbpkg.DB != nil {
 		if _, err := dbpkg.WDB.ExecContext(r.Context(),
-			`INSERT INTO contact_messages(id,name,email,message,page,ip,is_read,created_at) VALUES(?,?,?,?,?,?,0,?)`,
-			newUUID(), name, from, message, firstNonEmptyContact(body.Page, contactPageRef(r)), ip, time.Now().UTC()); err != nil {
+			`INSERT INTO contact_messages(id,name,email,message,page,country,region,city,is_read,created_at) VALUES(?,?,?,?,?,?,?,?,0,?)`,
+			newUUID(), name, from, message, firstNonEmptyContact(body.Page, contactPageRef(r)), geo.Country, geo.Region, geo.City, time.Now().UTC()); err != nil {
 			logging.LogError("contact", "persist failed", err.Error())
 		} else {
 			persisted = true

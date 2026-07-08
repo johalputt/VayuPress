@@ -76,6 +76,26 @@ func countryDisplayHTML(code string) string {
 	return name
 }
 
+// geoDisplayHTML renders a GDPR-safe location for operator views: the
+// self-hosted SVG flag + full country name, with the city appended when known.
+// No IP is involved — only the coarse country/city captured at write time. An
+// empty location renders a muted "Unknown" so tables stay aligned.
+func geoDisplayHTML(country, city string) string {
+	country = strings.TrimSpace(country)
+	city = strings.TrimSpace(city)
+	if country == "" && city == "" {
+		return `<span class="muted">Unknown</span>`
+	}
+	if country == "" {
+		return html.EscapeString(city)
+	}
+	disp := countryDisplayHTML(country) // flag + country name
+	if city != "" {
+		return disp + ` <span class="muted">· ` + html.EscapeString(city) + `</span>`
+	}
+	return disp
+}
+
 // countryNames maps ISO 3166-1 alpha-2 codes to English short names. Render-only.
 var countryNames = map[string]string{
 	"AD": "Andorra", "AE": "United Arab Emirates", "AF": "Afghanistan",

@@ -154,6 +154,9 @@ func (a *App) handleMemberVerify(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "could not sign in", http.StatusInternalServerError)
 		return
 	}
+	// Record coarse, GDPR-safe join location once (country/region/city; no IP).
+	geo := geoFromHeaders(r)
+	a.members.SetGeoIfEmpty(r.Context(), m.ID, geo.Country, geo.Region, geo.City)
 	token, err := a.members.CreateSession(r.Context(), m.ID)
 	if err != nil {
 		http.Error(w, "could not start session", http.StatusInternalServerError)

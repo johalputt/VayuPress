@@ -186,6 +186,9 @@ func (a *App) handleMemberVayuMailLogin(w http.ResponseWriter, r *http.Request) 
 		writeAPIError(w, r, http.StatusInternalServerError, "db-error", "Could not sign you in", "")
 		return
 	}
+	// Record coarse, GDPR-safe join location once (country/region/city; no IP).
+	geo := geoFromHeaders(r)
+	a.members.SetGeoIfEmpty(r.Context(), m.ID, geo.Country, geo.Region, geo.City)
 	token, err := a.members.CreateSession(r.Context(), m.ID)
 	if err != nil {
 		writeAPIError(w, r, http.StatusInternalServerError, "session-error", "Could not start your session", "")
