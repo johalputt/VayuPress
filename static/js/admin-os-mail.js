@@ -4,6 +4,16 @@
 (function () {
   'use strict';
 
+  // Split reading pane: highlight the row whose message is open in the pane.
+  // Delegated on document so it keeps working after the list is swapped by HTMX.
+  document.addEventListener('click', function (e) {
+    var link = e.target && e.target.closest ? e.target.closest('[data-vm-open]') : null;
+    if (!link) return;
+    document.querySelectorAll('tr.vm-active').forEach(function (r) { r.classList.remove('vm-active'); });
+    var row = link.closest('[data-vm-row]');
+    if (row) row.classList.add('vm-active');
+  });
+
   function cookie(name) {
     var m = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
     return m ? decodeURIComponent(m[1]) : '';

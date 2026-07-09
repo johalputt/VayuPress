@@ -997,14 +997,14 @@ func folderTabs(user, active string, counts map[string]int) string {
 		if n := counts[f]; n > 0 {
 			badge = ` <span class="vm-tab-badge">` + itoaSafe(n) + `</span>`
 		}
-		sb.WriteString(`<a class="` + cls + `" href="` + full + `" hx-get="` + frag + `" hx-target="#vm-inbox-body" hx-swap="innerHTML" hx-push-url="` + full + `">` + f + badge + `</a>`)
+		sb.WriteString(`<a class="` + cls + `" href="` + full + `" hx-get="` + frag + `" hx-target="#vm-inbox-list" hx-swap="innerHTML" hx-push-url="` + full + `">` + f + badge + `</a>`)
 	}
 	sb.WriteString(`</div>`)
 	return sb.String()
 }
 
 // handleVayuOSInbox lists mailboxes, or (with ?user=) the messages in a folder.
-// The folder view is an HTMX fragment (#vm-inbox-body) that swaps in place for
+// The folder view is an HTMX fragment (#vm-inbox-list) that swaps in place for
 // every action, folder switch, and the live new-mail poll — no full-page reload.
 func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
@@ -1065,11 +1065,18 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Folder view — HTMX fragment container. Every action, folder switch and the
-	// live new-mail poll swap #vm-inbox-body in place (no full reload). The poll
+	// live new-mail poll swap #vm-inbox-list in place (no full reload). The poll
 	// element lives inside the fragment (see vayuInboxBody) so it always carries
 	// the folder currently being viewed.
-	body.WriteString(`<div id="vm-inbox-body">`)
+	// Split reading pane: the message list (left) and an in-place reader (right).
+	// Rows load the message into #vm-readpane via HTMX; pane actions refresh the
+	// list via HX-Trigger. On narrow screens CSS collapses this to one column and
+	// the pane overlays the list (see admin-os.css .vm-split).
+	body.WriteString(`<div class="vm-split">`)
+	body.WriteString(`<div id="vm-inbox-list" class="vm-inbox-list">`)
 	body.WriteString(a.vayuInboxBody(user, folder))
+	body.WriteString(`</div>`)
+	body.WriteString(`<div id="vm-readpane" class="vm-readpane">` + vayuReadpaneEmpty("") + `</div>`)
 	body.WriteString(`</div>`)
 	body.WriteString(`<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail.js?v=` + assetVer("js/admin-os-mail.js") + `"></script>`)
 	writeOSHTML(w, adminOSLayout(nonce, "Mailbox", "vayuos", cfg, htmpl.HTML(body.String())))
@@ -1077,7 +1084,7 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 
 // vayuInboxBody renders the folder view (toolbar + quota + tabs + message list)
 // as an HTMX fragment. It is returned on page load and swapped into
-// #vm-inbox-body on the new-mail poll, after any row/bulk action, and on folder
+// #vm-inbox-list on the new-mail poll, after any row/bulk action, and on folder
 // switch — so the mailbox never does a jarring full-page reload.
 func (a *App) vayuInboxBody(user, folder string) string {
 	domain := a.vayuMail.Config().Domain
@@ -1088,7 +1095,7 @@ func (a *App) vayuInboxBody(user, folder string) string {
 	// swap) so it always targets the folder currently in view — a poll bound to
 	// the outer wrapper would keep reloading the folder that was first opened.
 	frag := "/os/vayumail/inbox/fragment?user=" + qparam(user) + "&folder=" + qparam(folder)
-	b.WriteString(`<div class="vm-poller" aria-hidden="true" hx-get="` + frag + `" hx-trigger="every 90s" hx-target="#vm-inbox-body" hx-swap="innerHTML"></div>`)
+	b.WriteString(`<div class="vm-poller" aria-hidden="true" hx-get="` + frag + `" hx-trigger="every 90s, vm-mail-changed from:body" hx-target="#vm-inbox-list" hx-swap="innerHTML"></div>`)
 
 	// Sticky toolbar: mailbox identity + Compose + search.
 	b.WriteString(`<div class="vm-toolbar">`)
@@ -1136,7 +1143,7 @@ func (a *App) vayuInboxBody(user, folder string) string {
 	// bulk bar) is managed by delegated JS that survives HTMX swaps.
 	b.WriteString(`<input type="hidden" name="user" value="` + html.EscapeString(user) + `" data-vm-scope><input type="hidden" name="folder" value="` + html.EscapeString(folder) + `" data-vm-scope>`)
 	if len(msgs) > 0 {
-		inc := ` hx-include="[data-vm-scope],[data-vm-check]:checked" hx-target="#vm-inbox-body" hx-swap="innerHTML"`
+		inc := ` hx-include="[data-vm-scope],[data-vm-check]:checked" hx-target="#vm-inbox-list" hx-swap="innerHTML"`
 		b.WriteString(`<div class="vm-bulk" data-vm-bulkbar hidden><span class="text-sm muted" data-vm-bulkcount>0 selected</span>`)
 		if received {
 			b.WriteString(`<button type="button" class="btn btn--sm" hx-post="/os/vayumail/inbox/action" hx-vals='{"action":"mark","mark":"read"}'` + inc + `>Mark read</button>`)
@@ -1185,17 +1192,26 @@ func (a *App) vayuInboxBody(user, folder string) string {
 		if m.Flagged {
 			pinVal, pinIcon = "0", "📍"
 		}
-		pin := `<button type="button" class="btn btn--xs btn--ghost" title="Pin" hx-post="/os/vayumail/inbox/action" ` + hxVals("action", "pin", "pin", pinVal, "user", user, "folder", folder, "id", m.ID) + ` hx-target="#vm-inbox-body" hx-swap="innerHTML">` + pinIcon + `</button>`
+		pin := `<button type="button" class="btn btn--xs btn--ghost" title="Pin" hx-post="/os/vayumail/inbox/action" ` + hxVals("action", "pin", "pin", pinVal, "user", user, "folder", folder, "id", m.ID) + ` hx-target="#vm-inbox-list" hx-swap="innerHTML">` + pinIcon + `</button>`
 		tick := ""
 		if received {
 			mark, label := "read", "Mark read"
 			if m.Seen {
 				mark, label = "unread", "✓ read"
 			}
-			tick = `<button type="button" class="btn btn--xs" hx-post="/os/vayumail/inbox/action" ` + hxVals("action", "mark", "mark", mark, "user", user, "folder", folder, "id", m.ID) + ` hx-target="#vm-inbox-body" hx-swap="innerHTML">` + label + `</button>`
+			tick = `<button type="button" class="btn btn--xs" hx-post="/os/vayumail/inbox/action" ` + hxVals("action", "mark", "mark", mark, "user", user, "folder", folder, "id", m.ID) + ` hx-target="#vm-inbox-list" hx-swap="innerHTML">` + label + `</button>`
 		}
 		check := `<input type="checkbox" class="vm-check-row" name="id" value="` + html.EscapeString(m.ID) + `" data-vm-check aria-label="Select message">`
-		b.WriteString(`<tr class="` + rowCls + `"><td class="vm-check">` + check + `</td><td>` + pin + `</td><td><div class="vm-from">` + mailAvatar(who) + `<span class="vm-name" title="` + html.EscapeString(who) + `">` + html.EscapeString(mailDisplay(who)) + `</span></div></td><td class="vm-subj"><a href="` + link + `">` + html.EscapeString(subj) + `</a></td><td class="muted text-sm vm-date">` + mailRelTime(m.Date) + `</td><td class="row-actions">` + tick + `</td></tr>`)
+		// Non-draft rows open in the split reading pane (HTMX); the href stays as a
+		// middle-click / no-JS fallback to the standalone message page. Drafts open
+		// the composer for editing (full navigation). data-vm-open lets the delegated
+		// JS highlight the active row across HTMX swaps.
+		subjA := `<a href="` + link + `"`
+		if !isDrafts {
+			subjA += ` class="vm-subj-link" data-vm-open hx-get="` + link + `&pane=1" hx-target="#vm-readpane" hx-swap="innerHTML"`
+		}
+		subjA += `>` + html.EscapeString(subj) + `</a>`
+		b.WriteString(`<tr class="` + rowCls + `" data-vm-row><td class="vm-check">` + check + `</td><td>` + pin + `</td><td><div class="vm-from">` + mailAvatar(who) + `<span class="vm-name" title="` + html.EscapeString(who) + `">` + html.EscapeString(mailDisplay(who)) + `</span></div></td><td class="vm-subj">` + subjA + `</td><td class="muted text-sm vm-date">` + mailRelTime(m.Date) + `</td><td class="row-actions">` + tick + `</td></tr>`)
 	}
 	b.WriteString(`</tbody></table></div>`)
 	return b.String()
@@ -1571,24 +1587,68 @@ func (a *App) handleVayuOSMessage(w http.ResponseWriter, r *http.Request) {
 		folder = "Inbox"
 	}
 	id := strings.TrimSpace(r.URL.Query().Get("id"))
-	var body strings.Builder
-	body.WriteString(`<div class="page-header"><h1>Message</h1><span class="muted text-sm">` + html.EscapeString(user+"@"+a.cfgDomain()) + ` · ` + html.EscapeString(folder) + `</span></div>`)
-	body.WriteString(vayuosNav("mailbox", a.isAdminRequest(r)))
+	// pane mode: the split reading pane loads the message beside the list via
+	// HTMX, so we return just the reader card fragment (no page chrome/layout),
+	// and the card's nav + actions are pure HTMX/native (no page-load JS).
+	pane := r.URL.Query().Get("pane") == "1"
+
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled || user == "" || id == "" {
+		if pane {
+			writeOSHTML(w, vayuReadpaneEmpty("Message not available."))
+			return
+		}
+		var body strings.Builder
+		body.WriteString(`<div class="page-header"><h1>Message</h1></div>` + vayuosNav("mailbox", a.isAdminRequest(r)))
 		body.WriteString(`<div class="empty-state">Message not available. <a href="/os/vayumail/inbox">Back to Mailbox</a></div>`)
 		writeOSHTML(w, adminOSLayout(nonce, "Message", "vayuos", cfg, htmpl.HTML(body.String())))
 		return
 	}
-	raw, err := a.vayuMail.ReadFolderMessage(user, folder, id)
-	if err != nil {
-		body.WriteString(`<div class="empty-state">Could not read message: ` + html.EscapeString(err.Error()) + ` <a href="/os/vayumail/inbox?user=` + qparam(user) + `">Back</a></div>`)
+
+	card, ok := a.vayuReaderCard(user, folder, id, pane)
+	if !ok {
+		if pane {
+			writeOSHTML(w, vayuReadpaneEmpty("Could not read this message."))
+			return
+		}
+		var body strings.Builder
+		body.WriteString(`<div class="page-header"><h1>Message</h1></div>` + vayuosNav("mailbox", a.isAdminRequest(r)))
+		body.WriteString(`<div class="empty-state">Could not read message. <a href="/os/vayumail/inbox?user=` + qparam(user) + `">Back</a></div>`)
 		writeOSHTML(w, adminOSLayout(nonce, "Message", "vayuos", cfg, htmpl.HTML(body.String())))
 		return
 	}
+	if pane {
+		// Fragment only — the inbox page already loaded admin-os-mail.js.
+		writeOSHTML(w, card)
+		return
+	}
+	var body strings.Builder
+	body.WriteString(`<div class="page-header"><h1>Message</h1><span class="muted text-sm">` + html.EscapeString(user+"@"+a.cfgDomain()) + ` · ` + html.EscapeString(folder) + `</span></div>`)
+	body.WriteString(vayuosNav("mailbox", a.isAdminRequest(r)))
+	body.WriteString(card)
+	body.WriteString(`<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail.js?v=` + assetVer("js/admin-os-mail.js") + `"></script>`)
+	writeOSHTML(w, adminOSLayout(nonce, "Message", "vayuos", cfg, htmpl.HTML(body.String())))
+}
+
+// vayuReadpaneEmpty renders the reading-pane placeholder (also the "message
+// left the folder" state after a pane move/delete).
+func vayuReadpaneEmpty(msg string) string {
+	if msg == "" {
+		msg = "Select a message to read it here."
+	}
+	return `<div class="vm-readpane-empty"><div class="vm-readpane-empty-ico">✉</div><p class="muted">` + html.EscapeString(msg) + `</p></div>`
+}
+
+// vayuReaderCard renders the message reader card for both the standalone
+// message page (pane=false: hrefs + admin-os-mail.js actions) and the split
+// reading pane (pane=true: HTMX nav/actions targeting #vm-readpane, native
+// <details> for raw — nothing depends on JS bound at page load). It reads the
+// message and marks it read (received folders only). ok is false on error.
+func (a *App) vayuReaderCard(user, folder, id string, pane bool) (string, bool) {
+	raw, err := a.vayuMail.ReadFolderMessage(user, folder, id)
+	if err != nil {
+		return "", false
+	}
 	received := !strings.EqualFold(folder, "Drafts") && !strings.EqualFold(folder, "Sent")
-	// Opening a message marks it read (Maildir Seen), like every mail client.
-	// Drafts/Sent are authored, not received, so they are left untouched. The
-	// rename can change the id, so we use the returned one for the actions below.
 	if received {
 		if nid, merr := a.vayuMail.MarkRead(user, folder, id); merr == nil && nid != "" {
 			id = nid
@@ -1598,18 +1658,18 @@ func (a *App) handleVayuOSMessage(w http.ResponseWriter, r *http.Request) {
 	msgURL := func(mid string) string {
 		return "/os/vayumail/message?user=" + qparam(user) + "&folder=" + qparam(folder) + "&id=" + qparam(mid)
 	}
-	// Pin state + prev/next neighbours (one folder scan, using the post-MarkRead id).
+	paneURL := func(mid string) string { return msgURL(mid) + "&pane=1" }
 	pinned := false
-	var prevURL, nextURL string
+	var prevID, nextID string
 	if msgs, lerr := a.vayuMail.ListFolder(user, folder); lerr == nil {
 		for i, mm := range msgs {
 			if mm.ID == id {
 				pinned = mm.Flagged
 				if i > 0 {
-					prevURL = msgURL(msgs[i-1].ID)
+					prevID = msgs[i-1].ID
 				}
 				if i+1 < len(msgs) {
-					nextURL = msgURL(msgs[i+1].ID)
+					nextID = msgs[i+1].ID
 				}
 				break
 			}
@@ -1628,54 +1688,94 @@ func (a *App) handleVayuOSMessage(w http.ResponseWriter, r *http.Request) {
 	var card strings.Builder
 	card.WriteString(`<div class="card vm-reader">`)
 
-	// Top bar: back + prev/next navigation.
-	card.WriteString(`<div class="vm-reader-top"><a class="btn btn--ghost btn--sm" href="` + back + `">← ` + html.EscapeString(folder) + `</a><span class="vm-reader-nav">`)
-	if prevURL != "" {
-		card.WriteString(`<a class="btn btn--xs" href="` + prevURL + `" title="Previous message" aria-label="Previous message">‹</a>`)
+	// Top bar: back/close + prev/next navigation.
+	card.WriteString(`<div class="vm-reader-top">`)
+	if pane {
+		card.WriteString(`<button type="button" class="btn btn--ghost btn--sm" hx-get="/os/vayumail/inbox/readpane" hx-target="#vm-readpane" hx-swap="innerHTML" title="Close">✕ Close</button>`)
 	} else {
-		card.WriteString(`<span class="btn btn--xs" aria-disabled="true">‹</span>`)
+		card.WriteString(`<a class="btn btn--ghost btn--sm" href="` + back + `">← ` + html.EscapeString(folder) + `</a>`)
 	}
-	if nextURL != "" {
-		card.WriteString(`<a class="btn btn--xs" href="` + nextURL + `" title="Next message" aria-label="Next message">›</a>`)
-	} else {
-		card.WriteString(`<span class="btn btn--xs" aria-disabled="true">›</span>`)
+	card.WriteString(`<span class="vm-reader-nav">`)
+	navBtn := func(mid, glyph, label string) {
+		if mid == "" {
+			card.WriteString(`<span class="btn btn--xs" aria-disabled="true">` + glyph + `</span>`)
+			return
+		}
+		if pane {
+			card.WriteString(`<button type="button" class="btn btn--xs" hx-get="` + paneURL(mid) + `" hx-target="#vm-readpane" hx-swap="innerHTML" title="` + label + `" aria-label="` + label + `">` + glyph + `</button>`)
+		} else {
+			card.WriteString(`<a class="btn btn--xs" href="` + msgURL(mid) + `" title="` + label + `" aria-label="` + label + `">` + glyph + `</a>`)
+		}
 	}
+	navBtn(prevID, "‹", "Previous message")
+	navBtn(nextID, "›", "Next message")
 	card.WriteString(`</span></div>`)
 
-	// Action toolbar (icon + label). POST actions run via admin-os-mail.js.
-	nextAttr := ""
-	if nextURL != "" {
-		nextAttr = `" data-next="` + html.EscapeString(nextURL)
-	}
-	card.WriteString(`<div class="vm-actions" data-mail-actions data-user="` + html.EscapeString(user) + `" data-folder="` + html.EscapeString(folder) + `" data-id="` + html.EscapeString(id) + `" data-back="` + html.EscapeString(back) + nextAttr + `">`)
-	card.WriteString(`<a class="btn btn--primary btn--sm" href="` + replyLink + `">↩ Reply</a>`)
-	card.WriteString(`<a class="btn btn--sm" href="` + forwardLink + `">↪ Forward</a>`)
-	if received {
-		card.WriteString(`<button type="button" class="btn btn--sm" data-mail-mark="unread">✉ Mark unread</button>`)
-	}
-	if pinned {
-		card.WriteString(`<button type="button" class="btn btn--sm" data-mail-pin="0">📌 Unpin</button>`)
-	} else {
-		card.WriteString(`<button type="button" class="btn btn--sm" data-mail-pin="1">📌 Pin</button>`)
-	}
-	if !strings.EqualFold(folder, "Junk") {
-		card.WriteString(`<button type="button" class="btn btn--sm" data-mail-move="Junk">⚠ Junk</button>`)
-	}
-	if !strings.EqualFold(folder, "Trash") {
-		card.WriteString(`<button type="button" class="btn btn--sm" data-mail-move="Trash">🗑 Trash</button>`)
-	} else {
-		card.WriteString(`<button type="button" class="btn btn--sm" data-mail-move="Inbox">↧ Restore</button>`)
-	}
-	card.WriteString(`<span class="vm-move"><select class="input input--sm" data-mail-move-select aria-label="Move to folder"><option value="">Move to…</option>`)
-	for _, f := range vmail.StandardFolders {
-		if strings.EqualFold(f, folder) {
-			continue
+	// Action toolbar. Page mode uses admin-os-mail.js (data-mail-*). Pane mode
+	// is pure HTMX: actions POST to the pane endpoint, which swaps #vm-readpane
+	// and fires HX-Trigger:vm-mail-changed so the list refreshes.
+	if pane {
+		paneVals := func(extra ...string) string {
+			args := append([]string{"user", user, "folder", folder, "id", id}, extra...)
+			return hxVals(args...)
 		}
-		card.WriteString(`<option value="` + html.EscapeString(f) + `">` + html.EscapeString(f) + `</option>`)
+		hxPost := ` hx-post="/os/vayumail/message/pane-action" hx-target="#vm-readpane" hx-swap="innerHTML" `
+		card.WriteString(`<div class="vm-actions">`)
+		card.WriteString(`<a class="btn btn--primary btn--sm" href="` + replyLink + `">↩ Reply</a>`)
+		card.WriteString(`<a class="btn btn--sm" href="` + forwardLink + `">↪ Forward</a>`)
+		if received {
+			card.WriteString(`<button type="button" class="btn btn--sm"` + hxPost + paneVals("mark", "unread") + `>✉ Mark unread</button>`)
+		}
+		if pinned {
+			card.WriteString(`<button type="button" class="btn btn--sm"` + hxPost + paneVals("pin", "0") + `>📌 Unpin</button>`)
+		} else {
+			card.WriteString(`<button type="button" class="btn btn--sm"` + hxPost + paneVals("pin", "1") + `>📌 Pin</button>`)
+		}
+		if !strings.EqualFold(folder, "Junk") {
+			card.WriteString(`<button type="button" class="btn btn--sm"` + hxPost + paneVals("to", "Junk") + `>⚠ Junk</button>`)
+		}
+		if !strings.EqualFold(folder, "Trash") {
+			card.WriteString(`<button type="button" class="btn btn--sm"` + hxPost + paneVals("to", "Trash") + `>🗑 Trash</button>`)
+		} else {
+			card.WriteString(`<button type="button" class="btn btn--sm"` + hxPost + paneVals("to", "Inbox") + `>↧ Restore</button>`)
+		}
+		card.WriteString(`<button type="button" class="btn btn--sm btn--danger"` + hxPost + paneVals("delete", "1") + ` hx-confirm="Permanently delete this message?">🗑 Delete</button>`)
+		card.WriteString(`</div>`)
+	} else {
+		nextAttr := ""
+		if nextID != "" {
+			nextAttr = `" data-next="` + html.EscapeString(msgURL(nextID))
+		}
+		card.WriteString(`<div class="vm-actions" data-mail-actions data-user="` + html.EscapeString(user) + `" data-folder="` + html.EscapeString(folder) + `" data-id="` + html.EscapeString(id) + `" data-back="` + html.EscapeString(back) + nextAttr + `">`)
+		card.WriteString(`<a class="btn btn--primary btn--sm" href="` + replyLink + `">↩ Reply</a>`)
+		card.WriteString(`<a class="btn btn--sm" href="` + forwardLink + `">↪ Forward</a>`)
+		if received {
+			card.WriteString(`<button type="button" class="btn btn--sm" data-mail-mark="unread">✉ Mark unread</button>`)
+		}
+		if pinned {
+			card.WriteString(`<button type="button" class="btn btn--sm" data-mail-pin="0">📌 Unpin</button>`)
+		} else {
+			card.WriteString(`<button type="button" class="btn btn--sm" data-mail-pin="1">📌 Pin</button>`)
+		}
+		if !strings.EqualFold(folder, "Junk") {
+			card.WriteString(`<button type="button" class="btn btn--sm" data-mail-move="Junk">⚠ Junk</button>`)
+		}
+		if !strings.EqualFold(folder, "Trash") {
+			card.WriteString(`<button type="button" class="btn btn--sm" data-mail-move="Trash">🗑 Trash</button>`)
+		} else {
+			card.WriteString(`<button type="button" class="btn btn--sm" data-mail-move="Inbox">↧ Restore</button>`)
+		}
+		card.WriteString(`<span class="vm-move"><select class="input input--sm" data-mail-move-select aria-label="Move to folder"><option value="">Move to…</option>`)
+		for _, f := range vmail.StandardFolders {
+			if strings.EqualFold(f, folder) {
+				continue
+			}
+			card.WriteString(`<option value="` + html.EscapeString(f) + `">` + html.EscapeString(f) + `</option>`)
+		}
+		card.WriteString(`</select></span>`)
+		card.WriteString(`<button type="button" class="btn btn--sm" data-mail-print>🖨 Print</button>`)
+		card.WriteString(`<button type="button" class="btn btn--sm btn--danger" data-mail-delete>🗑 Delete</button></div>`)
 	}
-	card.WriteString(`</select></span>`)
-	card.WriteString(`<button type="button" class="btn btn--sm" data-mail-print>🖨 Print</button>`)
-	card.WriteString(`<button type="button" class="btn btn--sm btn--danger" data-mail-delete>🗑 Delete</button></div>`)
 
 	// Header card: subject + PGP badge, sender avatar, addresses and date.
 	fromName, fromAddr := mailParseFrom(pm.From)
@@ -1726,13 +1826,83 @@ func (a *App) handleVayuOSMessage(w http.ResponseWriter, r *http.Request) {
 	}
 	card.WriteString(`</div>`)
 
-	// Raw source, hidden by default, toggled by admin-os-mail.js (CSP-safe).
-	card.WriteString(`<div class="vm-rawwrap"><button class="btn btn--sm btn--ghost" type="button" data-mail-raw-toggle>View raw source</button>`)
-	card.WriteString(`<pre class="vm-pre vm-raw" data-mail-raw hidden>` + html.EscapeString(string(raw)) + `</pre></div>`)
+	// Raw source. Page mode toggles via admin-os-mail.js; pane mode uses a
+	// native <details> so it needs no page-load JS.
+	if pane {
+		card.WriteString(`<details class="vm-rawwrap"><summary class="btn btn--sm btn--ghost">View raw source</summary><pre class="vm-pre vm-raw">` + html.EscapeString(string(raw)) + `</pre></details>`)
+	} else {
+		card.WriteString(`<div class="vm-rawwrap"><button class="btn btn--sm btn--ghost" type="button" data-mail-raw-toggle>View raw source</button>`)
+		card.WriteString(`<pre class="vm-pre vm-raw" data-mail-raw hidden>` + html.EscapeString(string(raw)) + `</pre></div>`)
+	}
 	card.WriteString(`</div>`)
-	body.WriteString(card.String())
-	body.WriteString(`<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail.js?v=` + assetVer("js/admin-os-mail.js") + `"></script>`)
-	writeOSHTML(w, adminOSLayout(nonce, "Message", "vayuos", cfg, htmpl.HTML(body.String())))
+	return card.String(), true
+}
+
+// handleVayuOSMessagePaneAction applies a reader action from the split reading
+// pane and returns the pane's next state (an updated card, or the empty
+// placeholder when the message leaves the view), firing HX-Trigger:vm-mail-changed
+// so the message list refreshes in place. Pure HTMX — no page-load JS.
+func (a *App) handleVayuOSMessagePaneAction(w http.ResponseWriter, r *http.Request) {
+	if a.vayuMail == nil || !a.vayuMail.Config().Enabled {
+		writeOSHTML(w, vayuReadpaneEmpty("VayuMail is not active."))
+		return
+	}
+	_ = r.ParseForm()
+	user := strings.TrimSpace(r.FormValue("user"))
+	folder := strings.TrimSpace(r.FormValue("folder"))
+	id := strings.TrimSpace(r.FormValue("id"))
+	if folder == "" {
+		folder = "Inbox"
+	}
+	if !a.isAdminRequest(r) {
+		local, _ := a.ownMailbox(r)
+		if local == "" || !strings.EqualFold(local, user) {
+			w.WriteHeader(http.StatusForbidden)
+			writeOSHTML(w, vayuReadpaneEmpty("You can only manage your own mailbox."))
+			return
+		}
+	}
+	if user == "" || id == "" {
+		writeOSHTML(w, vayuReadpaneEmpty("Message not available."))
+		return
+	}
+	// Every branch below changes what the list shows, so refresh it in place.
+	w.Header().Set("HX-Trigger", "vm-mail-changed")
+
+	switch {
+	case r.FormValue("delete") == "1":
+		_ = a.vayuMail.DeleteMessage(user, folder, id)
+		writeOSHTML(w, vayuReadpaneEmpty("Message deleted."))
+	case strings.TrimSpace(r.FormValue("to")) != "":
+		to := strings.TrimSpace(r.FormValue("to"))
+		_ = a.vayuMail.MoveMessage(user, id, folder, to)
+		writeOSHTML(w, vayuReadpaneEmpty("Moved to "+html.EscapeString(to)+"."))
+	case r.FormValue("mark") == "unread":
+		_, _ = a.vayuMail.MarkUnread(user, folder, id)
+		// Gmail-style: marking unread closes the reader so the bold row stands out.
+		writeOSHTML(w, vayuReadpaneEmpty("Marked unread."))
+	case r.FormValue("pin") == "1" || r.FormValue("pin") == "0":
+		if nid, err := a.vayuMail.SetPinned(user, folder, id, r.FormValue("pin") == "1"); err == nil && nid != "" {
+			id = nid
+		}
+		if card, ok := a.vayuReaderCard(user, folder, id, true); ok {
+			writeOSHTML(w, card)
+		} else {
+			writeOSHTML(w, vayuReadpaneEmpty(""))
+		}
+	default:
+		if card, ok := a.vayuReaderCard(user, folder, id, true); ok {
+			writeOSHTML(w, card)
+		} else {
+			writeOSHTML(w, vayuReadpaneEmpty(""))
+		}
+	}
+}
+
+// handleVayuOSReadpane returns the empty reading-pane placeholder — the pane's
+// initial split-view state and what its Close button restores.
+func (a *App) handleVayuOSReadpane(w http.ResponseWriter, r *http.Request) {
+	writeOSHTML(w, vayuReadpaneEmpty(""))
 }
 
 // cfgDomain is a small helper for templates.
