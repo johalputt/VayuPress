@@ -8,6 +8,16 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.9.24] — 2026-07-08
+
+### Added
+- **Recipient autocomplete in the composer.** The To, Cc and Bcc fields now
+  suggest addresses as you type — drawn from the mail-account directory and,
+  for administrators, recent sent-history recipients. Suggestions use a native
+  browser list (no extra scripts), and picking one drops it straight into a
+  recipient chip. Non-administrators only see the internal address directory,
+  never the organisation's outbound history.
+
 ## [3.9.23] — 2026-07-08
 
 Phase 2 of the VayuMail redesign begins: **per-account email signatures**.

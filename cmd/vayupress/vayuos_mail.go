@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	netmail "net/mail"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -88,11 +89,12 @@ func (a *App) handleVayuOSCompose(w http.ResponseWriter, r *http.Request) {
 
 	body.WriteString(`<div class="card"><div class="card-title">New message</div>
 <form data-mail-compose>
+  ` + a.composeContactsDatalist(r) + `
   <label class="field"><span class="field-label">From</span>
     <select class="input" data-c-from>` + fromOpts + `</select></label>
 
   <label class="field"><span class="field-label">To</span>
-    <div class="vm-chips" data-c-chips="to"><input type="text" class="vm-chip-input" data-c-chip-input placeholder="name@example.com" autocomplete="off" aria-label="To recipients"></div></label>
+    <div class="vm-chips" data-c-chips="to"><input type="text" class="vm-chip-input" data-c-chip-input list="vm-contacts" placeholder="name@example.com" autocomplete="off" aria-label="To recipients"></div></label>
   <input type="hidden" data-c-to value="` + html.EscapeString(prefillTo) + `">
 
   <div class="vm-row vm-row--tight">
@@ -102,10 +104,10 @@ func (a *App) handleVayuOSCompose(w http.ResponseWriter, r *http.Request) {
   </div>
 
   <label class="field" data-c-cc-field hidden><span class="field-label">Cc</span>
-    <div class="vm-chips" data-c-chips="cc"><input type="text" class="vm-chip-input" data-c-chip-input placeholder="cc@example.com" autocomplete="off" aria-label="Cc recipients"></div></label>
+    <div class="vm-chips" data-c-chips="cc"><input type="text" class="vm-chip-input" data-c-chip-input list="vm-contacts" placeholder="cc@example.com" autocomplete="off" aria-label="Cc recipients"></div></label>
   <input type="hidden" data-c-cc>
   <label class="field" data-c-bcc-field hidden><span class="field-label">Bcc</span>
-    <div class="vm-chips" data-c-chips="bcc"><input type="text" class="vm-chip-input" data-c-chip-input placeholder="bcc@example.com" autocomplete="off" aria-label="Bcc recipients"></div></label>
+    <div class="vm-chips" data-c-chips="bcc"><input type="text" class="vm-chip-input" data-c-chip-input list="vm-contacts" placeholder="bcc@example.com" autocomplete="off" aria-label="Bcc recipients"></div></label>
   <input type="hidden" data-c-bcc>
   <label class="field" data-c-reply-field hidden><span class="field-label">Reply-To</span>
     <input class="input" type="text" data-c-reply placeholder="reply@example.com"></label>
@@ -240,6 +242,60 @@ func composeMaxAttachMB() int {
 		return n
 	}
 	return 1
+}
+
+// composeContactsDatalist builds a native <datalist> of recipient suggestions
+// for the composer: the account directory (for everyone) plus, for admins,
+// recent sent-history recipients. Addresses are lower-cased, de-duplicated,
+// sorted and capped. Non-admins do not see the org's outbound history — only
+// the internal address directory — so the feature leaks no third-party contacts.
+func (a *App) composeContactsDatalist(r *http.Request) string {
+	if a.vayuMail == nil {
+		return `<datalist id="vm-contacts"></datalist>`
+	}
+	seen := map[string]bool{}
+	type contact struct{ addr, name string }
+	var contacts []contact
+	add := func(addr, name string) {
+		addr = strings.ToLower(strings.TrimSpace(addr))
+		if addr == "" || !strings.Contains(addr, "@") || seen[addr] {
+			return
+		}
+		seen[addr] = true
+		contacts = append(contacts, contact{addr, strings.TrimSpace(name)})
+	}
+	if acc := a.vayuMail.Accounts(); acc != nil {
+		if accs, err := acc.List(r.Context()); err == nil {
+			for _, ac := range accs {
+				add(ac.Email, ac.FullName)
+			}
+		}
+	}
+	if a.isAdminRequest(r) {
+		if sent, err := a.vayuMail.Sent(r.Context(), 200); err == nil {
+			for _, s := range sent {
+				for _, to := range s.To {
+					name, addr := mailParseFrom(to)
+					add(addr, name)
+				}
+			}
+		}
+	}
+	sort.Slice(contacts, func(i, j int) bool { return contacts[i].addr < contacts[j].addr })
+	if len(contacts) > 500 {
+		contacts = contacts[:500]
+	}
+	var b strings.Builder
+	b.WriteString(`<datalist id="vm-contacts">`)
+	for _, c := range contacts {
+		b.WriteString(`<option value="` + html.EscapeString(c.addr) + `"`)
+		if c.name != "" {
+			b.WriteString(` label="` + html.EscapeString(c.name) + `"`)
+		}
+		b.WriteString(`>`)
+	}
+	b.WriteString(`</datalist>`)
+	return b.String()
 }
 
 // insertSignature places a plain-text signature after the freshly-written reply
