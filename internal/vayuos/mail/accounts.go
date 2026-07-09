@@ -81,8 +81,12 @@ type Account struct {
 	Active      bool      `json:"active"`
 	TOTPEnabled bool      `json:"totp_enabled"`
 	QuotaBytes  int64     `json:"quota_bytes"` // mailbox storage limit; 0 = unlimited
+	Signature   string    `json:"signature"`   // plain-text mail signature, appended on send
 	CreatedAt   time.Time `json:"created_at"`
 }
+
+// maxSignatureBytes bounds a stored mail signature.
+const maxSignatureBytes = 4096
 
 // AccountStore persists mail accounts in SQLite.
 type AccountStore struct{ db *sql.DB }
@@ -118,6 +122,9 @@ func NewAccountStore(db *sql.DB) (*AccountStore, error) {
 		// Per-mailbox storage quota in bytes; 0 means unlimited. Existing accounts
 		// default to unlimited so the migration changes no behaviour.
 		`ALTER TABLE vayumail_accounts ADD COLUMN quota_bytes INTEGER NOT NULL DEFAULT 0`,
+		// Per-account plain-text mail signature, appended on send. Empty for
+		// existing accounts, so the migration changes no behaviour.
+		`ALTER TABLE vayumail_accounts ADD COLUMN signature TEXT NOT NULL DEFAULT ''`,
 	} {
 		if _, err := db.Exec(stmt); err != nil && !strings.Contains(err.Error(), "duplicate column") {
 			return s, err
@@ -155,6 +162,35 @@ func (s *AccountStore) QuotaFor(ctx context.Context, email string) int64 {
 }
 
 func normEmail(e string) string { return strings.ToLower(strings.TrimSpace(e)) }
+
+// SetSignature stores an account's plain-text mail signature (bounded). An empty
+// string clears it.
+func (s *AccountStore) SetSignature(ctx context.Context, email, sig string) error {
+	if s.db == nil {
+		return errors.New("vayumail: no storage")
+	}
+	if len(sig) > maxSignatureBytes {
+		sig = sig[:maxSignatureBytes]
+	}
+	res, err := s.db.ExecContext(ctx, `UPDATE vayumail_accounts SET signature=? WHERE email=?`, sig, normEmail(email))
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return errors.New("no such account")
+	}
+	return nil
+}
+
+// SignatureFor returns an account's stored mail signature (empty when unset).
+func (s *AccountStore) SignatureFor(ctx context.Context, email string) string {
+	if s.db == nil {
+		return ""
+	}
+	var sig string
+	_ = s.db.QueryRowContext(ctx, `SELECT signature FROM vayumail_accounts WHERE email=?`, normEmail(email)).Scan(&sig)
+	return sig
+}
 
 // Create adds a mail account. passwordHash must already be hashed by the caller.
 func (s *AccountStore) Create(ctx context.Context, email, passwordHash, fullName, role string) error {
@@ -267,7 +303,7 @@ func (s *AccountStore) List(ctx context.Context) ([]Account, error) {
 	if s.db == nil {
 		return out, nil
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT email,full_name,role,active,totp_enabled,quota_bytes,created_at FROM vayumail_accounts ORDER BY email`)
+	rows, err := s.db.QueryContext(ctx, `SELECT email,full_name,role,active,totp_enabled,quota_bytes,signature,created_at FROM vayumail_accounts ORDER BY email`)
 	if err != nil {
 		return nil, err
 	}
@@ -275,7 +311,7 @@ func (s *AccountStore) List(ctx context.Context) ([]Account, error) {
 	for rows.Next() {
 		var a Account
 		var active, totpEnabled int
-		if err := rows.Scan(&a.Email, &a.FullName, &a.Role, &active, &totpEnabled, &a.QuotaBytes, &a.CreatedAt); err != nil {
+		if err := rows.Scan(&a.Email, &a.FullName, &a.Role, &active, &totpEnabled, &a.QuotaBytes, &a.Signature, &a.CreatedAt); err != nil {
 			return nil, err
 		}
 		a.Active = active == 1

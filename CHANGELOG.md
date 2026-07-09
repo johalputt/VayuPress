@@ -8,6 +8,26 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.9.23] — 2026-07-08
+
+Phase 2 of the VayuMail redesign begins: **per-account email signatures**.
+
+### Added
+- **Signatures.** Each mail account can have a plain-text signature that is
+  appended to messages you send from that address. The composer previews it,
+  swaps it live when you change the sender, and offers a per-message **Append
+  signature** toggle.
+- **Self-service editing.** Edit your own signature directly from the composer;
+  administrators can edit any account's signature. It is stored per account
+  (`vayumail_accounts.signature`, migrated in idempotently).
+
+### Changed
+- On send, the signature is inserted **after your reply and before any quoted
+  history** (using the standard RFC 3676 dash-dash-space delimiter) — never
+  baked into drafts, so it can't double up.
+
+See [ADR-0125](docs/adr/ADR-0125-vayumail-per-account-signatures.md).
+
 ## [3.9.22] — 2026-07-08
 
 Final Phase 1 screen of the VayuMail redesign: **keyboard shortcuts** and a

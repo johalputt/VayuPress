@@ -158,6 +158,51 @@
     }
     updatePGP();
 
+    // ── Signature ────────────────────────────────────────────────────────────
+    // Each From <option> carries its account's signature in data-sig. The editor
+    // saves it (self-service for your own mailbox; admins for the selected one),
+    // and the "Append signature" toggle controls whether it is added on send.
+    var fromSel = compose.querySelector('[data-c-from]');
+    var sigToggle = compose.querySelector('[data-c-sig-toggle]');
+    var sigText = compose.querySelector('[data-c-sig-text]');
+    var sigPreview = compose.querySelector('[data-c-sig-preview]');
+    var sigSave = compose.querySelector('[data-c-sig-save]');
+    var sigStatus = compose.querySelector('[data-c-sig-status]');
+    function currentSig() {
+      if (!fromSel || fromSel.selectedIndex < 0) return '';
+      var opt = fromSel.options[fromSel.selectedIndex];
+      return opt ? (opt.getAttribute('data-sig') || '') : '';
+    }
+    function paintSig() {
+      var s = currentSig();
+      if (sigText && document.activeElement !== sigText) sigText.value = s;
+      if (sigPreview) sigPreview.textContent = s || '(no signature set for this address)';
+    }
+    function sigAppend() { return !(sigToggle && !sigToggle.checked); }
+    if (fromSel) fromSel.addEventListener('change', paintSig);
+    if (sigSave) {
+      sigSave.addEventListener('click', function () {
+        if (!fromSel) return;
+        var email = fromSel.value, text = sigText ? sigText.value : '';
+        sigSave.disabled = true;
+        if (sigStatus) sigStatus.textContent = 'Saving…';
+        postJSON('/os/vayumail/accounts/update', { email: email, signature: text }).then(function (res) {
+          sigSave.disabled = false;
+          if (res.ok) {
+            var opt = fromSel.options[fromSel.selectedIndex];
+            if (opt) opt.setAttribute('data-sig', text);
+            paintSig();
+            if (sigStatus) sigStatus.textContent = 'Saved ✓';
+            acctToast('Signature saved');
+          } else {
+            if (sigStatus) sigStatus.textContent = 'Failed: ' + errText(res);
+            acctToast('Signature save failed: ' + errText(res), true);
+          }
+        });
+      });
+    }
+    paintSig();
+
     var composeFields = function () {
       return {
         from: val(compose, '[data-c-from]'),
@@ -232,10 +277,12 @@
         var fd = new FormData();
         Object.keys(f).forEach(function (k) { fd.append(k, f[k] || ''); });
         composeFiles.forEach(function (file) { fd.append('attachments', file); });
+        fd.append('appendSig', sigAppend() ? '1' : '0');
         fetch('/os/vayumail/send', { method: 'POST', headers: { 'X-CSRF-Token': cookie('vp_csrf') }, body: fd })
           .then(function (r) { return r.json().catch(function () { return {}; }).then(function (b) { return { ok: r.ok, status: r.status, body: b }; }); })
           .then(done);
       } else {
+        f.appendSig = sigAppend();
         postJSON('/os/vayumail/send', f).then(done);
       }
     });
