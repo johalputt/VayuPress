@@ -210,6 +210,9 @@ func (a *App) handleVayuShieldPoW(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
 		return
 	}
+	// A solved challenge is the strongest human proof: raise the source's L5
+	// reputation and pardon any sentence it was serving.
+	a.vayuShield.RewardProof(r)
 	http.SetCookie(w, a.vayuShield.SessionCookie(tok))
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -505,6 +508,7 @@ func (a *App) shieldHeroBody(ctx context.Context) string {
 		b.WriteString(vsMetric(strconv.FormatInt(a.sovereign.Shed(), 10), "Shed (L0)"))
 	}
 	b.WriteString(vsMetric(strconv.FormatInt(stt.FairShed, 10), "Fair-shed (L2)"))
+	b.WriteString(vsMetric(strconv.Itoa(stt.RepJailed)+" / "+strconv.Itoa(stt.Suspects), "Rep-jailed / suspects (L5)"))
 	b.WriteString(`</div>`)
 	return b.String()
 }

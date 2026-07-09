@@ -34,6 +34,7 @@ import (
 
 	"github.com/johalputt/vayupress/internal/dbbatch"
 	"github.com/johalputt/vayupress/internal/vayushield/botdb"
+	"github.com/johalputt/vayupress/internal/vayushield/brain"
 	"github.com/johalputt/vayupress/internal/vayushield/challenge"
 	"github.com/johalputt/vayupress/internal/vayushield/fingerprint"
 	"github.com/johalputt/vayupress/internal/vayushield/prefilter"
@@ -148,6 +149,12 @@ type Manager struct {
 	// never be shed. Lock-free, zero-allocation hot path.
 	prefilter *prefilter.Prefilter
 
+	// brain is the Aegis L5 online reputation engine: every enforcement event
+	// lowers a source's standing, every positive proof raises it; collapsed
+	// standings auto-jail with escalating sentences, decay/rehab/pardons make
+	// false positives self-heal, and only suspects are ever tracked.
+	brain *brain.Brain
+
 	ipMu   sync.Mutex
 	ipSalt []byte
 	ipDay  string
@@ -233,6 +240,7 @@ func New(cfg Config) *Manager {
 	m.blocklist = resilience.NewBlocklist()
 	m.controller = &resilience.Controller{}
 	m.prefilter = prefilter.New()
+	m.brain = brain.New()
 	m.jailTTLns.Store(int64(10 * time.Minute))
 	// Seed the live config from the constructor Config (challenge tunables on,
 	// resilience toggles off — all opt-in).
@@ -361,17 +369,24 @@ type Status struct {
 	RPS         int64 `json:"rps"`
 	InFlight    int64 `json:"in_flight"`
 	Blocklisted int   `json:"blocklisted"`
-	FairShed    int64 `json:"fair_shed"` // cumulative L2 fair-shed count
+	FairShed    int64 `json:"fair_shed"`  // cumulative L2 fair-shed count
+	Suspects    int   `json:"suspects"`   // L5: sources currently under suspicion
+	RepJailed   int   `json:"rep_jailed"` // L5: sources serving a reputation sentence
+	Pardons     int64 `json:"pardons"`    // L5: cumulative challenge-proof pardons
 }
 
 // Status returns the current resilience meters.
 func (m *Manager) Status() Status {
+	bs := m.brain.Stats()
 	return Status{
 		UnderAttack: m.controller.UnderAttack(),
 		RPS:         m.controller.RPS(),
 		InFlight:    m.inflight.Current(),
 		Blocklisted: m.blocklist.Len(),
 		FairShed:    m.prefilter.Shed(),
+		Suspects:    bs.Tracked,
+		RepJailed:   bs.Jailed,
+		Pardons:     bs.Redeems,
 	}
 }
 
@@ -537,6 +552,15 @@ func (m *Manager) HasVerifiedSession(r *http.Request) bool {
 	return m.hasValidSession(r)
 }
 
+// RewardProof feeds the L5 reputation engine the strongest positive signal we
+// have: this client solved a challenge, proving a real browser/human. Called
+// by the PoW verification endpoint on success. It instantly pardons any
+// reputation sentence the source was serving (false-positive self-heal for
+// shared/NAT IPs).
+func (m *Manager) RewardProof(r *http.Request) {
+	m.brain.Observe(ipOnly(m.cfg.ClientIP(r)), brain.SignalProof)
+}
+
 // ctxKey carries the Verdict on the request context for downstream handlers
 // (analytics reads it to classify traffic and record bot_score/client_type).
 type ctxKey struct{}
@@ -588,6 +612,17 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 		// their signed token cannot be spoofed, so they can never be throttled.
 		verified := m.hasValidSession(r)
 
+		// 1b. Aegis L5 — reputation jail. A source whose standing collapsed is
+		// serving an automatic, escalating, self-expiring sentence: O(1) map
+		// read, no classification. A verified session always passes (and a
+		// solved challenge pardons the sentence — see RewardProof), so a real
+		// user behind a shared/NAT IP is never locked out.
+		if !verified && m.brain.Jailed(ipKey) {
+			m.onEvent(ActionBlock, 1.0)
+			m.serveThrottled(w, http.StatusTooManyRequests, "reputation", "60")
+			return
+		}
+
 		// 2. Load shedding — protect the process from collapse under saturation.
 		if lc.loadShed && !verified {
 			if !m.inflight.Acquire() {
@@ -624,6 +659,14 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 				// This IP keeps breaching the limit — jail it for a while.
 				m.blocklist.Block(ipKey, m.jailTTL())
 			}
+			m.brain.Observe(ipKey, brain.SignalRateBurst)
+			// If the breaches collapsed this source's reputation, escalate to
+			// the O(1) blocklist jail immediately — subsequent requests are then
+			// dropped by the very first gate (the brain reached the verdict the
+			// legacy 20-breach violation meter would take 4x longer to reach).
+			if lc.autoBlock && m.brain.Jailed(ipKey) {
+				m.blocklist.Block(ipKey, m.jailTTL())
+			}
 			m.onEvent(ActionBlock, 1.0)
 			m.serveThrottled(w, http.StatusTooManyRequests, "rate-limited", "10")
 			return
@@ -647,6 +690,12 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 
 		switch action {
 		case ActionAllow:
+			// Sustained human-scored browsing slowly restores a suspect's
+			// standing (no-op for untracked sources — the innocent are never
+			// tracked), so a mis-scored real user heals automatically.
+			if v.Result.BotScore < 0.3 {
+				m.brain.Observe(ipKey, brain.SignalHuman)
+			}
 			next.ServeHTTP(w, r)
 		case ActionChallengePoW:
 			m.serveChallenge(w, r, v, challenge.DefaultDifficulty)
@@ -654,6 +703,7 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 			m.serveChallenge(w, r, v, challenge.HardDifficulty)
 		case ActionTarpit:
 			// A confirmed bad actor (score ≥ block threshold, tarpit variant).
+			m.brain.Observe(ipKey, brain.SignalBlock)
 			m.jailBadActor(r.Context(), ipKey, lc.autoBlock, v)
 			m.serveTarpit(w, r, v, next)
 		case ActionBlock:
@@ -661,6 +711,7 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 			// is dropped by the O(1) blocklist gate above — without re-running
 			// classification — and fold its fingerprint into the signature
 			// knowledge base so the bot database grows from real detections.
+			m.brain.Observe(ipKey, brain.SignalBlock)
 			m.jailBadActor(r.Context(), ipKey, lc.autoBlock, v)
 			m.serveBlock(w, r, v)
 		}
