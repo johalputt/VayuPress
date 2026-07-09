@@ -141,6 +141,22 @@ func TestBypassPrefixes(t *testing.T) {
 	if rr2.Code != 200 {
 		t.Fatalf("feed should be bypassed, got %d", rr2.Code)
 	}
+	// Boundary correctness: a PUBLIC blog post whose path merely starts with a
+	// bypass prefix's characters (e.g. "/oslo-guide" vs "/os") must NOT be
+	// bypassed — otherwise bot protection is silently disabled for those posts.
+	if m.isBypassed(httptest.NewRequest("GET", "/oslo-travel-guide", nil)) {
+		t.Fatal("/oslo-travel-guide must NOT match the /os bypass prefix")
+	}
+	if m.isBypassed(httptest.NewRequest("GET", "/__vayushield-scandal", nil)) {
+		t.Fatal("/__vayushield-scandal must NOT match the /__vayushield prefix")
+	}
+	// Exact and sub-path matches still bypass.
+	if !m.isBypassed(httptest.NewRequest("GET", "/os", nil)) {
+		t.Fatal("/os (exact) must be bypassed")
+	}
+	if !m.isBypassed(httptest.NewRequest("GET", "/os/shield/section/hero", nil)) {
+		t.Fatal("/os/... (sub-path) must be bypassed")
+	}
 }
 
 func TestChallengeJSServable(t *testing.T) {
@@ -515,18 +531,25 @@ func TestMiddlewareReputationJailAndVerifiedExemption(t *testing.T) {
 	h := m.Middleware(okHandler())
 
 	// Breach the rate limit until reputation collapses into a jail sentence.
-	var last string
-	for i := 0; i < 12; i++ {
+	// The jailed source is offered the redeemable challenge — but only within
+	// its redeem budget (~once/30s); the rest of the flood gets the cheap flat
+	// rejection, so a hammering bot never turns the jail into expensive work.
+	var sawChallenge, sawCheap bool
+	for i := 0; i < 20; i++ {
 		rr := httptest.NewRecorder()
 		h.ServeHTTP(rr, browserReq("/post"))
-		if rr.Code != 200 {
-			last = rr.Header().Get("X-VayuShield")
+		switch rr.Header().Get("X-VayuShield") {
+		case "challenge":
+			sawChallenge = true
+		case "reputation", "rate-limited", "blocked":
+			sawCheap = true
 		}
 	}
-	// A jailed source now gets the redeemable challenge interstitial (its way
-	// to prove human and self-pardon), not a dead-end flat rejection.
-	if last != "challenge" {
-		t.Fatalf("flooding source should end up jailed behind a challenge, last reason %q", last)
+	if !sawChallenge {
+		t.Fatal("jailed source should be offered the redeemable challenge at least once")
+	}
+	if !sawCheap {
+		t.Fatal("a hammering jailed source should get the cheap flat rejection for most requests")
 	}
 	st := m.Status()
 	if st.Suspects == 0 || st.RepJailed == 0 {
@@ -654,19 +677,29 @@ func TestJailedSourceGetsRedeemableChallenge(t *testing.T) {
 	m.ApplySettings(Settings{RateLimit: true, RatePerMinute: 1, Burst: 1, AutoBlock: true})
 	h := m.Middleware(okHandler())
 
-	var lastReason string
-	var lastCode int
+	var challenges, cheap int
 	for i := 0; i < 30; i++ {
 		rr := httptest.NewRecorder()
 		h.ServeHTTP(rr, browserReq("/post"))
-		if rr.Code != 200 {
-			lastReason = rr.Header().Get("X-VayuShield")
-			lastCode = rr.Code
+		switch {
+		case rr.Header().Get("X-VayuShield") == "challenge" && rr.Code == http.StatusServiceUnavailable:
+			challenges++
+		case rr.Code == http.StatusTooManyRequests:
+			cheap++
 		}
 	}
-	// A jailed source is offered the silent PoW (503 interstitial), NOT a
-	// dead-end 429 — so a false positive can prove human and self-pardon.
-	if lastReason != "challenge" || lastCode != http.StatusServiceUnavailable {
-		t.Fatalf("jailed source should get the redeemable challenge, got %d %q", lastCode, lastReason)
+	// A jailed source is offered the silent PoW (503 interstitial) — so a false
+	// positive can prove human and self-pardon — but only within its redeem
+	// budget (~once/30s). A hammering bot therefore gets the challenge a small
+	// number of times and the cheap O(1) 429 for the overwhelming majority, so
+	// the jail never becomes an amplification vector.
+	if challenges == 0 {
+		t.Fatal("jailed source should be offered the redeemable challenge at least once")
+	}
+	if challenges > 3 {
+		t.Fatalf("redeem budget should bound challenges (~1/30s); got %d", challenges)
+	}
+	if cheap < 20 {
+		t.Fatalf("most jailed requests should get the cheap 429; got only %d", cheap)
 	}
 }

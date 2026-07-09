@@ -184,3 +184,35 @@ func containsStr(haystack, needle string) bool {
 	}
 	return false
 }
+
+func rawTestDB(t *testing.T) *sql.DB {
+	t.Helper()
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	return db
+}
+
+func TestUseReaderRoutesReadsSeparately(t *testing.T) {
+	// Wiring a reader makes reader() return it while writes stay on db.
+	db := rawTestDB(t)
+	rdb := rawTestDB(t)
+	s := New(db)
+	if s.reader() != db {
+		t.Fatal("reader() must default to the writer handle")
+	}
+	s.UseReader(rdb)
+	if s.reader() != rdb {
+		t.Fatal("UseReader must route reads through the dedicated pool")
+	}
+	if s.db != db {
+		t.Fatal("UseReader must not change the writer handle")
+	}
+	// nil is a no-op (keeps current reader).
+	s.UseReader(nil)
+	if s.reader() != rdb {
+		t.Fatal("UseReader(nil) must keep the current reader")
+	}
+}

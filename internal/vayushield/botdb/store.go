@@ -11,15 +11,42 @@ import (
 // Store is the SQLite-backed adaptive signature database. It records recurring
 // fingerprints, learns bot candidates, supports operator review, and can
 // export/import community signature files. It holds no in-memory table (the DB
-// is the source of truth); a tiny positive-lookup cache could be layered on top
-// but is intentionally omitted to keep the memory footprint at zero rows.
+// is the source of truth).
+//
+// Read/write split: writes (upserts, verify/dismiss) go to the single writer
+// connection (db); the per-request signature Lookup — which runs on the hot
+// classification path for every unverified request — goes to a SEPARATE read
+// pool (rdb) so it never serialises on the writer. Without this, enabling bot
+// protection would put a SELECT on the one writer connection for every public
+// request, contending with every write and with itself. rdb defaults to db
+// (safe) until UseReader wires the dedicated read pool.
 type Store struct {
-	db *sql.DB
+	db  *sql.DB
+	rdb *sql.DB
 }
 
 // New wraps an open *sql.DB. The vayushield_signatures table must already exist
-// (migration 055).
-func New(db *sql.DB) *Store { return &Store{db: db} }
+// (migration 055). Reads default to the same handle until UseReader is called.
+func New(db *sql.DB) *Store { return &Store{db: db, rdb: db} }
+
+// UseReader routes the read-only, per-request Lookup (and the panel read
+// queries) through a dedicated read pool instead of the writer connection, so
+// classification never contends on the single SQLite writer. Passing nil keeps
+// the current handle. Call once at boot.
+func (s *Store) UseReader(rdb *sql.DB) {
+	if s == nil || rdb == nil {
+		return
+	}
+	s.rdb = rdb
+}
+
+// reader returns the read handle, falling back to the writer if unset.
+func (s *Store) reader() *sql.DB {
+	if s.rdb != nil {
+		return s.rdb
+	}
+	return s.db
+}
 
 // Observation is a single sighting of a fingerprint, used to upsert a row.
 type Observation struct {
@@ -125,7 +152,7 @@ func (s *Store) Lookup(ctx context.Context, fingerprintHash string) (*StoredSign
 	if s == nil || s.db == nil || fingerprintHash == "" {
 		return nil, false
 	}
-	row := s.db.QueryRowContext(ctx, selectCols+` WHERE fingerprint_hash=?`, fingerprintHash)
+	row := s.reader().QueryRowContext(ctx, selectCols+` WHERE fingerprint_hash=?`, fingerprintHash)
 	sig, err := scanSignature(row)
 	if err != nil {
 		return nil, false
@@ -152,7 +179,7 @@ func (s *Store) ReviewQueue(ctx context.Context, limit int) ([]StoredSignature, 
 	if limit <= 0 || limit > 500 {
 		limit = 100
 	}
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.reader().QueryContext(ctx,
 		selectCols+` WHERE operator_verified=0 AND auto_learned=1 ORDER BY confidence DESC, request_count DESC LIMIT ?`, limit)
 	if err != nil {
 		return nil, err
@@ -188,10 +215,10 @@ type Stats struct {
 // Stats computes counts by classification plus learned-in-last-24h.
 func (s *Store) Stats(ctx context.Context) (Stats, error) {
 	out := Stats{ByClass: map[string]int64{}}
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(1) FROM vayushield_signatures`).Scan(&out.Total); err != nil {
+	if err := s.reader().QueryRowContext(ctx, `SELECT COUNT(1) FROM vayushield_signatures`).Scan(&out.Total); err != nil {
 		return out, err
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT classification, COUNT(1) FROM vayushield_signatures GROUP BY classification`)
+	rows, err := s.reader().QueryContext(ctx, `SELECT classification, COUNT(1) FROM vayushield_signatures GROUP BY classification`)
 	if err != nil {
 		return out, err
 	}
@@ -208,9 +235,9 @@ func (s *Store) Stats(ctx context.Context) (Stats, error) {
 		return out, err
 	}
 	cutoff := time.Now().UTC().Add(-24 * time.Hour)
-	_ = s.db.QueryRowContext(ctx, `SELECT COUNT(1) FROM vayushield_signatures WHERE auto_learned=1 AND created_at>=?`, cutoff).Scan(&out.LearnedLast24h)
-	_ = s.db.QueryRowContext(ctx, `SELECT COUNT(1) FROM vayushield_signatures WHERE operator_verified=0 AND auto_learned=1`).Scan(&out.PendingReview)
-	_ = s.db.QueryRowContext(ctx, `SELECT COUNT(1) FROM vayushield_signatures WHERE operator_verified=1`).Scan(&out.Verified)
+	_ = s.reader().QueryRowContext(ctx, `SELECT COUNT(1) FROM vayushield_signatures WHERE auto_learned=1 AND created_at>=?`, cutoff).Scan(&out.LearnedLast24h)
+	_ = s.reader().QueryRowContext(ctx, `SELECT COUNT(1) FROM vayushield_signatures WHERE operator_verified=0 AND auto_learned=1`).Scan(&out.PendingReview)
+	_ = s.reader().QueryRowContext(ctx, `SELECT COUNT(1) FROM vayushield_signatures WHERE operator_verified=1`).Scan(&out.Verified)
 	return out, nil
 }
 
@@ -242,7 +269,7 @@ type CommunitySigEntry struct {
 // Export serializes operator-verified and high-confidence auto-learned
 // signatures as a community file, with all IP data stripped.
 func (s *Store) Export(ctx context.Context) ([]byte, error) {
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.reader().QueryContext(ctx,
 		selectCols+` WHERE operator_verified=1 OR (auto_learned=1 AND confidence>=0.8) ORDER BY id`)
 	if err != nil {
 		return nil, err

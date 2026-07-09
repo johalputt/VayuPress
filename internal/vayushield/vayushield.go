@@ -155,6 +155,7 @@ type Manager struct {
 	// their toggle is on).
 	limiter    *resilience.Limiter // per-IP request rate
 	violation  *resilience.Limiter // per-IP rate-limit-breach meter -> auto-jail
+	redeem     *resilience.Limiter // per-IP redemption-challenge budget for jailed IPs
 	inflight   *resilience.InFlight
 	blocklist  *resilience.Blocklist
 	controller *resilience.Controller
@@ -260,6 +261,11 @@ func New(cfg Config) *Manager {
 	m := &Manager{cfg: cfg}
 	m.limiter = resilience.NewLimiter(2, 60, 200000)           // 120 rpm, burst 60
 	m.violation = resilience.NewLimiter(20.0/60.0, 20, 200000) // ~20 breaches/min -> jail
+	// Redemption budget: a jailed IP is offered the (expensive) solvable
+	// challenge at most ~once per 30s; every other request from it gets the
+	// O(1) flat rejection. This keeps a real user behind a shared/jailed IP
+	// able to redeem within seconds, while a hammering bot costs almost nothing.
+	m.redeem = resilience.NewLimiter(1.0/30.0, 1, 200000)
 	m.inflight = &resilience.InFlight{}
 	m.blocklist = resilience.NewBlocklist()
 	m.controller = &resilience.Controller{}
@@ -563,11 +569,18 @@ func (m *Manager) Decide(r *http.Request, v Verdict) Action {
 	}
 }
 
-// isBypassed reports whether the path is always allowed.
+// isBypassed reports whether the path is always allowed. Matching is
+// path-boundary-aware: a prefix "/os" matches "/os" and "/os/…" but NOT a
+// public URL that merely starts with those characters (e.g. a blog post at
+// "/oslo-guide" or "/static-site-generators"). A bare HasPrefix would silently
+// disable bot protection for such posts — this must not happen.
 func (m *Manager) isBypassed(r *http.Request) bool {
 	p := r.URL.Path
 	for _, pre := range m.cfg.BypassPrefixes {
-		if pre != "" && strings.HasPrefix(p, pre) {
+		if pre == "" {
+			continue
+		}
+		if p == pre || strings.HasPrefix(p, pre+"/") {
 			return true
 		}
 	}
@@ -664,7 +677,7 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 		// 1. Blocklist — the cheapest possible gate for a known-abusive IP.
 		if !verified && lc.autoBlock && m.blocklist.Blocked(ipKey) {
 			m.onEvent(ActionBlock, 1.0)
-			m.serveJailed(w, r, "blocked")
+			m.serveJailed(w, r, ipKey, "blocked")
 			return
 		}
 
@@ -675,7 +688,7 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 		// user behind a shared/NAT IP is never locked out.
 		if !verified && m.brain.Jailed(ipKey) {
 			m.onEvent(ActionBlock, 1.0)
-			m.serveJailed(w, r, "reputation")
+			m.serveJailed(w, r, ipKey, "reputation")
 			return
 		}
 
@@ -784,16 +797,18 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 	})
 }
 
-// serveJailed answers a request from a jailed source. Instead of the old
-// dead-end 429, a jailed visitor gets the silent PoW interstitial whenever the
-// challenge engine is available and no flood is in progress: solving it issues
-// the signed session cookie AND pardons the reputation sentence (RewardProof),
-// so a false positive — including the operator's own IP after a load test —
-// self-heals in one page load with zero human interaction. During an active
-// flood (or without a signer) it falls back to the cheap flat rejection, so
-// jail stays O(1) exactly when cheapness matters.
-func (m *Manager) serveJailed(w http.ResponseWriter, r *http.Request, reason string) {
-	if m.cfg.Signer != nil && !m.controller.UnderAttack() {
+// serveJailed answers a request from a jailed source. A jailed visitor is
+// offered the silent PoW interstitial — solving it issues the signed session
+// cookie AND pardons the sentence (RewardProof), so a false positive (including
+// the operator's own IP after a load test) self-heals in one page load with no
+// human interaction. But issuing a PoW + rendering the interstitial + recording
+// telemetry is far more expensive than an O(1) rejection, and a jailed BOT
+// keeps hammering — so the challenge is offered at most ~once per 30s per IP
+// (the redeem budget); every other request, plus any request during an active
+// flood or without a signer, gets the cheap flat rejection. This preserves both
+// properties: real users redeem within seconds, hammering bots cost ~nothing.
+func (m *Manager) serveJailed(w http.ResponseWriter, r *http.Request, ipKey, reason string) {
+	if m.cfg.Signer != nil && !m.controller.UnderAttack() && m.redeem.Allow(ipKey) {
 		m.serveChallenge(w, r, Verdict{}, challenge.DefaultDifficulty)
 		return
 	}

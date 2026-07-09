@@ -8,6 +8,45 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.11.10] — 2026-07-09
+
+### Fixed
+- **Deep Bot Shield audit — five real bugs found and fixed.** A full pass over
+  the whole VayuShield engine for correctness, hot-path cost and the "never
+  slow VayuOS/the blog, never block a real user" invariants.
+  - **Signature lookup no longer contends on the SQLite writer (major).** The
+    per-request classification lookup (`botdb.Lookup`) ran a `SELECT` on the
+    single *writer* connection — and the fingerprint hash is always populated,
+    so with bot protection enabled *every* unverified public request (and every
+    analytics beacon) serialised a read on the one writer, contending with all
+    writes and with itself. It now runs on the dedicated public read pool;
+    writes stay on the writer. This is the biggest throughput fix in the set.
+  - **Save / Tier / Verify buttons no longer silently 403 after a deploy.** The
+    Bot Shield panel's page and its 10-second auto-poll did not refresh the
+    `vp_csrf` cookie, so after a restart (CSRF secret rotates every deploy) or
+    the 1-hour cookie lifetime, an open panel held a stale token and every POST
+    was rejected until a hard reload — the "Save does nothing" report. The page
+    and the poll route now re-issue the token (via `CSRFTokenMiddleware`), so it
+    self-heals within 10 seconds with no reload.
+  - **Jail is no longer an amplification vector.** The redeemable-challenge path
+    added in v3.11.9 issued a proof-of-work + rendered the interstitial +
+    recorded telemetry for *every* request from a jailed IP — far more
+    expensive than the O(1) rejection it replaced, and a jailed bot hammers.
+    The solvable challenge is now offered at most ~once per 30 s per IP (a
+    dedicated redeem budget); every other request gets the cheap flat 429. A
+    real user behind a jailed/shared IP still redeems within seconds.
+  - **Bot protection no longer silently disabled for look-alike URLs.** The
+    bypass check used a raw prefix match, so a *public* post at
+    `/oslo-travel-guide` or `/static-site-generators` matched the `/os` /
+    `/static` bypass prefixes and skipped classification entirely. Matching is
+    now path-boundary-aware (`/os` matches `/os` and `/os/…`, never `/oslo…`).
+  - **Operator-immunity check taken off the DB hot path.** The trusted-operator
+    session lookup ran a SQLite read for every cookie-bearing request. It is now
+    served from a 30-second TTL cache (bounded, sharded), so a logged-in
+    operator browsing many pages — or an attacker spamming a garbage session
+    cookie — costs at most one read per token per window, on the isolated read
+    pool. Cookieless bot traffic still does zero work.
+
 ## [3.11.9] — 2026-07-09
 
 ### Fixed

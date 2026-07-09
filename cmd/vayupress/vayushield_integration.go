@@ -61,6 +61,7 @@ func (a *App) bootVayuShield() {
 	// the fix for "Save/refresh die when a big bot hit lands". The public ceiling
 	// is CPU-derived by default and live-tunable via VAYUSHIELD_MAX_PUBLIC.
 	a.sovereign = sovereign.New()
+	a.trustedSessions = newTrustedSessionCache()
 	if n, err := strconv.Atoi(strings.TrimSpace(config.EnvOr("VAYUSHIELD_MAX_PUBLIC", ""))); err == nil && n > 0 {
 		a.sovereign.SetLimit(n)
 		logging.LogInfo("vayushield", fmt.Sprintf("Aegis L0 admin-sovereignty lane active — public concurrency cap %d (VAYUSHIELD_MAX_PUBLIC)", n))
@@ -92,6 +93,12 @@ func (a *App) bootVayuShield() {
 	a.shieldOffload.Start(queue.DoneCh)
 
 	bots := botdb.New(dbpkg.DB)
+	// The per-request signature Lookup runs on the hot classification path for
+	// every unverified request; route it (and the panel reads) through the
+	// PUBLIC read pool so it never serialises on the single SQLite writer.
+	// Writes (learning upserts, verify/dismiss) stay on the writer. This is the
+	// fix for classification contending on the writer under load.
+	bots.UseReader(dbpkg.Reader())
 	signer := challenge.NewSigner([]byte(config.Cfg.APIKey))
 
 	a.vayuShield = vayushield.New(vayushield.Config{

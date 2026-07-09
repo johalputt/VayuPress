@@ -180,6 +180,10 @@ type App struct {
 	// verdicts into the control dir for the root agent to enforce in-kernel.
 	shieldOffload *offload.Exporter
 
+	// trustedSessions caches operator-session validation (TTL) so the shield's
+	// operator-immunity check stays off the SQLite read path under load.
+	trustedSessions *trustedSessionCache
+
 	// sovereign is the Aegis L0 admin-sovereignty gate: a lock-free admission
 	// controller mounted BEFORE VayuShield that caps PUBLIC concurrency and sheds
 	// the overflow cheaply, guaranteeing the admin control plane (VayuOS, Save,
