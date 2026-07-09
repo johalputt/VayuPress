@@ -36,6 +36,7 @@ import (
 	"github.com/johalputt/vayupress/internal/vayushield/botdb"
 	"github.com/johalputt/vayupress/internal/vayushield/challenge"
 	"github.com/johalputt/vayupress/internal/vayushield/fingerprint"
+	"github.com/johalputt/vayupress/internal/vayushield/prefilter"
 	"github.com/johalputt/vayupress/internal/vayushield/resilience"
 	"github.com/johalputt/vayupress/internal/vayushield/scorer"
 )
@@ -84,6 +85,14 @@ type Config struct {
 	ClientIP  func(r *http.Request) string  // trusted-proxy-aware client IP
 	OnEvent   func(a Action, score float64) // charge the error budget, emit metrics
 	Now       func() time.Time
+
+	// PressureFn reports external saturation (e.g. the Aegis L0 sovereignty
+	// lane nearing its cap). When it returns true the L2 pre-filter fair-sheds
+	// heavy hitters even if no operator toggle is on — the shield defends
+	// availability automatically, with no configuration. Optional; when set,
+	// the pre-filter observes every request (a few atomic ops) so its sketch is
+	// already warm the moment pressure appears.
+	PressureFn func() bool
 }
 
 // liveConfig is the runtime-tunable subset of the shield, swapped atomically so
@@ -131,6 +140,13 @@ type Manager struct {
 	blocklist  *resilience.Blocklist
 	controller *resilience.Controller
 	jailTTLns  atomic.Int64
+
+	// prefilter is the Aegis L2 probabilistic fair-shed engine: a 256 KiB
+	// windowed Count-Min Sketch that identifies heavy hitters (per IP and per
+	// /24 / /48 group) in fixed memory and, under attack pressure, sheds their
+	// excess traffic proportionally — while a client within its fair budget can
+	// never be shed. Lock-free, zero-allocation hot path.
+	prefilter *prefilter.Prefilter
 
 	ipMu   sync.Mutex
 	ipSalt []byte
@@ -216,6 +232,7 @@ func New(cfg Config) *Manager {
 	m.inflight = &resilience.InFlight{}
 	m.blocklist = resilience.NewBlocklist()
 	m.controller = &resilience.Controller{}
+	m.prefilter = prefilter.New()
 	m.jailTTLns.Store(int64(10 * time.Minute))
 	// Seed the live config from the constructor Config (challenge tunables on,
 	// resilience toggles off — all opt-in).
@@ -268,6 +285,10 @@ func (m *Manager) ApplySettings(s Settings) {
 		burst = 60
 	}
 	m.limiter.SetRate(float64(rpm)/60.0, float64(burst))
+	// L2 fair share follows the operator's per-IP rate: rpm/6 requests fit in
+	// one 10 s sketch window; 3x headroom on top means fair-shedding starts only
+	// at ~3x the configured sustained rate (default 120 rpm -> budget 60/window).
+	m.prefilter.SetFairShare(rpm / 2)
 	// In-flight load-shed cap. If shedding is enabled but the operator left the
 	// cap at 0, do NOT leave the gate disabled (0 = unlimited = no protection) —
 	// derive a generous, capacity-based ceiling so a flood is shed with a cheap
@@ -340,6 +361,7 @@ type Status struct {
 	RPS         int64 `json:"rps"`
 	InFlight    int64 `json:"in_flight"`
 	Blocklisted int   `json:"blocklisted"`
+	FairShed    int64 `json:"fair_shed"` // cumulative L2 fair-shed count
 }
 
 // Status returns the current resilience meters.
@@ -349,6 +371,7 @@ func (m *Manager) Status() Status {
 		RPS:         m.controller.RPS(),
 		InFlight:    m.inflight.Current(),
 		Blocklisted: m.blocklist.Len(),
+		FairShed:    m.prefilter.Shed(),
 	}
 }
 
@@ -537,7 +560,12 @@ func VerdictFrom(ctx context.Context) (Verdict, bool) {
 func (m *Manager) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		lc := m.live()
-		resilienceActive := lc.rateLimit || lc.loadShed || lc.autoBlock || lc.underAttack
+		// With PressureFn wired, the L2 pre-filter stays live even when every
+		// operator toggle is off: it observes each public request (a few atomic
+		// ops) and fair-sheds heavy hitters automatically when the L0 lane
+		// saturates — the shield's zero-configuration self-defense floor.
+		resilienceActive := lc.rateLimit || lc.loadShed || lc.autoBlock || lc.underAttack ||
+			m.cfg.PressureFn != nil
 		if !lc.enabled && !resilienceActive {
 			next.ServeHTTP(w, r)
 			return
@@ -572,6 +600,22 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 		// 3. Attack meter (lock-free) drives adaptive under-attack mode.
 		if lc.underAttack {
 			m.controller.Observe()
+		}
+
+		// 3b. Aegis L2 — probabilistic fair-shed pre-filter. Always observes
+		// (fixed 256 KiB sketch, a few atomic ops) so heavy hitters are already
+		// known the instant pressure appears; sheds ONLY under genuine pressure
+		// (attack meter tripped, or the L0 sovereignty lane near its cap), and
+		// only the traffic a source sends beyond its fair budget. A client at or
+		// under budget — every real reader — can never be shed here.
+		if !verified {
+			pressure := m.controller.UnderAttack() ||
+				(m.cfg.PressureFn != nil && m.cfg.PressureFn())
+			if m.prefilter.Check(ipKey, pressure) {
+				m.onEvent(ActionBlock, 1.0)
+				m.serveThrottled(w, http.StatusTooManyRequests, "fair-shed", "5")
+				return
+			}
 		}
 
 		// 4. Per-IP rate limit — generous burst, so a normal reader never trips it.

@@ -99,6 +99,14 @@ func (a *App) bootVayuShield() {
 		ClientIP:          auth.ClientIP,
 		CookieSecure:      auth.CSRFCookieSecure(),
 		OnEvent:           a.vayuShieldOnEvent,
+		// L0 -> L2 pressure link: when the public sovereignty lane passes 75%
+		// occupancy the L2 pre-filter starts fair-shedding heavy hitters, easing
+		// the lane back down BEFORE it saturates and starts shedding blindly.
+		// This runs with zero operator configuration — the self-defense floor.
+		PressureFn: func() bool {
+			g := a.sovereign
+			return g != nil && g.Inflight()*4 >= g.Cap()*3
+		},
 	})
 
 	// Apply the operator's persisted settings (bot protection + Tier-1 resilience
@@ -496,6 +504,7 @@ func (a *App) shieldHeroBody(ctx context.Context) string {
 		b.WriteString(vsMetric(strconv.FormatInt(a.sovereign.Inflight(), 10)+" / "+strconv.FormatInt(a.sovereign.Cap(), 10), "Public lane"))
 		b.WriteString(vsMetric(strconv.FormatInt(a.sovereign.Shed(), 10), "Shed (L0)"))
 	}
+	b.WriteString(vsMetric(strconv.FormatInt(stt.FairShed, 10), "Fair-shed (L2)"))
 	b.WriteString(`</div>`)
 	return b.String()
 }
