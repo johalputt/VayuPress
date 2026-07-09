@@ -328,6 +328,8 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/aliases/action", a.handleVayuOSAliasAction)
 		// Vacation autoresponder (admin-only; HTMX card on the Accounts page).
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/autoreply/action", a.handleVayuOSAutoreplyAction)
+		// Server-side filter rules (admin-only; HTMX card on the Accounts page).
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/filters/action", a.handleVayuOSFilterAction)
 		// Outbox: HTMX auto-refresh fragment + per-message Resend/Delete/Retry-all.
 		pr.Get("/os/vayumail/outbox/fragment", a.handleVayuOSOutboxFragment)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/outbox/action", a.handleVayuOSOutboxAction)
