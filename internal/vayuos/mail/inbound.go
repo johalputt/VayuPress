@@ -126,6 +126,7 @@ func (e *Engine) DeliverInbound(recipientEmail string, raw []byte) (string, erro
 	id, err := e.maildir.Deliver(domain, local, raw)
 	if err == nil {
 		e.forwardCopy(local+"@"+domain, raw)
+		e.maybeAutoReply(local+"@"+domain, raw)
 	}
 	return id, err
 }

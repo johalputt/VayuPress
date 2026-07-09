@@ -16,6 +16,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/microcosm-cc/bluemonday"
 
@@ -831,6 +832,9 @@ func (a *App) handleVayuOSAccounts(w http.ResponseWriter, r *http.Request) {
 	// add/delete/save, so managing addresses never reloads the page.
 	body.WriteString(`<div id="vm-alias-card">` + a.vayuAliasesCard(r.Context()) + `</div>`)
 
+	// Vacation autoresponder — per-mailbox out-of-office, same HTMX pattern.
+	body.WriteString(`<div id="vm-autoreply-card">` + a.vayuAutoreplyCard(r.Context()) + `</div>`)
+
 	body.WriteString(`<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail.js?v=` + assetVer("js/admin-os-mail.js") + `"></script>`)
 	writeOSHTML(w, adminOSLayout(nonce, "Mail accounts", "vayuos", cfg, htmpl.HTML(body.String())))
 }
@@ -887,6 +891,107 @@ func (a *App) vayuAliasesCard(ctx context.Context) string {
 	}
 	b.WriteString(`</tbody></table></div></div>`)
 	return b.String()
+}
+
+// vayuAutoreplyCard renders the per-mailbox vacation-autoresponder card. Each
+// mailbox is a <details> block with the full form; saving POSTs
+// /os/vayumail/autoreply/action and swaps this card in place.
+func (a *App) vayuAutoreplyCard(ctx context.Context) string {
+	accts := a.vayuMail.Accounts()
+	accs, _ := accts.List(ctx)
+
+	var b strings.Builder
+	b.WriteString(`<div class="card"><div class="card-title">Vacation autoresponder</div>`)
+	b.WriteString(`<p class="muted text-sm">Out-of-office replies (RFC 3834). Each correspondent gets <strong>one</strong> reply per week; auto-generated mail, mailing lists, bounces and no-reply senders are never answered, and replies are tagged so responders can't loop. Junk is never answered.</p>`)
+	for _, ac := range accs {
+		ar := accts.AutoreplyFor(ctx, ac.Email)
+		state := `<span class="muted text-sm">off</span>`
+		if ar.Active(time.Now()) {
+			state = `<span class="badge badge--ok">active</span>`
+		} else if ar.Enabled {
+			state = `<span class="badge badge--warn">scheduled</span>`
+		}
+		checked := ""
+		if ar.Enabled {
+			checked = " checked"
+		}
+		fromVal, untilVal := "", ""
+		if !ar.From.IsZero() {
+			fromVal = ar.From.Local().Format("2006-01-02")
+		}
+		if !ar.Until.IsZero() {
+			untilVal = ar.Until.Local().Format("2006-01-02")
+		}
+		he := html.EscapeString(ac.Email)
+		b.WriteString(`<details class="vm-ooo"><summary><span class="mono">` + he + `</span> ` + state + `</summary>`)
+		b.WriteString(`<form class="vm-ooo-form" hx-post="/os/vayumail/autoreply/action" hx-target="#vm-autoreply-card" hx-swap="innerHTML">`)
+		b.WriteString(`<input type="hidden" name="email" value="` + he + `">`)
+		b.WriteString(`<label class="vm-row text-sm"><input type="checkbox" name="enabled" value="1"` + checked + `> Enabled</label>`)
+		b.WriteString(`<div class="vm-row vm-row--end">`)
+		b.WriteString(`<label class="field vm-grow"><span class="field-label">Subject</span><input class="input input--sm" type="text" name="subject" value="` + html.EscapeString(ar.Subject) + `" placeholder="Out of office"></label>`)
+		b.WriteString(`<label class="field"><span class="field-label">First day (optional)</span><input class="input input--sm" type="date" name="from" value="` + fromVal + `"></label>`)
+		b.WriteString(`<label class="field"><span class="field-label">Last day (optional)</span><input class="input input--sm" type="date" name="until" value="` + untilVal + `"></label>`)
+		b.WriteString(`</div>`)
+		b.WriteString(`<label class="field"><span class="field-label">Message</span><textarea class="input" name="body" rows="4" placeholder="I am away until …">` + html.EscapeString(ar.Body) + `</textarea></label>`)
+		b.WriteString(`<button class="btn btn--primary btn--sm" type="submit">Save</button>`)
+		b.WriteString(`</form></details>`)
+	}
+	if len(accs) == 0 {
+		b.WriteString(`<p class="muted">No mail accounts yet.</p>`)
+	}
+	b.WriteString(`</div>`)
+	return b.String()
+}
+
+// handleVayuOSAutoreplyAction saves a mailbox's autoresponder settings and
+// returns the refreshed card (HTMX swap). Admin-only (the card lives on the
+// admin Accounts page).
+func (a *App) handleVayuOSAutoreplyAction(w http.ResponseWriter, r *http.Request) {
+	if a.vayuMail == nil || !a.vayuMail.Config().Enabled || a.vayuMail.Accounts() == nil {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", "VayuMail is not active", "")
+		return
+	}
+	if !a.isAdminRequest(r) {
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", "administrators only", "")
+		return
+	}
+	_ = r.ParseForm()
+	email := strings.TrimSpace(r.FormValue("email"))
+	ar := vmail.Autoreply{
+		Enabled: r.FormValue("enabled") == "1",
+		Subject: strings.TrimSpace(r.FormValue("subject")),
+		Body:    strings.TrimSpace(r.FormValue("body")),
+	}
+	// Dates are whole days in the operator's intent: the window opens at the
+	// start of the first day and closes at the END of the last day.
+	if v := strings.TrimSpace(r.FormValue("from")); v != "" {
+		if t, err := time.ParseInLocation("2006-01-02", v, time.Local); err == nil {
+			ar.From = t
+		}
+	}
+	if v := strings.TrimSpace(r.FormValue("until")); v != "" {
+		if t, err := time.ParseInLocation("2006-01-02", v, time.Local); err == nil {
+			ar.Until = t.Add(24*time.Hour - time.Second)
+		}
+	}
+	var opErr error
+	if ar.Enabled && strings.TrimSpace(ar.Body) == "" {
+		opErr = errors.New("an enabled autoresponder needs a message body")
+	} else {
+		opErr = a.vayuMail.Accounts().SetAutoreply(r.Context(), email, ar)
+		if opErr == nil {
+			onOff := "off"
+			if ar.Enabled {
+				onOff = "on"
+			}
+			dbpkg.AuditLog("vayumail.autoreply.set", dbpkg.AuditActor(r), email, onOff)
+		}
+	}
+	card := a.vayuAutoreplyCard(r.Context())
+	if opErr != nil {
+		card = `<div class="empty-state" role="alert">⚠ ` + html.EscapeString(opErr.Error()) + `</div>` + card
+	}
+	writeOSHTML(w, card)
 }
 
 // handleVayuOSAliasAction applies an alias/forward change and returns the

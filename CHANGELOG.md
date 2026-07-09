@@ -8,6 +8,29 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.11.0] — 2026-07-09
+
+### Added
+- **VayuMail vacation autoresponder** (Phase 3, part 2). Per-mailbox
+  out-of-office replies, managed from a new **Vacation autoresponder** card on
+  the Accounts page (subject, message, optional first/last day — the window
+  opens at the start of the first day and closes at the end of the last).
+  Implemented to **RFC 3834** so it can never become a mail-loop generator:
+  - each correspondent gets **one reply per week** (persistent dedupe log);
+  - **never answers** auto-generated or suppressed mail (`Auto-Submitted`,
+    `X-Auto-Response-Suppress`), bulk/list/junk `Precedence`, mailing-list
+    mail (`List-Id`/`List-Unsubscribe`/`List-Post`), bounces and machine
+    senders (mailer-daemon, postmaster, no-reply, bounce), the mailbox
+    itself, or copies relayed by the auto-forwarder;
+  - our replies are tagged `Auto-Submitted: auto-replied` +
+    `X-Auto-Response-Suppress: All` and threaded via `In-Reply-To`, so two
+    autoresponders can never converse — and ours refuses to answer such mail;
+  - replies honour `Reply-To`, are DKIM-signed, header-injection-safe, and
+    sent through the outbound queue **best-effort** (a responder problem never
+    affects delivery). Junk-filtered mail is never answered.
+  Changes are audit-logged. Backed by idempotent account-column migrations and
+  a `vayumail_autoreply_log` dedupe table.
+
 ## [3.10.0] — 2026-07-09
 
 ### Added
