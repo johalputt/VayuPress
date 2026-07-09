@@ -8,6 +8,39 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.11.5] — 2026-07-09
+
+### Added
+- **VayuShield 2.0 "Aegis" — L5 Brain v1: continuous online reputation**
+  (step 3 of the Cloudflare-free bot-shield rebuild). Where the fingerprint
+  learning database learns *what a bot looks like* over days, the brain learns
+  *who is currently misbehaving* within minutes — and forgives them just as
+  automatically. Fully autonomous: no cron, no operator commands, no settings.
+  - **Online scoring:** every enforcement event lowers a source's standing
+    immediately (hard block/tarpit −0.25, rate-limit breach −0.10) and every
+    positive proof raises it (solved challenge +0.40, sustained human-scored
+    browsing +0.02). Reputation decays toward neutral with a ~1 h half-life,
+    computed lazily on access — no sweeper goroutine.
+  - **Auto-jail with escalating sentences:** a collapsed standing jails the
+    source — first offense 5 minutes, doubling per re-offense, capped at 6 h.
+    A persistent attacker converges to cheap O(1) rejections at the first
+    middleware gate (reputation collapse also escalates straight into the
+    blocklist jail when auto-block is on — 4× faster than the legacy
+    20-breach violation meter); a one-off mistake costs almost nothing.
+  - **Rehabilitation & false-positive self-heal:** release restores a workable
+    standing; a solved challenge is an **instant pardon** — so the real user
+    behind a shared/NAT IP that hosted one bad actor is never locked out, and
+    verified sessions always bypass the jail entirely.
+  - **Suspicion-only memory (privacy + bounded):** entries are created ONLY by
+    negative events — well-behaved visitors are never tracked at all. Sharded
+    and hard-capped (≤ ~256k suspects), evicting the most irrelevant entries
+    first, so memory stays bounded under any flood.
+  - New hero metric **Rep-jailed / suspects (L5)** and `suspects`,
+    `rep_jailed`, `pardons` in the status JSON. Covered by escalation, decay,
+    pardon, sentence-cap, bounded-memory and race tests, plus middleware
+    integration tests (flooding source ends reputation-jailed; verified
+    session and challenge-solvers always pass).
+
 ## [3.11.4] — 2026-07-09
 
 ### Added

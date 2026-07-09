@@ -495,3 +495,57 @@ func TestMiddlewareFairShedExemptsVerifiedSession(t *testing.T) {
 		}
 	}
 }
+
+// ── Aegis L5 reputation integration ──────────────────────────────────────────
+
+func TestMiddlewareReputationJailAndVerifiedExemption(t *testing.T) {
+	signer := challenge.NewSigner([]byte("test-secret"))
+	m := New(Config{
+		Enabled:  false,
+		Signer:   signer,
+		ClientIP: func(r *http.Request) string { return "6.6.6.7:9" },
+	})
+	m.ApplySettings(Settings{RateLimit: true, RatePerMinute: 1, Burst: 1})
+	h := m.Middleware(okHandler())
+
+	// Breach the rate limit until reputation collapses into a jail sentence.
+	var last string
+	for i := 0; i < 12; i++ {
+		rr := httptest.NewRecorder()
+		h.ServeHTTP(rr, browserReq("/post"))
+		if rr.Code == http.StatusTooManyRequests {
+			last = rr.Header().Get("X-VayuShield")
+		}
+	}
+	if last != "reputation" {
+		t.Fatalf("flooding source should end up reputation-jailed, last reason %q", last)
+	}
+	st := m.Status()
+	if st.Suspects == 0 || st.RepJailed == 0 {
+		t.Fatalf("status = %+v, want suspect + jailed counts", st)
+	}
+
+	// A verified session from the SAME jailed IP always passes.
+	tok, err := signer.IssueSession(12 * time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rr := httptest.NewRecorder()
+	req := browserReq("/post")
+	req.AddCookie(&http.Cookie{Name: "vayushield", Value: tok})
+	h.ServeHTTP(rr, req)
+	if rr.Code != 200 {
+		t.Fatalf("verified session must bypass the reputation jail, got %d", rr.Code)
+	}
+
+	// RewardProof (a solved challenge) pardons the sentence for everyone else.
+	m.RewardProof(browserReq("/__vayushield/pow"))
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, browserReq("/post"))
+	if rr.Header().Get("X-VayuShield") == "reputation" {
+		t.Fatal("solved challenge must pardon the reputation sentence")
+	}
+	if m.Status().Pardons == 0 {
+		t.Fatal("pardon telemetry should be positive")
+	}
+}
