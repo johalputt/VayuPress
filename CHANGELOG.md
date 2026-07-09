@@ -8,6 +8,37 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.11.3] — 2026-07-09
+
+### Added
+- **VayuShield 2.0 "Aegis" — L0 Admin Sovereignty Lane** (first step of the
+  built-in, Cloudflare-free bot-shield rebuild). A lock-free admission
+  controller mounted *before* every other middleware that guarantees the admin
+  control plane and verified readers always keep CPU/goroutine headroom during
+  a volumetric flood.
+  - **The bug it fixes:** during a big bot hit the Save button and page refresh
+    would hang even though `/os` is bot-exempt. Root cause was resource
+    starvation, not blocking — unbounded concurrent public requests exhausted
+    the Go scheduler and CPU, so even bypassed admin requests couldn't get a
+    time slice. Isolating the admin DB read pool (ARDB) was not enough; the
+    process still needs CPU to run the handler.
+  - **How it works:** `internal/vayushield/sovereign` caps how many PUBLIC
+    requests may be in flight at once (CPU-derived default: 64 per core, floored
+    at 128) and sheds the overflow with a cheap `503 + Retry-After` **before**
+    any classification, rendering or SQLite work. Admin/API/health paths and any
+    visitor holding a verified signed session are the "sovereign lane": always
+    admitted, never counted against the public budget. The hot path is a couple
+    of atomic ops — zero allocation, bounded memory regardless of attacker count,
+    no measurable latency for normal traffic.
+  - **Never harms real users or SEO:** the overflow shed is a `503` (retry), not
+    a `4xx` block, so crawlers back off politely; verified/logged-in readers and
+    the whole admin console are structurally exempt.
+  - **Live-tunable** via `VAYUSHIELD_MAX_PUBLIC` (0/unset = auto CPU-derived
+    cap); no restart, no operator commands required. New hero metrics on the Bot
+    Shield panel show the public lane occupancy (`in-flight / cap`) and the
+    cumulative `Shed (L0)` count so the operator can see the lane holding the
+    line through a flood.
+
 ## [3.11.2] — 2026-07-09
 
 ### Added

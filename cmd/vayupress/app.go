@@ -53,6 +53,7 @@ import (
 	vpgp "github.com/johalputt/vayupress/internal/vayuos/pgp"
 	"github.com/johalputt/vayupress/internal/vayuos/secwatch"
 	"github.com/johalputt/vayupress/internal/vayushield"
+	"github.com/johalputt/vayupress/internal/vayushield/sovereign"
 	"github.com/johalputt/vayupress/internal/versions"
 	"github.com/johalputt/vayupress/internal/webhooks"
 	"github.com/johalputt/vayupress/internal/webmention"
@@ -173,6 +174,13 @@ type App struct {
 	vayuShield   *vayushield.Manager
 	vaEngagement *vastore.Store
 	vaSessions   *vasession.Hasher
+
+	// sovereign is the Aegis L0 admin-sovereignty gate: a lock-free admission
+	// controller mounted BEFORE VayuShield that caps PUBLIC concurrency and sheds
+	// the overflow cheaply, guaranteeing the admin control plane (VayuOS, Save,
+	// refresh) and verified readers always keep CPU headroom during a flood. It is
+	// always non-nil once bootVayuShield runs.
+	sovereign *sovereign.Gate
 }
 
 // startScheduler runs the background ticker that promotes due scheduled posts to

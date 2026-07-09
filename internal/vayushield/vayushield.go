@@ -505,6 +505,15 @@ func (m *Manager) hasValidSession(r *http.Request) bool {
 	return m.cfg.Signer.VerifySession(c.Value)
 }
 
+// HasVerifiedSession reports whether the request carries a valid, signed
+// session cookie. It is the exported form of hasValidSession, used by the L0
+// Aegis sovereignty gate to grant priority admission to verified readers so a
+// real logged-in visitor is never shed during a public-traffic flood. The
+// check is unspoofable (HMAC-verified) and allocation-free.
+func (m *Manager) HasVerifiedSession(r *http.Request) bool {
+	return m.hasValidSession(r)
+}
+
 // ctxKey carries the Verdict on the request context for downstream handlers
 // (analytics reads it to classify traffic and record bot_score/client_type).
 type ctxKey struct{}

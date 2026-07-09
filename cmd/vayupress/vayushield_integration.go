@@ -41,6 +41,7 @@ import (
 	"github.com/johalputt/vayupress/internal/vayushield"
 	"github.com/johalputt/vayupress/internal/vayushield/botdb"
 	"github.com/johalputt/vayupress/internal/vayushield/challenge"
+	"github.com/johalputt/vayupress/internal/vayushield/sovereign"
 )
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
@@ -51,6 +52,21 @@ import (
 // (VAYUSHIELD=on to enable); analytics ingestion is always available so the
 // dashboard has data even when challenges are not being issued.
 func (a *App) bootVayuShield() {
+	// L0 Aegis — Admin Sovereignty Lane. Constructed first and mounted before
+	// every other middleware (see registerRoutes) so that under a volumetric
+	// flood it caps PUBLIC concurrency and sheds the overflow with a couple of
+	// atomic ops — BEFORE any classification, render or SQLite work — leaving the
+	// admin control plane and verified readers guaranteed CPU headroom. This is
+	// the fix for "Save/refresh die when a big bot hit lands". The public ceiling
+	// is CPU-derived by default and live-tunable via VAYUSHIELD_MAX_PUBLIC.
+	a.sovereign = sovereign.New()
+	if n, err := strconv.Atoi(strings.TrimSpace(config.EnvOr("VAYUSHIELD_MAX_PUBLIC", ""))); err == nil && n > 0 {
+		a.sovereign.SetLimit(n)
+		logging.LogInfo("vayushield", fmt.Sprintf("Aegis L0 admin-sovereignty lane active — public concurrency cap %d (VAYUSHIELD_MAX_PUBLIC)", n))
+	} else {
+		logging.LogInfo("vayushield", fmt.Sprintf("Aegis L0 admin-sovereignty lane active — public concurrency cap %d (auto, CPU-derived)", a.sovereign.Cap()))
+	}
+
 	a.vaSessions = vasession.NewHasher()
 	a.vaEngagement = vastore.New(dbpkg.DB)
 	// Dashboard reads (Overview, sources, AI traffic, top pages, realtime) run a
@@ -472,6 +488,14 @@ func (a *App) shieldHeroBody(ctx context.Context) string {
 	b.WriteString(vsMetric(strconv.FormatInt(stt.RPS, 10), "Requests/sec"))
 	b.WriteString(vsMetric(strconv.FormatInt(stt.InFlight, 10), "In-flight"))
 	b.WriteString(vsMetric(strconv.Itoa(stt.Blocklisted), "Blocked IPs"))
+	// Aegis L0 — admin-sovereignty lane. Shows how many public requests are in
+	// flight against the CPU-derived cap and how many have been shed to keep the
+	// admin plane responsive. Under normal traffic these read 0 / low; a spike in
+	// "Shed (L0)" is the visible proof the console stayed alive through a flood.
+	if a.sovereign != nil {
+		b.WriteString(vsMetric(strconv.FormatInt(a.sovereign.Inflight(), 10)+" / "+strconv.FormatInt(a.sovereign.Cap(), 10), "Public lane"))
+		b.WriteString(vsMetric(strconv.FormatInt(a.sovereign.Shed(), 10), "Shed (L0)"))
+	}
 	b.WriteString(`</div>`)
 	return b.String()
 }
