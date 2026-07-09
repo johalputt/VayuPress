@@ -8,6 +8,29 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.11.2] — 2026-07-09
+
+### Added
+- **VayuMail conversation threading + snooze** (Phase 3, final part — the
+  VayuMail redesign roadmap is complete).
+  - **Threading** — messages sharing a subject (Re:/Fwd:/Fw: prefixes stripped,
+    any depth, case-insensitive) group into one conversation in every folder
+    list: the newest message is the visible row with a **count badge**; tapping
+    the badge expands/collapses the older messages in place (delegated JS, so
+    it survives HTMX swaps). Single messages are untouched, and grouping never
+    changes what actions do — every row is still individually actionable.
+  - **Snooze** — from the reading pane, snooze a received message until
+    **Tomorrow 8:00** or **Next week (Mon 8:00)**. The message physically moves
+    to a new **Snoozed** folder (visible in the panel and to IMAP clients) and
+    a background sweeper returns it to its original folder at wake time, where
+    it **resurfaces as unread** — Gmail's model. Guard rails: Sent/Drafts and
+    Snoozed itself can't be snoozed; a failed wake-row write rolls the move
+    back rather than strand mail asleep; a message moved out of Snoozed by hand
+    leaves only a stale row that the sweeper discards (it can never resurrect a
+    deleted message); manual move menus and filter rules deliberately exclude
+    the Snoozed folder, so nothing can be put to sleep without a wake time.
+    Backed by a `vayumail_snooze` wake table (idempotent).
+
 ## [3.11.1] — 2026-07-09
 
 ### Added

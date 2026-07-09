@@ -2594,6 +2594,19 @@
   .vp-os .vm-readpane:has(.vm-reader) { order: -1; margin-bottom: .6rem; }
 }
 
+/* ── VayuMail conversation threading (v-thread) ────────────────────────────── */
+.vp-os .vm-thread-count {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 1.5rem; height: 1.25rem; padding: 0 .4rem; margin-left: .4rem;
+  border: 1px solid var(--border-strong); border-radius: 999px;
+  background: transparent; color: var(--text-2);
+  font-size: .72rem; font-weight: 700; cursor: pointer;
+}
+.vp-os .vm-thread-count:hover { border-color: var(--accent); color: var(--accent); }
+.vp-os .vm-thread-count--open { background: var(--accent); border-color: var(--accent); color: #fff; }
+.vp-os tr.vm-thread-child > td { background: color-mix(in srgb, var(--border) 40%, transparent); }
+.vp-os tr.vm-thread-child .vm-subj { padding-left: 1.4rem; }
+
 /* ── VayuMail vacation autoresponder (v-ooo) ───────────────────────────────── */
 .vp-os .vm-ooo { border: 1px solid var(--border); border-radius: 10px; padding: .35rem .65rem; margin: 0 0 .5rem; }
 .vp-os .vm-ooo > summary { cursor: pointer; display: flex; align-items: center; gap: .6rem; padding: .3rem 0; list-style: none; }
