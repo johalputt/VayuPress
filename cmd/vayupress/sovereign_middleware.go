@@ -3,6 +3,8 @@ package main
 import (
 	"net/http"
 	"strings"
+
+	"github.com/johalputt/vayupress/internal/auth"
 )
 
 // sovereign_middleware.go — the request-side of the Aegis L0 Admin Sovereignty
@@ -31,9 +33,11 @@ var sovereignPrefixes = []string{
 }
 
 // isSovereignLane reports whether a request belongs to the always-admit priority
-// lane: an admin/control-plane path, or any visitor holding a verified signed
-// session (a real logged-in reader). The session check is unspoofable
-// (HMAC-verified) and allocation-free.
+// lane: an admin/control-plane path, any visitor holding a verified signed
+// session (a real logged-in reader), or a trusted operator (valid admin login
+// session — so the operator's asset loads and public-page views keep working
+// even while a flood saturates the public lane). The session checks are cheap:
+// HMAC verification, and a header parse when no admin cookie is present.
 func (a *App) isSovereignLane(r *http.Request) bool {
 	p := r.URL.Path
 	for _, pre := range sovereignPrefixes {
@@ -44,7 +48,25 @@ func (a *App) isSovereignLane(r *http.Request) bool {
 	if a.vayuShield != nil && a.vayuShield.HasVerifiedSession(r) {
 		return true
 	}
-	return false
+	return a.isTrustedOperator(r)
+}
+
+// isTrustedOperator reports whether the request carries a valid operator login
+// session (the admin console cookie). Used by the L0 sovereignty lane and
+// injected into VayuShield as TrustedFn, so a logged-in operator is
+// structurally immune to every availability gate on every path — they can
+// never be locked out of their own site, not even after jailing their own IP
+// with a load test. Cheap on the flood path: no cookie means no store lookup.
+func (a *App) isTrustedOperator(r *http.Request) bool {
+	if a.sessions == nil {
+		return false
+	}
+	token := auth.SessionTokenFromRequest(r)
+	if token == "" {
+		return false
+	}
+	_, err := a.sessions.Validate(r.Context(), token)
+	return err == nil
 }
 
 // sovereignMiddleware admits every request through the L0 gate. Priority

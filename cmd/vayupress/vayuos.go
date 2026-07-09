@@ -834,6 +834,55 @@ func vayuosNav(active string, admin bool) string {
 // (CodeQL go/reflected-xss) the HTML-context sanitiser barrier it recognises.
 func qparam(s string) string { return html.EscapeString(url.QueryEscape(s)) }
 
+// mailUserParam reads and STRICTLY validates a ?user= mailbox local-part from
+// the request. A mailbox local-part is a small, well-defined character set
+// (RFC 5321 dot-atom, lowercased by us); anything containing a character
+// outside [a-z0-9._+-] is rejected to "" rather than sanitised, so an
+// attacker-supplied value can never carry an HTML/JS metacharacter into a
+// rendered fragment or an attribute. This is the sanitiser barrier for
+// go/reflected-xss on every VayuMail page that echoes the selected mailbox.
+func mailUserParam(r *http.Request) string {
+	return sanitizeMailLocalPart(strings.TrimSpace(r.URL.Query().Get("user")))
+}
+
+// sanitizeMailLocalPart returns s unchanged when it is a valid mailbox
+// local-part, otherwise "". Empty in, empty out.
+func sanitizeMailLocalPart(s string) string {
+	if s == "" || len(s) > 64 {
+		return ""
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		ok := (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+			(c >= '0' && c <= '9') || c == '.' || c == '_' || c == '+' || c == '-'
+		if !ok {
+			return ""
+		}
+	}
+	return s
+}
+
+// mailFolderParam reads and STRICTLY validates a ?folder= name, defaulting to
+// "Inbox". Folder names (standard or custom) are restricted to letters,
+// digits, space, underscore and hyphen; anything else is rejected to the
+// default, so the folder value can never carry markup into a fragment. This is
+// the go/reflected-xss barrier for the folder parameter.
+func mailFolderParam(r *http.Request) string {
+	f := strings.TrimSpace(r.URL.Query().Get("folder"))
+	if f == "" || len(f) > 64 {
+		return "Inbox"
+	}
+	for i := 0; i < len(f); i++ {
+		c := f[i]
+		ok := (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+			(c >= '0' && c <= '9') || c == ' ' || c == '_' || c == '-'
+		if !ok {
+			return "Inbox"
+		}
+	}
+	return f
+}
+
 // ── VayuMail inbox helpers ───────────────────────────────────────────────────
 
 // mailParseFrom splits a raw From/To header ("Display Name <addr@host>" or a
@@ -1023,8 +1072,8 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	domain := a.vayuMail.Config().Domain
-	user := strings.TrimSpace(r.URL.Query().Get("user"))
-	folder := strings.TrimSpace(r.URL.Query().Get("folder"))
+	user := mailUserParam(r)
+	folder := mailFolderParam(r)
 	if folder == "" {
 		folder = "Inbox"
 	}
@@ -1275,8 +1324,8 @@ func (a *App) handleVayuOSInboxFragment(w http.ResponseWriter, r *http.Request) 
 		writeOSFragment(w, `<div class="empty-state">VayuMail is inactive.</div>`)
 		return
 	}
-	user := strings.TrimSpace(r.URL.Query().Get("user"))
-	folder := strings.TrimSpace(r.URL.Query().Get("folder"))
+	user := mailUserParam(r)
+	folder := mailFolderParam(r)
 	if folder == "" {
 		folder = "Inbox"
 	}
@@ -1375,7 +1424,7 @@ func (a *App) handleVayuOSInboxAction(w http.ResponseWriter, r *http.Request) {
 func (a *App) handleVayuOSSearch(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
-	user := strings.TrimSpace(r.URL.Query().Get("user"))
+	user := mailUserParam(r)
 	if !a.isAdminRequest(r) {
 		// Non-admins may only search their own assigned mailbox.
 		user, _ = a.ownMailbox(r)
@@ -1497,7 +1546,7 @@ func (a *App) handleVayuOSSearchFragment(w http.ResponseWriter, r *http.Request)
 		writeOSFragment(w, `<div class="empty-state">VayuMail is inactive.</div>`)
 		return
 	}
-	user := strings.TrimSpace(r.URL.Query().Get("user"))
+	user := mailUserParam(r)
 	if !a.isAdminRequest(r) {
 		user, _ = a.ownMailbox(r)
 	}
@@ -1628,12 +1677,12 @@ func mailPGPBadge(raw []byte) string {
 func (a *App) handleVayuOSMessage(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
-	user := strings.TrimSpace(r.URL.Query().Get("user"))
+	user := mailUserParam(r)
 	if !a.isAdminRequest(r) {
 		// Non-admins may only read messages in their own assigned mailbox.
 		user, _ = a.ownMailbox(r)
 	}
-	folder := strings.TrimSpace(r.URL.Query().Get("folder"))
+	folder := mailFolderParam(r)
 	if folder == "" {
 		folder = "Inbox"
 	}

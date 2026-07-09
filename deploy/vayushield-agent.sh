@@ -96,8 +96,13 @@ reconcile_banlist() {
   fi
   local now count=0
   now="$(date -u +%s)"
-  local batch
+  local batch xdp_new
   batch="$(mktemp)"
+  xdp_new="$(mktemp)"
+  # Mirror the file EXACTLY: flush both sets and re-add every valid entry in
+  # the same atomic nft transaction. This honours removals (pardons — e.g. a
+  # jailed visitor solved the challenge), not just additions.
+  printf 'flush set inet %s banned4\nflush set inet %s banned6\n' "$DYN_TABLE" "$DYN_TABLE" >>"$batch"
   if [ -f "$BANLIST" ]; then
     # Strict per-line validation: field 1 must be only [0-9a-fA-F.:] (an IP),
     # field 2 only digits (the expiry). Anything else is ignored.
@@ -117,12 +122,24 @@ reconcile_banlist() {
         *)   printf 'add element inet %s banned4 { %s timeout %ss }\n' "$DYN_TABLE" "$ip" "$ttl" >>"$batch" ;;
       esac
       count=$((count + 1))
-      # Mirror into the XDP filter when the tooling is present (best-effort;
-      # drops the source even before the kernel network stack).
-      if command -v xdp-filter >/dev/null 2>&1; then
-        xdp-filter ip "$ip" -m drop >/dev/null 2>&1 || true
-      fi
+      printf '%s\n' "$ip" >>"$xdp_new"
     done <"$BANLIST"
+  fi
+  # Mirror into the XDP filter when the tooling is present (best-effort; drops
+  # the source before the kernel network stack). Removals are honoured by
+  # diffing against what we added last poll, so a pardon lifts the XDP drop too.
+  if command -v xdp-filter >/dev/null 2>&1; then
+    local xdp_prev="${CONTROL_DIR}/offload.xdp.state"
+    while read -r ip; do
+      [ -n "$ip" ] && xdp-filter ip "$ip" -m src >/dev/null 2>&1 || true
+    done <"$xdp_new"
+    if [ -f "$xdp_prev" ]; then
+      while read -r old; do
+        [ -n "$old" ] || continue
+        grep -qxF "$old" "$xdp_new" || xdp-filter ip --remove "$old" -m src >/dev/null 2>&1 || true
+      done <"$xdp_prev"
+    fi
+    cp -f "$xdp_new" "$xdp_prev" 2>/dev/null || true
   fi
   if [ -s "$batch" ]; then
     # Element adds are idempotent per element; a duplicate only refreshes its
@@ -139,7 +156,7 @@ reconcile_banlist() {
     clear_reason offload
   fi
   printf '%s' "$count" >"${CONTROL_DIR}/offload.count" 2>/dev/null || true
-  rm -f "$batch"
+  rm -f "$batch" "$xdp_new"
 }
 
 reconcile_tier2() {

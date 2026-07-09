@@ -34,18 +34,23 @@ type Gate struct {
 // spawn unbounded concurrent heavy work and starve the admin plane.
 func New() *Gate { return &Gate{max: defaultMax()} }
 
-// defaultMax scales the public-concurrency ceiling with the CPU count: 64
-// concurrent public requests per core, floored at 128. On a 1-vCPU VPS that is
-// 128 — plenty for real readers, while a flood beyond it is shed instantly.
+// defaultMax scales the public-concurrency ceiling with the CPU count: 16
+// concurrent public requests per core, floored at 32. Public requests are the
+// EXPENSIVE kind (classification + render + SQLite; assets and the admin plane
+// ride the priority lane), so the cap must be low enough that a flood filling
+// it still leaves real CPU headroom — 32 in-flight renders at ~20 ms each is
+// ~1,600 req/s of legitimate capacity on a 1-vCPU VPS, while 128+ concurrent
+// renders (the previous default) starved the scheduler badly enough that even
+// priority requests crawled.
 func defaultMax() int64 {
 	n := int64(runtime.GOMAXPROCS(0))
 	if n < 1 {
 		n = 1
 	}
-	if m := n * 64; m > 128 {
+	if m := n * 16; m > 32 {
 		return m
 	}
-	return 128
+	return 32
 }
 
 // SetLimit live-tunes the public cap. n <= 0 restores the CPU-derived default.

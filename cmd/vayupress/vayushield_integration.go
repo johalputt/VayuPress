@@ -99,9 +99,14 @@ func (a *App) bootVayuShield() {
 		Bots:   bots,
 		Signer: signer,
 		DB:     dbpkg.DB,
-		// The admin panel, API, feeds, health/metrics and the shield's own
-		// endpoints are never challenged.
-		BypassPrefixes:    []string{"/os", "/api", "/admin", "/debug", "/health", "/metrics", "/__vayushield", "/__vayuanalytics", "/.well-known"},
+		// The admin panel, API, feeds, health/metrics, the shield's own
+		// endpoints AND static assets are never challenged or blocked. /static
+		// matters: a challenge/429 in place of a stylesheet or htmx.js breaks
+		// the page that references it — including the admin panel itself, whose
+		// Save/refresh buttons die if the operator's jailed IP can't load JS.
+		// Assets are cheap to serve and volumetric abuse of them is still
+		// bounded by the L0 public-concurrency lane.
+		BypassPrefixes:    []string{"/os", "/api", "/admin", "/debug", "/health", "/metrics", "/static", "/__vayushield", "/__vayuanalytics", "/.well-known"},
 		SessionCookieName: "vayushield",
 		CountryFn:         geoip.Country,
 		ClientIP:          auth.ClientIP,
@@ -117,6 +122,17 @@ func (a *App) bootVayuShield() {
 		},
 		// L1 kernel offload: jailed IPs also get dropped by nftables/XDP.
 		OffloadFn: a.shieldOffload.Ban,
+		// Operator immunity: a valid admin login session is exempt from every
+		// gate on every path — the operator can never be locked out. Their IP
+		// is also marked protected in the L1 exporter, because a kernel drop is
+		// the one gate app-level immunity cannot override.
+		TrustedFn: func(r *http.Request) bool {
+			if !a.isTrustedOperator(r) {
+				return false
+			}
+			a.shieldOffload.Protect(auth.ClientIP(r))
+			return true
+		},
 	})
 
 	// Apply the operator's persisted settings (bot protection + Tier-1 resilience
@@ -221,8 +237,10 @@ func (a *App) handleVayuShieldPoW(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// A solved challenge is the strongest human proof: raise the source's L5
-	// reputation and pardon any sentence it was serving.
+	// reputation, pardon any sentence it was serving, and withdraw any pending
+	// kernel ban so the pardon reaches the L1 offload within one agent poll.
 	a.vayuShield.RewardProof(r)
+	a.shieldOffload.Unban(auth.ClientIP(r))
 	http.SetCookie(w, a.vayuShield.SessionCookie(tok))
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -391,6 +409,14 @@ func (a *App) handleOSShield(w http.ResponseWriter, r *http.Request) {
 	b.WriteString(a.shieldHeroBody(r.Context()))
 	b.WriteString(`</div>`)
 
+	// ── Aegis defense layers — the live pipeline map. Each chip is one layer
+	// (L0 sovereignty, L1 kernel, L2 fair-shed, L4 challenges, L5 reputation)
+	// with its live counters; the whole strip refreshes in place every 10s and
+	// after every settings save. Pure HTMX + CSS — no page JS. ────────────────
+	b.WriteString(`<div class="card" id="vs-body-aegis" hx-get="/os/shield/section/aegis" hx-trigger="every 10s, vs-refresh from:body" hx-swap="innerHTML">`)
+	b.WriteString(a.shieldAegisBody())
+	b.WriteString(`</div>`)
+
 	// ── Protection & settings — collapsible. The form saves via HTMX (hx-post)
 	// and the server replies with an HX-Trigger that fires vs-refresh, so ONLY
 	// this section's body (and the status hero) reload in place to show the
@@ -441,6 +467,15 @@ func (a *App) handleOSShield(w http.ResponseWriter, r *http.Request) {
 	// operator can paste the exact command instead of typing it.
 	b.WriteString(`<script nonce="` + nonce + `">
 (function(){'use strict';
+// Save feedback: the settings save replies with HX-Trigger vs-refresh; flash
+// an ephemeral "Applied" toast so the operator gets instant confirmation even
+// while the sections re-render. Works during a flood because /os rides the
+// Aegis L0 sovereignty lane.
+document.body.addEventListener('vs-refresh',function(){
+  var t=document.createElement('div');t.className='vs-toast';t.textContent='✓ Settings applied — live on every request';
+  document.body.appendChild(t);requestAnimationFrame(function(){t.classList.add('is-in');});
+  setTimeout(function(){t.classList.remove('is-in');setTimeout(function(){t.remove();},400);},2200);
+});
 document.querySelectorAll('.vs-copy-btn').forEach(function(btn){
   btn.addEventListener('click',function(){
     var el=document.getElementById(btn.getAttribute('data-copy'));
@@ -521,6 +556,97 @@ func (a *App) shieldHeroBody(ctx context.Context) string {
 	b.WriteString(vsMetric(strconv.Itoa(stt.RepJailed)+" / "+strconv.Itoa(stt.Suspects), "Rep-jailed / suspects (L5)"))
 	b.WriteString(`</div>`)
 	return b.String()
+}
+
+// shieldAegisBody renders the live Aegis defense-layer map: one chip per
+// layer with its live counters, ordered as a request actually traverses them.
+// Every read is an in-memory atomic/counter (plus two tiny control-dir file
+// reads for L1), so it is safe to poll.
+func (a *App) shieldAegisBody() string {
+	var stt vayushield.Status
+	if a.vayuShield != nil {
+		stt = a.vayuShield.Status()
+	}
+	var b strings.Builder
+	b.WriteString(`<div class="vs-title">Aegis — sovereign defense layers</div>`)
+	b.WriteString(`<p class="muted text-sm vs-lead">Every request runs this gauntlet, cheapest first. All layers are automatic — they observe continuously, act only under genuine pressure, and stand down on their own.</p>`)
+	b.WriteString(`<div class="vs-aegis">`)
+
+	// L0 — admin sovereignty lane.
+	l0 := "idle"
+	var inflight, cap0, shed0 int64
+	if a.sovereign != nil {
+		inflight, cap0, shed0 = a.sovereign.Inflight(), a.sovereign.Cap(), a.sovereign.Shed()
+		if inflight*4 >= cap0*3 {
+			l0 = "hot"
+		} else if inflight > 0 {
+			l0 = "live"
+		}
+	}
+	b.WriteString(vsLayer("L0", "Sovereignty lane", l0,
+		"Admin &amp; verified traffic always has headroom",
+		"public "+strconv.FormatInt(inflight, 10)+" / "+strconv.FormatInt(cap0, 10),
+		"shed "+strconv.FormatInt(shed0, 10)))
+
+	// L1 — kernel offload (state written by the root agent).
+	l1state, l1count := shieldOffloadStatus()
+	l1 := "off"
+	l1desc := "Installs with Tier 2 — bans drop in-kernel"
+	switch l1state {
+	case "active":
+		l1 = "live"
+		l1desc = "Jail verdicts enforced by nftables/XDP"
+	case "error":
+		l1 = "hot"
+		l1desc = "Agent reported an error — see Network hardening"
+	}
+	b.WriteString(vsLayer("L1", "Kernel offload", l1, l1desc,
+		"banned "+l1count, ""))
+
+	// L2 — probabilistic fair-shed.
+	l2 := "live"
+	if stt.FairShed > 0 {
+		l2 = "hot"
+	}
+	b.WriteString(vsLayer("L2", "Fair-shed pre-filter", l2,
+		"Heavy hitters shed first, fair budgets never",
+		"window "+strconv.FormatInt(stt.WindowRate, 10)+" req",
+		"shed "+strconv.FormatInt(stt.FairShed, 10)))
+
+	// L4 — self-calibrating challenges.
+	l4 := "live"
+	if stt.CalibrationBias > 0 {
+		l4 = "tuned"
+	}
+	b.WriteString(vsLayer("L4", "Silent challenges", l4,
+		"Self-calibrating — loosens if it bothers humans",
+		"served "+strconv.FormatInt(stt.ChallengesServed, 10)+" · passed "+strconv.FormatInt(stt.ChallengesPassed, 10),
+		"bias +"+ftoa2(stt.CalibrationBias)))
+
+	// L5 — online reputation.
+	l5 := "live"
+	if stt.RepJailed > 0 {
+		l5 = "hot"
+	}
+	b.WriteString(vsLayer("L5", "Reputation brain", l5,
+		"Learns offenders in minutes, forgives automatically",
+		"suspects "+strconv.Itoa(stt.Suspects)+" · jailed "+strconv.Itoa(stt.RepJailed),
+		"pardons "+strconv.FormatInt(stt.Pardons, 10)))
+
+	b.WriteString(`</div>`)
+	return b.String()
+}
+
+// vsLayer renders one Aegis layer chip. state ∈ idle|live|tuned|hot|off maps
+// to a CSS accent class.
+func vsLayer(tag, name, state, desc, stat1, stat2 string) string {
+	var s strings.Builder
+	s.WriteString(`<div class="vs-layer is-` + state + `"><div class="vs-layer-tag">` + tag + `</div><div class="vs-layer-body"><div class="vs-layer-name">` + name + `</div><div class="vs-layer-desc">` + desc + `</div><div class="vs-layer-stats"><span>` + html.EscapeString(stat1) + `</span>`)
+	if stat2 != "" {
+		s.WriteString(`<span>` + html.EscapeString(stat2) + `</span>`)
+	}
+	s.WriteString(`</div></div></div>`)
+	return s.String()
 }
 
 // shieldProtectionBody renders the protection/availability/analytics settings
@@ -646,6 +772,8 @@ func (a *App) handleOSShieldSection(w http.ResponseWriter, r *http.Request) {
 	switch chi.URLParam(r, "name") {
 	case "hero":
 		out = a.shieldHeroBody(r.Context())
+	case "aegis":
+		out = a.shieldAegisBody()
 	case "protection":
 		out = a.shieldProtectionBody(r.Context())
 	case "signatures":

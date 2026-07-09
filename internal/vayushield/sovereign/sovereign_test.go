@@ -96,8 +96,8 @@ func TestShedReleaseIsNoop(t *testing.T) {
 func TestSetLimitDefaults(t *testing.T) {
 	g := New()
 	def := g.Cap()
-	if def < 128 {
-		t.Fatalf("default cap = %d, want >= 128", def)
+	if def < 32 {
+		t.Fatalf("default cap = %d, want >= 32", def)
 	}
 	g.SetLimit(500)
 	if g.Cap() != 500 {

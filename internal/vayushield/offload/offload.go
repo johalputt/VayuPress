@@ -20,6 +20,7 @@
 package offload
 
 import (
+	"net"
 	"net/netip"
 	"os"
 	"path/filepath"
@@ -38,11 +39,12 @@ const (
 
 // Exporter maintains the kernel ban file. Safe for concurrent use.
 type Exporter struct {
-	mu      sync.Mutex
-	dir     string
-	entries map[string]time.Time // ip -> expiry
-	dirty   bool
-	now     func() time.Time
+	mu        sync.Mutex
+	dir       string
+	entries   map[string]time.Time // ip -> expiry
+	protected map[string]time.Time // operator IPs immune from banning
+	dirty     bool
+	now       func() time.Time
 }
 
 // New builds an exporter that writes into dir (the VayuShield control
@@ -50,24 +52,84 @@ type Exporter struct {
 // place to read from; failures are silent — offload is best-effort by design.
 func New(dir string) *Exporter {
 	_ = os.MkdirAll(dir, 0o750)
-	return &Exporter{dir: dir, entries: make(map[string]time.Time), now: time.Now}
+	return &Exporter{
+		dir:       dir,
+		entries:   make(map[string]time.Time),
+		protected: make(map[string]time.Time),
+		now:       time.Now,
+	}
 }
 
-// Ban records that ip should be dropped in-kernel until now+ttl. Invalid IPs
-// and non-positive TTLs are ignored. The write itself happens on the next
-// debounced flush.
+// canonical strips any :port and normalizes the address, returning "" for
+// anything that is not a plain IP.
+func canonical(ip string) string {
+	if h, _, err := net.SplitHostPort(ip); err == nil {
+		ip = h
+	}
+	addr, err := netip.ParseAddr(ip)
+	if err != nil {
+		return ""
+	}
+	return addr.String()
+}
+
+// Protect marks ip as an operator address: it can never be banned, and any
+// pending ban for it is withdrawn. A kernel drop is the one gate app-level
+// operator immunity cannot override, so the ban must never be exported in the
+// first place. Protection lasts 24 h from the most recent trusted request.
+func (e *Exporter) Protect(ip string) {
+	key := canonical(ip)
+	if key == "" {
+		return
+	}
+	now := e.now()
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	// Refresh at most once a minute so per-request calls stay a cheap map read.
+	if until, ok := e.protected[key]; ok && until.Sub(now) > 23*time.Hour+59*time.Minute {
+		return
+	}
+	e.protected[key] = now.Add(24 * time.Hour)
+	if _, banned := e.entries[key]; banned {
+		delete(e.entries, key)
+		e.dirty = true
+	}
+}
+
+// Unban withdraws any pending ban for ip (a pardon — e.g. the source solved a
+// challenge). The agent mirrors the file exactly, so the kernel entry is
+// removed within one reconcile poll.
+func (e *Exporter) Unban(ip string) {
+	key := canonical(ip)
+	if key == "" {
+		return
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if _, ok := e.entries[key]; ok {
+		delete(e.entries, key)
+		e.dirty = true
+	}
+}
+
+// Ban records that ip should be dropped in-kernel until now+ttl. Invalid IPs,
+// non-positive TTLs and protected (operator) addresses are ignored. The write
+// itself happens on the next debounced flush.
 func (e *Exporter) Ban(ip string, ttl time.Duration) {
 	if ttl <= 0 {
 		return
 	}
-	addr, err := netip.ParseAddr(ip)
-	if err != nil {
+	key := canonical(ip)
+	if key == "" {
 		return
 	}
-	exp := e.now().Add(ttl)
-	key := addr.String() // canonical form
+	now := e.now()
+	exp := now.Add(ttl)
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	if until, ok := e.protected[key]; ok && until.After(now) {
+		return
+	}
 	if cur, ok := e.entries[key]; !ok || exp.After(cur) {
 		e.entries[key] = exp
 		e.dirty = true
