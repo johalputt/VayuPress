@@ -123,10 +123,41 @@ func (e *Engine) DeliverInbound(recipientEmail string, raw []byte) (string, erro
 			return e.maildir.DeliverTo(domain, local, "Junk", raw)
 		}
 	}
+	// Server-side filter rules: first match wins. Mail a rule files into Junk
+	// or Trash behaves like junk-filtered mail — no forward, no autoreply.
+	addr := local + "@" + domain
+	if rule := e.applyFilters(addr, raw); rule != nil {
+		switch rule.Action {
+		case "move":
+			folder := canonicalFolder(rule.Target)
+			id, err := e.maildir.DeliverTo(domain, local, folder, raw)
+			if err == nil && !strings.EqualFold(folder, "Junk") && !strings.EqualFold(folder, "Trash") {
+				e.forwardCopy(addr, raw)
+				e.maybeAutoReply(addr, raw)
+			}
+			return id, err
+		case "markread", "pin":
+			id, err := e.maildir.Deliver(domain, local, raw)
+			if err == nil {
+				if rule.Action == "markread" {
+					if nid, merr := e.MarkRead(local, "Inbox", id); merr == nil && nid != "" {
+						id = nid
+					}
+				} else {
+					if nid, perr := e.SetPinned(local, "Inbox", id, true); perr == nil && nid != "" {
+						id = nid
+					}
+				}
+				e.forwardCopy(addr, raw)
+				e.maybeAutoReply(addr, raw)
+			}
+			return id, err
+		}
+	}
 	id, err := e.maildir.Deliver(domain, local, raw)
 	if err == nil {
-		e.forwardCopy(local+"@"+domain, raw)
-		e.maybeAutoReply(local+"@"+domain, raw)
+		e.forwardCopy(addr, raw)
+		e.maybeAutoReply(addr, raw)
 	}
 	return id, err
 }

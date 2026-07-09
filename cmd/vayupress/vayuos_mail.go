@@ -835,8 +835,114 @@ func (a *App) handleVayuOSAccounts(w http.ResponseWriter, r *http.Request) {
 	// Vacation autoresponder — per-mailbox out-of-office, same HTMX pattern.
 	body.WriteString(`<div id="vm-autoreply-card">` + a.vayuAutoreplyCard(r.Context()) + `</div>`)
 
+	// Server-side filter rules — per-mailbox delivery rules, same HTMX pattern.
+	body.WriteString(`<div id="vm-filter-card">` + a.vayuFiltersCard(r.Context()) + `</div>`)
+
 	body.WriteString(`<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail.js?v=` + assetVer("js/admin-os-mail.js") + `"></script>`)
 	writeOSHTML(w, adminOSLayout(nonce, "Mail accounts", "vayuos", cfg, htmpl.HTML(body.String())))
+}
+
+// vayuFiltersCard renders the per-mailbox delivery-rules card. Rules run at
+// delivery, first match wins. Add/delete POST /os/vayumail/filters/action and
+// swap this card in place.
+func (a *App) vayuFiltersCard(ctx context.Context) string {
+	accts := a.vayuMail.Accounts()
+	accs, _ := accts.List(ctx)
+
+	post := ` hx-post="/os/vayumail/filters/action" hx-target="#vm-filter-card" hx-swap="innerHTML"`
+	var b strings.Builder
+	b.WriteString(`<div class="card"><div class="card-title">Filter rules</div>`)
+	b.WriteString(`<p class="muted text-sm">Delivery rules, applied server-side to every inbound message — <strong>first matching rule wins</strong> (top to bottom). Rules filing into Junk or Trash suppress auto-forward and the autoresponder, like the junk filter.</p>`)
+	for _, ac := range accs {
+		rules, _ := accts.FiltersFor(ctx, ac.Email)
+		he := html.EscapeString(ac.Email)
+		count := ""
+		if len(rules) > 0 {
+			count = `<span class="badge badge--ok">` + strconv.Itoa(len(rules)) + `</span>`
+		}
+		b.WriteString(`<details class="vm-ooo"><summary><span class="mono">` + he + `</span> ` + count + `</summary>`)
+		b.WriteString(`<div class="table-wrap"><table class="table"><thead><tr><th>#</th><th>When</th><th>Then</th><th></th></tr></thead><tbody>`)
+		if len(rules) == 0 {
+			b.WriteString(`<tr><td colspan="4" class="muted">No rules yet.</td></tr>`)
+		}
+		for i, rl := range rules {
+			then := ""
+			switch rl.Action {
+			case "move":
+				then = "move to " + html.EscapeString(rl.Target)
+			case "markread":
+				then = "mark as read"
+			case "pin":
+				then = "pin"
+			}
+			b.WriteString(`<tr><td class="muted">` + strconv.Itoa(i+1) + `</td><td>` + html.EscapeString(rl.Field) + ` contains <span class="mono">` + html.EscapeString(rl.Contains) + `</span></td><td>` + then + `</td><td>` +
+				`<button type="button" class="btn btn--sm btn--danger"` + post + hxVals("op", "delete", "email", ac.Email, "id", strconv.FormatInt(rl.ID, 10)) + `>Delete</button></td></tr>`)
+		}
+		b.WriteString(`</tbody></table></div>`)
+		// Add-rule form.
+		b.WriteString(`<form class="vm-row vm-row--end"` + post + `><input type="hidden" name="op" value="create"><input type="hidden" name="email" value="` + he + `">`)
+		b.WriteString(`<label class="field"><span class="field-label">When</span><select class="input input--sm" name="field"><option value="from">From</option><option value="to">To/Cc</option><option value="subject">Subject</option></select></label>`)
+		b.WriteString(`<label class="field vm-grow"><span class="field-label">contains</span><input class="input input--sm" type="text" name="contains" placeholder="newsletter@" required></label>`)
+		b.WriteString(`<label class="field"><span class="field-label">Then</span><select class="input input--sm" name="action">`)
+		for _, f := range vmail.StandardFolders {
+			if strings.EqualFold(f, "Inbox") {
+				continue
+			}
+			b.WriteString(`<option value="move:` + html.EscapeString(f) + `">Move to ` + html.EscapeString(f) + `</option>`)
+		}
+		b.WriteString(`<option value="markread">Mark as read</option><option value="pin">Pin</option></select></label>`)
+		b.WriteString(`<button class="btn btn--primary btn--sm" type="submit">Add rule</button></form>`)
+		b.WriteString(`</details>`)
+	}
+	if len(accs) == 0 {
+		b.WriteString(`<p class="muted">No mail accounts yet.</p>`)
+	}
+	b.WriteString(`</div>`)
+	return b.String()
+}
+
+// handleVayuOSFilterAction creates or deletes a delivery rule and returns the
+// refreshed card (HTMX swap). Admin-only (the card lives on the Accounts page).
+func (a *App) handleVayuOSFilterAction(w http.ResponseWriter, r *http.Request) {
+	if a.vayuMail == nil || !a.vayuMail.Config().Enabled || a.vayuMail.Accounts() == nil {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", "VayuMail is not active", "")
+		return
+	}
+	if !a.isAdminRequest(r) {
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", "administrators only", "")
+		return
+	}
+	_ = r.ParseForm()
+	accts := a.vayuMail.Accounts()
+	email := strings.TrimSpace(r.FormValue("email"))
+	var opErr error
+	switch r.FormValue("op") {
+	case "create":
+		action, target := r.FormValue("action"), ""
+		if f, ok := strings.CutPrefix(action, "move:"); ok {
+			action, target = "move", f
+		}
+		opErr = accts.CreateFilter(r.Context(), vmail.FilterRule{
+			Mailbox: email, Field: r.FormValue("field"),
+			Contains: r.FormValue("contains"), Action: action, Target: target,
+		})
+		if opErr == nil {
+			dbpkg.AuditLog("vayumail.filter.create", dbpkg.AuditActor(r), email, r.FormValue("field")+"~"+r.FormValue("contains"))
+		}
+	case "delete":
+		id, _ := strconv.ParseInt(r.FormValue("id"), 10, 64)
+		opErr = accts.DeleteFilter(r.Context(), email, id)
+		if opErr == nil {
+			dbpkg.AuditLog("vayumail.filter.delete", dbpkg.AuditActor(r), email, r.FormValue("id"))
+		}
+	default:
+		opErr = errors.New("unknown operation")
+	}
+	card := a.vayuFiltersCard(r.Context())
+	if opErr != nil {
+		card = `<div class="empty-state" role="alert">⚠ ` + html.EscapeString(opErr.Error()) + `</div>` + card
+	}
+	writeOSHTML(w, card)
 }
 
 // vayuAliasesCard renders the "Aliases & forwarding" card: extra receive-only

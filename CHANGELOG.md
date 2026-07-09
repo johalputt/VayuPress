@@ -8,6 +8,21 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.11.1] — 2026-07-09
+
+### Added
+- **VayuMail server-side filter rules** (Phase 3, part 3). Per-mailbox delivery
+  rules applied to every inbound message at the server — *when From/To-Cc/Subject
+  contains X, then move to folder / mark as read / pin*. Evaluation is
+  **first-match-wins** in creation order (one predictable action per message);
+  matching is case-insensitive and confined to the header block, so body text
+  can't trigger a rule. Rules filing into **Junk or Trash suppress auto-forward
+  and the autoresponder** (same discipline as the junk filter); moves to other
+  folders keep both working. Managed from a new **Filter rules** card on the
+  Accounts page (per-mailbox, HTMX in-place add/delete, audit-logged; capped at
+  50 rules per mailbox). Best-effort by design — a rules-storage problem can
+  never fail delivery. Backed by a new `vayumail_filters` table (idempotent).
+
 ## [3.11.0] — 2026-07-09
 
 ### Added
