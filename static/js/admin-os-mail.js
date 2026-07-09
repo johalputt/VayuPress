@@ -4,6 +4,23 @@
 (function () {
   'use strict';
 
+  // safeNav navigates only to a same-origin, absolute-path URL. Server-built
+  // nav targets (data-back / data-next) are already URL-encoded, but these
+  // values round-trip through DOM attributes, so we re-validate here before
+  // assigning to location.href: a value that is not a plain "/path" (e.g. a
+  // "javascript:" URL, a protocol-relative "//host", or a "/\evil" that some
+  // browsers treat as protocol-relative) is rejected in favour of a safe
+  // fallback. This closes any DOM-based open-redirect / script-URL vector
+  // regardless of what reaches the attribute.
+  function safeNav(url, fallback) {
+    var fb = fallback || '/os/vayumail/inbox';
+    if (typeof url !== 'string' || url.charAt(0) !== '/' ||
+        url.charAt(1) === '/' || url.charAt(1) === '\\') {
+      url = fb;
+    }
+    window.location.href = url;
+  }
+
   // Split reading pane: highlight the row whose message is open in the pane.
   // Delegated on document so it keeps working after the list is swapped by HTMX.
   document.addEventListener('click', function (e) {
@@ -530,7 +547,7 @@
     var nextURL = actions.getAttribute('data-next') || '';
     // After a message leaves the folder (move/junk/trash/delete) continue to the
     // next message if there is one, otherwise fall back to the folder list.
-    var advance = function () { window.location.href = nextURL || backURL; };
+    var advance = function () { safeNav(nextURL || backURL, backURL); };
 
     // Move / Junk / Trash / Restore buttons.
     actions.querySelectorAll('[data-mail-move]').forEach(function (btn) {
@@ -549,7 +566,7 @@
       btn.addEventListener('click', function () {
         var mark = btn.getAttribute('data-mail-mark');
         postJSON('/os/vayumail/message/action', { user: user, id: id, folder: folder, mark: mark }).then(function (res) {
-          if (res.ok) { acctToast(mark === 'unread' ? 'Marked unread' : 'Marked read'); window.location.href = backURL; }
+          if (res.ok) { acctToast(mark === 'unread' ? 'Marked unread' : 'Marked read'); safeNav(backURL); }
           else acctToast('Mark failed: ' + errText(res), true);
         });
       });

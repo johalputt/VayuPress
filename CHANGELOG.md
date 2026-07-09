@@ -8,6 +8,53 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.11.9] — 2026-07-09
+
+### Fixed
+- **Operator lock-out & dead Save/refresh under attack** — the critical
+  availability regression from the Aegis rollout. When an operator load-tested
+  their own site, their own IP got jailed, and every public page plus every
+  `/static` asset then returned `429`/`503` — so the admin panel's JavaScript
+  never loaded and Save/refresh silently did nothing. Root cause was three
+  gaps working together; all three are now closed:
+  - **Operator immunity (structural).** A valid admin login session is now
+    exempt from *every* gate on *every* path — blocklist, reputation jail,
+    load-shed, rate-limit, fair-shed and the challenge ladder — via a new
+    `TrustedFn`. The operator can never be locked out of their own site, not
+    even after jailing their own IP. Their IP is additionally marked
+    *protected* in the L1 kernel exporter (a kernel drop is the one gate
+    app-level immunity can't override), so it is never exported to nftables/XDP
+    and any pending ban is withdrawn.
+  - **Static assets exempt.** `/static` joined the bypass list: a challenge or
+    `429` served in place of a stylesheet or `htmx.js` breaks the very page
+    that loads it (including the admin console). Assets are cheap and their
+    volumetric abuse is still bounded by the L0 lane.
+  - **Jail is now redeemable, not a dead end.** A jailed source (blocklist or
+    reputation) is served the *silent proof-of-work interstitial* instead of a
+    flat `429` (except during an active flood, where the cheap rejection still
+    applies). Solving it pardons the reputation sentence **and** lifts the
+    blocklist jail **and** withdraws the kernel ban — so a false positive,
+    including a shared/NAT IP, self-heals in one page load with no human
+    interaction.
+- **L0 public-concurrency cap right-sized.** The sovereignty lane's default
+  ceiling dropped from 64/core (floor 128) to **16/core (floor 32)**. Public
+  requests are the expensive kind (classification + render + SQLite); 128+
+  concurrent renders starved the scheduler badly enough that even priority
+  admin requests crawled. 32 concurrent renders is ample legitimate capacity
+  while leaving real CPU headroom under a flood.
+
+### Security
+- **Reflected-XSS hardening (CodeQL #36, #49).** VayuMail's `?user=` and
+  `?folder=` parameters are now strictly validated at read time —
+  mailbox-local-part and folder-name character whitelists, rejecting anything
+  that could carry an HTML/JS metacharacter — giving static analysis a clean
+  sanitiser barrier in addition to the existing per-use escaping.
+- **DOM-navigation hardening (CodeQL #50, #51).** The VayuMail message-action
+  script routes every `location.href` navigation through a new `safeNav()`
+  guard that permits only same-origin absolute paths, closing any DOM-based
+  open-redirect / `javascript:`-URL vector even though the server-built
+  targets were already URL-encoded.
+
 ## [3.11.8] — 2026-07-09
 
 ### Added

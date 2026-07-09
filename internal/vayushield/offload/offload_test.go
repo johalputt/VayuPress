@@ -13,6 +13,9 @@ import (
 func read(t *testing.T, dir string) string {
 	t.Helper()
 	b, err := os.ReadFile(filepath.Join(dir, fileName))
+	if os.IsNotExist(err) {
+		return "" // no file == no bans
+	}
 	if err != nil {
 		t.Fatalf("read banlist: %v", err)
 	}
@@ -116,5 +119,45 @@ func TestConcurrentBanFlushIsRaceFree(t *testing.T) {
 	e.Flush()
 	if e.Count() == 0 {
 		t.Fatal("bans should be live after concurrent writes")
+	}
+}
+
+func TestProtectPreventsBan(t *testing.T) {
+	dir := t.TempDir()
+	e := New(dir)
+	e.Protect("203.0.113.200:9999") // operator IP (with port)
+	e.Ban("203.0.113.200", time.Hour)
+	e.Flush()
+	if strings.Contains(read(t, dir), "203.0.113.200") {
+		t.Fatal("a protected operator IP must never be banned")
+	}
+	if e.Count() != 0 {
+		t.Fatalf("count = %d, want 0", e.Count())
+	}
+}
+
+func TestProtectWithdrawsExistingBan(t *testing.T) {
+	dir := t.TempDir()
+	e := New(dir)
+	e.Ban("203.0.113.201", time.Hour)
+	e.Protect("203.0.113.201")
+	e.Flush()
+	if strings.Contains(read(t, dir), "203.0.113.201") {
+		t.Fatal("protecting an already-banned IP must withdraw the ban")
+	}
+}
+
+func TestUnbanPardons(t *testing.T) {
+	dir := t.TempDir()
+	e := New(dir)
+	e.Ban("203.0.113.202", time.Hour)
+	e.Flush()
+	if !strings.Contains(read(t, dir), "203.0.113.202") {
+		t.Fatal("setup: ban should be present")
+	}
+	e.Unban("203.0.113.202:1234") // pardon (with port)
+	e.Flush()
+	if strings.Contains(read(t, dir), "203.0.113.202") {
+		t.Fatal("unban must remove the entry so the agent lifts the kernel drop")
 	}
 }

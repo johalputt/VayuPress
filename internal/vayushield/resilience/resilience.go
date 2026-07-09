@@ -231,6 +231,18 @@ func (b *Blocklist) Block(key string, ttl time.Duration) {
 	s.mu.Unlock()
 }
 
+// Unblock releases key from the jail immediately (a pardon). No-op when the
+// key is not jailed.
+func (b *Blocklist) Unblock(key string) {
+	if key == "" {
+		return
+	}
+	s := b.shard(key)
+	s.mu.Lock()
+	delete(s.m, key)
+	s.mu.Unlock()
+}
+
 // Blocked reports whether key is currently jailed (expired entries are dropped).
 func (b *Blocklist) Blocked(key string) bool {
 	if key == "" {

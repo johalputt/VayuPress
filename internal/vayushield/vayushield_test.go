@@ -379,8 +379,13 @@ func TestBadBotAutoJailedOnBlock(t *testing.T) {
 	req2 := httptest.NewRequest("GET", "/post", nil)
 	req2.Header.Set("User-Agent", "sqlmap/1.7")
 	h.ServeHTTP(rr2, req2)
-	if rr2.Code != http.StatusTooManyRequests {
-		t.Fatalf("second request from a jailed bad-bot IP should be dropped by the blocklist (429), got %d", rr2.Code)
+	// The jailed IP is caught by the O(1) blocklist gate WITHOUT re-running
+	// classification, and — new in the Aegis rebuild — gets the redeemable
+	// challenge interstitial instead of a dead-end 429, so a false positive
+	// (e.g. a shared IP) can prove human and pardon itself.
+	if rr2.Header().Get("X-VayuShield") != "challenge" {
+		t.Fatalf("second request from a jailed IP should get the redeemable challenge, got %d %q",
+			rr2.Code, rr2.Header().Get("X-VayuShield"))
 	}
 }
 
@@ -514,12 +519,14 @@ func TestMiddlewareReputationJailAndVerifiedExemption(t *testing.T) {
 	for i := 0; i < 12; i++ {
 		rr := httptest.NewRecorder()
 		h.ServeHTTP(rr, browserReq("/post"))
-		if rr.Code == http.StatusTooManyRequests {
+		if rr.Code != 200 {
 			last = rr.Header().Get("X-VayuShield")
 		}
 	}
-	if last != "reputation" {
-		t.Fatalf("flooding source should end up reputation-jailed, last reason %q", last)
+	// A jailed source now gets the redeemable challenge interstitial (its way
+	// to prove human and self-pardon), not a dead-end flat rejection.
+	if last != "challenge" {
+		t.Fatalf("flooding source should end up jailed behind a challenge, last reason %q", last)
 	}
 	st := m.Status()
 	if st.Suspects == 0 || st.RepJailed == 0 {
@@ -605,5 +612,61 @@ func TestChallengeLifecycleFeedsCalibrator(t *testing.T) {
 	_, passed, _ := m.calib.Snapshot()
 	if passed == 0 {
 		t.Fatal("VerifyPoW success must feed the calibrator")
+	}
+}
+
+// ── v3.11.9 operator immunity + jail redemption ──────────────────────────────
+
+func TestTrustedOperatorImmuneToBlocklist(t *testing.T) {
+	trusted := false
+	m := New(Config{
+		Enabled:   false,
+		Signer:    challenge.NewSigner([]byte("s")),
+		ClientIP:  func(r *http.Request) string { return "6.6.6.9:1" },
+		TrustedFn: func(r *http.Request) bool { return trusted },
+	})
+	m.ApplySettings(Settings{RateLimit: true, RatePerMinute: 1, Burst: 1, AutoBlock: true})
+	h := m.Middleware(okHandler())
+
+	// Anonymous flood jails the IP.
+	for i := 0; i < 30; i++ {
+		rr := httptest.NewRecorder()
+		h.ServeHTTP(rr, browserReq("/post"))
+	}
+	// Same IP, now carrying an operator session: immune to the jail on every
+	// request, including public pages.
+	trusted = true
+	for i := 0; i < 10; i++ {
+		rr := httptest.NewRecorder()
+		h.ServeHTTP(rr, browserReq("/post"))
+		if rr.Code != 200 {
+			t.Fatalf("trusted operator must be immune to the jail, got %d", rr.Code)
+		}
+	}
+}
+
+func TestJailedSourceGetsRedeemableChallenge(t *testing.T) {
+	m := New(Config{
+		Enabled:  false,
+		Signer:   challenge.NewSigner([]byte("s")),
+		ClientIP: func(r *http.Request) string { return "6.6.6.10:1" },
+	})
+	m.ApplySettings(Settings{RateLimit: true, RatePerMinute: 1, Burst: 1, AutoBlock: true})
+	h := m.Middleware(okHandler())
+
+	var lastReason string
+	var lastCode int
+	for i := 0; i < 30; i++ {
+		rr := httptest.NewRecorder()
+		h.ServeHTTP(rr, browserReq("/post"))
+		if rr.Code != 200 {
+			lastReason = rr.Header().Get("X-VayuShield")
+			lastCode = rr.Code
+		}
+	}
+	// A jailed source is offered the silent PoW (503 interstitial), NOT a
+	// dead-end 429 — so a false positive can prove human and self-pardon.
+	if lastReason != "challenge" || lastCode != http.StatusServiceUnavailable {
+		t.Fatalf("jailed source should get the redeemable challenge, got %d %q", lastCode, lastReason)
 	}
 }

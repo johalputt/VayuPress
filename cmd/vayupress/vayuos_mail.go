@@ -685,8 +685,8 @@ func (a *App) handleVayuOSAttachment(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "VayuMail is not active", http.StatusServiceUnavailable)
 		return
 	}
-	user := strings.TrimSpace(r.URL.Query().Get("user"))
-	folder := strings.TrimSpace(r.URL.Query().Get("folder"))
+	user := mailUserParam(r)
+	folder := mailFolderParam(r)
 	if folder == "" {
 		folder = "Inbox"
 	}

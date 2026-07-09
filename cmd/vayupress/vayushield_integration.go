@@ -99,9 +99,14 @@ func (a *App) bootVayuShield() {
 		Bots:   bots,
 		Signer: signer,
 		DB:     dbpkg.DB,
-		// The admin panel, API, feeds, health/metrics and the shield's own
-		// endpoints are never challenged.
-		BypassPrefixes:    []string{"/os", "/api", "/admin", "/debug", "/health", "/metrics", "/__vayushield", "/__vayuanalytics", "/.well-known"},
+		// The admin panel, API, feeds, health/metrics, the shield's own
+		// endpoints AND static assets are never challenged or blocked. /static
+		// matters: a challenge/429 in place of a stylesheet or htmx.js breaks
+		// the page that references it — including the admin panel itself, whose
+		// Save/refresh buttons die if the operator's jailed IP can't load JS.
+		// Assets are cheap to serve and volumetric abuse of them is still
+		// bounded by the L0 public-concurrency lane.
+		BypassPrefixes:    []string{"/os", "/api", "/admin", "/debug", "/health", "/metrics", "/static", "/__vayushield", "/__vayuanalytics", "/.well-known"},
 		SessionCookieName: "vayushield",
 		CountryFn:         geoip.Country,
 		ClientIP:          auth.ClientIP,
@@ -117,6 +122,17 @@ func (a *App) bootVayuShield() {
 		},
 		// L1 kernel offload: jailed IPs also get dropped by nftables/XDP.
 		OffloadFn: a.shieldOffload.Ban,
+		// Operator immunity: a valid admin login session is exempt from every
+		// gate on every path — the operator can never be locked out. Their IP
+		// is also marked protected in the L1 exporter, because a kernel drop is
+		// the one gate app-level immunity cannot override.
+		TrustedFn: func(r *http.Request) bool {
+			if !a.isTrustedOperator(r) {
+				return false
+			}
+			a.shieldOffload.Protect(auth.ClientIP(r))
+			return true
+		},
 	})
 
 	// Apply the operator's persisted settings (bot protection + Tier-1 resilience
@@ -221,8 +237,10 @@ func (a *App) handleVayuShieldPoW(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// A solved challenge is the strongest human proof: raise the source's L5
-	// reputation and pardon any sentence it was serving.
+	// reputation, pardon any sentence it was serving, and withdraw any pending
+	// kernel ban so the pardon reaches the L1 offload within one agent poll.
 	a.vayuShield.RewardProof(r)
+	a.shieldOffload.Unban(auth.ClientIP(r))
 	http.SetCookie(w, a.vayuShield.SessionCookie(tok))
 	w.WriteHeader(http.StatusNoContent)
 }

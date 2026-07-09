@@ -102,6 +102,16 @@ type Config struct {
 	// in-binary gates keep enforcing on their own. Never called for verified
 	// visitors — only for sources the shield has actively jailed.
 	OffloadFn func(ip string, ttl time.Duration)
+
+	// TrustedFn reports whether the request carries a valid OPERATOR login
+	// session (the admin console cookie — not the shield's own PoW cookie).
+	// A trusted request is structurally immune to every gate on EVERY path:
+	// blocklist, reputation jail, load-shed, rate-limit, fair-shed and the
+	// challenge ladder. This is the guarantee that the operator can never be
+	// locked out of their own site — not even after load-testing it from
+	// their own IP and getting that IP jailed. Optional; must be cheap when
+	// the request carries no session cookie (a header parse).
+	TrustedFn func(r *http.Request) bool
 }
 
 // liveConfig is the runtime-tunable subset of the shield, swapped atomically so
@@ -595,7 +605,11 @@ func (m *Manager) HasVerifiedSession(r *http.Request) bool {
 // reputation sentence the source was serving (false-positive self-heal for
 // shared/NAT IPs).
 func (m *Manager) RewardProof(r *http.Request) {
-	m.brain.Observe(ipOnly(m.cfg.ClientIP(r)), brain.SignalProof)
+	ip := ipOnly(m.cfg.ClientIP(r))
+	m.brain.Observe(ip, brain.SignalProof)
+	// The pardon also lifts the blocklist jail, so every browser and device
+	// behind that IP recovers the moment one of them proves human.
+	m.blocklist.Unblock(ip)
 }
 
 // ctxKey carries the Verdict on the request context for downstream handlers
@@ -638,16 +652,21 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 
 		ipKey := ipOnly(m.cfg.ClientIP(r))
 
+		// A verified visitor (signed PoW session, unspoofable) or a trusted
+		// operator (valid admin login session) is exempt from EVERY gate below —
+		// including the blocklist and reputation jail. This must be decided
+		// BEFORE the jail gates: the operator who load-tests their own site from
+		// their own IP will jail that IP, and they must still be able to browse
+		// it, save settings and load assets from the very next request.
+		verified := m.hasValidSession(r) ||
+			(m.cfg.TrustedFn != nil && m.cfg.TrustedFn(r))
+
 		// 1. Blocklist — the cheapest possible gate for a known-abusive IP.
-		if lc.autoBlock && m.blocklist.Blocked(ipKey) {
+		if !verified && lc.autoBlock && m.blocklist.Blocked(ipKey) {
 			m.onEvent(ActionBlock, 1.0)
-			m.serveThrottled(w, http.StatusTooManyRequests, "blocked", "10")
+			m.serveJailed(w, r, "blocked")
 			return
 		}
-
-		// A previously-verified visitor is exempt from the availability gates —
-		// their signed token cannot be spoofed, so they can never be throttled.
-		verified := m.hasValidSession(r)
 
 		// 1b. Aegis L5 — reputation jail. A source whose standing collapsed is
 		// serving an automatic, escalating, self-expiring sentence: O(1) map
@@ -656,7 +675,7 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 		// user behind a shared/NAT IP is never locked out.
 		if !verified && m.brain.Jailed(ipKey) {
 			m.onEvent(ActionBlock, 1.0)
-			m.serveThrottled(w, http.StatusTooManyRequests, "reputation", "60")
+			m.serveJailed(w, r, "reputation")
 			return
 		}
 
@@ -763,6 +782,22 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 			m.serveBlock(w, r, v)
 		}
 	})
+}
+
+// serveJailed answers a request from a jailed source. Instead of the old
+// dead-end 429, a jailed visitor gets the silent PoW interstitial whenever the
+// challenge engine is available and no flood is in progress: solving it issues
+// the signed session cookie AND pardons the reputation sentence (RewardProof),
+// so a false positive — including the operator's own IP after a load test —
+// self-heals in one page load with zero human interaction. During an active
+// flood (or without a signer) it falls back to the cheap flat rejection, so
+// jail stays O(1) exactly when cheapness matters.
+func (m *Manager) serveJailed(w http.ResponseWriter, r *http.Request, reason string) {
+	if m.cfg.Signer != nil && !m.controller.UnderAttack() {
+		m.serveChallenge(w, r, Verdict{}, challenge.DefaultDifficulty)
+		return
+	}
+	m.serveThrottled(w, http.StatusTooManyRequests, reason, "10")
 }
 
 // serveThrottled writes a small, cheap rejection (429/503) with a Retry-After.
