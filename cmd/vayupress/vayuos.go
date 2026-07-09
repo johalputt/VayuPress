@@ -16,6 +16,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -1312,7 +1313,7 @@ func (a *App) handleVayuOSSearch(w http.ResponseWriter, r *http.Request) {
 		// Non-admins may only search their own assigned mailbox.
 		user, _ = a.ownMailbox(r)
 	}
-	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	sf := parseSearchFilters(r)
 	var body strings.Builder
 	body.WriteString(`<div class="page-header"><h1>Search mail</h1><span class="muted text-sm">` + html.EscapeString(user+"@"+a.cfgDomain()) + `</span></div>`)
 	body.WriteString(vayuosNav("mailbox", a.isAdminRequest(r)))
@@ -1322,29 +1323,196 @@ func (a *App) handleVayuOSSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	body.WriteString(`<div class="card"><div class="card-title"><a href="/os/vayumail/inbox?user=` + qparam(user) + `">← ` + html.EscapeString(user+"@"+a.cfgDomain()) + `</a></div>`)
-	body.WriteString(`<form class="vm-search" method="get" action="/os/vayumail/search">
-  <input type="hidden" name="user" value="` + html.EscapeString(user) + `">
-  <input class="input" type="search" name="q" value="` + html.EscapeString(q) + `" placeholder="Search mail…" aria-label="Search mail">
-  <button class="btn btn--primary" type="submit">Search</button>
-</form>`)
-	if q != "" {
-		results, _ := a.vayuMail.Search(user, q, 100)
-		body.WriteString(`<div class="table-wrap"><table class="table"><thead><tr><th>Folder</th><th>From</th><th>Subject</th><th>Date</th></tr></thead><tbody>`)
-		if len(results) == 0 {
-			body.WriteString(`<tr><td colspan="4" class="muted">No matches for “` + html.EscapeString(q) + `”.</td></tr>`)
+	// Filter bar — results update instantly over HTMX as you type or change a
+	// filter (debounced), swapping #vm-search-results with no full-page reload.
+	folderOpts := `<option value="">All folders</option>`
+	for _, f := range vmail.StandardFolders {
+		sel := ""
+		if strings.EqualFold(f, sf.folder) {
+			sel = ` selected`
 		}
-		for _, m := range results {
-			subj := m.Subject
-			if subj == "" {
-				subj = "(no subject)"
-			}
-			link := "/os/vayumail/message?user=" + qparam(user) + "&folder=" + qparam(m.Folder) + "&id=" + qparam(m.ID)
-			body.WriteString(`<tr><td><span class="badge">` + html.EscapeString(m.Folder) + `</span></td><td class="text-sm">` + html.EscapeString(m.From) + `</td><td><a href="` + link + `">` + html.EscapeString(subj) + `</a></td><td class="muted text-sm">` + m.Date.Format("2006-01-02 15:04") + `</td></tr>`)
-		}
-		body.WriteString(`</tbody></table></div>`)
+		folderOpts += `<option value="` + html.EscapeString(f) + `"` + sel + `>` + html.EscapeString(f) + `</option>`
 	}
+	unreadChecked := ""
+	if sf.unreadOnly {
+		unreadChecked = ` checked`
+	}
+	body.WriteString(`<form class="vm-search-form" hx-get="/os/vayumail/search/fragment" hx-target="#vm-search-results" hx-swap="innerHTML" hx-trigger="submit, input changed delay:400ms, change delay:150ms">
+  <input type="hidden" name="user" value="` + html.EscapeString(user) + `">
+  <div class="vm-search-row">
+    <input class="input" type="search" name="q" value="` + html.EscapeString(sf.q) + `" placeholder="Search mail (from, subject, body)…" aria-label="Search mail" autofocus>
+    <button class="btn btn--primary" type="submit">Search</button>
+  </div>
+  <div class="vm-search-filters">
+    <select class="input input--sm" name="folder" aria-label="Folder">` + folderOpts + `</select>
+    <input class="input input--sm" type="text" name="from" value="` + html.EscapeString(sf.from) + `" placeholder="From contains…" aria-label="From filter">
+    <label class="vm-filter-date">After <input class="input input--sm" type="date" name="after" value="` + html.EscapeString(sf.after) + `"></label>
+    <label class="vm-filter-date">Before <input class="input input--sm" type="date" name="before" value="` + html.EscapeString(sf.before) + `"></label>
+    <label class="vm-filter-check"><input type="checkbox" name="unread" value="1"` + unreadChecked + `> Unread only</label>
+  </div>
+</form>`)
+	body.WriteString(`<div id="vm-search-results">` + a.vayuSearchResults(user, sf) + `</div>`)
 	body.WriteString(`</div>`)
 	writeOSHTML(w, adminOSLayout(nonce, "Search mail", "vayuos", cfg, htmpl.HTML(body.String())))
+}
+
+// searchFilters holds the query and the refinement filters for a mail search.
+type searchFilters struct {
+	q, folder, from, after, before string
+	unreadOnly                     bool
+}
+
+func parseSearchFilters(r *http.Request) searchFilters {
+	q := r.URL.Query()
+	return searchFilters{
+		q:          strings.TrimSpace(q.Get("q")),
+		folder:     strings.TrimSpace(q.Get("folder")),
+		from:       strings.TrimSpace(q.Get("from")),
+		after:      strings.TrimSpace(q.Get("after")),
+		before:     strings.TrimSpace(q.Get("before")),
+		unreadOnly: q.Get("unread") == "1",
+	}
+}
+
+// vayuSearchResults runs the full-text search and applies the refinement
+// filters, returning the results table (or an empty/prompt state) as an HTMX
+// fragment. Matches in From/Subject are highlighted.
+func (a *App) vayuSearchResults(user string, sf searchFilters) string {
+	var b strings.Builder
+	if sf.q == "" {
+		b.WriteString(`<div class="empty-state">Type a search above to find mail across every folder — refine with the folder, sender, date and unread filters.</div>`)
+		return b.String()
+	}
+	results, _ := a.vayuMail.Search(user, sf.q, 200)
+	afterT, hasAfter := parseDay(sf.after)
+	beforeT, hasBefore := parseDay(sf.before)
+	fromLower := strings.ToLower(sf.from)
+	var matched []vmail.SearchResult
+	for _, m := range results {
+		if sf.folder != "" && !strings.EqualFold(m.Folder, sf.folder) {
+			continue
+		}
+		if fromLower != "" && !strings.Contains(strings.ToLower(m.From), fromLower) {
+			continue
+		}
+		if sf.unreadOnly && m.Seen {
+			continue
+		}
+		if hasAfter && m.Date.Before(afterT) {
+			continue
+		}
+		if hasBefore && !m.Date.Before(beforeT.AddDate(0, 0, 1)) {
+			continue
+		}
+		matched = append(matched, m)
+	}
+	b.WriteString(`<div class="vm-search-count text-sm muted">` + itoaSafe(len(matched)) + ` result(s) for “` + html.EscapeString(sf.q) + `”</div>`)
+	b.WriteString(`<div class="table-wrap"><table class="table vm-list"><thead><tr><th>Folder</th><th>From</th><th>Subject</th><th>Date</th></tr></thead><tbody>`)
+	if len(matched) == 0 {
+		b.WriteString(`<tr><td colspan="4" class="muted">No matches. Try a different term or relax the filters.</td></tr>`)
+	}
+	for _, m := range matched {
+		subj := m.Subject
+		if subj == "" {
+			subj = "(no subject)"
+		}
+		link := "/os/vayumail/message?user=" + qparam(user) + "&folder=" + qparam(m.Folder) + "&id=" + qparam(m.ID)
+		b.WriteString(`<tr><td><span class="badge">` + html.EscapeString(m.Folder) + `</span></td><td><div class="vm-from">` + mailAvatar(m.From) + `<span class="vm-name">` + highlightMatch(mailDisplay(m.From), sf.q) + `</span></div></td><td class="vm-subj"><a href="` + link + `">` + highlightMatch(subj, sf.q) + `</a></td><td class="muted text-sm vm-date">` + mailRelTime(m.Date) + `</td></tr>`)
+	}
+	b.WriteString(`</tbody></table></div>`)
+	return b.String()
+}
+
+// handleVayuOSSearchFragment returns the search results for the instant HTMX
+// filter bar.
+func (a *App) handleVayuOSSearchFragment(w http.ResponseWriter, r *http.Request) {
+	if a.vayuMail == nil || !a.vayuMail.Config().Enabled {
+		writeOSFragment(w, `<div class="empty-state">VayuMail is inactive.</div>`)
+		return
+	}
+	user := strings.TrimSpace(r.URL.Query().Get("user"))
+	if !a.isAdminRequest(r) {
+		user, _ = a.ownMailbox(r)
+	}
+	if user == "" {
+		writeOSFragment(w, `<div class="empty-state">No mailbox selected.</div>`)
+		return
+	}
+	writeOSFragment(w, a.vayuSearchResults(user, parseSearchFilters(r)))
+}
+
+// parseDay parses a YYYY-MM-DD date-input value (UTC midnight). ok is false when
+// the value is empty or malformed.
+func parseDay(s string) (time.Time, bool) {
+	if s == "" {
+		return time.Time{}, false
+	}
+	t, err := time.Parse("2006-01-02", s)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return t, true
+}
+
+// highlightMatch HTML-escapes text and wraps each occurrence of the search
+// term(s) in <mark>. It works on the escaped string and merges overlapping
+// match ranges so the emitted markup is always well-formed.
+func highlightMatch(text, q string) string {
+	esc := html.EscapeString(text)
+	q = strings.TrimSpace(q)
+	if q == "" {
+		return esc
+	}
+	lower := strings.ToLower(esc)
+	seen := map[string]bool{}
+	var terms []string
+	for _, t := range strings.Fields(q) {
+		et := strings.ToLower(html.EscapeString(t))
+		if et != "" && !seen[et] {
+			seen[et] = true
+			terms = append(terms, et)
+		}
+	}
+	type rng struct{ s, e int }
+	var ranges []rng
+	for _, t := range terms {
+		from := 0
+		for {
+			i := strings.Index(lower[from:], t)
+			if i < 0 {
+				break
+			}
+			s := from + i
+			ranges = append(ranges, rng{s, s + len(t)})
+			from = s + len(t)
+		}
+	}
+	if len(ranges) == 0 {
+		return esc
+	}
+	sort.Slice(ranges, func(i, j int) bool { return ranges[i].s < ranges[j].s })
+	merged := []rng{ranges[0]}
+	for _, r := range ranges[1:] {
+		last := &merged[len(merged)-1]
+		if r.s <= last.e {
+			if r.e > last.e {
+				last.e = r.e
+			}
+		} else {
+			merged = append(merged, r)
+		}
+	}
+	var b strings.Builder
+	prev := 0
+	for _, r := range merged {
+		b.WriteString(esc[prev:r.s])
+		b.WriteString("<mark>")
+		b.WriteString(esc[r.s:r.e])
+		b.WriteString("</mark>")
+		prev = r.e
+	}
+	b.WriteString(esc[prev:])
+	return b.String()
 }
 
 // handleVayuOSMessage shows a single message with Junk/Trash/Delete actions.

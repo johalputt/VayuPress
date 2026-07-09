@@ -2604,6 +2604,19 @@
 .vp-os .vm-pgp-hint--enc { color: var(--ok); }
 @media (max-width: 640px) { .vp-os .vm-pgp-hint { margin-left: 0; flex-basis: 100%; } }
 
+/* ── VayuMail search (v-search) ────────────────────────────────────────────── */
+.vp-os .vm-search-form { margin: .5rem 0 1rem; }
+.vp-os .vm-search-row { display: flex; gap: .5rem; align-items: center; }
+.vp-os .vm-search-row .input { flex: 1 1 auto; }
+.vp-os .vm-search-filters { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin-top: .55rem; }
+.vp-os .vm-search-filters .input--sm { width: auto; }
+.vp-os .vm-filter-date, .vp-os .vm-filter-check {
+  display: inline-flex; align-items: center; gap: .35rem;
+  font-size: var(--text-sm); color: var(--text-2);
+}
+.vp-os .vm-search-count { margin: .25rem 0 .6rem; }
+.vp-os mark { background: var(--warn-dim); color: var(--text); border-radius: 3px; padding: 0 .12em; }
+
 
 /* Live analytics indicator — pulsing dot next to the "Live" card title. */
 .vp-os .live-dot {
