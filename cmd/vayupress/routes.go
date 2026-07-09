@@ -33,6 +33,15 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	if a.redirectMgr != nil {
 		r.Use(a.redirectMgr.Middleware)
 	}
+	// Aegis L0 — Admin Sovereignty Lane. Mounted BEFORE VayuShield (and thus
+	// before classification, rendering and SQLite) so that under a volumetric
+	// flood it caps PUBLIC concurrency and sheds the overflow with a couple of
+	// atomic ops, guaranteeing the admin control plane (VayuOS, Save, refresh)
+	// and verified readers always keep CPU/goroutine headroom. Near-zero cost
+	// when traffic is nowhere near the cap.
+	if a.sovereign != nil {
+		r.Use(a.sovereignMiddleware)
+	}
 	// VayuShield bot protection — classifies every request and issues the
 	// escalating challenge ladder. A transparent pass-through when protection is
 	// disabled (VAYUSHIELD=off, the default) and for all bypassed prefixes
