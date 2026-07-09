@@ -8,6 +8,38 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.11.11] — 2026-07-09
+
+### Fixed
+- **CI green again — the Governance Constitution `go-native` gate was failing.**
+  The `deadcode` gate flagged `calibrate.BiasedForTest` (a cross-package
+  test-suite helper added in v3.11.6) as unreachable from `main`. It is a
+  legitimate test seam, like the already-baselined `challenge.Solve`, so it is
+  now recorded in `scripts/deadcode-allow.txt`. This is why the last few
+  releases showed a red ✗ on the Governance check even though they merged.
+
+### Security
+- **The three open CodeQL alerts are now actually fixed** (the v3.11.9 attempts
+  used custom escapers/guards CodeQL does not model, so the alerts persisted).
+  Each now uses a barrier static analysis recognises:
+  - **Reflected XSS #36 / #49** (`admin_os_ui.go`, `vayushield_integration.go`
+    write sinks) — the real path was the `hx-vals` builder, which used a bespoke
+    `jsonAttrEscape` replacer. `hxVals` now JSON-escapes each key/value and runs
+    it through `html.EscapeString`. Because the mail `?user=`/`?folder=` params
+    are already charset-restricted and the other values are literals,
+    `html.EscapeString` is a no-op on real input — the emitted attribute is
+    byte-for-byte identical — but the tainted value now provably passes through
+    a recognised sanitiser.
+  - **DOM-text-as-HTML #52** (`admin-os-mail.js`) — `safeNav` replaced its
+    `charAt` character checks (which CodeQL cannot follow) with the `new URL()`
+    + same-origin-check pattern: it navigates only to a destination
+    **reconstructed** from the parsed URL's own `pathname`/`search`/`hash`,
+    never the raw attribute text, closing any `javascript:` / cross-origin /
+    protocol-relative redirect.
+  - Covered by new tests: `hxVals` leaves safe values untouched and escapes
+    hostile ones; the existing HTMX button tests confirm the byte-identical
+    output.
+
 ## [3.11.10] — 2026-07-09
 
 ### Fixed

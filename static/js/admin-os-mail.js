@@ -4,21 +4,26 @@
 (function () {
   'use strict';
 
-  // safeNav navigates only to a same-origin, absolute-path URL. Server-built
-  // nav targets (data-back / data-next) are already URL-encoded, but these
-  // values round-trip through DOM attributes, so we re-validate here before
-  // assigning to location.href: a value that is not a plain "/path" (e.g. a
-  // "javascript:" URL, a protocol-relative "//host", or a "/\evil" that some
-  // browsers treat as protocol-relative) is rejected in favour of a safe
-  // fallback. This closes any DOM-based open-redirect / script-URL vector
-  // regardless of what reaches the attribute.
+  // safeNav navigates only to a same-origin destination. The nav targets
+  // (data-back / data-next) are server-built and URL-encoded, but they
+  // round-trip through DOM attributes, so we re-derive a safe destination here:
+  // parse the candidate against the current origin with the URL API, and if it
+  // does not resolve to THIS origin, fall back. The destination we navigate to
+  // is RECONSTRUCTED from the parsed URL's own pathname/search/hash — never the
+  // raw attribute text — so a "javascript:" URL, a protocol-relative "//host",
+  // or any cross-origin value can never reach location. Building the value from
+  // URL.origin/pathname (a recognised sanitiser) is what makes this provably
+  // safe to static analysis as well as at runtime.
   function safeNav(url, fallback) {
     var fb = fallback || '/os/vayumail/inbox';
-    if (typeof url !== 'string' || url.charAt(0) !== '/' ||
-        url.charAt(1) === '/' || url.charAt(1) === '\\') {
-      url = fb;
-    }
-    window.location.href = url;
+    var dest = fb;
+    try {
+      var u = new URL(String(url), window.location.origin);
+      if (u.origin === window.location.origin) {
+        dest = u.pathname + u.search + u.hash;
+      }
+    } catch (e) { /* malformed → fall back */ }
+    window.location.assign(dest);
   }
 
   // Split reading pane: highlight the row whose message is open in the pane.

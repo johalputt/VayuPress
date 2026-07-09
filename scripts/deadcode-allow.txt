@@ -270,6 +270,10 @@ internal/vayuos/mail/accounts.go: unreachable func: RoleCanSend
 #    reserved for public-render-path analytics attribution.
 #  - botdb Store.Import / Store.ReportFalsePositive: operator community-import and
 #    false-positive review, wired into VayuOS in a follow-up.
+#  - calibrate.BiasedForTest: constructs a calibrator pre-loaded with a bias so
+#    the vayushield package's tests can exercise the Decide bias path without
+#    simulating whole 10-minute windows; test-suite-only, like Solve above.
+internal/vayushield/calibrate/calibrate.go: unreachable func: BiasedForTest
 internal/vayushield/challenge/challenge.go: unreachable func: Solve
 internal/vayushield/vayushield.go: unreachable func: VerdictFrom
 internal/vayushield/botdb/store.go: unreachable func: Store.Import

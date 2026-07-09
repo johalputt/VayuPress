@@ -981,26 +981,54 @@ func mailRelTime(t time.Time) string {
 	return `<span title="` + abs + `">` + rel + `</span>`
 }
 
-// jsonAttrEscape escapes a value for embedding inside a single-quoted hx-vals
-// JSON attribute: JSON-escape backslash/quote, then HTML-escape & and ' so it
-// can never break out of the attribute.
-func jsonAttrEscape(s string) string {
-	s = strings.ReplaceAll(s, `\`, `\\`)
-	s = strings.ReplaceAll(s, `"`, `\"`)
-	s = strings.ReplaceAll(s, "&", "&amp;")
-	s = strings.ReplaceAll(s, "'", "&#39;")
-	return s
+// jsonStringEscape escapes a value for use inside a JSON string literal
+// (backslash, double-quote and control characters). It does NOT do HTML
+// escaping — the whole attribute is HTML-escaped once, in hxVals.
+func jsonStringEscape(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		switch r {
+		case '\\':
+			b.WriteString(`\\`)
+		case '"':
+			b.WriteString(`\"`)
+		case '\n':
+			b.WriteString(`\n`)
+		case '\r':
+			b.WriteString(`\r`)
+		case '\t':
+			b.WriteString(`\t`)
+		default:
+			if r < 0x20 {
+				b.WriteString(`\u00`)
+				const hexd = "0123456789abcdef"
+				b.WriteByte(hexd[r>>4])
+				b.WriteByte(hexd[r&0xf])
+			} else {
+				b.WriteRune(r)
+			}
+		}
+	}
+	return b.String()
 }
 
 // hxVals builds an hx-vals='{...}' attribute from alternating key/value pairs.
+// Each key and value is JSON-string-escaped and then passed through
+// html.EscapeString — a sanitiser static analysis recognises — so the tainted
+// value path is provably clean (closing go/reflected-xss) while a browser
+// un-escapes the attribute back to valid JSON for HTMX. For safe inputs
+// (literal keys, and the strictly-charset-validated user/folder params)
+// html.EscapeString is a no-op, so the emitted attribute is byte-identical to
+// before.
 func hxVals(pairs ...string) string {
+	esc := func(s string) string { return html.EscapeString(jsonStringEscape(s)) }
 	var sb strings.Builder
 	sb.WriteString(`hx-vals='{`)
 	for i := 0; i+1 < len(pairs); i += 2 {
 		if i > 0 {
 			sb.WriteString(",")
 		}
-		sb.WriteString(`"` + pairs[i] + `":"` + jsonAttrEscape(pairs[i+1]) + `"`)
+		sb.WriteString(`"` + esc(pairs[i]) + `":"` + esc(pairs[i+1]) + `"`)
 	}
 	sb.WriteString(`}'`)
 	return sb.String()
