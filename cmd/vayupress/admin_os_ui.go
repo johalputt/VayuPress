@@ -286,9 +286,16 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/analytics/goals", a.handleAnalyticsCreateGoal)
 		pr.With(auth.CSRFTokenMiddleware).Delete("/os/api/analytics/goals/{id}", a.handleAnalyticsDeleteGoal)
 		// VayuShield — Bot Shield & Analytics operator panel (admin-gated).
-		pr.Get("/os/shield", a.handleOSShield)
+		// Both the page load AND the section poll re-issue the vp_csrf cookie
+		// (CSRFTokenMiddleware) so it never goes stale while the panel is open.
+		// The hero polls the section route every 10s, so within 10s of a CSRF
+		// secret rotation (every deploy/restart) or the 1h cookie lifetime, the
+		// token is refreshed — without this, Save / Tier / Verify POSTs silently
+		// 403 after a deploy until the operator hard-reloads (the "Save button
+		// does nothing" report). Mirrors the VayuMail fix below.
+		pr.With(auth.CSRFTokenMiddleware).Get("/os/shield", a.handleOSShield)
 		// Per-section HTMX fragment refresh (no whole-page reload).
-		pr.Get("/os/shield/section/{name}", a.handleOSShieldSection)
+		pr.With(auth.CSRFTokenMiddleware).Get("/os/shield/section/{name}", a.handleOSShieldSection)
 		pr.Get("/os/api/shield/export", a.handleOSShieldExport)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/shield/verify", a.handleOSShieldVerify)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/shield/dismiss", a.handleOSShieldDismiss)
