@@ -845,8 +845,13 @@ func mailUserParam(r *http.Request) string {
 	return sanitizeMailLocalPart(strings.TrimSpace(r.URL.Query().Get("user")))
 }
 
-// sanitizeMailLocalPart returns s unchanged when it is a valid mailbox
-// local-part, otherwise "". Empty in, empty out.
+// sanitizeMailLocalPart returns a valid mailbox local-part, or "". A valid
+// local-part is [A-Za-z0-9._+-] only — a charset with NO HTML/JS metacharacter
+// — so the returned value is safe in every context. It is additionally passed
+// through html.EscapeString: on this charset that is a no-op (byte-identical
+// output), but it makes the value flow through a sanitiser static analysis
+// recognises, so go/reflected-xss is cleared on EVERY downstream sink without
+// having to escape at each one individually. Empty in, empty out.
 func sanitizeMailLocalPart(s string) string {
 	if s == "" || len(s) > 64 {
 		return ""
@@ -859,7 +864,29 @@ func sanitizeMailLocalPart(s string) string {
 			return ""
 		}
 	}
-	return s
+	return html.EscapeString(s)
+}
+
+// mailIDParam reads and validates a ?id= maildir message id. Maildir unique
+// names are [A-Za-z0-9._:,=+-] (timestamp.unique.host plus a ":2,flags" info
+// suffix); anything outside that is rejected to "". Like the other mail params
+// it is passed through html.EscapeString (a no-op on this charset) so the id is
+// a recognised-sanitised value on every downstream sink.
+func mailIDParam(r *http.Request) string {
+	s := strings.TrimSpace(r.URL.Query().Get("id"))
+	if s == "" || len(s) > 256 {
+		return ""
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		ok := (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+			(c >= '0' && c <= '9') || c == '.' || c == '_' || c == ':' ||
+			c == ',' || c == '=' || c == '+' || c == '-'
+		if !ok {
+			return ""
+		}
+	}
+	return html.EscapeString(s)
 }
 
 // mailFolderParam reads and STRICTLY validates a ?folder= name, defaulting to
@@ -880,7 +907,10 @@ func mailFolderParam(r *http.Request) string {
 			return "Inbox"
 		}
 	}
-	return f
+	// html.EscapeString is a no-op on this charset (byte-identical) but routes
+	// the value through a recognised sanitiser so go/reflected-xss is cleared
+	// on every downstream HTML sink.
+	return html.EscapeString(f)
 }
 
 // ── VayuMail inbox helpers ───────────────────────────────────────────────────
@@ -1714,7 +1744,7 @@ func (a *App) handleVayuOSMessage(w http.ResponseWriter, r *http.Request) {
 	if folder == "" {
 		folder = "Inbox"
 	}
-	id := strings.TrimSpace(r.URL.Query().Get("id"))
+	id := mailIDParam(r)
 	// pane mode: the split reading pane loads the message beside the list via
 	// HTMX, so we return just the reader card fragment (no page chrome/layout),
 	// and the card's nav + actions are pure HTMX/native (no page-load JS).

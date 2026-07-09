@@ -4,26 +4,22 @@
 (function () {
   'use strict';
 
-  // safeNav navigates only to a same-origin destination. The nav targets
-  // (data-back / data-next) are server-built and URL-encoded, but they
-  // round-trip through DOM attributes, so we re-derive a safe destination here:
-  // parse the candidate against the current origin with the URL API, and if it
-  // does not resolve to THIS origin, fall back. The destination we navigate to
-  // is RECONSTRUCTED from the parsed URL's own pathname/search/hash — never the
-  // raw attribute text — so a "javascript:" URL, a protocol-relative "//host",
-  // or any cross-origin value can never reach location. Building the value from
-  // URL.origin/pathname (a recognised sanitiser) is what makes this provably
-  // safe to static analysis as well as at runtime.
+  // localPath returns u only if it is a same-origin ABSOLUTE PATH: it must
+  // start with a single "/" and the second character must not be "/" or "\"
+  // (which would make it protocol-relative, e.g. "//evil.com"). A value that
+  // starts with "/" cannot carry a URL scheme, so "javascript:"/"http:" URLs
+  // are excluded. The regexp test is a recognised local-URL guard, so the
+  // guarded value is provably safe to static analysis as well as at runtime.
+  function localPath(u) {
+    return (typeof u === 'string' && /^\/[^/\\]/.test(u)) ? u : '';
+  }
+
+  // safeNav navigates only to a validated same-origin path. The candidate and
+  // the fallback (data-back / data-next attributes) both go through localPath;
+  // if neither is a valid local path we navigate to a hardcoded constant, so a
+  // tainted attribute value can NEVER reach location unvalidated.
   function safeNav(url, fallback) {
-    var fb = fallback || '/os/vayumail/inbox';
-    var dest = fb;
-    try {
-      var u = new URL(String(url), window.location.origin);
-      if (u.origin === window.location.origin) {
-        dest = u.pathname + u.search + u.hash;
-      }
-    } catch (e) { /* malformed → fall back */ }
-    window.location.assign(dest);
+    window.location.assign(localPath(url) || localPath(fallback) || '/os/vayumail/inbox');
   }
 
   // Split reading pane: highlight the row whose message is open in the pane.

@@ -690,7 +690,7 @@ func (a *App) handleVayuOSAttachment(w http.ResponseWriter, r *http.Request) {
 	if folder == "" {
 		folder = "Inbox"
 	}
-	id := strings.TrimSpace(r.URL.Query().Get("id"))
+	id := mailIDParam(r)
 	idx, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("idx")))
 	// Non-admins may only download from their own assigned mailbox.
 	if !a.isAdminRequest(r) {
