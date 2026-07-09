@@ -8,6 +8,41 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.11.6] — 2026-07-09
+
+### Added
+- **VayuShield 2.0 "Aegis" — L4 self-calibrating, silent-first challenges**
+  (step 4 of the Cloudflare-free bot-shield rebuild). The challenge ladder now
+  tunes itself from observed outcomes — no operator input — and scales its
+  difficulty to each source's reputation.
+  - **The feedback signal:** a solved proof-of-work is overwhelming evidence
+    of a real browser. `internal/vayushield/calibrate` watches the pass rate
+    of issued challenges in 10-minute windows: ≥ 90% solved means the
+    thresholds are biting humans → a bias raises the effective PoW/JS
+    thresholds so borderline visitors are allowed instead of challenged;
+    ≤ 50% solved means challenges are absorbing bots → the slack is walked
+    back. Quiet windows drift the bias to zero so stale looseness never
+    lingers.
+  - **Loosen-only safety invariant:** the bias is clamped to [0, +0.2] — the
+    calibrator can only make the shield MORE permissive than the operator's
+    settings, never stricter, so it can never be the reason a real user gets
+    challenged. It also never touches the block threshold — self-heal must
+    not open the door to confirmed bots. Automatic tightening remains
+    exclusively the under-attack controller's job (which relaxes the moment a
+    flood subsides).
+  - **Reputation-scaled difficulty (L5→L4):** an unknown client gets the
+    light, silent PoW; a source already under L5 suspicion (standing < 0.3)
+    works the hard variant. Real users never notice; suspect automation pays
+    an escalating compute price.
+  - **SEO/real-user guarantees unchanged and structural:** search engines,
+    AI assistants, verified sessions and human-classified clients are allowed
+    before any threshold is consulted; challenges themselves remain
+    silent-first (invisible PoW before any interactive interstitial).
+  - `calibration_bias`, `challenges_served`, `challenges_passed` in the
+    status JSON. Covered by loosen/restore/clamp/drift/min-sample window
+    tests, race tests, and integration tests (bias allows a borderline human;
+    block threshold immune to bias; serve/verify feed the calibrator).
+
 ## [3.11.5] — 2026-07-09
 
 ### Added

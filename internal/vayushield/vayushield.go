@@ -35,6 +35,7 @@ import (
 	"github.com/johalputt/vayupress/internal/dbbatch"
 	"github.com/johalputt/vayupress/internal/vayushield/botdb"
 	"github.com/johalputt/vayupress/internal/vayushield/brain"
+	"github.com/johalputt/vayupress/internal/vayushield/calibrate"
 	"github.com/johalputt/vayupress/internal/vayushield/challenge"
 	"github.com/johalputt/vayupress/internal/vayushield/fingerprint"
 	"github.com/johalputt/vayupress/internal/vayushield/prefilter"
@@ -155,6 +156,12 @@ type Manager struct {
 	// false positives self-heal, and only suspects are ever tracked.
 	brain *brain.Brain
 
+	// calib is the Aegis L4 feedback controller: it watches the challenge pass
+	// rate and, when almost everyone challenged proves to be a real browser,
+	// loosens the effective thresholds automatically (loosen-only, capped) so
+	// the ladder stays silent-first and self-heals its own false positives.
+	calib *calibrate.Calibrator
+
 	ipMu   sync.Mutex
 	ipSalt []byte
 	ipDay  string
@@ -241,6 +248,7 @@ func New(cfg Config) *Manager {
 	m.controller = &resilience.Controller{}
 	m.prefilter = prefilter.New()
 	m.brain = brain.New()
+	m.calib = calibrate.New()
 	m.jailTTLns.Store(int64(10 * time.Minute))
 	// Seed the live config from the constructor Config (challenge tunables on,
 	// resilience toggles off — all opt-in).
@@ -373,20 +381,31 @@ type Status struct {
 	Suspects    int   `json:"suspects"`   // L5: sources currently under suspicion
 	RepJailed   int   `json:"rep_jailed"` // L5: sources serving a reputation sentence
 	Pardons     int64 `json:"pardons"`    // L5: cumulative challenge-proof pardons
+
+	// L4 self-calibration: the loosen-only threshold bias currently applied
+	// (0 = running exactly at the operator's thresholds) and the live window's
+	// challenge counters it is derived from.
+	CalibrationBias  float64 `json:"calibration_bias"`
+	ChallengesServed int64   `json:"challenges_served"`
+	ChallengesPassed int64   `json:"challenges_passed"`
 }
 
 // Status returns the current resilience meters.
 func (m *Manager) Status() Status {
 	bs := m.brain.Stats()
+	served, passed, bias := m.calib.Snapshot()
 	return Status{
-		UnderAttack: m.controller.UnderAttack(),
-		RPS:         m.controller.RPS(),
-		InFlight:    m.inflight.Current(),
-		Blocklisted: m.blocklist.Len(),
-		FairShed:    m.prefilter.Shed(),
-		Suspects:    bs.Tracked,
-		RepJailed:   bs.Jailed,
-		Pardons:     bs.Redeems,
+		UnderAttack:      m.controller.UnderAttack(),
+		RPS:              m.controller.RPS(),
+		InFlight:         m.inflight.Current(),
+		Blocklisted:      m.blocklist.Len(),
+		FairShed:         m.prefilter.Shed(),
+		Suspects:         bs.Tracked,
+		RepJailed:        bs.Jailed,
+		Pardons:          bs.Redeems,
+		CalibrationBias:  bias,
+		ChallengesServed: served,
+		ChallengesPassed: passed,
 	}
 }
 
@@ -485,6 +504,15 @@ func (m *Manager) Decide(r *http.Request, v Verdict) Action {
 		return ActionAllow
 	}
 	pow, js, block := lc.pow, lc.js, lc.block
+	// Aegis L4 self-calibration: when the observed challenge pass rate says we
+	// have been challenging real browsers, a loosen-only bias raises the
+	// challenge thresholds so borderline humans are allowed instead. It can
+	// never tighten below the operator's settings, and it never touches the
+	// block threshold — self-heal must not open the door to confirmed bots.
+	if bias := m.calib.Bias(); bias > 0 {
+		pow += bias
+		js += bias
+	}
 	// Adaptive "under attack" mode: during a flood, tighten the thresholds so
 	// borderline traffic is challenged rather than served, and relax the moment
 	// the flood subsides. Verified visitors and good bots already returned above,
@@ -698,7 +726,13 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 			}
 			next.ServeHTTP(w, r)
 		case ActionChallengePoW:
-			m.serveChallenge(w, r, v, challenge.DefaultDifficulty)
+			// Reputation-scaled difficulty (L5→L4): an unknown client works a
+			// light, silent PoW; a source already under suspicion works harder.
+			diff := challenge.DefaultDifficulty
+			if m.brain.Standing(ipKey) < 0.3 {
+				diff = challenge.HardDifficulty
+			}
+			m.serveChallenge(w, r, v, diff)
 		case ActionChallengeJS:
 			m.serveChallenge(w, r, v, challenge.HardDifficulty)
 		case ActionTarpit:
@@ -843,6 +877,7 @@ func (m *Manager) serveChallenge(w http.ResponseWriter, r *http.Request, v Verdi
 	if err != nil {
 		return
 	}
+	m.calib.Served()
 	m.recordChallenge(r, v, actionType(difficulty), "issued", 0)
 	payload, _ := json.Marshal(pow)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -897,6 +932,10 @@ func (m *Manager) VerifyPoW(ctx context.Context, pow challenge.PoW, nonce string
 	if err != nil {
 		return "", false
 	}
+	// A solved challenge is the L4 calibrator's ground truth: this client was
+	// a real browser. If the pass rate says we mostly challenge real browsers,
+	// the thresholds loosen automatically.
+	m.calib.Passed()
 	return tok, true
 }
 
