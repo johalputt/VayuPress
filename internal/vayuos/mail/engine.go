@@ -905,12 +905,16 @@ func (e *Engine) splitLocalRecipients(to []string) (local, remote []string) {
 }
 
 // isLocalRecipient reports whether addr is a mailbox on this instance. The
-// recipient domain must match the configured domain; account existence is then
-// confirmed through the bridge (CMS user or admin-managed mail account).
+// recipient domain must match the configured domain; the address is then an
+// alias (delivering into its target mailbox) or an account confirmed through
+// the bridge (CMS user or admin-managed mail account).
 func (e *Engine) isLocalRecipient(addr string) bool {
 	_, domain := splitAddress(addr)
 	if domain == "" || !strings.EqualFold(domain, e.cfg.Domain) {
 		return false
+	}
+	if e.accounts != nil && e.accounts.ResolveAlias(context.Background(), addr) != "" {
+		return true
 	}
 	if e.bridge != nil {
 		return e.bridge.IsLocalRecipient(addr)

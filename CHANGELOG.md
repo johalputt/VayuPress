@@ -8,6 +8,31 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.10.0] — 2026-07-09
+
+### Added
+- **VayuMail aliases & auto-forwarding** (Phase 3, part 1). Two new
+  enterprise mail capabilities, managed from a new **Aliases & forwarding**
+  card on the Accounts page (HTMX — every add/delete/save swaps in place):
+  - **Aliases** — extra receive-only addresses (e.g. `sales@domain`) that
+    deliver straight into an existing mailbox. Accepted at SMTP RCPT time and
+    resolved at delivery. Single-level by construction: an alias must target a
+    real mailbox (never another alias) and cannot shadow an existing address,
+    so resolution can never chase chains or loops. Deleting an alias makes the
+    address bounce again.
+  - **Auto-forwarding** — a per-mailbox forward address: inbound mail is filed
+    locally as normal AND a copy is relayed through the outbound queue.
+    **Loop-protected**: each forwarded copy is tagged with an
+    `X-VayuMail-Forwarded` header and tagged mail is never forwarded again, so
+    two servers forwarding at each other can't bounce a message forever
+    (header detection is confined to the header block, so body text can't
+    spoof it). Junk-filtered mail is never forwarded, forwarding is
+    best-effort (a relay problem never fails local delivery), and
+    self-forwarding is rejected.
+  Alias and forward changes are audit-logged. Backed by a new
+  `vayumail_aliases` table and a `forward_to` account column (idempotent
+  migrations; existing installs are unaffected until the features are used).
+
 ## [3.9.26] — 2026-07-09
 
 ### Added

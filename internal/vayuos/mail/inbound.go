@@ -77,12 +77,25 @@ func (m *Maildir) ReadRaw(domain, username, id string) ([]byte, error) {
 	return os.ReadFile(filepath.Join(m.accountDir(domain, username), sub, name))
 }
 
+// forwardLoopHeader tags a message that VayuMail has already auto-forwarded
+// once. Its presence stops a second hop, so two servers forwarding at each
+// other (A→B, B→A) can never bounce a message forever.
+const forwardLoopHeader = "X-VayuMail-Forwarded"
+
 // DeliverInbound performs local delivery of a received message into the
-// recipient's Maildir. This is the storage half of inbound mail; a listening
-// MX/IMAP server is a separate, governed milestone.
+// recipient's Maildir. Alias addresses resolve to their target mailbox first
+// (single-level, see CreateAlias), and after successful filing a copy is
+// relayed to the mailbox's auto-forward address when one is set (best-effort —
+// a forwarding problem never fails local delivery).
 func (e *Engine) DeliverInbound(recipientEmail string, raw []byte) (string, error) {
 	if e.maildir == nil {
 		return "", errors.New("vayumail: not started")
+	}
+	// Alias resolution: file into the target mailbox instead.
+	if e.accounts != nil {
+		if target := e.accounts.ResolveAlias(context.Background(), recipientEmail); target != "" {
+			recipientEmail = target
+		}
 	}
 	local, domain := splitAddress(recipientEmail)
 	if local == "" {
@@ -104,13 +117,63 @@ func (e *Engine) DeliverInbound(recipientEmail string, raw []byte) (string, erro
 	}
 	// Built-in heuristic junk filter (fully local — no external services). Mail
 	// scoring at or above the threshold is filed straight into the recipient's
-	// Junk folder instead of the inbox.
+	// Junk folder instead of the inbox. Junk is NOT auto-forwarded.
 	if e.cfg.JunkFilterEnabled {
 		if v := ScoreSpam(raw); v.IsSpam {
 			return e.maildir.DeliverTo(domain, local, "Junk", raw)
 		}
 	}
-	return e.maildir.Deliver(domain, local, raw)
+	id, err := e.maildir.Deliver(domain, local, raw)
+	if err == nil {
+		e.forwardCopy(local+"@"+domain, raw)
+	}
+	return id, err
+}
+
+// forwardCopy relays a copy of an inbound message to the mailbox's auto-forward
+// address, when one is configured. Loop-safe: a message that already carries
+// the forward tag is never forwarded again, and each hop adds the tag. The
+// envelope sender is the local mailbox (our own domain), so SPF/DKIM alignment
+// for the forwarding hop is ours. Best-effort by design.
+func (e *Engine) forwardCopy(mailbox string, raw []byte) {
+	if e.accounts == nil || e.queue == nil {
+		return
+	}
+	fwd := e.accounts.ForwardFor(context.Background(), mailbox)
+	if fwd == "" || strings.EqualFold(fwd, mailbox) {
+		return
+	}
+	if hasHeader(raw, forwardLoopHeader) {
+		return
+	}
+	tagged := prependHeader(raw, forwardLoopHeader+": "+mailbox)
+	_, _ = e.queue.Enqueue(context.Background(), mailbox, []string{fwd}, tagged)
+}
+
+// hasHeader reports whether the message's header block contains the named
+// header (case-insensitive). Only the block before the first blank line is
+// examined, so a quoted header in the body can't spoof the check.
+func hasHeader(raw []byte, name string) bool {
+	head := raw
+	if i := strings.Index(string(raw), "\r\n\r\n"); i >= 0 {
+		head = raw[:i]
+	} else if i := strings.Index(string(raw), "\n\n"); i >= 0 {
+		head = raw[:i]
+	}
+	prefix := strings.ToLower(name) + ":"
+	for _, line := range strings.Split(string(head), "\n") {
+		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(line)), prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// prependHeader inserts a header line at the top of the message's header block.
+func prependHeader(raw []byte, headerLine string) []byte {
+	out := make([]byte, 0, len(raw)+len(headerLine)+2)
+	out = append(out, []byte(headerLine+"\r\n")...)
+	return append(out, raw...)
 }
 
 // Inbox returns the messages for a local account, defaulting the domain to the
