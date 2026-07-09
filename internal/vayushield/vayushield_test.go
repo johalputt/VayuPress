@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/johalputt/vayupress/internal/vayushield/botdb"
+	"github.com/johalputt/vayupress/internal/vayushield/calibrate"
 	"github.com/johalputt/vayupress/internal/vayushield/challenge"
 	"github.com/johalputt/vayupress/internal/vayushield/scorer"
 )
@@ -547,5 +548,62 @@ func TestMiddlewareReputationJailAndVerifiedExemption(t *testing.T) {
 	}
 	if m.Status().Pardons == 0 {
 		t.Fatal("pardon telemetry should be positive")
+	}
+}
+
+// ── Aegis L4 self-calibration integration ────────────────────────────────────
+
+func TestDecideAppliesLoosenOnlyCalibrationBias(t *testing.T) {
+	m := New(Config{Signer: challenge.NewSigner([]byte("s"))})
+	m.ApplySettings(Settings{Enabled: true, PoWThreshold: 0.4, JSThreshold: 0.6, BlockThreshold: 0.8})
+	req := httptest.NewRequest("GET", "/post", nil)
+	borderline := Verdict{Result: scorer.Result{BotScore: 0.45, ClientType: botdb.TypeUnknown}}
+	confirmed := Verdict{Result: scorer.Result{BotScore: 0.85, ClientType: botdb.TypeUnknown}}
+
+	// Without bias: 0.45 >= 0.4 → challenged.
+	if a := m.Decide(req, borderline); a != ActionChallengePoW {
+		t.Fatalf("no-bias decide = %v, want ChallengePoW", a)
+	}
+
+	// Simulate the calibrator having learned a bias (as if pass rate was ~100%).
+	m.calib = calibrate.BiasedForTest(0.1)
+	if a := m.Decide(req, borderline); a != ActionAllow {
+		t.Fatalf("with +0.1 bias a 0.45 score must be allowed, got %v", a)
+	}
+	// The block threshold is never loosened: confirmed bots still blocked.
+	if a := m.Decide(req, confirmed); a != ActionBlock {
+		t.Fatalf("bias must not loosen the block threshold, got %v", a)
+	}
+}
+
+func TestChallengeLifecycleFeedsCalibrator(t *testing.T) {
+	m := newTestManager(true)
+	// Serve a challenge to an uncertain client.
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/post", nil)
+	req.Header.Set("User-Agent", "SomeNewClient/1.0")
+	m.Middleware(okHandler()).ServeHTTP(rr, req)
+	if rr.Header().Get("X-VayuShield") != "challenge" {
+		t.Skipf("client not challenged (got %q) — scorer changed", rr.Header().Get("X-VayuShield"))
+	}
+	served, _, _ := m.calib.Snapshot()
+	if served == 0 {
+		t.Fatal("serveChallenge must feed the calibrator")
+	}
+	// Solve it: VerifyPoW must feed the pass side.
+	pow, err := m.cfg.Signer.IssuePoW(challenge.DefaultDifficulty, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nonce, ok := challenge.Solve(pow.Salt, pow.Difficulty, 5_000_000)
+	if !ok {
+		t.Fatal("solve failed")
+	}
+	if _, ok := m.VerifyPoW(context.Background(), pow, nonce); !ok {
+		t.Fatal("solved PoW should verify")
+	}
+	_, passed, _ := m.calib.Snapshot()
+	if passed == 0 {
+		t.Fatal("VerifyPoW success must feed the calibrator")
 	}
 }
