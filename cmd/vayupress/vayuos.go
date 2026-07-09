@@ -873,7 +873,12 @@ func sanitizeMailLocalPart(s string) string {
 // it is passed through html.EscapeString (a no-op on this charset) so the id is
 // a recognised-sanitised value on every downstream sink.
 func mailIDParam(r *http.Request) string {
-	s := strings.TrimSpace(r.URL.Query().Get("id"))
+	return sanitizeMailID(strings.TrimSpace(r.URL.Query().Get("id")))
+}
+
+// sanitizeMailID is the pure barrier behind mailIDParam, shared by the POST
+// action handlers that read the id from the form (not just the query string).
+func sanitizeMailID(s string) string {
 	if s == "" || len(s) > 256 {
 		return ""
 	}
@@ -895,7 +900,15 @@ func mailIDParam(r *http.Request) string {
 // default, so the folder value can never carry markup into a fragment. This is
 // the go/reflected-xss barrier for the folder parameter.
 func mailFolderParam(r *http.Request) string {
-	f := strings.TrimSpace(r.URL.Query().Get("folder"))
+	return sanitizeMailFolder(strings.TrimSpace(r.URL.Query().Get("folder")))
+}
+
+// sanitizeMailFolder is the pure barrier behind mailFolderParam, shared by the
+// POST action handlers that read the folder from the form. Invalid input falls
+// back to "Inbox". html.EscapeString is a no-op on the allowed charset
+// (byte-identical output) but routes the value through a recognised sanitiser
+// so go/reflected-xss is cleared on every downstream HTML sink.
+func sanitizeMailFolder(f string) string {
 	if f == "" || len(f) > 64 {
 		return "Inbox"
 	}
@@ -907,9 +920,6 @@ func mailFolderParam(r *http.Request) string {
 			return "Inbox"
 		}
 	}
-	// html.EscapeString is a no-op on this charset (byte-identical) but routes
-	// the value through a recognised sanitiser so go/reflected-xss is cleared
-	// on every downstream HTML sink.
 	return html.EscapeString(f)
 }
 
@@ -1414,11 +1424,13 @@ func (a *App) handleVayuOSInboxAction(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusBadRequest, "bad-request", "invalid form", "")
 		return
 	}
-	user := strings.TrimSpace(r.PostFormValue("user"))
-	folder := strings.TrimSpace(r.PostFormValue("folder"))
-	if folder == "" {
-		folder = "Inbox"
-	}
+	// Sanitise at the point of read (same barrier as the GET readers): these
+	// values are re-rendered into the refreshed inbox fragment below, so a raw
+	// form value would be a reflected-XSS sink. sanitizeMailLocalPart /
+	// sanitizeMailFolder are no-ops on valid input but route the value through
+	// html.EscapeString, clearing the taint for every downstream HTML sink.
+	user := sanitizeMailLocalPart(strings.TrimSpace(r.PostFormValue("user")))
+	folder := sanitizeMailFolder(strings.TrimSpace(r.PostFormValue("folder")))
 	if !a.isAdminRequest(r) {
 		local, _ := a.ownMailbox(r)
 		if local == "" || !strings.EqualFold(local, user) {
@@ -2013,12 +2025,12 @@ func (a *App) handleVayuOSMessagePaneAction(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	_ = r.ParseForm()
-	user := strings.TrimSpace(r.FormValue("user"))
-	folder := strings.TrimSpace(r.FormValue("folder"))
-	id := strings.TrimSpace(r.FormValue("id"))
-	if folder == "" {
-		folder = "Inbox"
-	}
+	// Sanitise at read: user/folder/id are rendered back into the reader-pane
+	// card (writeOSHTML) below, so raw form values would be a reflected-XSS
+	// sink. The sanitisers are no-ops on valid input but apply html.EscapeString.
+	user := sanitizeMailLocalPart(strings.TrimSpace(r.FormValue("user")))
+	folder := sanitizeMailFolder(strings.TrimSpace(r.FormValue("folder")))
+	id := sanitizeMailID(strings.TrimSpace(r.FormValue("id")))
 	if !a.isAdminRequest(r) {
 		local, _ := a.ownMailbox(r)
 		if local == "" || !strings.EqualFold(local, user) {

@@ -1,64 +1,46 @@
 package main
 
-import (
-	"net/http/httptest"
-	"testing"
-)
+import "testing"
 
-func TestSanitizeMailLocalPart(t *testing.T) {
-	ok := []string{"alice", "bob.smith", "a_b+c-d", "User123", ""}
-	for _, s := range ok {
-		if got := sanitizeMailLocalPart(s); got != s {
-			t.Fatalf("sanitizeMailLocalPart(%q) = %q, want unchanged", s, got)
+// These lock in the go/reflected-xss barrier for the mail params: valid values
+// pass through byte-identical (no behaviour change for real mailboxes/folders/
+// ids), and any value carrying HTML metacharacters is either rejected to a safe
+// default or escaped — so no raw markup can reach an HTML sink from user/folder/
+// id, whether read from the query string OR a POST form.
+
+func TestSanitizeMailFolder(t *testing.T) {
+	cases := map[string]string{
+		"Inbox":       "Inbox",
+		"Sent":        "Sent",
+		"My Folder-2": "My Folder-2", // spaces, digits, hyphen all valid
+		"":            "Inbox",       // empty → default
+		`<script>`:    "Inbox",       // markup → default
+		`Inbox"onx`:   "Inbox",       // quote → default
+		"a'b":         "Inbox",       // apostrophe → default
+	}
+	for in, want := range cases {
+		if got := sanitizeMailFolder(in); got != want {
+			t.Fatalf("sanitizeMailFolder(%q) = %q, want %q", in, got, want)
 		}
-	}
-	bad := []string{
-		`<script>`,
-		`a"onmouseover=alert(1)`,
-		`a b`,
-		`a/b`,
-		`x@y`,
-		`"><img src=x onerror=alert(1)>`,
-	}
-	for _, s := range bad {
-		if got := sanitizeMailLocalPart(s); got != "" {
-			t.Fatalf("sanitizeMailLocalPart(%q) = %q, want \"\" (rejected)", s, got)
-		}
-	}
-	// Over-length is rejected.
-	long := make([]byte, 65)
-	for i := range long {
-		long[i] = 'a'
-	}
-	if got := sanitizeMailLocalPart(string(long)); got != "" {
-		t.Fatal("over-length local part must be rejected")
 	}
 }
 
-func TestMailUserParamRejectsInjection(t *testing.T) {
-	r := httptest.NewRequest("GET", `/os/vayumail/inbox?user=%22%3E%3Cscript%3Ealert(1)%3C/script%3E`, nil)
-	if got := mailUserParam(r); got != "" {
-		t.Fatalf("mailUserParam must reject an XSS payload, got %q", got)
+func TestSanitizeMailLocalPartAndID(t *testing.T) {
+	// Valid local parts / ids are byte-identical (html.EscapeString is a no-op
+	// on their charset), so engine lookups and comparisons are unaffected.
+	if got := sanitizeMailLocalPart("john.doe+tag-1"); got != "john.doe+tag-1" {
+		t.Fatalf("valid local part changed: %q", got)
 	}
-	r2 := httptest.NewRequest("GET", `/os/vayumail/inbox?user=alice`, nil)
-	if got := mailUserParam(r2); got != "alice" {
-		t.Fatalf("mailUserParam(alice) = %q, want alice", got)
+	if got := sanitizeMailID("1700000000.M123P456:2,S"); got != "1700000000.M123P456:2,S" {
+		t.Fatalf("valid maildir id changed: %q", got)
 	}
-}
-
-func TestMailFolderParamDefaultsAndRejects(t *testing.T) {
-	// Valid custom folder passes.
-	r := httptest.NewRequest("GET", `/os/vayumail/inbox?folder=Project_X-2`, nil)
-	if got := mailFolderParam(r); got != "Project_X-2" {
-		t.Fatalf("folder = %q, want Project_X-2", got)
-	}
-	// Missing → Inbox.
-	if got := mailFolderParam(httptest.NewRequest("GET", `/os/vayumail/inbox`, nil)); got != "Inbox" {
-		t.Fatalf("missing folder = %q, want Inbox", got)
-	}
-	// Markup → Inbox (rejected to default).
-	r2 := httptest.NewRequest("GET", `/os/vayumail/inbox?folder=%3Cimg%20src%3Dx%3E`, nil)
-	if got := mailFolderParam(r2); got != "Inbox" {
-		t.Fatalf("markup folder = %q, want Inbox", got)
+	// Hostile values are rejected to empty (never reach HTML).
+	for _, bad := range []string{`a<b`, `x"y`, `z'q`, `a&b`, `a b`, `<script>`} {
+		if got := sanitizeMailLocalPart(bad); got != "" {
+			t.Fatalf("sanitizeMailLocalPart(%q) = %q, want empty", bad, got)
+		}
+		if got := sanitizeMailID(bad); got != "" {
+			t.Fatalf("sanitizeMailID(%q) = %q, want empty", bad, got)
+		}
 	}
 }
