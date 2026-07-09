@@ -2594,6 +2594,14 @@
   .vp-os .vm-readpane:has(.vm-reader) { order: -1; margin-bottom: .6rem; }
 }
 
+/* ── VayuMail vacation autoresponder (v-ooo) ───────────────────────────────── */
+.vp-os .vm-ooo { border: 1px solid var(--border); border-radius: 10px; padding: .35rem .65rem; margin: 0 0 .5rem; }
+.vp-os .vm-ooo > summary { cursor: pointer; display: flex; align-items: center; gap: .6rem; padding: .3rem 0; list-style: none; }
+.vp-os .vm-ooo > summary::before { content: "▸"; opacity: .6; }
+.vp-os .vm-ooo[open] > summary::before { content: "▾"; }
+.vp-os .vm-ooo-form { display: flex; flex-direction: column; gap: .6rem; padding: .5rem 0 .65rem; }
+.vp-os .vm-ooo-form textarea { resize: vertical; }
+
 /* ── VayuMail composer (v-compose) ─────────────────────────────────────────── */
 .vp-os .vm-row--tight { margin: 0 0 .65rem; }
 .vp-os .vm-compose-actions { align-items: center; }

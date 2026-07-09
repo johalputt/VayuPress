@@ -129,10 +129,26 @@ func NewAccountStore(db *sql.DB) (*AccountStore, error) {
 		// Per-account auto-forward target: inbound mail is filed locally AND a
 		// copy is relayed to this address. Empty (the default) means off.
 		`ALTER TABLE vayumail_accounts ADD COLUMN forward_to TEXT NOT NULL DEFAULT ''`,
+		// Vacation autoresponder (RFC 3834): enabled flag, subject/body, and an
+		// optional active window (RFC3339 date-times; empty = unbounded side).
+		`ALTER TABLE vayumail_accounts ADD COLUMN autoreply_enabled INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE vayumail_accounts ADD COLUMN autoreply_subject TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE vayumail_accounts ADD COLUMN autoreply_body TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE vayumail_accounts ADD COLUMN autoreply_from TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE vayumail_accounts ADD COLUMN autoreply_until TEXT NOT NULL DEFAULT ''`,
 	} {
 		if _, err := db.Exec(stmt); err != nil && !strings.Contains(err.Error(), "duplicate column") {
 			return s, err
 		}
+	}
+	// Autoresponder dedupe log: one row per (mailbox, correspondent) recording
+	// when we last auto-replied, so a sender gets at most one reply per window.
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS vayumail_autoreply_log(
+		mailbox TEXT NOT NULL,
+		sender TEXT NOT NULL,
+		sent_at DATETIME NOT NULL,
+		PRIMARY KEY(mailbox, sender));`); err != nil {
+		return s, err
 	}
 	// Alias addresses: extra receive-only addresses that deliver into an existing
 	// mailbox (single-level: an alias always points at a real account, never at
