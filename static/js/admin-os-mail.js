@@ -14,6 +14,19 @@
     if (row) row.classList.add('vm-active');
   });
 
+  // Conversation threading: the count badge on a thread's newest message
+  // toggles its older (hidden) rows. Delegated, so it survives HTMX swaps.
+  document.addEventListener('click', function (e) {
+    var btn = e.target && e.target.closest ? e.target.closest('[data-vm-thread-toggle]') : null;
+    if (!btn) return;
+    e.preventDefault();
+    var key = btn.getAttribute('data-vm-thread-toggle');
+    var open = btn.classList.toggle('vm-thread-count--open');
+    document.querySelectorAll('[data-vm-thread="' + key + '"]').forEach(function (r) {
+      if (open) r.removeAttribute('hidden'); else r.setAttribute('hidden', '');
+    });
+  });
+
   function cookie(name) {
     var m = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
     return m ? decodeURIComponent(m[1]) : '';

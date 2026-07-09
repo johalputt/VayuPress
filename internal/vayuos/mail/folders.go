@@ -14,7 +14,7 @@ import (
 )
 
 // StandardFolders are the mailbox folders surfaced in the panel, in order.
-var StandardFolders = []string{"Inbox", "Sent", "Drafts", "Archive", "Junk", "Trash"}
+var StandardFolders = []string{"Inbox", "Sent", "Drafts", "Archive", "Snoozed", "Junk", "Trash"}
 
 // canonicalFolder returns the canonical folder name, defaulting to Inbox.
 func canonicalFolder(name string) string {

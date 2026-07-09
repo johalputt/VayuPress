@@ -75,7 +75,9 @@ func (s *AccountStore) CreateFilter(ctx context.Context, r FilterRule) error {
 		return errors.New("invalid action")
 	}
 	if r.Action == "move" {
-		if !isStandardFolder(r.Target) {
+		// Snoozed is snooze-action-only: a rule filing there would put mail to
+		// sleep forever, since only Engine.Snooze records a wake row.
+		if !isStandardFolder(r.Target) || strings.EqualFold(r.Target, "Snoozed") {
 			return errors.New("invalid target folder")
 		}
 	} else {

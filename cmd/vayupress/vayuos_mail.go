@@ -885,7 +885,9 @@ func (a *App) vayuFiltersCard(ctx context.Context) string {
 		b.WriteString(`<label class="field vm-grow"><span class="field-label">contains</span><input class="input input--sm" type="text" name="contains" placeholder="newsletter@" required></label>`)
 		b.WriteString(`<label class="field"><span class="field-label">Then</span><select class="input input--sm" name="action">`)
 		for _, f := range vmail.StandardFolders {
-			if strings.EqualFold(f, "Inbox") {
+			// Inbox is the default destination; Snoozed is snooze-action-only
+			// (a filter filing there would sleep mail forever with no wake).
+			if strings.EqualFold(f, "Inbox") || strings.EqualFold(f, "Snoozed") {
 				continue
 			}
 			b.WriteString(`<option value="move:` + html.EscapeString(f) + `">Move to ` + html.EscapeString(f) + `</option>`)

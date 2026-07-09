@@ -424,6 +424,8 @@ func (e *Engine) Start(ctx context.Context) error {
 	}
 	e.queue = q
 	go e.worker()
+	// Snooze wake loop: resurfaces due snoozed messages (see snooze.go).
+	go e.snoozeSweeper()
 
 	// Admin-managed mail accounts (email + password).
 	if as, aerr := NewAccountStore(e.db); aerr == nil {

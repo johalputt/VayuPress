@@ -1151,7 +1151,9 @@ func (a *App) vayuInboxBody(user, folder string) string {
 			b.WriteString(`<button type="button" class="btn btn--sm" hx-post="/os/vayumail/inbox/action" hx-vals='{"action":"pin","pin":"1"}'` + inc + `>📌 Pin</button>`)
 			b.WriteString(`<span class="vm-move"><select class="input input--sm" name="to" aria-label="Move selected to folder" hx-post="/os/vayumail/inbox/action" hx-trigger="change" hx-vals='{"action":"move"}'` + inc + `><option value="">Move to…</option>`)
 			for _, f := range vmail.StandardFolders {
-				if strings.EqualFold(f, folder) {
+				// Snoozed is excluded: only the snooze action files there (a
+				// manual move would sleep forever with no wake row).
+				if strings.EqualFold(f, folder) || strings.EqualFold(f, "Snoozed") {
 					continue
 				}
 				b.WriteString(`<option value="` + html.EscapeString(f) + `">` + html.EscapeString(f) + `</option>`)
@@ -1171,7 +1173,13 @@ func (a *App) vayuInboxBody(user, folder string) string {
 	if len(msgs) == 0 {
 		b.WriteString(`<tr><td colspan="6" class="muted">No messages in ` + html.EscapeString(folder) + `.</td></tr>`)
 	}
-	for _, m := range msgs {
+	// Conversation threading: messages sharing a normalized subject (Re:/Fwd:
+	// prefixes stripped) group into one thread. The newest message is the
+	// visible row, carrying a count badge that toggles the older ones (hidden
+	// rows, flipped by delegated JS that survives HTMX swaps).
+	threadOf := map[string]int{} // normalized subject -> thread index
+	threadN := 0
+	rowHTML := func(m vmail.StoredMessage, threadAttr, extraCls, badge string) string {
 		subj := m.Subject
 		if subj == "" {
 			subj = "(no subject)"
@@ -1184,7 +1192,7 @@ func (a *App) vayuInboxBody(user, folder string) string {
 		if isDrafts {
 			link = "/os/vayumail/compose?draft=1&user=" + qparam(user) + "&id=" + qparam(m.ID)
 		}
-		rowCls := "vm-row-item"
+		rowCls := "vm-row-item" + extraCls
 		if !m.Seen && received {
 			rowCls += " vm-unread"
 		}
@@ -1211,10 +1219,53 @@ func (a *App) vayuInboxBody(user, folder string) string {
 			subjA += ` class="vm-subj-link" data-vm-open hx-get="` + link + `&pane=1" hx-target="#vm-readpane" hx-swap="innerHTML"`
 		}
 		subjA += `>` + html.EscapeString(subj) + `</a>`
-		b.WriteString(`<tr class="` + rowCls + `" data-vm-row><td class="vm-check">` + check + `</td><td>` + pin + `</td><td><div class="vm-from">` + mailAvatar(who) + `<span class="vm-name" title="` + html.EscapeString(who) + `">` + html.EscapeString(mailDisplay(who)) + `</span></div></td><td class="vm-subj">` + subjA + `</td><td class="muted text-sm vm-date">` + mailRelTime(m.Date) + `</td><td class="row-actions">` + tick + `</td></tr>`)
+		return `<tr class="` + rowCls + `" data-vm-row` + threadAttr + `><td class="vm-check">` + check + `</td><td>` + pin + `</td><td><div class="vm-from">` + mailAvatar(who) + `<span class="vm-name" title="` + html.EscapeString(who) + `">` + html.EscapeString(mailDisplay(who)) + `</span></div></td><td class="vm-subj">` + subjA + badge + `</td><td class="muted text-sm vm-date">` + mailRelTime(m.Date) + `</td><td class="row-actions">` + tick + `</td></tr>`
+	}
+	// Pass 1: count thread members per normalized subject.
+	counts := map[string]int{}
+	for _, m := range msgs {
+		if k := normSubject(m.Subject); k != "" {
+			counts[k]++
+		}
+	}
+	for _, m := range msgs {
+		k := normSubject(m.Subject)
+		if k == "" || counts[k] < 2 {
+			b.WriteString(rowHTML(m, "", "", "")) // unthreaded row
+			continue
+		}
+		if idx, seen := threadOf[k]; seen {
+			// Older thread member: hidden until the lead's badge is toggled.
+			b.WriteString(rowHTML(m, ` data-vm-thread="`+strconv.Itoa(idx)+`" hidden`, " vm-thread-child", ""))
+			continue
+		}
+		threadN++
+		threadOf[k] = threadN
+		badge := ` <button type="button" class="vm-thread-count" data-vm-thread-toggle="` + strconv.Itoa(threadN) + `" title="Show conversation (` + strconv.Itoa(counts[k]) + ` messages)" aria-label="Show conversation">` + strconv.Itoa(counts[k]) + `</button>`
+		b.WriteString(rowHTML(m, "", "", badge))
 	}
 	b.WriteString(`</tbody></table></div>`)
 	return b.String()
+}
+
+// normSubject normalizes a subject for conversation grouping: reply/forward
+// prefixes (Re:, Fwd:, Fw:, any depth) are stripped and the rest lowercased.
+// An empty result means "do not group".
+func normSubject(s string) string {
+	s = strings.TrimSpace(s)
+	for {
+		low := strings.ToLower(s)
+		switch {
+		case strings.HasPrefix(low, "re:"):
+			s = strings.TrimSpace(s[3:])
+		case strings.HasPrefix(low, "fwd:"):
+			s = strings.TrimSpace(s[4:])
+		case strings.HasPrefix(low, "fw:"):
+			s = strings.TrimSpace(s[3:])
+		default:
+			return strings.ToLower(s)
+		}
+	}
 }
 
 // handleVayuOSInboxFragment returns the inbox folder view for HTMX (new-mail
@@ -1739,6 +1790,12 @@ func (a *App) vayuReaderCard(user, folder, id string, pane bool) (string, bool) 
 		} else {
 			card.WriteString(`<button type="button" class="btn btn--sm"` + hxPost + paneVals("to", "Inbox") + `>↧ Restore</button>`)
 		}
+		// Snooze: hide until later; the sweeper resurfaces it unread. Only for
+		// received folders (the engine rejects Sent/Drafts/Snoozed anyway).
+		if received && !strings.EqualFold(folder, "Snoozed") {
+			card.WriteString(`<button type="button" class="btn btn--sm"` + hxPost + paneVals("snooze", "tomorrow") + ` title="Snooze until tomorrow 8:00">⏰ Tomorrow</button>`)
+			card.WriteString(`<button type="button" class="btn btn--sm"` + hxPost + paneVals("snooze", "nextweek") + ` title="Snooze until Monday 8:00">⏰ Next week</button>`)
+		}
 		card.WriteString(`<button type="button" class="btn btn--sm btn--danger"` + hxPost + paneVals("delete", "1") + ` hx-confirm="Permanently delete this message?">🗑 Delete</button>`)
 		card.WriteString(`</div>`)
 	} else {
@@ -1767,7 +1824,8 @@ func (a *App) vayuReaderCard(user, folder, id string, pane bool) (string, bool) 
 		}
 		card.WriteString(`<span class="vm-move"><select class="input input--sm" data-mail-move-select aria-label="Move to folder"><option value="">Move to…</option>`)
 		for _, f := range vmail.StandardFolders {
-			if strings.EqualFold(f, folder) {
+			// Snoozed is excluded: only the snooze action files there.
+			if strings.EqualFold(f, folder) || strings.EqualFold(f, "Snoozed") {
 				continue
 			}
 			card.WriteString(`<option value="` + html.EscapeString(f) + `">` + html.EscapeString(f) + `</option>`)
@@ -1870,6 +1928,13 @@ func (a *App) handleVayuOSMessagePaneAction(w http.ResponseWriter, r *http.Reque
 	w.Header().Set("HX-Trigger", "vm-mail-changed")
 
 	switch {
+	case r.FormValue("snooze") != "":
+		until := snoozeUntil(r.FormValue("snooze"))
+		if err := a.vayuMail.Snooze(user, folder, id, until); err != nil {
+			writeOSHTML(w, vayuReadpaneEmpty("Could not snooze: "+err.Error()))
+			return
+		}
+		writeOSHTML(w, vayuReadpaneEmpty("Snoozed — wakes "+until.Local().Format("Mon 15:04")+"."))
 	case r.FormValue("delete") == "1":
 		_ = a.vayuMail.DeleteMessage(user, folder, id)
 		writeOSHTML(w, vayuReadpaneEmpty("Message deleted."))
@@ -1903,6 +1968,25 @@ func (a *App) handleVayuOSMessagePaneAction(w http.ResponseWriter, r *http.Reque
 // initial split-view state and what its Close button restores.
 func (a *App) handleVayuOSReadpane(w http.ResponseWriter, r *http.Request) {
 	writeOSHTML(w, vayuReadpaneEmpty(""))
+}
+
+// snoozeUntil maps a snooze preset to its wake time: "later" (+4h),
+// "tomorrow" (next day 08:00) or "nextweek" (next Monday 08:00).
+func snoozeUntil(preset string) time.Time {
+	now := time.Now()
+	switch preset {
+	case "tomorrow":
+		d := now.AddDate(0, 0, 1)
+		return time.Date(d.Year(), d.Month(), d.Day(), 8, 0, 0, 0, time.Local)
+	case "nextweek":
+		d := now.AddDate(0, 0, 1)
+		for d.Weekday() != time.Monday {
+			d = d.AddDate(0, 0, 1)
+		}
+		return time.Date(d.Year(), d.Month(), d.Day(), 8, 0, 0, 0, time.Local)
+	default: // "later"
+		return now.Add(4 * time.Hour)
+	}
 }
 
 // cfgDomain is a small helper for templates.
