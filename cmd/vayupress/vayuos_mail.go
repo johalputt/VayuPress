@@ -143,6 +143,10 @@ func (a *App) handleVayuOSCompose(w http.ResponseWriter, r *http.Request) {
     <button class="btn" type="button" data-c-draft>Save as draft</button>
     <span class="muted text-sm" data-c-status></span>
   </div>
+  <div class="vm-undobar" data-c-undobar hidden role="status" aria-live="polite">
+    <span data-c-undo-text>Sending…</span>
+    <button class="btn btn--sm" type="button" data-c-undo>Undo</button>
+  </div>
 </form></div>` + `<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail.js?v=` + assetVer("js/admin-os-mail.js") + `"></script>`)
 	writeOSHTML(w, adminOSLayout(nonce, "Compose", "vayuos", cfg, htmpl.HTML(body.String())))
 }

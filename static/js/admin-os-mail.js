@@ -253,38 +253,97 @@
       });
     }
 
+    // ── Undo-send ──────────────────────────────────────────────────────────
+    // Clicking Send holds the message behind an Undo control for a few seconds
+    // rather than dispatching immediately. If the operator leaves during the
+    // hold, a beforeunload handler fires the send (keepalive) so nothing is
+    // lost. A "sending" guard prevents a double send.
+    var HOLD_MS = 8000;
+    var holdTimer = null, countdownTimer = null, holdSnapshot = null, sending = false;
+    var undoBar = compose.querySelector('[data-c-undobar]');
+    var undoText = compose.querySelector('[data-c-undo-text]');
+    var undoBtn = compose.querySelector('[data-c-undo]');
+
+    function clearHoldTimers() {
+      if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
+      if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
+    }
+    function sendDone(res) {
+      if (sendBtn) sendBtn.disabled = false;
+      if (res.ok) {
+        stopAutosave();
+        if (holdSnapshot && holdSnapshot.draftId) {
+          postJSON('/os/vayumail/message/action', { user: localPart(holdSnapshot.from), folder: 'Drafts', id: holdSnapshot.draftId, delete: true });
+        }
+        if (cStatus) cStatus.textContent = 'Sent ✓';
+        acctToast('Message sent');
+        setTimeout(function () { window.location.href = '/os/vayumail/sent'; }, 650);
+      } else {
+        sending = false;
+        holdSnapshot = null;
+        if (cStatus) cStatus.textContent = 'Failed: ' + errText(res);
+        acctToast('Send failed: ' + errText(res), true);
+      }
+    }
+    function performSend(keepalive) {
+      if (sending || !holdSnapshot) return;
+      sending = true;
+      clearHoldTimers();
+      if (undoBar) undoBar.setAttribute('hidden', '');
+      var snap = holdSnapshot;
+      var opts = { method: 'POST', keepalive: !!keepalive, headers: { 'X-CSRF-Token': cookie('vp_csrf') } };
+      if (snap.files.length > 0) {
+        var fd = new FormData();
+        Object.keys(snap.fields).forEach(function (k) { fd.append(k, snap.fields[k] || ''); });
+        snap.files.forEach(function (file) { fd.append('attachments', file); });
+        fd.append('appendSig', snap.appendSig ? '1' : '0');
+        opts.body = fd;
+      } else {
+        var payload = {};
+        Object.keys(snap.fields).forEach(function (k) { payload[k] = snap.fields[k]; });
+        payload.appendSig = snap.appendSig;
+        opts.headers['Content-Type'] = 'application/json';
+        opts.body = JSON.stringify(payload);
+      }
+      fetch('/os/vayumail/send', opts)
+        .then(function (r) { return r.json().catch(function () { return {}; }).then(function (b) { return { ok: r.ok, status: r.status, body: b }; }); })
+        .then(sendDone)
+        .catch(function () { sending = false; });
+    }
+    function cancelHold() {
+      clearHoldTimers();
+      holdSnapshot = null;
+      if (undoBar) undoBar.setAttribute('hidden', '');
+      if (sendBtn) sendBtn.disabled = false;
+      if (cStatus) cStatus.textContent = 'Cancelled — back to your draft.';
+      if (!autosaveTimer) autosaveTimer = setInterval(function () { saveDraft(true); }, 20000);
+    }
+    if (undoBtn) undoBtn.addEventListener('click', cancelHold);
+
     compose.addEventListener('submit', function (e) {
       e.preventDefault();
+      if (sending || holdSnapshot) return; // a send is already in flight/held
       var f = composeFields();
       if (!f.to && !f.cc && !f.bcc) { if (cStatus) cStatus.textContent = 'Add at least one recipient.'; return; }
-      if (cStatus) cStatus.textContent = 'Sending…';
+      // Snapshot at click time so edits during the hold don't leak into the send.
+      holdSnapshot = { fields: f, files: composeFiles.slice(), appendSig: sigAppend(), from: f.from, draftId: draftId };
+      stopAutosave();
       if (sendBtn) sendBtn.disabled = true;
-      var done = function (res) {
-        if (sendBtn) sendBtn.disabled = false;
-        if (res.ok) {
-          stopAutosave();
-          // Sent — clear the autosaved draft copy, like every mail client.
-          if (draftId) { postJSON('/os/vayumail/message/action', { user: localPart(f.from), folder: 'Drafts', id: draftId, delete: true }); }
-          if (cStatus) cStatus.textContent = 'Queued for delivery ✓';
-          acctToast('Message queued for delivery');
-          setTimeout(function () { window.location.href = '/os/vayumail/sent'; }, 650);
-        } else {
-          if (cStatus) cStatus.textContent = 'Failed: ' + errText(res);
-          acctToast('Send failed: ' + errText(res), true);
-        }
-      };
-      if (composeFiles.length > 0) {
-        var fd = new FormData();
-        Object.keys(f).forEach(function (k) { fd.append(k, f[k] || ''); });
-        composeFiles.forEach(function (file) { fd.append('attachments', file); });
-        fd.append('appendSig', sigAppend() ? '1' : '0');
-        fetch('/os/vayumail/send', { method: 'POST', headers: { 'X-CSRF-Token': cookie('vp_csrf') }, body: fd })
-          .then(function (r) { return r.json().catch(function () { return {}; }).then(function (b) { return { ok: r.ok, status: r.status, body: b }; }); })
-          .then(done);
-      } else {
-        f.appendSig = sigAppend();
-        postJSON('/os/vayumail/send', f).then(done);
-      }
+      if (cStatus) cStatus.textContent = '';
+      var remaining = Math.ceil(HOLD_MS / 1000);
+      if (undoText) undoText.textContent = 'Sending in ' + remaining + 's…';
+      if (undoBar) undoBar.removeAttribute('hidden');
+      clearHoldTimers();
+      countdownTimer = setInterval(function () {
+        remaining -= 1;
+        if (undoText) undoText.textContent = remaining > 0 ? ('Sending in ' + remaining + 's…') : 'Sending…';
+      }, 1000);
+      holdTimer = setTimeout(function () { performSend(false); }, HOLD_MS);
+    });
+
+    // If the operator navigates away while a send is held, fire it best-effort.
+    window.addEventListener('beforeunload', function () {
+      if (holdSnapshot && !sending) { performSend(true); }
     });
   }
 
