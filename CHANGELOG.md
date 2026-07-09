@@ -8,6 +8,27 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.11.8] — 2026-07-09
+
+### Added
+- **VayuShield 2.0 "Aegis" — live console** (step 6, completing the
+  Cloudflare-free bot-shield rebuild). The Bot Shield panel now shows the
+  whole defense pipeline as it runs.
+  - **Aegis layer map:** a new always-visible card renders one chip per layer
+    in the order a request actually traverses them — **L0 Sovereignty lane**
+    (public in-flight / cap, shed), **L1 Kernel offload** (agent state,
+    in-kernel ban count), **L2 Fair-shed pre-filter** (window request rate,
+    shed), **L4 Silent challenges** (served/passed, current loosen bias),
+    **L5 Reputation brain** (suspects, jailed, pardons) — each with a state
+    accent (idle / live / tuned / hot). Refreshes in place every 10 s and
+    after every save; every read is an in-memory counter, so polling is free.
+  - **Save feedback:** saving settings now flashes an ephemeral "✓ Settings
+    applied" toast (CSP-nonce'd, no framework). The Save button itself rides
+    the L0 sovereignty lane, so it keeps working during a flood — the exact
+    failure this rebuild set out to kill.
+  - Pure HTMX + lightweight CSS additions (`vs-aegis`, `vs-layer`,
+    `vs-toast`); no new JS dependencies, no page reloads anywhere.
+
 ## [3.11.7] — 2026-07-09
 
 ### Added

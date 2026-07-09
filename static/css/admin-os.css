@@ -3741,6 +3741,26 @@
 .vp-os .vs-lead { margin: calc(-1 * var(--sp-2)) 0 var(--sp-3); }
 .vp-os .vs-section { margin-top: var(--sp-6); padding-top: var(--sp-5); border-top: 1px solid var(--border); }
 
+/* ── Aegis defense-layer map ─────────────────────────────────── */
+.vp-os .vs-aegis { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--sp-3); }
+.vp-os .vs-layer { display: flex; gap: var(--sp-3); align-items: flex-start; padding: var(--sp-3); border: 1px solid var(--border); border-radius: var(--r-md); background: var(--bg-surface-2); }
+.vp-os .vs-layer-tag { font-family: var(--font-head); font-weight: 700; font-size: var(--text-sm); color: var(--text-2); border: 1px solid var(--border-strong); border-radius: var(--r-sm); padding: 2px 6px; flex: none; }
+.vp-os .vs-layer-name { font-weight: 600; color: var(--text); font-size: var(--text-sm); }
+.vp-os .vs-layer-desc { color: var(--text-2); font-size: var(--text-xs); margin-top: 2px; }
+.vp-os .vs-layer-stats { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-2); }
+.vp-os .vs-layer-stats span { font-family: var(--font-mono, monospace); font-size: var(--text-xs); color: var(--text); background: var(--bg-surface-3); border-radius: var(--r-sm); padding: 1px 6px; }
+.vp-os .vs-layer.is-live { border-color: var(--ok); }
+.vp-os .vs-layer.is-live .vs-layer-tag { color: var(--ok); border-color: var(--ok); }
+.vp-os .vs-layer.is-tuned { border-color: var(--brand); }
+.vp-os .vs-layer.is-tuned .vs-layer-tag { color: var(--brand); border-color: var(--brand); }
+.vp-os .vs-layer.is-hot { border-color: var(--warn, #d97706); }
+.vp-os .vs-layer.is-hot .vs-layer-tag { color: var(--warn, #d97706); border-color: var(--warn, #d97706); }
+.vp-os .vs-layer.is-off { opacity: 0.65; }
+
+/* ── Ephemeral save-feedback toast ───────────────────────────── */
+.vp-os .vs-toast { position: fixed; bottom: var(--sp-6); left: 50%; transform: translate(-50%, 12px); opacity: 0; background: var(--bg-surface); color: var(--text); border: 1px solid var(--ok); border-radius: var(--r-md); padding: var(--sp-3) var(--sp-5); font-size: var(--text-sm); box-shadow: var(--shadow-lg, 0 8px 30px rgba(0,0,0,.25)); z-index: 200; transition: opacity .3s ease, transform .3s ease; pointer-events: none; }
+.vp-os .vs-toast.is-in { opacity: 1; transform: translate(-50%, 0); }
+
 /* ── Feature rows ────────────────────────────────────────────── */
 .vp-os .vs-feat { border-top: 1px solid var(--border); }
 .vp-os .vs-feat:first-of-type { border-top: 0; }

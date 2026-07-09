@@ -384,10 +384,11 @@ type Status struct {
 	RPS         int64 `json:"rps"`
 	InFlight    int64 `json:"in_flight"`
 	Blocklisted int   `json:"blocklisted"`
-	FairShed    int64 `json:"fair_shed"`  // cumulative L2 fair-shed count
-	Suspects    int   `json:"suspects"`   // L5: sources currently under suspicion
-	RepJailed   int   `json:"rep_jailed"` // L5: sources serving a reputation sentence
-	Pardons     int64 `json:"pardons"`    // L5: cumulative challenge-proof pardons
+	FairShed    int64 `json:"fair_shed"`   // cumulative L2 fair-shed count
+	WindowRate  int64 `json:"window_rate"` // L2: requests seen in the busiest recent sketch window
+	Suspects    int   `json:"suspects"`    // L5: sources currently under suspicion
+	RepJailed   int   `json:"rep_jailed"`  // L5: sources serving a reputation sentence
+	Pardons     int64 `json:"pardons"`     // L5: cumulative challenge-proof pardons
 
 	// L4 self-calibration: the loosen-only threshold bias currently applied
 	// (0 = running exactly at the operator's thresholds) and the live window's
@@ -407,6 +408,7 @@ func (m *Manager) Status() Status {
 		InFlight:         m.inflight.Current(),
 		Blocklisted:      m.blocklist.Len(),
 		FairShed:         m.prefilter.Shed(),
+		WindowRate:       m.prefilter.WindowRate(),
 		Suspects:         bs.Tracked,
 		RepJailed:        bs.Jailed,
 		Pardons:          bs.Redeems,

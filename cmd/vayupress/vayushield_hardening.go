@@ -147,27 +147,32 @@ func (a *App) shieldHardeningBody() string {
 	return b.String()
 }
 
+// shieldOffloadStatus returns the agent-reported L1 offload state ("active",
+// "inactive", "error" or "") and the current in-kernel ban count ("0" when
+// unknown), for the hardening row and the Aegis layer map.
+func shieldOffloadStatus() (state, count string) {
+	if b, err := os.ReadFile(filepath.Join(shieldControlDir(), "offload.state")); err == nil {
+		state = strings.TrimSpace(string(b))
+	}
+	count = "0"
+	if b, err := os.ReadFile(filepath.Join(shieldControlDir(), "offload.count")); err == nil {
+		if v := strings.TrimSpace(string(b)); v != "" {
+			count = v
+		}
+	}
+	return state, count
+}
+
 // shieldOffloadRow renders the L1 dynamic-offload status line: whether the
 // agent is enforcing the shield's live jail verdicts in-kernel, and how many
 // IPs are currently banned there. Read-only — the offload follows Tier 2
 // automatically (on when Tier 2 is on), so there is nothing to configure.
 func shieldOffloadRow() string {
-	state := ""
-	if b, err := os.ReadFile(filepath.Join(shieldControlDir(), "offload.state")); err == nil {
-		state = strings.TrimSpace(string(b))
-	}
-	count := ""
-	if b, err := os.ReadFile(filepath.Join(shieldControlDir(), "offload.count")); err == nil {
-		count = strings.TrimSpace(string(b))
-	}
+	state, count := shieldOffloadStatus()
 	var pill string
 	switch state {
 	case "active":
-		n := count
-		if n == "" {
-			n = "0"
-		}
-		pill = `<span class="vs-hard-state is-on">● Enforcing — ` + html.EscapeString(n) + ` IP(s) banned in-kernel</span>`
+		pill = `<span class="vs-hard-state is-on">● Enforcing — ` + html.EscapeString(count) + ` IP(s) banned in-kernel</span>`
 	case "error":
 		reason := ""
 		if b, err := os.ReadFile(filepath.Join(shieldControlDir(), "offload.reason")); err == nil {
