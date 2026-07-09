@@ -129,8 +129,9 @@ func (a *App) shieldHardeningBody() string {
 
 	if shieldAgentAlive() {
 		b.WriteString(`<p class="muted text-xs">✅ Privileged helper installed — you can switch these on and off right here, no terminal needed. VayuPress itself stays unprivileged; a separate root agent applies only the vetted scripts.</p>`)
-		b.WriteString(shieldTierRow(2, "🛡️ Tier 2 · Kernel firewall (nftables)", "Per-IP connection/packet rate limits + SYN-flood cookies, enforced in the Linux kernel."))
+		b.WriteString(shieldTierRow(2, "🛡️ Tier 2 · Kernel firewall (nftables)", "Per-IP connection/packet rate limits + SYN-flood cookies, enforced in the Linux kernel. Turning this on also activates the L1 live offload below."))
 		b.WriteString(shieldTierRow(3, "🌐 Tier 3 · Edge shaping (nginx)", "Per-IP request/connection shaping + slow-loris timeouts at the reverse proxy."))
+		b.WriteString(shieldOffloadRow())
 		b.WriteString(`<p class="muted text-xs">Your origin serves visitors directly (no CDN proxy in front), so Tier 2's per-IP limits apply to real client IPs and are fully effective. (If you ever put a CDN/proxy in front, per-IP limits would then see the CDN's IPs — the SYN/edge hardening stays safe either way.) Both tiers are fully reversible from here.</p>`)
 	} else {
 		b.WriteString(`<div class="vs-tier"><div class="vs-tier-head">One-time setup — enable the in-panel switches</div>`)
@@ -144,6 +145,42 @@ func (a *App) shieldHardeningBody() string {
 	}
 	b.WriteString(`<p class="muted text-sm">A true volumetric flood still needs anycast/scrubbing capacity no single host provides; Tiers 1–3 handle what a typical publisher actually faces.</p>`)
 	return b.String()
+}
+
+// shieldOffloadRow renders the L1 dynamic-offload status line: whether the
+// agent is enforcing the shield's live jail verdicts in-kernel, and how many
+// IPs are currently banned there. Read-only — the offload follows Tier 2
+// automatically (on when Tier 2 is on), so there is nothing to configure.
+func shieldOffloadRow() string {
+	state := ""
+	if b, err := os.ReadFile(filepath.Join(shieldControlDir(), "offload.state")); err == nil {
+		state = strings.TrimSpace(string(b))
+	}
+	count := ""
+	if b, err := os.ReadFile(filepath.Join(shieldControlDir(), "offload.count")); err == nil {
+		count = strings.TrimSpace(string(b))
+	}
+	var pill string
+	switch state {
+	case "active":
+		n := count
+		if n == "" {
+			n = "0"
+		}
+		pill = `<span class="vs-hard-state is-on">● Enforcing — ` + html.EscapeString(n) + ` IP(s) banned in-kernel</span>`
+	case "error":
+		reason := ""
+		if b, err := os.ReadFile(filepath.Join(shieldControlDir(), "offload.reason")); err == nil {
+			reason = strings.TrimSpace(string(b))
+		}
+		if len(reason) > 160 {
+			reason = reason[:160] + "…"
+		}
+		pill = `<span class="vs-hard-state is-err">✕ ` + html.EscapeString(reason) + `</span>`
+	default:
+		pill = `<span class="vs-hard-state is-off">○ Follows Tier 2 — turns on with it</span>`
+	}
+	return `<div class="vs-tier"><div class="vs-hard-row"><div><div class="vs-tier-head">⚡ L1 · Live kernel offload (Aegis)</div><p class="muted text-sm">VayuShield's own jail verdicts (confirmed bad actors, reputation sentences) are pushed into a kernel nftables timeout-set — and an XDP filter where available — so a banned attacker's packets are dropped before a connection even exists. Fully automatic; bans expire on their own.</p></div><div class="vs-hard-ctl">` + pill + `</div></div></div>`
 }
 
 // shieldTierRow renders one tier's status pill + enable/disable toggle button.

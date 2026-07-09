@@ -53,6 +53,7 @@ import (
 	vpgp "github.com/johalputt/vayupress/internal/vayuos/pgp"
 	"github.com/johalputt/vayupress/internal/vayuos/secwatch"
 	"github.com/johalputt/vayupress/internal/vayushield"
+	"github.com/johalputt/vayupress/internal/vayushield/offload"
 	"github.com/johalputt/vayupress/internal/vayushield/sovereign"
 	"github.com/johalputt/vayupress/internal/versions"
 	"github.com/johalputt/vayupress/internal/webhooks"
@@ -174,6 +175,10 @@ type App struct {
 	vayuShield   *vayushield.Manager
 	vaEngagement *vastore.Store
 	vaSessions   *vasession.Hasher
+
+	// shieldOffload is the Aegis L1 exporter: it writes the shield's live jail
+	// verdicts into the control dir for the root agent to enforce in-kernel.
+	shieldOffload *offload.Exporter
 
 	// sovereign is the Aegis L0 admin-sovereignty gate: a lock-free admission
 	// controller mounted BEFORE VayuShield that caps PUBLIC concurrency and sheds
