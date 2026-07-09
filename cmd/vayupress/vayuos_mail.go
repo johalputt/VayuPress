@@ -47,13 +47,24 @@ func (a *App) handleVayuOSCompose(w http.ResponseWriter, r *http.Request) {
 	domain := a.vayuMail.Config().Domain
 	// Sender selector. Admins may send as any configured account (or postmaster);
 	// non-admin staff may only send from their own assigned mailbox.
+	acctStore := a.vayuMail.Accounts()
+	// Each From option carries its account's signature (data-sig) so the composer
+	// can preview/append it and swap it live when the sender changes.
+	optSig := func(email, sig string) string {
+		return `<option value="` + html.EscapeString(email) + `" data-sig="` + html.EscapeString(sig) + `">` + html.EscapeString(email) + `</option>`
+	}
 	fromOpts := ""
 	if a.isAdminRequest(r) {
-		fromOpts = `<option value="postmaster@` + html.EscapeString(domain) + `">postmaster@` + html.EscapeString(domain) + `</option>`
-		if a.vayuMail.Accounts() != nil {
-			if accs, err := a.vayuMail.Accounts().List(r.Context()); err == nil {
+		pm := "postmaster@" + domain
+		pmSig := ""
+		if acctStore != nil {
+			pmSig = acctStore.SignatureFor(r.Context(), pm)
+		}
+		fromOpts = optSig(pm, pmSig)
+		if acctStore != nil {
+			if accs, err := acctStore.List(r.Context()); err == nil {
 				for _, ac := range accs {
-					fromOpts += `<option value="` + html.EscapeString(ac.Email) + `">` + html.EscapeString(ac.Email) + `</option>`
+					fromOpts += optSig(ac.Email, ac.Signature)
 				}
 			}
 		}
@@ -64,7 +75,11 @@ func (a *App) handleVayuOSCompose(w http.ResponseWriter, r *http.Request) {
 			writeOSHTML(w, adminOSLayout(nonce, "Compose", "vayuos", cfg, htmpl.HTML(body.String())))
 			return
 		}
-		fromOpts = `<option value="` + html.EscapeString(ownEmail) + `">` + html.EscapeString(ownEmail) + `</option>`
+		ownSig := ""
+		if acctStore != nil {
+			ownSig = acctStore.SignatureFor(r.Context(), ownEmail)
+		}
+		fromOpts = optSig(ownEmail, ownSig)
 	}
 
 	// Prefill (reply / forward / direct). Reply and forward load the original
@@ -107,6 +122,19 @@ func (a *App) handleVayuOSCompose(w http.ResponseWriter, r *http.Request) {
     <input type="file" data-c-files multiple hidden>
   </div>
   <div class="vm-attach-tray" data-c-attach-list></div>
+
+  <div class="vm-sig" data-c-sig>
+    <label class="vm-filter-check"><input type="checkbox" data-c-sig-toggle checked> Append signature</label>
+    <details class="vm-sig-edit">
+      <summary>Edit signature</summary>
+      <textarea class="input" rows="4" data-c-sig-text placeholder="Your signature — appended to messages sent from the selected address."></textarea>
+      <div class="vm-row vm-row--tight">
+        <button class="btn btn--sm" type="button" data-c-sig-save>Save signature</button>
+        <span class="muted text-sm" data-c-sig-status></span>
+      </div>
+    </details>
+    <pre class="vm-sig-preview" data-c-sig-preview></pre>
+  </div>
 
   <div class="vm-row vm-compose-actions">
     <button class="btn btn--primary" type="submit" data-c-send>Send</button>
@@ -214,6 +242,21 @@ func composeMaxAttachMB() int {
 	return 1
 }
 
+// insertSignature places a plain-text signature after the freshly-written reply
+// and before any quoted history, using the RFC 3676 "-- " delimiter. For a new
+// message (no quote) the signature is appended at the end.
+func insertSignature(body, sig string) string {
+	sig = strings.TrimRight(sig, "\r\n")
+	if sig == "" {
+		return body
+	}
+	block := "\r\n\r\n-- \r\n" + sig
+	if main, quoted := splitQuoted(body); quoted != "" {
+		return strings.TrimRight(main, "\r\n") + block + "\r\n\r\n" + quoted
+	}
+	return strings.TrimRight(body, "\r\n") + block
+}
+
 func (a *App) handleVayuOSSend(w http.ResponseWriter, r *http.Request) {
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", "VayuMail is not active", "")
@@ -228,8 +271,10 @@ func (a *App) handleVayuOSSend(w http.ResponseWriter, r *http.Request) {
 
 	var in struct {
 		From, To, CC, BCC, ReplyTo, Subject, Body string
+		AppendSig                                 *bool `json:"appendSig"`
 	}
 	var attachments []vmail.Attachment
+	appendSig := true // default: append the sender's signature when one is set
 
 	if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
 		// Cap the whole request at the attachment budget + 1 MB of text/fields.
@@ -245,6 +290,9 @@ func (a *App) handleVayuOSSend(w http.ResponseWriter, r *http.Request) {
 		in.ReplyTo = r.FormValue("replyTo")
 		in.Subject = r.FormValue("subject")
 		in.Body = r.FormValue("body")
+		if r.FormValue("appendSig") == "0" {
+			appendSig = false
+		}
 		var total int64
 		if r.MultipartForm != nil {
 			for _, fhs := range r.MultipartForm.File["attachments"] {
@@ -275,6 +323,9 @@ func (a *App) handleVayuOSSend(w http.ResponseWriter, r *http.Request) {
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&in); err != nil {
 			writeAPIError(w, r, 400, "invalid_json", err.Error(), "")
 			return
+		}
+		if in.AppendSig != nil {
+			appendSig = *in.AppendSig
 		}
 	}
 
@@ -326,6 +377,16 @@ func (a *App) handleVayuOSSend(w http.ResponseWriter, r *http.Request) {
 	if name := a.senderDisplayName(r.Context(), from); name != "" {
 		fromHeader = (&netmail.Address{Name: name, Address: from}).String()
 	}
+	// Append the sender's signature (unless the composer turned it off), placed
+	// after the reply and before any quoted history.
+	bodyText := in.Body
+	if appendSig {
+		if acc := a.vayuMail.Accounts(); acc != nil {
+			if sig := acc.SignatureFor(r.Context(), from); sig != "" {
+				bodyText = insertSignature(in.Body, sig)
+			}
+		}
+	}
 	id, err := a.vayuMail.ComposeRich(r.Context(), vmail.ComposeMessage{
 		From:         fromHeader,
 		To:           to,
@@ -333,7 +394,7 @@ func (a *App) handleVayuOSSend(w http.ResponseWriter, r *http.Request) {
 		BCC:          bcc,
 		ReplyTo:      strings.TrimSpace(in.ReplyTo),
 		Subject:      in.Subject,
-		Body:         in.Body,
+		Body:         bodyText,
 		Attachments:  attachments,
 		SenderUserID: senderUserID,
 	})
@@ -1111,20 +1172,17 @@ func (a *App) handleVayuOSAccountDelete(w http.ResponseWriter, r *http.Request) 
 // existing mail account. Exactly one of {password, active} should be provided
 // per call; both are honoured if present.
 func (a *App) handleVayuOSAccountUpdate(w http.ResponseWriter, r *http.Request) {
-	if !a.isAdminRequest(r) {
-		writeAPIError(w, r, http.StatusForbidden, "forbidden", "admin role required", "")
-		return
-	}
 	if a.vayuMail == nil || a.vayuMail.Accounts() == nil {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", "VayuMail is not active", "")
 		return
 	}
 	var in struct {
-		Email   string   `json:"email"`
-		Pass    string   `json:"pass"`
-		Active  *bool    `json:"active"`
-		Role    string   `json:"role"`
-		QuotaMB *float64 `json:"quota_mb"` // mailbox storage limit in MB; 0 = unlimited
+		Email     string   `json:"email"`
+		Pass      string   `json:"pass"`
+		Active    *bool    `json:"active"`
+		Role      string   `json:"role"`
+		QuotaMB   *float64 `json:"quota_mb"`  // mailbox storage limit in MB; 0 = unlimited
+		Signature *string  `json:"signature"` // plain-text mail signature (nil = leave unchanged)
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64*1024)).Decode(&in); err != nil {
 		writeAPIError(w, r, 400, "invalid_json", err.Error(), "")
@@ -1133,6 +1191,23 @@ func (a *App) handleVayuOSAccountUpdate(w http.ResponseWriter, r *http.Request) 
 	if strings.TrimSpace(in.Email) == "" {
 		writeAPIError(w, r, 400, "validation_error", "email is required", "")
 		return
+	}
+	// Account management is admin-only, with ONE exception: a mailbox holder may
+	// set their OWN signature (and nothing else) so signatures are self-service.
+	if !a.isAdminRequest(r) {
+		_, own := a.ownMailbox(r)
+		onlySignature := in.Signature != nil && in.Pass == "" && in.Active == nil &&
+			strings.TrimSpace(in.Role) == "" && in.QuotaMB == nil
+		if own == "" || !strings.EqualFold(own, in.Email) || !onlySignature {
+			writeAPIError(w, r, http.StatusForbidden, "forbidden", "you can only edit your own signature", "")
+			return
+		}
+	}
+	if in.Signature != nil {
+		if err := a.vayuMail.Accounts().SetSignature(r.Context(), in.Email, *in.Signature); err != nil {
+			writeAPIError(w, r, 400, "update-failed", err.Error(), "")
+			return
+		}
 	}
 	if in.QuotaMB != nil {
 		bytes := int64(*in.QuotaMB * 1024 * 1024)

@@ -2600,6 +2600,13 @@
 .vp-os .vm-dropzone-hint { display: block; margin-top: .3rem; }
 .vp-os .vm-attach-tray { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: .85rem; }
 
+.vp-os .vm-sig { margin: 0 0 .85rem; padding: .6rem .75rem; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-surface-2); }
+.vp-os .vm-sig-edit { margin-top: .5rem; }
+.vp-os .vm-sig-edit > summary { cursor: pointer; font-size: var(--text-sm); color: var(--text-2); user-select: none; }
+.vp-os .vm-sig-edit > summary::-webkit-details-marker { color: var(--text-3); }
+.vp-os .vm-sig-edit textarea { margin-top: .5rem; }
+.vp-os .vm-sig-preview { margin: .5rem 0 0; padding: .5rem .65rem; border-left: 2px solid var(--border-strong); color: var(--text-2); font-size: var(--text-sm); white-space: pre-wrap; word-break: break-word; max-height: 8rem; overflow: auto; }
+
 .vp-os .vm-pgp-hint { font-size: .72rem; color: var(--text-3); margin-left: auto; }
 .vp-os .vm-pgp-hint--enc { color: var(--ok); }
 @media (max-width: 640px) { .vp-os .vm-pgp-hint { margin-left: 0; flex-basis: 100%; } }
