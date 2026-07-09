@@ -41,6 +41,7 @@ import (
 	"github.com/johalputt/vayupress/internal/vayushield"
 	"github.com/johalputt/vayupress/internal/vayushield/botdb"
 	"github.com/johalputt/vayupress/internal/vayushield/challenge"
+	"github.com/johalputt/vayupress/internal/vayushield/offload"
 	"github.com/johalputt/vayupress/internal/vayushield/sovereign"
 )
 
@@ -83,6 +84,13 @@ func (a *App) bootVayuShield() {
 	// admin panel stays responsive while caches warm.
 	a.vaEngagement.StartIngest(queue.DoneCh)
 
+	// L1 kernel offload — the exporter writes jailed IPs into the app-owned
+	// control dir (banlist.txt); the root agent, when installed, reconciles a
+	// kernel nftables timeout-set (and XDP filter where available) to match.
+	// Pure acceleration: with no agent, the in-binary gates enforce on their own.
+	a.shieldOffload = offload.New(shieldControlDir())
+	a.shieldOffload.Start(queue.DoneCh)
+
 	bots := botdb.New(dbpkg.DB)
 	signer := challenge.NewSigner([]byte(config.Cfg.APIKey))
 
@@ -107,6 +115,8 @@ func (a *App) bootVayuShield() {
 			g := a.sovereign
 			return g != nil && g.Inflight()*4 >= g.Cap()*3
 		},
+		// L1 kernel offload: jailed IPs also get dropped by nftables/XDP.
+		OffloadFn: a.shieldOffload.Ban,
 	})
 
 	// Apply the operator's persisted settings (bot protection + Tier-1 resilience

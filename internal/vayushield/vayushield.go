@@ -95,6 +95,13 @@ type Config struct {
 	// the pre-filter observes every request (a few atomic ops) so its sketch is
 	// already warm the moment pressure appears.
 	PressureFn func() bool
+
+	// OffloadFn exports a jail verdict to the L1 kernel offload (an IP that
+	// should be dropped by nftables/XDP for the given TTL). Optional and
+	// best-effort: when nil, or when the root agent is not installed, the
+	// in-binary gates keep enforcing on their own. Never called for verified
+	// visitors — only for sources the shield has actively jailed.
+	OffloadFn func(ip string, ttl time.Duration)
 }
 
 // liveConfig is the runtime-tunable subset of the shield, swapped atomically so
@@ -694,6 +701,10 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 			// legacy 20-breach violation meter would take 4x longer to reach).
 			if lc.autoBlock && m.brain.Jailed(ipKey) {
 				m.blocklist.Block(ipKey, m.jailTTL())
+				// L1 offload: drop this flooding source in-kernel too.
+				if m.cfg.OffloadFn != nil {
+					m.cfg.OffloadFn(ipKey, m.jailTTL())
+				}
 			}
 			m.onEvent(ActionBlock, 1.0)
 			m.serveThrottled(w, http.StatusTooManyRequests, "rate-limited", "10")
@@ -806,6 +817,11 @@ func (m *Manager) maybeLearn(ctx context.Context, v Verdict) {
 func (m *Manager) jailBadActor(ctx context.Context, ipKey string, autoBlock bool, v Verdict) {
 	if autoBlock && ipKey != "" {
 		m.blocklist.Block(ipKey, m.jailTTL())
+		// L1 offload: a jailed confirmed bad actor is also dropped in-kernel,
+		// so its follow-up packets never even create a connection.
+		if m.cfg.OffloadFn != nil {
+			m.cfg.OffloadFn(ipKey, m.jailTTL())
+		}
 	}
 	if m.cfg.Bots == nil || v.Composite.FingerprintHash == "" {
 		return

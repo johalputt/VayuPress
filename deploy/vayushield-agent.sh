@@ -51,6 +51,97 @@ clear_reason() { # $1=tier tag
   : >"${CONTROL_DIR}/$1.reason" 2>/dev/null || true
 }
 
+# ── L1 dynamic kernel offload ─────────────────────────────────────────────────
+# The app exports its live jail verdicts to <control>/banlist.txt (lines of
+# "<ip> <unix-expiry>"). We reconcile a dedicated nftables table with timeout
+# sets so those IPs are dropped at line rate, before a connection exists.
+# Security: every line is revalidated here with a strict character whitelist —
+# the agent builds nft input only from fields that pass validation, so content
+# written by the (unprivileged) app can never become command syntax. The whole
+# feature is gated behind Tier 2 being wanted: no Tier 2, no kernel changes.
+
+BANLIST="${CONTROL_DIR}/banlist.txt"
+DYN_TABLE="vayushield_dyn"
+
+ensure_dyn_table() {
+  nft list table inet "${DYN_TABLE}" >/dev/null 2>&1 && return 0
+  nft -f - <<EOF 2>/dev/null
+table inet ${DYN_TABLE} {
+  set banned4 { type ipv4_addr; flags timeout; }
+  set banned6 { type ipv6_addr; flags timeout; }
+  chain input {
+    type filter hook input priority -20; policy accept;
+    ip saddr @banned4 drop
+    ip6 saddr @banned6 drop
+  }
+}
+EOF
+}
+
+remove_dyn_table() {
+  nft delete table inet "${DYN_TABLE}" 2>/dev/null || true
+}
+
+reconcile_banlist() {
+  # Gated: dynamic offload only while the operator wants Tier 2 and nft exists.
+  if [ ! -f "${CONTROL_DIR}/tier2.want" ] || ! command -v nft >/dev/null 2>&1; then
+    remove_dyn_table
+    write_state offload inactive
+    return 0
+  fi
+  if ! ensure_dyn_table; then
+    write_state offload error
+    printf '%s' "could not create the ${DYN_TABLE} nftables table" >"${CONTROL_DIR}/offload.reason" 2>/dev/null || true
+    return 0
+  fi
+  local now count=0
+  now="$(date -u +%s)"
+  local batch
+  batch="$(mktemp)"
+  if [ -f "$BANLIST" ]; then
+    # Strict per-line validation: field 1 must be only [0-9a-fA-F.:] (an IP),
+    # field 2 only digits (the expiry). Anything else is ignored.
+    while read -r ip exp _; do
+      case "$ip" in
+        ''|\#*) continue ;;
+        *[!0-9a-fA-F.:]*) continue ;;
+      esac
+      case "$exp" in
+        ''|*[!0-9]*) continue ;;
+      esac
+      local ttl=$((exp - now))
+      [ "$ttl" -le 0 ] && continue
+      [ "$ttl" -gt 86400 ] && ttl=86400
+      case "$ip" in
+        *:*) printf 'add element inet %s banned6 { %s timeout %ss }\n' "$DYN_TABLE" "$ip" "$ttl" >>"$batch" ;;
+        *)   printf 'add element inet %s banned4 { %s timeout %ss }\n' "$DYN_TABLE" "$ip" "$ttl" >>"$batch" ;;
+      esac
+      count=$((count + 1))
+      # Mirror into the XDP filter when the tooling is present (best-effort;
+      # drops the source even before the kernel network stack).
+      if command -v xdp-filter >/dev/null 2>&1; then
+        xdp-filter ip "$ip" -m drop >/dev/null 2>&1 || true
+      fi
+    done <"$BANLIST"
+  fi
+  if [ -s "$batch" ]; then
+    # Element adds are idempotent per element; a duplicate only refreshes its
+    # timeout. Apply as one transaction; on failure surface the reason.
+    if nft -f "$batch" >"${CONTROL_DIR}/offload.log" 2>&1; then
+      write_state offload active
+      clear_reason offload
+    else
+      write_state offload error
+      write_reason offload "${CONTROL_DIR}/offload.log"
+    fi
+  else
+    write_state offload active
+    clear_reason offload
+  fi
+  printf '%s' "$count" >"${CONTROL_DIR}/offload.count" 2>/dev/null || true
+  rm -f "$batch"
+}
+
 reconcile_tier2() {
   local want=0 active=0
   [ -f "${CONTROL_DIR}/tier2.want" ] && want=1
@@ -117,6 +208,7 @@ run_agent() {
       printf '%s' "$(date -u +%s)" >"${CONTROL_DIR}/agent.alive" 2>/dev/null || true
       reconcile_tier2
       reconcile_tier3
+      reconcile_banlist
     fi
     sleep "$POLL"
   done

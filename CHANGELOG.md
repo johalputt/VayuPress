@@ -8,6 +8,37 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.11.7] — 2026-07-09
+
+### Added
+- **VayuShield 2.0 "Aegis" — L1 live kernel offload (nftables + XDP)** (step 5
+  of the Cloudflare-free bot-shield rebuild). The shield's own live verdicts —
+  confirmed bad actors and L5 reputation sentences — are now pushed down into
+  the Linux kernel, so a banned attacker's packets are dropped at line rate
+  **before a TCP connection, TLS handshake, goroutine or byte of userspace
+  work exists for them**.
+  - **Privilege separation preserved (ADR-0123):** the unprivileged app never
+    touches the firewall. `internal/vayushield/offload` maintains a plain-text
+    ban file in the app-owned control dir (atomic tmp+rename writes, debounced
+    to one write per 2 s, expired entries pruned, hard-capped at 10k with the
+    most persistent offenders kept). The root reconcile agent revalidates
+    every line against a strict character whitelist — app-written content can
+    never become command syntax — and reconciles a dedicated
+    `vayushield_dyn` nftables table with **timeout sets** (bans expire in
+    kernel on their own, capped at 24 h) plus an `xdp-filter` mirror where the
+    XDP tooling is installed.
+  - **Pure acceleration, never a dependency:** with no agent installed the
+    file is simply never consumed and the in-binary gates (L0/L2/L5 +
+    blocklist) keep enforcing exactly as before. Dynamic offload follows the
+    operator's Tier 2 switch — no Tier 2, no kernel changes — and turning
+    Tier 2 off removes the dynamic table entirely.
+  - **Panel:** the Network-hardening section now shows a read-only "L1 · Live
+    kernel offload" row with live state and the in-kernel ban count.
+  - Covered by exporter tests: canonicalization + strict-input rejection,
+    expiry pruning, longest-sentence-wins extension, cap retention of the
+    most persistent offenders, and concurrent race tests; agent script
+    syntax-validated.
+
 ## [3.11.6] — 2026-07-09
 
 ### Added
