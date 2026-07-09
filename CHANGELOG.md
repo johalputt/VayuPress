@@ -8,6 +8,43 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.11.4] — 2026-07-09
+
+### Added
+- **VayuShield 2.0 "Aegis" — L2 probabilistic fair-shed pre-filter** (step 2
+  of the Cloudflare-free bot-shield rebuild). Identifies and fair-sheds heavy
+  hitters during an attack in **fixed memory** — before the per-IP limiter
+  map, classification, rendering or SQLite are touched.
+  - **How it works:** `internal/vayushield/prefilter` keeps a windowed
+    Count-Min Sketch — 256 KiB of atomic counters, memory that never grows no
+    matter how many attacking IPs there are (the answer to spoofed/botnet
+    floods that would thrash any per-IP map). Every public request is a few
+    lock-free atomic increments; estimates cover a ~10–20 s sliding window so
+    a burst is forgotten moments after it stops.
+  - **Fairness (never harms real users):** every client gets a fair per-window
+    budget derived from the operator's rate setting (default ≈ 3× the
+    sustained per-IP rate). At or under budget the shed probability is exactly
+    **0** — a reader, a search-engine crawler or an AI assistant can never be
+    shed here. Above budget, shedding ramps as `1 − budget/estimate`, so the
+    heaviest sources shed the most of their own traffic; it is capped at 98%
+    so even the worst offender still trickles through to the classifier
+    (false positives self-heal instead of hard-failing).
+  - **Subnet aggregation:** both the IP and its /24 (IPv6 /48) group are
+    tracked, so a botnet spreading load across one subnet is caught at the
+    group level even when each address stays under the per-IP budget.
+  - **Self-defense floor, zero configuration:** the pre-filter sheds only
+    under genuine pressure — the under-attack meter tripping, **or the new
+    L0→L2 pressure link**: when the Aegis sovereignty lane passes 75%
+    occupancy, fair-shedding starts automatically (even with every operator
+    toggle off) and eases the lane back down before it saturates and must
+    shed blindly. Heavy hitters are shed *fairly* first; the L0 hard cap
+    remains the last-resort backstop.
+  - New Bot Shield hero metric **Fair-shed (L2)** and `fair_shed` in the
+    status JSON. Covered by sketch accuracy/decay/rotation tests, fairness and
+    subnet-flood tests, race tests, and middleware integration tests
+    (heavy hitter sheds under pressure, light client and verified sessions
+    never shed).
+
 ## [3.11.3] — 2026-07-09
 
 ### Added
