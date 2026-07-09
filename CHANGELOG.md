@@ -8,6 +8,22 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.9.22] — 2026-07-08
+
+Final Phase 1 screen of the VayuMail redesign: **keyboard shortcuts** and a
+help overlay bring power-user speed to the whole mail experience, and the list
+gets a keyboard cursor.
+
+### Added
+- **Keyboard shortcuts** across VayuMail — `c` compose, `/` search, `j`/`k` move
+  the list cursor (or next/previous in the reader), `Enter`/`o` open, `x` select,
+  `u` toggle read, `s` pin, `e` archive, `!` junk, `#` delete, and `r`/`f` reply/
+  forward in the reader. Shortcuts are ignored while typing in a field.
+- **Help overlay.** Press `?` to see all shortcuts in a lightweight overlay
+  (native popover where supported, a positioned fallback otherwise).
+- A **keyboard cursor** highlights the focused message row, and rows now have a
+  hover state.
+
 ## [3.9.21] — 2026-07-08
 
 Fourth screen of the VayuMail redesign: **mail search** gains a real filter bar

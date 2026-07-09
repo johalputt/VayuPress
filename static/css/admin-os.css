@@ -2617,6 +2617,30 @@
 .vp-os .vm-search-count { margin: .25rem 0 .6rem; }
 .vp-os mark { background: var(--warn-dim); color: var(--text); border-radius: 3px; padding: 0 .12em; }
 
+/* ── VayuMail keyboard shortcuts: list cursor + help overlay (v-keys) ───────── */
+.vp-os .vm-list tbody tr:hover { background: var(--bg-surface-2); }
+.vp-os tr.vm-focus { background: var(--accent-dim); box-shadow: inset 3px 0 0 var(--accent); }
+
+.vp-os .vm-help {
+  max-width: 30rem; width: calc(100% - 2rem); box-sizing: border-box;
+  border: 1px solid var(--border-strong); border-radius: 14px;
+  background: var(--bg-surface); color: var(--text);
+  padding: 1.1rem 1.25rem; box-shadow: 0 24px 64px rgba(0, 0, 0, .45);
+}
+.vp-os .vm-help[popover] { margin: auto; }         /* native popover: viewport-centered */
+.vp-os .vm-help:not([popover]) { display: none; position: fixed; inset: 0; margin: auto; height: max-content; z-index: 2000; }
+.vp-os .vm-help.vm-help--open { display: block; }
+.vp-os .vm-help[popover]::backdrop { background: rgba(0, 0, 0, .45); }
+.vp-os .vm-help-title { font-weight: 700; font-size: 1.05rem; margin-bottom: .85rem; }
+.vp-os .vm-help-grid { display: grid; grid-template-columns: 1fr auto; gap: .45rem .9rem; align-items: center; }
+.vp-os .vm-help-grid > span:nth-child(odd) { color: var(--text-2); font-size: .85rem; }
+.vp-os .vm-kbd {
+  justify-self: end; font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  font-size: .72rem; color: var(--text); background: var(--bg-surface-3);
+  border: 1px solid var(--border); border-radius: 6px; padding: .12rem .45rem; white-space: nowrap;
+}
+.vp-os .vm-help-foot { margin-top: .95rem; }
+
 
 /* Live analytics indicator — pulsing dot next to the "Live" card title. */
 .vp-os .live-dot {
