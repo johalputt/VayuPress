@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"html"
 	htmpl "html/template"
 	"io"
@@ -20,6 +21,7 @@ import (
 
 	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/config"
+	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/totp"
@@ -824,8 +826,121 @@ func (a *App) handleVayuOSAccounts(w http.ResponseWriter, r *http.Request) {
 			`<button class="btn btn--danger" data-acct-delete="` + html.EscapeString(ac.Email) + `">Delete</button></td></tr>`)
 	}
 	body.WriteString(`</tbody></table></div></div>`)
+
+	// Aliases & auto-forwarding — an HTMX card that swaps in place on every
+	// add/delete/save, so managing addresses never reloads the page.
+	body.WriteString(`<div id="vm-alias-card">` + a.vayuAliasesCard(r.Context()) + `</div>`)
+
 	body.WriteString(`<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail.js?v=` + assetVer("js/admin-os-mail.js") + `"></script>`)
 	writeOSHTML(w, adminOSLayout(nonce, "Mail accounts", "vayuos", cfg, htmpl.HTML(body.String())))
+}
+
+// vayuAliasesCard renders the "Aliases & forwarding" card: extra receive-only
+// addresses that deliver into a real mailbox, and per-mailbox auto-forward
+// targets. All actions POST /os/vayumail/aliases/action and swap this card.
+func (a *App) vayuAliasesCard(ctx context.Context) string {
+	accts := a.vayuMail.Accounts()
+	domain := a.vayuMail.Config().Domain
+	accs, _ := accts.List(ctx)
+	aliases, _ := accts.ListAliases(ctx)
+
+	post := ` hx-post="/os/vayumail/aliases/action" hx-target="#vm-alias-card" hx-swap="innerHTML"`
+	var b strings.Builder
+	b.WriteString(`<div class="card"><div class="card-title">Aliases &amp; forwarding</div>`)
+
+	// ── Aliases ────────────────────────────────────────────────────────────
+	b.WriteString(`<p class="muted text-sm">An <strong>alias</strong> is an extra address (e.g. <span class="mono">sales@` + html.EscapeString(domain) + `</span>) that delivers into an existing mailbox — no separate login, revocable any time.</p>`)
+	b.WriteString(`<div class="table-wrap"><table class="table"><thead><tr><th>Alias</th><th>Delivers to</th><th></th></tr></thead><tbody>`)
+	if len(aliases) == 0 {
+		b.WriteString(`<tr><td colspan="3" class="muted">No aliases yet.</td></tr>`)
+	}
+	for _, al := range aliases {
+		b.WriteString(`<tr><td class="mono">` + html.EscapeString(al.Alias) + `</td><td class="mono">` + html.EscapeString(al.Target) + `</td><td>` +
+			`<button type="button" class="btn btn--sm btn--danger"` + post + hxVals("op", "alias-delete", "alias", al.Alias) + ` hx-confirm="Delete alias ` + html.EscapeString(al.Alias) + `? Mail sent to it will bounce.">Delete</button></td></tr>`)
+	}
+	b.WriteString(`</tbody></table></div>`)
+
+	// Add-alias form (local part + target mailbox).
+	b.WriteString(`<form class="vm-row vm-row--end"` + post + `><input type="hidden" name="op" value="alias-create">`)
+	b.WriteString(`<label class="field"><span class="field-label">New alias</span><input class="input input--sm" type="text" name="local" placeholder="sales" required><span class="vm-suffix">@` + html.EscapeString(domain) + `</span></label>`)
+	b.WriteString(`<label class="field"><span class="field-label">Delivers to</span><select class="input input--sm" name="target">`)
+	for _, ac := range accs {
+		b.WriteString(`<option value="` + html.EscapeString(ac.Email) + `">` + html.EscapeString(ac.Email) + `</option>`)
+	}
+	b.WriteString(`</select></label><button class="btn btn--primary btn--sm" type="submit">Add alias</button></form>`)
+
+	// ── Auto-forwarding ────────────────────────────────────────────────────
+	b.WriteString(`<div class="card-title mt-2">Auto-forwarding</div>`)
+	b.WriteString(`<p class="muted text-sm">Inbound mail is kept in the mailbox <em>and</em> a copy is relayed to the forward address. Loop-protected; junk is never forwarded. Clear the field to turn it off.</p>`)
+	b.WriteString(`<div class="table-wrap"><table class="table"><thead><tr><th>Mailbox</th><th>Forward a copy to</th><th></th></tr></thead><tbody>`)
+	for _, ac := range accs {
+		b.WriteString(`<tr><td class="mono">` + html.EscapeString(ac.Email) + `</td>`)
+		b.WriteString(`<td><form class="vm-row"` + post + `><input type="hidden" name="op" value="forward-set"><input type="hidden" name="email" value="` + html.EscapeString(ac.Email) + `">`)
+		b.WriteString(`<input class="input input--sm" type="email" name="forward" value="` + html.EscapeString(ac.ForwardTo) + `" placeholder="someone@elsewhere.com" aria-label="Forward address for ` + html.EscapeString(ac.Email) + `">`)
+		b.WriteString(`<button class="btn btn--sm" type="submit">Save</button></form></td>`)
+		if ac.ForwardTo != "" {
+			b.WriteString(`<td><span class="badge badge--ok">forwarding</span></td>`)
+		} else {
+			b.WriteString(`<td><span class="muted text-sm">off</span></td>`)
+		}
+		b.WriteString(`</tr>`)
+	}
+	b.WriteString(`</tbody></table></div></div>`)
+	return b.String()
+}
+
+// handleVayuOSAliasAction applies an alias/forward change and returns the
+// refreshed card (HTMX swap). Admin-only.
+func (a *App) handleVayuOSAliasAction(w http.ResponseWriter, r *http.Request) {
+	if a.vayuMail == nil || !a.vayuMail.Config().Enabled || a.vayuMail.Accounts() == nil {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", "VayuMail is not active", "")
+		return
+	}
+	if !a.isAdminRequest(r) {
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", "administrators only", "")
+		return
+	}
+	_ = r.ParseForm()
+	accts := a.vayuMail.Accounts()
+	domain := a.vayuMail.Config().Domain
+	var opErr error
+	switch r.FormValue("op") {
+	case "alias-create":
+		local := strings.ToLower(strings.TrimSpace(r.FormValue("local")))
+		if local == "" || strings.ContainsAny(local, "@ \t") {
+			opErr = errors.New("invalid alias name")
+		} else {
+			opErr = accts.CreateAlias(r.Context(), local+"@"+domain, r.FormValue("target"))
+			if opErr == nil {
+				dbpkg.AuditLog("vayumail.alias.create", dbpkg.AuditActor(r), local+"@"+domain, r.FormValue("target"))
+			}
+		}
+	case "alias-delete":
+		opErr = accts.DeleteAlias(r.Context(), r.FormValue("alias"))
+		if opErr == nil {
+			dbpkg.AuditLog("vayumail.alias.delete", dbpkg.AuditActor(r), r.FormValue("alias"), "")
+		}
+	case "forward-set":
+		fwd := strings.TrimSpace(r.FormValue("forward"))
+		if fwd != "" {
+			if _, perr := netmail.ParseAddress(fwd); perr != nil {
+				opErr = errors.New("invalid forward address")
+			}
+		}
+		if opErr == nil {
+			opErr = accts.SetForward(r.Context(), r.FormValue("email"), fwd)
+			if opErr == nil {
+				dbpkg.AuditLog("vayumail.forward.set", dbpkg.AuditActor(r), r.FormValue("email"), fwd)
+			}
+		}
+	default:
+		opErr = errors.New("unknown operation")
+	}
+	card := a.vayuAliasesCard(r.Context())
+	if opErr != nil {
+		card = `<div class="empty-state" role="alert">⚠ ` + html.EscapeString(opErr.Error()) + `</div>` + card
+	}
+	writeOSHTML(w, card)
 }
 
 // mailPort extracts the port from a listen address (":993", "127.0.0.1:993"),

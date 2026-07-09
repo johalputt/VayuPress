@@ -82,6 +82,7 @@ type Account struct {
 	TOTPEnabled bool      `json:"totp_enabled"`
 	QuotaBytes  int64     `json:"quota_bytes"` // mailbox storage limit; 0 = unlimited
 	Signature   string    `json:"signature"`   // plain-text mail signature, appended on send
+	ForwardTo   string    `json:"forward_to"`  // auto-forward copies of inbound mail here; empty = off
 	CreatedAt   time.Time `json:"created_at"`
 }
 
@@ -125,10 +126,22 @@ func NewAccountStore(db *sql.DB) (*AccountStore, error) {
 		// Per-account plain-text mail signature, appended on send. Empty for
 		// existing accounts, so the migration changes no behaviour.
 		`ALTER TABLE vayumail_accounts ADD COLUMN signature TEXT NOT NULL DEFAULT ''`,
+		// Per-account auto-forward target: inbound mail is filed locally AND a
+		// copy is relayed to this address. Empty (the default) means off.
+		`ALTER TABLE vayumail_accounts ADD COLUMN forward_to TEXT NOT NULL DEFAULT ''`,
 	} {
 		if _, err := db.Exec(stmt); err != nil && !strings.Contains(err.Error(), "duplicate column") {
 			return s, err
 		}
+	}
+	// Alias addresses: extra receive-only addresses that deliver into an existing
+	// mailbox (single-level: an alias always points at a real account, never at
+	// another alias — enforced at creation).
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS vayumail_aliases(
+		alias TEXT PRIMARY KEY,
+		target TEXT NOT NULL,
+		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP);`); err != nil {
+		return s, err
 	}
 	return s, nil
 }
@@ -303,7 +316,7 @@ func (s *AccountStore) List(ctx context.Context) ([]Account, error) {
 	if s.db == nil {
 		return out, nil
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT email,full_name,role,active,totp_enabled,quota_bytes,signature,created_at FROM vayumail_accounts ORDER BY email`)
+	rows, err := s.db.QueryContext(ctx, `SELECT email,full_name,role,active,totp_enabled,quota_bytes,signature,forward_to,created_at FROM vayumail_accounts ORDER BY email`)
 	if err != nil {
 		return nil, err
 	}
@@ -311,7 +324,7 @@ func (s *AccountStore) List(ctx context.Context) ([]Account, error) {
 	for rows.Next() {
 		var a Account
 		var active, totpEnabled int
-		if err := rows.Scan(&a.Email, &a.FullName, &a.Role, &active, &totpEnabled, &a.QuotaBytes, &a.Signature, &a.CreatedAt); err != nil {
+		if err := rows.Scan(&a.Email, &a.FullName, &a.Role, &active, &totpEnabled, &a.QuotaBytes, &a.Signature, &a.ForwardTo, &a.CreatedAt); err != nil {
 			return nil, err
 		}
 		a.Active = active == 1
