@@ -8,6 +8,29 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.11.12] — 2026-07-09
+
+### Security
+- **CodeQL alerts #36 / #49 / #52(#53) — fixed at the source this time.** My
+  previous attempts escaped the wrong layer (the `hx-vals` builder) while
+  CodeQL traced the taint from `?user=`/`?folder=` all the way to the shared
+  `writeOSHTML` / `writeOSFragment` write sinks through a *different* helper
+  path. Rather than chase each path, the barrier now lives at the **source**:
+  - `mailUserParam` / `mailFolderParam` / the new `mailIDParam` validate their
+    strict charset and then return the value through `html.EscapeString`. On
+    those charsets (no HTML metacharacters) it is a **no-op — byte-identical
+    output**, so nothing about the rendered pages changes; but the value now
+    flows through a sanitiser static analysis recognises, clearing
+    go/reflected-xss on *every* downstream sink at once instead of one at a
+    time. `?id=` is now validated + escaped the same way.
+  - `admin-os-mail.js` `safeNav`: the earlier version had a real weakness — its
+    *fallback* was itself a tainted `data-*` attribute value, so an invalid
+    input still reached `location`. It now routes both the candidate and the
+    fallback through a `localPath()` guard (a regexp test recognised as a
+    local-URL sanitiser: must start with a single `/`, never `//` or `/\`,
+    which also excludes any `scheme:` URL) and falls back to a **hardcoded
+    constant** — so a `data-*` value can never reach `location` unvalidated.
+
 ## [3.11.11] — 2026-07-09
 
 ### Fixed
