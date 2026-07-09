@@ -8,6 +8,22 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.9.26] — 2026-07-09
+
+### Added
+- **VayuMail split reading pane** (completes the Phase-2 redesign). The Mailbox
+  now shows the message list and an in-place reader side by side: clicking a
+  message opens it in the right-hand pane instead of navigating to a separate
+  page. Reader actions (Reply/Forward, Mark unread, Pin, Junk/Trash/Restore,
+  Delete) and prev/next run **entirely in the pane via HTMX** — a move or delete
+  clears the pane and refreshes the list in place (`HX-Trigger:vm-mail-changed`),
+  with no full-page reload. The pane reader is pure HTMX/native (a `<details>`
+  raw-source toggle, HTMX nav) so it works after any swap without page-load JS.
+  A delegated highlighter marks the open row. On narrow screens the layout
+  collapses to one column and the reader overlays the list with a Close button.
+  The standalone message page is unchanged (middle-click / no-JS fallback via the
+  row's `href`). No backend change.
+
 ## [3.9.25] — 2026-07-08
 
 ### Added

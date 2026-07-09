@@ -2564,6 +2564,36 @@
   .vp-os .vm-msg-body { max-width: none; }
 }
 
+/* ── VayuMail split reading pane (v-split) ─────────────────────────────────── */
+/* List + in-place reader side by side. The reader loads via HTMX into
+   #vm-readpane; pane actions fire HX-Trigger:vm-mail-changed to refresh the
+   list. Collapses to one column on narrow screens (the pane overlays the list
+   only while a message is open). */
+.vp-os .vm-split { display: grid; grid-template-columns: minmax(20rem, 26rem) minmax(0, 1fr); gap: .9rem; align-items: start; }
+.vp-os .vm-inbox-list { min-width: 0; }
+.vp-os .vm-readpane { min-width: 0; position: sticky; top: .5rem; }
+.vp-os .vm-readpane .vm-reader { margin: 0; }
+.vp-os .vm-readpane-empty {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  text-align: center; gap: .4rem; min-height: 16rem;
+  border: 1px dashed var(--border-strong); border-radius: 12px;
+  background: var(--bg-glass); padding: 2rem 1rem;
+}
+.vp-os .vm-readpane-empty-ico { font-size: 2rem; opacity: .5; }
+/* Active row highlight (set by delegated JS on open). */
+.vp-os tr.vm-active > td { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.vp-os tr.vm-active .vm-subj a { text-decoration: underline; }
+
+/* Narrow screens: single column. The pane hides until a message is opened,
+   then it shows above the list as a full-width reader with a Close button. */
+@media (max-width: 60rem) {
+  .vp-os .vm-split { grid-template-columns: 1fr; }
+  .vp-os .vm-readpane { position: static; }
+  /* Empty pane takes no space on mobile; the reader (with .vm-reader) shows. */
+  .vp-os .vm-readpane:has(.vm-readpane-empty) { display: none; }
+  .vp-os .vm-readpane:has(.vm-reader) { order: -1; margin-bottom: .6rem; }
+}
+
 /* ── VayuMail composer (v-compose) ─────────────────────────────────────────── */
 .vp-os .vm-row--tight { margin: 0 0 .65rem; }
 .vp-os .vm-compose-actions { align-items: center; }

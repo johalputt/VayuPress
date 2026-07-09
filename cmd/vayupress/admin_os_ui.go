@@ -321,6 +321,9 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/send", a.handleVayuOSSend)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/draft", a.handleVayuOSDraft)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/message/action", a.handleVayuOSMessageAction)
+		// Split reading pane: load a message beside the list + act on it in place.
+		pr.Get("/os/vayumail/inbox/readpane", a.handleVayuOSReadpane)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/message/pane-action", a.handleVayuOSMessagePaneAction)
 		// Outbox: HTMX auto-refresh fragment + per-message Resend/Delete/Retry-all.
 		pr.Get("/os/vayumail/outbox/fragment", a.handleVayuOSOutboxFragment)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/outbox/action", a.handleVayuOSOutboxAction)
