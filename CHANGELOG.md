@@ -8,6 +8,14 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.9.25] — 2026-07-08
+
+### Added
+- **Undo Send.** Clicking Send now holds the message for a few seconds behind an
+  **Undo** control with a live countdown, so a mistaken send can be called back
+  before it goes out. If you navigate away during the hold, the message is sent
+  anyway (best-effort) so nothing is lost, and a guard prevents double-sending.
+
 ## [3.9.24] — 2026-07-08
 
 ### Added

@@ -2607,6 +2607,14 @@
 .vp-os .vm-sig-edit textarea { margin-top: .5rem; }
 .vp-os .vm-sig-preview { margin: .5rem 0 0; padding: .5rem .65rem; border-left: 2px solid var(--border-strong); color: var(--text-2); font-size: var(--text-sm); white-space: pre-wrap; word-break: break-word; max-height: 8rem; overflow: auto; }
 
+.vp-os .vm-undobar {
+  display: flex; align-items: center; gap: .75rem; margin-top: .6rem;
+  padding: .55rem .8rem; border: 1px solid var(--accent); border-radius: 10px;
+  background: var(--accent-dim); color: var(--text); font-size: var(--text-sm);
+}
+.vp-os .vm-undobar[hidden] { display: none; }
+.vp-os .vm-undobar span { flex: 1 1 auto; }
+
 .vp-os .vm-pgp-hint { font-size: .72rem; color: var(--text-3); margin-left: auto; }
 .vp-os .vm-pgp-hint--enc { color: var(--ok); }
 @media (max-width: 640px) { .vp-os .vm-pgp-hint { margin-left: 0; flex-basis: 100%; } }
