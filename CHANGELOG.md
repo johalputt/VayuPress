@@ -8,6 +8,21 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.11.17] — 2026-07-10
+
+### Fixed
+- **Editor focus mode: typewriter padding CSS cascade bug** (mobile audit). The
+  distraction-free "typewriter room" (large top/bottom padding so the first and
+  last lines can reach the vertical centre) was defined by an unscoped rule that
+  a later, unconditional `padding-top` silently overrode — so on **desktop** the
+  centring room was lost, and on **mobile** a competing rule could leave roughly
+  40% of the screen as empty space above and below the text. The padding is now
+  a single authoritative pair: a small base value everywhere, and the tall
+  typewriter value only inside `@media (min-width: 901px)`, placed last so it
+  wins on wide screens where the canvas scrolls and never applies on phones
+  (where the page scrolls instead). Desktop regains proper caret centring;
+  mobile focus mode no longer wastes vertical space.
+
 ## [3.11.16] — 2026-07-10
 
 ### Added
