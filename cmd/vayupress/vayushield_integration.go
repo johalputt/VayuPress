@@ -830,9 +830,10 @@ func (a *App) renderShieldEngagement(ctx context.Context, days int) string {
 		b.WriteString(`</div></div>`)
 	}
 	if srcs, err := a.vaEngagement.SourceBreakdown(ctx, days); err == nil && len(srcs) > 0 {
+		maxV := maxInt64(len(srcs), func(i int) int64 { return srcs[i].Views })
 		b.WriteString(`<div class="vs-subsection"><div class="card-title vs-section">Traffic sources</div><div class="table-wrap"><table class="table"><thead><tr><th>Source</th><th>Views</th><th>Sessions</th><th>Avg time</th><th>Avg scroll</th><th>Engagement</th></tr></thead><tbody>`)
 		for _, s := range srcs {
-			b.WriteString(`<tr><td>` + html.EscapeString(s.Category) + `</td><td>` + strconv.FormatInt(s.Views, 10) + `</td><td>` + strconv.FormatInt(s.Sessions, 10) + `</td><td>` + ftoa2(s.AvgTimeSeconds) + `s</td><td>` + ftoa2(s.AvgScrollPct) + `%</td><td>` + pct(s.EngagementRate) + `</td></tr>`)
+			b.WriteString(`<tr><td>` + html.EscapeString(s.Category) + `</td><td>` + vsBarCell(s.Views, maxV) + `</td><td>` + strconv.FormatInt(s.Sessions, 10) + `</td><td>` + ftoa2(s.AvgTimeSeconds) + `s</td><td>` + ftoa2(s.AvgScrollPct) + `%</td><td>` + pct(s.EngagementRate) + `</td></tr>`)
 		}
 		b.WriteString(`</tbody></table></div></div>`)
 	}
@@ -840,18 +841,20 @@ func (a *App) renderShieldEngagement(ctx context.Context, days int) string {
 		b.WriteString(`<div class="vs-subsection"><div class="card-title vs-section">AI-assisted discovery vs organic search</div>`)
 		b.WriteString(`<p class="muted text-sm">AI traffic is <strong>` + ftoa2(ai.AISharePercent) + `%</strong> of human views · AI engagement ` + pct(ai.AISummary.EngagementRate) + ` (avg ` + ftoa2(ai.AISummary.AvgTimeSeconds) + `s) vs organic ` + pct(ai.OrganicSummary.EngagementRate) + ` (avg ` + ftoa2(ai.OrganicSummary.AvgTimeSeconds) + `s).</p>`)
 		if len(ai.BySystem) > 0 {
+			maxAI := maxInt64(len(ai.BySystem), func(i int) int64 { return ai.BySystem[i].Views })
 			b.WriteString(`<div class="table-wrap"><table class="table"><thead><tr><th>AI system</th><th>Views</th><th>Avg time</th><th>Engagement</th></tr></thead><tbody>`)
 			for _, s := range ai.BySystem {
-				b.WriteString(`<tr><td>` + html.EscapeString(s.Detail) + `</td><td>` + strconv.FormatInt(s.Views, 10) + `</td><td>` + ftoa2(s.AvgTimeSeconds) + `s</td><td>` + pct(s.EngagementRate) + `</td></tr>`)
+				b.WriteString(`<tr><td>` + html.EscapeString(s.Detail) + `</td><td>` + vsBarCell(s.Views, maxAI) + `</td><td>` + ftoa2(s.AvgTimeSeconds) + `s</td><td>` + pct(s.EngagementRate) + `</td></tr>`)
 			}
 			b.WriteString(`</tbody></table></div>`)
 		}
 		b.WriteString(`</div>`)
 	}
 	if pages, err := a.vaEngagement.TopPages(ctx, days, 10); err == nil && len(pages) > 0 {
+		maxP := maxInt64(len(pages), func(i int) int64 { return pages[i].Views })
 		b.WriteString(`<div class="vs-subsection"><div class="card-title vs-section">Top pages</div><div class="table-wrap"><table class="table"><thead><tr><th>Page</th><th>Views</th><th>Avg time</th><th>Engagement</th></tr></thead><tbody>`)
 		for _, p := range pages {
-			b.WriteString(`<tr><td>` + html.EscapeString(p.Path) + `</td><td>` + strconv.FormatInt(p.Views, 10) + `</td><td>` + ftoa2(p.AvgTimeSeconds) + `s</td><td>` + pct(p.EngagementRate) + `</td></tr>`)
+			b.WriteString(`<tr><td>` + html.EscapeString(p.Path) + `</td><td>` + vsBarCell(p.Views, maxP) + `</td><td>` + ftoa2(p.AvgTimeSeconds) + `s</td><td>` + pct(p.EngagementRate) + `</td></tr>`)
 		}
 		b.WriteString(`</tbody></table></div></div>`)
 	}
@@ -1059,6 +1062,47 @@ func vsStat(n, label string) string {
 // vsMetric renders a compact hero metric (big number + label).
 func vsMetric(n, label string) string {
 	return `<div class="vs-metric"><div class="n">` + html.EscapeString(n) + `</div><div class="l">` + html.EscapeString(label) + `</div></div>`
+}
+
+// vsBarWidthClass maps value/max to a CSP-safe w-N width class (0..100 in 5%
+// steps). The strict admin CSP forbids inline styles, so magnitude bars borrow
+// the pre-defined .w-N utilities rather than a style="width:…". A non-positive
+// max (or value) yields w-0; anything positive gets at least w-5 so a real but
+// tiny value still shows a sliver.
+func vsBarWidthClass(value, max int64) string {
+	if max <= 0 || value <= 0 {
+		return "w-0"
+	}
+	p := int(value * 100 / max)
+	p = (p / 5) * 5 // bucket to the 5% steps the width classes are defined in
+	if p > 100 {
+		p = 100
+	}
+	if p < 5 {
+		p = 5
+	}
+	return "w-" + strconv.Itoa(p)
+}
+
+// vsBarCell renders a table cell: the numeric value stacked over a thin bar
+// proportional to max, so a column of counts reads as a mini bar chart. The
+// value is a plain int64 (no HTML escaping needed) and the width is a fixed
+// class, so this is injection-safe by construction.
+func vsBarCell(value, max int64) string {
+	return `<div class="vs-barcell"><span class="vs-barcell__n">` + strconv.FormatInt(value, 10) +
+		`</span><span class="vs-bar"><span class="vs-bar__fill ` + vsBarWidthClass(value, max) + `"></span></span></div>`
+}
+
+// maxViews returns the largest Views value across rows, the denominator for the
+// inline magnitude bars. Generic over the row shape via the accessor.
+func maxInt64(n int, at func(i int) int64) int64 {
+	var m int64
+	for i := 0; i < n; i++ {
+		if v := at(i); v > m {
+			m = v
+		}
+	}
+	return m
 }
 
 func ftoa2(f float64) string { return strconv.FormatFloat(f, 'f', 2, 64) }

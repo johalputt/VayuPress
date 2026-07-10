@@ -240,12 +240,14 @@
     var up = mkCtrlBtn('↑', 'Move up', function () { nudge(idx, -1); });
     var down = mkCtrlBtn('↓', 'Move down', function () { nudge(idx, 1); });
     var addBtn = mkCtrlBtn('+', 'Insert block below', function () { openPalette(idx + 1, idx); });
+    var dupBtn = mkCtrlBtn('⧉', 'Duplicate block', function () { duplicateBlock(idx); });
     var delBtn = mkCtrlBtn('×', 'Delete block', function () { removeBlock(idx); });
 
     ctrl.appendChild(drag);
     ctrl.appendChild(up);
     ctrl.appendChild(down);
     ctrl.appendChild(addBtn);
+    ctrl.appendChild(dupBtn);
     ctrl.appendChild(delBtn);
     wrap.appendChild(ctrl);
 
@@ -1085,6 +1087,7 @@
         else if (kk === 'e') mk = ['`', '`', false];
         else if (kk === 'k') mk = ['[', '](url)', true];
         if (mk) { e.preventDefault(); wrapSelection(el, mk[0], mk[1], mk[2]); return; }
+        if (kk === 'd') { e.preventDefault(); duplicateBlock(idx); return; } // ⌘/Ctrl+D duplicates the block
       }
       if (e.key === '/' && el.value === '') {
         e.preventDefault();
@@ -1139,6 +1142,20 @@
     if (to > blocks.length) to = blocks.length;
     blocks.splice(to, 0, b);
     structural();
+  }
+
+  // duplicateBlock deep-clones the block at idx and inserts the copy directly
+  // below it, then focuses the copy. Blocks are plain JSON-serialisable data
+  // (text, items, level, style, url…), so a structural clone via JSON is exact
+  // and can't share array/object references with the original.
+  function duplicateBlock(idx) {
+    if (idx < 0 || idx >= blocks.length) return;
+    var copy;
+    try { copy = JSON.parse(JSON.stringify(blocks[idx])); }
+    catch (e) { return; } // never corrupt the doc on an unexpected shape
+    blocks.splice(idx + 1, 0, copy);
+    structural();
+    setTimeout(function () { focusBlock(idx + 1, true); }, 0);
   }
 
   // nudge swaps a block with its neighbour (keyboard / button reorder).
@@ -1764,7 +1781,17 @@
           out.push(HEADING_HASHES[lvl] + ' ' + (b.text || ''));
           break;
         }
-        case 'list': out.push((b.items || []).map(function (it) { return '- ' + it; }).join('\n')); break;
+        // Lists carry their kind in b.style ('ordered' | 'unordered'); the
+        // legacy 'ordered' TYPE is an older shape kept for drafts saved before
+        // the model was unified. Both must serialise a numbered list as "1." —
+        // otherwise a numbered list the writer built round-trips out as bullets.
+        case 'list':
+          if (b.style === 'ordered') {
+            out.push((b.items || []).map(function (it, i) { return (i + 1) + '. ' + it; }).join('\n'));
+          } else {
+            out.push((b.items || []).map(function (it) { return '- ' + it; }).join('\n'));
+          }
+          break;
         case 'ordered': out.push((b.items || []).map(function (it, i) { return (i + 1) + '. ' + it; }).join('\n')); break;
         case 'tasklist': out.push((b.items || []).map(function (it, i) {
           return '- [' + ((b.checked || [])[i] ? 'x' : ' ') + '] ' + it;
@@ -1851,11 +1878,13 @@
         out.push({ type: 'list', items: bitems });
         continue;
       }
-      // Ordered list
+      // Ordered list — use the canonical { type:'list', style:'ordered' } shape
+      // that the palette, autoformat and paste all produce, so there is exactly
+      // one representation of a numbered list across load / create / serialise.
       if (/^\d+[.)]\s+/.test(line) && !para.length) {
         var oitems = [];
         while (i < lines.length && (m = lines[i].match(/^\d+[.)]\s+(.*)$/))) { oitems.push(m[1]); i++; }
-        out.push({ type: 'ordered', items: oitems });
+        out.push({ type: 'list', style: 'ordered', items: oitems });
         continue;
       }
       // Quote

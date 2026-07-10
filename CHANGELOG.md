@@ -8,6 +8,8 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.11.24] — 2026-07-10
+
 ### Added
 - **App-password console for VayuMail Mobile (ADR-0126).** The Connect tab can
   mint device app passwords again — the creation path that disappeared with the
@@ -21,6 +23,17 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   `VAYUMAIL_2FA_ENFORCE` mode attainable again: it needs an app password to
   exist before it retires the mailbox password on IMAP/SMTP/POP3, and one can
   now be created.
+- **Inline magnitude bars in the engagement analytics.** Each Views figure in
+  Traffic sources, AI systems and Top pages now sits over a thin bar sized
+  relative to the busiest row, so the tables read as a mini bar chart at a
+  glance — which source or page dominates is obvious without comparing digits.
+  CSP-safe (the bar width uses the pre-defined `w-N` utility classes, never an
+  inline style) and it folds neatly into the stacked mobile card layout.
+  Covered by unit tests for the width bucketing and cell markup.
+- **Duplicate block in the post editor.** A new ⧉ control on every block (and
+  ⌘/Ctrl+D while editing) clones the block — text, list items, checkboxes,
+  image settings and all — directly below and moves the cursor into the copy.
+  A natural companion to the existing move/insert/delete controls.
 
 ### Changed
 - **Connect tab describes the real VayuMail Mobile flow.** The official-app
@@ -29,6 +42,16 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   every server setting from `/.well-known/vayumail/autoconfig.json` and
   auto-syncs PGP keys via WKD. The Recommended-settings table now points at app
   passwords as the preferred device credential.
+
+### Fixed
+- **Numbered lists now export as numbered lists.** A list built in the editor
+  (via the palette, the `1.` autoformat, or a paste) is stored as
+  `{ type: list, style: ordered }`, but the Markdown serialiser's list case
+  ignored `style` and always emitted `-` bullets — so a numbered list
+  round-tripped out as a bullet list. The serialiser now honours the ordered
+  style, and the Markdown loader was unified onto the same canonical shape, so
+  there is exactly one representation of a numbered list across load, create
+  and export.
 
 ## [3.11.23] — 2026-07-10
 
