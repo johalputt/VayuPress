@@ -1612,6 +1612,12 @@
   .vp-os .editor-canvas { overflow-y: visible; padding-bottom: var(--sp-10); }
   .vp-os .editor-workspace { flex-direction: column; overflow: visible; }
   .vp-os .editor-sidebar { position: static; overflow: visible; }
+  /* Typewriter scrolling needs the canvas to be its own scroll container; on
+     mobile the PAGE scrolls (overflow-y: visible above), so the 40vh focus
+     padding would just add a phone-screen of dead space and the caret-centring
+     can't run. Neutralise it — mobile browsers already keep the caret above the
+     on-screen keyboard, which gives the same "line stays in view" comfort. */
+  .vp-os .editor-shell.is-focus .editor-canvas { padding-top: var(--sp-6); padding-bottom: var(--sp-10); }
 }
 
 /* ── Media library (Phase 4, ADR-0068) ─────────────────────────────────────── */
@@ -2734,11 +2740,23 @@
 .vp-os .editor-shell.is-focus { grid-template-columns: minmax(0, 1fr); }
 .vp-os .editor-shell.is-focus .editor-sidebar { display: none; }
 .vp-os .editor-shell.is-focus .editor-canvas { padding-left: max(var(--sp-4), calc((100% - 820px) / 2)); padding-right: max(var(--sp-4), calc((100% - 820px) / 2)); }
+/* Typewriter room: enough top/bottom space that the very first and very last
+   lines can still float to the vertical middle when typewriter scrolling
+   (focus mode) centres the caret line. Scrolling stays INSTANT — smooth-scroll
+   would make caret tracking feel floaty during fast typing. */
+.vp-os .editor-shell.is-focus .editor-canvas { padding-top: 40vh; padding-bottom: 40vh; }
 .vp-os .editor-shell.is-focus .editor-title { max-width: 820px; margin-left: auto; margin-right: auto; padding-left: var(--sp-1); }
 
 /* Dimming the non-active blocks in focus mode keeps the eye on the current line
    without hiding context. */
+/* Active-line spotlight: in focus mode, once the caret is in a block
+   (.is-spotlight, set by the editor JS), that block glows and the rest recede.
+   The eye rests on the current line without losing the surrounding context.
+   Only active alongside .is-spotlight, so placing the caret in the title (or
+   before any click) never greys the whole canvas. */
 .vp-os .editor-shell.is-focus .eblock { transition: opacity var(--t-fast); }
+.vp-os .editor-shell.is-focus.is-spotlight .eblock { opacity: 0.32; }
+.vp-os .editor-shell.is-focus.is-spotlight .eblock.is-caret { opacity: 1; }
 
 /* Image paste / drag-and-drop target highlight on the canvas. */
 .vp-os .editor-canvas.is-dragover {

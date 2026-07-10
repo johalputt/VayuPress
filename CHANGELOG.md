@@ -8,6 +8,34 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.11.15] — 2026-07-10
+
+### Added
+- **Editor: typewriter scrolling in focus mode** — the biggest "feel" upgrade
+  to the writing experience. In distraction-free focus mode (toggle with the
+  focus button or Cmd/Ctrl+`.`), the line you are typing now floats at the
+  vertical middle of the canvas instead of drifting toward the bottom edge, so
+  your eyes stay put while you write (the iA Writer / Ghost "zen" feel). It
+  acts only on a collapsed caret, so dragging a text selection is never fought,
+  and only inside the editor canvas, so the command menu and modals are
+  untouched. Pure scroll math coalesced into a single animation frame, so even
+  the fastest typing never thrashes layout; scrolling is intentionally instant
+  (smooth-scroll would make caret tracking feel floaty). Focus mode gains
+  generous top/bottom room so the first and last lines can also reach centre.
+- **Editor: active-line spotlight in focus mode** — companion to typewriter
+  scrolling. Once the caret is in a block, that line glows at full opacity and
+  the surrounding blocks gently recede (to ~32%), so the eye rests on what you
+  are writing without losing context. The dimming is gated on an
+  `is-spotlight` state set only when the caret is actually in a block, so
+  editing the title (or focus mode before any click) never greys the canvas.
+  This also activates a CSS `transition: opacity` rule that was previously
+  defined but never triggered — dead styling, now live.
+- **Editor: zen writer is mobile-correct.** Typewriter centring only runs when
+  the canvas is its own scroll container; on phones the page scrolls instead,
+  so the caret-centring is a clean no-op (mobile browsers already keep the
+  caret above the on-screen keyboard) and the desktop-only 40vh focus padding
+  is reduced to normal spacing on small screens so there is no dead space.
+
 ## [3.11.14] — 2026-07-09
 
 ### Fixed
