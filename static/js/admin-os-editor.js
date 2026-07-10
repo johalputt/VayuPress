@@ -969,10 +969,42 @@
     return false;
   }
 
+  // wrapSelection surrounds the textarea's current selection with Markdown marks
+  // (or drops an empty pair at the caret when nothing is selected), then fires an
+  // input event so block.text, the live stats and autosave all update through the
+  // existing listener. For links it leaves the "url" placeholder selected so the
+  // writer types the destination immediately — the ⌘K flow people expect.
+  function wrapSelection(el, before, after, isLink) {
+    var s = el.selectionStart, e2 = el.selectionEnd, v = el.value;
+    var sel = v.slice(s, e2);
+    el.value = v.slice(0, s) + before + sel + after + v.slice(e2);
+    if (isLink) {
+      var us = s + before.length + sel.length + 2; // just past "]("
+      el.selectionStart = us; el.selectionEnd = us + 3; // the word "url"
+    } else if (sel) {
+      el.selectionStart = s + before.length;
+      el.selectionEnd = e2 + before.length; // keep the original text selected
+    } else {
+      el.selectionStart = el.selectionEnd = s + before.length; // caret between marks
+    }
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
   // onTextKey gives text blocks a continuous, document-like writing flow.
   function onTextKey(idx) {
     return function (e) {
       var el = e.target;
+      // Inline formatting shortcuts (⌘/Ctrl + B/I/E/K) — wrap the selection with
+      // the Markdown marks, like a real prose editor. Alt is excluded so it never
+      // clashes with OS accents.
+      if ((e.metaKey || e.ctrlKey) && !e.altKey) {
+        var mk = null, kk = (e.key || '').toLowerCase();
+        if (kk === 'b') mk = ['**', '**', false];
+        else if (kk === 'i') mk = ['*', '*', false];
+        else if (kk === 'e') mk = ['`', '`', false];
+        else if (kk === 'k') mk = ['[', '](url)', true];
+        if (mk) { e.preventDefault(); wrapSelection(el, mk[0], mk[1], mk[2]); return; }
+      }
       if (e.key === '/' && el.value === '') {
         e.preventDefault();
         openPalette(idx + 1, idx);

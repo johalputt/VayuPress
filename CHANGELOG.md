@@ -8,6 +8,24 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.11.16] — 2026-07-10
+
+### Added
+- **Post editor: keyboard inline formatting** (writing-experience audit). Text
+  blocks now respond to the shortcuts prose writers expect, so you never leave
+  the keyboard to format:
+  - **⌘/Ctrl + B** wraps the selection in `**bold**`
+  - **⌘/Ctrl + I** wraps it in `*italic*`
+  - **⌘/Ctrl + E** wraps it in `` `inline code` ``
+  - **⌘/Ctrl + K** wraps it as a `[link](url)` and leaves the `url` placeholder
+    selected so you type the destination immediately
+  With no selection the marks are dropped at the caret with the cursor placed
+  between them. Each change fires the normal input path, so live word/character
+  count, reading time and autosave all update exactly as when typing. Purely
+  additive to the existing block shortcuts (a leading `#` for headings, `>` for
+  a quote, `-` for a list, a triple backtick for code, `---` for a divider),
+  which are unchanged.
+
 ## [3.11.15] — 2026-07-10
 
 ### Added
