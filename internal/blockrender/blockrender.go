@@ -42,8 +42,20 @@ var inlineMD = goldmark.New(
 // the caller, so untrusted/raw HTML inside the Markdown cannot widen the XSS
 // surface.
 var blockMD = goldmark.New(
-	goldmark.WithExtensions(extension.GFM),
+	goldmark.WithExtensions(extension.GFM, extension.Footnote),
 )
+
+// footnoteIDRe restricts the id/fragment anchors the sanitiser lets through to
+// exactly the shapes goldmark's footnote extension emits (fn:… / fnref:…, with
+// an optional numeric suffix goldmark adds when the same label repeats). This
+// keeps footnote back-links working without opening a general id allow (which
+// would invite DOM-clobbering); no author-controlled id can match.
+var footnoteIDRe = regexp.MustCompile(`^fn(ref)?:[A-Za-z0-9._-]+$`)
+
+// footnoteHrefRe is the matching in-page href — the same identifier as a
+// fragment ("#fn:1" / "#fnref:1"). Only same-document fragments are allowed, so
+// this can never become an off-site or javascript: link.
+var footnoteHrefRe = regexp.MustCompile(`^#fn(ref)?:[A-Za-z0-9._-]+$`)
 
 // renderInlineHTML converts s to inline HTML (no enclosing block element). It is
 // used for the text of paragraph/heading/quote/callout/list blocks so authors
@@ -119,6 +131,13 @@ var policy = func() *bluemonday.Policy {
 		"table", "thead", "tbody", "tr", "th", "td", "details", "summary", "audio")
 	p.AllowAttrs("data-embed-src").Matching(embedSrcRe).OnElements("div")
 	p.AllowAttrs("data-embed-title").OnElements("div")
+	// Footnotes (goldmark extension.Footnote): allow the specific id anchors and
+	// same-document fragment hrefs the extension emits so the reference numbers
+	// and back-links resolve. The regexes match only fn:/fnref: shapes — never an
+	// author-supplied id — so this does not open a general id/anchor surface.
+	p.AllowAttrs("id").Matching(footnoteIDRe).OnElements("li", "sup", "div")
+	p.AllowAttrs("href").Matching(footnoteHrefRe).OnElements("a")
+	p.AllowAttrs("role").Matching(regexp.MustCompile(`^doc-[a-z]+$`)).OnElements("div", "a", "li", "section")
 	// Table block.
 	p.AllowTables()
 	// Collapsible toggle block.

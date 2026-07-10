@@ -433,3 +433,47 @@ func TestRenderMarkdownCard(t *testing.T) {
 		}
 	}
 }
+
+// TestRenderFootnotes verifies the goldmark Footnote extension is active AND
+// that the reference number, footnote body, id anchors and back-link survive
+// the bluemonday sanitiser — otherwise footnotes would render as broken links.
+func TestRenderFootnotes(t *testing.T) {
+	doc := `[{"type":"markdown","text":"Here is a claim.[^src]\n\n[^src]: The supporting source."}]`
+	h, _, err := Render(doc)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	// The inline reference must become a superscript link into the note.
+	if !strings.Contains(h, `href="#fn:1"`) {
+		t.Fatalf("footnote reference link missing/stripped:\n%s", h)
+	}
+	// The note body must carry its id so the reference resolves.
+	if !strings.Contains(h, `id="fn:1"`) {
+		t.Fatalf("footnote body id missing/stripped:\n%s", h)
+	}
+	// The back-link (↩) returns to the reference.
+	if !strings.Contains(h, `href="#fnref:1"`) {
+		t.Fatalf("footnote back-link missing/stripped:\n%s", h)
+	}
+	// The supporting text must be present.
+	if !strings.Contains(h, "The supporting source.") {
+		t.Fatalf("footnote text missing:\n%s", h)
+	}
+}
+
+// TestFootnoteIDAllowIsNarrow makes sure the id/href allow we added for
+// footnotes cannot be abused to smuggle an arbitrary author id or an off-site /
+// script href through the sanitiser.
+func TestFootnoteIDAllowIsNarrow(t *testing.T) {
+	doc := `[{"type":"markdown","text":"<div id=\"evil\">x</div><a href=\"#not-a-footnote\">y</a><a id=\"clobber\">z</a>"}]`
+	h, _, err := Render(doc)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if strings.Contains(h, `id="evil"`) || strings.Contains(h, `id="clobber"`) {
+		t.Fatalf("non-footnote id survived sanitisation:\n%s", h)
+	}
+	if strings.Contains(h, `href="#not-a-footnote"`) {
+		t.Fatalf("non-footnote fragment href survived sanitisation:\n%s", h)
+	}
+}
