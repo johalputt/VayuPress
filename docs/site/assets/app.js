@@ -353,14 +353,26 @@ STATIC_DIR=./static VAYU_DOCS_DIR=./docs ./vayupress --port 8080`,
     },
 
     async fetchStars() {
+      // Two-stage, always-live star count:
+      //  1) a same-origin stars.json baked fresh by the deploy workflow (and a
+      //     daily schedule) — instant, never rate-limited, works even if the
+      //     visitor's network blocks api.github.com;
+      //  2) the live GitHub API with default caching (honours GitHub's own
+      //     ~60s Cache-Control, so it revalidates instead of pinning a stale
+      //     copy the way force-cache did) — refreshes the baked value in-browser.
+      const setStars = (n) => {
+        if (typeof n === 'number' && n >= 0) this.stars = n.toLocaleString();
+      };
       try {
-        const r = await fetch('https://api.github.com/repos/johalputt/VayuPress', { cache: 'force-cache' });
+        const b = await fetch('assets/stars.json', { cache: 'no-cache' });
+        if (b.ok) { const j = await b.json(); setStars(j.stargazers_count); }
+      } catch (_) { /* baked file absent in dev — fall through to the API */ }
+      try {
+        const r = await fetch('https://api.github.com/repos/johalputt/VayuPress', { cache: 'default' });
         if (!r.ok) return;
         const d = await r.json();
-        if (typeof d.stargazers_count === 'number') {
-          this.stars = d.stargazers_count.toLocaleString();
-        }
-      } catch (_) { /* offline / rate-limited */ }
+        setStars(d.stargazers_count);
+      } catch (_) { /* offline / rate-limited — keep the baked value */ }
     },
 
     init() {

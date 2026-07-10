@@ -42,6 +42,7 @@ shot "$BASE_URL/os/theme"                             "$OUT_DIR/admin-os-theme.p
 shot "$BASE_URL/os/media"                             "$OUT_DIR/admin-os-media.png"
 shot "$BASE_URL/os/seo"                               "$OUT_DIR/admin-os-seo.png"
 shot "$BASE_URL/os/analytics"                         "$OUT_DIR/admin-os-analytics.png"
+shot "$BASE_URL/os/shield"                            "$OUT_DIR/admin-os-shield.png"
 shot "$BASE_URL/os/security"                          "$OUT_DIR/admin-os-security.png"
 shot "$BASE_URL/os/monitoring"                        "$OUT_DIR/admin-os-monitoring.png"
 shot "$BASE_URL/os/governance"                        "$OUT_DIR/admin-os-governance.png"

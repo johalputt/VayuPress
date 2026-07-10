@@ -20,6 +20,11 @@ on:
       - "docs/screenshots/**"
       - ".github/workflows/deploy-site.yml"
   workflow_dispatch:
+  # Daily refresh so the live GitHub-star count on the site stays current even
+  # when no site files changed (the star count is baked into assets/stars.json
+  # at deploy time — see "Bake live GitHub star count" below).
+  schedule:
+    - cron: "17 6 * * *"
 
 permissions:
   contents: read
@@ -62,6 +67,32 @@ jobs:
           fi
           echo "Assembled _site:"
           ls -la _site
+
+      - name: Bake live GitHub star count
+        # Fetch the repo's current star count with the workflow token (5,000
+        # req/hr, never the anonymous 60/hr limit) and write it to a same-origin
+        # assets/stars.json the site reads first — so the count is correct the
+        # instant the page loads, even when a visitor's network blocks the
+        # GitHub API. The client still refreshes it live in-browser afterwards.
+        # Best-effort: a failure leaves the site's built-in fallback intact.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -uo pipefail
+          mkdir -p _site/assets
+          COUNT=$(curl -sS -H "Authorization: Bearer $GH_TOKEN" \
+                  -H "Accept: application/vnd.github+json" \
+                  "https://api.github.com/repos/${GITHUB_REPOSITORY}" \
+                  | grep -o '"stargazers_count"[[:space:]]*:[[:space:]]*[0-9]*' \
+                  | grep -o '[0-9]*$' || true)
+          if [ -n "${COUNT:-}" ]; then
+            printf '{"stargazers_count":%s,"generated_at":"%s"}\n' \
+              "$COUNT" "$(date -u +%FT%TZ)" > _site/assets/stars.json
+            echo "Baked star count: $COUNT"
+          else
+            echo '{"stargazers_count":null}' > _site/assets/stars.json
+            echo "::warning::could not fetch star count; site will use its live client fetch"
+          fi
 
       - name: Configure Pages
         uses: actions/configure-pages@v5

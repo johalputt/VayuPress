@@ -16,10 +16,16 @@
 <p align="center">
   <a href="https://github.com/johalputt/vayupress/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/johalputt/vayupress/actions/workflows/ci.yml/badge.svg"></a>
   <a href="https://github.com/johalputt/vayupress/actions/workflows/security.yml"><img alt="Security" src="https://github.com/johalputt/vayupress/actions/workflows/security.yml/badge.svg"></a>
+  <a href="https://github.com/johalputt/vayupress/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/johalputt/VayuPress?sort=semver&color=0ea5e9&label=release"></a>
+  <a href="https://github.com/johalputt/vayupress/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/johalputt/VayuPress?style=flat&logo=github&color=f5c518"></a>
   <a href="https://go.dev/"><img alt="Go" src="https://img.shields.io/badge/go-1.25-00ADD8?logo=go&logoColor=white"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-green"></a>
   <img alt="Telemetry" src="https://img.shields.io/badge/telemetry-zero-success">
   <a href="GOVERNANCE-CONSTITUTION.md"><img alt="Constitution" src="https://img.shields.io/badge/constitution-v6.0-blueviolet"></a>
+</p>
+
+<p align="center">
+  <em>The release &amp; star badges above are live — they update themselves from the repository, no rebuild needed.</em>
 </p>
 
 ---
@@ -47,8 +53,17 @@ each with a free Let's Encrypt certificate issued and renewed for you. No SaaS b
 ### 🌐 A real website
 Serve a genuine business site at your domain — **11 elegant, modern-minimalist templates** (restaurant, café, shop, portfolio, agency, school, clinic, salon, gym, professional firm, hotel), edited entirely from VayuOS with live preview. You choose the hosting topology (website at the root or the blog at the root); an update never changes it for you.
 
-### ✍️ A Ghost-class blog
-A best-in-class **block editor** with whole-document **Markdown** and **HTML** modes (lossless round-trips), drag/drop/paste images or any `https` link, tables, toggles, task lists, math, callouts, code, self-hosted audio/video, Mermaid diagrams rendered server-side, a slash-command palette, live preview, autosave, and version-history diffs. Whole-site **themes** restyle every surface (nav, hero, feed, article, footer) with a live Theme Studio. Multi-author bylines, memberships, paywalls, newsletters, threaded comments, and SEO baked in.
+### ✍️ A Ghost-class blog — with a writer people actually enjoy
+A best-in-class **block editor** with whole-document **Markdown** and **HTML** modes (lossless round-trips), drag/drop/paste images or any `https` link, tables, toggles, task lists, math, callouts, code, self-hosted audio/video, Mermaid diagrams rendered server-side, a slash-command palette, live preview, autosave, and version-history diffs. The writing surface is tuned to disappear: **typewriter scrolling** keeps your line centered, a **focus-mode spotlight** dims everything but the block you're in, **paste-as-Markdown** turns a whole pasted draft into real blocks, a **live document outline** tracks your headings with click-to-jump, real **footnotes**, image **captions**, block **duplicate**, and full **keyboard block reordering**. Whole-site **themes** restyle every surface (nav, hero, feed, article, footer) with a live Theme Studio. Multi-author bylines, memberships, paywalls, newsletters, threaded comments, and SEO baked in.
+
+### 🛡️ Built-in bot shield & anti-DDoS (VayuShield "Aegis")
+An **enterprise-grade, self-learning bot shield so you never need Cloudflare** — built into the same binary, defending in layers, with **zero operator commands**:
+- **L0 Admin Sovereignty Lane** — a lock-free admission gate that guarantees the admin console and logged-in readers always keep CPU headroom, so **Save and refresh keep working even during a volumetric flood**.
+- **L2 probabilistic fair-shed** — a 256 KiB Count-Min Sketch identifies heavy hitters (per IP and per /24·/48) in **fixed memory**, immune to spoofed botnets, and sheds only their excess; a client within its fair budget is **never** shed.
+- **L5 reputation brain** — learns who's misbehaving in minutes, auto-jails with escalating sentences, and **forgives automatically** (decay, rehab, and a challenge-solve pardon) so a real user behind a shared IP is never locked out.
+- **L4 silent-first challenges** — a proof-of-work that **self-calibrates**: if it ever starts bothering real browsers it loosens itself (loosen-only, never below your thresholds).
+- **L1 kernel offload** — jailed IPs are optionally dropped by **nftables + XDP** before a connection even exists (privilege-separated agent; pure acceleration, never a dependency).
+Search engines and AI assistants are always allowed and counted separately; the shed is a polite `503` (retry), never a `4xx`, so **SEO and real users are structurally protected**. Everything is visible and tunable — no restart — from the Bot Shield console, with a live Aegis layer map.
 
 ### 📧 A sovereign PGP mail server (VayuMail)
 Your own mail server for your domain — **SMTP send + receive, IMAP and POP3**, RFC-6376 **DKIM signing**, direct-to-MX delivery with STARTTLS, automatic **MX / SPF / DKIM / DMARC** records with live DNS health checks, per-mailbox quotas, junk filtering, and a full webmail surface. **PGP is native and automatic** (VayuPGP): keypairs are generated per account, private keys are AES-256-GCM encrypted at rest, and your public keys are published via **Web Key Directory (WKD)** so any client can find them. Mail never leaves your server unencrypted to a third party.
@@ -60,7 +75,7 @@ Your own mail server for your domain — **SMTP send + receive, IMAP and POP3**,
 Real product analytics — pageviews, sessions, top pages, referrers, UTM campaigns, custom events, funnels, retention, revenue, and a live visitor panel — stored locally in SQLite. Visitor identity is a **server-side daily-rotating salted hash**: no cookies, no `localStorage`, no IP or User-Agent ever stored, **no consent banner required**, nothing to leak on a database compromise. Visitor country is resolved from an **embedded offline table** — no external GeoIP service, no phone-home.
 
 ### 🛠️ One control panel (VayuOS)
-Everything above is run from a single, fast, strict-CSP admin at `/os` — dashboard, editor, media library, themes, members, newsletter, mail, analytics, SEO, API keys, and one-click **update & encrypted backup**. TOTP two-factor, role-based access, WORM audit log, and an adaptive policy-governed runtime underneath.
+Everything above is run from a single, fast, strict-CSP admin at `/os` — dashboard, editor, media library, themes, members, newsletter, mail, analytics, **Bot Shield**, SEO, API keys, and one-click **update & encrypted backup**. The dashboard opens on a real **14-day publishing area chart** (server-rendered SVG, hover tooltips, zero JavaScript) and live stat cards; every data table folds into phone-friendly cards on mobile. TOTP two-factor, role-based access, WORM audit log, and an adaptive policy-governed runtime underneath. Built with **HTMX + lightweight hand-written CSS** — no SPA framework, no build step, negligible RAM/CPU.
 
 ---
 
@@ -95,6 +110,7 @@ Runs comfortably on a single **8 GB RAM / 4 vCPU / 50 GB NVMe** VPS.
 | **Telemetry** | None — verifiable, it's open source | "Anonymized analytics" |
 | **Mail** | Your own server, PGP automatic | Google/Microsoft reads the metadata |
 | **Tracking of readers** | Cookieless, no PII, no consent banner | Cookies + third-party pixels |
+| **Bot & DDoS protection** | Built-in, self-learning (VayuShield Aegis) | A separate Cloudflare/WAF subscription |
 | **Dependencies** | One Go binary + SQLite + Nginx | Node, databases, Redis, queues, SDKs |
 | **Extensibility** | Sandboxed, capability-gated plugins | Marketplace plugins with full access |
 | **Lock-in** | Open standards, plain export | Proprietary formats, export friction |
@@ -111,6 +127,7 @@ VayuPress is a single Go binary and a single SQLite database. There is no second
                     ┌─────────────────────────────▼──────────────────────────────┐
                     │                     VayuPress (one Go binary)               │
                     │                                                             │
+                    │   VayuShield Aegis (L0 lane · L2 fair-shed · L5 brain)      │
                     │   Website · Blog · Block editor · Themes · Members          │
                     │   VayuMail (SMTP/IMAP/POP3 · DKIM · MX/SPF/DMARC)           │
                     │   VayuPGP (keys · WKD)   VayuFind (search)   Analytics      │
@@ -148,6 +165,10 @@ Under the hood: an **immutable platform kernel** (Ed25519 article signing, check
 
 ![VayuAnalytics](docs/screenshots/admin-os-analytics.png)
 *VayuAnalytics — cookieless, no-PII product analytics computed entirely from your local SQLite database.*
+
+### 🛡️ VayuShield — the built-in bot shield
+![Bot Shield & Analytics](docs/screenshots/admin-os-shield.png)
+*The Bot Shield console (`/os/shield`) — a live Aegis layer map (L0 sovereignty lane · L2 fair-shed · L4 challenges · L5 reputation brain · L1 kernel offload), protection toggles that apply with no restart, learned-signature review queue, and cookieless engagement analytics. Self-learning and self-healing: it protects availability automatically, never blocks a real reader or a search/AI crawler, and needs no Cloudflare.*
 
 <details>
 <summary><strong>More of VayuOS</strong> — posts, media, SEO, security, and the operator control plane</summary>

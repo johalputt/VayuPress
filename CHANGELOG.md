@@ -8,6 +8,33 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.11.28] — 2026-07-10
+
+### Changed
+- **README overhaul — world-class showcase.** Added a dedicated **VayuShield
+  "Aegis"** section (the built-in, self-learning bot shield & anti-DDoS that
+  removes the need for Cloudflare — the L0 sovereignty lane, L2 fair-shed, L5
+  reputation brain, L4 silent challenges, L1 kernel offload), a VayuShield
+  showcase screenshot, expanded writer copy (typewriter, focus spotlight,
+  paste-as-Markdown, live outline, footnotes, captions, duplicate, keyboard
+  reordering) and VayuOS copy (14-day trend area chart, mobile card tables), a
+  bot-&-DDoS row in the comparison table, VayuShield in the architecture
+  diagram, and **live release + star badges** that update themselves from the
+  repository. The Bot Shield panel (`/os/shield`) is now captured by the
+  screenshot pipeline.
+- **Marketing site (`vayupress.com`) — genuinely live GitHub-star count.**
+  Replaced the `force-cache` fetch (which pinned a stale count) with a
+  two-stage design: the deploy workflow bakes the current count into a
+  same-origin `assets/stars.json` (with a **daily `schedule:` refresh** so it
+  stays current with no code change), and the client reads that first — instant
+  and rate-limit-proof — then revalidates against the live GitHub API with
+  default caching. The site continues to deploy via GitHub Actions.
+
+### Docs
+- **ADR-0127** records the brand refresh (light/dark **VayuPress** wordmark
+  lockups, capital V and P), the README showcase overhaul, and the live-stars
+  site pipeline.
+
 ## [3.11.27] — 2026-07-10
 
 ### Changed
