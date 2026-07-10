@@ -8,6 +8,17 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.11.14] — 2026-07-09
+
+### Fixed
+- **CI: markdown-lint gate was failing on `CHANGELOG.md`** — the real reason
+  the last few pushes showed a red ✗ (the `go-native`/deadcode gate itself was
+  already green). A wrapped prose line in the v3.11.12 entry began with a
+  literal `+`, which markdownlint reads as a plus-style list bullet (MD004,
+  which requires dash bullets). Reworded so no line starts with `+`. This gate
+  is not part of `go build`/`go test`, which is why local verification kept
+  passing while CI failed; markdownlint is now run locally before each release.
+
 ## [3.11.13] — 2026-07-09
 
 ### Security
@@ -73,8 +84,8 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
     byte-for-byte identical — but the tainted value now provably passes through
     a recognised sanitiser.
   - **DOM-text-as-HTML #52** (`admin-os-mail.js`) — `safeNav` replaced its
-    `charAt` character checks (which CodeQL cannot follow) with the `new URL()`
-    + same-origin-check pattern: it navigates only to a destination
+    `charAt` character checks (which CodeQL cannot follow) with the
+    `new URL()` same-origin-check pattern: it navigates only to a destination
     **reconstructed** from the parsed URL's own `pathname`/`search`/`hash`,
     never the raw attribute text, closing any `javascript:` / cross-origin /
     protocol-relative redirect.
