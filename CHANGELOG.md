@@ -8,6 +8,22 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.11.20] — 2026-07-10
+
+### Added
+- **Post editor: real footnotes** (writing-experience audit). Markdown blocks
+  now support proper academic-style footnotes — write `A claim.[^src]` inline
+  and `[^src]: the supporting note.` anywhere in the block, and the renderer
+  produces a numbered superscript reference linked to a footnotes section at the
+  end, each note carrying a `↩` back-link to where it was cited. Enabled via
+  goldmark's Footnote extension. The bluemonday sanitiser was taught to allow
+  *only* the exact `fn:`/`fnref:` id anchors and same-document `#fn…` fragment
+  hrefs the extension emits (matched by strict regexes), plus ARIA `doc-*`
+  roles — so back-links resolve while no author-supplied `id` or off-site/scheme
+  href can slip through. Covered by a render test (reference, note body, id
+  anchors and back-link all survive sanitisation) and a narrowness test
+  (arbitrary `id`s and non-footnote fragment hrefs are still stripped).
+
 ## [3.11.19] — 2026-07-10
 
 ### Security
