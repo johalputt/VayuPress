@@ -657,6 +657,23 @@
 .vp-os .w-75{width:75%}.vp-os .w-80{width:80%}.vp-os .w-85{width:85%}
 .vp-os .w-90{width:90%}.vp-os .w-95{width:95%}.vp-os .w-100{width:100%}
 
+/* ── Inline magnitude bars (analytics) ───────────────────────────
+   A number stacked over a thin proportional bar, so a column of counts reads
+   as a tiny bar chart at a glance. The fill width comes from a .w-N class
+   (CSP-safe — no inline styles); this rule only sets the track/fill look, never
+   width, so it never fights the width utilities. Folds cleanly into the
+   stacked mobile card layout. */
+.vp-os .vs-barcell { display: flex; flex-direction: column; gap: 5px; min-width: 72px; }
+.vp-os .vs-barcell__n { font-variant-numeric: tabular-nums; font-weight: 600; line-height: 1; }
+.vp-os .vs-bar { display: block; width: 100%; height: 4px; border-radius: var(--r-full); background: var(--bg-surface-3); overflow: hidden; }
+.vp-os .vs-bar__fill { display: block; height: 100%; min-width: 2px; border-radius: var(--r-full); background: linear-gradient(90deg, var(--brand), var(--accent)); }
+/* On the stacked mobile card, the value+bar sits right-aligned opposite its
+   data-label — let the bar take the available width so it stays readable. */
+@media (max-width: 640px) {
+  .vp-os .table-wrap.vp-stackable .vs-barcell { align-items: flex-end; min-width: 0; flex: 1; }
+  .vp-os .table-wrap.vp-stackable .vs-bar { max-width: 160px; }
+}
+
 /* ── Skeleton loaders ────────────────────────────────────────── */
 @keyframes vp3-shimmer {
   0%   { background-position: -400px 0; }
