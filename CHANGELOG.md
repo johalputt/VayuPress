@@ -8,6 +8,40 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.11.23] — 2026-07-10
+
+### Changed
+- **VayuOS dashboard — a lighter, more three-dimensional stat grid.** The six
+  headline cards gained a subtle top-light seam (a 1px gradient that catches the
+  eye like a panel bezel), a whisper-soft vertical surface gradient, tabular
+  figures so the numbers line up, and a gentle 2px lift + icon bloom on hover.
+  All pure CSS via existing design tokens — no new assets, no extra requests,
+  and every motion is disabled under `prefers-reduced-motion`. A solid-colour
+  fallback sits behind the `color-mix` gradient for older engines.
+
+### Fixed
+- **Data tables now fold into phone-friendly cards even after an HTMX swap.**
+  The responsive-table helper only ran once at page load, so any table
+  delivered by HTMX later — the engagement analytics, the Bot Shield sections,
+  the mailbox list — stayed a wide horizontal scroll on phones. It now also
+  runs after every `htmx:afterSwap`, scoped to just the swapped subtree and
+  idempotent, so HTMX-loaded tables get the same labelled-card layout as
+  server-rendered ones. No effect on desktop.
+
+## [3.11.22] — 2026-07-10
+
+### Security
+- **Defensive hardening: no DOM-derived string is ever interpolated into a
+  query selector.** The VayuMail conversation thread-toggle previously built a
+  `querySelectorAll('[data-vm-thread="…"]')` selector by concatenating a value
+  read from a `data-*` attribute. Though that value is server-rendered, the
+  toggle now iterates the candidate rows and compares the attribute value
+  directly — so selector injection is structurally impossible and no similar
+  DOM-text-in-selector pattern remains to be flagged. (The compose recipient
+  chips were checked too: their field name is a hardcoded literal, never
+  DOM-derived, so they were already safe.) This complements the v3.11.21 root
+  fix of the reader-pane navigation.
+
 ## [3.11.21] — 2026-07-10
 
 ### Security

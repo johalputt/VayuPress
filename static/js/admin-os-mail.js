@@ -27,7 +27,11 @@
     e.preventDefault();
     var key = btn.getAttribute('data-vm-thread-toggle');
     var open = btn.classList.toggle('vm-thread-count--open');
-    document.querySelectorAll('[data-vm-thread="' + key + '"]').forEach(function (r) {
+    // Match by comparing the attribute value directly instead of building a
+    // selector from a DOM-derived string: no selector injection is possible and
+    // nothing DOM-sourced is interpolated into a query.
+    document.querySelectorAll('[data-vm-thread]').forEach(function (r) {
+      if (r.getAttribute('data-vm-thread') !== key) return;
       if (open) r.removeAttribute('hidden'); else r.setAttribute('hidden', '');
     });
   });
