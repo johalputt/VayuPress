@@ -157,27 +157,41 @@ window.vpToast = toast;
    header into its body cells as data-label and flag the wrapper .vp-stackable.
    CSS then folds the table into labelled cards on phones. Skips tables that opt
    out (data-no-stack), have fewer than two columns, or lead with a selection
-   checkbox (management grids that read better as a horizontal scroll). */
-(function initResponsiveTables() {
-  $$('.table-wrap > table.table').forEach(function (table) {
-    var wrap = table.parentElement;
-    if (wrap.hasAttribute('data-no-stack') || table.hasAttribute('data-no-stack')) return;
+   checkbox (management grids that read better as a horizontal scroll).
 
-    var heads = $$('thead th', table);
-    if (heads.length < 2) return;
-    if (heads[0].querySelector('input')) return; // select-all column → keep scroll
+   Runs on first load AND after every HTMX swap, scoped to the swapped subtree —
+   so tables delivered by HTMX (analytics, Bot Shield sections, the mailbox
+   list) get the same phone-friendly card layout as server-rendered ones,
+   instead of a wide horizontal scroll. Idempotent: cells already labelled and
+   wrappers already flagged are skipped, so repeated swaps never re-walk work. */
+  function stackTablesIn(root) {
+    var scope = (root && root.querySelectorAll) ? root : document;
+    var tables = scope.querySelectorAll('.table-wrap > table.table');
+    // A swap target may itself BE the table's wrapper; include that case.
+    Array.prototype.forEach.call(tables, function (table) {
+      var wrap = table.parentElement;
+      if (wrap.classList.contains('vp-stackable')) return;
+      if (wrap.hasAttribute('data-no-stack') || table.hasAttribute('data-no-stack')) return;
 
-    var labels = heads.map(function (th) { return th.textContent.trim(); });
-    $$('tbody tr', table).forEach(function (tr) {
-      var cells = tr.children;
-      if (cells.length !== labels.length) return; // colspan / empty-state rows
-      for (var i = 0; i < cells.length; i++) {
-        if (!cells[i].hasAttribute('data-label')) cells[i].setAttribute('data-label', labels[i]);
-      }
+      var heads = $$('thead th', table);
+      if (heads.length < 2) return;
+      if (heads[0].querySelector('input')) return; // select-all column → keep scroll
+
+      var labels = heads.map(function (th) { return th.textContent.trim(); });
+      $$('tbody tr', table).forEach(function (tr) {
+        var cells = tr.children;
+        if (cells.length !== labels.length) return; // colspan / empty-state rows
+        for (var i = 0; i < cells.length; i++) {
+          if (!cells[i].hasAttribute('data-label')) cells[i].setAttribute('data-label', labels[i]);
+        }
+      });
+      wrap.classList.add('vp-stackable');
     });
-    wrap.classList.add('vp-stackable');
+  }
+  stackTablesIn(document);
+  document.body.addEventListener('htmx:afterSwap', function (e) {
+    stackTablesIn(e.target || document);
   });
-})();
 
 /* ── Command palette (Cmd+K / Ctrl+K) ───────────────────────── */
 (function initCommandPalette() {
