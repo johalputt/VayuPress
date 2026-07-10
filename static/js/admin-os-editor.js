@@ -1742,6 +1742,11 @@
   var mdArea = root.querySelector('[data-editor-md-area]');
   var mdMode = false;
 
+  // Fixed heading-prefix table indexed by the clamped level 1..6 (index 0 unused)
+  // — used instead of building the '#' run dynamically, so no input can size an
+  // allocation.
+  var HEADING_HASHES = ['', '#', '##', '###', '####', '#####', '######'];
+
   function mdSentinel(block) {
     return '<!--vp:' + encodeURIComponent(JSON.stringify(block)) + '-->';
   }
@@ -1752,7 +1757,11 @@
         case 'paragraph': out.push(b.text || ''); break;
         case 'heading': {
           var lvl = Math.min(Math.max(parseInt(b.level, 10) || 2, 1), 6);
-          out.push(new Array(lvl + 1).join('#') + ' ' + (b.text || ''));
+          // Fixed lookup instead of new Array(n)/repeat(n): there is no dynamic
+          // allocation sized by input at all, so a hostile block.level can never
+          // drive a large allocation (resource exhaustion) — the value is one of
+          // exactly six constant strings.
+          out.push(HEADING_HASHES[lvl] + ' ' + (b.text || ''));
           break;
         }
         case 'list': out.push((b.items || []).map(function (it) { return '- ' + it; }).join('\n')); break;

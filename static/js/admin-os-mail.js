@@ -11,13 +11,21 @@
   // are excluded. The regexp test is a recognised local-URL guard, so the
   // guarded value is provably safe to static analysis as well as at runtime.
   function localPath(u) {
-    return (typeof u === 'string' && /^\/[^/\\]/.test(u)) ? u : '';
+    if (typeof u !== 'string' || u === '') return '';
+    var parsed;
+    try { parsed = new URL(u, window.location.origin); } catch (e) { return ''; }
+    if (parsed.origin !== window.location.origin) return '';
+    // Return a value RECONSTRUCTED from the parsed URL's own components — never
+    // the raw attribute text — so nothing tainted from the DOM reaches location.
+    // pathname/search/hash cannot carry a scheme or host, so no "javascript:",
+    // cross-origin, or protocol-relative target can survive.
+    return parsed.pathname + parsed.search + parsed.hash;
   }
 
-  // safeNav navigates only to a validated same-origin path. The candidate and
-  // the fallback (data-back / data-next attributes) both go through localPath;
-  // if neither is a valid local path we navigate to a hardcoded constant, so a
-  // tainted attribute value can NEVER reach location unvalidated.
+  // safeNav navigates only to a same-origin path rebuilt by localPath from the
+  // URL parser. The candidate and the fallback (data-back / data-next) both go
+  // through it; if neither yields a local path we navigate to a hardcoded
+  // constant, so a tainted attribute value can NEVER reach location unvalidated.
   function safeNav(url, fallback) {
     window.location.assign(localPath(url) || localPath(fallback) || '/os/vayumail/inbox');
   }
