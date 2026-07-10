@@ -720,6 +720,10 @@ func osEditorBody(slug, title, blocksJSON, authorOptions string) string {
       <div class="editor-stat"><span class="editor-stat__num" data-editor-stats-chars>0</span><span class="editor-stat__label">characters</span></div>
       <div class="editor-stat"><span class="editor-stat__num" data-editor-stats-read>—</span><span class="editor-stat__label">reading</span></div>
     </div>
+    <nav class="editor-outline" data-editor-outline-wrap aria-label="Document outline" hidden>
+      <div class="editor-outline__title">Outline</div>
+      <div class="editor-outline__list" data-editor-outline></div>
+    </nav>
     <div class="editor-actions">
       <button type="button" class="btn btn--ghost btn--sm" data-editor-undo title="Undo (Ctrl/Cmd+Z outside a field)" disabled>Undo</button>
       <button type="button" class="btn btn--ghost btn--sm" data-editor-redo title="Redo (Ctrl/Cmd+Shift+Z)" disabled>Redo</button>

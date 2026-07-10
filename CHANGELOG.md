@@ -8,6 +8,21 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.11.26] — 2026-07-10
+
+### Added
+- **Live document outline in the post editor.** The sidebar now shows the
+  post's heading structure as you write: every heading becomes a click-to-jump
+  entry (indented by level), the section your caret is in stays highlighted,
+  and the list updates instantly as headings are added, edited, reordered or
+  removed. Jumping scrolls the heading to the centre of the view (instant when
+  the reader prefers reduced motion) and places the caret in it. The outline is
+  rebuilt from the block model behind a cheap string signature, so the
+  per-keystroke cost when no heading changed is a single string compare — no
+  DOM work — and it scrolls internally past ~14 entries so a long document
+  never pushes the sidebar tools off-screen. Hidden entirely until the post
+  has its first heading.
+
 ## [3.11.25] — 2026-07-10
 
 ### Added

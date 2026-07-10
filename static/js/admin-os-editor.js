@@ -180,6 +180,85 @@
     if (statsWordsEl) statsWordsEl.textContent = String(words);
     if (statsCharsEl) statsCharsEl.textContent = String(chars);
     if (statsReadEl) statsReadEl.textContent = mins ? (mins + ' min read') : '—';
+    renderOutline();
+  }
+
+  // ── Live document outline ───────────────────────────────────────────────────
+  // The sidebar outline mirrors the document's heading structure as you write:
+  // every heading block becomes a click-to-jump entry, indented by level. It is
+  // rebuilt from the block model (never from the DOM) behind a cheap string
+  // signature, so the per-keystroke cost when nothing outline-relevant changed
+  // is one small string build and compare — no DOM work.
+  var outlineWrap = document.querySelector('[data-editor-outline-wrap]');
+  var outlineList = document.querySelector('[data-editor-outline]');
+  var outlineSig = null;
+  function renderOutline() {
+    if (!outlineWrap || !outlineList) return;
+    var heads = [];
+    for (var i = 0; i < blocks.length; i++) {
+      var b = blocks[i];
+      if (b && b.type === 'heading') {
+        heads.push({ idx: i, level: Math.min(4, Math.max(2, parseInt(b.level, 10) || 2)), text: (b.text || '').trim() });
+      }
+    }
+    var sig = heads.map(function (h) { return h.idx + ':' + h.level + ':' + h.text; }).join('');
+    if (sig === outlineSig) return;
+    outlineSig = sig;
+    outlineList.textContent = '';
+    if (!heads.length) { outlineWrap.hidden = true; return; }
+    outlineWrap.hidden = false;
+    heads.forEach(function (h) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'editor-outline__item editor-outline__item--l' + h.level;
+      btn.textContent = h.text || 'Untitled heading';
+      btn.setAttribute('data-outline-idx', String(h.idx));
+      btn.title = 'Jump to “' + (h.text || 'Untitled heading') + '”';
+      outlineList.appendChild(btn);
+    });
+    markOutlineActive(lastFocusedBlockIdx);
+  }
+
+  // Click-to-jump: focus the heading's field and bring it to the center of the
+  // viewport (instant when the user prefers reduced motion).
+  if (outlineList) {
+    outlineList.addEventListener('click', function (e) {
+      var btn = e.target && e.target.closest ? e.target.closest('[data-outline-idx]') : null;
+      if (!btn) return;
+      var idx = parseInt(btn.getAttribute('data-outline-idx'), 10);
+      if (isNaN(idx) || idx < 0 || idx >= blocks.length) return;
+      focusBlock(idx, false);
+      var el = canvas.querySelector('[data-block-idx="' + idx + '"]');
+      if (el) {
+        var smooth = !(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+        el.scrollIntoView({ block: 'center', behavior: smooth ? 'smooth' : 'auto' });
+      }
+    });
+  }
+
+  // Active-section tracking: highlight the outline entry for the heading that
+  // governs the block the caret is in (the nearest heading at or above it).
+  var lastFocusedBlockIdx = -1;
+  function markOutlineActive(blockIdx) {
+    if (!outlineList) return;
+    var items = outlineList.children;
+    var activeIdx = -1;
+    for (var i = 0; i < items.length; i++) {
+      var hIdx = parseInt(items[i].getAttribute('data-outline-idx'), 10);
+      if (hIdx <= blockIdx) activeIdx = i;
+      items[i].classList.remove('is-active');
+    }
+    if (activeIdx >= 0) items[activeIdx].classList.add('is-active');
+  }
+  if (canvas) {
+    canvas.addEventListener('focusin', function (e) {
+      var host = e.target && e.target.closest ? e.target.closest('[data-block-idx]') : null;
+      if (!host) return;
+      var idx = parseInt(host.getAttribute('data-block-idx'), 10);
+      if (isNaN(idx)) return;
+      lastFocusedBlockIdx = idx;
+      markOutlineActive(idx);
+    });
   }
 
   // ── Undo / redo (block-level checkpoints) ───────────────────────────────────
