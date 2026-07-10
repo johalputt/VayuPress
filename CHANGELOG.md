@@ -8,6 +8,25 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.11.13] — 2026-07-09
+
+### Security
+- **Reflected-XSS barrier extended to the mail POST action handlers** — the
+  remaining reason CodeQL #36 / #49 stayed open. v3.11.12 sanitised the GET
+  readers (`mailUserParam`/`mailFolderParam`/`mailIDParam`) at the source, but
+  two POST handlers — `handleVayuOSInboxAction` (bulk/row actions) and
+  `handleVayuOSMessagePaneAction` (reader-pane actions) — read `user`/`folder`/
+  `id` straight from the form and re-rendered them into the refreshed
+  fragment / reader card (`writeOSFragment` / `writeOSHTML` sinks) with no
+  sanitiser on the admin path. The pure barriers are now factored out
+  (`sanitizeMailLocalPart` / `sanitizeMailFolder` / `sanitizeMailID`) and
+  applied at every read — query string **and** form. They are runtime no-ops
+  on valid input (the allowed charsets contain no HTML metacharacters, so
+  mailbox lookups and comparisons are byte-identical), but route every value
+  through `html.EscapeString`, so no tainted value can reach an HTML sink.
+  Covered by new `sanitizeMail*` unit tests (valid values unchanged, hostile
+  values rejected/escaped).
+
 ## [3.11.12] — 2026-07-09
 
 ### Security
