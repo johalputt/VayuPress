@@ -1918,11 +1918,16 @@ func (a *App) vayuReaderCard(user, folder, id string, pane bool) (string, bool) 
 		card.WriteString(`<button type="button" class="btn btn--sm btn--danger"` + hxPost + paneVals("delete", "1") + ` hx-confirm="Permanently delete this message?">🗑 Delete</button>`)
 		card.WriteString(`</div>`)
 	} else {
+		// Emit only the raw next-message id (not a full URL): the client rebuilds
+		// the back/next navigation targets from these individual components with
+		// encodeURIComponent + a literal path prefix, so no full URL is ever read
+		// from a DOM attribute and handed to location (closes the DOM-XSS finding
+		// without any behaviour change — the URLs are identical).
 		nextAttr := ""
 		if nextID != "" {
-			nextAttr = `" data-next="` + html.EscapeString(msgURL(nextID))
+			nextAttr = `" data-next-id="` + html.EscapeString(nextID)
 		}
-		card.WriteString(`<div class="vm-actions" data-mail-actions data-user="` + html.EscapeString(user) + `" data-folder="` + html.EscapeString(folder) + `" data-id="` + html.EscapeString(id) + `" data-back="` + html.EscapeString(back) + nextAttr + `">`)
+		card.WriteString(`<div class="vm-actions" data-mail-actions data-user="` + html.EscapeString(user) + `" data-folder="` + html.EscapeString(folder) + `" data-id="` + html.EscapeString(id) + nextAttr + `">`)
 		card.WriteString(`<a class="btn btn--primary btn--sm" href="` + replyLink + `">↩ Reply</a>`)
 		card.WriteString(`<a class="btn btn--sm" href="` + forwardLink + `">↪ Forward</a>`)
 		if received {

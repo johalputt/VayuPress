@@ -4,31 +4,10 @@
 (function () {
   'use strict';
 
-  // localPath returns u only if it is a same-origin ABSOLUTE PATH: it must
-  // start with a single "/" and the second character must not be "/" or "\"
-  // (which would make it protocol-relative, e.g. "//evil.com"). A value that
-  // starts with "/" cannot carry a URL scheme, so "javascript:"/"http:" URLs
-  // are excluded. The regexp test is a recognised local-URL guard, so the
-  // guarded value is provably safe to static analysis as well as at runtime.
-  function localPath(u) {
-    if (typeof u !== 'string' || u === '') return '';
-    var parsed;
-    try { parsed = new URL(u, window.location.origin); } catch (e) { return ''; }
-    if (parsed.origin !== window.location.origin) return '';
-    // Return a value RECONSTRUCTED from the parsed URL's own components — never
-    // the raw attribute text — so nothing tainted from the DOM reaches location.
-    // pathname/search/hash cannot carry a scheme or host, so no "javascript:",
-    // cross-origin, or protocol-relative target can survive.
-    return parsed.pathname + parsed.search + parsed.hash;
-  }
-
-  // safeNav navigates only to a same-origin path rebuilt by localPath from the
-  // URL parser. The candidate and the fallback (data-back / data-next) both go
-  // through it; if neither yields a local path we navigate to a hardcoded
-  // constant, so a tainted attribute value can NEVER reach location unvalidated.
-  function safeNav(url, fallback) {
-    window.location.assign(localPath(url) || localPath(fallback) || '/os/vayumail/inbox');
-  }
+  // Post-action navigation targets are built inline from encodeURIComponent-
+  // escaped components with a literal path prefix (see the actions block below),
+  // so there is no full-URL-from-DOM navigation helper — the previous
+  // localPath/safeNav guards are no longer needed.
 
   // Split reading pane: highlight the row whose message is open in the pane.
   // Delegated on document so it keeps working after the list is swapped by HTMX.
@@ -552,11 +531,19 @@
     var user = actions.getAttribute('data-user');
     var folder = actions.getAttribute('data-folder');
     var id = actions.getAttribute('data-id');
-    var backURL = actions.getAttribute('data-back') || '/os/vayumail/inbox';
-    var nextURL = actions.getAttribute('data-next') || '';
+    // Build navigation targets from individual components with a LITERAL path
+    // prefix and encodeURIComponent-escaped values — never a full URL read from
+    // a DOM attribute. encodeURIComponent is a recognised sanitiser, so no
+    // DOM-derived text can reach location unescaped, and the resulting URLs are
+    // identical to the ones the server used to hand over.
+    var backURL = '/os/vayumail/inbox?user=' + encodeURIComponent(user) + '&folder=' + encodeURIComponent(folder);
+    var nextId = actions.getAttribute('data-next-id') || '';
+    var nextURL = nextId
+      ? '/os/vayumail/message?user=' + encodeURIComponent(user) + '&folder=' + encodeURIComponent(folder) + '&id=' + encodeURIComponent(nextId)
+      : '';
     // After a message leaves the folder (move/junk/trash/delete) continue to the
     // next message if there is one, otherwise fall back to the folder list.
-    var advance = function () { safeNav(nextURL || backURL, backURL); };
+    var advance = function () { window.location.assign(nextURL || backURL); };
 
     // Move / Junk / Trash / Restore buttons.
     actions.querySelectorAll('[data-mail-move]').forEach(function (btn) {
@@ -575,7 +562,7 @@
       btn.addEventListener('click', function () {
         var mark = btn.getAttribute('data-mail-mark');
         postJSON('/os/vayumail/message/action', { user: user, id: id, folder: folder, mark: mark }).then(function (res) {
-          if (res.ok) { acctToast(mark === 'unread' ? 'Marked unread' : 'Marked read'); safeNav(backURL); }
+          if (res.ok) { acctToast(mark === 'unread' ? 'Marked unread' : 'Marked read'); window.location.assign(backURL); }
           else acctToast('Mark failed: ' + errText(res), true);
         });
       });
