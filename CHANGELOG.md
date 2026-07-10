@@ -8,6 +8,28 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Added
+- **App-password console for VayuMail Mobile (ADR-0126).** The Connect tab can
+  mint device app passwords again — the creation path that disappeared with the
+  setup-QR removal in v3.9.16. A new **App passwords** card creates a
+  per-device credential for a mailbox (random 20-character secret, revealed
+  once in copy-friendly `abcd-efgh-ijkl-mnop-qrst` blocks, stored only as an
+  Argon2id hash) and lists/revokes existing ones — label and created date only,
+  never the hash. Administrators manage any mailbox; a mailbox holder can
+  self-serve their own. The secret signs in with or without the display dashes
+  (the auth path normalises them). This also makes the opt-in
+  `VAYUMAIL_2FA_ENFORCE` mode attainable again: it needs an app password to
+  exist before it retires the mailbox password on IMAP/SMTP/POP3, and one can
+  now be created.
+
+### Changed
+- **Connect tab describes the real VayuMail Mobile flow.** The official-app
+  card now walks the 30-second setup — install the app, enter your email + an
+  app password (linked directly to the new form), and the app auto-discovers
+  every server setting from `/.well-known/vayumail/autoconfig.json` and
+  auto-syncs PGP keys via WKD. The Recommended-settings table now points at app
+  passwords as the preferred device credential.
+
 ## [3.11.23] — 2026-07-10
 
 ### Changed

@@ -112,9 +112,14 @@ func (b *vayuMailBridge) verifyCredential(ctx context.Context, addr, password st
 
 	// 3) Device app passwords — always accepted (the required credential when
 	// enforcement is on, a convenience device credential otherwise). Verified
-	// last so the main password stays the fast path.
+	// last so the main password stays the fast path. Secrets are displayed to
+	// the operator in dash-grouped blocks (abcd-efgh-…) but hashed dashless, so
+	// the dashless form is tried first; the raw form is kept as a fallback in
+	// case an older stored credential contained literal dashes.
+	appPw := strings.ReplaceAll(password, "-", "")
 	for _, h := range appPwHashes {
-		if auth.VerifySecretArgon2id(password, h) {
+		if auth.VerifySecretArgon2id(appPw, h) ||
+			(appPw != password && auth.VerifySecretArgon2id(password, h)) {
 			return true
 		}
 	}
