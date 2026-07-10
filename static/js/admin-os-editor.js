@@ -87,6 +87,32 @@
   // ── Document model ─────────────────────────────────────────────────────────
   var blocks = [];
   var dragSrcIdx = -1;
+  var grabbedIdx = -1; // block currently "lifted" in keyboard reorder mode
+
+  // announce pushes a message to a polite ARIA live region so screen readers
+  // narrate keyboard reordering ("Block lifted", "Moved to position 3 of 7").
+  // The region is created once and reused; visually hidden.
+  var _liveRegion = null;
+  function announce(msg) {
+    if (!_liveRegion) {
+      _liveRegion = document.createElement('div');
+      _liveRegion.setAttribute('aria-live', 'polite');
+      _liveRegion.setAttribute('aria-atomic', 'true');
+      _liveRegion.className = 'eblock__sr-live';
+      document.body.appendChild(_liveRegion);
+    }
+    // Toggle the text so identical consecutive messages are still announced.
+    _liveRegion.textContent = '';
+    setTimeout(function () { _liveRegion.textContent = msg; }, 30);
+  }
+
+  // refocusGrabHandle re-focuses the drag handle of the block at idx after a
+  // re-render and keeps it in keyboard grab-mode, so arrow keys move a block
+  // continuously without re-grabbing between steps.
+  function refocusGrabHandle(idx) {
+    var host = document.querySelector('[data-block-idx="' + idx + '"] .eblock__drag');
+    if (host) host.focus();
+  }
 
   function hydrate() {
     var dataEl = document.getElementById('vp-editor-data');
@@ -236,6 +262,45 @@
       wrap.classList.add('is-dragging');
     });
     drag.addEventListener('dragend', function () { dragSrcIdx = -1; clearDropMarkers(); });
+    // Keyboard grab-mode: the drag handle is also fully operable without a
+    // mouse. Space/Enter "lifts" the block (aria-grabbed); ArrowUp/ArrowDown
+    // then move it a step at a time with a live announcement; Space/Enter or
+    // Escape drops it; blur cancels. This closes the accessibility gap where
+    // reordering was mouse-only (the ↑/↓ buttons still work independently).
+    drag.setAttribute('aria-roledescription', 'Draggable block handle');
+    if (grabbedIdx === idx) { drag.setAttribute('aria-grabbed', 'true'); wrap.classList.add('is-grabbed'); }
+    drag.addEventListener('keydown', function (e) {
+      if (e.key === ' ' || e.key === 'Enter') {
+        e.preventDefault();
+        var lift = grabbedIdx !== idx;
+        grabbedIdx = lift ? idx : -1;
+        drag.setAttribute('aria-grabbed', lift ? 'true' : 'false');
+        wrap.classList.toggle('is-grabbed', lift);
+        announce(lift ? 'Block lifted. Arrow up or down to move, space to drop.' : 'Block dropped at position ' + (idx + 1) + '.');
+        return;
+      }
+      if (grabbedIdx !== idx) return; // arrows only act while this block is lifted
+      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        var dir = e.key === 'ArrowUp' ? -1 : 1;
+        if (idx + dir < 0 || idx + dir >= blocks.length) return;
+        grabbedIdx = idx + dir; // survives the re-render below
+        nudge(idx, dir);        // structural() → renderCanvas() rebuilds the rail
+        // The DOM was rebuilt; refocus the moved block's handle so the next
+        // arrow press continues the move without re-grabbing.
+        setTimeout(function () { refocusGrabHandle(grabbedIdx); }, 0);
+        announce('Moved to position ' + (grabbedIdx + 1) + ' of ' + blocks.length + '.');
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        grabbedIdx = -1;
+        wrap.classList.remove('is-grabbed');
+        drag.setAttribute('aria-grabbed', 'false');
+        announce('Move cancelled.');
+      }
+    });
+    drag.addEventListener('blur', function () {
+      if (grabbedIdx === idx) { grabbedIdx = -1; wrap.classList.remove('is-grabbed'); drag.setAttribute('aria-grabbed', 'false'); }
+    });
 
     var up = mkCtrlBtn('↑', 'Move up', function () { nudge(idx, -1); });
     var down = mkCtrlBtn('↓', 'Move down', function () { nudge(idx, 1); });
