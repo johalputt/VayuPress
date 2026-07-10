@@ -8,6 +8,22 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.11.18] — 2026-07-10
+
+### Added
+- **Post editor: paste a whole Markdown draft and it becomes real blocks**
+  (writing-experience audit). Pasting multi-line text onto an empty paragraph
+  now parses it into the matching typed blocks instead of dumping everything
+  into one textarea: `#`..`######` headings, grouped bullet / numbered / task
+  lists (with checked state), block quotes (consecutive lines joined), fenced
+  code with its language, horizontal rules, and paragraphs (blank lines split
+  them; wrapped lines join). Bring a draft over from anywhere and it lands
+  structured and editable. Guardrails: only fires on an empty paragraph with a
+  genuine multi-line paste (single-line and mid-paragraph pastes are unchanged),
+  the lone-URL→embed flow still takes precedence, and the parse is capped at 500
+  lines so an enormous paste can never jank the editor. Verified with a
+  block-by-block parser test over a mixed document.
+
 ## [3.11.17] — 2026-07-10
 
 ### Fixed
