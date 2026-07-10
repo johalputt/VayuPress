@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/johalputt/vayupress/internal/config"
 )
@@ -165,5 +166,46 @@ func TestListMediaItemsFiltersUnsafeNames(t *testing.T) {
 	}
 	if !got[good] || !got[goodPDF] {
 		t.Errorf("expected safe names present, got %+v", got)
+	}
+}
+
+func TestOsTrendArea(t *testing.T) {
+	now := time.Date(2026, 7, 10, 12, 0, 0, 0, time.UTC)
+	if osTrendArea(nil, now) != "" {
+		t.Fatal("empty series must render nothing")
+	}
+	// A normal fortnight: endpoint label, peak label (peak not at end), one
+	// hover hit column per day, and no NaN coordinates anywhere.
+	vals := []int{0, 1, 3, 2, 5, 0, 0, 1, 2, 1, 0, 4, 1, 2}
+	out := osTrendArea(vals, now)
+	if !strings.Contains(out, "<svg") || strings.Contains(out, "NaN") {
+		t.Fatalf("bad svg output: %.120s", out)
+	}
+	if got := strings.Count(out, `class="tc-hit"`); got != len(vals) {
+		t.Fatalf("hit columns = %d, want %d", got, len(vals))
+	}
+	if !strings.Contains(out, `class="tc-endlabel"`) || !strings.Contains(out, `class="tc-end"`) {
+		t.Fatal("endpoint dot + label missing")
+	}
+	if !strings.Contains(out, `class="tc-peak"`) {
+		t.Fatal("peak label missing (peak is not the endpoint)")
+	}
+	if !strings.Contains(out, "27 Jun") || !strings.Contains(out, "10 Jul") {
+		t.Fatal("first/last date ticks missing")
+	}
+	// All-zero series: flat baseline, no NaN, no peak/y-axis label.
+	flat := osTrendArea(make([]int, 14), now)
+	if strings.Contains(flat, "NaN") || strings.Contains(flat, `class="tc-peak"`) || strings.Contains(flat, `class="tc-ylabel"`) {
+		t.Fatalf("all-zero series rendered labels it should not: %.120s", flat)
+	}
+	// Peak at the endpoint: no separate peak label (the endpoint label covers it).
+	rising := osTrendArea([]int{1, 2, 3, 9}, now)
+	if strings.Contains(rising, `class="tc-peak"`) {
+		t.Fatal("peak label must be suppressed when the peak is the endpoint")
+	}
+	// Single point never divides by zero and still renders a mark.
+	one := osTrendArea([]int{4}, now)
+	if !strings.Contains(one, "<svg") || strings.Contains(one, "NaN") {
+		t.Fatalf("single-point svg broken: %.120s", one)
 	}
 }

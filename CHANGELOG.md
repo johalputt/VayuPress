@@ -8,6 +8,23 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.11.27] — 2026-07-10
+
+### Changed
+- **The dashboard's publishing trend is now a real area chart.** The flat
+  sparkline grew into a proper 14-day chart: a soft gradient fill under a 2px
+  line, recessive dashed gridlines with a max-value label, sparse date ticks
+  (first · middle · last), the busiest day direct-labelled, and the newest day
+  emphasised with a dot and its count. Hovering any day reveals its dot and an
+  exact-value tooltip ("4 Jul · 2") — implemented as pure-CSS per-day hit
+  columns, so the whole chart remains server-rendered SVG with **zero
+  JavaScript and no inline styles** (strict-CSP safe), themed entirely through
+  design tokens in both light and dark. Native `<title>` tooltips serve touch
+  and assistive tech; the chart scales with the card at a fixed aspect so text
+  never distorts. All-zero fortnights, single-day series and NaN-free geometry
+  are covered by unit tests, and the render was visually QA'd in Chromium.
+  The compact sparklines elsewhere (intel, newsletter cards) are unchanged.
+
 ## [3.11.26] — 2026-07-10
 
 ### Added
