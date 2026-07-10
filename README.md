@@ -24,9 +24,6 @@
   <a href="GOVERNANCE-CONSTITUTION.md"><img alt="Constitution" src="https://img.shields.io/badge/constitution-v6.0-blueviolet"></a>
 </p>
 
-<p align="center">
-  <em>The release &amp; star badges above are live — they update themselves from the repository, no rebuild needed.</em>
-</p>
 
 ---
 
