@@ -8,6 +8,24 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.11.19] — 2026-07-10
+
+### Security
+- **CodeQL #55 — resource exhaustion (editor Markdown export).** Heading export
+  built its `#` run with `new Array(level + 1).join('#')`. The level was already
+  clamped to 1..6, so it was never actually exploitable, but a `new Array(n)`
+  sized from block data is a flagged pattern. Replaced with a fixed six-entry
+  lookup table indexed by the clamped level — there is now **no input-sized
+  allocation at all**, so the pattern is gone by construction.
+- **CodeQL #54 — DOM-text navigation (`safeNav`).** The reading-pane navigation
+  guard now rebuilds its destination from the URL parser
+  (`new URL(u, origin)` → `pathname + search + hash`) and returns that
+  reconstructed value instead of the raw `data-back`/`data-next` attribute, so
+  nothing tainted from the DOM reaches `location`. Cross-origin,
+  protocol-relative (`//host`), scheme (`javascript:`) and back-slash
+  (`/\host`) values all resolve to empty and fall back to a constant path —
+  verified with a navigation-target test matrix.
+
 ## [3.11.18] — 2026-07-10
 
 ### Added
