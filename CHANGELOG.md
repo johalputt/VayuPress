@@ -8,6 +8,20 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.11.22] — 2026-07-10
+
+### Security
+- **Defensive hardening: no DOM-derived string is ever interpolated into a
+  query selector.** The VayuMail conversation thread-toggle previously built a
+  `querySelectorAll('[data-vm-thread="…"]')` selector by concatenating a value
+  read from a `data-*` attribute. Though that value is server-rendered, the
+  toggle now iterates the candidate rows and compares the attribute value
+  directly — so selector injection is structurally impossible and no similar
+  DOM-text-in-selector pattern remains to be flagged. (The compose recipient
+  chips were checked too: their field name is a hardcoded literal, never
+  DOM-derived, so they were already safe.) This complements the v3.11.21 root
+  fix of the reader-pane navigation.
+
 ## [3.11.21] — 2026-07-10
 
 ### Security
