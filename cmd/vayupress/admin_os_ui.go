@@ -1252,6 +1252,128 @@ func osPublishTrend(ctx context.Context, n int) []int {
 	return out
 }
 
+// osTrendArea renders the dashboard's publishing trend as a real area chart:
+// recessive grid, gradient area fill under a 2px line, sparse date ticks, an
+// emphasised endpoint with its value, a selective peak label, and a pure-CSS
+// hover layer (per-day hit columns reveal that day's dot and a value tooltip)
+// — fully interactive with zero JavaScript and no inline styles (CSP-safe;
+// all colour arrives via CSS classes). The direct value labels double as the
+// contrast relief the light theme needs for a brand line on white. The SVG
+// scales with its container at a fixed aspect so text never distorts. An
+// empty series renders nothing.
+func osTrendArea(vals []int, now time.Time) string {
+	const w, h = 560.0, 140.0
+	const padX, padTop, padBottom = 10.0, 16.0, 24.0
+	n := len(vals)
+	if n == 0 {
+		return ""
+	}
+	maxV, maxIdx, total := 0, 0, 0
+	for i, v := range vals {
+		total += v
+		if v > maxV {
+			maxV, maxIdx = v, i
+		}
+	}
+	scaleMax := maxV
+	if scaleMax < 1 {
+		scaleMax = 1 // an all-zero fortnight still draws a flat baseline
+	}
+	plotBottom := h - padBottom
+	plotH := plotBottom - padTop
+	stepX := 0.0
+	if n > 1 {
+		stepX = (w - 2*padX) / float64(n-1)
+	}
+	f := func(v float64) string { return strconv.FormatFloat(v, 'f', 1, 64) }
+	xAt := func(i int) float64 { return padX + float64(i)*stepX }
+	yAt := func(v int) float64 { return plotBottom - (float64(v)/float64(scaleMax))*plotH }
+	dayAt := func(i int) time.Time { return now.AddDate(0, 0, -(n - 1 - i)) }
+
+	var b strings.Builder
+	label := "Publishing activity, last " + strconv.Itoa(n) + " days: " + strconv.Itoa(total) + " total"
+	if maxV > 0 {
+		label += ", peak " + strconv.Itoa(maxV) + " on " + dayAt(maxIdx).Format("2 Jan")
+	}
+	b.WriteString(`<svg class="trendchart" viewBox="0 0 560 140" role="img" aria-label="` + html.EscapeString(label) + `">`)
+	// Area gradient: line colour fading to transparent at the baseline. The
+	// stops take their colour from CSS (currentColor), so both themes work.
+	b.WriteString(`<defs><linearGradient id="vpTrendGrad" x1="0" y1="0" x2="0" y2="1">` +
+		`<stop class="tc-grad-a" offset="0"/><stop class="tc-grad-b" offset="1"/></linearGradient></defs>`)
+	// Recessive grid: top (max) + midline + baseline, tiny max label above.
+	b.WriteString(`<line class="tc-grid" x1="` + f(padX) + `" y1="` + f(padTop) + `" x2="` + f(w-padX) + `" y2="` + f(padTop) + `"/>`)
+	b.WriteString(`<line class="tc-grid" x1="` + f(padX) + `" y1="` + f(padTop+plotH/2) + `" x2="` + f(w-padX) + `" y2="` + f(padTop+plotH/2) + `"/>`)
+	b.WriteString(`<line class="tc-base" x1="` + f(padX) + `" y1="` + f(plotBottom) + `" x2="` + f(w-padX) + `" y2="` + f(plotBottom) + `"/>`)
+	if maxV > 0 {
+		b.WriteString(`<text class="tc-ylabel" x="` + f(padX) + `" y="` + f(padTop-5) + `">` + strconv.Itoa(maxV) + `</text>`)
+	}
+	// Line path (shared by the area fill, which closes down to the baseline).
+	var line strings.Builder
+	for i, v := range vals {
+		if i == 0 {
+			line.WriteString("M")
+		} else {
+			line.WriteString(" L")
+		}
+		line.WriteString(f(xAt(i)) + " " + f(yAt(v)))
+	}
+	if n == 1 { // a single point still draws a visible mark
+		line.WriteString(" L" + f(xAt(0)+0.1) + " " + f(yAt(vals[0])))
+	}
+	b.WriteString(`<path class="tc-area" d="` + line.String() + ` L` + f(xAt(n-1)) + ` ` + f(plotBottom) + ` L` + f(xAt(0)) + ` ` + f(plotBottom) + ` Z"/>`)
+	b.WriteString(`<path class="tc-line" d="` + line.String() + `"/>`)
+	// Sparse date ticks: first, middle, last — recessive text tokens.
+	tick := func(i int, anchor string) {
+		b.WriteString(`<text class="tc-tick tc-tick--` + anchor + `" x="` + f(xAt(i)) + `" y="` + f(h-8) + `">` + dayAt(i).Format("2 Jan") + `</text>`)
+	}
+	tick(0, "start")
+	if n > 4 {
+		tick(n/2, "mid")
+	}
+	if n > 1 {
+		tick(n-1, "end")
+	}
+	// Selective peak label (skipped when the peak IS the endpoint).
+	if maxV > 0 && maxIdx != n-1 {
+		b.WriteString(`<text class="tc-peak" x="` + f(xAt(maxIdx)) + `" y="` + f(yAt(maxV)-7) + `">` + strconv.Itoa(maxV) + `</text>`)
+	}
+	// Emphasised endpoint: always-visible dot + its value to the left.
+	endX, endY := xAt(n-1), yAt(vals[n-1])
+	b.WriteString(`<circle class="tc-end" cx="` + f(endX) + `" cy="` + f(endY) + `" r="3.5"/>`)
+	b.WriteString(`<text class="tc-endlabel" x="` + f(endX-7) + `" y="` + f(endY+3.5) + `">` + strconv.Itoa(vals[n-1]) + `</text>`)
+	// Hover layer: an invisible full-height hit column per day reveals that
+	// day's dot + a value tooltip (pure CSS). <title> is the native fallback
+	// for touch and assistive tech.
+	half := stepX / 2
+	if n == 1 {
+		half = (w - 2*padX) / 2
+	}
+	for i, v := range vals {
+		cx, cy := xAt(i), yAt(v)
+		day := dayAt(i).Format("2 Jan")
+		tipText := day + " · " + strconv.Itoa(v)
+		tipW := float64(len(tipText))*6.2 + 14
+		tipX := cx - tipW/2
+		if tipX < padX {
+			tipX = padX
+		}
+		if tipX+tipW > w-padX {
+			tipX = w - padX - tipW
+		}
+		tipY := cy - 26
+		if tipY < 2 {
+			tipY = cy + 10
+		}
+		b.WriteString(`<g class="tc-day">`)
+		b.WriteString(`<rect class="tc-hit" x="` + f(cx-half) + `" y="0" width="` + f(half*2) + `" height="` + f(h) + `"><title>` + html.EscapeString(day+" — "+strconv.Itoa(v)+" published") + `</title></rect>`)
+		b.WriteString(`<circle class="tc-dot" cx="` + f(cx) + `" cy="` + f(cy) + `" r="3"/>`)
+		b.WriteString(`<g class="tc-tip"><rect x="` + f(tipX) + `" y="` + f(tipY) + `" width="` + f(tipW) + `" height="17" rx="4"/><text x="` + f(tipX+tipW/2) + `" y="` + f(tipY+12) + `">` + html.EscapeString(tipText) + `</text></g>`)
+		b.WriteString(`</g>`)
+	}
+	b.WriteString(`</svg>`)
+	return b.String()
+}
+
 // osSparkline renders a compact inline SVG line chart from a series of values.
 // It emits no inline styles (CSP-safe); all colour comes from CSS via
 // currentColor on the .sparkline class. width/height are SVG viewBox units.
@@ -1299,7 +1421,7 @@ func (a *App) handleOSDashboard(w http.ResponseWriter, r *http.Request) {
 	for _, v := range trend {
 		trendTotal += v
 	}
-	sparkSVG := osSparkline(trend)
+	sparkSVG := osTrendArea(trend, time.Now())
 
 	pct := int(snap.StoragePct)
 	storBar := "progress__bar"
@@ -1423,7 +1545,7 @@ func (a *App) handleOSDashboard(w http.ResponseWriter, r *http.Request) {
     <div class="card-title">Publishing trend</div>
     <span class="text-xs muted">` + strconv.Itoa(trendTotal) + ` in last 14 days</span>
   </div>
-  <div class="sparkline-wrap">` + sparkSVG + `</div>
+  <div class="trendchart-wrap">` + sparkSVG + `</div>
 </div>
 
 <div class="grid grid-2 mb-6">
