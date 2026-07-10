@@ -2740,11 +2740,11 @@
 .vp-os .editor-shell.is-focus { grid-template-columns: minmax(0, 1fr); }
 .vp-os .editor-shell.is-focus .editor-sidebar { display: none; }
 .vp-os .editor-shell.is-focus .editor-canvas { padding-left: max(var(--sp-4), calc((100% - 820px) / 2)); padding-right: max(var(--sp-4), calc((100% - 820px) / 2)); }
-/* Typewriter room: enough top/bottom space that the very first and very last
-   lines can still float to the vertical middle when typewriter scrolling
-   (focus mode) centres the caret line. Scrolling stays INSTANT — smooth-scroll
-   would make caret tracking feel floaty during fast typing. */
-.vp-os .editor-shell.is-focus .editor-canvas { padding-top: 40vh; padding-bottom: 40vh; }
+/* Typewriter room is defined once, authoritatively, further down (after the
+   base focus padding rule) so it always wins the cascade on desktop while never
+   applying on mobile — see the min-width:901px block near .editor-canvas base
+   padding. Keeping a single source of truth avoids the ordering bug where a
+   later unconditional padding-top silently defeated it. */
 .vp-os .editor-shell.is-focus .editor-title { max-width: 820px; margin-left: auto; margin-right: auto; padding-left: var(--sp-1); }
 
 /* Dimming the non-active blocks in focus mode keeps the eye on the current line
@@ -2941,6 +2941,15 @@
 .vp-os .editor-shell.is-focus .editor-wordcount { opacity: 0.6; }
 .vp-os .editor-shell.is-focus .editor-main { max-width: 760px; margin: 0 auto; width: 100%; }
 .vp-os .editor-shell.is-focus .editor-canvas { padding-top: var(--sp-8); }
+/* Typewriter room (DESKTOP ONLY) — authoritative, placed last so it wins the
+   cascade on wide screens where the canvas itself scrolls: enough top/bottom
+   space that the first and last lines can still reach the vertical centre when
+   the editor JS centres the caret line. On mobile (<=900px) the PAGE scrolls,
+   so this never applies and the small base padding above is used — no phone
+   ever shows ~40vh of empty space. */
+@media (min-width: 901px) {
+  .vp-os .editor-shell.is-focus .editor-canvas { padding-top: 40vh; padding-bottom: 40vh; }
+}
 .vp-os .editor-shell.is-focus .eblock__ctrl { opacity: 0; }
 .vp-os .editor-shell.is-focus .eblock:hover .eblock__ctrl { opacity: 1; }
 

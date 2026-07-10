@@ -537,6 +537,22 @@
               e.preventDefault();
               convertBlock(idx, { type: 'embed', url: clip, title: '', description: '', provider: '', thumbURL: '' });
               setTimeout(function () { unfurlEmbedAt(idx, clip); }, 0);
+              return;
+            }
+            // Multi-line paste onto an empty paragraph: parse the Markdown into
+            // real blocks (headings, lists, quotes, code, dividers, paragraphs)
+            // instead of dumping everything into one textarea. Single-line
+            // pastes and pastes into non-empty paragraphs behave exactly as
+            // before — this only upgrades the "paste a whole draft in" flow.
+            if (clip.indexOf('\n') !== -1) {
+              var parsed = parseMarkdownBlocks(clip);
+              if (parsed.length) {
+                e.preventDefault();
+                blocks = blocks.slice(0, idx).concat(parsed, blocks.slice(idx + 1));
+                structural();
+                var last = idx + parsed.length - 1;
+                setTimeout(function () { focusBlock(last, true); }, 0);
+              }
             }
           });
         }
@@ -969,10 +985,107 @@
     return false;
   }
 
+  // parseMarkdownBlocks turns pasted multi-line Markdown into an array of typed
+  // blocks, mirroring the leading-marker shortcuts: headings, task lists,
+  // bullet/numbered lists (consecutive items grouped into one block), quotes
+  // (consecutive lines joined), fenced code (language kept), dividers; blank
+  // lines split paragraphs and consecutive prose lines join into one paragraph.
+  // Pure function — capped at 500 lines so a giant paste can never jank the UI.
+  function parseMarkdownBlocks(text) {
+    var lines = String(text).replace(/\r\n?/g, '\n').split('\n').slice(0, 500);
+    var out = [], i = 0, m;
+    function flushPara(buf) {
+      var s = buf.join('\n').replace(/\s+$/, '');
+      if (s) out.push({ type: 'paragraph', text: s });
+    }
+    while (i < lines.length) {
+      var ln = lines[i];
+      if (/^\s*$/.test(ln)) { i++; continue; }
+      if ((m = /^```(\w*)\s*$/.exec(ln))) { // fenced code until closing fence
+        var code = []; i++;
+        while (i < lines.length && !/^```\s*$/.test(lines[i])) { code.push(lines[i]); i++; }
+        i++; // skip closing fence (or run off the end)
+        out.push({ type: 'code', lang: m[1] || '', text: code.join('\n') });
+        continue;
+      }
+      if (/^---+\s*$/.test(ln)) { out.push({ type: 'divider' }); i++; continue; }
+      if ((m = /^(#{1,6})\s+(.*)$/.exec(ln))) {
+        out.push({ type: 'heading', level: Math.min(4, Math.max(2, m[1].length)), text: m[2] });
+        i++; continue;
+      }
+      if (/^[-*]\s\[( |x|X)\]\s/.test(ln)) { // task list (grouped)
+        var titems = [], tchecked = [];
+        while (i < lines.length && (m = /^[-*]\s\[( |x|X)\]\s(.*)$/.exec(lines[i]))) {
+          titems.push(m[2]); tchecked.push(/x/i.test(m[1])); i++;
+        }
+        out.push({ type: 'tasklist', items: titems, checked: tchecked });
+        continue;
+      }
+      if (/^[-*]\s+/.test(ln)) { // unordered list (grouped)
+        var uitems = [];
+        while (i < lines.length && (m = /^[-*]\s+(.*)$/.exec(lines[i]))) { uitems.push(m[1]); i++; }
+        out.push({ type: 'list', style: 'unordered', items: uitems });
+        continue;
+      }
+      if (/^\d+\.\s+/.test(ln)) { // ordered list (grouped)
+        var oitems = [];
+        while (i < lines.length && (m = /^\d+\.\s+(.*)$/.exec(lines[i]))) { oitems.push(m[1]); i++; }
+        out.push({ type: 'list', style: 'ordered', items: oitems });
+        continue;
+      }
+      if (/^>\s?/.test(ln)) { // quote (consecutive lines joined)
+        var q = [];
+        while (i < lines.length && (m = /^>\s?(.*)$/.exec(lines[i]))) { q.push(m[1]); i++; }
+        out.push({ type: 'quote', text: q.join('\n') });
+        continue;
+      }
+      var buf = []; // prose: join consecutive non-blank plain lines
+      while (i < lines.length && !/^\s*$/.test(lines[i]) &&
+             !/^(#{1,6}\s|[-*]\s|\d+\.\s|>\s?|```|---+\s*$)/.test(lines[i])) {
+        buf.push(lines[i]); i++;
+      }
+      if (!buf.length) { buf.push(lines[i]); i++; } // safety: always consume
+      flushPara(buf);
+    }
+    return out;
+  }
+
+  // wrapSelection surrounds the textarea's current selection with Markdown marks
+  // (or drops an empty pair at the caret when nothing is selected), then fires an
+  // input event so block.text, the live stats and autosave all update through the
+  // existing listener. For links it leaves the "url" placeholder selected so the
+  // writer types the destination immediately — the ⌘K flow people expect.
+  function wrapSelection(el, before, after, isLink) {
+    var s = el.selectionStart, e2 = el.selectionEnd, v = el.value;
+    var sel = v.slice(s, e2);
+    el.value = v.slice(0, s) + before + sel + after + v.slice(e2);
+    if (isLink) {
+      var us = s + before.length + sel.length + 2; // just past "]("
+      el.selectionStart = us; el.selectionEnd = us + 3; // the word "url"
+    } else if (sel) {
+      el.selectionStart = s + before.length;
+      el.selectionEnd = e2 + before.length; // keep the original text selected
+    } else {
+      el.selectionStart = el.selectionEnd = s + before.length; // caret between marks
+    }
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
   // onTextKey gives text blocks a continuous, document-like writing flow.
   function onTextKey(idx) {
     return function (e) {
       var el = e.target;
+      // Inline formatting shortcuts (⌘/Ctrl + B/I/E/K) — wrap the selection with
+      // the Markdown marks, like a real prose editor. Alt is excluded so it never
+      // clashes with OS accents.
+      if ((e.metaKey || e.ctrlKey) && !e.altKey) {
+        var mk = null, kk = (e.key || '').toLowerCase();
+        if (kk === 'b') mk = ['**', '**', false];
+        else if (kk === 'i') mk = ['*', '*', false];
+        else if (kk === 'e') mk = ['`', '`', false];
+        else if (kk === 'k') mk = ['[', '](url)', true];
+        if (mk) { e.preventDefault(); wrapSelection(el, mk[0], mk[1], mk[2]); return; }
+      }
       if (e.key === '/' && el.value === '') {
         e.preventDefault();
         openPalette(idx + 1, idx);

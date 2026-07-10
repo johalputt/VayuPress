@@ -8,6 +8,55 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.11.18] — 2026-07-10
+
+### Added
+- **Post editor: paste a whole Markdown draft and it becomes real blocks**
+  (writing-experience audit). Pasting multi-line text onto an empty paragraph
+  now parses it into the matching typed blocks instead of dumping everything
+  into one textarea: `#`..`######` headings, grouped bullet / numbered / task
+  lists (with checked state), block quotes (consecutive lines joined), fenced
+  code with its language, horizontal rules, and paragraphs (blank lines split
+  them; wrapped lines join). Bring a draft over from anywhere and it lands
+  structured and editable. Guardrails: only fires on an empty paragraph with a
+  genuine multi-line paste (single-line and mid-paragraph pastes are unchanged),
+  the lone-URL→embed flow still takes precedence, and the parse is capped at 500
+  lines so an enormous paste can never jank the editor. Verified with a
+  block-by-block parser test over a mixed document.
+
+## [3.11.17] — 2026-07-10
+
+### Fixed
+- **Editor focus mode: typewriter padding CSS cascade bug** (mobile audit). The
+  distraction-free "typewriter room" (large top/bottom padding so the first and
+  last lines can reach the vertical centre) was defined by an unscoped rule that
+  a later, unconditional `padding-top` silently overrode — so on **desktop** the
+  centring room was lost, and on **mobile** a competing rule could leave roughly
+  40% of the screen as empty space above and below the text. The padding is now
+  a single authoritative pair: a small base value everywhere, and the tall
+  typewriter value only inside `@media (min-width: 901px)`, placed last so it
+  wins on wide screens where the canvas scrolls and never applies on phones
+  (where the page scrolls instead). Desktop regains proper caret centring;
+  mobile focus mode no longer wastes vertical space.
+
+## [3.11.16] — 2026-07-10
+
+### Added
+- **Post editor: keyboard inline formatting** (writing-experience audit). Text
+  blocks now respond to the shortcuts prose writers expect, so you never leave
+  the keyboard to format:
+  - **⌘/Ctrl + B** wraps the selection in `**bold**`
+  - **⌘/Ctrl + I** wraps it in `*italic*`
+  - **⌘/Ctrl + E** wraps it in `` `inline code` ``
+  - **⌘/Ctrl + K** wraps it as a `[link](url)` and leaves the `url` placeholder
+    selected so you type the destination immediately
+  With no selection the marks are dropped at the caret with the cursor placed
+  between them. Each change fires the normal input path, so live word/character
+  count, reading time and autosave all update exactly as when typing. Purely
+  additive to the existing block shortcuts (a leading `#` for headings, `>` for
+  a quote, `-` for a list, a triple backtick for code, `---` for a divider),
+  which are unchanged.
+
 ## [3.11.15] — 2026-07-10
 
 ### Added
