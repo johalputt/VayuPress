@@ -8,6 +8,22 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.11.21] — 2026-07-10
+
+### Security
+- **CodeQL #54 (DOM-text navigation) — fixed at the root by removing the DOM
+  source.** Two earlier attempts (a regex guard, then URL reconstruction) both
+  left the finding open because no in-function barrier satisfies
+  `js/xss-through-dom` for a `location.assign` fed by `getAttribute`. The
+  VayuMail reader-pane action buttons no longer read a full navigation URL from
+  a `data-back`/`data-next` attribute. Instead the server emits only the raw
+  next-message **id** (`data-next-id`), and the client **builds** the back/next
+  targets from a literal path prefix plus `encodeURIComponent`-escaped
+  `user`/`folder`/`id` components — so no DOM-derived text reaches `location`
+  without passing through a recognised sanitiser. The resulting URLs are
+  byte-identical to before (verified), and the now-unused `safeNav`/`localPath`
+  helpers were removed.
+
 ## [3.11.20] — 2026-07-10
 
 ### Added
