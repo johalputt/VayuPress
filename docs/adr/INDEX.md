@@ -10,6 +10,7 @@
 | ADR | Title | Status | Owner | Date |
 |-----|-------|--------|-------|------|
 | [ADR-0001](ADR-0001-sqlite-first.md) | SQLite-First Data Layer | Accepted | Core | 2024-01-01 |
+| [ADR-0126](ADR-0126-vayumail-app-password-console.md) | App-Password Console for VayuMail Mobile Direct Connect | Accepted | VayuOS | 2026-07-09 |
 | [ADR-0125](ADR-0125-vayumail-per-account-signatures.md) | VayuMail Per-Account Signatures — Stored Setting, Send-Time Insertion & Self-Service Editing | Accepted | VayuOS | 2026-07-08 |
 | [ADR-0124](ADR-0124-vayumail-outbound-reliability.md) | VayuMail Outbound Reliability — Resend, Retry-Until-Sent & One-Click Dependency Updates | Accepted | VayuOS | 2026-07-08 |
 | [ADR-0123](ADR-0123-vayushield-privileged-agent.md) | In-Panel Tier 2/3 Activation via Unprivileged Intent + Root Reconcile Agent | Accepted | VayuOS | 2026-07-08 |

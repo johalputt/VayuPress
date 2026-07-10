@@ -6,6 +6,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"html"
@@ -1415,13 +1416,23 @@ func (a *App) handleVayuOSConnect(w http.ResponseWriter, r *http.Request) {
 	// VayuPress's own official mobile client. Plain external links only —
 	// CSP-safe (no third-party assets are loaded).
 	body.WriteString(`<div class="card"><div class="card-title">📱 VayuMail — the official mobile app</div>`)
-	body.WriteString(`<p class="text-sm">The easiest way to use your mailboxes on the go. <strong>VayuMail Mobile</strong> is VayuPress's own open-source app: it sets up from just your email address and password (no server typing), talks IMAP/SMTP straight to this server, and understands the built-in PGP so your mail stays end-to-end encrypted on your phone.</p>`)
+	body.WriteString(`<p class="text-sm">The easiest way to use your mailboxes on the go. <strong>VayuMail Mobile</strong> is VayuPress's own open-source app — connecting it takes about 30 seconds:</p>`)
+	body.WriteString(`<ol class="text-sm">` +
+		`<li><strong>Install the app</strong> (links below).</li>` +
+		`<li><strong>Enter your email address and an app password</strong> — <a href="#vm-apppw-card">create one below</a>.</li>` +
+		`<li>Done. The app <strong>auto-discovers every server setting</strong> from <span class="mono">/.well-known/vayumail/autoconfig.json</span> and <strong>auto-syncs PGP keys via WKD</strong>, so your mail stays end-to-end encrypted on your phone — no host, port or key typing.</li>` +
+		`</ol>`)
 	body.WriteString(`<div class="vm-row mt-1">` +
 		`<a class="btn btn--primary btn--sm" href="https://github.com/johalputt/VayuMail-Mobile/releases" target="_blank" rel="noopener noreferrer">Download app ↗</a>` +
 		`<a class="btn btn--ghost btn--sm" href="https://github.com/johalputt/VayuMail-Mobile" target="_blank" rel="noopener noreferrer">Source ↗</a>` +
 		`</div>`)
 	body.WriteString(`<p class="muted text-xs mt-2">Prefer another client? Any standard mail app (Apple Mail, the Gmail app, Outlook, Thunderbird) also connects using the manual settings below. With the trusted certificate active there is no security warning to accept.</p>`)
 	body.WriteString(`</div>`)
+
+	// ── App passwords — the credential the mobile app signs in with ──────────
+	// Create/revoke swap the card in place (HTMX), same pattern as the alias /
+	// autoreply / filter cards on the Accounts page.
+	body.WriteString(`<div id="vm-apppw-card">` + a.vayuAppPasswordsCard(r) + `</div>`)
 
 	// ── Instant setup (Mozilla Autoconfig) ────────────────────────────────────
 	// Thunderbird and K-9/Thunderbird-for-Android auto-discover server settings
@@ -1440,7 +1451,7 @@ func (a *App) handleVayuOSConnect(w http.ResponseWriter, r *http.Request) {
 	body.WriteString(`<tr><th>Incoming · POP3</th><td class="mono text-sm">` + hHost + `</td><td>port ` + pop3sPort + ` SSL · or ` + pop3Port + ` STLS</td></tr>`)
 	body.WriteString(`<tr><th>Outgoing · SMTP</th><td class="mono text-sm">` + hHost + `</td><td>port ` + subPort + ` · STARTTLS · authentication required</td></tr>`)
 	body.WriteString(`<tr><th>Username</th><td colspan="2">your full email address (e.g. <span class="mono">you@` + html.EscapeString(mc.Domain) + `</span>)</td></tr>`)
-	body.WriteString(`<tr><th>Password</th><td colspan="2">your mailbox password (set under <a href="/os/vayumail/accounts">Accounts</a>)</td></tr>`)
+	body.WriteString(`<tr><th>Password</th><td colspan="2">an <a href="#vm-apppw-card">app password</a> (recommended for devices) or your mailbox password (set under <a href="/os/vayumail/accounts">Accounts</a>)</td></tr>`)
 	body.WriteString(`</tbody></table></div>`)
 	body.WriteString(`<p class="muted text-sm">IMAP keeps mail in sync across all your devices; POP3 downloads to a single device. Prefer the SSL ports where your app supports them.</p></div>`)
 
@@ -1711,4 +1722,243 @@ func (a *App) handleVayuOSAccountTOTP(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeAPIError(w, r, 400, "validation_error", "unknown action", "")
 	}
+}
+
+// ── App passwords — device credentials for VayuMail Mobile ──────────────────
+//
+// An app password is a per-device credential for IMAP/SMTP/POP3 sign-in:
+// generated once, shown once, stored only as an Argon2id hash, and revocable
+// individually without touching the mailbox's main password (ADR-0126). It is
+// the credential the VayuMail Mobile onboarding asks for, and the only
+// accepted mailbox credential when VAYUMAIL_2FA_ENFORCE is active.
+
+// appPasswordAlphabet is the 62-character alphanumeric alphabet app-password
+// secrets are drawn from. No symbols and no dashes: the secret is displayed in
+// dash-grouped blocks, so the dashes stay pure presentation and stripping them
+// at verification can never eat a real secret character.
+const appPasswordAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+
+// appPasswordLength is the secret length in characters: 20 alphanumerics are
+// ~119 bits of entropy — far beyond online-guessing reach, and verification is
+// additionally slowed by mailAuthThrottle on the protocol listeners.
+const appPasswordLength = 20
+
+// appPasswordMaxPerMailbox caps live credentials per mailbox. It matches the
+// LIMIT the auth path reads back (AppPasswordHashes), so every stored secret
+// is guaranteed to actually authenticate.
+const appPasswordMaxPerMailbox = 20
+
+// generateAppPasswordSecret draws an appPasswordLength-character secret from
+// appPasswordAlphabet with crypto/rand, using rejection sampling (62×4 = 248)
+// so every character is equally likely — no modulo bias.
+func generateAppPasswordSecret() (string, error) {
+	out := make([]byte, 0, appPasswordLength)
+	buf := make([]byte, 64)
+	for len(out) < appPasswordLength {
+		if _, err := rand.Read(buf); err != nil {
+			return "", err
+		}
+		for _, b := range buf {
+			if b >= 248 { // 4×62; rejecting the top 8 values keeps the draw uniform
+				continue
+			}
+			out = append(out, appPasswordAlphabet[int(b)%len(appPasswordAlphabet)])
+			if len(out) == appPasswordLength {
+				break
+			}
+		}
+	}
+	return string(out), nil
+}
+
+// groupAppPasswordSecret renders a secret in 4-character dash-separated blocks
+// (abcd-efgh-ijkl-mnop-qrst) for readability. The dashes are presentation
+// only: the hash is computed over the dashless form and the auth path strips
+// dashes before verifying, so both spellings sign in.
+func groupAppPasswordSecret(secret string) string {
+	var b strings.Builder
+	for i, c := range secret {
+		if i > 0 && i%4 == 0 {
+			b.WriteByte('-')
+		}
+		b.WriteRune(c)
+	}
+	return b.String()
+}
+
+// canManageAppPassword reports whether this session may create/revoke app
+// passwords for the given mailbox: an administrator for any mailbox, everyone
+// else only for their own assigned mailbox (same self-service boundary as
+// signatures — a holder minting a credential for their own mailbox gains no
+// access they don't already have).
+func (a *App) canManageAppPassword(r *http.Request, email string) bool {
+	if strings.TrimSpace(email) == "" {
+		return false
+	}
+	if a.isAdminRequest(r) {
+		return true
+	}
+	_, own := a.ownMailbox(r)
+	return own != "" && strings.EqualFold(own, email)
+}
+
+// appPasswordMailboxes returns the mailboxes whose app passwords this session
+// may manage — every active account for an administrator, otherwise just the
+// caller's own mailbox. Mirrors the per-mailbox scoping of the Connect tab.
+func (a *App) appPasswordMailboxes(r *http.Request) []string {
+	if a.isAdminRequest(r) {
+		var out []string
+		if accs, err := a.vayuMail.Accounts().List(r.Context()); err == nil {
+			for _, ac := range accs {
+				if ac.Active {
+					out = append(out, ac.Email)
+				}
+			}
+		}
+		return out
+	}
+	if _, own := a.ownMailbox(r); own != "" {
+		return []string{own}
+	}
+	return nil
+}
+
+// vayuAppPasswordsCard renders the "App passwords" card on the Connect tab:
+// a create form plus the per-mailbox list of live credentials (label + created
+// date only — hashes never leave the store). Create/revoke POST the
+// /os/vayumail/accounts/apppassword endpoints and swap this card in place.
+func (a *App) vayuAppPasswordsCard(r *http.Request) string {
+	if a.vayuMail == nil || a.vayuMail.Accounts() == nil {
+		return `<div class="card"><div class="card-title">App passwords</div><p class="muted">VayuMail account storage is not available yet.</p></div>`
+	}
+	emails := a.appPasswordMailboxes(r)
+
+	post := ` hx-target="#vm-apppw-card" hx-swap="innerHTML"`
+	var b strings.Builder
+	b.WriteString(`<div class="card"><div class="card-title">App passwords</div>`)
+	b.WriteString(`<p class="text-sm">An <strong>app password</strong> is a sign-in credential for one device — the VayuMail app, or any IMAP/SMTP/POP3 client. It is <strong>shown once</strong> at creation, stored only as an Argon2id hash, and can be revoked here at any time without changing the mailbox password. With <span class="mono">VAYUMAIL_2FA_ENFORCE</span> on, mail apps on 2FA-protected mailboxes <em>must</em> use one.</p>`)
+
+	if len(emails) == 0 {
+		b.WriteString(`<p class="muted">No active mailboxes yet. Create one under <a href="/os/vayumail/accounts">Accounts</a>.</p></div>`)
+		return b.String()
+	}
+
+	// Create form.
+	b.WriteString(`<form class="vm-row vm-row--end" hx-post="/os/vayumail/accounts/apppassword"` + post + `>`)
+	b.WriteString(`<label class="field"><span class="field-label">Mailbox</span><select class="input input--sm" name="email">`)
+	for _, em := range emails {
+		b.WriteString(`<option value="` + html.EscapeString(em) + `">` + html.EscapeString(em) + `</option>`)
+	}
+	b.WriteString(`</select></label>`)
+	b.WriteString(`<label class="field vm-grow"><span class="field-label">Label (what device is this for?)</span><input class="input input--sm" type="text" name="label" placeholder="VayuMail Mobile" maxlength="64"></label>`)
+	b.WriteString(`<button class="btn btn--primary btn--sm" type="submit">Create app password</button></form>`)
+
+	// Existing credentials — metadata only, never the hash.
+	b.WriteString(`<div class="table-wrap"><table class="table"><thead><tr><th>Mailbox</th><th>Label</th><th>Created</th><th></th></tr></thead><tbody>`)
+	rows := 0
+	for _, em := range emails {
+		for _, p := range a.vayuMail.Accounts().ListAppPasswords(r.Context(), em) {
+			rows++
+			b.WriteString(`<tr><td class="mono">` + html.EscapeString(p.Email) + `</td><td>` + html.EscapeString(p.Label) + `</td><td class="muted text-sm">` + p.CreatedAt.Format("2006-01-02") + `</td><td>` +
+				`<button type="button" class="btn btn--sm btn--danger" hx-post="/os/vayumail/accounts/apppassword/delete"` + post + hxVals("email", p.Email, "id", strconv.FormatInt(p.ID, 10)) + ` hx-confirm="Revoke this app password? Devices signed in with it stop syncing immediately.">Revoke</button></td></tr>`)
+		}
+	}
+	if rows == 0 {
+		b.WriteString(`<tr><td colspan="4" class="muted">No app passwords yet. Create one above to connect the VayuMail app.</td></tr>`)
+	}
+	b.WriteString(`</tbody></table></div></div>`)
+	return b.String()
+}
+
+// handleVayuOSAppPasswordCreate mints a new app password for a mailbox and
+// returns the refreshed card (HTMX swap) with the secret revealed ONCE at the
+// top. Only the Argon2id hash of the dashless secret is stored; the plaintext
+// exists solely in this one response.
+func (a *App) handleVayuOSAppPasswordCreate(w http.ResponseWriter, r *http.Request) {
+	if a.vayuMail == nil || !a.vayuMail.Config().Enabled || a.vayuMail.Accounts() == nil {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", "VayuMail is not active", "")
+		return
+	}
+	_ = r.ParseForm()
+	email := strings.ToLower(strings.TrimSpace(r.FormValue("email")))
+	if !a.canManageAppPassword(r, email) {
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", "you can only manage app passwords for your own mailbox", "")
+		return
+	}
+	label := strings.TrimSpace(r.FormValue("label"))
+	if label == "" {
+		label = "VayuMail Mobile"
+	}
+	if len(label) > 64 {
+		label = label[:64]
+	}
+	accts := a.vayuMail.Accounts()
+
+	banner := ""
+	var opErr error
+	switch {
+	case accts.HashFor(r.Context(), email) == "":
+		// Guard: a credential for a non-account address must never exist — the
+		// auth bridge accepts any address with a matching app-password hash.
+		opErr = errors.New("no active mailbox with that address")
+	case len(accts.ListAppPasswords(r.Context(), email)) >= appPasswordMaxPerMailbox:
+		opErr = errors.New("app-password limit reached for this mailbox — revoke an unused one first")
+	default:
+		secret, err := generateAppPasswordSecret()
+		if err != nil {
+			opErr = errors.New("could not generate a secret")
+			break
+		}
+		hash, err := auth.HashSecretArgon2id(secret)
+		if err != nil {
+			opErr = errors.New("could not hash the secret")
+			break
+		}
+		if _, err := accts.CreateAppPassword(r.Context(), email, label, hash); err != nil {
+			opErr = err
+			break
+		}
+		dbpkg.AuditLog("vayumail.apppassword.create", dbpkg.AuditActor(r), email, label)
+		// One-time reveal: the grouped form is easier to read out / retype; the
+		// dashes are optional at sign-in (the auth path strips them).
+		banner = `<div class="card" style="border-left:4px solid #22c55e"><div class="card-title">App password created — copy it now</div>` +
+			`<p class="text-sm">This password is <strong>shown only once</strong>. It is stored only as a hash and can never be displayed again — if it is lost, revoke it and create a new one.</p>` +
+			`<pre class="mono text-sm" style="white-space:pre-wrap;background:var(--bg-surface-2);padding:10px;border-radius:8px">` + html.EscapeString(groupAppPasswordSecret(secret)) + `</pre>` +
+			`<p class="muted text-xs">Sign in to <span class="mono">` + html.EscapeString(email) + `</span> (label: ` + html.EscapeString(label) + `) with this as the password — in the VayuMail app or any IMAP/SMTP client. The dashes are optional.</p></div>`
+	}
+	card := a.vayuAppPasswordsCard(r)
+	if opErr != nil {
+		card = `<div class="empty-state" role="alert">⚠ ` + html.EscapeString(opErr.Error()) + `</div>` + card
+	}
+	writeOSHTML(w, banner+card)
+}
+
+// handleVayuOSAppPasswordDelete revokes one app password by id (scoped to the
+// mailbox) and returns the refreshed card (HTMX swap).
+func (a *App) handleVayuOSAppPasswordDelete(w http.ResponseWriter, r *http.Request) {
+	if a.vayuMail == nil || !a.vayuMail.Config().Enabled || a.vayuMail.Accounts() == nil {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", "VayuMail is not active", "")
+		return
+	}
+	_ = r.ParseForm()
+	email := strings.ToLower(strings.TrimSpace(r.FormValue("email")))
+	if !a.canManageAppPassword(r, email) {
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", "you can only manage app passwords for your own mailbox", "")
+		return
+	}
+	var opErr error
+	id, err := strconv.ParseInt(r.FormValue("id"), 10, 64)
+	switch {
+	case err != nil:
+		opErr = errors.New("invalid app-password id")
+	case a.vayuMail.Accounts().DeleteAppPassword(r.Context(), email, id) != nil:
+		opErr = errors.New("app password not found — it may already be revoked")
+	default:
+		dbpkg.AuditLog("vayumail.apppassword.revoke", dbpkg.AuditActor(r), email, r.FormValue("id"))
+	}
+	card := a.vayuAppPasswordsCard(r)
+	if opErr != nil {
+		card = `<div class="empty-state" role="alert">⚠ ` + html.EscapeString(opErr.Error()) + `</div>` + card
+	}
+	writeOSHTML(w, card)
 }

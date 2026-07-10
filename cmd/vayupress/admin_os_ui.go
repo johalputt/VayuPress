@@ -344,6 +344,12 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/accounts/delete", a.handleVayuOSAccountDelete)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/accounts/update", a.handleVayuOSAccountUpdate)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/accounts/totp", a.handleVayuOSAccountTOTP)
+		// App passwords — device credentials for VayuMail Mobile (and any
+		// IMAP/SMTP/POP3 client). Created/revoked from the Connect tab; an admin
+		// manages any mailbox, a mailbox holder only their own (enforced in the
+		// handlers). Same session+CSRF chain as the TOTP route above.
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/accounts/apppassword", a.handleVayuOSAppPasswordCreate)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/accounts/apppassword/delete", a.handleVayuOSAppPasswordDelete)
 
 		pr.Get("/os/vayumail/security", a.handleVayuOSSecurity)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/vayuos/security/check", a.handleVayuOSSecurityCheck)
