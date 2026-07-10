@@ -2935,6 +2935,23 @@
 .vp-os .eblock__drag { cursor: grab; }
 .vp-os .eblock__drag:active { cursor: grabbing; }
 .vp-os .eblock.is-dragging { opacity: 0.45; }
+/* Keyboard grab-mode: focus ring on the handle + a clear "lifted" state on the
+   block so a keyboard user always sees which block they are moving. */
+.vp-os .eblock__drag:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+.vp-os .eblock.is-grabbed {
+  box-shadow: 0 0 0 2px var(--brand-glow), 0 8px 24px -10px rgba(2, 8, 20, 0.6);
+  border-radius: var(--r-sm);
+}
+.vp-os .eblock.is-grabbed .eblock__ctrl { opacity: 1; }
+/* Screen-reader-only live region for reorder announcements. */
+.vp-os .eblock__sr-live, .eblock__sr-live {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
 .vp-os .eblock.is-drop-before { box-shadow: 0 -2px 0 0 var(--brand); }
 .vp-os .eblock.is-drop-after  { box-shadow: 0 2px 0 0 var(--brand); }
 

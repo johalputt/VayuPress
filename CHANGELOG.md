@@ -8,6 +8,18 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.11.25] — 2026-07-10
+
+### Added
+- **Keyboard-accessible block reordering in the post editor.** The block drag
+  handle is now fully operable without a mouse: focus it and press **Space**
+  (or Enter) to lift the block, **↑ / ↓** to move it a step at a time, and
+  **Space** or **Escape** to drop. Each step is narrated to screen readers via
+  a polite live region ("Block lifted", "Moved to position 3 of 7"), the lifted
+  block shows a clear highlighted state, and the handle has a visible focus
+  ring. This closes the gap where reordering by handle was mouse-only — the
+  existing drag-and-drop and ↑/↓ buttons are unchanged.
+
 ## [3.11.24] — 2026-07-10
 
 ### Added
