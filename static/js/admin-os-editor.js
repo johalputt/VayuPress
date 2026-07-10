@@ -1499,7 +1499,56 @@
     focusOn = !focusOn;
     root.classList.toggle('is-focus', focusOn);
     if (focusBtn) focusBtn.classList.toggle('is-active', focusOn);
+    if (focusOn) scheduleTypewriter(); // recentre the caret line on entering
+    else markActiveBlock(null);        // clear the spotlight on exit
   }
+
+  // ── Typewriter scrolling ────────────────────────────────────────────────────
+  // Engaged automatically in focus mode — the hallmark "zen writing" feel: the
+  // line you're typing floats at the vertical middle of the canvas instead of
+  // drifting to the bottom edge, so your eyes never move. Pure scroll math,
+  // coalesced into one animation frame so rapid typing never thrashes layout.
+  // Only acts on a COLLAPSED caret, so dragging a text selection is never
+  // fought; only acts inside the canvas, so the command menu / modals are free.
+  var typewriterRAF = 0, activeBlockEl = null;
+  // markActiveBlock spotlights the block holding the caret and dims the rest —
+  // the "current line glows, everything else recedes" companion to typewriter
+  // scrolling. The `is-spotlight` root class gates the dimming so NOTHING is
+  // dimmed until the caret is actually in a block (e.g. while editing the
+  // title), avoiding a fully-greyed canvas.
+  function markActiveBlock(el) {
+    if (activeBlockEl === el) return;
+    if (activeBlockEl) activeBlockEl.classList.remove('is-caret');
+    activeBlockEl = el;
+    if (el) el.classList.add('is-caret');
+    root.classList.toggle('is-spotlight', !!el);
+  }
+  function typewriterCentre() {
+    if (!focusOn || !canvas) return;
+    var sel = document.getSelection();
+    if (!sel || !sel.rangeCount || !sel.isCollapsed) return;
+    var node = sel.anchorNode;
+    if (!node || !canvas.contains(node)) return;
+    var el = node.nodeType === 1 ? node : node.parentNode;
+    while (el && el.parentNode !== canvas) el = el.parentNode; // nearest block child
+    if (!el || el.parentNode !== canvas) return;
+    markActiveBlock(el); // spotlight this line, dim the others
+    // Only centre when the canvas is its own scroll container. On mobile the
+    // page scrolls instead (canvas overflow-y: visible), so there is nothing to
+    // move — the browser already keeps the caret above the keyboard.
+    if (canvas.scrollHeight <= canvas.clientHeight) return;
+    var cr = el.getBoundingClientRect(), vr = canvas.getBoundingClientRect();
+    var delta = (cr.top + cr.height / 2) - (vr.top + vr.height / 2);
+    if (Math.abs(delta) > 4) canvas.scrollTop += delta;
+  }
+  function scheduleTypewriter() {
+    if (typewriterRAF) return;
+    typewriterRAF = requestAnimationFrame(function () {
+      typewriterRAF = 0;
+      typewriterCentre();
+    });
+  }
+  document.addEventListener('selectionchange', scheduleTypewriter);
 
   // ── HTML source mode (one-click round-trip) ────────────────────────────────
   // The HTML editor lets an operator edit the rendered HTML directly. Entering
