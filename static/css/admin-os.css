@@ -2655,8 +2655,19 @@
 .vp-os .vm-pre--quoted { color: var(--text-2); border-left: 2px solid var(--border-strong); padding-left: .75rem; }
 
 @media print {
-  .vp-os .vm-reader-top, .vp-os .vm-actions, .vp-os .vm-rawwrap, .vp-os .vm-poller { display: none !important; }
-  .vp-os .vm-msg-body { max-width: none; }
+  /* Print exactly the open message: hide everything, then re-show the
+     reader (visibility cascades back on for its subtree) pinned to the
+     page origin. Chrome, list, toolbars and action buttons never print. */
+  body * { visibility: hidden !important; }
+  .vm-reader, .vm-reader * { visibility: visible !important; }
+  .vm-reader {
+    position: absolute !important; left: 0 !important; top: 0 !important;
+    width: 100% !important; margin: 0 !important;
+    border: 0 !important; box-shadow: none !important;
+    background: #fff !important; color: #000 !important;
+  }
+  .vm-reader-top, .vm-actions, .vm-rawwrap { display: none !important; }
+  .vm-msg-body { max-width: none !important; }
 }
 
 /* ── VayuMail split reading pane (v-split) ─────────────────────────────────── */
@@ -2678,6 +2689,42 @@
 /* Active row highlight (set by delegated JS on open). */
 .vp-os tr.vm-active > td { background: color-mix(in srgb, var(--accent) 12%, transparent); }
 .vp-os tr.vm-active .vm-subj a { text-decoration: underline; }
+
+/* Collapse the split while nothing is open: the list gets the full width
+   and the dashed placeholder disappears; opening a message brings the
+   two-column split (or the narrow-screen overlay) back. Browsers without
+   :has() keep the previous always-split behavior. */
+.vp-os .vm-split:has(.vm-readpane-empty) { grid-template-columns: 1fr; }
+.vp-os .vm-split:has(.vm-readpane-empty) .vm-readpane { display: none; }
+
+/* Full view (⛶): the open message overlays the whole work area. */
+.vp-os #vm-readpane.vm-readpane--full {
+  position: fixed; inset: 1.25rem; z-index: 70; overflow: auto;
+  background: var(--bg-surface); border: 1px solid var(--border-strong);
+  border-radius: 14px; padding: 1rem;
+  box-shadow: 0 24px 64px rgb(0 0 0 / .45);
+}
+.vp-os #vm-readpane.vm-readpane--full .vm-reader { box-shadow: none; }
+
+/* Premium touches: rows glide, unread carries an accent bar, the reader
+   arrives with a soft rise, tabs behave like segmented pills. */
+.vp-os .vm-list tbody tr { transition: background .14s ease; }
+.vp-os .vm-list tbody tr:hover > td { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.vp-os .vm-list tbody td { padding-top: .6rem; padding-bottom: .6rem; }
+.vp-os tr.vm-unread > td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+.vp-os .vm-readpane .vm-reader {
+  box-shadow: 0 10px 34px rgb(0 0 0 / .22);
+  animation: vm-reader-in .18s ease-out;
+}
+@keyframes vm-reader-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vp-os .vm-readpane .vm-reader { animation: none; }
+}
+.vmtabs .tab { border-radius: 9px 9px 0 0; transition: color .14s ease, background .14s ease; }
+.vmtabs .tab:hover { background: var(--bg-surface-2); }
 
 /* Narrow screens: single column. The pane hides until a message is opened,
    then it shows above the list as a full-width reader with a Close button. */

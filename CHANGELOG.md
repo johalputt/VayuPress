@@ -9,6 +9,13 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 ## [Unreleased]
 
 ### Added
+- **Webmail: print, full view, and a split view that gets out of the way.**
+  The reading pane now stays collapsed until you open a message — the list
+  gets the full width — and opens with a soft rise when you click a mail.
+  A new ⛶ button expands the open message to a full-screen overlay (ESC or
+  Close collapses it), and 🖨 prints exactly the open message — no list, no
+  toolbars, no chrome. Message rows gained hover glide, an unread accent
+  bar, and comfortable density; folder tabs behave like segmented pills.
 - **Auto-delete read mail (retention).** Each mailbox can opt in to a
   retention window (Off/30/90/180/365 days, Accounts page): mail that has
   been READ for longer than the window is permanently deleted — no Trash

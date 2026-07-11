@@ -27,9 +27,30 @@
     var pane = document.getElementById('vm-readpane');
     if (!pane || !e.target || e.target !== pane) return;
     var reader = pane.querySelector('.vm-reader');
-    if (reader && typeof reader.scrollIntoView === 'function') {
+    if (!reader) { pane.classList.remove('vm-readpane--full'); return; }
+    if (typeof reader.scrollIntoView === 'function') {
       reader.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
+  });
+
+  // Reading-pane comfort controls: ⛶ toggles a full-screen overlay for the
+  // open message (ESC collapses), 🖨 prints just the reader (see the
+  // @media print rules). Delegated so they survive HTMX swaps.
+  document.addEventListener('click', function (e) {
+    if (e.target && e.target.closest && e.target.closest('[data-vm-print]')) {
+      window.print();
+      return;
+    }
+    var ex = e.target && e.target.closest ? e.target.closest('[data-vm-expand]') : null;
+    if (ex) {
+      var pane = document.getElementById('vm-readpane');
+      if (pane) pane.classList.toggle('vm-readpane--full');
+    }
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    var pane = document.getElementById('vm-readpane');
+    if (pane) pane.classList.remove('vm-readpane--full');
   });
 
   // Conversation threading: the count badge on a thread's newest message

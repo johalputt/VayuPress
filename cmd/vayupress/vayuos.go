@@ -1997,6 +1997,14 @@ func (a *App) vayuReaderCard(user, folder, id string, pane bool) (string, bool) 
 		card.WriteString(`<a class="btn btn--ghost btn--sm" href="` + back + `">← ` + html.EscapeString(folder) + `</a>`)
 	}
 	card.WriteString(`<span class="vm-reader-nav">`)
+	// Reading-pane comfort controls: expand to a full-screen overlay
+	// (toggled by delegated JS; ESC or Close collapses) and print (a
+	// delegated window.print with @media print rules that emit only the
+	// open reader). CSP-safe: data-attributes, no inline handlers.
+	if pane {
+		card.WriteString(`<button type="button" class="btn btn--xs" data-vm-expand title="Toggle full view" aria-label="Toggle full view">⛶</button>`)
+	}
+	card.WriteString(`<button type="button" class="btn btn--xs" data-vm-print title="Print message" aria-label="Print message">🖨</button>`)
 	navBtn := func(mid, glyph, label string) {
 		if mid == "" {
 			card.WriteString(`<span class="btn btn--xs" aria-disabled="true">` + glyph + `</span>`)
