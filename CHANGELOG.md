@@ -8,6 +8,33 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Added
+- **VayuTalk — ephemeral, end-to-end-encrypted messaging.** A sovereign
+  identity now has a private, real-time conversation channel that reuses its
+  mailbox address and PGP keypair — no new account, no phone number, no
+  third-party messenger. A small REST + Server-Sent-Events API lives under
+  `/api/v1/talk/*`: `connect` (mailbox credential → 12 h bearer token, same
+  device-approval and anti-enumeration defences as VayuMail sign-in), `stream`
+  (SSE push of envelopes, read/expiry receipts, and heartbeats), `send`
+  (`live` = deliver only if online, or `store` = queue in memory until read or
+  expiry), `ack` (read-destroy + read receipt to the sender), and `pubkey`
+  (fetch a recipient's public key to encrypt to). Enabled whenever mail is
+  enabled; switch off with `VAYUOS_TALK=off`. See
+  [ADR-0131](docs/adr/ADR-0131-vayutalk-ephemeral-messaging.md).
+
+### Security
+- **VayuTalk stores no plaintext and nothing on disk.** The relay carries only
+  opaque ciphertext plus minimal routing metadata in a bounded in-memory store;
+  it never sees message plaintext, never writes to SQLite, and never logs
+  message content. A process restart purges every envelope and token. Read
+  messages are destroyed on ack and everything expires on a clamped TTL
+  (60–3600 s). Every resource is capped (≤ 64 KiB per message, ≤ 50 queued per
+  recipient, ≤ 5000 global, ≤ 3 streams per user, ≤ 500 global) so a hostile
+  client cannot exhaust the host, and `connect` runs through the same
+  brute-force throttle and mail-sync credential scope (device approval enforced)
+  as the mail listeners. Threat model, the SSE-not-WebSockets rationale, and the
+  forward-secrecy / double-ratchet-as-future-work discussion are in ADR-0131.
+
 ## [3.11.34] — 2026-07-11
 
 ### Added

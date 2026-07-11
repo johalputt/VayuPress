@@ -33,6 +33,7 @@ import (
 	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
 	vpgp "github.com/johalputt/vayupress/internal/vayuos/pgp"
 	"github.com/johalputt/vayupress/internal/vayuos/secwatch"
+	vtalk "github.com/johalputt/vayupress/internal/vayuos/vayutalk"
 )
 
 // ── Mail bridge ──────────────────────────────────────────────────────────────
@@ -462,6 +463,54 @@ func (a *App) bootVayuOS() {
 			fmt.Sprintf("deleted %d read message(s) past %d days", count, days))
 	})
 
+	// VayuTalk — the ephemeral, end-to-end-encrypted messaging relay (ADR-0131).
+	// Enabled whenever mail is enabled UNLESS explicitly switched off. It never
+	// sees plaintext and never persists: every envelope lives in a bounded
+	// in-memory store that a restart purges. The verifier is the same mail-sync
+	// credential chokepoint (device approval enforced) wrapped in the shared
+	// brute-force throttle; the pubkey provider is VayuPGP (minting on demand).
+	talkEnabled := mailCfg.Enabled && !strings.EqualFold(config.EnvOr("VAYUOS_TALK", "on"), "off")
+	talkBridge := &vayuMailBridge{app: a}
+	a.vayuTalk = vtalk.NewEngine(vtalk.Config{
+		Enabled: talkEnabled,
+		Verify: func(ctx context.Context, email, password string) bool {
+			// Same decaying per-mailbox throttle as the mail listeners, so a
+			// VayuTalk connect cannot be used to bypass brute-force defences.
+			if d := mailAuthThrottle.Delay(email); d > 0 {
+				time.Sleep(d)
+			}
+			ok := talkBridge.verifyCredential(ctx, email, password)
+			if ok {
+				mailAuthThrottle.Success(email)
+			} else {
+				mailAuthThrottle.Fail(email)
+			}
+			return ok
+		},
+		PubKey: func(email string) (string, string, error) {
+			if a.vayuPGP == nil {
+				return "", "", fmt.Errorf("vayupgp unavailable")
+			}
+			pk, err := a.vayuPGP.GetPublicKey(email)
+			if err != nil {
+				// Mint on demand so a mailbox that pre-dates auto-keygen still
+				// resolves a key (WKD/GetPublicKey would otherwise 404).
+				name := email
+				if i := strings.Index(name, "@"); i > 0 {
+					name = name[:i]
+				}
+				if _, gerr := a.vayuPGP.EnsureKeypair(&vpgp.PGPUser{UserID: email, Name: name, Email: email}); gerr != nil {
+					return "", "", err
+				}
+				pk, err = a.vayuPGP.GetPublicKey(email)
+				if err != nil {
+					return "", "", err
+				}
+			}
+			return pk.Armor, pk.Fingerprint, nil
+		},
+	})
+
 	secEnabled := strings.EqualFold(config.EnvOr("VAYUOS_SECURITY_UPDATES", "off"), "on")
 	a.vayuSec = secwatch.New(secEnabled)
 
@@ -471,6 +520,7 @@ func (a *App) bootVayuOS() {
 	steps := []vkernel.Step{
 		{Sub: a.vayuPGP, Critical: true},
 		{Sub: a.vayuMail, Critical: false},
+		{Sub: a.vayuTalk, Critical: false},
 		{Sub: a.vayuSec, Critical: false},
 	}
 	if _, err := vkernel.Boot(context.Background(), steps, func(s string) { logging.LogInfo("vayuos", s) }); err != nil {
