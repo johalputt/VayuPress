@@ -350,6 +350,11 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		// handlers). Same session+CSRF chain as the TOTP route above.
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/accounts/apppassword", a.handleVayuOSAppPasswordCreate)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/accounts/apppassword/delete", a.handleVayuOSAppPasswordDelete)
+		// Device approval (ADR-0129) — approve/block/remove registered devices
+		// and toggle per-mailbox enforcement. Admin-only (enforced in the
+		// handler): the 2FA-protected console IS the approval anchor, so mailbox
+		// holders can never approve their own devices.
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/devices/action", a.handleVayuOSDeviceAction)
 
 		pr.Get("/os/vayumail/security", a.handleVayuOSSecurity)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/vayuos/security/check", a.handleVayuOSSecurityCheck)

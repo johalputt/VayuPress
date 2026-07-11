@@ -8,6 +8,33 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Added
+- **VayuMail device approval — no mail sync without web approval.** A new
+  device that signs into VayuMail now registers itself
+  (`POST /api/v1/members/vayumail-device-register`) and starts **pending**: it
+  cannot sync any mail — even with the correct mailbox password — until it is
+  approved from the 2FA-protected VayuPress console. A new **Devices** card on
+  the mail Accounts page lists every registered device (label, platform,
+  status, registered, last used) with one-click Approve / Block / Remove and a
+  per-mailbox "Require device approval" toggle; a companion
+  `vayumail-device-status` endpoint lets the app poll its own approval state
+  and start syncing the moment it flips. See
+  [ADR-0129](docs/adr/ADR-0129-vayumail-device-approval.md).
+
+### Security
+- **A stolen mailbox password can no longer sync mail.** While a mailbox
+  requires device approval (the default), the raw CMS/mailbox password is
+  rejected on IMAP/POP3/SMTP-submission and on the private-key sync endpoint —
+  only an **approved** device credential authenticates there; pending and
+  blocked devices fail uniformly. The password keeps working for the member
+  web endpoints (portal login, device registration), so a holder can always
+  bootstrap a new device, and existing app passwords are grandfathered as
+  approved so already-connected devices survive the upgrade. Every device
+  action is audit-logged
+  (`vayumail.device.register/.approve/.block/.remove/.require`), and both new
+  endpoints reuse the shared brute-force throttle with byte-identical 401s
+  (anti-enumeration).
+
 ## [3.11.32] — 2026-07-11
 
 ### Fixed

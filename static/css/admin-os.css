@@ -551,6 +551,21 @@
 .vp-os .badge--ok      { background: var(--ok-dim);     color: var(--ok); }
 .vp-os .badge--warn    { background: var(--warn-dim);   color: var(--warn); }
 .vp-os .badge--danger  { background: var(--danger-dim); color: var(--danger); }
+/* Pending device approvals (ADR-0129) must read as "action needed": the warn
+   palette plus a solid ring so the chip stands out from a plain warn badge.
+   Colors are re-tokened per theme below so the amber keeps contrast on light
+   backgrounds too. */
+.vp-os .badge--pending {
+  background: var(--pending-dim, var(--warn-dim));
+  color: var(--pending, var(--warn));
+  box-shadow: inset 0 0 0 1px var(--pending, var(--warn));
+  font-weight: 700;
+}
+.vp-os { --pending: #fbbf24; --pending-dim: rgba(251, 191, 36, 0.16); }
+.vp-os[data-theme="light"] { --pending: #92400e; --pending-dim: #fef3c7; }
+@media (prefers-color-scheme: light) {
+  .vp-os[data-theme="auto"] { --pending: #92400e; --pending-dim: #fef3c7; }
+}
 .vp-os .badge--info    { background: var(--info-dim);   color: var(--info); }
 .vp-os .badge--brand   { background: var(--brand-dim);  color: var(--brand); }
 .vp-os .badge--accent  { background: var(--accent-dim); color: var(--accent); }

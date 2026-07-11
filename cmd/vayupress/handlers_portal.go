@@ -204,6 +204,155 @@ func (a *App) handleMemberVayuMailLogin(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
+// handleMemberVayuMailDeviceRegister enrols a NEW device for a mailbox
+// (ADR-0129). The caller authenticates with the raw mailbox credential —
+// web-bootstrap scope, the one place the password must keep working — and
+// receives a device identity: a random device_id plus a freshly generated
+// device password (same generator/format as app passwords, stored only as an
+// Argon2id hash). The device starts life 'pending' and cannot sync any mail
+// until it is approved from the 2FA-protected web console; when the mailbox
+// has device approval switched off it is approved immediately.
+//
+// Same defences as vayumail-login/vayumail-privkey: the shared brute-force
+// throttle, a uniform 401 on ANY auth failure (anti-enumeration), a no-store
+// response (it carries a secret shown exactly once), and an audit-log entry.
+func (a *App) handleMemberVayuMailDeviceRegister(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	if !a.vayuMailLoginEnabled() {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "vayumail-disabled", "VayuMail sign-in is not available", "")
+		return
+	}
+	var body struct {
+		Email      string `json:"email"`
+		Password   string `json:"password"`
+		DeviceName string `json:"device_name"`
+		Platform   string `json:"platform"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16*1024)).Decode(&body); err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "bad-json", "Invalid request body", "")
+		return
+	}
+	emailAddr := strings.TrimSpace(strings.ToLower(body.Email))
+	if emailAddr == "" || body.Password == "" {
+		writeAPIError(w, r, http.StatusBadRequest, "validation_error", "Email and password are required", "")
+		return
+	}
+
+	// Authenticate in web-bootstrap scope: the raw mailbox password is accepted
+	// here even when the mailbox requires device approval — this endpoint IS the
+	// bootstrap that turns a password into an approvable device credential.
+	bridge := &vayuMailBridge{app: a}
+	if d := mailAuthThrottle.Delay(emailAddr); d > 0 {
+		time.Sleep(d)
+	}
+	if !bridge.verifyCredentialWeb(r.Context(), emailAddr, body.Password) {
+		mailAuthThrottle.Fail(emailAddr)
+		writeAPIError(w, r, http.StatusUnauthorized, "invalid-credentials", "That email and password don't match", "")
+		return
+	}
+	mailAuthThrottle.Success(emailAddr)
+
+	accts := a.vayuMail.Accounts()
+	// The auth path reads back at most appPasswordMaxPerMailbox rows, so a row
+	// beyond the cap would be a credential that can never authenticate.
+	if len(accts.AppPasswordCredentials(r.Context(), emailAddr)) >= appPasswordMaxPerMailbox {
+		writeAPIError(w, r, http.StatusConflict, "device-limit", "Device limit reached for this mailbox — remove an old device in the console first", "")
+		return
+	}
+	label := strings.TrimSpace(body.DeviceName)
+	if label == "" {
+		label = "VayuMail Mobile"
+	}
+	if len(label) > 64 {
+		label = label[:64]
+	}
+	platform := strings.TrimSpace(body.Platform)
+	if len(platform) > 32 {
+		platform = platform[:32]
+	}
+	deviceID, err := generateDeviceID()
+	if err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "device-error", "Could not register the device", "")
+		return
+	}
+	secret, err := generateAppPasswordSecret()
+	if err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "device-error", "Could not register the device", "")
+		return
+	}
+	hash, err := auth.HashSecretArgon2id(secret)
+	if err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "device-error", "Could not register the device", "")
+		return
+	}
+	// New devices are pending until approved from the 2FA-protected console —
+	// unless the operator switched approval off for this mailbox.
+	status := vmail.DeviceStatusPending
+	if !accts.RequireDeviceApproval(r.Context(), emailAddr) {
+		status = vmail.DeviceStatusApproved
+	}
+	if _, err := accts.CreateDevice(r.Context(), emailAddr, label, platform, deviceID, hash, status); err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "device-error", "Could not register the device", "")
+		return
+	}
+	dbpkg.AuditLog("vayumail.device.register", emailAddr, emailAddr, label+" ["+platform+"] "+status)
+	logging.LogInfo("members", "VayuMail device registered ("+status+") for "+emailAddr)
+	// The device password is shown exactly once, dash-grouped like the console
+	// reveal; the auth path accepts it with or without the dashes.
+	writeJSON(w, r, http.StatusOK, map[string]string{
+		"device_id":       deviceID,
+		"device_password": groupAppPasswordSecret(secret),
+		"status":          status,
+	})
+}
+
+// handleMemberVayuMailDeviceStatus lets a registered device poll its own
+// approval state ("pending" | "approved" | "blocked") so the app can tell the
+// user to go approve it in the console — and flip to syncing the moment it is.
+// The device proves possession of ITS OWN credential (verified against that
+// one row's Argon2id hash); any failure — unknown mailbox, unknown device,
+// wrong password — returns the same uniform 401 as the other member endpoints.
+func (a *App) handleMemberVayuMailDeviceStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	if !a.vayuMailLoginEnabled() {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "vayumail-disabled", "VayuMail sign-in is not available", "")
+		return
+	}
+	var body struct {
+		Email          string `json:"email"`
+		DeviceID       string `json:"device_id"`
+		DevicePassword string `json:"device_password"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16*1024)).Decode(&body); err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "bad-json", "Invalid request body", "")
+		return
+	}
+	emailAddr := strings.TrimSpace(strings.ToLower(body.Email))
+	if emailAddr == "" || strings.TrimSpace(body.DeviceID) == "" || body.DevicePassword == "" {
+		writeAPIError(w, r, http.StatusBadRequest, "validation_error", "Email, device id and device password are required", "")
+		return
+	}
+
+	if d := mailAuthThrottle.Delay(emailAddr); d > 0 {
+		time.Sleep(d)
+	}
+	id, hash, status, ok := a.vayuMail.Accounts().DeviceCredential(r.Context(), emailAddr, strings.TrimSpace(body.DeviceID))
+	// Verify even when the device is unknown (hash == "") to keep the timing
+	// and the response identical regardless of whether the device exists. The
+	// hash is computed over the dashless secret; the raw form is a fallback.
+	pw := strings.ReplaceAll(body.DevicePassword, "-", "")
+	match := auth.VerifySecretArgon2id(pw, hash) ||
+		(pw != body.DevicePassword && auth.VerifySecretArgon2id(body.DevicePassword, hash))
+	if !ok || !match {
+		mailAuthThrottle.Fail(emailAddr)
+		writeAPIError(w, r, http.StatusUnauthorized, "invalid-credentials", "That email and password don't match", "")
+		return
+	}
+	mailAuthThrottle.Success(emailAddr)
+	a.vayuMail.Accounts().TouchAppPassword(r.Context(), id)
+	writeJSON(w, r, http.StatusOK, map[string]string{"status": status})
+}
+
 // handleMemberVayuMailPrivKey returns the CALLER'S OWN mailbox PGP private key
 // (armored) so the VayuMail-Mobile app can import it and decrypt received mail
 // on-device — WKD only serves public keys, leaving the app unable to read
@@ -215,8 +364,11 @@ func (a *App) handleMemberVayuMailLogin(w http.ResponseWriter, r *http.Request) 
 // and can already decrypt everything at rest and in transit (see the IMAP
 // decrypt hook). The endpoint therefore reveals nothing the server does not
 // already hold on the owner's behalf. It is defended by:
-//   - the same credential check as vayumail-login (verifyCredential: CMS
-//     password → mail-account Argon2id → device app passwords);
+//   - the MAIL-SYNC credential scope (verifyCredential): when the mailbox
+//     requires device approval (ADR-0129, the default) only an APPROVED
+//     device credential unlocks the key — the raw CMS/mailbox password is
+//     refused here just like on IMAP/POP3/submission, because the private key
+//     decrypts the same mail those protocols serve;
 //   - the shared brute-force throttle (mailAuthThrottle) — a decaying per-mailbox
 //     delay on every failed attempt, identical to IMAP/SMTP/POP3;
 //   - a generic 401 on ANY failure that never reveals whether the address

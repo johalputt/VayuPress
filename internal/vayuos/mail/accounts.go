@@ -75,15 +75,18 @@ func RoleCanManageAccounts(role string) bool { return normRole(role) == RoleAdmi
 // addresses. Password hashing is done by the caller (the cmd layer, using the
 // project's Argon2id helper); this store only persists the hash.
 type Account struct {
-	Email       string    `json:"email"`
-	FullName    string    `json:"full_name"`
-	Role        string    `json:"role"`
-	Active      bool      `json:"active"`
-	TOTPEnabled bool      `json:"totp_enabled"`
-	QuotaBytes  int64     `json:"quota_bytes"` // mailbox storage limit; 0 = unlimited
-	Signature   string    `json:"signature"`   // plain-text mail signature, appended on send
-	ForwardTo   string    `json:"forward_to"`  // auto-forward copies of inbound mail here; empty = off
-	CreatedAt   time.Time `json:"created_at"`
+	Email       string `json:"email"`
+	FullName    string `json:"full_name"`
+	Role        string `json:"role"`
+	Active      bool   `json:"active"`
+	TOTPEnabled bool   `json:"totp_enabled"`
+	QuotaBytes  int64  `json:"quota_bytes"` // mailbox storage limit; 0 = unlimited
+	Signature   string `json:"signature"`   // plain-text mail signature, appended on send
+	ForwardTo   string `json:"forward_to"`  // auto-forward copies of inbound mail here; empty = off
+	// RequireDeviceApproval: only approved device credentials sync mail over
+	// IMAP/POP3/submission (ADR-0129). On by default.
+	RequireDeviceApproval bool      `json:"require_device_approval"`
+	CreatedAt             time.Time `json:"created_at"`
 }
 
 // maxSignatureBytes bounds a stored mail signature.
@@ -136,6 +139,12 @@ func NewAccountStore(db *sql.DB) (*AccountStore, error) {
 		`ALTER TABLE vayumail_accounts ADD COLUMN autoreply_body TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE vayumail_accounts ADD COLUMN autoreply_from TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE vayumail_accounts ADD COLUMN autoreply_until TEXT NOT NULL DEFAULT ''`,
+		// Device approval (ADR-0129): when 1 (the secure default), the raw mailbox
+		// password no longer authenticates the mail protocols — only an APPROVED
+		// device credential syncs mail. Bootstrapping (member login, device
+		// registration) still accepts the password, so this can never lock the
+		// holder out of registering a device.
+		`ALTER TABLE vayumail_accounts ADD COLUMN require_device_approval INTEGER NOT NULL DEFAULT 1`,
 	} {
 		if _, err := db.Exec(stmt); err != nil && !strings.Contains(err.Error(), "duplicate column") {
 			return s, err
@@ -332,22 +341,60 @@ func (s *AccountStore) List(ctx context.Context) ([]Account, error) {
 	if s.db == nil {
 		return out, nil
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT email,full_name,role,active,totp_enabled,quota_bytes,signature,forward_to,created_at FROM vayumail_accounts ORDER BY email`)
+	rows, err := s.db.QueryContext(ctx, `SELECT email,full_name,role,active,totp_enabled,quota_bytes,signature,forward_to,require_device_approval,created_at FROM vayumail_accounts ORDER BY email`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var a Account
-		var active, totpEnabled int
-		if err := rows.Scan(&a.Email, &a.FullName, &a.Role, &active, &totpEnabled, &a.QuotaBytes, &a.Signature, &a.ForwardTo, &a.CreatedAt); err != nil {
+		var active, totpEnabled, reqApproval int
+		if err := rows.Scan(&a.Email, &a.FullName, &a.Role, &active, &totpEnabled, &a.QuotaBytes, &a.Signature, &a.ForwardTo, &reqApproval, &a.CreatedAt); err != nil {
 			return nil, err
 		}
 		a.Active = active == 1
 		a.TOTPEnabled = totpEnabled == 1
+		a.RequireDeviceApproval = reqApproval == 1
 		out = append(out, a)
 	}
 	return out, rows.Err()
+}
+
+// SetRequireDeviceApproval flips the per-mailbox device-approval enforcement
+// (ADR-0129). Turning it OFF restores the pre-device behaviour: the raw
+// mailbox password authenticates the mail protocols again.
+func (s *AccountStore) SetRequireDeviceApproval(ctx context.Context, email string, on bool) error {
+	if s.db == nil {
+		return errors.New("vayumail: no storage")
+	}
+	v := 0
+	if on {
+		v = 1
+	}
+	res, err := s.db.ExecContext(ctx, `UPDATE vayumail_accounts SET require_device_approval=? WHERE email=?`, v, normEmail(email))
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return errors.New("no such account")
+	}
+	return nil
+}
+
+// RequireDeviceApproval reports whether device approval is enforced for a
+// mailbox. An identity WITHOUT an account row (e.g. a CMS-only user) reports
+// enforced too — the secure default — and its registered devices remain
+// approvable from the console's Devices card, so there is always a path to a
+// working credential. Only a nil store (no storage at all, hence no devices to
+// approve) reports off.
+func (s *AccountStore) RequireDeviceApproval(ctx context.Context, email string) bool {
+	if s.db == nil {
+		return false
+	}
+	on := 1
+	_ = s.db.QueryRowContext(ctx,
+		`SELECT require_device_approval FROM vayumail_accounts WHERE email=?`, normEmail(email)).Scan(&on)
+	return on == 1
 }
 
 // ── TOTP 2FA ─────────────────────────────────────────────────────────────────

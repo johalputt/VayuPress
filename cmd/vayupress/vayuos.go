@@ -70,15 +70,37 @@ func (b *vayuMailBridge) AuthUser(username, password string) (bool, error) {
 }
 
 // verifyCredential checks a mailbox password against every accepted credential
-// (CMS account password, mail-account password, and device app passwords),
-// honouring the optional app-password-only 2FA enforcement.
+// in MAIL-SYNC scope: it guards everything that hands out mail content — the
+// IMAP/POP3/submission listeners (via AuthUser) and the private-key sync
+// endpoint. When the mailbox requires device approval (ADR-0129, the default),
+// this scope rejects the raw CMS/mailbox password and accepts only an APPROVED
+// device credential, so a stolen password alone can never sync mail.
 func (b *vayuMailBridge) verifyCredential(ctx context.Context, addr, password string) bool {
-	// Device app-password hashes for this mailbox (the rotating setup-QR
-	// credentials). Fetched up front so the enforcement decision can require a
-	// working alternative to exist before it ever retires the main password.
-	var appPwHashes []string
+	return b.verifyCredentialScoped(ctx, addr, password, false)
+}
+
+// verifyCredentialWeb checks the same credential set in WEB-BOOTSTRAP scope:
+// the member HTTP endpoints (login, device registration) that a new device
+// needs the raw password for BEFORE it can hold an approved credential. The
+// raw password is accepted here regardless of the device-approval setting;
+// device credentials are still status-checked.
+func (b *vayuMailBridge) verifyCredentialWeb(ctx context.Context, addr, password string) bool {
+	return b.verifyCredentialScoped(ctx, addr, password, true)
+}
+
+// verifyCredentialScoped is the single credential chokepoint behind both
+// scopes (CMS account password, mail-account password, and device/app
+// passwords), honouring the optional app-password-only 2FA enforcement and
+// the per-mailbox device-approval policy.
+func (b *vayuMailBridge) verifyCredentialScoped(ctx context.Context, addr, password string, webBootstrap bool) bool {
+	// Stored credential rows for this mailbox (device credentials and plain app
+	// passwords). Fetched up front so the enforcement decisions can require a
+	// working alternative to exist before they ever retire the main password.
+	var accts *vmail.AccountStore
+	var creds []vmail.AppPasswordCredential
 	if b.app.vayuMail != nil && b.app.vayuMail.Accounts() != nil {
-		appPwHashes = b.app.vayuMail.Accounts().AppPasswordHashes(ctx, addr)
+		accts = b.app.vayuMail.Accounts()
+		creds = accts.AppPasswordCredentials(ctx, addr)
 	}
 
 	// Optional "app-password only" 2FA enforcement (Gmail/Outlook model): when
@@ -93,9 +115,15 @@ func (b *vayuMailBridge) verifyCredential(ctx context.Context, addr, password st
 	// credential and a password login can never be silently locked out. Any
 	// other case (no opt-in, no 2FA, no app password yet) keeps the password
 	// working exactly as before.
-	enforce := vayuMail2FAEnforce() && len(appPwHashes) > 0 && b.twoFactorEnabled(ctx, addr)
+	enforce := vayuMail2FAEnforce() && len(creds) > 0 && b.twoFactorEnabled(ctx, addr)
 
-	if !enforce {
+	// Device approval (ADR-0129): in mail-sync scope a mailbox that requires
+	// approval never accepts the raw password — only an approved device
+	// credential below. Web-bootstrap scope keeps accepting it so a new device
+	// can register (and a member can sign in) with just the password.
+	requireApproval := accts != nil && accts.RequireDeviceApproval(ctx, addr)
+
+	if !enforce && (webBootstrap || !requireApproval) {
 		// 1) CMS users (full VayuPress accounts).
 		if b.app.userStore != nil {
 			if _, err := b.app.userStore.Authenticate(ctx, addr, password); err == nil {
@@ -103,8 +131,8 @@ func (b *vayuMailBridge) verifyCredential(ctx context.Context, addr, password st
 			}
 		}
 		// 2) Admin-managed mail-only accounts (email + password).
-		if b.app.vayuMail != nil && b.app.vayuMail.Accounts() != nil {
-			if hash := b.app.vayuMail.Accounts().HashFor(ctx, addr); hash != "" {
+		if accts != nil {
+			if hash := accts.HashFor(ctx, addr); hash != "" {
 				if auth.VerifySecretArgon2id(password, hash) {
 					return true
 				}
@@ -112,16 +140,23 @@ func (b *vayuMailBridge) verifyCredential(ctx context.Context, addr, password st
 		}
 	}
 
-	// 3) Device app passwords — always accepted (the required credential when
-	// enforcement is on, a convenience device credential otherwise). Verified
-	// last so the main password stays the fast path. Secrets are displayed to
-	// the operator in dash-grouped blocks (abcd-efgh-…) but hashed dashless, so
-	// the dashless form is tried first; the raw form is kept as a fallback in
-	// case an older stored credential contained literal dashes.
+	// 3) Device credentials and app passwords — the required credential when
+	// either enforcement is on, a convenience device credential otherwise.
+	// Verified last so the main password stays the fast path. Secrets are
+	// displayed to the operator in dash-grouped blocks (abcd-efgh-…) but hashed
+	// dashless, so the dashless form is tried first; the raw form is kept as a
+	// fallback in case an older stored credential contained literal dashes.
 	appPw := strings.ReplaceAll(password, "-", "")
-	for _, h := range appPwHashes {
-		if auth.VerifySecretArgon2id(appPw, h) ||
-			(appPw != password && auth.VerifySecretArgon2id(password, h)) {
+	for _, c := range creds {
+		if auth.VerifySecretArgon2id(appPw, c.Hash) ||
+			(appPw != password && auth.VerifySecretArgon2id(password, c.Hash)) {
+			// The presented secret IS this credential — its status decides.
+			// Pending and blocked devices are rejected outright (uniform
+			// failure); legacy rows migrated to 'approved' keep working.
+			if c.Status == vmail.DeviceStatusPending || c.Status == vmail.DeviceStatusBlocked {
+				return false
+			}
+			accts.TouchAppPassword(ctx, c.ID)
 			return true
 		}
 	}

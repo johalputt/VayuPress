@@ -83,6 +83,12 @@ func TestAppPasswordCreateVerifyRevoke(t *testing.T) {
 	admin := &users.User{ID: "admin1", Email: "boss@example.com", Role: users.RoleAdmin}
 	ctx := context.Background()
 	const email = "dana@example.com"
+	// Device approval (on by default, ADR-0129) retires the raw mailbox
+	// password on the mail path; this test is about app-password lifecycle, so
+	// switch it off to keep exercising the password fast path too.
+	if err := a.vayuMail.Accounts().SetRequireDeviceApproval(ctx, email, false); err != nil {
+		t.Fatalf("disable device approval: %v", err)
+	}
 
 	rec := postAppPwForm(a.handleVayuOSAppPasswordCreate, "/os/vayumail/accounts/apppassword",
 		url.Values{"email": {email}, "label": {"Test Phone"}}, admin)
@@ -103,11 +109,11 @@ func TestAppPasswordCreateVerifyRevoke(t *testing.T) {
 	}
 
 	// The stored hash must never appear in any response.
-	hashes := a.vayuMail.Accounts().AppPasswordHashes(ctx, email)
-	if len(hashes) != 1 {
-		t.Fatalf("want 1 stored hash, got %d", len(hashes))
+	creds := a.vayuMail.Accounts().AppPasswordCredentials(ctx, email)
+	if len(creds) != 1 {
+		t.Fatalf("want 1 stored credential, got %d", len(creds))
 	}
-	if strings.Contains(body, hashes[0]) || strings.Contains(body, "argon2id") {
+	if strings.Contains(body, creds[0].Hash) || strings.Contains(body, "argon2id") {
 		t.Error("create response leaks the stored hash")
 	}
 
@@ -176,7 +182,7 @@ func TestAppPasswordDefaultLabelAndUnknownMailbox(t *testing.T) {
 	if !strings.Contains(rec.Body.String(), "no active mailbox") {
 		t.Error("creating for an unknown address should render an error")
 	}
-	if got := a.vayuMail.Accounts().AppPasswordHashes(context.Background(), "ghost@example.com"); len(got) != 0 {
+	if got := a.vayuMail.Accounts().AppPasswordCredentials(context.Background(), "ghost@example.com"); len(got) != 0 {
 		t.Fatal("no credential may be stored for a non-existent mailbox")
 	}
 }

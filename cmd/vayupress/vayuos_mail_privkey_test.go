@@ -47,8 +47,13 @@ const privKeyHeader = "-----BEGIN PGP PRIVATE KEY BLOCK-----"
 // TestVayuMailPrivKeyValidReturnsArmoredKey verifies a correct mailbox password
 // yields the caller's armored private key (minting one on demand when the
 // mailbox pre-dates auto-keygen) and that the response is marked no-store.
+// Device approval is switched off here: with it required (the default) the
+// raw password no longer unlocks the key — covered by the device tests.
 func TestVayuMailPrivKeyValidReturnsArmoredKey(t *testing.T) {
 	a := appWithMailAndPGP(t)
+	if err := a.vayuMail.Accounts().SetRequireDeviceApproval(context.Background(), "dana@example.com", false); err != nil {
+		t.Fatalf("disable device approval: %v", err)
+	}
 	rec := postPrivKey(a, "dana@example.com", "main-mailbox-pass")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200 (body: %s)", rec.Code, rec.Body.String())

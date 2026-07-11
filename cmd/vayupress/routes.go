@@ -236,6 +236,12 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	// check, brute-force throttle and anti-enumeration timing as vayumail-login
 	// above; the response is audit-logged and no-store. See ADR-0128.
 	r.Post("/api/v1/members/vayumail-privkey", a.handleMemberVayuMailPrivKey)
+	// VayuMail-Mobile device approval (ADR-0129): a new device registers with
+	// the mailbox password and receives a pending device credential; it polls
+	// its approval status until the operator approves it in the web console.
+	// Same throttle + uniform-401 anti-enumeration as vayumail-login above.
+	r.Post("/api/v1/members/vayumail-device-register", a.handleMemberVayuMailDeviceRegister)
+	r.Post("/api/v1/members/vayumail-device-status", a.handleMemberVayuMailDeviceStatus)
 	r.Get("/pricing", a.handlePricingPage)
 	r.Get("/api/v1/tiers", a.handleTiersPublic)
 	// Public author profile pages.

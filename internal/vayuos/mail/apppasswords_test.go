@@ -30,8 +30,11 @@ func TestAppPasswordLifecycle(t *testing.T) {
 		t.Fatalf("create 2: id=%d err=%v", id2, err)
 	}
 
-	if got := s.AppPasswordHashes(ctx, "user@example.com"); len(got) != 2 {
-		t.Fatalf("want 2 hashes, got %v", got)
+	if got := s.AppPasswordCredentials(ctx, "user@example.com"); len(got) != 2 {
+		t.Fatalf("want 2 credentials, got %v", got)
+	} else if got[0].Status != DeviceStatusApproved || got[1].Status != DeviceStatusApproved {
+		// Legacy rows (no device identity) report status 'approved'.
+		t.Fatalf("legacy credential status = %+v, want approved", got)
 	}
 	if got := s.ListAppPasswords(ctx, "user@example.com"); len(got) != 2 {
 		t.Fatalf("want 2 entries, got %d", len(got))
@@ -43,7 +46,7 @@ func TestAppPasswordLifecycle(t *testing.T) {
 	if err := s.DeleteAppPasswordsByLabel(ctx, "user@example.com", "setup-qr"); err != nil {
 		t.Fatalf("rotate: %v", err)
 	}
-	if got := s.AppPasswordHashes(ctx, "user@example.com"); len(got) != 1 || got[0] != "hashB" {
+	if got := s.AppPasswordCredentials(ctx, "user@example.com"); len(got) != 1 || got[0].Hash != "hashB" {
 		t.Fatalf("after rotate want [hashB], got %v", got)
 	}
 
@@ -54,7 +57,7 @@ func TestAppPasswordLifecycle(t *testing.T) {
 	if err := s.DeleteAppPassword(ctx, "user@example.com", id2); err != nil {
 		t.Fatalf("revoke: %v", err)
 	}
-	if got := s.AppPasswordHashes(ctx, "user@example.com"); len(got) != 0 {
+	if got := s.AppPasswordCredentials(ctx, "user@example.com"); len(got) != 0 {
 		t.Fatalf("want empty, got %v", got)
 	}
 }
