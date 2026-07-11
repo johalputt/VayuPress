@@ -413,6 +413,29 @@ func (e *Engine) ExportPublicKey(userID string) ([]byte, error) {
 	return []byte(kp.PublicArmor), nil
 }
 
+// ArmoredPrivateKey returns a mailbox's own PGP private key in armored form
+// ("-----BEGIN PGP PRIVATE KEY BLOCK-----…"), resolved by email address. The
+// private half is decrypted from its at-rest AES-256-GCM ciphertext — the same
+// server-side-decryptable model VayuPGP already uses to read inbound mail — so
+// the caller (the mailbox owner's own device, authenticated over TLS) can import
+// the key and decrypt received mail on-device. Returns ErrNotFound when no key
+// exists for the address; the caller should EnsureKeypair first if it wants one
+// generated on demand.
+func (e *Engine) ArmoredPrivateKey(email string) (string, error) {
+	if e.ks == nil {
+		return "", errors.New("vayupgp: engine not started")
+	}
+	userID, ok := e.ks.userIDForEmail(email)
+	if !ok {
+		return "", ErrNotFound
+	}
+	_, priv, err := e.ks.load(userID)
+	if err != nil {
+		return "", err
+	}
+	return string(priv), nil
+}
+
 // ImportPublicKey parses an armored public key and returns its description.
 func (e *Engine) ImportPublicKey(armored []byte) (*PublicKey, error) {
 	ent, err := entityFromArmor(string(armored))
