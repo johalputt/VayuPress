@@ -21,8 +21,6 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   lock-up's intrinsic aspect ratio corrected so it no longer reserves a
   slightly wrong box. No unreferenced image files were added.
 
-
-
 ## [3.11.28] — 2026-07-10
 
 ### Changed
