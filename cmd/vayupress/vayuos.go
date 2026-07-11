@@ -8,11 +8,13 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"html"
 	htmpl "html/template"
 	"net/http"
+	stdmail "net/mail"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -239,10 +241,13 @@ func (b *vayuMailBridge) SignAs(plaintext []byte, senderUserID string) ([]byte, 
 
 var _ vmail.Bridge = (*vayuMailBridge)(nil)
 
-// pgpDecryptForAccount transparently decrypts an inline PGP message for the
-// account that owns the mailbox, when VayuPGP holds that account's private key.
-// It is best-effort: on any failure it returns the original bytes unchanged so
-// the client always receives a readable (if still-encrypted) message.
+// pgpDecryptForAccount transparently decrypts a PGP message for the account
+// that owns the mailbox, when VayuPGP holds that account's private key. It
+// handles both inline PGP (the body IS the armored block — what VayuPress
+// itself sends) and PGP/MIME (RFC 3156 multipart/encrypted — what the
+// VayuMail app and third-party clients send). It is best-effort: on any
+// failure it returns the original bytes unchanged so the client always
+// receives a readable (if still-encrypted) message.
 func (a *App) pgpDecryptForAccount(accountEmail string, raw []byte) []byte {
 	if a.vayuPGP == nil {
 		return raw
@@ -265,8 +270,78 @@ func (a *App) pgpDecryptForAccount(accountEmail string, raw []byte) []byte {
 	if err != nil {
 		return raw
 	}
-	// Splice the decrypted text back in place of the armored block.
+	// PGP/MIME: the armor lives inside a multipart/encrypted structure, so
+	// splicing plaintext into the middle of it would produce a corrupt
+	// message (an "encrypted" envelope with no ciphertext — clients show
+	// raw MIME or loop trying to decrypt). Rebuild the message instead:
+	// original headers, decrypted content as the body.
+	if isPGPMIME(raw) {
+		if out := rebuildDecryptedMessage(raw, plain); out != nil {
+			return out
+		}
+		return raw
+	}
+	// Inline PGP: the armored block sits directly in a text body; splicing
+	// the plaintext in place preserves the (simple) structure.
 	return []byte(s[:bi] + string(plain) + s[ei:])
+}
+
+// isPGPMIME reports whether the message's top-level Content-Type is the
+// RFC 3156 multipart/encrypted structure.
+func isPGPMIME(raw []byte) bool {
+	msg, err := stdmail.ReadMessage(bytes.NewReader(raw))
+	if err != nil {
+		return false
+	}
+	return strings.Contains(strings.ToLower(msg.Header.Get("Content-Type")),
+		"multipart/encrypted")
+}
+
+// rebuildDecryptedMessage reassembles a decrypted PGP/MIME message: the
+// original top-level headers minus the multipart/encrypted framing, an
+// X-VayuPGP marker (so the 🔒 badge survives decryption), and the decrypted
+// payload as the body. When the payload is itself a MIME entity (it starts
+// with its own Content-* headers, as RFC 3156 prescribes), its headers
+// continue the header block; otherwise it is wrapped as plain text.
+// Returns nil when raw has no header/body split (caller falls back to raw).
+func rebuildDecryptedMessage(raw, plain []byte) []byte {
+	sep, nl := []byte("\r\n\r\n"), "\r\n"
+	idx := bytes.Index(raw, sep)
+	if idx < 0 {
+		sep, nl = []byte("\n\n"), "\n"
+		idx = bytes.Index(raw, sep)
+	}
+	if idx < 0 {
+		return nil
+	}
+	var out []string
+	skip := false
+	for _, ln := range strings.Split(string(raw[:idx]), nl) {
+		// Continuation lines belong to the header decided on above.
+		if len(ln) > 0 && (ln[0] == ' ' || ln[0] == '\t') {
+			if !skip {
+				out = append(out, ln)
+			}
+			continue
+		}
+		lower := strings.ToLower(ln)
+		skip = strings.HasPrefix(lower, "content-type:") ||
+			strings.HasPrefix(lower, "content-transfer-encoding:") ||
+			strings.HasPrefix(lower, "x-vayupgp:")
+		if !skip {
+			out = append(out, ln)
+		}
+	}
+	out = append(out, "X-VayuPGP: encrypted")
+	head := strings.Join(out, "\r\n")
+	body := strings.TrimLeft(string(plain), "\r\n")
+	if strings.HasPrefix(body, "Content-") {
+		// The decrypted payload is a full MIME entity: its Content-*
+		// headers extend the header block, then its own blank line and
+		// body follow.
+		return []byte(head + "\r\n" + body)
+	}
+	return []byte(head + "\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n" + body)
 }
 
 // ── Boot ─────────────────────────────────────────────────────────────────────
@@ -1747,7 +1822,11 @@ func splitQuoted(text string) (main, quoted string) {
 func mailPGPBadge(raw []byte) string {
 	rs := string(raw)
 	switch {
-	case strings.Contains(rs, "-----BEGIN PGP MESSAGE-----"):
+	case strings.Contains(rs, "-----BEGIN PGP MESSAGE-----"),
+		strings.Contains(rs, "X-VayuPGP: encrypted"):
+		// The second form is the marker left after transparent server-side
+		// decryption (inline or PGP/MIME) — the message WAS end-to-end
+		// encrypted even though the served copy is readable.
 		return ` <span class="vm-pgp vm-pgp--enc" title="PGP-encrypted message">🔒 Encrypted</span>`
 	case strings.Contains(rs, "-----BEGIN PGP SIGNED MESSAGE-----"), strings.Contains(rs, "-----BEGIN PGP SIGNATURE-----"):
 		return ` <span class="vm-pgp vm-pgp--sig" title="Carries a PGP signature">✓ Signed</span>`
