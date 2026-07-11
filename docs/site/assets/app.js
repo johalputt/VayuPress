@@ -114,6 +114,7 @@ function app() {
     typed:      '',
     copied:     false,
     stars:      '★',
+    version:    '',
     _typing:    false,
 
     deployScript:
@@ -352,6 +353,26 @@ STATIC_DIR=./static VAYU_DOCS_DIR=./docs ./vayupress --port 8080`,
       });
     },
 
+    async fetchVersion() {
+      // Same two-stage, always-live pattern as the star count: a same-origin
+      // version.json baked by the deploy workflow first (instant, never
+      // rate-limited), then the live GitHub releases API to refresh it in the
+      // browser. Falls back silently to whichever value it already has.
+      const setVer = (t) => {
+        if (typeof t === 'string' && /^v?\d/.test(t)) this.version = t.charAt(0) === 'v' ? t : 'v' + t;
+      };
+      try {
+        const b = await fetch('assets/version.json', { cache: 'no-cache' });
+        if (b.ok) { const j = await b.json(); setVer(j.tag_name || j.version); }
+      } catch (_) { /* baked file absent in dev — fall through to the API */ }
+      try {
+        const r = await fetch('https://api.github.com/repos/johalputt/VayuPress/releases/latest', { cache: 'default' });
+        if (!r.ok) return;
+        const d = await r.json();
+        setVer(d.tag_name);
+      } catch (_) { /* offline / rate-limited — keep the baked value */ }
+    },
+
     async fetchStars() {
       // Two-stage, always-live star count:
       //  1) a same-origin stars.json baked fresh by the deploy workflow (and a
@@ -379,8 +400,9 @@ STATIC_DIR=./static VAYU_DOCS_DIR=./docs ./vayupress --port 8080`,
       /* scroll listener */
       addEventListener('scroll', () => this.onScroll(), { passive: true });
 
-      /* fetch star count */
+      /* fetch star count + latest release version (both live) */
       this.fetchStars();
+      this.fetchVersion();
 
       /* hero terminal boot */
       let i = 1;

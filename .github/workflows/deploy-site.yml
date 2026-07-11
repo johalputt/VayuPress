@@ -93,6 +93,22 @@ jobs:
             echo '{"stargazers_count":null}' > _site/assets/stars.json
             echo "::warning::could not fetch star count; site will use its live client fetch"
           fi
+          # Same treatment for the latest release tag: bake assets/version.json
+          # so the site shows the current version instantly on load, then the
+          # client refreshes it live from the releases API.
+          TAG=$(curl -sS -H "Authorization: Bearer $GH_TOKEN" \
+                  -H "Accept: application/vnd.github+json" \
+                  "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/latest" \
+                  | grep -o '"tag_name"[[:space:]]*:[[:space:]]*"[^"]*"' \
+                  | grep -o '"[^"]*"$' | tr -d '"' || true)
+          if [ -n "${TAG:-}" ]; then
+            printf '{"tag_name":"%s","generated_at":"%s"}\n' \
+              "$TAG" "$(date -u +%FT%TZ)" > _site/assets/version.json
+            echo "Baked version: $TAG"
+          else
+            echo '{"tag_name":null}' > _site/assets/version.json
+            echo "::warning::could not fetch latest release; site will use its live client fetch"
+          fi
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
