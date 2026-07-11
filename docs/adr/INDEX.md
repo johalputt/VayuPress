@@ -10,6 +10,7 @@
 | ADR | Title | Status | Owner | Date |
 |-----|-------|--------|-------|------|
 | [ADR-0001](ADR-0001-sqlite-first.md) | SQLite-First Data Layer | Accepted | Core | 2024-01-01 |
+| [ADR-0131](ADR-0131-vayutalk-ephemeral-messaging.md) | VayuTalk — Ephemeral, End-to-End-Encrypted Messaging | Accepted | VayuOS | 2026-07-11 |
 | [ADR-0129](ADR-0129-vayumail-device-approval.md) | VayuMail Device Approval — No Mail Sync Without Web Approval | Accepted | VayuOS | 2026-07-11 |
 | [ADR-0130](ADR-0130-vayumail-retention-auto-delete.md) | VayuMail Retention — Auto-Delete Read Mail | Accepted | VayuOS | 2026-07-11 |
 | [ADR-0128](ADR-0128-vayumail-private-key-sync.md) | VayuMail Private-Key Sync for On-Device Decryption | Accepted | VayuOS | 2026-07-11 |

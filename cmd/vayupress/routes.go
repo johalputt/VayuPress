@@ -242,6 +242,16 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	// Same throttle + uniform-401 anti-enumeration as vayumail-login above.
 	r.Post("/api/v1/members/vayumail-device-register", a.handleMemberVayuMailDeviceRegister)
 	r.Post("/api/v1/members/vayumail-device-status", a.handleMemberVayuMailDeviceStatus)
+	// VayuTalk — ephemeral, end-to-end-encrypted messaging relay (ADR-0131). The
+	// server never sees plaintext and persists nothing; envelopes live in a
+	// bounded in-memory store that a restart purges. /connect authenticates in
+	// the same mail-sync credential scope with the same uniform-401
+	// anti-enumeration as vayumail-login; the rest are Bearer-authenticated.
+	r.Post("/api/v1/talk/connect", a.handleTalkConnect)
+	r.Get("/api/v1/talk/stream", a.handleTalkStream)
+	r.Post("/api/v1/talk/send", a.handleTalkSend)
+	r.Post("/api/v1/talk/ack", a.handleTalkAck)
+	r.Get("/api/v1/talk/pubkey", a.handleTalkPubkey)
 	r.Get("/pricing", a.handlePricingPage)
 	// Built-in legal page: the VayuMail app privacy policy (Google Play link).
 	r.Get("/vayumail/privacy", a.handleVayuMailPrivacy)
