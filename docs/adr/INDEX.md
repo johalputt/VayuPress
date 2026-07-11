@@ -11,6 +11,7 @@
 |-----|-------|--------|-------|------|
 | [ADR-0001](ADR-0001-sqlite-first.md) | SQLite-First Data Layer | Accepted | Core | 2024-01-01 |
 | [ADR-0129](ADR-0129-vayumail-device-approval.md) | VayuMail Device Approval — No Mail Sync Without Web Approval | Accepted | VayuOS | 2026-07-11 |
+| [ADR-0130](ADR-0130-vayumail-retention-auto-delete.md) | VayuMail Retention — Auto-Delete Read Mail | Accepted | VayuOS | 2026-07-11 |
 | [ADR-0128](ADR-0128-vayumail-private-key-sync.md) | VayuMail Private-Key Sync for On-Device Decryption | Accepted | VayuOS | 2026-07-11 |
 | [ADR-0127](ADR-0127-brand-refresh-and-live-stars-site.md) | Brand Refresh, README Showcase Overhaul & Live GitHub-Stars Site Pipeline | Accepted | VayuOS | 2026-07-10 |
 | [ADR-0126](ADR-0126-vayumail-app-password-console.md) | App-Password Console for VayuMail Mobile Direct Connect | Accepted | VayuOS | 2026-07-09 |

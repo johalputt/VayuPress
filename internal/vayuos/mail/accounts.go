@@ -145,6 +145,10 @@ func NewAccountStore(db *sql.DB) (*AccountStore, error) {
 		// registration) still accepts the password, so this can never lock the
 		// holder out of registering a device.
 		`ALTER TABLE vayumail_accounts ADD COLUMN require_device_approval INTEGER NOT NULL DEFAULT 1`,
+		// Retention (ADR-0130): read mail the holder hasn't deliberately saved
+		// is permanently deleted this many days after it was read. 0 (the
+		// default) disables the sweep, so the migration changes no behaviour.
+		`ALTER TABLE vayumail_accounts ADD COLUMN retention_days INTEGER NOT NULL DEFAULT 0`,
 	} {
 		if _, err := db.Exec(stmt); err != nil && !strings.Contains(err.Error(), "duplicate column") {
 			return s, err
@@ -387,6 +391,40 @@ func (s *AccountStore) SetRequireDeviceApproval(ctx context.Context, email strin
 // approvable from the console's Devices card, so there is always a path to a
 // working credential. Only a nil store (no storage at all, hence no devices to
 // approve) reports off.
+// RetentionDays returns how many days after being READ a message may live
+// before the retention sweep permanently deletes it (0 = retention off).
+func (s *AccountStore) RetentionDays(ctx context.Context, email string) int {
+	if s.db == nil {
+		return 0
+	}
+	days := 0
+	_ = s.db.QueryRowContext(ctx,
+		`SELECT retention_days FROM vayumail_accounts WHERE email=?`, normEmail(email)).Scan(&days)
+	if days < 0 {
+		days = 0
+	}
+	return days
+}
+
+// SetRetentionDays stores the mailbox's auto-delete window (0 disables).
+func (s *AccountStore) SetRetentionDays(ctx context.Context, email string, days int) error {
+	if s.db == nil {
+		return errors.New("vayumail: no storage")
+	}
+	if days < 0 {
+		days = 0
+	}
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE vayumail_accounts SET retention_days=? WHERE email=?`, days, normEmail(email))
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return errors.New("vayumail: no such account")
+	}
+	return nil
+}
+
 func (s *AccountStore) RequireDeviceApproval(ctx context.Context, email string) bool {
 	if s.db == nil {
 		return false

@@ -459,6 +459,20 @@
     });
   });
 
+  // ── Auto-delete read mail (retention window, ADR-0130) ───────────────────────
+  document.querySelectorAll('[data-acct-retention]').forEach(function (sel) {
+    sel.addEventListener('change', function () {
+      var email = sel.getAttribute('data-acct-retention');
+      var days = parseInt(sel.value, 10) || 0;
+      sel.disabled = true;
+      postJSON('/os/vayumail/accounts/update', { email: email, retention_days: days }).then(function (res) {
+        sel.disabled = false;
+        if (res.ok) acctToast(days ? 'Read mail auto-deletes after ' + days + ' days' : 'Auto-delete turned off');
+        else acctToast('Retention update failed: ' + errText(res), true);
+      });
+    });
+  });
+
   // ── Delete mail account (removes the row in place) ───────────────────────────
   document.querySelectorAll('[data-acct-delete]').forEach(function (btn) {
     btn.addEventListener('click', function () {

@@ -40,7 +40,10 @@ type Engine struct {
 	acmeErr    error        // ACME HTTP-01 listener bind error (e.g. :80 in use)
 	decrypt    DecryptHook
 	inboundErr error
-	done       chan struct{}
+	// retentionAudit reports a completed retention sweep to the host's
+	// audit log (nil-safe; see SetRetentionAudit).
+	retentionAudit func(email string, count, days int)
+	done           chan struct{}
 }
 
 // ACMEChallengeError returns the reason the ACME HTTP-01 challenge responder
@@ -424,6 +427,7 @@ func (e *Engine) Start(ctx context.Context) error {
 	}
 	e.queue = q
 	go e.worker()
+	go e.retentionLoop()
 	// Snooze wake loop: resurfaces due snoozed messages (see snooze.go).
 	go e.snoozeSweeper()
 

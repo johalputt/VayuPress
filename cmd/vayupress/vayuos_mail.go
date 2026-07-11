@@ -780,7 +780,7 @@ func (a *App) handleVayuOSAccounts(w http.ResponseWriter, r *http.Request) {
 </form></div>`)
 
 	// Existing accounts.
-	body.WriteString(`<div class="card"><div class="card-title">Accounts</div><div class="table-wrap"><table class="table"><thead><tr><th>Email</th><th>Name</th><th>Role</th><th>Storage (used / quota MB)</th><th>Status</th><th>2FA</th><th>Created</th><th></th></tr></thead><tbody>`)
+	body.WriteString(`<div class="card"><div class="card-title">Accounts</div><div class="table-wrap"><table class="table"><thead><tr><th>Email</th><th>Name</th><th>Role</th><th>Storage (used / quota MB)</th><th>Auto-delete read</th><th>Status</th><th>2FA</th><th>Created</th><th></th></tr></thead><tbody>`)
 	if len(accs) == 0 {
 		body.WriteString(`<tr><td colspan="8" class="muted">No mail accounts yet.</td></tr>`)
 	}
@@ -823,7 +823,23 @@ func (a *App) handleVayuOSAccounts(w http.ResponseWriter, r *http.Request) {
 		storage := `<span class="muted text-sm">` + strconv.FormatFloat(usedMB, 'f', 1, 64) + ` / </span>` +
 			`<input class="input input--sm vm-quota-input" type="number" min="0" step="1" value="` + strconv.FormatInt(quotaMB, 10) + `" data-acct-quota="` + html.EscapeString(ac.Email) + `" aria-label="Quota in MB (0 = unlimited)">` +
 			`<button class="btn btn--sm" data-acct-quota-save="` + html.EscapeString(ac.Email) + `">Save</button>`
-		body.WriteString(`<tr><td>` + html.EscapeString(ac.Email) + `</td><td>` + html.EscapeString(ac.FullName) + `</td><td>` + roleSel + `</td><td class="vm-row">` + storage + `</td><td>` + status + `</td><td>` + twofa + `</td><td class="muted text-sm">` + ac.CreatedAt.Format("2006-01-02") + `</td><td class="vm-row">` +
+		// Retention (ADR-0130): auto-delete read mail N days after it was
+		// read. Pinned mail, Archive, Sent, Drafts and Snoozed are exempt;
+		// deletion is permanent.
+		retDays := a.vayuMail.Accounts().RetentionDays(r.Context(), ac.Email)
+		retention := `<select class="input input--sm" data-acct-retention="` + html.EscapeString(ac.Email) + `" aria-label="Auto-delete read mail">`
+		for _, opt := range []struct {
+			Days  int
+			Label string
+		}{{0, "Off"}, {30, "30 days"}, {90, "90 days"}, {180, "180 days"}, {365, "1 year"}} {
+			sel := ""
+			if retDays == opt.Days {
+				sel = ` selected`
+			}
+			retention += `<option value="` + strconv.Itoa(opt.Days) + `"` + sel + `>` + opt.Label + `</option>`
+		}
+		retention += `</select>`
+		body.WriteString(`<tr><td>` + html.EscapeString(ac.Email) + `</td><td>` + html.EscapeString(ac.FullName) + `</td><td>` + roleSel + `</td><td class="vm-row">` + storage + `</td><td>` + retention + `</td><td>` + status + `</td><td>` + twofa + `</td><td class="muted text-sm">` + ac.CreatedAt.Format("2006-01-02") + `</td><td class="vm-row">` +
 			`<button class="btn" data-acct-pass="` + html.EscapeString(ac.Email) + `">Set password</button>` +
 			twofaBtn +
 			`<button class="btn" data-acct-toggle="` + html.EscapeString(ac.Email) + `" data-active="` + toggleActive + `">` + toggleLabel + `</button>` +
@@ -1588,6 +1604,9 @@ func (a *App) handleVayuOSAccountUpdate(w http.ResponseWriter, r *http.Request) 
 		Role      string   `json:"role"`
 		QuotaMB   *float64 `json:"quota_mb"`  // mailbox storage limit in MB; 0 = unlimited
 		Signature *string  `json:"signature"` // plain-text mail signature (nil = leave unchanged)
+		// Retention window in days (ADR-0130): read mail auto-deletes this many
+		// days after being read; 0 turns retention off; nil = leave unchanged.
+		RetentionDays *int `json:"retention_days"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64*1024)).Decode(&in); err != nil {
 		writeAPIError(w, r, 400, "invalid_json", err.Error(), "")
@@ -1602,7 +1621,7 @@ func (a *App) handleVayuOSAccountUpdate(w http.ResponseWriter, r *http.Request) 
 	if !a.isAdminRequest(r) {
 		_, own := a.ownMailbox(r)
 		onlySignature := in.Signature != nil && in.Pass == "" && in.Active == nil &&
-			strings.TrimSpace(in.Role) == "" && in.QuotaMB == nil
+			strings.TrimSpace(in.Role) == "" && in.QuotaMB == nil && in.RetentionDays == nil
 		if own == "" || !strings.EqualFold(own, in.Email) || !onlySignature {
 			writeAPIError(w, r, http.StatusForbidden, "forbidden", "you can only edit your own signature", "")
 			return
@@ -1613,6 +1632,14 @@ func (a *App) handleVayuOSAccountUpdate(w http.ResponseWriter, r *http.Request) 
 			writeAPIError(w, r, 400, "update-failed", err.Error(), "")
 			return
 		}
+	}
+	if in.RetentionDays != nil {
+		if err := a.vayuMail.Accounts().SetRetentionDays(r.Context(), in.Email, *in.RetentionDays); err != nil {
+			writeAPIError(w, r, 400, "update-failed", err.Error(), "")
+			return
+		}
+		dbpkg.AuditLog("vayumail.retention.set", dbpkg.AuditActor(r), in.Email,
+			strconv.Itoa(*in.RetentionDays)+" days")
 	}
 	if in.QuotaMB != nil {
 		bytes := int64(*in.QuotaMB * 1024 * 1024)

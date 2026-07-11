@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // flags.go — translate between IMAP system flags and Maildir info flags, and set
@@ -133,6 +134,17 @@ func (m *Maildir) setMessageFlags(domain, username, folder, id string, set map[b
 	dst := filepath.Join(dir, targetSub, targetName)
 	if err := os.Rename(src, dst); err != nil {
 		return id, err
+	}
+	// Read-time marker for retention (ADR-0130): rename preserves mtime, so
+	// the file's timestamp normally stays at delivery. When this change is
+	// the Seen transition — the moment the message was READ — stamp mtime to
+	// now. Every later flag rename preserves it, giving the retention sweep
+	// a durable read time with no extra bookkeeping. Best-effort: a failed
+	// stamp only delays retention, never the flag change itself.
+	_, oldFlags := splitMaildirFlags(name)
+	if set['S'] && !strings.ContainsRune(oldFlags, 'S') {
+		now := time.Now()
+		_ = os.Chtimes(dst, now, now)
 	}
 	return targetSub + "/" + targetName, nil
 }

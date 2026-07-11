@@ -9,6 +9,16 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 ## [Unreleased]
 
 ### Added
+- **Auto-delete read mail (retention).** Each mailbox can opt in to a
+  retention window (Off/30/90/180/365 days, Accounts page): mail that has
+  been READ for longer than the window is permanently deleted — no Trash
+  detour, no recovery. Pinned messages and the Sent, Drafts, Archive and
+  Snoozed folders are never touched, and unread mail always survives, so
+  "save this" is one tap in any client. Read time is stamped on the
+  message file at the moment it is first marked seen (webmail or IMAP)
+  and survives every later flag change; sweeps run hourly and are
+  audit-logged per mailbox. See
+  [ADR-0130](docs/adr/ADR-0130-vayumail-retention-auto-delete.md).
 - **VayuMail device approval — no mail sync without web approval.** A new
   device that signs into VayuMail now registers itself
   (`POST /api/v1/members/vayumail-device-register`) and starts **pending**: it

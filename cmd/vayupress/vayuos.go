@@ -455,6 +455,12 @@ func (a *App) bootVayuOS() {
 	a.vayuMail = vmail.NewEngine(&mailCfg, &vayuMailBridge{app: a}, dbpkg.DB)
 	// Transparent PGP decryption when serving mail over IMAP to the owner.
 	a.vayuMail.SetDecryptHook(a.pgpDecryptForAccount)
+	// Retention sweeps (ADR-0130) land in the audit log like every other
+	// destructive mail action.
+	a.vayuMail.SetRetentionAudit(func(email string, count, days int) {
+		dbpkg.AuditLog("vayumail.retention.sweep", "system", email,
+			fmt.Sprintf("deleted %d read message(s) past %d days", count, days))
+	})
 
 	secEnabled := strings.EqualFold(config.EnvOr("VAYUOS_SECURITY_UPDATES", "off"), "on")
 	a.vayuSec = secwatch.New(secEnabled)
