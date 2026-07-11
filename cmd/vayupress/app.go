@@ -52,6 +52,7 @@ import (
 	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
 	vpgp "github.com/johalputt/vayupress/internal/vayuos/pgp"
 	"github.com/johalputt/vayupress/internal/vayuos/secwatch"
+	vtalk "github.com/johalputt/vayupress/internal/vayuos/vayutalk"
 	"github.com/johalputt/vayupress/internal/vayushield"
 	"github.com/johalputt/vayupress/internal/vayushield/offload"
 	"github.com/johalputt/vayupress/internal/vayushield/sovereign"
@@ -166,6 +167,7 @@ type App struct {
 	vayuHealth *vkernel.HealthMonitor
 	vayuPGP    *vpgp.Engine
 	vayuMail   *vmail.Engine
+	vayuTalk   *vtalk.Engine
 	vayuSec    *secwatch.Watcher
 
 	// VayuShield + VayuAnalytics Enterprise — sovereign bot protection and
