@@ -8,7 +8,7 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
-## [3.11.35] — 2026-07-11
+## [3.11.36] — 2026-07-11
 
 ### Added
 - **VayuTalk — ephemeral, end-to-end-encrypted messaging.** A sovereign
