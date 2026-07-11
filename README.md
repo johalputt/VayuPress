@@ -24,7 +24,6 @@
   <a href="GOVERNANCE-CONSTITUTION.md"><img alt="Constitution" src="https://img.shields.io/badge/constitution-v6.0-blueviolet"></a>
 </p>
 
-
 ---
 
 ## About
@@ -54,13 +53,7 @@ Serve a genuine business site at your domain — **11 elegant, modern-minimalist
 A best-in-class **block editor** with whole-document **Markdown** and **HTML** modes (lossless round-trips), drag/drop/paste images or any `https` link, tables, toggles, task lists, math, callouts, code, self-hosted audio/video, Mermaid diagrams rendered server-side, a slash-command palette, live preview, autosave, and version-history diffs. The writing surface is tuned to disappear: **typewriter scrolling** keeps your line centered, a **focus-mode spotlight** dims everything but the block you're in, **paste-as-Markdown** turns a whole pasted draft into real blocks, a **live document outline** tracks your headings with click-to-jump, real **footnotes**, image **captions**, block **duplicate**, and full **keyboard block reordering**. Whole-site **themes** restyle every surface (nav, hero, feed, article, footer) with a live Theme Studio. Multi-author bylines, memberships, paywalls, newsletters, threaded comments, and SEO baked in.
 
 ### 🛡️ Built-in bot shield & anti-DDoS (VayuShield "Aegis")
-An **enterprise-grade, self-learning bot shield so you never need Cloudflare** — built into the same binary, defending in layers, with **zero operator commands**:
-- **L0 Admin Sovereignty Lane** — a lock-free admission gate that guarantees the admin console and logged-in readers always keep CPU headroom, so **Save and refresh keep working even during a volumetric flood**.
-- **L2 probabilistic fair-shed** — a 256 KiB Count-Min Sketch identifies heavy hitters (per IP and per /24·/48) in **fixed memory**, immune to spoofed botnets, and sheds only their excess; a client within its fair budget is **never** shed.
-- **L5 reputation brain** — learns who's misbehaving in minutes, auto-jails with escalating sentences, and **forgives automatically** (decay, rehab, and a challenge-solve pardon) so a real user behind a shared IP is never locked out.
-- **L4 silent-first challenges** — a proof-of-work that **self-calibrates**: if it ever starts bothering real browsers it loosens itself (loosen-only, never below your thresholds).
-- **L1 kernel offload** — jailed IPs are optionally dropped by **nftables + XDP** before a connection even exists (privilege-separated agent; pure acceleration, never a dependency).
-Search engines and AI assistants are always allowed and counted separately; the shed is a polite `503` (retry), never a `4xx`, so **SEO and real users are structurally protected**. Everything is visible and tunable — no restart — from the Bot Shield console, with a live Aegis layer map.
+An **enterprise-grade, self-learning bot shield so you never need Cloudflare** — built into the same binary, defending in five layers with **zero operator commands**: an admin-sovereignty lane that keeps **Save and refresh working even during a volumetric flood**, a fixed-memory probabilistic fair-shed that catches spoofed botnets without ever touching a client within its fair budget, a reputation brain that jails offenders in minutes and **forgives automatically**, silent-first proof-of-work challenges that self-calibrate so they never bother real browsers, and optional kernel-level `nftables + XDP` offload. Search engines and AI assistants are always allowed; abuse is shed with a polite `503` (never a `4xx`), so **SEO and real users are structurally protected**. Everything is visible and tunable with no restart from the Bot Shield console and its live Aegis layer map. *([architecture →](docs/adr/ADR-0111-vayushield-bot-protection-and-analytics.md))*
 
 ### 📧 A sovereign PGP mail server (VayuMail)
 Your own mail server for your domain — **SMTP send + receive, IMAP and POP3**, RFC-6376 **DKIM signing**, direct-to-MX delivery with STARTTLS, automatic **MX / SPF / DKIM / DMARC** records with live DNS health checks, per-mailbox quotas, junk filtering, and a full webmail surface. **PGP is native and automatic** (VayuPGP): keypairs are generated per account, private keys are AES-256-GCM encrypted at rest, and your public keys are published via **Web Key Directory (WKD)** so any client can find them. Mail never leaves your server unencrypted to a third party.

@@ -8,6 +8,30 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.11.30] — 2026-07-10
+
+### Fixed
+- **CI markdown-lint gate unblocked.** A `main` commit that removed the badge
+  note left two consecutive blank lines in `README.md`, so every branch merge
+  failed MD012. Collapsed to a single blank line.
+- **Broken VayuShield screenshot in the README showcase.** The Bot Shield &
+  Analytics panel (`docs/screenshots/admin-os-shield.png`) was referenced but
+  never present, showing a broken image. Added a faithful capture of the real
+  console — the live status hero, the Aegis L0–L5 layer map, and the
+  protection toggles — rendered from the shipping `admin-os.css`.
+
+### Changed
+- **README VayuShield section right-sized.** The five-bullet Aegis breakdown
+  was longer than every other feature; condensed to one proportionate,
+  enterprise-grade paragraph that still names all five layers and links to the
+  architecture ADR.
+- **Marketing site now shows the live release version** beside the live star
+  count. Both use the same two-stage source: a same-origin JSON file baked
+  fresh by the deploy workflow (instant, never rate-limited) plus a live
+  in-browser refresh from the GitHub API. The deploy workflow now bakes
+  `assets/version.json` from the latest release tag alongside `stars.json`, and
+  the version chip links to that release.
+
 ## [3.11.29] — 2026-07-10
 
 ### Changed
