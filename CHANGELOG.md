@@ -8,6 +8,52 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.11.33] — 2026-07-11
+
+### Added
+- **Webmail: print, full view, and a split view that gets out of the way.**
+  The reading pane now stays collapsed until you open a message — the list
+  gets the full width — and opens with a soft rise when you click a mail.
+  A new ⛶ button expands the open message to a full-screen overlay (ESC or
+  Close collapses it), and 🖨 prints exactly the open message — no list, no
+  toolbars, no chrome. Message rows gained hover glide, an unread accent
+  bar, and comfortable density; folder tabs behave like segmented pills.
+- **Auto-delete read mail (retention).** Each mailbox can opt in to a
+  retention window (Off/30/90/180/365 days, Accounts page): mail that has
+  been READ for longer than the window is permanently deleted — no Trash
+  detour, no recovery. Pinned messages and the Sent, Drafts, Archive and
+  Snoozed folders are never touched, and unread mail always survives, so
+  "save this" is one tap in any client. Read time is stamped on the
+  message file at the moment it is first marked seen (webmail or IMAP)
+  and survives every later flag change; sweeps run hourly and are
+  audit-logged per mailbox. See
+  [ADR-0130](docs/adr/ADR-0130-vayumail-retention-auto-delete.md).
+- **VayuMail device approval — no mail sync without web approval.** A new
+  device that signs into VayuMail now registers itself
+  (`POST /api/v1/members/vayumail-device-register`) and starts **pending**: it
+  cannot sync any mail — even with the correct mailbox password — until it is
+  approved from the 2FA-protected VayuPress console. A new **Devices** card on
+  the mail Accounts page lists every registered device (label, platform,
+  status, registered, last used) with one-click Approve / Block / Remove and a
+  per-mailbox "Require device approval" toggle; a companion
+  `vayumail-device-status` endpoint lets the app poll its own approval state
+  and start syncing the moment it flips. See
+  [ADR-0129](docs/adr/ADR-0129-vayumail-device-approval.md).
+
+### Security
+- **A stolen mailbox password can no longer sync mail.** While a mailbox
+  requires device approval (the default), the raw CMS/mailbox password is
+  rejected on IMAP/POP3/SMTP-submission and on the private-key sync endpoint —
+  only an **approved** device credential authenticates there; pending and
+  blocked devices fail uniformly. The password keeps working for the member
+  web endpoints (portal login, device registration), so a holder can always
+  bootstrap a new device, and existing app passwords are grandfathered as
+  approved so already-connected devices survive the upgrade. Every device
+  action is audit-logged
+  (`vayumail.device.register/.approve/.block/.remove/.require`), and both new
+  endpoints reuse the shared brute-force throttle with byte-identical 401s
+  (anti-enumeration).
+
 ## [3.11.32] — 2026-07-11
 
 ### Fixed

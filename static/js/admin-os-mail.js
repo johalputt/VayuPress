@@ -27,9 +27,30 @@
     var pane = document.getElementById('vm-readpane');
     if (!pane || !e.target || e.target !== pane) return;
     var reader = pane.querySelector('.vm-reader');
-    if (reader && typeof reader.scrollIntoView === 'function') {
+    if (!reader) { pane.classList.remove('vm-readpane--full'); return; }
+    if (typeof reader.scrollIntoView === 'function') {
       reader.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
+  });
+
+  // Reading-pane comfort controls: ⛶ toggles a full-screen overlay for the
+  // open message (ESC collapses), 🖨 prints just the reader (see the
+  // @media print rules). Delegated so they survive HTMX swaps.
+  document.addEventListener('click', function (e) {
+    if (e.target && e.target.closest && e.target.closest('[data-vm-print]')) {
+      window.print();
+      return;
+    }
+    var ex = e.target && e.target.closest ? e.target.closest('[data-vm-expand]') : null;
+    if (ex) {
+      var pane = document.getElementById('vm-readpane');
+      if (pane) pane.classList.toggle('vm-readpane--full');
+    }
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    var pane = document.getElementById('vm-readpane');
+    if (pane) pane.classList.remove('vm-readpane--full');
   });
 
   // Conversation threading: the count badge on a thread's newest message
@@ -455,6 +476,20 @@
         btn.disabled = false;
         if (res.ok) { btn.textContent = 'Saved ✓'; setTimeout(function () { btn.textContent = 'Save'; }, 1500); }
         else acctToast('Quota update failed: ' + errText(res), true);
+      });
+    });
+  });
+
+  // ── Auto-delete read mail (retention window, ADR-0130) ───────────────────────
+  document.querySelectorAll('[data-acct-retention]').forEach(function (sel) {
+    sel.addEventListener('change', function () {
+      var email = sel.getAttribute('data-acct-retention');
+      var days = parseInt(sel.value, 10) || 0;
+      sel.disabled = true;
+      postJSON('/os/vayumail/accounts/update', { email: email, retention_days: days }).then(function (res) {
+        sel.disabled = false;
+        if (res.ok) acctToast(days ? 'Read mail auto-deletes after ' + days + ' days' : 'Auto-delete turned off');
+        else acctToast('Retention update failed: ' + errText(res), true);
       });
     });
   });

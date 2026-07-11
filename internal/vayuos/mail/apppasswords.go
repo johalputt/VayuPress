@@ -1,39 +1,91 @@
 package mail
 
-// apppasswords.go — per-mailbox app passwords.
+// apppasswords.go — per-mailbox app passwords and device identities.
 //
 // An app password is a device-scoped credential for IMAP/POP3/SMTP: generated
 // once, shown once (and carried in the rotating setup QR), stored only as an
 // Argon2id hash, and revocable individually without touching the mailbox's main
 // password. Rotating the setup QR revokes the previous QR's credential, so a
 // photographed QR goes stale — the property a fixed QR can never have.
+//
+// A DEVICE (ADR-0129) is an app-password row carrying a device identity on
+// top: a random device_id, a platform hint, and an approval status. A device
+// registers itself with the mailbox password, starts life 'pending', and must
+// be approved from the (2FA-protected) web console before its credential
+// authenticates on the mail protocols — so a stolen mailbox password alone can
+// never sync mail to a new device.
 
 import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"time"
+)
+
+// Device lifecycle states. Rows created before device identities existed have
+// no device_id and keep status 'approved' (they were minted from the
+// 2FA-protected console, so the migration default is safe).
+const (
+	DeviceStatusPending  = "pending"
+	DeviceStatusApproved = "approved"
+	DeviceStatusBlocked  = "blocked"
 )
 
 // AppPassword is one device credential (hash omitted from JSON).
 type AppPassword struct {
-	ID        int64     `json:"id"`
-	Email     string    `json:"email"`
-	Label     string    `json:"label"`
-	CreatedAt time.Time `json:"created_at"`
+	ID         int64     `json:"id"`
+	Email      string    `json:"email"`
+	Label      string    `json:"label"`
+	DeviceID   string    `json:"device_id,omitempty"` // empty for plain app passwords
+	Platform   string    `json:"platform,omitempty"`
+	Status     string    `json:"status"`
+	CreatedAt  time.Time `json:"created_at"`
+	LastUsedAt time.Time `json:"last_used_at,omitempty"` // zero = never used
 }
 
-// ensureAppPasswords creates the table on first use (idempotent).
+// AppPasswordCredential is the verification view of one stored credential:
+// just enough for the auth path to match a presented secret and enforce the
+// device-approval status, never the metadata.
+type AppPasswordCredential struct {
+	ID     int64
+	Hash   string
+	Status string
+}
+
+// ensureAppPasswords creates the table on first use and applies the idempotent
+// device-identity migrations (ADR-0129). SQLite errors with "duplicate column
+// name" when a column already exists, which we treat as success — same
+// tolerant re-run pattern as the vayumail_accounts migrations.
 func (s *AccountStore) ensureAppPasswords() error {
 	if s.db == nil {
 		return errors.New("vayumail: no storage")
 	}
-	_, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS vayumail_app_passwords(
+	if _, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS vayumail_app_passwords(
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		email TEXT NOT NULL,
 		label TEXT NOT NULL DEFAULT '',
 		hash TEXT NOT NULL,
-		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP);`)
+		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP);`); err != nil {
+		return err
+	}
+	for _, stmt := range []string{
+		// Device identity: a random id the mobile app holds so it can poll its
+		// own approval status. NULL/'' for plain app passwords.
+		`ALTER TABLE vayumail_app_passwords ADD COLUMN device_id TEXT`,
+		`ALTER TABLE vayumail_app_passwords ADD COLUMN platform TEXT NOT NULL DEFAULT ''`,
+		// Approval status: existing rows default to 'approved' — they were minted
+		// from the 2FA-protected console, so the migration changes no behaviour.
+		`ALTER TABLE vayumail_app_passwords ADD COLUMN status TEXT NOT NULL DEFAULT 'approved'`,
+		`ALTER TABLE vayumail_app_passwords ADD COLUMN last_used_at INTEGER`,
+	} {
+		if _, err := s.db.Exec(stmt); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+			return err
+		}
+	}
+	// device_id is unique when set (a partial index leaves legacy NULL rows alone).
+	_, err := s.db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_vayumail_device_id
+		ON vayumail_app_passwords(device_id) WHERE device_id IS NOT NULL AND device_id <> ''`)
 	return err
 }
 
@@ -52,36 +104,141 @@ func (s *AccountStore) CreateAppPassword(ctx context.Context, email, label, hash
 	return res.LastInsertId()
 }
 
-// AppPasswordHashes returns the stored hashes for a mailbox (few rows; used by
-// the auth path to verify a presented credential).
-func (s *AccountStore) AppPasswordHashes(ctx context.Context, email string) []string {
+// CreateDevice stores a new device-scoped credential for a mailbox: an app
+// password carrying a device identity and an approval status. The caller
+// generates the device id and the plaintext secret and hashes it (Argon2id).
+func (s *AccountStore) CreateDevice(ctx context.Context, email, label, platform, deviceID, hash, status string) (int64, error) {
+	if err := s.ensureAppPasswords(); err != nil {
+		return 0, err
+	}
+	if strings.TrimSpace(deviceID) == "" {
+		return 0, errors.New("device id required")
+	}
+	res, err := s.db.ExecContext(ctx,
+		`INSERT INTO vayumail_app_passwords(email,label,hash,device_id,platform,status,created_at) VALUES(?,?,?,?,?,?,?)`,
+		normEmail(email), label, hash, deviceID, platform, normDeviceStatus(status), time.Now().UTC())
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
+// normDeviceStatus clamps a status to the known lifecycle states, falling back
+// to 'pending' so an unexpected value can never accidentally grant access.
+func normDeviceStatus(status string) string {
+	switch status {
+	case DeviceStatusApproved, DeviceStatusBlocked, DeviceStatusPending:
+		return status
+	}
+	return DeviceStatusPending
+}
+
+// AppPasswordCredentials returns the stored credential rows for a mailbox
+// (few rows; used by the auth path to verify a presented secret and enforce
+// the per-device approval status).
+func (s *AccountStore) AppPasswordCredentials(ctx context.Context, email string) []AppPasswordCredential {
 	if s.ensureAppPasswords() != nil {
 		return nil
 	}
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT hash FROM vayumail_app_passwords WHERE email=? LIMIT 20`, normEmail(email))
+		`SELECT id,hash,COALESCE(status,'approved') FROM vayumail_app_passwords WHERE email=? LIMIT 20`, normEmail(email))
 	if err != nil {
 		return nil
 	}
 	defer rows.Close()
-	var out []string
+	var out []AppPasswordCredential
 	for rows.Next() {
-		var h string
-		if rows.Scan(&h) == nil && h != "" {
-			out = append(out, h)
+		var c AppPasswordCredential
+		if rows.Scan(&c.ID, &c.Hash, &c.Status) == nil && c.Hash != "" {
+			out = append(out, c)
 		}
 	}
 	_ = rows.Err()
 	return out
 }
 
-// ListAppPasswords returns a mailbox's app passwords (metadata only, no hashes).
+// DeviceCredential returns the verification view of ONE device row, looked up
+// by (mailbox, device id) — used by the device-status endpoint so a device can
+// only ever prove possession of its own credential.
+func (s *AccountStore) DeviceCredential(ctx context.Context, email, deviceID string) (id int64, hash, status string, ok bool) {
+	if s.ensureAppPasswords() != nil || strings.TrimSpace(deviceID) == "" {
+		return 0, "", "", false
+	}
+	err := s.db.QueryRowContext(ctx,
+		`SELECT id,hash,COALESCE(status,'approved') FROM vayumail_app_passwords WHERE email=? AND device_id=?`,
+		normEmail(email), deviceID).Scan(&id, &hash, &status)
+	return id, hash, status, err == nil && hash != ""
+}
+
+// SetDeviceStatus moves one credential through the approval lifecycle
+// (pending/approved/blocked), scoped to the mailbox so a caller can never act
+// on another account's device.
+func (s *AccountStore) SetDeviceStatus(ctx context.Context, email string, id int64, status string) error {
+	if err := s.ensureAppPasswords(); err != nil {
+		return err
+	}
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE vayumail_app_passwords SET status=? WHERE id=? AND email=?`,
+		normDeviceStatus(status), id, normEmail(email))
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+// TouchAppPassword records that a credential just authenticated (best-effort;
+// last-used is operator-facing telemetry, never a security decision).
+func (s *AccountStore) TouchAppPassword(ctx context.Context, id int64) {
+	if s.db == nil {
+		return
+	}
+	_, _ = s.db.ExecContext(ctx,
+		`UPDATE vayumail_app_passwords SET last_used_at=? WHERE id=?`, time.Now().Unix(), id)
+}
+
+// ListDevices returns every device-scoped credential across all mailboxes
+// (metadata only, no hashes), pending first so the console surfaces approvals
+// that need action.
+func (s *AccountStore) ListDevices(ctx context.Context) []AppPassword {
+	if s.ensureAppPasswords() != nil {
+		return nil
+	}
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id,email,label,COALESCE(device_id,''),COALESCE(platform,''),COALESCE(status,'approved'),created_at,COALESCE(last_used_at,0)
+		 FROM vayumail_app_passwords WHERE device_id IS NOT NULL AND device_id <> ''
+		 ORDER BY (status='pending') DESC, id DESC LIMIT 200`)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var out []AppPassword
+	for rows.Next() {
+		var p AppPassword
+		var lastUsed int64
+		if rows.Scan(&p.ID, &p.Email, &p.Label, &p.DeviceID, &p.Platform, &p.Status, &p.CreatedAt, &lastUsed) == nil {
+			if lastUsed > 0 {
+				p.LastUsedAt = time.Unix(lastUsed, 0).UTC()
+			}
+			out = append(out, p)
+		}
+	}
+	_ = rows.Err()
+	return out
+}
+
+// ListAppPasswords returns a mailbox's plain (non-device) app passwords
+// (metadata only, no hashes). Device rows live in ListDevices — the two cards
+// in the console never show the same credential twice.
 func (s *AccountStore) ListAppPasswords(ctx context.Context, email string) []AppPassword {
 	if s.ensureAppPasswords() != nil {
 		return nil
 	}
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id,email,label,created_at FROM vayumail_app_passwords WHERE email=? ORDER BY id DESC LIMIT 20`, normEmail(email))
+		`SELECT id,email,label,created_at FROM vayumail_app_passwords
+		 WHERE email=? AND (device_id IS NULL OR device_id='') ORDER BY id DESC LIMIT 20`, normEmail(email))
 	if err != nil {
 		return nil
 	}

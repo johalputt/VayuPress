@@ -8,11 +8,13 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"html"
 	htmpl "html/template"
 	"net/http"
+	stdmail "net/mail"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -68,15 +70,37 @@ func (b *vayuMailBridge) AuthUser(username, password string) (bool, error) {
 }
 
 // verifyCredential checks a mailbox password against every accepted credential
-// (CMS account password, mail-account password, and device app passwords),
-// honouring the optional app-password-only 2FA enforcement.
+// in MAIL-SYNC scope: it guards everything that hands out mail content — the
+// IMAP/POP3/submission listeners (via AuthUser) and the private-key sync
+// endpoint. When the mailbox requires device approval (ADR-0129, the default),
+// this scope rejects the raw CMS/mailbox password and accepts only an APPROVED
+// device credential, so a stolen password alone can never sync mail.
 func (b *vayuMailBridge) verifyCredential(ctx context.Context, addr, password string) bool {
-	// Device app-password hashes for this mailbox (the rotating setup-QR
-	// credentials). Fetched up front so the enforcement decision can require a
-	// working alternative to exist before it ever retires the main password.
-	var appPwHashes []string
+	return b.verifyCredentialScoped(ctx, addr, password, false)
+}
+
+// verifyCredentialWeb checks the same credential set in WEB-BOOTSTRAP scope:
+// the member HTTP endpoints (login, device registration) that a new device
+// needs the raw password for BEFORE it can hold an approved credential. The
+// raw password is accepted here regardless of the device-approval setting;
+// device credentials are still status-checked.
+func (b *vayuMailBridge) verifyCredentialWeb(ctx context.Context, addr, password string) bool {
+	return b.verifyCredentialScoped(ctx, addr, password, true)
+}
+
+// verifyCredentialScoped is the single credential chokepoint behind both
+// scopes (CMS account password, mail-account password, and device/app
+// passwords), honouring the optional app-password-only 2FA enforcement and
+// the per-mailbox device-approval policy.
+func (b *vayuMailBridge) verifyCredentialScoped(ctx context.Context, addr, password string, webBootstrap bool) bool {
+	// Stored credential rows for this mailbox (device credentials and plain app
+	// passwords). Fetched up front so the enforcement decisions can require a
+	// working alternative to exist before they ever retire the main password.
+	var accts *vmail.AccountStore
+	var creds []vmail.AppPasswordCredential
 	if b.app.vayuMail != nil && b.app.vayuMail.Accounts() != nil {
-		appPwHashes = b.app.vayuMail.Accounts().AppPasswordHashes(ctx, addr)
+		accts = b.app.vayuMail.Accounts()
+		creds = accts.AppPasswordCredentials(ctx, addr)
 	}
 
 	// Optional "app-password only" 2FA enforcement (Gmail/Outlook model): when
@@ -91,9 +115,15 @@ func (b *vayuMailBridge) verifyCredential(ctx context.Context, addr, password st
 	// credential and a password login can never be silently locked out. Any
 	// other case (no opt-in, no 2FA, no app password yet) keeps the password
 	// working exactly as before.
-	enforce := vayuMail2FAEnforce() && len(appPwHashes) > 0 && b.twoFactorEnabled(ctx, addr)
+	enforce := vayuMail2FAEnforce() && len(creds) > 0 && b.twoFactorEnabled(ctx, addr)
 
-	if !enforce {
+	// Device approval (ADR-0129): in mail-sync scope a mailbox that requires
+	// approval never accepts the raw password — only an approved device
+	// credential below. Web-bootstrap scope keeps accepting it so a new device
+	// can register (and a member can sign in) with just the password.
+	requireApproval := accts != nil && accts.RequireDeviceApproval(ctx, addr)
+
+	if !enforce && (webBootstrap || !requireApproval) {
 		// 1) CMS users (full VayuPress accounts).
 		if b.app.userStore != nil {
 			if _, err := b.app.userStore.Authenticate(ctx, addr, password); err == nil {
@@ -101,8 +131,8 @@ func (b *vayuMailBridge) verifyCredential(ctx context.Context, addr, password st
 			}
 		}
 		// 2) Admin-managed mail-only accounts (email + password).
-		if b.app.vayuMail != nil && b.app.vayuMail.Accounts() != nil {
-			if hash := b.app.vayuMail.Accounts().HashFor(ctx, addr); hash != "" {
+		if accts != nil {
+			if hash := accts.HashFor(ctx, addr); hash != "" {
 				if auth.VerifySecretArgon2id(password, hash) {
 					return true
 				}
@@ -110,16 +140,23 @@ func (b *vayuMailBridge) verifyCredential(ctx context.Context, addr, password st
 		}
 	}
 
-	// 3) Device app passwords — always accepted (the required credential when
-	// enforcement is on, a convenience device credential otherwise). Verified
-	// last so the main password stays the fast path. Secrets are displayed to
-	// the operator in dash-grouped blocks (abcd-efgh-…) but hashed dashless, so
-	// the dashless form is tried first; the raw form is kept as a fallback in
-	// case an older stored credential contained literal dashes.
+	// 3) Device credentials and app passwords — the required credential when
+	// either enforcement is on, a convenience device credential otherwise.
+	// Verified last so the main password stays the fast path. Secrets are
+	// displayed to the operator in dash-grouped blocks (abcd-efgh-…) but hashed
+	// dashless, so the dashless form is tried first; the raw form is kept as a
+	// fallback in case an older stored credential contained literal dashes.
 	appPw := strings.ReplaceAll(password, "-", "")
-	for _, h := range appPwHashes {
-		if auth.VerifySecretArgon2id(appPw, h) ||
-			(appPw != password && auth.VerifySecretArgon2id(password, h)) {
+	for _, c := range creds {
+		if auth.VerifySecretArgon2id(appPw, c.Hash) ||
+			(appPw != password && auth.VerifySecretArgon2id(password, c.Hash)) {
+			// The presented secret IS this credential — its status decides.
+			// Pending and blocked devices are rejected outright (uniform
+			// failure); legacy rows migrated to 'approved' keep working.
+			if c.Status == vmail.DeviceStatusPending || c.Status == vmail.DeviceStatusBlocked {
+				return false
+			}
+			accts.TouchAppPassword(ctx, c.ID)
 			return true
 		}
 	}
@@ -239,10 +276,13 @@ func (b *vayuMailBridge) SignAs(plaintext []byte, senderUserID string) ([]byte, 
 
 var _ vmail.Bridge = (*vayuMailBridge)(nil)
 
-// pgpDecryptForAccount transparently decrypts an inline PGP message for the
-// account that owns the mailbox, when VayuPGP holds that account's private key.
-// It is best-effort: on any failure it returns the original bytes unchanged so
-// the client always receives a readable (if still-encrypted) message.
+// pgpDecryptForAccount transparently decrypts a PGP message for the account
+// that owns the mailbox, when VayuPGP holds that account's private key. It
+// handles both inline PGP (the body IS the armored block — what VayuPress
+// itself sends) and PGP/MIME (RFC 3156 multipart/encrypted — what the
+// VayuMail app and third-party clients send). It is best-effort: on any
+// failure it returns the original bytes unchanged so the client always
+// receives a readable (if still-encrypted) message.
 func (a *App) pgpDecryptForAccount(accountEmail string, raw []byte) []byte {
 	if a.vayuPGP == nil {
 		return raw
@@ -265,8 +305,78 @@ func (a *App) pgpDecryptForAccount(accountEmail string, raw []byte) []byte {
 	if err != nil {
 		return raw
 	}
-	// Splice the decrypted text back in place of the armored block.
+	// PGP/MIME: the armor lives inside a multipart/encrypted structure, so
+	// splicing plaintext into the middle of it would produce a corrupt
+	// message (an "encrypted" envelope with no ciphertext — clients show
+	// raw MIME or loop trying to decrypt). Rebuild the message instead:
+	// original headers, decrypted content as the body.
+	if isPGPMIME(raw) {
+		if out := rebuildDecryptedMessage(raw, plain); out != nil {
+			return out
+		}
+		return raw
+	}
+	// Inline PGP: the armored block sits directly in a text body; splicing
+	// the plaintext in place preserves the (simple) structure.
 	return []byte(s[:bi] + string(plain) + s[ei:])
+}
+
+// isPGPMIME reports whether the message's top-level Content-Type is the
+// RFC 3156 multipart/encrypted structure.
+func isPGPMIME(raw []byte) bool {
+	msg, err := stdmail.ReadMessage(bytes.NewReader(raw))
+	if err != nil {
+		return false
+	}
+	return strings.Contains(strings.ToLower(msg.Header.Get("Content-Type")),
+		"multipart/encrypted")
+}
+
+// rebuildDecryptedMessage reassembles a decrypted PGP/MIME message: the
+// original top-level headers minus the multipart/encrypted framing, an
+// X-VayuPGP marker (so the 🔒 badge survives decryption), and the decrypted
+// payload as the body. When the payload is itself a MIME entity (it starts
+// with its own Content-* headers, as RFC 3156 prescribes), its headers
+// continue the header block; otherwise it is wrapped as plain text.
+// Returns nil when raw has no header/body split (caller falls back to raw).
+func rebuildDecryptedMessage(raw, plain []byte) []byte {
+	sep, nl := []byte("\r\n\r\n"), "\r\n"
+	idx := bytes.Index(raw, sep)
+	if idx < 0 {
+		sep, nl = []byte("\n\n"), "\n"
+		idx = bytes.Index(raw, sep)
+	}
+	if idx < 0 {
+		return nil
+	}
+	var out []string
+	skip := false
+	for _, ln := range strings.Split(string(raw[:idx]), nl) {
+		// Continuation lines belong to the header decided on above.
+		if len(ln) > 0 && (ln[0] == ' ' || ln[0] == '\t') {
+			if !skip {
+				out = append(out, ln)
+			}
+			continue
+		}
+		lower := strings.ToLower(ln)
+		skip = strings.HasPrefix(lower, "content-type:") ||
+			strings.HasPrefix(lower, "content-transfer-encoding:") ||
+			strings.HasPrefix(lower, "x-vayupgp:")
+		if !skip {
+			out = append(out, ln)
+		}
+	}
+	out = append(out, "X-VayuPGP: encrypted")
+	head := strings.Join(out, "\r\n")
+	body := strings.TrimLeft(string(plain), "\r\n")
+	if strings.HasPrefix(body, "Content-") {
+		// The decrypted payload is a full MIME entity: its Content-*
+		// headers extend the header block, then its own blank line and
+		// body follow.
+		return []byte(head + "\r\n" + body)
+	}
+	return []byte(head + "\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n" + body)
 }
 
 // ── Boot ─────────────────────────────────────────────────────────────────────
@@ -345,6 +455,12 @@ func (a *App) bootVayuOS() {
 	a.vayuMail = vmail.NewEngine(&mailCfg, &vayuMailBridge{app: a}, dbpkg.DB)
 	// Transparent PGP decryption when serving mail over IMAP to the owner.
 	a.vayuMail.SetDecryptHook(a.pgpDecryptForAccount)
+	// Retention sweeps (ADR-0130) land in the audit log like every other
+	// destructive mail action.
+	a.vayuMail.SetRetentionAudit(func(email string, count, days int) {
+		dbpkg.AuditLog("vayumail.retention.sweep", "system", email,
+			fmt.Sprintf("deleted %d read message(s) past %d days", count, days))
+	})
 
 	secEnabled := strings.EqualFold(config.EnvOr("VAYUOS_SECURITY_UPDATES", "off"), "on")
 	a.vayuSec = secwatch.New(secEnabled)
@@ -1747,7 +1863,11 @@ func splitQuoted(text string) (main, quoted string) {
 func mailPGPBadge(raw []byte) string {
 	rs := string(raw)
 	switch {
-	case strings.Contains(rs, "-----BEGIN PGP MESSAGE-----"):
+	case strings.Contains(rs, "-----BEGIN PGP MESSAGE-----"),
+		strings.Contains(rs, "X-VayuPGP: encrypted"):
+		// The second form is the marker left after transparent server-side
+		// decryption (inline or PGP/MIME) — the message WAS end-to-end
+		// encrypted even though the served copy is readable.
 		return ` <span class="vm-pgp vm-pgp--enc" title="PGP-encrypted message">🔒 Encrypted</span>`
 	case strings.Contains(rs, "-----BEGIN PGP SIGNED MESSAGE-----"), strings.Contains(rs, "-----BEGIN PGP SIGNATURE-----"):
 		return ` <span class="vm-pgp vm-pgp--sig" title="Carries a PGP signature">✓ Signed</span>`
@@ -1877,6 +1997,14 @@ func (a *App) vayuReaderCard(user, folder, id string, pane bool) (string, bool) 
 		card.WriteString(`<a class="btn btn--ghost btn--sm" href="` + back + `">← ` + html.EscapeString(folder) + `</a>`)
 	}
 	card.WriteString(`<span class="vm-reader-nav">`)
+	// Reading-pane comfort controls: expand to a full-screen overlay
+	// (toggled by delegated JS; ESC or Close collapses) and print (a
+	// delegated window.print with @media print rules that emit only the
+	// open reader). CSP-safe: data-attributes, no inline handlers.
+	if pane {
+		card.WriteString(`<button type="button" class="btn btn--xs" data-vm-expand title="Toggle full view" aria-label="Toggle full view">⛶</button>`)
+	}
+	card.WriteString(`<button type="button" class="btn btn--xs" data-vm-print title="Print message" aria-label="Print message">🖨</button>`)
 	navBtn := func(mid, glyph, label string) {
 		if mid == "" {
 			card.WriteString(`<span class="btn btn--xs" aria-disabled="true">` + glyph + `</span>`)
