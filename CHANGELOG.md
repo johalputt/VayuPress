@@ -8,6 +8,8 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.11.31] — 2026-07-11
+
 ### Added
 - **VayuMail-Mobile private-key sync for on-device decryption.** A new
   authenticated endpoint, `POST /api/v1/members/vayumail-privkey`, returns the
