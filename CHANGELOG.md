@@ -8,6 +8,15 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.11.34] — 2026-07-11
+
+### Added
+- **VayuMail app privacy policy page** at `/vayumail/privacy` — a built-in,
+  CMS-free legal page rendered with the site theme, for the Google Play
+  listing of the VayuMail Android app (com.vayu.mail). It states plainly
+  that the app collects no data, uses no trackers, and talks only to the
+  user's own mail server.
+
 ## [3.11.33] — 2026-07-11
 
 ### Added
