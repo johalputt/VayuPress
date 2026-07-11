@@ -21,6 +21,13 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   VayuPGP's existing server-side-decryptable model. See
   [ADR-0128](docs/adr/ADR-0128-vayumail-private-key-sync.md).
 
+### Fixed
+- **Webmail: tapping a message now reliably opens it in the reading pane.**
+  On narrow screens the split-view pane renders above the message list, so
+  after HTMX loaded the message the viewport could stay parked mid-list and
+  the tap looked like it did nothing. The reader is now scrolled into view
+  as soon as it loads in `#vm-readpane`.
+
 ### Security
 - **Private-key endpoint is throttled, audited and non-enumerating.** Every
   failed attempt accrues a decaying per-mailbox delay; any failure returns a
