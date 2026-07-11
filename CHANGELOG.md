@@ -8,6 +8,27 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Added
+- **VayuMail-Mobile private-key sync for on-device decryption.** A new
+  authenticated endpoint, `POST /api/v1/members/vayumail-privkey`, returns the
+  caller's **own** mailbox PGP private key (armored) so the app can import it
+  and decrypt received PGP mail on-device — WKD only serves public keys, which
+  left the app able to encrypt and verify but never to read encrypted inbound
+  mail. It authenticates with the same credential path as
+  `vayumail-login` (mailbox password or a device app password), reuses the
+  shared brute-force throttle, mints a keypair on demand for accounts that
+  pre-date auto-keygen, and returns `Cache-Control: no-store`. Consistent with
+  VayuPGP's existing server-side-decryptable model. See
+  [ADR-0128](docs/adr/ADR-0128-vayumail-private-key-sync.md).
+
+### Security
+- **Private-key endpoint is throttled, audited and non-enumerating.** Every
+  failed attempt accrues a decaying per-mailbox delay; any failure returns a
+  single generic `401` whose status and body are identical for an unknown
+  mailbox and a wrong password, so the endpoint cannot be used to discover which
+  addresses exist; every successful export writes a `vayumail.privkey.fetch`
+  audit-log entry.
+
 ## [3.11.30] — 2026-07-10
 
 ### Fixed

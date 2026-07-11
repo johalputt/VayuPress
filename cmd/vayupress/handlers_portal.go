@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/config"
@@ -29,6 +30,7 @@ import (
 	"github.com/johalputt/vayupress/internal/settings"
 	"github.com/johalputt/vayupress/internal/totp"
 	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
+	vpgp "github.com/johalputt/vayupress/internal/vayuos/pgp"
 )
 
 // setMemberSessionCookie writes the member session cookie with the same
@@ -199,6 +201,95 @@ func (a *App) handleMemberVayuMailLogin(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, r, http.StatusOK, map[string]interface{}{
 		"authenticated": true,
 		"member":        a.memberSnapshot(r, m),
+	})
+}
+
+// handleMemberVayuMailPrivKey returns the CALLER'S OWN mailbox PGP private key
+// (armored) so the VayuMail-Mobile app can import it and decrypt received mail
+// on-device — WKD only serves public keys, leaving the app unable to read
+// encrypted-at-rest inbound mail without the private half.
+//
+// Security posture: this hands the owner their own private key over TLS to an
+// authenticated caller. It is consistent with VayuPGP's existing trust model —
+// the server already stores every mailbox's private key (AES-256-GCM at rest)
+// and can already decrypt everything at rest and in transit (see the IMAP
+// decrypt hook). The endpoint therefore reveals nothing the server does not
+// already hold on the owner's behalf. It is defended by:
+//   - the same credential check as vayumail-login (verifyCredential: CMS
+//     password → mail-account Argon2id → device app passwords);
+//   - the shared brute-force throttle (mailAuthThrottle) — a decaying per-mailbox
+//     delay on every failed attempt, identical to IMAP/SMTP/POP3;
+//   - a generic 401 on ANY failure that never reveals whether the address
+//     exists (anti-enumeration — same status and body for an unknown mailbox as
+//     for a wrong password);
+//   - an audit-log entry on every successful retrieval;
+//   - a no-store response so the key is never cached by proxies or the client.
+func (a *App) handleMemberVayuMailPrivKey(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	if a.vayuPGP == nil {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "vayupgp-disabled", "PGP is not available", "")
+		return
+	}
+	if !a.vayuMailLoginEnabled() {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "vayumail-disabled", "VayuMail sign-in is not available", "")
+		return
+	}
+	var body struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16*1024)).Decode(&body); err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "bad-json", "Invalid request body", "")
+		return
+	}
+	emailAddr := strings.TrimSpace(strings.ToLower(body.Email))
+	if emailAddr == "" || body.Password == "" {
+		writeAPIError(w, r, http.StatusBadRequest, "validation_error", "Email and password are required", "")
+		return
+	}
+
+	// Authenticate exactly as the mail protocol servers do: the shared
+	// brute-force throttle first (a mailbox under attack accrues a growing delay
+	// before every attempt), then the canonical credential check that accepts the
+	// mailbox password OR a device app password. On failure the throttle records
+	// it and we return a uniform 401 — identical for an unknown mailbox and a
+	// wrong password, so the endpoint cannot enumerate which addresses exist.
+	bridge := &vayuMailBridge{app: a}
+	if d := mailAuthThrottle.Delay(emailAddr); d > 0 {
+		time.Sleep(d)
+	}
+	if !bridge.verifyCredential(r.Context(), emailAddr, body.Password) {
+		mailAuthThrottle.Fail(emailAddr)
+		writeAPIError(w, r, http.StatusUnauthorized, "invalid-credentials", "That email and password don't match", "")
+		return
+	}
+	mailAuthThrottle.Success(emailAddr)
+
+	// Credentials good. Load the caller's armored private key; if this mailbox
+	// pre-dates auto-keygen and has none yet, mint one idempotently first so a key
+	// always exists to return.
+	armored, err := a.vayuPGP.ArmoredPrivateKey(emailAddr)
+	if err != nil {
+		name := emailAddr
+		if i := strings.Index(name, "@"); i > 0 {
+			name = name[:i]
+		}
+		if _, gerr := a.vayuPGP.EnsureKeypair(&vpgp.PGPUser{UserID: emailAddr, Name: name, Email: emailAddr}); gerr != nil {
+			writeAPIError(w, r, http.StatusInternalServerError, "keygen-error", "Could not provision your key", "")
+			return
+		}
+		armored, err = a.vayuPGP.ArmoredPrivateKey(emailAddr)
+		if err != nil {
+			writeAPIError(w, r, http.StatusInternalServerError, "key-error", "Could not load your key", "")
+			return
+		}
+	}
+
+	dbpkg.AuditLog("vayumail.privkey.fetch", emailAddr, emailAddr, "")
+	logging.LogInfo("members", "VayuMail private key exported for on-device decryption: "+emailAddr)
+	writeJSON(w, r, http.StatusOK, map[string]interface{}{
+		"email":               emailAddr,
+		"armored_private_key": armored,
 	})
 }
 

@@ -230,6 +230,12 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	r.Get("/api/v1/members/me", a.handleMemberMe)
 	r.Get("/api/v1/members/comments", a.handleMemberComments)
 	r.Post("/api/v1/members/vayumail-login", a.handleMemberVayuMailLogin)
+	// VayuMail-Mobile private-key sync — returns the authenticated caller's OWN
+	// mailbox PGP private key (armored) so the app can import it and decrypt
+	// received mail on-device (WKD only serves public keys). Same credential
+	// check, brute-force throttle and anti-enumeration timing as vayumail-login
+	// above; the response is audit-logged and no-store. See ADR-0128.
+	r.Post("/api/v1/members/vayumail-privkey", a.handleMemberVayuMailPrivKey)
 	r.Get("/pricing", a.handlePricingPage)
 	r.Get("/api/v1/tiers", a.handleTiersPublic)
 	// Public author profile pages.
