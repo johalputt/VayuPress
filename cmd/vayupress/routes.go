@@ -243,6 +243,8 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	r.Post("/api/v1/members/vayumail-device-register", a.handleMemberVayuMailDeviceRegister)
 	r.Post("/api/v1/members/vayumail-device-status", a.handleMemberVayuMailDeviceStatus)
 	r.Get("/pricing", a.handlePricingPage)
+	// Built-in legal page: the VayuMail app privacy policy (Google Play link).
+	r.Get("/vayumail/privacy", a.handleVayuMailPrivacy)
 	r.Get("/api/v1/tiers", a.handleTiersPublic)
 	// Public author profile pages.
 	r.Get("/author/{id}", a.handlePublicAuthor)
