@@ -19,6 +19,19 @@
     if (row) row.classList.add('vm-active');
   });
 
+  // When a message lands in the split reading pane, bring it into view. On
+  // narrow screens the pane renders above the list (CSS order:-1), so without
+  // this the viewport can stay parked mid-list and tapping a mail looks like
+  // nothing happened. Delegated on document so it survives HTMX swaps.
+  document.addEventListener('htmx:afterSwap', function (e) {
+    var pane = document.getElementById('vm-readpane');
+    if (!pane || !e.target || e.target !== pane) return;
+    var reader = pane.querySelector('.vm-reader');
+    if (reader && typeof reader.scrollIntoView === 'function') {
+      reader.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  });
+
   // Conversation threading: the count badge on a thread's newest message
   // toggles its older (hidden) rows. Delegated, so it survives HTMX swaps.
   document.addEventListener('click', function (e) {
