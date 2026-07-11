@@ -8,6 +8,8 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.11.33] — 2026-07-11
+
 ### Added
 - **Webmail: print, full view, and a split view that gets out of the way.**
   The reading pane now stays collapsed until you open a message — the list
