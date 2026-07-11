@@ -8,6 +8,21 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.11.29] — 2026-07-10
+
+### Changed
+- **New VayuPress logo mark, transparent, theme-aware.** The updated V-and-wing
+  mark now leads the README and the marketing site with a genuinely
+  transparent background — a white mark on dark surfaces, a black mark on light
+  ones — so it sits cleanly on any backdrop. The README hero switches the mark
+  by `prefers-color-scheme`, and "VayuPress" renders as real text beside it
+  (correct capital V and P) rather than baked-in artwork. The site header and
+  footer pick up the new transparent mark automatically, with the footer
+  lock-up's intrinsic aspect ratio corrected so it no longer reserves a
+  slightly wrong box. No unreferenced image files were added.
+
+
+
 ## [3.11.28] — 2026-07-10
 
 ### Changed

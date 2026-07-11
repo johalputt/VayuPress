@@ -1,8 +1,8 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)"  srcset="docs/assets/vayupress-logo-light.png">
-    <source media="(prefers-color-scheme: light)" srcset="docs/assets/vayupress-logo.png">
-    <img src="docs/assets/vayupress-logo.png" alt="VayuPress" width="440">
+    <source media="(prefers-color-scheme: dark)"  srcset="docs/assets/vayupress-mark-dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="docs/assets/vayupress-mark-light.png">
+    <img src="docs/assets/vayupress-mark-light.png" alt="VayuPress" width="150">
   </picture>
 </p>
 
