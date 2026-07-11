@@ -883,15 +883,21 @@ func mailIDParam(r *http.Request) string {
 
 // sanitizeMailID is the pure barrier behind mailIDParam, shared by the POST
 // action handlers that read the id from the form (not just the query string).
+// Real Maildir ids carry their subdirectory ("new/171...vm", "cur/171...:2,S"),
+// so exactly one '/' is permitted; '.' never adjoins another '.' (no ".."), so
+// the id cannot climb out of the mailbox even before the engine's own
+// filepath.Base + ".." rejection in resolveMessage. Every allowed byte is
+// HTML-inert, keeping html.EscapeString a byte-identical no-op.
 func sanitizeMailID(s string) string {
-	if s == "" || len(s) > 256 {
+	if s == "" || len(s) > 256 || strings.Contains(s, "..") ||
+		strings.Count(s, "/") > 1 || strings.HasPrefix(s, "/") {
 		return ""
 	}
 	for i := 0; i < len(s); i++ {
 		c := s[i]
 		ok := (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
 			(c >= '0' && c <= '9') || c == '.' || c == '_' || c == ':' ||
-			c == ',' || c == '=' || c == '+' || c == '-'
+			c == ',' || c == '=' || c == '+' || c == '-' || c == '/'
 		if !ok {
 			return ""
 		}
