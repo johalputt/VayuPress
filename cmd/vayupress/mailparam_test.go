@@ -34,11 +34,24 @@ func TestSanitizeMailLocalPartAndID(t *testing.T) {
 	if got := sanitizeMailID("1700000000.M123P456:2,S"); got != "1700000000.M123P456:2,S" {
 		t.Fatalf("valid maildir id changed: %q", got)
 	}
+	// Real webmail ids carry the Maildir subdirectory — rejecting the '/'
+	// broke every open/pin/mark action in the mailbox (id sanitized to "").
+	for _, good := range []string{"new/1783759230.1271_3.vm", "cur/1700000000.M123P456:2,S"} {
+		if got := sanitizeMailID(good); got != good {
+			t.Fatalf("sanitizeMailID(%q) = %q, want unchanged", good, got)
+		}
+	}
 	// Hostile values are rejected to empty (never reach HTML).
 	for _, bad := range []string{`a<b`, `x"y`, `z'q`, `a&b`, `a b`, `<script>`} {
 		if got := sanitizeMailLocalPart(bad); got != "" {
 			t.Fatalf("sanitizeMailLocalPart(%q) = %q, want empty", bad, got)
 		}
+		if got := sanitizeMailID(bad); got != "" {
+			t.Fatalf("sanitizeMailID(%q) = %q, want empty", bad, got)
+		}
+	}
+	// Traversal shapes stay rejected even with '/' allowed.
+	for _, bad := range []string{"../secrets", "new/../../etc/passwd", "a/b/c", "/etc/passwd", "cur/.."} {
 		if got := sanitizeMailID(bad); got != "" {
 			t.Fatalf("sanitizeMailID(%q) = %q, want empty", bad, got)
 		}

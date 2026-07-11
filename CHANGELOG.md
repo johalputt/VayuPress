@@ -8,6 +8,22 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.11.32] — 2026-07-11
+
+### Fixed
+- **Webmail: opening a message works again — every message, every action.**
+  The message-id sanitizer added in a security hardening pass rejected the
+  `/` in real Maildir ids (`new/171…vm`, `cur/171…:2,S`), so every id
+  arriving at the message reader, pin, mark-read, junk, move and delete
+  handlers was blanked to "" and the reader answered "Message not
+  available." On phones the reading pane hides while it shows only a
+  placeholder, so tapping a mail looked like it did nothing at all.
+  Reproduced end-to-end in a headless browser, then fixed: ids now allow
+  exactly one `/` (the Maildir subdirectory), still reject `..`, absolute
+  paths and multi-segment paths, and every allowed byte remains
+  HTML-inert — the XSS barrier and the engine's own `filepath.Base` +
+  `..` rejection stay intact.
+
 ## [3.11.31] — 2026-07-11
 
 ### Added
