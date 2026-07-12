@@ -70,6 +70,20 @@ func (a *App) handleOSDomains(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Per-domain mailbox counts (VayuDomains Stage 3a — mail-domain foundation).
+	// Read-only reporting: mailboxes are keyed by full address, so the host is
+	// derived. Delivery/auth stays untouched until Stage 3b.
+	mailCounts := map[string]int{}
+	mailOn := false
+	if a.vayuMail != nil {
+		mailOn = a.vayuMail.Config().Enabled
+		if a.vayuMail.Accounts() != nil {
+			if c, err := a.vayuMail.Accounts().CountsByHost(r.Context()); err == nil {
+				mailCounts = c
+			}
+		}
+	}
+
 	// The host the operator is currently browsing from — surfaced so it is
 	// obvious which registered domain served this very page.
 	viewingHost := ""
@@ -78,7 +92,7 @@ func (a *App) handleOSDomains(w http.ResponseWriter, r *http.Request) {
 	}
 
 	body := domainsHeader(len(domains), viewingHost) +
-		domainsTable(domains, counts) +
+		domainsTable(domains, counts, mailCounts, mailOn) +
 		domainsAssignForm(domains) +
 		domainsAddForm() +
 		domainsScript(nonce)
@@ -102,10 +116,10 @@ func domainsHeader(n int, viewingHost string) string {
   </div>
   <div class="page-head__meta"><span class="pill">` + strconv.Itoa(n) + ` ` + count + `</span></div>
 </div>
-<div class="card card--info"><p class="text-sm">VayuDomains is rolling out in stages. Today the registry is authoritative for <strong>host resolution</strong> and lets you manage the list; <strong>per-domain content, mail and members</strong> arrive in later releases. Adding a domain here registers it — point its DNS at this server and provision TLS before it serves traffic.</p></div>`
+<div class="card card--info"><p class="text-sm">VayuDomains is rolling out in stages. The registry drives <strong>host resolution</strong>, and <strong>per-domain content</strong> (homepage, articles, tags, feeds, sitemap and search) is live — each domain serves only its own posts. <strong>Per-domain mail</strong> is being staged: this page now shows each domain's mail status and mailbox count, with isolated per-domain delivery and branded mail arriving next. Adding a domain registers it — point its DNS at this server and provision TLS before it serves traffic.</p></div>`
 }
 
-func domainsTable(domains []domain.Domain, counts map[string]int) string {
+func domainsTable(domains []domain.Domain, counts, mailCounts map[string]int, mailOn bool) string {
 	if len(domains) == 0 {
 		return `<div class="card empty"><div class="empty-title">No domains registered yet</div>
 <div class="empty-sub">The primary domain is seeded automatically once DOMAIN is configured. Add a secondary domain below.</div></div>`
@@ -121,10 +135,11 @@ func domainsTable(domains []domain.Domain, counts map[string]int) string {
 			statusPill = `<span class="pill pill--muted">Disabled</span>`
 		}
 		tls := `<span class="pill pill--muted">` + html.EscapeString(tlsLabel(d.TLSState)) + `</span>`
-		mail := "—"
-		if d.MailEnabled {
-			mail = "Enabled"
-		}
+		// Mail (VayuDomains Stage 3a): show whether the domain carries mail and how
+		// many mailboxes it holds. The primary always carries mail when configured;
+		// a secondary opts in via mail_enabled. Counts are derived read-only from the
+		// account store — per-domain delivery/read isolation ships in Stage 3b.
+		mail := mailCell(d, mailCounts[strings.ToLower(d.Host)], mailOn)
 		// Content ownership (Stage 2): the primary owns the unassigned bucket ("").
 		key := d.ID
 		if d.IsPrimary {
@@ -188,6 +203,29 @@ func domainsAssignForm(domains []domain.Domain) string {
     <span id="dom-assign-status" class="text-sm muted" role="status" aria-live="polite"></span>
   </div>
 </div>`
+}
+
+// mailCell renders a domain's Mail column (VayuDomains Stage 3a). The primary
+// carries the install's mail when the engine is enabled; a secondary opts in via
+// mail_enabled, with per-domain delivery/read isolation arriving in Stage 3b. The
+// mailbox count is derived read-only from the account store.
+func mailCell(d domain.Domain, n int, mailOn bool) string {
+	unit := "mailboxes"
+	if n == 1 {
+		unit = "mailbox"
+	}
+	count := ` <span class="text-xs muted">` + strconv.Itoa(n) + ` ` + unit + `</span>`
+	switch {
+	case d.IsPrimary:
+		if !mailOn {
+			return `<span class="text-xs muted">Not configured</span>`
+		}
+		return `<span class="pill pill--ok">Primary mail</span>` + count
+	case d.MailEnabled:
+		return `<span class="pill pill--muted">Enabled · Stage 3b</span>` + count
+	default:
+		return `<span class="text-xs muted">—</span>`
+	}
 }
 
 func tlsLabel(state string) string {

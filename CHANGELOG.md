@@ -8,6 +8,24 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.3] — 2026-07-12
+
+### Added
+- **VayuDomains (Stage 3a) — mail-domain foundation.** The VayuOS **Domains** page
+  now shows, per domain, whether it carries mail and how many mailboxes it holds,
+  so operators can see the mail rollout state at a glance. This is the first,
+  deliberately conservative step of per-domain mail: the mailbox count is derived
+  read-only from the account store (mailboxes are keyed by full address, so the
+  host is derived, not stored).
+
+### Notes
+- **The mail delivery, authentication and Maildir-resolution paths are untouched**,
+  so the primary domain's mail is byte-identical (proven by the unchanged
+  mail-engine tests). Per-domain receive + read isolation is **Stage 3b**, and
+  per-domain outbound + branded mail (DKIM, autoconfig, DNS, webmail theming) is
+  **Stage 3c** — staged separately because the mail engine carries the product's
+  isolation and no-plaintext guarantees. See **ADR-0132**.
+
 ## [3.13.2] — 2026-07-12
 
 ### Added

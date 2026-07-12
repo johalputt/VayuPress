@@ -45,6 +45,41 @@ func TestAccountStoreCRUD(t *testing.T) {
 	}
 }
 
+// TestCountsByHost verifies the VayuDomains Stage 3a reporting helper groups
+// mailboxes by their domain host, case-insensitively, with no host left implicit.
+func TestCountsByHost(t *testing.T) {
+	t.Parallel()
+	db, _ := sql.Open("sqlite3", ":memory:")
+	db.SetMaxOpenConns(1)
+	defer db.Close()
+	s, err := NewAccountStore(db)
+	if err != nil {
+		t.Fatalf("store: %v", err)
+	}
+	ctx := context.Background()
+	for _, e := range []string{"a@johal.in", "B@Johal.in", "shop@Shop.example", "hi@shop.example", "solo@third.example"} {
+		if err := s.Create(ctx, e, "h", "", "author"); err != nil {
+			t.Fatalf("create %s: %v", e, err)
+		}
+	}
+	counts, err := s.CountsByHost(ctx)
+	if err != nil {
+		t.Fatalf("counts: %v", err)
+	}
+	if counts["johal.in"] != 2 {
+		t.Errorf("johal.in = %d, want 2 (case-insensitive host grouping)", counts["johal.in"])
+	}
+	if counts["shop.example"] != 2 {
+		t.Errorf("shop.example = %d, want 2", counts["shop.example"])
+	}
+	if counts["third.example"] != 1 {
+		t.Errorf("third.example = %d, want 1", counts["third.example"])
+	}
+	if len(counts) != 3 {
+		t.Errorf("distinct hosts = %d, want 3: %+v", len(counts), counts)
+	}
+}
+
 func TestMaildirFolders(t *testing.T) {
 	t.Parallel()
 	md := NewMaildir(t.TempDir())

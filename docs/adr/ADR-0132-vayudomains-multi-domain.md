@@ -139,10 +139,42 @@ remains a later sub-stage.
 to `UNIQUE(domain_id, slug)` needs an `articles`-table rebuild and is a later
 sub-stage.
 
-### Stage 3 — Mail branding + isolation (deferred)
+### Stage 3 — Mail branding + isolation
 
 Make mailbox/Maildir resolution domain-aware (constraint #4) so `mail_enabled`
-domains carry their own branded mail without reading the primary's Maildir.
+domains carry their own branded mail without reading the primary's Maildir. The
+recon that opened this stage found the on-disk Maildir layer is *already*
+domain-partitioned (`<base>/maildir/<domain>/<user>/…`); every resolution path
+simply collapses the domain to the primary `cfg.Domain`. Because existing storage
+already sits under `<primaryDomain>/<user>`, threading the *real* domain leaves the
+primary byte-identical — but doing so touches the acceptance gate, the IMAP/POP3
+login path and the whole engine mailbox API at once, which is exactly the
+high-blast-radius change on the mail guarantees this ADR exists to avoid. The mail
+subsystem is therefore staged like content (2a → 2b → 2c):
+
+**Stage 3a (shipped): mail-domain foundation.** The VayuOS **Domains** page now
+reports, per domain, whether it carries mail and how many mailboxes it holds
+(`AccountStore.CountsByHost`, a read-only derivation — mailboxes are keyed by full
+address, so the host is derived, not stored). The **delivery, authentication and
+Maildir-resolution paths are deliberately untouched**, so the primary domain's
+mail is provably byte-identical (proven by the unchanged mail-engine tests). This
+gives operators visibility into the rollout without putting a live mail server at
+risk.
+
+**Stage 3b (next): per-domain receive + read isolation.** Open the SMTP
+acceptance gate to `mail_enabled` secondary domains, thread the real recipient/
+login domain through inbound delivery and the IMAP/POP3/webmail read path (instead
+of the hardcoded `cfg.Domain`), so `user@secondary` receives and reads only its
+own isolated Maildir. Gated on a registered `mail_enabled` secondary so a plain
+install stays byte-identical, and covered by explicit cross-domain isolation tests
+(`bob@a.example` and `bob@b.example` are distinct mailboxes). The Maildir already
+isolates on disk and `safeSegment` already neutralises hostile domain/username
+segments — the work is threading, not new storage.
+
+**Stage 3c (later): per-domain outbound + branding.** A per-domain DKIM signer
+(the signer is already domain-parameterized), From/envelope alignment, per-host
+autoconfig/autodiscover and DNS guidance, and per-domain webmail branding from the
+registry's reserved `config_json`.
 
 ### Stage 4 — Member isolation (deferred)
 

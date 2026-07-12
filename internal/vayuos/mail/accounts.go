@@ -364,6 +364,33 @@ func (s *AccountStore) List(ctx context.Context) ([]Account, error) {
 	return out, rows.Err()
 }
 
+// CountsByHost returns the number of mail accounts per domain host, keyed by the
+// lowercased domain part of each account's address (the part after the last '@').
+// It is a read-only reporting helper for the VayuDomains admin surface — the
+// account model keys mailboxes by full email, so the host is derived rather than
+// stored, and no delivery/auth path is involved (VayuDomains Stage 3a).
+func (s *AccountStore) CountsByHost(ctx context.Context) (map[string]int, error) {
+	out := map[string]int{}
+	if s.db == nil {
+		return out, nil
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT email FROM vayumail_accounts`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var email string
+		if err := rows.Scan(&email); err != nil {
+			return nil, err
+		}
+		if i := strings.LastIndexByte(email, '@'); i >= 0 {
+			out[strings.ToLower(email[i+1:])]++
+		}
+	}
+	return out, rows.Err()
+}
+
 // SetRequireDeviceApproval flips the per-mailbox device-approval enforcement
 // (ADR-0129). Turning it OFF restores the pre-device behaviour: the raw
 // mailbox password authenticates the mail protocols again.
