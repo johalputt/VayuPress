@@ -234,6 +234,46 @@ only the VayuTalk API/stream paths pass straight through. When fixed, the `curl`
 above returns VayuPress's JSON, and the app connects. The same principle applies
 to any CDN or WAF — allow the two stream paths, keep protecting everything else.
 
+### Recommended: a dedicated, proxy-off `talk.<domain>` subdomain (automatic)
+
+If your site sits behind a CDN you can't fully exempt (e.g. a WAF Skip rule isn't
+enough against a heavy bot swarm), the robust fix is to serve the VayuTalk relay
+on its own subdomain that bypasses the CDN entirely, while the main domain keeps
+full protection. VayuPress automates the entire server side — **the only manual
+step is one DNS record:**
+
+```
+talk.<domain>   A / AAAA   ->  your server's IP    (CDN/proxy OFF — "DNS only")
+```
+
+Then run the deploy script (every VayuPress update runs it):
+
+```bash
+sudo bash scripts/deploy-vayupress.sh
+```
+
+It automatically: adds `talk.<domain>` to the Let's Encrypt certificate, writes a
+dedicated nginx vhost that exposes **only** the relay API (SSE never buffered),
+and sets `VAYUOS_TALK_HOST`, which makes the server advertise the host in
+`/.well-known/vayumail/autoconfig.json`. The VayuMail app reads that, confirms the
+subdomain is live, and routes its chat stream there on its own — no app setting to
+change. Until the DNS record exists the step is skipped and the app keeps using
+the main domain, so nothing breaks in the meantime.
+
+Verify after DNS propagates:
+
+```bash
+curl -s https://<domain>/health | grep -o '"version"[^,]*'          # confirm the running build
+curl -N -s https://talk.<domain>/api/v1/talk/stream                 # expect JSON invalid-token, NOT a CDN page
+```
+
+Because your origin IP is already reachable via `mail.<domain>` (mail must also be
+CDN-proxy-off), exposing `talk.<domain>` adds no new exposure. To keep the CDN's
+protection meaningful for the main site even though the IP is public, restrict the
+main `<domain>` vhost to your CDN's published IP ranges (allow those, deny the
+rest); `talk.<domain>` stays open. The relay itself is safe exposed: it is
+auth-gated, server-side rate-limited, and size-capped.
+
 ## Logs
 
 ```bash

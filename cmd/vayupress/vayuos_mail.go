@@ -1273,6 +1273,16 @@ type vayuMailAutoconfig struct {
 	UsernameIsEmail bool                 `json:"usernameIsEmail"`
 	Auth            string               `json:"auth"`
 	WKD             bool                 `json:"wkd"`
+	// Talk is the hostname the VayuTalk relay is reachable on — a dedicated
+	// subdomain (e.g. talk.<domain>) the operator points STRAIGHT at the origin
+	// with any CDN/proxy (Cloudflare) turned OFF, so the app's long-lived SSE
+	// stream is never buffered or bot-challenged. Empty (the default, and the
+	// omitted JSON field) means "no dedicated talk host" — the app then uses the
+	// mail domain exactly as before, so this is fully backward compatible. It is
+	// only populated once the deploy script has provisioned the subdomain's TLS
+	// certificate and set VAYUOS_TALK_HOST, so a client is never pointed at a host
+	// that isn't serving yet.
+	Talk string `json:"talk,omitempty"`
 }
 
 // vayuMailServerConfig is one server endpoint in the autoconfig document. TLS is
@@ -1308,7 +1318,21 @@ func (a *App) buildVayuMailAutoconfig() vayuMailAutoconfig {
 		UsernameIsEmail: true,
 		Auth:            "password",
 		WKD:             true,
+		Talk:            a.talkAutoconfigHost(),
 	}
+}
+
+// talkAutoconfigHost returns the hostname to advertise for the VayuTalk relay, or
+// "" to advertise none. It is the value of VAYUOS_TALK_HOST, and ONLY when the
+// relay is actually enabled — the deploy script sets that variable after it has
+// obtained the subdomain's TLS certificate, so the app is never handed a talk
+// host that isn't live. When empty the app falls back to the mail domain, so
+// existing servers keep working with no change.
+func (a *App) talkAutoconfigHost() string {
+	if !a.vayuTalkEnabled() {
+		return ""
+	}
+	return strings.ToLower(strings.TrimSpace(config.EnvOr("VAYUOS_TALK_HOST", "")))
 }
 
 // handleVayuMailAutoconfigJSON serves the first-party autoconfig JSON. Public and

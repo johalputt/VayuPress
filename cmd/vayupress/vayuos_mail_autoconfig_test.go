@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
+	vtalk "github.com/johalputt/vayupress/internal/vayuos/vayutalk"
 )
 
 // appWithMail builds an App whose vayuMail engine reports the given coordinates,
@@ -77,6 +78,38 @@ func TestVayuMailAutoconfigContract(t *testing.T) {
 	// is a deliberate, reviewed change.
 	if VayuMailAutoconfigSchema != "vayumail-autoconfig/1" {
 		t.Errorf("VayuMailAutoconfigSchema = %q; a bump requires a coordinated VayuMail-Mobile release", VayuMailAutoconfigSchema)
+	}
+}
+
+// TestVayuMailAutoconfigTalkHost verifies the talk host is advertised only when
+// the relay is enabled AND VAYUOS_TALK_HOST is set (the deploy script sets it
+// after provisioning the subdomain cert), and is omitted otherwise so the app
+// falls back to the mail domain.
+func TestVayuMailAutoconfigTalkHost(t *testing.T) {
+	// No talk engine → never advertised, even with the env set.
+	t.Setenv("VAYUOS_TALK_HOST", "talk.example.com")
+	if h := appWithMail(t).talkAutoconfigHost(); h != "" {
+		t.Errorf("talk host advertised with no relay engine: %q", h)
+	}
+
+	// Relay enabled but env unset → omitted (app falls back to the mail domain).
+	a := appWithMail(t)
+	a.vayuTalk = vtalk.NewEngine(vtalk.Config{Enabled: true})
+	t.Setenv("VAYUOS_TALK_HOST", "")
+	if h := a.talkAutoconfigHost(); h != "" {
+		t.Errorf("talk host advertised with VAYUOS_TALK_HOST unset: %q", h)
+	}
+	if strings.Contains(a.buildVayuMailAutoconfig().Talk, "talk") {
+		t.Error("autoconfig advertised a talk host before one was provisioned")
+	}
+
+	// Relay enabled AND env set → advertised (lower-cased, trimmed).
+	t.Setenv("VAYUOS_TALK_HOST", "  Talk.Example.com ")
+	if h := a.talkAutoconfigHost(); h != "talk.example.com" {
+		t.Errorf("talk host = %q, want talk.example.com", h)
+	}
+	if got := a.buildVayuMailAutoconfig().Talk; got != "talk.example.com" {
+		t.Errorf("autoconfig Talk = %q, want talk.example.com", got)
 	}
 }
 

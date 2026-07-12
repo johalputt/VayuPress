@@ -151,6 +151,39 @@ require_root() {
   fi
 }
 
+# cert_covers reports whether the main Let's Encrypt certificate lists the given
+# hostname as a SAN — used to decide whether the talk subdomain is ready to serve
+# (and therefore safe to advertise to the app) before writing its vhost.
+cert_covers() {
+  local name="$1" cert="/etc/letsencrypt/live/${DOMAIN}/fullchain.pem"
+  [[ -f "$cert" ]] || return 1
+  local re="DNS:${name//./\\.}([,[:space:]]|\$)"
+  openssl x509 -in "$cert" -noout -text 2>/dev/null | grep -qiE "$re"
+}
+
+# set_env_var upserts KEY=VALUE in /etc/vayupress/env idempotently, so a value the
+# deploy script derives (e.g. VAYUOS_TALK_HOST) is applied on both fresh installs
+# and upgrades without clobbering the rest of the operator's env.
+set_env_var() {
+  local key="$1" val="$2" f=/etc/vayupress/env
+  $DRY_RUN && { echo -e "${YELLOW}[dry-run]${NC} set ${key}=${val} in ${f}"; return 0; }
+  touch "$f"
+  if grep -q "^${key}=" "$f"; then
+    sed -i "s|^${key}=.*|${key}=${val}|" "$f"
+  else
+    printf '%s=%s\n' "$key" "$val" >> "$f"
+  fi
+}
+
+# unset_env_var removes KEY from /etc/vayupress/env if present (used to retract an
+# advertised talk host that is no longer serviceable).
+unset_env_var() {
+  local key="$1" f=/etc/vayupress/env
+  $DRY_RUN && { echo -e "${YELLOW}[dry-run]${NC} unset ${key} in ${f}"; return 0; }
+  [[ -f "$f" ]] && sed -i "/^${key}=/d" "$f"
+  return 0
+}
+
 # =============================================================================
 # ── BANNER ────────────────────────────────────────────────────────────────────
 # =============================================================================
@@ -505,7 +538,7 @@ cat > /etc/nginx/sites-available/vayupress <<NGINX
 server {
     listen 80;
     listen [::]:80;
-    server_name ${DOMAIN} www.${DOMAIN} blog.${DOMAIN};
+    server_name ${DOMAIN} www.${DOMAIN} blog.${DOMAIN} talk.${DOMAIN};
 
     # Certbot webroot: served from filesystem, not proxied to VayuPress.
     # Required both for initial certificate issuance and for renewals.
@@ -753,6 +786,116 @@ systemctl try-restart vayupress 2>/dev/null || true
 HOOK
     run chmod +x /etc/letsencrypt/renewal-hooks/deploy/vayupress-mailcert.sh
     ok "Mail certificate installed for mail.${DOMAIN} (auto-renews)."
+  fi
+fi
+
+# =============================================================================
+# ── VAYUTALK SUBDOMAIN (talk.<domain>, CDN/proxy OFF) ─────────────────────────
+# =============================================================================
+#
+# VayuTalk delivers messages over a long-lived Server-Sent-Events stream. A CDN
+# bot-challenge (e.g. Cloudflare) in front of the site will challenge that stream,
+# and the mobile app — a non-browser client — cannot solve a JS challenge, so it
+# receives nothing while the browser works. The robust fix is a dedicated
+# subdomain the operator points STRAIGHT at this server with the CDN proxy turned
+# OFF (grey-cloud / DNS-only), so the app's stream reaches the origin unbuffered
+# and unchallenged, while the main domain keeps full CDN bot protection.
+#
+# This is automatic: the operator's ONLY step is one DNS record —
+#   talk.<domain>  A/AAAA  ->  this server's IP   (proxy/CDN OFF)
+# Re-running this script (which every VayuPress update does) then adds the TLS
+# SAN, writes the vhost, and sets VAYUOS_TALK_HOST so autoconfig advertises it and
+# the app switches over on its own. Until the DNS is pointed it is skipped and the
+# app keeps using the main domain, so nothing breaks.
+TALK_HOST="talk.${DOMAIN}"
+if [[ -n "$DOMAIN" && "$DOMAIN" != "localhost" && -f "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" ]]; then
+  if ! cert_covers "${TALK_HOST}"; then
+    info "Adding ${TALK_HOST} to the TLS certificate (needs its DNS pointed here, proxy OFF)..."
+    # --expand re-issues the existing lineage; keep the site+mail SANs so adding
+    # talk never drops them. Each fallback removes an optional SAN (blog, then mail)
+    # whose DNS may not exist, but always keeps talk — if talk itself won't
+    # validate (DNS not pointed yet) all attempts fail and we leave the cert as is.
+    run certbot certonly --webroot -w "${CACHE_DIR}" --cert-name "${DOMAIN}" --expand \
+      -d "${DOMAIN}" -d "www.${DOMAIN}" -d "blog.${DOMAIN}" -d "mail.${DOMAIN}" -d "${TALK_HOST}" \
+      --email "${EMAIL}" --agree-tos --non-interactive || \
+    run certbot certonly --webroot -w "${CACHE_DIR}" --cert-name "${DOMAIN}" --expand \
+      -d "${DOMAIN}" -d "www.${DOMAIN}" -d "mail.${DOMAIN}" -d "${TALK_HOST}" \
+      --email "${EMAIL}" --agree-tos --non-interactive || \
+    run certbot certonly --webroot -w "${CACHE_DIR}" --cert-name "${DOMAIN}" --expand \
+      -d "${DOMAIN}" -d "www.${DOMAIN}" -d "${TALK_HOST}" \
+      --email "${EMAIL}" --agree-tos --non-interactive || \
+      warn "Couldn't add ${TALK_HOST} to the certificate — is its DNS pointed at this server with the CDN proxy OFF? VayuTalk will keep using ${DOMAIN}; just re-run this script once DNS is set."
+  fi
+
+  if cert_covers "${TALK_HOST}"; then
+    info "Provisioning the ${TALK_HOST} vhost (relay only, SSE never buffered)..."
+    cat > /etc/nginx/sites-available/vayupress-talk <<TALKNGINX
+# VayuTalk relay on a dedicated, CDN-proxy-OFF subdomain. Exposes ONLY the relay
+# API and health — nothing else of the app is reachable here — so publishing this
+# host's IP costs nothing beyond the relay itself (which is auth-gated, rate-
+# limited server-side, and size-capped).
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name ${TALK_HOST};
+
+    ssl_certificate     /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_session_cache   shared:SSL:10m;
+
+    add_header Strict-Transport-Security "max-age=63072000; includeSubDomains" always;
+    add_header X-Content-Type-Options    "nosniff" always;
+
+    # ACME renewals for this subdomain's SAN.
+    location ^~ /.well-known/acme-challenge/ {
+        root ${CACHE_DIR};
+        default_type text/plain;
+        try_files \$uri =404;
+    }
+
+    # The whole point: the relay, direct to the origin, never buffered/gzipped so
+    # the long-lived SSE stream flows in real time to app and web alike.
+    location /api/v1/talk/ {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host              \$host;
+        proxy_set_header X-Real-IP         \$remote_addr;
+        proxy_set_header X-Forwarded-For   \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_buffering off;
+        proxy_cache off;
+        gzip off;
+        chunked_transfer_encoding on;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+    }
+
+    # Health (so the app/operator can probe this host) and autoconfig (so a client
+    # that reaches the subdomain first can still discover settings).
+    location = /health {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_buffering off;
+        access_log off;
+    }
+    location = /.well-known/vayumail/autoconfig.json {
+        proxy_pass http://127.0.0.1:8080;
+    }
+
+    location / { return 404; }
+
+    access_log /var/log/nginx/vayupress-talk-access.log;
+    error_log  /var/log/nginx/vayupress-talk-error.log warn;
+}
+TALKNGINX
+    run ln -sf /etc/nginx/sites-available/vayupress-talk /etc/nginx/sites-enabled/vayupress-talk
+    set_env_var VAYUOS_TALK_HOST "${TALK_HOST}"
+    ok "VayuTalk subdomain live: https://${TALK_HOST} (advertised to the app via autoconfig)."
+  else
+    run rm -f /etc/nginx/sites-enabled/vayupress-talk
+    unset_env_var VAYUOS_TALK_HOST
+    warn "VayuTalk subdomain not enabled yet — the app will use ${DOMAIN}. Point ${TALK_HOST} DNS at this server (CDN proxy OFF) and re-run this script."
   fi
 fi
 

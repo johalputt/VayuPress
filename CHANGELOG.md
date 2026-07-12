@@ -8,6 +8,33 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.11.48] — 2026-07-12
+
+### Added
+- **Automatic, CDN-proxy-off `talk.<domain>` subdomain for VayuTalk.** The mobile
+  app's long-lived chat stream can't pass a CDN bot-challenge (it isn't a
+  browser), so behind Cloudflare the app could send but never receive. VayuPress
+  now automates a dedicated relay subdomain that bypasses the CDN while the main
+  site keeps full protection — **the operator's only step is one DNS record**
+  (`talk.<domain>` → server IP, proxy OFF). On the next deploy (every update runs
+  the script) VayuPress:
+  - **adds `talk.<domain>` to the Let's Encrypt certificate** (via `certbot
+    --expand`, preserving the existing site/mail SANs, with graceful fallbacks so
+    a missing record never breaks the main cert);
+  - **writes a dedicated nginx vhost** exposing only the relay API and health,
+    with SSE never buffered/gzipped; and
+  - **sets `VAYUOS_TALK_HOST`**, so `/.well-known/vayumail/autoconfig.json`
+    advertises the host and the app routes its chat stream there automatically.
+  Until the DNS record exists the step is skipped and the app keeps using the main
+  domain — fully backward compatible. Documented in `docs/TROUBLESHOOTING.md`
+  ("Recommended: a dedicated, proxy-off talk.<domain> subdomain").
+
+### Changed
+- Autoconfig gains an optional `talk` field (the advertised relay host), omitted
+  unless `VAYUOS_TALK_HOST` is set. The VayuMail app prefers it, but only after
+  confirming it is within the mail domain and answering as a live relay, so a
+  stale or foreign value can never redirect the connection.
+
 ## [3.11.47] — 2026-07-12
 
 ### Fixed
