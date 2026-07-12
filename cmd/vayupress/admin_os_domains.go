@@ -313,8 +313,13 @@ func (a *App) handleOSDomainAssign(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// The post just moved between domains — lazily invalidate the public caches
-	// so every domain's homepage re-renders on next request (Stage 2b).
+	// so every domain's homepage re-renders on next request (Stage 2b). Reassigning
+	// touches no search-indexed field, so the engine snapshot version is unchanged;
+	// clear the per-domain client-index memo explicitly so search re-scopes too
+	// (Stage 2c). The per-domain sitemap/feed self-heal within their freshness
+	// window, so they need no explicit purge.
 	render.CachePurgeAll()
+	purgeDomainSearchIndex()
 	writeJSON(w, r, http.StatusOK, map[string]string{"status": "ok"})
 }
 

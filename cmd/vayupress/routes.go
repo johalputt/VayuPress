@@ -79,16 +79,12 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	r.Get("/health/search", health.HandleHealthSearch)
 	r.Get("/health/queue", health.HandleHealthQueue)
 
-	// Static files + feeds
-	r.Get("/sitemap.xml", func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, filepath.Join(config.Cfg.CacheDir, "sitemap.xml"))
-	})
-	r.Get("/feed.xml", func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, filepath.Join(config.Cfg.CacheDir, "feed.xml"))
-	})
-	r.Get("/robots.txt", func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, filepath.Join(config.Cfg.CacheDir, "robots.txt"))
-	})
+	// Static files + feeds. Per-domain scoped when a secondary domain is
+	// registered (VayuDomains Stage 2c); byte-identical global artefacts
+	// otherwise.
+	r.Get("/sitemap.xml", a.handleSitemap)
+	r.Get("/feed.xml", a.handleFeed)
+	r.Get("/robots.txt", a.handleRobots)
 	// Dynamic per-site theme stylesheet (operator palette + custom CSS).
 	// Served same-origin so it satisfies the strict style-src 'self' CSP.
 	r.Get("/theme.css", a.handleThemeCSS)

@@ -80,7 +80,7 @@ import (
 // -ldflags "-X main.Version=<.release-version>", and scripts/update-vayupress.sh
 // reads .release-version too — keep this in sync with .release-version so an
 // un-stamped `go build` still reports an honest version.
-var Version = "3.13.1"
+var Version = "3.13.2"
 var bootTime = time.Now()
 
 // Immutable package-level values (compiled once, never mutated).
@@ -191,8 +191,24 @@ func searchSaveInterval() time.Duration {
 	return 10 * time.Minute
 }
 
-func generateSitemap() {
-	rows, err := dbpkg.Reader().Query(`SELECT slug,updated_at FROM articles WHERE COALESCE(status,'published')='published' AND COALESCE(is_page,0)=0 ORDER BY updated_at DESC LIMIT 50000`)
+// generateSitemap writes the historic global sitemap (every published article,
+// primary host) to sitemap.xml. It is the single-domain / primary artefact and is
+// byte-identical to the pre-VayuDomains output; the per-domain variant is written
+// by writeSitemapScoped on the multi-domain serve path (ADR-0132 Stage 2c).
+func generateSitemap() { writeSitemapScoped(config.Cfg.Domain, "", false, "sitemap.xml") }
+
+// writeSitemapScoped renders a sitemap for one host into rel. With scoped=false it
+// reproduces the historic global sitemap exactly (no domain filter, primary host).
+// With scoped=true it lists only the given domain's articles (domain_id=scope)
+// under that domain's host — the artefact served on a secondary domain.
+func writeSitemapScoped(host, scope string, scoped bool, rel string) {
+	domClause := ""
+	var domArgs []any
+	if scoped {
+		domClause = " AND domain_id=?"
+		domArgs = []any{scope}
+	}
+	rows, err := dbpkg.Reader().Query(`SELECT slug,updated_at FROM articles WHERE COALESCE(status,'published')='published' AND COALESCE(is_page,0)=0`+domClause+` ORDER BY updated_at DESC LIMIT 50000`, domArgs...)
 	if err != nil {
 		return
 	}
@@ -204,21 +220,28 @@ func generateSitemap() {
 		var updated time.Time
 		rows.Scan(&slug, &updated)
 		var locBuf strings.Builder
-		xml.EscapeText(&locBuf, []byte(fmt.Sprintf("https://%s/%s", config.Cfg.Domain, slug))) //nolint:errcheck
+		xml.EscapeText(&locBuf, []byte(fmt.Sprintf("https://%s/%s", host, slug))) //nolint:errcheck
 		fmt.Fprintf(&sb, "<url><loc>%s</loc><lastmod>%s</lastmod></url>", locBuf.String(), updated.Format("2006-01-02"))
 	}
 	_ = rows.Err() // best-effort sitemap; regenerated on the next change
-	sitemapAppendTagPages(&sb)
+	sitemapAppendTagPages(&sb, host, scope, scoped)
 	sb.WriteString("</urlset>")
-	render.CacheWrite("sitemap.xml", sb.String()) //nolint:errcheck
+	render.CacheWrite(rel, sb.String()) //nolint:errcheck
 }
 
 // sitemapAppendTagPages adds the topic index (/tags) and every per-tag listing
 // (/tags/<tag>) to the sitemap so search engines discover the taxonomy. Tags are
 // gathered from published articles, deduplicated case-insensitively, and the URL
-// path segment is escaped to match the live route's decoding.
-func sitemapAppendTagPages(sb *strings.Builder) {
-	rows, err := dbpkg.Reader().Query(`SELECT tags FROM articles WHERE tags != '' AND COALESCE(status,'published')='published'`)
+// path segment is escaped to match the live route's decoding. When scoped, only
+// the given domain's tags are enumerated and links carry that domain's host.
+func sitemapAppendTagPages(sb *strings.Builder, host, scope string, scoped bool) {
+	domClause := ""
+	var domArgs []any
+	if scoped {
+		domClause = " AND domain_id=?"
+		domArgs = []any{scope}
+	}
+	rows, err := dbpkg.Reader().Query(`SELECT tags FROM articles WHERE tags != '' AND COALESCE(status,'published')='published'`+domClause, domArgs...)
 	if err != nil {
 		return
 	}
@@ -242,18 +265,32 @@ func sitemapAppendTagPages(sb *strings.Builder) {
 	_ = rows.Err() // best-effort tag enumeration for the sitemap
 	// Topic index.
 	var idxBuf strings.Builder
-	xml.EscapeText(&idxBuf, []byte(fmt.Sprintf("https://%s/tags", config.Cfg.Domain))) //nolint:errcheck
+	xml.EscapeText(&idxBuf, []byte(fmt.Sprintf("https://%s/tags", host))) //nolint:errcheck
 	fmt.Fprintf(sb, "<url><loc>%s</loc></url>", idxBuf.String())
 	for _, display := range seen {
 		var locBuf strings.Builder
-		loc := fmt.Sprintf("https://%s/tags/%s", config.Cfg.Domain, url.PathEscape(display))
+		loc := fmt.Sprintf("https://%s/tags/%s", host, url.PathEscape(display))
 		xml.EscapeText(&locBuf, []byte(loc)) //nolint:errcheck
 		fmt.Fprintf(sb, "<url><loc>%s</loc></url>", locBuf.String())
 	}
 }
 
-func generateRSS() {
-	rows, err := dbpkg.Reader().Query(`SELECT title,slug,content,created_at FROM articles WHERE COALESCE(status,'published')='published' AND COALESCE(is_page,0)=0 ORDER BY created_at DESC LIMIT 50`)
+// generateRSS writes the historic global feed (latest 50 published articles,
+// primary host) to feed.xml — the single-domain / primary artefact, byte-identical
+// to the pre-VayuDomains output. writeRSSScoped produces the per-domain variant.
+func generateRSS() { writeRSSScoped(config.Cfg.Domain, "", false, "feed.xml") }
+
+// writeRSSScoped renders an RSS feed for one host into rel. With scoped=false it
+// reproduces the historic global feed exactly; with scoped=true it carries only
+// the given domain's latest articles under that domain's host.
+func writeRSSScoped(host, scope string, scoped bool, rel string) {
+	domClause := ""
+	var domArgs []any
+	if scoped {
+		domClause = " AND domain_id=?"
+		domArgs = []any{scope}
+	}
+	rows, err := dbpkg.Reader().Query(`SELECT title,slug,content,created_at FROM articles WHERE COALESCE(status,'published')='published' AND COALESCE(is_page,0)=0`+domClause+` ORDER BY created_at DESC LIMIT 50`, domArgs...)
 	if err != nil {
 		return
 	}
@@ -268,8 +305,8 @@ func generateRSS() {
 			plain = plain[:500] + "..."
 		}
 		var linkBuf, guidBuf strings.Builder
-		xml.EscapeText(&linkBuf, []byte(fmt.Sprintf("https://%s/%s", config.Cfg.Domain, slug))) //nolint:errcheck
-		xml.EscapeText(&guidBuf, []byte(fmt.Sprintf("https://%s/%s", config.Cfg.Domain, slug))) //nolint:errcheck
+		xml.EscapeText(&linkBuf, []byte(fmt.Sprintf("https://%s/%s", host, slug))) //nolint:errcheck
+		xml.EscapeText(&guidBuf, []byte(fmt.Sprintf("https://%s/%s", host, slug))) //nolint:errcheck
 		// CDATA wraps title/plain — strip any embedded ]]> sequences defensively
 		safeTitle := strings.ReplaceAll(title, "]]>", "]]]]><![CDATA[>")
 		safePlain := strings.ReplaceAll(plain, "]]>", "]]]]><![CDATA[>")
@@ -278,12 +315,16 @@ func generateRSS() {
 	}
 	_ = rows.Err() // best-effort RSS feed; regenerated on the next change
 	rss := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel><title>%s</title><link>https://%s</link><description>%s</description>%s</channel></rss>`,
-		config.Cfg.Domain, config.Cfg.Domain, config.Cfg.Domain, items.String())
-	render.CacheWrite("feed.xml", rss) //nolint:errcheck
+		host, host, host, items.String())
+	render.CacheWrite(rel, rss) //nolint:errcheck
 }
 
-func generateRobots() {
-	render.CacheWrite("robots.txt", fmt.Sprintf("User-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /admin\n\nSitemap: https://%s/sitemap.xml\n", config.Cfg.Domain)) //nolint:errcheck
+// generateRobots writes the historic global robots.txt (primary host).
+// writeRobotsScoped produces a per-domain variant pointing at that host's sitemap.
+func generateRobots() { writeRobotsScoped(config.Cfg.Domain, "robots.txt") }
+
+func writeRobotsScoped(host, rel string) {
+	render.CacheWrite(rel, fmt.Sprintf("User-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /admin\n\nSitemap: https://%s/sitemap.xml\n", host)) //nolint:errcheck
 }
 
 // =============================================================================

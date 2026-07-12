@@ -432,7 +432,7 @@ func (a *App) handleSearchPage(w http.ResponseWriter, r *http.Request) {
 	if q != "" && a.search != nil {
 		ctx, cancel := context.WithTimeout(r.Context(), 6*time.Second)
 		defer cancel()
-		if res, err := a.search.Search(ctx, q, 30); err == nil {
+		if res, err := a.searchScoped(ctx, r, q, 30); err == nil {
 			for _, h := range res.Hits {
 				hits = append(hits, render.SearchHit{Title: h.Title, Slug: h.Slug, Tags: h.Tags, CreatedAt: h.CreatedAt})
 			}

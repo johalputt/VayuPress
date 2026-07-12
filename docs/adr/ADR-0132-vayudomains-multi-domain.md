@@ -102,10 +102,37 @@ post is reachable only on its owning domain (slugs are globally unique, so this
 is an exact one-owner lookup). Reassigning a post lazily purges the caches so
 every domain re-renders on next request.
 
-**Stage 2c (deferred):** the tag pages, feeds, sitemap and search index are
-still global. Scoping those per domain, and per-domain canonical/branding on the
-rendered pages (which belongs with Stage 3 mail/identity), is the next
-increment.
+**Stage 2c (shipped): per-domain taxonomy, feeds, sitemap and search.** The
+remaining public discovery surfaces are now scoped to the active domain, on the
+same `multiDomain` gate as Stage 2b — a single-domain install keeps the original
+global code path and artefacts, byte-identical:
+
+- **Tag index + tag pages.** `/tags` counts only the active domain's published
+  posts, and `/tags/<tag>` lists only that domain's matches (cached per domain at
+  `tags/d_<id>/…`). A tag with no published post on the domain 404s as before.
+- **Sitemap + feed + robots.** `/sitemap.xml`, `/feed.xml` and `/robots.txt` are
+  served from per-domain artefacts (`sitemap_d_<id>.xml`, `feed_d_<id>.xml`,
+  `robots_d_<id>.txt`) that list only the domain's posts/tags and carry the
+  domain's own host, so no domain ever advertises a URL that would 404 under the
+  Stage 2b ownership gate. They are generated lazily on serve within a short
+  freshness window rather than wired into the per-post `CachePurge` fan-out,
+  keeping the change self-contained; the historic global artefacts remain the
+  single-domain path.
+- **Search.** The VayuFind engine stays a single, domain-blind index (no engine
+  fork). The server endpoint (`/api/v1/search`) over-fetches and post-filters
+  hits by ownership; the downloadable client index (`/api/search-index.json`)
+  that hydrates the instant-search modal is filtered to the domain's slugs and
+  memoised per domain, rebuilt when the engine snapshot version changes.
+  Reassigning a post between domains touches no indexed field, so that path
+  explicitly drops the per-domain index memo.
+
+The JSON/GraphQL query API (`gqlResolver.Search`/`Tags`/`Articles`) remains a
+global surface, consistent with the `db.ScopeAll` admin/API convention — it is a
+query interface, not a per-host rendered site.
+
+**Still deferred:** per-domain canonical/branding on the rendered pages belongs
+with Stage 3 (mail/identity); the `UNIQUE(domain_id, slug)` relaxation (below)
+remains a later sub-stage.
 
 **Constraint carried forward:** `articles.slug` is globally UNIQUE via an inline
 (un-droppable) constraint, so two domains cannot yet share a slug. Relaxing that

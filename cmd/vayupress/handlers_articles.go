@@ -127,7 +127,7 @@ func (a *App) handleSearch(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, r, 200, map[string]interface{}{"hits": []interface{}{}, "query": ""})
 		return
 	}
-	res, err := a.search.Search(r.Context(), q, limit)
+	res, err := a.searchScoped(r.Context(), r, q, limit)
 	if err != nil {
 		writeAPIError(w, r, 500, "search_error", "search unavailable", docsSearch)
 		return
@@ -145,6 +145,12 @@ func (a *App) handleSearchIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	payload, version := a.search.Snapshot()
+	// VayuDomains Stage 2c: on a multi-domain install, filter the client index to
+	// the active domain so the instant-search modal never surfaces another
+	// domain's posts. Single-domain installs keep the global payload verbatim.
+	if a.multiDomain(r) {
+		payload, version = a.scopedSearchIndex(r.Context(), a.contentScope(r), version, payload)
+	}
 	etag := `"` + version + `"`
 	if r.Header.Get("If-None-Match") == etag {
 		w.WriteHeader(http.StatusNotModified)

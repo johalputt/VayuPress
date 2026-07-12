@@ -8,6 +8,26 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.2] — 2026-07-12
+
+### Added
+- **VayuDomains (Stage 2c) — per-domain tags, feeds, sitemap & search.** With a
+  secondary domain registered, the remaining public discovery surfaces are now
+  scoped to the active domain: the `/tags` index and each `/tags/<tag>` page
+  count and list only that domain's published posts; `/sitemap.xml`, `/feed.xml`
+  and `/robots.txt` are served from per-domain artefacts that carry only the
+  domain's posts, tags and own host; and search — both the server endpoint and
+  the client index that powers the instant-search modal — returns only the
+  domain's own posts. This closes the Stage 2b gap where those surfaces were
+  still global.
+
+### Notes
+- **Byte-identical for single-domain installs.** Every per-domain path activates
+  only when a secondary domain exists; a plain install keeps its original global
+  code path and artefacts with no added query or file. The shared VayuFind index
+  is left untouched — search is scoped by over-fetch + ownership post-filter, not
+  an engine change. See **ADR-0132**.
+
 ## [3.13.1] — 2026-07-12
 
 ### Added
