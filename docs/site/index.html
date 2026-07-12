@@ -69,9 +69,12 @@
   <div id="progress" class="fixed top-0 left-0 z-[60] h-[2px] bg-gradient-to-r from-teal-400 via-teal-500 to-saffron-400 origin-left transition-none"
        :style="`transform:scaleX(${scrollPct})`"></div>
 
-  <!-- cosmic backdrop -->
+  <!-- ══ cinematic backdrop (layered) ══ -->
+  <canvas id="aurora" class="fixed inset-0 -z-30 pointer-events-none" aria-hidden="true"></canvas>
   <canvas id="wind" class="fixed inset-0 -z-20 pointer-events-none" aria-hidden="true"></canvas>
   <div class="fixed inset-0 -z-20 pointer-events-none cosmic"></div>
+  <div class="fixed inset-0 -z-10 pointer-events-none filmgrain" aria-hidden="true"></div>
+  <div class="fixed inset-0 -z-10 pointer-events-none vignette" aria-hidden="true"></div>
 
   <!-- cursor aura — desktop only -->
   <div id="aura" aria-hidden="true"
@@ -112,73 +115,79 @@
   </header>
 
   <!-- ══════════════ HERO ══════════════ -->
-  <section id="hero" class="relative min-h-[100svh] flex items-center">
+  <section id="hero" class="hero-sec relative min-h-[100svh] flex items-center overflow-hidden">
     <!-- ambient glows -->
+    <div class="hero-beam" aria-hidden="true"></div>
     <div class="glow-hero-1" aria-hidden="true"></div>
     <div class="glow-hero-2" aria-hidden="true"></div>
 
     <div class="relative max-w-7xl mx-auto px-6 pt-28 pb-16 sm:pb-20 grid lg:grid-cols-12 gap-10 lg:gap-14 items-center w-full">
       <!-- ── Copy ── -->
       <div class="lg:col-span-7">
-        <div data-reveal class="inline-flex items-center gap-2 mb-7 px-3 py-1.5 rounded-full border border-teal-800/50 bg-teal-900/20 text-teal-300 text-xs font-mono">
-          <span class="relative flex w-1.5 h-1.5" aria-hidden="true">
-            <span class="absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-75 animate-ping"></span>
-            <span class="relative inline-flex rounded-full w-1.5 h-1.5 bg-teal-400"></span>
+        <!-- eyebrow + live release badge -->
+        <div class="hero-fade inline-flex flex-wrap items-center gap-2.5 mb-8" style="--i:0">
+          <span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-teal-800/50 bg-teal-900/20 text-teal-300 text-xs font-mono">
+            <span class="relative flex w-1.5 h-1.5" aria-hidden="true">
+              <span class="absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-75 animate-ping"></span>
+              <span class="relative inline-flex rounded-full w-1.5 h-1.5 bg-teal-400"></span>
+            </span>
+            One sovereign binary · zero telemetry
           </span>
-          One binary · one VPS · zero telemetry · Apache-2.0
+          <a x-show="version" x-cloak :href="'https://github.com/johalputt/VayuPress/releases/tag/'+version" target="_blank" rel="noopener"
+             class="hero-rel inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-white/10 bg-white/[0.04] text-[11px] font-mono text-gray-300 hover:text-white transition-colors">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400" aria-hidden="true"></span>
+            <span x-text="version"></span> · latest
+          </a>
         </div>
 
-        <h1 class="font-display font-bold tracking-tightest text-white leading-[0.93] mb-7
-                   text-[2.8rem] xs:text-5xl sm:text-6xl lg:text-[5.2rem]">
-          <span class="block" data-reveal>Your website, blog</span>
-          <span class="block text-gradient" data-reveal style="--d:80ms">&amp; private mail.</span>
-          <span class="block text-white/30" data-reveal style="--d:160ms">One binary.</span>
+        <!-- cinematic masked headline -->
+        <h1 class="hero-title font-display font-bold tracking-tightest text-white leading-[0.92] mb-6
+                   text-[2.9rem] xs:text-5xl sm:text-6xl lg:text-[5rem]">
+          <span class="line" style="--i:0"><span class="line-in">Your website, blog,</span></span>
+          <span class="line" style="--i:1"><span class="line-in">mail &amp; chat —</span></span>
+          <span class="line" style="--i:2"><span class="line-in text-gradient">one sovereign binary.</span></span>
         </h1>
 
-        <p data-reveal style="--d:220ms"
-           class="text-base sm:text-lg text-gray-400 leading-relaxed mb-7 max-w-xl font-light">
-          Point a domain at one VPS, run one command, and own your whole online
-          presence: a business <span class="text-gray-100 font-medium">website</span>, a
-          <span class="text-gray-100 font-medium">blog</span>, and a private PGP
-          <span class="text-gray-100 font-medium">mail server</span> — with an official
-          mobile app, cookieless analytics, and one control panel. SQLite, zero
-          telemetry, nothing rented.
+        <!-- rotating subject -->
+        <p class="hero-fade flex items-center flex-wrap gap-x-2.5 text-lg sm:text-xl text-gray-400 font-light mb-6" style="--i:4">
+          <span>One command stands up</span>
+          <span class="hero-rot-mask">
+            <template x-for="r in [rot]" :key="r"><span class="hero-rot-word text-gradient font-medium" x-text="rotWords[rot]"></span></template>
+          </span>
         </p>
 
-        <!-- pillar showcase chips -->
-        <div data-reveal style="--d:250ms" class="flex flex-wrap gap-2 mb-9 max-w-xl">
-          <template x-for="p in pillars" :key="p">
-            <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-white/[0.08] bg-white/[0.03] text-xs text-gray-300 font-medium">
-              <span class="text-teal-400" aria-hidden="true">◆</span>
-              <span x-text="p"></span>
-            </span>
-          </template>
-        </div>
+        <p class="hero-fade text-base sm:text-lg text-gray-400 leading-relaxed mb-8 max-w-xl font-light" style="--i:5">
+          Point a domain at one VPS, run one command, and own your whole online presence —
+          <span class="text-gray-100 font-medium">website</span>,
+          <span class="text-gray-100 font-medium">blog</span>,
+          <span class="text-gray-100 font-medium">PGP mail</span>,
+          <span class="text-gray-100 font-medium">encrypted chat</span>,
+          cookieless analytics and one control panel. SQLite, zero telemetry, nothing rented.
+        </p>
 
-        <div data-reveal style="--d:280ms" class="flex flex-wrap gap-3 items-center">
+        <div class="hero-fade flex flex-wrap gap-3 items-center" style="--i:6">
           <button @click="ripple($event); smoothTo('quickstart')"
-                  class="ripple-btn group relative px-6 py-3 sm:px-7 sm:py-3.5 rounded-xl
+                  @mousemove="magnet($event)" @mouseleave="demagnet($event)"
+                  class="magnetic ripple-btn group relative px-7 py-3.5 rounded-xl
                          bg-gradient-to-r from-teal-500 to-teal-600 text-white font-semibold
-                         text-sm sm:text-base
-                         transition-all duration-200 hover:shadow-2xl hover:shadow-teal-600/40
-                         hover:-translate-y-0.5 overflow-hidden focus-ring"
+                         text-sm sm:text-base overflow-hidden focus-ring
+                         hover:shadow-2xl hover:shadow-teal-600/50"
                   aria-label="Jump to quick-start">
-            <span class="relative flex items-center gap-2">
-              Deploy Now
+            <span class="magnetic-in relative flex items-center gap-2">
+              Deploy in one command
               <span class="group-hover:translate-x-1 transition-transform" aria-hidden="true">→</span>
             </span>
           </button>
           <a href="https://github.com/johalputt/VayuPress" target="_blank" rel="noopener"
-             class="px-6 py-3 sm:px-7 sm:py-3.5 rounded-xl border border-white/10 hover:border-white/25
-                    bg-white/[0.03] text-gray-200 font-semibold text-sm sm:text-base
-                    transition-all duration-200 hover:-translate-y-0.5 focus-ring">
-            Read the source
+             @mousemove="magnet($event)" @mouseleave="demagnet($event)"
+             class="magnetic px-7 py-3.5 rounded-xl border border-white/10 hover:border-white/25
+                    bg-white/[0.03] text-gray-200 font-semibold text-sm sm:text-base focus-ring">
+            <span class="magnetic-in">Read the source</span>
           </a>
         </div>
 
         <!-- live stats bar -->
-        <div data-reveal style="--d:340ms"
-             class="mt-12 sm:mt-14 flex flex-wrap gap-x-8 gap-y-4 pt-7 border-t border-white/[0.06]">
+        <div class="hero-fade mt-12 sm:mt-14 flex flex-wrap gap-x-8 gap-y-4 pt-7 border-t border-white/[0.06]" style="--i:7">
           <div>
             <div class="font-display text-xl sm:text-2xl font-bold text-white tabular-nums" x-text="stars"></div>
             <div class="text-xs text-gray-500 mt-0.5">GitHub stars</div>
@@ -193,8 +202,8 @@
             <div class="text-xs text-gray-500 mt-0.5">binary · one VPS</div>
           </div>
           <div>
-            <div class="font-display text-xl sm:text-2xl font-bold text-white">3-in-1</div>
-            <div class="text-xs text-gray-500 mt-0.5">website · blog · mail</div>
+            <div class="font-display text-xl sm:text-2xl font-bold text-white">4-in-1</div>
+            <div class="text-xs text-gray-500 mt-0.5">site · blog · mail · chat</div>
           </div>
           <div>
             <div class="font-display text-xl sm:text-2xl font-bold text-white">Zero</div>
@@ -204,8 +213,9 @@
       </div>
 
       <!-- ── Terminal preview ── -->
-      <div data-reveal style="--d:180ms" class="lg:col-span-5">
-        <div class="terminal-frame rounded-2xl overflow-hidden shadow-2xl shadow-black/70">
+      <div class="hero-visual lg:col-span-5">
+        <div class="hero-ring" aria-hidden="true"></div>
+        <div class="terminal-frame hero-term rounded-2xl overflow-hidden shadow-2xl shadow-black/70">
           <div class="term-bar flex items-center gap-2 px-4 py-3">
             <span class="w-3 h-3 rounded-full bg-[#ff5f57]" aria-hidden="true"></span>
             <span class="w-3 h-3 rounded-full bg-[#febc2e]" aria-hidden="true"></span>

@@ -191,13 +191,14 @@
   .timeline-dot { left: -1.85rem; }
 }
 
-/* ── Scroll reveal ── */
+/* ── Scroll reveal (cinematic) ── */
 [data-reveal] {
-  opacity: 0; transform: translateY(26px);
+  opacity: 0; transform: translateY(36px) scale(0.984);
   transition:
-    opacity  0.75s cubic-bezier(0.22,1,0.36,1),
-    transform 0.75s cubic-bezier(0.22,1,0.36,1);
+    opacity  0.95s cubic-bezier(0.16,1,0.3,1),
+    transform 0.95s cubic-bezier(0.16,1,0.3,1);
   transition-delay: var(--d, 0ms);
+  will-change: opacity, transform;
 }
 [data-reveal].revealed { opacity: 1; transform: none; }
 
@@ -215,6 +216,84 @@
 ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.18); }
 
 ::selection { background: rgba(13,148,136,0.42); color: #fff; }
+
+/* ══════════════════════════════════════════════════════
+   CINEMATIC LAYER — aurora, grain, vignette, hero reveal
+   ══════════════════════════════════════════════════════ */
+
+/* Living aurora canvas — softened just a touch beyond its gradients. The
+   full-screen blur is desktop-only so low-power mobile GPUs never pay for it. */
+#aurora { opacity: 0.9; }
+@media (min-width: 1024px) { #aurora { filter: blur(8px) saturate(1.12); } }
+
+/* Film grain — a whisper of texture, blended over the whole page. */
+.filmgrain {
+  opacity: 0.05; mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  animation: grainShift 7s steps(6) infinite;
+}
+@keyframes grainShift {
+  0%,100% { transform: translate(0,0); }
+  20% { transform: translate(-2%, 1%); }
+  40% { transform: translate(1%, -2%); }
+  60% { transform: translate(-1%, 2%); }
+  80% { transform: translate(2%, -1%); }
+}
+
+/* Cinematic vignette — draws the eye to centre-stage. */
+.vignette { background: radial-gradient(ellipse 120% 118% at 50% 38%, transparent 54%, rgba(0,0,0,0.55) 100%); }
+
+/* ── Hero ── */
+.hero-sec { position: relative; }
+
+/* Soft top beam that slowly shifts hue. */
+.hero-beam {
+  position: absolute; top: -32%; left: 50%; transform: translateX(-50%);
+  width: 130%; height: 82%; pointer-events: none;
+  background: radial-gradient(ellipse 60% 100% at 50% 0%,
+              rgba(139,92,246,0.12), rgba(13,148,136,0.07) 42%, transparent 72%);
+  filter: blur(34px);
+  animation: beamHue 16s ease-in-out infinite;
+}
+@keyframes beamHue { 50% { filter: blur(34px) hue-rotate(28deg); opacity: 0.85; } }
+
+/* Rotating glow ring behind the terminal. */
+.hero-visual { position: relative; }
+.hero-ring {
+  position: absolute; inset: -10%; border-radius: 2rem; pointer-events: none;
+  background: conic-gradient(from 0deg,
+              rgba(45,212,191,0.28), rgba(139,92,246,0.24), rgba(245,158,11,0.22),
+              rgba(56,189,248,0.24), rgba(45,212,191,0.28));
+  filter: blur(46px); opacity: 0.55;
+  animation: spin 22s linear infinite;
+}
+.hero-term { position: relative; z-index: 1; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Masked headline — each line rises from behind a clip. */
+.hero-title .line { display: block; overflow: hidden; padding-bottom: 0.08em; }
+.hero-title .line-in {
+  display: block;
+  animation: heroLineUp 1.05s cubic-bezier(0.16,1,0.3,1) both;
+  animation-delay: calc(var(--i) * 135ms + 260ms);
+}
+@keyframes heroLineUp { from { transform: translateY(112%) rotate(3deg); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* Staggered fade-up for the rest of the hero copy. */
+.hero-fade {
+  animation: heroFadeUp 0.9s cubic-bezier(0.16,1,0.3,1) both;
+  animation-delay: calc(var(--i) * 85ms + 520ms);
+}
+@keyframes heroFadeUp { from { opacity: 0; transform: translateY(22px); } to { opacity: 1; transform: none; } }
+
+/* Rotating subject word. */
+.hero-rot-mask { display: inline-flex; align-items: flex-end; overflow: hidden; vertical-align: bottom; min-height: 1.35em; }
+.hero-rot-word { display: inline-block; animation: rotWordUp 0.6s cubic-bezier(0.22,1,0.36,1) both; }
+@keyframes rotWordUp { from { transform: translateY(105%); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* Magnetic buttons — drift toward the cursor, spring back. */
+.magnetic { transition: transform 0.4s cubic-bezier(0.22,1,0.36,1), box-shadow 0.35s ease, border-color 0.25s ease; will-change: transform; }
+.magnetic-in { pointer-events: none; }
 
 /* ══════════════════════════════════════════════════════
    PRODUCTS — the Vayu suite tabbed showcase

@@ -67,6 +67,68 @@
   frame();
 })();
 
+/* ═══════════════ Aurora field — living cinematic gradient
+   A few large, slowly-orbiting radial blobs blended additively into a soft,
+   breathing aurora. Canvas 2D (no WebGL), DPR-capped, ~30fps, visibility-aware,
+   and static on prefers-reduced-motion.                                    ═══ */
+(function auroraCanvas() {
+  const canvas = document.getElementById('aurora');
+  if (!canvas) return;
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const ctx = canvas.getContext('2d', { alpha: true });
+  const DPR = Math.min(window.devicePixelRatio || 1, 1.4);
+  const palette = [ [13,148,136], [139,92,246], [245,158,11], [56,189,248], [45,212,191] ];
+  let w, h, blobs, raf, visible = true, last = 0;
+
+  function resize() {
+    w = canvas.width  = Math.floor(innerWidth  * DPR);
+    h = canvas.height = Math.floor(innerHeight * DPR);
+    canvas.style.width  = innerWidth  + 'px';
+    canvas.style.height = innerHeight + 'px';
+    const n = innerWidth < 640 ? 4 : 5;
+    blobs = Array.from({ length: n }, (_, i) => ({
+      c:   palette[i % palette.length],
+      ox:  (0.15 + Math.random() * 0.7) * w,
+      oy:  (0.10 + Math.random() * 0.7) * h,
+      rad: (0.14 + Math.random() * 0.12) * Math.min(w, h),
+      r:   (0.34 + Math.random() * 0.24) * Math.min(w, h),
+      ang: Math.random() * Math.PI * 2,
+      sp:  (0.0011 + Math.random() * 0.0013) * (Math.random() > 0.5 ? 1 : -1),
+      a:   0.55 + Math.random() * 0.4,
+    }));
+  }
+
+  function draw(t) {
+    if (!visible) return;
+    if (t - last < 32) { raf = requestAnimationFrame(draw); return; } // ~30fps
+    last = t;
+    ctx.clearRect(0, 0, w, h);
+    ctx.globalCompositeOperation = 'lighter';
+    for (const b of blobs) {
+      if (!reduce) b.ang += b.sp;
+      const cx = b.ox + Math.cos(b.ang) * b.rad;
+      const cy = b.oy + Math.sin(b.ang * 0.85) * b.rad * 0.72;
+      const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, b.r);
+      g.addColorStop(0,    `rgba(${b.c[0]},${b.c[1]},${b.c[2]},${0.17 * b.a})`);
+      g.addColorStop(0.5,  `rgba(${b.c[0]},${b.c[1]},${b.c[2]},${0.05 * b.a})`);
+      g.addColorStop(1,    `rgba(${b.c[0]},${b.c[1]},${b.c[2]},0)`);
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(cx, cy, b.r, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.globalCompositeOperation = 'source-over';
+    if (reduce) return;
+    raf = requestAnimationFrame(draw);
+  }
+
+  addEventListener('resize', () => { cancelAnimationFrame(raf); resize(); last = 0; raf = requestAnimationFrame(draw); }, { passive: true });
+  document.addEventListener('visibilitychange', () => {
+    visible = !document.hidden;
+    if (visible) { cancelAnimationFrame(raf); last = 0; raf = requestAnimationFrame(draw); }
+  });
+  resize();
+  raf = requestAnimationFrame(draw);
+})();
+
 /* ═══════════════ Cursor aura (desktop pointer only) ═══ */
 (function cursorAura() {
   if (window.matchMedia('(pointer: coarse)').matches) return;
@@ -113,6 +175,7 @@ function app() {
     feature:    null,       // open feature-detail index
     activeProduct: 0,       // selected product tab
     prodAnim:   0,          // bump on tab change to retrigger panel animation
+    rot:        0,          // rotating hero subject index
     typed:      '',
     copied:     false,
     stars:      '★',
@@ -125,6 +188,16 @@ CGO_ENABLED=1 go build -o vayupress ./cmd/vayupress
 STATIC_DIR=./static VAYU_DOCS_DIR=./docs ./vayupress --port 8080`,
 
     /* ── data ── */
+    // Rotating hero subject — cycles through what one command stands up.
+    rotWords: [
+      'a business website.',
+      'a Ghost-class blog.',
+      'a PGP mail server.',
+      'encrypted VayuTalk chat.',
+      'cookieless analytics.',
+      'your whole stack.',
+    ],
+
     // Hero pillar chips — the whole platform at a glance.
     pillars: [
       'Website', 'Blog', 'PGP Mail', 'VayuTalk', 'Mobile App', 'Analytics', 'VayuOS',
@@ -406,6 +479,17 @@ STATIC_DIR=./static VAYU_DOCS_DIR=./docs ./vayupress --port 8080`,
       document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
     },
 
+    /* Magnetic buttons — the element drifts toward the cursor, springs back. */
+    magnet(e) {
+      if (window.matchMedia('(pointer: coarse)').matches) return;
+      const el = e.currentTarget;
+      const r  = el.getBoundingClientRect();
+      const mx = e.clientX - (r.left + r.width / 2);
+      const my = e.clientY - (r.top + r.height / 2);
+      el.style.transform = `translate(${mx * 0.22}px, ${my * 0.34}px)`;
+    },
+    demagnet(e) { e.currentTarget.style.transform = ''; },
+
     tilt(e) {
       if (window.matchMedia('(pointer: coarse)').matches) return;
       const el = e.currentTarget;
@@ -519,6 +603,9 @@ STATIC_DIR=./static VAYU_DOCS_DIR=./docs ./vayupress --port 8080`,
       let i = 1;
       const tick = () => { if (i <= 9) { this.t = i++; setTimeout(tick, i < 4 ? 540 : 370); } };
       setTimeout(tick, 750);
+
+      /* rotating hero subject */
+      setInterval(() => { this.rot = (this.rot + 1) % this.rotWords.length; }, 2400);
 
       /* typing terminal — triggered by IntersectionObserver when in view */
       this.$nextTick(() => {
