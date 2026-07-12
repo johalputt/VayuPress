@@ -117,6 +117,12 @@ func (a *App) handleTalkStream(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Connection", "keep-alive")
+	// Defeat reverse-proxy response buffering (nginx and friends buffer by
+	// default): without this a proxy in front of VayuPress holds the SSE bytes
+	// instead of forwarding them, so the app never receives pushed envelopes or
+	// receipts even though its POST /send works. The web stream sets the same
+	// header; the app's API stream needs it just as much.
+	w.Header().Set("X-Accel-Buffering", "no")
 	w.WriteHeader(http.StatusOK)
 	flusher.Flush()
 

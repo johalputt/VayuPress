@@ -8,6 +8,18 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.11.44] — 2026-07-12
+
+### Fixed
+- **VayuTalk: the app now actually receives messages (the “web→app never
+  arrives” bug).** The app's SSE receive stream (`/api/v1/talk/stream`) was
+  missing the `X-Accel-Buffering: no` header that the web stream already sets, so
+  a reverse proxy in front of VayuPress (nginx buffers by default) held the
+  stream and the app got nothing — no incoming messages, no read receipts — even
+  though its POST /send worked, which is exactly the one-directional symptom
+  seen. Both SSE streams now disable proxy buffering. Pinned by
+  `TestTalkAPIStreamDisablesProxyBuffering`.
+
 ## [3.11.43] — 2026-07-12
 
 ### Changed

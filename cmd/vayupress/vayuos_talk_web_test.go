@@ -357,3 +357,26 @@ func TestTalkAppToWeb(t *testing.T) {
 		t.Fatalf("web received from=%q text=%q", m.From, m.Text)
 	}
 }
+
+// TestTalkAPIStreamDisablesProxyBuffering pins the header that makes the app's
+// SSE receive stream survive a buffering reverse proxy. Without X-Accel-Buffering
+// a proxy (nginx default) holds the stream and the app receives nothing — even
+// though POST /send works — which is exactly the "web->app never arrives" bug.
+func TestTalkAPIStreamDisablesProxyBuffering(t *testing.T) {
+	a := appWithTalk(t, map[string]string{"a@example.com": "pw"})
+	tok := tokenFrom(t, talkConnect(t, a, "a@example.com", "pw"))
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/talk/stream", a.handleTalkStream)
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/api/v1/talk/stream", nil)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("open stream: %v", err)
+	}
+	defer resp.Body.Close()
+	if got := resp.Header.Get("X-Accel-Buffering"); got != "no" {
+		t.Fatalf("X-Accel-Buffering = %q, want \"no\"", got)
+	}
+}
