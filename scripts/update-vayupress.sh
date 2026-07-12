@@ -344,6 +344,16 @@ else
   echo "    journalctl -u $SERVICE -f    (wait for 'listening on :')"
 fi
 
+# ── 7. Keep the VayuTalk relay subdomain provisioned ──────────────────────────
+# If the operator has pointed talk.<domain> at this server (CDN proxy OFF), make
+# sure its cert SAN, nginx vhost, and advertisement stay in place across updates —
+# so the mobile app's SSE stream keeps bypassing the CDN. Idempotent and non-fatal:
+# with no talk.<domain> DNS it does nothing, so this is safe on every update.
+TALK_SETUP="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)/setup-talk-subdomain.sh"
+if [[ -f "$TALK_SETUP" ]]; then
+  CACHE_DIR="$CACHE_DIR" bash "$TALK_SETUP" || true
+fi
+
 echo ""
 echo -e "${GREEN}════════════════════════════════════════════════════════════${NC}"
 echo -e "${GREEN}  VayuPress updated to ${NEW_SHA} and restarted.${NC}"

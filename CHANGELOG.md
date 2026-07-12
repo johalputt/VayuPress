@@ -8,6 +8,26 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.11.49] — 2026-07-12
+
+### Changed
+- **The VayuTalk subdomain now provisions itself on `update`, not just `deploy` —
+  so no self-hoster has to run anything by hand.** The talk-subdomain setup moved
+  into a single shared, idempotent, non-fatal script (`scripts/setup-talk-subdomain.sh`)
+  that BOTH `deploy-vayupress.sh` and `update-vayupress.sh` call. Now the entire
+  server side is automatic: point `talk.<domain>` DNS at the box (CDN proxy OFF),
+  and the next VayuPress update (or deploy) adds the TLS SAN, writes the relay
+  vhost, and advertises the host — the operator never touches nginx or certbot.
+- **Certificate expansion now preserves the cert's existing names.** Instead of a
+  fixed domain list, it re-issues the current certificate's SANs **plus** talk,
+  and drops only names that no longer resolve in DNS. This fixes a real failure
+  mode: a stale record (e.g. a `blog.<domain>` that was never created) no longer
+  aborts the renewal, and live names like `mail.<domain>` are never dropped.
+
+### Notes
+- Existing servers get this the moment they update. The one manual step remains a
+  single DNS record; everything downstream is hands-off.
+
 ## [3.11.48] — 2026-07-12
 
 ### Added
