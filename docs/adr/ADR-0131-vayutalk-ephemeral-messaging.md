@@ -128,10 +128,45 @@ current PGP-only clients do not implement. The wire protocol is frozen at v1;
 a ratcheted mode would be negotiated as a new envelope `mode`/version so the
 in-memory relay itself — which only ever moves opaque bytes — need not change.
 
+### Web client (VayuOS console)
+
+The mobile app holds the mailbox's PGP private key on the device and does its
+own crypto. The **VayuOS web client** (`/os/vayumail/talk`) cannot — a browser
+under our strict CSP has no private key and we will not ship a megabyte of
+vendored OpenPGP.js to give it one. Instead the web surface reuses the trust
+model webmail *already* relies on: **the server decrypts on the user's behalf**,
+exactly as it does when the reader opens an encrypted mail. This keeps the
+browser client tiny (vanilla JS, EventSource + `fetch`, no crypto library) so
+the console stays butter-smooth.
+
+Concretely, two session-authenticated routes bridge the browser to the *same*
+in-process relay the app uses:
+
+- `POST /os/vayumail/talk/send` — the server signs+encrypts the plaintext to the
+  recipient with `EncryptAndSignFromEmail(text, to, self)` and hands the armored
+  ciphertext to the relay. This is byte-identical to what VayuMail Mobile's
+  `keyring.Encrypt(text, [peer], selfEmail)` produces, so a web sender and an app
+  sender are indistinguishable to the relay and to the recipient's signature
+  check.
+- `GET /os/vayumail/talk/stream` — a server-side-decrypting SSE bridge:
+  `Subscribe` to the relay for the signed-in mailbox, decrypt each envelope with
+  that mailbox's key, push **plaintext** to the browser, then `Ack`
+  (read-destroy) so a delivered message is a read message.
+
+The relay itself is unchanged and still only ever sees opaque ciphertext; the
+network and every intermediary do too. Plaintext exists only for the lifetime of
+one request or one SSE write and is never logged or persisted. The browser keeps
+conversations in tab memory only — a reload wipes them, matching the ephemeral
+promise. The identity is the mailbox address (`ownMailbox`), so **web and app
+share one relay and interoperate end to end**: a message sent from either
+surface arrives, decrypts, and read-destroys on the other. Bidirectional interop
+is pinned by `TestTalkWebToApp` / `TestTalkAppToWeb`.
+
 ## Consequences
 
 - A sovereign identity gains private messaging with **no new dependency, no new
-  table, and no new plaintext exposure**.
+  table, and no new plaintext exposure** — on both the app and the web console,
+  over one shared relay.
 - Delivery is best-effort by design: `live` can be dropped, and a restart
   clears the `store` queue. Clients treat VayuTalk as ephemeral chat, not as an
   archive — mail remains the durable channel.

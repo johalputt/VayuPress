@@ -346,6 +346,26 @@ func (e *Engine) EncryptAndSign(plaintext []byte, recipientEmail, senderUserID s
 	return encryptTo(plaintext, []*openpgp.Entity{recip}, signer)
 }
 
+// EncryptAndSignFromEmail produces an armored PGP message encrypted to
+// recipientEmail and signed by the local mailbox identified by senderEmail. It
+// resolves senderEmail to its internal key userID (the same email→userID index
+// DecryptForEmail uses), so a caller can sign as any local mailbox by address
+// alone. This is the server-side counterpart to VayuMail Mobile's device-side
+// keyring.Encrypt(plaintext, [peer], selfEmail): the VayuTalk web client signs
+// on behalf of the authenticated mailbox owner, producing wire-identical
+// armored ciphertext so a web sender and an app sender are indistinguishable to
+// the relay and to the recipient's signature check.
+func (e *Engine) EncryptAndSignFromEmail(plaintext []byte, recipientEmail, senderEmail string) ([]byte, error) {
+	if e.ks == nil {
+		return nil, errors.New("vayupgp: engine not started")
+	}
+	userID, ok := e.ks.userIDForEmail(senderEmail)
+	if !ok {
+		return nil, ErrNotFound
+	}
+	return e.EncryptAndSign(plaintext, recipientEmail, userID)
+}
+
 // Decrypt decrypts an armored PGP message addressed to userID.
 func (e *Engine) Decrypt(ciphertext []byte, userID string) ([]byte, error) {
 	ring, err := e.decryptionRing(userID)

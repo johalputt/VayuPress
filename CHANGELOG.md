@@ -8,6 +8,27 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.11.37] — 2026-07-12
+
+### Added
+- **VayuTalk on the web.** The ephemeral, end-to-end-encrypted chat introduced
+  in 3.11.36 now has a first-class client in the VayuOS console at
+  **VayuMail → VayuTalk** (`/os/vayumail/talk`) — so web and app are one
+  interconnected system over a single relay. A message sent from the browser
+  reaches the mobile app and vice-versa; both decrypt, and both read-destroy.
+  - The browser holds no private key. As with reading encrypted mail in webmail,
+    the server does the PGP crypto on the signed-in mailbox's behalf: on send it
+    signs+encrypts to the recipient (wire-identical to the app's ciphertext); on
+    receive a server-side-decrypting **SSE** bridge pushes plaintext to the tab
+    and immediately acks (read-destroys) the envelope. The relay, the network,
+    and every intermediary still see only ciphertext; nothing is persisted or
+    logged, and conversations live in tab memory only (a reload wipes them).
+  - The client is deliberately tiny — vanilla JS over `EventSource` + `fetch`,
+    no vendored crypto library — so the console stays fast and strict-CSP clean.
+  - New engine primitive `VayuPGP.EncryptAndSignFromEmail` (sign as any local
+    mailbox by address); bidirectional interop pinned by `TestTalkWebToApp` /
+    `TestTalkAppToWeb`. See ADR-0131 (“Web client”).
+
 ## [3.11.36] — 2026-07-11
 
 ### Added

@@ -4065,3 +4065,168 @@
   .vp-os .vs-metrics { gap: var(--sp-5); }
   .vp-os .vs-row { flex-wrap: wrap; }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   VayuTalk — ephemeral end-to-end-encrypted chat (/os/vayumail/talk).
+   Two-pane messenger: conversation rail + thread. Shares the relay with the
+   mobile app; styling matches the console's dark glass system.
+   ═══════════════════════════════════════════════════════════════════════════ */
+.vp-os .vtalk {
+  display: grid;
+  grid-template-columns: minmax(15rem, 19rem) minmax(0, 1fr);
+  gap: var(--sp-4);
+  height: calc(100vh - 13rem);
+  min-height: 30rem;
+  margin-top: var(--sp-4);
+}
+
+/* ── Left rail ─────────────────────────────────────────────────────────────*/
+.vp-os .vtalk-side {
+  display: flex; flex-direction: column; min-height: 0;
+  background: var(--bg-surface); border: 1px solid var(--border);
+  border-radius: var(--r-md); overflow: hidden;
+}
+.vp-os .vtalk-identity {
+  display: flex; align-items: center; gap: var(--sp-3);
+  padding: var(--sp-4); border-bottom: 1px solid var(--border);
+}
+.vp-os .vtalk-identity-meta { display: flex; flex-direction: column; min-width: 0; }
+.vp-os .vtalk-identity-meta strong {
+  font-size: var(--text-sm); color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.vp-os .vtalk-status {
+  display: inline-flex; align-items: center; gap: .4rem;
+  font-size: var(--text-xs); color: var(--text-2);
+}
+.vp-os .vtalk-status::before {
+  content: ""; width: 7px; height: 7px; border-radius: var(--r-full);
+  background: var(--text-3); transition: background var(--t);
+}
+.vp-os .vtalk-status[data-state="online"] { color: var(--ok); }
+.vp-os .vtalk-status[data-state="online"]::before { background: var(--ok); box-shadow: 0 0 8px var(--ok-dim); }
+.vp-os .vtalk-status[data-state="offline"] { color: var(--warn); }
+.vp-os .vtalk-status[data-state="offline"]::before { background: var(--warn); }
+
+.vp-os .vtalk-newchat { display: flex; gap: var(--sp-2); padding: var(--sp-3) var(--sp-4); }
+.vp-os .vtalk-newchat .input { flex: 1; min-width: 0; }
+
+.vp-os .vtalk-convos {
+  list-style: none; margin: 0; padding: var(--sp-2);
+  overflow-y: auto; flex: 1; min-height: 0;
+}
+.vp-os .vtalk-convo {
+  display: flex; align-items: center; gap: var(--sp-3);
+  padding: var(--sp-3); border-radius: var(--r);
+  cursor: pointer; transition: background var(--t-fast);
+}
+.vp-os .vtalk-convo:hover { background: var(--bg-surface-2); }
+.vp-os .vtalk-convo--active { background: var(--brand-dim); }
+.vp-os .vtalk-convo-meta { flex: 1; min-width: 0; }
+.vp-os .vtalk-convo-name {
+  display: block; font-size: var(--text-sm); color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.vp-os .vtalk-convo-badge {
+  min-width: 1.25rem; height: 1.25rem; padding: 0 .35rem;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: var(--text-xs); font-weight: 600; color: #fff;
+  background: var(--brand); border-radius: var(--r-full);
+}
+
+/* Avatars (JS-built rail + Go-built header share the round chip look). */
+.vp-os .vtalk-avatar {
+  width: 2.1rem; height: 2.1rem; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: var(--text-sm); font-weight: 600; color: #fff;
+  background: linear-gradient(135deg, var(--brand), var(--accent));
+  border-radius: var(--r-full);
+}
+
+/* ── Main pane ─────────────────────────────────────────────────────────────*/
+.vp-os .vtalk-main {
+  display: flex; flex-direction: column; min-height: 0; min-width: 0;
+  background: var(--bg-surface); border: 1px solid var(--border);
+  border-radius: var(--r-md); overflow: hidden;
+}
+.vp-os .vtalk-main[data-empty] .vtalk-thread-head,
+.vp-os .vtalk-main[data-empty] .vtalk-composer { display: none; }
+
+.vp-os .vtalk-thread-head {
+  display: flex; align-items: center; gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4); border-bottom: 1px solid var(--border);
+}
+.vp-os .vtalk-head-meta { display: flex; flex-direction: column; min-width: 0; }
+.vp-os .vtalk-head-meta strong { font-size: var(--text-base); color: var(--text); }
+
+.vp-os .vtalk-thread {
+  flex: 1; min-height: 0; overflow-y: auto;
+  display: flex; flex-direction: column; gap: var(--sp-2);
+  padding: var(--sp-4);
+}
+
+.vp-os .vtalk-hint {
+  margin: auto; max-width: 24rem; text-align: center;
+  color: var(--text-2); font-size: var(--text-sm);
+  display: flex; flex-direction: column; align-items: center; gap: var(--sp-3);
+}
+.vp-os .vtalk-hint-badge {
+  width: 3rem; height: 3rem; display: flex; align-items: center; justify-content: center;
+  font-size: 1.5rem; border-radius: var(--r-full);
+  background: var(--brand-dim); border: 1px solid var(--border-strong);
+}
+
+/* ── Bubbles ───────────────────────────────────────────────────────────────*/
+.vp-os .vtalk-msg { display: flex; max-width: 78%; }
+.vp-os .vtalk-msg--in { align-self: flex-start; }
+.vp-os .vtalk-msg--out { align-self: flex-end; }
+.vp-os .vtalk-bubble {
+  padding: var(--sp-3) var(--sp-4); border-radius: var(--r-md);
+  background: var(--bg-surface-2); border: 1px solid var(--border);
+  animation: vtalk-pop var(--t-spring);
+}
+.vp-os .vtalk-msg--out .vtalk-bubble {
+  background: linear-gradient(135deg, var(--brand), #0284c7);
+  border-color: transparent; color: #fff;
+}
+.vp-os .vtalk-bubble-text { font-size: var(--text-sm); line-height: 1.45; white-space: pre-wrap; word-break: break-word; }
+.vp-os .vtalk-bubble-foot {
+  display: flex; align-items: center; gap: var(--sp-2);
+  margin-top: .35rem; font-size: var(--text-xs); opacity: .8;
+}
+.vp-os .vtalk-msg--in .vtalk-bubble-foot { color: var(--text-2); }
+.vp-os .vtalk-bubble-status.is-read { color: var(--ok); opacity: 1; }
+.vp-os .vtalk-msg--out .vtalk-bubble-status.is-read { color: #d1fae5; }
+.vp-os .vtalk-bubble-status.is-error { color: var(--warn); opacity: 1; }
+.vp-os .vtalk-bubble-status.is-expired { color: var(--text-3); }
+
+.vp-os .vtalk-msg--gone { animation: vtalk-fade var(--t-slow) forwards; }
+@keyframes vtalk-pop { from { transform: translateY(6px) scale(.98); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes vtalk-fade { to { transform: scale(.96); opacity: 0; } }
+
+/* ── Composer ──────────────────────────────────────────────────────────────*/
+.vp-os .vtalk-composer {
+  border-top: 1px solid var(--border); padding: var(--sp-3) var(--sp-4);
+  display: flex; flex-direction: column; gap: var(--sp-2);
+}
+.vp-os .vtalk-input {
+  width: 100%; resize: none; min-height: 2.6rem; max-height: 10rem;
+  padding: var(--sp-3); border-radius: var(--r);
+  background: var(--bg-base); color: var(--text);
+  border: 1px solid var(--border); font: inherit; font-size: var(--text-sm);
+}
+.vp-os .vtalk-input:focus { outline: none; border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-dim); }
+.vp-os .vtalk-input:disabled { opacity: .5; }
+.vp-os .vtalk-composer-actions { display: flex; align-items: center; gap: var(--sp-3); }
+.vp-os .vtalk-opt { display: inline-flex; align-items: center; gap: var(--sp-2); }
+.vp-os .vtalk-opt .input { width: auto; }
+.vp-os .vtalk-opt--live { margin-left: auto; }
+.vp-os .vtalk-composer-actions .btn { margin-left: var(--sp-2); }
+
+/* ── Responsive: stack the rail above the thread ───────────────────────────*/
+@media (max-width: 800px) {
+  .vp-os .vtalk { grid-template-columns: 1fr; height: auto; }
+  .vp-os .vtalk-side { max-height: 40vh; }
+  .vp-os .vtalk-thread { min-height: 22rem; }
+  .vp-os .vtalk-msg { max-width: 90%; }
+}

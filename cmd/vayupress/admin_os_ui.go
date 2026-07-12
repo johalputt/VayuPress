@@ -86,6 +86,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 	r.Get("/os/static/js/theme-preview-frame.js", serveAdminOSAsset("js/theme-preview-frame.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-theme-store.js", serveAdminOSAsset("js/admin-os-theme-store.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-mail.js", serveAdminOSAsset("js/admin-os-mail.js", "application/javascript; charset=utf-8"))
+	r.Get("/os/static/js/admin-os-talk.js", serveAdminOSAsset("js/admin-os-talk.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-update.js", serveAdminOSAsset("js/admin-os-update.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-storage.js", serveAdminOSAsset("js/admin-os-storage.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-website.js", serveAdminOSAsset("js/admin-os-website.js", "application/javascript; charset=utf-8"))
@@ -355,6 +356,14 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		// handler): the 2FA-protected console IS the approval anchor, so mailbox
 		// holders can never approve their own devices.
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/devices/action", a.handleVayuOSDeviceAction)
+
+		// VayuTalk web client — ephemeral E2E chat over the same relay the app
+		// uses. The page + send POST are CSRF/session guarded; the SSE stream is
+		// a GET authenticated by the session cookie (EventSource can't set
+		// headers), server-side-decrypting each envelope for the signed-in mailbox.
+		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/talk", a.handleVayuOSTalk)
+		pr.Get("/os/vayumail/talk/stream", a.handleVayuOSTalkStream)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/talk/send", a.handleVayuOSTalkSend)
 
 		pr.Get("/os/vayumail/security", a.handleVayuOSSecurity)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/vayuos/security/check", a.handleVayuOSSecurityCheck)
