@@ -29,6 +29,12 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 		chimw.Timeout(30*time.Second),
 		securityHeadersMiddleware,
 	)
+	// VayuDomains host resolution — annotates each request with the registered
+	// domain that owns its Host header (Stage 1). A pure pass-through: it only
+	// adds context, so the primary domain is served byte-identically.
+	if a.domains != nil {
+		r.Use(a.domainMiddleware)
+	}
 	// Redirect middleware — runs after core middleware, serves 301/302 before routing.
 	if a.redirectMgr != nil {
 		r.Use(a.redirectMgr.Middleware)

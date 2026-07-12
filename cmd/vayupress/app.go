@@ -23,6 +23,7 @@ import (
 	"github.com/johalputt/vayupress/internal/comments"
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/domain"
 	"github.com/johalputt/vayupress/internal/email"
 	"github.com/johalputt/vayupress/internal/emailtmpl"
 	"github.com/johalputt/vayupress/internal/events"
@@ -106,6 +107,10 @@ type App struct {
 
 	// Site/theme settings store (migration 006)
 	siteSettings *settings.Store
+
+	// VayuDomains registry (migration 059) — the multi-domain host registry.
+	// Stage 1: seeded with the primary domain and used for host resolution.
+	domains *domain.Registry
 
 	// API key management (migration 041): VayuPress's own rotatable bearer
 	// tokens, plus encrypted-at-rest third-party service credentials.

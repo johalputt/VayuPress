@@ -38,6 +38,7 @@ import (
 	"github.com/johalputt/vayupress/internal/comments"
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/domain"
 	"github.com/johalputt/vayupress/internal/email"
 	"github.com/johalputt/vayupress/internal/emailtmpl"
 	"github.com/johalputt/vayupress/internal/events"
@@ -79,7 +80,7 @@ import (
 // -ldflags "-X main.Version=<.release-version>", and scripts/update-vayupress.sh
 // reads .release-version too — keep this in sync with .release-version so an
 // un-stamped `go build` still reports an honest version.
-var Version = "3.11.49"
+var Version = "3.12.0"
 var bootTime = time.Now()
 
 // Immutable package-level values (compiled once, never mutated).
@@ -462,6 +463,21 @@ func main() {
 			ShowHero:        sv[settings.KeyHomeHero] == "true",
 			CommentsEnabled: sv[settings.KeyFeatureComments] != "off",
 		})
+	}
+
+	// VayuDomains registry (migration 059) — seed the primary domain from the
+	// configured host so an existing single-domain install is described exactly
+	// as it already runs (byte-identical). site_type tracks the live site.mode.
+	a.domains = domain.New(dbpkg.DB, dbpkg.RDB)
+	if host := strings.TrimSpace(config.Cfg.Domain); host != "" && host != "localhost" {
+		// The raw site.mode string is the site_type vocabulary; EnsurePrimary
+		// coerces the empty/blog case to "blog" itself.
+		siteMode := strings.TrimSpace(a.siteSettings.Get(context.Background(), settings.KeySiteMode))
+		if err := a.domains.EnsurePrimary(context.Background(), host, siteMode); err != nil {
+			logging.LogError("domains", "seed primary domain", err.Error())
+		} else {
+			logging.LogInfo("domains", "primary domain registered: "+host)
+		}
 	}
 
 	// Load persisted design-token theme into the render pipeline.

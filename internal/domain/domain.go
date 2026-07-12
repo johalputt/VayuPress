@@ -1,0 +1,239 @@
+// Package domain is the VayuDomains registry: the single source of truth for
+// every hostname this one binary serves. Stage 1 is deliberately read-mostly —
+// it resolves an incoming Host header to a registered domain and lets the
+// operator manage the list — while content, mail and member scoping land in
+// later stages. The primary domain (the original single-host install) is seeded
+// from config at startup, so an existing site is byte-identical: the registry
+// describes what already exists rather than changing how it is served.
+package domain
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"net"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/johalputt/vayupress/internal/logging"
+)
+
+// Site types. These mirror the global site.mode vocabulary so the primary
+// domain's type is a faithful copy of the existing install, and add the
+// multi-domain-only kinds that later stages fill in.
+const (
+	SiteBlog            = "blog"             // blog at "/" (historic default; empty is treated as this)
+	SiteBusiness        = "business"         // business site at "/", blog at blog.<host>
+	SiteBusinessSubpath = "business_subpath" // business at "/", blog at /blog
+	SiteStatic          = "static"           // a static bundle (Stage 2)
+	SiteMailOnly        = "mail_only"        // no public site; branded mail only (Stage 3)
+)
+
+// TLS lifecycle states recorded (never enforced) by Stage 1.
+const (
+	TLSPrimary = "primary" // managed outside the registry (e.g. the existing certbot cert)
+	TLSPending = "pending"
+	TLSActive  = "active"
+	TLSFailed  = "failed"
+)
+
+// Domain statuses. A disabled domain stays in the table (auditable, reversible)
+// but host resolution treats it as unknown.
+const (
+	StatusActive   = "active"
+	StatusDisabled = "disabled"
+)
+
+// ErrNotFound is returned when no registered, active domain matches a host.
+var ErrNotFound = errors.New("domain: host not registered")
+
+// Domain is one registered hostname and how this binary should serve it.
+type Domain struct {
+	ID          string    `json:"id"`
+	Host        string    `json:"host"`
+	SiteType    string    `json:"site_type"`
+	MailEnabled bool      `json:"mail_enabled"`
+	TLSState    string    `json:"tls_state"`
+	ConfigJSON  string    `json:"config_json,omitempty"`
+	IsPrimary   bool      `json:"is_primary"`
+	Status      string    `json:"status"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+// EffectiveSiteType maps an empty or unknown site_type to the blog default,
+// exactly as the historic site.mode handling does.
+func (d Domain) EffectiveSiteType() string {
+	switch d.SiteType {
+	case SiteBusiness, SiteBusinessSubpath, SiteStatic, SiteMailOnly:
+		return d.SiteType
+	default:
+		return SiteBlog
+	}
+}
+
+// cacheTTL bounds how long a resolved snapshot is trusted before a refresh.
+// Host resolution runs on every public request, so the hot path must not touch
+// SQLite; writes invalidate the cache immediately, and the TTL only bounds
+// staleness from an out-of-band DB edit.
+const cacheTTL = 30 * time.Second
+
+// Registry is the thread-safe domain store with an in-process snapshot cache
+// keyed by lower-cased host.
+type Registry struct {
+	db  *sql.DB
+	rdb *sql.DB // read pool; falls back to db when nil
+
+	mu      sync.RWMutex
+	byHost  map[string]Domain
+	primary Domain
+	hasPrim bool
+	ttl     time.Time
+}
+
+// New constructs a Registry. rdb is the read-only pool (may be nil, in which
+// case reads use db).
+func New(db, rdb *sql.DB) *Registry {
+	return &Registry{db: db, rdb: rdb, byHost: make(map[string]Domain)}
+}
+
+func (r *Registry) reader() *sql.DB {
+	if r.rdb != nil {
+		return r.rdb
+	}
+	return r.db
+}
+
+// NormalizeHost lower-cases a Host header value and strips the port and any
+// trailing dot, yielding the bare hostname used as the registry key.
+func NormalizeHost(host string) string {
+	host = strings.TrimSpace(host)
+	if host == "" {
+		return ""
+	}
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	host = strings.TrimSuffix(host, ".")
+	return strings.ToLower(host)
+}
+
+// refresh reloads the whole registry into the cache. The table is small (one
+// row per served hostname), so a full scan is cheaper than per-host queries.
+func (r *Registry) refresh(ctx context.Context) error {
+	rows, err := r.reader().QueryContext(ctx, `SELECT id,host,site_type,mail_enabled,tls_state,config_json,is_primary,status,created_at,updated_at FROM domains`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	byHost := make(map[string]Domain)
+	var primary Domain
+	var hasPrim bool
+	for rows.Next() {
+		var d Domain
+		var mail, prim int
+		if err := rows.Scan(&d.ID, &d.Host, &d.SiteType, &mail, &d.TLSState, &d.ConfigJSON, &prim, &d.Status, &d.CreatedAt, &d.UpdatedAt); err != nil {
+			return err
+		}
+		d.MailEnabled = mail != 0
+		d.IsPrimary = prim != 0
+		d.Host = NormalizeHost(d.Host)
+		byHost[d.Host] = d
+		if d.IsPrimary {
+			primary = d
+			hasPrim = true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	r.mu.Lock()
+	r.byHost = byHost
+	r.primary = primary
+	r.hasPrim = hasPrim
+	r.ttl = time.Now().Add(cacheTTL)
+	r.mu.Unlock()
+	return nil
+}
+
+// ensureFresh refreshes the cache when the TTL has expired. Freshness is purely
+// time-based: an empty registry (localhost/dev, before seeding) is a valid,
+// cacheable state, so the hot path must not re-query the DB on every request
+// just because there are no rows yet.
+func (r *Registry) ensureFresh(ctx context.Context) {
+	r.mu.RLock()
+	fresh := !r.ttl.IsZero() && time.Now().Before(r.ttl)
+	r.mu.RUnlock()
+	if fresh {
+		return
+	}
+	if err := r.refresh(ctx); err != nil {
+		logging.LogError("domains", "registry refresh failed", err.Error())
+	}
+}
+
+// invalidate forces the next read to reload from the DB.
+func (r *Registry) invalidate() {
+	r.mu.Lock()
+	r.ttl = time.Time{}
+	r.mu.Unlock()
+}
+
+// Resolve returns the active domain registered for host, or ErrNotFound. A
+// disabled domain resolves as not-found so callers fall back to primary
+// behaviour without a special case.
+func (r *Registry) Resolve(ctx context.Context, host string) (Domain, error) {
+	key := NormalizeHost(host)
+	if key == "" {
+		return Domain{}, ErrNotFound
+	}
+	r.ensureFresh(ctx)
+	r.mu.RLock()
+	d, ok := r.byHost[key]
+	r.mu.RUnlock()
+	if !ok || d.Status != StatusActive {
+		return Domain{}, ErrNotFound
+	}
+	return d, nil
+}
+
+// Primary returns the primary domain (the original install). ok is false when
+// the registry has not been seeded yet.
+func (r *Registry) Primary(ctx context.Context) (Domain, bool) {
+	r.ensureFresh(ctx)
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.primary, r.hasPrim
+}
+
+// List returns every registered domain (active and disabled), primary first
+// then alphabetically by host, for the admin console.
+func (r *Registry) List(ctx context.Context) ([]Domain, error) {
+	rows, err := r.reader().QueryContext(ctx, `SELECT id,host,site_type,mail_enabled,tls_state,config_json,is_primary,status,created_at,updated_at FROM domains ORDER BY is_primary DESC, host ASC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Domain
+	for rows.Next() {
+		var d Domain
+		var mail, prim int
+		if err := rows.Scan(&d.ID, &d.Host, &d.SiteType, &mail, &d.TLSState, &d.ConfigJSON, &prim, &d.Status, &d.CreatedAt, &d.UpdatedAt); err != nil {
+			return nil, err
+		}
+		d.MailEnabled = mail != 0
+		d.IsPrimary = prim != 0
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
+// Count returns the number of registered domains.
+func (r *Registry) Count(ctx context.Context) (int, error) {
+	var n int
+	err := r.reader().QueryRowContext(ctx, `SELECT COUNT(1) FROM domains`).Scan(&n)
+	return n, err
+}

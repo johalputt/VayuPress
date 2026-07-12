@@ -8,6 +8,34 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.12.0] — 2026-07-12
+
+### Added
+- **VayuDomains (Stage 1) — one binary, one registry of every hostname it
+  serves.** A new `domains` table (migration 059) and an in-process registry
+  (`internal/domain`) become the authoritative source of truth for host
+  resolution. A new **Domains** page under VayuOS (`/os/domains`) lists every
+  registered hostname and lets an operator add, enable, disable or remove
+  secondary domains and choose what each one serves (blog, business,
+  business + `/blog`, static, or mail-only).
+- **Host-resolution middleware** annotates every request with the registered
+  domain that owns its `Host` header. It is a pure pass-through: an unknown or
+  disabled host falls back to the primary domain, and no handler yet branches on
+  the resolved domain — so the primary site is served **byte-identically**.
+- **Primary-domain seed.** On startup the configured `DOMAIN` is idempotently
+  registered as the single primary domain, with its certificate marked as
+  managed outside the registry (the existing certbot cert). The primary domain
+  is protected — it cannot be disabled, deleted, or edited from the page; its
+  site type tracks the global Website (`site.mode`) setting.
+
+### Notes
+- This is Stage 1 (the foundation). Per-domain **content, mail and members**,
+  and **automatic per-domain TLS/nginx provisioning**, are deferred to later
+  stages and documented — with the hard constraints that shape them — in
+  **ADR-0132**. Adding a domain here registers it; point its DNS at this server
+  and provision a certificate before it serves traffic. The admin page states
+  this plainly so nothing over-promises.
+
 ## [3.11.49] — 2026-07-12
 
 ### Changed
