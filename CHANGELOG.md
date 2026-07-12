@@ -8,6 +8,19 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.11.40] — 2026-07-12
+
+### Added
+- **VayuTalk “chat as” switcher.** An administrator — who owns every mailbox on
+  the server — now gets a mailbox dropdown in the VayuTalk left rail and can chat
+  as any of them; the recipient sees the selected address as the sender.
+  Switching identity cleanly reconnects the stream, resets the conversation view,
+  and refreshes your safety number. A normal mailbox holder still has exactly one
+  identity (their own) and no switcher. The selection is authorized server-side
+  (`talkSelf`): a non-admin can never send as another mailbox, and an admin is
+  confined to mailboxes on their own server. Pinned by `TestTalkChatAsBoundary`
+  and `TestTalkChatAsAdminSendsAsSelected`.
+
 ## [3.11.39] — 2026-07-12
 
 ### Added

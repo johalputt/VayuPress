@@ -4273,3 +4273,12 @@
   background: var(--warn-dim); border: 1px solid var(--warn);
   border-radius: var(--r);
 }
+
+/* "Chat as" identity switcher (admins with multiple mailboxes) */
+.vp-os .vtalk-as {
+  font-family: var(--font-body); font-size: var(--text-sm); font-weight: 600;
+  color: var(--text); background: var(--bg-surface-2);
+  border: 1px solid var(--border); border-radius: var(--r-sm);
+  padding: .2rem .5rem; max-width: 100%;
+}
+.vp-os .vtalk-as:focus { outline: none; border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-dim); }

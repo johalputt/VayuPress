@@ -134,6 +134,38 @@ func TestTalkIdentityResolution(t *testing.T) {
 	}
 }
 
+// TestTalkChatAsBoundary pins the "chat as" switcher's authorization boundary:
+// an admin may send as any active mailbox on the server, a non-admin is confined
+// to their own, and an unentitled `as` value silently falls back to the default.
+func TestTalkChatAsBoundary(t *testing.T) {
+	a, _, _ := appWithTalkWeb(t) // dana@example.com is an active mailbox
+	reqFor := func(u *users.User) *http.Request {
+		return withUser(httptest.NewRequest(http.MethodGet, "/os/talk", nil), u)
+	}
+
+	admin := &users.User{ID: "ad", Email: "boss@example.com", Role: users.RoleAdmin, MailAddress: "boss@example.com"}
+	// Admin lists more than one identity (their own + server mailboxes).
+	if ids := a.talkIdentities(reqFor(admin)); len(ids) < 2 {
+		t.Fatalf("admin should have multiple identities, got %v", ids)
+	}
+	// Admin may select an active server mailbox.
+	if got := a.talkSelf(reqFor(admin), "dana@example.com"); got != "dana@example.com" {
+		t.Fatalf("admin select dana: got %q", got)
+	}
+	// A non-admin is confined to their own mailbox — any other `as` falls back.
+	holder := &users.User{ID: "h", Email: "holder@example.com", Role: users.RoleAuthor, MailAddress: "holder@example.com"}
+	if ids := a.talkIdentities(reqFor(holder)); len(ids) != 1 || ids[0] != "holder@example.com" {
+		t.Fatalf("holder identities = %v, want just their own", ids)
+	}
+	if got := a.talkSelf(reqFor(holder), "dana@example.com"); got != "holder@example.com" {
+		t.Fatalf("holder must not chat as another mailbox: got %q", got)
+	}
+	// Empty selection → default.
+	if got := a.talkSelf(reqFor(holder), ""); got != "holder@example.com" {
+		t.Fatalf("holder default: got %q", got)
+	}
+}
+
 // TestFormatSafetyMatchesApp checks the safety-number normalisation the web
 // shares with VayuMail Mobile: colons/spaces stripped, uppercased, groups of
 // four separated by a single space — so the two screens are comparable.
@@ -147,6 +179,41 @@ func TestFormatSafetyMatchesApp(t *testing.T) {
 		if got := formatSafety(in); got != want {
 			t.Fatalf("formatSafety(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+// TestTalkChatAsAdminSendsAsSelected proves the switcher end to end: an admin
+// who picks a different mailbox has the recipient see THAT address as the
+// sender, not the admin's default identity.
+func TestTalkChatAsAdminSendsAsSelected(t *testing.T) {
+	a, _, _ := appWithTalkWeb(t)
+	bobTok := tokenFrom(t, talkConnect(t, a, "bob@example.com", "pw"))
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/talk/stream", a.handleTalkStream)
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	bob := openSSE(t, srv.URL+"/api/v1/talk/stream", bobTok)
+	defer bob.close()
+
+	admin := &users.User{ID: "ad", Email: "boss@example.com", Role: users.RoleAdmin, MailAddress: "boss@example.com"}
+	body, _ := json.Marshal(map[string]interface{}{
+		"to": "bob@example.com", "text": "as dana", "mode": "store", "as": "dana@example.com",
+	})
+	req := withUser(httptest.NewRequest(http.MethodPost, "/os/talk/send", strings.NewReader(string(body))), admin)
+	rec := httptest.NewRecorder()
+	a.handleVayuOSTalkSend(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("send = %d (%s)", rec.Code, rec.Body.String())
+	}
+
+	ev := bob.wait(t, "envelope")
+	var p struct {
+		From string `json:"from"`
+	}
+	_ = json.Unmarshal([]byte(ev.data), &p)
+	if p.From != "dana@example.com" {
+		t.Fatalf("recipient saw sender %q, want dana@example.com (the selected identity)", p.From)
 	}
 }
 

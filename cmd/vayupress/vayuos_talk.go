@@ -78,6 +78,52 @@ func (a *App) talkIdentity(r *http.Request) string {
 	return ""
 }
 
+// talkIdentities lists every address this session may chat as, default first.
+// A normal mailbox holder gets exactly one (their own); an admin — who owns
+// every mailbox on the server — may pick any active mailbox, which is what the
+// "chat as ▾" switcher offers. The default (talkIdentity) always leads, so an
+// admin whose fallback is postmaster@domain still sees it even if it isn't a
+// provisioned account.
+func (a *App) talkIdentities(r *http.Request) []string {
+	def := a.talkIdentity(r)
+	if def == "" {
+		return nil
+	}
+	out := []string{def}
+	if a.isAdminRequest(r) {
+		seen := map[string]bool{def: true}
+		for _, m := range a.appPasswordMailboxes(r) {
+			m = strings.ToLower(strings.TrimSpace(m))
+			if m != "" && !seen[m] {
+				seen[m] = true
+				out = append(out, m)
+			}
+		}
+	}
+	return out
+}
+
+// talkSelf resolves the identity for one request, honouring an explicit
+// selection (the switcher's `as` value) but ONLY when it is one this session is
+// entitled to use — otherwise it falls back to the default. This is the
+// authorization boundary for "chat as": a non-admin can never select another
+// mailbox, and an admin is confined to mailboxes on their own server.
+func (a *App) talkSelf(r *http.Request, requested string) string {
+	allowed := a.talkIdentities(r)
+	if len(allowed) == 0 {
+		return ""
+	}
+	requested = strings.ToLower(strings.TrimSpace(requested))
+	if requested != "" {
+		for _, m := range allowed {
+			if m == requested {
+				return requested
+			}
+		}
+	}
+	return allowed[0]
+}
+
 // formatSafety renders a PGP fingerprint as a "safety number" for out-of-band
 // verification. It normalises exactly as VayuMail Mobile's chat.SafetyNumber
 // does — colons and spaces stripped, uppercased, split into groups of four — so
@@ -172,24 +218,39 @@ func (a *App) handleVayuOSTalk(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	self := a.talkIdentity(r)
-	if self == "" {
+	idents := a.talkIdentities(r)
+	if len(idents) == 0 {
 		body.WriteString(`<div class="empty-state">VayuTalk needs a mailbox on this domain to use as your chat identity, and this server has no mailboxes yet. Create one under <a href="/os/vayumail/accounts">VayuMail → Accounts</a>, then reload.</div>`)
 		writeOSHTML(w, adminOSLayout(nonce, "VayuTalk", "talk", cfg, htmpl.HTML(body.String())))
 		return
 	}
+	self := idents[0]
 
 	// Resolve our own fingerprint (minting the key if this is the first use) so
 	// the verify panel can show the user their own safety number to read out.
+	// Only the default identity is minted eagerly; switching to another mints
+	// that one on demand via the peer endpoint, so a server with many mailboxes
+	// never pays for keygen it isn't using.
 	a.ensureTalkKeypair(self)
 	_, selfFP, _ := a.vayuTalk.PubKey(self)
 
 	esc := htmpl.HTMLEscapeString
 	body.WriteString(`<div class="vtalk" data-self="` + esc(self) + `" data-self-fp="` + esc(formatSafety(selfFP)) + `">`)
 
-	// Left rail: start-a-chat box + live conversation list (filled by JS).
+	// Left rail: identity (a "chat as" switcher when more than one is available),
+	// start-a-chat box, and the live conversation list (filled by JS).
 	body.WriteString(`<aside class="vtalk-side">`)
-	body.WriteString(`<div class="vtalk-identity">` + mailAvatar(self) + `<div class="vtalk-identity-meta"><strong>` + esc(self) + `</strong><span class="vtalk-status" id="vtalk-status" data-state="connecting">Connecting…</span></div></div>`)
+	body.WriteString(`<div class="vtalk-identity">` + mailAvatar(self) + `<div class="vtalk-identity-meta">`)
+	if len(idents) > 1 {
+		body.WriteString(`<select class="vtalk-as" id="vtalk-as" aria-label="Chat as">`)
+		for _, id := range idents {
+			body.WriteString(`<option value="` + esc(id) + `">` + esc(id) + `</option>`)
+		}
+		body.WriteString(`</select>`)
+	} else {
+		body.WriteString(`<strong>` + esc(self) + `</strong>`)
+	}
+	body.WriteString(`<span class="vtalk-status" id="vtalk-status" data-state="connecting">Connecting…</span></div></div>`)
 	body.WriteString(`<form class="vtalk-newchat" id="vtalk-newchat"><input class="input input--sm" id="vtalk-peer" type="email" autocomplete="off" spellcheck="false" placeholder="name@domain" aria-label="Recipient address"><button class="btn btn--sm btn--primary" type="submit">Start</button></form>`)
 	body.WriteString(`<ul class="vtalk-convos" id="vtalk-convos" aria-label="Conversations"></ul>`)
 	body.WriteString(`</aside>`)
@@ -222,7 +283,7 @@ func (a *App) handleVayuOSTalkStream(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "VayuTalk unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	self := a.talkIdentity(r)
+	self := a.talkSelf(r, r.URL.Query().Get("as"))
 	if self == "" {
 		http.Error(w, "no mailbox assigned", http.StatusForbidden)
 		return
@@ -319,19 +380,22 @@ func (a *App) handleVayuOSTalkSend(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "vayutalk-disabled", "VayuTalk is not available", "")
 		return
 	}
-	self := a.talkIdentity(r)
-	if self == "" {
-		writeAPIError(w, r, http.StatusForbidden, "no-mailbox", "No mailbox is assigned to your account", "")
-		return
-	}
 	var body struct {
 		To         string `json:"to"`
 		Text       string `json:"text"`
 		TTLSeconds int    `json:"ttl_seconds"`
 		Mode       string `json:"mode"`
+		As         string `json:"as"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 256*1024)).Decode(&body); err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "bad-json", "Invalid request body", "")
+		return
+	}
+	// Resolve the sending identity, honouring the switcher's `as` value only if
+	// this session is entitled to it (talkSelf enforces the boundary).
+	self := a.talkSelf(r, body.As)
+	if self == "" {
+		writeAPIError(w, r, http.StatusForbidden, "no-mailbox", "No mailbox is assigned to your account", "")
 		return
 	}
 	to := strings.TrimSpace(strings.ToLower(body.To))

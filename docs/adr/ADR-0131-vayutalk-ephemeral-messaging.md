@@ -185,6 +185,16 @@ reachability (turning a doomed send into an upfront explanation) and render that
 number. Verified state is per-tab memory only — fingerprints are public, and
 nothing about a verification is persisted.
 
+**Chat-as switcher.** `talkIdentities` lists every address a session may chat as
+(one for a normal holder; every active mailbox for an admin, who owns them all),
+and `talkSelf(r, requested)` resolves a request's identity, honouring the
+switcher's `as` value only when it is in that entitled set — the authorization
+boundary that stops a non-admin from ever sending as another mailbox. The stream
+(`?as=`) and send (`"as"` body field) both pass through `talkSelf`, so selection
+is validated on every request, not just at page load. Switching identity is a
+clean teardown client-side (new inbox, new key, reset conversations) because a
+different mailbox is a different key.
+
 ## Consequences
 
 - A sovereign identity gains private messaging with **no new dependency, no new

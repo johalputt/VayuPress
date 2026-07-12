@@ -24,6 +24,8 @@
   if (!root) return;
   var self = root.getAttribute('data-self') || '';
   var selfFp = root.getAttribute('data-self-fp') || '';
+  var asSel = document.getElementById('vtalk-as');   // "chat as" switcher (admins)
+  var currentSelf = (asSel ? asSel.value : self).trim().toLowerCase();
 
   var els = {
     status: document.getElementById('vtalk-status'),
@@ -293,7 +295,7 @@
   var es = null;
   function connect() {
     if (es) es.close();
-    es = new EventSource('/os/talk/stream');
+    es = new EventSource('/os/talk/stream?as=' + encodeURIComponent(currentSelf));
     es.addEventListener('open', function () { markStatus('online', 'Online'); });
     es.addEventListener('error', function () { markStatus('offline', 'Reconnecting…'); });
     es.addEventListener('message', function (e) {
@@ -337,7 +339,7 @@
     fetch('/os/talk/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': cookie('vp_csrf') },
-      body: JSON.stringify({ to: to, text: text, ttl_seconds: ttl, mode: mode })
+      body: JSON.stringify({ to: to, text: text, ttl_seconds: ttl, mode: mode, as: currentSelf })
     }).then(function (r) {
       return r.json().then(function (j) { return { ok: r.ok, j: j }; }, function () { return { ok: r.ok, j: null }; });
     }).then(function (res) {
@@ -365,10 +367,42 @@
   els.newchat.addEventListener('submit', function (e) {
     e.preventDefault();
     var peer = norm(els.peer.value);
-    if (!peer || peer === norm(self)) { els.peer.value = ''; return; }
+    if (!peer || peer === currentSelf) { els.peer.value = ''; return; }
     els.peer.value = '';
     activate(peer);
   });
+
+  // "Chat as" switcher: a different identity is a different inbox and a
+  // different key, so we tear the session down and reconnect cleanly.
+  if (asSel) {
+    asSel.addEventListener('change', function () { switchIdentity(norm(asSel.value)); });
+  }
+  function switchIdentity(next) {
+    if (!next || next === currentSelf) return;
+    currentSelf = next;
+    // Reset all conversation state — nothing carries across identities.
+    convos = Object.create(null);
+    byId = Object.create(null);
+    peerInfo = Object.create(null);
+    verified = Object.create(null);
+    active = '';
+    els.convos.textContent = '';
+    els.head.textContent = '';
+    els.thread.textContent = '';
+    els.main.setAttribute('data-empty', '1');
+    els.input.disabled = true;
+    els.send.disabled = true;
+    var av = root.querySelector('.vtalk-identity .vm-av');
+    if (av) av.textContent = initials(currentSelf);
+    // Refresh our own safety number for the new identity, then reconnect.
+    selfFp = '';
+    fetch('/os/talk/peer?email=' + encodeURIComponent(currentSelf), { headers: { 'Accept': 'application/json' } })
+      .then(function (r) { return r.json(); })
+      .then(function (j) { if (j && j.safety) selfFp = j.safety; })
+      .catch(function () {});
+    markStatus('connecting', 'Connecting…');
+    connect();
+  }
   els.composer.addEventListener('submit', function (e) { e.preventDefault(); send(); });
   els.input.addEventListener('keydown', function (e) {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
