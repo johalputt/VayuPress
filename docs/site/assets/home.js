@@ -212,11 +212,11 @@
       'vec2 p=uv-mo*0.12;float r=length(p);float ang=atan(p.y,p.x);float swirl=0.55/(r+0.32);',
       'vec2 q=vec2(cos(ang+swirl+t),sin(ang+swirl+t))*r;vec2 w=q+0.6*vec2(fbm(q*1.5+t),fbm(q*1.5-t+5.2));',
       'float n=fbm(w*2.0+mo*0.35);float coreY=-0.05+uScroll*0.55;float rc=length(p-vec2(0.,coreY));',
-      'float core=exp(-rc*3.1)+0.55*exp(-rc*8.0);float ml=0.24*exp(-length(uv-mo)*4.5);',
-      'float dens=n*0.92+core*1.65+ml;dens*=smoothstep(1.45,0.05,r);',
+      'float core=exp(-rc*3.3)+0.45*exp(-rc*8.5);float ml=0.18*exp(-length(uv-mo)*4.5);',
+      'float dens=n*0.72+core*1.25+ml;dens*=smoothstep(1.42,0.08,r);',
       'vec3 cyan=vec3(0.13,0.98,0.90),blue=vec3(0.28,0.52,1.0),violet=vec3(0.56,0.34,1.0),rose=vec3(1.0,0.32,0.60),gold=vec3(1.0,0.80,0.46);',
       'float h=n*1.25+ang*0.06+t*2.2+r*1.15;vec3 col=mix(blue,cyan,0.5+0.5*sin(h));col=mix(col,violet,0.5+0.5*sin(h*0.8+2.0));col=mix(col,rose,0.5+0.5*sin(h*1.45+1.5));col=mix(col,gold,clamp(core*0.9,0.,1.));',
-      'vec3 o=col*dens;o+=vec3(0.02,0.025,0.05)*(1.0-r);o=o/(o+0.72);o=pow(o,vec3(0.85));gl_FragColor=vec4(o,1.0);}'].join('\n');
+      'vec3 o=col*dens;o+=vec3(0.015,0.02,0.045)*(1.0-r);o=o/(o+0.95);o=pow(o,vec3(0.9));gl_FragColor=vec4(o,1.0);}'].join('\n');
     function sh(ty, src) { var s = gl.createShader(ty); gl.shaderSource(s, src); gl.compileShader(s); return s; }
     var prog = gl.createProgram(); gl.attachShader(prog, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(prog);
     if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) { cv.style.display = 'none'; $('#glfallback').style.display = 'block'; return; }
@@ -321,28 +321,40 @@
     stage.classList.add('stage-3d');
 
     var scene = new T.Scene();
-    var cam = new T.PerspectiveCamera(45, 1, 0.1, 100); cam.position.set(0, 0, 5.4);
+    var cam = new T.PerspectiveCamera(45, 1, 0.1, 100); cam.position.set(0, 0, 5.7);
     var group = new T.Group(); scene.add(group);
 
-    var ico = new T.IcosahedronGeometry(1.4, 1);
-    group.add(new T.LineSegments(new T.WireframeGeometry(ico), new T.LineBasicMaterial({ color: 0x35E6D6, transparent: true, opacity: 0.5 })));
-    var shell = new T.Mesh(new T.IcosahedronGeometry(0.78, 1), new T.MeshStandardMaterial({ color: 0x0b0f1a, emissive: 0x7C6BFF, emissiveIntensity: 1.15, metalness: 0.6, roughness: 0.25, flatShading: true }));
-    group.add(shell);
-    var heart = new T.Mesh(new T.SphereGeometry(0.3, 24, 24), new T.MeshBasicMaterial({ color: 0xbfefff }));
-    group.add(heart);
+    // soft bloom halo behind the core (a radial-gradient sprite, additive)
+    function glowTex() {
+      var c2 = document.createElement('canvas'); c2.width = c2.height = 128;
+      var g = c2.getContext('2d'), gr = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+      gr.addColorStop(0, 'rgba(180,238,255,0.95)'); gr.addColorStop(0.28, 'rgba(124,140,255,0.42)'); gr.addColorStop(1, 'rgba(124,107,255,0)');
+      g.fillStyle = gr; g.fillRect(0, 0, 128, 128); return new T.CanvasTexture(c2);
+    }
+    var glow = new T.Sprite(new T.SpriteMaterial({ map: glowTex(), blending: T.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0.9 }));
+    glow.scale.set(3.5, 3.5, 1); group.add(glow);
 
-    var N = 900, pos = new Float32Array(N * 3), col = new Float32Array(N * 3);
-    var pal = [[0.21, 0.94, 0.86], [0.5, 0.4, 1.0], [1.0, 0.42, 0.63]];
+    group.add(new T.LineSegments(new T.WireframeGeometry(new T.IcosahedronGeometry(1.46, 1)), new T.LineBasicMaterial({ color: 0x4defe0, transparent: true, opacity: 0.42 })));
+    var shell = new T.Mesh(new T.IcosahedronGeometry(0.82, 1), new T.MeshStandardMaterial({ color: 0x0a0e18, emissive: 0x6a5cff, emissiveIntensity: 0.9, metalness: 0.7, roughness: 0.22, flatShading: true, transparent: true, opacity: 0.96 }));
+    group.add(shell);
+    group.add(new T.LineSegments(new T.WireframeGeometry(new T.IcosahedronGeometry(0.82, 1)), new T.LineBasicMaterial({ color: 0xbfefff, transparent: true, opacity: 0.26 })));
+    var heart = new T.Mesh(new T.SphereGeometry(0.26, 28, 28), new T.MeshBasicMaterial({ color: 0xdaf6ff }));
+    group.add(heart);
+    var ring = new T.Mesh(new T.TorusGeometry(1.95, 0.011, 8, 128), new T.MeshBasicMaterial({ color: 0x9fb0ff, transparent: true, opacity: 0.32 }));
+    ring.rotation.x = 1.15; group.add(ring);
+
+    var N = 1200, pos = new Float32Array(N * 3), col = new Float32Array(N * 3);
+    var pal = [[0.24, 0.95, 0.87], [0.55, 0.45, 1.0], [1.0, 0.45, 0.66], [0.72, 0.86, 1.0]];
     for (var i = 0; i < N; i++) {
-      var rr = 1.85 + Math.pow((i % 97) / 97, 2) * 2.2;
+      var rr = 1.65 + Math.pow(((i * 13) % 101) / 101, 1.7) * 2.0;
       var u = ((i * 2.3999632) % 2) - 1, th = i * 2.399963, s = Math.sqrt(Math.max(0, 1 - u * u));
-      pos[i * 3] = s * Math.cos(th) * rr; pos[i * 3 + 1] = u * rr; pos[i * 3 + 2] = s * Math.sin(th) * rr;
-      var c = pal[i % 3]; col[i * 3] = c[0]; col[i * 3 + 1] = c[1]; col[i * 3 + 2] = c[2];
+      pos[i * 3] = s * Math.cos(th) * rr; pos[i * 3 + 1] = u * rr * 0.82; pos[i * 3 + 2] = s * Math.sin(th) * rr;
+      var c = pal[i % 4]; col[i * 3] = c[0]; col[i * 3 + 1] = c[1]; col[i * 3 + 2] = c[2];
     }
     var pgeo = new T.BufferGeometry();
     pgeo.setAttribute('position', new T.BufferAttribute(pos, 3));
     pgeo.setAttribute('color', new T.BufferAttribute(col, 3));
-    var pts = new T.Points(pgeo, new T.PointsMaterial({ size: 0.04, vertexColors: true, transparent: true, opacity: 0.85, blending: T.AdditiveBlending, depthWrite: false, sizeAttenuation: true }));
+    var pts = new T.Points(pgeo, new T.PointsMaterial({ size: 0.03, vertexColors: true, transparent: true, opacity: 0.8, blending: T.AdditiveBlending, depthWrite: false, sizeAttenuation: true }));
     group.add(pts);
 
     scene.add(new T.AmbientLight(0x334455, 0.7));
@@ -361,12 +373,15 @@
     function frame() {
       raf = 0; if (!inview || document.hidden) return;
       clock += 0.016;
-      if (!drag) { vy *= 0.94; vx *= 0.94; group.rotation.y += 0.0018; }
+      if (!drag) { vy *= 0.93; vx *= 0.93; group.rotation.y += 0.0013; }
       group.rotation.y += vy;
       group.rotation.x = Math.max(-1.2, Math.min(1.2, group.rotation.x + vx));
-      pts.rotation.y -= 0.0007; pts.rotation.x += 0.0003;
-      var pulse = 1 + Math.sin(clock * 2.4) * 0.09; heart.scale.setScalar(pulse);
-      shell.material.emissiveIntensity = 1.0 + Math.sin(clock * 2.4) * 0.35;
+      group.position.y = Math.sin(clock * 0.8) * 0.05;   // gentle float
+      pts.rotation.y -= 0.0006; pts.rotation.x += 0.00025;
+      ring.rotation.z += 0.002;
+      var pulse = 1 + Math.sin(clock * 2.1) * 0.07; heart.scale.setScalar(pulse);
+      shell.material.emissiveIntensity = 0.82 + Math.sin(clock * 2.1) * 0.26;
+      var gp = 3.4 + Math.sin(clock * 2.1) * 0.22; glow.scale.set(gp, gp, 1);
       renderer.render(scene, cam); start();
     }
     function start() { if (!raf && inview && !document.hidden) raf = requestAnimationFrame(frame); }
@@ -397,20 +412,20 @@
       if (!targets || !targets.length) targets = [h];
       gsap.from(targets, {
         scrollTrigger: { trigger: h, start: 'top 85%', once: true },
-        yPercent: 60, opacity: 0, duration: 0.9, ease: 'power3.out', stagger: 0.035
+        yPercent: 60, opacity: 0, duration: 0.9, ease: 'power4.out', stagger: 0.035
       });
     });
 
     // Hero entrance
     var heroTl = gsap.timeline({ delay: 0.1 });
-    heroTl.from('#hero .reveal-fade', { y: 26, opacity: 0, duration: 0.9, ease: 'power3.out', stagger: 0.09 }, 0.2);
+    heroTl.from('#hero .reveal-fade', { y: 26, opacity: 0, duration: 0.9, ease: 'power4.out', stagger: 0.09 }, 0.2);
 
     // Generic reveals (prod-cards are revealed by the horizontal scroll itself)
     $$('.feat, .princ, .step').forEach(function (n) {
-      gsap.from(n, { scrollTrigger: { trigger: n, start: 'top 90%', once: true }, y: 36, opacity: 0, duration: 0.8, ease: 'power3.out' });
+      gsap.from(n, { scrollTrigger: { trigger: n, start: 'top 90%', once: true }, y: 36, opacity: 0, duration: 0.8, ease: 'power4.out' });
     });
     $$('.sec-head, .prod-intro, .table-wrap, .term').forEach(function (n) {
-      gsap.from(n, { scrollTrigger: { trigger: n, start: 'top 88%', once: true }, y: 30, opacity: 0, duration: 0.8, ease: 'power3.out' });
+      gsap.from(n, { scrollTrigger: { trigger: n, start: 'top 88%', once: true }, y: 30, opacity: 0, duration: 0.8, ease: 'power4.out' });
     });
 
     // Convergence — pinned scrub
@@ -443,8 +458,8 @@
     // scroll-velocity skew — the classic award-site "fling"
     var skewEls = $$('[data-skew]');
     if (skewEls.length && window.__lenis) {
-      var setters = skewEls.map(function (el) { return gsap.quickTo(el, 'skewY', { duration: 0.5, ease: 'power3' }); });
-      gsap.ticker.add(function () { var v = Math.max(-4, Math.min(4, (window.__lenis.velocity || 0) * 0.35)); for (var i = 0; i < setters.length; i++) setters[i](v); });
+      var setters = skewEls.map(function (el) { return gsap.quickTo(el, 'skewY', { duration: 0.6, ease: 'power3' }); });
+      gsap.ticker.add(function () { var v = Math.max(-3, Math.min(3, (window.__lenis.velocity || 0) * 0.28)); for (var i = 0; i < setters.length; i++) setters[i](v); });
     }
 
     // gallery — GSAP marquee: auto-drifts, speeds with scroll velocity, draggable
