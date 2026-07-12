@@ -223,8 +223,8 @@
 
 /* Living aurora canvas — softened just a touch beyond its gradients. The
    full-screen blur is desktop-only so low-power mobile GPUs never pay for it. */
-#aurora { opacity: 0.9; }
-@media (min-width: 1024px) { #aurora { filter: blur(8px) saturate(1.12); } }
+#aurora { opacity: 0.68; }
+@media (min-width: 1024px) { #aurora { filter: blur(10px) saturate(1.08); } }
 
 /* Film grain — a whisper of texture, blended over the whole page. */
 .filmgrain {
