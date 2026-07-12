@@ -8,6 +8,25 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.11.46] — 2026-07-12
+
+### Fixed
+- **VayuPGP: one key per address, resolved the same way everywhere** — closes the
+  root cause of "a message sent from the web never decrypts on the phone." Three
+  linked keystore defects (found in an adversarial audit) are fixed:
+  - **No duplicate keys.** Account creation now uses `EnsureKeypair`, not the
+    unguarded `GenerateKeypair`, so a CMS user created for an address that already
+    has a mailbox key reuses that key instead of minting a second one for the same
+    email. Two keys per address is what let the web encrypt to one while a device
+    held the other.
+  - **Consistent resolution.** The email→key index now applies the same
+    deterministic oldest-key-wins tiebreak at runtime (`save`) and at boot
+    (`reindex`), so the web-encrypt path and a device's key-sync path can never
+    resolve different keys for the same address.
+  - **Revoked keys never win.** `reindex` no longer re-activates a revoked key on
+    restart. Pinned by `TestKeystoreDeterministicEmailResolution` (now also
+    asserting in-process resolution) and `TestKeystoreRevokedKeyNotActive`.
+
 ### Documentation
 - **How to run VayuTalk behind a reverse proxy or CDN.** New
   `docs/TROUBLESHOOTING.md` → "VayuTalk Chat Issues" documents the two things

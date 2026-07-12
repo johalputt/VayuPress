@@ -29,7 +29,15 @@ func TestKeystoreDeterministicEmailResolution(t *testing.T) {
 	if err := ks.save(newer, []byte("NEW")); err != nil {
 		t.Fatalf("save newer: %v", err)
 	}
-	// Every fresh open (reindex) must land on the oldest key, deterministically.
+	// IN-PROCESS (post-save) resolution must ALSO be the oldest key — not the
+	// last one saved. This is the crux: the web-encrypt path and the device
+	// key-sync path both read this index in the SAME running process, so if save
+	// disagreed with reindex the two could target different keys and a
+	// web-composed message would never decrypt on the device.
+	if id, ok := ks.userIDForEmail("dup@example.com"); !ok || id != "user-older" {
+		t.Fatalf("in-process resolution = %q, want user-older (save must match reindex)", id)
+	}
+	// Every fresh open (reindex) must land on the same oldest key.
 	for i := 0; i < 5; i++ {
 		ks2, err := newKeyStore(dir, secret)
 		if err != nil {
@@ -39,6 +47,37 @@ func TestKeystoreDeterministicEmailResolution(t *testing.T) {
 		if !ok || id != "user-older" {
 			t.Fatalf("resolution flipped on reopen %d: got %q, want user-older", i, id)
 		}
+	}
+}
+
+// TestKeystoreRevokedKeyNotActive verifies a revoked key never becomes the
+// active key for its address — not at save time and not after a restart's
+// reindex — so the web never encrypts to a revoked key.
+func TestKeystoreRevokedKeyNotActive(t *testing.T) {
+	dir := t.TempDir()
+	secret := []byte("s")
+	ks, err := newKeyStore(dir, secret)
+	if err != nil {
+		t.Fatalf("new keystore: %v", err)
+	}
+	live := storedKey{UserID: "live", Email: "r@example.com", CreatedAt: time.Unix(2000, 0)}
+	revoked := storedKey{UserID: "revoked", Email: "r@example.com", CreatedAt: time.Unix(1000, 0), Revoked: true}
+	if err := ks.save(live, []byte("LIVE")); err != nil {
+		t.Fatalf("save live: %v", err)
+	}
+	if err := ks.save(revoked, []byte("REVOKED")); err != nil {
+		t.Fatalf("save revoked: %v", err)
+	}
+	// The revoked key is OLDER, but it must not win — the live key stays active.
+	if id, ok := ks.userIDForEmail("r@example.com"); !ok || id != "live" {
+		t.Fatalf("in-process active = %q, want live (revoked must not win)", id)
+	}
+	ks2, err := newKeyStore(dir, secret)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	if id, ok := ks2.userIDForEmail("r@example.com"); !ok || id != "live" {
+		t.Fatalf("post-reindex active = %q, want live (revoked must not re-activate)", id)
 	}
 }
 

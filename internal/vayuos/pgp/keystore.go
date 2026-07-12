@@ -49,10 +49,30 @@ type keyStore struct {
 	aeadKey [32]byte // AES-256-GCM key for private-key ciphertext (unchanged scheme)
 	nameKey [32]byte // HMAC key for deriving new filenames (domain-separated)
 
-	mu       sync.RWMutex
-	byEmail  map[string]string   // email  → userID
-	fileByID map[string]string   // userID → key file base name
-	archByID map[string][]string // userID → archive file base names
+	mu           sync.RWMutex
+	byEmail      map[string]string    // email  → userID (the active, oldest key)
+	emailCreated map[string]time.Time // email  → the active key's CreatedAt (for the tiebreak)
+	fileByID     map[string]string    // userID → key file base name
+	archByID     map[string][]string  // userID → archive file base names
+}
+
+// preferEmailLocked applies the deterministic oldest-key-wins tiebreak for the
+// email→userID index so `save` (runtime) and `reindex` (boot) always resolve the
+// SAME key for an address. Without this, a runtime save last-writes the newest
+// duplicate while a reboot reindex picks the oldest — and the web (which
+// encrypts via this index) and a device's key sync (which reads it too) could
+// then disagree, so a web-composed message never decrypts on the device. A
+// revoked key never wins. Caller holds k.mu.
+func (k *keyStore) preferEmailLocked(email, userID string, created time.Time, revoked bool) {
+	if email == "" || revoked {
+		return
+	}
+	if cur, ok := k.byEmail[email]; !ok ||
+		created.Before(k.emailCreated[email]) ||
+		(created.Equal(k.emailCreated[email]) && userID < cur) {
+		k.byEmail[email] = userID
+		k.emailCreated[email] = created
+	}
 }
 
 // newKeyStore opens (and lazily creates) a key store under dir, deriving the
@@ -65,10 +85,11 @@ func newKeyStore(dir string, masterSecret []byte) (*keyStore, error) {
 		return nil, fmt.Errorf("vayupgp: create storage dir: %w", err)
 	}
 	ks := &keyStore{
-		dir:      dir,
-		byEmail:  make(map[string]string),
-		fileByID: make(map[string]string),
-		archByID: make(map[string][]string),
+		dir:          dir,
+		byEmail:      make(map[string]string),
+		emailCreated: make(map[string]time.Time),
+		fileByID:     make(map[string]string),
+		archByID:     make(map[string][]string),
 	}
 	// Domain-separated derivation so the keystore key is distinct from any other
 	// use of the master secret. Never log or persist the derived key. This scheme
@@ -169,7 +190,19 @@ func (k *keyStore) save(rec storedKey, privArmor []byte) error {
 		return err
 	}
 	k.mu.Lock()
-	k.byEmail[normalizeEmail(rec.Email)] = rec.UserID
+	// Same oldest-wins tiebreak as reindex, so a runtime save never disagrees
+	// with what a reboot would resolve for this address. A save of the SAME
+	// userID (an update) re-points its own mapping; a save of a different,
+	// newer duplicate does NOT steal the active mapping from the older key.
+	if k.emailCreated == nil {
+		k.emailCreated = make(map[string]time.Time)
+	}
+	email := normalizeEmail(rec.Email)
+	if cur, ok := k.byEmail[email]; ok && cur == rec.UserID {
+		k.emailCreated[email] = rec.CreatedAt // refresh our own entry
+	} else {
+		k.preferEmailLocked(email, rec.UserID, rec.CreatedAt, rec.Revoked)
+	}
 	k.fileByID[rec.UserID] = base
 	k.mu.Unlock()
 	return nil
@@ -255,15 +288,15 @@ func (k *keyStore) reindex() error {
 	if err != nil {
 		return err
 	}
-	byEmail := make(map[string]string)
-	fileByID := make(map[string]string)
+	// Collect records first, then apply the same oldest-wins email tiebreak that
+	// `save` uses (via preferEmailLocked), so runtime and boot resolution agree.
+	type keyEntry struct {
+		rec  storedKey
+		name string
+	}
+	var keys []keyEntry
 	archByID := make(map[string][]string)
-	// When two key files somehow share an email, the winner must be the SAME
-	// across restarts — otherwise the "active" key for that address could flip
-	// (directory order is not stable), silently breaking anyone who encrypted to
-	// or verified the other one. Deterministic tiebreak: the oldest key wins
-	// (earliest CreatedAt; userID breaks exact ties).
-	emailCreated := make(map[string]time.Time)
+	fileByID := make(map[string]string)
 	for _, e := range entries {
 		name := e.Name()
 		if e.IsDir() || !strings.HasSuffix(name, ".json") {
@@ -286,19 +319,19 @@ func (k *keyStore) reindex() error {
 			archByID[rec.UserID] = append(archByID[rec.UserID], name)
 			continue
 		}
-		fileByID[rec.UserID] = name
-		email := normalizeEmail(rec.Email)
-		if email == "" {
-			continue
-		}
-		if cur, ok := byEmail[email]; !ok || rec.CreatedAt.Before(emailCreated[email]) ||
-			(rec.CreatedAt.Equal(emailCreated[email]) && rec.UserID < cur) {
-			byEmail[email] = rec.UserID
-			emailCreated[email] = rec.CreatedAt
-		}
+		fileByID[rec.UserID] = name // load() finds every file, revoked or not
+		keys = append(keys, keyEntry{rec: rec, name: name})
 	}
 	k.mu.Lock()
-	k.byEmail, k.fileByID, k.archByID = byEmail, fileByID, archByID
+	k.byEmail = make(map[string]string)
+	k.emailCreated = make(map[string]time.Time)
+	k.fileByID = fileByID
+	k.archByID = archByID
+	for _, ke := range keys {
+		// A revoked key is never the active key for its address, and never
+		// re-activates on restart.
+		k.preferEmailLocked(normalizeEmail(ke.rec.Email), ke.rec.UserID, ke.rec.CreatedAt, ke.rec.Revoked)
+	}
 	k.mu.Unlock()
 	return nil
 }

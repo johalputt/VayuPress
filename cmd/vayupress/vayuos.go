@@ -607,7 +607,12 @@ func (a *App) bootVayuOS() {
 	a.vayuKernel.Subscribe(vkernel.UserCreated{}, func(_ context.Context, ev vkernel.Event) {
 		e := ev.(vkernel.UserCreated)
 		if a.vayuPGP != nil {
-			if kp, err := a.vayuPGP.GenerateKeypair(&vpgp.PGPUser{UserID: e.UserID, Name: e.Name, Email: e.Email}); err != nil {
+			// EnsureKeypair (not GenerateKeypair) so a CMS user created for an
+			// address that ALREADY has a mailbox key reuses that key instead of
+			// minting a SECOND key for the same email. Two keys per address is
+			// what lets the web encrypt to one while a device holds the other —
+			// the root of "web message never decrypts on the phone".
+			if kp, err := a.vayuPGP.EnsureKeypair(&vpgp.PGPUser{UserID: e.UserID, Name: e.Name, Email: e.Email}); err != nil {
 				logging.LogError("vayuos", "auto PGP keygen failed for "+e.Email, err.Error())
 			} else {
 				// Log only the fingerprint — never key material.
