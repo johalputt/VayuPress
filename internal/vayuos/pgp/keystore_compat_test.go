@@ -7,7 +7,40 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
+
+// TestKeystoreDeterministicEmailResolution guards against the "active key flips
+// on restart" hazard: if two key files ever share an email, reindex must resolve
+// the same one every time (the oldest), so a message encrypted to — or a
+// fingerprint verified against — that key never silently breaks after a reboot.
+func TestKeystoreDeterministicEmailResolution(t *testing.T) {
+	dir := t.TempDir()
+	secret := []byte("s")
+	ks, err := newKeyStore(dir, secret)
+	if err != nil {
+		t.Fatalf("new keystore: %v", err)
+	}
+	older := storedKey{UserID: "user-older", Email: "dup@example.com", CreatedAt: time.Unix(1000, 0)}
+	newer := storedKey{UserID: "user-newer", Email: "dup@example.com", CreatedAt: time.Unix(2000, 0)}
+	if err := ks.save(older, []byte("OLD")); err != nil {
+		t.Fatalf("save older: %v", err)
+	}
+	if err := ks.save(newer, []byte("NEW")); err != nil {
+		t.Fatalf("save newer: %v", err)
+	}
+	// Every fresh open (reindex) must land on the oldest key, deterministically.
+	for i := 0; i < 5; i++ {
+		ks2, err := newKeyStore(dir, secret)
+		if err != nil {
+			t.Fatalf("reopen %d: %v", i, err)
+		}
+		id, ok := ks2.userIDForEmail("dup@example.com")
+		if !ok || id != "user-older" {
+			t.Fatalf("resolution flipped on reopen %d: got %q, want user-older", i, id)
+		}
+	}
+}
 
 // TestKeystoreLegacyFilenameStillLoads guards the security-hardening refactor
 // that stopped naming key files after a bare hash of the (email-bearing)

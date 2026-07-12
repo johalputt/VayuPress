@@ -8,6 +8,24 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.11.43] — 2026-07-12
+
+### Changed
+- **VayuTalk web: verify a contact once, not every reload.** A verification is
+  now remembered (bound to the exact public fingerprint you confirmed), so a
+  reload keeps the ✓ Verified badge instead of resetting it. If a peer's key ever
+  changed, the mark clears and you're asked to re-verify — the correct security
+  behaviour. Only the public fingerprint is stored locally; messages are still
+  never persisted.
+
+### Fixed
+- **VayuPGP: the “active” key for an address can no longer flip between server
+  restarts.** If two key files ever share an email, resolution is now
+  deterministic (oldest key wins) instead of depending on directory order — so a
+  message encrypted to, or a fingerprint verified against, that key never
+  silently breaks after a reboot. This underpins stable, verify-once identities
+  across the app and the web. Pinned by `TestKeystoreDeterministicEmailResolution`.
+
 ## [3.11.42] — 2026-07-12
 
 ### Security

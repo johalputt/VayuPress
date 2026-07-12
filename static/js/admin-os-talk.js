@@ -11,11 +11,13 @@
  *   GET  /os/talk/peer?email=   → { found, fingerprint, safety } for a recipient.
  *   POST /os/talk/send          → { to, text, ttl_seconds, mode } (CSRF).
  *
- * Privacy: conversations and verification state live only in this tab's memory.
- * A reload wipes them — no localStorage, no history, nothing on disk. Messages
- * self-remove at their expiry. Strict-CSP compliant: no inline styles, no
- * innerHTML with dynamic data — every node is built with createElement /
- * textContent.
+ * Privacy: conversations live only in this tab's memory. A reload wipes them —
+ * no message is ever written to disk, and each self-removes at its expiry. The
+ * ONE thing persisted (localStorage) is a verification mark: the public
+ * fingerprint you confirmed for a peer, so you verify once instead of on every
+ * reload; it reveals nothing and is dropped if the peer's key ever changes.
+ * Strict-CSP compliant: no inline styles, no innerHTML with dynamic data — every
+ * node is built with createElement / textContent.
  */
 (function () {
   'use strict';
@@ -173,9 +175,7 @@
       cb.type = 'checkbox';
       cb.checked = !!verified[peer];
       cb.addEventListener('change', function () {
-        verified[peer] = cb.checked;
-        var c = convos[peer];
-        if (c) c.item.classList.toggle('vtalk-convo--verified', cb.checked);
+        setVerified(peer, cb.checked, true);
         var btn = els.head.querySelector('.vtalk-verify-btn');
         if (btn) setVerifyBtn(btn, peer);
       });
@@ -188,20 +188,50 @@
     }
   }
 
-  // Fetch the peer's key so we can (a) warn early if they're unreachable and
-  // (b) show a safety number to verify.
+  // Verification is remembered across reloads, bound to the exact fingerprint
+  // that was verified (fingerprints are public, so persisting them locally leaks
+  // nothing). If the peer's key ever changes, the stored mark no longer matches
+  // and you're asked to verify again — which is the correct behaviour. Messages
+  // themselves are still never persisted.
+  function verifyKey(peer) { return 'vtalk-verified:' + currentSelf + ':' + peer; }
+  function lsGet(k) { try { return window.localStorage.getItem(k); } catch (_) { return null; } }
+  function lsSet(k, v) { try { window.localStorage.setItem(k, v); } catch (_) {} }
+  function lsDel(k) { try { window.localStorage.removeItem(k); } catch (_) {} }
+
+  // Fetch the peer's key so we can (a) warn early if they're unreachable,
+  // (b) show a safety number to verify, and (c) restore a prior verification
+  // when the key is unchanged.
   function preflightPeer(peer) {
     fetch('/os/talk/peer?email=' + encodeURIComponent(peer), { headers: { 'Accept': 'application/json' } })
       .then(function (r) { return r.json(); })
       .then(function (j) {
-        peerInfo[peer] = { found: !!j.found, safety: j.safety || '' };
+        peerInfo[peer] = { found: !!j.found, safety: j.safety || '', fingerprint: j.fingerprint || '' };
+        // Restore verification only if the fingerprint matches what was verified.
+        if (j.found && j.fingerprint && lsGet(verifyKey(peer)) === j.fingerprint) {
+          setVerified(peer, true, false);
+        }
         if (active === peer) {
           reachabilityBanner(peer);
+          var btn = els.head.querySelector('.vtalk-verify-btn');
+          if (btn) setVerifyBtn(btn, peer);
           var panel = document.getElementById('vtalk-verify');
           if (panel && !panel.hidden) renderVerify(panel, peer);
         }
       })
       .catch(function () { /* offline; send will report the real error */ });
+  }
+
+  // setVerified updates state, the conversation badge, and (when persist) the
+  // remembered fingerprint.
+  function setVerified(peer, on, persist) {
+    verified[peer] = on;
+    var c = convos[peer];
+    if (c) c.item.classList.toggle('vtalk-convo--verified', on);
+    if (persist) {
+      var info = peerInfo[peer];
+      if (on && info && info.fingerprint) lsSet(verifyKey(peer), info.fingerprint);
+      else lsDel(verifyKey(peer));
+    }
   }
 
   function reachabilityBanner(peer) {

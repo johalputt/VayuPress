@@ -258,6 +258,12 @@ func (k *keyStore) reindex() error {
 	byEmail := make(map[string]string)
 	fileByID := make(map[string]string)
 	archByID := make(map[string][]string)
+	// When two key files somehow share an email, the winner must be the SAME
+	// across restarts — otherwise the "active" key for that address could flip
+	// (directory order is not stable), silently breaking anyone who encrypted to
+	// or verified the other one. Deterministic tiebreak: the oldest key wins
+	// (earliest CreatedAt; userID breaks exact ties).
+	emailCreated := make(map[string]time.Time)
 	for _, e := range entries {
 		name := e.Name()
 		if e.IsDir() || !strings.HasSuffix(name, ".json") {
@@ -280,8 +286,16 @@ func (k *keyStore) reindex() error {
 			archByID[rec.UserID] = append(archByID[rec.UserID], name)
 			continue
 		}
-		byEmail[normalizeEmail(rec.Email)] = rec.UserID
 		fileByID[rec.UserID] = name
+		email := normalizeEmail(rec.Email)
+		if email == "" {
+			continue
+		}
+		if cur, ok := byEmail[email]; !ok || rec.CreatedAt.Before(emailCreated[email]) ||
+			(rec.CreatedAt.Equal(emailCreated[email]) && rec.UserID < cur) {
+			byEmail[email] = rec.UserID
+			emailCreated[email] = rec.CreatedAt
+		}
 	}
 	k.mu.Lock()
 	k.byEmail, k.fileByID, k.archByID = byEmail, fileByID, archByID
