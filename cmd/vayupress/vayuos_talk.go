@@ -15,8 +15,9 @@
 //     ciphertext — exactly as with the app.
 //   - stream : the server subscribes to the relay for the logged-in mailbox,
 //     decrypts each incoming envelope with that mailbox's key, and
-//     pushes plaintext to the browser over Server-Sent Events, then
-//     read-destroys the envelope (ack) so it can never be read twice.
+//     pushes plaintext to the browser over Server-Sent Events. It does
+//     NOT read-destroy on delivery — see handleVayuOSTalkStream for why
+//     the console must not consume the recipient's shared queue.
 //
 // Nothing is persisted. Plaintext exists only for the lifetime of one request
 // or one SSE write, and is NEVER logged. The session cookie authenticates the
@@ -276,8 +277,18 @@ func (a *App) handleVayuOSTalk(w http.ResponseWriter, r *http.Request) {
 // handleVayuOSTalkStream is the server-side-decrypting SSE bridge. It subscribes
 // to the relay for the signed-in mailbox, flushes anything queued while the user
 // was away, then streams live. Every envelope is decrypted with the mailbox's
-// own key before it reaches the browser, and read-destroyed immediately after —
-// so a delivered message is a read message, exactly as on the app.
+// own key before it reaches the browser.
+//
+// It deliberately does NOT read-destroy (ack) on delivery. The relay keeps a
+// single shared queue per recipient identity, and a mailbox can be open on
+// several places at once — the phone app AND this console, both as the same
+// address. If the console acked on delivery it would delete the queued envelope
+// the instant it rendered it here, so the user's PHONE (which relies on flushing
+// that queue when its stream reconnects) would never receive its copy — the
+// message would "only appear in the web". So the console is a passive viewer:
+// it shows messages and lets them expire by TTL, while the app remains the
+// authoritative reader that read-destroys on reveal. Because we no longer ack,
+// a reconnect re-flushes the queue, so admin-os-talk.js dedupes by message id.
 func (a *App) handleVayuOSTalkStream(w http.ResponseWriter, r *http.Request) {
 	if !a.vayuTalkEnabled() {
 		http.Error(w, "VayuTalk unavailable", http.StatusServiceUnavailable)
@@ -311,7 +322,8 @@ func (a *App) handleVayuOSTalkStream(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	// Flush envelopes queued while the user was offline (arrival order), each
-	// decrypted and then read-destroyed.
+	// decrypted for display. NOT acked — see the function doc: the console must
+	// leave the shared queue intact so the recipient's app still gets its copy.
 	for _, env := range queued {
 		if txt, ok := a.talkDecrypt(self, env.Ciphertext); ok {
 			out := talkMessageOut{
@@ -323,7 +335,6 @@ func (a *App) handleVayuOSTalkStream(w http.ResponseWriter, r *http.Request) {
 			if !writeSSE(w, rc, "message", out) {
 				return
 			}
-			a.vayuTalk.Ack(env.ID)
 		}
 	}
 	flusher.Flush()
@@ -357,7 +368,9 @@ func (a *App) handleVayuOSTalkStream(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 				flusher.Flush()
-				a.vayuTalk.Ack(p.ID)
+				// No ack: the console is a passive viewer, not the reader. Acking
+				// here would delete the recipient's queued copy before their app
+				// could flush it. See the function doc.
 			case "receipt":
 				if !writeSSE(w, rc, "receipt", evt.Payload) {
 					return

@@ -278,6 +278,10 @@
   }
 
   function addMessage(peer, m) {
+    // Dedupe by server id: the console no longer read-destroys on delivery (so
+    // the recipient's app keeps its queued copy), which means a stream reconnect
+    // re-flushes messages we've already shown. Skip anything already on screen.
+    if (m.id && byId[m.id]) return;
     var c = getConvo(peer);
     if (!c) return;
     bubble(m);

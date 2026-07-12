@@ -8,6 +8,29 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.11.47] — 2026-07-12
+
+### Fixed
+- **The web console no longer "eats" messages meant for your phone** — the real
+  reason an app-to-app message would "only appear in the web." The VayuTalk relay
+  keeps a single shared queue per recipient address, and a mailbox can be open in
+  two places at once (the phone app *and* the web console, both as the same
+  address). The console used to read-destroy (ack) every message the instant it
+  rendered it, which deleted the queued copy before the recipient's **phone**
+  could flush it on reconnect — so the message vanished from the queue and the
+  app never received it. The web console is now a **passive viewer**: it displays
+  messages and lets them expire by their TTL, while the app remains the
+  authoritative reader that destroys a message when it is revealed. Because the
+  console no longer acks, a stream reconnect re-flushes the queue, so the web
+  client now dedupes by message id to avoid showing a message twice.
+
+### Upgrade Notes
+- This is a server-behaviour fix: **rebuild and restart VayuPress** for it to take
+  effect. Confirm the running build afterwards with
+  `curl -s https://YOUR-DOMAIN/health | grep -o '"version":"[^"]*"'` — it must
+  report `3.11.47` (an older number means the old binary is still running, which
+  by itself explains "the app can't receive").
+
 ## [3.11.46] — 2026-07-12
 
 ### Fixed
