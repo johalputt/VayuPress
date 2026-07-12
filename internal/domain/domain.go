@@ -237,3 +237,19 @@ func (r *Registry) Count(ctx context.Context) (int, error) {
 	err := r.reader().QueryRowContext(ctx, `SELECT COUNT(1) FROM domains`).Scan(&n)
 	return n, err
 }
+
+// HasSecondaries reports whether any non-primary domain is registered. It reads
+// the cached snapshot, so it is cheap enough to gate the public hot path: when
+// it is false (a plain single-domain install) the per-domain content code paths
+// are skipped entirely and behaviour is byte-identical.
+func (r *Registry) HasSecondaries(ctx context.Context) bool {
+	r.ensureFresh(ctx)
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for _, d := range r.byHost {
+		if !d.IsPrimary {
+			return true
+		}
+	}
+	return false
+}

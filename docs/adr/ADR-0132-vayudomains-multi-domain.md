@@ -89,13 +89,23 @@ disabling the filter for the admin/JSON path), plus `SetDomain` and
 operator assign a post to a domain by slug. The public render path is
 deliberately **not** rewired yet, so behaviour is unchanged and provably safe.
 
-**Stage 2b (deferred): flip the public switch.** The homepage renders through a
-single global file cache (`home/index.html`) and raw SQL, and the article page
-is cached too. Serving per-domain content publicly therefore requires keying the
-render cache by the active domain (from the Stage 1 host-resolution middleware)
-and threading the scope into the cached queries and feeds/sitemap/search — a
-change to the hot, cached path that gets its own stage so it can be done
-carefully rather than risk the primary site.
+**Stage 2b (shipped): per-domain public homepage + article pages.** The public
+homepage feed and article pages now serve only the active domain's content,
+keyed off the Stage 1 host-resolution middleware. Safety was the design centre:
+the per-domain code paths run **only when a secondary domain is registered**
+(`multiDomain`), so a plain single-domain install takes its original route with
+zero added work and is provably byte-identical (proven by the unchanged home/
+article tests). When multi-domain is active, the homepage query is scoped by
+`domain_id` and cached to a per-domain file (`home/d_<id>/index.html`; the
+primary keeps `home/index.html`), and the article page gates on ownership — a
+post is reachable only on its owning domain (slugs are globally unique, so this
+is an exact one-owner lookup). Reassigning a post lazily purges the caches so
+every domain re-renders on next request.
+
+**Stage 2c (deferred):** the tag pages, feeds, sitemap and search index are
+still global. Scoping those per domain, and per-domain canonical/branding on the
+rendered pages (which belongs with Stage 3 mail/identity), is the next
+increment.
 
 **Constraint carried forward:** `articles.slug` is globally UNIQUE via an inline
 (un-droppable) constraint, so two domains cannot yet share a slug. Relaxing that

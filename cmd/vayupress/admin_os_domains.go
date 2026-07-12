@@ -312,6 +312,9 @@ func (a *App) handleOSDomainAssign(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusBadRequest, "assign-failed", err.Error(), "")
 		return
 	}
+	// The post just moved between domains — lazily invalidate the public caches
+	// so every domain's homepage re-renders on next request (Stage 2b).
+	render.CachePurgeAll()
 	writeJSON(w, r, http.StatusOK, map[string]string{"status": "ok"})
 }
 

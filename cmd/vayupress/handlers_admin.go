@@ -310,10 +310,25 @@ func (a *App) renderHomeAt(w http.ResponseWriter, r *http.Request, page int) {
 	if page < 1 {
 		page = 1
 	}
+	// VayuDomains Stage 2b: scope the feed to the active domain, but ONLY when a
+	// secondary domain is registered. A plain single-domain install takes the
+	// original path with an empty clause and the historic cache file, so it is
+	// byte-identical and pays nothing.
+	homeRel := filepath.Join("home", "index.html")
+	domClause := ""
+	var domArgs []any
+	if a.multiDomain(r) {
+		scope := a.contentScope(r)
+		domClause = " AND domain_id=?"
+		domArgs = []any{scope}
+		if scope != "" {
+			homeRel = filepath.Join("home", "d_"+domCacheDir(scope), "index.html")
+		}
+	}
 	useCache := page == 1
 	warm := isCacheWarm(r)
 	if useCache {
-		cachePath := filepath.Join(config.Cfg.CacheDir, "home", "index.html")
+		cachePath := filepath.Join(config.Cfg.CacheDir, homeRel)
 		if fi, err := os.Stat(cachePath); err == nil {
 			fresh := render.CacheEntryFresh(fi)
 			// Stale-while-revalidate (see handleArticlePage): serve the stale
@@ -342,7 +357,7 @@ func (a *App) renderHomeAt(w http.ResponseWriter, r *http.Request, page int) {
 	// serialised every cold homepage render (and everything else, including
 	// VayuOS) behind a 234k-row scan. status is NOT NULL DEFAULT 'published' and
 	// is_page is NOT NULL DEFAULT 0, so the bare columns are exact.
-	dbpkg.Reader().QueryRow(`SELECT COUNT(1) FROM articles WHERE status='published' AND is_page=0`).Scan(&total)
+	dbpkg.Reader().QueryRow(`SELECT COUNT(1) FROM articles WHERE status='published' AND is_page=0`+domClause, domArgs...).Scan(&total)
 
 	totalPages := (total + homeFeedPageSize - 1) / homeFeedPageSize
 	if totalPages < 1 {
@@ -356,7 +371,8 @@ func (a *App) renderHomeAt(w http.ResponseWriter, r *http.Request, page int) {
 	}
 	offset := (page - 1) * homeFeedPageSize
 
-	rows, err := dbpkg.Reader().Query(`SELECT title,slug,content,tags,created_at,COALESCE(excerpt,''),COALESCE(feature_image,'') FROM articles WHERE status='published' AND is_page=0 ORDER BY created_at DESC LIMIT ? OFFSET ?`, homeFeedPageSize, offset)
+	listArgs := append(append([]any{}, domArgs...), homeFeedPageSize, offset)
+	rows, err := dbpkg.Reader().Query(`SELECT title,slug,content,tags,created_at,COALESCE(excerpt,''),COALESCE(feature_image,'') FROM articles WHERE status='published' AND is_page=0`+domClause+` ORDER BY created_at DESC LIMIT ? OFFSET ?`, listArgs...)
 	var articles []render.HomeArticle
 	author := render.GetActiveSettings().Author
 	if err == nil {
@@ -391,7 +407,7 @@ func (a *App) renderHomeAt(w http.ResponseWriter, r *http.Request, page int) {
 		return
 	}
 	if useCache {
-		render.CacheWrite(filepath.Join("home", "index.html"), html) //nolint:errcheck
+		render.CacheWrite(homeRel, html) //nolint:errcheck
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	fmt.Fprint(w, html)
@@ -465,6 +481,19 @@ func (a *App) handleArticlePage(w http.ResponseWriter, r *http.Request) {
 	if !api.IsValidSlug(slug) {
 		a.handleNotFound(w, r)
 		return
+	}
+	// VayuDomains Stage 2b: an article is only reachable on its owning domain.
+	// This gate runs (and adds a lookup) ONLY when a secondary domain exists, so
+	// a single-domain install is byte-identical with no extra work. Slugs are
+	// globally unique, so this maps a slug to exactly one owner.
+	if a.multiDomain(r) {
+		var owner string
+		if err := dbpkg.Reader().QueryRow(`SELECT domain_id FROM articles WHERE slug=?`, slug).Scan(&owner); err == nil {
+			if owner != a.contentScope(r) {
+				a.handleNotFound(w, r)
+				return
+			}
+		}
 	}
 	isAdmin := r.Header.Get("X-API-Key") == config.Cfg.APIKey
 	warm := isCacheWarm(r)

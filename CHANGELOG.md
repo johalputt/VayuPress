@@ -8,6 +8,21 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.1] — 2026-07-12
+
+### Added
+- **VayuDomains (Stage 2b) — per-domain public homepage & article pages.** With a
+  secondary domain registered, each domain's homepage feed now serves only its
+  own posts (scoped query + a per-domain render cache), and an article is
+  reachable only on its owning domain. Reassigning a post refreshes every
+  domain's cache automatically.
+
+### Notes
+- **Byte-identical for single-domain installs.** The per-domain paths activate
+  only when a secondary domain exists; a plain install takes its original route
+  with no added work. Tag pages, feeds, sitemap and search remain global for now
+  (next increment) — see **ADR-0132**.
+
 ## [3.13.0] — 2026-07-12
 
 ### Added

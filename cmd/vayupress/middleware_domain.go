@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"net/http"
+	"strings"
 
 	"github.com/johalputt/vayupress/internal/domain"
 )
@@ -49,4 +50,48 @@ func (a *App) domainMiddleware(next http.Handler) http.Handler {
 func activeDomain(r *http.Request) (domain.Domain, bool) {
 	d, ok := r.Context().Value(ctxKeyDomain{}).(domain.Domain)
 	return d, ok
+}
+
+// contentScope returns the VayuDomains content scope for the request: the empty
+// string for the primary domain (or when host resolution did not run), or a
+// secondary domain's id. It matches the article repo's scope convention
+// (dbpkg.ScopeAll disables filtering; "" is the primary; an id is a secondary),
+// so public reads serve only the active domain's content (ADR-0132, Stage 2b).
+func (a *App) contentScope(r *http.Request) string {
+	if a.domains == nil {
+		return ""
+	}
+	if d, ok := activeDomain(r); ok && !d.IsPrimary {
+		return d.ID
+	}
+	return ""
+}
+
+// multiDomain reports whether per-domain content routing is active (at least one
+// secondary domain is registered). When false, the public hot paths take their
+// original, byte-identical route with zero added work.
+func (a *App) multiDomain(r *http.Request) bool {
+	return a.domains != nil && a.domains.HasSecondaries(r.Context())
+}
+
+// domCacheDir sanitises a domain id into a filesystem-safe cache subdirectory
+// name. Ids are already hex, but a path segment is never trusted blindly.
+func domCacheDir(id string) string {
+	var b strings.Builder
+	for _, c := range id {
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9', c == '-', c == '_':
+			b.WriteRune(c)
+		default:
+			b.WriteByte('_')
+		}
+	}
+	s := b.String()
+	if s == "" {
+		return "x"
+	}
+	if len(s) > 64 {
+		s = s[:64]
+	}
+	return s
 }
