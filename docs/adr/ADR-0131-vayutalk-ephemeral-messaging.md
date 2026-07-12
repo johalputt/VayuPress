@@ -195,6 +195,19 @@ is validated on every request, not just at page load. Switching identity is a
 clean teardown client-side (new inbox, new key, reset conversations) because a
 different mailbox is a different key.
 
+**Store-and-forward is the default surface.** Both clients now default to (the
+web exclusively uses) `store` mode: the relay delivers live if the recipient is
+streaming and otherwise queues with TTL for at-least-once delivery on their next
+connect. `live` (fire-and-forget, dropped when the peer is momentarily offline)
+was a footgun as a user-facing default — it surfaced as "not delivered" whenever
+the two endpoints weren't connected at the same instant — so the web drops the
+toggle entirely and VayuMail Mobile defaults to store. For real-time to actually
+feel real-time both endpoints must be streaming, so the app keeps its VayuTalk
+connection open for the active account the whole time it runs (not only while
+the chat screen is foregrounded); because the app acks on reveal, not on
+receipt, a reconnect re-flushes anything unread, and the client de-duplicates by
+envelope id.
+
 ## Consequences
 
 - A sovereign identity gains private messaging with **no new dependency, no new

@@ -4220,7 +4220,7 @@
 .vp-os .vtalk-composer-actions { display: flex; align-items: center; gap: var(--sp-3); }
 .vp-os .vtalk-opt { display: inline-flex; align-items: center; gap: var(--sp-2); }
 .vp-os .vtalk-opt .input { width: auto; }
-.vp-os .vtalk-opt--live { margin-left: auto; }
+.vp-os .vtalk-opt--spacer { flex: 1; }
 .vp-os .vtalk-composer-actions .btn { margin-left: var(--sp-2); }
 
 /* ── Responsive: stack the rail above the thread ───────────────────────────*/

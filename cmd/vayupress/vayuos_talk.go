@@ -263,7 +263,7 @@ func (a *App) handleVayuOSTalk(w http.ResponseWriter, r *http.Request) {
 	body.WriteString(`<textarea class="vtalk-input" id="vtalk-input" rows="1" placeholder="Write a message…" aria-label="Message" disabled></textarea>`)
 	body.WriteString(`<div class="vtalk-composer-actions">`)
 	body.WriteString(`<label class="vtalk-opt"><span class="text-sm muted">Keep for</span><select class="input input--sm" id="vtalk-ttl" aria-label="Message lifetime"><option value="300">5 min</option><option value="900">15 min</option><option value="3600" selected>1 hour</option></select></label>`)
-	body.WriteString(`<label class="vtalk-opt vtalk-opt--live"><input type="checkbox" id="vtalk-live"><span class="text-sm muted" title="Deliver only if they're online right now — never queued">Live only</span></label>`)
+	body.WriteString(`<span class="vtalk-opt--spacer"></span>`)
 	body.WriteString(`<button class="btn btn--primary btn--sm" type="submit" id="vtalk-send" disabled>Send</button>`)
 	body.WriteString(`</div></form>`)
 	body.WriteString(`</section>`)

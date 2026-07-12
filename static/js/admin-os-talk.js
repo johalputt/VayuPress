@@ -38,7 +38,6 @@
     composer: document.getElementById('vtalk-composer'),
     input: document.getElementById('vtalk-input'),
     ttl: document.getElementById('vtalk-ttl'),
-    live: document.getElementById('vtalk-live'),
     send: document.getElementById('vtalk-send')
   };
 
@@ -327,11 +326,13 @@
   function send() {
     var text = els.input.value.trim();
     if (!text || !active) return;
-    var mode = els.live && els.live.checked ? 'live' : 'store';
     var ttl = parseInt(els.ttl && els.ttl.value, 10) || 3600;
     var to = active;
 
-    var m = { peer: to, mine: true, text: text, createdAt: new Date().toISOString(), mode: mode };
+    // Always store-and-forward: delivered live if they're connected right now,
+    // otherwise queued and delivered the moment they next connect. Nothing is
+    // ever dropped for being offline.
+    var m = { peer: to, mine: true, text: text, createdAt: new Date().toISOString(), mode: 'store' };
     addMessage(to, m);
     els.input.value = '';
     autogrow();
@@ -339,7 +340,7 @@
     fetch('/os/talk/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': cookie('vp_csrf') },
-      body: JSON.stringify({ to: to, text: text, ttl_seconds: ttl, mode: mode, as: currentSelf })
+      body: JSON.stringify({ to: to, text: text, ttl_seconds: ttl, mode: 'store', as: currentSelf })
     }).then(function (r) {
       return r.json().then(function (j) { return { ok: r.ok, j: j }; }, function () { return { ok: r.ok, j: null }; });
     }).then(function (res) {
@@ -351,9 +352,7 @@
       if (res.j.id) { m.id = res.j.id; byId[m.id] = m; }
       m.expiresAt = new Date(Date.now() + ttl * 1000).toISOString();
       scheduleExpiry(m);
-      if (res.j.delivered) setStatus(m, 'Delivered');
-      else if (mode === 'live') setStatus(m, 'They’re offline — not delivered', 'is-error');
-      else setStatus(m, 'Queued — delivers when they connect');
+      setStatus(m, res.j.delivered ? 'Delivered' : 'Sent');
     }).catch(function () { setStatus(m, 'Network error — not sent', 'is-error'); });
   }
 

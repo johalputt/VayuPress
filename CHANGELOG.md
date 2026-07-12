@@ -8,6 +8,17 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.11.41] — 2026-07-12
+
+### Changed
+- **VayuTalk web now always uses store-and-forward — the “Live only” toggle is
+  gone.** A message is delivered in real time if the peer is connected and
+  otherwise queued and delivered the moment they next connect, so nothing is
+  ever dropped for being offline. Sent status reads **Delivered** (live) or
+  **Sent** (queued), then **Read** when they open it. This removes the footgun
+  where a “Live only” message to a momentarily-disconnected peer showed
+  “not delivered.”
+
 ## [3.11.40] — 2026-07-12
 
 ### Added
