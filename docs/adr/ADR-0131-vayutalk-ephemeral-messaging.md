@@ -131,7 +131,7 @@ in-memory relay itself — which only ever moves opaque bytes — need not chang
 ### Web client (VayuOS console)
 
 The mobile app holds the mailbox's PGP private key on the device and does its
-own crypto. The **VayuOS web client** (`/os/vayumail/talk`) cannot — a browser
+own crypto. The **VayuOS web client** (`/os/talk`) cannot — a browser
 under our strict CSP has no private key and we will not ship a megabyte of
 vendored OpenPGP.js to give it one. Instead the web surface reuses the trust
 model webmail *already* relies on: **the server decrypts on the user's behalf**,
@@ -142,13 +142,13 @@ the console stays butter-smooth.
 Concretely, two session-authenticated routes bridge the browser to the *same*
 in-process relay the app uses:
 
-- `POST /os/vayumail/talk/send` — the server signs+encrypts the plaintext to the
+- `POST /os/talk/send` — the server signs+encrypts the plaintext to the
   recipient with `EncryptAndSignFromEmail(text, to, self)` and hands the armored
   ciphertext to the relay. This is byte-identical to what VayuMail Mobile's
   `keyring.Encrypt(text, [peer], selfEmail)` produces, so a web sender and an app
   sender are indistinguishable to the relay and to the recipient's signature
   check.
-- `GET /os/vayumail/talk/stream` — a server-side-decrypting SSE bridge:
+- `GET /os/talk/stream` — a server-side-decrypting SSE bridge:
   `Subscribe` to the relay for the signed-in mailbox, decrypt each envelope with
   that mailbox's key, push **plaintext** to the browser, then `Ack`
   (read-destroy) so a delivered message is a read message.
@@ -157,10 +157,23 @@ The relay itself is unchanged and still only ever sees opaque ciphertext; the
 network and every intermediary do too. Plaintext exists only for the lifetime of
 one request or one SSE write and is never logged or persisted. The browser keeps
 conversations in tab memory only — a reload wipes them, matching the ephemeral
-promise. The identity is the mailbox address (`ownMailbox`), so **web and app
-share one relay and interoperate end to end**: a message sent from either
-surface arrives, decrypts, and read-destroys on the other. Bidirectional interop
-is pinned by `TestTalkWebToApp` / `TestTalkAppToWeb`.
+promise. **Web and app share one relay and interoperate end to end**: a message
+sent from either surface arrives, decrypts, and read-destroys on the other.
+Bidirectional interop is pinned by `TestTalkWebToApp` / `TestTalkAppToWeb`.
+
+VayuTalk is a **top-level system in the console** (its own sidebar entry and
+`/os/talk` route), not a VayuMail sub-tab — it reuses the mailbox identity but is
+a distinct product surface. Chat identity is resolved by `talkIdentity`, not
+`ownMailbox`: the latter re-reads the user from the database and so drops the
+in-memory mailbox address a mailbox login attaches to a unified CMS account, and
+a pure CMS admin has no assigned-mailbox row at all — which produced a spurious
+"no mailbox assigned" dead-end for a signed-in owner. `talkIdentity` resolves,
+most-specific first, (1) the session's bound mailbox, (2) the account's own email
+when it is on the mail domain ("chat as who I signed in as"), then (3) for an
+admin, the first mailbox on the server (an admin owns them all) or
+`postmaster@domain`. Every branch is an address the caller controls, so nobody
+can chat as an identity that isn't theirs; resolution is pinned by
+`TestTalkIdentityResolution`.
 
 ## Consequences
 

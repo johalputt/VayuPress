@@ -18,10 +18,9 @@ import (
 )
 
 // appWithTalkWeb builds an App with a REAL VayuPGP engine, a REAL VayuTalk relay
-// wired to it, a user store (so ownMailbox resolves the session mailbox), and
-// keypairs for alice & bob. It returns the app plus the two session users the
-// web handlers authenticate as. This is the shared fixture for the web↔app
-// interop tests below.
+// wired to it, a user store, and keypairs for alice & bob. It returns the app
+// plus the two session users the web handlers authenticate as. This is the
+// shared fixture for the identity + web↔app interop tests below.
 func appWithTalkWeb(t *testing.T) (*App, *users.User, *users.User) {
 	t.Helper()
 	a := appWithMailAndPGP(t)
@@ -106,6 +105,35 @@ func openSSE(t *testing.T, fullURL, bearer string) *sseStream {
 	return s
 }
 
+// TestTalkIdentityResolution pins the identity resolver that fixes the "no
+// mailbox assigned" dead-end: a signed-in user gets a usable chat identity
+// without an explicitly assigned mailbox row.
+func TestTalkIdentityResolution(t *testing.T) {
+	a, _, _ := appWithTalkWeb(t) // mail domain example.com; dana@example.com exists
+
+	req := func(u *users.User) *http.Request {
+		return withUser(httptest.NewRequest(http.MethodGet, "/os/talk", nil), u)
+	}
+
+	// 1. Assigned mailbox wins.
+	if got := a.talkIdentity(req(&users.User{ID: "u1", Email: "x@example.com", Role: users.RoleAuthor, MailAddress: "assigned@example.com"})); got != "assigned@example.com" {
+		t.Fatalf("assigned mailbox: got %q", got)
+	}
+	// 2. No assigned mailbox, but the login email is on the mail domain → use it.
+	//    (This is exactly the reported case: logged in, nothing "assigned".)
+	if got := a.talkIdentity(req(&users.User{ID: "u2", Email: "Boss@Example.com", Role: users.RoleAuthor})); got != "boss@example.com" {
+		t.Fatalf("email-on-domain: got %q", got)
+	}
+	// 3. Admin with an off-domain email → falls back to a real mailbox.
+	if got := a.talkIdentity(req(&users.User{ID: "u3", Email: "owner@gmail.com", Role: users.RoleAdmin})); got != "dana@example.com" {
+		t.Fatalf("admin fallback: got %q", got)
+	}
+	// 4. Non-admin, off-domain email, no mailbox → no identity (clean empty).
+	if got := a.talkIdentity(req(&users.User{ID: "u4", Email: "someone@gmail.com", Role: users.RoleAuthor})); got != "" {
+		t.Fatalf("non-admin off-domain: got %q, want empty", got)
+	}
+}
+
 // TestTalkWebToApp proves a message SENT from the VayuOS web console reaches the
 // mobile app: Alice sends via the web handler (server signs+encrypts to Bob),
 // and Bob, streaming over the app API, receives the ciphertext envelope and
@@ -124,7 +152,7 @@ func TestTalkWebToApp(t *testing.T) {
 
 	// Alice sends from the web console (session-authenticated, no bearer).
 	body, _ := json.Marshal(map[string]interface{}{"to": "bob@example.com", "text": "hi from the web", "ttl_seconds": 300, "mode": "store"})
-	req := withUser(httptest.NewRequest(http.MethodPost, "/os/vayumail/talk/send", strings.NewReader(string(body))), alice)
+	req := withUser(httptest.NewRequest(http.MethodPost, "/os/talk/send", strings.NewReader(string(body))), alice)
 	rec := httptest.NewRecorder()
 	a.handleVayuOSTalkSend(rec, req)
 	if rec.Code != http.StatusOK {
@@ -164,13 +192,13 @@ func TestTalkAppToWeb(t *testing.T) {
 	bobTok := tokenFrom(t, talkConnect(t, a, "bob@example.com", "pw"))
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/os/vayumail/talk/stream", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/os/talk/stream", func(w http.ResponseWriter, r *http.Request) {
 		a.handleVayuOSTalkStream(w, withUser(r, alice))
 	})
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	aliceWeb := openSSE(t, srv.URL+"/os/vayumail/talk/stream", "")
+	aliceWeb := openSSE(t, srv.URL+"/os/talk/stream", "")
 	defer aliceWeb.close()
 
 	// Bob composes app-format ciphertext: armored PGP, encrypted to Alice and

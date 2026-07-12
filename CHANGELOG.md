@@ -8,6 +8,24 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.11.38] — 2026-07-12
+
+### Changed
+- **VayuTalk is now its own system in the console**, not a tab inside VayuMail.
+  It has a dedicated **VayuTalk** entry in the left sidebar and a clean
+  `/os/talk` route — it reuses your mailbox identity but is a separate product
+  surface, as intended.
+
+### Fixed
+- **VayuTalk no longer shows a false “No mailbox is assigned” dead-end** for a
+  signed-in owner/admin. Chat identity is now resolved from the live session
+  instead of a database re-read (which dropped the mailbox address a mailbox
+  login carries, and which a pure CMS admin never has): it uses your bound
+  mailbox, else your account email when it’s on the mail domain (“chat as who I
+  signed in as”), else — for an admin — the first mailbox on the server or
+  `postmaster@domain`. You can open VayuTalk and start chatting immediately with
+  the identity you logged in as. (`TestTalkIdentityResolution`.)
+
 ## [3.11.37] — 2026-07-12
 
 ### Added

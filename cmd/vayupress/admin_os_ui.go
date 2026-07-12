@@ -357,13 +357,14 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		// holders can never approve their own devices.
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/devices/action", a.handleVayuOSDeviceAction)
 
-		// VayuTalk web client — ephemeral E2E chat over the same relay the app
-		// uses. The page + send POST are CSRF/session guarded; the SSE stream is
-		// a GET authenticated by the session cookie (EventSource can't set
-		// headers), server-side-decrypting each envelope for the signed-in mailbox.
-		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/talk", a.handleVayuOSTalk)
-		pr.Get("/os/vayumail/talk/stream", a.handleVayuOSTalkStream)
-		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/talk/send", a.handleVayuOSTalkSend)
+		// VayuTalk — its own top-level system (NOT a VayuMail sub-tab): ephemeral
+		// E2E chat over the same relay the mobile app uses. The page + send POST
+		// are CSRF/session guarded; the SSE stream is a GET authenticated by the
+		// session cookie (EventSource can't set headers), server-side-decrypting
+		// each envelope for the signed-in mailbox.
+		pr.With(auth.CSRFTokenMiddleware).Get("/os/talk", a.handleVayuOSTalk)
+		pr.Get("/os/talk/stream", a.handleVayuOSTalkStream)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/talk/send", a.handleVayuOSTalkSend)
 
 		pr.Get("/os/vayumail/security", a.handleVayuOSSecurity)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/vayuos/security/check", a.handleVayuOSSecurityCheck)
@@ -607,6 +608,7 @@ func osSidebarNav(active string, s *osSettings) string {
 		gate(navItem("/os/theme", "Theme Studio", "theme", active, iconTheme), "/os/theme"),
 		gate(navItem("/os/theme/store", "Theme Store", "theme-store", active, iconThemeStore), "/os/theme/store"),
 		navItem("/os/vayumail", "VayuMail", "vayuos", active, iconSecurity),
+		navItem("/os/talk", "VayuTalk", "talk", active, iconTalk),
 	)
 	section("System",
 		gate(navItem("/os/monitoring", "Monitoring", "monitoring", active, iconMonitoring), "/os/monitoring"),
@@ -641,6 +643,7 @@ var (
 	iconComments   = svgIcon("M3 4h14v9H7l-4 3V4zm3 3h8M6 10h5")
 	iconPages      = svgIcon("M5 2h7l3 3v13H5V2zm7 0v3h3M7 9h6M7 12h6M7 15h4")
 	iconMessages   = svgIcon("M2 4h16v10H6l-4 3V4zm3 4h10M5 11h7")
+	iconTalk       = svgIcon("M4 3h9a3 3 0 013 3v4a3 3 0 01-3 3H8l-4 3v-3a3 3 0 01-3-3V6a3 3 0 013-3zm2 4h7M6 9.5h4")
 	iconNewPost    = svgIcon("M10 4v12m-6-6h12")
 	iconMedia      = svgIcon("M3 5a2 2 0 012-2h10a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V5zm0 8l4-4 3 3 2-2 4 4")
 	iconMembers    = svgIcon("M13 6a3 3 0 11-6 0 3 3 0 016 0zm-9 10a6 6 0 1112 0H4z")

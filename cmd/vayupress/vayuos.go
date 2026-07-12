@@ -975,7 +975,6 @@ func vayuosNav(active string, admin bool) string {
 		{"overview", "Overview", "/os/vayumail", false},
 		{"compose", "Compose", "/os/vayumail/compose", false},
 		{"mailbox", "Mailbox", "/os/vayumail/inbox", false},
-		{"talk", "VayuTalk", "/os/vayumail/talk", false},
 		{"accounts", "Accounts", "/os/vayumail/accounts", true},
 		{"connect", "Connect", "/os/vayumail/connect", false},
 		{"outbox", "Outbox", "/os/vayumail/sent", false},

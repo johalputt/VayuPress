@@ -1,5 +1,5 @@
 // vayuos_talk.go — the VayuTalk web client for VayuOS, mounted under
-// /os/vayumail/talk. It is the browser counterpart to VayuMail Mobile's chat
+// /os/talk. It is the browser counterpart to VayuMail Mobile's chat
 // screen: both speak to the SAME in-process relay (internal/vayuos/vayutalk),
 // so a message typed in the web console and a message typed in the app are
 // indistinguishable to the relay and fully interoperable end to end.
@@ -38,6 +38,46 @@ import (
 	vtalk "github.com/johalputt/vayupress/internal/vayuos/vayutalk"
 )
 
+// talkIdentity resolves the VayuTalk chat identity for the signed-in session —
+// the address this person messages as. It deliberately does NOT go through
+// ownMailbox: that helper re-fetches the user from the database and so drops the
+// in-memory mailbox address that a mailbox login attaches to a unified CMS
+// account (and a pure CMS admin has no assigned mailbox row at all). Resolution,
+// most-specific first:
+//
+//  1. the mailbox this session is bound to (set at login for mailbox holders);
+//  2. the account's own email, when it is an address on the mail domain — i.e.
+//     "chat as the identity I signed in with";
+//  3. admin fallback: the first active mailbox on the server (an admin owns them
+//     all), else postmaster@domain.
+//
+// Every branch returns an address the caller legitimately controls, so nobody
+// can chat as an identity that isn't theirs. Keys are minted on demand, so the
+// address need not have a pre-existing PGP key.
+func (a *App) talkIdentity(r *http.Request) string {
+	domain := ""
+	if a.vayuMail != nil && a.vayuMail.Config().Enabled {
+		domain = strings.ToLower(strings.TrimSpace(a.vayuMail.Config().Domain))
+	}
+	if u := currentUser(r); u != nil {
+		if ma := strings.TrimSpace(strings.ToLower(u.MailAddress)); ma != "" {
+			return ma
+		}
+		if e := strings.TrimSpace(strings.ToLower(u.Email)); e != "" && domain != "" && strings.HasSuffix(e, "@"+domain) {
+			return e
+		}
+	}
+	if a.isAdminRequest(r) {
+		if boxes := a.appPasswordMailboxes(r); len(boxes) > 0 {
+			return strings.ToLower(strings.TrimSpace(boxes[0]))
+		}
+		if domain != "" {
+			return "postmaster@" + domain
+		}
+	}
+	return ""
+}
+
 // talkMessageOut is the decrypted message shape pushed to the browser over SSE.
 // It carries plaintext (the server has already opened the envelope) plus the
 // routing/expiry metadata the UI needs to render and time-out the bubble.
@@ -64,18 +104,17 @@ func (a *App) handleVayuOSTalk(w http.ResponseWriter, r *http.Request) {
 
 	var body strings.Builder
 	body.WriteString(`<div class="page-header"><h1>VayuTalk</h1><span class="muted text-sm">Ephemeral, end-to-end-encrypted chat — same relay as the app, messages vanish after they're read</span></div>`)
-	body.WriteString(vayuosNav("talk", a.isAdminRequest(r)))
 
 	if !a.vayuTalkEnabled() {
 		body.WriteString(`<div class="empty-state">VayuTalk is inactive. It runs automatically once mail is enabled (a <code>DOMAIN</code> is set); it is disabled only when <code>VAYUOS_TALK=off</code>.</div>`)
-		writeOSHTML(w, adminOSLayout(nonce, "VayuTalk", "vayuos", cfg, htmpl.HTML(body.String())))
+		writeOSHTML(w, adminOSLayout(nonce, "VayuTalk", "talk", cfg, htmpl.HTML(body.String())))
 		return
 	}
 
-	_, self := a.ownMailbox(r)
+	self := a.talkIdentity(r)
 	if self == "" {
-		body.WriteString(`<div class="empty-state">No mailbox is assigned to your account yet. VayuTalk uses your mailbox address as your chat identity — ask an administrator to assign you an email address under <strong>Members → Team &amp; roles</strong>.</div>`)
-		writeOSHTML(w, adminOSLayout(nonce, "VayuTalk", "vayuos", cfg, htmpl.HTML(body.String())))
+		body.WriteString(`<div class="empty-state">VayuTalk needs a mailbox on this domain to use as your chat identity, and this server has no mailboxes yet. Create one under <a href="/os/vayumail/accounts">VayuMail → Accounts</a>, then reload.</div>`)
+		writeOSHTML(w, adminOSLayout(nonce, "VayuTalk", "talk", cfg, htmpl.HTML(body.String())))
 		return
 	}
 
@@ -104,7 +143,7 @@ func (a *App) handleVayuOSTalk(w http.ResponseWriter, r *http.Request) {
 
 	body.WriteString(`</div>`) // .vtalk
 	body.WriteString(`<script nonce="` + nonce + `" src="/os/static/js/admin-os-talk.js?v=` + assetVer("js/admin-os-talk.js") + `"></script>`)
-	writeOSHTML(w, adminOSLayout(nonce, "VayuTalk", "vayuos", cfg, htmpl.HTML(body.String())))
+	writeOSHTML(w, adminOSLayout(nonce, "VayuTalk", "talk", cfg, htmpl.HTML(body.String())))
 }
 
 // handleVayuOSTalkStream is the server-side-decrypting SSE bridge. It subscribes
@@ -117,7 +156,7 @@ func (a *App) handleVayuOSTalkStream(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "VayuTalk unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	_, self := a.ownMailbox(r)
+	self := a.talkIdentity(r)
 	if self == "" {
 		http.Error(w, "no mailbox assigned", http.StatusForbidden)
 		return
@@ -214,7 +253,7 @@ func (a *App) handleVayuOSTalkSend(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "vayutalk-disabled", "VayuTalk is not available", "")
 		return
 	}
-	_, self := a.ownMailbox(r)
+	self := a.talkIdentity(r)
 	if self == "" {
 		writeAPIError(w, r, http.StatusForbidden, "no-mailbox", "No mailbox is assigned to your account", "")
 		return

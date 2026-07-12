@@ -7,9 +7,9 @@
  * receive for the signed-in mailbox (the same trust model as reading encrypted
  * mail in webmail). We speak plaintext to same-origin endpoints only:
  *
- *   GET  /os/vayumail/talk/stream  → Server-Sent Events: decrypted `message`
+ *   GET  /os/talk/stream  → Server-Sent Events: decrypted `message`
  *                                    envelopes, `receipt` (read/expired), `ping`.
- *   POST /os/vayumail/talk/send    → { to, text, ttl_seconds, mode } (CSRF).
+ *   POST /os/talk/send    → { to, text, ttl_seconds, mode } (CSRF).
  *
  * Privacy: conversations live only in this tab's memory. A reload wipes them —
  * there is no localStorage, no history, nothing on disk. Messages self-remove
@@ -207,7 +207,7 @@
   var es = null;
   function connect() {
     if (es) es.close();
-    es = new EventSource('/os/vayumail/talk/stream');
+    es = new EventSource('/os/talk/stream');
 
     es.addEventListener('open', function () { markStatus('online', 'Online'); });
     es.addEventListener('error', function () { markStatus('offline', 'Reconnecting…'); });
@@ -255,7 +255,7 @@
     els.input.value = '';
     autogrow();
 
-    fetch('/os/vayumail/talk/send', {
+    fetch('/os/talk/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': cookie('vp_csrf') },
       body: JSON.stringify({ to: to, text: text, ttl_seconds: ttl, mode: mode })
