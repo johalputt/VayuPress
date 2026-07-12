@@ -114,12 +114,14 @@
         Five bills, five accounts, five sets of terms — collapsed into a single Go binary you run and own.</p>
     </div>
     <div class="converge-stage" id="stage" role="img" aria-label="Five rented services collapsing into one binary">
+      <canvas id="core3d" class="core3d" aria-hidden="true"></canvas>
       <div class="orbit" data-orbit style="--tx:-40vw;--ty:-24vh"><span class="ic">◵</span>Website</div>
       <div class="orbit" data-orbit style="--tx:-22vw;--ty:26vh"><span class="ic">✎</span>Blog</div>
       <div class="orbit" data-orbit style="--tx:8vw;--ty:-30vh"><span class="ic">✉</span>PGP mail</div>
       <div class="orbit" data-orbit style="--tx:30vw;--ty:22vh"><span class="ic">◈</span>Chat</div>
       <div class="orbit" data-orbit style="--tx:44vw;--ty:-16vh"><span class="ic">◔</span>Analytics</div>
       <div class="core" id="core"><b>1&nbsp;binary</b></div>
+      <div class="core3d-hint">drag to orbit</div>
     </div>
   </div>
 </section>
@@ -145,7 +147,7 @@
       <h2 class="sec-h" data-split>The whole platform, in one binary.</h2>
       <p class="sec-p">Publishing, mail, memberships, security and migration — every surface first-class, none of it duct-taped on.</p>
     </div>
-    <div class="feat-grid" id="featGrid"></div>
+    <div class="feat-grid" id="featGrid" data-skew></div>
   </div>
 </section>
 
@@ -180,7 +182,7 @@
       <span class="eyebrow"><span class="dot"></span>Built on a thesis, not a trend</span>
       <h2 class="sec-h" data-split>Principles you can read in the code.</h2>
     </div>
-    <div class="princ-grid" id="princGrid"></div>
+    <div class="princ-grid" id="princGrid" data-skew></div>
   </div>
 </section>
 
@@ -233,6 +235,7 @@
 <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/ScrollTrigger.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/lenis@1.1.14/dist/lenis.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/split-type@0.3.4/umd/index.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.150.1/build/three.min.js"></script>
 <script src="assets/home.js"></script>
 </body>
 </html>
