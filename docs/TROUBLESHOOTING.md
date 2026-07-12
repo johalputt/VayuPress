@@ -171,6 +171,69 @@ curl -X POST http://localhost:8080/admin/storage/cleanup \
   -H "Authorization: Bearer $API_KEY"
 ```
 
+## VayuTalk Chat Issues
+
+### Messages queue / never deliver live; web shows "Reconnecting…"; the mobile app receives nothing
+
+VayuTalk delivers messages and read receipts over a long-lived **Server-Sent
+Events** stream (`GET /api/v1/talk/stream` for the app, `GET /os/talk/stream`
+for the web console). If that stream can't stay open, messages only ever drain
+from the queue during brief connect windows — so live delivery and read
+receipts silently fail, the web status dot sticks on "Reconnecting…", and the
+app (which can send via POST but can't hold the stream) appears to receive
+nothing. Two layers in front of VayuPress commonly break the stream:
+
+**1. Reverse proxy (nginx) buffering / idle timeout.** A generic proxy block
+buffers the response and times the connection out (nginx defaults:
+`proxy_read_timeout 60s`). The SSE endpoints need dedicated `location` blocks:
+
+```nginx
+    location = /api/v1/talk/stream {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_buffering off; proxy_cache off; gzip off;
+        chunked_transfer_encoding on;
+        proxy_read_timeout 3600s; proxy_send_timeout 3600s;
+    }
+    location = /os/talk/stream {
+        # …same, plus:  proxy_pass_header X-CSRF-Token;
+    }
+```
+
+`deploy-vayupress.sh` writes these automatically; an existing server needs them
+added and `nginx -s reload`. Verify with `curl -N https://DOMAIN/api/v1/talk/stream`
+— you should get a JSON `invalid-token` error (or an `event: ping`), NOT an
+immediate disconnect.
+
+**2. A CDN / bot challenge in front of nginx (e.g. Cloudflare).** A browser can
+solve a JavaScript "managed challenge," so the **web** may work — but the mobile
+app is a plain HTTP client that **cannot** solve it, so Cloudflare returns a
+`Just a moment…` HTML page instead of the event stream and the app's stream never
+connects. Diagnose it:
+
+```bash
+curl -N -s https://DOMAIN/api/v1/talk/stream -H 'User-Agent: Go-http-client/2.0' | head -c 300
+```
+
+If you see `<!DOCTYPE html>… Just a moment…` (look for `cf-ray`,
+`challenges.cloudflare.com`), the CDN is intercepting the stream. **Do not turn
+bot protection off site-wide** — exempt only the VayuTalk paths. In Cloudflare:
+**Security → WAF → Custom rules → Create rule**, expression:
+
+```
+(starts_with(http.request.uri.path, "/api/v1/")) or (starts_with(http.request.uri.path, "/os/talk/"))
+```
+
+Action **Skip** → skip managed rules, Bot Fight Mode, and (if shown) Security
+Level / Browser Integrity Check. The rest of the site keeps full CDN protection;
+only the VayuTalk API/stream paths pass straight through. When fixed, the `curl`
+above returns VayuPress's JSON, and the app connects. The same principle applies
+to any CDN or WAF — allow the two stream paths, keep protecting everything else.
+
 ## Logs
 
 ```bash

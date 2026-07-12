@@ -8,6 +8,15 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Documentation
+- **How to run VayuTalk behind a reverse proxy or CDN.** New
+  `docs/TROUBLESHOOTING.md` → "VayuTalk Chat Issues" documents the two things
+  that stop the chat stream from staying open: an nginx proxy that buffers/idle-
+  times-out SSE (fixed with dedicated `location` blocks), and a CDN bot challenge
+  (e.g. Cloudflare) that a browser can pass but the mobile app cannot — fixed by
+  a WAF "Skip" rule for the `/api/v1/` and `/os/talk/` paths, so the rest of the
+  site keeps full protection while only the VayuTalk stream is let through.
+
 ## [3.11.45] — 2026-07-12
 
 ### Fixed

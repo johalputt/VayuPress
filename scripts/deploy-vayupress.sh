@@ -595,6 +595,13 @@ server {
     # ("Reconnecting…"). Exact-match locations, so they win over the prefix
     # blocks below. Keep these in sync with the app path (/api/v1/talk/stream)
     # and the web path (/os/talk/stream).
+    #
+    # NOTE: if a CDN/bot-challenge (e.g. Cloudflare) sits in FRONT of nginx, it
+    # will challenge the mobile app's stream (a non-browser client can't solve a
+    # JS challenge) and the app receives nothing while the browser works. Exempt
+    # ONLY these paths from the challenge (a WAF "Skip" rule for /api/v1/ and
+    # /os/talk/) — do not disable protection site-wide. See docs/TROUBLESHOOTING.md
+    # ("VayuTalk Chat Issues").
     location = /api/v1/talk/stream {
         proxy_pass http://127.0.0.1:8080;
         proxy_set_header Host              \$host;
