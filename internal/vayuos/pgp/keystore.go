@@ -3,6 +3,7 @@ package pgp
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -12,6 +13,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -34,18 +36,27 @@ type storedKey struct {
 	Revoked      bool      `json:"revoked"`
 }
 
-// keyStore persists encrypted keypairs to a directory and maintains an
-// email→userID index for recipient lookup.
+// keyStore persists encrypted keypairs to a directory and maintains in-memory
+// indexes for lookup. Filenames are NOT a bare hash of the (email-bearing)
+// userID — that would let anyone with directory access confirm whether a given
+// address has a key by recomputing the hash. Instead every file is located
+// through indexes rebuilt from file *contents* at startup, so a filename need
+// carry no recoverable link to its owner; new files are named with a keyed
+// HMAC (opaque without the secret). Legacy files written under the old bare-hash
+// scheme still load unchanged, because lookup no longer depends on the name.
 type keyStore struct {
 	dir     string
-	aeadKey [32]byte
+	aeadKey [32]byte // AES-256-GCM key for private-key ciphertext (unchanged scheme)
+	nameKey [32]byte // HMAC key for deriving new filenames (domain-separated)
 
-	mu      sync.RWMutex
-	byEmail map[string]string // email → userID
+	mu       sync.RWMutex
+	byEmail  map[string]string   // email  → userID
+	fileByID map[string]string   // userID → key file base name
+	archByID map[string][]string // userID → archive file base names
 }
 
 // newKeyStore opens (and lazily creates) a key store under dir, deriving the
-// at-rest AES key from masterSecret. The derived key is held only in memory.
+// at-rest AES key from masterSecret. The derived keys are held only in memory.
 func newKeyStore(dir string, masterSecret []byte) (*keyStore, error) {
 	if dir == "" {
 		return nil, errors.New("vayupgp: empty storage dir")
@@ -53,19 +64,40 @@ func newKeyStore(dir string, masterSecret []byte) (*keyStore, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("vayupgp: create storage dir: %w", err)
 	}
-	ks := &keyStore{dir: dir, byEmail: make(map[string]string)}
+	ks := &keyStore{
+		dir:      dir,
+		byEmail:  make(map[string]string),
+		fileByID: make(map[string]string),
+		archByID: make(map[string][]string),
+	}
 	// Domain-separated derivation so the keystore key is distinct from any other
-	// use of the master secret. Never log or persist the derived key.
+	// use of the master secret. Never log or persist the derived key. This scheme
+	// is FROZEN — changing it would make every stored private key undecryptable.
 	ks.aeadKey = sha256.Sum256(append([]byte("vayupgp-keystore-v1\x00"), masterSecret...))
+	// The filename HMAC key is domain-separated from the AEAD key.
+	nk := hmac.New(sha256.New, ks.aeadKey[:])
+	nk.Write([]byte("vayupgp-keystore-filename-v1"))
+	copy(ks.nameKey[:], nk.Sum(nil))
 	if err := ks.reindex(); err != nil {
 		return nil, err
 	}
 	return ks, nil
 }
 
-func (k *keyStore) path(userID string) string {
-	sum := sha256.Sum256([]byte(userID))
-	return filepath.Join(k.dir, hex.EncodeToString(sum[:])+".key.json")
+// nameHash derives an opaque, non-reversible file token for a userID using a
+// keyed HMAC (not a bare hash), so a filename cannot be correlated back to the
+// email it belongs to without the master secret.
+func (k *keyStore) nameHash(userID string) string {
+	mac := hmac.New(sha256.New, k.nameKey[:])
+	mac.Write([]byte(userID))
+	return hex.EncodeToString(mac.Sum(nil))
+}
+
+// keyFileName returns the base name a NEW key file for userID is written under.
+// Existing files are located through fileByID (built from contents), so their
+// on-disk names — whatever scheme wrote them — keep working unchanged.
+func (k *keyStore) keyFileName(userID string) string {
+	return k.nameHash(userID) + ".key.json"
 }
 
 func (k *keyStore) seal(plaintext []byte) (nonceHex, ctHex string, err error) {
@@ -120,42 +152,38 @@ func (k *keyStore) save(rec storedKey, privArmor []byte) error {
 	if err != nil {
 		return err
 	}
-	tmp := k.path(rec.UserID) + ".tmp"
+	// Reuse the existing file name for an update (preserving a legacy-named file
+	// in place); a brand-new key gets a fresh HMAC name.
+	k.mu.RLock()
+	base := k.fileByID[rec.UserID]
+	k.mu.RUnlock()
+	if base == "" {
+		base = k.keyFileName(rec.UserID)
+	}
+	dst := filepath.Join(k.dir, base)
+	tmp := dst + ".tmp"
 	if err := os.WriteFile(tmp, data, 0o600); err != nil {
 		return err
 	}
-	if err := os.Rename(tmp, k.path(rec.UserID)); err != nil {
+	if err := os.Rename(tmp, dst); err != nil {
 		return err
 	}
 	k.mu.Lock()
 	k.byEmail[normalizeEmail(rec.Email)] = rec.UserID
+	k.fileByID[rec.UserID] = base
 	k.mu.Unlock()
 	return nil
 }
 
-// load reads a record and returns it plus the decrypted armored private key.
-func (k *keyStore) load(userID string) (storedKey, []byte, error) {
-	data, err := os.ReadFile(k.path(userID))
-	if errors.Is(err, os.ErrNotExist) {
-		return storedKey{}, nil, ErrNotFound
+// readRecord reads and unmarshals one stored record by its indexed file name.
+func (k *keyStore) readRecord(userID string) (storedKey, error) {
+	k.mu.RLock()
+	base := k.fileByID[userID]
+	k.mu.RUnlock()
+	if base == "" {
+		return storedKey{}, ErrNotFound
 	}
-	if err != nil {
-		return storedKey{}, nil, err
-	}
-	var rec storedKey
-	if err := json.Unmarshal(data, &rec); err != nil {
-		return storedKey{}, nil, err
-	}
-	priv, err := k.open(rec.PrivateNonce, rec.PrivateCT)
-	if err != nil {
-		return storedKey{}, nil, fmt.Errorf("vayupgp: decrypt private key: %w", err)
-	}
-	return rec, priv, nil
-}
-
-// loadMeta reads a record without decrypting the private key.
-func (k *keyStore) loadMeta(userID string) (storedKey, error) {
-	data, err := os.ReadFile(k.path(userID))
+	data, err := os.ReadFile(filepath.Join(k.dir, base))
 	if errors.Is(err, os.ErrNotExist) {
 		return storedKey{}, ErrNotFound
 	}
@@ -167,6 +195,24 @@ func (k *keyStore) loadMeta(userID string) (storedKey, error) {
 		return storedKey{}, err
 	}
 	return rec, nil
+}
+
+// load reads a record and returns it plus the decrypted armored private key.
+func (k *keyStore) load(userID string) (storedKey, []byte, error) {
+	rec, err := k.readRecord(userID)
+	if err != nil {
+		return storedKey{}, nil, err
+	}
+	priv, err := k.open(rec.PrivateNonce, rec.PrivateCT)
+	if err != nil {
+		return storedKey{}, nil, fmt.Errorf("vayupgp: decrypt private key: %w", err)
+	}
+	return rec, priv, nil
+}
+
+// loadMeta reads a record without decrypting the private key.
+func (k *keyStore) loadMeta(userID string) (storedKey, error) {
+	return k.readRecord(userID)
 }
 
 // userIDForEmail resolves a recipient email to a local userID.
@@ -201,29 +247,51 @@ func (k *keyStore) list() ([]storedKey, error) {
 	return out, nil
 }
 
-// reindex rebuilds the email→userID index from disk.
+// reindex rebuilds every in-memory index from disk CONTENTS (not from file
+// names), so a key or archive is found by the userID recorded inside it — which
+// is why the on-disk name never has to encode a recoverable link to its owner.
 func (k *keyStore) reindex() error {
-	recs, err := k.list()
+	entries, err := os.ReadDir(k.dir)
 	if err != nil {
 		return err
 	}
-	k.mu.Lock()
-	defer k.mu.Unlock()
-	k.byEmail = make(map[string]string, len(recs))
-	for _, r := range recs {
-		k.byEmail[normalizeEmail(r.Email)] = r.UserID
+	byEmail := make(map[string]string)
+	fileByID := make(map[string]string)
+	archByID := make(map[string][]string)
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || !strings.HasSuffix(name, ".json") {
+			continue
+		}
+		isArchive := strings.Contains(name, ".arch.")
+		isKey := strings.HasSuffix(name, ".key.json")
+		if !isArchive && !isKey {
+			continue
+		}
+		data, rerr := os.ReadFile(filepath.Join(k.dir, name))
+		if rerr != nil {
+			continue
+		}
+		var rec storedKey
+		if json.Unmarshal(data, &rec) != nil || rec.UserID == "" {
+			continue
+		}
+		if isArchive {
+			archByID[rec.UserID] = append(archByID[rec.UserID], name)
+			continue
+		}
+		byEmail[normalizeEmail(rec.Email)] = rec.UserID
+		fileByID[rec.UserID] = name
 	}
+	k.mu.Lock()
+	k.byEmail, k.fileByID, k.archByID = byEmail, fileByID, archByID
+	k.mu.Unlock()
 	return nil
 }
 
-// archivePath returns the on-disk path for an archived (rotated-out) key.
-func (k *keyStore) archivePath(userID, fingerprint string) string {
-	sum := sha256.Sum256([]byte(userID))
-	return filepath.Join(k.dir, hex.EncodeToString(sum[:])+".arch."+fingerprint+".json")
-}
-
 // archive stores a rotated-out private key so historical ciphertext encrypted
-// to it stays decryptable.
+// to it stays decryptable. New archives use the keyed-HMAC name scheme; older
+// ones remain findable through archByID (indexed from contents at startup).
 func (k *keyStore) archive(rec storedKey, privArmor []byte) error {
 	nonceHex, ctHex, err := k.seal(privArmor)
 	if err != nil {
@@ -235,23 +303,24 @@ func (k *keyStore) archive(rec storedKey, privArmor []byte) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(k.archivePath(rec.UserID, rec.Fingerprint), data, 0o600)
+	base := k.nameHash(rec.UserID) + ".arch." + rec.Fingerprint + ".json"
+	if err := os.WriteFile(filepath.Join(k.dir, base), data, 0o600); err != nil {
+		return err
+	}
+	k.mu.Lock()
+	k.archByID[rec.UserID] = append(k.archByID[rec.UserID], base)
+	k.mu.Unlock()
+	return nil
 }
 
 // archivedPrivs returns the decrypted armored private keys archived for userID.
 func (k *keyStore) archivedPrivs(userID string) [][]byte {
-	entries, err := os.ReadDir(k.dir)
-	if err != nil {
-		return nil
-	}
-	sum := sha256.Sum256([]byte(userID))
-	prefix := hex.EncodeToString(sum[:]) + ".arch."
+	k.mu.RLock()
+	names := append([]string(nil), k.archByID[userID]...)
+	k.mu.RUnlock()
 	var out [][]byte
-	for _, e := range entries {
-		if e.IsDir() || !hasPrefixSuffix(e.Name(), prefix, ".json") {
-			continue
-		}
-		data, err := os.ReadFile(filepath.Join(k.dir, e.Name()))
+	for _, name := range names {
+		data, err := os.ReadFile(filepath.Join(k.dir, name))
 		if err != nil {
 			continue
 		}
@@ -264,9 +333,4 @@ func (k *keyStore) archivedPrivs(userID string) [][]byte {
 		}
 	}
 	return out
-}
-
-func hasPrefixSuffix(s, prefix, suffix string) bool {
-	return len(s) >= len(prefix)+len(suffix) &&
-		s[:len(prefix)] == prefix && s[len(s)-len(suffix):] == suffix
 }

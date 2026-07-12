@@ -8,6 +8,21 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.11.42] — 2026-07-12
+
+### Security
+- **VayuPGP keystore: stop naming key files after a bare hash of the mailbox
+  address** (CodeQL: weak hashing of sensitive data). A key file used to be
+  named `sha256(userID).key.json`, which let anyone able to read the key
+  directory confirm whether a given address had a key by recomputing the hash.
+  Files are now located through indexes rebuilt from file *contents* at startup,
+  so a filename carries no recoverable link to its owner, and new files are named
+  with a keyed HMAC (opaque without the master secret). Fully backward
+  compatible: existing key and archive files load unchanged and are reused in
+  place on the next write (no migration, no re-keying). The at-rest AES-256-GCM
+  encryption of private keys is unchanged. Pinned by
+  `TestKeystoreLegacyFilenameStillLoads` and `TestKeystoreFilenameNotBareHashOfUserID`.
+
 ## [3.11.41] — 2026-07-12
 
 ### Changed
