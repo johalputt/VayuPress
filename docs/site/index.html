@@ -3,24 +3,23 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>VayuPress — Your website, blog &amp; private mail. One sovereign binary.</title>
-  <meta name="description" content="VayuPress puts your whole online presence in one sovereign Go binary on a single VPS: a business website, a blog, and a private PGP mail server (VayuMail — SMTP/IMAP/POP3, DKIM, WKD) with an official mobile app, plus cookieless analytics and one control panel (VayuOS). SQLite-first, zero telemetry, Apache-2.0." />
-  <meta name="theme-color" content="#04050A" />
+  <title>VayuPress — 3D Sovereign Platform</title>
+  <meta name="description" content="VayuPress puts your whole online presence in one sovereign Go binary on a single VPS: a business website, a blog, a private PGP mail server (VayuMail), ephemeral encrypted chat (VayuTalk), cookieless analytics and one control panel (VayuOS). SQLite-first, zero telemetry, Apache-2.0." />
+  <meta name="theme-color" content="#0C0C0C" />
   <link rel="canonical" href="https://vayupress.com/" />
 
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://vayupress.com/" />
   <meta property="og:title" content="VayuPress — Your whole presence, one sovereign binary." />
-  <meta property="og:description" content="Website, blog, private PGP mail, encrypted chat, cookieless analytics and one control panel — collapsed into a single sovereign Go binary you run and own. SQLite-first, zero telemetry." />
+  <meta property="og:description" content="Website, blog, private PGP mail, encrypted chat, cookieless analytics and one control panel — one sovereign Go binary you run and own." />
   <meta property="og:image" content="https://vayupress.com/assets/logo-dark.png" />
   <meta property="og:image:width" content="923" />
   <meta property="og:image:height" content="617" />
   <meta property="og:image:alt" content="VayuPress" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="VayuPress — Your whole presence, one sovereign binary." />
-  <meta name="twitter:description" content="Website + blog + private PGP mail + encrypted chat + cookieless analytics + one control panel — a single sovereign Go binary. Own your content, communication, and privacy." />
+  <meta name="twitter:description" content="Website + blog + private PGP mail + encrypted chat + cookieless analytics + one control panel — a single sovereign Go binary." />
   <meta name="twitter:image" content="https://vayupress.com/assets/logo-dark.png" />
-  <meta name="twitter:image:alt" content="VayuPress" />
 
   <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png" />
   <link rel="icon" type="image/png" sizes="512x512" href="assets/favicon-512.png" />
@@ -28,8 +27,8 @@
 
   <script type="application/ld+json">
   {"@context":"https://schema.org","@type":"SoftwareApplication","name":"VayuPress",
-   "applicationCategory":"DeveloperApplication","operatingSystem":"Linux",
-   "softwareVersion":"3.12.0","description":"A sovereign, single-VPS platform in one Go binary: a business website, a blog, a private PGP mail server (VayuMail) with an official mobile app, ephemeral end-to-end-encrypted chat (VayuTalk), built-in bot protection (VayuShield), cookieless analytics (VayuAnalytics) and one control panel (VayuOS). Zero telemetry.",
+   "applicationCategory":"DeveloperApplication","operatingSystem":"Linux","softwareVersion":"3.12.0",
+   "description":"A sovereign, single-VPS platform in one Go binary: website, blog, private PGP mail (VayuMail), ephemeral encrypted chat (VayuTalk), bot protection (VayuShield), cookieless analytics (VayuAnalytics) and one control panel (VayuOS). Zero telemetry.",
    "url":"https://vayupress.com/","license":"https://www.apache.org/licenses/LICENSE-2.0",
    "offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},
    "author":{"@type":"Organization","name":"VayuPress","email":"hello@vayupress.com"}}
@@ -37,205 +36,84 @@
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="assets/home.css" />
 </head>
 <body>
+<div id="root">
+<main class="wrap">
 
-<!-- preloader -->
-<div id="preload" aria-hidden="true">
-  <div class="pl-inner">
-    <img class="pl-mark" src="assets/mark-dark.png" alt="" />
-    <div class="pl-count"><span id="plNum">0</span><span class="pl-pct">%</span></div>
-    <div class="pl-word" id="plWord">assembling the binary</div>
-  </div>
-  <div class="pl-curtain"></div>
+  <!-- ═══ 1 · HERO ═══ -->
+  <section class="hero">
+    <nav class="navbar" data-fade data-y="-20" data-delay="0">
+      <a class="nav-brand" href="#hero" aria-label="VayuPress"><img src="assets/mark-dark.png" alt="VayuPress" /></a>
+      <div class="nav-links">
+        <a href="#about">About</a>
+        <a href="#services">Services</a>
+        <a href="#projects">Projects</a>
+        <a href="https://github.com/johalputt/VayuPress" target="_blank" rel="noopener">GitHub</a>
+      </div>
+    </nav>
+
+    <div class="hero-heading-wrap">
+      <h1 class="hero-heading" data-fade data-y="40" data-delay="0.15">one binary.</h1>
+    </div>
+
+    <div class="hero-bottom">
+      <p class="hero-tagline" data-fade data-y="20" data-delay="0.35">a sovereign platform — website, blog, private mail &amp; encrypted chat in one binary you own</p>
+      <div data-fade data-y="20" data-delay="0.5">
+        <a class="contact-btn" href="#projects">Deploy Now</a>
+      </div>
+    </div>
+
+    <div class="hero-portrait" id="magnet" data-fade data-y="30" data-delay="0.6">
+      <div class="magnet-inner" id="magnetInner">
+        <img src="assets/logo-dark.png" alt="VayuPress — one sovereign binary" />
+        <span class="portrait-glow" aria-hidden="true"></span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ 2 · MARQUEE ═══ -->
+  <section class="marquee-sec" id="marquee">
+    <div class="marquee-row" id="mrow1"></div>
+    <div class="marquee-row" id="mrow2"></div>
+  </section>
+
+  <!-- ═══ 3 · ABOUT ═══ -->
+  <section class="about" id="about">
+    <img class="about-deco tl" src="assets/mark-dark.png" alt="" data-fade data-x="-80" data-delay="0.1" aria-hidden="true" />
+    <img class="about-deco bl" src="assets/mark-dark.png" alt="" data-fade data-x="-80" data-delay="0.25" aria-hidden="true" />
+    <img class="about-deco tr" src="assets/mark-dark.png" alt="" data-fade data-x="80" data-delay="0.15" aria-hidden="true" />
+    <img class="about-deco br" src="assets/mark-dark.png" alt="" data-fade data-x="80" data-delay="0.3" aria-hidden="true" />
+
+    <div class="about-inner">
+      <h2 class="section-heading hero-heading" data-fade data-y="40" data-delay="0">About</h2>
+      <p class="about-text" id="aboutText">For years, renting your website, your blog, your mail and your analytics from five different landlords was simply how it worked. VayuPress is the opposite bet: one sovereign Go binary on one VPS that you own completely — website, blog, PGP mail, encrypted chat and cookieless analytics, all in a single process. Let&apos;s put your whole internet back in your hands.</p>
+      <a class="contact-btn" href="#projects">Deploy Now</a>
+    </div>
+  </section>
+
+  <!-- ═══ 4 · SERVICES ═══ -->
+  <section class="services" id="services">
+    <h2 class="section-heading services-heading">Services</h2>
+    <div class="services-list" id="servicesList"></div>
+  </section>
+
+  <!-- ═══ 5 · PROJECTS ═══ -->
+  <section class="projects" id="projects">
+    <div class="projects-head">
+      <h2 class="section-heading hero-heading">Projects</h2>
+    </div>
+    <div class="cards" id="projectCards"></div>
+  </section>
+
+  <footer class="foot">© <span id="yr"></span> VayuPress · Apache-2.0 · <a href="https://github.com/johalputt/VayuPress" target="_blank" rel="noopener">GitHub</a> · one sovereign binary</footer>
+
+</main>
 </div>
 
-<!-- living singularity (WebGL) + graceful fallback -->
-<canvas id="gl" aria-hidden="true"></canvas>
-<div id="glfallback" aria-hidden="true"></div>
-<div class="atmos" aria-hidden="true"></div>
-<div class="grain" aria-hidden="true"></div>
-<div class="cursor" aria-hidden="true"></div>
-<div class="cursor-ring" aria-hidden="true"></div>
-<div id="rail" aria-hidden="true"></div>
-<a class="skip" href="#hero">Skip to content</a>
-
-<!-- ══ NAV ══ -->
-<nav id="nav">
-  <div class="nav-in">
-    <a class="brand" href="#hero" aria-label="VayuPress home"><img class="brand-mark" src="assets/mark-dark.png" alt="VayuPress" /></a>
-    <div class="nav-links">
-      <a href="#idea">The idea</a>
-      <a href="#products">Products</a>
-      <a href="#features">Platform</a>
-      <a href="#compare">Compare</a>
-      <a href="#quickstart">Deploy</a>
-    </div>
-    <a class="nav-cta" href="https://github.com/johalputt/VayuPress" target="_blank" rel="noopener" data-hot>
-      <span class="star">★</span><span id="stars">…</span> · GitHub
-    </a>
-  </div>
-</nav>
-
-<!-- ══ HERO ══ -->
-<header id="hero">
-  <div class="hero-in">
-    <span class="eyebrow reveal-fade"><span class="dot"></span>One sovereign binary · zero telemetry</span>
-    <h1 class="hero-title" data-split>Your whole presence, collapsed into <em>one sovereign binary.</em></h1>
-    <p class="hero-sub reveal-fade">One command stands up
-      <span class="rot"><b id="rot">a business website.</b></span></p>
-    <p class="hero-lede reveal-fade">Point a domain at one VPS, run one command, and own your whole online presence —
-      <b>website</b>, <b>blog</b>, <b>PGP mail</b>, <b>encrypted chat</b>, cookieless analytics and one
-      control panel. SQLite, zero telemetry, nothing rented.</p>
-    <div class="cta-row reveal-fade">
-      <a class="btn btn-primary" href="#quickstart" data-hot><span class="sheen"></span>Deploy in one command</a>
-      <a class="btn btn-ghost" href="#idea" data-hot>See the idea</a>
-    </div>
-    <div class="hero-meta reveal-fade">
-      <a class="badge" href="https://github.com/johalputt/VayuPress/releases" target="_blank" rel="noopener">
-        <span class="live"></span><span id="rel">v3.12.0</span> · latest release</a>
-      <span class="pill-row" id="pillRow" aria-hidden="true"></span>
-    </div>
-  </div>
-  <div class="scroll-cue" aria-hidden="true">Scroll<i></i></div>
-</header>
-
-<main>
-
-<!-- ══ THE IDEA — convergence (pinned scrub) ══ -->
-<section id="idea">
-  <div class="idea-pin">
-    <div class="wrap idea-copy">
-      <span class="eyebrow"><span class="dot"></span>The thesis</span>
-      <h2 class="idea-h" data-split>You rent your life from five landlords. Take it back as one.</h2>
-      <p class="idea-p">A website host. A blog platform. A mail provider. A chat app. An analytics tracker.
-        Five bills, five accounts, five sets of terms — collapsed into a single Go binary you run and own.</p>
-    </div>
-    <div class="converge-stage" id="stage" role="img" aria-label="Five rented services collapsing into one binary">
-      <canvas id="core3d" class="core3d" aria-hidden="true"></canvas>
-      <div class="orbit" data-orbit style="--tx:-40vw;--ty:-24vh"><span class="ic">◵</span>Website</div>
-      <div class="orbit" data-orbit style="--tx:-22vw;--ty:26vh"><span class="ic">✎</span>Blog</div>
-      <div class="orbit" data-orbit style="--tx:8vw;--ty:-30vh"><span class="ic">✉</span>PGP mail</div>
-      <div class="orbit" data-orbit style="--tx:30vw;--ty:22vh"><span class="ic">◈</span>Chat</div>
-      <div class="orbit" data-orbit style="--tx:44vw;--ty:-16vh"><span class="ic">◔</span>Analytics</div>
-      <div class="core" id="core"><b>1&nbsp;binary</b></div>
-      <div class="core3d-hint">drag to orbit</div>
-    </div>
-  </div>
-</section>
-
-<!-- ══ PRODUCTS — horizontal scroll ══ -->
-<section id="products">
-  <div class="wrap prod-intro">
-    <span class="eyebrow"><span class="dot"></span>Seven products, one process</span>
-    <h2 class="sec-h" data-split>Each one world-class. None of them bolted on.</h2>
-    <p class="sec-p">Not a bundle of plugins — one process where every capability shares the same memory,
-      the same SQLite, the same strict security posture. <span class="muted">Scroll →</span></p>
-  </div>
-  <div class="hscroll" id="hscroll">
-    <div class="hscroll-track" id="prodTrack"></div>
-  </div>
-</section>
-
-<!-- ══ PLATFORM — features ══ -->
-<section id="features" class="sec">
-  <div class="wrap">
-    <div class="sec-head">
-      <span class="eyebrow"><span class="dot"></span>Everything an operator needs</span>
-      <h2 class="sec-h" data-split>The whole platform, in one binary.</h2>
-      <p class="sec-p">Publishing, mail, memberships, security and migration — every surface first-class, none of it duct-taped on.</p>
-    </div>
-    <div class="feat-grid" id="featGrid" data-skew></div>
-  </div>
-</section>
-
-<!-- ══ GALLERY ══ -->
-<section id="gallery" class="sec sec-band">
-  <div class="wrap">
-    <div class="sec-head">
-      <span class="eyebrow"><span class="dot"></span>Every screen, operator-grade</span>
-      <h2 class="sec-h" data-split>One calm control room.</h2>
-      <p class="sec-p">VayuOS — the single admin behind the whole platform. Click any frame to look closer.</p>
-    </div>
-  </div>
-  <div class="marquee" id="marquee" aria-label="Product screenshots"></div>
-</section>
-
-<!-- ══ COMPARE ══ -->
-<section id="compare" class="sec">
-  <div class="wrap">
-    <div class="sec-head">
-      <span class="eyebrow"><span class="dot"></span>How it compares</span>
-      <h2 class="sec-h" data-split>What makes VayuPress different.</h2>
-      <p class="sec-p">Not another CMS. A sovereign platform where the website, the mail server and the chat relay are the same process.</p>
-    </div>
-    <div class="table-wrap" id="compareWrap"></div>
-  </div>
-</section>
-
-<!-- ══ PHILOSOPHY ══ -->
-<section id="philosophy" class="sec sec-band">
-  <div class="wrap">
-    <div class="sec-head">
-      <span class="eyebrow"><span class="dot"></span>Built on a thesis, not a trend</span>
-      <h2 class="sec-h" data-split>Principles you can read in the code.</h2>
-    </div>
-    <div class="princ-grid" id="princGrid" data-skew></div>
-  </div>
-</section>
-
-<!-- ══ QUICKSTART ══ -->
-<section id="quickstart" class="sec">
-  <div class="wrap">
-    <div class="sec-head">
-      <span class="eyebrow"><span class="dot"></span>From nothing to sovereign</span>
-      <h2 class="sec-h" data-split>Four commands to a live server.</h2>
-      <p class="sec-p">Point a domain at one VPS. Build one binary. Own everything the moment it boots.</p>
-    </div>
-    <div class="term" id="term">
-      <div class="term-bar"><i></i><i></i><i></i><span>you@vps ~ — the whole internet, self-hosted</span></div>
-      <pre id="termBody" aria-label="Install commands"></pre>
-      <button class="term-copy" id="copyBtn" data-hot>Copy</button>
-    </div>
-    <div class="steps" id="steps"></div>
-  </div>
-</section>
-
-<!-- ══ CLOSING ══ -->
-<section id="end" class="sec">
-  <div class="wrap end-wrap">
-    <h2 class="end-h" data-split>Stop renting the internet. Own it in one binary.</h2>
-    <p>Apache-2.0. SQLite-first. Zero telemetry. Yours the moment it runs.</p>
-    <div class="cta-row" style="justify-content:center">
-      <a class="btn btn-primary" href="#quickstart" data-hot><span class="sheen"></span>Deploy VayuPress</a>
-      <a class="btn btn-ghost" href="https://github.com/johalputt/VayuPress" target="_blank" rel="noopener" data-hot>Read the docs</a>
-    </div>
-  </div>
-</section>
-</main>
-
-<footer>
-  <div class="foot-in">
-    <div class="foot-brand">
-      <img class="foot-logo" src="assets/logo-dark.png" alt="VayuPress" />
-      <p>Your whole online presence in one sovereign Go binary. Built in the open, owned by you.</p>
-    </div>
-    <div class="foot-cols" id="footCols"></div>
-  </div>
-  <div class="foot-base">
-    <span>© <span id="yr"></span> VayuPress · Apache-2.0</span>
-    <span>Website · Blog · PGP Mail · Chat · Analytics — one binary</span>
-  </div>
-</footer>
-
-<!-- motion stack (external — free to use here) -->
-<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/ScrollTrigger.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/lenis@1.1.14/dist/lenis.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/split-type@0.3.4/umd/index.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.150.1/build/three.min.js"></script>
 <script src="assets/home.js"></script>
 </body>
 </html>
