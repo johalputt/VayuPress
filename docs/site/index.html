@@ -1,25 +1,24 @@
 <!DOCTYPE html>
-<html lang="en" class="scroll-smooth">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>VayuPress — Your website, blog &amp; private mail. One sovereign binary.</title>
   <meta name="description" content="VayuPress puts your whole online presence in one sovereign Go binary on a single VPS: a business website, a blog, and a private PGP mail server (VayuMail — SMTP/IMAP/POP3, DKIM, WKD) with an official mobile app, plus cookieless analytics and one control panel (VayuOS). SQLite-first, zero telemetry, Apache-2.0." />
-  <meta name="theme-color" content="#04060d" />
+  <meta name="theme-color" content="#04050A" />
   <link rel="canonical" href="https://vayupress.com/" />
 
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://vayupress.com/" />
-  <meta property="og:title" content="VayuPress — Your website, blog &amp; private mail. One binary." />
-  <meta property="og:description" content="Your whole online presence in one sovereign Go binary: a website, a blog, and a private PGP mail server (VayuMail) with an official mobile app, plus cookieless analytics and one control panel. SQLite-first, zero telemetry." />
-  <!-- Social share card shows the VayuPress brand mark, not a screenshot. -->
+  <meta property="og:title" content="VayuPress — Your whole presence, one sovereign binary." />
+  <meta property="og:description" content="Website, blog, private PGP mail, encrypted chat, cookieless analytics and one control panel — collapsed into a single sovereign Go binary you run and own. SQLite-first, zero telemetry." />
   <meta property="og:image" content="https://vayupress.com/assets/logo-dark.png" />
   <meta property="og:image:width" content="923" />
   <meta property="og:image:height" content="617" />
   <meta property="og:image:alt" content="VayuPress" />
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="VayuPress — Your website, blog &amp; private mail. One binary." />
-  <meta name="twitter:description" content="Website + blog + private PGP mail + mobile app + cookieless analytics + one control panel — all in a single sovereign Go binary. Own your content, communication, and privacy." />
+  <meta name="twitter:title" content="VayuPress — Your whole presence, one sovereign binary." />
+  <meta name="twitter:description" content="Website + blog + private PGP mail + encrypted chat + cookieless analytics + one control panel — a single sovereign Go binary. Own your content, communication, and privacy." />
   <meta name="twitter:image" content="https://vayupress.com/assets/logo-dark.png" />
   <meta name="twitter:image:alt" content="VayuPress" />
 
@@ -30,976 +29,200 @@
   <script type="application/ld+json">
   {"@context":"https://schema.org","@type":"SoftwareApplication","name":"VayuPress",
    "applicationCategory":"DeveloperApplication","operatingSystem":"Linux",
-   "softwareVersion":"3.11.49","description":"A sovereign, single-VPS platform in one Go binary: a business website, a blog, a private PGP mail server (VayuMail) with an official mobile app, ephemeral end-to-end-encrypted chat (VayuTalk), built-in bot protection (VayuShield), cookieless analytics (VayuAnalytics) and one control panel (VayuOS). Zero telemetry.",
+   "softwareVersion":"3.12.0","description":"A sovereign, single-VPS platform in one Go binary: a business website, a blog, a private PGP mail server (VayuMail) with an official mobile app, ephemeral end-to-end-encrypted chat (VayuTalk), built-in bot protection (VayuShield), cookieless analytics (VayuAnalytics) and one control panel (VayuOS). Zero telemetry.",
    "url":"https://vayupress.com/","license":"https://www.apache.org/licenses/LICENSE-2.0",
    "offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},
    "author":{"@type":"Organization","name":"VayuPress","email":"hello@vayupress.com"}}
   </script>
 
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          colors: {
-            teal:    { 300:'#5eead4',400:'#2dd4bf',500:'#14b8a6',600:'#0d9488',700:'#0f766e',800:'#115e59',900:'#042f2e' },
-            saffron: { 300:'#fcd34d',400:'#fbbf24',600:'#d97706' },
-            ink:     { 700:'#10172a',800:'#0a1020',900:'#070b16',950:'#04060d' },
-          },
-          fontFamily: {
-            display: ['"Space Grotesk"','Inter','system-ui','sans-serif'],
-            sans:    ['Inter','system-ui','sans-serif'],
-            mono:    ['"JetBrains Mono"','monospace'],
-          },
-          letterSpacing: { tightest:'-0.045em' },
-        },
-      },
-    };
-  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
-  <link rel="stylesheet" href="assets/style.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="assets/home.css" />
 </head>
-<body class="bg-ink-950 text-gray-200 font-sans antialiased overflow-x-hidden"
-      x-data="app()" @keydown.escape.window="lightbox=null">
+<body>
 
-  <!-- scroll progress bar -->
-  <div id="progress" class="fixed top-0 left-0 z-[60] h-[2px] bg-gradient-to-r from-teal-400 via-teal-500 to-saffron-400 origin-left transition-none"
-       :style="`transform:scaleX(${scrollPct})`"></div>
+<!-- the living singularity (WebGL) + graceful fallback -->
+<canvas id="gl" aria-hidden="true"></canvas>
+<div id="glfallback" aria-hidden="true"></div>
+<div class="atmos" aria-hidden="true"></div>
+<div class="grain" aria-hidden="true"></div>
+<div class="cursor" aria-hidden="true"></div>
+<div class="cursor-ring" aria-hidden="true"></div>
+<div id="rail" aria-hidden="true"></div>
+<a class="skip" href="#hero">Skip to content</a>
 
-  <!-- ══ cinematic backdrop (layered) ══ -->
-  <canvas id="aurora" class="fixed inset-0 -z-30 pointer-events-none" aria-hidden="true"></canvas>
-  <canvas id="wind" class="fixed inset-0 -z-20 pointer-events-none" aria-hidden="true"></canvas>
-  <div class="fixed inset-0 -z-20 pointer-events-none cosmic"></div>
-  <div class="fixed inset-0 -z-10 pointer-events-none filmgrain" aria-hidden="true"></div>
-  <div class="fixed inset-0 -z-10 pointer-events-none vignette" aria-hidden="true"></div>
-
-  <!-- cursor aura — desktop only -->
-  <div id="aura" aria-hidden="true"
-       class="hidden lg:block fixed -z-10 pointer-events-none w-[420px] h-[420px] rounded-full"
-       style="background:radial-gradient(circle,rgba(13,148,136,0.45),transparent 65%);filter:blur(72px);opacity:0.35;will-change:transform;transition:opacity .4s ease"></div>
-
-  <!-- ══════════════ NAV ══════════════ -->
-  <header id="nav" class="fixed top-2 inset-x-0 z-50 transition-all duration-500 px-4 sm:px-6">
-    <nav class="max-w-7xl mx-auto h-14 flex items-center justify-between rounded-2xl px-5 transition-all duration-500"
-         :class="scrolled ? 'bg-ink-950/80 backdrop-blur-xl border border-white/[0.07] shadow-2xl shadow-black/50' : ''">
-
-      <a href="#hero" class="flex items-center gap-2.5 group" aria-label="VayuPress home">
-        <img src="assets/mark-dark.png" alt="VayuPress mark"
-             class="brand-mark h-7 w-auto transition-transform duration-300 group-hover:scale-110" />
-        <span class="font-display font-semibold text-white tracking-tight hidden sm:block">VayuPress</span>
-        <span class="hidden sm:inline text-[10px] text-teal-300 font-mono border border-teal-800/60 rounded px-1.5 py-0.5 leading-none" x-text="version || 'v3.11.49'"></span>
-      </a>
-
-      <!-- desktop links -->
-      <div class="hidden md:flex items-center gap-8 text-sm text-gray-400">
-        <a href="#why"        class="nav-link hover:text-white transition-colors">Why</a>
-        <a href="#stack"      class="nav-link hover:text-white transition-colors">The stack</a>
-        <a href="#products"   class="nav-link hover:text-white transition-colors">Products</a>
-        <a href="#features"   class="nav-link hover:text-white transition-colors">Features</a>
-        <a href="#compare"    class="nav-link hover:text-white transition-colors">Compare</a>
-        <a href="#gallery"    class="nav-link hover:text-white transition-colors">Gallery</a>
-        <a href="#quickstart" class="nav-link hover:text-white transition-colors">Quick start</a>
-        <a href="about.html"  class="nav-link hover:text-white transition-colors">About</a>
-      </div>
-
-      <a href="https://github.com/johalputt/VayuPress" target="_blank" rel="noopener"
-         class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.09] text-sm font-medium text-gray-200 transition-all duration-200 hover:-translate-y-px"
-         aria-label="Star VayuPress on GitHub">
-        <svg class="w-4 h-4 shrink-0" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg>
-        <span class="font-mono text-xs tabular-nums" x-text="stars"></span>
-      </a>
-    </nav>
-  </header>
-
-  <!-- ══════════════ HERO ══════════════ -->
-  <section id="hero" class="hero-sec relative min-h-[100svh] flex items-center overflow-hidden">
-    <!-- ambient glows -->
-    <div class="hero-beam" aria-hidden="true"></div>
-    <div class="glow-hero-1" aria-hidden="true"></div>
-    <div class="glow-hero-2" aria-hidden="true"></div>
-
-    <div class="relative max-w-7xl mx-auto px-6 pt-28 pb-16 sm:pb-20 grid lg:grid-cols-12 gap-10 lg:gap-14 items-center w-full">
-      <!-- ── Copy ── -->
-      <div class="lg:col-span-7">
-        <!-- eyebrow + live release badge -->
-        <div class="hero-fade inline-flex flex-wrap items-center gap-2.5 mb-8" style="--i:0">
-          <span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-teal-800/50 bg-teal-900/20 text-teal-300 text-xs font-mono">
-            <span class="relative flex w-1.5 h-1.5" aria-hidden="true">
-              <span class="absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-75 animate-ping"></span>
-              <span class="relative inline-flex rounded-full w-1.5 h-1.5 bg-teal-400"></span>
-            </span>
-            One sovereign binary · zero telemetry
-          </span>
-          <a x-show="version" x-cloak :href="'https://github.com/johalputt/VayuPress/releases/tag/'+version" target="_blank" rel="noopener"
-             class="hero-rel inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-white/10 bg-white/[0.04] text-[11px] font-mono text-gray-300 hover:text-white transition-colors">
-            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400" aria-hidden="true"></span>
-            <span x-text="version"></span> · latest
-          </a>
-        </div>
-
-        <!-- cinematic masked headline -->
-        <h1 class="hero-title font-display font-bold tracking-tightest text-white leading-[0.92] mb-6
-                   text-[2.9rem] xs:text-5xl sm:text-6xl lg:text-[5rem]">
-          <span class="line" style="--i:0"><span class="line-in">Your website, blog,</span></span>
-          <span class="line" style="--i:1"><span class="line-in">mail &amp; chat —</span></span>
-          <span class="line" style="--i:2"><span class="line-in text-gradient">one sovereign binary.</span></span>
-        </h1>
-
-        <!-- rotating subject -->
-        <p class="hero-fade flex items-center flex-wrap gap-x-2.5 text-lg sm:text-xl text-gray-400 font-light mb-6" style="--i:4">
-          <span>One command stands up</span>
-          <span class="hero-rot-mask">
-            <template x-for="r in [rot]" :key="r"><span class="hero-rot-word text-gradient font-medium" x-text="rotWords[rot]"></span></template>
-          </span>
-        </p>
-
-        <p class="hero-fade text-base sm:text-lg text-gray-400 leading-relaxed mb-8 max-w-xl font-light" style="--i:5">
-          Point a domain at one VPS, run one command, and own your whole online presence —
-          <span class="text-gray-100 font-medium">website</span>,
-          <span class="text-gray-100 font-medium">blog</span>,
-          <span class="text-gray-100 font-medium">PGP mail</span>,
-          <span class="text-gray-100 font-medium">encrypted chat</span>,
-          cookieless analytics and one control panel. SQLite, zero telemetry, nothing rented.
-        </p>
-
-        <div class="hero-fade flex flex-wrap gap-3 items-center" style="--i:6">
-          <button @click="ripple($event); smoothTo('quickstart')"
-                  @mousemove="magnet($event)" @mouseleave="demagnet($event)"
-                  class="magnetic ripple-btn group relative px-7 py-3.5 rounded-xl
-                         bg-gradient-to-r from-teal-500 to-teal-600 text-white font-semibold
-                         text-sm sm:text-base overflow-hidden focus-ring
-                         hover:shadow-2xl hover:shadow-teal-600/50"
-                  aria-label="Jump to quick-start">
-            <span class="magnetic-in relative flex items-center gap-2">
-              Deploy in one command
-              <span class="group-hover:translate-x-1 transition-transform" aria-hidden="true">→</span>
-            </span>
-          </button>
-          <a href="https://github.com/johalputt/VayuPress" target="_blank" rel="noopener"
-             @mousemove="magnet($event)" @mouseleave="demagnet($event)"
-             class="magnetic px-7 py-3.5 rounded-xl border border-white/10 hover:border-white/25
-                    bg-white/[0.03] text-gray-200 font-semibold text-sm sm:text-base focus-ring">
-            <span class="magnetic-in">Read the source</span>
-          </a>
-        </div>
-
-        <!-- live stats bar -->
-        <div class="hero-fade mt-12 sm:mt-14 flex flex-wrap gap-x-8 gap-y-4 pt-7 border-t border-white/[0.06]" style="--i:7">
-          <div>
-            <div class="font-display text-xl sm:text-2xl font-bold text-white tabular-nums" x-text="stars"></div>
-            <div class="text-xs text-gray-500 mt-0.5">GitHub stars</div>
-          </div>
-          <div x-show="version" x-cloak>
-            <a :href="'https://github.com/johalputt/VayuPress/releases/tag/' + version" target="_blank" rel="noopener"
-               class="font-display text-xl sm:text-2xl font-bold text-white tabular-nums hover:text-sky-400 transition-colors" x-text="version"></a>
-            <div class="text-xs text-gray-500 mt-0.5">latest release</div>
-          </div>
-          <div>
-            <div class="font-display text-xl sm:text-2xl font-bold text-white">1</div>
-            <div class="text-xs text-gray-500 mt-0.5">binary · one VPS</div>
-          </div>
-          <div>
-            <div class="font-display text-xl sm:text-2xl font-bold text-white">4-in-1</div>
-            <div class="text-xs text-gray-500 mt-0.5">site · blog · mail · chat</div>
-          </div>
-          <div>
-            <div class="font-display text-xl sm:text-2xl font-bold text-white">Zero</div>
-            <div class="text-xs text-gray-500 mt-0.5">telemetry · trackers</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- ── Terminal preview ── -->
-      <div class="hero-visual lg:col-span-5">
-        <div class="hero-ring" aria-hidden="true"></div>
-        <div class="terminal-frame hero-term rounded-2xl overflow-hidden shadow-2xl shadow-black/70">
-          <div class="term-bar flex items-center gap-2 px-4 py-3">
-            <span class="w-3 h-3 rounded-full bg-[#ff5f57]" aria-hidden="true"></span>
-            <span class="w-3 h-3 rounded-full bg-[#febc2e]" aria-hidden="true"></span>
-            <span class="w-3 h-3 rounded-full bg-[#28c840]" aria-hidden="true"></span>
-            <span class="ml-3 text-xs text-gray-500 font-mono">vayupress — ssh root@vps</span>
-          </div>
-          <div class="p-5 sm:p-6 font-mono text-[12px] sm:text-[13px] leading-relaxed space-y-1.5 min-h-[260px] sm:min-h-[280px]">
-            <div x-show="t>=1" x-transition.opacity.duration.300ms>
-              <span class="text-teal-400">❯</span> <span class="text-gray-300">deploy-vayupress.sh · yourdomain.com</span>
-            </div>
-            <div x-show="t>=2" x-transition.opacity.duration.300ms class="text-gray-600">Provisioning · Let's Encrypt × 3 …</div>
-            <div x-show="t>=3" x-transition.opacity.duration.300ms class="text-emerald-400">✓ Website · <span class="text-teal-300">yourdomain.com</span></div>
-            <div x-show="t>=4" x-transition.opacity.duration.300ms class="text-emerald-400">✓ Blog · <span class="text-teal-300">blog.yourdomain.com</span></div>
-            <div x-show="t>=5" x-transition.opacity.duration.300ms class="text-emerald-400">✓ VayuMail · <span class="text-teal-300">mail.yourdomain.com</span> · DKIM + IMAP</div>
-            <div x-show="t>=6" x-transition.opacity.duration.300ms class="text-emerald-400">✓ VayuTalk · <span class="text-teal-300">talk.yourdomain.com</span> · E2E chat relay</div>
-            <div x-show="t>=7" x-transition.opacity.duration.300ms class="text-emerald-400">✓ VayuPGP · WKD published (AES-256 at rest)</div>
-            <div x-show="t>=8" x-transition.opacity.duration.300ms class="text-emerald-400">✓ VayuShield + VayuAnalytics · bot protection · cookieless</div>
-            <div x-show="t>=9" x-transition.opacity.duration.300ms class="text-saffron-300 font-medium pt-2">
-              VayuOS online · your whole stack is live <span class="cursor" aria-hidden="true">▊</span>
-            </div>
-          </div>
-        </div>
-      </div>
+<!-- ══ NAV ══ -->
+<nav id="nav">
+  <div class="nav-in">
+    <a class="brand" href="#hero" aria-label="VayuPress home"><span class="mark"></span>VayuPress</a>
+    <div class="nav-links">
+      <a href="#idea">The idea</a>
+      <a href="#products">Products</a>
+      <a href="#features">Platform</a>
+      <a href="#compare">Compare</a>
+      <a href="#quickstart">Deploy</a>
     </div>
+    <a class="nav-cta" href="https://github.com/johalputt/VayuPress" target="_blank" rel="noopener" data-hot>
+      <span class="star">★</span><span id="stars">…</span> · GitHub
+    </a>
+  </div>
+</nav>
 
-    <!-- scroll hint -->
-    <button @click="smoothTo('features')"
-            class="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2
-                   text-gray-600 text-[11px] tracking-widest uppercase hover:text-teal-400
-                   transition-colors focus-ring rounded-lg px-2 py-1"
-            aria-label="Scroll to features">
-      <span>explore</span>
-      <span class="scroll-pill" aria-hidden="true"></span>
-    </button>
-  </section>
+<!-- ══ HERO ══ -->
+<header id="hero">
+  <div class="hero-in">
+    <span class="eyebrow fade"><span class="dot"></span>One sovereign binary · zero telemetry</span>
+    <h1 class="hero-title">
+      <span class="l"><span>Your whole presence,</span></span>
+      <span class="l"><span>collapsed into</span></span>
+      <span class="l"><span class="grad">one sovereign binary.</span></span>
+    </h1>
+    <p class="hero-sub fade">One command stands up
+      <span class="rot"><b id="rot">a business website.</b></span></p>
+    <p class="hero-lede fade">Point a domain at one VPS, run one command, and own your whole online presence —
+      <b>website</b>, <b>blog</b>, <b>PGP mail</b>, <b>encrypted chat</b>, cookieless analytics and one
+      control panel. SQLite, zero telemetry, nothing rented.</p>
+    <div class="cta-row fade">
+      <a class="btn btn-primary" href="#quickstart" data-hot><span class="sheen"></span>Deploy in one command</a>
+      <a class="btn btn-ghost" href="#idea" data-hot>See the idea</a>
+    </div>
+    <div class="hero-meta fade">
+      <a class="badge" id="relBadge" href="https://github.com/johalputt/VayuPress/releases" target="_blank" rel="noopener">
+        <span class="live"></span><span id="rel">v3.12.0</span> · latest release</a>
+      <span class="pill-row" id="pillRow" aria-hidden="true"></span>
+    </div>
+    <div class="scroll-cue fade" aria-hidden="true">Scroll<i></i></div>
+  </div>
+</header>
 
-  <!-- ══════════════ TRUST BAR ══════════════ -->
-  <div class="border-y border-white/[0.06] bg-white/[0.015]">
-    <div class="max-w-7xl mx-auto px-6 py-5 flex flex-wrap items-center justify-center gap-x-10 gap-y-3">
-      <template x-for="t in trustBadges" :key="t">
-        <span class="flex items-center gap-2 text-xs text-gray-500 font-mono">
-          <span class="text-teal-500" aria-hidden="true">◆</span>
-          <span x-text="t"></span>
-        </span>
-      </template>
+<main>
+
+<!-- ══ THE IDEA — convergence ══ -->
+<section id="idea" class="sec">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <span class="eyebrow"><span class="dot"></span>The thesis</span>
+      <h2>You rent your life from five landlords. <span class="muted">Take it back as one.</span></h2>
+      <p>A website host. A blog platform. A mail provider. A chat app. An analytics tracker. Five bills,
+        five accounts, five sets of terms — collapsed into a single Go binary you run and own.</p>
+    </div>
+    <div class="converge-stage rv" id="stage" role="img" aria-label="Five rented services collapsing into one binary">
+      <div class="orbit" style="--tx:-38vw;--ty:-30%"><span class="ic">◵</span>Website</div>
+      <div class="orbit" style="--tx:-18vw;--ty:34%"><span class="ic">✎</span>Blog</div>
+      <div class="orbit" style="--tx:6vw;--ty:-36%"><span class="ic">✉</span>PGP mail</div>
+      <div class="orbit" style="--tx:26vw;--ty:28%"><span class="ic">◈</span>Chat</div>
+      <div class="orbit" style="--tx:40vw;--ty:-22%"><span class="ic">◔</span>Analytics</div>
+      <div class="core"><b>1&nbsp;binary</b></div>
     </div>
   </div>
+</section>
 
-  <!-- ══════════════ WHY ══════════════ -->
-  <section id="why" class="relative py-24 sm:py-28 lg:py-32">
-    <div class="max-w-5xl mx-auto px-6">
-      <header class="max-w-3xl mb-14 sm:mb-16" data-reveal>
-        <p class="text-teal-400 font-mono text-xs mb-4 tracking-[0.25em] uppercase">Why it exists</p>
-        <h2 class="font-display text-3xl sm:text-4xl lg:text-5xl font-bold text-white tracking-tight leading-[1.1]">
-          You don't own your online presence today.
-          <span class="text-gray-600 block mt-1">You rent it — from five landlords.</span>
-        </h2>
-        <p class="mt-6 text-base sm:text-lg text-gray-400 leading-relaxed">
-          A website builder for the site. WordPress and a dozen plugins for the blog.
-          Google or Microsoft for the mail. An analytics vendor watching your readers.
-          A SaaS dashboard tying it together — each its own bill, its own login, its own
-          cloud you don't control. VayuPress is the opposite bet: your website, your blog,
-          your mail, your analytics and your admin in
-          <span class="text-gray-100 font-medium">one binary you run yourself</span> —
-          nothing phones home, nothing is rented, nothing can be taken away.
-        </p>
-      </header>
-
-      <div class="grid sm:grid-cols-3 gap-4 sm:gap-5">
-        <div data-reveal class="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-6">
-          <div class="text-2xl mb-3" aria-hidden="true">📦</div>
-          <h3 class="font-display text-lg font-semibold text-white mb-2">Own your content</h3>
-          <p class="text-sm text-gray-400 leading-relaxed">A real website and a Ghost-class blog — block editor, whole-site themes, media, members, SEO — with every word in your own SQLite file. No SaaS, no export wall.</p>
-        </div>
-        <div data-reveal style="--d:60ms" class="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-6">
-          <div class="text-2xl mb-3" aria-hidden="true">✉️</div>
-          <h3 class="font-display text-lg font-semibold text-white mb-2">Own your communication</h3>
-          <p class="text-sm text-gray-400 leading-relaxed">A native SMTP/IMAP/POP3 mail server with DKIM and automatic PGP is built into the binary — send and receive from your own domain, read it in the official app, no third-party relay.</p>
-        </div>
-        <div data-reveal style="--d:120ms" class="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-6">
-          <div class="text-2xl mb-3" aria-hidden="true">🔐</div>
-          <h3 class="font-display text-lg font-semibold text-white mb-2">Own your privacy</h3>
-          <p class="text-sm text-gray-400 leading-relaxed">End-to-end PGP, encrypted keys at rest, and cookieless analytics with zero trackers and no PII on your readers. The only outbound calls are the ones you configure.</p>
-        </div>
-      </div>
+<!-- ══ PRODUCTS — tabbed ══ -->
+<section id="products" class="sec">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <span class="eyebrow"><span class="dot"></span>Seven products, one process</span>
+      <h2>Each one world-class. None of them bolted on.</h2>
+      <p>Not a bundle of plugins — one process where every capability shares the same memory, the same
+        SQLite, the same strict security posture.</p>
     </div>
-  </section>
-
-  <!-- ══════════════ THE STACK (one command) ══════════════ -->
-  <section id="stack" class="relative py-24 sm:py-28 lg:py-32 bg-white/[0.015] border-y border-white/[0.06] overflow-hidden">
-    <div class="glow-hero-2" aria-hidden="true"></div>
-    <div class="max-w-6xl mx-auto px-6">
-      <header class="max-w-3xl mb-14 sm:mb-16" data-reveal>
-        <p class="text-teal-400 font-mono text-xs mb-4 tracking-[0.25em] uppercase">One command · the whole stack</p>
-        <h2 class="font-display text-3xl sm:text-4xl lg:text-5xl font-bold text-white tracking-tight leading-[1.1]">
-          Your domain. A website, a blog, encrypted mail —
-          <span class="text-gray-500">and an app in your pocket.</span>
-        </h2>
-        <p class="mt-6 text-base sm:text-lg text-gray-400 leading-relaxed">
-          Point <span class="font-mono text-gray-200">yourdomain.com</span> at one VPS, run one install command, and
-          VayuPress stands up your entire online presence — a business
-          <span class="text-gray-100 font-medium">website</span>, a <span class="text-gray-100 font-medium">blog</span>,
-          and a sovereign <span class="text-gray-100 font-medium">mail server with automatic PGP</span> — each on its own
-          subdomain, each with a free Let's Encrypt certificate issued and renewed for you. Then read and send that mail
-          from the <span class="text-gray-100 font-medium">official VayuMail app</span> on Android.
-        </p>
-      </header>
-
-      <!-- Domain → three hosts -->
-      <div class="grid sm:grid-cols-3 gap-4 sm:gap-5" data-reveal>
-        <div class="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-6 flex flex-col">
-          <div class="text-2xl mb-3" aria-hidden="true">🏪</div>
-          <div class="font-mono text-xs text-teal-300 mb-1">yourdomain.com</div>
-          <h3 class="font-display text-lg font-semibold text-white mb-2">Business website</h3>
-          <p class="text-sm text-gray-400 leading-relaxed">Eleven elegant templates — restaurant, shop, studio, clinic, school, portfolio and more. Edit every word from the admin, switch designs live.</p>
-        </div>
-        <div class="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-6 flex flex-col" style="--d:60ms">
-          <div class="text-2xl mb-3" aria-hidden="true">✍️</div>
-          <div class="font-mono text-xs text-teal-300 mb-1">blog.yourdomain.com</div>
-          <h3 class="font-display text-lg font-semibold text-white mb-2">Your blog</h3>
-          <p class="text-sm text-gray-400 leading-relaxed">The full publishing engine — Ghost-class editor, whole-site themes, members and analytics. Or keep the blog at the root; it's your call, and updates never change it.</p>
-        </div>
-        <div class="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-6 flex flex-col" style="--d:120ms">
-          <div class="text-2xl mb-3" aria-hidden="true">🔐</div>
-          <div class="font-mono text-xs text-teal-300 mb-1">mail.yourdomain.com</div>
-          <h3 class="font-display text-lg font-semibold text-white mb-2">Encrypted mail</h3>
-          <p class="text-sm text-gray-400 leading-relaxed">A DKIM-signing mail server with automatic end-to-end PGP — keys generated per mailbox, messages encrypted when the recipient's key is known.</p>
-        </div>
-      </div>
-
-      <!-- Mobile app spotlight -->
-      <div data-reveal style="--d:160ms"
-           class="mt-5 rounded-2xl border border-teal-500/20 bg-gradient-to-br from-teal-500/[0.06] to-transparent p-6 sm:p-8 flex flex-col sm:flex-row sm:items-center gap-6">
-        <div class="shrink-0 grid place-items-center w-16 h-16 rounded-2xl bg-teal-500/10 border border-teal-400/20 text-3xl" aria-hidden="true">📱</div>
-        <div class="flex-1">
-          <div class="flex items-center gap-2 mb-1">
-            <h3 class="font-display text-xl font-semibold text-white">VayuMail for Android</h3>
-            <span class="text-[10px] font-mono uppercase tracking-wider text-teal-300 border border-teal-700/60 rounded px-1.5 py-0.5">Official app</span>
-          </div>
-          <p class="text-sm text-gray-400 leading-relaxed">
-            Connect a phone in one scan — the admin shows a rotating setup QR that carries a per-device app password (never your real password),
-            so the app signs in to IMAP &amp; SMTP instantly. Read, write and send PGP-encrypted mail from your own domain, on the go.
-          </p>
-        </div>
-        <div class="shrink-0 flex sm:flex-col gap-2.5">
-          <a href="https://github.com/johalputt/VayuMail-Mobile" target="_blank" rel="noopener"
-             class="inline-flex items-center justify-center gap-2 rounded-xl bg-teal-500 hover:bg-teal-400 text-gray-950 font-semibold text-sm px-4 py-2.5 transition-colors">
-            Get the app ↗
-          </a>
-          <a href="https://github.com/johalputt/VayuMail-Mobile/releases" target="_blank" rel="noopener"
-             class="inline-flex items-center justify-center gap-2 rounded-xl border border-white/15 hover:border-white/30 text-gray-200 text-sm px-4 py-2.5 transition-colors">
-            Download APK
-          </a>
-        </div>
-      </div>
-
-      <p class="mt-6 text-sm text-gray-500 leading-relaxed" data-reveal>
-        Cookieless <span class="text-gray-300">analytics</span> and a single
-        <span class="text-gray-300">control panel (VayuOS)</span> come with it — open source,
-        zero telemetry, all on your own name. Nothing rented, nothing phoning home.
-      </p>
-    </div>
-  </section>
-
-  <!-- ══════════════ PRODUCTS (tabbed suite) ══════════════ -->
-  <section id="products" class="relative py-24 sm:py-28 lg:py-36 overflow-hidden">
-    <div class="prod-ambient" :style="`--pr:${product.rgb}`" aria-hidden="true"></div>
-    <div class="max-w-7xl mx-auto px-6 relative">
-      <header class="max-w-3xl mb-12 sm:mb-14" data-reveal>
-        <p class="font-mono text-xs mb-4 tracking-[0.25em] uppercase" style="color:#a78bfa">The Vayu suite</p>
-        <h2 class="font-display text-3xl sm:text-4xl lg:text-5xl font-bold text-white tracking-tight leading-[1.08]">
-          One binary. Seven products.
-          <span class="text-gray-600 block mt-1">Each one, world-class.</span>
-        </h2>
-        <p class="mt-6 text-base sm:text-lg text-gray-400 leading-relaxed">
-          Not a bundle of plugins — a single Go process where publishing, mail, chat,
-          bot defense and analytics are first-class citizens. Switch between them below.
-        </p>
-      </header>
-
-      <!-- Tab rail -->
-      <div class="prod-rail" role="tablist" aria-label="VayuPress products" data-reveal>
-        <template x-for="(p, i) in products" :key="p.key">
-          <button type="button" role="tab"
-                  :aria-selected="activeProduct === i ? 'true' : 'false'"
-                  @click="setProduct(i)"
-                  class="prod-tab focus-ring"
-                  :class="activeProduct === i ? 'is-active' : ''"
-                  :style="`--pr:${p.rgb}`">
-            <span class="prod-tab-ic" x-text="p.icon" aria-hidden="true"></span>
-            <span class="prod-tab-name" x-text="p.name"></span>
-            <span x-show="p.badge" x-cloak class="prod-tab-badge" x-text="p.badge"></span>
-          </button>
-        </template>
-      </div>
-
-      <!-- Panel -->
-      <div class="prod-stage mt-6 sm:mt-8" :style="`--pr:${product.rgb}`">
-        <template x-for="frame in [prodAnim]" :key="frame">
-          <div class="prod-panel grid lg:grid-cols-2 gap-8 lg:gap-12 items-center">
-
-            <!-- ── Copy ── -->
-            <div class="prod-copy order-2 lg:order-1">
-              <div class="flex items-center gap-3 mb-4" style="--i:0">
-                <div class="prod-copy-ic" x-text="product.icon" aria-hidden="true"></div>
-                <div>
-                  <div class="flex items-center gap-2">
-                    <h3 class="font-display text-2xl sm:text-3xl font-bold text-white tracking-tight" x-text="product.name"></h3>
-                    <span x-show="product.badge" x-cloak class="prod-badge-lg" x-text="product.badge"></span>
-                  </div>
-                  <code class="prod-host font-mono text-xs" x-text="product.host"></code>
-                </div>
-              </div>
-              <p class="prod-tag font-display text-lg sm:text-xl font-medium mb-4" style="--i:1" x-text="product.tag"></p>
-              <p class="text-[15px] text-gray-400 leading-relaxed mb-7" style="--i:2" x-text="product.blurb"></p>
-              <ul class="grid sm:grid-cols-2 gap-x-6 gap-y-3 mb-8" role="list">
-                <template x-for="(pt, pi) in product.points" :key="pi">
-                  <li class="prod-point flex items-start gap-2.5 text-sm text-gray-300" role="listitem"
-                      :style="`--i:${pi+3}`">
-                    <span class="prod-check" aria-hidden="true">
-                      <svg viewBox="0 0 20 20" fill="none" class="w-3 h-3"><path d="M4 10.5l4 4 8-9" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                    </span>
-                    <span x-text="pt"></span>
-                  </li>
-                </template>
-              </ul>
-              <a :href="product.cta.href" target="_blank" rel="noopener"
-                 class="prod-cta focus-ring" style="--i:9" x-text="product.cta.label"></a>
-            </div>
-
-            <!-- ── Visual stage ── -->
-            <div class="prod-visual order-1 lg:order-2">
-              <div class="prod-frame">
-                <div class="prod-frame-bar">
-                  <span class="prod-dot" style="background:#ff5f57" aria-hidden="true"></span>
-                  <span class="prod-dot" style="background:#febc2e" aria-hidden="true"></span>
-                  <span class="prod-dot" style="background:#28c840" aria-hidden="true"></span>
-                  <span class="ml-2 font-mono text-[11px] text-gray-500 truncate" x-text="product.host"></span>
-                </div>
-                <div class="prod-frame-body">
-
-                  <!-- VayuOS: mini dashboard -->
-                  <div x-show="activeProduct===0" class="prod-mock">
-                    <div class="grid grid-cols-3 gap-2.5 mb-4">
-                      <template x-for="s in [['Views','12.4k'],['Members','318'],['Uptime','99.9%']]" :key="s[1]">
-                        <div class="prod-tile">
-                          <div class="prod-tile-v" x-text="s[1]"></div>
-                          <div class="prod-tile-l" x-text="s[0]"></div>
-                        </div>
-                      </template>
-                    </div>
-                    <div class="prod-bars">
-                      <template x-for="h in [40,64,52,80,60,92,74]" :key="h"><span :style="`height:${h}%`"></span></template>
-                    </div>
-                    <div class="prod-chip mt-3">⌘K · publish · themes · one admin</div>
-                  </div>
-
-                  <!-- VayuMail -->
-                  <div x-show="activeProduct===1" class="prod-mock space-y-2">
-                    <template x-for="m in [['A','Board deck · Q3','🔒'],['R','Invoice #2043','🔒'],['J','Re: launch plan','🔒']]" :key="m[1]">
-                      <div class="prod-row">
-                        <span class="prod-av" x-text="m[0]"></span>
-                        <span class="flex-1 text-sm text-gray-300 truncate" x-text="m[1]"></span>
-                        <span class="prod-pill">PGP <span x-text="m[2]"></span></span>
-                      </div>
-                    </template>
-                    <div class="prod-chip mt-2">DKIM ✓ · SPF ✓ · DMARC ✓ · WKD published</div>
-                  </div>
-
-                  <!-- VayuTalk -->
-                  <div x-show="activeProduct===2" class="prod-mock space-y-2.5">
-                    <div class="prod-bub in">Deploying the new relay 🚀</div>
-                    <div class="prod-bub out">On it — talk.johal.in is live 🔐</div>
-                    <div class="prod-bub in">Seamless web ⇄ app 🎉</div>
-                    <div class="prod-bub out with-meta">
-                      Perfect. See you there 👋
-                      <span class="prod-bub-meta">🔒 read-once · 0:58</span>
-                    </div>
-                  </div>
-
-                  <!-- VayuShield -->
-                  <div x-show="activeProduct===3" class="prod-mock">
-                    <template x-for="L in [['L0','Sovereignty lane',96],['L2','Fair-shed',88],['L4','PoW challenge',72],['L5','Reputation brain',80],['L1','Kernel offload',60]]" :key="L[0]">
-                      <div class="prod-layer">
-                        <span class="prod-layer-tag" x-text="L[0]"></span>
-                        <span class="prod-layer-name" x-text="L[1]"></span>
-                        <span class="prod-layer-bar"><span :style="`width:${L[2]}%`"></span></span>
-                      </div>
-                    </template>
-                    <div class="prod-chip mt-3"><span class="prod-live"></span> botnet shed · readers never throttled</div>
-                  </div>
-
-                  <!-- VayuAnalytics -->
-                  <div x-show="activeProduct===4" class="prod-mock">
-                    <div class="flex items-end justify-between gap-1.5 h-28 mb-3">
-                      <template x-for="h in [38,52,44,66,58,78,70,90]" :key="h">
-                        <span class="prod-abar" :style="`height:${h}%`"></span>
-                      </template>
-                    </div>
-                    <div class="grid grid-cols-3 gap-2.5">
-                      <template x-for="s in [['Live','42'],['Today','3.1k'],['Conv.','4.8%']]" :key="s[1]">
-                        <div class="prod-tile"><div class="prod-tile-v" x-text="s[1]"></div><div class="prod-tile-l" x-text="s[0]"></div></div>
-                      </template>
-                    </div>
-                    <div class="prod-chip mt-3">no cookies · no PII · no consent banner</div>
-                  </div>
-
-                  <!-- Website & Blog -->
-                  <div x-show="activeProduct===5" class="prod-mock">
-                    <div class="prod-hero-mock mb-3">
-                      <div class="prod-hero-title"></div>
-                      <div class="prod-hero-sub"></div>
-                    </div>
-                    <div class="grid grid-cols-2 gap-2.5">
-                      <template x-for="n in [1,2,3,4]" :key="n">
-                        <div class="prod-card">
-                          <div class="prod-card-img"></div>
-                          <div class="prod-card-line w-4/5"></div>
-                          <div class="prod-card-line w-3/5"></div>
-                        </div>
-                      </template>
-                    </div>
-                  </div>
-
-                  <!-- VayuPGP -->
-                  <div x-show="activeProduct===6" class="prod-mock text-center">
-                    <div class="prod-key" aria-hidden="true">🔑</div>
-                    <div class="prod-safety">
-                      <template x-for="g in ['A1B2','C3D4','E5F6','7G8H','J9K0','L1M2']" :key="g"><span x-text="g"></span></template>
-                    </div>
-                    <div class="prod-chip mt-3 justify-center">AES-256-GCM at rest · WKD · never logged</div>
-                  </div>
-
-                </div>
-              </div>
-            </div>
-
-          </div>
-        </template>
-      </div>
-    </div>
-  </section>
-
-  <!-- ══════════════ FEATURES ══════════════ -->
-  <section id="features" class="relative py-24 sm:py-28 lg:py-36">
-    <div class="max-w-7xl mx-auto px-6">
-      <header class="max-w-2xl mb-14 sm:mb-16" data-reveal>
-        <p class="text-teal-400 font-mono text-xs mb-4 tracking-[0.25em] uppercase">What's inside</p>
-        <h2 class="font-display text-3xl sm:text-4xl lg:text-5xl font-bold text-white tracking-tight leading-tight">
-          Everything an operator needs.
-          <span class="text-gray-600 block mt-1">Nothing they don't.</span>
-        </h2>
-      </header>
-
-      <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
-        <template x-for="(f, i) in features" :key="i">
-          <article data-reveal :style="`--d:${i*40}ms`"
-                   @mousemove="tilt($event)" @mouseleave="untilt($event)"
-                   @click="openFeature(i)" @keydown.enter="openFeature(i)" @keydown.space.prevent="openFeature(i)"
-                   role="button" tabindex="0" :aria-label="`${f.title} — read more`"
-                   class="feature-card group relative rounded-2xl border border-white/[0.07] bg-white/[0.025] p-5 sm:p-6 overflow-hidden cursor-pointer focus-ring flex flex-col">
-            <!-- orb -->
-            <div class="card-orb" :style="`--orb:${f.orb}`" aria-hidden="true"></div>
-            <!-- cursor glow -->
-            <div class="card-glow" aria-hidden="true"></div>
-            <div class="relative flex flex-col h-full">
-              <div class="flex items-start gap-3 mb-3">
-                <div class="w-10 h-10 shrink-0 rounded-xl flex items-center justify-center text-lg
-                            transition-transform duration-300 group-hover:scale-110 group-hover:-rotate-6"
-                     :class="f.iconBg" x-text="f.icon" aria-hidden="true"></div>
-                <h3 class="font-display text-[0.95rem] sm:text-base font-semibold text-white leading-snug mt-1" x-text="f.title"></h3>
-              </div>
-              <p class="text-[13px] text-gray-400 leading-relaxed clamp-2" x-text="f.desc"></p>
-              <div class="mt-auto pt-4 flex items-center justify-between gap-2">
-                <div class="flex flex-wrap gap-1.5" role="list" aria-label="tags">
-                  <template x-for="tag in f.tags.slice(0,2)" :key="tag">
-                    <span class="text-[10px] px-2 py-0.5 rounded-full bg-white/[0.04] border border-white/[0.07]
-                                 text-gray-500 font-mono" role="listitem" x-text="tag"></span>
-                  </template>
-                </div>
-                <span class="text-[11px] font-mono text-teal-400/80 group-hover:text-teal-300 whitespace-nowrap
-                             transition-colors flex items-center gap-1">
-                  Details
-                  <span class="inline-block transition-transform group-hover:translate-x-0.5" aria-hidden="true">→</span>
-                </span>
-              </div>
-            </div>
-          </article>
-        </template>
-      </div>
-    </div>
-  </section>
-
-  <!-- ── Feature detail modal ── -->
-  <div x-show="feature !== null" x-cloak
-       x-transition:enter="transition ease-out duration-250"
-       x-transition:enter-start="opacity-0"
-       x-transition:enter-end="opacity-100"
-       x-transition:leave="transition ease-in duration-200"
-       x-transition:leave-start="opacity-100"
-       x-transition:leave-end="opacity-0"
-       class="fixed inset-0 z-[100] bg-ink-950/90 backdrop-blur-lg flex items-center justify-center p-4 sm:p-6"
-       @click="closeFeature()"
-       role="dialog" aria-modal="true" :aria-label="feature!==null ? features[feature].title : ''">
-    <template x-if="feature !== null">
-      <div @click.stop
-           x-transition:enter="transition ease-out duration-300 delay-75"
-           x-transition:enter-start="opacity-0 translate-y-4 scale-[0.98]"
-           x-transition:enter-end="opacity-100 translate-y-0 scale-100"
-           class="feature-modal relative w-full max-w-lg rounded-3xl border border-white/[0.09] bg-ink-900/95 overflow-hidden shadow-2xl">
-        <!-- accent glow -->
-        <div class="absolute -top-24 -right-16 w-64 h-64 rounded-full blur-3xl pointer-events-none"
-             :style="`background:${features[feature].orb}`" aria-hidden="true"></div>
-
-        <!-- close -->
-        <button @click="closeFeature()" aria-label="Close"
-                class="absolute top-4 right-4 z-10 w-9 h-9 rounded-full bg-white/[0.06] hover:bg-white/[0.12]
-                       text-gray-300 hover:text-white flex items-center justify-center text-xl leading-none transition-colors focus-ring">×</button>
-
-        <div class="relative p-7 sm:p-9">
-          <div class="w-14 h-14 rounded-2xl flex items-center justify-center text-2xl mb-5"
-               :class="features[feature].iconBg" x-text="features[feature].icon" aria-hidden="true"></div>
-
-          <h3 class="font-display text-xl sm:text-2xl font-bold text-white tracking-tight mb-4"
-              x-text="features[feature].title"></h3>
-
-          <p class="text-[15px] text-gray-300 leading-relaxed mb-6" x-text="features[feature].desc"></p>
-
-          <div class="flex flex-wrap gap-2 mb-7" role="list" aria-label="tags">
-            <template x-for="tag in features[feature].tags" :key="tag">
-              <span class="text-[11px] px-2.5 py-1 rounded-full bg-teal-900/30 border border-teal-800/40
-                           text-teal-300/90 font-mono" role="listitem" x-text="tag"></span>
-            </template>
-          </div>
-
-          <!-- footer nav -->
-          <div class="flex items-center justify-between pt-5 border-t border-white/[0.07]">
-            <button @click="prevFeature()" class="text-sm text-gray-500 hover:text-white font-mono transition-colors focus-ring rounded px-1"
-                    aria-label="Previous feature">← Prev</button>
-            <span class="text-[11px] text-gray-600 font-mono" x-text="`${feature+1} / ${features.length}`"></span>
-            <button @click="nextFeature()" class="text-sm text-gray-500 hover:text-white font-mono transition-colors focus-ring rounded px-1"
-                    aria-label="Next feature">Next →</button>
-          </div>
-        </div>
-      </div>
-    </template>
+    <div class="prod-tabs rv" id="prodTabs" role="tablist" aria-label="VayuPress products"></div>
+    <div class="prod-panel rv" id="prodPanel" role="tabpanel"></div>
   </div>
+</section>
 
-  <!-- ══════════════ GALLERY ══════════════ -->
-  <section id="gallery" class="relative py-24 sm:py-28 lg:py-36 bg-white/[0.015] border-y border-white/[0.06] overflow-hidden">
-    <div class="max-w-7xl mx-auto px-6">
-      <header class="flex flex-wrap items-end justify-between gap-6 mb-10 sm:mb-12" data-reveal>
-        <div>
-          <p class="text-saffron-400 font-mono text-xs mb-4 tracking-[0.25em] uppercase">See it live</p>
-          <h2 class="font-display text-3xl sm:text-4xl lg:text-5xl font-bold text-white tracking-tight">Every screen, operator-grade.</h2>
-        </div>
-        <p class="text-xs text-gray-600 font-mono hidden md:block" aria-hidden="true">hover to pause · click to expand</p>
-      </header>
+<!-- ══ PLATFORM — features ══ -->
+<section id="features" class="sec">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <span class="eyebrow"><span class="dot"></span>Everything an operator needs</span>
+      <h2>The whole platform, in one binary.</h2>
+      <p>Publishing, mail, memberships, security and migration — every surface first-class, none of it duct-taped on.</p>
     </div>
-
-    <!-- marquee -->
-    <div class="marquee" role="list" aria-label="Screenshot gallery">
-      <div class="marquee-track">
-        <template x-for="(s, i) in galleryLoop" :key="i">
-          <button @click="lightbox = s.idx" role="listitem"
-                  class="shot group shrink-0 w-[80vw] sm:w-[420px] lg:w-[460px] text-left rounded-2xl overflow-hidden border border-white/[0.09] bg-ink-900 hover:border-teal-700/60 transition-all duration-300 hover:-translate-y-1.5 focus-ring"
-                  :aria-label="`Open ${s.label} screenshot`">
-            <!-- browser chrome -->
-            <div class="flex items-center gap-1.5 px-4 py-2.5 bg-ink-800 border-b border-white/[0.06]">
-              <span class="w-2.5 h-2.5 rounded-full bg-red-500/50" aria-hidden="true"></span>
-              <span class="w-2.5 h-2.5 rounded-full bg-yellow-500/50" aria-hidden="true"></span>
-              <span class="w-2.5 h-2.5 rounded-full bg-green-500/50" aria-hidden="true"></span>
-              <span class="ml-2 text-[11px] text-gray-500 font-mono truncate" x-text="`vayupress.com${s.path}`"></span>
-            </div>
-            <div class="relative overflow-hidden">
-              <img :src="s.src" :alt="s.label" loading="lazy" decoding="async" width="460" height="240"
-                   class="w-full h-48 sm:h-56 lg:h-64 object-cover object-top
-                          transition-transform duration-700 group-hover:scale-[1.04]" />
-              <div class="absolute inset-0 bg-gradient-to-t from-ink-950/95 via-ink-950/10 to-transparent"></div>
-              <div class="absolute bottom-0 inset-x-0 p-4 flex items-center justify-between">
-                <span class="font-display font-semibold text-white text-sm" x-text="s.label"></span>
-                <span class="w-7 h-7 rounded-full bg-white/10 backdrop-blur flex items-center justify-center text-white text-sm
-                             opacity-0 group-hover:opacity-100 transition-opacity" aria-hidden="true">⤢</span>
-              </div>
-            </div>
-          </button>
-        </template>
-      </div>
-    </div>
-  </section>
-
-  <!-- ── Lightbox ── -->
-  <div x-show="lightbox !== null" x-cloak
-       x-transition:enter="transition ease-out duration-250"
-       x-transition:enter-start="opacity-0"
-       x-transition:enter-end="opacity-100"
-       x-transition:leave="transition ease-in duration-200"
-       x-transition:leave-start="opacity-100"
-       x-transition:leave-end="opacity-0"
-       class="fixed inset-0 z-[100] bg-ink-950/94 backdrop-blur-lg flex items-center justify-center p-4 sm:p-8"
-       @click="lightbox=null"
-       role="dialog" aria-modal="true" :aria-label="lightbox!==null ? `Screenshot: ${screenshots[lightbox].label}` : ''">
-    <button class="absolute top-4 right-5 text-gray-400 hover:text-white text-3xl leading-none focus-ring rounded-lg w-10 h-10 flex items-center justify-center transition-colors"
-            @click.stop="lightbox=null" aria-label="Close lightbox">×</button>
-    <button class="absolute left-2 sm:left-6 text-gray-400 hover:text-white text-4xl w-12 h-12 flex items-center justify-center focus-ring rounded-xl transition-colors"
-            @click.stop="lightbox=(lightbox-1+screenshots.length)%screenshots.length" aria-label="Previous screenshot">‹</button>
-    <button class="absolute right-2 sm:right-6 text-gray-400 hover:text-white text-4xl w-12 h-12 flex items-center justify-center focus-ring rounded-xl transition-colors"
-            @click.stop="lightbox=(lightbox+1)%screenshots.length" aria-label="Next screenshot">›</button>
-    <template x-if="lightbox !== null">
-      <figure class="max-w-5xl w-full" @click.stop>
-        <div class="rounded-xl overflow-hidden border border-white/15 shadow-2xl">
-          <img :src="screenshots[lightbox].src" :alt="screenshots[lightbox].label"
-               class="w-full max-h-[76vh] object-contain bg-ink-900" loading="eager" />
-        </div>
-        <figcaption class="mt-4 text-center">
-          <span class="font-display font-semibold text-white" x-text="screenshots[lightbox].label"></span>
-          <span class="block text-sm text-gray-400 mt-1" x-text="screenshots[lightbox].caption"></span>
-          <span class="block text-xs text-gray-600 font-mono mt-1.5" x-text="`${lightbox+1} / ${screenshots.length}`"></span>
-        </figcaption>
-      </figure>
-    </template>
+    <div class="feat-grid" id="featGrid"></div>
   </div>
+</section>
 
-  <!-- ══════════════ PHILOSOPHY ══════════════ -->
-  <section id="philosophy" class="relative py-24 sm:py-28 lg:py-36">
-    <div class="max-w-5xl mx-auto px-6">
-      <header class="max-w-2xl mb-14 sm:mb-16" data-reveal>
-        <p class="text-teal-400 font-mono text-xs mb-4 tracking-[0.25em] uppercase">The design contract</p>
-        <h2 class="font-display text-3xl sm:text-4xl lg:text-5xl font-bold text-white tracking-tight">Built on a thesis, not a trend.</h2>
-      </header>
-
-      <div class="relative pl-8 sm:pl-14">
-        <div class="timeline-spine" aria-hidden="true"></div>
-        <template x-for="(p, i) in principles" :key="p.title">
-          <div data-reveal :style="`--d:${i*55}ms`" class="relative mb-6 last:mb-0">
-            <span class="timeline-dot" aria-hidden="true"></span>
-            <div class="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-6 sm:p-7
-                        hover:bg-white/[0.045] hover:border-white/[0.13] transition-all duration-300">
-              <div class="font-mono text-teal-500 text-xs mb-2" x-text="`0${i+1}`"></div>
-              <h3 class="font-display text-lg sm:text-xl font-semibold text-white mb-2" x-text="p.title"></h3>
-              <p class="text-sm sm:text-base text-gray-400 leading-relaxed" x-text="p.body"></p>
-            </div>
-          </div>
-        </template>
-      </div>
-
-      <blockquote data-reveal class="mt-14 sm:mt-16 border-l-2 border-teal-600 pl-6
-                                      text-xl sm:text-2xl lg:text-3xl font-display font-light
-                                      text-gray-200 leading-snug">
-        "Complexity that exists must be visible, bounded, and owned.
-        VayuPress makes nothing disappear — it makes everything observable."
-      </blockquote>
+<!-- ══ GALLERY ══ -->
+<section id="gallery" class="sec sec-band">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <span class="eyebrow"><span class="dot"></span>Every screen, operator-grade</span>
+      <h2>One calm control room.</h2>
+      <p>VayuOS — the single admin behind the whole platform. Click any frame to look closer.</p>
     </div>
-  </section>
+  </div>
+  <div class="marquee rv" id="marquee" aria-label="Product screenshots"></div>
+</section>
 
-  <!-- ══════════════ COMPARISON ══════════════ -->
-  <section id="compare" class="relative py-24 sm:py-28 lg:py-36 bg-white/[0.015] border-y border-white/[0.06]">
-    <div class="max-w-6xl mx-auto px-6">
-      <header class="max-w-2xl mb-14 sm:mb-16" data-reveal>
-        <p class="text-teal-400 font-mono text-xs mb-4 tracking-[0.25em] uppercase">How it compares</p>
-        <h2 class="font-display text-3xl sm:text-4xl lg:text-5xl font-bold text-white tracking-tight">What makes VayuPress different.</h2>
-        <p class="mt-5 text-base sm:text-lg text-gray-400 leading-relaxed">
-          Most platforms bolt sovereignty, observability and governance on as
-          plugins — or sell them as a hosted tier. VayuPress ships them in a
-          single binary, with every byte of behaviour owned by the operator.
-        </p>
-      </header>
-
-      <div data-reveal class="overflow-x-auto rounded-2xl border border-white/[0.08]">
-        <table class="w-full text-left border-collapse min-w-[640px]">
-          <thead>
-            <tr class="bg-white/[0.03]">
-              <th class="py-4 px-5 text-sm font-semibold text-gray-300">Capability</th>
-              <template x-for="(c, ci) in compareCols" :key="c">
-                <th class="py-4 px-5 text-sm font-semibold"
-                    :class="ci === 0 ? 'text-teal-300' : 'text-gray-400'"
-                    x-text="c"></th>
-              </template>
-            </tr>
-          </thead>
-          <tbody>
-            <template x-for="(row, ri) in compareRows" :key="row.f">
-              <tr class="border-t border-white/[0.05] hover:bg-white/[0.02] transition-colors">
-                <td class="py-3.5 px-5 text-sm text-gray-300" x-text="row.f"></td>
-                <template x-for="(val, vi) in row.v" :key="vi">
-                  <td class="py-3.5 px-5 text-sm"
-                      :class="vi === 0 ? 'font-medium' : ''">
-                    <span x-show="val === 'yes'" class="inline-flex items-center gap-1.5"
-                          :class="vi === 0 ? 'text-teal-300' : 'text-emerald-400/80'">
-                      <span aria-hidden="true">✓</span><span x-text="vi === 0 ? 'Built in' : 'Yes'"></span>
-                    </span>
-                    <span x-show="val === 'no'" class="text-gray-600">—</span>
-                    <span x-show="val === 'partial'" class="text-amber-400/80">Partial</span>
-                    <span x-show="val === 'plugin'" class="text-amber-400/70">Plugin</span>
-                    <span x-show="val === 'hosted-only'" class="text-amber-400/70">Hosted only</span>
-                    <span x-show="val === 'n/a'" class="text-gray-600">n/a</span>
-                  </td>
-                </template>
-              </tr>
-            </template>
-          </tbody>
-        </table>
-      </div>
-      <p class="mt-5 text-xs text-gray-500 font-mono" data-reveal>
-        Comparison reflects out-of-the-box, self-hosted defaults. WordPress/Ghost
-        capabilities marked “Plugin” are achievable via third-party extensions;
-        Substack is hosted-only and not self-hostable.
-      </p>
+<!-- ══ COMPARE ══ -->
+<section id="compare" class="sec">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <span class="eyebrow"><span class="dot"></span>How it compares</span>
+      <h2>What makes VayuPress different.</h2>
+      <p>Not another CMS. A sovereign platform where the website, the mail server and the chat relay are the same process.</p>
     </div>
-  </section>
+    <div class="table-wrap rv" id="compareWrap"></div>
+  </div>
+</section>
 
-  <!-- ══════════════ TOOLS ══════════════ -->
-  <section id="tools" class="relative py-24 sm:py-28 lg:py-36 bg-white/[0.015] border-y border-white/[0.06]">
-    <div class="max-w-5xl mx-auto px-6">
-      <header class="max-w-2xl mb-14 sm:mb-16" data-reveal>
-        <p class="text-teal-400 font-mono text-xs mb-4 tracking-[0.25em] uppercase">Companion tools</p>
-        <h2 class="font-display text-3xl sm:text-4xl lg:text-5xl font-bold text-white tracking-tight leading-tight">
-          Bring your content with you.
-          <span class="text-gray-600 block mt-1">Leave anytime, too.</span>
-        </h2>
-      </header>
-
-      <div class="grid gap-4 sm:gap-5">
-        <template x-for="(t, i) in tools" :key="t.name">
-          <article data-reveal :style="`--d:${i*60}ms`"
-                   @mousemove="tilt($event)" @mouseleave="untilt($event)"
-                   class="feature-card group relative rounded-2xl border border-white/[0.07] bg-white/[0.025] p-6 sm:p-8 overflow-hidden">
-            <div class="card-orb" :style="`--orb:rgba(245,158,11,0.3)`" aria-hidden="true"></div>
-            <div class="card-glow" aria-hidden="true"></div>
-            <div class="relative sm:flex sm:items-start sm:gap-8">
-              <div class="sm:flex-1">
-                <div class="flex items-center gap-3 mb-3">
-                  <h3 class="font-mono text-lg sm:text-xl font-semibold text-white" x-text="t.name"></h3>
-                  <span class="text-[11px] px-2 py-0.5 rounded-full bg-saffron-400/10 border border-saffron-400/20
-                               text-saffron-300 font-mono" x-text="t.tag"></span>
-                </div>
-                <p class="text-sm sm:text-base text-gray-400 leading-relaxed mb-5" x-text="t.desc"></p>
-                <ul class="space-y-2 mb-6" role="list">
-                  <template x-for="pt in t.points" :key="pt">
-                    <li class="flex items-start gap-2.5 text-sm text-gray-300" role="listitem">
-                      <span class="mt-1.5 w-1.5 h-1.5 rounded-full bg-teal-400 shrink-0" aria-hidden="true"></span>
-                      <span x-text="pt"></span>
-                    </li>
-                  </template>
-                </ul>
-                <div class="flex flex-wrap items-center gap-3">
-                  <a :href="t.href" target="_blank" rel="noopener"
-                     class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-white/[0.06] hover:bg-white/[0.12]
-                            border border-white/[0.09] text-sm font-medium text-gray-100 transition-all duration-200 hover:-translate-y-px focus-ring">
-                    <svg class="w-4 h-4 shrink-0" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg>
-                    View on GitHub
-                  </a>
-                </div>
-              </div>
-              <div class="mt-6 sm:mt-0 sm:w-72 shrink-0">
-                <div class="rounded-xl border border-white/[0.08] bg-black/40 overflow-hidden">
-                  <div class="flex items-center gap-1.5 px-3 py-2 border-b border-white/[0.06]">
-                    <span class="w-2.5 h-2.5 rounded-full bg-white/15" aria-hidden="true"></span>
-                    <span class="w-2.5 h-2.5 rounded-full bg-white/15" aria-hidden="true"></span>
-                    <span class="w-2.5 h-2.5 rounded-full bg-white/15" aria-hidden="true"></span>
-                  </div>
-                  <pre class="p-4 text-xs leading-relaxed font-mono text-teal-300 whitespace-pre-wrap break-words"><span class="text-gray-600 select-none">$ </span><span x-text="t.cmd"></span></pre>
-                </div>
-              </div>
-            </div>
-          </article>
-        </template>
-      </div>
+<!-- ══ PHILOSOPHY ══ -->
+<section id="philosophy" class="sec sec-band">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <span class="eyebrow"><span class="dot"></span>Built on a thesis, not a trend</span>
+      <h2>Principles you can read in the code.</h2>
     </div>
-  </section>
+    <div class="princ-grid" id="princGrid"></div>
+  </div>
+</section>
 
-  <!-- ══════════════ QUICK START ══════════════ -->
-  <section id="quickstart" class="relative py-24 sm:py-28 lg:py-36 bg-white/[0.015] border-y border-white/[0.06]">
-    <div class="max-w-4xl mx-auto px-6">
-      <header class="text-center mb-12 sm:mb-14" data-reveal>
-        <p class="text-saffron-400 font-mono text-xs mb-4 tracking-[0.25em] uppercase">Ship in minutes</p>
-        <h2 class="font-display text-3xl sm:text-4xl lg:text-5xl font-bold text-white tracking-tight">Four commands to a live server.</h2>
-      </header>
-
-      <!-- typing terminal -->
-      <div data-reveal x-ref="deployTerm"
-           class="terminal-frame rounded-2xl overflow-hidden shadow-2xl shadow-black/60 mb-8 sm:mb-10">
-        <div class="term-bar flex items-center gap-2 px-4 py-3">
-          <span class="w-3 h-3 rounded-full bg-[#ff5f57]" aria-hidden="true"></span>
-          <span class="w-3 h-3 rounded-full bg-[#febc2e]" aria-hidden="true"></span>
-          <span class="w-3 h-3 rounded-full bg-[#28c840]" aria-hidden="true"></span>
-          <span class="ml-3 text-xs text-gray-500 font-mono">deploy.sh</span>
-          <button @click="copyDeploy()"
-                  class="ml-auto flex items-center gap-1.5 text-xs font-mono px-2 py-1 rounded-md
-                         transition-all duration-200 focus-ring"
-                  :class="copied ? 'text-emerald-400 bg-emerald-400/10' : 'text-gray-500 hover:text-teal-300 hover:bg-white/5'"
-                  aria-live="polite" :aria-label="copied ? 'Copied!' : 'Copy deploy script'">
-            <span x-show="!copied">⧉ copy</span>
-            <span x-show="copied" x-cloak class="pop">✓ copied!</span>
-          </button>
-        </div>
-        <pre class="p-5 sm:p-6 font-mono text-[12px] sm:text-[13px] leading-7 text-gray-300 min-h-[140px] whitespace-pre-wrap overflow-x-auto"><code><span class="text-teal-400">❯ </span><span x-text="typed"></span><span class="cursor" aria-hidden="true">▊</span></code></pre>
-      </div>
-
-      <!-- step cards -->
-      <div class="grid sm:grid-cols-2 gap-3 sm:gap-4">
-        <template x-for="(step, i) in steps" :key="i">
-          <div data-reveal :style="`--d:${i*55}ms`"
-               class="flex gap-4 rounded-xl border border-white/[0.07] bg-white/[0.025] p-4 sm:p-5
-                      hover:border-white/[0.13] hover:bg-white/[0.04] transition-all duration-300">
-            <span class="shrink-0 w-7 h-7 rounded-full bg-teal-600/15 border border-teal-700/50
-                         text-teal-300 text-xs font-bold flex items-center justify-center"
-                  x-text="i+1" aria-hidden="true"></span>
-            <div>
-              <div class="text-sm text-gray-200 font-medium mb-1" x-text="step.label"></div>
-              <code class="text-xs text-teal-300/80 font-mono" x-text="step.cmd"></code>
-            </div>
-          </div>
-        </template>
-      </div>
-
-      <!-- tip -->
-      <div data-reveal class="mt-8 sm:mt-10 rounded-xl border border-saffron-600/20 bg-saffron-600/[0.06] p-5 sm:p-6">
-        <p class="text-sm text-saffron-300 font-mono font-medium mb-1.5">Tip · go live with a domain</p>
-        <p class="text-sm text-gray-400 leading-relaxed">Point your domain at the VPS and run the installer — it provisions nginx and free Let's Encrypt certificates for your <span class="text-gray-200">website</span>, <span class="text-gray-200 font-mono">blog.</span>, and <span class="text-gray-200 font-mono">mail.</span> hosts automatically. To add the real-time <span class="text-gray-200">VayuTalk</span> relay, point one extra record — <span class="font-mono text-gray-200">talk.yourdomain.com</span> → your server, CDN proxy <span class="text-gray-200">off</span> — and re-run the installer; it adds the certificate, vhost and app advertisement for you. Full steps in the <a href="https://github.com/johalputt/VayuPress/blob/main/docs/INSTALLATION.md" target="_blank" rel="noopener" class="text-gray-100 underline decoration-saffron-500/40 hover:decoration-saffron-400">installation guide</a>.</p>
-      </div>
+<!-- ══ QUICKSTART ══ -->
+<section id="quickstart" class="sec">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <span class="eyebrow"><span class="dot"></span>From nothing to sovereign</span>
+      <h2>Four commands to a live server.</h2>
+      <p>Point a domain at one VPS. Build one binary. Own everything the moment it boots.</p>
     </div>
-  </section>
-
-  <!-- ══════════════ TRUST / COMMUNITY ══════════════ -->
-  <section class="relative py-20 sm:py-24">
-    <div class="max-w-4xl mx-auto px-6 text-center">
-      <p data-reveal class="text-teal-400 font-mono text-xs mb-4 tracking-[0.25em] uppercase">Open source · forever</p>
-      <h2 data-reveal class="font-display text-3xl lg:text-4xl font-bold text-white tracking-tight mb-4">Built in the open. Owned by you.</h2>
-      <p data-reveal class="text-gray-400 max-w-xl mx-auto mb-10 leading-relaxed">Apache-2.0 licensed, dependency-light, documented to the decision level — VayuPress is for operators who refuse to rent their stack.</p>
-
-      <div data-reveal class="flex flex-wrap items-center justify-center gap-4 mb-12">
-        <a href="https://github.com/johalputt/VayuPress" target="_blank" rel="noopener"
-           class="inline-flex items-center gap-3 px-6 py-3.5 rounded-xl
-                  bg-gradient-to-r from-teal-500 to-teal-600 hover:to-teal-500
-                  text-white font-semibold transition-all duration-200
-                  hover:shadow-2xl hover:shadow-teal-600/40 hover:-translate-y-0.5 focus-ring">
-          <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg>
-          Star on GitHub
-          <span class="px-2 py-0.5 rounded-md bg-white/15 text-xs font-mono tabular-nums" x-text="stars"></span>
-        </a>
-        <a href="https://github.com/johalputt/VayuPress/blob/main/docs/INSTALLATION.md"
-           target="_blank" rel="noopener"
-           class="px-6 py-3.5 rounded-xl border border-white/10 hover:border-white/25
-                  bg-white/[0.03] text-gray-200 font-semibold
-                  transition-all duration-200 hover:-translate-y-0.5 focus-ring">
-          Read the docs
-        </a>
-      </div>
+    <div class="term rv" id="term">
+      <div class="term-bar"><i></i><i></i><i></i><span>you@vps ~ — the whole internet, self-hosted</span></div>
+      <pre id="termBody" aria-label="Install commands"></pre>
+      <button class="term-copy" id="copyBtn" data-hot>Copy</button>
     </div>
-  </section>
+    <div class="steps rv" id="steps"></div>
+  </div>
+</section>
 
-  <!-- ══════════════ FOOTER ══════════════ -->
-  <footer class="pt-16 sm:pt-20 pb-10 sm:pb-12 border-t border-white/[0.06]">
-    <div class="max-w-7xl mx-auto px-6">
-      <div class="grid sm:grid-cols-2 lg:grid-cols-5 gap-10 pb-10 sm:pb-12 border-b border-white/[0.06]">
-        <div class="lg:col-span-2">
-          <img src="assets/logo-dark.png" alt="VayuPress" width="200" height="149"
-               class="brand-mark h-9 sm:h-11 w-auto mb-5" loading="lazy" />
-          <p class="text-sm text-gray-500 leading-relaxed max-w-xs">Complete digital sovereignty in one binary — own your content, communication &amp; privacy. Publishing · VayuMail · VayuPGP · VayuOS.</p>
-          <p class="mt-5 text-xs text-gray-700 font-mono italic">vayu · the wind · carries only what you choose</p>
-        </div>
-        <template x-for="col in footer" :key="col.head">
-          <nav :aria-label="col.head">
-            <h4 class="text-xs font-mono uppercase tracking-widest text-gray-600 mb-4" x-text="col.head"></h4>
-            <ul class="space-y-2.5">
-              <template x-for="l in col.links" :key="l.label">
-                <li>
-                  <a :href="l.href" target="_blank" rel="noopener"
-                     class="text-sm text-gray-400 hover:text-teal-300 transition-colors focus-ring rounded"
-                     x-text="l.label"></a>
-                </li>
-              </template>
-            </ul>
-          </nav>
-        </template>
-      </div>
-      <div class="pt-7 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-gray-600">
-        <p>© 2026 VayuPress · Apache License 2.0 · <a href="https://vayupress.com" class="hover:text-teal-300 transition-colors">vayupress.com</a> · <a href="mailto:hello@vayupress.com" class="hover:text-teal-300 transition-colors">hello@vayupress.com</a></p>
-        <p class="font-mono">Built for operators who own their stack.</p>
-      </div>
+<!-- ══ CLOSING ══ -->
+<section id="end" class="sec">
+  <div class="wrap end-wrap rv">
+    <h2>Stop renting the internet.<br><span class="grad">Own it in one binary.</span></h2>
+    <p>Apache-2.0. SQLite-first. Zero telemetry. Yours the moment it runs.</p>
+    <div class="cta-row" style="justify-content:center">
+      <a class="btn btn-primary" href="#quickstart" data-hot><span class="sheen"></span>Deploy VayuPress</a>
+      <a class="btn btn-ghost" href="https://github.com/johalputt/VayuPress" target="_blank" rel="noopener" data-hot>Read the docs</a>
     </div>
-  </footer>
+  </div>
+</section>
+</main>
 
-  <script src="assets/app.js"></script>
+<footer>
+  <div class="foot-in">
+    <div class="foot-brand">
+      <a class="brand" href="#hero"><span class="mark"></span>VayuPress</a>
+      <p>Your whole online presence in one sovereign Go binary. Built in the open, owned by you.</p>
+    </div>
+    <div class="foot-cols" id="footCols"></div>
+  </div>
+  <div class="foot-base">
+    <span>© <span id="yr"></span> VayuPress · Apache-2.0</span>
+    <span>Website · Blog · PGP Mail · Chat · Analytics — one binary</span>
+  </div>
+</footer>
+
+<script src="assets/home.js" defer></script>
 </body>
 </html>
