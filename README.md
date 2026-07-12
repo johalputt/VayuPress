@@ -37,6 +37,7 @@ Point a domain at one server, run one install command, and you get:
 - a **website** at `yourdomain.com`,
 - a **blog** at `blog.yourdomain.com`,
 - a **mail server with automatic PGP** at `mail.yourdomain.com`,
+- **ephemeral, end-to-end-encrypted chat** at `talk.yourdomain.com`,
 
 each with a free Let's Encrypt certificate issued and renewed for you. No SaaS bill, no analytics harvesting, no plugin marketplace, no credentials on someone else's cloud. **You own the content, the mailbox, the data, and the machine.**
 
@@ -58,14 +59,17 @@ An **enterprise-grade, self-learning bot shield so you never need Cloudflare** �
 ### 📧 A sovereign PGP mail server (VayuMail)
 Your own mail server for your domain — **SMTP send + receive, IMAP and POP3**, RFC-6376 **DKIM signing**, direct-to-MX delivery with STARTTLS, automatic **MX / SPF / DKIM / DMARC** records with live DNS health checks, per-mailbox quotas, junk filtering, and a full webmail surface. **PGP is native and automatic** (VayuPGP): keypairs are generated per account, private keys are AES-256-GCM encrypted at rest, and your public keys are published via **Web Key Directory (WKD)** so any client can find them. Mail never leaves your server unencrypted to a third party.
 
+### 💬 Ephemeral end-to-end-encrypted chat (VayuTalk)
+Real-time private messaging built into the same binary — a **PGP end-to-end-encrypted chat** for your domain that interoperates seamlessly across the **web console and the mobile app over one shared relay**: a message typed on the web reaches the phone and vice-versa, indistinguishable to the server. Every message is encrypted to the recipient's key, relayed through a **bounded in-memory store that never touches disk**, and **read-destroyed** — it vanishes the moment it is read or when its short TTL (5 min – 1 h) elapses. Out-of-band **safety-number verification** (shown identically on web and app) defeats a man-in-the-middle key swap. The relay auto-serves on a dedicated **`talk.yourdomain.com`** subdomain that bypasses any CDN in front of your site, so the long-lived event stream is never buffered or bot-challenged — provisioned automatically by the installer the moment you point that one DNS record. *([architecture →](docs/adr/ADR-0131-vayutalk-ephemeral-messaging.md))*
+
 ### 📱 An official mobile app (VayuMail Mobile)
-[**johalputt/VayuMail-Mobile**](https://github.com/johalputt/VayuMail-Mobile) — a pure-Go Android app that reads and sends your PGP mail from your own domain. Connect in **one scan**: the admin's rotating setup QR carries a per-device app password (never your real password, revocable anytime), or auto-detect the whole account from just your email address via VayuPress's first-party autoconfig endpoint. No tracking pixels, no remote content, no telemetry.
+[**johalputt/VayuMail-Mobile**](https://github.com/johalputt/VayuMail-Mobile) — a pure-Go Android app that reads and sends your PGP mail *and* carries VayuTalk chat from your own domain. Connect in **one scan**: the admin's rotating setup QR carries a per-device app password (never your real password, revocable anytime), or auto-detect the whole account from just your email address via VayuPress's first-party autoconfig endpoint. No tracking pixels, no remote content, no telemetry.
 
 ### 📊 Privacy-first analytics (VayuAnalytics)
 Real product analytics — pageviews, sessions, top pages, referrers, UTM campaigns, custom events, funnels, retention, revenue, and a live visitor panel — stored locally in SQLite. Visitor identity is a **server-side daily-rotating salted hash**: no cookies, no `localStorage`, no IP or User-Agent ever stored, **no consent banner required**, nothing to leak on a database compromise. Visitor country is resolved from an **embedded offline table** — no external GeoIP service, no phone-home.
 
 ### 🛠️ One control panel (VayuOS)
-Everything above is run from a single, fast, strict-CSP admin at `/os` — dashboard, editor, media library, themes, members, newsletter, mail, analytics, **Bot Shield**, SEO, API keys, and one-click **update & encrypted backup**. The dashboard opens on a real **14-day publishing area chart** (server-rendered SVG, hover tooltips, zero JavaScript) and live stat cards; every data table folds into phone-friendly cards on mobile. TOTP two-factor, role-based access, WORM audit log, and an adaptive policy-governed runtime underneath. Built with **HTMX + lightweight hand-written CSS** — no SPA framework, no build step, negligible RAM/CPU.
+Everything above is run from a single, fast, strict-CSP admin at `/os` — dashboard, editor, media library, themes, members, newsletter, mail, **VayuTalk chat**, analytics, **Bot Shield**, SEO, API keys, and one-click **update & encrypted backup**. The dashboard opens on a real **14-day publishing area chart** (server-rendered SVG, hover tooltips, zero JavaScript) and live stat cards; every data table folds into phone-friendly cards on mobile. TOTP two-factor, role-based access, WORM audit log, and an adaptive policy-governed runtime underneath. Built with **HTMX + lightweight hand-written CSS** — no SPA framework, no build step, negligible RAM/CPU.
 
 ---
 
@@ -87,6 +91,8 @@ sudo ./scripts/deploy-vayupress.sh
 
 The installer provisions the binary, systemd service, Nginx, and Let's Encrypt certificates for your website, blog, and mail hostnames. A fresh install auto-creates an `admin@yourdomain` account (random password, saved to a root-only file) and forces a password change on first sign-in — no extra CLI step.
 
+**Add VayuTalk chat (optional, one DNS record).** VayuTalk works on the main domain out of the box; for the seamless real-time relay behind a CDN, point one `A`/`AAAA` record — `talk.yourdomain.com` → your server, **CDN proxy OFF** (the same "DNS-only" mode you use for `mail.`) — and re-run the installer (or let the next update run it). It adds the subdomain's TLS certificate, writes its Nginx vhost, and advertises it to the app automatically. Nothing else to configure. *(See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) → "VayuTalk".)*
+
 Runs comfortably on a single **8 GB RAM / 4 vCPU / 50 GB NVMe** VPS.
 
 ---
@@ -99,6 +105,7 @@ Runs comfortably on a single **8 GB RAM / 4 vCPU / 50 GB NVMe** VPS.
 | **Where your data lives** | Your VPS, your SQLite file | Vendor clouds you don't control |
 | **Telemetry** | None — verifiable, it's open source | "Anonymized analytics" |
 | **Mail** | Your own server, PGP automatic | Google/Microsoft reads the metadata |
+| **Private messaging** | Built-in, E2E-encrypted, ephemeral (VayuTalk) | A separate Signal/Slack account & server |
 | **Tracking of readers** | Cookieless, no PII, no consent banner | Cookies + third-party pixels |
 | **Bot & DDoS protection** | Built-in, self-learning (VayuShield Aegis) | A separate Cloudflare/WAF subscription |
 | **Dependencies** | One Go binary + SQLite + Nginx | Node, databases, Redis, queues, SDKs |
@@ -120,6 +127,7 @@ VayuPress is a single Go binary and a single SQLite database. There is no second
                     │   VayuShield Aegis (L0 lane · L2 fair-shed · L5 brain)      │
                     │   Website · Blog · Block editor · Themes · Members          │
                     │   VayuMail (SMTP/IMAP/POP3 · DKIM · MX/SPF/DMARC)           │
+                    │   VayuTalk (ephemeral E2E chat · SSE relay · read-once)     │
                     │   VayuPGP (keys · WKD)   VayuFind (search)   Analytics      │
                     │   VayuOS control panel   Newsletter   Media   API           │
                     │                                                             │

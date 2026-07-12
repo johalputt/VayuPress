@@ -30,7 +30,7 @@
   <script type="application/ld+json">
   {"@context":"https://schema.org","@type":"SoftwareApplication","name":"VayuPress",
    "applicationCategory":"DeveloperApplication","operatingSystem":"Linux",
-   "softwareVersion":"3.9.25","description":"A sovereign, single-VPS platform in one Go binary: a business website, a blog, and a private PGP mail server (VayuMail) with an official mobile app, plus built-in bot protection (VayuShield), cookieless analytics and one control panel (VayuOS). Zero telemetry.",
+   "softwareVersion":"3.11.49","description":"A sovereign, single-VPS platform in one Go binary: a business website, a blog, a private PGP mail server (VayuMail) with an official mobile app, ephemeral end-to-end-encrypted chat (VayuTalk), built-in bot protection (VayuShield), cookieless analytics (VayuAnalytics) and one control panel (VayuOS). Zero telemetry.",
    "url":"https://vayupress.com/","license":"https://www.apache.org/licenses/LICENSE-2.0",
    "offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},
    "author":{"@type":"Organization","name":"VayuPress","email":"hello@vayupress.com"}}
@@ -87,13 +87,14 @@
         <img src="assets/mark-dark.png" alt="VayuPress mark"
              class="brand-mark h-7 w-auto transition-transform duration-300 group-hover:scale-110" />
         <span class="font-display font-semibold text-white tracking-tight hidden sm:block">VayuPress</span>
-        <span class="hidden sm:inline text-[10px] text-teal-300 font-mono border border-teal-800/60 rounded px-1.5 py-0.5 leading-none">v3.9.25</span>
+        <span class="hidden sm:inline text-[10px] text-teal-300 font-mono border border-teal-800/60 rounded px-1.5 py-0.5 leading-none" x-text="version || 'v3.11.49'"></span>
       </a>
 
       <!-- desktop links -->
       <div class="hidden md:flex items-center gap-8 text-sm text-gray-400">
         <a href="#why"        class="nav-link hover:text-white transition-colors">Why</a>
         <a href="#stack"      class="nav-link hover:text-white transition-colors">The stack</a>
+        <a href="#products"   class="nav-link hover:text-white transition-colors">Products</a>
         <a href="#features"   class="nav-link hover:text-white transition-colors">Features</a>
         <a href="#compare"    class="nav-link hover:text-white transition-colors">Compare</a>
         <a href="#gallery"    class="nav-link hover:text-white transition-colors">Gallery</a>
@@ -219,8 +220,8 @@
             <div x-show="t>=3" x-transition.opacity.duration.300ms class="text-emerald-400">✓ Website · <span class="text-teal-300">yourdomain.com</span></div>
             <div x-show="t>=4" x-transition.opacity.duration.300ms class="text-emerald-400">✓ Blog · <span class="text-teal-300">blog.yourdomain.com</span></div>
             <div x-show="t>=5" x-transition.opacity.duration.300ms class="text-emerald-400">✓ VayuMail · <span class="text-teal-300">mail.yourdomain.com</span> · DKIM + IMAP</div>
-            <div x-show="t>=6" x-transition.opacity.duration.300ms class="text-emerald-400">✓ VayuPGP · Ed25519 keystore (AES-256 at rest)</div>
-            <div x-show="t>=7" x-transition.opacity.duration.300ms class="text-emerald-400">✓ WKD published · scan QR to pair the app</div>
+            <div x-show="t>=6" x-transition.opacity.duration.300ms class="text-emerald-400">✓ VayuTalk · <span class="text-teal-300">talk.yourdomain.com</span> · E2E chat relay</div>
+            <div x-show="t>=7" x-transition.opacity.duration.300ms class="text-emerald-400">✓ VayuPGP · WKD published (AES-256 at rest)</div>
             <div x-show="t>=8" x-transition.opacity.duration.300ms class="text-emerald-400">✓ VayuShield + VayuAnalytics · bot protection · cookieless</div>
             <div x-show="t>=9" x-transition.opacity.duration.300ms class="text-saffron-300 font-medium pt-2">
               VayuOS online · your whole stack is live <span class="cursor" aria-hidden="true">▊</span>
@@ -366,6 +367,185 @@
         <span class="text-gray-300">control panel (VayuOS)</span> come with it — open source,
         zero telemetry, all on your own name. Nothing rented, nothing phoning home.
       </p>
+    </div>
+  </section>
+
+  <!-- ══════════════ PRODUCTS (tabbed suite) ══════════════ -->
+  <section id="products" class="relative py-24 sm:py-28 lg:py-36 overflow-hidden">
+    <div class="prod-ambient" :style="`--pr:${product.rgb}`" aria-hidden="true"></div>
+    <div class="max-w-7xl mx-auto px-6 relative">
+      <header class="max-w-3xl mb-12 sm:mb-14" data-reveal>
+        <p class="font-mono text-xs mb-4 tracking-[0.25em] uppercase" style="color:#a78bfa">The Vayu suite</p>
+        <h2 class="font-display text-3xl sm:text-4xl lg:text-5xl font-bold text-white tracking-tight leading-[1.08]">
+          One binary. Seven products.
+          <span class="text-gray-600 block mt-1">Each one, world-class.</span>
+        </h2>
+        <p class="mt-6 text-base sm:text-lg text-gray-400 leading-relaxed">
+          Not a bundle of plugins — a single Go process where publishing, mail, chat,
+          bot defense and analytics are first-class citizens. Switch between them below.
+        </p>
+      </header>
+
+      <!-- Tab rail -->
+      <div class="prod-rail" role="tablist" aria-label="VayuPress products" data-reveal>
+        <template x-for="(p, i) in products" :key="p.key">
+          <button type="button" role="tab"
+                  :aria-selected="activeProduct === i ? 'true' : 'false'"
+                  @click="setProduct(i)"
+                  class="prod-tab focus-ring"
+                  :class="activeProduct === i ? 'is-active' : ''"
+                  :style="`--pr:${p.rgb}`">
+            <span class="prod-tab-ic" x-text="p.icon" aria-hidden="true"></span>
+            <span class="prod-tab-name" x-text="p.name"></span>
+            <span x-show="p.badge" x-cloak class="prod-tab-badge" x-text="p.badge"></span>
+          </button>
+        </template>
+      </div>
+
+      <!-- Panel -->
+      <div class="prod-stage mt-6 sm:mt-8" :style="`--pr:${product.rgb}`">
+        <template x-for="frame in [prodAnim]" :key="frame">
+          <div class="prod-panel grid lg:grid-cols-2 gap-8 lg:gap-12 items-center">
+
+            <!-- ── Copy ── -->
+            <div class="prod-copy order-2 lg:order-1">
+              <div class="flex items-center gap-3 mb-4" style="--i:0">
+                <div class="prod-copy-ic" x-text="product.icon" aria-hidden="true"></div>
+                <div>
+                  <div class="flex items-center gap-2">
+                    <h3 class="font-display text-2xl sm:text-3xl font-bold text-white tracking-tight" x-text="product.name"></h3>
+                    <span x-show="product.badge" x-cloak class="prod-badge-lg" x-text="product.badge"></span>
+                  </div>
+                  <code class="prod-host font-mono text-xs" x-text="product.host"></code>
+                </div>
+              </div>
+              <p class="prod-tag font-display text-lg sm:text-xl font-medium mb-4" style="--i:1" x-text="product.tag"></p>
+              <p class="text-[15px] text-gray-400 leading-relaxed mb-7" style="--i:2" x-text="product.blurb"></p>
+              <ul class="grid sm:grid-cols-2 gap-x-6 gap-y-3 mb-8" role="list">
+                <template x-for="(pt, pi) in product.points" :key="pi">
+                  <li class="prod-point flex items-start gap-2.5 text-sm text-gray-300" role="listitem"
+                      :style="`--i:${pi+3}`">
+                    <span class="prod-check" aria-hidden="true">
+                      <svg viewBox="0 0 20 20" fill="none" class="w-3 h-3"><path d="M4 10.5l4 4 8-9" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    </span>
+                    <span x-text="pt"></span>
+                  </li>
+                </template>
+              </ul>
+              <a :href="product.cta.href" target="_blank" rel="noopener"
+                 class="prod-cta focus-ring" style="--i:9" x-text="product.cta.label"></a>
+            </div>
+
+            <!-- ── Visual stage ── -->
+            <div class="prod-visual order-1 lg:order-2">
+              <div class="prod-frame">
+                <div class="prod-frame-bar">
+                  <span class="prod-dot" style="background:#ff5f57" aria-hidden="true"></span>
+                  <span class="prod-dot" style="background:#febc2e" aria-hidden="true"></span>
+                  <span class="prod-dot" style="background:#28c840" aria-hidden="true"></span>
+                  <span class="ml-2 font-mono text-[11px] text-gray-500 truncate" x-text="product.host"></span>
+                </div>
+                <div class="prod-frame-body">
+
+                  <!-- VayuOS: mini dashboard -->
+                  <div x-show="activeProduct===0" class="prod-mock">
+                    <div class="grid grid-cols-3 gap-2.5 mb-4">
+                      <template x-for="s in [['Views','12.4k'],['Members','318'],['Uptime','99.9%']]" :key="s[1]">
+                        <div class="prod-tile">
+                          <div class="prod-tile-v" x-text="s[1]"></div>
+                          <div class="prod-tile-l" x-text="s[0]"></div>
+                        </div>
+                      </template>
+                    </div>
+                    <div class="prod-bars">
+                      <template x-for="h in [40,64,52,80,60,92,74]" :key="h"><span :style="`height:${h}%`"></span></template>
+                    </div>
+                    <div class="prod-chip mt-3">⌘K · publish · themes · one admin</div>
+                  </div>
+
+                  <!-- VayuMail -->
+                  <div x-show="activeProduct===1" class="prod-mock space-y-2">
+                    <template x-for="m in [['A','Board deck · Q3','🔒'],['R','Invoice #2043','🔒'],['J','Re: launch plan','🔒']]" :key="m[1]">
+                      <div class="prod-row">
+                        <span class="prod-av" x-text="m[0]"></span>
+                        <span class="flex-1 text-sm text-gray-300 truncate" x-text="m[1]"></span>
+                        <span class="prod-pill">PGP <span x-text="m[2]"></span></span>
+                      </div>
+                    </template>
+                    <div class="prod-chip mt-2">DKIM ✓ · SPF ✓ · DMARC ✓ · WKD published</div>
+                  </div>
+
+                  <!-- VayuTalk -->
+                  <div x-show="activeProduct===2" class="prod-mock space-y-2.5">
+                    <div class="prod-bub in">Deploying the new relay 🚀</div>
+                    <div class="prod-bub out">On it — talk.johal.in is live 🔐</div>
+                    <div class="prod-bub in">Seamless web ⇄ app 🎉</div>
+                    <div class="prod-bub out with-meta">
+                      Perfect. See you there 👋
+                      <span class="prod-bub-meta">🔒 read-once · 0:58</span>
+                    </div>
+                  </div>
+
+                  <!-- VayuShield -->
+                  <div x-show="activeProduct===3" class="prod-mock">
+                    <template x-for="L in [['L0','Sovereignty lane',96],['L2','Fair-shed',88],['L4','PoW challenge',72],['L5','Reputation brain',80],['L1','Kernel offload',60]]" :key="L[0]">
+                      <div class="prod-layer">
+                        <span class="prod-layer-tag" x-text="L[0]"></span>
+                        <span class="prod-layer-name" x-text="L[1]"></span>
+                        <span class="prod-layer-bar"><span :style="`width:${L[2]}%`"></span></span>
+                      </div>
+                    </template>
+                    <div class="prod-chip mt-3"><span class="prod-live"></span> botnet shed · readers never throttled</div>
+                  </div>
+
+                  <!-- VayuAnalytics -->
+                  <div x-show="activeProduct===4" class="prod-mock">
+                    <div class="flex items-end justify-between gap-1.5 h-28 mb-3">
+                      <template x-for="h in [38,52,44,66,58,78,70,90]" :key="h">
+                        <span class="prod-abar" :style="`height:${h}%`"></span>
+                      </template>
+                    </div>
+                    <div class="grid grid-cols-3 gap-2.5">
+                      <template x-for="s in [['Live','42'],['Today','3.1k'],['Conv.','4.8%']]" :key="s[1]">
+                        <div class="prod-tile"><div class="prod-tile-v" x-text="s[1]"></div><div class="prod-tile-l" x-text="s[0]"></div></div>
+                      </template>
+                    </div>
+                    <div class="prod-chip mt-3">no cookies · no PII · no consent banner</div>
+                  </div>
+
+                  <!-- Website & Blog -->
+                  <div x-show="activeProduct===5" class="prod-mock">
+                    <div class="prod-hero-mock mb-3">
+                      <div class="prod-hero-title"></div>
+                      <div class="prod-hero-sub"></div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2.5">
+                      <template x-for="n in [1,2,3,4]" :key="n">
+                        <div class="prod-card">
+                          <div class="prod-card-img"></div>
+                          <div class="prod-card-line w-4/5"></div>
+                          <div class="prod-card-line w-3/5"></div>
+                        </div>
+                      </template>
+                    </div>
+                  </div>
+
+                  <!-- VayuPGP -->
+                  <div x-show="activeProduct===6" class="prod-mock text-center">
+                    <div class="prod-key" aria-hidden="true">🔑</div>
+                    <div class="prod-safety">
+                      <template x-for="g in ['A1B2','C3D4','E5F6','7G8H','J9K0','L1M2']" :key="g"><span x-text="g"></span></template>
+                    </div>
+                    <div class="prod-chip mt-3 justify-center">AES-256-GCM at rest · WKD · never logged</div>
+                  </div>
+
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </template>
+      </div>
     </div>
   </section>
 
@@ -745,7 +925,7 @@
       <!-- tip -->
       <div data-reveal class="mt-8 sm:mt-10 rounded-xl border border-saffron-600/20 bg-saffron-600/[0.06] p-5 sm:p-6">
         <p class="text-sm text-saffron-300 font-mono font-medium mb-1.5">Tip · go live with a domain</p>
-        <p class="text-sm text-gray-400 leading-relaxed">Put VayuPress behind nginx with a free Let's Encrypt certificate, point your domain at the VPS, and you have publishing, mail and PGP on your own name — see the <a href="https://github.com/johalputt/VayuPress/blob/main/docs/INSTALLATION.md" target="_blank" rel="noopener" class="text-gray-100 underline decoration-saffron-500/40 hover:decoration-saffron-400">installation guide</a>.</p>
+        <p class="text-sm text-gray-400 leading-relaxed">Point your domain at the VPS and run the installer — it provisions nginx and free Let's Encrypt certificates for your <span class="text-gray-200">website</span>, <span class="text-gray-200 font-mono">blog.</span>, and <span class="text-gray-200 font-mono">mail.</span> hosts automatically. To add the real-time <span class="text-gray-200">VayuTalk</span> relay, point one extra record — <span class="font-mono text-gray-200">talk.yourdomain.com</span> → your server, CDN proxy <span class="text-gray-200">off</span> — and re-run the installer; it adds the certificate, vhost and app advertisement for you. Full steps in the <a href="https://github.com/johalputt/VayuPress/blob/main/docs/INSTALLATION.md" target="_blank" rel="noopener" class="text-gray-100 underline decoration-saffron-500/40 hover:decoration-saffron-400">installation guide</a>.</p>
       </div>
     </div>
   </section>

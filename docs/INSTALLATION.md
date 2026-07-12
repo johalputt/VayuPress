@@ -17,14 +17,18 @@ You need a fresh **Ubuntu 24.04** server and a **domain name**. That's it.
 **Step 1 — point your domain at the server.** In your DNS provider, create three
 **A records** pointing at your server's IP address:
 
-| Type | Name              | Value            |
-|------|-------------------|------------------|
-| A    | `example.com`     | your server's IP |
-| A    | `www.example.com` | your server's IP |
-| A    | `mail.example.com`| your server's IP |
+| Type | Name              | Value            | Notes |
+|------|-------------------|------------------|-------|
+| A    | `example.com`     | your server's IP | your website / blog |
+| A    | `www.example.com` | your server's IP | www redirect |
+| A    | `mail.example.com`| your server's IP | mail server (keep CDN proxy **off**) |
+| A    | `talk.example.com`| your server's IP | *optional* — VayuTalk chat relay (CDN proxy **off**) |
 
 (Replace `example.com` with your domain. The `mail.` record lets VayuPress run
-your email.)
+your email; the optional `talk.` record enables the real-time **VayuTalk** chat
+relay — see *"Add VayuTalk chat"* below. If a CDN like Cloudflare fronts your
+site, leave `mail.` and `talk.` as **DNS-only / grey-cloud** so their direct
+connections aren't proxied.)
 
 **Step 2 — run one command** on the server (SSH in as root or a sudo user):
 
@@ -78,6 +82,46 @@ VayuOS.)
 Certificates need your DNS to be pointing at the server first. If you ran the
 installer before DNS propagated, just re-run it once DNS is live — it will pick
 up where it left off and obtain the certificates.
+
+### Add VayuTalk chat (optional)
+
+**VayuTalk** — ephemeral, end-to-end-encrypted chat that works across the web
+console and the mobile app — runs on the main domain out of the box. For the
+seamless real-time relay (and to work reliably **behind a CDN** such as
+Cloudflare), give it a dedicated subdomain that talks straight to your origin:
+
+1. **Add one DNS record:** `talk.example.com` → your server's IP, with the CDN
+   proxy turned **off** (Cloudflare: set it to *DNS only / grey cloud*, exactly
+   like your `mail.` record). Your origin IP is already reachable via `mail.`, so
+   this exposes nothing new.
+2. **Re-run the installer** (or just wait for the next update — every update runs
+   the same step):
+
+   ```bash
+   sudo bash /path/to/VayuPress/scripts/deploy-vayupress.sh
+   # or, to provision only the talk subdomain:
+   sudo bash /path/to/VayuPress/scripts/setup-talk-subdomain.sh
+   ```
+
+That's the **only** manual step. The installer then automatically adds
+`talk.example.com` to your TLS certificate, writes its nginx vhost (relay-only,
+with Server-Sent-Events never buffered), sets `VAYUOS_TALK_HOST`, and advertises
+the host in autoconfig — so the VayuMail app discovers it and routes its chat
+stream there on its own. Until the DNS record exists the step is skipped and the
+app keeps using the main domain, so nothing breaks.
+
+**Why the dedicated subdomain?** VayuTalk delivers over a long-lived
+Server-Sent-Events stream. A CDN bot-challenge (which a browser can solve but the
+mobile app cannot) would block that stream — so the app could send but never
+receive. The proxy-off `talk.` subdomain lets the stream reach your origin
+unbuffered and unchallenged, while your main domain keeps full CDN protection.
+See [`docs/TROUBLESHOOTING.md`](TROUBLESHOOTING.md) → *"VayuTalk"*.
+
+### What the certificate covers
+
+The installer requests one certificate covering `example.com`, `www.example.com`,
+`mail.example.com` and (when its DNS is pointed) `talk.example.com` — dropping any
+name that doesn't yet resolve so a missing optional record never blocks issuance.
 
 ## Manual / advanced install
 

@@ -111,6 +111,8 @@ function app() {
     t:          0,          // hero terminal line
     lightbox:   null,
     feature:    null,       // open feature-detail index
+    activeProduct: 0,       // selected product tab
+    prodAnim:   0,          // bump on tab change to retrigger panel animation
     typed:      '',
     copied:     false,
     stars:      '★',
@@ -125,14 +127,14 @@ STATIC_DIR=./static VAYU_DOCS_DIR=./docs ./vayupress --port 8080`,
     /* ── data ── */
     // Hero pillar chips — the whole platform at a glance.
     pillars: [
-      'Website', 'Blog', 'PGP Mail', 'Mobile App', 'Analytics', 'VayuOS',
+      'Website', 'Blog', 'PGP Mail', 'VayuTalk', 'Mobile App', 'Analytics', 'VayuOS',
     ],
 
     trustBadges: [
       'single-VPS deploy',
       'SQLite-durable',
       'zero third-party trackers',
-      'website · blog · mail · app',
+      'website · blog · mail · chat · app',
       'native mail + E2E PGP',
       'Apache-2.0 licensed',
     ],
@@ -182,6 +184,107 @@ STATIC_DIR=./static VAYU_DOCS_DIR=./docs ./vayupress --port 8080`,
         title:'Bring your whole archive',
         desc:'Move in from Ghost, WordPress, Substack, Medium, Hugo, Jekyll, Notion or a plain folder of Markdown — slugs, tags, dates, images and drafts preserved. The importers are resumable and gentle enough to migrate a 200,000-post site onto a small VPS without falling over.',
         tags:['Ghost · WP · Substack','Medium · Hugo · Jekyll','resumable'] },
+    ],
+
+    /* ── The Vayu suite — one binary, showcased product by product ── */
+    products: [
+      { key:'vayuos', name:'VayuOS', icon:'🛠', rgb:'52,211,153', badge:'',
+        tag:'One calm control room for the whole platform',
+        host:'/os',
+        blurb:'Every surface — publishing, mail, chat, analytics and security — in one fast, strict-CSP admin. No sprawl, no SPA bloat, no second weaker path in. Creating an account quietly provisions a mailbox and PGP keys for you.',
+        points:[
+          '⌘K command palette + a live 14-day publishing chart',
+          'Block editor, media library & Theme Studio',
+          'Members, newsletter, SEO & mail in one place',
+          'TOTP two-factor, roles & a WORM audit log',
+          'One-click signed update & encrypted backup',
+          'HTMX + hand-written CSS — negligible RAM/CPU',
+        ],
+        cta:{ label:'Explore VayuOS →', href:'https://github.com/johalputt/VayuPress' } },
+
+      { key:'vayumail', name:'VayuMail', icon:'✉️', rgb:'56,189,248', badge:'',
+        tag:'Your own sovereign PGP mail server',
+        host:'mail.yourdomain.com',
+        blurb:'SMTP send + receive, IMAP and POP3, RFC-6376 DKIM signing and direct-to-MX delivery — a real mail server for your domain, with automatic MX / SPF / DKIM / DMARC records and live DNS health checks. Mail never leaves your server unencrypted to a third party.',
+        points:[
+          'Send & receive from your own domain',
+          'DKIM-signed, direct-to-MX with STARTTLS',
+          'IMAP + POP3 for any client (Thunderbird, K-9…)',
+          'Automatic MX / SPF / DKIM / DMARC + DNS health',
+          'Native PGP: keys per account, published via WKD',
+          'Official Android app — connect in one scan',
+        ],
+        cta:{ label:'Get the app ↗', href:'https://github.com/johalputt/VayuMail-Mobile' } },
+
+      { key:'vayutalk', name:'VayuTalk', icon:'💬', rgb:'139,92,246', badge:'NEW',
+        tag:'Ephemeral, end-to-end-encrypted chat',
+        host:'talk.yourdomain.com',
+        blurb:'Real-time PGP-encrypted messaging that works seamlessly across the web console and the mobile app over one shared relay — a message typed on the web reaches the phone and vice-versa. Nothing ever touches disk; every message vanishes the moment it is read.',
+        points:[
+          'PGP end-to-end encrypted, web ⇄ app interop',
+          'Read-once — a message self-destructs on read',
+          'Short TTL (5 min – 1 h); nothing is persisted',
+          'Safety-number verification defeats a MITM swap',
+          'Dedicated talk.yourdomain.com relay — bypasses any CDN',
+          'Auto-provisioned by the installer — one DNS record',
+        ],
+        cta:{ label:'How VayuTalk works →', href:'https://github.com/johalputt/VayuPress/blob/main/docs/adr/ADR-0131-vayutalk-ephemeral-messaging.md' } },
+
+      { key:'vayushield', name:'VayuShield', icon:'🛡', rgb:'244,63,94', badge:'',
+        tag:'Enterprise bot shield & anti-DDoS — no Cloudflare',
+        host:'/os/shield',
+        blurb:'A five-layer, self-learning bot & DDoS shield built into the same binary. It keeps Save and refresh working even during a volumetric flood, jails offenders in minutes and forgives automatically — search engines and AI assistants are always welcome.',
+        points:[
+          'Admin-sovereignty lane survives a volumetric flood',
+          'Fixed-memory fair-shed catches spoofed botnets',
+          'Reputation brain jails offenders & auto-forgives',
+          'Silent, self-calibrating proof-of-work challenges',
+          'Search engines & AI crawlers always allowed',
+          'Optional kernel-level nftables + XDP offload',
+        ],
+        cta:{ label:'Read the architecture →', href:'https://github.com/johalputt/VayuPress/blob/main/docs/adr/ADR-0111-vayushield-bot-protection-and-analytics.md' } },
+
+      { key:'vayuanalytics', name:'VayuAnalytics', icon:'📊', rgb:'232,121,249', badge:'',
+        tag:'Product analytics without surveillance',
+        host:'/os/analytics',
+        blurb:'Pageviews, sessions, top pages, funnels, retention, revenue and a live visitor panel — computed entirely from your local SQLite. No cookies, no localStorage, no IP or User-Agent ever stored, and no consent banner required.',
+        points:[
+          'Cookieless — a daily-rotating salted hash identity',
+          'No IP or User-Agent ever stored — nothing to leak',
+          'Funnels, retention, revenue & UTM campaigns',
+          'Live visitor panel, updated in real time',
+          'Offline country table — no external GeoIP call',
+          'GDPR by design — no consent banner needed',
+        ],
+        cta:{ label:'See the dashboard →', href:'https://github.com/johalputt/VayuPress' } },
+
+      { key:'website', name:'Website & Blog', icon:'🌐', rgb:'45,212,191', badge:'',
+        tag:'A real website and a Ghost-class blog',
+        host:'yourdomain.com',
+        blurb:'Eleven elegant, modern-minimalist site templates plus a best-in-class block editor with lossless Markdown and HTML modes, whole-site themes, members, newsletters and SEO — every word in your own SQLite, styled entirely from your own origin.',
+        points:[
+          '11 modern-minimalist business templates',
+          'Ghost-class block editor · Markdown · HTML',
+          'Whole-site themes with a live Theme Studio',
+          'Memberships, paywalls & newsletters',
+          'Server-rendered Mermaid, math & code',
+          'SEO, JSON-LD & sitemaps baked in',
+        ],
+        cta:{ label:'View the templates →', href:'https://github.com/johalputt/VayuPress' } },
+
+      { key:'vayupgp', name:'VayuPGP', icon:'🔑', rgb:'245,158,11', badge:'',
+        tag:'Privacy by architecture',
+        host:'WKD',
+        blurb:'Every account gets a modern PGP keypair automatically. Private keys are AES-256-GCM encrypted at rest and never logged; public keys are published via Web Key Directory so any GPG client can discover them. It is the engine under both VayuMail and VayuTalk.',
+        points:[
+          'Auto keypair generated per account',
+          'Private keys AES-256-GCM encrypted at rest',
+          'Encrypt · decrypt · sign · verify · rotate',
+          'WKD discovery for any GPG client',
+          'Powers both VayuMail and VayuTalk',
+          'End-to-end encryption with nothing to bolt on',
+        ],
+        cta:{ label:'Learn about VayuPGP →', href:'https://github.com/johalputt/VayuPress' } },
     ],
 
     screenshots: [
@@ -314,6 +417,14 @@ STATIC_DIR=./static VAYU_DOCS_DIR=./docs ./vayupress --port 8080`,
       el.style.transform = `perspective(1000px) rotateX(${(0.5-py)*5.5}deg) rotateY(${(px-0.5)*5.5}deg) translateY(-3px)`;
     },
     untilt(e) { e.currentTarget.style.transform = ''; },
+
+    /* product tabs — select and retrigger the panel's entrance animation */
+    setProduct(i) {
+      if (i === this.activeProduct) return;
+      this.activeProduct = i;
+      this.prodAnim++;               // key change re-runs the x-transition
+    },
+    get product() { return this.products[this.activeProduct]; },
 
     /* feature-detail modal */
     openFeature(i) { this.feature = i; document.body.style.overflow = 'hidden'; },
