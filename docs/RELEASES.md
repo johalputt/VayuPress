@@ -6,13 +6,20 @@
 
 ---
 
+## Versioning policy — patch/micro only
+
+**Current policy (owner directive): every release is a micro/patch bump.** Bump
+only the third version segment (e.g. `v3.13.0` → `v3.13.1`), regardless of how
+large the change is — no minor (`v3.14.0`) or major (`v4.0.0`) bumps. This is
+also recorded in `AGENTS.md` for AI agents.
+
 ## Release Types
 
 | Type | Trigger | Examples | Branch |
 |------|---------|---------|--------|
-| Patch | Bug fix, security fix | v1.0.1, v1.2.3 | `hotfix/...` → main |
-| Minor | New feature, backward compatible | v1.1.0 | `feature/...` → main |
-| Major | Breaking API change or architecture shift | v2.0.0 | RFC required + vote |
+| Patch | Any change (current policy) | v3.13.1, v3.13.2 | main |
+| Minor | (not used under the current patch-only policy) | — | — |
+| Major | (not used under the current patch-only policy) | — | — |
 
 Security patches skip RFC and go directly to release after Security Lead review.
 
