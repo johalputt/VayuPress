@@ -7,8 +7,13 @@ import (
 
 // Stream caps (FROZEN).
 const (
-	// MaxStreamsPerUser bounds concurrent live streams for one user.
-	MaxStreamsPerUser = 3
+	// MaxStreamsPerUser bounds concurrent live streams for one user. A new
+	// stream past this evicts the user's oldest rather than being rejected, so a
+	// client whose connection keeps dropping always reconnects successfully
+	// instead of spiralling into "stream limit" errors (a stale stream can
+	// linger until the proxy times out its upstream side). Room for app + web +
+	// a spare device before any eviction.
+	MaxStreamsPerUser = 5
 	// MaxGlobalStreams bounds concurrent live streams across all users.
 	MaxGlobalStreams = 500
 	// subscriberBuffer is the per-subscriber channel depth. A slow client that
@@ -49,7 +54,8 @@ type ReceiptPayload struct {
 }
 
 type subscriber struct {
-	ch chan Event
+	ch  chan Event
+	seq uint64 // monotonic insertion order, so the oldest can be evicted first
 }
 
 // Hub manages live subscribers keyed by user, enforcing the per-user and global
@@ -58,6 +64,7 @@ type Hub struct {
 	mu    sync.Mutex
 	subs  map[string]map[*subscriber]struct{}
 	total int
+	seq   uint64
 }
 
 // NewHub returns an empty hub.
@@ -73,10 +80,14 @@ func (h *Hub) Subscribe(user string) (<-chan Event, func(), error) {
 	if h.total >= MaxGlobalStreams {
 		return nil, nil, ErrGlobalStreamLimit
 	}
-	if len(h.subs[user]) >= MaxStreamsPerUser {
-		return nil, nil, ErrUserStreamLimit
+	// Evict this user's oldest stream(s) instead of rejecting the new one, so a
+	// reconnect always succeeds. Closing the evicted subscriber's channel makes
+	// its handler return (it reads `evt, ok := <-ch` and stops when ok is false).
+	for len(h.subs[user]) >= MaxStreamsPerUser {
+		h.evictOldestLocked(user)
 	}
-	sub := &subscriber{ch: make(chan Event, subscriberBuffer)}
+	h.seq++
+	sub := &subscriber{ch: make(chan Event, subscriberBuffer), seq: h.seq}
 	if h.subs[user] == nil {
 		h.subs[user] = make(map[*subscriber]struct{})
 	}
@@ -100,6 +111,29 @@ func (h *Hub) Subscribe(user string) (<-chan Event, func(), error) {
 		})
 	}
 	return sub.ch, cancel, nil
+}
+
+// evictOldestLocked removes and closes the oldest (lowest-seq) subscriber for
+// user. Closing the channel signals that subscriber's stream handler to return.
+// The caller holds h.mu; the evicted subscriber's own cancel becomes a no-op
+// because it checks membership before closing, so there is no double close.
+func (h *Hub) evictOldestLocked(user string) {
+	set := h.subs[user]
+	if len(set) == 0 {
+		return
+	}
+	var oldest *subscriber
+	for s := range set {
+		if oldest == nil || s.seq < oldest.seq {
+			oldest = s
+		}
+	}
+	delete(set, oldest)
+	h.total--
+	if len(set) == 0 {
+		delete(h.subs, user)
+	}
+	close(oldest.ch)
 }
 
 // Publish delivers env to a live subscriber of env.To, returning true if at

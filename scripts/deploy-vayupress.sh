@@ -588,6 +588,45 @@ server {
         access_log off;
     }
 
+    # VayuTalk live streams (Server-Sent Events). These are long-lived
+    # connections that push chat messages and receipts; they MUST NOT be
+    # buffered, gzipped, rate-limited, or read-timed-out like ordinary requests,
+    # or the app and web clients receive nothing and sit in a reconnect loop
+    # ("Reconnecting…"). Exact-match locations, so they win over the prefix
+    # blocks below. Keep these in sync with the app path (/api/v1/talk/stream)
+    # and the web path (/os/talk/stream).
+    location = /api/v1/talk/stream {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host              \$host;
+        proxy_set_header X-Real-IP         \$remote_addr;
+        proxy_set_header X-Forwarded-For   \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_buffering off;
+        proxy_cache off;
+        gzip off;
+        chunked_transfer_encoding on;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+    }
+    location = /os/talk/stream {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host              \$host;
+        proxy_set_header X-Real-IP         \$remote_addr;
+        proxy_set_header X-Forwarded-For   \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_buffering off;
+        proxy_cache off;
+        gzip off;
+        chunked_transfer_encoding on;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+        proxy_pass_header X-CSRF-Token;
+    }
+
     # API rate limiting
     location /api/v1/ {
         limit_req zone=vayupress_api burst=20 nodelay;

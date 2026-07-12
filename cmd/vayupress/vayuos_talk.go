@@ -334,7 +334,10 @@ func (a *App) handleVayuOSTalkStream(w http.ResponseWriter, r *http.Request) {
 		select {
 		case <-ctx.Done():
 			return
-		case evt := <-ch:
+		case evt, ok := <-ch:
+			if !ok {
+				return // evicted: a newer stream for this mailbox took over
+			}
 			switch evt.Type {
 			case "envelope":
 				p, ok := evt.Payload.(vtalk.EnvelopePayload)

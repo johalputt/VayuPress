@@ -20,8 +20,11 @@ import (
 // pin a server goroutine forever.
 const streamWriteDeadline = 30 * time.Second
 
-// streamHeartbeat is the interval between SSE keep-alive pings.
-const streamHeartbeat = 25 * time.Second
+// streamHeartbeat is the interval between SSE keep-alive pings. Kept well under
+// common reverse-proxy idle timeouts (nginx proxy_read_timeout defaults to 60s)
+// so an idle conversation's stream is never mistaken for a dead connection and
+// closed, and a genuinely dead peer is noticed within one interval.
+const streamHeartbeat = 15 * time.Second
 
 // vayuTalkEnabled reports whether the VayuTalk relay is serving.
 func (a *App) vayuTalkEnabled() bool {
@@ -143,7 +146,10 @@ func (a *App) handleTalkStream(w http.ResponseWriter, r *http.Request) {
 		select {
 		case <-ctx.Done():
 			return
-		case evt := <-ch:
+		case evt, ok := <-ch:
+			if !ok {
+				return // evicted: a newer stream for this user took over
+			}
 			if !writeSSE(w, rc, evt.Type, evt.Payload) {
 				return
 			}

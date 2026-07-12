@@ -16,32 +16,36 @@ func recvEvent(t *testing.T, ch <-chan Event) Event {
 	}
 }
 
-func TestSubscribePerUserCap(t *testing.T) {
+func TestSubscribePerUserCapEvictsOldest(t *testing.T) {
 	h := NewHub()
-	var cancels []func()
+	chans := make([]<-chan Event, 0, MaxStreamsPerUser)
+	cancels := make([]func(), 0, MaxStreamsPerUser)
 	for i := 0; i < MaxStreamsPerUser; i++ {
-		_, cancel, err := h.Subscribe("b@x")
+		ch, cancel, err := h.Subscribe("b@x")
 		if err != nil {
 			t.Fatalf("subscribe %d: %v", i, err)
 		}
+		chans = append(chans, ch)
 		cancels = append(cancels, cancel)
 	}
-	if _, _, err := h.Subscribe("b@x"); err != ErrUserStreamLimit {
-		t.Fatalf("over per-user err = %v, want ErrUserStreamLimit", err)
+	// One more must SUCCEED (not be rejected) by evicting the oldest — so a
+	// client whose stream keeps dropping always reconnects instead of spiralling.
+	_, extraCancel, err := h.Subscribe("b@x")
+	if err != nil {
+		t.Fatalf("over-cap subscribe should evict, not reject: %v", err)
 	}
-	// A different user is unaffected.
+	// The oldest subscriber's channel is closed, which is how its handler learns
+	// to stop.
+	if _, open := <-chans[0]; open {
+		t.Fatalf("oldest stream should have been closed on eviction")
+	}
+	// The user is still at the cap (evict + add), and a different user is fine.
 	_, c, err := h.Subscribe("c@x")
 	if err != nil {
 		t.Fatalf("other user rejected: %v", err)
 	}
 	c()
-	// Cancel one and re-subscribe succeeds (slot freed).
-	cancels[0]()
-	_, c2, err := h.Subscribe("b@x")
-	if err != nil {
-		t.Fatalf("resubscribe after cancel: %v", err)
-	}
-	c2()
+	extraCancel()
 	for _, c := range cancels[1:] {
 		c()
 	}

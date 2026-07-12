@@ -8,6 +8,25 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.11.45] — 2026-07-12
+
+### Fixed
+- **VayuTalk streams no longer sit in a “Reconnecting…” loop** (the real cause of
+  web↔app messages queuing instead of delivering live). Three fixes:
+  - **nginx config**: the deploy script now gives the SSE endpoints
+    (`/api/v1/talk/stream`, `/os/talk/stream`) dedicated `location` blocks with
+    `proxy_buffering off`, `gzip off`, and a long `proxy_read_timeout` — the
+    generic proxy blocks were buffering and 60-second-timing-out the long-lived
+    streams, so a stream would connect, drain the queue once, then drop. **Re-run
+    the deploy script (or apply the two blocks) and `nginx -s reload`** for this
+    to take effect on a running server.
+  - **Stream cap now evicts instead of rejects**: a reconnecting client used to
+    pile up stale server-side streams and hit the per-user limit, spiralling into
+    permanent rejections; a new stream now evicts that user's oldest so a
+    reconnect always wins. Cap raised 3 → 5.
+  - **Heartbeat** lowered 25s → 15s so an idle conversation's stream stays well
+    under proxy idle timeouts. Pinned by `TestSubscribePerUserCapEvictsOldest`.
+
 ## [3.11.44] — 2026-07-12
 
 ### Fixed
