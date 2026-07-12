@@ -77,12 +77,30 @@ The primary domain is **protected**: it cannot be disabled, deleted, or edited
 from this page (its `site_type` tracks the global `site.mode`; disabling it
 would take the install offline).
 
-### Stage 2 — Content scoping (deferred)
+### Stage 2 — Content scoping
 
-Thread a domain key through the content tables (constraint #3). Because
-`articles.slug` is globally unique today, this is a migration + query-layer
-change gated behind the registry; until it lands, secondary domains serve the
-shared content set by `site_type`.
+**Stage 2a (shipped): content-ownership foundation.** Migration 060 adds an
+additive `domain_id` column to `articles` (default `''` = the primary /
+unassigned bucket), so an existing install is byte-identical — the primary
+domain still serves exactly its historic rows. The repository and article
+service gain domain-scoped reads (`ListScoped` / `GetScoped`, with `db.ScopeAll`
+disabling the filter for the admin/JSON path), plus `SetDomain` and
+`CountsByDomain`. VayuOS → **Domains** shows a per-domain post count and lets an
+operator assign a post to a domain by slug. The public render path is
+deliberately **not** rewired yet, so behaviour is unchanged and provably safe.
+
+**Stage 2b (deferred): flip the public switch.** The homepage renders through a
+single global file cache (`home/index.html`) and raw SQL, and the article page
+is cached too. Serving per-domain content publicly therefore requires keying the
+render cache by the active domain (from the Stage 1 host-resolution middleware)
+and threading the scope into the cached queries and feeds/sitemap/search — a
+change to the hot, cached path that gets its own stage so it can be done
+carefully rather than risk the primary site.
+
+**Constraint carried forward:** `articles.slug` is globally UNIQUE via an inline
+(un-droppable) constraint, so two domains cannot yet share a slug. Relaxing that
+to `UNIQUE(domain_id, slug)` needs an `articles`-table rebuild and is a later
+sub-stage.
 
 ### Stage 3 — Mail branding + isolation (deferred)
 

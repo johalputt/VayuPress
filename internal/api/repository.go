@@ -18,6 +18,15 @@ type ArticleRepository interface {
 	// List returns up to limit articles starting at page (1-indexed), optionally
 	// filtered by tag, plus the total count.
 	List(ctx context.Context, page, limit int, tag string) (articles []dbpkg.Article, total int, err error)
+	// GetScoped / ListScoped are List / Get restricted to a VayuDomains scope
+	// (dbpkg.ScopeAll disables filtering; "" is the primary domain; any other
+	// value is a secondary domain id). See ADR-0132, Stage 2.
+	GetScoped(ctx context.Context, scope, slug string) (dbpkg.Article, error)
+	ListScoped(ctx context.Context, scope string, page, limit int, tag string) (articles []dbpkg.Article, total int, err error)
+	// SetDomain reassigns an article to a domain ("" = primary).
+	SetDomain(ctx context.Context, slug, domainID string) error
+	// CountsByDomain returns the article count per owning domain id.
+	CountsByDomain(ctx context.Context) (map[string]int, error)
 	// TagCounts returns each distinct tag mapped to the number of articles using
 	// it, resolved from the indexed article_tags join table so it never has to
 	// scan or load the whole articles table.

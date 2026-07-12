@@ -10,6 +10,13 @@ import (
 // ErrNotFound is returned by the repository when a requested article does not exist.
 var ErrNotFound = errors.New("article not found")
 
+// ScopeAll is the domain scope that disables per-domain filtering: the admin
+// JSON API and VayuOS see every article regardless of its owning domain. Public
+// pages instead pass the active domain's scope ("" for the primary domain, or a
+// secondary domain's id) so each site serves only its own content (ADR-0132,
+// VayuDomains Stage 2). The sentinel is a byte no real domain id can hold.
+const ScopeAll = "\x00*all*"
+
 // sqliteArticleRepo is the SQLite implementation of api.ArticleRepository.
 // The interface is defined in internal/api; this concrete type satisfies it
 // via duck typing — no import of internal/api required.
@@ -47,19 +54,33 @@ func (r *sqliteArticleRepo) Create(ctx context.Context, art Article) error {
 		status = "published"
 	}
 	_, err := r.db.ExecContext(ctx,
-		`INSERT INTO articles(id,title,slug,content,tags,created_at,updated_at,status,author_id) VALUES(?,?,?,?,?,?,?,?,?)`,
+		`INSERT INTO articles(id,title,slug,content,tags,created_at,updated_at,status,author_id,domain_id) VALUES(?,?,?,?,?,?,?,?,?,?)`,
 		art.ID, art.Title, art.Slug, art.Content,
-		strings.Join(art.Tags, ","), art.CreatedAt, art.UpdatedAt, status, art.AuthorID,
+		strings.Join(art.Tags, ","), art.CreatedAt, art.UpdatedAt, status, art.AuthorID, art.DomainID,
 	)
 	return err
 }
 
+// Get returns an article by slug regardless of owning domain (admin path).
 func (r *sqliteArticleRepo) Get(ctx context.Context, slug string) (Article, error) {
+	return r.GetScoped(ctx, ScopeAll, slug)
+}
+
+// GetScoped returns an article by slug within a domain scope. ScopeAll matches
+// any domain; otherwise only an article whose domain_id equals scope is
+// returned (so a secondary domain cannot reach another domain's content, and
+// the primary domain — scope "" — serves the historic unassigned rows).
+func (r *sqliteArticleRepo) GetScoped(ctx context.Context, scope, slug string) (Article, error) {
 	var art Article
 	var tagsCSV string
-	err := r.reader().QueryRowContext(ctx,
-		`SELECT id,title,slug,content,tags,created_at,updated_at,COALESCE(status,'published'),COALESCE(author_id,'') FROM articles WHERE slug=?`, slug,
-	).Scan(&art.ID, &art.Title, &art.Slug, &art.Content, &tagsCSV, &art.CreatedAt, &art.UpdatedAt, &art.Status, &art.AuthorID)
+	const cols = `id,title,slug,content,tags,created_at,updated_at,COALESCE(status,'published'),COALESCE(author_id,''),domain_id`
+	var row *sql.Row
+	if scope == ScopeAll {
+		row = r.reader().QueryRowContext(ctx, `SELECT `+cols+` FROM articles WHERE slug=?`, slug)
+	} else {
+		row = r.reader().QueryRowContext(ctx, `SELECT `+cols+` FROM articles WHERE slug=? AND domain_id=?`, slug, scope)
+	}
+	err := row.Scan(&art.ID, &art.Title, &art.Slug, &art.Content, &tagsCSV, &art.CreatedAt, &art.UpdatedAt, &art.Status, &art.AuthorID, &art.DomainID)
 	if err == sql.ErrNoRows {
 		return art, ErrNotFound
 	}
@@ -68,6 +89,31 @@ func (r *sqliteArticleRepo) Get(ctx context.Context, slug string) (Article, erro
 	}
 	art.Tags = splitCSV(tagsCSV)
 	return art, nil
+}
+
+// SetDomain reassigns an article to a domain (empty = the primary domain).
+func (r *sqliteArticleRepo) SetDomain(ctx context.Context, slug, domainID string) error {
+	_, err := r.db.ExecContext(ctx, `UPDATE articles SET domain_id=? WHERE slug=?`, domainID, slug)
+	return err
+}
+
+// CountsByDomain returns the number of articles owned by each domain id
+// (the primary/unassigned bucket is the empty-string key).
+func (r *sqliteArticleRepo) CountsByDomain(ctx context.Context) (map[string]int, error) {
+	rows, err := r.reader().QueryContext(ctx, `SELECT domain_id, COUNT(1) FROM articles GROUP BY domain_id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make(map[string]int)
+	for rows.Next() {
+		var d string
+		var n int
+		if rows.Scan(&d, &n) == nil {
+			out[d] = n
+		}
+	}
+	return out, rows.Err()
 }
 
 func (r *sqliteArticleRepo) Update(ctx context.Context, art Article) error {
@@ -83,28 +129,51 @@ func (r *sqliteArticleRepo) Delete(ctx context.Context, slug string) error {
 	return err
 }
 
+// List returns the published feed across all domains (admin / JSON API).
 func (r *sqliteArticleRepo) List(ctx context.Context, page, limit int, tag string) ([]Article, int, error) {
+	return r.ListScoped(ctx, ScopeAll, page, limit, tag)
+}
+
+// ListScoped is List restricted to a domain scope. ScopeAll lists every
+// published article; any other scope lists only articles whose domain_id equals
+// it, so the primary domain (scope "") serves its historic content and a
+// secondary domain serves only its own (ADR-0132, VayuDomains Stage 2). Drafts
+// are never included on either path.
+func (r *sqliteArticleRepo) ListScoped(ctx context.Context, scope string, page, limit int, tag string) ([]Article, int, error) {
 	var total int
 	var rows *sql.Rows
 	var err error
-	// List is the public-facing listing (JSON API): drafts are never included.
+	scoped := scope != ScopeAll
 	if tag != "" {
 		// Resolve membership through the indexed article_tags join table rather
 		// than a `tags LIKE '%..%'` scan, so tag-filtered listings stay fast at
-		// scale. tag_norm is the lower-cased form; match case-insensitively.
-		// CROSS JOIN pins the tag table as the driver — an always-indexed lookup,
-		// never a full articles scan even when the tag is very common.
+		// scale. CROSS JOIN pins the tag table as the driver — an always-indexed
+		// lookup, never a full articles scan even when the tag is very common.
 		norm := strings.ToLower(strings.TrimSpace(tag))
-		r.reader().QueryRowContext(ctx, `SELECT COUNT(1) FROM article_tags t CROSS JOIN articles a ON a.id=t.article_id WHERE t.tag_norm=? AND COALESCE(a.status,'published')='published'`, norm).Scan(&total)
+		where := `t.tag_norm=? AND COALESCE(a.status,'published')='published'`
+		cargs := []any{norm}
+		if scoped {
+			where += ` AND a.domain_id=?`
+			cargs = append(cargs, scope)
+		}
+		r.reader().QueryRowContext(ctx, `SELECT COUNT(1) FROM article_tags t CROSS JOIN articles a ON a.id=t.article_id WHERE `+where, cargs...).Scan(&total)
+		qargs := append(append([]any{}, cargs...), limit, (page-1)*limit)
 		rows, err = r.reader().QueryContext(ctx,
-			`SELECT a.id,a.title,a.slug,a.content,a.tags,a.created_at,a.updated_at,COALESCE(a.status,'published') FROM article_tags t CROSS JOIN articles a ON a.id=t.article_id WHERE t.tag_norm=? AND COALESCE(a.status,'published')='published' ORDER BY t.created_at DESC LIMIT ? OFFSET ?`,
-			norm, limit, (page-1)*limit,
+			`SELECT a.id,a.title,a.slug,a.content,a.tags,a.created_at,a.updated_at,COALESCE(a.status,'published'),a.domain_id FROM article_tags t CROSS JOIN articles a ON a.id=t.article_id WHERE `+where+` ORDER BY t.created_at DESC LIMIT ? OFFSET ?`,
+			qargs...,
 		)
 	} else {
-		r.reader().QueryRowContext(ctx, `SELECT COUNT(1) FROM articles WHERE COALESCE(status,'published')='published'`).Scan(&total)
+		where := `COALESCE(status,'published')='published'`
+		cargs := []any{}
+		if scoped {
+			where += ` AND domain_id=?`
+			cargs = append(cargs, scope)
+		}
+		r.reader().QueryRowContext(ctx, `SELECT COUNT(1) FROM articles WHERE `+where, cargs...).Scan(&total)
+		qargs := append(append([]any{}, cargs...), limit, (page-1)*limit)
 		rows, err = r.reader().QueryContext(ctx,
-			`SELECT id,title,slug,content,tags,created_at,updated_at,COALESCE(status,'published') FROM articles WHERE COALESCE(status,'published')='published' ORDER BY created_at DESC LIMIT ? OFFSET ?`,
-			limit, (page-1)*limit,
+			`SELECT id,title,slug,content,tags,created_at,updated_at,COALESCE(status,'published'),domain_id FROM articles WHERE `+where+` ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+			qargs...,
 		)
 	}
 	if err != nil {
@@ -115,7 +184,7 @@ func (r *sqliteArticleRepo) List(ctx context.Context, page, limit int, tag strin
 	for rows.Next() {
 		var a Article
 		var tagsCSV string
-		rows.Scan(&a.ID, &a.Title, &a.Slug, &a.Content, &tagsCSV, &a.CreatedAt, &a.UpdatedAt, &a.Status)
+		rows.Scan(&a.ID, &a.Title, &a.Slug, &a.Content, &tagsCSV, &a.CreatedAt, &a.UpdatedAt, &a.Status, &a.DomainID)
 		a.Tags = splitCSV(tagsCSV)
 		result = append(result, a)
 	}

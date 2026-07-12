@@ -8,6 +8,26 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.0] — 2026-07-12
+
+### Added
+- **VayuDomains (Stage 2a) — per-domain content ownership.** A new additive
+  `domain_id` column on articles (migration 060) lets each post be owned by a
+  domain. The article repository and service gain domain-scoped reads
+  (`ListScoped` / `GetScoped`, with an all-domains scope for the admin and JSON
+  API), plus reassignment and per-domain counts. The **Domains** page in VayuOS
+  now shows a post count per domain and lets you assign a post to a domain by
+  its slug.
+
+### Notes
+- This stage is **byte-identical** for existing single-domain installs: every
+  existing post defaults to the primary domain, and the public render path is
+  intentionally unchanged. Serving per-domain content on the public site (which
+  requires keying the homepage/article render cache by domain) is the next
+  sub-stage — see **ADR-0132**. The global-unique `articles.slug` still means two
+  domains cannot share a slug yet; relaxing that needs an articles-table rebuild
+  and is deferred.
+
 ## [3.12.0] — 2026-07-12
 
 ### Added

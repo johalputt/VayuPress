@@ -188,6 +188,52 @@ func (s *ArticleService) Get(ctx context.Context, slug string) (dbpkg.Article, e
 	return art, mapRepoErr(err)
 }
 
+// GetScoped is Get restricted to a VayuDomains scope so a secondary domain can
+// only reach its own content (ADR-0132, Stage 2).
+func (s *ArticleService) GetScoped(ctx context.Context, scope, slug string) (dbpkg.Article, error) {
+	if !IsValidSlug(slug) {
+		return dbpkg.Article{}, ErrInvalidSlug
+	}
+	art, err := s.Repo.GetScoped(ctx, scope, slug)
+	return art, mapRepoErr(err)
+}
+
+// SetDomain reassigns an article to a domain ("" = the primary domain).
+func (s *ArticleService) SetDomain(ctx context.Context, slug, domainID string) error {
+	if !IsValidSlug(slug) {
+		return ErrInvalidSlug
+	}
+	return mapRepoErr(s.Repo.SetDomain(ctx, slug, domainID))
+}
+
+// CountsByDomain returns the number of articles owned by each domain id.
+func (s *ArticleService) CountsByDomain(ctx context.Context) (map[string]int, error) {
+	return s.Repo.CountsByDomain(ctx)
+}
+
+// ListScoped is List restricted to a VayuDomains scope.
+func (s *ArticleService) ListScoped(ctx context.Context, scope string, page, limit int, tag string) (ListResult, error) {
+	if page < 1 {
+		page = 1
+	}
+	if limit < 1 || limit > 100 {
+		limit = 20
+	}
+	articles, total, err := s.Repo.ListScoped(ctx, scope, page, limit, tag)
+	if err != nil {
+		return ListResult{}, err
+	}
+	summaries := make([]ArticleSummary, 0, len(articles))
+	for _, a := range articles {
+		summaries = append(summaries, ArticleSummary{
+			ID: a.ID, Title: a.Title, Slug: a.Slug, Tags: a.Tags,
+			CreatedAt: a.CreatedAt, UpdatedAt: a.UpdatedAt,
+		})
+	}
+	pages := (total + limit - 1) / limit
+	return ListResult{Articles: summaries, Page: page, Limit: limit, Total: total, Pages: pages}, nil
+}
+
 // List returns a paginated, optionally tag-filtered, article summary list.
 func (s *ArticleService) List(ctx context.Context, page, limit int, tag string) (ListResult, error) {
 	ctx, span := trace.Start(ctx, "ArticleService.List")

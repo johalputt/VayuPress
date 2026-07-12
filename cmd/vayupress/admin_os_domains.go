@@ -62,6 +62,14 @@ func (a *App) handleOSDomains(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Per-domain article counts (VayuDomains Stage 2 — content ownership).
+	counts := map[string]int{}
+	if a.articles != nil {
+		if c, err := a.articles.CountsByDomain(r.Context()); err == nil {
+			counts = c
+		}
+	}
+
 	// The host the operator is currently browsing from — surfaced so it is
 	// obvious which registered domain served this very page.
 	viewingHost := ""
@@ -70,7 +78,8 @@ func (a *App) handleOSDomains(w http.ResponseWriter, r *http.Request) {
 	}
 
 	body := domainsHeader(len(domains), viewingHost) +
-		domainsTable(domains) +
+		domainsTable(domains, counts) +
+		domainsAssignForm(domains) +
 		domainsAddForm() +
 		domainsScript(nonce)
 
@@ -96,7 +105,7 @@ func domainsHeader(n int, viewingHost string) string {
 <div class="card card--info"><p class="text-sm">VayuDomains is rolling out in stages. Today the registry is authoritative for <strong>host resolution</strong> and lets you manage the list; <strong>per-domain content, mail and members</strong> arrive in later releases. Adding a domain here registers it — point its DNS at this server and provision TLS before it serves traffic.</p></div>`
 }
 
-func domainsTable(domains []domain.Domain) string {
+func domainsTable(domains []domain.Domain, counts map[string]int) string {
 	if len(domains) == 0 {
 		return `<div class="card empty"><div class="empty-title">No domains registered yet</div>
 <div class="empty-sub">The primary domain is seeded automatically once DOMAIN is configured. Add a secondary domain below.</div></div>`
@@ -116,6 +125,12 @@ func domainsTable(domains []domain.Domain) string {
 		if d.MailEnabled {
 			mail = "Enabled"
 		}
+		// Content ownership (Stage 2): the primary owns the unassigned bucket ("").
+		key := d.ID
+		if d.IsPrimary {
+			key = ""
+		}
+		content := strconv.Itoa(counts[key]) + " posts"
 
 		// Actions: the primary row is read-only here (managed from Website
 		// settings); secondary rows can be toggled and removed.
@@ -134,6 +149,7 @@ func domainsTable(domains []domain.Domain) string {
 		rows.WriteString(`<tr data-dom-row>
   <td><strong>` + html.EscapeString(d.Host) + `</strong>` + badge + `</td>
   <td>` + html.EscapeString(siteTypeLabel(d.EffectiveSiteType())) + `</td>
+  <td class="text-xs muted">` + content + `</td>
   <td>` + mail + `</td>
   <td>` + tls + `</td>
   <td>` + statusPill + `</td>
@@ -141,9 +157,37 @@ func domainsTable(domains []domain.Domain) string {
 </tr>`)
 	}
 	return `<div class="card"><div class="table-wrap"><table class="table">
-  <thead><tr><th>Host</th><th>Serves</th><th>Mail</th><th>TLS</th><th>Status</th><th></th></tr></thead>
+  <thead><tr><th>Host</th><th>Serves</th><th>Content</th><th>Mail</th><th>TLS</th><th>Status</th><th></th></tr></thead>
   <tbody>` + rows.String() + `</tbody>
 </table></div></div>`
+}
+
+// domainsAssignForm lets the operator move a post to a domain by slug. This is
+// the write half of Stage 2 content ownership; the public site begins serving
+// per-domain content once Stage 2b keys the render cache by domain.
+func domainsAssignForm(domains []domain.Domain) string {
+	var opts strings.Builder
+	opts.WriteString(`<option value="">Primary domain (default)</option>`)
+	for _, d := range domains {
+		if d.IsPrimary {
+			continue
+		}
+		opts.WriteString(`<option value="` + html.EscapeString(d.ID) + `">` + html.EscapeString(d.Host) + `</option>`)
+	}
+	return `<div class="card">
+  <h2 class="card-title">Assign a post to a domain</h2>
+  <p class="text-sm muted">Move a published post to a domain by its slug. Existing posts stay on the primary domain until reassigned. The public per-domain site turns on in the next stage; assignments made now take effect then.</p>
+  <div class="form-grid">
+    <label class="field"><span class="field-label">Post slug</span>
+      <input type="text" id="dom-assign-slug" class="input" placeholder="my-post-slug" autocomplete="off" spellcheck="false"></label>
+    <label class="field"><span class="field-label">Owner domain</span>
+      <select id="dom-assign-domain" class="input">` + opts.String() + `</select></label>
+  </div>
+  <div class="vm-row" style="gap:.5rem;align-items:center">
+    <button type="button" class="btn btn--primary" data-dom-assign>Assign post</button>
+    <span id="dom-assign-status" class="text-sm muted" role="status" aria-live="polite"></span>
+  </div>
+</div>`
 }
 
 func tlsLabel(state string) string {
@@ -216,8 +260,59 @@ document.querySelectorAll('[data-dom-delete]').forEach(function(b){
       .catch(function(e){b.disabled=false;show('Error: '+e);});
   });
 });
+var ast=document.getElementById('dom-assign-status');
+var assignBtn=document.querySelector('[data-dom-assign]');
+if(assignBtn)assignBtn.addEventListener('click',function(){
+  var slug=(document.getElementById('dom-assign-slug').value||'').trim();
+  if(!slug){if(ast)ast.textContent='Enter a post slug.';return;}
+  var dom=document.getElementById('dom-assign-domain').value;
+  assignBtn.disabled=true;if(ast)ast.textContent='Assigning…';
+  fetch('/os/api/domains/assign',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},body:JSON.stringify({slug:slug,domain_id:dom})})
+    .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
+    .then(function(res){assignBtn.disabled=false;if(res.ok){if(ast)ast.textContent='Assigned ✓';setTimeout(function(){location.reload();},700);}else{if(ast)ast.textContent=(res.j&&res.j.message)||'Could not assign';}})
+    .catch(function(e){assignBtn.disabled=false;if(ast)ast.textContent='Error: '+e;});
+});
 })();
 </script>`
+}
+
+// handleOSDomainAssign moves a post to a domain (Stage 2 content ownership).
+func (a *App) handleOSDomainAssign(w http.ResponseWriter, r *http.Request) {
+	if a.articles == nil {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "unavailable", "article service not initialised", "")
+		return
+	}
+	var body struct {
+		Slug     string `json:"slug"`
+		DomainID string `json:"domain_id"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&body); err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "bad-request", "invalid JSON", "")
+		return
+	}
+	body.Slug = strings.TrimSpace(body.Slug)
+	body.DomainID = strings.TrimSpace(body.DomainID)
+	// A non-empty target must be a real, registered secondary domain.
+	if body.DomainID != "" && a.domains != nil {
+		found := false
+		if list, err := a.domains.List(r.Context()); err == nil {
+			for _, d := range list {
+				if d.ID == body.DomainID && !d.IsPrimary {
+					found = true
+					break
+				}
+			}
+		}
+		if !found {
+			writeAPIError(w, r, http.StatusBadRequest, "unknown-domain", "target is not a registered secondary domain", "")
+			return
+		}
+	}
+	if err := a.articles.SetDomain(r.Context(), body.Slug, body.DomainID); err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "assign-failed", err.Error(), "")
+		return
+	}
+	writeJSON(w, r, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 // --- Session-friendly write APIs (CSRF-protected; operators hold a cookie) ---
