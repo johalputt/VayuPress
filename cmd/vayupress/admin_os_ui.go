@@ -364,6 +364,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		// each envelope for the signed-in mailbox.
 		pr.With(auth.CSRFTokenMiddleware).Get("/os/talk", a.handleVayuOSTalk)
 		pr.Get("/os/talk/stream", a.handleVayuOSTalkStream)
+		pr.Get("/os/talk/peer", a.handleVayuOSTalkPeer)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/talk/send", a.handleVayuOSTalkSend)
 
 		pr.Get("/os/vayumail/security", a.handleVayuOSSecurity)

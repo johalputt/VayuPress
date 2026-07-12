@@ -134,6 +134,71 @@ func TestTalkIdentityResolution(t *testing.T) {
 	}
 }
 
+// TestFormatSafetyMatchesApp checks the safety-number normalisation the web
+// shares with VayuMail Mobile: colons/spaces stripped, uppercased, groups of
+// four separated by a single space — so the two screens are comparable.
+func TestFormatSafetyMatchesApp(t *testing.T) {
+	cases := map[string]string{
+		"aabbccddeeff00112233": "AABB CCDD EEFF 0011 2233",
+		"AABB:CCDD:EEFF":       "AABB CCDD EEFF",
+		"a1b2c3":               "A1B2 C3",
+	}
+	for in, want := range cases {
+		if got := formatSafety(in); got != want {
+			t.Fatalf("formatSafety(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// TestTalkPeerEndpoint pins the peer-key preflight the web uses to (a) warn
+// before a doomed send and (b) show a safety number for verification.
+func TestTalkPeerEndpoint(t *testing.T) {
+	a, alice, _ := appWithTalkWeb(t)
+
+	// Known local mailbox → found, with a grouped safety number.
+	req := withUser(httptest.NewRequest(http.MethodGet, "/os/talk/peer?email=bob@example.com", nil), alice)
+	rec := httptest.NewRecorder()
+	a.handleVayuOSTalkPeer(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("peer = %d (%s)", rec.Code, rec.Body.String())
+	}
+	var out struct {
+		Found  bool   `json:"found"`
+		Safety string `json:"safety"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &out)
+	if !out.Found || strings.TrimSpace(out.Safety) == "" {
+		t.Fatalf("expected found bob with a safety number, got %s", rec.Body.String())
+	}
+
+	// Off-domain address with no key and no WKD → found:false (clean, not error).
+	req2 := withUser(httptest.NewRequest(http.MethodGet, "/os/talk/peer?email=nobody@elsewhere.invalid", nil), alice)
+	rec2 := httptest.NewRecorder()
+	a.handleVayuOSTalkPeer(rec2, req2)
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("peer(unknown) = %d", rec2.Code)
+	}
+	if strings.Contains(rec2.Body.String(), `"found":true`) {
+		t.Fatalf("unreachable address must report found:false, got %s", rec2.Body.String())
+	}
+}
+
+// TestTalkSendUnknownRecipient verifies the send handler returns a distinct,
+// actionable error (not a generic failure) when the recipient has no key.
+func TestTalkSendUnknownRecipient(t *testing.T) {
+	a, alice, _ := appWithTalkWeb(t)
+	body, _ := json.Marshal(map[string]interface{}{"to": "ghost@elsewhere.invalid", "text": "hi", "mode": "store"})
+	req := withUser(httptest.NewRequest(http.MethodPost, "/os/talk/send", strings.NewReader(string(body))), alice)
+	rec := httptest.NewRecorder()
+	a.handleVayuOSTalkSend(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("send to unknown = %d, want 404 (%s)", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "no-recipient-key") {
+		t.Fatalf("want no-recipient-key code, got %s", rec.Body.String())
+	}
+}
+
 // TestTalkWebToApp proves a message SENT from the VayuOS web console reaches the
 // mobile app: Alice sends via the web handler (server signs+encrypts to Bob),
 // and Bob, streaming over the app API, receives the ciphertext envelope and

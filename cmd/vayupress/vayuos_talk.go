@@ -78,6 +78,67 @@ func (a *App) talkIdentity(r *http.Request) string {
 	return ""
 }
 
+// formatSafety renders a PGP fingerprint as a "safety number" for out-of-band
+// verification. It normalises exactly as VayuMail Mobile's chat.SafetyNumber
+// does — colons and spaces stripped, uppercased, split into groups of four — so
+// the groups shown here match the app's Verify-contact screen character for
+// character. (The app additionally wraps every fifth group onto a new line;
+// here the groups flow and wrap naturally, which does not change the digits a
+// user compares.)
+func formatSafety(fp string) string {
+	fp = strings.ToUpper(strings.Map(func(r rune) rune {
+		if r == ' ' || r == ':' {
+			return -1
+		}
+		return r
+	}, fp))
+	var b strings.Builder
+	for i := 0; i < len(fp); i += 4 {
+		end := i + 4
+		if end > len(fp) {
+			end = len(fp)
+		}
+		if i > 0 {
+			b.WriteByte(' ')
+		}
+		b.WriteString(fp[i:end])
+	}
+	return b.String()
+}
+
+// handleVayuOSTalkPeer resolves a recipient's VayuTalk key. The browser calls it
+// (a) when a conversation opens, so the user is told up front whether the
+// address is reachable — turning a silent "can't send" into a clear reason —
+// and (b) to show the peer's fingerprint as a safety number for out-of-band
+// verification. Read-only and session-authenticated; no plaintext involved.
+func (a *App) handleVayuOSTalkPeer(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	if !a.vayuTalkEnabled() {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "vayutalk-disabled", "VayuTalk is not available", "")
+		return
+	}
+	if a.talkIdentity(r) == "" {
+		writeAPIError(w, r, http.StatusForbidden, "no-mailbox", "No mailbox is assigned to your account", "")
+		return
+	}
+	email := strings.TrimSpace(strings.ToLower(r.URL.Query().Get("email")))
+	if email == "" {
+		writeAPIError(w, r, http.StatusBadRequest, "validation_error", "email is required", "")
+		return
+	}
+	_, fp, err := a.vayuTalk.PubKey(email)
+	if err != nil || fp == "" {
+		writeJSON(w, r, http.StatusOK, map[string]interface{}{"email": email, "found": false})
+		return
+	}
+	writeJSON(w, r, http.StatusOK, map[string]interface{}{
+		"email":       email,
+		"found":       true,
+		"fingerprint": fp,
+		"safety":      formatSafety(fp),
+	})
+}
+
 // talkMessageOut is the decrypted message shape pushed to the browser over SSE.
 // It carries plaintext (the server has already opened the envelope) plus the
 // routing/expiry metadata the UI needs to render and time-out the bubble.
@@ -118,8 +179,13 @@ func (a *App) handleVayuOSTalk(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Resolve our own fingerprint (minting the key if this is the first use) so
+	// the verify panel can show the user their own safety number to read out.
+	a.ensureTalkKeypair(self)
+	_, selfFP, _ := a.vayuTalk.PubKey(self)
+
 	esc := htmpl.HTMLEscapeString
-	body.WriteString(`<div class="vtalk" data-self="` + esc(self) + `">`)
+	body.WriteString(`<div class="vtalk" data-self="` + esc(self) + `" data-self-fp="` + esc(formatSafety(selfFP)) + `">`)
 
 	// Left rail: start-a-chat box + live conversation list (filled by JS).
 	body.WriteString(`<aside class="vtalk-side">`)
@@ -283,16 +349,21 @@ func (a *App) handleVayuOSTalkSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Resolve (minting on demand) the recipient's key, then sign+encrypt as the
-	// sender. Missing keys are the only expected failure the user can act on.
-	a.ensureTalkKeypair(to)
+	// Resolve the recipient's key first (minting on demand for a local mailbox,
+	// WKD lookup otherwise). A missing recipient key is the common, actionable
+	// failure — surface it distinctly from a sender-side problem.
+	if _, _, kerr := a.vayuTalk.PubKey(to); kerr != nil {
+		writeAPIError(w, r, http.StatusNotFound, "no-recipient-key",
+			"No VayuTalk key found for "+to+". They need a VayuMail mailbox on this server (or a published key) before you can message them.", "")
+		return
+	}
+	// Ensure our own signing key exists (a mailbox that predates auto-keygen),
+	// then sign+encrypt as the sender.
+	a.ensureTalkKeypair(self)
 	ciphertext, err := a.vayuPGP.EncryptAndSignFromEmail([]byte(text), to, self)
 	if err != nil {
-		a.ensureTalkKeypair(self) // sender might predate auto-keygen
-		ciphertext, err = a.vayuPGP.EncryptAndSignFromEmail([]byte(text), to, self)
-	}
-	if err != nil {
-		writeAPIError(w, r, http.StatusNotFound, "no-key", "No encryption key for that address yet — the recipient must have a VayuMail mailbox on this server", "")
+		writeAPIError(w, r, http.StatusInternalServerError, "sender-key",
+			"Couldn't prepare your encryption key. Try reloading; if this persists, re-sync your key under VayuMail → PGP Keys.", "")
 		return
 	}
 

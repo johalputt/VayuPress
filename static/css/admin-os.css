@@ -4230,3 +4230,46 @@
   .vp-os .vtalk-thread { min-height: 22rem; }
   .vp-os .vtalk-msg { max-width: 90%; }
 }
+
+/* ── VayuTalk: key verification + reachability ──────────────────────────────*/
+.vp-os .vtalk-thread-head { flex-wrap: wrap; position: relative; }
+.vp-os .vtalk-head-meta { flex: 1; }
+.vp-os .vtalk-verify-btn {
+  display: inline-flex; align-items: center; gap: .35rem;
+  padding: .35rem .7rem; font-size: var(--text-xs); font-weight: 600;
+  color: var(--text-2); background: var(--bg-surface-2);
+  border: 1px solid var(--border); border-radius: var(--r-full); cursor: pointer;
+  transition: background var(--t-fast), color var(--t-fast), border-color var(--t-fast);
+}
+.vp-os .vtalk-verify-btn:hover { background: var(--bg-surface-3); color: var(--text); }
+.vp-os .vtalk-verify-btn.is-verified { color: var(--ok); border-color: var(--ok); background: var(--ok-dim); }
+
+.vp-os .vtalk-verify {
+  flex-basis: 100%; margin-top: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--bg-base); border: 1px solid var(--border); border-radius: var(--r);
+}
+.vp-os .vtalk-verify-intro { font-size: var(--text-xs); color: var(--text-2); margin: 0 0 var(--sp-3); line-height: 1.5; }
+.vp-os .vtalk-safety-row { display: flex; align-items: baseline; gap: var(--sp-3); margin-bottom: var(--sp-2); }
+.vp-os .vtalk-safety-label { min-width: 3rem; font-size: var(--text-xs); color: var(--text-3); text-transform: uppercase; letter-spacing: .04em; }
+.vp-os .vtalk-safety-code {
+  font-family: var(--font-mono); font-size: var(--text-sm); color: var(--text);
+  letter-spacing: .06em; word-spacing: .15em; line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.vp-os .vtalk-verify-toggle {
+  display: flex; align-items: center; gap: var(--sp-2); margin-top: var(--sp-3);
+  font-size: var(--text-sm); color: var(--text); cursor: pointer;
+}
+.vp-os .vtalk-safety-missing { margin-top: var(--sp-2); font-size: var(--text-xs); color: var(--warn); line-height: 1.5; }
+
+.vp-os .vtalk-convo--verified .vtalk-convo-name::after {
+  content: "🛡"; margin-left: .35rem; font-size: .8em; opacity: .9;
+}
+
+.vp-os .vtalk-warn {
+  margin-bottom: var(--sp-3); padding: var(--sp-3);
+  font-size: var(--text-xs); color: var(--warn); line-height: 1.5;
+  background: var(--warn-dim); border: 1px solid var(--warn);
+  border-radius: var(--r);
+}

@@ -8,6 +8,29 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.11.39] — 2026-07-12
+
+### Added
+- **VayuTalk key verification on the web.** Each conversation now has a
+  **🛡 Verify** panel showing your safety number and the peer's, normalised
+  identically to the app's Verify-contact screen so the two are directly
+  comparable out-of-band. Mark a peer verified (per tab) and a shield appears on
+  the conversation — the web counterpart to VayuMail Mobile's peer verification.
+- **Recipient key preflight.** Opening a conversation checks the recipient's key
+  (`GET /os/talk/peer`) and, if none exists yet, shows a clear banner explaining
+  they must open VayuMail on this server once — instead of a message that
+  silently fails to send.
+
+### Fixed
+- **Sending from the web now reports precisely what happened.** A missing
+  recipient key returns a distinct, actionable “no VayuTalk key for <addr>”
+  error (not a generic failure); a queued store-mode message reads “Queued —
+  delivers when they connect” rather than looking like an error; a live message
+  to an offline peer says so plainly. (The identity fix in 3.11.38 already
+  resolved the underlying “couldn’t send at all” case for signed-in admins.)
+  Covered by `TestTalkPeerEndpoint`, `TestTalkSendUnknownRecipient`,
+  `TestFormatSafetyMatchesApp`.
+
 ## [3.11.38] — 2026-07-12
 
 ### Changed

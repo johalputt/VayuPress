@@ -175,6 +175,16 @@ admin, the first mailbox on the server (an admin owns them all) or
 can chat as an identity that isn't theirs; resolution is pinned by
 `TestTalkIdentityResolution`.
 
+**Verification parity.** The web shows a safety number (the peer's PGP
+fingerprint) for out-of-band comparison, formatted by `formatSafety` with the
+same normalisation as VayuMail Mobile's `chat.SafetyNumber` (colons/spaces
+stripped, uppercased, groups of four) so the number on the web panel and the one
+on the app's Verify-contact screen match character for character. A read-only
+`GET /os/talk/peer` resolves a recipient's key so the browser can both preflight
+reachability (turning a doomed send into an upfront explanation) and render that
+number. Verified state is per-tab memory only — fingerprints are public, and
+nothing about a verification is persisted.
+
 ## Consequences
 
 - A sovereign identity gains private messaging with **no new dependency, no new
