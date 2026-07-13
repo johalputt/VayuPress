@@ -164,6 +164,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/domains", a.handleOSDomainCreate)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/domains/assign", a.handleOSDomainAssign)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/domains/{id}/status", a.handleOSDomainStatus)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/domains/{id}/brand", a.handleOSDomainBrand)
 		pr.With(auth.CSRFTokenMiddleware).Delete("/os/api/domains/{id}", a.handleOSDomainDelete)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/website/save", a.handleOSWebsiteSave)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/website/custom-upload", a.handleOSWebsiteCustomUpload)

@@ -169,6 +169,28 @@ func (r *Registry) SetTLSState(ctx context.Context, id, state string) error {
 	return err
 }
 
+// SetBrand stores a secondary domain's public branding overrides in its
+// config_json. Like every mutable per-domain field, the primary is refused: its
+// identity is the global Website settings, and re-branding it here would let a
+// single-host install diverge from byte-identical. An empty brand clears the
+// stored config back to empty so the resolve path's Brand() short-circuit holds.
+func (r *Registry) SetBrand(ctx context.Context, id string, b Brand) error {
+	cur, err := r.get(ctx, id)
+	if err != nil {
+		return err
+	}
+	if cur.IsPrimary {
+		return fmt.Errorf("domain: the primary domain's branding is managed from Website settings")
+	}
+	cfg, err := EncodeBrandConfig(b)
+	if err != nil {
+		return err
+	}
+	defer r.invalidate()
+	_, err = r.db.ExecContext(ctx, `UPDATE domains SET config_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND is_primary=0`, cfg, id)
+	return err
+}
+
 // Delete removes a secondary domain outright. The primary is never deletable.
 func (r *Registry) Delete(ctx context.Context, id string) error {
 	cur, err := r.get(ctx, id)

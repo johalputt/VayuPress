@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/johalputt/vayupress/internal/domain"
+	"github.com/johalputt/vayupress/internal/render"
 )
 
 // middleware_domain.go — VayuDomains host resolution (Stage 1).
@@ -84,6 +85,54 @@ func (a *App) memberScope(r *http.Request) string {
 		return a.contentScope(r)
 	}
 	return ""
+}
+
+// brandForRequest returns the branded SiteSettings to render the current
+// request's public pages with, and ok=true, ONLY when a secondary domain has its
+// own stored brand. In every other case — a single-domain install, the primary
+// domain, or a secondary domain with no brand set — it returns ok=false so the
+// caller takes its original render path (the global active settings) verbatim.
+// This keeps johal.in byte-identical: the primary hot path pays only one cached
+// HasSecondaries bool and then calls the exact same renderer it always did.
+func (a *App) brandForRequest(r *http.Request) (render.SiteSettings, bool) {
+	if !a.multiDomain(r) {
+		return render.SiteSettings{}, false
+	}
+	d, ok := activeDomain(r)
+	if !ok || d.IsPrimary {
+		return render.SiteSettings{}, false
+	}
+	b, ok := d.Brand()
+	if !ok {
+		return render.SiteSettings{}, false
+	}
+	s := render.GetActiveSettings()
+	applyBrand(&s, b)
+	return s, true
+}
+
+// applyBrand overlays a secondary domain's non-empty branding fields onto a copy
+// of the site settings. Every blank field inherits the primary's value, so a
+// domain can re-brand just its name and keep the rest of the operator's design.
+func applyBrand(s *render.SiteSettings, b domain.Brand) {
+	if b.SiteName != "" {
+		s.Name = b.SiteName
+	}
+	if b.Tagline != "" {
+		s.Tagline = b.Tagline
+	}
+	if b.Description != "" {
+		s.Description = b.Description
+	}
+	if b.AccentLight != "" {
+		s.AccentLight = b.AccentLight
+	}
+	if b.AccentDark != "" {
+		s.AccentDark = b.AccentDark
+	}
+	if b.ThemeColor != "" {
+		s.ThemeColor = b.ThemeColor
+	}
 }
 
 // acceptsSecondaryMailDomain reports whether host is a registered, active,

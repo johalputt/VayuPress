@@ -401,7 +401,15 @@ func (a *App) renderHomeAt(w http.ResponseWriter, r *http.Request, page int) {
 		_ = rows.Err()
 	}
 
-	html, err := render.RenderHome(config.Cfg.Domain, Version, articles, total, page, totalPages)
+	// Per-domain branding: a secondary domain with its own brand renders from its
+	// branded settings; the primary and single-domain installs take the original
+	// call, byte-identical.
+	var html string
+	if s, ok := a.brandForRequest(r); ok {
+		html, err = render.RenderHomeWithSettings(s, config.Cfg.Domain, Version, articles, total, page, totalPages)
+	} else {
+		html, err = render.RenderHome(config.Cfg.Domain, Version, articles, total, page, totalPages)
+	}
 	if err != nil {
 		http.Error(w, "render error", 500)
 		return
@@ -579,7 +587,11 @@ func (a *App) handleArticlePage(w http.ResponseWriter, r *http.Request) {
 	layout := render.DetectLayout(art, r, isAdmin)
 	related := a.relatedArticles(r.Context(), art.Slug, art.Tags, 4)
 	pm := loadPostMeta(r.Context(), art.Slug)
-	htmlOut, err := render.RenderArticleWithMeta(art, layout, related, render.ArticleMetaOverrides{
+	// Per-domain branding: the ownership gate above guarantees this article is
+	// served only on its owning domain, so branded settings (when that owner is a
+	// secondary domain with a brand) apply cleanly; the primary and single-domain
+	// installs take the original call, byte-identical.
+	ov := render.ArticleMetaOverrides{
 		Excerpt:            pm.Excerpt,
 		FeatureImage:       pm.FeatureImage,
 		MetaTitle:          pm.MetaTitle,
@@ -593,7 +605,14 @@ func (a *App) handleArticlePage(w http.ResponseWriter, r *http.Request) {
 		TwitterImage:       pm.TwitterImage,
 		Featured:           pm.Featured,
 		IsPage:             pm.IsPage,
-	})
+	}
+	var htmlOut string
+	var err error
+	if s, ok := a.brandForRequest(r); ok {
+		htmlOut, err = render.RenderArticleWithMetaSettings(s, art, layout, related, ov)
+	} else {
+		htmlOut, err = render.RenderArticleWithMeta(art, layout, related, ov)
+	}
 	if err != nil {
 		http.Error(w, "render error", 500)
 		return

@@ -120,7 +120,14 @@ func robotsOptionsHTML(current string) string {
 // cheaply; no-cache forces revalidation so palette changes propagate even to
 // disk-cached HTML pages on the next request.
 func (a *App) handleThemeCSS(w http.ResponseWriter, r *http.Request) {
-	etag := render.ThemeCSSETag()
+	// VayuDomains per-domain branding: a secondary domain with its own accent
+	// serves a branded stylesheet (its own ETag); the primary and single-domain
+	// installs take the original path — same ETag, same bytes — byte-identical.
+	// Each domain is a distinct origin (own Host), so browser caches never collide.
+	etag, css := render.ThemeCSSETag(), render.ThemeCSS()
+	if s, ok := a.brandForRequest(r); ok {
+		etag, css = render.ThemeCSSETagFor(s), render.ThemeCSSFor(s)
+	}
 	w.Header().Set("Content-Type", "text/css; charset=utf-8")
 	w.Header().Set("ETag", etag)
 	// Palette changes are infrequent; a short max-age lets browsers serve from
@@ -132,7 +139,7 @@ func (a *App) handleThemeCSS(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotModified)
 		return
 	}
-	fmt.Fprint(w, render.ThemeCSS())
+	fmt.Fprint(w, css)
 }
 
 // handleThemeToggleJS serves the public sun/moon theme switcher script.

@@ -23,7 +23,11 @@ ALLOW="scripts/deadcode-allow.txt"
 # or in GOPATH/bin (CI). Install it if missing, then locate it.
 if ! command -v deadcode >/dev/null 2>&1; then
   go install golang.org/x/tools/cmd/deadcode@latest
-  export PATH="$PATH:$(go env GOBIN):$(go env GOPATH)/bin"
+  # Declare then assign so a failing `go env` surfaces instead of being masked
+  # by export's own exit status (shellcheck SC2155).
+  gobin="$(go env GOBIN)"
+  gopath="$(go env GOPATH)"
+  export PATH="$PATH:$gobin:$gopath/bin"
 fi
 BIN="$(command -v deadcode)"
 

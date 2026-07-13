@@ -8,6 +8,30 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.11] — 2026-07-13
+
+### Added
+- **VayuDomains — per-domain public branding.** Each secondary domain can now
+  present as its own site. VayuOS → Domains gains a **Brand a domain** card where
+  the operator sets a domain's site name, tagline, meta description, light/dark
+  accent colours and browser theme-colour; every field is optional and a blank one
+  inherits the primary site's value, so a domain can re-brand just its name and
+  keep the rest of the design. The overrides are stored in the registry's
+  `config_json` (no schema change) and overlaid onto the site settings when that
+  domain's homepage, articles and `/theme.css` render — so one binary on one VPS
+  serves many domains, each with its own identity.
+
+### Notes
+- **No-op for single-domain installs, byte-identical for the primary.** The brand
+  overlay is reached only when a secondary domain is registered *and* it carries a
+  brand; in every other case (single-domain install, the primary domain, or a
+  secondary with no brand) the original renderers are called verbatim — same
+  bytes, same ETag — so johal.in pays only one cached `HasSecondaries` bool on the
+  hot path and nothing else. Accent/theme-colour inputs are hex-validated before
+  they can reach `/theme.css` or `<meta theme-color>`, closing any CSS/attribute
+  injection through the branding form. The primary domain's identity remains the
+  global Website settings and is intentionally not editable here.
+
 ## [3.13.10] — 2026-07-13
 
 ### Added

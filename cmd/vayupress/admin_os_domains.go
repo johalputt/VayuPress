@@ -102,9 +102,10 @@ func (a *App) handleOSDomains(w http.ResponseWriter, r *http.Request) {
 
 	body := domainsHeader(len(domains), viewingHost) +
 		domainsTable(domains, counts, mailCounts, memberCounts, mailOn) +
+		domainsBrandForm(domains) +
 		domainsAssignForm(domains) +
 		domainsAddForm() +
-		domainsScript(nonce)
+		domainsScript(nonce, domainsBrandJSON(domains))
 
 	writeOSHTML(w, adminOSLayout(nonce, "Domains", "domains", cfg, htmpl.HTML(body)))
 }
@@ -218,6 +219,76 @@ func domainsAssignForm(domains []domain.Domain) string {
 </div>`
 }
 
+// domainsBrandForm lets the operator give each secondary domain its own public
+// identity — site name, tagline, description, accent colours and browser
+// theme-colour — so it presents as its own site. Every field is optional: a
+// blank field inherits the primary site's value, so a domain can re-brand just
+// its name and keep the rest of the operator's design. The primary domain's
+// identity is the global Website settings and is intentionally not editable here.
+// The card is only rendered when a secondary domain exists (nothing to brand on a
+// single-domain install).
+func domainsBrandForm(domains []domain.Domain) string {
+	var opts strings.Builder
+	secondaries := 0
+	for _, d := range domains {
+		if d.IsPrimary {
+			continue
+		}
+		opts.WriteString(`<option value="` + html.EscapeString(d.ID) + `">` + html.EscapeString(d.Host) + `</option>`)
+		secondaries++
+	}
+	if secondaries == 0 {
+		return ""
+	}
+	return `<div class="card">
+  <h2 class="card-title">Brand a domain</h2>
+  <p class="text-sm muted">Give a secondary domain its own public identity so it presents as its own site. Every field is optional — leave one blank to inherit the primary site's value. Changes apply to that domain's homepage, articles and theme within a few seconds.</p>
+  <div class="form-grid">
+    <label class="field"><span class="field-label">Domain</span>
+      <select id="dom-brand-domain" class="input">` + opts.String() + `</select></label>
+    <label class="field"><span class="field-label">Site name</span>
+      <input type="text" id="dom-brand-name" class="input" placeholder="Inherit primary" autocomplete="off"></label>
+    <label class="field"><span class="field-label">Tagline</span>
+      <input type="text" id="dom-brand-tagline" class="input" placeholder="Inherit primary" autocomplete="off"></label>
+    <label class="field"><span class="field-label">Meta description</span>
+      <input type="text" id="dom-brand-desc" class="input" placeholder="Inherit primary" autocomplete="off"></label>
+    <label class="field"><span class="field-label">Accent · light (hex)</span>
+      <input type="text" id="dom-brand-accent-light" class="input" placeholder="#2563eb" autocomplete="off" spellcheck="false"></label>
+    <label class="field"><span class="field-label">Accent · dark (hex)</span>
+      <input type="text" id="dom-brand-accent-dark" class="input" placeholder="#60a5fa" autocomplete="off" spellcheck="false"></label>
+    <label class="field"><span class="field-label">Theme colour (hex)</span>
+      <input type="text" id="dom-brand-theme" class="input" placeholder="#0f172a" autocomplete="off" spellcheck="false"></label>
+  </div>
+  <div class="vm-row" style="gap:.5rem;align-items:center">
+    <button type="button" class="btn btn--primary" data-dom-brand-save>Save branding</button>
+    <button type="button" class="btn btn--ghost" data-dom-brand-clear>Reset to primary</button>
+    <span id="dom-brand-status" class="text-sm muted" role="status" aria-live="polite"></span>
+  </div>
+</div>`
+}
+
+// domainsBrandJSON encodes each secondary domain's current brand as a JSON map
+// (id → brand) so the page script can populate the branding form when a domain
+// is selected. Primary domains carry no brand and are omitted.
+func domainsBrandJSON(domains []domain.Domain) string {
+	m := map[string]domain.Brand{}
+	for _, d := range domains {
+		if d.IsPrimary {
+			continue
+		}
+		if b, ok := d.Brand(); ok {
+			m[d.ID] = b
+		} else {
+			m[d.ID] = domain.Brand{}
+		}
+	}
+	out, err := json.Marshal(m)
+	if err != nil {
+		return "{}"
+	}
+	return string(out)
+}
+
 // mailCell renders a domain's Mail column (VayuDomains Stage 3a). The primary
 // carries the install's mail when the engine is enabled; a secondary opts in via
 // mail_enabled, with per-domain delivery/read isolation arriving in Stage 3b. The
@@ -276,12 +347,13 @@ func domainsAddForm() string {
 </div>`
 }
 
-func domainsScript(nonce string) string {
+func domainsScript(nonce, brandJSON string) string {
 	return `<script nonce="` + nonce + `">
 (function(){'use strict';
 function csrf(){var m=document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);return m?decodeURIComponent(m[1]):'';}
 var st=document.getElementById('dom-status');
 function show(t){if(st)st.textContent=t;}
+var BRANDS=` + brandJSON + `;
 var addBtn=document.querySelector('[data-dom-add]');
 if(addBtn)addBtn.addEventListener('click',function(){
   var host=(document.getElementById('dom-host').value||'').trim();
@@ -322,6 +394,38 @@ if(assignBtn)assignBtn.addEventListener('click',function(){
     .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
     .then(function(res){assignBtn.disabled=false;if(res.ok){if(ast)ast.textContent='Assigned ✓';setTimeout(function(){location.reload();},700);}else{if(ast)ast.textContent=(res.j&&res.j.message)||'Could not assign';}})
     .catch(function(e){assignBtn.disabled=false;if(ast)ast.textContent='Error: '+e;});
+});
+// ── Per-domain branding ─────────────────────────────────────────────────────
+var bSel=document.getElementById('dom-brand-domain');
+var bName=document.getElementById('dom-brand-name'),bTag=document.getElementById('dom-brand-tagline'),
+    bDesc=document.getElementById('dom-brand-desc'),bAL=document.getElementById('dom-brand-accent-light'),
+    bAD=document.getElementById('dom-brand-accent-dark'),bTheme=document.getElementById('dom-brand-theme'),
+    bSt=document.getElementById('dom-brand-status');
+function bShow(t){if(bSt)bSt.textContent=t;}
+function bFill(){if(!bSel)return;var b=BRANDS[bSel.value]||{};
+  bName.value=b.site_name||'';bTag.value=b.tagline||'';bDesc.value=b.description||'';
+  bAL.value=b.accent_light||'';bAD.value=b.accent_dark||'';bTheme.value=b.theme_color||'';bShow('');}
+if(bSel){bSel.addEventListener('change',bFill);bFill();}
+var bSave=document.querySelector('[data-dom-brand-save]');
+if(bSave)bSave.addEventListener('click',function(){
+  if(!bSel||!bSel.value){bShow('Select a domain.');return;}
+  var payload={site_name:bName.value.trim(),tagline:bTag.value.trim(),description:bDesc.value.trim(),
+    accent_light:bAL.value.trim(),accent_dark:bAD.value.trim(),theme_color:bTheme.value.trim()};
+  bSave.disabled=true;bShow('Saving…');
+  fetch('/os/api/domains/'+encodeURIComponent(bSel.value)+'/brand',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},body:JSON.stringify(payload)})
+    .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
+    .then(function(res){bSave.disabled=false;if(res.ok){BRANDS[bSel.value]=res.j&&res.j.brand?res.j.brand:payload;bShow('Saved ✓');}else{bShow((res.j&&res.j.message)||'Could not save branding');}})
+    .catch(function(e){bSave.disabled=false;bShow('Error: '+e);});
+});
+var bClear=document.querySelector('[data-dom-brand-clear]');
+if(bClear)bClear.addEventListener('click',function(){
+  if(!bSel||!bSel.value){bShow('Select a domain.');return;}
+  if(!window.confirm('Reset this domain to inherit the primary site branding?'))return;
+  bClear.disabled=true;bShow('Resetting…');
+  fetch('/os/api/domains/'+encodeURIComponent(bSel.value)+'/brand',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},body:JSON.stringify({})})
+    .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
+    .then(function(res){bClear.disabled=false;if(res.ok){BRANDS[bSel.value]={};bFill();bShow('Reset ✓');}else{bShow((res.j&&res.j.message)||'Could not reset');}})
+    .catch(function(e){bClear.disabled=false;bShow('Error: '+e);});
 });
 })();
 </script>`
@@ -422,6 +526,71 @@ func (a *App) handleOSDomainStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, r, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// handleOSDomainBrand stores a secondary domain's public branding overrides
+// (VayuDomains per-domain branding). Colour fields are hex-validated before they
+// can reach the domain's /theme.css or its <meta theme-color>, so no CSS or
+// attribute injection is possible through the accent variables; text fields are
+// length-capped. An empty payload clears the brand back to inheriting the
+// primary site. Only secondary domains are brandable — the registry refuses the
+// primary, whose identity is the global Website settings.
+func (a *App) handleOSDomainBrand(w http.ResponseWriter, r *http.Request) {
+	if a.domains == nil {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "unavailable", "domain registry not initialised", "")
+		return
+	}
+	id := chi.URLParam(r, "id")
+	var body struct {
+		SiteName    string `json:"site_name"`
+		Tagline     string `json:"tagline"`
+		Description string `json:"description"`
+		AccentLight string `json:"accent_light"`
+		AccentDark  string `json:"accent_dark"`
+		ThemeColor  string `json:"theme_color"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&body); err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "bad-request", "invalid JSON", "")
+		return
+	}
+	clip := func(s string, n int) string {
+		s = strings.TrimSpace(s)
+		if len(s) > n {
+			s = strings.TrimSpace(s[:n])
+		}
+		return s
+	}
+	brand := domain.Brand{
+		SiteName:    clip(body.SiteName, 120),
+		Tagline:     clip(body.Tagline, 200),
+		Description: clip(body.Description, 320),
+		AccentLight: strings.TrimSpace(body.AccentLight),
+		AccentDark:  strings.TrimSpace(body.AccentDark),
+		ThemeColor:  strings.TrimSpace(body.ThemeColor),
+	}
+	// Colour fields are injected verbatim into the domain's /theme.css and its
+	// <meta theme-color>, so a non-empty value MUST be a plain hex colour — this
+	// closes any CSS/attribute injection through the accent variables.
+	for _, c := range []struct{ name, val string }{
+		{"Accent (light)", brand.AccentLight},
+		{"Accent (dark)", brand.AccentDark},
+		{"Theme colour", brand.ThemeColor},
+	} {
+		if c.val != "" && !hexColorRe.MatchString(c.val) {
+			writeAPIError(w, r, http.StatusBadRequest, "bad-color", c.name+" must be a hex colour like #2563eb", "")
+			return
+		}
+	}
+	if err := a.domains.SetBrand(r.Context(), id, brand); err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "brand-failed", err.Error(), "")
+		return
+	}
+	// The domain's public identity changed: purge the public HTML caches so its
+	// homepage and articles re-render with the new brand on the next request (the
+	// same lazy purge the assign path uses). /theme.css is served live per request,
+	// so its accent update needs no purge and takes effect immediately.
+	render.CachePurgeAll()
+	writeJSON(w, r, http.StatusOK, map[string]any{"status": "ok", "brand": brand})
 }
 
 // handleOSDomainDelete removes a secondary domain from the registry.

@@ -130,9 +130,19 @@ The JSON/GraphQL query API (`gqlResolver.Search`/`Tags`/`Articles`) remains a
 global surface, consistent with the `db.ScopeAll` admin/API convention — it is a
 query interface, not a per-host rendered site.
 
-**Still deferred:** per-domain canonical/branding on the rendered pages belongs
-with Stage 3 (mail/identity); the `UNIQUE(domain_id, slug)` relaxation (below)
-remains a later sub-stage.
+**Per-domain branding (shipped, v3.13.11):** each secondary domain can now
+present as its own site — site name, tagline, meta description, light/dark accent
+colours and browser theme-colour — stored in the registry's `config_json`
+(`Domain.Brand()` / `Registry.SetBrand`, no schema change) and overlaid onto the
+site settings when that domain's homepage, articles and `/theme.css` render. The
+overlay is reached only when a secondary domain is registered *and* carries a
+brand (`App.brandForRequest`); in every other case the original renderers are
+called verbatim, so the primary is byte-identical (same bytes, same ETag) and a
+single-domain install pays only the cached `HasSecondaries` bool. Blank fields
+inherit the primary; colour fields are hex-validated before they can reach CSS or
+the theme-colour meta tag. **Still deferred:** per-domain *canonical/OG host* on
+the rendered pages (articles still emit `config.Cfg.Domain` in canonical/OG URLs);
+the `UNIQUE(domain_id, slug)` relaxation (below) remains a later sub-stage.
 
 **Constraint carried forward:** `articles.slug` is globally UNIQUE via an inline
 (un-droppable) constraint, so two domains cannot yet share a slug. Relaxing that

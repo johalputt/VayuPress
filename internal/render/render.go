@@ -473,7 +473,15 @@ func getActiveSettings() SiteSettings {
 // satisfies the strict `style-src 'self'` CSP (ADR-0036) — inline <style> blocks
 // are blocked by policy. Callers reference it via ThemeCSSLink().
 func ThemeCSS() string {
-	s := getActiveSettings()
+	return ThemeCSSFor(getActiveSettings())
+}
+
+// ThemeCSSFor builds the dynamic theme stylesheet from an explicit SiteSettings
+// instead of the package-global active settings. VayuDomains serves a secondary
+// domain's /theme.css from its branded settings (accent overrides) through this;
+// the primary install calls ThemeCSS() (global settings) so its stylesheet is
+// byte-identical.
+func ThemeCSSFor(s SiteSettings) string {
 	var sb strings.Builder
 	themeTokenMu.RLock()
 	if themeTokenCSS != "" {
@@ -508,8 +516,13 @@ func ThemeCSS() string {
 
 // ThemeCSSETag returns a stable content hash of the current dynamic theme CSS,
 // suitable for an HTTP ETag so browsers revalidate when the palette changes.
-func ThemeCSSETag() string {
-	sum := sha256.Sum256([]byte(ThemeCSS()))
+func ThemeCSSETag() string { return ThemeCSSETagFor(getActiveSettings()) }
+
+// ThemeCSSETagFor is ThemeCSSETag for an explicit SiteSettings, so a secondary
+// domain's branded stylesheet carries its own content hash (a different accent
+// yields a different ETag and a clean 304/revalidate boundary per domain).
+func ThemeCSSETagFor(s SiteSettings) string {
+	sum := sha256.Sum256([]byte(ThemeCSSFor(s)))
 	return `"` + hex.EncodeToString(sum[:16]) + `"`
 }
 
@@ -1703,8 +1716,16 @@ var notFoundTmpl = template.Must(template.New("404").Funcs(homeFuncs).Parse(`<!D
 // totalPages > 1 a Newer/Older pager is rendered and rel=prev/next + a
 // page-aware canonical are emitted for SEO.
 func RenderHome(domain, version string, articles []HomeArticle, totalCount, page, totalPages int) (string, error) {
+	return RenderHomeWithSettings(getActiveSettings(), domain, version, articles, totalCount, page, totalPages)
+}
+
+// RenderHomeWithSettings is RenderHome with the SiteSettings passed in
+// explicitly instead of read from the package-global active settings. It lets
+// VayuDomains overlay a secondary domain's branding for that domain's homepage
+// while the primary install keeps calling RenderHome (which passes the global
+// settings), so a single-host site is byte-identical.
+func RenderHomeWithSettings(s SiteSettings, domain, version string, articles []HomeArticle, totalCount, page, totalPages int) (string, error) {
 	var buf strings.Builder
-	s := getActiveSettings()
 	if page < 1 {
 		page = 1
 	}
@@ -1939,6 +1960,15 @@ func RenderArticleWithLayout(a db.Article, layout ArticleLayoutType, related []R
 // options. It resolves each head/meta value once (override → derived → site
 // default) so the template stays a straight print of pre-computed fields.
 func RenderArticleWithMeta(a db.Article, layout ArticleLayoutType, related []RelatedArticle, ov ArticleMetaOverrides) (string, error) {
+	return RenderArticleWithMetaSettings(getActiveSettings(), a, layout, related, ov)
+}
+
+// RenderArticleWithMetaSettings is RenderArticleWithMeta with the SiteSettings
+// passed in explicitly instead of read from the package-global active settings.
+// VayuDomains uses it to overlay a secondary domain's branding on its articles;
+// the primary install calls RenderArticleWithMeta (global settings), so a
+// single-host site is byte-identical.
+func RenderArticleWithMetaSettings(s SiteSettings, a db.Article, layout ArticleLayoutType, related []RelatedArticle, ov ArticleMetaOverrides) (string, error) {
 	// Opt-in contact form: if the operator placed the marker in the content,
 	// strip it from the visible prose and flag the widget so the template injects
 	// the CSP-safe form container + loader instead.
@@ -1949,7 +1979,6 @@ func RenderArticleWithMeta(a db.Article, layout ArticleLayoutType, related []Rel
 	a.Content = renderContentHTML(a.Content)
 	start := time.Now()
 	var buf strings.Builder
-	s := getActiveSettings()
 	seoMeta := seo.Compute(a.Title, a.Slug, a.Content, a.CreatedAt, a.UpdatedAt, config.Cfg.Domain, s.Name)
 	domain := config.Cfg.Domain
 
