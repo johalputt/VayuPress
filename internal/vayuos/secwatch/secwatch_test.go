@@ -92,6 +92,47 @@ func TestIsNewer(t *testing.T) {
 	}
 }
 
+func TestIsStableTag(t *testing.T) {
+	t.Parallel()
+	stable := []string{"v1.8.2", "v1.14.48", "v2.0.0", "v10.0.0"}
+	for _, s := range stable {
+		if !isStableTag(s) {
+			t.Errorf("isStableTag(%q) = false, want true", s)
+		}
+	}
+	pre := []string{"v2.0.0-beta.5", "v1.0.0-rc1", "v3.0.0-alpha", "v1.2.3+build", "1.2.3", ""}
+	for _, s := range pre {
+		if isStableTag(s) {
+			t.Errorf("isStableTag(%q) = true, want false", s)
+		}
+	}
+}
+
+// TestLatestVersionSkipsPrerelease pins the fix for the false "update available"
+// on goldmark: a repo whose newest tag is a beta (v2.0.0-beta.5) must resolve to
+// the highest STABLE tag (v1.8.2), never the pre-release.
+func TestLatestVersionSkipsPrerelease(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[{"name":"v2.0.0-beta.5"},{"name":"v1.8.2"},{"name":"v1.8.1"},{"name":"random-tag"}]`))
+	}))
+	defer srv.Close()
+	w := New(true)
+	w.apiBase = srv.URL
+	got, err := w.latestVersion(context.Background(), "yuin/goldmark")
+	if err != nil {
+		t.Fatalf("latestVersion: %v", err)
+	}
+	if got != "v1.8.2" {
+		t.Fatalf("latestVersion = %q, want v1.8.2 (beta must be skipped)", got)
+	}
+	// And it must not read as an update over a built v1.8.2.
+	if isNewer(got, "v1.8.2") {
+		t.Fatalf("stable latest %q should not be newer than built v1.8.2", got)
+	}
+}
+
 func TestNormalizeVer(t *testing.T) {
 	t.Parallel()
 	if normalizeVer("v1.4.1") != normalizeVer("1.4.1") {

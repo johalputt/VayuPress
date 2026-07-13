@@ -8,9 +8,12 @@
 // Privacy by default: the watcher is DISABLED unless the operator explicitly
 // enables it. It is not telemetry — it sends nothing about the operator or
 // their site; it only fetches public release metadata from api.github.com, and
-// only when enabled. The actual upgrade is performed by the operator via the
-// documented `go get -u <module> && go build` maintenance path; the watcher
-// never mutates the binary or dependencies on its own.
+// only when enabled. It reports STABLE upstream releases only, never pre-releases.
+//
+// VayuPress is a single statically-linked binary with its dependencies compiled
+// in, so patched libraries reach a server inside a signed release: the operator
+// applies them with the one-click self-updater, not a server-side go-get/rebuild.
+// The watcher never mutates the binary or dependencies on its own.
 package secwatch
 
 import (
@@ -148,7 +151,10 @@ func (w *Watcher) runCheck(ctx context.Context) *Report {
 		}
 	}
 	if rep.UpdatesAvailable > 0 {
-		rep.UpgradeHint = "Run `go get -u <module>@latest && go build ./...` then redeploy to apply security patches."
+		// VayuPress is a single static binary with its dependencies compiled in, so
+		// the operator does not run go-get/rebuild on the server: the patched libraries
+		// ship inside a signed release. Point at the one-click self-updater below.
+		rep.UpgradeHint = "These patches ship inside a signed VayuPress release — use the one-click updater below to install the latest release and apply them."
 	}
 	w.store(rep)
 	return rep
@@ -175,11 +181,25 @@ type ghTag struct {
 	Name string `json:"name"`
 }
 
-// latestVersion returns the highest semantic-version TAG for a repo. Tags are
-// the source of truth for Go modules: GitHub's "releases/latest" lags for repos
-// that tag versions without cutting a GitHub Release (e.g. mattn/go-sqlite3,
+// isStableTag reports whether name is a STABLE vX.Y.Z release tag: it must be
+// v-prefixed and carry no semver pre-release/build suffix (a '-' segment such as
+// -beta/-rc/-alpha, or '+build'). The watcher must never recommend pre-release
+// software — flagging, say, goldmark v2.0.0-beta.5 as an available "update" would
+// push an operator to run a beta in production, and normalizeVer would silently
+// compare it as the stable 2.0.0. Skipping these keeps "Latest" on real releases.
+func isStableTag(name string) bool {
+	if len(name) < 2 || name[0] != 'v' {
+		return false
+	}
+	return !strings.ContainsAny(name, "-+")
+}
+
+// latestVersion returns the highest STABLE semantic-version TAG for a repo. Tags
+// are the source of truth for Go modules: GitHub's "releases/latest" lags for
+// repos that tag versions without cutting a GitHub Release (e.g. mattn/go-sqlite3,
 // microcosm-cc/bluemonday), which made the panel show a "Latest" OLDER than the
-// built "Current". When no v-prefixed tag is found we fall back to the release.
+// built "Current". Pre-release tags are ignored (see isStableTag). When no stable
+// v-prefixed tag is found we fall back to the release.
 func (w *Watcher) latestVersion(ctx context.Context, repo string) (string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, w.apiBase+"/repos/"+repo+"/tags?per_page=100", nil)
 	if err != nil {
@@ -203,8 +223,8 @@ func (w *Watcher) latestVersion(ctx context.Context, repo string) (string, error
 	best := ""
 	for _, t := range tags {
 		name := strings.TrimSpace(t.Name)
-		if len(name) < 2 || name[0] != 'v' {
-			continue // only vX.Y.Z release tags
+		if !isStableTag(name) {
+			continue // only stable vX.Y.Z tags — never pre-releases
 		}
 		if best == "" || isNewer(name, best) {
 			best = name

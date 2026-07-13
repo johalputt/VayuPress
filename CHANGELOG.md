@@ -8,6 +8,34 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.22] — 2026-07-13
+
+### Security
+- **go-sqlite3 v1.14.47 → v1.14.48.** Bumped the SQLite driver to the latest
+  upstream patch. Because VayuPress is a single statically-linked binary, the
+  patched library ships compiled into this signed release — installing v3.13.22
+  via the one-click updater (VayuOS → Security → Update VayuPress) applies it;
+  there is no server-side `go get`/rebuild step.
+
+### Fixed
+- **Security page no longer flags pre-release dependencies.** The upstream watcher
+  compared only the numeric version and treated a beta major (e.g. goldmark
+  `v2.0.0-beta.5`) as a newer stable release, showing a false "update available"
+  and — worse — implying an operator should run beta software in production. The
+  watcher now considers **stable release tags only** (any `-beta`/`-rc`/`-alpha`
+  or `+build` tag is ignored), so goldmark correctly reads *up to date* on the
+  latest stable `v1.8.x`.
+- **Accurate upgrade guidance.** The "updates available" banner previously told
+  operators to run `go get -u … && go build`, which contradicts the single-binary
+  model explained lower on the same page. It now points at the built-in one-click
+  self-updater (checksum + Ed25519 verified, atomic swap, auto-rollback), which is
+  how dependency patches actually reach a server.
+
+### Notes
+- No schema, wire-format or behaviour change; the watcher stays disabled by
+  default (privacy first). Tests cover stable-tag selection and that a beta tag is
+  skipped in favour of the highest stable release.
+
 ## [3.13.21] — 2026-07-13
 
 ### Changed
