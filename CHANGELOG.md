@@ -8,6 +8,27 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.21] — 2026-07-13
+
+### Changed
+- **Every per-mailbox control now lives inside its own account card.** Following
+  forwarding and vacation (v3.13.20), a mailbox's **aliases** and **filter rules**
+  have moved into that mailbox's card on VayuOS → Accounts too — so expanding an
+  address shows its role, quota, retention, forwarding, vacation, aliases and
+  filters together, and nothing else. The separate account-wide "Aliases" and
+  "Filter rules" cards are gone. Each control saves over HTMX and refreshes the
+  accounts list in place.
+- **Aliases follow the mailbox's own domain.** An alias added from a card is now
+  created on the target mailbox's domain, so a secondary-domain mailbox
+  (VayuDomains) gets secondary-domain aliases (e.g. `sales@second.example`)
+  instead of always the primary domain.
+
+### Notes
+- Admin-only UI reorganisation; the alias/forward/autoreply/filter endpoints and
+  data model are unchanged. Single-domain installs see the same controls, just
+  relocated into each card. Tests cover the consolidated card, the per-domain
+  alias creation and the filter round-trip.
+
 ## [3.13.20] — 2026-07-13
 
 ### Changed

@@ -170,6 +170,99 @@ func (a *App) vayuCardVacation(ctx context.Context, ac vmail.Account) string {
 	return b.String()
 }
 
+// vayuCardAliases renders a mailbox's aliases inside its card: the extra
+// receive-only addresses that deliver into THIS mailbox, plus an add form whose
+// target is fixed to this account and whose domain follows the mailbox's own
+// domain (so a secondary-domain mailbox gets secondary-domain aliases). Every
+// action refreshes the whole accounts list in place.
+func (a *App) vayuCardAliases(ctx context.Context, ac vmail.Account) string {
+	accts := a.vayuMail.Accounts()
+	all, _ := accts.ListAliases(ctx)
+	domain := emailDomain(ac.Email, a.vayuMail.Config().Domain)
+	he := html.EscapeString(ac.Email)
+	post := ` hx-post="/os/vayumail/aliases/action" hx-target="#vm-accounts-list" hx-swap="innerHTML"`
+
+	var mine []vmail.Alias
+	for _, al := range all {
+		if strings.EqualFold(al.Target, ac.Email) {
+			mine = append(mine, al)
+		}
+	}
+	state := `<span class="muted text-xs">none</span>`
+	if len(mine) > 0 {
+		state = `<span class="badge badge--ok">` + strconv.Itoa(len(mine)) + `</span>`
+	}
+
+	var b strings.Builder
+	b.WriteString(`<details class="vm-ooo vm-acct__sub"><summary><span class="field-label">Aliases</span> ` + state + `</summary>`)
+	b.WriteString(`<p class="muted text-xs">Extra addresses that deliver into this mailbox — no separate login, revocable any time.</p>`)
+	b.WriteString(`<div class="table-wrap"><table class="table"><tbody>`)
+	if len(mine) == 0 {
+		b.WriteString(`<tr><td class="muted">No aliases yet.</td><td></td></tr>`)
+	}
+	for _, al := range mine {
+		b.WriteString(`<tr><td class="mono">` + html.EscapeString(al.Alias) + `</td><td>` +
+			`<button type="button" class="btn btn--sm btn--danger"` + post + hxVals("op", "alias-delete", "alias", al.Alias) +
+			` hx-confirm="Delete alias ` + html.EscapeString(al.Alias) + `? Mail sent to it will bounce.">Delete</button></td></tr>`)
+	}
+	b.WriteString(`</tbody></table></div>`)
+	b.WriteString(`<form class="vm-row vm-row--end"` + post + `><input type="hidden" name="op" value="alias-create"><input type="hidden" name="target" value="` + he + `">`)
+	b.WriteString(`<label class="field vm-grow"><span class="field-label">New alias</span><input class="input input--sm" type="text" name="local" placeholder="sales" required><span class="vm-suffix">@` + html.EscapeString(domain) + `</span></label>`)
+	b.WriteString(`<button class="btn btn--primary btn--sm" type="submit">Add alias</button></form>`)
+	b.WriteString(`</details>`)
+	return b.String()
+}
+
+// vayuCardFilters renders a mailbox's server-side delivery rules inside its card
+// (first match wins). Add/delete refresh the whole accounts list in place.
+func (a *App) vayuCardFilters(ctx context.Context, ac vmail.Account) string {
+	accts := a.vayuMail.Accounts()
+	rules, _ := accts.FiltersFor(ctx, ac.Email)
+	he := html.EscapeString(ac.Email)
+	post := ` hx-post="/os/vayumail/filters/action" hx-target="#vm-accounts-list" hx-swap="innerHTML"`
+
+	state := `<span class="muted text-xs">none</span>`
+	if len(rules) > 0 {
+		state = `<span class="badge badge--ok">` + strconv.Itoa(len(rules)) + `</span>`
+	}
+
+	var b strings.Builder
+	b.WriteString(`<details class="vm-ooo vm-acct__sub"><summary><span class="field-label">Filter rules</span> ` + state + `</summary>`)
+	b.WriteString(`<p class="muted text-xs">Applied at delivery, <strong>first match wins</strong>. Rules filing into Junk or Trash suppress auto-forward and the autoresponder.</p>`)
+	b.WriteString(`<div class="table-wrap"><table class="table"><thead><tr><th>#</th><th>When</th><th>Then</th><th></th></tr></thead><tbody>`)
+	if len(rules) == 0 {
+		b.WriteString(`<tr><td colspan="4" class="muted">No rules yet.</td></tr>`)
+	}
+	for i, rl := range rules {
+		then := ""
+		switch rl.Action {
+		case "move":
+			then = "move to " + html.EscapeString(rl.Target)
+		case "markread":
+			then = "mark as read"
+		case "pin":
+			then = "pin"
+		}
+		b.WriteString(`<tr><td class="muted">` + strconv.Itoa(i+1) + `</td><td>` + html.EscapeString(rl.Field) + ` contains <span class="mono">` + html.EscapeString(rl.Contains) + `</span></td><td>` + then + `</td><td>` +
+			`<button type="button" class="btn btn--sm btn--danger"` + post + hxVals("op", "delete", "email", ac.Email, "id", strconv.FormatInt(rl.ID, 10)) + `>Delete</button></td></tr>`)
+	}
+	b.WriteString(`</tbody></table></div>`)
+	b.WriteString(`<form class="vm-row vm-row--end"` + post + `><input type="hidden" name="op" value="create"><input type="hidden" name="email" value="` + he + `">`)
+	b.WriteString(`<label class="field"><span class="field-label">When</span><select class="input input--sm" name="field"><option value="from">From</option><option value="to">To/Cc</option><option value="subject">Subject</option></select></label>`)
+	b.WriteString(`<label class="field vm-grow"><span class="field-label">contains</span><input class="input input--sm" type="text" name="contains" placeholder="newsletter@" required></label>`)
+	b.WriteString(`<label class="field"><span class="field-label">Then</span><select class="input input--sm" name="action">`)
+	for _, f := range vmail.StandardFolders {
+		if strings.EqualFold(f, "Inbox") || strings.EqualFold(f, "Snoozed") {
+			continue
+		}
+		b.WriteString(`<option value="move:` + html.EscapeString(f) + `">Move to ` + html.EscapeString(f) + `</option>`)
+	}
+	b.WriteString(`<option value="markread">Mark as read</option><option value="pin">Pin</option></select></label>`)
+	b.WriteString(`<button class="btn btn--primary btn--sm" type="submit">Add rule</button></form>`)
+	b.WriteString(`</details>`)
+	return b.String()
+}
+
 // vmStatTile renders one summary tile. tone "" is neutral, "warn" highlights a
 // value that wants operator attention (e.g. devices awaiting approval).
 func vmStatTile(value, label, tone string) string {
@@ -308,10 +401,13 @@ func (a *App) vayuAccountCard(ctx context.Context, ac vmail.Account) string {
 	c.WriteString(`<label class="field"><span class="field-label">Auto-delete read mail</span>` + retSel + `</label>`)
 	c.WriteString(`<label class="field"><span class="field-label">Quota (MB, 0 = unlimited)</span><span class="vm-row">` + quotaField + `</span></label>`)
 	c.WriteString(`</div>`)
-	// Per-mailbox forwarding + vacation live inside the mailbox's own card (all of
-	// an address's settings in one place). Both refresh the whole list on save.
+	// Per-mailbox forwarding, vacation, aliases and filters all live inside the
+	// mailbox's own card (all of an address's settings in one place). Each refreshes
+	// the whole list on save.
 	c.WriteString(`<div class="vm-acct__sub"><span class="field-label">Auto-forward a copy to</span>` + vayuCardForwarding(ac) + `</div>`)
 	c.WriteString(a.vayuCardVacation(ctx, ac))
+	c.WriteString(a.vayuCardAliases(ctx, ac))
+	c.WriteString(a.vayuCardFilters(ctx, ac))
 	// Profile picture: direct upload (≤500 KB) + optional remove. HTMX multipart,
 	// swapping the whole list so the new avatar shows immediately.
 	removeBtn := ""

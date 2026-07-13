@@ -870,76 +870,12 @@ func (a *App) handleVayuOSAccounts(w http.ResponseWriter, r *http.Request) {
 	// itself so a newly-registered pending device surfaces without a page reload.
 	body.WriteString(`<div id="vm-device-card">` + a.vayuDevicesCard(r.Context()) + `</div>`)
 
-	// Aliases — an HTMX card that swaps in place on every add/delete. (Per-mailbox
-	// auto-forwarding and vacation now live inside each mailbox's card.)
-	body.WriteString(`<div id="vm-alias-card">` + a.vayuAliasesCard(r.Context()) + `</div>`)
-
-	// Server-side filter rules — per-mailbox delivery rules, same HTMX pattern.
-	body.WriteString(`<div id="vm-filter-card">` + a.vayuFiltersCard(r.Context()) + `</div>`)
+	// Every per-mailbox control — forwarding, vacation, aliases and filters — now
+	// lives inside that mailbox's own card in #vm-accounts-list above, so there are
+	// no separate account-wide alias/filter cards here.
 
 	body.WriteString(`<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail.js?v=` + assetVer("js/admin-os-mail.js") + `"></script>`)
 	writeOSHTML(w, adminOSLayout(nonce, "Mail accounts", "vayuos", cfg, htmpl.HTML(body.String())))
-}
-
-// vayuFiltersCard renders the per-mailbox delivery-rules card. Rules run at
-// delivery, first match wins. Add/delete POST /os/vayumail/filters/action and
-// swap this card in place.
-func (a *App) vayuFiltersCard(ctx context.Context) string {
-	accts := a.vayuMail.Accounts()
-	accs, _ := accts.List(ctx)
-
-	post := ` hx-post="/os/vayumail/filters/action" hx-target="#vm-filter-card" hx-swap="innerHTML"`
-	var b strings.Builder
-	b.WriteString(`<div class="card"><div class="card-title">Filter rules</div>`)
-	b.WriteString(`<p class="muted text-sm">Delivery rules, applied server-side to every inbound message — <strong>first matching rule wins</strong> (top to bottom). Rules filing into Junk or Trash suppress auto-forward and the autoresponder, like the junk filter.</p>`)
-	for _, ac := range accs {
-		rules, _ := accts.FiltersFor(ctx, ac.Email)
-		he := html.EscapeString(ac.Email)
-		count := ""
-		if len(rules) > 0 {
-			count = `<span class="badge badge--ok">` + strconv.Itoa(len(rules)) + `</span>`
-		}
-		b.WriteString(`<details class="vm-ooo"><summary><span class="mono">` + he + `</span> ` + count + `</summary>`)
-		b.WriteString(`<div class="table-wrap"><table class="table"><thead><tr><th>#</th><th>When</th><th>Then</th><th></th></tr></thead><tbody>`)
-		if len(rules) == 0 {
-			b.WriteString(`<tr><td colspan="4" class="muted">No rules yet.</td></tr>`)
-		}
-		for i, rl := range rules {
-			then := ""
-			switch rl.Action {
-			case "move":
-				then = "move to " + html.EscapeString(rl.Target)
-			case "markread":
-				then = "mark as read"
-			case "pin":
-				then = "pin"
-			}
-			b.WriteString(`<tr><td class="muted">` + strconv.Itoa(i+1) + `</td><td>` + html.EscapeString(rl.Field) + ` contains <span class="mono">` + html.EscapeString(rl.Contains) + `</span></td><td>` + then + `</td><td>` +
-				`<button type="button" class="btn btn--sm btn--danger"` + post + hxVals("op", "delete", "email", ac.Email, "id", strconv.FormatInt(rl.ID, 10)) + `>Delete</button></td></tr>`)
-		}
-		b.WriteString(`</tbody></table></div>`)
-		// Add-rule form.
-		b.WriteString(`<form class="vm-row vm-row--end"` + post + `><input type="hidden" name="op" value="create"><input type="hidden" name="email" value="` + he + `">`)
-		b.WriteString(`<label class="field"><span class="field-label">When</span><select class="input input--sm" name="field"><option value="from">From</option><option value="to">To/Cc</option><option value="subject">Subject</option></select></label>`)
-		b.WriteString(`<label class="field vm-grow"><span class="field-label">contains</span><input class="input input--sm" type="text" name="contains" placeholder="newsletter@" required></label>`)
-		b.WriteString(`<label class="field"><span class="field-label">Then</span><select class="input input--sm" name="action">`)
-		for _, f := range vmail.StandardFolders {
-			// Inbox is the default destination; Snoozed is snooze-action-only
-			// (a filter filing there would sleep mail forever with no wake).
-			if strings.EqualFold(f, "Inbox") || strings.EqualFold(f, "Snoozed") {
-				continue
-			}
-			b.WriteString(`<option value="move:` + html.EscapeString(f) + `">Move to ` + html.EscapeString(f) + `</option>`)
-		}
-		b.WriteString(`<option value="markread">Mark as read</option><option value="pin">Pin</option></select></label>`)
-		b.WriteString(`<button class="btn btn--primary btn--sm" type="submit">Add rule</button></form>`)
-		b.WriteString(`</details>`)
-	}
-	if len(accs) == 0 {
-		b.WriteString(`<p class="muted">No mail accounts yet.</p>`)
-	}
-	b.WriteString(`</div>`)
-	return b.String()
 }
 
 // handleVayuOSFilterAction creates or deletes a delivery rule and returns the
@@ -979,51 +915,12 @@ func (a *App) handleVayuOSFilterAction(w http.ResponseWriter, r *http.Request) {
 	default:
 		opErr = errors.New("unknown operation")
 	}
-	card := a.vayuFiltersCard(r.Context())
+	// Filters are driven from inside each mailbox's card, so refresh the list.
+	card := a.vayuAccountsList(r.Context())
 	if opErr != nil {
 		card = `<div class="empty-state" role="alert">⚠ ` + html.EscapeString(opErr.Error()) + `</div>` + card
 	}
 	writeOSHTML(w, card)
-}
-
-// vayuAliasesCard renders the "Aliases" card: extra receive-only addresses that
-// deliver into a real mailbox. Per-mailbox auto-forwarding now lives inside each
-// account's own card; the forward-set action is still served by this card's
-// endpoint. Alias actions POST /os/vayumail/aliases/action and swap this card.
-func (a *App) vayuAliasesCard(ctx context.Context) string {
-	accts := a.vayuMail.Accounts()
-	domain := a.vayuMail.Config().Domain
-	accs, _ := accts.List(ctx)
-	aliases, _ := accts.ListAliases(ctx)
-
-	post := ` hx-post="/os/vayumail/aliases/action" hx-target="#vm-alias-card" hx-swap="innerHTML"`
-	var b strings.Builder
-	b.WriteString(`<div class="card"><div class="card-title">Aliases</div>`)
-
-	// ── Aliases ────────────────────────────────────────────────────────────
-	b.WriteString(`<p class="muted text-sm">An <strong>alias</strong> is an extra address (e.g. <span class="mono">sales@` + html.EscapeString(domain) + `</span>) that delivers into an existing mailbox — no separate login, revocable any time.</p>`)
-	b.WriteString(`<div class="table-wrap"><table class="table"><thead><tr><th>Alias</th><th>Delivers to</th><th></th></tr></thead><tbody>`)
-	if len(aliases) == 0 {
-		b.WriteString(`<tr><td colspan="3" class="muted">No aliases yet.</td></tr>`)
-	}
-	for _, al := range aliases {
-		b.WriteString(`<tr><td class="mono">` + html.EscapeString(al.Alias) + `</td><td class="mono">` + html.EscapeString(al.Target) + `</td><td>` +
-			`<button type="button" class="btn btn--sm btn--danger"` + post + hxVals("op", "alias-delete", "alias", al.Alias) + ` hx-confirm="Delete alias ` + html.EscapeString(al.Alias) + `? Mail sent to it will bounce.">Delete</button></td></tr>`)
-	}
-	b.WriteString(`</tbody></table></div>`)
-
-	// Add-alias form (local part + target mailbox).
-	b.WriteString(`<form class="vm-row vm-row--end"` + post + `><input type="hidden" name="op" value="alias-create">`)
-	b.WriteString(`<label class="field"><span class="field-label">New alias</span><input class="input input--sm" type="text" name="local" placeholder="sales" required><span class="vm-suffix">@` + html.EscapeString(domain) + `</span></label>`)
-	b.WriteString(`<label class="field"><span class="field-label">Delivers to</span><select class="input input--sm" name="target">`)
-	for _, ac := range accs {
-		b.WriteString(`<option value="` + html.EscapeString(ac.Email) + `">` + html.EscapeString(ac.Email) + `</option>`)
-	}
-	b.WriteString(`</select></label><button class="btn btn--primary btn--sm" type="submit">Add alias</button></form>`)
-
-	b.WriteString(`<p class="muted text-sm mt-2">Per-mailbox <strong>auto-forwarding</strong> now lives inside each account's own settings on the <a href="/os/vayumail/accounts">Accounts</a> tab.</p>`)
-	b.WriteString(`</div>`)
-	return b.String()
 }
 
 // handleVayuOSAutoreplyAction saves a mailbox's autoresponder settings and
@@ -1092,17 +989,22 @@ func (a *App) handleVayuOSAliasAction(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = r.ParseForm()
 	accts := a.vayuMail.Accounts()
-	domain := a.vayuMail.Config().Domain
+	fallbackDomain := a.vayuMail.Config().Domain
 	var opErr error
 	switch r.FormValue("op") {
 	case "alias-create":
 		local := strings.ToLower(strings.TrimSpace(r.FormValue("local")))
+		target := r.FormValue("target")
+		// The alias lives on the target mailbox's own domain, so a secondary-domain
+		// mailbox gets secondary-domain aliases (VayuDomains).
+		aliasDomain := emailDomain(target, fallbackDomain)
 		if local == "" || strings.ContainsAny(local, "@ \t") {
 			opErr = errors.New("invalid alias name")
 		} else {
-			opErr = accts.CreateAlias(r.Context(), local+"@"+domain, r.FormValue("target"))
+			alias := local + "@" + aliasDomain
+			opErr = accts.CreateAlias(r.Context(), alias, target)
 			if opErr == nil {
-				dbpkg.AuditLog("vayumail.alias.create", dbpkg.AuditActor(r), local+"@"+domain, r.FormValue("target"))
+				dbpkg.AuditLog("vayumail.alias.create", dbpkg.AuditActor(r), alias, target)
 			}
 		}
 	case "alias-delete":
@@ -1126,14 +1028,9 @@ func (a *App) handleVayuOSAliasAction(w http.ResponseWriter, r *http.Request) {
 	default:
 		opErr = errors.New("unknown operation")
 	}
-	// forward-set is driven from inside each mailbox's card, so it refreshes the
-	// accounts list; alias create/delete refresh the aliases card.
-	var card string
-	if r.FormValue("op") == "forward-set" {
-		card = a.vayuAccountsList(r.Context())
-	} else {
-		card = a.vayuAliasesCard(r.Context())
-	}
+	// Aliases, forwarding and vacation are all driven from inside each mailbox's
+	// card now, so every action refreshes the accounts list in place.
+	card := a.vayuAccountsList(r.Context())
 	if opErr != nil {
 		card = `<div class="empty-state" role="alert">⚠ ` + html.EscapeString(opErr.Error()) + `</div>` + card
 	}
