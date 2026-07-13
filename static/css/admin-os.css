@@ -4539,3 +4539,10 @@
 /* Accounts grouped by domain (VayuDomains): a header per domain over its cards. */
 .vp-os .vm-acct-domain + .vm-acct-domain { margin-top: var(--sp-5); }
 .vp-os .vm-acct-domain > .vm-dom-head { margin-bottom: var(--sp-3); }
+
+/* Per-mailbox sub-sections inside a card: forwarding + vacation live here so
+   every setting for one address sits together, each divided from the block above. */
+.vp-os .vm-acct__sub { margin: var(--sp-3) 0 0; padding-top: var(--sp-3); border-top: 1px solid var(--border); }
+.vp-os .vm-acct__sub > .field-label { display: block; margin-bottom: var(--sp-2); }
+.vp-os .vm-card-fwd { margin: 0; align-items: center; }
+.vp-os details.vm-acct__sub > summary .field-label { margin: 0; }

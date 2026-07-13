@@ -870,12 +870,9 @@ func (a *App) handleVayuOSAccounts(w http.ResponseWriter, r *http.Request) {
 	// itself so a newly-registered pending device surfaces without a page reload.
 	body.WriteString(`<div id="vm-device-card">` + a.vayuDevicesCard(r.Context()) + `</div>`)
 
-	// Aliases & auto-forwarding — an HTMX card that swaps in place on every
-	// add/delete/save, so managing addresses never reloads the page.
+	// Aliases — an HTMX card that swaps in place on every add/delete. (Per-mailbox
+	// auto-forwarding and vacation now live inside each mailbox's card.)
 	body.WriteString(`<div id="vm-alias-card">` + a.vayuAliasesCard(r.Context()) + `</div>`)
-
-	// Vacation autoresponder — per-mailbox out-of-office, same HTMX pattern.
-	body.WriteString(`<div id="vm-autoreply-card">` + a.vayuAutoreplyCard(r.Context()) + `</div>`)
 
 	// Server-side filter rules — per-mailbox delivery rules, same HTMX pattern.
 	body.WriteString(`<div id="vm-filter-card">` + a.vayuFiltersCard(r.Context()) + `</div>`)
@@ -989,9 +986,10 @@ func (a *App) handleVayuOSFilterAction(w http.ResponseWriter, r *http.Request) {
 	writeOSHTML(w, card)
 }
 
-// vayuAliasesCard renders the "Aliases & forwarding" card: extra receive-only
-// addresses that deliver into a real mailbox, and per-mailbox auto-forward
-// targets. All actions POST /os/vayumail/aliases/action and swap this card.
+// vayuAliasesCard renders the "Aliases" card: extra receive-only addresses that
+// deliver into a real mailbox. Per-mailbox auto-forwarding now lives inside each
+// account's own card; the forward-set action is still served by this card's
+// endpoint. Alias actions POST /os/vayumail/aliases/action and swap this card.
 func (a *App) vayuAliasesCard(ctx context.Context) string {
 	accts := a.vayuMail.Accounts()
 	domain := a.vayuMail.Config().Domain
@@ -1000,7 +998,7 @@ func (a *App) vayuAliasesCard(ctx context.Context) string {
 
 	post := ` hx-post="/os/vayumail/aliases/action" hx-target="#vm-alias-card" hx-swap="innerHTML"`
 	var b strings.Builder
-	b.WriteString(`<div class="card"><div class="card-title">Aliases &amp; forwarding</div>`)
+	b.WriteString(`<div class="card"><div class="card-title">Aliases</div>`)
 
 	// ── Aliases ────────────────────────────────────────────────────────────
 	b.WriteString(`<p class="muted text-sm">An <strong>alias</strong> is an extra address (e.g. <span class="mono">sales@` + html.EscapeString(domain) + `</span>) that delivers into an existing mailbox — no separate login, revocable any time.</p>`)
@@ -1023,72 +1021,7 @@ func (a *App) vayuAliasesCard(ctx context.Context) string {
 	}
 	b.WriteString(`</select></label><button class="btn btn--primary btn--sm" type="submit">Add alias</button></form>`)
 
-	// ── Auto-forwarding ────────────────────────────────────────────────────
-	b.WriteString(`<div class="card-title mt-2">Auto-forwarding</div>`)
-	b.WriteString(`<p class="muted text-sm">Inbound mail is kept in the mailbox <em>and</em> a copy is relayed to the forward address. Loop-protected; junk is never forwarded. Clear the field to turn it off.</p>`)
-	b.WriteString(`<div class="table-wrap"><table class="table"><thead><tr><th>Mailbox</th><th>Forward a copy to</th><th></th></tr></thead><tbody>`)
-	for _, ac := range accs {
-		b.WriteString(`<tr><td class="mono">` + html.EscapeString(ac.Email) + `</td>`)
-		b.WriteString(`<td><form class="vm-row"` + post + `><input type="hidden" name="op" value="forward-set"><input type="hidden" name="email" value="` + html.EscapeString(ac.Email) + `">`)
-		b.WriteString(`<input class="input input--sm" type="email" name="forward" value="` + html.EscapeString(ac.ForwardTo) + `" placeholder="someone@elsewhere.com" aria-label="Forward address for ` + html.EscapeString(ac.Email) + `">`)
-		b.WriteString(`<button class="btn btn--sm" type="submit">Save</button></form></td>`)
-		if ac.ForwardTo != "" {
-			b.WriteString(`<td><span class="badge badge--ok">forwarding</span></td>`)
-		} else {
-			b.WriteString(`<td><span class="muted text-sm">off</span></td>`)
-		}
-		b.WriteString(`</tr>`)
-	}
-	b.WriteString(`</tbody></table></div></div>`)
-	return b.String()
-}
-
-// vayuAutoreplyCard renders the per-mailbox vacation-autoresponder card. Each
-// mailbox is a <details> block with the full form; saving POSTs
-// /os/vayumail/autoreply/action and swaps this card in place.
-func (a *App) vayuAutoreplyCard(ctx context.Context) string {
-	accts := a.vayuMail.Accounts()
-	accs, _ := accts.List(ctx)
-
-	var b strings.Builder
-	b.WriteString(`<div class="card"><div class="card-title">Vacation autoresponder</div>`)
-	b.WriteString(`<p class="muted text-sm">Out-of-office replies (RFC 3834). Each correspondent gets <strong>one</strong> reply per week; auto-generated mail, mailing lists, bounces and no-reply senders are never answered, and replies are tagged so responders can't loop. Junk is never answered.</p>`)
-	for _, ac := range accs {
-		ar := accts.AutoreplyFor(ctx, ac.Email)
-		state := `<span class="muted text-sm">off</span>`
-		if ar.Active(time.Now()) {
-			state = `<span class="badge badge--ok">active</span>`
-		} else if ar.Enabled {
-			state = `<span class="badge badge--warn">scheduled</span>`
-		}
-		checked := ""
-		if ar.Enabled {
-			checked = " checked"
-		}
-		fromVal, untilVal := "", ""
-		if !ar.From.IsZero() {
-			fromVal = ar.From.Local().Format("2006-01-02")
-		}
-		if !ar.Until.IsZero() {
-			untilVal = ar.Until.Local().Format("2006-01-02")
-		}
-		he := html.EscapeString(ac.Email)
-		b.WriteString(`<details class="vm-ooo"><summary><span class="mono">` + he + `</span> ` + state + `</summary>`)
-		b.WriteString(`<form class="vm-ooo-form" hx-post="/os/vayumail/autoreply/action" hx-target="#vm-autoreply-card" hx-swap="innerHTML">`)
-		b.WriteString(`<input type="hidden" name="email" value="` + he + `">`)
-		b.WriteString(`<label class="vm-row text-sm"><input type="checkbox" name="enabled" value="1"` + checked + `> Enabled</label>`)
-		b.WriteString(`<div class="vm-row vm-row--end">`)
-		b.WriteString(`<label class="field vm-grow"><span class="field-label">Subject</span><input class="input input--sm" type="text" name="subject" value="` + html.EscapeString(ar.Subject) + `" placeholder="Out of office"></label>`)
-		b.WriteString(`<label class="field"><span class="field-label">First day (optional)</span><input class="input input--sm" type="date" name="from" value="` + fromVal + `"></label>`)
-		b.WriteString(`<label class="field"><span class="field-label">Last day (optional)</span><input class="input input--sm" type="date" name="until" value="` + untilVal + `"></label>`)
-		b.WriteString(`</div>`)
-		b.WriteString(`<label class="field"><span class="field-label">Message</span><textarea class="input" name="body" rows="4" placeholder="I am away until …">` + html.EscapeString(ar.Body) + `</textarea></label>`)
-		b.WriteString(`<button class="btn btn--primary btn--sm" type="submit">Save</button>`)
-		b.WriteString(`</form></details>`)
-	}
-	if len(accs) == 0 {
-		b.WriteString(`<p class="muted">No mail accounts yet.</p>`)
-	}
+	b.WriteString(`<p class="muted text-sm mt-2">Per-mailbox <strong>auto-forwarding</strong> now lives inside each account's own settings on the <a href="/os/vayumail/accounts">Accounts</a> tab.</p>`)
 	b.WriteString(`</div>`)
 	return b.String()
 }
@@ -1137,7 +1070,9 @@ func (a *App) handleVayuOSAutoreplyAction(w http.ResponseWriter, r *http.Request
 			dbpkg.AuditLog("vayumail.autoreply.set", dbpkg.AuditActor(r), email, onOff)
 		}
 	}
-	card := a.vayuAutoreplyCard(r.Context())
+	// The vacation control now lives inside each mailbox's card, so refresh the
+	// whole accounts list in place.
+	card := a.vayuAccountsList(r.Context())
 	if opErr != nil {
 		card = `<div class="empty-state" role="alert">⚠ ` + html.EscapeString(opErr.Error()) + `</div>` + card
 	}
@@ -1191,7 +1126,14 @@ func (a *App) handleVayuOSAliasAction(w http.ResponseWriter, r *http.Request) {
 	default:
 		opErr = errors.New("unknown operation")
 	}
-	card := a.vayuAliasesCard(r.Context())
+	// forward-set is driven from inside each mailbox's card, so it refreshes the
+	// accounts list; alias create/delete refresh the aliases card.
+	var card string
+	if r.FormValue("op") == "forward-set" {
+		card = a.vayuAccountsList(r.Context())
+	} else {
+		card = a.vayuAliasesCard(r.Context())
+	}
 	if opErr != nil {
 		card = `<div class="empty-state" role="alert">⚠ ` + html.EscapeString(opErr.Error()) + `</div>` + card
 	}

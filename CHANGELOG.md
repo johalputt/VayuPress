@@ -8,6 +8,23 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.20] — 2026-07-13
+
+### Changed
+- **Per-mailbox forwarding & vacation now live inside each account's card.**
+  On VayuOS → Accounts, expanding a mailbox now shows its own auto-forward
+  address and vacation autoresponder alongside its role, quota and retention —
+  every setting for one address in one place, instead of a shared "Aliases &
+  forwarding" table and a separate "Vacation autoresponder" card that listed
+  every mailbox. Both controls save over HTMX and refresh the accounts list in
+  place. The Aliases card keeps its (address-scoped) alias table and now points
+  to the account cards for forwarding.
+
+### Notes
+- Admin-only UI reorganisation; no data model, wire-format or behaviour change,
+  and the forward/autoreply endpoints are unchanged. Single-domain installs are
+  unaffected beyond the same in-card layout.
+
 ## [3.13.19] — 2026-07-13
 
 ### Added

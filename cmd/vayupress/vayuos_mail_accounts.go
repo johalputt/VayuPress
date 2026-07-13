@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
@@ -117,6 +118,55 @@ func (a *App) vayuAccountsList(ctx context.Context) string {
 		}
 		b.WriteString(`</div></div>`)
 	}
+	return b.String()
+}
+
+// vayuCardForwarding renders a mailbox's auto-forward control inside its card.
+// It posts op=forward-set to the alias action endpoint and refreshes the whole
+// accounts list so the change is reflected everywhere.
+func vayuCardForwarding(ac vmail.Account) string {
+	he := html.EscapeString(ac.Email)
+	return `<form class="vm-row vm-card-fwd" hx-post="/os/vayumail/aliases/action" hx-target="#vm-accounts-list" hx-swap="innerHTML">` +
+		`<input type="hidden" name="op" value="forward-set"><input type="hidden" name="email" value="` + he + `">` +
+		`<input class="input input--sm vm-grow" type="email" name="forward" value="` + html.EscapeString(ac.ForwardTo) + `" placeholder="someone@elsewhere.com — blank to turn off" aria-label="Forward address for ` + he + `">` +
+		`<button class="btn btn--sm" type="submit">Save</button></form>`
+}
+
+// vayuCardVacation renders a mailbox's vacation autoresponder inside its card (a
+// collapsible form), posting to the autoreply endpoint and refreshing the list.
+func (a *App) vayuCardVacation(ctx context.Context, ac vmail.Account) string {
+	ar := a.vayuMail.Accounts().AutoreplyFor(ctx, ac.Email)
+	state := `<span class="muted text-xs">off</span>`
+	if ar.Active(time.Now()) {
+		state = `<span class="badge badge--ok">active</span>`
+	} else if ar.Enabled {
+		state = `<span class="badge badge--warn">scheduled</span>`
+	}
+	checked := ""
+	if ar.Enabled {
+		checked = " checked"
+	}
+	fromVal, untilVal := "", ""
+	if !ar.From.IsZero() {
+		fromVal = ar.From.Local().Format("2006-01-02")
+	}
+	if !ar.Until.IsZero() {
+		untilVal = ar.Until.Local().Format("2006-01-02")
+	}
+	he := html.EscapeString(ac.Email)
+	var b strings.Builder
+	b.WriteString(`<details class="vm-ooo vm-acct__sub"><summary><span class="field-label">Vacation autoresponder</span> ` + state + `</summary>`)
+	b.WriteString(`<form class="vm-ooo-form" hx-post="/os/vayumail/autoreply/action" hx-target="#vm-accounts-list" hx-swap="innerHTML">`)
+	b.WriteString(`<input type="hidden" name="email" value="` + he + `">`)
+	b.WriteString(`<label class="vm-row text-sm"><input type="checkbox" name="enabled" value="1"` + checked + `> Enabled</label>`)
+	b.WriteString(`<div class="vm-row vm-row--end">`)
+	b.WriteString(`<label class="field vm-grow"><span class="field-label">Subject</span><input class="input input--sm" type="text" name="subject" value="` + html.EscapeString(ar.Subject) + `" placeholder="Out of office"></label>`)
+	b.WriteString(`<label class="field"><span class="field-label">First day (optional)</span><input class="input input--sm" type="date" name="from" value="` + fromVal + `"></label>`)
+	b.WriteString(`<label class="field"><span class="field-label">Last day (optional)</span><input class="input input--sm" type="date" name="until" value="` + untilVal + `"></label>`)
+	b.WriteString(`</div>`)
+	b.WriteString(`<label class="field"><span class="field-label">Message</span><textarea class="input" name="body" rows="3" placeholder="I am away until …">` + html.EscapeString(ar.Body) + `</textarea></label>`)
+	b.WriteString(`<button class="btn btn--primary btn--sm" type="submit">Save</button>`)
+	b.WriteString(`</form></details>`)
 	return b.String()
 }
 
@@ -258,6 +308,10 @@ func (a *App) vayuAccountCard(ctx context.Context, ac vmail.Account) string {
 	c.WriteString(`<label class="field"><span class="field-label">Auto-delete read mail</span>` + retSel + `</label>`)
 	c.WriteString(`<label class="field"><span class="field-label">Quota (MB, 0 = unlimited)</span><span class="vm-row">` + quotaField + `</span></label>`)
 	c.WriteString(`</div>`)
+	// Per-mailbox forwarding + vacation live inside the mailbox's own card (all of
+	// an address's settings in one place). Both refresh the whole list on save.
+	c.WriteString(`<div class="vm-acct__sub"><span class="field-label">Auto-forward a copy to</span>` + vayuCardForwarding(ac) + `</div>`)
+	c.WriteString(a.vayuCardVacation(ctx, ac))
 	// Profile picture: direct upload (≤500 KB) + optional remove. HTMX multipart,
 	// swapping the whole list so the new avatar shows immediately.
 	removeBtn := ""
