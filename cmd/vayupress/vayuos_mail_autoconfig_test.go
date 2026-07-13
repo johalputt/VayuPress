@@ -99,7 +99,7 @@ func TestVayuMailAutoconfigTalkHost(t *testing.T) {
 	if h := a.talkAutoconfigHost(); h != "" {
 		t.Errorf("talk host advertised with VAYUOS_TALK_HOST unset: %q", h)
 	}
-	if strings.Contains(a.buildVayuMailAutoconfig().Talk, "talk") {
+	if strings.Contains(a.buildVayuMailAutoconfigFor("").Talk, "talk") {
 		t.Error("autoconfig advertised a talk host before one was provisioned")
 	}
 
@@ -108,7 +108,7 @@ func TestVayuMailAutoconfigTalkHost(t *testing.T) {
 	if h := a.talkAutoconfigHost(); h != "talk.example.com" {
 		t.Errorf("talk host = %q, want talk.example.com", h)
 	}
-	if got := a.buildVayuMailAutoconfig().Talk; got != "talk.example.com" {
+	if got := a.buildVayuMailAutoconfigFor("").Talk; got != "talk.example.com" {
 		t.Errorf("autoconfig Talk = %q, want talk.example.com", got)
 	}
 }

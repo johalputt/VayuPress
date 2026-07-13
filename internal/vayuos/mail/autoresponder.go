@@ -233,7 +233,7 @@ func (e *Engine) maybeAutoReply(mailbox string, raw []byte) {
 	b.WriteString("To: <" + sender + ">\r\n")
 	b.WriteString("Subject: " + sanitizeHeader(subject) + "\r\n")
 	b.WriteString("Date: " + now.Format(time.RFC1123Z) + "\r\n")
-	b.WriteString("Message-ID: " + e.messageID() + "\r\n")
+	b.WriteString("Message-ID: " + e.messageID(e.senderDomain(mailbox)) + "\r\n")
 	if mid := headerValue(raw, "Message-ID"); mid != "" {
 		b.WriteString("In-Reply-To: " + sanitizeHeader(mid) + "\r\n")
 		b.WriteString("References: " + sanitizeHeader(mid) + "\r\n")
@@ -251,7 +251,7 @@ func (e *Engine) maybeAutoReply(mailbox string, raw []byte) {
 
 	out := []byte(b.String())
 	if e.dkim != nil {
-		if signed, err := e.dkim.SignMessage(out); err == nil {
+		if signed, err := e.dkimFor(e.senderDomain(mailbox)).SignMessage(out); err == nil {
 			out = signed
 		}
 	}

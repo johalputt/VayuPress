@@ -14,32 +14,40 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
 // Engine is the VayuMail runtime: DKIM signer + outbound queue + Maildir store,
 // wired to VayuPress core through the Bridge.
 type Engine struct {
-	cfg        Config
-	bridge     Bridge
-	db         *sql.DB
-	dkim       *DKIM
-	queue      *Queue
-	maildir    *Maildir
-	accounts   *AccountStore
-	smtpd      *SMTPServer
-	imapd      *IMAPServer
-	submitd    *SMTPServer  // authenticated submission (587)
-	imapsd     *IMAPServer  // implicit-TLS IMAPS (993)
-	pop3d      *POP3Server  // POP3 (110, STLS)
-	pop3sd     *POP3Server  // implicit-TLS POP3S (995)
-	uids       *UIDStore    // persistent IMAP UID/UIDVALIDITY
-	tlsConf    *tls.Config  // shared STARTTLS / implicit-TLS config
-	tlsProv    *tlsProvider // provenance/diagnostics for tlsConf
-	acmeHTTP   *http.Server // ACME HTTP-01 challenge responder (ACME mode only)
-	acmeErr    error        // ACME HTTP-01 listener bind error (e.g. :80 in use)
-	decrypt    DecryptHook
-	inboundErr error
+	cfg    Config
+	bridge Bridge
+	db     *sql.DB
+	dkim   *DKIM // primary-domain signer (cfg.Domain)
+	// dkimByDomain caches per-domain signers for mail_enabled secondary senders
+	// (VayuDomains Stage 3c). They share the primary's private key file (keyed by
+	// selector) but carry the sender domain in the signature's d= tag, so each
+	// domain's outbound aligns with the DKIM record published at
+	// <selector>._domainkey.<sender-domain>.
+	dkimByDomain map[string]*DKIM
+	dkimMu       sync.Mutex
+	queue        *Queue
+	maildir      *Maildir
+	accounts     *AccountStore
+	smtpd        *SMTPServer
+	imapd        *IMAPServer
+	submitd      *SMTPServer  // authenticated submission (587)
+	imapsd       *IMAPServer  // implicit-TLS IMAPS (993)
+	pop3d        *POP3Server  // POP3 (110, STLS)
+	pop3sd       *POP3Server  // implicit-TLS POP3S (995)
+	uids         *UIDStore    // persistent IMAP UID/UIDVALIDITY
+	tlsConf      *tls.Config  // shared STARTTLS / implicit-TLS config
+	tlsProv      *tlsProvider // provenance/diagnostics for tlsConf
+	acmeHTTP     *http.Server // ACME HTTP-01 challenge responder (ACME mode only)
+	acmeErr      error        // ACME HTTP-01 listener bind error (e.g. :80 in use)
+	decrypt      DecryptHook
+	inboundErr   error
 	// retentionAudit reports a completed retention sweep to the host's
 	// audit log (nil-safe; see SetRetentionAudit).
 	retentionAudit func(email string, count, days int)
@@ -210,7 +218,7 @@ func (e *Engine) Compose(ctx context.Context, from string, to []string, subject,
 		local, _ := splitAddress(from)
 		sent := "From: " + from + "\r\nTo: " + strings.Join(to, ", ") + "\r\nSubject: " + subject +
 			"\r\nDate: " + time.Now().UTC().Format(time.RFC1123Z) + "\r\n\r\n" + body + "\r\n"
-		_, _ = e.maildir.DeliverTo(e.cfg.Domain, local, "Sent", []byte(sent))
+		_, _ = e.maildir.DeliverTo(e.senderDomain(from), local, "Sent", []byte(sent))
 	}
 	return id, nil
 }
@@ -275,7 +283,7 @@ func (e *Engine) ComposeRich(ctx context.Context, m ComposeMessage) (int64, erro
 	headers = append(headers,
 		HeaderField{Key: "Subject", Value: m.Subject},
 		HeaderField{Key: "Date", Value: time.Now().UTC().Format(time.RFC1123Z)},
-		HeaderField{Key: "Message-ID", Value: e.messageID()},
+		HeaderField{Key: "Message-ID", Value: e.messageID(e.senderDomain(m.From))},
 		HeaderField{Key: "MIME-Version", Value: "1.0"},
 	)
 
@@ -314,16 +322,17 @@ func (e *Engine) ComposeRich(ctx context.Context, m ComposeMessage) (int64, erro
 	raw.WriteString("\r\n")
 	raw.Write(bodyBuf.Bytes())
 
-	rawMsg, err := e.dkim.SignMessage(raw.Bytes())
+	rawMsg, err := e.dkimFor(e.senderDomain(m.From)).SignMessage(raw.Bytes())
 	if err != nil {
 		return 0, fmt.Errorf("vayumail: dkim sign: %w", err)
 	}
 
 	// File the exact assembled message in the sender's Sent folder (best-effort)
-	// so attachments, Cc and the real body are preserved there.
+	// so attachments, Cc and the real body are preserved there — under the
+	// sender's own domain so a secondary sender's Sent copy stays isolated.
 	if e.maildir != nil {
 		if local, _ := splitAddress(m.From); local != "" {
-			_, _ = e.maildir.DeliverTo(e.cfg.Domain, local, "Sent", rawMsg)
+			_, _ = e.maildir.DeliverTo(e.senderDomain(m.From), local, "Sent", rawMsg)
 		}
 	}
 
@@ -822,7 +831,7 @@ func (e *Engine) sendMail(ctx context.Context, from string, to []string, subject
 		{Key: "To", Value: strings.Join(to, ", ")},
 		{Key: "Subject", Value: subject},
 		{Key: "Date", Value: time.Now().UTC().Format(time.RFC1123Z)},
-		{Key: "Message-ID", Value: e.messageID()},
+		{Key: "Message-ID", Value: e.messageID(e.senderDomain(from))},
 		{Key: "MIME-Version", Value: "1.0"},
 	}
 
@@ -869,7 +878,7 @@ func (e *Engine) sendMail(ctx context.Context, from string, to []string, subject
 	raw.WriteString("\r\n")
 	raw.Write(bodyBuf.Bytes())
 
-	rawMsg, err := e.dkim.SignMessage(raw.Bytes())
+	rawMsg, err := e.dkimFor(e.senderDomain(from)).SignMessage(raw.Bytes())
 	if err != nil {
 		return 0, fmt.Errorf("vayumail: dkim sign: %w", err)
 	}
@@ -931,10 +940,53 @@ func (e *Engine) isLocalRecipient(addr string) bool {
 	return true
 }
 
-func (e *Engine) messageID() string {
+// messageID mints a unique Message-ID whose domain part matches the sender's
+// domain (VayuDomains Stage 3c) so it aligns with the From/DKIM domain. An empty
+// domain falls back to the primary — byte-identical for single-domain sends.
+func (e *Engine) messageID(domain string) string {
+	if domain == "" {
+		domain = e.cfg.Domain
+	}
 	b := make([]byte, 12)
 	_, _ = rand.Read(b)
-	return "<" + hex.EncodeToString(b) + "@" + e.cfg.Domain + ">"
+	return "<" + hex.EncodeToString(b) + "@" + domain + ">"
+}
+
+// senderDomain extracts the outbound sender's domain from a From value, falling
+// back to the primary domain (so a bare/relative From, or a primary sender,
+// behaves exactly as before).
+func (e *Engine) senderDomain(from string) string {
+	if _, d := splitAddress(from); d != "" {
+		return d
+	}
+	return e.cfg.Domain
+}
+
+// dkimFor returns the DKIM signer for a sender domain. The primary domain uses
+// the signer loaded at Start (byte-identical); a mail_enabled secondary gets a
+// signer that reuses the shared private key but carries its own domain in the d=
+// tag, so its mail validates against the record published at
+// <selector>._domainkey.<domain>. Falls back to the primary signer if a
+// per-domain signer cannot be built, so a send is never blocked.
+func (e *Engine) dkimFor(domain string) *DKIM {
+	if e.dkim == nil || domain == "" || strings.EqualFold(domain, e.cfg.Domain) {
+		return e.dkim
+	}
+	dom := strings.ToLower(domain)
+	e.dkimMu.Lock()
+	defer e.dkimMu.Unlock()
+	if d, ok := e.dkimByDomain[dom]; ok {
+		return d
+	}
+	d, err := LoadOrCreateDKIM(e.cfg.StorageDir, e.cfg.DKIMSelector, dom)
+	if err != nil || d == nil {
+		return e.dkim
+	}
+	if e.dkimByDomain == nil {
+		e.dkimByDomain = make(map[string]*DKIM)
+	}
+	e.dkimByDomain[dom] = d
+	return d
 }
 
 // mimeBoundary returns a unique multipart boundary token.

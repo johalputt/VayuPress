@@ -195,10 +195,34 @@ the login→domain resolution table. `safeSegment` already neutralises hostile
 domain/username path segments, so feeding the real (attacker-influenceable)
 recipient domain into the Maildir path adds no traversal surface.
 
-**Stage 3c (later): per-domain outbound + branding.** A per-domain DKIM signer
-(the signer is already domain-parameterized), From/envelope alignment, per-host
-autoconfig/autodiscover and DNS guidance, and per-domain webmail branding from the
-registry's reserved `config_json`.
+**Stage 3c (shipped): per-domain outbound + autoconfig.** A `mail_enabled`
+secondary domain now sends DKIM-aligned, deliverable mail and its clients
+auto-configure with their own address:
+
+- **Per-domain DKIM.** `Engine.dkimFor(domain)` returns a signer that reuses the
+  selector's shared private key but carries the sender's domain in the signature's
+  `d=` tag, so a secondary's outbound validates against the DKIM record published
+  at `<selector>._domainkey.<secondary>`. The primary send path uses the signer
+  loaded at start unchanged (byte-identical). Every send/compose/autoresponder
+  sign site selects by the From domain, and the `Message-ID` and Sent-folder copy
+  now carry the sender's own domain too (so a secondary sender's Sent copy stays
+  in its isolated Maildir).
+- **Per-domain autoconfig.** `/.well-known/vayumail/autoconfig.json` and the
+  Thunderbird XML resolve the account domain from the request Host (a
+  `mail_enabled` secondary, else primary), while keeping the advertised server
+  host the primary mail host — its cert is valid and it serves every domain's
+  mailboxes, whose users log in with their own address. No per-secondary cert is
+  required for clients to connect today.
+
+**Operator note (DNS).** Because the DKIM key is shared across domains, a
+secondary domain publishes the **same** `<selector>._domainkey` TXT record as the
+primary, plus its own MX (→ the primary mail host), SPF and DMARC. 
+
+**Stage 3d (deferred):** a per-domain DNS-records panel in the admin (the
+generator is already domain-parameterized), per-domain webmail branding from the
+registry's reserved `config_json`, and full webmail access to secondary mailboxes
+(today webmail stays primary-only; secondary mailboxes are client-accessed).
+Per-secondary TLS certs remain **P4** (the privileged root-helper track).
 
 ### Stage 4 — Member isolation (deferred)
 

@@ -1155,13 +1155,16 @@ func (a *App) handleMailAutoconfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	mc := a.vayuMail.Config()
-	domain := strings.TrimSpace(mc.Domain)
-	if domain == "" {
-		domain = config.Cfg.Domain
+	primary := strings.TrimSpace(mc.Domain)
+	if primary == "" {
+		primary = config.Cfg.Domain
 	}
+	// Per-domain (Stage 3c): the account domain follows the request Host; the
+	// advertised server host stays the primary mail host with its valid cert.
+	domain := a.autoconfigDomain(r.Host, primary)
 	host := strings.TrimSpace(mc.Hostname)
 	if host == "" {
-		host = "mail." + domain
+		host = "mail." + primary
 	}
 	imaps := mailPort(mc.IMAPSListen, "993")
 	pop3s := mailPort(mc.POP3SListen, "995")
@@ -1249,15 +1252,36 @@ type vayuMailServerConfig struct {
 // buildVayuMailAutoconfig derives the autoconfig document from the running mail
 // server configuration. Kept separate from the handler so the contract test can
 // assert the emitted shape without spinning up HTTP.
-func (a *App) buildVayuMailAutoconfig() vayuMailAutoconfig {
-	mc := a.vayuMail.Config()
-	domain := strings.TrimSpace(mc.Domain)
-	if domain == "" {
-		domain = config.Cfg.Domain
+// autoconfigDomain resolves which mail domain an autoconfig request is for: the
+// primary, or a mail_enabled secondary derived from the request Host (VayuDomains
+// Stage 3c). The advertised server host stays the primary mail host — its cert is
+// valid and it serves every domain's mailboxes, whose users log in with their own
+// address — so only the account domain / display name changes per host.
+func (a *App) autoconfigDomain(reqHost, primary string) string {
+	h := strings.ToLower(strings.TrimSpace(reqHost))
+	if i := strings.IndexByte(h, ':'); i >= 0 {
+		h = h[:i]
 	}
+	h = strings.TrimPrefix(h, "mail.")
+	if h != "" && !strings.EqualFold(h, primary) && a.acceptsSecondaryMailDomain(h) {
+		return h
+	}
+	return primary
+}
+
+// buildVayuMailAutoconfigFor returns the autoconfig document for the domain
+// implied by reqHost (primary when empty or unrecognised), so a mail_enabled
+// secondary domain's clients auto-configure with their own address.
+func (a *App) buildVayuMailAutoconfigFor(reqHost string) vayuMailAutoconfig {
+	mc := a.vayuMail.Config()
+	primary := strings.TrimSpace(mc.Domain)
+	if primary == "" {
+		primary = config.Cfg.Domain
+	}
+	domain := a.autoconfigDomain(reqHost, primary)
 	host := strings.TrimSpace(mc.Hostname)
 	if host == "" {
-		host = "mail." + domain
+		host = "mail." + primary
 	}
 	atoi := func(s string) int { n, _ := strconv.Atoi(s); return n }
 	return vayuMailAutoconfig{
@@ -1299,7 +1323,7 @@ func (a *App) handleVayuMailAutoconfigJSON(w http.ResponseWriter, r *http.Reques
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("Cache-Control", "public, max-age=3600")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	_ = json.NewEncoder(w).Encode(a.buildVayuMailAutoconfig())
+	_ = json.NewEncoder(w).Encode(a.buildVayuMailAutoconfigFor(r.Host))
 }
 
 // handleVayuOSConnect renders the "Connect" tab: ready-to-use IMAP/POP3/SMTP

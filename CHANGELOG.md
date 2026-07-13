@@ -8,6 +8,27 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.6] — 2026-07-13
+
+### Added
+- **VayuDomains (Stage 3c) — per-domain outbound + autoconfig.** A mail-enabled
+  secondary domain now sends **DKIM-aligned, deliverable mail**: each send signs
+  with a signer whose `d=` tag is the sender's own domain (reusing the shared
+  selector key), and the `Message-ID` + Sent-folder copy carry that domain too, so
+  a secondary sender's outbound passes DKIM/DMARC alignment and its Sent copy stays
+  in its isolated mailbox. Mail-autoconfig (`/.well-known/vayumail/autoconfig.json`
+  and the Thunderbird XML) resolves the account domain from the request host, so a
+  secondary domain's clients auto-configure with their own address.
+
+### Notes
+- **Byte-identical for single-domain installs.** The primary keeps the signer
+  loaded at start and its historic Message-ID/Sent behaviour; per-domain signers
+  are created only for a genuinely different sender domain. Because the DKIM key is
+  shared, a secondary domain publishes the **same** `<selector>._domainkey` TXT as
+  the primary (plus its own MX/SPF/DMARC). A per-domain DNS panel, webmail branding
+  and full webmail access to secondary mailboxes are **Stage 3d**; per-secondary
+  TLS certs remain **P4**. See **ADR-0132**.
+
 ## [3.13.5] — 2026-07-13
 
 ### Changed
