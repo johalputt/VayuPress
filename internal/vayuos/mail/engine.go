@@ -769,6 +769,24 @@ func (e *Engine) PlannedRecords() []DNSRecord {
 	return PlannedRecords(e.cfg, dkimName, dkimTXT)
 }
 
+// PlannedRecordsForDomain lists the DNS records to publish for a mail_enabled
+// secondary domain (VayuDomains Stage 3d). The MX points at the primary mail host
+// (which serves every domain's mailboxes), while the SPF/DKIM/DMARC records are
+// scoped to the secondary domain. The DKIM public key is shared across domains, so
+// the secondary publishes the *same* key TXT at its own <selector>._domainkey.
+func (e *Engine) PlannedRecordsForDomain(domain string) []DNSRecord {
+	if domain == "" || strings.EqualFold(domain, e.cfg.Domain) {
+		return e.PlannedRecords()
+	}
+	cfg := e.cfg // copy; keep Hostname = the primary mail host
+	cfg.Domain = strings.ToLower(domain)
+	dkimName, dkimTXT := "", ""
+	if dk := e.dkimFor(domain); dk != nil {
+		dkimName, dkimTXT = dk.RecordName(), dk.PublicTXT()
+	}
+	return PlannedRecords(cfg, dkimName, dkimTXT)
+}
+
 // Health runs live DNS health checks for the configured domain.
 func (e *Engine) Health(ctx context.Context) *DomainHealth {
 	dkimName := e.cfg.DKIMSelector + "._domainkey." + e.cfg.Domain

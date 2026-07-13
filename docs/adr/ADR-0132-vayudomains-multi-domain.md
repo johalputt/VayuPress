@@ -218,11 +218,24 @@ auto-configure with their own address:
 secondary domain publishes the **same** `<selector>._domainkey` TXT record as the
 primary, plus its own MX (→ the primary mail host), SPF and DMARC. 
 
-**Stage 3d (deferred):** a per-domain DNS-records panel in the admin (the
-generator is already domain-parameterized), per-domain webmail branding from the
-registry's reserved `config_json`, and full webmail access to secondary mailboxes
-(today webmail stays primary-only; secondary mailboxes are client-accessed).
-Per-secondary TLS certs remain **P4** (the privileged root-helper track).
+**Stage 3d (in progress): per-domain DNS panel (shipped).** VayuOS → mail now
+renders, below the primary's records, a **DNS-records-to-publish card for each
+`mail_enabled` secondary** (`Engine.PlannedRecordsForDomain`): its MX points at the
+primary mail host, its SPF/DMARC are scoped to itself, and — because the DKIM key
+is shared — it publishes the same key value at its own `<selector>._domainkey`
+record. This closes the operability gap: an operator can now set a secondary
+domain's mail up end to end (register → enable mail → create mailbox → send
+DKIM-signed → publish the shown DNS). *Still deferred:* per-domain webmail branding
+from the registry's reserved `config_json`, and full webmail access to secondary
+mailboxes (today webmail stays primary-only; secondary mailboxes are
+client-accessed via IMAP/POP3/SMTP). Per-secondary TLS certs remain **P4**.
+
+**Performance note.** Every per-domain path is gated behind
+`Registry.HasSecondaries` (a precomputed cached bool — no map scan, no per-request
+DB query) or the primary-first `Config.AcceptsMailDomain` check (the registry
+resolver is consulted only for non-primary recipients), so a single-domain install
+— the overwhelming common case — carries **zero** added work on the blog or VayuOS
+hot paths.
 
 ### Stage 4 — Member isolation (deferred)
 

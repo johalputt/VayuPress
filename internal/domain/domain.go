@@ -89,7 +89,10 @@ type Registry struct {
 	byHost  map[string]Domain
 	primary Domain
 	hasPrim bool
-	ttl     time.Time
+	hasSec  bool // any non-primary domain registered — precomputed so the
+	// per-request HasSecondaries gate (hit on every public blog page and VayuOS
+	// request) is a single cached bool read, never a map scan or DB query.
+	ttl time.Time
 }
 
 // New constructs a Registry. rdb is the read-only pool (may be nil, in which
@@ -130,7 +133,7 @@ func (r *Registry) refresh(ctx context.Context) error {
 
 	byHost := make(map[string]Domain)
 	var primary Domain
-	var hasPrim bool
+	var hasPrim, hasSec bool
 	for rows.Next() {
 		var d Domain
 		var mail, prim int
@@ -144,6 +147,8 @@ func (r *Registry) refresh(ctx context.Context) error {
 		if d.IsPrimary {
 			primary = d
 			hasPrim = true
+		} else {
+			hasSec = true
 		}
 	}
 	if err := rows.Err(); err != nil {
@@ -154,6 +159,7 @@ func (r *Registry) refresh(ctx context.Context) error {
 	r.byHost = byHost
 	r.primary = primary
 	r.hasPrim = hasPrim
+	r.hasSec = hasSec
 	r.ttl = time.Now().Add(cacheTTL)
 	r.mu.Unlock()
 	return nil
@@ -246,10 +252,5 @@ func (r *Registry) HasSecondaries(ctx context.Context) bool {
 	r.ensureFresh(ctx)
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	for _, d := range r.byHost {
-		if !d.IsPrimary {
-			return true
-		}
-	}
-	return false
+	return r.hasSec // precomputed at refresh — O(1), no scan (hot path)
 }

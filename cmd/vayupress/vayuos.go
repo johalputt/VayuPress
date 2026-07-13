@@ -846,6 +846,19 @@ func (a *App) handleVayuOSMail(w http.ResponseWriter, r *http.Request) {
 		body.WriteString(`<tr><td>` + html.EscapeString(rec.Type) + `</td><td class="mono text-sm">` + html.EscapeString(rec.Name) + `</td><td class="mono text-sm vm-break">` + html.EscapeString(rec.Value) + `</td></tr>`)
 	}
 	body.WriteString(`</tbody></table></div></div>`)
+	// Per-domain DNS (VayuDomains Stage 3d): each mail_enabled secondary domain
+	// needs its own MX/SPF/DKIM/DMARC. The DKIM key is shared with the primary, so
+	// the secondary publishes the SAME key value at its own selector record. Only
+	// rendered when a secondary mail domain exists (byte-identical otherwise).
+	for _, secHost := range a.mailSecondaryHosts(r.Context()) {
+		body.WriteString(`<div class="card"><div class="card-title">DNS records to publish (` + html.EscapeString(secHost) + `)</div>`)
+		body.WriteString(`<p class="muted text-sm">Secondary mail domain. Its MX points at this install's mail host; its DKIM key is shared with the primary, so publish the same key value at <span class="mono">` + html.EscapeString(mc.DKIMSelector) + `._domainkey.` + html.EscapeString(secHost) + `</span>.</p>`)
+		body.WriteString(`<div class="table-wrap"><table class="table"><thead><tr><th>Type</th><th>Name</th><th>Value</th></tr></thead><tbody>`)
+		for _, rec := range a.vayuMail.PlannedRecordsForDomain(secHost) {
+			body.WriteString(`<tr><td>` + html.EscapeString(rec.Type) + `</td><td class="mono text-sm">` + html.EscapeString(rec.Name) + `</td><td class="mono text-sm vm-break">` + html.EscapeString(rec.Value) + `</td></tr>`)
+		}
+		body.WriteString(`</tbody></table></div></div>`)
+	}
 	// Live DNS health.
 	hc := a.vayuMail.Health(r.Context())
 	body.WriteString(`<div class="card"><div class="card-title">Live DNS health</div><div class="table-wrap"><table class="table"><thead><tr><th>Record</th><th>Status</th><th>Found</th></tr></thead><tbody>`)

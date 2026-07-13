@@ -8,6 +8,30 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.7] — 2026-07-13
+
+### Added
+- **VayuDomains (Stage 3d) — per-domain DNS records panel.** VayuOS → mail now
+  shows a *DNS records to publish* card for each mail-enabled secondary domain
+  (`PlannedRecordsForDomain`): its MX points at this install's mail host, its
+  SPF/DMARC are scoped to the secondary, and — because the DKIM key is shared — it
+  publishes the same key value at its own `<selector>._domainkey` record. An
+  operator can now stand up a secondary domain's mail end to end.
+
+### Performance
+- **`Registry.HasSecondaries` is now O(1).** The per-request VayuDomains gate — hit
+  on every public blog page and VayuOS request — reads a boolean precomputed at
+  cache refresh instead of scanning the domain map, so multi-domain support adds no
+  measurable overhead to the blog or console. (Single-domain installs already took
+  the zero-work path; this keeps it flat as domains are added.)
+
+### Notes
+- Byte-identical for single-domain installs: the DNS panel renders only when a
+  mail-enabled secondary exists, and every per-domain path stays gated behind the
+  cached `HasSecondaries` / primary-first `AcceptsMailDomain` checks. Per-domain
+  webmail branding and full webmail access to secondary mailboxes remain **Stage
+  3d** follow-ups; per-secondary TLS is **P4**. See **ADR-0132**.
+
 ## [3.13.6] — 2026-07-13
 
 ### Added

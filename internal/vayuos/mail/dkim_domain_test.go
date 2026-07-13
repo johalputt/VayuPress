@@ -75,6 +75,48 @@ func TestSenderDomainAndMessageID(t *testing.T) {
 	}
 }
 
+// TestPlannedRecordsForDomain checks the Stage 3d per-domain DNS guidance: a
+// secondary domain's MX points at the primary mail host, its SPF/DKIM/DMARC are
+// scoped to itself, and the DKIM record uses the secondary's own selector name
+// (with the shared key value).
+func TestPlannedRecordsForDomain(t *testing.T) {
+	t.Parallel()
+	cfg := DefaultConfig()
+	cfg.Domain = "example.com"
+	cfg.Hostname = "mail.example.com"
+	cfg.StorageDir = t.TempDir()
+	e := NewEngine(&cfg, nil, nil)
+	dk, err := LoadOrCreateDKIM(cfg.StorageDir, cfg.DKIMSelector, cfg.Domain)
+	if err != nil {
+		t.Fatalf("dkim: %v", err)
+	}
+	e.dkim = dk
+
+	recs := e.PlannedRecordsForDomain("shop.example")
+	find := func(typ, name string) (DNSRecord, bool) {
+		for _, r := range recs {
+			if r.Type == typ && r.Name == name {
+				return r, true
+			}
+		}
+		return DNSRecord{}, false
+	}
+	mx, ok := find("MX", "shop.example.")
+	if !ok || mx.Value != "mail.example.com." {
+		t.Fatalf("secondary MX = %+v, want value mail.example.com.", mx)
+	}
+	if _, ok := find("TXT", "_dmarc.shop.example."); !ok {
+		t.Error("secondary DMARC record missing / not scoped to the secondary domain")
+	}
+	if _, ok := find("TXT", "vayu._domainkey.shop.example."); !ok {
+		t.Error("secondary DKIM record missing / not at the secondary's selector name")
+	}
+	// The primary variant is unchanged.
+	if got := e.PlannedRecordsForDomain("example.com"); len(got) != len(e.PlannedRecords()) {
+		t.Error("primary PlannedRecordsForDomain should equal PlannedRecords")
+	}
+}
+
 func firstLines(s string, n int) string {
 	parts := strings.SplitN(s, "\n", n+1)
 	if len(parts) > n {
