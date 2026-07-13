@@ -358,6 +358,9 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		// Accounts redesign: HTMX list fragment + inline action swap (enable/disable,
 		// role, quota, retention, delete) so the page never full-reloads.
 		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/accounts/fragment", a.handleVayuOSAccountsFragment)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/accounts/avatar", a.handleVayuOSAvatarUpload)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/accounts/avatar/remove", a.handleVayuOSAvatarRemove)
+		pr.Get("/os/vayumail/accounts/avatar", a.handleVayuOSAvatarServe)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/accounts/action", a.handleVayuOSAccountsAction)
 		// Devices: GET fragment backs the self-refresh poller so a newly-registered
 		// pending device surfaces without a reload.

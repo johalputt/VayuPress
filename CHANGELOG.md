@@ -8,6 +8,21 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.18] — 2026-07-13
+
+### Added
+- **Per-mailbox profile pictures.** Each mail account can now have a profile
+  picture, uploaded directly from inside its card on VayuOS → Accounts (≤500 KB;
+  PNG, JPEG, GIF or WebP, validated by magic bytes — the client Content-Type is
+  never trusted). The picture fills the account's avatar chip (falling back to
+  initials) and can be removed. Stored in the account row and served from a
+  same-origin, `nosniff` route; admin-only upload/remove.
+
+### Notes
+- Additive `avatar_blob` / `avatar_type` columns on `vayumail_accounts` (idempotent
+  migration; empty for existing accounts, so no behaviour change). Tests cover the
+  store round-trip and the magic-byte image sniffing (SVG/PDF/truncated rejected).
+
 ## [3.13.17] — 2026-07-13
 
 ### Added

@@ -188,10 +188,17 @@ func (a *App) vayuAccountCard(ctx context.Context, ac vmail.Account) string {
 		twofaBtn = `<button type="button" class="btn btn--sm" data-acct-2fa-disable="` + email + `">Disable 2FA</button>`
 	}
 
+	// Summary avatar: the uploaded profile picture when set, else initials.
+	avatar := `<span class="vm-acct__avatar" aria-hidden="true">` + esc(initial) + `</span>`
+	hasAvatar := strings.TrimSpace(ac.AvatarType) != ""
+	if hasAvatar {
+		avatar = `<img class="vm-acct__avatar vm-acct__avatar--img" src="/os/vayumail/accounts/avatar?email=` + qparam(ac.Email) + `" alt="" aria-hidden="true">`
+	}
+
 	var c strings.Builder
 	c.WriteString(`<details class="vm-acct card">`)
 	c.WriteString(`<summary class="vm-acct__sum">`)
-	c.WriteString(`<span class="vm-acct__avatar" aria-hidden="true">` + esc(initial) + `</span>`)
+	c.WriteString(avatar)
 	c.WriteString(`<span class="vm-acct__id"><span class="vm-acct__email mono">` + email + `</span>`)
 	if strings.TrimSpace(ac.FullName) != "" {
 		c.WriteString(`<span class="vm-acct__name muted text-sm">` + esc(ac.FullName) + `</span>`)
@@ -208,6 +215,18 @@ func (a *App) vayuAccountCard(ctx context.Context, ac vmail.Account) string {
 	c.WriteString(`<label class="field"><span class="field-label">Auto-delete read mail</span>` + retSel + `</label>`)
 	c.WriteString(`<label class="field"><span class="field-label">Quota (MB, 0 = unlimited)</span><span class="vm-row">` + quotaField + `</span></label>`)
 	c.WriteString(`</div>`)
+	// Profile picture: direct upload (≤500 KB) + optional remove. HTMX multipart,
+	// swapping the whole list so the new avatar shows immediately.
+	removeBtn := ""
+	if hasAvatar {
+		removeBtn = `<button class="btn btn--sm btn--ghost" type="button" hx-post="/os/vayumail/accounts/avatar/remove" ` + hxVals("email", ac.Email) + ` hx-target="#vm-accounts-list" hx-swap="innerHTML">Remove picture</button>`
+	}
+	c.WriteString(`<div class="vm-acct__avatar-edit"><span class="field-label">Profile picture</span>` +
+		`<form class="vm-row vm-avatar-form" hx-post="/os/vayumail/accounts/avatar" hx-encoding="multipart/form-data" hx-target="#vm-accounts-list" hx-swap="innerHTML">` +
+		`<input type="hidden" name="email" value="` + email + `">` +
+		`<input class="input input--sm" type="file" name="avatar" accept="image/png,image/jpeg,image/gif,image/webp" aria-label="Profile picture">` +
+		`<button class="btn btn--sm" type="submit">Upload</button></form>` + removeBtn +
+		`<span class="text-xs muted">PNG, JPEG, GIF or WebP · up to 500 KB.</span></div>`)
 	c.WriteString(`<div class="vm-acct__meta muted text-sm">Created ` + ac.CreatedAt.Format("2006-01-02") + `</div>`)
 	c.WriteString(`<div class="vm-acct__actions">` + passBtn + twofaBtn + toggleBtn + deleteBtn + `</div>`)
 	c.WriteString(`</div>`)

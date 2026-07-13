@@ -4528,3 +4528,10 @@
 /* Outbox auto-clear control. */
 .vp-os .vm-retention { display: inline-flex; align-items: center; gap: var(--sp-2); }
 .vp-os .vm-retention select { width: auto; }
+
+/* Per-mailbox profile picture: uploaded avatar fills the initials chip, and the
+   in-card upload/remove control. */
+.vp-os .vm-acct__avatar--img { object-fit: cover; background: none; padding: 0; }
+.vp-os .vm-acct__avatar-edit { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin: var(--sp-3) 0; }
+.vp-os .vm-avatar-form { display: inline-flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; margin: 0; }
+.vp-os .vm-avatar-form input[type=file] { max-width: 220px; }

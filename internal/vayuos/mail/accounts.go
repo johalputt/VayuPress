@@ -87,6 +87,9 @@ type Account struct {
 	// IMAP/POP3/submission (ADR-0129). On by default.
 	RequireDeviceApproval bool      `json:"require_device_approval"`
 	CreatedAt             time.Time `json:"created_at"`
+	// AvatarType is the MIME of the stored profile picture ("" = none). The image
+	// bytes are fetched separately (Avatar) so listing stays light.
+	AvatarType string `json:"avatar_type,omitempty"`
 }
 
 // maxSignatureBytes bounds a stored mail signature.
@@ -149,6 +152,11 @@ func NewAccountStore(db *sql.DB) (*AccountStore, error) {
 		// is permanently deleted this many days after it was read. 0 (the
 		// default) disables the sweep, so the migration changes no behaviour.
 		`ALTER TABLE vayumail_accounts ADD COLUMN retention_days INTEGER NOT NULL DEFAULT 0`,
+		// Per-mailbox profile picture: the raw image bytes and its validated MIME.
+		// avatar_type != '' signals presence without pulling the blob into List().
+		// Empty for existing accounts, so the migration changes no behaviour.
+		`ALTER TABLE vayumail_accounts ADD COLUMN avatar_blob BLOB`,
+		`ALTER TABLE vayumail_accounts ADD COLUMN avatar_type TEXT NOT NULL DEFAULT ''`,
 	} {
 		if _, err := db.Exec(stmt); err != nil && !strings.Contains(err.Error(), "duplicate column") {
 			return s, err
@@ -345,7 +353,7 @@ func (s *AccountStore) List(ctx context.Context) ([]Account, error) {
 	if s.db == nil {
 		return out, nil
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT email,full_name,role,active,totp_enabled,quota_bytes,signature,forward_to,require_device_approval,created_at FROM vayumail_accounts ORDER BY email`)
+	rows, err := s.db.QueryContext(ctx, `SELECT email,full_name,role,active,totp_enabled,quota_bytes,signature,forward_to,require_device_approval,created_at,avatar_type FROM vayumail_accounts ORDER BY email`)
 	if err != nil {
 		return nil, err
 	}
@@ -353,7 +361,7 @@ func (s *AccountStore) List(ctx context.Context) ([]Account, error) {
 	for rows.Next() {
 		var a Account
 		var active, totpEnabled, reqApproval int
-		if err := rows.Scan(&a.Email, &a.FullName, &a.Role, &active, &totpEnabled, &a.QuotaBytes, &a.Signature, &a.ForwardTo, &reqApproval, &a.CreatedAt); err != nil {
+		if err := rows.Scan(&a.Email, &a.FullName, &a.Role, &active, &totpEnabled, &a.QuotaBytes, &a.Signature, &a.ForwardTo, &reqApproval, &a.CreatedAt, &a.AvatarType); err != nil {
 			return nil, err
 		}
 		a.Active = active == 1
@@ -362,6 +370,43 @@ func (s *AccountStore) List(ctx context.Context) ([]Account, error) {
 		out = append(out, a)
 	}
 	return out, rows.Err()
+}
+
+// SetAvatar stores a mailbox's profile picture (raw bytes + validated MIME). The
+// caller enforces the size/type limits (see the cmd-layer upload handler).
+func (s *AccountStore) SetAvatar(ctx context.Context, email string, blob []byte, mime string) error {
+	if s.db == nil {
+		return nil
+	}
+	_, err := s.db.ExecContext(ctx, `UPDATE vayumail_accounts SET avatar_blob=?, avatar_type=? WHERE email=?`,
+		blob, mime, strings.ToLower(strings.TrimSpace(email)))
+	return err
+}
+
+// ClearAvatar removes a mailbox's profile picture (the card falls back to initials).
+func (s *AccountStore) ClearAvatar(ctx context.Context, email string) error {
+	if s.db == nil {
+		return nil
+	}
+	_, err := s.db.ExecContext(ctx, `UPDATE vayumail_accounts SET avatar_blob=NULL, avatar_type='' WHERE email=?`,
+		strings.ToLower(strings.TrimSpace(email)))
+	return err
+}
+
+// Avatar returns a mailbox's stored profile picture and its MIME, or (nil,"")
+// when none is set.
+func (s *AccountStore) Avatar(ctx context.Context, email string) ([]byte, string, error) {
+	if s.db == nil {
+		return nil, "", nil
+	}
+	var blob []byte
+	var mime string
+	err := s.db.QueryRowContext(ctx, `SELECT avatar_blob, avatar_type FROM vayumail_accounts WHERE email=?`,
+		strings.ToLower(strings.TrimSpace(email))).Scan(&blob, &mime)
+	if err == sql.ErrNoRows {
+		return nil, "", nil
+	}
+	return blob, mime, err
 }
 
 // CountsByHost returns the number of mail accounts per domain host, keyed by the
