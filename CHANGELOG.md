@@ -8,6 +8,26 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.10] — 2026-07-13
+
+### Added
+- **VayuDomains (P4) — per-domain TLS + nginx automation.** A new privileged root
+  helper, `scripts/setup-vayudomain.sh`, provisions each registered secondary
+  domain's TLS certificate and nginx vhost out-of-process (the server runs
+  unprivileged and cannot certbot/reload nginx itself). Each secondary gets its
+  **own** certificate lineage (`certbot --cert-name <host>`, plus `www.` and, for a
+  mail-enabled domain, `mail.<host>`), so the Let's Encrypt 100-SAN cap can never
+  be hit. `deploy-vayupress.sh` and `update-vayupress.sh` invoke it (idempotent,
+  non-fatal). A new `vayupress domains` CLI (`list` / `hosts [--mail]` / `set-tls`)
+  is the read/notify surface the helper drives from — the binary records state, the
+  helper acts on it.
+
+### Notes
+- No-op for single-domain installs (no secondary domains → the helper skips
+  cleanly). This completes the VayuDomains roadmap through P4; the deferred
+  sub-stages (member `UNIQUE(domain_id,email)` rebuild, context-free payment
+  attribution, per-domain webmail branding) are recorded in **ADR-0132**.
+
 ## [3.13.9] — 2026-07-13
 
 ### Added

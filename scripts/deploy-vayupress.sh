@@ -772,6 +772,17 @@ else
   warn "setup-talk-subdomain.sh not found next to this script — skipping VayuTalk subdomain auto-provision."
 fi
 
+# Provision TLS + nginx for every registered VayuDomains secondary domain
+# (VayuDomains P4). Delegated to setup-vayudomain.sh so deploy AND update share one
+# implementation. Idempotent and non-fatal: a domain whose DNS isn't pointed here
+# is skipped cleanly. Each secondary gets its OWN cert (--cert-name), never sharing
+# the primary's lineage, so the Let's Encrypt 100-SAN cap can never be hit.
+DOM_SETUP="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)/setup-vayudomain.sh"
+if [[ -f "$DOM_SETUP" ]]; then
+  DOMAIN="$DOMAIN" EMAIL="$EMAIL" CACHE_DIR="$CACHE_DIR" run bash "$DOM_SETUP" || \
+    warn "VayuDomains secondary-domain setup reported an issue — secondary domains keep serving over HTTP until it is resolved."
+fi
+
 run nginx -t
 run systemctl reload nginx
 ok "Nginx reloaded."

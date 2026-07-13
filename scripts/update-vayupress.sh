@@ -354,6 +354,13 @@ if [[ -f "$TALK_SETUP" ]]; then
   CACHE_DIR="$CACHE_DIR" bash "$TALK_SETUP" || true
 fi
 
+# Keep every registered VayuDomains secondary domain's TLS cert + nginx vhost in
+# place across updates (VayuDomains P4). Idempotent and non-fatal.
+DOM_SETUP="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)/setup-vayudomain.sh"
+if [[ -f "$DOM_SETUP" ]]; then
+  CACHE_DIR="$CACHE_DIR" bash "$DOM_SETUP" || true
+fi
+
 echo ""
 echo -e "${GREEN}════════════════════════════════════════════════════════════${NC}"
 echo -e "${GREEN}  VayuPress updated to ${NEW_SHA} and restarted.${NC}"

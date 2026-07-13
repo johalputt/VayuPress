@@ -269,14 +269,23 @@ fulfilment and the Stripe webhook — attribute to the primary (`''`) until the
 owning domain is carried on the order/customer; per-domain magic-link hostnames and
 per-domain newsletter subscribers ride here too.
 
-### P4 — TLS + nginx automation (deferred, orthogonal)
+### P4 — TLS + nginx automation (shipped)
 
-A privileged root helper (in the shape of the existing
-`scripts/setup-talk-subdomain.sh`) provisions a **per-domain** certificate
-(`--cert-name <host>`, never sharing a cert past the 100-SAN cap) and writes the
-vhost, driven by the registry's `tls_state`. The binary records state; the
-helper acts on it out-of-process. Stage 1 only records `tls_state`; it never
-provisions.
+A privileged root helper, **`scripts/setup-vayudomain.sh`** (in the shape of the
+existing `setup-talk-subdomain.sh`), provisions each registered secondary domain's
+TLS + nginx out-of-process, since the unprivileged server can never run certbot or
+reload nginx itself. For every secondary host it obtains its **own** Let's Encrypt
+certificate (`certbot --cert-name <host>`, a **separate lineage per domain** — the
+primary's cert is never expanded, so the 100-SAN cap is structurally impossible to
+hit) — including `www.<host>` and, for a `mail_enabled` domain, `mail.<host>` so
+its mail clients get a valid cert — then writes a reverse-proxy vhost to the origin
+and records the outcome back into the registry's `tls_state`.
+
+The binary exposes the read/notify surface the helper drives from — **`vayupress
+domains`** (`list` / `hosts [--mail]` / `set-tls <host> <state>`) — so the binary
+only *records* state while the helper *acts* on it. `deploy-vayupress.sh` and
+`update-vayupress.sh` call the helper (idempotent, non-fatal): a domain whose DNS
+is not yet pointed here is skipped cleanly, so it is safe on every deploy/update.
 
 ## Consequences
 

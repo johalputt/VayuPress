@@ -80,7 +80,7 @@ import (
 // -ldflags "-X main.Version=<.release-version>", and scripts/update-vayupress.sh
 // reads .release-version too — keep this in sync with .release-version so an
 // un-stamped `go build` still reports an honest version.
-var Version = "3.13.9"
+var Version = "3.13.10"
 var bootTime = time.Now()
 
 // Immutable package-level values (compiled once, never mutated).
@@ -350,6 +350,22 @@ func main() {
 		}
 		if err := update.RunCLI(context.Background(), os.Args[2:], os.Stdout, dbpkg.DB, Version); err != nil {
 			fmt.Fprintln(os.Stderr, "update:", err)
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
+
+	// domains subcommand: list registered domains + record per-domain TLS state.
+	// It is the read/notify surface the privileged TLS+nginx helper drives from
+	// (the server runs unprivileged and cannot certbot/reload nginx itself).
+	if len(os.Args) > 1 && os.Args[1] == "domains" {
+		config.Load()
+		if err := dbpkg.Init(); err != nil {
+			fmt.Fprintln(os.Stderr, "DB init failed:", err)
+			os.Exit(1)
+		}
+		if err := runDomainsCLI(os.Args[2:], os.Stdout); err != nil {
+			fmt.Fprintln(os.Stderr, "domains:", err)
 			os.Exit(1)
 		}
 		os.Exit(0)
