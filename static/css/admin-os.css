@@ -4525,3 +4525,6 @@
 .vp-os .vm-outbox-table--multi .vm-ocw-err { width: 15%; }
 .vp-os .vm-outbox-table--multi .vm-ocw-when { width: 13%; }
 .vp-os .vm-outbox-table--multi .vm-ocw-act { width: 12%; }
+/* Outbox auto-clear control. */
+.vp-os .vm-retention { display: inline-flex; align-items: center; gap: var(--sp-2); }
+.vp-os .vm-retention select { width: auto; }

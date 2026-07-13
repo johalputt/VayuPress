@@ -209,6 +209,18 @@ func (q *Queue) Delete(ctx context.Context, id int64) error {
 	return err
 }
 
+// PruneDelivered removes DELIVERED queue rows created before cutoff and returns
+// how many were removed. Only the delivery-queue record is deleted; the Sent
+// copy lives in the sender's Maildir (a separate store) and is untouched.
+func (q *Queue) PruneDelivered(ctx context.Context, cutoff time.Time) (int64, error) {
+	res, err := q.db.ExecContext(ctx, `DELETE FROM vayumail_queue WHERE state='delivered' AND created_at < ?`, cutoff.UTC())
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	return n, nil
+}
+
 // Status returns counters for the VayuOS panel.
 func (q *Queue) Status(ctx context.Context) (*QueueStatus, *SMTPStats, error) {
 	st := &QueueStatus{CheckedAt: time.Now().UTC()}

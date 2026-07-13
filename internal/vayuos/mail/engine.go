@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -51,8 +52,24 @@ type Engine struct {
 	// retentionAudit reports a completed retention sweep to the host's
 	// audit log (nil-safe; see SetRetentionAudit).
 	retentionAudit func(email string, count, days int)
+	// queueRetention is the operator-settable auto-clear window (days) for
+	// DELIVERED outbound-queue rows; 0 = keep forever. Runtime-updatable, so it is
+	// an atomic rather than a copy of cfg.QueueRetentionDays.
+	queueRetention atomic.Int64
 	done           chan struct{}
 }
+
+// SetQueueRetentionDays sets the auto-clear window (days) for delivered
+// outbound-queue rows; 0 disables pruning. Applied on the next retention sweep.
+func (e *Engine) SetQueueRetentionDays(days int) {
+	if days < 0 {
+		days = 0
+	}
+	e.queueRetention.Store(int64(days))
+}
+
+// QueueRetentionDays returns the current auto-clear window (days); 0 = off.
+func (e *Engine) QueueRetentionDays() int { return int(e.queueRetention.Load()) }
 
 // ACMEChallengeError returns the reason the ACME HTTP-01 challenge responder
 // could not start (most often: port 80 is already held by a reverse proxy such
@@ -424,7 +441,9 @@ func NewEngine(cfg *Config, bridge Bridge, db *sql.DB) *Engine {
 		c := DefaultConfig()
 		cfg = &c
 	}
-	return &Engine{cfg: *cfg, bridge: bridge, db: db, done: make(chan struct{})}
+	e := &Engine{cfg: *cfg, bridge: bridge, db: db, done: make(chan struct{})}
+	e.queueRetention.Store(int64(cfg.QueueRetentionDays))
+	return e
 }
 
 // Name identifies the subsystem for the boot orchestrator.

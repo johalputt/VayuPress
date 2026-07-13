@@ -8,6 +8,24 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.17] — 2026-07-13
+
+### Added
+- **Outbox auto-clear (retention) for delivered mail.** A new *Auto-clear
+  delivered* control on the Outbox prunes DELIVERED delivery-queue rows older than
+  the chosen window (Off / 7 / 30 / 90 days). Only the Outbox's delivery-status
+  record is removed — the **Sent copy stays** in the mailbox's Sent folder
+  (separate Maildir store). The choice is persisted and applied live; the sweep
+  runs hourly. A `VAYUOS_MAIL_QUEUE_RETENTION_DAYS` env sets the default.
+- **VayuMail Overview stat strip.** The Overview now shows live tiles for
+  administrators — mailboxes, mail domains, and the outbound queue
+  (queued / failed / delivered) — above the existing cards.
+
+### Notes
+- Off by default (nothing is auto-deleted until an operator picks a window), and
+  the strip is administrator-only. Tests cover the delivered-only prune (recent,
+  pending and failed rows are kept) and the runtime setter.
+
 ## [3.13.16] — 2026-07-13
 
 ### Changed

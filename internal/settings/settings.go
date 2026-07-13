@@ -46,6 +46,11 @@ const (
 	KeyHeadVerifyGoogle = "head.verify_google" // google-site-verification token
 	KeyHeadVerifyBing   = "head.verify_bing"   // msvalidate.01 token
 
+	// KeyMailQueueRetentionDays is the operator-chosen auto-clear window (days) for
+	// DELIVERED outbound-queue rows shown in the Outbox; "" / "0" = keep forever.
+	// Only the delivery-status record is pruned — the Sent Maildir copy is kept.
+	KeyMailQueueRetentionDays = "mail.queue_retention_days"
+
 	// Branding. A custom favicon/logo uploaded through the theme console is
 	// stored base64-encoded in the DB (sovereign — survives in backups, no
 	// extra file management) and overrides the embedded default marks at the

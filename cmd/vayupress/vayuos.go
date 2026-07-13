@@ -29,6 +29,7 @@ import (
 	"github.com/johalputt/vayupress/internal/email"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/render"
+	"github.com/johalputt/vayupress/internal/settings"
 	vkernel "github.com/johalputt/vayupress/internal/vayuos/kernel"
 	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
 	vpgp "github.com/johalputt/vayupress/internal/vayuos/pgp"
@@ -473,6 +474,25 @@ func (a *App) bootVayuOS() {
 		dbpkg.AuditLog("vayumail.retention.sweep", "system", email,
 			fmt.Sprintf("deleted %d read message(s) past %d days", count, days))
 	})
+	// Apply the operator's Outbox auto-clear window: env sets the default, the
+	// persisted admin choice overrides. Delivered queue rows older than this are
+	// pruned on the hourly sweep; the Sent Maildir copy is never touched.
+	{
+		days := 0
+		if v := strings.TrimSpace(config.EnvOr("VAYUOS_MAIL_QUEUE_RETENTION_DAYS", "")); v != "" {
+			if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+				days = n
+			}
+		}
+		if a.siteSettings != nil {
+			if v := strings.TrimSpace(a.siteSettings.Get(context.Background(), settings.KeyMailQueueRetentionDays)); v != "" {
+				if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+					days = n
+				}
+			}
+		}
+		a.vayuMail.SetQueueRetentionDays(days)
+	}
 
 	// VayuTalk — the ephemeral, end-to-end-encrypted messaging relay (ADR-0131).
 	// Enabled whenever mail is enabled UNLESS explicitly switched off. It never
@@ -765,6 +785,38 @@ func (a *App) handleVayuOSDashboard(w http.ResponseWriter, r *http.Request) {
 	// Infrastructure cards (PGP keys, DKIM/DNS, security updates) and the
 	// subsystem-health table expose operational detail the four non-admin roles
 	// do not need, so they are administrator-only.
+	// Admin-only live stat strip: mailboxes, mail domains, and the outbound queue
+	// at a glance (mirrors the Accounts stat tiles).
+	statStrip := ""
+	if admin {
+		pending, failed, delivered := 0, 0, 0
+		if qs, st, err := a.vayuMail.QueueStatus(r.Context()); err == nil {
+			pending, failed = qs.Pending, qs.Failed
+			if st != nil {
+				delivered = st.Delivered
+			}
+		}
+		mailboxes := 0
+		if acc := a.vayuMail.Accounts(); acc != nil {
+			if c, err := acc.CountsByHost(r.Context()); err == nil {
+				for _, n := range c {
+					mailboxes += n
+				}
+			}
+		}
+		domains := 1 + len(a.mailSecondaryHosts(r.Context()))
+		failTone := ""
+		if failed > 0 {
+			failTone = "warn"
+		}
+		statStrip = `<div class="vm-stats">` +
+			vmStatTile(itoaSafe(mailboxes), "Mailboxes", "") +
+			vmStatTile(itoaSafe(domains), "Mail domains", "") +
+			vmStatTile(itoaSafe(pending), "Queued", "") +
+			vmStatTile(itoaSafe(failed), "Failed", failTone) +
+			vmStatTile(itoaSafe(delivered), "Delivered", "") +
+			`</div>`
+	}
 	infraCards, healthCard := "", ""
 	if admin {
 		infraCards = `
@@ -776,7 +828,7 @@ func (a *App) handleVayuOSDashboard(w http.ResponseWriter, r *http.Request) {
 <div class="table-wrap"><table class="table"><thead><tr><th>Component</th><th>Status</th><th>Detail</th></tr></thead><tbody>` + rows.String() + `</tbody></table></div></div>`
 	}
 	body := `<div class="page-header"><h1>VayuMail</h1>
-<span class="muted text-sm">Your mailboxes — read, compose and connect mail apps</span></div>` + vayuosNav("overview", admin) + `
+<span class="muted text-sm">Your mailboxes — read, compose and connect mail apps</span></div>` + vayuosNav("overview", admin) + statStrip + `
 <div class="grid grid-3">
   <div class="card"><div class="card-title">Inbox</div><p class="muted">Read mail received into your mailboxes (Maildir).</p><a class="btn" href="/os/vayumail/inbox">Open inbox</a></div>
   <div class="card"><div class="card-title">Sent</div><p class="muted">Outbound delivery queue with per-message status.</p><a class="btn" href="/os/vayumail/sent">View sent</a></div>
@@ -2436,6 +2488,55 @@ func outboxChip(label, val string, active bool) string {
 		`" hx-target="#vm-outbox-body" hx-swap="innerHTML">` + html.EscapeString(label) + `</button>`
 }
 
+// outboxRetentionSelect renders the "auto-clear delivered" control: an HTMX
+// select that prunes DELIVERED queue rows older than the chosen window (the Sent
+// Maildir copy is never touched). cur is the current window in days (0 = off).
+func outboxRetentionSelect(cur int) string {
+	std := map[int]bool{0: true, 7: true, 30: true, 90: true}
+	opt := func(v int, label string) string {
+		sel := ""
+		if v == cur {
+			sel = " selected"
+		}
+		return `<option value="` + itoaSafe(v) + `"` + sel + `>` + label + `</option>`
+	}
+	extra := ""
+	if !std[cur] && cur > 0 {
+		extra = `<option value="` + itoaSafe(cur) + `" selected>After ` + itoaSafe(cur) + ` days</option>`
+	}
+	return `<label class="vm-retention" title="Auto-delete the delivered Outbox rows after this long. Your sent mail stays in the mailbox’s Sent folder."><span class="text-xs muted">Auto-clear delivered</span>` +
+		`<select class="input input--sm" name="days" hx-post="/os/vayumail/outbox/retention" hx-trigger="change" hx-target="#vm-outbox-body" hx-swap="innerHTML">` +
+		extra + opt(0, "Off · keep all") + opt(7, "After 7 days") + opt(30, "After 30 days") + opt(90, "After 90 days") +
+		`</select></label>`
+}
+
+// handleVayuOSOutboxRetention persists the operator's auto-clear window for
+// delivered outbound-queue rows and applies it live, then returns the refreshed
+// outbox body. Admin-only, CSRF-protected.
+func (a *App) handleVayuOSOutboxRetention(w http.ResponseWriter, r *http.Request) {
+	if a.vayuMail == nil || !a.vayuMail.Config().Enabled {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", "VayuMail is not active", "")
+		return
+	}
+	if !a.isAdminRequest(r) {
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", "admin role required", "")
+		return
+	}
+	days, _ := strconv.Atoi(strings.TrimSpace(r.FormValue("days")))
+	// Clamp to the offered choices so an unexpected value can't set a runaway
+	// window; anything else falls back to off.
+	switch days {
+	case 0, 7, 30, 90:
+	default:
+		days = 0
+	}
+	a.vayuMail.SetQueueRetentionDays(days)
+	if a.siteSettings != nil {
+		_ = a.siteSettings.SetMany(r.Context(), map[string]string{settings.KeyMailQueueRetentionDays: strconv.Itoa(days)})
+	}
+	writeOSFragment(w, a.vayuOutboxBody(r.Context(), r.FormValue("domain")))
+}
+
 // vayuOutboxBody renders the outbound-queue view (counters + optional per-domain
 // filter + per-message Resend/Delete + Retry-all-failed). Returned on page load
 // and as the HTMX fragment after an action or on the auto-refresh poll.
@@ -2488,6 +2589,7 @@ func (a *App) vayuOutboxBody(ctx context.Context, filterDomain string) string {
 
 	b.WriteString(`<div class="vm-row vm-row--end">`)
 	b.WriteString(`<span class="muted text-sm vm-grow">` + itoaSafe(pending) + ` pending · ` + itoaSafe(failed) + ` failed · ` + itoaSafe(delivered) + ` delivered <span class="text-xs">(latest ` + itoaSafe(len(sent)) + `)</span></span>`)
+	b.WriteString(outboxRetentionSelect(a.vayuMail.QueueRetentionDays()))
 	b.WriteString(`<button type="button" class="btn btn--sm" hx-get="/os/vayumail/outbox/fragment?domain=` + qparam(filterDomain) + `" hx-target="#vm-outbox-body" hx-swap="innerHTML">↻ Refresh</button>`)
 	if failed > 0 {
 		b.WriteString(`<button type="button" class="btn btn--sm btn--primary" hx-post="/os/vayumail/outbox/action" hx-vals='{"action":"retry-all","domain":"` + html.EscapeString(filterDomain) + `"}' hx-target="#vm-outbox-body" hx-swap="innerHTML">Retry all failed (` + itoaSafe(failed) + `)</button>`)

@@ -54,6 +54,12 @@ type Config struct {
 	QueueMaxAttempts int
 	QueueBaseBackoff time.Duration
 
+	// QueueRetentionDays auto-clears DELIVERED outbound-queue rows older than this
+	// many days (0 = keep forever, the default). It prunes only the delivery-queue
+	// record shown in the Outbox — the Sent copy in the sender's Maildir is a
+	// separate store and is never touched. Operator-settable at runtime.
+	QueueRetentionDays int
+
 	// DeliveryTimeout bounds a single SMTP delivery attempt.
 	DeliveryTimeout time.Duration
 

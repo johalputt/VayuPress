@@ -350,6 +350,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		// Outbox: HTMX auto-refresh fragment + per-message Resend/Delete/Retry-all.
 		pr.Get("/os/vayumail/outbox/fragment", a.handleVayuOSOutboxFragment)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/outbox/action", a.handleVayuOSOutboxAction)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/outbox/retention", a.handleVayuOSOutboxRetention)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/accounts/create", a.handleVayuOSAccountCreate)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/accounts/delete", a.handleVayuOSAccountDelete)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/accounts/update", a.handleVayuOSAccountUpdate)

@@ -39,11 +39,29 @@ func (e *Engine) retentionLoop() {
 	defer ticker.Stop()
 	for {
 		e.sweepRetention(time.Now())
+		e.pruneDeliveredQueue(time.Now())
 		select {
 		case <-e.done:
 			return
 		case <-ticker.C:
 		}
+	}
+}
+
+// pruneDeliveredQueue auto-clears delivered outbound-queue rows older than the
+// operator's retention window (0 = off). The Sent Maildir copy is a separate
+// store and is never touched, so pruning the queue only trims the Outbox's
+// delivery-status log, not the sent mail itself.
+func (e *Engine) pruneDeliveredQueue(now time.Time) {
+	days := e.QueueRetentionDays()
+	if days <= 0 || e.queue == nil {
+		return
+	}
+	cutoff := now.AddDate(0, 0, -days)
+	if n, err := e.queue.PruneDelivered(context.Background(), cutoff); err != nil {
+		slog.Warn("vayumail queue retention: prune", "err", err)
+	} else if n > 0 {
+		slog.Info("vayumail queue retention: pruned delivered rows", "count", n, "olderThanDays", days)
 	}
 }
 
