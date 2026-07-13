@@ -8,6 +8,18 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.19] — 2026-07-13
+
+### Added
+- **Accounts grouped by domain.** VayuOS → Accounts now groups mailboxes under a
+  header per mail domain (the primary first, then each secondary), so a
+  multi-domain operator manages one domain's mailboxes at a time instead of one
+  mixed list. A single-domain install renders the flat list unchanged.
+
+### Notes
+- Cosmetic/admin-only; no behaviour change. The next step folds each mailbox's
+  forwarding, vacation, alias and filter controls into its own card.
+
 ## [3.13.18] — 2026-07-13
 
 ### Added

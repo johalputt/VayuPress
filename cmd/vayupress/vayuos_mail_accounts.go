@@ -5,6 +5,7 @@ import (
 	"errors"
 	"html"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -69,11 +70,53 @@ func (a *App) vayuAccountsList(ctx context.Context) string {
 		return b.String()
 	}
 
-	b.WriteString(`<div class="vm-acct-list">`)
+	// Group the mailboxes by domain (VayuDomains): the primary first, then each
+	// secondary alphabetically — so domains are managed separately, not mixed into
+	// one list. A single-domain install renders the flat list unchanged.
+	primary := strings.ToLower(strings.TrimSpace(a.vayuMail.Config().Domain))
+	groups := map[string][]vmail.Account{}
 	for _, ac := range accs {
-		b.WriteString(a.vayuAccountCard(ctx, ac))
+		d := emailDomain(ac.Email, primary)
+		groups[d] = append(groups[d], ac)
 	}
-	b.WriteString(`</div>`)
+	order := make([]string, 0, len(groups))
+	if _, ok := groups[primary]; ok && primary != "" {
+		order = append(order, primary)
+	}
+	others := make([]string, 0, len(groups))
+	for d := range groups {
+		if d != primary {
+			others = append(others, d)
+		}
+	}
+	sort.Strings(others)
+	order = append(order, others...)
+
+	if len(order) <= 1 {
+		b.WriteString(`<div class="vm-acct-list">`)
+		for _, ac := range accs {
+			b.WriteString(a.vayuAccountCard(ctx, ac))
+		}
+		b.WriteString(`</div>`)
+		return b.String()
+	}
+	for _, d := range order {
+		list := groups[d]
+		role := `<span class="badge badge--muted">secondary</span>`
+		if d == primary {
+			role = `<span class="badge badge--accent">primary</span>`
+		}
+		unit := "mailboxes"
+		if len(list) == 1 {
+			unit = "mailbox"
+		}
+		b.WriteString(`<div class="vm-acct-domain"><div class="vm-dom-head"><span class="vm-dom-name">` + html.EscapeString(d) + `</span> ` + role +
+			` <span class="vm-dom-count">` + strconv.Itoa(len(list)) + ` ` + unit + `</span></div><div class="vm-acct-list">`)
+		for _, ac := range list {
+			b.WriteString(a.vayuAccountCard(ctx, ac))
+		}
+		b.WriteString(`</div></div>`)
+	}
 	return b.String()
 }
 

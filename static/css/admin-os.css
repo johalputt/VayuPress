@@ -4535,3 +4535,7 @@
 .vp-os .vm-acct__avatar-edit { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin: var(--sp-3) 0; }
 .vp-os .vm-avatar-form { display: inline-flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; margin: 0; }
 .vp-os .vm-avatar-form input[type=file] { max-width: 220px; }
+
+/* Accounts grouped by domain (VayuDomains): a header per domain over its cards. */
+.vp-os .vm-acct-domain + .vm-acct-domain { margin-top: var(--sp-5); }
+.vp-os .vm-acct-domain > .vm-dom-head { margin-bottom: var(--sp-3); }
