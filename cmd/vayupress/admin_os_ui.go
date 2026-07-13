@@ -352,6 +352,13 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/accounts/delete", a.handleVayuOSAccountDelete)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/accounts/update", a.handleVayuOSAccountUpdate)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/accounts/totp", a.handleVayuOSAccountTOTP)
+		// Accounts redesign: HTMX list fragment + inline action swap (enable/disable,
+		// role, quota, retention, delete) so the page never full-reloads.
+		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/accounts/fragment", a.handleVayuOSAccountsFragment)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/accounts/action", a.handleVayuOSAccountsAction)
+		// Devices: GET fragment backs the self-refresh poller so a newly-registered
+		// pending device surfaces without a reload.
+		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/devices/fragment", a.handleVayuOSDevicesFragment)
 		// App passwords — device credentials for VayuMail Mobile (and any
 		// IMAP/SMTP/POP3 client). Created/revoked from the Connect tab; an admin
 		// manages any mailbox, a mailbox holder only their own (enforced in the

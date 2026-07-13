@@ -8,6 +8,33 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.5] — 2026-07-13
+
+### Changed
+- **VayuMail Accounts — enterprise HTMX redesign.** The Accounts admin section is
+  rebuilt as a modern, seamless, HTMX-driven surface: an at-a-glance stats strip
+  (mailboxes, active, 2FA, **devices pending**, storage), one **collapsible card
+  per mailbox** with a native storage meter, and every inline action (enable/
+  disable, role, quota, retention, delete) posting a fragment that swaps the list
+  in place — the page never does a full reload. The create / set-password / 2FA
+  flows refresh the same fragment via `htmx.ajax`, and their controls are bound by
+  a single delegated listener so they survive every swap.
+
+### Added
+- **Live device approval — no page refresh.** The Devices card now self-refreshes:
+  a newly-registered device surfaces as **pending approval** within seconds
+  (a hidden HTMX poller on a new `GET /os/vayumail/devices/fragment`), with a
+  prominent "N devices awaiting approval" banner and a live indicator — no more
+  reloading the whole page to see a pending device. Approve/Block/Remove already
+  swap the card in place.
+
+### Notes
+- CSP posture is unchanged: no inline styles (storage bars use the native
+  `<meter>` element), the page's single `<script>` carries the nonce, htmx.min.js
+  stays self-hosted, and the shared glue mirrors `vp_csrf` into `X-CSRF-Token` on
+  every request. Admin-only enforcement on every account/device action is
+  preserved.
+
 ## [3.13.4] — 2026-07-13
 
 ### Added

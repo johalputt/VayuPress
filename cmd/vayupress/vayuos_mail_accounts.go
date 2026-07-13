@@ -1,0 +1,306 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"html"
+	"net/http"
+	"strconv"
+	"strings"
+
+	dbpkg "github.com/johalputt/vayupress/internal/db"
+	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
+)
+
+// vayuos_mail_accounts.go — the enterprise, HTMX-driven Accounts surface.
+//
+// Every mailbox is a collapsible card; every inline action (enable/disable,
+// role, quota, retention, delete) is an HTMX POST that swaps the whole
+// #vm-accounts-list fragment in place, so the page never does a full reload.
+// The prompt-driven flows (create, set-password, 2FA enrolment) stay in
+// admin-os-mail.js but refresh the same fragment via htmx.ajax instead of
+// window.location.reload(). CSP posture is unchanged: no inline styles, the
+// page's single <script> carries the nonce, htmx.min.js is self-hosted, and the
+// shared inline glue mirrors vp_csrf into X-CSRF-Token on every hx request.
+
+const acctListHx = ` hx-target="#vm-accounts-list" hx-swap="innerHTML"`
+
+// vayuAccountsList renders the stats strip plus one collapsible card per mailbox.
+// It is the swap target for every account action and the create flow, so it is
+// always re-rendered whole — keeping the storage figures, badges and counts live.
+func (a *App) vayuAccountsList(ctx context.Context) string {
+	accts := a.vayuMail.Accounts()
+	accs, _ := accts.List(ctx)
+
+	active, twofa := 0, 0
+	var usedTotal float64
+	for _, ac := range accs {
+		if ac.Active {
+			active++
+		}
+		if ac.TOTPEnabled {
+			twofa++
+		}
+		usedTotal += float64(a.vayuMail.MailboxUsage(ac.Email)) / (1024 * 1024)
+	}
+	pending := 0
+	for _, d := range accts.ListDevices(ctx) {
+		if d.Status == vmail.DeviceStatusPending {
+			pending++
+		}
+	}
+
+	var b strings.Builder
+	// Stats strip — an at-a-glance enterprise summary that refreshes on every swap.
+	b.WriteString(`<div class="vm-stats">`)
+	b.WriteString(vmStatTile(strconv.Itoa(len(accs)), "Mailboxes", ""))
+	b.WriteString(vmStatTile(strconv.Itoa(active), "Active", ""))
+	b.WriteString(vmStatTile(strconv.Itoa(twofa), "2FA on", ""))
+	pendCls := ""
+	if pending > 0 {
+		pendCls = "warn"
+	}
+	b.WriteString(vmStatTile(strconv.Itoa(pending), "Devices pending", pendCls))
+	b.WriteString(vmStatTile(strconv.FormatFloat(usedTotal, 'f', 1, 64)+" MB", "Storage used", ""))
+	b.WriteString(`</div>`)
+
+	if len(accs) == 0 {
+		b.WriteString(`<div class="card empty-state">No mail accounts yet. Create one above — it can sign in over SMTP/IMAP/POP3 straight away.</div>`)
+		return b.String()
+	}
+
+	b.WriteString(`<div class="vm-acct-list">`)
+	for _, ac := range accs {
+		b.WriteString(a.vayuAccountCard(ctx, ac))
+	}
+	b.WriteString(`</div>`)
+	return b.String()
+}
+
+// vmStatTile renders one summary tile. tone "" is neutral, "warn" highlights a
+// value that wants operator attention (e.g. devices awaiting approval).
+func vmStatTile(value, label, tone string) string {
+	cls := "vm-stat"
+	if tone != "" {
+		cls += " vm-stat--" + tone
+	}
+	return `<div class="` + cls + `"><span class="vm-stat__v">` + html.EscapeString(value) +
+		`</span><span class="vm-stat__l">` + html.EscapeString(label) + `</span></div>`
+}
+
+// vayuAccountCard renders one mailbox as a collapsible <details> card: a scannable
+// summary (address, role, status, 2FA, storage) with every control revealed on
+// expand. Inline controls are HTMX; the prompt-driven ones keep their data-*
+// hooks for admin-os-mail.js.
+func (a *App) vayuAccountCard(ctx context.Context, ac vmail.Account) string {
+	esc := html.EscapeString
+	email := esc(ac.Email)
+	initial := "?"
+	if t := strings.TrimSpace(ac.Email); t != "" {
+		initial = strings.ToUpper(t[:1])
+	}
+
+	// Badges for the summary line.
+	roleName := ac.Role
+	if roleName == "" {
+		roleName = "mailbox"
+	}
+	statusBadge := `<span class="badge badge--ok">active</span>`
+	if !ac.Active {
+		statusBadge = `<span class="badge badge--warn">disabled</span>`
+	}
+	twofaBadge := `<span class="badge badge--muted">2FA off</span>`
+	if ac.TOTPEnabled {
+		twofaBadge = `<span class="badge badge--ok">2FA on</span>`
+	}
+
+	// Storage: a native <meter> (CSP-safe, no inline style, survives HTMX swaps)
+	// when a quota is set; plain used-MB text when unlimited.
+	usedMB := float64(a.vayuMail.MailboxUsage(ac.Email)) / (1024 * 1024)
+	quotaMB := int64(0)
+	if ac.QuotaBytes > 0 {
+		quotaMB = ac.QuotaBytes / (1024 * 1024)
+	}
+	usedStr := strconv.FormatFloat(usedMB, 'f', 1, 64)
+	var storageSummary string
+	if quotaMB > 0 {
+		storageSummary = `<meter class="vm-meter" min="0" max="` + strconv.FormatInt(quotaMB, 10) + `" value="` +
+			usedStr + `" title="` + usedStr + ` of ` + strconv.FormatInt(quotaMB, 10) + ` MB"></meter>` +
+			`<span class="vm-acct__usage muted text-sm">` + usedStr + `/` + strconv.FormatInt(quotaMB, 10) + ` MB</span>`
+	} else {
+		storageSummary = `<span class="vm-acct__usage muted text-sm">` + usedStr + ` MB · no limit</span>`
+	}
+
+	// Role select (HTMX on change).
+	roleSel := `<select class="input input--sm" name="role" hx-post="/os/vayumail/accounts/action"` +
+		hxVals("op", "role", "email", ac.Email) + ` hx-trigger="change"` + acctListHx + ` aria-label="Role">`
+	for _, rr := range vmail.BuiltinRoles {
+		sel := ""
+		if strings.EqualFold(rr, ac.Role) {
+			sel = " selected"
+		}
+		roleSel += `<option value="` + rr + `"` + sel + `>` + strings.ToUpper(rr[:1]) + rr[1:] + `</option>`
+	}
+	if ac.Role != "" && !vmail.IsBuiltinRole(ac.Role) {
+		roleSel += `<option value="` + esc(ac.Role) + `" selected>` + esc(ac.Role) + `</option>`
+	}
+	roleSel += `</select>`
+
+	// Retention select (HTMX on change).
+	retDays := a.vayuMail.Accounts().RetentionDays(ctx, ac.Email)
+	retSel := `<select class="input input--sm" name="retention_days" hx-post="/os/vayumail/accounts/action"` +
+		hxVals("op", "retention", "email", ac.Email) + ` hx-trigger="change"` + acctListHx + ` aria-label="Auto-delete read mail">`
+	for _, opt := range []struct {
+		Days  int
+		Label string
+	}{{0, "Off"}, {30, "30 days"}, {90, "90 days"}, {180, "180 days"}, {365, "1 year"}} {
+		sel := ""
+		if retDays == opt.Days {
+			sel = " selected"
+		}
+		retSel += `<option value="` + strconv.Itoa(opt.Days) + `"` + sel + `>` + opt.Label + `</option>`
+	}
+	retSel += `</select>`
+
+	// Quota input + Save (HTMX; the button includes the sibling input).
+	quotaID := "vm-q-" + esc(ac.Email)
+	quotaField := `<input class="input input--sm vm-quota-input" id="` + quotaID + `" type="number" min="0" step="1" name="quota_mb" value="` +
+		strconv.FormatInt(quotaMB, 10) + `" aria-label="Quota in MB (0 = unlimited)">` +
+		`<button type="button" class="btn btn--sm" hx-post="/os/vayumail/accounts/action"` +
+		hxVals("op", "quota", "email", ac.Email) + ` hx-include="#` + quotaID + `"` + acctListHx + `>Save</button>`
+
+	// Enable/disable toggle + delete (HTMX).
+	toggleLabel, toggleTo := "Disable", "false"
+	if !ac.Active {
+		toggleLabel, toggleTo = "Enable", "true"
+	}
+	toggleBtn := `<button type="button" class="btn btn--sm" hx-post="/os/vayumail/accounts/action"` +
+		hxVals("op", "toggle", "email", ac.Email, "active", toggleTo) + acctListHx + `>` + toggleLabel + `</button>`
+	deleteBtn := `<button type="button" class="btn btn--sm btn--danger" hx-post="/os/vayumail/accounts/action"` +
+		hxVals("op", "delete", "email", ac.Email) + acctListHx +
+		` hx-confirm="Delete ` + email + `? Its mailbox and all stored mail are removed permanently.">Delete</button>`
+
+	// Prompt-driven controls stay in admin-os-mail.js (they need a dialog), but the
+	// page no longer reloads — their JS refreshes #vm-accounts-list via htmx.ajax.
+	passBtn := `<button type="button" class="btn btn--sm" data-acct-pass="` + email + `">Set password</button>`
+	twofaBtn := `<button type="button" class="btn btn--sm" data-acct-2fa-enable="` + email + `">Enable 2FA</button>`
+	if ac.TOTPEnabled {
+		twofaBtn = `<button type="button" class="btn btn--sm" data-acct-2fa-disable="` + email + `">Disable 2FA</button>`
+	}
+
+	var c strings.Builder
+	c.WriteString(`<details class="vm-acct card">`)
+	c.WriteString(`<summary class="vm-acct__sum">`)
+	c.WriteString(`<span class="vm-acct__avatar" aria-hidden="true">` + esc(initial) + `</span>`)
+	c.WriteString(`<span class="vm-acct__id"><span class="vm-acct__email mono">` + email + `</span>`)
+	if strings.TrimSpace(ac.FullName) != "" {
+		c.WriteString(`<span class="vm-acct__name muted text-sm">` + esc(ac.FullName) + `</span>`)
+	}
+	c.WriteString(`</span>`)
+	c.WriteString(`<span class="vm-acct__badges"><span class="badge badge--info">` + esc(roleName) + `</span>` + statusBadge + twofaBadge + `</span>`)
+	c.WriteString(`<span class="vm-acct__store">` + storageSummary + `</span>`)
+	c.WriteString(`<span class="vm-acct__chev" aria-hidden="true"></span>`)
+	c.WriteString(`</summary>`)
+
+	c.WriteString(`<div class="vm-acct__body">`)
+	c.WriteString(`<div class="vm-acct__grid">`)
+	c.WriteString(`<label class="field"><span class="field-label">Role</span>` + roleSel + `</label>`)
+	c.WriteString(`<label class="field"><span class="field-label">Auto-delete read mail</span>` + retSel + `</label>`)
+	c.WriteString(`<label class="field"><span class="field-label">Quota (MB, 0 = unlimited)</span><span class="vm-row">` + quotaField + `</span></label>`)
+	c.WriteString(`</div>`)
+	c.WriteString(`<div class="vm-acct__meta muted text-sm">Created ` + ac.CreatedAt.Format("2006-01-02") + `</div>`)
+	c.WriteString(`<div class="vm-acct__actions">` + passBtn + twofaBtn + toggleBtn + deleteBtn + `</div>`)
+	c.WriteString(`</div>`)
+	c.WriteString(`</details>`)
+	return c.String()
+}
+
+// handleVayuOSAccountsFragment returns the accounts list fragment (HTMX swap
+// target). Admin-only; used by the create/2FA/set-password JS flows to refresh
+// the list without a full page reload.
+func (a *App) handleVayuOSAccountsFragment(w http.ResponseWriter, r *http.Request) {
+	if a.vayuMail == nil || !a.vayuMail.Config().Enabled || a.vayuMail.Accounts() == nil {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", "VayuMail is not active", "")
+		return
+	}
+	if !a.isAdminRequest(r) {
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", "administrators only", "")
+		return
+	}
+	writeOSHTML(w, a.vayuAccountsList(r.Context()))
+}
+
+// handleVayuOSAccountsAction applies one inline account action (toggle / role /
+// quota / retention / delete) and returns the refreshed list fragment (HTMX
+// swap). Admin-only, CSRF-protected. The prompt-driven mutations (password, 2FA,
+// create) keep their dedicated JSON endpoints.
+func (a *App) handleVayuOSAccountsAction(w http.ResponseWriter, r *http.Request) {
+	if a.vayuMail == nil || !a.vayuMail.Config().Enabled || a.vayuMail.Accounts() == nil {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", "VayuMail is not active", "")
+		return
+	}
+	if !a.isAdminRequest(r) {
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", "administrators only", "")
+		return
+	}
+	_ = r.ParseForm()
+	accts := a.vayuMail.Accounts()
+	email := strings.ToLower(strings.TrimSpace(r.FormValue("email")))
+	op := r.FormValue("op")
+	var opErr error
+	switch op {
+	case "toggle":
+		active := r.FormValue("active") == "true"
+		if opErr = accts.SetActive(r.Context(), email, active); opErr == nil {
+			state := "disabled"
+			if active {
+				state = "enabled"
+			}
+			dbpkg.AuditLog("vayumail.account.active", dbpkg.AuditActor(r), email, state)
+		}
+	case "role":
+		role := strings.TrimSpace(r.FormValue("role"))
+		if opErr = accts.SetRole(r.Context(), email, role); opErr == nil {
+			dbpkg.AuditLog("vayumail.account.role", dbpkg.AuditActor(r), email, role)
+		}
+	case "quota":
+		mb, _ := strconv.ParseFloat(strings.TrimSpace(r.FormValue("quota_mb")), 64)
+		bytes := int64(mb * 1024 * 1024)
+		if bytes < 0 {
+			bytes = 0
+		}
+		opErr = accts.SetQuota(r.Context(), email, bytes)
+	case "retention":
+		days, _ := strconv.Atoi(strings.TrimSpace(r.FormValue("retention_days")))
+		if opErr = accts.SetRetentionDays(r.Context(), email, days); opErr == nil {
+			dbpkg.AuditLog("vayumail.retention.set", dbpkg.AuditActor(r), email, strconv.Itoa(days)+" days")
+		}
+	case "delete":
+		if opErr = accts.Delete(r.Context(), email); opErr == nil {
+			dbpkg.AuditLog("vayumail.account.delete", dbpkg.AuditActor(r), email, "")
+		}
+	default:
+		opErr = errors.New("unknown operation")
+	}
+
+	list := a.vayuAccountsList(r.Context())
+	if opErr != nil {
+		list = `<div class="empty-state" role="alert">⚠ ` + html.EscapeString(opErr.Error()) + `</div>` + list
+	}
+	writeOSHTML(w, list)
+}
+
+// handleVayuOSDevicesFragment returns the Devices card fragment. It backs the
+// poller inside #vm-device-card so a newly-registered pending device surfaces
+// within seconds — no full-page refresh (VayuMail Accounts redesign). Admin-only.
+func (a *App) handleVayuOSDevicesFragment(w http.ResponseWriter, r *http.Request) {
+	if a.vayuMail == nil || !a.vayuMail.Config().Enabled || a.vayuMail.Accounts() == nil {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", "VayuMail is not active", "")
+		return
+	}
+	if !a.isAdminRequest(r) {
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", "administrators only", "")
+		return
+	}
+	writeOSHTML(w, a.vayuDevicesCard(r.Context()))
+}

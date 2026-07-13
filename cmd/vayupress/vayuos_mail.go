@@ -750,7 +750,6 @@ func (a *App) handleVayuOSAccounts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	domain := a.vayuMail.Config().Domain
-	accs, _ := a.vayuMail.Accounts().List(r.Context())
 
 	// VayuDomains Stage 3b: when a mail_enabled secondary domain exists, let the
 	// operator choose which domain a new mailbox belongs to (each domain has its
@@ -793,76 +792,15 @@ func (a *App) handleVayuOSAccounts(w http.ResponseWriter, r *http.Request) {
   <span class="muted text-sm" data-a-status></span>
 </form></div>`)
 
-	// Existing accounts.
-	body.WriteString(`<div class="card"><div class="card-title">Accounts</div><div class="table-wrap"><table class="table"><thead><tr><th>Email</th><th>Name</th><th>Role</th><th>Storage (used / quota MB)</th><th>Auto-delete read</th><th>Status</th><th>2FA</th><th>Created</th><th></th></tr></thead><tbody>`)
-	if len(accs) == 0 {
-		body.WriteString(`<tr><td colspan="8" class="muted">No mail accounts yet.</td></tr>`)
-	}
-	for _, ac := range accs {
-		status := `<span class="badge badge--ok">active</span>`
-		toggleLabel := "Disable"
-		toggleActive := "false"
-		if !ac.Active {
-			status = `<span class="badge badge--warn">disabled</span>`
-			toggleLabel = "Enable"
-			toggleActive = "true"
-		}
-		roleSel := `<select class="input input--sm" data-acct-role="` + html.EscapeString(ac.Email) + `">`
-		for _, rr := range vmail.BuiltinRoles {
-			sel := ""
-			if strings.EqualFold(rr, ac.Role) {
-				sel = " selected"
-			}
-			label := strings.ToUpper(rr[:1]) + rr[1:]
-			roleSel += `<option value="` + rr + `"` + sel + `>` + label + `</option>`
-		}
-		// Preserve a custom (non-builtin) role as a selected option.
-		if ac.Role != "" && !vmail.IsBuiltinRole(ac.Role) {
-			roleSel += `<option value="` + html.EscapeString(ac.Role) + `" selected>` + html.EscapeString(ac.Role) + `</option>`
-		}
-		roleSel += `</select>`
-		// 2FA status badge + enrol/disable control.
-		twofa := `<span class="badge badge--warn">off</span>`
-		twofaBtn := `<button class="btn" data-acct-2fa-enable="` + html.EscapeString(ac.Email) + `">Enable 2FA</button>`
-		if ac.TOTPEnabled {
-			twofa = `<span class="badge badge--ok">on</span>`
-			twofaBtn = `<button class="btn" data-acct-2fa-disable="` + html.EscapeString(ac.Email) + `">Disable 2FA</button>`
-		}
-		// Storage: live usage vs the editable quota (MB; 0 = unlimited).
-		usedMB := float64(a.vayuMail.MailboxUsage(ac.Email)) / (1024 * 1024)
-		quotaMB := int64(0)
-		if ac.QuotaBytes > 0 {
-			quotaMB = ac.QuotaBytes / (1024 * 1024)
-		}
-		storage := `<span class="muted text-sm">` + strconv.FormatFloat(usedMB, 'f', 1, 64) + ` / </span>` +
-			`<input class="input input--sm vm-quota-input" type="number" min="0" step="1" value="` + strconv.FormatInt(quotaMB, 10) + `" data-acct-quota="` + html.EscapeString(ac.Email) + `" aria-label="Quota in MB (0 = unlimited)">` +
-			`<button class="btn btn--sm" data-acct-quota-save="` + html.EscapeString(ac.Email) + `">Save</button>`
-		// Retention (ADR-0130): auto-delete read mail N days after it was
-		// read. Pinned mail, Archive, Sent, Drafts and Snoozed are exempt;
-		// deletion is permanent.
-		retDays := a.vayuMail.Accounts().RetentionDays(r.Context(), ac.Email)
-		retention := `<select class="input input--sm" data-acct-retention="` + html.EscapeString(ac.Email) + `" aria-label="Auto-delete read mail">`
-		for _, opt := range []struct {
-			Days  int
-			Label string
-		}{{0, "Off"}, {30, "30 days"}, {90, "90 days"}, {180, "180 days"}, {365, "1 year"}} {
-			sel := ""
-			if retDays == opt.Days {
-				sel = ` selected`
-			}
-			retention += `<option value="` + strconv.Itoa(opt.Days) + `"` + sel + `>` + opt.Label + `</option>`
-		}
-		retention += `</select>`
-		body.WriteString(`<tr><td>` + html.EscapeString(ac.Email) + `</td><td>` + html.EscapeString(ac.FullName) + `</td><td>` + roleSel + `</td><td class="vm-row">` + storage + `</td><td>` + retention + `</td><td>` + status + `</td><td>` + twofa + `</td><td class="muted text-sm">` + ac.CreatedAt.Format("2006-01-02") + `</td><td class="vm-row">` +
-			`<button class="btn" data-acct-pass="` + html.EscapeString(ac.Email) + `">Set password</button>` +
-			twofaBtn +
-			`<button class="btn" data-acct-toggle="` + html.EscapeString(ac.Email) + `" data-active="` + toggleActive + `">` + toggleLabel + `</button>` +
-			`<button class="btn btn--danger" data-acct-delete="` + html.EscapeString(ac.Email) + `">Delete</button></td></tr>`)
-	}
-	body.WriteString(`</tbody></table></div></div>`)
+	// Existing accounts — a live, HTMX-swappable list of collapsible mailbox cards
+	// (VayuMail Accounts redesign). Every inline action swaps this fragment in
+	// place, and the create / 2FA / set-password flows refresh it via htmx.ajax, so
+	// the page never does a full reload.
+	body.WriteString(`<div id="vm-accounts-list">` + a.vayuAccountsList(r.Context()) + `</div>`)
 
 	// Devices — approval-gated sync credentials (ADR-0129): pending devices
-	// need an explicit Approve here before any mail syncs to them.
+	// need an explicit Approve here before any mail syncs to them. The card polls
+	// itself so a newly-registered pending device surfaces without a page reload.
 	body.WriteString(`<div id="vm-device-card">` + a.vayuDevicesCard(r.Context()) + `</div>`)
 
 	// Aliases & auto-forwarding — an HTMX card that swaps in place on every
@@ -2094,8 +2032,26 @@ func (a *App) vayuDevicesCard(ctx context.Context) string {
 	devices := accts.ListDevices(ctx)
 
 	post := ` hx-post="/os/vayumail/devices/action" hx-target="#vm-device-card" hx-swap="innerHTML"`
+	// Count pending devices so the card can flag work at a glance.
+	pending := 0
+	for _, d := range devices {
+		if d.Status == vmail.DeviceStatusPending {
+			pending++
+		}
+	}
 	var b strings.Builder
-	b.WriteString(`<div class="card"><div class="card-title">Devices</div>`)
+	b.WriteString(`<div class="card"><div class="vm-card-head"><div class="card-title">Devices</div><span class="vm-live" title="Updates automatically">● live</span></div>`)
+	// Self-refresh: a hidden poller re-fetches this card so a device that registers
+	// out-of-band (from the mobile app) surfaces as "pending approval" within
+	// seconds — no full-page reload (the redesign's headline fix).
+	b.WriteString(`<div class="vm-poller" aria-hidden="true" hx-get="/os/vayumail/devices/fragment" hx-trigger="every 15s" hx-target="#vm-device-card" hx-swap="innerHTML"></div>`)
+	if pending > 0 {
+		noun := "device is"
+		if pending > 1 {
+			noun = "devices are"
+		}
+		b.WriteString(`<div class="vm-attention" role="status"><strong>` + strconv.Itoa(pending) + `</strong> ` + noun + ` awaiting approval — review and Approve or Block below.</div>`)
+	}
 	b.WriteString(`<p class="text-sm">A <strong>new device</strong> that signs into VayuMail registers itself here and starts <strong>pending</strong>: it cannot sync any mail — even with the correct password — until you approve it. With approval required, the mailbox password alone never syncs mail over IMAP/POP3/SMTP, so a stolen password is useless to an attacker's device.</p>`)
 
 	// Registered devices — pending first (they need action).

@@ -4282,3 +4282,117 @@
   padding: .2rem .5rem; max-width: 100%;
 }
 .vp-os .vtalk-as:focus { outline: none; border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-dim); }
+
+/* ============================================================================
+   VayuMail — Accounts section (enterprise HTMX redesign)
+   Collapsible mailbox cards, stat strip, native <meter> storage, device
+   live-refresh. All rules scoped under .vp-os; no inline styles (CSP-safe).
+   ============================================================================ */
+
+/* Stat strip — at-a-glance summary above the mailbox list. */
+.vp-os .vm-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-5);
+}
+.vp-os .vm-stat {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: var(--sp-4) var(--sp-4);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  box-shadow: var(--sh-sm);
+}
+.vp-os .vm-stat__v { font-family: var(--font-head); font-size: var(--text-2xl); font-weight: 700; color: var(--text); line-height: 1.1; }
+.vp-os .vm-stat__l { font-size: var(--text-xs); color: var(--text-3); text-transform: uppercase; letter-spacing: .04em; }
+.vp-os .vm-stat--warn { border-color: var(--warn); background: var(--warn-dim); }
+.vp-os .vm-stat--warn .vm-stat__v { color: var(--warn); }
+
+/* Collapsible mailbox cards. */
+.vp-os .vm-acct-list { display: flex; flex-direction: column; gap: var(--sp-3); }
+.vp-os .vm-acct {
+  padding: 0;
+  overflow: hidden;
+  transition: border-color var(--t), box-shadow var(--t);
+}
+.vp-os .vm-acct[open] { border-color: var(--border-strong); box-shadow: var(--sh); }
+.vp-os .vm-acct__sum {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-4) var(--sp-5);
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.vp-os .vm-acct__sum::-webkit-details-marker { display: none; }
+.vp-os .vm-acct__sum:hover { background: var(--bg-surface-2); }
+.vp-os .vm-acct__avatar {
+  flex: 0 0 auto;
+  width: 34px; height: 34px;
+  border-radius: var(--r-full);
+  background: var(--brand-dim);
+  color: var(--brand);
+  display: grid; place-items: center;
+  font-weight: 700; font-size: var(--text-base);
+}
+.vp-os .vm-acct__id { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; }
+.vp-os .vm-acct__email { font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vp-os .vm-acct__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vp-os .vm-acct__badges { display: flex; gap: var(--sp-2); align-items: center; flex-wrap: wrap; }
+.vp-os .vm-acct__store { display: flex; align-items: center; gap: var(--sp-2); flex: 0 0 auto; }
+.vp-os .vm-acct__chev {
+  flex: 0 0 auto;
+  width: 0; height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 6px solid var(--text-3);
+  transition: transform var(--t);
+}
+.vp-os .vm-acct[open] .vm-acct__chev { transform: rotate(180deg); }
+
+/* Native storage meter — no inline style, survives HTMX swaps. */
+.vp-os .vm-meter { width: 84px; height: 8px; border-radius: var(--r-full); background: var(--bg-surface-3); border: none; }
+.vp-os .vm-meter::-webkit-meter-bar { background: var(--bg-surface-3); border-radius: var(--r-full); border: none; }
+.vp-os .vm-meter::-webkit-meter-optimum-value { background: var(--brand); border-radius: var(--r-full); }
+.vp-os .vm-meter::-webkit-meter-suboptimum-value { background: var(--warn); border-radius: var(--r-full); }
+.vp-os .vm-meter::-webkit-meter-even-less-good-value { background: var(--danger); border-radius: var(--r-full); }
+.vp-os .vm-meter:-moz-meter-optimum::-moz-meter-bar { background: var(--brand); }
+
+/* Expanded card body. */
+.vp-os .vm-acct__body {
+  padding: var(--sp-4) var(--sp-5) var(--sp-5);
+  border-top: 1px solid var(--border);
+  background: var(--bg-surface-2);
+}
+.vp-os .vm-acct__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--sp-4);
+  margin-bottom: var(--sp-4);
+}
+.vp-os .vm-acct__meta { margin-bottom: var(--sp-3); }
+.vp-os .vm-acct__actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+
+/* Device card: live indicator + pending-attention banner. */
+.vp-os .vm-card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--sp-4); }
+.vp-os .vm-card-head .card-title { margin-bottom: 0; }
+.vp-os .vm-live { font-size: var(--text-xs); color: var(--ok); display: inline-flex; align-items: center; gap: 4px; }
+.vp-os .vm-attention {
+  background: var(--warn-dim);
+  border: 1px solid var(--warn);
+  color: var(--text);
+  border-radius: var(--r-md);
+  padding: var(--sp-3) var(--sp-4);
+  margin-bottom: var(--sp-4);
+  font-size: var(--text-sm);
+}
+.vp-os .vm-poller { display: none; }
+
+@media (max-width: 640px) {
+  .vp-os .vm-acct__store { display: none; }
+  .vp-os .vm-acct__badges { flex: 1 1 100%; }
+}
