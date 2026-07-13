@@ -8,6 +8,19 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.15] — 2026-07-13
+
+### Fixed
+- **Sending to a `Name <email>` recipient no longer fails delivery.** Composing
+  (or replying) to a display-name address such as `VayuPress Hello
+  <hello@vayupress.com>` kept the angle bracket, so the recipient domain became
+  `vayupress.com>` and outbound delivery failed with `dial tcp: lookup
+  vayupress.com>: no such host`. The recipient list is now parsed with
+  `net/mail` (both the send and the save-draft paths), extracting the bare
+  address. As a bonus this also lets a reply to a **local secondary-domain
+  mailbox** (e.g. `hello@vayupress.com`) deliver straight into its Maildir
+  instead of being attempted over external MX.
+
 ## [3.13.14] — 2026-07-13
 
 ### Security

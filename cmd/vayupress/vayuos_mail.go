@@ -346,6 +346,45 @@ func insertSignature(body, sig string) string {
 	return strings.TrimRight(body, "\r\n") + block
 }
 
+// parseRecipientList extracts the bare email addresses from a recipient string
+// that may hold "Name <email>" forms and/or bare addresses, comma-separated. It
+// strips the display name and angle brackets so a recipient like
+// `VayuPress Hello <hello@vayupress.com>` is delivered to hello@vayupress.com
+// (and recognised as a local mailbox) instead of to a malformed `vayupress.com>`
+// host — the cause of the "no such host" failures when replying to a display-name
+// address. A token that cannot be parsed is kept verbatim so the operator still
+// sees it (and gets a clear downstream error) rather than having it dropped.
+func parseRecipientList(s string) []string {
+	if strings.TrimSpace(s) == "" {
+		return nil
+	}
+	// ParseAddressList handles quoted commas inside display names; when the whole
+	// list parses, use the extracted bare addresses.
+	if list, err := netmail.ParseAddressList(s); err == nil {
+		out := make([]string, 0, len(list))
+		for _, a := range list {
+			if addr := strings.TrimSpace(a.Address); addr != "" {
+				out = append(out, addr)
+			}
+		}
+		return out
+	}
+	// One malformed token fails the whole list, so fall back to per-token parsing.
+	var out []string
+	for _, t := range strings.Split(s, ",") {
+		t = strings.TrimSpace(t)
+		if t == "" {
+			continue
+		}
+		if a, err := netmail.ParseAddress(t); err == nil && strings.TrimSpace(a.Address) != "" {
+			out = append(out, strings.TrimSpace(a.Address))
+		} else {
+			out = append(out, t) // keep the raw token; the engine reports the error
+		}
+	}
+	return out
+}
+
 func (a *App) handleVayuOSSend(w http.ResponseWriter, r *http.Request) {
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", "VayuMail is not active", "")
@@ -432,15 +471,7 @@ func (a *App) handleVayuOSSend(w http.ResponseWriter, r *http.Request) {
 		}
 		from = ownEmail
 	}
-	splitAddrs := func(s string) []string {
-		var out []string
-		for _, t := range strings.Split(s, ",") {
-			if t = strings.TrimSpace(t); t != "" {
-				out = append(out, t)
-			}
-		}
-		return out
-	}
+	splitAddrs := parseRecipientList
 	to := splitAddrs(in.To)
 	cc := splitAddrs(in.CC)
 	bcc := splitAddrs(in.BCC)
@@ -524,12 +555,7 @@ func (a *App) handleVayuOSDraft(w http.ResponseWriter, r *http.Request) {
 		}
 		from = ownEmail
 	}
-	var to []string
-	for _, t := range strings.Split(in.To, ",") {
-		if t = strings.TrimSpace(t); t != "" {
-			to = append(to, t)
-		}
-	}
+	to := parseRecipientList(in.To)
 	// Saving a draft files it into the Drafts folder, so refuse when full.
 	if a.vayuMail.MailboxOverQuota(from) {
 		writeAPIError(w, r, 400, "over-quota", "Your mailbox is full (storage quota reached). Delete some mail or ask an administrator to raise your quota.", "")
