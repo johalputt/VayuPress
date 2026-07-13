@@ -74,6 +74,18 @@ func (a *App) multiDomain(r *http.Request) bool {
 	return a.domains != nil && a.domains.HasSecondaries(r.Context())
 }
 
+// memberScope returns the VayuDomains scope a new member signup should be
+// attributed to: the active domain when a secondary domain is registered
+// (multiDomain), or "" (the primary) otherwise — so a single-domain install is
+// byte-identical. Login lookups stay keyed by the globally-unique email, so this
+// scope only governs signup attribution and per-domain counts (Stage 4).
+func (a *App) memberScope(r *http.Request) string {
+	if a.multiDomain(r) {
+		return a.contentScope(r)
+	}
+	return ""
+}
+
 // acceptsSecondaryMailDomain reports whether host is a registered, active,
 // mail_enabled *secondary* domain (VayuDomains Stage 3b). The primary mail domain
 // is handled separately by the mail engine's cfg.Domain checks; this covers only

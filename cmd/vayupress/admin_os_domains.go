@@ -84,6 +84,15 @@ func (a *App) handleOSDomains(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Per-domain member counts (VayuDomains Stage 4 — member attribution). Keyed by
+	// the registry domain id ("" = primary), like the article counts.
+	memberCounts := map[string]int{}
+	if a.members != nil {
+		if c, err := a.members.CountsByDomain(r.Context()); err == nil {
+			memberCounts = c
+		}
+	}
+
 	// The host the operator is currently browsing from — surfaced so it is
 	// obvious which registered domain served this very page.
 	viewingHost := ""
@@ -92,7 +101,7 @@ func (a *App) handleOSDomains(w http.ResponseWriter, r *http.Request) {
 	}
 
 	body := domainsHeader(len(domains), viewingHost) +
-		domainsTable(domains, counts, mailCounts, mailOn) +
+		domainsTable(domains, counts, mailCounts, memberCounts, mailOn) +
 		domainsAssignForm(domains) +
 		domainsAddForm() +
 		domainsScript(nonce)
@@ -119,7 +128,7 @@ func domainsHeader(n int, viewingHost string) string {
 <div class="card card--info"><p class="text-sm">VayuDomains is rolling out in stages. The registry drives <strong>host resolution</strong>, and <strong>per-domain content</strong> (homepage, articles, tags, feeds, sitemap and search) is live — each domain serves only its own posts. <strong>Per-domain mail</strong> is being staged: this page now shows each domain's mail status and mailbox count, with isolated per-domain delivery and branded mail arriving next. Adding a domain registers it — point its DNS at this server and provision TLS before it serves traffic.</p></div>`
 }
 
-func domainsTable(domains []domain.Domain, counts, mailCounts map[string]int, mailOn bool) string {
+func domainsTable(domains []domain.Domain, counts, mailCounts, memberCounts map[string]int, mailOn bool) string {
 	if len(domains) == 0 {
 		return `<div class="card empty"><div class="empty-title">No domains registered yet</div>
 <div class="empty-sub">The primary domain is seeded automatically once DOMAIN is configured. Add a secondary domain below.</div></div>`
@@ -146,6 +155,9 @@ func domainsTable(domains []domain.Domain, counts, mailCounts map[string]int, ma
 			key = ""
 		}
 		content := strconv.Itoa(counts[key]) + " posts"
+		// Members attributed to this domain (VayuDomains Stage 4). Keyed the same
+		// way as content: the primary owns the "" bucket.
+		members := strconv.Itoa(memberCounts[key]) + " members"
 
 		// Actions: the primary row is read-only here (managed from Website
 		// settings); secondary rows can be toggled and removed.
@@ -165,6 +177,7 @@ func domainsTable(domains []domain.Domain, counts, mailCounts map[string]int, ma
   <td><strong>` + html.EscapeString(d.Host) + `</strong>` + badge + `</td>
   <td>` + html.EscapeString(siteTypeLabel(d.EffectiveSiteType())) + `</td>
   <td class="text-xs muted">` + content + `</td>
+  <td class="text-xs muted">` + members + `</td>
   <td>` + mail + `</td>
   <td>` + tls + `</td>
   <td>` + statusPill + `</td>
@@ -172,7 +185,7 @@ func domainsTable(domains []domain.Domain, counts, mailCounts map[string]int, ma
 </tr>`)
 	}
 	return `<div class="card"><div class="table-wrap"><table class="table">
-  <thead><tr><th>Host</th><th>Serves</th><th>Content</th><th>Mail</th><th>TLS</th><th>Status</th><th></th></tr></thead>
+  <thead><tr><th>Host</th><th>Serves</th><th>Content</th><th>Members</th><th>Mail</th><th>TLS</th><th>Status</th><th></th></tr></thead>
   <tbody>` + rows.String() + `</tbody>
 </table></div></div>`
 }

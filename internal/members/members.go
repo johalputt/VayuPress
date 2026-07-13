@@ -61,6 +61,10 @@ type Member struct {
 	City            string     `json:"city,omitempty"`
 	LastSeenAt      *time.Time `json:"last_seen_at,omitempty"`
 	CreatedAt       time.Time  `json:"created_at"`
+	// DomainID is the VayuDomains attribution: which domain this member signed up
+	// on ("" = the primary / unassigned bucket). Login stays keyed by the globally
+	// unique email, so this is a reporting dimension, not a read filter (Stage 4).
+	DomainID string `json:"domain_id,omitempty"`
 }
 
 // IsPaid reports whether the member has an active paying membership. Any active
@@ -92,7 +96,7 @@ type Store struct{ db *sql.DB }
 func New(db *sql.DB) *Store { return &Store{db: db} }
 
 // memberCols is the canonical SELECT column list for scanning into a Member.
-const memberCols = `id,email,name,note,tier,status,newsletter_opt_in,reply_notify,stripe_customer,last_seen_at,created_at,country,region,city`
+const memberCols = `id,email,name,note,tier,status,newsletter_opt_in,reply_notify,stripe_customer,last_seen_at,created_at,country,region,city,domain_id`
 
 // scanner is satisfied by both *sql.Row and *sql.Rows.
 type scanner interface {
@@ -105,7 +109,7 @@ func scanMember(sc scanner) (*Member, error) {
 	var note, stripe string
 	var optIn, replyNotify int
 	var lastSeen sql.NullTime
-	if err := sc.Scan(&m.ID, &m.Email, &m.Name, &note, &m.Tier, &m.Status, &optIn, &replyNotify, &stripe, &lastSeen, &m.CreatedAt, &m.Country, &m.Region, &m.City); err != nil {
+	if err := sc.Scan(&m.ID, &m.Email, &m.Name, &note, &m.Tier, &m.Status, &optIn, &replyNotify, &stripe, &lastSeen, &m.CreatedAt, &m.Country, &m.Region, &m.City, &m.DomainID); err != nil {
 		return nil, err
 	}
 	m.Note = note
@@ -119,8 +123,17 @@ func scanMember(sc scanner) (*Member, error) {
 	return &m, nil
 }
 
-// Upsert ensures a member row exists for email and returns it.
+// Upsert ensures a member row exists for email and returns it (primary domain).
 func (s *Store) Upsert(ctx context.Context, email string) (*Member, error) {
+	return s.UpsertScoped(ctx, "", email)
+}
+
+// UpsertScoped ensures a member row exists for email and returns it, attributing
+// a brand-new signup to the given domain scope (VayuDomains Stage 4: "" = the
+// primary domain, byte-identical; a secondary domain id records where the member
+// signed up). An existing member keeps its original domain — email is globally
+// unique, so a member is a single entity found by email regardless of scope.
+func (s *Store) UpsertScoped(ctx context.Context, scope, email string) (*Member, error) {
 	email = strings.TrimSpace(strings.ToLower(email))
 	if _, err := mail.ParseAddress(email); err != nil {
 		return nil, fmt.Errorf("invalid email: %w", err)
@@ -130,11 +143,33 @@ func (s *Store) Upsert(ctx context.Context, email string) (*Member, error) {
 	}
 	id := randHex(12)
 	if _, err := s.db.ExecContext(ctx,
-		`INSERT INTO members(id,email) VALUES(?,?)`, id, email); err != nil {
+		`INSERT INTO members(id,email,domain_id) VALUES(?,?,?)`, id, email, scope); err != nil {
 		return nil, fmt.Errorf("upsert member: %w", err)
 	}
 	s.recordEventTx(ctx, id, EventSignup, "", 0)
-	return &Member{ID: id, Email: email, Tier: TierFree, Status: "active", NewsletterOptIn: true, CreatedAt: time.Now().UTC()}, nil
+	return &Member{ID: id, Email: email, Tier: TierFree, Status: "active", NewsletterOptIn: true, DomainID: scope, CreatedAt: time.Now().UTC()}, nil
+}
+
+// CountsByDomain returns the number of members per signup domain, keyed by
+// domain_id ("" = the primary / unassigned bucket). Mirrors
+// articles.CountsByDomain so the VayuOS Domains page can show a per-domain member
+// count beside the article and mailbox counts (VayuDomains Stage 4).
+func (s *Store) CountsByDomain(ctx context.Context) (map[string]int, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT domain_id, COUNT(1) FROM members GROUP BY domain_id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make(map[string]int)
+	for rows.Next() {
+		var dom string
+		var n int
+		if err := rows.Scan(&dom, &n); err != nil {
+			return nil, err
+		}
+		out[dom] = n
+	}
+	return out, rows.Err()
 }
 
 // Get returns the member with the given email.

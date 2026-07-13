@@ -247,9 +247,27 @@ resolver is consulted only for non-primary recipients), so a single-domain insta
 — the overwhelming common case — carries **zero** added work on the blog or VayuOS
 hot paths.
 
-### Stage 4 — Member isolation (deferred)
+### Stage 4 — Member isolation
 
 Scope subscribers/members per domain (constraint #2).
+
+**Stage 4a (shipped): member domain attribution.** Migration 061 adds an additive
+`domain_id` column to `members` (default `''` = primary), and a new signup is
+attributed to the active domain (`UpsertScoped`, gated on `multiDomain` so a
+single-domain install is byte-identical). Because a member is identified by the
+globally-**UNIQUE** email and login is by email, the read/auth path is deliberately
+**unchanged** — `Get`/login find a member by email regardless of domain, so
+`domain_id` is attribution + reporting, not a login filter, and no existing member
+flow changes. VayuOS → **Domains** shows a per-domain member count
+(`members.CountsByDomain`) beside the article and mailbox counts.
+
+**Stage 4b (deferred):** relaxing the global `UNIQUE(email)` to
+`UNIQUE(domain_id, email)` — so the same address can be an independent member of
+two domains — needs a `members`-table rebuild (the same inline-constraint hazard as
+`articles.slug`). The signup paths without a request context — Stripe checkout
+fulfilment and the Stripe webhook — attribute to the primary (`''`) until the
+owning domain is carried on the order/customer; per-domain magic-link hostnames and
+per-domain newsletter subscribers ride here too.
 
 ### P4 — TLS + nginx automation (deferred, orthogonal)
 

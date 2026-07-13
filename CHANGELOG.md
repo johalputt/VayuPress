@@ -8,6 +8,24 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.9] — 2026-07-13
+
+### Added
+- **VayuDomains (Stage 4a) — per-domain member attribution.** A member who signs
+  up now records which domain they joined on (additive `members.domain_id`,
+  migration 061; default `''` = primary), and VayuOS → Domains shows a per-domain
+  member count beside the article and mailbox counts. Because a member is keyed by
+  the globally-unique email, login is unchanged — the domain is attribution +
+  reporting, not a login filter.
+
+### Notes
+- **Byte-identical for single-domain installs.** Attribution is gated on a
+  registered secondary domain, so a plain install writes `domain_id=''` and the
+  member read/auth path is untouched (the member tests are unchanged). Relaxing the
+  global `UNIQUE(email)` so one address can be a member of two domains — plus
+  attributing the context-free Stripe fulfilment/webhook paths — is **Stage 4b**.
+  See **ADR-0132**.
+
 ## [3.13.8] — 2026-07-13
 
 ### Added

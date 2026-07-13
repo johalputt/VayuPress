@@ -90,7 +90,7 @@ func (a *App) handleMemberLogin(w http.ResponseWriter, r *http.Request) {
 	// gets a one-time welcome email alongside its sign-in link.
 	_, getErr := a.members.Get(r.Context(), email)
 	isNew := getErr != nil
-	if _, err := a.members.Upsert(r.Context(), email); err == nil {
+	if _, err := a.members.UpsertScoped(r.Context(), a.memberScope(r), email); err == nil {
 		if token, err := a.members.CreateLoginToken(r.Context(), email); err == nil {
 			go a.sendMemberMagicLink(email, token)
 		}
@@ -149,7 +149,7 @@ func (a *App) handleMemberVerify(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid or expired sign-in link", http.StatusBadRequest)
 		return
 	}
-	m, err := a.members.Upsert(r.Context(), email)
+	m, err := a.members.UpsertScoped(r.Context(), a.memberScope(r), email)
 	if err != nil {
 		http.Error(w, "could not sign in", http.StatusInternalServerError)
 		return

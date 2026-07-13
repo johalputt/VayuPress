@@ -183,7 +183,7 @@ func (a *App) handleMemberVayuMailLogin(w http.ResponseWriter, r *http.Request) 
 	// Credentials good: ensure a member record exists for this address and start
 	// a session. The member's tier is whatever it already is (free by default);
 	// holding a mailbox does not itself grant a paid plan.
-	m, err := a.members.Upsert(r.Context(), emailAddr)
+	m, err := a.members.UpsertScoped(r.Context(), a.memberScope(r), emailAddr)
 	if err != nil {
 		writeAPIError(w, r, http.StatusInternalServerError, "db-error", "Could not sign you in", "")
 		return
