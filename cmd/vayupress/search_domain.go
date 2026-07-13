@@ -54,7 +54,11 @@ func filterHitsByDomain(ctx context.Context, hits []search.Hit, scope string, li
 		slugs = append(slugs, h.Slug)
 	}
 	allowed := domainSlugSet(ctx, scope, slugs)
-	out := make([]search.Hit, 0, limit)
+	// Bound the pre-allocation by the number of hits (the true ceiling on the
+	// output) rather than the caller's limit, which is request-derived: the
+	// filtered result can never exceed len(hits), so this both avoids
+	// over-allocating and keeps a large/negative limit from sizing the slice.
+	out := make([]search.Hit, 0, max(0, min(limit, len(hits))))
 	for _, h := range hits {
 		if _, ok := allowed[h.Slug]; ok {
 			out = append(out, h)

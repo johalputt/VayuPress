@@ -8,6 +8,26 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.14] — 2026-07-13
+
+### Security
+- **Fix CodeQL "potentially unsafe quoting" on the Domains page (CWE-116).** The
+  per-domain brand map was interpolated raw into the inline `<script>`. Although
+  `encoding/json` HTML-escapes `<`/`>`/`&` (so a `</script>` breakout was already
+  impossible), the value now rides in an `html.EscapeString`-escaped data
+  attribute and is `JSON.parse`d by the page script — a recognised-safe sink with
+  no data flowing into script quoting.
+- **Fix CodeQL "slice allocation with excessive size" in per-domain search
+  (CWE-770).** `filterHitsByDomain` pre-sized its result slice from the
+  request-derived `limit` (clamped in a different function, so the bound wasn't
+  provable at the allocation). It now bounds the capacity by `len(hits)` — the
+  true ceiling on the filtered output — clamped ≥0, which also avoids
+  over-allocating for a large requested limit.
+
+### Notes
+- Both are hardening fixes with no behaviour change for a valid request. Tests
+  pin the brand-map-via-attribute rendering.
+
 ## [3.13.13] — 2026-07-13
 
 ### Fixed

@@ -102,10 +102,10 @@ func (a *App) handleOSDomains(w http.ResponseWriter, r *http.Request) {
 
 	body := domainsHeader(len(domains), viewingHost) +
 		domainsTable(domains, counts, mailCounts, memberCounts, mailOn) +
-		domainsBrandForm(domains) +
+		domainsBrandForm(domains, domainsBrandJSON(domains)) +
 		domainsAssignForm(domains) +
 		domainsAddForm() +
-		domainsScript(nonce, domainsBrandJSON(domains))
+		domainsScript(nonce)
 
 	writeOSHTML(w, adminOSLayout(nonce, "Domains", "domains", cfg, htmpl.HTML(body)))
 }
@@ -227,7 +227,7 @@ func domainsAssignForm(domains []domain.Domain) string {
 // identity is the global Website settings and is intentionally not editable here.
 // The card is only rendered when a secondary domain exists (nothing to brand on a
 // single-domain install).
-func domainsBrandForm(domains []domain.Domain) string {
+func domainsBrandForm(domains []domain.Domain, brandJSON string) string {
 	var opts strings.Builder
 	secondaries := 0
 	for _, d := range domains {
@@ -240,7 +240,12 @@ func domainsBrandForm(domains []domain.Domain) string {
 	if secondaries == 0 {
 		return ""
 	}
-	return `<div class="card">
+	// The per-domain brand map rides in an HTML data attribute (html-escaped for
+	// the attribute's quote context) and is JSON.parsed by the page script, rather
+	// than being interpolated straight into the inline <script> — so no value can
+	// break the script's quoting (CWE-116).
+	return `<div id="dom-brands" data-brands="` + html.EscapeString(brandJSON) + `" hidden></div>
+<div class="card">
   <h2 class="card-title">Brand a domain</h2>
   <p class="text-sm muted">Give a secondary domain its own public identity so it presents as its own site. Every field is optional — leave one blank to inherit the primary site's value. Changes apply to that domain's homepage, articles and theme within a few seconds.</p>
   <div class="form-grid">
@@ -347,13 +352,14 @@ func domainsAddForm() string {
 </div>`
 }
 
-func domainsScript(nonce, brandJSON string) string {
+func domainsScript(nonce string) string {
 	return `<script nonce="` + nonce + `">
 (function(){'use strict';
 function csrf(){var m=document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);return m?decodeURIComponent(m[1]):'';}
 var st=document.getElementById('dom-status');
 function show(t){if(st)st.textContent=t;}
-var BRANDS=` + brandJSON + `;
+var BRANDS={};var _be=document.getElementById('dom-brands');
+if(_be){try{BRANDS=JSON.parse(_be.getAttribute('data-brands')||'{}')||{};}catch(e){BRANDS={};}}
 var addBtn=document.querySelector('[data-dom-add]');
 if(addBtn)addBtn.addEventListener('click',function(){
   var host=(document.getElementById('dom-host').value||'').trim();
