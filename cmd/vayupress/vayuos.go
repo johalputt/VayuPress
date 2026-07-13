@@ -1009,27 +1009,52 @@ func qparam(s string) string { return html.EscapeString(url.QueryEscape(s)) }
 // rendered fragment or an attribute. This is the sanitiser barrier for
 // go/reflected-xss on every VayuMail page that echoes the selected mailbox.
 func mailUserParam(r *http.Request) string {
-	return sanitizeMailLocalPart(strings.TrimSpace(r.URL.Query().Get("user")))
+	return sanitizeMailUser(strings.TrimSpace(r.URL.Query().Get("user")))
 }
 
-// sanitizeMailLocalPart returns a valid mailbox local-part, or "". A valid
-// local-part is [A-Za-z0-9._+-] only — a charset with NO HTML/JS metacharacter
-// — so the returned value is safe in every context. It is additionally passed
-// through html.EscapeString: on this charset that is a no-op (byte-identical
-// output), but it makes the value flow through a sanitiser static analysis
-// recognises, so go/reflected-xss is cleared on EVERY downstream sink without
-// having to escape at each one individually. Empty in, empty out.
-func sanitizeMailLocalPart(s string) string {
-	if s == "" || len(s) > 64 {
+// sanitizeMailUser validates a mailbox KEY, which — unlike a bare local-part — may
+// be a full "local@domain" address so an admin can open a secondary domain's
+// mailbox (VayuDomains). It accepts either a bare local-part (the primary domain)
+// or exactly one "@" joining a local-part [A-Za-z0-9._+-] and a domain
+// [A-Za-z0-9.-]; anything else (including a leading/trailing "@" or a second "@")
+// is rejected to "". The charset carries NO HTML/JS metacharacter and the result
+// is passed through html.EscapeString, so the value stays safe in every rendered
+// sink and go/reflected-xss is cleared — the same barrier as the folder/id
+// sanitisers, widened by a single "@". Empty in, empty out.
+func sanitizeMailUser(s string) string {
+	if s == "" || len(s) > 254 {
 		return ""
 	}
+	at := -1
 	for i := 0; i < len(s); i++ {
 		c := s[i]
-		ok := (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
-			(c >= '0' && c <= '9') || c == '.' || c == '_' || c == '+' || c == '-'
-		if !ok {
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9',
+			c == '.', c == '_', c == '+', c == '-':
+			// mailbox-safe in both local-part and domain
+		case c == '@':
+			if at >= 0 { // a second "@" is never valid
+				return ""
+			}
+			at = i
+		default:
 			return ""
 		}
+	}
+	// A present "@" must join a non-empty local-part and a well-formed domain:
+	// "+"/"_" are not domain characters, and a domain with an empty label
+	// (".."), a leading/trailing dot, or a leading "-" is rejected. (The Maildir
+	// layer already neutralises path traversal via safeSegment; this keeps a
+	// malformed key from reaching display/DKIM/URL sinks at all.)
+	if at >= 0 {
+		local, domain := s[:at], s[at+1:]
+		if local == "" || len(local) > 64 || domain == "" ||
+			strings.ContainsAny(domain, "+_") || strings.Contains(domain, "..") ||
+			domain[0] == '.' || domain[0] == '-' || domain[len(domain)-1] == '.' {
+			return ""
+		}
+	} else if len(s) > 64 {
+		return "" // a bare local-part keeps the original 64-char bound
 	}
 	return html.EscapeString(s)
 }
@@ -1331,45 +1356,25 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if user == "" {
-		// List every mailbox across all mail domains this install serves — the
-		// primary plus each mail_enabled secondary (VayuDomains). A single-domain
-		// install lists only the primary, byte-identical. The Maildir is
-		// domain-partitioned, so each domain's accounts come from its own tree.
-		boxes, err := a.vayuMail.Mailboxes()
+		// Mailbox directory. Each mail domain this install serves gets its OWN
+		// card — the primary first, then each mail_enabled secondary — so the
+		// domains are never mixed into one list (VayuDomains). A single-domain
+		// install renders exactly one card, byte-identical in content. The Maildir
+		// is domain-partitioned, so every domain's accounts come from its own tree.
+		primary, err := a.vayuMail.Mailboxes()
 		if err != nil {
 			body.WriteString(`<div class="empty-state">Could not read mailboxes: ` + html.EscapeString(err.Error()) + `</div>`)
 			writeOSHTML(w, adminOSLayout(nonce, "Mailbox", "vayuos", cfg, htmpl.HTML(body.String())))
 			return
 		}
+		body.WriteString(a.vayuMailboxDomainCard(domain, domain, primary, true))
 		for _, secHost := range a.mailSecondaryHosts(r.Context()) {
-			if sb, e2 := a.vayuMail.MailboxesForDomain(secHost); e2 == nil {
-				boxes = append(boxes, sb...)
+			sb, e2 := a.vayuMail.MailboxesForDomain(secHost)
+			if e2 != nil {
+				continue
 			}
+			body.WriteString(a.vayuMailboxDomainCard(secHost, domain, sb, false))
 		}
-		body.WriteString(`<div class="card"><div class="card-title">Mailboxes</div><div class="table-wrap"><table class="table vm-list"><thead><tr><th>Mailbox</th><th>Inbox</th><th>Unseen</th></tr></thead><tbody>`)
-		if len(boxes) == 0 {
-			body.WriteString(`<tr><td colspan="3" class="muted">No mailboxes yet. Create one under <a href="/os/vayumail/accounts">Accounts</a>, or one is provisioned when a CMS account is created.</td></tr>`)
-		}
-		for _, bx := range boxes {
-			bdom := bx.Domain
-			if bdom == "" {
-				bdom = domain
-			}
-			addr := bx.Username + "@" + bdom
-			// The mailbox key in the link is the bare local part for the primary
-			// (unchanged) and the full address for a secondary, so the read path's
-			// mailboxKey resolves each account's own domain-partitioned Maildir.
-			key := bx.Username
-			if !strings.EqualFold(bdom, domain) {
-				key = addr
-			}
-			unseen := ""
-			if bx.Unseen > 0 {
-				unseen = `<span class="vm-tab-badge">` + itoaSafe(bx.Unseen) + `</span>`
-			}
-			body.WriteString(`<tr><td><a class="vm-from" href="/os/vayumail/inbox?user=` + qparam(key) + `">` + mailAvatar(addr) + `<span class="vm-name">` + html.EscapeString(addr) + `</span></a></td><td>` + itoaSafe(bx.Total) + `</td><td>` + unseen + `</td></tr>`)
-		}
-		body.WriteString(`</tbody></table></div></div>`)
 		writeOSHTML(w, adminOSLayout(nonce, "Mailbox", "vayuos", cfg, htmpl.HTML(body.String())))
 		return
 	}
@@ -1390,6 +1395,53 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 	body.WriteString(`</div>`)
 	body.WriteString(`<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail.js?v=` + assetVer("js/admin-os-mail.js") + `"></script>`)
 	writeOSHTML(w, adminOSLayout(nonce, "Mailbox", "vayuos", cfg, htmpl.HTML(body.String())))
+}
+
+// vayuMailboxDomainCard renders one mail domain's mailbox directory as its own
+// card (VayuDomains) so domains are shown separately rather than mixed into one
+// list. dom is the card's domain; primaryDomain is the install's primary, used to
+// keep the primary's ?user= link a bare local part (byte-identical) while a
+// secondary links the full address so the read path resolves its own Maildir.
+func (a *App) vayuMailboxDomainCard(dom, primaryDomain string, boxes []vmail.MailboxSummary, isPrimary bool) string {
+	var rows strings.Builder
+	unseenTotal := 0
+	for _, bx := range boxes {
+		bdom := bx.Domain
+		if bdom == "" {
+			bdom = dom
+		}
+		addr := bx.Username + "@" + bdom
+		key := bx.Username
+		if !strings.EqualFold(bdom, primaryDomain) {
+			key = addr
+		}
+		unseen := ""
+		if bx.Unseen > 0 {
+			unseen = `<span class="vm-tab-badge">` + itoaSafe(bx.Unseen) + `</span>`
+			unseenTotal += bx.Unseen
+		}
+		rows.WriteString(`<tr><td><a class="vm-from" href="/os/vayumail/inbox?user=` + qparam(key) + `">` + mailAvatar(addr) + `<span class="vm-name">` + html.EscapeString(addr) + `</span></a></td><td>` + itoaSafe(bx.Total) + `</td><td>` + unseen + `</td></tr>`)
+	}
+	if len(boxes) == 0 {
+		rows.WriteString(`<tr><td colspan="3" class="muted">No mailboxes on this domain yet. Create one under <a href="/os/vayumail/accounts">Accounts</a>.</td></tr>`)
+	}
+	roleBadge := `<span class="badge badge--muted">secondary</span>`
+	if isPrimary {
+		roleBadge = `<span class="badge badge--accent">primary</span>`
+	}
+	unit := "mailboxes"
+	if len(boxes) == 1 {
+		unit = "mailbox"
+	}
+	unseenBadge := ""
+	if unseenTotal > 0 {
+		unseenBadge = ` <span class="vm-tab-badge">` + itoaSafe(unseenTotal) + ` unseen</span>`
+	}
+	return `<div class="card vm-dom-card">
+  <div class="vm-dom-head"><span class="vm-dom-name">` + html.EscapeString(dom) + `</span> ` + roleBadge +
+		` <span class="vm-dom-count">` + itoaSafe(len(boxes)) + ` ` + unit + `</span>` + unseenBadge + `</div>
+  <div class="table-wrap"><table class="table vm-list"><thead><tr><th>Mailbox</th><th>Inbox</th><th>Unseen</th></tr></thead><tbody>` + rows.String() + `</tbody></table></div>
+</div>`
 }
 
 // vayuInboxBody renders the folder view (toolbar + quota + tabs + message list)
@@ -1619,18 +1671,20 @@ func (a *App) handleVayuOSInboxAction(w http.ResponseWriter, r *http.Request) {
 	}
 	// Sanitise at the point of read (same barrier as the GET readers): these
 	// values are re-rendered into the refreshed inbox fragment below, so a raw
-	// form value would be a reflected-XSS sink. sanitizeMailLocalPart /
+	// form value would be a reflected-XSS sink. sanitizeMailUser /
 	// sanitizeMailFolder are no-ops on valid input but route the value through
 	// html.EscapeString, clearing the taint for every downstream HTML sink.
-	user := sanitizeMailLocalPart(strings.TrimSpace(r.PostFormValue("user")))
+	user := sanitizeMailUser(strings.TrimSpace(r.PostFormValue("user")))
 	folder := sanitizeMailFolder(strings.TrimSpace(r.PostFormValue("folder")))
 	if !a.isAdminRequest(r) {
-		local, _ := a.ownMailbox(r)
-		if local == "" || !strings.EqualFold(local, user) {
+		// Non-admins may only act on their own mailbox — force it from server
+		// state (the full local@domain key) rather than trusting the form.
+		own := a.ownMailboxKey(r)
+		if own == "" {
 			writeAPIError(w, r, http.StatusForbidden, "forbidden", "you can only manage your own mailbox", "")
 			return
 		}
-		user = local
+		user = own
 	}
 	if user == "" {
 		writeAPIError(w, r, http.StatusBadRequest, "validation_error", "user is required", "")
@@ -2238,7 +2292,7 @@ func (a *App) handleVayuOSMessagePaneAction(w http.ResponseWriter, r *http.Reque
 	// Sanitise at read: user/folder/id are rendered back into the reader-pane
 	// card (writeOSHTML) below, so raw form values would be a reflected-XSS
 	// sink. The sanitisers are no-ops on valid input but apply html.EscapeString.
-	user := sanitizeMailLocalPart(strings.TrimSpace(r.FormValue("user")))
+	user := sanitizeMailUser(strings.TrimSpace(r.FormValue("user")))
 	folder := sanitizeMailFolder(strings.TrimSpace(r.FormValue("folder")))
 	id := sanitizeMailID(strings.TrimSpace(r.FormValue("id")))
 	if !a.isAdminRequest(r) {
@@ -2353,22 +2407,70 @@ func (a *App) handleVayuOSSent(w http.ResponseWriter, r *http.Request) {
 		writeOSHTML(w, adminOSLayout(nonce, "Outbox", "vayuos", cfg, htmpl.HTML(body.String())))
 		return
 	}
-	body.WriteString(`<div id="vm-outbox-body" hx-get="/os/vayumail/outbox/fragment" hx-trigger="every 15s" hx-swap="innerHTML">`)
-	body.WriteString(a.vayuOutboxBody(r.Context()))
+	// The auto-refresh poller lives INSIDE the body (see vayuOutboxBody) so it
+	// carries the active per-domain filter; a poll on this wrapper would reset it.
+	body.WriteString(`<div id="vm-outbox-body">`)
+	body.WriteString(a.vayuOutboxBody(r.Context(), r.URL.Query().Get("domain")))
 	body.WriteString(`</div>`)
 	writeOSHTML(w, adminOSLayout(nonce, "Outbox", "vayuos", cfg, htmpl.HTML(body.String())))
 }
 
-// vayuOutboxBody renders the outbound-queue table (counters + per-message
-// Resend/Delete + Retry-all-failed). Returned on page load and as the HTMX
-// fragment after an action or on the auto-refresh poll.
-func (a *App) vayuOutboxBody(ctx context.Context) string {
+// emailDomain returns the lower-cased domain of an email address, or fallback
+// when the value carries no domain (a bare/relative From falls back to primary).
+func emailDomain(email, fallback string) string {
+	if i := strings.LastIndexByte(email, '@'); i >= 0 && i < len(email)-1 {
+		return strings.ToLower(strings.TrimSpace(email[i+1:]))
+	}
+	return fallback
+}
+
+// outboxChip renders one per-domain filter chip for the Outbox. It swaps the
+// whole outbox body via HTMX carrying its domain, so the filter is server-side
+// (no JS) and survives the auto-refresh poll (which re-emits the same domain).
+func outboxChip(label, val string, active bool) string {
+	cls := "vm-fchip"
+	if active {
+		cls += " vm-fchip--on"
+	}
+	return `<button type="button" class="` + cls + `" hx-get="/os/vayumail/outbox/fragment?domain=` + qparam(val) +
+		`" hx-target="#vm-outbox-body" hx-swap="innerHTML">` + html.EscapeString(label) + `</button>`
+}
+
+// vayuOutboxBody renders the outbound-queue view (counters + optional per-domain
+// filter + per-message Resend/Delete + Retry-all-failed). Returned on page load
+// and as the HTMX fragment after an action or on the auto-refresh poll.
+// filterDomain narrows the shown rows to one mail domain (VayuDomains); it is
+// validated against the served domains, so only a real domain (or "" = all) ever
+// reaches the rendered attributes. A single-domain install shows no filter and no
+// From column, staying byte-identical.
+func (a *App) vayuOutboxBody(ctx context.Context, filterDomain string) string {
 	var b strings.Builder
 	sent, err := a.vayuMail.Sent(ctx, 100)
 	if err != nil {
 		b.WriteString(`<div class="empty-state">Could not read outbound queue: ` + html.EscapeString(err.Error()) + `</div>`)
 		return b.String()
 	}
+	primary := a.vayuMail.Config().Domain
+	domains := append([]string{primary}, a.mailSecondaryHosts(ctx)...)
+	multi := len(domains) > 1
+
+	// Validate the filter against the served domains — only a real registered
+	// domain filters; anything else (incl. "all"/unknown) means no filter, so no
+	// attacker-controlled string ever reaches the emitted hx-get/hx-vals.
+	filterDomain = strings.ToLower(strings.TrimSpace(filterDomain))
+	valid := false
+	for _, d := range domains {
+		if strings.EqualFold(d, filterDomain) {
+			valid = true
+			break
+		}
+	}
+	if !multi || !valid {
+		filterDomain = ""
+	}
+
+	// Counters summarise the WHOLE queue (retry-all is global); the table below is
+	// the filtered view.
 	var pending, failed, delivered int
 	for _, s := range sent {
 		switch s.State {
@@ -2380,19 +2482,38 @@ func (a *App) vayuOutboxBody(ctx context.Context) string {
 			delivered++
 		}
 	}
+
+	// A poller carrying the active filter, so the 15s refresh preserves it.
+	b.WriteString(`<div class="vm-poller" aria-hidden="true" hx-get="/os/vayumail/outbox/fragment?domain=` + qparam(filterDomain) + `" hx-trigger="every 15s" hx-target="#vm-outbox-body" hx-swap="innerHTML"></div>`)
+
 	b.WriteString(`<div class="vm-row vm-row--end">`)
 	b.WriteString(`<span class="muted text-sm vm-grow">` + itoaSafe(pending) + ` pending · ` + itoaSafe(failed) + ` failed · ` + itoaSafe(delivered) + ` delivered <span class="text-xs">(latest ` + itoaSafe(len(sent)) + `)</span></span>`)
-	b.WriteString(`<button type="button" class="btn btn--sm" hx-get="/os/vayumail/outbox/fragment" hx-target="#vm-outbox-body" hx-swap="innerHTML">↻ Refresh</button>`)
+	b.WriteString(`<button type="button" class="btn btn--sm" hx-get="/os/vayumail/outbox/fragment?domain=` + qparam(filterDomain) + `" hx-target="#vm-outbox-body" hx-swap="innerHTML">↻ Refresh</button>`)
 	if failed > 0 {
-		b.WriteString(`<button type="button" class="btn btn--sm btn--primary" hx-post="/os/vayumail/outbox/action" hx-vals='{"action":"retry-all"}' hx-target="#vm-outbox-body" hx-swap="innerHTML">Retry all failed (` + itoaSafe(failed) + `)</button>`)
+		b.WriteString(`<button type="button" class="btn btn--sm btn--primary" hx-post="/os/vayumail/outbox/action" hx-vals='{"action":"retry-all","domain":"` + html.EscapeString(filterDomain) + `"}' hx-target="#vm-outbox-body" hx-swap="innerHTML">Retry all failed (` + itoaSafe(failed) + `)</button>`)
 	}
 	b.WriteString(`</div>`)
 
-	b.WriteString(`<div class="card"><div class="card-title">Recent outbound</div><div class="table-wrap"><table class="table"><thead><tr><th>To</th><th>Subject</th><th>Status</th><th>Tries</th><th>Last error</th><th>When</th><th></th></tr></thead><tbody>`)
-	if len(sent) == 0 {
-		b.WriteString(`<tr><td colspan="7" class="muted">Nothing sent yet. Mail sent through VayuMail (DKIM-signed, direct-to-MX) appears here; VayuPress keeps retrying with backoff until it sends.</td></tr>`)
+	// Per-domain filter chips (VayuDomains) — only with more than one mail domain.
+	if multi {
+		b.WriteString(`<div class="vm-fchip-row">` + outboxChip("All domains", "all", filterDomain == ""))
+		for _, d := range domains {
+			b.WriteString(outboxChip(d, d, strings.EqualFold(filterDomain, d)))
+		}
+		b.WriteString(`</div>`)
 	}
+
+	fromHead := ""
+	if multi {
+		fromHead = `<th>From</th>`
+	}
+	b.WriteString(`<div class="card"><div class="card-title">Recent outbound</div><div class="table-wrap"><table class="table"><thead><tr>` + fromHead + `<th>To</th><th>Subject</th><th>Status</th><th>Tries</th><th>Last error</th><th>When</th><th></th></tr></thead><tbody>`)
+	shown := 0
 	for _, s := range sent {
+		if filterDomain != "" && !strings.EqualFold(emailDomain(s.From, primary), filterDomain) {
+			continue
+		}
+		shown++
 		subj := s.Subject
 		if subj == "" {
 			subj = "(no subject)"
@@ -2415,10 +2536,30 @@ func (a *App) vayuOutboxBody(ctx context.Context) string {
 		id := strconv.FormatInt(s.ID, 10)
 		actions := ""
 		if s.State == "failed" || s.State == "pending" {
-			actions += `<button type="button" class="btn btn--xs btn--primary" hx-post="/os/vayumail/outbox/action" hx-vals='{"action":"resend","id":"` + id + `"}' hx-target="#vm-outbox-body" hx-swap="innerHTML">Resend</button> `
+			actions += `<button type="button" class="btn btn--xs btn--primary" hx-post="/os/vayumail/outbox/action" hx-vals='{"action":"resend","id":"` + id + `","domain":"` + html.EscapeString(filterDomain) + `"}' hx-target="#vm-outbox-body" hx-swap="innerHTML">Resend</button> `
 		}
-		actions += `<button type="button" class="btn btn--xs btn--danger" hx-post="/os/vayumail/outbox/action" hx-vals='{"action":"delete","id":"` + id + `"}' hx-target="#vm-outbox-body" hx-swap="innerHTML">Delete</button>`
-		b.WriteString(`<tr><td class="text-sm">` + html.EscapeString(strings.Join(s.To, ", ")) + `</td><td>` + html.EscapeString(subj) + `</td><td>` + badge + `</td><td class="text-sm">` + itoaSafe(s.Attempts) + `</td><td class="muted text-xs">` + html.EscapeString(lastErr) + `</td><td class="muted text-sm">` + html.EscapeString(when) + `</td><td class="row-actions">` + actions + `</td></tr>`)
+		actions += `<button type="button" class="btn btn--xs btn--danger" hx-post="/os/vayumail/outbox/action" hx-vals='{"action":"delete","id":"` + id + `","domain":"` + html.EscapeString(filterDomain) + `"}' hx-target="#vm-outbox-body" hx-swap="innerHTML">Delete</button>`
+		fromCell := ""
+		if multi {
+			fd := emailDomain(s.From, primary)
+			local := s.From
+			if i := strings.LastIndexByte(s.From, '@'); i >= 0 {
+				local = s.From[:i]
+			}
+			fromCell = `<td class="text-sm"><span class="vm-name">` + html.EscapeString(local) + `</span> <span class="badge badge--muted">` + html.EscapeString(fd) + `</span></td>`
+		}
+		b.WriteString(`<tr>` + fromCell + `<td class="text-sm">` + html.EscapeString(strings.Join(s.To, ", ")) + `</td><td>` + html.EscapeString(subj) + `</td><td>` + badge + `</td><td class="text-sm">` + itoaSafe(s.Attempts) + `</td><td class="muted text-xs">` + html.EscapeString(lastErr) + `</td><td class="muted text-sm">` + html.EscapeString(when) + `</td><td class="row-actions">` + actions + `</td></tr>`)
+	}
+	if shown == 0 {
+		colspan := 7
+		msg := `Nothing sent yet. Mail sent through VayuMail (DKIM-signed, direct-to-MX) appears here; VayuPress keeps retrying with backoff until it sends.`
+		if multi {
+			colspan = 8
+		}
+		if filterDomain != "" {
+			msg = `No outbound mail from ` + html.EscapeString(filterDomain) + ` in the latest queue.`
+		}
+		b.WriteString(`<tr><td colspan="` + itoaSafe(colspan) + `" class="muted">` + msg + `</td></tr>`)
 	}
 	b.WriteString(`</tbody></table></div></div>`)
 	return b.String()
@@ -2430,7 +2571,7 @@ func (a *App) handleVayuOSOutboxFragment(w http.ResponseWriter, r *http.Request)
 		writeOSFragment(w, `<div class="empty-state">Outbox unavailable.</div>`)
 		return
 	}
-	writeOSFragment(w, a.vayuOutboxBody(r.Context()))
+	writeOSFragment(w, a.vayuOutboxBody(r.Context(), r.URL.Query().Get("domain")))
 }
 
 // handleVayuOSOutboxAction performs a Resend / Delete / Retry-all on the
@@ -2474,7 +2615,7 @@ func (a *App) handleVayuOSOutboxAction(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusBadRequest, "bad-request", "unknown action", "")
 		return
 	}
-	writeOSFragment(w, a.vayuOutboxBody(r.Context()))
+	writeOSFragment(w, a.vayuOutboxBody(r.Context(), r.PostFormValue("domain")))
 }
 
 func itoaSafe(n int) string { return fmt.Sprintf("%d", n) }

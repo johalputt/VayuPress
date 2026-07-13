@@ -28,7 +28,7 @@ func TestSanitizeMailFolder(t *testing.T) {
 func TestSanitizeMailLocalPartAndID(t *testing.T) {
 	// Valid local parts / ids are byte-identical (html.EscapeString is a no-op
 	// on their charset), so engine lookups and comparisons are unaffected.
-	if got := sanitizeMailLocalPart("john.doe+tag-1"); got != "john.doe+tag-1" {
+	if got := sanitizeMailUser("john.doe+tag-1"); got != "john.doe+tag-1" {
 		t.Fatalf("valid local part changed: %q", got)
 	}
 	if got := sanitizeMailID("1700000000.M123P456:2,S"); got != "1700000000.M123P456:2,S" {
@@ -43,8 +43,8 @@ func TestSanitizeMailLocalPartAndID(t *testing.T) {
 	}
 	// Hostile values are rejected to empty (never reach HTML).
 	for _, bad := range []string{`a<b`, `x"y`, `z'q`, `a&b`, `a b`, `<script>`} {
-		if got := sanitizeMailLocalPart(bad); got != "" {
-			t.Fatalf("sanitizeMailLocalPart(%q) = %q, want empty", bad, got)
+		if got := sanitizeMailUser(bad); got != "" {
+			t.Fatalf("sanitizeMailUser(%q) = %q, want empty", bad, got)
 		}
 		if got := sanitizeMailID(bad); got != "" {
 			t.Fatalf("sanitizeMailID(%q) = %q, want empty", bad, got)

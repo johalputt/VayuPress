@@ -67,12 +67,35 @@ func (a *App) handleVayuOSCompose(w http.ResponseWriter, r *http.Request) {
 		if acctStore != nil {
 			pmSig = acctStore.SignatureFor(r.Context(), pm)
 		}
-		fromOpts = optSig(pm, pmSig)
+		// Group the sender identities by domain (VayuDomains) so an operator
+		// serving multiple domains picks a From per domain instead of scanning one
+		// long flat list. The primary domain's group is first (and holds
+		// postmaster). A single-domain install emits a flat list with no optgroup
+		// chrome, so it stays byte-identical.
+		domOf := func(email string) string {
+			if i := strings.LastIndexByte(email, '@'); i >= 0 && i < len(email)-1 {
+				return strings.ToLower(email[i+1:])
+			}
+			return domain
+		}
+		byDom := map[string]string{domain: optSig(pm, pmSig)}
+		order := []string{domain}
 		if acctStore != nil {
 			if accs, err := acctStore.List(r.Context()); err == nil {
 				for _, ac := range accs {
-					fromOpts += optSig(ac.Email, ac.Signature)
+					d := domOf(ac.Email)
+					if _, seen := byDom[d]; !seen {
+						order = append(order, d)
+					}
+					byDom[d] += optSig(ac.Email, ac.Signature)
 				}
+			}
+		}
+		if len(order) == 1 {
+			fromOpts = byDom[domain]
+		} else {
+			for _, d := range order {
+				fromOpts += `<optgroup label="` + html.EscapeString(d) + `">` + byDom[d] + `</optgroup>`
 			}
 		}
 	} else {

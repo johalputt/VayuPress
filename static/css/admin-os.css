@@ -4464,3 +4464,30 @@
 .vp-os .htmx-indicator { opacity: 0; transition: opacity var(--t); }
 .vp-os .htmx-request .htmx-indicator,
 .vp-os .htmx-request.htmx-indicator { opacity: 1; }
+
+/* ── VayuMail Mailbox: per-domain directory cards ──────────────────────────── */
+.vp-os .vm-dom-card + .vm-dom-card { margin-top: var(--sp-4); }
+.vp-os .vm-dom-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+  margin-bottom: var(--sp-3);
+}
+.vp-os .vm-dom-name { font-family: var(--font-head); font-weight: 600; font-size: var(--text-base); color: var(--text); }
+.vp-os .vm-dom-count { font-size: var(--text-xs); color: var(--text-3); }
+
+/* ── VayuMail Outbox: per-domain filter chips ──────────────────────────────── */
+.vp-os .vm-fchip-row { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin: var(--sp-3) 0; }
+.vp-os .vm-fchip {
+  padding: 3px var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-full);
+  background: var(--bg-surface);
+  color: var(--text-2);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  transition: border-color var(--t), color var(--t), background var(--t);
+}
+.vp-os .vm-fchip:hover { border-color: var(--brand); color: var(--brand); }
+.vp-os .vm-fchip--on { background: var(--brand-dim); border-color: var(--brand); color: var(--brand); font-weight: 600; }

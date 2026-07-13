@@ -8,6 +8,36 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.13] — 2026-07-13
+
+### Fixed
+- **Secondary-domain mailboxes now open.** Clicking a `@secondary` mailbox (or a
+  message/folder/search inside it) did nothing — the admin `?user=` sanitizer
+  rejected the `@`, collapsing `hello@vayupress.com` to empty and re-rendering the
+  list. A new mailbox-key sanitizer accepts a full `local@domain` address (still
+  charset-locked and html-escaped, with malformed domains rejected), so every
+  secondary mailbox, its messages, folders and search open correctly. The engine
+  and Maildir already resolved the domain; only the admin param gate was blocking.
+
+### Added
+- **Mailbox: one card per domain.** The Mailbox directory now shows a separate
+  card per mail domain (primary first, then each secondary) with a role badge and
+  mailbox/unseen counts, instead of one mixed list.
+- **Compose: sender identities grouped by domain.** The admin From selector groups
+  addresses under a per-domain `<optgroup>` (primary first) so picking a `From` on
+  a multi-domain install is clear; sending as a secondary address was already
+  DKIM-signed per domain and filed in that domain's Sent folder.
+- **Outbox: per-domain visibility.** The outbound queue gains a **From** column
+  (with a domain badge) and a **per-domain filter** (HTMX chips) so an operator can
+  see and narrow to a specific domain's outbound. The auto-refresh poll preserves
+  the active filter.
+
+### Notes
+- No-op for single-domain installs: one mailbox card, a flat From list, and an
+  Outbox with no filter chips and no From column — unchanged. All of this is
+  administrator-only. Internally the primary-only mailbox-param sanitizer
+  (`sanitizeMailLocalPart`) is superseded by `sanitizeMailUser`.
+
 ## [3.13.12] — 2026-07-13
 
 ### Added
