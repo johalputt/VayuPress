@@ -225,10 +225,20 @@ primary mail host, its SPF/DMARC are scoped to itself, and — because the DKIM 
 is shared — it publishes the same key value at its own `<selector>._domainkey`
 record. This closes the operability gap: an operator can now set a secondary
 domain's mail up end to end (register → enable mail → create mailbox → send
-DKIM-signed → publish the shown DNS). *Still deferred:* per-domain webmail branding
-from the registry's reserved `config_json`, and full webmail access to secondary
-mailboxes (today webmail stays primary-only; secondary mailboxes are
-client-accessed via IMAP/POP3/SMTP). Per-secondary TLS certs remain **P4**.
+DKIM-signed → publish the shown DNS).
+
+**Stage 3d webmail access (shipped).** A CMS user can be assigned a mailbox on a
+`mail_enabled` secondary domain (team assignment now takes an optional domain,
+validated by `acceptsSecondaryMailDomain`), and that user reads/searches/acts on
+their mail in the built-in **webmail**. The engine read API became domain-aware
+(`Engine.mailboxKey` accepts a bare local part → primary, byte-identical, or a full
+address → that domain), and the webmail handlers resolve the mailbox key
+**server-side** from the authenticated identity (`ownMailboxKey`) — never from the
+XSS-sanitised `user` param, so the domain carries no injection surface and the
+primary path is byte-identical (the key collapses to the local part on the primary
+domain). *Still deferred:* per-domain webmail/console branding from the registry's
+reserved `config_json` (its meaning — public site identity vs console chrome — will
+be pinned before building). Per-secondary TLS certs remain **P4**.
 
 **Performance note.** Every per-domain path is gated behind
 `Registry.HasSecondaries` (a precomputed cached bool — no map scan, no per-request

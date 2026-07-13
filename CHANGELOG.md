@@ -8,6 +8,26 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.8] — 2026-07-13
+
+### Added
+- **VayuDomains (Stage 3d) — webmail access to secondary-domain mailboxes.** A team
+  member can now be assigned a mailbox on a mail-enabled secondary domain (the
+  assign form takes an optional domain, validated against the registry), and that
+  user reads, searches and acts on their mail in the built-in webmail — fully
+  isolated to their own domain's Maildir. The engine read API is now domain-aware
+  (`mailboxKey` accepts a bare local part → primary, or a full address → that
+  domain), and the webmail handlers resolve the mailbox key **server-side** from
+  the signed-in identity, never from a client param.
+
+### Notes
+- **Byte-identical for single-domain installs.** The engine key collapses to the
+  bare local part on the primary domain, so every existing webmail path is
+  unchanged; the domain is only ever taken from server state (the user's stored
+  address), carrying no XSS exposure (the `user` form param stays local-part-only).
+  Per-domain webmail/console branding remains a Stage 3d follow-up; per-secondary
+  TLS is **P4**. See **ADR-0132**.
+
 ## [3.13.7] — 2026-07-13
 
 ### Added

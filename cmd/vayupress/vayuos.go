@@ -1354,7 +1354,7 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 	// Non-admin staff may only operate their own assigned mailbox — never browse
 	// or target another mailbox via ?user=.
 	if !a.isAdminRequest(r) {
-		local, _ := a.ownMailbox(r)
+		local := a.ownMailboxKey(r)
 		if local == "" {
 			body.WriteString(`<div class="empty-state">No mailbox has been assigned to your account yet. Ask an administrator to assign you an email address under <strong>Members → Team &amp; roles</strong>.</div>`)
 			writeOSHTML(w, adminOSLayout(nonce, "Mailbox", "vayuos", cfg, htmpl.HTML(body.String())))
@@ -1411,7 +1411,7 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 // switch — so the mailbox never does a jarring full-page reload.
 func (a *App) vayuInboxBody(user, folder string) string {
 	domain := a.vayuMail.Config().Domain
-	mbox := user + "@" + domain
+	mbox := mailAddrOf(user, domain)
 	var b strings.Builder
 
 	// Live new-mail poll. It lives inside the fragment (re-rendered on every
@@ -1604,7 +1604,7 @@ func (a *App) handleVayuOSInboxFragment(w http.ResponseWriter, r *http.Request) 
 		folder = "Inbox"
 	}
 	if !a.isAdminRequest(r) {
-		local, _ := a.ownMailbox(r)
+		local := a.ownMailboxKey(r)
 		if local == "" {
 			writeOSFragment(w, `<div class="empty-state">No mailbox has been assigned to your account.</div>`)
 			return
@@ -1703,18 +1703,18 @@ func (a *App) handleVayuOSSearch(w http.ResponseWriter, r *http.Request) {
 	user := mailUserParam(r)
 	if !a.isAdminRequest(r) {
 		// Non-admins may only search their own assigned mailbox.
-		user, _ = a.ownMailbox(r)
+		user = a.ownMailboxKey(r)
 	}
 	sf := parseSearchFilters(r)
 	var body strings.Builder
-	body.WriteString(`<div class="page-header"><h1>Search mail</h1><span class="muted text-sm">` + html.EscapeString(user+"@"+a.cfgDomain()) + `</span></div>`)
+	body.WriteString(`<div class="page-header"><h1>Search mail</h1><span class="muted text-sm">` + html.EscapeString(mailAddrOf(user, a.cfgDomain())) + `</span></div>`)
 	body.WriteString(vayuosNav("mailbox", a.isAdminRequest(r)))
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled || user == "" {
 		body.WriteString(`<div class="empty-state">VayuMail is inactive or no mailbox selected. <a href="/os/vayumail/inbox">Back to Mailbox</a></div>`)
 		writeOSHTML(w, adminOSLayout(nonce, "Search mail", "vayuos", cfg, htmpl.HTML(body.String())))
 		return
 	}
-	body.WriteString(`<div class="card"><div class="card-title"><a href="/os/vayumail/inbox?user=` + qparam(user) + `">← ` + html.EscapeString(user+"@"+a.cfgDomain()) + `</a></div>`)
+	body.WriteString(`<div class="card"><div class="card-title"><a href="/os/vayumail/inbox?user=` + qparam(user) + `">← ` + html.EscapeString(mailAddrOf(user, a.cfgDomain())) + `</a></div>`)
 	// Filter bar — results update instantly over HTMX as you type or change a
 	// filter (debounced), swapping #vm-search-results with no full-page reload.
 	folderOpts := `<option value="">All folders</option>`
@@ -1824,7 +1824,7 @@ func (a *App) handleVayuOSSearchFragment(w http.ResponseWriter, r *http.Request)
 	}
 	user := mailUserParam(r)
 	if !a.isAdminRequest(r) {
-		user, _ = a.ownMailbox(r)
+		user = a.ownMailboxKey(r)
 	}
 	if user == "" {
 		writeOSFragment(w, `<div class="empty-state">No mailbox selected.</div>`)
@@ -1960,7 +1960,7 @@ func (a *App) handleVayuOSMessage(w http.ResponseWriter, r *http.Request) {
 	user := mailUserParam(r)
 	if !a.isAdminRequest(r) {
 		// Non-admins may only read messages in their own assigned mailbox.
-		user, _ = a.ownMailbox(r)
+		user = a.ownMailboxKey(r)
 	}
 	folder := mailFolderParam(r)
 	if folder == "" {
@@ -2002,7 +2002,7 @@ func (a *App) handleVayuOSMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body strings.Builder
-	body.WriteString(`<div class="page-header"><h1>Message</h1><span class="muted text-sm">` + html.EscapeString(user+"@"+a.cfgDomain()) + ` · ` + html.EscapeString(folder) + `</span></div>`)
+	body.WriteString(`<div class="page-header"><h1>Message</h1><span class="muted text-sm">` + html.EscapeString(mailAddrOf(user, a.cfgDomain())) + ` · ` + html.EscapeString(folder) + `</span></div>`)
 	body.WriteString(vayuosNav("mailbox", a.isAdminRequest(r)))
 	body.WriteString(card)
 	body.WriteString(`<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail.js?v=` + assetVer("js/admin-os-mail.js") + `"></script>`)
@@ -2255,12 +2255,13 @@ func (a *App) handleVayuOSMessagePaneAction(w http.ResponseWriter, r *http.Reque
 	folder := sanitizeMailFolder(strings.TrimSpace(r.FormValue("folder")))
 	id := sanitizeMailID(strings.TrimSpace(r.FormValue("id")))
 	if !a.isAdminRequest(r) {
-		local, _ := a.ownMailbox(r)
-		if local == "" || !strings.EqualFold(local, user) {
+		own := a.ownMailboxKey(r)
+		if own == "" {
 			w.WriteHeader(http.StatusForbidden)
 			writeOSHTML(w, vayuReadpaneEmpty("You can only manage your own mailbox."))
 			return
 		}
+		user = own // non-admin: own mailbox engine key (domain included), server-derived
 	}
 	if user == "" || id == "" {
 		writeOSHTML(w, vayuReadpaneEmpty("Message not available."))

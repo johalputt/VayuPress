@@ -588,10 +588,14 @@ func (a *App) handleVayuOSMessageAction(w http.ResponseWriter, r *http.Request) 
 		writeAPIError(w, r, 400, "too_many", "at most 500 messages per request", "")
 		return
 	}
-	// Non-admins may only act on messages in their own assigned mailbox.
+	// The mailbox engine key. Admins act on the requested mailbox; a non-admin is
+	// locked to their own — resolved server-side (domain included for a secondary
+	// mailbox), so the client-supplied in.User can never target another mailbox
+	// (VayuDomains Stage 3d).
+	mbox := in.User
 	if !a.isAdminRequest(r) {
-		local, _ := a.ownMailbox(r)
-		if local == "" || !strings.EqualFold(local, in.User) {
+		mbox = a.ownMailboxKey(r)
+		if mbox == "" {
 			writeAPIError(w, r, http.StatusForbidden, "forbidden", "you can only manage your own mailbox", "")
 			return
 		}
@@ -608,15 +612,15 @@ func (a *App) handleVayuOSMessageAction(w http.ResponseWriter, r *http.Request) 
 	apply := func(id string) error {
 		switch {
 		case in.Mark == "read":
-			nid, err := a.vayuMail.MarkRead(in.User, from, id)
+			nid, err := a.vayuMail.MarkRead(mbox, from, id)
 			lastID, action = nid, "read"
 			return err
 		case in.Mark == "unread":
-			nid, err := a.vayuMail.MarkUnread(in.User, from, id)
+			nid, err := a.vayuMail.MarkUnread(mbox, from, id)
 			lastID, action = nid, "unread"
 			return err
 		case in.Pin != nil:
-			nid, err := a.vayuMail.SetPinned(in.User, from, id, *in.Pin)
+			nid, err := a.vayuMail.SetPinned(mbox, from, id, *in.Pin)
 			lastID = nid
 			if *in.Pin {
 				action = "pinned"
@@ -626,14 +630,14 @@ func (a *App) handleVayuOSMessageAction(w http.ResponseWriter, r *http.Request) 
 			return err
 		case in.Delete:
 			action = "deleted"
-			return a.vayuMail.DeleteMessage(in.User, from, id)
+			return a.vayuMail.DeleteMessage(mbox, from, id)
 		default:
 			target := in.To
 			if target == "" {
 				target = "Trash"
 			}
 			action = "moved"
-			return a.vayuMail.MoveMessage(in.User, id, from, target)
+			return a.vayuMail.MoveMessage(mbox, id, from, target)
 		}
 	}
 	var firstErr string
@@ -695,14 +699,15 @@ func (a *App) handleVayuOSAttachment(w http.ResponseWriter, r *http.Request) {
 	}
 	id := mailIDParam(r)
 	idx, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("idx")))
-	// Non-admins may only download from their own assigned mailbox.
+	// Non-admins may only download from their own assigned mailbox (server-derived
+	// engine key, domain included for a secondary mailbox).
 	if !a.isAdminRequest(r) {
-		local, _ := a.ownMailbox(r)
-		if local == "" || !strings.EqualFold(local, user) {
+		own := a.ownMailboxKey(r)
+		if own == "" {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
-		user = local
+		user = own
 	}
 	if user == "" || id == "" {
 		http.Error(w, "not found", http.StatusNotFound)

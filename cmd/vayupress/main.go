@@ -80,7 +80,7 @@ import (
 // -ldflags "-X main.Version=<.release-version>", and scripts/update-vayupress.sh
 // reads .release-version too — keep this in sync with .release-version so an
 // un-stamped `go build` still reports an honest version.
-var Version = "3.13.7"
+var Version = "3.13.8"
 var bootTime = time.Now()
 
 // Immutable package-level values (compiled once, never mutated).

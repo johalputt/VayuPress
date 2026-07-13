@@ -157,8 +157,9 @@ func mapMailRole(cmsRole string) string {
 
 // mailboxBody is the JSON payload for assigning a mailbox.
 type mailboxBody struct {
-	Local string `json:"local"`
-	Pass  string `json:"pass"`
+	Local  string `json:"local"`
+	Pass   string `json:"pass"`
+	Domain string `json:"domain"` // "" or primary → primary mailbox; a mail_enabled secondary → isolated secondary mailbox (Stage 3d)
 }
 
 // POST /os/api/users/{email}/mailbox  {local, pass}
@@ -203,7 +204,20 @@ func (a *App) handleAssignMailbox(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusInternalServerError, "hash-failed", "Could not hash password", "")
 		return
 	}
-	email := local + "@" + a.vayuMail.Config().Domain
+	// VayuDomains Stage 3d: a mailbox may be assigned on the primary (default) or on
+	// a mail_enabled secondary domain, provisioned into that domain's isolated
+	// Maildir. mailDomain stays "" for the primary so the path is byte-identical.
+	mailDomain := ""
+	targetHost := a.vayuMail.Config().Domain
+	if d := strings.ToLower(strings.TrimSpace(body.Domain)); d != "" && !strings.EqualFold(d, targetHost) {
+		if !a.acceptsSecondaryMailDomain(d) {
+			writeAPIError(w, r, http.StatusBadRequest, "validation_error", "not a mail-enabled domain — enable mail for it under Domains first", "")
+			return
+		}
+		mailDomain = d
+		targetHost = d
+	}
+	email := local + "@" + targetHost
 	role := mapMailRole(u.Role)
 	accts := a.vayuMail.Accounts()
 
@@ -221,8 +235,9 @@ func (a *App) handleAssignMailbox(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	// Provision the Maildir folders and a PGP keypair (best-effort).
-	_ = a.vayuMail.CreateMailbox("", local)
+	// Provision the Maildir folders and a PGP keypair (best-effort), under the
+	// mailbox's owning domain ("" = primary).
+	_ = a.vayuMail.CreateMailbox(mailDomain, local)
 	if a.vayuPGP != nil {
 		if _, err := a.vayuPGP.EnsureKeypair(&vpgp.PGPUser{UserID: email, Name: u.Name, Email: email}); err != nil {
 			logging.LogError("vayuos", "PGP keygen failed for assigned mailbox "+email, err.Error())
@@ -236,15 +251,45 @@ func (a *App) handleAssignMailbox(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, http.StatusOK, map[string]string{"email": email, "role": role})
 }
 
-// scopedMailUser resolves the mailbox identifier (local part) a request may
+// scopedMailUser resolves the mailbox identifier (engine key) a request may
 // operate on. Admins may target the requested mailbox; everyone else is locked
-// to their own assigned mailbox (empty when none).
+// to their own assigned mailbox (empty when none). For a non-admin whose mailbox
+// is on a secondary domain the key is the full address (VayuDomains Stage 3d);
+// on the primary domain it collapses to the bare local part, byte-identical.
 func (a *App) scopedMailUser(r *http.Request, requested string) string {
 	if a.isAdminRequest(r) {
 		return strings.TrimSpace(requested)
 	}
-	local, _ := a.ownMailbox(r)
+	return a.ownMailboxKey(r)
+}
+
+// ownMailboxKey returns the engine mailbox key for the signed-in user's assigned
+// mailbox — the bare local part when it is on the primary domain (so the primary
+// read path is byte-identical), or the full address when it is on a mail_enabled
+// secondary domain. The domain is taken purely from server state (the user's
+// stored MailAddress), never from a client param, so it carries no XSS exposure.
+// Empty when no mailbox is assigned.
+func (a *App) ownMailboxKey(r *http.Request) string {
+	local, email := a.ownMailbox(r)
+	if email == "" {
+		return ""
+	}
+	if at := strings.LastIndex(email, "@"); at >= 0 {
+		if dom := strings.ToLower(email[at+1:]); dom != "" && !strings.EqualFold(dom, a.cfgDomain()) {
+			return email
+		}
+	}
 	return local
+}
+
+// mailAddrOf turns an engine mailbox key into a full display address: a key that
+// already carries a domain (a secondary mailbox) is returned as-is; a bare local
+// part is qualified with the primary domain (unchanged from before).
+func mailAddrOf(key, primaryDomain string) string {
+	if strings.Contains(key, "@") {
+		return key
+	}
+	return key + "@" + primaryDomain
 }
 
 // ownMailbox returns the signed-in user's assigned mailbox local part and full
