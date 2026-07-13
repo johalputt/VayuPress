@@ -56,32 +56,60 @@ type DomainHealth struct {
 	CheckedAt time.Time      `json:"checked_at"`
 }
 
-// CheckHealth performs live DNS lookups (MX, SPF, DKIM, DMARC) and reports
-// whether each expected record is present. Lookups are best-effort and bounded.
-func CheckHealth(ctx context.Context, cfg Config, dkimName string) *DomainHealth {
-	res := &DomainHealth{Domain: cfg.Domain, CheckedAt: time.Now().UTC(), AllOK: true}
+// CheckHealthForDomain runs live DNS lookups (MX, SPF, DKIM, DMARC) for any mail
+// domain this install serves — the primary or any mail_enabled secondary — so an
+// operator can confirm every domain's records are aligned to THIS install, not
+// just present. The MX row verifies the domain routes mail to cfg.Hostname (a
+// secondary still pointing elsewhere is flagged as misaligned rather than "ok"),
+// and when dkimTXT is supplied the DKIM row confirms the published key matches
+// the key VayuMail signs with (a mismatch means dkim=fail at the recipient).
+// Lookups are best-effort and bounded.
+func CheckHealthForDomain(ctx context.Context, cfg Config, domain, dkimName, dkimTXT string) *DomainHealth {
+	domain = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(domain), "."))
+	res := &DomainHealth{Domain: domain, CheckedAt: time.Now().UTC(), AllOK: true}
 	resolver := net.Resolver{}
+	wantHost := strings.ToLower(strings.TrimSuffix(cfg.Hostname, "."))
 
-	// MX
-	mxOK := false
-	var mxFound string
-	if mxs, err := resolver.LookupMX(ctx, cfg.Domain); err == nil && len(mxs) > 0 {
-		mxOK = true
-		mxFound = strings.TrimSuffix(mxs[0].Host, ".")
+	// MX — present AND pointing at this install's mail host.
+	mxRow := RecordHealth{Type: "MX", Name: domain, Message: "missing"}
+	if mxs, err := resolver.LookupMX(ctx, domain); err == nil && len(mxs) > 0 {
+		var hosts []string
+		aligned := false
+		for _, mx := range mxs {
+			h := strings.ToLower(strings.TrimSuffix(mx.Host, "."))
+			hosts = append(hosts, h)
+			if wantHost != "" && h == wantHost {
+				aligned = true
+			}
+		}
+		mxRow.Found = strings.Join(hosts, ", ")
+		if wantHost == "" || aligned {
+			mxRow.OK, mxRow.Message = true, "ok"
+		} else {
+			mxRow.Message = "MX does not point to " + cfg.Hostname + " — mail for this domain is delivered elsewhere"
+		}
 	}
-	res.Records = append(res.Records, health("MX", cfg.Domain, mxOK, mxFound))
+	res.Records = append(res.Records, mxRow)
 
 	// SPF
 	if cfg.SPFEnabled {
-		res.Records = append(res.Records, txtContains(ctx, &resolver, "SPF", cfg.Domain, "v=spf1"))
+		res.Records = append(res.Records, txtContains(ctx, &resolver, "SPF", domain, "v=spf1"))
 	}
-	// DKIM
+	// DKIM — present, and (when we know our key) matching the signing key.
 	if cfg.DKIMEnabled {
-		res.Records = append(res.Records, txtContains(ctx, &resolver, "DKIM", dkimName, "v=DKIM1"))
+		row := txtContains(ctx, &resolver, "DKIM", dkimName, "v=DKIM1")
+		if row.OK && dkimTXT != "" {
+			want, got := dkimPValue(dkimTXT), dkimPValue(row.Found)
+			if want != "" && got != "" && want != got {
+				row.OK = false
+				row.Message = "published DKIM key does not match this install's signing key"
+			}
+		}
+		res.Records = append(res.Records, row)
 	}
 	// DMARC
 	if cfg.DMARCEnabled {
-		res.Records = append(res.Records, txtContains(ctx, &resolver, "DMARC", "_dmarc."+cfg.Domain, "v=DMARC1"))
+		res.Records = append(res.Records, txtContains(ctx, &resolver, "DMARC", "_dmarc."+domain, "v=DMARC1"))
 	}
 
 	for _, r := range res.Records {

@@ -840,46 +840,13 @@ func (a *App) handleVayuOSMail(w http.ResponseWriter, r *http.Request) {
   <div class="card"><div class="card-title">Delivered</div><div class="vm-stat">` + itoaSafe(stats.Delivered) + `</div></div>
   <div class="card"><div class="card-title">Failed</div><div class="vm-stat">` + itoaSafe(qs.Failed) + `</div></div>
 </div>`)
-	// DNS records.
-	body.WriteString(`<div class="card"><div class="card-title">DNS records to publish (` + html.EscapeString(mc.Domain) + `)</div><div class="table-wrap"><table class="table"><thead><tr><th>Type</th><th>Name</th><th>Value</th></tr></thead><tbody>`)
-	for _, rec := range a.vayuMail.PlannedRecords() {
-		body.WriteString(`<tr><td>` + html.EscapeString(rec.Type) + `</td><td class="mono text-sm">` + html.EscapeString(rec.Name) + `</td><td class="mono text-sm vm-break">` + html.EscapeString(rec.Value) + `</td></tr>`)
-	}
-	body.WriteString(`</tbody></table></div></div>`)
-	// Per-domain DNS (VayuDomains Stage 3d): each mail_enabled secondary domain
-	// needs its own MX/SPF/DKIM/DMARC. The DKIM key is shared with the primary, so
-	// the secondary publishes the SAME key value at its own selector record. Only
-	// rendered when a secondary mail domain exists (byte-identical otherwise).
-	for _, secHost := range a.mailSecondaryHosts(r.Context()) {
-		body.WriteString(`<div class="card"><div class="card-title">DNS records to publish (` + html.EscapeString(secHost) + `)</div>`)
-		body.WriteString(`<p class="muted text-sm">Secondary mail domain. Its MX points at this install's mail host; its DKIM key is shared with the primary, so publish the same key value at <span class="mono">` + html.EscapeString(mc.DKIMSelector) + `._domainkey.` + html.EscapeString(secHost) + `</span>.</p>`)
-		body.WriteString(`<div class="table-wrap"><table class="table"><thead><tr><th>Type</th><th>Name</th><th>Value</th></tr></thead><tbody>`)
-		for _, rec := range a.vayuMail.PlannedRecordsForDomain(secHost) {
-			body.WriteString(`<tr><td>` + html.EscapeString(rec.Type) + `</td><td class="mono text-sm">` + html.EscapeString(rec.Name) + `</td><td class="mono text-sm vm-break">` + html.EscapeString(rec.Value) + `</td></tr>`)
-		}
-		body.WriteString(`</tbody></table></div></div>`)
-	}
-	// Live DNS health.
-	hc := a.vayuMail.Health(r.Context())
-	body.WriteString(`<div class="card"><div class="card-title">Live DNS health</div><div class="table-wrap"><table class="table"><thead><tr><th>Record</th><th>Status</th><th>Found</th></tr></thead><tbody>`)
-	for _, rh := range hc.Records {
-		badge := `<span class="badge badge--ok">ok</span>`
-		if !rh.OK {
-			badge = `<span class="badge badge--warn">missing</span>`
-		}
-		body.WriteString(`<tr><td>` + html.EscapeString(rh.Type) + `</td><td>` + badge + `</td><td class="mono text-sm vm-break">` + html.EscapeString(rh.Found) + `</td></tr>`)
-	}
-	body.WriteString(`</tbody></table></div></div>`)
-	// Deliverability self-check — the things that most often send mail to spam.
-	body.WriteString(`<div class="card"><div class="card-title">Deliverability self-check</div><p class="muted text-sm">Why mail may be marked as spam. Fix any ✗ rows below.</p><div class="table-wrap"><table class="table"><thead><tr><th>Check</th><th>Status</th><th>Detail</th></tr></thead><tbody>`)
-	for _, rh := range a.vayuMail.Deliverability(r.Context()) {
-		badge := `<span class="badge badge--ok">ok</span>`
-		if !rh.OK {
-			badge = `<span class="badge badge--warn">action needed</span>`
-		}
-		body.WriteString(`<tr><td>` + html.EscapeString(rh.Type) + `</td><td>` + badge + `</td><td class="muted text-sm vm-break">` + html.EscapeString(rh.Message) + `</td></tr>`)
-	}
-	body.WriteString(`</tbody></table></div></div>`)
+	// DNS tab (rebuilt for multi-domain — see vayuos_mail_dns.go): the records to
+	// publish per domain, the mail-host & networking records the old flat table
+	// never showed, and live verification of EVERY mail domain (primary + each
+	// secondary) with an HTMX re-check.
+	body.WriteString(a.vayuDNSPublishSections(r, mc))
+	body.WriteString(a.vayuDNSVerifyFragment(r))
+	body.WriteString(vayuDNSScript(nonce))
 	writeOSHTML(w, adminOSLayout(nonce, "VayuMail", "vayuos", cfg, htmpl.HTML(body.String())))
 }
 
@@ -1364,23 +1331,43 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if user == "" {
+		// List every mailbox across all mail domains this install serves — the
+		// primary plus each mail_enabled secondary (VayuDomains). A single-domain
+		// install lists only the primary, byte-identical. The Maildir is
+		// domain-partitioned, so each domain's accounts come from its own tree.
 		boxes, err := a.vayuMail.Mailboxes()
 		if err != nil {
 			body.WriteString(`<div class="empty-state">Could not read mailboxes: ` + html.EscapeString(err.Error()) + `</div>`)
 			writeOSHTML(w, adminOSLayout(nonce, "Mailbox", "vayuos", cfg, htmpl.HTML(body.String())))
 			return
 		}
+		for _, secHost := range a.mailSecondaryHosts(r.Context()) {
+			if sb, e2 := a.vayuMail.MailboxesForDomain(secHost); e2 == nil {
+				boxes = append(boxes, sb...)
+			}
+		}
 		body.WriteString(`<div class="card"><div class="card-title">Mailboxes</div><div class="table-wrap"><table class="table vm-list"><thead><tr><th>Mailbox</th><th>Inbox</th><th>Unseen</th></tr></thead><tbody>`)
 		if len(boxes) == 0 {
 			body.WriteString(`<tr><td colspan="3" class="muted">No mailboxes yet. Create one under <a href="/os/vayumail/accounts">Accounts</a>, or one is provisioned when a CMS account is created.</td></tr>`)
 		}
 		for _, bx := range boxes {
-			addr := bx.Username + "@" + domain
+			bdom := bx.Domain
+			if bdom == "" {
+				bdom = domain
+			}
+			addr := bx.Username + "@" + bdom
+			// The mailbox key in the link is the bare local part for the primary
+			// (unchanged) and the full address for a secondary, so the read path's
+			// mailboxKey resolves each account's own domain-partitioned Maildir.
+			key := bx.Username
+			if !strings.EqualFold(bdom, domain) {
+				key = addr
+			}
 			unseen := ""
 			if bx.Unseen > 0 {
 				unseen = `<span class="vm-tab-badge">` + itoaSafe(bx.Unseen) + `</span>`
 			}
-			body.WriteString(`<tr><td><a class="vm-from" href="/os/vayumail/inbox?user=` + qparam(bx.Username) + `">` + mailAvatar(addr) + `<span class="vm-name">` + html.EscapeString(addr) + `</span></a></td><td>` + itoaSafe(bx.Total) + `</td><td>` + unseen + `</td></tr>`)
+			body.WriteString(`<tr><td><a class="vm-from" href="/os/vayumail/inbox?user=` + qparam(key) + `">` + mailAvatar(addr) + `<span class="vm-name">` + html.EscapeString(addr) + `</span></a></td><td>` + itoaSafe(bx.Total) + `</td><td>` + unseen + `</td></tr>`)
 		}
 		body.WriteString(`</tbody></table></div></div>`)
 		writeOSHTML(w, adminOSLayout(nonce, "Mailbox", "vayuos", cfg, htmpl.HTML(body.String())))

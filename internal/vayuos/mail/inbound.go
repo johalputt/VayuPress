@@ -340,30 +340,46 @@ func (m *Maildir) Accounts(domain string) ([]string, error) {
 	return out, nil
 }
 
-// MailboxSummary is a per-account inbox summary for the panel.
+// MailboxSummary is a per-account inbox summary for the panel. Domain names the
+// mail domain the account belongs to, so a caller listing multiple domains can
+// render and link each account's full address.
 type MailboxSummary struct {
 	Username string `json:"username"`
+	Domain   string `json:"domain"`
 	Total    int    `json:"total"`
 	Unseen   int    `json:"unseen"`
 }
 
 // Mailboxes returns inbox summaries for every provisioned account on the
-// engine's configured domain.
+// engine's configured primary domain.
 func (e *Engine) Mailboxes() ([]MailboxSummary, error) {
+	return e.MailboxesForDomain(e.cfg.Domain)
+}
+
+// MailboxesForDomain returns inbox summaries for every provisioned account on a
+// single mail domain this install serves — the primary or a mail_enabled
+// secondary (VayuDomains). The Maildir is domain-partitioned, so a secondary's
+// accounts are read from its own tree and never mixed with the primary's; each
+// summary carries its Domain so callers can render the full address.
+func (e *Engine) MailboxesForDomain(domain string) ([]MailboxSummary, error) {
 	if e.maildir == nil {
 		return nil, errors.New("vayumail: not started")
 	}
-	accts, err := e.maildir.Accounts(e.cfg.Domain)
+	domain = strings.ToLower(strings.TrimSpace(domain))
+	if domain == "" {
+		domain = e.cfg.Domain
+	}
+	accts, err := e.maildir.Accounts(domain)
 	if err != nil {
 		return nil, err
 	}
 	out := make([]MailboxSummary, 0, len(accts))
 	for _, u := range accts {
-		msgs, err := e.maildir.List(e.cfg.Domain, u)
+		msgs, err := e.maildir.List(domain, u)
 		if err != nil {
 			continue
 		}
-		s := MailboxSummary{Username: u, Total: len(msgs)}
+		s := MailboxSummary{Username: u, Domain: domain, Total: len(msgs)}
 		for _, m := range msgs {
 			if !m.Seen {
 				s.Unseen++

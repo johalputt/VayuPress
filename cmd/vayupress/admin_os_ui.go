@@ -318,6 +318,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail", a.handleVayuOSDashboard)
 		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/pgp", a.handleVayuOSPGP)
 		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/dns", a.handleVayuOSMail)
+		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/dns/verify", a.handleVayuOSMailDNSVerify)
 		// Legacy /os/vayuos/* URLs (pre-2.8 layout) redirect permanently to the
 		// clean /os/vayumail/* namespace so bookmarks and muscle memory keep working.
 		pr.Get("/os/vayuos", redirectLegacyVayuOS)

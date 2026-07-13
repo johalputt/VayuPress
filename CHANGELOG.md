@@ -8,6 +8,37 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.12] — 2026-07-13
+
+### Added
+- **VayuMail DNS tab — rebuilt for multi-domain.** The DNS tab is now a set of
+  collapsible sections instead of flat tables. It adds the **Mail host &
+  networking** section the old tab never showed — the `A`/`AAAA` records that make
+  the mail host reachable, the reverse-DNS (PTR) alignment and the inbound ports —
+  with a prominent warning that mail cannot be proxied, so those records must be
+  published **DNS-only** (on Cloudflare, the grey cloud). Each record value gets a
+  one-click **copy** button.
+- **DNS verification for every mail domain.** A new *DNS verification — all
+  domains* section checks the live MX/SPF/DKIM/DMARC of the **primary and every
+  mail_enabled secondary** — not just the primary — and confirms each domain's MX
+  actually routes to this install's mail host (a secondary still pointing
+  elsewhere is flagged as misaligned rather than merely "present"). An **HTMX
+  Re-check** control re-runs every lookup in place, no full-page reload.
+
+### Fixed
+- **Secondary-domain mailboxes now appear in the Mailbox list.** The Mailbox tab
+  enumerated only the primary domain's Maildir, so `@secondary` accounts were
+  invisible. It now lists every mail domain's accounts (each from its own
+  domain-partitioned Maildir) with the full address, and opening one reads the
+  correct mailbox.
+
+### Notes
+- No-op for single-domain installs: only the primary records and host section
+  render, and the mailbox list is unchanged (byte-identical). The DNS tab is
+  administrator-only, as before. Internally, `Engine.HealthForDomain` /
+  `CheckHealthForDomain` and `Engine.MailboxesForDomain` supersede the
+  primary-only `Health` / `CheckHealth`.
+
 ## [3.13.11] — 2026-07-13
 
 ### Added

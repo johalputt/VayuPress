@@ -811,10 +811,21 @@ func (e *Engine) PlannedRecordsForDomain(domain string) []DNSRecord {
 	return PlannedRecords(cfg, dkimName, dkimTXT)
 }
 
-// Health runs live DNS health checks for the configured domain.
-func (e *Engine) Health(ctx context.Context) *DomainHealth {
-	dkimName := e.cfg.DKIMSelector + "._domainkey." + e.cfg.Domain
-	return CheckHealth(ctx, e.cfg, dkimName)
+// HealthForDomain runs live DNS checks for any mail domain this install serves —
+// the primary or a mail_enabled secondary — so the operator can confirm every
+// domain's MX/SPF/DKIM/DMARC is aligned to this install. The DKIM key is shared
+// across domains and published at each domain's own <selector>._domainkey name,
+// so the check compares the domain's published key against this install's key.
+func (e *Engine) HealthForDomain(ctx context.Context, domain string) *DomainHealth {
+	if strings.TrimSpace(domain) == "" {
+		domain = e.cfg.Domain
+	}
+	dkimName := e.cfg.DKIMSelector + "._domainkey." + strings.ToLower(strings.TrimSuffix(domain, "."))
+	dkimTXT := ""
+	if dk := e.dkimFor(domain); dk != nil {
+		dkimName, dkimTXT = dk.RecordName(), dk.PublicTXT()
+	}
+	return CheckHealthForDomain(ctx, e.cfg, domain, dkimName, dkimTXT)
 }
 
 // QueueStatus returns outbound queue counters.

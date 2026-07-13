@@ -4396,3 +4396,71 @@
   .vp-os .vm-acct__store { display: none; }
   .vp-os .vm-acct__badges { flex: 1 1 100%; }
 }
+
+/* ── VayuMail DNS tab: collapsible sections + verification ──────────────────── */
+.vp-os .vm-sec { padding: 0; overflow: hidden; transition: border-color var(--t), box-shadow var(--t); }
+.vp-os .vm-sec[open] { border-color: var(--border-strong); box-shadow: var(--sh); }
+.vp-os .vm-sec__head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-4) var(--sp-5);
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.vp-os .vm-sec__head::-webkit-details-marker { display: none; }
+.vp-os .vm-sec__head:hover { background: var(--bg-surface-2); }
+.vp-os .vm-sec__title { font-family: var(--font-head); font-weight: 600; color: var(--text); flex: 1 1 auto; min-width: 0; }
+.vp-os .vm-sec__meta { flex: 0 0 auto; display: flex; align-items: center; gap: var(--sp-2); }
+.vp-os .vm-sec__chev { flex: 0 0 auto; color: var(--text-3); transition: transform var(--t); font-size: var(--text-sm); }
+.vp-os .vm-sec[open] .vm-sec__chev { transform: rotate(180deg); }
+.vp-os .vm-sec__body { padding: 0 var(--sp-5) var(--sp-5); }
+.vp-os .vm-sec__body > p:first-child { margin-top: 0; }
+
+/* Record type chip + copy button + value cell. */
+.vp-os .vm-tag {
+  display: inline-block;
+  padding: 1px var(--sp-2);
+  border-radius: var(--r-sm);
+  background: var(--brand-dim);
+  color: var(--brand);
+  font-family: var(--font-mono, monospace);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: .02em;
+}
+.vp-os .vm-dns-table td { vertical-align: top; }
+.vp-os .vm-rec-val { display: inline-block; max-width: 100%; }
+.vp-os .vm-copy {
+  margin-left: var(--sp-2);
+  padding: 1px var(--sp-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--bg-surface-2);
+  color: var(--text-2);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  vertical-align: middle;
+  transition: border-color var(--t), color var(--t);
+}
+.vp-os .vm-copy:hover { border-color: var(--brand); color: var(--brand); }
+
+/* Verification section: per-domain groups + re-check control. */
+.vp-os .vm-verify-head { display: flex; align-items: center; gap: var(--sp-3); margin-bottom: var(--sp-4); flex-wrap: wrap; }
+.vp-os .vm-verify-dom { margin-top: var(--sp-4); }
+.vp-os .vm-verify-dom:first-of-type { margin-top: 0; }
+.vp-os .vm-sub-title {
+  font-family: var(--font-head);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-2);
+  margin: 0 0 var(--sp-2);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.vp-os .vm-spin { color: var(--text-3); font-size: var(--text-xs); }
+.vp-os .htmx-indicator { opacity: 0; transition: opacity var(--t); }
+.vp-os .htmx-request .htmx-indicator,
+.vp-os .htmx-request.htmx-indicator { opacity: 1; }
