@@ -219,6 +219,14 @@ func domainsAssignForm(domains []domain.Domain) string {
 </div>`
 }
 
+// domBrandsCarrier renders the hidden element that carries the per-domain brand
+// map to the page script. It uses html/template so the JSON payload is quoted by
+// the template engine's context-aware auto-escaper — not by manual string
+// concatenation — which is the safe, recognised way to embed a value in an HTML
+// attribute (CWE-116): no brand value can break out of the attribute's quoting.
+var domBrandsCarrier = htmpl.Must(htmpl.New("dom-brands").Parse(
+	`<div id="dom-brands" data-brands="{{.}}" hidden></div>`))
+
 // domainsBrandForm lets the operator give each secondary domain its own public
 // identity — site name, tagline, description, accent colours and browser
 // theme-colour — so it presents as its own site. Every field is optional: a
@@ -240,11 +248,13 @@ func domainsBrandForm(domains []domain.Domain, brandJSON string) string {
 	if secondaries == 0 {
 		return ""
 	}
-	// The per-domain brand map rides in an HTML data attribute (html-escaped for
-	// the attribute's quote context) and is JSON.parsed by the page script, rather
-	// than being interpolated straight into the inline <script> — so no value can
-	// break the script's quoting (CWE-116).
-	return `<div id="dom-brands" data-brands="` + html.EscapeString(brandJSON) + `" hidden></div>
+	// The per-domain brand map rides in an HTML data attribute and is JSON.parsed by
+	// the page script, rather than being interpolated straight into the inline
+	// <script>. html/template (domBrandsCarrier) owns the attribute quoting, so no
+	// value can break out of it (CWE-116).
+	var carrier strings.Builder
+	_ = domBrandsCarrier.Execute(&carrier, brandJSON)
+	return carrier.String() + `
 <div class="card">
   <h2 class="card-title">Brand a domain</h2>
   <p class="text-sm muted">Give a secondary domain its own public identity so it presents as its own site. Every field is optional — leave one blank to inherit the primary site's value. Changes apply to that domain's homepage, articles and theme within a few seconds.</p>

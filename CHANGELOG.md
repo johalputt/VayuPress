@@ -8,6 +8,32 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.23] — 2026-07-13
+
+### Security
+- **goldmark v1.8.2 → v1.8.4.** With the pre-release filter in place (v3.13.22),
+  the watcher now surfaces the real latest *stable* goldmark instead of the
+  `v2.0.0-beta.5` pre-release; this bumps to it. Ships inside this signed release.
+- **CodeQL CWE-116 (unsafe quoting), `admin_os_domains.go`.** The per-domain brand
+  map was embedded in a `data-brands` attribute with a hand-built,
+  quote-delimited string and `html.EscapeString`. Although escaped, CodeQL still
+  flagged the manual quoting. It is now rendered through `html/template`, so the
+  template engine's context-aware auto-escaper owns the attribute quoting — the
+  recognised, defence-in-depth-correct way to embed a value in HTML. A new test
+  proves a hostile brand value carrying `"><script>` cannot break out.
+- **CodeQL CWE-770 (uncontrolled allocation size), `search_domain.go`.** The
+  per-domain hit filter pre-sized its output slice from an expression involving
+  the request-derived `limit`. It now sizes purely from `len(hits)` — the length
+  of an already-materialised slice (itself capped at the 500-hit over-fetch bound)
+  — keeping the allocation size off any request-tainted path. `limit` still bounds
+  the loop, so results are unchanged.
+
+### Notes
+- Both CodeQL fixes are defence-in-depth: the previous code was already safe in
+  practice (escaped output; a filter bounded by the batch), but the sanitisers
+  weren't ones CodeQL's data-flow model recognises. The fixes remove the tainted
+  value from the sink entirely, which is the durable fix. No behaviour change.
+
 ## [3.13.22] — 2026-07-13
 
 ### Security

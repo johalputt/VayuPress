@@ -22,9 +22,19 @@ func TestDomainsBrandFormEmbedsBrandsViaAttribute(t *testing.T) {
 		t.Fatalf("brand form should carry the brands in a data attribute:\n%s", form)
 	}
 	// The raw JSON must be html-escaped inside the attribute (quotes escaped), so
-	// it cannot break out of the attribute or the surrounding markup.
+	// it cannot break out of the attribute or the surrounding markup. html/template
+	// owns the quoting, so every JSON double quote is rendered as the &#34; entity.
 	if strings.Contains(form, `data-brands="`+brandJSON+`"`) {
 		t.Errorf("brand JSON must be html-escaped in the attribute, not raw")
+	}
+	if !strings.Contains(form, `&#34;`) {
+		t.Errorf("brand JSON quotes should be html-entity-escaped by the template:\n%s", form)
+	}
+	// A hostile brand value carrying a double quote must not be able to close the
+	// attribute — the raw `">` breakout sequence must never survive into the markup.
+	hostile := domainsBrandForm(domains, `{"s1":{"site_name":"\"><script>x"}}`)
+	if strings.Contains(hostile, `"><script>`) {
+		t.Fatalf("brand value broke out of the attribute quoting:\n%s", hostile)
 	}
 
 	// The page script reads the brands from the element and never interpolates
