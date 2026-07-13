@@ -350,10 +350,13 @@ func (s *SMTPServer) verify(user, pass string) bool {
 	return err == nil && ok
 }
 
-// recipientAccepted enforces no open relay: only local domain recipients.
+// recipientAccepted enforces no open relay: only recipients on a domain this
+// install serves — the primary, or a mail_enabled secondary (VayuDomains Stage
+// 3b). With no secondary mail domain configured this is exactly the historic
+// primary-only check.
 func (s *SMTPServer) recipientAccepted(addr string) bool {
 	_, domain := splitAddress(addr)
-	return strings.EqualFold(domain, s.cfg.Domain)
+	return s.cfg.AcceptsMailDomain(domain)
 }
 
 func splitCmd(line string) (cmd, arg string) {

@@ -24,6 +24,7 @@ package mail
 import (
 	"net"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -32,6 +33,16 @@ type Config struct {
 	Enabled  bool
 	Domain   string // primary mail domain (e.g. example.com)
 	Hostname string // mail host (e.g. mail.example.com)
+
+	// MailAccepts reports whether host is a *secondary* mail domain this install
+	// accepts and stores mail for (VayuDomains Stage 3b: a registered, active,
+	// mail_enabled, non-primary domain). The primary domain is always accepted via
+	// the Domain field above, independently of this hook. nil (the zero value, and
+	// the value in every existing single-domain install and test) means
+	// primary-only — byte-identical to the pre-Stage-3b behaviour. The engine and
+	// SMTP receive server consult it on the recipient-acceptance hot path, so the
+	// closure must be cheap (a cached registry lookup).
+	MailAccepts func(host string) bool
 
 	// DKIMSelector is the DKIM selector published at <selector>._domainkey.<domain>.
 	DKIMSelector string
@@ -133,6 +144,21 @@ type Config struct {
 	// on :465) before AUTH/DATA. On by default; only disable for a trusted relay
 	// on a private network.
 	RelayRequireTLS bool
+}
+
+// AcceptsMailDomain reports whether host is a mail domain this install serves —
+// the primary Domain, or a secondary domain accepted via MailAccepts (VayuDomains
+// Stage 3b). It is the single acceptance predicate shared by the SMTP receive
+// server and the engine's local-recipient check, so the primary path is
+// byte-identical when MailAccepts is nil.
+func (c Config) AcceptsMailDomain(host string) bool {
+	if host == "" {
+		return false
+	}
+	if strings.EqualFold(host, c.Domain) {
+		return true
+	}
+	return c.MailAccepts != nil && c.MailAccepts(host)
 }
 
 // RelayEnabled reports whether outbound mail should be sent through a configured

@@ -137,11 +137,12 @@ func (s *IMAPServer) acceptLoop() {
 }
 
 type imapSession struct {
-	authedUser string // local username
-	authedMail string // full email
-	selected   string // canonical folder name, "" if none selected
-	readOnly   bool
-	msgs       []imapMsg
+	authedUser   string // local username
+	authedMail   string // full email
+	authedDomain string // owning mail domain (VayuDomains Stage 3b): the Maildir key
+	selected     string // canonical folder name, "" if none selected
+	readOnly     bool
+	msgs         []imapMsg
 }
 
 func (sess *imapSession) authed() bool { return sess.authedUser != "" }
@@ -333,6 +334,10 @@ func (s *IMAPServer) verify(user, pass string) bool {
 
 func (s *IMAPServer) setAuthed(sess *imapSession, user string) {
 	local, mailAddr := user, user
+	// The Maildir is keyed by owning domain (VayuDomains Stage 3b). A bare local
+	// part or local@primary resolves to the primary — byte-identical; only a
+	// secondary login domain switches the Maildir key. Auth has already verified
+	// the account exists for the presented address.
 	if i := strings.IndexByte(user, '@'); i >= 0 {
 		local = user[:i]
 	} else {
@@ -340,6 +345,7 @@ func (s *IMAPServer) setAuthed(sess *imapSession, user string) {
 	}
 	sess.authedUser = local
 	sess.authedMail = mailAddr
+	sess.authedDomain = mailboxDomainFor(user, s.cfg.Domain)
 }
 
 // ── Mailbox listing ──────────────────────────────────────────────────────────
@@ -422,7 +428,7 @@ func (s *IMAPServer) doStatus(line func(string), sess *imapSession, tag, arg str
 	}
 	mbox, items := cutSpace(arg)
 	folder := canonicalFolder(strings.Trim(mbox, `"`))
-	msgs, _ := s.maildir.ListFolder(s.cfg.Domain, sess.authedUser, folder)
+	msgs, _ := s.maildir.ListFolder(sess.authedDomain, sess.authedUser, folder)
 	unseen := 0
 	for _, m := range msgs {
 		if len(imapFlagsForID(m.ID)) == 0 || !strings.Contains(strings.Join(imapFlagsForID(m.ID), " "), `\Seen`) {
@@ -473,7 +479,7 @@ func (s *IMAPServer) uidNext(account, folder string, snapshotLen int) uint32 {
 // snapshot loads the selected folder's messages, assigning stable UIDs and
 // ordering by UID ascending (so sequence numbers are stable too).
 func (s *IMAPServer) snapshot(sess *imapSession, folder string) error {
-	list, err := s.maildir.ListFolder(s.cfg.Domain, sess.authedUser, folder)
+	list, err := s.maildir.ListFolder(sess.authedDomain, sess.authedUser, folder)
 	if err != nil {
 		return err
 	}
@@ -558,7 +564,7 @@ func (s *IMAPServer) doFetch(w *bufio.Writer, line func(string), sess *imapSessi
 	for _, m := range targets {
 		if willSeen && !m.flags['S'] {
 			m.flags['S'] = true
-			if newID, err := s.maildir.setMessageFlags(s.cfg.Domain, sess.authedUser, sess.selected, m.id, m.flags); err == nil {
+			if newID, err := s.maildir.setMessageFlags(sess.authedDomain, sess.authedUser, sess.selected, m.id, m.flags); err == nil {
 				m.id = newID
 			}
 		}
@@ -633,7 +639,7 @@ func (s *IMAPServer) doStore(w *bufio.Writer, line func(string), sess *imapSessi
 		default:
 			newSet = wantFlags
 		}
-		if newID, err := s.maildir.setMessageFlags(s.cfg.Domain, sess.authedUser, sess.selected, m.id, newSet); err == nil {
+		if newID, err := s.maildir.setMessageFlags(sess.authedDomain, sess.authedUser, sess.selected, m.id, newSet); err == nil {
 			m.id = newID
 			m.flags = newSet
 		}
@@ -675,11 +681,11 @@ func (s *IMAPServer) doCopy(line func(string), sess *imapSession, tag, arg strin
 	targets := s.resolveSet(sess, seqPart, byUID)
 	srcUIDs, dstUIDs := []string{}, []string{}
 	for _, m := range targets {
-		raw, err := s.maildir.ReadRawFolder(s.cfg.Domain, sess.authedUser, sess.selected, m.id)
+		raw, err := s.maildir.ReadRawFolder(sess.authedDomain, sess.authedUser, sess.selected, m.id)
 		if err != nil {
 			continue
 		}
-		newID, err := s.maildir.DeliverTo(s.cfg.Domain, sess.authedUser, dest, raw)
+		newID, err := s.maildir.DeliverTo(sess.authedDomain, sess.authedUser, dest, raw)
 		if err != nil {
 			continue
 		}
@@ -712,14 +718,14 @@ func (s *IMAPServer) doMove(w *bufio.Writer, line func(string), sess *imapSessio
 	targets := s.resolveSet(sess, seqPart, byUID)
 	moved := map[string]bool{}
 	for _, m := range targets {
-		raw, err := s.maildir.ReadRawFolder(s.cfg.Domain, sess.authedUser, sess.selected, m.id)
+		raw, err := s.maildir.ReadRawFolder(sess.authedDomain, sess.authedUser, sess.selected, m.id)
 		if err != nil {
 			continue
 		}
-		if _, err := s.maildir.DeliverTo(s.cfg.Domain, sess.authedUser, dest, raw); err != nil {
+		if _, err := s.maildir.DeliverTo(sess.authedDomain, sess.authedUser, dest, raw); err != nil {
 			continue
 		}
-		if err := s.maildir.deleteMessage(s.cfg.Domain, sess.authedUser, sess.selected, m.id); err == nil {
+		if err := s.maildir.deleteMessage(sess.authedDomain, sess.authedUser, sess.selected, m.id); err == nil {
 			moved[m.id] = true
 		}
 	}
@@ -746,7 +752,7 @@ func (s *IMAPServer) expungeDeleted(sess *imapSession, w *bufio.Writer) {
 	del := map[string]bool{}
 	for _, m := range sess.msgs {
 		if m.flags['T'] {
-			if err := s.maildir.deleteMessage(s.cfg.Domain, sess.authedUser, sess.selected, m.id); err == nil {
+			if err := s.maildir.deleteMessage(sess.authedDomain, sess.authedUser, sess.selected, m.id); err == nil {
 				del[m.id] = true
 			}
 		}
@@ -819,7 +825,7 @@ func (s *IMAPServer) matchesCriteria(sess *imapSession, m *imapMsg, toks []strin
 	var hdr string
 	loadHdr := func() string {
 		if hdr == "" {
-			if raw, err := s.maildir.ReadRawFolder(s.cfg.Domain, sess.authedUser, sess.selected, m.id); err == nil {
+			if raw, err := s.maildir.ReadRawFolder(sess.authedDomain, sess.authedUser, sess.selected, m.id); err == nil {
 				hb, _ := splitHeaderBody(raw)
 				hdr = strings.ToLower(string(hb))
 			}
@@ -876,7 +882,7 @@ func (s *IMAPServer) matchesCriteria(sess *imapSession, m *imapMsg, toks []strin
 			}
 			hay := loadHdr()
 			if t == "BODY" || t == "TEXT" {
-				if raw, err := s.maildir.ReadRawFolder(s.cfg.Domain, sess.authedUser, sess.selected, m.id); err == nil {
+				if raw, err := s.maildir.ReadRawFolder(sess.authedDomain, sess.authedUser, sess.selected, m.id); err == nil {
 					hay = strings.ToLower(string(raw))
 				}
 			}
@@ -1061,13 +1067,13 @@ func (s *IMAPServer) doAppend(br *bufio.Reader, w *bufio.Writer, line func(strin
 	}
 	_, _ = br.ReadString('\n') // trailing CRLF after the literal
 
-	newID, err := s.maildir.DeliverTo(s.cfg.Domain, sess.authedUser, folder, buf)
+	newID, err := s.maildir.DeliverTo(sess.authedDomain, sess.authedUser, folder, buf)
 	if err != nil {
 		line(tag + " NO APPEND failed")
 		return
 	}
 	if len(flags) > 0 {
-		if id2, ferr := s.maildir.setMessageFlags(s.cfg.Domain, sess.authedUser, folder, newID, flags); ferr == nil {
+		if id2, ferr := s.maildir.setMessageFlags(sess.authedDomain, sess.authedUser, folder, newID, flags); ferr == nil {
 			newID = id2
 		}
 	}
@@ -1143,7 +1149,7 @@ func (s *IMAPServer) doIdle(br *bufio.Reader, w *bufio.Writer, line func(string)
 			line(tag + " OK IDLE terminated")
 			return
 		case <-ticker.C:
-			msgs, err := s.maildir.ListFolder(s.cfg.Domain, sess.authedUser, sess.selected)
+			msgs, err := s.maildir.ListFolder(sess.authedDomain, sess.authedUser, sess.selected)
 			if err == nil && len(msgs) != lastCount {
 				lastCount = len(msgs)
 				_, _ = w.WriteString(fmt.Sprintf("* %d EXISTS\r\n", lastCount))

@@ -752,13 +752,27 @@ func (a *App) handleVayuOSAccounts(w http.ResponseWriter, r *http.Request) {
 	domain := a.vayuMail.Config().Domain
 	accs, _ := a.vayuMail.Accounts().List(r.Context())
 
+	// VayuDomains Stage 3b: when a mail_enabled secondary domain exists, let the
+	// operator choose which domain a new mailbox belongs to (each domain has its
+	// own isolated store). With none, the address suffix is the fixed primary
+	// domain exactly as before.
+	addrSuffix := `<span class="vm-suffix">@` + html.EscapeString(domain) + `</span>`
+	if secs := a.mailSecondaryHosts(r.Context()); len(secs) > 0 {
+		var opts strings.Builder
+		opts.WriteString(`<option value="">@` + html.EscapeString(domain) + ` (primary)</option>`)
+		for _, h := range secs {
+			opts.WriteString(`<option value="` + html.EscapeString(h) + `">@` + html.EscapeString(h) + `</option>`)
+		}
+		addrSuffix = `<select class="input" data-a-domain aria-label="Mailbox domain">` + opts.String() + `</select>`
+	}
+
 	// Create form.
 	body.WriteString(`<div class="card"><div class="card-title">Create mail account</div>
 <form data-acct-create>
   <div class="vm-row vm-row--end">
     <label class="field vm-grow"><span class="field-label">Address</span>
       <input class="input" type="text" data-a-local placeholder="name" required>
-      <span class="vm-suffix">@` + html.EscapeString(domain) + `</span></label>
+      ` + addrSuffix + `</label>
     <label class="field vm-grow"><span class="field-label">Full name (optional)</span>
       <input class="input" type="text" data-a-name placeholder="Display name"></label>
     <label class="field"><span class="field-label">Role</span>
@@ -1547,6 +1561,7 @@ func (a *App) handleVayuOSAccountCreate(w http.ResponseWriter, r *http.Request) 
 		Name    string   `json:"name"`
 		Pass    string   `json:"pass"`
 		Role    string   `json:"role"`
+		Domain  string   `json:"domain"` // "" or the primary => primary mailbox; a mail_enabled secondary => isolated secondary mailbox (Stage 3b)
 		QuotaMB *float64 `json:"quota_mb"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64*1024)).Decode(&in); err != nil {
@@ -1567,7 +1582,21 @@ func (a *App) handleVayuOSAccountCreate(w http.ResponseWriter, r *http.Request) 
 		writeAPIError(w, r, 500, "hash-failed", "could not hash password", "")
 		return
 	}
-	email := local + "@" + a.vayuMail.Config().Domain
+	// VayuDomains Stage 3b: a mailbox may be created on the primary (default) or on
+	// a mail_enabled secondary domain, provisioned into that domain's isolated
+	// Maildir. mailDomain stays "" for the primary so the Maildir path is
+	// byte-identical to before.
+	mailDomain := ""
+	targetHost := a.vayuMail.Config().Domain
+	if in.Domain = strings.ToLower(strings.TrimSpace(in.Domain)); in.Domain != "" && !strings.EqualFold(in.Domain, targetHost) {
+		if !a.acceptsSecondaryMailDomain(in.Domain) {
+			writeAPIError(w, r, 400, "validation_error", "not a mail-enabled domain — enable mail for it under Domains first", "")
+			return
+		}
+		mailDomain = in.Domain
+		targetHost = in.Domain
+	}
+	email := local + "@" + targetHost
 	if err := a.vayuMail.Accounts().Create(r.Context(), email, hash, in.Name, in.Role); err != nil {
 		writeAPIError(w, r, 400, "create-failed", err.Error(), "")
 		return
@@ -1576,8 +1605,8 @@ func (a *App) handleVayuOSAccountCreate(w http.ResponseWriter, r *http.Request) 
 	if in.QuotaMB != nil && *in.QuotaMB > 0 {
 		_ = a.vayuMail.Accounts().SetQuota(r.Context(), email, int64(*in.QuotaMB*1024*1024))
 	}
-	// Provision the Maildir folders for the new address.
-	_ = a.vayuMail.CreateMailbox("", local)
+	// Provision the Maildir folders for the new address (under its owning domain).
+	_ = a.vayuMail.CreateMailbox(mailDomain, local)
 	// Auto-generate a PGP keypair for the new mailbox (private key encrypted at
 	// rest) so it appears in the VayuPGP panel and its mail can be encrypted /
 	// transparently decrypted. Best-effort: a key failure must not fail account

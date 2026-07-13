@@ -916,7 +916,10 @@ func (e *Engine) splitLocalRecipients(to []string) (local, remote []string) {
 // the bridge (CMS user or admin-managed mail account).
 func (e *Engine) isLocalRecipient(addr string) bool {
 	_, domain := splitAddress(addr)
-	if domain == "" || !strings.EqualFold(domain, e.cfg.Domain) {
+	// The recipient must be on a domain this install serves — the primary, or a
+	// mail_enabled secondary (VayuDomains Stage 3b). Byte-identical to the historic
+	// primary-only check when no secondary mail domain is configured.
+	if !e.cfg.AcceptsMailDomain(domain) {
 		return false
 	}
 	if e.accounts != nil && e.accounts.ResolveAlias(context.Background(), addr) != "" {

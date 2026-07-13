@@ -161,15 +161,39 @@ mail is provably byte-identical (proven by the unchanged mail-engine tests). Thi
 gives operators visibility into the rollout without putting a live mail server at
 risk.
 
-**Stage 3b (next): per-domain receive + read isolation.** Open the SMTP
-acceptance gate to `mail_enabled` secondary domains, thread the real recipient/
-login domain through inbound delivery and the IMAP/POP3/webmail read path (instead
-of the hardcoded `cfg.Domain`), so `user@secondary` receives and reads only its
-own isolated Maildir. Gated on a registered `mail_enabled` secondary so a plain
-install stays byte-identical, and covered by explicit cross-domain isolation tests
-(`bob@a.example` and `bob@b.example` are distinct mailboxes). The Maildir already
-isolates on disk and `safeSegment` already neutralises hostile domain/username
-segments — the work is threading, not new storage.
+**Stage 3b (shipped): per-domain receive + read isolation.** A `mail_enabled`
+secondary domain now receives external mail into its own isolated Maildir and its
+users read only that mailbox over IMAP/POP3:
+
+- **Acceptance.** A single predicate — `Config.AcceptsMailDomain` (primary via
+  `cfg.Domain`, secondaries via an injected `MailAccepts` resolver backed by the
+  registry) — gates the SMTP receive server (`recipientAccepted`), the engine's
+  local-recipient check and the bridge's `IsLocalRecipient`. `MailAccepts` is nil
+  in every single-domain install and test, so the predicate collapses to the
+  historic primary-only check — byte-identical.
+- **Delivery** already carried the parsed recipient domain to
+  `maildir.Deliver(domain, …)`; opening acceptance is enough for a secondary's
+  mail to land in `<base>/maildir/<secondary>/<user>/…`.
+- **Read.** IMAP and POP3 sessions record the authenticated login's owning domain
+  (`mailboxDomainFor`, which returns the primary unless a genuinely different —
+  secondary — login domain is presented) and key every Maildir operation on it
+  instead of `cfg.Domain`. A bare local part or `local@primary` login stays on the
+  primary, so the primary path is unchanged. Auth was already domain-correct
+  (`AuthUser` uses the full login address).
+- **Provisioning.** The Accounts admin page lets an operator create a mailbox on a
+  `mail_enabled` secondary (a domain picker appears only when one exists); the
+  address, Maildir and PGP key are provisioned under that domain.
+- **Webmail stays primary.** CMS-user mailboxes are always primary (team
+  assignment hardcodes the primary domain), and the webmail `user` param is a
+  local part resolving to `cfg.Domain`, so webmail never reads a secondary
+  Maildir — no cross-domain leak. Full webmail access to secondary mailboxes rides
+  with Stage 3c.
+
+Covered by explicit cross-domain isolation tests (`bob@example.com` and
+`bob@shop.example` are distinct stored messages), acceptance-predicate tests and
+the login→domain resolution table. `safeSegment` already neutralises hostile
+domain/username path segments, so feeding the real (attacker-influenceable)
+recipient domain into the Maildir path adds no traversal surface.
 
 **Stage 3c (later): per-domain outbound + branding.** A per-domain DKIM signer
 (the signer is already domain-parameterized), From/envelope alignment, per-host

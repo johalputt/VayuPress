@@ -98,7 +98,7 @@ func (s *IMAPServer) writeFetchResponse(w *bufio.Writer, sess *imapSession, m *i
 			return
 		}
 		rawLoaded = true
-		b, err := s.maildir.ReadRawFolder(s.cfg.Domain, sess.authedUser, sess.selected, m.id)
+		b, err := s.maildir.ReadRawFolder(sess.authedDomain, sess.authedUser, sess.selected, m.id)
 		if err != nil {
 			b = []byte{}
 		}

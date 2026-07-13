@@ -74,6 +74,48 @@ func (a *App) multiDomain(r *http.Request) bool {
 	return a.domains != nil && a.domains.HasSecondaries(r.Context())
 }
 
+// acceptsSecondaryMailDomain reports whether host is a registered, active,
+// mail_enabled *secondary* domain (VayuDomains Stage 3b). The primary mail domain
+// is handled separately by the mail engine's cfg.Domain checks; this covers only
+// the opt-in secondary mail domains. With none registered it is always false, so
+// the mail acceptance and Maildir-resolution paths stay byte-identical. It is
+// consulted on the SMTP recipient-acceptance hot path, so it leans on the
+// registry's in-memory TTL cache rather than hitting the DB per call.
+func (a *App) acceptsSecondaryMailDomain(host string) bool {
+	if a.domains == nil {
+		return false
+	}
+	host = strings.TrimSpace(host)
+	if host == "" {
+		return false
+	}
+	d, err := a.domains.Resolve(context.Background(), host)
+	if err != nil {
+		return false
+	}
+	return !d.IsPrimary && d.MailEnabled && d.Status == domain.StatusActive
+}
+
+// mailSecondaryHosts returns the hosts of active, mail_enabled secondary domains
+// (VayuDomains Stage 3b). It is empty on a single-domain install, so the mail
+// admin UI that consumes it stays byte-identical there.
+func (a *App) mailSecondaryHosts(ctx context.Context) []string {
+	if a.domains == nil {
+		return nil
+	}
+	list, err := a.domains.List(ctx)
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, d := range list {
+		if !d.IsPrimary && d.MailEnabled && d.Status == domain.StatusActive {
+			out = append(out, d.Host)
+		}
+	}
+	return out
+}
+
 // domCacheDir sanitises a domain id into a filesystem-safe cache subdirectory
 // name. Ids are already hex, but a path segment is never trusted blindly.
 func domCacheDir(id string) string {

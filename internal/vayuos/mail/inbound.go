@@ -305,6 +305,21 @@ func splitAddress(addr string) (local, domain string) {
 	return addr[:at], strings.ToLower(addr[at+1:])
 }
 
+// mailboxDomainFor resolves the Maildir domain key for an authenticated login.
+// It returns the primary domain unless the login carries a genuinely different
+// (secondary) domain, so a bare local part or a local@primary login is
+// byte-identical to the pre-Stage-3b behaviour, while local@secondary reads and
+// writes that secondary domain's isolated Maildir (VayuDomains Stage 3b). Auth has
+// already verified the account exists for the presented address.
+func mailboxDomainFor(login, primary string) string {
+	if i := strings.IndexByte(login, '@'); i >= 0 {
+		if d := strings.ToLower(strings.TrimSpace(login[i+1:])); d != "" && !strings.EqualFold(d, primary) {
+			return d
+		}
+	}
+	return primary
+}
+
 // Accounts lists the provisioned mailbox usernames for a domain.
 func (m *Maildir) Accounts(domain string) ([]string, error) {
 	dir := filepath.Join(m.base, domain)

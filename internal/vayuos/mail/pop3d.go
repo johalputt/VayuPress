@@ -140,10 +140,11 @@ func (s *POP3Server) handle(conn net.Conn) {
 	ok("VayuMail POP3 ready")
 
 	var (
-		user      string
-		authed    bool
-		localUser string
-		msgs      []pop3Msg
+		user        string
+		authed      bool
+		localUser   string
+		localDomain = s.cfg.Domain // Maildir key; a secondary login overrides it (Stage 3b)
+		msgs        []pop3Msg
 	)
 
 	for {
@@ -199,7 +200,8 @@ func (s *POP3Server) handle(conn net.Conn) {
 			if i := strings.IndexByte(user, '@'); i >= 0 {
 				localUser = user[:i]
 			}
-			msgs = s.loadInbox(localUser)
+			localDomain = mailboxDomainFor(user, s.cfg.Domain)
+			msgs = s.loadInbox(localDomain, localUser)
 			ok(fmt.Sprintf("mailbox ready, %d messages", len(msgs)))
 		case "STAT":
 			if !authed {
@@ -225,7 +227,7 @@ func (s *POP3Server) handle(conn net.Conn) {
 				errResp("not authenticated")
 				continue
 			}
-			s.cmdRetr(w, ok, errResp, localUser, msgs, arg, -1)
+			s.cmdRetr(w, ok, errResp, localDomain, localUser, msgs, arg, -1)
 		case "TOP":
 			if !authed {
 				errResp("not authenticated")
@@ -237,7 +239,7 @@ func (s *POP3Server) handle(conn net.Conn) {
 				errResp("bad TOP arguments")
 				continue
 			}
-			s.cmdRetr(w, ok, errResp, localUser, msgs, idxArg, nLines)
+			s.cmdRetr(w, ok, errResp, localDomain, localUser, msgs, idxArg, nLines)
 		case "DELE":
 			if !authed {
 				errResp("not authenticated")
@@ -262,7 +264,7 @@ func (s *POP3Server) handle(conn net.Conn) {
 			// UPDATE state: physically remove messages marked for deletion.
 			for _, m := range msgs {
 				if m.deleted {
-					_ = s.maildir.deleteMessage(s.cfg.Domain, localUser, "Inbox", m.id)
+					_ = s.maildir.deleteMessage(localDomain, localUser, "Inbox", m.id)
 				}
 			}
 			ok("VayuMail POP3 signing off")
@@ -276,8 +278,8 @@ func (s *POP3Server) handle(conn net.Conn) {
 // loadInbox snapshots the account's INBOX for the session (oldest first, the
 // conventional POP3 order). The UIDL is the immutable Maildir base name, which
 // is unique and stable across sessions.
-func (s *POP3Server) loadInbox(localUser string) []pop3Msg {
-	list, err := s.maildir.List(s.cfg.Domain, localUser)
+func (s *POP3Server) loadInbox(localDomain, localUser string) []pop3Msg {
+	list, err := s.maildir.List(localDomain, localUser)
 	if err != nil {
 		return nil
 	}
@@ -344,19 +346,19 @@ func (s *POP3Server) cmdList(w *bufio.Writer, ok func(string), errResp func(stri
 
 // cmdRetr serves RETR (maxLines < 0) and TOP (maxLines >= 0 body lines). The
 // message is PGP-decrypted (best-effort) and dot-stuffed per RFC 1939.
-func (s *POP3Server) cmdRetr(w *bufio.Writer, ok func(string), errResp func(string), localUser string, msgs []pop3Msg, arg string, maxLines int) {
+func (s *POP3Server) cmdRetr(w *bufio.Writer, ok func(string), errResp func(string), localDomain, localUser string, msgs []pop3Msg, arg string, maxLines int) {
 	idx, ferr := pop3Index(arg, msgs)
 	if ferr != nil {
 		errResp(ferr.Error())
 		return
 	}
-	raw, err := s.maildir.ReadRawFolder(s.cfg.Domain, localUser, "Inbox", msgs[idx].id)
+	raw, err := s.maildir.ReadRawFolder(localDomain, localUser, "Inbox", msgs[idx].id)
 	if err != nil {
 		errResp("cannot read message")
 		return
 	}
 	if s.decrypt != nil {
-		raw = s.decrypt(localUser+"@"+s.cfg.Domain, raw)
+		raw = s.decrypt(localUser+"@"+localDomain, raw)
 	}
 	payload := raw
 	if maxLines >= 0 {

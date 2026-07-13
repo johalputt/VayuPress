@@ -8,6 +8,28 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.4] — 2026-07-13
+
+### Added
+- **VayuDomains (Stage 3b) — per-domain receive + read mail isolation.** A
+  mail-enabled secondary domain now receives external mail into its own isolated
+  Maildir, and its users read only that mailbox over IMAP and POP3. The SMTP
+  receive gate, the engine's local-recipient check and the bridge accept a
+  secondary via a single registry-backed predicate; IMAP/POP3 sessions key every
+  Maildir operation on the authenticated login's owning domain instead of the
+  primary. The Accounts admin page grows a domain picker (shown only when a
+  mail-enabled secondary exists) so an operator can provision a mailbox on a
+  secondary domain, isolated end to end.
+
+### Notes
+- **Byte-identical for single-domain installs.** Every new mail path is gated on a
+  registered mail-enabled secondary (the acceptance resolver is nil otherwise), and
+  a bare or `local@primary` login always resolves to the primary Maildir — the
+  mail-engine tests are unchanged and still pass. Webmail and CMS-user mailboxes
+  remain primary-only, so there is no cross-domain leak; full webmail access to
+  secondary mailboxes and per-domain outbound/branding (DKIM, autoconfig, DNS) ride
+  with **Stage 3c**. See **ADR-0132**.
+
 ## [3.13.3] — 2026-07-12
 
 ### Added

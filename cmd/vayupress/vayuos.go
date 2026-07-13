@@ -224,7 +224,14 @@ func (b *vayuMailBridge) IsLocalRecipient(emailAddr string) bool {
 		return false
 	}
 	at := strings.LastIndex(emailAddr, "@")
-	if at < 0 || !strings.EqualFold(strings.TrimSpace(emailAddr[at+1:]), domain) {
+	if at < 0 {
+		return false
+	}
+	host := strings.TrimSpace(emailAddr[at+1:])
+	// The recipient must be on a domain this install serves — the primary, or a
+	// mail_enabled secondary (VayuDomains Stage 3b). Byte-identical (primary-only)
+	// when no secondary mail domain is registered.
+	if !strings.EqualFold(host, domain) && !b.app.acceptsSecondaryMailDomain(host) {
 		return false
 	}
 	// 1) CMS users (full VayuPress accounts).
@@ -401,6 +408,10 @@ func (a *App) bootVayuOS() {
 		mailCfg.Hostname = "mail." + d
 		mailCfg.Enabled = true
 	}
+	// VayuDomains Stage 3b: accept and store mail for mail_enabled secondary
+	// domains too, each in its own isolated Maildir. Primary-only (byte-identical)
+	// until a secondary mail domain is registered.
+	mailCfg.MailAccepts = a.acceptsSecondaryMailDomain
 	// Inbound receive side is enabled by default so a configured domain can
 	// receive external mail. Run outbound-only with VAYUOS_MAIL_INBOUND=off.
 	// Binding the mail ports is best-effort inside the engine (a failed bind is

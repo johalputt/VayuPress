@@ -437,6 +437,7 @@
       postJSON('/os/vayumail/accounts/create', {
         local: local, name: val(acctForm, '[data-a-name]'), pass: pass,
         role: val(acctForm, '[data-a-role]'),
+        domain: val(acctForm, '[data-a-domain]'),
         quota_mb: parseFloat(val(acctForm, '[data-a-quota]')) || 0,
       }).then(function (res) {
         if (res.ok) { acctToast('Mailbox ' + local + ' created'); acctReload(); }
