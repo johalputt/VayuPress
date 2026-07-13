@@ -8,6 +8,27 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.16] — 2026-07-13
+
+### Changed
+- **PGP encryption in the composer is now opt-in.** Previously a single-recipient
+  message was silently encrypted whenever a recipient key was on file — so a plain
+  "test" to a Gmail address arrived as an unreadable `-----BEGIN PGP MESSAGE-----`
+  block (and scored as spam, since Gmail can't decrypt it). Compose now has an
+  explicit **🔒 Encrypt with PGP** checkbox, off by default; a message is
+  encrypted only when you tick it (and the recipient has a key, one recipient, no
+  attachments). System/transactional mail was already never encrypted and is
+  unchanged.
+
+### Fixed
+- **Full-view (⛶) reader no longer slides under the sidebar.** The enlarged
+  message overlay now offsets by the sidebar width and sits above it (it spans
+  full width only once the sidebar goes off-canvas on narrow screens).
+- **Outbox fits the window — no horizontal scrolling.** The outbound table uses a
+  fixed layout with sized columns; long To/Subject/error values truncate or wrap
+  within their column (full value on hover) instead of forcing a left-right
+  scroll.
+
 ## [3.13.15] — 2026-07-13
 
 ### Fixed

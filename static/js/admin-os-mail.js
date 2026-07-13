@@ -215,7 +215,7 @@
       var to = countAddrs(val(compose, '[data-c-to]')), cc = countAddrs(val(compose, '[data-c-cc]')), bcc = countAddrs(val(compose, '[data-c-bcc]'));
       if (to + cc + bcc === 0) { pgpHint.textContent = ''; pgpHint.className = 'vm-pgp-hint'; return; }
       if (to === 1 && cc === 0 && bcc === 0 && composeFiles.length === 0) {
-        pgpHint.textContent = '🔒 PGP-eligible — encrypts if the recipient key is on file';
+        pgpHint.textContent = '🔒 PGP-eligible — tick “Encrypt with PGP” below to encrypt for the recipient';
         pgpHint.className = 'vm-pgp-hint vm-pgp-hint--enc';
       } else {
         pgpHint.textContent = '🔓 DKIM-signed (PGP needs one recipient, no Cc/Bcc, no attachments)';
@@ -245,6 +245,16 @@
       if (sigPreview) sigPreview.textContent = s || '(no signature set for this address)';
     }
     function sigAppend() { return !(sigToggle && !sigToggle.checked); }
+    var encToggle = compose.querySelector('[data-c-encrypt]');
+    var encHint = compose.querySelector('[data-c-encrypt-hint]');
+    function pgpEncrypt() { return !!(encToggle && encToggle.checked); }
+    function paintEnc() {
+      if (!encHint) return;
+      encHint.textContent = pgpEncrypt()
+        ? 'On — the body is PGP-encrypted for the recipient (single recipient, no attachments). If they cannot decrypt PGP it will look like ciphertext.'
+        : 'Off — the message is sent as readable text. Encrypt only when the recipient can decrypt PGP (encrypting to a plain inbox like Gmail arrives as unreadable ciphertext).';
+    }
+    if (encToggle) { encToggle.addEventListener('change', paintEnc); paintEnc(); }
     if (fromSel) fromSel.addEventListener('change', paintSig);
     if (sigSave) {
       sigSave.addEventListener('click', function () {
@@ -363,11 +373,13 @@
         Object.keys(snap.fields).forEach(function (k) { fd.append(k, snap.fields[k] || ''); });
         snap.files.forEach(function (file) { fd.append('attachments', file); });
         fd.append('appendSig', snap.appendSig ? '1' : '0');
+        fd.append('encrypt', snap.encrypt ? '1' : '0');
         opts.body = fd;
       } else {
         var payload = {};
         Object.keys(snap.fields).forEach(function (k) { payload[k] = snap.fields[k]; });
         payload.appendSig = snap.appendSig;
+        payload.encrypt = snap.encrypt;
         opts.headers['Content-Type'] = 'application/json';
         opts.body = JSON.stringify(payload);
       }
@@ -392,7 +404,7 @@
       var f = composeFields();
       if (!f.to && !f.cc && !f.bcc) { if (cStatus) cStatus.textContent = 'Add at least one recipient.'; return; }
       // Snapshot at click time so edits during the hold don't leak into the send.
-      holdSnapshot = { fields: f, files: composeFiles.slice(), appendSig: sigAppend(), from: f.from, draftId: draftId };
+      holdSnapshot = { fields: f, files: composeFiles.slice(), appendSig: sigAppend(), encrypt: pgpEncrypt(), from: f.from, draftId: draftId };
       stopAutosave();
       if (sendBtn) sendBtn.disabled = true;
       if (cStatus) cStatus.textContent = '';

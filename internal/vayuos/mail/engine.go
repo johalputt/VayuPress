@@ -263,6 +263,13 @@ type ComposeMessage struct {
 	Body         string
 	Attachments  []Attachment
 	SenderUserID string
+	// Encrypt opts this message into PGP encryption. Encryption is applied only
+	// when the operator asks for it AND the message is a single-recipient,
+	// no-attachment, no-Cc/Bcc message AND a recipient key is known. It is off by
+	// default so a plain message is delivered as readable text (encrypting to a
+	// recipient that cannot decrypt — e.g. a plain Gmail address — would arrive as
+	// an unreadable ciphertext block and score as spam).
+	Encrypt bool
 }
 
 // ComposeRich sends a message with optional Cc/Bcc/Reply-To and file
@@ -286,7 +293,9 @@ func (e *Engine) ComposeRich(ctx context.Context, m ComposeMessage) (int64, erro
 
 	text := m.Body
 	pgpApplied := false
-	if len(m.Attachments) == 0 && len(m.CC) == 0 && len(m.BCC) == 0 &&
+	// PGP is opt-in (m.Encrypt): encrypting to a recipient who cannot decrypt
+	// delivers an unreadable ciphertext block, so the operator chooses per message.
+	if m.Encrypt && len(m.Attachments) == 0 && len(m.CC) == 0 && len(m.BCC) == 0 &&
 		e.bridge != nil && len(m.To) == 1 {
 		if ct, ok := e.bridge.EncryptForRecipient([]byte(m.Body), m.To[0]); ok && len(ct) > 0 {
 			text = string(ct)

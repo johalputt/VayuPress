@@ -2697,14 +2697,22 @@
 .vp-os .vm-split:has(.vm-readpane-empty) { grid-template-columns: 1fr; }
 .vp-os .vm-split:has(.vm-readpane-empty) .vm-readpane { display: none; }
 
-/* Full view (⛶): the open message overlays the whole work area. */
+/* Full view (⛶): the open message overlays the work area — but only the area
+   RIGHT of the fixed sidebar, and above it, so it never slides under the rail.
+   left offsets by the sidebar width; z-index clears the sidebar's 200. */
 .vp-os #vm-readpane.vm-readpane--full {
-  position: fixed; inset: 1.25rem; z-index: 70; overflow: auto;
+  position: fixed; top: 1.25rem; right: 1.25rem; bottom: 1.25rem;
+  left: calc(var(--sidebar-w) + 1.25rem); z-index: 240; overflow: auto;
   background: var(--bg-surface); border: 1px solid var(--border-strong);
   border-radius: 14px; padding: 1rem;
   box-shadow: 0 24px 64px rgb(0 0 0 / .45);
 }
 .vp-os #vm-readpane.vm-readpane--full .vm-reader { box-shadow: none; }
+/* At <=768px the sidebar is off-canvas (see the rail's transform), so the
+   overlay spans full width. */
+@media (max-width: 768px) {
+  .vp-os #vm-readpane.vm-readpane--full { left: 1.25rem; }
+}
 
 /* Premium touches: rows glide, unread carries an accent bar, the reader
    arrives with a soft rise, tabs behave like segmented pills. */
@@ -4491,3 +4499,29 @@
 }
 .vp-os .vm-fchip:hover { border-color: var(--brand); color: var(--brand); }
 .vp-os .vm-fchip--on { background: var(--brand-dim); border-color: var(--brand); color: var(--brand); font-weight: 600; }
+
+/* Outbox table: fit the viewport with no horizontal scroll. Fixed layout + a
+   colgroup; long cells truncate (nowrap+ellipsis) or wrap within their column. */
+.vp-os .vm-outbox-table { table-layout: fixed; width: 100%; }
+.vp-os .vm-outbox-table th, .vp-os .vm-outbox-table td { overflow: hidden; vertical-align: top; }
+.vp-os .vm-outbox-table td.vm-oc-nowrap { white-space: nowrap; text-overflow: ellipsis; }
+.vp-os .vm-outbox-table td.vm-oc-wrap { white-space: normal; overflow-wrap: anywhere; word-break: break-word; }
+.vp-os .vm-outbox-table td.vm-oc-act { white-space: normal; }
+.vp-os .vm-outbox-table td.vm-oc-act .btn { margin: 0 2px 2px 0; }
+/* Primary-only (7 col) widths. */
+.vp-os .vm-outbox-table .vm-ocw-to { width: 19%; }
+.vp-os .vm-outbox-table .vm-ocw-subj { width: 24%; }
+.vp-os .vm-outbox-table .vm-ocw-status { width: 9%; }
+.vp-os .vm-outbox-table .vm-ocw-tries { width: 7%; }
+.vp-os .vm-outbox-table .vm-ocw-err { width: 17%; }
+.vp-os .vm-outbox-table .vm-ocw-when { width: 13%; }
+.vp-os .vm-outbox-table .vm-ocw-act { width: 11%; }
+/* Multi-domain (8 col) widths — sizes the From column too. */
+.vp-os .vm-outbox-table--multi .vm-ocw-from { width: 12%; }
+.vp-os .vm-outbox-table--multi .vm-ocw-to { width: 15%; }
+.vp-os .vm-outbox-table--multi .vm-ocw-subj { width: 19%; }
+.vp-os .vm-outbox-table--multi .vm-ocw-status { width: 8%; }
+.vp-os .vm-outbox-table--multi .vm-ocw-tries { width: 6%; }
+.vp-os .vm-outbox-table--multi .vm-ocw-err { width: 15%; }
+.vp-os .vm-outbox-table--multi .vm-ocw-when { width: 13%; }
+.vp-os .vm-outbox-table--multi .vm-ocw-act { width: 12%; }

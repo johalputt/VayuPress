@@ -2503,11 +2503,18 @@ func (a *App) vayuOutboxBody(ctx context.Context, filterDomain string) string {
 		b.WriteString(`</div>`)
 	}
 
-	fromHead := ""
+	// table-layout:fixed + a colgroup keeps every column inside the viewport (no
+	// left-right scroll); long cells truncate/wrap within their column. Column
+	// widths come from CSS classes (no inline style — strict CSP), with a --multi
+	// variant that also sizes the From column.
+	fromHead, fromCol, tableCls := "", "", "vm-outbox-table"
 	if multi {
 		fromHead = `<th>From</th>`
+		fromCol = `<col class="vm-ocw-from">`
+		tableCls = "vm-outbox-table vm-outbox-table--multi"
 	}
-	b.WriteString(`<div class="card"><div class="card-title">Recent outbound</div><div class="table-wrap"><table class="table"><thead><tr>` + fromHead + `<th>To</th><th>Subject</th><th>Status</th><th>Tries</th><th>Last error</th><th>When</th><th></th></tr></thead><tbody>`)
+	cols := fromCol + `<col class="vm-ocw-to"><col class="vm-ocw-subj"><col class="vm-ocw-status"><col class="vm-ocw-tries"><col class="vm-ocw-err"><col class="vm-ocw-when"><col class="vm-ocw-act">`
+	b.WriteString(`<div class="card"><div class="card-title">Recent outbound</div><div class="table-wrap"><table class="table ` + tableCls + `"><colgroup>` + cols + `</colgroup><thead><tr>` + fromHead + `<th>To</th><th>Subject</th><th>Status</th><th>Tries</th><th>Last error</th><th>When</th><th></th></tr></thead><tbody>`)
 	shown := 0
 	for _, s := range sent {
 		if filterDomain != "" && !strings.EqualFold(emailDomain(s.From, primary), filterDomain) {
@@ -2546,9 +2553,17 @@ func (a *App) vayuOutboxBody(ctx context.Context, filterDomain string) string {
 			if i := strings.LastIndexByte(s.From, '@'); i >= 0 {
 				local = s.From[:i]
 			}
-			fromCell = `<td class="text-sm"><span class="vm-name">` + html.EscapeString(local) + `</span> <span class="badge badge--muted">` + html.EscapeString(fd) + `</span></td>`
+			fromCell = `<td class="text-sm vm-oc-nowrap" title="` + html.EscapeString(s.From) + `"><span class="vm-name">` + html.EscapeString(local) + `</span> <span class="badge badge--muted">` + html.EscapeString(fd) + `</span></td>`
 		}
-		b.WriteString(`<tr>` + fromCell + `<td class="text-sm">` + html.EscapeString(strings.Join(s.To, ", ")) + `</td><td>` + html.EscapeString(subj) + `</td><td>` + badge + `</td><td class="text-sm">` + itoaSafe(s.Attempts) + `</td><td class="muted text-xs">` + html.EscapeString(lastErr) + `</td><td class="muted text-sm">` + html.EscapeString(when) + `</td><td class="row-actions">` + actions + `</td></tr>`)
+		toJoined := strings.Join(s.To, ", ")
+		b.WriteString(`<tr>` + fromCell +
+			`<td class="text-sm vm-oc-nowrap" title="` + html.EscapeString(toJoined) + `">` + html.EscapeString(toJoined) + `</td>` +
+			`<td class="vm-oc-wrap" title="` + html.EscapeString(subj) + `">` + html.EscapeString(subj) + `</td>` +
+			`<td>` + badge + `</td>` +
+			`<td class="text-sm">` + itoaSafe(s.Attempts) + `</td>` +
+			`<td class="muted text-xs vm-oc-wrap" title="` + html.EscapeString(s.LastError) + `">` + html.EscapeString(lastErr) + `</td>` +
+			`<td class="muted text-xs vm-oc-nowrap">` + html.EscapeString(when) + `</td>` +
+			`<td class="row-actions vm-oc-act">` + actions + `</td></tr>`)
 	}
 	if shown == 0 {
 		colspan := 7

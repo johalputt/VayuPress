@@ -167,6 +167,10 @@ func (a *App) handleVayuOSCompose(w http.ResponseWriter, r *http.Request) {
     <pre class="vm-sig-preview" data-c-sig-preview></pre>
   </div>
 
+  <div class="vm-row vm-row--tight vm-encrypt-row">
+    <label class="vm-filter-check"><input type="checkbox" data-c-encrypt> 🔒 Encrypt with PGP</label>
+    <span class="vm-pgp-hint" data-c-encrypt-hint aria-live="polite">Off — the message is sent as readable text. Encrypt only when the recipient can decrypt PGP (encrypting to a plain inbox like Gmail arrives as unreadable ciphertext).</span>
+  </div>
   <div class="vm-row vm-compose-actions">
     <button class="btn btn--primary" type="submit" data-c-send>Send</button>
     <button class="btn" type="button" data-c-draft>Save as draft</button>
@@ -400,9 +404,11 @@ func (a *App) handleVayuOSSend(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		From, To, CC, BCC, ReplyTo, Subject, Body string
 		AppendSig                                 *bool `json:"appendSig"`
+		Encrypt                                   *bool `json:"encrypt"`
 	}
 	var attachments []vmail.Attachment
 	appendSig := true // default: append the sender's signature when one is set
+	encrypt := false  // default OFF: plain messages are delivered as readable text
 
 	if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
 		// Cap the whole request at the attachment budget + 1 MB of text/fields.
@@ -420,6 +426,9 @@ func (a *App) handleVayuOSSend(w http.ResponseWriter, r *http.Request) {
 		in.Body = r.FormValue("body")
 		if r.FormValue("appendSig") == "0" {
 			appendSig = false
+		}
+		if r.FormValue("encrypt") == "1" {
+			encrypt = true
 		}
 		var total int64
 		if r.MultipartForm != nil {
@@ -454,6 +463,9 @@ func (a *App) handleVayuOSSend(w http.ResponseWriter, r *http.Request) {
 		}
 		if in.AppendSig != nil {
 			appendSig = *in.AppendSig
+		}
+		if in.Encrypt != nil {
+			encrypt = *in.Encrypt
 		}
 	}
 
@@ -517,6 +529,7 @@ func (a *App) handleVayuOSSend(w http.ResponseWriter, r *http.Request) {
 		Body:         bodyText,
 		Attachments:  attachments,
 		SenderUserID: senderUserID,
+		Encrypt:      encrypt,
 	})
 	if err != nil {
 		writeAPIError(w, r, 500, "send-failed", err.Error(), "")
