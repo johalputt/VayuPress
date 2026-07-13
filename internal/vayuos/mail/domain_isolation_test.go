@@ -49,6 +49,43 @@ func TestCrossDomainMaildirIsolation(t *testing.T) {
 	}
 }
 
+// TestEngineReadResolvesSecondaryMailbox proves the webmail-facing read API
+// (Stage 3d) accepts a full address to reach a secondary mailbox, while a bare
+// local part still resolves to the primary — byte-identical.
+func TestEngineReadResolvesSecondaryMailbox(t *testing.T) {
+	t.Parallel()
+	cfg := DefaultConfig()
+	cfg.Domain = "example.com"
+	cfg.MailAccepts = func(h string) bool { return strings.EqualFold(h, "shop.example") }
+	e := NewEngine(&cfg, nil, nil)
+	e.maildir = NewMaildir(t.TempDir())
+
+	// mailboxKey resolution.
+	if d, l := e.mailboxKey("bob"); d != "example.com" || l != "bob" {
+		t.Fatalf("mailboxKey(bare) = (%q,%q), want (example.com,bob)", d, l)
+	}
+	if d, l := e.mailboxKey("bob@shop.example"); d != "shop.example" || l != "bob" {
+		t.Fatalf("mailboxKey(full) = (%q,%q), want (shop.example,bob)", d, l)
+	}
+	if d, l := e.mailboxKey("bob@"); d != "example.com" || l != "bob" {
+		t.Fatalf("mailboxKey(empty domain) = (%q,%q), want primary", d, l)
+	}
+
+	// A message delivered to the secondary is visible only via the full address.
+	raw := []byte("From: a@partner.test\r\nTo: bob@shop.example\r\nSubject: Sec\r\n\r\nx\r\n")
+	if _, err := e.DeliverInbound("bob@shop.example", raw); err != nil {
+		t.Fatalf("deliver: %v", err)
+	}
+	full, err := e.ListFolder("bob@shop.example", "Inbox")
+	if err != nil || len(full) != 1 {
+		t.Fatalf("ListFolder(full) n=%d err=%v, want 1", len(full), err)
+	}
+	prim, err := e.ListFolder("bob", "Inbox") // primary "bob" — a different mailbox
+	if err != nil || len(prim) != 0 {
+		t.Fatalf("ListFolder(bare) n=%d, want 0 (primary bob is a separate mailbox)", len(prim))
+	}
+}
+
 // TestAcceptsMailDomain checks the shared acceptance predicate: primary always,
 // secondaries only via the resolver, byte-identical (primary-only) when nil.
 func TestAcceptsMailDomain(t *testing.T) {

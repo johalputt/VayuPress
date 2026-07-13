@@ -73,12 +73,29 @@ func (e *Engine) Accounts() *AccountStore { return e.accounts }
 // Folders returns the standard mailbox folder names.
 func (e *Engine) Folders() []string { return StandardFolders }
 
+// mailboxKey resolves a mailbox identifier — which may be a bare local part (the
+// historic form, resolving to the primary domain, byte-identical) or a full
+// address (VayuDomains Stage 3d: a secondary mailbox reached via webmail) — into
+// its Maildir (domain, local) key. An address with an empty/omitted domain falls
+// back to the primary, so every existing local-part caller is unchanged.
+func (e *Engine) mailboxKey(username string) (domain, local string) {
+	if i := strings.IndexByte(username, '@'); i >= 0 {
+		local = username[:i]
+		if d := strings.ToLower(strings.TrimSpace(username[i+1:])); d != "" {
+			return d, local
+		}
+		return e.cfg.Domain, local
+	}
+	return e.cfg.Domain, username
+}
+
 // ListFolder returns the messages in a folder for a local account.
 func (e *Engine) ListFolder(username, folder string) ([]StoredMessage, error) {
 	if e.maildir == nil {
 		return nil, errors.New("vayumail: not started")
 	}
-	return e.maildir.ListFolder(e.cfg.Domain, username, folder)
+	dom, local := e.mailboxKey(username)
+	return e.maildir.ListFolder(dom, local, folder)
 }
 
 // ReadFolderMessage returns a message from a folder, PGP-decrypted if possible.
@@ -86,12 +103,13 @@ func (e *Engine) ReadFolderMessage(username, folder, id string) ([]byte, error) 
 	if e.maildir == nil {
 		return nil, errors.New("vayumail: not started")
 	}
-	raw, err := e.maildir.ReadRawFolder(e.cfg.Domain, username, folder, id)
+	dom, local := e.mailboxKey(username)
+	raw, err := e.maildir.ReadRawFolder(dom, local, folder, id)
 	if err != nil {
 		return nil, err
 	}
 	if e.decrypt != nil {
-		raw = e.decrypt(username+"@"+e.cfg.Domain, raw)
+		raw = e.decrypt(local+"@"+dom, raw)
 	}
 	return raw, nil
 }
@@ -102,7 +120,8 @@ func (e *Engine) Search(username, q string, limit int) ([]SearchResult, error) {
 	if e.maildir == nil {
 		return nil, errors.New("vayumail: not started")
 	}
-	return e.maildir.Search(e.cfg.Domain, username, q, limit)
+	dom, local := e.mailboxKey(username)
+	return e.maildir.Search(dom, local, q, limit)
 }
 
 // MoveMessage moves a message between folders (e.g. mark as Junk, or Trash).
@@ -110,7 +129,8 @@ func (e *Engine) MoveMessage(username, id, from, to string) error {
 	if e.maildir == nil {
 		return errors.New("vayumail: not started")
 	}
-	return e.maildir.MoveBetween(e.cfg.Domain, username, id, from, to)
+	dom, local := e.mailboxKey(username)
+	return e.maildir.MoveBetween(dom, local, id, from, to)
 }
 
 // MarkRead flags a message as read (Maildir Seen) within a folder, returning
@@ -119,7 +139,8 @@ func (e *Engine) MarkRead(username, folder, id string) (string, error) {
 	if e.maildir == nil {
 		return id, errors.New("vayumail: not started")
 	}
-	return e.maildir.markSeenFolder(e.cfg.Domain, username, folder, id)
+	dom, local := e.mailboxKey(username)
+	return e.maildir.markSeenFolder(dom, local, folder, id)
 }
 
 // MarkUnread clears the read flag, returning the message's new id.
@@ -127,7 +148,8 @@ func (e *Engine) MarkUnread(username, folder, id string) (string, error) {
 	if e.maildir == nil {
 		return id, errors.New("vayumail: not started")
 	}
-	return e.maildir.markUnseenFolder(e.cfg.Domain, username, folder, id)
+	dom, local := e.mailboxKey(username)
+	return e.maildir.markUnseenFolder(dom, local, folder, id)
 }
 
 // MailboxUsage returns the total bytes a mailbox occupies across all folders,
@@ -171,7 +193,8 @@ func (e *Engine) SetPinned(username, folder, id string, pinned bool) (string, er
 	if e.maildir == nil {
 		return id, errors.New("vayumail: not started")
 	}
-	return e.maildir.setFlagFolder(e.cfg.Domain, username, folder, id, 'F', pinned)
+	dom, local := e.mailboxKey(username)
+	return e.maildir.setFlagFolder(dom, local, folder, id, 'F', pinned)
 }
 
 // SaveDraft files a composed message into the sender's Drafts folder and
@@ -183,7 +206,7 @@ func (e *Engine) SaveDraft(from string, to []string, subject, body string) (stri
 	local, _ := splitAddress(from)
 	raw := "From: " + from + "\r\nTo: " + strings.Join(to, ", ") + "\r\nSubject: " + subject +
 		"\r\nDate: " + time.Now().UTC().Format(time.RFC1123Z) + "\r\n\r\n" + body + "\r\n"
-	return e.maildir.DeliverTo(e.cfg.Domain, local, "Drafts", []byte(raw))
+	return e.maildir.DeliverTo(e.senderDomain(from), local, "Drafts", []byte(raw))
 }
 
 // Deliverability runs the live spam-prevention self-checks (DKIM published-key
@@ -201,7 +224,8 @@ func (e *Engine) DeleteMessage(username, folder, id string) error {
 	if e.maildir == nil {
 		return errors.New("vayumail: not started")
 	}
-	return e.maildir.deleteMessage(e.cfg.Domain, username, folder, id)
+	dom, local := e.mailboxKey(username)
+	return e.maildir.deleteMessage(dom, local, folder, id)
 }
 
 // Compose assembles, DKIM-signs, queues an outgoing message and files a copy in
