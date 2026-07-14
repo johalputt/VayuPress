@@ -8,6 +8,18 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Added
+- **`vayupress.com/docs` on the marketing site.** The project site is hosted on
+  GitHub Pages (`docs/site/`), so the binary's `/docs` route (v3.13.24) did not
+  make it appear there. A new cgo-free generator (`cmd/vayudocs`) renders the
+  guides, security model, operations runbooks and every ADR to static HTML into
+  the Pages build, so `vayupress.com/docs` now serves the same docs the running
+  binary serves at `<site>/docs`. It mirrors the binary's DOM and shares
+  `static/css/docs.css`, so both look identical; the Pages workflow
+  (`deploy-site.yml`) builds it in seconds (no engine/SQLite build) and now
+  redeploys on any `docs/**` change. A "Docs" link was added to the site nav.
+  No binary change (the running-server `/docs` shipped in v3.13.24).
+
 ## [3.13.24] — 2026-07-14
 
 ### Added

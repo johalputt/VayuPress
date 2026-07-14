@@ -16,8 +16,9 @@ on:
   push:
     branches: [main]
     paths:
-      - "docs/site/**"
-      - "docs/screenshots/**"
+      - "docs/**"
+      - "static/css/docs.css"
+      - "cmd/vayudocs/**"
       - ".github/workflows/deploy-site.yml"
   workflow_dispatch:
   # Daily refresh so the live GitHub-star count on the site stays current even
@@ -44,6 +45,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
       - name: Assemble site payload
         run: |
           set -euo pipefail
@@ -67,6 +74,17 @@ jobs:
           fi
           echo "Assembled _site:"
           ls -la _site
+
+      - name: Render documentation into /docs
+        # Render the guides, security model, operations runbooks and every ADR to
+        # static HTML at /docs, so vayupress.com/docs serves the same docs the
+        # running binary serves at <site>/docs. cmd/vayudocs is cgo-free (no
+        # SQLite), so this is a seconds-long build, not a full engine build.
+        run: |
+          set -euo pipefail
+          go run ./cmd/vayudocs -src docs -css static/css/docs.css -out _site/docs
+          echo "Rendered docs (top level):"
+          ls _site/docs | head
 
       - name: Bake live GitHub star count
         # Fetch the repo's current star count with the workflow token (5,000
