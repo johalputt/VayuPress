@@ -31,3 +31,17 @@ var StaticFS embed.FS
 //
 //go:embed docs/adr
 var DocsADRFS embed.FS
+
+// DocsFS holds the human-readable documentation tree (top-level guides plus the
+// prose sub-folders), embedded at build time so the public /docs site — the
+// operator- and auditor-facing home for VayuPress's docs — ships inside the one
+// binary and updates atomically with a self-update, exactly like StaticFS and
+// DocsADRFS. The Architecture Decision Records live in DocsADRFS already and are
+// intentionally NOT re-embedded here; the docs handler unions the two. The
+// image-heavy folders (docs/screenshots, docs/assets, docs/site) are excluded to
+// keep the binary lean — /docs renders markdown, not the README screenshots.
+// Members are rooted at "docs/" (e.g. "docs/OPERATIONS.md", "docs/security/trust-model.md").
+//
+//go:embed docs/*.md
+//go:embed docs/architecture docs/compatibility docs/governance docs/operations docs/plugins docs/release docs/reliability docs/security
+var DocsFS embed.FS

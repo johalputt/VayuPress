@@ -23,7 +23,7 @@ State-changing requests also require a CSRF token (double-submit cookie):
     "code": "invalid_slug",
     "message": "Slug must be lowercase alphanumeric with hyphens/underscores.",
     "request_id": "a1b2c3d4",
-    "docs": "https://docs.vayupress.com/api/errors#invalid_slug"
+    "docs": "/docs/api/errors#invalid_slug"
   }
 }
 ```

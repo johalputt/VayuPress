@@ -538,13 +538,13 @@ window.vpReplayAll=function(){vpPost('/api/v1/queue/replay',function(d){return '
 func (a *App) handleReplayJob(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(r.URL.Query().Get("id"), 10, 64)
 	if err != nil {
-		writeAPIError(w, r, 400, "invalid_id", "id must be a positive integer", "https://docs.vayupress.com/operations/replay")
+		writeAPIError(w, r, 400, "invalid_id", "id must be a positive integer", "/docs/operations/replay")
 		return
 	}
 	res, err := dbpkg.WDB.Exec(
 		`UPDATE write_jobs SET status='pending',retries=0,retry_at=NULL,replay_count=replay_count+1 WHERE id=? AND status='dead_letter'`, id)
 	if err != nil {
-		writeAPIError(w, r, 500, "replay_failed", err.Error(), "https://docs.vayupress.com/operations/replay")
+		writeAPIError(w, r, 500, "replay_failed", err.Error(), "/docs/operations/replay")
 		return
 	}
 	n, _ := res.RowsAffected()
@@ -568,7 +568,7 @@ func (a *App) handleModeTransition(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if !valid {
-		writeAPIError(w, r, 400, "invalid_mode", "unknown target mode: "+string(to), "https://docs.vayupress.com/operations/modes")
+		writeAPIError(w, r, 400, "invalid_mode", "unknown target mode: "+string(to), "/docs/operations/modes")
 		return
 	}
 
@@ -576,7 +576,7 @@ func (a *App) handleModeTransition(w http.ResponseWriter, r *http.Request) {
 	if force {
 		mode.Global.ForceTransition(to, "operator console override")
 	} else if err := mode.Global.Transition(to, "operator console transition", "operator"); err != nil {
-		writeAPIError(w, r, 409, "transition_not_permitted", err.Error(), "https://docs.vayupress.com/operations/modes")
+		writeAPIError(w, r, 409, "transition_not_permitted", err.Error(), "/docs/operations/modes")
 		return
 	}
 	writeJSON(w, r, 200, map[string]interface{}{
@@ -597,7 +597,7 @@ func (a *App) handleFaultSimulate(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if !known {
-		writeAPIError(w, r, 400, "unknown_fault", "unknown fault point: "+name, "https://docs.vayupress.com/operations/faults")
+		writeAPIError(w, r, 400, "unknown_fault", "unknown fault point: "+name, "/docs/operations/faults")
 		return
 	}
 

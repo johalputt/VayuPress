@@ -428,6 +428,13 @@ sudo rm -f /etc/systemd/system/isso.service
 # sudo rm -rf /var/lib/vayupress /var/cache/vayupress /var/log/vayupress
 ```
 
+## Documentation
+
+Every guide, operations runbook, the security model and all Architecture Decision
+Records ship **inside the binary** and are served by your own install at
+**`https://<your-domain>/docs`** — no `docs.` subdomain and no DNS record to add.
+The canonical project copy is at `https://vayupress.com/docs`.
+
 ## Support
 
-support@vayupress.com — https://docs.vayupress.com
+support@vayupress.com — https://vayupress.com/docs

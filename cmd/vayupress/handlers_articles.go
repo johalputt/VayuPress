@@ -11,9 +11,9 @@ import (
 )
 
 const (
-	docsArticles = "https://docs.vayupress.com/api/articles"
-	docsErrors   = "https://docs.vayupress.com/api/errors"
-	docsSearch   = "https://docs.vayupress.com/api/search"
+	docsArticles = "/docs/api/articles"
+	docsErrors   = "/docs/api/errors"
+	docsSearch   = "/docs/api/search"
 )
 
 // =============================================================================

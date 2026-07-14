@@ -142,7 +142,7 @@ func HandleHealthStorage(w http.ResponseWriter, r *http.Request) {
 func HandleHealthMigrations(w http.ResponseWriter, r *http.Request) {
 	rows, err := dbpkg.DB.Query(`SELECT version,checksum,applied_at FROM schema_migrations ORDER BY id ASC`)
 	if err != nil {
-		WriteAPIError(w, r, 500, "db_error", "", "https://docs.vayupress.com/api/health")
+		WriteAPIError(w, r, 500, "db_error", "", "/docs/api/health")
 		return
 	}
 	defer rows.Close()

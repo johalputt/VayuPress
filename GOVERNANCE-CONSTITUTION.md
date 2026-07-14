@@ -1096,7 +1096,7 @@ Every major component must document:
       "code": "invalid_slug",
       "message": "...",
       "request_id": "a1b2c3d4",
-      "docs": "https://docs.vayupress.com/api/errors#invalid_slug"
+      "docs": "/docs/api/errors#invalid_slug"
     }
   }
   ```

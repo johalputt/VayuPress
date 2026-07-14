@@ -85,6 +85,17 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	r.Get("/sitemap.xml", a.handleSitemap)
 	r.Get("/feed.xml", a.handleFeed)
 	r.Get("/robots.txt", a.handleRobots)
+	// Public documentation site: guides, operations runbooks, the security model
+	// and every ADR, rendered from markdown embedded in the binary for public
+	// audit. Hosted at a path (no docs subdomain). /doc redirects to /docs.
+	r.Get("/docs", a.handleDocs)
+	r.Get("/docs/*", a.handleDocs)
+	r.Get("/doc", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/docs", http.StatusMovedPermanently)
+	})
+	r.Get("/doc/*", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/docs/"+chi.URLParam(r, "*"), http.StatusMovedPermanently)
+	})
 	// Dynamic per-site theme stylesheet (operator palette + custom CSS).
 	// Served same-origin so it satisfies the strict style-src 'self' CSP.
 	r.Get("/theme.css", a.handleThemeCSS)
@@ -130,6 +141,7 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 		"custom.css":        "custom.css",
 		"signup.css":        "signup.css",
 		"portal.css":        "portal.css",
+		"docs.css":          "docs.css",
 	}
 	r.Get("/static/css/{file}", func(w http.ResponseWriter, r *http.Request) {
 		canon, ok := cssAllowlist[chi.URLParam(r, "file")]

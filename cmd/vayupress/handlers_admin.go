@@ -79,25 +79,25 @@ func (a *App) handleAdminVacuum(w http.ResponseWriter, r *http.Request) {
 	if !a.vacuumLastRun.IsZero() && time.Since(a.vacuumLastRun) < cooldown {
 		remaining := cooldown - time.Since(a.vacuumLastRun)
 		atomic.AddInt64(&metrics.MetricVacuumRejected, 1)
-		writeAPIError(w, r, 429, "vacuum_cooldown", fmt.Sprintf("cooldown active — %ds remaining", int(remaining.Seconds())), "https://docs.vayupress.com/operations/vacuum")
+		writeAPIError(w, r, 429, "vacuum_cooldown", fmt.Sprintf("cooldown active — %ds remaining", int(remaining.Seconds())), "/docs/operations/vacuum")
 		return
 	}
 	var pending int
 	dbpkg.DB.QueryRow(`SELECT COUNT(1) FROM write_jobs WHERE status='pending'`).Scan(&pending)
 	if pending > vacuumWriteThreshold {
 		atomic.AddInt64(&metrics.MetricVacuumRejected, 1)
-		writeAPIError(w, r, 503, "vacuum_write_threshold", fmt.Sprintf("VACUUM rejected: %d pending jobs > threshold %d", pending, vacuumWriteThreshold), "https://docs.vayupress.com/operations/vacuum")
+		writeAPIError(w, r, 503, "vacuum_write_threshold", fmt.Sprintf("VACUUM rejected: %d pending jobs > threshold %d", pending, vacuumWriteThreshold), "/docs/operations/vacuum")
 		return
 	}
 	start := time.Now()
 	var integrityResult string
 	dbpkg.DB.QueryRow(`PRAGMA integrity_check`).Scan(&integrityResult)
 	if integrityResult != "ok" {
-		writeAPIError(w, r, 500, "integrity_failed", "SQLite integrity check failed: "+integrityResult, "https://docs.vayupress.com/operations/vacuum")
+		writeAPIError(w, r, 500, "integrity_failed", "SQLite integrity check failed: "+integrityResult, "/docs/operations/vacuum")
 		return
 	}
 	if _, err := dbpkg.DB.Exec(`VACUUM`); err != nil {
-		writeAPIError(w, r, 500, "vacuum_failed", "VACUUM error: "+err.Error(), "https://docs.vayupress.com/operations/vacuum")
+		writeAPIError(w, r, 500, "vacuum_failed", "VACUUM error: "+err.Error(), "/docs/operations/vacuum")
 		return
 	}
 	a.vacuumLastRun = time.Now()
@@ -112,7 +112,7 @@ func (a *App) pprofHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if !auth.AllowPprof(ip) {
 		atomic.AddInt64(&metrics.MetricPprofAccesses, 1)
-		writeAPIError(w, r, 429, "pprof_rate_limited", fmt.Sprintf("pprof rate limit exceeded (%d/min)", config.Cfg.PprofRateLimit), "https://docs.vayupress.com/operations/profiling")
+		writeAPIError(w, r, 429, "pprof_rate_limited", fmt.Sprintf("pprof rate limit exceeded (%d/min)", config.Cfg.PprofRateLimit), "/docs/operations/profiling")
 		return
 	}
 	atomic.AddInt64(&metrics.MetricPprofAccesses, 1)
@@ -124,7 +124,7 @@ func (a *App) handleAdminBackupValidate(w http.ResponseWriter, r *http.Request) 
 	backupDir := "/backups/vayupress"
 	entries, err := os.ReadDir(backupDir)
 	if err != nil {
-		writeAPIError(w, r, 404, "no_backup_dir", "backup directory not found: "+backupDir, "https://docs.vayupress.com/operations/backup")
+		writeAPIError(w, r, 404, "no_backup_dir", "backup directory not found: "+backupDir, "/docs/operations/backup")
 		return
 	}
 	var latestBackup string
@@ -143,7 +143,7 @@ func (a *App) handleAdminBackupValidate(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 	if latestBackup == "" {
-		writeAPIError(w, r, 404, "no_backup", "no backup files found", "https://docs.vayupress.com/operations/backup")
+		writeAPIError(w, r, 404, "no_backup", "no backup files found", "/docs/operations/backup")
 		return
 	}
 	start := time.Now()
@@ -176,7 +176,7 @@ func (a *App) handleAdminCachePurge(w http.ResponseWriter, r *http.Request) {
 	purgeType := "targeted"
 	if slug != "" {
 		if !api.IsValidSlug(slug) {
-			writeAPIError(w, r, 400, "invalid_slug", "invalid slug", "https://docs.vayupress.com/api/cache")
+			writeAPIError(w, r, 400, "invalid_slug", "invalid slug", "/docs/api/cache")
 			return
 		}
 		var tags string
@@ -190,7 +190,7 @@ func (a *App) handleAdminCachePurge(w http.ResponseWriter, r *http.Request) {
 			remoteIP = strings.Split(r.RemoteAddr, ":")[0]
 		}
 		if !auth.AllowPurge(remoteIP) {
-			writeAPIError(w, r, 429, "rate_limited", "full cache purge rate-limited", "https://docs.vayupress.com/api/cache")
+			writeAPIError(w, r, 429, "rate_limited", "full cache purge rate-limited", "/docs/api/cache")
 			return
 		}
 		postsDir := filepath.Join(config.Cfg.CacheDir, "posts")
@@ -1024,7 +1024,7 @@ func (a *App) handleHealthBenchmarks(w http.ResponseWriter, r *http.Request) {
 	result := a.lastBenchmark
 	a.lastBenchmarkMu.Unlock()
 	if result == nil {
-		writeAPIError(w, r, 404, "no_benchmark", "no benchmark run yet; POST /admin/benchmark", "https://docs.vayupress.com/operations/benchmarks")
+		writeAPIError(w, r, 404, "no_benchmark", "no benchmark run yet; POST /admin/benchmark", "/docs/operations/benchmarks")
 		return
 	}
 	writeJSON(w, r, 200, result)
@@ -1032,7 +1032,7 @@ func (a *App) handleHealthBenchmarks(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) handleRunBenchmark(w http.ResponseWriter, r *http.Request) {
 	if !atomic.CompareAndSwapInt32(&a.benchmarkRunning, 0, 1) {
-		writeAPIError(w, r, 409, "benchmark_running", "benchmark already in progress", "https://docs.vayupress.com/operations/benchmarks")
+		writeAPIError(w, r, 409, "benchmark_running", "benchmark already in progress", "/docs/operations/benchmarks")
 		return
 	}
 	defer atomic.StoreInt32(&a.benchmarkRunning, 0)
@@ -1618,11 +1618,11 @@ func (a *App) handleGovernanceBudgetAck(w http.ResponseWriter, r *http.Request) 
 		Name string `json:"name"`
 	}
 	if err := json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&body); err != nil || body.Name == "" {
-		writeAPIError(w, r, http.StatusBadRequest, "invalid_request", "expected JSON body {\"name\":\"<budget>\"}", "https://docs.vayupress.com/governance/budgets")
+		writeAPIError(w, r, http.StatusBadRequest, "invalid_request", "expected JSON body {\"name\":\"<budget>\"}", "/docs/governance/budgets")
 		return
 	}
 	if !budget.Global.Acknowledge(body.Name, time.Now()) {
-		writeAPIError(w, r, http.StatusNotFound, "unknown_budget", "no governance budget named "+body.Name, "https://docs.vayupress.com/governance/budgets")
+		writeAPIError(w, r, http.StatusNotFound, "unknown_budget", "no governance budget named "+body.Name, "/docs/governance/budgets")
 		return
 	}
 	logging.LogInfo("budget", "operator acknowledged governance budget "+body.Name+" — debt window cleared")

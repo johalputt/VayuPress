@@ -289,4 +289,4 @@ sudo tail -f /var/log/meilisearch/meilisearch.log
 
 ## Support
 
-support@vayupress.com — https://docs.vayupress.com
+support@vayupress.com — https://vayupress.com/docs

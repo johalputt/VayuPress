@@ -1,0 +1,153 @@
+/* docs.css — public documentation site (/docs).
+ *
+ * Self-contained and CSP-safe (served from /static/css, no inline styles): the
+ * /docs handler links only this file plus /theme.css, so the strict
+ * `style-src 'self'` policy holds. Light and dark are both handled via
+ * prefers-color-scheme; the brand accent is picked up from --brand / --accent
+ * when /theme.css defines them, with a sober blue fallback. */
+
+:root {
+  --doc-bg: #ffffff;
+  --doc-surface: #f7f8fa;
+  --doc-border: #e3e6ea;
+  --doc-text: #1b1f24;
+  --doc-text-dim: #5b6672;
+  --doc-accent: var(--brand, var(--accent, #2563eb));
+  --doc-accent-dim: color-mix(in srgb, var(--doc-accent) 12%, transparent);
+  --doc-code-bg: #f2f4f7;
+  --doc-max: 46rem;
+  --doc-sidebar-w: 17rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --doc-bg: #0f1216;
+    --doc-surface: #161a20;
+    --doc-border: #262c34;
+    --doc-text: #e6e9ee;
+    --doc-text-dim: #97a1ad;
+    --doc-code-bg: #1b2027;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body.doc-body {
+  margin: 0;
+  background: var(--doc-bg);
+  color: var(--doc-text);
+  font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Top bar ─────────────────────────────────────────────────────────────── */
+.doc-top {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; gap: 1rem;
+  padding: 0.75rem 1.25rem;
+  background: color-mix(in srgb, var(--doc-bg) 88%, transparent);
+  backdrop-filter: saturate(160%) blur(8px);
+  border-bottom: 1px solid var(--doc-border);
+}
+.doc-top a { color: inherit; text-decoration: none; }
+.doc-brand { font-weight: 700; letter-spacing: -0.01em; }
+.doc-brand span { color: var(--doc-accent); }
+.doc-top nav { margin-left: auto; display: flex; gap: 1.1rem; font-size: 0.9rem; }
+.doc-top nav a { color: var(--doc-text-dim); }
+.doc-top nav a:hover { color: var(--doc-accent); }
+
+/* ── Shell layout ────────────────────────────────────────────────────────── */
+.doc-shell {
+  display: grid;
+  grid-template-columns: var(--doc-sidebar-w) minmax(0, 1fr);
+  gap: 2.5rem;
+  max-width: 74rem;
+  margin: 0 auto;
+  padding: 1.75rem 1.25rem 5rem;
+}
+.doc-side {
+  align-self: start;
+  position: sticky; top: 4.25rem;
+  max-height: calc(100vh - 5.5rem);
+  overflow-y: auto;
+  font-size: 0.9rem;
+  padding-right: 0.5rem;
+}
+.doc-side h4 {
+  margin: 1.1rem 0 0.4rem;
+  font-size: 0.72rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--doc-text-dim);
+}
+.doc-side ul { list-style: none; margin: 0 0 0.4rem; padding: 0; }
+.doc-side li { margin: 0.05rem 0; }
+.doc-side a {
+  display: block; padding: 0.28rem 0.6rem;
+  color: var(--doc-text-dim); text-decoration: none;
+  border-radius: 7px; line-height: 1.35;
+}
+.doc-side a:hover { background: var(--doc-surface); color: var(--doc-text); }
+.doc-side a.is-active { background: var(--doc-accent-dim); color: var(--doc-accent); font-weight: 600; }
+
+/* ── Content ─────────────────────────────────────────────────────────────── */
+.doc-main { min-width: 0; }
+.doc-crumb { font-size: 0.85rem; color: var(--doc-text-dim); margin-bottom: 1rem; }
+.doc-crumb a { color: var(--doc-accent); text-decoration: none; }
+
+.doc-prose { max-width: var(--doc-max); }
+.doc-prose > :first-child { margin-top: 0; }
+.doc-prose h1 { font-size: 2rem; line-height: 1.2; letter-spacing: -0.02em; margin: 0 0 1rem; }
+.doc-prose h2 { font-size: 1.4rem; margin: 2.25rem 0 0.75rem; padding-top: 0.4rem; border-top: 1px solid var(--doc-border); }
+.doc-prose h3 { font-size: 1.13rem; margin: 1.6rem 0 0.5rem; }
+.doc-prose h4 { font-size: 1rem; margin: 1.3rem 0 0.4rem; }
+.doc-prose p, .doc-prose li { color: var(--doc-text); }
+.doc-prose a { color: var(--doc-accent); text-decoration: none; }
+.doc-prose a:hover { text-decoration: underline; }
+.doc-prose code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.88em; background: var(--doc-code-bg);
+  padding: 0.12em 0.38em; border-radius: 5px;
+}
+.doc-prose pre {
+  background: var(--doc-code-bg); border: 1px solid var(--doc-border);
+  border-radius: 10px; padding: 1rem 1.1rem; overflow-x: auto; line-height: 1.5;
+}
+.doc-prose pre code { background: none; padding: 0; font-size: 0.85rem; }
+.doc-prose blockquote {
+  margin: 1rem 0; padding: 0.5rem 1rem;
+  border-left: 3px solid var(--doc-accent); background: var(--doc-surface);
+  color: var(--doc-text-dim); border-radius: 0 8px 8px 0;
+}
+.doc-prose table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: 0.92rem; display: block; overflow-x: auto; }
+.doc-prose th, .doc-prose td { border: 1px solid var(--doc-border); padding: 0.5rem 0.7rem; text-align: left; }
+.doc-prose th { background: var(--doc-surface); font-weight: 600; }
+.doc-prose img { max-width: 100%; height: auto; border-radius: 8px; }
+.doc-prose hr { border: none; border-top: 1px solid var(--doc-border); margin: 2rem 0; }
+
+/* ── Index landing cards ─────────────────────────────────────────────────── */
+.doc-intro { max-width: var(--doc-max); margin-bottom: 2rem; }
+.doc-intro h1 { font-size: 2.1rem; letter-spacing: -0.02em; margin: 0 0 0.5rem; }
+.doc-intro p { color: var(--doc-text-dim); margin: 0; }
+.doc-section { margin: 1.75rem 0; }
+.doc-section > h2 { font-size: 1.15rem; margin: 0 0 0.75rem; }
+.doc-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: 0.75rem; }
+.doc-card {
+  display: block; padding: 0.85rem 1rem;
+  border: 1px solid var(--doc-border); border-radius: 11px;
+  background: var(--doc-surface); text-decoration: none; color: var(--doc-text);
+  transition: border-color 0.15s, transform 0.15s;
+}
+.doc-card:hover { border-color: var(--doc-accent); transform: translateY(-1px); }
+.doc-card b { display: block; font-weight: 600; }
+.doc-card span { display: block; font-size: 0.82rem; color: var(--doc-text-dim); margin-top: 0.15rem; }
+
+.doc-empty { color: var(--doc-text-dim); padding: 2rem 0; }
+.doc-foot { border-top: 1px solid var(--doc-border); margin-top: 3rem; padding: 1.5rem 1.25rem; text-align: center; font-size: 0.85rem; color: var(--doc-text-dim); }
+.doc-foot a { color: var(--doc-accent); text-decoration: none; }
+
+/* ── Responsive: fold the sidebar under the content on narrow screens ─────── */
+@media (max-width: 820px) {
+  .doc-shell { grid-template-columns: minmax(0, 1fr); gap: 1.25rem; }
+  .doc-side { position: static; max-height: none; order: 2; border-top: 1px solid var(--doc-border); padding-top: 0.75rem; }
+  .doc-main { order: 1; }
+}

@@ -418,7 +418,7 @@ info "Writing systemd service..."
 cat > /etc/systemd/system/vayupress.service <<SYSTEMD
 [Unit]
 Description=VayuPress CMS Engine ${ENGINE_VERSION}
-Documentation=https://github.com/johalputt/vayupress
+Documentation=https://vayupress.com/docs https://github.com/johalputt/vayupress
 After=network.target
 
 [Service]

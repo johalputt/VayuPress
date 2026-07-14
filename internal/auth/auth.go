@@ -247,7 +247,7 @@ func RateLimitMiddleware(next http.Handler) http.Handler {
 		allowed := b.count <= 100
 		rateMu.Unlock()
 		if !allowed {
-			writeAuthError(w, 429, "rate_limit_exceeded", "rate limit exceeded (100 req/hour)", "https://docs.vayupress.com/api/rate-limiting")
+			writeAuthError(w, 429, "rate_limit_exceeded", "rate limit exceeded (100 req/hour)", "/docs/api/rate-limiting")
 			return
 		}
 		next.ServeHTTP(w, r)
@@ -649,7 +649,7 @@ func CSRFTokenMiddleware(next http.Handler) http.Handler {
 			// verifies the HMAC so a forged-but-matching pair still fails.
 			tokensMatch := subtle.ConstantTimeCompare([]byte(headerToken), []byte(cookieToken)) == 1
 			if headerToken == "" || cookieToken == "" || !tokensMatch || !ValidateCSRFToken(headerToken) {
-				writeAuthError(w, 403, "csrf_invalid", "CSRF token missing or invalid", "https://docs.vayupress.com/api/csrf")
+				writeAuthError(w, 403, "csrf_invalid", "CSRF token missing or invalid", "/docs/api/csrf")
 				return
 			}
 		}
@@ -696,7 +696,7 @@ func RequireAPIKey(next http.Handler) http.Handler {
 		if locked, until := CheckAuthLockout(ip); locked {
 			retryAfter := int(time.Until(until).Seconds()) + 1
 			w.Header().Set("Retry-After", strconv.Itoa(retryAfter))
-			writeAuthError(w, 429, "auth_lockout", fmt.Sprintf("locked out for %ds", retryAfter), "https://docs.vayupress.com/api/auth#lockout")
+			writeAuthError(w, 429, "auth_lockout", fmt.Sprintf("locked out for %ds", retryAfter), "/docs/api/auth#lockout")
 			return
 		}
 		key := r.Header.Get("X-API-Key")
@@ -710,7 +710,7 @@ func RequireAPIKey(next http.Handler) http.Handler {
 		staticOK := config.Cfg.APIKey != "" && subtle.ConstantTimeCompare([]byte(key), []byte(config.Cfg.APIKey)) == 1
 		if !staticOK && !verifyExtraAPIKey(key) {
 			RecordAuthFailure(ip)
-			writeAuthError(w, 401, "unauthorized", "invalid or missing API key", "https://docs.vayupress.com/api/auth")
+			writeAuthError(w, 401, "unauthorized", "invalid or missing API key", "/docs/api/auth")
 			return
 		}
 		RecordAuthSuccess(ip)

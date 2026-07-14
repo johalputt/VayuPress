@@ -160,11 +160,11 @@ func (a *App) reconcileSearchOnce() {
 // with 409 rather than running two competing rebuilds.
 func (a *App) handleSearchReindex(w http.ResponseWriter, r *http.Request) {
 	if a.search == nil {
-		writeAPIError(w, r, 503, "search_unavailable", "search service not configured", "https://docs.vayupress.com/operations/search")
+		writeAPIError(w, r, 503, "search_unavailable", "search service not configured", "/docs/operations/search")
 		return
 	}
 	if !atomic.CompareAndSwapInt32(&a.reindexRunning, 0, 1) {
-		writeAPIError(w, r, 409, "reindex_running", "a reindex is already in progress", "https://docs.vayupress.com/operations/search")
+		writeAPIError(w, r, 409, "reindex_running", "a reindex is already in progress", "/docs/operations/search")
 		return
 	}
 	defer atomic.StoreInt32(&a.reindexRunning, 0)
@@ -174,7 +174,7 @@ func (a *App) handleSearchReindex(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	res, err := a.reindexAllArticles(ctx)
 	if err != nil {
-		writeAPIError(w, r, 500, "reindex_failed", err.Error(), "https://docs.vayupress.com/operations/search")
+		writeAPIError(w, r, 500, "reindex_failed", err.Error(), "/docs/operations/search")
 		return
 	}
 	a.lastReindexMu.Lock()
@@ -192,12 +192,12 @@ func (a *App) handleSearchReindex(w http.ResponseWriter, r *http.Request) {
 // warranted without running one.
 func (a *App) handleSearchDrift(w http.ResponseWriter, r *http.Request) {
 	if a.search == nil {
-		writeAPIError(w, r, 503, "search_unavailable", "search service not configured", "https://docs.vayupress.com/operations/search")
+		writeAPIError(w, r, 503, "search_unavailable", "search service not configured", "/docs/operations/search")
 		return
 	}
 	var storeCount int
 	if err := dbpkg.DB.QueryRow(`SELECT COUNT(1) FROM articles`).Scan(&storeCount); err != nil {
-		writeAPIError(w, r, 500, "store_count_failed", err.Error(), "https://docs.vayupress.com/operations/search")
+		writeAPIError(w, r, 500, "store_count_failed", err.Error(), "/docs/operations/search")
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)

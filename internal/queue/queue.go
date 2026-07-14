@@ -260,7 +260,7 @@ func HandleQueueStatus(w http.ResponseWriter, r *http.Request, writeJSON func(ht
 func HandleQueueReplay(w http.ResponseWriter, r *http.Request, writeJSON func(http.ResponseWriter, *http.Request, int, interface{}), writeAPIError func(http.ResponseWriter, *http.Request, int, string, string, string)) {
 	rows, err := dbpkg.DB.Query(`SELECT id,replay_count FROM write_jobs WHERE status='dead_letter' LIMIT ?`, config.Cfg.ReplayBatchLimit+50)
 	if err != nil {
-		writeAPIError(w, r, 500, "db_error", "replay query failed: "+err.Error(), "https://docs.vayupress.com/api/queue")
+		writeAPIError(w, r, 500, "db_error", "replay query failed: "+err.Error(), "/docs/api/queue")
 		return
 	}
 	var quarantineIDs, replayIDs []int64

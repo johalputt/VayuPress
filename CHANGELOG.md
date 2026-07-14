@@ -8,6 +8,41 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.24] — 2026-07-14
+
+### Added
+- **Public documentation site at `/docs`** (ADR-0133). Every guide, operations
+  runbook, the security model and all 100+ Architecture Decision Records now ship
+  as markdown **embedded in the binary** and are rendered at `<your-site>/docs` —
+  a path, not a subdomain, hosted by your own install for public audit. Read-only,
+  GET-only, rendered with the same sanitising pipeline as the VayuOS ADR registry
+  (goldmark + bluemonday UGC), inside a self-contained, CSP-safe shell
+  (`static/css/docs.css`; no inline styles/scripts). Routing is allowlist-based —
+  a request can only resolve to a real embedded file, so no path escapes the tree.
+  `/doc` redirects to `/docs`.
+
+### Changed
+- **Retired the `docs.vayupress.com` subdomain.** Every in-app reference (API error
+  `docs` hints in `handlers_*`, `auth`, `queue`, `health`) is now the site-relative
+  `/docs/…`, so hints resolve on whatever host serves the API (multi-domain
+  included); documentation/config prose links point at `https://vayupress.com/docs/…`.
+  Legacy anchor paths still used by error hints (`/docs/operations/…`,
+  `/docs/api/…`, `/docs/governance/…`) alias to the guide that covers them, so no
+  link dead-ends. The installer's systemd `Documentation=` now points at the docs
+  site; `INSTALLATION.md` documents the built-in `/docs` (no DNS record to add).
+- **Canonicalised `docs/EMAILS.md`** into the complete 24-address inventory
+  (adds the ethics, admin/BDFL, architecture-lead and performance-lead contacts
+  that were referenced elsewhere), with a note that the VayuMail-Mobile app defines
+  no addresses of its own and shares this list.
+
+### Notes
+- Only markdown is embedded (~0.7 MB; the README screenshot/asset folders are
+  excluded), so the hot request path is untouched and binary growth is bounded.
+  ADRs are not re-embedded — the handler unions the existing `DocsADRFS`. Tests
+  cover the index, guide/ADR rendering, the legacy-anchor alias, a real 404 and
+  that path traversal cannot escape the embedded set. Single-domain installs are
+  unaffected beyond gaining the new `/docs` route.
+
 ## [3.13.23] — 2026-07-13
 
 ### Security
