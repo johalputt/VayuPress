@@ -8,6 +8,25 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.32] — 2026-07-15
+
+### Added
+- **The account panel + nav chip now show your profile photo, not just an
+  initial.** The public account panel rendered a coloured circle with the first
+  letter of your name; it never displayed an image. It now shows your profile
+  picture when one is available. The membership snapshot resolves the avatar from
+  the matching CMS user (the same public URL shown on your `/author` page), so
+  the owner/staff who signed into the portal see their photo in the panel and the
+  nav chip; members without a picture keep the initial. Works for same-origin and
+  external image URLs (the public CSP already allows `img-src 'self' data:
+  https:`).
+
+### Notes
+- No new storage or endpoint: the avatar is the existing CMS-user `AvatarURL`,
+  surfaced read-only. Tests cover the panel's image-vs-initial rendering path,
+  the member snapshot supplying the avatar when a matching CMS user has one, and
+  omitting it otherwise.
+
 ## [3.13.31] — 2026-07-15
 
 ### Added

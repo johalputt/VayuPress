@@ -118,6 +118,15 @@ func (a *App) memberSnapshot(r *http.Request, m *members.Member) map[string]inte
 		"tier":  m.Tier,
 		"paid":  m.IsPaid(),
 	}
+	// Public profile picture: when the member is also a CMS user (typically the
+	// owner/staff who signed into the portal), surface their avatar — the same
+	// public URL shown on their /author page — so the account panel and nav chip
+	// show their photo instead of only an initial.
+	if a.userStore != nil {
+		if cu, err := a.userStore.GetByEmail(r.Context(), m.Email); err == nil && cu != nil && cu.AvatarURL != "" {
+			mem["avatar"] = cu.AvatarURL
+		}
+	}
 	if a.vayuMailLoginEnabled() {
 		if role := a.vayuMail.Accounts().RoleFor(r.Context(), m.Email); role != "" {
 			_, console := mailConsoleAccess(role)

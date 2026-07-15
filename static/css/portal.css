@@ -214,8 +214,10 @@
   display: flex; align-items: center; justify-content: center;
   font-weight: 700; font-size: 1.3rem; color: #fff;
   background: linear-gradient(180deg, var(--vpp-accent-2), var(--vpp-accent));
-  flex: none;
+  flex: none; overflow: hidden;
 }
+/* Profile photo fills the avatar circle when the account has one. */
+.vp-portal-avatar-img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; }
 .vp-portal-account-id .vp-portal-acc-name { font-weight: 700; font-size: 1.05rem; }
 .vp-portal-account-id .vp-portal-acc-mail { color: var(--vpp-muted); font-size: .85rem; }
 

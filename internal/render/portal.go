@@ -129,8 +129,11 @@ const PortalJS = `(function () {
         ? '<a class="vp-portal-btn" href="/os">Open VayuOS console</a>'
         : '<a class="vp-portal-btn" href="/os/vayuos/mail/inbox">Open VayuMail</a>';
     }
+    var avatarInner = m.avatar
+      ? '<img class="vp-portal-avatar-img" src="' + esc(m.avatar) + '" alt="">'
+      : esc(initial);
     return '<div class="vp-portal-account-id">' +
-      '<div class="vp-portal-avatar">' + esc(initial) + '</div>' +
+      '<div class="vp-portal-avatar">' + avatarInner + '</div>' +
       '<div><div class="vp-portal-acc-name">' + esc(name) + '</div>' +
       '<div class="vp-portal-acc-mail">' + esc(m.email || '') + '</div></div></div>' +
       '<div class="vp-portal-plan"><div class="vp-portal-plan-label">Your plan</div>' +
