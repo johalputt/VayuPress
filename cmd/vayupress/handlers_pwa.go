@@ -68,7 +68,9 @@ func (a *App) handleServiceWorker(w http.ResponseWriter, r *http.Request) {
 }
 
 const serviceWorkerJS = `// VayuPress service worker — offline-first for static assets.
-const CACHE_NAME = 'vayupress-v1';
+// CACHE_NAME is bumped to v2 to purge any v1 entries that wrongly cached the
+// admin console (/os) — see the activate handler, which deletes stale caches.
+const CACHE_NAME = 'vayupress-v2';
 const STATIC_ASSETS = [
   '/',
   '/static/chroma.css',
@@ -95,6 +97,19 @@ self.addEventListener('activate', event => {
 
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
+  // Never intercept the admin console or ANY of its surfaces — always go to the
+  // network, never serve from cache. These are authenticated, per-user,
+  // session-aware pages. Serving a stale copy would (a) re-show /os/login to an
+  // operator who is already signed in, silently defeating the server-side
+  // "already authenticated -> redirect to /os" logic, and (b) risk showing one
+  // person's dashboard to another on a shared device. This MUST run before the
+  // navigate/stale-while-revalidate branch below. Covers the console (/os), its
+  // sub-paths and assets (/os/...), and the legacy admin path (/admin).
+  if (url.pathname === '/os' || url.pathname.startsWith('/os/') ||
+      url.pathname === '/admin' || url.pathname.startsWith('/admin/')) {
+    event.respondWith(fetch(event.request));
+    return;
+  }
   // Cache-first for static assets (CSS, JS, images, fonts).
   if (url.pathname.startsWith('/static/') || url.pathname.startsWith('/media/')) {
     event.respondWith(
@@ -109,12 +124,6 @@ self.addEventListener('fetch', event => {
         });
       })
     );
-    return;
-  }
-  // Never cache authenticated admin pages — they must always hit the network
-  // (avoids serving a stale/foreign admin view from a shared-device cache).
-  if (url.pathname === '/admin' || url.pathname.startsWith('/admin/')) {
-    event.respondWith(fetch(event.request));
     return;
   }
   // Stale-while-revalidate for HTML pages.

@@ -8,6 +8,38 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.30] — 2026-07-15
+
+### Fixed
+- **The real cause of the "login page shows while signed in" bug: the PWA
+  service worker was caching the admin console.** The offline service worker
+  serves navigations *stale-while-revalidate* (`return cached || network`), and
+  it only excluded the legacy `/admin` path — but the console lives at **`/os`**,
+  which was never added to the exclusion. So the worker cached `/os/login` in
+  Cache Storage and served the stale form on every visit, **bypassing the server
+  entirely** — which is why it survived a hard refresh *and* a full browser
+  restart (Cache Storage is persistent; HTTP-cache fixes and `no-store` headers
+  can't touch it). Worse, the same path could serve one operator's cached
+  dashboard to another on a shared device.
+  - The service worker now routes the whole console — `/os`, every `/os/*`
+    sub-path and asset, plus the legacy `/admin` — **straight to the network,
+    never through the cache**, and this guard runs before the stale-while-
+    revalidate branch.
+  - `CACHE_NAME` is bumped to `vayupress-v2`, so on activation the worker's
+    existing cleanup step **deletes the old `vayupress-v1` cache**, purging the
+    poisoned `/os/login` entry. Because `/sw.js` is served `no-store`, browsers
+    fetch the fixed worker on their next visit, install it (`skipWaiting`),
+    activate it, and claim the page automatically — no manual cache-clearing
+    needed.
+
+### Notes
+- Defense in depth now spans both layers: the HTTP response is `no-store`
+  (v3.13.29) *and* the service worker never caches the console (this release).
+  Public blog pages keep their offline stale-while-revalidate behaviour
+  unchanged. Tests assert the console network-only guard, its ordering before the
+  navigate branch, the `vayupress-v2` cache bump, and that `/sw.js` is served
+  uncacheable so the worker self-updates.
+
 ## [3.13.29] — 2026-07-15
 
 ### Fixed
