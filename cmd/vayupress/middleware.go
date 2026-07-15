@@ -16,6 +16,7 @@ import (
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/metrics"
 	"github.com/johalputt/vayupress/internal/render"
+	"github.com/johalputt/vayupress/internal/reqclass"
 	"github.com/johalputt/vayupress/internal/safefetch"
 	"github.com/johalputt/vayupress/internal/trace"
 )
@@ -112,6 +113,10 @@ func structuredLoggerMiddleware(next http.Handler) http.Handler {
 		span.SetAttribute("http.method", r.Method)
 		span.SetAttribute("http.path", r.URL.Path)
 		span.SetAttribute("http.remote_addr", r.RemoteAddr)
+		// Seed a mutable classification so VayuShield (an inner middleware) can flag
+		// a request it deliberately delayed (a 5s tarpit) or challenged — that time
+		// is bot defence, not page latency, and must be kept out of the p95.
+		ctx = reqclass.NewContext(ctx)
 
 		ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
 		next.ServeHTTP(ww, r.WithContext(ctx))
@@ -123,14 +128,17 @@ func structuredLoggerMiddleware(next http.Handler) http.Handler {
 		span.End()
 
 		dur := span.EndTime.Sub(span.StartTime)
-		// Latency metrics measure page/request responsiveness, so exclude
-		// long-lived connections — a streamed/hijacked response (e.g. a VayuTalk
-		// relay held open for minutes) would otherwise record its ENTIRE lifetime
-		// as a single "request latency", permanently pinning the P95 tail. Normal
-		// requests can't exceed the 30s server timeout, so anything past it is a
-		// stream, not a slow page. The windowed view drives the dashboards (recent
-		// real latency); the cumulative one stays the Prometheus source.
-		if dur <= streamLatencyCutoff {
+		// Latency metrics measure page/request responsiveness, so exclude requests
+		// that are not representative page loads:
+		//   - Long-lived/streamed connections (a VayuTalk relay held open for
+		//     minutes) would record their ENTIRE lifetime as one "request latency";
+		//     nothing under the 30s server timeout is a stream.
+		//   - VayuShield-defended requests: a tarpit deliberately sleeps ~5s to waste
+		//     a confirmed bot's time, so counting it as latency pins the p95 tail at
+		//     the shield's own delay for as long as bots keep probing.
+		// The windowed view drives the dashboards (recent real latency); the
+		// cumulative one stays the Prometheus source.
+		if dur <= streamLatencyCutoff && !reqclass.Shielded(ctx) {
 			metrics.HTTPLatency.Record(dur)
 			metrics.HTTPLatencyWindow.Record(dur)
 		}

@@ -8,6 +8,36 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.27] — 2026-07-15
+
+### Performance
+- **The p95 finally reflects reader latency — VayuShield tarpit delays excluded.**
+  The true cause of the stuck 8192 ms p95 was VayuShield's **tarpit**: it
+  deliberately `sleep`s ~5 s on a confirmed-bad-bot request to waste its time
+  (`serveTarpit`). That 5 s was being recorded as "request latency", so while
+  bots kept probing the p95 was pinned at the shield's own delay — the shield
+  *working* looked like the site being slow. HTTP latency now excludes every
+  shield-defended request (tarpit, challenge, block, jail, load-/fair-shed,
+  rate-limit) via a mutable per-request classification (`internal/reqclass`) the
+  shield sets and the latency recorder honours. Real reader requests are unchanged.
+
+### Fixed
+- **`governance-breach` no longer floods from the admin UI's own inline styles.**
+  The strict CSP is `style-src 'self'`, but the admin HTML carries ~150 inline
+  `style="…"` attributes — each was blocked and reported as a CSP violation on
+  every operator page view, exhausting the VIOLATION budget (and quietly degrading
+  admin layout). The CSP now adds **`style-src-attr 'unsafe-inline'`**, which
+  permits passive, developer-authored inline style *attributes* only. Stylesheets
+  and `<style>` stay `'self'`, and the XSS-relevant `script-src` stays
+  `'self' 'nonce-…'` with no `unsafe-inline` — the execution sandbox is unchanged.
+
+### Notes
+- Both are correctness fixes; request serving is unchanged. Tests cover the
+  shield-mark flowing from an inner middleware to the outer latency recorder, and
+  the CSP allowing inline style attributes while keeping script strict. The
+  earlier fixes stand: `degradation-debt` stays healthy (bot-blocks isolated to
+  `bot-attack-intensity`), and the Storage page footprint is served from cache.
+
 ## [3.13.26] — 2026-07-15
 
 ### Performance

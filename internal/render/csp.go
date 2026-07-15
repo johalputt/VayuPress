@@ -37,7 +37,15 @@ var allowedFrameOrigins = func() map[string]bool {
 // (Unsplash, Pixabay, …) straight from the editor. Images are passive,
 // non-executable content — scripts, styles, frames and fetches all remain
 // locked to 'self', so this does not weaken the execution sandbox.
-const cspBaseline = "default-src 'self'; font-src 'self'; style-src 'self'; " +
+//
+// style-src-attr 'unsafe-inline' permits inline `style="…"` ATTRIBUTES only —
+// stylesheets and `<style>` elements stay 'self' (style-src), and the
+// XSS-relevant script surface stays nonce-locked (script-src 'self' 'nonce'). An
+// inline style attribute is passive, developer-authored layout (flex/gap/width)
+// and cannot execute script; without this, the admin UI's attributes were being
+// BLOCKED — degrading layout and emitting a steady stream of CSP-violation
+// reports (the governance-breach budget) on every operator page view.
+const cspBaseline = "default-src 'self'; font-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'; " +
 	"script-src 'self' 'nonce-%s'; img-src 'self' data: https:; connect-src 'self'; " +
 	"frame-ancestors 'none'; base-uri 'self'; form-action 'self'; report-uri /csp-report"
 
@@ -120,7 +128,7 @@ func BuildAdCSP(nonce string, frameOrigins []string) string {
 	frames := append([]string{}, adFrameOrigins...)
 	frames = append(frames, validFrameOrigins(frameOrigins)...)
 	frameSrc := "frame-src 'self' " + strings.Join(dedupeSorted(frames), " ")
-	return "default-src 'self'; font-src 'self'; style-src 'self'; " +
+	return "default-src 'self'; font-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'; " +
 		scriptSrc + "; " + imgSrc + "; " + connectSrc + "; " + frameSrc + "; " +
 		"frame-ancestors 'none'; base-uri 'self'; form-action 'self'; report-uri /csp-report"
 }

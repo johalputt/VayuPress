@@ -33,6 +33,7 @@ import (
 	"time"
 
 	"github.com/johalputt/vayupress/internal/dbbatch"
+	"github.com/johalputt/vayupress/internal/reqclass"
 	"github.com/johalputt/vayupress/internal/vayushield/botdb"
 	"github.com/johalputt/vayupress/internal/vayushield/brain"
 	"github.com/johalputt/vayupress/internal/vayushield/calibrate"
@@ -676,6 +677,7 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 
 		// 1. Blocklist — the cheapest possible gate for a known-abusive IP.
 		if !verified && lc.autoBlock && m.blocklist.Blocked(ipKey) {
+			reqclass.MarkShielded(r.Context())
 			m.onEvent(ActionBlock, 1.0)
 			m.serveJailed(w, r, ipKey, "blocked")
 			return
@@ -687,6 +689,7 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 		// solved challenge pardons the sentence — see RewardProof), so a real
 		// user behind a shared/NAT IP is never locked out.
 		if !verified && m.brain.Jailed(ipKey) {
+			reqclass.MarkShielded(r.Context())
 			m.onEvent(ActionBlock, 1.0)
 			m.serveJailed(w, r, ipKey, "reputation")
 			return
@@ -695,6 +698,7 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 		// 2. Load shedding — protect the process from collapse under saturation.
 		if lc.loadShed && !verified {
 			if !m.inflight.Acquire() {
+				reqclass.MarkShielded(r.Context())
 				m.serveThrottled(w, http.StatusServiceUnavailable, "load-shed", "5")
 				return
 			}
@@ -716,6 +720,7 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 			pressure := m.controller.UnderAttack() ||
 				(m.cfg.PressureFn != nil && m.cfg.PressureFn())
 			if m.prefilter.Check(ipKey, pressure) {
+				reqclass.MarkShielded(r.Context())
 				m.onEvent(ActionBlock, 1.0)
 				m.serveThrottled(w, http.StatusTooManyRequests, "fair-shed", "5")
 				return
@@ -740,6 +745,7 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 					m.cfg.OffloadFn(ipKey, m.jailTTL())
 				}
 			}
+			reqclass.MarkShielded(r.Context())
 			m.onEvent(ActionBlock, 1.0)
 			m.serveThrottled(w, http.StatusTooManyRequests, "rate-limited", "10")
 			return
@@ -760,6 +766,14 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 
 		ctx := context.WithValue(r.Context(), ctxKey{}, v)
 		r = r.WithContext(ctx)
+
+		// A non-Allow decision is bot defence (a challenge, a deliberate tarpit
+		// delay, or a hard block), not a representative page load. Flag it so the
+		// latency recorder keeps it out of the HTTP p95 — otherwise the tarpit's
+		// own 5s sleep pins the tail for as long as bots keep probing.
+		if action != ActionAllow {
+			reqclass.MarkShielded(ctx)
+		}
 
 		switch action {
 		case ActionAllow:
