@@ -116,6 +116,23 @@ func (l *Ledger) RecordFrom(level severity.Level, source string, now time.Time) 
 	}
 }
 
+// RecordTo charges ONLY the named budget with one event, so a signal that
+// belongs to a specific budget cannot bleed into other budgets that happen to
+// track the same severity. VayuShield bot-blocks, for example, belong to
+// bot-attack-intensity (a tolerant, bot-specific budget) — charging them as a
+// generic WARN would also drain the strict degradation-debt budget and make the
+// shield doing its job read as system degradation. No-op if name is unknown.
+func (l *Ledger) RecordTo(name, source string, now time.Time) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for _, r := range l.rules {
+		if r.Name == name {
+			l.hits[r.Name] = append(l.hits[r.Name], charge{at: now, source: source})
+			return
+		}
+	}
+}
+
 // Acknowledge clears the current debt window for the named budget and stamps the
 // acknowledgment time — operator-driven recovery that resets accumulation without
 // waiting for the window to roll off. Returns false if no such budget exists.

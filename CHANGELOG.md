@@ -8,6 +8,35 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.26] — 2026-07-15
+
+### Performance
+- **Storage & System page no longer walks the render cache on the request path.**
+  The page summed the on-disk footprint by `WalkDir`-ing the render cache, media
+  and backup trees **synchronously per load** — on a multi-GB render cache that
+  blocked for 4-8 s, and (as of v3.13.25's honest recent-window metric) those
+  loads were the requests pinning the HTTP p95 at 8192 ms. Directory sizes are now
+  computed by a **background refresher** (at boot, then every 10 min) and read
+  from cache instantly; the DB size stays a live stat. A stale cache kicks a
+  non-blocking refresh, so a delete still reflects promptly. This is the actual
+  fix behind the p95 the v3.13.25 metric surfaced.
+
+### Fixed
+- **`degradation-debt` no longer exhausts just because the bot shield is
+  working.** VayuShield hard-blocks charged a generic `severity.Warn`, which the
+  strict general-purpose `degradation-debt` budget (limit 5) tracks alongside the
+  tolerant, purpose-built `bot-attack-intensity` budget (limit 20) — so blocking a
+  bot flood (hundreds of IPs) read as *system degradation* and marked the box
+  "exhausted". Bot-blocks now charge **only** `bot-attack-intensity` (new
+  `Ledger.RecordTo`), so `degradation-debt` reflects genuine degradation and the
+  governance panel stops false-alarming under normal bot pressure.
+
+### Notes
+- Both are correctness/latency fixes with no behaviour change to serving. Tests
+  cover the footprint cache (reads are served from cache, never a live walk) and
+  the targeted budget charge (bot-blocks hit only the bot budget; genuine WARNs
+  still charge degradation-debt).
+
 ## [3.13.25] — 2026-07-14
 
 ### Performance

@@ -33,7 +33,6 @@ import (
 	"github.com/johalputt/vayupress/internal/queue"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/settings"
-	"github.com/johalputt/vayupress/internal/severity"
 	"github.com/johalputt/vayupress/internal/vayuanalytics/classifier"
 	vagdpr "github.com/johalputt/vayupress/internal/vayuanalytics/gdpr"
 	vasession "github.com/johalputt/vayupress/internal/vayuanalytics/session"
@@ -207,7 +206,10 @@ func (a *App) vayuShieldOnEvent(action vayushield.Action, score float64) {
 		return
 	}
 	if atomic.CompareAndSwapInt64(&shieldChargeAt, last, now) {
-		budget.Global.RecordFrom(severity.Warn, "vayushield", time.Now())
+		// Charge ONLY the bot-specific budget. Blocking a bot flood is the shield
+		// working, not system degradation, so it must not drain the strict
+		// general-purpose degradation-debt budget (which also tracks WARN).
+		budget.Global.RecordTo("bot-attack-intensity", "vayushield", time.Now())
 	}
 }
 

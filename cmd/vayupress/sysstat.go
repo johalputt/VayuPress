@@ -13,8 +13,50 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"syscall"
+	"time"
 )
+
+// footprintCache holds the last computed directory-tree sizes for the on-disk
+// footprint figures. Walking the render cache (multi-GB, tens of thousands of
+// small files) takes seconds, so it is computed in the BACKGROUND and never on
+// the Storage page's request path — which previously blocked for 4-8s per load,
+// polluting the HTTP p95 tail. The DB size stays live (a single stat, instant).
+var footprintCache struct {
+	cache   int64 // atomic
+	media   int64 // atomic
+	backups int64 // atomic
+	at      int64 // atomic: unix seconds of the last successful compute
+}
+
+// refreshFootprint recomputes the cached directory sizes (blocking; call from a
+// goroutine).
+func refreshFootprint(cacheDir, mediaDir, backupsDir string) {
+	atomic.StoreInt64(&footprintCache.cache, dirSize(cacheDir))
+	atomic.StoreInt64(&footprintCache.media, dirSize(mediaDir))
+	atomic.StoreInt64(&footprintCache.backups, dirSize(backupsDir))
+	atomic.StoreInt64(&footprintCache.at, time.Now().Unix())
+}
+
+// startFootprintRefresher computes the footprint once immediately (in the
+// background so boot never blocks) and then every 10 minutes.
+func startFootprintRefresher(cacheDir, mediaDir, backupsDir string) {
+	go func() {
+		refreshFootprint(cacheDir, mediaDir, backupsDir)
+		t := time.NewTicker(10 * time.Minute)
+		defer t.Stop()
+		for range t.C {
+			refreshFootprint(cacheDir, mediaDir, backupsDir)
+		}
+	}()
+}
+
+// footprintStale reports whether the cached sizes are older than 2 minutes, so a
+// page load can kick a non-blocking refresh (e.g. right after a delete).
+func footprintStale() bool {
+	return time.Now().Unix()-atomic.LoadInt64(&footprintCache.at) > 120
+}
 
 // sysStats is a point-in-time snapshot of resource usage.
 type sysStats struct {
@@ -77,10 +119,16 @@ func collectSysStats(dbPath, cacheDir, mediaDir, backupsDir string) sysStats {
 		s.DiskUsed = s.DiskTotal - s.DiskFree
 	}
 
+	// DB size is a handful of stats (instant). The directory-tree sizes are read
+	// from the background-refreshed cache so this never walks the multi-GB render
+	// cache on the request path; a stale cache kicks a non-blocking refresh.
 	s.DBSize = fileSize(dbPath) + fileSize(dbPath+"-wal") + fileSize(dbPath+"-shm")
-	s.CacheSize = dirSize(cacheDir)
-	s.MediaSize = dirSize(mediaDir)
-	s.BackupsSize = dirSize(backupsDir)
+	s.CacheSize = atomic.LoadInt64(&footprintCache.cache)
+	s.MediaSize = atomic.LoadInt64(&footprintCache.media)
+	s.BackupsSize = atomic.LoadInt64(&footprintCache.backups)
+	if footprintStale() {
+		go refreshFootprint(cacheDir, mediaDir, backupsDir)
+	}
 	return s
 }
 

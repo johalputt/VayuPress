@@ -80,7 +80,7 @@ import (
 // -ldflags "-X main.Version=<.release-version>", and scripts/update-vayupress.sh
 // reads .release-version too — keep this in sync with .release-version so an
 // un-stamped `go build` still reports an honest version.
-var Version = "3.13.25"
+var Version = "3.13.26"
 var bootTime = time.Now()
 
 // Immutable package-level values (compiled once, never mutated).
@@ -818,6 +818,10 @@ func main() {
 	}
 
 	dbpkg.InitStorageCachedBytes()
+	// Background footprint sizing for the Storage & System page — keeps the
+	// multi-GB render-cache tree walk off the request path (Storage page was
+	// blocking for 4-8s per load, inflating the HTTP p95).
+	startFootprintRefresher(config.Cfg.CacheDir, config.Cfg.MediaDir, updateBackupDir())
 	dbpkg.StartWALCheckpointGoroutine(queue.DoneCh)
 	dbpkg.StartStuckJobReaper(queue.DoneCh)
 	dbpkg.StartJobRetentionSweeper(queue.DoneCh)
