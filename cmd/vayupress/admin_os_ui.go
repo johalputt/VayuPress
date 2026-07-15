@@ -1013,7 +1013,28 @@ func writeOSHTML(w http.ResponseWriter, body string) {
 
 // ── Login page ───────────────────────────────────────────────────────────────
 
+// setAuthPageNoCache marks an auth page (login, change-password) uncacheable by
+// the browser AND every proxy/CDN.
+//
+// This is load-bearing, not defensive boilerplate: the login page is written
+// directly (it bypasses writeOSHTML, which is where the dashboard gets its
+// no-store). Without an explicit Cache-Control the browser is free to
+// heuristically cache the rendered 200 form and serve it on a LATER visit
+// WITHOUT hitting the server — so the "already signed in → redirect to /os"
+// check below never runs, and a logged-in operator keeps seeing the login page
+// while /os (always no-store) correctly shows the dashboard. That exact
+// asymmetry is the reported bug. no-store forbids all caching/reuse, so the
+// session-aware redirect runs on every /os/login navigation.
+func setAuthPageNoCache(w http.ResponseWriter) {
+	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("Expires", "0")
+}
+
 func (a *App) handleOSLogin(w http.ResponseWriter, r *http.Request) {
+	// no-store BEFORE the branch so both the redirect and the form response are
+	// uncacheable — otherwise a cached form silently defeats the redirect.
+	setAuthPageNoCache(w)
 	// Already signed in? Opening /os/login with a live session must land on the
 	// dashboard, not re-prompt for credentials — the seamless posture the operator
 	// expects whether they typed /os or /os/login.
@@ -1026,6 +1047,7 @@ func (a *App) handleOSLogin(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleOSLoginSubmit(w http.ResponseWriter, r *http.Request) {
+	setAuthPageNoCache(w)
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
@@ -1100,6 +1122,7 @@ func (a *App) handleOSLoginSubmit(w http.ResponseWriter, r *http.Request) {
 // handleOSChangePassword renders the forced first-login password-change page for
 // a bootstrapped default admin. Reached via the serveWithAccess gate.
 func (a *App) handleOSChangePassword(w http.ResponseWriter, r *http.Request) {
+	setAuthPageNoCache(w)
 	u := currentUser(r)
 	em := ""
 	if u != nil {
@@ -1113,6 +1136,7 @@ func (a *App) handleOSChangePassword(w http.ResponseWriter, r *http.Request) {
 // clears the must-change flag, then sends them to the console. New password must
 // be ≥8 chars and match the confirmation.
 func (a *App) handleOSChangePasswordSubmit(w http.ResponseWriter, r *http.Request) {
+	setAuthPageNoCache(w)
 	u := currentUser(r)
 	if u == nil || a.userStore == nil {
 		http.Redirect(w, r, "/os/login", http.StatusSeeOther)

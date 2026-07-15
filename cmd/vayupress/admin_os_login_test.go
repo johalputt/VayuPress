@@ -26,6 +26,14 @@ func TestHandleOSLoginRendersFormWhenAnonymous(t *testing.T) {
 	if !strings.Contains(rec.Body.String(), "Sign in") {
 		t.Error("expected the sign-in form to render for an anonymous visitor")
 	}
+	// The login page MUST be uncacheable. Without no-store the browser can
+	// heuristically cache the rendered form and serve it on a later visit without
+	// hitting the server, so the "already signed in → redirect" check never runs
+	// and a logged-in operator keeps seeing the login page. This is the exact
+	// caching defect behind the reported bug — guard it.
+	if cc := rec.Header().Get("Cache-Control"); !strings.Contains(cc, "no-store") {
+		t.Errorf("login page Cache-Control = %q, want it to contain no-store", cc)
+	}
 }
 
 // TestOSLoginPageRememberCheckbox verifies the sign-in page renders the

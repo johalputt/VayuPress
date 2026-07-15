@@ -8,6 +8,29 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.29] — 2026-07-15
+
+### Fixed
+- **The `/os/login` redirect now actually fires — the login page is no longer
+  cacheable.** v3.13.28 added the "already signed in → forward to `/os`" redirect,
+  but the login page was written directly (bypassing `writeOSHTML`, where the
+  dashboard gets its `no-store`) and carried **no `Cache-Control` header at all**.
+  The browser was free to heuristically cache the rendered form and serve it on a
+  later visit *without hitting the server*, so the session-aware redirect never
+  ran — a signed-in operator kept seeing the login page while `/os` (always
+  `no-store`) correctly showed the dashboard. That exact asymmetry was the bug.
+  All four auth-page responses (login GET/POST, change-password GET/POST) now send
+  `Cache-Control: no-store, no-cache, must-revalidate` + `Pragma: no-cache` +
+  `Expires: 0`, so the redirect logic runs on every navigation. Verified
+  end-to-end: a real session cookie against `GET /os/login` returns `303 → /os`.
+
+### Notes
+- Auth pages must never be cached anyway — they carry live session state, a
+  prefilled email, and per-attempt error banners; a shared/heuristic cache
+  serving a stale copy is both a correctness and a privacy issue. Tests assert
+  the `no-store` header on the anonymous form render and on the authenticated
+  redirect. Cookie posture is unchanged (`HttpOnly`, `Secure`, `SameSite=Strict`).
+
 ## [3.13.28] — 2026-07-15
 
 ### Fixed

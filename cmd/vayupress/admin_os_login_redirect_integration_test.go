@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/johalputt/vayupress/internal/auth"
@@ -59,6 +60,11 @@ func TestHandleOSLoginRedirectsWhenAuthed(t *testing.T) {
 	}
 	if loc := rec.Header().Get("Location"); loc != "/os" {
 		t.Errorf("Location = %q, want /os", loc)
+	}
+	// The redirect itself must be uncacheable too — a cached 303 (or a cached
+	// 200 form from an earlier visit) would defeat the session-aware routing.
+	if cc := rec.Header().Get("Cache-Control"); !strings.Contains(cc, "no-store") {
+		t.Errorf("redirect Cache-Control = %q, want it to contain no-store", cc)
 	}
 
 	// Stale/unknown cookie: no live session → must render the form (200), not
