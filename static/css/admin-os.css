@@ -2596,6 +2596,30 @@
 .vp-os .vm-av--img { background: none; padding: 0; overflow: hidden; }
 .vp-os .vm-av--img img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; display: block; }
 
+/* Per-domain mailbox tabs — pure CSS (hidden radio + label + :checked sibling
+   rules), so no JS and no inline styles are needed (CSP-safe). Rules are emitted
+   for up to 10 domains; installs with more still work, only tabs 11+ won't be
+   selectable (no real install has that many mail domains). */
+.vp-os .vm-domtabs { position: relative; }
+.vp-os .vm-domtab-radio { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.vp-os .vm-domtabs-strip { display: flex; gap: .35rem; flex-wrap: wrap; margin-bottom: var(--sp-3); border-bottom: 1px solid var(--border, rgba(255,255,255,.08)); }
+.vp-os .vm-domtab-tab { cursor: pointer; padding: .5rem .95rem; border-radius: 10px 10px 0 0; font-weight: 600; color: var(--text-2, #9aa4b2); user-select: none; display: inline-flex; align-items: center; gap: .4rem; border: 1px solid transparent; border-bottom: none; margin-bottom: -1px; transition: color .12s, background .12s; }
+.vp-os .vm-domtab-tab:hover { color: var(--text, #e6edf3); }
+.vp-os .vm-domtab-panel { display: none; }
+.vp-os .vm-domtab-radio:focus-visible + .vm-domtab-radio + .vm-domtabs-strip label,
+.vp-os .vm-domtabs-strip label:focus-within { outline: 2px solid var(--brand, #3b82f6); outline-offset: 2px; }
+.vp-os #vm-dt-0:checked ~ .vm-domtab-panel[data-i="0"], .vp-os #vm-dt-1:checked ~ .vm-domtab-panel[data-i="1"],
+.vp-os #vm-dt-2:checked ~ .vm-domtab-panel[data-i="2"], .vp-os #vm-dt-3:checked ~ .vm-domtab-panel[data-i="3"],
+.vp-os #vm-dt-4:checked ~ .vm-domtab-panel[data-i="4"], .vp-os #vm-dt-5:checked ~ .vm-domtab-panel[data-i="5"],
+.vp-os #vm-dt-6:checked ~ .vm-domtab-panel[data-i="6"], .vp-os #vm-dt-7:checked ~ .vm-domtab-panel[data-i="7"],
+.vp-os #vm-dt-8:checked ~ .vm-domtab-panel[data-i="8"], .vp-os #vm-dt-9:checked ~ .vm-domtab-panel[data-i="9"] { display: block; }
+.vp-os #vm-dt-0:checked ~ .vm-domtabs-strip label[for="vm-dt-0"], .vp-os #vm-dt-1:checked ~ .vm-domtabs-strip label[for="vm-dt-1"],
+.vp-os #vm-dt-2:checked ~ .vm-domtabs-strip label[for="vm-dt-2"], .vp-os #vm-dt-3:checked ~ .vm-domtabs-strip label[for="vm-dt-3"],
+.vp-os #vm-dt-4:checked ~ .vm-domtabs-strip label[for="vm-dt-4"], .vp-os #vm-dt-5:checked ~ .vm-domtabs-strip label[for="vm-dt-5"],
+.vp-os #vm-dt-6:checked ~ .vm-domtabs-strip label[for="vm-dt-6"], .vp-os #vm-dt-7:checked ~ .vm-domtabs-strip label[for="vm-dt-7"],
+.vp-os #vm-dt-8:checked ~ .vm-domtabs-strip label[for="vm-dt-8"], .vp-os #vm-dt-9:checked ~ .vm-domtabs-strip label[for="vm-dt-9"] {
+  color: var(--text, #e6edf3); background: var(--surface-2, rgba(255,255,255,.05)); border-color: var(--border, rgba(255,255,255,.08)); }
+
 /* Per-mailbox address book (Contacts panel + save-contact control). */
 .vp-os .vm-contacts { display: flex; flex-direction: column; gap: var(--sp-3); }
 .vp-os .vm-contacts-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-2); flex-wrap: wrap; }

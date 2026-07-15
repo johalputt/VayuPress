@@ -206,6 +206,11 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	r.Get("/static/js/vp-engagement.js", a.handleVAEngagementJS)
 	r.Get("/.well-known/privacy-report.json", a.handlePrivacyReport)
 
+	// Libravatar/Gravatar-compatible federated avatar: so a recipient's mail
+	// client/service can fetch a sender's profile picture. Rate-limited because
+	// the handler scans the account list per request (same posture as WKD).
+	r.With(auth.PublicDiscoveryRateLimit).Get("/avatar/{hash}", a.handleFederatedAvatar)
+
 	// VayuPGP Web Key Directory — public key discovery (RFC WKD advanced method).
 	// Rate-limited: the handler scans the whole keystore per request, so an
 	// unbounded query rate is a DoS amplifier (generous per-IP cap, legit

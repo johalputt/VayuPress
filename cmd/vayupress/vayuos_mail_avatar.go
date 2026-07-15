@@ -10,6 +10,8 @@ import (
 	"io"
 	"net/http"
 	"strings"
+
+	"github.com/go-chi/chi/v5"
 )
 
 // maxMailAvatarBytes caps a stored profile picture at 500 KB (matches the mail
@@ -113,6 +115,48 @@ func (a *App) handleVayuOSAvatarRemove(w http.ResponseWriter, r *http.Request) {
 	}
 	a.invalidateAvatarCache() // drop the removed picture across the mailbox at once
 	writeOSHTML(w, a.vayuAccountsList(r.Context()))
+}
+
+// handleFederatedAvatar serves a mailbox's profile picture over the public
+// Libravatar/Gravatar-compatible endpoint GET /avatar/<hash>, where <hash> is the
+// md5 or sha256 of the lowercased address. This is how avatar-federation-aware
+// mail clients and services fetch a sender's picture, so a recipient can see it.
+// Public by design (an avatar is meant to be seen); it exposes ONLY the image for
+// an address that has opted in by uploading one, and 404s / honours the ?d=
+// default otherwise.
+func (a *App) handleFederatedAvatar(w http.ResponseWriter, r *http.Request) {
+	hash := chi.URLParam(r, "hash")
+	if i := strings.IndexByte(hash, '.'); i >= 0 { // tolerate /avatar/<hash>.png
+		hash = hash[:i]
+	}
+	serveDefault := func() {
+		// Libravatar/Gravatar ?d= fallback: a URL redirects there, "404" 404s.
+		d := strings.TrimSpace(r.URL.Query().Get("d"))
+		if d == "" {
+			d = strings.TrimSpace(r.URL.Query().Get("default"))
+		}
+		if strings.HasPrefix(d, "https://") || strings.HasPrefix(d, "http://") {
+			http.Redirect(w, r, d, http.StatusFound)
+			return
+		}
+		http.NotFound(w, r)
+	}
+	if a.vayuMail == nil || a.vayuMail.Accounts() == nil {
+		serveDefault()
+		return
+	}
+	blob, mime, err := a.vayuMail.Accounts().AvatarByHash(r.Context(), hash)
+	if err != nil || len(blob) == 0 || mime == "" {
+		serveDefault()
+		return
+	}
+	w.Header().Set("Content-Type", mime)
+	// Public and cacheable for an hour: federation fetches happen per recipient
+	// view, so a short shared-cache lifetime keeps load down without pinning a
+	// stale picture for long after a change.
+	w.Header().Set("Cache-Control", "public, max-age=3600")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	_, _ = w.Write(blob)
 }
 
 // handleVayuOSAvatarServe serves a mailbox's stored profile picture. Session-

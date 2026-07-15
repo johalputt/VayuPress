@@ -8,6 +8,32 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.35] — 2026-07-15
+
+### Added
+- **Per-domain tabs on the mailbox directory.** When more than one mail domain is
+  served, the mailbox landing page now shows a tab per domain; clicking a tab
+  shows only that domain's mailboxes instead of stacking every domain down the
+  page. Pure CSS (hidden radio + `:checked` sibling rules), so it needs no
+  JavaScript and emits no inline styles (CSP-safe). A single-domain install is
+  unchanged (one card, no tab chrome).
+- **Federated (Libravatar/Gravatar-compatible) sender avatar.** A public
+  `GET /avatar/<hash>` endpoint serves a mailbox's profile picture by the md5 or
+  sha256 of its address, so a recipient's mail client or a service that supports
+  avatar federation can display the sender's picture. It exposes only the image
+  for an address that opted in by uploading one, honours the `?d=` default-URL
+  fallback, 404s otherwise, and is rate-limited (same posture as WKD).
+
+### Notes
+- Real-world reach of the federated avatar depends on the recipient's client:
+  clients/services that implement Libravatar federation (discovered via a
+  `_avatars._tcp.<domain>` SRV record) will fetch it; clients that don't show
+  sender avatars at all won't. It is standards-based best-effort, not a guarantee
+  every recipient sees the picture. Tests cover the md5/sha256 hash derivation,
+  lookup by either hash, no-match for a mailbox without a picture, and the
+  public route's 404 / `?d=` redirect behaviour. Third in the mail-experience
+  series (after profile pictures and the address book).
+
 ## [3.13.34] — 2026-07-15
 
 ### Added

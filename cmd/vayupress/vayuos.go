@@ -1486,14 +1486,7 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 			writeOSHTML(w, adminOSLayout(nonce, "Mailbox", "vayuos", cfg, htmpl.HTML(body.String())))
 			return
 		}
-		body.WriteString(a.vayuMailboxDomainCard(domain, domain, primary, true))
-		for _, secHost := range a.mailSecondaryHosts(r.Context()) {
-			sb, e2 := a.vayuMail.MailboxesForDomain(secHost)
-			if e2 != nil {
-				continue
-			}
-			body.WriteString(a.vayuMailboxDomainCard(secHost, domain, sb, false))
-		}
+		body.WriteString(a.vayuMailboxTabs(domain, primary, a.mailSecondaryHosts(r.Context())))
 		writeOSHTML(w, adminOSLayout(nonce, "Mailbox", "vayuos", cfg, htmpl.HTML(body.String())))
 		return
 	}
@@ -1514,6 +1507,70 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 	body.WriteString(`</div>`)
 	body.WriteString(`<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail.js?v=` + assetVer("js/admin-os-mail.js") + `"></script>`)
 	writeOSHTML(w, adminOSLayout(nonce, "Mailbox", "vayuos", cfg, htmpl.HTML(body.String())))
+}
+
+// vayuMailboxTabs renders the mailbox directory as one tab per mail domain
+// (VayuDomains): a tab strip on top, and only the selected domain's mailboxes
+// showing beneath it. The primary domain is the first, selected tab. Pure CSS
+// (hidden radio + label + :checked sibling rules in admin-os.css) so it stays
+// CSP-safe — no inline styles, no JavaScript. A single-domain install renders
+// just that domain's card with no tab chrome.
+func (a *App) vayuMailboxTabs(primaryDom string, primary []vmail.MailboxSummary, secHosts []string) string {
+	unseenOf := func(boxes []vmail.MailboxSummary) int {
+		n := 0
+		for _, b := range boxes {
+			n += b.Unseen
+		}
+		return n
+	}
+	type domTab struct {
+		dom       string
+		isPrimary bool
+		unseen    int
+		card      string
+	}
+	tabs := []domTab{{primaryDom, true, unseenOf(primary), a.vayuMailboxDomainCard(primaryDom, primaryDom, primary, true)}}
+	for _, sh := range secHosts {
+		sb, err := a.vayuMail.MailboxesForDomain(sh)
+		if err != nil {
+			continue
+		}
+		tabs = append(tabs, domTab{sh, false, unseenOf(sb), a.vayuMailboxDomainCard(sh, primaryDom, sb, false)})
+	}
+	// One domain: no tab chrome needed — render its card directly (byte-identical
+	// to the pre-tabs single-domain layout).
+	if len(tabs) == 1 {
+		return tabs[0].card
+	}
+	var b strings.Builder
+	b.WriteString(`<div class="vm-domtabs">`)
+	// Hidden radios first, so the :checked ~ sibling rules can reach the strip and
+	// the panels that follow.
+	for i := range tabs {
+		checked := ""
+		if i == 0 {
+			checked = " checked"
+		}
+		b.WriteString(`<input type="radio" name="vm-domtab" id="vm-dt-` + itoaSafe(i) + `" class="vm-domtab-radio"` + checked + `>`)
+	}
+	b.WriteString(`<div class="vm-domtabs-strip" role="tablist">`)
+	for i, t := range tabs {
+		tier := ` <span class="badge badge--muted">secondary</span>`
+		if t.isPrimary {
+			tier = ` <span class="badge badge--accent">primary</span>`
+		}
+		un := ""
+		if t.unseen > 0 {
+			un = ` <span class="vm-tab-badge">` + itoaSafe(t.unseen) + `</span>`
+		}
+		b.WriteString(`<label class="vm-domtab-tab" for="vm-dt-` + itoaSafe(i) + `">` + html.EscapeString(t.dom) + tier + un + `</label>`)
+	}
+	b.WriteString(`</div>`)
+	for i, t := range tabs {
+		b.WriteString(`<div class="vm-domtab-panel" data-i="` + itoaSafe(i) + `">` + t.card + `</div>`)
+	}
+	b.WriteString(`</div>`)
+	return b.String()
 }
 
 // vayuMailboxDomainCard renders one mail domain's mailbox directory as its own
