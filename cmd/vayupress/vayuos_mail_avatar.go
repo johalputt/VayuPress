@@ -88,6 +88,7 @@ func (a *App) handleVayuOSAvatarUpload(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusInternalServerError, "save-failed", err.Error(), "")
 		return
 	}
+	a.invalidateAvatarCache() // show the new picture across the mailbox at once
 	writeOSHTML(w, a.vayuAccountsList(r.Context()))
 }
 
@@ -110,6 +111,7 @@ func (a *App) handleVayuOSAvatarRemove(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusInternalServerError, "clear-failed", err.Error(), "")
 		return
 	}
+	a.invalidateAvatarCache() // drop the removed picture across the mailbox at once
 	writeOSHTML(w, a.vayuAccountsList(r.Context()))
 }
 

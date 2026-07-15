@@ -21,6 +21,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/johalputt/vayupress/internal/auth"
@@ -1247,6 +1248,72 @@ func mailAvatar(raw string) string {
 	return `<span class="vm-av vm-av--` + itoaSafe(mailAvatarIdx(seed)) + `" aria-hidden="true">` + html.EscapeString(mailInitials(raw)) + `</span>`
 }
 
+// mailAvatarSet caches the set of local mailbox addresses that have an uploaded
+// profile picture. A message/mailbox list can then render photos without one
+// avatar-presence query per row.
+type mailAvatarSet struct {
+	mu      sync.RWMutex
+	set     map[string]bool
+	expires time.Time
+}
+
+// mailAvatarTTL bounds how stale the has-a-picture set may be (a fresh upload is
+// reflected sooner because the handlers invalidate the cache explicitly).
+const mailAvatarTTL = 30 * time.Second
+
+// mailboxAvatarSet returns the cached set of lowercased mailbox addresses that
+// have an uploaded profile picture, refreshing it when the TTL has passed.
+func (a *App) mailboxAvatarSet() map[string]bool {
+	a.avatarCache.mu.RLock()
+	if a.avatarCache.set != nil && time.Now().Before(a.avatarCache.expires) {
+		s := a.avatarCache.set
+		a.avatarCache.mu.RUnlock()
+		return s
+	}
+	a.avatarCache.mu.RUnlock()
+
+	set := map[string]bool{}
+	if a.vayuMail != nil && a.vayuMail.Accounts() != nil {
+		if accs, err := a.vayuMail.Accounts().List(context.Background()); err == nil {
+			for _, ac := range accs {
+				if strings.TrimSpace(ac.AvatarType) != "" {
+					set[strings.ToLower(strings.TrimSpace(ac.Email))] = true
+				}
+			}
+		}
+	}
+	a.avatarCache.mu.Lock()
+	a.avatarCache.set = set
+	a.avatarCache.expires = time.Now().Add(mailAvatarTTL)
+	a.avatarCache.mu.Unlock()
+	return set
+}
+
+// invalidateAvatarCache forces the next mailboxAvatarSet call to rebuild, so a
+// freshly uploaded/removed picture shows across the mailbox immediately.
+func (a *App) invalidateAvatarCache() {
+	a.avatarCache.mu.Lock()
+	a.avatarCache.expires = time.Time{}
+	a.avatarCache.mu.Unlock()
+}
+
+// mailAvatarImg renders a sender/recipient chip: the uploaded profile picture
+// when that local mailbox has one (per avatarSet), else the colored-initials
+// fallback. Keeping the fallback avoids a broken <img> for external senders and
+// mailboxes without a picture (CSP forbids an inline onerror handler).
+func mailAvatarImg(raw string, avatarSet map[string]bool) string {
+	_, addr := mailParseFrom(raw)
+	if addr == "" {
+		addr = raw
+	}
+	addr = strings.ToLower(strings.TrimSpace(addr))
+	if avatarSet[addr] {
+		return `<span class="vm-av vm-av--img" aria-hidden="true"><img src="/os/vayumail/accounts/avatar?email=` +
+			qparam(addr) + `" alt="" loading="lazy"></span>`
+	}
+	return mailAvatar(raw)
+}
+
 // mailRelTime renders a compact relative timestamp ("just now", "5m", "3h",
 // "2d", "Jan 2") with the absolute time as a tooltip.
 func mailRelTime(t time.Time) string {
@@ -1456,6 +1523,7 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 // secondary links the full address so the read path resolves its own Maildir.
 func (a *App) vayuMailboxDomainCard(dom, primaryDomain string, boxes []vmail.MailboxSummary, isPrimary bool) string {
 	var rows strings.Builder
+	avSet := a.mailboxAvatarSet()
 	unseenTotal := 0
 	for _, bx := range boxes {
 		bdom := bx.Domain
@@ -1472,7 +1540,7 @@ func (a *App) vayuMailboxDomainCard(dom, primaryDomain string, boxes []vmail.Mai
 			unseen = `<span class="vm-tab-badge">` + itoaSafe(bx.Unseen) + `</span>`
 			unseenTotal += bx.Unseen
 		}
-		rows.WriteString(`<tr><td><a class="vm-from" href="/os/vayumail/inbox?user=` + qparam(key) + `">` + mailAvatar(addr) + `<span class="vm-name">` + html.EscapeString(addr) + `</span></a></td><td>` + itoaSafe(bx.Total) + `</td><td>` + unseen + `</td></tr>`)
+		rows.WriteString(`<tr><td><a class="vm-from" href="/os/vayumail/inbox?user=` + qparam(key) + `">` + mailAvatarImg(addr, avSet) + `<span class="vm-name">` + html.EscapeString(addr) + `</span></a></td><td>` + itoaSafe(bx.Total) + `</td><td>` + unseen + `</td></tr>`)
 	}
 	if len(boxes) == 0 {
 		rows.WriteString(`<tr><td colspan="3" class="muted">No mailboxes on this domain yet. Create one under <a href="/os/vayumail/accounts">Accounts</a>.</td></tr>`)
@@ -1513,7 +1581,7 @@ func (a *App) vayuInboxBody(user, folder string) string {
 
 	// Sticky toolbar: mailbox identity + Compose + search.
 	b.WriteString(`<div class="vm-toolbar">`)
-	b.WriteString(`<div class="vm-toolbar-id">` + mailAvatar(mbox) + `<div class="vm-toolbar-meta"><strong>` + html.EscapeString(mbox) + `</strong><a class="text-sm muted" href="/os/vayumail/inbox">All mailboxes</a></div></div>`)
+	b.WriteString(`<div class="vm-toolbar-id">` + mailAvatarImg(mbox, a.mailboxAvatarSet()) + `<div class="vm-toolbar-meta"><strong>` + html.EscapeString(mbox) + `</strong><a class="text-sm muted" href="/os/vayumail/inbox">All mailboxes</a></div></div>`)
 	b.WriteString(`<div class="vm-toolbar-actions">`)
 	b.WriteString(`<a class="btn btn--primary btn--sm" href="/os/vayumail/compose?user=` + qparam(user) + `">✎ Compose</a>`)
 	b.WriteString(`<form class="vm-search" method="get" action="/os/vayumail/search"><input type="hidden" name="user" value="` + html.EscapeString(user) + `"><input class="input input--sm" type="search" name="q" placeholder="Search mail…" aria-label="Search mail"><button class="btn btn--sm" type="submit">Search</button></form>`)
@@ -1593,6 +1661,7 @@ func (a *App) vayuInboxBody(user, folder string) string {
 	// rows, flipped by delegated JS that survives HTMX swaps).
 	threadOf := map[string]int{} // normalized subject -> thread index
 	threadN := 0
+	avSet := a.mailboxAvatarSet()
 	rowHTML := func(m vmail.StoredMessage, threadAttr, extraCls, badge string) string {
 		subj := m.Subject
 		if subj == "" {
@@ -1633,7 +1702,7 @@ func (a *App) vayuInboxBody(user, folder string) string {
 			subjA += ` class="vm-subj-link" data-vm-open hx-get="` + link + `&pane=1" hx-target="#vm-readpane" hx-swap="innerHTML"`
 		}
 		subjA += `>` + html.EscapeString(subj) + `</a>`
-		return `<tr class="` + rowCls + `" data-vm-row` + threadAttr + `><td class="vm-check">` + check + `</td><td>` + pin + `</td><td><div class="vm-from">` + mailAvatar(who) + `<span class="vm-name" title="` + html.EscapeString(who) + `">` + html.EscapeString(mailDisplay(who)) + `</span></div></td><td class="vm-subj">` + subjA + badge + `</td><td class="muted text-sm vm-date">` + mailRelTime(m.Date) + `</td><td class="row-actions">` + tick + `</td></tr>`
+		return `<tr class="` + rowCls + `" data-vm-row` + threadAttr + `><td class="vm-check">` + check + `</td><td>` + pin + `</td><td><div class="vm-from">` + mailAvatarImg(who, avSet) + `<span class="vm-name" title="` + html.EscapeString(who) + `">` + html.EscapeString(mailDisplay(who)) + `</span></div></td><td class="vm-subj">` + subjA + badge + `</td><td class="muted text-sm vm-date">` + mailRelTime(m.Date) + `</td><td class="row-actions">` + tick + `</td></tr>`
 	}
 	// Pass 1: count thread members per normalized subject.
 	counts := map[string]int{}
@@ -1896,13 +1965,14 @@ func (a *App) vayuSearchResults(user string, sf searchFilters) string {
 	if len(matched) == 0 {
 		b.WriteString(`<tr><td colspan="4" class="muted">No matches. Try a different term or relax the filters.</td></tr>`)
 	}
+	avSet := a.mailboxAvatarSet()
 	for _, m := range matched {
 		subj := m.Subject
 		if subj == "" {
 			subj = "(no subject)"
 		}
 		link := "/os/vayumail/message?user=" + qparam(user) + "&folder=" + qparam(m.Folder) + "&id=" + qparam(m.ID)
-		b.WriteString(`<tr><td><span class="badge">` + html.EscapeString(m.Folder) + `</span></td><td><div class="vm-from">` + mailAvatar(m.From) + `<span class="vm-name">` + highlightMatch(mailDisplay(m.From), sf.q) + `</span></div></td><td class="vm-subj"><a href="` + link + `">` + highlightMatch(subj, sf.q) + `</a></td><td class="muted text-sm vm-date">` + mailRelTime(m.Date) + `</td></tr>`)
+		b.WriteString(`<tr><td><span class="badge">` + html.EscapeString(m.Folder) + `</span></td><td><div class="vm-from">` + mailAvatarImg(m.From, avSet) + `<span class="vm-name">` + highlightMatch(mailDisplay(m.From), sf.q) + `</span></div></td><td class="vm-subj"><a href="` + link + `">` + highlightMatch(subj, sf.q) + `</a></td><td class="muted text-sm vm-date">` + mailRelTime(m.Date) + `</td></tr>`)
 	}
 	b.WriteString(`</tbody></table></div>`)
 	return b.String()
@@ -2276,7 +2346,7 @@ func (a *App) vayuReaderCard(user, folder, id string, pane bool) (string, bool) 
 		fromName = fromAddr
 	}
 	card.WriteString(`<div class="vm-msg-head"><div class="vm-msg-subject">` + html.EscapeString(subj) + mailPGPBadge(raw) + `</div>`)
-	card.WriteString(`<div class="vm-msg-from-row">` + mailAvatar(pm.From) + `<div class="vm-msg-from-meta">`)
+	card.WriteString(`<div class="vm-msg-from-row">` + mailAvatarImg(pm.From, a.mailboxAvatarSet()) + `<div class="vm-msg-from-meta">`)
 	card.WriteString(`<div class="vm-msg-fromname"><strong>` + html.EscapeString(fromName) + `</strong>`)
 	if fromAddr != "" && fromAddr != fromName {
 		card.WriteString(` <span class="muted text-sm">&lt;` + html.EscapeString(fromAddr) + `&gt;</span>`)

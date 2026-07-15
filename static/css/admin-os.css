@@ -2591,6 +2591,10 @@
 .vp-os .vm-av--3 { background: #f59e0b; }
 .vp-os .vm-av--4 { background: #ec4899; }
 .vp-os .vm-av--5 { background: #8b5cf6; }
+/* Photo avatar: the uploaded profile picture, clipped to the same circle as the
+   initials chip. No background so a transparent PNG reads cleanly. */
+.vp-os .vm-av--img { background: none; padding: 0; overflow: hidden; }
+.vp-os .vm-av--img img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; display: block; }
 
 .vp-os .vm-list td { vertical-align: middle; }
 .vp-os .vm-from { display: flex; align-items: center; gap: .55rem; min-width: 0; text-decoration: none; color: var(--text); }

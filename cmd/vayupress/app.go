@@ -175,6 +175,12 @@ type App struct {
 	vayuTalk   *vtalk.Engine
 	vayuSec    *secwatch.Watcher
 
+	// avatarCache memoises the set of mailbox addresses that have an uploaded
+	// profile picture, so rendering a mailbox/message list shows photos without
+	// issuing one avatar-presence query per row. Refreshed on a short TTL and
+	// invalidated immediately on upload/remove.
+	avatarCache mailAvatarSet
+
 	// VayuShield + VayuAnalytics Enterprise — sovereign bot protection and
 	// cookieless engagement analytics. vayuShield is always non-nil once
 	// bootVayuShield runs (its Middleware is a transparent pass-through when

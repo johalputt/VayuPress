@@ -241,7 +241,7 @@ func (a *App) handleVayuOSTalk(w http.ResponseWriter, r *http.Request) {
 	// Left rail: identity (a "chat as" switcher when more than one is available),
 	// start-a-chat box, and the live conversation list (filled by JS).
 	body.WriteString(`<aside class="vtalk-side">`)
-	body.WriteString(`<div class="vtalk-identity">` + mailAvatar(self) + `<div class="vtalk-identity-meta">`)
+	body.WriteString(`<div class="vtalk-identity">` + mailAvatarImg(self, a.mailboxAvatarSet()) + `<div class="vtalk-identity-meta">`)
 	if len(idents) > 1 {
 		body.WriteString(`<select class="vtalk-as" id="vtalk-as" aria-label="Chat as">`)
 		for _, id := range idents {

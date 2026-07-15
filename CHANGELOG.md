@@ -8,6 +8,24 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.33] — 2026-07-15
+
+### Fixed
+- **Uploaded mailbox profile pictures now show across the whole mail UI, not just
+  the Accounts card.** The mailbox directory, the open-mailbox toolbar, message
+  lists (inbox/sent/search), the message reader, and the VayuTalk identity all
+  rendered a colored-initials chip and ignored the uploaded picture. They now show
+  the photo for any local mailbox that has one, falling back to initials for
+  mailboxes without a picture and for external senders (so there is never a broken
+  image — the strict CSP forbids an inline `onerror` fallback). A short-TTL,
+  upload-invalidated cache of "which mailboxes have a picture" keeps this to one
+  lookup per render, not one per row.
+
+### Notes
+- First of a small series improving the mail experience (avatars, per-domain
+  tabs, a per-mailbox address book). Tests cover the photo-vs-initials decision
+  for a mailbox with a picture, a mailbox without one, and an external sender.
+
 ## [3.13.32] — 2026-07-15
 
 ### Added
