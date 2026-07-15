@@ -1264,6 +1264,8 @@
 .vp-os .login-form { display: flex; flex-direction: column; gap: 1.05rem; }
 .vp-os .login-form .field { display: flex; flex-direction: column; gap: 0.4rem; }
 .vp-os .login-hint { color: var(--text-3); font-weight: 400; font-size: 0.75rem; }
+.vp-os .login-remember { display: flex; align-items: center; gap: 0.55rem; font-size: 0.85rem; color: var(--text-2); cursor: pointer; user-select: none; }
+.vp-os .login-remember input { width: 15px; height: 15px; accent-color: var(--brand); cursor: pointer; margin: 0; }
 .vp-os .login-submit { margin-top: 0.4rem; justify-content: center; width: 100%; padding: 0.72rem 1rem; font-size: 0.95rem; border-radius: 10px; }
 .vp-os .login-footer { margin-top: 1.4rem; font-size: 0.75rem; color: var(--text-3); text-align: center; }
 .vp-os .login-error {

@@ -8,6 +8,34 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.28] — 2026-07-15
+
+### Fixed
+- **Signed-in operators no longer see the login form at `/os/login`.** Opening
+  the sign-in URL directly with a live session re-rendered the form (the
+  dashboard only appeared once the path was cleared). `/os/login` now resolves
+  the session server-side and, when it belongs to a real account (a CMS user or
+  a VayuMail mailbox), forwards straight to `/os` with a 303 — the seamless
+  posture whether the operator lands on `/os` or `/os/login`. A stale or unknown
+  cookie still renders the form, so the guard trusts a *resolved* session, never
+  the mere presence of a cookie.
+
+### Added
+- **"Remember me on this device" on the sign-in page.** Checked (the default,
+  persistent posture) issues a cookie whose lifetime is the session TTL, so the
+  sign-in survives browser restarts. **Left unchecked, the session cookie becomes
+  a browser-session cookie** — no `Max-Age`/`Expires` — so the browser drops it
+  the moment it closes and the operator is signed out on the next visit, the
+  right posture for a shared or public machine. Applies to both CMS-account and
+  VayuMail-account logins. The server-side session still expires on its own TTL;
+  dropping the cookie is what logs the browser out.
+
+### Notes
+- Cookie hardening is unchanged in both modes — `HttpOnly`, `Secure` (when
+  served over TLS), `SameSite=Strict`. Tests cover the persistent-vs-session
+  cookie choice, the redirect-when-authenticated behaviour, and the render-form
+  fallback for an anonymous visitor or a stale cookie.
+
 ## [3.13.27] — 2026-07-15
 
 ### Performance

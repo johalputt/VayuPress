@@ -1014,6 +1014,13 @@ func writeOSHTML(w http.ResponseWriter, body string) {
 // ── Login page ───────────────────────────────────────────────────────────────
 
 func (a *App) handleOSLogin(w http.ResponseWriter, r *http.Request) {
+	// Already signed in? Opening /os/login with a live session must land on the
+	// dashboard, not re-prompt for credentials — the seamless posture the operator
+	// expects whether they typed /os or /os/login.
+	if a.hasValidConsoleSession(r) {
+		http.Redirect(w, r, "/os", http.StatusSeeOther)
+		return
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write([]byte(osLoginPage("", "")))
 }
@@ -1034,6 +1041,10 @@ func (a *App) handleOSLoginSubmit(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "accounts not initialised", http.StatusServiceUnavailable)
 		return
 	}
+	// "Remember me": checked (default) keeps a persistent cookie across browser
+	// restarts; unchecked issues a browser-session cookie that is dropped on close,
+	// so the operator is signed out and must log in again on the next visit.
+	remember := r.FormValue("remember") != ""
 	// Brute-force guard — shared lockout state with the v2 surface and the
 	// API-key path so attempts cannot be split across surfaces.
 	ip := loginClientIP(r)
@@ -1053,7 +1064,7 @@ func (a *App) handleOSLoginSubmit(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			auth.RecordAuthSuccess(ip)
-			auth.SetSessionCookie(w, token)
+			auth.SetSessionCookieRemember(w, token, remember)
 			http.Redirect(w, r, "/os", http.StatusSeeOther)
 			return
 		} else if totpMissing {
@@ -1082,7 +1093,7 @@ func (a *App) handleOSLoginSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 	auth.RecordAuthSuccess(ip)
 	a.userStore.TouchLastLogin(r.Context(), u.ID)
-	auth.SetSessionCookie(w, token)
+	auth.SetSessionCookieRemember(w, token, remember)
 	http.Redirect(w, r, "/os", http.StatusSeeOther)
 }
 
@@ -1220,6 +1231,10 @@ func osLoginPage(prefillEmail, errMsg string) string {
         <input id="login-totp" class="input" type="text" name="totp"
           inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000">
       </div>
+      <label class="login-remember" for="login-remember">
+        <input id="login-remember" type="checkbox" name="remember" value="1" checked>
+        <span>Remember me on this device</span>
+      </label>
       <button type="submit" class="btn btn--primary login-submit">Sign in</button>
     </form>
   </div>

@@ -111,6 +111,35 @@ func currentUser(r *http.Request) *users.User {
 	return nil
 }
 
+// hasValidConsoleSession reports whether the request already carries a session
+// cookie that resolves to a real user (a CMS account or a VayuMail account). The
+// public login page uses it to forward an already-signed-in operator straight to
+// the console instead of re-showing the form. It mirrors requireSessionOrAPIKey's
+// resolution but is read-only and never mutates the request.
+func (a *App) hasValidConsoleSession(r *http.Request) bool {
+	if a.sessions == nil {
+		return false
+	}
+	token := auth.SessionTokenFromRequest(r)
+	if token == "" {
+		return false
+	}
+	uid, err := a.sessions.Validate(r.Context(), token)
+	if err != nil {
+		return false
+	}
+	if email, isMail := strings.CutPrefix(uid, "vmail:"); isMail {
+		_, _, ok := a.resolveMailSessionUser(r.Context(), email)
+		return ok
+	}
+	if a.userStore != nil {
+		if _, err := a.userStore.GetByID(r.Context(), uid); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
 // requireSessionOrAPIKey gates admin pages. A valid API key passes through
 // unchanged. Otherwise a valid session cookie resolves the user and attaches it
 // to the request context. On failure, browser navigations are redirected to the

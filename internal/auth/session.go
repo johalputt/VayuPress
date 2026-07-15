@@ -120,23 +120,39 @@ func (s *SessionStore) PurgeExpired(ctx context.Context) (int64, error) {
 	return n, nil
 }
 
-// SetSessionCookie writes the session cookie with hardened attributes.
+// SetSessionCookieRemember writes the session cookie with hardened attributes,
+// choosing its lifetime from the operator's "Remember me" choice.
 //
 // SameSite=Strict (audit F-6): the staff/admin session is only ever used for
 // same-site navigation within /os, so Strict gives the strongest CSRF posture
 // for these privileged, state-changing surfaces. (The reader/member cookie
 // stays Lax because it must survive the cross-site top-level navigation of a
 // magic-link click from an email client.)
-func SetSessionCookie(w http.ResponseWriter, token string) {
-	http.SetCookie(w, &http.Cookie{
+//
+// Lifetime:
+//
+//   - remember=true  → PERSISTENT: Max-Age = the session TTL, so the sign-in
+//     survives browser restarts (the default, seamless posture).
+//   - remember=false → a browser-SESSION cookie: no Max-Age/Expires, so the
+//     browser drops it the moment it closes. On the next visit there is no cookie
+//     to present, so the operator is signed out and must log in again — the right
+//     posture for a shared or public machine.
+//
+// The server-side session record still expires on its own TTL; dropping the
+// cookie is what logs the browser out.
+func SetSessionCookieRemember(w http.ResponseWriter, token string, remember bool) {
+	c := &http.Cookie{
 		Name:     SessionCookie,
 		Value:    token,
 		Path:     "/",
 		HttpOnly: true,
 		Secure:   CSRFCookieSecure(),
 		SameSite: http.SameSiteStrictMode,
-		MaxAge:   int(DefaultSessionTTL.Seconds()),
-	})
+	}
+	if remember {
+		c.MaxAge = int(DefaultSessionTTL.Seconds())
+	}
+	http.SetCookie(w, c)
 }
 
 // ClearSessionCookie expires the session cookie on the client.
