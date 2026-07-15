@@ -138,7 +138,7 @@ func (a *App) handleStats(w http.ResponseWriter, r *http.Request) {
 			"post_pin_toggles":         atomic.LoadInt64(&metrics.MetricPostPinToggles),
 		},
 		"latency_ms": map[string]interface{}{
-			"http_p95": metrics.HTTPLatency.Percentile(95), "http_p99": metrics.HTTPLatency.Percentile(99),
+			"http_p95": metrics.HTTPLatencyWindow.Percentile(95), "http_p99": metrics.HTTPLatencyWindow.Percentile(99),
 			"render_p99": metrics.RenderLatency.Percentile(99), "queue_job_p99": metrics.QueueJobLatency.Percentile(99),
 			"sqlite_write_p99": metrics.SQLiteWriteLatency.Percentile(99),
 		},

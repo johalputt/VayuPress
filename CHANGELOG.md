@@ -8,6 +8,31 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.25] — 2026-07-14
+
+### Performance
+- **Truthful HTTP p95 (recent window, streams excluded).** The Monitoring "HTTP
+  p95" was an **all-time cumulative** histogram that also recorded the full
+  lifetime of long-lived/streamed connections (a VayuTalk relay held open for
+  minutes counted as one multi-minute "request"). Over long uptime and a bot
+  burst, that tail could only climb — e.g. 32 ms at boot → 8192 ms — while real
+  page render stayed ~64 ms. Latency is now measured over a **15-minute sliding
+  window** and **excludes connections past the 30 s request timeout** (streams,
+  not page loads), so the number reflects how fast the site is *right now* and a
+  transient slow burst ages out instead of pinning it forever. The cumulative
+  histogram is retained for Prometheus (monotonic counters); the tile is labelled
+  "last 15 min".
+
+### Fixed
+- **Self-healing DB-backup disk hygiene.** The shell update path
+  (`update-vayupress.sh`) drops a full `sqlite3 .backup` copy — `<db>.backup-<ts>.db`
+  — next to the live database, and nothing pruned them, so they (and orphaned
+  `.db-journal` sidecars) accumulated into multi-GB clutter shown on the Storage
+  panel. The engine now sweeps them at boot and daily, keeping the newest
+  `VAYU_DB_BACKUP_KEEP` snapshots (default 3) and removing orphaned journals — and
+  never the live DB or its WAL/SHM/journal (those carry no `.backup-` infix). The
+  update script prunes inline too.
+
 ### Added
 - **`vayupress.com/docs` on the marketing site.** The project site is hosted on
   GitHub Pages (`docs/site/`), so the binary's `/docs` route (v3.13.24) did not
@@ -16,9 +41,15 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   the Pages build, so `vayupress.com/docs` now serves the same docs the running
   binary serves at `<site>/docs`. It mirrors the binary's DOM and shares
   `static/css/docs.css`, so both look identical; the Pages workflow
-  (`deploy-site.yml`) builds it in seconds (no engine/SQLite build) and now
-  redeploys on any `docs/**` change. A "Docs" link was added to the site nav.
-  No binary change (the running-server `/docs` shipped in v3.13.24).
+  (`deploy-site.yml`) builds it in seconds and redeploys on any `docs/**` change.
+  A "Docs" link was added to the site nav.
+
+### Notes
+- The latency change is metrics-only — it changes what the dashboard *reports*,
+  not how requests are served. If the recent-window p95 is still high after this,
+  that is a genuine signal to investigate (pprof), not an accumulation artefact.
+  Tests cover the windowed percentile (recency + aging-out) and the backup sweep
+  (keep-newest-K, journal cleanup, live-DB safety).
 
 ## [3.13.24] — 2026-07-14
 

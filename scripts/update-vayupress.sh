@@ -273,6 +273,15 @@ if [[ "$BACKUP_DB" == "1" ]]; then
     info "Backing up DB to $BACKUP (max ${BACKUP_TIMEOUT}s)..."
     if timeout "$BACKUP_TIMEOUT" sqlite3 -cmd ".timeout 5000" "$DB_PATH" ".backup '$BACKUP'" 2>/dev/null; then
       ok "DB backup written: $BACKUP ($(du -h "$BACKUP" | cut -f1))"
+      # Retention: keep only the newest DB_BACKUP_KEEP snapshots (default 3) and
+      # drop orphaned journal sidecars, so these full copies can't grow without
+      # bound next to the DB. The engine also sweeps these at boot + daily; this
+      # keeps a script-only update path tidy too.
+      DB_BACKUP_KEEP="${DB_BACKUP_KEEP:-3}"
+      rm -f "${DB_PATH%.db}".backup-*.db-journal "${DB_PATH%.db}".backup-*.db-wal "${DB_PATH%.db}".backup-*.db-shm 2>/dev/null || true
+      ls -1t "${DB_PATH%.db}".backup-*.db 2>/dev/null | tail -n +"$((DB_BACKUP_KEEP + 1))" | while IFS= read -r old; do
+        rm -f "$old" && info "Pruned old DB backup: $(basename "$old")"
+      done
     else
       rm -f "$BACKUP"
       warn "DB backup timed out/failed (continuing). Back up $DB_PATH manually if needed."

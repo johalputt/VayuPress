@@ -81,7 +81,7 @@ func (a *App) handleOSMonitoring(w http.ResponseWriter, r *http.Request) {
 	// ── Performance ──────────────────────────────────────────────────────────
 	uptime := time.Duration(snap.UptimeSeconds) * time.Second
 	perf := `<div class="stat-grid mb-6">` +
-		monStat("HTTP p95", strconv.FormatInt(snap.HTTPP95, 10)+" ms", "request latency") +
+		monStat("HTTP p95", strconv.FormatInt(snap.HTTPP95, 10)+" ms", "request latency · last 15 min") +
 		monStat("Write p99", strconv.FormatInt(snap.WriteP99, 10)+" ms", "queue job latency") +
 		monStat("Render p99", strconv.FormatInt(snap.RenderP99, 10)+" ms", "page render") +
 		monStat("Cache hit", strconv.Itoa(int(snap.CacheHitRatio*100))+"%", "render cache") +

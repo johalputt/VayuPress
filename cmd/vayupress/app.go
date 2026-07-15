@@ -545,7 +545,10 @@ func (a *App) collectAdminMetrics() {
 	snap.WorkersAlive = atomic.LoadInt64(&metrics.WorkerLiveness)
 	snap.CacheHitRatio = metrics.CacheHitRatio()
 	snap.UptimeSeconds = time.Since(bootTime).Seconds()
-	snap.HTTPP95 = metrics.HTTPLatency.Percentile(95)
+	// Recent-window P95 (last ~15 min), not the all-time cumulative tail: the
+	// dashboard shows how fast the site is right now, and a transient slow burst
+	// ages out instead of pinning the number forever.
+	snap.HTTPP95 = metrics.HTTPLatencyWindow.Percentile(95)
 	snap.WriteP99 = metrics.QueueJobLatency.Percentile(99)
 	snap.RenderP99 = metrics.RenderLatency.Percentile(99)
 	rows, err := rdb.Query(`SELECT title,slug,created_at FROM articles ORDER BY created_at DESC LIMIT 15`)

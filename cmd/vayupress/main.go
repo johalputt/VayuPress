@@ -80,7 +80,7 @@ import (
 // -ldflags "-X main.Version=<.release-version>", and scripts/update-vayupress.sh
 // reads .release-version too — keep this in sync with .release-version so an
 // un-stamped `go build` still reports an honest version.
-var Version = "3.13.24"
+var Version = "3.13.25"
 var bootTime = time.Now()
 
 // Immutable package-level values (compiled once, never mutated).
@@ -627,6 +627,13 @@ func main() {
 			}
 		}
 	}()
+	// Self-healing disk hygiene: prune the timestamped SQLite snapshots the shell
+	// update path drops next to the live DB (and their orphaned journals), keeping
+	// only the newest few. Runs once at boot so an already-cluttered box is tidied
+	// immediately, then daily. Never touches the live DB or its WAL/SHM/journal.
+	if removed, reclaimed := update.SweepDBBackupsDefault(config.Cfg.DBPath); removed > 0 {
+		logging.LogInfo("update", fmt.Sprintf("pruned %d stale DB backup file(s), reclaimed %d MiB", removed, reclaimed/(1<<20)))
+	}
 	go func() {
 		ticker := time.NewTicker(24 * time.Hour)
 		defer ticker.Stop()
@@ -641,6 +648,10 @@ func main() {
 				// VayuAnalytics: data-minimisation sweep of detailed session/pageview rows.
 				if n, err := a.analytics.PurgeOlderThan(context.Background(), config.Cfg.AnalyticsRetainDays); err == nil && n > 0 {
 					logging.LogInfo("analytics", fmt.Sprintf("purged %d detailed rows older than %dd", n, config.Cfg.AnalyticsRetainDays))
+				}
+				// Daily DB-backup hygiene (see the boot sweep above).
+				if removed, reclaimed := update.SweepDBBackupsDefault(config.Cfg.DBPath); removed > 0 {
+					logging.LogInfo("update", fmt.Sprintf("pruned %d stale DB backup file(s), reclaimed %d MiB", removed, reclaimed/(1<<20)))
 				}
 			}
 		}

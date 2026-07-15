@@ -93,6 +93,12 @@ func getRequestID(r *http.Request) string {
 	return ""
 }
 
+// streamLatencyCutoff separates a slow-but-real request from a long-lived stream.
+// The global request timeout is 30s, so a handler that ran longer was a
+// hijacked/streamed connection (WebSocket, SSE, a VayuTalk relay), whose lifetime
+// must never be counted as request latency.
+const streamLatencyCutoff = 30 * time.Second
+
 func structuredLoggerMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Root HTTP span: wraps the entire request lifecycle. Kept deliberately
@@ -117,7 +123,17 @@ func structuredLoggerMiddleware(next http.Handler) http.Handler {
 		span.End()
 
 		dur := span.EndTime.Sub(span.StartTime)
-		metrics.HTTPLatency.Record(dur)
+		// Latency metrics measure page/request responsiveness, so exclude
+		// long-lived connections — a streamed/hijacked response (e.g. a VayuTalk
+		// relay held open for minutes) would otherwise record its ENTIRE lifetime
+		// as a single "request latency", permanently pinning the P95 tail. Normal
+		// requests can't exceed the 30s server timeout, so anything past it is a
+		// stream, not a slow page. The windowed view drives the dashboards (recent
+		// real latency); the cumulative one stays the Prometheus source.
+		if dur <= streamLatencyCutoff {
+			metrics.HTTPLatency.Record(dur)
+			metrics.HTTPLatencyWindow.Record(dur)
+		}
 		logging.LogJSON(logging.LogFields{
 			Level: "info", RequestID: getRequestID(r),
 			CorrelationID: trace.CorrelationID(r.Context()),
