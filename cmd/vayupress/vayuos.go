@@ -1584,6 +1584,7 @@ func (a *App) vayuInboxBody(user, folder string) string {
 	b.WriteString(`<div class="vm-toolbar-id">` + mailAvatarImg(mbox, a.mailboxAvatarSet()) + `<div class="vm-toolbar-meta"><strong>` + html.EscapeString(mbox) + `</strong><a class="text-sm muted" href="/os/vayumail/inbox">All mailboxes</a></div></div>`)
 	b.WriteString(`<div class="vm-toolbar-actions">`)
 	b.WriteString(`<a class="btn btn--primary btn--sm" href="/os/vayumail/compose?user=` + qparam(user) + `">✎ Compose</a>`)
+	b.WriteString(`<button type="button" class="btn btn--sm" hx-get="/os/vayumail/contacts?user=` + qparam(user) + `" hx-target="#vm-readpane" hx-swap="innerHTML" title="This mailbox's saved contacts">👥 Contacts</button>`)
 	b.WriteString(`<form class="vm-search" method="get" action="/os/vayumail/search"><input type="hidden" name="user" value="` + html.EscapeString(user) + `"><input class="input input--sm" type="search" name="q" placeholder="Search mail…" aria-label="Search mail"><button class="btn btn--sm" type="submit">Search</button></form>`)
 	b.WriteString(`</div></div>`)
 
@@ -2351,6 +2352,8 @@ func (a *App) vayuReaderCard(user, folder, id string, pane bool) (string, bool) 
 	if fromAddr != "" && fromAddr != fromName {
 		card.WriteString(` <span class="muted text-sm">&lt;` + html.EscapeString(fromAddr) + `&gt;</span>`)
 	}
+	// One-click: file the sender into THIS mailbox's private address book.
+	card.WriteString(` ` + contactSaveButton(user, pm.From))
 	card.WriteString(`</div>`)
 	metaRow := func(label, value string) {
 		if strings.TrimSpace(value) == "" {

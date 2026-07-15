@@ -171,6 +171,18 @@ func NewAccountStore(db *sql.DB) (*AccountStore, error) {
 		PRIMARY KEY(mailbox, sender));`); err != nil {
 		return s, err
 	}
+	// Per-mailbox address book. owner is the mailbox that saved the contact, so
+	// each mailbox has its OWN private list — one mailbox's contacts are never
+	// visible to another. PRIMARY KEY(owner,email) dedupes and makes saving an
+	// upsert (re-saving a known address just refreshes the display name).
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS vayumail_contacts(
+		owner TEXT NOT NULL,
+		email TEXT NOT NULL,
+		name TEXT NOT NULL DEFAULT '',
+		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		PRIMARY KEY(owner, email));`); err != nil {
+		return s, err
+	}
 	// Alias addresses: extra receive-only addresses that deliver into an existing
 	// mailbox (single-level: an alias always points at a real account, never at
 	// another alias — enforced at creation).

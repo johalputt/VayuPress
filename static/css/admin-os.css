@@ -2596,6 +2596,23 @@
 .vp-os .vm-av--img { background: none; padding: 0; overflow: hidden; }
 .vp-os .vm-av--img img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; display: block; }
 
+/* Per-mailbox address book (Contacts panel + save-contact control). */
+.vp-os .vm-contacts { display: flex; flex-direction: column; gap: var(--sp-3); }
+.vp-os .vm-contacts-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-2); flex-wrap: wrap; }
+.vp-os .vm-contacts-title { margin: 0; font-size: 1.05rem; }
+.vp-os .vm-contacts-sub { margin: 0; }
+.vp-os .vm-contacts-add { display: flex; gap: var(--sp-2); flex-wrap: wrap; align-items: center; }
+.vp-os .vm-contacts-add .input { flex: 1 1 160px; min-width: 0; }
+.vp-os .vm-contacts-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.vp-os .vm-contact { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) 0; border-top: 1px solid var(--border, rgba(255,255,255,.08)); }
+.vp-os .vm-contact:first-child { border-top: 0; }
+.vp-os .vm-contact-id { display: flex; align-items: center; gap: var(--sp-2); text-decoration: none; color: inherit; flex: 1 1 auto; min-width: 0; }
+.vp-os .vm-contact-meta { display: flex; flex-direction: column; min-width: 0; }
+.vp-os .vm-contact-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vp-os .vm-contact-mail { color: var(--text-2, #9aa4b2); font-size: .82rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vp-os .vm-contact-del { flex: 0 0 auto; }
+.vp-os .vm-contact-saved { color: #10b981; }
+
 .vp-os .vm-list td { vertical-align: middle; }
 .vp-os .vm-from { display: flex; align-items: center; gap: .55rem; min-width: 0; text-decoration: none; color: var(--text); }
 .vp-os .vm-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 15rem; }

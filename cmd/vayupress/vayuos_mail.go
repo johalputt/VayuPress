@@ -16,7 +16,6 @@ import (
 	"io"
 	"net/http"
 	netmail "net/mail"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -116,9 +115,19 @@ func (a *App) handleVayuOSCompose(w http.ResponseWriter, r *http.Request) {
 	// message server-side so URLs stay short and large bodies are handled.
 	prefillTo, prefillSubject, prefillBody := a.composePrefill(r)
 
+	// Recipient autocomplete is scoped to the SENDING mailbox's own address book
+	// only (never a shared/global directory), so one mailbox's contacts stay
+	// private to it. The owner is the opened mailbox; an admin composing without a
+	// specific mailbox falls back to postmaster's book.
+	composeOwner := ""
+	if o, ok := a.contactOwner(r, mailUserParam(r)); ok {
+		composeOwner = o
+	} else if a.isAdminRequest(r) {
+		composeOwner = "postmaster@" + domain
+	}
 	body.WriteString(`<div class="card"><div class="card-title">New message</div>
 <form data-mail-compose>
-  ` + a.composeContactsDatalist(r) + `
+  ` + a.composeContactsDatalistFor(r.Context(), composeOwner) + `
   <label class="field"><span class="field-label">From</span>
     <select class="input" data-c-from>` + fromOpts + `</select></label>
 
@@ -279,60 +288,6 @@ func composeMaxAttachMB() int {
 		return n
 	}
 	return 1
-}
-
-// composeContactsDatalist builds a native <datalist> of recipient suggestions
-// for the composer: the account directory (for everyone) plus, for admins,
-// recent sent-history recipients. Addresses are lower-cased, de-duplicated,
-// sorted and capped. Non-admins do not see the org's outbound history — only
-// the internal address directory — so the feature leaks no third-party contacts.
-func (a *App) composeContactsDatalist(r *http.Request) string {
-	if a.vayuMail == nil {
-		return `<datalist id="vm-contacts"></datalist>`
-	}
-	seen := map[string]bool{}
-	type contact struct{ addr, name string }
-	var contacts []contact
-	add := func(addr, name string) {
-		addr = strings.ToLower(strings.TrimSpace(addr))
-		if addr == "" || !strings.Contains(addr, "@") || seen[addr] {
-			return
-		}
-		seen[addr] = true
-		contacts = append(contacts, contact{addr, strings.TrimSpace(name)})
-	}
-	if acc := a.vayuMail.Accounts(); acc != nil {
-		if accs, err := acc.List(r.Context()); err == nil {
-			for _, ac := range accs {
-				add(ac.Email, ac.FullName)
-			}
-		}
-	}
-	if a.isAdminRequest(r) {
-		if sent, err := a.vayuMail.Sent(r.Context(), 200); err == nil {
-			for _, s := range sent {
-				for _, to := range s.To {
-					name, addr := mailParseFrom(to)
-					add(addr, name)
-				}
-			}
-		}
-	}
-	sort.Slice(contacts, func(i, j int) bool { return contacts[i].addr < contacts[j].addr })
-	if len(contacts) > 500 {
-		contacts = contacts[:500]
-	}
-	var b strings.Builder
-	b.WriteString(`<datalist id="vm-contacts">`)
-	for _, c := range contacts {
-		b.WriteString(`<option value="` + html.EscapeString(c.addr) + `"`)
-		if c.name != "" {
-			b.WriteString(` label="` + html.EscapeString(c.name) + `"`)
-		}
-		b.WriteString(`>`)
-	}
-	b.WriteString(`</datalist>`)
-	return b.String()
 }
 
 // insertSignature places a plain-text signature after the freshly-written reply

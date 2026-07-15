@@ -8,6 +8,34 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.34] — 2026-07-15
+
+### Added
+- **Per-mailbox address book (Contacts) with one-click save and scoped compose
+  autocomplete.** Every mailbox now has its own private contact list — one
+  mailbox's contacts are never visible to another.
+  - **Contacts panel** (👥 Contacts in the mailbox toolbar): an elegant HTMX
+    panel to add, list, and remove saved contacts. Each row shows the contact's
+    avatar/initials and links straight to a pre-addressed compose.
+  - **One-click "＋ Save contact"** on any open message files the sender into the
+    current mailbox's book (parsing "Name <addr>" into name + address) and swaps
+    the button to "✓ Saved" with no reload.
+  - **Compose autocomplete** now draws ONLY from the sending mailbox's saved
+    contacts (the previous suggestion list was a shared, directory-wide source);
+    typing a recipient suggests that mailbox's matching contacts via a native
+    `<datalist>` — no JS, CSP-safe.
+  - Isolation is enforced server-side: every contacts route resolves the owning
+    mailbox with the same authorization the inbox uses, so a non-admin can only
+    ever touch their own contacts. Saving is an upsert keyed on (owner, email),
+    so re-saving a known address just refreshes its name.
+
+### Notes
+- New `vayumail_contacts(owner,email,name,created_at)` table (created idempotently
+  alongside the other mail tables). Tests cover per-mailbox isolation, upsert +
+  case-normalisation, self/invalid-input rejection, and scoped search/delete; the
+  panel is verified CSP-safe (no inline styles). Second in the mail-experience
+  series (after profile pictures).
+
 ## [3.13.33] — 2026-07-15
 
 ### Fixed

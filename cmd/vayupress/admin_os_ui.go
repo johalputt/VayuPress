@@ -362,6 +362,13 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/accounts/avatar/remove", a.handleVayuOSAvatarRemove)
 		pr.Get("/os/vayumail/accounts/avatar", a.handleVayuOSAvatarServe)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/accounts/action", a.handleVayuOSAccountsAction)
+		// Per-mailbox address book: view panel + add/delete + one-click save from a
+		// message. Every route resolves the owning mailbox (contactOwner), so a
+		// non-admin can only ever touch their own contacts.
+		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/contacts", a.handleVayuOSContacts)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/contacts/add", a.handleVayuOSContactAdd)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/contacts/delete", a.handleVayuOSContactDelete)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/contacts/save", a.handleVayuOSContactSave)
 		// Devices: GET fragment backs the self-refresh poller so a newly-registered
 		// pending device surfaces without a reload.
 		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/devices/fragment", a.handleVayuOSDevicesFragment)
