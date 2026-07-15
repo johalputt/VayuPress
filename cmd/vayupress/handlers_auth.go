@@ -111,33 +111,44 @@ func currentUser(r *http.Request) *users.User {
 	return nil
 }
 
-// hasValidConsoleSession reports whether the request already carries a session
-// cookie that resolves to a real user (a CMS account or a VayuMail account). The
-// public login page uses it to forward an already-signed-in operator straight to
-// the console instead of re-showing the form. It mirrors requireSessionOrAPIKey's
-// resolution but is read-only and never mutates the request.
-func (a *App) hasValidConsoleSession(r *http.Request) bool {
+// resolveConsoleUser resolves the operator/staff identity from a VayuOS console
+// session cookie (vp_session), or nil if the request carries no valid console
+// session. It mirrors requireSessionOrAPIKey's resolution but is read-only and
+// never mutates the request. Two callers rely on it: the public login page (to
+// forward an already-signed-in operator to the console) and the public site nav
+// (to recognise a signed-in operator and show their account, not Sign in).
+func (a *App) resolveConsoleUser(r *http.Request) *users.User {
 	if a.sessions == nil {
-		return false
+		return nil
 	}
 	token := auth.SessionTokenFromRequest(r)
 	if token == "" {
-		return false
+		return nil
 	}
 	uid, err := a.sessions.Validate(r.Context(), token)
 	if err != nil {
-		return false
+		return nil
 	}
 	if email, isMail := strings.CutPrefix(uid, "vmail:"); isMail {
-		_, _, ok := a.resolveMailSessionUser(r.Context(), email)
-		return ok
+		if u, _, ok := a.resolveMailSessionUser(r.Context(), email); ok {
+			return u
+		}
+		return nil
 	}
 	if a.userStore != nil {
-		if _, err := a.userStore.GetByID(r.Context(), uid); err == nil {
-			return true
+		if u, err := a.userStore.GetByID(r.Context(), uid); err == nil {
+			return u
 		}
 	}
-	return false
+	return nil
+}
+
+// hasValidConsoleSession reports whether the request already carries a session
+// cookie that resolves to a real user (a CMS account or a VayuMail account). The
+// public login page uses it to forward an already-signed-in operator straight to
+// the console instead of re-showing the form.
+func (a *App) hasValidConsoleSession(r *http.Request) bool {
+	return a.resolveConsoleUser(r) != nil
 }
 
 // requireSessionOrAPIKey gates admin pages. A valid API key passes through

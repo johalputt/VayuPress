@@ -8,6 +8,30 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.31] — 2026-07-15
+
+### Added
+- **The public site now recognises a signed-in VayuOS operator.** Visiting your
+  own public site (the homepage, an article) while signed in to the console used
+  to still show **"Sign in / Sign up"**, because the public nav only knew about
+  *reader/member* sessions — not your *operator* session. The membership snapshot
+  (`GET /api/v1/members/me`, fetched same-origin so it already receives your
+  `vp_session` cookie) now also resolves a console session: when an operator is
+  signed in it returns `authenticated: true` with an operator chip. The nav then
+  shows your name (and avatar, when set) linking straight to **/os (Dashboard)**,
+  instead of the sign-in buttons — so you're recognised everywhere on your own
+  site, VayuOS or public, exactly as expected. Readers' member sessions behave
+  exactly as before; a member session still takes precedence when both exist.
+
+### Notes
+- Read-only and same-origin: the operator identity is resolved from the existing
+  console session with no new cookie and no change to cookie posture
+  (`HttpOnly`, `Secure`, `SameSite=Strict`). The public account chip links to the
+  console; it never exposes operator capabilities to the page. Tests cover the
+  operator snapshot shape (operator flag, console link, email fallback,
+  avatar-only-when-set) and the end-to-end `/api/v1/members/me` recognition of a
+  console session.
+
 ## [3.13.30] — 2026-07-15
 
 ### Fixed

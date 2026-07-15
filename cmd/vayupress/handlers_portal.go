@@ -29,6 +29,7 @@ import (
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/settings"
 	"github.com/johalputt/vayupress/internal/totp"
+	"github.com/johalputt/vayupress/internal/users"
 	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
 	vpgp "github.com/johalputt/vayupress/internal/vayuos/pgp"
 )
@@ -73,8 +74,36 @@ func (a *App) handleMemberMe(w http.ResponseWriter, r *http.Request) {
 	if m := a.resolveMember(r); m != nil {
 		resp["authenticated"] = true
 		resp["member"] = a.memberSnapshot(r, m)
+	} else if u := a.resolveConsoleUser(r); u != nil {
+		// A VayuOS operator/staff user is signed in (console session) even though
+		// they hold no reader "member" session. Reflect that on the public site so
+		// the nav shows their identity + a shortcut to the dashboard instead of
+		// "Sign in / Sign up" — "recognise me wherever I am on my own site".
+		resp["authenticated"] = true
+		resp["member"] = operatorSnapshot(u)
 	}
 	writeJSON(w, r, http.StatusOK, resp)
+}
+
+// operatorSnapshot builds the public account chip for a signed-in VayuOS
+// operator/staff user. The console_url flag makes the nav chip link straight to
+// the dashboard (instead of the reader account panel); avatar, when set, lets
+// the chip show their profile picture.
+func operatorSnapshot(u *users.User) map[string]interface{} {
+	name := u.Name
+	if name == "" {
+		name = u.Email
+	}
+	m := map[string]interface{}{
+		"email":       u.Email,
+		"name":        name,
+		"operator":    true,
+		"console_url": "/os",
+	}
+	if u.AvatarURL != "" {
+		m["avatar"] = u.AvatarURL
+	}
+	return m
 }
 
 // memberSnapshot builds the public member object the portal renders. When the

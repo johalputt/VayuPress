@@ -339,14 +339,34 @@ const PortalJS = `(function () {
     var si = document.querySelector('.vayu-nav-signin');
     var su = document.querySelector('.vayu-nav-signup');
     if (state.auth && state.member) {
-      // Signed in: drop the "Sign up" link and turn "Sign in" into the member's
-      // name, which opens the account panel (with logout) instead of navigating.
+      // Signed in: drop the "Sign up" link and turn "Sign in" into the account
+      // chip. A reader opens the account panel; a VayuOS operator (console_url set)
+      // links straight to their dashboard, so the owner is recognised on their own
+      // public site instead of being shown "Sign in / Sign up".
       if (su && su.parentNode) { su.parentNode.removeChild(su); }
       if (si) {
         si.classList.add('vayu-nav-member');
-        si.textContent = '👤 ' + (state.member.name || 'Account');
-        si.setAttribute('href', '/members/account');
-        si.addEventListener('click', function (e) { e.preventDefault(); open('account'); });
+        var nm = state.member.name || 'Account';
+        if (state.member.avatar) {
+          si.textContent = '';
+          var img = document.createElement('img');
+          img.className = 'vayu-nav-avatar';
+          img.src = state.member.avatar;
+          img.alt = '';
+          img.width = 22; img.height = 22;
+          si.appendChild(img);
+          si.appendChild(document.createTextNode(' ' + nm));
+        } else {
+          si.textContent = '👤 ' + nm;
+        }
+        if (state.member.console_url) {
+          // Operator/staff: let the chip navigate to the console dashboard.
+          si.classList.add('vayu-nav-operator');
+          si.setAttribute('href', state.member.console_url);
+        } else {
+          si.setAttribute('href', '/members/account');
+          si.addEventListener('click', function (e) { e.preventDefault(); open('account'); });
+        }
       }
     } else {
       // Logged out: upgrade the nav Sign in / Sign up links to open the panel.

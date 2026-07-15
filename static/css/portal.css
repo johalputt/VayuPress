@@ -261,4 +261,8 @@
 .vp-portal-badge--err { background: #fde8e8; color: #b42318; }
 
 /* Signed-in nav name (replaces Sign in / Sign up). */
-.vayu-nav-member { font-weight: 600; }
+.vayu-nav-member { font-weight: 600; display: inline-flex; align-items: center; gap: .35rem; }
+/* Round profile picture shown in the chip when the account has an avatar. */
+.vayu-nav-avatar { width: 22px; height: 22px; border-radius: 50%; object-fit: cover; vertical-align: middle; }
+/* Operator/staff chip links straight to the VayuOS dashboard. */
+.vayu-nav-operator { cursor: pointer; }
