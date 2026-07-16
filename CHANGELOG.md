@@ -8,6 +8,20 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.36] — 2026-07-15
+
+### Security
+- **Fixed an open redirect in the federated avatar endpoint (CodeQL #61).** The
+  `/avatar/<hash>` endpoint added in v3.13.35 honoured the Libravatar/Gravatar
+  `?d=<url>` "fallback" parameter by 302-redirecting to it — but that URL is
+  caller-supplied, so `…/avatar/<hash>?d=https://evil.example` turned the endpoint
+  into an open redirect (a phishing primitive). The `?d=<url>` redirect is now
+  removed entirely: a missing avatar always returns **404**, and the client uses
+  its own local fallback (keyword defaults like `d=404`/`d=mp` already mean "no
+  server image", which 404 conveys). Serving a real avatar is unchanged. A
+  regression test asserts the endpoint never emits a `Location` header for any
+  `?d=` value (absolute, protocol-relative, or path).
+
 ## [3.13.35] — 2026-07-15
 
 ### Added

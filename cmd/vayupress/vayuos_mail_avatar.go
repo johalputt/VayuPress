@@ -122,32 +122,25 @@ func (a *App) handleVayuOSAvatarRemove(w http.ResponseWriter, r *http.Request) {
 // md5 or sha256 of the lowercased address. This is how avatar-federation-aware
 // mail clients and services fetch a sender's picture, so a recipient can see it.
 // Public by design (an avatar is meant to be seen); it exposes ONLY the image for
-// an address that has opted in by uploading one, and 404s / honours the ?d=
-// default otherwise.
+// an address that has opted in by uploading one, and 404s otherwise.
+//
+// Security: the Libravatar/Gravatar `?d=<url>` "redirect to a fallback" feature is
+// deliberately NOT honoured. Redirecting to a caller-supplied URL is an open
+// redirect (a phishing primitive), so a missing avatar always returns 404 and the
+// client uses its own local fallback. Keyword defaults (d=404, d=mp, …) already
+// mean "no server image", which 404 conveys.
 func (a *App) handleFederatedAvatar(w http.ResponseWriter, r *http.Request) {
 	hash := chi.URLParam(r, "hash")
 	if i := strings.IndexByte(hash, '.'); i >= 0 { // tolerate /avatar/<hash>.png
 		hash = hash[:i]
 	}
-	serveDefault := func() {
-		// Libravatar/Gravatar ?d= fallback: a URL redirects there, "404" 404s.
-		d := strings.TrimSpace(r.URL.Query().Get("d"))
-		if d == "" {
-			d = strings.TrimSpace(r.URL.Query().Get("default"))
-		}
-		if strings.HasPrefix(d, "https://") || strings.HasPrefix(d, "http://") {
-			http.Redirect(w, r, d, http.StatusFound)
-			return
-		}
-		http.NotFound(w, r)
-	}
 	if a.vayuMail == nil || a.vayuMail.Accounts() == nil {
-		serveDefault()
+		http.NotFound(w, r)
 		return
 	}
 	blob, mime, err := a.vayuMail.Accounts().AvatarByHash(r.Context(), hash)
 	if err != nil || len(blob) == 0 || mime == "" {
-		serveDefault()
+		http.NotFound(w, r)
 		return
 	}
 	w.Header().Set("Content-Type", mime)
