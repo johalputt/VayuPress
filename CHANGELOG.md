@@ -8,6 +8,30 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.43] — 2026-07-16
+
+### Security
+- **VCB validator: confine the plugin executable file-check to the package
+  directory (CodeQL #62/#63 — path expression from untrusted input).** The
+  optional `--files` check resolved the manifest-supplied `executable` path
+  with `filepath.Join` + `os.Stat`/`os.Open`, which CodeQL flagged as a path
+  expression built from untrusted data. All filesystem access now goes through
+  `os.OpenRoot(baseDir)` (Go 1.24+): the executable name is resolved *inside*
+  the package root and can never reach a file outside it — not via an absolute
+  path, a `../` sequence, or a symlink pointing out of the tree. A regression
+  test proves an escaping symlink is refused rather than hashed. (The pre-existing
+  `!IsAbs` / no-`..` guards already blocked the obvious cases; this removes the
+  flagged sink entirely and hardens against symlink escape.)
+
+### Added
+- **One-click Compatibility (VCB) access from the API Keys console.** The
+  VayuOS **API Keys** page (`/os/apikeys`) now has a **Compatibility (VCB)**
+  button in its header and a dedicated card: open the Vayu Compatibility Bible,
+  the API-keys & permissions reference, and ADR-0135 in one click, with the
+  live contract endpoints (`GET /api/v1/vcb/contract`, `POST /api/v1/vcb/validate`)
+  and the `vayu-compat` CLI documented inline. CSP-safe (same-origin links, no
+  inline style).
+
 ## [3.13.42] — 2026-07-16
 
 ### Security

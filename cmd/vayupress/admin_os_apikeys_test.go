@@ -80,6 +80,24 @@ func TestAPIKeysOwnSectionCSPSafe(t *testing.T) {
 	}
 }
 
+// TestAPIKeysVCBCardCSPSafe verifies the one-click VCB gateway is CSP-safe and
+// links to the compatibility docs and the live contract endpoints.
+func TestAPIKeysVCBCardCSPSafe(t *testing.T) {
+	out := osAPIKeysVCBCard()
+	assertCSPSafe(t, "osAPIKeysVCBCard", out)
+	for _, want := range []string{
+		`href="/docs/compatibility/vcb"`,
+		`href="/docs/compatibility/vayuapi"`,
+		"/api/v1/vcb/contract",
+		"plugins:read",
+		"vayu-compat",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("VCB card missing %q", want)
+		}
+	}
+}
+
 // TestAPIKeysServicesSectionCSPSafe renders the third-party credential cards
 // (known providers + a stored custom credential) and asserts CSP-safety and
 // that a stored secret is shown only as its masked hint, never in clear text.

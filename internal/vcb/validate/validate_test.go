@@ -159,6 +159,19 @@ func TestPluginFileChecks(t *testing.T) {
 	if !hasCode(r, "plugin.executable.absent") {
 		t.Errorf("missing executable must be caught, got: %s", codes(r))
 	}
+
+	// Security: a symlink inside the package that points OUT of it must not be
+	// followed. os.Root confines all access to baseDir, so the file check sees
+	// it as absent rather than hashing an arbitrary host file.
+	if err := os.Symlink("/etc/passwd", filepath.Join(dir, "bin", "escape")); err == nil {
+		esc := goodPlugin()
+		esc.Executable = "bin/escape"
+		esc.ExecutableSHA256 = ""
+		r = Plugin(esc, Options{HostVersion: "3.13.41", BaseDir: dir, CheckFiles: true})
+		if !hasCode(r, "plugin.executable.absent") {
+			t.Errorf("a symlink escaping the package must not be followed, got: %s", codes(r))
+		}
+	}
 }
 
 // goodTheme returns a fully valid theme manifest (name distinct from every

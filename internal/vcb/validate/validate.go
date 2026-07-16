@@ -150,18 +150,7 @@ func Plugin(m *vcb.PluginManifest, opts Options) *Result {
 	}
 
 	if opts.CheckFiles && opts.BaseDir != "" && m.Executable != "" && !filepath.IsAbs(m.Executable) && !pathEscapes(m.Executable) {
-		exe := filepath.Join(opts.BaseDir, m.Executable)
-		if fi, err := os.Stat(exe); err != nil {
-			r.errf("plugin.executable.absent", "executable", "executable %s not found: %v", m.Executable, err)
-		} else if fi.IsDir() {
-			r.errf("plugin.executable.dir", "executable", "executable %s is a directory", m.Executable)
-		} else if m.ExecutableSHA256 != "" && validHexDigest(m.ExecutableSHA256) {
-			if got, err := fileSHA256(exe); err != nil {
-				r.errf("plugin.sha256.unreadable", "executable_sha256", "could not hash executable: %v", err)
-			} else if got != strings.ToLower(m.ExecutableSHA256) {
-				r.errf("plugin.sha256.mismatch", "executable_sha256", "executable hash %s does not match declared %s (the sandbox refuses to launch it)", got, strings.ToLower(m.ExecutableSHA256))
-			}
-		}
+		checkExecutableFile(r, opts.BaseDir, m.Executable, m.ExecutableSHA256)
 	}
 
 	// Env — the sandbox passes entries verbatim; a malformed one is inert.
@@ -518,8 +507,48 @@ func pathEscapes(rel string) bool {
 	return clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator))
 }
 
-func fileSHA256(path string) (string, error) {
-	f, err := os.Open(path)
+// checkExecutableFile verifies the plugin binary exists inside the package
+// directory and, when a hash is declared, matches it — the same check the
+// sandbox performs before every launch. ALL filesystem access is confined to
+// baseDir through os.Root: the manifest-supplied executable name is resolved
+// inside the root and can never reach a file outside the package, even via an
+// absolute path, a "../" sequence, or a symlink pointing out of the tree. This
+// is the traversal-safe path sink (no untrusted data reaches an unconfined
+// os.Open/os.Stat).
+func checkExecutableFile(r *Result, baseDir, exe, wantHash string) {
+	root, err := os.OpenRoot(baseDir)
+	if err != nil {
+		r.errf("plugin.executable.absent", "executable", "cannot open package directory: %v", err)
+		return
+	}
+	defer root.Close()
+
+	fi, err := root.Stat(exe)
+	if err != nil {
+		r.errf("plugin.executable.absent", "executable", "executable %s not found: %v", exe, err)
+		return
+	}
+	if fi.IsDir() {
+		r.errf("plugin.executable.dir", "executable", "executable %s is a directory", exe)
+		return
+	}
+	if wantHash == "" || !validHexDigest(wantHash) {
+		return
+	}
+	got, err := rootFileSHA256(root, exe)
+	if err != nil {
+		r.errf("plugin.sha256.unreadable", "executable_sha256", "could not hash executable: %v", err)
+		return
+	}
+	if got != strings.ToLower(wantHash) {
+		r.errf("plugin.sha256.mismatch", "executable_sha256", "executable hash %s does not match declared %s (the sandbox refuses to launch it)", got, strings.ToLower(wantHash))
+	}
+}
+
+// rootFileSHA256 hashes a file opened relative to root, so access stays
+// confined to the package directory.
+func rootFileSHA256(root *os.Root, name string) (string, error) {
+	f, err := root.Open(name)
 	if err != nil {
 		return "", err
 	}

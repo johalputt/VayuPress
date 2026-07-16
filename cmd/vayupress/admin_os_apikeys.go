@@ -17,6 +17,10 @@ import (
 // iconKey is the sidebar icon for the API Keys console.
 var iconKey = svgIcon("M8 11a3 3 0 100-6 3 3 0 000 6zm2.2 0l5.3 5.3M13 13l1.5 1.5M15 11l1.5 1.5")
 
+// iconVCB is a shield-with-check mark — the "validated compatibility" glyph for
+// the one-click Vayu Compatibility Bible link in the console header.
+var iconVCB = svgIcon("M10 2.5l5.5 1.8v4.7c0 3.6-2.7 6-5.5 6.9-2.8-.9-5.5-3.3-5.5-6.9V4.3L10 2.5zM7.6 9.4l1.7 1.7 3.1-3.5")
+
 // providerMeta describes a first-class third-party integration surfaced as its
 // own card in the API Keys console. The Provider value matches a slug in the
 // secrets package; HasEndpoint controls whether an endpoint/URL field is shown.
@@ -121,6 +125,7 @@ func (a *App) handleOSAPIKeys(w http.ResponseWriter, r *http.Request) {
 	body := `<div class="page-header">
   <h1>API Keys</h1>
   <div class="page-actions">
+    <a class="btn btn--sm" href="/docs/compatibility/vcb" target="_blank" rel="noopener" title="Open the Vayu Compatibility Bible">` + iconVCB + ` Compatibility (VCB)</a>
     <span id="ak-status" role="status" aria-live="polite" class="text-xs muted"></span>
   </div>
 </div>
@@ -136,7 +141,7 @@ func (a *App) handleOSAPIKeys(w http.ResponseWriter, r *http.Request) {
   </div>
 </div>
 
-` + osAPIKeysOwnSection(keys) + osAPIKeysServicesSection(creds)
+` + osAPIKeysOwnSection(keys) + osAPIKeysVCBCard() + osAPIKeysServicesSection(creds)
 
 	full := adminOSShellHead(nonce, "API Keys", "apikeys", cfg) +
 		body +
@@ -282,6 +287,24 @@ func osAPIKeysCreateCard() string {
     <span class="text-xs muted">The full key is shown once, immediately after creation.</span>
   </div>
 </div>`
+}
+
+// osAPIKeysVCBCard renders the one-click gateway to the Vayu Compatibility
+// Bible (VCB, ADR-0135) from the API Keys console: what to grant an extension,
+// where the full contract lives, and how to validate a plugin/theme before
+// trusting it. Every action is a same-origin link — CSP-safe, no inline style.
+func osAPIKeysVCBCard() string {
+	return `<div class="card">
+  <div class="settings-block-title">Extension compatibility — the Vayu Compatibility Bible (VCB)</div>
+  <p class="text-sm muted mb-4">Before you trust a plugin or theme, validate it against the <strong>same contract this API enforces</strong>. An extension declares the hooks, capabilities and <code>section:action</code> permissions it needs; VCB checks them and you mint a key granting <strong>only</strong> those — never more. Themes that fetch from another host, plugins that over-ask, or manifests built against a hook that doesn't exist are refused with a plain, exact reason.</p>
+  <div class="ak-cred-actions">
+    <a class="btn btn--primary btn--sm" href="/docs/compatibility/vcb" target="_blank" rel="noopener">` + iconVCB + ` Open the Compatibility Bible</a>
+    <a class="btn btn--sm" href="/docs/compatibility/vayuapi" target="_blank" rel="noopener">API keys &amp; permissions reference</a>
+    <a class="btn btn--sm" href="/docs/adr/ADR-0135-vayu-compatibility-bible" target="_blank" rel="noopener">Design record (ADR-0135)</a>
+  </div>
+  <p class="field-hint mt-2">Build tools can read the live contract at <code>GET /api/v1/vcb/contract</code> and check a manifest against this running host at <code>POST /api/v1/vcb/validate</code> (both need a key with <code>plugins:read</code>). The <code>vayu-compat</code> CLI runs the same checks offline for CI.</p>
+</div>
+`
 }
 
 // osAPIKeysServicesSection renders a card per known provider plus custom creds.
