@@ -8,6 +8,20 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.47] — 2026-07-16
+
+### Added
+- **Premium UX, phase 4 — theme-author documentation for the motion/token
+  system (ADR-0136).** The Vayu Compatibility Bible
+  (`/docs/compatibility/vcb`) now documents the shared motion & elevation token
+  vocabulary every compiled theme exposes — the scheme-adaptive elevation
+  scale (`--sh-*`), easing curves, durations, composed transition tokens, the
+  spacing and z-index scales — with copy-paste examples, so third-party themes
+  build on the same premium primitives the platform uses, with zero build step
+  and no dependency. Note that native page View Transitions are enabled
+  site-wide and reduced-motion is respected automatically, so theme authors get
+  the polish for free.
+
 ## [3.13.46] — 2026-07-16
 
 ### Added

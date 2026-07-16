@@ -191,6 +191,38 @@ Every built-in preset passes these rules — enforced by test
 (`TestBuiltinPresetsSatisfyThemeContract`), so the published contract and the
 shipped themes can never disagree.
 
+### Motion & elevation tokens (build on the shared system)
+
+Every compiled theme (`/theme.css`) exposes a shared, sovereign motion and
+elevation vocabulary (ADR-0136) that your `custom_css` can use directly — the
+same premium primitives the VayuOS admin uses, with **zero build step and no
+dependency**. Prefer these over hand-typed durations and shadows so your theme
+feels consistent with the platform and honours reduced-motion automatically.
+
+| Token (bare alias) | What it is | Example |
+|--------------------|------------|---------|
+| `--sh-sm` / `--sh` / `--sh-lg` | Scheme-adaptive elevation (subtler on dark, more present on light) | `box-shadow: var(--sh)` |
+| `--ease` / `--ease-out` / `--ease-spring` | Easing curves | `transition-timing-function: var(--ease)` |
+| `--dur-fast` / `--dur` / `--dur-slow` | Durations (90 / 160 / 280 ms) | `transition-duration: var(--dur)` |
+| `--t` / `--t-fast` / `--t-slow` / `--t-spring` | Composed `duration + easing` (drop into a `transition`) | `transition: box-shadow var(--t)` |
+| `--vp-sp-1 … --vp-sp-12` | Spacing scale (rem) | `padding: var(--vp-sp-4)` |
+| `--vp-z-base … --vp-z-toast` | z-index scale | `z-index: var(--vp-z-modal)` |
+
+(The `--vp-*`-prefixed canonical names are also available, e.g. `--vp-sh`,
+`--vp-ease-spring`.) Example:
+
+```css
+/* in a theme's custom_css */
+.post-card { transition: transform var(--t), box-shadow var(--t); }
+.post-card:hover { transform: translateY(-2px); box-shadow: var(--sh); }
+```
+
+Motion is enhancement, never requirement: the public stylesheet already carries
+a global `prefers-reduced-motion` guard, and native page **View Transitions**
+(`@view-transition { navigation: auto }`) are enabled site-wide — same-origin
+navigation crossfades with zero JavaScript and degrades cleanly where
+unsupported. You do not need to add either; just build on the tokens.
+
 ---
 
 ## API permissions and key provisioning
