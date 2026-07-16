@@ -93,3 +93,18 @@ real gap.
 - The marketing site (`docs/site`, GitHub Pages) is unaffected: it already uses
   CDN Tailwind + Alpine and lives outside the product's CSP; nothing here
   touches it.
+
+## Vendor provenance
+
+- **`static/js/alpine-csp.min.js`** — `@alpinejs/csp` **3.15.12**, fetched
+  canonically from the npm registry (CDN hosts `unpkg`/`jsdelivr` are egress-
+  blocked, which is itself consistent with the no-CDN rule), tarball verified
+  against the registry shasum. SHA-256 of the vendored file:
+  `566167134bb2347110904e2ced6e816d2e8d837200c158f98b72372b3bb0b9a6`.
+  Proven eval-free (zero `eval(` / `new Function`), enforced going forward by
+  `TestVendoredAlpineIsEvalFree`. MIT — license text in
+  `static/js/alpine-csp.LICENSE`.
+- **`static/js/vayu-islands.js`** — first-party `Alpine.data()` registry
+  (`filterList`, `disclosure`, `copyable`), registered on `alpine:init`,
+  components referenced by name only (no inline expressions). Loaded before the
+  Alpine build; both deferred, same-origin, nonce-threaded.

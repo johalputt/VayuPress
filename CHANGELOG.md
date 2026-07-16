@@ -8,6 +8,30 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.46] — 2026-07-16
+
+### Added
+- **Premium UX, phase 3 — Alpine.js islands under strict CSP (ADR-0136).** The
+  VayuOS admin can now use small, reactive client-side "islands" where they
+  genuinely beat an HTMX round-trip — with **no `unsafe-eval` and no CDN**:
+  - **Vendored the eval-free Alpine.js CSP build** (`@alpinejs/csp` 3.15.12,
+    ~20 KB gzip) into `static/js/alpine-csp.min.js`, self-hosted and served
+    same-origin like HTMX and DOMPurify. It interprets directives with a
+    tokenizer + AST walker instead of `new Function`, so it runs under
+    `script-src 'self' 'nonce'`. Integrity-verified and proven eval-free by a
+    regression test; MIT license vendored alongside.
+  - **`vayu-islands.js`** — a first-party `Alpine.data()` registry
+    (`filterList`, `disclosure`, `copyable`), registered on `alpine:init` with
+    components referenced by name only (CSP-build contract; never inline
+    expressions). Loaded before the Alpine build, both deferred and nonce-
+    threaded.
+  - **First island**: the API Keys list gains an instant, client-side filter
+    (type to narrow by label or key prefix). Purely additive — if Alpine is
+    absent the input is inert and every row shows, and the create/rotate/revoke
+    flows (vanilla JS) are untouched.
+  - HTMX remains the backbone; Alpine is the exception, scoped to the admin and
+    within the constitution's <50 KB-gzip admin-framework budget.
+
 ## [3.13.45] — 2026-07-16
 
 ### Added

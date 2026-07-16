@@ -4681,3 +4681,7 @@
   ::view-transition-old(*),
   ::view-transition-new(*) { animation: none !important; }
 }
+
+/* API Keys live filter (ADR-0136 Alpine island). Progressive: inert without JS. */
+.vp-os .ak-filter { margin-bottom: var(--sp-3); }
+.vp-os .ak-filter-input { max-width: 340px; }

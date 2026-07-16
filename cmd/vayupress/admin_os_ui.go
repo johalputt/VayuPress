@@ -74,6 +74,11 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 	// Public static assets (served same-origin so CSP 'self' covers them).
 	r.Get("/os/static/css/admin-os.css", serveAdminOSAsset("css/admin-os.css", "text/css; charset=utf-8"))
 	r.Get("/os/static/js/admin-os.js", serveAdminOSAsset("js/admin-os.js", "application/javascript; charset=utf-8"))
+	// Alpine.js CSP build + the VayuOS island registry (ADR-0136). Self-hosted,
+	// eval-free, served same-origin so they satisfy script-src 'self' with no
+	// unsafe-eval.
+	r.Get("/os/static/js/alpine-csp.min.js", serveAdminOSAsset("js/alpine-csp.min.js", "application/javascript; charset=utf-8"))
+	r.Get("/os/static/js/vayu-islands.js", serveAdminOSAsset("js/vayu-islands.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-editor.js", serveAdminOSAsset("js/admin-os-editor.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-security.js", serveAdminOSAsset("js/admin-os-security.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-members.js", serveAdminOSAsset("js/admin-os-members.js", "application/javascript; charset=utf-8"))
@@ -902,6 +907,15 @@ b.addEventListener('htmx:sendError',vpHtmxFail);
 b.addEventListener('htmx:afterRequest',function(e){var d=e.detail;if(!d||!d.successful)return;var l=document.getElementById('vp-live');if(!l)return;var v=(d.requestConfig&&(d.requestConfig.verb||'')).toLowerCase();l.textContent='';l.textContent=(v==='get'?'Content refreshed.':'Change saved.');});
 })();
 </script>
+<!-- Alpine.js islands (ADR-0136): the eval-free CSP build + the VayuOS island
+     registry. Self-hosted, deferred, same-origin so they satisfy script-src
+     'self' with no dynamic code evaluation. The registry loads FIRST so its
+     alpine:init listener is armed before Alpine starts; components are
+     referenced by name in x-data, never as inline expressions. HTMX stays the
+     backbone — Alpine only powers isolated client-reactive islands, and every
+     island degrades to plain HTML. -->
+<script src="/os/static/js/vayu-islands.js?v=` + assetVer("js/vayu-islands.js") + `" defer></script>
+<script src="/os/static/js/alpine-csp.min.js?v=` + assetVer("js/alpine-csp.min.js") + `" defer></script>
 <!-- Bootstrap (nonce-gated, reads data-admin-theme from body) -->
 <script src="/os/static/js/purify.min.js"></script>
 <script nonce="` + nonce + `" src="/os/static/js/admin-os.js"></script>
