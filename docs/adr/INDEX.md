@@ -10,6 +10,8 @@
 | ADR | Title | Status | Owner | Date |
 |-----|-------|--------|-------|------|
 | [ADR-0001](ADR-0001-sqlite-first.md) | SQLite-First Data Layer | Accepted | Core | 2024-01-01 |
+| [ADR-0134](ADR-0134-vayuapi-fine-grained-keys.md) | VayuAPI — Fine-Grained, Per-Key API Permissions | Accepted | Core | 2026-07-16 |
+| [ADR-0133](ADR-0133-public-docs-site.md) | Public Documentation at /docs (No Docs Subdomain) | Accepted | Core | 2026-07-14 |
 | [ADR-0132](ADR-0132-vayudomains-multi-domain.md) | VayuDomains — Multi-Domain Support (Staged) | Accepted | VayuOS | 2026-07-12 |
 | [ADR-0131](ADR-0131-vayutalk-ephemeral-messaging.md) | VayuTalk — Ephemeral, End-to-End-Encrypted Messaging | Accepted | VayuOS | 2026-07-11 |
 | [ADR-0129](ADR-0129-vayumail-device-approval.md) | VayuMail Device Approval — No Mail Sync Without Web Approval | Accepted | VayuOS | 2026-07-11 |

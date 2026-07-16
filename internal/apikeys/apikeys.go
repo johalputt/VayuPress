@@ -338,6 +338,14 @@ func (s *Store) Resolve(raw string) (KeyInfo, bool) {
 			s.mu.RUnlock()
 		}
 	}
+	// Hard expiry is exact, not TTL-lagged: refresh() filters expired keys at
+	// load time, but a key whose expires_at passes WHILE cached would otherwise
+	// keep authenticating until the 30s TTL elapses (revoke/deactivate invalidate
+	// immediately; the clock does not). Re-check here so an expired credential is
+	// refused on the very next request.
+	if ok && ki.ExpiresAt != nil && !time.Now().Before(*ki.ExpiresAt) {
+		ki, ok = KeyInfo{}, false
+	}
 	if ok {
 		go s.touch(ki.ID)
 	}

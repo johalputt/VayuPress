@@ -8,6 +8,40 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.37] — 2026-07-16
+
+### Added
+- **VayuAPI Stage 1 — the fine-grained API-key permission model (ADR-0134).**
+  Every API key can now carry a precise grant set over **12 sections**
+  (posts, themes, design, plugins, domains, analytics, media, comments, members,
+  mail, settings, backup) × **6 actions** (read, write, delete, apply, install,
+  export), written `section:action`, with `section:*` and the `*:*` superuser
+  wildcards. Keys gain an **owner**, an optional **hard expiry**, a per-key
+  **rate budget**, a usage counter, and a reversible **active/inactive** toggle
+  (distinct from terminal revocation). Only SHA-256 hashes are stored, as before.
+  - **Deny by default, fail closed**: an empty grant set permits nothing; a
+    malformed or forward-version permission blob parses to deny-all — it can
+    never widen access.
+  - **Upgrades are safe**: migration 062 backfills every *pre-existing* key as
+    superuser exactly once, so live automation keeps today's full access. The
+    backfill can never touch an API-minted deny-all key (the store always writes
+    the versioned envelope, which the backfill predicate cannot match).
+  - **Hard expiry is exact**: the resolver re-checks `expires_at` on every cache
+    hit, so an expired key is refused on the very next request — never lagged by
+    the 30-second verification-cache TTL. (Caught by the pre-release adversarial
+    security review; regression-tested.)
+  - This stage is deliberately **inert at the auth layer** — nothing enforces
+    grants yet, so behaviour is unchanged. The enforcement middleware, per-key
+    rate limiting, per-call audit, and the scoped admin UI ship in the next
+    stages on top of `Store.Resolve → KeyInfo.Can(section, action)`.
+
+### Notes
+- Adversarially reviewed pre-release by three independent lenses (security,
+  correctness, migration-safety), each finding independently verified against the
+  code; the single confirmed defect (expiry lag) is fixed and pinned by a
+  regression test. ADR-0134 records the design; ADR INDEX also gains the missing
+  0133 row.
+
 ## [3.13.36] — 2026-07-15
 
 ### Security

@@ -215,3 +215,27 @@ func TestResolveExpiry(t *testing.T) {
 		t.Error("an already-expired key must not resolve")
 	}
 }
+
+// TestResolveExpiryExactWhileCached is the regression guard for the security-
+// review finding: a key whose expires_at passes WHILE it sits in the fresh cache
+// must be refused on the very next request — hard expiry is exact, never lagged
+// by the 30s cache TTL (revoke/deactivate invalidate the cache; the clock
+// cannot, so Resolve re-checks expiry on every hit).
+func TestResolveExpiryExactWhileCached(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	soon := time.Now().Add(150 * time.Millisecond)
+	_, raw, err := s.CreateWithPermissions(ctx, "u", "short-lived", Superuser(), &soon, 0)
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	// Prime the cache while the key is still valid (TTL is 30s — far beyond the
+	// key's lifetime, so without the exact check the stale entry would win).
+	if _, ok := s.Resolve(raw); !ok {
+		t.Fatal("key should resolve before its expiry")
+	}
+	time.Sleep(200 * time.Millisecond) // cross expires_at; cache still fresh
+	if _, ok := s.Resolve(raw); ok {
+		t.Error("a key that expired while cached must be refused immediately, not after the cache TTL")
+	}
+}
