@@ -40,6 +40,12 @@ func newIngestLimiter(limit int, window time.Duration) *ingestLimiter {
 
 // allow reports whether the key may record another event in the current window.
 func (l *ingestLimiter) allow(key string) bool {
+	return l.allowLimit(key, l.limit)
+}
+
+// allowLimit is allow with a per-call budget, so one limiter can serve keys with
+// individual limits (VayuAPI per-key rate_per_min) while sharing window state.
+func (l *ingestLimiter) allowLimit(key string, limit int) bool {
 	now := time.Now()
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -56,7 +62,7 @@ func (l *ingestLimiter) allow(key string) bool {
 		}
 		return true
 	}
-	if w.count >= l.limit {
+	if w.count >= limit {
 		return false
 	}
 	w.count++

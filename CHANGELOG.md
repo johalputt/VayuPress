@@ -8,6 +8,32 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.39] — 2026-07-16
+
+### Added
+- **VayuAPI Stage 3 — per-key rate limiting, per-call audit, and expiry
+  auto-cleanup (ADR-0134).** Every external API key now has its own request
+  budget and usage trail:
+  - **Per-key rate limit**, keyed by the key's id (not its IP), so a caller
+    cannot escape the budget by rotating source addresses. Defaults to
+    **600 requests/minute** (env-tunable via `VAYU_API_RATE_PER_MIN`, or a
+    per-key `rate_per_min` override); over-budget calls get `429` +
+    `Retry-After`. The internal system key is exempt. Enforced identically on
+    both the `/api/v1` and `/os` surfaces.
+  - **WORM audit** — every key-authenticated call appends
+    `api.call | key:<id> | METHOD /path | <status>` to the append-only
+    `audit_log`, giving a per-key usage record that never leaves the box.
+  - **Expiry auto-cleanup** — a daily sweeper hard-deletes external keys whose
+    expiry passed more than 30 days ago (the internal key is never touched).
+    Expiry itself is still enforced the instant it passes; the sweeper only
+    tidies long-dead rows.
+
+### Notes
+- Superuser keys (bootstrap, internal, pre-migration backfilled) are unaffected
+  by permission checks but are still metered and audited (except the internal
+  key, which is exempt). Tests cover the per-key budget + 429, the internal
+  exemption, the env-tuned default, and the grace-window cleanup.
+
 ## [3.13.38] — 2026-07-16
 
 ### Added

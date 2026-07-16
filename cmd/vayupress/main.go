@@ -80,7 +80,7 @@ import (
 // -ldflags "-X main.Version=<.release-version>", and scripts/update-vayupress.sh
 // reads .release-version too — keep this in sync with .release-version so an
 // un-stamped `go build` still reports an honest version.
-var Version = "3.13.38"
+var Version = "3.13.39"
 var bootTime = time.Now()
 
 // Immutable package-level values (compiled once, never mutated).
@@ -656,6 +656,14 @@ func main() {
 				// Daily DB-backup hygiene (see the boot sweep above).
 				if removed, reclaimed := update.SweepDBBackupsDefault(config.Cfg.DBPath); removed > 0 {
 					logging.LogInfo("update", fmt.Sprintf("pruned %d stale DB backup file(s), reclaimed %d MiB", removed, reclaimed/(1<<20)))
+				}
+				// VayuAPI hygiene (ADR-0134): hard-delete keys whose expiry passed
+				// more than the grace window ago. Expiry itself is enforced live;
+				// this only tidies long-dead rows out of the admin list.
+				if a.apiKeys != nil {
+					if n, err := a.apiKeys.Cleanup(context.Background()); err == nil && n > 0 {
+						logging.LogInfo("apikeys", fmt.Sprintf("purged %d long-expired API key(s)", n))
+					}
 				}
 			}
 		}

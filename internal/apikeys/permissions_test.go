@@ -216,6 +216,60 @@ func TestResolveExpiry(t *testing.T) {
 	}
 }
 
+// TestCleanupPurgesOnlyLongExpired verifies the sweeper deletes only external
+// keys whose expiry passed more than the grace window ago — recently-expired
+// keys stay visible (badged) and the internal key is never touched.
+func TestCleanupPurgesOnlyLongExpired(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	longGone := time.Now().Add(-time.Duration(cleanupGraceDays+5) * 24 * time.Hour)
+	recent := time.Now().Add(-time.Hour)
+	_, _, err := s.CreateWithPermissions(ctx, "u", "long-expired", Superuser(), &longGone, 0)
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	_, _, err = s.CreateWithPermissions(ctx, "u", "recently-expired", Superuser(), &recent, 0)
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if err := s.EnsureInternal(ctx); err != nil {
+		t.Fatalf("ensure internal: %v", err)
+	}
+
+	n, err := s.Cleanup(ctx)
+	if err != nil {
+		t.Fatalf("cleanup: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("cleanup purged %d keys, want exactly the long-expired one", n)
+	}
+	keys, err := s.List(ctx)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	var labels []string
+	for _, k := range keys {
+		labels = append(labels, k.Label)
+	}
+	for _, want := range []string{"recently-expired", "System (internal)"} {
+		found := false
+		for _, l := range labels {
+			if l == want {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("cleanup must keep %q; remaining: %v", want, labels)
+		}
+	}
+	for _, l := range labels {
+		if l == "long-expired" {
+			t.Error("cleanup must delete the long-expired key")
+		}
+	}
+}
+
 // TestResolveExpiryExactWhileCached is the regression guard for the security-
 // review finding: a key whose expires_at passes WHILE it sits in the fresh cache
 // must be refused on the very next request — hard expiry is exact, never lagged

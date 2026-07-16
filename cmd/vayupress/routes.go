@@ -293,7 +293,10 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	// internal, and pre-migration backfilled keys) pass everything, scoped keys
 	// get exactly what they were granted, unmapped routes fail closed.
 	r.Group(func(r chi.Router) {
-		r.Use(auth.RequireAPIKey, a.requireAPIPermission, auth.RateLimitMiddleware)
+		// Chain: authenticate (stamp KeyInfo) → enforce section:action grant →
+		// coarse per-IP cap → per-key budget + WORM audit (only admitted
+		// requests consume a key's budget and appear in its usage trail).
+		r.Use(auth.RequireAPIKey, a.requireAPIPermission, auth.RateLimitMiddleware, a.apiUsageMiddleware)
 
 		r.Post("/api/v1/articles", a.handleCreateArticle)
 		r.Post("/api/v1/articles/bulk", a.handleBulkCreateArticles)

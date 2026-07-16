@@ -169,7 +169,9 @@ func (a *App) requireSessionOrAPIKey(next http.Handler) http.Handler {
 					"this API key does not hold the capability required for this route", "/docs/compatibility/vayuapi")
 				return
 			}
-			next.ServeHTTP(w, auth.RequestWithKeyInfo(r, ki))
+			// Same per-key budget + WORM audit as the /api surface, so a key's
+			// usage trail and rate limit cannot be escaped by switching prefixes.
+			a.serveWithKeyUsage(w, auth.RequestWithKeyInfo(r, ki), ki, next)
 			return
 		}
 		if a.sessions != nil {

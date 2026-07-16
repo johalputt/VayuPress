@@ -450,6 +450,32 @@ func (s *Store) UpdatePermissions(ctx context.Context, id string, perms Permissi
 	return nil
 }
 
+// cleanupGraceDays is how long an expired key's row stays visible (badged
+// "expired" in the admin list) before the sweeper hard-deletes it. The grace
+// window keeps the audit trail inspectable; expiry itself is enforced the
+// moment it passes (Resolve re-checks the clock).
+const cleanupGraceDays = 30
+
+// Cleanup hard-deletes external keys whose expiry passed more than the grace
+// window ago. The internal system key is never touched (its expiry is NULL and
+// the scope filter excludes it anyway — both guards on purpose).
+func (s *Store) Cleanup(ctx context.Context) (int64, error) {
+	res, err := s.db.ExecContext(ctx,
+		`DELETE FROM vayu_api_keys
+		 WHERE id <> ? AND scope <> 'internal'
+		   AND expires_at IS NOT NULL
+		   AND expires_at < datetime('now', ?)`,
+		InternalKeyID, fmt.Sprintf("-%d days", cleanupGraceDays))
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	if n > 0 {
+		s.invalidate()
+	}
+	return n, nil
+}
+
 func (s *Store) invalidate() {
 	s.mu.Lock()
 	s.ttl = time.Time{}
