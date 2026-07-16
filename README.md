@@ -71,6 +71,12 @@ Real product analytics — pageviews, sessions, top pages, referrers, UTM campai
 ### 🛠️ One control panel (VayuOS)
 Everything above is run from a single, fast, strict-CSP admin at `/os` — dashboard, editor, media library, themes, members, newsletter, mail, **VayuTalk chat**, analytics, **Bot Shield**, SEO, API keys, and one-click **update & encrypted backup**. The dashboard opens on a real **14-day publishing area chart** (server-rendered SVG, hover tooltips, zero JavaScript) and live stat cards; every data table folds into phone-friendly cards on mobile. TOTP two-factor, role-based access, WORM audit log, and an adaptive policy-governed runtime underneath. Built with **HTMX + lightweight hand-written CSS** — no SPA framework, no build step, negligible RAM/CPU.
 
+### 🔌 A fine-grained, scoped API (VayuAPI)
+Drive the whole platform programmatically — create posts, apply themes, manage domains, read analytics, install plugins, run backups — with **API keys scoped to the exact section and action they need, and nothing more**. Mint a key from a **12 × 6 permission grid** (twelve sections × six actions, written `section:action`), give it an optional hard expiry and a **per-key rate budget**, then rotate, deactivate (reversibly) or revoke it in a click. Keys are **owner-scoped and stored only as a hash** (the raw value is shown once); every call is checked against the key's grant on both the `/api/v1` and `/os` surfaces, metered against its budget (`429` + `Retry-After` when exhausted), and appended to a tamper-evident **audit log**. So a script, a CI job, or an AI agent can update your site autonomously — without ever holding the keys to everything. *([reference →](docs/compatibility/vayuapi.md) · [ADR →](docs/adr/ADR-0134-vayuapi-fine-grained-keys.md))*
+
+### 🧩 An extension contract that guarantees compatibility (VCB)
+The **Vayu Compatibility Bible** turns "will this plugin/theme work?" into a checked contract. A developer — or an AI agent — writes a `plugin.json` or `theme.json`, runs **`vayu-compat`**, and knows *before shipping* that every hook, capability, colour, option, sandbox limit, and CSP rule matches what the host actually enforces — because the validator is the **same code the host runs**, so the docs can never drift. Themes that fetch from an external host, plugins that request more than they need, or manifests built against a hook that doesn't exist are refused with a plain, exact reason. Discover the live contract over the API (`GET /api/v1/vcb/contract`) or validate a manifest against a running host (`POST /api/v1/vcb/validate`). *([the Bible →](docs/compatibility/vcb.md) · [ADR →](docs/adr/ADR-0135-vayu-compatibility-bible.md))*
+
 ---
 
 ## Quick start
@@ -109,7 +115,8 @@ Runs comfortably on a single **8 GB RAM / 4 vCPU / 50 GB NVMe** VPS.
 | **Tracking of readers** | Cookieless, no PII, no consent banner | Cookies + third-party pixels |
 | **Bot & DDoS protection** | Built-in, self-learning (VayuShield Aegis) | A separate Cloudflare/WAF subscription |
 | **Dependencies** | One Go binary + SQLite + Nginx | Node, databases, Redis, queues, SDKs |
-| **Extensibility** | Sandboxed, capability-gated plugins | Marketplace plugins with full access |
+| **Extensibility** | Sandboxed, capability-gated plugins; a scoped API + a checked compatibility contract (VCB) | Marketplace plugins with full access |
+| **Automation / API** | Fine-grained keys scoped to `section:action`, rate-limited & audited (VayuAPI) | All-or-nothing tokens, or none at all |
 | **Lock-in** | Open standards, plain export | Proprietary formats, export friction |
 
 ---
@@ -129,7 +136,7 @@ VayuPress is a single Go binary and a single SQLite database. There is no second
                     │   VayuMail (SMTP/IMAP/POP3 · DKIM · MX/SPF/DMARC)           │
                     │   VayuTalk (ephemeral E2E chat · SSE relay · read-once)     │
                     │   VayuPGP (keys · WKD)   VayuFind (search)   Analytics      │
-                    │   VayuOS control panel   Newsletter   Media   API           │
+                    │   VayuOS control panel   Newsletter   Media   VayuAPI       │
                     │                                                             │
                     │   ── Platform kernel (immutable) ──                         │
                     │   signing · migrations · outbox · policy · modes · audit    │
@@ -206,6 +213,8 @@ The adaptive-governance runtime is fully inspectable from inside VayuOS — syst
 
 - **[CHANGELOG.md](CHANGELOG.md)** — every release and what changed, version by version.
 - **[docs/adr/](docs/adr/)** — Architecture Decision Records: every design decision, recorded.
+- **[docs/compatibility/vcb.md](docs/compatibility/vcb.md)** — the Vayu Compatibility Bible: how to build a compatible plugin, theme, or tool.
+- **[docs/compatibility/vayuapi.md](docs/compatibility/vayuapi.md)** — the API-key, permission, and rate-limit reference.
 - **[GOVERNANCE-CONSTITUTION.md](GOVERNANCE-CONSTITUTION.md)** — the binding rules, mechanically enforced by CI.
 - **[ETHICS.md](ETHICS.md)** — the Ethical AI Charter.
 - **[VayuMail-Mobile](https://github.com/johalputt/VayuMail-Mobile)** — the official mobile mail app.
