@@ -281,3 +281,6 @@ internal/vayushield/botdb/store.go: unreachable func: Store.ReportFalsePositive
 internal/vayushield/fingerprint/capture.go: unreachable func: NewStore
 internal/vayushield/fingerprint/capture.go: unreachable func: Store.Put
 internal/vayushield/fingerprint/capture.go: unreachable func: FromClientHello
+# VayuAPI (fine-grained keys): Stage-1 permission vocabulary + resolved-key helpers, unit-tested and consumed by the Stage-2 enforcement middleware (ADR-0134).
+internal/apikeys/keyinfo.go: unreachable func: SuperuserKeyInfo
+internal/apikeys/permissions.go: unreachable func: ParseCapability
