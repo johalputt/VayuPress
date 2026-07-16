@@ -8,6 +8,24 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.45] — 2026-07-16
+
+### Added
+- **Premium UX, phase 2 — native View Transitions (ADR-0136).** Same-origin
+  navigation now crossfades instead of hard-cutting, with **zero JavaScript and
+  zero new dependency** — a pure CSS at-rule (`@view-transition { navigation:
+  auto }`) in the same-origin stylesheets, so `style-src 'self'` is untouched:
+  - **Public site**: article→article and home→article navigations transition
+    smoothly (a soft fade + 6px rise on the incoming page). Fully progressive —
+    browsers without support just navigate normally.
+  - **VayuOS admin**: full-page sidebar navigation transitions, and HTMX
+    fragment swaps now ride the same View Transitions API
+    (`globalViewTransitions` enabled in the htmx-config) for app-like partial
+    updates.
+  - Every transition runs on the compositor (GPU), off the main thread, and is
+    fully neutralised under `prefers-reduced-motion`. No framework, no CDN, no
+    `unsafe-eval`.
+
 ## [3.13.44] — 2026-07-16
 
 ### Added

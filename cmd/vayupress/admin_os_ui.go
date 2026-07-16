@@ -766,7 +766,7 @@ func adminOSShellHead(nonce, title, active string, settings *osSettings) string 
 <meta name="robots" content="noindex, nofollow">
 <!-- HTMX runtime config: skip the injected indicator <style> so we never need
      style-src 'unsafe-inline' — the strict admin CSP (style-src 'self') stays intact. -->
-<meta name="htmx-config" content='{"includeIndicatorStyles":false}'>
+<meta name="htmx-config" content='{"includeIndicatorStyles":false,"globalViewTransitions":true}'>
 <link rel="stylesheet" href="/os/static/css/admin-os.css?v=` + assetVer("css/admin-os.css") + `">
 <link rel="icon" type="image/png" href="/static/favicon-light.png">
 </head>

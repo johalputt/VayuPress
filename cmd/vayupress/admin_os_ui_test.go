@@ -34,8 +34,16 @@ func TestOSLayoutCSPSafe(t *testing.T) {
 	if !strings.Contains(out, `<script src="/static/js/htmx.min.js?v=`) || !strings.Contains(out, `" defer></script>`) {
 		t.Error("os layout missing deferred same-origin HTMX script tag")
 	}
-	if !strings.Contains(out, `<meta name="htmx-config" content='{"includeIndicatorStyles":false}'>`) {
-		t.Error("os layout missing htmx-config meta (indicator styles must stay off for CSP)")
+	// Indicator styles must stay OFF (no injected <style>, keeps style-src 'self');
+	// globalViewTransitions is ON so HTMX swaps ride the native View Transitions
+	// API (ADR-0136). Assert both flags independently so either can move without a
+	// brittle exact-JSON match.
+	if !strings.Contains(out, `name="htmx-config"`) ||
+		!strings.Contains(out, `"includeIndicatorStyles":false`) {
+		t.Error("os layout missing htmx-config meta with indicator styles off (CSP)")
+	}
+	if !strings.Contains(out, `"globalViewTransitions":true`) {
+		t.Error("os layout must enable HTMX globalViewTransitions (ADR-0136)")
 	}
 	// HTMX writes must never fail silently: the layout wires the CSRF header shim
 	// and an error handler that surfaces failures via the toast API.
