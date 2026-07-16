@@ -18,6 +18,9 @@
     // data-filter-text. Filtering happens in the method body (not in x-show
     // expressions), so the only directives on the page are x-model + @input.
     // If Alpine is absent, the input is inert and every row stays visible.
+    // Results are announced to assistive tech via an aria-live [data-filter-
+    // status] region (WCAG 4.1.3 status messages), so a screen-reader user
+    // hears how many rows matched instead of the table silently emptying.
     Alpine.data('filterList', function () {
       return {
         q: '',
@@ -33,6 +36,17 @@
           });
           var empty = root.querySelector('[data-filter-empty]');
           if (empty) empty.hidden = !(needle !== '' && shown === 0);
+          var status = root.querySelector('[data-filter-status]');
+          if (status) {
+            if (needle === '') {
+              status.textContent = '';
+            } else {
+              var noun = root.getAttribute('data-filter-noun') || 'results';
+              status.textContent = shown === 0
+                ? ('No ' + noun + ' match your filter.')
+                : (shown + ' ' + noun + ' match your filter.');
+            }
+          }
         }
       };
     });

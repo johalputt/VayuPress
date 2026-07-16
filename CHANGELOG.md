@@ -8,6 +8,39 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.48] — 2026-07-16
+
+### Changed
+- **Premium UX, phase 4 — flagship themes rebuilt on the sovereign token
+  system (ADR-0136).** The flagship themes (Apex, Vayu) now consume the shared,
+  scheme-adaptive elevation (`--sh-*`) and motion (`--t*`) tokens instead of
+  hardcoding their own shadows and durations — so cards and surfaces gain depth
+  that lightens on light schemes and deepens on dark automatically, with one
+  cohesive motion feel. Pure CSS custom properties, literal fallbacks preserved
+  for defensiveness; no build step, no dependency, no visual regression on
+  unsupported engines.
+
+### Fixed
+- **Admin performance — Alpine loads only where an island exists (ADR-0136).**
+  The eval-free Alpine runtime (and its document-wide `MutationObserver`) is now
+  emitted **only** on admin pages that actually host an `x-data` island — today
+  just the API Keys manager. Island-free pages (the overwhelming majority) ship
+  no Alpine at all, eliminating an unnecessary ~61 KB parse and an always-on DOM
+  observer on every other admin page. Detection is automatic from the rendered
+  body, so any future island is covered without per-page bookkeeping.
+- **Accessibility — API-keys live filter announces results (WCAG 4.1.3).** The
+  client-side key filter now writes its match count / empty state into an
+  `aria-live` status region, so screen-reader users hear how many keys matched
+  instead of the table silently emptying.
+
+### Added
+- **VCB theme contract validates sovereign tokens (ADR-0136).** The Vayu
+  Compatibility Bible validator now exports the sanctioned `--vp-*` token
+  vocabulary (derived from the compiler, so it can never drift) and warns when a
+  third-party theme's `custom_css` references a `--vp-*` token the compiler
+  never emits with no fallback — a typo that would silently resolve to nothing —
+  keeping the motion/elevation polish safe to scale across the ecosystem.
+
 ## [3.13.47] — 2026-07-16
 
 ### Added

@@ -399,6 +399,43 @@ func TestBuiltinPresetsSatisfyThemeContract(t *testing.T) {
 	}
 }
 
+// TestThemeTokenRefUnknown is the ADR-0136 VCB token check: a custom_css
+// reference to a --vp-* token the compiler never emits, with no fallback,
+// silently resolves to nothing — surfaced as a WARNING so the author catches
+// the typo without the theme being rejected. A reference to a real token, or a
+// typo'd one WITH a fallback, is clean.
+func TestThemeTokenRefUnknown(t *testing.T) {
+	bad := goodTheme()
+	bad.Tokens.CustomCSS = ".card{box-shadow:var(--vp-shdw-lg);transition:var(--vp-t)}"
+	r := Theme(bad, Options{HostVersion: "3.13.41"})
+	if !hasCode(r, "theme.css.token.unknown") {
+		t.Errorf("expected theme.css.token.unknown for var(--vp-shdw-lg), got: %s", codes(r))
+	}
+	if !r.OK() {
+		t.Errorf("an unknown-token reference is a WARNING and must not fail validation; got: %s", codes(r))
+	}
+
+	ok := goodTheme()
+	ok.Tokens.CustomCSS = ".card{box-shadow:var(--vp-sh-lg);color:var(--vp-typo, #fff);transition:var(--t,160ms)}"
+	r2 := Theme(ok, Options{HostVersion: "3.13.41"})
+	if hasCode(r2, "theme.css.token.unknown") {
+		t.Errorf("real token + fallback'd references must not warn, got: %s", codes(r2))
+	}
+}
+
+// TestBuiltinThemesHaveNoUnknownTokenRefs guards that the flagship + every
+// built-in preset references only real --vp-* tokens (no self-inflicted typos)
+// — including the new motion/elevation tokens the flagships now consume.
+func TestBuiltinThemesHaveNoUnknownTokenRefs(t *testing.T) {
+	for _, p := range theme.AllPresets() {
+		r := &Result{Kind: "theme"}
+		checkCustomCSS(r, p.CustomCSS)
+		if hasCode(r, "theme.css.token.unknown") {
+			t.Errorf("built-in preset %q references an unknown --vp- token: %s", p.Name, codes(r))
+		}
+	}
+}
+
 // TestVersionHelpers pins the host-range comparison semantics.
 func TestVersionHelpers(t *testing.T) {
 	if vcb.CompareVersions("3.13.41", "v3.13.41") != 0 {

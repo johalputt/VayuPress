@@ -66,12 +66,12 @@ func TestIslandRegistryIsCSPBuildSafe(t *testing.T) {
 	}
 }
 
-// TestAdminFootLoadsAlpineInOrder verifies the admin shell foot loads the island
-// registry BEFORE the Alpine build (so alpine:init is armed first), both
-// deferred and same-origin (script-src 'self'), and that the layout stays
-// CSP-safe with the additions.
+// TestAdminFootLoadsAlpineInOrder verifies that WHEN a page hosts an island the
+// admin shell foot loads the island registry BEFORE the Alpine build (so
+// alpine:init is armed first), both deferred and same-origin (script-src
+// 'self'), and that the layout stays CSP-safe with the additions.
 func TestAdminFootLoadsAlpineInOrder(t *testing.T) {
-	out := adminOSShellFoot("test-nonce", "")
+	out := adminOSShellFoot("test-nonce", "", true)
 	islands := strings.Index(out, "/os/static/js/vayu-islands.js")
 	alpine := strings.Index(out, "/os/static/js/alpine-csp.min.js")
 	if islands < 0 || alpine < 0 {
@@ -86,6 +86,38 @@ func TestAdminFootLoadsAlpineInOrder(t *testing.T) {
 	assertCSPSafe(t, "adminOSShellFoot+alpine", out)
 }
 
+// TestAdminFootOmitsAlpineWithoutIsland is the load-bearing guard for the
+// ADR-0136 performance fix: an island-free admin page (the overwhelming
+// majority) must NOT ship the 61 KB Alpine build or its document-wide
+// MutationObserver. Alpine is the exception, not the rule.
+func TestAdminFootOmitsAlpineWithoutIsland(t *testing.T) {
+	out := adminOSShellFoot("test-nonce", "", false)
+	if strings.Contains(out, "alpine-csp.min.js") || strings.Contains(out, "vayu-islands.js") {
+		t.Error("island-free page must not load the Alpine runtime (perf: no parse, no global MutationObserver)")
+	}
+	// The rest of the shell (HTMX, bootstrap) must still be present + CSP-safe.
+	if !strings.Contains(out, "/static/js/htmx.min.js") {
+		t.Error("HTMX (the interaction backbone) must still load on island-free pages")
+	}
+	assertCSPSafe(t, "adminOSShellFoot-noalpine", out)
+}
+
+// TestPageUsesAlpineDetection pins the automatic detection that ties Alpine
+// loading to the presence of an x-data island in the rendered body — so any
+// page that gains an island is covered without per-page bookkeeping.
+func TestPageUsesAlpineDetection(t *testing.T) {
+	if pageUsesAlpine(`<div class="card">no island here</div>`) {
+		t.Error("plain body must not be detected as needing Alpine")
+	}
+	if !pageUsesAlpine(`<div class="card" x-data="filterList">…</div>`) {
+		t.Error("body with x-data island must be detected as needing Alpine")
+	}
+	// The real API Keys section must trigger detection end-to-end.
+	if !pageUsesAlpine(osAPIKeysOwnSection(mustSampleKeys())) {
+		t.Error("API Keys section hosts the filter island; must be detected as needing Alpine")
+	}
+}
+
 // TestAPIKeysFilterIsland proves the API Keys list carries the additive filter
 // island (x-data + per-row filter text) without breaking CSP-safety.
 func TestAPIKeysFilterIsland(t *testing.T) {
@@ -95,6 +127,13 @@ func TestAPIKeysFilterIsland(t *testing.T) {
 	for _, want := range []string{`x-data="filterList"`, `x-model="q"`, `@input="apply()"`, `data-filter-text=`, `data-filter-empty`} {
 		if !strings.Contains(out, want) {
 			t.Errorf("API Keys list missing filter-island hook %q", want)
+		}
+	}
+	// A11y (WCAG 4.1.3): filter results must be announced to assistive tech via
+	// an aria-live status region carried inside the island root.
+	for _, want := range []string{`data-filter-status`, `role="status"`, `aria-live="polite"`, `data-filter-noun="keys"`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("API Keys filter island missing a11y status hook %q", want)
 		}
 	}
 }

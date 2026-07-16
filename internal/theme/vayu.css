@@ -118,7 +118,9 @@ body::before {
   background: color-mix(in srgb, var(--surface, #0a1020) 70%, transparent);
   border: 1px solid var(--border, rgba(255,255,255,.08)); border-radius: var(--radius2, 14px);
   text-decoration: none; overflow: hidden;
-  transition: border-color .2s, transform .2s, box-shadow .2s, background .2s;
+  /* Motion + elevation flow through the sovereign tokens (ADR-0136): one shared
+     easing/duration and a scheme-adaptive shadow, with literal fallbacks. */
+  transition: border-color var(--t, .2s), transform var(--t, .2s), box-shadow var(--t, .2s), background var(--t, .2s);
 }
 .vayu-post-card::before {
   content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0;
@@ -127,7 +129,7 @@ body::before {
 }
 .vayu-post-card:hover {
   border-color: color-mix(in srgb, var(--accent, #2dd4bf) 55%, transparent);
-  transform: translateY(-3px); box-shadow: 0 14px 34px rgba(0,0,0,.32);
+  transform: translateY(-3px); box-shadow: var(--sh-lg, 0 14px 34px rgba(0,0,0,.32));
 }
 .vayu-post-card:hover::before { opacity: 1; }
 .vayu-post-card--media { display: flex; gap: 1.3rem; align-items: stretch; }

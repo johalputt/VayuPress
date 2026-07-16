@@ -17,6 +17,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -345,6 +346,37 @@ func checkCustomCSS(r *Result, css string) {
 	}
 	if strings.Contains(css, "<") {
 		r.errf("theme.css.markup", "tokens.custom_css", "custom_css must not contain '<' (markup inside CSS breaks the stylesheet and is an injection smell)")
+	}
+	checkThemeTokenRefs(r, css)
+}
+
+// vpVarRefRE matches a var(--vp-…) reference and captures the token name plus
+// the delimiter that follows it: ')' means the reference has no fallback, ','
+// means a fallback value is supplied.
+var vpVarRefRE = regexp.MustCompile(`var\(\s*(--vp-[a-z0-9-]+)\s*([,)])`)
+
+// checkThemeTokenRefs validates custom_css references to the sovereign --vp-*
+// token namespace (ADR-0136 extends this to the new motion/elevation tokens).
+// A theme never defines --vp-* itself — those are compiler-owned — so a
+// var(--vp-…) reference to a name the compiler never emits, with no fallback,
+// silently resolves to nothing: a typo that breaks the intended styling. It is
+// reported as a WARNING (not an error): the token set can grow, and a stale
+// validator must never fail a legitimate theme. References with a fallback are
+// safe by construction and are not flagged.
+func checkThemeTokenRefs(r *Result, css string) {
+	valid := theme.VPTokenNames()
+	seen := map[string]bool{}
+	for _, m := range vpVarRefRE.FindAllStringSubmatch(css, -1) {
+		name, delim := m[1], m[2]
+		if delim == "," { // a fallback is supplied → safe even if the token is unknown
+			continue
+		}
+		if valid[name] || seen[name] {
+			continue
+		}
+		seen[name] = true
+		r.warnf("theme.css.token.unknown", "tokens.custom_css",
+			"custom_css references var(%s), which is not a VayuPress theme token — with no fallback it resolves to nothing; check the spelling (see the motion/elevation token reference in the VCB)", name)
 	}
 }
 

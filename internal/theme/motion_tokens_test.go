@@ -61,3 +61,74 @@ func TestMotionTokensSurviveCustomCSS(t *testing.T) {
 		t.Error("motion tokens or CustomCSS missing when both present")
 	}
 }
+
+// TestMotionTokensAreCompilerBacked guards the exported ADR-0136 vocabulary
+// against drift: every canonical --vp-* name MotionTokens() advertises must be
+// a token the compiler actually defines, and must appear in VPTokenNames().
+func TestMotionTokensAreCompilerBacked(t *testing.T) {
+	css, err := CompileCSS(Default())
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	vp := VPTokenNames()
+	for _, tok := range MotionTokens() {
+		if !strings.HasPrefix(tok, "--vp-") {
+			continue // bare aliases (--sh, --t, …) are not in the --vp- namespace
+		}
+		if !strings.Contains(css, tok+":") {
+			t.Errorf("MotionTokens() advertises %q but the compiler never defines it", tok)
+		}
+		if !vp[tok] {
+			t.Errorf("VPTokenNames() is missing compiler token %q", tok)
+		}
+	}
+}
+
+// TestVPTokenNamesSurface pins that the derived --vp-* set covers colour,
+// layout and the new motion families, and excludes names the compiler never
+// emits (so the VCB typo check is sound).
+func TestVPTokenNamesSurface(t *testing.T) {
+	vp := VPTokenNames()
+	for _, want := range []string{"--vp-accent", "--vp-text", "--vp-radius-lg", "--vp-sh-lg", "--vp-t", "--vp-sp-4", "--vp-z-modal"} {
+		if !vp[want] {
+			t.Errorf("VPTokenNames() should include %q", want)
+		}
+	}
+	for _, bogus := range []string{"--vp-nope", "--vp-shadow", "--vp-transition"} {
+		if vp[bogus] {
+			t.Errorf("VPTokenNames() should NOT include non-existent token %q", bogus)
+		}
+	}
+}
+
+// TestFlagshipThemesConsumeMotionTokens is the deliverable guard for UX P4:
+// the flagship themes must be built ON the sovereign token system — consuming
+// the scheme-adaptive elevation + motion tokens — not hardcoding their own.
+func TestFlagshipThemesConsumeMotionTokens(t *testing.T) {
+	checkedApex, checkedVayu := false, false
+	for _, p := range AllPresets() {
+		css := p.CustomCSS
+		if strings.Contains(css, ".apex-bento__cell") {
+			checkedApex = true
+			for _, want := range []string{"var(--sh-lg", "var(--sh,", "var(--t-slow", "var(--t,"} {
+				if !strings.Contains(css, want) {
+					t.Errorf("Apex flagship does not consume sovereign token %q — it should be built on the token system", want)
+				}
+			}
+		}
+		if strings.Contains(css, ".vayu-post-card {") {
+			checkedVayu = true
+			for _, want := range []string{"var(--sh-lg", "var(--t,"} {
+				if !strings.Contains(css, want) {
+					t.Errorf("Vayu flagship does not consume sovereign token %q", want)
+				}
+			}
+		}
+	}
+	if !checkedApex {
+		t.Error("Apex flagship preset not found among AllPresets()")
+	}
+	if !checkedVayu {
+		t.Error("Vayu flagship preset not found among AllPresets()")
+	}
+}

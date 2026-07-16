@@ -85,7 +85,9 @@ func (a *App) writeConsoleShellHead(w http.ResponseWriter, r *http.Request, acti
 }
 
 func writeConsoleShellFoot(w http.ResponseWriter, nonce, script string) {
-	fmt.Fprint(w, adminOSShellFoot(nonce, script))
+	// Streaming operator/console pages never host an Alpine island, so they opt
+	// out of the Alpine runtime entirely (ADR-0136 — Alpine is the exception).
+	fmt.Fprint(w, adminOSShellFoot(nonce, script, false))
 }
 
 // =============================================================================

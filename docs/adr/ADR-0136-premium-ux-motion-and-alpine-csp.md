@@ -63,18 +63,27 @@ real gap.
 4. **HTMX stays the server-interaction backbone.** Add `hx-boost` + view-
    transition swap wiring for buttery navigation without an SPA. No new
    dependency — HTMX is already self-hosted.
-5. **Alpine.js CSP build, vendored, for genuinely client-side islands only.**
-   Self-host the eval-free `@alpinejs/csp` build under `static/js/` (with its
-   MIT LICENSE), loaded via a nonce'd `<script>` on admin pages, wired through a
-   small `Alpine.data()` registry — never inline expressions. It is used only
-   where reactive client state genuinely beats an HTMX round-trip (command
-   palette, the permission grid, theme-studio live preview). It stays within the
-   admin "heavy-framework" budget (< 50 KB gzipped). HTMX remains the default;
-   Alpine is the exception, not the rule.
+5. **Alpine.js CSP build, vendored, for genuinely client-side islands only,
+   loaded only where an island exists.** Self-host the eval-free `@alpinejs/csp`
+   build under `static/js/` (with its MIT LICENSE), wired through a small
+   `Alpine.data()` registry — never inline expressions. It is used only where
+   reactive client state genuinely beats an HTMX round-trip. Because Alpine
+   installs a document-wide `MutationObserver` on start, the runtime is emitted
+   **only on pages that actually host an island** (detected from an `x-data`
+   attribute in the rendered body): island-free admin pages — the overwhelming
+   majority — ship no Alpine at all, so there is no parse cost and no always-on
+   observer where it would do nothing. When present it stays within the admin
+   "heavy-framework" budget (< 50 KB gzipped). HTMX remains the default; Alpine
+   is the exception, not the rule.
 6. **The VCB theme contract validates the new tokens.** As themes gain motion
-   and elevation tokens, the VCB theme validator (ADR-0135) is extended so
-   third-party themes declaring them are checked, keeping the polish safe to
-   scale across the ecosystem.
+   and elevation tokens, the VCB theme validator (ADR-0135) is extended: it
+   exports the sanctioned `--vp-*` token vocabulary (derived from the compiler,
+   so it cannot drift) and warns when a third-party theme's `custom_css`
+   references a `--vp-*` token the compiler never emits with no fallback — a
+   typo that would silently resolve to nothing. This keeps the polish safe to
+   scale across the ecosystem. The flagship themes (Apex, Vayu) are themselves
+   rebuilt on this vocabulary — consuming the scheme-adaptive elevation and
+   motion tokens rather than hardcoding their own — as the reference examples.
 
 ## Consequences
 

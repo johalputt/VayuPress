@@ -223,6 +223,14 @@ a global `prefers-reduced-motion` guard, and native page **View Transitions**
 navigation crossfades with zero JavaScript and degrades cleanly where
 unsupported. You do not need to add either; just build on the tokens.
 
+**The validator catches token typos.** These `--vp-*` names are the sovereign
+vocabulary the compiler owns — a theme never defines them. If your `custom_css`
+references a `--vp-*` token the compiler does not emit **and gives no fallback**
+(e.g. `var(--vp-shdw-lg)`), it would silently resolve to nothing; `vayu-compat`
+flags it as a warning so you catch the misspelling before shipping. A reference
+with a fallback (`var(--vp-x, 0)`) is always accepted. The flagship themes
+themselves are built on this vocabulary, as reference examples.
+
 ---
 
 ## API permissions and key provisioning

@@ -143,9 +143,11 @@ func (a *App) handleOSAPIKeys(w http.ResponseWriter, r *http.Request) {
 
 ` + osAPIKeysOwnSection(keys) + osAPIKeysVCBCard() + osAPIKeysServicesSection(creds)
 
+	// This page hosts the filter island (x-data="filterList"), so it opts into
+	// the Alpine runtime; pageUsesAlpine keeps the decision tied to the markup.
 	full := adminOSShellHead(nonce, "API Keys", "apikeys", cfg) +
 		body +
-		adminOSShellFoot(nonce, osAPIKeysScript)
+		adminOSShellFoot(nonce, osAPIKeysScript, pageUsesAlpine(body))
 	writeOSHTML(w, full)
 }
 
@@ -224,10 +226,10 @@ func osAPIKeysOwnSection(keys []apikeys.Key) string {
 	// vayu-islands.js). It is a pure enhancement: if Alpine is absent the input
 	// is inert and every row stays visible, and the create/rotate/revoke flows
 	// (vanilla JS) are untouched.
-	return `<div class="card" x-data="filterList">
+	return `<div class="card" x-data="filterList" data-filter-noun="keys">
   <div class="settings-block-title">VayuPress API keys</div>
   <p class="text-sm muted mb-4">Issue keys for scripts, integrations, and CI. Send a key as the <code>X-API-Key</code> header or <code>Authorization: Bearer &lt;key&gt;</code>. Each key is granted <strong>only</strong> the sections and actions you check below — a key can do nothing it was not granted. Rotating invalidates the old value immediately; deactivating disables a key reversibly; revoking disables it permanently (audit row kept). The <strong>System</strong> key is auto-managed for internal use.</p>
-  <div class="ak-filter"><input type="search" class="input ak-filter-input" placeholder="Filter keys by label or prefix…" x-model="q" @input="apply()" aria-label="Filter API keys"></div>
+  <div class="ak-filter"><input type="search" class="input ak-filter-input" placeholder="Filter keys by label or prefix…" x-model="q" @input="apply()" aria-label="Filter API keys"><span data-filter-status role="status" aria-live="polite" class="vp-sr-only"></span></div>
   <div class="table-wrap">
     <table class="table ak-table">
       <thead><tr><th>Label</th><th>Permissions</th><th>Expires</th><th>Last used</th><th>Status</th><th></th></tr></thead>

@@ -733,8 +733,14 @@ func renderTrustedHTML(h htmpl.HTML) string {
 func adminOSLayout(nonce, title, active string, settings *osSettings, bodyHTML htmpl.HTML) string {
 	return adminOSShellHead(nonce, title, active, settings) +
 		renderTrustedHTML(bodyHTML) +
-		adminOSShellFoot(nonce, "")
+		adminOSShellFoot(nonce, "", pageUsesAlpine(string(bodyHTML)))
 }
+
+// pageUsesAlpine reports whether a rendered admin page body hosts an Alpine
+// island (an x-data component), so adminOSShellFoot loads the Alpine runtime
+// only where it is actually used (ADR-0136). Any page that gains an island is
+// covered automatically — no per-page bookkeeping to drift out of sync.
+func pageUsesAlpine(body string) bool { return strings.Contains(body, "x-data") }
 
 // adminOSShellHead emits the VayuOS document head, sidebar, topbar and the
 // opening <main class="content"> tag. The caller appends body content and then
@@ -825,7 +831,25 @@ func adminOSShellHead(nonce, title, active string, settings *osSettings) string 
 // When pageScript is non-empty it is emitted as an additional nonce-gated inline
 // script alongside the shared operator-control helpers (csrf/vpPost/show) and a
 // live status region, so streaming operator pages keep their POST controls.
-func adminOSShellFoot(nonce, pageScript string) string {
+func adminOSShellFoot(nonce, pageScript string, needsAlpine bool) string {
+	// Alpine (ADR-0136) is loaded ONLY on pages that actually host an island
+	// (an x-data component). Emitting the 61 KB CSP build + its document-wide
+	// MutationObserver on every admin page would tax parse time and every HTMX
+	// swap for zero benefit — Alpine is the exception, not the rule. Island-free
+	// pages (the overwhelming majority) stay fully Alpine-free.
+	alpine := ""
+	if needsAlpine {
+		alpine = `<!-- Alpine.js islands (ADR-0136): the eval-free CSP build + the VayuOS island
+     registry. Self-hosted, deferred, same-origin so they satisfy script-src
+     'self' with no dynamic code evaluation. The registry loads FIRST so its
+     alpine:init listener is armed before Alpine starts; components are
+     referenced by name in x-data, never as inline expressions. HTMX stays the
+     backbone — Alpine only powers isolated client-reactive islands, and every
+     island degrades to plain HTML. Loaded only when this page hosts one. -->
+<script src="/os/static/js/vayu-islands.js?v=` + assetVer("js/vayu-islands.js") + `" defer></script>
+<script src="/os/static/js/alpine-csp.min.js?v=` + assetVer("js/alpine-csp.min.js") + `" defer></script>
+`
+	}
 	ops := ""
 	if pageScript != "" {
 		ops = `<div id="action-msg" role="status" aria-live="polite" class="action-msg"></div>
@@ -907,16 +931,7 @@ b.addEventListener('htmx:sendError',vpHtmxFail);
 b.addEventListener('htmx:afterRequest',function(e){var d=e.detail;if(!d||!d.successful)return;var l=document.getElementById('vp-live');if(!l)return;var v=(d.requestConfig&&(d.requestConfig.verb||'')).toLowerCase();l.textContent='';l.textContent=(v==='get'?'Content refreshed.':'Change saved.');});
 })();
 </script>
-<!-- Alpine.js islands (ADR-0136): the eval-free CSP build + the VayuOS island
-     registry. Self-hosted, deferred, same-origin so they satisfy script-src
-     'self' with no dynamic code evaluation. The registry loads FIRST so its
-     alpine:init listener is armed before Alpine starts; components are
-     referenced by name in x-data, never as inline expressions. HTMX stays the
-     backbone — Alpine only powers isolated client-reactive islands, and every
-     island degrades to plain HTML. -->
-<script src="/os/static/js/vayu-islands.js?v=` + assetVer("js/vayu-islands.js") + `" defer></script>
-<script src="/os/static/js/alpine-csp.min.js?v=` + assetVer("js/alpine-csp.min.js") + `" defer></script>
-<!-- Bootstrap (nonce-gated, reads data-admin-theme from body) -->
+` + alpine + `<!-- Bootstrap (nonce-gated, reads data-admin-theme from body) -->
 <script src="/os/static/js/purify.min.js"></script>
 <script nonce="` + nonce + `" src="/os/static/js/admin-os.js"></script>
 </body></html>`
@@ -2861,7 +2876,7 @@ if(footerInput){
 
 	fullHTML := adminOSShellHead(nonce, "Settings", "settings", cfg) +
 		renderTrustedHTML(htmpl.HTML(body)) +
-		adminOSShellFoot(nonce, saveScript)
+		adminOSShellFoot(nonce, saveScript, pageUsesAlpine(body))
 	writeOSHTML(w, fullHTML)
 }
 
