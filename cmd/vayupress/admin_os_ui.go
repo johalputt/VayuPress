@@ -408,6 +408,8 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/apikeys/rotate", a.handleOSAPIKeyRotate)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/apikeys/revoke", a.handleOSAPIKeyRevoke)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/apikeys/delete", a.handleOSAPIKeyDelete)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/apikeys/activate", a.handleOSAPIKeySetActive(true))
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/apikeys/deactivate", a.handleOSAPIKeySetActive(false))
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/credentials/save", a.handleOSCredentialSave)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/credentials/reveal", a.handleOSCredentialReveal)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/credentials/delete", a.handleOSCredentialDelete)

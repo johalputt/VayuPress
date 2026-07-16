@@ -4593,3 +4593,72 @@
 .vp-os .vm-acct__sub > .field-label { display: block; margin-bottom: var(--sp-2); }
 .vp-os .vm-card-fwd { margin: 0; align-items: center; }
 .vp-os details.vm-acct__sub > summary .field-label { margin: 0; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   VayuAPI — API Keys console (fine-grained key manager)
+   Every rule is CSP-safe (no inline styles): the handlers emit only class
+   hooks, all presentation lives here. Layout uses the shared design tokens so
+   the console tracks the light/dark themes automatically.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* Intro / lead paragraph — hold it to a comfortable reading measure. */
+.vp-os .ak-intro { max-width: 78ch; }
+
+/* One-time token reveal banner: an accent-framed card that appears after a
+   create or rotate. It is the only moment the full secret is shown. */
+.vp-os .ak-token-banner { border-color: var(--brand); background: var(--brand-dim); }
+.vp-os .ak-token-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin-top: var(--sp-3); }
+.vp-os .ak-token-input { flex: 1 1 340px; min-width: 0; }
+
+/* Issued-keys table: keep rows readable and let the action buttons wrap
+   without stretching the row height. */
+.vp-os .ak-table td { vertical-align: middle; }
+.vp-os .ak-key-label { font-weight: 600; color: var(--text); margin-bottom: 2px; }
+.vp-os .ak-row-actions { white-space: normal; }
+.vp-os .ak-row-actions .btn { margin: 0 var(--sp-1) var(--sp-1) 0; }
+.vp-os .ak-empty { text-align: center; padding: var(--sp-6) var(--sp-4); }
+
+/* Capability badges: a compact monospace chip per granted section:action, with
+   a muted "+N more" overflow marker so a wide grant set never bloats the row. */
+.vp-os .ak-caps { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1); }
+.vp-os .ak-cap {
+  display: inline-block; padding: 1px var(--sp-2);
+  font-family: var(--font-mono); font-size: var(--text-xs); line-height: 1.5;
+  color: var(--text-2); background: var(--bg-surface-3);
+  border: 1px solid var(--border); border-radius: var(--r-sm);
+}
+.vp-os .ak-cap-more { font-size: var(--text-xs); color: var(--text-3); font-style: italic; }
+
+/* Scoped-key create form: the label/expiry/rate inputs sit on one wrapping row,
+   each field flexing to fit while the rate stays narrow. */
+.vp-os .ak-create-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--sp-4); margin-bottom: var(--sp-4); }
+.vp-os .ak-field-grow { flex: 1 1 240px; }
+.vp-os .ak-field-narrow { flex: 0 0 120px; max-width: 140px; }
+
+/* Toolbar above the permission grid: the "Permissions" label on the left and
+   the full-access (superuser) toggle on the right. */
+.vp-os .ak-grid-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-3); margin: var(--sp-5) 0 var(--sp-2); }
+.vp-os .ak-superuser { display: inline-flex; align-items: center; gap: var(--sp-2); cursor: pointer; font-size: var(--text-sm); color: var(--text-2); }
+
+/* The 12×6 permission grid: section rows × action columns. Checkboxes centre in
+   their cells; the section name column stays left-aligned and never wraps. */
+.vp-os .ak-grid th, .vp-os .ak-grid td { text-align: center; padding: var(--sp-2); }
+.vp-os .ak-grid-section { text-align: left; font-weight: 600; color: var(--text-2); white-space: nowrap; }
+.vp-os .ak-grid-all { color: var(--text-3); font-weight: 500; }
+.vp-os .ak-grid input[type="checkbox"], .vp-os .ak-superuser input[type="checkbox"] { accent-color: var(--brand); cursor: pointer; width: 16px; height: 16px; }
+/* Full access selected → the grid is dimmed and inert; the grant is implicit. */
+.vp-os .ak-grid--disabled { opacity: 0.4; pointer-events: none; }
+
+.vp-os .ak-create-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); margin-top: var(--sp-4); }
+
+/* Third-party service credential cards (IndexNow, OpenRouter, Ollama, n8n,
+   custom): header with title + enable toggle, then the secret/endpoint fields
+   and the save/reveal/delete action row. */
+.vp-os .ak-cred-card + .ak-cred-card { margin-top: var(--sp-4); }
+.vp-os .ak-cred-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--sp-4); margin-bottom: var(--sp-3); }
+.vp-os .ak-cred-desc { max-width: 68ch; margin-top: var(--sp-1); }
+.vp-os .ak-cred-toggle { display: inline-flex; align-items: center; gap: var(--sp-2); flex-shrink: 0; margin: 0; }
+.vp-os .ak-cred-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin-top: var(--sp-3); }
+
+/* Custom-credential add form: name / endpoint / secret inputs + Add button. */
+.vp-os .ak-cc-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--sp-3); margin-bottom: var(--sp-4); }

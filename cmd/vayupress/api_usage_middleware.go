@@ -63,9 +63,13 @@ func (a *App) serveWithKeyUsage(w http.ResponseWriter, r *http.Request, ki apike
 	}
 	ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
 	next.ServeHTTP(ww, r)
-	// Append-only audit trail, off the response path (mirrors apikeys' async
-	// touch). Method+path identify the action; the status records its outcome.
-	go dbpkg.AuditLog("api.call", "key:"+ki.ID, r.Method+" "+r.URL.Path, strconv.Itoa(ww.Status()))
+	// Append-only audit trail, written after the response body is flushed to ww.
+	// Synchronous like every other AuditLog call site: the record is guaranteed
+	// durable before the handler returns (no detached goroutine that could race
+	// a DB re-open or be lost on shutdown), and with SQLite's single writer
+	// connection an async write would only contend on the same conn anyway.
+	// Method+path identify the action; the status records its outcome.
+	dbpkg.AuditLog("api.call", "key:"+ki.ID, r.Method+" "+r.URL.Path, strconv.Itoa(ww.Status()))
 }
 
 // apiUsageMiddleware wires serveWithKeyUsage into the protected /api group.

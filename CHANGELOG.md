@@ -8,6 +8,44 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.40] — 2026-07-16
+
+### Added
+- **VayuAPI Stage 4 — the fine-grained key-manager UI (ADR-0134).** The VayuOS
+  **API Keys** console now issues and governs scoped keys end to end, no SQL
+  required:
+  - **12 × 6 permission grid** — every section (posts, media, themes, design,
+    plugins, domains, analytics, members, comments, settings, mail, api) × every
+    action (read, write, delete, apply, install, manage) is a checkbox, with a
+    per-row *all-actions* toggle and a grand **Full access** switch that dims the
+    grid when a superuser key is intended. A key is granted **only** what is
+    ticked — nothing it was not.
+  - **Lifecycle in one place** — issued keys list their granted capabilities as
+    compact chips, their expiry and last-used time, and a live status
+    (**Active / Inactive / Expired / Revoked / System**). Actions are
+    status-aware: rotate, **deactivate** (reversible disable) / **activate**,
+    revoke (permanent), and delete.
+  - **Optional hard expiry and a per-key rate budget** at creation. Expiry
+    accepts the browser `datetime-local` value or full RFC3339, is normalised to
+    UTC, and a past time is refused.
+  - Keys are **owner-scoped** to the creating operator. The full key is shown
+    exactly once, immediately after creation, in a copy-once banner.
+
+### Changed
+- **Per-call API audit is now written synchronously** (matching every other
+  `AuditLog` call site) instead of on a detached goroutine. The record is
+  guaranteed durable before the handler returns and can no longer be lost on
+  shutdown; under SQLite's single writer connection the previous async write
+  bought no throughput anyway. This also removes a data race the detached
+  goroutine could trip against a database re-open under `-race`.
+
+### Notes
+- The console is fully **CSP-safe** — no inline styles or scripts; all
+  presentation lives in `admin-os.css` under `.ak-*` classes, all behaviour in
+  the nonce-gated page controller. A rendering test asserts the CSP contract and
+  that every section × action checkbox, both select-all toggles, capability
+  chips, and each lifecycle action are present.
+
 ## [3.13.39] — 2026-07-16
 
 ### Added

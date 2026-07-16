@@ -5,6 +5,7 @@ import (
 	"html"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -123,13 +124,13 @@ func (a *App) handleOSAPIKeys(w http.ResponseWriter, r *http.Request) {
     <span id="ak-status" role="status" aria-live="polite" class="text-xs muted"></span>
   </div>
 </div>
-<p class="text-sm muted mb-4" style="max-width:60ch">Manage the keys that authenticate calls to your VayuPress API, and store the credentials VayuPress uses to talk to third-party services. Third-party secrets are encrypted at rest with AES-256-GCM and are shown masked — they never leave your server in clear text.</p>
+<p class="text-sm muted mb-4 ak-intro">Manage the keys that authenticate calls to your VayuPress API, and store the credentials VayuPress uses to talk to third-party services. Third-party secrets are encrypted at rest with AES-256-GCM and are shown masked — they never leave your server in clear text.</p>
 
-<div id="ak-token-banner" class="card" hidden style="border:1px solid var(--color-success,#22c55e)">
+<div id="ak-token-banner" class="card ak-token-banner" hidden>
   <div class="settings-block-title">Copy your new key now</div>
   <p class="text-sm muted">This is the only time the full key is shown. Store it somewhere safe — you won't be able to see it again.</p>
-  <div style="display:flex;gap:.5rem;align-items:center;margin:.5rem 0">
-    <input id="ak-token-value" class="input font-mono" type="text" readonly style="flex:1">
+  <div class="ak-token-row">
+    <input id="ak-token-value" class="input font-mono ak-token-input" type="text" readonly>
     <button type="button" class="btn btn--sm" id="ak-token-copy">Copy</button>
     <button type="button" class="btn btn--primary btn--sm" id="ak-token-done">Done</button>
   </div>
@@ -143,57 +144,143 @@ func (a *App) handleOSAPIKeys(w http.ResponseWriter, r *http.Request) {
 	writeOSHTML(w, full)
 }
 
-// osAPIKeysOwnSection renders the issued-token table and create form.
+// apiKeyCapabilitySummary renders a compact set of capability badges for a key's
+// grant set (or a single "Full access" badge for a superuser/legacy key).
+func apiKeyCapabilitySummary(k apikeys.Key) string {
+	if k.Scope == apikeys.ScopeInternal || k.Permissions.IsSuperuser() {
+		return `<span class="badge badge--accent">Full access</span>`
+	}
+	caps := k.Permissions.Capabilities()
+	if len(caps) == 0 {
+		return `<span class="badge">No grants</span>`
+	}
+	// Collapse a section whose every action is granted to "section:*".
+	out := ""
+	shown := 0
+	for _, c := range caps {
+		if shown >= 8 {
+			out += `<span class="ak-cap-more">+` + itoaSafe(len(caps)-shown) + ` more</span>`
+			break
+		}
+		out += `<span class="ak-cap">` + html.EscapeString(c) + `</span>`
+		shown++
+	}
+	return `<span class="ak-caps">` + out + `</span>`
+}
+
+// osAPIKeysOwnSection renders the issued-token list and the scoped-key create
+// form (permission grid + expiry + rate). CSP-safe: no inline styles, all layout
+// via utility/component classes.
 func osAPIKeysOwnSection(keys []apikeys.Key) string {
 	rows := ""
 	for _, k := range keys {
 		var status, actions string
 		if k.Scope == apikeys.ScopeInternal {
-			// The system key is auto-managed: rotate only, never revoke/delete.
 			status = `<span class="badge">System · auto-managed</span>`
 			actions = `<button type="button" class="btn btn--sm" data-action="ak-rotate" data-id="` + html.EscapeString(k.ID) + `">Rotate</button>`
 		} else if k.Revoked {
 			status = `<span class="badge">Revoked</span>`
 			actions = `<button type="button" class="btn btn--sm" data-action="ak-delete" data-id="` + html.EscapeString(k.ID) + `">Delete</button>`
+		} else if k.ExpiresAt != nil && !k.ExpiresAt.After(time.Now().UTC()) {
+			status = `<span class="badge badge--warn">Expired</span>`
+			actions = `<button type="button" class="btn btn--sm" data-action="ak-delete" data-id="` + html.EscapeString(k.ID) + `">Delete</button>`
+		} else if !k.Active {
+			status = `<span class="badge">Inactive</span>`
+			actions = `<button type="button" class="btn btn--sm" data-action="ak-activate" data-id="` + html.EscapeString(k.ID) + `">Activate</button>
+        <button type="button" class="btn btn--sm" data-action="ak-revoke" data-id="` + html.EscapeString(k.ID) + `">Revoke</button>`
 		} else {
-			status = `<span class="badge badge--success">Active</span>`
+			status = `<span class="badge badge--ok">Active</span>`
 			actions = `<button type="button" class="btn btn--sm" data-action="ak-rotate" data-id="` + html.EscapeString(k.ID) + `">Rotate</button>
+        <button type="button" class="btn btn--sm" data-action="ak-deactivate" data-id="` + html.EscapeString(k.ID) + `">Deactivate</button>
         <button type="button" class="btn btn--sm" data-action="ak-revoke" data-id="` + html.EscapeString(k.ID) + `">Revoke</button>`
 		}
 		last := "Never"
 		if k.LastUsedAt != nil {
 			last = k.LastUsedAt.UTC().Format("2006-01-02 15:04 MST")
 		}
+		expiry := "—"
+		if k.ExpiresAt != nil {
+			expiry = k.ExpiresAt.UTC().Format("2006-01-02")
+		}
 		rows += `<tr>
-      <td>` + html.EscapeString(k.Label) + `</td>
-      <td><code class="font-mono">` + html.EscapeString(apikeys.Mask(k.Prefix)) + `</code></td>
-      <td class="text-xs muted">` + html.EscapeString(k.CreatedAt.UTC().Format("2006-01-02")) + `</td>
+      <td><div class="ak-key-label">` + html.EscapeString(k.Label) + `</div><code class="font-mono text-xs muted">` + html.EscapeString(apikeys.Mask(k.Prefix)) + `</code></td>
+      <td>` + apiKeyCapabilitySummary(k) + `</td>
+      <td class="text-xs muted">` + html.EscapeString(expiry) + `</td>
       <td class="text-xs muted">` + html.EscapeString(last) + `</td>
       <td>` + status + `</td>
-      <td style="text-align:right;white-space:nowrap">` + actions + `</td>
+      <td class="ak-row-actions">` + actions + `</td>
     </tr>`
 	}
 	if rows == "" {
-		rows = `<tr><td colspan="6" class="text-sm muted" style="text-align:center;padding:1.5rem">No keys issued yet. Create one to authenticate API requests.</td></tr>`
+		rows = `<tr><td colspan="6" class="text-sm muted ak-empty">No keys issued yet. Create one below to authenticate API requests.</td></tr>`
 	}
 
 	return `<div class="card">
   <div class="settings-block-title">VayuPress API keys</div>
-  <p class="text-sm muted mb-4">Issue keys for scripts, integrations, and CI. Send a key as the <code>X-API-Key</code> header or <code>Authorization: Bearer &lt;key&gt;</code>. Rotating a key invalidates the old value immediately; revoking disables it without deleting the audit record. The <strong>System</strong> key is provisioned and managed automatically for internal use — it can be rotated but never revoked, and internal automation always picks up the current value with no manual step.</p>
-  <div style="display:flex;gap:.5rem;align-items:flex-end;margin-bottom:1rem;flex-wrap:wrap">
-    <div class="field" style="flex:1;min-width:14rem;margin:0">
-      <label class="field-label" for="ak-new-label">Label</label>
-      <input id="ak-new-label" class="input" type="text" placeholder="e.g. Deploy bot, Zapier, CI">
-    </div>
-    <button type="button" class="btn btn--primary" id="ak-create-btn">Create key</button>
-  </div>
+  <p class="text-sm muted mb-4">Issue keys for scripts, integrations, and CI. Send a key as the <code>X-API-Key</code> header or <code>Authorization: Bearer &lt;key&gt;</code>. Each key is granted <strong>only</strong> the sections and actions you check below — a key can do nothing it was not granted. Rotating invalidates the old value immediately; deactivating disables a key reversibly; revoking disables it permanently (audit row kept). The <strong>System</strong> key is auto-managed for internal use.</p>
   <div class="table-wrap">
-    <table class="table">
-      <thead><tr><th>Label</th><th>Key</th><th>Created</th><th>Last used</th><th>Status</th><th></th></tr></thead>
+    <table class="table ak-table">
+      <thead><tr><th>Label</th><th>Permissions</th><th>Expires</th><th>Last used</th><th>Status</th><th></th></tr></thead>
       <tbody>` + rows + `</tbody>
     </table>
   </div>
-  <p class="field-hint mt-2">A root key set via the <code>API_KEY</code> environment variable always remains valid as a bootstrap credential and is not listed here. Rotating any key here never affects your stored third-party secrets — they are encrypted with a separate, persistent key, so nothing needs re-entering.</p>
+  <p class="field-hint mt-2">A root key set via the <code>API_KEY</code> environment variable always remains valid as a bootstrap credential (full access) and is not listed here.</p>
+</div>
+` + osAPIKeysCreateCard()
+}
+
+// osAPIKeysCreateCard renders the scoped-key create form: a 12×6 permission grid
+// (section rows × action columns) with per-row and grand "select all" toggles,
+// plus optional expiry and a per-key rate budget.
+func osAPIKeysCreateCard() string {
+	// Column header.
+	head := `<th scope="col" class="ak-grid-section">Section</th><th scope="col" class="ak-grid-all">All</th>`
+	for _, act := range apikeys.AllActions {
+		head += `<th scope="col">` + html.EscapeString(string(act)) + `</th>`
+	}
+
+	body := ""
+	for _, sec := range apikeys.AllSections {
+		s := html.EscapeString(string(sec))
+		cells := `<th scope="row" class="ak-grid-section">` + s + `</th>` +
+			`<td><input type="checkbox" class="ak-perm-all" data-section="` + s + `" aria-label="All ` + s + ` actions"></td>`
+		for _, act := range apikeys.AllActions {
+			a := html.EscapeString(string(act))
+			cells += `<td><input type="checkbox" class="ak-perm" data-section="` + s + `" data-action="` + a + `" aria-label="` + s + `:` + a + `"></td>`
+		}
+		body += `<tr>` + cells + `</tr>`
+	}
+
+	return `<div class="card">
+  <div class="settings-block-title">Create a scoped key</div>
+  <div class="ak-create-row">
+    <div class="field ak-field-grow">
+      <label class="field-label" for="ak-new-label">Label</label>
+      <input id="ak-new-label" class="input" type="text" placeholder="e.g. Theme builder, Zapier, CI">
+    </div>
+    <div class="field">
+      <label class="field-label" for="ak-new-expiry">Expires (optional)</label>
+      <input id="ak-new-expiry" class="input" type="datetime-local">
+    </div>
+    <div class="field ak-field-narrow">
+      <label class="field-label" for="ak-new-rate">Rate / min</label>
+      <input id="ak-new-rate" class="input" type="number" min="0" step="1" placeholder="600">
+    </div>
+  </div>
+  <div class="ak-grid-toolbar">
+    <span class="field-label">Permissions</span>
+    <label class="ak-superuser"><input type="checkbox" id="ak-perm-super"> <span>Full access (all sections &amp; actions)</span></label>
+  </div>
+  <div class="table-wrap">
+    <table class="table ak-grid" id="ak-perm-grid">
+      <thead><tr>` + head + `</tr></thead>
+      <tbody>` + body + `</tbody>
+    </table>
+  </div>
+  <div class="ak-create-actions">
+    <button type="button" class="btn btn--primary" id="ak-create-btn">Create key</button>
+    <span class="text-xs muted">The full key is shown once, immediately after creation.</span>
+  </div>
 </div>`
 }
 
@@ -236,16 +323,16 @@ func osAPIKeysServicesSection(creds []secrets.Credential) string {
 <div class="card">
   <div class="settings-block-title">Custom credentials</div>
   <p class="text-sm muted mb-4">Store an API key for any other service by name. Useful for bespoke integrations and plugins.</p>
-  <div style="display:flex;gap:.5rem;align-items:flex-end;margin-bottom:1rem;flex-wrap:wrap">
-    <div class="field" style="flex:1;min-width:10rem;margin:0">
+  <div class="ak-cc-form">
+    <div class="field ak-field-grow">
       <label class="field-label" for="cc-label">Name</label>
       <input id="cc-label" class="input" type="text" placeholder="e.g. Sendgrid, Pushover">
     </div>
-    <div class="field" style="flex:1;min-width:10rem;margin:0">
+    <div class="field ak-field-grow">
       <label class="field-label" for="cc-endpoint">Endpoint (optional)</label>
       <input id="cc-endpoint" class="input" type="text" placeholder="https://…">
     </div>
-    <div class="field" style="flex:1;min-width:10rem;margin:0">
+    <div class="field ak-field-grow">
       <label class="field-label" for="cc-secret">Secret</label>
       <input id="cc-secret" class="input" type="password" placeholder="API key / token" autocomplete="new-password">
     </div>
@@ -285,13 +372,13 @@ func osAPIKeysProviderCard(p providerMeta, c secrets.Credential) string {
       <button type="button" class="btn btn--sm" data-action="cred-delete" data-id="` + dataID + `">Delete</button>`
 	}
 
-	return `<div class="settings-section" data-cred-card data-provider="` + html.EscapeString(p.Provider) + `" data-id="` + dataID + `" style="border:1px solid var(--border,#2a2a2a);border-radius:10px;padding:1rem;margin-bottom:1rem">
-  <div style="display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap">
+	return `<div class="settings-section ak-cred-card" data-cred-card data-provider="` + html.EscapeString(p.Provider) + `" data-id="` + dataID + `">
+  <div class="ak-cred-head">
     <div>
       <div class="settings-row-label">` + html.EscapeString(p.Title) + `</div>
-      <div class="text-sm muted" style="max-width:60ch">` + html.EscapeString(p.Desc) + `</div>
+      <div class="text-sm muted ak-cred-desc">` + html.EscapeString(p.Desc) + `</div>
     </div>
-    <label class="settings-row" style="gap:.5rem;margin:0"><span class="text-xs muted">Enabled</span>
+    <label class="settings-row ak-cred-toggle"><span class="text-xs muted">Enabled</span>
       <input type="checkbox" class="toggle" data-cred-enabled` + checked + `></label>
   </div>
   ` + endpointField + `
@@ -300,7 +387,7 @@ func osAPIKeysProviderCard(p providerMeta, c secrets.Credential) string {
     <input class="input font-mono" type="password" data-cred-secret placeholder="` + html.EscapeString(p.SecretPH) + `" autocomplete="new-password">
     <span class="field-hint" data-cred-hint>` + html.EscapeString(hintLine) + `</span>
   </div>
-  <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin-top:.5rem">
+  <div class="ak-cred-actions">
     <button type="button" class="btn btn--primary btn--sm" data-action="cred-save" data-provider="` + html.EscapeString(p.Provider) + `" data-label="` + html.EscapeString(p.Title) + `">Save</button>
     ` + revealDel + `
     <span class="text-xs muted" data-cred-status role="status" aria-live="polite"></span>
@@ -319,10 +406,10 @@ func osAPIKeysCustomRow(c secrets.Credential) string {
 		checked = ""
 	}
 	id := html.EscapeString(c.ID)
-	return `<div class="settings-section" data-cred-card data-provider="custom" data-id="` + id + `" data-label="` + html.EscapeString(c.Label) + `" style="border:1px solid var(--border,#2a2a2a);border-radius:10px;padding:1rem;margin-bottom:.75rem">
-  <div style="display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap">
+	return `<div class="settings-section ak-cred-card ak-cred-card--custom" data-cred-card data-provider="custom" data-id="` + id + `" data-label="` + html.EscapeString(c.Label) + `">
+  <div class="ak-cred-head">
     <div class="settings-row-label">` + html.EscapeString(c.Label) + `</div>
-    <label class="settings-row" style="gap:.5rem;margin:0"><span class="text-xs muted">Enabled</span>
+    <label class="settings-row ak-cred-toggle"><span class="text-xs muted">Enabled</span>
       <input type="checkbox" class="toggle" data-cred-enabled` + checked + `></label>
   </div>
   <div class="field">
@@ -334,7 +421,7 @@ func osAPIKeysCustomRow(c secrets.Credential) string {
     <input class="input font-mono" type="password" data-cred-secret placeholder="Leave blank to keep current" autocomplete="new-password">
     <span class="field-hint" data-cred-hint>` + html.EscapeString(hintLine) + `</span>
   </div>
-  <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin-top:.5rem">
+  <div class="ak-cred-actions">
     <button type="button" class="btn btn--primary btn--sm" data-action="cred-save" data-provider="custom" data-label="` + html.EscapeString(c.Label) + `">Save</button>
     <button type="button" class="btn btn--sm" data-action="cred-reveal" data-id="` + id + `">Reveal</button>
     <button type="button" class="btn btn--sm" data-action="cred-delete" data-id="` + id + `">Delete</button>
@@ -351,19 +438,84 @@ func (a *App) handleOSAPIKeyCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Label string `json:"label"`
+		Label        string   `json:"label"`
+		Capabilities []string `json:"capabilities"` // "section:action" tokens; ["*:*"] = full access
+		ExpiresAt    string   `json:"expires_at"`   // RFC3339 / datetime-local; empty = never
+		RatePerMin   int      `json:"rate_per_min"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&body)
 	label := strings.TrimSpace(body.Label)
 	if label == "" {
 		label = "API key"
 	}
-	key, raw, err := a.apiKeys.Create(r.Context(), label)
+
+	// Build the grant set from the checked capabilities, dropping any unknown
+	// token (fail-closed). An empty set is a valid deny-all key.
+	perms := apikeys.NewPermissions()
+	for _, c := range body.Capabilities {
+		if sec, act, ok := apikeys.ParseCapability(strings.TrimSpace(c)); ok {
+			perms.Grant(sec, act)
+		}
+	}
+
+	// Optional hard expiry. Accept both the browser datetime-local shape
+	// (2006-01-02T15:04) and full RFC3339; reject a past time.
+	var expiresAt *time.Time
+	if s := strings.TrimSpace(body.ExpiresAt); s != "" {
+		t, err := parseAPIKeyExpiry(s)
+		if err != nil {
+			writeAPIError(w, r, http.StatusBadRequest, "bad-expiry", "Could not read the expiry date/time.", "")
+			return
+		}
+		if !t.After(time.Now()) {
+			writeAPIError(w, r, http.StatusBadRequest, "past-expiry", "The expiry must be in the future.", "")
+			return
+		}
+		expiresAt = &t
+	}
+
+	rate := body.RatePerMin
+	if rate < 0 {
+		rate = 0
+	}
+
+	owner := currentUserIDOf(r) // per-user ownership; admins can still manage all
+	key, raw, err := a.apiKeys.CreateWithPermissions(r.Context(), owner, label, perms, expiresAt, rate)
 	if err != nil {
 		writeAPIError(w, r, http.StatusInternalServerError, "apikeys-error", err.Error(), "")
 		return
 	}
 	writeJSON(w, r, http.StatusOK, map[string]interface{}{"id": key.ID, "token": raw})
+}
+
+// parseAPIKeyExpiry accepts a browser datetime-local value or RFC3339 and returns
+// a UTC time. datetime-local carries no zone, so it is read in the server's local
+// zone (the operator's own clock) then normalised to UTC for storage.
+func parseAPIKeyExpiry(s string) (time.Time, error) {
+	if t, err := time.Parse(time.RFC3339, s); err == nil {
+		return t.UTC(), nil
+	}
+	if t, err := time.ParseInLocation("2006-01-02T15:04", s, time.Local); err == nil {
+		return t.UTC(), nil
+	}
+	if t, err := time.ParseInLocation("2006-01-02T15:04:05", s, time.Local); err == nil {
+		return t.UTC(), nil
+	}
+	return time.Time{}, errBadExpiry
+}
+
+var errBadExpiry = &apiKeyError{"unparseable expiry"}
+
+type apiKeyError struct{ s string }
+
+func (e *apiKeyError) Error() string { return e.s }
+
+// handleOSAPIKeySetActive activates or deactivates a key without rotating it
+// (reversible enable/disable, distinct from terminal revocation).
+func (a *App) handleOSAPIKeySetActive(active bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		a.apiKeyMutate(w, r, func(id string) error { return a.apiKeys.SetActive(r.Context(), id, active) })
+	}
 }
 
 func (a *App) handleOSAPIKeyRotate(w http.ResponseWriter, r *http.Request) {
@@ -490,12 +642,40 @@ function showToken(tok){if(!banner)return;tokenVal.value=tok;banner.hidden=false
 if(copyBtn)copyBtn.addEventListener('click',function(){tokenVal.select();try{document.execCommand('copy');}catch(e){}if(navigator.clipboard)navigator.clipboard.writeText(tokenVal.value);akSet('Copied to clipboard',false);});
 if(doneBtn)doneBtn.addEventListener('click',function(){location.reload();});
 
-// ── Create / rotate / revoke / delete own keys ──
+// ── Permission grid wiring (row "all", grand superuser) ──
+var grid=document.getElementById('ak-perm-grid');
+var superBox=document.getElementById('ak-perm-super');
+function permBoxes(){return grid?grid.querySelectorAll('.ak-perm'):[];}
+function rowBox(section){return grid?grid.querySelector('.ak-perm-all[data-section="'+section+'"]'):null;}
+function rowCells(section){return grid?grid.querySelectorAll('.ak-perm[data-section="'+section+'"]'):[];}
+function syncRow(section){var r=rowBox(section);if(!r)return;var cells=rowCells(section),all=cells.length>0;cells.forEach(function(c){if(!c.checked)all=false;});r.checked=all;}
+if(grid)grid.addEventListener('change',function(ev){
+  var t=ev.target;
+  if(t.classList.contains('ak-perm-all')){var sec=t.getAttribute('data-section');rowCells(sec).forEach(function(c){c.checked=t.checked;});}
+  else if(t.classList.contains('ak-perm')){syncRow(t.getAttribute('data-section'));}
+  if(superBox&&superBox.checked&&!(t===superBox)){/* editing individual boxes leaves superuser as-is */}
+});
+if(superBox)superBox.addEventListener('change',function(){
+  // Full access dims the grid — grants are then implicit.
+  if(grid)grid.classList.toggle('ak-grid--disabled',superBox.checked);
+});
+function collectCapabilities(){
+  if(superBox&&superBox.checked)return['*:*'];
+  var caps=[];permBoxes().forEach(function(c){if(c.checked)caps.push(c.getAttribute('data-section')+':'+c.getAttribute('data-action'));});
+  return caps;
+}
+
+// ── Create / rotate / activate / deactivate / revoke / delete own keys ──
 var createBtn=document.getElementById('ak-create-btn');
 if(createBtn)createBtn.addEventListener('click',function(){
   var label=(document.getElementById('ak-new-label')||{}).value||'';
+  var expiry=(document.getElementById('ak-new-expiry')||{}).value||'';
+  var rateRaw=(document.getElementById('ak-new-rate')||{}).value||'';
+  var rate=parseInt(rateRaw,10);if(isNaN(rate)||rate<0)rate=0;
+  var caps=collectCapabilities();
+  if(caps.length===0){akSet('Grant at least one permission (or tick Full access)',true);return;}
   createBtn.disabled=true;akSet('Creating…',false);
-  jpost('/os/api/apikeys/create',{label:label}).then(function(res){
+  jpost('/os/api/apikeys/create',{label:label,capabilities:caps,expires_at:expiry,rate_per_min:rate}).then(function(res){
     createBtn.disabled=false;
     if(res.ok){showToken(res.d.token);akSet('Key created',false);}else{akSet(res.d.detail||res.d.title||'Error',true);}
   }).catch(function(e){createBtn.disabled=false;akSet('Error: '+e,true);});
@@ -507,6 +687,11 @@ document.addEventListener('click',function(ev){
   if(act==='ak-rotate'){
     if(!confirm('Rotate this key? The current value stops working immediately.'))return;
     b.disabled=true;jpost('/os/api/apikeys/rotate',{id:id}).then(function(res){b.disabled=false;if(res.ok){showToken(res.d.token);akSet('Key rotated',false);}else{akSet(res.d.detail||'Error',true);}});
+  }else if(act==='ak-activate'){
+    b.disabled=true;jpost('/os/api/apikeys/activate',{id:id}).then(function(res){if(res.ok){location.reload();}else{b.disabled=false;akSet(res.d.detail||'Error',true);}});
+  }else if(act==='ak-deactivate'){
+    if(!confirm('Deactivate this key? It stops authenticating until you re-activate it.'))return;
+    b.disabled=true;jpost('/os/api/apikeys/deactivate',{id:id}).then(function(res){if(res.ok){location.reload();}else{b.disabled=false;akSet(res.d.detail||'Error',true);}});
   }else if(act==='ak-revoke'){
     if(!confirm('Revoke this key? It can no longer authenticate.'))return;
     b.disabled=true;jpost('/os/api/apikeys/revoke',{id:id}).then(function(res){if(res.ok){location.reload();}else{b.disabled=false;akSet(res.d.detail||'Error',true);}});
