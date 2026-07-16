@@ -76,7 +76,7 @@ The stdin/stdout JSON protocol between host and plugin is a **Stable** contract.
 **Request (host → plugin):**
 ```json
 {
-  "hook_name":      "on_article_publish",
+  "hook":           "article.create",
   "payload":        {},
   "correlation_id": "uuid",
   "causation_id":   "uuid",

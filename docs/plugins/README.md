@@ -20,7 +20,7 @@ The host writes **one JSON request per line** to the plugin's stdin and reads
 
 ```json
 {
-  "hook": "article.created.v1",
+  "hook": "article.create",
   "payload": { "slug": "hello-world", "id": "…", "content": "<p>…</p>" },
   "correlation_id": "…",
   "causation_id": "…",
@@ -67,7 +67,7 @@ m := sandbox.Manifest{
     Timeout:    2 * time.Second,
 }
 // poolSize worker processes; hook is the event the plugin subscribes to.
-plugins.RegisterSubprocess(reg, m, "article.created.v1", 2)
+plugins.RegisterSubprocess(reg, m, "article.create", 2)
 ```
 
 Plugins only fire when `VAYU_PLUGINS_ENABLED=true`.

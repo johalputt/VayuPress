@@ -7,10 +7,12 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/json"
-	"github.com/johalputt/vayupress/internal/signing"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/johalputt/vayupress/internal/sandbox"
+	"github.com/johalputt/vayupress/internal/signing"
 )
 
 // goldenPath returns the path to a golden file, creating the directory if needed.
@@ -111,23 +113,57 @@ func TestSignedArticleSchemaStable(t *testing.T) {
 	}
 }
 
-// TestPluginRequestSchemaStable verifies the plugin IPC Request JSON structure.
+// TestPluginRequestSchemaStable freezes the plugin IPC wire contract as
+// actually produced by encoding/json for the real internal/sandbox structs —
+// never a hand-written list, so the golden cannot drift from the wire. (The
+// previous hand-maintained list froze "hook_name", a key that never existed:
+// the tag on sandbox.Request.HookName has always been `json:"hook"`, which is
+// what every shipped example plugin decodes. Corrected deliberately as part
+// of VCB, ADR-0135.) Every field is populated with a non-zero value because
+// correlation_id, causation_id, trace_id, error, and log_lines carry
+// `omitempty` and would otherwise vanish from the frozen schema.
 func TestPluginRequestSchemaStable(t *testing.T) {
 	type RequestShape struct {
-		Fields []string `json:"fields"`
+		Fields             []string `json:"fields"`
+		CapabilitiesFields []string `json:"capabilities_fields"`
+		ResponseFields     []string `json:"response_fields"`
 	}
 
-	// This mirrors internal/sandbox.Request field names — if they change, golden fails.
-	fields := []string{
-		"capabilities",
-		"causation_id",
-		"correlation_id",
-		"hook_name",
-		"payload",
-		"trace_id",
+	req := sandbox.Request{
+		HookName:      "golden-hook",
+		Payload:       map[string]interface{}{"k": "v"},
+		CorrelationID: "corr-golden",
+		CausationID:   "cause-golden",
+		TraceID:       "trace-golden",
+		Capabilities: sandbox.Capabilities{
+			AllowNetwork:      true,
+			AllowedReadPaths:  []string{"/data/public"},
+			AllowedWritePaths: []string{"/data/tmp"},
+		},
+	}
+	resp := sandbox.Response{
+		OK:       true,
+		Error:    "golden-error",
+		LogLines: []sandbox.LogLine{{Level: "info", Message: "golden"}},
 	}
 
-	shape := RequestShape{Fields: fields}
+	marshalKeys := func(v interface{}) []string {
+		b, err := json.Marshal(v)
+		if err != nil {
+			t.Fatalf("marshal %T: %v", v, err)
+		}
+		var raw map[string]interface{}
+		if err := json.Unmarshal(b, &raw); err != nil {
+			t.Fatalf("unmarshal %T: %v", v, err)
+		}
+		return sortedKeys(raw)
+	}
+
+	shape := RequestShape{
+		Fields:             marshalKeys(req),
+		CapabilitiesFields: marshalKeys(req.Capabilities),
+		ResponseFields:     marshalKeys(resp),
+	}
 	got, err := json.MarshalIndent(shape, "", "  ")
 	if err != nil {
 		t.Fatalf("marshal: %v", err)

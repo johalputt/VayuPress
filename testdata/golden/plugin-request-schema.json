@@ -3,8 +3,18 @@
     "capabilities",
     "causation_id",
     "correlation_id",
-    "hook_name",
+    "hook",
     "payload",
     "trace_id"
+  ],
+  "capabilities_fields": [
+    "allow_network",
+    "allowed_read_paths",
+    "allowed_write_paths"
+  ],
+  "response_fields": [
+    "error",
+    "log_lines",
+    "ok"
   ]
 }

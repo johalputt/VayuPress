@@ -8,6 +8,54 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.41] — 2026-07-16
+
+### Added
+- **Vayu Compatibility Bible (VCB) — enforceable extension contracts
+  (ADR-0135).** Any developer or AI agent can now build themes, plugins, and
+  tools that work on the first try, validated by the exact code the host runs:
+  - **`internal/vcb`** — the contract package: a versioned on-disk **plugin
+    manifest** (`plugin.json`, strict parsing: unknown fields are errors, not
+    silent no-ops) that converts 1:1 into the runtime sandbox manifest; a
+    versioned **theme manifest** (`theme.json`) wrapping the real token
+    struct; the **enumerated hook catalogue** (exactly what the host fires:
+    `article.create`, `article.update`, `article.delete`, `cache.purge`); and
+    the `section:action` capability vocabulary re-exported from VayuAPI.
+  - **`internal/vcb/validate`** — static validation lifted from every real
+    enforcement point: colours that would abort the theme compile, dimensions
+    and font characters the compiler silently drops, option keys/values that
+    are silent no-ops, CSP violations in custom CSS (`@import`, external
+    `url()`), catalogue category and name-collision rules, sandbox capability
+    sanity (absolute paths, numeric `uid:gid`, sane limits), executable
+    SHA-256 verification, HTTPS-only distribution, host version ranges, and
+    least-privilege API permissions (wildcards refused). Every built-in preset
+    is tested against the published contract.
+  - **`tools/vayu-compat`** — standalone CLI (`check`, `hooks`,
+    `capabilities`): validates a `plugin.json`/`theme.json`, prints findings
+    with stable machine codes, exits 1 on error. It imports the host's own
+    contract packages, so it can never drift.
+  - **Public docs** at `/docs/compatibility/vcb` (the Bible) and
+    `/docs/compatibility/vayuapi` (keys, permissions, rate limits — the page
+    the API's 403/429 error bodies have linked to since v3.13.38, previously a
+    404, now real).
+  - **CI gate** — preflight section 11 runs the vcb contract tests and
+    builds/tests the vayu-compat module explicitly (nested modules are
+    invisible to the root `./...`).
+
+### Fixed
+- **The plugin ecosystem docs finally match reality.** The plugin SPEC and all
+  five example plugins documented hook names the host has never fired
+  (`articles.write`, `article.created.v1`) — a plugin built from those docs
+  would silently receive nothing. All corrected to the real catalogue.
+- **The plugin IPC golden test now freezes the real wire contract.** It
+  previously froze a hand-written field list containing a key that never
+  existed on the wire (`hook_name`; the real JSON key has always been `hook`)
+  and could not catch a genuine rename. The frozen list is now derived from
+  the actual `sandbox.Request`/`Response` structs via `encoding/json`
+  (deliberate golden update; the capabilities and response shapes are frozen
+  too). Stale `hook_name` references in `api-contracts.md` and
+  `sandbox-boundaries.md` corrected alongside.
+
 ## [3.13.40] — 2026-07-16
 
 ### Added

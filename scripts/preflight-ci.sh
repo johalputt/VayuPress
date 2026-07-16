@@ -159,6 +159,27 @@ else
   fail "go not installed"
 fi
 
+# ── 11. VCB extension-contract validation (ci.yml: go-native) ────────────────
+echo ""
+echo "── VCB extension contracts ──"
+if command -v go >/dev/null 2>&1; then
+  VSTART=$FAILED
+  # Named gate (mirrors the archcheck/compat precedent in ci.yml). The vcb
+  # tests are covered by `go test ./...` above, but surfaced by name so an
+  # extension-contract break is unmistakable in the preflight output.
+  go test ./internal/vcb/... -count=1 >/dev/null 2>&1 \
+    && pass "vcb contract tests" || fail "vcb contract tests (go test ./internal/vcb/...)"
+  # tools/vayu-compat is its OWN Go module — the root `go build/test ./...`
+  # skips it (Go never descends into nested modules), so exercise it here.
+  if [ -d tools/vayu-compat ]; then
+    (cd tools/vayu-compat && go build ./... && go test ./... -count=1) >/dev/null 2>&1 \
+      && pass "vayu-compat module (build+test)" || fail "vayu-compat module (cd tools/vayu-compat && go build ./... && go test ./...)"
+  fi
+  [ $VSTART -eq $FAILED ] && pass "VCB extension contracts clean"
+else
+  fail "go not installed (VCB gate skipped)"
+fi
+
 # ── Result ────────────────────────────────────────────────────────────────────
 echo ""
 echo "════════════════════════════════════════════════════════════"

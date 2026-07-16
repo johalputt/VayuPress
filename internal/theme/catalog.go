@@ -279,10 +279,18 @@ func Store() []StoreEntry {
 	return out
 }
 
+// AllCategories returns the complete, fixed category vocabulary in curated
+// order — the closed set a theme's Meta.Category must belong to. (Categories()
+// below narrows this to the labels actually present in the built-in store; the
+// VCB validator checks against the full vocabulary.)
+func AllCategories() []string {
+	return []string{CatFlagship, CatDark, CatLight, CatMinimal, CatReading, CatEditorial, CatNewsletter, CatBusiness, CatCommunity, CatCreative, CatVibrant, CatMono}
+}
+
 // Categories returns the distinct category labels present in the store, in a
 // stable, curated order (categories not present in the catalogue are omitted).
 func Categories() []string {
-	order := []string{CatFlagship, CatDark, CatLight, CatMinimal, CatReading, CatEditorial, CatNewsletter, CatBusiness, CatCommunity, CatCreative, CatVibrant, CatMono}
+	order := AllCategories()
 	present := map[string]bool{}
 	for _, e := range Store() {
 		present[e.Meta.Category] = true

@@ -54,7 +54,7 @@
 Plugins communicate via **line-delimited JSON on stdin/stdout**:
 
 ```
-parent → child:  {"hook_name":"...", "payload":{...}, "correlation_id":"..."}\n
+parent → child:  {"hook":"...", "payload":{...}, "correlation_id":"..."}\n
 child  → parent: {"ok":true, "log_lines":[...]}\n
 ```
 

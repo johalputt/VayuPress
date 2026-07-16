@@ -50,6 +50,7 @@ coverage.html
 
 # Build output
 bin/
+tools/vayu-compat/vayu-compat
 
 # Benchmarks & profiling output
 *.pprof

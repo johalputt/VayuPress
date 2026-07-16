@@ -52,33 +52,14 @@ func CompileCSS(t Tokens) (string, error) {
 	// the rest return scoped CSS appended at the end.
 	optionCSS := applyThemeOptions(&t)
 
-	type colorField struct {
-		name string
-		ptr  *string
-	}
-	fields := []colorField{
-		{"BgDark", &t.BgDark},
-		{"SurfaceDark", &t.SurfaceDark},
-		{"TextDark", &t.TextDark},
-		{"MutedDark", &t.MutedDark},
-		{"AccentDark", &t.AccentDark},
-		{"Accent2Dark", &t.Accent2Dark},
-		{"HiDark", &t.HiDark},
-		{"GreenDark", &t.GreenDark},
-		{"BgLight", &t.BgLight},
-		{"SurfaceLight", &t.SurfaceLight},
-		{"TextLight", &t.TextLight},
-		{"MutedLight", &t.MutedLight},
-		{"AccentLight", &t.AccentLight},
-		{"Accent2Light", &t.Accent2Light},
-		{"HiLight", &t.HiLight},
-	}
-	for _, f := range fields {
-		v, err := validHex(f.name, *f.ptr)
+	// The colour-field list is shared with the VCB validator (validate.go) so
+	// the published compatibility contract is exactly what is enforced here.
+	for _, f := range colorFields(&t) {
+		v, err := validHex(f.Name, *f.Ptr)
 		if err != nil {
 			return "", err
 		}
-		*f.ptr = v
+		*f.Ptr = v
 	}
 
 	fontSans := safeFont(t.FontSans)

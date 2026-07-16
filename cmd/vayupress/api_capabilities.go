@@ -99,6 +99,11 @@ var capabilityRules = []capRule{
 
 	// ── plugins: tool/plugin toggles are installs ──
 	{prefix: "/os/api/tools", section: apikeys.SectionPlugins, action: apikeys.ActionInstall},
+	// VCB contract discovery + manifest validation: read-only whatever the
+	// verb (validation is a pure function of the request body). Trailing
+	// slash so an unrelated future /api/v1/vcbXYZ route can never inherit
+	// this rule.
+	{prefix: "/api/v1/vcb/", section: apikeys.SectionPlugins, action: apikeys.ActionRead},
 
 	// ── domains (VayuDomains) ──
 	{prefix: "/os/api/domains", section: apikeys.SectionDomains},

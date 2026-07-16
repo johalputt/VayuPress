@@ -18,7 +18,7 @@
 //	    Timeout:    2 * time.Second,
 //	    // No AllowedReadPaths / AllowedWritePaths / AllowNetwork: fully isolated.
 //	}
-//	plugins.RegisterSubprocess(reg, m, "article.created.v1", 2)
+//	plugins.RegisterSubprocess(reg, m, "article.create", 2)
 package main
 
 import (

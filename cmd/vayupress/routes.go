@@ -298,6 +298,11 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 		// requests consume a key's budget and appear in its usage trail).
 		r.Use(auth.RequireAPIKey, a.requireAPIPermission, auth.RateLimitMiddleware, a.apiUsageMiddleware)
 
+		// VCB (ADR-0135): machine-readable contract discovery + manifest
+		// validation against this running host. Read-only; plugins:read.
+		r.Get("/api/v1/vcb/contract", a.handleVCBContract)
+		r.Post("/api/v1/vcb/validate", a.handleVCBValidate)
+
 		r.Post("/api/v1/articles", a.handleCreateArticle)
 		r.Post("/api/v1/articles/bulk", a.handleBulkCreateArticles)
 		r.Put("/api/v1/articles/{slug}", a.handleUpdateArticle)

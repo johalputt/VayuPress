@@ -18,7 +18,7 @@
 //	    AllowNetwork: true,
 //	    Timeout:      5 * time.Second,
 //	}
-//	plugins.RegisterSubprocess(reg, m, "article.created.v1", 1)
+//	plugins.RegisterSubprocess(reg, m, "article.create", 1)
 //
 // Configure the destination with the WEBHOOK_URL environment variable.
 package main

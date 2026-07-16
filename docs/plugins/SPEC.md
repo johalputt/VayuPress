@@ -91,8 +91,8 @@ an over-long line as a protocol error and count it as a crash.
 
 ```json
 {
-  "hook": "articles.write",
-  "payload": { "slug": "hello-world", "id": "…", "content": "<p>…</p>" },
+  "hook": "article.create",
+  "payload": { "slug": "hello-world", "id": "…" },
   "correlation_id": "…",
   "causation_id": "…",
   "trace_id": "…",
@@ -141,15 +141,21 @@ A plugin **MUST** set `ok:false` with a non-empty `error` to signal failure; it
 ## 5. Hook events
 
 The host fires named hooks. A plugin is registered against one hook event and is
-invoked each time that event occurs. Current first-party events:
+invoked each time that event occurs. The catalogue below is the **enumerated,
+closed set** the host actually fires (single source of truth:
+`internal/vcb/hooks.go`; the VCB validator refuses a manifest subscribing to
+anything else — see [/docs/compatibility/vcb](/docs/compatibility/vcb)):
 
-| Hook | Fired when | Payload (indicative) |
-|------|-----------|----------------------|
-| `articles.write` | An article is created or updated | `slug`, `id`, `content`, `title`, `tags` |
+| Hook | Fired when | Payload keys |
+|------|-----------|--------------|
+| `article.create` | An article was created | `slug`, `id` |
+| `article.update` | An article was updated | `slug` |
+| `article.delete` | An article was deleted | `slug`, `id` |
+| `cache.purge` | The page cache was purged from the admin | `purge_type`, `slug`, `purged_count` |
 
 Payload schemas are **additive**: the host **MAY** add fields; a plugin **MUST**
 ignore unknown fields. New hook events are introduced in a backward-compatible
-way and documented here.
+way, added to the `internal/vcb/hooks.go` catalogue, and documented here.
 
 ---
 

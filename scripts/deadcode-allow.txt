@@ -284,3 +284,13 @@ internal/vayushield/fingerprint/capture.go: unreachable func: FromClientHello
 # VayuAPI (fine-grained keys): Stage-1 permission vocabulary + resolved-key helpers, unit-tested and consumed by the Stage-2 enforcement middleware (ADR-0134).
 internal/apikeys/keyinfo.go: unreachable func: SuperuserKeyInfo
 internal/apikeys/permissions.go: unreachable func: ParseCapability
+#
+# VCB (Vayu Compatibility Bible, ADR-0135): manifest loaders + the capability
+# re-export are consumed by the NESTED tools/vayu-compat module (its own
+# go.mod, invisible to the root ./... deadcode walk) and are the entry points
+# for the future host-side package-install flow. The rest of internal/vcb is
+# reachable via the /api/v1/vcb endpoints.
+internal/vcb/apiperms.go: unreachable func: ParseCapability
+internal/vcb/manifest.go: unreachable func: LoadPluginManifest
+internal/vcb/manifest.go: unreachable func: readBounded
+internal/vcb/theme_manifest.go: unreachable func: LoadThemeManifest
