@@ -8,6 +8,30 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.44] — 2026-07-16
+
+### Added
+- **Premium UX, phase 1 — a sovereign motion/design-token layer (ADR-0136).**
+  The Go theme compiler now emits a shared design-primitive block into every
+  compiled `/theme.css`, so **public themes inherit the same premium vocabulary
+  the admin already uses** — with zero build step, zero dependency, and no CDN:
+  - **Scheme-adaptive elevation** (`--vp-sh-sm/--vp-sh/--vp-sh-lg`, subtler on
+    dark, more present on light) plus bare `--sh-*` aliases.
+  - **Easing curves** (`--vp-ease`, `--vp-ease-out/in/spring`), **duration
+    tokens** (`--vp-dur-fast/--vp-dur/--vp-dur-slow`), composed **transition
+    tokens** (`--vp-t*`), a **spacing scale** (`--vp-sp-1…12`) and a **z-index
+    scale** — all with bare aliases theme CustomCSS can use directly.
+  - A visible first application: public post cards, embed cards, video facades,
+    code blocks and buttons gain soft, token-driven elevation on hover. Purely
+    additive and covered by the site's existing `prefers-reduced-motion` guard,
+    so nothing animates for readers who ask it not to.
+  - **ADR-0136** records the decision: adopt Tailwind's *aesthetic* as tokens
+    (never the framework — CDN Tailwind breaks `style-src 'self'`, build-time
+    Tailwind breaks "no build step"); keep HTMX as the backbone; and admit the
+    eval-free Alpine.js **CSP build** (self-hosted, nonce'd) for later reactive
+    islands — all within the strict CSP, zero-third-party, single-binary
+    contract.
+
 ## [3.13.43] — 2026-07-16
 
 ### Security

@@ -83,7 +83,7 @@ func CompileCSS(t Tokens) (string, error) {
 	//                 the public palette, typography, reading measure and corner
 	//                 radius all change on a theme switch (theme.css is loaded
 	//                 last, after article.css, so these overrides win).
-	emit := func(bg, surface, text, muted, accent, accent2, hi, green string) {
+	emit := func(light bool, bg, surface, text, muted, accent, accent2, hi, green string) {
 		set := func(name, val string) {
 			if val != "" {
 				fmt.Fprintf(&sb, "%s:%s;", name, val)
@@ -142,26 +142,69 @@ func CompileCSS(t Tokens) (string, error) {
 		set("--max-w", maxW)
 		set("--radius", radSm)
 		set("--radius2", radLg)
+
+		// 4. Elevation (ADR-0136) — a scheme-adaptive shadow scale so public
+		//    themes inherit the same premium depth vocabulary the admin uses.
+		//    Shadows are subtler on dark, more present on light. Exposed both
+		//    --vp-* (canonical) and bare (--sh-*) for theme CustomCSS authors.
+		if light {
+			sb.WriteString("--vp-sh-sm:0 1px 2px rgba(15,23,42,.06),0 1px 3px rgba(15,23,42,.10);" +
+				"--vp-sh:0 6px 20px rgba(15,23,42,.10),0 2px 6px rgba(15,23,42,.08);" +
+				"--vp-sh-lg:0 18px 50px rgba(15,23,42,.16),0 4px 12px rgba(15,23,42,.08);")
+		} else {
+			sb.WriteString("--vp-sh-sm:0 1px 2px rgba(0,0,0,.35),0 1px 3px rgba(0,0,0,.30);" +
+				"--vp-sh:0 6px 20px rgba(0,0,0,.45),0 2px 6px rgba(0,0,0,.35);" +
+				"--vp-sh-lg:0 18px 50px rgba(0,0,0,.60),0 4px 12px rgba(0,0,0,.40);")
+		}
 	}
 
 	// Default (dark) under :root; light under the system media query — matching
 	// how the public stylesheet (article.css) is authored.
 	sb.WriteString(":root{")
-	emit(t.BgDark, t.SurfaceDark, t.TextDark, t.MutedDark, t.AccentDark, t.Accent2Dark, t.HiDark, t.GreenDark)
+	emit(false, t.BgDark, t.SurfaceDark, t.TextDark, t.MutedDark, t.AccentDark, t.Accent2Dark, t.HiDark, t.GreenDark)
 	sb.WriteString("}")
 	sb.WriteString("@media(prefers-color-scheme:light){:root{")
-	emit(t.BgLight, t.SurfaceLight, t.TextLight, t.MutedLight, t.AccentLight, t.Accent2Light, t.HiLight, t.GreenDark)
+	emit(true, t.BgLight, t.SurfaceLight, t.TextLight, t.MutedLight, t.AccentLight, t.Accent2Light, t.HiLight, t.GreenDark)
 	sb.WriteString("}}")
 
 	// Manual sun/moon toggle: an explicit [data-theme] / [data-color-scheme]
 	// choice overrides the media query so the WHOLE site (public + Pico) flips,
 	// not just Pico pages.
 	sb.WriteString(`:root[data-theme="dark"],:root[data-color-scheme="dark"]{`)
-	emit(t.BgDark, t.SurfaceDark, t.TextDark, t.MutedDark, t.AccentDark, t.Accent2Dark, t.HiDark, t.GreenDark)
+	emit(false, t.BgDark, t.SurfaceDark, t.TextDark, t.MutedDark, t.AccentDark, t.Accent2Dark, t.HiDark, t.GreenDark)
 	sb.WriteString("}")
 	sb.WriteString(`:root[data-theme="light"],:root[data-color-scheme="light"]{`)
-	emit(t.BgLight, t.SurfaceLight, t.TextLight, t.MutedLight, t.AccentLight, t.Accent2Light, t.HiLight, t.GreenDark)
+	emit(true, t.BgLight, t.SurfaceLight, t.TextLight, t.MutedLight, t.AccentLight, t.Accent2Light, t.HiLight, t.GreenDark)
 	sb.WriteString("}")
+
+	// Scheme-independent design primitives (ADR-0136): easing curves, motion
+	// durations, a token-based transition set, a spacing scale and a z-index
+	// scale — emitted once so every public theme shares one premium motion
+	// vocabulary. These are additive (no existing rule references them yet), so
+	// they cannot change how a current theme renders; article.css already
+	// carries the global prefers-reduced-motion guard that neutralises them.
+	sb.WriteString(":root{" +
+		// easing
+		"--vp-ease:cubic-bezier(0.4,0,0.2,1);" +
+		"--vp-ease-out:cubic-bezier(0,0,0.2,1);" +
+		"--vp-ease-in:cubic-bezier(0.4,0,1,1);" +
+		"--vp-ease-spring:cubic-bezier(0.34,1.56,0.64,1);" +
+		// durations
+		"--vp-dur-fast:90ms;--vp-dur:160ms;--vp-dur-slow:280ms;" +
+		// composed transitions
+		"--vp-t-fast:90ms var(--vp-ease);--vp-t:160ms var(--vp-ease);--vp-t-slow:280ms var(--vp-ease);" +
+		"--vp-t-spring:340ms var(--vp-ease-spring);" +
+		// spacing scale (rem-based, matches the admin cadence)
+		"--vp-sp-1:0.25rem;--vp-sp-2:0.5rem;--vp-sp-3:0.75rem;--vp-sp-4:1rem;" +
+		"--vp-sp-5:1.25rem;--vp-sp-6:1.5rem;--vp-sp-8:2rem;--vp-sp-10:2.5rem;--vp-sp-12:3rem;" +
+		// z-index scale
+		"--vp-z-base:1;--vp-z-sticky:100;--vp-z-overlay:200;--vp-z-modal:300;--vp-z-toast:400;" +
+		// bare aliases the public stylesheet + theme CustomCSS can use directly
+		"--sh-sm:var(--vp-sh-sm);--sh:var(--vp-sh);--sh-lg:var(--vp-sh-lg);" +
+		"--ease:var(--vp-ease);--ease-out:var(--vp-ease-out);--ease-spring:var(--vp-ease-spring);" +
+		"--dur-fast:var(--vp-dur-fast);--dur:var(--vp-dur);--dur-slow:var(--vp-dur-slow);" +
+		"--t:var(--vp-t);--t-fast:var(--vp-t-fast);--t-slow:var(--vp-t-slow);--t-spring:var(--vp-t-spring);" +
+		"}")
 
 	// Per-preset / per-site custom CSS is appended verbatim after the token
 	// blocks so presets like Gale and Zephyr can ship their own layout rules.
