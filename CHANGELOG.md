@@ -8,6 +8,38 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.42] — 2026-07-16
+
+### Security
+- **VCB theme validator: closed an external-`url()` bypass.** The
+  `theme.css.external` check (which enforces the "zero third-party fetches"
+  contract for a theme's CustomCSS) could be defeated two ways a browser still
+  resolves to an external fetch: CSS backslash escapes
+  (`url(\68ttps://evil.example/…)` → `https://…`) and CSS whitespace —
+  including newlines — before the value. The check now CSS-unescapes and
+  fully whitespace-normalises each `url()` body before the scheme test, so the
+  decoded value it inspects is exactly what the browser would fetch. Same-origin
+  and `data:` URIs remain allowed.
+
+### Fixed
+- **VCB theme validator: stop falsely rejecting per-theme options.** `density`
+  and `headingscale` are applied by `CompileCSS` purely by option key,
+  regardless of theme name, so any third-party theme may set them — but the
+  validator built its option schema from the per-name narrowing, which omits
+  those keys for any name that isn't a built-in preset (which a third-party
+  theme can never be). It now validates against the full option vocabulary
+  (`theme.AllOptionDefs`), matching what the compiler actually honors.
+- **VCB plugin validator: `run_as` now matches the sandbox exactly.** The
+  validator accepted values (`+`-signed, or above the uint32 ceiling like
+  `4294967296`) that the sandbox's own `strconv.ParseUint(_,10,32)` rejects —
+  silently leaving the subprocess running as the host user. `validRunAs` now
+  mirrors the sandbox parse, so a manifest that validates drops privileges as
+  declared.
+
+All three were surfaced by the pre-release adversarial review and are the same
+class of defect VCB exists to prevent: the validator disagreeing with the host
+it certifies against. Each ships with a regression test.
+
 ## [3.13.41] — 2026-07-16
 
 ### Added

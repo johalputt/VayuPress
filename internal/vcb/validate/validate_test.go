@@ -268,6 +268,107 @@ func TestThemeLocalURLAllowed(t *testing.T) {
 	}
 }
 
+// TestThemeExternalURLObfuscations is the regression guard for the security-
+// review finding: the external-url() check must not be defeated by CSS escape
+// sequences or by whitespace (including newlines) before the value. Each of
+// these resolves, in a real browser, to an external fetch — so each must be
+// refused, exactly as a plain url(https://…) is.
+func TestThemeExternalURLObfuscations(t *testing.T) {
+	cases := map[string]string{
+		"plain https":            "a{background:url(https://evil.example/p.png)}",
+		"protocol relative":      "a{background:url(//evil.example/p.png)}",
+		"quoted":                 `a{background:url("https://evil.example/p.png")}`,
+		"hex-escaped scheme":     `a{background:url(\68ttps://evil.example/p.png)}`,
+		"zero-pad hex escape":    `a{background:url(\000068ttps://evil.example/p.png)}`,
+		"uppercase hex escape":   `a{background:url(\48ttps://evil.example/p.png)}`,
+		"padded escaped slashes": `a{background:url(\00002f\00002fevil.example/p.png)}`,
+		"ws-terminated slashes":  `a{background:url(\2f \2f evil.example/p.png)}`,
+		"leading newline":        "a{background:url(\nhttps://evil.example/p.png)}",
+		"leading tab+CR":         "a{background:url(\t\rhttps://evil.example/p.png)}",
+		"escaped newline gap":    `a{background:url(\a https://evil.example/p.png)}`,
+	}
+	for name, css := range cases {
+		t.Run(name, func(t *testing.T) {
+			m := goodTheme()
+			m.Tokens.CustomCSS = css
+			r := Theme(m, Options{HostVersion: "3.13.41"})
+			if !hasCode(r, "theme.css.external") {
+				t.Errorf("obfuscated external url() must be refused (%s); got: %s", name, codes(r))
+			}
+		})
+	}
+
+	// A same-origin escape must stay allowed — the decoder must not over-block.
+	ok := goodTheme()
+	ok.Tokens.CustomCSS = `a{background:url(\2fstatic/media/bg.png)}` // "\2f" = "/", still same-origin
+	if r := Theme(ok, Options{HostVersion: "3.13.41"}); !r.OK() {
+		t.Errorf("same-origin escaped url() must be allowed, got: %s", codes(r))
+	}
+	// A data: URI is an inline value, not a fetch — allowed.
+	data := goodTheme()
+	data.Tokens.CustomCSS = "a{background:url(data:image/png;base64,iVBOR)}"
+	if r := Theme(data, Options{HostVersion: "3.13.41"}); !r.OK() {
+		t.Errorf("data: url() must be allowed, got: %s", codes(r))
+	}
+}
+
+// TestThemePerThemeOptionsAccepted is the regression guard for the correctness
+// finding: options applied by key regardless of theme name (density,
+// headingscale) must validate on a THIRD-PARTY theme, whose name can never
+// match a built-in preset. Rejecting them contradicted what CompileCSS does.
+func TestThemePerThemeOptionsAccepted(t *testing.T) {
+	for _, opt := range []map[string]string{
+		{"density": "compact"},
+		{"headingscale": "lg"},
+		{"density": "spacious", "headingscale": "sm", "width": "wide"},
+	} {
+		m := goodTheme() // name "Nightfall Test" — not a built-in preset
+		m.Tokens.Options = opt
+		r := Theme(m, Options{HostVersion: "3.13.41"})
+		if !r.OK() {
+			t.Errorf("per-theme options %v must validate on a third-party theme, got: %s", opt, codes(r))
+		}
+	}
+	// A genuinely unknown key is still refused, and a bad value for a real
+	// per-theme option is still refused.
+	bad := goodTheme()
+	bad.Tokens.Options = map[string]string{"density": "galactic"}
+	if r := Theme(bad, Options{HostVersion: "3.13.41"}); !hasCode(r, "theme.option.value") {
+		t.Errorf("out-of-vocabulary value for a per-theme option must fail: %s", codes(r))
+	}
+	bad2 := goodTheme()
+	bad2.Tokens.Options = map[string]string{"nonsense": "x"}
+	if r := Theme(bad2, Options{HostVersion: "3.13.41"}); !hasCode(r, "theme.option.unknown") {
+		t.Errorf("truly unknown option key must still fail: %s", codes(r))
+	}
+}
+
+// TestRunAsMatchesSandbox is the regression guard for the finding that the
+// validator accepted run_as values the sandbox silently ignores. The validator
+// must accept EXACTLY what strconv.ParseUint(part,10,32) accepts.
+func TestRunAsMatchesSandbox(t *testing.T) {
+	accept := []string{"0:0", "1000:1000", "4294967295:0"} // uint32 max ok
+	reject := []string{
+		"4294967296:1000", // > uint32 max — sandbox ParseUint(…,32) fails
+		"+1:+1",           // Atoi accepts a sign; ParseUint does not
+		"-1:0", "1000", "a:b", "1000:", ":1000", "1000:1000:1000", "0x10:0",
+	}
+	for _, s := range accept {
+		m := goodPlugin()
+		m.Sandbox.RunAs = s
+		if r := Plugin(m, Options{HostVersion: "3.13.41"}); hasCode(r, "plugin.sandbox.runas") {
+			t.Errorf("run_as %q must be accepted (sandbox accepts it): %s", s, codes(r))
+		}
+	}
+	for _, s := range reject {
+		m := goodPlugin()
+		m.Sandbox.RunAs = s
+		if r := Plugin(m, Options{HostVersion: "3.13.41"}); !hasCode(r, "plugin.sandbox.runas") {
+			t.Errorf("run_as %q must be rejected (sandbox would silently ignore it): %s", s, codes(r))
+		}
+	}
+}
+
 // TestBuiltinPresetsSatisfyThemeContract runs every shipped preset through the
 // validator (minus the name-collision rule, which by construction they all
 // trip). If a built-in preset ever violates the published contract, either the

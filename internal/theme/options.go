@@ -281,6 +281,29 @@ func OptionKeys() []string {
 	return keys
 }
 
+// AllOptionDefs returns every distinct option (the shared set plus every
+// per-theme extra), deduplicated by key — the complete vocabulary
+// applyThemeOptions can honor. It is the single source of truth for the VCB
+// theme validator: applyThemeOptions realises density/headingscale purely by
+// option key, regardless of the active theme's name (harmlessly on themes that
+// don't style them), so ANY theme may legitimately set them. Narrowing the
+// validated vocabulary by theme name would falsely reject third-party themes,
+// which can never carry a built-in preset name.
+func AllOptionDefs() []Option {
+	out := AllOptions()
+	seen := make(map[string]bool, len(out))
+	for _, o := range out {
+		seen[o.Key] = true
+	}
+	for _, to := range perThemeOptions {
+		if !seen[to.Option.Key] {
+			seen[to.Option.Key] = true
+			out = append(out, to.Option)
+		}
+	}
+	return out
+}
+
 // DefaultOptions returns the default value for every option key.
 func DefaultOptions() map[string]string {
 	out := make(map[string]string, len(AllOptions()))

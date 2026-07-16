@@ -278,7 +278,7 @@ func Theme(m *vcb.ThemeManifest, opts Options) *Result {
 		}
 	}
 
-	checkThemeOptions(r, t.Name, t.Options)
+	checkThemeOptions(r, t.Options)
 	checkCustomCSS(r, t.CustomCSS)
 
 	// Meta — the catalogue keys by name and filters by a fixed category set.
@@ -302,13 +302,17 @@ func Theme(m *vcb.ThemeManifest, opts Options) *Result {
 }
 
 // checkThemeOptions flags unknown option keys and out-of-vocabulary values —
-// both are SILENT NO-OPS at apply time (applyThemeOptions ignores them).
-func checkThemeOptions(r *Result, name string, opts map[string]string) {
+// both are SILENT NO-OPS at apply time (applyThemeOptions ignores them). The
+// schema is the FULL option vocabulary (theme.AllOptionDefs), not the per-name
+// narrowing: applyThemeOptions honors every option by key regardless of theme
+// name, so a third-party theme legitimately may set density/headingscale even
+// though it can never carry a built-in preset name.
+func checkThemeOptions(r *Result, opts map[string]string) {
 	if len(opts) == 0 {
 		return
 	}
 	schema := map[string]map[string]bool{}
-	for _, o := range theme.OptionsFor(name) {
+	for _, o := range theme.AllOptionDefs() {
 		vals := map[string]bool{}
 		for _, c := range o.Choices {
 			vals[c.Value] = true
@@ -344,7 +348,7 @@ func checkCustomCSS(r *Result, css string) {
 	if strings.Contains(lower, "@import") {
 		r.errf("theme.css.import", "tokens.custom_css", "@import is not allowed (CSP style-src 'self' blocks external stylesheets; zero third-party fetches is the contract)")
 	}
-	if externalURLRef(lower) {
+	if externalURLRef(css) {
 		r.errf("theme.css.external", "tokens.custom_css", "url() must not reference an external host (CSP style-src 'self'; zero third-party fetches is the contract)")
 	}
 	if strings.Contains(lower, "expression(") {
@@ -355,21 +359,82 @@ func checkCustomCSS(r *Result, css string) {
 	}
 }
 
-// externalURLRef reports whether lowercased CSS references an external URL in
-// any url(...) — http:, https:, or protocol-relative //.
-func externalURLRef(lower string) bool {
+// cssWhitespace is the CSS token whitespace set (space, tab, LF, CR, FF). The
+// original external-URL check trimmed only " \t", so a url() value pushed
+// behind a newline slipped through.
+const cssWhitespace = " \t\n\r\f"
+
+// externalURLRef reports whether CSS references an external URL in any url(...)
+// — http:, https:, or protocol-relative //. It defeats the two obfuscations a
+// naive substring test misses: (1) CSS backslash escapes (url(\68ttps://…)
+// resolves to https:// in the browser) and (2) any CSS whitespace, including
+// newlines, before the value. Each url() body is CSS-unescaped, whitespace-
+// and quote-trimmed, and lowercased before the scheme check, so the decoded
+// value is what the browser would actually fetch.
+func externalURLRef(css string) bool {
+	lower := strings.ToLower(css)
 	for i := 0; ; {
 		j := strings.Index(lower[i:], "url(")
 		if j < 0 {
 			return false
 		}
-		rest := lower[i+j+4:]
-		rest = strings.TrimLeft(rest, " \t'\"")
-		if strings.HasPrefix(rest, "http:") || strings.HasPrefix(rest, "https:") || strings.HasPrefix(rest, "//") {
+		start := i + j + 4
+		body := lower[start:]
+		if end := strings.IndexByte(body, ')'); end >= 0 {
+			body = body[:end]
+		}
+		val := strings.Trim(cssUnescape(body), cssWhitespace)
+		val = strings.Trim(val, "'\"")
+		val = strings.Trim(val, cssWhitespace)
+		val = strings.ToLower(val) // a hex escape may decode to an upper-case letter
+		if strings.HasPrefix(val, "http:") || strings.HasPrefix(val, "https:") || strings.HasPrefix(val, "//") {
 			return true
 		}
-		i += j + 4
+		i = start
 	}
+}
+
+// cssUnescape decodes CSS backslash escapes: "\" + 1–6 hex digits (optionally
+// followed by one whitespace char) → that code point; "\" + any other char →
+// that char literally. Other bytes pass through unchanged. This is what a
+// browser does before resolving a url(), so url(\68ttps://evil) becomes
+// https://evil — which the scheme check must see.
+func cssUnescape(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	for i := 0; i < len(s); {
+		c := s[i]
+		if c != '\\' {
+			b.WriteByte(c)
+			i++
+			continue
+		}
+		i++ // consume the backslash
+		if i >= len(s) {
+			break
+		}
+		if isHexDigit(s[i]) {
+			j := i
+			for j < len(s) && j-i < 6 && isHexDigit(s[j]) {
+				j++
+			}
+			if n, err := strconv.ParseInt(s[i:j], 16, 32); err == nil && n > 0 {
+				b.WriteRune(rune(n))
+			}
+			i = j
+			if i < len(s) && strings.IndexByte(cssWhitespace, s[i]) >= 0 {
+				i++ // one optional trailing whitespace terminates a hex escape
+			}
+			continue
+		}
+		b.WriteByte(s[i]) // literal (non-hex) escape
+		i++
+	}
+	return b.String()
+}
+
+func isHexDigit(c byte) bool {
+	return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
 }
 
 // ── Shared checks ─────────────────────────────────────────────────────────────
@@ -427,13 +492,19 @@ func validHexDigest(s string) bool {
 	return err == nil
 }
 
+// validRunAs mirrors the sandbox's own parse EXACTLY (applyRunAs uses
+// strconv.ParseUint(part, 10, 32)): the value must be two colon-separated
+// unsigned 32-bit integers. Atoi would wrongly accept a '+'-signed part or a
+// value above the uint32 ceiling (e.g. "4294967296") that the sandbox then
+// silently rejects — leaving the subprocess running as the host user, the very
+// outcome the run_as declaration exists to avoid.
 func validRunAs(s string) bool {
 	uidgid := strings.Split(s, ":")
 	if len(uidgid) != 2 {
 		return false
 	}
 	for _, part := range uidgid {
-		if n, err := strconv.Atoi(part); err != nil || n < 0 {
+		if _, err := strconv.ParseUint(part, 10, 32); err != nil {
 			return false
 		}
 	}
