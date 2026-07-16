@@ -157,8 +157,19 @@ func (a *App) hasValidConsoleSession(r *http.Request) bool {
 // login page; API/XHR callers receive 401 JSON.
 func (a *App) requireSessionOrAPIKey(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if auth.HasValidAPIKey(r) {
-			next.ServeHTTP(w, r)
+		if ki, ok := auth.ResolveValidAPIKey(r); ok {
+			// Key-authenticated automation entering the /os surface: enforce the
+			// same fine-grained capability table as /api/v1 (ADR-0134), so a grant
+			// cannot be bypassed by switching prefixes. Superuser keys (bootstrap,
+			// internal, pre-migration backfilled) pass everything, exactly as
+			// before. Session-authenticated operators never reach this branch and
+			// are governed by session RBAC below, unchanged.
+			if !keyMayCall(ki, r.Method, r.URL.Path) {
+				writeAPIError(w, r, http.StatusForbidden, "insufficient_permissions",
+					"this API key does not hold the capability required for this route", "/docs/compatibility/vayuapi")
+				return
+			}
+			next.ServeHTTP(w, auth.RequestWithKeyInfo(r, ki))
 			return
 		}
 		if a.sessions != nil {

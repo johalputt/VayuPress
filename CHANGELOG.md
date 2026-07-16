@@ -8,6 +8,41 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.38] — 2026-07-16
+
+### Added
+- **VayuAPI Stage 2 — the enforcement layer (ADR-0134).** Scoped API keys are now
+  actually enforced. A single route→capability table maps every protected route
+  on **both** API surfaces — `/api/v1` (+ the legacy `/admin` API) and their
+  `/os` twins — to a `section:action`, keyed by handler intent so a grant cannot
+  be bypassed by hitting a different prefix. `RequireAPIKey` resolves the caller's
+  key to its grant set and stamps it into the request context; the permission
+  middleware then refuses any request whose key lacks the route's capability
+  (HTTP 403 naming the missing `section:action`, e.g. `members:read`).
+  - **Superuser keys pass everything** — the static bootstrap `API_KEY`, the
+    internal system key, and every pre-migration key backfilled with a full grant
+    in v3.13.37 — so all existing automation keeps working with no change.
+  - **Scoped keys get exactly what they were granted**; a posts-only key can
+    create articles but is denied members, theme-apply, backup export, etc.
+  - **Fail-closed**: a scoped key hitting a route not in the table is refused;
+    only a superuser key reaches unmapped routes. Session-authenticated operators
+    are untouched — their access is still governed by session RBAC, never by key
+    grants.
+
+### Security
+- The `/api` middleware and the `/os` session-or-key gate now share ONE
+  resolution + permission path (`auth.ResolveValidAPIKey` → `keyMayCall`), so the
+  two entry points can never disagree about which keys are valid or what a key
+  may do — closing the prefix-swap escalation class by construction.
+
+### Notes
+- Verified end-to-end against a running server: a `posts:*` key gets 202/200 on
+  posts routes and 403 on members/theme-apply/backup and any unmapped `/os` page,
+  while the bootstrap key gets 200 everywhere. Tests pin the capability mapping
+  for ~55 representative routes across all 12 sections, the fail-closed default,
+  and the middleware behaviour; `-race`, deadcode, and preflight clean. Per-key
+  rate limiting, per-call audit, and the scoped admin UI are the next stages.
+
 ## [3.13.37] — 2026-07-16
 
 ### Added

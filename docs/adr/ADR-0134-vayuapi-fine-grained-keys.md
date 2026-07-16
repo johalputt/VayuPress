@@ -47,10 +47,18 @@ automation that depends on today's keys.
    hit, so an expired credential is refused on the next request — never lagged by
    the 30-second verification-cache TTL (a defect caught and fixed in the
    pre-release adversarial review).
-7. **Enforcement is a follow-up stage** (route→capability table + middleware at
-   the API choke point, per-key rate limiting, per-call audit, the scoped admin
-   UI). This ADR covers the model + store; the enforcement stage ships behind it
-   using `Store.Resolve → KeyInfo.Can(section, action)`.
+7. **Enforcement (Stage 2, shipped in v3.13.38).** A single route→capability
+   table (`cmd/vayupress/api_capabilities.go`) maps every protected route on
+   *both* surfaces — `/api/v1` (+legacy `/admin` API) and the `/os` twins — to a
+   `section:action`, keyed by handler intent so a grant cannot be bypassed by
+   switching prefixes. `auth.RequireAPIKey` resolves the key to its `KeyInfo` and
+   stamps it into the request context; `requireAPIPermission` (on `/api`) and the
+   `requireSessionOrAPIKey` gate (on `/os`) both call the shared `keyMayCall`
+   predicate: mapped routes require the route's capability, **unmapped routes
+   require a superuser key (fail-closed)**. Session-authenticated operators never
+   touch this table — their access stays governed by session RBAC.
+   Per-key rate limiting, per-call audit, and the scoped admin UI remain
+   follow-up stages.
 
 ## Consequences
 

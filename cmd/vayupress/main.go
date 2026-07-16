@@ -80,7 +80,7 @@ import (
 // -ldflags "-X main.Version=<.release-version>", and scripts/update-vayupress.sh
 // reads .release-version too — keep this in sync with .release-version so an
 // un-stamped `go build` still reports an honest version.
-var Version = "3.13.37"
+var Version = "3.13.38"
 var bootTime = time.Now()
 
 // Immutable package-level values (compiled once, never mutated).
@@ -491,6 +491,10 @@ func main() {
 	a.apiKeys = apikeys.New(dbpkg.DB)
 	a.secrets = secrets.New(dbpkg.DB, []byte(config.EnvOr("VAYU_SECRET", "")))
 	auth.SetExtraAPIKeyVerifier(a.apiKeys.Verify)
+	// Rich resolver (ADR-0134): lets the auth layer stamp each key's grant set
+	// into the request context so the permission middleware can enforce
+	// section:action capabilities per route.
+	auth.SetExtraAPIKeyResolver(a.apiKeys.Resolve)
 	// Auto-provision the internal/system key. Internal automation reads it live
 	// via a.InternalAPIKey(), so a rotation propagates with no manual step.
 	if err := a.apiKeys.EnsureInternal(context.Background()); err != nil {

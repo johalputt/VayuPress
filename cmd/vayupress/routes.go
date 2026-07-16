@@ -287,9 +287,13 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	r.Post("/checkout", a.handleCheckoutPage)
 	r.Post("/api/v1/payments/webhook/{gateway}", a.handlePaymentWebhook)
 
-	// Protected admin + write API
+	// Protected admin + write API. RequireAPIKey authenticates and stamps the
+	// caller's KeyInfo; requireAPIPermission enforces the fine-grained
+	// section:action grant for the route (ADR-0134) — superuser keys (bootstrap,
+	// internal, and pre-migration backfilled keys) pass everything, scoped keys
+	// get exactly what they were granted, unmapped routes fail closed.
 	r.Group(func(r chi.Router) {
-		r.Use(auth.RequireAPIKey, auth.RateLimitMiddleware)
+		r.Use(auth.RequireAPIKey, a.requireAPIPermission, auth.RateLimitMiddleware)
 
 		r.Post("/api/v1/articles", a.handleCreateArticle)
 		r.Post("/api/v1/articles/bulk", a.handleBulkCreateArticles)

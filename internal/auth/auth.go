@@ -678,17 +678,6 @@ func SetExtraAPIKeyVerifier(fn func(presentedKey string) bool) {
 	extraAPIKeyMu.Unlock()
 }
 
-// verifyExtraAPIKey reports whether a registered verifier accepts the key.
-func verifyExtraAPIKey(key string) bool {
-	if key == "" {
-		return false
-	}
-	extraAPIKeyMu.RLock()
-	fn := extraAPIKeyVerifier
-	extraAPIKeyMu.RUnlock()
-	return fn != nil && fn(key)
-}
-
 // RequireAPIKey is HTTP middleware that validates X-API-Key / Authorization: Bearer headers.
 func RequireAPIKey(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -699,22 +688,19 @@ func RequireAPIKey(next http.Handler) http.Handler {
 			writeAuthError(w, 429, "auth_lockout", fmt.Sprintf("locked out for %ds", retryAfter), "/docs/api/auth#lockout")
 			return
 		}
-		key := r.Header.Get("X-API-Key")
-		if key == "" {
-			key = strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-		}
-		// Constant-time comparison prevents timing attacks that could otherwise
-		// leak the configured key one byte at a time. An empty configured key is
-		// never a valid credential, even against an empty presented key. A
-		// database-backed key (issued from VayuOS) is accepted as a fallback.
-		staticOK := config.Cfg.APIKey != "" && subtle.ConstantTimeCompare([]byte(key), []byte(config.Cfg.APIKey)) == 1
-		if !staticOK && !verifyExtraAPIKey(key) {
+		// Resolve the key to its enforcement identity (static bootstrap →
+		// superuser; issued key → its grant set). The constant-time static
+		// comparison lives inside ResolveValidAPIKey, the single shared path with
+		// the /os session-or-key gate. The identity is stamped into the request
+		// context so the permission middleware and audit can read it.
+		ki, ok := ResolveValidAPIKey(r)
+		if !ok {
 			RecordAuthFailure(ip)
 			writeAuthError(w, 401, "unauthorized", "invalid or missing API key", "/docs/api/auth")
 			return
 		}
 		RecordAuthSuccess(ip)
-		next.ServeHTTP(w, r)
+		next.ServeHTTP(w, RequestWithKeyInfo(r, ki))
 	})
 }
 

@@ -4,22 +4,12 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
-	"crypto/subtle"
 	"database/sql"
 	"encoding/hex"
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
-
-	"github.com/johalputt/vayupress/internal/config"
 )
-
-func trimBearer(v string) string { return strings.TrimPrefix(v, "Bearer ") }
-
-func constantTimeEqual(a, b string) bool {
-	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
-}
 
 // SessionCookie is the cookie name carrying the opaque session token.
 const SessionCookie = "vp_session"
@@ -184,10 +174,9 @@ func hashToken(token string) string {
 
 // HasValidAPIKey reports whether the request carries the configured API key.
 // Used so a single guard can accept either an API key or a login session.
+// Delegates to ResolveValidAPIKey so this gate and RequireAPIKey can never
+// disagree about which keys are valid.
 func HasValidAPIKey(r *http.Request) bool {
-	key := r.Header.Get("X-API-Key")
-	if key == "" {
-		key = trimBearer(r.Header.Get("Authorization"))
-	}
-	return config.Cfg.APIKey != "" && constantTimeEqual(key, config.Cfg.APIKey) || verifyExtraAPIKey(key)
+	_, ok := ResolveValidAPIKey(r)
+	return ok
 }
