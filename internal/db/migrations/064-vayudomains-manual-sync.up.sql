@@ -1,0 +1,16 @@
+-- VayuDomains — manual sync gate (P5).
+-- IMPORTANT: the migration runner executes ONE statement per line, so every
+-- statement below MUST stay on a single line (see internal/db/db.go).
+--
+-- sync_state records whether the operator has approved a secondary domain for
+-- out-of-process provisioning (TLS + nginx via scripts/setup-vayudomain.sh):
+--   'approved' — the root helper may provision and keep maintaining this domain.
+--   'hold'     — registered only; the helper must skip it until the operator
+--                presses "Sync now" in VayuOS → Domains (or runs
+--                `vayupress domains sync <host>`).
+-- Existing rows are backfilled to 'approved' so domains that were already
+-- provisioned before this migration keep being maintained across updates —
+-- the gate changes the default for NEW registrations only (Registry.Create
+-- inserts 'hold' explicitly). The primary carries the column for uniformity
+-- but the helper never acts on it (its cert predates the registry).
+ALTER TABLE domains ADD COLUMN sync_state TEXT NOT NULL DEFAULT 'approved';
