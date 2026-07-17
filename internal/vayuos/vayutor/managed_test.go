@@ -46,6 +46,38 @@ func TestParseBootstrap(t *testing.T) {
 	}
 }
 
+func TestManagedTorrcBridges(t *testing.T) {
+	m := newManagedTor("/usr/bin/tor", "/var/lib/vayupress/tor")
+
+	// No bridges set → no bridge directives (keeps the onion-only shape).
+	if rc := m.buildTorrc(); strings.Contains(rc, "UseBridges") || strings.Contains(rc, "Bridge ") {
+		t.Errorf("torrc should have no bridge lines when unset:\n%s", rc)
+	}
+
+	// obfs4 bridges + a PT path → full block.
+	m.setBridges([]string{"obfs4 1.2.3.4:443 ABCDEF cert=zzz iat-mode=0"}, "/usr/bin/obfs4proxy")
+	rc := m.buildTorrc()
+	for _, want := range []string{
+		"ClientTransportPlugin obfs4 exec /usr/bin/obfs4proxy",
+		"UseBridges 1",
+		"Bridge obfs4 1.2.3.4:443 ABCDEF cert=zzz iat-mode=0",
+	} {
+		if !strings.Contains(rc, want) {
+			t.Errorf("torrc missing %q\n%s", want, rc)
+		}
+	}
+
+	// Vanilla bridge (no PT) → UseBridges but NO ClientTransportPlugin.
+	m.setBridges([]string{"5.6.7.8:9001 0123456789"}, "")
+	rc = m.buildTorrc()
+	if strings.Contains(rc, "ClientTransportPlugin") {
+		t.Errorf("vanilla bridge should not emit ClientTransportPlugin:\n%s", rc)
+	}
+	if !strings.Contains(rc, "UseBridges 1") || !strings.Contains(rc, "Bridge 5.6.7.8:9001 0123456789") {
+		t.Errorf("vanilla bridge lines missing:\n%s", rc)
+	}
+}
+
 func TestManagedControlPaths(t *testing.T) {
 	m := newManagedTor("tor", "/base/tor")
 	if got, want := m.controlAddr(), "unix:/base/tor/control.sock"; got != want {

@@ -101,3 +101,34 @@ updates. Deactivating VayuTor kills the managed child, so onions and the process
 both stop; the persisted onion keys still bring the same addresses back on
 re-activation. Env knobs: `VAYUOS_TOR_MANAGED` (default on), `VAYUOS_TOR_BINARY`,
 `VAYUOS_TOR_DIR`.
+
+## Addendum — bootstrap escalation & bridges (v3.13.67)
+
+Real servers surfaced a ladder of ways a network can stop Tor from bootstrapping
+(so onions never publish even though activation "succeeded"). VayuTor now handles
+them with a **one-shot escalation ladder** on the managed tor, driven by the
+existing stall detector (no forward bootstrap progress for 150 s — a slow but
+climbing bootstrap is never disturbed):
+
+1. **direct** — no restriction.
+2. **firewall-friendly** (`ReachableAddresses *:80,*:443`) — for hosts that only
+   permit outbound 80/443.
+3. **bridges** (`UseBridges 1` + `Bridge …` lines, with `ClientTransportPlugin
+   obfs4 exec …` when the lines are obfs4) — for hosts that block Tor at the IP
+   level (a VPS null-routing public relay IPs, or DPI). When tor's log proves an
+   IP-level block (`No route to host`/NOROUTE), or the operator has configured
+   bridges, VayuTor **skips straight to bridges** — ports-only cannot help a
+   null-routed relay. `escBridges` is terminal; the ladder resets on deactivation.
+
+Bridges are **operator-supplied** via `VAYUOS_TOR_BRIDGES` (obfs4 lines from
+bridges.torproject.org; the built-in default set is intentionally empty —
+VayuPress does not ship third-party bridge infrastructure). The obfs4 pluggable
+transport (`obfs4proxy`, installed by the deploy/update script) is spawned by the
+managed tor as the same unprivileged user, with its `pt_state` under the writable
+DataDirectory — no root, no new inbound surface. Because v3 onion services are
+end-to-end encrypted and VayuTor's onion↔domain mapping is intentionally public
+(co-hosted with the clearnet Let's Encrypt site), routing the server's own
+circuits through third-party bridges is anonymity- and confidentiality-neutral,
+and the "count-only, nothing tracked" privacy posture is unchanged. Diagnostics:
+the VayuTor page reads tor's log tail and shows the exact remedy (allow outbound,
+fix the clock, install obfs4proxy, or paste bridges) plus the current transport.

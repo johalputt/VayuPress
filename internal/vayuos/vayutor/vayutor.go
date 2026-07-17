@@ -49,9 +49,10 @@ type Config struct {
 	// VayuTor works with only the `tor` binary present — no root, no systemd, no
 	// manual control-port setup. Preferred order at connect time: a reachable
 	// ControlAddr (an existing system tor) first, then the managed instance.
-	Managed    bool   // enable the self-managed tor fallback (VAYUOS_TOR_MANAGED != 0)
-	TorBinary  string // resolved `tor` executable (exec.LookPath); "" → managed disabled
-	ManagedDir string // writable base dir VayuPress owns for the managed tor state
+	Managed    bool     // enable the self-managed tor fallback (VAYUOS_TOR_MANAGED != 0)
+	TorBinary  string   // resolved `tor` executable (exec.LookPath); "" → managed disabled
+	ManagedDir string   // writable base dir VayuPress owns for the managed tor state
+	Bridges    []string // operator Bridge lines (VAYUOS_TOR_BRIDGES); used on the bridges rung
 }
 
 // Engine is the VayuTor subsystem. It owns the control connection, the
@@ -60,17 +61,17 @@ type Config struct {
 type Engine struct {
 	cfg Config
 
-	mu           sync.RWMutex
-	onionByHost  map[string]string // clearnet host -> onion host
-	hostByOnion  map[string]string // onion host -> clearnet host
-	ctrl         *control
-	connected    bool
-	lastErr      string
-	bootPct      int       // tor network bootstrap %, 0..100 (100 = onions publishable)
-	bootNote     string    // tor's human summary of the current bootstrap phase
-	bootBestPct  int       // highest bootstrap % seen this connection (stall detect)
-	bootMovedAt  time.Time // when bootstrap last advanced
-	fascistTried bool      // already fell back to firewall-friendly ports this activation
+	mu          sync.RWMutex
+	onionByHost map[string]string // clearnet host -> onion host
+	hostByOnion map[string]string // onion host -> clearnet host
+	ctrl        *control
+	connected   bool
+	lastErr     string
+	bootPct     int       // tor network bootstrap %, 0..100 (100 = onions publishable)
+	bootNote    string    // tor's human summary of the current bootstrap phase
+	bootBestPct int       // highest bootstrap % seen this connection (stall detect)
+	bootMovedAt time.Time // when bootstrap last advanced
+	esc         escLevel  // one-shot escalation rung: direct → 80/443 → bridges
 
 	visits int64 // atomic; aggregate onion pageviews (no PII, no time)
 
@@ -308,22 +309,76 @@ func (e *Engine) queryBootstrap() {
 		e.bootBestPct = pct
 		e.bootMovedAt = time.Now()
 	}
-	stalled := pct < 100 && e.usingMgd && e.managed != nil && !e.fascistTried &&
-		!e.bootMovedAt.IsZero() && time.Since(e.bootMovedAt) > bootStallTimeout
-	if stalled {
-		e.fascistTried = true
-	}
 	e.mu.Unlock()
+	e.maybeEscalate()
+}
 
-	// A bootstrap that hasn't advanced for a while on a locked-down host usually
-	// means only 80/443 outbound is allowed. Restart tor in firewall-friendly
-	// mode (once) — it never fires while bootstrap is still climbing.
-	if stalled {
-		e.managed.setStrict(true)
-		e.managed.stop() // next reconcile reaps + respawns with ReachableAddresses
-		e.setErr("bootstrap stalled — retrying Tor via firewall-friendly ports (80/443)")
-		e.Kick()
+// maybeEscalate advances the one-shot bootstrap-escalation ladder when a managed
+// tor's bootstrap has genuinely STALLED (no forward progress for bootStallTimeout
+// — a slow-but-climbing bootstrap is never disturbed). Rungs: direct → 80/443 →
+// bridges. When tor's log proves an IP-level block (NOROUTE), or the operator
+// configured bridges, it skips straight to bridges (firewall-friendly ports
+// can't help a null-routed relay IP). escBridges is terminal.
+func (e *Engine) maybeEscalate() {
+	e.mu.Lock()
+	stalled := e.bootPct < 100 && e.usingMgd && e.managed != nil && e.esc < escBridges &&
+		!e.bootMovedAt.IsZero() && time.Since(e.bootMovedAt) > bootStallTimeout
+	cur := e.esc
+	e.mu.Unlock()
+	if !stalled {
+		return
 	}
+
+	next := cur + 1
+	if cur == escDirect {
+		if logHasNoRoute(e.managed.tailLog(12)) || len(e.cfg.Bridges) > 0 {
+			next = escBridges // ports-only can't fix a null-routed relay / operator opted in
+		}
+	}
+
+	if next == escBridges {
+		lines, ptPath, why := e.bridgeConfig()
+		if len(lines) == 0 {
+			e.setErr(why) // actionable: no bridges, or obfs4 configured but obfs4proxy missing
+			return
+		}
+		e.mu.Lock()
+		e.esc = escBridges
+		e.mu.Unlock()
+		e.managed.setStrict(false) // don't also narrow bridge reachability to 80/443
+		e.managed.setBridges(lines, ptPath)
+	} else { // escFascist
+		e.mu.Lock()
+		e.esc = escFascist
+		e.mu.Unlock()
+		e.managed.setStrict(true)
+	}
+	e.managed.stop() // next reconcile reaps + respawns with the new torrc
+	e.setErr(escalationNote(next))
+	e.Kick()
+}
+
+// bridgeConfig resolves the effective bridge set for the bridges rung: operator
+// lines (VAYUOS_TOR_BRIDGES) if any, else the built-in defaults. why is "" only
+// on success; on failure lines is empty and why is an actionable message.
+func (e *Engine) bridgeConfig() (lines []string, ptPath, why string) {
+	raw := e.cfg.Bridges
+	if len(raw) == 0 {
+		raw = defaultObfs4Bridges
+	}
+	norm, needsPT := classifyBridges(raw)
+	if len(norm) == 0 {
+		return nil, "", "the network blocks direct Tor connections and no bridges are configured — get obfs4 bridges from https://bridges.torproject.org (or email bridges@torproject.org), set VAYUOS_TOR_BRIDGES to those lines, and reload"
+	}
+	if needsPT {
+		if ptPath = e.managed.resolvePT(); ptPath == "" {
+			if v := vanillaOnly(norm); len(v) > 0 {
+				return v, "", "" // fall back to the plain bridges we do have
+			}
+			return nil, "", "obfs4 bridges are configured but obfs4proxy is not installed — run `sudo apt-get install -y obfs4proxy` (or re-run the VayuPress updater), then reload"
+		}
+	}
+	return norm, ptPath, ""
 }
 
 // bootStallTimeout is how long bootstrap may sit without advancing before
@@ -458,16 +513,18 @@ func (e *Engine) teardown() {
 	e.bootNote = ""
 	e.bootBestPct = 0
 	e.bootMovedAt = time.Time{}
-	e.fascistTried = false
+	e.esc = escDirect
 	e.onionByHost = map[string]string{}
 	e.hostByOnion = map[string]string{}
 	mgd := e.managed
 	e.mu.Unlock()
 	// Stop our tor child when deactivated so "off" is truly off (no process, no
-	// onions). Re-activation respawns it fresh (non-strict). Kept outside the
-	// lock so we never hold it across a process kill.
+	// onions). Clear the escalation state so re-activation starts clean at rung 0
+	// (direct, no ports restriction, no bridges). Kept outside the lock so we
+	// never hold it across a process kill.
 	if mgd != nil {
 		mgd.setStrict(false)
+		mgd.setBridges(nil, "")
 		mgd.stop()
 	}
 }
@@ -538,6 +595,7 @@ type Status struct {
 	BootstrapEng string  // tor's summary of the current bootstrap phase
 	LogPath      string  // managed tor's log file, for diagnostics ("" if external)
 	LogTail      string  // last few lines of the managed tor log (bootstrap reason)
+	Transport    string  // how the managed tor is reaching the network (direct/80,443/bridges)
 }
 
 // Onion is one domain↔onion mapping for the admin table.
@@ -573,6 +631,7 @@ func (e *Engine) Snapshot() Status {
 	}
 	if e.managed != nil {
 		st.LogPath = e.managed.logPath()
+		st.Transport = transportLabel(e.esc, e.managed.usingBridges())
 		if !st.Connected || st.BootstrapPct < 100 {
 			st.LogTail = e.managed.tailLog(3)
 		}

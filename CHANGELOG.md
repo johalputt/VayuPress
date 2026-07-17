@@ -8,6 +8,30 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.67] — 2026-07-17
+
+### Added
+- **VayuTor works even when the network blocks Tor — Tor bridges + obfs4
+  auto-escalation.** Some VPS/mail hosts null-route public Tor relay IPs, so
+  bootstrap fails with "No route to host" and onions never publish. VayuTor now
+  climbs a one-shot escalation ladder on its managed Tor — **direct → ports
+  80/443 only → bridges** — driven by the existing stall detector (a slow but
+  climbing bootstrap is never disturbed). When Tor's log proves an IP-level block
+  (NOROUTE), or the operator has configured bridges, it **skips straight to
+  bridges**, whose IPs aren't on any public-relay blocklist; obfs4 additionally
+  disguises the traffic to defeat DPI.
+  - Operator bridges via **`VAYUOS_TOR_BRIDGES`** (obfs4 lines from
+    https://bridges.torproject.org, newline/`;`-separated). The deploy/update
+    scripts now install **`obfs4proxy`**, which the managed Tor spawns as the
+    same unprivileged user (no root, no new inbound surface).
+  - The VayuTor page shows the current **transport** and, on failure, the exact
+    remedy read from Tor's log (allow outbound / fix clock / install obfs4proxy /
+    paste bridges).
+  - Onion services stay E2E-encrypted and the onion↔domain mapping is already
+    public, so routing the server's own circuits through bridges is anonymity-
+    and confidentiality-neutral — the "count-only, nothing tracked" posture is
+    unchanged. See ADR-0138.
+
 ## [3.13.66] — 2026-07-17
 
 ### Fixed

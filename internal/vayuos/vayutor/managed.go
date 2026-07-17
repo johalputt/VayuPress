@@ -33,11 +33,46 @@ type managedTor struct {
 	binary string // resolved tor executable (from PATH or an explicit path)
 	dir    string // writable base dir we fully own, e.g. <data>/tor
 
-	mu     sync.Mutex
-	cmd    *exec.Cmd
-	alive  bool
-	last   string // last spawn/boot error, for the admin status line
-	strict bool   // restrict outbound to relay ports 80/443 (firewall-friendly)
+	mu      sync.Mutex
+	cmd     *exec.Cmd
+	alive   bool
+	last    string   // last spawn/boot error, for the admin status line
+	strict  bool     // restrict outbound to relay ports 80/443 (firewall-friendly)
+	bridges []string // normalized Bridge lines; non-empty ⇒ UseBridges block
+	ptPath  string   // resolved obfs4proxy/lyrebird path; "" ⇒ vanilla bridges only
+}
+
+// setBridges configures the bridge lines (and obfs4 PT path) tor uses on its
+// next (re)start. Empty clears them.
+func (m *managedTor) setBridges(lines []string, ptPath string) {
+	m.mu.Lock()
+	m.bridges, m.ptPath = lines, ptPath
+	m.mu.Unlock()
+}
+
+// usingBridges reports whether bridge mode is currently configured.
+func (m *managedTor) usingBridges() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.bridges) > 0
+}
+
+// resolvePT lazily locates the obfs4 pluggable-transport binary, mirroring
+// resolveBinary()'s PATH-first approach so installing obfs4proxy after start is
+// picked up with no restart. Debian ships it as `obfs4proxy`; newer distros as
+// `lyrebird`.
+func (m *managedTor) resolvePT() string {
+	for _, name := range []string{"obfs4proxy", "lyrebird"} {
+		if p, err := exec.LookPath(name); err == nil {
+			return p
+		}
+	}
+	for _, p := range []string{"/usr/bin/obfs4proxy", "/usr/bin/lyrebird", "/usr/sbin/obfs4proxy"} {
+		if fi, err := os.Stat(p); err == nil && !fi.IsDir() {
+			return p
+		}
+	}
+	return ""
 }
 
 // setStrict enables (or disables) firewall-friendly mode: tor only reaches
@@ -126,6 +161,25 @@ func (m *managedTor) buildTorrc() string {
 	// automatically after a stalled bootstrap.
 	if m.isStrict() {
 		b.WriteString("ReachableAddresses *:80,*:443\n")
+	}
+	// Bridges: the terminal escalation for hosts that null-route/block direct
+	// relay IPs. UseBridges makes tor reach the network ONLY through these
+	// unlisted bridges (whose IPs aren't on the public-relay blocklist); obfs4
+	// additionally disguises the traffic to defeat DPI. No SOCKS/relay surface is
+	// added — obfs4proxy is a client-side managed transport tor spawns itself,
+	// with its pt_state under DataDirectory (already writable). SafeLogging (tor
+	// default) keeps bridge IPs/fingerprints out of the log the admin page tails.
+	m.mu.Lock()
+	bridges, pt := m.bridges, m.ptPath
+	m.mu.Unlock()
+	if len(bridges) > 0 {
+		if pt != "" {
+			b.WriteString("ClientTransportPlugin obfs4 exec " + pt + "\n")
+		}
+		b.WriteString("UseBridges 1\n")
+		for _, ln := range bridges {
+			b.WriteString("Bridge " + ln + "\n")
+		}
 	}
 	// A pidfile lets a restarted VayuPress find and reap an orphaned tor from a
 	// previous run (e.g. after an in-place self-update re-exec) that still holds

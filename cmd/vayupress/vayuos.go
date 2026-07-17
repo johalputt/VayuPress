@@ -582,6 +582,7 @@ func (a *App) bootVayuOS() {
 		Managed:     torManaged,
 		TorBinary:   torBinary,
 		ManagedDir:  torDir,
+		Bridges:     parseTorBridges(config.EnvOr("VAYUOS_TOR_BRIDGES", "")),
 		Store:       &torStore{settings: a.siteSettings},
 		Domains: func(ctx context.Context) ([]string, error) {
 			ds, err := a.domains.List(ctx)
@@ -746,6 +747,23 @@ func (a *App) bootVayuOS() {
 	// got a mailbox but no key). Runs in the background so boot is never blocked;
 	// EnsureKeypair is idempotent so this is a no-op once every account has a key.
 	go a.backfillPGPKeys(context.Background())
+}
+
+// parseTorBridges splits the VAYUOS_TOR_BRIDGES value into individual Bridge
+// lines. Entries are separated by newlines and/or ";" (env vars rarely carry
+// real newlines), trimmed, with blanks dropped. Each surviving line is a torrc
+// Bridge line (with or without a leading "Bridge " keyword — the engine
+// normalizes it).
+func parseTorBridges(raw string) []string {
+	raw = strings.ReplaceAll(raw, "\r", "\n")
+	raw = strings.ReplaceAll(raw, ";", "\n")
+	var out []string
+	for _, l := range strings.Split(raw, "\n") {
+		if l = strings.TrimSpace(l); l != "" {
+			out = append(out, l)
+		}
+	}
+	return out
 }
 
 // backfillPGPKeys ensures every known local identity (CMS user + admin-managed

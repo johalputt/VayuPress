@@ -220,7 +220,7 @@ ok "System packages installed."
 # rendezvous circuits, never an inbound port. VayuTor stays dormant (no onions,
 # no control connection) until the operator activates it on the VayuTor page.
 info "Installing Tor for VayuTor onion services..."
-run apt-get install -y -qq tor
+run apt-get install -y -qq tor obfs4proxy
 TORRC=/etc/tor/torrc
 if ! grep -q "VayuTor control port" "$TORRC" 2>/dev/null; then
   cat >> "$TORRC" <<'TORCONF'
