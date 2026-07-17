@@ -1,0 +1,492 @@
+/* ============================================================================
+   Editor — the world-newsroom flagship theme for VayuPress.
+
+   A broadsheet-grade publication system built the way the great papers build
+   theirs: a warm paper canvas and true-ink dark edition, serif display type
+   (ui-serif / Iowan Old Style / Palatino / Georgia — the stacks the NYT and
+   the Guardian themselves fall back to), quiet sans chrome, and ONE rationed
+   editorial red that appears only as text, labels and hairline rules — never
+   as fills. Hierarchy is carried by rule weight (double / single / faint) and
+   grey de-emphasis, exactly as print sub-editors do it. Pure CSS, system
+   fonts, zero JavaScript, zero external requests, zero layout shift — served
+   same-origin via /theme.css (style-src 'self'), driven by the VayuPress
+   tokens (--vp-*) and the sovereign motion vocabulary (ADR-0136).
+
+   Customization hooks (add a class to any wrapper — no code):
+     Paper tone      .editor-paper--{bright|ivory|salmon}   (salmon = FT pink)
+     Density         .editor--compact | .editor--spacious
+     Voice           .editor--egyptian  (Cheltenham-flavoured headlines)
+
+   Section / component map
+     Stripline (date/edition/markets)   -> .editor-topbar / __item / __up / __down
+     Masthead + section bar             -> .editor-masthead / .editor-navbar
+     Kickers (news/breaking/live/rule)  -> .editor-kicker(--breaking|--live|--rule)
+     Breaking band + ticker             -> .editor-breaking-bar / .editor-ticker
+     Front page grid + lead package     -> .editor-front / .editor-lead / __hed /
+                                            __dek / __related / .editor-span-{4,6,8}
+     Rule hierarchy (print-grade)       -> .editor-rule--{section|story|soft}
+     Teasers (art/compact/headline/     -> .editor-teaser(--compact|--headline|
+       opinion)                             --opinion)
+     Story packages (+ pinned)          -> .editor-package(--pinned)
+     Most read (numbered rail)          -> .editor-mostread
+     Section containers + slices        -> .editor-container / .editor-slice-{1-2,4,list}
+     Article furniture                  -> .editor-standfirst / .editor-byline /
+                                            .editor-dateline / .editor-dropcap /
+                                            .editor-pullquote / .editor-keypoints
+     Reading progress (pure CSS)        -> .editor-progress
+     Share rail / related coverage      -> .editor-share-rail / .editor-related
+     Membership (fade + prompt)         -> .editor-paywall-fade / .editor-prompt
+     Chips + badges                     -> .editor-chip / .editor-badge(--premium)
+     Buttons                            -> .editor-btn(--cta|--ghost)
+     Sitemap footer                     -> .editor-footer
+     Scroll reveal (progressive)        -> .editor-reveal
+   ============================================================================ */
+
+:root{
+  /* Typographic voices — system stacks only, graded like a real news group:
+     display (Old Style news serif), egyptian (Cheltenham/Bookman flavour),
+     masthead (Didone — nameplate ONLY), text (Charter book serif for running
+     copy), ui (sans for chrome, bylines, labels). */
+  --editor-display:ui-serif,'Iowan Old Style','Palatino Linotype',Palatino,'URW Palladio L',P052,'Georgia Pro',Georgia,serif;
+  --editor-egyptian:Superclarendon,'Bookman Old Style','URW Bookman','Georgia Pro',Georgia,serif;
+  --editor-masthead:Didot,'Didot LT STD','Bodoni MT','Bodoni 72','URW Palladio L',P052,Georgia,serif;
+  --editor-text:Charter,'Bitstream Charter','Iowan Old Style','Georgia Pro',Georgia,Cambria,'Times New Roman',serif;
+  --editor-ui:var(--vp-font-sans,system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif);
+  /* Rationed colour: accent = editorial red (text/rules only), link = news blue. */
+  --editor-accent:var(--vp-accent,#b42318);
+  --editor-link:var(--vp-accent2,#326891);
+  --editor-live:var(--vp-accent,#b42318);
+  /* Foreground ramp: headlines -> ink, deks -> muted, furniture -> faint. */
+  --editor-ink:var(--vp-text,#14120e);
+  --editor-ink-muted:color-mix(in srgb,var(--vp-text) 72%,var(--vp-bg));
+  --editor-ink-faint:color-mix(in srgb,var(--vp-text) 46%,var(--vp-bg));
+  /* Print rule hierarchy: strong (section) / rule (story) / soft (facet). */
+  --editor-rule-strong:color-mix(in srgb,var(--vp-text) 82%,transparent);
+  --editor-rule:color-mix(in srgb,var(--vp-muted) 38%,transparent);
+  --editor-rule-soft:color-mix(in srgb,var(--vp-muted) 20%,transparent);
+  --editor-hairline:1px solid var(--editor-rule);
+  /* Surface ramp derived from the paper, never a shadow. */
+  --editor-well:color-mix(in srgb,var(--vp-text) 4%,var(--vp-bg));
+  --editor-well-2:color-mix(in srgb,var(--vp-text) 8%,var(--vp-bg));
+  /* Size-graduated display tracking (print kerning; relaxed in dark below). */
+  --editor-track-xl:-0.022em;
+  --editor-track-lg:-0.015em;
+  --editor-track-md:-0.008em;
+  --editor-pad:clamp(2.25rem,5vw,4rem);
+}
+/* Halation control: light-on-dark serif reads heavier, so relax tracking and
+   antialias instead of faking a lighter weight. */
+:root[data-theme="dark"],:root[data-color-scheme="dark"]{
+  --editor-track-xl:-0.015em;--editor-track-lg:-0.01em;
+  -webkit-font-smoothing:antialiased;
+}
+@media(prefers-color-scheme:dark){
+  :root:not([data-theme="light"]):not([data-color-scheme="light"]){
+    --editor-track-xl:-0.015em;--editor-track-lg:-0.01em;
+    -webkit-font-smoothing:antialiased;
+  }
+}
+
+/* Paper tones — the FT lesson: the whole surface system from one warm hue. */
+.editor-paper--bright{--vp-bg:#ffffff;--vp-surface:#fafaf7}
+.editor-paper--ivory{--vp-bg:#faf8f3;--vp-surface:#ffffff}
+.editor-paper--salmon{--vp-bg:#fff1e0;--vp-surface:#fff8ec}
+.editor--egyptian .editor-lead__hed,.editor--egyptian .editor-teaser__hed,.editor--egyptian .editor-hed{font-family:var(--editor-egyptian)}
+.editor--compact{--editor-pad:clamp(1.5rem,3vw,2.5rem)}
+.editor--spacious{--editor-pad:clamp(3rem,7vw,6rem)}
+
+/* ── Utilities ──────────────────────────────────────────────────────────── */
+.editor-hairline{border:0;border-top:var(--editor-hairline);margin:var(--editor-pad) 0}
+.editor-rule--section{border:0;border-top:4px double var(--editor-rule-strong);margin:0 0 .75rem}
+.editor-rule--story{border:0;border-top:1px solid var(--editor-rule);margin:0}
+.editor-rule--soft{border:0;border-top:1px solid var(--editor-rule-soft);margin:0}
+.editor-kicker{display:inline-block;font-family:var(--editor-ui);font-size:.72rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--editor-accent)}
+.editor-kicker--rule::before{content:"";display:block;width:2.5rem;height:3px;background:var(--editor-accent);margin-bottom:.5rem}
+.editor-kicker--breaking{color:var(--editor-accent)}
+.editor-kicker--live{color:var(--editor-live)}
+.editor-kicker--live::before{content:"";display:inline-block;width:.5em;height:.5em;border-radius:50%;background:currentColor;margin-right:.4em;vertical-align:baseline}
+.editor-badge{display:inline-block;font-family:var(--editor-ui);font-size:.6875rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--editor-accent);border:1px solid color-mix(in srgb,var(--editor-accent) 45%,transparent);border-radius:2px;padding:.14em .5em}
+.editor-badge--premium{color:var(--vp-hi,#946200);border-color:color-mix(in srgb,var(--vp-hi,#946200) 45%,transparent)}
+.editor-chip{display:inline-block;font-family:var(--editor-ui);font-size:.8125rem;font-weight:500;color:var(--editor-ink-muted);background:transparent;border:var(--editor-hairline);border-radius:999px;padding:.3em .8em;text-decoration:none;transition:color var(--t,.16s),border-color var(--t,.16s)}
+.editor-chip:hover,.editor-chip:focus-visible{color:var(--editor-accent);border-color:var(--editor-accent)}
+.editor-btn{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;min-height:44px;padding:.6rem 1.4rem;font-family:var(--editor-ui);font-size:.9rem;font-weight:650;letter-spacing:.01em;text-decoration:none;color:var(--editor-ink);background:transparent;border:1.5px solid var(--editor-rule-strong);border-radius:2px;cursor:pointer;transition:color var(--t,.16s),border-color var(--t,.16s),background var(--t,.16s)}
+.editor-btn:hover{border-color:var(--editor-accent);color:var(--editor-accent)}
+.editor-btn--cta{background:var(--editor-ink);color:var(--vp-bg);border-color:var(--editor-ink)}
+.editor-btn--cta:hover{background:var(--editor-accent);border-color:var(--editor-accent);color:#fff}
+.editor-btn--ghost{border-color:var(--editor-rule)}
+.editor-age{font-family:var(--editor-ui);font-size:.75rem;color:var(--editor-ink-faint);font-variant-numeric:lining-nums tabular-nums}
+:where(.editor-btn,.editor-chip,.editor-navbar a,.editor-ticker a,.editor-teaser a,.editor-mostread a):focus-visible{outline:2px solid var(--editor-accent);outline-offset:2px}
+
+/* ── Stripline (date / edition / markets) ───────────────────────────────── */
+.editor-topbar{display:flex;gap:1.5rem;align-items:center;font-family:var(--editor-ui);font-size:.75rem;color:var(--editor-ink-muted);border-bottom:var(--editor-hairline);padding:.5rem 0;font-variant-numeric:tabular-nums;overflow-x:auto;white-space:nowrap}
+.editor-topbar__item{display:inline-flex;gap:.4rem;align-items:baseline}
+.editor-topbar__date{text-transform:uppercase;letter-spacing:.06em}
+.editor-topbar__up{color:var(--vp-green,#2e7d32)}
+.editor-topbar__down{color:var(--editor-accent)}
+
+/* ── Masthead + section bar ─────────────────────────────────────────────── */
+.editor-masthead{text-align:center;padding:1.6rem 0 1.1rem}
+.editor-masthead__brand{font-family:var(--editor-masthead);font-size:clamp(2rem,5vw,3.2rem);font-weight:700;letter-spacing:.01em;color:var(--editor-ink);text-decoration:none;font-synthesis:none}
+.editor-masthead__motto{font-family:var(--editor-text);font-style:italic;font-size:.9rem;color:var(--editor-ink-faint);margin-top:.3rem}
+.editor-navbar{display:flex;justify-content:center;gap:1.6rem;flex-wrap:wrap;border-top:1px solid var(--editor-rule-strong);border-bottom:var(--editor-hairline);padding:.65rem 0}
+.editor-navbar a{font-family:var(--editor-ui);font-size:.8rem;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--editor-ink);text-decoration:underline;text-decoration-color:transparent;text-decoration-thickness:.12em;text-underline-offset:.45em;transition:text-decoration-color var(--t,.16s),color var(--t,.16s)}
+.editor-navbar a:hover,.editor-navbar a[aria-current="page"]{color:var(--editor-accent);text-decoration-color:var(--editor-accent)}
+
+/* ── Breaking band + ticker ─────────────────────────────────────────────── */
+.editor-breaking-bar{display:flex;gap:.9rem;align-items:baseline;border-top:3px solid var(--editor-accent);border-bottom:var(--editor-hairline);padding:.55rem 0;font-family:var(--editor-ui)}
+.editor-breaking-bar a{color:var(--editor-ink);font-weight:650;text-decoration:none}
+.editor-breaking-bar a:hover{color:var(--editor-accent)}
+/* Ticker: base state is a static, scrollable strip (WCAG 2.2.2-safe); the
+   marquee motion is opt-in and pauses on hover/focus. */
+.editor-ticker{display:flex;gap:2.5rem;overflow-x:auto;white-space:nowrap;border-block:var(--editor-hairline);padding:.5rem 0;font-family:var(--editor-ui);font-size:.85rem}
+.editor-ticker a{color:var(--editor-ink-muted);text-decoration:none}
+.editor-ticker a:hover{color:var(--editor-accent)}
+@media(prefers-reduced-motion:no-preference){
+  .editor-ticker--auto{overflow:hidden}
+  .editor-ticker--auto .editor-ticker__track{display:inline-flex;gap:2.5rem;animation:editor-ticker 36s linear infinite}
+  .editor-ticker--auto:hover .editor-ticker__track,.editor-ticker--auto:focus-within .editor-ticker__track{animation-play-state:paused}
+  @keyframes editor-ticker{to{transform:translateX(-50%)}}
+}
+
+/* ── Front page grid + lead package ─────────────────────────────────────── */
+.editor-front{display:grid;grid-template-columns:repeat(12,1fr);gap:1px;background:var(--editor-rule);border-block:1px solid var(--editor-rule)}
+.editor-front>*{background:var(--vp-bg);padding:1.25rem;grid-column:span 4;min-width:0}
+.editor-span-4{grid-column:span 4}.editor-span-6{grid-column:span 6}.editor-span-8{grid-column:span 8}.editor-span-12{grid-column:1/-1}
+.editor-lead{grid-column:span 8}
+.editor-lead__hed,.editor-hed{font-family:var(--editor-display);font-weight:700;font-synthesis:none;line-height:1.08;letter-spacing:var(--editor-track-xl);font-size:clamp(1.75rem,1.15rem + 2.6vw,2.75rem);color:var(--editor-ink);margin:0;text-wrap:balance}
+.editor-lead__dek,.editor-dek{font-family:var(--editor-display);font-weight:400;font-size:clamp(1.0625rem,1rem + .4vw,1.25rem);line-height:1.4;color:var(--editor-ink-muted);max-width:38em;margin:.6rem 0 0;text-wrap:balance}
+.editor-lead__related{list-style:none;margin:.9rem 0 0;padding:0;display:flex;flex-direction:column;gap:.45rem}
+.editor-lead__related a{font-family:var(--editor-ui);font-size:.875rem;font-weight:600;line-height:1.3;color:var(--editor-ink);text-decoration:none;display:flex;gap:.5rem;align-items:baseline}
+.editor-lead__related a::before{content:"";flex:none;width:.45em;height:.45em;background:var(--editor-accent);margin-top:.1em}
+.editor-lead__related a:hover{color:var(--editor-accent)}
+.editor-lead__media img,.editor-teaser__media img{width:100%;aspect-ratio:3/2;object-fit:cover;display:block;background:var(--editor-well)}
+.editor-lead__media,.editor-teaser__media{overflow:hidden;margin-bottom:.8rem}
+.editor-figcap{font-family:var(--editor-ui);font-size:.75rem;color:var(--editor-ink-faint);margin-top:.4rem;text-wrap:balance}
+
+/* ── Teasers — density increases down the page ──────────────────────────── */
+.editor-teaser{position:relative;display:flex;flex-direction:column;gap:.45rem}
+.editor-teaser__hed{font-family:var(--editor-display);font-weight:700;font-synthesis:none;font-size:clamp(1.125rem,1rem + .6vw,1.375rem);line-height:1.2;letter-spacing:var(--editor-track-md);color:var(--editor-ink);margin:0;text-wrap:balance}
+.editor-teaser__hed a{color:inherit;text-decoration:underline;text-decoration-color:transparent;text-decoration-thickness:.08em;text-underline-offset:.2em;transition:text-decoration-color var(--t,.16s)}
+.editor-teaser__hed a:hover,.editor-teaser__hed a:focus-visible{text-decoration-color:currentColor}
+.editor-teaser__hed a::after{content:"";position:absolute;inset:0}
+.editor-teaser__dek{font-family:var(--editor-text);font-size:.95rem;line-height:1.5;color:var(--editor-ink-muted);margin:0}
+.editor-teaser--compact .editor-teaser__media{display:none}
+.editor-teaser--headline .editor-teaser__media,.editor-teaser--headline .editor-teaser__dek{display:none}
+.editor-teaser--opinion .editor-teaser__hed{font-style:italic;font-weight:400}
+.editor-teaser--opinion::before{content:"\201C";font-family:var(--editor-display);font-size:2.6rem;line-height:.6;color:var(--editor-accent)}
+.editor-teaser:focus-within{outline:2px solid var(--editor-accent);outline-offset:2px}
+@media(prefers-reduced-motion:no-preference){
+  .editor-lead__media img,.editor-teaser__media img{transition:transform 400ms var(--ease-out,ease-out)}
+  .editor-teaser:hover .editor-teaser__media img,.editor-lead:hover .editor-lead__media img{transform:scale(1.04)}
+}
+
+/* ── Story packages ─────────────────────────────────────────────────────── */
+.editor-package{border-top:1px solid var(--editor-rule);padding-top:.9rem}
+.editor-package>.editor-kicker{grid-column:1/-1}
+.editor-package--pinned{border-top:3px solid var(--editor-accent)}
+
+/* ── Most read (numbered rail) ──────────────────────────────────────────── */
+.editor-mostread{list-style:none;counter-reset:editor-rank;margin:0;padding:0}
+.editor-mostread li{counter-increment:editor-rank;display:grid;grid-template-columns:2.4rem 1fr;gap:.8rem;align-items:start;padding:.8rem 0;border-top:1px solid var(--editor-rule-soft)}
+.editor-mostread li:first-child{border-top:0}
+.editor-mostread li::before{content:counter(editor-rank);font-family:var(--editor-display);font-size:2rem;font-weight:400;line-height:.9;color:var(--editor-accent);font-variant-numeric:lining-nums tabular-nums}
+.editor-mostread a{font-family:var(--editor-display);font-weight:700;font-size:1.0625rem;line-height:1.25;color:var(--editor-ink);text-decoration:underline;text-decoration-color:transparent;text-decoration-thickness:.08em;text-underline-offset:.2em;transition:text-decoration-color var(--t,.16s)}
+.editor-mostread a:hover{text-decoration-color:currentColor}
+
+/* ── Section containers + slices ────────────────────────────────────────── */
+.editor-container{margin:var(--editor-pad) 0}
+.editor-container__head{display:flex;align-items:baseline;justify-content:space-between;gap:1rem;border-top:4px double var(--editor-rule-strong);padding-top:.55rem;margin-bottom:1.1rem}
+.editor-container__label{font-family:var(--editor-ui);font-size:.75rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--editor-section-accent,var(--editor-ink));margin:0}
+.editor-container__more{font-family:var(--editor-ui);font-size:.78rem;font-weight:600;color:var(--editor-ink-faint);text-decoration:none}
+.editor-container__more:hover{color:var(--editor-accent)}
+.editor-slice-1-2{display:grid;grid-template-columns:2fr 1fr;gap:1px;background:var(--editor-rule)}
+.editor-slice-1-2>*{background:var(--vp-bg);padding:1.1rem;min-width:0}
+.editor-slice-4{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:1px;background:var(--editor-rule)}
+.editor-slice-4>*{background:var(--vp-bg);padding:1.1rem;min-width:0}
+.editor-slice-list{display:flex;flex-direction:column}
+.editor-slice-list>*{border-top:1px solid var(--editor-rule-soft);padding:.85rem 0}
+.editor-slice-list>:first-child{border-top:0}
+
+/* ── Article furniture ──────────────────────────────────────────────────── */
+.editor-standfirst{font-family:var(--editor-display);font-size:clamp(1.0625rem,1rem + .4vw,1.25rem);line-height:1.4;font-weight:400;color:var(--editor-ink-muted);max-width:38em;margin:.75rem 0 1.25rem;text-wrap:balance}
+.editor-byline{font-family:var(--editor-ui);font-size:.875rem;color:var(--editor-ink-muted)}
+.editor-byline b,.editor-byline a{font-weight:700;font-style:normal;color:var(--editor-ink);text-decoration:none}
+.editor-byline a:hover{color:var(--editor-accent)}
+.editor-dateline{font-family:var(--editor-ui);font-size:.75rem;text-transform:uppercase;letter-spacing:.06em;color:var(--editor-ink-faint);font-variant-numeric:lining-nums}
+.editor-dropcap>p:first-of-type::first-letter{float:left;font-family:var(--editor-display);font-size:3.4em;line-height:.82;padding:.04em .09em 0 0;font-weight:700;color:var(--editor-ink)}
+@supports(initial-letter:3){.editor-dropcap>p:first-of-type::first-letter{float:none;padding:0 .09em 0 0;line-height:1;font-size:1em;initial-letter:3}}
+.editor-pullquote{font-family:var(--editor-display);font-style:italic;font-size:clamp(1.375rem,1.15rem + 1vw,1.75rem);line-height:1.3;letter-spacing:var(--editor-track-md);color:var(--editor-ink);border-block:var(--editor-hairline);padding:1.2rem .5rem;margin:2rem 0;text-align:center;hanging-punctuation:first;text-wrap:balance}
+.editor-pullquote cite{display:block;font-family:var(--editor-ui);font-style:normal;font-size:.78rem;letter-spacing:.06em;text-transform:uppercase;color:var(--editor-ink-faint);margin-top:.7rem}
+.editor-keypoints{border:var(--editor-hairline);border-top:3px solid var(--editor-accent);padding:1.1rem 1.25rem;margin:1.5rem 0;background:var(--editor-well)}
+.editor-keypoints__title{font-family:var(--editor-ui);font-size:.75rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;margin:0 0 .6rem;color:var(--editor-ink)}
+.editor-keypoints ul{margin:0;padding-left:1.1rem;font-size:.95rem;line-height:1.55}
+
+/* ── Reading progress — pure CSS, scroll-driven, enhancement-only ────────── */
+.editor-progress{display:none}
+@supports(animation-timeline:scroll()){
+  @media(prefers-reduced-motion:no-preference){
+    .editor-progress{display:block;position:fixed;inset:0 0 auto 0;height:3px;background:var(--editor-accent);transform-origin:0 50%;scale:0 1;animation:editor-progress linear both;animation-timeline:scroll(root);z-index:var(--vp-z-sticky,100)}
+  }
+}
+@keyframes editor-progress{to{scale:1 1}}
+
+/* ── Share rail + related coverage ──────────────────────────────────────── */
+.editor-share-rail{display:flex;gap:.5rem}
+.editor-share-rail a{display:grid;place-items:center;width:2.5rem;height:2.5rem;border-radius:50%;border:var(--editor-hairline);color:var(--editor-ink-muted);text-decoration:none;transition:color var(--t,.16s),border-color var(--t,.16s)}
+.editor-share-rail a:hover{color:var(--editor-accent);border-color:var(--editor-accent)}
+.editor-related{border-block:var(--editor-hairline);padding:1rem 0;margin:2rem 0}
+.editor-related li+li{border-top:1px solid var(--editor-rule-soft)}
+.editor-related a{font-family:var(--editor-display);font-weight:700;font-size:1.0625rem;color:var(--editor-ink);text-decoration:none}
+.editor-related a:hover{color:var(--editor-accent)}
+
+/* ── Membership: fade + restrained prompt ───────────────────────────────── */
+.editor-paywall-fade{position:relative}
+.editor-paywall-fade::after{content:"";position:absolute;inset:auto 0 0 0;height:8rem;background:linear-gradient(to bottom,transparent,var(--vp-bg))}
+.editor-prompt{border-block:4px double var(--editor-rule-strong);padding:2rem 0;margin:1.5rem 0;text-align:center}
+.editor-prompt__title{font-family:var(--editor-display);font-weight:700;font-size:1.5rem;letter-spacing:var(--editor-track-lg);margin:0 0 .5rem;color:var(--editor-ink)}
+.editor-prompt__text{font-family:var(--editor-text);color:var(--editor-ink-muted);max-width:44ch;margin:0 auto 1.25rem}
+
+/* ── Sitemap footer ─────────────────────────────────────────────────────── */
+.editor-footer{border-top:2px solid var(--editor-rule-strong);padding:2.5rem 0 1.5rem;margin-top:var(--editor-pad)}
+.editor-footer__grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(9rem,1fr));gap:2rem 3rem}
+.editor-footer__head{font-family:var(--editor-ui);font-size:.72rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--editor-ink);margin:0 0 .7rem}
+.editor-footer a{font-family:var(--editor-ui);font-size:.875rem;color:var(--editor-ink-muted);text-decoration:none}
+.editor-footer a:hover{color:var(--editor-accent);text-decoration:underline}
+
+/* ── Scroll reveal — strictly progressive (base state fully visible) ─────── */
+@supports(animation-timeline:view()){
+  @media(prefers-reduced-motion:no-preference){
+    .editor-reveal{animation:editor-rise both;animation-timeline:view();animation-range:entry 0% entry 32%}
+  }
+}
+@keyframes editor-rise{from{opacity:.25;transform:translateY(14px)}to{opacity:1;transform:none}}
+
+/* ============================================================================
+   Live public-site styling — restyles the real VayuPress markup (vayu-*), so
+   deploying Editor turns the actual home page into a broadsheet front page and
+   every article into a piece of newspaper typography. /theme.css is served
+   last, so these win. Identity: paper, ink, hairlines, one rationed red.
+   ============================================================================ */
+.container{max-width:1140px}
+body{font-family:var(--editor-ui)}
+h1,h2,h3,.vayu-post-title{text-wrap:balance}
+
+/* Masthead: centred nameplate over an uppercase section bar with print rules. */
+.vayu-nav{display:flex;flex-direction:column;align-items:center;gap:.9rem;padding:1.6rem 0 .9rem;border-bottom:4px double var(--editor-rule-strong);margin-bottom:0}
+.vayu-nav-brand{font-family:var(--editor-masthead);font-size:clamp(1.8rem,4.5vw,2.9rem);font-weight:700;letter-spacing:.01em;color:var(--editor-ink);font-synthesis:none;display:inline-flex;align-items:center;gap:.55rem}
+.vayu-nav-brand img{width:1.05em;height:1.05em;border-radius:0}
+.vayu-nav-links{display:flex;align-items:center;justify-content:center;gap:1.5rem;flex-wrap:wrap;width:100%;border-top:1px solid var(--editor-rule-strong);padding-top:.7rem}
+.vayu-nav-links>a{font-family:var(--editor-ui);font-size:.8rem;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--editor-ink);text-decoration:underline;text-decoration-color:transparent;text-decoration-thickness:.12em;text-underline-offset:.45em;transition:text-decoration-color var(--t,.16s),color var(--t,.16s)}
+.vayu-nav-links>a:hover{color:var(--editor-accent);text-decoration-color:var(--editor-accent)}
+.vayu-theme-toggle{width:34px;height:34px;border-radius:50%;border:var(--editor-hairline);background:transparent;color:var(--editor-ink-muted);cursor:pointer;transition:color var(--t,.16s),border-color var(--t,.16s)}
+.vayu-theme-toggle:hover{color:var(--editor-accent);border-color:var(--editor-accent)}
+.vayu-search-input{font-family:var(--editor-ui);font-size:.85rem;background:transparent;border:0;border-bottom:var(--editor-hairline);border-radius:0;color:var(--editor-ink);padding:.3rem .1rem;transition:border-color var(--t,.16s)}
+.vayu-search-input:focus{outline:none;border-bottom-color:var(--editor-accent)}
+.vayu-nav .vayu-nav-signin{font-family:var(--editor-ui);font-size:.8rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--editor-ink-muted)}
+.vayu-nav .vayu-nav-signup{font-family:var(--editor-ui);font-size:.8rem;font-weight:650;letter-spacing:.05em;text-transform:uppercase;background:var(--editor-ink);color:var(--vp-bg);border-radius:2px;padding:.45rem 1rem;text-decoration:none;transition:background var(--t,.16s)}
+.vayu-nav .vayu-nav-signup:hover{background:var(--editor-accent);color:#fff}
+
+/* Nameplate hero: serif, ink, an italic dateline motto — no gradients here. */
+.vayu-hero{text-align:center;background:none;border-bottom:1px solid var(--editor-rule);padding:2.6rem 1rem 2.2rem}
+.vayu-hero h1{font-family:var(--editor-display);font-weight:700;font-synthesis:none;font-size:clamp(2rem,4.6vw,3.1rem);line-height:1.08;letter-spacing:var(--editor-track-xl);background:none;-webkit-text-fill-color:currentColor;color:var(--editor-ink);text-wrap:balance;max-width:22ch;margin-left:auto;margin-right:auto}
+.vayu-hero-tagline{font-family:var(--editor-text);font-style:italic;font-size:1.15rem;color:var(--editor-ink-muted);margin-left:auto;margin-right:auto;max-width:40rem;text-wrap:balance}
+.vayu-hero-eyebrow{background:none;border:0;padding:0;font-family:var(--editor-ui);font-weight:700;letter-spacing:.12em;text-transform:uppercase;font-size:.7rem;color:var(--editor-accent);justify-content:center}
+.vayu-stats{justify-content:center;gap:2.2rem;border-top:var(--editor-hairline);padding-top:1.4rem;margin-top:1.8rem}
+.vayu-stat-val{font-family:var(--editor-display);font-weight:700;background:none;-webkit-text-fill-color:currentColor;color:var(--editor-ink);font-variant-numeric:lining-nums tabular-nums}
+.vayu-stat-label{font-family:var(--editor-ui);font-size:.72rem;letter-spacing:.07em;text-transform:uppercase;color:var(--editor-ink-faint)}
+
+/* Section label: an accent-crowned kicker, the paper's quiet section flag. */
+.vayu-section-label{font-family:var(--editor-ui);font-size:.75rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--editor-ink);border-bottom:0;margin-top:1.9rem}
+.vayu-section-label::before{content:"";display:block;width:2.5rem;height:3px;background:var(--editor-accent);margin-bottom:.5rem}
+
+/* Front page: the hairline story lattice. gap:1px over a rule-coloured line
+   grid is drawn by each card's 1px ring — FT/NYT column rules without any
+   extra markup, at any column count, in both palettes. */
+.vayu-post-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:1px;margin-top:.9rem}
+.vayu-post-card{position:relative;background:var(--vp-bg);box-shadow:0 0 0 1px var(--editor-rule);border:0;border-radius:0;padding:1.35rem;display:flex;flex-direction:column;transition:background var(--t,.16s)}
+.vayu-post-card:hover{transform:none;background:var(--editor-well)}
+.vayu-post-body{display:flex;flex-direction:column;gap:.5rem;min-width:0}
+.vayu-post-meta{font-family:var(--editor-ui);font-size:.72rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--editor-ink-faint);font-variant-numeric:lining-nums tabular-nums;display:flex;align-items:center;gap:.5rem}
+.vayu-post-dot{width:3px;height:3px;background:var(--editor-accent);border-radius:0}
+.vayu-post-author{color:var(--editor-ink-muted)}
+.vayu-post-title{font-family:var(--editor-display);font-weight:700;font-synthesis:none;font-size:clamp(1.125rem,1rem + .6vw,1.4rem);line-height:1.18;letter-spacing:var(--editor-track-md);color:var(--editor-ink);text-decoration:underline;text-decoration-color:transparent;text-decoration-thickness:.07em;text-underline-offset:.18em;transition:text-decoration-color var(--t,.16s)}
+.vayu-post-card:hover .vayu-post-title{text-decoration-color:currentColor;color:var(--editor-ink)}
+.vayu-post-excerpt{font-family:var(--editor-text);font-size:.95rem;line-height:1.5;color:var(--editor-ink-muted)}
+.vayu-post-arrow{display:none}
+/* Lead story: the first card spans the page — kicker, display hed, art right. */
+.vayu-post-card:first-child{grid-column:1/-1;padding:1.9rem 1.6rem}
+.vayu-post-card:first-child .vayu-post-title{font-size:clamp(1.7rem,1.1rem + 2.6vw,2.7rem);line-height:1.08;letter-spacing:var(--editor-track-xl)}
+.vayu-post-card:first-child .vayu-post-excerpt{font-family:var(--editor-display);font-size:clamp(1.0625rem,1rem + .4vw,1.25rem);line-height:1.4;max-width:38em}
+.vayu-post-card--media:first-child{display:grid;grid-template-columns:1.1fr .9fr;gap:1.6rem;align-items:start}
+.vayu-post-card--media:first-child .vayu-post-thumb{order:2;margin:0}
+.vayu-post-card--media:first-child .vayu-post-body{order:1}
+/* Cover art: fixed ratio (zero CLS), zoom is motion-opt-in. */
+.vayu-post-thumb{overflow:hidden;margin:-1.35rem -1.35rem 1rem;order:-1}
+.vayu-post-card:first-child .vayu-post-thumb{margin:0 0 .9rem}
+.vayu-post-thumb img{width:100%;aspect-ratio:3/2;object-fit:cover;display:block;background:var(--editor-well)}
+@media(prefers-reduced-motion:no-preference){
+  .vayu-post-thumb img{transition:transform 400ms var(--ease-out,ease-out)}
+  .vayu-post-card:hover .vayu-post-thumb img{transform:scale(1.04)}
+}
+.vayu-empty{font-family:var(--editor-text);font-style:italic;color:var(--editor-ink-faint);text-align:center;padding:3rem 0}
+
+/* Pagination: quiet print folios. */
+.vayu-pagination{display:flex;align-items:center;justify-content:center;gap:1rem;margin:2.2rem 0;font-variant-numeric:tabular-nums}
+.vayu-page-link{font-family:var(--editor-ui);font-size:.8rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--editor-ink);border:var(--editor-hairline);border-radius:2px;padding:.55rem 1.1rem;min-height:44px;display:inline-flex;align-items:center;text-decoration:none;transition:color var(--t,.16s),border-color var(--t,.16s)}
+.vayu-page-link:hover{color:var(--editor-accent);border-color:var(--editor-accent)}
+.vayu-page-link.is-disabled{opacity:.4}
+.vayu-page-status{font-family:var(--editor-ui);font-size:.8rem;color:var(--editor-ink-faint)}
+
+/* Most read + pinned: the platform's trending widget as a numbered news rail. */
+.vayu-trending{border-top:4px double var(--editor-rule-strong);margin-top:var(--editor-pad);padding-top:1rem;background:none;border-radius:0}
+.vayu-trending-group{margin-bottom:1.6rem}
+.vayu-trending-head{display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:.4rem}
+.vayu-trending-label{font-family:var(--editor-ui);font-size:.75rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--editor-ink)}
+.vayu-trending-tabs{display:inline-flex;gap:.4rem}
+.vayu-trending-tab{font-family:var(--editor-ui);font-size:.72rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase;background:transparent;border:var(--editor-hairline);border-radius:999px;color:var(--editor-ink-muted);padding:.3rem .8rem;cursor:pointer;transition:color var(--t,.16s),border-color var(--t,.16s)}
+.vayu-trending-tab:hover{color:var(--editor-accent);border-color:var(--editor-accent)}
+.vayu-trending-tab[aria-selected="true"]{color:var(--editor-accent);border-color:var(--editor-accent)}
+.vayu-trending-tab[disabled]{opacity:.35;cursor:default}
+.vayu-trending-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:0 2.2rem}
+.vayu-trending-card{display:grid;grid-template-columns:2.4rem auto 1fr;gap:.8rem;align-items:center;padding:.8rem 0;border:0;border-radius:0;border-top:1px solid var(--editor-rule-soft);background:none;text-decoration:none;transition:background var(--t,.16s)}
+.vayu-trending-card:hover{border-color:var(--editor-rule-soft);background:var(--editor-well)}
+.vayu-trending-rank{font-family:var(--editor-display);font-size:1.9rem;font-weight:400;line-height:.9;color:var(--editor-accent);font-variant-numeric:lining-nums tabular-nums;text-align:center}
+.vayu-trending-pin{font-size:1rem;text-align:center}
+.vayu-trending-thumb{width:64px;height:44px;object-fit:cover;border-radius:0;background:var(--editor-well)}
+.vayu-trending-title{font-family:var(--editor-display);font-weight:700;font-size:1rem;line-height:1.25;color:var(--editor-ink)}
+.vayu-trending-card:hover .vayu-trending-title{text-decoration:underline;text-decoration-thickness:.07em;text-underline-offset:.18em}
+/* The pinned group is a front-page package: accent rule, quiet well. */
+.vayu-trending-group:first-child:has(.vayu-trending-pin){border-top:3px solid var(--editor-accent);background:var(--editor-well);padding:.9rem 1.1rem 0}
+
+/* Article page: newspaper reading typography. The piece sits flat on the
+   paper — no floating card, no shadow (Pico's article chrome is reset). */
+article.vayu-prose{background:transparent;box-shadow:none;border:0;border-radius:0;padding:1.6rem 0 0;margin-block:0}
+article.vayu-prose>header{background:transparent;margin:0 0 1.6rem;padding:0 0 1.2rem;border-radius:0}
+.vayu-article-header{border-bottom:var(--editor-hairline);padding-bottom:1.2rem;margin-bottom:1.6rem}
+article.vayu-prose h1,.vayu-article-header h1{font-family:var(--editor-display);font-weight:700;font-synthesis:none;font-size:clamp(1.9rem,1.2rem + 3vw,2.9rem);line-height:1.08;letter-spacing:var(--editor-track-xl);background:none;-webkit-text-fill-color:currentColor;color:var(--editor-ink);text-wrap:balance}
+.vayu-feature-image{width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:0;background:var(--editor-well);margin-bottom:1.4rem}
+.vayu-byline{font-family:var(--editor-ui);font-size:.875rem;color:var(--editor-ink-muted)}
+.vayu-byline-name{font-weight:700;color:var(--editor-ink)}
+.vayu-byline-link:hover .vayu-byline-name{color:var(--editor-accent)}
+.vayu-byline-avatar{border-radius:50%}
+.vayu-article-meta{font-family:var(--editor-ui);font-size:.75rem;letter-spacing:.06em;text-transform:uppercase;color:var(--editor-ink-faint);font-variant-numeric:lining-nums tabular-nums}
+.vayu-article-meta a.vayu-tag{font-weight:600;background:transparent;color:var(--editor-ink-muted);border:var(--editor-hairline);border-radius:999px;padding:.15em .7em;text-decoration:none;text-transform:none;letter-spacing:.01em;transition:color var(--t,.16s),border-color var(--t,.16s)}
+.vayu-article-meta a.vayu-tag:hover{background:transparent;color:var(--editor-accent);border-color:var(--editor-accent)}
+.vayu-byline-avatar--ph{display:inline-grid;place-items:center;width:36px;height:36px;border-radius:50%;background:var(--editor-well-2);border:var(--editor-hairline);color:var(--editor-ink-muted);font-family:var(--editor-display);font-weight:700}
+article.vayu-prose .content{font-family:var(--editor-text);font-size:1.125rem;line-height:1.72;max-width:68ch;margin-left:auto;margin-right:auto}
+article.vayu-prose .content p{text-wrap:pretty}
+article.vayu-prose .content h2,article.vayu-prose .content h3{font-family:var(--editor-display);font-weight:700;letter-spacing:var(--editor-track-lg);line-height:1.15;text-wrap:balance}
+article.vayu-prose .content a{color:var(--editor-link);text-decoration:underline;text-decoration-thickness:.08em;text-underline-offset:.18em;text-decoration-color:color-mix(in srgb,var(--editor-link) 45%,transparent);transition:text-decoration-color var(--t,.16s)}
+article.vayu-prose .content a:hover{text-decoration-color:currentColor}
+/* Drop cap: the print opener, double-pathed for every engine. */
+article.vayu-prose .content>p:first-of-type::first-letter{float:left;font-family:var(--editor-display);font-size:3.4em;line-height:.82;padding:.04em .09em 0 0;font-weight:700;color:var(--editor-ink)}
+@supports(initial-letter:3){article.vayu-prose .content>p:first-of-type::first-letter{float:none;padding:0 .09em 0 0;line-height:1;font-size:1em;initial-letter:3}}
+/* Quotes read as pullquotes: serif italic between hairlines. */
+.content blockquote{font-family:var(--editor-display);font-style:italic;font-size:1.35rem;line-height:1.35;color:var(--editor-ink);background:none;border:0;border-block:var(--editor-hairline);border-radius:0;padding:1.2rem .5rem;margin:2rem 0;text-align:center;hanging-punctuation:first;text-wrap:balance}
+.content img{border-radius:0;max-width:100%;height:auto}
+.content figcaption{font-family:var(--editor-ui);font-size:.75rem;color:var(--editor-ink-faint)}
+.content hr{border:0;border-top:4px double var(--editor-rule-strong);margin:2.4rem auto;max-width:12rem}
+.content pre{border:var(--editor-hairline);border-radius:2px;background:var(--editor-well)}
+.content code{background:var(--editor-well);border-radius:2px}
+/* Reading progress on articles: scroll-driven, pure CSS, enhancement-only. */
+@supports(animation-timeline:scroll()){
+  @media(prefers-reduced-motion:no-preference){
+    article.vayu-prose::before{content:"";position:fixed;inset:0 0 auto 0;height:3px;background:var(--editor-accent);transform-origin:0 50%;scale:0 1;animation:editor-progress linear both;animation-timeline:scroll(root);z-index:var(--vp-z-sticky,100)}
+  }
+}
+
+/* Related coverage: a hairline-bounded headline list, print recirculation. */
+.vayu-related{border-top:4px double var(--editor-rule-strong);padding-top:.8rem;margin-top:2.4rem}
+.vayu-related-heading{font-family:var(--editor-ui);font-size:.75rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;background:none;-webkit-text-fill-color:currentColor;color:var(--editor-ink)}
+.vayu-related-list{list-style:none;padding:0;margin:0}
+.vayu-related-list li{border-top:1px solid var(--editor-rule-soft);padding:.7rem 0;display:flex;justify-content:space-between;gap:1rem;align-items:baseline}
+.vayu-related-list li:first-child{border-top:0}
+.vayu-related-list a{font-family:var(--editor-display);font-weight:700;font-size:1.0625rem;line-height:1.3;color:var(--editor-ink);text-decoration:underline;text-decoration-color:transparent;text-decoration-thickness:.08em;text-underline-offset:.2em;transition:text-decoration-color var(--t,.16s)}
+.vayu-related-list a:hover{text-decoration-color:currentColor}
+.vayu-related-list time{font-family:var(--editor-ui);font-size:.75rem;color:var(--editor-ink-faint);font-variant-numeric:tabular-nums;flex:none}
+
+/* Author box: a signed piece, ruled top and bottom — never a shadowed card. */
+.vayu-author-box{display:flex;gap:1.1rem;align-items:flex-start;background:none;border:0;border-block:var(--editor-hairline);border-radius:0;box-shadow:none;padding:1.5rem 0;margin:2.4rem 0}
+.vayu-author-avatar{border-radius:50%}
+.vayu-author-name{font-family:var(--editor-display);font-weight:700;font-size:1.15rem;letter-spacing:var(--editor-track-md);color:var(--editor-ink)}
+.vayu-author-bio{font-family:var(--editor-text);color:var(--editor-ink-muted)}
+
+/* Comments: the letters page. */
+.vayu-comments{border-top:4px double var(--editor-rule-strong);margin-top:2.4rem;padding-top:1rem}
+.vayu-comment-heading{font-family:var(--editor-ui);font-size:.75rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--editor-ink)}
+.vayu-comment{border-top:1px solid var(--editor-rule-soft);padding:1rem 0}
+.vayu-comment-author{font-family:var(--editor-ui);font-weight:700;color:var(--editor-ink)}
+.vayu-comment-date{font-family:var(--editor-ui);font-size:.75rem;color:var(--editor-ink-faint)}
+.vayu-comment-body{font-family:var(--editor-text);line-height:1.6}
+.vayu-comment-input{font-family:var(--editor-ui);background:var(--vp-bg);border:var(--editor-hairline);border-radius:2px;color:var(--editor-ink);padding:.6rem .8rem}
+.vayu-comment-input:focus{outline:2px solid var(--editor-accent);outline-offset:1px}
+.vayu-comment-submit{font-family:var(--editor-ui);font-size:.85rem;font-weight:650;letter-spacing:.03em;background:var(--editor-ink);color:var(--vp-bg);border:1.5px solid var(--editor-ink);border-radius:2px;padding:.55rem 1.2rem;min-height:44px;cursor:pointer;transition:background var(--t,.16s),border-color var(--t,.16s)}
+.vayu-comment-submit:hover{background:var(--editor-accent);border-color:var(--editor-accent);color:#fff}
+
+/* Instant search: a quiet reading-room overlay. */
+.vayu-search-panel{background:var(--vp-surface);border:var(--editor-hairline);border-radius:2px;box-shadow:var(--sh-lg,0 18px 50px rgba(0,0,0,.16))}
+.vayu-search-field{font-family:var(--editor-ui)}
+.vayu-search-result-title{font-family:var(--editor-display);font-weight:700;color:var(--editor-ink)}
+.vayu-search-result:hover .vayu-search-result-title{color:var(--editor-accent)}
+.vayu-search-result-excerpt{font-family:var(--editor-text);color:var(--editor-ink-muted)}
+
+/* Tags index: ghost chips, newsroom desks. */
+.vayu-tag--cloud{font-family:var(--editor-ui);border:var(--editor-hairline);border-radius:999px;background:none;color:var(--editor-ink-muted);transition:color var(--t,.16s),border-color var(--t,.16s)}
+.vayu-tag--cloud:hover{color:var(--editor-accent);border-color:var(--editor-accent)}
+.vayu-tag-count{color:var(--editor-ink-faint)}
+
+/* Footer: the fat sitemap under a firm end-of-page rule. */
+.vayu-footer{border-top:2px solid var(--editor-rule-strong);margin-top:var(--editor-pad);padding-top:2.2rem}
+.vayu-footer-main{display:grid;grid-template-columns:1.3fr 2fr;gap:2rem 3rem}
+.vayu-footer-cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(9rem,1fr));gap:2rem 3rem}
+.vayu-footer-col-links{list-style:none;margin:0;padding:0}
+.vayu-footer-col-links li{list-style:none;margin:0;padding:.22rem 0}
+.vayu-footer-brand{font-family:var(--editor-masthead);font-weight:700;font-size:1.35rem;color:var(--editor-ink)}
+.vayu-footer-tagline{font-family:var(--editor-text);font-style:italic;color:var(--editor-ink-muted)}
+.vayu-footer-col-title{font-family:var(--editor-ui);font-size:.72rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--editor-ink)}
+.vayu-footer-col-links a{font-family:var(--editor-ui);font-size:.875rem;color:var(--editor-ink-muted);text-decoration:none;transition:color var(--t,.16s)}
+.vayu-footer-col-links a:hover{color:var(--editor-accent);text-decoration:underline}
+.vayu-footer-social a{color:var(--editor-ink-muted)}
+.vayu-footer-social a:hover{color:var(--editor-accent)}
+.vayu-footer-bottom{border-top:var(--editor-hairline);padding-top:1rem;margin-top:1.6rem;font-family:var(--editor-ui);font-size:.8rem;color:var(--editor-ink-faint)}
+.vayu-footer-legal a{color:var(--editor-ink-faint)}
+.vayu-footer-legal a:hover{color:var(--editor-accent)}
+
+/* 404: a correction notice. */
+.vayu-err-code{font-family:var(--editor-display);font-weight:700;color:var(--editor-ink)}
+.vayu-err-msg{font-family:var(--editor-display);color:var(--editor-ink)}
+.vayu-err-sub{font-family:var(--editor-text);font-style:italic;color:var(--editor-ink-faint)}
+
+/* Soft cross-page fades — Baseline-safe enhancement, instant elsewhere. */
+@media(prefers-reduced-motion:no-preference){
+  @view-transition{navigation:auto}
+  ::view-transition-old(root),::view-transition-new(root){animation-duration:180ms;animation-timing-function:var(--ease,ease)}
+}
+
+/* ── Responsive: the broadsheet folds down to a tabloid, then a liveblog. ── */
+@media(max-width:1024px){
+  .vayu-post-card--media:first-child{grid-template-columns:1fr}
+  .vayu-post-card--media:first-child .vayu-post-thumb{order:-1}
+  .editor-lead,.editor-front>*{grid-column:1/-1}
+  .editor-slice-1-2{grid-template-columns:1fr}
+  .vayu-footer-main{grid-template-columns:1fr 1fr}
+}
+@media(max-width:768px){
+  .vayu-nav{padding-top:1.1rem}
+  .vayu-nav-links{gap:1rem}
+  .vayu-post-list{grid-template-columns:1fr}
+  .vayu-trending-list{grid-template-columns:1fr}
+  article.vayu-prose .content{font-size:1.0625rem}
+  .editor-topbar{font-size:.7rem}
+}
+@media(max-width:480px){
+  .vayu-post-card{padding:1.1rem}
+  .vayu-post-card:first-child{padding:1.3rem 1.1rem}
+  .vayu-footer-main{grid-template-columns:1fr}
+  .vayu-pagination{flex-wrap:wrap}
+}
+
+/* ── Reduced motion: every affordance stays, everything static. ─────────── */
+@media(prefers-reduced-motion:reduce){
+  .vayu-post-card,.vayu-post-title,.vayu-page-link,.vayu-trending-card,.vayu-trending-tab,.vayu-theme-toggle,.vayu-nav-links>a,.editor-chip,.editor-btn,.editor-navbar a{transition:none}
+}

@@ -234,7 +234,7 @@ type ThemedOption struct {
 // vayu-* markup, so they are harmless if ever applied to another theme.
 var perThemeOptions = []ThemedOption{
 	{
-		Themes: []string{"Apex", "Beacon", "Dispatch", "Agora", "Ripple"},
+		Themes: []string{"Apex", "Beacon", "Dispatch", "Agora", "Ripple", "Editor"},
 		Option: Option{
 			Key: "density", Label: "Density", Default: "default",
 			Help: "Vertical rhythm and section spacing.",
@@ -245,13 +245,64 @@ var perThemeOptions = []ThemedOption{
 		},
 	},
 	{
-		Themes: []string{"Maverick", "Vivid", "Gale", "Apex", "Noir"},
+		Themes: []string{"Maverick", "Vivid", "Gale", "Apex", "Noir", "Editor"},
 		Option: Option{
 			Key: "headingscale", Label: "Heading size", Default: "default",
 			Help: "Scale of display headings.",
 			Choices: []OptionChoice{
 				{"default", "Theme default"}, {"sm", "Small"}, {"md", "Medium"},
 				{"lg", "Large"}, {"xl", "Extra large"},
+			},
+		},
+	},
+	{
+		Themes: []string{"Editor"},
+		Option: Option{
+			Key: "paper", Label: "Paper tone", Default: "default",
+			Help: "The light-mode paper: bright white, warm ivory, or FT-style salmon.",
+			Choices: []OptionChoice{
+				{"default", "Theme default"}, {"bright", "Bright white"},
+				{"ivory", "Warm ivory"}, {"salmon", "Salmon (FT)"},
+			},
+		},
+	},
+	{
+		Themes: []string{"Editor"},
+		Option: Option{
+			Key: "dropcap", Label: "Drop cap", Default: "default",
+			Help: "A print-style initial letter on the first paragraph of each post.",
+			Choices: []OptionChoice{
+				{"default", "Theme default"}, {"show", "Show"}, {"hidden", "Hide"},
+			},
+		},
+	},
+	{
+		Themes: []string{"Editor"},
+		Option: Option{
+			Key: "columnrules", Label: "Story grid rules", Default: "default",
+			Help: "Hairline rules between front-page stories, broadsheet style.",
+			Choices: []OptionChoice{
+				{"default", "Theme default"}, {"show", "Show"}, {"hidden", "Hide"},
+			},
+		},
+	},
+	{
+		Themes: []string{"Editor"},
+		Option: Option{
+			Key: "readingprogress", Label: "Reading progress", Default: "default",
+			Help: "A thin scroll-progress bar on posts (pure CSS, motion-respecting).",
+			Choices: []OptionChoice{
+				{"default", "Theme default"}, {"show", "Show"}, {"hidden", "Hide"},
+			},
+		},
+	},
+	{
+		Themes: []string{"Editor"},
+		Option: Option{
+			Key: "pagefade", Label: "Page transitions", Default: "default",
+			Help: "Soft cross-page fades via CSS view transitions (motion-respecting).",
+			Choices: []OptionChoice{
+				{"default", "Theme default"}, {"on", "On"}, {"off", "Off"},
 			},
 		},
 	},
@@ -331,6 +382,17 @@ func applyThemeOptions(t *Tokens) string {
 			t.AccentLight, t.Accent2Light = p.AccentLight, p.Accent2Light
 			t.AccentDark, t.Accent2Dark = p.AccentDark, p.Accent2Dark
 		}
+	}
+	// Paper tone: re-tint the light-mode canvas (the dark "ink edition" keeps
+	// its own palette). Mutating the tokens routes the choice through every
+	// bridge — --vp-*, Pico and the bare public variables — like scheme does.
+	switch t.Options["paper"] {
+	case "bright":
+		t.BgLight, t.SurfaceLight = "#ffffff", "#fafaf7"
+	case "ivory":
+		t.BgLight, t.SurfaceLight = "#faf8f3", "#ffffff"
+	case "salmon":
+		t.BgLight, t.SurfaceLight = "#fff1e0", "#fff8ec"
 	}
 	// Typography pairing: the body stack flows through Tokens.FontSans (and so
 	// every bridge — --vp-font-sans, --font, Pico), the display stack via scoped
@@ -508,6 +570,48 @@ func applyThemeOptions(t *Tokens) string {
 	case "spacious":
 		extra.WriteString("body{line-height:1.85}.vayu-hero{padding-top:6rem;padding-bottom:4.5rem}.vayu-section{margin:4.5rem 0}")
 	}
+	// Drop cap — a print-style initial on the first paragraph of each post.
+	// Double-pathed: float fallback everywhere, initial-letter where supported.
+	switch t.Options["dropcap"] {
+	case "show":
+		extra.WriteString("article.vayu-prose .content>p:first-of-type::first-letter{float:left;font-size:3.4em;line-height:.82;padding:.04em .09em 0 0;font-weight:700}" +
+			"@supports(initial-letter:3){article.vayu-prose .content>p:first-of-type::first-letter{float:none;padding:0 .09em 0 0;line-height:1;font-size:1em;initial-letter:3}}")
+	case "hidden":
+		extra.WriteString("article.vayu-prose .content>p:first-of-type::first-letter{float:none;font-size:1em;line-height:inherit;padding:0;font-weight:inherit;font-family:inherit;color:inherit;initial-letter:normal}")
+	}
+
+	// Story grid rules — hairline rules between front-page stories. "show"
+	// draws the broadsheet lattice (1px gaps ringed by each card); "hidden"
+	// swaps it for an airy open grid.
+	switch t.Options["columnrules"] {
+	case "show":
+		extra.WriteString(".vayu-post-list{gap:1px}.vayu-post-card{box-shadow:0 0 0 1px var(--border,rgba(125,125,125,.22));border-radius:0}")
+	case "hidden":
+		extra.WriteString(".vayu-post-list{gap:1.6rem 2rem}.vayu-post-card{box-shadow:none}")
+	}
+
+	// Reading progress — a thin scroll bar on posts. Pure CSS (scroll-driven
+	// animation), gated behind @supports and prefers-reduced-motion so it is a
+	// strict progressive enhancement.
+	switch t.Options["readingprogress"] {
+	case "show":
+		extra.WriteString("@supports(animation-timeline:scroll()){@media(prefers-reduced-motion:no-preference){" +
+			`article.vayu-prose::before{content:"";position:fixed;inset:0 0 auto 0;height:3px;background:var(--accent,#2dd4bf);transform-origin:0 50%;scale:0 1;animation:vayu-opt-progress linear both;animation-timeline:scroll(root);z-index:var(--vp-z-sticky,100)}` +
+			"}}@keyframes vayu-opt-progress{to{scale:1 1}}")
+	case "hidden":
+		extra.WriteString("article.vayu-prose::before{content:none}")
+	}
+
+	// Page transitions — soft cross-page fades via CSS view transitions.
+	// Motion-respecting; browsers without support simply navigate instantly.
+	switch t.Options["pagefade"] {
+	case "on":
+		extra.WriteString("@media(prefers-reduced-motion:no-preference){@view-transition{navigation:auto}" +
+			"::view-transition-old(root),::view-transition-new(root){animation-duration:180ms}}")
+	case "off":
+		extra.WriteString("@view-transition{navigation:none}")
+	}
+
 	switch t.Options["headingscale"] {
 	case "sm":
 		extra.WriteString(".vayu-hero h1{font-size:2rem}.vayu-post-title{font-size:1.1rem}article.vayu-prose h1,.vayu-article-header h1{font-size:1.9rem}")
