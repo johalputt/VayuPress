@@ -406,6 +406,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/tor/toggle", a.handleOSTorToggle)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/tor/bridges", a.handleOSTorBridges)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/tor/pagestats", a.handleOSTorPageStats)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/tor/hardening", a.handleOSTorHardening)
 		pr.Get("/os/tor/stats", a.handleOSTorStats)
 
 		pr.Get("/os/vayumail/security", a.handleVayuOSSecurity)

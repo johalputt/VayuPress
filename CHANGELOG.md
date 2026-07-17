@@ -8,6 +8,26 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.75] — 2026-07-17
+
+### Added
+- **VayuTor onion hardening.** A new "Hardening" card plus always-on protections
+  for onion visitors. Responses served over a `.onion` now **omit HSTS** (it's
+  meaningless over a plain-HTTP, self-authenticating address) and send
+  **`Referrer-Policy: no-referrer`** so the onion URL never leaks as a Referer to
+  any off-onion navigation or subresource — while clearnet responses keep HSTS
+  and the standard policy. The strict CSP is unchanged and already onion-safe (no
+  `upgrade-insecure-requests`), and VayuTor still opens no inbound ports.
+- **Onion-Location advertising toggle** (`tor.onion_location`, default on): turn
+  off to keep onions live without announcing them to Tor Browser on clearnet
+  responses. Read live by the middleware — no restart.
+
+### Notes
+- A "disable clearnet / Tor-only" switch is intentionally **not** offered: it
+  would make the site unreachable to every non-Tor visitor, and that policy
+  belongs at the web-server/DNS layer, not a per-site toggle that could lock the
+  operator out. Onion abuse continues to be handled by VayuShield.
+
 ## [3.13.74] — 2026-07-17
 
 ### Added

@@ -154,7 +154,13 @@ func structuredLoggerMiddleware(next http.Handler) http.Handler {
 
 func securityHeadersMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload")
+		// Onion hardening: a .onion is plain HTTP and self-authenticating, so HSTS
+		// is meaningless (and wrong) over it — omit it. This middleware runs before
+		// torOnionMiddleware rewrites the Host, so r.Host is still the .onion here.
+		onion := isOnionHost(r.Host)
+		if !onion {
+			w.Header().Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload")
+		}
 		nonce := render.GenerateCSPNonce()
 		// Strict baseline (no third-party frame-src). Pages with a click-to-load
 		// video facade narrowly extend frame-src themselves via render.BuildCSP.
@@ -171,7 +177,13 @@ func securityHeadersMiddleware(next http.Handler) http.Handler {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("X-XSS-Protection", "1; mode=block")
-		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		// Onion visitors get the strictest referrer policy so the .onion URL never
+		// leaks as a Referer to any off-onion navigation or subresource.
+		refPol := "strict-origin-when-cross-origin"
+		if onion {
+			refPol = "no-referrer"
+		}
+		w.Header().Set("Referrer-Policy", refPol)
 		w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()")
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})

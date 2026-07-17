@@ -163,6 +163,7 @@ func (a *App) handleOSTor(w http.ResponseWriter, r *http.Request) {
 	body += osTorHealthCard(esc, st)
 	body += a.osTorPageStatsCard(esc, st)
 	body += a.osTorBridgesCard(r, esc, st)
+	body += a.osTorHardeningCard(r)
 	body += osTorPrivacyNote(st)
 	body += `<script nonce="` + nonce + `" src="/os/static/js/admin-os-tor.js?v=` + assetVer("js/admin-os-tor.js") + `"></script>`
 	writeOSHTML(w, adminOSLayout(nonce, "VayuTor", "tor", cfg, htmpl.HTML(body)))
@@ -254,6 +255,51 @@ func (a *App) handleOSTorBridges(w http.ResponseWriter, r *http.Request) {
 	bridges := strings.TrimSpace(r.PostFormValue("bridges"))
 	_ = a.siteSettings.SetMany(r.Context(), map[string]string{settings.KeyTorBridges: bridges})
 	a.vayuTor.Kick()
+	http.Redirect(w, r, "/os/tor", http.StatusSeeOther)
+}
+
+// osTorHardeningCard renders the onion hardening controls: the Onion-Location
+// advertising toggle plus a summary of the always-on onion protections.
+func (a *App) osTorHardeningCard(r *http.Request) string {
+	advertise := true
+	if a.siteSettings != nil {
+		advertise = a.siteSettings.Get(r.Context(), settings.KeyTorOnionLocation) != "off"
+	}
+	next, label, cls := "off", "Stop advertising the onion", "btn--ghost"
+	state := `<span class="vt-bridges__on muted text-xs">✓ On — Tor Browser is told the onion via the <code>Onion-Location</code> header and can auto-switch to it.</span>`
+	if !advertise {
+		next, label, cls = "on", "Advertise the onion to Tor Browser", "btn--primary"
+		state = `<span class="muted text-xs">Off — clearnet responses don't announce the onion. Visitors can still use the <code>.onion</code> directly.</span>`
+	}
+	card := `<div class="card mt-4 vt-hardening"><div class="card-title">🛡 Hardening</div>`
+	card += `<p class="muted text-sm mb-3"><strong>Onion-Location.</strong> When on, every clearnet page advertises its <code>.onion</code> so Tor Browser can offer or automatically switch to it. Turn it off to keep onions live without announcing them.</p>`
+	card += `<form method="post" action="/os/tor/hardening" data-tor-form>
+  <input type="hidden" name="onion_location" value="` + next + `">
+  <input type="hidden" name="csrf_token" value="">
+  <div class="vt-bridges__row"><button type="submit" class="btn ` + cls + `">` + label + `</button> ` + state + `</div>
+</form>`
+	card += `<p class="muted text-sm mt-3"><strong>Always on for onion visitors</strong> (no setup): responses over a <code>.onion</code> omit HSTS (meaningless over a self-authenticating address), send <code>Referrer-Policy: no-referrer</code> so the onion URL never leaks, keep the same strict CSP as clearnet, and open <strong>no inbound ports</strong> — onion traffic arrives through Tor's rendezvous. Onion abuse is handled by VayuShield alongside clearnet traffic.</p>`
+	card += `<p class="muted text-xs mt-2">Not offered on purpose: a “disable clearnet / Tor-only” switch would make your site unreachable to everyone not using Tor. If you truly want that, it belongs at the web-server/DNS layer, not here.</p>`
+	card += `</div>`
+	return card
+}
+
+// handleOSTorHardening saves the onion hardening settings (currently the
+// Onion-Location advertising toggle). Read live by the middleware — no kick.
+func (a *App) handleOSTorHardening(w http.ResponseWriter, r *http.Request) {
+	if a.siteSettings == nil {
+		http.Redirect(w, r, "/os/tor", http.StatusSeeOther)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Redirect(w, r, "/os/tor", http.StatusSeeOther)
+		return
+	}
+	val := "on"
+	if r.PostFormValue("onion_location") == "off" {
+		val = "off"
+	}
+	_ = a.siteSettings.SetMany(r.Context(), map[string]string{settings.KeyTorOnionLocation: val})
 	http.Redirect(w, r, "/os/tor", http.StatusSeeOther)
 }
 
