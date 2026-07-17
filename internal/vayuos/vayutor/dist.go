@@ -335,8 +335,13 @@ func fetchAndExtractTor(url, dir string) error {
 		if !isTor && !isLib {
 			continue
 		}
-		// filepath.Base neutralises any path-traversal in the archive entry.
+		// filepath.Base already strips any directory, but guard explicitly against
+		// archive path traversal (Zip Slip): the destination must stay within dir.
 		dst := filepath.Join(dir, base)
+		if dst != filepath.Join(dir, filepath.Base(dst)) ||
+			!strings.HasPrefix(dst, filepath.Clean(dir)+string(os.PathSeparator)) {
+			continue
+		}
 		f, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o700)
 		if err != nil {
 			return err
