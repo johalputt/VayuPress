@@ -64,7 +64,7 @@ func (a *App) handleOSTor(w http.ResponseWriter, r *http.Request) {
 
 	// ── Connection guidance when activated but the daemon is unreachable ──
 	if st.Active && !st.Connected {
-		hint := "Waiting for the local Tor daemon on the control port. If this persists, the server needs Tor installed with its control port enabled — the VayuPress deploy/update script does this automatically (it installs <code>tor</code>, turns on the cookie-authenticated control port, and grants access). Re-run it, then reload."
+		hint := "Bringing Tor up. VayuPress runs its own Tor daemon automatically — it only needs the <code>tor</code> program installed on the server (no control-port or systemd setup required). If this persists, Tor isn't installed yet: the VayuPress deploy/update script installs it in one step (<code>apt-get install tor</code>). Re-run the updater, then reload."
 		if st.LastError != "" {
 			hint += `<div class="text-xs muted mt-2">last error: ` + esc(st.LastError) + `</div>`
 		}

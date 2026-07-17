@@ -2,6 +2,7 @@ package vayutor
 
 import (
 	"context"
+	"errors"
 	"os"
 	"strings"
 	"sync"
@@ -42,6 +43,15 @@ type Config struct {
 	Store       Store                                       // identity + counter persistence
 	Domains     func(ctx context.Context) ([]string, error) // all hosted clearnet hosts
 	Active      func() bool                                 // one-click on/off (settings-backed)
+
+	// Managed mode lets VayuPress run its OWN tor daemon (as the unprivileged
+	// service user) when the external control port is absent/unreachable, so
+	// VayuTor works with only the `tor` binary present — no root, no systemd, no
+	// manual control-port setup. Preferred order at connect time: a reachable
+	// ControlAddr (an existing system tor) first, then the managed instance.
+	Managed    bool   // enable the self-managed tor fallback (VAYUOS_TOR_MANAGED != 0)
+	TorBinary  string // resolved `tor` executable (exec.LookPath); "" → managed disabled
+	ManagedDir string // writable base dir VayuPress owns for the managed tor state
 }
 
 // Engine is the VayuTor subsystem. It owns the control connection, the
@@ -59,19 +69,26 @@ type Engine struct {
 
 	visits int64 // atomic; aggregate onion pageviews (no PII, no time)
 
+	managed  *managedTor // self-managed tor daemon (nil unless Managed + a binary)
+	usingMgd bool        // the live control connection is to our managed tor
+
 	kick chan struct{}
 	done chan struct{}
 }
 
 // NewEngine constructs the engine from injected dependencies.
 func NewEngine(cfg Config) *Engine {
-	return &Engine{
+	e := &Engine{
 		cfg:         cfg,
 		onionByHost: map[string]string{},
 		hostByOnion: map[string]string{},
 		kick:        make(chan struct{}, 1),
 		done:        make(chan struct{}),
 	}
+	if cfg.Managed && strings.TrimSpace(cfg.TorBinary) != "" && strings.TrimSpace(cfg.ManagedDir) != "" {
+		e.managed = newManagedTor(cfg.TorBinary, cfg.ManagedDir)
+	}
+	return e
 }
 
 // Name identifies the subsystem for the boot orchestrator.
@@ -110,6 +127,9 @@ func (e *Engine) Stop(_ context.Context) error {
 	}
 	e.connected = false
 	e.mu.Unlock()
+	if e.managed != nil {
+		e.managed.stop() // terminate our tor child (also tears its onions down)
+	}
 	return nil
 }
 
@@ -253,7 +273,10 @@ func (e *Engine) reconcile(ctx context.Context) {
 	e.mu.Unlock()
 }
 
-// ensureConnected dials + authenticates the control port if not already up.
+// ensureConnected dials + authenticates a control port if not already up. It
+// prefers a reachable external control port (an existing system tor), and falls
+// back to a VayuPress-managed tor daemon when one is configured — so activation
+// succeeds with only the `tor` binary present, no external setup required.
 func (e *Engine) ensureConnected() error {
 	e.mu.RLock()
 	ok := e.ctrl != nil && e.connected
@@ -261,28 +284,70 @@ func (e *Engine) ensureConnected() error {
 	if ok {
 		return nil
 	}
-	c, err := dialControl(e.cfg.ControlAddr)
+
+	// 1. External control port (system tor), when configured. Kept first so an
+	//    operator's existing, purpose-built tor service always wins.
+	var extErr error
+	if strings.TrimSpace(e.cfg.ControlAddr) != "" {
+		if c, err := e.dialAuth(e.cfg.ControlAddr, e.cfg.CookiePath); err == nil {
+			e.adoptControl(c, false)
+			return nil
+		} else {
+			extErr = err
+		}
+	}
+
+	// 2. VayuPress-managed tor daemon (unprivileged child process). This is what
+	//    makes VayuTor work after any update with zero manual setup.
+	if e.managed != nil {
+		if err := e.managed.ensure(context.Background()); err != nil {
+			return err
+		}
+		c, err := e.dialAuth(e.managed.controlAddr(), e.managed.cookiePath())
+		if err != nil {
+			return err
+		}
+		e.adoptControl(c, true)
+		return nil
+	}
+
+	if extErr != nil {
+		return extErr
+	}
+	return errNoControlPort
+}
+
+// errNoControlPort is returned when neither an external control port is
+// configured nor a managed tor is available (no `tor` binary installed).
+var errNoControlPort = errors.New("vayutor: no tor control port available — install the tor binary (the VayuPress updater does this) or set VAYUOS_TOR_CONTROL_ADDR")
+
+// dialAuth opens and cookie-authenticates one control connection.
+func (e *Engine) dialAuth(addr, cookiePath string) (*control, error) {
+	c, err := dialControl(addr)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	var cookie []byte
-	if e.cfg.CookiePath != "" {
-		cookie, _ = os.ReadFile(e.cfg.CookiePath) // empty → password-less AUTHENTICATE
+	if cookiePath != "" {
+		cookie, _ = os.ReadFile(cookiePath) // empty → password-less AUTHENTICATE
 	}
 	if err := c.authenticate(cookie); err != nil {
 		_ = c.Close()
-		return err
+		return nil, err
 	}
+	return c, nil
+}
+
+// adoptControl installs a freshly-authenticated control connection and resets
+// the live registry (onions from any prior connection were torn down with it).
+func (e *Engine) adoptControl(c *control, managed bool) {
 	e.mu.Lock()
 	e.ctrl = c
 	e.connected = true
-	// Any onions from a previous connection were torn down when it dropped
-	// (non-detached), so the live registry is stale — clear it and let reconcile
-	// re-add every wanted domain over the fresh connection.
+	e.usingMgd = managed
 	e.onionByHost = map[string]string{}
 	e.hostByOnion = map[string]string{}
 	e.mu.Unlock()
-	return nil
 }
 
 // teardown deletes all onions and closes the control connection (toggle off or
@@ -290,7 +355,6 @@ func (e *Engine) ensureConnected() error {
 // back when re-activated.
 func (e *Engine) teardown() {
 	e.mu.Lock()
-	defer e.mu.Unlock()
 	if e.ctrl != nil {
 		for onionHost := range e.hostByOnion {
 			_ = e.ctrl.delOnion(serviceIDOf(onionHost))
@@ -299,8 +363,17 @@ func (e *Engine) teardown() {
 		e.ctrl = nil
 	}
 	e.connected = false
+	e.usingMgd = false
 	e.onionByHost = map[string]string{}
 	e.hostByOnion = map[string]string{}
+	mgd := e.managed
+	e.mu.Unlock()
+	// Stop our tor child when deactivated so "off" is truly off (no process, no
+	// onions). Re-activation respawns it. Kept outside the lock so we never hold
+	// it across a process kill.
+	if mgd != nil {
+		mgd.stop()
+	}
 }
 
 // setErr records the last control error and marks the connection down so the

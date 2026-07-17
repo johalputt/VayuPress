@@ -78,3 +78,26 @@ timer (bounded DB writes) and on shutdown.
 - Tor's exit/rendezvous path is higher-latency than clearnet by nature; VayuTor
   does not slow the clearnet site at all, and onion visitors get the same content
   and features. This is a property of Tor, not of VayuPress.
+
+## Addendum — managed tor daemon (v3.13.61)
+
+The original design coupled VayuTor to a **separately-configured** system `tor`
+service (control port on `127.0.0.1:9051`, cookie auth, group membership set up
+by the deploy/update script). That worked, but left a gap: the **in-app
+one-click self-update replaces only the binary**, so a server that first gained
+VayuTor via that path — or was provisioned before the control-port automation
+existed — would activate the toggle and sit at "connection refused."
+
+VayuTor now runs its **own tor daemon** when no external control port is
+reachable. Because `tor` runs happily as an ordinary user with a user-owned
+`DataDirectory`, VayuPress spawns it as a child process under the unprivileged
+service user, with a generated torrc (`ControlPort unix:<state>/tor/control.sock`,
+`CookieAuthentication 1`, `SocksPort 0`, no relay/exit/dir surface). The engine
+prefers a reachable `VAYUOS_TOR_CONTROL_ADDR` (an operator's purpose-built tor)
+and falls back to the managed instance. The only remaining one-time root step is
+installing the `tor` **binary** (`apt-get install tor`, which the deploy/update
+script still does) — everything else is automatic and survives binary-only
+updates. Deactivating VayuTor kills the managed child, so onions and the process
+both stop; the persisted onion keys still bring the same addresses back on
+re-activation. Env knobs: `VAYUOS_TOR_MANAGED` (default on), `VAYUOS_TOR_BINARY`,
+`VAYUOS_TOR_DIR`.
