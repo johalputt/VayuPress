@@ -8,9 +8,10 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-// schemaSQL mirrors migration 059-vayudomains.up.sql. Kept in sync by hand so
-// the test exercises the exact table shape the migration creates.
-const schemaSQL = `CREATE TABLE domains(id TEXT PRIMARY KEY,host TEXT NOT NULL UNIQUE,site_type TEXT NOT NULL DEFAULT 'blog',mail_enabled INTEGER NOT NULL DEFAULT 0,tls_state TEXT NOT NULL DEFAULT 'pending',config_json TEXT NOT NULL DEFAULT '',is_primary INTEGER NOT NULL DEFAULT 0,status TEXT NOT NULL DEFAULT 'active',created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP);`
+// schemaSQL mirrors migration 059-vayudomains.up.sql plus the columns later
+// migrations add (064: sync_state). Kept in sync by hand so the test exercises
+// the exact table shape the migrations create.
+const schemaSQL = `CREATE TABLE domains(id TEXT PRIMARY KEY,host TEXT NOT NULL UNIQUE,site_type TEXT NOT NULL DEFAULT 'blog',mail_enabled INTEGER NOT NULL DEFAULT 0,tls_state TEXT NOT NULL DEFAULT 'pending',sync_state TEXT NOT NULL DEFAULT 'approved',config_json TEXT NOT NULL DEFAULT '',is_primary INTEGER NOT NULL DEFAULT 0,status TEXT NOT NULL DEFAULT 'active',created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP);`
 
 func newTestRegistry(t *testing.T) *Registry {
 	t.Helper()
@@ -178,6 +179,60 @@ func TestPrimaryIsProtected(t *testing.T) {
 	}
 	if _, err := r.Update(ctx, p.ID, SiteBusiness, false); err == nil {
 		t.Fatal("expected primary update to be refused (managed via Website)")
+	}
+}
+
+// TestManualSyncGate covers the P5 gate: a new secondary starts on hold, the
+// operator approves/pauses it, the primary is refused, and pre-migration rows
+// (empty sync_state) read as approved so already-provisioned domains keep
+// being maintained.
+func TestManualSyncGate(t *testing.T) {
+	r := newTestRegistry(t)
+	ctx := context.Background()
+	if err := r.EnsurePrimary(ctx, "johal.in", "blog"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	// A newly registered domain is on manual hold — adding it must never
+	// auto-provision anything.
+	sec, err := r.Create(ctx, "shop.example", SiteBlog, false)
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if sec.SyncState != SyncHold || sec.IsSyncApproved() {
+		t.Fatalf("new secondary should start on hold, got %+v", sec)
+	}
+
+	// Approve, then pause again; both transitions round-trip through the DB.
+	if err := r.SetSyncState(ctx, sec.ID, SyncApproved); err != nil {
+		t.Fatalf("approve: %v", err)
+	}
+	if d, _ := r.Resolve(ctx, "shop.example"); !d.IsSyncApproved() {
+		t.Fatalf("expected approved after SetSyncState, got %+v", d)
+	}
+	if err := r.SetSyncState(ctx, sec.ID, SyncHold); err != nil {
+		t.Fatalf("hold: %v", err)
+	}
+	if d, _ := r.Resolve(ctx, "shop.example"); d.IsSyncApproved() {
+		t.Fatalf("expected hold after SetSyncState, got %+v", d)
+	}
+
+	// Invalid states and the primary are refused.
+	if err := r.SetSyncState(ctx, sec.ID, "bogus"); err == nil {
+		t.Fatal("expected invalid sync state to be rejected")
+	}
+	p, _ := r.Primary(ctx)
+	if err := r.SetSyncState(ctx, p.ID, SyncHold); err == nil {
+		t.Fatal("expected primary sync-state change to be refused")
+	}
+
+	// Backfill semantics: an empty sync_state (a row written before migration
+	// 064) reads as approved, exactly like the migration's DEFAULT backfill.
+	if (Domain{SyncState: ""}).EffectiveSyncState() != SyncApproved {
+		t.Fatal("empty sync_state must read as approved")
+	}
+	if (Domain{SyncState: SyncHold}).IsSyncApproved() {
+		t.Fatal("hold must not read as approved")
 	}
 }
 

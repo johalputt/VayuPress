@@ -1,27 +1,32 @@
 #!/usr/bin/env bash
 #
-# setup-vayudomain.sh — provision TLS + nginx for VayuDomains SECONDARY domains,
-# fully automatically (VayuDomains P4, ADR-0132).
+# setup-vayudomain.sh — provision TLS + nginx for VayuDomains SECONDARY domains
+# that the operator has APPROVED for sync (VayuDomains P4 + P5, ADR-0132).
 #
 # WHY THIS EXISTS
 # VayuPress runs UNPRIVILEGED on :8080 behind nginx + certbot, so the server
 # process can never run certbot or reload nginx itself. This root helper is the
-# out-of-process actor the ADR calls for: it reads the registered secondary
-# domains from the binary (`vayupress domains hosts`) and, for each, obtains its
-# OWN Let's Encrypt certificate (--cert-name <host>, a SEPARATE lineage per domain
-# — never expanding the primary cert, so the 100-SAN cap can never be hit) and
-# writes a reverse-proxy vhost to the origin. It then records the result back into
-# the registry via `vayupress domains set-tls`.
+# out-of-process actor the ADR calls for: it reads the SYNC-APPROVED secondary
+# domains from the binary (`vayupress domains hosts` — domains on manual hold
+# are never listed, so adding a domain in VayuOS provisions NOTHING until the
+# operator presses "Sync now" there or runs `vayupress domains sync <host>`).
+# For each approved domain it obtains its OWN Let's Encrypt certificate
+# (--cert-name <host>, a SEPARATE lineage per domain — never expanding the
+# primary cert, so the 100-SAN cap can never be hit) and writes a reverse-proxy
+# vhost to the origin. It then records the result back into the registry via
+# `vayupress domains set-tls`.
 #
-# THE OPERATOR'S ONLY STEP per domain is DNS:
+# THE OPERATOR'S STEPS per domain: point DNS, then approve the sync.
 #     <domain>       A/AAAA -> this server's IP
 #     www.<domain>   A/AAAA -> this server's IP        (optional)
 #     mail.<domain>  A/AAAA -> this server's IP        (only if mail is enabled)
+# Approve in VayuOS → Domains ("Sync now"), or:  vayupress domains sync <host>
 # Then run (or let deploy/update run):  sudo bash scripts/setup-vayudomain.sh
 #
 # It is IDEMPOTENT and NON-FATAL: a domain whose DNS isn't pointed yet is skipped
 # cleanly, so calling it from deploy/update never breaks anything. Pass explicit
-# hosts to provision just those:  sudo bash scripts/setup-vayudomain.sh shop.example
+# hosts to provision just those (an explicit host is treated as operator intent
+# and approves that domain's sync):  sudo bash scripts/setup-vayudomain.sh shop.example
 #
 # Config: env → /etc/vayupress/env → defaults (DOMAIN, EMAIL, CACHE_DIR, VP_BIN).
 
@@ -58,15 +63,34 @@ mail_enabled() { # $1=host — is it a mail_enabled secondary?
   "$VP_BIN" domains hosts --mail 2>/dev/null | grep -qx "$1"
 }
 
-# ── Resolve the host list: explicit args, else the registry's secondaries ─────
+# ── Resolve the host list: explicit args, else the registry's APPROVED ────────
+# secondaries. `domains hosts` lists only sync-approved domains (P5): a domain
+# the operator has not approved is invisible here, so deploy/update runs can
+# never provision it behind their back. Explicit args are operator intent —
+# record the approval so future runs keep maintaining those domains too.
 HOSTS=("$@")
+if [[ ${#HOSTS[@]} -gt 0 && -x "$VP_BIN" ]]; then
+  for H in "${HOSTS[@]}"; do
+    "$VP_BIN" domains sync "$H" >/dev/null 2>&1 || true
+  done
+fi
 if [[ ${#HOSTS[@]} -eq 0 ]]; then
   if [[ -x "$VP_BIN" ]]; then
     mapfile -t HOSTS < <("$VP_BIN" domains hosts 2>/dev/null)
   fi
 fi
+
+# Surface (never act on) domains parked on manual hold, so an operator reading
+# the deploy/update log knows exactly why a registered domain wasn't touched.
+if [[ -x "$VP_BIN" ]]; then
+  HELD="$("$VP_BIN" domains hosts --hold 2>/dev/null | tr '\n' ' ')"
+  if [[ -n "${HELD// /}" ]]; then
+    info "On manual hold (not provisioned): ${HELD}— approve in VayuOS → Domains or run: vayupress domains sync <host>"
+  fi
+fi
+
 if [[ ${#HOSTS[@]} -eq 0 ]]; then
-  info "No secondary domains registered (or none pointed here) — nothing to do."; exit 0
+  info "No sync-approved secondary domains — nothing to do."; exit 0
 fi
 
 AVAIL_DIR=/etc/nginx/sites-available

@@ -8,6 +8,28 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.57] — 2026-07-17
+
+### Changed
+- **Adding a secondary domain no longer provisions it automatically — sync is
+  now a manual, per-domain decision (VayuDomains P5).** Previously, registering
+  a domain in VayuOS → Domains was enough for the next deploy/update run to
+  obtain its TLS certificate and publish its nginx vhost. Now a new domain is
+  registered on **manual hold** and the provisioning helper skips it until you
+  explicitly approve it: press **Sync now** on the domain's row (new *Sync*
+  column shows `Synced` / `Manual hold`, with a matching **Pause sync** action),
+  or run `vayupress domains sync <host>` on the server. Domains registered
+  before this release were already provisioned, so they are backfilled as
+  approved and keep being maintained across updates — nothing changes for them.
+  - Migration 064 adds `domains.sync_state` (`approved` | `hold`).
+  - `vayupress domains hosts` (the helper's work list) emits only sync-approved
+    secondaries; new `--hold` and `--all` flags list what is parked / everything.
+  - New CLI verbs: `vayupress domains sync <host>` and `vayupress domains hold
+    <host>`; new CSRF-protected endpoint `POST /os/api/domains/{id}/sync`.
+  - `setup-vayudomain.sh` treats explicit host arguments as operator intent
+    (records the approval, provisions immediately) and logs which domains were
+    skipped on manual hold, so deploy/update logs always explain themselves.
+
 ## [3.13.56] — 2026-07-17
 
 ### Added
