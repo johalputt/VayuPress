@@ -583,7 +583,13 @@ func (a *App) bootVayuOS() {
 		TorBinary:   torBinary,
 		ManagedDir:  torDir,
 		Bridges:     parseTorBridges(config.EnvOr("VAYUOS_TOR_BRIDGES", "")),
-		Store:       &torStore{settings: a.siteSettings},
+		BridgesLive: func() []string {
+			if a.siteSettings == nil {
+				return nil
+			}
+			return parseTorBridges(a.siteSettings.Get(context.Background(), settings.KeyTorBridges))
+		},
+		Store: &torStore{settings: a.siteSettings},
 		Domains: func(ctx context.Context) ([]string, error) {
 			ds, err := a.domains.List(ctx)
 			if err != nil {

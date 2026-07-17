@@ -4482,6 +4482,12 @@
 /* Tor bootstrap log tail shown while publishing (wraps, scrolls, never overflows). */
 .vp-os .vt-log { margin: 0; padding: 8px 10px; border-radius: 8px; background: var(--bg-surface-3); border: 1px solid var(--border); white-space: pre-wrap; word-break: break-word; overflow-x: auto; font-family: var(--mono, monospace); line-height: 1.45; }
 
+/* Operator bridge configuration (paste obfs4 lines — no server access needed). */
+.vp-os .vt-bridges__input { width: 100%; box-sizing: border-box; resize: vertical; min-height: 76px; padding: 10px 12px; border-radius: 8px; background: var(--bg-surface-2); border: 1px solid var(--border); color: var(--text); font-family: var(--mono, monospace); font-size: 12px; line-height: 1.5; }
+.vp-os .vt-bridges__input:focus { outline: none; border-color: var(--accent); }
+.vp-os .vt-bridges__row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 10px; }
+.vp-os .vt-bridges__on { color: var(--ok, #34d399); }
+
 /* Off-screen buffer used by the clipboard fallback (no inline styles). */
 .vp-os .vt-copy-buf { position: fixed; left: -9999px; top: 0; opacity: 0; }
 

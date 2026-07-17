@@ -120,9 +120,11 @@ climbing bootstrap is never disturbed):
    bridges, VayuTor **skips straight to bridges** — ports-only cannot help a
    null-routed relay. `escBridges` is terminal; the ladder resets on deactivation.
 
-Bridges are **operator-supplied** via `VAYUOS_TOR_BRIDGES` (obfs4 lines from
-bridges.torproject.org; the built-in default set is intentionally empty —
-VayuPress does not ship third-party bridge infrastructure). The obfs4 pluggable
+Bridges are **operator-supplied** — configured entirely **from the VayuTor admin
+page** (saved to `settings.tor.bridges`, applied live with no restart and no
+server access) or via the `VAYUOS_TOR_BRIDGES` env var; the settings value wins.
+obfs4 lines come from bridges.torproject.org; the built-in default set is
+intentionally empty — VayuPress does not ship third-party bridge infrastructure. The obfs4 pluggable
 transport (`obfs4proxy`, installed by the deploy/update script) is spawned by the
 managed tor as the same unprivileged user, with its `pt_state` under the writable
 DataDirectory — no root, no new inbound surface. Because v3 onion services are

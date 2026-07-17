@@ -404,6 +404,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		// VayuTor — onion services control page + one-click toggle + count JSON.
 		pr.With(auth.CSRFTokenMiddleware).Get("/os/tor", a.handleOSTor)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/tor/toggle", a.handleOSTorToggle)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/tor/bridges", a.handleOSTorBridges)
 		pr.Get("/os/tor/stats", a.handleOSTorStats)
 
 		pr.Get("/os/vayumail/security", a.handleVayuOSSecurity)

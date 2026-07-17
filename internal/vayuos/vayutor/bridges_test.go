@@ -93,6 +93,54 @@ func TestEscalationSkipsToBridgesWithOperatorBridges(t *testing.T) {
 	}
 }
 
+// TestOperatorBridgesPrefersLive: the settings-backed (VayuOS form) source wins
+// over the static env value; an empty live source falls back to env.
+func TestOperatorBridgesPrefersLive(t *testing.T) {
+	e := NewEngine(Config{Bridges: []string{"env-bridge"}, BridgesLive: func() []string { return []string{"live-bridge"} }})
+	if got := e.operatorBridges(); len(got) != 1 || got[0] != "live-bridge" {
+		t.Fatalf("operatorBridges = %v, want the live settings bridge", got)
+	}
+	e2 := NewEngine(Config{Bridges: []string{"env-bridge"}, BridgesLive: func() []string { return nil }})
+	if got := e2.operatorBridges(); len(got) != 1 || got[0] != "env-bridge" {
+		t.Fatalf("operatorBridges = %v, want the env fallback", got)
+	}
+}
+
+// TestBridgesLiveAppliedAndCleared: applyOperatorBridges configures + selects the
+// bridges rung from the live (VayuOS form) source without waiting for a stall,
+// and clearing them (no env fallback) drops back to a direct connection.
+func TestBridgesLiveAppliedAndCleared(t *testing.T) {
+	live := []string{"9.9.9.9:443 LIVEFINGERPRINT"}
+	e := NewEngine(Config{
+		Enabled:     true,
+		Managed:     true,
+		ManagedDir:  t.TempDir(),
+		TorBinary:   "/nonexistent/tor",
+		BridgesLive: func() []string { return live },
+	})
+
+	e.applyOperatorBridges()
+	if !e.managed.usingBridges() {
+		t.Fatal("applyOperatorBridges should configure the managed tor with bridges")
+	}
+	if e.esc != escBridges {
+		t.Fatalf("esc = %d, want escBridges after applying operator bridges", e.esc)
+	}
+	if !e.managed.bridgesEqual([]string{"9.9.9.9:443 LIVEFINGERPRINT"}, "") {
+		t.Error("managed bridges should equal the live set")
+	}
+
+	// Clearing the live bridges reverts to a direct connection.
+	live = nil
+	e.applyOperatorBridges()
+	if e.esc != escDirect {
+		t.Errorf("clearing bridges should return to escDirect, got %d", e.esc)
+	}
+	if e.managed.usingBridges() {
+		t.Error("managed bridges should be cleared")
+	}
+}
+
 // TestEscalationDirectToFascist: a generic stall with no NOROUTE and no operator
 // bridges takes the firewall-friendly rung first.
 func TestEscalationDirectToFascist(t *testing.T) {

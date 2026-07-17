@@ -9,19 +9,18 @@
   var root = document.querySelector('[data-tor]');
   if (!root) return;
 
-  // ── CSRF: fill the toggle's hidden field from the LIVE vp_csrf cookie at
-  // submit time. The admin layout rotates the double-submit cookie on every
-  // render, so any token baked into the page markup is already stale by the
-  // time the form posts. Reading document.cookie here guarantees the field
-  // matches whatever cookie the browser currently holds. ──
-  var toggleForm = document.querySelector('[data-tor-toggle]');
-  if (toggleForm) {
-    toggleForm.addEventListener('submit', function () {
+  // ── CSRF: fill every VayuTor form's hidden field from the LIVE vp_csrf cookie
+  // at submit time. The admin layout rotates the double-submit cookie on every
+  // render, so any token baked into the page markup is already stale by the time
+  // the form posts. Reading document.cookie here guarantees the field matches
+  // whatever cookie the browser currently holds. ──
+  document.querySelectorAll('[data-tor-form]').forEach(function (form) {
+    form.addEventListener('submit', function () {
       var m = document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);
-      var field = toggleForm.querySelector('input[name="csrf_token"]');
+      var field = form.querySelector('input[name="csrf_token"]');
       if (m && field) field.value = m[1];
     });
-  }
+  });
 
   // ── Copy .onion address to clipboard ──
   document.querySelectorAll('[data-copy]').forEach(function (btn) {

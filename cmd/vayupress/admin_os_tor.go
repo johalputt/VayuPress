@@ -61,7 +61,7 @@ func (a *App) handleOSTor(w http.ResponseWriter, r *http.Request) {
     <div class="vt-hero__count"><span class="vt-count" data-tor-visits>` + strconv.FormatInt(st.Visits, 10) + `</span> <span class="muted">Tor visits</span></div>
     <div class="muted text-sm">Count only — no identity, no time, nothing else is ever recorded.</div>
   </div>
-  <form class="vt-hero__action" method="post" action="/os/tor/toggle" data-tor-toggle>
+  <form class="vt-hero__action" method="post" action="/os/tor/toggle" data-tor-toggle data-tor-form>
     <input type="hidden" name="state" value="` + nextState + `">
     <input type="hidden" name="csrf_token" value="">
     <button type="submit" class="btn ` + btnKind + `">` + btnLabel + `</button>
@@ -126,6 +126,7 @@ func (a *App) handleOSTor(w http.ResponseWriter, r *http.Request) {
 	}
 	body += `</div>`
 
+	body += a.osTorBridgesCard(r, esc)
 	body += osTorPrivacyNote()
 	body += `<script nonce="` + nonce + `" src="/os/static/js/admin-os-tor.js?v=` + assetVer("js/admin-os-tor.js") + `"></script>`
 	writeOSHTML(w, adminOSLayout(nonce, "VayuTor", "tor", cfg, htmpl.HTML(body)))
@@ -154,6 +155,44 @@ func osTorLogRemedy(log string) string {
 		return `⚠ <strong>The server can't reach the Tor network.</strong> Allow <strong>outbound</strong> connections in your firewall / cloud security group (inbound stays closed). VayuTor also auto-retries using only ports 80/443, then bridges, after a stall.`
 	}
 	return ""
+}
+
+// osTorBridgesCard renders the operator's Tor bridge configuration — the entire
+// "network blocks Tor" fix, done from VayuOS with no server access. Bridges are
+// saved to settings (KeyTorBridges) and applied live by the engine.
+func (a *App) osTorBridgesCard(r *http.Request, esc func(string) string) string {
+	current := ""
+	if a.siteSettings != nil {
+		current = a.siteSettings.Get(r.Context(), settings.KeyTorBridges)
+	}
+	card := `<div class="card mt-4 vt-bridges"><div class="card-title">🌉 Bridges — for networks that block Tor</div>`
+	card += `<p class="muted text-sm mb-3">If your host or ISP blocks Tor (bootstrap stalls with “no route to host” or a consensus error), paste <strong>obfs4 bridge lines</strong> here and VayuTor routes around the block automatically — no server access needed. Get free bridges at <code>https://bridges.torproject.org</code> (choose <strong>obfs4</strong>), or email <code>bridges@torproject.org</code> from Gmail/Riseup with <code>get transport obfs4</code> in the body. One bridge per line.</p>`
+	card += `<form method="post" action="/os/tor/bridges" data-tor-form>
+  <textarea class="vt-bridges__input" name="bridges" rows="4" spellcheck="false" autocomplete="off" placeholder="obfs4 1.2.3.4:443 FINGERPRINT cert=... iat-mode=0">` + esc(current) + `</textarea>
+  <input type="hidden" name="csrf_token" value="">
+  <div class="vt-bridges__row"><button type="submit" class="btn btn--primary">Save bridges</button>`
+	if strings.TrimSpace(current) != "" {
+		card += ` <span class="vt-bridges__on muted text-xs">✓ Bridges configured — used automatically when a direct connection is blocked. Clear the box and save to stop using them.</span>`
+	}
+	card += `</div></form></div>`
+	return card
+}
+
+// handleOSTorBridges saves operator-supplied Tor bridge lines (from the VayuTor
+// page) and kicks the engine to apply them immediately.
+func (a *App) handleOSTorBridges(w http.ResponseWriter, r *http.Request) {
+	if a.vayuTor == nil || a.siteSettings == nil {
+		http.Redirect(w, r, "/os/tor", http.StatusSeeOther)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Redirect(w, r, "/os/tor", http.StatusSeeOther)
+		return
+	}
+	bridges := strings.TrimSpace(r.PostFormValue("bridges"))
+	_ = a.siteSettings.SetMany(r.Context(), map[string]string{settings.KeyTorBridges: bridges})
+	a.vayuTor.Kick()
+	http.Redirect(w, r, "/os/tor", http.StatusSeeOther)
 }
 
 // osTorPrivacyNote states the privacy posture explicitly.

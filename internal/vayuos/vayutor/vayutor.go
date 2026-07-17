@@ -49,10 +49,23 @@ type Config struct {
 	// VayuTor works with only the `tor` binary present — no root, no systemd, no
 	// manual control-port setup. Preferred order at connect time: a reachable
 	// ControlAddr (an existing system tor) first, then the managed instance.
-	Managed    bool     // enable the self-managed tor fallback (VAYUOS_TOR_MANAGED != 0)
-	TorBinary  string   // resolved `tor` executable (exec.LookPath); "" → managed disabled
-	ManagedDir string   // writable base dir VayuPress owns for the managed tor state
-	Bridges    []string // operator Bridge lines (VAYUOS_TOR_BRIDGES); used on the bridges rung
+	Managed     bool            // enable the self-managed tor fallback (VAYUOS_TOR_MANAGED != 0)
+	TorBinary   string          // resolved `tor` executable (exec.LookPath); "" → managed disabled
+	ManagedDir  string          // writable base dir VayuPress owns for the managed tor state
+	Bridges     []string        // static operator Bridge lines from env (VAYUOS_TOR_BRIDGES)
+	BridgesLive func() []string // live operator Bridge lines from settings (VayuOS form); read each reconcile
+}
+
+// operatorBridges returns the operator-configured bridge lines, preferring the
+// live settings-backed source (the VayuOS form) over the static env value so
+// changes made from the admin UI take effect with no restart.
+func (e *Engine) operatorBridges() []string {
+	if e.cfg.BridgesLive != nil {
+		if live := e.cfg.BridgesLive(); len(live) > 0 {
+			return live
+		}
+	}
+	return e.cfg.Bridges
 }
 
 // Engine is the VayuTor subsystem. It owns the control connection, the
@@ -189,6 +202,7 @@ func (e *Engine) reconcile(ctx context.Context) {
 		e.teardown()
 		return
 	}
+	e.applyOperatorBridges()
 	if err := e.ensureConnected(); err != nil {
 		e.setErr(err.Error())
 		return
@@ -331,7 +345,7 @@ func (e *Engine) maybeEscalate() {
 
 	next := cur + 1
 	if cur == escDirect {
-		if logHasNoRoute(e.managed.tailLog(12)) || len(e.cfg.Bridges) > 0 {
+		if logHasNoRoute(e.managed.tailLog(12)) || len(e.operatorBridges()) > 0 {
 			next = escBridges // ports-only can't fix a null-routed relay / operator opted in
 		}
 	}
@@ -358,11 +372,80 @@ func (e *Engine) maybeEscalate() {
 	e.Kick()
 }
 
+// applyOperatorBridges honours bridges the operator configured from VayuOS (or
+// env) BEFORE any stall: if they set bridges, direct is presumed blocked, so the
+// managed tor should use them straight away. It reconfigures + restarts the
+// managed tor only when the effective bridge set actually changes (no restart
+// loop), and drops back to a direct connection if the operator clears them.
+func (e *Engine) applyOperatorBridges() {
+	if e.managed == nil {
+		return
+	}
+	ob := e.operatorBridges()
+	if len(ob) == 0 {
+		// Operator cleared bridges: if we were forced onto the bridges rung, go
+		// back to direct so a now-unblocked network is used again.
+		e.mu.Lock()
+		wasBridges := e.esc == escBridges
+		e.mu.Unlock()
+		if wasBridges && e.managed.usingBridges() {
+			e.mu.Lock()
+			e.esc = escDirect
+			e.mu.Unlock()
+			e.managed.setBridges(nil, "")
+			e.managed.setStrict(false)
+			e.managed.stop()
+			e.resetConn()
+		}
+		return
+	}
+
+	norm, needsPT := classifyBridges(ob)
+	pt := ""
+	if needsPT {
+		if pt = e.managed.resolvePT(); pt == "" {
+			if v := vanillaOnly(norm); len(v) > 0 {
+				norm = v // obfs4proxy missing — use the plain bridges we have
+			} else {
+				e.setErr("obfs4 bridges are set but obfs4proxy is not installed — re-run the VayuPress updater to add it, then reload")
+				return
+			}
+		}
+	}
+	if len(norm) == 0 || e.managed.bridgesEqual(norm, pt) {
+		return // nothing to change (already applied)
+	}
+	e.managed.setBridges(norm, pt)
+	e.managed.setStrict(false)
+	e.mu.Lock()
+	e.esc = escBridges
+	e.mu.Unlock()
+	e.managed.stop() // ensureConnected (next line of reconcile) respawns with bridges
+	e.resetConn()
+}
+
+// resetConn drops the live control connection so the next ensureConnected
+// re-dials (used after we restart the managed tor with a new config). It records
+// no error — unlike setErr — because this is an intentional reconfiguration.
+func (e *Engine) resetConn() {
+	e.mu.Lock()
+	if e.ctrl != nil {
+		_ = e.ctrl.Close()
+		e.ctrl = nil
+	}
+	e.connected = false
+	e.bootPct = 0
+	e.bootNote = ""
+	e.bootBestPct = 0
+	e.bootMovedAt = time.Time{}
+	e.mu.Unlock()
+}
+
 // bridgeConfig resolves the effective bridge set for the bridges rung: operator
 // lines (VAYUOS_TOR_BRIDGES) if any, else the built-in defaults. why is "" only
 // on success; on failure lines is empty and why is an actionable message.
 func (e *Engine) bridgeConfig() (lines []string, ptPath, why string) {
-	raw := e.cfg.Bridges
+	raw := e.operatorBridges()
 	if len(raw) == 0 {
 		raw = defaultObfs4Bridges
 	}
