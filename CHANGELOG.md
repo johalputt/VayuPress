@@ -8,7 +8,22 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
-## [3.13.73] — 2026-07-17
+## [3.13.74] — 2026-07-17
+
+### Added
+- **VayuTor onion health & alerts.** VayuTor now tracks a coarse onion-service
+  health state — `healthy` / `starting` / `degraded` (some domains unpublished) /
+  `down` (control port unreachable) / `off` — with a short transition history,
+  all shown on a new "Health & alerts" card. When onions go **down** or
+  **recover**, it POSTs a signed alert to any webhook subscribed to
+  `tor.onion_down` / `tor.onion_recovered` (reusing the existing signed-webhook
+  dispatcher). Alerts are debounced (a bad state must persist ~90s), so a brief
+  blip or the normal startup climb never fires a false alarm; a latch guarantees
+  exactly one "recovered" even across a `down → starting → healthy` path.
+  Deactivation never alerts. The alert payload is operational only (state,
+  reason, onion/domain counts, bootstrap %) — no visitor data. Health is
+  re-judged at every reconcile, including early error exits, so an outage is
+  noticed even when reconcile bails early.
 
 ### Added
 - **VayuTor "Popular pages" — opt-in, privacy-safe onion analytics.** A new card

@@ -215,3 +215,30 @@ visitor privacy:
 The engine reads the opt-in flag live (no restart), records via `IncPage` on the
 onion request path next to the existing aggregate `IncVisit`, and persists the
 map on the same reconcile tick as the visit counter.
+
+## Addendum (v3.13.74) — Onion health & alerting
+
+VayuTor now turns the signals the reconcile loop already has (control
+connection, bootstrap %, published-vs-wanted onion count) into a single coarse
+health state with alerting (`internal/vayuos/vayutor/health.go`):
+
+- **States.** `off` (deactivated), `starting` (tor bootstrapping — expected, not
+  an alert), `healthy` (connected, 100% bootstrapped, every wanted domain has a
+  live onion), `degraded` (connected but some onions missing), `down` (control
+  port unreachable). A bounded transition history feeds the admin "Health &
+  alerts" card.
+- **Debounced alerting.** Benign states commit immediately; outage states
+  (`down`/`degraded`) must persist ~90s before they commit and alert, so a brief
+  blip or the normal startup climb never pages anyone. A latch (`healthAlerted`)
+  ensures exactly one `tor.onion_down` per outage and exactly one
+  `tor.onion_recovered` on return to healthy — even across a
+  `down → starting → healthy` recovery. Deactivation clears the latch silently.
+- **Delivery.** Alerts ride the existing signed-webhook dispatcher via an
+  injected `Config.Notify` callback (host wires it to `webhooks.Dispatch`), so an
+  operator subscribes a URL to `tor.onion_down`/`tor.onion_recovered` like any
+  other event, with the same HMAC signature and delivery records. The payload is
+  operational only (state, reason, onion/domain counts, bootstrap %) — consistent
+  with VayuTor's no-visitor-data posture.
+- **Robustness.** Health is re-evaluated at every reconcile exit (via `defer`),
+  including early error returns, so a persistent connection failure is noticed
+  and alerted rather than leaving a stale "healthy".

@@ -4498,6 +4498,18 @@
 .vp-os .vt-pages__num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .vp-os .vt-pages__actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
 
+/* Onion health & alerts. */
+.vp-os .vt-health__now { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.vp-os .vt-health__badge { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; border: 1px solid var(--border); }
+.vp-os .vt-health__badge--sm { padding: 2px 8px; font-size: 11px; }
+.vp-os .vt-health__badge--ok { color: var(--ok, #34d399); border-color: color-mix(in srgb, var(--ok, #34d399) 40%, transparent); }
+.vp-os .vt-health__badge--warn { color: var(--warn, #f59e0b); border-color: color-mix(in srgb, var(--warn, #f59e0b) 40%, transparent); }
+.vp-os .vt-health__badge--err { color: var(--danger, #f87171); border-color: color-mix(in srgb, var(--danger, #f87171) 45%, transparent); }
+.vp-os .vt-health__badge--off { color: var(--text-muted, #9ca3af); }
+.vp-os .vt-health__log { margin-top: 12px; display: grid; gap: 6px; }
+.vp-os .vt-health__row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.vp-os .vt-health__ago { margin-left: auto; white-space: nowrap; }
+
 /* Off-screen buffer used by the clipboard fallback (no inline styles). */
 .vp-os .vt-copy-buf { position: fixed; left: -9999px; top: 0; opacity: 0; }
 
