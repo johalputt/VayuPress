@@ -65,6 +65,34 @@ func TestTrendChartLongWindowStaysLight(t *testing.T) {
 	assertCSPSafe(t, "osTrendChart-long", out)
 }
 
+// TestLiveCardStructureCSPSafe: the Live panel must expose the poller hooks the
+// JS fills (count, window, updated, and the three bar containers) and stay
+// strictly CSP-safe (no inline styles/scripts). The bar containers are .vp-bars
+// so the poller can render the same coloured bars the server renders elsewhere.
+func TestLiveCardStructureCSPSafe(t *testing.T) {
+	out := osLiveCard()
+	assertCSPSafe(t, "osLiveCard", out)
+	for _, want := range []string{
+		`data-live`,
+		`data-live-count`,
+		`data-live-window`,
+		`data-live-updated`,
+		`vp-bars vm-live-list" data-live-countries`,
+		`vp-bars vm-live-list" data-live-pages`,
+		`vp-bars vm-live-list" data-live-referrers`,
+		`vm-live-badge`,
+		`vm-live-rings`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("live card missing %q", want)
+		}
+	}
+	// The old table markup must be gone — bars, not <tbody> rows.
+	if strings.Contains(out, "<tbody") || strings.Contains(out, "data-live-pages><table") {
+		t.Error("live card should use .vp-bars containers, not tables")
+	}
+}
+
 func TestTrendChartEdgeCases(t *testing.T) {
 	if osTrendChart(nil, "x") != "" {
 		t.Error("empty series must render nothing")

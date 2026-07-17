@@ -8,6 +8,30 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.54] — 2026-07-17
+
+### Changed
+- **Analytics Live page redesigned + GDPR-safe engagement depth (Overview).**
+  The realtime "Live" tab is rebuilt from plain two-column tables into a premium
+  surface, and the Overview gains four derived engagement metrics — all still
+  cookieless, no-PII, aggregate-only (GDPR-safe by construction).
+  - **Live hero:** a large active-visitor count with a "LIVE" badge, a pulsing
+    status dot, and a concentric radar-ring motif. Below it, the three realtime
+    panels (top countries, active pages, referrers) now render as **proportional
+    coloured bars with each row's share of the total** — the same bar language
+    used across the rest of Analytics — instead of bare number tables. Country
+    rows keep their self-hosted flag image (neutral globe when unknown).
+  - **Overview engagement strip:** Pages / visit, Views / visitor,
+    Visits / visitor, and Engaged visits (inverse of bounce). These are pure
+    ratios of existing aggregate counters — no new data is collected or stored.
+  - **Speed & CSP:** no new scripts or libraries. The realtime poller stays a
+    tiny vanilla `fetch` (already visibility-paused when the tab is hidden) and
+    now builds the bars via DOM APIs only — no inline styles, no `innerHTML`, so
+    it remains strictly CSP-safe (`style-src 'self'`). All motion (radar rings,
+    row fade-in, live dot) is transform/opacity only and fully disabled under
+    `prefers-reduced-motion`. Zero added page weight; the widths reuse the
+    existing `w-*` utility classes.
+
 ## [3.13.53] — 2026-07-17
 
 ### Changed

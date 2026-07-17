@@ -390,6 +390,34 @@ func (a *App) renderAnalyticsBody(ctx context.Context, days int, periodLabel str
 			osStatCardDelta("Bounce rate", fmt.Sprintf("%.0f%%", ov.BounceRate), osDeltaPoints(ov.BounceRate, bounce, hasPrev)) + `</div>`
 	}
 
+	// Derived engagement metrics — all computed from aggregate counts, so they add
+	// depth without touching PII (GDPR-safe by construction). Only shown once there
+	// is at least one visit to divide by.
+	engagementStrip := ""
+	if ov != nil && ov.TotalVisits > 0 {
+		pagesPerVisit := float64(ov.TotalPageviews) / float64(ov.TotalVisits)
+		viewsPerVisitor, visitsPerVisitor := 0.0, 0.0
+		if ov.UniqueVisitors > 0 {
+			viewsPerVisitor = float64(ov.TotalPageviews) / float64(ov.UniqueVisitors)
+			visitsPerVisitor = float64(ov.TotalVisits) / float64(ov.UniqueVisitors)
+		}
+		engaged := 100 - ov.BounceRate // inverse of bounce — visits that went deeper
+		if engaged < 0 {
+			engaged = 0
+		}
+		chip := func(label, value, hint string) string {
+			return `<div class="vm-engage__item"><div class="vm-engage__val">` + html.EscapeString(value) +
+				`</div><div class="vm-engage__label">` + html.EscapeString(label) +
+				`</div><div class="vm-engage__hint">` + html.EscapeString(hint) + `</div></div>`
+		}
+		engagementStrip = `<div class="vm-engage">` +
+			chip("Pages / visit", fmt.Sprintf("%.1f", pagesPerVisit), "reading depth per session") +
+			chip("Views / visitor", fmt.Sprintf("%.1f", viewsPerVisitor), "content seen per person") +
+			chip("Visits / visitor", fmt.Sprintf("%.2f", visitsPerVisitor), "how often they return") +
+			chip("Engaged visits", fmt.Sprintf("%.0f%%", engaged), "went beyond the first page") +
+			`</div>`
+	}
+
 	utmRows := `<div class="empty-state">No campaign traffic yet. Add <code>utm_source</code>, <code>utm_medium</code> &amp; <code>utm_campaign</code> tags to the links you share to see which campaigns bring visitors.</div>`
 	if len(utm) > 0 {
 		rows := ""
@@ -416,7 +444,7 @@ func (a *App) renderAnalyticsBody(ctx context.Context, days int, periodLabel str
 		chart = `<div class="card mb-6"><div class="card-title">Traffic — ` + periodLabel + `</div>` +
 			osTrendChart(series, "Traffic over "+periodLabel) + `</div>`
 	}
-	overviewPanel := metricsIntro + overviewCard + chart
+	overviewPanel := metricsIntro + overviewCard + engagementStrip + chart
 	if overviewCard == "" && chart == "" {
 		overviewPanel = metricsIntro + `<div class="empty-state">No visits in this period yet.</div>`
 	}
@@ -535,21 +563,24 @@ func osPeriodSelector(days int) string {
 // active-visitor count plus where they are (country), what they're viewing,
 // and how they arrived (referrer).
 func osLiveCard() string {
-	return `<div class="vm-live" data-live>
+	return `<div class="vm-liveview" data-live>
   <div class="card vm-live-hero mb-4">
-    <div class="card-title"><span class="live-dot"></span> Active right now</div>
-    <div class="vm-live-count" data-live-count>—</div>
-    <div class="muted text-sm">visitors in the last 5 minutes · auto-refreshes every 10s <span class="vm-live-pulse" data-live-updated></span></div>
+    <div class="vm-live-hero__main">
+      <div class="vm-live-badge"><span class="live-dot"></span> LIVE</div>
+      <div class="vm-live-count" data-live-count>—</div>
+      <div class="vm-live-sub muted text-sm">visitors active in the last <span data-live-window>5</span> minutes · auto-refreshes every 10s <span class="vm-live-updated text-xs" data-live-updated></span></div>
+    </div>
+    <div class="vm-live-rings" aria-hidden="true"><span></span><span></span><span></span></div>
   </div>
   <div class="grid grid-3 vm-live-grid">
-    <div class="card"><div class="card-title">🌍 Countries</div>
-      <div class="table-wrap"><table class="table"><tbody data-live-countries><tr><td class="muted">Waiting for live data…</td></tr></tbody></table></div>
+    <div class="card"><div class="card-title">🌍 Top countries</div>
+      <div class="vp-bars vm-live-list" data-live-countries><div class="empty-state">Waiting for live data…</div></div>
     </div>
     <div class="card"><div class="card-title">📄 Active pages</div>
-      <div class="table-wrap"><table class="table"><thead><tr><th>Page</th><th>Viewers</th></tr></thead><tbody data-live-pages><tr><td colspan="2" class="muted">Waiting for live data…</td></tr></tbody></table></div>
+      <div class="vp-bars vm-live-list" data-live-pages><div class="empty-state">Waiting for live data…</div></div>
     </div>
     <div class="card"><div class="card-title">🔗 Referrers</div>
-      <div class="table-wrap"><table class="table"><tbody data-live-referrers><tr><td class="muted">Waiting for live data…</td></tr></tbody></table></div>
+      <div class="vp-bars vm-live-list" data-live-referrers><div class="empty-state">Waiting for live data…</div></div>
     </div>
   </div>
 </div>`

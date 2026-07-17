@@ -104,46 +104,92 @@
 
   function clear(el) { while (el && el.firstChild) el.removeChild(el.firstChild); }
 
-  function emptyRow(el, cols, msg) {
-    var tr = document.createElement('tr');
-    var td = document.createElement('td');
-    if (cols > 1) td.setAttribute('colspan', String(cols));
-    td.className = 'muted';
-    td.textContent = msg;
-    tr.appendChild(td);
-    el.appendChild(tr);
+  function emptyState(el, msg) {
+    var d = document.createElement('div');
+    d.className = 'empty-state';
+    d.textContent = msg;
+    el.appendChild(d);
   }
 
-  // Fill a two-column [label, count] table body from {label,count}/{path,count}.
+  // widthClass snaps a 0..100 percentage to the nearest 5% bucket, mirroring the
+  // server's barWidthClass so live bars reuse the same w-N utility classes and
+  // need no inline width style (strict CSP: style-src 'self').
+  function widthClass(pct) {
+    if (pct < 0) pct = 0;
+    if (pct > 100) pct = 100;
+    return 'w-' + (Math.floor((pct + 2) / 5) * 5);
+  }
+
+  // makeBar builds one .vp-bar row — structurally identical to the server's
+  // osBarList output: a label, the count with its share %, and a proportional
+  // coloured track. labelNode is a string or a DOM node (flag + country name);
+  // title is the hover/aria text. CSP-safe: DOM API only, no innerHTML.
+  function makeBar(labelNode, title, value, max, total, colorIndex) {
+    var row = document.createElement('div');
+    row.className = 'vp-bar vp-bar--c' + colorIndex + ' vp-bar--enter';
+
+    var label = document.createElement('span');
+    label.className = 'vp-bar__label';
+    if (title) label.title = title;
+    if (typeof labelNode === 'string') label.textContent = labelNode;
+    else label.appendChild(labelNode);
+
+    var val = document.createElement('span');
+    val.className = 'vp-bar__val';
+    val.appendChild(document.createTextNode(String(value)));
+    if (total > 0) {
+      var pctSpan = document.createElement('span');
+      pctSpan.className = 'vp-bar__pct';
+      pctSpan.textContent = Math.round(value * 100 / total) + '%';
+      val.appendChild(pctSpan);
+    }
+
+    var track = document.createElement('span');
+    track.className = 'vp-bar__track';
+    var fill = document.createElement('span');
+    var pct = max > 0 ? Math.floor(value * 100 / max) : 0;
+    fill.className = 'vp-bar__fill ' + widthClass(pct);
+    track.appendChild(fill);
+
+    row.appendChild(label);
+    row.appendChild(val);
+    row.appendChild(track);
+    return row;
+  }
+
+  // maxTotal returns {max, total} of the count field across items (max floored
+  // at 1 so a single visitor still fills its bar proportionally).
+  function maxTotal(items) {
+    var max = 1, total = 0;
+    items.forEach(function (it) { var v = it.count || 0; if (v > max) max = v; total += v; });
+    return { max: max, total: total };
+  }
+
+  // Fill a bar list from {label,count}/{path,count}. Proportional coloured bars
+  // (relative to the busiest row) plus each row's share of the total.
   function fill(el, items, labelKey, emptyMsg) {
     if (!el) return;
     clear(el);
     items = items || [];
-    if (!items.length) { emptyRow(el, 2, emptyMsg); return; }
-    items.forEach(function (it) {
-      var tr = document.createElement('tr');
-      var label = document.createElement('td');
-      label.className = 'row-title';
-      label.textContent = it[labelKey] || it.label || '(unknown)';
-      var n = document.createElement('td');
-      n.textContent = String(it.count || 0);
-      tr.appendChild(label);
-      tr.appendChild(n);
-      el.appendChild(tr);
+    if (!items.length) { emptyState(el, emptyMsg); return; }
+    var mt = maxTotal(items);
+    items.forEach(function (it, i) {
+      var label = String(it[labelKey] || it.label || '(unknown)');
+      el.appendChild(makeBar(label, label, it.count || 0, mt.max, mt.total, (i % 8) + 1));
     });
   }
 
-  // Fill the live-countries table with a flag <img> (or a neutral globe for
+  // Fill the live-countries bars with a flag <img> (or a neutral globe for
   // unknown locations) + name + count. Resilient to old/new payload shapes.
   function fillCountries(el, items) {
     if (!el) return;
     clear(el);
     items = items || [];
-    if (!items.length) { emptyRow(el, 2, 'No active visitors right now.'); return; }
-    items.forEach(function (c) {
-      var tr = document.createElement('tr');
-      var label = document.createElement('td');
-      label.className = 'row-title';
+    if (!items.length) { emptyState(el, 'No active visitors right now.'); return; }
+    var mt = maxTotal(items);
+    items.forEach(function (c, i) {
+      var name = c.name || c.label || c.code || 'Unknown';
+      var frag = document.createDocumentFragment();
       if (c.flag) {
         var img = document.createElement('img');
         img.className = 'vp-flag-img';
@@ -151,19 +197,15 @@
         img.alt = '';
         img.width = 20; img.height = 15;
         img.loading = 'lazy';
-        label.appendChild(img);
+        frag.appendChild(img);
       } else {
         var globe = document.createElement('span');
         globe.className = 'vp-flag-img vp-flag-unknown';
         globe.setAttribute('aria-hidden', 'true');
-        label.appendChild(globe);
+        frag.appendChild(globe);
       }
-      label.appendChild(document.createTextNode(' ' + (c.name || c.label || c.code || 'Unknown')));
-      var n = document.createElement('td');
-      n.textContent = String(c.count || 0);
-      tr.appendChild(label);
-      tr.appendChild(n);
-      el.appendChild(tr);
+      frag.appendChild(document.createTextNode(' ' + name));
+      el.appendChild(makeBar(frag, name, c.count || 0, mt.max, mt.total, (i % 8) + 1));
     });
   }
 
