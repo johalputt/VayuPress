@@ -241,7 +241,11 @@ fi
 run usermod -aG debian-tor www-data
 run systemctl enable tor
 run systemctl restart tor
-ok "Tor installed and running (VayuTor stays off until activated in VayuOS)."
+# Tor validates the signed network consensus against the current time; clock skew
+# makes it reject the consensus and onions never publish. Keep the clock correct
+# via NTP (also matters for TLS + DKIM). Best-effort.
+timedatectl set-ntp true >/dev/null 2>&1 || true
+ok "Tor installed and running, time sync enabled (VayuTor stays off until activated in VayuOS)."
 
 # =============================================================================
 # ── GO TOOLCHAIN ──────────────────────────────────────────────────────────────

@@ -10,6 +10,7 @@ package main
 import (
 	"net/http"
 	"strconv"
+	"strings"
 
 	htmpl "html/template"
 
@@ -89,6 +90,11 @@ func (a *App) handleOSTor(w http.ResponseWriter, r *http.Request) {
 		card := `<div class="card vt-warn"><div class="card-title">⏳ Publishing to the Tor network…</div><p class="text-sm">` + note + `</p>`
 		if st.LogTail != "" {
 			card += `<pre class="vt-log text-xs muted mt-2">` + esc(st.LogTail) + `</pre>`
+			// Targeted remediation for the most common hard failures we can
+			// recognise in tor's own log.
+			if tip := osTorLogRemedy(st.LogTail); tip != "" {
+				card += `<p class="text-sm mt-2">` + tip + `</p>`
+			}
 		}
 		card += `</div>`
 		body += card
@@ -120,6 +126,25 @@ func (a *App) handleOSTor(w http.ResponseWriter, r *http.Request) {
 	body += osTorPrivacyNote()
 	body += `<script nonce="` + nonce + `" src="/os/static/js/admin-os-tor.js?v=` + assetVer("js/admin-os-tor.js") + `"></script>`
 	writeOSHTML(w, adminOSLayout(nonce, "VayuTor", "tor", cfg, htmpl.HTML(body)))
+}
+
+// osTorLogRemedy recognises the most common hard bootstrap failures in tor's
+// own log and returns a specific, actionable remedy (HTML). "" if nothing known.
+func osTorLogRemedy(log string) string {
+	low := strings.ToLower(log)
+	switch {
+	case strings.Contains(low, "not signed by sufficient") ||
+		strings.Contains(low, "clock") ||
+		strings.Contains(low, "certificate") && strings.Contains(low, "expired"):
+		// Tor rejected the network consensus. Overwhelmingly this is a wrong
+		// server clock, or a tor package too old to know the current authorities.
+		return `⚠ <strong>Tor can't validate the network consensus.</strong> This is almost always the <strong>server clock being off</strong> — even a few minutes of skew breaks it. Enable time sync: <code>sudo timedatectl set-ntp true</code> (check with <code>timedatectl</code>), then it recovers within a minute. If the clock is correct, your <code>tor</code> package may be too old — check <code>tor --version</code> and update it.`
+	case strings.Contains(low, "no route to host") ||
+		strings.Contains(low, "connection refused") ||
+		strings.Contains(low, "connection timed out"):
+		return `⚠ <strong>The server can't reach the Tor network.</strong> Allow <strong>outbound</strong> connections in your firewall / cloud security group (inbound stays closed). VayuTor also auto-retries using only ports 80/443 after a stall.`
+	}
+	return ""
 }
 
 // osTorPrivacyNote states the privacy posture explicitly.

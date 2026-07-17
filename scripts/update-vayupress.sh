@@ -278,7 +278,12 @@ if [[ "${VAYUOS_TOR:-1}" == "1" ]] && command -v apt-get >/dev/null 2>&1; then
   usermod -aG debian-tor "$SERVICE_USER" 2>/dev/null || true
   systemctl enable tor >/dev/null 2>&1 || true
   systemctl restart tor 2>/dev/null || true
-  ok "Tor control port ensured (VayuTor stays off until activated in VayuOS)."
+  # Tor validates the signed network consensus against the current time; even a
+  # few minutes of clock skew makes it reject the consensus ("not signed by
+  # sufficient number of authorities") and onions never publish. Enable NTP so
+  # the clock stays correct (also matters for TLS + DKIM). Best-effort.
+  timedatectl set-ntp true >/dev/null 2>&1 || true
+  ok "Tor + time sync ensured (VayuTor stays off until activated in VayuOS)."
 fi
 
 # ── 5. Back up the database (default ON, consistent, never blocks) ───────────
