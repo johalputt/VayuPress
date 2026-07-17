@@ -8,6 +8,28 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.61] — 2026-07-17
+
+### Added
+- **VayuTor self-manages its own Tor daemon (zero-setup activation).** VayuTor no
+  longer depends on a separately-configured system Tor service. When no external
+  control port is reachable, VayuPress now runs its **own `tor` process** as the
+  unprivileged service user — with a private data directory, a cookie-authenticated
+  loopback control socket, and no SOCKS/relay/exit surface. This means VayuTor
+  works with only the **`tor` binary present** — no root at runtime, no `systemd`
+  unit, no `torrc` editing, no control-port or group setup — and it keeps working
+  across the **in-app one-click self-update** (which only swaps the binary). An
+  existing external control port (`VAYUOS_TOR_CONTROL_ADDR`) is still preferred
+  when reachable; the managed instance is the automatic fallback. New env knobs:
+  `VAYUOS_TOR_MANAGED` (default `on`), `VAYUOS_TOR_BINARY`, `VAYUOS_TOR_DIR`. The
+  onion services remain bound to VayuPress's lifetime — deactivating VayuTor stops
+  the managed `tor` entirely.
+
+### Changed
+- **Clearer VayuTor "bringing onions up" guidance.** The activation hint now
+  reflects managed mode: VayuTor runs its own Tor and only needs the `tor` binary
+  installed (the deploy/update script installs it in one step).
+
 ## [3.13.60] — 2026-07-17
 
 ### Fixed

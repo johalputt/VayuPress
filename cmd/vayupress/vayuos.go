@@ -17,6 +17,7 @@ import (
 	stdmail "net/mail"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -563,11 +564,27 @@ func (a *App) bootVayuOS() {
 	// created only while the toggle is on AND a control port is reachable — the
 	// clearnet site is never affected. VayuPress opens no inbound ports for this.
 	torAvailable := !strings.EqualFold(config.EnvOr("VAYUOS_TOR", "on"), "off")
+	// Managed mode: when no external tor control port is reachable, VayuPress runs
+	// its OWN tor daemon (as the unprivileged service user) so VayuTor works with
+	// only the `tor` binary present — no root, no systemd, no manual control-port
+	// setup, and it survives the in-app binary-only self-update. Resolve the tor
+	// binary from PATH (or an explicit override); "" disables the managed fallback.
+	torManaged := !strings.EqualFold(config.EnvOr("VAYUOS_TOR_MANAGED", "on"), "off")
+	torBinary := config.EnvOr("VAYUOS_TOR_BINARY", "")
+	if torManaged && torBinary == "" {
+		if p, lerr := exec.LookPath("tor"); lerr == nil {
+			torBinary = p
+		}
+	}
+	torDir := config.EnvOr("VAYUOS_TOR_DIR", filepath.Join(filepath.Dir(config.Cfg.MediaDir), "tor"))
 	a.vayuTor = vtor.NewEngine(vtor.Config{
 		Enabled:     torAvailable,
 		ControlAddr: config.EnvOr("VAYUOS_TOR_CONTROL_ADDR", "127.0.0.1:9051"),
 		CookiePath:  config.EnvOr("VAYUOS_TOR_COOKIE", "/run/tor/control.authcookie"),
 		Target:      "127.0.0.1:" + config.Cfg.Port,
+		Managed:     torManaged,
+		TorBinary:   torBinary,
+		ManagedDir:  torDir,
 		Store:       &torStore{settings: a.siteSettings},
 		Domains: func(ctx context.Context) ([]string, error) {
 			ds, err := a.domains.List(ctx)
