@@ -75,15 +75,14 @@ func runEmbeddedObfs4() {
 }
 
 // obfs4AcceptLoop accepts SOCKS5 connections from tor and hands each to obfs4.
+// It exits when the listener is closed (VayuTor shutting the transport down) or
+// on any unrecoverable accept error — the process is short-lived and tor-managed.
 func obfs4AcceptLoop(f base.ClientFactory, ln net.Listener) {
 	defer func() { _ = ln.Close() }()
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
-			if e, ok := err.(net.Error); ok && !e.Temporary() { //nolint:staticcheck // net.Error.Temporary still used by PT accept loops
-				return
-			}
-			continue
+			return
 		}
 		go obfs4Handler(f, conn)
 	}
