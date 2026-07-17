@@ -338,20 +338,70 @@ confidence=CASE WHEN operator_verified=1 THEN confidence ELSE MAX(confidence, ex
 	return n, nil
 }
 
+// purgeChunk bounds how many rows a single maintenance DELETE removes, so it
+// holds the single SQLite writer only briefly even when a swarm has left a huge
+// backlog of one-off fingerprints. The rowid-subquery form works without the
+// SQLITE_ENABLE_UPDATE_DELETE_LIMIT build tag (which mattn/go-sqlite3 omits).
+const purgeChunk = 500
+
 // PurgeStale deletes low-value auto-learned rows that have not recurred within
-// retainDays and were never verified — bounding table growth.
+// retainDays and were never verified — bounding table growth. Chunked so each
+// statement holds the writer briefly; index idx_signatures_prune keeps it from
+// scanning the whole table.
 func (s *Store) PurgeStale(ctx context.Context, retainDays int) (int64, error) {
-	if retainDays <= 0 {
+	if s == nil || s.db == nil || retainDays <= 0 {
 		return 0, nil
 	}
 	cutoff := time.Now().UTC().AddDate(0, 0, -retainDays)
-	res, err := s.db.ExecContext(ctx,
-		`DELETE FROM vayushield_signatures WHERE operator_verified=0 AND last_seen<? AND request_count<?`, cutoff, autoPromoteThreshold)
-	if err != nil {
-		return 0, err
+	var total int64
+	for {
+		res, err := s.db.ExecContext(ctx,
+			`DELETE FROM vayushield_signatures WHERE rowid IN (SELECT rowid FROM vayushield_signatures WHERE operator_verified=0 AND last_seen<? AND request_count<? LIMIT ?)`,
+			cutoff, autoPromoteThreshold, purgeChunk)
+		if err != nil {
+			return total, err
+		}
+		n, _ := res.RowsAffected()
+		total += n
+		if n < purgeChunk {
+			return total, nil
+		}
+		select {
+		case <-ctx.Done():
+			return total, ctx.Err()
+		default:
+		}
 	}
-	n, _ := res.RowsAffected()
-	return n, nil
+}
+
+// PurgeBlocked ages out old rows from vayushield_blocked. That table is a hashed,
+// non-PII record of hard blocks kept only for aggregate counts (there is no live
+// per-IP list any more, ADR-0137), so it must not grow forever. Chunked and
+// index-driven (idx_blocked_created). Returns the number of rows removed.
+func (s *Store) PurgeBlocked(ctx context.Context, retainDays int) (int64, error) {
+	if s == nil || s.db == nil || retainDays <= 0 {
+		return 0, nil
+	}
+	cutoff := time.Now().UTC().AddDate(0, 0, -retainDays)
+	var total int64
+	for {
+		res, err := s.db.ExecContext(ctx,
+			`DELETE FROM vayushield_blocked WHERE rowid IN (SELECT rowid FROM vayushield_blocked WHERE created_at<? LIMIT ?)`,
+			cutoff, purgeChunk)
+		if err != nil {
+			return total, err
+		}
+		n, _ := res.RowsAffected()
+		total += n
+		if n < purgeChunk {
+			return total, nil
+		}
+		select {
+		case <-ctx.Done():
+			return total, ctx.Err()
+		default:
+		}
+	}
 }
 
 // ── scanning helpers ─────────────────────────────────────────────────────────

@@ -8,7 +8,24 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
-## [3.13.51] — 2026-07-16
+## [3.13.52] — 2026-07-16
+
+### Changed
+- **VayuShield detection is now self-maintaining in the background; the stale
+  per-IP block list is gone (ADR-0137, stage 4).** The operator-reported problem
+  — "the blocked-IP list is not updated" — is resolved by removing the list, not
+  patching it: a scrolling table of hashed IPs was stale by design (the live jail
+  is in memory, not that log) and was easily misread as the current block list.
+  - The "Recent blocks" panel section is removed. Live enforcement state is the
+    aggregate counters in the status hero (blocked / reputation-jailed / suspects
+    / fair-shed / surge / cache-hit), which reflect the actual in-memory gates.
+  - The existing background maintenance cycle now also **prunes efficiently**: new
+    composite indexes (migration 063) make the prune and promotion passes
+    index-driven instead of full-table scans, the deletes are **chunked** so each
+    holds the single database writer only briefly (safe even with a huge swarm
+    backlog), and the hashed block log is now **retention-bounded** so it can no
+    longer grow without limit. No new goroutine — it extends the existing
+    shutdown-aware reporter.
 
 ### Fixed
 - **VayuShield learning system now actually learns and self-heals (ADR-0137,

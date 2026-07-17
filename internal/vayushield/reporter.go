@@ -9,8 +9,9 @@ import (
 
 // LearningResult summarizes one run of the 24-hour learning cycle.
 type LearningResult struct {
-	Promoted int64 `json:"promoted"` // unknown candidates promoted to bad_bot
-	Purged   int64 `json:"purged"`   // stale low-value signatures removed
+	Promoted     int64 `json:"promoted"`      // unknown candidates promoted to bad_bot
+	Purged       int64 `json:"purged"`        // stale low-value signatures removed
+	BlocksPurged int64 `json:"blocks_purged"` // aged-out rows from the hashed block log
 }
 
 // RunLearningCycle performs one improvement pass over the adaptive database:
@@ -41,6 +42,16 @@ WHERE auto_learned=1 AND operator_verified=0 AND classification='unknown' AND re
 	if m.cfg.Bots != nil && retainDays > 0 {
 		if n, perr := m.cfg.Bots.PurgeStale(ctx, retainDays); perr == nil {
 			out.Purged = n
+		}
+		// Age out the hashed block log too — it is now write-only (kept only for
+		// aggregate counts; there is no live per-IP list any more, ADR-0137), so it
+		// must be bounded. Keep it a bit longer than the signature retention.
+		blockRetain := retainDays
+		if blockRetain < 7 {
+			blockRetain = 7
+		}
+		if n, perr := m.cfg.Bots.PurgeBlocked(ctx, blockRetain); perr == nil {
+			out.BlocksPurged = n
 		}
 	}
 	return out, nil

@@ -465,11 +465,12 @@ func (a *App) handleOSShield(w http.ResponseWriter, r *http.Request) {
 		b.WriteString(`</div></details>`)
 	}
 
-	// ── Recent blocks — collapsible + refreshable (fast indexed query on the
-	// admin lane). ─────────────────────────────────────────────────────────────
-	b.WriteString(`<details class="card"><summary class="card-title vs-summary">Recent blocks — bot block list</summary><div id="vs-body-blocks">`)
-	b.WriteString(a.shieldBlocksBody(r.Context()))
-	b.WriteString(`</div></details>`)
+	// The old per-IP "Recent blocks" list was removed (ADR-0137): a scrolling log
+	// of hashed IPs was stale by design (the LIVE jail is in memory) and misread as
+	// the current block list. Detection is now maintained by an efficient
+	// background job (prune + retention + promotion), and the live enforcement
+	// state is the aggregate counters in the status hero above (blocked / jailed /
+	// suspects / surge / cache) — which reflect the actual in-memory gates.
 
 	// ── Engagement analytics — heavy aggregate scans, computed OFF the request
 	// path and cached (admin_dashcache.go) so this panel can never block into a
@@ -808,8 +809,6 @@ func (a *App) handleOSShieldSection(w http.ResponseWriter, r *http.Request) {
 		out = a.shieldSignaturesBody(r.Context())
 	case "queue":
 		out = a.shieldQueueBody(r.Context())
-	case "blocks":
-		out = a.shieldBlocksBody(r.Context())
 	case "engagement":
 		out = a.shieldEngagementBody(r.Context(), shieldDays(r))
 	case "hardening":
@@ -879,57 +878,6 @@ func (a *App) renderShieldEngagement(ctx context.Context, days int) string {
 		}
 		b.WriteString(`</tbody></table></div></div>`)
 	}
-	return b.String()
-}
-
-// shieldBlocksBody renders the operator-visible bot block list body (with a
-// Refresh control) — the most recent hard blocks recorded in vayushield_blocked.
-// GDPR: the IP is a salted, daily-rotating hash (never stored or shown in the
-// clear); the full User-Agent is not PII and is truncated for display.
-// Best-effort; an empty/failed query yields a friendly empty state.
-func (a *App) shieldBlocksBody(ctx context.Context) string {
-	var b strings.Builder
-	b.WriteString(vsRefresh("blocks", "vs-body-blocks", ""))
-	empty := `<p class="muted text-sm">No bots have been blocked yet. When VayuShield blocks a bad bot it is recorded here and its IP is jailed so the next request is dropped instantly.</p>`
-	if dbpkg.DB == nil {
-		b.WriteString(empty)
-		return b.String()
-	}
-	rows, err := dbpkg.AdminReader().QueryContext(ctx,
-		`SELECT created_at, COALESCE(user_agent,''), COALESCE(request_path,''), COALESCE(block_reason,''), bot_score, COALESCE(country_code,''), COALESCE(ip_hash,'')
-		 FROM vayushield_blocked ORDER BY created_at DESC LIMIT 50`)
-	if err != nil {
-		b.WriteString(empty)
-		return b.String()
-	}
-	defer rows.Close()
-	var tbl strings.Builder
-	n := 0
-	for rows.Next() {
-		var when time.Time
-		var ua, path, reason, country, iphash string
-		var score float64
-		if rows.Scan(&when, &ua, &path, &reason, &score, &country, &iphash) != nil {
-			continue
-		}
-		if len(ua) > 60 {
-			ua = ua[:60]
-		}
-		if len(iphash) > 12 {
-			iphash = iphash[:12]
-		}
-		tbl.WriteString(`<tr><td>` + when.UTC().Format("2006-01-02 15:04") + `</td><td class="text-sm">` + html.EscapeString(ua) + `</td><td class="text-sm">` + html.EscapeString(path) + `</td><td class="text-sm">` + html.EscapeString(reason) + `</td><td>` + ftoa2(score) + `</td><td>` + html.EscapeString(country) + `</td><td class="font-mono text-sm">` + html.EscapeString(iphash) + `…</td></tr>`)
-		n++
-	}
-	_ = rows.Err()
-	if n == 0 {
-		b.WriteString(empty)
-		return b.String()
-	}
-	b.WriteString(`<p class="muted text-sm">Every hard block is recorded here (the IP is a salted daily-rotating hash — never stored in the clear). Auto-blocked IPs are also jailed in memory, so repeat requests are dropped instantly without re-classification.</p>`)
-	b.WriteString(`<div class="table-wrap"><table class="table"><thead><tr><th>When (UTC)</th><th>User-Agent</th><th>Path</th><th>Reason</th><th>Score</th><th>Country</th><th>IP (hashed)</th></tr></thead><tbody>`)
-	b.WriteString(tbl.String())
-	b.WriteString(`</tbody></table></div>`)
 	return b.String()
 }
 
