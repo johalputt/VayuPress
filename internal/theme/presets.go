@@ -29,6 +29,9 @@ var agoraCSS string
 //go:embed apex.css
 var apexCSS string
 
+//go:embed editor.css
+var editorCSS string
+
 //go:embed vayu.css
 var vayuCSS string
 
@@ -322,6 +325,7 @@ func allPresetsRaw() []Tokens {
 		Maverick(),
 		Agora(),
 		Apex(),
+		Editor(),
 		Vayu(),
 	}
 }
@@ -668,6 +672,30 @@ func Apex() Tokens {
 		FontSans: "Inter, system-ui, -apple-system, 'Segoe UI', sans-serif", FontMono: "IBM Plex Mono, ui-monospace, monospace",
 		FontSizeBase: "1.0625rem", LineHeight: "1.65", MaxWidth: "46rem", RadiusSm: "0.5rem", RadiusLg: "1.25rem",
 		CustomCSS: apexCSS,
+	}
+}
+
+// Editor — the world-newsroom flagship: a broadsheet-grade newspaper theme for
+// serious, multinational publications. Light-first warm paper with a true-ink
+// dark edition, serif display typography (ui-serif / Iowan Old Style /
+// Palatino / Georgia — the stacks the great papers themselves fall back to),
+// quiet sans chrome, and ONE rationed editorial red used only for text, labels
+// and hairline rules — never fills. Ships a full broadsheet component CSS: a
+// centred masthead with an uppercase section bar, a hairline story lattice
+// with a lead-story package, a numbered "most read" treatment for the
+// trending/pinned rail, breaking & live kickers with a reduced-motion-safe
+// pulse, drop caps, pull quotes, standfirsts, a pure-CSS scroll-driven reading
+// progress bar and view-transition page fades (both strictly progressive) —
+// zero JS, zero external requests, zero layout shift, light & dark.
+func Editor() Tokens {
+	return Tokens{
+		Name: "Editor", BgDark: "#131211", SurfaceDark: "#1c1a18", TextDark: "#e8e6e3",
+		MutedDark: "#a8a29e", AccentDark: "#f87171", Accent2Dark: "#8ab4d8", HiDark: "#e3b341", GreenDark: "#34d399",
+		BgLight: "#faf8f3", SurfaceLight: "#ffffff", TextLight: "#14120e", MutedLight: "#6e6759",
+		AccentLight: "#b42318", Accent2Light: "#326891", HiLight: "#946200",
+		FontSans: "system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif", FontMono: "ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace",
+		FontSizeBase: "1.0625rem", LineHeight: "1.65", MaxWidth: "42rem", RadiusSm: "0.125rem", RadiusLg: "0.25rem",
+		CustomCSS: editorCSS,
 	}
 }
 
