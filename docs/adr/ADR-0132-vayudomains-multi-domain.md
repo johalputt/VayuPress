@@ -297,6 +297,35 @@ only *records* state while the helper *acts* on it. `deploy-vayupress.sh` and
 `update-vayupress.sh` call the helper (idempotent, non-fatal): a domain whose DNS
 is not yet pointed here is skipped cleanly, so it is safe on every deploy/update.
 
+### P5 — manual sync gate (shipped)
+
+P4 provisioned **every** registered secondary on every deploy/update run. That
+made "Add a domain" quietly consequential: registering a hostname was enough for
+the next update to obtain certificates and publish an nginx vhost for it. P5
+separates *registering* from *provisioning* with an explicit, per-domain operator
+approval:
+
+- Migration **064** adds `domains.sync_state` (`'approved'` | `'hold'`). Existing
+  rows are backfilled to `approved` (they were already provisioned; updates keep
+  maintaining them), while `Registry.Create` inserts new secondaries as `hold`.
+- `vayupress domains hosts` — the helper's work list — emits **only
+  sync-approved** secondaries. New verbs `domains sync <host>` / `domains hold
+  <host>` flip the gate from the terminal; `hosts --hold` lists what is parked
+  and `hosts --all` lists every active secondary for diagnostics.
+- VayuOS → **Domains** shows the gate as a *Sync* column (`Synced` /
+  `Manual hold`) with a per-row **Sync now** / **Pause sync** action
+  (`POST /os/api/domains/{id}/sync`, CSRF-protected like its siblings). The page
+  copy states plainly that approving only queues the domain for the helper's
+  next run — the unprivileged binary still never touches certbot or nginx.
+- `setup-vayudomain.sh` treats **explicit host arguments as operator intent**:
+  `sudo bash scripts/setup-vayudomain.sh shop.example` records the approval
+  (`domains sync`) and provisions immediately. Runs without arguments log which
+  domains were skipped on hold, so a deploy/update log always explains itself.
+
+The primary is untouched by the gate (its certificate predates the registry),
+and a domain already provisioned under P4 behaves exactly as before — the gate
+changes the default for **new** registrations only.
+
 ## Consequences
 
 - **Safe foundation.** Stage 1 adds a registry and a pass-through middleware

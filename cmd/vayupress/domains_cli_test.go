@@ -10,8 +10,10 @@ import (
 )
 
 // TestDomainsCLI covers the P4 read/notify surface the privileged TLS helper
-// drives from: listing registered domains, emitting secondary hosts for scripts,
-// and recording a domain's tls_state back into the registry.
+// drives from — listing registered domains, emitting secondary hosts for
+// scripts, recording tls_state — plus the P5 manual sync gate: a freshly
+// registered domain is on hold and invisible to `hosts` until the operator
+// approves it with `domains sync`.
 func TestDomainsCLI(t *testing.T) {
 	setupSEOTestDB(t) // config.Load + dbpkg.Init with DOMAIN=primary.example
 	ctx := context.Background()
@@ -23,23 +25,81 @@ func TestDomainsCLI(t *testing.T) {
 		t.Fatalf("create secondary: %v", err)
 	}
 
-	// hosts: secondary hosts only, one per line.
+	// hosts: a new secondary is on manual hold, so the helper's work list is
+	// EMPTY — adding a domain must never auto-provision it (P5).
 	var b strings.Builder
 	if err := runDomainsCLI([]string{"hosts"}, &b); err != nil {
 		t.Fatalf("hosts: %v", err)
 	}
-	if got := strings.TrimSpace(b.String()); got != "shop.example" {
-		t.Fatalf("hosts = %q, want shop.example (primary must not be listed)", got)
+	if got := strings.TrimSpace(b.String()); got != "" {
+		t.Fatalf("hosts = %q, want empty (new domains are on manual hold)", got)
 	}
 
-	// hosts --mail: still lists the mail_enabled secondary.
+	// hosts --hold surfaces what is waiting; --all lists regardless of gate.
+	b.Reset()
+	_ = runDomainsCLI([]string{"hosts", "--hold"}, &b)
+	if got := strings.TrimSpace(b.String()); got != "shop.example" {
+		t.Fatalf("hosts --hold = %q, want shop.example", got)
+	}
+	b.Reset()
+	_ = runDomainsCLI([]string{"hosts", "--all"}, &b)
+	if got := strings.TrimSpace(b.String()); got != "shop.example" {
+		t.Fatalf("hosts --all = %q, want shop.example", got)
+	}
+
+	// sync: approving puts the domain on the work list (and off --hold).
+	b.Reset()
+	if err := runDomainsCLI([]string{"sync", "shop.example"}, &b); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	if !strings.Contains(b.String(), "sync_state=approved") {
+		t.Errorf("sync output missing confirmation: %q", b.String())
+	}
+	b.Reset()
+	if err := runDomainsCLI([]string{"hosts"}, &b); err != nil {
+		t.Fatalf("hosts after sync: %v", err)
+	}
+	if got := strings.TrimSpace(b.String()); got != "shop.example" {
+		t.Fatalf("hosts after sync = %q, want shop.example (primary must not be listed)", got)
+	}
+	b.Reset()
+	_ = runDomainsCLI([]string{"hosts", "--hold"}, &b)
+	if got := strings.TrimSpace(b.String()); got != "" {
+		t.Fatalf("hosts --hold after sync = %q, want empty", got)
+	}
+
+	// hosts --mail: still lists the mail_enabled (now approved) secondary.
 	b.Reset()
 	_ = runDomainsCLI([]string{"hosts", "--mail"}, &b)
 	if !strings.Contains(b.String(), "shop.example") {
 		t.Errorf("hosts --mail missing the mail_enabled secondary: %q", b.String())
 	}
 
-	// list: human-readable table includes both, with roles.
+	// hold: pausing takes it back off the work list.
+	b.Reset()
+	if err := runDomainsCLI([]string{"hold", "shop.example"}, &b); err != nil {
+		t.Fatalf("hold: %v", err)
+	}
+	b.Reset()
+	_ = runDomainsCLI([]string{"hosts"}, &b)
+	if got := strings.TrimSpace(b.String()); got != "" {
+		t.Fatalf("hosts after hold = %q, want empty", got)
+	}
+	// Re-approve for the remaining assertions.
+	b.Reset()
+	if err := runDomainsCLI([]string{"sync", "shop.example"}, &b); err != nil {
+		t.Fatalf("re-sync: %v", err)
+	}
+
+	// sync/hold refuse the primary and unknown hosts.
+	if err := runDomainsCLI([]string{"sync", "primary.example"}, &b); err == nil {
+		t.Error("sync should refuse the primary domain")
+	}
+	if err := runDomainsCLI([]string{"hold", "nowhere.example"}, &b); err == nil {
+		t.Error("hold should refuse an unregistered host")
+	}
+
+	// list: human-readable table includes both, with roles and sync state.
 	b.Reset()
 	if err := runDomainsCLI([]string{"list"}, &b); err != nil {
 		t.Fatalf("list: %v", err)
@@ -47,6 +107,9 @@ func TestDomainsCLI(t *testing.T) {
 	out := b.String()
 	if !strings.Contains(out, "primary.example") || !strings.Contains(out, "shop.example") || !strings.Contains(out, "primary") {
 		t.Errorf("list output incomplete:\n%s", out)
+	}
+	if !strings.Contains(out, "SYNC") || !strings.Contains(out, "approved") {
+		t.Errorf("list output missing sync column:\n%s", out)
 	}
 
 	// set-tls: records the state, and refuses the primary + bad states.
