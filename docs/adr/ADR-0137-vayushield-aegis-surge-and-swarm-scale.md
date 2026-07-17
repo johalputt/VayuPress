@@ -59,15 +59,22 @@ plaintext IP at rest), and no measurable slowdown for legitimate traffic.
 
 Add a surge gate that runs **before** classification, fingerprinting or the
 signature `SELECT`. Surge is a deliberate escalation ("challenge every unproven
-visitor"), so it engages only when the shield is genuinely under attack — the
-global attack-RPS meter tripped (adaptive under-attack mode; a 1M-source swarm
-drives RPS through the roof and trips it automatically) or the operator's
-explicit "Under Attack" switch is on. It deliberately does **not** engage on
-mere L0 lane pressure: that milder signal drives the graceful L2 fair-shed,
-which only sheds heavy hitters and never touches a client within its fair
-budget, so a merely-busy site (a legitimate traffic spike) never challenges
-everyone. When surge is engaged, any request that is **not** already trusted is
-answered with the existing HMAC-stateless proof-of-work interstitial *up front*:
+visitor"), so it engages only when the shield is genuinely under attack:
+
+- the operator's explicit "Under Attack" switch is on (auto-expiring); or
+- the global attack-RPS meter is tripped (adaptive under-attack mode); or
+- the L0 sovereignty lane is **critically** saturated (≈90% of its concurrency
+  cap) — the site is being overwhelmed. This is the zero-configuration trigger
+  that catches a **low-and-slow, high-cardinality swarm**: a million distinct
+  IPs each sending a little fills the lane without ever spiking per-second RPS,
+  so the RPS meter alone would miss it, but the lane occupancy will not.
+
+It deliberately does **not** engage on *mild* L0 pressure (≈75%): that gentler
+signal drives the graceful L2 fair-shed, which only sheds heavy hitters and
+never touches a client within its fair budget, so a merely-busy site never
+challenges everyone. When surge is engaged, any request that is **not** already
+trusted is answered with the existing HMAC-stateless proof-of-work interstitial
+*up front*:
 
 - **Bypass (no challenge):** a valid shield session cookie (proven human), a
   trusted operator session, a bypassed prefix (`/os`, `/api`, feeds, health,

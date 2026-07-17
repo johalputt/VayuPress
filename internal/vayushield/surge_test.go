@@ -150,6 +150,33 @@ func TestSurgeAutoEngagesUnderAttack(t *testing.T) {
 	}
 }
 
+// TestSurgeAutoEngagesOnCriticalSaturation: when the L0 lane is critically full
+// (SurgePressureFn), surge auto-engages with NO operator toggle and NO RPS
+// spike — so a low-and-slow, high-cardinality swarm that fills the lane without
+// tripping the per-second meter is still met at the front gate.
+func TestSurgeAutoEngagesOnCriticalSaturation(t *testing.T) {
+	critical := false
+	m := New(Config{
+		Enabled:         true,
+		Signer:          challenge.NewSigner([]byte("s")),
+		ClientIP:        func(r *http.Request) string { return "203.0.113.9:1" },
+		SurgePressureFn: func() bool { return critical },
+	})
+	m.ApplySettings(Settings{Enabled: true, Surge: false, UnderAttack: false})
+
+	rr := httptest.NewRecorder()
+	m.Middleware(okHandler()).ServeHTTP(rr, getBrowser("/post"))
+	if rr.Code != 200 {
+		t.Fatalf("below critical saturation: browser should pass, got %d", rr.Code)
+	}
+	critical = true
+	rr = httptest.NewRecorder()
+	m.Middleware(okHandler()).ServeHTTP(rr, getBrowser("/post"))
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Fatalf("critical L0 saturation must auto-engage surge (503), got %d", rr.Code)
+	}
+}
+
 // TestSurgeDoesNotEngageOnMildPressure: the L0 fair-shed pressure signal must
 // NOT trip surge — a merely-busy site keeps serving unproven light clients (the
 // graceful-degradation contract), only heavy hitters are fair-shed.

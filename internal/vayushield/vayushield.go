@@ -42,6 +42,7 @@ import (
 	"github.com/johalputt/vayupress/internal/vayushield/prefilter"
 	"github.com/johalputt/vayupress/internal/vayushield/resilience"
 	"github.com/johalputt/vayupress/internal/vayushield/scorer"
+	"github.com/johalputt/vayupress/internal/vayushield/sigcache"
 )
 
 // Action is the middleware's decision for a request.
@@ -96,6 +97,15 @@ type Config struct {
 	// the pre-filter observes every request (a few atomic ops) so its sketch is
 	// already warm the moment pressure appears.
 	PressureFn func() bool
+
+	// SurgePressureFn reports CRITICAL saturation — the L0 lane at/near full, i.e.
+	// the site is genuinely being overwhelmed. It is a higher bar than PressureFn
+	// (which drives the gentler fair-shed): when it trips, Sovereign Surge
+	// auto-engages so unproven traffic is bounced by a cheap challenge instead of
+	// blindly shed. This catches an overwhelming swarm even when it does not spike
+	// per-second RPS (a low-and-slow, high-cardinality flood that fills the lane).
+	// Optional; a couple of atomic loads.
+	SurgePressureFn func() bool
 
 	// OffloadFn exports a jail verdict to the L1 kernel offload (an IP that
 	// should be dropped by nftables/XDP for the given TTL). Optional and
@@ -190,6 +200,11 @@ type Manager struct {
 	// loosens the effective thresholds automatically (loosen-only, capped) so
 	// the ladder stays silent-first and self-heals its own false positives.
 	calib *calibrate.Calibrator
+
+	// sigCache is the Aegis L6 signature-lookup cache: a fixed-memory, negative-
+	// caching layer in front of the adaptive-DB Lookup SELECT, so classification
+	// under load does not hit SQLite per request. Keyed on fingerprint hash only.
+	sigCache *sigcache.Cache
 
 	// surgeServed counts stateless surge-mode PoW interstitials served (telemetry).
 	surgeServed atomic.Int64
@@ -292,6 +307,7 @@ func New(cfg Config) *Manager {
 	m.prefilter = prefilter.New()
 	m.brain = brain.New()
 	m.calib = calibrate.New()
+	m.sigCache = sigcache.New(sigCacheTTL)
 	m.jailTTLns.Store(int64(10 * time.Minute))
 	// Seed the live config from the constructor Config (challenge tunables on,
 	// resilience toggles off — all opt-in).
@@ -333,6 +349,20 @@ func defaultMaxInFlight() int {
 // forgotten switch cannot serve 503s (and risk deindexing) forever. A genuine
 // ongoing attack is still covered by the RPS auto-engage path (no timer).
 const maxForcedSurge = 12 * time.Hour
+
+// sigCacheTTL bounds how long a cached signature-lookup result is served. Short,
+// so a freshly-learned or pardoned signature takes effect within seconds even
+// without an explicit invalidation; operator actions Clear the cache at once.
+const sigCacheTTL = 45 * time.Second
+
+// InvalidateSigCache drops every cached signature-lookup result. The cmd layer
+// calls it after an operator verify / dismiss / report-false-positive so a
+// verdict flip is never masked by a stale cache entry.
+func (m *Manager) InvalidateSigCache() {
+	if m != nil {
+		m.sigCache.Clear()
+	}
+}
 
 func (m *Manager) ApplySettings(s Settings) {
 	// Arm / disarm the operator-forced surge timer on a genuine off->on edge, so
@@ -458,6 +488,12 @@ func (m *Manager) underSurge(lc *liveConfig) bool {
 			return true
 		}
 	}
+	// Critical L0 saturation: the site is being overwhelmed (a high-RPS flood OR a
+	// low-and-slow distinct-IP swarm that fills the lane without spiking RPS). Both
+	// auto-engage — no operator toggle, no configuration. Relaxes when it clears.
+	if m.cfg.SurgePressureFn != nil && m.cfg.SurgePressureFn() {
+		return true
+	}
 	return lc.underAttack && m.controller.UnderAttack()
 }
 
@@ -477,6 +513,11 @@ type Status struct {
 	// count of up-front surge interstitials served (each ~one HMAC, no DB/render).
 	SurgeActive     bool  `json:"surge_active"`
 	SurgeChallenges int64 `json:"surge_challenges"`
+
+	// L6 signature-lookup cache: hits served from memory vs misses that fell
+	// through to the adaptive-DB SELECT.
+	SigCacheHits   int64 `json:"sig_cache_hits"`
+	SigCacheMisses int64 `json:"sig_cache_misses"`
 
 	// L4 self-calibration: the loosen-only threshold bias currently applied
 	// (0 = running exactly at the operator's thresholds) and the live window's
@@ -505,6 +546,8 @@ func (m *Manager) Status() Status {
 		ChallengesPassed: passed,
 		SurgeActive:      m.underSurge(m.live()),
 		SurgeChallenges:  m.surgeServed.Load(),
+		SigCacheHits:     m.sigCache.Hits(),
+		SigCacheMisses:   m.sigCache.Misses(),
 	}
 }
 
@@ -547,8 +590,20 @@ func (m *Manager) Classify(r *http.Request) Verdict {
 		}
 	}
 	if m.cfg.Bots != nil && comp.FingerprintHash != "" {
-		if learned, ok := m.cfg.Bots.Lookup(r.Context(), comp.FingerprintHash); ok {
+		// L6 cache first: most unproven traffic under load is a fingerprint the DB
+		// has never seen (legit readers, flash crowds), so the negative cache keeps
+		// that SELECT off the read pool. A miss falls through to the real Lookup and
+		// records the outcome (positive OR negative). Short TTL bounds staleness;
+		// operator actions Clear the cache for instant invalidation.
+		if learned, found, hit := m.sigCache.Get(comp.FingerprintHash); hit {
+			if found {
+				in.Learned = learned
+			}
+		} else if learned, ok := m.cfg.Bots.Lookup(r.Context(), comp.FingerprintHash); ok {
 			in.Learned = learned
+			m.sigCache.Put(comp.FingerprintHash, learned, true)
+		} else {
+			m.sigCache.Put(comp.FingerprintHash, nil, false)
 		}
 	}
 	v := Verdict{Result: scorer.Score(in), Composite: comp, Signals: sig, HasTLS: hasTLS}

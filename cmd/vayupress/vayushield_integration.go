@@ -126,6 +126,15 @@ func (a *App) bootVayuShield() {
 			g := a.sovereign
 			return g != nil && g.Inflight()*4 >= g.Cap()*3
 		},
+		// Critical saturation (L0 lane >= 90% full) auto-engages Sovereign Surge:
+		// the site is being overwhelmed — a high-RPS flood OR a low-and-slow
+		// distinct-IP swarm that fills the public lane without spiking per-second
+		// RPS — so unproven traffic is met with a cheap challenge instead of blind
+		// shedding, and real browsers prove in to the priority lane. Zero config.
+		SurgePressureFn: func() bool {
+			g := a.sovereign
+			return g != nil && g.Inflight()*10 >= g.Cap()*9
+		},
 		// L1 kernel offload: jailed IPs also get dropped by nftables/XDP.
 		OffloadFn: a.shieldOffload.Ban,
 		// Operator immunity: a valid admin login session is exempt from every
@@ -566,6 +575,9 @@ func (a *App) shieldHeroBody(ctx context.Context) string {
 	}
 	b.WriteString(vsMetric(strconv.FormatInt(stt.FairShed, 10), "Fair-shed (L2)"))
 	b.WriteString(vsMetric(strconv.FormatInt(stt.SurgeChallenges, 10), "Surge checks (L3)"))
+	if total := stt.SigCacheHits + stt.SigCacheMisses; total > 0 {
+		b.WriteString(vsMetric(strconv.FormatInt(stt.SigCacheHits*100/total, 10)+"%", "Cache hit (L6)"))
+	}
 	b.WriteString(vsMetric(strconv.Itoa(stt.RepJailed)+" / "+strconv.Itoa(stt.Suspects), "Rep-jailed / suspects (L5)"))
 	b.WriteString(`</div>`)
 	return b.String()
@@ -942,6 +954,9 @@ func (a *App) handleOSShieldVerify(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusInternalServerError, "db-error", err.Error(), "")
 		return
 	}
+	// The verdict for this signature just changed; drop the L6 lookup cache so the
+	// new classification takes effect on the next request, not after the TTL.
+	a.vayuShield.InvalidateSigCache()
 	// HTMX hx-swap="delete" removes the row on 2xx; vs-refresh-sig also refreshes
 	// the signature counts + queue body in place.
 	w.Header().Set("HX-Trigger", "vs-refresh-sig")
@@ -963,6 +978,7 @@ func (a *App) handleOSShieldDismiss(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusInternalServerError, "db-error", err.Error(), "")
 		return
 	}
+	a.vayuShield.InvalidateSigCache()
 	// HTMX hx-swap="delete" removes the row on 2xx; vs-refresh-sig also refreshes
 	// the signature counts + queue body in place.
 	w.Header().Set("HX-Trigger", "vs-refresh-sig")

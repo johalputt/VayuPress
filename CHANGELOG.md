@@ -8,6 +8,29 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.50] — 2026-07-16
+
+### Added
+- **VayuShield Aegis — swarm-scale classification cache + zero-config surge on
+  overwhelm (ADR-0137, stage 2).** Two changes that keep the site fast under a
+  large scraper/crawler swarm:
+  - **Signature-lookup cache (L6).** A fixed-memory, sharded, negative-caching
+    layer in front of the adaptive bot-signature database, so classifying an
+    unproven request no longer hits SQLite on every request. The common case — a
+    fingerprint the database has never seen (real readers, flash crowds) — is
+    served from memory; the cache is bounded (can't grow under a
+    million-distinct-fingerprint flood), keyed only on the fingerprint hash (no
+    IPs, GDPR-clean), and invalidated instantly when the operator verifies,
+    dismisses, or flags a signature. A live "Cache hit (L6)" figure appears on
+    the Bot Shield panel.
+  - **Surge auto-engages when the site is genuinely overwhelmed.** Sovereign
+    Surge now also switches on automatically when the admin-sovereignty lane is
+    critically saturated — which catches a **low-and-slow, high-cardinality
+    swarm** (a million distinct IPs each sending a little) that fills the server
+    without ever spiking per-second request rate, a pattern the rate-based
+    detector alone would miss. Mild load still uses the gentler fair-shed; only
+    genuine overwhelm triggers the challenge.
+
 ## [3.13.49] — 2026-07-16
 
 ### Added
