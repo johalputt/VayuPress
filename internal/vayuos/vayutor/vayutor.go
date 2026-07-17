@@ -357,6 +357,10 @@ func (e *Engine) ensureConnected() error {
 		}
 		c, err := e.dialAuth(e.managed.controlAddr(), e.managed.cookiePath())
 		if err != nil {
+			// The managed tor is wedged/unreachable (e.g. reset by peer). Tear it
+			// down so the next reconcile reaps + respawns a clean daemon rather
+			// than looping against a dead socket.
+			e.managed.stop()
 			return err
 		}
 		e.adoptControl(c, true)
