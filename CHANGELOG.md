@@ -8,6 +8,22 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.64] — 2026-07-17
+
+### Fixed
+- **VayuTor no longer breaks after an update ("connection reset by peer" on the
+  control socket, onions disappear).** When VayuPress updates in place (the
+  in-app one-click self-update re-execs without a full process restart), the
+  previous managed `tor` child survived but the new process lost its handle to
+  it. That orphan kept the data-directory lock and control socket, so the new
+  VayuPress could not start its own `tor` and the control connection reset.
+  VayuTor now **reaps an orphaned `tor`** before spawning — matched precisely by
+  a pidfile and by scanning `/proc` for a `tor` launched against *our* torrc, and
+  verified to actually be `tor` so PID reuse can never hit an unrelated process —
+  then clears the stale lock/socket and starts cleanly. If the control connection
+  still fails, the managed `tor` is torn down so the next reconcile respawns a
+  fresh one instead of looping against a dead socket.
+
 ## [3.13.63] — 2026-07-17
 
 ### Added

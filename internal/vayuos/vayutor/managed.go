@@ -16,8 +16,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -49,6 +51,8 @@ func (m *managedTor) torrcPath() string     { return filepath.Join(m.dir, "torrc
 func (m *managedTor) controlSocket() string { return filepath.Join(m.dir, "control.sock") }
 func (m *managedTor) cookiePath() string    { return filepath.Join(m.dataDir(), "control_auth_cookie") }
 func (m *managedTor) logPath() string       { return filepath.Join(m.dir, "tor.log") }
+func (m *managedTor) pidPath() string       { return filepath.Join(m.dir, "tor.pid") }
+func (m *managedTor) lockPath() string      { return filepath.Join(m.dataDir(), "lock") }
 
 // controlAddr is what dialControl expects for a unix control socket.
 func (m *managedTor) controlAddr() string { return "unix:" + m.controlSocket() }
@@ -101,6 +105,10 @@ func (m *managedTor) buildTorrc() string {
 	// service publication does not need any of them.
 	b.WriteString("SocksPort 0\n")
 	b.WriteString("RunAsDaemon 0\n")
+	// A pidfile lets a restarted VayuPress find and reap an orphaned tor from a
+	// previous run (e.g. after an in-place self-update re-exec) that still holds
+	// this DataDirectory's lock and control socket.
+	b.WriteString("PidFile " + m.pidPath() + "\n")
 	// Persist tor's notice log so bootstrap/network problems are inspectable.
 	b.WriteString("Log notice file " + m.logPath() + "\n")
 	return b.String()
@@ -124,8 +132,14 @@ func (m *managedTor) ensure(ctx context.Context) error {
 		return m.fail("cannot create tor data dir: " + err.Error())
 	}
 	_ = os.Chmod(m.dataDir(), 0o700)
-	// A stale socket from a previous run would make tor fail to bind.
+	// Reap an orphaned tor from a previous VayuPress run (common after an in-place
+	// self-update re-exec, where the old child survives but this new process lost
+	// its handle). It still holds the DataDirectory lock + control socket, so a
+	// fresh tor cannot start and the control connection resets — clear it first.
+	m.reapOrphan()
+	// Stale lock/socket from an unclean prior exit would block startup / bind.
 	_ = os.Remove(m.controlSocket())
+	_ = os.Remove(m.lockPath())
 	if err := os.WriteFile(m.torrcPath(), []byte(m.buildTorrc()), 0o600); err != nil {
 		return m.fail("cannot write torrc: " + err.Error())
 	}
@@ -184,6 +198,70 @@ func (m *managedTor) waitControl(ctx context.Context) error {
 		case <-time.After(250 * time.Millisecond):
 		}
 	}
+}
+
+// reapOrphan kills a tor process left over from a previous VayuPress run that
+// this (restarted) process no longer tracks but which still holds our
+// DataDirectory lock and control socket. It only runs when we believe we have no
+// live child. Every kill target is verified to be a `tor` process started
+// against OUR config, so PID reuse can never make it kill something unrelated.
+// Best-effort and Linux-oriented (VayuPress's server target); no /proc → skip.
+func (m *managedTor) reapOrphan() {
+	// Fast path: the pidfile our own tor writes.
+	if data, err := os.ReadFile(m.pidPath()); err == nil {
+		if pid, perr := strconv.Atoi(strings.TrimSpace(string(data))); perr == nil && m.isOurTor(pid) {
+			m.killTor(pid)
+		}
+	}
+	// Catch-all: scan /proc for any tor launched with `-f <our torrc>`. This
+	// covers an orphan from a version that predates the pidfile.
+	if entries, err := os.ReadDir("/proc"); err == nil {
+		for _, e := range entries {
+			pid, perr := strconv.Atoi(e.Name())
+			if perr != nil {
+				continue
+			}
+			cl, rerr := os.ReadFile("/proc/" + e.Name() + "/cmdline")
+			if rerr != nil {
+				continue
+			}
+			args := strings.ReplaceAll(string(cl), "\x00", " ")
+			if strings.Contains(args, m.torrcPath()) && m.isOurTor(pid) {
+				m.killTor(pid)
+			}
+		}
+	}
+	_ = os.Remove(m.pidPath())
+}
+
+// isOurTor reports whether pid is a live process named "tor". The cmdline match
+// in reapOrphan already scoped it to our torrc; this is the identity backstop.
+func (m *managedTor) isOurTor(pid int) bool {
+	if pid <= 1 || pid == os.Getpid() {
+		return false
+	}
+	comm, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/comm")
+	if err != nil {
+		return true // no /proc to check — trust the caller's cmdline/pidfile scoping
+	}
+	return strings.TrimSpace(string(comm)) == "tor"
+}
+
+// killTor SIGTERMs a pid, waits briefly for it to release the DataDirectory
+// lock, then SIGKILLs if still alive.
+func (m *managedTor) killTor(pid int) {
+	p, err := os.FindProcess(pid)
+	if err != nil {
+		return
+	}
+	_ = p.Signal(syscall.SIGTERM)
+	for i := 0; i < 20; i++ {
+		if p.Signal(syscall.Signal(0)) != nil {
+			return // gone
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	_ = p.Signal(syscall.SIGKILL)
 }
 
 // stop terminates the tor child (which tears down its onions). Best-effort.
