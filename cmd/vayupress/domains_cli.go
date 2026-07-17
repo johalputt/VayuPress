@@ -16,8 +16,14 @@ import (
 // (ADR-0132, P4). The binary only *records* per-domain TLS state; the helper acts
 // on it out-of-process.
 //
+// P5 adds the manual sync gate: a newly registered domain sits on sync_state=hold
+// and is invisible to `hosts` (the helper's work list) until the operator
+// approves it — from VayuOS → Domains ("Sync now") or `domains sync <host>`.
+//
 //	vayupress domains list                 # every registered domain, human-readable
-//	vayupress domains hosts [--mail]       # secondary hosts, one per line (for scripts)
+//	vayupress domains hosts [--mail|--all|--hold]  # secondary hosts, one per line (for scripts)
+//	vayupress domains sync <host>          # approve a domain for provisioning
+//	vayupress domains hold <host>          # pause provisioning/maintenance for a domain
 //	vayupress domains set-tls <host> <s>   # record a domain's tls_state (pending|active|failed)
 func runDomainsCLI(args []string, out io.Writer) error {
 	reg := domain.New(dbpkg.DB, dbpkg.RDB)
@@ -32,7 +38,7 @@ func runDomainsCLI(args []string, out io.Writer) error {
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(out, "%-32s %-9s %-5s %s\n", "HOST", "ROLE", "MAIL", "TLS")
+		fmt.Fprintf(out, "%-32s %-9s %-5s %-8s %s\n", "HOST", "ROLE", "MAIL", "SYNC", "TLS")
 		for _, d := range list {
 			role := "secondary"
 			if d.IsPrimary {
@@ -42,17 +48,32 @@ func runDomainsCLI(args []string, out io.Writer) error {
 			if d.MailEnabled {
 				mail = "on"
 			}
-			fmt.Fprintf(out, "%-32s %-9s %-5s %s\n", d.Host, role, mail, d.TLSState)
+			// The primary is provisioned outside the registry, so its sync
+			// column is a dash rather than a state the helper would act on.
+			syncCol := d.EffectiveSyncState()
+			if d.IsPrimary {
+				syncCol = "—"
+			}
+			fmt.Fprintf(out, "%-32s %-9s %-5s %-8s %s\n", d.Host, role, mail, syncCol, d.TLSState)
 		}
 		return nil
 
 	case "hosts":
 		// Secondary hosts only (the primary's cert is the existing certbot cert,
-		// managed outside the registry). --mail restricts to mail_enabled domains.
-		onlyMail := false
+		// managed outside the registry). By default only SYNC-APPROVED domains are
+		// listed — this is the helper's work list, and the P5 gate keeps domains on
+		// manual hold out of it. --all lists every active secondary regardless of
+		// sync state (diagnostics), --hold lists only the held ones (so scripts can
+		// tell the operator what is waiting), --mail restricts to mail_enabled.
+		onlyMail, all, onlyHold := false, false, false
 		for _, a := range args[1:] {
-			if a == "--mail" {
+			switch a {
+			case "--mail":
 				onlyMail = true
+			case "--all":
+				all = true
+			case "--hold":
+				onlyHold = true
 			}
 		}
 		list, err := reg.List(ctx)
@@ -66,8 +87,42 @@ func runDomainsCLI(args []string, out io.Writer) error {
 			if onlyMail && !d.MailEnabled {
 				continue
 			}
+			switch {
+			case onlyHold:
+				if d.IsSyncApproved() {
+					continue
+				}
+			case all:
+				// every active secondary
+			default:
+				if !d.IsSyncApproved() {
+					continue
+				}
+			}
 			fmt.Fprintln(out, d.Host)
 		}
+		return nil
+
+	case "sync", "hold":
+		if len(args) < 2 {
+			return fmt.Errorf("usage: vayupress domains %s <host>", sub)
+		}
+		host := strings.TrimSpace(args[1])
+		d, err := reg.Resolve(ctx, host)
+		if err != nil {
+			return fmt.Errorf("no registered domain for host %q: %w", host, err)
+		}
+		if d.IsPrimary {
+			return fmt.Errorf("the primary domain is provisioned outside the registry")
+		}
+		state := domain.SyncApproved
+		if sub == "hold" {
+			state = domain.SyncHold
+		}
+		if err := reg.SetSyncState(ctx, d.ID, state); err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "%s sync_state=%s\n", d.Host, state)
 		return nil
 
 	case "set-tls":
@@ -95,6 +150,6 @@ func runDomainsCLI(args []string, out io.Writer) error {
 		return nil
 
 	default:
-		return fmt.Errorf("unknown domains subcommand %q (want list|hosts|set-tls)", sub)
+		return fmt.Errorf("unknown domains subcommand %q (want list|hosts|sync|hold|set-tls)", sub)
 	}
 }

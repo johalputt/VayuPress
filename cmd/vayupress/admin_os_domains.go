@@ -46,6 +46,22 @@ func siteTypeLabel(v string) string {
 	return v
 }
 
+// toggleLabelFor / toggleStatusFor describe the enable/disable action for a
+// secondary domain row: an active row offers Disable, a disabled row Enable.
+func toggleLabelFor(d domain.Domain) string {
+	if d.Status != domain.StatusActive {
+		return "Enable"
+	}
+	return "Disable"
+}
+
+func toggleStatusFor(d domain.Domain) string {
+	if d.Status != domain.StatusActive {
+		return domain.StatusActive
+	}
+	return domain.StatusDisabled
+}
+
 // handleOSDomains renders the domain registry management page.
 func (a *App) handleOSDomains(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
@@ -126,7 +142,7 @@ func domainsHeader(n int, viewingHost string) string {
   </div>
   <div class="page-head__meta"><span class="pill">` + strconv.Itoa(n) + ` ` + count + `</span></div>
 </div>
-<div class="card card--info"><p class="text-sm">VayuDomains is rolling out in stages. The registry drives <strong>host resolution</strong>, and <strong>per-domain content</strong> (homepage, articles, tags, feeds, sitemap and search) is live — each domain serves only its own posts. <strong>Per-domain mail</strong> is being staged: this page now shows each domain's mail status and mailbox count, with isolated per-domain delivery and branded mail arriving next. Adding a domain registers it — point its DNS at this server and provision TLS before it serves traffic.</p></div>`
+<div class="card card--info"><p class="text-sm">VayuDomains is rolling out in stages. The registry drives <strong>host resolution</strong>, and <strong>per-domain content</strong> (homepage, articles, tags, feeds, sitemap and search) is live — each domain serves only its own posts. <strong>Per-domain mail</strong> is being staged: this page now shows each domain's mail status and mailbox count, with isolated per-domain delivery and branded mail arriving next. Adding a domain only <strong>registers</strong> it — nothing is provisioned automatically. When its DNS points here, press <strong>Sync now</strong> to approve it; the provisioning helper (run by deploy/update, or <code>sudo bash scripts/setup-vayudomain.sh</code>) then obtains its TLS certificate and nginx vhost. Domains on manual hold are never touched.</p></div>`
 }
 
 func domainsTable(domains []domain.Domain, counts, mailCounts, memberCounts map[string]int, mailOn bool) string {
@@ -160,17 +176,28 @@ func domainsTable(domains []domain.Domain, counts, mailCounts, memberCounts map[
 		// way as content: the primary owns the "" bucket.
 		members := strconv.Itoa(memberCounts[key]) + " members"
 
+		// Sync (P5 manual gate): the primary is provisioned outside the registry;
+		// a secondary is either approved (helper provisions + maintains it) or on
+		// manual hold (helper skips it until the operator presses Sync now).
+		syncCell := `<span class="text-xs muted">—</span>`
+		if !d.IsPrimary {
+			if d.IsSyncApproved() {
+				syncCell = `<span class="pill pill--ok">Synced</span>`
+			} else {
+				syncCell = `<span class="pill pill--muted">Manual hold</span>`
+			}
+		}
+
 		// Actions: the primary row is read-only here (managed from Website
-		// settings); secondary rows can be toggled and removed.
+		// settings); secondary rows can be synced/held, toggled and removed.
 		actions := `<span class="text-xs muted">Managed in Website</span>`
 		if !d.IsPrimary {
-			toggleLabel := "Disable"
-			toggleStatus := domain.StatusDisabled
-			if d.Status != domain.StatusActive {
-				toggleLabel = "Enable"
-				toggleStatus = domain.StatusActive
+			syncLabel, syncTarget := "Sync now", domain.SyncApproved
+			if d.IsSyncApproved() {
+				syncLabel, syncTarget = "Pause sync", domain.SyncHold
 			}
-			actions = `<button type="button" class="btn btn--ghost btn--sm" data-dom-toggle data-id="` + html.EscapeString(d.ID) + `" data-status="` + toggleStatus + `">` + toggleLabel + `</button>
+			actions = `<button type="button" class="btn btn--ghost btn--sm" data-dom-sync data-id="` + html.EscapeString(d.ID) + `" data-sync="` + syncTarget + `">` + syncLabel + `</button>
+<button type="button" class="btn btn--ghost btn--sm" data-dom-toggle data-id="` + html.EscapeString(d.ID) + `" data-status="` + toggleStatusFor(d) + `">` + toggleLabelFor(d) + `</button>
 <button type="button" class="btn btn--ghost btn--sm" data-dom-delete data-id="` + html.EscapeString(d.ID) + `" data-host="` + html.EscapeString(d.Host) + `">Remove</button>`
 		}
 
@@ -180,13 +207,14 @@ func domainsTable(domains []domain.Domain, counts, mailCounts, memberCounts map[
   <td class="text-xs muted">` + content + `</td>
   <td class="text-xs muted">` + members + `</td>
   <td>` + mail + `</td>
+  <td>` + syncCell + `</td>
   <td>` + tls + `</td>
   <td>` + statusPill + `</td>
   <td class="text-right">` + actions + `</td>
 </tr>`)
 	}
 	return `<div class="card"><div class="table-wrap"><table class="table">
-  <thead><tr><th>Host</th><th>Serves</th><th>Content</th><th>Members</th><th>Mail</th><th>TLS</th><th>Status</th><th></th></tr></thead>
+  <thead><tr><th>Host</th><th>Serves</th><th>Content</th><th>Members</th><th>Mail</th><th>Sync</th><th>TLS</th><th>Status</th><th></th></tr></thead>
   <tbody>` + rows.String() + `</tbody>
 </table></div></div>`
 }
@@ -347,7 +375,7 @@ func domainsAddForm() string {
 	}
 	return `<div class="card">
   <h2 class="card-title">Add a domain</h2>
-  <p class="text-sm muted">Register another hostname this install should answer on. It is added in a pending state until you point DNS here and provision a certificate.</p>
+  <p class="text-sm muted">Register another hostname this install should answer on. New domains start on <strong>manual hold</strong>: nothing is provisioned until you point DNS here and press <strong>Sync now</strong> on the domain's row.</p>
   <div class="form-grid">
     <label class="field"><span class="field-label">Host</span>
       <input type="text" id="dom-host" class="input" placeholder="example.com" autocomplete="off" spellcheck="false"></label>
@@ -381,6 +409,14 @@ if(addBtn)addBtn.addEventListener('click',function(){
     .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
     .then(function(res){if(res.ok){location.reload();}else{addBtn.disabled=false;show((res.j&&res.j.message)||'Could not add domain');}})
     .catch(function(e){addBtn.disabled=false;show('Error: '+e);});
+});
+document.querySelectorAll('[data-dom-sync]').forEach(function(b){
+  b.addEventListener('click',function(){
+    b.disabled=true;show('Saving…');
+    fetch('/os/api/domains/'+encodeURIComponent(b.getAttribute('data-id'))+'/sync',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},body:JSON.stringify({sync_state:b.getAttribute('data-sync')})})
+      .then(function(r){if(r.ok){location.reload();}else{b.disabled=false;show('Could not update sync state');}})
+      .catch(function(e){b.disabled=false;show('Error: '+e);});
+  });
 });
 document.querySelectorAll('[data-dom-toggle]').forEach(function(b){
   b.addEventListener('click',function(){
@@ -521,6 +557,31 @@ func (a *App) handleOSDomainCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, r, http.StatusOK, d)
+}
+
+// handleOSDomainSync approves or holds a secondary domain for out-of-process
+// TLS+nginx provisioning (P5 manual sync gate). Approving does not provision
+// anything by itself — it only adds the domain to the work list the privileged
+// helper (scripts/setup-vayudomain.sh) reads on its next run; the page copy
+// says so, keeping the surface truthful.
+func (a *App) handleOSDomainSync(w http.ResponseWriter, r *http.Request) {
+	if a.domains == nil {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "unavailable", "domain registry not initialised", "")
+		return
+	}
+	id := chi.URLParam(r, "id")
+	var body struct {
+		SyncState string `json:"sync_state"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 512)).Decode(&body); err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "bad-request", "invalid JSON", "")
+		return
+	}
+	if err := a.domains.SetSyncState(r.Context(), id, strings.TrimSpace(body.SyncState)); err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "sync-failed", err.Error(), "")
+		return
+	}
+	writeJSON(w, r, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 // handleOSDomainStatus enables or disables a secondary domain.

@@ -363,8 +363,10 @@ if [[ -f "$TALK_SETUP" ]]; then
   CACHE_DIR="$CACHE_DIR" bash "$TALK_SETUP" || true
 fi
 
-# Keep every registered VayuDomains secondary domain's TLS cert + nginx vhost in
-# place across updates (VayuDomains P4). Idempotent and non-fatal.
+# Keep every SYNC-APPROVED VayuDomains secondary domain's TLS cert + nginx vhost
+# in place across updates (VayuDomains P4+P5). Domains the operator has not
+# approved ("manual hold" in VayuOS → Domains) are never provisioned by an
+# update — the helper lists and skips them. Idempotent and non-fatal.
 DOM_SETUP="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)/setup-vayudomain.sh"
 if [[ -f "$DOM_SETUP" ]]; then
   CACHE_DIR="$CACHE_DIR" bash "$DOM_SETUP" || true

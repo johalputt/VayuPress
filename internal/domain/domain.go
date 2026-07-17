@@ -46,6 +46,16 @@ const (
 	StatusDisabled = "disabled"
 )
 
+// Sync states — the manual gate between "registered" and "provisioned" (P5).
+// The out-of-process TLS+nginx helper acts only on approved secondaries; a
+// newly created domain starts on hold so adding it never provisions anything
+// until the operator explicitly presses "Sync now" (VayuOS → Domains) or runs
+// `vayupress domains sync <host>`.
+const (
+	SyncApproved = "approved" // helper may provision and keep maintaining it
+	SyncHold     = "hold"     // registered only; helper must skip it
+)
+
 // ErrNotFound is returned when no registered, active domain matches a host.
 var ErrNotFound = errors.New("domain: host not registered")
 
@@ -56,6 +66,7 @@ type Domain struct {
 	SiteType    string    `json:"site_type"`
 	MailEnabled bool      `json:"mail_enabled"`
 	TLSState    string    `json:"tls_state"`
+	SyncState   string    `json:"sync_state"`
 	ConfigJSON  string    `json:"config_json,omitempty"`
 	IsPrimary   bool      `json:"is_primary"`
 	Status      string    `json:"status"`
@@ -125,6 +136,21 @@ func EncodeBrandConfig(b Brand) (string, error) {
 	return string(out), nil
 }
 
+// EffectiveSyncState maps an empty sync_state to approved. Rows written before
+// migration 064 (or by an out-of-band editor) carry "" — treating that as
+// approved preserves the pre-gate behaviour for domains that were already
+// provisioned, exactly like the migration's backfill default.
+func (d Domain) EffectiveSyncState() string {
+	if d.SyncState == SyncHold {
+		return SyncHold
+	}
+	return SyncApproved
+}
+
+// IsSyncApproved reports whether the out-of-process provisioning helper may
+// act on this domain.
+func (d Domain) IsSyncApproved() bool { return d.EffectiveSyncState() == SyncApproved }
+
 // EffectiveSiteType maps an empty or unknown site_type to the blog default,
 // exactly as the historic site.mode handling does.
 func (d Domain) EffectiveSiteType() string {
@@ -188,7 +214,7 @@ func NormalizeHost(host string) string {
 // refresh reloads the whole registry into the cache. The table is small (one
 // row per served hostname), so a full scan is cheaper than per-host queries.
 func (r *Registry) refresh(ctx context.Context) error {
-	rows, err := r.reader().QueryContext(ctx, `SELECT id,host,site_type,mail_enabled,tls_state,config_json,is_primary,status,created_at,updated_at FROM domains`)
+	rows, err := r.reader().QueryContext(ctx, `SELECT id,host,site_type,mail_enabled,tls_state,sync_state,config_json,is_primary,status,created_at,updated_at FROM domains`)
 	if err != nil {
 		return err
 	}
@@ -200,7 +226,7 @@ func (r *Registry) refresh(ctx context.Context) error {
 	for rows.Next() {
 		var d Domain
 		var mail, prim int
-		if err := rows.Scan(&d.ID, &d.Host, &d.SiteType, &mail, &d.TLSState, &d.ConfigJSON, &prim, &d.Status, &d.CreatedAt, &d.UpdatedAt); err != nil {
+		if err := rows.Scan(&d.ID, &d.Host, &d.SiteType, &mail, &d.TLSState, &d.SyncState, &d.ConfigJSON, &prim, &d.Status, &d.CreatedAt, &d.UpdatedAt); err != nil {
 			return err
 		}
 		d.MailEnabled = mail != 0
@@ -281,7 +307,7 @@ func (r *Registry) Primary(ctx context.Context) (Domain, bool) {
 // List returns every registered domain (active and disabled), primary first
 // then alphabetically by host, for the admin console.
 func (r *Registry) List(ctx context.Context) ([]Domain, error) {
-	rows, err := r.reader().QueryContext(ctx, `SELECT id,host,site_type,mail_enabled,tls_state,config_json,is_primary,status,created_at,updated_at FROM domains ORDER BY is_primary DESC, host ASC`)
+	rows, err := r.reader().QueryContext(ctx, `SELECT id,host,site_type,mail_enabled,tls_state,sync_state,config_json,is_primary,status,created_at,updated_at FROM domains ORDER BY is_primary DESC, host ASC`)
 	if err != nil {
 		return nil, err
 	}
@@ -290,7 +316,7 @@ func (r *Registry) List(ctx context.Context) ([]Domain, error) {
 	for rows.Next() {
 		var d Domain
 		var mail, prim int
-		if err := rows.Scan(&d.ID, &d.Host, &d.SiteType, &mail, &d.TLSState, &d.ConfigJSON, &prim, &d.Status, &d.CreatedAt, &d.UpdatedAt); err != nil {
+		if err := rows.Scan(&d.ID, &d.Host, &d.SiteType, &mail, &d.TLSState, &d.SyncState, &d.ConfigJSON, &prim, &d.Status, &d.CreatedAt, &d.UpdatedAt); err != nil {
 			return nil, err
 		}
 		d.MailEnabled = mail != 0

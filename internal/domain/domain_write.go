@@ -85,7 +85,9 @@ func (r *Registry) EnsurePrimary(ctx context.Context, host, siteType string) err
 
 // Create registers a new secondary domain. The host is normalised and must be
 // unique and not equal to an existing row; is_primary is always 0 here (the
-// primary is owned by EnsurePrimary).
+// primary is owned by EnsurePrimary). The row starts on sync_state=hold: adding
+// a domain only registers it — nothing is provisioned until the operator
+// approves the sync explicitly (P5 manual sync gate).
 func (r *Registry) Create(ctx context.Context, host, siteType string, mailEnabled bool) (Domain, error) {
 	host = NormalizeHost(host)
 	if host == "" {
@@ -101,7 +103,7 @@ func (r *Registry) Create(ctx context.Context, host, siteType string, mailEnable
 	if mailEnabled {
 		mail = 1
 	}
-	_, err := r.db.ExecContext(ctx, `INSERT INTO domains(id,host,site_type,mail_enabled,tls_state,config_json,is_primary,status) VALUES(?,?,?,?,?,'',0,?)`, id, host, siteType, mail, TLSPending, StatusActive)
+	_, err := r.db.ExecContext(ctx, `INSERT INTO domains(id,host,site_type,mail_enabled,tls_state,sync_state,config_json,is_primary,status) VALUES(?,?,?,?,?,?,'',0,?)`, id, host, siteType, mail, TLSPending, SyncHold, StatusActive)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE") {
 			return Domain{}, fmt.Errorf("domain: host %q already registered", host)
@@ -169,6 +171,25 @@ func (r *Registry) SetTLSState(ctx context.Context, id, state string) error {
 	return err
 }
 
+// SetSyncState approves or holds a secondary domain for out-of-process
+// provisioning (P5 manual sync gate). The primary is refused: its certificate
+// and vhost predate the registry and are never driven by the helper.
+func (r *Registry) SetSyncState(ctx context.Context, id, state string) error {
+	if state != SyncApproved && state != SyncHold {
+		return fmt.Errorf("domain: invalid sync state %q", state)
+	}
+	cur, err := r.get(ctx, id)
+	if err != nil {
+		return err
+	}
+	if cur.IsPrimary {
+		return fmt.Errorf("domain: the primary domain is provisioned outside the registry")
+	}
+	defer r.invalidate()
+	_, err = r.db.ExecContext(ctx, `UPDATE domains SET sync_state=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND is_primary=0`, state, id)
+	return err
+}
+
 // SetBrand stores a secondary domain's public branding overrides in its
 // config_json. Like every mutable per-domain field, the primary is refused: its
 // identity is the global Website settings, and re-branding it here would let a
@@ -210,8 +231,8 @@ func (r *Registry) Delete(ctx context.Context, id string) error {
 func (r *Registry) get(ctx context.Context, id string) (Domain, error) {
 	var d Domain
 	var mail, prim int
-	err := r.db.QueryRowContext(ctx, `SELECT id,host,site_type,mail_enabled,tls_state,config_json,is_primary,status,created_at,updated_at FROM domains WHERE id=?`, id).
-		Scan(&d.ID, &d.Host, &d.SiteType, &mail, &d.TLSState, &d.ConfigJSON, &prim, &d.Status, &d.CreatedAt, &d.UpdatedAt)
+	err := r.db.QueryRowContext(ctx, `SELECT id,host,site_type,mail_enabled,tls_state,sync_state,config_json,is_primary,status,created_at,updated_at FROM domains WHERE id=?`, id).
+		Scan(&d.ID, &d.Host, &d.SiteType, &mail, &d.TLSState, &d.SyncState, &d.ConfigJSON, &prim, &d.Status, &d.CreatedAt, &d.UpdatedAt)
 	if err != nil {
 		return Domain{}, err
 	}
