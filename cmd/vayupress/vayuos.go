@@ -574,6 +574,12 @@ func (a *App) bootVayuOS() {
 	// VAYUOS_TOR_BINARY overrides that lookup.
 	torBinary := config.EnvOr("VAYUOS_TOR_BINARY", "")
 	torDir := config.EnvOr("VAYUOS_TOR_DIR", filepath.Join(filepath.Dir(config.Cfg.MediaDir), "tor"))
+	// Managed download: when the *system* tor is missing or too old to validate
+	// today's consensus (e.g. an EOL distro's 0.4.2.x), VayuPress fetches Tor
+	// Project's official static build into its own writable state dir and runs
+	// that — as the service user, no root, no apt. Default on; falls back to the
+	// system tor if the download fails or won't run on the host.
+	torDownload := !strings.EqualFold(config.EnvOr("VAYUOS_TOR_DOWNLOAD", "on"), "off")
 	// Register VayuPress's built-in obfs4 transport so obfs4 bridges work with no
 	// obfs4proxy package installed — tor execs this same binary as the transport.
 	if exe, eerr := os.Executable(); eerr == nil {
@@ -587,6 +593,7 @@ func (a *App) bootVayuOS() {
 		Managed:     torManaged,
 		TorBinary:   torBinary,
 		ManagedDir:  torDir,
+		TorDownload: torDownload,
 		Bridges:     parseTorBridges(config.EnvOr("VAYUOS_TOR_BRIDGES", "")),
 		BridgesLive: func() []string {
 			if a.siteSettings == nil {

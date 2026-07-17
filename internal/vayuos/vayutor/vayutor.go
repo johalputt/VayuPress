@@ -54,6 +54,14 @@ type Config struct {
 	ManagedDir  string          // writable base dir VayuPress owns for the managed tor state
 	Bridges     []string        // static operator Bridge lines from env (VAYUOS_TOR_BRIDGES)
 	BridgesLive func() []string // live operator Bridge lines from settings (VayuOS form); read each reconcile
+
+	// TorDownload lets the managed tor download the Tor Project's official static
+	// build into VayuPress's own state dir when the *system* tor is missing or too
+	// old to validate today's consensus (e.g. an EOL distro's 0.4.2.x). Runs as the
+	// unprivileged service user — no root, no apt. Falls back to the system tor if
+	// the download fails or the modern build won't run on the host. Default on
+	// (VAYUOS_TOR_DOWNLOAD != 0).
+	TorDownload bool
 }
 
 // operatorBridges returns the operator-configured bridge lines, preferring the
@@ -111,6 +119,9 @@ func NewEngine(cfg Config) *Engine {
 	// reconcile — no restart required.
 	if cfg.Managed && strings.TrimSpace(cfg.ManagedDir) != "" {
 		e.managed = newManagedTor(cfg.TorBinary, cfg.ManagedDir)
+		// When enabled, the managed tor may download the Tor Project's current
+		// static build if the system tor is absent/too old (see dist.go).
+		e.managed.setDistEnabled(cfg.TorDownload)
 	}
 	return e
 }
@@ -623,6 +634,9 @@ func (e *Engine) teardown() {
 	if mgd != nil {
 		mgd.setStrict(false)
 		mgd.setBridges(nil, "")
+		// Clear any managed-download cooldown so toggling VayuTor off→on forces a
+		// fresh download attempt (the operator's manual "try again").
+		mgd.resetDistCooldown()
 		mgd.stop()
 	}
 }
@@ -696,6 +710,8 @@ type Status struct {
 	Transport      string  // how the managed tor is reaching the network (direct/80,443/bridges)
 	Obfs4Available bool    // the obfs4 pluggable-transport binary is present (needed for obfs4 bridges)
 	TorVersion     string  // the tor daemon version, e.g. "0.4.2.7" (for diagnostics)
+	TorManaged     bool    // running a VayuPress-downloaded tor (not the system one)
+	TorDownloadErr string  // last managed-download failure, if any (for the fallback hint)
 }
 
 // Onion is one domain↔onion mapping for the admin table.
@@ -734,6 +750,8 @@ func (e *Engine) Snapshot() Status {
 		st.LogPath = e.managed.logPath()
 		st.Transport = transportLabel(e.esc, e.managed.usingBridges())
 		st.Obfs4Available = e.managed.resolvePT() != ""
+		st.TorManaged = e.managed.usingDistBinary()
+		st.TorDownloadErr = e.managed.distDownloadErr()
 		if !st.Connected || st.BootstrapPct < 100 {
 			st.LogTail = e.managed.tailLog(3)
 		}

@@ -40,6 +40,17 @@ type managedTor struct {
 	strict  bool     // restrict outbound to relay ports 80/443 (firewall-friendly)
 	bridges []string // normalized Bridge lines; non-empty ⇒ UseBridges block
 	ptPath  string   // resolved obfs4proxy/lyrebird path; "" ⇒ vanilla bridges only
+
+	// Managed-download of a current tor (see dist.go): used when the *system* tor
+	// is too old to validate the live consensus (e.g. Debian 10's 0.4.2.x). These
+	// are guarded by their own distMu, independent of mu, so a download never
+	// blocks an admin status read.
+	distEnabled bool
+	distMu      sync.Mutex
+	distBin     string    // cached path to a validated, downloaded tor ("" = none)
+	distLibDir  string    // dir holding that build's bundled libs (LD_LIBRARY_PATH)
+	distErr     string    // last download failure (host-libc-too-old, network, …)
+	distNextTry time.Time // cooldown: don't re-download every reconcile on failure
 }
 
 // setBridges configures the bridge lines (and obfs4 PT path) tor uses on its
@@ -145,19 +156,39 @@ func (m *managedTor) controlAddr() string { return "unix:" + m.controlSocket() }
 // running is picked up on the next reconcile, with no restart.
 func (m *managedTor) resolveBinary() string {
 	m.mu.Lock()
-	b := m.binary
+	override := strings.TrimSpace(m.binary)
 	m.mu.Unlock()
-	if strings.TrimSpace(b) != "" {
-		return b
+	if override != "" {
+		return override // operator-configured explicit path always wins
 	}
-	p, err := exec.LookPath("tor")
-	if err != nil {
+	// A current tor VayuPress previously downloaded into its own state dir.
+	if p := m.cachedDistBinary(); p != "" {
+		return p
+	}
+	sys, serr := exec.LookPath("tor")
+	if !m.distIsEnabled() {
+		if serr == nil {
+			return sys // legacy behaviour: use whatever tor is on PATH
+		}
 		return ""
 	}
-	m.mu.Lock()
-	m.binary = p
-	m.mu.Unlock()
-	return p
+	// Managed-download path: prefer a system tor only when it is new enough to
+	// validate today's consensus; otherwise fetch a current one ourselves.
+	if serr == nil {
+		if v, ok := torBinVersion(sys, ""); ok && v.atLeast(torMinVersion) {
+			return sys
+		}
+	}
+	if p, err := m.ensureDist(); err == nil && p != "" {
+		return p
+	}
+	// Last resort: an old (or unversioned) system tor still boots and lets the
+	// admin page show the precise "your tor is too old — here's the fix" guidance
+	// rather than a bare "tor not installed".
+	if serr == nil {
+		return sys
+	}
+	return ""
 }
 
 // running reports whether our tor child is currently alive.
@@ -231,6 +262,9 @@ func (m *managedTor) ensure(ctx context.Context) error {
 	}
 	bin := m.resolveBinary()
 	if bin == "" {
+		if de := m.distDownloadErr(); de != "" {
+			return m.fail("VayuTor tried to download its own Tor but couldn't: " + de)
+		}
 		return m.fail("tor is not installed on the server — run one command as root to add it: `sudo apt-get install -y tor` (or re-run the VayuPress updater). VayuTor then comes up automatically within a minute; no restart needed")
 	}
 	// tor refuses to start unless its DataDirectory is private (0700) and owned
@@ -254,6 +288,12 @@ func (m *managedTor) ensure(ctx context.Context) error {
 	// Deliberately NOT exec.CommandContext: the daemon must survive the reconcile
 	// context. Its lifetime is managed by stop()/the wait goroutine below.
 	cmd := exec.Command(bin, "-f", m.torrcPath()) //nolint:gosec // fixed binary + our own torrc
+	// A VayuPress-downloaded tor bundles its own libssl/libevent/… next to the
+	// binary; point the loader at that dir so it runs without touching the host's
+	// system libraries. A system tor (libDir "") keeps the default environment.
+	if lib := m.libDirFor(bin); lib != "" {
+		cmd.Env = append(os.Environ(), "LD_LIBRARY_PATH="+lib)
+	}
 	// Capture tor's own log to a file so bootstrap/network failures are
 	// diagnosable ("why is my onion offline?") instead of being silently
 	// discarded. Truncated each start; tor also mirrors this via `Log notice`.

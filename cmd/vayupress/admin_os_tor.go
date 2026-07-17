@@ -19,6 +19,18 @@ import (
 	vtor "github.com/johalputt/vayupress/internal/vayuos/vayutor"
 )
 
+// aptTorFallbackCmd is the one-time, run-once-as-root install of a current Tor
+// from Tor Project's official repository — the guaranteed fallback for a host so
+// old that even VayuTor's downloaded static build won't run on its system libc.
+// After this, the system tor is current and self-updating, and VayuTor uses it
+// automatically (no VayuPress restart needed).
+const aptTorFallbackCmd = `sudo apt-get install -y apt-transport-https gpg wget
+wget -qO- https://deb.torproject.org/torproject.org/A3C4F0F979CAA22CDBA8F512EE8CBC9E886DDD89.asc \
+  | gpg --dearmor | sudo tee /usr/share/keyrings/tor.gpg >/dev/null
+echo "deb [signed-by=/usr/share/keyrings/tor.gpg] https://deb.torproject.org/torproject.org $(lsb_release -cs) main" \
+  | sudo tee /etc/apt/sources.list.d/tor.list
+sudo apt-get update && sudo apt-get install -y tor`
+
 // handleOSTor renders the VayuTor control page.
 func (a *App) handleOSTor(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
@@ -86,6 +98,12 @@ func (a *App) handleOSTor(w http.ResponseWriter, r *http.Request) {
 		if st.Transport != "" && st.Transport != "direct" {
 			note += ` &middot; via <strong>` + esc(st.Transport) + `</strong>`
 		}
+		if st.TorManaged {
+			note += ` &middot; running <strong>VayuPress-managed Tor</strong>`
+			if st.TorVersion != "" {
+				note += ` ` + esc(st.TorVersion)
+			}
+		}
 		note += `. Your <code>.onion</code> addresses become reachable once this reaches 100%. The first time, this takes a couple of minutes. If it stays stuck below 100%, the server can't reach the Tor network — allow <strong>outbound</strong> connections (inbound stays closed).`
 		if st.LogPath != "" {
 			note += ` Diagnostic log: <code>` + esc(st.LogPath) + `</code>.`
@@ -98,11 +116,19 @@ func (a *App) handleOSTor(w http.ResponseWriter, r *http.Request) {
 			if tip := osTorLogRemedy(st.LogTail); tip != "" {
 				card += `<p class="text-sm mt-2">` + tip + `</p>`
 			}
-			// When tor can't validate the consensus and we know its version, name
-			// it — an EOL distro's ancient tor (e.g. 0.4.2.x) is too old for today's
-			// network, which no bridge can fix.
-			if st.TorVersion != "" && strings.Contains(strings.ToLower(st.LogTail), "not signed by sufficient") {
-				card += `<p class="text-sm mt-1">Detected Tor version: <code>` + esc(st.TorVersion) + `</code>. Anything older than <strong>0.4.7</strong> is too old to validate today's Tor network — <strong>install current Tor</strong> (from <code>https://deb.torproject.org</code>), which bridges cannot substitute for.</p>`
+			// When tor can't validate the consensus, the system tor is too old for
+			// today's network (an EOL distro's 0.4.2.x), which no bridge can fix.
+			// VayuTor auto-downloads its own current Tor; if that build can't run on
+			// this host (typically an ancient system libc), fall back to a one-time
+			// apt install of a current Tor.
+			if strings.Contains(strings.ToLower(st.LogTail), "not signed by sufficient") {
+				if st.TorDownloadErr != "" {
+					card += `<p class="text-sm mt-1">VayuTor tried to run its <strong>own current Tor</strong> but this host rejected it — <code>` + esc(st.TorDownloadErr) + `</code>. Your OS is too old for a modern Tor build. One-time fix (run once as root; it then keeps itself updated):</p>`
+					card += `<pre class="vt-log text-xs mt-1">` + esc(aptTorFallbackCmd) + `</pre>`
+					card += `<p class="text-sm mt-1">If your OS is end-of-life (e.g. Debian 10 &ldquo;buster&rdquo;), upgrading the OS is the durable fix — everything else here already works.</p>`
+				} else if st.TorVersion != "" {
+					card += `<p class="text-sm mt-1">Detected Tor version: <code>` + esc(st.TorVersion) + `</code> — older than <strong>0.4.7</strong>, so it can't validate today's Tor network. VayuTor is downloading and switching to its <strong>own current Tor</strong> automatically; this takes a moment on first activation.</p>`
+				}
 			}
 		}
 		card += `</div>`
