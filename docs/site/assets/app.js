@@ -366,6 +366,34 @@ STATIC_DIR=./static VAYU_DOCS_DIR=./docs ./vayupress --port 8080`,
           'End-to-end encryption with nothing to bolt on',
         ],
         cta:{ label:'Learn about VayuPGP →', href:'https://github.com/johalputt/VayuPress' } },
+
+      { key:'vayuapi', name:'VayuAPI + VCB', icon:'🔌', rgb:'250,204,21', badge:'',
+        tag:'A fine-grained API + an enforceable extension contract',
+        host:'/os/apikeys',
+        blurb:'A first-class REST API with per-key, per-section scopes, per-key rate limits and a WORM audit trail — paired with the Vayu Compatibility Bible (VCB), a machine-checked contract every theme, plugin and extension must satisfy, gated in CI. Build on VayuPress without ever getting a surprise break.',
+        points:[
+          'Per-key scopes: posts, media, members, mail…',
+          'Read / write / export actions — least privilege',
+          'Per-key rate limits, expiry & a WORM audit log',
+          'VCB: hooks, tokens & contracts validated in CI',
+          'vayu-compat CLI checks an extension before ship',
+          'Golden-file contracts — no silent breaking changes',
+        ],
+        cta:{ label:'Read the VCB →', href:'https://github.com/johalputt/VayuPress/blob/main/docs/adr/ADR-0135-vayu-compatibility-bible.md' } },
+
+      { key:'vayutor', name:'VayuTor', icon:'🧅', rgb:'147,112,219', badge:'NEW',
+        tag:'One click, every domain gets a Tor .onion',
+        host:'*.onion',
+        blurb:'Publish every hosted domain as its own Tor v3 onion service, alongside its normal URL — both work at the same time, with no speed or quality trade-off. No ISP, network or observer can see who visits, and the server never learns a visitor’s IP. Activate from VayuOS in a single click.',
+        points:[
+          'One-click activation — drives Tor’s control port',
+          'A stable .onion for every hosted domain',
+          'Clearnet + onion serve the same site, together',
+          'Onion-Location — Tor Browser discovers it automatically',
+          'Count-only stats: no IP, no time, nothing else',
+          'Opens no inbound port — zero new attack surface',
+        ],
+        cta:{ label:'How VayuTor works →', href:'https://github.com/johalputt/VayuPress/blob/main/docs/adr/ADR-0138-vayutor-onion-services.md' } },
     ],
 
     screenshots: [
@@ -622,7 +650,7 @@ STATIC_DIR=./static VAYU_DOCS_DIR=./docs ./vayupress --port 8080`,
 
       /* hero terminal boot */
       let i = 1;
-      const tick = () => { if (i <= 9) { this.t = i++; setTimeout(tick, i < 4 ? 540 : 370); } };
+      const tick = () => { if (i <= 10) { this.t = i++; setTimeout(tick, i < 4 ? 540 : 370); } };
       setTimeout(tick, 750);
 
       /* rotating hero subject */
