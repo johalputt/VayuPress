@@ -93,9 +93,13 @@ const autoPromoteThreshold = 5
 
 // Observe upserts a fingerprint sighting. On first sight it inserts the row; on
 // repeat it bumps request_count and last_seen. When an auto-learned candidate
-// crosses autoPromoteThreshold sightings its confidence is nudged upward
-// (capped at 0.95) so persistent bot-like fingerprints rise in confidence
-// without operator action, while operator-verified rows are left untouched.
+// crosses autoPromoteThreshold sightings AND has no recorded false positive, its
+// confidence is nudged upward by +0.10/sighting (capped at 0.95) — so a
+// persistent bot-like fingerprint reaches the scorer's action threshold (0.80)
+// in a few sightings from the 0.7 detection seed, closing the learning loop
+// without operator action. A false_positive_count>0 (a solved-challenge human
+// proof) freezes the climb, so a coarse fingerprint many real users share never
+// escalates. Operator-verified rows are left untouched.
 func (s *Store) Observe(ctx context.Context, o Observation) error {
 	if s == nil || s.db == nil {
 		return nil
@@ -141,7 +145,7 @@ ON CONFLICT(fingerprint_hash) DO UPDATE SET
 last_seen=excluded.last_seen,
 request_count=request_count+1,
 ja4_hash=CASE WHEN vayushield_signatures.ja4_hash='' THEN excluded.ja4_hash ELSE vayushield_signatures.ja4_hash END,
-confidence=CASE WHEN operator_verified=1 THEN confidence WHEN request_count+1>=? AND auto_learned=1 THEN MIN(0.95, confidence+0.05) ELSE confidence END`,
+confidence=CASE WHEN operator_verified=1 THEN confidence WHEN request_count+1>=? AND auto_learned=1 AND false_positive_count=0 THEN MIN(0.95, confidence+0.10) ELSE confidence END`,
 		o.FingerprintHash, o.JA3, o.JA4, o.HTTP2SettingsHash, o.HeaderOrderHash, o.UserAgentPattern, o.IPRangeHint, pq,
 		string(o.Classification), o.BotName, o.Confidence, now, now, auto, autoPromoteThreshold)
 	return err

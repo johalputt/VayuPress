@@ -946,9 +946,11 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 		action := m.Decide(r, v)
 		m.onEvent(action, v.Result.BotScore)
 
-		// Learn: a strongly bot-like but as-yet unclassified fingerprint becomes
-		// an auto-learned candidate for later operator review / auto-promotion.
-		m.maybeLearn(r.Context(), v)
+		// Learn: a challenged-but-not-blocked "unknown" fingerprint becomes an
+		// auto-learned review candidate. The action is required because the trigger
+		// keys on it (a near-miss is Unknown + a challenge, not a hard block —
+		// blocks already learn via jailBadActor).
+		m.maybeLearn(r.Context(), v, action)
 
 		ctx := context.WithValue(r.Context(), ctxKey{}, v)
 		r = r.WithContext(ctx)
@@ -1030,11 +1032,20 @@ func (m *Manager) serveThrottled(w http.ResponseWriter, code int, reason, retryA
 }
 
 // maybeLearn records a bot-like unknown fingerprint as an auto-learned candidate.
-func (m *Manager) maybeLearn(ctx context.Context, v Verdict) {
+func (m *Manager) maybeLearn(ctx context.Context, v Verdict, action Action) {
 	if m.cfg.Bots == nil || v.Composite.FingerprintHash == "" {
 		return
 	}
-	if v.Result.BotScore > 0.75 && v.Result.ClientType == botdb.TypeUnknown {
+	// A genuine near-miss: an UNKNOWN client (0.4–0.75 band) that scored high
+	// enough to be challenged but not blocked. The previous guard —
+	// BotScore>0.75 AND ClientType==Unknown — was unsatisfiable (the scorer only
+	// labels Unknown below 0.75), so this path never ran and the signature DB
+	// grew only from hard blocks. We now record recurring challenged unknowns as
+	// review candidates; a solved-challenge false-positive (see VerifyPoW) decays
+	// any that are really shared human fingerprints, so they never auto-promote.
+	nearMiss := v.Result.ClientType == botdb.TypeUnknown && v.Result.BotScore >= 0.6 &&
+		(action == ActionChallengeJS || action == ActionChallengePoW)
+	if nearMiss {
 		obs := botdb.Observation{
 			FingerprintHash:   v.Composite.FingerprintHash,
 			JA3:               v.Composite.JA3,
@@ -1225,6 +1236,23 @@ func (m *Manager) VerifyPoW(r *http.Request, pow challenge.PoW, nonce string) (t
 	// it for hours after an attack. Only score-driven ladder outcomes calibrate.
 	if !m.underSurge(m.live()) {
 		m.calib.Passed()
+	}
+	// Arm the false-positive guard: a solved challenge is human proof, so if the
+	// challenged fingerprint had been auto-learned as a bad-bot candidate this
+	// increments its false-positive count and decays its confidence. That is what
+	// stops a COARSE fingerprint (e.g. behind a reverse proxy that strips the TLS
+	// sub-hashes, so many real users collapse onto one signature) from ever
+	// auto-promoting to a hard block — the promotion cycle skips any signature
+	// with false_positive_count>0. The stateless PoW carries no fingerprint, so
+	// recompute it from the verifying request; a no-op for unknown fingerprints.
+	// Batched off the request path so a flash crowd of solvers cannot serialise
+	// on the single writer.
+	if m.cfg.Bots != nil {
+		sig, _ := m.signals(r)
+		if fph := sig.Fingerprint().FingerprintHash; fph != "" {
+			m.recordExec(r.Context(), `UPDATE vayushield_signatures SET false_positive_count=false_positive_count+1, confidence=MAX(0.0, confidence-0.2) WHERE fingerprint_hash=?`, fph)
+			m.sigCache.Forget(fph) // verdict may have changed; drop any cached entry
+		}
 	}
 	return tok, true
 }

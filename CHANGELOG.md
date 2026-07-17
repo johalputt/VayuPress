@@ -8,7 +8,27 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
-## [3.13.50] — 2026-07-16
+## [3.13.51] — 2026-07-16
+
+### Fixed
+- **VayuShield learning system now actually learns and self-heals (ADR-0137,
+  stage 3).** Three coupled fixes close the adaptive-detection loop the operator
+  reported as "not working":
+  - **Dead learning path revived.** The rule that was meant to record a
+    suspicious-but-not-blocked fingerprint as a review candidate could never fire
+    (its condition was self-contradictory), so the signature database only ever
+    grew from hard blocks. It now correctly records a recurring *challenged*
+    unknown client as an auto-learned candidate.
+  - **Repeat offenders auto-block faster.** A recurring bot-like fingerprint now
+    reaches the action threshold in a few sightings (steeper confidence curve),
+    so the shield blocks it from the learned signature instead of re-analysing it
+    every time.
+  - **False-positive self-heal is now real.** Solving the browser check reports a
+    false positive for that fingerprint, and any signature with a false positive
+    is frozen — so a *coarse* fingerprint that many real users share (e.g. behind
+    a reverse proxy that hides the fine-grained TLS signals) can **never**
+    auto-escalate to a hard block. Previously this guard existed in the code but
+    was never triggered, so it protected no one.
 
 ### Added
 - **VayuShield Aegis — swarm-scale classification cache + zero-config surge on
