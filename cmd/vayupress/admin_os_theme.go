@@ -344,7 +344,7 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
       <div class="cz-group__body">
         <p class="text-sm muted mb-3">Accent colours and colour scheme for the active theme.</p>
         <div class="theme-fields">` + brandRows + `</div>
-        <div class="theme-fields theme-fields--text mt-3">` + optionRowsByKeys("scheme", "accentfill") + `</div>
+        <div class="theme-fields theme-fields--text mt-3">` + optionRowsByKeys("scheme", "accentfill", "paper") + `</div>
       </div>
     </section>
 
@@ -352,7 +352,7 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
       <button type="button" class="cz-group__head" aria-expanded="false">Layout</button>
       <div class="cz-group__body">
         <p class="text-sm muted mb-3">Reading width, corners, post-feed layout, header alignment, navigation, post cards and density — applied across the whole blog.</p>
-        <div class="theme-fields theme-fields--text">` + optionRowsByKeys("archetype", "width", "corners", "feedlayout", "cardimage", "headeralign", "navstyle", "cardstyle", "density") + `</div>
+        <div class="theme-fields theme-fields--text">` + optionRowsByKeys("archetype", "width", "corners", "feedlayout", "cardimage", "headeralign", "navstyle", "cardstyle", "density", "columnrules", "pagefade") + `</div>
       </div>
     </section>
 
@@ -386,7 +386,7 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
       <button type="button" class="cz-group__head" aria-expanded="false">Typography &amp; fonts</button>
       <div class="cz-group__body">
         ` + fontPairSelectHTML() + `
-        <div class="theme-fields theme-fields--text">` + optionRowsByKeys("headingcase", "headingscale") + typoRows + `</div>
+        <div class="theme-fields theme-fields--text">` + optionRowsByKeys("headingcase", "headingscale", "dropcap") + typoRows + `</div>
       </div>
     </section>
 
@@ -394,7 +394,7 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
       <button type="button" class="cz-group__head" aria-expanded="false">Article pages</button>
       <div class="cz-group__body">
         <p class="text-sm muted mb-3">How individual posts look — header alignment, the meta line, related &amp; trending posts, the author box and content links.</p>
-        <div class="theme-fields theme-fields--text">` + optionRowsByKeys("articlealign", "articlemeta", "relatedposts", "trendingposts", "authorbox", "linkstyle") + `</div>
+        <div class="theme-fields theme-fields--text">` + optionRowsByKeys("articlealign", "articlemeta", "relatedposts", "trendingposts", "authorbox", "linkstyle", "readingprogress") + `</div>
         <label class="theme-field theme-field--text mt-3">
           <span class="theme-field__label">Author bio <span class="cz-group__hint">author box</span></span>
           <input type="text" class="input" id="author-bio" maxlength="280" value="` + html.EscapeString(val(settings.KeyAuthorBio)) + `" placeholder="One line about the author">

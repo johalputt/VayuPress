@@ -18,6 +18,7 @@ func TestDesignThemesStyleRealMarkup(t *testing.T) {
 		"Dispatch": theme.Dispatch,
 		"Vivid":    theme.Vivid,
 		"Beacon":   theme.Beacon,
+		"Editor":   theme.Editor,
 	}
 	// Real selectors emitted by the public templates (render.go).
 	wantSelectors := []string{".vayu-hero", ".vayu-post-card", ".vayu-post-title", ".vayu-footer"}
