@@ -13,7 +13,6 @@ import (
 
 	htmpl "html/template"
 
-	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/settings"
 	vtor "github.com/johalputt/vayupress/internal/vayuos/vayutor"
@@ -23,10 +22,6 @@ import (
 func (a *App) handleOSTor(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
-	csrf := auth.GenerateCSRFToken()
-	if csrf != "" {
-		http.SetCookie(w, &http.Cookie{Name: "vp_csrf", Value: csrf, Path: "/", SameSite: http.SameSiteStrictMode, HttpOnly: false, Secure: csrfCookieSecure(), MaxAge: 3600})
-	}
 
 	var st vtor.Status
 	if a.vayuTor != nil {
@@ -62,7 +57,7 @@ func (a *App) handleOSTor(w http.ResponseWriter, r *http.Request) {
   </div>
   <form class="vt-hero__action" method="post" action="/os/tor/toggle" data-tor-toggle>
     <input type="hidden" name="state" value="` + nextState + `">
-    <input type="hidden" name="csrf_token" value="` + esc(csrf) + `">
+    <input type="hidden" name="csrf_token" value="">
     <button type="submit" class="btn ` + btnKind + `">` + btnLabel + `</button>
   </form>
 </div>`

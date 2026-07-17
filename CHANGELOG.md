@@ -8,6 +8,19 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.60] — 2026-07-17
+
+### Fixed
+- **VayuTor activation no longer fails with "CSRF token missing or invalid."**
+  The one-click **Activate onion services** button on the VayuTor page posted a
+  CSRF token that was baked into the page markup, but the admin layout rotates
+  the double-submit `vp_csrf` cookie on every render — so by the time the form
+  submitted, its token no longer matched the cookie and the request was rejected
+  with `csrf_invalid`. The toggle now reads the *live* `vp_csrf` cookie at submit
+  time (the same double-submit pattern every other VayuOS mutation already uses),
+  so activating and deactivating VayuTor works reliably. The page also no longer
+  issues its own competing CSRF cookie.
+
 ## [3.13.59] — 2026-07-17
 
 ### Added
