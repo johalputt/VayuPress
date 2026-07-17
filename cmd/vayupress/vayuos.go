@@ -27,6 +27,7 @@ import (
 	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/domain"
 	"github.com/johalputt/vayupress/internal/email"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/render"
@@ -36,6 +37,7 @@ import (
 	vpgp "github.com/johalputt/vayupress/internal/vayuos/pgp"
 	"github.com/johalputt/vayupress/internal/vayuos/secwatch"
 	vtalk "github.com/johalputt/vayupress/internal/vayuos/vayutalk"
+	vtor "github.com/johalputt/vayupress/internal/vayuos/vayutor"
 )
 
 // ── Mail bridge ──────────────────────────────────────────────────────────────
@@ -554,6 +556,38 @@ func (a *App) bootVayuOS() {
 	secEnabled := strings.EqualFold(config.EnvOr("VAYUOS_SECURITY_UPDATES", "off"), "on")
 	a.vayuSec = secwatch.New(secEnabled)
 
+	// VayuTor — publish every hosted domain as a Tor v3 onion service alongside
+	// its clearnet URL, driven over a locally-running tor daemon's control port
+	// (ADD_ONION). The env var is a master kill switch (default available); the
+	// actual on/off is the one-click settings toggle (default off). Onions are
+	// created only while the toggle is on AND a control port is reachable — the
+	// clearnet site is never affected. VayuPress opens no inbound ports for this.
+	torAvailable := !strings.EqualFold(config.EnvOr("VAYUOS_TOR", "on"), "off")
+	a.vayuTor = vtor.NewEngine(vtor.Config{
+		Enabled:     torAvailable,
+		ControlAddr: config.EnvOr("VAYUOS_TOR_CONTROL_ADDR", "127.0.0.1:9051"),
+		CookiePath:  config.EnvOr("VAYUOS_TOR_COOKIE", "/run/tor/control.authcookie"),
+		Target:      "127.0.0.1:" + config.Cfg.Port,
+		Store:       &torStore{settings: a.siteSettings},
+		Domains: func(ctx context.Context) ([]string, error) {
+			ds, err := a.domains.List(ctx)
+			if err != nil {
+				return nil, err
+			}
+			hosts := make([]string, 0, len(ds))
+			for _, d := range ds {
+				if d.Status == domain.StatusActive {
+					hosts = append(hosts, d.Host)
+				}
+			}
+			return hosts, nil
+		},
+		Active: func() bool {
+			return a.siteSettings != nil &&
+				a.siteSettings.Get(context.Background(), settings.KeyTorEnabled) == "on"
+		},
+	})
+
 	a.vayuKernel = vkernel.NewBus()
 	a.vayuHealth = vkernel.NewHealthMonitor()
 
@@ -561,6 +595,7 @@ func (a *App) bootVayuOS() {
 		{Sub: a.vayuPGP, Critical: true},
 		{Sub: a.vayuMail, Critical: false},
 		{Sub: a.vayuTalk, Critical: false},
+		{Sub: a.vayuTor, Critical: false},
 		{Sub: a.vayuSec, Critical: false},
 	}
 	if _, err := vkernel.Boot(context.Background(), steps, func(s string) { logging.LogInfo("vayuos", s) }); err != nil {
@@ -598,6 +633,24 @@ func (a *App) bootVayuOS() {
 			return false, "not initialised"
 		}
 		return true, "Ed25519/Curve25519 keystore active"
+	})
+	a.vayuHealth.Register("vayutor", func() (bool, string) {
+		if a.vayuTor == nil || !a.vayuTor.Available() {
+			return false, "disabled (VAYUOS_TOR=off)"
+		}
+		st := a.vayuTor.Snapshot()
+		switch {
+		case !st.Active:
+			return true, "available — activate from the VayuTor page"
+		case st.Connected:
+			return true, fmt.Sprintf("active — %d onion service(s) published", len(st.Onions))
+		default:
+			msg := "activated, but the tor control port is unreachable"
+			if st.LastError != "" {
+				msg += ": " + st.LastError
+			}
+			return false, msg
+		}
 	})
 	a.vayuHealth.Register("vayumail", func() (bool, string) {
 		if a.vayuMail == nil || !a.vayuMail.Config().Enabled {

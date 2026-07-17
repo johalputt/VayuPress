@@ -80,7 +80,7 @@ import (
 // -ldflags "-X main.Version=<.release-version>", and scripts/update-vayupress.sh
 // reads .release-version too — keep this in sync with .release-version so an
 // un-stamped `go build` still reports an honest version.
-var Version = "3.13.58"
+var Version = "3.13.59"
 var bootTime = time.Now()
 
 // Immutable package-level values (compiled once, never mutated).
@@ -1018,6 +1018,11 @@ func main() {
 		if os.Getenv("VAYU_PLUGINS_ENABLED") == "true" {
 			a.pluginManager.Shutdown()
 			plugins.ShutdownSubprocesses()
+		}
+		// Tear down onion services (their lifetime is bound to VayuPress) and
+		// flush the aggregate visit counter to the DB before it closes.
+		if a.vayuTor != nil {
+			_ = a.vayuTor.Stop(context.Background())
 		}
 		if resource.Global != nil {
 			resource.Global.Stop()

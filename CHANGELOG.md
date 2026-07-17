@@ -8,6 +8,34 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.59] — 2026-07-17
+
+### Added
+- **VayuTor — one-click Tor onion services for every hosted domain (ADR-0138).**
+  A new **VayuTor** page in VayuOS publishes each domain you host as its own Tor
+  v3 `.onion` alongside its normal clearnet URL — both work at the same time,
+  with no speed or quality trade-off. It is a heaven for privacy-focused
+  visitors: no ISP, network provider, or on-path observer can see who reaches the
+  site, and the server never learns a visitor's IP.
+  - **One click.** Activation drives a local `tor` daemon's cookie-authenticated
+    control port (`ADD_ONION`) — no torrc editing, no tor restart. Every hosted
+    domain automatically gets a stable `.onion` (its key is pinned in your own
+    DB, so a restore brings the same address back).
+  - **Both URLs, one site.** An incoming `<onion>.onion` request is mapped to the
+    right domain and served the exact same content as clearnet; clearnet
+    responses advertise the onion via the `Onion-Location` header so Tor Browser
+    discovers it automatically. The clearnet path is byte-for-byte unchanged and
+    costs nothing when VayuTor is off.
+  - **Count-only analytics.** The VayuTor page shows a single number — total Tor
+    visits. No identity, no time, no path, no user agent, no cookie: nothing
+    per-visitor is ever recorded (Tor provides no IP to begin with).
+  - **No new attack surface.** VayuTor opens **no** inbound port; onion traffic
+    arrives through Tor's rendezvous circuits. Dormant by default (opt-in
+    toggle), a non-critical subsystem — an onion outage never touches the
+    clearnet site. The deploy/update script installs Tor and enables the loopback
+    control port automatically. Strict CSP throughout (server-rendered page + a
+    nonce'd same-origin island). Onion identities in migration 065.
+
 ## [3.13.58] — 2026-07-17
 
 ### Added

@@ -4438,6 +4438,56 @@
 .vp-os .vtalk-live { cursor: pointer; user-select: none; gap: 4px; }
 .vp-os .vtalk-live input { accent-color: var(--warn); width: 15px; height: 15px; }
 
+/* ── VayuTor — onion services control page ─────────────────────────────────── */
+.vp-os .vt-hero {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--sp-4); flex-wrap: wrap;
+}
+.vp-os .vt-hero__main { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.vp-os .vt-state {
+  display: inline-flex; align-items: center; gap: 0.5em;
+  font-size: var(--text-xs); font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+  width: fit-content;
+}
+.vp-os .vt-dot { width: 0.6rem; height: 0.6rem; border-radius: 50%; background: currentColor; }
+.vp-os .vt-state--on { color: var(--ok); }
+.vp-os .vt-state--on .vt-dot { animation: vp-live-pulse 1.6s ease-in-out infinite; }
+.vp-os .vt-state--warn { color: var(--warn); }
+.vp-os .vt-state--off { color: var(--text-3); }
+.vp-os .vt-hero__count { display: flex; align-items: baseline; gap: 0.4em; }
+.vp-os .vt-count { font-size: 2.4rem; font-weight: 700; line-height: 1; color: var(--brand); font-variant-numeric: tabular-nums; }
+.vp-os .vt-hero__action { margin: 0; }
+
+.vp-os .vt-warn { border-color: var(--warn); background: var(--warn-dim); }
+
+/* Onion address cards. */
+.vp-os .vt-onions { display: grid; gap: var(--sp-3); }
+.vp-os .vt-onion {
+  border: 1px solid var(--border); border-radius: var(--r-md);
+  padding: var(--sp-3) var(--sp-4); background: var(--bg-surface);
+}
+.vp-os .vt-onion__host { font-weight: 600; color: var(--text); margin-bottom: 4px; }
+.vp-os .vt-onion__row { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; }
+.vp-os .vt-onion__addr {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  font-size: var(--text-xs); color: var(--brand);
+  background: var(--bg-surface-2); border: 1px solid var(--border);
+  border-radius: var(--r-sm); padding: 0.3rem 0.5rem;
+  overflow-wrap: anywhere; word-break: break-all; flex: 1; min-width: 0;
+}
+.vp-os .vt-copy.is-copied { color: var(--ok); border-color: var(--ok); }
+
+.vp-os .vt-note__list { margin: 0; padding-left: 1.1rem; display: grid; gap: 6px; color: var(--text-2); }
+
+/* Off-screen buffer used by the clipboard fallback (no inline styles). */
+.vp-os .vt-copy-buf { position: fixed; left: -9999px; top: 0; opacity: 0; }
+
+@media (max-width: 560px) {
+  .vp-os .vt-hero { align-items: flex-start; }
+  .vp-os .vt-hero__action { width: 100%; }
+  .vp-os .vt-hero__action .btn { width: 100%; }
+}
+
 /* ── Composer ──────────────────────────────────────────────────────────────*/
 .vp-os .vtalk-composer {
   border-top: 1px solid var(--border); padding: var(--sp-3) var(--sp-4);

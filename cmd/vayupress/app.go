@@ -54,6 +54,7 @@ import (
 	vpgp "github.com/johalputt/vayupress/internal/vayuos/pgp"
 	"github.com/johalputt/vayupress/internal/vayuos/secwatch"
 	vtalk "github.com/johalputt/vayupress/internal/vayuos/vayutalk"
+	vtor "github.com/johalputt/vayupress/internal/vayuos/vayutor"
 	"github.com/johalputt/vayupress/internal/vayushield"
 	"github.com/johalputt/vayupress/internal/vayushield/offload"
 	"github.com/johalputt/vayupress/internal/vayushield/sovereign"
@@ -173,6 +174,7 @@ type App struct {
 	vayuPGP    *vpgp.Engine
 	vayuMail   *vmail.Engine
 	vayuTalk   *vtalk.Engine
+	vayuTor    *vtor.Engine
 	vayuSec    *secwatch.Watcher
 
 	// avatarCache memoises the set of mailbox addresses that have an uploaded

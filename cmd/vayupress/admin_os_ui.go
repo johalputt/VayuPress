@@ -92,6 +92,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 	r.Get("/os/static/js/admin-os-theme-store.js", serveAdminOSAsset("js/admin-os-theme-store.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-mail.js", serveAdminOSAsset("js/admin-os-mail.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-talk.js", serveAdminOSAsset("js/admin-os-talk.js", "application/javascript; charset=utf-8"))
+	r.Get("/os/static/js/admin-os-tor.js", serveAdminOSAsset("js/admin-os-tor.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-update.js", serveAdminOSAsset("js/admin-os-update.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-storage.js", serveAdminOSAsset("js/admin-os-storage.js", "application/javascript; charset=utf-8"))
 	r.Get("/os/static/js/admin-os-website.js", serveAdminOSAsset("js/admin-os-website.js", "application/javascript; charset=utf-8"))
@@ -400,6 +401,11 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.Get("/os/talk/peer", a.handleVayuOSTalkPeer)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/talk/send", a.handleVayuOSTalkSend)
 
+		// VayuTor — onion services control page + one-click toggle + count JSON.
+		pr.With(auth.CSRFTokenMiddleware).Get("/os/tor", a.handleOSTor)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/tor/toggle", a.handleOSTorToggle)
+		pr.Get("/os/tor/stats", a.handleOSTorStats)
+
 		pr.Get("/os/vayumail/security", a.handleVayuOSSecurity)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/vayuos/security/check", a.handleVayuOSSecurityCheck)
 		pr.Get("/os/api/vayuos/health", a.handleVayuOSHealthJSON)
@@ -645,6 +651,7 @@ func osSidebarNav(active string, s *osSettings) string {
 		gate(navItem("/os/theme/store", "Theme Store", "theme-store", active, iconThemeStore), "/os/theme/store"),
 		navItem("/os/vayumail", "VayuMail", "vayuos", active, iconSecurity),
 		navItem("/os/talk", "VayuTalk", "talk", active, iconTalk),
+		navItem("/os/tor", "VayuTor", "tor", active, iconTor),
 	)
 	section("System",
 		gate(navItem("/os/monitoring", "Monitoring", "monitoring", active, iconMonitoring), "/os/monitoring"),
@@ -681,6 +688,7 @@ var (
 	iconPages      = svgIcon("M5 2h7l3 3v13H5V2zm7 0v3h3M7 9h6M7 12h6M7 15h4")
 	iconMessages   = svgIcon("M2 4h16v10H6l-4 3V4zm3 4h10M5 11h7")
 	iconTalk       = svgIcon("M4 3h9a3 3 0 013 3v4a3 3 0 01-3 3H8l-4 3v-3a3 3 0 01-3-3V6a3 3 0 013-3zm2 4h7M6 9.5h4")
+	iconTor        = svgIcon("M10 2.5a7.5 7.5 0 100 15 7.5 7.5 0 000-15zM10 6.5a3.5 3.5 0 100 7 3.5 3.5 0 000-7zM10 9.2a.8.8 0 100 1.6.8.8 0 000-1.6z")
 	iconNewPost    = svgIcon("M10 4v12m-6-6h12")
 	iconMedia      = svgIcon("M3 5a2 2 0 012-2h10a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V5zm0 8l4-4 3 3 2-2 4 4")
 	iconMembers    = svgIcon("M13 6a3 3 0 11-6 0 3 3 0 016 0zm-9 10a6 6 0 1112 0H4z")

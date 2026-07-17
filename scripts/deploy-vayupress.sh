@@ -211,6 +211,39 @@ run apt-get install -y -qq \
 ok "System packages installed."
 
 # =============================================================================
+# ── VAYUTOR (TOR ONION SERVICES) ──────────────────────────────────────────────
+# =============================================================================
+# Install Tor and enable its cookie-authenticated control port on loopback so
+# VayuPress can publish every hosted domain as a v3 onion service (ADD_ONION)
+# with one click from VayuOS. This opens NOTHING to the internet: the control
+# port is 127.0.0.1-only and onion traffic reaches the server through Tor's
+# rendezvous circuits, never an inbound port. VayuTor stays dormant (no onions,
+# no control connection) until the operator activates it on the VayuTor page.
+info "Installing Tor for VayuTor onion services..."
+run apt-get install -y -qq tor
+TORRC=/etc/tor/torrc
+if ! grep -q "VayuTor control port" "$TORRC" 2>/dev/null; then
+  cat >> "$TORRC" <<'TORCONF'
+
+# VayuTor control port — added by deploy-vayupress.sh. Loopback-only, cookie
+# authenticated, group-readable so the www-data VayuPress service can drive
+# ADD_ONION. Never expose ControlPort to any non-loopback address.
+ControlPort 9051
+CookieAuthentication 1
+CookieAuthFileGroupReadable 1
+TORCONF
+  ok "Tor control port configured (127.0.0.1:9051, cookie auth)."
+else
+  info "Tor control port already configured — leaving torrc unchanged."
+fi
+# Let the VayuPress service user read the control auth cookie (group membership
+# only — no elevated privilege). The debian-tor group is created by the package.
+run usermod -aG debian-tor www-data
+run systemctl enable tor
+run systemctl restart tor
+ok "Tor installed and running (VayuTor stays off until activated in VayuOS)."
+
+# =============================================================================
 # ── GO TOOLCHAIN ──────────────────────────────────────────────────────────────
 # =============================================================================
 
@@ -405,6 +438,11 @@ PLUGIN_MAX_CONCURRENT=${PLUGIN_MAX_CONCURRENT}
 PLUGIN_TIMEOUT_MS=${PLUGIN_TIMEOUT_MS}
 WAL_SIZE_THRESHOLD_MB=${WAL_SIZE_THRESHOLD_MB}
 MAINTENANCE_MODE=${MAINTENANCE_MODE}
+# VayuTor — Tor onion services. VAYUOS_TOR is the master switch (set to off to
+# hard-disable); the per-site on/off is the one-click toggle on the VayuTor page.
+VAYUOS_TOR=on
+VAYUOS_TOR_CONTROL_ADDR=127.0.0.1:9051
+VAYUOS_TOR_COOKIE=/run/tor/control.authcookie
 ENV
   run chmod 600 /etc/vayupress/env
   ok "Runtime config written to /etc/vayupress/env"
@@ -419,7 +457,10 @@ cat > /etc/systemd/system/vayupress.service <<SYSTEMD
 [Unit]
 Description=VayuPress CMS Engine ${ENGINE_VERSION}
 Documentation=https://vayupress.com/docs https://github.com/johalputt/vayupress
-After=network.target
+After=network.target tor.service
+# VayuTor drives Tor's control port; start after it when present. Wants (not
+# Requires) so a box without Tor still boots VayuPress normally.
+Wants=tor.service
 
 [Service]
 Type=simple
@@ -804,6 +845,9 @@ run ufw allow 443/tcp comment 'HTTPS'
 for p in 25 110 143 465 587 993 995; do
   run ufw allow "${p}/tcp" comment 'VayuMail'
 done
+# VayuTor deliberately opens NO inbound port: the Tor control port is loopback
+# only, and onion visitors reach the server through Tor's rendezvous circuits,
+# not a listening socket. No firewall rule is needed or wanted for it.
 run ufw --force enable
 ok "Firewall configured."
 

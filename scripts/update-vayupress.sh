@@ -259,6 +259,28 @@ if [[ "$VAYUSHIELD_AGENT" == "1" ]] && command -v systemctl >/dev/null 2>&1 && [
   fi
 fi
 
+# ── 4c. Ensure Tor is installed + its control port enabled for VayuTor ───────
+# VayuTor publishes each hosted domain as a Tor onion service by driving the
+# local tor daemon's cookie-authenticated control port. This installs/configures
+# it idempotently so the in-app updater keeps VayuTor working; it stays dormant
+# until the operator activates it in VayuOS. Best-effort — never blocks the
+# update. Set VAYUOS_TOR=0 to skip.
+if [[ "${VAYUOS_TOR:-1}" == "1" ]] && command -v apt-get >/dev/null 2>&1; then
+  info "Ensuring Tor control port for VayuTor…"
+  DEBIAN_FRONTEND=noninteractive apt-get install -y -qq tor >/dev/null 2>&1 || true
+  TORRC=/etc/tor/torrc
+  if [[ -f "$TORRC" ]] && ! grep -q "VayuTor control port" "$TORRC" 2>/dev/null; then
+    {
+      printf '\n# VayuTor control port — loopback only, cookie auth, group-readable.\n'
+      printf 'ControlPort 9051\nCookieAuthentication 1\nCookieAuthFileGroupReadable 1\n'
+    } >> "$TORRC" 2>/dev/null || true
+  fi
+  usermod -aG debian-tor "$SERVICE_USER" 2>/dev/null || true
+  systemctl enable tor >/dev/null 2>&1 || true
+  systemctl restart tor 2>/dev/null || true
+  ok "Tor control port ensured (VayuTor stays off until activated in VayuOS)."
+fi
+
 # ── 5. Back up the database (default ON, consistent, never blocks) ───────────
 # A consistent snapshot (sqlite3 online backup) is taken before the restart so a
 # migration-bearing release always has a rollback point. A hard timeout
