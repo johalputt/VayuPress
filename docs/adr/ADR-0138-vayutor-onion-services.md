@@ -268,3 +268,32 @@ foot-gun that can lock the operator out of their own site. That policy, if truly
 wanted, belongs at the web-server/DNS layer, not a VayuTor toggle. Onion request
 abuse is handled by VayuShield alongside clearnet traffic (Tor exposes no client
 IP, so per-visitor rate limiting isn't meaningful for onion traffic anyway).
+
+## Addendum (v3.13.76) — Vanity (custom-prefix) onion addresses
+
+Operators can now give a domain a recognisable `.onion` whose address starts
+with letters they choose (`internal/vayuos/vayutor/vanity.go`):
+
+- **How it works.** A v3 onion address is `base32(pubkey ‖ checksum ‖ version)`
+  of an ed25519 public key, so a chosen prefix is found by brute force: mint
+  random ed25519 seeds, derive the address, and keep the first key whose address
+  starts with the prefix. This runs entirely on the server as the unprivileged
+  service user, across `NumCPU-1` goroutines, and is cancellable. Difficulty is
+  ~`32^len` attempts (each base32 char is 5 bits); the prefix is capped at 7 and
+  the UI warns past 5.
+- **Correctness.** `deriveOnion` clamps the SHA-512 of the seed per RFC 8032,
+  computes `A = a·B` via `filippo.io/edwards25519`, and builds the address with a
+  SHA3-256 checksum — the exact rend-spec-v3 construction. The stored key is
+  tor's `ED25519-V3` expanded secret (`clamped scalar ‖ nonce`, base64), which
+  `ADD_ONION` accepts to pin the address. Tests decode the address and
+  re-verify its checksum/version/layout exactly as a Tor client does, and prove
+  the stored key blob re-derives the same public key — so tor brings back
+  precisely this `.onion`.
+- **Apply + republish.** On a hit, the new `OnionRecord` is persisted and the
+  domain's current onion is torn down from the live registry (and via
+  `DEL_ONION` if connected); the next reconcile republishes the domain under the
+  vanity key. The result is durable (persisted at the moment found), so it
+  survives a restart even though an in-progress search does not.
+- **UI.** The VayuTor page shows live progress (attempts, elapsed) via the
+  existing `/os/tor/stats` poll (sped up to 2s while a search runs), reloads on
+  completion, and offers cancel. No key material is ever exposed to the browser.

@@ -8,7 +8,22 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
-## [3.13.75] — 2026-07-17
+## [3.13.76] — 2026-07-17
+
+### Added
+- **VayuTor vanity (custom-prefix) onion addresses.** Give a domain a
+  recognisable `.onion` that starts with letters you choose instead of a random
+  one. From the VayuTor page, pick a domain and a short prefix (`a–z`, `2–7`) and
+  VayuTor brute-forces a matching v3 ed25519 key **in the background on the
+  server** — no key ever leaves the box — using all cores but one. Progress
+  (attempts, elapsed) updates live; the search survives navigating away and is
+  cancellable. When it lands, the new identity is persisted and the domain's
+  onion is republished under the vanity address (replacing the old random one).
+  Difficulty scales ~32× per character: 1–4 chars is seconds, 5 a few minutes,
+  6–7 can take hours (capped at 7, with a warning past 5). The v3 address
+  derivation is verified in tests to round-trip its checksum exactly as a Tor
+  client does, and the stored `ED25519-V3` key is proven to re-derive the same
+  address.
 
 ### Added
 - **VayuTor onion hardening.** A new "Hardening" card plus always-on protections
