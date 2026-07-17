@@ -88,8 +88,23 @@ func (m *managedTor) resolvePT() string {
 			return p
 		}
 	}
+	// No system pluggable transport — fall back to VayuPress's OWN embedded obfs4
+	// (tor execs this same binary with the transport subcommand). This is what
+	// makes obfs4 bridges work with nothing installed on the server.
+	if selfObfs4 != "" {
+		return selfObfs4
+	}
 	return ""
 }
+
+// selfObfs4 is the exec spec ("<vayupress> __run-obfs4") for VayuPress's built-in
+// obfs4 transport, injected by the host at startup so this package stays free of
+// the transport implementation. Empty when the host doesn't provide one.
+var selfObfs4 string
+
+// SetEmbeddedObfs4 registers the host's built-in obfs4 transport exec spec, used
+// as the pluggable transport when no system obfs4proxy is installed.
+func SetEmbeddedObfs4(execSpec string) { selfObfs4 = execSpec }
 
 // setStrict enables (or disables) firewall-friendly mode: tor only reaches
 // relays on ports 80/443, which punches through the restrictive egress firewalls

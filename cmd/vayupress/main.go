@@ -80,7 +80,7 @@ import (
 // -ldflags "-X main.Version=<.release-version>", and scripts/update-vayupress.sh
 // reads .release-version too — keep this in sync with .release-version so an
 // un-stamped `go build` still reports an honest version.
-var Version = "3.13.68"
+var Version = "3.13.69"
 var bootTime = time.Now()
 
 // Immutable package-level values (compiled once, never mutated).
@@ -333,6 +333,14 @@ func writeRobotsScoped(host, rel string) {
 
 func main() {
 	log.SetFlags(0)
+
+	// obfs4 pluggable-transport mode: tor execs this same binary as its bridge
+	// transport (see VayuTor's managedTor.resolvePT). Handle it FIRST — before any
+	// config/DB/server init — since stdout is the PT protocol channel, and exit.
+	if len(os.Args) > 1 && os.Args[1] == obfs4Subcommand {
+		runEmbeddedObfs4()
+		os.Exit(0)
+	}
 
 	// Give the GC a memory ceiling to aim at (cgroup-aware; honours an explicit
 	// GOMEMLIMIT). Keeps steady RSS bounded and avoids OOM-kill overshoot on

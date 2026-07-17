@@ -124,7 +124,18 @@ Bridges are **operator-supplied** — configured entirely **from the VayuTor adm
 page** (saved to `settings.tor.bridges`, applied live with no restart and no
 server access) or via the `VAYUOS_TOR_BRIDGES` env var; the settings value wins.
 obfs4 lines come from bridges.torproject.org; the built-in default set is
-intentionally empty — VayuPress does not ship third-party bridge infrastructure. The obfs4 pluggable
+intentionally empty — VayuPress does not ship third-party bridge infrastructure.
+
+**Embedded obfs4 transport.** The obfs4 pluggable transport is **built into the
+VayuPress binary** (via the lyrebird obfs4 client library, exposed as the hidden
+`__run-obfs4` subcommand): the managed tor is told `ClientTransportPlugin obfs4
+exec <vayupress> __run-obfs4`, so obfs4 bridges work with **no `obfs4proxy`
+package installed** — nothing to apt-install, nothing done outside VayuOS. It is a
+client transport only (a loopback SOCKS listener that dials out through obfs4);
+its `pt_state` lives under the writable DataDirectory, and it exits when the
+managed tor does. A system `obfs4proxy`/`lyrebird` is still preferred when
+present. Operators paste **IPv4** obfs4 bridges (the server needs working IPv6 to
+use IPv6 bridges — most don't). The obfs4 pluggable
 transport (`obfs4proxy`, installed by the deploy/update script) is spawned by the
 managed tor as the same unprivileged user, with its `pt_state` under the writable
 DataDirectory — no root, no new inbound surface. Because v3 onion services are

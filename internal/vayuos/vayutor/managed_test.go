@@ -78,6 +78,19 @@ func TestManagedTorrcBridges(t *testing.T) {
 	}
 }
 
+func TestResolvePTEmbeddedFallback(t *testing.T) {
+	m := newManagedTor("tor", t.TempDir())
+	SetEmbeddedObfs4("")
+	if m.resolvePT() != "" {
+		t.Skip("a system obfs4proxy is present in the test environment")
+	}
+	SetEmbeddedObfs4("/opt/vayupress __run-obfs4")
+	defer SetEmbeddedObfs4("")
+	if got := m.resolvePT(); got != "/opt/vayupress __run-obfs4" {
+		t.Errorf("resolvePT = %q, want the embedded obfs4 fallback", got)
+	}
+}
+
 func TestManagedControlPaths(t *testing.T) {
 	m := newManagedTor("tor", "/base/tor")
 	if got, want := m.controlAddr(), "unix:/base/tor/control.sock"; got != want {
