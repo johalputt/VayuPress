@@ -85,7 +85,11 @@ func NewEngine(cfg Config) *Engine {
 		kick:        make(chan struct{}, 1),
 		done:        make(chan struct{}),
 	}
-	if cfg.Managed && strings.TrimSpace(cfg.TorBinary) != "" && strings.TrimSpace(cfg.ManagedDir) != "" {
+	// Create the managed supervisor whenever managed mode is on and we have a
+	// writable dir. The tor binary is resolved LAZILY at connect time (not here),
+	// so installing tor after VayuPress has started is picked up on the next
+	// reconcile — no restart required.
+	if cfg.Managed && strings.TrimSpace(cfg.ManagedDir) != "" {
 		e.managed = newManagedTor(cfg.TorBinary, cfg.ManagedDir)
 	}
 	return e
@@ -451,12 +455,21 @@ func (e *Engine) Snapshot() Status {
 	}
 	e.mu.RLock()
 	defer e.mu.RUnlock()
+	lastErr := e.lastErr
+	// When the managed tor is the relevant path and reported something more
+	// specific (e.g. "tor is not installed"), prefer that — it is actionable,
+	// whereas the raw external-dial error ("connection refused") is not.
+	if !e.connected && e.managed != nil {
+		if me := e.managed.lastError(); me != "" {
+			lastErr = me
+		}
+	}
 	st := Status{
 		Available: e.cfg.Enabled,
 		Active:    e.active(),
 		Connected: e.connected,
 		Visits:    atomic.LoadInt64(&e.visits),
-		LastError: e.lastErr,
+		LastError: lastErr,
 	}
 	for host, onionHost := range e.onionByHost {
 		st.Onions = append(st.Onions, Onion{Host: host, OnionHost: onionHost})

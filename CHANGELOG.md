@@ -8,6 +8,21 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.62] — 2026-07-17
+
+### Fixed
+- **VayuTor now activates the moment `tor` is installed — no VayuPress restart.**
+  The managed tor's binary was resolved once at process start, so a server that
+  installed `tor` *after* VayuPress was already running (or updated only the
+  binary via the in-app one-click updater) never engaged managed mode and sat at
+  the external "connection refused." The tor binary is now resolved **lazily at
+  connect time**, so it is picked up on the next reconcile (≤60s) with no restart.
+- **Actionable VayuTor status when Tor is missing.** The page now shows exactly
+  what to do — `sudo apt-get install -y tor` (or re-run the updater) — instead of
+  the confusing `dial tcp 127.0.0.1:9051: connect: connection refused`.
+- Internal: wired the managed-tor error into the status snapshot (resolves the
+  deadcode-gate CI failure on the 3.13.61 tag).
+
 ## [3.13.61] — 2026-07-17
 
 ### Added

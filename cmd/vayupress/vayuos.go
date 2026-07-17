@@ -17,7 +17,6 @@ import (
 	stdmail "net/mail"
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -570,12 +569,10 @@ func (a *App) bootVayuOS() {
 	// setup, and it survives the in-app binary-only self-update. Resolve the tor
 	// binary from PATH (or an explicit override); "" disables the managed fallback.
 	torManaged := !strings.EqualFold(config.EnvOr("VAYUOS_TOR_MANAGED", "on"), "off")
+	// The tor binary is resolved lazily by the engine (from PATH) at connect time,
+	// so installing tor after start is picked up with no restart. An explicit
+	// VAYUOS_TOR_BINARY overrides that lookup.
 	torBinary := config.EnvOr("VAYUOS_TOR_BINARY", "")
-	if torManaged && torBinary == "" {
-		if p, lerr := exec.LookPath("tor"); lerr == nil {
-			torBinary = p
-		}
-	}
 	torDir := config.EnvOr("VAYUOS_TOR_DIR", filepath.Join(filepath.Dir(config.Cfg.MediaDir), "tor"))
 	a.vayuTor = vtor.NewEngine(vtor.Config{
 		Enabled:     torAvailable,
