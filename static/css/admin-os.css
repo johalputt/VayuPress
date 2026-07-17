@@ -4479,6 +4479,9 @@
 
 .vp-os .vt-note__list { margin: 0; padding-left: 1.1rem; display: grid; gap: 6px; color: var(--text-2); }
 
+/* Tor bootstrap log tail shown while publishing (wraps, scrolls, never overflows). */
+.vp-os .vt-log { margin: 0; padding: 8px 10px; border-radius: 8px; background: var(--bg-surface-3); border: 1px solid var(--border); white-space: pre-wrap; word-break: break-word; overflow-x: auto; font-family: var(--mono, monospace); line-height: 1.45; }
+
 /* Off-screen buffer used by the clipboard fallback (no inline styles). */
 .vp-os .vt-copy-buf { position: fixed; left: -9999px; top: 0; opacity: 0; }
 

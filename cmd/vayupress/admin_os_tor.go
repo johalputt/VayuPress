@@ -86,7 +86,12 @@ func (a *App) handleOSTor(w http.ResponseWriter, r *http.Request) {
 		if st.LogPath != "" {
 			note += ` Diagnostic log: <code>` + esc(st.LogPath) + `</code>.`
 		}
-		body += `<div class="card vt-warn"><div class="card-title">⏳ Publishing to the Tor network…</div><p class="text-sm">` + note + `</p></div>`
+		card := `<div class="card vt-warn"><div class="card-title">⏳ Publishing to the Tor network…</div><p class="text-sm">` + note + `</p>`
+		if st.LogTail != "" {
+			card += `<pre class="vt-log text-xs muted mt-2">` + esc(st.LogTail) + `</pre>`
+		}
+		card += `</div>`
+		body += card
 	}
 
 	// ── Onion address table ──
