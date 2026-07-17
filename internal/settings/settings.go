@@ -194,6 +194,7 @@ const (
 	KeyShieldJailMinutes    = "shield.jail_minutes"    // how long an auto-jailed IP stays blocked
 	KeyShieldUnderAttack    = "shield.underattack"     // adaptive: tighten thresholds during a flood
 	KeyShieldUnderAttackRPS = "shield.underattack_rps" // global RPS that trips attack mode
+	KeyShieldSurge          = "shield.surge"           // Aegis L3: challenge all unproven visitors up front
 
 	// KeyAnalyticsBeacon toggles the VayuAnalytics engagement beacon (time on
 	// page / scroll depth) injected on public pages. Default ON — it is
@@ -299,6 +300,7 @@ var AllKeys = map[string]bool{
 	KeyShieldJailMinutes:    true,
 	KeyShieldUnderAttack:    true,
 	KeyShieldUnderAttackRPS: true,
+	KeyShieldSurge:          true,
 	KeyAnalyticsBeacon:      true,
 }
 

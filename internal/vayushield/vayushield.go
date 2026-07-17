@@ -126,6 +126,7 @@ type liveConfig struct {
 	loadShed       bool    // in-flight concurrency cap (503 when saturated)
 	autoBlock      bool    // auto-jail IPs that keep breaching the rate limit
 	underAttack    bool    // adaptive: tighten thresholds during a flood
+	surge          bool    // Aegis L3: operator-forced surge (challenge all unproven)
 }
 
 // Settings is the full operator-tunable configuration, persisted by the cmd
@@ -143,6 +144,15 @@ type Settings struct {
 	AutoBlockJailMinutes                      int
 	UnderAttack                               bool
 	UnderAttackRPS                            int // global RPS that trips attack mode
+
+	// Surge is the operator's "Sovereign Surge" (a.k.a. Under-Attack) switch. When
+	// on, every unproven visitor is met with the stateless PoW interstitial up
+	// front — before any classification, fingerprint or SQLite read — so a
+	// distributed swarm is absorbed at ~one HMAC per request. Surge ALSO engages
+	// automatically (no toggle) whenever the L0 sovereignty lane nears saturation
+	// or an active flood trips the attack meter, so the site self-defends even if
+	// the operator never touches this.
+	Surge bool
 }
 
 // Manager is the live bot-protection + resilience engine.
@@ -180,6 +190,15 @@ type Manager struct {
 	// loosens the effective thresholds automatically (loosen-only, capped) so
 	// the ladder stays silent-first and self-heals its own false positives.
 	calib *calibrate.Calibrator
+
+	// surgeServed counts stateless surge-mode PoW interstitials served (telemetry).
+	surgeServed atomic.Int64
+	// surgeArmedNs is when operator-forced surge (the toggle) was last armed, in
+	// unix nanoseconds; 0 = not armed. Operator-forced surge auto-expires after
+	// maxForcedSurge so a forgotten toggle can never serve 503s indefinitely (a
+	// sustained multi-day 503 deindexes URLs even with Retry-After). The RPS
+	// auto-engage path needs no timer — it already relaxes when the flood passes.
+	surgeArmedNs atomic.Int64
 
 	ipMu   sync.Mutex
 	ipSalt []byte
@@ -309,7 +328,23 @@ func defaultMaxInFlight() int {
 	return n
 }
 
+// maxForcedSurge bounds how long the operator's manual surge switch stays
+// active. After this, surge auto-disarms even if the toggle is still on, so a
+// forgotten switch cannot serve 503s (and risk deindexing) forever. A genuine
+// ongoing attack is still covered by the RPS auto-engage path (no timer).
+const maxForcedSurge = 12 * time.Hour
+
 func (m *Manager) ApplySettings(s Settings) {
+	// Arm / disarm the operator-forced surge timer on a genuine off->on edge, so
+	// re-saving other settings while surge is on does not keep resetting (and
+	// thus indefinitely extending) the auto-expiry window.
+	prev := m.liveCfg.Load()
+	switch {
+	case s.Surge && (prev == nil || !prev.surge):
+		m.surgeArmedNs.Store(m.cfg.Now().UnixNano())
+	case !s.Surge:
+		m.surgeArmedNs.Store(0)
+	}
 	clamp := func(f, def float64) float64 {
 		if f <= 0 || f > 1 {
 			return def
@@ -364,6 +399,7 @@ func (m *Manager) ApplySettings(s Settings) {
 		loadShed:    s.LoadShed,
 		autoBlock:   s.AutoBlock,
 		underAttack: s.UnderAttack,
+		surge:       s.Surge,
 	})
 	// Preserve the resolved numeric fields for the dashboard.
 	s.PoWThreshold = clamp(s.PoWThreshold, 0.4)
@@ -395,6 +431,36 @@ func (m *Manager) jailTTL() time.Duration {
 	return 10 * time.Minute
 }
 
+// underSurge reports whether Sovereign Surge (Aegis L3) is currently engaged, so
+// the middleware meets an unproven visitor with the stateless PoW interstitial
+// BEFORE any classification/fingerprint/SQLite work. Surge is a deliberate
+// escalation — "challenge every unproven visitor" — so it engages only when:
+//   - the operator forced it on (the explicit "Under Attack" switch), or
+//   - adaptive under-attack mode is enabled AND the RPS meter says a flood is
+//     live (a 1M-source swarm drives global RPS through the roof, so this fires
+//     automatically during a real attack and relaxes the moment it passes).
+//
+// It deliberately does NOT engage on mild pressure (the L0 lane's PressureFn):
+// that signal drives the graceful L2 fair-shed, which sheds only heavy hitters
+// and never touches a client within its fair budget. Surge stays a higher tier
+// so a merely-busy site (a legitimate traffic spike) never challenges everyone.
+// Requires a signer (no signer => no surge, fail-open); both checks are a couple
+// of atomic loads, so this is negligible on the hot path.
+func (m *Manager) underSurge(lc *liveConfig) bool {
+	if m.cfg.Signer == nil {
+		return false
+	}
+	if lc.surge {
+		// Operator-forced surge auto-expires after maxForcedSurge so a forgotten
+		// switch cannot serve 503s forever. armed==0 is defensive (treat as live).
+		armed := m.surgeArmedNs.Load()
+		if armed == 0 || m.cfg.Now().Sub(time.Unix(0, armed)) < maxForcedSurge {
+			return true
+		}
+	}
+	return lc.underAttack && m.controller.UnderAttack()
+}
+
 // Status is a live snapshot of the resilience meters for the dashboard.
 type Status struct {
 	UnderAttack bool  `json:"under_attack"`
@@ -406,6 +472,11 @@ type Status struct {
 	Suspects    int   `json:"suspects"`    // L5: sources currently under suspicion
 	RepJailed   int   `json:"rep_jailed"`  // L5: sources serving a reputation sentence
 	Pardons     int64 `json:"pardons"`     // L5: cumulative challenge-proof pardons
+
+	// L3 Sovereign Surge: whether surge is engaged right now, and the cumulative
+	// count of up-front surge interstitials served (each ~one HMAC, no DB/render).
+	SurgeActive     bool  `json:"surge_active"`
+	SurgeChallenges int64 `json:"surge_challenges"`
 
 	// L4 self-calibration: the loosen-only threshold bias currently applied
 	// (0 = running exactly at the operator's thresholds) and the live window's
@@ -432,6 +503,8 @@ func (m *Manager) Status() Status {
 		CalibrationBias:  bias,
 		ChallengesServed: served,
 		ChallengesPassed: passed,
+		SurgeActive:      m.underSurge(m.live()),
+		SurgeChallenges:  m.surgeServed.Load(),
 	}
 }
 
@@ -585,12 +658,40 @@ func (m *Manager) isBypassed(r *http.Request) bool {
 			return true
 		}
 	}
-	// Feeds are machine endpoints legit clients hit without JS.
-	switch p {
-	case "/feed.xml", "/rss.xml", "/atom.xml", "/sitemap.xml", "/robots.txt":
+	// Feeds/sitemaps/robots are machine endpoints legit clients (feed readers,
+	// crawlers, unfurlers) hit WITHOUT JS — they can never solve a challenge, so
+	// a surge interstitial in place of a feed silently breaks every subscriber.
+	// Match them broadly by shape, not a short exact list (which missed Hugo's
+	// /index.xml and WordPress /feed/). These are cheap, cacheable, and still
+	// bounded by the L0 public-concurrency lane, so bypassing the shield's
+	// challenge for them is safe.
+	return isFeedLikePath(p)
+}
+
+// isFeedLikePath reports whether a path is a feed, sitemap, or robots endpoint
+// by shape: any *.xml/*.atom/*.rss (covers /index.xml, /sitemap.xml, per-tag
+// feeds), a /feed or /rss path segment (WordPress /feed/, /comments/feed/), or
+// robots.txt / feed.json.
+func isFeedLikePath(p string) bool {
+	if strings.HasSuffix(p, ".xml") || strings.HasSuffix(p, ".atom") || strings.HasSuffix(p, ".rss") {
 		return true
 	}
-	return false
+	switch p {
+	case "/robots.txt", "/feed", "/rss", "/feed.json":
+		return true
+	}
+	return strings.HasSuffix(p, "/feed") || strings.HasSuffix(p, "/feed/") ||
+		strings.Contains(p, "/feed/") || strings.HasSuffix(p, "/rss") || strings.HasSuffix(p, "/rss/")
+}
+
+// clientBind is the per-client key a session/clearance cookie is cryptographically
+// bound to: the client IP (port stripped). It never leaves the process and is
+// never stored — it is folded into the token MAC only — so a clearance cookie is
+// worthless when replayed from a different source (defeating "solve once, replay
+// across the botnet"), with no new PII at rest. A client whose IP changes
+// (roaming mobile) simply re-proves, a ~100 ms cost.
+func (m *Manager) clientBind(r *http.Request) string {
+	return ipOnly(m.cfg.ClientIP(r))
 }
 
 func (m *Manager) hasValidSession(r *http.Request) bool {
@@ -601,7 +702,7 @@ func (m *Manager) hasValidSession(r *http.Request) bool {
 	if err != nil || c.Value == "" {
 		return false
 	}
-	return m.cfg.Signer.VerifySession(c.Value)
+	return m.cfg.Signer.VerifySession(c.Value, m.clientBind(r))
 }
 
 // HasVerifiedSession reports whether the request carries a valid, signed
@@ -654,7 +755,7 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 		// ops) and fair-sheds heavy hitters automatically when the L0 lane
 		// saturates — the shield's zero-configuration self-defense floor.
 		resilienceActive := lc.rateLimit || lc.loadShed || lc.autoBlock || lc.underAttack ||
-			m.cfg.PressureFn != nil
+			lc.surge || m.cfg.PressureFn != nil
 		if !lc.enabled && !resilienceActive {
 			next.ServeHTTP(w, r)
 			return
@@ -751,6 +852,36 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 			return
 		}
 
+		// 4c. Sovereign Surge (Aegis L3). Under genuine pressure — an operator-
+		// forced surge, an active flood, or the L0 sovereignty lane nearing its cap
+		// — an unproven visitor is met with the cheap, stateless PoW interstitial
+		// BEFORE the expensive classification path (TLS/HTTP fingerprint + the
+		// adaptive-signature SELECT). A real browser solves it once in a Web Worker
+		// (<100 ms) and rides the verified lane thereafter; a client that will not
+		// run JS never reaches fingerprinting, SQLite or rendering — it costs one
+		// HMAC. This is what lets a single VPS absorb a distributed 1M-source swarm
+		// with no CDN. It challenges EVERY unproven client (a spoofed good-bot UA
+		// gets no free pass here), so there is no UA-spoof bypass; good bots are
+		// briefly asked to retry only while a flood is live. Verified sessions,
+		// trusted operators and bypassed paths already returned above; a nil signer
+		// disables it (fail-open).
+		if !verified && m.underSurge(lc) {
+			// Impose real cost: surge exists to defend against clients that will
+			// (headless browsers) or won't (plain scrapers) run JS during a flood.
+			// A difficulty-4 PoW (~65k hashes) is trivial for a headless engine, so
+			// surge uses the harder tier. feedCalib=false keeps these score-blind
+			// challenges out of the L4 ladder self-tuning. If the challenge cannot
+			// be issued (no signer / issue error) serveChallenge reports false and
+			// we fail OPEN — never an empty response.
+			if m.serveChallenge(w, r, Verdict{}, challenge.HardDifficulty, false) {
+				m.surgeServed.Add(1)
+				reqclass.MarkShielded(r.Context())
+				return
+			}
+			next.ServeHTTP(w, r)
+			return
+		}
+
 		// 5. Bot classification + challenge ladder (only when enabled).
 		if !lc.enabled {
 			next.ServeHTTP(w, r)
@@ -791,9 +922,13 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 			if m.brain.Standing(ipKey) < 0.3 {
 				diff = challenge.HardDifficulty
 			}
-			m.serveChallenge(w, r, v, diff)
+			if !m.serveChallenge(w, r, v, diff, true) {
+				next.ServeHTTP(w, r) // fail open if the challenge cannot be issued
+			}
 		case ActionChallengeJS:
-			m.serveChallenge(w, r, v, challenge.HardDifficulty)
+			if !m.serveChallenge(w, r, v, challenge.HardDifficulty, true) {
+				next.ServeHTTP(w, r)
+			}
 		case ActionTarpit:
 			// A confirmed bad actor (score ≥ block threshold, tarpit variant).
 			m.brain.Observe(ipKey, brain.SignalBlock)
@@ -823,8 +958,9 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 // properties: real users redeem within seconds, hammering bots cost ~nothing.
 func (m *Manager) serveJailed(w http.ResponseWriter, r *http.Request, ipKey, reason string) {
 	if m.cfg.Signer != nil && !m.controller.UnderAttack() && m.redeem.Allow(ipKey) {
-		m.serveChallenge(w, r, Verdict{}, challenge.DefaultDifficulty)
-		return
+		if m.serveChallenge(w, r, Verdict{}, challenge.DefaultDifficulty, false) {
+			return
+		}
 	}
 	m.serveThrottled(w, http.StatusTooManyRequests, reason, "10")
 }
@@ -947,26 +1083,37 @@ func (m *Manager) rotateIPSaltLocked(now time.Time) {
 
 // ── Challenge / block rendering ───────────────────────────────────────────────
 
-// serveChallenge issues a signed PoW and returns the branded interstitial page.
-// The solver runs from a same-origin script (/__vayushield/challenge.js), so no
-// inline script is needed and the strict script-src 'self' CSP is satisfied.
-func (m *Manager) serveChallenge(w http.ResponseWriter, r *http.Request, v Verdict, difficulty int) {
+// serveChallenge issues a signed PoW and returns the branded interstitial page,
+// reporting whether it actually issued one (false = fail-open: the caller should
+// let the request proceed rather than emit an empty response). The solver runs
+// from a same-origin script (/__vayushield/challenge.js), so no inline script is
+// needed and the strict script-src 'self' CSP is satisfied. feedCalib gates the
+// L4 calibrator: the score-based ladder feeds it (true); Sovereign Surge, which
+// challenges every unproven visitor regardless of score, does not (false), so it
+// cannot skew the ladder's self-tuning.
+func (m *Manager) serveChallenge(w http.ResponseWriter, r *http.Request, v Verdict, difficulty int, feedCalib bool) bool {
 	if m.cfg.Signer == nil {
-		// Cannot challenge without a signer — fail open.
-		return
+		return false // cannot challenge without a signer — fail open
 	}
 	pow, err := m.cfg.Signer.IssuePoW(difficulty, m.cfg.ChallengeTTL)
 	if err != nil {
-		return
+		return false // issue failure — fail open
 	}
-	m.calib.Served()
+	if feedCalib {
+		m.calib.Served()
+	}
 	m.recordChallenge(r, v, actionType(difficulty), "issued", 0)
 	payload, _ := json.Marshal(pow)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
+	// Retry-After tells well-behaved clients and crawlers this is temporary: a
+	// 503 + Retry-After is treated as a transient outage (not deindexed), unlike
+	// a bare 503, so serving the challenge to a crawler during an attack is safe.
+	w.Header().Set("Retry-After", "5")
 	w.Header().Set("X-VayuShield", "challenge")
 	w.WriteHeader(http.StatusServiceUnavailable) // 503: retry after solving
 	_, _ = w.Write([]byte(interstitialHTML(string(payload))))
+	return true
 }
 
 func actionType(difficulty int) string {
@@ -1001,23 +1148,29 @@ func (m *Manager) serveTarpit(w http.ResponseWriter, r *http.Request, v Verdict,
 }
 
 // VerifyPoW verifies a solved challenge submitted to the PoW endpoint and, on
-// success, returns a freshly-minted session token to set as the cookie. The
-// caller (cmd) owns the HTTP surface and cookie writing.
-func (m *Manager) VerifyPoW(ctx context.Context, pow challenge.PoW, nonce string) (token string, ok bool) {
+// success, returns a freshly-minted session token — cryptographically bound to
+// the solving request's client (its IP), so the resulting clearance cookie is
+// worthless if replayed from any other source. The caller (cmd) owns the HTTP
+// surface and cookie writing. The request is required for the binding.
+func (m *Manager) VerifyPoW(r *http.Request, pow challenge.PoW, nonce string) (token string, ok bool) {
 	if m.cfg.Signer == nil {
 		return "", false
 	}
 	if err := m.cfg.Signer.VerifyPoW(pow, nonce); err != nil {
 		return "", false
 	}
-	tok, err := m.cfg.Signer.IssueSession(m.cfg.SessionTTL)
+	tok, err := m.cfg.Signer.IssueSession(m.cfg.SessionTTL, m.clientBind(r))
 	if err != nil {
 		return "", false
 	}
-	// A solved challenge is the L4 calibrator's ground truth: this client was
-	// a real browser. If the pass rate says we mostly challenge real browsers,
-	// the thresholds loosen automatically.
-	m.calib.Passed()
+	// A solved challenge is the L4 calibrator's ground truth: this client was a
+	// real browser. But do NOT feed calibration while surge is engaged — surge
+	// challenges EVERY unproven visitor regardless of score, so those outcomes
+	// are not informative about the score-based ladder and would wrongly loosen
+	// it for hours after an attack. Only score-driven ladder outcomes calibrate.
+	if !m.underSurge(m.live()) {
+		m.calib.Passed()
+	}
 	return tok, true
 }
 

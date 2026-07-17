@@ -240,7 +240,7 @@ func (a *App) handleVayuShieldPoW(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	tok, ok := a.vayuShield.VerifyPoW(r.Context(), req.Challenge, req.Nonce)
+	tok, ok := a.vayuShield.VerifyPoW(r, req.Challenge, req.Nonce)
 	if !ok {
 		w.WriteHeader(http.StatusForbidden)
 		return
@@ -541,6 +541,9 @@ func (a *App) shieldHeroBody(ctx context.Context) string {
 	if stt.UnderAttack {
 		dot, word = " attack", "Under attack"
 	}
+	if stt.SurgeActive {
+		dot, word = " attack", "Surge active — verifying visitors"
+	}
 	var activeVisitors int64
 	if a.vaEngagement != nil {
 		if rt, err := a.vaEngagement.Realtime(ctx, 5); err == nil {
@@ -562,6 +565,7 @@ func (a *App) shieldHeroBody(ctx context.Context) string {
 		b.WriteString(vsMetric(strconv.FormatInt(a.sovereign.Shed(), 10), "Shed (L0)"))
 	}
 	b.WriteString(vsMetric(strconv.FormatInt(stt.FairShed, 10), "Fair-shed (L2)"))
+	b.WriteString(vsMetric(strconv.FormatInt(stt.SurgeChallenges, 10), "Surge checks (L3)"))
 	b.WriteString(vsMetric(strconv.Itoa(stt.RepJailed)+" / "+strconv.Itoa(stt.Suspects), "Rep-jailed / suspects (L5)"))
 	b.WriteString(`</div>`)
 	return b.String()
@@ -687,6 +691,9 @@ func (a *App) shieldProtectionBody(ctx context.Context) string {
 	b.WriteString(`<div class="vs-feat">`)
 	b.WriteString(vsRow("sh_underattack", "Adaptive under-attack mode", "Automatically tighten challenge thresholds during a flood and relax when it passes.", cur.UnderAttack, true))
 	b.WriteString(`<div class="vs-adv">` + vsField("sh_rps", "Trip at (requests/sec)", strconv.Itoa(cur.UnderAttackRPS)) + `</div></div>`)
+	b.WriteString(`<div class="vs-feat">`)
+	b.WriteString(vsRow("sh_surge", "Sovereign Surge (Under-Attack Mode)", "Meet every unverified visitor with a one-time browser check BEFORE any classification — so a million-bot swarm is absorbed at ~one hash per request, with no CDN. Real browsers pass silently in a moment (their clearance is bound to their network, so a solved check can't be shared across a botnet); bots that won't run it never reach the site. Surge also engages automatically during a flood even when this is off, and a manually-forced surge auto-expires after 12h so a forgotten switch can never keep challenging visitors.", cur.Surge, false))
+	b.WriteString(`</div>`)
 	b.WriteString(`<div class="card-title vs-section">Analytics</div>`)
 	b.WriteString(`<div class="vs-feat">`)
 	b.WriteString(vsRow("sh_beacon", "Engagement analytics", "Measure time-on-page and scroll depth on public pages. Cookieless, no PII.", beaconOn, false))
@@ -1016,6 +1023,7 @@ func (a *App) handleOSShieldSettings(w http.ResponseWriter, r *http.Request) {
 		settings.KeyShieldJailMinutes:    num("sh_jail"),
 		settings.KeyShieldUnderAttack:    bs("sh_underattack"),
 		settings.KeyShieldUnderAttackRPS: num("sh_rps"),
+		settings.KeyShieldSurge:          bs("sh_surge"),
 		settings.KeyAnalyticsBeacon:      bs("sh_beacon"),
 	}
 	if err := a.siteSettings.SetMany(r.Context(), kv); err != nil {
@@ -1199,6 +1207,7 @@ func (a *App) shieldSettings(ctx context.Context) vayushield.Settings {
 		AutoBlockJailMinutes: inum(settings.KeyShieldJailMinutes, 10),
 		UnderAttack:          on(settings.KeyShieldUnderAttack),
 		UnderAttackRPS:       inum(settings.KeyShieldUnderAttackRPS, 200),
+		Surge:                on(settings.KeyShieldSurge) || shieldEnvBool("VAYUSHIELD_SURGE", false),
 	}
 }
 

@@ -170,32 +170,49 @@ func Solve(salt string, difficulty, maxTries int) (string, bool) {
 // tokenVersion prefixes session tokens so the format can evolve.
 const tokenVersion byte = 1
 
-// IssueSession mints an opaque, signed session verification token valid for ttl.
-// The token carries only an issue timestamp and random entropy — no PII, no
-// visitor identifier — so it is a security-essential (not tracking) cookie under
-// GDPR. Format: base64url(version || exp(8) || rand(8) || hmac(16)).
-func (s *Signer) IssueSession(ttl time.Duration) (string, error) {
+// IssueSession mints an opaque, signed session verification token valid for ttl,
+// CRYPTOGRAPHICALLY BOUND to a client key (typically the client IP). The binding
+// is folded into the MAC — it is NOT stored in the token — so the cookie carries
+// only an issue timestamp and random entropy (no PII, no visitor identifier: a
+// security-essential, not tracking, cookie under GDPR), yet a token minted for
+// one client fails verification when presented from another. This defeats the
+// "solve once, replay the cookie across a whole botnet" attack: a stolen or
+// shared clearance cookie is worthless from a different source.
+// Format: base64url(version || exp(8) || rand(8) || hmac(16)); mac = HMAC(payload || bind).
+func (s *Signer) IssueSession(ttl time.Duration, bind string) (string, error) {
 	payload := make([]byte, 1+8+8)
 	payload[0] = tokenVersion
 	binary.BigEndian.PutUint64(payload[1:9], uint64(time.Now().Add(ttl).Unix()))
 	if _, err := rand.Read(payload[9:17]); err != nil {
 		return "", err
 	}
-	mac := s.mac(payload)[:16]
+	mac := s.macBound(payload, bind)[:16]
 	tok := append(payload, mac...)
 	return base64.RawURLEncoding.EncodeToString(tok), nil
 }
 
+// macBound computes the session MAC over the payload folded with the client
+// binding, so a token is only valid when presented with the same binding.
+func (s *Signer) macBound(payload []byte, bind string) []byte {
+	m := hmac.New(sha256.New, s.key)
+	m.Write(payload)
+	m.Write([]byte{0}) // domain-separate payload from binding
+	m.Write([]byte(bind))
+	return m.Sum(nil)
+}
+
 // VerifySession reports whether tok is a valid, unexpired, correctly-signed
-// session token. Constant-time on the MAC comparison.
-func (s *Signer) VerifySession(tok string) bool {
+// session token issued for the given client binding. Constant-time on the MAC
+// comparison. A token presented with a different binding than it was issued for
+// fails — so a clearance cookie replayed from another source is rejected.
+func (s *Signer) VerifySession(tok, bind string) bool {
 	raw, err := base64.RawURLEncoding.DecodeString(strings.TrimSpace(tok))
 	if err != nil || len(raw) != 1+8+8+16 || raw[0] != tokenVersion {
 		return false
 	}
 	payload := raw[:17]
 	mac := raw[17:]
-	expected := s.mac(payload)[:16]
+	expected := s.macBound(payload, bind)[:16]
 	if !hmac.Equal(expected, mac) {
 		return false
 	}

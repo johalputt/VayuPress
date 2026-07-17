@@ -1,7 +1,6 @@
 package vayushield
 
 import (
-	"context"
 	"encoding/json"
 	htmlpkg "html"
 	"net/http"
@@ -108,8 +107,8 @@ func TestPoWEndToEndSessionBypass(t *testing.T) {
 	if !ok {
 		t.Fatal("solve failed")
 	}
-	// 2) Verify and mint a session token.
-	tok, ok := m.VerifyPoW(context.Background(), pow, nonce)
+	// 2) Verify and mint a session token (bound to the solving request's client).
+	tok, ok := m.VerifyPoW(httptest.NewRequest("POST", "/__vayushield/pow", nil), pow, nonce)
 	if !ok {
 		t.Fatal("VerifyPoW should succeed for a valid solution")
 	}
@@ -278,7 +277,7 @@ func TestVerifiedSessionBypassesRateLimit(t *testing.T) {
 	signer := challenge.NewSigner([]byte("s"))
 	m := New(Config{Signer: signer, ClientIP: func(r *http.Request) string { return "8.8.8.8:2" }})
 	m.ApplySettings(Settings{Enabled: false, RateLimit: true, RatePerMinute: 1, Burst: 1})
-	tok, _ := signer.IssueSession(time.Hour)
+	tok, _ := signer.IssueSession(time.Hour, "8.8.8.8")
 	for i := 0; i < 10; i++ {
 		rr := httptest.NewRecorder()
 		req := httptest.NewRequest("GET", "/post", nil)
@@ -496,7 +495,7 @@ func TestMiddlewareFairShedExemptsVerifiedSession(t *testing.T) {
 		PressureFn: func() bool { return true },
 	})
 	h := m.Middleware(okHandler())
-	tok, err := signer.IssueSession(12 * time.Hour)
+	tok, err := signer.IssueSession(12*time.Hour, "203.0.113.77")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -557,7 +556,7 @@ func TestMiddlewareReputationJailAndVerifiedExemption(t *testing.T) {
 	}
 
 	// A verified session from the SAME jailed IP always passes.
-	tok, err := signer.IssueSession(12 * time.Hour)
+	tok, err := signer.IssueSession(12*time.Hour, "6.6.6.7")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -629,7 +628,7 @@ func TestChallengeLifecycleFeedsCalibrator(t *testing.T) {
 	if !ok {
 		t.Fatal("solve failed")
 	}
-	if _, ok := m.VerifyPoW(context.Background(), pow, nonce); !ok {
+	if _, ok := m.VerifyPoW(httptest.NewRequest("POST", "/__vayushield/pow", nil), pow, nonce); !ok {
 		t.Fatal("solved PoW should verify")
 	}
 	_, passed, _ := m.calib.Snapshot()

@@ -8,7 +8,31 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
-## [3.13.48] — 2026-07-16
+## [3.13.49] — 2026-07-16
+
+### Added
+- **VayuShield Aegis — Sovereign Surge (Under-Attack Mode), ADR-0137.** A new
+  in-binary defence tier that lets a single VPS absorb a **million-bot
+  scraper/crawler swarm without a CDN and without slowing the site**. During a
+  detected flood (or when the operator flips the switch), every unverified
+  visitor is met with a cheap, stateless proof-of-work browser check **before**
+  any bot classification, fingerprinting, template render or SQLite read. A real
+  browser solves it once in a moment and then rides the priority lane untouched;
+  a bot that will not run it never reaches the expensive path — it costs the
+  server ~one hash. Sovereign and CSP-safe (the solver is a same-origin script,
+  no CDN, no `unsafe-inline`/`eval`, no third party), and fail-open (a signer
+  error serves the request rather than blocking it).
+  - **Anti-replay clearance:** the clearance cookie is cryptographically bound to
+    the solver's network, so a check solved once cannot be shared across a
+    botnet (no new personal data stored).
+  - **SEO-safe:** feeds, sitemaps and `robots.txt` are never challenged
+    (matched by shape, so Hugo `/index.xml` and WordPress `/feed/` are covered),
+    and the challenge response carries `Retry-After` so crawlers treat it as
+    transient. A manually-forced surge auto-expires after 12h so a forgotten
+    switch can never keep challenging visitors; automatic surge relaxes the
+    instant the flood passes.
+  - Live status + an "Surge checks (L3)" counter on the Bot Shield panel, plus a
+    `Sovereign Surge (Under-Attack Mode)` toggle (also `VAYUSHIELD_SURGE`).
 
 ### Changed
 - **Premium UX, phase 4 — flagship themes rebuilt on the sovereign token
