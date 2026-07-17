@@ -46,8 +46,8 @@ func TestManagedEnsureNoBinary(t *testing.T) {
 	if m.running() {
 		t.Error("no process should be running after a failed ensure")
 	}
-	if le := m.lastError(); !strings.Contains(le, "tor binary not found") {
-		t.Errorf("lastError = %q, want it to mention the missing binary", le)
+	if le := m.lastError(); !strings.Contains(le, "not installed") {
+		t.Errorf("lastError = %q, want it to mention tor is not installed", le)
 	}
 }
 

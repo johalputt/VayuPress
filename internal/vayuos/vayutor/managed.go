@@ -52,6 +52,27 @@ func (m *managedTor) cookiePath() string    { return filepath.Join(m.dataDir(), 
 // controlAddr is what dialControl expects for a unix control socket.
 func (m *managedTor) controlAddr() string { return "unix:" + m.controlSocket() }
 
+// resolveBinary returns the tor executable, resolving it from PATH the first
+// time it is actually needed (and caching the result). Resolving lazily — rather
+// than once at process start — means installing tor AFTER VayuPress is already
+// running is picked up on the next reconcile, with no restart.
+func (m *managedTor) resolveBinary() string {
+	m.mu.Lock()
+	b := m.binary
+	m.mu.Unlock()
+	if strings.TrimSpace(b) != "" {
+		return b
+	}
+	p, err := exec.LookPath("tor")
+	if err != nil {
+		return ""
+	}
+	m.mu.Lock()
+	m.binary = p
+	m.mu.Unlock()
+	return p
+}
+
 // running reports whether our tor child is currently alive.
 func (m *managedTor) running() bool {
 	m.mu.Lock()
@@ -90,8 +111,9 @@ func (m *managedTor) ensure(ctx context.Context) error {
 	if m.running() {
 		return nil
 	}
-	if strings.TrimSpace(m.binary) == "" {
-		return m.fail("tor binary not found on PATH — install it (the VayuPress updater does this automatically)")
+	bin := m.resolveBinary()
+	if bin == "" {
+		return m.fail("tor is not installed on the server — run one command as root to add it: `sudo apt-get install -y tor` (or re-run the VayuPress updater). VayuTor then comes up automatically within a minute; no restart needed")
 	}
 	// tor refuses to start unless its DataDirectory is private (0700) and owned
 	// by the running user. We create it fresh under our own writable tree.
@@ -107,7 +129,7 @@ func (m *managedTor) ensure(ctx context.Context) error {
 
 	// Deliberately NOT exec.CommandContext: the daemon must survive the reconcile
 	// context. Its lifetime is managed by stop()/the wait goroutine below.
-	cmd := exec.Command(m.binary, "-f", m.torrcPath()) //nolint:gosec // fixed binary + our own torrc
+	cmd := exec.Command(bin, "-f", m.torrcPath()) //nolint:gosec // fixed binary + our own torrc
 	// Keep tor's own logging out of VayuPress stdout; failures surface via the
 	// control-socket wait and the status line instead.
 	cmd.Stdout = nil
