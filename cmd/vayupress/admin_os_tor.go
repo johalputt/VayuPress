@@ -10,6 +10,7 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -160,6 +161,7 @@ func (a *App) handleOSTor(w http.ResponseWriter, r *http.Request) {
 	}
 	body += `</div>`
 
+	body += a.osTorVanityCard(esc, st, r.URL.Query().Get("vanity_err"))
 	body += osTorHealthCard(esc, st)
 	body += a.osTorPageStatsCard(esc, st)
 	body += a.osTorBridgesCard(r, esc, st)
@@ -284,6 +286,30 @@ func (a *App) osTorHardeningCard(r *http.Request) string {
 	return card
 }
 
+// handleOSTorVanity starts or cancels a vanity-address search for a domain.
+func (a *App) handleOSTorVanity(w http.ResponseWriter, r *http.Request) {
+	if a.vayuTor == nil {
+		http.Redirect(w, r, "/os/tor", http.StatusSeeOther)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Redirect(w, r, "/os/tor", http.StatusSeeOther)
+		return
+	}
+	if r.PostFormValue("action") == "cancel" {
+		a.vayuTor.CancelVanity()
+		http.Redirect(w, r, "/os/tor", http.StatusSeeOther)
+		return
+	}
+	host := r.PostFormValue("host")
+	prefix := r.PostFormValue("prefix")
+	if err := a.vayuTor.StartVanity(host, prefix); err != nil {
+		http.Redirect(w, r, "/os/tor?vanity_err="+url.QueryEscape(err.Error()), http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, "/os/tor", http.StatusSeeOther)
+}
+
 // handleOSTorHardening saves the onion hardening settings (currently the
 // Onion-Location advertising toggle). Read live by the middleware — no kick.
 func (a *App) handleOSTorHardening(w http.ResponseWriter, r *http.Request) {
@@ -383,6 +409,106 @@ func (a *App) osTorPageStatsCard(esc func(string) string, st vtor.Status) string
   </form>
 </div></div>`
 	return card
+}
+
+// osTorVanityCard renders the custom-prefix ("vanity") onion address generator:
+// pick a domain and a short prefix, and VayuTor brute-forces a matching key in
+// the background, then republishes that domain's onion under the new address.
+func (a *App) osTorVanityCard(esc func(string) string, st vtor.Status, startErr string) string {
+	if a.vayuTor == nil {
+		return ""
+	}
+	vs := a.vayuTor.VanityStatus()
+	card := `<div class="card mt-4 vt-vanity" data-vanity` + boolAttr(" data-vanity-active", vs.Active) + `><div class="card-title">✨ Custom (vanity) address</div>`
+	card += `<p class="muted text-sm mb-3">Give a domain a recognisable <code>.onion</code> that starts with letters you choose, instead of a random one. VayuTor searches for a matching key in the background on this server — nothing leaves the box. Each extra character is ~32× more work: <strong>1–4</strong> is seconds, <strong>5</strong> a few minutes, <strong>6–7</strong> can take hours. Allowed characters: <code>a–z</code> and <code>2–7</code>.</p>`
+
+	if vs.Active {
+		card += `<div class="vt-vanity__run"><div class="vt-health__badge vt-health__badge--warn">⏳ Searching</div> `
+		card += `<span class="text-sm">prefix <code>` + esc(vs.Prefix) + `</code> for <strong>` + esc(vs.Host) + `</strong></span></div>`
+		card += `<p class="text-sm muted mt-2">Attempts: <strong data-vanity-tries>` + strconv.FormatInt(vs.Tries, 10) + `</strong> &middot; elapsed <span data-vanity-elapsed>` + fmtDur(vs.Elapsed) + `</span>. You can leave this page — it keeps running.</p>`
+		if vs.Warn {
+			card += `<p class="vt-bridges__warn text-xs mt-1">⚠ A ` + strconv.Itoa(len(vs.Prefix)) + `-character prefix can take a long time (averaging ~` + pow32(len(vs.Prefix)) + ` attempts).</p>`
+		}
+		card += `<form method="post" action="/os/tor/vanity" data-tor-form class="mt-2">
+  <input type="hidden" name="action" value="cancel">
+  <input type="hidden" name="csrf_token" value="">
+  <button type="submit" class="btn btn--ghost btn--sm">Cancel search</button>
+</form>`
+		card += `</div>`
+		return card
+	}
+
+	if vs.Found && vs.Address != "" {
+		card += `<div class="vt-vanity__run"><div class="vt-health__badge vt-health__badge--ok">✓ Found</div> <span class="text-sm">for <strong>` + esc(vs.Host) + `</strong></span></div>`
+		card += `<div class="vt-onion__row mt-2"><code class="vt-onion__addr">` + esc(vs.Address) + `</code></div>`
+		card += `<p class="text-sm muted mt-1">Republishing <strong>` + esc(vs.Host) + `</strong> under this address — it replaces the old one in the list above within a minute.</p>`
+	} else if vs.Error != "" && vs.Error != "cancelled" {
+		card += `<p class="vt-bridges__warn text-sm mb-2">Last search: ` + esc(vs.Error) + `</p>`
+	}
+
+	if startErr != "" {
+		card += `<p class="vt-bridges__warn text-sm mb-2">` + esc(startErr) + `</p>`
+	}
+	// New-search form (also shown after a completed/cancelled search).
+	if len(st.Onions) == 0 {
+		card += `<div class="empty-state">Activate VayuTor and wait for onions to appear, then you can give a domain a custom address.</div></div>`
+		return card
+	}
+	card += `<form method="post" action="/os/tor/vanity" data-tor-form class="vt-vanity__form">
+  <input type="hidden" name="action" value="start">
+  <input type="hidden" name="csrf_token" value="">
+  <label class="field-label" for="vanity-host">Domain</label>
+  <select id="vanity-host" name="host" class="vt-vanity__select">`
+	for _, o := range st.Onions {
+		card += `<option value="` + esc(o.Host) + `">` + esc(o.Host) + `</option>`
+	}
+	card += `</select>
+  <label class="field-label" for="vanity-prefix">Starts with</label>
+  <input id="vanity-prefix" name="prefix" class="vt-vanity__input" type="text" inputmode="latin" autocomplete="off" spellcheck="false" maxlength="7" pattern="[a-z2-7]{1,7}" placeholder="e.g. vayu" required>
+  <button type="submit" class="btn btn--primary">Generate</button>
+</form>
+<p class="muted text-xs mt-2">Tip: keep it to 4–5 characters. The rest of the address stays random.</p>`
+	card += `</div>`
+	return card
+}
+
+// boolAttr returns attr when cond is true, else "" — for optional HTML attributes.
+func boolAttr(attr string, cond bool) string {
+	if cond {
+		return attr + `="1"`
+	}
+	return ""
+}
+
+// fmtDur renders a coarse elapsed duration like "3s", "2m 10s", "1h 4m".
+func fmtDur(d time.Duration) string {
+	if d < 0 {
+		d = 0
+	}
+	switch {
+	case d < time.Minute:
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	case d < time.Hour:
+		return fmt.Sprintf("%dm %ds", int(d.Minutes()), int(d.Seconds())%60)
+	default:
+		return fmt.Sprintf("%dh %dm", int(d.Hours()), int(d.Minutes())%60)
+	}
+}
+
+// pow32 renders a friendly "32^n" attempt estimate.
+func pow32(n int) string {
+	v := 1
+	for i := 0; i < n; i++ {
+		v *= 32
+	}
+	switch {
+	case v >= 1_000_000_000:
+		return strconv.Itoa(v/1_000_000_000) + " billion"
+	case v >= 1_000_000:
+		return strconv.Itoa(v/1_000_000) + " million"
+	default:
+		return strconv.Itoa(v)
+	}
 }
 
 // osTorHealthCard renders the onion health state, a short transition history,
@@ -487,11 +613,26 @@ func (a *App) handleOSTorStats(w http.ResponseWriter, r *http.Request) {
 	if a.vayuTor != nil {
 		st = a.vayuTor.Snapshot()
 	}
-	writeJSON(w, r, http.StatusOK, map[string]interface{}{
+	resp := map[string]interface{}{
 		"visits":    st.Visits,
 		"active":    st.Active,
 		"connected": st.Connected,
 		"onions":    len(st.Onions),
 		"bootstrap": st.BootstrapPct,
-	})
+	}
+	if a.vayuTor != nil {
+		vs := a.vayuTor.VanityStatus()
+		if vs.Active || vs.Found {
+			resp["vanity"] = map[string]interface{}{
+				"active":  vs.Active,
+				"host":    vs.Host,
+				"prefix":  vs.Prefix,
+				"tries":   vs.Tries,
+				"found":   vs.Found,
+				"address": vs.Address,
+				"elapsed": fmtDur(vs.Elapsed),
+			}
+		}
+	}
+	writeJSON(w, r, http.StatusOK, resp)
 }

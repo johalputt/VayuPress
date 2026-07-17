@@ -4510,6 +4510,13 @@
 .vp-os .vt-health__row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .vp-os .vt-health__ago { margin-left: auto; white-space: nowrap; }
 
+/* Vanity (custom-prefix) onion address generator. */
+.vp-os .vt-vanity__run { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.vp-os .vt-vanity__form { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+.vp-os .vt-vanity__select, .vp-os .vt-vanity__input { padding: 8px 10px; border-radius: 8px; background: var(--bg-surface-2); border: 1px solid var(--border); color: var(--text); font-size: 13px; }
+.vp-os .vt-vanity__input { font-family: var(--mono, monospace); width: 10ch; text-transform: lowercase; }
+.vp-os .vt-vanity__select:focus, .vp-os .vt-vanity__input:focus { outline: none; border-color: var(--accent); }
+
 /* Off-screen buffer used by the clipboard fallback (no inline styles). */
 .vp-os .vt-copy-buf { position: fixed; left: -9999px; top: 0; opacity: 0; }
 

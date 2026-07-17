@@ -119,6 +119,9 @@ type Engine struct {
 	managed  *managedTor // self-managed tor daemon (nil unless Managed + a binary)
 	usingMgd bool        // the live control connection is to our managed tor
 
+	vanityMu sync.Mutex   // guards vanity
+	vanity   *vanityState // in-progress vanity-address search (nil if none)
+
 	kick chan struct{}
 	done chan struct{}
 }
