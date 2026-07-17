@@ -8,6 +8,49 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.58] — 2026-07-17
+
+### Added
+- **Theme Store: "Editor" — the world-newsroom flagship theme.** A
+  broadsheet-grade newspaper theme for serious, multinational publications,
+  built from the design language of the world's leading papers (hero-plus-grid
+  front page, print rule hierarchy, rationed accent, serif display over sans
+  chrome):
+  - **Front page as a broadsheet.** A centred serif masthead over an uppercase
+    section bar with double print rules, a hairline story lattice (FT/NYT-style
+    column rules at any breakpoint with no extra markup), and a lead-story
+    package — kicker-style meta, display headline, standfirst-sized excerpt and
+    side art — from the first post automatically.
+  - **Trending & pinned as a numbered "Most read" rail.** The platform's
+    trending widget renders with oversized serif rank numerals, hairline rows
+    and a pinned "package" treatment crowned by an accent rule.
+  - **Newspaper reading experience.** Charter/Georgia book-serif body at a
+    68ch measure, drop caps (double-pathed `initial-letter` + float fallback),
+    centred hairline pull quotes, dateline-style meta, news-blue content links,
+    balanced headlines (`text-wrap: balance/pretty`), and a signed author box
+    ruled top and bottom.
+  - **Premium motion with zero JavaScript.** A scroll-driven pure-CSS reading
+    progress bar and soft cross-page view-transition fades — both strictly
+    progressive (`@supports`-gated) and fully disabled under
+    `prefers-reduced-motion`; hover language is underline-reveals and gentle
+    art zooms, never card lifts.
+  - **Newsroom component kit** (`.editor-*`): stripline/topbar with market
+    up/down colours, breaking bar and WCAG-safe ticker, breaking/live kickers
+    with a reduced-motion-safe pulse, opinion/compact/headline teaser
+    densities, story packages with pinned treatment, section containers with
+    slice layouts, key-points box, share rail, membership fade + prompt, and a
+    fat sitemap footer.
+  - **Theme Studio controls.** Five new Editor controls — paper tone
+    (bright/ivory/FT-salmon), drop cap, story-grid rules, reading progress and
+    page transitions — plus the shared density and heading-size extras. All
+    realised through the standard options pipeline, previewable live, and
+    picked up automatically by the VCB validator.
+  - **Speed & sovereignty by construction.** Pure CSS, system font stacks only
+    (ui-serif/Iowan Old Style/Palatino/Georgia display voice), no external
+    requests, fixed image aspect ratios (zero CLS), compositor-only animation
+    — the 100/100 PageSpeed posture of the platform is preserved untouched,
+    light & dark.
+
 ## [3.13.57] — 2026-07-17
 
 ### Changed
