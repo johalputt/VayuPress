@@ -145,3 +145,43 @@ circuits through third-party bridges is anonymity- and confidentiality-neutral,
 and the "count-only, nothing tracked" privacy posture is unchanged. Diagnostics:
 the VayuTor page reads tor's log tail and shows the exact remedy (allow outbound,
 fix the clock, install obfs4proxy, or paste bridges) plus the current transport.
+
+## Addendum (v3.13.72) — VayuPress-managed current Tor
+
+The last remaining VayuTor blocker on a real deployment was **not** VayuPress: a
+host running an end-of-life OS (Debian 10 "buster") ships Tor **0.4.2.7 (2020)**,
+which today's directory authorities reject ("Consensus not signed by sufficient
+number of requested authorities"). No bridge can fix this — bridges route *around*
+a network block, but consensus validation is done by the local tor, and an
+ancient tor simply cannot validate the current network. Updating a system package
+needs root, which an unprivileged web app must never assume.
+
+To honour the "everything from VayuOS, nothing on the server" constraint, the
+managed tor now **downloads and runs its own current Tor** when the system tor is
+absent or older than 0.4.7 (`internal/vayuos/vayutor/dist.go`):
+
+- **Source.** The Tor Project's official static *expert bundle*, discovered from
+  the distribution index (`dist.torproject.org/torbrowser/`), newest stable
+  first, with the archive mirror and both filename conventions as fallbacks,
+  fetched over CA-validated HTTPS. Only the `tor` binary and its bundled shared
+  libraries are extracted (flat, by base name — path-traversal-safe), into
+  `<tor-dir>/dist/`; the binary is run with `LD_LIBRARY_PATH` pointed at that dir
+  so it needs nothing from the host beyond libc.
+- **Trust & validation.** Transport authenticity comes from HTTPS to the official
+  host. Before use, the downloaded binary must execute and report a version
+  ≥ 0.4.7; anything that fails to run (typically an ancient host libc rejecting a
+  modern build) or is too old is discarded.
+- **No regression.** Any failure falls back to the system tor exactly as before.
+  A failed download is cooled down (15 min) so it isn't retried every reconcile;
+  toggling VayuTor off→on clears the cooldown for an immediate retry. Cached
+  across restarts (re-validated on load). Disable with `VAYUOS_TOR_DOWNLOAD=off`.
+- **Operator-visible fallback.** When even the downloaded build won't run on the
+  host, the admin page states the reason and gives a one-time, run-once-as-root
+  `apt` command to install a current, self-updating Tor from Tor Project's
+  official repository — the guaranteed path for a host too old for a modern static
+  build. For an EOL OS, upgrading the OS remains the durable fix; everything else
+  in VayuTor already works (bridges + embedded obfs4 defeat the provider's Tor
+  block; only consensus validation needs a current tor).
+
+This keeps VayuTor's promise intact: one click in VayuOS, nothing done on the
+server — now even on hosts whose own Tor is too old to join the network.

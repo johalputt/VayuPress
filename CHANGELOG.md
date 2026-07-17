@@ -8,6 +8,29 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.72] — 2026-07-17
+
+### Added
+- **VayuTor runs its own current Tor when the system's is too old — nothing to do
+  on the server.** On a host whose system `tor` is missing or too old to validate
+  today's consensus (e.g. an EOL distro shipping 0.4.2.x), the managed tor now
+  downloads the Tor Project's official static "expert bundle" into VayuPress's own
+  writable state dir (`<tor-dir>/dist/`) and runs *that* binary — as the
+  unprivileged service user, no root, no apt, nothing edited on the server. The
+  bundled build is pinned to its own libraries via `LD_LIBRARY_PATH`, verified to
+  run and be ≥ 0.4.7 before use, and cached across restarts. The download is
+  discovered from the Tor distribution index (newest stable first, primary host +
+  archive mirror, current and legacy filename schemes), fetched over CA-validated
+  HTTPS. Controlled by `VAYUOS_TOR_DOWNLOAD` (default on).
+- **Graceful, no-regression fallback.** If the download can't be reached, or the
+  modern build won't start on an ancient host libc, VayuTor falls back to the
+  system tor exactly as before (a failed attempt is cooled down for 15 min;
+  toggling VayuTor off→on forces an immediate retry). The admin page then shows
+  the precise reason and a one-time, run-once-as-root `apt` command to install a
+  current, self-updating Tor from Tor Project's official repository. When the
+  managed build *is* in use, the publishing card shows "running VayuPress-managed
+  Tor <version>".
+
 ## [3.13.71] — 2026-07-17
 
 ### Security
