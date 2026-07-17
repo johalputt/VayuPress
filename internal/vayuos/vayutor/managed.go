@@ -33,10 +33,26 @@ type managedTor struct {
 	binary string // resolved tor executable (from PATH or an explicit path)
 	dir    string // writable base dir we fully own, e.g. <data>/tor
 
-	mu    sync.Mutex
-	cmd   *exec.Cmd
-	alive bool
-	last  string // last spawn/boot error, for the admin status line
+	mu     sync.Mutex
+	cmd    *exec.Cmd
+	alive  bool
+	last   string // last spawn/boot error, for the admin status line
+	strict bool   // restrict outbound to relay ports 80/443 (firewall-friendly)
+}
+
+// setStrict enables (or disables) firewall-friendly mode: tor only reaches
+// relays on ports 80/443, which punches through the restrictive egress firewalls
+// common on locked-down VPS hosts. Applied on the next (re)start.
+func (m *managedTor) setStrict(v bool) {
+	m.mu.Lock()
+	m.strict = v
+	m.mu.Unlock()
+}
+
+func (m *managedTor) isStrict() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.strict
 }
 
 // newManagedTor prepares (but does not start) a managed instance. binary may be
@@ -105,6 +121,12 @@ func (m *managedTor) buildTorrc() string {
 	// service publication does not need any of them.
 	b.WriteString("SocksPort 0\n")
 	b.WriteString("RunAsDaemon 0\n")
+	// Firewall-friendly mode: only reach relays on 80/443, which gets through the
+	// restrictive egress firewalls common on locked-down hosts. Enabled
+	// automatically after a stalled bootstrap.
+	if m.isStrict() {
+		b.WriteString("ReachableAddresses *:80,*:443\n")
+	}
 	// A pidfile lets a restarted VayuPress find and reap an orphaned tor from a
 	// previous run (e.g. after an in-place self-update re-exec) that still holds
 	// this DataDirectory's lock and control socket.
@@ -275,6 +297,40 @@ func (m *managedTor) stop() {
 		_ = cmd.Process.Kill()
 	}
 	_ = os.Remove(m.controlSocket())
+}
+
+// tailLog returns the last few non-empty lines of tor's log, so the admin page
+// can show WHY a bootstrap is stuck (e.g. "Stuck at 5%: Connecting to a relay")
+// without the operator needing shell access. Best-effort; "" if unavailable.
+func (m *managedTor) tailLog(maxLines int) string {
+	f, err := os.Open(m.logPath())
+	if err != nil {
+		return ""
+	}
+	defer func() { _ = f.Close() }()
+	info, err := f.Stat()
+	if err != nil {
+		return ""
+	}
+	const window = 4096
+	start := info.Size() - window
+	if start < 0 {
+		start = 0
+	}
+	if _, err := f.Seek(start, 0); err != nil {
+		return ""
+	}
+	buf := make([]byte, info.Size()-start)
+	n, _ := f.Read(buf)
+	lines := strings.Split(strings.TrimRight(string(buf[:n]), "\n"), "\n")
+	// Keep the last maxLines non-empty lines.
+	var out []string
+	for i := len(lines) - 1; i >= 0 && len(out) < maxLines; i-- {
+		if s := strings.TrimSpace(lines[i]); s != "" {
+			out = append([]string{s}, out...)
+		}
+	}
+	return strings.Join(out, "\n")
 }
 
 // fail records the latest error for the admin status line and returns it as an

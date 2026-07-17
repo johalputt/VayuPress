@@ -8,6 +8,19 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.65] — 2026-07-17
+
+### Added
+- **VayuTor self-recovers from a stalled Tor bootstrap, and shows the reason.**
+  On locked-down hosts that only permit outbound 80/443, Tor can get stuck early
+  in bootstrap. VayuTor now detects a genuinely **stalled** bootstrap (no forward
+  progress for 150s — a merely-slow first bootstrap that keeps climbing is never
+  disturbed) and automatically restarts its managed Tor in **firewall-friendly
+  mode** (`ReachableAddresses *:80,*:443`), which gets through most restrictive
+  egress firewalls. The VayuTor page also now shows the **last few lines of Tor's
+  own log** while publishing, so the exact bootstrap phase or error is visible
+  without shell access.
+
 ## [3.13.64] — 2026-07-17
 
 ### Fixed

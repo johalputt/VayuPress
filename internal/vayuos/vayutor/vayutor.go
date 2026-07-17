@@ -60,14 +60,17 @@ type Config struct {
 type Engine struct {
 	cfg Config
 
-	mu          sync.RWMutex
-	onionByHost map[string]string // clearnet host -> onion host
-	hostByOnion map[string]string // onion host -> clearnet host
-	ctrl        *control
-	connected   bool
-	lastErr     string
-	bootPct     int    // tor network bootstrap %, 0..100 (100 = onions publishable)
-	bootNote    string // tor's human summary of the current bootstrap phase
+	mu           sync.RWMutex
+	onionByHost  map[string]string // clearnet host -> onion host
+	hostByOnion  map[string]string // onion host -> clearnet host
+	ctrl         *control
+	connected    bool
+	lastErr      string
+	bootPct      int       // tor network bootstrap %, 0..100 (100 = onions publishable)
+	bootNote     string    // tor's human summary of the current bootstrap phase
+	bootBestPct  int       // highest bootstrap % seen this connection (stall detect)
+	bootMovedAt  time.Time // when bootstrap last advanced
+	fascistTried bool      // already fell back to firewall-friendly ports this activation
 
 	visits int64 // atomic; aggregate onion pageviews (no PII, no time)
 
@@ -299,8 +302,34 @@ func (e *Engine) queryBootstrap() {
 	e.mu.Lock()
 	e.bootPct = pct
 	e.bootNote = note
+	// Track forward progress so we can tell a slow-but-climbing bootstrap (fine,
+	// leave it alone) apart from a genuinely stuck one (needs intervention).
+	if pct > e.bootBestPct {
+		e.bootBestPct = pct
+		e.bootMovedAt = time.Now()
+	}
+	stalled := pct < 100 && e.usingMgd && e.managed != nil && !e.fascistTried &&
+		!e.bootMovedAt.IsZero() && time.Since(e.bootMovedAt) > bootStallTimeout
+	if stalled {
+		e.fascistTried = true
+	}
 	e.mu.Unlock()
+
+	// A bootstrap that hasn't advanced for a while on a locked-down host usually
+	// means only 80/443 outbound is allowed. Restart tor in firewall-friendly
+	// mode (once) — it never fires while bootstrap is still climbing.
+	if stalled {
+		e.managed.setStrict(true)
+		e.managed.stop() // next reconcile reaps + respawns with ReachableAddresses
+		e.setErr("bootstrap stalled — retrying Tor via firewall-friendly ports (80/443)")
+		e.Kick()
+	}
 }
+
+// bootStallTimeout is how long bootstrap may sit without advancing before
+// VayuTor retries tor in firewall-friendly mode. Generous, so a merely-slow
+// first bootstrap (downloading the consensus) is never disrupted.
+const bootStallTimeout = 150 * time.Second
 
 // parseBootstrap extracts the PROGRESS percentage and SUMMARY text from a tor
 // "status/bootstrap-phase" line, e.g.
@@ -401,6 +430,11 @@ func (e *Engine) adoptControl(c *control, managed bool) {
 	e.ctrl = c
 	e.connected = true
 	e.usingMgd = managed
+	// Start bootstrap-progress tracking fresh for this connection.
+	e.bootPct = 0
+	e.bootNote = ""
+	e.bootBestPct = 0
+	e.bootMovedAt = time.Now()
 	e.onionByHost = map[string]string{}
 	e.hostByOnion = map[string]string{}
 	e.mu.Unlock()
@@ -422,14 +456,18 @@ func (e *Engine) teardown() {
 	e.usingMgd = false
 	e.bootPct = 0
 	e.bootNote = ""
+	e.bootBestPct = 0
+	e.bootMovedAt = time.Time{}
+	e.fascistTried = false
 	e.onionByHost = map[string]string{}
 	e.hostByOnion = map[string]string{}
 	mgd := e.managed
 	e.mu.Unlock()
 	// Stop our tor child when deactivated so "off" is truly off (no process, no
-	// onions). Re-activation respawns it. Kept outside the lock so we never hold
-	// it across a process kill.
+	// onions). Re-activation respawns it fresh (non-strict). Kept outside the
+	// lock so we never hold it across a process kill.
 	if mgd != nil {
+		mgd.setStrict(false)
 		mgd.stop()
 	}
 }
@@ -499,6 +537,7 @@ type Status struct {
 	BootstrapPct int     // tor network bootstrap % (100 = onions reachable)
 	BootstrapEng string  // tor's summary of the current bootstrap phase
 	LogPath      string  // managed tor's log file, for diagnostics ("" if external)
+	LogTail      string  // last few lines of the managed tor log (bootstrap reason)
 }
 
 // Onion is one domain↔onion mapping for the admin table.
@@ -534,6 +573,9 @@ func (e *Engine) Snapshot() Status {
 	}
 	if e.managed != nil {
 		st.LogPath = e.managed.logPath()
+		if !st.Connected || st.BootstrapPct < 100 {
+			st.LogTail = e.managed.tailLog(3)
+		}
 	}
 	for host, onionHost := range e.onionByHost {
 		st.Onions = append(st.Onions, Onion{Host: host, OnionHost: onionHost})
