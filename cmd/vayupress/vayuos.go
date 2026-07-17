@@ -623,6 +623,14 @@ func (a *App) bootVayuOS() {
 			return a.siteSettings != nil &&
 				a.siteSettings.Get(context.Background(), settings.KeyTorPageStats) == "on"
 		},
+		Notify: func(event string, payload map[string]any) {
+			// Onion health alerts ride the existing signed-webhook dispatcher, so
+			// operators subscribe a URL to "tor.onion_down"/"tor.onion_recovered"
+			// like any other event. No visitor data is in the payload.
+			if a.webhooks != nil {
+				a.webhooks.Dispatch(context.Background(), event, payload)
+			}
+		},
 	})
 
 	a.vayuKernel = vkernel.NewBus()

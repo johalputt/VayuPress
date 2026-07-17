@@ -8,9 +8,11 @@ package main
 // is a nonce'd same-origin script.
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	htmpl "html/template"
 
@@ -158,6 +160,7 @@ func (a *App) handleOSTor(w http.ResponseWriter, r *http.Request) {
 	}
 	body += `</div>`
 
+	body += osTorHealthCard(esc, st)
 	body += a.osTorPageStatsCard(esc, st)
 	body += a.osTorBridgesCard(r, esc, st)
 	body += osTorPrivacyNote(st)
@@ -334,6 +337,80 @@ func (a *App) osTorPageStatsCard(esc func(string) string, st vtor.Status) string
   </form>
 </div></div>`
 	return card
+}
+
+// osTorHealthCard renders the onion health state, a short transition history,
+// and how outage alerts are delivered (via subscribed webhooks).
+func osTorHealthCard(esc func(string) string, st vtor.Status) string {
+	cls, label, icon := torHealthBadge(st.Health)
+	card := `<div class="card mt-4 vt-health"><div class="card-title">🩺 Health &amp; alerts</div>`
+	card += `<div class="vt-health__now"><span class="vt-health__badge ` + cls + `">` + icon + ` ` + label + `</span>`
+	if st.Health != vtor.HealthOff {
+		if d := torRelDur(st.HealthSince); d != "" {
+			card += ` <span class="muted text-sm">for ` + d + `</span>`
+		}
+	}
+	card += `</div>`
+	if st.HealthReason != "" && st.Health != vtor.HealthHealthy && st.Health != vtor.HealthOff {
+		card += `<p class="text-sm muted mt-1">` + esc(st.HealthReason) + `</p>`
+	}
+	card += `<p class="text-sm muted mt-2">VayuTor watches every onion and, when they go down or recover, POSTs a signed alert to any webhook subscribed to <code>tor.onion_down</code> / <code>tor.onion_recovered</code>. Alerts are debounced, so a brief blip or the normal startup climb never pages you — and the payload is operational only (state, reason, onion/domain counts), never visitor data.</p>`
+	if len(st.HealthLog) > 0 {
+		card += `<div class="vt-health__log">`
+		for i := len(st.HealthLog) - 1; i >= 0; i-- { // newest first
+			ev := st.HealthLog[i]
+			c, l, ic := torHealthBadge(ev.State)
+			card += `<div class="vt-health__row"><span class="vt-health__badge vt-health__badge--sm ` + c + `">` + ic + ` ` + l + `</span>`
+			if ev.Reason != "" {
+				card += ` <span class="muted text-xs">` + esc(ev.Reason) + `</span>`
+			}
+			if d := torRelDur(ev.At); d != "" {
+				card += ` <span class="muted text-xs vt-health__ago">` + d + ` ago</span>`
+			}
+			card += `</div>`
+		}
+		card += `</div>`
+	}
+	card += `</div>`
+	return card
+}
+
+// torHealthBadge maps a health state to its CSS class, label, and icon.
+func torHealthBadge(state string) (cls, label, icon string) {
+	switch state {
+	case vtor.HealthHealthy:
+		return "vt-health__badge--ok", "Healthy", "✓"
+	case vtor.HealthStarting:
+		return "vt-health__badge--warn", "Starting", "⏳"
+	case vtor.HealthDegraded:
+		return "vt-health__badge--warn", "Degraded", "⚠"
+	case vtor.HealthDown:
+		return "vt-health__badge--err", "Down", "✕"
+	default:
+		return "vt-health__badge--off", "Off", "○"
+	}
+}
+
+// torRelDur renders a coarse "how long ago / for how long" duration, "" if the
+// time is zero.
+func torRelDur(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	d := time.Since(t)
+	if d < 0 {
+		d = 0
+	}
+	switch {
+	case d < time.Minute:
+		return "<1m"
+	case d < time.Hour:
+		return fmt.Sprintf("%dm", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh %dm", int(d.Hours()), int(d.Minutes())%60)
+	default:
+		return fmt.Sprintf("%dd %dh", int(d.Hours())/24, int(d.Hours())%24)
+	}
 }
 
 // handleOSTorToggle flips the one-click activation setting and kicks the engine
