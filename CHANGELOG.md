@@ -8,6 +8,21 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.71] — 2026-07-17
+
+### Security
+- Bumped `filippo.io/edwards25519` v1.1.0 → v1.2.0 (patches a low-severity
+  `MultiScalarMult` advisory), pulled in transitively by the embedded obfs4
+  transport. Not reachable from VayuPress code paths; upgraded for hygiene.
+
+### Added
+- **VayuTor reports the Tor daemon version and flags an ancient Tor.** When Tor
+  can't validate the network consensus ("not signed by sufficient authorities"),
+  the page now shows the detected version and, if it predates ~0.4.7 (e.g. an EOL
+  distro's 0.4.2.x), says plainly that Tor itself is too old for today's network
+  — which bridges cannot substitute for — and points to current Tor. Read via
+  the control port (`GETINFO version`).
+
 ## [3.13.70] — 2026-07-17
 
 ### Fixed

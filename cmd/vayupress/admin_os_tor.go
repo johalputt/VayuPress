@@ -98,6 +98,12 @@ func (a *App) handleOSTor(w http.ResponseWriter, r *http.Request) {
 			if tip := osTorLogRemedy(st.LogTail); tip != "" {
 				card += `<p class="text-sm mt-2">` + tip + `</p>`
 			}
+			// When tor can't validate the consensus and we know its version, name
+			// it — an EOL distro's ancient tor (e.g. 0.4.2.x) is too old for today's
+			// network, which no bridge can fix.
+			if st.TorVersion != "" && strings.Contains(strings.ToLower(st.LogTail), "not signed by sufficient") {
+				card += `<p class="text-sm mt-1">Detected Tor version: <code>` + esc(st.TorVersion) + `</code>. Anything older than <strong>0.4.7</strong> is too old to validate today's Tor network — <strong>install current Tor</strong> (from <code>https://deb.torproject.org</code>), which bridges cannot substitute for.</p>`
+			}
 		}
 		card += `</div>`
 		body += card
