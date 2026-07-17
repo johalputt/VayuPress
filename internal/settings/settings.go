@@ -201,6 +201,16 @@ const (
 	// cookieless and stores no PII, the same posture as the existing view
 	// analytics, so it is safe to enable by default.
 	KeyAnalyticsBeacon = "analytics.beacon"
+
+	// KeyTorEnabled is the one-click VayuTor toggle: when "on" (and the env
+	// master switch VAYUOS_TOR is not off, and a tor control port is reachable),
+	// every hosted domain is published as a v3 onion service alongside its
+	// clearnet URL. Default OFF — Tor onions are opt-in.
+	KeyTorEnabled = "tor.enabled"
+	// KeyTorVisits is the persisted aggregate count of onion pageviews — the
+	// ENTIRE VayuTor analytic. No identifier, time, path, or any other datum is
+	// ever stored (privacy by construction).
+	KeyTorVisits = "tor.visits"
 )
 
 // FeatureKeys is the set of operator-toggleable feature flags. Each maps to a
@@ -302,6 +312,8 @@ var AllKeys = map[string]bool{
 	KeyShieldUnderAttackRPS: true,
 	KeyShieldSurge:          true,
 	KeyAnalyticsBeacon:      true,
+	KeyTorEnabled:           true,
+	KeyTorVisits:            true,
 }
 
 // Defaults are returned when no DB value exists for a key.
@@ -357,6 +369,8 @@ var Defaults = map[string]string{
 	KeyShieldUnderAttack:     "off",
 	KeyShieldUnderAttackRPS:  "200",
 	KeyAnalyticsBeacon:       "on",
+	KeyTorEnabled:            "off",
+	KeyTorVisits:             "0",
 }
 
 // Store is a thread-safe settings store with an in-process read cache.

@@ -29,6 +29,14 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 		chimw.Timeout(30*time.Second),
 		securityHeadersMiddleware,
 	)
+	// VayuTor onion routing — maps an incoming <onion>.onion Host to the clearnet
+	// domain it serves (so per-domain routing works over Tor), and advertises the
+	// onion on clearnet responses via Onion-Location. Runs BEFORE the domain
+	// resolver so the rewritten Host resolves normally. No-op unless VayuTor is
+	// available; never affects clearnet routing.
+	if a.vayuTor != nil {
+		r.Use(a.torOnionMiddleware)
+	}
 	// VayuDomains host resolution — annotates each request with the registered
 	// domain that owns its Host header (Stage 1). A pure pass-through: it only
 	// adds context, so the primary domain is served byte-identically.
