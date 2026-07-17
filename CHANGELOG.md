@@ -8,7 +8,19 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
-## [3.13.52] — 2026-07-16
+## [3.13.53] — 2026-07-17
+
+### Changed
+- **Analytics traffic chart — interactive, premium, and instant.** The Overview
+  chart is redesigned: a gradient-filled pageviews area, a dashed unique-visitors
+  line, quartile value gridlines with axis labels, evenly-spaced date labels, and
+  a "peak" badge. **Hovering any point now shows a styled tooltip with that day's
+  date, pageviews and unique visitors** — with a guide line and highlighted dots,
+  and the tooltip flips to stay on-screen near the edges. It is built entirely in
+  pure SVG + CSS (no JavaScript, no charting library, no inline styles), so it is
+  fully CSP-safe, adds zero page weight, and is buttery-smooth; a light one-shot
+  draw-in animation respects `prefers-reduced-motion`. GDPR posture unchanged —
+  aggregate, no-PII counts only.
 
 ### Changed
 - **VayuShield detection is now self-maintaining in the background; the stale

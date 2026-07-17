@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/johalputt/vayupress/internal/analytics"
 )
@@ -159,14 +160,39 @@ func osDonut(items []osChartSeg, emptyMsg string) string {
 		`<div class="vp-legend">` + legend + `</div></div>`
 }
 
-// osTrendChart renders a two-series area+line chart: pageviews (filled area +
-// line) and unique visitors (line), with light gridlines. Pure SVG + classes.
+// prettyChartDate turns an ISO date (2006-01-02) into a compact "Jan 2" for
+// tooltips/axis labels; falls back to the raw string if it does not parse.
+func prettyChartDate(iso string) string {
+	if t, err := time.Parse("2006-01-02", iso); err == nil {
+		return t.Format("Jan 2")
+	}
+	return iso
+}
+
+// maxStyledTooltips caps how many per-day styled tooltip groups are drawn, so a
+// multi-year daily window cannot balloon the SVG DOM. Beyond it, every day is
+// still hoverable but via a lightweight native <title> (browser tooltip) — the
+// chart stays fast at 1000+ points.
+const maxStyledTooltips = 190
+
+// osTrendChart renders the premium interactive traffic chart: a gradient-filled
+// pageviews area, a pageviews line and a unique-visitors line, quartile
+// gridlines with value labels, and — on hover over any day's vertical band — a
+// guide line, highlighted dots and a styled tooltip showing that day's date,
+// pageviews and unique visitors. Everything is pure SVG + CSS classes with a
+// uniform viewBox (undistorted dots/text) and CSS-only hover reveal: no inline
+// styles, no JavaScript, no distortion, CSP-safe, and instant. GDPR posture is
+// unchanged (aggregate no-PII counts only).
 func osTrendChart(series []analytics.DayPageviews, title string) string {
 	if len(series) == 0 {
 		return ""
 	}
-	const w, h = 720.0, 180.0
-	const padB = 18.0 // bottom padding for date labels
+	const w, h = 1000.0, 220.0
+	const padL, padR, padT, padB = 6.0, 6.0, 12.0, 22.0
+	plotW := w - padL - padR
+	plotH := h - padT - padB
+	baseY := h - padB
+
 	max := 1
 	for _, d := range series {
 		if d.Count > max {
@@ -179,44 +205,126 @@ func osTrendChart(series []analytics.DayPageviews, title string) string {
 	n := len(series)
 	xAt := func(i int) float64 {
 		if n == 1 {
-			return w / 2
+			return padL + plotW/2
 		}
-		return float64(i) / float64(n-1) * w
+		return padL + float64(i)/float64(n-1)*plotW
 	}
 	yAt := func(v int) float64 {
-		return (h - padB) - (float64(v)/float64(max))*(h-padB-6)
+		return baseY - (float64(v)/float64(max))*plotH
 	}
-	// Gridlines (quartiles).
+
+	// Gridlines + y-axis value labels at 0 / 25 / 50 / 75 / 100 %.
 	grid := ""
-	for _, f := range []float64{0.25, 0.5, 0.75} {
-		y := (h - padB) * (1 - f)
-		grid += fmt.Sprintf(`<line class="chart-grid" x1="0" y1="%.1f" x2="%.1f" y2="%.1f"></line>`, y, w, y)
+	for _, f := range []float64{0, 0.25, 0.5, 0.75, 1} {
+		y := baseY - f*plotH
+		grid += fmt.Sprintf(`<line class="chart-grid" x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f"></line>`, padL, y, w-padR, y)
+		grid += fmt.Sprintf(`<text class="chart-yaxis" x="%.1f" y="%.1f">%s</text>`, padL, y-2, humanCount(int(float64(max)*f+0.5)))
 	}
+
 	pv, vis := "", ""
-	area := fmt.Sprintf("0,%.1f ", h-padB)
+	area := fmt.Sprintf("%.1f,%.1f ", padL, baseY)
 	for i, d := range series {
-		x, y := xAt(i), yAt(d.Count)
-		pv += fmt.Sprintf("%.1f,%.1f ", x, y)
-		area += fmt.Sprintf("%.1f,%.1f ", x, y)
+		x := xAt(i)
+		pv += fmt.Sprintf("%.1f,%.1f ", x, yAt(d.Count))
+		area += fmt.Sprintf("%.1f,%.1f ", x, yAt(d.Count))
 		vis += fmt.Sprintf("%.1f,%.1f ", x, yAt(d.Visitors))
 	}
-	area += fmt.Sprintf("%.1f,%.1f", w, h-padB)
-	// First/last date labels.
-	labels := ""
-	if n > 0 {
-		labels = fmt.Sprintf(`<text class="chart-axis" x="0" y="%.1f">%s</text>`+
-			`<text class="chart-axis chart-axis--end" x="%.1f" y="%.1f">%s</text>`,
-			h-4, html.EscapeString(series[0].Date), w, h-4, html.EscapeString(series[n-1].Date))
+	area += fmt.Sprintf("%.1f,%.1f", padL+plotW, baseY)
+
+	// X-axis date labels: first, last, and a handful evenly spaced between, so a
+	// long window is not an unreadable smear of dates.
+	xlabels := ""
+	step := 1
+	if n > 8 {
+		step = (n + 6) / 7
 	}
-	return `<div class="vp-trend">` +
+	for i := 0; i < n; i += step {
+		anchor := "chart-xaxis"
+		if i == 0 {
+			anchor = "chart-xaxis chart-xaxis--start"
+		} else if i >= n-step {
+			continue // avoid colliding with the forced last label
+		}
+		xlabels += fmt.Sprintf(`<text class="%s" x="%.1f" y="%.1f">%s</text>`, anchor, xAt(i), h-4, html.EscapeString(prettyChartDate(series[i].Date)))
+	}
+	if n > 1 {
+		xlabels += fmt.Sprintf(`<text class="chart-xaxis chart-xaxis--end" x="%.1f" y="%.1f">%s</text>`, xAt(n-1), h-4, html.EscapeString(prettyChartDate(series[n-1].Date)))
+	}
+
+	// Per-day interactive layer: a full-height transparent hit band, a guide line,
+	// dots and a styled tooltip, all revealed on :hover by CSS. The band spans the
+	// midpoints to its neighbours so the whole vertical slice is hoverable.
+	styled := n <= maxStyledTooltips
+	pts := ""
+	for i, d := range series {
+		x := xAt(i)
+		left, right := padL, w-padR
+		if i > 0 {
+			left = (xAt(i-1) + x) / 2
+		}
+		if i < n-1 {
+			right = (x + xAt(i+1)) / 2
+		}
+		pvY, visY := yAt(d.Count), yAt(d.Visitors)
+		hit := fmt.Sprintf(`<rect class="vp-pt__hit" x="%.1f" y="%.1f" width="%.1f" height="%.1f"></rect>`, left, padT, right-left, plotH)
+		if !styled {
+			// Lightweight native tooltip for very long windows.
+			pts += `<g class="vp-pt">` + hit +
+				fmt.Sprintf(`<title>%s — %s pageviews · %s visitors</title>`, html.EscapeString(series[i].Date), humanCount(d.Count), humanCount(d.Visitors)) +
+				`</g>`
+			continue
+		}
+		guide := fmt.Sprintf(`<line class="vp-pt__guide" x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f"></line>`, x, padT, x, baseY)
+		dotPV := fmt.Sprintf(`<circle class="vp-pt__dot vp-pt__dot--pv" cx="%.1f" cy="%.1f" r="3.5"></circle>`, x, pvY)
+		dotVis := fmt.Sprintf(`<circle class="vp-pt__dot vp-pt__dot--vis" cx="%.1f" cy="%.1f" r="3.5"></circle>`, x, visY)
+		// Tooltip card: anchor to the left of the guide for points in the right
+		// third so it never clips the chart edge.
+		tipW, tipH := 132.0, 62.0
+		tx := x + 12
+		tipCls := "vp-pt__tip"
+		if x > w*0.62 {
+			tx = x - 12 - tipW
+			tipCls = "vp-pt__tip vp-pt__tip--left"
+		}
+		ty := pvY - tipH - 8
+		if ty < padT {
+			ty = padT
+		}
+		tip := fmt.Sprintf(`<g class="%s" transform="translate(%.1f,%.1f)">`, tipCls, tx, ty) +
+			fmt.Sprintf(`<rect class="vp-pt__tip-bg" x="0" y="0" width="%.0f" height="%.0f" rx="8"></rect>`, tipW, tipH) +
+			`<text class="vp-pt__tip-date" x="12" y="18">` + html.EscapeString(prettyChartDate(d.Date)) + `</text>` +
+			`<circle class="vp-pt__tip-dot vp-pt__tip-dot--pv" cx="16" cy="34" r="3.5"></circle>` +
+			`<text class="vp-pt__tip-lbl" x="26" y="38">Pageviews</text>` +
+			`<text class="vp-pt__tip-val" x="120" y="38">` + humanCount(d.Count) + `</text>` +
+			`<circle class="vp-pt__tip-dot vp-pt__tip-dot--vis" cx="16" cy="50" r="3.5"></circle>` +
+			`<text class="vp-pt__tip-lbl" x="26" y="54">Visitors</text>` +
+			`<text class="vp-pt__tip-val" x="120" y="54">` + humanCount(d.Visitors) + `</text>` +
+			`</g>`
+		pts += `<g class="vp-pt">` + hit + guide + dotPV + dotVis + tip + `</g>`
+	}
+
+	peakDay, peakVal := "", 0
+	for _, d := range series {
+		if d.Count > peakVal {
+			peakVal, peakDay = d.Count, d.Date
+		}
+	}
+	peakNote := ""
+	if peakVal > 0 {
+		peakNote = `<span class="vp-trend-peak">Peak ` + humanCount(peakVal) + ` on ` + html.EscapeString(prettyChartDate(peakDay)) + `</span>`
+	}
+
+	return `<div class="vp-trend" data-chart>` +
 		`<div class="vp-trend-legend"><span class="vp-legend__item"><span class="vp-legend__dot legend-c1"></span>Pageviews</span>` +
-		`<span class="vp-legend__item"><span class="vp-legend__dot legend-c2"></span>Unique visitors</span></div>` +
-		`<svg class="vp-trend-svg" viewBox="0 0 720 180" preserveAspectRatio="none" role="img" aria-label="` + html.EscapeString(title) + `">` +
+		`<span class="vp-legend__item"><span class="vp-legend__dot legend-c2"></span>Unique visitors</span>` + peakNote + `</div>` +
+		`<svg class="vp-trend-svg" viewBox="0 0 1000 220" preserveAspectRatio="xMidYMid meet" role="img" aria-label="` + html.EscapeString(title) + `">` +
+		`<defs><linearGradient id="vpTrendFill" x1="0" y1="0" x2="0" y2="1">` +
+		`<stop class="vp-trend-grad-0" offset="0"></stop><stop class="vp-trend-grad-1" offset="1"></stop></linearGradient></defs>` +
 		grid +
 		`<polygon class="vp-trend-area" points="` + area + `"></polygon>` +
 		`<polyline class="vp-trend-line vp-trend-line--pv" points="` + pv + `"></polyline>` +
 		`<polyline class="vp-trend-line vp-trend-line--vis" points="` + vis + `"></polyline>` +
-		labels +
+		xlabels + pts +
 		`</svg></div>`
 }
 

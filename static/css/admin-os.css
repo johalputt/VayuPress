@@ -3843,15 +3843,56 @@
 
 /* Two-series trend chart */
 .vp-os .vp-trend { margin-top: .25rem; }
-.vp-os .vp-trend-legend { display: flex; gap: 1.2rem; margin-bottom: .6rem; font-size: .8rem; color: var(--text-2); }
-.vp-os .vp-trend-svg { width: 100%; height: 180px; display: block; overflow: visible; }
-.vp-os .chart-grid { stroke: var(--border); stroke-width: 1; }
-.vp-os .vp-trend-area { fill: var(--brand-dim); opacity: .5; }
+.vp-os .vp-trend-legend { display: flex; align-items: center; gap: 1.2rem; margin-bottom: .6rem; font-size: .8rem; color: var(--text-2); }
+.vp-os .vp-trend-peak { margin-left: auto; font-size: .72rem; color: var(--text-3); padding: .12rem .55rem; border-radius: 999px; background: color-mix(in srgb, var(--chart-1) 12%, transparent); }
+.vp-os .vp-trend-svg { width: 100%; height: auto; max-height: 320px; display: block; overflow: visible; }
+.vp-os .chart-grid { stroke: var(--border); stroke-width: 1; opacity: .5; }
+.vp-os .chart-yaxis { fill: var(--text-3); font-size: 9px; }
+.vp-os .chart-xaxis { fill: var(--text-3); font-size: 9px; text-anchor: middle; }
+.vp-os .chart-xaxis--start { text-anchor: start; }
+.vp-os .chart-xaxis--end { text-anchor: end; }
+
+/* Gradient area fill (stop colours set here so no inline SVG styles are needed). */
+.vp-os .vp-trend-grad-0 { stop-color: var(--chart-1); stop-opacity: .34; }
+.vp-os .vp-trend-grad-1 { stop-color: var(--chart-1); stop-opacity: 0; }
+.vp-os .vp-trend-area { fill: url(#vpTrendFill); }
 .vp-os .vp-trend-line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
 .vp-os .vp-trend-line--pv { stroke: var(--chart-1); }
 .vp-os .vp-trend-line--vis { stroke: var(--chart-2); stroke-dasharray: 4 3; }
-.vp-os .chart-axis { fill: var(--text-3); font-size: 10px; }
-.vp-os .chart-axis--end { text-anchor: end; }
+
+/* ── Interactive hover layer: guide line, dots and a styled tooltip, revealed by
+   pure CSS on band :hover (no JS, no inline styles). ─────────────────────────── */
+.vp-os .vp-pt__hit { fill: transparent; cursor: crosshair; }
+.vp-os .vp-pt__guide { stroke: var(--text-3); stroke-width: 1; stroke-dasharray: 3 3; opacity: 0; vector-effect: non-scaling-stroke; }
+.vp-os .vp-pt__dot { opacity: 0; stroke: var(--surface-1); stroke-width: 1.5; }
+.vp-os .vp-pt__dot--pv { fill: var(--chart-1); }
+.vp-os .vp-pt__dot--vis { fill: var(--chart-2); }
+.vp-os .vp-pt__tip { opacity: 0; pointer-events: none; }
+.vp-os .vp-pt__tip-bg { fill: var(--surface-2, #10151f); stroke: var(--border); filter: drop-shadow(0 6px 16px rgba(0,0,0,.4)); }
+.vp-os .vp-pt__tip-date { fill: var(--text-1); font-size: 11px; font-weight: 600; }
+.vp-os .vp-pt__tip-lbl { fill: var(--text-3); font-size: 10px; }
+.vp-os .vp-pt__tip-val { fill: var(--text-1); font-size: 10px; font-weight: 600; text-anchor: end; }
+.vp-os .vp-pt__tip-dot--pv { fill: var(--chart-1); }
+.vp-os .vp-pt__tip-dot--vis { fill: var(--chart-2); }
+/* Only the hovered band lights up. Transitions are short + GPU-cheap (opacity). */
+.vp-os .vp-pt__guide, .vp-os .vp-pt__dot, .vp-os .vp-pt__tip { transition: opacity .12s var(--ease, ease); }
+.vp-os .vp-pt:hover .vp-pt__guide,
+.vp-os .vp-pt:hover .vp-pt__dot,
+.vp-os .vp-pt:hover .vp-pt__tip { opacity: 1; }
+
+/* Light one-shot draw-in when the chart first mounts. */
+@keyframes vpTrendDraw { from { stroke-dashoffset: 3000; } to { stroke-dashoffset: 0; } }
+@keyframes vpTrendRise { from { opacity: 0; } to { opacity: 1; } }
+.vp-os .vp-trend[data-chart] .vp-trend-line { stroke-dasharray: 3000; animation: vpTrendDraw .9s var(--ease-out, ease) forwards; }
+.vp-os .vp-trend[data-chart] .vp-trend-line--vis { stroke-dasharray: 4 3; animation: vpTrendRise .9s ease forwards; }
+.vp-os .vp-trend[data-chart] .vp-trend-area { animation: vpTrendRise 1s ease forwards; }
+@media (prefers-reduced-motion: reduce) {
+  .vp-os .vp-trend[data-chart] .vp-trend-line,
+  .vp-os .vp-trend[data-chart] .vp-trend-line--vis,
+  .vp-os .vp-trend[data-chart] .vp-trend-area { animation: none; stroke-dasharray: none; }
+  .vp-os .vp-trend-line--vis { stroke-dasharray: 4 3; }
+  .vp-os .vp-pt__guide, .vp-os .vp-pt__dot, .vp-os .vp-pt__tip { transition: none; }
+}
 
 /* ── Editor: Ghost-style writing surface ─────────────────────────────────────
    A calm, centered, chrome-free writing measure. Block controls stay invisible
