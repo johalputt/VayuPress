@@ -83,6 +83,9 @@ func (a *App) handleOSTor(w http.ResponseWriter, r *http.Request) {
 		if st.BootstrapEng != "" {
 			note += " (" + esc(st.BootstrapEng) + ")"
 		}
+		if st.Transport != "" && st.Transport != "direct" {
+			note += ` &middot; via <strong>` + esc(st.Transport) + `</strong>`
+		}
 		note += `. Your <code>.onion</code> addresses become reachable once this reaches 100%. The first time, this takes a couple of minutes. If it stays stuck below 100%, the server can't reach the Tor network — allow <strong>outbound</strong> connections (inbound stays closed).`
 		if st.LogPath != "" {
 			note += ` Diagnostic log: <code>` + esc(st.LogPath) + `</code>.`
@@ -139,10 +142,16 @@ func osTorLogRemedy(log string) string {
 		// Tor rejected the network consensus. Overwhelmingly this is a wrong
 		// server clock, or a tor package too old to know the current authorities.
 		return `⚠ <strong>Tor can't validate the network consensus.</strong> This is almost always the <strong>server clock being off</strong> — even a few minutes of skew breaks it. Enable time sync: <code>sudo timedatectl set-ntp true</code> (check with <code>timedatectl</code>), then it recovers within a minute. If the clock is correct, your <code>tor</code> package may be too old — check <code>tor --version</code> and update it.`
+	case strings.Contains(low, "obfs4proxy") ||
+		strings.Contains(low, "pluggable transport") ||
+		strings.Contains(low, "managed proxy"):
+		return `⚠ <strong>The obfs4 bridge transport isn't installed.</strong> Run <code>sudo apt-get install -y obfs4proxy</code> (or re-run the VayuPress updater), then reload — VayuTor picks it up within a minute.`
 	case strings.Contains(low, "no route to host") ||
-		strings.Contains(low, "connection refused") ||
+		strings.Contains(low, "noroute"):
+		return `⚠ <strong>Your network blocks Tor at the IP level</strong> (common on some VPS/mail hosts). Your firewall is fine — the provider is null-routing Tor relays. VayuTor auto-escalates to <strong>Tor bridges</strong> to route around this. If it stays stuck, get obfs4 bridges from <code>https://bridges.torproject.org</code> (or email <code>bridges@torproject.org</code>) and set <code>VAYUOS_TOR_BRIDGES</code> to those lines, then reload.`
+	case strings.Contains(low, "connection refused") ||
 		strings.Contains(low, "connection timed out"):
-		return `⚠ <strong>The server can't reach the Tor network.</strong> Allow <strong>outbound</strong> connections in your firewall / cloud security group (inbound stays closed). VayuTor also auto-retries using only ports 80/443 after a stall.`
+		return `⚠ <strong>The server can't reach the Tor network.</strong> Allow <strong>outbound</strong> connections in your firewall / cloud security group (inbound stays closed). VayuTor also auto-retries using only ports 80/443, then bridges, after a stall.`
 	}
 	return ""
 }

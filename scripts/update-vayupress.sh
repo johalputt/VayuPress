@@ -267,7 +267,7 @@ fi
 # update. Set VAYUOS_TOR=0 to skip.
 if [[ "${VAYUOS_TOR:-1}" == "1" ]] && command -v apt-get >/dev/null 2>&1; then
   info "Ensuring Tor control port for VayuTor…"
-  DEBIAN_FRONTEND=noninteractive apt-get install -y -qq tor >/dev/null 2>&1 || true
+  DEBIAN_FRONTEND=noninteractive apt-get install -y -qq tor obfs4proxy >/dev/null 2>&1 || true
   TORRC=/etc/tor/torrc
   if [[ -f "$TORRC" ]] && ! grep -q "VayuTor control port" "$TORRC" 2>/dev/null; then
     {
