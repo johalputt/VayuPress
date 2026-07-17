@@ -165,6 +165,19 @@ func (c *control) authenticate(cookie []byte) error {
 	return nil
 }
 
+// getInfo issues GETINFO for a single key and returns its value (e.g.
+// "status/bootstrap-phase" → "NOTICE BOOTSTRAP PROGRESS=100 TAG=done …").
+func (c *control) getInfo(key string) (string, error) {
+	rp, err := c.send("GETINFO " + key)
+	if err != nil {
+		return "", err
+	}
+	if !rp.ok() {
+		return "", fmt.Errorf("vayutor: GETINFO %s failed (%d)", key, rp.code)
+	}
+	return rp.value(key), nil
+}
+
 // onion is a created onion service: its address (without the ".onion" suffix as
 // tor reports the ServiceID, plus the full host) and, when freshly minted, the
 // private key to persist for a stable address next time.

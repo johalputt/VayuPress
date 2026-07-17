@@ -61,9 +61,16 @@
       .then(function (r) { return r.ok ? r.json() : Promise.reject(r); })
       .then(function (d) {
         if (d && typeof d.visits === 'number') countEl.textContent = String(d.visits);
+        if (!d) return;
         // If onions came up since page load, a soft reload surfaces the table.
-        if (d && d.active && d.connected && d.onions > 0 &&
-            document.querySelectorAll('[data-onion]').length === 0) {
+        var onionsAppeared = d.active && d.connected && d.onions > 0 &&
+            document.querySelectorAll('[data-onion]').length === 0;
+        // If tor finished joining the network since the page rendered, reload so
+        // the state flips from "Connecting to Tor (NN%)" to "Active".
+        var renderedBoot = parseInt(root.getAttribute('data-boot-pct') || '0', 10);
+        var bootstrapped = d.connected && typeof d.bootstrap === 'number' &&
+            d.bootstrap >= 100 && renderedBoot < 100;
+        if (onionsAppeared || bootstrapped) {
           window.location.reload();
         }
       })

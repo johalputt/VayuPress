@@ -39,9 +39,14 @@ func (a *App) handleOSTor(w http.ResponseWriter, r *http.Request) {
 
 	// ── Status hero + one-click toggle ──
 	stateClass, stateLabel := "vt-state--off", "Inactive"
-	if st.Active && st.Connected {
+	switch {
+	case st.Active && st.Connected && st.BootstrapPct >= 100:
 		stateClass, stateLabel = "vt-state--on", "Active"
-	} else if st.Active && !st.Connected {
+	case st.Active && st.Connected:
+		// Control port is up and onions are registered, but tor is still joining
+		// the Tor network — onions are not reachable until this hits 100%.
+		stateClass, stateLabel = "vt-state--warn", "Connecting to Tor ("+strconv.Itoa(st.BootstrapPct)+"%)"
+	case st.Active && !st.Connected:
 		stateClass, stateLabel = "vt-state--warn", "Activating…"
 	}
 	btnLabel, btnKind, nextState := "Activate onion services", "btn--primary", "on"
@@ -49,7 +54,7 @@ func (a *App) handleOSTor(w http.ResponseWriter, r *http.Request) {
 		btnLabel, btnKind, nextState = "Deactivate", "btn--ghost", "off"
 	}
 
-	body += `<div class="card vt-hero" data-tor>
+	body += `<div class="card vt-hero" data-tor data-boot-pct="` + strconv.Itoa(st.BootstrapPct) + `">
   <div class="vt-hero__main">
     <div class="vt-state ` + stateClass + `"><span class="vt-dot"></span> ` + stateLabel + `</div>
     <div class="vt-hero__count"><span class="vt-count" data-tor-visits>` + strconv.FormatInt(st.Visits, 10) + `</span> <span class="muted">Tor visits</span></div>
@@ -69,6 +74,19 @@ func (a *App) handleOSTor(w http.ResponseWriter, r *http.Request) {
 			hint += `<div class="text-xs muted mt-2">last error: ` + esc(st.LastError) + `</div>`
 		}
 		body += `<div class="card vt-warn"><div class="card-title">⏳ Bringing onions up…</div><p class="text-sm">` + hint + `</p></div>`
+	} else if st.Active && st.Connected && st.BootstrapPct < 100 {
+		// Connected to our tor, but it is still joining the Tor network. Onions
+		// cannot be reached until bootstrap completes — this is the usual reason a
+		// freshly-activated .onion shows "Onion site not found".
+		note := "Tor is joining the network — <strong>" + strconv.Itoa(st.BootstrapPct) + "%</strong>"
+		if st.BootstrapEng != "" {
+			note += " (" + esc(st.BootstrapEng) + ")"
+		}
+		note += `. Your <code>.onion</code> addresses become reachable once this reaches 100%. The first time, this takes a couple of minutes. If it stays stuck below 100%, the server can't reach the Tor network — allow <strong>outbound</strong> connections (inbound stays closed).`
+		if st.LogPath != "" {
+			note += ` Diagnostic log: <code>` + esc(st.LogPath) + `</code>.`
+		}
+		body += `<div class="card vt-warn"><div class="card-title">⏳ Publishing to the Tor network…</div><p class="text-sm">` + note + `</p></div>`
 	}
 
 	// ── Onion address table ──
@@ -142,5 +160,6 @@ func (a *App) handleOSTorStats(w http.ResponseWriter, r *http.Request) {
 		"active":    st.Active,
 		"connected": st.Connected,
 		"onions":    len(st.Onions),
+		"bootstrap": st.BootstrapPct,
 	})
 }

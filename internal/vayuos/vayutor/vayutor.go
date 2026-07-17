@@ -66,6 +66,8 @@ type Engine struct {
 	ctrl        *control
 	connected   bool
 	lastErr     string
+	bootPct     int    // tor network bootstrap %, 0..100 (100 = onions publishable)
+	bootNote    string // tor's human summary of the current bootstrap phase
 
 	visits int64 // atomic; aggregate onion pageviews (no PII, no time)
 
@@ -275,6 +277,52 @@ func (e *Engine) reconcile(ctx context.Context) {
 	e.mu.Lock()
 	e.lastErr = ""
 	e.mu.Unlock()
+
+	e.queryBootstrap()
+}
+
+// queryBootstrap asks tor how far its network bootstrap has progressed. Until it
+// reaches 100% the onion descriptors cannot be published, so a visitor sees
+// "Onion site not found" even though VayuTor reports Active. Best-effort.
+func (e *Engine) queryBootstrap() {
+	e.mu.RLock()
+	ctrl := e.ctrl
+	e.mu.RUnlock()
+	if ctrl == nil {
+		return
+	}
+	phase, err := ctrl.getInfo("status/bootstrap-phase")
+	if err != nil {
+		return
+	}
+	pct, note := parseBootstrap(phase)
+	e.mu.Lock()
+	e.bootPct = pct
+	e.bootNote = note
+	e.mu.Unlock()
+}
+
+// parseBootstrap extracts the PROGRESS percentage and SUMMARY text from a tor
+// "status/bootstrap-phase" line, e.g.
+// `NOTICE BOOTSTRAP PROGRESS=100 TAG=done SUMMARY="Done"`.
+func parseBootstrap(line string) (int, string) {
+	pct := 0
+	if i := strings.Index(line, "PROGRESS="); i >= 0 {
+		rest := line[i+len("PROGRESS="):]
+		n := 0
+		for n < len(rest) && rest[n] >= '0' && rest[n] <= '9' {
+			pct = pct*10 + int(rest[n]-'0')
+			n++
+		}
+	}
+	note := ""
+	if i := strings.Index(line, `SUMMARY="`); i >= 0 {
+		rest := line[i+len(`SUMMARY="`):]
+		if j := strings.IndexByte(rest, '"'); j >= 0 {
+			note = rest[:j]
+		}
+	}
+	return pct, note
 }
 
 // ensureConnected dials + authenticates a control port if not already up. It
@@ -368,6 +416,8 @@ func (e *Engine) teardown() {
 	}
 	e.connected = false
 	e.usingMgd = false
+	e.bootPct = 0
+	e.bootNote = ""
 	e.onionByHost = map[string]string{}
 	e.hostByOnion = map[string]string{}
 	mgd := e.managed
@@ -390,6 +440,8 @@ func (e *Engine) setErr(msg string) {
 		e.ctrl = nil
 	}
 	e.connected = false
+	e.bootPct = 0
+	e.bootNote = ""
 	e.mu.Unlock()
 }
 
@@ -434,12 +486,15 @@ func (e *Engine) flushVisits(ctx context.Context) {
 
 // Status is the admin-facing snapshot of the subsystem.
 type Status struct {
-	Available bool    // env master switch on
-	Active    bool    // one-click toggle on
-	Connected bool    // control port reachable + authenticated
-	Onions    []Onion // per-domain mappings, sorted by host
-	Visits    int64   // aggregate onion pageviews
-	LastError string  // last control error, if any
+	Available    bool    // env master switch on
+	Active       bool    // one-click toggle on
+	Connected    bool    // control port reachable + authenticated
+	Onions       []Onion // per-domain mappings, sorted by host
+	Visits       int64   // aggregate onion pageviews
+	LastError    string  // last control error, if any
+	BootstrapPct int     // tor network bootstrap % (100 = onions reachable)
+	BootstrapEng string  // tor's summary of the current bootstrap phase
+	LogPath      string  // managed tor's log file, for diagnostics ("" if external)
 }
 
 // Onion is one domain↔onion mapping for the admin table.
@@ -465,11 +520,16 @@ func (e *Engine) Snapshot() Status {
 		}
 	}
 	st := Status{
-		Available: e.cfg.Enabled,
-		Active:    e.active(),
-		Connected: e.connected,
-		Visits:    atomic.LoadInt64(&e.visits),
-		LastError: lastErr,
+		Available:    e.cfg.Enabled,
+		Active:       e.active(),
+		Connected:    e.connected,
+		Visits:       atomic.LoadInt64(&e.visits),
+		LastError:    lastErr,
+		BootstrapPct: e.bootPct,
+		BootstrapEng: e.bootNote,
+	}
+	if e.managed != nil {
+		st.LogPath = e.managed.logPath()
 	}
 	for host, onionHost := range e.onionByHost {
 		st.Onions = append(st.Onions, Onion{Host: host, OnionHost: onionHost})

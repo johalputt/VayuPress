@@ -27,6 +27,25 @@ func TestManagedTorrcHasOnlyWhatWeNeed(t *testing.T) {
 	}
 }
 
+func TestParseBootstrap(t *testing.T) {
+	cases := []struct {
+		line    string
+		wantPct int
+		wantSum string
+	}{
+		{`NOTICE BOOTSTRAP PROGRESS=100 TAG=done SUMMARY="Done"`, 100, "Done"},
+		{`NOTICE BOOTSTRAP PROGRESS=45 TAG=requesting_descriptors SUMMARY="Asking for relay descriptors"`, 45, "Asking for relay descriptors"},
+		{`NOTICE BOOTSTRAP PROGRESS=0 TAG=starting SUMMARY="Starting"`, 0, "Starting"},
+		{"garbage", 0, ""},
+	}
+	for _, c := range cases {
+		pct, sum := parseBootstrap(c.line)
+		if pct != c.wantPct || sum != c.wantSum {
+			t.Errorf("parseBootstrap(%q) = (%d,%q), want (%d,%q)", c.line, pct, sum, c.wantPct, c.wantSum)
+		}
+	}
+}
+
 func TestManagedControlPaths(t *testing.T) {
 	m := newManagedTor("tor", "/base/tor")
 	if got, want := m.controlAddr(), "unix:/base/tor/control.sock"; got != want {
