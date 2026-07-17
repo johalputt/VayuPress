@@ -217,6 +217,16 @@ const (
 	// managed tor through these bridges, which defeats a network that blocks Tor
 	// at the IP level (a VPS null-routing public relays, or DPI).
 	KeyTorBridges = "tor.bridges"
+	// KeyTorPageStats opts INTO per-page onion visit counts. Default OFF, which
+	// preserves VayuTor's stricter "not even the path" promise. When "on", VayuTor
+	// keeps an AGGREGATE cumulative count per page (host+path → total views) — and
+	// still no identifier, no time, no session, no ordering, so individual visits
+	// can never be correlated or a visitor deanonymised. Visitor geolocation is
+	// deliberately absent: an onion service never sees the client's IP.
+	KeyTorPageStats = "tor.page_stats"
+	// KeyTorPageHits persists the per-page counts (a small JSON object of
+	// "host path" → count) when KeyTorPageStats is on. Aggregate only.
+	KeyTorPageHits = "tor.page_hits"
 )
 
 // FeatureKeys is the set of operator-toggleable feature flags. Each maps to a
@@ -321,6 +331,8 @@ var AllKeys = map[string]bool{
 	KeyTorEnabled:           true,
 	KeyTorVisits:            true,
 	KeyTorBridges:           true,
+	KeyTorPageStats:         true,
+	KeyTorPageHits:          true,
 }
 
 // Defaults are returned when no DB value exists for a key.
@@ -379,6 +391,8 @@ var Defaults = map[string]string{
 	KeyTorEnabled:            "off",
 	KeyTorVisits:             "0",
 	KeyTorBridges:            "",
+	KeyTorPageStats:          "off",
+	KeyTorPageHits:           "",
 }
 
 // Store is a thread-safe settings store with an in-process read cache.

@@ -31,6 +31,10 @@ type Store interface {
 	DeleteOnion(ctx context.Context, host string) error
 	LoadVisits(ctx context.Context) int64
 	SaveVisits(ctx context.Context, n int64) error
+	// Per-page aggregate onion counts (opt-in; see pagestats.go). The map is
+	// "host path" → cumulative count — no time, identity, or ordering.
+	LoadPageHits(ctx context.Context) map[string]int64
+	SavePageHits(ctx context.Context, hits map[string]int64) error
 }
 
 // Config injects host dependencies. Domains returns every clearnet host to
@@ -43,6 +47,7 @@ type Config struct {
 	Store       Store                                       // identity + counter persistence
 	Domains     func(ctx context.Context) ([]string, error) // all hosted clearnet hosts
 	Active      func() bool                                 // one-click on/off (settings-backed)
+	PageStats   func() bool                                 // opt-in per-page onion counts (settings-backed); nil ⇒ off
 
 	// Managed mode lets VayuPress run its OWN tor daemon (as the unprivileged
 	// service user) when the external control port is absent/unreachable, so
@@ -97,6 +102,9 @@ type Engine struct {
 
 	visits int64 // atomic; aggregate onion pageviews (no PII, no time)
 
+	pageMu   sync.Mutex       // guards pageHits
+	pageHits map[string]int64 // "host path" → cumulative count (opt-in; aggregate only)
+
 	managed  *managedTor // self-managed tor daemon (nil unless Managed + a binary)
 	usingMgd bool        // the live control connection is to our managed tor
 
@@ -110,6 +118,7 @@ func NewEngine(cfg Config) *Engine {
 		cfg:         cfg,
 		onionByHost: map[string]string{},
 		hostByOnion: map[string]string{},
+		pageHits:    map[string]int64{},
 		kick:        make(chan struct{}, 1),
 		done:        make(chan struct{}),
 	}
@@ -142,6 +151,11 @@ func (e *Engine) Start(ctx context.Context) error {
 	}
 	if e.cfg.Store != nil {
 		atomic.StoreInt64(&e.visits, e.cfg.Store.LoadVisits(ctx))
+		if hits := e.cfg.Store.LoadPageHits(ctx); len(hits) > 0 {
+			e.pageMu.Lock()
+			e.pageHits = hits
+			e.pageMu.Unlock()
+		}
 	}
 	go e.loop(ctx)
 	return nil
@@ -690,34 +704,54 @@ func (e *Engine) Visits() int64 { return atomic.LoadInt64(&e.visits) }
 
 // flushVisits persists the counter (bounded to one write per reconcile tick).
 func (e *Engine) flushVisits(ctx context.Context) {
-	if e.cfg.Store != nil {
-		_ = e.cfg.Store.SaveVisits(ctx, atomic.LoadInt64(&e.visits))
+	if e.cfg.Store == nil {
+		return
 	}
+	_ = e.cfg.Store.SaveVisits(ctx, atomic.LoadInt64(&e.visits))
+	// Persist per-page counts too (only meaningful when opted in; a no-op empty
+	// map is cheap and keeps the store consistent if the operator just disabled it).
+	e.pageMu.Lock()
+	snap := make(map[string]int64, len(e.pageHits))
+	for k, v := range e.pageHits {
+		snap[k] = v
+	}
+	e.pageMu.Unlock()
+	_ = e.cfg.Store.SavePageHits(ctx, snap)
 }
 
 // Status is the admin-facing snapshot of the subsystem.
 type Status struct {
-	Available      bool    // env master switch on
-	Active         bool    // one-click toggle on
-	Connected      bool    // control port reachable + authenticated
-	Onions         []Onion // per-domain mappings, sorted by host
-	Visits         int64   // aggregate onion pageviews
-	LastError      string  // last control error, if any
-	BootstrapPct   int     // tor network bootstrap % (100 = onions reachable)
-	BootstrapEng   string  // tor's summary of the current bootstrap phase
-	LogPath        string  // managed tor's log file, for diagnostics ("" if external)
-	LogTail        string  // last few lines of the managed tor log (bootstrap reason)
-	Transport      string  // how the managed tor is reaching the network (direct/80,443/bridges)
-	Obfs4Available bool    // the obfs4 pluggable-transport binary is present (needed for obfs4 bridges)
-	TorVersion     string  // the tor daemon version, e.g. "0.4.2.7" (for diagnostics)
-	TorManaged     bool    // running a VayuPress-downloaded tor (not the system one)
-	TorDownloadErr string  // last managed-download failure, if any (for the fallback hint)
+	Available      bool      // env master switch on
+	Active         bool      // one-click toggle on
+	Connected      bool      // control port reachable + authenticated
+	Onions         []Onion   // per-domain mappings, sorted by host
+	Visits         int64     // aggregate onion pageviews
+	LastError      string    // last control error, if any
+	BootstrapPct   int       // tor network bootstrap % (100 = onions reachable)
+	BootstrapEng   string    // tor's summary of the current bootstrap phase
+	LogPath        string    // managed tor's log file, for diagnostics ("" if external)
+	LogTail        string    // last few lines of the managed tor log (bootstrap reason)
+	Transport      string    // how the managed tor is reaching the network (direct/80,443/bridges)
+	Obfs4Available bool      // the obfs4 pluggable-transport binary is present (needed for obfs4 bridges)
+	TorVersion     string    // the tor daemon version, e.g. "0.4.2.7" (for diagnostics)
+	TorManaged     bool      // running a VayuPress-downloaded tor (not the system one)
+	TorDownloadErr string    // last managed-download failure, if any (for the fallback hint)
+	PageStatsOn    bool      // per-page onion counts are opted in
+	TopPages       []PageHit // most-visited onion pages (aggregate, only when PageStatsOn)
 }
 
 // Onion is one domain↔onion mapping for the admin table.
 type Onion struct {
 	Host      string
 	OnionHost string
+}
+
+// PageHit is one aggregate per-page onion count for the admin table. It carries
+// no time, identity, or ordering — only a cumulative total.
+type PageHit struct {
+	Host  string
+	Path  string
+	Count int64
 }
 
 // Snapshot returns the current status for the admin page.
@@ -760,6 +794,10 @@ func (e *Engine) Snapshot() Status {
 		st.Onions = append(st.Onions, Onion{Host: host, OnionHost: onionHost})
 	}
 	sortOnions(st.Onions)
+	st.PageStatsOn = e.pageStatsOn()
+	if st.PageStatsOn {
+		st.TopPages = e.topPages(topPagesShown)
+	}
 	return st
 }
 

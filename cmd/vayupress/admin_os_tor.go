@@ -158,8 +158,9 @@ func (a *App) handleOSTor(w http.ResponseWriter, r *http.Request) {
 	}
 	body += `</div>`
 
+	body += a.osTorPageStatsCard(esc, st)
 	body += a.osTorBridgesCard(r, esc, st)
-	body += osTorPrivacyNote()
+	body += osTorPrivacyNote(st)
 	body += `<script nonce="` + nonce + `" src="/os/static/js/admin-os-tor.js?v=` + assetVer("js/admin-os-tor.js") + `"></script>`
 	writeOSHTML(w, adminOSLayout(nonce, "VayuTor", "tor", cfg, htmpl.HTML(body)))
 }
@@ -253,14 +254,86 @@ func (a *App) handleOSTorBridges(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/os/tor", http.StatusSeeOther)
 }
 
-// osTorPrivacyNote states the privacy posture explicitly.
-func osTorPrivacyNote() string {
+// handleOSTorPageStats enables/disables the opt-in per-page onion counts, or
+// resets them. The engine reads the setting live, so there is nothing to kick.
+func (a *App) handleOSTorPageStats(w http.ResponseWriter, r *http.Request) {
+	if a.vayuTor == nil || a.siteSettings == nil {
+		http.Redirect(w, r, "/os/tor", http.StatusSeeOther)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Redirect(w, r, "/os/tor", http.StatusSeeOther)
+		return
+	}
+	if r.PostFormValue("reset") == "1" {
+		a.vayuTor.ResetPageHits()
+		http.Redirect(w, r, "/os/tor", http.StatusSeeOther)
+		return
+	}
+	state := "off"
+	if r.PostFormValue("on") == "1" {
+		state = "on"
+	}
+	_ = a.siteSettings.SetMany(r.Context(), map[string]string{settings.KeyTorPageStats: state})
+	http.Redirect(w, r, "/os/tor", http.StatusSeeOther)
+}
+
+// osTorPrivacyNote states the privacy posture explicitly. The "tracked" line is
+// truthful about whether per-page counts are opted in, so the page never claims
+// more privacy than is actually in effect.
+func osTorPrivacyNote(st vtor.Status) string {
+	tracked := `<li><strong>Nothing is tracked.</strong> The only VayuTor metric is a single visit count — no IP (Tor provides none), no time, no path, no user agent, no cookie.</li>`
+	if st.PageStatsOn {
+		tracked = `<li><strong>Aggregate counts only.</strong> You've opted into per-page counts. VayuTor keeps a running total per page and a single overall visit count — and still <strong>no IP</strong> (Tor provides none), <strong>no time</strong>, no session, no ordering, no user agent, no cookie. Individual visits can't be correlated, and a visitor can't be identified or located.</li>`
+	}
 	return `<div class="card mt-4 vt-note"><div class="card-title">Privacy posture</div>
 <ul class="vt-note__list text-sm">
-  <li><strong>Nothing is tracked.</strong> The only VayuTor metric is a single visit count — no IP (Tor provides none), no time, no path, no user agent, no cookie.</li>
+  ` + tracked + `
   <li><strong>Onion keys are yours.</strong> Each address is pinned by a key stored only in your own database, so a restore brings the same <code>.onion</code> back.</li>
   <li><strong>No new attack surface.</strong> VayuTor opens no inbound ports; onion traffic reaches your server through Tor's rendezvous, and the clearnet site is untouched.</li>
 </ul></div>`
+}
+
+// osTorPageStatsCard renders the opt-in per-page onion analytics: a privacy-safe
+// aggregate "which pages are popular" table (no time, IP, identity, or ordering),
+// plus the enable/disable toggle and a reset. Visitor geolocation is impossible
+// over an onion service (the server never sees the client IP), so it is stated
+// as absent rather than offered.
+func (a *App) osTorPageStatsCard(esc func(string) string, st vtor.Status) string {
+	card := `<div class="card mt-4 vt-pages"><div class="card-title">📄 Popular pages — private, opt-in</div>`
+	if !st.PageStatsOn {
+		card += `<p class="muted text-sm mb-3">Off by default. When enabled, VayuTor keeps an <strong>aggregate count per page</strong> (a running total of views) so you can see which posts are popular over Tor. It stays privacy-safe: <strong>no IP</strong> (Tor provides none), no time, no session, no ordering — so it can never identify, locate, or correlate a visitor. <strong>Visitor country isn't shown because it's impossible</strong>: an onion service never sees the visitor's IP.</p>`
+		card += `<form method="post" action="/os/tor/pagestats" data-tor-form>
+  <input type="hidden" name="on" value="1">
+  <input type="hidden" name="csrf_token" value="">
+  <button type="submit" class="btn btn--primary">Enable per-page counts</button>
+</form>`
+		card += `</div>`
+		return card
+	}
+	card += `<p class="muted text-sm mb-3">Aggregate views per page — no IP, time, session, or ordering, so no visit can be traced to a person. Visitor country is deliberately absent (an onion service never sees the client IP).</p>`
+	if len(st.TopPages) == 0 {
+		card += `<div class="empty-state">No page views counted yet. They appear here as visitors browse your <code>.onion</code>.</div>`
+	} else {
+		card += `<div class="vt-pages__table"><table class="vt-pages__t"><thead><tr><th>Domain</th><th>Page</th><th class="vt-pages__num">Views</th></tr></thead><tbody>`
+		for _, p := range st.TopPages {
+			card += `<tr><td>` + esc(p.Host) + `</td><td><code>` + esc(p.Path) + `</code></td><td class="vt-pages__num">` + strconv.FormatInt(p.Count, 10) + `</td></tr>`
+		}
+		card += `</tbody></table></div>`
+	}
+	card += `<div class="vt-pages__actions">
+  <form method="post" action="/os/tor/pagestats" data-tor-form>
+    <input type="hidden" name="on" value="0">
+    <input type="hidden" name="csrf_token" value="">
+    <button type="submit" class="btn btn--ghost btn--sm">Turn off</button>
+  </form>
+  <form method="post" action="/os/tor/pagestats" data-tor-form>
+    <input type="hidden" name="reset" value="1">
+    <input type="hidden" name="csrf_token" value="">
+    <button type="submit" class="btn btn--ghost btn--sm">Reset counts</button>
+  </form>
+</div></div>`
+	return card
 }
 
 // handleOSTorToggle flips the one-click activation setting and kicks the engine

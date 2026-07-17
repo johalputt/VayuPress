@@ -8,6 +8,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"strconv"
 
 	dbpkg "github.com/johalputt/vayupress/internal/db"
@@ -69,4 +70,37 @@ func (s *torStore) SaveVisits(ctx context.Context, n int64) error {
 		return nil
 	}
 	return s.settings.SetMany(ctx, map[string]string{settings.KeyTorVisits: strconv.FormatInt(n, 10)})
+}
+
+// LoadPageHits reads the persisted per-page onion counts (aggregate; opt-in).
+func (s *torStore) LoadPageHits(ctx context.Context) map[string]int64 {
+	if s.settings == nil {
+		return nil
+	}
+	raw := s.settings.Get(ctx, settings.KeyTorPageHits)
+	if raw == "" {
+		return nil
+	}
+	var hits map[string]int64
+	if err := json.Unmarshal([]byte(raw), &hits); err != nil {
+		return nil
+	}
+	return hits
+}
+
+// SavePageHits persists the per-page onion counts as a compact JSON object
+// (batched by the engine to one write per reconcile tick). Empty ⇒ cleared.
+func (s *torStore) SavePageHits(ctx context.Context, hits map[string]int64) error {
+	if s.settings == nil {
+		return nil
+	}
+	val := ""
+	if len(hits) > 0 {
+		b, err := json.Marshal(hits)
+		if err != nil {
+			return err
+		}
+		val = string(b)
+	}
+	return s.settings.SetMany(ctx, map[string]string{settings.KeyTorPageHits: val})
 }

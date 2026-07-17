@@ -619,6 +619,10 @@ func (a *App) bootVayuOS() {
 			return a.siteSettings != nil &&
 				a.siteSettings.Get(context.Background(), settings.KeyTorEnabled) == "on"
 		},
+		PageStats: func() bool {
+			return a.siteSettings != nil &&
+				a.siteSettings.Get(context.Background(), settings.KeyTorPageStats) == "on"
+		},
 	})
 
 	a.vayuKernel = vkernel.NewBus()
