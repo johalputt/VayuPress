@@ -85,6 +85,7 @@ type Engine struct {
 	bootBestPct int       // highest bootstrap % seen this connection (stall detect)
 	bootMovedAt time.Time // when bootstrap last advanced
 	esc         escLevel  // one-shot escalation rung: direct → 80/443 → bridges
+	torVer      string    // tor daemon version (GETINFO version), for diagnostics
 
 	visits int64 // atomic; aggregate onion pageviews (no PII, no time)
 
@@ -309,6 +310,20 @@ func (e *Engine) queryBootstrap() {
 	if ctrl == nil {
 		return
 	}
+	// Capture the tor version once — an ancient tor (e.g. an EOL distro's 0.4.2.x)
+	// can't validate today's consensus, and knowing the version turns that vague
+	// error into precise guidance.
+	e.mu.RLock()
+	haveVer := e.torVer != ""
+	e.mu.RUnlock()
+	if !haveVer {
+		if v, verr := ctrl.getInfo("version"); verr == nil && v != "" {
+			e.mu.Lock()
+			e.torVer = v
+			e.mu.Unlock()
+		}
+	}
+
 	phase, err := ctrl.getInfo("status/bootstrap-phase")
 	if err != nil {
 		return
@@ -680,6 +695,7 @@ type Status struct {
 	LogTail        string  // last few lines of the managed tor log (bootstrap reason)
 	Transport      string  // how the managed tor is reaching the network (direct/80,443/bridges)
 	Obfs4Available bool    // the obfs4 pluggable-transport binary is present (needed for obfs4 bridges)
+	TorVersion     string  // the tor daemon version, e.g. "0.4.2.7" (for diagnostics)
 }
 
 // Onion is one domain↔onion mapping for the admin table.
@@ -712,6 +728,7 @@ func (e *Engine) Snapshot() Status {
 		LastError:    lastErr,
 		BootstrapPct: e.bootPct,
 		BootstrapEng: e.bootNote,
+		TorVersion:   e.torVer,
 	}
 	if e.managed != nil {
 		st.LogPath = e.managed.logPath()

@@ -22,7 +22,7 @@ require (
 )
 
 require (
-	filippo.io/edwards25519 v1.1.0 // indirect
+	filippo.io/edwards25519 v1.2.0 // indirect
 	github.com/cloudflare/circl v1.6.4 // indirect
 	github.com/dchest/siphash v1.2.3 // indirect
 	github.com/dlclark/regexp2/v2 v2.2.2 // indirect
