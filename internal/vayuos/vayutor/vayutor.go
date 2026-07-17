@@ -668,17 +668,18 @@ func (e *Engine) flushVisits(ctx context.Context) {
 
 // Status is the admin-facing snapshot of the subsystem.
 type Status struct {
-	Available    bool    // env master switch on
-	Active       bool    // one-click toggle on
-	Connected    bool    // control port reachable + authenticated
-	Onions       []Onion // per-domain mappings, sorted by host
-	Visits       int64   // aggregate onion pageviews
-	LastError    string  // last control error, if any
-	BootstrapPct int     // tor network bootstrap % (100 = onions reachable)
-	BootstrapEng string  // tor's summary of the current bootstrap phase
-	LogPath      string  // managed tor's log file, for diagnostics ("" if external)
-	LogTail      string  // last few lines of the managed tor log (bootstrap reason)
-	Transport    string  // how the managed tor is reaching the network (direct/80,443/bridges)
+	Available      bool    // env master switch on
+	Active         bool    // one-click toggle on
+	Connected      bool    // control port reachable + authenticated
+	Onions         []Onion // per-domain mappings, sorted by host
+	Visits         int64   // aggregate onion pageviews
+	LastError      string  // last control error, if any
+	BootstrapPct   int     // tor network bootstrap % (100 = onions reachable)
+	BootstrapEng   string  // tor's summary of the current bootstrap phase
+	LogPath        string  // managed tor's log file, for diagnostics ("" if external)
+	LogTail        string  // last few lines of the managed tor log (bootstrap reason)
+	Transport      string  // how the managed tor is reaching the network (direct/80,443/bridges)
+	Obfs4Available bool    // the obfs4 pluggable-transport binary is present (needed for obfs4 bridges)
 }
 
 // Onion is one domain↔onion mapping for the admin table.
@@ -715,6 +716,7 @@ func (e *Engine) Snapshot() Status {
 	if e.managed != nil {
 		st.LogPath = e.managed.logPath()
 		st.Transport = transportLabel(e.esc, e.managed.usingBridges())
+		st.Obfs4Available = e.managed.resolvePT() != ""
 		if !st.Connected || st.BootstrapPct < 100 {
 			st.LogTail = e.managed.tailLog(3)
 		}

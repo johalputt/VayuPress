@@ -126,7 +126,7 @@ func (a *App) handleOSTor(w http.ResponseWriter, r *http.Request) {
 	}
 	body += `</div>`
 
-	body += a.osTorBridgesCard(r, esc)
+	body += a.osTorBridgesCard(r, esc, st)
 	body += osTorPrivacyNote()
 	body += `<script nonce="` + nonce + `" src="/os/static/js/admin-os-tor.js?v=` + assetVer("js/admin-os-tor.js") + `"></script>`
 	writeOSHTML(w, adminOSLayout(nonce, "VayuTor", "tor", cfg, htmpl.HTML(body)))
@@ -160,22 +160,48 @@ func osTorLogRemedy(log string) string {
 // osTorBridgesCard renders the operator's Tor bridge configuration — the entire
 // "network blocks Tor" fix, done from VayuOS with no server access. Bridges are
 // saved to settings (KeyTorBridges) and applied live by the engine.
-func (a *App) osTorBridgesCard(r *http.Request, esc func(string) string) string {
+func (a *App) osTorBridgesCard(r *http.Request, esc func(string) string, st vtor.Status) string {
 	current := ""
 	if a.siteSettings != nil {
 		current = a.siteSettings.Get(r.Context(), settings.KeyTorBridges)
 	}
+	needsObfs4 := strings.Contains(strings.ToLower(current), "obfs4")
 	card := `<div class="card mt-4 vt-bridges"><div class="card-title">🌉 Bridges — for networks that block Tor</div>`
-	card += `<p class="muted text-sm mb-3">If your host or ISP blocks Tor (bootstrap stalls with “no route to host” or a consensus error), paste <strong>obfs4 bridge lines</strong> here and VayuTor routes around the block automatically — no server access needed. Get free bridges at <code>https://bridges.torproject.org</code> (choose <strong>obfs4</strong>), or email <code>bridges@torproject.org</code> from Gmail/Riseup with <code>get transport obfs4</code> in the body. One bridge per line.</p>`
+	// The obfs4 transport binary is required to USE obfs4 bridges. If it's missing,
+	// the bridges are configured but inert (tor falls back to a direct, blocked
+	// connection) — say so loudly, since it's the #1 "I pasted bridges but nothing
+	// happens" cause.
+	if needsObfs4 && !st.Obfs4Available {
+		card += `<div class="vt-bridges__warn text-sm mb-3">⚠ The obfs4 transport is unavailable on this server, so these obfs4 bridges can't be used yet. VayuPress normally provides obfs4 built-in — reload the page; if it persists, re-run the VayuPress updater.</div>`
+	}
+	card += `<p class="muted text-sm mb-3">If your host or ISP blocks Tor (bootstrap stalls with “no route to host” or a consensus error), paste <strong>obfs4 bridge lines</strong> here and VayuTor routes around the block automatically — no server access needed. Get free bridges at <code>https://bridges.torproject.org</code> (choose <strong>obfs4</strong>), or email <code>bridges@torproject.org</code> from Gmail/Riseup with <code>get transport obfs4</code> in the body. Use <strong>IPv4</strong> bridges (addresses like <code>1.2.3.4:443</code>) unless your server has working IPv6 — most don't. One bridge per line.</p>`
 	card += `<form method="post" action="/os/tor/bridges" data-tor-form>
   <textarea class="vt-bridges__input" name="bridges" rows="4" spellcheck="false" autocomplete="off" placeholder="obfs4 1.2.3.4:443 FINGERPRINT cert=... iat-mode=0">` + esc(current) + `</textarea>
   <input type="hidden" name="csrf_token" value="">
   <div class="vt-bridges__row"><button type="submit" class="btn btn--primary">Save bridges</button>`
-	if strings.TrimSpace(current) != "" {
+	if bridgesLookIPv6Only(current) {
+		card += ` <span class="vt-bridges__warn text-xs">⚠ These are <strong>IPv6</strong> bridges (addresses in <code>[…]</code>). They only connect if your server has working IPv6 — most VPS don't, which shows as “connections died in state connect()ing.” Get <strong>IPv4</strong> obfs4 bridges instead.</span>`
+	} else if strings.TrimSpace(current) != "" {
 		card += ` <span class="vt-bridges__on muted text-xs">✓ Bridges configured — used automatically when a direct connection is blocked. Clear the box and save to stop using them.</span>`
 	}
 	card += `</div></form></div>`
 	return card
+}
+
+// bridgesLookIPv6Only reports whether every configured bridge uses an IPv6
+// literal ([addr]:port) — which only works when the server itself has IPv6, a
+// common footgun when the operator picks the IPv6 option on bridges.torproject.org.
+func bridgesLookIPv6Only(raw string) bool {
+	lines := parseTorBridges(raw)
+	if len(lines) == 0 {
+		return false
+	}
+	for _, l := range lines {
+		if !strings.Contains(l, "]:") { // an IPv4 (or hostname) endpoint present → not IPv6-only
+			return false
+		}
+	}
+	return true
 }
 
 // handleOSTorBridges saves operator-supplied Tor bridge lines (from the VayuTor

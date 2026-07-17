@@ -574,6 +574,11 @@ func (a *App) bootVayuOS() {
 	// VAYUOS_TOR_BINARY overrides that lookup.
 	torBinary := config.EnvOr("VAYUOS_TOR_BINARY", "")
 	torDir := config.EnvOr("VAYUOS_TOR_DIR", filepath.Join(filepath.Dir(config.Cfg.MediaDir), "tor"))
+	// Register VayuPress's built-in obfs4 transport so obfs4 bridges work with no
+	// obfs4proxy package installed — tor execs this same binary as the transport.
+	if exe, eerr := os.Executable(); eerr == nil {
+		vtor.SetEmbeddedObfs4(exe + " " + obfs4Subcommand)
+	}
 	a.vayuTor = vtor.NewEngine(vtor.Config{
 		Enabled:     torAvailable,
 		ControlAddr: config.EnvOr("VAYUOS_TOR_CONTROL_ADDR", "127.0.0.1:9051"),

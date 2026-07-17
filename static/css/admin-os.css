@@ -4487,6 +4487,7 @@
 .vp-os .vt-bridges__input:focus { outline: none; border-color: var(--accent); }
 .vp-os .vt-bridges__row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 10px; }
 .vp-os .vt-bridges__on { color: var(--ok, #34d399); }
+.vp-os .vt-bridges__warn { color: var(--warn, #f59e0b); max-width: 60ch; }
 
 /* Off-screen buffer used by the clipboard fallback (no inline styles). */
 .vp-os .vt-copy-buf { position: fixed; left: -9999px; top: 0; opacity: 0; }

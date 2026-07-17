@@ -8,6 +8,25 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.69] — 2026-07-17
+
+### Added
+- **obfs4 is built into VayuPress — obfs4 bridges now need zero server install.**
+  VayuPress runs the obfs4 pluggable transport itself (the lyrebird obfs4 client,
+  exposed as an internal `__run-obfs4` subcommand tor execs); the managed tor is
+  pointed at `ClientTransportPlugin obfs4 exec <vayupress> __run-obfs4`. So an
+  operator on a Tor-blocking VPS can paste obfs4 bridges in the VayuOS **Bridges**
+  panel and it just works — **no `obfs4proxy` package, nothing done on the
+  server**. A system `obfs4proxy`/`lyrebird` is still used when present. Client
+  transport only — no new inbound surface; state lives under the writable tor dir.
+
+### Fixed
+- **VayuTor: clearer bridge guidance.** The Bridges panel now warns when the
+  pasted bridges are **IPv6-only** (they need server IPv6, which most VPS lack —
+  the usual cause of "connections died in state connect()ing"), and steers to
+  IPv4 obfs4 bridges. The page also reports when the obfs4 transport is somehow
+  unavailable.
+
 ## [3.13.68] — 2026-07-17
 
 ### Added
