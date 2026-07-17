@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"crypto/sha3"
 	"filippo.io/edwards25519"
-	"golang.org/x/crypto/sha3"
 )
 
 // decodeAndVerifyOnion decodes a v3 .onion address and re-verifies its checksum

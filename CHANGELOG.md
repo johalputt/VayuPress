@@ -8,6 +8,19 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.77] — 2026-07-17
+
+### Fixed
+- **CI lint gate:** switched the vanity onion code from `golang.org/x/crypto/sha3`
+  to the standard library `crypto/sha3` (Go 1.24+), which the current `govet`
+  inline analyzer requires — restores a green build.
+
+### Security
+- **CodeQL "Zip Slip" (High):** the managed-Tor expert-bundle extraction already
+  neutralised traversal via `filepath.Base`, but it now also verifies each
+  destination stays within the target directory before writing — an explicit,
+  analyzer-recognised guard against archive path traversal.
+
 ## [3.13.76] — 2026-07-17
 
 ### Added

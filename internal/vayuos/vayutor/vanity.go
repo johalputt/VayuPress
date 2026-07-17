@@ -11,6 +11,7 @@ package vayutor
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha3"
 	"crypto/sha512"
 	"encoding/base32"
 	"encoding/base64"
@@ -21,7 +22,6 @@ import (
 	"time"
 
 	"filippo.io/edwards25519"
-	"golang.org/x/crypto/sha3"
 )
 
 const (
