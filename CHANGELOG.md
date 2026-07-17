@@ -8,6 +8,35 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.55] — 2026-07-17
+
+### Fixed
+- **Traffic-chart hover tooltip was unreadable (dark text on the dark card).**
+  The tooltip's date/value text referenced an undefined `--text-1` token, so in
+  SVG it fell back to the initial fill (black) and blended into the dark tooltip
+  background. Added the missing `--text-1` / `--surface-2` token aliases (so they
+  follow light/dark automatically) and hardened the tooltip to an elevated
+  surface (`--bg-surface-3`) with a strong border and bright `--text` labels —
+  now clearly legible in both themes. This also fixes five other components that
+  referenced the same undefined token.
+
+### Added
+- **Audience → Traffic channels.** A new card groups visits into **Direct**,
+  **Organic search**, **Social** and **Referral** (with each channel's share),
+  classified purely from the stored referrer host — cookieless, no-PII, offline.
+- **Geography → Continents.** A world-region breakdown aggregated **offline**
+  from the country codes VayuPress already resolves (no proxy headers needed), so
+  the Geography tab always shows a real geographic distribution.
+
+### Changed
+- **Geography tab polished.** Long country/region/city lists now scroll inside
+  their card (the page is no longer one endless column), and when region/city
+  data is absent the tab shows a **precise, premium setup card** — the exact
+  Cloudflare toggle (*Rules → Settings → Add visitor location headers*) plus the
+  other recognised providers — instead of a wall of guidance text. Region and
+  city still require a reverse-proxy location header by design (VayuPress never
+  geolocates IPs itself); countries and continents work with no proxy.
+
 ## [3.13.54] — 2026-07-17
 
 ### Changed

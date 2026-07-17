@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -369,6 +370,7 @@ func (a *App) renderAnalyticsBody(ctx context.Context, days int, periodLabel str
 	devices, _ := a.analytics.Devices(ctx, days)
 	browsers, _ := a.analytics.Browsers(ctx, days)
 	oses, _ := a.analytics.OperatingSystems(ctx, days)
+	channels, _ := a.analytics.Channels(ctx, days)
 	events, _ := a.analytics.CustomEvents(ctx, days)
 	utm, _ := a.analytics.UTMStats(ctx, days)
 	countries, _ := a.analytics.Countries(ctx, days)
@@ -454,7 +456,10 @@ func (a *App) renderAnalyticsBody(ctx context.Context, days int, periodLabel str
   <div class="card"><div class="card-title">Referrers</div>` + refs + `</div>
 </div>`
 
-	audiencePanel := `<div class="grid grid-3">
+	audiencePanel := `<div class="card mb-4"><div class="card-title">📈 Traffic channels</div>` +
+		osBarList(osBarsFromAudience(channels), "No traffic yet. Once visitors arrive, this groups them into Direct, Organic search, Social and Referral.") +
+		`<p class="muted text-xs mt-2">How visitors reached you — <strong>Direct</strong> (typed / bookmarked) · <strong>Organic search</strong> (Google, Bing, DuckDuckGo…) · <strong>Social</strong> (X, Reddit, LinkedIn…) · <strong>Referral</strong> (other sites). Derived from the referrer host only — cookieless, no-PII.</p></div>` +
+		`<div class="grid grid-3">
   <div class="card"><div class="card-title">Devices</div>` + osDonut(osSegsFromAudience(devices), "No device data yet.") + `</div>
   <div class="card"><div class="card-title">Browsers</div>` + osBarList(osBarsFromAudience(browsers), "No browser data yet.") + `</div>
   <div class="card"><div class="card-title">Operating systems</div>` + osBarList(osBarsFromAudience(oses), "No OS data yet.") + `</div>
@@ -586,16 +591,15 @@ func osLiveCard() string {
 </div>`
 }
 
-// osGeoSection renders country/region/city breakdowns. Geo is populated only
-// when a reverse proxy (e.g. Cloudflare) supplies location headers; when empty
-// it shows guidance rather than a blank card.
+// osGeoSection renders the Geography tab: countries + an offline continent
+// breakdown (both work with no proxy, since countries resolve offline), then
+// regions + cities (which need proxy location headers). When region/city data is
+// absent it shows a precise, premium setup card rather than a blank panel.
 func osGeoSection(countries, regions, cities []analytics.AudienceStat) string {
 	if len(countries) == 0 && len(regions) == 0 && len(cities) == 0 {
-		return `<div class="card"><div class="card-title">Locations</div>
-<div class="empty-state">No location data yet. VayuPress does no GeoIP lookups (privacy by design); to see countries/cities, front your site with a proxy that sets geo headers — e.g. Cloudflare's <code>CF-IPCountry</code> (country, all plans) and <code>CF-IPCity</code> (city, where available), or any <code>X-Geo-Country</code> / <code>X-Geo-City</code> header.</div></div>`
+		return `<div class="card"><div class="card-title">🌍 Locations</div>` + osGeoSetupNote(true) + `</div>`
 	}
-	// Countries as a colour bar list with full country names; regions/cities keep
-	// their setup-guidance empty states when no proxy location headers are present.
+	// Countries as a colour bar list with full country names + flags.
 	countryBars := make([]osChartBar, 0, len(countries))
 	for _, c := range countries {
 		name := countryName(c.Label)
@@ -604,42 +608,65 @@ func osGeoSection(countries, regions, cities []analytics.AudienceStat) string {
 		}
 		countryBars = append(countryBars, osChartBar{Label: name, LabelHTML: countryDisplayHTML(c.Label), Value: c.Count})
 	}
-	regionCard := osGeoTable(regions, "region")
-	if len(regions) > 0 {
-		regionCard = osBarList(osBarsFromAudience(regions), "")
+	// Continents — aggregated offline from the country codes (no proxy needed),
+	// so the Geography tab always shows a real world-region view. Sorted desc.
+	contAgg := map[string]int{}
+	for _, c := range countries {
+		if name := continentName(c.Label); name != "" {
+			contAgg[name] += c.Count
+		}
 	}
-	cityCard := osGeoTable(cities, "city")
-	if len(cities) > 0 {
-		cityCard = osBarList(osBarsFromAudience(cities), "")
+	continentBars := make([]osChartBar, 0, len(contAgg))
+	for name, n := range contAgg {
+		continentBars = append(continentBars, osChartBar{Label: name, Value: n})
 	}
-	return `<div class="grid grid-3">
-  <div class="card"><div class="card-title">Countries</div>` + osBarList(countryBars, "No country data yet.") + `</div>
-  <div class="card"><div class="card-title">Regions</div>` + regionCard + `</div>
-  <div class="card"><div class="card-title">Cities</div>` + cityCard + `</div>
+	sort.SliceStable(continentBars, func(i, j int) bool { return continentBars[i].Value > continentBars[j].Value })
+
+	top := `<div class="grid grid-2">
+  <div class="card"><div class="card-title">🌍 Countries</div><div class="vp-geo-scroll">` + osBarList(countryBars, "No country data yet.") + `</div></div>
+  <div class="card"><div class="card-title">🗺️ Continents</div>` + osBarList(continentBars, "No continent data yet.") + `</div>
 </div>`
+
+	// Regions & cities need proxy headers. When both are absent, show one setup
+	// card spanning the row; otherwise show whichever populated bar lists exist.
+	var detail string
+	if len(regions) == 0 && len(cities) == 0 {
+		detail = `<div class="card mt-4"><div class="card-title">📍 Regions &amp; cities</div>` + osGeoSetupNote(false) + `</div>`
+	} else {
+		regionCard := osGeoSetupNote(false)
+		if len(regions) > 0 {
+			regionCard = `<div class="vp-geo-scroll">` + osBarList(osBarsFromAudience(regions), "") + `</div>`
+		}
+		cityCard := osGeoSetupNote(false)
+		if len(cities) > 0 {
+			cityCard = `<div class="vp-geo-scroll">` + osBarList(osBarsFromAudience(cities), "") + `</div>`
+		}
+		detail = `<div class="grid grid-2 mt-4">
+  <div class="card"><div class="card-title">📍 Regions</div>` + regionCard + `</div>
+  <div class="card"><div class="card-title">🏙️ Cities</div>` + cityCard + `</div>
+</div>`
+	}
+	return top + detail
 }
 
-// osGeoTable renders a region/city breakdown. Unlike a plain audience table, its
-// empty state explains how to populate it (these fields need proxy location
-// headers that countries don't), so an operator who sees flags but blank
-// regions/cities knows exactly what to enable.
-func osGeoTable(items []analytics.AudienceStat, kind string) string {
-	if len(items) == 0 {
-		return `<div class="empty-state">No ` + html.EscapeString(kind) + ` data yet. ` +
-			`Countries come from <code>CF-IPCountry</code> (sent by Cloudflare on every plan), but ` +
-			html.EscapeString(kind) + `s need extra location headers: in Cloudflare enable ` +
-			`<strong>Rules → Settings → Add visitor location headers</strong> (adds <code>cf-region</code> &amp; <code>cf-ipcity</code>). ` +
-			`CloudFront, Vercel and Fastly geo headers, and generic <code>X-Geo-Region</code> / <code>X-Geo-City</code>, are also recognised.</div>`
+// osGeoSetupNote renders a precise, premium setup card explaining how to light up
+// region/city data. VayuPress does no IP geolocation itself (privacy by design);
+// regions and cities require a CDN location header. The steps are Cloudflare-first
+// (the common case) with other providers noted. CSP-safe: no inline styles.
+func osGeoSetupNote(full bool) string {
+	lead := "Regions and cities need one extra signal from your reverse proxy — VayuPress never geolocates IPs itself (privacy by design). Countries already resolve automatically."
+	if full {
+		lead = "No location data yet. VayuPress does no GeoIP lookups (privacy by design). Countries resolve automatically; regions and cities need one extra signal from your reverse proxy."
 	}
-	rows := ""
-	for _, it := range items {
-		label := html.EscapeString(it.Label)
-		if it.Label == "" {
-			label = "(unknown)"
-		}
-		rows += `<tr><td class="row-title">` + label + `</td><td>` + strconv.Itoa(it.Count) + `</td></tr>`
-	}
-	return `<div class="table-wrap"><table class="table"><tbody>` + rows + `</tbody></table></div>`
+	return `<div class="vp-geo-setup">
+  <p class="vp-geo-setup__lead">` + lead + `</p>
+  <ol class="vp-geo-setup__steps">
+    <li><span class="vp-geo-setup__n">1</span> Cloudflare dashboard → your site → <strong>Rules → Settings</strong></li>
+    <li><span class="vp-geo-setup__n">2</span> Turn on <strong>Add visitor location headers</strong></li>
+    <li><span class="vp-geo-setup__n">3</span> Done — regions &amp; cities appear within minutes (adds <code>cf-region</code> &amp; <code>cf-ipcity</code>)</li>
+  </ol>
+  <p class="vp-geo-setup__alt">Also recognised automatically: AWS CloudFront, Vercel &amp; Fastly geo headers, and generic <code>X-Geo-Region</code> / <code>X-Geo-City</code>.</p>
+</div>`
 }
 
 // osGoalsSection renders the conversion-goals card: a create form, plus a table

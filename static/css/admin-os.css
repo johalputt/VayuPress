@@ -42,6 +42,12 @@
   --text:         #eef2f8;
   --text-2:       #8ba4c4;
   --text-3:       #4d6480;
+  /* Aliases: some components reference --text-1/--surface-2 (undefined before).
+     Defined via var() indirection so they follow the light-theme overrides of
+     --text/--bg-surface-2 automatically. Without these, `fill: var(--text-1)`
+     in SVG fell back to the initial value (black) → invisible chart tooltips. */
+  --text-1:       var(--text);
+  --surface-2:    var(--bg-surface-2);
 
   /* Brand */
   --brand:        #0ea5e9;
@@ -3448,6 +3454,32 @@
   box-shadow: none;
 }
 
+/* Geography — long country/region/city lists scroll inside their card so the
+   page never becomes one endless column. */
+.vp-os .vp-geo-scroll { max-height: 340px; overflow-y: auto; padding-right: 4px; }
+.vp-os .vp-geo-scroll::-webkit-scrollbar { width: 8px; }
+.vp-os .vp-geo-scroll::-webkit-scrollbar-track { background: transparent; }
+.vp-os .vp-geo-scroll::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 8px; }
+
+/* Premium setup card shown when region/city data needs a CDN location header. */
+.vp-os .vp-geo-setup {
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--r-md);
+  padding: var(--sp-4);
+  background: var(--brand-dim);
+}
+.vp-os .vp-geo-setup__lead { color: var(--text-2); font-size: var(--text-sm); margin-bottom: var(--sp-3); line-height: 1.5; }
+.vp-os .vp-geo-setup__steps { list-style: none; display: grid; gap: var(--sp-2); margin: 0 0 var(--sp-3); padding: 0; }
+.vp-os .vp-geo-setup__steps li { display: flex; align-items: center; gap: 0.6em; font-size: var(--text-sm); color: var(--text); }
+.vp-os .vp-geo-setup__n {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; flex: 0 0 auto;
+  border-radius: 50%; background: var(--brand); color: #fff;
+  font-weight: 700; font-size: 12px;
+}
+.vp-os .vp-geo-setup__alt { font-size: var(--text-xs); color: var(--text-3); margin: 0; }
+.vp-os .vp-geo-setup code { background: var(--bg-surface-2); padding: 1px 5px; border-radius: 4px; font-size: 0.85em; }
+
 @media (max-width: 860px) {
   .vp-os .vm-live-grid { grid-template-columns: 1fr; }
   .vp-os .vm-live-count { font-size: 2.4rem; }
@@ -3959,10 +3991,10 @@
 .vp-os .vp-pt__dot--pv { fill: var(--chart-1); }
 .vp-os .vp-pt__dot--vis { fill: var(--chart-2); }
 .vp-os .vp-pt__tip { opacity: 0; pointer-events: none; }
-.vp-os .vp-pt__tip-bg { fill: var(--surface-2, #10151f); stroke: var(--border); filter: drop-shadow(0 6px 16px rgba(0,0,0,.4)); }
-.vp-os .vp-pt__tip-date { fill: var(--text-1); font-size: 11px; font-weight: 600; }
-.vp-os .vp-pt__tip-lbl { fill: var(--text-3); font-size: 10px; }
-.vp-os .vp-pt__tip-val { fill: var(--text-1); font-size: 10px; font-weight: 600; text-anchor: end; }
+.vp-os .vp-pt__tip-bg { fill: var(--bg-surface-3, #1e2d47); stroke: var(--border-strong, var(--border)); stroke-width: 1; filter: drop-shadow(0 6px 16px rgba(0,0,0,.45)); }
+.vp-os .vp-pt__tip-date { fill: var(--text, #eef2f8); font-size: 11px; font-weight: 700; }
+.vp-os .vp-pt__tip-lbl { fill: var(--text-2, #8ba4c4); font-size: 10px; }
+.vp-os .vp-pt__tip-val { fill: var(--text, #eef2f8); font-size: 10px; font-weight: 700; text-anchor: end; }
 .vp-os .vp-pt__tip-dot--pv { fill: var(--chart-1); }
 .vp-os .vp-pt__tip-dot--vis { fill: var(--chart-2); }
 /* Only the hovered band lights up. Transitions are short + GPU-cheap (opacity). */

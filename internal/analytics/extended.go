@@ -23,6 +23,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -465,6 +466,80 @@ func (s *Store) audienceSince(ctx context.Context, column string, days int) ([]A
 		result = append(result, a)
 	}
 	return result, rows.Err()
+}
+
+// ── Acquisition channels ─────────────────────────────────────────────────────
+
+// ReferrerChannel classifies a stored referrer host into a coarse acquisition
+// channel: Direct (no referrer), Organic search, Social, or Referral. The
+// classification is purely lexical over the host (no lookups, no PII) so it is
+// cheap and offline. Exported so it can be unit-tested independently.
+func ReferrerChannel(host string) string {
+	h := strings.ToLower(strings.TrimSpace(host))
+	if h == "" {
+		return "Direct"
+	}
+	h = strings.TrimPrefix(h, "www.")
+	// Search engines → organic. Matched as substrings so regional TLDs
+	// (google.co.uk, bing.de, …) all fold into one bucket.
+	for _, s := range []string{
+		"google.", "bing.", "duckduckgo.", "yahoo.", "yandex.", "baidu.",
+		"ecosia.", "startpage.", "qwant.", "search.brave.", "naver.",
+		"seznam.", "sogou.", "ask.com", "search.marginalia",
+	} {
+		if strings.Contains(h, s) {
+			return "Organic search"
+		}
+	}
+	// Social / community platforms.
+	for _, s := range []string{
+		"facebook.", "fb.com", "instagram.", "t.co", "twitter.", "x.com",
+		"linkedin.", "lnkd.in", "reddit.", "youtube.", "youtu.be",
+		"pinterest.", "tiktok.", "mastodon", "threads.net", "t.me",
+		"telegram", "whatsapp", "vk.com", "tumblr.", "quora.",
+		"news.ycombinator.com", "lobste.rs", "bsky.app", "bluesky",
+	} {
+		if strings.Contains(h, s) {
+			return "Social"
+		}
+	}
+	return "Referral"
+}
+
+// Channels groups pageviews into acquisition channels (Direct / Organic search /
+// Social / Referral) by classifying the stored referrer host. All aggregate and
+// no-PII. Empty buckets are omitted; the result is sorted by count descending.
+func (s *Store) Channels(ctx context.Context, days int) ([]AudienceStat, error) {
+	if days <= 0 {
+		days = 14
+	}
+	from := time.Now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
+	rows, err := s.readDB().QueryContext(ctx,
+		`SELECT referrer,COUNT(1) FROM analytics_pageviews WHERE created_at>=? GROUP BY referrer`, from)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	buckets := map[string]int{}
+	for rows.Next() {
+		var ref string
+		var cnt int
+		if err := rows.Scan(&ref, &cnt); err != nil {
+			return nil, err
+		}
+		buckets[ReferrerChannel(ref)] += cnt
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	out := make([]AudienceStat, 0, 4)
+	for _, k := range []string{"Direct", "Organic search", "Social", "Referral"} {
+		if buckets[k] > 0 {
+			out = append(out, AudienceStat{Label: k, Count: buckets[k]})
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Count > out[j].Count })
+	return out, nil
 }
 
 // ── UTM ──────────────────────────────────────────────────────────────────────
