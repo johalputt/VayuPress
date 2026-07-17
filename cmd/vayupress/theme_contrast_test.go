@@ -44,6 +44,7 @@ func TestThemeEditorCoversSettingsAllowlist(t *testing.T) {
 		// theme editor. The visit counter is engine-maintained, never a form field.
 		settings.KeyTorEnabled: true,
 		settings.KeyTorVisits:  true,
+		settings.KeyTorBridges: true,
 		// Feature flags are toggled through the Tools & Plugins panel
 		// (POST /os/api/tools/toggle), not the theme editor form.
 		settings.KeyFeatureComments:    true,

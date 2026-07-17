@@ -211,6 +211,12 @@ const (
 	// ENTIRE VayuTor analytic. No identifier, time, path, or any other datum is
 	// ever stored (privacy by construction).
 	KeyTorVisits = "tor.visits"
+	// KeyTorBridges holds operator-supplied Tor bridge lines (newline/";"-
+	// separated obfs4 or vanilla Bridge lines), configured entirely from the
+	// VayuTor admin page — no server access needed. When set, VayuTor routes its
+	// managed tor through these bridges, which defeats a network that blocks Tor
+	// at the IP level (a VPS null-routing public relays, or DPI).
+	KeyTorBridges = "tor.bridges"
 )
 
 // FeatureKeys is the set of operator-toggleable feature flags. Each maps to a
@@ -314,6 +320,7 @@ var AllKeys = map[string]bool{
 	KeyAnalyticsBeacon:      true,
 	KeyTorEnabled:           true,
 	KeyTorVisits:            true,
+	KeyTorBridges:           true,
 }
 
 // Defaults are returned when no DB value exists for a key.
@@ -371,6 +378,7 @@ var Defaults = map[string]string{
 	KeyAnalyticsBeacon:       "on",
 	KeyTorEnabled:            "off",
 	KeyTorVisits:             "0",
+	KeyTorBridges:            "",
 }
 
 // Store is a thread-safe settings store with an in-process read cache.

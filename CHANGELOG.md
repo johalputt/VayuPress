@@ -8,6 +8,19 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.68] — 2026-07-17
+
+### Added
+- **Configure Tor bridges entirely from VayuOS — no server access.** The VayuTor
+  page now has a **Bridges** panel: paste obfs4 bridge lines (from
+  bridges.torproject.org) and save. They're stored in the site database
+  (`tor.bridges`) and applied **live** — the managed Tor restarts through the
+  bridges automatically, with no SSH, no env-file editing, and no restart of
+  VayuPress. The settings value takes precedence over the `VAYUOS_TOR_BRIDGES`
+  env var; clearing the box reverts to a direct connection. This makes the
+  "network blocks Tor" fix fully self-service from the admin UI — which is
+  exactly where an operator on a Tor-hostile VPS needs it.
+
 ## [3.13.67] — 2026-07-17
 
 ### Added

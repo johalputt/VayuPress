@@ -57,6 +57,22 @@ func (m *managedTor) usingBridges() bool {
 	return len(m.bridges) > 0
 }
 
+// bridgesEqual reports whether the configured bridge lines + PT path already
+// match, so the caller can avoid a needless tor restart.
+func (m *managedTor) bridgesEqual(lines []string, ptPath string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.ptPath != ptPath || len(m.bridges) != len(lines) {
+		return false
+	}
+	for i := range lines {
+		if m.bridges[i] != lines[i] {
+			return false
+		}
+	}
+	return true
+}
+
 // resolvePT lazily locates the obfs4 pluggable-transport binary, mirroring
 // resolveBinary()'s PATH-first approach so installing obfs4proxy after start is
 // picked up with no restart. Debian ships it as `obfs4proxy`; newer distros as
