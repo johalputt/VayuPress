@@ -8,6 +8,13 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.70] — 2026-07-17
+
+### Fixed
+- Release-hygiene build: the green-CI cut of 3.13.69's embedded obfs4 transport
+  (the standalone-staticcheck `net.Error.Temporary` deprecation is folded in). No
+  behaviour change from 3.13.69.
+
 ## [3.13.69] — 2026-07-17
 
 ### Added
