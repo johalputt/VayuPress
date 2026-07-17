@@ -61,12 +61,15 @@ func fakeTorServer(t *testing.T) string {
 
 // memStore is an in-memory Store for tests.
 type memStore struct {
-	mu     sync.Mutex
-	onions map[string]OnionRecord
-	visits int64
+	mu       sync.Mutex
+	onions   map[string]OnionRecord
+	visits   int64
+	pageHits map[string]int64
 }
 
-func newMemStore() *memStore { return &memStore{onions: map[string]OnionRecord{}} }
+func newMemStore() *memStore {
+	return &memStore{onions: map[string]OnionRecord{}, pageHits: map[string]int64{}}
+}
 
 func (m *memStore) LoadOnions(context.Context) ([]OnionRecord, error) {
 	m.mu.Lock()
@@ -97,6 +100,21 @@ func (m *memStore) LoadVisits(context.Context) int64 {
 func (m *memStore) SaveVisits(_ context.Context, n int64) error {
 	m.mu.Lock()
 	m.visits = n
+	m.mu.Unlock()
+	return nil
+}
+func (m *memStore) LoadPageHits(context.Context) map[string]int64 {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make(map[string]int64, len(m.pageHits))
+	for k, v := range m.pageHits {
+		out[k] = v
+	}
+	return out
+}
+func (m *memStore) SavePageHits(_ context.Context, hits map[string]int64) error {
+	m.mu.Lock()
+	m.pageHits = hits
 	m.mu.Unlock()
 	return nil
 }

@@ -8,6 +8,29 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.73] — 2026-07-17
+
+### Added
+- **VayuTor "Popular pages" — opt-in, privacy-safe onion analytics.** A new card
+  on the VayuTor page can show which pages are most visited over Tor, as an
+  **aggregate cumulative count per page** (host + path → total views). It is
+  privacy-preserving by construction: no IP (an onion service never sees one), no
+  time, no session, no user agent, no ordering — so individual visits can't be
+  correlated and a visitor can't be identified. Off by default (preserving the
+  stricter "not even the path" posture); the operator enables it with one click,
+  and can reset the counts. Counts are bounded (top pages, capped cardinality)
+  and persisted alongside the visit tally. Setting: `tor.page_stats`.
+- The privacy-posture text on the page now reflects the actual state — it only
+  claims "no path" while per-page counts are off, and states the aggregate-only
+  guarantees when they're on.
+
+### Not implemented (by design)
+- **Visitor country / geolocation for onion visits is impossible and omitted.**
+  Over a Tor onion service the visitor's IP never reaches the server (the
+  connection arrives from a Tor rendezvous point), so there is nothing to
+  geolocate — any "country" would be fabricated and would betray VayuTor's
+  privacy guarantee. The page says so explicitly rather than offering it.
+
 ## [3.13.72] — 2026-07-17
 
 ### Added

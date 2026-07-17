@@ -33,6 +33,9 @@ func (a *App) torOnionMiddleware(next http.Handler) http.Handler {
 				r.Host = real // serve the mapped domain's content over the onion
 				if isTorPageview(r) {
 					a.vayuTor.IncVisit()
+					// Opt-in per-page tally (aggregate only; no-op unless enabled).
+					// Path only — never the query string, which can carry tokens.
+					a.vayuTor.IncPage(real, r.URL.Path)
 				}
 			}
 			next.ServeHTTP(w, r)

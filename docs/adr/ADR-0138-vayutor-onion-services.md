@@ -185,3 +185,33 @@ absent or older than 0.4.7 (`internal/vayuos/vayutor/dist.go`):
 
 This keeps VayuTor's promise intact: one click in VayuOS, nothing done on the
 server — now even on hosts whose own Tor is too old to join the network.
+
+## Addendum (v3.13.73) — Opt-in per-page analytics; why no geolocation
+
+VayuTor's baseline stays "count-only, nothing tracked". On operator request we
+added an **opt-in** per-page popularity view, designed so opting in cannot erode
+visitor privacy:
+
+- **Aggregate only.** The store holds `"<clearnet host> <path>" → cumulative
+  count` (`internal/vayuos/vayutor/pagestats.go`). No timestamp, no IP (an onion
+  service never receives one), no session, no user agent, no ordering. With no
+  per-visit record and no time, two page views can never be correlated, and a
+  visitor can never be re-identified or deanonymised — the data is content
+  popularity, not visitor behaviour.
+- **Opt-in, reversible, bounded.** Default OFF (`tor.page_stats`), preserving the
+  stricter "not even the path" promise for anyone who doesn't enable it. The
+  page's privacy-posture text is state-aware — it only claims "no path" while the
+  feature is off, and states the aggregate-only guarantees when on. Counts are
+  cardinality-capped, query strings are never recorded (they can carry tokens),
+  the query is stripped to path-only at the middleware, and the operator can
+  reset the counts at any time.
+- **Geolocation is impossible, so it is absent — not merely declined.** An onion
+  service's inbound connection comes from a Tor rendezvous point; the client IP
+  is never exposed to the server by design. There is nothing to geolocate, and
+  fabricating a "country" from a Tor relay would both be meaningless and violate
+  the privacy guarantee. The UI states this plainly instead of offering a broken
+  feature.
+
+The engine reads the opt-in flag live (no restart), records via `IncPage` on the
+onion request path next to the existing aggregate `IncVisit`, and persists the
+map on the same reconcile tick as the visit counter.

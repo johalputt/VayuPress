@@ -42,9 +42,11 @@ func TestThemeEditorCoversSettingsAllowlist(t *testing.T) {
 		settings.KeyBrandFaviconType: true,
 		// VayuTor onion services — managed on the VayuTor page (/os/tor), not the
 		// theme editor. The visit counter is engine-maintained, never a form field.
-		settings.KeyTorEnabled: true,
-		settings.KeyTorVisits:  true,
-		settings.KeyTorBridges: true,
+		settings.KeyTorEnabled:   true,
+		settings.KeyTorVisits:    true,
+		settings.KeyTorBridges:   true,
+		settings.KeyTorPageStats: true,
+		settings.KeyTorPageHits:  true,
 		// Feature flags are toggled through the Tools & Plugins panel
 		// (POST /os/api/tools/toggle), not the theme editor form.
 		settings.KeyFeatureComments:    true,

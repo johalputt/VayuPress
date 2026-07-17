@@ -4489,6 +4489,15 @@
 .vp-os .vt-bridges__on { color: var(--ok, #34d399); }
 .vp-os .vt-bridges__warn { color: var(--warn, #f59e0b); max-width: 60ch; }
 
+/* Opt-in per-page onion analytics (aggregate, privacy-safe). */
+.vp-os .vt-pages__table { overflow-x: auto; }
+.vp-os .vt-pages__t { width: 100%; border-collapse: collapse; font-size: 13px; }
+.vp-os .vt-pages__t th { text-align: left; font-weight: 600; color: var(--text-muted, #9ca3af); padding: 6px 10px; border-bottom: 1px solid var(--border); }
+.vp-os .vt-pages__t td { padding: 6px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.vp-os .vt-pages__t td code { word-break: break-all; }
+.vp-os .vt-pages__num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.vp-os .vt-pages__actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+
 /* Off-screen buffer used by the clipboard fallback (no inline styles). */
 .vp-os .vt-copy-buf { position: fixed; left: -9999px; top: 0; opacity: 0; }
 
