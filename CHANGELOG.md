@@ -8,6 +8,19 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.66] — 2026-07-17
+
+### Fixed
+- **VayuTor: pinpoint and prevent the "consensus not signed by sufficient
+  authorities" bootstrap failure.** When Tor reaches ~30% and then fails to
+  validate the network consensus, it is almost always a **skewed server clock**
+  (even a few minutes breaks consensus validation) or an outdated `tor` package.
+  The VayuTor page now recognises this signature in Tor's log and shows the exact
+  fix (`sudo timedatectl set-ntp true`, or update `tor`), rather than leaving the
+  operator to decode a raw warning. The deploy and update scripts now **enable
+  NTP time sync** when installing Tor, so a correct clock — required by Tor (and
+  by TLS and DKIM) — is in place automatically.
+
 ## [3.13.65] — 2026-07-17
 
 ### Added
