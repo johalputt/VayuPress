@@ -89,7 +89,7 @@ func (rp reply) value(key string) string {
 // something is wrong).
 func (c *control) send(cmd string) (reply, error) {
 	_ = c.conn.SetDeadline(time.Now().Add(controlDialTimeout))
-	defer c.conn.SetDeadline(time.Time{})
+	defer func() { _ = c.conn.SetDeadline(time.Time{}) }()
 	if _, err := c.conn.Write([]byte(cmd + "\r\n")); err != nil {
 		return reply{}, err
 	}

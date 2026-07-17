@@ -232,7 +232,8 @@
             <div x-show="t>=6" x-transition.opacity.duration.300ms class="text-emerald-400">✓ VayuTalk · <span class="text-teal-300">talk.yourdomain.com</span> · E2E chat relay</div>
             <div x-show="t>=7" x-transition.opacity.duration.300ms class="text-emerald-400">✓ VayuPGP · WKD published (AES-256 at rest)</div>
             <div x-show="t>=8" x-transition.opacity.duration.300ms class="text-emerald-400">✓ VayuShield + VayuAnalytics · bot protection · cookieless</div>
-            <div x-show="t>=9" x-transition.opacity.duration.300ms class="text-saffron-300 font-medium pt-2">
+            <div x-show="t>=9" x-transition.opacity.duration.300ms class="text-emerald-400">✓ VayuTor · <span class="text-purple-300">every domain now on .onion</span> · one click</div>
+            <div x-show="t>=10" x-transition.opacity.duration.300ms class="text-saffron-300 font-medium pt-2">
               VayuOS online · your whole stack is live <span class="cursor" aria-hidden="true">▊</span>
             </div>
           </div>
@@ -386,7 +387,7 @@
       <header class="max-w-3xl mb-12 sm:mb-14" data-reveal>
         <p class="font-mono text-xs mb-4 tracking-[0.25em] uppercase" style="color:#a78bfa">The Vayu suite</p>
         <h2 class="font-display text-3xl sm:text-4xl lg:text-5xl font-bold text-white tracking-tight leading-[1.08]">
-          One binary. Seven products.
+          One binary. Nine products.
           <span class="text-gray-600 block mt-1">Each one, world-class.</span>
         </h2>
         <p class="mt-6 text-base sm:text-lg text-gray-400 leading-relaxed">
@@ -546,6 +547,30 @@
                       <template x-for="g in ['A1B2','C3D4','E5F6','7G8H','J9K0','L1M2']" :key="g"><span x-text="g"></span></template>
                     </div>
                     <div class="prod-chip mt-3 justify-center">AES-256-GCM at rest · WKD · never logged</div>
+                  </div>
+
+                  <!-- VayuAPI + VCB -->
+                  <div x-show="activeProduct===7" class="prod-mock space-y-2">
+                    <template x-for="k in [['live_sk_…a91','posts:write · media:read'],['ci_sk_…4f2','export'],['bot_sk_…7d0','analytics:read']]" :key="k[0]">
+                      <div class="prod-row">
+                        <span class="prod-pill">KEY</span>
+                        <span class="flex-1 font-mono text-[11px] text-gray-400 truncate" x-text="k[0]"></span>
+                        <span class="text-[11px] text-gray-300 truncate" x-text="k[1]"></span>
+                      </div>
+                    </template>
+                    <div class="prod-chip mt-2">VCB ✓ hooks · tokens · golden contracts — gated in CI</div>
+                  </div>
+
+                  <!-- VayuTor -->
+                  <div x-show="activeProduct===8" class="prod-mock space-y-2">
+                    <template x-for="o in [['johal.in','vayp7xk2n4qy6zj3…onion'],['shop.johal.in','q4x3z2a1s0d9f8g7…onion'],['blog.johal.in','m8w5r0t1c2v3b4n5…onion']]" :key="o[0]">
+                      <div class="prod-row">
+                        <span class="prod-av">🧅</span>
+                        <span class="flex-1 text-sm text-gray-300 truncate" x-text="o[0]"></span>
+                        <span class="prod-pill font-mono text-[10px]" x-text="o[1]"></span>
+                      </div>
+                    </template>
+                    <div class="prod-chip mt-2"><span class="prod-live"></span> 1,284 Tor visits · no IP · no time · nothing else</div>
                   </div>
 
                 </div>

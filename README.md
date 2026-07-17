@@ -77,6 +77,9 @@ Drive the whole platform programmatically — create posts, apply themes, manage
 ### 🧩 An extension contract that guarantees compatibility (VCB)
 The **Vayu Compatibility Bible** turns "will this plugin/theme work?" into a checked contract. A developer — or an AI agent — writes a `plugin.json` or `theme.json`, runs **`vayu-compat`**, and knows *before shipping* that every hook, capability, colour, option, sandbox limit, and CSP rule matches what the host actually enforces — because the validator is the **same code the host runs**, so the docs can never drift. Themes that fetch from an external host, plugins that request more than they need, or manifests built against a hook that doesn't exist are refused with a plain, exact reason. Discover the live contract over the API (`GET /api/v1/vcb/contract`) or validate a manifest against a running host (`POST /api/v1/vcb/validate`). *([the Bible →](docs/compatibility/vcb.md) · [ADR →](docs/adr/ADR-0135-vayu-compatibility-bible.md))*
 
+### 🧅 One-click Tor onion services (VayuTor)
+Flip one switch in VayuOS and **every domain VayuPress hosts becomes reachable as its own Tor v3 `.onion` service** — alongside its normal clearnet URL, with no loss of speed or quality and both addresses serving simultaneously. VayuPress drives a locally-running tor daemon over its **authenticated control port** (`ADD_ONION`), persisting each onion's ED25519 key so the address is **stable across restarts**, and advertises it to Tor Browser via the **`Onion-Location`** header for automatic discovery. Visitors reach your site with **no ISP, no network observer, and no third party** able to see who connected or from where. The **VayuTor tab shows a single number** — how many Tor visits — and *nothing else*: no IP, no time, no user-agent, no path. Runs under the same strict CSP as the rest of VayuOS. *([architecture →](docs/adr/ADR-0138-vayutor-onion-services.md))*
+
 ---
 
 ## Quick start
@@ -114,6 +117,7 @@ Runs comfortably on a single **8 GB RAM / 4 vCPU / 50 GB NVMe** VPS.
 | **Private messaging** | Built-in, E2E-encrypted, ephemeral (VayuTalk) | A separate Signal/Slack account & server |
 | **Tracking of readers** | Cookieless, no PII, no consent banner | Cookies + third-party pixels |
 | **Bot & DDoS protection** | Built-in, self-learning (VayuShield Aegis) | A separate Cloudflare/WAF subscription |
+| **Anonymity / Tor** | One-click `.onion` for every domain, stable address, count-only stats (VayuTor) | Manual torrc surgery, or not at all |
 | **Dependencies** | One Go binary + SQLite + Nginx | Node, databases, Redis, queues, SDKs |
 | **Extensibility** | Sandboxed, capability-gated plugins; a scoped API + a checked compatibility contract (VCB) | Marketplace plugins with full access |
 | **Automation / API** | Fine-grained keys scoped to `section:action`, rate-limited & audited (VayuAPI) | All-or-nothing tokens, or none at all |
@@ -136,6 +140,7 @@ VayuPress is a single Go binary and a single SQLite database. There is no second
                     │   VayuMail (SMTP/IMAP/POP3 · DKIM · MX/SPF/DMARC)           │
                     │   VayuTalk (ephemeral E2E chat · SSE relay · read-once)     │
                     │   VayuPGP (keys · WKD)   VayuFind (search)   Analytics      │
+                    │   VayuTor (every domain on a v3 .onion · count-only)        │
                     │   VayuOS control panel   Newsletter   Media   VayuAPI       │
                     │                                                             │
                     │   ── Platform kernel (immutable) ──                         │
