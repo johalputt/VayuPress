@@ -8,6 +8,21 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.63] — 2026-07-17
+
+### Added
+- **VayuTor now shows real Tor bootstrap progress.** After activation the page
+  reports "Connecting to Tor (NN%)" — read live from the tor daemon
+  (`status/bootstrap-phase`) — and only flips to a green **Active** once tor has
+  fully joined the network at 100%, which is when the `.onion` addresses actually
+  become reachable. This explains the common "Onion site not found" seen for the
+  first couple of minutes after activation (the descriptor can't publish until
+  bootstrap completes) and tells the operator to allow **outbound** connections
+  if it stalls. The page auto-refreshes to **Active** when 100% is reached.
+- **Managed tor now writes a diagnostic log.** Its notice log is captured to
+  `<state>/tor/tor.log` (and surfaced on the VayuTor page) so a stuck bootstrap
+  or network-blocked server is inspectable instead of silent.
+
 ## [3.13.62] — 2026-07-17
 
 ### Fixed

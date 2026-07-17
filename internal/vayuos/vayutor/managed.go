@@ -48,6 +48,7 @@ func (m *managedTor) dataDir() string       { return filepath.Join(m.dir, "data"
 func (m *managedTor) torrcPath() string     { return filepath.Join(m.dir, "torrc") }
 func (m *managedTor) controlSocket() string { return filepath.Join(m.dir, "control.sock") }
 func (m *managedTor) cookiePath() string    { return filepath.Join(m.dataDir(), "control_auth_cookie") }
+func (m *managedTor) logPath() string       { return filepath.Join(m.dir, "tor.log") }
 
 // controlAddr is what dialControl expects for a unix control socket.
 func (m *managedTor) controlAddr() string { return "unix:" + m.controlSocket() }
@@ -100,6 +101,8 @@ func (m *managedTor) buildTorrc() string {
 	// service publication does not need any of them.
 	b.WriteString("SocksPort 0\n")
 	b.WriteString("RunAsDaemon 0\n")
+	// Persist tor's notice log so bootstrap/network problems are inspectable.
+	b.WriteString("Log notice file " + m.logPath() + "\n")
 	return b.String()
 }
 
@@ -130,10 +133,13 @@ func (m *managedTor) ensure(ctx context.Context) error {
 	// Deliberately NOT exec.CommandContext: the daemon must survive the reconcile
 	// context. Its lifetime is managed by stop()/the wait goroutine below.
 	cmd := exec.Command(bin, "-f", m.torrcPath()) //nolint:gosec // fixed binary + our own torrc
-	// Keep tor's own logging out of VayuPress stdout; failures surface via the
-	// control-socket wait and the status line instead.
-	cmd.Stdout = nil
-	cmd.Stderr = nil
+	// Capture tor's own log to a file so bootstrap/network failures are
+	// diagnosable ("why is my onion offline?") instead of being silently
+	// discarded. Truncated each start; tor also mirrors this via `Log notice`.
+	if lf, lerr := os.OpenFile(m.logPath(), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600); lerr == nil {
+		cmd.Stdout = lf
+		cmd.Stderr = lf
+	}
 	if err := cmd.Start(); err != nil {
 		return m.fail("cannot start tor: " + err.Error())
 	}
