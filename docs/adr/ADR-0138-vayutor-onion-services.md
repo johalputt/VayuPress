@@ -242,3 +242,29 @@ health state with alerting (`internal/vayuos/vayutor/health.go`):
 - **Robustness.** Health is re-evaluated at every reconcile exit (via `defer`),
   including early error returns, so a persistent connection failure is noticed
   and alerted rather than leaving a stale "healthy".
+
+## Addendum (v3.13.75) — Onion hardening
+
+Responses served over a `.onion` differ from clearnet in ways that matter, so
+VayuTor now hardens them (`securityHeadersMiddleware`, which runs before the host
+is rewritten, so `r.Host` is still the `.onion` and `isOnionHost` can detect it):
+
+- **No HSTS over onion.** `Strict-Transport-Security` is meaningless (and wrong)
+  for a plain-HTTP, self-authenticating `.onion` address, so it is omitted there
+  and kept on clearnet.
+- **`Referrer-Policy: no-referrer` over onion**, so the onion URL never leaks as
+  a Referer to any off-onion navigation or subresource (clearnet keeps the
+  standard `strict-origin-when-cross-origin`).
+- **CSP is already onion-safe** — the strict baseline has no
+  `upgrade-insecure-requests` and `default-src 'self'` resolves to the onion
+  origin — so no onion-specific CSP change is needed.
+- **Onion-Location advertising is operator-controlled** (`tor.onion_location`,
+  default on), read live by `torOnionMiddleware`; turning it off keeps onions
+  live without announcing them.
+
+**Deliberately not built: a "Tor-only / disable clearnet" switch.** Forcing a
+domain onion-only would make it unreachable to every non-Tor visitor — a
+foot-gun that can lock the operator out of their own site. That policy, if truly
+wanted, belongs at the web-server/DNS layer, not a VayuTor toggle. Onion request
+abuse is handled by VayuShield alongside clearnet traffic (Tor exposes no client
+IP, so per-visitor rate limiting isn't meaningful for onion traffic anyway).

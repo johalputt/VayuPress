@@ -13,11 +13,29 @@ package main
 //     onion. This is a plain response header — no CSP change is required.
 
 import (
+	"context"
 	"net/http"
 	"strings"
 
 	"github.com/johalputt/vayupress/internal/domain"
+	"github.com/johalputt/vayupress/internal/settings"
 )
+
+// isOnionHost reports whether a request's Host header targets a .onion address.
+// Used by the security-header middleware to harden onion responses (no HSTS —
+// meaningless over http .onion — and a stricter Referrer-Policy).
+func isOnionHost(hostHeader string) bool {
+	return strings.HasSuffix(domain.NormalizeHost(hostHeader), ".onion")
+}
+
+// onionLocationEnabled reports whether clearnet responses should advertise their
+// onion via the Onion-Location header (operator-controlled; default on).
+func (a *App) onionLocationEnabled(ctx context.Context) bool {
+	if a.siteSettings == nil {
+		return true
+	}
+	return a.siteSettings.Get(ctx, settings.KeyTorOnionLocation) != "off"
+}
 
 // torOnionMiddleware maps onion Hosts to their clearnet domain and advertises
 // onions on clearnet responses. A no-op when VayuTor is unavailable.
@@ -41,8 +59,9 @@ func (a *App) torOnionMiddleware(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		// Clearnet: advertise the onion to Tor Browser.
-		if onion := a.vayuTor.OnionForHost(host); onion != "" {
+		// Clearnet: advertise the onion to Tor Browser (unless the operator turned
+		// auto-advertising off in VayuTor hardening).
+		if onion := a.vayuTor.OnionForHost(host); onion != "" && a.onionLocationEnabled(r.Context()) {
 			w.Header().Set("Onion-Location", "http://"+onion+r.URL.RequestURI())
 		}
 		next.ServeHTTP(w, r)

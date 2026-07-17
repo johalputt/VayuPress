@@ -227,6 +227,10 @@ const (
 	// KeyTorPageHits persists the per-page counts (a small JSON object of
 	// "host path" → count) when KeyTorPageStats is on. Aggregate only.
 	KeyTorPageHits = "tor.page_hits"
+	// KeyTorOnionLocation controls whether clearnet responses advertise their
+	// onion via the Onion-Location header (so Tor Browser can offer/auto-switch).
+	// Default "on"; set "off" to stop advertising without deactivating onions.
+	KeyTorOnionLocation = "tor.onion_location"
 )
 
 // FeatureKeys is the set of operator-toggleable feature flags. Each maps to a
@@ -333,6 +337,7 @@ var AllKeys = map[string]bool{
 	KeyTorBridges:           true,
 	KeyTorPageStats:         true,
 	KeyTorPageHits:          true,
+	KeyTorOnionLocation:     true,
 }
 
 // Defaults are returned when no DB value exists for a key.
@@ -393,6 +398,7 @@ var Defaults = map[string]string{
 	KeyTorBridges:            "",
 	KeyTorPageStats:          "off",
 	KeyTorPageHits:           "",
+	KeyTorOnionLocation:      "on",
 }
 
 // Store is a thread-safe settings store with an in-process read cache.
