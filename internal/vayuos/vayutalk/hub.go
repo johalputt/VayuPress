@@ -39,12 +39,13 @@ type Event struct {
 
 // EnvelopePayload is the wire shape of an envelope event.
 type EnvelopePayload struct {
-	ID         string `json:"id"`
-	From       string `json:"from"`
-	Ciphertext string `json:"ciphertext"` // base64 of opaque bytes
-	CreatedAt  string `json:"created_at"`
-	ExpiresAt  string `json:"expires_at"`
-	Mode       string `json:"mode"`
+	ID          string `json:"id"`
+	From        string `json:"from"`
+	Ciphertext  string `json:"ciphertext"` // base64 of opaque bytes
+	CreatedAt   string `json:"created_at"`
+	ExpiresAt   string `json:"expires_at"`
+	BurnSeconds int    `json:"burn_seconds"` // burn-after-read timer
+	Mode        string `json:"mode"`
 }
 
 // ReceiptPayload is the wire shape of a receipt event.
@@ -186,11 +187,12 @@ func (h *Hub) Online(user string) bool {
 // envelopePayload projects an Envelope onto its wire form.
 func envelopePayload(env *Envelope) EnvelopePayload {
 	return EnvelopePayload{
-		ID:         env.ID,
-		From:       env.From,
-		Ciphertext: encodeCiphertext(env.Ciphertext),
-		CreatedAt:  env.CreatedAt.UTC().Format(timeLayout),
-		ExpiresAt:  env.ExpiresAt.UTC().Format(timeLayout),
-		Mode:       env.Mode,
+		ID:          env.ID,
+		From:        env.From,
+		Ciphertext:  encodeCiphertext(env.Ciphertext),
+		CreatedAt:   env.CreatedAt.UTC().Format(timeLayout),
+		ExpiresAt:   env.ExpiresAt.UTC().Format(timeLayout),
+		BurnSeconds: env.BurnSeconds,
+		Mode:        env.Mode,
 	}
 }

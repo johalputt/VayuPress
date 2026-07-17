@@ -4423,6 +4423,21 @@
 @keyframes vtalk-pop { from { transform: translateY(6px) scale(.98); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes vtalk-fade { to { transform: scale(.96); opacity: 0; } }
 
+/* Burn-after-read countdown — appears once a message is read and ticks down. */
+.vp-os .vtalk-bubble-burn {
+  font-variant-numeric: tabular-nums; font-weight: 600;
+  color: var(--warn); opacity: 1; white-space: nowrap;
+}
+.vp-os .vtalk-msg--out .vtalk-bubble-burn { color: #fed7aa; }
+/* An armed (reading, counting down) message gets a subtle warm ring. */
+.vp-os .vtalk-msg--armed .vtalk-bubble { box-shadow: inset 0 0 0 1px var(--warn-dim, rgba(245,158,11,.25)); }
+/* Live-mode messages read as hotter: a dashed accent edge. */
+.vp-os .vtalk-msg--live .vtalk-bubble { border: 1px dashed rgba(245, 158, 11, .55); }
+
+/* Live-mode composer toggle. */
+.vp-os .vtalk-live { cursor: pointer; user-select: none; gap: 4px; }
+.vp-os .vtalk-live input { accent-color: var(--warn); width: 15px; height: 15px; }
+
 /* ── Composer ──────────────────────────────────────────────────────────────*/
 .vp-os .vtalk-composer {
   border-top: 1px solid var(--border); padding: var(--sp-3) var(--sp-4);

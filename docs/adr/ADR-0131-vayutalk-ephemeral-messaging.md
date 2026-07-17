@@ -219,3 +219,40 @@ envelope id.
 - The relay is trivially horizontal-unfriendly (state is in one process's RAM);
   that is an accepted trade for the no-storage guarantee on the single-VPS
   product. Clustering would require a shared ephemeral bus and is out of scope.
+
+## Amendment (v3.13.56): burn-after-read self-destruct timers + Live mode
+
+The original design expired every envelope at an absolute `CreatedAt + TTL`
+computed at send. That conflated two different clocks — "how long the server
+holds a message the recipient hasn't come to read" and "how long a message
+lingers after it IS read". This amendment separates them and adds a Live mode.
+
+**Burn-after-read timer.** Each envelope now carries `burn_seconds` (wire field
+on the envelope payload; `Envelope.BurnSeconds`), the self-destruct timer that
+starts **when the message is read**, not when it is sent. User-selectable values
+are **5s / 1m / 5m / 15m / 30m / 1h**, default **5 minutes** (safe but usable).
+The clamp widened from `[60s, 3600s]` to `[5s, 3600s]` (`MinBurnSeconds`,
+`MaxBurnSeconds`, `DefaultBurnSeconds`); the wire field `ttl_seconds` on `/send`
+is reinterpreted as this burn timer (additively compatible — an older client
+that sent a lifetime still gets a sensible burn-after-read).
+
+**Unread holding window.** `Envelope.ExpiresAt` now means only the server-side
+holding deadline for an *unread* message — default 24h, operator-tunable via
+`VAYUOS_TALK_UNREAD_TTL_SECONDS` (clamped `[5m, 7d]`, see `SetUnreadTTL`). This
+is decoupled from the burn timer so a "5s after read" message does not vanish
+from the queue five seconds after send. Reading still read-destroys the stored
+copy on `ack` (no server storage after read); the countdown is then enforced
+client-side on both endpoints (recipient on reveal, sender on the `read`
+receipt), so the message disappears on both devices on the same clock.
+
+**Live mode.** The `live` envelope mode — never queued, delivered only if the
+recipient is streaming — is resurfaced as a user toggle meaning "nothing is ever
+stored on the server, and the message burns the moment it is read". It reuses
+the existing read-receipt plumbing; the client applies a short read grace so a
+live message is legible before it burns. The web console remains a **passive
+viewer that never acks** (per the v1.6.0 fix that stopped it read-destroying the
+app's queued copy); it applies the burn countdown visually on display but leaves
+the authoritative read-destroy to the app.
+
+Nothing is persisted; all new state (the burn timer, the unread window) lives in
+the same bounded in-memory structures and a restart still purges everything.

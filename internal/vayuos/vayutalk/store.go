@@ -21,10 +21,38 @@ const (
 	MaxPerRecipientQueue = 50
 	// MaxGlobalQueue bounds store-mode envelopes across all users.
 	MaxGlobalQueue = 5000
-	// MinTTLSeconds / MaxTTLSeconds clamp a caller-supplied envelope lifetime.
-	MinTTLSeconds = 60
-	MaxTTLSeconds = 3600
+	// MinBurnSeconds / MaxBurnSeconds clamp the caller-supplied self-destruct
+	// timer — how long a message survives AFTER the recipient first reads it
+	// (burn-after-read). The client renders the countdown from this value.
+	MinBurnSeconds = 5
+	MaxBurnSeconds = 3600
+	// DefaultBurnSeconds is used when the caller supplies no timer (5 minutes —
+	// safe but usable).
+	DefaultBurnSeconds = 300
 )
+
+// UnreadTTLSeconds bounds how long an UNREAD store-mode envelope is held in RAM
+// before it is purged (the recipient never came to read it). It decouples the
+// server's holding window from the per-message burn-after-read timer, so a short
+// "5s after read" timer does not cause an unread message to vanish in 5s. It is
+// a var (not const) so operators can tune it via VAYUOS_TALK_UNREAD_TTL_SECONDS;
+// the default is 24h. Clamped to [5m, 7d] by SetUnreadTTL.
+var UnreadTTLSeconds = 86400
+
+// SetUnreadTTL sets the unread holding window, clamped to a sane [5m, 7d] range.
+// Values ≤ 0 are ignored (keep the current setting).
+func SetUnreadTTL(secs int) {
+	if secs <= 0 {
+		return
+	}
+	switch {
+	case secs < 300:
+		secs = 300
+	case secs > 604800:
+		secs = 604800
+	}
+	UnreadTTLSeconds = secs
+}
 
 // Enqueue outcomes.
 var (
@@ -39,13 +67,14 @@ var (
 // Envelope is one opaque, end-to-end-encrypted message in transit. The server
 // stores ONLY the ciphertext and minimal routing metadata, in memory only.
 type Envelope struct {
-	ID         string
-	From       string
-	To         string
-	Ciphertext []byte
-	CreatedAt  time.Time
-	ExpiresAt  time.Time
-	Mode       string // "live" | "store"
+	ID          string
+	From        string
+	To          string
+	Ciphertext  []byte
+	CreatedAt   time.Time
+	ExpiresAt   time.Time // server holding deadline (unread cap); GC only
+	BurnSeconds int       // burn-after-read timer, delivered to clients
+	Mode        string    // "live" | "store"
 }
 
 // ExpiredReceipt names an envelope that a purge removed and the sender that
@@ -72,15 +101,18 @@ func NewStore() *Store {
 	}
 }
 
-// ClampTTL bounds a caller-supplied TTL to [MinTTLSeconds, MaxTTLSeconds].
-func ClampTTL(ttl int) int {
+// ClampBurn bounds a caller-supplied burn-after-read timer to
+// [MinBurnSeconds, MaxBurnSeconds]. A value ≤ 0 (unset) becomes DefaultBurnSeconds.
+func ClampBurn(secs int) int {
 	switch {
-	case ttl < MinTTLSeconds:
-		return MinTTLSeconds
-	case ttl > MaxTTLSeconds:
-		return MaxTTLSeconds
+	case secs <= 0:
+		return DefaultBurnSeconds
+	case secs < MinBurnSeconds:
+		return MinBurnSeconds
+	case secs > MaxBurnSeconds:
+		return MaxBurnSeconds
 	default:
-		return ttl
+		return secs
 	}
 }
 
@@ -96,9 +128,12 @@ func randID() string {
 	return base64.RawURLEncoding.EncodeToString(b)
 }
 
-// NewEnvelope mints an envelope with a fresh random ID and computed expiry.
-// The TTL is clamped; an oversized ciphertext is rejected before it is stored.
-func NewEnvelope(from, to string, ciphertext []byte, ttlSeconds int, mode string, now time.Time) (*Envelope, error) {
+// NewEnvelope mints an envelope with a fresh random ID. burnSeconds is the
+// clamped burn-after-read timer carried to the clients; ExpiresAt is the server
+// holding deadline (the unread cap), which is independent of the burn timer so a
+// short "burn 5s after read" does not evict an unread message in 5 seconds. An
+// oversized ciphertext is rejected before it is stored.
+func NewEnvelope(from, to string, ciphertext []byte, burnSeconds int, mode string, now time.Time) (*Envelope, error) {
 	if len(ciphertext) > MaxCiphertextBytes {
 		return nil, ErrCiphertextTooLarge
 	}
@@ -106,15 +141,15 @@ func NewEnvelope(from, to string, ciphertext []byte, ttlSeconds int, mode string
 	if id == "" {
 		return nil, errors.New("vayutalk: could not generate id")
 	}
-	ttl := ClampTTL(ttlSeconds)
 	return &Envelope{
-		ID:         id,
-		From:       from,
-		To:         to,
-		Ciphertext: ciphertext,
-		CreatedAt:  now,
-		ExpiresAt:  now.Add(time.Duration(ttl) * time.Second),
-		Mode:       mode,
+		ID:          id,
+		From:        from,
+		To:          to,
+		Ciphertext:  ciphertext,
+		CreatedAt:   now,
+		ExpiresAt:   now.Add(time.Duration(UnreadTTLSeconds) * time.Second),
+		BurnSeconds: ClampBurn(burnSeconds),
+		Mode:        mode,
 	}, nil
 }
 

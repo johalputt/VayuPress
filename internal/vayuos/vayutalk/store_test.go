@@ -14,14 +14,17 @@ func mkEnv(t *testing.T, from, to string, ttl int, mode string, now time.Time) *
 	return env
 }
 
-func TestClampTTL(t *testing.T) {
+func TestClampBurn(t *testing.T) {
 	cases := []struct{ in, want int }{
-		{0, MinTTLSeconds}, {59, MinTTLSeconds}, {60, 60}, {1000, 1000},
-		{3600, 3600}, {99999, MaxTTLSeconds},
+		{0, DefaultBurnSeconds},  // unset -> default 5m
+		{-1, DefaultBurnSeconds}, // negative -> default
+		{1, MinBurnSeconds},      // below min 5s -> 5s
+		{5, 5}, {60, 60}, {300, 300}, {1000, 1000},
+		{3600, 3600}, {99999, MaxBurnSeconds},
 	}
 	for _, c := range cases {
-		if got := ClampTTL(c.in); got != c.want {
-			t.Errorf("ClampTTL(%d) = %d, want %d", c.in, got, c.want)
+		if got := ClampBurn(c.in); got != c.want {
+			t.Errorf("ClampBurn(%d) = %d, want %d", c.in, got, c.want)
 		}
 	}
 }
@@ -36,11 +39,38 @@ func TestNewEnvelopeRejectsOversize(t *testing.T) {
 	}
 }
 
-func TestEnvelopeExpiryClamped(t *testing.T) {
+// TestEnvelopeBurnAndUnreadCap: the burn timer is carried on the envelope
+// (clamped), while ExpiresAt is the independent unread holding deadline.
+func TestEnvelopeBurnAndUnreadCap(t *testing.T) {
 	now := time.Unix(1000, 0)
-	env := mkEnv(t, "a@x", "b@x", 10, "store", now) // below min -> clamped to 60
-	if got := env.ExpiresAt.Sub(now); got != time.Duration(MinTTLSeconds)*time.Second {
-		t.Fatalf("expiry span = %v, want %v", got, time.Duration(MinTTLSeconds)*time.Second)
+	env := mkEnv(t, "a@x", "b@x", 1, "store", now) // 1s below min -> clamped to 5s burn
+	if env.BurnSeconds != MinBurnSeconds {
+		t.Fatalf("burn = %d, want %d", env.BurnSeconds, MinBurnSeconds)
+	}
+	// ExpiresAt is the unread cap, NOT the burn timer.
+	if got := env.ExpiresAt.Sub(now); got != time.Duration(UnreadTTLSeconds)*time.Second {
+		t.Fatalf("unread cap = %v, want %v", got, time.Duration(UnreadTTLSeconds)*time.Second)
+	}
+}
+
+func TestSetUnreadTTL(t *testing.T) {
+	orig := UnreadTTLSeconds
+	defer func() { UnreadTTLSeconds = orig }()
+	SetUnreadTTL(0) // ignored
+	if UnreadTTLSeconds != orig {
+		t.Fatal("0 should be ignored")
+	}
+	SetUnreadTTL(60) // below floor -> 300
+	if UnreadTTLSeconds != 300 {
+		t.Fatalf("got %d, want 300 (floor)", UnreadTTLSeconds)
+	}
+	SetUnreadTTL(9999999) // above ceiling -> 604800
+	if UnreadTTLSeconds != 604800 {
+		t.Fatalf("got %d, want 604800 (ceiling)", UnreadTTLSeconds)
+	}
+	SetUnreadTTL(3600)
+	if UnreadTTLSeconds != 3600 {
+		t.Fatalf("got %d, want 3600", UnreadTTLSeconds)
 	}
 }
 
@@ -141,8 +171,12 @@ func TestDelete(t *testing.T) {
 func TestPurgeExpired(t *testing.T) {
 	s := NewStore()
 	base := time.Unix(10000, 0)
+	// ExpiresAt is the unread holding deadline; set it explicitly to exercise the
+	// sweeper (NewEnvelope now derives it from the unread cap, not the burn timer).
 	live := mkEnv(t, "a@x", "b@x", 3600, "store", base)
+	live.ExpiresAt = base.Add(3600 * time.Second)
 	soon := mkEnv(t, "sndr@x", "b@x", 60, "store", base)
+	soon.ExpiresAt = base.Add(60 * time.Second)
 	if err := s.Enqueue(live); err != nil {
 		t.Fatal(err)
 	}

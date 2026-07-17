@@ -502,6 +502,14 @@ func (a *App) bootVayuOS() {
 	// credential chokepoint (device approval enforced) wrapped in the shared
 	// brute-force throttle; the pubkey provider is VayuPGP (minting on demand).
 	talkEnabled := mailCfg.Enabled && !strings.EqualFold(config.EnvOr("VAYUOS_TALK", "on"), "off")
+	// Optional operator override for how long an UNREAD message is held in RAM
+	// before it is purged (independent of the per-message burn-after-read timer).
+	// Default 24h; clamped to [5m, 7d] by SetUnreadTTL.
+	if v := strings.TrimSpace(config.EnvOr("VAYUOS_TALK_UNREAD_TTL_SECONDS", "")); v != "" {
+		if secs, err := strconv.Atoi(v); err == nil {
+			vtalk.SetUnreadTTL(secs)
+		}
+	}
 	talkBridge := &vayuMailBridge{app: a}
 	a.vayuTalk = vtalk.NewEngine(vtalk.Config{
 		Enabled: talkEnabled,

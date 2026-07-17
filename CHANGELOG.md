@@ -8,6 +8,25 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.56] — 2026-07-17
+
+### Added
+- **VayuTalk self-destruct timers + Live mode (ADR-0131 amendment).** Messages
+  now burn on a timer that starts **when they're read**, not when they're sent.
+  - **Timer options:** 5 seconds, 1 minute, 5 minutes, 15 minutes, 30 minutes,
+    1 hour — **default 5 minutes** (safe but usable). The web composer's
+    "Disappears" selector carries all six; each message shows a live 🔥 countdown
+    once it's read, and disappears on both sides on the same clock.
+  - **🔥 Live mode:** a composer toggle for messages that are **never stored on
+    the server** (delivered only while both of you are online) and vanish the
+    moment they're read.
+  - **Server:** the envelope now carries a `burn_seconds` timer (clamp widened to
+    `[5s, 1h]`) separate from the unread holding window (`ExpiresAt`, default 24h,
+    tunable via `VAYUOS_TALK_UNREAD_TTL_SECONDS`), so a short "5s after read"
+    timer no longer evicts an unread message five seconds after it's sent.
+    Everything stays in RAM — no new table, a restart still purges all. The web
+    console remains a passive viewer that never read-destroys the app's copy.
+
 ## [3.13.55] — 2026-07-17
 
 ### Fixed

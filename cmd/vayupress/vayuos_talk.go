@@ -190,12 +190,13 @@ func (a *App) handleVayuOSTalkPeer(w http.ResponseWriter, r *http.Request) {
 // It carries plaintext (the server has already opened the envelope) plus the
 // routing/expiry metadata the UI needs to render and time-out the bubble.
 type talkMessageOut struct {
-	ID        string `json:"id"`
-	From      string `json:"from"`
-	Text      string `json:"text"`
-	CreatedAt string `json:"created_at"`
-	ExpiresAt string `json:"expires_at"`
-	Mode      string `json:"mode"`
+	ID          string `json:"id"`
+	From        string `json:"from"`
+	Text        string `json:"text"`
+	CreatedAt   string `json:"created_at"`
+	ExpiresAt   string `json:"expires_at"`
+	BurnSeconds int    `json:"burn_seconds"`
+	Mode        string `json:"mode"`
 }
 
 // handleVayuOSTalk renders the VayuTalk chat page. The heavy lifting is in
@@ -211,7 +212,7 @@ func (a *App) handleVayuOSTalk(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var body strings.Builder
-	body.WriteString(`<div class="page-header"><h1>VayuTalk</h1><span class="muted text-sm">Ephemeral, end-to-end-encrypted chat — same relay as the app, messages vanish after they're read</span></div>`)
+	body.WriteString(`<div class="page-header"><h1>VayuTalk</h1><span class="muted text-sm">Ephemeral, end-to-end-encrypted chat — same relay as the app. Pick a self-destruct timer; messages burn a set time after they're read.</span></div>`)
 
 	if !a.vayuTalkEnabled() {
 		body.WriteString(`<div class="empty-state">VayuTalk is inactive. It runs automatically once mail is enabled (a <code>DOMAIN</code> is set); it is disabled only when <code>VAYUOS_TALK=off</code>.</div>`)
@@ -259,11 +260,12 @@ func (a *App) handleVayuOSTalk(w http.ResponseWriter, r *http.Request) {
 	// Right pane: thread header, message list, composer.
 	body.WriteString(`<section class="vtalk-main" id="vtalk-main" data-empty="1">`)
 	body.WriteString(`<div class="vtalk-thread-head" id="vtalk-thread-head"></div>`)
-	body.WriteString(`<div class="vtalk-thread" id="vtalk-thread"><div class="vtalk-hint"><div class="vtalk-hint-badge">🔒</div><p>Pick a conversation or start a new one. Messages are end-to-end encrypted and disappear the moment they're read — nothing is ever stored on the server.</p></div></div>`)
+	body.WriteString(`<div class="vtalk-thread" id="vtalk-thread"><div class="vtalk-hint"><div class="vtalk-hint-badge">🔒</div><p>Pick a conversation or start a new one. Messages are end-to-end encrypted and self-destruct on a timer once they're read. Turn on 🔥 Live to keep nothing on the server at all.</p></div></div>`)
 	body.WriteString(`<form class="vtalk-composer" id="vtalk-composer">`)
 	body.WriteString(`<textarea class="vtalk-input" id="vtalk-input" rows="1" placeholder="Write a message…" aria-label="Message" disabled></textarea>`)
 	body.WriteString(`<div class="vtalk-composer-actions">`)
-	body.WriteString(`<label class="vtalk-opt"><span class="text-sm muted">Keep for</span><select class="input input--sm" id="vtalk-ttl" aria-label="Message lifetime"><option value="300">5 min</option><option value="900">15 min</option><option value="3600" selected>1 hour</option></select></label>`)
+	body.WriteString(`<label class="vtalk-opt"><span class="text-sm muted">Disappears</span><select class="input input--sm" id="vtalk-ttl" aria-label="Self-destruct timer (after reading)"><option value="5">5 sec after read</option><option value="60">1 min after read</option><option value="300" selected>5 min after read</option><option value="900">15 min after read</option><option value="1800">30 min after read</option><option value="3600">1 hour after read</option></select></label>`)
+	body.WriteString(`<label class="vtalk-opt vtalk-live" title="Live mode: not stored on the server; vanishes the instant it is read. Both of you must be online."><input type="checkbox" id="vtalk-live"><span class="text-sm">🔥 Live</span></label>`)
 	body.WriteString(`<span class="vtalk-opt--spacer"></span>`)
 	body.WriteString(`<button class="btn btn--primary btn--sm" type="submit" id="vtalk-send" disabled>Send</button>`)
 	body.WriteString(`</div></form>`)
@@ -328,9 +330,10 @@ func (a *App) handleVayuOSTalkStream(w http.ResponseWriter, r *http.Request) {
 		if txt, ok := a.talkDecrypt(self, env.Ciphertext); ok {
 			out := talkMessageOut{
 				ID: env.ID, From: env.From, Text: txt,
-				CreatedAt: env.CreatedAt.UTC().Format(time.RFC3339),
-				ExpiresAt: env.ExpiresAt.UTC().Format(time.RFC3339),
-				Mode:      env.Mode,
+				CreatedAt:   env.CreatedAt.UTC().Format(time.RFC3339),
+				ExpiresAt:   env.ExpiresAt.UTC().Format(time.RFC3339),
+				BurnSeconds: env.BurnSeconds,
+				Mode:        env.Mode,
 			}
 			if !writeSSE(w, rc, "message", out) {
 				return
@@ -363,7 +366,7 @@ func (a *App) handleVayuOSTalkStream(w http.ResponseWriter, r *http.Request) {
 				if !ok {
 					continue
 				}
-				out := talkMessageOut{ID: p.ID, From: p.From, Text: txt, CreatedAt: p.CreatedAt, ExpiresAt: p.ExpiresAt, Mode: p.Mode}
+				out := talkMessageOut{ID: p.ID, From: p.From, Text: txt, CreatedAt: p.CreatedAt, ExpiresAt: p.ExpiresAt, BurnSeconds: p.BurnSeconds, Mode: p.Mode}
 				if !writeSSE(w, rc, "message", out) {
 					return
 				}

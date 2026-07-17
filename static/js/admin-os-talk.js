@@ -40,8 +40,13 @@
     composer: document.getElementById('vtalk-composer'),
     input: document.getElementById('vtalk-input'),
     ttl: document.getElementById('vtalk-ttl'),
+    live: document.getElementById('vtalk-live'),
     send: document.getElementById('vtalk-send')
   };
+
+  // Live mode burns a message a few seconds after it is read (readable, then
+  // gone) and is never stored on the server — see the composer's 🔥 Live toggle.
+  var LIVE_GRACE_SECONDS = 5;
 
   // peer(lowercased) -> { peer, messages:[], unread, item, dot }
   var convos = Object.create(null);
@@ -252,7 +257,12 @@
       hint.appendChild(elem('p', null, 'No messages yet. Say hello — it will vanish once they read it.'));
       els.thread.appendChild(hint);
     } else {
-      c.messages.forEach(function (m) { els.thread.appendChild(m.node); });
+      c.messages.forEach(function (m) {
+        els.thread.appendChild(m.node);
+        // Opening the thread reveals any incoming messages that arrived while it
+        // was in the background — start their burn-after-read countdown now.
+        if (!m.mine) armBurn(m);
+      });
     }
     reachabilityBanner(c.peer);
     scrollDown();
@@ -271,7 +281,12 @@
       m.statusEl = elem('span', 'vtalk-bubble-status', 'Sending…');
       foot.appendChild(m.statusEl);
     }
+    // Burn countdown — hidden until the message is read (armed), then ticks down.
+    m.burnEl = elem('span', 'vtalk-bubble-burn');
+    m.burnEl.hidden = true;
+    foot.appendChild(m.burnEl);
     body.appendChild(foot);
+    if (m.mode === 'live') row.classList.add('vtalk-msg--live');
     row.appendChild(body);
     m.node = row;
     return row;
@@ -298,7 +313,12 @@
       c.dot.textContent = String(c.unread);
       els.convos.insertBefore(c.item, els.convos.firstChild);
     }
+    // Fallback: an unread message still vanishes when the server's unread hold
+    // (expires_at) elapses, even if it is never opened here.
     scheduleExpiry(m);
+    // Incoming messages start their burn-after-read countdown the moment they are
+    // shown in the open thread (displaying them in the console IS reading them).
+    if (!m.mine && active === peer) armBurn(m);
   }
 
   function scheduleExpiry(m) {
@@ -308,7 +328,47 @@
     if (ms < 0) ms = 0;
     m.timer = setTimeout(function () { expireMessage(m); }, Math.min(ms, 2147483647));
   }
+
+  // ── Burn-after-read countdown ────────────────────────────────────────────────
+  // A single shared ticker updates every armed message once a second and burns
+  // the ones whose timer has elapsed. This keeps the DOM churn bounded no matter
+  // how many messages are counting down.
+  var burning = [];
+  var burnTicker = null;
+  function armBurn(m) {
+    if (!m || m.armed) return;
+    m.armed = true;
+    var secs = (m.mode === 'live') ? LIVE_GRACE_SECONDS : (m.burnSeconds || 300);
+    m.burnAt = Date.now() + secs * 1000;
+    if (m.node) m.node.classList.add('vtalk-msg--armed');
+    burning.push(m);
+    tickBurns();
+    if (!burnTicker) burnTicker = setInterval(tickBurns, 1000);
+  }
+  function fmtCountdown(sec) {
+    if (sec >= 3600) return Math.round(sec / 3600) + 'h';
+    if (sec >= 60) { var mm = Math.floor(sec / 60), ss = sec % 60; return mm + ':' + (ss < 10 ? '0' : '') + ss; }
+    return sec + 's';
+  }
+  function tickBurns() {
+    var now = Date.now();
+    for (var i = burning.length - 1; i >= 0; i--) {
+      var m = burning[i];
+      var remain = Math.round((m.burnAt - now) / 1000);
+      if (remain <= 0) {
+        burning.splice(i, 1);
+        expireMessage(m);
+        continue;
+      }
+      if (m.burnEl) {
+        m.burnEl.hidden = false;
+        m.burnEl.textContent = '🔥 ' + fmtCountdown(remain);
+      }
+    }
+    if (!burning.length && burnTicker) { clearInterval(burnTicker); burnTicker = null; }
+  }
   function expireMessage(m) {
+    if (m.timer) { clearTimeout(m.timer); m.timer = null; }
     if (m.node && m.node.parentNode) {
       m.node.classList.add('vtalk-msg--gone');
       setTimeout(function () { if (m.node && m.node.parentNode) m.node.parentNode.removeChild(m.node); }, 400);
@@ -336,7 +396,8 @@
       if (!d || !d.from) return;
       addMessage(d.from, {
         peer: norm(d.from), mine: false, text: d.text || '',
-        id: d.id, createdAt: d.created_at, expiresAt: d.expires_at, mode: d.mode
+        id: d.id, createdAt: d.created_at, expiresAt: d.expires_at,
+        burnSeconds: d.burn_seconds, mode: d.mode
       });
     });
     es.addEventListener('receipt', function (e) {
@@ -344,8 +405,14 @@
       if (!d || !d.id) return;
       var m = byId[d.id];
       if (!m) return;
-      if (d.status === 'read') setStatus(m, 'Read', 'is-read');
-      else if (d.status === 'expired') setStatus(m, 'Expired', 'is-expired');
+      if (d.status === 'read') {
+        // The recipient opened it: mark read and start our copy's burn countdown
+        // so the sender's view disappears on the same timer.
+        setStatus(m, 'Read', 'is-read');
+        armBurn(m);
+      } else if (d.status === 'expired') {
+        setStatus(m, 'Expired', 'is-expired');
+      }
     });
     es.addEventListener('ping', function () { markStatus('online', 'Online'); });
   }
@@ -360,13 +427,15 @@
   function send() {
     var text = els.input.value.trim();
     if (!text || !active) return;
-    var ttl = parseInt(els.ttl && els.ttl.value, 10) || 3600;
+    var burn = parseInt(els.ttl && els.ttl.value, 10) || 300; // burn-after-read seconds
+    var live = !!(els.live && els.live.checked);
+    var mode = live ? 'live' : 'store';
     var to = active;
 
-    // Always store-and-forward: delivered live if they're connected right now,
-    // otherwise queued and delivered the moment they next connect. Nothing is
-    // ever dropped for being offline.
-    var m = { peer: to, mine: true, text: text, createdAt: new Date().toISOString(), mode: 'store' };
+    // store mode: delivered live if they're connected now, otherwise queued and
+    // delivered the moment they next connect. live mode: never stored, delivered
+    // only if they're online now. Either way the message burns after it's read.
+    var m = { peer: to, mine: true, text: text, createdAt: new Date().toISOString(), mode: mode, burnSeconds: burn };
     addMessage(to, m);
     els.input.value = '';
     autogrow();
@@ -374,7 +443,7 @@
     fetch('/os/talk/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': cookie('vp_csrf') },
-      body: JSON.stringify({ to: to, text: text, ttl_seconds: ttl, mode: 'store', as: currentSelf })
+      body: JSON.stringify({ to: to, text: text, ttl_seconds: burn, mode: mode, as: currentSelf })
     }).then(function (r) {
       return r.json().then(function (j) { return { ok: r.ok, j: j }; }, function () { return { ok: r.ok, j: null }; });
     }).then(function (res) {
@@ -384,8 +453,10 @@
         return;
       }
       if (res.j.id) { m.id = res.j.id; byId[m.id] = m; }
-      m.expiresAt = new Date(Date.now() + ttl * 1000).toISOString();
-      scheduleExpiry(m);
+      // Outgoing messages do NOT start their countdown until the recipient reads
+      // them (a 'read' receipt arms the burn). Live messages that couldn't be
+      // delivered (recipient offline) are gone already.
+      if (live && !res.j.delivered) { setStatus(m, 'Not delivered — they’re offline', 'is-error'); return; }
       setStatus(m, res.j.delivered ? 'Delivered' : 'Sent');
     }).catch(function () { setStatus(m, 'Network error — not sent', 'is-error'); });
   }

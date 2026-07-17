@@ -146,11 +146,12 @@ func (e *Engine) Subscribe(user string) (queued []*Envelope, ch <-chan Event, ca
 }
 
 // Send routes an envelope per its mode. live: deliver only if the recipient is
-// online now, never queue. store: deliver live if online, else queue with TTL.
-// It returns the envelope id, whether it was delivered live now, and whether it
-// was queued for later.
-func (e *Engine) Send(from, to string, ciphertext []byte, ttlSeconds int, mode string) (id string, delivered, queued bool, err error) {
-	env, err := NewEnvelope(from, to, ciphertext, ttlSeconds, mode, time.Now())
+// online now, never queue. store: deliver live if online, else queue until read
+// or the unread cap. burnSeconds is the burn-after-read timer carried to the
+// clients. It returns the envelope id, whether it was delivered live now, and
+// whether it was queued for later.
+func (e *Engine) Send(from, to string, ciphertext []byte, burnSeconds int, mode string) (id string, delivered, queued bool, err error) {
+	env, err := NewEnvelope(from, to, ciphertext, burnSeconds, mode, time.Now())
 	if err != nil {
 		return "", false, false, err
 	}
