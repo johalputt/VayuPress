@@ -72,15 +72,17 @@ Go 1.25+ is required (govulncheck / x/tools need it).
 ## 6. Product facts to keep accurate everywhere (site, docs, copy)
 
 - **Ten products, one binary:** VayuOS, VayuMail, VayuTalk, VayuShield,
-  VayuAnalytics, Website & Blog, VayuPGP, VayuAPI + VCB, **Claude Connector**,
+  VayuAnalytics, Website & Blog, VayuPGP, VayuAPI + VCB, **VayuMCP**,
   VayuTor. Headline: "One binary. Ten products."
 - **The VayuMail mobile app onboards by direct-connect** — the user enters
   their domain and signs in once; the app provisions a per-device app password
   and configures IMAP/SMTP automatically. **QR scanning was removed** — do NOT
   mention QR codes / "scan to connect" anywhere in the app, site, or docs.
-- **Claude Connector** (ADR-0139): a built-in MCP server (`/mcp`) + OAuth 2.1
+- **VayuMCP** (ADR-0139): a built-in MCP server (`/mcp`) + OAuth 2.1
   authorization server gives one-click Connect from claude.ai for **Claude and
-  Claude Code** (and any MCP client). Optional dedicated `mcp.<domain>` host
+  Claude Code** — and any MCP client (claude.ai is just one). The user-facing
+  name is **VayuMCP** everywhere (VayuOS page, site, docs); do not call it the
+  "Claude Connector". Optional dedicated `mcp.<domain>` host
   with its own auto TLS cert (`scripts/setup-mcp-subdomain.sh`); needed when a
   CDN in front of the apex can't skip its bot challenge per-path. The `form-action`
   CSP on the consent page must include the client's validated redirect origin,

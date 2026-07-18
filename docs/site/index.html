@@ -30,7 +30,7 @@
   <script type="application/ld+json">
   {"@context":"https://schema.org","@type":"SoftwareApplication","name":"VayuPress",
    "applicationCategory":"DeveloperApplication","operatingSystem":"Linux",
-   "softwareVersion":"3.13.95","description":"A sovereign, single-VPS platform in one Go binary: a business website, a blog, a private PGP mail server (VayuMail) with an official mobile app, ephemeral end-to-end-encrypted chat (VayuTalk), built-in bot protection (VayuShield), cookieless analytics (VayuAnalytics), a fine-grained scoped API (VayuAPI), one-click Tor onion services for every domain (VayuTor), a one-click Claude/MCP connector, and one control panel (VayuOS). Zero telemetry.",
+   "softwareVersion":"3.13.95","description":"A sovereign, single-VPS platform in one Go binary: a business website, a blog, a private PGP mail server (VayuMail) with an official mobile app, ephemeral end-to-end-encrypted chat (VayuTalk), built-in bot protection (VayuShield), cookieless analytics (VayuAnalytics), a fine-grained scoped API (VayuAPI), one-click Tor onion services for every domain (VayuTor), a one-click MCP connector for Claude and any MCP client (VayuMCP), and one control panel (VayuOS). Zero telemetry.",
    "url":"https://vayupress.com/","license":"https://www.apache.org/licenses/LICENSE-2.0",
    "offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},
    "author":{"@type":"Organization","name":"VayuPress","email":"hello@vayupress.com"}}
@@ -194,7 +194,7 @@
             <div x-show="t>=7" x-transition.opacity.duration.300ms class="text-emerald-400">✓ VayuPGP · WKD published (AES-256 at rest)</div>
             <div x-show="t>=8" x-transition.opacity.duration.300ms class="text-emerald-400">✓ VayuShield + VayuAnalytics · bot protection · cookieless</div>
             <div x-show="t>=9" x-transition.opacity.duration.300ms class="text-emerald-400">✓ VayuTor · <span class="text-purple-300">every domain now on .onion</span> · one click</div>
-            <div x-show="t>=10" x-transition.opacity.duration.300ms class="text-emerald-400">✓ Claude Connector · <span class="text-indigo-300">mcp.yourdomain.com</span> · one-click AI control</div>
+            <div x-show="t>=10" x-transition.opacity.duration.300ms class="text-emerald-400">✓ VayuMCP · <span class="text-indigo-300">mcp.yourdomain.com</span> · connect Claude &amp; any MCP client</div>
             <div x-show="t>=11" x-transition.opacity.duration.300ms class="text-saffron-300 font-medium pt-2">
               VayuOS online · your whole stack is live <span class="cursor" aria-hidden="true">▊</span>
             </div>
@@ -512,7 +512,7 @@
                     <div class="prod-chip mt-2">VCB ✓ hooks · tokens · golden contracts — gated in CI</div>
                   </div>
 
-                  <!-- Claude Connector -->
+                  <!-- VayuMCP -->
                   <div x-show="activeProduct===8" class="prod-mock space-y-2">
                     <template x-for="c in [['📊','read_analytics'],['✍️','create_post'],['🎨','apply_theme'],['⚙️','update_settings']]" :key="c[1]">
                       <div class="prod-row">

@@ -1,6 +1,6 @@
 package main
 
-// admin_os_connector.go — the VayuOS "Claude connector" page (ADR-0139, Stage 2).
+// admin_os_connector.go — the VayuOS VayuMCP page (ADR-0139, Stage 2).
 //
 // This is the one-click front door for connecting Claude (or any MCP client) to
 // this VayuPress site. It does not introduce any new backend surface: minting and
@@ -20,7 +20,7 @@ import (
 	"github.com/johalputt/vayupress/internal/render"
 )
 
-// iconConnector is the sidebar/plug glyph for the Claude connector page.
+// iconConnector is the sidebar/plug glyph for the VayuMCP page.
 var iconConnector = svgIcon("M7 10.5V7a3 3 0 016 0v3.5M5.5 10.5h9l-.7 5A2 2 0 0111.8 17H8.2a2 2 0 01-2-1.5l-.7-5zM10 17v1.5")
 
 // publicMCPEndpoint returns the absolute URL of this site's MCP connector
@@ -48,7 +48,7 @@ func publicMCPEndpoint(r *http.Request) string {
 	return scheme + "://" + host + "/mcp"
 }
 
-// handleOSConnector renders the Claude connector page.
+// handleOSConnector renders the VayuMCP page.
 func (a *App) handleOSConnector(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
@@ -74,7 +74,7 @@ func (a *App) handleOSConnector(w http.ResponseWriter, r *http.Request) {
 		osConnectorConnectCard(endpoint) +
 		osConnectorManageCard(connectors)
 
-	full := adminOSShellHead(nonce, "Claude Connector", "connector", cfg) +
+	full := adminOSShellHead(nonce, "VayuMCP", "connector", cfg) +
 		body +
 		adminOSShellFoot(nonce, osConnectorScript, pageUsesAlpine(body))
 	writeOSHTML(w, full)
@@ -82,13 +82,13 @@ func (a *App) handleOSConnector(w http.ResponseWriter, r *http.Request) {
 
 func osConnectorIntro() string {
 	return `<div class="page-header">
-  <h1>Claude Connector</h1>
+  <h1>VayuMCP</h1>
   <div class="page-actions">
     <a class="btn btn--sm" href="/docs/compatibility/mcp" target="_blank" rel="noopener">Connector docs</a>
     <span id="cx-status" role="status" aria-live="polite" class="text-xs muted"></span>
   </div>
 </div>
-<p class="text-sm muted mb-4">Connect <strong>Claude</strong> (or any Model Context Protocol client) directly to this site — the same way Claude connects to GitHub. Claude gets a native set of tools and can publish posts, build pages, read analytics, search content, and more. What it can do is decided <strong>entirely by the key you grant below</strong>: a full-control key lets Claude run the whole site; a limited key exposes only what you allow. Nothing else changes — the connector is just your API, spoken in Claude's language.</p>
+<p class="text-sm muted mb-4"><strong>VayuMCP</strong> is a built-in <strong>Model Context Protocol</strong> connector: it lets an AI client connect directly to this site and run it with a native set of tools — publish posts, build pages, read analytics, search content, and more. <strong>Claude and Claude Code connect in one click</strong>, but claude.ai is just one client — <strong>any MCP client works the same way</strong> (Claude Desktop, Claude Code, Cursor, or anything that speaks MCP over HTTP + OAuth). What a client can do is decided <strong>entirely by the key you grant below</strong>: a full-control key lets it run the whole site; a limited key exposes only what you allow. It is simply your API, spoken in MCP.</p>
 
 <div id="cx-token-banner" class="card ak-token-banner" hidden>
   <div class="settings-block-title">Copy your new connector key now</div>
@@ -105,7 +105,7 @@ func osConnectorEndpointCard(endpoint string) string {
 	e := html.EscapeString(endpoint)
 	return `<div class="card">
   <div class="settings-block-title">Your connector endpoint</div>
-  <p class="text-sm muted mb-4">This is the single URL Claude connects to. It is served by VayuPress itself — no extra service, no extra port. Requests are authenticated with the key you grant below.</p>
+  <p class="text-sm muted mb-4">This is the single URL an MCP client (Claude, Claude Code, or any other) connects to. It is served by VayuPress itself — no extra service, no extra port. Requests are authenticated with the key you grant below.</p>
   <div class="ak-token-row">
     <input id="cx-endpoint" class="input font-mono ak-token-input" type="text" readonly value="` + e + `">
     <button type="button" class="btn btn--sm" data-copy="#cx-endpoint">Copy</button>
@@ -118,8 +118,8 @@ func osConnectorEndpointCard(endpoint string) string {
 // create endpoint; the preset buttons carry their capability set in data-caps.
 func osConnectorGrantCard() string {
 	return `<div class="card">
-  <div class="settings-block-title">Grant access to Claude</div>
-  <p class="text-sm muted mb-4">Pick how much control to hand over. You can revoke any grant instantly below, and every action Claude takes is written to the audit log.</p>
+  <div class="settings-block-title">Grant access</div>
+  <p class="text-sm muted mb-4">Pick how much control to hand over to the connected client. You can revoke any grant instantly below, and every action the client takes is written to the audit log.</p>
 
   <div class="cx-grant-grid">
     <div class="cx-grant cx-grant--full">
@@ -127,8 +127,8 @@ func osConnectorGrantCard() string {
         <span class="settings-row-label">Full control</span>
         <span class="badge badge--accent">Everything</span>
       </div>
-      <p class="text-sm muted">A superuser key. Every current and future VayuMCP tool becomes available — posts, pages, media, analytics, and more as the toolset grows. This is the "give Claude the keys to the whole site" option.</p>
-      <button type="button" class="btn btn--primary" data-mint="*:*" data-label="Claude (full control)">Grant full control</button>
+      <p class="text-sm muted">A superuser key. Every current and future VayuMCP tool becomes available — posts, pages, media, analytics, and more as the toolset grows. This is the "give the client the keys to the whole site" option.</p>
+      <button type="button" class="btn btn--primary" data-mint="*:*" data-label="VayuMCP (full control)">Grant full control</button>
     </div>
 
     <div class="cx-grant">
@@ -137,7 +137,7 @@ func osConnectorGrantCard() string {
         <span class="badge">Posts &amp; pages</span>
       </div>
       <p class="text-sm muted">Let Claude write, update, and organise content — create and edit posts and pages, search, and list — but nothing else. A safe default for a writing assistant.</p>
-      <button type="button" class="btn" data-mint="posts:read,posts:write" data-label="Claude (author)">Grant author access</button>
+      <button type="button" class="btn" data-mint="posts:read,posts:write" data-label="VayuMCP (author)">Grant author access</button>
     </div>
 
     <div class="cx-grant">
@@ -146,7 +146,7 @@ func osConnectorGrantCard() string {
         <span class="badge">Look, don't touch</span>
       </div>
       <p class="text-sm muted">Claude can read posts and pages, search content, and read analytics — but cannot change anything. Ideal for analysis, reporting, and audits.</p>
-      <button type="button" class="btn" data-mint="posts:read,analytics:read" data-label="Claude (read-only)">Grant read-only access</button>
+      <button type="button" class="btn" data-mint="posts:read,analytics:read" data-label="VayuMCP (read-only)">Grant read-only access</button>
     </div>
   </div>
 
@@ -175,8 +175,8 @@ func osConnectorConnectCard(endpoint string) string {
 }`
 	cli := `claude mcp add --transport http vayupress ` + endpoint + ` --header "Authorization: Bearer YOUR_KEY_HERE"`
 	return `<div class="card">
-  <div class="settings-block-title">Connect Claude</div>
-  <p class="text-sm muted mb-4">After you grant a key above, it is filled into the snippets below automatically. Choose your client:</p>
+  <div class="settings-block-title">Connect a client</div>
+  <p class="text-sm muted mb-4">After you grant a key above, it is filled into the snippets below automatically. Claude, Claude Code and any other MCP client all use the same endpoint — choose your client:</p>
 
   <div class="settings-block-title text-sm">Claude Desktop</div>
   <p class="text-sm muted">Add this to your <code>claude_desktop_config.json</code> (Settings → Developer → Edit config), then restart Claude Desktop:</p>
@@ -220,7 +220,7 @@ func osConnectorManageCard(keys []apikeys.Key) string {
     </tr>`
 	}
 	if rows == "" {
-		rows = `<tr><td colspan="3" class="text-sm muted ak-empty">No active connector keys yet. Grant one above to connect Claude.</td></tr>`
+		rows = `<tr><td colspan="3" class="text-sm muted ak-empty">No active connector keys yet. Grant one above to connect a client.</td></tr>`
 	}
 	return `<div class="card">
   <div class="settings-block-title">Active connectors</div>
@@ -270,7 +270,7 @@ document.addEventListener('click',function(ev){
   var mintBtn=ev.target.closest('[data-mint]');
   if(mintBtn){
     var caps=mintBtn.getAttribute('data-mint').split(',');
-    var label=mintBtn.getAttribute('data-label')||'Claude connector';
+    var label=mintBtn.getAttribute('data-label')||'VayuMCP';
     mintBtn.disabled=true;cxSet('Creating key…',false);
     cxPost('/os/api/apikeys/create',{label:label,capabilities:caps}).then(function(res){
       mintBtn.disabled=false;

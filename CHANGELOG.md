@@ -8,7 +8,20 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
-## [3.13.95] — 2026-07-18
+## [3.13.96] — 2026-07-18
+
+### Changed
+- **The connector is now branded "VayuMCP" everywhere, not "Claude Connector".**
+  claude.ai is just one client — VayuMCP is a standard MCP + OAuth 2.1 endpoint, so
+  **any MCP client** (Claude, Claude Code, Claude Desktop, Cursor, or anything that
+  speaks MCP over HTTP) connects the same way. Renamed the VayuOS page title, `<h1>`,
+  and sidebar nav to **VayuMCP**; reframed the page copy to say "connect a client"
+  and lead with "any MCP client" while keeping the concrete Claude how-tos; and
+  relabelled the one-click grants to `VayuMCP (full control / author / read-only)`.
+  Updated the marketing site (products tab renamed **VayuMCP**, hero terminal line,
+  JSON-LD) and `docs/compatibility/mcp.md` (retitled, added a "claude.ai is just one
+  client" note and a plain-language "what you can ask a connected client to do"
+  summary). No behaviour or endpoint change — `/mcp` and the OAuth flow are unchanged.
 
 ### Fixed
 - **OAuth consent "Approve" now actually redirects back to the client.** The whole

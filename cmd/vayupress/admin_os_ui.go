@@ -431,7 +431,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/credentials/reveal", a.handleOSCredentialReveal)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/credentials/delete", a.handleOSCredentialDelete)
 
-		// Claude connector (ADR-0139, Stage 2): the one-click front door for
+		// VayuMCP (ADR-0139, Stage 2): the one-click front door for
 		// connecting Claude/MCP clients. GET-only — it mints and revokes through
 		// the CSRF-protected API-key endpoints above, adding no new write surface.
 		pr.Get("/os/connector", a.handleOSConnector)
@@ -672,7 +672,7 @@ func osSidebarNav(active string, s *osSettings) string {
 		gate(navItem("/os/domains", "Domains", "domains", active, iconDomains), "/os/domains"),
 		gate(navItem("/os/settings", "Settings", "settings", active, iconSettings), "/os/settings"),
 		gate(navItem("/os/apikeys", "API Keys", "apikeys", active, iconKey), "/os/apikeys"),
-		gate(navItem("/os/connector", "Claude Connector", "connector", active, iconConnector), "/os/connector"),
+		gate(navItem("/os/connector", "VayuMCP", "connector", active, iconConnector), "/os/connector"),
 		gate(navItem("/os/security", "Security", "security", active, iconSecurity), "/os/security"),
 	)
 	section("Operations",

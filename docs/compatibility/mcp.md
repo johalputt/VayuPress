@@ -1,10 +1,20 @@
-# VayuMCP — the built-in Claude / MCP connector
+# VayuMCP — the built-in MCP connector (Claude, Claude Code & any MCP client)
 
 VayuPress serves a **Model Context Protocol (MCP)** server from the same binary,
-so an AI assistant (Claude Desktop, Claude Code, or any MCP client) can drive
-your site natively — publish posts, read analytics, search content, and more —
-the same way Claude connects to GitHub. See
+so an AI client can drive your site natively — publish posts, read analytics,
+search content, and more — the same way Claude connects to GitHub. See
 [ADR-0139](../adr/ADR-0139-vayu-mcp-connector.md) for the design.
+
+**claude.ai is just one client.** Claude and Claude Code connect in one click, but
+VayuMCP is a standard MCP + OAuth 2.1 endpoint — **any MCP client works the same
+way** (Claude Desktop, Claude Code, Cursor, or anything that speaks MCP over HTTP).
+Nothing here is Claude-specific except the example screenshots.
+
+**What you can ask a connected client to do** (scoped to the key you grant):
+show a traffic summary, list/search/read posts, create & publish a post, create a
+standalone page, list media, list & apply themes, and read or update your site
+settings (branding, colours, nav, footer, SEO). It cannot touch email, chat,
+VayuShield, or VayuTor — VayuMCP covers the publishing/site/analytics surface only.
 
 - **Endpoint:** `POST https://<your-domain>/mcp`
 - **Protocol:** MCP over Streamable HTTP (JSON-RPC 2.0)
@@ -13,12 +23,12 @@ the same way Claude connects to GitHub. See
   nothing more.
 - **Toggle:** on by default; set `VAYUOS_MCP=off` to disable the endpoint.
 
-## One-click: the Claude Connector page
+## One-click: the VayuMCP page
 
-The fastest way to connect is **VayuOS → Claude Connector** (`/os/connector`):
+The fastest way to connect is **VayuOS → VayuMCP** (`/os/connector`):
 
-- **Grant full control** — one click mints a superuser key so Claude can run the
-  whole site.
+- **Grant full control** — one click mints a superuser key so the client can run
+  the whole site.
 - **Author** / **Read-only** presets — one click mints a safely-scoped key.
 - Your live endpoint is shown, and your freshly-minted key is filled straight
   into ready-to-paste **Claude Desktop** and **Claude Code** configurations.
@@ -32,8 +42,8 @@ through the same API-key endpoints as the API Keys page.
 The connector's power equals its key's scope:
 
 - **Full control** — a superuser key (full access / `*:*`). Every VayuMCP tool
-  becomes available; Claude can do anything the platform can. Use this to let
-  Claude run the whole site.
+  becomes available; the client can do anything the platform can. Use this to
+  let it run the whole site.
 - **Limited** — a scoped key (e.g. only `posts:write`). The connector then
   exposes *only* the tools that key grants; every other tool is hidden from
   `tools/list` and refused if called. Same enforcement as the REST API.
@@ -116,7 +126,7 @@ config (Tor bridges, VayuShield thresholds) is never writable through it.
 
 ## Roadmap
 
-- **Stage 2 (shipped):** the VayuOS **Claude Connector** page (one-click
+- **Stage 2 (shipped):** the VayuOS **VayuMCP** page (one-click
   full-control or scoped key + copy-paste connect steps) and broadened read tools
   (`site_settings`, `analytics_summary`).
 - **Stage 3 (in progress):** safe write tools for the remaining sections, each
