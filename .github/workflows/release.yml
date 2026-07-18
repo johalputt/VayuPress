@@ -11,7 +11,7 @@ jobs:
     name: "Build, sign, and publish release"
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install C build tools
         run: sudo apt-get install -y gcc build-essential
       - uses: actions/setup-go@v5

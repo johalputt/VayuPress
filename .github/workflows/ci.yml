@@ -30,7 +30,7 @@ jobs:
     name: "P10 · Required Docs"
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Verify all required documentation files exist
         run: |
           MISSING=0
@@ -60,7 +60,7 @@ jobs:
     name: "P10 · Shell Lint (shellcheck)"
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install shellcheck
         run: sudo apt-get install -y shellcheck
       - name: Lint all shell scripts
@@ -73,7 +73,7 @@ jobs:
     name: "P10 · Markdown Lint"
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Lint Markdown files
         uses: DavidAnson/markdownlint-cli2-action@v16
         with:
@@ -84,7 +84,7 @@ jobs:
     name: "P9 · Secret Scan (trufflehog)"
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Scan for secrets with TruffleHog (filesystem mode)
@@ -127,7 +127,7 @@ jobs:
     name: "P10 · License Compliance"
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Check for GPL/AGPL licenses in scripts
         run: |
           echo "Checking SPDX headers and license files..."
@@ -143,7 +143,7 @@ jobs:
     name: "P10 · Governance Self-Consistency"
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Verify GOVERNANCE-CONSTITUTION.md is present and non-empty
         run: |
           [ -s GOVERNANCE-CONSTITUTION.md ] || { echo "FAIL: GOVERNANCE-CONSTITUTION.md missing or empty"; exit 1; }
@@ -170,7 +170,7 @@ jobs:
     name: "P10 · ADR Completeness"
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Verify required ADRs exist
         run: |
           MISSING=0
@@ -199,7 +199,7 @@ jobs:
     name: "P9 · Security Policy"
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Verify SECURITY.md has required sections
         run: |
           MISSING=0
@@ -225,7 +225,7 @@ jobs:
     name: "P12 · Ethical Compliance"
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Verify ETHICS.md has Ethical AI Charter
         run: |
           MISSING=0
@@ -262,7 +262,7 @@ jobs:
     name: "P11 · Community Governance"
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Verify community health files
         run: |
           MISSING=0
@@ -291,7 +291,7 @@ jobs:
     name: "P10 · Deploy Script Validation"
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Validate deploy script structure
         run: |
           # Check the deploy script has all required sections
@@ -327,7 +327,7 @@ jobs:
     name: "P13 · Source Sync (no drift)"
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Verify cmd/vayupress/main.go matches the deploy script heredoc
         run: |
           chmod +x scripts/sync-source.sh
@@ -338,7 +338,7 @@ jobs:
     name: "P16 · Native Go Build/Vet/Test/Staticcheck"
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install C build tools (required for CGO/sqlite3)
         run: sudo apt-get install -y gcc build-essential
       - uses: actions/setup-go@v5
@@ -407,7 +407,7 @@ jobs:
     name: "Advisory · Link Check"
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Check Markdown links
         uses: gaurav-nelson/github-action-markdown-link-check@v1
         with:
