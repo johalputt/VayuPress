@@ -512,8 +512,20 @@
                     <div class="prod-chip mt-2">VCB ✓ hooks · tokens · golden contracts — gated in CI</div>
                   </div>
 
-                  <!-- VayuTor -->
+                  <!-- Claude Connector -->
                   <div x-show="activeProduct===8" class="prod-mock space-y-2">
+                    <template x-for="c in [['📊','read_analytics'],['✍️','create_post'],['🎨','apply_theme'],['⚙️','update_settings']]" :key="c[1]">
+                      <div class="prod-row">
+                        <span class="prod-av" x-text="c[0]"></span>
+                        <span class="flex-1 font-mono text-[11px] text-gray-300 truncate" x-text="c[1]"></span>
+                        <span class="prod-pill">allow</span>
+                      </div>
+                    </template>
+                    <div class="prod-chip mt-2"><span class="prod-live"></span> Claude connected · OAuth 2.1 · scoped &amp; revocable</div>
+                  </div>
+
+                  <!-- VayuTor -->
+                  <div x-show="activeProduct===9" class="prod-mock space-y-2">
                     <template x-for="o in [['johal.in','vayp7xk2n4qy6zj3…onion'],['shop.johal.in','q4x3z2a1s0d9f8g7…onion'],['blog.johal.in','m8w5r0t1c2v3b4n5…onion']]" :key="o[0]">
                       <div class="prod-row">
                         <span class="prod-av">🧅</span>
