@@ -18,6 +18,37 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   list — nothing is provisioned by the unprivileged binary itself. Idempotent:
   re-running reports how many rows actually changed (0 when nothing was pending).
 
+## [3.13.79] — 2026-07-18
+
+### Added
+- **VayuMCP — a built-in Claude / MCP connector (Stage 1).** VayuPress now serves
+  its own **Model Context Protocol** server from the same binary at `POST /mcp`,
+  so an AI assistant (Claude Desktop, Claude Code, or any MCP client) can drive
+  the site natively — the way Claude connects to GitHub. Stage 1 ships tools for
+  posts (`create_post`, `update_post`, `delete_post`, `list_posts`, `get_post`),
+  `search_content`, and `site_info`. Auth reuses the scoped-key model
+  (ADR-0134): each tool declares the `section:action` it needs and is checked
+  with `KeyInfo.Can()` before it is listed *or* called, so a connector can do
+  **exactly** what its key grants — a superuser key gives Claude **full control**;
+  a scoped key exposes only its tools, and ungranted tools are invisible and
+  refused ("unknown"). The endpoint is authenticated, rate-limited, and every
+  call is WORM-audited with the calling key's label (never the secret). Toggle
+  with `VAYUOS_MCP=off`. Protocol layer is a self-contained, dependency-free
+  `internal/mcp` package. See [ADR-0139](docs/adr/ADR-0139-vayu-mcp-connector.md)
+  and [docs/compatibility/mcp.md](docs/compatibility/mcp.md). Stage 2 adds a
+  one-click VayuOS connector page + more tools; Stage 3 adds OAuth for a
+  claude.ai one-click Connect button.
+
+### Security / hardening
+- Adversarial review of the connector (no auth/capability-bypass found) surfaced
+  three fixes now applied: **article updates now enforce the same field limits as
+  create** (`ValidateArticleInput` in `ArticleService.Update`) — closing an
+  oversized-row / limit-bypass hole that also affected the REST `PUT`; MCP
+  error responses now always include the JSON-RPC `id` (Null on parse error) per
+  spec; and MCP audit rows are attributed to the key's **stable unique id**, not
+  its mutable/non-unique label, so a destructive tool call is always traceable to
+  exactly one key.
+
 ## [3.13.78] — 2026-07-18
 
 ### Security

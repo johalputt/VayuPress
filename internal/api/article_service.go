@@ -150,6 +150,16 @@ func (s *ArticleService) Update(ctx context.Context, slug string, title, content
 		art.Tags = tags
 	}
 	art.UpdatedAt = time.Now().UTC()
+	// Enforce the same field limits as Create on the merged result (title ≤500,
+	// content ≤5 MB, ≤20 tags each ≤100 chars). Without this an update could store
+	// an oversized row that Create would reject — a hole reachable from both the
+	// REST PUT and the MCP update_post tool. (Storage-quota is intentionally not
+	// re-checked here: an update overwrites in place and must stay allowed even at
+	// quota so an operator can shrink a post.)
+	if err := ValidateArticleInput(art.Title, art.Slug, art.Content, art.Tags); err != nil {
+		span.SetError(err)
+		return art, err
+	}
 	if err := s.Queue.Enqueue(ctx, art, "update"); err != nil {
 		return art, fmt.Errorf("queue: %w", err)
 	}

@@ -295,6 +295,11 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	r.Post("/checkout", a.handleCheckoutPage)
 	r.Post("/api/v1/payments/webhook/{gateway}", a.handlePaymentWebhook)
 
+	// VayuMCP (ADR-0139): the Model Context Protocol connector at POST /mcp, so an
+	// AI assistant (Claude, etc.) can drive VayuPress natively. Authenticated by
+	// the same scoped keys; capability is enforced per tool, not per URL.
+	a.mountMCP(r)
+
 	// Protected admin + write API. RequireAPIKey authenticates and stamps the
 	// caller's KeyInfo; requireAPIPermission enforces the fine-grained
 	// section:action grant for the route (ADR-0134) — superuser keys (bootstrap,
