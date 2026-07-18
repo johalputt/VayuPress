@@ -6,8 +6,12 @@ that too — it holds the release-versioning rule).
 
 ## 1. Releases
 
-- **Patch/micro versions only.** See `AGENTS.md`: bump only the third segment
-  (`v3.13.94 → v3.13.95`), never minor or major.
+- **Micro by default; roll over at 99.** See `AGENTS.md`. Normally bump the third
+  (micro) segment: `v3.13.96 → v3.13.97`. Each segment counts **0–99** and never
+  exceeds 99: when micro is at **99**, the next release bumps the **minor** and
+  resets micro to 0 (`v3.13.99 → v3.14.0`); when minor is at **99** and micro rolls
+  over, the next release bumps the **major** and resets minor+micro to 0
+  (`v3.99.99 → v4.0.0`). Never bump minor/major early — only the 99 rollover does.
 - A release bumps **all three** in one commit, then push to `main`:
   1. `.release-version` — e.g. `v3.13.95` (**no trailing newline**; match the
      existing byte format). Changing this file triggers `tag-release.yml`
