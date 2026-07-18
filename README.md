@@ -77,8 +77,18 @@ Drive the whole platform programmatically — create posts, apply themes, manage
 ### 🧩 An extension contract that guarantees compatibility (VCB)
 The **Vayu Compatibility Bible** turns "will this plugin/theme work?" into a checked contract. A developer — or an AI agent — writes a `plugin.json` or `theme.json`, runs **`vayu-compat`**, and knows *before shipping* that every hook, capability, colour, option, sandbox limit, and CSP rule matches what the host actually enforces — because the validator is the **same code the host runs**, so the docs can never drift. Themes that fetch from an external host, plugins that request more than they need, or manifests built against a hook that doesn't exist are refused with a plain, exact reason. Discover the live contract over the API (`GET /api/v1/vcb/contract`) or validate a manifest against a running host (`POST /api/v1/vcb/validate`). *([the Bible →](docs/compatibility/vcb.md) · [ADR →](docs/adr/ADR-0135-vayu-compatibility-bible.md))*
 
-### 🧅 One-click Tor onion services (VayuTor)
-Flip one switch in VayuOS and **every domain VayuPress hosts becomes reachable as its own Tor v3 `.onion` service** — alongside its normal clearnet URL, with no loss of speed or quality and both addresses serving simultaneously. VayuPress drives a locally-running tor daemon over its **authenticated control port** (`ADD_ONION`), persisting each onion's ED25519 key so the address is **stable across restarts**, and advertises it to Tor Browser via the **`Onion-Location`** header for automatic discovery. Visitors reach your site with **no ISP, no network observer, and no third party** able to see who connected or from where. The **VayuTor tab shows a single number** — how many Tor visits — and *nothing else*: no IP, no time, no user-agent, no path. Runs under the same strict CSP as the rest of VayuOS. *([architecture →](docs/adr/ADR-0138-vayutor-onion-services.md))*
+### 🧅 Private, censorship-resistant Tor onion services (VayuTor)
+Flip one switch in VayuOS and **every domain becomes reachable as its own Tor v3 `.onion`** — alongside its normal clearnet URL, both serving the same site simultaneously with no loss of speed or quality, and advertised to Tor Browser via the **`Onion-Location`** header. Visitors reach you with **no ISP, no network observer, and no third party** able to see who connected or from where.
+
+VayuPress runs its **own tor** as an unprivileged child process (authenticated control port, `ADD_ONION`), persisting each onion's ED25519 key so the address is **stable across restarts** — no root, no `torrc` surgery, no systemd setup. It will even **download a current Tor by itself** when the host's system tor is missing or too old to validate today's network, so it works on locked-down and end-of-life servers with **nothing done on the box**.
+
+- **Beats networks that block Tor.** An automatic escalation ladder (direct → 80/443-only → **obfs4 bridges**) routes around IP-level blocks and deep-packet inspection. The **obfs4 transport is built into VayuPress**, so bridges work with nothing to install — paste bridge lines in VayuOS and they apply live.
+- **Vanity addresses.** Give a domain a recognisable `.onion` that starts with letters you choose; VayuPress brute-forces a matching v3 key **in the background on the server** (no key ever leaves the box) and republishes the domain under it.
+- **Health & alerts.** A live onion health state (healthy / degraded / down) with a transition history, plus **signed webhook alerts** (`tor.onion_down` / `tor.onion_recovered`) when onions drop or recover.
+- **Hardened for onion visitors.** No HSTS over a `.onion` (meaningless there), `Referrer-Policy: no-referrer` so the onion URL never leaks, and **no inbound ports** — onion traffic arrives through Tor's rendezvous.
+- **Privacy by construction.** The default metric is a single count — **no IP** (Tor provides none), no time, no path, no user-agent, no cookie. Per-page popularity counts are **opt-in and aggregate-only**; visitor geolocation is impossible over an onion service and never attempted.
+
+Runs under the same strict CSP as the rest of VayuOS. *([architecture →](docs/adr/ADR-0138-vayutor-onion-services.md))*
 
 ---
 
@@ -117,7 +127,7 @@ Runs comfortably on a single **8 GB RAM / 4 vCPU / 50 GB NVMe** VPS.
 | **Private messaging** | Built-in, E2E-encrypted, ephemeral (VayuTalk) | A separate Signal/Slack account & server |
 | **Tracking of readers** | Cookieless, no PII, no consent banner | Cookies + third-party pixels |
 | **Bot & DDoS protection** | Built-in, self-learning (VayuShield Aegis) | A separate Cloudflare/WAF subscription |
-| **Anonymity / Tor** | One-click `.onion` for every domain, stable address, count-only stats (VayuTor) | Manual torrc surgery, or not at all |
+| **Anonymity / Tor** | One-click `.onion` for every domain — stable & **vanity** addresses, **obfs4 bridges** to beat censorship, self-managed tor, health alerts, count-only stats (VayuTor) | Manual torrc surgery, or not at all |
 | **Dependencies** | One Go binary + SQLite + Nginx | Node, databases, Redis, queues, SDKs |
 | **Extensibility** | Sandboxed, capability-gated plugins; a scoped API + a checked compatibility contract (VCB) | Marketplace plugins with full access |
 | **Automation / API** | Fine-grained keys scoped to `section:action`, rate-limited & audited (VayuAPI) | All-or-nothing tokens, or none at all |
@@ -140,7 +150,7 @@ VayuPress is a single Go binary and a single SQLite database. There is no second
                     │   VayuMail (SMTP/IMAP/POP3 · DKIM · MX/SPF/DMARC)           │
                     │   VayuTalk (ephemeral E2E chat · SSE relay · read-once)     │
                     │   VayuPGP (keys · WKD)   VayuFind (search)   Analytics      │
-                    │   VayuTor (every domain on a v3 .onion · count-only)        │
+                    │   VayuTor (v3 .onion · self-managed tor · obfs4 · vanity)   │
                     │   VayuOS control panel   Newsletter   Media   VayuAPI       │
                     │                                                             │
                     │   ── Platform kernel (immutable) ──                         │
