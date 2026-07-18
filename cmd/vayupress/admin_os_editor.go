@@ -316,6 +316,37 @@ func (a *App) handleOSPostToggleFragment(w http.ResponseWriter, r *http.Request)
 	fmt.Fprint(w, osPostStatusButton(esc, status)+osPostStatusOOB(esc, status))
 }
 
+// handleOSPostIndexNowFragment lets an operator manually (re-)submit a single
+// post's URL to IndexNow from the Posts manager — for when the automatic
+// on-publish ping did not go through (no key at the time, a transient failure,
+// or a proxy challenge). It submits synchronously so the result is immediate,
+// then returns the flipped button plus an out-of-band update of that row's
+// IndexNow badge. CSRF is enforced by the route's CSRFTokenMiddleware.
+func (a *App) handleOSPostIndexNowFragment(w http.ResponseWriter, r *http.Request) {
+	slug := strings.TrimSpace(chi.URLParam(r, "slug"))
+	if !api.IsValidSlug(slug) {
+		http.Error(w, "a valid slug is required", http.StatusBadRequest)
+		return
+	}
+	var status string
+	if err := dbpkg.Reader().QueryRowContext(r.Context(), `SELECT COALESCE(status,'published') FROM articles WHERE slug=?`, slug).Scan(&status); err != nil {
+		http.Error(w, "no article with that slug", http.StatusNotFound)
+		return
+	}
+	isDraft := status != "published"
+	// Submit now; pingIndexNow records the outcome to indexnow_submissions.
+	state, detail := a.pingIndexNow(slug)
+	st, ok := dbpkg.IndexNowStatusOf(slug)
+	if !ok && state == "skipped" {
+		// Nothing was recorded (e.g. no IndexNow key configured, or a read-only
+		// mode). Surface the reason inline so the operator isn't left guessing.
+		st, ok = dbpkg.IndexNowStatus{State: dbpkg.IndexNowFailed, Detail: detail}, true
+	}
+	esc := htmlpkg.EscapeString(slug)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprint(w, osIndexNowButton(esc, st, ok, isDraft)+osIndexNowBadgeOOB(esc, st, ok, isDraft))
+}
+
 // handleOSPostPinFragment is the HTMX counterpart to handleOSPostPin: it flips a
 // post's featured (pinned) flag and returns an HTML fragment — the flipped pin
 // button plus an out-of-band update of the row's "📌 Pinned" badge — so the

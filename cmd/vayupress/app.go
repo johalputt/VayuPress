@@ -350,10 +350,16 @@ func (a *App) indexNowKey() string {
 	return config.Cfg.IndexNowKey
 }
 
-func (a *App) pingIndexNow(slug string) {
+// pingIndexNow announces a published post's URL to IndexNow. It returns the
+// outcome — state is one of "submitted", "failed", or "skipped" — and records
+// every real attempt (submitted/failed) to indexnow_submissions so the Posts
+// manager can show a per-post status and offer a manual re-ping. Skips (no key,
+// draft, read-only mode) are not recorded; they leave the last-known row intact.
+// Async callers (`go a.pingIndexNow(...)`) simply ignore the return values.
+func (a *App) pingIndexNow(slug string) (state, detail string) {
 	indexNowKey := a.indexNowKey()
 	if indexNowKey == "" {
-		return
+		return "skipped", "no IndexNow key configured"
 	}
 	// Only announce URLs that are actually public. A draft (or a not-yet-published
 	// post) returns 404/noindex, so pinging it wastes the submission and can train
@@ -363,14 +369,14 @@ func (a *App) pingIndexNow(slug string) {
 		var status string
 		if err := dbpkg.Reader().QueryRow(
 			`SELECT COALESCE(status,'published') FROM articles WHERE slug=?`, slug).Scan(&status); err != nil {
-			return // unknown slug → nothing public to announce
+			return "skipped", "unknown slug" // nothing public to announce
 		}
 		if status != "published" {
 			logging.LogJSON(logging.LogFields{
 				Level: "info", Component: "indexnow", Severity: "info",
 				Msg: "submission skipped — post is not published", Path: slug, Error: status,
 			})
-			return
+			return "skipped", "post is not published"
 		}
 	}
 	// Governance: IndexNow is an outbound mutation announcement. Suppress it in
@@ -381,7 +387,7 @@ func (a *App) pingIndexNow(slug string) {
 			Level: "info", Component: "indexnow", Severity: "info",
 			Msg: "submission suppressed by system mode", Path: slug, Error: string(m),
 		})
-		return
+		return "skipped", "suppressed by system mode (" + string(m) + ")"
 	}
 	body, err := json.Marshal(map[string]interface{}{
 		"host": config.Cfg.Domain, "key": indexNowKey,
@@ -390,28 +396,35 @@ func (a *App) pingIndexNow(slug string) {
 	})
 	if err != nil {
 		logging.LogError("indexnow", "marshal failed: "+slug, err.Error())
-		return
+		dbpkg.RecordIndexNow(slug, dbpkg.IndexNowFailed, 0, err.Error())
+		return "failed", err.Error()
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, "POST", "https://api.indexnow.org/indexnow", bytes.NewReader(body))
 	if err != nil {
 		logging.LogError("indexnow", "build request failed: "+slug, err.Error())
-		return
+		dbpkg.RecordIndexNow(slug, dbpkg.IndexNowFailed, 0, err.Error())
+		return "failed", err.Error()
 	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err2 := a.outboundClient.Do(req)
 	if err2 != nil {
 		logging.LogError("indexnow", "submission failed: "+slug, err2.Error())
-		return
+		dbpkg.RecordIndexNow(slug, dbpkg.IndexNowFailed, 0, err2.Error())
+		return "failed", err2.Error()
 	}
 	defer resp.Body.Close()
 	// IndexNow returns 200/202 on accept; surface anything else for operators.
 	if resp.StatusCode >= 300 {
-		logging.LogError("indexnow", "submission rejected: "+slug, fmt.Sprintf("status %d", resp.StatusCode))
-		return
+		detail := fmt.Sprintf("endpoint returned HTTP %d", resp.StatusCode)
+		logging.LogError("indexnow", "submission rejected: "+slug, detail)
+		dbpkg.RecordIndexNow(slug, dbpkg.IndexNowFailed, resp.StatusCode, detail)
+		return "failed", detail
 	}
 	logging.LogInfo("indexnow", "submitted "+slug)
+	dbpkg.RecordIndexNow(slug, dbpkg.IndexNowSubmitted, resp.StatusCode, "")
+	return "submitted", ""
 }
 
 // =============================================================================

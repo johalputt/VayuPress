@@ -8,7 +8,22 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
-## [3.13.96] — 2026-07-18
+## [3.13.97] — 2026-07-18
+
+### Added
+- **Per-post IndexNow status + manual re-ping in the Posts manager.** Every
+  published post is already announced to IndexNow automatically on publish/update;
+  now that outcome is **persisted per post** (migration 067, `indexnow_submissions`)
+  and **shown on each row** in VayuOS → Posts as a small badge: **✓ IndexNow**
+  (submitted, with the time on hover), **⚠ IndexNow failed** (with the reason), or
+  **IndexNow: not sent** (never submitted). Drafts show a neutral **—** since they
+  have no public URL. When a post was not submitted — no key at publish time, a
+  transient failure, or a proxy challenge — a **Ping IndexNow** button submits it
+  on the spot (and reads **Re-ping** once done); the row's badge updates in place
+  over HTMX with no reload. The manual endpoint (`POST
+  /os/api/posts/{slug}/indexnow-fragment`) is admin-only and CSRF-protected, and
+  reuses the same `pingIndexNow` path, so a manual ping is announced exactly like an
+  automatic one and its result is recorded the same way.
 
 ### Changed
 - **The connector is now branded "VayuMCP" everywhere, not "Claude Connector".**

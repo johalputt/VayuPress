@@ -445,6 +445,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		// (flipped button + out-of-band status pill) instead of JSON, so the
 		// Posts manager updates the row without a full-page reload.
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/posts/{slug}/status-fragment", a.handleOSPostToggleFragment)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/posts/{slug}/indexnow-fragment", a.handleOSPostIndexNowFragment)
 		// HTMX in-place pin/unpin: returns the flipped pin button + an out-of-band
 		// "Pinned" badge, so the row updates without a full-page reload.
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/posts/{slug}/pin-fragment", a.handleOSPostPinFragment)
@@ -1845,6 +1846,51 @@ func osPostPinBadge(slugEsc string, featured, oob bool) string {
 	return `<span id="ppin-` + slugEsc + `"` + oobAttr + `>` + inner + `</span>`
 }
 
+// osIndexNowBadge renders a post's IndexNow (search-engine instant-index)
+// submission state as a small chip, keyed by a stable per-slug id so the manual
+// re-ping can swap it out-of-band. slugEsc must already be HTML-escaped. Drafts
+// are not public, so they show a neutral "—" instead of a submission state.
+func osIndexNowBadge(slugEsc string, st dbpkg.IndexNowStatus, ok, isDraft bool) string {
+	var inner string
+	switch {
+	case isDraft:
+		inner = `<span class="chip" title="Drafts are not public, so nothing is submitted to IndexNow until you publish.">IndexNow: —</span>`
+	case ok && st.State == dbpkg.IndexNowSubmitted:
+		when := st.SubmittedAt.Format("2 Jan 2006 15:04 UTC")
+		inner = `<span class="chip chip--brand" title="Submitted to IndexNow on ` + html.EscapeString(when) + `">✓ IndexNow</span>`
+	case ok && st.State == dbpkg.IndexNowFailed:
+		inner = `<span class="chip" style="color:#f59e0b" title="` + html.EscapeString(st.Detail) + `">⚠ IndexNow failed</span>`
+	default:
+		inner = `<span class="chip" title="Not yet submitted to IndexNow. Use “Ping IndexNow” to submit it now.">IndexNow: not sent</span>`
+	}
+	return `<span id="post-indexnow-` + slugEsc + `">` + inner + `</span>`
+}
+
+// osIndexNowBadgeOOB is the out-of-band variant returned by the manual re-ping
+// endpoint so HTMX updates just that post's badge in place.
+func osIndexNowBadgeOOB(slugEsc string, st dbpkg.IndexNowStatus, ok, isDraft bool) string {
+	base := osIndexNowBadge(slugEsc, st, ok, isDraft)
+	return strings.Replace(base, `<span id="post-indexnow-`+slugEsc+`">`, `<span id="post-indexnow-`+slugEsc+`" hx-swap-oob="true">`, 1)
+}
+
+// osIndexNowButton renders the manual "Ping IndexNow" control. It is only
+// meaningful for a published post (a draft has no public URL to announce), so it
+// returns empty for drafts. The label reads "Re-ping" once a post was already
+// submitted. Clicking POSTs to the fragment endpoint, which returns the flipped
+// button plus an out-of-band badge update.
+func osIndexNowButton(slugEsc string, st dbpkg.IndexNowStatus, ok, isDraft bool) string {
+	if isDraft {
+		return ""
+	}
+	label := "Ping IndexNow"
+	if ok && st.State == dbpkg.IndexNowSubmitted {
+		label = "Re-ping"
+	}
+	return `<button type="button" class="btn btn--ghost btn--sm"` +
+		` hx-post="/os/api/posts/` + slugEsc + `/indexnow-fragment"` +
+		` hx-target="this" hx-swap="outerHTML" hx-disabled-elt="this">` + label + `</button>`
+}
+
 func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
@@ -2023,6 +2069,14 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
   <a class="btn btn--primary mt-4" href="/os/editor">Write your first post</a>
 </div>`
 	} else {
+		// Batch-load each shown post's IndexNow submission status in one query
+		// (avoids an N+1) so every row can show whether it was announced to
+		// search engines and offer a manual re-ping.
+		slugList := make([]string, 0, len(posts))
+		for _, p := range posts {
+			slugList = append(slugList, p.Slug)
+		}
+		inStatus := dbpkg.IndexNowStatuses(slugList)
 		rows := ""
 		for _, p := range posts {
 			tags := ""
@@ -2031,6 +2085,7 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 			}
 			esc := html.EscapeString(p.Slug)
 			isDraft := p.Status == "draft"
+			inSt, inOK := inStatus[p.Slug]
 			viewBtn := `<a class="btn btn--ghost btn--sm" href="/` + esc + `" target="_blank" rel="noopener">View ↗</a>`
 			if isDraft {
 				// A draft is hidden from the public site (previewed in the editor).
@@ -2044,7 +2099,7 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
   <td><input type="checkbox" data-post-select value="` + esc + `" aria-label="Select ` + html.EscapeString(p.Title) + `"></td>
   <td class="row-title">
     <a href="/os/editor/` + esc + `">` + html.EscapeString(p.Title) + `</a>` + osPostPinBadge(esc, p.Featured, false) + `
-    <div class="row-meta">/` + esc + `</div>
+    <div class="row-meta">/` + esc + ` ` + osIndexNowBadge(esc, inSt, inOK, isDraft) + `</div>
   </td>
   <td><span id="post-status-` + esc + `">` + osPostStatusPill(p.Status) + `</span></td>
   <td>` + tags + `</td>
@@ -2054,6 +2109,7 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
     ` + viewBtn + `
     ` + osPostPinButton(esc, p.Featured) + `
     ` + osPostStatusButton(esc, p.Status) + `
+    ` + osIndexNowButton(esc, inSt, inOK, isDraft) + `
     <button type="button" class="btn btn--ghost btn--sm" data-post-delete data-slug="` + esc + `" data-title="` + html.EscapeString(p.Title) + `">Delete</button>
   </td>
 </tr>`
