@@ -8,6 +8,16 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Added
+- **VayuDomains: bulk "Sync all pending" approval.** The manual sync gate now has
+  a batch action so a set of freshly-registered secondary domains can be approved
+  for provisioning together instead of one row at a time. VayuOS → Domains shows a
+  **Sync all pending (N)** button whenever any domain is on manual hold, and the
+  CLI gains `vayupress domains sync --all` / `hold --all`. Like the per-domain
+  action, approving only adds the domains to the out-of-process helper's work
+  list — nothing is provisioned by the unprivileged binary itself. Idempotent:
+  re-running reports how many rows actually changed (0 when nothing was pending).
+
 ## [3.13.77] — 2026-07-17
 
 ### Fixed

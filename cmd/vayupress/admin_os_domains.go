@@ -151,7 +151,11 @@ func domainsTable(domains []domain.Domain, counts, mailCounts, memberCounts map[
 <div class="empty-sub">The primary domain is seeded automatically once DOMAIN is configured. Add a secondary domain below.</div></div>`
 	}
 	var rows strings.Builder
+	held := 0 // secondary domains parked on manual hold (for the bulk action)
 	for _, d := range domains {
+		if !d.IsPrimary && !d.IsSyncApproved() {
+			held++
+		}
 		badge := ""
 		if d.IsPrimary {
 			badge = ` <span class="pill pill--accent">Primary</span>`
@@ -213,10 +217,25 @@ func domainsTable(domains []domain.Domain, counts, mailCounts, memberCounts map[
   <td class="text-right">` + actions + `</td>
 </tr>`)
 	}
+	// Bulk action: when one or more secondaries sit on manual hold, offer a
+	// single "Sync all pending" that approves them together — the batch
+	// counterpart to each row's "Sync now" (the helper still provisions
+	// out-of-process; approving only adds them to its work list).
+	bulk := ""
+	if held > 0 {
+		unit := "domains"
+		if held == 1 {
+			unit = "domain"
+		}
+		bulk = `<div class="vm-row" style="gap:.5rem;align-items:center;margin-top:.75rem">
+  <button type="button" class="btn btn--primary btn--sm" data-dom-sync-all>Sync all pending (` + strconv.Itoa(held) + ` ` + unit + `)</button>
+  <span id="dom-sync-all-status" class="text-sm muted" role="status" aria-live="polite"></span>
+</div>`
+	}
 	return `<div class="card"><div class="table-wrap"><table class="table">
   <thead><tr><th>Host</th><th>Serves</th><th>Content</th><th>Members</th><th>Mail</th><th>Sync</th><th>TLS</th><th>Status</th><th></th></tr></thead>
   <tbody>` + rows.String() + `</tbody>
-</table></div></div>`
+</table></div>` + bulk + `</div>`
 }
 
 // domainsAssignForm lets the operator move a post to a domain by slug. This is
@@ -418,6 +437,14 @@ document.querySelectorAll('[data-dom-sync]').forEach(function(b){
       .catch(function(e){b.disabled=false;show('Error: '+e);});
   });
 });
+var syncAllBtn=document.querySelector('[data-dom-sync-all]');
+if(syncAllBtn)syncAllBtn.addEventListener('click',function(){
+  var s=document.getElementById('dom-sync-all-status');
+  syncAllBtn.disabled=true;if(s)s.textContent='Approving…';
+  fetch('/os/api/domains/sync-all',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},body:JSON.stringify({sync_state:'approved'})})
+    .then(function(r){if(r.ok){location.reload();}else{syncAllBtn.disabled=false;if(s)s.textContent='Could not approve pending domains';}})
+    .catch(function(e){syncAllBtn.disabled=false;if(s)s.textContent='Error: '+e;});
+});
 document.querySelectorAll('[data-dom-toggle]').forEach(function(b){
   b.addEventListener('click',function(){
     b.disabled=true;show('Saving…');
@@ -582,6 +609,31 @@ func (a *App) handleOSDomainSync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, r, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// handleOSDomainSyncAll flips every secondary domain's sync state in one call —
+// the bulk counterpart to handleOSDomainSync behind the "Sync all pending"
+// button. Like the per-row action it only records approval; provisioning still
+// happens out-of-process on the helper's next run. Returns how many rows
+// changed so the UI can report the batch result.
+func (a *App) handleOSDomainSyncAll(w http.ResponseWriter, r *http.Request) {
+	if a.domains == nil {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "unavailable", "domain registry not initialised", "")
+		return
+	}
+	var body struct {
+		SyncState string `json:"sync_state"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 512)).Decode(&body); err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "bad-request", "invalid JSON", "")
+		return
+	}
+	n, err := a.domains.SetAllSyncState(r.Context(), strings.TrimSpace(body.SyncState))
+	if err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "sync-failed", err.Error(), "")
+		return
+	}
+	writeJSON(w, r, http.StatusOK, map[string]any{"status": "ok", "changed": n})
 }
 
 // handleOSDomainStatus enables or disables a secondary domain.
