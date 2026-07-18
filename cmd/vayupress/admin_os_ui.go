@@ -1096,12 +1096,41 @@ func (a *App) handleOSLogin(w http.ResponseWriter, r *http.Request) {
 	// Already signed in? Opening /os/login with a live session must land on the
 	// dashboard, not re-prompt for credentials — the seamless posture the operator
 	// expects whether they typed /os or /os/login.
+	next := safeLocalNext(r.URL.Query().Get("next"))
 	if a.hasValidConsoleSession(r) {
-		http.Redirect(w, r, "/os", http.StatusSeeOther)
+		dest := "/os"
+		if next != "" {
+			dest = next
+		}
+		http.Redirect(w, r, dest, http.StatusSeeOther)
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = w.Write([]byte(osLoginPage("", "")))
+	_, _ = w.Write([]byte(osLoginPage("", "", next)))
+}
+
+// safeLocalNext returns s only if it is a safe SAME-ORIGIN path — it must begin
+// with a single "/" and must not be protocol-relative ("//host"), a backslash
+// trick ("/\host"), or contain control characters or a scheme. Anything else
+// yields "" so a post-login redirect can never leave this site (open-redirect
+// guard; cf. the CodeQL open-redirect fix in ADR history).
+func safeLocalNext(s string) string {
+	if s == "" || len(s) > 512 || s[0] != '/' {
+		return ""
+	}
+	if strings.HasPrefix(s, "//") || strings.HasPrefix(s, "/\\") {
+		return ""
+	}
+	for _, r := range s {
+		if r < 0x20 || r == 0x7f {
+			return ""
+		}
+	}
+	// Reject an embedded scheme (e.g. "/x:https://evil" is harmless, but be strict).
+	if strings.Contains(s, "://") {
+		return ""
+	}
+	return s
 }
 
 func (a *App) handleOSLoginSubmit(w http.ResponseWriter, r *http.Request) {
@@ -1110,11 +1139,16 @@ func (a *App) handleOSLoginSubmit(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
+	next := safeLocalNext(r.FormValue("next"))
+	loginDest := "/os"
+	if next != "" {
+		loginDest = next
+	}
 	email := strings.TrimSpace(r.FormValue("email"))
 	pass := r.FormValue("password")
 	if email == "" || pass == "" {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte(osLoginPage(email, "Email and password are required.")))
+		_, _ = w.Write([]byte(osLoginPage(email, "Email and password are required.", next)))
 		return
 	}
 	if a.userStore == nil || a.sessions == nil {
@@ -1130,7 +1164,7 @@ func (a *App) handleOSLoginSubmit(w http.ResponseWriter, r *http.Request) {
 	ip := loginClientIP(r)
 	if locked, until := auth.CheckAuthLockout(ip); locked {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte(osLoginPage(email, loginLockoutMessage(until))))
+		_, _ = w.Write([]byte(osLoginPage(email, loginLockoutMessage(until), next)))
 		return
 	}
 	u, err := a.userStore.Authenticate(r.Context(), email, pass)
@@ -1145,17 +1179,17 @@ func (a *App) handleOSLoginSubmit(w http.ResponseWriter, r *http.Request) {
 			}
 			auth.RecordAuthSuccess(ip)
 			auth.SetSessionCookieRemember(w, token, remember)
-			http.Redirect(w, r, "/os", http.StatusSeeOther)
+			http.Redirect(w, r, loginDest, http.StatusSeeOther)
 			return
 		} else if totpMissing {
 			auth.RecordAuthFailure(ip)
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			_, _ = w.Write([]byte(osLoginPage(email, "Enter the 6-digit code from your authenticator app, then re-enter your password.")))
+			_, _ = w.Write([]byte(osLoginPage(email, "Enter the 6-digit code from your authenticator app, then re-enter your password.", next)))
 			return
 		}
 		auth.RecordAuthFailure(ip)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte(osLoginPage(email, "Invalid email or password.")))
+		_, _ = w.Write([]byte(osLoginPage(email, "Invalid email or password.", next)))
 		return
 	}
 	// Second factor: if the account has 2FA enabled, a valid TOTP code is required.
@@ -1163,7 +1197,7 @@ func (a *App) handleOSLoginSubmit(w http.ResponseWriter, r *http.Request) {
 	if ok, required := a.verifyTOTPForLogin(r.Context(), email, r.FormValue("totp")); required && !ok {
 		auth.RecordAuthFailure(ip)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte(osLoginPage(email, "Enter the 6-digit code from your authenticator app, then re-enter your password.")))
+		_, _ = w.Write([]byte(osLoginPage(email, "Enter the 6-digit code from your authenticator app, then re-enter your password.", next)))
 		return
 	}
 	token, err := a.sessions.Create(r.Context(), u.ID)
@@ -1174,7 +1208,7 @@ func (a *App) handleOSLoginSubmit(w http.ResponseWriter, r *http.Request) {
 	auth.RecordAuthSuccess(ip)
 	a.userStore.TouchLastLogin(r.Context(), u.ID)
 	auth.SetSessionCookieRemember(w, token, remember)
-	http.Redirect(w, r, "/os", http.StatusSeeOther)
+	http.Redirect(w, r, loginDest, http.StatusSeeOther)
 }
 
 // handleOSChangePassword renders the forced first-login password-change page for
@@ -1282,10 +1316,17 @@ func (a *App) handleOSLogout(w http.ResponseWriter, r *http.Request) {
 // osLoginPage builds the sign-in page: a single, calm, centered card on a clean
 // background (light by default, following the OS) with an unobtrusive
 // light/dark/auto theme switch. No gradients, no animation — minimalist premium.
-func osLoginPage(prefillEmail, errMsg string) string {
+func osLoginPage(prefillEmail, errMsg, next string) string {
 	errHTML := ""
 	if errMsg != "" {
 		errHTML = `<div class="login-error" role="alert">` + html.EscapeString(errMsg) + `</div>`
+	}
+	// next carries the post-login destination (e.g. an /oauth/authorize URL the
+	// operator was bounced from). It is a safe same-origin path (safeLocalNext),
+	// so it can never redirect off-site; it is round-tripped as a hidden field.
+	nextHTML := ""
+	if next != "" {
+		nextHTML = `<input type="hidden" name="next" value="` + html.EscapeString(next) + `">`
 	}
 	return authPageShell("Sign in — VayuPress", `
   <div class="login-brandline">
@@ -1296,7 +1337,7 @@ func osLoginPage(prefillEmail, errMsg string) string {
     <h1 class="login-title">Welcome back</h1>
     <p class="login-sub">Sign in to your dashboard</p>
     `+errHTML+`
-    <form class="login-form" method="POST" action="/os/login" novalidate>
+    <form class="login-form" method="POST" action="/os/login" novalidate>`+nextHTML+`
       <div class="field">
         <label class="field-label" for="login-email">Email</label>
         <input id="login-email" class="input" type="email" name="email"

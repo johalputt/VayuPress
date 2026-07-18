@@ -96,7 +96,7 @@ func TestOSLayoutEscapesTitle(t *testing.T) {
 // TestOSLoginPageCSPSafe checks the standalone login page is CSP-clean and
 // escapes the error message and prefilled email.
 func TestOSLoginPageCSPSafe(t *testing.T) {
-	out := osLoginPage(`evil"<x>`, `<b>bad</b>`)
+	out := osLoginPage(`evil"<x>`, `<b>bad</b>`, "")
 	assertCSPSafe(t, "osLoginPage", out)
 	if strings.Contains(out, "<b>bad</b>") {
 		t.Error("login page did not escape error message")

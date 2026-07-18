@@ -4949,6 +4949,20 @@
   overflow-x: auto;
 }
 
+/* ── OAuth consent screen (ADR-0140) — shown on the auth-page shell ───────── */
+.oauth-consent { max-width: 30rem; }
+.oauth-choices { display: flex; flex-direction: column; gap: var(--sp-3); margin: var(--sp-4) 0; }
+.oauth-choice {
+  display: grid; grid-template-columns: auto 1fr; gap: 2px var(--sp-3);
+  align-items: start; padding: var(--sp-3);
+  border: 1px solid var(--border); border-radius: var(--r-md);
+  cursor: pointer;
+}
+.oauth-choice input { grid-row: span 2; margin-top: 2px; accent-color: var(--brand); }
+.oauth-choice-title { font-weight: 600; color: var(--text); }
+.oauth-choice-desc { font-size: var(--text-sm); color: var(--text-2); }
+.oauth-actions { display: flex; gap: var(--sp-3); margin-top: var(--sp-4); }
+
 /* ══════════════════════════════════════════════════════════════════════════
    ADR-0136 — native View Transitions (cross-document + HTMX swaps)
    A CSS at-rule only; lives in this same-origin stylesheet, so it satisfies

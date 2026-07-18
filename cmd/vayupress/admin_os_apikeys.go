@@ -586,11 +586,33 @@ func (a *App) handleOSAPIKeyRotate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleOSAPIKeyRevoke(w http.ResponseWriter, r *http.Request) {
-	a.apiKeyMutate(w, r, func(id string) error { return a.apiKeys.Revoke(r.Context(), id) })
+	a.apiKeyMutate(w, r, func(id string) error {
+		if err := a.apiKeys.Revoke(r.Context(), id); err != nil {
+			return err
+		}
+		a.revokeOAuthRefreshForKey(r, id)
+		return nil
+	})
 }
 
 func (a *App) handleOSAPIKeyDelete(w http.ResponseWriter, r *http.Request) {
-	a.apiKeyMutate(w, r, func(id string) error { return a.apiKeys.Delete(r.Context(), id) })
+	a.apiKeyMutate(w, r, func(id string) error {
+		if err := a.apiKeys.Delete(r.Context(), id); err != nil {
+			return err
+		}
+		a.revokeOAuthRefreshForKey(r, id)
+		return nil
+	})
+}
+
+// revokeOAuthRefreshForKey drops any OAuth refresh tokens bound to a key when it
+// is revoked or deleted, so a revoked connector cannot mint a fresh access token
+// by rotating through /oauth/token (ADR-0140). Best-effort — a cleanup failure
+// must not block the revoke, and the access token (the key itself) is already dead.
+func (a *App) revokeOAuthRefreshForKey(r *http.Request, id string) {
+	if a.oauth != nil {
+		_ = a.oauth.RevokeRefreshForKey(r.Context(), id)
+	}
 }
 
 // apiKeyMutate is the shared revoke/delete helper.

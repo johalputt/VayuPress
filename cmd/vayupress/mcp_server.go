@@ -12,6 +12,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"sort"
 	"strings"
 
@@ -64,8 +65,29 @@ func (a *App) mountMCP(r chi.Router) {
 	}
 	srv := a.buildMCPServer()
 	r.Group(func(r chi.Router) {
-		r.Use(auth.RequireAPIKey, auth.RateLimitMiddleware, a.apiUsageMiddleware)
+		r.Use(a.requireMCPAuth, auth.RateLimitMiddleware, a.apiUsageMiddleware)
 		r.Post("/mcp", srv.ServeHTTP)
+	})
+}
+
+// requireMCPAuth authenticates an /mcp request by its API key (an X-API-Key /
+// Bearer token — which may be one issued through the OAuth flow, since those are
+// scoped API keys). When no valid key is present it returns 401 with an RFC 9728
+// WWW-Authenticate challenge pointing at this site's protected-resource metadata,
+// so an MCP client (claude.ai) can discover the authorization server and begin the
+// one-click Connect flow. This replaces auth.RequireAPIKey on /mcp only, to add
+// that challenge; the resolution + KeyInfo stamping is identical.
+func (a *App) requireMCPAuth(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if ki, ok := auth.ResolveValidAPIKey(r); ok {
+			next.ServeHTTP(w, auth.RequestWithKeyInfo(r, ki))
+			return
+		}
+		rm := oauthBaseURL(r) + "/.well-known/oauth-protected-resource"
+		w.Header().Set("WWW-Authenticate", `Bearer resource_metadata="`+rm+`"`)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error":"unauthorized","error_description":"authentication required; see WWW-Authenticate for the authorization server"}`))
 	})
 }
 

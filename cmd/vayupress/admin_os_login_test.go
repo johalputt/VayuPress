@@ -41,7 +41,7 @@ func TestHandleOSLoginRendersFormWhenAnonymous(t *testing.T) {
 // (the seamless persistent posture), and stays CSP-safe (no inline styles or
 // external asset hosts).
 func TestOSLoginPageRememberCheckbox(t *testing.T) {
-	out := osLoginPage("", "")
+	out := osLoginPage("", "", "")
 	assertCSPSafe(t, "osLoginPage", out)
 
 	if !strings.Contains(out, `name="remember"`) {
@@ -68,5 +68,25 @@ func TestOSLoginPageRememberCheckbox(t *testing.T) {
 	}
 	if !strings.Contains(out, "Remember me") {
 		t.Error("login page missing the human-readable Remember me label")
+	}
+}
+
+// TestSafeLocalNext is the open-redirect guard for the post-login return path
+// (used by the OAuth authorize bounce). Only same-origin absolute paths pass.
+func TestSafeLocalNext(t *testing.T) {
+	ok := []string{"/os", "/oauth/authorize?client_id=x&state=y", "/os/connector"}
+	for _, s := range ok {
+		if safeLocalNext(s) != s {
+			t.Errorf("safe local path %q should be returned unchanged", s)
+		}
+	}
+	bad := []string{
+		"", "os", "https://evil.com", "//evil.com", "/\\evil.com",
+		"http://evil.com", "/x://evil", "/a\tb", "javascript:alert(1)",
+	}
+	for _, s := range bad {
+		if safeLocalNext(s) != "" {
+			t.Errorf("unsafe next %q must be rejected (got %q)", s, safeLocalNext(s))
+		}
 	}
 }

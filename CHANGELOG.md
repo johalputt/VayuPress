@@ -8,6 +8,34 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.84] — 2026-07-18
+
+### Added
+- **VayuMCP Stage 4 — one-click Connect on claude.ai (OAuth 2.1).** VayuPress now
+  runs a built-in **OAuth 2.1 authorization server** (ADR-0140), so claude.ai and
+  any OAuth MCP client can connect with a real *sign in → approve* button — no key
+  to copy and paste. It advertises itself via a `401 WWW-Authenticate` challenge on
+  `/mcp` plus RFC 8414 / RFC 9728 discovery metadata, supports RFC 7591 dynamic
+  client registration, and runs a PKCE (S256) authorization-code flow with refresh
+  tokens. The consent screen offers the same **Full control / Author / Read-only**
+  access levels as the connector page.
+  - **The access token is a scoped VayuPress API key.** On the token exchange the
+    server mints an `apikeys` key with the approved grant and returns it as the
+    `access_token`, so the capability table, per-key rate budget, audit log, and
+    revocation all apply unchanged — and **no bearer token is ever stored at rest**
+    (the authorization code carries only the grant; the key is minted at exchange
+    time). Revoking the key in VayuOS → API Keys disconnects the connector and drops
+    its refresh token.
+- The VayuOS login page gained a strictly same-origin `next` return path so the
+  consent flow can bounce through sign-in without ever redirecting off-site.
+
+### Security
+- PKCE **S256 is mandatory** (no `plain`); authorization codes and refresh tokens
+  are single-use, hashed at rest, and codes expire in 5 minutes.
+- Redirect URIs are **exact-match** and validated **before** any redirect, so the
+  authorize endpoint can never be used as an open redirect; only a signed-in
+  **administrator** can approve, re-checked on the consent POST (CSRF-guarded).
+
 ## [3.13.83] — 2026-07-18
 
 ### Added

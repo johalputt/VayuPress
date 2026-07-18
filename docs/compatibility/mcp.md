@@ -40,6 +40,23 @@ The connector's power equals its key's scope:
 
 For a precise custom grant, build a scoped key on the **VayuOS → API keys** page.
 
+## Connect from claude.ai (one-click OAuth)
+
+VayuPress runs a built-in **OAuth 2.1** authorization server ([ADR-0140](../adr/ADR-0140-vayu-mcp-oauth.md)),
+so a client like **claude.ai** can Connect with a real sign-in + approve button —
+no key to copy. The client discovers everything automatically:
+
+1. It calls `POST /mcp`, gets a `401` with a `WWW-Authenticate` header pointing at
+   `/.well-known/oauth-protected-resource`.
+2. It registers itself (`POST /oauth/register`) and sends you to `/oauth/authorize`.
+3. You sign in to **VayuOS** and pick an access level — **Full control**, **Author**,
+   or **Read-only** — the same choices as the connector page.
+4. Claude receives a token and is connected. The token is a scoped VayuPress API
+   key under the hood, so you can revoke it anytime from **VayuOS → API Keys**.
+
+Everything is PKCE-protected (S256), redirect URIs are exact-match, and only a
+signed-in administrator can approve a connection.
+
 ## Connect from Claude Desktop / Claude Code
 
 Add a custom MCP server that points at your endpoint and sends your key as a
@@ -105,6 +122,8 @@ config (Tor bridges, VayuShield thresholds) is never writable through it.
 - **Stage 3 (in progress):** safe write tools for the remaining sections, each
   reusing its subsystem's validated path. **3a shipped:** `update_site_settings`
   (branding/theme/nav/SEO writes). **3b shipped:** `create_page` + `list_pages`.
-  **3c shipped:** `list_media`, `list_themes`, `apply_theme`. Then **OAuth 2.1** on
-  the same endpoint for a true one-click **Connect** button on claude.ai, exactly
-  like the GitHub connector.
+  **3c shipped:** `list_media`, `list_themes`, `apply_theme`.
+- **Stage 4 (shipped):** **OAuth 2.1** authorization server — a true one-click
+  **Connect** on claude.ai (sign in + approve, no key to copy), exactly like the
+  GitHub connector. See "Connect from claude.ai" above and
+  [ADR-0140](../adr/ADR-0140-vayu-mcp-oauth.md).

@@ -34,6 +34,7 @@ import (
 	"github.com/johalputt/vayupress/internal/metrics"
 	"github.com/johalputt/vayupress/internal/mode"
 	"github.com/johalputt/vayupress/internal/newsletter"
+	"github.com/johalputt/vayupress/internal/oauth"
 	"github.com/johalputt/vayupress/internal/payments"
 	"github.com/johalputt/vayupress/internal/plugins"
 	"github.com/johalputt/vayupress/internal/preview"
@@ -117,6 +118,11 @@ type App struct {
 	// tokens, plus encrypted-at-rest third-party service credentials.
 	apiKeys *apikeys.Store
 	secrets *secrets.Store
+
+	// OAuth 2.1 authorization server (migration 066, ADR-0140) — the one-click
+	// "Connect" flow on claude.ai. Access tokens are scoped apikeys, so this only
+	// holds clients, PKCE codes, and refresh tokens.
+	oauth *oauth.Store
 
 	// Plugin stores (wired at startup when DB is ready)
 	commentStore    *comments.Store

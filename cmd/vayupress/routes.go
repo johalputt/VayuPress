@@ -214,6 +214,19 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	r.Get("/static/js/vp-engagement.js", a.handleVAEngagementJS)
 	r.Get("/.well-known/privacy-report.json", a.handlePrivacyReport)
 
+	// VayuMCP OAuth 2.1 authorization server (ADR-0140) — the one-click Connect
+	// flow on claude.ai. Discovery metadata (RFC 8414 + RFC 9728), dynamic client
+	// registration (RFC 7591), the consent screen, and the token exchange. The
+	// consent GET is a session-authenticated admin page; its POST and the token/
+	// register endpoints are public (the token endpoint authenticates the caller by
+	// the authorization code + PKCE verifier it presents, not a session).
+	r.With(auth.PublicDiscoveryRateLimit).Get("/.well-known/oauth-authorization-server", a.handleOAuthASMetadata)
+	r.With(auth.PublicDiscoveryRateLimit).Get("/.well-known/oauth-protected-resource", a.handleOAuthResourceMetadata)
+	r.With(auth.PublicDiscoveryRateLimit).Post("/oauth/register", a.handleOAuthRegister)
+	r.Get("/oauth/authorize", a.handleOAuthAuthorize)
+	r.With(auth.CSRFTokenMiddleware).Post("/oauth/authorize/consent", a.handleOAuthConsent)
+	r.With(auth.PublicDiscoveryRateLimit).Post("/oauth/token", a.handleOAuthToken)
+
 	// Libravatar/Gravatar-compatible federated avatar: so a recipient's mail
 	// client/service can fetch a sender's profile picture. Rate-limited because
 	// the handler scans the account list per request (same posture as WKD).
