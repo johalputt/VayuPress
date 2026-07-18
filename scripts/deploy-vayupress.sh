@@ -817,6 +817,20 @@ else
   warn "setup-talk-subdomain.sh not found next to this script — skipping VayuTalk subdomain auto-provision."
 fi
 
+# Provision the VayuMCP connector subdomain (mcp.<domain>) with the CDN proxy OFF,
+# so Claude / any MCP client reaches /mcp + /oauth without a CDN bot-challenge a
+# machine client cannot solve (see setup-mcp-subdomain.sh header). Delegated so
+# deploy AND update share one implementation. Idempotent and non-fatal: with
+# mcp.<domain> DNS not yet pointed here it skips cleanly and the connector keeps
+# using the main domain.
+MCP_SETUP="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)/setup-mcp-subdomain.sh"
+if [[ -f "$MCP_SETUP" ]]; then
+  DOMAIN="$DOMAIN" EMAIL="$EMAIL" CACHE_DIR="$CACHE_DIR" run bash "$MCP_SETUP" || \
+    warn "VayuMCP subdomain setup reported an issue — the connector will use ${DOMAIN} until it is resolved."
+else
+  warn "setup-mcp-subdomain.sh not found next to this script — skipping VayuMCP subdomain auto-provision."
+fi
+
 # Provision TLS + nginx for every SYNC-APPROVED VayuDomains secondary domain
 # (VayuDomains P4+P5). Delegated to setup-vayudomain.sh so deploy AND update share
 # one implementation. Newly registered domains start on manual hold and are NOT

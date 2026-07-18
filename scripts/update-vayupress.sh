@@ -390,6 +390,15 @@ if [[ -f "$TALK_SETUP" ]]; then
   CACHE_DIR="$CACHE_DIR" bash "$TALK_SETUP" || true
 fi
 
+# If the operator has pointed mcp.<domain> at this server (CDN proxy OFF), keep its
+# cert SAN + nginx vhost in place across updates so Claude / any MCP client reaches
+# the /mcp + /oauth endpoints without a CDN bot-challenge (which a machine client
+# cannot solve). Idempotent and non-fatal: with no mcp.<domain> DNS it does nothing.
+MCP_SETUP="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)/setup-mcp-subdomain.sh"
+if [[ -f "$MCP_SETUP" ]]; then
+  CACHE_DIR="$CACHE_DIR" bash "$MCP_SETUP" || true
+fi
+
 # Keep every SYNC-APPROVED VayuDomains secondary domain's TLS cert + nginx vhost
 # in place across updates (VayuDomains P4+P5). Domains the operator has not
 # approved ("manual hold" in VayuOS → Domains) are never provisioned by an

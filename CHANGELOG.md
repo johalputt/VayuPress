@@ -8,6 +8,31 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.91] — 2026-07-18
+
+### Fixed
+- **OAuth consent "Approve" failed with `csrf_invalid` in Claude's connect flow.**
+  The consent form is reached from an external OAuth client (claude.ai / Claude
+  Desktop) and the approval POST is made in a cross-site context, where the browser
+  drops the `SameSite=Strict` `vp_csrf` (and session) cookie — so the double-submit
+  check saw no cookie and rejected the approval. `/oauth/authorize` now issues both
+  the CSRF cookie and a re-issued admin session cookie with **`SameSite=None; Secure`**
+  so they are delivered on the cross-site consent POST. CSRF protection is unchanged
+  in strength — it rests on the HMAC-signed, unforgeable double-submit token (plus
+  the re-validated admin session), not on `SameSite`. Falls back to the hardened
+  default on a non-TLS dev instance. Verified end-to-end locally: the consent POST
+  now returns the authorization code. (The `/os` console keeps its Strict cookies.)
+
+### Added
+- **`scripts/setup-mcp-subdomain.sh`** — auto-provisions a `mcp.<domain>` connector
+  subdomain (TLS SAN via Let's Encrypt + nginx vhost that proxies the full app) for
+  operators who front their site with a CDN/WAF whose bot-challenge can't be scoped
+  per-path (e.g. Cloudflare free Bot Fight Mode). Point `mcp.<domain>` straight at
+  the origin with the CDN proxy **OFF**, and Claude reaches `/mcp` + `/oauth`
+  unchallenged while the main domain keeps full CDN protection. Wired into
+  `deploy-vayupress.sh` and `update-vayupress.sh` (idempotent, non-fatal, skips
+  cleanly until the DNS record exists). The connector page documents the option.
+
 ## [3.13.90] — 2026-07-18
 
 ### Fixed

@@ -181,13 +181,23 @@ func (a *App) handleOAuthAuthorize(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Double-submit CSRF token for the consent POST (a plain form, so it travels as
-	// a hidden field). Reuse a valid existing cookie; otherwise mint one now.
-	csrfTok := ""
-	if c, err := r.Cookie("vp_csrf"); err == nil && c.Value != "" && auth.ValidateCSRFToken(c.Value) {
-		csrfTok = c.Value
-	} else {
-		csrfTok = auth.GenerateCSRFToken()
-		http.SetCookie(w, &http.Cookie{Name: "vp_csrf", Value: csrfTok, Path: "/", SameSite: http.SameSiteStrictMode, HttpOnly: false, Secure: auth.CSRFCookieSecure(), MaxAge: 3600})
+	// a hidden field). This flow is ENTERED from an external OAuth client, and the
+	// approval POST is made in a cross-site context, where a SameSite=Strict cookie
+	// is dropped by the browser — which the operator sees as "CSRF token missing or
+	// invalid" at the "Approve" step. So mint a fresh token and set the cookie
+	// SameSite=None (with Secure) so it is delivered in any client context; the
+	// HMAC-signed token still makes it unforgeable, so CSRF protection holds. Also
+	// re-issue the admin session cookie cross-site for the same reason, so the
+	// consent handler still resolves the signed-in admin on the POST. Both fall back
+	// to the hardened default on a non-TLS dev instance (SameSite=None needs Secure).
+	csrfTok := auth.GenerateCSRFToken()
+	csrfSameSite := http.SameSiteLaxMode
+	if auth.CSRFCookieSecure() {
+		csrfSameSite = http.SameSiteNoneMode
+	}
+	http.SetCookie(w, &http.Cookie{Name: "vp_csrf", Value: csrfTok, Path: "/", SameSite: csrfSameSite, HttpOnly: false, Secure: auth.CSRFCookieSecure(), MaxAge: 3600})
+	if c, err := r.Cookie(auth.SessionCookie); err == nil && c.Value != "" {
+		auth.ReissueSessionCookieCrossSite(w, c.Value)
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
