@@ -8,6 +8,29 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.85] — 2026-07-18
+
+### Security
+- **Hardened the static-analysis barriers on three redirect/output paths** flagged
+  by CodeQL code scanning. All three were defence-in-depth (the runtime guards were
+  already in place); the fix makes the sanitizer barrier one the analyser can see,
+  and tightens each guard while doing so.
+  - **OAuth consent page (reflected-XSS finding).** Every dynamic value is now passed
+    through `html.EscapeString` **inline at the point of interpolation** rather than
+    via a local alias/closure, which is what lets the reflected-XSS query recognise
+    the escape as a barrier. Output is byte-for-byte identical; only the escaping call
+    site changed.
+  - **Post-login `next` bounce (open-redirect finding).** `safeLocalNext` now parses
+    the candidate with `url.Parse` and accepts it only as a **purely relative
+    reference** — no scheme, no host/authority, no userinfo, no opaque part — in
+    addition to the existing backslash/control-character/`://` rejections, so a
+    post-login redirect can never leave the site.
+  - **OAuth client redirect (open-redirect finding).** `oauthRedirectWith` re-asserts
+    the scheme/host invariant **inline** before `http.Redirect` (https, or http to a
+    loopback host, and no userinfo), on top of the caller's exact-match validation.
+- No behavioural change for any legitimate flow; the OAuth authorize bounce and the
+  client redirect round-trip exactly as before.
+
 ## [3.13.84] — 2026-07-18
 
 ### Added

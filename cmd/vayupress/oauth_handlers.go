@@ -376,6 +376,18 @@ func oauthRedirectWith(w http.ResponseWriter, r *http.Request, redirectURI strin
 		oauthHTMLError(w, "Invalid redirect URL.")
 		return
 	}
+	// Defence in depth against an open redirect. The caller only ever reaches here
+	// with a redirect URI that the client registered (validated by exact match),
+	// but re-assert the scheme/host invariant inline so an upstream mistake can
+	// never send a browser to an attacker origin — and so the static analyser sees
+	// the barrier directly on the value that reaches http.Redirect. Only https, or
+	// http to a loopback host, is ever permitted (matching client registration).
+	host := u.Hostname()
+	loopback := host == "localhost" || host == "127.0.0.1" || host == "::1"
+	if host == "" || u.User != nil || !(u.Scheme == "https" || (u.Scheme == "http" && loopback)) {
+		oauthHTMLError(w, "Invalid redirect URL.")
+		return
+	}
 	q := u.Query()
 	for k, vs := range extra {
 		if len(vs) > 0 && vs[0] != "" {
@@ -406,11 +418,11 @@ func oauthConsentPage(client oauth.Client, redirectURI, challenge, state, csrf s
 	if name == "" {
 		name = "An MCP client"
 	}
-	esc := html.EscapeString
-	hidden := func(k, v string) string {
-		return `<input type="hidden" name="` + k + `" value="` + esc(v) + `">`
-	}
-	// Access-level choices (full-control is pre-selected but clearly the strongest).
+	// Every dynamic value is passed through html.EscapeString directly at the point
+	// of interpolation. Calling the standard sanitizer inline (rather than via a
+	// local alias or closure) is what lets CodeQL's reflected-XSS query see the
+	// barrier — an aliased sanitizer reads as untrusted flow to the query engine.
+	// Access-level choices (author is pre-selected; full-control is clearly the strongest).
 	choices := ""
 	for _, id := range []string{"full", "author", "readonly"} {
 		p := oauthPresets[id]
@@ -419,18 +431,22 @@ func oauthConsentPage(client oauth.Client, redirectURI, challenge, state, csrf s
 			checked = " checked"
 		}
 		choices += `<label class="oauth-choice">
-      <input type="radio" name="grant" value="` + id + `"` + checked + `>
-      <span class="oauth-choice-title">` + esc(p.Label) + `</span>
-      <span class="oauth-choice-desc">` + esc(p.Desc) + `</span>
+      <input type="radio" name="grant" value="` + html.EscapeString(id) + `"` + checked + `>
+      <span class="oauth-choice-title">` + html.EscapeString(p.Label) + `</span>
+      <span class="oauth-choice-desc">` + html.EscapeString(p.Desc) + `</span>
     </label>`
 	}
+	escName := html.EscapeString(name)
 	inner := `
   <div class="login-card oauth-consent">
-    <h1 class="login-title">Connect ` + esc(name) + `?</h1>
-    <p class="login-sub"><strong>` + esc(name) + `</strong> is asking to connect to your VayuPress site. Choose how much access to grant. You can revoke it anytime from <a href="/os/apikeys">API&nbsp;Keys</a>.</p>
+    <h1 class="login-title">Connect ` + escName + `?</h1>
+    <p class="login-sub"><strong>` + escName + `</strong> is asking to connect to your VayuPress site. Choose how much access to grant. You can revoke it anytime from <a href="/os/apikeys">API&nbsp;Keys</a>.</p>
     <form method="POST" action="/oauth/authorize/consent" class="oauth-form">
-      ` + hidden("client_id", client.ID) + hidden("redirect_uri", redirectURI) +
-		hidden("code_challenge", challenge) + hidden("state", state) + hidden("csrf_token", csrf) + `
+      <input type="hidden" name="client_id" value="` + html.EscapeString(client.ID) + `">
+      <input type="hidden" name="redirect_uri" value="` + html.EscapeString(redirectURI) + `">
+      <input type="hidden" name="code_challenge" value="` + html.EscapeString(challenge) + `">
+      <input type="hidden" name="state" value="` + html.EscapeString(state) + `">
+      <input type="hidden" name="csrf_token" value="` + html.EscapeString(csrf) + `">
       <div class="oauth-choices">` + choices + `</div>
       <div class="oauth-actions">
         <button type="submit" name="decision" value="approve" class="btn btn--primary">Approve &amp; connect</button>

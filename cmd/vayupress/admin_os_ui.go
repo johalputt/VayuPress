@@ -1109,28 +1109,52 @@ func (a *App) handleOSLogin(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte(osLoginPage("", "", next)))
 }
 
-// safeLocalNext returns s only if it is a safe SAME-ORIGIN path — it must begin
-// with a single "/" and must not be protocol-relative ("//host"), a backslash
-// trick ("/\host"), or contain control characters or a scheme. Anything else
-// yields "" so a post-login redirect can never leave this site (open-redirect
-// guard; cf. the CodeQL open-redirect fix in ADR history).
+// safeLocalNext returns s only if it is a safe SAME-ORIGIN path, else "". It must
+// parse as a purely relative reference — no scheme and no host/authority — so a
+// browser can only ever resolve it against the current origin. This is the
+// open-redirect barrier for the post-login "next" bounce (cf. the CodeQL
+// open-redirect fix in ADR history).
+//
+// The url.Parse + IsAbs()/Host guard below is what the static analyser recognises
+// as the sanitizer: an absolute URL ("https://evil"), a protocol-relative URL
+// ("//evil"), or an opaque URL ("javascript:…") all fail the check and yield "".
+// The value returned is re-encoded from the parsed parts so no tainted authority
+// component can survive into the redirect.
 func safeLocalNext(s string) string {
-	if s == "" || len(s) > 512 || s[0] != '/' {
+	if s == "" || len(s) > 512 {
 		return ""
 	}
-	if strings.HasPrefix(s, "//") || strings.HasPrefix(s, "/\\") {
-		return ""
-	}
+	// Some browsers treat "\" as "/", so a "/\evil.com" could become
+	// protocol-relative; reject backslashes and control characters outright.
 	for _, r := range s {
-		if r < 0x20 || r == 0x7f {
+		if r < 0x20 || r == 0x7f || r == '\\' {
 			return ""
 		}
 	}
-	// Reject an embedded scheme (e.g. "/x:https://evil" is harmless, but be strict).
+	// Reject any embedded scheme separator outright (strict: a legitimate local
+	// path never contains "://").
 	if strings.Contains(s, "://") {
 		return ""
 	}
-	return s
+	u, err := url.Parse(s)
+	if err != nil {
+		return ""
+	}
+	// Only a site-rooted relative reference is safe.
+	if u.IsAbs() || u.Scheme != "" || u.Host != "" || u.User != nil || u.Opaque != "" {
+		return ""
+	}
+	if !strings.HasPrefix(u.Path, "/") || strings.HasPrefix(u.Path, "//") {
+		return ""
+	}
+	out := u.EscapedPath()
+	if u.RawQuery != "" {
+		out += "?" + u.RawQuery
+	}
+	if u.Fragment != "" {
+		out += "#" + u.EscapedFragment()
+	}
+	return out
 }
 
 func (a *App) handleOSLoginSubmit(w http.ResponseWriter, r *http.Request) {
