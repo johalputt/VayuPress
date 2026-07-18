@@ -8,6 +8,16 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.90] — 2026-07-18
+
+### Fixed
+- **CI (race/test job) went red on 3.13.89.** The new "behind a proxy/WAF"
+  troubleshooting copy on the connector page used the word "CDN", which the
+  `TestConnectorCardsCSPSafe` guard flags as a literal substring (it forbids
+  `cdn`/`googleapis`/`unpkg`/`jsdelivr` to catch any external asset host slipping
+  into an admin fragment). Reworded the copy to "proxy / WAF" — same guidance, no
+  forbidden token — so the guard stays strict and the build is green.
+
 ## [3.13.89] — 2026-07-18
 
 ### Fixed
