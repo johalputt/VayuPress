@@ -21,6 +21,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -248,12 +249,15 @@ func (s *Store) ExchangeRefresh(ctx context.Context, rawRefresh, clientID string
 	if err != nil {
 		return "", err
 	}
+	// Verify the presenting client BEFORE consuming the token: a wrong client_id
+	// must be a harmless rejection, not destroy a valid token (a DoS otherwise, as
+	// the legitimate client's next refresh would then fail). The deferred Rollback
+	// leaves the token intact on mismatch.
+	if subtle.ConstantTimeCompare([]byte(boundClient), []byte(clientID)) != 1 {
+		return "", ErrMismatch
+	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM oauth_refresh_tokens WHERE token_hash=?`, hashToken(rawRefresh)); err != nil {
 		return "", err
-	}
-	if subtle.ConstantTimeCompare([]byte(boundClient), []byte(clientID)) != 1 {
-		_ = tx.Commit()
-		return "", ErrMismatch
 	}
 	if err := tx.Commit(); err != nil {
 		return "", err
@@ -292,17 +296,34 @@ func VerifyPKCE(challenge, verifier string) bool {
 	return subtle.ConstantTimeCompare([]byte(computed), []byte(challenge)) == 1
 }
 
-// validRedirectURI accepts absolute https URLs and http://localhost / 127.0.0.1
-// (for local development), and rejects anything with a fragment (OAuth 2.1).
-func validRedirectURI(u string) bool {
-	if strings.Contains(u, "#") {
+// loopbackHosts are the only hosts permitted to use cleartext http as a redirect
+// URI (local-development clients). Everything else must be https.
+var loopbackHosts = map[string]bool{"localhost": true, "127.0.0.1": true, "::1": true}
+
+// validRedirectURI accepts absolute https URLs, and http only for a genuine
+// loopback host (local development). It PARSES the URL and compares the real host
+// — never a string prefix — so tricks like http://localhost.evil.com,
+// http://127.0.0.1x.attacker.com, or the userinfo form http://localhost@evil.com
+// (whose real host is evil.com) are rejected. Any fragment or userinfo component
+// is rejected outright (OAuth 2.1).
+func validRedirectURI(raw string) bool {
+	if strings.Contains(raw, "#") {
 		return false
 	}
-	if strings.HasPrefix(u, "https://") {
-		return true
+	u, err := url.Parse(raw)
+	if err != nil || u.Fragment != "" || u.User != nil {
+		return false
 	}
-	if strings.HasPrefix(u, "http://localhost") || strings.HasPrefix(u, "http://127.0.0.1") {
-		return true
+	host := u.Hostname() // strips port and IPv6 brackets; excludes userinfo
+	if host == "" {
+		return false
 	}
-	return false
+	switch u.Scheme {
+	case "https":
+		return true
+	case "http":
+		return loopbackHosts[host]
+	default:
+		return false
+	}
 }

@@ -75,6 +75,40 @@ func TestRegisterClientAndRedirectMatch(t *testing.T) {
 	}
 }
 
+// TestValidRedirectURIRejectsHostTricks is the regression test for the HIGH
+// finding: the http loopback exception must match the real HOST, not a string
+// prefix, so subdomain/userinfo tricks cannot register a cleartext off-site URI.
+func TestValidRedirectURIRejectsHostTricks(t *testing.T) {
+	good := []string{
+		"https://claude.ai/api/mcp/auth_callback",
+		"https://example.com/cb?x=1",
+		"http://localhost:8080/cb",
+		"http://127.0.0.1/cb",
+		"http://[::1]:9000/cb",
+	}
+	for _, u := range good {
+		if !validRedirectURI(u) {
+			t.Errorf("valid redirect %q was rejected", u)
+		}
+	}
+	bad := []string{
+		"http://localhost.evil.com/cb",      // subdomain, not loopback
+		"http://127.0.0.1x.attacker.com/cb", // prefix trick
+		"http://localhost@evil.com/cb",      // userinfo → real host evil.com
+		"http://127.0.0.1@evil.com/cb",      // userinfo trick
+		"http://evil.com/cb",                // plain cleartext non-loopback
+		"https://evil.com/cb#frag",          // fragment
+		"https://user:pw@example.com/cb",    // userinfo on https
+		"ftp://example.com/cb",              // wrong scheme
+		"javascript:alert(1)",               // no host
+	}
+	for _, u := range bad {
+		if validRedirectURI(u) {
+			t.Errorf("dangerous redirect %q was ACCEPTED — must be rejected", u)
+		}
+	}
+}
+
 func TestCodeExchangeSingleUseAndPKCE(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
@@ -135,14 +169,18 @@ func TestRefreshRotation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("issue refresh: %v", err)
 	}
-	// Wrong client is refused.
+	// Wrong client is refused WITHOUT consuming the token (a wrong client_id must
+	// not be able to burn a valid refresh token — that would be a DoS).
 	if _, err := s.ExchangeRefresh(ctx, raw, "vpc_other"); err != ErrMismatch {
 		t.Errorf("wrong client: got %v, want ErrMismatch", err)
 	}
-	// ...and the failed exchange consumed it (rotation semantics), so the right
-	// client can no longer use it.
+	// The rightful client can still use it (the mismatch did NOT consume it).
+	if id, err := s.ExchangeRefresh(ctx, raw, "vpc_x"); err != nil || id != "key-1" {
+		t.Errorf("token must survive a wrong-client attempt: id=%q err=%v", id, err)
+	}
+	// ...and now it is consumed (single-use on the successful exchange).
 	if _, err := s.ExchangeRefresh(ctx, raw, "vpc_x"); err != ErrNotFound {
-		t.Errorf("refresh must be single-use even after a mismatch: got %v", err)
+		t.Errorf("refresh must be single-use after a successful exchange: got %v", err)
 	}
 	// A fresh refresh token resolves to its bound key exactly once.
 	raw2, _ := s.IssueRefresh(ctx, "vpc_x", "key-1")

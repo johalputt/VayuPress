@@ -232,15 +232,19 @@ func (a *App) handleOAuthConsent(w http.ResponseWriter, r *http.Request) {
 	// scoped key is minted at the /token exchange, so no bearer token exists until
 	// the client presents a valid PKCE verifier (and none is ever stored at rest).
 	label := "Claude via OAuth (" + preset.Label + ")"
+	// Attribute the grant to the admin we just re-resolved (u), NOT currentUserIDOf,
+	// which is only stamped on the session-gated router group and is empty on this
+	// CSRF-only consent route — so the minted key is owned by, and the audit trail
+	// names, the operator who actually approved.
 	code, err := a.oauth.IssueCode(r.Context(), oauth.CodeGrant{
 		ClientID: clientID, RedirectURI: redirectURI, CodeChallenge: challenge,
-		GrantCaps: preset.Caps, OwnerUserID: currentUserIDOf(r), Label: label,
+		GrantCaps: preset.Caps, OwnerUserID: u.ID, Label: label,
 	})
 	if err != nil {
 		oauthHTMLError(w, "Could not complete authorization. Please try again.")
 		return
 	}
-	dbpkg.AuditLog("oauth.authorize", "user:"+currentUserIDOf(r), clientID, "grant="+preset.Caps)
+	dbpkg.AuditLog("oauth.authorize", "user:"+u.ID, clientID, "grant="+preset.Caps)
 
 	// Success redirect back to the client with the code and original state.
 	oauthRedirectSuccess(w, r, redirectURI, state, code)

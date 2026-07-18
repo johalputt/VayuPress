@@ -35,6 +35,13 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 - Redirect URIs are **exact-match** and validated **before** any redirect, so the
   authorize endpoint can never be used as an open redirect; only a signed-in
   **administrator** can approve, re-checked on the consent POST (CSRF-guarded).
+- Redirect-URI validation parses the URL and matches the real **host** against a
+  loopback allowlist (never a string prefix), so `http://localhost.evil.com`,
+  `http://127.0.0.1@evil.com` (userinfo trick), and similar cannot register a
+  cleartext off-site callback — closing an open-redirect / code-exfiltration path
+  an adversarial review of this release found. A wrong `client_id` on a refresh
+  exchange is now a harmless rejection that never consumes the token, and the
+  OAuth-minted key + audit trail are attributed to the approving administrator.
 
 ## [3.13.83] — 2026-07-18
 
