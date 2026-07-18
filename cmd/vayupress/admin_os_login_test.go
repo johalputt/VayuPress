@@ -71,13 +71,13 @@ func TestOSLoginPageRememberCheckbox(t *testing.T) {
 	}
 }
 
-// TestSafeLocalNext is the open-redirect guard for the post-login return path
-// (used by the OAuth authorize bounce). Only same-origin absolute paths pass.
-func TestSafeLocalNext(t *testing.T) {
+// TestIsLocalURL is the open-redirect guard for the post-login return path (used
+// by the OAuth authorize bounce). Only site-rooted same-origin paths pass.
+func TestIsLocalURL(t *testing.T) {
 	ok := []string{"/os", "/oauth/authorize?client_id=x&state=y", "/os/connector"}
 	for _, s := range ok {
-		if safeLocalNext(s) != s {
-			t.Errorf("safe local path %q should be returned unchanged", s)
+		if !isLocalURL(s) {
+			t.Errorf("safe local path %q should be accepted", s)
 		}
 	}
 	bad := []string{
@@ -85,8 +85,8 @@ func TestSafeLocalNext(t *testing.T) {
 		"http://evil.com", "/x://evil", "/a\tb", "javascript:alert(1)",
 	}
 	for _, s := range bad {
-		if safeLocalNext(s) != "" {
-			t.Errorf("unsafe next %q must be rejected (got %q)", s, safeLocalNext(s))
+		if isLocalURL(s) {
+			t.Errorf("unsafe next %q must be rejected", s)
 		}
 	}
 }

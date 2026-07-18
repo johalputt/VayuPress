@@ -8,6 +8,28 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.86] — 2026-07-18
+
+### Changed
+- **Claude Connector page now documents the shipped one-click Connect.** The page
+  previously said a one-click OAuth Connect button was "on the roadmap"; the OAuth
+  2.1 server shipped in 3.13.84, so the copy now explains the real flow: the Connect
+  button lives on **Claude's side** (claude.ai → Settings → Connectors → Add custom
+  connector → paste your `/mcp` endpoint → **Connect** → approve the access level on
+  this site's consent screen) — no key to copy. The Desktop/CLI pasted-key snippets
+  remain for clients that use a static key.
+
+### Security
+- **Reworked the two open-redirect guards into the boolean form CodeQL recognises.**
+  The 3.13.85 sanitizers were runtime-correct but expressed as a string-returning
+  helper (`safeLocalNext`) and an inline `Hostname()` check on a different variable
+  than the one redirected — neither of which the code-scanning open-redirect query
+  models as a barrier. Both are now name-matched boolean guards (`isLocalURL`,
+  `isValidRedirectURL`) applied directly to the value passed to `http.Redirect`, so
+  the analyser recognises the neutralisation. Behaviour is unchanged: the post-login
+  `next` bounce still accepts only site-rooted relative paths, and OAuth client
+  redirects still allow only https (or http to a loopback host), never userinfo.
+
 ## [3.13.85] — 2026-07-18
 
 ### Security

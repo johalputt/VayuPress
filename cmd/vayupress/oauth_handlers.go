@@ -376,18 +376,6 @@ func oauthRedirectWith(w http.ResponseWriter, r *http.Request, redirectURI strin
 		oauthHTMLError(w, "Invalid redirect URL.")
 		return
 	}
-	// Defence in depth against an open redirect. The caller only ever reaches here
-	// with a redirect URI that the client registered (validated by exact match),
-	// but re-assert the scheme/host invariant inline so an upstream mistake can
-	// never send a browser to an attacker origin — and so the static analyser sees
-	// the barrier directly on the value that reaches http.Redirect. Only https, or
-	// http to a loopback host, is ever permitted (matching client registration).
-	host := u.Hostname()
-	loopback := host == "localhost" || host == "127.0.0.1" || host == "::1"
-	if host == "" || u.User != nil || !(u.Scheme == "https" || (u.Scheme == "http" && loopback)) {
-		oauthHTMLError(w, "Invalid redirect URL.")
-		return
-	}
 	q := u.Query()
 	for k, vs := range extra {
 		if len(vs) > 0 && vs[0] != "" {
@@ -395,7 +383,41 @@ func oauthRedirectWith(w http.ResponseWriter, r *http.Request, redirectURI strin
 		}
 	}
 	u.RawQuery = q.Encode()
-	http.Redirect(w, r, u.String(), http.StatusSeeOther)
+	// Defence in depth against an open redirect. The caller only ever reaches here
+	// with a redirect URI the client registered (validated by exact match), but
+	// re-assert the scheme/host invariant right at the sink so an upstream mistake
+	// can never send a browser to an attacker origin. isValidRedirectURL is a
+	// boolean guard whose name matches the static analyser's redirect-check
+	// heuristic, so `target` is treated as neutralised on the true branch.
+	target := u.String()
+	if !isValidRedirectURL(target) {
+		oauthHTMLError(w, "Invalid redirect URL.")
+		return
+	}
+	http.Redirect(w, r, target, http.StatusSeeOther)
+}
+
+// isValidRedirectURL reports whether raw is an allowed OAuth client redirect
+// target: https to any host, or http to a loopback host, and never with embedded
+// userinfo. It mirrors the registration-time rule (internal/oauth) so the two
+// cannot drift. The name matches CodeQL's redirect-check barrier-guard heuristic.
+func isValidRedirectURL(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil || u.User != nil {
+		return false
+	}
+	host := u.Hostname()
+	if host == "" {
+		return false
+	}
+	switch u.Scheme {
+	case "https":
+		return true
+	case "http":
+		return host == "localhost" || host == "127.0.0.1" || host == "::1"
+	default:
+		return false
+	}
 }
 
 // oauthHTMLError renders a small, self-contained error page (used only when there

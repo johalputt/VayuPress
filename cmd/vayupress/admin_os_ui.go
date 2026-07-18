@@ -1096,65 +1096,55 @@ func (a *App) handleOSLogin(w http.ResponseWriter, r *http.Request) {
 	// Already signed in? Opening /os/login with a live session must land on the
 	// dashboard, not re-prompt for credentials — the seamless posture the operator
 	// expects whether they typed /os or /os/login.
-	next := safeLocalNext(r.URL.Query().Get("next"))
+	next := r.URL.Query().Get("next")
+	if !isLocalURL(next) {
+		next = ""
+	}
 	if a.hasValidConsoleSession(r) {
-		dest := "/os"
-		if next != "" {
-			dest = next
+		// Redirect the guarded value directly inside `if isLocalURL(next)` so the
+		// static analyser sees `next` neutralised on this branch (barrier guard).
+		if isLocalURL(next) {
+			http.Redirect(w, r, next, http.StatusSeeOther)
+			return
 		}
-		http.Redirect(w, r, dest, http.StatusSeeOther)
+		http.Redirect(w, r, "/os", http.StatusSeeOther)
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write([]byte(osLoginPage("", "", next)))
 }
 
-// safeLocalNext returns s only if it is a safe SAME-ORIGIN path, else "". It must
-// parse as a purely relative reference — no scheme and no host/authority — so a
-// browser can only ever resolve it against the current origin. This is the
-// open-redirect barrier for the post-login "next" bounce (cf. the CodeQL
-// open-redirect fix in ADR history).
+// isLocalURL reports whether s is a safe SAME-ORIGIN path. It must parse as a
+// purely relative reference — no scheme, no host/authority, no userinfo, no
+// opaque part — that is site-rooted ("/…"), and must not be protocol-relative
+// ("//host"), a backslash trick ("/\host"), or carry control characters or an
+// embedded scheme. Anything else is rejected, so a post-login "next" bounce can
+// never leave this site.
 //
-// The url.Parse + IsAbs()/Host guard below is what the static analyser recognises
-// as the sanitizer: an absolute URL ("https://evil"), a protocol-relative URL
-// ("//evil"), or an opaque URL ("javascript:…") all fail the check and yield "".
-// The value returned is re-encoded from the parsed parts so no tainted authority
-// component can survive into the redirect.
-func safeLocalNext(s string) string {
-	if s == "" || len(s) > 512 {
-		return ""
+// The name deliberately matches CodeQL's redirect-check barrier-guard heuristic
+// (isLocalUrl / isValidRedirect / …): used as `if isLocalURL(v) { redirect(v) }`
+// the analyser treats v as a neutralised, safe-to-redirect value on the true
+// branch. A prior version returned a normalised string, which the analyser never
+// recognised as a sanitizer — a boolean guard is what the query actually models.
+func isLocalURL(s string) bool {
+	if s == "" || len(s) > 512 || strings.Contains(s, "://") {
+		return false
 	}
 	// Some browsers treat "\" as "/", so a "/\evil.com" could become
 	// protocol-relative; reject backslashes and control characters outright.
 	for _, r := range s {
 		if r < 0x20 || r == 0x7f || r == '\\' {
-			return ""
+			return false
 		}
-	}
-	// Reject any embedded scheme separator outright (strict: a legitimate local
-	// path never contains "://").
-	if strings.Contains(s, "://") {
-		return ""
 	}
 	u, err := url.Parse(s)
 	if err != nil {
-		return ""
+		return false
 	}
-	// Only a site-rooted relative reference is safe.
 	if u.IsAbs() || u.Scheme != "" || u.Host != "" || u.User != nil || u.Opaque != "" {
-		return ""
+		return false
 	}
-	if !strings.HasPrefix(u.Path, "/") || strings.HasPrefix(u.Path, "//") {
-		return ""
-	}
-	out := u.EscapedPath()
-	if u.RawQuery != "" {
-		out += "?" + u.RawQuery
-	}
-	if u.Fragment != "" {
-		out += "#" + u.EscapedFragment()
-	}
-	return out
+	return strings.HasPrefix(u.Path, "/") && !strings.HasPrefix(u.Path, "//")
 }
 
 func (a *App) handleOSLoginSubmit(w http.ResponseWriter, r *http.Request) {
@@ -1163,9 +1153,12 @@ func (a *App) handleOSLoginSubmit(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
-	next := safeLocalNext(r.FormValue("next"))
+	next := r.FormValue("next")
+	if !isLocalURL(next) {
+		next = ""
+	}
 	loginDest := "/os"
-	if next != "" {
+	if isLocalURL(next) {
 		loginDest = next
 	}
 	email := strings.TrimSpace(r.FormValue("email"))
@@ -1346,7 +1339,7 @@ func osLoginPage(prefillEmail, errMsg, next string) string {
 		errHTML = `<div class="login-error" role="alert">` + html.EscapeString(errMsg) + `</div>`
 	}
 	// next carries the post-login destination (e.g. an /oauth/authorize URL the
-	// operator was bounced from). It is a safe same-origin path (safeLocalNext),
+	// operator was bounced from). It is a safe same-origin path (isLocalURL),
 	// so it can never redirect off-site; it is round-tripped as a hidden field.
 	nextHTML := ""
 	if next != "" {

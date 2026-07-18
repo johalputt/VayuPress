@@ -192,7 +192,9 @@ func osConnectorConnectCard(endpoint string) string {
     <button type="button" class="btn btn--sm" data-copy="#cx-cfg-cli">Copy command</button>
   </div>
 
-  <p class="field-hint mt-4">A true one-click <strong>Connect</strong> button on claude.ai (OAuth sign-in, no key to copy) is on the roadmap — see <a href="/docs/adr/ADR-0139-vayu-mcp-connector" target="_blank" rel="noopener">ADR-0139</a>. Until then the key above works in every MCP client today.</p>
+  <div class="settings-block-title text-sm mt-4">One-click Connect on claude.ai — no key to copy</div>
+  <p class="text-sm muted">This is the easiest way and needs <strong>no key at all</strong>. The Connect button lives on <strong>Claude's side</strong>, not on this page — this site now runs the OAuth&nbsp;2.1 server it signs into. On <strong>claude.ai</strong> (or Claude Desktop) open <em>Settings → Connectors → Add custom connector</em>, paste your connector endpoint <code>` + e + `</code>, and click <strong>Connect</strong>. Claude signs you in through this site and shows an <strong>Approve&nbsp;&amp;&nbsp;connect</strong> screen where you choose Full&nbsp;control / Author / Read-only — then you are connected. Revoke it anytime below or on the <a href="/os/apikeys">API&nbsp;Keys</a> page.</p>
+  <p class="field-hint mt-2">Custom connectors on claude.ai may require a paid plan (Pro/Max/Team/Enterprise). The Desktop/CLI snippets above remain for clients that use a pasted key. Technical detail: <a href="/docs/adr/ADR-0140-vayu-mcp-oauth" target="_blank" rel="noopener">ADR-0140</a>.</p>
 </div>`
 }
 
