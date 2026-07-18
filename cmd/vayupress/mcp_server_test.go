@@ -9,7 +9,32 @@ import (
 
 	"github.com/johalputt/vayupress/internal/apikeys"
 	"github.com/johalputt/vayupress/internal/auth"
+	"github.com/johalputt/vayupress/internal/settings"
 )
+
+// TestProjectPublicSettingsDropsOperationalKeys is the regression test for the
+// site_settings data-leak finding: the tool must expose presentational config
+// only, never operational/sensitive keys like the operator's private Tor bridges
+// or the VayuShield thresholds — even though GetAll returns them all.
+func TestProjectPublicSettingsDropsOperationalKeys(t *testing.T) {
+	all := map[string]string{
+		settings.KeySiteName:      "My Site",
+		settings.KeySiteTagline:   "A tagline",
+		settings.KeyTorBridges:    "obfs4 1.2.3.4:443 CERT=secretbridgeline", // private, must NOT leak
+		settings.KeyShieldBlock:   "0.8",                                     // operational, must NOT leak
+		settings.KeyShieldRateRPM: "120",                                     // operational, must NOT leak
+	}
+	out := projectPublicSettings(all)
+
+	if out[settings.KeySiteName] != "My Site" || out[settings.KeySiteTagline] != "A tagline" {
+		t.Error("presentational keys (site name, tagline) must be exposed")
+	}
+	for _, leaked := range []string{settings.KeyTorBridges, settings.KeyShieldBlock, settings.KeyShieldRateRPM} {
+		if _, present := out[leaked]; present {
+			t.Errorf("operational key %q must NOT be exposed by site_settings", leaked)
+		}
+	}
+}
 
 // keyCtxRequest builds an MCP POST request carrying ki in context, exactly as
 // RequireAPIKey would stamp it after authenticating.
@@ -78,22 +103,41 @@ func TestMCPToolsListReflectsScope(t *testing.T) {
 		return names
 	}
 
-	// Read-only posts key: read tools + site_info, but NOT create/update/delete.
+	// Read-only posts key: read tools + site_info, but NOT create/update/delete —
+	// and NOT the settings/analytics tools (those are separate sections it lacks).
 	ro := listFor(scopedKey([2]string{"posts", "read"}))
 	for _, want := range []string{"site_info", "get_post", "list_posts", "search_content"} {
 		if !ro[want] {
 			t.Errorf("read-only key should see %q", want)
 		}
 	}
-	for _, deny := range []string{"create_post", "update_post", "delete_post"} {
+	for _, deny := range []string{"create_post", "update_post", "delete_post", "site_settings", "analytics_summary"} {
 		if ro[deny] {
-			t.Errorf("read-only key must NOT see %q", deny)
+			t.Errorf("posts:read key must NOT see %q (wrong section)", deny)
 		}
+	}
+
+	// A settings:read key sees site_settings but no posts write/read tools.
+	set := listFor(scopedKey([2]string{"settings", "read"}))
+	if !set["site_settings"] {
+		t.Error("settings:read key should see site_settings")
+	}
+	if set["analytics_summary"] || set["get_post"] {
+		t.Error("settings:read key must not see other sections' tools")
+	}
+
+	// An analytics:read key sees analytics_summary and nothing cross-section.
+	an := listFor(scopedKey([2]string{"analytics", "read"}))
+	if !an["analytics_summary"] {
+		t.Error("analytics:read key should see analytics_summary")
+	}
+	if an["site_settings"] || an["create_post"] {
+		t.Error("analytics:read key must not see other sections' tools")
 	}
 
 	// Superuser ("full control"): every tool is visible.
 	su := listFor(apikeys.SuperuserKeyInfo("s", "root", apikeys.ScopeExternal))
-	for _, want := range []string{"create_post", "update_post", "delete_post", "get_post", "list_posts", "search_content", "site_info"} {
+	for _, want := range []string{"create_post", "update_post", "delete_post", "get_post", "list_posts", "search_content", "site_info", "site_settings", "analytics_summary"} {
 		if !su[want] {
 			t.Errorf("superuser (full control) should see %q", want)
 		}

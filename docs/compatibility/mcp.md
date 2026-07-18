@@ -13,10 +13,23 @@ the same way Claude connects to GitHub. See
   nothing more.
 - **Toggle:** on by default; set `VAYUOS_MCP=off` to disable the endpoint.
 
+## One-click: the Claude Connector page
+
+The fastest way to connect is **VayuOS → Claude Connector** (`/os/connector`):
+
+- **Grant full control** — one click mints a superuser key so Claude can run the
+  whole site.
+- **Author** / **Read-only** presets — one click mints a safely-scoped key.
+- Your live endpoint is shown, and your freshly-minted key is filled straight
+  into ready-to-paste **Claude Desktop** and **Claude Code** configurations.
+- Every active connector is listed with an instant **Revoke**.
+
+The page is admin-only and adds no new write surface — it mints and revokes
+through the same API-key endpoints as the API Keys page.
+
 ## Full control vs. limited
 
-The connector's power equals its key's scope. Mint the key in **VayuOS → API
-keys**:
+The connector's power equals its key's scope:
 
 - **Full control** — a superuser key (full access / `*:*`). Every VayuMCP tool
   becomes available; Claude can do anything the platform can. Use this to let
@@ -24,6 +37,8 @@ keys**:
 - **Limited** — a scoped key (e.g. only `posts:write`). The connector then
   exposes *only* the tools that key grants; every other tool is hidden from
   `tools/list` and refused if called. Same enforcement as the REST API.
+
+For a precise custom grant, build a scoped key on the **VayuOS → API keys** page.
 
 ## Connect from Claude Desktop / Claude Code
 
@@ -43,7 +58,7 @@ header. Example (Claude Desktop `claude_desktop_config.json`):
 
 Claude Code: `claude mcp add --transport http vayupress https://your-domain.com/mcp --header "Authorization: Bearer vp_your_key_here"`.
 
-## Tools (Stage 1)
+## Tools
 
 | Tool | Needs (section:action) | Does |
 |---|---|---|
@@ -54,9 +69,13 @@ Claude Code: `claude mcp add --transport http vayupress https://your-domain.com/
 | `list_posts` | `posts:read` | List published posts (pagination, tag filter). |
 | `get_post` | `posts:read` | Fetch one post, including its HTML. |
 | `search_content` | `posts:read` | Full-text search across published posts. |
+| `site_settings` | `settings:read` | Read the site's non-secret config (name, tagline, theme, nav, SEO meta). |
+| `analytics_summary` | `analytics:read` | Privacy-first traffic overview + top pages for the last N days. |
 
-More tools (themes, plugins, design, settings, media, domains, analytics) land in
-later stages; a full-control key automatically gains each new tool.
+More tools (themes, plugins, design, settings/page writes, media, domains) land in
+later stages; a full-control key automatically gains each new tool. Write tools
+for a subsystem are added only once they can reuse that subsystem's own validated
+path, so a tool can never bypass a check the REST/admin route enforces.
 
 ## Security model
 
@@ -72,8 +91,10 @@ later stages; a full-control key automatically gains each new tool.
 
 ## Roadmap
 
-- **Stage 2:** a VayuOS "Claude connector" page (one-click full-control or
-  limited key + copy-paste connect steps), a generic `vayu_request` tool for the
-  whole API surface, and tools for the remaining sections.
-- **Stage 3:** OAuth 2.1 on the same endpoint for a true one-click **Connect**
-  button on claude.ai, exactly like the GitHub connector.
+- **Stage 2 (shipped):** the VayuOS **Claude Connector** page (one-click
+  full-control or scoped key + copy-paste connect steps) and broadened read tools
+  (`site_settings`, `analytics_summary`).
+- **Stage 3:** safe write tools for the remaining sections (pages, themes,
+  settings, media) — each reusing its subsystem's validated path — and **OAuth
+  2.1** on the same endpoint for a true one-click **Connect** button on claude.ai,
+  exactly like the GitHub connector.

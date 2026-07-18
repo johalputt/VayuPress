@@ -8,7 +8,25 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.80] — 2026-07-18
+
 ### Added
+- **VayuMCP Stage 2 — one-click Claude connector page + a broader toolset.** A new
+  **VayuOS → Claude Connector** page (`/os/connector`) makes connecting Claude a
+  one-click affair: **Grant full control** mints a superuser key (Claude can then
+  run the whole site), while **Author** and **Read-only** presets mint safely
+  scoped keys — and a custom grant is one link away on the API Keys page. The page
+  shows your live connector endpoint and fills your freshly-minted key straight
+  into ready-to-paste **Claude Desktop** and **Claude Code** configurations, and
+  lists every active connector with an instant **Revoke**. The page is admin-only
+  and adds **no new write surface** — it mints and revokes through the existing
+  CSRF-protected API-key endpoints.
+- **New MCP tools:** `site_settings` (read the site's non-secret configuration —
+  name, tagline, theme, navigation, SEO meta; needs `settings:read`) and
+  `analytics_summary` (privacy-first traffic overview + top pages for the last N
+  days; needs `analytics:read`). A full-control key gains both automatically; a
+  scoped key sees a tool only if its key grants that section — the same
+  enforcement as every other tool.
 - **VayuDomains: bulk "Sync all pending" approval.** The manual sync gate now has
   a batch action so a set of freshly-registered secondary domains can be approved
   for provisioning together instead of one row at a time. VayuOS → Domains shows a
@@ -17,6 +35,21 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   action, approving only adds the domains to the out-of-process helper's work
   list — nothing is provisioned by the unprivileged binary itself. Idempotent:
   re-running reports how many rows actually changed (0 when nothing was pending).
+
+### Security
+- The connector page requires **admin** console level (it can mint a full-control
+  key), enforced by the same per-path level guard as every other admin area.
+- `site_settings` returns only an **allowlist** of presentational keys (site
+  identity, theme, navigation, SEO meta). Operational configuration — the
+  operator's private Tor bridge lines and the VayuShield thresholds — is never
+  projected into the tool's output, and third-party credentials remain in the
+  separate encrypted store, unreachable through it.
+- **Key minting is now subset-bounded.** A key-authenticated caller of the
+  key-create endpoint can no longer mint a key more powerful than itself (a scoped
+  key requesting `*:*`, or any capability it does not hold, is refused). The
+  interactive admin UI (session-authenticated), including the connector's one-click
+  "Grant full control", is unaffected — this closes a defense-in-depth gap in the
+  "a key is never more powerful than its grant" invariant.
 
 ## [3.13.79] — 2026-07-18
 

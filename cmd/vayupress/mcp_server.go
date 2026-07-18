@@ -20,7 +20,37 @@ import (
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/mcp"
+	"github.com/johalputt/vayupress/internal/settings"
 )
+
+// mcpPublicSettingKeys is the allowlist of presentational, non-sensitive site
+// settings that the site_settings tool exposes. It is deliberately NOT the whole
+// settings map: GetAll also returns operational config an operator would never
+// want handed to a connector — tor.bridges (private obfs4 bridge lines with
+// embedded secrets), the shield.* protection thresholds, and other runtime knobs.
+// Projecting onto this list keeps the tool's contract ("non-secret site
+// configuration") literally true regardless of what else lives in the store.
+var mcpPublicSettingKeys = []string{
+	settings.KeySiteName,
+	settings.KeySiteTagline,
+	settings.KeySiteDescription,
+	settings.KeySiteAuthor,
+	settings.KeyAuthorBio,
+	settings.KeyThemePrimaryLight,
+	settings.KeyThemePrimaryDark,
+	settings.KeyThemeAccentLight,
+	settings.KeyThemeAccentDark,
+	settings.KeyThemeCustomCSS,
+	settings.KeyThemeOGImage,
+	settings.KeyHeadKeywords,
+	settings.KeyHeadThemeColor,
+	settings.KeyHeadRobots,
+	settings.KeyNavItems,
+	settings.KeyFooterConfig,
+	settings.KeyHomeHero,
+	settings.KeyFeatureComments,
+	settings.KeyMembershipButtons,
+}
 
 // mountMCP registers the VayuMCP connector endpoint unless disabled by
 // VAYUOS_MCP=off. The endpoint is authenticated (RequireAPIKey) and rate-limited
@@ -211,7 +241,98 @@ func (a *App) buildMCPServer() *mcp.Server {
 		},
 	})
 
+	// ── site configuration (read) ─────────────────────────────────────────────
+	// site_settings lets Claude read the site's own configuration — name,
+	// tagline, theme colours, navigation, SEO meta — so it can reason about and
+	// describe the site before proposing changes. Read-only: it never returns a
+	// third-party secret (those live in the separate encrypted credential store,
+	// not here) and it never mutates. Writing settings back is a Stage 3 tool that
+	// must also drive the live-render refresh, so it is intentionally not exposed
+	// yet.
+	srv.Register(mcp.Tool{
+		Name:        "site_settings",
+		Description: "Read this site's presentational configuration: name, tagline, description, theme colours, navigation, footer, and SEO meta. Returns a key→value map of non-secret settings. Use it to understand the current site before suggesting changes.",
+		InputSchema: mcp.NewObjectSchema(),
+		Visible:     a.mcpVisible(apikeys.SectionSettings, apikeys.ActionRead),
+		Handler: func(ctx context.Context, _ json.RawMessage) (string, error) {
+			if a.siteSettings == nil {
+				return "", fmt.Errorf("site settings are unavailable")
+			}
+			all, err := a.siteSettings.GetAll(ctx)
+			if err != nil {
+				return "", err
+			}
+			// Project onto the presentational allowlist — never the raw GetAll dump,
+			// which also carries operational config (tor.bridges, shield.* thresholds)
+			// that must not reach a connector.
+			return jsonStr(projectPublicSettings(all)), nil
+		},
+	})
+
+	// ── analytics (read) ──────────────────────────────────────────────────────
+	// analytics_summary gives Claude the privacy-first traffic picture (aggregate
+	// counts only — VayuPress stores no per-visitor PII) so it can report on and
+	// optimise the site. Read-only.
+	srv.Register(mcp.Tool{
+		Name:        "analytics_summary",
+		Description: "Return a privacy-first traffic summary for the last N days: total pageviews, unique visitors, visits, bounce rate, average visit duration, and the top pages. Aggregate counts only — VayuPress stores no per-visitor personal data.",
+		InputSchema: objSchema(nil, map[string]any{
+			"days":  intProp("Look-back window in days (default 30, max 365)."),
+			"limit": intProp("How many top pages to return (default 10, max 50)."),
+		}),
+		Visible: a.mcpVisible(apikeys.SectionAnalytics, apikeys.ActionRead),
+		Handler: func(ctx context.Context, args json.RawMessage) (string, error) {
+			if a.analytics == nil {
+				return "", fmt.Errorf("analytics are unavailable")
+			}
+			var in struct {
+				Days  int `json:"days"`
+				Limit int `json:"limit"`
+			}
+			_ = json.Unmarshal(args, &in)
+			if in.Days <= 0 {
+				in.Days = 30
+			}
+			if in.Days > 365 {
+				in.Days = 365
+			}
+			if in.Limit <= 0 {
+				in.Limit = 10
+			}
+			if in.Limit > 50 {
+				in.Limit = 50
+			}
+			overview, err := a.analytics.OverviewSince(ctx, in.Days)
+			if err != nil {
+				return "", err
+			}
+			topPages, err := a.analytics.TopPages(ctx, in.Days, in.Limit)
+			if err != nil {
+				return "", err
+			}
+			return jsonStr(map[string]any{
+				"days":      in.Days,
+				"overview":  overview,
+				"top_pages": topPages,
+			}), nil
+		},
+	})
+
 	return srv
+}
+
+// projectPublicSettings returns only the presentational, non-sensitive settings
+// from a full GetAll map. Anything not on mcpPublicSettingKeys (tor.bridges,
+// shield.* thresholds, and every other operational key) is dropped, so the
+// site_settings tool can never leak operational config to a connector.
+func projectPublicSettings(all map[string]string) map[string]string {
+	out := make(map[string]string, len(mcpPublicSettingKeys))
+	for _, k := range mcpPublicSettingKeys {
+		if v, ok := all[k]; ok {
+			out[k] = v
+		}
+	}
+	return out
 }
 
 // mcpVisible returns a Visible closure that passes only when the request's key

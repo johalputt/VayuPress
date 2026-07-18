@@ -4930,6 +4930,25 @@
 /* Custom-credential add form: name / endpoint / secret inputs + Add button. */
 .vp-os .ak-cc-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--sp-3); margin-bottom: var(--sp-4); }
 
+/* ── Claude connector page (ADR-0139, Stage 2) ─────────────────────────────
+   Three grant choices sit side by side and wrap to a single column on narrow
+   viewports; the full-control card is accent-framed so the "give Claude the
+   keys" option reads as the headline. Config snippets use a scrollable mono
+   block so a long endpoint/key never forces horizontal page scroll. */
+.vp-os .cx-grant-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--sp-4); margin-bottom: var(--sp-3); }
+.vp-os .cx-grant { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-4); border: 1px solid var(--border); border-radius: var(--r-md); background: var(--bg-surface-2); }
+.vp-os .cx-grant--full { border-color: var(--brand); background: var(--brand-dim); }
+.vp-os .cx-grant-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
+.vp-os .cx-grant p { flex: 1 1 auto; margin: 0; }
+.vp-os .cx-grant .btn { margin-top: var(--sp-2); }
+.vp-os .cx-code {
+  margin: var(--sp-2) 0 0; padding: var(--sp-3);
+  font-size: var(--text-xs); line-height: 1.55; white-space: pre;
+  color: var(--text-2); background: var(--bg-surface-3);
+  border: 1px solid var(--border); border-radius: var(--r-sm);
+  overflow-x: auto;
+}
+
 /* ══════════════════════════════════════════════════════════════════════════
    ADR-0136 — native View Transitions (cross-document + HTMX swaps)
    A CSS at-rule only; lives in this same-origin stylesheet, so it satisfies

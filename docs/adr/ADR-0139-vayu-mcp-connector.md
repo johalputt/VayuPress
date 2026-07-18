@@ -1,6 +1,6 @@
 # ADR-0139 — VayuMCP: a built-in Model Context Protocol connector
 
-Status: Accepted (Stage 1 — API-key transport)
+Status: Accepted (Stage 1 — API-key transport; Stage 2 — connector page + broadened tools)
 Date: 2026-07-18
 Deciders: VayuPress core
 
@@ -54,24 +54,29 @@ what its key grants.
   reuses the ADR-0134 capability model verbatim.
 - Every `tools/call` is written to the same WORM audit log as the REST twin.
 
-### Tools (Stage 1 set)
+### Tools
 
 Each tool wraps an existing internal service so behaviour is identical to the
-REST path:
+REST path. Stage 1 shipped the posts surface + `site_info`; Stage 2 broadened it
+with site-configuration and analytics reads:
 
-| Tool | Needs | Wraps |
-|---|---|---|
-| `create_post` | posts:write | `articles.Create` |
-| `update_post` | posts:write | `articles.Update` |
-| `delete_post` | posts:delete | `articles.Delete` |
-| `list_posts` | posts:read | `articles.List` |
-| `get_post` | posts:read | `articles.Get` |
-| `search_content` | posts:read | `search.Query` |
-| `list_domains` | domains:read | `domains.List` |
-| `get_analytics_summary` | analytics:read | `analytics` summary |
-| `site_info` | (any valid key) | version/host/status |
+| Tool | Needs | Wraps | Since |
+|---|---|---|---|
+| `site_info` | (any valid key) | version/host/status | 1 |
+| `create_post` | posts:write | `articles.Create` | 1 |
+| `update_post` | posts:write | `articles.Update` | 1 |
+| `delete_post` | posts:delete | `articles.Delete` | 1 |
+| `list_posts` | posts:read | `articles.List` | 1 |
+| `get_post` | posts:read | `articles.Get` | 1 |
+| `search_content` | posts:read | `search.Search` | 1 |
+| `site_settings` | settings:read | `siteSettings.GetAll` | 2 |
+| `analytics_summary` | analytics:read | `analytics.OverviewSince` + `TopPages` | 2 |
 
-The set grows in later stages; the registry makes adding a tool a few lines.
+The set grows in later stages; the registry makes adding a tool a few lines. Read
+tools are added freely; a **write** tool for a subsystem is added only once it can
+reuse that subsystem's own validated path (so a tool can never bypass a check the
+REST/admin route enforces) — which is why Stage 2 broadens reads first and defers
+settings/theme/page writes to Stage 3.
 
 ### Full control vs. limited (operator's choice)
 
@@ -87,23 +92,31 @@ time:
   exposes *only* the tools that key grants — everything else is hidden and
   refused. Same enforcement as the REST API.
 
-To make "do anything" reachable before a named tool exists for every endpoint, a
-later stage adds a generic **`vayu_request`** tool that proxies to any VayuAPI
-endpoint (method + path + body), still gated by the key's capability grant — so a
-full-control key exposes the entire REST surface through one tool, while a
-limited key still cannot exceed its scope.
+A generic **`vayu_request`** tool that proxies to any VayuAPI endpoint (method +
+path + body) was evaluated for "do anything before a named tool exists" and
+**deferred**: re-dispatching a synthetic request through the live router would
+re-run host/bot-protection/redirect middleware on an in-process request (fragile),
+and the CSRF gate on the browser-oriented admin routes makes a raw passthrough
+behave inconsistently. The chosen path is instead a **curated, self-describing
+toolset** — each tool a thin adapter over a subsystem's already-validated service
+method — which an LLM uses far more reliably than a raw HTTP passthrough, and
+which can never bypass a validation the underlying path enforces. A safe
+passthrough (dispatched through a dedicated internal API mux built from a single
+source of truth) remains a future option if a gap appears.
 
-### One-click experience
+### One-click experience (Stage 2 — shipped)
 
 - **VayuOS "Claude connector" page** (`/os/connector`): shows the connector URL
   (`https://<domain>/mcp`); offers **"Grant full control"** (mints a superuser
-  key) and **"Limited access"** (pick sections) as one-click choices; and gives
-  copy-paste steps for Claude Desktop / Claude Code (which accept custom MCP
-  servers with an auth header).
-- **Stage 2 (separate ADR/amendment): OAuth 2.1** authorisation on the same
-  endpoint, so claude.ai shows a real "Connect → sign in → authorise" button
-  like the GitHub connector — the true one-click. Stage 1 ships first and is
-  usable immediately from Claude Desktop/Code and any header-capable MCP client.
+  key) plus **Author** and **Read-only** one-click presets — with a link to the
+  API Keys grid for a custom grant; fills the freshly-minted key into ready-to-
+  paste Claude Desktop / Claude Code configurations; and lists active connectors
+  with an instant Revoke. Admin-only, and adds no new write surface — it mints and
+  revokes through the existing CSRF-protected API-key endpoints.
+- **Stage 3: OAuth 2.1** authorisation on the same endpoint, so claude.ai shows a
+  real "Connect → sign in → authorise" button like the GitHub connector — the true
+  one-click. The API-key transport ships first and is usable immediately from
+  Claude Desktop/Code and any header-capable MCP client.
 
 ## Consequences
 
@@ -115,7 +128,7 @@ limited key still cannot exceed its scope.
   server. Tool handlers are thin adapters over already-tested services.
 - Enables autonomous, native AI operation of a VayuPress site (draft → publish →
   measure) from any MCP client, with a clean path to a claude.ai one-click
-  connector via Stage 2 OAuth.
+  connector via Stage 3 OAuth.
 
 ## Alternatives considered
 

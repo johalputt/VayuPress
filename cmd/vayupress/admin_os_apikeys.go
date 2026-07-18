@@ -10,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/johalputt/vayupress/internal/apikeys"
+	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/secrets"
 )
@@ -485,6 +486,21 @@ func (a *App) handleOSAPIKeyCreate(w http.ResponseWriter, r *http.Request) {
 	for _, c := range body.Capabilities {
 		if sec, act, ok := apikeys.ParseCapability(strings.TrimSpace(c)); ok {
 			perms.Grant(sec, act)
+		}
+	}
+
+	// Defense-in-depth: a key-authenticated caller can never mint a key more
+	// powerful than itself (the "a key is never more powerful than its grant"
+	// invariant that the whole VayuMCP/connector story rests on). Session-
+	// authenticated admins carry no KeyInfo — they reach this handler through
+	// console RBAC (which already gated them to admin level for /os/apikeys and
+	// /os/connector) — so the interactive UI, including the one-click "Grant full
+	// control", is unaffected. Only a scoped API key trying to escalate is blocked.
+	if ki, ok := auth.KeyInfoFromContext(r.Context()); ok && !ki.IsSuperuser() {
+		if !ki.Perms.Covers(perms) {
+			writeAPIError(w, r, http.StatusForbidden, "grant-exceeds-key",
+				"an API key cannot mint a key with capabilities it does not itself hold", "/docs/compatibility/vayuapi")
+			return
 		}
 	}
 

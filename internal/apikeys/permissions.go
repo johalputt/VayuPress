@@ -151,6 +151,21 @@ func (p Permissions) Has(s Section, a Action) bool {
 // IsSuperuser reports whether this grant set permits every capability.
 func (p Permissions) IsSuperuser() bool { return p.hasExact(SectionAll, ActionAll) }
 
+// Covers reports whether p grants every capability in other — i.e. other is a
+// subset of p, wildcards honoured (a "*:*" or "section:*" grant in p satisfies
+// the matching entries in other). Used to enforce that a key can never mint or
+// widen a grant it does not itself hold. An empty other is trivially covered.
+func (p Permissions) Covers(other Permissions) bool {
+	for s, acts := range other {
+		for a := range acts {
+			if !p.Has(s, a) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 // IsEmpty reports whether the grant set permits nothing (deny-all).
 func (p Permissions) IsEmpty() bool {
 	for _, acts := range p {

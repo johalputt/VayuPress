@@ -293,3 +293,44 @@ func TestResolveExpiryExactWhileCached(t *testing.T) {
 		t.Error("a key that expired while cached must be refused immediately, not after the cache TTL")
 	}
 }
+
+// TestCovers proves the subset predicate used to stop a key minting a key more
+// powerful than itself: p.Covers(other) is true iff every capability in other is
+// granted by p, with wildcards honoured on the p side.
+func TestCovers(t *testing.T) {
+	super := Superuser()
+	posts := NewPermissions()
+	posts.Grant(SectionPosts, ActionRead)
+	posts.Grant(SectionPosts, ActionWrite)
+	postsAll := NewPermissions()
+	postsAll.Grant(SectionPosts, ActionAll)
+
+	reqSuper := Superuser()
+	reqPostWrite := NewPermissions()
+	reqPostWrite.Grant(SectionPosts, ActionWrite)
+	reqPostsStar := NewPermissions()
+	reqPostsStar.Grant(SectionPosts, ActionAll)
+	reqSettings := NewPermissions()
+	reqSettings.Grant(SectionSettings, ActionWrite)
+
+	cases := []struct {
+		name string
+		p    Permissions
+		req  Permissions
+		want bool
+	}{
+		{"superuser covers superuser request", super, reqSuper, true},
+		{"superuser covers anything", super, reqSettings, true},
+		{"posts:rw covers posts:write", posts, reqPostWrite, true},
+		{"posts:rw does NOT cover posts:* (missing delete/etc)", posts, reqPostsStar, false},
+		{"posts:* covers posts:write", postsAll, reqPostWrite, true},
+		{"posts key does NOT cover superuser request", posts, reqSuper, false},
+		{"posts key does NOT cover a settings request", posts, reqSettings, false},
+		{"any key covers an empty (deny-all) request", posts, NewPermissions(), true},
+	}
+	for _, c := range cases {
+		if got := c.p.Covers(c.req); got != c.want {
+			t.Errorf("%s: Covers = %v, want %v", c.name, got, c.want)
+		}
+	}
+}
