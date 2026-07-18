@@ -9,7 +9,7 @@
 <h1 align="center">VayuPress</h1>
 
 <p align="center">
-  <strong>Your whole online presence — website, blog, and private mail — in one sovereign binary.</strong><br>
+  <strong>Your whole online presence — website, blog, private mail, encrypted chat, and one-click Tor .onion — in one sovereign binary.</strong><br>
   One VPS. One process. One control panel. Zero telemetry, zero vendor lock-in, zero SDKs.
 </p>
 
