@@ -8,6 +8,31 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.88] — 2026-07-18
+
+### Fixed
+- **Claude's Connect could fail at dynamic client registration for native MCP
+  clients.** The OAuth server only accepted `https` and `http`-loopback redirect
+  URIs, so a native client that registers a **private-use / custom URI scheme**
+  (RFC 8252 §7.1, e.g. `com.anthropic.claude:/…`) was turned away at
+  `POST /oauth/register` — surfacing in Claude as *"Couldn't register with <site>'s
+  sign-in service."* `validRedirectURI` now also accepts custom URI schemes
+  (rejecting only the script/data/file schemes: `javascript`, `data`, `vbscript`,
+  `file`, `blob`, `about`), which is safe because PKCE S256 is mandatory. Cleartext
+  `http` to a non-loopback host, fragments, and userinfo are still rejected.
+- **Loopback redirect URIs are now matched port-agnostically (RFC 8252 §7.3).** A
+  native client (e.g. Claude Code) that registers `http://127.0.0.1:<port>/callback`
+  binds a fresh ephemeral port per session; the authorize/token step now matches on
+  host + path + query and ignores the port for loopback hosts. All other redirect
+  URIs (https, custom schemes) are still exact-matched.
+
+### Changed
+- **The OAuth endpoints now log the flow** (`component: "oauth"`): the exact
+  `client_name` and `redirect_uris` received at `/oauth/register` (and the rejection
+  reason if any), the `client_id`/`redirect_uri` at `/oauth/authorize`, and the
+  `grant_type` at `/oauth/token`. A failed connect is now diagnosable straight from
+  the server log instead of guessing.
+
 ## [3.13.87] — 2026-07-18
 
 ### Fixed

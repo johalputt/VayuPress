@@ -132,15 +132,40 @@ func (s *Store) GetClient(ctx context.Context, clientID string) (Client, error) 
 	return c, nil
 }
 
-// RedirectAllowed reports whether uri exactly matches one of the client's
-// registered redirect URIs (exact string match, per OAuth 2.1 — no prefix/pattern).
+// RedirectAllowed reports whether uri matches one of the client's registered
+// redirect URIs. Matching is exact (OAuth 2.1) for https and private-use schemes;
+// for http loopback redirects the PORT is ignored (RFC 8252 §7.3) because a native
+// app binds an ephemeral loopback port that varies per session — Claude Code does
+// exactly this. Everything else about the URI (host, path, query) must still match.
 func (c Client) RedirectAllowed(uri string) bool {
 	for _, u := range c.RedirectURIs {
 		if subtle.ConstantTimeCompare([]byte(u), []byte(uri)) == 1 {
 			return true
 		}
+		if loopbackRedirectMatch(u, uri) {
+			return true
+		}
 	}
 	return false
+}
+
+// loopbackRedirectMatch reports whether registered and presented are both http
+// loopback redirect URIs identical except for the port (RFC 8252 §7.3). Redirect
+// URIs are public (registered in the clear), so a constant-time compare is not
+// required here.
+func loopbackRedirectMatch(registered, presented string) bool {
+	ru, err1 := url.Parse(registered)
+	pu, err2 := url.Parse(presented)
+	if err1 != nil || err2 != nil {
+		return false
+	}
+	if ru.Scheme != "http" || pu.Scheme != "http" {
+		return false
+	}
+	if !loopbackHosts[ru.Hostname()] || ru.Hostname() != pu.Hostname() {
+		return false
+	}
+	return ru.EscapedPath() == pu.EscapedPath() && ru.RawQuery == pu.RawQuery && ru.User == nil && pu.User == nil
 }
 
 // ── authorization codes ─────────────────────────────────────────────────────────
@@ -297,15 +322,37 @@ func VerifyPKCE(challenge, verifier string) bool {
 }
 
 // loopbackHosts are the only hosts permitted to use cleartext http as a redirect
-// URI (local-development clients). Everything else must be https.
+// URI (native-app loopback listeners). Everything else on http is rejected.
 var loopbackHosts = map[string]bool{"localhost": true, "127.0.0.1": true, "::1": true}
 
-// validRedirectURI accepts absolute https URLs, and http only for a genuine
-// loopback host (local development). It PARSES the URL and compares the real host
-// — never a string prefix — so tricks like http://localhost.evil.com,
-// http://127.0.0.1x.attacker.com, or the userinfo form http://localhost@evil.com
-// (whose real host is evil.com) are rejected. Any fragment or userinfo component
-// is rejected outright (OAuth 2.1).
+// dangerousSchemes are redirect schemes that can execute script or read local
+// resources in a web context. They are never accepted as a redirect target, even
+// though PKCE is enforced — there is no legitimate OAuth client that needs them.
+var dangerousSchemes = map[string]bool{
+	"javascript": true, "data": true, "vbscript": true,
+	"file": true, "blob": true, "about": true,
+}
+
+// validRedirectURI accepts the redirect-URI forms that OAuth 2.1 web AND native
+// clients legitimately use (RFC 8252):
+//   - https:// to any host — claimed-domain web clients (e.g. claude.ai's
+//     https://claude.ai/api/mcp/auth_callback);
+//   - http:// to a genuine loopback host (localhost / 127.0.0.1 / ::1) on any
+//     port — native apps with an ephemeral loopback listener (e.g. Claude Code);
+//   - a private-use / custom URI scheme (e.g. "com.example.app:/cb",
+//     "claudeai://cb") — native apps that register a scheme handler with the OS.
+//
+// It PARSES the URL and compares the real host, so http://localhost.evil.com,
+// http://127.0.0.1x.attacker.com and the userinfo form http://localhost@evil.com
+// (whose real host is evil.com) are rejected. Cleartext http to a non-loopback
+// host, the script/data/file schemes, and any URL carrying a fragment or userinfo
+// are rejected outright. Interception of a custom-scheme or loopback redirect is
+// mitigated by the mandatory PKCE S256 exchange.
+//
+// This deliberately accepts more than the earlier https/loopback-only rule: a
+// native MCP client that registered a private-use scheme was being turned away at
+// dynamic client registration, surfacing to the operator as "couldn't register
+// with <site>'s sign-in service".
 func validRedirectURI(raw string) bool {
 	if strings.Contains(raw, "#") {
 		return false
@@ -314,16 +361,16 @@ func validRedirectURI(raw string) bool {
 	if err != nil || u.Fragment != "" || u.User != nil {
 		return false
 	}
-	host := u.Hostname() // strips port and IPv6 brackets; excludes userinfo
-	if host == "" {
+	switch strings.ToLower(u.Scheme) {
+	case "":
 		return false
-	}
-	switch u.Scheme {
 	case "https":
-		return true
+		return u.Hostname() != "" // strips port/IPv6 brackets; excludes userinfo
 	case "http":
-		return loopbackHosts[host]
+		return loopbackHosts[u.Hostname()]
 	default:
-		return false
+		// Private-use / custom scheme (RFC 8252 §7.1) — allowed for native apps
+		// unless it is a script/data/file scheme that could be abused.
+		return !dangerousSchemes[strings.ToLower(u.Scheme)]
 	}
 }

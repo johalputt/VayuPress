@@ -9,6 +9,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"html"
 	"io"
 	"net/http"
@@ -18,6 +19,7 @@ import (
 	"github.com/johalputt/vayupress/internal/apikeys"
 	"github.com/johalputt/vayupress/internal/auth"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
+	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/oauth"
 )
 
@@ -94,14 +96,20 @@ func (a *App) handleOAuthRegister(w http.ResponseWriter, r *http.Request) {
 		RedirectURIs []string `json:"redirect_uris"`
 	}
 	if err := json.NewDecoder(io.LimitReader(r.Body, 32*1024)).Decode(&body); err != nil {
+		logging.LogWarn("oauth", "register: request body was not valid JSON: "+err.Error())
 		oauthError(w, http.StatusBadRequest, "invalid_client_metadata", "request body must be JSON")
 		return
 	}
+	// Log exactly what the client sent so a failed connect is diagnosable from the
+	// server log (the redirect_uris are the usual reason registration is refused).
+	logging.LogInfo("oauth", fmt.Sprintf("register: client_name=%q redirect_uris=%v", body.ClientName, body.RedirectURIs))
 	c, err := a.oauth.RegisterClient(r.Context(), strings.TrimSpace(body.ClientName), body.RedirectURIs)
 	if err != nil {
+		logging.LogWarn("oauth", fmt.Sprintf("register: REJECTED client_name=%q redirect_uris=%v: %v", body.ClientName, body.RedirectURIs, err))
 		oauthError(w, http.StatusBadRequest, "invalid_redirect_uri", err.Error())
 		return
 	}
+	logging.LogInfo("oauth", fmt.Sprintf("register: OK client_id=%s accepted_redirect_uris=%v", c.ID, c.RedirectURIs))
 	oauthWriteJSON(w, http.StatusCreated, map[string]any{
 		"client_id":                  c.ID,
 		"client_name":                c.Name,
@@ -142,9 +150,11 @@ func (a *App) handleOAuthAuthorize(w http.ResponseWriter, r *http.Request) {
 	client, err := a.oauth.GetClient(r.Context(), clientID)
 	if err != nil || !client.RedirectAllowed(redirectURI) {
 		// Never redirect to an unvalidated URI — show a local error instead.
+		logging.LogWarn("oauth", fmt.Sprintf("authorize: rejected client_id=%q redirect_uri=%q (getClientErr=%v redirectAllowed=%v)", clientID, redirectURI, err, err == nil && client.RedirectAllowed(redirectURI)))
 		oauthHTMLError(w, "This app is not registered, or its redirect URL does not match. Reconnect from your MCP client.")
 		return
 	}
+	logging.LogInfo("oauth", fmt.Sprintf("authorize: client_id=%s redirect_uri=%s response_type=%s", clientID, redirectURI, q.Get("response_type")))
 	state := q.Get("state")
 	if q.Get("response_type") != "code" {
 		oauthRedirectError(w, r, redirectURI, state, "unsupported_response_type")
@@ -261,7 +271,9 @@ func (a *App) handleOAuthToken(w http.ResponseWriter, r *http.Request) {
 		oauthError(w, http.StatusBadRequest, "invalid_request", "malformed form body")
 		return
 	}
-	switch r.FormValue("grant_type") {
+	grantType := r.FormValue("grant_type")
+	logging.LogInfo("oauth", fmt.Sprintf("token: grant_type=%q client_id=%q", grantType, r.FormValue("client_id")))
+	switch grantType {
 	case "authorization_code":
 		a.oauthTokenFromCode(w, r)
 	case "refresh_token":

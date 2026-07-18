@@ -85,6 +85,12 @@ func TestValidRedirectURIRejectsHostTricks(t *testing.T) {
 		"http://localhost:8080/cb",
 		"http://127.0.0.1/cb",
 		"http://[::1]:9000/cb",
+		// Private-use / custom URI schemes for native apps (RFC 8252 §7.1) — a
+		// native MCP client that registers a scheme handler must be able to
+		// register, or dynamic client registration fails with "couldn't register".
+		"claudeai://callback",
+		"com.anthropic.claude:/oauth2redirect",
+		"com.example.app://cb",
 	}
 	for _, u := range good {
 		if !validRedirectURI(u) {
@@ -99,13 +105,43 @@ func TestValidRedirectURIRejectsHostTricks(t *testing.T) {
 		"http://evil.com/cb",                // plain cleartext non-loopback
 		"https://evil.com/cb#frag",          // fragment
 		"https://user:pw@example.com/cb",    // userinfo on https
-		"ftp://example.com/cb",              // wrong scheme
-		"javascript:alert(1)",               // no host
+		"javascript:alert(1)",               // script scheme
+		"data:text/html,<script>1</script>", // data scheme
+		"vbscript:msgbox(1)",                // script scheme
+		"file:///etc/passwd",                // local file scheme
+		"blob:https://x/y",                  // blob scheme
 	}
 	for _, u := range bad {
 		if validRedirectURI(u) {
 			t.Errorf("dangerous redirect %q was ACCEPTED — must be rejected", u)
 		}
+	}
+}
+
+// TestLoopbackRedirectPortAgnostic locks in RFC 8252 §7.3: a native client that
+// registers an http loopback redirect must be allowed to complete the flow even
+// though the ephemeral listener port differs on the authorize/token call. The
+// port is ignored for loopback; everything else (scheme, host, path, query) must
+// still match, and non-loopback hosts get exact matching only.
+func TestLoopbackRedirectPortAgnostic(t *testing.T) {
+	c := Client{RedirectURIs: []string{"http://127.0.0.1:8976/callback", "https://claude.ai/cb"}}
+	if !c.RedirectAllowed("http://127.0.0.1:51234/callback") {
+		t.Error("loopback redirect with a different port must be allowed (RFC 8252 §7.3)")
+	}
+	if !c.RedirectAllowed("http://127.0.0.1:8976/callback") {
+		t.Error("the exact registered loopback redirect must be allowed")
+	}
+	if c.RedirectAllowed("http://127.0.0.1:51234/evil") {
+		t.Error("a different PATH must NOT match, even on loopback")
+	}
+	if c.RedirectAllowed("http://localhost:8976/callback") {
+		t.Error("a different loopback HOST (localhost vs 127.0.0.1) must not port-match")
+	}
+	if c.RedirectAllowed("https://claude.ai/cb/") {
+		t.Error("https redirects must still be EXACT-matched (trailing slash differs)")
+	}
+	if !c.RedirectAllowed("https://claude.ai/cb") {
+		t.Error("the exact registered https redirect must be allowed")
 	}
 }
 
