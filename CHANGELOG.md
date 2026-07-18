@@ -8,6 +8,24 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.95] — 2026-07-18
+
+### Fixed
+- **OAuth consent "Approve" now actually redirects back to the client.** The whole
+  flow completed server-side — consent APPROVED, a 303 with the authorization code
+  to the client's redirect URI — but the browser silently dropped that redirect and
+  the operator just saw the page "refresh" and nothing happen. Cause: the consent
+  page carries the strict baseline CSP `form-action 'self'`, and browsers enforce
+  `form-action` across the **entire** form navigation, including the redirect target.
+  So the POST to `/oauth/authorize/consent` was allowed, but its 303 to
+  `https://claude.ai/…` was blocked (server log: `CSP violation:
+  directive=form-action blocked=…/oauth/authorize/consent`). `/oauth/authorize` now
+  extends `form-action` for just that one page to also allow the client's
+  already-validated redirect origin (`form-action 'self' https://claude.ai` for a
+  web callback, or the native custom scheme for a desktop client), so the
+  authorization code can be delivered back and the connection completes. Verified the
+  emitted header now includes the client origin.
+
 ## [3.13.94] — 2026-07-18
 
 ### Changed

@@ -20,9 +20,11 @@ import (
 
 	"github.com/johalputt/vayupress/internal/apikeys"
 	"github.com/johalputt/vayupress/internal/auth"
+	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/oauth"
+	"github.com/johalputt/vayupress/internal/render"
 )
 
 // oauthBaseURL returns this site's public origin (scheme://host) as seen by the
@@ -193,9 +195,45 @@ func (a *App) handleOAuthAuthorize(w http.ResponseWriter, r *http.Request) {
 	// cookie (the consent handler no longer needs the session on the POST).
 	consentTok := auth.SignedToken(u.ID + "|" + strconv.FormatInt(time.Now().Add(consentTokenTTL).Unix(), 10))
 
+	// The approval POST is 303-redirected to the client's registered redirect_uri
+	// (e.g. https://claude.ai/…). CSP `form-action` is enforced across the WHOLE
+	// form navigation — including that redirect — so the strict baseline
+	// `form-action 'self'` blocks the redirect and the browser silently drops it:
+	// the operator clicks Approve and "nothing happens". Extend form-action for THIS
+	// page to also allow the client's (already-validated) redirect origin, so the
+	// authorization code can actually be delivered back to the client.
+	if src := redirectCSPSource(redirectURI); src != "" {
+		hdr := "Content-Security-Policy"
+		if config.Cfg.CSPReportOnly {
+			hdr = "Content-Security-Policy-Report-Only"
+		}
+		csp := strings.Replace(render.BuildCSP(render.CSPNonce(r), nil), "form-action 'self'", "form-action 'self' "+src, 1)
+		w.Header().Set(hdr, csp)
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	_, _ = w.Write([]byte(oauthConsentPage(client, redirectURI, challenge, state, consentTok)))
+}
+
+// redirectCSPSource returns a CSP source-expression that allows a form to POST/
+// redirect to the given (already-validated) OAuth redirect URI: the scheme+host
+// origin for http/https, or a scheme-source ("myapp:") for a native custom scheme.
+func redirectCSPSource(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	switch strings.ToLower(u.Scheme) {
+	case "http", "https":
+		if u.Host == "" {
+			return ""
+		}
+		return strings.ToLower(u.Scheme) + "://" + u.Host
+	case "":
+		return ""
+	default:
+		return strings.ToLower(u.Scheme) + ":"
+	}
 }
 
 // consentTokenTTL bounds how long an OAuth consent approval token stays valid
