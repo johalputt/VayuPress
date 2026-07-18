@@ -385,7 +385,7 @@ func (a *App) buildMCPServer() *mcp.Server {
 		Name:        "list_media",
 		Description: "List files in the media library (images, PDFs), newest first. Returns each item's name, public /media/<name> URL, size, and type. Use the URL to embed an asset in a post or page.",
 		InputSchema: objSchema(nil, map[string]any{
-			"limit": intProp("Max items to return (default 100)."),
+			"limit": intProp("Max items to return (default 100, max 500)."),
 		}),
 		Visible: a.mcpVisible(apikeys.SectionMedia, apikeys.ActionRead),
 		Handler: func(_ context.Context, args json.RawMessage) (string, error) {
@@ -393,8 +393,16 @@ func (a *App) buildMCPServer() *mcp.Server {
 				Limit int `json:"limit"`
 			}
 			_ = json.Unmarshal(args, &in)
+			// Apply the documented default and a hard cap so an omitted limit never
+			// serialises an entire large media library into one response.
+			if in.Limit <= 0 {
+				in.Limit = 100
+			}
+			if in.Limit > 500 {
+				in.Limit = 500
+			}
 			items := listMediaItems()
-			if in.Limit > 0 && in.Limit < len(items) {
+			if in.Limit < len(items) {
 				items = items[:in.Limit]
 			}
 			return jsonStr(items), nil
