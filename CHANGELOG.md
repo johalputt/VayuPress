@@ -25,6 +25,13 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   a page as a blog post before the flag was set. The VayuOS "Add a page"
   quick-create was migrated to this path, removing the previous
   create-then-`setArticleIsPage` race entirely.
+- **A new page is no longer briefly served with blog-post chrome.** The write
+  worker pre-renders a published article into the disk cache; it rendered with the
+  post layout (published date, tags, related, comments, author box) regardless of
+  kind, so a freshly created page could be served as a post until the cache was
+  purged. The worker now skips the pre-seed for pages (`is_page=1`) — they render
+  correctly on demand via the live article handler. (Surfaced by the review of the
+  race-free `is_page` change above.)
 
 ## [3.13.81] — 2026-07-18
 

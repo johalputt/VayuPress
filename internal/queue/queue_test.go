@@ -119,7 +119,15 @@ func TestProcessOneJob_InsertPagePersistsIsPage(t *testing.T) {
 	if _, err := dbpkg.DB.Exec(`INSERT INTO write_jobs(article_json,op) VALUES(?,'insert')`, payload); err != nil {
 		t.Fatalf("insert job: %v", err)
 	}
-	SetCacheWriteFn(func(_, _ string) {})
+	// Capture any disk-cache writes so we can prove a page is NOT pre-seeded with
+	// blog-post chrome (it would otherwise be served as a post until purged). A
+	// non-nil RenderFn is required for the cache block to run at all; restore it
+	// afterwards so sibling tests keep the default (nil) behaviour.
+	prevRender := RenderFn
+	defer func() { RenderFn = prevRender }()
+	var cachedPaths []string
+	RenderFn = func(dbpkg.Article) (string, error) { return "<html>page</html>", nil }
+	SetCacheWriteFn(func(relPath, _ string) { cachedPaths = append(cachedPaths, relPath) })
 
 	if processOneJob(0) {
 		t.Fatal("queue had a job; should not return empty=true")
@@ -130,6 +138,11 @@ func TestProcessOneJob_InsertPagePersistsIsPage(t *testing.T) {
 	}
 	if isPage != 1 {
 		t.Fatalf("is_page = %d, want 1 (page must be written with the flag set atomically)", isPage)
+	}
+	for _, p := range cachedPaths {
+		if p == "posts/"+a.Slug+".html" {
+			t.Errorf("a page must NOT be pre-seeded into the post cache (%q), it would render as a post", p)
+		}
 	}
 }
 

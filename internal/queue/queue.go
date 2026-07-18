@@ -170,13 +170,20 @@ func processOneJob(workerID int) (empty bool) {
 	if job.Op != "delete" && RenderFn != nil {
 		// Never write a draft's HTML to the public disk cache — the article page
 		// serves the cache file before its status check, so a cached draft would
-		// be publicly readable. Read the authoritative status of the row we just
-		// wrote; only published articles are pre-rendered into the cache.
+		// be publicly readable. Read the authoritative status AND is_page of the row
+		// we just wrote.
 		var status string
-		if err := dbpkg.DB.QueryRow(`SELECT COALESCE(status,'published') FROM articles WHERE slug=?`, a.Slug).Scan(&status); err != nil {
-			status = "published" // row missing/unknown — fall back to prior behaviour
+		var isPage int
+		if err := dbpkg.DB.QueryRow(`SELECT COALESCE(status,'published'), COALESCE(is_page,0) FROM articles WHERE slug=?`, a.Slug).Scan(&status, &isPage); err != nil {
+			status, isPage = "published", 0 // row missing/unknown — fall back to prior behaviour
 		}
-		if status == "published" {
+		// Pre-seed the disk cache only for published BLOG POSTS. Pages (is_page=1)
+		// are intentionally skipped: RenderFn renders with post chrome (published
+		// date, tags, related, comments, author box), which is wrong for a page, so
+		// a pre-seeded page cache would serve the page as a post until it is purged.
+		// Pages are few and the live article handler renders them correctly on demand
+		// (it reads is_page), so skipping the pre-seed is both correct and cheap.
+		if status == "published" && isPage == 0 {
 			html, err := RenderFn(a)
 			if err != nil {
 				logging.LogError("worker", "render error for "+a.Slug, err.Error())
