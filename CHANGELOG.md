@@ -8,6 +8,22 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.87] — 2026-07-18
+
+### Fixed
+- **Claude's one-click Connect could not register (VayuShield was blocking it).**
+  When bot protection is enabled, VayuShield bypassed `/.well-known` — so OAuth
+  *discovery* succeeded — but not `/oauth` or `/mcp`. Anthropic's backend then hit
+  `POST /oauth/register` (dynamic client registration) as a non-browser client with
+  no session, was classified as a bot, and got a proof-of-work/JS challenge it can
+  never solve — surfacing in Claude Desktop as *"Couldn't register with <site>'s
+  sign-in service."* `/mcp` and `/oauth` are now on VayuShield's bypass list (and
+  the sovereignty lane's priority list), alongside `/api` and `/.well-known`. This
+  is safe: `/mcp` still requires an API key and enforces the per-key rate budget;
+  `/oauth/register` and `/oauth/token` sit behind the discovery rate limit; and
+  `/oauth/authorize` still requires a signed-in admin. A regression test asserts
+  both prefixes stay bypassed.
+
 ## [3.13.86] — 2026-07-18
 
 ### Changed

@@ -88,6 +88,11 @@ var sovereignPrefixes = []string{
 	"/metrics",
 	"/__vayushield",
 	"/.well-known",
+	// Machine-protocol endpoints (VayuMCP + OAuth, ADR-0139/0140): same
+	// treatment as /api — authenticated/rate-limited traffic that must not be
+	// shed with the anonymous public pool. Mirrors VayuShield's BypassPrefixes.
+	"/mcp",
+	"/oauth",
 }
 
 // isSovereignLane reports whether a request belongs to the always-admit priority

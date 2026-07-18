@@ -47,6 +47,18 @@ import (
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
 // bootVayuShield constructs the bot-protection manager and the engagement
+// shieldBypassPrefixes are path prefixes VayuShield never challenges or blocks:
+// the admin/control plane, the API, feeds, health/metrics, the shield's own
+// endpoints, static assets, and the machine-protocol surfaces (/mcp + /oauth).
+// The machine surfaces MUST be here — their callers (MCP clients, Anthropic's
+// OAuth backend) can never solve a browser challenge, so a challenge there is an
+// outage, not defence. They carry their own auth/rate limits instead. Kept as a
+// package var so a regression test can assert these prefixes are present.
+var shieldBypassPrefixes = []string{
+	"/os", "/api", "/admin", "/debug", "/health", "/metrics", "/static",
+	"/__vayushield", "/__vayuanalytics", "/.well-known", "/mcp", "/oauth",
+}
+
 // analytics store, wires governance/geoip side channels, and starts the
 // background learning + retention goroutines. Bot protection is OFF by default
 // (VAYUSHIELD=on to enable); analytics ingestion is always available so the
@@ -112,7 +124,16 @@ func (a *App) bootVayuShield() {
 		// Save/refresh buttons die if the operator's jailed IP can't load JS.
 		// Assets are cheap to serve and volumetric abuse of them is still
 		// bounded by the L0 public-concurrency lane.
-		BypassPrefixes:    []string{"/os", "/api", "/admin", "/debug", "/health", "/metrics", "/static", "/__vayushield", "/__vayuanalytics", "/.well-known"},
+		//
+		// /mcp and /oauth are machine-protocol endpoints (VayuMCP + its OAuth
+		// 2.1 server, ADR-0139/0140): the callers are MCP clients and
+		// Anthropic's backend, which can never solve a browser challenge —
+		// shielding them is indistinguishable from an outage (claude.ai's
+		// one-click Connect dies at POST /oauth/register). Like /api they carry
+		// their own defences: /mcp requires an API key and enforces the per-key
+		// rate budget; /oauth/register + /oauth/token sit behind the discovery
+		// rate limit and /oauth/authorize requires an admin session.
+		BypassPrefixes:    shieldBypassPrefixes,
 		SessionCookieName: "vayushield",
 		CountryFn:         geoip.Country,
 		ClientIP:          auth.ClientIP,
