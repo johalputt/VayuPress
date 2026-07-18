@@ -19,14 +19,15 @@
 # THE OPERATOR'S ONLY STEP is one DNS record:
 #     mcp.<domain>   A/AAAA  ->  this server's IP    (CDN/proxy OFF — "DNS only")
 # After that, this script (invoked automatically by deploy-vayupress.sh AND
-# update-vayupress.sh) does everything else: it adds the TLS SAN, writes the nginx
-# vhost that proxies the full app so the whole OAuth sign-in + consent flow works
-# on the subdomain, and reloads nginx. Point Claude at  https://mcp.<domain>/mcp .
+# update-vayupress.sh) does everything else: it issues a DEDICATED Let's Encrypt
+# certificate for mcp.<domain> (validated directly at the origin, so it never
+# re-validates the CDN-proxied apex — that could fail), writes the nginx vhost that
+# proxies the full app so the whole OAuth sign-in + consent flow works on the
+# subdomain, and reloads nginx. Point Claude at  https://mcp.<domain>/mcp .
 #
 # It is IDEMPOTENT and NON-FATAL: if mcp.<domain> isn't pointed yet it skips
-# cleanly and the connector keeps working on the main domain (when that domain is
-# reachable) — so calling it from deploy/update never breaks anything. Run it by
-# hand any time, too:
+# cleanly and the connector keeps using the main domain — so calling it from
+# deploy/update never breaks anything. Run it by hand any time, too:
 #     sudo bash scripts/setup-mcp-subdomain.sh
 #
 # Config is read from the environment, then /etc/vayupress/env, then sane
@@ -57,22 +58,12 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 MCP="mcp.${DOMAIN}"
-CERT_DIR="/etc/letsencrypt/live/${DOMAIN}"
+CERT_DIR="/etc/letsencrypt/live/${MCP}"   # DEDICATED cert for the subdomain
 AVAIL=/etc/nginx/sites-available/vayupress-mcp
 ENABLED=/etc/nginx/sites-enabled/vayupress-mcp
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
-resolves()   { getent hosts "$1" >/dev/null 2>&1; }
-cert_covers() { # $1=hostname — is it a SAN on the main cert?
-  [[ -f "${CERT_DIR}/fullchain.pem" ]] || return 1
-  openssl x509 -in "${CERT_DIR}/fullchain.pem" -noout -text 2>/dev/null \
-    | grep -oE 'DNS:[^,]+' | sed 's/DNS://' | grep -qx "$1"
-}
-cert_sans() { # print current SANs on the main cert, one per line
-  [[ -f "${CERT_DIR}/fullchain.pem" ]] || return 0
-  openssl x509 -in "${CERT_DIR}/fullchain.pem" -noout -text 2>/dev/null \
-    | grep -oE 'DNS:[^,]+' | sed 's/DNS://'
-}
+resolves() { getent hosts "$1" >/dev/null 2>&1; }
 write_mcp_http_only() { # phase A: HTTP vhost so the ACME challenge validates
   cat > "$AVAIL" <<NGINX
 server {
@@ -83,7 +74,7 @@ server {
 }
 NGINX
 }
-write_mcp_full() { # phase B: HTTP redirect + HTTPS full-app vhost (proxy off at the CDN)
+write_mcp_full() { # phase B: HTTP redirect + HTTPS full-app vhost (CDN proxy OFF)
   cat > "$AVAIL" <<NGINX
 server {
     listen 80; listen [::]:80;
@@ -130,46 +121,28 @@ if ! resolves "$MCP"; then
   warn "To enable the unchallenged connector: add  ${MCP}  A/AAAA -> this server (CDN proxy OFF / 'DNS only'), then re-run."
   exit 0
 fi
-if [[ ! -f "${CERT_DIR}/fullchain.pem" ]]; then
-  warn "No base certificate at ${CERT_DIR} yet — run deploy-vayupress.sh first. Skipping MCP setup."
-  exit 0
-fi
 
-# ── 1. Ensure the certificate covers mcp.<domain> ────────────────────────────
-if ! cert_covers "$MCP"; then
-  info "Adding ${MCP} to the TLS certificate…"
+# ── 1. Issue a DEDICATED cert for mcp.<domain> (never touches the apex cert) ──
+if [[ ! -f "${CERT_DIR}/fullchain.pem" ]]; then
+  info "Issuing a Let's Encrypt certificate for ${MCP}…"
   mkdir -p "${CACHE_DIR}/.well-known/acme-challenge"
   chown -R www-data:www-data "$CACHE_DIR" 2>/dev/null || true
 
-  # Phase A: HTTP-only vhost so certbot's HTTP-01 challenge for mcp validates.
+  # Phase A: HTTP-only vhost so certbot's HTTP-01 challenge validates. Because
+  # mcp.<domain> is pointed straight at the origin (CDN proxy OFF), the challenge
+  # reaches nginx directly and is never intercepted by a CDN.
   write_mcp_http_only
   ln -sf "$AVAIL" "$ENABLED"
   if ! nginx -t >/dev/null 2>&1; then warn "nginx config test failed — aborting MCP setup."; rm -f "$ENABLED"; exit 0; fi
   systemctl reload nginx 2>/dev/null || true
 
-  # Re-issue the SAME lineage with its CURRENT SANs (so the site/mail/talk keep
-  # their coverage) plus mcp — but only those that still resolve, so a stale
-  # record can't fail the whole renewal.
-  DARGS=()
-  seen=" "
-  while IFS= read -r h; do
-    [[ -z "$h" ]] && continue
-    resolves "$h" || { warn "  (dropping ${h} from cert — no DNS)"; continue; }
-    case "$seen" in *" $h "*) ;; *) DARGS+=(-d "$h"); seen="${seen}${h} ";; esac
-  done < <(printf '%s\n%s\n' "$(cert_sans)" "$MCP")
-  # Guarantee the primary + mcp are present even if the cert had no SANs listed.
-  case "$seen" in *" $DOMAIN "*) ;; *) DARGS=(-d "$DOMAIN" "${DARGS[@]}");; esac
-  case "$seen" in *" $MCP "*) ;; *) DARGS+=(-d "$MCP");; esac
-
-  certbot certonly --webroot -w "$CACHE_DIR" --cert-name "$DOMAIN" --expand \
-    "${DARGS[@]}" --email "$EMAIL" --agree-tos --non-interactive || \
-  certbot certonly --webroot -w "$CACHE_DIR" --cert-name "$DOMAIN" --expand \
-    -d "$DOMAIN" -d "$MCP" --email "$EMAIL" --agree-tos --non-interactive || \
-    warn "certbot could not add ${MCP} (is its DNS pointed here with the CDN proxy OFF?)."
+  certbot certonly --webroot -w "$CACHE_DIR" --cert-name "$MCP" \
+    -d "$MCP" --email "$EMAIL" --agree-tos --non-interactive || \
+    warn "certbot could not issue a certificate for ${MCP} (is its DNS pointed here with the CDN proxy OFF?)."
 fi
 
-# ── 2. Provision the vhost, or clean up if the cert still lacks it ────────────
-if cert_covers "$MCP"; then
+# ── 2. Provision the full vhost, or clean up if the cert is still missing ─────
+if [[ -f "${CERT_DIR}/fullchain.pem" ]]; then
   write_mcp_full
   ln -sf "$AVAIL" "$ENABLED"
   if nginx -t >/dev/null 2>&1; then
@@ -181,7 +154,7 @@ if cert_covers "$MCP"; then
     rm -f "$ENABLED"
   fi
 else
-  warn "Certificate still does not cover ${MCP}; the connector will use ${DOMAIN} for now."
+  warn "No certificate for ${MCP} yet; the connector will use ${DOMAIN} for now."
   rm -f "$ENABLED"
 fi
 exit 0

@@ -8,6 +8,20 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.92] — 2026-07-18
+
+### Changed
+- **`setup-mcp-subdomain.sh` now issues a DEDICATED certificate for `mcp.<domain>`**
+  (`certbot --cert-name mcp.<domain> -d mcp.<domain>`) instead of expanding the apex
+  certificate. Expanding the shared cert re-validates every existing SAN, including
+  the CDN-proxied apex — whose HTTP-01 challenge can be intercepted by the CDN and
+  fail the whole reissue. Because `mcp.<domain>` is grey-clouded (proxy OFF), its
+  own challenge always reaches the origin directly, so a dedicated cert provisions
+  reliably and never risks the apex/mail certs. Verified end-to-end on a live host:
+  cert issued, vhost written, `https://mcp.<domain>/health` serves JSON. This is the
+  method to use when a CDN's bot-challenge can't be scoped per path (e.g. Cloudflare
+  free Bot Fight Mode).
+
 ## [3.13.91] — 2026-07-18
 
 ### Fixed
