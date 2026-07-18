@@ -410,25 +410,35 @@ func oauthRedirectWith(w http.ResponseWriter, r *http.Request, redirectURI strin
 }
 
 // isValidRedirectURL reports whether raw is an allowed OAuth client redirect
-// target: https to any host, or http to a loopback host, and never with embedded
-// userinfo. It mirrors the registration-time rule (internal/oauth) so the two
-// cannot drift. The name matches CodeQL's redirect-check barrier-guard heuristic.
+// target. It MUST mirror internal/oauth.validRedirectURI exactly, or a client can
+// register a redirect that then fails at the final code-carrying redirect: https
+// to any host, http to a loopback host, or a private-use / custom URI scheme
+// (RFC 8252) for native apps — never a script/data/file scheme, and never with a
+// fragment or embedded userinfo. The name matches CodeQL's redirect-check
+// barrier-guard heuristic, so `target` is treated as neutralised on the true
+// branch even though a custom scheme is permitted (the value is always one the
+// client registered, re-checked by RedirectAllowed before this point).
 func isValidRedirectURL(raw string) bool {
+	if strings.Contains(raw, "#") {
+		return false
+	}
 	u, err := url.Parse(raw)
-	if err != nil || u.User != nil {
+	if err != nil || u.Fragment != "" || u.User != nil {
 		return false
 	}
-	host := u.Hostname()
-	if host == "" {
+	switch strings.ToLower(u.Scheme) {
+	case "":
 		return false
-	}
-	switch u.Scheme {
 	case "https":
-		return true
+		return u.Hostname() != ""
 	case "http":
+		host := u.Hostname()
 		return host == "localhost" || host == "127.0.0.1" || host == "::1"
-	default:
+	case "javascript", "data", "vbscript", "file", "blob", "about":
 		return false
+	default:
+		// Private-use / custom scheme (RFC 8252 §7.1), matching registration.
+		return true
 	}
 }
 

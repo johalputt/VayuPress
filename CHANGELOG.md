@@ -8,6 +8,29 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.89] — 2026-07-18
+
+### Fixed
+- **A native OAuth client using a custom URI scheme could register but then fail at
+  the final redirect.** `isValidRedirectURL` (the redirect-sink guard in
+  `oauthRedirectWith`) still accepted only https + http-loopback, while registration
+  (`validRedirectURI`) was broadened in 3.13.88 to accept private-use / custom URI
+  schemes. The two disagreed, so a client that registered `myapp://cb` reached the
+  consent screen, approved, and then hit *"Invalid redirect URL"* when the code was
+  delivered. The sink guard now mirrors the registration rule exactly (https any
+  host, http loopback, or a non-dangerous custom scheme), while remaining the
+  name-matched barrier the code-scanning open-redirect query recognises.
+
+### Changed
+- **The Claude Connector page now documents the CDN/WAF challenge gotcha.** When a
+  site is behind Cloudflare (or any WAF) with Bot Fight Mode / a managed challenge /
+  Under-Attack mode, Claude's *machine-to-machine* requests to `/oauth/*`, `/mcp`
+  and `/.well-known/*` are blocked by a JavaScript challenge before they reach
+  VayuPress — the connect fails with "couldn't register" and nothing appears in the
+  server log. The page now explains this and how to fix it (Skip rule for those
+  paths; on the free plan, extend an existing Skip rule rather than adding a new
+  one), with a `curl /health` litmus test.
+
 ## [3.13.88] — 2026-07-18
 
 ### Fixed
