@@ -831,6 +831,20 @@ else
   warn "setup-mcp-subdomain.sh not found next to this script — skipping VayuMCP subdomain auto-provision."
 fi
 
+# Provision the VayuAPI host (api.<domain>) with the CDN proxy OFF, so scripts / CI
+# / AI agents reach the REST API without a CDN bot-challenge a machine client cannot
+# solve. HARDENED: this vhost exposes only /api and /health (never /os), so the
+# direct host has a minimal, key-authenticated surface (see setup-api-subdomain.sh).
+# Idempotent and non-fatal: with api.<domain> DNS not yet pointed here it skips
+# cleanly and the API keeps using the main domain.
+API_SETUP="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)/setup-api-subdomain.sh"
+if [[ -f "$API_SETUP" ]]; then
+  DOMAIN="$DOMAIN" EMAIL="$EMAIL" CACHE_DIR="$CACHE_DIR" run bash "$API_SETUP" || \
+    warn "VayuAPI subdomain setup reported an issue — the REST API will use ${DOMAIN} until it is resolved."
+else
+  warn "setup-api-subdomain.sh not found next to this script — skipping VayuAPI subdomain auto-provision."
+fi
+
 # Provision TLS + nginx for every SYNC-APPROVED VayuDomains secondary domain
 # (VayuDomains P4+P5). Delegated to setup-vayudomain.sh so deploy AND update share
 # one implementation. Newly registered domains start on manual hold and are NOT

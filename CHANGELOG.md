@@ -8,6 +8,22 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Added
+- **Direct API host: `api.<domain>` (hardened, CDN-proxy-off).** Scripts, CI jobs
+  and AI agents call `/api/v1/…` machine-to-machine and — like VayuMCP and VayuTalk
+  — cannot solve a CDN JavaScript challenge (Cloudflare Bot Fight Mode / managed
+  challenge), which a free-plan WAF rule can't scope per-path. `scripts/setup-api-subdomain.sh`
+  (run automatically by deploy + every update, idempotent + non-fatal) issues a
+  dedicated Let's Encrypt cert for `api.<domain>` and writes a **hardened** nginx
+  vhost that proxies **only** `/api` and `/health` — everything else, including the
+  `/os` admin console, login and the OAuth/MCP endpoints, returns **404** on the
+  direct host. So the machine surface is minimal and key-authenticated (per-key
+  rate-limited, WORM-audited, and still guarded by VayuShield, which already
+  bypasses JS challenges on `/api`), while the apex keeps full CDN protection for
+  browser traffic. Operators add one DNS record (`api.<domain>` → server IP, proxy
+  off) and re-run the installer; docs updated (`docs/INSTALLATION.md` DNS table +
+  new "Direct API host" section). No binary change — this is provisioning + docs.
+
 ## [3.13.97] — 2026-07-18
 
 ### Added

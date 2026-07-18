@@ -399,6 +399,15 @@ if [[ -f "$MCP_SETUP" ]]; then
   CACHE_DIR="$CACHE_DIR" bash "$MCP_SETUP" || true
 fi
 
+# If the operator has pointed api.<domain> at this server (CDN proxy OFF), keep its
+# dedicated cert + HARDENED nginx vhost (API-only, /os never exposed) in place across
+# updates, so scripts / CI / AI agents reach the REST API without a CDN bot-challenge.
+# Idempotent and non-fatal: with no api.<domain> DNS it does nothing.
+API_SETUP="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)/setup-api-subdomain.sh"
+if [[ -f "$API_SETUP" ]]; then
+  CACHE_DIR="$CACHE_DIR" bash "$API_SETUP" || true
+fi
+
 # Keep every SYNC-APPROVED VayuDomains secondary domain's TLS cert + nginx vhost
 # in place across updates (VayuDomains P4+P5). Domains the operator has not
 # approved ("manual hold" in VayuOS → Domains) are never provisioned by an

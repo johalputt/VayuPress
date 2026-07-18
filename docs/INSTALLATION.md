@@ -23,16 +23,19 @@ You need a fresh **Ubuntu 24.04** server and a **domain name**. That's it.
 | A    | `www.example.com` | your server's IP | www redirect |
 | A    | `mail.example.com`| your server's IP | mail server (keep CDN proxy **off**) |
 | A    | `talk.example.com`| your server's IP | *optional* — VayuTalk chat relay (CDN proxy **off**) |
-| A    | `mcp.example.com` | your server's IP | *optional* — Claude / MCP connector (CDN proxy **off**) |
+| A    | `mcp.example.com` | your server's IP | *optional* — VayuMCP (Claude / MCP connector) (CDN proxy **off**) |
+| A    | `api.example.com` | your server's IP | *optional* — VayuAPI direct host for scripts / CI / agents (CDN proxy **off**) |
 
 (Replace `example.com` with your domain. The `mail.` record lets VayuPress run
 your email; the optional `talk.` record enables the real-time **VayuTalk** chat
 relay — see *"Add VayuTalk chat"* below; the optional `mcp.` record lets **Claude
-connect** to your site — see *"Connect Claude"* below. **Point every record you
-plan to use before you run the installer** — the installer only provisions a
-subdomain's certificate + vhost once its DNS resolves. If a CDN like Cloudflare
-fronts your site, leave `mail.`, `talk.` **and `mcp.`** as **DNS-only / grey-cloud**
-so their direct, machine-to-machine connections aren't proxied or challenged.)
+connect** to your site — see *"Connect Claude"* below; the optional `api.` record
+gives scripts, CI jobs and AI agents a **challenge-free REST API host** — see
+*"Direct API host"* below. **Point every record you plan to use before you run the
+installer** — the installer only provisions a subdomain's certificate + vhost once
+its DNS resolves. If a CDN like Cloudflare fronts your site, leave `mail.`, `talk.`,
+`mcp.` **and `api.`** as **DNS-only / grey-cloud** so their direct,
+machine-to-machine connections aren't proxied or challenged.)
 
 **Step 2 — run one command** on the server (SSH in as root or a sudo user):
 
@@ -150,6 +153,36 @@ Your main domain keeps full CDN protection; only `mcp.` is direct (VayuShield st
 guards the origin, and `/mcp` + `/oauth` are in its bypass). If you are *not* behind
 a challenge-mode CDN, you can skip the subdomain and connect Claude straight to
 `https://example.com/mcp`. See [`docs/compatibility/mcp.md`](compatibility/mcp.md).
+
+## Direct API host (`api.example.com`)
+
+The REST API (`/api/v1/…`) is called **machine-to-machine** by scripts, CI jobs and
+AI agents — none of which can solve a CDN JavaScript challenge either. Behind a
+challenge-mode CDN those calls fail, so VayuPress can serve the API on its own
+proxy-off subdomain, exactly like `mcp.`:
+
+1. **Add one DNS record:** `api.example.com` → your server's IP, CDN proxy **off**
+   (Cloudflare: *DNS only / grey cloud*).
+2. **Re-run the installer** (every update runs this step too), or just this subdomain:
+
+   ```bash
+   sudo bash /path/to/VayuPress/scripts/setup-api-subdomain.sh
+   ```
+
+The installer issues a dedicated Let's Encrypt certificate for `api.example.com`
+and writes a **hardened** nginx vhost that proxies **only** `/api` and `/health` —
+**everything else returns 404**, so your admin console (`/os`), login and the
+OAuth/MCP endpoints are *not* reachable on the direct host. Point clients at
+**`https://api.example.com/api/v1/…`** with `Authorization: Bearer <key>` (mint a
+scoped key in **VayuOS → API Keys**). Verify with
+`curl -s https://api.example.com/health` (JSON, not a challenge page).
+
+**Why this is safe without the CDN in front:** every API call is
+key-authenticated, per-key rate-limited and WORM-audited, and VayuShield still
+guards the origin — an unauthenticated bot flood only earns cheap `401`s against a
+minimal surface. Your main domain keeps full CDN protection for human/browser
+traffic. If you are *not* behind a challenge-mode CDN you don't need this at all —
+call the API on `https://example.com/api/v1/…` directly.
 
 ### What the certificate covers
 
