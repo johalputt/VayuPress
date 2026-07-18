@@ -130,6 +130,14 @@ func (a *App) handleOSEditorSave(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Sideload any external image URLs (Pixabay/Unsplash/anywhere) into local
+	// /media before we render + persist, so images render reliably — in the post
+	// AND on post cards — from our own origin, and stop depending on a hotlink
+	// that can rot or be blocked. Best-effort: an unreachable image is left as-is.
+	if rewritten, changed := sideloadBlocksImages(r.Context(), blocksJSON); changed {
+		blocksJSON = rewritten
+	}
+
 	contentHTML, _, err := blockrender.Render(blocksJSON)
 	if err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "render-error", "Could not render blocks: "+err.Error(), "")
@@ -202,6 +210,18 @@ func (a *App) applyPostExtras(ctx context.Context, slug string, meta *PostMeta, 
 			} else {
 				meta.AuthorID = editorID
 			}
+		}
+		// Sideload external cover / share images into local /media so post cards
+		// and social share cards reference our own origin (and survive hotlink
+		// rot). Best-effort — an unreachable URL is left as-is.
+		if local, changed := sideloadImageURL(ctx, meta.FeatureImage); changed {
+			meta.FeatureImage = local
+		}
+		if local, changed := sideloadImageURL(ctx, meta.OGImage); changed {
+			meta.OGImage = local
+		}
+		if local, changed := sideloadImageURL(ctx, meta.TwitterImage); changed {
+			meta.TwitterImage = local
 		}
 		if err := savePostMeta(ctx, slug, *meta); err != nil {
 			logging.LogError("os-editor", "save post meta failed", err.Error())
@@ -669,6 +689,8 @@ var osEditorHeadTmpl = htmpl.Must(htmpl.New("oseditorhead").Parse(
       <button type="button" class="btn btn--ghost btn--sm" data-editor-md-btn title="Edit the whole post as Markdown (Ctrl/Cmd+Shift+M)" aria-pressed="false">Markdown</button>
       <button type="button" class="btn btn--ghost btn--sm" data-editor-html-btn title="Edit HTML source (Ctrl/Cmd+Shift+H)" aria-pressed="false">HTML</button>
       <button type="button" class="btn btn--ghost btn--sm" data-editor-preview-btn>Preview</button>
+      <button type="button" class="btn btn--ghost btn--sm" data-editor-image-btn title="Upload an image and insert it here">🖼 Image</button>
+      <button type="button" class="btn btn--ghost btn--sm" data-editor-ai-btn title="Write a draft from a prompt with AI">✨ AI</button>
       <button type="button" class="btn btn--ghost btn--sm" data-editor-settings-btn title="Post settings (Ctrl/Cmd+Shift+P)" aria-pressed="false">⚙ Settings</button>
       <button type="button" class="btn btn--ghost btn--sm" data-editor-newpage title="Create a new standalone page">＋ Page</button>
       <button type="button" class="btn btn--primary btn--sm" data-editor-save>Save</button>
@@ -786,6 +808,35 @@ func osEditorBody(slug, title, blocksJSON, authorOptions string) string {
       <div class="editor-history-body">
         <div class="editor-history-list" data-editor-history-list></div>
         <div class="editor-history-diff" data-editor-history-diff></div>
+      </div>
+    </div>
+  </div>
+  <div class="editor-history-modal" data-editor-ai-modal hidden role="dialog" aria-modal="true" aria-label="Write with AI">
+    <div class="editor-history-panel">
+      <div class="editor-history-head">
+        <span>✨ Write with AI</span>
+        <button type="button" class="btn--icon" data-ai-close aria-label="Close">✕</button>
+      </div>
+      <div class="editor-settings-body">
+        <div class="pm-field">
+          <label class="pm-label">What should this post be about?</label>
+          <textarea class="pm-input" data-ai-prompt rows="4" placeholder="e.g. A beginner's guide to self-hosting email — friendly tone, ~800 words, with a short FAQ."></textarea>
+        </div>
+        <div class="pm-field">
+          <label class="pm-label">Provider</label>
+          <select class="pm-input" data-ai-provider></select>
+        </div>
+        <div class="pm-field">
+          <label class="pm-label">Model <span class="muted">(optional — blank uses the provider default)</span></label>
+          <input class="pm-input" type="text" data-ai-model placeholder="Provider default">
+        </div>
+        <div class="pm-field">
+          <div class="text-sm muted" data-ai-msg>The draft is inserted as editable blocks — always review before you publish.</div>
+        </div>
+        <div class="pm-row">
+          <button type="button" class="btn btn--primary btn--sm" data-ai-run>Generate draft</button>
+          <button type="button" class="btn btn--ghost btn--sm" data-ai-cancel>Cancel</button>
+        </div>
       </div>
     </div>
   </div>

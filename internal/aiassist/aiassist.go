@@ -30,7 +30,27 @@ const (
 	OpTitles    = "titles"
 	OpSEO       = "seo"
 	OpContinue  = "continue"
+	// OpDraft writes a complete post in Markdown from a free-form instruction —
+	// the "give a prompt, get a draft" editor flow.
+	OpDraft = "draft"
 )
+
+// Provider kinds for a runtime-selected backend.
+const (
+	KindOllama = "ollama" // native Ollama /api/generate protocol
+	KindOpenAI = "openai" // OpenAI-compatible /chat/completions (OpenAI, OpenRouter, …)
+)
+
+// Backend selects the inference provider for a one-off generation. It lets the
+// editor pick a provider at request time — a local Ollama, or any
+// OpenAI-compatible endpoint (OpenAI, OpenRouter, or a custom gateway) whose
+// base URL + API key the operator stored in VayuOS.
+type Backend struct {
+	Kind     string // KindOllama | KindOpenAI
+	Endpoint string // base URL (Ollama root, or the OpenAI-compatible base ending in /v1)
+	APIKey   string // bearer token for OpenAI-compatible providers (empty for Ollama)
+	Model    string // model name
+}
 
 // Config configures the local inference endpoint.
 type Config struct {
@@ -64,7 +84,35 @@ func (c *Client) Model() string { return c.cfg.Model }
 
 // SupportedOps lists the operation identifiers the assistant accepts.
 func SupportedOps() []string {
-	return []string{OpSummarize, OpImprove, OpTitles, OpSEO, OpContinue}
+	return []string{OpSummarize, OpImprove, OpTitles, OpSEO, OpContinue, OpDraft}
+}
+
+// GenerateOp runs op over text against an explicit, runtime-selected backend
+// (Ollama, OpenAI, OpenRouter, or any OpenAI-compatible gateway). It is the
+// stateless path the editor's provider picker uses; the env-configured Client
+// above remains for the default local-Ollama assist. text is capped to bound the
+// prompt. A nil httpClient gets a 90s default.
+func GenerateOp(ctx context.Context, hc *http.Client, b Backend, op, text string) (string, error) {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return "", fmt.Errorf("text is required")
+	}
+	if len(text) > 12000 {
+		text = text[:12000]
+	}
+	prompt, ok := buildPrompt(op, text)
+	if !ok {
+		return "", fmt.Errorf("unsupported operation %q", op)
+	}
+	if hc == nil {
+		hc = &http.Client{Timeout: 90 * time.Second}
+	}
+	switch strings.ToLower(strings.TrimSpace(b.Kind)) {
+	case KindOpenAI:
+		return generateOpenAI(ctx, hc, b, prompt)
+	default:
+		return generateOllamaAt(ctx, hc, b.Endpoint, b.Model, prompt)
+	}
 }
 
 // Assist runs op over text and returns the model's suggestion. text is capped to
@@ -87,20 +135,28 @@ func (c *Client) Assist(ctx context.Context, op, text string) (string, error) {
 	return c.generate(ctx, prompt)
 }
 
-// generate calls Ollama's /api/generate with streaming disabled.
+// generate calls the env-configured local Ollama for the default assist Client.
 func (c *Client) generate(ctx context.Context, prompt string) (string, error) {
+	return generateOllamaAt(ctx, c.http, c.cfg.URL, c.cfg.Model, prompt)
+}
+
+// generateOllamaAt calls an Ollama /api/generate endpoint with streaming off.
+func generateOllamaAt(ctx context.Context, hc *http.Client, base, model, prompt string) (string, error) {
+	if strings.TrimSpace(model) == "" {
+		model = "llama3.2"
+	}
 	body, _ := json.Marshal(map[string]interface{}{
-		"model":  c.cfg.Model,
+		"model":  model,
 		"prompt": prompt,
 		"stream": false,
 	})
-	endpoint := strings.TrimRight(c.cfg.URL, "/") + "/api/generate"
+	endpoint := strings.TrimRight(base, "/") + "/api/generate"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
 		return "", err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := c.http.Do(req)
+	resp, err := hc.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("ai request: %w", err)
 	}
@@ -119,6 +175,62 @@ func (c *Client) generate(ctx context.Context, prompt string) (string, error) {
 		return "", fmt.Errorf("ai model error: %s", out.Error)
 	}
 	return strings.TrimSpace(out.Response), nil
+}
+
+// generateOpenAI calls an OpenAI-compatible /chat/completions endpoint (OpenAI,
+// OpenRouter, or any compatible gateway) with streaming disabled.
+func generateOpenAI(ctx context.Context, hc *http.Client, b Backend, prompt string) (string, error) {
+	if strings.TrimSpace(b.Model) == "" {
+		return "", fmt.Errorf("a model name is required for this provider")
+	}
+	body, _ := json.Marshal(map[string]interface{}{
+		"model":    b.Model,
+		"messages": []map[string]string{{"role": "user", "content": prompt}},
+		"stream":   false,
+	})
+	endpoint := strings.TrimRight(strings.TrimSpace(b.Endpoint), "/")
+	if endpoint == "" {
+		return "", fmt.Errorf("this provider has no endpoint configured")
+	}
+	if !strings.HasSuffix(endpoint, "/chat/completions") {
+		endpoint += "/chat/completions"
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if k := strings.TrimSpace(b.APIKey); k != "" {
+		req.Header.Set("Authorization", "Bearer "+k)
+	}
+	resp, err := hc.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("ai request: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", fmt.Errorf("ai endpoint status %d", resp.StatusCode)
+	}
+	var out struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+		Error struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return "", fmt.Errorf("ai decode: %w", err)
+	}
+	if out.Error.Message != "" {
+		return "", fmt.Errorf("ai model error: %s", out.Error.Message)
+	}
+	if len(out.Choices) == 0 {
+		return "", fmt.Errorf("ai returned no choices")
+	}
+	return strings.TrimSpace(out.Choices[0].Message.Content), nil
 }
 
 // buildPrompt returns the instruction prompt for op, or ok=false if unknown.
@@ -141,6 +253,13 @@ func buildPrompt(op, text string) (string, bool) {
 	case OpContinue:
 		return "Continue writing the following article in the same voice and " +
 			"style. Add one or two coherent paragraphs. Return only the new text.\n\n" + text, true
+	case OpDraft:
+		return "Write a complete, well-structured blog post in GitHub-Flavored " +
+			"Markdown based on the instruction below. Begin with a single H1 title " +
+			"(# Title). Use ## / ### subheadings, short paragraphs, and bullet or " +
+			"numbered lists where they help. Do not include front-matter, code " +
+			"fences around the whole post, or any commentary — return only the " +
+			"Markdown post.\n\nInstruction: " + text, true
 	default:
 		return "", false
 	}

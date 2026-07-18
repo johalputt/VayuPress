@@ -2427,6 +2427,123 @@
 
   if (saveBtn) saveBtn.addEventListener('click', save);
   if (previewBtn) previewBtn.addEventListener('click', preview);
+
+  // ── Direct image upload (toolbar) ──────────────────────────────────────────
+  // A first-class "Image" button: pick a file, upload it to /media, and insert
+  // the image block at the caret — no visit to the media library required.
+  var imageBtn = root.querySelector('[data-editor-image-btn]');
+  var imageFileInput = document.createElement('input');
+  imageFileInput.type = 'file';
+  imageFileInput.accept = 'image/png,image/jpeg,image/gif,image/webp';
+  imageFileInput.hidden = true;
+  document.body.appendChild(imageFileInput);
+  imageFileInput.addEventListener('change', function () {
+    var f = imageFileInput.files && imageFileInput.files[0];
+    if (f) uploadImageFile(f, focusedBlockIdx() + 1);
+    imageFileInput.value = '';
+  });
+  if (imageBtn) imageBtn.addEventListener('click', function () { imageFileInput.click(); });
+
+  // ── AI: write a draft from a prompt ────────────────────────────────────────
+  var aiBtn = root.querySelector('[data-editor-ai-btn]');
+  var aiModal = root.querySelector('[data-editor-ai-modal]');
+  var aiProvidersLoaded = false;
+  function aiQ(sel) { return aiModal ? aiModal.querySelector(sel) : null; }
+  function openAIModal() {
+    if (!aiModal) return;
+    aiModal.hidden = false;
+    var p = aiQ('[data-ai-prompt]');
+    if (p) p.focus();
+    if (!aiProvidersLoaded) loadAIProviders();
+  }
+  function closeAIModal() { if (aiModal) aiModal.hidden = true; }
+  function loadAIProviders() {
+    var sel = aiQ('[data-ai-provider]'), msg = aiQ('[data-ai-msg]');
+    var modelEl = aiQ('[data-ai-model]'), runBtn = aiQ('[data-ai-run]');
+    if (!sel) return;
+    fetch('/os/api/editor/ai-providers', { headers: { 'X-CSRF-Token': csrfToken() } })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        aiProvidersLoaded = true;
+        while (sel.firstChild) sel.removeChild(sel.firstChild);
+        var provs = (d && d.providers) || [];
+        if (!provs.length) {
+          var o = document.createElement('option');
+          o.value = ''; o.textContent = 'No provider configured';
+          sel.appendChild(o); sel.disabled = true;
+          if (runBtn) runBtn.disabled = true;
+          if (msg) msg.textContent = 'Add a local Ollama endpoint, or an OpenAI / OpenRouter API key, in VayuOS → API Keys to enable AI writing.';
+          return;
+        }
+        sel.disabled = false;
+        if (runBtn) runBtn.disabled = false;
+        provs.forEach(function (p) {
+          var o = document.createElement('option');
+          o.value = p.id; o.textContent = p.label;
+          o.setAttribute('data-default-model', p.defaultModel || '');
+          sel.appendChild(o);
+        });
+        function syncModel() {
+          var opt = sel.options[sel.selectedIndex];
+          var dm = opt ? (opt.getAttribute('data-default-model') || '') : '';
+          if (modelEl) modelEl.placeholder = dm || 'Model name required';
+        }
+        sel.addEventListener('change', syncModel);
+        syncModel();
+      })
+      .catch(function () { if (msg) msg.textContent = 'Could not load AI providers.'; });
+  }
+  function insertGeneratedBlocks(newBlocks) {
+    // Use the first heading as the post title when the title is still empty.
+    if (titleEl && !titleEl.value.trim() && newBlocks[0] && newBlocks[0].type === 'heading' && newBlocks[0].text) {
+      titleEl.value = String(newBlocks[0].text);
+      updateStats();
+      newBlocks = newBlocks.slice(1);
+    }
+    // Replace a lone empty starter paragraph rather than leaving it above the draft.
+    var at = blocks.length;
+    if (blocks.length === 1 && blocks[0].type === 'paragraph' && !((blocks[0].text || '').trim())) {
+      blocks = []; at = 0;
+    }
+    newBlocks.forEach(function (b) { if (b && b.type) insertBlock(at++, b); });
+  }
+  function runAIGenerate() {
+    var promptEl = aiQ('[data-ai-prompt]'), sel = aiQ('[data-ai-provider]');
+    var modelEl = aiQ('[data-ai-model]'), msg = aiQ('[data-ai-msg]'), runBtn = aiQ('[data-ai-run]');
+    var prompt = promptEl ? promptEl.value.trim() : '';
+    if (!prompt) { if (msg) msg.textContent = 'Enter a prompt first.'; return; }
+    var provider = sel ? sel.value : '';
+    var model = modelEl ? modelEl.value.trim() : '';
+    if (runBtn) runBtn.disabled = true;
+    if (msg) msg.textContent = 'Writing your draft… this can take a moment.';
+    fetch('/os/api/editor/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() },
+      body: JSON.stringify({ prompt: prompt, provider: provider, model: model })
+    }).then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+      .then(function (res) {
+        if (runBtn) runBtn.disabled = false;
+        if (!res.ok) {
+          if (msg) msg.textContent = (res.d && (res.d.message || res.d.error)) || 'Generation failed.';
+          return;
+        }
+        var newBlocks = (res.d && res.d.blocks) || [];
+        if (!newBlocks.length) { if (msg) msg.textContent = 'The model returned nothing — try again.'; return; }
+        insertGeneratedBlocks(newBlocks);
+        closeAIModal();
+        if (promptEl) promptEl.value = '';
+        if (msg) msg.textContent = 'The draft is inserted as editable blocks — always review before you publish.';
+        setStatus('AI draft inserted — review before publishing', 'ok');
+      })
+      .catch(function () { if (runBtn) runBtn.disabled = false; if (msg) msg.textContent = 'Generation failed.'; });
+  }
+  if (aiBtn) aiBtn.addEventListener('click', openAIModal);
+  if (aiModal) {
+    var aiCloseBtn = aiQ('[data-ai-close]'); if (aiCloseBtn) aiCloseBtn.addEventListener('click', closeAIModal);
+    var aiCancelBtn = aiQ('[data-ai-cancel]'); if (aiCancelBtn) aiCancelBtn.addEventListener('click', closeAIModal);
+    var aiRunBtn = aiQ('[data-ai-run]'); if (aiRunBtn) aiRunBtn.addEventListener('click', runAIGenerate);
+    aiModal.addEventListener('click', function (e) { if (e.target === aiModal) closeAIModal(); });
+  }
   if (previewClose) previewClose.addEventListener('click', function () { previewModal.hidden = true; });
   if (historyBtn) historyBtn.addEventListener('click', openHistory);
   if (historyClose) historyClose.addEventListener('click', function () { historyModal.hidden = true; });

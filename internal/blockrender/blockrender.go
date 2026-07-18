@@ -189,6 +189,23 @@ type Block struct {
 // text excerpt (first ~200 chars, tags stripped) suitable for search/meta.
 // On parse failure it returns empty strings and the error, leaving callers free
 // to fall back to legacy Markdown content.
+// MarkdownToBlocks converts a full Markdown document into editor blocks by
+// rendering it to HTML with the GFM block renderer and importing that. Used by
+// the AI "draft from a prompt" feature to turn generated Markdown into real,
+// editable blocks. On a render error it falls back to a single markdown block so
+// nothing is lost.
+func MarkdownToBlocks(md string) []Block {
+	var buf bytes.Buffer
+	if err := blockMD.Convert([]byte(md), &buf); err != nil {
+		return []Block{{Type: "markdown", Text: md}}
+	}
+	blocks := ImportHTML(buf.String())
+	if len(blocks) == 0 {
+		return []Block{{Type: "markdown", Text: md}}
+	}
+	return blocks
+}
+
 func Render(blocksJSON string) (htmlOut, text string, err error) {
 	trimmed := strings.TrimSpace(blocksJSON)
 	if trimmed == "" {

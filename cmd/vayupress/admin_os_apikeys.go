@@ -58,6 +58,16 @@ var knownProviders = []providerMeta{
 		EndpointHint: "Base URL — leave blank to use the default.",
 	},
 	{
+		Provider:     secrets.ProviderOpenAI,
+		Title:        "OpenAI",
+		Desc:         "Use OpenAI's models for the writing assistant. Enter your API key; the base URL defaults to OpenAI and can point at any OpenAI-compatible gateway.",
+		SecretLabel:  "API key",
+		SecretPH:     "sk-...",
+		HasEndpoint:  true,
+		EndpointPH:   "https://api.openai.com/v1",
+		EndpointHint: "Base URL — leave blank to use OpenAI's default.",
+	},
+	{
 		Provider:     secrets.ProviderOllama,
 		Title:        "Local AI (Ollama)",
 		Desc:         "Connect a self-hosted model runtime so AI features run on infrastructure you control. No data leaves your server.",

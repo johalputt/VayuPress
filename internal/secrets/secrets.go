@@ -48,6 +48,7 @@ const (
 	ProviderN8N        = "n8n"
 	ProviderOllama     = "ollama"
 	ProviderOpenRouter = "openrouter"
+	ProviderOpenAI     = "openai"
 	// ProviderGoogleAds stores the Google AdSense account credential. The
 	// publisher id ("ca-pub-…") is held in site settings (it is not secret);
 	// this credential slot carries any private API token used for reporting and
@@ -66,6 +67,7 @@ var KnownProviders = map[string]bool{
 	ProviderN8N:            true,
 	ProviderOllama:         true,
 	ProviderOpenRouter:     true,
+	ProviderOpenAI:         true,
 	ProviderGoogleAds:      true,
 	ProviderPaymentGateway: true,
 	ProviderCustom:         true,
