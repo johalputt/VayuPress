@@ -8,6 +8,16 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.94] — 2026-07-18
+
+### Changed
+- **Full OAuth-flow logging** (`component: "oauth"`) so the entire connect can be
+  followed from the server log: the consent decision (APPROVED/DENIED + grant), the
+  303 redirect back to the client (scheme+host+params only — never the code/token),
+  and the token exchange result (OK, or the exact failure reason). This makes the
+  post-approval hops (redirect → `/token` → first `/mcp` call) diagnosable without
+  guessing.
+
 ## [3.13.93] — 2026-07-18
 
 ### Fixed

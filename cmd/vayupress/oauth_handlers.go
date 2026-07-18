@@ -250,14 +250,17 @@ func (a *App) handleOAuthConsent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if r.FormValue("decision") != "approve" {
+		logging.LogInfo("oauth", fmt.Sprintf("consent: DENIED client_id=%s redirect_uri=%s", clientID, redirectURI))
 		oauthRedirectError(w, r, redirectURI, state, "access_denied")
 		return
 	}
 	preset, ok := oauthPresets[r.FormValue("grant")]
 	if !ok {
+		logging.LogWarn("oauth", fmt.Sprintf("consent: no access level chosen (grant=%q) client_id=%s", r.FormValue("grant"), clientID))
 		oauthHTMLError(w, "Please choose an access level.")
 		return
 	}
+	logging.LogInfo("oauth", fmt.Sprintf("consent: APPROVED client_id=%s grant=%s redirect_uri=%s", clientID, preset.Caps, redirectURI))
 
 	// Do NOT mint the key here — the code carries only the approved GRANT, and the
 	// scoped key is minted at the /token exchange, so no bearer token exists until
@@ -313,6 +316,7 @@ func (a *App) oauthTokenFromCode(w http.ResponseWriter, r *http.Request) {
 	}
 	g, err := a.oauth.ExchangeCode(r.Context(), code, clientID, redirectURI, verifier)
 	if err != nil {
+		logging.LogWarn("oauth", fmt.Sprintf("token(code): exchange FAILED client_id=%s redirect_uri=%s: %v", clientID, redirectURI, err))
 		switch err {
 		case oauth.ErrPKCE, oauth.ErrMismatch, oauth.ErrExpired, oauth.ErrNotFound:
 			oauthError(w, http.StatusBadRequest, "invalid_grant", "the authorization code is invalid, expired, or already used")
@@ -321,6 +325,7 @@ func (a *App) oauthTokenFromCode(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	logging.LogInfo("oauth", fmt.Sprintf("token(code): exchange OK client_id=%s grant=%s -> minting access token", clientID, g.GrantCaps))
 	a.oauthIssueTokens(w, r, clientID, g.GrantCaps, g.OwnerUserID, g.Label)
 }
 
@@ -422,9 +427,16 @@ func oauthRedirectWith(w http.ResponseWriter, r *http.Request, redirectURI strin
 	// heuristic, so `target` is treated as neutralised on the true branch.
 	target := u.String()
 	if !isValidRedirectURL(target) {
+		logging.LogWarn("oauth", fmt.Sprintf("redirect REJECTED to %s://%s (redirect_uri=%q not an allowed target)", u.Scheme, u.Host, redirectURI))
 		oauthHTMLError(w, "Invalid redirect URL.")
 		return
 	}
+	// Log the scheme+host+params only (never the code/token itself).
+	keys := make([]string, 0, len(extra))
+	for k := range extra {
+		keys = append(keys, k)
+	}
+	logging.LogInfo("oauth", fmt.Sprintf("redirect -> %s://%s%s params=%v (303 back to client)", u.Scheme, u.Host, u.Path, keys))
 	http.Redirect(w, r, target, http.StatusSeeOther)
 }
 
