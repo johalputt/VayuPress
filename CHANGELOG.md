@@ -8,6 +8,15 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### CI / infrastructure
+- **Dependency-freshness system.** Added `.github/dependabot.yml` (weekly grouped
+  auto-update PRs for Go modules and GitHub Actions, each gated by full CI) plus a
+  scheduled **Dependency Freshness** workflow that goes **red** when a *direct*
+  third-party dependency is behind its latest release, with a job-summary table of
+  exactly what needs updating. Transitive/indirect modules are reported as
+  collapsed info so the check stays actionable rather than perpetually red. A
+  status badge is on the README; logic lives in `scripts/dep-freshness.sh`.
+
 ### Added
 - **VayuDomains: bulk "Sync all pending" approval.** The manual sync gate now has
   a batch action so a set of freshly-registered secondary domains can be approved

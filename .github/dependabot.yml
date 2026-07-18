@@ -1,0 +1,49 @@
+# Dependabot — automatic dependency-update pull requests.
+#
+# This is the "auto-update in the repo" half of the dependency-freshness system:
+# Dependabot opens PRs to bump third-party dependencies, each gated by the full
+# CI suite before it can be merged (never committed straight to main). The
+# scheduled "Dependency Freshness" workflow (.github/workflows/dep-freshness.yml)
+# is the complementary "show red" half — it fails visibly when a DIRECT
+# dependency is behind, so outdated deps are never silently ignored.
+version: 2
+updates:
+  # Go modules (go.mod / go.sum) — the entire third-party code surface.
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+    open-pull-requests-limit: 8
+    commit-message:
+      prefix: "chore(deps)"
+    labels:
+      - "dependencies"
+      - "go"
+    # Fold routine minor/patch bumps into a single PR to cut review noise;
+    # major bumps still get their own PR so they are reviewed deliberately.
+    groups:
+      go-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # The pinned action versions used by the CI/release workflows themselves.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(ci)"
+    labels:
+      - "dependencies"
+      - "ci"
+    groups:
+      actions:
+        update-types:
+          - "minor"
+          - "patch"
