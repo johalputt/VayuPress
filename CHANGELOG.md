@@ -16,6 +16,11 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   exactly what needs updating. Transitive/indirect modules are reported as
   collapsed info so the check stays actionable rather than perpetually red. A
   status badge is on the README; logic lives in `scripts/dep-freshness.sh`.
+- **Dependabot auto-merge for safe bumps.** `dependabot-automerge.yml` enables
+  GitHub auto-merge on Dependabot PRs that are **minor or patch** updates (major
+  bumps stay manual). Auto-merge still waits for all required CI checks, so
+  nothing broken lands — zero-touch for routine updates, deliberate review for
+  breaking ones. Requires "Allow auto-merge" enabled in repo settings.
 
 ### Added
 - **VayuDomains: bulk "Sync all pending" approval.** The manual sync gate now has
