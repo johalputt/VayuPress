@@ -8,6 +8,31 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.93] — 2026-07-18
+
+### Fixed
+- **OAuth consent "Approve" now works even when the client blocks third-party
+  cookies.** 3.13.91 made the consent CSRF + session cookies `SameSite=None; Secure`,
+  but Claude's OAuth window blocks third-party cookies outright, so *no* cookie
+  survived the cross-site approval POST and it still failed with `csrf_invalid`. The
+  consent step is now **completely cookie-free**: `/oauth/authorize` mints a
+  stateless, HMAC-signed token that binds the approval to the authenticated admin
+  and a short expiry, and carries it in the form. `/oauth/authorize/consent` verifies
+  that token (no CSRF cookie, no session cookie needed) — form fields always survive
+  a POST. It is unforgeable without the server secret and is only ever handed to an
+  authenticated admin, so a token the server accepts proves the POST came from the
+  real consent page, and it names the approver for ownership + audit. Verified
+  end-to-end: the consent POST succeeds with **zero cookies** and a tampered token is
+  rejected (400). Removed the now-unneeded `SameSite=None` cookie handling and the
+  `ReissueSessionCookieCrossSite` helper.
+
+### Changed
+- **Installation guide documents the Claude/MCP connector.** `docs/INSTALLATION.md`
+  now lists the optional `mcp.<domain>` DNS record (proxy **off**) in the records
+  table, tells operators to point every subdomain they'll use *before* running the
+  installer, and adds a *"Connect Claude to your site"* section covering the
+  proxy-off subdomain, `setup-mcp-subdomain.sh`, and the `curl /health` check.
+
 ## [3.13.92] — 2026-07-18
 
 ### Changed

@@ -23,12 +23,16 @@ You need a fresh **Ubuntu 24.04** server and a **domain name**. That's it.
 | A    | `www.example.com` | your server's IP | www redirect |
 | A    | `mail.example.com`| your server's IP | mail server (keep CDN proxy **off**) |
 | A    | `talk.example.com`| your server's IP | *optional* — VayuTalk chat relay (CDN proxy **off**) |
+| A    | `mcp.example.com` | your server's IP | *optional* — Claude / MCP connector (CDN proxy **off**) |
 
 (Replace `example.com` with your domain. The `mail.` record lets VayuPress run
 your email; the optional `talk.` record enables the real-time **VayuTalk** chat
-relay — see *"Add VayuTalk chat"* below. If a CDN like Cloudflare fronts your
-site, leave `mail.` and `talk.` as **DNS-only / grey-cloud** so their direct
-connections aren't proxied.)
+relay — see *"Add VayuTalk chat"* below; the optional `mcp.` record lets **Claude
+connect** to your site — see *"Connect Claude"* below. **Point every record you
+plan to use before you run the installer** — the installer only provisions a
+subdomain's certificate + vhost once its DNS resolves. If a CDN like Cloudflare
+fronts your site, leave `mail.`, `talk.` **and `mcp.`** as **DNS-only / grey-cloud**
+so their direct, machine-to-machine connections aren't proxied or challenged.)
 
 **Step 2 — run one command** on the server (SSH in as root or a sudo user):
 
@@ -116,6 +120,36 @@ mobile app cannot) would block that stream — so the app could send but never
 receive. The proxy-off `talk.` subdomain lets the stream reach your origin
 unbuffered and unchallenged, while your main domain keeps full CDN protection.
 See [`docs/TROUBLESHOOTING.md`](TROUBLESHOOTING.md) → *"VayuTalk"*.
+
+### Connect Claude to your site (optional)
+
+VayuPress has a built-in **OAuth 2.1 MCP connector**, so Claude (Desktop, web, or
+any Model Context Protocol client) can connect to your site with a one-click
+*sign-in → approve* — no key to copy. Claude connects **machine-to-machine**, so
+just like VayuTalk it cannot solve a CDN JavaScript "challenge" page. Behind a CDN
+(especially **Cloudflare's free plan**, whose Bot Fight Mode a WAF rule cannot
+scope per-path), give the connector its own proxy-off subdomain:
+
+1. **Add one DNS record:** `mcp.example.com` → your server's IP, with the CDN proxy
+   turned **off** (Cloudflare: *DNS only / grey cloud*, exactly like `mail.`).
+2. **Re-run the installer** (or wait for the next update — every update runs this
+   step), or provision just this subdomain:
+
+   ```bash
+   sudo bash /path/to/VayuPress/scripts/setup-mcp-subdomain.sh
+   ```
+
+The installer then issues a dedicated Let's Encrypt certificate for
+`mcp.example.com` (validated straight at your origin, so the proxied apex is never
+re-checked), writes its nginx vhost proxying the full app, and the OAuth sign-in +
+consent flow work on the subdomain. Verify with `curl -s https://mcp.example.com/health`
+(must return JSON, not a challenge page). Then in Claude → **Settings → Connectors
+→ Add custom connector**, use **`https://mcp.example.com/mcp`** → **Connect**.
+
+Your main domain keeps full CDN protection; only `mcp.` is direct (VayuShield still
+guards the origin, and `/mcp` + `/oauth` are in its bypass). If you are *not* behind
+a challenge-mode CDN, you can skip the subdomain and connect Claude straight to
+`https://example.com/mcp`. See [`docs/compatibility/mcp.md`](compatibility/mcp.md).
 
 ### What the certificate covers
 

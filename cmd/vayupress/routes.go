@@ -224,7 +224,7 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	r.With(auth.PublicDiscoveryRateLimit).Get("/.well-known/oauth-protected-resource", a.handleOAuthResourceMetadata)
 	r.With(auth.PublicDiscoveryRateLimit).Post("/oauth/register", a.handleOAuthRegister)
 	r.Get("/oauth/authorize", a.handleOAuthAuthorize)
-	r.With(auth.CSRFTokenMiddleware).Post("/oauth/authorize/consent", a.handleOAuthConsent)
+	r.Post("/oauth/authorize/consent", a.handleOAuthConsent)
 	r.With(auth.PublicDiscoveryRateLimit).Post("/oauth/token", a.handleOAuthToken)
 
 	// Libravatar/Gravatar-compatible federated avatar: so a recipient's mail

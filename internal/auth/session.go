@@ -145,29 +145,6 @@ func SetSessionCookieRemember(w http.ResponseWriter, token string, remember bool
 	http.SetCookie(w, c)
 }
 
-// ReissueSessionCookieCrossSite re-writes the admin session cookie with
-// SameSite=None (and Secure) so it survives an OAuth consent flow. That flow is
-// initiated by an external client (claude.ai / Claude Desktop) and the approval
-// POST is made from a cross-site context, where a SameSite=Strict cookie is not
-// delivered — the operator sees "CSRF token missing or invalid" or a lost session.
-// Only the OAuth /authorize path calls this; normal /os navigation keeps issuing
-// the Strict cookie, and CSRF on /os is still enforced by the double-submit token.
-// No-op on a non-TLS site (SameSite=None requires Secure), e.g. localhost dev.
-func ReissueSessionCookieCrossSite(w http.ResponseWriter, token string) {
-	if !CSRFCookieSecure() {
-		return
-	}
-	http.SetCookie(w, &http.Cookie{
-		Name:     SessionCookie,
-		Value:    token,
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   true,
-		SameSite: http.SameSiteNoneMode,
-		MaxAge:   int(DefaultSessionTTL.Seconds()),
-	})
-}
-
 // ClearSessionCookie expires the session cookie on the client.
 func ClearSessionCookie(w http.ResponseWriter) {
 	http.SetCookie(w, &http.Cookie{

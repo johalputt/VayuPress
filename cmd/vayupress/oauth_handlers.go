@@ -14,7 +14,9 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/johalputt/vayupress/internal/apikeys"
 	"github.com/johalputt/vayupress/internal/auth"
@@ -180,35 +182,31 @@ func (a *App) handleOAuthAuthorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Double-submit CSRF token for the consent POST (a plain form, so it travels as
-	// a hidden field). This flow is ENTERED from an external OAuth client, and the
-	// approval POST is made in a cross-site context, where a SameSite=Strict cookie
-	// is dropped by the browser — which the operator sees as "CSRF token missing or
-	// invalid" at the "Approve" step. So mint a fresh token and set the cookie
-	// SameSite=None (with Secure) so it is delivered in any client context; the
-	// HMAC-signed token still makes it unforgeable, so CSRF protection holds. Also
-	// re-issue the admin session cookie cross-site for the same reason, so the
-	// consent handler still resolves the signed-in admin on the POST. Both fall back
-	// to the hardened default on a non-TLS dev instance (SameSite=None needs Secure).
-	csrfTok := auth.GenerateCSRFToken()
-	csrfSameSite := http.SameSiteLaxMode
-	if auth.CSRFCookieSecure() {
-		csrfSameSite = http.SameSiteNoneMode
-	}
-	http.SetCookie(w, &http.Cookie{Name: "vp_csrf", Value: csrfTok, Path: "/", SameSite: csrfSameSite, HttpOnly: false, Secure: auth.CSRFCookieSecure(), MaxAge: 3600})
-	if c, err := r.Cookie(auth.SessionCookie); err == nil && c.Value != "" {
-		auth.ReissueSessionCookieCrossSite(w, c.Value)
-	}
+	// CSRF for the consent POST. This flow is ENTERED from an external OAuth client
+	// and the approval POST is made in a cross-site context, where the browser drops
+	// EVERY cookie — even SameSite=None; Secure — under third-party-cookie blocking.
+	// So we do not rely on a cookie at all: mint a stateless, HMAC-signed token that
+	// binds the approval to THIS admin and a short expiry, and carry it in the form.
+	// It is unforgeable without the server secret and is only ever handed to an
+	// authenticated admin here, so a value the consent handler accepts proves the
+	// POST originated from this page — and it identifies the approver without any
+	// cookie (the consent handler no longer needs the session on the POST).
+	consentTok := auth.SignedToken(u.ID + "|" + strconv.FormatInt(time.Now().Add(consentTokenTTL).Unix(), 10))
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
-	_, _ = w.Write([]byte(oauthConsentPage(client, redirectURI, challenge, state, csrfTok)))
+	_, _ = w.Write([]byte(oauthConsentPage(client, redirectURI, challenge, state, consentTok)))
 }
+
+// consentTokenTTL bounds how long an OAuth consent approval token stays valid
+// after the consent screen is rendered.
+const consentTokenTTL = 10 * time.Minute
 
 // handleOAuthConsent processes the operator's decision. On approval it mints a
 // scoped API key with the chosen grant and issues a single-use authorization code
 // bound to the client, redirect URI, and PKCE challenge; then it redirects back to
-// the client. CSRF is enforced by middleware on this route.
+// the client. CSRF is enforced by the signed consent token in the form (cookie-free,
+// so it survives the cross-site approval POST).
 func (a *App) handleOAuthConsent(w http.ResponseWriter, r *http.Request) {
 	if a.oauth == nil || a.apiKeys == nil {
 		oauthHTMLError(w, "The authorization server is unavailable.")
@@ -230,11 +228,24 @@ func (a *App) handleOAuthConsent(w http.ResponseWriter, r *http.Request) {
 		oauthHTMLError(w, "This app is not registered, or its redirect URL does not match.")
 		return
 	}
-	// Re-check the operator identity on the POST (never trust the form for who is
-	// approving) — must be a signed-in administrator.
-	u := a.resolveConsoleUser(r)
-	if u == nil || accessLevelFor(u.Role, false) < accessAdmin {
-		oauthHTMLError(w, "Your session expired. Sign in again and retry the connection.")
+	// Verify the signed consent token (cookie-free CSRF + approver identity). It was
+	// minted at /authorize for the authenticated admin and carried in the form, so it
+	// survives the cross-site POST where the browser drops every cookie (third-party
+	// blocking). An attacker cannot forge it (HMAC over the server secret), and it is
+	// only ever shown to an authenticated admin, so a token the server accepts proves
+	// the POST came from this consent page — and it names the approver without a cookie.
+	payload, ok := auth.VerifySignedToken(r.FormValue("consent_token"))
+	if !ok {
+		oauthHTMLError(w, "This approval could not be verified. Reconnect from your MCP client and try again.")
+		return
+	}
+	ownerID, expStr, found := strings.Cut(payload, "|")
+	if !found || ownerID == "" {
+		oauthHTMLError(w, "Invalid approval token.")
+		return
+	}
+	if exp, perr := strconv.ParseInt(expStr, 10, 64); perr != nil || time.Now().Unix() > exp {
+		oauthHTMLError(w, "This approval expired. Reconnect from your MCP client and approve again.")
 		return
 	}
 
@@ -252,19 +263,17 @@ func (a *App) handleOAuthConsent(w http.ResponseWriter, r *http.Request) {
 	// scoped key is minted at the /token exchange, so no bearer token exists until
 	// the client presents a valid PKCE verifier (and none is ever stored at rest).
 	label := "Claude via OAuth (" + preset.Label + ")"
-	// Attribute the grant to the admin we just re-resolved (u), NOT currentUserIDOf,
-	// which is only stamped on the session-gated router group and is empty on this
-	// CSRF-only consent route — so the minted key is owned by, and the audit trail
-	// names, the operator who actually approved.
+	// Attribute the grant to the admin named in the verified consent token, so the
+	// minted key is owned by, and the audit trail names, the operator who approved.
 	code, err := a.oauth.IssueCode(r.Context(), oauth.CodeGrant{
 		ClientID: clientID, RedirectURI: redirectURI, CodeChallenge: challenge,
-		GrantCaps: preset.Caps, OwnerUserID: u.ID, Label: label,
+		GrantCaps: preset.Caps, OwnerUserID: ownerID, Label: label,
 	})
 	if err != nil {
 		oauthHTMLError(w, "Could not complete authorization. Please try again.")
 		return
 	}
-	dbpkg.AuditLog("oauth.authorize", "user:"+u.ID, clientID, "grant="+preset.Caps)
+	dbpkg.AuditLog("oauth.authorize", "user:"+ownerID, clientID, "grant="+preset.Caps)
 
 	// Success redirect back to the client with the code and original state.
 	oauthRedirectSuccess(w, r, redirectURI, state, code)
@@ -467,7 +476,7 @@ func oauthHTMLError(w http.ResponseWriter, msg string) {
 // oauthConsentPage renders the approval screen. All dynamic values are escaped;
 // the form carries the request parameters + CSRF token as hidden fields and POSTs
 // same-origin to /oauth/authorize/consent.
-func oauthConsentPage(client oauth.Client, redirectURI, challenge, state, csrf string) string {
+func oauthConsentPage(client oauth.Client, redirectURI, challenge, state, consent string) string {
 	name := strings.TrimSpace(client.Name)
 	if name == "" {
 		name = "An MCP client"
@@ -500,7 +509,7 @@ func oauthConsentPage(client oauth.Client, redirectURI, challenge, state, csrf s
       <input type="hidden" name="redirect_uri" value="` + html.EscapeString(redirectURI) + `">
       <input type="hidden" name="code_challenge" value="` + html.EscapeString(challenge) + `">
       <input type="hidden" name="state" value="` + html.EscapeString(state) + `">
-      <input type="hidden" name="csrf_token" value="` + html.EscapeString(csrf) + `">
+      <input type="hidden" name="consent_token" value="` + html.EscapeString(consent) + `">
       <div class="oauth-choices">` + choices + `</div>
       <div class="oauth-actions">
         <button type="submit" name="decision" value="approve" class="btn btn--primary">Approve &amp; connect</button>

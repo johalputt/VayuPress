@@ -610,6 +610,42 @@ func ValidateCSRFToken(token string) bool {
 	return hmac.Equal([]byte(parts[1]), []byte(hex.EncodeToString(mac.Sum(nil))))
 }
 
+// SignedToken returns a stateless, HMAC-signed, URL-safe token over payload
+// ("b64url(payload).b64url(HMAC(payload))") using the server CSRF secret. Unlike
+// the double-submit CSRF cookie, this needs NO cookie to verify — it is used for
+// flows entered cross-site by a third party (the OAuth consent step), where the
+// browser may drop even a SameSite=None cookie under third-party-cookie blocking.
+// The token is unforgeable without the secret, so a value that VerifySignedToken
+// accepts can only have been minted by this server.
+func SignedToken(payload string) string {
+	mac := hmac.New(sha256.New, csrfSecret)
+	mac.Write([]byte(payload))
+	return base64.RawURLEncoding.EncodeToString([]byte(payload)) + "." +
+		base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+}
+
+// VerifySignedToken returns the original payload iff token's HMAC checks out.
+func VerifySignedToken(token string) (string, bool) {
+	parts := strings.SplitN(token, ".", 2)
+	if len(parts) != 2 {
+		return "", false
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil {
+		return "", false
+	}
+	sig, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return "", false
+	}
+	mac := hmac.New(sha256.New, csrfSecret)
+	mac.Write(payload)
+	if !hmac.Equal(sig, mac.Sum(nil)) {
+		return "", false
+	}
+	return string(payload), true
+}
+
 // CSRFTokenMiddleware issues CSRF tokens on GET and validates them on mutating requests.
 func CSRFTokenMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
