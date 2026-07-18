@@ -321,7 +321,7 @@ STATIC_DIR=./static VAYU_DOCS_DIR=./docs ./vayupress --port 8080`,
       { key:'claude', name:'Claude Connector', icon:'🔗', rgb:'129,140,248', badge:'NEW',
         tag:'Connect Claude to your site — one click, full control',
         host:'mcp.yourdomain.com',
-        blurb:'A built-in MCP server and OAuth 2.1 authorization server let you connect Claude — or any MCP client — to your site in one click, straight from claude.ai. No API key to copy, no plugin to install: approve once and Claude can run your site by chat, scoped to exactly what you allow.',
+        blurb:'A built-in MCP server and OAuth 2.1 authorization server let you connect Claude, Claude Code — or any MCP client — to your site in one click, straight from claude.ai. No API key to copy, no plugin to install: approve once and Claude can run your site by chat, scoped to exactly what you allow.',
         points:[
           'One-click Connect on claude.ai — OAuth 2.1 + PKCE',
           'Built-in MCP server at /mcp — no extra service',
