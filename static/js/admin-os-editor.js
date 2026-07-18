@@ -2439,7 +2439,9 @@
   document.body.appendChild(imageFileInput);
   imageFileInput.addEventListener('change', function () {
     var f = imageFileInput.files && imageFileInput.files[0];
-    if (f) uploadImageFile(f, focusedBlockIdx() + 1);
+    // focusedBlockIdx() already returns the slot directly below the caret block,
+    // so insert there (matching the paste path) — no extra offset.
+    if (f) uploadImageFile(f, focusedBlockIdx());
     imageFileInput.value = '';
   });
   if (imageBtn) imageBtn.addEventListener('click', function () { imageFileInput.click(); });
@@ -2505,7 +2507,14 @@
     if (blocks.length === 1 && blocks[0].type === 'paragraph' && !((blocks[0].text || '').trim())) {
       blocks = []; at = 0;
     }
-    newBlocks.forEach(function (b) { if (b && b.type) insertBlock(at++, b); });
+    // Insert the whole draft in ONE splice + structural() so the canvas rebuilds
+    // once and the draft is a single "undo" step (not one per block).
+    var valid = newBlocks.filter(function (b) { return b && b.type; });
+    if (!valid.length) return;
+    if (at < 0) at = 0;
+    if (at > blocks.length) at = blocks.length;
+    blocks.splice.apply(blocks, [at, 0].concat(valid));
+    structural();
   }
   function runAIGenerate() {
     var promptEl = aiQ('[data-ai-prompt]'), sel = aiQ('[data-ai-provider]');

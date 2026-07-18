@@ -441,6 +441,32 @@ func (s *Store) Reveal(ctx context.Context, id string) (string, error) {
 	return string(pt), nil
 }
 
+// SecretByID returns the decrypted secret and endpoint for a single ENABLED
+// credential identified by its id, with ok=false when no enabled credential
+// matches or the secret cannot be opened. Unlike ProviderSecret — which picks
+// the most-recently-updated credential for a provider — this resolves the exact
+// credential the caller selected. It backs the editor's per-credential custom
+// AI-gateway picker, where several "custom" credentials may coexist and the
+// author must reach one specific gateway.
+func (s *Store) SecretByID(ctx context.Context, id string) (secret, endpoint string, ok bool) {
+	if err := s.ensure(); err != nil {
+		return "", "", false
+	}
+	var nonceHex, ctHex, ep string
+	err := s.db.QueryRowContext(ctx,
+		`SELECT secret_nonce, secret_ct, endpoint FROM service_credentials
+		 WHERE id=? AND enabled=1`, id,
+	).Scan(&nonceHex, &ctHex, &ep)
+	if err != nil {
+		return "", "", false
+	}
+	pt, err := s.open(nonceHex, ctHex)
+	if err != nil {
+		return "", ep, false
+	}
+	return string(pt), ep, true
+}
+
 // ProviderSecret returns the decrypted secret and endpoint of the first
 // enabled credential for a provider, or empty strings if none is configured.
 // This is the runtime accessor used by features such as IndexNow.

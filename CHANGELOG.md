@@ -8,6 +8,35 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.0] — 2026-07-18
+
+### Security
+- **Bounded, abuse-resistant AI generation.** The editor's AI-draft endpoint is
+  reachable by any author-role account and spends the operator's stored (often
+  paid) provider key on every call. It now enforces a **per-user rate limit**
+  (10 drafts/minute) and a **process-wide concurrency cap** (4 at once), so a
+  compromised or careless account can't run up unbounded third-party inference
+  cost or pin many outbound connections. Over the limit returns 429/“busy”.
+- **AI provider errors no longer leak the endpoint.** A failed generation used
+  to reflect the raw upstream/transport error to the caller, which could expose
+  the operator's configured provider URL (including internal hosts) to a
+  lower-privileged author. The caller now gets a generic message; the detail is
+  logged server-side for operators.
+
+### Fixed
+- **Custom AI gateway picker is now accurate.** The editor only offers a “Custom
+  (OpenAI-compatible)” backend once it actually has **both a key and a base
+  URL** (custom has no built-in default), and offers **one entry per custom
+  credential** — selected by credential id — so with several custom credentials
+  a draft always routes to the exact gateway you picked, never the
+  most-recently-saved one (which could be an unrelated, non-LLM secret).
+- **Toolbar 🖼 Image insert position.** The toolbar image upload inserted one
+  block too low in some browsers; it now inserts directly at the caret,
+  matching paste/drop.
+- **AI draft is a single undo step.** Inserting an N-block AI draft rebuilt the
+  canvas N times and needed N presses to undo; it now inserts in one operation —
+  one canvas rebuild, one “undo”.
+
 ## [3.13.99] — 2026-07-18
 
 ### Added

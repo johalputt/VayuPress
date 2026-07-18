@@ -24,6 +24,7 @@ import (
 	"github.com/johalputt/vayupress/internal/aiassist"
 	"github.com/johalputt/vayupress/internal/blockrender"
 	"github.com/johalputt/vayupress/internal/config"
+	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/secrets"
 )
 
@@ -31,6 +32,25 @@ import (
 // slow, so the timeout is generous; endpoints are operator-configured (a stored
 // provider or VAYU_AI_URL), never a per-request user URL.
 var aiGenHTTP = &http.Client{Timeout: 120 * time.Second}
+
+// Abuse controls for author-triggered generation. Any author-role console user
+// can reach the generate route, and every call spends the operator's stored
+// (often paid) provider key against a third-party endpoint. Without bounds a
+// single compromised or careless account could run up unbounded inference cost
+// and pin many concurrent outbound connections. We therefore cap both the
+// per-user request rate and the process-wide concurrency.
+const (
+	aiGenPerUserPerMin = 10 // drafts one console user may request per minute
+	aiGenMaxConcurrent = 4  // generations running at once across all users
+)
+
+var (
+	// aiGenPerUser is a fixed-window per-user limiter (keyed on the console user
+	// id), reusing the same limiter primitive as the analytics/contact paths.
+	aiGenPerUser = newIngestLimiter(aiGenPerUserPerMin, time.Minute)
+	// aiGenSlots is a counting semaphore bounding concurrent generations.
+	aiGenSlots = make(chan struct{}, aiGenMaxConcurrent)
+)
 
 // aiProviderOption is one selectable provider for the editor's AI panel.
 type aiProviderOption struct {
@@ -82,15 +102,36 @@ func (a *App) aiAvailableProviders(ctx context.Context) []aiProviderOption {
 	if a.aiAssist != nil && a.aiAssist.Enabled() {
 		add(aiProviderOption{ID: secrets.ProviderOllama, Label: "Local AI (Ollama)", DefaultModel: a.aiAssist.Model()})
 	}
-	if a.secrets != nil {
-		if _, endpoint := a.secrets.ProviderSecret(ctx, secrets.ProviderOllama); strings.TrimSpace(endpoint) != "" {
-			add(aiProviderOption{ID: secrets.ProviderOllama, Label: "Local AI (Ollama)", DefaultModel: config.Cfg.AIModel})
+	if a.secrets == nil {
+		return out
+	}
+	if _, endpoint := a.secrets.ProviderSecret(ctx, secrets.ProviderOllama); strings.TrimSpace(endpoint) != "" {
+		add(aiProviderOption{ID: secrets.ProviderOllama, Label: "Local AI (Ollama)", DefaultModel: config.Cfg.AIModel})
+	}
+	// OpenAI / OpenRouter: a stored key alone is enough — each has a built-in
+	// default base URL (aiDefaultEndpoint), so it will always resolve.
+	for _, p := range []string{secrets.ProviderOpenRouter, secrets.ProviderOpenAI} {
+		if key, _ := a.secrets.ProviderSecret(ctx, p); strings.TrimSpace(key) != "" {
+			label := map[string]string{secrets.ProviderOpenRouter: "OpenRouter", secrets.ProviderOpenAI: "OpenAI"}[p]
+			add(aiProviderOption{ID: p, Label: label, DefaultModel: aiDefaultModel(p), NeedsModel: aiDefaultModel(p) == ""})
 		}
-		for _, p := range []string{secrets.ProviderOpenRouter, secrets.ProviderOpenAI, secrets.ProviderCustom} {
-			if key, _ := a.secrets.ProviderSecret(ctx, p); strings.TrimSpace(key) != "" {
-				label := map[string]string{secrets.ProviderOpenRouter: "OpenRouter", secrets.ProviderOpenAI: "OpenAI", secrets.ProviderCustom: "Custom (OpenAI-compatible)"}[p]
-				add(aiProviderOption{ID: p, Label: label, DefaultModel: aiDefaultModel(p), NeedsModel: aiDefaultModel(p) == ""})
+	}
+	// Custom OpenAI-compatible gateways. The generic "custom" slot is a catch-all
+	// that may also hold non-LLM secrets (e.g. a Pushover token) and has no
+	// built-in default base URL. Offer one entry PER enabled custom credential
+	// that actually carries both a key and a base URL, identified by its
+	// credential id ("custom:<id>"), so the author reaches the exact gateway they
+	// mean and generation never routes to a keyless, URL-less, or most-recent
+	// unrelated credential.
+	if creds, err := a.secrets.List(ctx); err == nil {
+		for _, c := range creds {
+			if c.Provider != secrets.ProviderCustom || !c.Enabled || !c.HasSecret {
+				continue
 			}
+			if strings.TrimSpace(c.Endpoint) == "" {
+				continue
+			}
+			add(aiProviderOption{ID: "custom:" + c.ID, Label: "Custom: " + c.Label, NeedsModel: true})
 		}
 	}
 	return out
@@ -101,6 +142,27 @@ func (a *App) aiAvailableProviders(ctx context.Context) []aiProviderOption {
 func (a *App) resolveAIBackend(ctx context.Context, provider, model string) (aiassist.Backend, bool, string) {
 	provider = strings.ToLower(strings.TrimSpace(provider))
 	model = strings.TrimSpace(model)
+
+	// A specific custom gateway selected by credential id: "custom:<id>". The
+	// credential is resolved exactly (never the most-recent custom row), so with
+	// several custom credentials the author reaches the one they picked.
+	if strings.HasPrefix(provider, "custom:") {
+		if a.secrets == nil {
+			return aiassist.Backend{}, false, "The credential store is unavailable."
+		}
+		id := strings.TrimPrefix(provider, "custom:")
+		key, endpoint, found := a.secrets.SecretByID(ctx, id)
+		if !found || strings.TrimSpace(key) == "" {
+			return aiassist.Backend{}, false, "That custom provider is no longer available. Pick another in the AI panel."
+		}
+		if strings.TrimSpace(endpoint) == "" {
+			return aiassist.Backend{}, false, "This provider needs a base URL — set it on its card in API Keys."
+		}
+		if model == "" {
+			return aiassist.Backend{}, false, "Enter a model name for this provider."
+		}
+		return aiassist.Backend{Kind: aiassist.KindOpenAI, Endpoint: endpoint, APIKey: key, Model: model}, true, ""
+	}
 
 	// Default / Ollama.
 	if provider == "" || provider == secrets.ProviderOllama {
@@ -179,14 +241,41 @@ func (a *App) handleOSEditorGenerate(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusBadRequest, "no-prompt", "A prompt is required.", "")
 		return
 	}
+
+	// Per-user rate limit: cap how fast one console account can spend the
+	// operator's provider key. Keyed on the user id (never PII).
+	rlKey := "anon"
+	if u := currentUser(r); u != nil && u.ID != "" {
+		rlKey = u.ID
+	}
+	if !aiGenPerUser.allow(rlKey) {
+		writeAPIError(w, r, http.StatusTooManyRequests, "rate-limited", "You're generating drafts too quickly — wait a moment and try again.", "")
+		return
+	}
+
 	backend, ok, reason := a.resolveAIBackend(r.Context(), body.Provider, body.Model)
 	if !ok {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "ai-unavailable", reason, "")
 		return
 	}
+
+	// Process-wide concurrency cap: wait for a slot, but never longer than the
+	// request itself (the global request timeout cancels r.Context()).
+	select {
+	case aiGenSlots <- struct{}{}:
+		defer func() { <-aiGenSlots }()
+	case <-r.Context().Done():
+		writeAPIError(w, r, http.StatusServiceUnavailable, "ai-busy", "The AI service is busy right now — please try again in a moment.", "")
+		return
+	}
+
 	md, err := aiassist.GenerateOp(r.Context(), aiGenHTTP, backend, aiassist.OpDraft, body.Prompt)
 	if err != nil {
-		writeAPIError(w, r, http.StatusBadGateway, "ai-error", err.Error(), "")
+		// Never reflect the upstream/transport error to the caller: it can carry
+		// the operator's configured provider endpoint (including internal hosts).
+		// Log the detail server-side for operators; return a generic message.
+		logging.LogError("ai-generate", "provider generation failed", err.Error())
+		writeAPIError(w, r, http.StatusBadGateway, "ai-error", "The AI provider request failed. Check the provider settings in VayuOS → API Keys.", "")
 		return
 	}
 	blocks := blockrender.MarkdownToBlocks(md)

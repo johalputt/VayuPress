@@ -98,6 +98,37 @@ func TestUpsertPreservesSecretWhenBlank(t *testing.T) {
 	}
 }
 
+// TestSecretByID resolves a specific credential by id and honours the enabled
+// flag — the accessor the editor's per-credential custom AI gateway relies on to
+// reach one exact gateway rather than the most-recent custom row.
+func TestSecretByID(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	// Two custom gateways; the older one is the intended target.
+	gw, err := s.Upsert(ctx, ProviderCustom, "LLM Gateway", "https://llm.example/v1", "sk-gateway", true, false)
+	if err != nil {
+		t.Fatalf("upsert gateway: %v", err)
+	}
+	if _, err := s.Upsert(ctx, ProviderCustom, "Pushover", "https://api.pushover.net/1", "push-token", true, false); err != nil {
+		t.Fatalf("upsert pushover: %v", err)
+	}
+	key, ep, ok := s.SecretByID(ctx, gw)
+	if !ok || key != "sk-gateway" || ep != "https://llm.example/v1" {
+		t.Fatalf("SecretByID = (%q, %q, %v), want the exact gateway credential", key, ep, ok)
+	}
+	// Unknown id → not found.
+	if _, _, ok := s.SecretByID(ctx, "does-not-exist"); ok {
+		t.Fatal("SecretByID must report ok=false for an unknown id")
+	}
+	// Disabled credential → not found (mirrors ProviderSecret's enabled filter).
+	if _, err := s.Upsert(ctx, ProviderCustom, "LLM Gateway", "https://llm.example/v1", "", false, false); err != nil {
+		t.Fatalf("disable: %v", err)
+	}
+	if _, _, ok := s.SecretByID(ctx, gw); ok {
+		t.Fatal("SecretByID must not return a disabled credential")
+	}
+}
+
 func TestMaskHidesSecret(t *testing.T) {
 	if h := mask("abcdefghijkl"); !strings.HasSuffix(h, "ijkl") || strings.Contains(h, "abcd") {
 		t.Fatalf("mask leaked too much: %q", h)
