@@ -13,18 +13,22 @@ const ConfigVersion = "1.0"
 const MinCompatibleConfigVersion = "1.0"
 
 var Cfg struct {
-	APIKey              string
-	DBPath              string
-	CacheDir            string
-	MediaDir            string
-	MeiliHost           string
-	MeiliMasterKey      string
-	Domain              string
-	Port                string
-	WorkerCount         int
-	CFZoneID            string
-	CFAPIToken          string
-	IndexNowKey         string
+	APIKey         string
+	DBPath         string
+	CacheDir       string
+	MediaDir       string
+	MeiliHost      string
+	MeiliMasterKey string
+	Domain         string
+	Port           string
+	WorkerCount    int
+	CFZoneID       string
+	CFAPIToken     string
+	IndexNowKey    string
+	// APIHost is an optional dedicated, CDN-proxy-off host for the REST API
+	// (e.g. api.<domain>), so machine clients reach /api without a CDN
+	// bot-challenge. Empty means the REST API is advertised on the apex domain.
+	APIHost             string
 	StorageQuotaGB      int64
 	MediaRetainDays     int
 	CacheMaxSizeGB      int64
@@ -100,6 +104,7 @@ func Load() {
 	Cfg.CFZoneID = EnvOr("CF_ZONE_ID", "")
 	Cfg.CFAPIToken = EnvOr("CF_API_TOKEN", "")
 	Cfg.IndexNowKey = EnvOr("INDEXNOW_KEY", "")
+	Cfg.APIHost = EnvOr("VAYUOS_API_HOST", "")
 	Cfg.TmpDir = EnvOr("TMP_DIR", "/tmp/vayupress")
 	Cfg.WorkerCount = GetEnvAsInt("WORKER_COUNT", 3)
 	Cfg.BackupRetainDays = GetEnvAsInt("BACKUP_RETAIN_DAYS", 30)

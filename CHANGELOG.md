@@ -8,23 +8,26 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
-### Added
-- **Direct API host: `api.<domain>` (hardened, CDN-proxy-off).** Scripts, CI jobs
-  and AI agents call `/api/v1/…` machine-to-machine and — like VayuMCP and VayuTalk
-  — cannot solve a CDN JavaScript challenge (Cloudflare Bot Fight Mode / managed
-  challenge), which a free-plan WAF rule can't scope per-path. `scripts/setup-api-subdomain.sh`
-  (run automatically by deploy + every update, idempotent + non-fatal) issues a
-  dedicated Let's Encrypt cert for `api.<domain>` and writes a **hardened** nginx
-  vhost that proxies **only** `/api` and `/health` — everything else, including the
-  `/os` admin console, login and the OAuth/MCP endpoints, returns **404** on the
-  direct host. So the machine surface is minimal and key-authenticated (per-key
-  rate-limited, WORM-audited, and still guarded by VayuShield, which already
-  bypasses JS challenges on `/api`), while the apex keeps full CDN protection for
-  browser traffic. Operators add one DNS record (`api.<domain>` → server IP, proxy
-  off) and re-run the installer; docs updated (`docs/INSTALLATION.md` DNS table +
-  new "Direct API host" section). No binary change — this is provisioning + docs.
+## [3.13.98] — 2026-07-18
 
-## [3.13.97] — 2026-07-18
+### Added
+- **Direct API host: `api.<domain>` (hardened, proxy-off) + it's surfaced in the
+  admin.** Scripts, CI jobs and AI agents call `/api/v1/…` machine-to-machine and —
+  like VayuMCP and VayuTalk — cannot solve a proxy JavaScript challenge (e.g.
+  Cloudflare Bot Fight Mode / managed challenge), which a free-plan WAF rule can't
+  scope per-path. `scripts/setup-api-subdomain.sh` (run automatically by deploy +
+  every update, idempotent + non-fatal) issues a dedicated Let's Encrypt cert for
+  `api.<domain>` and writes a **hardened** nginx vhost that proxies **only** `/api`
+  and `/health` — everything else, including the `/os` admin console, login and the
+  OAuth/MCP endpoints, returns **404** on the direct host. The machine surface is
+  minimal and key-authenticated (per-key rate-limited, WORM-audited, and still
+  guarded by VayuShield, which already bypasses JS challenges on `/api`), while the
+  apex keeps full proxy protection for browser traffic.
+- New **`VAYUOS_API_HOST`** setting: when set (e.g. `api.<domain>`), **VayuOS → API
+  Keys** now shows a **"Your API base URL"** card with the recommended, challenge-free
+  base URL to copy; when unset it shows the apex URL plus guidance to provision the
+  dedicated host. Docs: `docs/INSTALLATION.md` DNS table + a new "Direct API host"
+  section, and a "Base URL" section in `docs/compatibility/vayuapi.md`.
 
 ### Added
 - **Per-post IndexNow status + manual re-ping in the Posts manager.** Every

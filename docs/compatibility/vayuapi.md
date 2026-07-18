@@ -20,6 +20,21 @@ contracts) · [/docs/API-REFERENCE](/docs/API-REFERENCE) (endpoints) ·
 
 ---
 
+## Base URL
+
+Call the API at **`https://<your-domain>/api/v1/…`**.
+
+Behind a proxy that shows a bot "challenge" page (e.g. Cloudflare Bot Fight Mode /
+managed challenge), a script, CI job or AI agent **cannot** solve it, so those
+calls fail. For that case VayuPress can serve the API on a dedicated, proxy-off
+host: point `api.<your-domain>` straight at your server (proxy **off / DNS only**),
+set `VAYUOS_API_HOST=api.<your-domain>`, and re-run the installer. It provisions a
+**hardened** host that exposes **only** `/api` and `/health` (the admin console is
+not reachable there), so clients use **`https://api.<your-domain>/api/v1/…`**. The
+recommended base URL is shown on **VayuOS → API Keys**. VayuShield still guards the
+origin and every call is key-authenticated + rate-limited, so the direct host has a
+minimal, safe surface. See [`INSTALLATION.md`](../INSTALLATION.md) → *Direct API host*.
+
 ## Authenticating
 
 Send the key with either header on any protected route:

@@ -11,6 +11,7 @@ import (
 
 	"github.com/johalputt/vayupress/internal/apikeys"
 	"github.com/johalputt/vayupress/internal/auth"
+	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/secrets"
 )
@@ -142,7 +143,7 @@ func (a *App) handleOSAPIKeys(w http.ResponseWriter, r *http.Request) {
   </div>
 </div>
 
-` + osAPIKeysOwnSection(keys) + osAPIKeysVCBCard() + osAPIKeysServicesSection(creds)
+` + osAPIBaseCard() + osAPIKeysOwnSection(keys) + osAPIKeysVCBCard() + osAPIKeysServicesSection(creds)
 
 	// This page hosts the filter island (x-data="filterList"), so it opts into
 	// the Alpine runtime; pageUsesAlpine keeps the decision tied to the markup.
@@ -150,6 +151,43 @@ func (a *App) handleOSAPIKeys(w http.ResponseWriter, r *http.Request) {
 		body +
 		adminOSShellFoot(nonce, osAPIKeysScript, pageUsesAlpine(body))
 	writeOSHTML(w, full)
+}
+
+// apiBaseURL returns the recommended public base URL for the REST API. When a
+// dedicated API host is configured (VAYUOS_API_HOST — e.g. api.<domain>, a
+// proxy-off host that machine clients reach without a bot-challenge) it is used;
+// otherwise the API is advertised on the apex domain.
+func apiBaseURL() string {
+	host := strings.TrimSpace(config.Cfg.APIHost)
+	if host == "" {
+		host = config.Cfg.Domain
+	}
+	if host == "" || host == "localhost" {
+		return "/api/v1"
+	}
+	return "https://" + host + "/api/v1"
+}
+
+// osAPIBaseCard shows the API base URL operators point scripts, CI and AI agents
+// at, plus guidance on the dedicated proxy-off API host when they are behind a
+// challenge-mode proxy. Copy avoids the literal "CDN" per the CSP-safe-prose rule.
+func osAPIBaseCard() string {
+	base := html.EscapeString(apiBaseURL())
+	var hint string
+	if strings.TrimSpace(config.Cfg.APIHost) != "" {
+		hint = `<p class="field-hint mt-2">Served on your dedicated <code>` + html.EscapeString(config.Cfg.APIHost) + `</code> host (<code>VAYUOS_API_HOST</code>), pointed straight at the origin with the proxy <strong>off</strong>. Only <code>/api</code> and <code>/health</code> are exposed there — the admin console is not — and VayuShield still guards it.</p>`
+	} else {
+		hint = `<p class="field-hint mt-2">Behind a proxy that shows a bot &ldquo;challenge&rdquo; page (e.g. Cloudflare)? A script or agent can&rsquo;t solve it. Point a dedicated <code>api.&lt;your-domain&gt;</code> record straight at this server with the proxy <strong>off (&ldquo;DNS only&rdquo;)</strong>, set <code>VAYUOS_API_HOST=api.&lt;your-domain&gt;</code>, and re-run the installer — VayuPress serves a hardened, API-only host there. See the installation guide.</p>`
+	}
+	return `<div class="card">
+  <div class="settings-block-title">Your API base URL</div>
+  <p class="text-sm muted mb-4">Point scripts, CI jobs and AI agents here, sending a key you mint below as <code>Authorization: Bearer &lt;key&gt;</code>.</p>
+  <div class="ak-token-row">
+    <input id="ak-apibase" class="input font-mono ak-token-input" type="text" readonly value="` + base + `">
+    <button type="button" class="btn btn--sm" data-copy="#ak-apibase">Copy</button>
+  </div>
+  ` + hint + `
+</div>`
 }
 
 // apiKeyCapabilitySummary renders a compact set of capability badges for a key's
