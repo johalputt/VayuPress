@@ -134,14 +134,14 @@ func TestMCPToolsListReflectsScope(t *testing.T) {
 	// Read-only posts key: read tools + site_info, but NOT create/update/delete —
 	// and NOT the settings/analytics tools (those are separate sections it lacks).
 	ro := listFor(scopedKey([2]string{"posts", "read"}))
-	for _, want := range []string{"site_info", "get_post", "list_posts", "search_content"} {
+	for _, want := range []string{"site_info", "get_post", "list_posts", "search_content", "list_pages"} {
 		if !ro[want] {
 			t.Errorf("read-only key should see %q", want)
 		}
 	}
-	for _, deny := range []string{"create_post", "update_post", "delete_post", "site_settings", "analytics_summary"} {
+	for _, deny := range []string{"create_post", "update_post", "delete_post", "create_page", "site_settings", "analytics_summary"} {
 		if ro[deny] {
-			t.Errorf("posts:read key must NOT see %q (wrong section)", deny)
+			t.Errorf("posts:read key must NOT see %q (wrong section/action)", deny)
 		}
 	}
 
@@ -176,7 +176,7 @@ func TestMCPToolsListReflectsScope(t *testing.T) {
 
 	// Superuser ("full control"): every tool is visible.
 	su := listFor(apikeys.SuperuserKeyInfo("s", "root", apikeys.ScopeExternal))
-	for _, want := range []string{"create_post", "update_post", "delete_post", "get_post", "list_posts", "search_content", "site_info", "site_settings", "update_site_settings", "analytics_summary"} {
+	for _, want := range []string{"create_post", "update_post", "delete_post", "get_post", "list_posts", "search_content", "create_page", "list_pages", "site_info", "site_settings", "update_site_settings", "analytics_summary"} {
 		if !su[want] {
 			t.Errorf("superuser (full control) should see %q", want)
 		}

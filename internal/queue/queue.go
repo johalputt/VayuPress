@@ -95,8 +95,8 @@ func processOneJob(workerID int) (empty bool) {
 	switch job.Op {
 	case "insert":
 		execErr = dbpkg.RunInTx(context.Background(), dbpkg.DB, func(tx *sql.Tx) error {
-			if _, err := tx.Exec(`INSERT INTO articles(id,title,slug,content,tags,created_at,updated_at) VALUES(?,?,?,?,?,?,?)`,
-				a.ID, a.Title, a.Slug, a.Content, strings.Join(a.Tags, ","), a.CreatedAt, a.UpdatedAt); err != nil {
+			if _, err := tx.Exec(`INSERT INTO articles(id,title,slug,content,tags,created_at,updated_at,is_page) VALUES(?,?,?,?,?,?,?,?)`,
+				a.ID, a.Title, a.Slug, a.Content, strings.Join(a.Tags, ","), a.CreatedAt, a.UpdatedAt, boolToInt(a.IsPage)); err != nil {
 				return err
 			}
 			// Keep the indexed tag-membership table in sync within the same tx.
@@ -297,4 +297,14 @@ func HandleQueueReplay(w http.ResponseWriter, r *http.Request, writeJSON func(ht
 		"batch_limit":         config.Cfg.ReplayBatchLimit,
 		"max_replay_count":    config.Cfg.MaxReplayCount,
 	})
+}
+
+// boolToInt maps a Go bool to the 0/1 integer SQLite stores for a boolean-typed
+// column (e.g. articles.is_page), keeping the INSERT explicit rather than relying
+// on driver bool coercion.
+func boolToInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }

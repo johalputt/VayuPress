@@ -8,6 +8,24 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.82] — 2026-07-18
+
+### Added
+- **VayuMCP Stage 3b — Claude can build pages.** New `create_page` tool creates a
+  standalone page (About, Contact, a landing page — the building blocks of a
+  "custom website") that renders at `/<slug>` and is excluded from the blog feed;
+  `list_pages` enumerates them. Editing, reading, and removing a page reuse the
+  existing slug-based `update_post` / `get_post` / `delete_post` tools. Both new
+  tools are capability-gated (`posts:write` / `posts:read`) and audit-logged.
+
+### Fixed
+- **Page creation is now race-free.** The `is_page` flag flows through the async
+  write pipeline (a new persisted `Article.IsPage` field written by the queue
+  worker's insert) instead of a follow-up `UPDATE` that could momentarily publish
+  a page as a blog post before the flag was set. The VayuOS "Add a page"
+  quick-create was migrated to this path, removing the previous
+  create-then-`setArticleIsPage` race entirely.
+
 ## [3.13.81] — 2026-07-18
 
 ### Added

@@ -15,7 +15,6 @@ package main
 // <script> carries the per-request nonce, and every dynamic string is escaped.
 
 import (
-	"context"
 	"encoding/json"
 	"html"
 	htmpl "html/template"
@@ -262,25 +261,11 @@ func (a *App) handleOSQuickCreatePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slug := a.uniqueArticleSlug(r.Context(), title)
-	if _, err := a.articles.Create(r.Context(), title, slug, pageTemplateSeed(body.Template), nil); err != nil {
-		writeAPIError(w, r, http.StatusInternalServerError, "create-error", err.Error(), "")
-		return
-	}
-	if err := setArticleIsPage(r.Context(), slug, true); err != nil {
+	// CreatePage sets is_page atomically through the write pipeline — no
+	// follow-up UPDATE that could race the queued insert (the old pattern).
+	if _, err := a.articles.CreatePage(r.Context(), title, slug, pageTemplateSeed(body.Template), nil); err != nil {
 		writeAPIError(w, r, http.StatusInternalServerError, "create-error", err.Error(), "")
 		return
 	}
 	writeJSON(w, r, http.StatusOK, map[string]string{"slug": slug})
-}
-
-// setArticleIsPage flips the is_page flag for a slug. A targeted single-column
-// UPDATE so it never races the queued content/title writer or clobbers the
-// other publishing-options columns.
-func setArticleIsPage(ctx context.Context, slug string, isPage bool) error {
-	v := 0
-	if isPage {
-		v = 1
-	}
-	_, err := dbpkg.WDB.ExecContext(ctx, `UPDATE articles SET is_page=? WHERE slug=?`, v, slug)
-	return err
 }

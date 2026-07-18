@@ -63,8 +63,21 @@ type BulkCreateItem struct {
 	Tags                 []string `json:"tags"`
 }
 
-// Create validates and enqueues a new article.
+// Create validates and enqueues a new blog post.
 func (s *ArticleService) Create(ctx context.Context, title, slug, content string, tags []string) (CreateResult, error) {
+	return s.create(ctx, title, slug, content, tags, false)
+}
+
+// CreatePage validates and enqueues a new standalone page (is_page=1). It is
+// identical to Create except the is_page flag flows through the insert atomically,
+// so a page is never briefly published as a post before a follow-up UPDATE flips
+// the flag (the race the old create-then-setArticleIsPage pattern carried).
+func (s *ArticleService) CreatePage(ctx context.Context, title, slug, content string, tags []string) (CreateResult, error) {
+	return s.create(ctx, title, slug, content, tags, true)
+}
+
+// create is the shared post/page create path. isPage selects the article kind.
+func (s *ArticleService) create(ctx context.Context, title, slug, content string, tags []string, isPage bool) (CreateResult, error) {
 	ctx, span := trace.Start(ctx, "ArticleService.Create")
 	defer span.End()
 	// Auto-derive a slug from the title when the caller omits one (ADR-0047).
@@ -72,6 +85,9 @@ func (s *ArticleService) Create(ctx context.Context, title, slug, content string
 		slug = Slugify(title)
 	}
 	span.SetAttribute("slug", slug)
+	if isPage {
+		span.SetAttribute("kind", "page")
+	}
 	if err := ValidateArticleInput(title, slug, content, tags); err != nil {
 		span.SetError(err)
 		return CreateResult{}, err
@@ -91,13 +107,34 @@ func (s *ArticleService) Create(ctx context.Context, title, slug, content string
 	}
 	art := dbpkg.Article{
 		ID: newID(), Title: title, Slug: slug,
-		Content: content, Tags: tags,
+		Content: content, Tags: tags, IsPage: isPage,
 		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
 	}
 	if err := s.Queue.Enqueue(ctx, art, "insert"); err != nil {
 		return CreateResult{}, fmt.Errorf("queue: %w", err)
 	}
 	return CreateResult{ID: art.ID, Slug: art.Slug}, nil
+}
+
+// ListPages returns up to limit standalone pages (newest-updated first) as
+// summaries — the read behind the list_pages MCP tool. Pages are excluded from
+// List (the blog feed), so they need their own listing.
+func (s *ArticleService) ListPages(ctx context.Context, limit int) ([]ArticleSummary, error) {
+	if limit <= 0 || limit > 1000 {
+		limit = 100
+	}
+	pages, err := s.Repo.ListPages(ctx, limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ArticleSummary, 0, len(pages))
+	for _, a := range pages {
+		out = append(out, ArticleSummary{
+			ID: a.ID, Title: a.Title, Slug: a.Slug, Tags: a.Tags,
+			CreatedAt: a.CreatedAt, UpdatedAt: a.UpdatedAt,
+		})
+	}
+	return out, nil
 }
 
 // BulkCreate creates multiple articles, skipping those that fail validation or

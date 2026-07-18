@@ -69,6 +69,8 @@ with site-configuration and analytics reads:
 | `list_posts` | posts:read | `articles.List` | 1 |
 | `get_post` | posts:read | `articles.Get` | 1 |
 | `search_content` | posts:read | `search.Search` | 1 |
+| `create_page` | posts:write | `articles.CreatePage` (is_page atomic) | 3b |
+| `list_pages` | posts:read | `articles.ListPages` | 3b |
 | `site_settings` | settings:read | `siteSettings.GetAll` (presentational allowlist) | 2 |
 | `analytics_summary` | analytics:read | `analytics.OverviewSince` + `TopPages` | 2 |
 | `update_site_settings` | settings:write | `siteSettings.SetMany` + shared render refresh (presentational allowlist) | 3a |
@@ -81,8 +83,13 @@ write beyond posts: it reuses `SetMany` (which validates against the settings
 vocabulary) and the same `reloadRenderSettings` helper the VayuOS settings API
 uses, and it is bounded to the **same presentational allowlist** as its read twin —
 so operational config (Tor bridges, VayuShield thresholds) is never writable through
-it. Page/theme/media writes follow in later Stage-3 increments as each grows a
-race-free, validated create path.
+it. Stage 3b adds page writes (`create_page`, `list_pages`): to make the create
+race-free, `is_page` now flows through the async write pipeline (a new
+`dbpkg.Article.IsPage` field persisted by the queue worker's insert) instead of a
+follow-up `UPDATE` that could briefly publish a page as a post — the same fix also
+removed the racy `setArticleIsPage` path from the VayuOS quick-create-page handler.
+Editing/removing a page reuses the slug-based `update_post`/`delete_post`/`get_post`
+tools. Theme/media writes follow in later Stage-3 increments.
 
 ### Full control vs. limited (operator's choice)
 

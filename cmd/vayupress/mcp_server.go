@@ -243,6 +243,62 @@ func (a *App) buildMCPServer() *mcp.Server {
 		},
 	})
 
+	// ── pages ──────────────────────────────────────────────────────────────────
+	// A page is a standalone article (is_page=1) that renders at /<slug> but is
+	// excluded from the blog feed — About, Contact, landing pages, the building
+	// blocks of a "custom website". create_page sets the flag atomically through
+	// the write pipeline. Reading/editing/removing a page reuses the slug-based
+	// post tools (get_post/update_post/delete_post work on any article).
+	srv.Register(mcp.Tool{
+		Name:        "create_page",
+		Description: "Create a standalone page (not a blog post) — e.g. About, Contact, or a landing page. content is HTML (sanitized server-side). Returns the slug; the page is live at /<slug> and does NOT appear in the blog feed. Use update_post/get_post/delete_post (by slug) to edit, read, or remove it.",
+		InputSchema: objSchema([]string{"title", "content"}, map[string]any{
+			"title":   strProp("Page title (1–500 chars)."),
+			"slug":    strProp("URL slug (lowercase, hyphenated). Omit to auto-derive from the title."),
+			"content": strProp("Page body as HTML."),
+			"tags":    arrProp("Optional tags (max 20)."),
+		}),
+		Visible: a.mcpVisible(apikeys.SectionPosts, apikeys.ActionWrite),
+		Handler: func(ctx context.Context, args json.RawMessage) (string, error) {
+			var in struct {
+				Title, Slug, Content string
+				Tags                 []string
+			}
+			if err := json.Unmarshal(args, &in); err != nil {
+				return "", errBadArgs(err)
+			}
+			res, err := a.articles.CreatePage(ctx, in.Title, in.Slug, in.Content, in.Tags)
+			if err != nil {
+				return "", err
+			}
+			dbpkg.AuditLog("page.create", mcpActor(ctx), res.Slug, "id="+res.ID+" via=mcp")
+			return jsonStr(map[string]string{"status": "queued", "id": res.ID, "slug": res.Slug, "url": "/" + res.Slug}), nil
+		},
+	})
+
+	srv.Register(mcp.Tool{
+		Name:        "list_pages",
+		Description: "List standalone pages (is_page=1, newest-updated first). Pages do not appear in list_posts. Returns titles and slugs; read a page with get_post.",
+		InputSchema: objSchema(nil, map[string]any{
+			"limit": intProp("Max pages to return (default 100, max 1000)."),
+		}),
+		Visible: a.mcpVisible(apikeys.SectionPosts, apikeys.ActionRead),
+		Handler: func(ctx context.Context, args json.RawMessage) (string, error) {
+			var in struct {
+				Limit int `json:"limit"`
+			}
+			_ = json.Unmarshal(args, &in)
+			if in.Limit <= 0 {
+				in.Limit = 100
+			}
+			res, err := a.articles.ListPages(ctx, in.Limit)
+			if err != nil {
+				return "", err
+			}
+			return jsonStr(res), nil
+		},
+	})
+
 	// ── site configuration (read) ─────────────────────────────────────────────
 	// site_settings lets Claude read the site's own configuration — name,
 	// tagline, theme colours, navigation, SEO meta — so it can reason about and

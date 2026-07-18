@@ -53,12 +53,44 @@ func (r *sqliteArticleRepo) Create(ctx context.Context, art Article) error {
 	if status == "" {
 		status = "published"
 	}
+	isPage := 0
+	if art.IsPage {
+		isPage = 1
+	}
 	_, err := r.db.ExecContext(ctx,
-		`INSERT INTO articles(id,title,slug,content,tags,created_at,updated_at,status,author_id,domain_id) VALUES(?,?,?,?,?,?,?,?,?,?)`,
+		`INSERT INTO articles(id,title,slug,content,tags,created_at,updated_at,status,author_id,domain_id,is_page) VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
 		art.ID, art.Title, art.Slug, art.Content,
-		strings.Join(art.Tags, ","), art.CreatedAt, art.UpdatedAt, status, art.AuthorID, art.DomainID,
+		strings.Join(art.Tags, ","), art.CreatedAt, art.UpdatedAt, status, art.AuthorID, art.DomainID, isPage,
 	)
 	return err
+}
+
+// ListPages returns up to limit standalone pages (is_page=1), newest-updated
+// first. Pages are excluded from the blog feed, so they need their own listing;
+// this is the read behind the list_pages tool and the VayuOS Pages manager.
+func (r *sqliteArticleRepo) ListPages(ctx context.Context, limit int) ([]Article, error) {
+	if limit <= 0 || limit > 1000 {
+		limit = 1000
+	}
+	rows, err := r.reader().QueryContext(ctx,
+		`SELECT id,title,slug,content,tags,created_at,updated_at,COALESCE(status,'published'),domain_id
+		 FROM articles WHERE is_page=1 ORDER BY updated_at DESC LIMIT ?`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Article
+	for rows.Next() {
+		var a Article
+		var tagsCSV string
+		if err := rows.Scan(&a.ID, &a.Title, &a.Slug, &a.Content, &tagsCSV, &a.CreatedAt, &a.UpdatedAt, &a.Status, &a.DomainID); err != nil {
+			continue
+		}
+		a.Tags = splitCSV(tagsCSV)
+		a.IsPage = true
+		out = append(out, a)
+	}
+	return out, rows.Err()
 }
 
 // Get returns an article by slug regardless of owning domain (admin path).

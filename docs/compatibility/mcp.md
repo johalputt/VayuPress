@@ -69,6 +69,8 @@ Claude Code: `claude mcp add --transport http vayupress https://your-domain.com/
 | `list_posts` | `posts:read` | List published posts (pagination, tag filter). |
 | `get_post` | `posts:read` | Fetch one post, including its HTML. |
 | `search_content` | `posts:read` | Full-text search across published posts. |
+| `create_page` | `posts:write` | Create a standalone page (About, Contact, landing) at /<slug>; excluded from the blog feed. |
+| `list_pages` | `posts:read` | List standalone pages (edit/read via update_post/get_post by slug). |
 | `site_settings` | `settings:read` | Read the site's non-secret config (name, tagline, theme, nav, SEO meta). |
 | `analytics_summary` | `analytics:read` | Privacy-first traffic overview + top pages for the last N days. |
 | `update_site_settings` | `settings:write` | Update presentational config (branding, theme colours, nav, footer, custom CSS, SEO); changes apply live. |
@@ -99,6 +101,6 @@ config (Tor bridges, VayuShield thresholds) is never writable through it.
   (`site_settings`, `analytics_summary`).
 - **Stage 3 (in progress):** safe write tools for the remaining sections, each
   reusing its subsystem's validated path. **3a shipped:** `update_site_settings`
-  (branding/theme/nav/SEO writes). Next: pages, themes, media. Then **OAuth 2.1**
-  on the same endpoint for a true one-click **Connect** button on claude.ai,
-  exactly like the GitHub connector.
+  (branding/theme/nav/SEO writes). **3b shipped:** `create_page` + `list_pages`.
+  Next: themes, media. Then **OAuth 2.1** on the same endpoint for a true
+  one-click **Connect** button on claude.ai, exactly like the GitHub connector.

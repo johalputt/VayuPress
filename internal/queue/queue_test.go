@@ -106,6 +106,33 @@ func TestProcessOneJob_InsertAndProcess(t *testing.T) {
 	}
 }
 
+// TestProcessOneJob_InsertPagePersistsIsPage proves the Stage 3b fix: a page
+// (IsPage=true) enqueued for insert is written with is_page=1 atomically by the
+// worker — no follow-up UPDATE, so no window where the row exists as a post.
+func TestProcessOneJob_InsertPagePersistsIsPage(t *testing.T) {
+	a := dbpkg.Article{
+		ID: "test-page-1", Title: "About", Slug: "about-page-1",
+		Content: "<p>about</p>", IsPage: true,
+		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+	}
+	payload, _ := json.Marshal(a)
+	if _, err := dbpkg.DB.Exec(`INSERT INTO write_jobs(article_json,op) VALUES(?,'insert')`, payload); err != nil {
+		t.Fatalf("insert job: %v", err)
+	}
+	SetCacheWriteFn(func(_, _ string) {})
+
+	if processOneJob(0) {
+		t.Fatal("queue had a job; should not return empty=true")
+	}
+	var isPage int
+	if err := dbpkg.DB.QueryRow(`SELECT is_page FROM articles WHERE slug=?`, a.Slug).Scan(&isPage); err != nil {
+		t.Fatalf("page row not found after processing: %v", err)
+	}
+	if isPage != 1 {
+		t.Fatalf("is_page = %d, want 1 (page must be written with the flag set atomically)", isPage)
+	}
+}
+
 func TestBackoffCap(t *testing.T) {
 	// Ensure maxBackoffSeconds is capped (regression guard for ADR-0035)
 	if maxBackoffSeconds > 300 {

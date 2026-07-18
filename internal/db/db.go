@@ -46,6 +46,12 @@ type Article struct {
 	// content stays on the primary site. A secondary domain's id scopes the
 	// article to that domain (ADR-0132, Stage 2).
 	DomainID string `json:"domain_id,omitempty"`
+	// IsPage marks a standalone page (is_page=1, migration 045) rather than a blog
+	// post. It flows through the async create pipeline so a page is written with the
+	// flag atomically, instead of being patched by a follow-up UPDATE that could
+	// race the queued insert. Zero value (false) is a normal post — the historic
+	// default — so existing create paths are unaffected.
+	IsPage bool `json:"is_page,omitempty"`
 }
 
 // DB is the package-level database connection. It is the single, serialized
