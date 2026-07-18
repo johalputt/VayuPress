@@ -30,7 +30,7 @@
   <script type="application/ld+json">
   {"@context":"https://schema.org","@type":"SoftwareApplication","name":"VayuPress",
    "applicationCategory":"DeveloperApplication","operatingSystem":"Linux",
-   "softwareVersion":"3.13.42","description":"A sovereign, single-VPS platform in one Go binary: a business website, a blog, a private PGP mail server (VayuMail) with an official mobile app, ephemeral end-to-end-encrypted chat (VayuTalk), built-in bot protection (VayuShield), cookieless analytics (VayuAnalytics), a fine-grained scoped API (VayuAPI) and one control panel (VayuOS). Zero telemetry.",
+   "softwareVersion":"3.13.95","description":"A sovereign, single-VPS platform in one Go binary: a business website, a blog, a private PGP mail server (VayuMail) with an official mobile app, ephemeral end-to-end-encrypted chat (VayuTalk), built-in bot protection (VayuShield), cookieless analytics (VayuAnalytics), a fine-grained scoped API (VayuAPI), one-click Tor onion services for every domain (VayuTor), a one-click Claude/MCP connector, and one control panel (VayuOS). Zero telemetry.",
    "url":"https://vayupress.com/","license":"https://www.apache.org/licenses/LICENSE-2.0",
    "offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},
    "author":{"@type":"Organization","name":"VayuPress","email":"hello@vayupress.com"}}
@@ -88,7 +88,7 @@
         <img src="assets/mark-dark.png" alt="VayuPress mark"
              class="brand-mark h-7 w-auto transition-transform duration-300 group-hover:scale-110" />
         <span class="font-display font-semibold text-white tracking-tight hidden sm:block">VayuPress</span>
-        <span class="hidden sm:inline text-[10px] text-teal-300 font-mono border border-teal-800/60 rounded px-1.5 py-0.5 leading-none" x-text="version || 'v3.11.49'"></span>
+        <span class="hidden sm:inline text-[10px] text-teal-300 font-mono border border-teal-800/60 rounded px-1.5 py-0.5 leading-none" x-text="version || 'v3.13.95'"></span>
       </a>
 
       <!-- desktop links -->
@@ -96,7 +96,6 @@
         <a href="#why"        class="nav-link hover:text-white transition-colors">Why</a>
         <a href="#stack"      class="nav-link hover:text-white transition-colors">The stack</a>
         <a href="#products"   class="nav-link hover:text-white transition-colors">Products</a>
-        <a href="#features"   class="nav-link hover:text-white transition-colors">Features</a>
         <a href="#compare"    class="nav-link hover:text-white transition-colors">Compare</a>
         <a href="#gallery"    class="nav-link hover:text-white transition-colors">Gallery</a>
         <a href="#quickstart" class="nav-link hover:text-white transition-colors">Quick start</a>
@@ -161,7 +160,9 @@
           <span class="text-gray-100 font-medium">blog</span>,
           <span class="text-gray-100 font-medium">PGP mail</span>,
           <span class="text-gray-100 font-medium">encrypted chat</span>,
-          cookieless analytics and one control panel. SQLite, zero telemetry, nothing rented.
+          cookieless analytics and one control panel. Publish every site to a
+          <span class="text-gray-100 font-medium">Tor .onion</span> and connect
+          <span class="text-gray-100 font-medium">Claude</span> to it in one click. SQLite, zero telemetry, nothing rented.
         </p>
 
         <div class="hero-fade flex flex-wrap gap-3 items-center" style="--i:6">
@@ -197,12 +198,12 @@
             <div class="text-xs text-gray-500 mt-0.5">latest release</div>
           </div>
           <div>
-            <div class="font-display text-xl sm:text-2xl font-bold text-white">1</div>
-            <div class="text-xs text-gray-500 mt-0.5">binary · one VPS</div>
+            <div class="font-display text-xl sm:text-2xl font-bold text-white">10-in-1</div>
+            <div class="text-xs text-gray-500 mt-0.5">products · one binary</div>
           </div>
           <div>
-            <div class="font-display text-xl sm:text-2xl font-bold text-white">4-in-1</div>
-            <div class="text-xs text-gray-500 mt-0.5">site · blog · mail · chat</div>
+            <div class="font-display text-xl sm:text-2xl font-bold text-white">1-click</div>
+            <div class="text-xs text-gray-500 mt-0.5">connect Claude · MCP</div>
           </div>
           <div>
             <div class="font-display text-xl sm:text-2xl font-bold text-white">Zero</div>
@@ -233,7 +234,8 @@
             <div x-show="t>=7" x-transition.opacity.duration.300ms class="text-emerald-400">✓ VayuPGP · WKD published (AES-256 at rest)</div>
             <div x-show="t>=8" x-transition.opacity.duration.300ms class="text-emerald-400">✓ VayuShield + VayuAnalytics · bot protection · cookieless</div>
             <div x-show="t>=9" x-transition.opacity.duration.300ms class="text-emerald-400">✓ VayuTor · <span class="text-purple-300">every domain now on .onion</span> · one click</div>
-            <div x-show="t>=10" x-transition.opacity.duration.300ms class="text-saffron-300 font-medium pt-2">
+            <div x-show="t>=10" x-transition.opacity.duration.300ms class="text-emerald-400">✓ Claude Connector · <span class="text-indigo-300">mcp.yourdomain.com</span> · one-click AI control</div>
+            <div x-show="t>=11" x-transition.opacity.duration.300ms class="text-saffron-300 font-medium pt-2">
               VayuOS online · your whole stack is live <span class="cursor" aria-hidden="true">▊</span>
             </div>
           </div>
@@ -242,7 +244,7 @@
     </div>
 
     <!-- scroll hint -->
-    <button @click="smoothTo('features')"
+    <button @click="smoothTo('products')"
             class="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2
                    text-gray-600 text-[11px] tracking-widest uppercase hover:text-teal-400
                    transition-colors focus-ring rounded-lg px-2 py-1"
@@ -251,18 +253,6 @@
       <span class="scroll-pill" aria-hidden="true"></span>
     </button>
   </section>
-
-  <!-- ══════════════ TRUST BAR ══════════════ -->
-  <div class="border-y border-white/[0.06] bg-white/[0.015]">
-    <div class="max-w-7xl mx-auto px-6 py-5 flex flex-wrap items-center justify-center gap-x-10 gap-y-3">
-      <template x-for="t in trustBadges" :key="t">
-        <span class="flex items-center gap-2 text-xs text-gray-500 font-mono">
-          <span class="text-teal-500" aria-hidden="true">◆</span>
-          <span x-text="t"></span>
-        </span>
-      </template>
-    </div>
-  </div>
 
   <!-- ══════════════ WHY ══════════════ -->
   <section id="why" class="relative py-24 sm:py-28 lg:py-32">
@@ -356,8 +346,9 @@
             <span class="text-[10px] font-mono uppercase tracking-wider text-teal-300 border border-teal-700/60 rounded px-1.5 py-0.5">Official app</span>
           </div>
           <p class="text-sm text-gray-400 leading-relaxed">
-            Connect a phone in one scan — the admin shows a rotating setup QR that carries a per-device app password (never your real password),
-            so the app signs in to IMAP &amp; SMTP instantly. Read, write and send PGP-encrypted mail from your own domain, on the go.
+            Connect a phone in seconds — open the app, enter your domain and sign in once. It provisions a per-device app password
+            (never your real password, revocable any time) and configures IMAP &amp; SMTP for you — no QR, no manual server settings.
+            Read, write and send PGP-encrypted mail from your own domain, on the go.
           </p>
         </div>
         <div class="shrink-0 flex sm:flex-col gap-2.5">
@@ -387,7 +378,7 @@
       <header class="max-w-3xl mb-12 sm:mb-14" data-reveal>
         <p class="font-mono text-xs mb-4 tracking-[0.25em] uppercase" style="color:#a78bfa">The Vayu suite</p>
         <h2 class="font-display text-3xl sm:text-4xl lg:text-5xl font-bold text-white tracking-tight leading-[1.08]">
-          One binary. Nine products.
+          One binary. Ten products.
           <span class="text-gray-600 block mt-1">Each one, world-class.</span>
         </h2>
         <p class="mt-6 text-base sm:text-lg text-gray-400 leading-relaxed">
@@ -582,111 +573,6 @@
       </div>
     </div>
   </section>
-
-  <!-- ══════════════ FEATURES ══════════════ -->
-  <section id="features" class="relative py-24 sm:py-28 lg:py-36">
-    <div class="max-w-7xl mx-auto px-6">
-      <header class="max-w-2xl mb-14 sm:mb-16" data-reveal>
-        <p class="text-teal-400 font-mono text-xs mb-4 tracking-[0.25em] uppercase">What's inside</p>
-        <h2 class="font-display text-3xl sm:text-4xl lg:text-5xl font-bold text-white tracking-tight leading-tight">
-          Everything an operator needs.
-          <span class="text-gray-600 block mt-1">Nothing they don't.</span>
-        </h2>
-      </header>
-
-      <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
-        <template x-for="(f, i) in features" :key="i">
-          <article data-reveal :style="`--d:${i*40}ms`"
-                   @mousemove="tilt($event)" @mouseleave="untilt($event)"
-                   @click="openFeature(i)" @keydown.enter="openFeature(i)" @keydown.space.prevent="openFeature(i)"
-                   role="button" tabindex="0" :aria-label="`${f.title} — read more`"
-                   class="feature-card group relative rounded-2xl border border-white/[0.07] bg-white/[0.025] p-5 sm:p-6 overflow-hidden cursor-pointer focus-ring flex flex-col">
-            <!-- orb -->
-            <div class="card-orb" :style="`--orb:${f.orb}`" aria-hidden="true"></div>
-            <!-- cursor glow -->
-            <div class="card-glow" aria-hidden="true"></div>
-            <div class="relative flex flex-col h-full">
-              <div class="flex items-start gap-3 mb-3">
-                <div class="w-10 h-10 shrink-0 rounded-xl flex items-center justify-center text-lg
-                            transition-transform duration-300 group-hover:scale-110 group-hover:-rotate-6"
-                     :class="f.iconBg" x-text="f.icon" aria-hidden="true"></div>
-                <h3 class="font-display text-[0.95rem] sm:text-base font-semibold text-white leading-snug mt-1" x-text="f.title"></h3>
-              </div>
-              <p class="text-[13px] text-gray-400 leading-relaxed clamp-2" x-text="f.desc"></p>
-              <div class="mt-auto pt-4 flex items-center justify-between gap-2">
-                <div class="flex flex-wrap gap-1.5" role="list" aria-label="tags">
-                  <template x-for="tag in f.tags.slice(0,2)" :key="tag">
-                    <span class="text-[10px] px-2 py-0.5 rounded-full bg-white/[0.04] border border-white/[0.07]
-                                 text-gray-500 font-mono" role="listitem" x-text="tag"></span>
-                  </template>
-                </div>
-                <span class="text-[11px] font-mono text-teal-400/80 group-hover:text-teal-300 whitespace-nowrap
-                             transition-colors flex items-center gap-1">
-                  Details
-                  <span class="inline-block transition-transform group-hover:translate-x-0.5" aria-hidden="true">→</span>
-                </span>
-              </div>
-            </div>
-          </article>
-        </template>
-      </div>
-    </div>
-  </section>
-
-  <!-- ── Feature detail modal ── -->
-  <div x-show="feature !== null" x-cloak
-       x-transition:enter="transition ease-out duration-250"
-       x-transition:enter-start="opacity-0"
-       x-transition:enter-end="opacity-100"
-       x-transition:leave="transition ease-in duration-200"
-       x-transition:leave-start="opacity-100"
-       x-transition:leave-end="opacity-0"
-       class="fixed inset-0 z-[100] bg-ink-950/90 backdrop-blur-lg flex items-center justify-center p-4 sm:p-6"
-       @click="closeFeature()"
-       role="dialog" aria-modal="true" :aria-label="feature!==null ? features[feature].title : ''">
-    <template x-if="feature !== null">
-      <div @click.stop
-           x-transition:enter="transition ease-out duration-300 delay-75"
-           x-transition:enter-start="opacity-0 translate-y-4 scale-[0.98]"
-           x-transition:enter-end="opacity-100 translate-y-0 scale-100"
-           class="feature-modal relative w-full max-w-lg rounded-3xl border border-white/[0.09] bg-ink-900/95 overflow-hidden shadow-2xl">
-        <!-- accent glow -->
-        <div class="absolute -top-24 -right-16 w-64 h-64 rounded-full blur-3xl pointer-events-none"
-             :style="`background:${features[feature].orb}`" aria-hidden="true"></div>
-
-        <!-- close -->
-        <button @click="closeFeature()" aria-label="Close"
-                class="absolute top-4 right-4 z-10 w-9 h-9 rounded-full bg-white/[0.06] hover:bg-white/[0.12]
-                       text-gray-300 hover:text-white flex items-center justify-center text-xl leading-none transition-colors focus-ring">×</button>
-
-        <div class="relative p-7 sm:p-9">
-          <div class="w-14 h-14 rounded-2xl flex items-center justify-center text-2xl mb-5"
-               :class="features[feature].iconBg" x-text="features[feature].icon" aria-hidden="true"></div>
-
-          <h3 class="font-display text-xl sm:text-2xl font-bold text-white tracking-tight mb-4"
-              x-text="features[feature].title"></h3>
-
-          <p class="text-[15px] text-gray-300 leading-relaxed mb-6" x-text="features[feature].desc"></p>
-
-          <div class="flex flex-wrap gap-2 mb-7" role="list" aria-label="tags">
-            <template x-for="tag in features[feature].tags" :key="tag">
-              <span class="text-[11px] px-2.5 py-1 rounded-full bg-teal-900/30 border border-teal-800/40
-                           text-teal-300/90 font-mono" role="listitem" x-text="tag"></span>
-            </template>
-          </div>
-
-          <!-- footer nav -->
-          <div class="flex items-center justify-between pt-5 border-t border-white/[0.07]">
-            <button @click="prevFeature()" class="text-sm text-gray-500 hover:text-white font-mono transition-colors focus-ring rounded px-1"
-                    aria-label="Previous feature">← Prev</button>
-            <span class="text-[11px] text-gray-600 font-mono" x-text="`${feature+1} / ${features.length}`"></span>
-            <button @click="nextFeature()" class="text-sm text-gray-500 hover:text-white font-mono transition-colors focus-ring rounded px-1"
-                    aria-label="Next feature">Next →</button>
-          </div>
-        </div>
-      </div>
-    </template>
-  </div>
 
   <!-- ══════════════ GALLERY ══════════════ -->
   <section id="gallery" class="relative py-24 sm:py-28 lg:py-36 bg-white/[0.015] border-y border-white/[0.06] overflow-hidden">

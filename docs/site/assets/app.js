@@ -172,7 +172,6 @@ function app() {
     scrollPct:  0,
     t:          0,          // hero terminal line
     lightbox:   null,
-    feature:    null,       // open feature-detail index
     activeProduct: 0,       // selected product tab
     prodAnim:   0,          // bump on tab change to retrigger panel animation
     rot:        0,          // rotating hero subject index
@@ -194,6 +193,8 @@ STATIC_DIR=./static VAYU_DOCS_DIR=./docs ./vayupress --port 8080`,
       'a Ghost-class blog.',
       'a PGP mail server.',
       'encrypted VayuTalk chat.',
+      'a Tor .onion for every site.',
+      'a one-click Claude connector.',
       'cookieless analytics.',
       'your whole stack.',
     ],
@@ -201,70 +202,6 @@ STATIC_DIR=./static VAYU_DOCS_DIR=./docs ./vayupress --port 8080`,
     // Hero pillar chips — the whole platform at a glance.
     pillars: [
       'Website', 'Blog', 'PGP Mail', 'VayuTalk', 'Mobile App', 'Analytics', 'VayuOS',
-    ],
-
-    trustBadges: [
-      'single-VPS deploy',
-      'SQLite-durable',
-      'zero third-party trackers',
-      'website · blog · mail · chat · app',
-      'native mail + E2E PGP',
-      'Apache-2.0 licensed',
-    ],
-
-    features: [
-      { icon:'🏪', iconBg:'bg-orange-900/60 border border-orange-800/60', orb:'rgba(251,146,60,0.45)',
-        title:'A business website, not just a blog',
-        desc:'Need a real website for a restaurant, shop, studio, school, clinic or portfolio? Pick from eleven elegant, modern-minimalist templates and deploy a full site — hero, offerings with prices, gallery, hours and contact — editing every word from VayuOS with a live preview. Your domain shows the website, the blog moves to blog.yourdomain.com and mail to mail.yourdomain.com; the installer gets Let\'s Encrypt certificates for all of them automatically. It\'s your choice, and an update never changes it.',
-        tags:['11 templates','website + blog + mail','edit from VayuOS'] },
-      { icon:'✍️', iconBg:'bg-teal-900/60 border border-teal-800/60',   orb:'rgba(45,212,191,0.55)',
-        title:'A writing studio you\'ll love',
-        desc:'A calm, Ghost-clean block editor with tables, toggles, task lists, math, callouts, code, self-hosted audio and privacy-first video. Write in blocks, switch to whole-document Markdown or raw HTML and back — losslessly — and drop, paste or link any image (Unsplash, Pixabay, anywhere) straight in. Drag to reorder, undo anything, and watch live word-count as you type; a slash menu, a ⌘K palette, focus mode and split preview keep you in flow.',
-        tags:['blocks · Markdown · HTML','image drag/drop/link','slash menu · ⌘K'] },
-      { icon:'✉️', iconBg:'bg-sky-900/60 border border-sky-800/60',     orb:'rgba(56,189,248,0.5)',
-        title:'VayuMail — your own mail server',
-        desc:'Send and receive from your own domain without renting a mail provider. Outbound mail is DKIM-signed and delivered straight to the recipient\'s server; an inbound SMTP receiver and IMAP inbox let the official VayuMail Android app, Thunderbird, K-9 and Apple Mail read your mail. Connect a phone in one scan with a rotating setup QR — it carries a per-device app password you can revoke any time, never your real password. It even writes your MX, SPF, DKIM and DMARC records and checks the DNS is healthy.',
-        tags:['DKIM-signed','Android app','rotating setup QR'] },
-      { icon:'🔑', iconBg:'bg-violet-900/60 border border-violet-800/60',orb:'rgba(167,139,250,0.5)',
-        title:'VayuPGP — privacy by architecture',
-        desc:'Every account gets a modern PGP keypair automatically. Private keys are encrypted at rest and never logged; you can encrypt, decrypt, sign, verify and rotate keys, and a Web Key Directory lets any GPG client discover your public key. End-to-end encryption that just works, with nothing to bolt on.',
-        tags:['auto keypairs','encrypted at rest','WKD discovery'] },
-      { icon:'🛡️', iconBg:'bg-emerald-900/60 border border-emerald-800/60',orb:'rgba(52,211,153,0.5)',
-        title:'VayuOS — one calm control room',
-        desc:'Every operator tool lives in one fast, strict-CSP admin at /os: posts, the editor, media, members, SEO, theme studio, mail and security. Creating an account quietly provisions a mailbox and PGP keys for you. One front door, no sprawl, no second weaker path in.',
-        tags:['single admin','/os','strict CSP'] },
-      { icon:'🎨', iconBg:'bg-pink-900/60 border border-pink-800/60',    orb:'rgba(244,114,182,0.55)',
-        title:'Themes that restyle the whole site',
-        desc:'Pick a theme and the entire public site changes — navigation, hero, post cards, article pages, author box, comments and footer, each with its own layout and personality. Tune logo, colours, fonts and your social share image with a live preview. All served from your own origin: no inline styles, no CDNs.',
-        tags:['whole-site themes','live preview','self-hosted CSS'] },
-      { icon:'💳', iconBg:'bg-green-900/60 border border-green-800/60',   orb:'rgba(74,222,128,0.4)',
-        title:'Memberships & paywalls',
-        desc:'Turn readers into members with passwordless magic-link sign-in — no reader passwords ever stored. Define priced tiers, publish a themed pricing page, and gate any article as public, members or paid. Members get a self-service portal; an optional Stripe webhook handles paid upgrades, with no payment SDK baked in.',
-        tags:['magic-link','tiers & paywalls','member portal'] },
-      { icon:'📈', iconBg:'bg-fuchsia-900/60 border border-fuchsia-800/60',orb:'rgba(232,121,249,0.4)',
-        title:'Analytics without surveillance',
-        desc:'See pageviews, top pages, referrers and trends — without cookies, consent banners, or storing a single IP address. Visitor identity is a daily-rotating salted hash that can\'t be traced back to a person, and everything lives in your own SQLite. Insight for you, privacy for your readers.',
-        tags:['cookieless','no PII','no consent banner'] },
-      { icon:'🛡', iconBg:'bg-rose-900/60 border border-rose-800/60',    orb:'rgba(244,63,94,0.45)',
-        title:'VayuShield — bot defense meets deep analytics',
-        desc:'A sovereign replacement for Cloudflare Bot Management and Google Analytics, built into the binary. It fingerprints every client from its TLS handshake (JA3/JA4), a 2026 post-quantum key share, HTTP/2 settings and header order to tell real browsers from scrapers, then challenges the suspicious ones with a silent proof-of-work that escalates to a JS check, a block, or a tarpit — learning new bot signatures as it goes. It welcomes and counts good bots and AI assistants (ChatGPT, Claude, Perplexity) separately, and measures real engagement — time on page, scroll depth, and how AI-referred readers compare to search. Under load it also shields availability — per-IP rate limiting, load shedding, an auto-blocklist and an adaptive under-attack mode that tightens the moment a flood starts and relaxes when it passes, with verified readers never throttled. Every defense is a live on/off switch in VayuOS, no restart. Still cookieless, still no PII, still GDPR by design.',
-        tags:['JA3/JA4 + PoW','rate-limit + load-shed','live toggles, no Cloudflare/GA'] },
-      { icon:'📦', iconBg:'bg-amber-900/60 border border-amber-800/60',   orb:'rgba(245,158,11,0.4)',
-        title:'Update & back up in one click',
-        desc:'Install the latest signed release from inside VayuOS — the download is checksum- and signature-verified, your database is backed up first, and the binary swaps in atomically. Export your entire site — database, settings, media, mailboxes and PGP keys — as one file encrypted with AES-256-GCM under a passphrase only you hold: a stolen backup is useless and tamper-evident with any tool, yet restores anywhere in seconds. No shell required, fully reversible.',
-        tags:['signed updates','encrypted backups','reversible'] },
-      { icon:'🔁', iconBg:'bg-indigo-900/60 border border-indigo-800/60', orb:'rgba(129,140,248,0.4)',
-        title:'Bring your whole archive',
-        desc:'Move in from Ghost, WordPress, Substack, Medium, Hugo, Jekyll, Notion or a plain folder of Markdown — slugs, tags, dates, images and drafts preserved. The importers are resumable and gentle enough to migrate a 200,000-post site onto a small VPS without falling over.',
-        tags:['Ghost · WP · Substack','Medium · Hugo · Jekyll','resumable'] },
-      { icon:'🔌', iconBg:'bg-cyan-900/60 border border-cyan-800/60',   orb:'rgba(34,211,238,0.5)',
-        title:'VayuAPI — fine-grained API control',
-        desc:'Drive everything through the API — create posts, apply themes, manage domains, read analytics, run backups — with keys scoped to the exact section and action they need, and nothing more. Mint a key from a 12×6 permission grid, give it an expiry and a per-key rate budget, then rotate, deactivate or revoke it in a click. Every call is metered against the key\'s budget and written to a tamper-evident audit log; raw keys are never stored, only a hash. A script, a CI job or an AI agent can update your site autonomously — without ever holding the keys to everything.',
-        tags:['12×6 permission grid','per-key rate + audit','scoped, hashed keys'] },
-      { icon:'🧩', iconBg:'bg-blue-900/60 border border-blue-800/60',   orb:'rgba(96,165,250,0.45)',
-        title:'Build extensions with confidence (VCB)',
-        desc:'The Vayu Compatibility Bible turns \'will this work?\' into a checked contract. A developer — or an AI agent — writes a plugin.json or theme.json, runs vayu-compat, and knows before shipping that every hook, capability, colour, option and CSP rule matches what the host actually enforces — validated by the same code that runs it, so the docs can never drift. Themes that fetch from an external host, plugins that ask for more than they need, or manifests built against a hook that does not exist are refused with a plain, exact reason. Build for VayuPress with certainty, not guesswork.',
-        tags:['plugin + theme contracts','vayu-compat validator','one source of truth'] },
     ],
 
     /* ── The Vayu suite — one binary, showcased product by product ── */
@@ -293,7 +230,7 @@ STATIC_DIR=./static VAYU_DOCS_DIR=./docs ./vayupress --port 8080`,
           'IMAP + POP3 for any client (Thunderbird, K-9…)',
           'Automatic MX / SPF / DKIM / DMARC + DNS health',
           'Native PGP: keys per account, published via WKD',
-          'Official Android app — connect in one scan',
+          'Official Android app — enter your domain, sign in once',
         ],
         cta:{ label:'Get the app ↗', href:'https://github.com/johalputt/VayuMail-Mobile' } },
 
@@ -380,6 +317,20 @@ STATIC_DIR=./static VAYU_DOCS_DIR=./docs ./vayupress --port 8080`,
           'Golden-file contracts — no silent breaking changes',
         ],
         cta:{ label:'Read the VCB →', href:'https://github.com/johalputt/VayuPress/blob/main/docs/adr/ADR-0135-vayu-compatibility-bible.md' } },
+
+      { key:'claude', name:'Claude Connector', icon:'🔗', rgb:'129,140,248', badge:'NEW',
+        tag:'Connect Claude to your site — one click, full control',
+        host:'mcp.yourdomain.com',
+        blurb:'A built-in MCP server and OAuth 2.1 authorization server let you connect Claude — or any MCP client — to your site in one click, straight from claude.ai. No API key to copy, no plugin to install: approve once and Claude can run your site by chat, scoped to exactly what you allow.',
+        points:[
+          'One-click Connect on claude.ai — OAuth 2.1 + PKCE',
+          'Built-in MCP server at /mcp — no extra service',
+          'Read analytics · create, edit & publish posts and pages',
+          'Update settings & switch themes just by asking',
+          'Scoped, revocable access — no bearer token stored at rest',
+          'Optional mcp.yourdomain.com with its own auto TLS cert',
+        ],
+        cta:{ label:'How the connector works →', href:'https://github.com/johalputt/VayuPress/blob/main/docs/adr/ADR-0139-vayu-mcp-connector.md' } },
 
       { key:'vayutor', name:'VayuTor', icon:'🧅', rgb:'147,112,219', badge:'NEW',
         tag:'One click, every domain gets a Tor .onion',
@@ -559,12 +510,6 @@ STATIC_DIR=./static VAYU_DOCS_DIR=./docs ./vayupress --port 8080`,
     },
     get product() { return this.products[this.activeProduct]; },
 
-    /* feature-detail modal */
-    openFeature(i) { this.feature = i; document.body.style.overflow = 'hidden'; },
-    closeFeature() { this.feature = null; document.body.style.overflow = ''; },
-    nextFeature()  { if (this.feature !== null) this.feature = (this.feature + 1) % this.features.length; },
-    prevFeature()  { if (this.feature !== null) this.feature = (this.feature - 1 + this.features.length) % this.features.length; },
-
     ripple(e) {
       const btn = e.currentTarget;
       const el  = document.createElement('span');
@@ -650,7 +595,7 @@ STATIC_DIR=./static VAYU_DOCS_DIR=./docs ./vayupress --port 8080`,
 
       /* hero terminal boot */
       let i = 1;
-      const tick = () => { if (i <= 10) { this.t = i++; setTimeout(tick, i < 4 ? 540 : 370); } };
+      const tick = () => { if (i <= 11) { this.t = i++; setTimeout(tick, i < 4 ? 540 : 370); } };
       setTimeout(tick, 750);
 
       /* rotating hero subject */
@@ -675,12 +620,6 @@ STATIC_DIR=./static VAYU_DOCS_DIR=./docs ./vayupress --port 8080`,
           if (e.key === 'ArrowLeft')  this.lightbox = (this.lightbox - 1 + this.screenshots.length) % this.screenshots.length;
           if (e.key === 'ArrowRight') this.lightbox = (this.lightbox + 1) % this.screenshots.length;
           return;
-        }
-        /* feature-detail modal nav */
-        if (this.feature !== null) {
-          if (e.key === 'Escape')     this.closeFeature();
-          if (e.key === 'ArrowLeft')  this.prevFeature();
-          if (e.key === 'ArrowRight') this.nextFeature();
         }
       });
     },
