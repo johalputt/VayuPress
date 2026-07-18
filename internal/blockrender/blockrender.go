@@ -98,6 +98,24 @@ func safeEmbedSrc(s string) string {
 // keeping playback privacy-preserving (no third-party request on page load).
 var localMediaRe = regexp.MustCompile(`^/media/[A-Za-z0-9][A-Za-z0-9._/-]*$`)
 
+// safeImageURL reports whether an image URL is safe to emit as an <img src>. It
+// mirrors the sanitizer's URL-scheme allowlist exactly — a site-relative path
+// (our /media uploads and any local path) or an http(s) URL (so external images
+// can be hotlinked by direct link, per operator choice). Anything else
+// (javascript:, data:, vbscript:, …) is refused at render time, so a dangerous
+// or unrenderable URL never produces even a src-stripped <img>.
+func safeImageURL(u string) bool {
+	u = strings.TrimSpace(u)
+	if u == "" {
+		return false
+	}
+	if strings.HasPrefix(u, "/") {
+		return true
+	}
+	lu := strings.ToLower(u)
+	return strings.HasPrefix(lu, "https://") || strings.HasPrefix(lu, "http://")
+}
+
 // audioPreloadRe is the closed allowlist for the <audio preload> attribute.
 var audioPreloadRe = regexp.MustCompile(`^(none|metadata|auto)$`)
 
@@ -148,6 +166,11 @@ var policy = func() *bluemonday.Policy {
 	p.AllowAttrs("controls").OnElements("audio")
 	p.AllowAttrs("preload").Matching(audioPreloadRe).OnElements("audio")
 	p.AllowAttrs("src").Matching(localMediaRe).OnElements("audio")
+	// Images may carry loading=lazy and referrerpolicy=no-referrer. no-referrer
+	// keeps a hotlinked external image working past simple referrer-based hotlink
+	// protection AND stops leaking the reader's page URL to the third-party host.
+	p.AllowAttrs("loading").Matching(regexp.MustCompile(`^(lazy|eager)$`)).OnElements("img")
+	p.AllowAttrs("referrerpolicy").Matching(regexp.MustCompile(`^no-referrer$`)).OnElements("img")
 	return p
 }()
 
@@ -287,7 +310,7 @@ func renderBlock(b, plain *strings.Builder, blk Block) {
 		}
 		b.WriteString("</" + tag + ">")
 	case "image":
-		if strings.TrimSpace(blk.URL) == "" {
+		if !safeImageURL(blk.URL) {
 			return
 		}
 		figCls := "vp-figure"
@@ -298,7 +321,7 @@ func renderBlock(b, plain *strings.Builder, blk Block) {
 			figCls += " vp-figure--full"
 		}
 		b.WriteString(`<figure class="` + figCls + `"><img src="` + html.EscapeString(blk.URL) +
-			`" alt="` + html.EscapeString(blk.Alt) + `" loading="lazy">`)
+			`" alt="` + html.EscapeString(blk.Alt) + `" loading="lazy" referrerpolicy="no-referrer">`)
 		if strings.TrimSpace(blk.Caption) != "" {
 			b.WriteString(`<figcaption>` + renderInlineHTML(blk.Caption) + `</figcaption>`)
 			plain.WriteString(blk.Caption + " ")
@@ -313,7 +336,7 @@ func renderBlock(b, plain *strings.Builder, blk Block) {
 		// follows. Only well-formed URLs are emitted; empties are skipped.
 		imgs := make([]string, 0, len(blk.Images))
 		for _, u := range blk.Images {
-			if strings.TrimSpace(u) != "" {
+			if safeImageURL(u) {
 				imgs = append(imgs, u)
 			}
 		}
@@ -325,7 +348,7 @@ func renderBlock(b, plain *strings.Builder, blk Block) {
 		}
 		b.WriteString(`<figure class="vp-gallery"><div class="vp-gallery__grid">`)
 		for _, u := range imgs {
-			b.WriteString(`<div class="vp-gallery__item"><img src="` + html.EscapeString(u) + `" alt="" loading="lazy"></div>`)
+			b.WriteString(`<div class="vp-gallery__item"><img src="` + html.EscapeString(u) + `" alt="" loading="lazy" referrerpolicy="no-referrer"></div>`)
 		}
 		b.WriteString(`</div>`)
 		if strings.TrimSpace(blk.Caption) != "" {

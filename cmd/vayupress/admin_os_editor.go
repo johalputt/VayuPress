@@ -130,14 +130,6 @@ func (a *App) handleOSEditorSave(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Sideload any external image URLs (Pixabay/Unsplash/anywhere) into local
-	// /media before we render + persist, so images render reliably — in the post
-	// AND on post cards — from our own origin, and stop depending on a hotlink
-	// that can rot or be blocked. Best-effort: an unreachable image is left as-is.
-	if rewritten, changed := sideloadBlocksImages(r.Context(), blocksJSON); changed {
-		blocksJSON = rewritten
-	}
-
 	contentHTML, _, err := blockrender.Render(blocksJSON)
 	if err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "render-error", "Could not render blocks: "+err.Error(), "")
@@ -210,18 +202,6 @@ func (a *App) applyPostExtras(ctx context.Context, slug string, meta *PostMeta, 
 			} else {
 				meta.AuthorID = editorID
 			}
-		}
-		// Sideload external cover / share images into local /media so post cards
-		// and social share cards reference our own origin (and survive hotlink
-		// rot). Best-effort — an unreachable URL is left as-is.
-		if local, changed := sideloadImageURL(ctx, meta.FeatureImage); changed {
-			meta.FeatureImage = local
-		}
-		if local, changed := sideloadImageURL(ctx, meta.OGImage); changed {
-			meta.OGImage = local
-		}
-		if local, changed := sideloadImageURL(ctx, meta.TwitterImage); changed {
-			meta.TwitterImage = local
 		}
 		if err := savePostMeta(ctx, slug, *meta); err != nil {
 			logging.LogError("os-editor", "save post meta failed", err.Error())

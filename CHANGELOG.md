@@ -8,6 +8,35 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.99] — 2026-07-18
+
+### Added
+- **Write a post draft with AI, from any provider.** A new **✨ AI** button in the
+  editor opens a panel: type a prompt, pick a provider, and a full draft is
+  inserted as editable blocks (the first heading fills an empty title). Providers:
+  a local **Ollama**, **OpenAI**, **OpenRouter**, or any **OpenAI-compatible**
+  endpoint — using the API keys you store (encrypted at rest) in **VayuOS → API
+  Keys** (added an OpenAI provider card; OpenRouter/Ollama already existed). The
+  model only ever produces a suggestion you insert — never auto-saved or
+  published. Generated Markdown is turned into real blocks through the same
+  sanitized import path as everything else. New endpoints:
+  `POST /os/api/editor/generate` and `GET /os/api/editor/ai-providers`, with the
+  backend resolved from the stored provider credentials (or the env Ollama).
+- **Direct image upload from the toolbar.** A new **🖼 Image** button uploads a
+  file to your media store and inserts it at the caret in one click — no trip to
+  the media library to copy a URL (drag-drop and paste already worked).
+
+### Fixed
+- **External images (Pixabay, Unsplash, anywhere) now render by direct link — no
+  re-hosting.** Images referenced by an external `https://` URL are shown as-is
+  (nothing is downloaded into your storage), and each `<img>` is emitted with
+  `referrerpolicy="no-referrer"`, which loads past simple referrer-based hotlink
+  protection *and* stops leaking your reader's page URL to the third-party host.
+  A render-time scheme allowlist (`safeImageURL`) means only site-relative or
+  `http(s)` image URLs are emitted, so a dangerous scheme never produces even a
+  `src`-stripped `<img>`. (Requires a direct **https** image URL — an `http://`
+  URL is blocked as mixed content by the browser, and a page URL is not an image.)
+
 ## [3.13.98] — 2026-07-18
 
 ### Added
