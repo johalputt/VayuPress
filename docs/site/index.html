@@ -122,22 +122,6 @@
     <div class="relative max-w-7xl mx-auto px-6 pt-28 pb-16 sm:pb-20 grid lg:grid-cols-12 gap-10 lg:gap-14 items-center w-full">
       <!-- ── Copy ── -->
       <div class="lg:col-span-7">
-        <!-- eyebrow + live release badge -->
-        <div class="hero-fade inline-flex flex-wrap items-center gap-2.5 mb-8" style="--i:0">
-          <span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-teal-800/50 bg-teal-900/20 text-teal-300 text-xs font-mono">
-            <span class="relative flex w-1.5 h-1.5" aria-hidden="true">
-              <span class="absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-75 animate-ping"></span>
-              <span class="relative inline-flex rounded-full w-1.5 h-1.5 bg-teal-400"></span>
-            </span>
-            One sovereign binary · zero telemetry
-          </span>
-          <a x-show="version" x-cloak :href="'https://github.com/johalputt/VayuPress/releases/tag/'+version" target="_blank" rel="noopener"
-             class="hero-rel inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-white/10 bg-white/[0.04] text-[11px] font-mono text-gray-300 hover:text-white transition-colors">
-            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400" aria-hidden="true"></span>
-            <span x-text="version"></span> · latest
-          </a>
-        </div>
-
         <!-- cinematic masked headline -->
         <h1 class="hero-title font-display font-bold tracking-tightest text-white leading-[0.92] mb-6
                    text-[2.9rem] xs:text-5xl sm:text-6xl lg:text-[5rem]">
@@ -184,31 +168,6 @@
                     bg-white/[0.03] text-gray-200 font-semibold text-sm sm:text-base focus-ring">
             <span class="magnetic-in">Read the source</span>
           </a>
-        </div>
-
-        <!-- live stats bar -->
-        <div class="hero-fade mt-12 sm:mt-14 flex flex-wrap gap-x-8 gap-y-4 pt-7 border-t border-white/[0.06]" style="--i:7">
-          <div>
-            <div class="font-display text-xl sm:text-2xl font-bold text-white tabular-nums" x-text="stars"></div>
-            <div class="text-xs text-gray-500 mt-0.5">GitHub stars</div>
-          </div>
-          <div x-show="version" x-cloak>
-            <a :href="'https://github.com/johalputt/VayuPress/releases/tag/' + version" target="_blank" rel="noopener"
-               class="font-display text-xl sm:text-2xl font-bold text-white tabular-nums hover:text-sky-400 transition-colors" x-text="version"></a>
-            <div class="text-xs text-gray-500 mt-0.5">latest release</div>
-          </div>
-          <div>
-            <div class="font-display text-xl sm:text-2xl font-bold text-white">10-in-1</div>
-            <div class="text-xs text-gray-500 mt-0.5">products · one binary</div>
-          </div>
-          <div>
-            <div class="font-display text-xl sm:text-2xl font-bold text-white">1-click</div>
-            <div class="text-xs text-gray-500 mt-0.5">connect Claude · MCP</div>
-          </div>
-          <div>
-            <div class="font-display text-xl sm:text-2xl font-bold text-white">Zero</div>
-            <div class="text-xs text-gray-500 mt-0.5">telemetry · trackers</div>
-          </div>
         </div>
       </div>
 
@@ -347,7 +306,7 @@
           </div>
           <p class="text-sm text-gray-400 leading-relaxed">
             Connect a phone in seconds — open the app, enter your domain and sign in once. It provisions a per-device app password
-            (never your real password, revocable any time) and configures IMAP &amp; SMTP for you — no QR, no manual server settings.
+            (never your real password, revocable any time) and configures IMAP &amp; SMTP for you — no manual server settings.
             Read, write and send PGP-encrypted mail from your own domain, on the go.
           </p>
         </div>
