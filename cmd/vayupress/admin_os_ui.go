@@ -3250,36 +3250,47 @@ func (a *App) handleOSSettingsAPI(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusBadRequest, "settings-error", err.Error(), "")
 		return
 	}
-	// Push the change into the live render pipeline and drop cached pages so
-	// public-facing settings (site identity, membership buttons, SEO meta) take
-	// effect immediately rather than on the next restart.
-	if sv, err := a.siteSettings.GetAll(r.Context()); err == nil {
-		render.SetActiveSettings(render.SiteSettings{
-			Name:            sv[settings.KeySiteName],
-			Tagline:         sv[settings.KeySiteTagline],
-			Description:     sv[settings.KeySiteDescription],
-			Author:          sv[settings.KeySiteAuthor],
-			AuthorBio:       sv[settings.KeyAuthorBio],
-			ShowMembership:  sv[settings.KeyMembershipButtons] == "true",
-			PrimaryLight:    sv[settings.KeyThemePrimaryLight],
-			PrimaryDark:     sv[settings.KeyThemePrimaryDark],
-			AccentLight:     sv[settings.KeyThemeAccentLight],
-			AccentDark:      sv[settings.KeyThemeAccentDark],
-			CustomCSS:       sv[settings.KeyThemeCustomCSS],
-			Keywords:        sv[settings.KeyHeadKeywords],
-			ThemeColor:      sv[settings.KeyHeadThemeColor],
-			Robots:          sv[settings.KeyHeadRobots],
-			VerifyGoogle:    sv[settings.KeyHeadVerifyGoogle],
-			VerifyBing:      sv[settings.KeyHeadVerifyBing],
-			NavJSON:         sv[settings.KeyNavItems],
-			FooterJSON:      sv[settings.KeyFooterConfig],
-			OGImage:         render.OGImagePath(sv[settings.KeyThemeOGImage]),
-			ShowHero:        sv[settings.KeyHomeHero] == "true",
-			CommentsEnabled: sv[settings.KeyFeatureComments] != "off",
-		})
-	}
-	render.CachePurgeAll()
+	a.reloadRenderSettings(r.Context())
 	writeJSON(w, r, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// reloadRenderSettings re-reads the site settings and pushes them into the live
+// render pipeline, then drops cached pages so a settings change takes effect
+// immediately rather than on the next restart. It is the single source of truth
+// for the settings→render mapping, shared by the VayuOS settings API and the
+// update_site_settings MCP tool. A no-op if the settings store is unavailable.
+func (a *App) reloadRenderSettings(ctx context.Context) {
+	if a.siteSettings == nil {
+		return
+	}
+	sv, err := a.siteSettings.GetAll(ctx)
+	if err != nil {
+		return
+	}
+	render.SetActiveSettings(render.SiteSettings{
+		Name:            sv[settings.KeySiteName],
+		Tagline:         sv[settings.KeySiteTagline],
+		Description:     sv[settings.KeySiteDescription],
+		Author:          sv[settings.KeySiteAuthor],
+		AuthorBio:       sv[settings.KeyAuthorBio],
+		ShowMembership:  sv[settings.KeyMembershipButtons] == "true",
+		PrimaryLight:    sv[settings.KeyThemePrimaryLight],
+		PrimaryDark:     sv[settings.KeyThemePrimaryDark],
+		AccentLight:     sv[settings.KeyThemeAccentLight],
+		AccentDark:      sv[settings.KeyThemeAccentDark],
+		CustomCSS:       sv[settings.KeyThemeCustomCSS],
+		Keywords:        sv[settings.KeyHeadKeywords],
+		ThemeColor:      sv[settings.KeyHeadThemeColor],
+		Robots:          sv[settings.KeyHeadRobots],
+		VerifyGoogle:    sv[settings.KeyHeadVerifyGoogle],
+		VerifyBing:      sv[settings.KeyHeadVerifyBing],
+		NavJSON:         sv[settings.KeyNavItems],
+		FooterJSON:      sv[settings.KeyFooterConfig],
+		OGImage:         render.OGImagePath(sv[settings.KeyThemeOGImage]),
+		ShowHero:        sv[settings.KeyHomeHero] == "true",
+		CommentsEnabled: sv[settings.KeyFeatureComments] != "off",
+	})
+	render.CachePurgeAll()
 }
 
 // handleOSQuickCreatePost creates a draft post from the dashboard quick-compose.

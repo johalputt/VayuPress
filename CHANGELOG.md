@@ -8,6 +8,24 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.81] — 2026-07-18
+
+### Added
+- **VayuMCP Stage 3a — `update_site_settings` (Claude can now edit the site's
+  look).** The write counterpart to `site_settings`: a full-control (or
+  `settings:write`) connector can rebrand and restyle the site — name, tagline,
+  description, theme colours, navigation, footer, custom CSS, and SEO meta — and
+  the change applies live. It reuses the same `SetMany` write path and render
+  refresh the VayuOS settings screen uses (now a single shared helper), and is
+  bounded to the **same presentational allowlist** as the read tool: operational
+  configuration (private Tor bridge lines, VayuShield thresholds) is never
+  writable through it, even if requested. Every change is written to the audit log.
+
+### Changed
+- The settings→render mapping is now a single `reloadRenderSettings` helper shared
+  by the VayuOS settings API and the new tool (was duplicated inline), so a live
+  settings change behaves identically however it is made.
+
 ## [3.13.80] — 2026-07-18
 
 ### Added

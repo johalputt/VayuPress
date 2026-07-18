@@ -69,14 +69,20 @@ with site-configuration and analytics reads:
 | `list_posts` | posts:read | `articles.List` | 1 |
 | `get_post` | posts:read | `articles.Get` | 1 |
 | `search_content` | posts:read | `search.Search` | 1 |
-| `site_settings` | settings:read | `siteSettings.GetAll` | 2 |
+| `site_settings` | settings:read | `siteSettings.GetAll` (presentational allowlist) | 2 |
 | `analytics_summary` | analytics:read | `analytics.OverviewSince` + `TopPages` | 2 |
+| `update_site_settings` | settings:write | `siteSettings.SetMany` + shared render refresh (presentational allowlist) | 3a |
 
 The set grows in later stages; the registry makes adding a tool a few lines. Read
 tools are added freely; a **write** tool for a subsystem is added only once it can
 reuse that subsystem's own validated path (so a tool can never bypass a check the
-REST/admin route enforces) — which is why Stage 2 broadens reads first and defers
-settings/theme/page writes to Stage 3.
+REST/admin route enforces). `update_site_settings` (Stage 3a) is the first such
+write beyond posts: it reuses `SetMany` (which validates against the settings
+vocabulary) and the same `reloadRenderSettings` helper the VayuOS settings API
+uses, and it is bounded to the **same presentational allowlist** as its read twin —
+so operational config (Tor bridges, VayuShield thresholds) is never writable through
+it. Page/theme/media writes follow in later Stage-3 increments as each grows a
+race-free, validated create path.
 
 ### Full control vs. limited (operator's choice)
 

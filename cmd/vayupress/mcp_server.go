@@ -12,6 +12,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 
@@ -269,6 +271,56 @@ func (a *App) buildMCPServer() *mcp.Server {
 		},
 	})
 
+	// update_site_settings — the write counterpart to site_settings. It lets Claude
+	// rebrand and restyle the site (name, tagline, theme colours, navigation,
+	// footer, custom CSS, SEO meta) — real "build my site" power — while staying
+	// bounded to the SAME presentational allowlist the read tool exposes. Operational
+	// keys (tor.bridges, shield.* thresholds) are never writable here, even though the
+	// underlying SetMany would accept any known key; and SetMany itself still drops
+	// anything outside the settings vocabulary. After writing, the live render
+	// pipeline is refreshed (shared helper) so the change is visible immediately.
+	srv.Register(mcp.Tool{
+		Name:        "update_site_settings",
+		Description: "Update the site's presentational configuration (branding, theme colours, navigation, footer, custom CSS, SEO meta). Pass a map of key→value; keys outside the allowlist are ignored. Changes apply live. Allowed keys: " + strings.Join(mcpPublicSettingKeys, ", ") + ".",
+		InputSchema: objSchema([]string{"settings"}, map[string]any{
+			"settings": map[string]any{
+				"type":                 "object",
+				"description":          "Map of setting key → new value. Only allowlisted presentational keys are applied; any other key is ignored.",
+				"additionalProperties": map[string]any{"type": "string"},
+			},
+		}),
+		Visible: a.mcpVisible(apikeys.SectionSettings, apikeys.ActionWrite),
+		Handler: func(ctx context.Context, args json.RawMessage) (string, error) {
+			if a.siteSettings == nil {
+				return "", fmt.Errorf("site settings are unavailable")
+			}
+			var in struct {
+				Settings map[string]string `json:"settings"`
+			}
+			if err := json.Unmarshal(args, &in); err != nil {
+				return "", errBadArgs(err)
+			}
+			// Restrict to the presentational allowlist BEFORE writing — a settings:write
+			// connector must not be able to reach operational keys.
+			apply, ignored := partitionAllowedSettings(in.Settings)
+			if len(apply) == 0 {
+				return "", fmt.Errorf("no updatable settings provided; allowed keys: %s", strings.Join(mcpPublicSettingKeys, ", "))
+			}
+			if err := a.siteSettings.SetMany(ctx, apply); err != nil {
+				return "", err
+			}
+			a.reloadRenderSettings(ctx)
+			applied := make([]string, 0, len(apply))
+			for k := range apply {
+				applied = append(applied, k)
+			}
+			sort.Strings(applied)
+			sort.Strings(ignored)
+			dbpkg.AuditLog("settings.update", mcpActor(ctx), strings.Join(applied, ","), "via=mcp")
+			return jsonStr(map[string]any{"status": "ok", "applied": applied, "ignored": ignored}), nil
+		},
+	})
+
 	// ── analytics (read) ──────────────────────────────────────────────────────
 	// analytics_summary gives Claude the privacy-first traffic picture (aggregate
 	// counts only — VayuPress stores no per-visitor PII) so it can report on and
@@ -333,6 +385,27 @@ func projectPublicSettings(all map[string]string) map[string]string {
 		}
 	}
 	return out
+}
+
+// partitionAllowedSettings splits a requested settings map into the keys that
+// update_site_settings is permitted to write (the presentational allowlist) and
+// the keys it must ignore (everything else — operational config, unknown keys).
+// This is the write-side guard: an operational key such as tor.bridges or a
+// shield.* threshold can never be applied through the tool even if requested.
+func partitionAllowedSettings(in map[string]string) (apply map[string]string, ignored []string) {
+	allowed := make(map[string]bool, len(mcpPublicSettingKeys))
+	for _, k := range mcpPublicSettingKeys {
+		allowed[k] = true
+	}
+	apply = make(map[string]string)
+	for k, v := range in {
+		if allowed[k] {
+			apply[k] = v
+		} else {
+			ignored = append(ignored, k)
+		}
+	}
+	return apply, ignored
 }
 
 // mcpVisible returns a Visible closure that passes only when the request's key

@@ -71,11 +71,14 @@ Claude Code: `claude mcp add --transport http vayupress https://your-domain.com/
 | `search_content` | `posts:read` | Full-text search across published posts. |
 | `site_settings` | `settings:read` | Read the site's non-secret config (name, tagline, theme, nav, SEO meta). |
 | `analytics_summary` | `analytics:read` | Privacy-first traffic overview + top pages for the last N days. |
+| `update_site_settings` | `settings:write` | Update presentational config (branding, theme colours, nav, footer, custom CSS, SEO); changes apply live. |
 
-More tools (themes, plugins, design, settings/page writes, media, domains) land in
-later stages; a full-control key automatically gains each new tool. Write tools
-for a subsystem are added only once they can reuse that subsystem's own validated
-path, so a tool can never bypass a check the REST/admin route enforces.
+More tools (themes, plugins, pages, media, domains) land in later stages; a
+full-control key automatically gains each new tool. Write tools for a subsystem
+are added only once they can reuse that subsystem's own validated path, so a tool
+can never bypass a check the REST/admin route enforces. `update_site_settings` is
+bounded to the same presentational allowlist as `site_settings`, so operational
+config (Tor bridges, VayuShield thresholds) is never writable through it.
 
 ## Security model
 
@@ -94,7 +97,8 @@ path, so a tool can never bypass a check the REST/admin route enforces.
 - **Stage 2 (shipped):** the VayuOS **Claude Connector** page (one-click
   full-control or scoped key + copy-paste connect steps) and broadened read tools
   (`site_settings`, `analytics_summary`).
-- **Stage 3:** safe write tools for the remaining sections (pages, themes,
-  settings, media) — each reusing its subsystem's validated path — and **OAuth
-  2.1** on the same endpoint for a true one-click **Connect** button on claude.ai,
+- **Stage 3 (in progress):** safe write tools for the remaining sections, each
+  reusing its subsystem's validated path. **3a shipped:** `update_site_settings`
+  (branding/theme/nav/SEO writes). Next: pages, themes, media. Then **OAuth 2.1**
+  on the same endpoint for a true one-click **Connect** button on claude.ai,
   exactly like the GitHub connector.

@@ -36,6 +36,34 @@ func TestProjectPublicSettingsDropsOperationalKeys(t *testing.T) {
 	}
 }
 
+// TestPartitionAllowedSettings proves the write-side guard: update_site_settings
+// applies only presentational keys and ignores operational ones (tor.bridges,
+// shield.*) even when the caller requests them.
+func TestPartitionAllowedSettings(t *testing.T) {
+	apply, ignored := partitionAllowedSettings(map[string]string{
+		settings.KeySiteName:    "New Name",
+		settings.KeyNavItems:    `[{"label":"Home","href":"/"}]`,
+		settings.KeyTorBridges:  "obfs4 1.2.3.4:443 CERT=x", // must be ignored
+		settings.KeyShieldBlock: "0.9",                      // must be ignored
+		"totally.unknown.key":   "x",                        // must be ignored
+	})
+	if apply[settings.KeySiteName] != "New Name" || apply[settings.KeyNavItems] == "" {
+		t.Error("presentational keys must be applied")
+	}
+	for _, k := range []string{settings.KeyTorBridges, settings.KeyShieldBlock, "totally.unknown.key"} {
+		if _, ok := apply[k]; ok {
+			t.Errorf("operational/unknown key %q must NOT be applied", k)
+		}
+	}
+	ignoredSet := map[string]bool{}
+	for _, k := range ignored {
+		ignoredSet[k] = true
+	}
+	if !ignoredSet[settings.KeyTorBridges] || !ignoredSet[settings.KeyShieldBlock] {
+		t.Error("rejected operational keys should be reported in ignored")
+	}
+}
+
 // keyCtxRequest builds an MCP POST request carrying ki in context, exactly as
 // RequireAPIKey would stamp it after authenticating.
 func keyCtxRequest(body string, ki apikeys.KeyInfo) *http.Request {
@@ -117,13 +145,24 @@ func TestMCPToolsListReflectsScope(t *testing.T) {
 		}
 	}
 
-	// A settings:read key sees site_settings but no posts write/read tools.
+	// A settings:read key sees site_settings but NOT the write tool nor other
+	// sections' tools.
 	set := listFor(scopedKey([2]string{"settings", "read"}))
 	if !set["site_settings"] {
 		t.Error("settings:read key should see site_settings")
 	}
+	if set["update_site_settings"] {
+		t.Error("settings:read key must NOT see update_site_settings (needs settings:write)")
+	}
 	if set["analytics_summary"] || set["get_post"] {
 		t.Error("settings:read key must not see other sections' tools")
+	}
+
+	// A settings:write key sees the write tool (and, since write does not imply
+	// read, not necessarily site_settings — that is by design).
+	setW := listFor(scopedKey([2]string{"settings", "write"}))
+	if !setW["update_site_settings"] {
+		t.Error("settings:write key should see update_site_settings")
 	}
 
 	// An analytics:read key sees analytics_summary and nothing cross-section.
@@ -137,7 +176,7 @@ func TestMCPToolsListReflectsScope(t *testing.T) {
 
 	// Superuser ("full control"): every tool is visible.
 	su := listFor(apikeys.SuperuserKeyInfo("s", "root", apikeys.ScopeExternal))
-	for _, want := range []string{"create_post", "update_post", "delete_post", "get_post", "list_posts", "search_content", "site_info", "site_settings", "analytics_summary"} {
+	for _, want := range []string{"create_post", "update_post", "delete_post", "get_post", "list_posts", "search_content", "site_info", "site_settings", "update_site_settings", "analytics_summary"} {
 		if !su[want] {
 			t.Errorf("superuser (full control) should see %q", want)
 		}
