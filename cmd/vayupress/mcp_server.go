@@ -377,6 +377,69 @@ func (a *App) buildMCPServer() *mcp.Server {
 		},
 	})
 
+	// ── media ──────────────────────────────────────────────────────────────────
+	// list_media lets Claude see the images/PDFs already in the media library so it
+	// can reference them (by /media/<name> URL) when writing posts or pages. Read
+	// only; uploading is a later increment (binary transfer over MCP needs care).
+	srv.Register(mcp.Tool{
+		Name:        "list_media",
+		Description: "List files in the media library (images, PDFs), newest first. Returns each item's name, public /media/<name> URL, size, and type. Use the URL to embed an asset in a post or page.",
+		InputSchema: objSchema(nil, map[string]any{
+			"limit": intProp("Max items to return (default 100)."),
+		}),
+		Visible: a.mcpVisible(apikeys.SectionMedia, apikeys.ActionRead),
+		Handler: func(_ context.Context, args json.RawMessage) (string, error) {
+			var in struct {
+				Limit int `json:"limit"`
+			}
+			_ = json.Unmarshal(args, &in)
+			items := listMediaItems()
+			if in.Limit > 0 && in.Limit < len(items) {
+				items = items[:in.Limit]
+			}
+			return jsonStr(items), nil
+		},
+	})
+
+	// ── themes ───────────────────────────────────────────────────────────────────
+	// list_themes + apply_theme let Claude restyle the whole site to a built-in
+	// design preset in one step (beyond the individual theme colours reachable via
+	// update_site_settings). apply_theme reuses the exact Theme Studio path —
+	// compile-validate → persist → activate CSS → purge cache — so a connector
+	// restyle behaves identically to an operator clicking a preset.
+	srv.Register(mcp.Tool{
+		Name:        "list_themes",
+		Description: "List the built-in theme presets available to apply, with each preset's name and headline accent colours.",
+		InputSchema: mcp.NewObjectSchema(),
+		Visible:     a.mcpVisible(apikeys.SectionThemes, apikeys.ActionRead),
+		Handler: func(_ context.Context, _ json.RawMessage) (string, error) {
+			return jsonStr(themeCatalog()), nil
+		},
+	})
+
+	srv.Register(mcp.Tool{
+		Name:        "apply_theme",
+		Description: "Apply a built-in theme preset by name (see list_themes) to the whole site. The new look is live immediately. This changes the site's colours, typography, and layout tokens.",
+		InputSchema: objSchema([]string{"preset"}, map[string]any{
+			"preset": strProp("Name of the preset to apply (case-insensitive; from list_themes)."),
+		}),
+		Visible: a.mcpVisible(apikeys.SectionThemes, apikeys.ActionApply),
+		Handler: func(ctx context.Context, args json.RawMessage) (string, error) {
+			var in struct {
+				Preset string `json:"preset"`
+			}
+			if err := json.Unmarshal(args, &in); err != nil {
+				return "", errBadArgs(err)
+			}
+			name, err := a.applyThemePresetByName(ctx, in.Preset)
+			if err != nil {
+				return "", err
+			}
+			dbpkg.AuditLog("theme.apply", mcpActor(ctx), name, "via=mcp")
+			return jsonStr(map[string]string{"status": "ok", "applied": name}), nil
+		},
+	})
+
 	// ── analytics (read) ──────────────────────────────────────────────────────
 	// analytics_summary gives Claude the privacy-first traffic picture (aggregate
 	// counts only — VayuPress stores no per-visitor PII) so it can report on and

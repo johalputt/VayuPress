@@ -74,6 +74,9 @@ with site-configuration and analytics reads:
 | `site_settings` | settings:read | `siteSettings.GetAll` (presentational allowlist) | 2 |
 | `analytics_summary` | analytics:read | `analytics.OverviewSince` + `TopPages` | 2 |
 | `update_site_settings` | settings:write | `siteSettings.SetMany` + shared render refresh (presentational allowlist) | 3a |
+| `list_media` | media:read | `listMediaItems` | 3c |
+| `list_themes` | themes:read | `theme.AllPresets` | 3c |
+| `apply_theme` | themes:apply | `theme.CompileCSS` + `theme.Save` + activate (shared with Theme Studio) | 3c |
 
 The set grows in later stages; the registry makes adding a tool a few lines. Read
 tools are added freely; a **write** tool for a subsystem is added only once it can

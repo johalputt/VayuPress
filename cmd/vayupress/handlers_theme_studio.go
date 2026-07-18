@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -154,13 +156,10 @@ func (a *App) handleThemeApply(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := theme.Save(r.Context(), dbpkg.DB, t); err != nil {
+	if err := a.saveAndActivateTheme(r.Context(), t, css); err != nil {
 		writeAPIError(w, r, 500, "db_error", "failed to persist tokens: "+err.Error(), "")
 		return
 	}
-
-	render.SetThemeCSS(css)
-	render.CachePurgeAll()
 
 	dbpkg.AuditLog("theme.apply", dbpkg.AuditActor(r), t.Name, "")
 
@@ -169,6 +168,54 @@ func (a *App) handleThemeApply(w http.ResponseWriter, r *http.Request) {
 		"name":   t.Name,
 		"css":    css,
 	})
+}
+
+// saveAndActivateTheme persists a validated theme token set, activates its
+// compiled CSS in the live render pipeline, and drops cached pages so the new
+// look is immediate. Shared by the Theme Studio apply handler and the apply_theme
+// MCP tool so both take effect identically. The caller compiles (and thus
+// validates) the tokens first.
+func (a *App) saveAndActivateTheme(ctx context.Context, t theme.Tokens, css string) error {
+	if err := theme.Save(ctx, dbpkg.DB, t); err != nil {
+		return err
+	}
+	render.SetThemeCSS(css)
+	render.CachePurgeAll()
+	return nil
+}
+
+// applyThemePresetByName applies a built-in theme preset by name (case-insensitive)
+// through the same compile→save→activate path as the Theme Studio, returning the
+// canonical preset name applied. It is the core of the apply_theme MCP tool.
+func (a *App) applyThemePresetByName(ctx context.Context, name string) (string, error) {
+	for _, p := range theme.AllPresets() {
+		if strings.EqualFold(p.Name, name) {
+			css, err := theme.CompileCSS(p)
+			if err != nil {
+				return "", err
+			}
+			if err := a.saveAndActivateTheme(ctx, p, css); err != nil {
+				return "", err
+			}
+			return p.Name, nil
+		}
+	}
+	return "", fmt.Errorf("unknown theme preset %q", name)
+}
+
+// themeCatalog returns a compact, connector-friendly summary of the built-in
+// theme presets (name + headline accent colours), for the list_themes MCP tool.
+func themeCatalog() []map[string]string {
+	presets := theme.AllPresets()
+	out := make([]map[string]string, 0, len(presets))
+	for _, p := range presets {
+		out = append(out, map[string]string{
+			"name":         p.Name,
+			"accent_light": p.AccentLight,
+			"accent_dark":  p.AccentDark,
+		})
+	}
+	return out
 }
 
 // applyOverrides merges the string map onto t, matching by canonical field names

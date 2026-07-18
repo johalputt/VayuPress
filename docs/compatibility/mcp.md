@@ -74,6 +74,9 @@ Claude Code: `claude mcp add --transport http vayupress https://your-domain.com/
 | `site_settings` | `settings:read` | Read the site's non-secret config (name, tagline, theme, nav, SEO meta). |
 | `analytics_summary` | `analytics:read` | Privacy-first traffic overview + top pages for the last N days. |
 | `update_site_settings` | `settings:write` | Update presentational config (branding, theme colours, nav, footer, custom CSS, SEO); changes apply live. |
+| `list_media` | `media:read` | List media-library files (name, /media/<name> URL, size, type). |
+| `list_themes` | `themes:read` | List built-in theme presets available to apply. |
+| `apply_theme` | `themes:apply` | Apply a built-in theme preset to the whole site (live). |
 
 More tools (themes, plugins, pages, media, domains) land in later stages; a
 full-control key automatically gains each new tool. Write tools for a subsystem
@@ -102,5 +105,6 @@ config (Tor bridges, VayuShield thresholds) is never writable through it.
 - **Stage 3 (in progress):** safe write tools for the remaining sections, each
   reusing its subsystem's validated path. **3a shipped:** `update_site_settings`
   (branding/theme/nav/SEO writes). **3b shipped:** `create_page` + `list_pages`.
-  Next: themes, media. Then **OAuth 2.1** on the same endpoint for a true
-  one-click **Connect** button on claude.ai, exactly like the GitHub connector.
+  **3c shipped:** `list_media`, `list_themes`, `apply_theme`. Then **OAuth 2.1** on
+  the same endpoint for a true one-click **Connect** button on claude.ai, exactly
+  like the GitHub connector.

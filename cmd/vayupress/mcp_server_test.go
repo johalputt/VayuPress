@@ -174,9 +174,32 @@ func TestMCPToolsListReflectsScope(t *testing.T) {
 		t.Error("analytics:read key must not see other sections' tools")
 	}
 
+	// A media:read key sees list_media only.
+	md := listFor(scopedKey([2]string{"media", "read"}))
+	if !md["list_media"] {
+		t.Error("media:read key should see list_media")
+	}
+	if md["list_themes"] || md["create_post"] {
+		t.Error("media:read key must not see other sections' tools")
+	}
+
+	// themes:read sees list_themes but NOT apply_theme (that needs themes:apply);
+	// themes:apply sees apply_theme.
+	thR := listFor(scopedKey([2]string{"themes", "read"}))
+	if !thR["list_themes"] {
+		t.Error("themes:read key should see list_themes")
+	}
+	if thR["apply_theme"] {
+		t.Error("themes:read key must NOT see apply_theme (needs themes:apply)")
+	}
+	thA := listFor(scopedKey([2]string{"themes", "apply"}))
+	if !thA["apply_theme"] {
+		t.Error("themes:apply key should see apply_theme")
+	}
+
 	// Superuser ("full control"): every tool is visible.
 	su := listFor(apikeys.SuperuserKeyInfo("s", "root", apikeys.ScopeExternal))
-	for _, want := range []string{"create_post", "update_post", "delete_post", "get_post", "list_posts", "search_content", "create_page", "list_pages", "site_info", "site_settings", "update_site_settings", "analytics_summary"} {
+	for _, want := range []string{"create_post", "update_post", "delete_post", "get_post", "list_posts", "search_content", "create_page", "list_pages", "site_info", "site_settings", "update_site_settings", "analytics_summary", "list_media", "list_themes", "apply_theme"} {
 		if !su[want] {
 			t.Errorf("superuser (full control) should see %q", want)
 		}

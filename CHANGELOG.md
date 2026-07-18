@@ -8,6 +8,19 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.13.83] — 2026-07-18
+
+### Added
+- **VayuMCP Stage 3c — Claude can restyle the site and see the media library.**
+  Three new tools: `list_media` (browse the media library — names, `/media/<name>`
+  URLs, sizes — so Claude can embed existing assets; needs `media:read`),
+  `list_themes` (the built-in theme presets; `themes:read`), and `apply_theme`
+  (apply a preset to the whole site in one step, live; `themes:apply`).
+  `apply_theme` reuses the exact Theme Studio path — compile-validate → persist →
+  activate CSS → purge cache — via a shared `saveAndActivateTheme` helper, so a
+  connector restyle behaves identically to an operator clicking a preset. Each tool
+  is capability-gated and `apply_theme` is audit-logged.
+
 ## [3.13.82] — 2026-07-18
 
 ### Added
