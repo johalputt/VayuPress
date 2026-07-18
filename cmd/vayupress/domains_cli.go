@@ -22,8 +22,8 @@ import (
 //
 //	vayupress domains list                 # every registered domain, human-readable
 //	vayupress domains hosts [--mail|--all|--hold]  # secondary hosts, one per line (for scripts)
-//	vayupress domains sync <host>          # approve a domain for provisioning
-//	vayupress domains hold <host>          # pause provisioning/maintenance for a domain
+//	vayupress domains sync <host>|--all    # approve a domain (or all) for provisioning
+//	vayupress domains hold <host>|--all    # pause provisioning/maintenance for a domain (or all)
 //	vayupress domains set-tls <host> <s>   # record a domain's tls_state (pending|active|failed)
 func runDomainsCLI(args []string, out io.Writer) error {
 	reg := domain.New(dbpkg.DB, dbpkg.RDB)
@@ -105,7 +105,21 @@ func runDomainsCLI(args []string, out io.Writer) error {
 
 	case "sync", "hold":
 		if len(args) < 2 {
-			return fmt.Errorf("usage: vayupress domains %s <host>", sub)
+			return fmt.Errorf("usage: vayupress domains %s <host>|--all", sub)
+		}
+		state := domain.SyncApproved
+		if sub == "hold" {
+			state = domain.SyncHold
+		}
+		// Bulk: approve/hold every secondary at once, so a batch of freshly
+		// registered domains can be released without touching each row.
+		if strings.TrimSpace(args[1]) == "--all" {
+			n, err := reg.SetAllSyncState(ctx, state)
+			if err != nil {
+				return err
+			}
+			fmt.Fprintf(out, "%d domain(s) set sync_state=%s\n", n, state)
+			return nil
 		}
 		host := strings.TrimSpace(args[1])
 		d, err := reg.Resolve(ctx, host)
@@ -114,10 +128,6 @@ func runDomainsCLI(args []string, out io.Writer) error {
 		}
 		if d.IsPrimary {
 			return fmt.Errorf("the primary domain is provisioned outside the registry")
-		}
-		state := domain.SyncApproved
-		if sub == "hold" {
-			state = domain.SyncHold
 		}
 		if err := reg.SetSyncState(ctx, d.ID, state); err != nil {
 			return err

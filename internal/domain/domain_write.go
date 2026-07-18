@@ -190,6 +190,25 @@ func (r *Registry) SetSyncState(ctx context.Context, id, state string) error {
 	return err
 }
 
+// SetAllSyncState flips every secondary domain to state in one statement and
+// reports how many rows changed — the bulk counterpart to SetSyncState, so an
+// operator can approve (or hold) a batch of newly-registered domains without
+// clicking each row. The primary is excluded by the is_primary=0 guard, and
+// only rows not already in the target state are counted, so approving an
+// already-synced set reports 0 changed.
+func (r *Registry) SetAllSyncState(ctx context.Context, state string) (int, error) {
+	if state != SyncApproved && state != SyncHold {
+		return 0, fmt.Errorf("domain: invalid sync state %q", state)
+	}
+	defer r.invalidate()
+	res, err := r.db.ExecContext(ctx, `UPDATE domains SET sync_state=?,updated_at=CURRENT_TIMESTAMP WHERE is_primary=0 AND sync_state!=?`, state, state)
+	if err != nil {
+		return 0, err
+	}
+	n, err := res.RowsAffected()
+	return int(n), err
+}
+
 // SetBrand stores a secondary domain's public branding overrides in its
 // config_json. Like every mutable per-domain field, the primary is refused: its
 // identity is the global Website settings, and re-branding it here would let a

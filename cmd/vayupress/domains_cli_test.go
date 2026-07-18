@@ -85,6 +85,39 @@ func TestDomainsCLI(t *testing.T) {
 	if got := strings.TrimSpace(b.String()); got != "" {
 		t.Fatalf("hosts after hold = %q, want empty", got)
 	}
+
+	// sync --all: bulk-approve every secondary at once. shop.example is held
+	// again above, so exactly one row changes; the primary is never counted.
+	b.Reset()
+	if err := runDomainsCLI([]string{"sync", "--all"}, &b); err != nil {
+		t.Fatalf("sync --all: %v", err)
+	}
+	if !strings.Contains(b.String(), "1 domain(s) set sync_state=approved") {
+		t.Errorf("sync --all output = %q, want 1 domain approved", b.String())
+	}
+	b.Reset()
+	_ = runDomainsCLI([]string{"hosts"}, &b)
+	if got := strings.TrimSpace(b.String()); got != "shop.example" {
+		t.Fatalf("hosts after sync --all = %q, want shop.example", got)
+	}
+	// Re-running is idempotent: nothing left on hold, so zero rows change.
+	b.Reset()
+	if err := runDomainsCLI([]string{"sync", "--all"}, &b); err != nil {
+		t.Fatalf("sync --all (idempotent): %v", err)
+	}
+	if !strings.Contains(b.String(), "0 domain(s) set sync_state=approved") {
+		t.Errorf("second sync --all = %q, want 0 changed", b.String())
+	}
+	// hold --all takes them all back off the work list.
+	b.Reset()
+	if err := runDomainsCLI([]string{"hold", "--all"}, &b); err != nil {
+		t.Fatalf("hold --all: %v", err)
+	}
+	b.Reset()
+	_ = runDomainsCLI([]string{"hosts"}, &b)
+	if got := strings.TrimSpace(b.String()); got != "" {
+		t.Fatalf("hosts after hold --all = %q, want empty", got)
+	}
 	// Re-approve for the remaining assertions.
 	b.Reset()
 	if err := runDomainsCLI([]string{"sync", "shop.example"}, &b); err != nil {
