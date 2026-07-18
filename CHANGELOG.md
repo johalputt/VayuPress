@@ -8,6 +8,28 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Added
+- **VayuDomains: bulk "Sync all pending" approval.** The manual sync gate now has
+  a batch action so a set of freshly-registered secondary domains can be approved
+  for provisioning together instead of one row at a time. VayuOS → Domains shows a
+  **Sync all pending (N)** button whenever any domain is on manual hold, and the
+  CLI gains `vayupress domains sync --all` / `hold --all`. Like the per-domain
+  action, approving only adds the domains to the out-of-process helper's work
+  list — nothing is provisioned by the unprivileged binary itself. Idempotent:
+  re-running reports how many rows actually changed (0 when nothing was pending).
+
+## [3.13.78] — 2026-07-18
+
+### Security
+- **Dependency refresh — all direct modules current.** Updated Go modules to
+  their latest compatible releases, notably `golang.org/x/crypto` v0.53.0 →
+  v0.54.0 and `golang.org/x/net` v0.56.0 → v0.57.0 (which carry upstream security
+  fixes), plus `golang.org/x/sys`, `golang.org/x/text`, `github.com/phuslu/iploc`,
+  and `github.com/dlclark/regexp2/v2`. Every direct dependency is now up to date
+  (green on the new Dependency Freshness check); build, vet, tests, staticcheck,
+  golangci-lint, and deadcode all clean. The Tor pluggable-transport pins
+  (lyrebird/goptlib) were intentionally left unchanged.
+
 ### CI / infrastructure
 - **Dependency-freshness system.** Added `.github/dependabot.yml` (weekly grouped
   auto-update PRs for Go modules and GitHub Actions, each gated by full CI) plus a
@@ -21,16 +43,6 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   bumps stay manual). Auto-merge still waits for all required CI checks, so
   nothing broken lands — zero-touch for routine updates, deliberate review for
   breaking ones. Requires "Allow auto-merge" enabled in repo settings.
-
-### Added
-- **VayuDomains: bulk "Sync all pending" approval.** The manual sync gate now has
-  a batch action so a set of freshly-registered secondary domains can be approved
-  for provisioning together instead of one row at a time. VayuOS → Domains shows a
-  **Sync all pending (N)** button whenever any domain is on manual hold, and the
-  CLI gains `vayupress domains sync --all` / `hold --all`. Like the per-domain
-  action, approving only adds the domains to the out-of-process helper's work
-  list — nothing is provisioned by the unprivileged binary itself. Idempotent:
-  re-running reports how many rows actually changed (0 when nothing was pending).
 
 ## [3.13.77] — 2026-07-17
 
