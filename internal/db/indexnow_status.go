@@ -92,5 +92,6 @@ func IndexNowStatuses(slugs []string) map[string]IndexNowStatus {
 			out[slug] = st
 		}
 	}
+	_ = rows.Err() // best-effort batch load; partial results are acceptable
 	return out
 }
