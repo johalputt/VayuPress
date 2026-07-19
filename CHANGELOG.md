@@ -8,6 +8,22 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.16] — 2026-07-19
+
+### Changed
+- **Self-contained world switch — no separate page (ADR-0141).** The top-of-sidebar
+  Clearnet ⟷ Tor switch now shows the anonymous world's live status and its
+  copyable `.onion` address inline, directly beneath the switch, so there is no
+  "Spaces" page to open and nothing to activate twice. Flipping to Tor gives instant
+  on-screen feedback ("Starting your anonymous world…"), then shows "Anonymous world
+  live" with a one-click **copy .onion** once it publishes. A dedicated
+  whole-install Tor world shows its address the same way.
+
+### Notes
+- The functional in-app toggle first shipped in v3.14.14. On a server still running
+  an earlier binary the toggle button is present but does nothing — update the
+  install (VayuOS → Update & Backup) to v3.14.16 so the switch is wired.
+
 ## [3.14.15] — 2026-07-19
 
 ### Changed

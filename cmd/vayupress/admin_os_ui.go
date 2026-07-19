@@ -597,23 +597,40 @@ func navItemBadge(href, label, key, active, iconSVG string, count int) string {
 // static indicator (you cannot turn a dedicated Tor install back to clearnet from
 // here — that is a separate install). CSP-safe: no inline styles or handlers, all
 // behaviour is wired by data attributes in the nonce-gated foot script.
-func spaceSwitch(lvl int, torOn bool) string {
+func spaceSwitch(lvl int, s *osSettings) string {
 	if lvl < accessAdmin {
 		return ""
 	}
 	if config.Cfg.OnionMode {
 		// This whole install IS the Tor world — show it, but it is not switchable.
+		d := html.EscapeString(config.Cfg.Domain)
 		return `<div class="space-switch-wrap">
   <div class="space-switch" role="group" aria-label="Active world" title="This install is a dedicated Tor world">
     <span class="space-switch__seg" aria-disabled="true">Clearnet</span>
     <span class="space-switch__seg is-active" aria-current="true">Tor</span>
   </div>
-  <a class="space-switch__more" href="/os/spaces">Onion address →</a>
+  <div class="space-switch__status"><span class="space-dot space-dot--ok"></span>Tor world · <button type="button" class="space-switch__copy" data-copy="http://` + d + `">copy address</button></div>
 </div>`
+	}
+	torOn := s != nil && s.TorSpaceOn
+	onion, running := "", false
+	if s != nil {
+		onion, running = s.TorSpaceOnion, s.TorSpaceRunning
 	}
 	clearCls, torCls := "space-switch__seg is-active", "space-switch__seg"
 	if torOn {
 		clearCls, torCls = "space-switch__seg", "space-switch__seg is-active"
+	}
+	// Inline status under the switch — self-contained, so there is no separate
+	// page to open: live + copyable .onion when up, "starting…" while it publishes.
+	status, hidden := "", " hidden"
+	if torOn {
+		hidden = ""
+		if running && onion != "" {
+			status = `<span class="space-dot space-dot--ok"></span>Anonymous world live · <button type="button" class="space-switch__copy" data-copy="http://` + html.EscapeString(onion) + `">copy .onion</button>`
+		} else {
+			status = `<span class="space-dot space-dot--warn"></span>Starting your anonymous world…`
+		}
 	}
 	// data-space-switch on a segment = "clicking me switches to this world":
 	// "off" turns the Tor Space off (back to Clearnet), "on" turns it on.
@@ -622,7 +639,7 @@ func spaceSwitch(lvl int, torOn bool) string {
     <button type="button" class="` + clearCls + `" data-space-switch="off" aria-pressed="` + ariaBool(!torOn) + `">Clearnet</button>
     <button type="button" class="` + torCls + `" data-space-switch="on" aria-pressed="` + ariaBool(torOn) + `">Tor</button>
   </div>
-  <a class="space-switch__more" href="/os/spaces">Anonymous Tor Space →</a>
+  <div class="space-switch__status" data-space-status` + hidden + `>` + status + `</div>
 </div>`
 }
 
@@ -672,8 +689,9 @@ func osSidebarNav(active string, s *osSettings) string {
 	var b strings.Builder
 	// One-click world switch pinned to the TOP of the sidebar (ADR-0141): flip the
 	// install between the public Clearnet world and the Anonymous Tor Space in a
-	// single click, from anywhere. Admin-only (matches the /os/spaces guard).
-	b.WriteString(spaceSwitch(lvl, s != nil && s.TorSpaceOn))
+	// single click, from anywhere, with the live status + .onion shown inline (no
+	// separate page). Admin-only (matches the /os/spaces guard).
+	b.WriteString(spaceSwitch(lvl, s))
 	// gate returns the item only when this access level can reach its href.
 	gate := func(item, href string) string {
 		if lvl < osPathMinLevel(href) {
@@ -1039,19 +1057,30 @@ b.addEventListener('htmx:afterRequest',function(e){var d=e.detail;if(!d||!d.succ
 // vp_csrf cookie is only issued by CSRF-wrapped GETs, so prime it with a GET of
 // the (admin-only, side-effect-free) Spaces page, then POST the toggle with the
 // fresh token. Reloads on success to pick up the new world + its colour.
+function vpSpaceStatus(txt){var st=document.querySelector('[data-space-status]');if(st){st.hidden=false;st.textContent=txt;}}
 Array.prototype.forEach.call(document.querySelectorAll('[data-space-switch]'),function(seg){
   seg.addEventListener('click',function(){
     if(seg.classList.contains('is-active')||seg.disabled)return;
     var on=seg.getAttribute('data-space-switch')==='on';
     var sw=seg.parentNode;if(sw)sw.classList.add('is-busy');
+    vpSpaceStatus(on?'Starting your anonymous world…':'Switching to Clearnet…'); // instant feedback
     fetch('/os/spaces',{credentials:'same-origin'}).then(function(){
       var m=document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);
       return fetch('/os/spaces/toggle?enable='+(on?'1':'0'),{method:'POST',credentials:'same-origin',headers:{'X-CSRF-Token':m?m[1]:''}});
     }).then(function(r){
       if(r.ok){location.reload();return;}
       if(sw)sw.classList.remove('is-busy');
+      vpSpaceStatus('Could not switch — administrator only.');
       if(window.vpToast)window.vpToast('Could not switch world (administrator only).','error');
-    }).catch(function(){if(sw)sw.classList.remove('is-busy');if(window.vpToast)window.vpToast('Could not switch world — please try again.','error');});
+    }).catch(function(){if(sw)sw.classList.remove('is-busy');vpSpaceStatus('Could not switch — please try again.');if(window.vpToast)window.vpToast('Could not switch world — please try again.','error');});
+  });
+});
+// Copy buttons inside the sidebar (the Tor .onion address under the switch).
+Array.prototype.forEach.call(document.querySelectorAll('.sidebar [data-copy]'),function(btn){
+  btn.addEventListener('click',function(){
+    var v=btn.getAttribute('data-copy')||'',p=btn.textContent;
+    var done=function(){btn.textContent='copied';setTimeout(function(){btn.textContent=p;},1400);};
+    if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(v).then(done,done);}else{done();}
   });
 });
 })();
@@ -1080,6 +1109,11 @@ type osSettings struct {
 	// TorSpaceOn: the Anonymous Tor Space is enabled — the shell wears the Tor
 	// (purple) palette so the operator always knows the anonymous world is live.
 	TorSpaceOn bool
+	// TorSpaceRunning / TorSpaceOnion back the inline status shown under the sidebar
+	// world switch, so the operator sees whether the anonymous world is live and its
+	// .onion address without opening a separate page.
+	TorSpaceRunning bool
+	TorSpaceOnion   string
 }
 
 // getOSSettings loads settings needed for layout rendering.
@@ -1090,6 +1124,13 @@ func (a *App) getOSSettings(ctx context.Context) *osSettings {
 		s.AdminTheme = a.siteSettings.Get(ctx, "admin.theme")
 		// Anonymous Tor Space on ⇒ shift the whole VayuOS chrome to the Tor palette.
 		s.TorSpaceOn = a.siteSettings.Get(ctx, settings.KeyTorSpaceEnabled) == "on"
+	}
+	// Live Tor-Space status for the inline panel under the sidebar switch (nil-safe;
+	// zero values in a Tor-Space child, which has no supervisor).
+	if s.TorSpaceOn {
+		st := a.torSpaceStatusNow()
+		s.TorSpaceRunning = st.Running
+		s.TorSpaceOnion = st.Onion
 	}
 	// Unread contact messages drive the sidebar badge. Best-effort: any error
 	// (nil DB / missing table on a pre-046 schema) just leaves the badge off.

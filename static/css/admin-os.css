@@ -286,14 +286,34 @@
 }
 .vp-os .space-switch__seg[aria-disabled="true"] { cursor: default; opacity: 0.5; }
 .vp-os .space-switch__seg:not(.is-active):not([aria-disabled="true"]):hover { color: var(--text); }
-.vp-os .space-switch__more {
-  display: inline-block;
-  padding: 6px var(--sp-3) 2px;
+.vp-os .space-switch__status {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px var(--sp-3) 2px;
   font-size: var(--text-xs);
-  color: var(--text-3);
-  text-decoration: none;
+  color: var(--text-2);
 }
-.vp-os .space-switch__more:hover { color: var(--brand); text-decoration: underline; }
+.vp-os .space-switch__status[hidden] { display: none; }
+.vp-os .space-dot {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: var(--r-full);
+  background: var(--text-3);
+}
+.vp-os .space-dot--ok { background: var(--ok); box-shadow: 0 0 6px var(--ok-dim); }
+.vp-os .space-dot--warn { background: var(--warn); box-shadow: 0 0 6px var(--warn-dim); }
+.vp-os .space-switch__copy {
+  padding: 0;
+  font: inherit;
+  color: var(--brand);
+  background: none;
+  border: 0;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.vp-os .space-switch__copy:hover { color: var(--text); }
 
 .vp-os .sidebar-spacer { margin-top: auto; }
 
