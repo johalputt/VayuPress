@@ -3,11 +3,14 @@ package main
 // vayutor_middleware.go — request-path integration for VayuTor. A single
 // middleware, mounted before the VayuDomains host resolver, does two things:
 //
-//   - Onion request (Host ends in ".onion"): rewrite r.Host to the clearnet
-//     host the onion maps to, so the SAME per-domain routing/content serves over
-//     Tor with no duplication. The original onion host is intentionally dropped
-//     (nothing distinguishes an onion visitor downstream — privacy by design),
-//     except for a single aggregate visit tally.
+//   - Onion request (Host ends in ".onion"), CLEARNET Space: rewrite r.Host to
+//     the clearnet host the onion maps to, so the SAME per-domain routing/content
+//     serves over Tor with no duplication. The original onion host is
+//     intentionally dropped (nothing distinguishes an onion visitor downstream —
+//     privacy by design), except for a single aggregate visit tally.
+//   - Onion request, TOR Space (VAYUOS_MODE=tor, ADR-0141): the onion IS the
+//     site's own domain, so its Host is preserved and resolved as a first-class
+//     VayuDomain — no clearnet rewrite. Only the count-only visit tally is kept.
 //   - Clearnet request to a domain that has an onion: advertise it via the
 //     Onion-Location response header so Tor Browser can offer/auto-switch to the
 //     onion. This is a plain response header — no CSP change is required.
@@ -17,6 +20,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/domain"
 	"github.com/johalputt/vayupress/internal/settings"
 )
@@ -47,7 +51,18 @@ func (a *App) torOnionMiddleware(next http.Handler) http.Handler {
 		}
 		host := domain.NormalizeHost(r.Host)
 		if strings.HasSuffix(host, ".onion") {
-			if real, ok := a.vayuTor.HostForOnion(host); ok {
+			if config.Cfg.OnionMode {
+				// Onion-primary (ADR-0141): in a Tor Space the onion IS the site's
+				// domain, so its Host must survive to downstream resolution — never
+				// rewrite it to a clearnet host. Keep the aggregate visit tally.
+				if isTorPageview(r) {
+					a.vayuTor.IncVisit()
+					// Path only — never the query string, which can carry tokens.
+					a.vayuTor.IncPage(host, r.URL.Path)
+				}
+			} else if real, ok := a.vayuTor.HostForOnion(host); ok {
+				// Clearnet Space: VayuTor overlays an onion on a clearnet domain, so
+				// map the onion Host back to that domain's content.
 				r.Host = real // serve the mapped domain's content over the onion
 				if isTorPageview(r) {
 					a.vayuTor.IncVisit()

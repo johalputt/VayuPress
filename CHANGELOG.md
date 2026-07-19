@@ -8,6 +8,18 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.7] — 2026-07-19
+
+### Changed
+- **Onion-primary routing in a Tor Space (ADR-0141, Phase 1).** With
+  `VAYUOS_MODE=tor`, an incoming `.onion` request keeps its own Host all the way
+  to the domain resolver — the onion is treated as the site's first-class domain
+  rather than being rewritten to a clearnet host. This lets a site run purely as
+  its `.onion` (no clearnet twin) with correct canonical URLs and cookies. The
+  count-only visit tally is preserved. Clearnet Spaces are byte-identical: the
+  onion→clearnet overlay rewrite still applies exactly as before whenever
+  `VAYUOS_MODE` is unset or `clearnet`.
+
 ## [3.14.6] — 2026-07-19
 
 ### Security
