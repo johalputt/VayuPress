@@ -189,3 +189,27 @@ build to:
   no mobile.
 - **Phase 4 — VayuTalk anonymous web client** over Tor (rotatable ID); mobile
   deferred pending a leak-proof design.
+
+### Phase 1 — implementation status (shipping incrementally)
+
+Delivered so far:
+
+- `seo.Origin(host)` scheme backbone — `.onion` → `http://`, clearnet → `https://`
+  (v3.14.2).
+- Whole-install `VAYUOS_MODE` switch → `config.Cfg.OnionMode`
+  (`clearnet` default; `tor`/`onion`/`anonymous` enable Tor mode) (v3.14.4).
+- Anti-leak callback gates in Tor mode — IndexNow, social auto-post, Cloudflare
+  purge no-op; browser-enforced `img-src 'self' data:` CSP (v3.14.4–v3.14.6).
+- Onion-primary routing — in Tor mode the `.onion` Host is preserved to the domain
+  resolver instead of being rewritten to a clearnet host (v3.14.7).
+- VayuOS top-bar Space-mode indicator (Clearnet/Tor badge) (v3.14.8).
+- **One-command Tor Space provisioner** `scripts/setup-tor-space.sh` — stands up a
+  SECOND `vayupress-tor` instance (own DB, own persistent `.onion`,
+  `VAYUOS_MODE=tor`) alongside an existing clearnet install, so both worlds run at
+  once with nothing shared (v3.14.9).
+
+Still open in Phase 1: a from-scratch onion-only branch inside
+`deploy-vayupress.sh` (skip the certbot/HTTPS path when `VAYUOS_MODE=tor`), a
+VayuOS "Spaces" admin page surfacing the provisioner + the live `.onion`, and
+request-aware `Secure` cookies (largely moot — Tor Browser treats `.onion` as a
+secure context).

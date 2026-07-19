@@ -81,8 +81,21 @@ import (
 // -ldflags "-X main.Version=<.release-version>", and scripts/update-vayupress.sh
 // reads .release-version too — keep this in sync with .release-version so an
 // un-stamped `go build` still reports an honest version.
-var Version = "3.14.8"
+var Version = "3.14.9"
 var bootTime = time.Now()
+
+// onionSafeBindAddr picks the HTTP listen address (ADR-0141). A Tor Space
+// (OnionMode) is reached ONLY through Tor's HiddenServicePort → 127.0.0.1, so
+// the app binds loopback and its content is never exposed on the host's public
+// clearnet IP — closing an onion-deanonymisation vector (a port scan of the VPS
+// could otherwise serve the "anonymous" site in cleartext). A clearnet install
+// binds all interfaces exactly as before (nginx/TLS terminate in front).
+func onionSafeBindAddr(port string, onion bool) string {
+	if onion {
+		return "127.0.0.1:" + port
+	}
+	return ":" + port
+}
 
 // Immutable package-level values (compiled once, never mutated).
 var htmlTagRe = regexp.MustCompile(`<[^>]+>`)
@@ -990,7 +1003,7 @@ func main() {
 	a.registerRoutes(r, staticDir)
 
 	srv := &http.Server{
-		Addr:        ":" + config.Cfg.Port,
+		Addr:        onionSafeBindAddr(config.Cfg.Port, config.Cfg.OnionMode),
 		Handler:     r,
 		ReadTimeout: 15 * time.Second,
 		// ReadHeaderTimeout bounds how long a client may take to send the request

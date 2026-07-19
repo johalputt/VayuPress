@@ -8,6 +8,41 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.9] — 2026-07-19
+
+### Added
+- **One-command Tor Space provisioner — run both worlds at once (ADR-0141,
+  Phase 1).** New `scripts/setup-tor-space.sh` stands up a second, fully separate
+  VayuPress instance in anonymous mode *alongside* an existing Clearnet install:
+  it reuses the already-installed binary and Tor daemon, provisions a persistent
+  Tor v3 `.onion`, writes an isolated `vayupress-tor` systemd service with its own
+  database, cache and logs (`VAYUOS_MODE=tor`, no clearnet callbacks, no CA-TLS,
+  a tighter sandbox with no privileged-port capability), starts it, and prints the
+  onion address. The two worlds share **nothing** (separate databases), so they
+  can never be correlated — "no mesh" by construction. Idempotent; re-running
+  keeps the same `.onion`. Remove just the service with `--remove` (identity and
+  data are preserved). Documented in `docs/INSTALLATION.md` and `.env.example`
+  (new `VAYUOS_MODE` guidance).
+
+### Security
+- **A Tor Space binds loopback only (ADR-0141).** In `VAYUOS_MODE=tor` the HTTP
+  server now binds `127.0.0.1:<port>` instead of every interface — the onion is
+  reached solely through Tor's HiddenServicePort, so a port scan of the host can
+  no longer serve the "anonymous" site in cleartext on its public clearnet IP (a
+  deanonymisation vector). Clearnet installs bind all interfaces exactly as before.
+- **The mail engine is disabled in a Tor Space.** The Tor world is web-only, so
+  VayuMail no longer starts under `VAYUOS_MODE=tor` — closing an outbound
+  direct-to-MX clearnet leak and stopping the futile privileged-port binds the
+  Tor sandbox cannot grant.
+
+### Changed
+- **`setup-tor-space.sh` hardening (adversarial review).** Applies torrc changes
+  with a SIGHUP `reload` instead of a full tor `restart`, so standing up the Tor
+  Space never drops the clearnet install's live onions; converges the service on
+  re-run; waits for `/health` before declaring success (surfaces a crash-loop
+  instead of a false "started"); and prints the auto-generated first-run admin
+  credentials so the operator can sign in.
+
 ## [3.14.8] — 2026-07-19
 
 ### Added

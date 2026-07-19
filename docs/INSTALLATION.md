@@ -232,6 +232,29 @@ Expected: `{"status":"ok"}` from both endpoints.
 > Search is built in (VayuFind, ADR-0101) — there is no external search service
 > to install or run.
 
+## Run a Tor Space alongside (VayuOS Spaces)
+
+VayuOS can run two independent worlds at once (ADR-0141): your normal
+**Clearnet Space** on its public HTTPS domain, and an anonymous **Tor Space**
+served only as a `.onion`. They are separate installs with separate databases —
+nothing is shared, so the two can never be correlated.
+
+To stand up a Tor Space next to an existing clearnet install, run one command:
+
+```bash
+sudo bash scripts/setup-tor-space.sh
+```
+
+This reuses the already-installed `vayupress` binary and Tor daemon, provisions a
+persistent `.onion`, writes a second `vayupress-tor` service (its own database,
+`VAYUOS_MODE=tor`, no clearnet callbacks, no CA-TLS), starts it, and prints the
+onion address. Open `http://<onion>/os` in Tor Browser to create the Tor Space's
+first account. The clearnet install is never touched.
+
+Remove just the Tor Space service (keeping its `.onion` and data) with
+`sudo bash scripts/setup-tor-space.sh --remove`. Move content between the two
+worlds with the offline bundle: `vayupress migrate export --file bundle.vaybundle`.
+
 ## Directory Layout
 
 ```

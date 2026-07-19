@@ -407,7 +407,11 @@ func (a *App) bootVayuOS() {
 
 	mailCfg := vmail.DefaultConfig()
 	mailCfg.StorageDir = filepath.Join(base, "vayudata", "mail")
-	if d := config.Cfg.Domain; d != "" && d != "localhost" {
+	// A Tor Space (OnionMode, ADR-0141) is web-only: mail is never served over
+	// Tor, and a live outbound queue would deliver direct-to-MX over clearnet — an
+	// anonymity leak. So the whole mail engine stays disabled in a Tor Space (it
+	// also stops the futile privileged-port binds the Tor sandbox can't grant).
+	if d := config.Cfg.Domain; d != "" && d != "localhost" && !config.Cfg.OnionMode {
 		mailCfg.Domain = d
 		mailCfg.Hostname = "mail." + d
 		mailCfg.Enabled = true

@@ -65,3 +65,15 @@ func TestTorOnionMiddlewareOnionPrimary(t *testing.T) {
 		}
 	})
 }
+
+// TestOnionSafeBindAddr: a Tor Space binds loopback only (its content must never
+// be reachable on the host's public clearnet IP — a deanonymisation vector),
+// while a clearnet install binds all interfaces exactly as before (ADR-0141).
+func TestOnionSafeBindAddr(t *testing.T) {
+	if got := onionSafeBindAddr("8080", false); got != ":8080" {
+		t.Errorf("clearnet bind = %q, want %q", got, ":8080")
+	}
+	if got := onionSafeBindAddr("8081", true); got != "127.0.0.1:8081" {
+		t.Errorf("tor bind = %q, want %q (must be loopback-only)", got, "127.0.0.1:8081")
+	}
+}
