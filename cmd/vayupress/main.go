@@ -81,7 +81,7 @@ import (
 // -ldflags "-X main.Version=<.release-version>", and scripts/update-vayupress.sh
 // reads .release-version too — keep this in sync with .release-version so an
 // un-stamped `go build` still reports an honest version.
-var Version = "3.14.4"
+var Version = "3.14.5"
 var bootTime = time.Now()
 
 // Immutable package-level values (compiled once, never mutated).
@@ -595,6 +595,12 @@ func main() {
 
 	// Scheduled publishing (Tier 1).
 	a.scheduler = scheduler.New(dbpkg.DB)
+
+	// Announce the install's world (ADR-0141). Tor/anonymous mode suppresses every
+	// clearnet callback (IndexNow, social auto-post, Cloudflare purge, …).
+	if config.Cfg.OnionMode {
+		logging.LogInfo("vayuos", "VAYUOS_MODE=tor — anonymous Tor Space: clearnet callbacks disabled")
+	}
 
 	// Privacy-first analytics + outbound webhooks + social posting (Tier 2).
 	a.analytics = analytics.New(dbpkg.DB)

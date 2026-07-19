@@ -273,6 +273,11 @@ func (a *App) dispatchWebhook(event string, payload interface{}) {
 // networks (Tier 2). No-op when social posting is unconfigured. The article
 // title is looked up from the store; failures are logged, never fatal.
 func (a *App) shareToSocial(slug string) {
+	// Tor/anonymous mode (ADR-0141): never auto-post to a clearnet social network —
+	// it would publish the onion URL and phone home, de-anonymising the install.
+	if config.Cfg.OnionMode {
+		return
+	}
 	if a.social == nil || !a.social.Enabled() {
 		return
 	}
@@ -306,6 +311,11 @@ func (a *App) FireHook(event string, payload map[string]interface{}) {
 // =============================================================================
 
 func (a *App) purgeCloudflare(slug string) {
+	// Tor/anonymous mode (ADR-0141): a Tor Space has no clearnet CDN in front of
+	// it, and must never call the Cloudflare API (an outbound clearnet request).
+	if config.Cfg.OnionMode {
+		return
+	}
 	if config.Cfg.CFZoneID == "" || config.Cfg.CFAPIToken == "" {
 		return
 	}

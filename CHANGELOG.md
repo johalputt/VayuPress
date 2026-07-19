@@ -8,7 +8,16 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
-## [3.14.4] — 2026-07-19
+## [3.14.5] — 2026-07-19
+
+### Added
+- **Tor-mode anti-leak sweep (ADR-0141, Phase 1).** With `VAYUOS_MODE=tor`, the
+  install now also suppresses the two remaining publish-time clearnet callbacks:
+  **social auto-post** (Mastodon) and the **Cloudflare cache purge** — both would
+  otherwise phone home to a clearnet endpoint (and social would publish the onion
+  URL), reducing anonymity. Together with the IndexNow gate (v3.14.4), a Tor
+  Space makes no publish-time clearnet callbacks. The active mode is logged at
+  startup. Clearnet installs are unaffected (every guard is off by default).
 
 ### Added
 - **VayuOS Spaces — whole-install mode switch (ADR-0141, Phase 1 start).** A new
