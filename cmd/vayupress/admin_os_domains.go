@@ -23,9 +23,17 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/johalputt/vayupress/internal/auth"
+	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/domain"
 	"github.com/johalputt/vayupress/internal/render"
 )
+
+// isPendingTorSite reports whether a host is a just-added Tor site still waiting
+// for the parent to mint and assign its .onion (ADR-0141). Such rows are shown as
+// "Minting .onion…" and drive the page's auto-refresh-while-pending.
+func isPendingTorSite(host string) bool {
+	return strings.HasPrefix(host, torSitePending) && strings.HasSuffix(host, ".local")
+}
 
 // siteTypeOptions is the operator-facing catalogue of what "/" can serve for a
 // domain, with a short description of the current support level.
@@ -116,12 +124,30 @@ func (a *App) handleOSDomains(w http.ResponseWriter, r *http.Request) {
 		viewingHost = d.Host
 	}
 
+	// In the Tor world (OnionMode) a domain is a ".onion" the operator can't type —
+	// it is minted for them. So swap the clearnet "Add a domain" host form for the
+	// one-click "Add Tor site" picker, and auto-refresh while any site is still
+	// waiting for its onion to land.
+	onion := config.Cfg.OnionMode
+	addForm := domainsAddForm()
+	pending := false
+	if onion {
+		addForm = torSitesAddForm()
+		for _, d := range domains {
+			if !d.IsPrimary && isPendingTorSite(d.Host) {
+				pending = true
+				break
+			}
+		}
+	}
+
 	body := domainsHeader(len(domains), viewingHost) +
 		domainsTable(domains, counts, mailCounts, memberCounts, mailOn) +
 		domainsBrandForm(domains, domainsBrandJSON(domains)) +
 		domainsAssignForm(domains) +
-		domainsAddForm() +
-		domainsScript(nonce)
+		addForm +
+		domainsScript(nonce) +
+		torSitesScript(nonce, onion, pending)
 
 	writeOSHTML(w, adminOSLayout(nonce, "Domains", "domains", cfg, htmpl.HTML(body)))
 }
@@ -205,8 +231,15 @@ func domainsTable(domains []domain.Domain, counts, mailCounts, memberCounts map[
 <button type="button" class="btn btn--ghost btn--sm" data-dom-delete data-id="` + html.EscapeString(d.ID) + `" data-host="` + html.EscapeString(d.Host) + `">Remove</button>`
 		}
 
+		// A just-added Tor site has a placeholder host until the parent mints its
+		// .onion; show that plainly rather than the internal placeholder hostname.
+		hostCell := `<strong>` + html.EscapeString(d.Host) + `</strong>`
+		if !d.IsPrimary && isPendingTorSite(d.Host) {
+			hostCell = `<span class="pill pill--muted">Minting .onion…</span>`
+		}
+
 		rows.WriteString(`<tr data-dom-row>
-  <td><strong>` + html.EscapeString(d.Host) + `</strong>` + badge + `</td>
+  <td>` + hostCell + badge + `</td>
   <td>` + html.EscapeString(siteTypeLabel(d.EffectiveSiteType())) + `</td>
   <td class="text-xs muted">` + content + `</td>
   <td class="text-xs muted">` + members + `</td>
@@ -407,6 +440,66 @@ func domainsAddForm() string {
     <span id="dom-status" class="text-sm muted" role="status" aria-live="polite"></span>
   </div>
 </div>`
+}
+
+// torSitesAddForm is the one-click "Add Tor site" card, shown only in the Tor
+// world (ADR-0141). There is no host to type — the operator picks what the site
+// serves and the parent mints a fresh dedicated .onion for it. Anonymous mail
+// (VayuMail·Tor) can be switched on so the new site also carries mailboxes.
+func torSitesAddForm() string {
+	var opts strings.Builder
+	for _, o := range siteTypeOptions {
+		opts.WriteString(`<option value="` + o.Value + `">` + html.EscapeString(o.Label) + `</option>`)
+	}
+	return `<div class="card">
+  <h2 class="card-title">Add a Tor site</h2>
+  <p class="text-sm muted">Spin up another anonymous site in one click. You don't pick a name — VayuPress mints a fresh <code>.onion</code> for it automatically. Choose what it serves, optionally turn on anonymous mail, and its <code>.onion</code> address appears in the table above within about a minute.</p>
+  <div class="form-grid">
+    <label class="field"><span class="field-label">Serves</span>
+      <select id="tor-site-type" class="input">` + opts.String() + `</select></label>
+    <label class="field field--check"><input type="checkbox" id="tor-site-mail"> <span class="field-label">Enable anonymous mail (VayuMail·Tor)</span></label>
+  </div>
+  <div class="vm-row" style="gap:.5rem;align-items:center">
+    <button type="button" class="btn btn--primary" data-tor-site-add>Add Tor site</button>
+    <span id="tor-site-status" class="text-sm muted" role="status" aria-live="polite"></span>
+  </div>
+</div>`
+}
+
+// torSitesScript wires the "Add Tor site" button and, while any site is still
+// waiting on its onion, auto-refreshes so the freshly-assigned .onion appears
+// without a manual reload. Emitted only in the Tor world; the empty string
+// otherwise keeps the clearnet console byte-identical.
+func torSitesScript(nonce string, onion, pending bool) string {
+	if !onion {
+		return ""
+	}
+	// A pending site is waiting on the parent's tor engine (it reconciles about
+	// once a minute); re-check periodically until every onion has landed.
+	poll := ""
+	if pending {
+		poll = `setTimeout(function(){location.reload();},15000);`
+	}
+	return `<script nonce="` + nonce + `">
+(function(){'use strict';
+function csrf(){var m=document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);return m?decodeURIComponent(m[1]):'';}
+var st=document.getElementById('tor-site-status');
+function show(t){if(st)st.textContent=t;}
+var b=document.querySelector('[data-tor-site-add]');
+if(b)b.addEventListener('click',function(){
+  var typeEl=document.getElementById('tor-site-type');
+  var mailEl=document.getElementById('tor-site-mail');
+  var type=typeEl?typeEl.value:'blog';
+  var mail=mailEl?mailEl.checked:false;
+  b.disabled=true;show('Creating your Tor site…');
+  fetch('/os/api/torworld/add-site',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},body:JSON.stringify({site_type:type,mail_enabled:mail})})
+    .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};}).catch(function(){return {ok:r.ok,j:null};});})
+    .then(function(res){if(res.ok){show('Site created — minting its .onion…');setTimeout(function(){location.reload();},900);}else{b.disabled=false;show((res.j&&res.j.error&&res.j.error.message)||'Could not add site');}})
+    .catch(function(e){b.disabled=false;show('Error: '+e);});
+});
+` + poll + `
+})();
+</script>`
 }
 
 func domainsScript(nonce string) string {

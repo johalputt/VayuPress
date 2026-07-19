@@ -183,6 +183,13 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/domains/{id}/sync", a.handleOSDomainSync)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/domains/{id}/brand", a.handleOSDomainBrand)
 		pr.With(auth.CSRFTokenMiddleware).Delete("/os/api/domains/{id}", a.handleOSDomainDelete)
+		// One-click "Add Tor site" (ADR-0141): Tor-world only. add-site registers a
+		// placeholder site the operator can serve blog/mail on; sites/assign are the
+		// parent↔child control channel that mints and hands back each site's .onion
+		// (bearer-authed from the parent, so CSRF-exempt).
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/torworld/add-site", a.handleTorWorldAddSite)
+		pr.Get("/os/api/torworld/sites", a.handleTorWorldSites)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/torworld/assign", a.handleTorWorldAssign)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/website/save", a.handleOSWebsiteSave)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/website/custom-upload", a.handleOSWebsiteCustomUpload)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/website/custom-rollback", a.handleOSWebsiteCustomRollback)

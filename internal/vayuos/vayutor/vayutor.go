@@ -79,6 +79,18 @@ type Config struct {
 	// SpaceOnionReady is called with the dedicated onion's address once it is live,
 	// so the host can hand the child its DOMAIN. nil ⇒ ignored.
 	SpaceOnionReady func(onion string)
+	// SpaceSites returns the IDs of EXTRA Tor-world sites that each want their own
+	// dedicated onion (all routing to the same child target as SpaceOnionTarget) —
+	// the "one-click add Tor site" feature (ADR-0141). Each site's onion is minted
+	// with its own persistent key under a reserved store host and kept out of the
+	// per-domain map, exactly like the primary Space onion. The bool reports whether
+	// the answer is DEFINITIVE (the child was reached): on false the engine leaves
+	// every live site onion in place and retries next tick, so a transient child
+	// hiccup never blips a published .onion. nil ⇒ feature off.
+	SpaceSites func() ([]string, bool)
+	// SpaceSiteReady is called with (siteID, onion) once an extra site's onion is
+	// live, so the host can register that .onion as a domain in the child. nil ⇒ ignored.
+	SpaceSiteReady func(siteID, onion string)
 }
 
 // operatorBridges returns the operator-configured bridge lines, preferring the
@@ -130,7 +142,8 @@ type Engine struct {
 	managed  *managedTor // self-managed tor daemon (nil unless Managed + a binary)
 	usingMgd bool        // the live control connection is to our managed tor
 
-	spaceOnionHost string // the live Anonymous Tor Space onion (ADR-0141); guarded by e.mu
+	spaceOnionHost string            // the live Anonymous Tor Space onion (ADR-0141); guarded by e.mu
+	spaceSiteHosts map[string]string // extra Tor-world site onions: siteID → live host; guarded by e.mu
 
 	vanityMu sync.Mutex   // guards vanity
 	vanity   *vanityState // in-progress vanity-address search (nil if none)
@@ -368,6 +381,7 @@ func (e *Engine) reconcile(ctx context.Context) {
 	// reached regardless of any per-domain add failure so enabling the anonymous
 	// Space never depends on the health of unrelated clearnet-domain onions.
 	e.reconcileSpaceOnion(ctx)
+	e.reconcileSpaceSites(ctx)
 
 	e.queryBootstrap()
 }
@@ -670,6 +684,7 @@ func (e *Engine) adoptControl(c *control, managed bool) {
 	// onions above. Without this the address is dead but SpaceOnion() keeps naming
 	// it, so the child boots against an unpublished onion ("site not found").
 	e.spaceOnionHost = ""
+	e.spaceSiteHosts = nil
 	e.mu.Unlock()
 }
 
@@ -698,6 +713,7 @@ func (e *Engine) teardown() {
 	// tearing down the control connection removes it inside tor, so leaving it set
 	// would strand a dead address across a re-activation.
 	e.spaceOnionHost = ""
+	e.spaceSiteHosts = nil
 	mgd := e.managed
 	e.mu.Unlock()
 	// Stop our tor child when deactivated so "off" is truly off (no process, no

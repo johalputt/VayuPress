@@ -157,6 +157,27 @@ func (r *Registry) SetStatus(ctx context.Context, id, status string) error {
 	return err
 }
 
+// SetHost replaces a secondary domain's host. It exists for the Tor world
+// (ADR-0141): a "Tor site" is created with a placeholder host, then the parent
+// mints its .onion and rewrites the host to that address. The primary is refused
+// (its host is the install's identity) and the new host must be unique.
+func (r *Registry) SetHost(ctx context.Context, id, host string) error {
+	host = NormalizeHost(host)
+	if host == "" {
+		return fmt.Errorf("domain: host is required")
+	}
+	cur, err := r.get(ctx, id)
+	if err != nil {
+		return err
+	}
+	if cur.IsPrimary {
+		return fmt.Errorf("domain: the primary domain host cannot be changed")
+	}
+	defer r.invalidate()
+	_, err = r.db.ExecContext(ctx, `UPDATE domains SET host=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`, host, id)
+	return err
+}
+
 // SetTLSState records a certificate lifecycle transition. Provisioning itself
 // lands in a later stage; Stage 1 only stores the state the operator or a future
 // provisioner reports.

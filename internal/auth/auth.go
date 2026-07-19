@@ -669,6 +669,16 @@ func CSRFTokenMiddleware(next http.Handler) http.Handler {
 			return
 		}
 		if r.Method == http.MethodPost || r.Method == http.MethodPut || r.Method == http.MethodDelete {
+			// API-key / bearer requests are not cookie-authenticated, so CSRF (which
+			// only defends cookie auth against cross-site forgery) does not apply — a
+			// third-party site cannot obtain the bearer token. This lets trusted
+			// server-to-server callers (e.g. the parent provisioning the Tor world
+			// over its child API key, ADR-0141) POST without a browser CSRF token,
+			// exactly as the /api/v1 surface already allows.
+			if HasValidAPIKey(r) {
+				next.ServeHTTP(w, r)
+				return
+			}
 			headerToken := r.Header.Get("X-CSRF-Token")
 			// Plain HTML forms cannot set headers: accept the token as a form
 			// field too (same double-submit + HMAC checks apply). Only parsed for

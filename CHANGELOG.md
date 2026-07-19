@@ -8,6 +8,31 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.24] — 2026-07-19
+
+### Added
+- **One-click "Add Tor site" in the Tor world (ADR-0141).** The Domains section of
+  the Anonymous Tor world now has an **Add a Tor site** card: pick what it serves
+  (blog, business or mail-only) and, optionally, turn on anonymous mail — no
+  hostname to type. VayuPress mints a fresh dedicated `.onion` for the new site
+  automatically and it appears in the table within about a minute (the row shows
+  **Minting .onion…** and the page auto-refreshes until the address lands). Each
+  Tor site is a fully separate onion fronting the same isolated Tor-world instance,
+  routed by its own address — so you can run several independent anonymous sites
+  (each with its own blog and VayuMail·Tor) from one switch.
+
+### Changed
+- The clearnet "Add a domain" host form is hidden while you are viewing the Tor
+  world; there you only ever add auto-onioned Tor sites, keeping the two worlds'
+  domain surfaces distinct.
+
+### Security
+- The parent↔child control channel that mints and assigns each Tor site's onion is
+  authenticated by the Tor world's own distinct API key (bearer) over loopback,
+  exactly like the enter-the-Tor-world proxy — no clearnet session or key crosses
+  over. A transient child hiccup never tears a published `.onion` down: the engine
+  only reconciles site onions on a definitive answer from the child.
+
 ## [3.14.23] — 2026-07-19
 
 ### Added

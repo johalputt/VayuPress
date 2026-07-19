@@ -257,3 +257,43 @@ func TestUpdateAndDeleteSecondary(t *testing.T) {
 		t.Fatalf("expected removed host to be gone, got %v", err)
 	}
 }
+
+// TestSetHostRewritesSecondary covers the Tor-world "one-click add Tor site" flow
+// (ADR-0141): a site is created with a placeholder host, then SetHost rewrites it
+// to the freshly-minted .onion. The primary host is immutable, and a blank host
+// is refused.
+func TestSetHostRewritesSecondary(t *testing.T) {
+	r := newTestRegistry(t)
+	ctx := context.Background()
+	if err := r.EnsurePrimary(ctx, "clearnet.example", "blog"); err != nil {
+		t.Fatalf("seed primary: %v", err)
+	}
+	sec, err := r.Create(ctx, "pending-abcdef.local", SiteBlog, true)
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	const onion = "abcdefghij234567.onion"
+	if err := r.SetHost(ctx, sec.ID, onion); err != nil {
+		t.Fatalf("set host: %v", err)
+	}
+	// The site now resolves by its onion, and the old placeholder is gone.
+	got, err := r.Resolve(ctx, onion)
+	if err != nil {
+		t.Fatalf("resolve onion: %v", err)
+	}
+	if got.ID != sec.ID || got.Host != onion {
+		t.Fatalf("host not rewritten: %+v", got)
+	}
+	if _, err := r.Resolve(ctx, "pending-abcdef.local"); err != ErrNotFound {
+		t.Fatalf("placeholder host should be gone, got %v", err)
+	}
+	// The primary host is the install identity and must never move.
+	p, _ := r.Primary(ctx)
+	if err := r.SetHost(ctx, p.ID, "evil.onion"); err == nil {
+		t.Fatal("SetHost must refuse the primary domain")
+	}
+	// A blank host is rejected.
+	if err := r.SetHost(ctx, sec.ID, "   "); err == nil {
+		t.Fatal("SetHost must refuse a blank host")
+	}
+}

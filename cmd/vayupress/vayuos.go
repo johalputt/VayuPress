@@ -641,6 +641,19 @@ func (a *App) bootVayuOS() {
 				a.torSpace.SetOnion(onion)
 			}
 		},
+		// One-click "Add Tor site" (ADR-0141): the Tor-world child owns the site
+		// registry but cannot mint onions, so the parent enumerates its sites and
+		// mints one dedicated onion per site, handing each back to the child. Both
+		// callbacks no-op until the Space is running (torWorld* return early).
+		SpaceSites: func() ([]string, bool) {
+			if a.torSpace != nil && a.torSpaceEnabled() {
+				return a.torWorldSites()
+			}
+			return nil, false
+		},
+		SpaceSiteReady: func(siteID, onion string) {
+			a.torWorldAssign(siteID, onion)
+		},
 		Managed:     torManaged,
 		TorBinary:   torBinary,
 		ManagedDir:  torDir,
