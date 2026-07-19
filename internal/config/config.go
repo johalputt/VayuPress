@@ -28,7 +28,13 @@ var Cfg struct {
 	// APIHost is an optional dedicated, CDN-proxy-off host for the REST API
 	// (e.g. api.<domain>), so machine clients reach /api without a CDN
 	// bot-challenge. Empty means the REST API is advertised on the apex domain.
-	APIHost             string
+	APIHost string
+	// OnionMode selects the whole-install Tor / anonymous world (VAYUOS_MODE=tor):
+	// the install is a self-contained VayuOS "Tor Space" (ADR-0141) that must never
+	// make clearnet callbacks (IndexNow, webmention, …) which would phone home and
+	// de-anonymise it. The default (VAYUOS_MODE=clearnet, or unset) preserves every
+	// existing behaviour — this flag only ever removes clearnet egress, never adds.
+	OnionMode           bool
 	StorageQuotaGB      int64
 	MediaRetainDays     int
 	CacheMaxSizeGB      int64
@@ -105,6 +111,7 @@ func Load() {
 	Cfg.CFAPIToken = EnvOr("CF_API_TOKEN", "")
 	Cfg.IndexNowKey = EnvOr("INDEXNOW_KEY", "")
 	Cfg.APIHost = EnvOr("VAYUOS_API_HOST", "")
+	Cfg.OnionMode = onionModeFromEnv(EnvOr("VAYUOS_MODE", "clearnet"))
 	Cfg.TmpDir = EnvOr("TMP_DIR", "/tmp/vayupress")
 	Cfg.WorkerCount = GetEnvAsInt("WORKER_COUNT", 3)
 	Cfg.BackupRetainDays = GetEnvAsInt("BACKUP_RETAIN_DAYS", 30)
@@ -142,6 +149,19 @@ func Load() {
 	Cfg.AIModel = EnvOr("VAYU_AI_MODEL", "llama3.2")
 	Cfg.StripeWebhookSecret = EnvOr("STRIPE_WEBHOOK_SECRET", "")
 	Cfg.TrustedProxies = parseCIDRs(EnvOr("TRUSTED_PROXIES", "127.0.0.0/8,::1/128"))
+}
+
+// onionModeFromEnv maps VAYUOS_MODE to the whole-install Tor/anonymous switch.
+// "tor", "onion" and "anonymous" enable it; anything else (including the
+// "clearnet" default and any unrecognised value) leaves the install in the
+// normal clearnet world, so a typo can never silently drop clearnet features.
+func onionModeFromEnv(v string) bool {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "tor", "onion", "anonymous":
+		return true
+	default:
+		return false
+	}
 }
 
 // parseCIDRs parses a comma-separated list of CIDR ranges, skipping any that

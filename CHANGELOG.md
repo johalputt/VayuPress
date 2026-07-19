@@ -8,7 +8,22 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
-## [3.14.3] — 2026-07-19
+## [3.14.4] — 2026-07-19
+
+### Added
+- **VayuOS Spaces — whole-install mode switch (ADR-0141, Phase 1 start).** A new
+  `VAYUOS_MODE` env selects the install's world: `clearnet` (default — unchanged)
+  or `tor`/`onion`/`anonymous` (`config.Cfg.OnionMode`). Only an explicit
+  tor/onion/anonymous value enables Tor mode, so a typo can never silently drop
+  clearnet features. First anti-leak guardrail wired: in Tor mode the IndexNow
+  clearnet callback is skipped (it would otherwise submit the onion URL to a
+  public search endpoint and phone home). Clearnet installs are byte-for-byte
+  unaffected. More anti-leak sites (webmention, WKD, onion-primary routing,
+  request-aware cookies) follow in later increments.
+
+### Notes
+- Refreshed the repo's `CLAUDE.md` project memory with the VayuOS Spaces plan,
+  the v3.14.x shipped features, and CI gotchas, so future sessions start warm.
 
 ### Added
 - **Content Bundle export/import (VayuOS Spaces sync/migrate — ADR-0141).** A new

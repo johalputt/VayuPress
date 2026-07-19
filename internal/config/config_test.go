@@ -66,3 +66,19 @@ func TestConfigVersions(t *testing.T) {
 		t.Fatal("MinCompatibleConfigVersion should not be empty")
 	}
 }
+
+// TestOnionModeFromEnv: VAYUOS_MODE selects the whole-install Tor/anonymous
+// world; only explicit tor/onion/anonymous enable it, so a typo or the default
+// can never silently drop clearnet features (ADR-0141).
+func TestOnionModeFromEnv(t *testing.T) {
+	for _, v := range []string{"tor", "onion", "anonymous", "TOR", "  Onion  "} {
+		if !onionModeFromEnv(v) {
+			t.Errorf("onionModeFromEnv(%q) = false, want true", v)
+		}
+	}
+	for _, v := range []string{"", "clearnet", "CLEARNET", "public", "xyz", "torx"} {
+		if onionModeFromEnv(v) {
+			t.Errorf("onionModeFromEnv(%q) = true, want false", v)
+		}
+	}
+}

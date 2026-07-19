@@ -357,6 +357,12 @@ func (a *App) indexNowKey() string {
 // draft, read-only mode) are not recorded; they leave the last-known row intact.
 // Async callers (`go a.pingIndexNow(...)`) simply ignore the return values.
 func (a *App) pingIndexNow(slug string) (state, detail string) {
+	// Tor/anonymous mode (ADR-0141): never make the clearnet IndexNow callback —
+	// it would submit the (onion) URL to a public search endpoint and phone home,
+	// de-anonymising the install. Clearnet installs are unaffected.
+	if config.Cfg.OnionMode {
+		return "skipped", "Tor/anonymous mode — clearnet callbacks disabled"
+	}
 	indexNowKey := a.indexNowKey()
 	if indexNowKey == "" {
 		return "skipped", "no IndexNow key configured"

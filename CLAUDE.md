@@ -103,3 +103,50 @@ Go 1.25+ is required (govulncheck / x/tools need it).
 - **Do not disable TLS verification** or bypass the agent proxy. On TLS/proxy
   errors, consult `/root/.ccr/README.md` rather than working around it.
 - Be frugal with GitHub comments — only reply when genuinely necessary.
+
+## 8. Current initiative — VayuOS Spaces (Clearnet / Tor), ADR-0141
+
+- **Goal:** two separate, independently switchable worlds. Whole-install switch
+  `VAYUOS_MODE=clearnet|tor` (default clearnet; `tor`/`onion`/`anonymous` enable
+  Tor mode via `config.Cfg.OnionMode`). Run **two installs** (own DBs) for both.
+- **Tor world is web-only** (Tor Browser): VayuMail·Tor is webmail only and
+  VayuTalk·Tor is a web client only — no mobile-over-Tor.
+- **Anti-leak in Tor mode:** no clearnet callbacks (IndexNow already gated;
+  webmention/WKD/gravatar/MX to follow), block external hotlinked images, keep
+  `img-src 'self' data:` (never widen to `http:`), serve http onion (no CA-TLS,
+  no HSTS, no Secure cookie). `seo.Origin(host)` is the scheme source of truth —
+  `.onion` gets `http://`, clearnet stays `https://`.
+- **Sync/migrate is content-only:** `vayupress migrate export|import --file
+  x.vaybundle` (checksummed, offline-movable; `--mode=merge|add-only`). Accounts,
+  mailboxes, PGP keys and Talk IDs never cross (no `author_id`). A Live Mirror
+  agent is opt-in with a correlation warning.
+- **Phases:** P1 whole-install mode + onion-primary + stop onion→clearnet Host
+  rewrite + request-aware cookies + anti-leak + deploy branch + top-bar mode
+  indicator; P2 VayuMail·Tor; P3 rotatable VayuTalk. Reuse the VayuTor engine
+  (ADR-0138). Onion-only reverses ADR-0138's Tor-only refusal (guard-railed).
+
+## 9. Recently shipped (v3.14.x) — don't re-derive
+
+- v3.14.0 AI-generate hardening (per-user rate limit + concurrency cap, generic
+  provider errors, per-credential custom-gateway routing).
+- v3.14.1 editor AI **model picker** (live `/models` + curated fallback), **safe
+  SVG** in Diagram/HTML blocks (sanitised inline, CSP backstop), external
+  Pixabay/Unsplash images render (`referrerpolicy=no-referrer` on hero/cards/
+  trending) + page→`og:image` resolve at save + auto-hero from first body image.
+- v3.14.2 `seo.Origin` scheme backbone. v3.14.3 Content Bundle export/import.
+- **api.<domain>** hardened REST host exists (`scripts/setup-api-subdomain.sh`):
+  CDN-proxy-off, exposes only `/api` + `/health`.
+
+## 10. CI gotchas (mirror these locally before pushing)
+
+- **markdownlint** lints every `**/*.md`. MD004: a wrapped line starting with
+  `+`/`*` is read as a list bullet — reword (use `plus`). Run
+  `markdownlint-cli2 <file>` on any changed `.md` before pushing.
+- **gosec** CI **excludes** the taint series `G702,G703,G704,G709,G710`
+  (see `ci.yml`); local `gosec` over-flags operator CLI file paths — run with the
+  same `-exclude=…` to match. Operator CLI paths use a `//nosec G703` rationale.
+- **golangci-lint v2** must be 0 issues (it's on PATH in this env). `rowserrcheck`
+  wants `rows.Err()` checked — use `_ = rows.Err()` for best-effort loaders.
+- The **P16 go-native** job runs golangci-lint first (fail-fast), then gosec /
+  race build+test / govulncheck / deadcode. `govulncheck` can't fetch its DB in
+  this sandbox (proxy) but passes on GitHub — don't block on the local failure.
