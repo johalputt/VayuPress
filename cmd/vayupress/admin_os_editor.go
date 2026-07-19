@@ -130,11 +130,25 @@ func (a *App) handleOSEditorSave(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Make pasted third-party image links robust: resolve any image/gallery block
+	// whose URL is a *page* (e.g. a Pixabay/Unsplash photo page) to the direct
+	// image it advertises, so it renders instead of showing a broken image. This
+	// only rewrites URL strings — nothing is downloaded or re-hosted — and is
+	// bounded by a short deadline so a slow host never blocks the save.
+	imgCtx, cancelImg := context.WithTimeout(r.Context(), 6*time.Second)
+	defer cancelImg()
+	blocksJSON = a.resolveBlockImages(imgCtx, blocksJSON)
+
 	contentHTML, _, err := blockrender.Render(blocksJSON)
 	if err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "render-error", "Could not render blocks: "+err.Error(), "")
 		return
 	}
+
+	// Auto-hero: when the author left the feature image blank, adopt the first
+	// image in the body so the post gets a hero automatically; also resolve a
+	// page-link feature image to its direct image. Storage-neutral (URL only).
+	a.ensureFeatureImage(imgCtx, body.Meta, contentHTML)
 
 	title := strings.TrimSpace(body.Title)
 
@@ -807,7 +821,8 @@ func osEditorBody(slug, title, blocksJSON, authorOptions string) string {
           <select class="pm-input" data-ai-provider></select>
         </div>
         <div class="pm-field">
-          <label class="pm-label">Model <span class="muted">(optional — blank uses the provider default)</span></label>
+          <label class="pm-label">Model <span class="muted">(pick one, or type a custom name)</span></label>
+          <select class="pm-input" data-ai-model-select></select>
           <input class="pm-input" type="text" data-ai-model placeholder="Provider default">
         </div>
         <div class="pm-field">

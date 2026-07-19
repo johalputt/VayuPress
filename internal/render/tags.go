@@ -139,7 +139,7 @@ var tagPageTmpl = template.Must(template.New("tagpage").Funcs(tagFuncs).Parse(`<
 <div class="vayu-section-label"><a class="vayu-tag-back" href="/tags">← All topics</a></div>
 {{if .Articles}}<div class="vayu-post-list">
 {{range .Articles}}<a class="vayu-post-card{{if .Image}} vayu-post-card--media{{end}}" href="/{{.Slug}}">
-  {{if .Image}}<div class="vayu-post-thumb"><img src="{{.Image}}" alt="" loading="lazy" decoding="async"></div>{{end}}
+  {{if .Image}}<div class="vayu-post-thumb"><img src="{{.Image}}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer"></div>{{end}}
   <div class="vayu-post-body">
     <div class="vayu-post-meta"><time datetime="{{.CreatedAt | shortDate}}">{{.CreatedAt | humanDate}}</time>{{if .Author}}<span class="vayu-post-dot" aria-hidden="true"></span><span class="vayu-post-author">{{.Author}}</span>{{end}}</div>
     <h2 class="vayu-post-title">{{.Title}}</h2>

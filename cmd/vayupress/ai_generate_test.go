@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"database/sql"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -122,5 +124,51 @@ func TestAIAvailableProvidersCustomNeedsEndpoint(t *testing.T) {
 	}
 	if !found {
 		t.Error("a custom gateway with a key and base URL should be advertised as custom:<id>")
+	}
+}
+
+// TestAICuratedModels: every provider with a curated fallback returns a non-empty
+// list (so the picker is never empty even when the live catalogue is unreachable).
+func TestAICuratedModels(t *testing.T) {
+	for _, p := range []string{secrets.ProviderOpenRouter, secrets.ProviderOpenAI, secrets.ProviderOllama} {
+		if len(aiCuratedModels(p)) == 0 {
+			t.Errorf("aiCuratedModels(%q) should not be empty", p)
+		}
+	}
+}
+
+// TestAIProviderModelsFallback: an unconfigured provider still yields the curated
+// list rather than nothing.
+func TestAIProviderModelsFallback(t *testing.T) {
+	a := &App{} // no secrets store
+	got := a.aiProviderModels(context.Background(), secrets.ProviderOpenRouter)
+	if len(got) == 0 {
+		t.Error("unconfigured provider should fall back to the curated model list")
+	}
+}
+
+// TestAIProviderModelsLive: a custom OpenAI-compatible gateway's /models endpoint
+// is fetched and its ids are returned.
+func TestAIProviderModelsLive(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasSuffix(r.URL.Path, "/models") {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"data":[{"id":"gw-large"},{"id":"gw-small"}]}`))
+	}))
+	defer srv.Close()
+
+	store := newAITestSecrets(t)
+	id, err := store.Upsert(context.Background(), secrets.ProviderCustom, "Gateway", srv.URL, "sk-gw", true, false)
+	if err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	a := &App{secrets: store}
+	got := a.aiProviderModels(context.Background(), "custom:"+id)
+	joined := strings.Join(got, ",")
+	if !strings.Contains(joined, "gw-large") || !strings.Contains(joined, "gw-small") {
+		t.Errorf("live model list should contain the gateway's ids, got %v", got)
 	}
 }

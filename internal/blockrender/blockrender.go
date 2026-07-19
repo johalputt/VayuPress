@@ -249,6 +249,13 @@ func Render(blocksJSON string) (htmlOut, text string, err error) {
 			out.WriteString(renderDiagramBlock(blk, &plain))
 			continue
 		}
+		// A raw SVG pasted into an HTML card is rendered through the SVG-safe path
+		// (like the diagram block) — the UGC policy below would otherwise strip
+		// every SVG element and leave only run-together text.
+		if blk.Type == "html" && LooksLikeSVG(blk.Text) {
+			out.WriteString(renderRawSVG(blk.Text))
+			continue
+		}
 		var frag strings.Builder
 		renderBlock(&frag, &plain, blk)
 		out.WriteString(policy.Sanitize(frag.String()))
@@ -259,9 +266,14 @@ func Render(blocksJSON string) (htmlOut, text string, err error) {
 // renderDiagramBlock compiles a diagram block's source to a themeable SVG via the
 // dependency-free diagram engine. The SVG is already sanitised by that engine's
 // allowlist, so it is wrapped in a trusted, constant <figure> and returned
-// verbatim. Unsupported/malformed sources degrade to an escaped code block.
+// verbatim. A source that is itself raw SVG markup (pasted from a design tool) is
+// sanitised and shown as-is; unsupported/malformed DSL sources degrade to an
+// escaped code block.
 func renderDiagramBlock(blk Block, plain *strings.Builder) string {
 	src := blk.Text
+	if LooksLikeSVG(src) {
+		return renderRawSVG(src)
+	}
 	svg, err := diagram.Render(src)
 	if err != nil {
 		var f strings.Builder
@@ -269,6 +281,80 @@ func renderDiagramBlock(blk Block, plain *strings.Builder) string {
 		return policy.Sanitize(f.String())
 	}
 	return `<figure class="vp-diagram-figure">` + svg + `</figure>`
+}
+
+// maxRawSVGBytes bounds a single pasted SVG so a runaway document cannot bloat a
+// post or a render pass.
+const maxRawSVGBytes = 512 * 1024
+
+var (
+	svgOpenRe    = regexp.MustCompile(`(?is)^\s*(?:<\?xml[^>]*\?>\s*)?(?:<!doctype[^>]*>\s*)?<svg[\s>]`)
+	svgScriptRe  = regexp.MustCompile(`(?is)<script.*?</script\s*>`)
+	svgStyleRe   = regexp.MustCompile(`(?is)<style.*?</style\s*>`)
+	svgForeignRe = regexp.MustCompile(`(?is)<foreignobject.*?</foreignobject\s*>`)
+	svgOnAttrRe  = regexp.MustCompile(`(?is)\son[a-z0-9_-]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)`)
+	svgHrefRe    = regexp.MustCompile(`(?is)\s(?:xlink:)?href\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)`)
+	svgJSProtoRe = regexp.MustCompile(`(?is)(javascript|vbscript|data\s*:\s*text/html)\s*:`)
+)
+
+// LooksLikeSVG reports whether src is (starts as) a standalone SVG document —
+// optionally preceded by an XML declaration or doctype.
+func LooksLikeSVG(src string) bool {
+	return svgOpenRe.MatchString(src)
+}
+
+// SanitizeSVG defensively strips the active-content vectors from a raw SVG:
+// <script>/<style>/<foreignObject> subtrees, inline event-handler attributes,
+// dangerous URL schemes, and any href/xlink:href that is not a same-document
+// (#fragment) reference — so no off-site resource is fetched and the reader's IP
+// never leaks. It returns the cleaned SVG and ok=false when the input is too
+// large or no longer contains an <svg> element. This is defence in depth: the
+// public/admin CSP (script-src 'self' 'nonce-…', no unsafe-inline) already blocks
+// inline script and event-handler execution, so a cleaned SVG cannot run code.
+func SanitizeSVG(src string) (string, bool) {
+	src = strings.TrimSpace(src)
+	if src == "" || len(src) > maxRawSVGBytes {
+		return "", false
+	}
+	src = svgScriptRe.ReplaceAllString(src, "")
+	src = svgStyleRe.ReplaceAllString(src, "")
+	src = svgForeignRe.ReplaceAllString(src, "")
+	src = svgOnAttrRe.ReplaceAllString(src, "")
+	// Drop every href/xlink:href that is not a local #fragment (gradient/marker
+	// refs stay; off-site <image>/<use>/<a> targets are removed).
+	src = svgHrefRe.ReplaceAllStringFunc(src, func(m string) string {
+		i := strings.IndexAny(m, "\"'")
+		val := ""
+		if i >= 0 {
+			val = strings.TrimSpace(m[i+1 : len(m)-1])
+		} else if eq := strings.Index(m, "="); eq >= 0 {
+			val = strings.TrimSpace(m[eq+1:])
+		}
+		if strings.HasPrefix(val, "#") {
+			return m
+		}
+		return ""
+	})
+	if svgJSProtoRe.MatchString(src) {
+		src = svgJSProtoRe.ReplaceAllString(src, "")
+	}
+	if !strings.Contains(strings.ToLower(src), "<svg") {
+		return "", false
+	}
+	return src, true
+}
+
+// renderRawSVG sanitises a pasted SVG and wraps it in a trusted, constant
+// <figure>. Like the diagram engine's output it is returned verbatim (it does not
+// pass through the UGC policy, which would strip every SVG element); safety comes
+// from SanitizeSVG plus the strict CSP backstop. Invalid/oversized input degrades
+// to an escaped code block so nothing renders unsafely.
+func renderRawSVG(src string) string {
+	svg, ok := SanitizeSVG(src)
+	if !ok {
+		return `<pre class="vp-diagram-fallback"><code>` + html.EscapeString(strings.TrimSpace(src)) + `</code></pre>`
+	}
+	return `<figure class="vp-diagram-figure vp-svg-figure">` + svg + `</figure>`
 }
 
 func renderBlock(b, plain *strings.Builder, blk Block) {

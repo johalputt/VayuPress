@@ -467,6 +467,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/diagram/preview", a.handleDiagramPreview)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/editor/ai", a.handleOSEditorAI)
 		pr.Get("/os/api/editor/ai-providers", a.handleOSEditorAIProviders)
+		pr.Get("/os/api/editor/ai-models", a.handleOSEditorAIModels)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/editor/generate", a.handleOSEditorGenerate)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/editor/convert", a.handleOSEditorConvert)
 		pr.Get("/os/api/editor/versions/{slug}", a.handleOSEditorVersionList)

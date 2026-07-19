@@ -837,6 +837,7 @@ const TrendingJS = `(function () {
       img.alt = '';
       img.loading = 'lazy';
       img.decoding = 'async';
+      img.referrerPolicy = 'no-referrer';
       a.appendChild(img);
     }
 
@@ -1508,7 +1509,7 @@ var articleTmpl = template.Must(template.New("article").Funcs(template.FuncMap{
 <main id="main-content">
 <article class="vayu-prose" itemscope itemtype="https://schema.org/BlogPosting">
 <header class="vayu-article-header">
-{{if .FeatureImage}}<img class="vayu-feature-image" src="{{.FeatureImage}}" alt="" loading="eager">{{end}}
+{{if .FeatureImage}}<img class="vayu-feature-image" src="{{.FeatureImage}}" alt="" loading="eager" referrerpolicy="no-referrer">{{end}}
 <h1 itemprop="headline">{{.Title}}</h1>
 {{if and .Author (not .IsPage)}}<div class="vayu-byline" itemprop="author" itemscope itemtype="https://schema.org/Person">
   {{if .AuthorSlug}}<a class="vayu-byline-link" href="/author/{{.AuthorSlug}}" rel="author">{{end}}
@@ -1669,7 +1670,7 @@ var homeTmpl = template.Must(template.New("home").Funcs(homeFuncs).Parse(`<!DOCT
 {{if .Articles}}<div class="vayu-section-label">Latest writing</div>
 <div class="vayu-post-list">
 {{range .Articles}}<a class="vayu-post-card{{if .Image}} vayu-post-card--media{{end}}" href="/{{.Slug}}">
-  {{if .Image}}<div class="vayu-post-thumb"><img src="{{.Image}}" alt="" loading="lazy" decoding="async"></div>{{end}}
+  {{if .Image}}<div class="vayu-post-thumb"><img src="{{.Image}}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer"></div>{{end}}
   <div class="vayu-post-body">
     <div class="vayu-post-meta"><time datetime="{{.CreatedAt | shortDate}}">{{.CreatedAt | humanDate}}</time>{{if .Author}}<span class="vayu-post-dot" aria-hidden="true"></span><span class="vayu-post-author">{{.Author}}</span>{{end}}</div>
     <h2 class="vayu-post-title">{{.Title}}</h2>

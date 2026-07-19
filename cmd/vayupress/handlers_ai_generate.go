@@ -17,7 +17,9 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -221,6 +223,149 @@ func (a *App) handleOSEditorAIProviders(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, r, http.StatusOK, map[string]interface{}{
 		"enabled":   len(providers) > 0,
 		"providers": providers,
+	})
+}
+
+// aiModelsHTTP lists a provider's models — a quick metadata call, so its timeout
+// is much tighter than the generation client's.
+var aiModelsHTTP = &http.Client{Timeout: 15 * time.Second}
+
+// aiCuratedModels is the fallback catalogue shown when a provider's live model
+// list can't be fetched (offline, older gateway, or a provider with no list API).
+func aiCuratedModels(provider string) []string {
+	switch {
+	case provider == secrets.ProviderOpenRouter:
+		return []string{"openai/gpt-4o-mini", "openai/gpt-4o", "anthropic/claude-3.5-sonnet", "google/gemini-flash-1.5", "meta-llama/llama-3.1-70b-instruct"}
+	case provider == secrets.ProviderOpenAI:
+		return []string{"gpt-4o-mini", "gpt-4o", "gpt-4.1-mini", "gpt-3.5-turbo"}
+	case provider == secrets.ProviderOllama:
+		return []string{"llama3.2", "llama3.1", "qwen2.5", "mistral", "gemma2"}
+	default:
+		return nil
+	}
+}
+
+// aiResolveEndpoint resolves a provider (including "custom:<id>") to a concrete
+// inference endpoint + key WITHOUT requiring a model — used to list models.
+func (a *App) aiResolveEndpoint(ctx context.Context, provider string) (kind, endpoint, apiKey string, ok bool) {
+	provider = strings.ToLower(strings.TrimSpace(provider))
+	if strings.HasPrefix(provider, "custom:") {
+		if a.secrets == nil {
+			return "", "", "", false
+		}
+		key, ep, found := a.secrets.SecretByID(ctx, strings.TrimPrefix(provider, "custom:"))
+		if !found || strings.TrimSpace(ep) == "" {
+			return "", "", "", false
+		}
+		return aiassist.KindOpenAI, ep, key, true
+	}
+	if provider == "" || provider == secrets.ProviderOllama {
+		if a.secrets != nil {
+			if _, ep := a.secrets.ProviderSecret(ctx, secrets.ProviderOllama); strings.TrimSpace(ep) != "" {
+				return aiassist.KindOllama, ep, "", true
+			}
+		}
+		if a.aiAssist != nil && a.aiAssist.Enabled() {
+			return aiassist.KindOllama, config.Cfg.AIURL, "", true
+		}
+		return "", "", "", false
+	}
+	switch provider {
+	case secrets.ProviderOpenAI, secrets.ProviderOpenRouter, secrets.ProviderCustom:
+		if a.secrets == nil {
+			return "", "", "", false
+		}
+		key, ep := a.secrets.ProviderSecret(ctx, provider)
+		if strings.TrimSpace(key) == "" {
+			return "", "", "", false
+		}
+		if strings.TrimSpace(ep) == "" {
+			ep = aiDefaultEndpoint(provider)
+		}
+		if strings.TrimSpace(ep) == "" {
+			return "", "", "", false
+		}
+		return aiassist.KindOpenAI, ep, key, true
+	}
+	return "", "", "", false
+}
+
+// aiProviderModels returns the model ids the provider offers: fetched live from
+// the provider's own catalogue (Ollama /api/tags, OpenAI-compatible /models),
+// falling back to a curated list when the live call is unavailable.
+func (a *App) aiProviderModels(ctx context.Context, provider string) []string {
+	curated := aiCuratedModels(provider)
+	kind, endpoint, apiKey, ok := a.aiResolveEndpoint(ctx, provider)
+	if !ok {
+		return curated
+	}
+	base := strings.TrimRight(strings.TrimSpace(endpoint), "/")
+	var reqURL string
+	if kind == aiassist.KindOllama {
+		reqURL = base + "/api/tags"
+	} else {
+		reqURL = base + "/models"
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+	if err != nil {
+		return curated
+	}
+	if k := strings.TrimSpace(apiKey); k != "" {
+		req.Header.Set("Authorization", "Bearer "+k)
+	}
+	resp, err := aiModelsHTTP.Do(req)
+	if err != nil {
+		return curated
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return curated
+	}
+	var payload struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"` // OpenAI-compatible
+		Models []struct {
+			Name string `json:"name"`
+		} `json:"models"` // Ollama
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&payload); err != nil {
+		return curated
+	}
+	seen := map[string]bool{}
+	var out []string
+	add := func(id string) {
+		id = strings.TrimSpace(id)
+		if id == "" || seen[id] {
+			return
+		}
+		seen[id] = true
+		out = append(out, id)
+	}
+	for _, m := range payload.Data {
+		add(m.ID)
+	}
+	for _, m := range payload.Models {
+		add(m.Name)
+	}
+	if len(out) == 0 {
+		return curated
+	}
+	sort.Strings(out)
+	if len(out) > 300 {
+		out = out[:300]
+	}
+	return out
+}
+
+// handleOSEditorAIModels lists the selected provider's models for the editor's
+// model picker. GET ?provider=<id>, session-authenticated.
+func (a *App) handleOSEditorAIModels(w http.ResponseWriter, r *http.Request) {
+	provider := r.URL.Query().Get("provider")
+	models := a.aiProviderModels(r.Context(), provider)
+	writeJSON(w, r, http.StatusOK, map[string]interface{}{
+		"models":  models,
+		"default": aiDefaultModel(strings.ToLower(strings.TrimSpace(provider))),
 	})
 }
 

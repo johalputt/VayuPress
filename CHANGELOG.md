@@ -8,6 +8,34 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.1] — 2026-07-19
+
+### Added
+- **Pick your AI model from a dropdown.** In the editor's ✨ AI panel, choosing a
+  provider now loads that provider's **model list** (fetched live — OpenRouter /
+  OpenAI `/models`, Ollama `/api/tags` — with a curated fallback when the live
+  catalogue can't be reached). Pick from the dropdown or still type any custom
+  model name. New endpoint `GET /os/api/editor/ai-models`.
+- **SVG diagrams render in posts.** A raw SVG pasted into a **Diagram** block or an
+  **HTML** card now displays as the diagram instead of being flattened to
+  run-together text. The SVG is sanitised (script/style/foreignObject, inline
+  event handlers, `javascript:` and non-local `href`s are stripped) and emitted
+  inline with full geometry preserved; the strict CSP (`script-src 'self'
+  'nonce-…'`, no `unsafe-inline`) is a hard backstop against any active content.
+  The live editor preview handles pasted SVG too.
+- **Automatic hero image.** When a post has no feature image set, it now adopts the
+  first image in the body as its hero automatically.
+
+### Fixed
+- **Third-party images (Pixabay/Unsplash) render reliably.** The hero, post cards
+  (home + tag pages), and the trending widget now emit `referrerpolicy="no-referrer"`
+  so hotlinked external images load past referrer-based hotlink protection (and
+  the reader's page URL isn't leaked). Additionally, a pasted image **page** link
+  (e.g. a Pixabay/Unsplash photo *page* rather than the direct image) is resolved
+  at save time to the direct image it advertises via `og:image` — for both body
+  images and the feature image. Nothing is downloaded or re-hosted: only the URL
+  is stored (storage-neutral), bounded, and fetched through the SSRF-safe client.
+
 ## [3.14.0] — 2026-07-18
 
 ### Security

@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/johalputt/vayupress/internal/blockrender"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/diagram"
 	"github.com/johalputt/vayupress/internal/mode"
@@ -46,6 +47,18 @@ func (a *App) handleDiagramPreview(w http.ResponseWriter, r *http.Request) {
 	src := strings.TrimSpace(req.Source)
 	if src == "" {
 		writeJSONResp(400, map[string]string{"error": "missing 'source'"})
+		return
+	}
+
+	// A pasted raw SVG is sanitised and previewed as-is (the block editor renders
+	// the same safe markup on publish). Kept out of the DSL cache since it is
+	// already terminal markup.
+	if blockrender.LooksLikeSVG(src) {
+		if svg, ok := blockrender.SanitizeSVG(src); ok {
+			writeJSONResp(200, map[string]string{"svg": svg})
+		} else {
+			writeJSONResp(200, map[string]interface{}{"error": "That SVG is empty or too large to render.", "fallback": true})
+		}
 		return
 	}
 

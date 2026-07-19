@@ -2485,15 +2485,42 @@
           o.setAttribute('data-default-model', p.defaultModel || '');
           sel.appendChild(o);
         });
-        function syncModel() {
-          var opt = sel.options[sel.selectedIndex];
-          var dm = opt ? (opt.getAttribute('data-default-model') || '') : '';
-          if (modelEl) modelEl.placeholder = dm || 'Model name required';
-        }
-        sel.addEventListener('change', syncModel);
-        syncModel();
+        sel.addEventListener('change', function () { loadAIModels(sel.value); });
+        loadAIModels(sel.value);
       })
       .catch(function () { if (msg) msg.textContent = 'Could not load AI providers.'; });
+  }
+  // loadAIModels fills the model dropdown with the chosen provider's catalogue
+  // (fetched live, curated fallback) and keeps the custom text box in sync.
+  function loadAIModels(provider) {
+    var modelSel = aiQ('[data-ai-model-select]'), modelEl = aiQ('[data-ai-model]');
+    if (!modelSel) return;
+    while (modelSel.firstChild) modelSel.removeChild(modelSel.firstChild);
+    var loading = document.createElement('option');
+    loading.value = ''; loading.textContent = 'Loading models…';
+    modelSel.appendChild(loading);
+    fetch('/os/api/editor/ai-models?provider=' + encodeURIComponent(provider || ''), { headers: { 'X-CSRF-Token': csrfToken() } })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        while (modelSel.firstChild) modelSel.removeChild(modelSel.firstChild);
+        var def = (d && d.default) || '';
+        var first = document.createElement('option');
+        first.value = ''; first.textContent = def ? ('Provider default (' + def + ')') : 'Type a model below…';
+        modelSel.appendChild(first);
+        var models = (d && d.models) || [];
+        models.forEach(function (m) {
+          var o = document.createElement('option');
+          o.value = m; o.textContent = m;
+          modelSel.appendChild(o);
+        });
+        if (modelEl) modelEl.placeholder = def || 'Model name required';
+      })
+      .catch(function () {
+        while (modelSel.firstChild) modelSel.removeChild(modelSel.firstChild);
+        var o = document.createElement('option');
+        o.value = ''; o.textContent = 'Type a model below…';
+        modelSel.appendChild(o);
+      });
   }
   function insertGeneratedBlocks(newBlocks) {
     // Use the first heading as the post title when the title is still empty.
@@ -2551,6 +2578,11 @@
     var aiCloseBtn = aiQ('[data-ai-close]'); if (aiCloseBtn) aiCloseBtn.addEventListener('click', closeAIModal);
     var aiCancelBtn = aiQ('[data-ai-cancel]'); if (aiCancelBtn) aiCancelBtn.addEventListener('click', closeAIModal);
     var aiRunBtn = aiQ('[data-ai-run]'); if (aiRunBtn) aiRunBtn.addEventListener('click', runAIGenerate);
+    var aiModelSel = aiQ('[data-ai-model-select]');
+    if (aiModelSel) aiModelSel.addEventListener('change', function () {
+      var modelEl = aiQ('[data-ai-model]');
+      if (modelEl && aiModelSel.value) modelEl.value = aiModelSel.value;
+    });
     aiModal.addEventListener('click', function (e) { if (e.target === aiModal) closeAIModal(); });
   }
   if (previewClose) previewClose.addEventListener('click', function () { previewModal.hidden = true; });
