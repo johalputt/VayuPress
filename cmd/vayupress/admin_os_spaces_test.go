@@ -3,12 +3,10 @@ package main
 import (
 	"strings"
 	"testing"
-
-	"github.com/johalputt/vayupress/internal/config"
 )
 
-// TestOSSpacesCardsCSPSafe verifies the Spaces page fragments are CSP-safe (no
-// inline style, no external host) and carry the right content for each world.
+// TestOSSpacesCardsCSPSafe verifies the Spaces fragments are CSP-safe and carry
+// the right content, including the one-click Anonymous Tor Space toggle.
 func TestOSSpacesCardsCSPSafe(t *testing.T) {
 	header := osSpacesHeader()
 	assertCSPSafe(t, "osSpacesHeader", header)
@@ -33,66 +31,37 @@ func TestOSSpacesCardsCSPSafe(t *testing.T) {
 		t.Error("tor current card must show the tor badge and the onion")
 	}
 
-	// Add-Tor card carries the exact provisioner command and reflects status.
-	notProv := osSpacesAddTorCard(false, "")
-	assertCSPSafe(t, "addtor/none", notProv)
-	if !strings.Contains(notProv, torSpaceSetupCmd) {
-		t.Errorf("add-tor card must show the command %q", torSpaceSetupCmd)
+	// Off state: the toggle offers to turn ON.
+	off := osSpacesTorSpaceCard(torSpaceStatus{Enabled: false})
+	assertCSPSafe(t, "torspace/off", off)
+	if !strings.Contains(off, `data-space-toggle="on"`) || !strings.Contains(off, "Turn on") {
+		t.Error("off card must offer to turn the Tor Space on")
 	}
-	if !strings.Contains(notProv, "Not provisioned yet") {
-		t.Error("add-tor card must show not-provisioned status when absent")
-	}
-	prov := osSpacesAddTorCard(true, "abcxyz.onion")
-	assertCSPSafe(t, "addtor/provisioned", prov)
-	if !strings.Contains(prov, "provisioned") || !strings.Contains(prov, "abcxyz.onion") {
-		t.Error("provisioned add-tor card must show status + the sibling onion")
+	if !strings.Contains(off, "same server") {
+		t.Error("card must carry the honest same-server caveat")
 	}
 
-	// Tor-self card shows the install's own onion.
+	// Running state: offers OFF, shows the onion, marks Running.
+	on := osSpacesTorSpaceCard(torSpaceStatus{Enabled: true, Running: true, Onion: "abcxyz.onion", Port: 8347})
+	assertCSPSafe(t, "torspace/on", on)
+	if !strings.Contains(on, `data-space-toggle="off"`) || !strings.Contains(on, "Running") {
+		t.Error("running card must offer OFF and show Running")
+	}
+	if !strings.Contains(on, "abcxyz.onion") {
+		t.Error("running card must show the anonymous onion address")
+	}
+
+	// Error surfaces (html-escaped).
+	errCard := osSpacesTorSpaceCard(torSpaceStatus{Enabled: true, LastErr: "boom <x>"})
+	assertCSPSafe(t, "torspace/err", errCard)
+	if !strings.Contains(errCard, "boom &lt;x&gt;") {
+		t.Error("error must be html-escaped and shown")
+	}
+
+	// Tor-self card (whole-install Tor).
 	self := osSpacesTorSelfCard("abcxyz.onion")
 	assertCSPSafe(t, "torself", self)
 	if !strings.Contains(self, "abcxyz.onion") {
 		t.Error("tor-self card must show this install's onion")
 	}
-}
-
-// TestTorSpaceStateSafe: the sibling probe never panics and returns empty when
-// no Tor Space is present (the sandbox has neither the unit nor the marker).
-func TestTorSpaceStateSafe(t *testing.T) {
-	prov, onion := torSpaceState()
-	if prov {
-		t.Skip("a Tor Space unit exists in this environment; skipping absence check")
-	}
-	if onion != "" {
-		t.Errorf("onion should be empty when unprovisioned, got %q", onion)
-	}
-}
-
-// TestOSSpacesFullRenderCSPSafe drives the whole page shell for both worlds via
-// the card composition + layout, asserting CSP-safety and the correct badge.
-func TestOSSpacesFullRenderCSPSafe(t *testing.T) {
-	prev := config.Cfg.OnionMode
-	defer func() { config.Cfg.OnionMode = prev }()
-
-	build := func(onion bool, domain string) string {
-		body := osSpacesHeader() + osSpacesCurrentCard(onion, domain) + osSpacesModelCard()
-		if onion {
-			body += osSpacesTorSelfCard(domain)
-		} else {
-			body += osSpacesAddTorCard(false, "")
-		}
-		return adminOSShellHead("N", "Spaces", "spaces", &osSettings{SiteName: "Demo"}) +
-			body + adminOSShellFoot("N", osSpacesScript, false)
-	}
-
-	config.Cfg.OnionMode = false
-	clear := build(false, "johal.in")
-	assertCSPSafe(t, "spaces/full/clearnet", clear)
-	if !strings.Contains(clear, torSpaceSetupCmd) {
-		t.Error("clearnet Spaces page must surface the provisioner command")
-	}
-
-	config.Cfg.OnionMode = true
-	tor := build(true, "abcxyz.onion")
-	assertCSPSafe(t, "spaces/full/tor", tor)
 }

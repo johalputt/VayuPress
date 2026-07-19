@@ -594,11 +594,43 @@ func (a *App) bootVayuOS() {
 	if exe, eerr := os.Executable(); eerr == nil {
 		vtor.SetEmbeddedObfs4(exe + " " + obfs4Subcommand)
 	}
+
+	// Anonymous Tor Space (ADR-0141): the parent supervises an isolated child
+	// VayuPress on a fixed loopback port; the VayuTor engine mints a dedicated
+	// onion targeting it. A Tor-Space CHILD never sets any of this up (recursion
+	// guard). The child's API key is distinct + persisted so its identity is
+	// stable across restarts and never shares the parent's.
+	spacePort := config.GetEnvAsInt("VAYUOS_TOR_SPACE_PORT", 8347)
+	if !torspace.IsSpaceChild() && a.siteSettings != nil {
+		ctxKey := context.Background()
+		childKey := a.siteSettings.Get(ctxKey, settings.KeyTorSpaceAPIKey)
+		if strings.TrimSpace(childKey) == "" {
+			childKey = torspace.NewAPIKey()
+			_ = a.siteSettings.SetMany(ctxKey, map[string]string{settings.KeyTorSpaceAPIKey: childKey})
+		}
+		if exe, eerr := os.Executable(); eerr == nil {
+			a.torSpace = torspace.New(exe, config.Cfg.DBPath, childKey, spacePort)
+		}
+	}
+
 	a.vayuTor = vtor.NewEngine(vtor.Config{
 		Enabled:     torAvailable,
 		ControlAddr: config.EnvOr("VAYUOS_TOR_CONTROL_ADDR", "127.0.0.1:9051"),
 		CookiePath:  config.EnvOr("VAYUOS_TOR_COOKIE", "/run/tor/control.authcookie"),
 		Target:      "127.0.0.1:" + config.Cfg.Port,
+		// The dedicated Anonymous Tor Space onion targets the child's fixed
+		// loopback port while the Space is enabled; "" tears it down (keeping key).
+		SpaceOnionTarget: func() string {
+			if a.torSpace != nil && a.torSpaceEnabled() {
+				return "127.0.0.1:" + strconv.Itoa(spacePort)
+			}
+			return ""
+		},
+		SpaceOnionReady: func(onion string) {
+			if a.torSpace != nil {
+				a.torSpace.SetOnion(onion)
+			}
+		},
 		Managed:     torManaged,
 		TorBinary:   torBinary,
 		ManagedDir:  torDir,
@@ -612,6 +644,13 @@ func (a *App) bootVayuOS() {
 		},
 		Store: &torStore{settings: a.siteSettings},
 		Domains: func(ctx context.Context) ([]string, error) {
+			// Per-domain onions belong to the VayuTor one-click toggle only. When
+			// only the Anonymous Tor Space is on, the engine still connects to tor
+			// (to mint the dedicated space onion) but publishes NO clearnet-domain
+			// onions — the anonymous world must not drag the public domains onto Tor.
+			if a.siteSettings == nil || a.siteSettings.Get(ctx, settings.KeyTorEnabled) != "on" {
+				return nil, nil
+			}
 			ds, err := a.domains.List(ctx)
 			if err != nil {
 				return nil, err
@@ -625,8 +664,13 @@ func (a *App) bootVayuOS() {
 			return hosts, nil
 		},
 		Active: func() bool {
-			return a.siteSettings != nil &&
-				a.siteSettings.Get(context.Background(), settings.KeyTorEnabled) == "on"
+			// The engine runs (connects to tor, reconciles) when EITHER the
+			// per-domain VayuTor toggle OR the Anonymous Tor Space is enabled.
+			if a.siteSettings == nil {
+				return false
+			}
+			return a.siteSettings.Get(context.Background(), settings.KeyTorEnabled) == "on" ||
+				a.siteSettings.Get(context.Background(), settings.KeyTorSpaceEnabled) == "on"
 		},
 		PageStats: func() bool {
 			return a.siteSettings != nil &&
@@ -654,6 +698,13 @@ func (a *App) bootVayuOS() {
 	}
 	if _, err := vkernel.Boot(context.Background(), steps, func(s string) { logging.LogInfo("vayuos", s) }); err != nil {
 		logging.LogError("vayuos", "VayuOS boot failed", err.Error())
+	}
+
+	// Anonymous Tor Space (ADR-0141): converge the isolated child to the toggle in
+	// the background. No-op unless the operator has built one (a.torSpace != nil;
+	// never in a Tor-Space child).
+	if a.torSpace != nil {
+		go a.torSpaceLoop()
 	}
 
 	// Surface a loud, actionable warning at startup when the inbound mail

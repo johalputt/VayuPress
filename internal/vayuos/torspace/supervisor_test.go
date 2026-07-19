@@ -11,7 +11,7 @@ import (
 // lifecycle runs without the real vayupress binary.
 func newTestSup(t *testing.T) *Supervisor {
 	t.Helper()
-	s := New("/bin/does-not-matter", t.TempDir()+"/vayupress.db", "child-key")
+	s := New("/bin/does-not-matter", t.TempDir()+"/vayupress.db", "child-key", 8347)
 	s.bootTimeout = 2 * time.Second
 	s.pollInterval = 20 * time.Millisecond
 	return s
@@ -38,8 +38,8 @@ func TestSupervisorLifecycle(t *testing.T) {
 	if !s.Running() {
 		t.Fatal("child should be running after a healthy Ensure(true)")
 	}
-	if s.Port() <= 0 {
-		t.Errorf("Port() = %d, want a real loopback port", s.Port())
+	if s.Port() != 8347 {
+		t.Errorf("Port() = %d, want the fixed port 8347", s.Port())
 	}
 	// The child got the curated env (its own Tor mode + sentinel), not ours.
 	if !containsExact(gotEnv, "VAYUOS_MODE=tor") || !containsExact(gotEnv, EnvSpaceChild+"=1") {
@@ -108,13 +108,38 @@ func TestSupervisorSpawnError(t *testing.T) {
 	}
 }
 
-func TestPickLoopbackPort(t *testing.T) {
-	p, err := pickLoopbackPort()
-	if err != nil {
-		t.Fatalf("pickLoopbackPort: %v", err)
+// TestSupervisorShutdownLatch: after Shutdown() the supervisor is latched off, so
+// a racing Ensure(true) (a reconcile tick firing during process shutdown) can no
+// longer respawn the child.
+func TestSupervisorShutdownLatch(t *testing.T) {
+	s := newTestSup(t)
+	spawns := 0
+	s.spawn = func(env []string) (*exec.Cmd, error) {
+		spawns++
+		c := exec.Command("sleep", "30")
+		if err := c.Start(); err != nil {
+			return nil, err
+		}
+		return c, nil
 	}
-	if p <= 0 || p > 65535 {
-		t.Errorf("port %d out of range", p)
+	s.health = func(int) bool { return true }
+
+	if err := s.Ensure(true); err != nil {
+		t.Fatalf("Ensure(true) failed: %v", err)
+	}
+	s.Shutdown()
+	if s.Running() {
+		t.Error("child should be stopped after Shutdown()")
+	}
+	// A stray reconcile tick after shutdown must NOT respawn.
+	if err := s.Ensure(true); err != nil {
+		t.Errorf("Ensure(true) after Shutdown should be a silent no-op, got %v", err)
+	}
+	if s.Running() {
+		t.Error("Shutdown() must latch the supervisor off — no respawn")
+	}
+	if spawns != 1 {
+		t.Errorf("expected exactly 1 spawn across shutdown, got %d", spawns)
 	}
 }
 

@@ -21,7 +21,6 @@ package torspace
 
 import (
 	"errors"
-	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -53,23 +52,32 @@ type Supervisor struct {
 	bootTimeout  time.Duration
 	pollInterval time.Duration
 
-	mu        sync.Mutex
-	cmd       *exec.Cmd
-	alive     bool
-	port      int
-	onion     string
-	apiKey    string
-	last      string
-	startedAt time.Time
-	fails     int
-	nextTry   time.Time
+	// startMu serialises the whole Ensure body (start AND stop) so two callers —
+	// the reconcile ticker and the toggle POST's `go reconcileTorSpace()` — can
+	// never both pass the Running() gate and double-spawn, and reapOrphan can
+	// never fire against a child a concurrent Ensure is actively starting.
+	startMu sync.Mutex
+
+	mu           sync.Mutex
+	cmd          *exec.Cmd
+	alive        bool
+	shuttingDown bool // latched by Shutdown(): Ensure(true) becomes a permanent no-op
+	port         int
+	onion        string
+	apiKey       string
+	last         string
+	startedAt    time.Time
+	fails        int
+	nextTry      time.Time
 }
 
 // New prepares (does not start) a supervisor. apiKey must be the child's stable,
 // DISTINCT key (persisted by the caller so the child's identity survives
-// restarts). exePath "" resolves to this process's own binary.
-func New(exePath, parentDBPath, apiKey string) *Supervisor {
-	s := &Supervisor{exePath: cleanExePath(exePath), parentDBPath: parentDBPath, apiKey: apiKey}
+// restarts). port is the FIXED loopback port the child binds and the dedicated
+// onion targets — they must agree, so it is chosen once by the caller. exePath ""
+// resolves to this process's own binary.
+func New(exePath, parentDBPath, apiKey string, port int) *Supervisor {
+	s := &Supervisor{exePath: cleanExePath(exePath), parentDBPath: parentDBPath, apiKey: apiKey, port: port}
 	s.spawn = s.realSpawn
 	s.health = httpHealth
 	s.bootTimeout = childBootTimeout
@@ -99,33 +107,43 @@ func (s *Supervisor) LastError() string { s.mu.Lock(); defer s.mu.Unlock(); retu
 
 // Ensure converges the child to the desired running state. on=false stops it;
 // on=true starts it if not alive, respecting crash-loop backoff. Idempotent.
+// The entire body is serialised by startMu so concurrent callers can never
+// double-spawn and a stop can never interleave with an in-flight start.
 func (s *Supervisor) Ensure(on bool) error {
+	s.startMu.Lock()
+	defer s.startMu.Unlock()
 	if !on {
 		s.Stop()
 		return nil
 	}
-	if s.Running() {
-		return nil
-	}
 	s.mu.Lock()
-	if !s.nextTry.IsZero() && time.Now().Before(s.nextTry) {
-		s.mu.Unlock()
-		return errors.New("torspace: backing off after repeated boot failures")
-	}
+	down := s.shuttingDown
+	running := s.alive
+	backoff := !s.nextTry.IsZero() && time.Now().Before(s.nextTry)
 	onion, apiKey := s.onion, s.apiKey
 	s.mu.Unlock()
+	if down {
+		// Parent is shutting down — never respawn (a stray reconcile tick must not
+		// resurrect the child after the shutdown drain).
+		return nil
+	}
+	if running {
+		return nil
+	}
+	if backoff {
+		return errors.New("torspace: backing off after repeated boot failures")
+	}
 
 	if err := os.MkdirAll(s.Root(), 0o700); err != nil {
 		return s.fail("cannot create Tor-Space data dir: " + err.Error())
 	}
 	// Reap an orphaned child from a previous parent run (e.g. after a self-update
-	// re-exec) so it can't hold a DB lock or its old loopback port.
+	// re-exec) so it can't hold a DB lock or its loopback port.
 	s.reapOrphan()
 
-	port, perr := pickLoopbackPort()
-	if perr != nil {
-		return s.fail("cannot allocate a loopback port: " + perr.Error())
-	}
+	s.mu.Lock()
+	port := s.port
+	s.mu.Unlock()
 	cmd, err := s.spawn(BuildChildEnv(s.Root(), onion, port, apiKey))
 	if err != nil {
 		return s.recordFailure("cannot start Tor Space: " + err.Error())
@@ -133,7 +151,6 @@ func (s *Supervisor) Ensure(on bool) error {
 	s.mu.Lock()
 	s.cmd = cmd
 	s.alive = true
-	s.port = port
 	s.last = ""
 	s.startedAt = time.Now()
 	s.mu.Unlock()
@@ -174,6 +191,11 @@ func (s *Supervisor) waitReap(cmd *exec.Cmd) {
 func (s *Supervisor) waitHealthy(port int) error {
 	deadline := time.Now().Add(s.bootTimeout)
 	for {
+		if s.isShuttingDown() {
+			// Shutdown() latched while we were booting — abort fast so it can grab
+			// startMu and drain the child instead of blocking on the full timeout.
+			return errors.New("shutting down")
+		}
 		if !s.Running() {
 			return errors.New("process exited during startup")
 		}
@@ -185,6 +207,28 @@ func (s *Supervisor) waitHealthy(port int) error {
 		}
 		time.Sleep(s.pollInterval)
 	}
+}
+
+// isShuttingDown reports whether Shutdown() has latched the supervisor off.
+func (s *Supervisor) isShuttingDown() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.shuttingDown
+}
+
+// Shutdown permanently stops the child and latches the supervisor off so a
+// racing Ensure(true) (a reconcile tick firing during process shutdown) can no
+// longer respawn it. It sets the latch first (unblocking any in-flight boot's
+// waitHealthy), then serialises on startMu to perform the final graceful stop.
+// Idempotent; call from the parent's shutdown sequence to drain the detached
+// child deterministically (it is not otherwise signalled when the parent exits).
+func (s *Supervisor) Shutdown() {
+	s.mu.Lock()
+	s.shuttingDown = true
+	s.mu.Unlock()
+	s.startMu.Lock()
+	defer s.startMu.Unlock()
+	s.Stop()
 }
 
 // Stop gracefully terminates the child: SIGTERM (let it close its listener and
@@ -237,19 +281,6 @@ func httpHealth(port int) bool {
 	}
 	_ = resp.Body.Close()
 	return resp.StatusCode == http.StatusOK
-}
-
-// pickLoopbackPort returns a currently-free loopback TCP port. There is a small
-// TOCTOU window between closing the probe listener and the child binding it;
-// acceptable because a collision just fails the boot and the next reconcile
-// picks another port.
-func pickLoopbackPort() (int, error) {
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return 0, err
-	}
-	defer func() { _ = l.Close() }()
-	return l.Addr().(*net.TCPAddr).Port, nil
 }
 
 // reapOrphan kills a Tor-Space child left over from a previous parent run,

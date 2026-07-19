@@ -54,6 +54,7 @@ import (
 	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
 	vpgp "github.com/johalputt/vayupress/internal/vayuos/pgp"
 	"github.com/johalputt/vayupress/internal/vayuos/secwatch"
+	"github.com/johalputt/vayupress/internal/vayuos/torspace"
 	vtalk "github.com/johalputt/vayupress/internal/vayuos/vayutalk"
 	vtor "github.com/johalputt/vayupress/internal/vayuos/vayutor"
 	"github.com/johalputt/vayupress/internal/vayushield"
@@ -181,6 +182,7 @@ type App struct {
 	vayuMail   *vmail.Engine
 	vayuTalk   *vtalk.Engine
 	vayuTor    *vtor.Engine
+	torSpace   *torspace.Supervisor // Anonymous Tor Space child supervisor (ADR-0141); nil in a child
 	vayuSec    *secwatch.Watcher
 
 	// avatarCache memoises the set of mailbox addresses that have an uploaded

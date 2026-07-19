@@ -608,6 +608,22 @@
 .vp-os .space-badge--clearnet { background: var(--ok-dim);     color: var(--ok); }
 .vp-os .space-badge--tor      { background: var(--accent-dim); color: var(--accent); }
 
+/* ── Tor Space palette (ADR-0141) ────────────────────────────────
+   While the Anonymous Tor Space is live, data-space="tor" on the shell
+   repaints the accent/brand tokens purple, so the WHOLE VayuOS chrome
+   (active nav, brand, buttons, the sidebar rail) signals the Tor world at a
+   glance. Purely a colour shift — layout and the strict CSP are untouched. */
+.vp-os[data-space="tor"] {
+  --brand:     #a855f7;
+  --brand-dim: rgba(168, 85, 247, 0.18);
+  --accent:     #a855f7;
+  --accent-dim: rgba(168, 85, 247, 0.18);
+}
+.vp-os[data-space="tor"] .sidebar {
+  border-right-color: var(--accent-dim);
+  box-shadow: inset -1px 0 0 var(--accent-dim);
+}
+
 /* ── Form elements ───────────────────────────────────────────── */
 .vp-os .field { display: flex; flex-direction: column; gap: var(--sp-2); }
 .vp-os .field-label {

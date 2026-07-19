@@ -320,7 +320,12 @@ func (e *Engine) reconcile(ctx context.Context) {
 		}
 	}
 
-	// Add onions for newly-wanted domains not already live.
+	// Add onions for newly-wanted domains not already live. One host's identity
+	// failing (e.g. a corrupt persisted ED25519 key tor rejects) must NOT abort
+	// the whole reconcile — record it and continue, so the other domains AND the
+	// dedicated Space onion below still come up. Only a lost control connection
+	// (nothing can be added) short-circuits.
+	var addErr string
 	for host := range want {
 		if _, ok := liveByHost[host]; ok {
 			continue
@@ -338,8 +343,8 @@ func (e *Engine) reconcile(ctx context.Context) {
 		}
 		on, aerr := ctrl.addOnion(blob, e.cfg.Target)
 		if aerr != nil {
-			e.setErr(aerr.Error())
-			return
+			addErr = aerr.Error()
+			continue
 		}
 		e.mu.Lock()
 		e.onionByHost[host] = on.host
@@ -351,13 +356,18 @@ func (e *Engine) reconcile(ctx context.Context) {
 		}
 	}
 
-	// The ONE dedicated Anonymous Tor Space onion (ADR-0141), managed separately
-	// from the per-domain onions above so the reap loop never tears it down.
-	e.reconcileSpaceOnion(ctx)
-
+	// Surface any per-domain add error BEFORE the Space onion runs, so a
+	// successful Space onion leaves the per-domain problem visible and a failing
+	// one (setErr) takes precedence.
 	e.mu.Lock()
-	e.lastErr = ""
+	e.lastErr = addErr
 	e.mu.Unlock()
+
+	// The ONE dedicated Anonymous Tor Space onion (ADR-0141), managed separately
+	// from the per-domain onions above so the reap loop never tears it down — and
+	// reached regardless of any per-domain add failure so enabling the anonymous
+	// Space never depends on the health of unrelated clearnet-domain onions.
+	e.reconcileSpaceOnion(ctx)
 
 	e.queryBootstrap()
 }
@@ -652,6 +662,14 @@ func (e *Engine) adoptControl(c *control, managed bool) {
 	e.bootMovedAt = time.Now()
 	e.onionByHost = map[string]string{}
 	e.hostByOnion = map[string]string{}
+	// The dedicated Anonymous Tor Space onion (ADR-0141) is torn down inside tor
+	// with the old control connection (onions are created without Detach), so its
+	// live-host record is stale on any re-dial. Clear it here — the single choke
+	// point for every reconnect — so reconcileSpaceOnion re-issues ADD_ONION from
+	// the persisted key and restores the SAME address, exactly like per-domain
+	// onions above. Without this the address is dead but SpaceOnion() keeps naming
+	// it, so the child boots against an unpublished onion ("site not found").
+	e.spaceOnionHost = ""
 	e.mu.Unlock()
 }
 
@@ -676,6 +694,10 @@ func (e *Engine) teardown() {
 	e.esc = escDirect
 	e.onionByHost = map[string]string{}
 	e.hostByOnion = map[string]string{}
+	// Drop the dedicated Space onion's live-host record too (see adoptControl):
+	// tearing down the control connection removes it inside tor, so leaving it set
+	// would strand a dead address across a re-activation.
+	e.spaceOnionHost = ""
 	mgd := e.managed
 	e.mu.Unlock()
 	// Stop our tor child when deactivated so "off" is truly off (no process, no

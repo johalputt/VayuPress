@@ -436,10 +436,14 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		// the CSRF-protected API-key endpoints above, adding no new write surface.
 		pr.Get("/os/connector", a.handleOSConnector)
 
-		// VayuOS Spaces (ADR-0141): read-only page surfacing the Clearnet/Tor
-		// worlds and the one-command sibling Tor Space provisioner. No write
-		// surface — provisioning is run by the operator on the server.
-		pr.Get("/os/spaces", a.handleOSSpaces)
+		// VayuOS Spaces (ADR-0141): the Clearnet/Tor worlds + the one-click
+		// Anonymous Tor Space toggle. The GET is wrapped in CSRFTokenMiddleware so
+		// loading the page (re)issues the vp_csrf cookie the toggle POST reads back
+		// — without this the toggle 403s on a fresh session / after a restart or the
+		// 1h cookie lifetime, and reloading never recovers it (mirrors /os/tor,
+		// /os/shield). The toggle POST is CSRF-checked.
+		pr.With(auth.CSRFTokenMiddleware).Get("/os/spaces", a.handleOSSpaces)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/spaces/toggle", a.handleOSSpaceToggle)
 
 		// CSRF-protected writes
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/seo/regenerate", a.handleSEORegenerate)
@@ -670,8 +674,11 @@ func osSidebarNav(active string, s *osSettings) string {
 		gate(navItem("/os/theme/store", "Theme Store", "theme-store", active, iconThemeStore), "/os/theme/store"),
 		navItem("/os/vayumail", "VayuMail", "vayuos", active, iconSecurity),
 		navItem("/os/talk", "VayuTalk", "talk", active, iconTalk),
-		navItem("/os/tor", "VayuTor", "tor", active, iconTor),
-		navItem("/os/spaces", "Spaces", "spaces", active, iconSpaces),
+		// VayuTor + Spaces are admin-only infrastructure controls (see
+		// osPathMinLevel): gate their sidebar entries so author/editor sessions
+		// never see a control they cannot (and must not) reach.
+		gate(navItem("/os/tor", "VayuTor", "tor", active, iconTor), "/os/tor"),
+		gate(navItem("/os/spaces", "Spaces", "spaces", active, iconSpaces), "/os/spaces"),
 	)
 	section("System",
 		gate(navItem("/os/monitoring", "Monitoring", "monitoring", active, iconMonitoring), "/os/monitoring"),
@@ -785,6 +792,13 @@ func adminOSShellHead(nonce, title, active string, settings *osSettings) string 
 	if settings != nil && settings.SiteName != "" {
 		siteName = html.EscapeString(settings.SiteName)
 	}
+	// data-space="tor" repaints the whole VayuOS shell in the Tor (purple) palette
+	// while the anonymous world is live — a whole-install Tor Space, or the
+	// one-click Anonymous Tor Space toggle (ADR-0141).
+	spaceAttr := ""
+	if config.Cfg.OnionMode || (settings != nil && settings.TorSpaceOn) {
+		spaceAttr = ` data-space="tor"`
+	}
 
 	cmdHint := `<button class="topbar-cmd" aria-label="Command palette" title="Open command palette">
       <svg viewBox="0 0 20 20" fill="none" width="14" height="14" aria-hidden="true"><path d="M8 15A7 7 0 108 1a7 7 0 000 14zm5-1l4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
@@ -821,7 +835,7 @@ func adminOSShellHead(nonce, title, active string, settings *osSettings) string 
 <link rel="stylesheet" href="/os/static/css/admin-os.css?v=` + assetVer("css/admin-os.css") + `">
 <link rel="icon" type="image/png" href="/static/favicon-light.png">
 </head>
-<body class="vp-os" data-theme="` + html.EscapeString(theme) + `" data-admin-theme="` + html.EscapeString(theme) + `">
+<body class="vp-os" data-theme="` + html.EscapeString(theme) + `" data-admin-theme="` + html.EscapeString(theme) + `"` + spaceAttr + `>
 <a href="#main-content" class="skip-link">Skip to main content</a>
 
 <!-- Sidebar overlay for mobile tap-to-close -->
@@ -993,6 +1007,9 @@ type osSettings struct {
 	AccessLevel int
 	// UnreadMessages drives the sidebar badge on the Messages item.
 	UnreadMessages int
+	// TorSpaceOn: the Anonymous Tor Space is enabled — the shell wears the Tor
+	// (purple) palette so the operator always knows the anonymous world is live.
+	TorSpaceOn bool
 }
 
 // getOSSettings loads settings needed for layout rendering.
@@ -1001,6 +1018,8 @@ func (a *App) getOSSettings(ctx context.Context) *osSettings {
 	if a.siteSettings != nil {
 		s.SiteName = a.siteSettings.Get(ctx, settings.KeySiteName)
 		s.AdminTheme = a.siteSettings.Get(ctx, "admin.theme")
+		// Anonymous Tor Space on ⇒ shift the whole VayuOS chrome to the Tor palette.
+		s.TorSpaceOn = a.siteSettings.Get(ctx, settings.KeyTorSpaceEnabled) == "on"
 	}
 	// Unread contact messages drive the sidebar badge. Best-effort: any error
 	// (nil DB / missing table on a pre-046 schema) just leaves the badge off.

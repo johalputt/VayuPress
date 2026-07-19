@@ -231,6 +231,13 @@ const (
 	// onion via the Onion-Location header (so Tor Browser can offer/auto-switch).
 	// Default "on"; set "off" to stop advertising without deactivating onions.
 	KeyTorOnionLocation = "tor.onion_location"
+	// KeyTorSpaceEnabled is the one-click Anonymous Tor Space toggle (ADR-0141):
+	// "on" spins up the isolated Tor-world child instance + its dedicated onion;
+	// anything else keeps it stopped. Default off.
+	KeyTorSpaceEnabled = "tor.space_enabled"
+	// KeyTorSpaceAPIKey persists the child instance's DISTINCT API key so its
+	// identity is stable across restarts and never shares the parent's key.
+	KeyTorSpaceAPIKey = "tor.space_api_key"
 )
 
 // FeatureKeys is the set of operator-toggleable feature flags. Each maps to a

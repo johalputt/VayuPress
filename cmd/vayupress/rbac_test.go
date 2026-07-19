@@ -77,6 +77,13 @@ func TestOSPathMinLevel(t *testing.T) {
 		"/os/newsletter":       accessAdmin,
 		"/os/security":         accessAdmin,
 		"/os/adr":              accessAdmin,
+		// Infrastructure controls (ADR-0141): VayuTor + the Anonymous Tor Space
+		// toggle each supervise network-facing services / a second server process,
+		// so page AND action paths must be admin-only — never author/editor.
+		"/os/tor":           accessAdmin,
+		"/os/tor/toggle":    accessAdmin,
+		"/os/spaces":        accessAdmin,
+		"/os/spaces/toggle": accessAdmin,
 	}
 	for path, want := range cases {
 		if got := osPathMinLevel(path); got != want {

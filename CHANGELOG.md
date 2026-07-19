@@ -8,6 +8,50 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.14] — 2026-07-19
+
+### Added
+- **One-click Anonymous Tor Space — go-live (ADR-0141).** A clearnet install can now
+  turn on a second, fully isolated VayuPress as an anonymous `.onion` world from the
+  Spaces page with a single toggle — no terminal, no server-side setup. The parent
+  supervises the isolated child (its own database, accounts and identity), the
+  VayuTor engine mints the child's dedicated onion, and the whole VayuOS chrome
+  shifts to the Tor (purple) palette while it is on so the active world is always
+  obvious. The card states plainly that both worlds share the same server, so this
+  compartmentalises identity and content — it is not machine-level anonymity.
+
+### Fixed
+- **Tor Space onion is re-published after any control reconnect.** The dedicated
+  Space onion's live-host record is now cleared wherever the tor control connection
+  is dropped/replaced (reconnect and teardown), so it is re-issued from its
+  persistent key and the SAME address comes back — instead of the admin card naming
+  a dead address after a transient control error, a managed-tor restart, or an
+  off→on toggle.
+- **A failing per-domain onion no longer blocks the Space onion.** The per-domain
+  ADD_ONION loop is resilient: one host's bad identity is recorded and skipped
+  instead of aborting the whole reconcile, so enabling the anonymous Space never
+  depends on the health of unrelated clearnet-domain onions.
+- **Tor Space child cannot be double-spawned.** The supervisor serialises its whole
+  start/stop transition, so the reconcile ticker and the toggle POST can never both
+  spawn a child (and the orphan-reaper can never fire against a child a concurrent
+  start is launching).
+- **Tor Space child is drained deterministically at parent shutdown.** The detached
+  child is now signalled from the shutdown sequence (SIGTERM → WAL checkpoint) and
+  the supervisor is latched off so a reconcile tick racing shutdown cannot respawn
+  it — instead of the child being left running after the parent exits.
+- **Spaces toggle reliability + diagnostics.** The Spaces page GET re-issues the
+  `vp_csrf` cookie (so the toggle no longer 403s on a fresh session or after a
+  restart), the toggle button re-enables itself if the request fails, and the card
+  surfaces the VayuTor engine's actionable reason (e.g. no tor control port) when
+  the onion is not yet live instead of showing "Publishing…" forever.
+
+### Security
+- **Anonymous Tor Space + VayuTor are admin-only.** `/os/spaces`, `/os/spaces/toggle`,
+  `/os/tor` and `/os/tor/toggle` now require administrator access (route guard plus
+  an explicit in-handler check) and their sidebar entries are hidden from
+  author/editor sessions — closing a gap where a non-admin console user could start
+  or stop the anonymous world (and the VayuTor onions).
+
 ## [3.14.13] — 2026-07-19
 
 ### Added

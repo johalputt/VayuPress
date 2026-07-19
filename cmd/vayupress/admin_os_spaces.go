@@ -2,42 +2,35 @@ package main
 
 // admin_os_spaces.go — VayuOS "Spaces" page (/os/spaces), ADR-0141.
 //
-// Surfaces the two independent worlds a VayuOS operator can run — a Clearnet
-// Space (public HTTPS site) and an anonymous Tor Space (.onion) — inside the
-// admin. It shows which world THIS install is, explains the model, and (on a
-// clearnet install) gives the one command that stands up a separate Tor Space
-// alongside it, with best-effort live status. It is a read-only info page: the
-// privileged provisioning itself is run by the operator on the server, never by
-// the web tier (which is unprivileged), exactly like the setup-*-subdomain
-// scripts. Every interpolated value is html-escaped; no inline styles (CSP).
+// One place to run and control the two worlds. On a normal (clearnet) install it
+// offers a ONE-CLICK toggle for an Anonymous Tor Space: a second, fully isolated
+// VayuPress the parent supervises as a child — its own database, accounts and
+// .onion — with no terminal. Toggling it on shifts the whole VayuOS chrome to the
+// Tor (purple) palette. Every interpolated value is html-escaped; the toggle
+// writes through the shared CSRF-checked vpPost helper (no inline styles — CSP).
 
 import (
 	"html"
 	"net/http"
-	"os"
-	"strings"
 
 	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/render"
-)
-
-// torSpaceSetupCmd is the single operator command that provisions a sibling Tor
-// Space (see scripts/setup-tor-space.sh). Shown verbatim in a copy box.
-const torSpaceSetupCmd = "sudo bash scripts/setup-tor-space.sh"
-
-// Paths a clearnet install can read to detect a sibling Tor Space. The unit file
-// is world-readable; onion.txt is written by setup-tor-space.sh into the Tor
-// Space's data dir (same www-data owner, so this install can read it).
-const (
-	torSpaceUnitPath  = "/etc/systemd/system/vayupress-tor.service"
-	torSpaceOnionPath = "/var/lib/vayupress-tor/onion.txt"
+	"github.com/johalputt/vayupress/internal/settings"
 )
 
 // iconSpaces is the sidebar glyph (two stacked layers = two worlds).
 var iconSpaces = svgIcon("M10 2.5l7.5 4.2-7.5 4.2-7.5-4.2 7.5-4.2zM2.5 11l7.5 4.2 7.5-4.2")
 
-// handleOSSpaces renders the Spaces page. GET-only, read-only.
+// handleOSSpaces renders the Spaces page.
 func (a *App) handleOSSpaces(w http.ResponseWriter, r *http.Request) {
+	// Admin-only: the Anonymous Tor Space supervises a second server process and
+	// mints a persistent onion. The route guard (osPathMinLevel: "spaces") already
+	// enforces this; the explicit check is defense in depth, matching
+	// handleVayuOSPGP so the handler is safe even if the route were ever remounted.
+	if !a.isAdminRequest(r) {
+		a.denyAccess(w, r, "/os")
+		return
+	}
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
 	onion := config.Cfg.OnionMode
@@ -46,10 +39,11 @@ func (a *App) handleOSSpaces(w http.ResponseWriter, r *http.Request) {
 		osSpacesCurrentCard(onion, config.Cfg.Domain) +
 		osSpacesModelCard()
 	if onion {
+		// This whole install already IS the Tor world.
 		body += osSpacesTorSelfCard(config.Cfg.Domain)
 	} else {
-		provisioned, sibOnion := torSpaceState()
-		body += osSpacesAddTorCard(provisioned, sibOnion)
+		// A clearnet install can spin up a separate Anonymous Tor Space child.
+		body += osSpacesTorSpaceCard(a.torSpaceStatusNow())
 	}
 
 	full := adminOSShellHead(nonce, "Spaces", "spaces", cfg) +
@@ -58,22 +52,33 @@ func (a *App) handleOSSpaces(w http.ResponseWriter, r *http.Request) {
 	writeOSHTML(w, full)
 }
 
-// torSpaceState is a best-effort probe of a sibling Tor Space: whether its
-// systemd unit exists, and its .onion if the provisioner recorded one. Never
-// errors — an absent/unreadable path just yields (false, "").
-func torSpaceState() (provisioned bool, onion string) {
-	if _, err := os.Stat(torSpaceUnitPath); err == nil {
-		provisioned = true
+// handleOSSpaceToggle flips the Anonymous Tor Space on/off and converges the
+// child immediately. CSRF-checked; the client reloads to pick up the new state
+// (and the Tor colour theme).
+func (a *App) handleOSSpaceToggle(w http.ResponseWriter, r *http.Request) {
+	// Admin-only (defense in depth over the route guard): starting/stopping the
+	// anonymous world is more privileged than Update & Backup or Storage.
+	if !a.isAdminRequest(r) {
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", "administrator access required", "")
+		return
 	}
-	if b, err := os.ReadFile(torSpaceOnionPath); err == nil { //nosec G304 -- fixed constant path, public onion address
-		v := strings.TrimSpace(string(b))
-		// Only surface a plausible v3 onion — never render arbitrary file content
-		// (and bound what a malformed marker file can put on the page).
-		if len(v) <= 128 && strings.HasSuffix(v, ".onion") {
-			onion = v
-		}
+	if a.siteSettings == nil {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "unavailable", "settings unavailable", "")
+		return
 	}
-	return provisioned, onion
+	enable := r.URL.Query().Get("enable") == "1"
+	state := "off"
+	if enable {
+		state = "on"
+	}
+	if err := a.siteSettings.SetMany(r.Context(), map[string]string{settings.KeyTorSpaceEnabled: state}); err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "write_failed", "could not save the setting", "")
+		return
+	}
+	// Converge promptly: this mints/tears the dedicated onion and starts/stops the
+	// child (a background reconcile so the request returns immediately).
+	go a.reconcileTorSpace()
+	writeJSON(w, r, http.StatusOK, map[string]any{"ok": true, "enabled": enable})
 }
 
 func osSpacesHeader() string {
@@ -83,13 +88,13 @@ func osSpacesHeader() string {
     <a class="btn btn--sm" href="/docs/adr/ADR-0141-vayuos-spaces-clearnet-tor" target="_blank" rel="noopener">About Spaces</a>
   </div>
 </div>
-<p class="text-sm muted mb-4">Run your public world and an anonymous Tor world side by side — two separate installs that share nothing.</p>`
+<p class="text-sm muted mb-4">Run your public world and an anonymous Tor world side by side.</p>`
 }
 
 // osSpacesCurrentCard shows which world THIS install is (from VAYUOS_MODE).
 func osSpacesCurrentCard(onion bool, domain string) string {
 	badge := `<span class="space-badge space-badge--clearnet">Clearnet</span>`
-	desc := `A public site, blog and mail served over HTTPS on your domain. To make an install a Tor Space instead, set <code>VAYUOS_MODE=tor</code> and give it its own database.`
+	desc := `A public site, blog and mail served over HTTPS on your domain.`
 	if onion {
 		badge = `<span class="space-badge space-badge--tor">Tor</span>`
 		d := html.EscapeString(domain)
@@ -107,51 +112,57 @@ func osSpacesCurrentCard(onion bool, domain string) string {
 func osSpacesModelCard() string {
 	return `<div class="card">
   <div class="settings-block-title">Two worlds, no mesh</div>
-  <p class="text-sm muted mb-4">VayuOS Spaces are two independent worlds you can run side by side:</p>
   <ul class="text-sm muted">
     <li><strong>Clearnet Space</strong> — your public site, blog and mail on your domain, over HTTPS.</li>
     <li><strong>Tor Space</strong> — an anonymous <code>.onion</code> world with its own database, no clearnet callbacks and no CA-TLS.</li>
   </ul>
-  <p class="text-sm muted mt-4">They share <strong>nothing</strong> — separate databases — so the two can never be correlated. Run one, the other, or both at once; each is a separate install selected by <code>VAYUOS_MODE</code>.</p>
+  <p class="text-sm muted mt-4">They share <strong>nothing</strong> — separate databases — so their content and logins can never be linked.</p>
 </div>`
 }
 
-// osSpacesAddTorCard (clearnet installs) surfaces the one-command provisioner and
-// best-effort live status of a sibling Tor Space.
-func osSpacesAddTorCard(provisioned bool, onion string) string {
-	cmd := html.EscapeString(torSpaceSetupCmd)
-	status := `<span class="badge badge--muted">Not provisioned yet</span>
-  <p class="text-sm muted mt-4">Run the command above once on your server to create it.</p>`
-	if provisioned {
-		status = `<span class="badge badge--ok">● Tor Space provisioned</span>`
-		if onion != "" {
-			o := html.EscapeString(onion)
-			status += `
-  <p class="text-sm muted mt-4">Its address (open in Tor Browser):</p>
+// osSpacesTorSpaceCard is the one-click Anonymous Tor Space control + live status.
+func osSpacesTorSpaceCard(st torSpaceStatus) string {
+	label, kind, next := "Turn on Tor Space", "btn--primary", "on"
+	statusPill := `<span class="badge badge--muted">Off</span>`
+	if st.Enabled {
+		label, kind, next = "Turn off Tor Space", "btn--ghost", "off"
+		if st.Running {
+			statusPill = `<span class="badge badge--ok">● Running</span>`
+		} else {
+			statusPill = `<span class="badge badge--warn">● Starting…</span>`
+		}
+	}
+
+	extra := ""
+	if st.Enabled && st.Running && st.Onion != "" {
+		o := html.EscapeString(st.Onion)
+		extra += `
+  <p class="text-sm muted mt-4">Your anonymous address (open in Tor Browser):</p>
   <div class="ak-token-row">
     <input class="input font-mono ak-token-input" type="text" readonly value="http://` + o + `">
     <button type="button" class="btn btn--sm" data-copy="http://` + o + `">Copy</button>
   </div>`
-		} else {
-			status += `
-  <p class="text-sm muted mt-4">Retrieve its address with <code>journalctl -u vayupress-tor</code> on the server.</p>`
-		}
+	} else if st.Enabled && st.Onion == "" {
+		extra += `
+  <p class="text-sm muted mt-4">Publishing your <code>.onion</code> to the Tor network — the first time this takes a couple of minutes.</p>`
 	}
+	if st.LastErr != "" {
+		extra += `
+  <p class="text-sm mt-2" role="status">⚠ ` + html.EscapeString(st.LastErr) + `</p>`
+	}
+
 	return `<div class="card">
-  <div class="settings-block-title">Add a Tor Space</div>
-  <p class="text-sm muted mb-4">Stand up a second, fully separate Tor Space alongside this Clearnet one — both run at the same time. Run this once on your server, as root:</p>
-  <div class="ak-token-row">
-    <input class="input font-mono ak-token-input" type="text" readonly value="` + cmd + `">
-    <button type="button" class="btn btn--sm" data-copy="` + cmd + `">Copy</button>
-  </div>
-  <p class="text-sm muted mt-4">It reuses this install's binary and Tor daemon, provisions a persistent <code>.onion</code>, and starts a separate <code>vayupress-tor</code> service with its own database. Nothing is shared with this Clearnet Space.</p>
-  <div class="settings-block-title text-sm mt-4">Status</div>
-  ` + status + `
-  <p class="text-sm muted mt-4">Remove just the Tor Space service (its identity and data are kept): <code>` + cmd + ` --remove</code></p>
+  <div class="settings-block-title">Anonymous Tor Space</div>
+  <p class="text-sm muted mb-4">One click runs a <strong>second, fully separate</strong> VayuPress as an anonymous <code>.onion</code> world — its own database, accounts and identity, no terminal. While it is on, VayuOS wears the Tor colour so you always know.</p>
+  <div class="ak-cred-actions">
+    <button type="button" class="btn ` + kind + `" data-space-toggle="` + next + `">` + label + `</button>
+    ` + statusPill + `
+  </div>` + extra + `
+  <p class="text-sm muted mt-4"><strong>Honest note:</strong> both worlds run on this same server, so this separates your <em>identity and content</em> — not the machine. Anonymity that survives someone seizing the server needs a physically separate computer.</p>
 </div>`
 }
 
-// osSpacesTorSelfCard (Tor installs) shows this Space's own onion address.
+// osSpacesTorSelfCard (whole-install Tor installs) shows this Space's own onion.
 func osSpacesTorSelfCard(domain string) string {
 	d := html.EscapeString(domain)
 	return `<div class="card">
@@ -161,12 +172,11 @@ func osSpacesTorSelfCard(domain string) string {
     <input class="input font-mono ak-token-input" type="text" readonly value="http://` + d + `">
     <button type="button" class="btn btn--sm" data-copy="http://` + d + `">Copy</button>
   </div>
-  <p class="text-sm muted mt-4">Your Clearnet Space, if you run one, is a completely separate install with its own database. Move content between worlds with the offline bundle: <code>vayupress migrate export --file bundle.vaybundle</code></p>
 </div>`
 }
 
-// osSpacesScript is the nonce-gated page controller (runs inside the shared foot
-// IIFE). It only wires the copy buttons — no writes, no network beyond clipboard.
+// osSpacesScript wires the copy buttons and the Tor Space toggle. It runs inside
+// the shared foot IIFE, so window.vpPost (CSRF header + reload-on-success) exists.
 const osSpacesScript = `
 document.querySelectorAll('[data-copy]').forEach(function(btn){
   btn.addEventListener('click',function(){
@@ -174,5 +184,17 @@ document.querySelectorAll('[data-copy]').forEach(function(btn){
     var prev=btn.textContent;
     var done=function(){btn.textContent='Copied';setTimeout(function(){btn.textContent=prev;},1400);};
     if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(val).then(done,done);}else{done();}
+  });
+});
+document.querySelectorAll('[data-space-toggle]').forEach(function(btn){
+  btn.addEventListener('click',function(){
+    var enable=btn.getAttribute('data-space-toggle')==='on';
+    btn.disabled=true;
+    // vpPost reloads the page ~650ms after a successful POST, so this re-enable
+    // only ever fires when the POST FAILED (403/500/network) and the page stayed
+    // put — letting the operator retry instead of being stuck with a dead button.
+    setTimeout(function(){btn.disabled=false;},4000);
+    if(window.vpPost){window.vpPost('/os/spaces/toggle?enable='+(enable?'1':'0'),function(){return enable?'Anonymous Tor Space starting…':'Tor Space stopping…';});}
+    else{btn.disabled=false;}
   });
 });`

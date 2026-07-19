@@ -81,7 +81,7 @@ import (
 // -ldflags "-X main.Version=<.release-version>", and scripts/update-vayupress.sh
 // reads .release-version too — keep this in sync with .release-version so an
 // un-stamped `go build` still reports an honest version.
-var Version = "3.14.13"
+var Version = "3.14.14"
 var bootTime = time.Now()
 
 // onionSafeBindAddr picks the HTTP listen address (ADR-0141). A Tor Space
@@ -1052,6 +1052,13 @@ func main() {
 		// flush the aggregate visit counter to the DB before it closes.
 		if a.vayuTor != nil {
 			_ = a.vayuTor.Stop(context.Background())
+		}
+		// Drain the Anonymous Tor Space child (ADR-0141): it is a detached process
+		// the OS does not kill when the parent exits, so signal it to close its
+		// listener and WAL-checkpoint its own SQLite. Shutdown() also latches the
+		// supervisor off so a stray reconcile tick can't respawn it mid-shutdown.
+		if a.torSpace != nil {
+			a.torSpace.Shutdown()
 		}
 		if resource.Global != nil {
 			resource.Global.Stop()

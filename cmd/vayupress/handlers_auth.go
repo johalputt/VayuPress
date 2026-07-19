@@ -86,6 +86,10 @@ func osPathMinLevel(path string) int {
 		"settings", "security", "apikeys", "connector", "update", "storage", "monitoring", "governance",
 		"tools", "modes", "policy", "topology", "replay", "faults", "adr",
 		"members", "newsletter", "monetization", "ads", "website", "shield",
+		// Infrastructure controls: VayuTor onion services and the Anonymous Tor
+		// Space toggle each supervise network-facing services / a second server
+		// process, so they are admin-only — never author/editor (ADR-0141 review).
+		"tor", "spaces",
 	}
 	editorAreas := []string{"comments", "pages", "seo", "analytics", "theme", "messages"}
 	for _, a := range adminAreas {
