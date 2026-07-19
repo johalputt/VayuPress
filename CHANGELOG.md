@@ -8,6 +8,20 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.15] — 2026-07-19
+
+### Changed
+- **One-click world switch, pinned to the top of the sidebar (ADR-0141).** The
+  Clearnet ⟷ Tor switch now lives at the very top of the VayuOS sidebar on every
+  admin page: one click flips the whole install between the public Clearnet world
+  and the Anonymous Tor Space (and the chrome recolours to match). It works from
+  anywhere — the handler primes the CSRF cookie, then posts the toggle — and is
+  administrator-only. On a dedicated whole-install Tor world it shows as a static
+  indicator (that world is switched by running a separate install, not from here).
+- **Fewer sidebar rows.** The standalone "Spaces" navigation row is removed; the
+  top switch is its control and its address/detail page is reached from the small
+  link beneath the switch — a cleaner, more beginner-friendly sidebar.
+
 ## [3.14.14] — 2026-07-19
 
 ### Added

@@ -18,9 +18,6 @@ import (
 	"github.com/johalputt/vayupress/internal/settings"
 )
 
-// iconSpaces is the sidebar glyph (two stacked layers = two worlds).
-var iconSpaces = svgIcon("M10 2.5l7.5 4.2-7.5 4.2-7.5-4.2 7.5-4.2zM2.5 11l7.5 4.2 7.5-4.2")
-
 // handleOSSpaces renders the Spaces page.
 func (a *App) handleOSSpaces(w http.ResponseWriter, r *http.Request) {
 	// Admin-only: the Anonymous Tor Space supervises a second server process and

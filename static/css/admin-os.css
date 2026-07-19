@@ -254,6 +254,47 @@
   margin-top: var(--sp-2);
 }
 
+/* One-click Clearnet⟷Tor world switch, pinned to the top of the sidebar
+   (ADR-0141). The active segment uses --brand, which the [data-space="tor"]
+   theme re-points to purple, so "Tor" lights up in the Tor colour automatically. */
+.vp-os .space-switch-wrap { padding: var(--sp-3) var(--sp-3) 0; }
+.vp-os .space-switch {
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+  background: var(--bg-surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+}
+.vp-os .space-switch.is-busy { opacity: 0.6; pointer-events: none; }
+.vp-os .space-switch__seg {
+  flex: 1;
+  padding: 6px 8px;
+  font: 600 var(--text-xs)/1 var(--font-body);
+  text-align: center;
+  color: var(--text-2);
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: color var(--t), background var(--t);
+}
+.vp-os .space-switch__seg.is-active {
+  background: var(--brand);
+  color: #fff;
+  box-shadow: var(--sh-sm);
+}
+.vp-os .space-switch__seg[aria-disabled="true"] { cursor: default; opacity: 0.5; }
+.vp-os .space-switch__seg:not(.is-active):not([aria-disabled="true"]):hover { color: var(--text); }
+.vp-os .space-switch__more {
+  display: inline-block;
+  padding: 6px var(--sp-3) 2px;
+  font-size: var(--text-xs);
+  color: var(--text-3);
+  text-decoration: none;
+}
+.vp-os .space-switch__more:hover { color: var(--brand); text-decoration: underline; }
+
 .vp-os .sidebar-spacer { margin-top: auto; }
 
 .vp-os .nav-link {

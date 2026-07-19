@@ -589,6 +589,52 @@ func navItemBadge(href, label, key, active, iconSVG string, count int) string {
 		`</a>`
 }
 
+// spaceSwitch renders the one-click Clearnet⟷Tor world switch pinned to the top
+// of the sidebar (ADR-0141). Admin-only — returns "" for every lower role. On a
+// clearnet install it is interactive: clicking the inactive segment enables or
+// disables the Anonymous Tor Space (the data-space-switch handler primes the CSRF
+// cookie, then POSTs /os/spaces/toggle). On a whole-install Tor world it is a
+// static indicator (you cannot turn a dedicated Tor install back to clearnet from
+// here — that is a separate install). CSP-safe: no inline styles or handlers, all
+// behaviour is wired by data attributes in the nonce-gated foot script.
+func spaceSwitch(lvl int, torOn bool) string {
+	if lvl < accessAdmin {
+		return ""
+	}
+	if config.Cfg.OnionMode {
+		// This whole install IS the Tor world — show it, but it is not switchable.
+		return `<div class="space-switch-wrap">
+  <div class="space-switch" role="group" aria-label="Active world" title="This install is a dedicated Tor world">
+    <span class="space-switch__seg" aria-disabled="true">Clearnet</span>
+    <span class="space-switch__seg is-active" aria-current="true">Tor</span>
+  </div>
+  <a class="space-switch__more" href="/os/spaces">Onion address →</a>
+</div>`
+	}
+	clearCls, torCls := "space-switch__seg is-active", "space-switch__seg"
+	if torOn {
+		clearCls, torCls = "space-switch__seg", "space-switch__seg is-active"
+	}
+	// data-space-switch on a segment = "clicking me switches to this world":
+	// "off" turns the Tor Space off (back to Clearnet), "on" turns it on.
+	return `<div class="space-switch-wrap">
+  <div class="space-switch" role="group" aria-label="Switch world">
+    <button type="button" class="` + clearCls + `" data-space-switch="off" aria-pressed="` + ariaBool(!torOn) + `">Clearnet</button>
+    <button type="button" class="` + torCls + `" data-space-switch="on" aria-pressed="` + ariaBool(torOn) + `">Tor</button>
+  </div>
+  <a class="space-switch__more" href="/os/spaces">Anonymous Tor Space →</a>
+</div>`
+}
+
+// ariaBool renders a Go bool as the string "true"/"false" for an ARIA attribute
+// (e.g. aria-pressed), which requires the literal words, not "1"/"".
+func ariaBool(b bool) string {
+	if b {
+		return "true"
+	}
+	return "false"
+}
+
 // unreadMessagesLabel is the dashboard Messages-card footer link text.
 func unreadMessagesLabel(unread int) string {
 	if unread > 0 {
@@ -624,6 +670,10 @@ func osSidebarNav(active string, s *osSettings) string {
 	}
 
 	var b strings.Builder
+	// One-click world switch pinned to the TOP of the sidebar (ADR-0141): flip the
+	// install between the public Clearnet world and the Anonymous Tor Space in a
+	// single click, from anywhere. Admin-only (matches the /os/spaces guard).
+	b.WriteString(spaceSwitch(lvl, s != nil && s.TorSpaceOn))
 	// gate returns the item only when this access level can reach its href.
 	gate := func(item, href string) string {
 		if lvl < osPathMinLevel(href) {
@@ -674,11 +724,12 @@ func osSidebarNav(active string, s *osSettings) string {
 		gate(navItem("/os/theme/store", "Theme Store", "theme-store", active, iconThemeStore), "/os/theme/store"),
 		navItem("/os/vayumail", "VayuMail", "vayuos", active, iconSecurity),
 		navItem("/os/talk", "VayuTalk", "talk", active, iconTalk),
-		// VayuTor + Spaces are admin-only infrastructure controls (see
-		// osPathMinLevel): gate their sidebar entries so author/editor sessions
-		// never see a control they cannot (and must not) reach.
+		// VayuTor is an admin-only infrastructure control (see osPathMinLevel):
+		// gate its sidebar entry so author/editor sessions never see it. The
+		// Anonymous Tor Space no longer has its own nav row — the one-click world
+		// switch at the TOP of the sidebar is its control, and its detail/address
+		// page is reached from there (fewer sidebar rows, ADR-0141).
 		gate(navItem("/os/tor", "VayuTor", "tor", active, iconTor), "/os/tor"),
-		gate(navItem("/os/spaces", "Spaces", "spaces", active, iconSpaces), "/os/spaces"),
 	)
 	section("System",
 		gate(navItem("/os/monitoring", "Monitoring", "monitoring", active, iconMonitoring), "/os/monitoring"),
@@ -984,6 +1035,25 @@ function vpHtmxFail(){if(window.vpToast)window.vpToast('Action failed — please
 b.addEventListener('htmx:responseError',vpHtmxFail);
 b.addEventListener('htmx:sendError',vpHtmxFail);
 b.addEventListener('htmx:afterRequest',function(e){var d=e.detail;if(!d||!d.successful)return;var l=document.getElementById('vp-live');if(!l)return;var v=(d.requestConfig&&(d.requestConfig.verb||'')).toLowerCase();l.textContent='';l.textContent=(v==='get'?'Content refreshed.':'Change saved.');});
+// One-click world switch (ADR-0141): the switch lives on every admin page but the
+// vp_csrf cookie is only issued by CSRF-wrapped GETs, so prime it with a GET of
+// the (admin-only, side-effect-free) Spaces page, then POST the toggle with the
+// fresh token. Reloads on success to pick up the new world + its colour.
+Array.prototype.forEach.call(document.querySelectorAll('[data-space-switch]'),function(seg){
+  seg.addEventListener('click',function(){
+    if(seg.classList.contains('is-active')||seg.disabled)return;
+    var on=seg.getAttribute('data-space-switch')==='on';
+    var sw=seg.parentNode;if(sw)sw.classList.add('is-busy');
+    fetch('/os/spaces',{credentials:'same-origin'}).then(function(){
+      var m=document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);
+      return fetch('/os/spaces/toggle?enable='+(on?'1':'0'),{method:'POST',credentials:'same-origin',headers:{'X-CSRF-Token':m?m[1]:''}});
+    }).then(function(r){
+      if(r.ok){location.reload();return;}
+      if(sw)sw.classList.remove('is-busy');
+      if(window.vpToast)window.vpToast('Could not switch world (administrator only).','error');
+    }).catch(function(){if(sw)sw.classList.remove('is-busy');if(window.vpToast)window.vpToast('Could not switch world — please try again.','error');});
+  });
+});
 })();
 </script>
 ` + alpine + `<!-- Bootstrap (nonce-gated, reads data-admin-theme from body) -->

@@ -3,7 +3,53 @@ package main
 import (
 	"strings"
 	"testing"
+
+	"github.com/johalputt/vayupress/internal/config"
 )
+
+// TestSpaceSwitch covers the top-of-sidebar one-click world switch (ADR-0141):
+// admin-only, CSP-safe, correct active segment, and static (non-switchable) on a
+// whole-install Tor world.
+func TestSpaceSwitch(t *testing.T) {
+	// Non-admins never see the switch.
+	if got := spaceSwitch(accessAuthor, false); got != "" {
+		t.Errorf("spaceSwitch must be empty for non-admins, got %q", got)
+	}
+	if got := spaceSwitch(accessEditor, true); got != "" {
+		t.Errorf("spaceSwitch must be empty for editors, got %q", got)
+	}
+
+	// Clearnet install, Tor Space OFF: Clearnet is active, the Tor segment offers
+	// to switch ON.
+	off := spaceSwitch(accessAdmin, false)
+	assertCSPSafe(t, "spaceSwitch/off", off)
+	if !strings.Contains(off, `data-space-switch="on"`) || !strings.Contains(off, `data-space-switch="off"`) {
+		t.Error("clearnet switch must offer both segments")
+	}
+	if !strings.Contains(off, `class="space-switch__seg is-active" data-space-switch="off"`) {
+		t.Error("with Tor off, the Clearnet segment must be active")
+	}
+
+	// Clearnet install, Tor Space ON: the Tor segment is active.
+	on := spaceSwitch(accessAdmin, true)
+	assertCSPSafe(t, "spaceSwitch/on", on)
+	if !strings.Contains(on, `class="space-switch__seg is-active" data-space-switch="on"`) {
+		t.Error("with Tor on, the Tor segment must be active")
+	}
+
+	// Whole-install Tor world: static indicator, no interactive switch buttons.
+	prev := config.Cfg.OnionMode
+	config.Cfg.OnionMode = true
+	defer func() { config.Cfg.OnionMode = prev }()
+	self := spaceSwitch(accessAdmin, true)
+	assertCSPSafe(t, "spaceSwitch/self", self)
+	if strings.Contains(self, "data-space-switch") {
+		t.Error("a dedicated Tor install must not offer a switch control")
+	}
+	if !strings.Contains(self, "is-active") || !strings.Contains(self, "Onion address") {
+		t.Error("dedicated Tor install must show Tor active + its onion link")
+	}
+}
 
 // TestOSSpacesCardsCSPSafe verifies the Spaces fragments are CSP-safe and carry
 // the right content, including the one-click Anonymous Tor Space toggle.
