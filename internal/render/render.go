@@ -1257,7 +1257,12 @@ func headMetaHTML(s SiteSettings) template.HTML {
 
 type articlePage struct {
 	db.Article
-	Domain              string
+	Domain string
+	// Origin is seo.Origin(Domain) — the scheme-correct absolute-URL prefix
+	// ("https://<host>" for clearnet, "http://<onion>" for a Tor site). Every
+	// canonical / og:url / og:image / JSON-LD URL uses it so a .onion never emits
+	// an unreachable https:// share URL (ADR-0141). Clearnet output is unchanged.
+	Origin              string
 	Version             string
 	Layout              ArticleLayoutType
 	PicoCSSLink         template.HTML
@@ -1474,10 +1479,10 @@ var articleTmpl = template.Must(template.New("article").Funcs(template.FuncMap{
 <meta property="og:type" content="article">
 <meta property="og:title" content="{{.OGTitle}}">
 <meta property="og:description" content="{{.OGDescription}}">
-<meta property="og:url" content="https://{{.Domain}}/{{.Slug}}">
+<meta property="og:url" content="{{.Canonical}}">
 <meta property="og:site_name" content="{{if .SiteName}}{{.SiteName}}{{else}}{{.Domain}}{{end}}">
 <meta property="og:locale" content="en">
-{{if .OGImage}}<meta property="og:image" content="{{.OGImage}}">{{else if .SiteOGImage}}<meta property="og:image" content="https://{{.Domain}}{{.SiteOGImage}}">{{end}}
+{{if .OGImage}}<meta property="og:image" content="{{.OGImage}}">{{else if .SiteOGImage}}<meta property="og:image" content="{{.Origin}}{{.SiteOGImage}}">{{end}}
 <meta property="article:published_time" content="{{.CreatedAt | isoDate}}">
 <meta property="article:modified_time" content="{{.UpdatedAt | isoDate}}">
 {{range .Tags}}<meta property="article:tag" content="{{.}}">{{end}}
@@ -1485,7 +1490,7 @@ var articleTmpl = template.Must(template.New("article").Funcs(template.FuncMap{
 <meta name="twitter:title" content="{{.TwitterTitle}}">
 <meta name="twitter:description" content="{{.TwitterDescription}}">
 {{if .TwitterImageURL}}<meta name="twitter:image" content="{{.TwitterImageURL}}">{{end}}
-<script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"{{.Title | jsonAttr}}","description":"{{.SEODescription | jsonAttr}}","datePublished":"{{.CreatedAt | isoDate}}","dateModified":"{{.UpdatedAt | isoDate}}","url":"{{.Canonical}}","mainEntityOfPage":{"@type":"WebPage","@id":"{{.Canonical}}"},"inLanguage":"en",{{if .OGImage}}"image":"{{.OGImage}}",{{end}}"author":{"@type":"Person","name":"{{if .Author}}{{.Author | jsonAttr}}{{else if .SiteName}}{{.SiteName | jsonAttr}}{{else}}{{.Domain | jsonAttr}}{{end}}"},"publisher":{"@type":"Organization","name":"{{if .SiteName}}{{.SiteName | jsonAttr}}{{else}}{{.Domain | jsonAttr}}{{end}}","url":"https://{{.Domain}}"}}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"{{.Title | jsonAttr}}","description":"{{.SEODescription | jsonAttr}}","datePublished":"{{.CreatedAt | isoDate}}","dateModified":"{{.UpdatedAt | isoDate}}","url":"{{.Canonical}}","mainEntityOfPage":{"@type":"WebPage","@id":"{{.Canonical}}"},"inLanguage":"en",{{if .OGImage}}"image":"{{.OGImage}}",{{end}}"author":{"@type":"Person","name":"{{if .Author}}{{.Author | jsonAttr}}{{else if .SiteName}}{{.SiteName | jsonAttr}}{{else}}{{.Domain | jsonAttr}}{{end}}"},"publisher":{"@type":"Organization","name":"{{if .SiteName}}{{.SiteName | jsonAttr}}{{else}}{{.Domain | jsonAttr}}{{end}}","url":"{{.Origin}}"}}</script>
 {{.PicoCSSLink}}{{.CustomCSSLink}}{{.ArticleCSSLink}}{{.HighContrastCSSLink}}{{.ThemeCSSLink}}<link rel="stylesheet" href="/static/chroma.css">{{.HeadMeta}}{{.ThemeToggleJSLink}}{{.VideoFacadeJSLink}}
 <link rel="manifest" href="/manifest.json">
 <link rel="icon" type="image/png" href="/static/favicon-dark.png" media="(prefers-color-scheme: light)">
@@ -1547,7 +1552,11 @@ type HomeArticle struct {
 }
 
 type homePage struct {
-	Domain              string
+	Domain string
+	// Origin is seo.Origin(Domain): "https://<host>" clearnet, "http://<onion>" for
+	// a Tor site. Canonical/prev/next/og:url/og:image all use it so the onion emits
+	// reachable http:// URLs (ADR-0141); clearnet output is byte-identical.
+	Origin              string
 	Version             string
 	PicoCSSLink         template.HTML
 	CustomCSSLink       template.HTML
@@ -1633,13 +1642,13 @@ var homeTmpl = template.Must(template.New("home").Funcs(homeFuncs).Parse(`<!DOCT
 <title>{{if .SiteName}}{{.SiteName}}{{else}}{{.Domain}}{{end}}{{if .Tagline}} — {{.Tagline}}{{end}}</title>
 <meta name="description" content="{{if .Description}}{{.Description}}{{else if .Tagline}}{{.Tagline}}{{else}}{{if .SiteName}}{{.SiteName}}{{else}}{{.Domain}}{{end}}{{end}}">
 <meta name="generator" content="VayuPress {{.Version}}">
-<link rel="canonical" href="https://{{.Domain}}{{.Canonical}}">{{if .HasPrev}}
-<link rel="prev" href="https://{{.Domain}}{{.PrevURL}}">{{end}}{{if .HasNext}}
-<link rel="next" href="https://{{.Domain}}{{.NextURL}}">{{end}}
+<link rel="canonical" href="{{.Origin}}{{.Canonical}}">{{if .HasPrev}}
+<link rel="prev" href="{{.Origin}}{{.PrevURL}}">{{end}}{{if .HasNext}}
+<link rel="next" href="{{.Origin}}{{.NextURL}}">{{end}}
 <link rel="alternate" type="application/rss+xml" title="{{.Domain}} feed" href="/feed.xml">
 <meta property="og:type" content="website"><meta property="og:title" content="{{.Domain}}">
-<meta property="og:url" content="https://{{.Domain}}{{.Canonical}}">
-{{if .OGImage}}<meta property="og:image" content="https://{{.Domain}}{{.OGImage}}"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="https://{{.Domain}}{{.OGImage}}">{{end}}
+<meta property="og:url" content="{{.Origin}}{{.Canonical}}">
+{{if .OGImage}}<meta property="og:image" content="{{.Origin}}{{.OGImage}}"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="{{.Origin}}{{.OGImage}}">{{end}}
 {{.PicoCSSLink}}{{.CustomCSSLink}}{{.ArticleCSSLink}}{{.HighContrastCSSLink}}{{.ThemeCSSLink}}{{.HeadMeta}}{{.ThemeToggleJSLink}}
 <link rel="manifest" href="/manifest.json">
 <link rel="icon" type="image/png" href="/static/favicon-dark.png" media="(prefers-color-scheme: light)">
@@ -1747,6 +1756,7 @@ func RenderHomeWithSettings(s SiteSettings, domain, version string, articles []H
 	}
 	err := homeTmpl.Execute(&buf, homePage{
 		Domain:              domain,
+		Origin:              seo.Origin(domain),
 		Version:             version,
 		PicoCSSLink:         PicoCSSLink(),
 		CustomCSSLink:       CustomCSSLink(),
@@ -1881,6 +1891,7 @@ func Render404(domain, version string) string {
 	s := getActiveSettings()
 	_ = notFoundTmpl.Execute(&buf, homePage{
 		Domain:              domain,
+		Origin:              seo.Origin(domain),
 		Version:             version,
 		PicoCSSLink:         PicoCSSLink(),
 		CustomCSSLink:       CustomCSSLink(),
@@ -2007,6 +2018,7 @@ func RenderArticleWithMetaSettings(s SiteSettings, a db.Article, layout ArticleL
 	data := articlePage{
 		Article:             a,
 		Domain:              domain,
+		Origin:              seo.Origin(domain),
 		Version:             Version,
 		Layout:              layout,
 		PicoCSSLink:         PicoCSSLink(),

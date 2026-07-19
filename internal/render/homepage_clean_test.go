@@ -83,6 +83,35 @@ func TestHomepagePagination(t *testing.T) {
 	}
 }
 
+// TestHomepageOnionUsesHTTPOrigin locks the ADR-0141 scheme rule for a Tor site:
+// on a .onion the canonical / og:url / prev / next / og:image URLs are emitted over
+// http:// (v3 onions are http-only, so an https://<onion> share URL is
+// unreachable) — never https://. Clearnet stays https:// (TestHomepagePagination).
+func TestHomepageOnionUsesHTTPOrigin(t *testing.T) {
+	SetActiveSettings(SiteSettings{Name: "Acme", OGImage: "/theme-assets/og"})
+	t.Cleanup(func() { SetActiveSettings(SiteSettings{}) })
+
+	arts := []HomeArticle{{Title: "A", Slug: "a"}}
+	out, err := RenderHome("abcxyz.onion", "1.0.0", arts, 90, 2, 3)
+	if err != nil {
+		t.Fatalf("RenderHome onion: %v", err)
+	}
+	for _, want := range []string{
+		`<link rel="canonical" href="http://abcxyz.onion/page/2">`,
+		`<link rel="prev" href="http://abcxyz.onion/">`,
+		`<link rel="next" href="http://abcxyz.onion/page/3">`,
+		`<meta property="og:url" content="http://abcxyz.onion/page/2">`,
+		`<meta property="og:image" content="http://abcxyz.onion/theme-assets/og">`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("onion homepage missing %q", want)
+		}
+	}
+	if strings.Contains(out, "https://abcxyz.onion") {
+		t.Error("onion homepage must never emit an https:// onion URL (unreachable)")
+	}
+}
+
 // TestHomepageHasSearchBox confirms the public nav exposes a search box wired to
 // the /search page when search is enabled, and hides it when disabled (the box
 // is tied to the Meilisearch toggle).

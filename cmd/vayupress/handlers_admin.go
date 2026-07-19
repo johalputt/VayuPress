@@ -327,6 +327,23 @@ func (a *App) renderHomeAt(w http.ResponseWriter, r *http.Request, page int) {
 	}
 	useCache := page == 1
 	warm := isCacheWarm(r)
+	// Privacy-first analytics: count the homepage view (cookieless, no PII) before
+	// the cache early-return so cached hits are tallied too. Crucially this is the
+	// only reliable signal in the Tor world — Tor Browser commonly disables JS, so
+	// the client beacon never fires; server-side recording still counts the visit.
+	// Only page 1 is the canonical "/"; admin previews and cache-warm probes are
+	// excluded. Async + best-effort, mirroring the per-article path.
+	if page == 1 && a.analytics != nil {
+		isAdmin := r.Header.Get("X-API-Key") == config.Cfg.APIKey
+		if !isAdmin && !warm {
+			ref := r.Referer()
+			go func() {
+				if err := a.analytics.Record(context.Background(), "/", ref); err != nil {
+					logging.LogError("analytics", "record home failed", err.Error())
+				}
+			}()
+		}
+	}
 	if useCache {
 		cachePath := filepath.Join(config.Cfg.CacheDir, homeRel)
 		if fi, err := os.Stat(cachePath); err == nil {

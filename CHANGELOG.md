@@ -8,6 +8,31 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.27] — 2026-07-19
+
+### Fixed
+- **Tor-world logo now actually changes.** The default (built-in) favicon/logo was
+  served with a year-long `immutable` cache, so a browser that had cached it never
+  re-requested the asset — a custom logo uploaded later silently "did nothing".
+  This bit the Tor world hardest (a fresh Tor instance starts on the shared
+  default). The default logo now serves with an ETag + short revalidation, so a
+  custom logo appears within a minute. Uploaded logos were already content-hashed
+  and unaffected. (Both worlds benefit; each keeps its own logo in its own DB.)
+- **Tor-world social/OG image is emitted over the correct scheme.** `og:image`,
+  `og:url`, `canonical`, `prev`/`next` and the JSON-LD publisher URL were built as
+  hard-coded `https://<host>` even for a `.onion` — an unreachable URL on a v3
+  onion (which is http-only). They now route through `seo.Origin`, so a Tor site
+  emits `http://<onion>/…` and its share image resolves. Clearnet output is
+  byte-identical (still `https://`).
+
+### Added
+- **Tor analytics in the Tor console.** The Anonymous Tor world's sidebar now has
+  an **Insights → Analytics** entry showing the visit count and which pages were
+  visited — privacy-preserving (aggregate counts only, no per-visitor data),
+  served entirely from the Tor world's own database. The homepage `/` is now also
+  recorded server-side, so Tor Browser visitors (JS commonly disabled, so the
+  client beacon never fires) are still counted.
+
 ## [3.14.26] — 2026-07-19
 
 ### Security

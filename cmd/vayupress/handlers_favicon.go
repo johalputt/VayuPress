@@ -150,10 +150,14 @@ func (a *App) serveFavicon(fallback []byte) http.HandlerFunc {
 				}
 			}
 		}
-		// Default embedded mark — safe to cache aggressively (immutable).
-		w.Header().Set("Content-Type", "image/png")
-		w.Header().Set("Cache-Control", "public, immutable, max-age=31536000")
-		_, _ = w.Write(fallback)
+		// Default embedded mark. Serve it with an ETag + short revalidation (NOT a
+		// year-long immutable cache): a browser that cached an immutable default
+		// would keep showing it for a YEAR and never pick up a later custom-logo
+		// upload, so the operator's new logo silently "won't change". This bit the
+		// Tor world especially — a fresh child starts with the shared default, so a
+		// custom logo uploaded there appeared to do nothing. Revalidation makes the
+		// default→custom switch show within a minute.
+		serveFaviconBytes(w, r, fallback, "image/png")
 	}
 }
 

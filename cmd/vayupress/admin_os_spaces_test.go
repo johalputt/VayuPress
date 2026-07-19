@@ -21,7 +21,7 @@ func TestTorWorldNav(t *testing.T) {
 	// Post) moved INTO the dashboard workspace, so the sidebar keeps only the
 	// Dashboard hub, the design tool, the anonymous services and system areas.
 	for _, want := range []string{
-		">Dashboard<", ">Theme<",
+		">Dashboard<", ">Theme<", ">Analytics<",
 		">VayuMail<", ">VayuTalk<", ">Domains<", ">Settings<",
 		"Anonymous services",
 	} {
@@ -31,10 +31,12 @@ func TestTorWorldNav(t *testing.T) {
 	}
 	// Tor world MUST hide every clearnet-only section, AND the content items that
 	// now live in the dashboard workspace (they must not reappear in the sidebar).
+	// Analytics IS shown (Tor visit stats are privacy-preserving and served from the
+	// Tor world's own DB), so it is intentionally NOT in this deny list.
 	for _, deny := range []string{
 		">Monetization<", ">Advertising<", ">Newsletter<", ">Members<",
 		">VayuMCP<", ">SEO<", ">Bot Shield<", ">VayuTor<", ">Website<",
-		">Analytics<", ">Governance<", ">Fault Engine<",
+		">Governance<", ">Fault Engine<",
 		">Posts<", ">Pages<", ">Comments<", ">Media<", ">New Post<",
 	} {
 		if strings.Contains(nav, deny) {

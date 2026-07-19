@@ -823,6 +823,13 @@ func torWorldNav(active string, lvl int, s *osSettings) string {
 	section("Design",
 		gate(navItem("/os/theme", "Theme", "theme", active, iconTheme), "/os/theme"),
 	)
+	// Tor analytics: the visit count and which pages were visited — privacy-
+	// preserving (aggregate counts only, no per-visitor data), served entirely from
+	// the Tor world's own database. The /os/analytics handler already works in
+	// OnionMode; it was only missing from this sidebar.
+	section("Insights",
+		gate(navItem("/os/analytics", "Analytics", "analytics", active, iconAnalytics), "/os/analytics"),
+	)
 	section("Anonymous services",
 		navItem("/os/vayumail", "VayuMail", "vayuos", active, iconSecurity),
 		navItem("/os/talk", "VayuTalk", "talk", active, iconTalk),
