@@ -67,6 +67,31 @@ func TestSetManyOverridesDefaultsAndInvalidatesCache(t *testing.T) {
 	}
 }
 
+// TestTorSpaceKeysPersist is a regression guard for the ADR-0141 world toggle:
+// KeyTorSpaceEnabled / KeyTorSpaceAPIKey must be registered in AllKeys, or
+// SetMany silently drops the write (returning success) and the one-click switch
+// appears to work but never persists — the reloaded page always reads "off".
+func TestTorSpaceKeysPersist(t *testing.T) {
+	for _, k := range []string{KeyTorSpaceEnabled, KeyTorSpaceAPIKey} {
+		if !AllKeys[k] {
+			t.Fatalf("%q missing from AllKeys — SetMany will silently drop it", k)
+		}
+	}
+	s := newTestStore(t)
+	if err := s.SetMany(context.Background(), map[string]string{
+		KeyTorSpaceEnabled: "on",
+		KeyTorSpaceAPIKey:  "deadbeef",
+	}); err != nil {
+		t.Fatalf("SetMany: %v", err)
+	}
+	if got := s.Get(context.Background(), KeyTorSpaceEnabled); got != "on" {
+		t.Errorf("KeyTorSpaceEnabled did not persist: got %q, want %q", got, "on")
+	}
+	if got := s.Get(context.Background(), KeyTorSpaceAPIKey); got != "deadbeef" {
+		t.Errorf("KeyTorSpaceAPIKey did not persist: got %q", got)
+	}
+}
+
 func TestGetSingleFallsBackToDefault(t *testing.T) {
 	s := newTestStore(t)
 	if got := s.Get(context.Background(), KeyThemeAccentLight); got != "#f59e0b" {

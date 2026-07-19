@@ -8,6 +8,18 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.17] — 2026-07-19
+
+### Fixed
+- **The Anonymous Tor Space toggle now actually persists (ADR-0141).** The new
+  `tor.space_enabled` / `tor.space_api_key` settings keys were defined but never
+  registered in the settings allowlist, so `SetMany` silently dropped the write and
+  returned success — the one-click world switch appeared to work (the page
+  reloaded) but the value never saved, so the reloaded console always read "off" and
+  nothing changed. Registered both keys (with defaults) and added a settings
+  regression test that fails if a Tor-Space key is missing from the allowlist. This
+  was the real cause of "clicking Tor only refreshes, nothing changes".
+
 ## [3.14.16] — 2026-07-19
 
 ### Changed

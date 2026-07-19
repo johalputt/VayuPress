@@ -48,6 +48,11 @@ func TestThemeEditorCoversSettingsAllowlist(t *testing.T) {
 		settings.KeyTorPageStats:     true,
 		settings.KeyTorPageHits:      true,
 		settings.KeyTorOnionLocation: true,
+		// Anonymous Tor Space (ADR-0141): the world switch (/os/spaces/toggle) owns
+		// these operational keys, and the child API key is engine-generated — never
+		// theme-editor form fields.
+		settings.KeyTorSpaceEnabled: true,
+		settings.KeyTorSpaceAPIKey:  true,
 		// Feature flags are toggled through the Tools & Plugins panel
 		// (POST /os/api/tools/toggle), not the theme editor form.
 		settings.KeyFeatureComments:    true,

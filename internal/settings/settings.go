@@ -345,6 +345,11 @@ var AllKeys = map[string]bool{
 	KeyTorPageStats:         true,
 	KeyTorPageHits:          true,
 	KeyTorOnionLocation:     true,
+	// Anonymous Tor Space (ADR-0141). MUST be registered here or SetMany silently
+	// drops the write — the one-click world toggle would appear to succeed (200)
+	// yet never persist, so the reloaded page always reads "off".
+	KeyTorSpaceEnabled: true,
+	KeyTorSpaceAPIKey:  true,
 }
 
 // Defaults are returned when no DB value exists for a key.
@@ -406,6 +411,8 @@ var Defaults = map[string]string{
 	KeyTorPageStats:          "off",
 	KeyTorPageHits:           "",
 	KeyTorOnionLocation:      "on",
+	KeyTorSpaceEnabled:       "off",
+	KeyTorSpaceAPIKey:        "",
 }
 
 // Store is a thread-safe settings store with an in-process read cache.
