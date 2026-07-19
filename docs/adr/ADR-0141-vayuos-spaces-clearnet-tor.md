@@ -129,3 +129,63 @@ confirmation).
 - ADR-0134 (VayuAPI) / ADR-0139 (VayuMCP) — endpoints ride the same mux, so they
   work in either Space; the OAuth consent `form-action` must include the onion
   origin when served over Tor.
+
+## Amendment — 2026-07-19: finalized operating decisions
+
+After review, the model is refined from "per-site Space" to a **whole-install
+mode switch**, and the Tor world is **web-first**. These are the decisions we
+build to:
+
+1. **Whole-install mode, not per-site.** A single flag `VAYUOS_MODE = clearnet |
+   tor` selects the entire instance's world. To run both, the operator runs **two
+   separate VayuPress installs** — a Clearnet install (nginx + certbot + public
+   DNS + mobile apps) and a Tor install (http onion, no certbot, anti-leak
+   enforced) — each with its **own database**. That physical separation *is* the
+   isolation and the strongest anonymity boundary (no shared identity, no
+   correlation, either can be switched off by simply not running it).
+
+2. **Tor clients are web-only (via Tor Browser).** A mobile app is a large
+   de-anonymization surface (needs Orbot/embedded Tor, leaks are easy), so the
+   Tor install is accessed through **Tor Browser**:
+   - **VayuMail·Tor = webmail only.** No mobile-app support for the Tor install;
+     the mobile apps stay on the Clearnet install. (This also removes the mobile
+     SOCKS-dialer work.)
+   - **VayuTalk over Tor = web client only.** A mobile-over-Tor Talk client is
+     deferred and only ever considered if it can be proven not to leak; until
+     then, anonymous Talk lives in the browser over Tor Browser.
+
+3. **Sync & Migrate — content only, two mechanisms, with a hard warning.** Data
+   moves between the two separate installs by an explicit tool; **identities never
+   cross**:
+   - **Scope = content only:** posts, pages, media, themes, menus, settings,
+     redirects. **Never** accounts, mailboxes, PGP private keys, sessions, or Talk
+     identities — syncing those would de-anonymize the Tor install. Identity
+     export is not offered.
+   - **Mechanism A — Portable Bundle (primary):** a signed, checksummed
+     `.vaybundle` export you move manually (works fully offline / by USB — the
+     safe path for an air-gapped anonymous box). Import supports **Merge** (upsert
+     by slug) or **Replace**; media is content-addressed so re-import is
+     idempotent. Serves both one-time **migrate** and periodic **mirror** (by
+     re-importing).
+   - **Mechanism B — Live Mirror agent (opt-in):** a scheduled pull of content
+     from the source install's API over Tor SOCKS (typically clearnet→onion for a
+     censorship mirror). **Off by default**, and enabling it shows a blunt warning:
+     *a live link between the two installs makes them correlatable and reduces the
+     anonymity of the Tor install.*
+   - **Anonymity note reiterated:** any sync makes the two installs correlatable
+     by content; sync is an availability/convenience feature, not an anonymity
+     one. A truly anonymous Tor install keeps its own content and never syncs.
+
+### Revised phased delivery
+
+- **Phase 1 — whole-install mode + onion-only site/blog + admin.** `VAYUOS_MODE`
+  flag, onion-primary identity, stop the onion→clearnet Host rewrite, scheme-aware
+  origin (shipped), request-aware `Secure` cookies, CORS/callback no-ops, onion
+  deploy branch, Go-layer rate limiting, anti-leak enforcement, and the VayuOS
+  top-bar mode indicator.
+- **Phase 2 — Content Bundle export/import** (content-only, Merge/Replace, signed)
+  + the opt-in Live Mirror agent with warning.
+- **Phase 3 — VayuMail·Tor (webmail only)**: instance-local → onion-federated,
+  no mobile.
+- **Phase 4 — VayuTalk anonymous web client** over Tor (rotatable ID); mobile
+  deferred pending a leak-proof design.
