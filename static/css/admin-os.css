@@ -597,6 +597,108 @@
 .vp-os .stat-card__trend--down { color: var(--danger); }
 .vp-os .stat-card__sparkline { display: block; }
 
+/* ── Dashboard workspace (ADR-0141 dashboard redesign) ─────────────────
+   The content areas — Posts, Pages, Comments, Messages, Media, New Post,
+   Website — are surfaced on the dashboard itself as large clickable cards
+   with live counts and notification badges, so the sidebar stays focused on
+   the broader system areas. Each card is a first-class navigation target. */
+.vp-os .section-head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-3);
+  margin: 0 0 var(--sp-4);
+}
+.vp-os .section-head__title {
+  font-family: var(--font-head); font-size: var(--text-lg); font-weight: 700;
+  color: var(--text); letter-spacing: -0.01em;
+}
+.vp-os .section-head__hint { font-size: var(--text-xs); color: var(--text-3); }
+
+.vp-os .work-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--sp-4);
+  margin-bottom: var(--sp-6);
+}
+.vp-os .work-card {
+  position: relative;
+  display: flex; align-items: center; gap: var(--sp-4);
+  padding: var(--sp-4) var(--sp-5);
+  background: var(--bg-surface);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--bg-surface-2) 55%, var(--bg-surface)) 0%, var(--bg-surface) 60%);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  text-decoration: none;
+  overflow: hidden;
+  transition: border-color var(--t), box-shadow var(--t), transform var(--t);
+}
+.vp-os .work-card::before {
+  content: ""; position: absolute; inset: 0 0 auto 0; height: 1px;
+  background: linear-gradient(90deg, transparent, var(--border-strong) 20%, var(--brand-glow) 50%, var(--border-strong) 80%, transparent);
+  opacity: 0.5; transition: opacity var(--t);
+}
+.vp-os .work-card:hover {
+  border-color: var(--border-strong);
+  box-shadow: 0 8px 28px -12px rgba(2, 8, 20, 0.55);
+  transform: translateY(-2px); text-decoration: none;
+}
+.vp-os .work-card:hover::before { opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .vp-os .work-card { transition: border-color var(--t), box-shadow var(--t); }
+  .vp-os .work-card:hover { transform: none; }
+}
+.vp-os .work-card__icon {
+  flex: 0 0 auto; width: 40px; height: 40px; border-radius: var(--r-sm);
+  display: flex; align-items: center; justify-content: center;
+  background: var(--brand-dim); color: var(--brand);
+  transition: transform var(--t);
+}
+.vp-os .work-card:hover .work-card__icon { transform: scale(1.08); }
+.vp-os .work-card__icon svg { width: 20px; height: 20px; }
+.vp-os .work-card__icon--accent { background: var(--accent-dim); color: var(--accent); }
+.vp-os .work-card__body { flex: 1; min-width: 0; }
+.vp-os .work-card__title {
+  display: flex; align-items: center; gap: var(--sp-2);
+  font-size: var(--text-sm); font-weight: 600; color: var(--text);
+}
+.vp-os .work-card__count {
+  font-family: var(--font-head); font-variant-numeric: tabular-nums;
+  font-size: var(--text-sm); font-weight: 700; color: var(--text-2);
+}
+.vp-os .work-card__desc { margin-top: 2px; font-size: var(--text-xs); color: var(--text-3); }
+.vp-os .work-card__badge {
+  min-width: 18px; height: 18px; padding: 0 6px; border-radius: var(--r-full);
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 0.66rem; font-weight: 700; line-height: 1; color: #fff; background: var(--accent);
+}
+.vp-os .work-card__arrow {
+  flex: 0 0 auto; color: var(--text-3); opacity: 0; transform: translateX(-4px);
+  transition: opacity var(--t), transform var(--t);
+}
+.vp-os .work-card:hover .work-card__arrow { opacity: 1; transform: translateX(0); }
+
+/* Anonymous-world status card — the .onion indicator moved off the sidebar
+   toggle and onto the dashboard, where there is room to show it properly. */
+.vp-os .world-card {
+  display: flex; align-items: center; gap: var(--sp-4); flex-wrap: wrap;
+  padding: var(--sp-4) var(--sp-5); margin-bottom: var(--sp-6);
+  background: linear-gradient(120deg, var(--brand-dim), transparent 70%);
+  border: 1px solid var(--border-strong); border-radius: var(--r-md);
+}
+.vp-os .world-card__dot {
+  flex: 0 0 auto; width: 9px; height: 9px; border-radius: var(--r-full);
+  background: var(--ok); box-shadow: 0 0 8px var(--ok-dim);
+}
+.vp-os .world-card__dot--warn { background: var(--warn); box-shadow: 0 0 8px var(--warn-dim); }
+.vp-os .world-card__text { flex: 1; min-width: 12rem; }
+.vp-os .world-card__title { font-size: var(--text-sm); font-weight: 700; color: var(--text); }
+.vp-os .world-card__addr {
+  margin-top: 2px; font-family: var(--font-mono); font-size: var(--text-xs);
+  color: var(--text-2); word-break: break-all;
+}
+.vp-os .world-card__actions { display: flex; align-items: center; gap: var(--sp-2); flex-shrink: 0; }
+
+@media (max-width: 1100px) { .vp-os .work-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 640px)  { .vp-os .work-grid { grid-template-columns: 1fr; } }
+
 /* ── Grid system ─────────────────────────────────────────────── */
 .vp-os .grid { display: grid; gap: var(--sp-4); }
 .vp-os .grid-2 { grid-template-columns: repeat(2, 1fr); }

@@ -8,7 +8,24 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
-## [3.14.24] — 2026-07-19
+## [3.14.25] — 2026-07-19
+
+### Changed
+- **Dashboard is now the command center (both Clearnet and Tor).** The content
+  areas — Posts, Pages, Comments, Messages, Media, New Post and (on clearnet)
+  Website — have moved OUT of the sidebar and INTO the dashboard as a premium
+  **Workspace** grid: large, clickable tiles that each show their live count and,
+  where it matters, a notification badge (pending comments, unread messages). The
+  sidebar now keeps only the Dashboard hub and the broader system areas, so it is
+  shorter and calmer. The dashboard also gained a **System health** row (queue
+  jobs) alongside the existing publishing trend, storage, activity feed and recent
+  articles. The Tor world console gets the same premium dashboard.
+- **The anonymous-world status moved off the sidebar toggle onto the dashboard.**
+  The old "Anonymous world live · copy .onion" line under the Clearnet⟷Tor switch
+  is gone; the switch is now a clean two-segment control. The world's live status
+  and its `.onion` (with a copy button and an Enter/Back link) are shown as a
+  dedicated **world card** at the top of the dashboard, where there is room to
+  present it properly.
 
 ### Added
 - **One-click "Add Tor site" in the Tor world (ADR-0141).** The Domains section of

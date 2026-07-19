@@ -17,9 +17,11 @@ func TestTorWorldNav(t *testing.T) {
 
 	nav := osSidebarNav("dashboard", &osSettings{AccessLevel: accessAdmin})
 
-	// Tor world MUST include these.
+	// Tor world MUST include these. Content (Posts, Pages, Comments, Media, New
+	// Post) moved INTO the dashboard workspace, so the sidebar keeps only the
+	// Dashboard hub, the design tool, the anonymous services and system areas.
 	for _, want := range []string{
-		">Dashboard<", ">Posts<", ">Pages<", ">Media<",
+		">Dashboard<", ">Theme<",
 		">VayuMail<", ">VayuTalk<", ">Domains<", ">Settings<",
 		"Anonymous services",
 	} {
@@ -27,14 +29,16 @@ func TestTorWorldNav(t *testing.T) {
 			t.Errorf("Tor world nav missing %q", want)
 		}
 	}
-	// Tor world MUST hide every clearnet-only section.
+	// Tor world MUST hide every clearnet-only section, AND the content items that
+	// now live in the dashboard workspace (they must not reappear in the sidebar).
 	for _, deny := range []string{
 		">Monetization<", ">Advertising<", ">Newsletter<", ">Members<",
 		">VayuMCP<", ">SEO<", ">Bot Shield<", ">VayuTor<", ">Website<",
 		">Analytics<", ">Governance<", ">Fault Engine<",
+		">Posts<", ">Pages<", ">Comments<", ">Media<", ">New Post<",
 	} {
 		if strings.Contains(nav, deny) {
-			t.Errorf("Tor world nav must NOT show clearnet section %q", deny)
+			t.Errorf("Tor world nav must NOT show %q", deny)
 		}
 	}
 }
@@ -51,8 +55,9 @@ func TestSpaceSwitch(t *testing.T) {
 		t.Errorf("spaceSwitch must be empty for editors, got %q", got)
 	}
 
-	// Clearnet install, Tor Space OFF: Clearnet is active, the Tor segment offers
-	// to switch ON, and the status panel is hidden.
+	// Clearnet install: the switch is a clean two-segment control — Clearnet active,
+	// Tor the click-to-enter segment. The live .onion status now lives on the
+	// dashboard (osWorldCard), not under the switch, so no status panel is rendered.
 	off := spaceSwitch(accessAdmin, &osSettings{})
 	assertCSPSafe(t, "spaceSwitch/off", off)
 	if !strings.Contains(off, `data-space-switch="on"`) || !strings.Contains(off, `data-space-switch="off"`) {
@@ -61,32 +66,24 @@ func TestSpaceSwitch(t *testing.T) {
 	if !strings.Contains(off, `class="space-switch__seg is-active" data-space-switch="off"`) {
 		t.Error("with Tor off, the Clearnet segment must be active")
 	}
-	if !strings.Contains(off, `data-space-status hidden`) {
-		t.Error("with Tor off, the inline status must be hidden")
+	if strings.Contains(off, "space-switch__status") {
+		t.Error("the .onion status moved to the dashboard — no status panel under the switch")
 	}
 
-	// Clearnet install, Tor Space ON + live: on the CLEARNET console the operator is
-	// still viewing clearnet, so Clearnet stays the active segment and Tor stays the
-	// click-to-enter control; the live .onion is shown inline as status only.
+	// Enabling the Space must NOT change the switch itself (status is on the
+	// dashboard now): Clearnet stays active, Tor stays the click-to-enter control,
+	// and no .onion is crammed under the switch.
 	on := spaceSwitch(accessAdmin, &osSettings{TorSpaceOn: true, TorSpaceRunning: true, TorSpaceOnion: "abcxyz.onion"})
 	assertCSPSafe(t, "spaceSwitch/on", on)
 	if !strings.Contains(on, `class="space-switch__seg is-active" data-space-switch="off"`) {
 		t.Error("Clearnet must stay the active segment on the clearnet console")
 	}
-	if !strings.Contains(on, `data-space-switch="on"`) || strings.Contains(on, `is-active" data-space-switch="on"`) {
-		t.Error("Tor must remain the click-to-enter (non-active) segment")
-	}
-	if !strings.Contains(on, `data-copy="http://abcxyz.onion"`) || !strings.Contains(on, "live") {
-		t.Error("a live Tor Space must show its .onion inline with a copy button")
+	if strings.Contains(on, "data-copy") || strings.Contains(on, "abcxyz.onion") {
+		t.Error("the switch must not carry the .onion — it now lives on the dashboard")
 	}
 
-	// Tor Space ON but not yet live: a "starting" status, no onion.
-	starting := spaceSwitch(accessAdmin, &osSettings{TorSpaceOn: true})
-	if !strings.Contains(starting, "Starting your anonymous world") || strings.Contains(starting, "data-copy") {
-		t.Error("a not-yet-live Tor Space must show a starting status and no onion")
-	}
-
-	// Whole-install Tor world: static indicator, no interactive switch buttons.
+	// Whole-install Tor world: static indicator with a working Clearnet back-link,
+	// no interactive switch buttons.
 	prev := config.Cfg.OnionMode
 	config.Cfg.OnionMode = true
 	defer func() { config.Cfg.OnionMode = prev }()
@@ -95,8 +92,63 @@ func TestSpaceSwitch(t *testing.T) {
 	if strings.Contains(self, "data-space-switch") {
 		t.Error("a dedicated Tor install must not offer a switch control")
 	}
-	if !strings.Contains(self, "is-active") || !strings.Contains(self, "Tor world") {
-		t.Error("dedicated Tor install must show Tor active + its address")
+	if !strings.Contains(self, "is-active") || !strings.Contains(self, "/os/world?target=clearnet") {
+		t.Error("dedicated Tor install must show Tor active + a Clearnet back-link")
+	}
+}
+
+// TestOSWorldCard covers the dashboard world card that now carries the Anonymous
+// Tor world's status + .onion, moved off the sidebar switch (dashboard redesign).
+func TestOSWorldCard(t *testing.T) {
+	// Clearnet, Space off → nothing to show.
+	if got := osWorldCard(false, false, false, ""); got != "" {
+		t.Errorf("world card must be empty when the Space is off, got %q", got)
+	}
+	// Clearnet, Space live → address + copy button + enter link.
+	live := osWorldCard(false, true, true, "abcxyz.onion")
+	assertCSPSafe(t, "osWorldCard/live", live)
+	if !strings.Contains(live, "abcxyz.onion") || !strings.Contains(live, `data-copy="http://abcxyz.onion"`) {
+		t.Error("a live Space world card must show its .onion with a copy button")
+	}
+	if !strings.Contains(live, "/os/world?target=tor") {
+		t.Error("a live Space world card must offer to enter the Tor world")
+	}
+	// Clearnet, Space booting → starting state, no address/copy.
+	starting := osWorldCard(false, true, false, "")
+	if !strings.Contains(starting, "Starting your anonymous world") || strings.Contains(starting, "data-copy") {
+		t.Error("a booting Space must show a starting state and no onion")
+	}
+	// Tor world itself → "you're in" + this install's onion + a Clearnet back-link.
+	self := osWorldCard(true, false, false, "myonion.onion")
+	assertCSPSafe(t, "osWorldCard/self", self)
+	if !strings.Contains(self, "myonion.onion") || !strings.Contains(self, "/os/world?target=clearnet") {
+		t.Error("the Tor world card must show its onion and a Clearnet back-link")
+	}
+}
+
+// TestOSWorkspaceGrid checks the dashboard workspace surfaces the content areas
+// (moved off the sidebar) with counts + notification badges, and omits the
+// clearnet-only Website tile in the Tor world.
+func TestOSWorkspaceGrid(t *testing.T) {
+	clearnet := osWorkspaceGrid(false, 1234, 5, 3, 2, 40)
+	assertCSPSafe(t, "osWorkspaceGrid/clearnet", clearnet)
+	for _, want := range []string{
+		`href="/os/editor"`, `href="/os/posts"`, `href="/os/pages"`,
+		`href="/os/comments"`, `href="/os/messages"`, `href="/os/media"`,
+		`href="/os/website"`, "1,234", "Workspace",
+	} {
+		if !strings.Contains(clearnet, want) {
+			t.Errorf("clearnet workspace missing %q", want)
+		}
+	}
+	// Pending comments (3) + unread messages (2) render as notification badges.
+	if !strings.Contains(clearnet, `work-card__badge">3<`) || !strings.Contains(clearnet, `work-card__badge">2<`) {
+		t.Error("workspace must surface pending-comment and unread-message badges")
+	}
+	// The Tor world omits the clearnet-only Website tile.
+	tor := osWorkspaceGrid(true, 10, 2, 0, 0, 4)
+	if strings.Contains(tor, `href="/os/website"`) {
+		t.Error("Tor workspace must not show the clearnet Website tile")
 	}
 }
 

@@ -615,7 +615,7 @@ func navItemBadge(href, label, key, active, iconSVG string, count int) string {
 // static indicator (you cannot turn a dedicated Tor install back to clearnet from
 // here — that is a separate install). CSP-safe: no inline styles or handlers, all
 // behaviour is wired by data attributes in the nonce-gated foot script.
-func spaceSwitch(lvl int, s *osSettings) string {
+func spaceSwitch(lvl int, _ *osSettings) string {
 	if lvl < accessAdmin {
 		return ""
 	}
@@ -626,13 +626,13 @@ func spaceSwitch(lvl int, s *osSettings) string {
 		// .onion in Tor Browser the child's own handler just redirects to /os (a
 		// harmless no-op). Rendering it unconditionally guarantees there is never a
 		// dead-end "stuck in Tor" state, regardless of how the child was launched.
-		d := html.EscapeString(config.Cfg.Domain)
+		// The live .onion address itself is surfaced on the DASHBOARD now (world
+		// card), not crammed under the switch — the toggle stays a clean control.
 		return `<div class="space-switch-wrap">
   <div class="space-switch" role="group" aria-label="Active world">
     <a class="space-switch__seg" href="/os/world?target=clearnet">Clearnet</a>
     <span class="space-switch__seg is-active" aria-current="true">Tor</span>
   </div>
-  <div class="space-switch__status"><span class="space-dot space-dot--ok"></span>Tor world · <button type="button" class="space-switch__copy" data-copy="http://` + d + `">copy address</button></div>
 </div>`
 	}
 	// This is the CLEARNET console (not OnionMode): rendering it at all means the
@@ -641,22 +641,9 @@ func spaceSwitch(lvl int, s *osSettings) string {
 	// ALWAYS the click-to-enter one, regardless of whether the Tor world happens to
 	// be running. (Basing "active" on whether the Space was enabled made Tor look
 	// selected while you were still on clearnet, so clicking it did nothing.)
-	enabled := s != nil && s.TorSpaceOn
-	onion, running := "", false
-	if s != nil {
-		onion, running = s.TorSpaceOnion, s.TorSpaceRunning
-	}
-	// Inline status under the switch: only meaningful once the Tor world is on, to
-	// surface its live .onion — it does NOT change which segment is active.
-	status, hidden := "", " hidden"
-	if enabled {
-		hidden = ""
-		if running && onion != "" {
-			status = `<span class="space-dot space-dot--ok"></span>Anonymous world live · <button type="button" class="space-switch__copy" data-copy="http://` + html.EscapeString(onion) + `">copy .onion</button>`
-		} else {
-			status = `<span class="space-dot space-dot--warn"></span>Starting your anonymous world…`
-		}
-	}
+	//
+	// The anonymous world's live status + .onion address are shown on the DASHBOARD
+	// (the world card), not under the switch — the toggle is just the world control.
 	// data-space-switch on a segment = "clicking me switches to this world":
 	// "on" enters the Tor world (this console proxies into it), "off" stays here.
 	return `<div class="space-switch-wrap">
@@ -664,24 +651,139 @@ func spaceSwitch(lvl int, s *osSettings) string {
     <button type="button" class="space-switch__seg is-active" data-space-switch="off" aria-pressed="true">Clearnet</button>
     <button type="button" class="space-switch__seg" data-space-switch="on" aria-pressed="false">Tor</button>
   </div>
-  <div class="space-switch__status" data-space-status` + hidden + `>` + status + `</div>
 </div>`
 }
 
-// unreadMessagesLabel is the dashboard Messages-card footer link text.
-func unreadMessagesLabel(unread int) string {
-	if unread > 0 {
-		return "Unread — open inbox →"
+// osGroupInt formats an integer with thousands separators (234465 → "234,465")
+// so large counts read cleanly on the premium dashboard tiles.
+func osGroupInt(n int) string {
+	s := strconv.Itoa(n)
+	neg := ""
+	if n < 0 {
+		neg, s = "-", s[1:]
 	}
-	return "Open inbox →"
+	var out []byte
+	for i := 0; i < len(s); i++ {
+		if i > 0 && (len(s)-i)%3 == 0 {
+			out = append(out, ',')
+		}
+		out = append(out, s[i])
+	}
+	return neg + string(out)
 }
 
-// osUnread safely reads the unread-message count for the sidebar badge.
-func osUnread(s *osSettings) int {
-	if s == nil {
-		return 0
+// osBadgeCount renders a compact notification count, capping over 99 at "99+".
+func osBadgeCount(n int) string {
+	if n > 99 {
+		return "99+"
 	}
-	return s.UnreadMessages
+	return strconv.Itoa(n)
+}
+
+// osWorkCard renders one clickable workspace tile for the dashboard: an icon, a
+// title with an optional count, a short description and an optional notification
+// badge (pending comments / unread messages). These tiles ARE the content
+// navigation — the areas that used to sit in the sidebar are reached from here.
+func osWorkCard(href, title, desc, iconSVG string, count int, badge string, accent bool) string {
+	iconCls := "work-card__icon"
+	if accent {
+		iconCls += " work-card__icon--accent"
+	}
+	countHTML := ""
+	if count > 0 {
+		countHTML = ` <span class="work-card__count">` + osGroupInt(count) + `</span>`
+	}
+	badgeHTML := ""
+	if badge != "" {
+		badgeHTML = ` <span class="work-card__badge">` + html.EscapeString(badge) + `</span>`
+	}
+	return `<a class="work-card" href="` + href + `">
+  <span class="` + iconCls + `">` + iconSVG + `</span>
+  <span class="work-card__body">
+    <span class="work-card__title">` + html.EscapeString(title) + countHTML + badgeHTML + `</span>
+    <span class="work-card__desc">` + html.EscapeString(desc) + `</span>
+  </span>
+  <svg class="work-card__arrow" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+</a>`
+}
+
+// osWorkspaceGrid renders the dashboard's content workspace — the Posts, Pages,
+// Comments, Messages, Media and New Post tiles (plus Website on clearnet) that
+// used to live in the sidebar — each with its live count and, where relevant, a
+// notification badge. The clearnet-only Website tile is omitted in the Tor world.
+func osWorkspaceGrid(onion bool, blogPosts, pages, pendingComments, unread, media int) string {
+	var b strings.Builder
+	b.WriteString(`<div class="section-head"><span class="section-head__title">Workspace</span><span class="section-head__hint">Everything you manage, in one place</span></div>`)
+	b.WriteString(`<div class="work-grid">`)
+	b.WriteString(osWorkCard("/os/editor", "New Post", "Start writing a new story", iconNewPost, 0, "", true))
+	b.WriteString(osWorkCard("/os/posts", "Posts", "Manage & edit your posts", iconPosts, blogPosts, "", false))
+	b.WriteString(osWorkCard("/os/pages", "Pages", "Standalone pages", iconPages, pages, "", false))
+	cBadge := ""
+	if pendingComments > 0 {
+		cBadge = osBadgeCount(pendingComments)
+	}
+	b.WriteString(osWorkCard("/os/comments", "Comments", "Moderate reader comments", iconComments, 0, cBadge, false))
+	mBadge := ""
+	if unread > 0 {
+		mBadge = osBadgeCount(unread)
+	}
+	b.WriteString(osWorkCard("/os/messages", "Messages", "Contact-form inbox", iconMessages, 0, mBadge, false))
+	b.WriteString(osWorkCard("/os/media", "Media", "Images & uploads", iconMedia, media, "", false))
+	if !onion {
+		b.WriteString(osWorkCard("/os/website", "Website", "Site identity & layout", iconPages, 0, "", false))
+	}
+	b.WriteString(`</div>`)
+	return b.String()
+}
+
+// osWorldCard surfaces the Anonymous Tor world's live status + .onion on the
+// dashboard (moved off the sidebar toggle). On the clearnet console a running
+// Space shows its address with a copy button + an "Enter Tor world" link, and a
+// booting Space shows a "starting" state. In the Tor world itself (onion) it shows
+// "you're in the Tor world" with this install's own .onion. Returns "" when there
+// is nothing to show (clearnet with the Space off).
+func osWorldCard(onion, torOn, running bool, addr string) string {
+	if onion {
+		if addr == "" {
+			return ""
+		}
+		esc := html.EscapeString(addr)
+		return `<div class="world-card">
+  <span class="world-card__dot"></span>
+  <span class="world-card__text">
+    <span class="world-card__title">You're in the Anonymous Tor world</span>
+    <span class="world-card__addr">` + esc + `</span>
+  </span>
+  <span class="world-card__actions">
+    <button type="button" class="btn btn--ghost btn--sm world-card__copy" data-copy="http://` + esc + `">Copy .onion</button>
+    <a class="btn btn--ghost btn--sm" href="/os/world?target=clearnet">Back to Clearnet →</a>
+  </span>
+</div>`
+	}
+	if !torOn {
+		return ""
+	}
+	if running && addr != "" {
+		esc := html.EscapeString(addr)
+		return `<div class="world-card">
+  <span class="world-card__dot"></span>
+  <span class="world-card__text">
+    <span class="world-card__title">Anonymous Tor world is live</span>
+    <span class="world-card__addr">` + esc + `</span>
+  </span>
+  <span class="world-card__actions">
+    <button type="button" class="btn btn--ghost btn--sm world-card__copy" data-copy="http://` + esc + `">Copy .onion</button>
+    <a class="btn btn--ghost btn--sm" href="/os/world?target=tor">Enter Tor world →</a>
+  </span>
+</div>`
+	}
+	return `<div class="world-card">
+  <span class="world-card__dot world-card__dot--warn"></span>
+  <span class="world-card__text">
+    <span class="world-card__title">Starting your anonymous world…</span>
+    <span class="world-card__addr">Publishing its .onion — this can take a minute.</span>
+  </span>
+</div>`
 }
 
 // torWorldNav is the sidebar for the Tor world (OnionMode): a Tor-only console
@@ -713,13 +815,12 @@ func torWorldNav(active string, lvl int, s *osSettings) string {
 			b.WriteString(it)
 		}
 	}
-	section("Blog",
-		gate(navItem("/os", "Dashboard", "dashboard", active, iconDashboard), "/os"),
-		gate(navItem("/os/posts", "Posts", "posts", active, iconPosts), "/os/posts"),
-		gate(navItem("/os/editor", "New Post", "editor", active, iconNewPost), "/os/editor"),
-		gate(navItem("/os/pages", "Pages", "pages", active, iconPages), "/os/pages"),
-		gate(navItem("/os/comments", "Comments", "comments", active, iconComments), "/os/comments"),
-		gate(navItem("/os/media", "Media", "media", active, iconMedia), "/os/media"),
+	// Blog content (Posts, New Post, Pages, Comments, Media) lives INSIDE the
+	// Dashboard workspace grid now — the same premium hub the clearnet console uses
+	// — so the Tor sidebar stays a short, focused list. Theme (a design tool, not
+	// content) stays pinned here.
+	b.WriteString(gate(navItem("/os", "Dashboard", "dashboard", active, iconDashboard), "/os"))
+	section("Design",
 		gate(navItem("/os/theme", "Theme", "theme", active, iconTheme), "/os/theme"),
 	)
 	section("Anonymous services",
@@ -792,16 +893,11 @@ func osSidebarNav(active string, s *osSettings) string {
 		}
 	}
 
-	section("Content",
-		gate(navItem("/os", "Dashboard", "dashboard", active, iconDashboard), "/os"),
-		gate(navItem("/os/posts", "Posts", "posts", active, iconPosts), "/os/posts"),
-		gate(navItem("/os/comments", "Comments", "comments", active, iconComments), "/os/comments"),
-		gate(navItem("/os/pages", "Pages", "pages", active, iconPages), "/os/pages"),
-		gate(navItem("/os/website", "Website", "website", active, iconPages), "/os/website"),
-		gate(navItemBadge("/os/messages", "Messages", "messages", active, iconMessages, osUnread(s)), "/os/messages"),
-		gate(navItem("/os/editor", "New Post", "editor", active, iconNewPost), "/os/editor"),
-		gate(navItem("/os/media", "Media", "media", active, iconMedia), "/os/media"),
-	)
+	// Content management (Posts, Pages, Comments, Messages, Media, New Post,
+	// Website) now lives INSIDE the Dashboard as a premium workspace grid with live
+	// counts + notification badges, so the sidebar stays focused on the broader
+	// system areas. Only the Dashboard hub is pinned here.
+	b.WriteString(gate(navItem("/os", "Dashboard", "dashboard", active, iconDashboard), "/os"))
 	section("Audience",
 		gate(navItem("/os/members", "Members", "members", active, iconMembers), "/os/members"),
 		gate(navItem("/os/newsletter", "Newsletter", "newsletter", active, iconNewsletter), "/os/newsletter"),
@@ -1158,8 +1254,9 @@ Array.prototype.forEach.call(document.querySelectorAll('[data-space-switch]'),fu
     }).catch(function(){if(sw)sw.classList.remove('is-busy');vpSpaceStatus('Could not switch — please try again.');if(window.vpToast)window.vpToast('Could not switch world — please try again.','error');});
   });
 });
-// Copy buttons inside the sidebar (the Tor .onion address under the switch).
-Array.prototype.forEach.call(document.querySelectorAll('.sidebar [data-copy]'),function(btn){
+// Copy buttons for the Tor .onion address — in the sidebar and on the dashboard
+// world card. Scoped so it never double-binds with the VayuTor page's own island.
+Array.prototype.forEach.call(document.querySelectorAll('.sidebar [data-copy], .world-card [data-copy]'),function(btn){
   btn.addEventListener('click',function(){
     var v=btn.getAttribute('data-copy')||'',p=btn.textContent;
     var done=function(){btn.textContent='copied';setTimeout(function(){btn.textContent=p;},1400);};
@@ -1884,6 +1981,29 @@ func (a *App) handleOSDashboard(w http.ResponseWriter, r *http.Request) {
 </table></div>`
 	}
 
+	// Content workspace + anonymous-world status (dashboard redesign): the content
+	// areas that used to live in the sidebar (Posts, Pages, Comments, Messages,
+	// Media, New Post, Website) are surfaced here as premium tiles with live counts
+	// and notification badges, and the Tor world's .onion — previously crammed under
+	// the sidebar toggle — is shown as its own world card. Both counts are cheap
+	// on-demand reads, so the 30s metrics collector is left untouched.
+	onionMode := config.Cfg.OnionMode
+	blogPosts := snap.TotalArticles - snap.TotalPages
+	if blogPosts < 0 {
+		blogPosts = 0
+	}
+	pendingComments := 0
+	if dbpkg.DB != nil {
+		_ = dbpkg.Reader().QueryRowContext(r.Context(), `SELECT COUNT(1) FROM comments WHERE status='pending'`).Scan(&pendingComments)
+	}
+	mediaCount := len(listMediaItems())
+	worldAddr := cfg.TorSpaceOnion
+	if onionMode {
+		worldAddr = config.Cfg.Domain
+	}
+	worldCardHTML := osWorldCard(onionMode, cfg.TorSpaceOn, cfg.TorSpaceRunning, worldAddr)
+	workspaceHTML := osWorkspaceGrid(onionMode, blogPosts, snap.TotalPages, pendingComments, snap.UnreadMessages, mediaCount)
+
 	body := `<!-- Quick compose -->
 <div class="quick-compose" role="search">
   <span class="quick-compose-icon" aria-hidden="true">✍</span>
@@ -1891,45 +2011,10 @@ func (a *App) handleOSDashboard(w http.ResponseWriter, r *http.Request) {
     type="text" placeholder="Start a new post… (press Enter)" autocomplete="off"
     aria-label="Quick compose: type a title and press Enter">
 </div>
-
-<!-- Stat cards -->
+` + worldCardHTML + workspaceHTML + `
+<!-- System health -->
+<div class="section-head"><span class="section-head__title">System health</span><span class="section-head__hint">Background jobs &amp; queue</span></div>
 <div class="stat-grid">
-  <div class="stat-card">
-    <div class="stat-card__top">
-      <div class="stat-card__label">Articles</div>
-      <div class="stat-card__icon stat-card__icon--brand">
-        <svg viewBox="0 0 16 16" fill="none" width="16" height="16" aria-hidden="true"><path d="M2 3h12v2H2V3zm0 4h12v2H2V7zm0 4h8v2H2v-2z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>
-      </div>
-    </div>
-    <div class="stat-card__value">` + strconv.Itoa(snap.TotalArticles-snap.TotalPages) + `</div>
-    <div class="stat-card__bottom">
-      <span class="muted text-xs">Blog posts</span>
-    </div>
-  </div>
-  <div class="stat-card">
-    <div class="stat-card__top">
-      <div class="stat-card__label">Pages</div>
-      <div class="stat-card__icon stat-card__icon--brand">
-        <svg viewBox="0 0 16 16" fill="none" width="16" height="16" aria-hidden="true"><path d="M4 2h6l3 3v9H4V2zm6 0v3h3M6 8h5M6 11h5" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>
-      </div>
-    </div>
-    <div class="stat-card__value">` + strconv.Itoa(snap.TotalPages) + `</div>
-    <div class="stat-card__bottom">
-      <a class="text-xs" href="/os/pages">Manage pages →</a>
-    </div>
-  </div>
-  <div class="stat-card">
-    <div class="stat-card__top">
-      <div class="stat-card__label">Messages</div>
-      <div class="stat-card__icon stat-card__icon--accent">
-        <svg viewBox="0 0 16 16" fill="none" width="16" height="16" aria-hidden="true"><path d="M2 4h12v8H5l-3 2V4zm2 3h8M4 9h5" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>
-      </div>
-    </div>
-    <div class="stat-card__value">` + strconv.Itoa(snap.UnreadMessages) + `</div>
-    <div class="stat-card__bottom">
-      <a class="text-xs" href="/os/messages">` + unreadMessagesLabel(snap.UnreadMessages) + `</a>
-    </div>
-  </div>
   <div class="stat-card">
     <div class="stat-card__top">
       <div class="stat-card__label">Pending jobs</div>
