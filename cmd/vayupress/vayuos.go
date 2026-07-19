@@ -36,6 +36,7 @@ import (
 	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
 	vpgp "github.com/johalputt/vayupress/internal/vayuos/pgp"
 	"github.com/johalputt/vayupress/internal/vayuos/secwatch"
+	"github.com/johalputt/vayupress/internal/vayuos/torspace"
 	vtalk "github.com/johalputt/vayupress/internal/vayuos/vayutalk"
 	vtor "github.com/johalputt/vayupress/internal/vayuos/vayutor"
 )
@@ -566,7 +567,11 @@ func (a *App) bootVayuOS() {
 	// actual on/off is the one-click settings toggle (default off). Onions are
 	// created only while the toggle is on AND a control port is reachable — the
 	// clearnet site is never affected. VayuPress opens no inbound ports for this.
-	torAvailable := !strings.EqualFold(config.EnvOr("VAYUOS_TOR", "on"), "off")
+	// A Tor-Space CHILD instance (ADR-0141) never runs its own onion engine — its
+	// .onion is minted by the parent. The recursion guard keeps a child from
+	// supervising a grandchild world too. (VAYUOS_TOR=off already does this for
+	// the child; this makes the intent explicit and independent of that env.)
+	torAvailable := !strings.EqualFold(config.EnvOr("VAYUOS_TOR", "on"), "off") && !torspace.IsSpaceChild()
 	// Managed mode: when no external tor control port is reachable, VayuPress runs
 	// its OWN tor daemon (as the unprivileged service user) so VayuTor works with
 	// only the `tor` binary present — no root, no systemd, no manual control-port

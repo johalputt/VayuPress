@@ -15,9 +15,32 @@
 # blocked while this known surface is accepted. When you wire one of these up
 # or delete it, regenerate the baseline with:  scripts/deadcode-gate.sh --update
 #
+
+#
+# VayuShield + VayuAnalytics — forward-looking / operator-reserved surface that
+# is compiled and unit-tested but not yet reachable from main:
+#  - TLS ClientHello capture (fingerprint.NewStore/Store.Put/FromClientHello):
+#    active only when VayuPress terminates TLS in-process; today TLS is
+#    terminated upstream (nginx), so the capture store is dormant infrastructure.
+#  - Solve: the reference proof-of-work solver (clients solve in JS; server only
+#    verifies) — kept as a public API and used by the test suite.
+#  - VerdictFrom: reads the middleware's classification off the request context,
+#    reserved for public-render-path analytics attribution.
+#  - botdb Store.Import / Store.ReportFalsePositive: operator community-import and
+#    false-positive review, wired into VayuOS in a follow-up.
+#  - calibrate.BiasedForTest: constructs a calibrator pre-loaded with a bias so
+#    the vayushield package's tests can exercise the Decide bias path without
+#    simulating whole 10-minute windows; test-suite-only, like Solve above.
+# VayuAPI (fine-grained keys): Stage-1 permission vocabulary + resolved-key helpers, unit-tested and consumed by the Stage-2 enforcement middleware (ADR-0134).
+#
+# VCB (Vayu Compatibility Bible, ADR-0135): manifest loaders + the capability
+# re-export are consumed by the NESTED tools/vayu-compat module (its own
+# go.mod, invisible to the root ./... deadcode walk) and are the entry points
+# for the future host-side package-install flow. The rest of internal/vcb is
+# reachable via the /api/v1/vcb endpoints.
 cmd/vayupress/brand.go: unreachable func: servePNG
-internal/ai/agent.go: unreachable func: AgentRunner.execStep
 internal/ai/agent.go: unreachable func: AgentRunner.Run
+internal/ai/agent.go: unreachable func: AgentRunner.execStep
 internal/ai/agent.go: unreachable func: NewAgentRunner
 internal/ai/embeddings.go: unreachable func: CosineSimilarity
 internal/ai/embeddings.go: unreachable func: LocalEmbedder.Dimensions
@@ -28,20 +51,20 @@ internal/ai/policy.go: unreachable func: DefaultPolicy
 internal/ai/policy.go: unreachable func: Policy.Apply
 internal/ai/policy.go: unreachable func: Policy.Check
 internal/ai/policy.go: unreachable func: Policy.Compile
-internal/archive/snapshot.go: unreachable func: addFile
 internal/archive/snapshot.go: unreachable func: Manager.Create
 internal/archive/snapshot.go: unreachable func: Manager.List
 internal/archive/snapshot.go: unreachable func: NewManager
+internal/archive/snapshot.go: unreachable func: addFile
 internal/budget/actuator.go: unreachable func: Actuator.LastActuations
 internal/budget/budget.go: unreachable func: Ledger.Record
 internal/cluster/node.go: unreachable func: New
-internal/cluster/node.go: unreachable func: Node.electLeader
 internal/cluster/node.go: unreachable func: Node.Heartbeat
 internal/cluster/node.go: unreachable func: Node.ID
 internal/cluster/node.go: unreachable func: Node.IsLeader
 internal/cluster/node.go: unreachable func: Node.LivePeers
 internal/cluster/node.go: unreachable func: Node.Role
 internal/cluster/node.go: unreachable func: Node.RunHeartbeat
+internal/cluster/node.go: unreachable func: Node.electLeader
 internal/db/db.go: unreachable func: RollbackMigration
 internal/did/did.go: unreachable func: Authenticator.IssueChallenge
 internal/did/did.go: unreachable func: Authenticator.Verify
@@ -50,11 +73,11 @@ internal/did/did.go: unreachable func: NewAuthenticator
 internal/did/did.go: unreachable func: SignChallenge
 internal/emailtmpl/emailtmpl.go: unreachable func: SettingsKey
 internal/events/schema/builtin.go: unreachable func: init#1
-internal/events/schema/registry.go: unreachable func: checkType
 internal/events/schema/registry.go: unreachable func: NewRegistry
 internal/events/schema/registry.go: unreachable func: Registry.MarshalJSON
 internal/events/schema/registry.go: unreachable func: Registry.Register
 internal/events/schema/registry.go: unreachable func: Registry.Validate
+internal/events/schema/registry.go: unreachable func: checkType
 internal/fault/fault.go: unreachable func: Injector.Check
 internal/fault/fault.go: unreachable func: Injector.Register
 internal/fault/fault.go: unreachable func: Injector.Reset
@@ -70,22 +93,22 @@ internal/federation/activitypub.go: unreachable func: Server.Publish
 internal/federation/activitypub.go: unreachable func: Server.ReceiveActivity
 internal/federation/activitypub.go: unreachable func: Server.SetKeyResolver
 internal/federation/activitypub.go: unreachable func: Server.SetReplayStore
-internal/federation/activitypub.go: unreachable func: Server.verifyInbound
 internal/federation/activitypub.go: unreachable func: Server.WebFinger
+internal/federation/activitypub.go: unreachable func: Server.verifyInbound
 internal/federation/replay.go: unreachable func: NewReplayStore
 internal/federation/replay.go: unreachable func: ReplayStore.Count
 internal/federation/replay.go: unreachable func: ReplayStore.EnsureSchema
 internal/federation/replay.go: unreachable func: ReplayStore.Mark
 internal/federation/replay.go: unreachable func: ReplayStore.MarkOrReject
 internal/federation/replay.go: unreachable func: ReplayStore.Seen
+internal/federation/signature.go: unreachable func: ParseRSAPublicKeyPEM
+internal/federation/signature.go: unreachable func: VerifyRequest
 internal/federation/signature.go: unreachable func: buildSigningString
 internal/federation/signature.go: unreachable func: checkDateSkew
-internal/federation/signature.go: unreachable func: ParseRSAPublicKeyPEM
 internal/federation/signature.go: unreachable func: parseSignatureHeader
 internal/federation/signature.go: unreachable func: signedHeaderList
 internal/federation/signature.go: unreachable func: splitTopLevelCommas
 internal/federation/signature.go: unreachable func: verifyDigest
-internal/federation/signature.go: unreachable func: VerifyRequest
 internal/governance/rfc.go: unreachable func: NewStore
 internal/governance/rfc.go: unreachable func: RFC.Result
 internal/governance/rfc.go: unreachable func: RFC.Tally
@@ -102,30 +125,29 @@ internal/graph/graph.go: unreachable func: Graph.Successors
 internal/graph/graph.go: unreachable func: New
 internal/imageproc/imageproc.go: unreachable func: DefaultMaxWidthStr
 internal/lifecycle/lifecycle.go: unreachable func: Manager.Stop
-internal/logging/logging.go: unreachable func: LogWarn
-internal/merkle/tree.go: unreachable func: hashCopy
 internal/merkle/tree.go: unreachable func: New
-internal/merkle/tree.go: unreachable func: pairHash
-internal/merkle/tree.go: unreachable func: parentLayer
 internal/merkle/tree.go: unreachable func: Tree.Proof
 internal/merkle/tree.go: unreachable func: Tree.Root
 internal/merkle/tree.go: unreachable func: Verify
-internal/migrations/migrate.go: unreachable func: Migrator.applied
+internal/merkle/tree.go: unreachable func: hashCopy
+internal/merkle/tree.go: unreachable func: pairHash
+internal/merkle/tree.go: unreachable func: parentLayer
 internal/migrations/migrate.go: unreachable func: Migrator.Applied
-internal/migrations/migrate.go: unreachable func: Migrator.apply
 internal/migrations/migrate.go: unreachable func: Migrator.Down
+internal/migrations/migrate.go: unreachable func: Migrator.Up
+internal/migrations/migrate.go: unreachable func: Migrator.applied
+internal/migrations/migrate.go: unreachable func: Migrator.apply
 internal/migrations/migrate.go: unreachable func: Migrator.ensureTable
 internal/migrations/migrate.go: unreachable func: Migrator.lastApplied
-internal/migrations/migrate.go: unreachable func: Migrator.Up
 internal/migrations/migrate.go: unreachable func: New
 internal/migrations/migrate.go: unreachable func: sha256Hex
 internal/migrations/migrate.go: unreachable func: versionOf
-internal/migrations/resilience.go: unreachable func: boolInt
 internal/migrations/resilience.go: unreachable func: Migrator.DryRun
 internal/migrations/resilience.go: unreachable func: Migrator.EnsureJournal
 internal/migrations/resilience.go: unreachable func: Migrator.Journal
 internal/migrations/resilience.go: unreachable func: Migrator.RecordJournalEntry
 internal/migrations/resilience.go: unreachable func: Migrator.VerifyChecksums
+internal/migrations/resilience.go: unreachable func: boolInt
 internal/mode/journal.go: unreachable func: Journal.History
 internal/mode/mode.go: unreachable func: AllowedFrom
 internal/payments/payments.go: unreachable func: Gateways
@@ -139,9 +161,9 @@ internal/profiling/health_fingerprint.go: unreachable func: CaptureFingerprint
 internal/profiling/health_fingerprint.go: unreachable func: EnableBlockProfiling
 internal/profiling/health_fingerprint.go: unreachable func: EnableMutexProfiling
 internal/profiling/health_fingerprint.go: unreachable func: HealthFingerprint.JSON
-internal/profiling/profiling.go: unreachable func: guard
 internal/profiling/profiling.go: unreachable func: Handler
 internal/profiling/profiling.go: unreachable func: Snapshot
+internal/profiling/profiling.go: unreachable func: guard
 internal/provenance/confidence.go: unreachable func: All
 internal/provenance/confidence.go: unreachable func: Confidence.AtLeast
 internal/provenance/confidence.go: unreachable func: Parse
@@ -161,10 +183,7 @@ internal/sandbox/capability_enforcer.go: unreachable func: EnforceCapabilities
 internal/sandbox/cgroup_linux.go: unreachable func: enableControllersUpward
 internal/sandbox/cgroup_linux.go: unreachable func: setupCgroup
 internal/sandbox/cgroup_linux.go: unreachable func: writeControl
-internal/sandbox/confinement_linux.go: unreachable func: applyMountPropagation
-internal/sandbox/confinement_linux.go: unreachable func: applyProcMask
 internal/sandbox/confinement_linux.go: unreachable func: ApplySeccompFilter
-internal/sandbox/confinement_linux.go: unreachable func: buildSeccompFilter
 internal/sandbox/confinement_linux.go: unreachable func: CloseExtraFDs
 internal/sandbox/confinement_linux.go: unreachable func: DropCapabilities
 internal/sandbox/confinement_linux.go: unreachable func: MountConfinement.ScratchDir
@@ -172,27 +191,27 @@ internal/sandbox/confinement_linux.go: unreachable func: MountNamespaceFlags
 internal/sandbox/confinement_linux.go: unreachable func: PluginConfinement.ScratchDir
 internal/sandbox/confinement_linux.go: unreachable func: PrepareExecEnv
 internal/sandbox/confinement_linux.go: unreachable func: SetupConfinement
+internal/sandbox/confinement_linux.go: unreachable func: applyMountPropagation
+internal/sandbox/confinement_linux.go: unreachable func: applyProcMask
+internal/sandbox/confinement_linux.go: unreachable func: buildSeccompFilter
 internal/sandbox/confinement_linux.go: unreachable func: setupMountConfinement
 internal/sandbox/ipc.go: unreachable func: marshalRequest
 internal/sandbox/ipc.go: unreachable func: unmarshalResponse
-internal/sandbox/manifest.go: unreachable func: Manifest.AllowsReadPath
-internal/sandbox/manifest.go: unreachable func: Manifest.AllowsWritePath
 internal/sandbox/manifest.go: unreachable func: Manifest.effectiveMaxMessageBytes
 internal/sandbox/manifest.go: unreachable func: Manifest.effectiveMaxRestarts
 internal/sandbox/manifest.go: unreachable func: Manifest.effectiveTimeout
-internal/sandbox/manifest.go: unreachable func: Manifest.Validate
 internal/sandbox/manifest.go: unreachable func: verifyExecutableHash
 internal/sandbox/namespace_linux.go: unreachable func: namespaceCloneflags
 internal/sandbox/path_hardening.go: unreachable func: ResolveAndCheckPath
 internal/sandbox/pool.go: unreachable func: NewPool
 internal/sandbox/pool.go: unreachable func: Pool.Invoke
-internal/sandbox/subprocess.go: unreachable func: isEPERM
 internal/sandbox/subprocess.go: unreachable func: NewSubprocessPlugin
-internal/sandbox/subprocess.go: unreachable func: SubprocessPlugin.handleCrash
 internal/sandbox/subprocess.go: unreachable func: SubprocessPlugin.Invoke
+internal/sandbox/subprocess.go: unreachable func: SubprocessPlugin.Telemetry
+internal/sandbox/subprocess.go: unreachable func: SubprocessPlugin.handleCrash
 internal/sandbox/subprocess.go: unreachable func: SubprocessPlugin.restart
 internal/sandbox/subprocess.go: unreachable func: SubprocessPlugin.start
-internal/sandbox/subprocess.go: unreachable func: SubprocessPlugin.Telemetry
+internal/sandbox/subprocess.go: unreachable func: isEPERM
 internal/sandbox/subprocess_linux.go: unreachable func: applyNamespaceFlags
 internal/sandbox/subprocess_linux.go: unreachable func: applyProcAttr
 internal/sandbox/subprocess_linux.go: unreachable func: applyRunAs
@@ -206,10 +225,10 @@ internal/search/sharded/sharded.go: unreachable func: ShardedIndex.Index
 internal/search/sharded/sharded.go: unreachable func: ShardedIndex.Search
 internal/search/sharded/sharded.go: unreachable func: ShardedIndex.shardFor
 internal/seo/sitemap.go: unreachable func: GenerateSitemap
-internal/signing/article.go: unreachable func: canonicalJSON
 internal/signing/article.go: unreachable func: GenerateKeyPair
 internal/signing/article.go: unreachable func: Sign
 internal/signing/article.go: unreachable func: Verify
+internal/signing/article.go: unreachable func: canonicalJSON
 internal/slo/slo.go: unreachable func: NewRegistry
 internal/slo/slo.go: unreachable func: NewTracker
 internal/slo/slo.go: unreachable func: Registry.Get
@@ -217,9 +236,9 @@ internal/slo/slo.go: unreachable func: Registry.Register
 internal/slo/slo.go: unreachable func: Registry.Snapshot
 internal/slo/slo.go: unreachable func: Tracker.Budget
 internal/slo/slo.go: unreachable func: Tracker.BudgetExhausted
-internal/slo/slo.go: unreachable func: Tracker.prune
 internal/slo/slo.go: unreachable func: Tracker.Record
 internal/slo/slo.go: unreachable func: Tracker.Status
+internal/slo/slo.go: unreachable func: Tracker.prune
 internal/spam/spam.go: unreachable func: Classify
 internal/spam/spam.go: unreachable func: Score.IsSpam
 internal/spam/spam.go: unreachable func: wordCount
@@ -238,58 +257,31 @@ internal/storage/storage.go: unreachable func: FallbackBackend.Name
 internal/storage/storage.go: unreachable func: FallbackBackend.Put
 internal/testutil/goroutine.go: unreachable func: AssertNoGoroutineLeak
 internal/testutil/goroutine.go: unreachable func: goroutineCount
-internal/theme/catalog.go: unreachable func: ThemeMeta.MatchesQuery
 internal/theme/compiler.go: unreachable func: CompileVPOnly
 internal/theme/options.go: unreachable func: DefaultOptions
-internal/theme/options.go: unreachable func: OptionsFor
-internal/toc/toc.go: unreachable func: htmlEscape
 internal/toc/toc.go: unreachable func: InjectAnchors
 internal/toc/toc.go: unreachable func: RenderHTML
+internal/toc/toc.go: unreachable func: htmlEscape
 internal/totp/totp.go: unreachable func: GenerateAt
 internal/trace/span.go: unreachable func: CurrentSpan
-internal/trace/store.go: unreachable func: attrsJSON
 internal/trace/store.go: unreachable func: NewStore
-internal/trace/store.go: unreachable func: parseStatus
-internal/trace/store.go: unreachable func: Store.ensureSchema
 internal/trace/store.go: unreachable func: Store.Query
 internal/trace/store.go: unreachable func: Store.SaveSpan
+internal/trace/store.go: unreachable func: Store.ensureSchema
+internal/trace/store.go: unreachable func: attrsJSON
+internal/trace/store.go: unreachable func: parseStatus
 internal/trace/trace.go: unreachable func: CausationID
 internal/vayuos/mail/accounts.go: unreachable func: RoleCanDelete
 internal/vayuos/mail/accounts.go: unreachable func: RoleCanManageAccounts
 internal/vayuos/mail/accounts.go: unreachable func: RoleCanSend
-
-#
-# VayuShield + VayuAnalytics — forward-looking / operator-reserved surface that
-# is compiled and unit-tested but not yet reachable from main:
-#  - TLS ClientHello capture (fingerprint.NewStore/Store.Put/FromClientHello):
-#    active only when VayuPress terminates TLS in-process; today TLS is
-#    terminated upstream (nginx), so the capture store is dormant infrastructure.
-#  - Solve: the reference proof-of-work solver (clients solve in JS; server only
-#    verifies) — kept as a public API and used by the test suite.
-#  - VerdictFrom: reads the middleware's classification off the request context,
-#    reserved for public-render-path analytics attribution.
-#  - botdb Store.Import / Store.ReportFalsePositive: operator community-import and
-#    false-positive review, wired into VayuOS in a follow-up.
-#  - calibrate.BiasedForTest: constructs a calibrator pre-loaded with a bias so
-#    the vayushield package's tests can exercise the Decide bias path without
-#    simulating whole 10-minute windows; test-suite-only, like Solve above.
+internal/vayuos/torspace/torspace.go: unreachable func: BuildChildEnv
+internal/vayuos/torspace/torspace.go: unreachable func: ChildSpaceRoot
+internal/vayuos/torspace/torspace.go: unreachable func: NewAPIKey
 internal/vayushield/calibrate/calibrate.go: unreachable func: BiasedForTest
 internal/vayushield/challenge/challenge.go: unreachable func: Solve
-internal/vayushield/vayushield.go: unreachable func: VerdictFrom
-internal/vayushield/botdb/store.go: unreachable func: Store.Import
-internal/vayushield/botdb/store.go: unreachable func: Store.ReportFalsePositive
-internal/vayushield/fingerprint/capture.go: unreachable func: NewStore
-internal/vayushield/fingerprint/capture.go: unreachable func: Store.Put
 internal/vayushield/fingerprint/capture.go: unreachable func: FromClientHello
-# VayuAPI (fine-grained keys): Stage-1 permission vocabulary + resolved-key helpers, unit-tested and consumed by the Stage-2 enforcement middleware (ADR-0134).
-internal/apikeys/keyinfo.go: unreachable func: SuperuserKeyInfo
-internal/apikeys/permissions.go: unreachable func: ParseCapability
-#
-# VCB (Vayu Compatibility Bible, ADR-0135): manifest loaders + the capability
-# re-export are consumed by the NESTED tools/vayu-compat module (its own
-# go.mod, invisible to the root ./... deadcode walk) and are the entry points
-# for the future host-side package-install flow. The rest of internal/vcb is
-# reachable via the /api/v1/vcb endpoints.
+internal/vayushield/fingerprint/capture.go: unreachable func: NewStore
+internal/vayushield/vayushield.go: unreachable func: VerdictFrom
 internal/vcb/apiperms.go: unreachable func: ParseCapability
 internal/vcb/manifest.go: unreachable func: LoadPluginManifest
 internal/vcb/manifest.go: unreachable func: readBounded

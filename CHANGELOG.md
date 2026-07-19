@@ -8,6 +8,26 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.11] — 2026-07-19
+
+### Added
+- **Anonymous Tor Space — isolation foundation (ADR-0141).** Groundwork for a
+  one-click, no-terminal Anonymous Tor Space: the running clearnet process will
+  supervise a second, isolated copy of itself as the Tor world (reusing the
+  self-exec + managed-child patterns the binary already uses unprivileged). This
+  release ships the security-critical isolation contract (`internal/vayuos/
+  torspace`): the child gets a **curated environment** — never the parent's, so
+  the API key and other secrets can't leak or correlate the two worlds — a
+  **distinct API key**, and every writable path (`DB`, cache, media, static,
+  logs, tmp) pinned under an isolated `DATA_DIR/tor-space` root (closing the
+  content/media-bleed the sibling script had). A `VAYUOS_SPACE_CHILD` sentinel is
+  the recursion guard (a child never supervises a grandchild or runs an onion
+  engine). No process is spawned yet — this locks the contract first, with tests.
+  Documented honestly in ADR-0141: this is content/identity *compartmentalisation*
+  (separate DB, media, accounts, `.onion`), **not** anonymity against a
+  server-access or network-level adversary — that needs a physically separate
+  machine.
+
 ## [3.14.10] — 2026-07-19
 
 ### Added

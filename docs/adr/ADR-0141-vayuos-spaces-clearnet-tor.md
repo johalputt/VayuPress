@@ -213,3 +213,40 @@ Still open in Phase 1: a from-scratch onion-only branch inside
 VayuOS "Spaces" admin page surfacing the provisioner + the live `.onion`, and
 request-aware `Secure` cookies (largely moot — Tor Browser treats `.onion` as a
 secure context).
+
+### Amendment — Anonymous Tor Space via a self-supervised child (no root, no terminal)
+
+The sibling-service model (`scripts/setup-tor-space.sh`) is the hardened form,
+but it needs root/systemd. To give a **one-click, in-VayuOS** Anonymous Tor Space
+with **no server-side work**, the running clearnet process instead **supervises a
+second copy of itself** as the Tor world — reusing patterns the binary already
+uses unprivileged: it self-execs its own binary (as it does for the built-in
+obfs4 transport), supervises a child process (as managed-Tor does), and mints the
+onion over the already-running managed-Tor control port (`ADD_ONION`, whose
+target is an arbitrary local port). No root, no systemd, no `torrc` edit.
+
+Isolation contract (`internal/vayuos/torspace`): the child runs with a **curated
+environment** — never the parent's (which would leak the API key and correlate
+the worlds). It gets a **distinct API key** and every writable path
+(`DB_PATH`/`CACHE_DIR`/`MEDIA_DIR`/`STATIC_DIR`/`LOG_DIR`/`TMP_DIR`) pinned under
+`DATA_DIR/tor-space`, so it inherits the parent unit's `ReadWritePaths` with no
+new grant and no content/media bleed. A `VAYUOS_SPACE_CHILD=1` sentinel is the
+recursion guard (the child never supervises a grandchild or runs an onion engine).
+
+**Honesty — what this is and is not.** This provides content/identity
+**compartmentalisation**: separate database, media, accounts, PGP keys, Talk IDs
+and a separate stable `.onion`, plus the Tor-mode anti-leak posture. It is **not**
+anonymity against an adversary with server access or network-level correlation:
+both worlds share the same host, UID, disk and Tor daemon, and the clearnet
+install is already an identified entity — a server seizure, disk image, or
+coincident uptime links them. Anonymity that survives that requires a physically
+separate machine (the sibling-service install). The admin UI must state this
+plainly and never market the child mode as unlinkable anonymity.
+
+Ship-gating musts before the child is spawned by a live toggle (enforced across
+the increments): curated secret-excluding env with a distinct API key (done,
+`torspace` package); exponential crash-loop backoff + breaker; reap by an exact
+role marker (never by binary name — parent and child share it); a verified
+graceful SQLite drain (SIGTERM → checkpoint → SIGKILL); robust child-port
+capture; the dedicated onion's reserved host exempt from the reap loop; and the
+parent backup sweep excluding `/tor-space`.
