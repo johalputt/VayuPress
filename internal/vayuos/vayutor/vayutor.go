@@ -68,6 +68,17 @@ type Config struct {
 	// the download fails or the modern build won't run on the host. Default on
 	// (VAYUOS_TOR_DOWNLOAD != 0).
 	TorDownload bool
+
+	// SpaceOnionTarget drives the ONE dedicated onion for the Anonymous Tor Space
+	// (ADR-0141): it returns the child instance's loopback target ("127.0.0.1:<port>")
+	// while the Space is active, or "" to tear the onion down (keeping its key). nil
+	// ⇒ the feature is off. This onion is minted with its OWN persistent key under a
+	// reserved store host and is kept OUT of the per-domain map, so the domain reap
+	// loop never touches it and its address is stable across restarts.
+	SpaceOnionTarget func() string
+	// SpaceOnionReady is called with the dedicated onion's address once it is live,
+	// so the host can hand the child its DOMAIN. nil ⇒ ignored.
+	SpaceOnionReady func(onion string)
 }
 
 // operatorBridges returns the operator-configured bridge lines, preferring the
@@ -118,6 +129,8 @@ type Engine struct {
 
 	managed  *managedTor // self-managed tor daemon (nil unless Managed + a binary)
 	usingMgd bool        // the live control connection is to our managed tor
+
+	spaceOnionHost string // the live Anonymous Tor Space onion (ADR-0141); guarded by e.mu
 
 	vanityMu sync.Mutex   // guards vanity
 	vanity   *vanityState // in-progress vanity-address search (nil if none)
@@ -337,6 +350,10 @@ func (e *Engine) reconcile(ctx context.Context) {
 			_ = e.cfg.Store.SaveOnion(ctx, OnionRecord{Host: host, Address: on.host, PrivateKey: on.privateKey})
 		}
 	}
+
+	// The ONE dedicated Anonymous Tor Space onion (ADR-0141), managed separately
+	// from the per-domain onions above so the reap loop never tears it down.
+	e.reconcileSpaceOnion(ctx)
 
 	e.mu.Lock()
 	e.lastErr = ""

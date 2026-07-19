@@ -8,6 +8,19 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.13] — 2026-07-19
+
+### Added
+- **Anonymous Tor Space — dedicated onion (ADR-0141).** The VayuTor engine can now
+  mint ONE dedicated onion for the Tor-Space child, separate from the per-domain
+  onions: it targets the child's loopback port, carries its OWN persistent key
+  under a reserved store host (so the address is stable across restarts), and is
+  kept out of the per-domain map so the reconcile reap loop can never tear it down.
+  Driven by two new engine config hooks (`SpaceOnionTarget`, `SpaceOnionReady`);
+  the decision core (`spaceOnionPlan`: mint / restore / teardown / noop) is a pure,
+  unit-tested function. Inert until the toggle wires the target — a `nil` hook is a
+  no-op on every reconcile, so clearnet behaviour is unchanged.
+
 ## [3.14.12] — 2026-07-19
 
 ### Added
