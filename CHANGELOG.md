@@ -8,6 +8,21 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.19] — 2026-07-19
+
+### Added
+- **Flip to Tor now ENTERS the Tor world (ADR-0141).** Switching the sidebar to Tor
+  no longer just recolours the clearnet console — it steps you INTO the separate
+  Tor-world instance in the same browser. While the Tor view is active, the admin
+  console (`/os/*`) is proxied into that isolated instance, so you manage ITS data —
+  its Tor domains, Tor blog, Tor mail, Tor chat, from its own database — never
+  clearnet's. Flip back to Clearnet (a switch inside the Tor console, or the
+  clearnet segment) to return. The bridge authenticates to the Tor world with that
+  instance's OWN API key (checked before any session), so no clearnet login or
+  account crosses over; the two databases stay separate. If the Tor world is still
+  booting, a clear "starting…" page with a Back-to-Clearnet link is shown instead
+  of an error.
+
 ## [3.14.18] — 2026-07-19
 
 ### Changed

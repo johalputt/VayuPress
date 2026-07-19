@@ -102,6 +102,11 @@ func (s *Supervisor) Running() bool { s.mu.Lock(); defer s.mu.Unlock(); return s
 // Port returns the child's loopback port (0 until started).
 func (s *Supervisor) Port() int { s.mu.Lock(); defer s.mu.Unlock(); return s.port }
 
+// APIKey returns the child's distinct API key, so the parent can authenticate as
+// admin when it proxies the operator's console into the Tor world. It is the
+// child's own key (never the parent's), matching the key the child boots with.
+func (s *Supervisor) APIKey() string { s.mu.Lock(); defer s.mu.Unlock(); return s.apiKey }
+
 // LastError returns the last spawn/boot failure for the admin status line.
 func (s *Supervisor) LastError() string { s.mu.Lock(); defer s.mu.Unlock(); return s.last }
 

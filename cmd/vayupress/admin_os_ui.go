@@ -51,6 +51,7 @@ import (
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/settings"
 	"github.com/johalputt/vayupress/internal/users"
+	"github.com/johalputt/vayupress/internal/vayuos/torspace"
 )
 
 // ── Static asset path ────────────────────────────────────────────────────────
@@ -146,6 +147,15 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 	// Protected pages and APIs — require session or API key.
 	r.Group(func(pr chi.Router) {
 		pr.Use(a.requireSessionOrAPIKey)
+		// Enter-the-Tor-world bridge (ADR-0141): while the operator's view is set to
+		// Tor, this proxies /os/* into the separate Tor-world instance so they manage
+		// its data (its own database), never clearnet's. Mounted after auth so only a
+		// signed-in admin can reach the proxy; /os/world and /os/logout are exempt so
+		// the operator can always flip back or sign out.
+		pr.Use(a.torWorldMiddleware)
+		// The world switch itself: a light GET that sets/clears the per-browser view
+		// cookie (enabling the Tor world is the separate CSRF-checked space toggle).
+		pr.Get("/os/world", a.handleWorldSwitch)
 
 		// Pages
 		pr.Get("/os", a.handleOSDashboard)
@@ -602,11 +612,19 @@ func spaceSwitch(lvl int, s *osSettings) string {
 		return ""
 	}
 	if config.Cfg.OnionMode {
-		// This whole install IS the Tor world — show it, but it is not switchable.
+		// This install IS the Tor world. When it is being managed from the parent's
+		// clearnet console (proxied), the Clearnet segment is a real switch back
+		// (/os/world?target=clearnet, which the parent intercepts). Opened directly
+		// at its .onion in Tor Browser there is no parent, so it stays a static
+		// indicator with no clearnet affordance.
 		d := html.EscapeString(config.Cfg.Domain)
+		clearSeg := `<span class="space-switch__seg" aria-disabled="true">Clearnet</span>`
+		if torspace.FromParentConsole() {
+			clearSeg = `<a class="space-switch__seg" href="/os/world?target=clearnet">Clearnet</a>`
+		}
 		return `<div class="space-switch-wrap">
-  <div class="space-switch" role="group" aria-label="Active world" title="This install is a dedicated Tor world">
-    <span class="space-switch__seg" aria-disabled="true">Clearnet</span>
+  <div class="space-switch" role="group" aria-label="Active world">
+    ` + clearSeg + `
     <span class="space-switch__seg is-active" aria-current="true">Tor</span>
   </div>
   <div class="space-switch__status"><span class="space-dot space-dot--ok"></span>Tor world · <button type="button" class="space-switch__copy" data-copy="http://` + d + `">copy address</button></div>
@@ -1125,11 +1143,13 @@ Array.prototype.forEach.call(document.querySelectorAll('[data-space-switch]'),fu
     var on=seg.getAttribute('data-space-switch')==='on';
     var sw=seg.parentNode;if(sw)sw.classList.add('is-busy');
     vpSpaceStatus(on?'Starting your anonymous world…':'Switching to Clearnet…'); // instant feedback
+    if(!on){location.href='/os/world?target=clearnet';return;} // leave: just drop the view
+    // Enter Tor: make sure the anonymous world is on, then step INTO it.
     fetch('/os/spaces',{credentials:'same-origin'}).then(function(){
       var m=document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);
-      return fetch('/os/spaces/toggle?enable='+(on?'1':'0'),{method:'POST',credentials:'same-origin',headers:{'X-CSRF-Token':m?m[1]:''}});
+      return fetch('/os/spaces/toggle?enable=1',{method:'POST',credentials:'same-origin',headers:{'X-CSRF-Token':m?m[1]:''}});
     }).then(function(r){
-      if(r.ok){location.reload();return;}
+      if(r.ok){location.href='/os/world?target=tor';return;} // enter the Tor world console
       if(sw)sw.classList.remove('is-busy');
       vpSpaceStatus('Could not switch — administrator only.');
       if(window.vpToast)window.vpToast('Could not switch world (administrator only).','error');

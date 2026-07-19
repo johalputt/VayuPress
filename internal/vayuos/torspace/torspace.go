@@ -31,6 +31,17 @@ import (
 // parent's per-domain onion engine.
 const EnvSpaceChild = "VAYUOS_SPACE_CHILD"
 
+// EnvParentConsole tells the child it is managed from the parent's clearnet
+// console (proxied), so its Tor-only sidebar renders a working "Clearnet" switch
+// back (a link the parent intercepts) instead of a static indicator. It is NOT
+// set when the .onion is opened directly in Tor Browser, so that path stays a
+// pure Tor world with no clearnet affordance.
+const EnvParentConsole = "VAYUOS_PARENT_CONSOLE"
+
+// FromParentConsole reports whether this child is being managed from the parent
+// clearnet console (proxied), enabling the in-console "back to Clearnet" switch.
+func FromParentConsole() bool { return os.Getenv(EnvParentConsole) == "1" }
+
 // IsSpaceChild reports whether THIS process is a Tor-Space child instance.
 func IsSpaceChild() bool { return os.Getenv(EnvSpaceChild) == "1" }
 
@@ -80,6 +91,9 @@ func BuildChildEnv(root, onion string, port int, apiKey string) []string {
 		"LOG_DIR=" + filepath.Join(root, "logs"),
 		"TMP_DIR=" + filepath.Join(root, "tmp"),
 		"API_KEY=" + apiKey,
+		// The child is reachable from the parent's clearnet console (proxied), so
+		// its Tor-only sidebar offers a working switch back to Clearnet.
+		EnvParentConsole + "=1",
 	}
 	if onion != "" {
 		env = append(env, "DOMAIN="+onion)
