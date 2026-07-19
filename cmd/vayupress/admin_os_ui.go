@@ -626,19 +626,21 @@ func spaceSwitch(lvl int, s *osSettings) string {
   <div class="space-switch__status"><span class="space-dot space-dot--ok"></span>Tor world · <button type="button" class="space-switch__copy" data-copy="http://` + d + `">copy address</button></div>
 </div>`
 	}
-	torOn := s != nil && s.TorSpaceOn
+	// This is the CLEARNET console (not OnionMode): rendering it at all means the
+	// operator is currently VIEWING clearnet — viewing Tor proxies to the child's
+	// own console instead. So Clearnet is ALWAYS the active segment and Tor is
+	// ALWAYS the click-to-enter one, regardless of whether the Tor world happens to
+	// be running. (Basing "active" on whether the Space was enabled made Tor look
+	// selected while you were still on clearnet, so clicking it did nothing.)
+	enabled := s != nil && s.TorSpaceOn
 	onion, running := "", false
 	if s != nil {
 		onion, running = s.TorSpaceOnion, s.TorSpaceRunning
 	}
-	clearCls, torCls := "space-switch__seg is-active", "space-switch__seg"
-	if torOn {
-		clearCls, torCls = "space-switch__seg", "space-switch__seg is-active"
-	}
-	// Inline status under the switch — self-contained, so there is no separate
-	// page to open: live + copyable .onion when up, "starting…" while it publishes.
+	// Inline status under the switch: only meaningful once the Tor world is on, to
+	// surface its live .onion — it does NOT change which segment is active.
 	status, hidden := "", " hidden"
-	if torOn {
+	if enabled {
 		hidden = ""
 		if running && onion != "" {
 			status = `<span class="space-dot space-dot--ok"></span>Anonymous world live · <button type="button" class="space-switch__copy" data-copy="http://` + html.EscapeString(onion) + `">copy .onion</button>`
@@ -647,23 +649,14 @@ func spaceSwitch(lvl int, s *osSettings) string {
 		}
 	}
 	// data-space-switch on a segment = "clicking me switches to this world":
-	// "off" turns the Tor Space off (back to Clearnet), "on" turns it on.
+	// "on" enters the Tor world (this console proxies into it), "off" stays here.
 	return `<div class="space-switch-wrap">
   <div class="space-switch" role="group" aria-label="Switch world">
-    <button type="button" class="` + clearCls + `" data-space-switch="off" aria-pressed="` + ariaBool(!torOn) + `">Clearnet</button>
-    <button type="button" class="` + torCls + `" data-space-switch="on" aria-pressed="` + ariaBool(torOn) + `">Tor</button>
+    <button type="button" class="space-switch__seg is-active" data-space-switch="off" aria-pressed="true">Clearnet</button>
+    <button type="button" class="space-switch__seg" data-space-switch="on" aria-pressed="false">Tor</button>
   </div>
   <div class="space-switch__status" data-space-status` + hidden + `>` + status + `</div>
 </div>`
-}
-
-// ariaBool renders a Go bool as the string "true"/"false" for an ARIA attribute
-// (e.g. aria-pressed), which requires the literal words, not "1"/"".
-func ariaBool(b bool) string {
-	if b {
-		return "true"
-	}
-	return "false"
 }
 
 // unreadMessagesLabel is the dashboard Messages-card footer link text.

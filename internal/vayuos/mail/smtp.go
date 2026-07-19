@@ -12,6 +12,18 @@ import (
 	"time"
 )
 
+// NewLocalOnlyDeliverer returns a DeliverFunc that performs NO network I/O: it
+// bounces every queued (i.e. non-local) recipient with a permanent error. It is
+// used by a Tor Space (OnionMode, ADR-0141) so the anonymous world can never dial
+// out over clearnet (no MX lookup, no SMTP connect). Mail to mailboxes on the same
+// .onion is delivered locally before it ever reaches the queue, so same-instance
+// mail is unaffected; only external/clearnet recipients are refused.
+func NewLocalOnlyDeliverer() DeliverFunc {
+	return func(_ context.Context, _ string, _ []string, _ []byte) error {
+		return errors.New("vayumail: this Tor world sends only to mailboxes on its own .onion — external delivery is disabled for anonymity")
+	}
+}
+
 // NewMXDeliverer returns a DeliverFunc that delivers mail directly to each
 // recipient domain's MX hosts (no third-party relay — full sovereignty), using
 // opportunistic STARTTLS. heloHost is announced in EHLO/HELO.

@@ -65,12 +65,16 @@ func TestSpaceSwitch(t *testing.T) {
 		t.Error("with Tor off, the inline status must be hidden")
 	}
 
-	// Clearnet install, Tor Space ON + live: Tor segment active, onion shown inline
-	// with a copy button (no separate page).
+	// Clearnet install, Tor Space ON + live: on the CLEARNET console the operator is
+	// still viewing clearnet, so Clearnet stays the active segment and Tor stays the
+	// click-to-enter control; the live .onion is shown inline as status only.
 	on := spaceSwitch(accessAdmin, &osSettings{TorSpaceOn: true, TorSpaceRunning: true, TorSpaceOnion: "abcxyz.onion"})
 	assertCSPSafe(t, "spaceSwitch/on", on)
-	if !strings.Contains(on, `class="space-switch__seg is-active" data-space-switch="on"`) {
-		t.Error("with Tor on, the Tor segment must be active")
+	if !strings.Contains(on, `class="space-switch__seg is-active" data-space-switch="off"`) {
+		t.Error("Clearnet must stay the active segment on the clearnet console")
+	}
+	if !strings.Contains(on, `data-space-switch="on"`) || strings.Contains(on, `is-active" data-space-switch="on"`) {
+		t.Error("Tor must remain the click-to-enter (non-active) segment")
 	}
 	if !strings.Contains(on, `data-copy="http://abcxyz.onion"`) || !strings.Contains(on, "live") {
 		t.Error("a live Tor Space must show its .onion inline with a copy button")

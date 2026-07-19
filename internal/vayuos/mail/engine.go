@@ -477,9 +477,13 @@ func (e *Engine) Start(ctx context.Context) error {
 	// (the relay's IP reputation carries deliverability), otherwise sovereign
 	// direct-to-MX. DKIM signing happens before the queue either way.
 	var deliver DeliverFunc
-	if e.cfg.RelayEnabled() {
+	switch {
+	case e.cfg.LocalOnly:
+		// Tor Space: never dial out; external recipients are bounced (ADR-0141).
+		deliver = NewLocalOnlyDeliverer()
+	case e.cfg.RelayEnabled():
 		deliver = NewRelayDeliverer(e.cfg, e.cfg.Hostname, e.cfg.DeliveryTimeout)
-	} else {
+	default:
 		deliver = NewMXDeliverer(e.cfg.Hostname, e.cfg.DeliveryTimeout)
 	}
 	q, err := NewQueue(e.db, e.cfg, deliver)

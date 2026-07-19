@@ -408,14 +408,20 @@ func (a *App) bootVayuOS() {
 
 	mailCfg := vmail.DefaultConfig()
 	mailCfg.StorageDir = filepath.Join(base, "vayudata", "mail")
-	// A Tor Space (OnionMode, ADR-0141) is web-only: mail is never served over
-	// Tor, and a live outbound queue would deliver direct-to-MX over clearnet — an
-	// anonymity leak. So the whole mail engine stays disabled in a Tor Space (it
-	// also stops the futile privileged-port binds the Tor sandbox can't grant).
-	if d := config.Cfg.Domain; d != "" && d != "localhost" && !config.Cfg.OnionMode {
+	// VayuMail runs whenever a domain is configured. In a Tor Space (OnionMode,
+	// ADR-0141) it runs as an onion-only, fully-encrypted mail service: webmail and
+	// same-.onion mailbox-to-mailbox delivery, all local (encrypted at rest via
+	// VayuPGP, transparently decrypted on read). NO clearnet egress — outbound to any
+	// external address is bounced (LocalOnly), the privileged inbound listeners never
+	// bind (web-only over Tor), no ACME (no clearnet CA), and no WKD key fetch.
+	if d := config.Cfg.Domain; d != "" && d != "localhost" {
 		mailCfg.Domain = d
 		mailCfg.Hostname = "mail." + d
 		mailCfg.Enabled = true
+		if config.Cfg.OnionMode {
+			mailCfg.Hostname = d // the .onion itself; no "mail." subdomain over Tor
+			mailCfg.LocalOnly = true
+		}
 	}
 	// VayuDomains Stage 3b: accept and store mail for mail_enabled secondary
 	// domains too, each in its own isolated Maildir. Primary-only (byte-identical)
@@ -425,7 +431,11 @@ func (a *App) bootVayuOS() {
 	// receive external mail. Run outbound-only with VAYUOS_MAIL_INBOUND=off.
 	// Binding the mail ports is best-effort inside the engine (a failed bind is
 	// surfaced but never blocks outbound/local delivery).
-	if strings.EqualFold(config.EnvOr("VAYUOS_MAIL_INBOUND", "on"), "off") {
+	if config.Cfg.OnionMode || strings.EqualFold(config.EnvOr("VAYUOS_MAIL_INBOUND", "on"), "off") {
+		// A Tor Space is web-only: never bind the privileged SMTP/IMAP/POP3 ports
+		// (the Tor sandbox can't grant them and there is no clearnet mail receive
+		// over Tor), and never run ACME (no clearnet CA). Webmail reads the Maildir
+		// directly and does not need the listeners.
 		mailCfg.InboundEnabled = false
 	} else {
 		mailCfg.InboundEnabled = true
@@ -1059,6 +1069,13 @@ func (a *App) handleVayuOSMail(w http.ResponseWriter, r *http.Request) {
 	// are infrastructure detail — administrator-only.
 	if !a.isAdminRequest(r) {
 		a.denyAccess(w, r, "/os/vayumail/inbox")
+		return
+	}
+	// In a Tor Space the DNS/deliverability checks make clearnet DNS queries
+	// (MX/SPF/DMARC/PTR) — a network leak that has no meaning for an .onion.
+	// Redirect back to the inbox instead of running them (ADR-0141).
+	if config.Cfg.OnionMode {
+		http.Redirect(w, r, "/os/vayumail/inbox", http.StatusSeeOther)
 		return
 	}
 	mc := a.vayuMail.Config()

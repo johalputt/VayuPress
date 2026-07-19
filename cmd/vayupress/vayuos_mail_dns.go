@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/vayuos/mail"
 )
 
@@ -189,6 +190,11 @@ document.addEventListener('click',function(e){
 func (a *App) handleVayuOSMailDNSVerify(w http.ResponseWriter, r *http.Request) {
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", "VayuMail is not active", "")
+		return
+	}
+	// No clearnet DNS lookups from a Tor Space (ADR-0141).
+	if config.Cfg.OnionMode {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "onion-mode", "DNS checks are disabled in the Tor world (no clearnet lookups)", "")
 		return
 	}
 	if !a.isAdminRequest(r) {

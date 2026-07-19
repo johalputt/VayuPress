@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/ProtonMail/go-crypto/openpgp/armor"
+	"github.com/johalputt/vayupress/internal/config"
 )
 
 // wkdDomainRe matches a syntactically valid public DNS hostname (at least two
@@ -166,6 +167,13 @@ func (e *Engine) ServeWKD(domain string) http.Handler {
 // LookupExternalKey discovers a recipient's public key via WKD over HTTPS,
 // trying the advanced method first and then the direct method.
 func (e *Engine) LookupExternalKey(email string) (*PublicKey, error) {
+	// In a Tor Space (OnionMode, ADR-0141) a WKD discovery is an outbound HTTPS
+	// call to the recipient's clearnet domain — a network leak that would correlate
+	// the anonymous world. Never fetch external keys there; encryption uses only
+	// keys already in the local keystore.
+	if config.Cfg.OnionMode {
+		return nil, ErrNotFound
+	}
 	local, domain := splitEmail(normalizeEmail(email))
 	if domain == "" || !validExternalWKDDomain(domain) {
 		return nil, ErrNotFound

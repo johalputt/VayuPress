@@ -150,6 +150,14 @@ type Config struct {
 	// on :465) before AUTH/DATA. On by default; only disable for a trusted relay
 	// on a private network.
 	RelayRequireTLS bool
+
+	// LocalOnly makes outbound delivery refuse any recipient not on a mail domain
+	// this install serves — with NO network call at all (no MX lookup, no SMTP
+	// dial). It is set for a Tor Space (OnionMode, ADR-0141): mailbox-to-mailbox
+	// mail on the same .onion is delivered locally (pure filesystem, encrypted at
+	// rest), and mail to any external/clearnet address is bounced rather than
+	// leaked over the network. Same-instance webmail is fully functional.
+	LocalOnly bool
 }
 
 // AcceptsMailDomain reports whether host is a mail domain this install serves —

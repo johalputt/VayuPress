@@ -8,6 +8,31 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.21] — 2026-07-19
+
+### Fixed
+- **The world switch works again (ADR-0141).** On the clearnet console the switch
+  now always shows **Clearnet** as the active segment and **Tor** as the
+  click-to-enter one — previously, once the Tor world had been enabled, the switch
+  drew Tor as "active" even while you were viewing clearnet, so clicking it did
+  nothing and you were stuck on clearnet. The active segment now reflects which
+  world you are VIEWING, not whether the Tor world happens to be running.
+
+### Added
+- **VayuMail·Tor — encrypted mail inside the Tor world (ADR-0141).** VayuMail now
+  runs in the Tor world as an onion-only, fully-encrypted service: create mailboxes
+  and app passwords, compose, read and search, all on the Tor world's own database.
+  Mailbox-to-mailbox mail on the same `.onion` is delivered locally and encrypted at
+  rest with VayuPGP (transparently decrypted on read). It makes **zero clearnet
+  callbacks**: outbound to any external address is bounced (never dialed), the
+  privileged SMTP/IMAP/POP3 listeners never bind, ACME is off, WKD external key
+  discovery is disabled, and the DNS/deliverability page is turned off in Tor mode.
+- **VayuTalk·Tor — anonymous encrypted chat inside the Tor world (ADR-0141).**
+  VayuTalk now runs automatically in the Tor world. Its relay is entirely in-memory
+  and in-process (ephemeral, burn-after-read), messages are end-to-end encrypted
+  with VayuPGP, and it makes no external/clearnet calls — so it is safe over the
+  onion out of the box.
+
 ## [3.14.20] — 2026-07-19
 
 ### Fixed
