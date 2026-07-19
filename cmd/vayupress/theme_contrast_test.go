@@ -53,6 +53,9 @@ func TestThemeEditorCoversSettingsAllowlist(t *testing.T) {
 		// theme-editor form fields.
 		settings.KeyTorSpaceEnabled: true,
 		settings.KeyTorSpaceAPIKey:  true,
+		// The anonymous VayuTalk handle is engine-generated + rotated from the Talk
+		// page, never a theme-editor field.
+		settings.KeyTalkAnonID: true,
 		// Feature flags are toggled through the Tools & Plugins panel
 		// (POST /os/api/tools/toggle), not the theme editor form.
 		settings.KeyFeatureComments:    true,

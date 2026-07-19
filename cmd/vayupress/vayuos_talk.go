@@ -34,6 +34,7 @@ import (
 	"time"
 
 	"github.com/johalputt/vayupress/internal/auth"
+	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/render"
 	vpgp "github.com/johalputt/vayupress/internal/vayuos/pgp"
 	vtalk "github.com/johalputt/vayupress/internal/vayuos/vayutalk"
@@ -56,6 +57,11 @@ import (
 // can chat as an identity that isn't theirs. Keys are minted on demand, so the
 // address need not have a pre-existing PGP key.
 func (a *App) talkIdentity(r *http.Request) string {
+	// In the Tor world the identity is an ANONYMOUS, rotatable handle — never a
+	// mailbox address — so chat is not linked to a mail account (ADR-0141).
+	if config.Cfg.OnionMode {
+		return a.talkAnonAddress(r.Context())
+	}
 	domain := ""
 	if a.vayuMail != nil && a.vayuMail.Config().Enabled {
 		domain = strings.ToLower(strings.TrimSpace(a.vayuMail.Config().Domain))
@@ -89,6 +95,11 @@ func (a *App) talkIdentities(r *http.Request) []string {
 	def := a.talkIdentity(r)
 	if def == "" {
 		return nil
+	}
+	// The Tor world has exactly one identity — the anonymous handle — with no
+	// "chat as" mailbox switcher (there are no mailbox identities to pick from).
+	if config.Cfg.OnionMode {
+		return []string{def}
 	}
 	out := []string{def}
 	if a.isAdminRequest(r) {
@@ -212,7 +223,11 @@ func (a *App) handleVayuOSTalk(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var body strings.Builder
-	body.WriteString(`<div class="page-header"><h1>VayuTalk</h1><span class="muted text-sm">Ephemeral, end-to-end-encrypted chat — same relay as the app. Pick a self-destruct timer; messages burn a set time after they're read.</span></div>`)
+	tagline := `Ephemeral, end-to-end-encrypted chat — same relay as the app. Pick a self-destruct timer; messages burn a set time after they're read.`
+	if config.Cfg.OnionMode {
+		tagline = `Ephemeral, end-to-end-encrypted chat over your <code>.onion</code>. Your identity is an anonymous, rotatable code — not a mailbox. Share it so people can reach you; messages burn a set time after they're read.`
+	}
+	body.WriteString(`<div class="page-header"><h1>VayuTalk</h1><span class="muted text-sm">` + tagline + `</span></div>`)
 
 	if !a.vayuTalkEnabled() {
 		body.WriteString(`<div class="empty-state">VayuTalk is inactive. It runs automatically once mail is enabled (a <code>DOMAIN</code> is set); it is disabled only when <code>VAYUOS_TALK=off</code>.</div>`)
@@ -253,6 +268,10 @@ func (a *App) handleVayuOSTalk(w http.ResponseWriter, r *http.Request) {
 		body.WriteString(`<strong>` + esc(self) + `</strong>`)
 	}
 	body.WriteString(`<span class="vtalk-status" id="vtalk-status" data-state="connecting">Connecting…</span></div></div>`)
+	// Tor world: the identity is an anonymous, rotatable code — offer copy + rotate.
+	if config.Cfg.OnionMode {
+		body.WriteString(`<div class="vtalk-anon"><p class="text-sm muted">This is your anonymous code — share it so people can reach you.</p><div class="ak-cred-actions"><button type="button" class="btn btn--sm" data-copy="` + esc(self) + `">Copy code</button><button type="button" class="btn btn--sm btn--ghost" id="vtalk-rotate">Rotate</button></div></div>`)
+	}
 	body.WriteString(`<form class="vtalk-newchat" id="vtalk-newchat"><input class="input input--sm" id="vtalk-peer" type="email" autocomplete="off" spellcheck="false" placeholder="name@domain" aria-label="Recipient address"><button class="btn btn--sm btn--primary" type="submit">Start</button></form>`)
 	body.WriteString(`<ul class="vtalk-convos" id="vtalk-convos" aria-label="Conversations"></ul>`)
 	body.WriteString(`</aside>`)
@@ -273,6 +292,13 @@ func (a *App) handleVayuOSTalk(w http.ResponseWriter, r *http.Request) {
 
 	body.WriteString(`</div>`) // .vtalk
 	body.WriteString(`<script nonce="` + nonce + `" src="/os/static/js/admin-os-talk.js?v=` + assetVer("js/admin-os-talk.js") + `"></script>`)
+	// Anonymous-code controls (Tor world): copy the code, or rotate to a fresh one.
+	// Same-origin, CSRF-checked; reload after a rotate to pick up the new identity.
+	body.WriteString(`<script nonce="` + nonce + `">(function(){
+var rot=document.getElementById('vtalk-rotate');
+if(rot){rot.addEventListener('click',function(){rot.disabled=true;var m=document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);fetch('/os/talk/rotate',{method:'POST',credentials:'same-origin',headers:{'X-CSRF-Token':m?m[1]:''}}).then(function(r){if(r.ok){location.reload();}else{rot.disabled=false;}}).catch(function(){rot.disabled=false;});});}
+Array.prototype.forEach.call(document.querySelectorAll('.vtalk-anon [data-copy]'),function(b){b.addEventListener('click',function(){var v=b.getAttribute('data-copy')||'',p=b.textContent;var d=function(){b.textContent='Copied';setTimeout(function(){b.textContent=p;},1400);};if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(v).then(d,d);}else{d();}});});
+})();</script>`)
 	writeOSHTML(w, adminOSLayout(nonce, "VayuTalk", "talk", cfg, htmpl.HTML(body.String())))
 }
 

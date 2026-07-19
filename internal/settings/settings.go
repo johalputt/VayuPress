@@ -238,6 +238,10 @@ const (
 	// KeyTorSpaceAPIKey persists the child instance's DISTINCT API key so its
 	// identity is stable across restarts and never shares the parent's key.
 	KeyTorSpaceAPIKey = "tor.space_api_key"
+	// KeyTalkAnonID is the local-part of the ANONYMOUS, rotatable VayuTalk identity
+	// used in the Tor world (ADR-0141) — a random handle, not a mailbox address, so
+	// chat is not linked to a mail account. "Rotate" replaces it with a fresh one.
+	KeyTalkAnonID = "talk.anon_id"
 )
 
 // FeatureKeys is the set of operator-toggleable feature flags. Each maps to a
@@ -350,6 +354,7 @@ var AllKeys = map[string]bool{
 	// yet never persist, so the reloaded page always reads "off".
 	KeyTorSpaceEnabled: true,
 	KeyTorSpaceAPIKey:  true,
+	KeyTalkAnonID:      true,
 }
 
 // Defaults are returned when no DB value exists for a key.
@@ -413,6 +418,7 @@ var Defaults = map[string]string{
 	KeyTorOnionLocation:      "on",
 	KeyTorSpaceEnabled:       "off",
 	KeyTorSpaceAPIKey:        "",
+	KeyTalkAnonID:            "",
 }
 
 // Store is a thread-safe settings store with an in-process read cache.

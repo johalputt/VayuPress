@@ -8,6 +8,17 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.23] — 2026-07-19
+
+### Added
+- **VayuTalk·Tor uses an anonymous, rotatable code (ADR-0141).** In the Tor world
+  your chat identity is no longer your mailbox address — it is a random handle
+  (`<random>@<onion>`) with no mailbox behind it, so chat is not linked to a mail
+  account. The VayuTalk page shows the code with **Copy** and **Rotate**; Rotate
+  mints a brand-new handle and keypair on demand, so you can hand out a throwaway
+  code and drop it whenever you like. The relay is identity-agnostic, so this is a
+  pure identity change — messages stay end-to-end encrypted and ephemeral.
+
 ## [3.14.22] — 2026-07-19
 
 ### Fixed
