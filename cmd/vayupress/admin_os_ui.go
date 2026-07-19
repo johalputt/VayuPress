@@ -792,6 +792,16 @@ func adminOSShellHead(nonce, title, active string, settings *osSettings) string 
 		newPostBtn = ""
 	}
 
+	// Space-mode indicator (ADR-0141): every admin page carries an unmistakable
+	// badge for the world this whole install controls — a CLEARNET Space (public
+	// HTTPS domain) or a TOR Space (anonymous .onion, clearnet callbacks off) — so
+	// the two are never confused. The mode is fixed per install by VAYUOS_MODE, so
+	// this is a read-only status label, not a toggle.
+	spaceBadge := `<span class="space-badge space-badge--clearnet" title="Clearnet Space — served over HTTPS on your public domain">Clearnet</span>`
+	if config.Cfg.OnionMode {
+		spaceBadge = `<span class="space-badge space-badge--tor" title="Tor Space — anonymous .onion world; clearnet callbacks disabled">Tor</span>`
+	}
+
 	return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -835,6 +845,7 @@ func adminOSShellHead(nonce, title, active string, settings *osSettings) string 
       <svg viewBox="0 0 20 20" fill="none" width="20" height="20" aria-hidden="true"><path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
     </button>
     <span class="topbar-title">` + et + `</span>
+    ` + spaceBadge + `
     <span class="topbar-spacer"></span>
     ` + cmdHint + `
     ` + newPostBtn + `

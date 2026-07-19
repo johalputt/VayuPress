@@ -8,6 +8,18 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.8] — 2026-07-19
+
+### Added
+- **Space-mode indicator in the VayuOS topbar (ADR-0141, Phase 1).** Every admin
+  page now carries an unmistakable badge next to the page title showing which
+  world this whole install controls — a green **Clearnet** Space (public HTTPS
+  domain) or a purple **Tor** Space (anonymous `.onion`, clearnet callbacks off).
+  The mode is fixed per install by `VAYUOS_MODE`, so the badge is a read-only
+  status label, not a toggle — the two worlds are never confused when operating
+  either. Rendered with a same-origin CSS class (no inline style), so the strict
+  admin CSP (`style-src 'self'`) is untouched.
+
 ## [3.14.7] — 2026-07-19
 
 ### Changed

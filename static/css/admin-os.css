@@ -579,6 +579,35 @@
 .vp-os .badge--free    { background: var(--bg-surface-3); color: var(--text-2); }
 .vp-os .badge--paid    { background: var(--accent-dim);   color: var(--accent); }
 
+/* ── Space-mode badge (ADR-0141) ─────────────────────────────────
+   Persistent topbar indicator of the world this whole install controls:
+   a CLEARNET Space (public HTTPS domain, green) or a TOR Space (anonymous
+   .onion, purple). Fixed per install by VAYUOS_MODE — a status label, not a
+   toggle — so the two worlds are never confused when operating either. The
+   leading dot is a ::before pseudo (no inline style; strict admin CSP). */
+.vp-os .space-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45em;
+  padding: 0.2em 0.65em;
+  border-radius: var(--r-full);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.vp-os .space-badge::before {
+  content: "";
+  width: 0.5em;
+  height: 0.5em;
+  border-radius: var(--r-full);
+  background: currentColor;
+  flex: none;
+}
+.vp-os .space-badge--clearnet { background: var(--ok-dim);     color: var(--ok); }
+.vp-os .space-badge--tor      { background: var(--accent-dim); color: var(--accent); }
+
 /* ── Form elements ───────────────────────────────────────────── */
 .vp-os .field { display: flex; flex-direction: column; gap: var(--sp-2); }
 .vp-os .field-label {

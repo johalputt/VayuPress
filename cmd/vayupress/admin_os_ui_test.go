@@ -62,6 +62,39 @@ func TestOSLayoutCSPSafe(t *testing.T) {
 	}
 }
 
+// TestOSTopbarSpaceBadge verifies the ADR-0141 Space-mode indicator in the admin
+// topbar: a clearnet install shows a "Clearnet" badge, a Tor install shows a
+// "Tor" badge, exactly one is ever present, and neither breaks the strict admin
+// CSP (no inline style / external host).
+func TestOSTopbarSpaceBadge(t *testing.T) {
+	prev := config.Cfg.OnionMode
+	defer func() { config.Cfg.OnionMode = prev }()
+
+	t.Run("clearnet space", func(t *testing.T) {
+		config.Cfg.OnionMode = false
+		out := adminOSLayout("N", "Dashboard", "dashboard", &osSettings{SiteName: "Demo"}, htmpl.HTML("<p>x</p>"))
+		assertCSPSafe(t, "spaceBadge/clearnet", out)
+		if !strings.Contains(out, `class="space-badge space-badge--clearnet"`) {
+			t.Error("clearnet install must render the clearnet Space badge")
+		}
+		if strings.Contains(out, "space-badge--tor") {
+			t.Error("clearnet install must not render the Tor Space badge")
+		}
+	})
+
+	t.Run("tor space", func(t *testing.T) {
+		config.Cfg.OnionMode = true
+		out := adminOSLayout("N", "Dashboard", "dashboard", &osSettings{SiteName: "Demo"}, htmpl.HTML("<p>x</p>"))
+		assertCSPSafe(t, "spaceBadge/tor", out)
+		if !strings.Contains(out, `class="space-badge space-badge--tor"`) {
+			t.Error("Tor install must render the Tor Space badge")
+		}
+		if strings.Contains(out, "space-badge--clearnet") {
+			t.Error("Tor install must not render the clearnet Space badge")
+		}
+	})
+}
+
 // TestHTMXAssetServed verifies the self-hosted HTMX library is compiled into the
 // binary (via StaticFS) and served at /static/js/htmx.min.js with a JavaScript
 // content type — same-origin, no CDN, satisfying script-src 'self'.
