@@ -1946,7 +1946,7 @@ func absoluteURL(domain, v string) string {
 		return v
 	}
 	if strings.HasPrefix(v, "/") {
-		return "https://" + domain + v
+		return seo.Origin(domain) + v
 	}
 	return v
 }
@@ -1993,7 +1993,7 @@ func RenderArticleWithMetaSettings(s SiteSettings, a db.Article, layout ArticleL
 	// Canonical: explicit override → site canonical for this slug.
 	canonical := firstNonEmpty(ov.CanonicalURL)
 	if canonical == "" {
-		canonical = "https://" + domain + "/" + a.Slug
+		canonical = seo.Origin(domain) + "/" + a.Slug
 	}
 	// Share image: per-post OG image → feature image → derived → site default.
 	ogImage := firstNonEmpty(

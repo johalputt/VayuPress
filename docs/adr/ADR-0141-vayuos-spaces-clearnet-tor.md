@@ -1,0 +1,131 @@
+# ADR-0141 — VayuOS Spaces: Clearnet and Tor as separate, independently controllable worlds
+
+Status: Accepted (Phase 1 in progress — scheme-aware public origin shipped)
+Date: 2026-07-19
+Deciders: VayuPress core
+
+## Context
+
+VayuTor (ADR-0138) gives every hosted **clearnet** domain a paired v3 `.onion`,
+"clearnet + onion together", and **deliberately refused** a Tor-only switch —
+onion was always minted from, and routed back to, a clearnet domain record. That
+is excellent for censorship-resilience of an existing public site, but it means:
+
+1. There is **no way to run a site that has no clearnet domain at all** (fully
+   anonymous / Tor-only). The onion set is derived from `StatusActive` clearnet
+   hosts and explicitly filters out `.onion`; the primary domain must be a real
+   clearnet FQDN and cannot be removed.
+2. Clearnet and Tor concerns are **meshed** in one admin surface. An operator
+   who wants to run and control the two worlds separately (turn one off, keep the
+   other, keep anonymous content away from public content) cannot.
+3. Every absolute URL (canonical, OG, JSON-LD, sitemap, RSS, robots) is hardcoded
+   `https://<clearnet domain>` because the onion request's Host is rewritten back
+   to the clearnet host **before** rendering — so a Tor-only site would emit dead
+   `https://` links.
+
+The operator's requirement: **two clear, first-class options in VayuOS —
+Clearnet 🌐 and Tor 🧅 — that work simultaneously, can each be switched off
+independently, and are not mashed together.** Plus a **Tor-native VayuMail**
+(onion-to-onion mail) and a **VayuTalk anonymous identity** that does not require
+a mailbox. Both "powers" available at once; each site/identity may be **Synced**
+(one identity, reachable both ways) or **Separate** (an independent, anonymous
+island).
+
+## Decision
+
+Introduce **VayuOS Spaces**: the admin console and the platform are organised
+into two isolated, independently-controllable worlds.
+
+- **🌐 Clearnet Space** — public domains, global VayuMail (SMTP/IMAP, MX/DKIM,
+  CA-TLS), mail-linked VayuTalk, normal analytics. This is today's behaviour.
+- **🧅 Tor Space** — onion services (may exist with **no** clearnet domain),
+  **VayuMail·Tor** (onion-to-onion / instance-local only, no MX/DNS/CA-TLS),
+  anonymous rotatable VayuTalk identities, count-only stats, and **enforced
+  anti-leak guardrails**.
+
+A persistent **space switcher at the top of VayuOS** flips between them; each
+Space is scoped, themed distinctly (so the operator always knows which world they
+are in), has its own master on/off, and its data never meshes with the other.
+
+Reversing ADR-0138's Tor-only refusal is an explicit, guard-railed decision made
+here: onion-only is now a supported per-site mode, never a foot-gun (the app
+always stays reachable on `127.0.0.1`, and suppressing clearnet requires explicit
+confirmation).
+
+### Core technical model
+
+1. **Reach is two independent per-site switches** (`clearnet on/off`, `tor
+   on/off`). Both on = co-hosted (today). Tor-only = anonymous. Clearnet-only =
+   classic. A site is keyed in the existing domains registry; a `site_type`
+   discriminator (`clearnet` | `onion`) plus onion-primary support lets a site
+   exist keyed by its `.onion` with no clearnet host.
+
+2. **Identity is Synced or Separate per site.** Synced = the onion is a second
+   door to the same site/accounts (correlatable, for availability). Separate = an
+   independent onion-only site/mailboxes/Talk IDs (uncorrelated, for anonymity).
+
+3. **Scheme is request/host-derived, not global.** A single source of truth,
+   `seo.Origin(host)`, returns `http://` for a `.onion` host and `https://`
+   otherwise. All absolute-URL generation flows through it. The onion middleware
+   stops rewriting an onion-primary Host back to clearnet, so renderers can be
+   scheme-aware per request. (Phase 1, shipping incrementally — the `seo.Origin`
+   backbone lands first, byte-identical for clearnet, guarded by the compat
+   golden tests.)
+
+4. **`Secure` cookies become request-aware**, off for onion requests (Tor
+   Browser treats `.onion` as a secure context, but plain-http onions must not
+   force `Secure`) while staying on for any clearnet host — never a global
+   disable.
+
+5. **Anti-leak is enforced, not advisory, in the Tor Space.** External
+   `http(s)://` images/assets, gravatar/WKD/MX/IndexNow/webmention clearnet
+   callbacks, and any clearnet `fetch()` are blocked so a Tor Space page cannot
+   de-anonymise its readers. `img-src 'self' data:` stays tight (never widened to
+   `http:`). A dead `https://<onion>` link is a correctness bug; a live external
+   asset is a **blocking** de-anonymisation bug.
+
+6. **VayuMail·Tor** is a separate service in the Tor Space: instance-local
+   same-onion delivery needs zero DNS/TLS (works today); optional onion-to-onion
+   federation dials the peer's mail onion over Tor SOCKS with key discovery over
+   the onion. Global email interop (Gmail/Outlook) is **out of scope by physics**
+   — it needs a public MX/PTR/DKIM that pins the server to a clearnet IP — and is
+   only ever available as an explicit, clearly-labelled non-anonymous opt-in in
+   the Clearnet Space.
+
+7. **VayuTalk anonymous identity** is a standalone, rotatable keypair addressed
+   by fingerprint / copy-paste share string (`talk:<onion>/<fingerprint>`), no
+   mailbox. The relay is already identity-agnostic, so it carries both mail-linked
+   and anonymous identities at once; the operator/user picks per conversation.
+
+## Consequences
+
+- **Positive:** true Tor-only anonymous hosting becomes possible; the two worlds
+  are cleanly separated and independently controllable; onion sites emit correct
+  URLs; the anti-leak guardrails make "anonymous" mean it. Most of the machinery
+  (VayuTor engine, domains registry, local mail delivery, identity-agnostic Talk
+  relay) is reused, not rebuilt.
+- **Negative / limits:** global email cannot be anonymous (documented, gated);
+  Synced identity is correlatable by design (documented); losing nginx in a
+  Tor-only deploy moves rate-limiting into the Go layer.
+- **Reversal of ADR-0138:** the "no Tor-only switch" decision is superseded here,
+  with explicit lock-out and confirmation guardrails.
+
+## Phased delivery
+
+- **Phase 1 — Spaces framework + onion-only site/blog + admin.** Scheme-aware
+  `seo.Origin` (shipped), then: `site_type`/onion-primary, stop the onion→clearnet
+  Host rewrite for onion-primary sites, request-aware `Secure` cookies, CORS +
+  callback no-ops, onion-only deploy branch, Go-layer rate limiting, the top-bar
+  space switcher + per-Space scoping/theming, CI gate (no `https://` / no external
+  asset in onion artifacts). **This ADR.**
+- **Phase 2 — VayuMail·Tor** (instance-local → onion-federated; separate Tor
+  inbox; clearnet-send block). Future ADR.
+- **Phase 3 — standalone rotatable VayuTalk identity** in the Tor Space. Future
+  ADR (amends ADR-0131).
+
+## Related
+
+- ADR-0138 (VayuTor onion services) — superseded on the Tor-only decision.
+- ADR-0134 (VayuAPI) / ADR-0139 (VayuMCP) — endpoints ride the same mux, so they
+  work in either Space; the OAuth consent `form-action` must include the onion
+  origin when served over Tor.

@@ -46,13 +46,32 @@ type ArticleMeta struct {
 	SiteName      string
 }
 
+// IsOnion reports whether host is a Tor onion address (…​.onion), so callers can
+// choose the correct scheme. Empty/whitespace and non-onion hosts return false.
+func IsOnion(host string) bool {
+	return strings.HasSuffix(strings.ToLower(strings.TrimSpace(host)), ".onion")
+}
+
+// Origin returns the absolute-URL origin for a public host and is the single
+// source of truth for the scheme: a Tor onion service is reached over plain
+// http:// (v3 onions are self-authenticating — no CA TLS, no HTTPS), every other
+// host over https://. This lets an onion-only / Tor Space site emit correct
+// http://<onion> canonical/OG/sitemap URLs while clearnet hosts stay https://.
+// (ADR-0141.)
+func Origin(host string) string {
+	if IsOnion(host) {
+		return "http://" + host
+	}
+	return "https://" + host
+}
+
 // Compute fills ArticleMeta for an article.
 func Compute(title, slug, contentHTML string, createdAt, updatedAt time.Time, domain, siteName string) ArticleMeta {
 	return ArticleMeta{
 		Title:         title,
 		Description:   ExtractDescription(contentHTML),
 		OGImage:       ExtractFirstImage(contentHTML),
-		CanonicalURL:  "https://" + domain + "/articles/" + slug,
+		CanonicalURL:  Origin(domain) + "/articles/" + slug,
 		DatePublished: createdAt.UTC().Format(time.RFC3339),
 		DateModified:  updatedAt.UTC().Format(time.RFC3339),
 		SiteName:      siteName,

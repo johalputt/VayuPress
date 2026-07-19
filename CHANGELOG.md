@@ -8,7 +8,22 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
-## [3.14.1] — 2026-07-19
+## [3.14.2] — 2026-07-19
+
+### Added
+- **ADR-0141 — VayuOS Spaces (Clearnet 🌐 / Tor 🧅).** Design record for splitting
+  VayuOS into two isolated, independently switchable worlds — a public Clearnet
+  Space and an anonymous Tor Space (onion-only sites with no clearnet domain,
+  Tor-native VayuMail, and a standalone rotatable VayuTalk identity), with
+  enforced anti-leak guardrails. This reverses ADR-0138's Tor-only refusal, with
+  lock-out guardrails. Phased delivery starts here.
+- **Scheme-aware public origin (Phase 1 backbone).** A single source of truth,
+  `seo.Origin(host)`, now decides the absolute-URL scheme: a `.onion` host is
+  emitted as `http://<onion>` (v3 onions are self-authenticating — no CA TLS),
+  every clearnet host stays `https://`. Article canonical URLs and social/OG
+  image URLs route through it. **No change for clearnet sites** (byte-identical,
+  guarded by the compatibility golden tests); it lets a future onion-only site
+  emit correct links instead of dead `https://` ones.
 
 ### Added
 - **Pick your AI model from a dropdown.** In the editor's ✨ AI panel, choosing a
