@@ -13,7 +13,27 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/johalputt/vayupress/internal/config"
 )
+
+// cspOnionImgSrc is the img-src used in a Tor/anonymous Space: no external https
+// origin, so a reader's Tor Browser can never fetch an off-onion image and leak
+// its IP. cspClearnetImgSrc is the clearnet baseline (hotlinking allowed).
+const (
+	cspClearnetImgSrc = "img-src 'self' data: https:"
+	cspOnionImgSrc    = "img-src 'self' data:"
+)
+
+// applyOnionCSP tightens a built CSP for Tor/anonymous mode (ADR-0141): it strips
+// external https from img-src. In clearnet mode it returns the policy unchanged,
+// so clearnet Spaces are byte-identical.
+func applyOnionCSP(csp string) string {
+	if config.Cfg.OnionMode {
+		return strings.Replace(csp, cspClearnetImgSrc, cspOnionImgSrc, 1)
+	}
+	return csp
+}
 
 // privacyFrameOrigins maps a provider key to its cookie-free embed origin. These
 // are the only third-party origins that may ever appear in a frame-src.
@@ -59,9 +79,9 @@ func BuildCSP(nonce string, frameOrigins []string) string {
 	base := strings.Replace(cspBaseline, "%s", nonce, 1)
 	valid := validFrameOrigins(frameOrigins)
 	if len(valid) == 0 {
-		return base
+		return applyOnionCSP(base)
 	}
-	return base + "; frame-src 'self' " + strings.Join(valid, " ")
+	return applyOnionCSP(base + "; frame-src 'self' " + strings.Join(valid, " "))
 }
 
 // validFrameOrigins filters the input to the closed allowlist and de-duplicates,

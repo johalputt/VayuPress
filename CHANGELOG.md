@@ -8,7 +8,16 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
-## [3.14.5] — 2026-07-19
+## [3.14.6] — 2026-07-19
+
+### Security
+- **Tor-mode CSP hardening (ADR-0141, Phase 1).** With `VAYUOS_MODE=tor`, the
+  reader Content-Security-Policy now drops external `https:` from `img-src`
+  (`img-src 'self' data:` only), so a reader's Tor Browser can never fetch an
+  off-onion image and leak its IP — the browser-enforced version of the anti-leak
+  rule (it covers even already-stored content, not just newly-saved posts).
+  Clearnet Spaces are byte-identical (they keep `img-src 'self' data: https:`,
+  confirmed by the compatibility golden tests).
 
 ### Added
 - **Tor-mode anti-leak sweep (ADR-0141, Phase 1).** With `VAYUOS_MODE=tor`, the
