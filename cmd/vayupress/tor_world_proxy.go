@@ -86,11 +86,14 @@ func (a *App) handleWorldSwitch(w http.ResponseWriter, r *http.Request) {
 			go a.reconcileTorSpace()
 		}
 		http.SetCookie(w, &http.Cookie{
-			Name: worldCookie, Value: "tor", Path: "/os",
+			Name: worldCookie, Value: "tor", Path: "/",
 			SameSite: http.SameSiteLaxMode, HttpOnly: true, Secure: r.TLS != nil, MaxAge: 30 * 24 * 3600,
 		})
 	} else {
 		// Back to clearnet: clear the view cookie (the Tor world keeps running).
+		// Clear BOTH the current Path=/ cookie and any legacy Path=/os cookie from an
+		// earlier build, so an operator can never get stuck viewing Tor.
+		http.SetCookie(w, &http.Cookie{Name: worldCookie, Value: "", Path: "/", MaxAge: -1})
 		http.SetCookie(w, &http.Cookie{Name: worldCookie, Value: "", Path: "/os", MaxAge: -1})
 	}
 	http.Redirect(w, r, "/os", http.StatusSeeOther)

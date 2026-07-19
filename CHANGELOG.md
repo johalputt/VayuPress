@@ -8,6 +8,16 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.20] — 2026-07-19
+
+### Fixed
+- **No more "stuck in Tor" (ADR-0141).** The Clearnet switch-back inside the Tor
+  world console is now ALWAYS a working link, regardless of how the Tor instance
+  was launched — previously it could render as a dead label, leaving the operator
+  unable to return to the clearnet console. The world-view cookie is also cleared
+  robustly (both current and any legacy path) so flipping back to Clearnet always
+  takes effect.
+
 ## [3.14.19] — 2026-07-19
 
 ### Added

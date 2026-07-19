@@ -51,7 +51,6 @@ import (
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/settings"
 	"github.com/johalputt/vayupress/internal/users"
-	"github.com/johalputt/vayupress/internal/vayuos/torspace"
 )
 
 // ── Static asset path ────────────────────────────────────────────────────────
@@ -612,19 +611,16 @@ func spaceSwitch(lvl int, s *osSettings) string {
 		return ""
 	}
 	if config.Cfg.OnionMode {
-		// This install IS the Tor world. When it is being managed from the parent's
-		// clearnet console (proxied), the Clearnet segment is a real switch back
-		// (/os/world?target=clearnet, which the parent intercepts). Opened directly
-		// at its .onion in Tor Browser there is no parent, so it stays a static
-		// indicator with no clearnet affordance.
+		// This install IS the Tor world. The Clearnet segment is ALWAYS a real link
+		// back to /os/world?target=clearnet — when managed from the parent console
+		// the parent intercepts it and drops the Tor view; opened directly at the
+		// .onion in Tor Browser the child's own handler just redirects to /os (a
+		// harmless no-op). Rendering it unconditionally guarantees there is never a
+		// dead-end "stuck in Tor" state, regardless of how the child was launched.
 		d := html.EscapeString(config.Cfg.Domain)
-		clearSeg := `<span class="space-switch__seg" aria-disabled="true">Clearnet</span>`
-		if torspace.FromParentConsole() {
-			clearSeg = `<a class="space-switch__seg" href="/os/world?target=clearnet">Clearnet</a>`
-		}
 		return `<div class="space-switch-wrap">
   <div class="space-switch" role="group" aria-label="Active world">
-    ` + clearSeg + `
+    <a class="space-switch__seg" href="/os/world?target=clearnet">Clearnet</a>
     <span class="space-switch__seg is-active" aria-current="true">Tor</span>
   </div>
   <div class="space-switch__status"><span class="space-dot space-dot--ok"></span>Tor world · <button type="button" class="space-switch__copy" data-copy="http://` + d + `">copy address</button></div>
