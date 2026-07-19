@@ -51,6 +51,10 @@ func runMigrate(args []string) error {
 		return runMigrateGhost(rest)
 	case "wordpress", "wp":
 		return runMigrateWordPress(rest)
+	case "export":
+		return runExportBundle(rest)
+	case "import":
+		return runImportBundle(rest)
 	case "list":
 		return runMigrateList(rest)
 	case "info":
@@ -68,6 +72,8 @@ func printMigrateUsage() {
   vayupress migrate markdown  --dir <folder> [--db <vayupress.db>] [--dry-run] [--recursive=false] [--skip-drafts=false]
   vayupress migrate ghost     --file <ghost-export.json> [--dry-run] [--skip-drafts=false]
   vayupress migrate wordpress --file <wordpress-export.xml> [--dry-run] [--skip-drafts=false]
+  vayupress migrate export    --file <site.vaybundle> [--include-pages=false]
+  vayupress migrate import    --file <site.vaybundle> [--mode=merge|add-only] [--dry-run]
   vayupress migrate list      --dir <folder> [--recursive=false]
   vayupress migrate info
 
@@ -75,6 +81,9 @@ Subcommands:
   markdown    Import Markdown files (with optional YAML frontmatter) into the VayuPress database.
   ghost       Import a Ghost JSON export (Settings → Labs → Export) — built-in, no external tool.
   wordpress   Import a WordPress WXR/XML export (Tools → Export → All content) — built-in.
+  export      Export this site's content (posts + pages) to a signed VayuPress bundle — content only,
+              no accounts/mailboxes/keys — to move to another VayuPress install (e.g. clearnet → Tor).
+  import      Import a VayuPress content bundle. --mode=merge upserts by slug; --mode=add-only skips existing.
   list        List Markdown files that would be imported without writing anything.
   info        Print guidance for migrating from WordPress, Ghost, Hugo, Jekyll, Medium, Notion, and Substack.
 

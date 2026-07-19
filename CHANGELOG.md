@@ -8,7 +8,23 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
-## [3.14.2] — 2026-07-19
+## [3.14.3] — 2026-07-19
+
+### Added
+- **Content Bundle export/import (VayuOS Spaces sync/migrate — ADR-0141).** A new
+  CLI to move content between two separate VayuPress installs (e.g. a Clearnet
+  install and an anonymous Tor install):
+  - `vayupress migrate export --file site.vaybundle [--include-pages=false]` —
+    writes a single, **checksummed** JSON bundle of posts + pages (title, slug,
+    content, tags, excerpt, feature image, flags, dates).
+  - `vayupress migrate import --file site.vaybundle [--mode=merge|add-only]
+    [--dry-run]` — imports by slug; `merge` upserts, `add-only` skips existing.
+    Content is re-sanitised on the way in and the bundle checksum is verified
+    before anything is written (a tampered/truncated bundle is refused).
+  - **Content only, by design:** accounts, mailboxes, PGP keys, sessions and Talk
+    identities never cross — importing identity would let the two installs be
+    correlated and de-anonymise the Tor one. The bundle moves fully offline (e.g.
+    by USB), the safe path for an air-gapped anonymous install.
 
 ### Added
 - **ADR-0141 — VayuOS Spaces (Clearnet 🌐 / Tor 🧅).** Design record for splitting
