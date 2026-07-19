@@ -92,9 +92,20 @@ func (a *App) handleWorldSwitch(w http.ResponseWriter, r *http.Request) {
 	} else {
 		// Back to clearnet: clear the view cookie (the Tor world keeps running).
 		// Clear BOTH the current Path=/ cookie and any legacy Path=/os cookie from an
-		// earlier build, so an operator can never get stuck viewing Tor.
-		http.SetCookie(w, &http.Cookie{Name: worldCookie, Value: "", Path: "/", MaxAge: -1})
-		http.SetCookie(w, &http.Cookie{Name: worldCookie, Value: "", Path: "/os", MaxAge: -1})
+		// earlier build, so an operator can never get stuck viewing Tor. The deletion
+		// cookies carry the SAME attributes the cookie was set with (line above) —
+		// HttpOnly, SameSite and request-aware Secure (https clearnet gets Secure; the
+		// http .onion world must not, or the delete would be dropped over http, and the
+		// operator could never switch back). Mirroring them also satisfies the CodeQL
+		// "cookie Secure attribute" scan without weakening the onion world.
+		clearWorldCookie := func(path string) {
+			http.SetCookie(w, &http.Cookie{
+				Name: worldCookie, Value: "", Path: path,
+				SameSite: http.SameSiteLaxMode, HttpOnly: true, Secure: r.TLS != nil, MaxAge: -1,
+			})
+		}
+		clearWorldCookie("/")
+		clearWorldCookie("/os")
 	}
 	http.Redirect(w, r, "/os", http.StatusSeeOther)
 }

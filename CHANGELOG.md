@@ -8,6 +8,17 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.26] — 2026-07-19
+
+### Security
+- **World-switch cookie deletion now carries the same attributes it was set with**
+  (CodeQL #70/#71). Clearing the `vp_world` view cookie (switching back to
+  Clearnet) previously emitted a bare `Set-Cookie` with no `HttpOnly`, `SameSite`
+  or `Secure`. The deletion now mirrors the set path — `HttpOnly`, `SameSite=Lax`
+  and request-aware `Secure` (https clearnet gets `Secure`; the http `.onion` world
+  deliberately does not, or the delete would be dropped over http and the operator
+  could never switch back). No behavioural change; closes the code-scanning alerts.
+
 ## [3.14.25] — 2026-07-19
 
 ### Changed
