@@ -668,6 +668,57 @@ func osUnread(s *osSettings) int {
 	return s.UnreadMessages
 }
 
+// torWorldNav is the sidebar for the Tor world (OnionMode): a Tor-only console
+// showing just the blog, the anonymous services (VayuMail·Tor, VayuTalk·Tor) and
+// its onion Domains — no clearnet sections. Access-gated like the main nav.
+func torWorldNav(active string, lvl int, s *osSettings) string {
+	var b strings.Builder
+	// Static "Tor world" indicator + copyable .onion at the top (spaceSwitch
+	// renders the non-switchable indicator in OnionMode).
+	b.WriteString(spaceSwitch(lvl, s))
+	gate := func(item, href string) string {
+		if lvl < osPathMinLevel(href) {
+			return ""
+		}
+		return item
+	}
+	section := func(label string, items ...string) {
+		shown := make([]string, 0, len(items))
+		for _, it := range items {
+			if it != "" {
+				shown = append(shown, it)
+			}
+		}
+		if len(shown) == 0 {
+			return
+		}
+		b.WriteString(`<div class="sidebar-section-label">` + label + `</div>`)
+		for _, it := range shown {
+			b.WriteString(it)
+		}
+	}
+	section("Blog",
+		gate(navItem("/os", "Dashboard", "dashboard", active, iconDashboard), "/os"),
+		gate(navItem("/os/posts", "Posts", "posts", active, iconPosts), "/os/posts"),
+		gate(navItem("/os/editor", "New Post", "editor", active, iconNewPost), "/os/editor"),
+		gate(navItem("/os/pages", "Pages", "pages", active, iconPages), "/os/pages"),
+		gate(navItem("/os/comments", "Comments", "comments", active, iconComments), "/os/comments"),
+		gate(navItem("/os/media", "Media", "media", active, iconMedia), "/os/media"),
+		gate(navItem("/os/theme", "Theme", "theme", active, iconTheme), "/os/theme"),
+	)
+	section("Anonymous services",
+		navItem("/os/vayumail", "VayuMail", "vayuos", active, iconSecurity),
+		navItem("/os/talk", "VayuTalk", "talk", active, iconTalk),
+		gate(navItem("/os/domains", "Domains", "domains", active, iconDomains), "/os/domains"),
+	)
+	section("System",
+		gate(navItem("/os/storage", "Storage & System", "storage", active, iconStorage), "/os/storage"),
+		gate(navItem("/os/settings", "Settings", "settings", active, iconSettings), "/os/settings"),
+		navItem("/os/profile", "My Profile", "profile", active, iconMembers),
+	)
+	return b.String()
+}
+
 // osSidebarNav builds the role-scoped sidebar. A mail-only session (mailbox /
 // reviewer role) sees only its Mailbox and Profile; console sessions see only
 // the sections their access level permits. The visibility rule is exactly the
@@ -684,6 +735,16 @@ func osSidebarNav(active string, s *osSettings) string {
 		return `<div class="sidebar-section-label">Mail</div>` +
 			navItem("/os/vayumail/inbox", "Mailbox", "vayuos", active, iconSecurity) +
 			navItem("/os/profile", "My Profile", "profile", active, iconMembers)
+	}
+
+	// The Tor world (OnionMode) is its OWN system — a separate database and
+	// identity — so its console shows ONLY what belongs in the anonymous world:
+	// the blog, VayuMail·Tor, VayuTalk·Tor and its onion Domains. Every
+	// clearnet-only section (monetization, ads, newsletter, members, SEO/IndexNow,
+	// VayuMCP, analytics, the ops panels…) is hidden, so it reads as a clean,
+	// standalone Tor system (ADR-0141). The clearnet console is unchanged.
+	if config.Cfg.OnionMode {
+		return torWorldNav(active, lvl, s)
 	}
 
 	var b strings.Builder

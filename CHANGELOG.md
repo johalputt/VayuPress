@@ -8,6 +8,18 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.18] — 2026-07-19
+
+### Changed
+- **Tor world is now its own Tor-only console (ADR-0141).** When a VayuOS install
+  runs in Tor mode (the anonymous `.onion` world, served in Tor Browser), its
+  sidebar shows ONLY what belongs there — the blog (Dashboard, Posts, Pages, Media,
+  Comments, Theme), the anonymous services (VayuMail, VayuTalk) and its onion
+  Domains — with every clearnet-only section hidden (monetization, ads, newsletter,
+  members, SEO/IndexNow, VayuMCP, analytics, VayuTor and the operations panels). The
+  Tor world has its own separate database, so it reads as a clean, standalone
+  anonymous system. The clearnet console is unchanged.
+
 ## [3.14.17] — 2026-07-19
 
 ### Fixed

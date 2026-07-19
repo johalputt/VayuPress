@@ -7,6 +7,38 @@ import (
 	"github.com/johalputt/vayupress/internal/config"
 )
 
+// TestTorWorldNav asserts the Tor world (OnionMode) console is Tor-only: it shows
+// the blog, the anonymous services (VayuMail·Tor, VayuTalk·Tor) and onion Domains,
+// and hides every clearnet-only section (ADR-0141).
+func TestTorWorldNav(t *testing.T) {
+	prev := config.Cfg.OnionMode
+	config.Cfg.OnionMode = true
+	defer func() { config.Cfg.OnionMode = prev }()
+
+	nav := osSidebarNav("dashboard", &osSettings{AccessLevel: accessAdmin})
+
+	// Tor world MUST include these.
+	for _, want := range []string{
+		">Dashboard<", ">Posts<", ">Pages<", ">Media<",
+		">VayuMail<", ">VayuTalk<", ">Domains<", ">Settings<",
+		"Anonymous services",
+	} {
+		if !strings.Contains(nav, want) {
+			t.Errorf("Tor world nav missing %q", want)
+		}
+	}
+	// Tor world MUST hide every clearnet-only section.
+	for _, deny := range []string{
+		">Monetization<", ">Advertising<", ">Newsletter<", ">Members<",
+		">VayuMCP<", ">SEO<", ">Bot Shield<", ">VayuTor<", ">Website<",
+		">Analytics<", ">Governance<", ">Fault Engine<",
+	} {
+		if strings.Contains(nav, deny) {
+			t.Errorf("Tor world nav must NOT show clearnet section %q", deny)
+		}
+	}
+}
+
 // TestSpaceSwitch covers the top-of-sidebar one-click world switch (ADR-0141):
 // admin-only, CSP-safe, correct active segment, and static (non-switchable) on a
 // whole-install Tor world.
