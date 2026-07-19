@@ -124,6 +124,12 @@ done
 [[ -n "$ONION" ]] || die "Tor did not publish an onion at ${HS_DIR}/hostname — check 'journalctl -u tor'."
 ok "Tor Space onion: ${ONION}"
 
+# Record the onion where a sibling clearnet install (same www-data owner) can
+# read it, so its VayuOS "Spaces" page can display this Tor Space's address. The
+# onion is public, so world-readable is fine.
+printf '%s\n' "$ONION" > "${TOR_DATA_DIR}/onion.txt"
+chmod 644 "${TOR_DATA_DIR}/onion.txt"
+
 # ── 3. Runtime env for the Tor Space ──────────────────────────────────────────
 info "Writing ${TOR_ENV_FILE}…"
 cat > "$TOR_ENV_FILE" <<ENV

@@ -8,6 +8,20 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.10] — 2026-07-19
+
+### Added
+- **VayuOS "Spaces" admin page (`/os/spaces`, ADR-0141).** A new sidebar page
+  puts the Clearnet and Tor worlds side by side in the admin: it shows which
+  world *this* install is (a Clearnet or Tor Space badge, from `VAYUOS_MODE`),
+  explains the two-world "no mesh" model, and — on a clearnet install — surfaces
+  the one command that stands up a separate Tor Space alongside it
+  (`sudo bash scripts/setup-tor-space.sh`, in a copy box) with best-effort live
+  status (provisioned? its `.onion`?). On a Tor install it shows that Space's own
+  onion address. Read-only: the privileged provisioning is still run by the
+  operator on the server, never by the web tier. `setup-tor-space.sh` now records
+  the onion where the page can read it.
+
 ## [3.14.9] — 2026-07-19
 
 ### Added

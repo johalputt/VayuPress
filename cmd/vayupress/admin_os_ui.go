@@ -436,6 +436,11 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		// the CSRF-protected API-key endpoints above, adding no new write surface.
 		pr.Get("/os/connector", a.handleOSConnector)
 
+		// VayuOS Spaces (ADR-0141): read-only page surfacing the Clearnet/Tor
+		// worlds and the one-command sibling Tor Space provisioner. No write
+		// surface — provisioning is run by the operator on the server.
+		pr.Get("/os/spaces", a.handleOSSpaces)
+
 		// CSRF-protected writes
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/seo/regenerate", a.handleSEORegenerate)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/settings", a.handleOSSettingsAPI)
@@ -666,6 +671,7 @@ func osSidebarNav(active string, s *osSettings) string {
 		navItem("/os/vayumail", "VayuMail", "vayuos", active, iconSecurity),
 		navItem("/os/talk", "VayuTalk", "talk", active, iconTalk),
 		navItem("/os/tor", "VayuTor", "tor", active, iconTor),
+		navItem("/os/spaces", "Spaces", "spaces", active, iconSpaces),
 	)
 	section("System",
 		gate(navItem("/os/monitoring", "Monitoring", "monitoring", active, iconMonitoring), "/os/monitoring"),
