@@ -929,11 +929,15 @@ func adminOSShellHead(nonce, title, active string, settings *osSettings) string 
 	if settings != nil && settings.SiteName != "" {
 		siteName = html.EscapeString(settings.SiteName)
 	}
-	// data-space="tor" repaints the whole VayuOS shell in the Tor (purple) palette
-	// while the anonymous world is live — a whole-install Tor Space, or the
-	// one-click Anonymous Tor Space toggle (ADR-0141).
+	// data-space="tor" repaints the shell in the Tor (purple) palette ONLY when the
+	// console being shown IS the Tor world (OnionMode) — i.e. when you are VIEWING
+	// Tor. The clearnet console keeps its own colour even while the Tor world is
+	// enabled/running in the background; entering the Tor world proxies to that
+	// instance, which renders purple itself. Tying the colour to "Tor is enabled"
+	// (rather than "viewing Tor") wrongly painted the clearnet console purple
+	// (ADR-0141).
 	spaceAttr := ""
-	if config.Cfg.OnionMode || (settings != nil && settings.TorSpaceOn) {
+	if config.Cfg.OnionMode {
 		spaceAttr = ` data-space="tor"`
 	}
 

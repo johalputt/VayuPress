@@ -8,6 +8,15 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.22] — 2026-07-19
+
+### Fixed
+- **Clearnet keeps its own colour (ADR-0141).** The Tor (purple) palette now paints
+  the console ONLY when you are viewing the Tor world — not merely because the Tor
+  world is enabled. Previously the clearnet console turned purple as soon as the Tor
+  world was switched on, so the two worlds looked the same. Now clearnet stays its
+  normal colour and only the Tor world is purple.
+
 ## [3.14.21] — 2026-07-19
 
 ### Fixed
