@@ -8,6 +8,23 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.12] — 2026-07-19
+
+### Added
+- **Anonymous Tor Space — supervisor (ADR-0141).** The lifecycle manager for the
+  isolated Tor-world child (`internal/vayuos/torspace/supervisor.go`), ported from
+  the managed-Tor supervision pattern with the anonymity review's must-fixes baked
+  in: a curated child environment (never the parent's), **crash-loop backoff** so a
+  child that fails to boot can't hot-spin a second VayuPress, a **graceful**
+  `SIGTERM → drain → SIGKILL` stop (the child owns a live SQLite DB), and reaping a
+  prior-run orphan by an **environ role marker** (`VAYUOS_SPACE_CHILD=1` + its own
+  DB path) — never by binary name, which the parent shares. Health is a loopback
+  `/health` poll; the child binds a fresh loopback port. Fully unit-tested via
+  injectable spawn/health seams (lifecycle, backoff, spawn-error) and race-clean.
+  Still inert — no process is spawned until a later increment wires the toggle and
+  verifies the child's graceful-drain path; the supervisor API is baselined in the
+  deadcode allow-list until then.
+
 ## [3.14.11] — 2026-07-19
 
 ### Added
