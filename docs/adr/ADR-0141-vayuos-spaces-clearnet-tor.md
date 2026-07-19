@@ -184,7 +184,7 @@ build to:
   deploy branch, Go-layer rate limiting, anti-leak enforcement, and the VayuOS
   top-bar mode indicator.
 - **Phase 2 — Content Bundle export/import** (content-only, Merge/Replace, signed)
-  + the opt-in Live Mirror agent with warning.
+  plus the opt-in Live Mirror agent with warning.
 - **Phase 3 — VayuMail·Tor (webmail only)**: instance-local → onion-federated,
   no mobile.
 - **Phase 4 — VayuTalk anonymous web client** over Tor (rotatable ID); mobile
