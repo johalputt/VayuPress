@@ -208,6 +208,7 @@ type talkMessageOut struct {
 	ExpiresAt   string `json:"expires_at"`
 	BurnSeconds int    `json:"burn_seconds"`
 	Mode        string `json:"mode"`
+	Verified    bool   `json:"verified"`
 }
 
 // handleVayuOSTalk renders the VayuTalk chat page. The heavy lifting is in
@@ -366,13 +367,15 @@ func (a *App) handleVayuOSTalkStream(w http.ResponseWriter, r *http.Request) {
 	// decrypted for display. NOT acked — see the function doc: the console must
 	// leave the shared queue intact so the recipient's app still gets its copy.
 	for _, env := range queued {
-		if txt, ok := a.talkDecrypt(self, env.Ciphertext); ok {
+		if txt, verified, ok := a.talkDecryptVerify(self, env.From, env.Ciphertext); ok {
+			a.maybeFetchSenderKey(self, env.From, verified)
 			out := talkMessageOut{
 				ID: env.ID, From: env.From, Text: txt,
 				CreatedAt:   env.CreatedAt.UTC().Format(time.RFC3339),
 				ExpiresAt:   env.ExpiresAt.UTC().Format(time.RFC3339),
 				BurnSeconds: env.BurnSeconds,
 				Mode:        env.Mode,
+				Verified:    verified,
 			}
 			if !writeSSE(w, rc, "message", out) {
 				return
@@ -401,11 +404,12 @@ func (a *App) handleVayuOSTalkStream(w http.ResponseWriter, r *http.Request) {
 				if derr != nil {
 					continue
 				}
-				txt, ok := a.talkDecrypt(self, raw)
+				txt, verified, ok := a.talkDecryptVerify(self, p.From, raw)
 				if !ok {
 					continue
 				}
-				out := talkMessageOut{ID: p.ID, From: p.From, Text: txt, CreatedAt: p.CreatedAt, ExpiresAt: p.ExpiresAt, BurnSeconds: p.BurnSeconds, Mode: p.Mode}
+				a.maybeFetchSenderKey(self, p.From, verified)
+				out := talkMessageOut{ID: p.ID, From: p.From, Text: txt, CreatedAt: p.CreatedAt, ExpiresAt: p.ExpiresAt, BurnSeconds: p.BurnSeconds, Mode: p.Mode, Verified: verified}
 				if !writeSSE(w, rc, "message", out) {
 					return
 				}
@@ -517,18 +521,33 @@ func (a *App) handleVayuOSTalkSend(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// talkDecrypt opens an armored VayuTalk envelope with the mailbox's own key.
-// It returns ok=false (never an error, never a log line) on any failure so a
-// single unreadable envelope can never break the stream or leak that it failed.
-func (a *App) talkDecrypt(email string, ciphertext []byte) (string, bool) {
+// talkDecryptVerify decrypts an armored VayuTalk envelope with the mailbox's own
+// key AND reports whether it carries a valid signature from sender (ADR-0142).
+// verified is true only when the sender's key is local and the signature checks
+// out; the plaintext is returned regardless, so confidentiality never depends on
+// being able to verify. It returns ok=false (never an error, never a log line) on
+// any decryption failure so a single unreadable envelope can never break the
+// stream or leak that it failed.
+func (a *App) talkDecryptVerify(email, sender string, ciphertext []byte) (text string, verified, ok bool) {
 	if a.vayuPGP == nil {
-		return "", false
+		return "", false, false
 	}
-	pt, err := a.vayuPGP.DecryptForEmail(ciphertext, email)
+	pt, ver, err := a.vayuPGP.DecryptAndVerifyForEmail(ciphertext, email, sender)
 	if err != nil {
-		return "", false
+		return "", false, false
 	}
-	return string(pt), true
+	return string(pt), ver, true
+}
+
+// maybeFetchSenderKey, when a message from a DIFFERENT onion could not be verified
+// (its sender key is not yet local), kicks off a best-effort over-Tor fetch so
+// subsequent messages from that sender verify. Non-blocking; deduped inside
+// ensureOnionSenderKey. Driven only by the operator's own authenticated stream.
+func (a *App) maybeFetchSenderKey(self, from string, verified bool) {
+	if verified || !talkRecipientRemoteOnion(self, from) {
+		return
+	}
+	go a.ensureOnionSenderKey(from)
 }
 
 // ensureTalkKeypair mints a keypair for a local address on demand so a mailbox

@@ -110,6 +110,48 @@ func TestEncryptAndSign(t *testing.T) {
 	}
 }
 
+// TestDecryptAndVerifyForEmail proves the signature check behind onion-to-onion
+// authenticity (ADR-0142): a message decrypts and verifies against its true
+// sender, but reports verified=false when checked against the wrong sender key —
+// while still returning the plaintext (confidentiality never depends on it).
+func TestDecryptAndVerifyForEmail(t *testing.T) {
+	t.Parallel()
+	e := newTestEngine(t)
+	_, _ = e.GenerateKeypair(&PGPUser{UserID: "snd@example.com", Name: "Sender", Email: "snd@example.com"})
+	_, _ = e.GenerateKeypair(&PGPUser{UserID: "rcv@example.com", Name: "Receiver", Email: "rcv@example.com"})
+	_, _ = e.GenerateKeypair(&PGPUser{UserID: "mal@example.com", Name: "Mallory", Email: "mal@example.com"})
+
+	msg := []byte("authentic and sealed")
+	ct, err := e.EncryptAndSignFromEmail(msg, "rcv@example.com", "snd@example.com")
+	if err != nil {
+		t.Fatalf("encrypt+sign: %v", err)
+	}
+
+	// True sender → verified.
+	pt, verified, err := e.DecryptAndVerifyForEmail(ct, "rcv@example.com", "snd@example.com")
+	if err != nil {
+		t.Fatalf("decrypt+verify: %v", err)
+	}
+	if !bytes.Equal(pt, msg) {
+		t.Fatalf("plaintext mismatch")
+	}
+	if !verified {
+		t.Fatal("message from the true sender was not verified")
+	}
+
+	// Wrong sender key → not verified, but plaintext still returned.
+	pt2, verified2, err := e.DecryptAndVerifyForEmail(ct, "rcv@example.com", "mal@example.com")
+	if err != nil {
+		t.Fatalf("decrypt+verify (wrong sender): %v", err)
+	}
+	if !bytes.Equal(pt2, msg) {
+		t.Fatalf("plaintext mismatch on wrong-sender path")
+	}
+	if verified2 {
+		t.Fatal("message was 'verified' against the wrong sender key")
+	}
+}
+
 func TestKeystoreEncryptedAtRest(t *testing.T) {
 	t.Parallel()
 	e := newTestEngine(t)

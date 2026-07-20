@@ -23,12 +23,63 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/net/proxy"
 
 	"github.com/johalputt/vayupress/internal/config"
 )
+
+// onionKeyInflight dedups concurrent over-Tor sender-key fetches so a burst of
+// inbound messages from the same new sender triggers at most one fetch.
+var (
+	onionKeyInflightMu sync.Mutex
+	onionKeyInflight   = map[string]bool{}
+)
+
+// ensureOnionSenderKey best-effort fetches a remote onion sender's public key over
+// Tor and imports it, so a later signature verification can identify the signer.
+// It is a no-op unless we are in the Tor world with federation on and a SOCKS
+// proxy configured, the sender is a remote onion handle, and the key is not
+// already local. Safe to call from a goroutine on the operator's own stream (never
+// driven by an unauthenticated request), and deduped while in flight.
+func (a *App) ensureOnionSenderKey(from string) {
+	if !config.Cfg.OnionMode || a.vayuPGP == nil {
+		return
+	}
+	if !talkHostIsOnion(hostPart(from)) {
+		return
+	}
+	if !a.talkOnionFederationEnabled(context.Background()) {
+		return
+	}
+	socks := torSocksAddr()
+	if socks == "" {
+		return
+	}
+	if _, err := a.vayuPGP.GetPublicKey(from); err == nil {
+		return // already have it
+	}
+	onionKeyInflightMu.Lock()
+	if onionKeyInflight[from] {
+		onionKeyInflightMu.Unlock()
+		return
+	}
+	onionKeyInflight[from] = true
+	onionKeyInflightMu.Unlock()
+	defer func() {
+		onionKeyInflightMu.Lock()
+		delete(onionKeyInflight, from)
+		onionKeyInflightMu.Unlock()
+	}()
+
+	client, err := newOnionHTTPClient(socks)
+	if err != nil {
+		return
+	}
+	_, _ = a.vayuPGP.LookupOnionKey(from, client)
+}
 
 // errNotOnion is returned by the guarded dialer when asked to reach a host that
 // is not a .onion — the invariant that keeps this lane from ever touching

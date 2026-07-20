@@ -8,6 +8,26 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.65] — 2026-07-20
+
+### Added
+- **Onion-to-onion VayuTalk — inbound sender-signature verification (Phase 5).**
+  Incoming messages are now checked for a valid signature from the code they
+  claim to be from. A new `DecryptAndVerifyForEmail` decrypts and reports whether
+  the message is signed by the sender's key; the web VayuTalk stream carries a
+  `verified` flag, and an unverifiable incoming message shows a **⚠ unverified**
+  badge (verified ones stay unbadged). Plaintext is always returned —
+  confidentiality never depends on verification.
+- To make replies and repeat senders verify, when an incoming message from
+  another `.onion` can't be verified the server best-effort fetches that sender's
+  key over Tor (deduped, gated on federation + `VAYUOS_TOR_SOCKS_ADDR`, driven
+  only by the operator's own authenticated stream) so later messages verify.
+
+### Notes
+- Sender-key lookup for verification is local/onion-only — no clearnet WKD is
+  triggered in the Tor world. Live behaviour still requires validation on two real
+  `.onion` installs.
+
 ## [3.14.64] — 2026-07-20
 
 ### Added

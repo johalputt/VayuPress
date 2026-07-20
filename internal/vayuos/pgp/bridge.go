@@ -62,6 +62,10 @@ type Bridge interface {
 	Encrypt(plaintext []byte, recipientEmail string) ([]byte, error)
 	Decrypt(ciphertext []byte, userID string) ([]byte, error)
 	DecryptForEmail(ciphertext []byte, recipientEmail string) ([]byte, error)
+	// DecryptAndVerifyForEmail also reports whether the message carries a valid
+	// signature from senderEmail (ADR-0142). verified=false when the sender key is
+	// not local or the message is unsigned; plaintext is returned regardless.
+	DecryptAndVerifyForEmail(ciphertext []byte, recipientEmail, senderEmail string) ([]byte, bool, error)
 	Sign(data []byte, userID string) ([]byte, error)
 	Verify(data, sig []byte, senderEmail string) (bool, error)
 	EncryptAndSign(plaintext []byte, recipientEmail, senderUserID string) ([]byte, error)

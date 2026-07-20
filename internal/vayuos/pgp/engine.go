@@ -399,6 +399,49 @@ func (e *Engine) DecryptForEmail(ciphertext []byte, recipientEmail string) ([]by
 	return e.Decrypt(ciphertext, userID)
 }
 
+// DecryptAndVerifyForEmail decrypts a message addressed to recipientEmail and, if
+// senderEmail's public key is available locally, reports whether the message
+// carries a valid signature from that sender. verified is true only when the
+// message is signed AND the signature checks out against the sender's key; a
+// missing sender key or an unsigned message yields verified=false with the
+// plaintext still returned — confidentiality never depends on verification. The
+// sender key is looked up locally only (in the Tor world recipientEntity's WKD
+// fallback is refused), so no clearnet lookup is triggered here.
+func (e *Engine) DecryptAndVerifyForEmail(ciphertext []byte, recipientEmail, senderEmail string) ([]byte, bool, error) {
+	if e.ks == nil {
+		return nil, false, errors.New("vayupgp: engine not started")
+	}
+	userID, ok := e.ks.userIDForEmail(recipientEmail)
+	if !ok {
+		return nil, false, ErrNotFound
+	}
+	ring, err := e.decryptionRing(userID)
+	if err != nil {
+		return nil, false, err
+	}
+	// Add the sender's public key to the ring so ReadMessage can identify and
+	// check the signature. Best-effort: absence just means we cannot verify.
+	if senderEmail != "" {
+		if sender, serr := e.recipientEntity(senderEmail); serr == nil && sender != nil {
+			ring = append(ring, sender)
+		}
+	}
+	block, err := armor.Decode(bytes.NewReader(ciphertext))
+	if err != nil {
+		return nil, false, fmt.Errorf("vayupgp: dearmor: %w", err)
+	}
+	md, err := openpgp.ReadMessage(block.Body, ring, nil, e.packetConfig())
+	if err != nil {
+		return nil, false, fmt.Errorf("vayupgp: read message: %w", err)
+	}
+	body, err := io.ReadAll(md.UnverifiedBody)
+	if err != nil {
+		return nil, false, err
+	}
+	verified := md.IsSigned && md.SignedBy != nil && md.SignatureError == nil
+	return body, verified, nil
+}
+
 // Sign returns an armored detached signature over data using userID's key.
 func (e *Engine) Sign(data []byte, userID string) ([]byte, error) {
 	signer, err := e.entity(userID)

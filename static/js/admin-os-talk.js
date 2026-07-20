@@ -281,6 +281,14 @@
       m.statusEl = elem('span', 'vtalk-bubble-status', 'Sending…');
       foot.appendChild(m.statusEl);
     }
+    // Authenticity: flag an incoming message we could not verify as coming from
+    // the sender it claims (its signing key is not known here). Verified messages
+    // stay unbadged to avoid noise.
+    if (!m.mine && m.verified === false) {
+      var unv = elem('span', 'vtalk-bubble-unverified', '⚠ unverified');
+      unv.title = 'This message could not be verified as coming from the sender it claims.';
+      foot.appendChild(unv);
+    }
     // Burn countdown — hidden until the message is read (armed), then ticks down.
     m.burnEl = elem('span', 'vtalk-bubble-burn');
     m.burnEl.hidden = true;
@@ -397,7 +405,7 @@
       addMessage(d.from, {
         peer: norm(d.from), mine: false, text: d.text || '',
         id: d.id, createdAt: d.created_at, expiresAt: d.expires_at,
-        burnSeconds: d.burn_seconds, mode: d.mode
+        burnSeconds: d.burn_seconds, mode: d.mode, verified: !!d.verified
       });
     });
     es.addEventListener('receipt', function (e) {
