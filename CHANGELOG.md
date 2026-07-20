@@ -8,6 +8,21 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.56] — 2026-07-20
+
+### Added
+- **Premium Mail-ID management console** (`/os/monetization/mailids`, linked from
+  Growth). The operator can now **see every premium (vanity) address sale**,
+  **approve** a pending/offline order (the buyer can then activate it), and
+  **disapprove (revoke)** any grant — plus manage the **premium-name list**: add
+  or remove exact localparts that are held back from the free member claim and
+  sold at the premium price. Backed by new members-store methods
+  (`AddPremiumLocalpart`/`RemovePremiumLocalpart`/`ListPremiumLocalparts`,
+  `ApprovePremiumGrant`/`RevokePremiumGrant`) and migration 075.
+- The free-claim guard, the live availability check and the purchase check now
+  treat an operator-added premium name as premium (held back / sellable), not just
+  the built-in ultra-short + curated handles.
+
 ## [3.14.55] — 2026-07-20
 
 ### Added

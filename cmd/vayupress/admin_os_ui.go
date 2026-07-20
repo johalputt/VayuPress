@@ -308,6 +308,13 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/payments/paypal/connect", a.handlePayPalConnect)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/payments/paypal/test", a.handlePayPalTest)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/payments/paypal/disconnect", a.handlePayPalDisconnect)
+		// Premium Mail-ID management console (see/approve/disapprove sales + the
+		// operator's premium-name list).
+		pr.Get("/os/monetization/mailids", a.handleOSMailIDs)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/mailids/{id}/approve", a.handleOSMailIDApprove)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/mailids/{id}/revoke", a.handleOSMailIDRevoke)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/mailids/premium-names/add", a.handleOSMailIDNameAdd)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/mailids/premium-names/remove", a.handleOSMailIDNameRemove)
 		pr.Get("/os/ads", a.handleOSAds)
 		pr.Get("/os/api/ads", a.handleOSAdsList)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/ads", a.handleOSAdCreate)

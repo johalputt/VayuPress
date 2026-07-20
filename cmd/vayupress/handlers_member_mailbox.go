@@ -39,6 +39,16 @@ const premiumMailIDDefaultQuotaMB = 1024
 // operator-defined tier slug.
 const mailIDOrderTier = "__mailid__"
 
+// isPremiumLocalpart treats a name as premium (sellable, held back from the free
+// claim) when EITHER the static classifier OR the operator's custom premium list
+// says so.
+func (a *App) isPremiumLocalpart(ctx context.Context, local string) bool {
+	if mail.IsPremiumLocalpart(local) {
+		return true
+	}
+	return a.members != nil && a.members.IsCustomPremiumLocalpart(ctx, local)
+}
+
 // premiumMailIDPriceCents returns the operator-configured price, in minor units
 // of the checkout currency, for a premium (vanity) mail address.
 func (a *App) premiumMailIDPriceCents(ctx context.Context) int {
@@ -97,7 +107,7 @@ func (a *App) mailboxLocalpartCheck(ctx context.Context, local string) (bool, st
 	}
 	// Premium (vanity) names are the operator's sellable inventory and are not
 	// handed out on the free claim path — they are purchased (Phase 3 marketplace).
-	if mail.IsPremiumLocalpart(local) {
+	if a.isPremiumLocalpart(ctx, local) {
 		return false, "That's a premium address — it isn't included on the free claim."
 	}
 	host := a.mailHost()
@@ -159,7 +169,7 @@ func (a *App) premiumMailboxCheck(ctx context.Context, local string) (bool, stri
 	if mail.IsReservedLocalpart(local) {
 		return false, "That address is reserved."
 	}
-	if !mail.IsPremiumLocalpart(local) {
+	if !a.isPremiumLocalpart(ctx, local) {
 		return false, "That isn't a premium address — claim it free from your plan instead."
 	}
 	host := a.mailHost()
@@ -327,7 +337,7 @@ func (a *App) handleMemberMailboxAvailable(w http.ResponseWriter, r *http.Reques
 	available, reason := a.mailboxLocalpartCheck(r.Context(), local)
 	// premium flags a well-formed, non-reserved vanity name so the portal can
 	// surface it as sellable inventory rather than a plain "unavailable".
-	premium := mail.ValidLocalpart(local) && !mail.IsReservedLocalpart(local) && mail.IsPremiumLocalpart(local)
+	premium := mail.ValidLocalpart(local) && !mail.IsReservedLocalpart(local) && a.isPremiumLocalpart(r.Context(), local)
 	resp := map[string]interface{}{"localpart": local, "available": available, "reason": reason, "premium": premium}
 	if premium {
 		cents := a.premiumMailIDPriceCents(r.Context())

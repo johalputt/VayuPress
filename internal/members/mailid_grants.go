@@ -29,6 +29,7 @@ const (
 	GrantPending = "pending"
 	GrantPaid    = "paid"
 	GrantClaimed = "claimed"
+	GrantRevoked = "revoked" // operator-disapproved / cancelled
 )
 
 // PremiumGrant is one premium-address purchase and its lifecycle.
@@ -170,6 +171,78 @@ func (s *Store) AllPremiumGrants(ctx context.Context, limit int) ([]PremiumGrant
 		out = append(out, *g)
 	}
 	return out, rows.Err()
+}
+
+// PremiumGrantByID returns a single grant (admin moderation).
+func (s *Store) PremiumGrantByID(ctx context.Context, id string) (*PremiumGrant, error) {
+	return s.premiumGrantByID(ctx, id)
+}
+
+// ApprovePremiumGrant manually confirms a pending grant (operator-confirmed
+// offline payment), making the address claimable. Idempotent on pending→paid.
+func (s *Store) ApprovePremiumGrant(ctx context.Context, id string) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE premium_mailid_grants SET status='paid', paid_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending'`, id)
+	return err
+}
+
+// RevokePremiumGrant disapproves/cancels a grant, moving it to revoked from any
+// state. A claimed address's mailbox is suspended separately by the caller.
+func (s *Store) RevokePremiumGrant(ctx context.Context, id string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE premium_mailid_grants SET status='revoked' WHERE id=?`, id)
+	return err
+}
+
+// ── Operator-managed premium (sellable) localpart list ────────────────────────
+//
+// The static classifier (mail.IsPremiumLocalpart) marks ultra-short + curated
+// vanity names premium; this list lets the operator designate ADDITIONAL exact
+// localparts as premium (held back from the free claim, sold at the premium
+// price). Callers treat a name as premium when EITHER source says so.
+
+// AddPremiumLocalpart adds an exact localpart to the operator's premium list.
+func (s *Store) AddPremiumLocalpart(ctx context.Context, local string) error {
+	local = strings.ToLower(strings.TrimSpace(local))
+	if local == "" {
+		return fmt.Errorf("localpart required")
+	}
+	_, err := s.db.ExecContext(ctx, `INSERT INTO premium_localparts(localpart) VALUES(?) ON CONFLICT(localpart) DO NOTHING`, local)
+	return err
+}
+
+// RemovePremiumLocalpart drops a localpart from the operator's premium list.
+func (s *Store) RemovePremiumLocalpart(ctx context.Context, local string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM premium_localparts WHERE localpart=?`, strings.ToLower(strings.TrimSpace(local)))
+	return err
+}
+
+// ListPremiumLocalparts returns the operator's premium localparts, alphabetical.
+func (s *Store) ListPremiumLocalparts(ctx context.Context) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT localpart FROM premium_localparts ORDER BY localpart`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var lp string
+		if rows.Scan(&lp) == nil {
+			out = append(out, lp)
+		}
+	}
+	return out, rows.Err()
+}
+
+// IsCustomPremiumLocalpart reports whether the operator has flagged this exact
+// localpart as premium.
+func (s *Store) IsCustomPremiumLocalpart(ctx context.Context, local string) bool {
+	local = strings.ToLower(strings.TrimSpace(local))
+	if local == "" {
+		return false
+	}
+	var n int
+	_ = s.db.QueryRowContext(ctx, `SELECT COUNT(1) FROM premium_localparts WHERE localpart=?`, local).Scan(&n)
+	return n > 0
 }
 
 // PremiumGrantCounts returns how many premium grants sit in each lifecycle state,

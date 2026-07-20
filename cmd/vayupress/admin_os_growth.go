@@ -88,7 +88,7 @@ func (a *App) osGrowthBody(ctx context.Context, memberCount, subscribers, paid i
 	b.WriteString(`<div class="card"><div class="settings-block-title">Premium addresses</div>`)
 	b.WriteString(`<p class="text-sm muted mb-4">Every premium (vanity) address a member has bought, live. Members buy these from their account; you set the price and the terms they must accept in Monetization.</p>`)
 	b.WriteString(premiumGrantsTable(grants))
-	b.WriteString(`<div class="mt-2"><a class="btn btn--primary btn--sm" href="/os/monetization">Set price &amp; terms →</a></div></div>`)
+	b.WriteString(`<div class="mt-2"><a class="btn btn--primary btn--sm" href="/os/monetization/mailids">Manage premium IDs →</a> <a class="btn btn--ghost btn--sm" href="/os/monetization">Set price &amp; terms →</a></div></div>`)
 
 	// Orders — the single audit ledger for every paid section (memberships,
 	// premium addresses, paid content…), each labelled by product.

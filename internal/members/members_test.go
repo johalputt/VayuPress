@@ -26,6 +26,7 @@ func newTestStore(t *testing.T) *Store {
 		`CREATE TABLE member_events(id TEXT PRIMARY KEY,member_id TEXT NOT NULL,type TEXT NOT NULL,detail TEXT NOT NULL DEFAULT '',amount_cents INTEGER NOT NULL DEFAULT 0,created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
 		`CREATE TABLE mailid_agreements(id TEXT PRIMARY KEY,email TEXT NOT NULL,address TEXT NOT NULL,terms_sha256 TEXT NOT NULL,accepted_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
 		`CREATE TABLE premium_mailid_grants(id TEXT PRIMARY KEY,email TEXT NOT NULL,localpart TEXT NOT NULL,domain TEXT NOT NULL,order_ref TEXT NOT NULL DEFAULT '',status TEXT NOT NULL DEFAULT 'pending',created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,paid_at DATETIME,claimed_at DATETIME)`,
+		`CREATE TABLE premium_localparts(localpart TEXT PRIMARY KEY,created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
 		`INSERT INTO member_tiers(id,slug,name,monthly_cents,yearly_cents,sort) VALUES('tier_free','free','Free',0,0,0),('tier_paid','paid','Premium',500,5000,1)`,
 	} {
 		if _, err := db.Exec(stmt); err != nil {
@@ -64,6 +65,47 @@ func TestMailIDAgreement(t *testing.T) {
 	}
 	if err := s.RecordMailIDAgreement(ctx, "reader@example.com", "", "z"); err == nil {
 		t.Error("expected error for blank address")
+	}
+}
+
+func TestPremiumLocalpartsAndModeration(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	// Operator premium-name list: add (case-insensitive), detect, list, remove.
+	if s.IsCustomPremiumLocalpart(ctx, "founder") {
+		t.Fatal("nothing should be premium initially")
+	}
+	if err := s.AddPremiumLocalpart(ctx, "Founder"); err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	if !s.IsCustomPremiumLocalpart(ctx, "founder") {
+		t.Error("added localpart should be premium")
+	}
+	if list, _ := s.ListPremiumLocalparts(ctx); len(list) != 1 || list[0] != "founder" {
+		t.Errorf("list = %v", list)
+	}
+	if err := s.RemovePremiumLocalpart(ctx, "founder"); err != nil {
+		t.Fatalf("remove: %v", err)
+	}
+	if s.IsCustomPremiumLocalpart(ctx, "founder") {
+		t.Error("removed localpart must no longer be premium")
+	}
+
+	// Grant moderation: approve a pending grant, revoke another.
+	g1, _ := s.CreatePremiumGrant(ctx, "a@x.com", "boss", "mail.x.com", "VP-A")
+	if err := s.ApprovePremiumGrant(ctx, g1.ID); err != nil {
+		t.Fatalf("approve: %v", err)
+	}
+	if cg, _ := s.ClaimablePremiumGrant(ctx, "a@x.com", "boss"); cg == nil {
+		t.Error("approved grant should be claimable")
+	}
+	g2, _ := s.CreatePremiumGrant(ctx, "b@x.com", "ceo", "mail.x.com", "VP-B")
+	if err := s.RevokePremiumGrant(ctx, g2.ID); err != nil {
+		t.Fatalf("revoke: %v", err)
+	}
+	got, _ := s.PremiumGrantByID(ctx, g2.ID)
+	if got == nil || got.Status != GrantRevoked {
+		t.Errorf("revoked grant status = %+v", got)
 	}
 }
 
