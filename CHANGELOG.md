@@ -8,6 +8,26 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.46] — 2026-07-20
+
+### Added
+- **Paid members can claim the mailbox their tier includes — reserved names
+  protected.** New member-authed endpoints provision a real VayuMail mailbox for a
+  paid member on a mail-enabled tier: `GET /api/v1/members/mailbox` (entitlement +
+  status), `GET /api/v1/members/mailbox/available?localpart=` (live availability),
+  and `POST /api/v1/members/mailbox/claim`. The member picks a **generic** address
+  and a password; VayuPress creates the account, its Maildir, an auto **PGP keypair
+  (+ WKD)**, and applies the **tier's storage quota** — reusing the same proven
+  provisioning path as the operator console (now factored into one helper).
+  Migration 071 links the claimed address to the member so each gets exactly one.
+
+### Security
+- Added `mail.IsReservedLocalpart` and `mail.ValidLocalpart`: the member claim path
+  refuses **admin/role-critical localparts** (postmaster, abuse, admin, security,
+  billing, RFC 2142 role names, infrastructure names…), malformed localparts, and
+  already-taken addresses before anything is provisioned. Members can only ever
+  claim a generic ID; the operator keeps the reserved names as inventory.
+
 ## [3.14.45] — 2026-07-20
 
 ### Added

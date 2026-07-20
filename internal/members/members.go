@@ -231,6 +231,30 @@ func (s *Store) SetStripeCustomer(ctx context.Context, email, customer string) e
 	return err
 }
 
+// SetMailAddress records the VayuMail address a member claimed with their tier's
+// included mailbox (empty clears it). Stored outside memberCols so the canonical
+// member SELECT is unchanged; read with MailAddressFor.
+func (s *Store) SetMailAddress(ctx context.Context, email, mailAddr string) error {
+	email = strings.ToLower(strings.TrimSpace(email))
+	if email == "" {
+		return fmt.Errorf("email required")
+	}
+	_, err := s.db.ExecContext(ctx, `UPDATE members SET mail_address=? WHERE email=?`,
+		strings.ToLower(strings.TrimSpace(mailAddr)), email)
+	return err
+}
+
+// MailAddressFor returns the mailbox address a member has claimed, or "" if none.
+func (s *Store) MailAddressFor(ctx context.Context, email string) string {
+	email = strings.ToLower(strings.TrimSpace(email))
+	if email == "" {
+		return ""
+	}
+	var addr string
+	_ = s.db.QueryRowContext(ctx, `SELECT COALESCE(mail_address,'') FROM members WHERE email=?`, email).Scan(&addr)
+	return addr
+}
+
 // List returns members, newest first.
 func (s *Store) List(ctx context.Context, limit int) ([]Member, error) {
 	if limit <= 0 {

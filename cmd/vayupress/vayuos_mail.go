@@ -1419,27 +1419,39 @@ func (a *App) handleVayuOSAccountCreate(w http.ResponseWriter, r *http.Request) 
 		mailDomain = in.Domain
 		targetHost = in.Domain
 	}
-	email := local + "@" + targetHost
-	if err := a.vayuMail.Accounts().Create(r.Context(), email, hash, in.Name, in.Role); err != nil {
-		writeAPIError(w, r, 400, "create-failed", err.Error(), "")
+	var quotaBytes int64
+	if in.QuotaMB != nil && *in.QuotaMB > 0 {
+		quotaBytes = int64(*in.QuotaMB * 1024 * 1024)
+	}
+	email, perr := a.provisionMailbox(r.Context(), mailDomain, local, targetHost, hash, in.Name, in.Role, quotaBytes)
+	if perr != nil {
+		writeAPIError(w, r, 400, "create-failed", perr.Error(), "")
 		return
 	}
-	// Optional storage quota (MB) set at creation; 0/absent = unlimited.
-	if in.QuotaMB != nil && *in.QuotaMB > 0 {
-		_ = a.vayuMail.Accounts().SetQuota(r.Context(), email, int64(*in.QuotaMB*1024*1024))
+	writeJSON(w, r, 201, map[string]string{"email": email})
+}
+
+// provisionMailbox creates a VayuMail account, its Maildir folders and a PGP
+// keypair in one place — shared by the operator create handler and the member
+// self-service claim. mailDomain is "" for the primary domain (byte-identical
+// Maildir path) or a mail-enabled secondary; quotaBytes 0 = unlimited. Returns
+// the full address. The PGP keygen is best-effort (a key failure never fails the
+// account creation).
+func (a *App) provisionMailbox(ctx context.Context, mailDomain, local, targetHost, passwordHash, name, role string, quotaBytes int64) (string, error) {
+	email := local + "@" + targetHost
+	if err := a.vayuMail.Accounts().Create(ctx, email, passwordHash, name, role); err != nil {
+		return "", err
 	}
-	// Provision the Maildir folders for the new address (under its owning domain).
+	if quotaBytes > 0 {
+		_ = a.vayuMail.Accounts().SetQuota(ctx, email, quotaBytes)
+	}
 	_ = a.vayuMail.CreateMailbox(mailDomain, local)
-	// Auto-generate a PGP keypair for the new mailbox (private key encrypted at
-	// rest) so it appears in the VayuPGP panel and its mail can be encrypted /
-	// transparently decrypted. Best-effort: a key failure must not fail account
-	// creation.
 	if a.vayuPGP != nil {
-		if _, err := a.vayuPGP.EnsureKeypair(&vpgp.PGPUser{UserID: email, Name: in.Name, Email: email}); err != nil {
+		if _, err := a.vayuPGP.EnsureKeypair(&vpgp.PGPUser{UserID: email, Name: name, Email: email}); err != nil {
 			logging.LogError("vayuos", "auto PGP keygen failed for "+email, err.Error())
 		}
 	}
-	writeJSON(w, r, 201, map[string]string{"email": email})
+	return email, nil
 }
 
 func (a *App) handleVayuOSAccountDelete(w http.ResponseWriter, r *http.Request) {

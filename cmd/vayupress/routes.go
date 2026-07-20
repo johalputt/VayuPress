@@ -277,6 +277,11 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	r.Get("/api/v1/members/avatar/{id}", a.handleMemberAvatarServe)
 	r.Post("/api/v1/members/avatar", a.handleMemberAvatarUpload)
 	r.Post("/api/v1/members/avatar/choose", a.handleMemberAvatarChoose)
+	// Paid-member mailbox: entitlement/status, availability check, and claim
+	// (provisions a real VayuMail mailbox with PGP + quota; reserved names refused).
+	r.Get("/api/v1/members/mailbox", a.handleMemberMailboxStatus)
+	r.Get("/api/v1/members/mailbox/available", a.handleMemberMailboxAvailable)
+	r.Post("/api/v1/members/mailbox/claim", a.handleMemberMailboxClaim)
 	r.Post("/api/v1/members/vayumail-login", a.handleMemberVayuMailLogin)
 	// VayuMail-Mobile private-key sync — returns the authenticated caller's OWN
 	// mailbox PGP private key (armored) so the app can import it and decrypt
