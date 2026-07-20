@@ -25,6 +25,7 @@ func newTestStore(t *testing.T) *Store {
 		`CREATE TABLE member_label_map(member_id TEXT NOT NULL,label_id TEXT NOT NULL,PRIMARY KEY(member_id,label_id))`,
 		`CREATE TABLE member_events(id TEXT PRIMARY KEY,member_id TEXT NOT NULL,type TEXT NOT NULL,detail TEXT NOT NULL DEFAULT '',amount_cents INTEGER NOT NULL DEFAULT 0,created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
 		`CREATE TABLE mailid_agreements(id TEXT PRIMARY KEY,email TEXT NOT NULL,address TEXT NOT NULL,terms_sha256 TEXT NOT NULL,accepted_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
+		`CREATE TABLE premium_mailid_grants(id TEXT PRIMARY KEY,email TEXT NOT NULL,localpart TEXT NOT NULL,domain TEXT NOT NULL,order_ref TEXT NOT NULL DEFAULT '',status TEXT NOT NULL DEFAULT 'pending',created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,paid_at DATETIME,claimed_at DATETIME)`,
 		`INSERT INTO member_tiers(id,slug,name,monthly_cents,yearly_cents,sort) VALUES('tier_free','free','Free',0,0,0),('tier_paid','paid','Premium',500,5000,1)`,
 	} {
 		if _, err := db.Exec(stmt); err != nil {
@@ -63,6 +64,44 @@ func TestMailIDAgreement(t *testing.T) {
 	}
 	if err := s.RecordMailIDAgreement(ctx, "reader@example.com", "", "z"); err == nil {
 		t.Error("expected error for blank address")
+	}
+}
+
+func TestPremiumGrantLifecycle(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	g, err := s.CreatePremiumGrant(ctx, "Reader@Example.com", "VIP", "mail.example.com", "VP-OT-1")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if g.Status != GrantPending || g.Address() != "vip@mail.example.com" {
+		t.Fatalf("bad grant: %+v", g)
+	}
+	// A second pending purchase for the same address is refused.
+	if _, err := s.CreatePremiumGrant(ctx, "reader@example.com", "vip", "mail.example.com", "VP-OT-2"); err == nil {
+		t.Error("expected duplicate pending grant to be refused")
+	}
+	// Not claimable while still pending.
+	if cg, _ := s.ClaimablePremiumGrant(ctx, "reader@example.com", "vip"); cg != nil {
+		t.Error("pending grant must not be claimable")
+	}
+	// Payment (by order reference) makes it claimable.
+	if err := s.MarkPremiumGrantPaidByOrder(ctx, "VP-OT-1"); err != nil {
+		t.Fatalf("mark paid: %v", err)
+	}
+	cg, err := s.ClaimablePremiumGrant(ctx, "reader@example.com", "vip")
+	if err != nil || cg == nil {
+		t.Fatalf("expected claimable grant, err=%v cg=%v", err, cg)
+	}
+	if list, _ := s.ClaimablePremiumGrants(ctx, "reader@example.com"); len(list) != 1 {
+		t.Errorf("expected 1 claimable grant, got %d", len(list))
+	}
+	// Claiming removes it from the claimable set.
+	if err := s.MarkPremiumGrantClaimed(ctx, cg.ID); err != nil {
+		t.Fatalf("claim: %v", err)
+	}
+	if cg2, _ := s.ClaimablePremiumGrant(ctx, "reader@example.com", "vip"); cg2 != nil {
+		t.Error("claimed grant must no longer be claimable")
 	}
 }
 

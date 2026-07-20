@@ -1,0 +1,1 @@
+CREATE TABLE IF NOT EXISTS premium_mailid_grants (id TEXT PRIMARY KEY, email TEXT NOT NULL, localpart TEXT NOT NULL, domain TEXT NOT NULL, order_ref TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'pending', created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, paid_at DATETIME, claimed_at DATETIME);

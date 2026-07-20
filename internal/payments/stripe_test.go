@@ -93,6 +93,45 @@ func TestCreateCheckoutSession(t *testing.T) {
 	}
 }
 
+// TestCreateOneTimeCheckoutSession verifies the one-time ("payment") mode: a
+// non-recurring inline price, no subscription_data, and metadata mirrored onto
+// the PaymentIntent so a webhook can be correlated to the order.
+func TestCreateOneTimeCheckoutSession(t *testing.T) {
+	var gotForm url.Values
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		gotForm = r.PostForm
+		_ = json.NewEncoder(w).Encode(map[string]string{"id": "cs_test_ot", "url": "https://checkout.stripe.com/ot"})
+	}))
+	defer srv.Close()
+	c := NewStripeClient(srv.Client(), "sk_test_secret")
+	c.base = srv.URL
+	if _, _, err := c.CreateCheckoutSession(context.Background(), CheckoutParams{
+		Mode: "payment", AmountCents: 500, Currency: "USD", ProductName: "Premium address vip@x",
+		CustomerEmail: "reader@example.com", ClientReferenceID: "VP-OT-1",
+		SuccessURL: "https://x/ok", CancelURL: "https://x/no",
+		Metadata: map[string]string{"reference": "VP-OT-1", "kind": "mailid"},
+	}); err != nil {
+		t.Fatalf("CreateCheckoutSession (payment): %v", err)
+	}
+	if gotForm.Get("mode") != "payment" {
+		t.Errorf("mode = %q, want payment", gotForm.Get("mode"))
+	}
+	// A one-time price must NOT be recurring, and no subscription_data may appear.
+	if gotForm.Get("line_items[0][price_data][recurring][interval]") != "" {
+		t.Error("one-time price must not carry a recurring interval")
+	}
+	if gotForm.Get("subscription_data[metadata][reference]") != "" {
+		t.Error("one-time session must not carry subscription_data")
+	}
+	if gotForm.Get("line_items[0][price_data][unit_amount]") != "500" {
+		t.Errorf("unit_amount = %q, want 500", gotForm.Get("line_items[0][price_data][unit_amount]"))
+	}
+	if gotForm.Get("metadata[reference]") != "VP-OT-1" || gotForm.Get("payment_intent_data[metadata][reference]") != "VP-OT-1" {
+		t.Error("reference metadata must be on both the session and the payment_intent")
+	}
+}
+
 // TestCreateCheckoutSessionWithPriceID prefers a pre-created Stripe Price id and
 // then omits inline price_data.
 func TestCreateCheckoutSessionWithPriceID(t *testing.T) {

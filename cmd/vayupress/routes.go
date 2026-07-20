@@ -282,6 +282,8 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	r.Get("/api/v1/members/mailbox", a.handleMemberMailboxStatus)
 	r.Get("/api/v1/members/mailbox/available", a.handleMemberMailboxAvailable)
 	r.Post("/api/v1/members/mailbox/claim", a.handleMemberMailboxClaim)
+	r.Post("/api/v1/members/mailbox/premium/checkout", a.handleMemberMailIDCheckout)
+	r.Post("/api/v1/members/mailbox/premium/activate", a.handleMemberMailIDActivate)
 	r.Post("/api/v1/members/vayumail-login", a.handleMemberVayuMailLogin)
 	// VayuMail-Mobile private-key sync — returns the authenticated caller's OWN
 	// mailbox PGP private key (armored) so the app can import it and decrypt

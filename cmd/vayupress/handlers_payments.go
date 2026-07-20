@@ -482,6 +482,11 @@ func (a *App) fulfillOrder(ctx context.Context, o *payments.Order) error {
 	if a.members == nil {
 		return errors.New("members not initialised")
 	}
+	// A premium mail-ID purchase is a one-time buy, not a membership: mark the
+	// buyer's grant claimable rather than starting a subscription.
+	if o.TierSlug == mailIDOrderTier {
+		return a.fulfillMailIDOrder(ctx, o)
+	}
 	m, err := a.members.Upsert(ctx, o.Email)
 	if err != nil {
 		return err
@@ -505,6 +510,23 @@ func (a *App) fulfillOrder(ctx context.Context, o *payments.Order) error {
 		"amount_cents": o.AmountCents, "currency": o.Currency, "gateway": o.Gateway,
 	})
 	logging.LogInfo("payments", "member fulfilled to "+o.TierSlug+": "+o.Email)
+	return nil
+}
+
+// fulfillMailIDOrder fulfils a paid premium mail-ID purchase: it flips the
+// buyer's pending grant to claimable (they then set a password to provision the
+// mailbox) and emails a receipt. No membership tier changes. Idempotent — a
+// racing webhook or refresh re-marks an already-paid grant harmlessly.
+func (a *App) fulfillMailIDOrder(ctx context.Context, o *payments.Order) error {
+	if err := a.members.MarkPremiumGrantPaidByOrder(ctx, o.Reference); err != nil {
+		return err
+	}
+	go a.sendPaymentConfirmedEmail(o)
+	a.dispatchWebhook("payment.completed.v1", map[string]interface{}{
+		"reference": o.Reference, "email": o.Email, "kind": "mailid",
+		"amount_cents": o.AmountCents, "currency": o.Currency, "gateway": o.Gateway,
+	})
+	logging.LogInfo("payments", "premium mail-ID paid: "+o.Reference)
 	return nil
 }
 

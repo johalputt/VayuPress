@@ -8,6 +8,31 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.53] — 2026-07-20
+
+### Added
+- **One-click premium mail-ID purchase (Stripe one-time).** A paid member can now
+  buy a premium (vanity) VayuMail address end-to-end: the portal's address search
+  shows a **Buy** button on a premium name, which opens a one-time Stripe Checkout
+  (card, instant) — or the sovereign direct/offline gateway when Stripe isn't
+  connected. Payment is decoupled from provisioning via a **grant ledger**
+  (`premium_mailid_grants`, migration 073): buying opens a `pending` grant; the
+  shared payment-fulfilment path flips it to `paid` on confirmation (Stripe
+  success/webhook or operator "Mark paid"); the member then **activates** it by
+  setting a password, which provisions the real PGP mailbox (with WKD + a recorded
+  terms acceptance) exactly like the included-mailbox claim. Purchased-but-unactivated
+  addresses surface in the portal for activation.
+- **Stripe one-time payments.** The dependency-free Stripe client gained a
+  `mode=payment` path (non-recurring price, PaymentIntent-tagged metadata) beside
+  the existing subscription mode, powering one-off purchases without creating a
+  subscription. The subscription checkout is byte-for-byte unchanged.
+
+### Notes
+- Premium purchases route through Stripe one-time when connected, else the
+  direct/offline gateway; the reader is never left at a dead end. A premium address
+  is a real additional mailbox — a member can hold their included generic address
+  and purchased vanity addresses side by side.
+
 ## [3.14.52] — 2026-07-20
 
 ### Added

@@ -91,31 +91,40 @@ func (c *StripeClient) Ping(ctx context.Context) error {
 	return nil
 }
 
-// CheckoutParams describes a subscription Checkout Session to create.
+// CheckoutParams describes a Checkout Session to create.
 type CheckoutParams struct {
+	Mode              string // "subscription" (default) | "payment" (one-time)
 	PriceID           string // optional Stripe Price id; empty → inline price_data
 	AmountCents       int
 	Currency          string
-	Interval          string // "month" | "year"
+	Interval          string // "month" | "year" (subscription mode only)
 	ProductName       string
 	CustomerEmail     string
 	ClientReferenceID string // the VayuPress order reference
 	SuccessURL        string
 	CancelURL         string
 	Metadata          map[string]string
-	TrialDays         int
+	TrialDays         int // subscription mode only
 }
 
-// CreateCheckoutSession creates a subscription Checkout Session and returns its
-// hosted URL and id. When PriceID is set it is used directly; otherwise a
-// recurring price_data is built inline from amount/currency/interval so the
-// operator needs no pre-created Stripe Price (the "just paste your key" path).
+// CreateCheckoutSession creates a Checkout Session and returns its hosted URL and
+// id. Mode selects a recurring subscription (default) or a one-time payment
+// ("payment") — the latter powers one-off purchases (a premium mail address, a
+// single paid post) with no subscription created. When PriceID is set it is used
+// directly; otherwise a price_data is built inline from amount/currency (and, for
+// subscriptions, interval) so the operator needs no pre-created Stripe Price (the
+// "just paste your key" path).
 func (c *StripeClient) CreateCheckoutSession(ctx context.Context, p CheckoutParams) (checkoutURL, sessionID string, err error) {
 	if !c.Configured() {
 		return "", "", fmt.Errorf("stripe: no secret key configured")
 	}
+	mode := strings.TrimSpace(p.Mode)
+	if mode == "" {
+		mode = "subscription"
+	}
+	oneTime := mode == "payment"
 	f := url.Values{}
-	f.Set("mode", "subscription")
+	f.Set("mode", mode)
 	f.Set("success_url", p.SuccessURL)
 	f.Set("cancel_url", p.CancelURL)
 	if p.CustomerEmail != "" {
@@ -131,28 +140,40 @@ func (c *StripeClient) CreateCheckoutSession(ctx context.Context, p CheckoutPara
 		if cur == "" {
 			cur = "usd"
 		}
-		interval := "month"
-		if p.Interval == "year" {
-			interval = "year"
-		}
 		name := strings.TrimSpace(p.ProductName)
 		if name == "" {
 			name = "Membership"
 		}
 		f.Set("line_items[0][price_data][currency]", cur)
 		f.Set("line_items[0][price_data][unit_amount]", strconv.Itoa(p.AmountCents))
-		f.Set("line_items[0][price_data][recurring][interval]", interval)
 		f.Set("line_items[0][price_data][product_data][name]", name)
+		// A subscription price is recurring; a one-time payment price is not.
+		if !oneTime {
+			interval := "month"
+			if p.Interval == "year" {
+				interval = "year"
+			}
+			f.Set("line_items[0][price_data][recurring][interval]", interval)
+		}
 	}
 	f.Set("line_items[0][quantity]", "1")
-	if p.TrialDays > 0 {
-		f.Set("subscription_data[trial_period_days]", strconv.Itoa(p.TrialDays))
-	}
-	for k, v := range p.Metadata {
-		f.Set("metadata["+k+"]", v)
-		// Carry the same tags onto the subscription so later invoice/subscription
-		// webhooks can be correlated back to the VayuPress order too.
-		f.Set("subscription_data[metadata]["+k+"]", v)
+	if oneTime {
+		// One-time: no subscription, no trial. Tag both the session and the
+		// resulting PaymentIntent so a webhook can be correlated to the order.
+		for k, v := range p.Metadata {
+			f.Set("metadata["+k+"]", v)
+			f.Set("payment_intent_data[metadata]["+k+"]", v)
+		}
+	} else {
+		if p.TrialDays > 0 {
+			f.Set("subscription_data[trial_period_days]", strconv.Itoa(p.TrialDays))
+		}
+		for k, v := range p.Metadata {
+			f.Set("metadata["+k+"]", v)
+			// Carry the same tags onto the subscription so later invoice/subscription
+			// webhooks can be correlated back to the VayuPress order too.
+			f.Set("subscription_data[metadata]["+k+"]", v)
+		}
 	}
 	data, code, err := c.do(ctx, http.MethodPost, "/v1/checkout/sessions", f)
 	if err != nil {

@@ -214,13 +214,14 @@ const PortalJS = `(function () {
       .then(function (d) {
         d = d || {};
         if (d.has_mailbox && d.address) {
-          box.innerHTML =
+          box.innerHTML = purchasedHTML(d) +
             '<p class="vp-portal-sub">Your private mailbox is ready 🎉</p>' +
             '<div class="vp-portal-plan"><div class="vp-portal-plan-label">Address</div>' +
             '<div class="vp-portal-plan-name">' + esc(d.address) + '</div></div>' +
             '<p class="vp-portal-foot">' + (d.quota_mb ? esc(String(d.quota_mb)) + ' MB storage' : 'Unlimited storage') + ' · PGP encryption + WKD · VayuTalk secure chat included.</p>' +
             '<a class="vp-portal-btn" href="/os/vayuos/mail/inbox">Open VayuMail</a>' +
             '<p class="vp-portal-foot">On your phone, open the VayuMail app and sign in with this address to finish device setup — that also unlocks end-to-end encrypted VayuTalk chat.</p>';
+          wireActivateForms();
           return;
         }
         if (!d.entitled) {
@@ -229,15 +230,16 @@ const PortalJS = `(function () {
           return;
         }
         var domain = d.domain || '';
-        box.innerHTML =
+        box.innerHTML = purchasedHTML(d) +
           '<p class="vp-portal-sub">Pick your address — you get a private mailbox with PGP encryption' +
-          (d.quota_mb ? ', ' + esc(String(d.quota_mb)) + ' MB storage' : '') + ' and end-to-end encrypted VayuTalk chat, all included.</p>' +
+          (d.quota_mb ? ', ' + esc(String(d.quota_mb)) + ' MB storage' : '') + ' and end-to-end encrypted VayuTalk chat, all included. Premium (vanity) names can be bought below.</p>' +
           '<form class="vp-portal-form" data-vp-mailbox-form novalidate>' +
           '<label class="vp-portal-label" for="vp-mb-local">Choose your address</label>' +
           '<div style="display:flex;gap:.4rem;align-items:center;flex-wrap:wrap">' +
           '<input class="vp-portal-input" id="vp-mb-local" type="text" autocomplete="off" spellcheck="false" placeholder="yourname" style="text-transform:lowercase;flex:1;min-width:8rem">' +
           '<span style="opacity:.7;font-family:monospace">@' + esc(domain) + '</span></div>' +
           '<div data-vp-mbavail style="font-size:.85rem;min-height:1.2em;margin:.25rem 0"></div>' +
+          '<button type="button" class="vp-portal-btn" data-vp-mbbuy hidden style="margin:.1rem 0 .4rem"></button>' +
           '<label class="vp-portal-label" for="vp-mb-pass">Set a mailbox password</label>' +
           '<input class="vp-portal-input" id="vp-mb-pass" type="password" autocomplete="new-password" placeholder="At least 8 characters">' +
           (d.terms ?
@@ -250,27 +252,82 @@ const PortalJS = `(function () {
           '</form>' +
           '<div class="vp-portal-msg" aria-live="polite"></div>';
         wireMailboxForm(domain);
+        wireActivateForms();
       })
       .catch(function () { box.innerHTML = '<div class="vp-portal-activity-empty">Could not load your mailbox.</div>'; });
+  }
+
+  // purchasedHTML renders the "activate a premium address you've bought" block for
+  // any paid-but-unclaimed grants the member holds.
+  function purchasedHTML(d) {
+    if (!d || !d.purchased || !d.purchased.length) { return ''; }
+    var items = d.purchased.map(function (p) {
+      return '<div class="vp-portal-plan" style="margin-bottom:.6rem"><div class="vp-portal-plan-label">Purchased — activate</div>' +
+        '<div class="vp-portal-plan-name">' + esc(p.address) + '</div>' +
+        '<form class="vp-portal-form" data-vp-activate-form data-localpart="' + esc(p.localpart) + '" novalidate style="margin-top:.4rem">' +
+        '<input class="vp-portal-input" type="password" data-vp-actpass autocomplete="new-password" placeholder="Set a password (min 8)">' +
+        (d.terms ? '<label style="display:flex;gap:.4rem;align-items:flex-start;font-size:.8rem;margin:.3rem 0"><input type="checkbox" data-vp-actterms style="margin-top:.2rem"><span>I agree to the mailbox terms.</span></label>' : '') +
+        '<button class="vp-portal-btn" type="submit">Activate ' + esc(p.localpart) + '</button></form></div>';
+    }).join('');
+    return '<div class="vp-portal-sub">You’ve purchased ' + d.purchased.length + ' premium address' + (d.purchased.length > 1 ? 'es' : '') + ' — set a password to activate:</div>' + items + '<div class="vp-portal-msg" aria-live="polite"></div>';
+  }
+
+  function wireActivateForms() {
+    var forms = body.querySelectorAll('[data-vp-activate-form]');
+    Array.prototype.forEach.call(forms, function (form) {
+      form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        var lp = form.getAttribute('data-localpart') || '';
+        var pass = (form.querySelector('[data-vp-actpass]') || {}).value || '';
+        var tb = form.querySelector('[data-vp-actterms]');
+        var accepted = tb ? tb.checked : true;
+        if (pass.length < 8) { msg('Password must be at least 8 characters.', 'err'); return; }
+        if (tb && !accepted) { msg('Please accept the mailbox terms to continue.', 'err'); return; }
+        var btn = form.querySelector('.vp-portal-btn');
+        btn.disabled = true; btn.textContent = 'Activating…';
+        postJSON('/api/v1/members/mailbox/premium/activate', { localpart: lp, password: pass, accept_terms: accepted }).then(function (res) {
+          btn.disabled = false; btn.textContent = 'Activate ' + lp;
+          if (res.ok) { loadMailbox(); }
+          else { msg((res.body && res.body.error && res.body.error.message) || 'Could not activate that address.', 'err'); }
+        });
+      });
+    });
   }
 
   function wireMailboxForm(domain) {
     var local = body.querySelector('#vp-mb-local');
     var avail = body.querySelector('[data-vp-mbavail]');
+    var buy = body.querySelector('[data-vp-mbbuy]');
     var form = body.querySelector('[data-vp-mailbox-form]');
-    var t = null;
+    var t = null, buyLocal = '';
     function check() {
       var v = (local.value || '').trim().toLowerCase();
+      if (buy) { buy.hidden = true; }
       if (!v) { avail.textContent = ''; avail.style.color = ''; return; }
       fetch('/api/v1/members/mailbox/available?localpart=' + encodeURIComponent(v), { credentials: 'same-origin' })
         .then(function (r) { return r.json(); })
         .then(function (d) {
           if (d && d.available) { avail.textContent = '✓ ' + v + '@' + domain + ' is available'; avail.style.color = '#22c55e'; }
-          else if (d && d.premium) { avail.textContent = '✦ ' + v + '@' + domain + ' is a premium address' + (d.price ? ' — ' + d.price : '') + ' (not included on the free claim)'; avail.style.color = '#f59e0b'; }
+          else if (d && d.premium) {
+            avail.textContent = '✦ ' + v + '@' + domain + ' is a premium address' + (d.price ? ' — ' + d.price : '') + ' (not on the free claim)'; avail.style.color = '#f59e0b';
+            if (buy) { buyLocal = v; buy.textContent = 'Buy ' + v + '@' + domain + (d.price ? ' — ' + d.price : ''); buy.hidden = false; }
+          }
           else { avail.textContent = '✕ ' + ((d && d.reason) || 'Not available'); avail.style.color = '#ef4444'; }
         }).catch(function () {});
     }
     if (local) { local.addEventListener('input', function () { clearTimeout(t); t = setTimeout(check, 300); }); }
+    if (buy) {
+      buy.addEventListener('click', function () {
+        if (!buyLocal) { return; }
+        buy.disabled = true; var lbl = buy.textContent; buy.textContent = 'Starting checkout…';
+        postJSON('/api/v1/members/mailbox/premium/checkout', { localpart: buyLocal }).then(function (res) {
+          buy.disabled = false; buy.textContent = lbl;
+          if (res.ok && res.body && res.body.checkout_url) { window.location.href = res.body.checkout_url; return; }
+          if (res.ok && res.body && res.body.reference) { msg('To buy ' + buyLocal + '@' + domain + ', pay ' + (res.body.amount || '') + ' quoting reference ' + res.body.reference + '. ' + (res.body.instructions || '') + ' Your address unlocks once payment is confirmed.', ''); return; }
+          msg((res.body && res.body.error && res.body.error.message) || 'Could not start checkout.', 'err');
+        });
+      });
+    }
     if (form) {
       form.addEventListener('submit', function (e) {
         e.preventDefault();
