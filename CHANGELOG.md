@@ -8,6 +8,15 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.55] — 2026-07-20
+
+### Added
+- **Growth: orders audit ledger.** The Growth control panel now includes the
+  single audit trail for every paid section — a newest-first table of all orders
+  (reference, product, buyer, amount, gateway, status, date), with each row
+  labelled by product (Membership · tier, Premium mail-ID, and paid content as it
+  lands) so the operator can audit and confirm every payment from one place.
+
 ## [3.14.54] — 2026-07-20
 
 ### Added

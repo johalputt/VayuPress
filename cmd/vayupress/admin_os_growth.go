@@ -54,6 +54,10 @@ func (a *App) osGrowthBody(ctx context.Context, memberCount, subscribers, paid i
 		gPending, gPaid, gClaimed = a.members.PremiumGrantCounts(ctx)
 		grants, _ = a.members.AllPremiumGrants(ctx, 100)
 	}
+	var orders []payments.Order
+	if a.payments != nil {
+		orders, _ = a.payments.List(ctx, "", 50)
+	}
 	sold := gPaid + gClaimed
 	currency := a.payCurrency(ctx)
 	revCurrency := stats.Currency
@@ -86,6 +90,13 @@ func (a *App) osGrowthBody(ctx context.Context, memberCount, subscribers, paid i
 	b.WriteString(premiumGrantsTable(grants))
 	b.WriteString(`<div class="mt-2"><a class="btn btn--primary btn--sm" href="/os/monetization">Set price &amp; terms →</a></div></div>`)
 
+	// Orders — the single audit ledger for every paid section (memberships,
+	// premium addresses, paid content…), each labelled by product.
+	b.WriteString(`<div class="section-head"><span class="section-head__title">Orders — audit ledger</span><span class="section-head__hint">Every payment, newest first</span></div>`)
+	b.WriteString(`<div class="card">`)
+	b.WriteString(growthOrdersTable(orders))
+	b.WriteString(`<div class="mt-2"><a class="btn btn--primary btn--sm" href="/os/monetization">Manage &amp; confirm orders →</a></div></div>`)
+
 	// Audience section cards.
 	b.WriteString(`<div class="section-head"><span class="section-head__title">Audience</span><span class="section-head__hint">Grow and reach your readers</span></div>`)
 	b.WriteString(`<div class="work-grid">`)
@@ -106,6 +117,40 @@ func (a *App) osGrowthBody(ctx context.Context, memberCount, subscribers, paid i
 // growthStat renders one KPI card.
 func growthStat(label, value string) string {
 	return `<div class="stat-card"><div class="stat-card__label">` + label + `</div><div class="stat-card__value">` + value + `</div></div>`
+}
+
+// growthOrderProduct labels an order by what it bought, decoding the sentinel
+// tier slugs the one-time products use so the audit ledger reads plainly.
+func growthOrderProduct(tierSlug string) string {
+	switch tierSlug {
+	case mailIDOrderTier:
+		return "Premium mail-ID"
+	default:
+		return "Membership: " + tierSlug
+	}
+}
+
+// growthOrdersTable renders the audit ledger of every payment, newest first.
+func growthOrdersTable(orders []payments.Order) string {
+	if len(orders) == 0 {
+		return `<div class="table-empty">No orders yet. Every checkout — memberships, premium addresses and paid content — is recorded here.</div>`
+	}
+	rows := ""
+	for i := range orders {
+		o := orders[i]
+		rows += `<tr>` +
+			`<td class="row-title"><code>` + html.EscapeString(o.Reference) + `</code></td>` +
+			`<td>` + html.EscapeString(growthOrderProduct(o.TierSlug)) + `</td>` +
+			`<td class="muted text-sm">` + html.EscapeString(o.Email) + `</td>` +
+			`<td>` + html.EscapeString(priceLabel(o.Currency, o.AmountCents)) + `</td>` +
+			`<td>` + html.EscapeString(o.Gateway) + `</td>` +
+			`<td>` + orderStatusPill(o.Status) + `</td>` +
+			`<td class="muted text-sm">` + o.CreatedAt.UTC().Format("2 Jan 2006") + `</td>` +
+			`</tr>`
+	}
+	return `<div class="table-wrap"><table class="table">` +
+		`<thead><tr><th>Reference</th><th>Product</th><th>Buyer</th><th>Amount</th><th>Gateway</th><th>Status</th><th>Date</th></tr></thead>` +
+		`<tbody>` + rows + `</tbody></table></div>`
 }
 
 // premiumGrantPill maps a grant's lifecycle status to a coloured pill.
