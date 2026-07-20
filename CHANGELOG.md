@@ -8,6 +8,18 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.37] — 2026-07-20
+
+### Changed
+- **Operator/staff comments post instantly (auto-approved).** A signed-in
+  operator already holds moderation power over every comment, so their own
+  comments now **skip the moderation queue** — the server approves them on submit
+  and the widget **shows them live** (reloads the thread, reports *"Posted ✓"*)
+  instead of *"awaiting moderation."* A reader member's comment still enters the
+  queue exactly as before. When an operator's live comment is a **reply**, the
+  parent author's *"you got a reply"* notification still fires (it would otherwise
+  be skipped by bypassing the console moderation path).
+
 ## [3.14.36] — 2026-07-20
 
 ### Fixed

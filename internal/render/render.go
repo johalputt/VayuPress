@@ -626,7 +626,13 @@ const CommentsJS = `(function(){
       if(!bodyI.value.trim()){status.textContent='Please write something.';return;}
       btn.disabled=true;status.textContent='Posting…';
       post(parentId,bodyI.value.trim(),function(res){btn.disabled=false;
-        if(res.ok){bodyI.value='';status.textContent='Thanks! Awaiting moderation. ✨';if(onPosted)onPosted();}
+        if(res.ok){bodyI.value='';
+          // An operator/staff comment is auto-approved server-side (status
+          // "approved"): show it live by reloading the thread. A member's comment
+          // still enters moderation, so it reports the awaiting-review state.
+          if(res.d&&res.d.status==='approved'){status.textContent='Posted ✓';load();}
+          else{status.textContent='Thanks! Awaiting moderation. ✨';}
+          if(onPosted)onPosted();}
         else if(res.status===401){me=null;status.textContent='Please sign in as a member to comment.';if(typeof window.vpPortalOpen==='function'){window.vpPortalOpen('signin');}}
         else{status.textContent=(res.d&&res.d.error&&(res.d.error.message||res.d.error))||'Could not post comment.';}});});
     return form;

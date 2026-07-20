@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/johalputt/vayupress/internal/comments"
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/email"
@@ -156,6 +157,20 @@ func (a *App) handleCommentSubmit(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "comment-error", err.Error(), "")
 		return
+	}
+	// Operators/staff already hold moderation power over every comment, so their
+	// own comments skip the queue: approve immediately and reflect the approved
+	// status in the response so the widget shows the comment live instead of
+	// "awaiting moderation". A member's comment still enters moderation as before.
+	if who.Operator {
+		if merr := a.commentStore.Moderate(r.Context(), c.ID, comments.StatusApproved); merr == nil {
+			c.Status = comments.StatusApproved
+			// The comment is now live without passing through the console moderation
+			// path, so fire the same "you got a reply" notification here — otherwise an
+			// operator replying to a member would silently skip it. A no-op for a
+			// top-level comment (no parent author to notify).
+			go a.notifyCommentReply(context.WithoutCancel(r.Context()), c.ID)
+		}
 	}
 	writeJSON(w, r, http.StatusCreated, c)
 }
