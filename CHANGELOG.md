@@ -8,6 +8,26 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.50] — 2026-07-20
+
+### Added
+- **Premium (vanity) mail-ID classifier — Phase 3 groundwork.** Member mailbox
+  addresses now fall into three classes: **reserved** (role/infrastructure names,
+  never claimable — unchanged), **premium** (ultra-short handles plus a curated
+  set of high-demand words like `vip`, `ceo`, `shop`, `inbox`), and **generic**
+  (everything else). A paying member's free tier claim provisions a *generic*
+  address only; premium names are held back as the operator's sellable vanity
+  inventory. The live availability check in the member portal now marks a premium
+  name distinctly ("✦ premium address — not included on the free claim") instead
+  of a plain "unavailable", so it reads as sellable rather than broken.
+
+### Changed
+- The member mailbox self-claim (`/api/v1/members/mailbox/claim` and its
+  `…/available` check) refuses premium localparts on the free path, closing the
+  gap where a paid member could self-claim a high-value vanity address (e.g. a
+  two-letter or `ceo@` handle) for free. Operator-created mailboxes are
+  unaffected — the guard applies only to the member self-service claim.
+
 ## [3.14.49] — 2026-07-20
 
 ### Added

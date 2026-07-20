@@ -260,6 +260,7 @@ const PortalJS = `(function () {
         .then(function (r) { return r.json(); })
         .then(function (d) {
           if (d && d.available) { avail.textContent = '✓ ' + v + '@' + domain + ' is available'; avail.style.color = '#22c55e'; }
+          else if (d && d.premium) { avail.textContent = '✦ ' + v + '@' + domain + ' is a premium address — not included on the free claim'; avail.style.color = '#f59e0b'; }
           else { avail.textContent = '✕ ' + ((d && d.reason) || 'Not available'); avail.style.color = '#ef4444'; }
         }).catch(function () {});
     }

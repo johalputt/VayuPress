@@ -53,6 +53,11 @@ func (a *App) mailboxLocalpartCheck(ctx context.Context, local string) (bool, st
 	if mail.IsReservedLocalpart(local) {
 		return false, "That address is reserved."
 	}
+	// Premium (vanity) names are the operator's sellable inventory and are not
+	// handed out on the free claim path — they are purchased (Phase 3 marketplace).
+	if mail.IsPremiumLocalpart(local) {
+		return false, "That's a premium address — it isn't included on the free claim."
+	}
 	host := a.mailHost()
 	if host == "" {
 		return false, "Mail is not available."
@@ -100,7 +105,10 @@ func (a *App) handleMemberMailboxAvailable(w http.ResponseWriter, r *http.Reques
 	}
 	local := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("localpart")))
 	available, reason := a.mailboxLocalpartCheck(r.Context(), local)
-	writeJSON(w, r, http.StatusOK, map[string]interface{}{"localpart": local, "available": available, "reason": reason})
+	// premium flags a well-formed, non-reserved vanity name so the portal can
+	// surface it as sellable inventory rather than a plain "unavailable".
+	premium := mail.ValidLocalpart(local) && !mail.IsReservedLocalpart(local) && mail.IsPremiumLocalpart(local)
+	writeJSON(w, r, http.StatusOK, map[string]interface{}{"localpart": local, "available": available, "reason": reason, "premium": premium})
 }
 
 // POST /api/v1/members/mailbox/claim {localpart, password} — provisions the
