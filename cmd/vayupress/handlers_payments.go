@@ -21,6 +21,7 @@ import (
 	"html"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -129,41 +130,49 @@ func (a *App) handleCheckoutPage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 
+	stripeKey, stripeOn := a.stripeSecretKey(r.Context())
+	ppID, ppSecret, ppSandbox, paypalOn := a.paypalCreds(r.Context())
+
 	if r.Method == http.MethodPost {
 		emailAddr := strings.TrimSpace(strings.ToLower(r.PostFormValue("email")))
 		name := strings.TrimSpace(r.PostFormValue("name"))
+		method := strings.ToLower(strings.TrimSpace(r.PostFormValue("method")))
 
-		// One-click card checkout when the operator has connected Stripe; otherwise
-		// open a direct/offline order with payment instructions.
-		stripeKey, stripeOn := a.stripeSecretKey(r.Context())
+		// Resolve the gateway: an explicit method wins when connected; otherwise
+		// prefer Stripe, then PayPal, then the built-in direct/offline gateway.
 		gateway := payments.GatewayDirect
-		if stripeOn {
+		switch {
+		case method == "paypal" && paypalOn:
+			gateway = payments.GatewayPayPal
+		case method == "stripe" && stripeOn:
 			gateway = payments.GatewayStripe
+		case method == "" && stripeOn:
+			gateway = payments.GatewayStripe
+		case method == "" && paypalOn:
+			gateway = payments.GatewayPayPal
 		}
+
 		order, cerr := a.payments.Create(r.Context(), payments.OrderInput{
 			Email: emailAddr, Name: name, TierSlug: tier.Slug, Cadence: cadence,
 			AmountCents: amount, Currency: currency, Gateway: gateway,
 		})
 		if cerr != nil {
-			_, _ = w.Write([]byte(checkoutFormPage(tier, cadence, amount, currency, cerr.Error())))
+			_, _ = w.Write([]byte(checkoutFormPage(tier, cadence, amount, currency, stripeOn, paypalOn, cerr.Error())))
 			return
 		}
 		logging.LogInfo("payments", "order opened: "+order.Reference+" tier="+tier.Slug+" gateway="+gateway)
 		a.dispatchWebhook("payment.order_created.v1", map[string]interface{}{"reference": order.Reference, "tier": order.TierSlug, "amount_cents": order.AmountCents, "currency": order.Currency})
 
-		if stripeOn {
-			// Create a Stripe-hosted Checkout Session tagged with our order
-			// reference and redirect (a top-level navigation — no CSP relaxation,
-			// no Stripe.js). The success handler confirms + fulfils server-side.
+		origin := "https://" + config.Cfg.Domain
+		switch gateway {
+		case payments.GatewayStripe:
+			// Stripe-hosted Checkout Session tagged with our order reference; redirect
+			// (top-level navigation — no CSP relaxation, no Stripe.js). /checkout/success
+			// confirms + fulfils server-side.
 			sc := payments.NewStripeClient(a.outboundClient, stripeKey)
-			origin := "https://" + config.Cfg.Domain
 			checkoutURL, _, serr := sc.CreateCheckoutSession(r.Context(), payments.CheckoutParams{
-				PriceID:           stripePriceFor(tier, cadence),
-				AmountCents:       amount,
-				Currency:          currency,
-				Interval:          intervalFor(cadence),
-				ProductName:       tier.Name,
-				CustomerEmail:     emailAddr,
+				PriceID: stripePriceFor(tier, cadence), AmountCents: amount, Currency: currency,
+				Interval: intervalFor(cadence), ProductName: tier.Name, CustomerEmail: emailAddr,
 				ClientReferenceID: order.Reference,
 				SuccessURL:        origin + "/checkout/success?session_id={CHECKOUT_SESSION_ID}",
 				CancelURL:         origin + "/pricing",
@@ -171,22 +180,132 @@ func (a *App) handleCheckoutPage(w http.ResponseWriter, r *http.Request) {
 				TrialDays:         tier.TrialDays,
 			})
 			if serr != nil {
-				// Never dead-end the reader: fall back to offline instructions.
 				logging.LogError("payments", "stripe checkout session failed", serr.Error())
-				go a.sendPaymentPendingEmail(order, tier.Name)
-				_, _ = w.Write([]byte(a.checkoutInstructionsPage(r.Context(), order, tier.Name)))
+				a.checkoutOfflineFallback(r.Context(), w, order, tier.Name)
 				return
 			}
 			http.Redirect(w, r, checkoutURL, http.StatusSeeOther)
 			return
+		case payments.GatewayPayPal:
+			// Ensure a PayPal billing plan for this price, create an auto-renewing
+			// subscription, and redirect to PayPal's approval page. /checkout/paypal/return
+			// confirms + fulfils server-side.
+			pp := payments.NewPayPalClient(a.outboundClient, ppID, ppSecret, ppSandbox)
+			planID, perr := a.ensurePayPalPlan(r.Context(), pp, tier, cadence, amount, currency)
+			if perr != nil {
+				logging.LogError("payments", "paypal plan ensure failed", perr.Error())
+				a.checkoutOfflineFallback(r.Context(), w, order, tier.Name)
+				return
+			}
+			_, approveURL, serr := pp.CreateSubscription(r.Context(), planID, emailAddr, order.Reference, origin+"/checkout/paypal/return", origin+"/pricing", brandName())
+			if serr != nil {
+				logging.LogError("payments", "paypal subscription failed", serr.Error())
+				a.checkoutOfflineFallback(r.Context(), w, order, tier.Name)
+				return
+			}
+			http.Redirect(w, r, approveURL, http.StatusSeeOther)
+			return
+		default:
+			a.checkoutOfflineFallback(r.Context(), w, order, tier.Name)
+			return
 		}
-
-		// Offline/direct gateway: email instructions + show the reference.
-		go a.sendPaymentPendingEmail(order, tier.Name)
-		_, _ = w.Write([]byte(a.checkoutInstructionsPage(r.Context(), order, tier.Name)))
-		return
 	}
-	_, _ = w.Write([]byte(checkoutFormPage(tier, cadence, amount, currency, "")))
+	_, _ = w.Write([]byte(checkoutFormPage(tier, cadence, amount, currency, stripeOn, paypalOn, "")))
+}
+
+// checkoutOfflineFallback emails the payer offline instructions and renders the
+// reference page — used when a connected gateway errs, so a reader is never left
+// at a dead end.
+func (a *App) checkoutOfflineFallback(ctx context.Context, w http.ResponseWriter, order *payments.Order, tierName string) {
+	go a.sendPaymentPendingEmail(order, tierName)
+	_, _ = w.Write([]byte(a.checkoutInstructionsPage(ctx, order, tierName)))
+}
+
+// ── PayPal (auto-renewing subscriptions) ──────────────────────────────────────
+
+// paypalCreds returns the operator's PayPal REST credentials (client id in the
+// credential endpoint, secret encrypted) plus the sandbox flag, and whether a
+// live PayPal checkout is available.
+func (a *App) paypalCreds(ctx context.Context) (clientID, secret string, sandbox, ok bool) {
+	if a.secrets == nil {
+		return "", "", false, false
+	}
+	sec, ep := a.secrets.ProviderSecret(ctx, secrets.ProviderPayPal)
+	sec = strings.TrimSpace(sec)
+	ep = strings.TrimSpace(ep)
+	if sec == "" || ep == "" {
+		return "", "", false, false
+	}
+	sb := a.siteSettings != nil && a.siteSettings.Get(ctx, settings.KeyPayPalSandbox) == "on"
+	return ep, sec, sb, true
+}
+
+// paypalPlanFingerprint keys the plan cache by everything that affects price, so
+// a price change transparently yields a new plan (stale prices never charge).
+func paypalPlanFingerprint(tierSlug, cadence string, amountCents int, currency string) string {
+	sum := sha256.Sum256([]byte(tierSlug + "|" + cadence + "|" + strconv.Itoa(amountCents) + "|" + strings.ToUpper(currency)))
+	return hex.EncodeToString(sum[:12])
+}
+
+// ensurePayPalPlan returns a PayPal billing-plan id for the tier+cadence+price,
+// creating and caching the shared product and the plan on first use.
+func (a *App) ensurePayPalPlan(ctx context.Context, pp *payments.PayPalClient, tier *members.Tier, cadence string, amountCents int, currency string) (string, error) {
+	fp := paypalPlanFingerprint(tier.Slug, cadence, amountCents, currency)
+	if id, ok := a.payments.PayPalPlanID(ctx, fp); ok {
+		return id, nil
+	}
+	productID, ok := a.payments.PayPalProductID(ctx)
+	if !ok || productID == "" {
+		pid, err := pp.EnsureProduct(ctx, brandName()+" membership")
+		if err != nil {
+			return "", err
+		}
+		_ = a.payments.SavePayPalProduct(ctx, pid)
+		productID = pid
+	}
+	planID, err := pp.CreatePlan(ctx, productID, tier.Name+" · "+cadence, amountCents, currency, intervalFor(cadence))
+	if err != nil {
+		return "", err
+	}
+	_ = a.payments.SavePayPalPlan(ctx, fp, planID)
+	return planID, nil
+}
+
+// brandName is the display name used on hosted checkout pages.
+func brandName() string {
+	if config.Cfg.Domain != "" {
+		return config.Cfg.Domain
+	}
+	return "VayuPress"
+}
+
+// handleCheckoutPayPalReturn is PayPal's return_url. It confirms the subscription
+// against PayPal server-side (never trusting the browser), marks the matching
+// order paid and fulfils it (upgrade + receipt). Idempotent.
+func (a *App) handleCheckoutPayPalReturn(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	subID := strings.TrimSpace(r.URL.Query().Get("subscription_id"))
+	ppID, ppSecret, ppSandbox, on := a.paypalCreds(r.Context())
+	if on && a.payments != nil && a.members != nil && payments.ValidPayPalSubscriptionID(subID) {
+		pp := payments.NewPayPalClient(a.outboundClient, ppID, ppSecret, ppSandbox)
+		if sub, err := pp.GetSubscription(r.Context(), subID); err == nil && sub.Active() && sub.CustomID != "" {
+			order, perr := a.payments.MarkPaid(r.Context(), sub.CustomID, sub.ID)
+			switch {
+			case perr == nil:
+				if ferr := a.fulfillOrder(r.Context(), order); ferr != nil {
+					logging.LogError("payments", "paypal fulfilment failed: "+order.Reference, ferr.Error())
+				} else {
+					logging.LogInfo("payments", "order paid via paypal: "+order.Reference)
+				}
+			case errors.Is(perr, payments.ErrAlreadyPaid):
+				// already fulfilled (return refresh or webhook)
+			default:
+				logging.LogError("payments", "paypal return mark-paid failed", perr.Error())
+			}
+		}
+	}
+	_, _ = w.Write([]byte(checkoutThanksPage()))
 }
 
 // handleCheckoutSuccess is Stripe's success_url. It CONFIRMS the session against
@@ -524,7 +643,7 @@ func verifyHMACHex(sigHex string, payload []byte, secret string) bool {
 
 // ── Public checkout page markup (CSP-safe, no inline JS) ───────────────────────
 
-func checkoutFormPage(tier *members.Tier, cadence string, amountCents int, currency, errMsg string) string {
+func checkoutFormPage(tier *members.Tier, cadence string, amountCents int, currency string, stripeOn, paypalOn bool, errMsg string) string {
 	esc := html.EscapeString
 	errHTML := ""
 	if errMsg != "" {
@@ -535,6 +654,18 @@ func checkoutFormPage(tier *members.Tier, cadence string, amountCents int, curre
 		per = "year"
 	}
 	price := priceLabel(currency, amountCents)
+	// One button per connected gateway (each submits its own method); the built-in
+	// direct/offline gateway is the fallback when none is connected.
+	buttons := `<button type="submit" class="btn btn--primary pr-cta pr-cta--primary" style="width:100%">Continue to payment</button>`
+	if stripeOn || paypalOn {
+		buttons = ""
+		if stripeOn {
+			buttons += `<button type="submit" name="method" value="stripe" class="btn btn--primary pr-cta pr-cta--primary" style="width:100%;margin-bottom:.5rem">Pay by card</button>`
+		}
+		if paypalOn {
+			buttons += `<button type="submit" name="method" value="paypal" class="btn btn--ghost pr-cta" style="width:100%">Pay with PayPal</button>`
+		}
+	}
 	return checkoutShell("Checkout · "+esc(tier.Name), `
 <main class="pr-shell" id="main-content">
   <div class="pr-head">
@@ -553,7 +684,7 @@ func checkoutFormPage(tier *members.Tier, cadence string, amountCents int, curre
       <label class="field-label" for="co-email">Email</label>
       <input id="co-email" class="input" type="email" name="email" placeholder="you@example.com" autocomplete="email" required autofocus>
     </div>
-    <button type="submit" class="btn btn--primary pr-cta pr-cta--primary">Continue to payment</button>
+    `+buttons+`
   </form>
   <p class="pr-foot">Already a member? <a href="/members" class="su-link">Sign in</a></p>
 </main>`)

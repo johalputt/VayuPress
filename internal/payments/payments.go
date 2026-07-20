@@ -59,6 +59,8 @@ const (
 	GatewayWebhook = "webhook"
 	// GatewayStripe is recognised for orders reconciled by the Stripe webhook.
 	GatewayStripe = "stripe"
+	// GatewayPayPal is recognised for orders paid through a PayPal subscription.
+	GatewayPayPal = "paypal"
 )
 
 // ErrAlreadyPaid is returned by MarkPaid when the order was already paid, so the

@@ -71,7 +71,7 @@ func (a *App) handleOSMonetization(w http.ResponseWriter, r *http.Request) {
   <p class="text-sm muted mb-4">Every checkout records an order. For offline/direct payments, confirm receipt with <strong>Mark paid</strong> — that upgrades the member and emails them a receipt automatically.</p>
   ` + monetizationOrdersTable(orders) + `
 </div>
-` + a.paymentGatewaysCard(nonce, ctx) + `
+` + a.paymentGatewaysCard(nonce, ctx) + a.paypalConnectCard(nonce, ctx) + `
 <div class="card">
   <div class="settings-block-title">Direct / offline payment</div>
   <p class="text-sm muted mb-4">The dependency-free way to get paid. Publish how readers should pay (bank transfer, UPI, a payment link…); they quote their order reference, you confirm receipt above. No third-party gateway required.</p>

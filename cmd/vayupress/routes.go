@@ -314,7 +314,8 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	// are no-ops until the Payments module is enabled / a gateway is configured.
 	r.Get("/checkout", a.handleCheckoutPage)
 	r.Post("/checkout", a.handleCheckoutPage)
-	r.Get("/checkout/success", a.handleCheckoutSuccess) // Stripe return: verify + fulfil server-side
+	r.Get("/checkout/success", a.handleCheckoutSuccess)            // Stripe return: verify + fulfil server-side
+	r.Get("/checkout/paypal/return", a.handleCheckoutPayPalReturn) // PayPal return: verify + fulfil server-side
 	r.Post("/api/v1/payments/webhook/{gateway}", a.handlePaymentWebhook)
 
 	// VayuMCP (ADR-0139): the Model Context Protocol connector at POST /mcp, so an

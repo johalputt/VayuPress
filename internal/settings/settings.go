@@ -164,6 +164,9 @@ const (
 	// KeyPaySupportEmail is the reply-to address printed on payment emails and
 	// the checkout page so payers can reach a human. Falls back to SMTP From.
 	KeyPaySupportEmail = "monetization.support_email"
+	// KeyPayPalSandbox routes PayPal to the sandbox host ("on") instead of live
+	// ("off", default) — for testing with sandbox REST credentials.
+	KeyPayPalSandbox = "monetization.paypal_sandbox"
 
 	// Advertising configuration.
 	//
@@ -318,6 +321,7 @@ var AllKeys = map[string]bool{
 	KeyPayDirectInstructions: true,
 	KeyPayCurrency:           true,
 	KeyPaySupportEmail:       true,
+	KeyPayPalSandbox:         true,
 	KeyAdsenseClient:         true,
 	KeyAffiliateDisclosure:   true,
 	KeySiteMode:              true,
@@ -393,6 +397,7 @@ var Defaults = map[string]string{
 	KeyPayDirectInstructions: "",
 	KeyPayCurrency:           "USD",
 	KeyPaySupportEmail:       "",
+	KeyPayPalSandbox:         "off",
 	KeyAdsenseClient:         "",
 	KeyAffiliateDisclosure:   "This post may contain affiliate links. We may earn a commission at no extra cost to you.",
 	KeyShieldEnabled:         "off",

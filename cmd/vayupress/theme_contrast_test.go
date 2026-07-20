@@ -113,6 +113,7 @@ func TestThemeEditorCoversSettingsAllowlist(t *testing.T) {
 		settings.KeyPayDirectInstructions: true,
 		settings.KeyPayCurrency:           true,
 		settings.KeyPaySupportEmail:       true,
+		settings.KeyPayPalSandbox:         true,
 		settings.KeyAdsenseClient:         true,
 		settings.KeyAffiliateDisclosure:   true,
 		// The VayuOS console colour theme is set from the topbar theme toggle

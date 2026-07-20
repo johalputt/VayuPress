@@ -8,6 +8,24 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.44] — 2026-07-20
+
+### Added
+- **One-click PayPal — auto-renewing subscriptions alongside Stripe.** A *PayPal*
+  panel in the Monetization console: enter your PayPal REST client id and secret
+  (stored **encrypted at rest**, AES-256-GCM), tick **sandbox** for testing, and
+  press **Test connection** for instant verification. When both gateways are
+  connected the checkout page shows **Pay by card** and **Pay with PayPal**.
+  VayuPress creates the PayPal catalog product and billing plan for each
+  tier/price automatically — cached in a new `paypal_plans` table (migration 069),
+  so a price change transparently makes a new plan and stale prices can never be
+  charged — then sends the reader to a **PayPal-hosted approval page**: no PayPal
+  SDK, no browser JS, the strict CSP is untouched (ADR-0090). On return,
+  `/checkout/paypal/return` **confirms the subscription against PayPal
+  server-side** (the browser is never trusted) before upgrading the member and
+  emailing a receipt — idempotent. Funds settle into the operator's own PayPal
+  account (direct credentials — no middleman).
+
 ## [3.14.43] — 2026-07-20
 
 ### Added
