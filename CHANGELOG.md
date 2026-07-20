@@ -8,6 +8,27 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.62] — 2026-07-20
+
+### Added
+- **Onion-to-onion VayuTalk — Phase 2a: inbound delivery endpoint.** A new
+  `POST /api/v1/talk/onion/deliver` accepts a ciphertext envelope from a remote
+  `.onion` and drops it into the local relay so the recipient's live stream
+  receives it. Security posture, all enforced and unit-tested:
+  - **Closed by default** — returns 404 unless the install is in the Tor world
+    *and* the operator has switched on `talk.onion_federation`, so it is not even
+    discoverable otherwise.
+  - **Not an open relay** — accepts an envelope only when it is addressed to the
+    install's own current anonymous code; a foreign recipient is refused (403).
+  - **Bounded** — a valid onion sender code is required (clearnet senders
+    refused), the payload rides the existing 64 KiB ciphertext cap and the
+    per-recipient/global queue caps, and the route carries the public-discovery
+    rate limit. The payload is opaque ciphertext and is never decrypted here.
+
+### Notes
+- This is the receiving half. The outbound Tor lane (sending to another onion) and
+  the send-path wiring land next; cross-onion delivery is not yet end-to-end.
+
 ## [3.14.61] — 2026-07-20
 
 ### Added
