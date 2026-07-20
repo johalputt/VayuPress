@@ -55,7 +55,7 @@ jobs:
             || echo "cosign skipped/failed — publishing without signature"
 
       - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: v1.9.0
           name: "VayuPress v1.9.0 — Stable Private Email"

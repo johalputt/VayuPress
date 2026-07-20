@@ -48,7 +48,7 @@ jobs:
             --bundle dist/vayupress.cosign.bundle || echo "cosign skipped/failed — publishing without signature"
           echo "✅ sign step complete"
       - name: Upload release assets
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           # A semver pre-release tag (one containing a hyphen, e.g. v2.9.10-rc1)
           # is published as a GitHub *pre-release*, so it only appears in the

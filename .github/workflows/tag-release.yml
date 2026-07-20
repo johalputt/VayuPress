@@ -109,7 +109,7 @@ jobs:
 
       - name: Create tag + publish release
         if: steps.exists.outputs.skip != 'true'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.ver.outputs.version }}
           name: VayuPress ${{ steps.ver.outputs.version }}
