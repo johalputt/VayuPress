@@ -132,22 +132,151 @@ func (a *App) handleCheckoutPage(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
 		emailAddr := strings.TrimSpace(strings.ToLower(r.PostFormValue("email")))
 		name := strings.TrimSpace(r.PostFormValue("name"))
+
+		// One-click card checkout when the operator has connected Stripe; otherwise
+		// open a direct/offline order with payment instructions.
+		stripeKey, stripeOn := a.stripeSecretKey(r.Context())
+		gateway := payments.GatewayDirect
+		if stripeOn {
+			gateway = payments.GatewayStripe
+		}
 		order, cerr := a.payments.Create(r.Context(), payments.OrderInput{
 			Email: emailAddr, Name: name, TierSlug: tier.Slug, Cadence: cadence,
-			AmountCents: amount, Currency: currency, Gateway: payments.GatewayDirect,
+			AmountCents: amount, Currency: currency, Gateway: gateway,
 		})
 		if cerr != nil {
 			_, _ = w.Write([]byte(checkoutFormPage(tier, cadence, amount, currency, cerr.Error())))
 			return
 		}
-		// Email the payer their instructions + reference (best-effort).
-		go a.sendPaymentPendingEmail(order, tier.Name)
-		logging.LogInfo("payments", "order opened: "+order.Reference+" tier="+tier.Slug)
+		logging.LogInfo("payments", "order opened: "+order.Reference+" tier="+tier.Slug+" gateway="+gateway)
 		a.dispatchWebhook("payment.order_created.v1", map[string]interface{}{"reference": order.Reference, "tier": order.TierSlug, "amount_cents": order.AmountCents, "currency": order.Currency})
+
+		if stripeOn {
+			// Create a Stripe-hosted Checkout Session tagged with our order
+			// reference and redirect (a top-level navigation — no CSP relaxation,
+			// no Stripe.js). The success handler confirms + fulfils server-side.
+			sc := payments.NewStripeClient(a.outboundClient, stripeKey)
+			origin := "https://" + config.Cfg.Domain
+			checkoutURL, _, serr := sc.CreateCheckoutSession(r.Context(), payments.CheckoutParams{
+				PriceID:           stripePriceFor(tier, cadence),
+				AmountCents:       amount,
+				Currency:          currency,
+				Interval:          intervalFor(cadence),
+				ProductName:       tier.Name,
+				CustomerEmail:     emailAddr,
+				ClientReferenceID: order.Reference,
+				SuccessURL:        origin + "/checkout/success?session_id={CHECKOUT_SESSION_ID}",
+				CancelURL:         origin + "/pricing",
+				Metadata:          map[string]string{"reference": order.Reference, "tier": tier.Slug},
+				TrialDays:         tier.TrialDays,
+			})
+			if serr != nil {
+				// Never dead-end the reader: fall back to offline instructions.
+				logging.LogError("payments", "stripe checkout session failed", serr.Error())
+				go a.sendPaymentPendingEmail(order, tier.Name)
+				_, _ = w.Write([]byte(a.checkoutInstructionsPage(r.Context(), order, tier.Name)))
+				return
+			}
+			http.Redirect(w, r, checkoutURL, http.StatusSeeOther)
+			return
+		}
+
+		// Offline/direct gateway: email instructions + show the reference.
+		go a.sendPaymentPendingEmail(order, tier.Name)
 		_, _ = w.Write([]byte(a.checkoutInstructionsPage(r.Context(), order, tier.Name)))
 		return
 	}
 	_, _ = w.Write([]byte(checkoutFormPage(tier, cadence, amount, currency, "")))
+}
+
+// handleCheckoutSuccess is Stripe's success_url. It CONFIRMS the session against
+// Stripe server-side (the browser is never trusted to assert payment), marks the
+// matching order paid, fulfils it (upgrade + receipt), and links the member to
+// their Stripe customer for later lifecycle webhooks. Idempotent: a refresh or a
+// racing webhook is a no-op. A thank-you renders regardless.
+func (a *App) handleCheckoutSuccess(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	sessionID := strings.TrimSpace(r.URL.Query().Get("session_id"))
+	key, on := a.stripeSecretKey(r.Context())
+	if on && a.payments != nil && a.members != nil && payments.ValidStripeSessionID(sessionID) {
+		sc := payments.NewStripeClient(a.outboundClient, key)
+		if sess, err := sc.GetCheckoutSession(r.Context(), sessionID); err == nil && sess.Paid() && sess.ClientReferenceID != "" {
+			order, perr := a.payments.MarkPaid(r.Context(), sess.ClientReferenceID, sess.ID)
+			switch {
+			case perr == nil:
+				if sess.CustomerID != "" {
+					_ = a.members.SetStripeCustomer(r.Context(), order.Email, sess.CustomerID)
+				}
+				if ferr := a.fulfillOrder(r.Context(), order); ferr != nil {
+					logging.LogError("payments", "stripe fulfilment failed: "+order.Reference, ferr.Error())
+				} else {
+					logging.LogInfo("payments", "order paid via stripe checkout: "+order.Reference)
+				}
+			case errors.Is(perr, payments.ErrAlreadyPaid):
+				// already fulfilled by a racing webhook or a page refresh
+			default:
+				logging.LogError("payments", "stripe success mark-paid failed", perr.Error())
+			}
+		}
+	}
+	_, _ = w.Write([]byte(checkoutThanksPage()))
+}
+
+// stripeSecretKey returns the operator's connected Stripe secret key and whether
+// a live Stripe checkout is available (an enabled key is present).
+func (a *App) stripeSecretKey(ctx context.Context) (string, bool) {
+	if a.secrets == nil {
+		return "", false
+	}
+	key, _ := a.secrets.ProviderSecret(ctx, secrets.ProviderStripe)
+	key = strings.TrimSpace(key)
+	return key, key != ""
+}
+
+// stripeWebhookSecret returns the Stripe endpoint signing secret, preferring the
+// operator-editable encrypted store over the STRIPE_WEBHOOK_SECRET env var.
+func (a *App) stripeWebhookSecret(ctx context.Context) string {
+	if a.secrets != nil {
+		if s, _ := a.secrets.ProviderSecret(ctx, secrets.ProviderStripeWebhook); strings.TrimSpace(s) != "" {
+			return strings.TrimSpace(s)
+		}
+	}
+	return strings.TrimSpace(config.Cfg.StripeWebhookSecret)
+}
+
+// intervalFor maps a checkout cadence to a Stripe recurring interval.
+func intervalFor(cadence string) string {
+	if cadence == payments.CadenceYearly {
+		return "year"
+	}
+	return "month"
+}
+
+// stripePriceFor returns the tier's pre-created Stripe Price id for the cadence,
+// or "" so the client builds an inline price (no Price setup required).
+func stripePriceFor(t *members.Tier, cadence string) string {
+	if t == nil {
+		return ""
+	}
+	if cadence == payments.CadenceYearly {
+		return t.StripeYearlyPrice
+	}
+	return t.StripeMonthlyPrice
+}
+
+func checkoutThanksPage() string {
+	return checkoutShell("Thank you", `
+<main class="pr-shell" id="main-content">
+  <div class="pr-head">
+    <h1>Thank you 🎉</h1>
+    <p>Your payment was received and your membership is being activated.</p>
+  </div>
+  <div class="pr-card" style="max-width:34rem;margin:0 auto">
+    <p>Access unlocks within a few seconds — a receipt is on its way to your inbox.</p>
+    <p class="pr-foot"><a class="btn btn--primary pr-cta pr-cta--primary" href="/members/account">Go to your account</a></p>
+  </div>
+</main>`)
 }
 
 // ── Generic payment webhook (connected third-party gateways) ──────────────────

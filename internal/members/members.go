@@ -218,6 +218,19 @@ func (s *Store) GetByStripeCustomer(ctx context.Context, customer string) (*Memb
 	return m, nil
 }
 
+// SetStripeCustomer links a member (by email) to a Stripe customer id so later
+// subscription webhooks — which arrive keyed by customer, not email — can
+// reconcile back to the member. Best-effort: a no-op when the member is absent.
+func (s *Store) SetStripeCustomer(ctx context.Context, email, customer string) error {
+	email = strings.ToLower(strings.TrimSpace(email))
+	customer = strings.TrimSpace(customer)
+	if email == "" || customer == "" {
+		return nil
+	}
+	_, err := s.db.ExecContext(ctx, `UPDATE members SET stripe_customer=? WHERE email=?`, customer, email)
+	return err
+}
+
 // List returns members, newest first.
 func (s *Store) List(ctx context.Context, limit int) ([]Member, error) {
 	if limit <= 0 {

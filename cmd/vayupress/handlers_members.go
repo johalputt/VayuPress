@@ -14,6 +14,7 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -25,6 +26,7 @@ import (
 	"github.com/johalputt/vayupress/internal/emailtmpl"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/members"
+	"github.com/johalputt/vayupress/internal/payments"
 	"github.com/johalputt/vayupress/internal/render"
 )
 
@@ -305,7 +307,7 @@ func (a *App) handleArticleAccessSet(w http.ResponseWriter, r *http.Request) {
 // Verifies the Stripe-Signature header against STRIPE_WEBHOOK_SECRET and, on a
 // checkout.session.completed event, upgrades the customer's member to paid.
 func (a *App) handleStripeWebhook(w http.ResponseWriter, r *http.Request) {
-	secret := config.Cfg.StripeWebhookSecret
+	secret := a.stripeWebhookSecret(r.Context())
 	if a.members == nil || secret == "" {
 		http.Error(w, "stripe not configured", http.StatusServiceUnavailable)
 		return
@@ -327,10 +329,12 @@ func (a *App) handleStripeWebhook(w http.ResponseWriter, r *http.Request) {
 				CustomerDetails struct {
 					Email string `json:"email"`
 				} `json:"customer_details"`
-				Customer          string `json:"customer"`
-				ID                string `json:"id"`
-				Status            string `json:"status"`
-				CancelAtPeriodEnd bool   `json:"cancel_at_period_end"`
+				Customer          string            `json:"customer"`
+				ID                string            `json:"id"`
+				Status            string            `json:"status"`
+				CancelAtPeriodEnd bool              `json:"cancel_at_period_end"`
+				ClientReferenceID string            `json:"client_reference_id"`
+				Metadata          map[string]string `json:"metadata"`
 			} `json:"object"`
 		} `json:"data"`
 	}
@@ -341,15 +345,43 @@ func (a *App) handleStripeWebhook(w http.ResponseWriter, r *http.Request) {
 	obj := evt.Data.Object
 	switch evt.Type {
 	case "checkout.session.completed":
-		email := obj.CustomerEmail
-		if email == "" {
-			email = obj.CustomerDetails.Email
+		// Prefer the sovereign order path: a session VayuPress created carries the
+		// order reference, so mark that order paid and fulfil it (idempotent). Fall
+		// back to a bare email upgrade for sessions created outside VayuPress (e.g.
+		// a Stripe Payment Link).
+		handled := false
+		ref := strings.TrimSpace(obj.ClientReferenceID)
+		if ref == "" && obj.Metadata != nil {
+			ref = strings.TrimSpace(obj.Metadata["reference"])
 		}
-		if email != "" {
-			if err := a.members.UpgradeByEmail(r.Context(), email, obj.Customer); err != nil {
-				logging.LogError("stripe", "upgrade failed", err.Error())
-			} else {
-				logging.LogInfo("stripe", "member upgraded to paid: "+email)
+		if ref != "" && a.payments != nil {
+			order, perr := a.payments.MarkPaid(r.Context(), ref, obj.ID)
+			switch {
+			case perr == nil:
+				handled = true
+				if obj.Customer != "" {
+					_ = a.members.SetStripeCustomer(r.Context(), order.Email, obj.Customer)
+				}
+				if ferr := a.fulfillOrder(r.Context(), order); ferr != nil {
+					logging.LogError("stripe", "fulfilment failed", ferr.Error())
+				} else {
+					logging.LogInfo("stripe", "order paid via webhook: "+order.Reference)
+				}
+			case errors.Is(perr, payments.ErrAlreadyPaid):
+				handled = true // idempotent: already fulfilled
+			}
+		}
+		if !handled {
+			email := obj.CustomerEmail
+			if email == "" {
+				email = obj.CustomerDetails.Email
+			}
+			if email != "" {
+				if err := a.members.UpgradeByEmail(r.Context(), email, obj.Customer); err != nil {
+					logging.LogError("stripe", "upgrade failed", err.Error())
+				} else {
+					logging.LogInfo("stripe", "member upgraded to paid: "+email)
+				}
 			}
 		}
 	case "customer.subscription.updated":

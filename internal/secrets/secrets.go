@@ -58,7 +58,21 @@ const (
 	// third-party payment webhook (HMAC-SHA256 over the raw body). This lets any
 	// external processor confirm an order without an embedded payment SDK.
 	ProviderPaymentGateway = "payment_gateway"
-	ProviderCustom         = "custom"
+	// ProviderStripe stores the operator's Stripe SECRET key (sk_...), used
+	// server-to-server to create hosted Checkout Sessions and verify them. The
+	// endpoint column optionally holds the non-secret publishable key (pk_...).
+	// No Stripe SDK or browser Stripe.js is used — checkout is a redirect.
+	ProviderStripe = "stripe"
+	// ProviderStripeWebhook stores the Stripe endpoint signing secret (whsec_...)
+	// so the webhook secret is operator-editable from the console instead of only
+	// via the STRIPE_WEBHOOK_SECRET environment variable.
+	ProviderStripeWebhook = "stripe_webhook"
+	// ProviderPayPal stores the operator's PayPal REST client secret; the endpoint
+	// column holds the (non-secret) client id. ProviderPayPalWebhook stores the
+	// webhook id used to verify PayPal webhook signatures.
+	ProviderPayPal        = "paypal"
+	ProviderPayPalWebhook = "paypal_webhook"
+	ProviderCustom        = "custom"
 )
 
 // KnownProviders is the allowlist of provider slugs accepted on write.
@@ -70,6 +84,10 @@ var KnownProviders = map[string]bool{
 	ProviderOpenAI:         true,
 	ProviderGoogleAds:      true,
 	ProviderPaymentGateway: true,
+	ProviderStripe:         true,
+	ProviderStripeWebhook:  true,
+	ProviderPayPal:         true,
+	ProviderPayPalWebhook:  true,
 	ProviderCustom:         true,
 }
 

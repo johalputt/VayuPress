@@ -301,6 +301,10 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.Get("/os/api/orders", a.handleOSOrdersList)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/orders/{id}/paid", a.handleOSOrderMarkPaid)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/orders/{id}/cancel", a.handleOSOrderCancel)
+		// One-click card gateways (Stripe now; PayPal in a later phase).
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/payments/stripe/connect", a.handleStripeConnect)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/payments/stripe/test", a.handleStripeTest)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/payments/stripe/disconnect", a.handleStripeDisconnect)
 		pr.Get("/os/ads", a.handleOSAds)
 		pr.Get("/os/api/ads", a.handleOSAdsList)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/ads", a.handleOSAdCreate)

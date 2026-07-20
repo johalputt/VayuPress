@@ -8,6 +8,32 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.43] — 2026-07-20
+
+### Added
+- **One-click Stripe checkout — take card payments straight into your own
+  account.** A new *Card payments · Stripe* panel in the Monetization console
+  (`/os/monetization`): paste your Stripe secret key once (stored **encrypted at
+  rest**, AES-256-GCM) and press **Test connection** for instant live
+  verification. Readers then subscribe through a **Stripe-hosted checkout** —
+  VayuPress never embeds Stripe.js or any SDK, so the reader is simply redirected
+  out and back (a top-level navigation) and the **strict CSP is untouched**
+  (ADR-0090). The flow reuses the sovereign order ledger: `/checkout` opens an
+  order plus a Stripe session tagged with its reference; on return,
+  `/checkout/success` **confirms the payment against Stripe server-side** (the
+  browser is never trusted to assert payment) before upgrading the member and
+  emailing a receipt — idempotent, and mirrored by the webhook. It works with
+  just the secret key; add the optional webhook signing secret to also sync
+  cancellations and renewals. Payments settle into the operator's own Stripe
+  account (direct keys — no middleman, no platform fee).
+
+### Changed
+- The Stripe webhook now reads its signing secret from the operator-editable
+  encrypted store (falling back to the `STRIPE_WEBHOOK_SECRET` env var) and, when
+  an event carries a VayuPress order reference, fulfils that exact order rather
+  than only matching on email — so a connected subscription upgrades the right
+  member every time.
+
 ## [3.14.42] — 2026-07-20
 
 ### Added
