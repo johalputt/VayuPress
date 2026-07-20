@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"strconv"
 
+	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/members"
 	"github.com/johalputt/vayupress/internal/payments"
 	"github.com/johalputt/vayupress/internal/render"
@@ -46,8 +47,17 @@ func (a *App) handleOSMonetization(w http.ResponseWriter, r *http.Request) {
 	premiumPriceStr := strconv.Itoa(a.premiumMailIDPriceCents(ctx))
 	mailidTerms := a.mailIDTerms(ctx)
 	var pricedPosts []members.PricedPost
+	var grants []members.PremiumGrant
+	gPending, gPaid, gClaimed := 0, 0, 0
 	if a.members != nil {
 		pricedPosts, _ = a.members.ListPricedPosts(ctx, 100)
+		grants, _ = a.members.AllPremiumGrants(ctx, 50)
+		gPending, gPaid, gClaimed = a.members.PremiumGrantCounts(ctx)
+	}
+	premiumSold := gPaid + gClaimed
+	paidMembers := 0
+	if dbpkg.DB != nil {
+		_ = dbpkg.Reader().QueryRowContext(ctx, `SELECT COUNT(1) FROM members WHERE tier NOT IN ('free','')`).Scan(&paidMembers)
 	}
 
 	var stats payments.Stats
@@ -62,22 +72,25 @@ func (a *App) handleOSMonetization(w http.ResponseWriter, r *http.Request) {
 		statusBanner = `<div class="settings-callout"><strong>Payments are off.</strong> <span class="text-sm muted">Readers cannot check out until you enable the Payments module.</span> <a class="btn btn--primary btn--sm mt-2" href="/os/tools">Enable in Tools &amp; Plugins →</a></div>`
 	}
 
+	revCurrency := stats.Currency
+	if revCurrency == "" {
+		revCurrency = currency
+	}
+
 	body := `<div class="page-header">
   <h1>Monetization</h1>
   <div class="page-actions"><span id="mon-status" role="status" aria-live="polite" class="text-xs muted"></span></div>
 </div>
+<p class="page-sub">Your whole revenue engine in one place — payments, membership plans, the premium mail-ID marketplace, paid posts and every order.</p>
 ` + statusBanner + `
 <div class="stat-grid">
+  <div class="stat-card"><div class="stat-card__label">Revenue collected</div><div class="stat-card__value">` + html.EscapeString(priceLabel(revCurrency, stats.RevenueCents)) + `</div></div>
+  <div class="stat-card"><div class="stat-card__label">Paid members</div><div class="stat-card__value">` + strconv.Itoa(paidMembers) + `</div></div>
   <div class="stat-card"><div class="stat-card__label">Pending orders</div><div class="stat-card__value">` + strconv.Itoa(stats.Pending) + `</div></div>
-  <div class="stat-card"><div class="stat-card__label">Paid orders</div><div class="stat-card__value">` + strconv.Itoa(stats.Paid) + `</div></div>
-  <div class="stat-card"><div class="stat-card__label">Revenue collected</div><div class="stat-card__value">` + html.EscapeString(priceLabel(stats.Currency, stats.RevenueCents)) + `</div></div>
+  <div class="stat-card"><div class="stat-card__label">Premium addresses sold</div><div class="stat-card__value">` + strconv.Itoa(premiumSold) + `</div></div>
 </div>
 
-<div class="card">
-  <div class="settings-block-title">Orders</div>
-  <p class="text-sm muted mb-4">Every checkout records an order. For offline/direct payments, confirm receipt with <strong>Mark paid</strong> — that upgrades the member and emails them a receipt automatically.</p>
-  ` + monetizationOrdersTable(orders) + `
-</div>
+<div class="section-head"><span class="section-head__title">Payments</span><span class="section-head__hint">Connect a card gateway or take payments directly</span></div>
 ` + a.paymentGatewaysCard(nonce, ctx) + a.paypalConnectCard(nonce, ctx) + `
 <div class="card">
   <div class="settings-block-title">Direct / offline payment</div>
@@ -109,6 +122,14 @@ func (a *App) handleOSMonetization(w http.ResponseWriter, r *http.Request) {
   <button type="button" class="btn btn--primary btn--sm" id="mon-webhook-save">Save webhook secret</button>
 </div>
 
+<div class="section-head"><span class="section-head__title">Products &amp; pricing</span><span class="section-head__hint">Everything you sell — mail-IDs, paid posts, plans</span></div>
+<div class="card">
+  <div class="settings-block-title">Premium mail-ID marketplace</div>
+  <p class="text-sm muted mb-4">Members buy premium (vanity) VayuMail addresses from their account. Live sales below — <strong>` + strconv.Itoa(gClaimed) + `</strong> active, <strong>` + strconv.Itoa(gPaid) + `</strong> awaiting activation, <strong>` + strconv.Itoa(gPending) + `</strong> awaiting payment.</p>
+  ` + premiumGrantsTable(grants) + `
+  <div class="mt-2"><a class="btn btn--primary btn--sm" href="/os/monetization/mailids">Manage premium IDs →</a></div>
+</div>
+
 <div class="card">
   <div class="settings-block-title">VayuMail address marketplace</div>
   <p class="text-sm muted mb-4">Premium (vanity) addresses — ultra-short handles and sought-after words — are held back from the free member claim so you can sell them. Set their price, and the terms a member must accept before any address is provisioned to them.</p>
@@ -138,6 +159,13 @@ func (a *App) handleOSMonetization(w http.ResponseWriter, r *http.Request) {
     <button type="button" class="btn btn--primary btn--sm" id="pp-save">Set</button>
   </div>
   ` + paidPostsTable(pricedPosts, currency) + `
+</div>
+
+<div class="section-head"><span class="section-head__title">Orders</span><span class="section-head__hint">Every payment — memberships, mail-IDs & paid posts</span></div>
+<div class="card">
+  <div class="settings-block-title">Order ledger</div>
+  <p class="text-sm muted mb-4">Every checkout records an order. For offline/direct payments, confirm receipt with <strong>Mark paid</strong> — that fulfils the purchase and emails a receipt automatically.</p>
+  ` + monetizationOrdersTable(orders) + `
 </div>
 
 <div id="action-msg" role="status" aria-live="polite" class="action-msg"></div>
@@ -235,7 +263,7 @@ func monetizationOrdersTable(orders []payments.Order) string {
 		rows += `<tr>
   <td class="row-title"><code>` + html.EscapeString(o.Reference) + `</code>
     <div class="row-meta">` + html.EscapeString(o.Email) + `</div></td>
-  <td>` + html.EscapeString(o.TierSlug) + ` <span class="muted text-xs">· ` + html.EscapeString(o.Cadence) + `</span></td>
+  <td>` + html.EscapeString(orderProductLabel(o.TierSlug)) + `</td>
   <td>` + html.EscapeString(priceLabel(o.Currency, o.AmountCents)) + `</td>
   <td>` + html.EscapeString(o.Gateway) + `</td>
   <td>` + orderStatusPill(o.Status) + `</td>
@@ -244,9 +272,56 @@ func monetizationOrdersTable(orders []payments.Order) string {
 </tr>`
 	}
 	return `<div class="table-wrap"><table class="table">
-  <thead><tr><th>Reference</th><th>Tier</th><th>Amount</th><th>Gateway</th><th>Status</th><th>Created</th><th></th></tr></thead>
+  <thead><tr><th>Reference</th><th>Product</th><th>Amount</th><th>Gateway</th><th>Status</th><th>Created</th><th></th></tr></thead>
   <tbody>` + rows + `</tbody>
 </table></div>`
+}
+
+// orderProductLabel decodes the sentinel tier slugs the one-time products use so
+// the order ledger reads plainly.
+func orderProductLabel(tierSlug string) string {
+	switch tierSlug {
+	case mailIDOrderTier:
+		return "Premium mail-ID"
+	case postOrderTier:
+		return "Paid post"
+	default:
+		return "Membership: " + tierSlug
+	}
+}
+
+// premiumGrantPill maps a premium-address grant's status to a coloured pill.
+func premiumGrantPill(status string) string {
+	switch status {
+	case members.GrantClaimed:
+		return `<span class="status-pill status-pill--live">● active</span>`
+	case members.GrantPaid:
+		return `<span class="status-pill status-pill--draft">● paid · awaiting activation</span>`
+	case members.GrantPending:
+		return `<span class="status-pill">● awaiting payment</span>`
+	default:
+		return `<span class="status-pill">● ` + html.EscapeString(status) + `</span>`
+	}
+}
+
+// premiumGrantsTable renders recent premium-address sales (read-only overview).
+func premiumGrantsTable(grants []members.PremiumGrant) string {
+	if len(grants) == 0 {
+		return `<div class="table-empty">No premium addresses sold yet. They appear here as members buy vanity IDs from their account.</div>`
+	}
+	rows := ""
+	for i := range grants {
+		g := grants[i]
+		rows += `<tr>` +
+			`<td class="row-title"><code>` + html.EscapeString(g.Address()) + `</code></td>` +
+			`<td class="muted text-sm">` + html.EscapeString(g.Email) + `</td>` +
+			`<td>` + premiumGrantPill(g.Status) + `</td>` +
+			`<td class="muted text-sm">` + g.CreatedAt.UTC().Format("2 Jan 2006") + `</td>` +
+			`</tr>`
+	}
+	return `<div class="table-wrap"><table class="table">` +
+		`<thead><tr><th>Address</th><th>Buyer</th><th>Status</th><th>Purchased</th></tr></thead>` +
+		`<tbody>` + rows + `</tbody></table></div>`
 }
 
 func orderStatusPill(status string) string {

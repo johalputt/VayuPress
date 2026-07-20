@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"strings"
 	"testing"
 
@@ -25,22 +24,24 @@ func TestGrowthHubConsolidatesSidebar(t *testing.T) {
 		}
 	}
 
-	// The hub body carries each card, its link, the live member count, the KPI
-	// row and the premium mail-ID marketplace control unit. A zero-value App
-	// (nil payments/members/settings) exercises the safe best-effort fallbacks.
-	body := (&App{}).osGrowthBody(context.Background(), 1234, 56, 0)
-	assertCSPSafe(t, "osGrowthBody", body)
+	// The clean Growth hub launches Audience + Monetization; the revenue controls,
+	// KPIs and premium marketplace live inside Monetization, not here.
+	body := osGrowthGrid(1234, 56, 3)
+	assertCSPSafe(t, "osGrowthGrid", body)
 	for _, want := range []string{
 		`href="/os/members"`, `href="/os/newsletter"`, `href="/os/profile"`,
 		`href="/os/monetization"`, `href="/os/ads"`,
 		"1,234", // grouped member count
 		"Growth",
-		"Premium mail-ID marketplace",   // the control unit heading
-		"No premium addresses sold yet", // empty-state list
-		"Premium addresses sold",        // KPI card
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("Growth hub missing %q", want)
+		}
+	}
+	// The monetization control surfaces must NOT be duplicated on the Growth hub.
+	for _, gone := range []string{"Premium mail-ID marketplace", "Orders — audit ledger", "Revenue collected"} {
+		if strings.Contains(body, gone) {
+			t.Errorf("Growth hub must not carry monetization control %q (moved to Monetization)", gone)
 		}
 	}
 }

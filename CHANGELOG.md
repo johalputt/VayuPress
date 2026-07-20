@@ -8,6 +8,20 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.58] — 2026-07-20
+
+### Changed
+- **Monetization is now the single control centre; Growth is clean.** Every
+  revenue control — the KPI hero (revenue, paid members, pending orders, premium
+  addresses sold), the premium mail-ID marketplace overview, the order ledger and
+  all product pricing — now lives inside **Monetization** (`/os/monetization`),
+  organised into clear premium sections: **Payments** (Stripe / PayPal / direct /
+  webhook) · **Products & pricing** (premium mail-IDs, paid posts) · **Orders**.
+  The **Growth** hub is stripped back to a clean launcher (Audience + a
+  Monetization card), so nothing is duplicated and the money surface is one calm,
+  elegant place. The order ledger now labels each order by product (Membership ·
+  tier, Premium mail-ID, Paid post) instead of a raw slug.
+
 ## [3.14.57] — 2026-07-20
 
 ### Added
