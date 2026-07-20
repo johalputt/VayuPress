@@ -8,6 +8,25 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.35] — 2026-07-20
+
+### Changed
+- **Topbar notification centre replaces the New Post button.** The admin topbar
+  now carries a **notification bell** with a live count badge and an **expandable
+  panel** that lists every actionable signal in the system — **new messages,
+  comments to moderate, mail devices awaiting approval, domains waiting to sync**
+  — each a **direct link to the page that clears it**. Every item is gated to the
+  viewer's access level, so it never points at a page they cannot open. Present on
+  every admin page and in **both worlds** (the Tor console reads its own DB). The
+  toggle is wired CSP-safely in `admin-os.js`; New Post now lives on the dashboard
+  workspace and the command palette.
+- **Slimmer, calmer dashboard.** Removed the **Publishing trend** chart, the
+  **Storage** card and the **Recent articles** table; the dashboard now focuses on
+  the **Workspace** tiles, **System health**, and a full-width **Recent activity**
+  feed. The **Anonymous Tor `.onion` never appears on the clearnet dashboard**
+  anymore — it is shown only inside the Tor console itself (ADR-0141
+  anti-correlation); entering the Tor world stays on the sidebar world switch.
+
 ## [3.14.34] — 2026-07-20
 
 ### Changed

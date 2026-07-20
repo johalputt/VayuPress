@@ -802,6 +802,86 @@ func osWorldCard(onion, torOn, running bool, addr string) string {
 </div>`
 }
 
+// notifCap clamps a badge count to a compact "99+" so a large backlog never
+// blows out the bell badge or a row's count chip.
+func notifCap(n int) string {
+	if n > 99 {
+		return "99+"
+	}
+	return strconv.Itoa(n)
+}
+
+// notifIcon maps a notification kind to its glyph. The kind is a fixed literal
+// from osNotifications (never user input), so it also doubles as the accent
+// modifier class on the icon chip.
+func notifIcon(kind string) string {
+	switch kind {
+	case "mail":
+		return iconMail
+	case "comment":
+		return iconComments
+	case "message":
+		return iconMessages
+	case "domain":
+		return iconDomains
+	default:
+		return iconBell
+	}
+}
+
+// osNotifItem renders one notification as a clickable row that navigates straight
+// to the page which clears it (a plain <a>, so no JS is needed for the jump).
+func osNotifItem(n osNotification) string {
+	detail := notifCap(n.Count) + " " + n.Detail
+	return `<a class="notif-item" href="` + n.Href + `">
+  <span class="notif-item__icon notif-item__icon--` + n.Kind + `">` + notifIcon(n.Kind) + `</span>
+  <span class="notif-item__body">
+    <span class="notif-item__title">` + html.EscapeString(n.Title) + `</span>
+    <span class="notif-item__detail">` + html.EscapeString(detail) + `</span>
+  </span>
+  <span class="notif-item__count">` + notifCap(n.Count) + `</span>
+</a>`
+}
+
+// osNotifBell renders the topbar notification centre (the bell that replaced the
+// New Post shortcut): a button with a live count badge and an expandable panel
+// listing every actionable item, each a direct link to the page that clears it.
+// The panel is present on every admin page; the toggle is wired CSP-safely in
+// admin-os.js (initNotifications). Rendered identically in both worlds.
+func osNotifBell(s *osSettings) string {
+	var notifs []osNotification
+	if s != nil {
+		notifs = s.Notifications
+	}
+	total := 0
+	for _, n := range notifs {
+		total += n.Count
+	}
+	badge, headCount, activeCls := "", "", ""
+	if total > 0 {
+		badge = `<span class="topbar-notif__badge">` + notifCap(total) + `</span>`
+		headCount = `<span class="topbar-notif__count">` + notifCap(total) + ` new</span>`
+		activeCls = " topbar-notif__btn--active"
+	}
+	var list strings.Builder
+	if len(notifs) == 0 {
+		list.WriteString(`<div class="topbar-notif__empty">✨ You're all caught up</div>`)
+	} else {
+		for _, n := range notifs {
+			list.WriteString(osNotifItem(n))
+		}
+	}
+	return `<div class="topbar-notif" data-notif>
+  <button type="button" class="btn--icon topbar-notif__btn` + activeCls + `" data-notif-toggle aria-haspopup="true" aria-expanded="false" aria-label="Notifications">
+    ` + iconBell + badge + `
+  </button>
+  <div class="topbar-notif__panel" data-notif-panel hidden>
+    <div class="topbar-notif__head"><span>Notifications</span>` + headCount + `</div>
+    <div class="topbar-notif__list">` + list.String() + `</div>
+  </div>
+</div>`
+}
+
 // torWorldNav is the sidebar for the Tor world (OnionMode): a Tor-only console
 // showing just the blog, the anonymous services (VayuMail·Tor, VayuTalk·Tor) and
 // its onion Domains — no clearnet sections. Access-gated like the main nav.
@@ -969,6 +1049,8 @@ var (
 	iconADR        = svgIcon("M5 3h7l3 3v11H5V3zm7 0v3h3M7 9h6m-6 3h6m-6 3h4")
 	iconMoney      = svgIcon("M10 2v16M6.5 6.5h5a2 2 0 010 4h-3a2 2 0 000 4h5")
 	iconAds        = svgIcon("M3 5h14v8H3V5zm2 11h6M6 8h6m-6 2.5h4")
+	iconBell       = svgIcon("M10 3a4 4 0 00-4 4c0 4-2 5-2 5h12s-2-1-2-5a4 4 0 00-4-4zm-1.5 13a1.5 1.5 0 003 0")
+	iconMail       = svgIcon("M3 5h14v10H3V5zm0 1l7 5 7-5")
 	// iconApps is the mobile bottom-nav "Menu" affordance — a 2x2 grid that
 	// reads as "all sections", opening the full role-scoped drawer.
 	iconApps = svgIcon("M3 3h6v6H3V3zm8 0h6v6h-6V3zM3 11h6v6H3v-6zm8 0h6v6h-6v-6z")
@@ -1038,11 +1120,11 @@ func adminOSShellHead(nonce, title, active string, settings *osSettings) string 
       <kbd>⌘K</kbd>
     </button>`
 
-	// Mail-only sessions cannot create posts; hide the topbar shortcut for them.
-	newPostBtn := `<a class="btn btn--primary btn--sm" href="/os/editor">New Post</a>`
-	if settings != nil && settings.MailOnly {
-		newPostBtn = ""
-	}
+	// The topbar's primary affordance is now the notification centre (bell +
+	// expandable panel), not a New Post button: every actionable signal in the
+	// system surfaces here, each a direct link to the page that clears it. New Post
+	// still lives on the dashboard workspace and the command palette.
+	notifBell := osNotifBell(settings)
 
 	// Space-mode indicator (ADR-0141): every admin page carries an unmistakable
 	// badge for the world this whole install controls — a CLEARNET Space (public
@@ -1100,7 +1182,7 @@ func adminOSShellHead(nonce, title, active string, settings *osSettings) string 
     ` + spaceBadge + `
     <span class="topbar-spacer"></span>
     ` + cmdHint + `
-    ` + newPostBtn + `
+    ` + notifBell + `
     <button type="button" class="btn--icon topbar-theme-btn" aria-label="Toggle colour theme (light / dark / auto)" title="Colour theme">
       <svg viewBox="0 0 20 20" width="18" height="18" fill="none" aria-hidden="true"><path d="M10 2v16M10 2a8 8 0 000 16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="10" cy="10" r="8" stroke="currentColor" stroke-width="1.5"/></svg>
     </button>
@@ -1280,6 +1362,24 @@ type osSettings struct {
 	// .onion address without opening a separate page.
 	TorSpaceRunning bool
 	TorSpaceOnion   string
+	// Notifications backs the topbar notification centre (the bell that replaced the
+	// New Post shortcut): every actionable signal in the system — new contact mail,
+	// comments to moderate, mail devices awaiting approval, domains waiting to sync —
+	// each linking straight to the page that clears it. Gated per-item to the
+	// viewer's access level, so an item never points at a page they cannot open.
+	Notifications []osNotification
+}
+
+// osNotification is one actionable item in the topbar notification centre: a
+// short title, a human detail, the count driving its badge, a target page, and a
+// kind slug that selects both its icon and its accent colour (a fixed literal, so
+// it is safe to interpolate straight into the class name).
+type osNotification struct {
+	Title  string
+	Detail string
+	Href   string
+	Count  int
+	Kind   string // "mail" | "comment" | "message" | "domain"
 }
 
 // getOSSettings loads settings needed for layout rendering.
@@ -1322,7 +1422,57 @@ func (a *App) getOSSettings(ctx context.Context) *osSettings {
 			s.AccessLevel = accessLevelFor(u.Role, s.MailOnly)
 		}
 	}
+	// Notification centre (topbar bell): computed last, once the access level is
+	// known, so each item can be gated to what the viewer can actually open.
+	s.Notifications = a.osNotifications(ctx, s)
 	return s
+}
+
+// osNotifications aggregates the actionable signals shown in the topbar bell.
+// Every source is a cheap, best-effort read (a nil DB, a missing table on an
+// older schema, or a query error simply drops that item — the console never
+// fails to render because a count could not be taken). Each item is gated to the
+// viewer's access level via osPathMinLevel(href), so it never advertises a page
+// the viewer cannot open.
+func (a *App) osNotifications(ctx context.Context, s *osSettings) []osNotification {
+	var out []osNotification
+	add := func(href, title, detail, kind string, count int) {
+		if count <= 0 || s.AccessLevel < osPathMinLevel(href) {
+			return
+		}
+		out = append(out, osNotification{Title: title, Detail: detail, Href: href, Count: count, Kind: kind})
+	}
+	if dbpkg.DB == nil {
+		return out
+	}
+	rdb := dbpkg.Reader()
+	// Unread contact-form mail (already counted for the sidebar badge).
+	add("/os/messages", "New messages", "unread in your inbox", "message", s.UnreadMessages)
+	// Comments awaiting moderation.
+	pendingComments := 0
+	_ = rdb.QueryRowContext(ctx, `SELECT COUNT(1) FROM comments WHERE status='pending'`).Scan(&pendingComments)
+	add("/os/comments", "Comments to review", "awaiting moderation", "comment", pendingComments)
+	// Mail devices waiting for approval to sync a mailbox (VayuMail direct-connect).
+	if a.vayuMail != nil {
+		pendingDevices := 0
+		_ = rdb.QueryRowContext(ctx, `SELECT COUNT(1) FROM vayumail_app_passwords WHERE device_id IS NOT NULL AND device_id <> '' AND status='pending'`).Scan(&pendingDevices)
+		add("/os/vayumail", "Mail devices", "waiting for approval", "mail", pendingDevices)
+	}
+	// Secondary domains registered but still on manual hold (not yet approved to
+	// provision). Pending Tor sites (placeholder host, minting their .onion) are
+	// excluded — there is nothing to approve until their address lands.
+	if a.domains != nil {
+		if list, err := a.domains.List(ctx); err == nil {
+			held := 0
+			for _, d := range list {
+				if !d.IsPrimary && !d.IsSyncApproved() && !isPendingTorSite(d.Host) {
+					held++
+				}
+			}
+			add("/os/domains", "Domains to sync", "waiting for approval", "domain", held)
+		}
+	}
+	return out
 }
 
 // roleDisplay returns a human label for a role slug.
@@ -1727,165 +1877,6 @@ func authPageShell(title, inner string) string {
 
 // ── Dashboard ────────────────────────────────────────────────────────────────
 
-// osPublishTrend returns the count of articles created on each of the last n
-// days (oldest first). Used to render the dashboard sparkline. Counts come
-// straight from the articles table grouped by calendar day (UTC).
-func osPublishTrend(ctx context.Context, n int) []int {
-	out := make([]int, n)
-	if dbpkg.DB == nil {
-		return out
-	}
-	// Bucket per day for the window. SQLite date() truncates to YYYY-MM-DD.
-	rows, err := dbpkg.Reader().QueryContext(ctx,
-		`SELECT date(created_at) d, COUNT(1) c
-		 FROM articles
-		 WHERE created_at >= date('now', ?)
-		 GROUP BY d`, "-"+strconv.Itoa(n-1)+" days")
-	if err != nil {
-		return out
-	}
-	defer rows.Close()
-	byDay := map[string]int{}
-	for rows.Next() {
-		var d string
-		var c int
-		if rows.Scan(&d, &c) == nil {
-			byDay[d] = c
-		}
-	}
-	if rows.Err() != nil {
-		return out
-	}
-	now := time.Now().UTC()
-	for i := 0; i < n; i++ {
-		day := now.AddDate(0, 0, -(n - 1 - i)).Format("2006-01-02")
-		out[i] = byDay[day]
-	}
-	return out
-}
-
-// osTrendArea renders the dashboard's publishing trend as a real area chart:
-// recessive grid, gradient area fill under a 2px line, sparse date ticks, an
-// emphasised endpoint with its value, a selective peak label, and a pure-CSS
-// hover layer (per-day hit columns reveal that day's dot and a value tooltip)
-// — fully interactive with zero JavaScript and no inline styles (CSP-safe;
-// all colour arrives via CSS classes). The direct value labels double as the
-// contrast relief the light theme needs for a brand line on white. The SVG
-// scales with its container at a fixed aspect so text never distorts. An
-// empty series renders nothing.
-func osTrendArea(vals []int, now time.Time) string {
-	const w, h = 560.0, 140.0
-	const padX, padTop, padBottom = 10.0, 16.0, 24.0
-	n := len(vals)
-	if n == 0 {
-		return ""
-	}
-	maxV, maxIdx, total := 0, 0, 0
-	for i, v := range vals {
-		total += v
-		if v > maxV {
-			maxV, maxIdx = v, i
-		}
-	}
-	scaleMax := maxV
-	if scaleMax < 1 {
-		scaleMax = 1 // an all-zero fortnight still draws a flat baseline
-	}
-	plotBottom := h - padBottom
-	plotH := plotBottom - padTop
-	stepX := 0.0
-	if n > 1 {
-		stepX = (w - 2*padX) / float64(n-1)
-	}
-	f := func(v float64) string { return strconv.FormatFloat(v, 'f', 1, 64) }
-	xAt := func(i int) float64 { return padX + float64(i)*stepX }
-	yAt := func(v int) float64 { return plotBottom - (float64(v)/float64(scaleMax))*plotH }
-	dayAt := func(i int) time.Time { return now.AddDate(0, 0, -(n - 1 - i)) }
-
-	var b strings.Builder
-	label := "Publishing activity, last " + strconv.Itoa(n) + " days: " + strconv.Itoa(total) + " total"
-	if maxV > 0 {
-		label += ", peak " + strconv.Itoa(maxV) + " on " + dayAt(maxIdx).Format("2 Jan")
-	}
-	b.WriteString(`<svg class="trendchart" viewBox="0 0 560 140" role="img" aria-label="` + html.EscapeString(label) + `">`)
-	// Area gradient: line colour fading to transparent at the baseline. The
-	// stops take their colour from CSS (currentColor), so both themes work.
-	b.WriteString(`<defs><linearGradient id="vpTrendGrad" x1="0" y1="0" x2="0" y2="1">` +
-		`<stop class="tc-grad-a" offset="0"/><stop class="tc-grad-b" offset="1"/></linearGradient></defs>`)
-	// Recessive grid: top (max) + midline + baseline, tiny max label above.
-	b.WriteString(`<line class="tc-grid" x1="` + f(padX) + `" y1="` + f(padTop) + `" x2="` + f(w-padX) + `" y2="` + f(padTop) + `"/>`)
-	b.WriteString(`<line class="tc-grid" x1="` + f(padX) + `" y1="` + f(padTop+plotH/2) + `" x2="` + f(w-padX) + `" y2="` + f(padTop+plotH/2) + `"/>`)
-	b.WriteString(`<line class="tc-base" x1="` + f(padX) + `" y1="` + f(plotBottom) + `" x2="` + f(w-padX) + `" y2="` + f(plotBottom) + `"/>`)
-	if maxV > 0 {
-		b.WriteString(`<text class="tc-ylabel" x="` + f(padX) + `" y="` + f(padTop-5) + `">` + strconv.Itoa(maxV) + `</text>`)
-	}
-	// Line path (shared by the area fill, which closes down to the baseline).
-	var line strings.Builder
-	for i, v := range vals {
-		if i == 0 {
-			line.WriteString("M")
-		} else {
-			line.WriteString(" L")
-		}
-		line.WriteString(f(xAt(i)) + " " + f(yAt(v)))
-	}
-	if n == 1 { // a single point still draws a visible mark
-		line.WriteString(" L" + f(xAt(0)+0.1) + " " + f(yAt(vals[0])))
-	}
-	b.WriteString(`<path class="tc-area" d="` + line.String() + ` L` + f(xAt(n-1)) + ` ` + f(plotBottom) + ` L` + f(xAt(0)) + ` ` + f(plotBottom) + ` Z"/>`)
-	b.WriteString(`<path class="tc-line" d="` + line.String() + `"/>`)
-	// Sparse date ticks: first, middle, last — recessive text tokens.
-	tick := func(i int, anchor string) {
-		b.WriteString(`<text class="tc-tick tc-tick--` + anchor + `" x="` + f(xAt(i)) + `" y="` + f(h-8) + `">` + dayAt(i).Format("2 Jan") + `</text>`)
-	}
-	tick(0, "start")
-	if n > 4 {
-		tick(n/2, "mid")
-	}
-	if n > 1 {
-		tick(n-1, "end")
-	}
-	// Selective peak label (skipped when the peak IS the endpoint).
-	if maxV > 0 && maxIdx != n-1 {
-		b.WriteString(`<text class="tc-peak" x="` + f(xAt(maxIdx)) + `" y="` + f(yAt(maxV)-7) + `">` + strconv.Itoa(maxV) + `</text>`)
-	}
-	// Emphasised endpoint: always-visible dot + its value to the left.
-	endX, endY := xAt(n-1), yAt(vals[n-1])
-	b.WriteString(`<circle class="tc-end" cx="` + f(endX) + `" cy="` + f(endY) + `" r="3.5"/>`)
-	b.WriteString(`<text class="tc-endlabel" x="` + f(endX-7) + `" y="` + f(endY+3.5) + `">` + strconv.Itoa(vals[n-1]) + `</text>`)
-	// Hover layer: an invisible full-height hit column per day reveals that
-	// day's dot + a value tooltip (pure CSS). <title> is the native fallback
-	// for touch and assistive tech.
-	half := stepX / 2
-	if n == 1 {
-		half = (w - 2*padX) / 2
-	}
-	for i, v := range vals {
-		cx, cy := xAt(i), yAt(v)
-		day := dayAt(i).Format("2 Jan")
-		tipText := day + " · " + strconv.Itoa(v)
-		tipW := float64(len(tipText))*6.2 + 14
-		tipX := cx - tipW/2
-		if tipX < padX {
-			tipX = padX
-		}
-		if tipX+tipW > w-padX {
-			tipX = w - padX - tipW
-		}
-		tipY := cy - 26
-		if tipY < 2 {
-			tipY = cy + 10
-		}
-		b.WriteString(`<g class="tc-day">`)
-		b.WriteString(`<rect class="tc-hit" x="` + f(cx-half) + `" y="0" width="` + f(half*2) + `" height="` + f(h) + `"><title>` + html.EscapeString(day+" — "+strconv.Itoa(v)+" published") + `</title></rect>`)
-		b.WriteString(`<circle class="tc-dot" cx="` + f(cx) + `" cy="` + f(cy) + `" r="3"/>`)
-		b.WriteString(`<g class="tc-tip"><rect x="` + f(tipX) + `" y="` + f(tipY) + `" width="` + f(tipW) + `" height="17" rx="4"/><text x="` + f(tipX+tipW/2) + `" y="` + f(tipY+12) + `">` + html.EscapeString(tipText) + `</text></g>`)
-		b.WriteString(`</g>`)
-	}
-	b.WriteString(`</svg>`)
-	return b.String()
-}
-
 // osSparkline renders a compact inline SVG line chart from a series of values.
 // It emits no inline styles (CSP-safe); all colour comes from CSS via
 // currentColor on the .sparkline class. width/height are SVG viewBox units.
@@ -1927,52 +1918,10 @@ func (a *App) handleOSDashboard(w http.ResponseWriter, r *http.Request) {
 	cfg := a.getOSSettings(r.Context())
 	snap := a.getAdminSnapshot()
 
-	// 14-day publishing trend sparkline.
-	trend := osPublishTrend(r.Context(), 14)
-	trendTotal := 0
-	for _, v := range trend {
-		trendTotal += v
-	}
-	sparkSVG := osTrendArea(trend, time.Now())
-
-	pct := int(snap.StoragePct)
-	storBar := "progress__bar"
-	storWidth := storageWidthClass(pct)
-	if pct >= 90 {
-		storBar += " progress__bar--danger"
-	} else if pct >= 75 {
-		storBar += " progress__bar--warn"
-	} else {
-		storBar += " progress__bar--ok"
-	}
-
-	// Recent articles table
-	recentHTML := `<div class="table-empty">No articles yet — <a href="/os/editor">write your first post</a>.</div>`
-	if len(snap.RecentArticles) > 0 {
-		rows := ""
-		for _, ra := range snap.RecentArticles {
-			rows += `<tr>
-  <td class="row-title"><a href="/os/editor/` + html.EscapeString(ra.Slug) + `">` + html.EscapeString(ra.Title) + `</a>
-    <div class="row-meta">/` + html.EscapeString(ra.Slug) + `</div></td>
-  <td class="muted text-sm">` + ra.CreatedAt.UTC().Format("2 Jan 2006") + `</td>
-  <td class="row-actions">
-    <a class="btn btn--ghost btn--sm" href="/os/editor/` + html.EscapeString(ra.Slug) + `">Edit</a>
-    <a class="btn btn--ghost btn--sm" href="/` + html.EscapeString(ra.Slug) + `" target="_blank" rel="noopener">View ↗</a>
-  </td>
-</tr>`
-		}
-		recentHTML = `<div class="table-wrap"><table class="table">
-  <thead><tr><th>Title</th><th>Created</th><th></th></tr></thead>
-  <tbody>` + rows + `</tbody>
-</table></div>`
-	}
-
-	// Content workspace + anonymous-world status (dashboard redesign): the content
-	// areas that used to live in the sidebar (Posts, Pages, Comments, Messages,
-	// Media, New Post, Website) are surfaced here as premium tiles with live counts
-	// and notification badges, and the Tor world's .onion — previously crammed under
-	// the sidebar toggle — is shown as its own world card. Both counts are cheap
-	// on-demand reads, so the 30s metrics collector is left untouched.
+	// Content workspace (dashboard redesign): the content areas that used to live in
+	// the sidebar (Posts, Pages, Comments, Messages, Media, New Post, Website) are
+	// surfaced here as premium tiles with live counts and notification badges. Counts
+	// are cheap on-demand reads, so the 30s metrics collector is left untouched.
 	onionMode := config.Cfg.OnionMode
 	blogPosts := snap.TotalArticles - snap.TotalPages
 	if blogPosts < 0 {
@@ -1983,11 +1932,14 @@ func (a *App) handleOSDashboard(w http.ResponseWriter, r *http.Request) {
 		_ = dbpkg.Reader().QueryRowContext(r.Context(), `SELECT COUNT(1) FROM comments WHERE status='pending'`).Scan(&pendingComments)
 	}
 	mediaCount := len(listMediaItems())
-	worldAddr := cfg.TorSpaceOnion
+	// The Tor world's .onion is shown ONLY inside the Tor console itself — the
+	// clearnet dashboard must never surface the anonymous address (ADR-0141
+	// anti-correlation: the onion never appears alongside the clearnet identity).
+	// Entering the Tor world is done from the sidebar world switch.
+	worldCardHTML := ""
 	if onionMode {
-		worldAddr = config.Cfg.Domain
+		worldCardHTML = osWorldCard(true, cfg.TorSpaceOn, cfg.TorSpaceRunning, config.Cfg.Domain)
 	}
-	worldCardHTML := osWorldCard(onionMode, cfg.TorSpaceOn, cfg.TorSpaceRunning, worldAddr)
 	workspaceHTML := osWorkspaceGrid(onionMode, blogPosts, snap.TotalPages, pendingComments, snap.UnreadMessages, mediaCount)
 
 	body := `<!-- Quick compose -->
@@ -2039,42 +1991,15 @@ func (a *App) handleOSDashboard(w http.ResponseWriter, r *http.Request) {
   </div>
 </div>
 
-<!-- Publishing trend -->
-<div class="card mb-6">
-  <div class="flex justify-between items-center">
-    <div class="card-title">Publishing trend</div>
-    <span class="text-xs muted">` + strconv.Itoa(trendTotal) + ` in last 14 days</span>
-  </div>
-  <div class="trendchart-wrap">` + sparkSVG + `</div>
-</div>
-
-<div class="grid grid-2 mb-6">
-  <!-- Storage -->
-  <div class="card">
-    <div class="card-title">Storage</div>
-    <div class="progress"><div class="` + storBar + ` ` + storWidth + `"></div></div>
-    <div class="flex justify-between mt-3">
-      <span class="text-xs muted">` + strconv.Itoa(pct) + `% used</span>
-      <span class="text-xs muted">Cache hit ` + strconv.Itoa(int(snap.CacheHitRatio*100)) + `%</span>
-    </div>
-  </div>
-
-  <!-- Activity feed -->
-  <div class="card">
-    <div class="card-title">Recent activity</div>
-    <div id="activity-feed" class="activity-list">
-      <!-- Populated by admin-os.js via GET /os/api/activity -->
-      <div class="skeleton skeleton--text mb-3"></div>
-      <div class="skeleton skeleton--text mb-3 w-80"></div>
-      <div class="skeleton skeleton--text w-65"></div>
-    </div>
-  </div>
-</div>
-
-<!-- Recent articles -->
+<!-- Activity feed (full-width) -->
 <div class="card">
-  <div class="card-title">Recent articles</div>
-  ` + recentHTML + `
+  <div class="card-title">Recent activity</div>
+  <div id="activity-feed" class="activity-list">
+    <!-- Populated by admin-os.js via GET /os/api/activity -->
+    <div class="skeleton skeleton--text mb-3"></div>
+    <div class="skeleton skeleton--text mb-3 w-80"></div>
+    <div class="skeleton skeleton--text w-65"></div>
+  </div>
 </div>`
 
 	writeOSHTML(w, adminOSLayout(nonce, "Dashboard", "dashboard", cfg, htmpl.HTML(body)))

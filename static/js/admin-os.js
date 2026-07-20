@@ -686,6 +686,37 @@ $$('[data-setting-key]').forEach(function (el) {
   load();
 })();
 
+/* ── Notification centre ─────────────────────────────────────── */
+/* The topbar bell opens an expandable panel of actionable notifications
+ * (rendered server-side as plain links, so clicking a row navigates straight
+ * to the page that clears it). This only toggles visibility — no fetch, no
+ * innerHTML — keeping the strict CSP intact. */
+(function initNotifications() {
+  var wrap = $('[data-notif]');
+  if (!wrap) return;
+  var btn = $('[data-notif-toggle]', wrap);
+  var panel = $('[data-notif-panel]', wrap);
+  if (!btn || !panel) return;
+  function open() {
+    panel.hidden = false;
+    wrap.classList.add('is-open');
+    btn.setAttribute('aria-expanded', 'true');
+  }
+  function close() {
+    panel.hidden = true;
+    wrap.classList.remove('is-open');
+    btn.setAttribute('aria-expanded', 'false');
+  }
+  on(btn, 'click', function (e) {
+    e.preventDefault();
+    e.stopPropagation();
+    panel.hidden ? open() : close();
+  });
+  // Dismiss on outside click or Escape.
+  on(document, 'click', function (e) { if (!wrap.contains(e.target)) close(); });
+  on(document, 'keydown', function (e) { if (e.key === 'Escape') close(); });
+})();
+
 /* ── Login page shake on error ───────────────────────────────── */
 (function initLogin() {
   var panel = $('.login-panel');
