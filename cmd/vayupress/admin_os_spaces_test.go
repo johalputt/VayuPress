@@ -22,7 +22,7 @@ func TestTorWorldNav(t *testing.T) {
 	// Dashboard hub, the design tool, the anonymous services and system areas.
 	for _, want := range []string{
 		">Dashboard<", ">Theme<", ">Analytics<",
-		">VayuMail<", ">VayuTalk<", ">Domains<", ">Settings<",
+		">VayuMail<", ">VayuTalk<", ">Domains<", ">System<",
 		"Anonymous services",
 	} {
 		if !strings.Contains(nav, want) {

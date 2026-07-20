@@ -8,7 +8,25 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
-## [3.14.32] — 2026-07-20
+## [3.14.33] — 2026-07-20
+
+### Changed
+- **Flat, label-less sidebar; System surfaces folded into the Optimize hub.** The
+  everyday config surfaces — **Tools & Plugins, Domains, Settings, VayuAPI**
+  (renamed from *API Keys*) and **VayuMCP** — now live in the **Optimize** hub
+  (new *Configuration & integrations* row), and the **PRODUCTS** and **SYSTEM**
+  section headings are gone. The clearnet sidebar is now a clean flat list:
+  **Dashboard · Growth · Optimize · Operations**, plus pinned **VayuMail ·
+  VayuTalk · VayuTor · Update & Backup**. Hub cards stay role-gated, so editors
+  never see the admin-only ones.
+- **Tor console gets the same hub treatment (design parity, ADR-0141).** The Tor
+  world's **System** group (Storage & System, Settings, My Profile) is consolidated
+  into a single pinned **System** hub tab, matching the clearnet card-hub pattern
+  so both worlds share the identical minimal design.
+
+### Build
+- Merged the pending CI dependency bumps (`setup-go`, `upload-artifact`,
+  `fetch-metadata`, `deploy-pages`, `action-gh-release`).
 
 ### Changed
 - **Monitoring, Governance, Storage & System and Security moved into the

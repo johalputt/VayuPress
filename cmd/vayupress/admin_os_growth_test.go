@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/mode"
 )
 
@@ -84,40 +85,84 @@ func TestOperationsHubConsolidatesSidebar(t *testing.T) {
 	}
 }
 
-// TestOptimizeHubConsolidatesSidebar verifies the circled Optimize items collapse
-// into one pinned hub while the products stay pinned, and that the hub gates the
-// admin-only Bot Shield card away from editors.
+// TestOptimizeHubConsolidatesSidebar verifies the Optimize hub now fronts BOTH the
+// original optimize items and the config surfaces (Tools/Domains/Settings/VayuAPI/
+// VayuMCP), that the sidebar is flat/label-less (no Products/System headings), and
+// that the hub gates admin-only cards away from editors.
 func TestOptimizeHubConsolidatesSidebar(t *testing.T) {
 	nav := osSidebarNav("dashboard", &osSettings{AccessLevel: accessAdmin})
 
 	if !strings.Contains(nav, ">Optimize<") {
 		t.Error("sidebar must show the Optimize hub tab")
 	}
-	for _, gone := range []string{">SEO<", ">Analytics<", ">Bot Shield<", ">Theme Studio<", ">Theme Store<"} {
+	// Moved into hubs — must NOT be sidebar rows anymore.
+	for _, gone := range []string{
+		">SEO<", ">Analytics<", ">Bot Shield<", ">Theme Studio<", ">Theme Store<",
+		">Tools & Plugins<", ">Domains<", ">Settings<", ">API Keys<", ">VayuMCP<",
+	} {
 		if strings.Contains(nav, gone) {
-			t.Errorf("sidebar must not show %q (moved into the Optimize hub)", gone)
+			t.Errorf("sidebar must not show %q (moved into a hub)", gone)
 		}
 	}
-	for _, keep := range []string{">VayuMail<", ">VayuTalk<", ">VayuTor<", "Products"} {
+	// The "Products" and "System" section labels are gone (flat sidebar).
+	for _, label := range []string{"sidebar-section-label\">Products<", "sidebar-section-label\">System<"} {
+		if strings.Contains(nav, label) {
+			t.Errorf("sidebar must not render the %q heading anymore", label)
+		}
+	}
+	// Still pinned (label-less): the products + Update & Backup (href-checked to
+	// dodge the &amp; escaping in the label).
+	for _, keep := range []string{">VayuMail<", ">VayuTalk<", ">VayuTor<", `href="/os/update"`} {
 		if !strings.Contains(nav, keep) {
 			t.Errorf("sidebar must still pin %q", keep)
 		}
 	}
 
-	// Admins see every card, including the admin-only Bot Shield.
+	// Admins see every card, including the config surfaces and the renamed VayuAPI.
 	admin := osOptimizeGrid(accessAdmin)
 	assertCSPSafe(t, "osOptimizeGrid/admin", admin)
-	for _, want := range []string{`href="/os/seo"`, `href="/os/analytics"`, `href="/os/shield"`, `href="/os/theme"`, `href="/os/theme/store"`} {
+	for _, want := range []string{
+		`href="/os/seo"`, `href="/os/analytics"`, `href="/os/shield"`, `href="/os/theme"`, `href="/os/theme/store"`,
+		`href="/os/tools"`, `href="/os/domains"`, `href="/os/settings"`, `href="/os/apikeys"`, `href="/os/connector"`,
+		">VayuAPI<", // API Keys renamed
+	} {
 		if !strings.Contains(admin, want) {
 			t.Errorf("admin Optimize hub missing %q", want)
 		}
 	}
-	// Editors see the editor cards but NOT the admin-only Bot Shield.
+	// Editors see the editor cards but NOT the admin-only ones (Bot Shield, config).
 	editor := osOptimizeGrid(accessEditor)
-	if strings.Contains(editor, `href="/os/shield"`) {
-		t.Error("editor must not see the admin-only Bot Shield card")
+	for _, deny := range []string{`href="/os/shield"`, `href="/os/settings"`, `href="/os/apikeys"`} {
+		if strings.Contains(editor, deny) {
+			t.Errorf("editor must not see admin-only card %q", deny)
+		}
 	}
 	if !strings.Contains(editor, `href="/os/seo"`) {
 		t.Error("editor must still see the SEO card")
+	}
+}
+
+// TestTorSystemHub verifies the Tor console's System group is consolidated into a
+// pinned System hub tab (design parity) and the hub renders its cards.
+func TestTorSystemHub(t *testing.T) {
+	prev := config.Cfg.OnionMode
+	config.Cfg.OnionMode = true
+	defer func() { config.Cfg.OnionMode = prev }()
+
+	nav := osSidebarNav("dashboard", &osSettings{AccessLevel: accessAdmin})
+	if !strings.Contains(nav, ">System<") {
+		t.Error("Tor sidebar must show the consolidated System hub tab")
+	}
+	for _, gone := range []string{">Storage & System<", ">My Profile<"} {
+		if strings.Contains(nav, gone) {
+			t.Errorf("Tor sidebar must not show %q (moved into the System hub)", gone)
+		}
+	}
+	body := osSystemGrid(accessAdmin)
+	assertCSPSafe(t, "osSystemGrid", body)
+	for _, want := range []string{`href="/os/storage"`, `href="/os/settings"`, `href="/os/profile"`, "System"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("System hub missing %q", want)
+		}
 	}
 }

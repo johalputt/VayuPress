@@ -219,9 +219,12 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		// Fault Engine / ADR Registry into one dashboard-style card page (admin-only).
 		pr.Get("/os/operations", a.handleOSOperations)
 		// Optimize hub: consolidates SEO / Analytics / Bot Shield / Theme Studio /
-		// Theme Store into one dashboard-style card page (editor+; admin-only cards
-		// are hidden from editors).
+		// Theme Store + Tools / Domains / Settings / VayuAPI / VayuMCP into one
+		// dashboard-style card page (editor+; admin-only cards hidden from editors).
 		pr.Get("/os/optimize", a.handleOSOptimize)
+		// System hub: Storage & System / Settings / My Profile as a card page —
+		// gives the Tor-world console the same minimal hub treatment (ADR-0141).
+		pr.Get("/os/system", a.handleOSSystem)
 		pr.Get("/os/members", a.handleOSMembers)
 		// HTMX fragment: live-refresh the Members "Recent activity" feed.
 		pr.Get("/os/members/activity", a.handleOSMembersActivityFragment)
@@ -845,11 +848,10 @@ func torWorldNav(active string, lvl int, s *osSettings) string {
 		navItem("/os/talk", "VayuTalk", "talk", active, iconTalk),
 		gate(navItem("/os/domains", "Domains", "domains", active, iconDomains), "/os/domains"),
 	)
-	section("System",
-		gate(navItem("/os/storage", "Storage & System", "storage", active, iconStorage), "/os/storage"),
-		gate(navItem("/os/settings", "Settings", "settings", active, iconSettings), "/os/settings"),
-		navItem("/os/profile", "My Profile", "profile", active, iconMembers),
-	)
+	// System (Storage & System, Settings, My Profile) is consolidated into ONE
+	// pinned hub tab too — the same card-hub treatment the clearnet console uses —
+	// so both worlds share the identical minimal pattern (design parity, ADR-0141).
+	b.WriteString(gate(navItem("/os/system", "System", "system", active, iconSettings), "/os/system"))
 	return b.String()
 }
 
@@ -887,27 +889,15 @@ func osSidebarNav(active string, s *osSettings) string {
 	// single click, from anywhere, with the live status + .onion shown inline (no
 	// separate page). Admin-only (matches the /os/spaces guard).
 	b.WriteString(spaceSwitch(lvl, s))
-	// gate returns the item only when this access level can reach its href.
+	// gate returns the item only when this access level can reach its href. The
+	// clearnet sidebar is now a flat, label-less list of hub tabs + a few pinned
+	// items (no "Products"/"System" section headings) — every grouping lives inside
+	// a hub page (Dashboard, Growth, Optimize, Operations).
 	gate := func(item, href string) string {
 		if lvl < osPathMinLevel(href) {
 			return ""
 		}
 		return item
-	}
-	section := func(label string, items ...string) {
-		shown := make([]string, 0, len(items))
-		for _, it := range items {
-			if it != "" {
-				shown = append(shown, it)
-			}
-		}
-		if len(shown) == 0 {
-			return
-		}
-		b.WriteString(`<div class="sidebar-section-label">` + label + `</div>`)
-		for _, it := range shown {
-			b.WriteString(it)
-		}
 	}
 
 	// Content management (Posts, Pages, Comments, Messages, Media, New Post,
@@ -920,33 +910,18 @@ func osSidebarNav(active string, s *osSettings) string {
 	// live counts, mirroring the Dashboard pattern — so the sidebar stays minimal.
 	// (My Profile also remains reachable from the sidebar footer avatar.)
 	b.WriteString(gate(navItem("/os/growth", "Growth", "growth", active, iconGrowth), "/os/growth"))
-	// Optimize (SEO, Analytics, Bot Shield, Theme Studio, Theme Store) is
-	// consolidated into ONE pinned hub tab — a card grid like Dashboard/Growth —
-	// keeping the sidebar minimal. The products (VayuMail, VayuTalk, VayuTor) stay
-	// pinned below as their own row since they are opened often.
+	// Optimize hub. SEO, Analytics, Bot Shield, Theme Studio, Theme Store AND the
+	// everyday config surfaces (Tools & Plugins, Domains, Settings, VayuAPI, VayuMCP)
+	// all live inside this one card page now.
 	b.WriteString(gate(navItem("/os/optimize", "Optimize", "optimize", active, iconOptimize), "/os/optimize"))
-	section("Products",
-		navItem("/os/vayumail", "VayuMail", "vayuos", active, iconSecurity),
-		navItem("/os/talk", "VayuTalk", "talk", active, iconTalk),
-		// VayuTor is an admin-only infrastructure control (see osPathMinLevel):
-		// gate its sidebar entry so author/editor sessions never see it.
-		gate(navItem("/os/tor", "VayuTor", "tor", active, iconTor), "/os/tor"),
-	)
-	// Monitoring, Governance, Storage & System and Security moved into the
-	// Operations hub (Health & governance) — the System row keeps the everyday
-	// config surfaces.
-	section("System",
-		gate(navItem("/os/tools", "Tools & Plugins", "tools", active, iconTools), "/os/tools"),
-		gate(navItem("/os/update", "Update & Backup", "update", active, iconUpdate), "/os/update"),
-		gate(navItem("/os/domains", "Domains", "domains", active, iconDomains), "/os/domains"),
-		gate(navItem("/os/settings", "Settings", "settings", active, iconSettings), "/os/settings"),
-		gate(navItem("/os/apikeys", "API Keys", "apikeys", active, iconKey), "/os/apikeys"),
-		gate(navItem("/os/connector", "VayuMCP", "connector", active, iconConnector), "/os/connector"),
-	)
-	// Operations (System Modes, Policy Inspector, Topology, Replay Explorer, Fault
-	// Engine, ADR Registry) is consolidated into ONE pinned hub tab — a card grid
-	// like Dashboard/Growth — keeping the sidebar minimal and clean.
+	// Operations hub (ops/diagnostics + health/governance).
 	b.WriteString(gate(navItem("/os/operations", "Operations", "operations", active, iconOperations), "/os/operations"))
+	// Pinned, label-less: the products (opened often) and Update & Backup (the one
+	// system surface kept a click away). Everything else folded into the hubs.
+	b.WriteString(navItem("/os/vayumail", "VayuMail", "vayuos", active, iconSecurity))
+	b.WriteString(navItem("/os/talk", "VayuTalk", "talk", active, iconTalk))
+	b.WriteString(gate(navItem("/os/tor", "VayuTor", "tor", active, iconTor), "/os/tor"))
+	b.WriteString(gate(navItem("/os/update", "Update & Backup", "update", active, iconUpdate), "/os/update"))
 	return b.String()
 }
 
