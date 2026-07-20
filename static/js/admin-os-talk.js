@@ -26,6 +26,7 @@
   if (!root) return;
   var self = root.getAttribute('data-self') || '';
   var selfFp = root.getAttribute('data-self-fp') || '';
+  var onionWorld = root.getAttribute('data-onion') === '1'; // Tor world: this console is the sole reader
   var asSel = document.getElementById('vtalk-as');   // "chat as" switcher (admins)
   var currentSelf = (asSel ? asSel.value : self).trim().toLowerCase();
 
@@ -343,8 +344,22 @@
   // how many messages are counting down.
   var burning = [];
   var burnTicker = null;
+  // signalRead tells the server an incoming message has been read. Only the Tor
+  // world console does this (it is the sole reader there); the server read-destroys
+  // and, for a message from another .onion, forwards a "read" receipt over Tor so
+  // the sender sees it. Fire-and-forget, once per message. (ADR-0142)
+  function signalRead(m) {
+    if (!onionWorld || !m || m.mine || !m.id || m.readSignaled) return;
+    m.readSignaled = true;
+    fetch('/os/talk/read', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': cookie('vp_csrf') },
+      body: JSON.stringify({ id: m.id })
+    }).catch(function () {});
+  }
   function armBurn(m) {
     if (!m || m.armed) return;
+    if (!m.mine) signalRead(m);
     m.armed = true;
     var secs = (m.mode === 'live') ? LIVE_GRACE_SECONDS : (m.burnSeconds || 300);
     m.burnAt = Date.now() + secs * 1000;

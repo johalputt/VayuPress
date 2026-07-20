@@ -313,6 +313,9 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	// ciphertext envelope for our anonymous code. Closed unless federation is on
 	// (the handler 404s otherwise); rate-limited like the other public endpoints.
 	r.With(auth.PublicDiscoveryRateLimit).Post("/api/v1/talk/onion/deliver", a.handleTalkOnionDeliver)
+	// Inbound onion-to-onion receipt (ADR-0142): a peer we messaged tells us they
+	// read it; we surface it on the sender's stream. Same closed-by-default gating.
+	r.With(auth.PublicDiscoveryRateLimit).Post("/api/v1/talk/onion/receipt", a.handleTalkOnionReceipt)
 	r.Get("/pricing", a.handlePricingPage)
 	// Built-in legal page: the VayuMail app privacy policy (Google Play link).
 	r.Get("/vayumail/privacy", a.handleVayuMailPrivacy)

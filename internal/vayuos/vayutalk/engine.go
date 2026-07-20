@@ -182,6 +182,25 @@ func (e *Engine) Ack(id string) {
 	}
 }
 
+// AckReturningSender is Ack that also reports the message's sender, so a caller
+// can forward the read receipt to a sender who is not on this instance (an
+// onion-to-onion peer, ADR-0142). Returns ok=false if the id was unknown.
+func (e *Engine) AckReturningSender(id string) (sender string, ok bool) {
+	sender, existed := e.store.Delete(id)
+	if !existed {
+		return "", false
+	}
+	e.hub.PublishReceipt(sender, id, "read")
+	return sender, true
+}
+
+// PublishReceipt delivers a receipt (e.g. "read") to a streaming user. Used to
+// surface a receipt that arrived from another onion for a message this instance's
+// user sent (ADR-0142).
+func (e *Engine) PublishReceipt(user, id, status string) {
+	e.hub.PublishReceipt(user, id, status)
+}
+
 // PubKey resolves a recipient's armored public key and fingerprint.
 func (e *Engine) PubKey(email string) (armored, fingerprint string, err error) {
 	if e.pubkey == nil {

@@ -8,6 +8,27 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.67] — 2026-07-20
+
+### Added
+- **Onion-to-onion VayuTalk — cross-onion read receipts.** When the recipient
+  reads a message that was delivered to another `.onion`, a **"read" receipt is
+  forwarded back to the sender's onion over Tor**, so the sender sees the message
+  marked read and it burns on both sides — the ephemeral timer that already works
+  same-instance now works across onions.
+  - In the Tor world the web console is the sole reader (no phone app), so it now
+    read-destroys on reveal via a new `POST /os/talk/read`. In the clearnet world
+    this is a deliberate no-op — the phone app remains the authoritative reader
+    and the console never steals its queued copy.
+  - A new inbound `POST /api/v1/talk/onion/receipt` accepts the receipt (same
+    closed-by-default gating as delivery; it acts only on a receipt for a message
+    *this* code sent) and surfaces it on the sender's live stream.
+
+### Notes
+- Receipts are best-effort over Tor; a lost one only means the sender doesn't see
+  a read mark. Cross-onion behaviour still needs validation on two real `.onion`
+  installs — it cannot be exercised in CI.
+
 ## [3.14.66] — 2026-07-20
 
 ### Added

@@ -60,7 +60,9 @@ and restart the service. When set, this takes precedence over the managed port.
 ## Limits (experimental)
 
 - Rotating your code changes the address peers must use; hand out the new one.
-- There is no cross-onion read receipt yet — the sender does not learn when the
-  recipient reads a message delivered to another onion.
+- **Read receipts work across onions:** when the recipient reads a message, a
+  "read" receipt is delivered back to the sender's onion over Tor (best-effort),
+  and the message burns on both sides. In the Tor world the web console is the
+  sole reader, so it read-destroys on reveal (there is no phone to also hold it).
 - **Validate on real onions.** This path cannot be exercised in CI; confirm
   delivery between two live `.onion` installs before relying on it.

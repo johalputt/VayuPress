@@ -2,8 +2,8 @@
 
 Status: Accepted (all phases shipped: opt-in + inbound endpoint + guard-railed
 outbound lane + send wiring + admin toggle + inbound signature verification +
-managed-tor loopback SOCKS auto-open. Live 2-onion delivery pending real-deploy
-validation — it cannot be exercised in CI.)
+managed-tor loopback SOCKS auto-open + cross-onion read receipts. Live 2-onion
+delivery pending real-deploy validation — it cannot be exercised in CI.)
 Date: 2026-07-20
 Deciders: VayuPress core
 

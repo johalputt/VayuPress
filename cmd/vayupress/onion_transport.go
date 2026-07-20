@@ -226,6 +226,49 @@ func onionDeliverEnvelope(ctx context.Context, client *http.Client, peerHost str
 	return out.ID, out.Delivered, out.Queued, nil
 }
 
+// onionReceipt is the wire shape POSTed to a peer's /api/v1/talk/onion/receipt.
+type onionReceipt struct {
+	ID        string `json:"id"`
+	Status    string `json:"status"`
+	Sender    string `json:"sender"`    // the original message sender (who receives the receipt)
+	Recipient string `json:"recipient"` // the reader who generated it
+}
+
+// forwardReadReceiptOverOnion tells the ORIGINAL sender's onion that we read their
+// message, over Tor. sender is the original sender's address (its host is where we
+// deliver); recipient is us. Best-effort — a lost receipt only means the sender
+// does not see a "read" mark.
+func (a *App) forwardReadReceiptOverOnion(id, sender, recipient string) {
+	socks := a.resolvedTorSocksAddr(context.Background())
+	if socks == "" {
+		return
+	}
+	host := hostPart(sender)
+	if !talkHostIsOnion(host) {
+		return
+	}
+	client, err := newOnionHTTPClient(socks)
+	if err != nil {
+		return
+	}
+	payload, merr := json.Marshal(onionReceipt{ID: id, Status: "read", Sender: sender, Recipient: recipient})
+	if merr != nil {
+		return
+	}
+	req, rerr := http.NewRequest(http.MethodPost, "http://"+host+"/api/v1/talk/onion/receipt", bytes.NewReader(payload))
+	if rerr != nil {
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+	defer cancel()
+	resp, derr := client.Do(req.WithContext(ctx))
+	if derr != nil {
+		return
+	}
+	_ = resp.Body.Close()
+}
+
 // sendOverOnion performs a full outbound onion-to-onion delivery: fetch the
 // recipient's key from their .onion over Tor, encrypt+sign locally, and hand the
 // ciphertext to their install's delivery endpoint over Tor. Every failure branch

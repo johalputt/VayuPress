@@ -253,7 +253,11 @@ func (a *App) handleVayuOSTalk(w http.ResponseWriter, r *http.Request) {
 	_, selfFP, _ := a.vayuTalk.PubKey(self)
 
 	esc := htmpl.HTMLEscapeString
-	body.WriteString(`<div class="vtalk" data-self="` + esc(self) + `" data-self-fp="` + esc(formatSafety(selfFP)) + `">`)
+	onionAttr := ""
+	if config.Cfg.OnionMode {
+		onionAttr = ` data-onion="1"`
+	}
+	body.WriteString(`<div class="vtalk" data-self="` + esc(self) + `" data-self-fp="` + esc(formatSafety(selfFP)) + `"` + onionAttr + `>`)
 
 	// Left rail: identity (a "chat as" switcher when more than one is available),
 	// start-a-chat box, and the live conversation list (filled by JS).
@@ -519,6 +523,87 @@ func (a *App) handleVayuOSTalkSend(w http.ResponseWriter, r *http.Request) {
 		"delivered": delivered,
 		"queued":    queued,
 	})
+}
+
+// handleVayuOSTalkRead marks an incoming message as read from the web console. In
+// the clearnet world this is a no-op (the phone app is the authoritative reader
+// that read-destroys — the console must never steal its queued copy). In the Tor
+// world the console is the ONLY reader (web-only, ADR-0141), so it read-destroys
+// here and, when the sender is on another .onion, forwards a "read" receipt to
+// that onion over Tor (ADR-0142).
+func (a *App) handleVayuOSTalkRead(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	if !a.vayuTalkEnabled() {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "vayutalk-disabled", "VayuTalk is not available", "")
+		return
+	}
+	var body struct {
+		ID string `json:"id"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8*1024)).Decode(&body); err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "bad-json", "Invalid request body", "")
+		return
+	}
+	id := strings.TrimSpace(body.ID)
+	if id == "" {
+		writeAPIError(w, r, http.StatusBadRequest, "validation_error", "id is required", "")
+		return
+	}
+	// Clearnet: never read-destroy from the console (see doc). Report ok so the
+	// client's fire-and-forget call is a clean no-op.
+	if !config.Cfg.OnionMode {
+		writeJSON(w, r, http.StatusOK, map[string]bool{"ok": true})
+		return
+	}
+	self := a.talkIdentity(r)
+	if self == "" {
+		writeAPIError(w, r, http.StatusForbidden, "no-mailbox", "No chat identity", "")
+		return
+	}
+	sender, ok := a.vayuTalk.AckReturningSender(id)
+	if ok && talkRecipientRemoteOnion(self, sender) {
+		go a.forwardReadReceiptOverOnion(id, sender, self)
+	}
+	writeJSON(w, r, http.StatusOK, map[string]bool{"ok": true, "acked": ok})
+}
+
+// handleTalkOnionReceipt accepts a "read" (or similar) receipt delivered from a
+// remote .onion for a message THIS instance's user sent, and publishes it to that
+// user's live stream (ADR-0142). Same closed-by-default posture as the delivery
+// endpoint; it acts only on a receipt addressed to our own current code.
+func (a *App) handleTalkOnionReceipt(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	if !a.vayuTalkEnabled() || !config.Cfg.OnionMode || !a.talkOnionFederationEnabled(r.Context()) {
+		http.NotFound(w, r)
+		return
+	}
+	self := a.talkAnonAddress(r.Context())
+	if self == "" {
+		http.NotFound(w, r)
+		return
+	}
+	var body struct {
+		ID        string `json:"id"`
+		Status    string `json:"status"`
+		Sender    string `json:"sender"`
+		Recipient string `json:"recipient"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8*1024)).Decode(&body); err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "bad-json", "Invalid request body", "")
+		return
+	}
+	id := strings.TrimSpace(body.ID)
+	status := strings.TrimSpace(body.Status)
+	// The receipt must be for a message WE sent (sender == our code), else ignore.
+	if id == "" || !strings.EqualFold(strings.TrimSpace(body.Sender), self) {
+		writeAPIError(w, r, http.StatusForbidden, "not-for-us", "This receipt is not for a code hosted here.", "")
+		return
+	}
+	if status != "read" {
+		status = "read"
+	}
+	a.vayuTalk.PublishReceipt(self, id, status)
+	writeJSON(w, r, http.StatusOK, map[string]bool{"ok": true})
 }
 
 // talkDecryptVerify decrypts an armored VayuTalk envelope with the mailbox's own

@@ -71,6 +71,45 @@ func onionDeliver(a *App, body map[string]interface{}) *httptest.ResponseRecorde
 	return rec
 }
 
+func onionReceiptPost(a *App, body map[string]interface{}) *httptest.ResponseRecorder {
+	payload, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/talk/onion/receipt", strings.NewReader(string(payload)))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	a.handleTalkOnionReceipt(rec, req)
+	return rec
+}
+
+// TestOnionReceiptClosedWhenFederationOff proves the receipt endpoint is closed
+// (404) unless federation is on.
+func TestOnionReceiptClosedWhenFederationOff(t *testing.T) {
+	a, self := appWithTalkOnion(t, false)
+	rec := onionReceiptPost(a, map[string]interface{}{"id": "abc", "status": "read", "sender": self, "recipient": "anonpeer99999999@peeronion234567xyz.onion"})
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("federation off = %d, want 404 (%s)", rec.Code, rec.Body.String())
+	}
+}
+
+// TestOnionReceiptAcceptsForOurMessage proves a receipt for a message WE sent
+// (sender == our code) is accepted.
+func TestOnionReceiptAcceptsForOurMessage(t *testing.T) {
+	a, self := appWithTalkOnion(t, true)
+	rec := onionReceiptPost(a, map[string]interface{}{"id": "abc", "status": "read", "sender": self, "recipient": "anonpeer99999999@peeronion234567xyz.onion"})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("receipt = %d, want 200 (%s)", rec.Code, rec.Body.String())
+	}
+}
+
+// TestOnionReceiptRejectsForeignSender proves a receipt whose sender is not our
+// code (i.e. not for a message we sent) is refused.
+func TestOnionReceiptRejectsForeignSender(t *testing.T) {
+	a, _ := appWithTalkOnion(t, true)
+	rec := onionReceiptPost(a, map[string]interface{}{"id": "abc", "status": "read", "sender": "anonsomeoneelse1@othersite234567xy.onion", "recipient": "anonpeer99999999@peeronion234567xyz.onion"})
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("foreign sender = %d, want 403 (%s)", rec.Code, rec.Body.String())
+	}
+}
+
 // TestOnionDeliverClosedWhenFederationOff proves the endpoint is undiscoverable
 // (404) unless the operator has opted into federation.
 func TestOnionDeliverClosedWhenFederationOff(t *testing.T) {
