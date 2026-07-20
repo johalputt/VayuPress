@@ -469,6 +469,203 @@
 .prod-safety { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.4rem; max-width: 15rem; margin: 0 auto; }
 .prod-safety span { font-family: monospace; font-size: 0.8rem; letter-spacing: 0.08em; color: rgb(var(--pr)); background: rgba(var(--pr),0.08); border: 1px solid rgba(var(--pr),0.18); border-radius: 0.4rem; padding: 0.3rem 0; }
 
+/* ══════════════════════════════════════════════════════
+   TWO WORLDS — Clearnet ⇄ Tor · animated toggle + palette flip
+   The active world drives --w-accent (rgb triplet) so a whole
+   family of surfaces repaints in one move; the flip block at the
+   bottom recolours the fixed teal utilities for the Tor world.
+   ══════════════════════════════════════════════════════ */
+
+:root {
+  --w-accent:   45,212,191;   /* teal-l  */
+  --w-accent-2: 245,158,11;   /* saffron */
+  --w-btn-a: #14b8a6;
+  --w-btn-b: #0d9488;
+}
+body[data-world="tor"] {
+  --w-accent:   167,139,250;  /* violet-400 */
+  --w-accent-2: 216,180,254;  /* violet-300 */
+  --w-btn-a: #7c3aed;
+  --w-btn-b: #6d28d9;
+}
+
+/* Futuristic hero grid — a faint, masked coordinate field. */
+.hero-grid {
+  position: absolute; inset: 0; pointer-events: none; z-index: 0;
+  background-image:
+    linear-gradient(rgba(var(--w-accent),0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(var(--w-accent),0.05) 1px, transparent 1px);
+  background-size: 46px 46px;
+  -webkit-mask-image: radial-gradient(ellipse 72% 62% at 32% 30%, #000 0%, transparent 74%);
+          mask-image: radial-gradient(ellipse 72% 62% at 32% 30%, #000 0%, transparent 74%);
+  opacity: 0.6; transition: background-image 0.6s ease;
+}
+
+/* Highlighted words inside the world-reactive hero lead. */
+.hero-lead .hl { color: #e5e7eb; font-weight: 500; }
+
+/* Primary hero CTA — gradient flips with the world. */
+.hero-cta {
+  background: linear-gradient(90deg, var(--w-btn-a), var(--w-btn-b));
+  box-shadow: 0 14px 40px -14px var(--w-btn-b);
+  transition: box-shadow 0.35s ease, transform 0.3s ease, background 0.4s ease;
+}
+.hero-cta:hover { box-shadow: 0 22px 58px -14px var(--w-btn-b); }
+
+/* ── The toggle itself — a cute sliding pill ── */
+.world-toggle {
+  position: relative; display: inline-flex; align-items: center;
+  padding: 0.3rem; border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(255,255,255,0.03);
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  box-shadow: inset 0 0 0 1px rgba(var(--w-accent),0.08),
+              0 12px 34px -14px rgba(var(--w-accent),0.55);
+}
+.world-thumb {
+  position: absolute; top: 0.3rem; bottom: 0.3rem; left: 0.3rem;
+  width: calc(50% - 0.3rem); border-radius: 999px; z-index: 0;
+  background: linear-gradient(135deg, rgba(var(--w-accent),0.95), rgba(var(--w-accent),0.6));
+  box-shadow: 0 6px 20px -6px rgba(var(--w-accent),0.85);
+  transition: transform 0.45s cubic-bezier(0.22,1,0.36,1), background 0.4s ease;
+}
+.world-toggle[data-active="tor"] .world-thumb { transform: translateX(100%); }
+.world-opt {
+  position: relative; z-index: 1;
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.45rem;
+  min-width: 7.5rem; padding: 0.5rem 1.15rem; border-radius: 999px;
+  font-size: 0.9rem; font-weight: 600; color: #9aa4b2;
+  cursor: pointer; white-space: nowrap; background: transparent; border: 0;
+  transition: color 0.3s ease;
+}
+.world-opt.is-on { color: #04060d; }
+
+/* Pulsing world status dot under the toggle. */
+.world-dot {
+  display: inline-block; width: 0.5rem; height: 0.5rem; border-radius: 999px;
+  background: rgb(var(--w-accent));
+  box-shadow: 0 0 0 0 rgba(var(--w-accent),0.6);
+  animation: wpulse 1.9s ease-out infinite;
+}
+@keyframes wpulse {
+  0%   { box-shadow: 0 0 0 0 rgba(var(--w-accent),0.55); }
+  70%  { box-shadow: 0 0 0 8px rgba(var(--w-accent),0); }
+  100% { box-shadow: 0 0 0 0 rgba(var(--w-accent),0); }
+}
+
+/* Section eyebrows that follow the world accent. */
+.eyebrow-accent { color: rgb(var(--w-accent)); }
+.eyebrow-money  { color: #fbbf24; }
+
+/* ── "Two worlds" showcase cards ── */
+.worlds-ambient {
+  position: absolute; pointer-events: none; z-index: 0;
+  width: 44rem; height: 44rem; border-radius: 9999px; top: -10rem; left: -8rem;
+  background: rgba(var(--w-accent),0.10); filter: blur(150px);
+  transition: background 0.6s ease;
+}
+.world-card {
+  display: block; width: 100%; text-align: left;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.025);
+  border-radius: 1.25rem; padding: 1.5rem 1.6rem; cursor: pointer;
+  transition: border-color 0.35s ease, background 0.35s ease, transform 0.3s ease, box-shadow 0.4s ease;
+}
+.world-card:hover { transform: translateY(-3px); border-color: rgba(255,255,255,0.16); }
+.world-card.is-active {
+  border-color: rgba(45,212,191,0.5);
+  background: linear-gradient(160deg, rgba(45,212,191,0.08), transparent 60%), rgba(255,255,255,0.02);
+  box-shadow: 0 24px 60px -30px rgba(45,212,191,0.6);
+}
+.world-card--tor.is-active {
+  border-color: rgba(139,92,246,0.55);
+  background: linear-gradient(160deg, rgba(139,92,246,0.10), transparent 60%), rgba(255,255,255,0.02);
+  box-shadow: 0 24px 60px -30px rgba(139,92,246,0.65);
+}
+.world-card-ic {
+  font-size: 1.4rem; width: 2.6rem; height: 2.6rem; border-radius: 0.8rem;
+  display: grid; place-items: center;
+  background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08);
+}
+.world-card-state {
+  font-family: monospace; font-size: 0.62rem; letter-spacing: 0.06em;
+  color: #2dd4bf; border: 1px solid rgba(45,212,191,0.35);
+  background: rgba(45,212,191,0.1); border-radius: 999px; padding: 0.15rem 0.5rem;
+}
+.world-card-state.tor {
+  color: #c4b5fd; border-color: rgba(139,92,246,0.4); background: rgba(139,92,246,0.12);
+}
+.world-tick {
+  margin-top: 0.05rem; flex-shrink: 0;
+  width: 1.05rem; height: 1.05rem; border-radius: 999px;
+  display: inline-grid; place-items: center; font-size: 0.6rem; font-weight: 700;
+}
+.world-tick.clear { color: #2dd4bf; background: rgba(45,212,191,0.14); }
+.world-tick.tor   { color: #c4b5fd; background: rgba(139,92,246,0.16); }
+
+/* ── Monetization cards ── */
+.money-ambient {
+  position: absolute; pointer-events: none; z-index: 0;
+  width: 40rem; height: 40rem; border-radius: 9999px; bottom: -10rem; right: -8rem;
+  background: rgba(245,158,11,0.08); filter: blur(150px);
+}
+.money-card {
+  border: 1px solid rgba(255,255,255,0.07);
+  background: rgba(255,255,255,0.025);
+  border-radius: 1.1rem; padding: 1.4rem 1.5rem;
+  transition: border-color 0.3s ease, background 0.3s ease, transform 0.3s ease;
+}
+.money-card:hover { transform: translateY(-3px); border-color: rgba(245,158,11,0.4); background: rgba(245,158,11,0.03); }
+.money-card--ledger {
+  background: linear-gradient(160deg, rgba(245,158,11,0.06), transparent 60%), rgba(255,255,255,0.025);
+  border-color: rgba(245,158,11,0.2);
+}
+.money-ic { font-size: 1.6rem; margin-bottom: 0.75rem; filter: drop-shadow(0 6px 16px rgba(245,158,11,0.35)); }
+
+/* ══ Tor-world palette flip — recolour the fixed teal/saffron brand ══ */
+body[data-world="tor"] .text-gradient {
+  background: linear-gradient(108deg, #d8b4fe 0%, #a78bfa 42%, #7c3aed 110%);
+  -webkit-background-clip: text; background-clip: text;
+}
+body[data-world="tor"] .hero-beam {
+  background: radial-gradient(ellipse 60% 100% at 50% 0%,
+              rgba(139,92,246,0.20), rgba(124,58,237,0.10) 42%, transparent 72%);
+}
+body[data-world="tor"] .glow-hero-1 { background: rgba(139,92,246,0.14); }
+body[data-world="tor"] .glow-hero-2 { background: rgba(124,58,237,0.10); }
+body[data-world="tor"] .hero-ring {
+  background: conic-gradient(from 0deg,
+              rgba(167,139,250,0.30), rgba(124,58,237,0.26), rgba(216,180,254,0.22),
+              rgba(99,102,241,0.24), rgba(167,139,250,0.30));
+}
+body[data-world="tor"] .cosmic {
+  background-image:
+    radial-gradient(ellipse 80% 60% at 18% 22%, rgba(139,92,246,0.11), transparent 55%),
+    radial-gradient(ellipse 60% 50% at 82% 72%, rgba(124,58,237,0.07), transparent 55%);
+}
+body[data-world="tor"] #aurora { filter: hue-rotate(58deg) saturate(1.05); }
+@media (min-width: 1024px) {
+  body[data-world="tor"] #aurora { filter: blur(10px) saturate(1.08) hue-rotate(58deg); }
+}
+body[data-world="tor"] #progress {
+  background: linear-gradient(90deg, #a78bfa, #7c3aed, #c4b5fd) !important;
+}
+body[data-world="tor"] ::selection { background: rgba(139,92,246,0.42); color: #fff; }
+body[data-world="tor"] .timeline-spine {
+  background: linear-gradient(180deg, rgba(167,139,250,0.7), rgba(124,58,237,0.25) 70%, transparent);
+}
+body[data-world="tor"] .timeline-dot { background: #a78bfa; box-shadow: 0 0 0 4px rgba(139,92,246,0.2); }
+body[data-world="tor"] .text-teal-400,
+body[data-world="tor"] .text-teal-300,
+body[data-world="tor"] .text-teal-500 { color: #c4b5fd !important; }
+body[data-world="tor"] .text-saffron-400 { color: #d8b4fe !important; }
+body[data-world="tor"] .hover\:text-teal-400:hover { color: #c4b5fd !important; }
+
+/* Toggle polish on small screens. */
+@media (max-width: 420px) {
+  .world-opt { min-width: 6.2rem; padding: 0.5rem 0.75rem; font-size: 0.82rem; }
+}
+
 /* ── Reduced motion ── */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

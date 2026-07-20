@@ -175,6 +175,8 @@ function app() {
     activeProduct: 0,       // selected product tab
     prodAnim:   0,          // bump on tab change to retrigger panel animation
     rot:        0,          // rotating hero subject index
+    world:      'clearnet', // 'clearnet' | 'tor' — the whole page repaints per world
+    heroKey:    0,          // bump on world switch to replay hero entrance
     typed:      '',
     copied:     false,
     stars:      '★',
@@ -186,18 +188,86 @@ function app() {
 CGO_ENABLED=1 go build -o vayupress ./cmd/vayupress
 STATIC_DIR=./static VAYU_DOCS_DIR=./docs ./vayupress --port 8080`,
 
-    /* ── data ── */
-    // Rotating hero subject — cycles through what one command stands up.
-    rotWords: [
-      'a business website.',
-      'a Ghost-class blog.',
-      'a PGP mail server.',
-      'encrypted VayuTalk chat.',
-      'a Tor .onion for every site.',
-      'a one-click MCP connector.',
-      'cookieless analytics.',
-      'your whole stack.',
-    ],
+    /* ── Two worlds, one binary (ADR-0141 · VayuOS Spaces) ──
+       The hero toggle flips `world`; every world-bound surface — headline,
+       rotating subject, lead copy and the boot terminal — swaps to match, and
+       the whole page repaints via [data-world] on <body>. Content only; no
+       screenshotting in the sandbox, so this stays structurally verifiable. */
+    worlds: {
+      clearnet: {
+        label:  'Clearnet',
+        icon:   '🌐',
+        kicker: 'The public web — fast, encrypted, and entirely yours.',
+        title:  ['Your website, blog,', 'mail &amp; chat —', 'one sovereign binary.'],
+        lead:
+          'Point a domain at one VPS, run one command, and own your whole online presence — ' +
+          '<span class="hl">website</span>, <span class="hl">blog</span>, ' +
+          '<span class="hl">PGP mail</span>, <span class="hl">encrypted chat</span>, ' +
+          'cookieless analytics and one control panel. Publish every site to a ' +
+          '<span class="hl">Tor .onion</span>, connect <span class="hl">Claude</span> in one click, ' +
+          'and <span class="hl">get paid</span> through your own Stripe &amp; PayPal. ' +
+          'SQLite, zero telemetry, nothing rented.',
+        cta:    'Deploy in one command',
+        rotWords: [
+          'a business website.',
+          'a Ghost-class blog.',
+          'a PGP mail server.',
+          'encrypted VayuTalk chat.',
+          'paid memberships &amp; ads.',
+          'a one-click MCP connector.',
+          'cookieless analytics.',
+          'your whole stack.',
+        ],
+        termDone: 'VayuOS online · your whole stack is live',
+        term: [
+          { cls:'',                 mark:'❯', markCls:'text-teal-400', body:' deploy-vayupress.sh · yourdomain.com', host:'', hostCls:'', tail:'' },
+          { cls:'text-gray-600',    mark:'',  markCls:'', body:"Provisioning · Let's Encrypt × 3 …", host:'', hostCls:'', tail:'' },
+          { cls:'text-emerald-400', mark:'✓', markCls:'', body:' Website · ',    host:'yourdomain.com',       hostCls:'text-teal-300', tail:'' },
+          { cls:'text-emerald-400', mark:'✓', markCls:'', body:' Blog · ',       host:'blog.yourdomain.com',  hostCls:'text-teal-300', tail:'' },
+          { cls:'text-emerald-400', mark:'✓', markCls:'', body:' VayuMail · ',   host:'mail.yourdomain.com',  hostCls:'text-teal-300', tail:' · DKIM + IMAP' },
+          { cls:'text-emerald-400', mark:'✓', markCls:'', body:' VayuTalk · ',   host:'talk.yourdomain.com',  hostCls:'text-teal-300', tail:' · E2E chat relay' },
+          { cls:'text-emerald-400', mark:'✓', markCls:'', body:' VayuShield + VayuAnalytics · bot protection · cookieless', host:'', hostCls:'', tail:'' },
+          { cls:'text-emerald-400', mark:'✓', markCls:'', body:' VayuTor · ',    host:'every domain now on .onion', hostCls:'text-purple-300', tail:' · one click' },
+          { cls:'text-emerald-400', mark:'✓', markCls:'', body:' VayuMCP · ',    host:'mcp.yourdomain.com',  hostCls:'text-indigo-300', tail:' · connect Claude' },
+          { cls:'text-emerald-400', mark:'✓', markCls:'', body:' Monetization · Stripe + PayPal · ', host:'your keys, your revenue', hostCls:'text-saffron-300', tail:'' },
+        ],
+      },
+      tor: {
+        label:  'Tor',
+        icon:   '🧅',
+        kicker: 'The anonymous web — no IP, no trace, and still yours.',
+        title:  ['Your onion site, webmail', '&amp; anonymous chat —', 'one sovereign binary.'],
+        lead:
+          'Flip one switch and run a <span class="hl">fully separate Tor world</span> — a site on its own ' +
+          '<span class="hl">v3 .onion</span>, <span class="hl">webmail over Tor</span>, and an ' +
+          '<span class="hl">anonymous, rotatable VayuTalk</span> that delivers ' +
+          '<span class="hl">onion-to-onion</span>. Anti-leak by construction: no clearnet callbacks, ' +
+          'no CA-TLS, no cookies that follow you. Its own database, its own identity — ' +
+          '<span class="hl">nothing crosses back</span>. SQLite, zero telemetry, nothing rented.',
+        cta:    'Enter the Tor world',
+        rotWords: [
+          'a v3 .onion for every site.',
+          'webmail over Tor.',
+          'anonymous VayuTalk chat.',
+          'onion-to-onion delivery.',
+          'obfs4 bridges to beat blocks.',
+          'a world that never leaks.',
+          'your anonymous stack.',
+        ],
+        termDone: 'Tor world online · anonymous, and it never leaks',
+        term: [
+          { cls:'',                 mark:'❯', markCls:'text-purple-300', body:' VAYUOS_MODE=tor deploy-vayupress.sh', host:'', hostCls:'', tail:'' },
+          { cls:'text-gray-600',    mark:'',  markCls:'', body:'Starting own tor · publishing v3 onions …', host:'', hostCls:'', tail:'' },
+          { cls:'text-emerald-400', mark:'✓', markCls:'', body:' Onion site · ',  host:'vayp7xk2n4qy6zj3…onion', hostCls:'text-purple-300', tail:'' },
+          { cls:'text-emerald-400', mark:'✓', markCls:'', body:' VayuMail·Tor · webmail only · ', host:'no clearnet MX', hostCls:'text-purple-300', tail:'' },
+          { cls:'text-emerald-400', mark:'✓', markCls:'', body:' VayuTalk·Tor · ', host:'anonymous rotatable ID', hostCls:'text-purple-300', tail:'' },
+          { cls:'text-emerald-400', mark:'✓', markCls:'', body:' Onion-to-onion delivery · ', host:'over-Tor key fetch', hostCls:'text-purple-300', tail:' · signed' },
+          { cls:'text-emerald-400', mark:'✓', markCls:'', body:' Anti-leak · no callbacks · no CA-TLS · no Secure cookie', host:'', hostCls:'', tail:'' },
+          { cls:'text-emerald-400', mark:'✓', markCls:'', body:' obfs4 bridges armed · ', host:'routes around blocks', hostCls:'text-purple-300', tail:'' },
+          { cls:'text-emerald-400', mark:'✓', markCls:'', body:' Separate database · ', host:'nothing crosses to clearnet', hostCls:'text-purple-300', tail:'' },
+        ],
+      },
+    },
 
     // Hero pillar chips — the whole platform at a glance.
     pillars: [
@@ -510,6 +580,24 @@ STATIC_DIR=./static VAYU_DOCS_DIR=./docs ./vayupress --port 8080`,
     },
     get product() { return this.products[this.activeProduct]; },
 
+    /* ── World switch (Clearnet ⇄ Tor) ── */
+    get w() { return this.worlds[this.world]; },
+    setWorld(name) {
+      if (name === this.world || !this.worlds[name]) return;
+      this.world = name;
+      this.rot = 0;                  // restart the rotating subject cleanly
+      this.heroKey++;                // re-key hero blocks so entrances replay
+      this.bootTerminal();           // re-run the boot log for the new world
+    },
+    // Boot the hero terminal: reveal one line at a time, then the "online" line.
+    bootTerminal() {
+      this.t = 0;
+      const n = this.w.term.length + 1; // +1 for the trailing "…online" summary
+      let i = 1;
+      const tick = () => { if (i <= n) { this.t = i++; setTimeout(tick, i < 4 ? 480 : 300); } };
+      setTimeout(tick, 320);
+    },
+
     ripple(e) {
       const btn = e.currentTarget;
       const el  = document.createElement('span');
@@ -593,13 +681,11 @@ STATIC_DIR=./static VAYU_DOCS_DIR=./docs ./vayupress --port 8080`,
       this.fetchStars();
       this.fetchVersion();
 
-      /* hero terminal boot */
-      let i = 1;
-      const tick = () => { if (i <= 11) { this.t = i++; setTimeout(tick, i < 4 ? 540 : 370); } };
-      setTimeout(tick, 750);
+      /* hero terminal boot (world-aware) */
+      this.bootTerminal();
 
-      /* rotating hero subject */
-      setInterval(() => { this.rot = (this.rot + 1) % this.rotWords.length; }, 2400);
+      /* rotating hero subject — indexes into the active world's list */
+      setInterval(() => { this.rot = (this.rot + 1) % this.w.rotWords.length; }, 2400);
 
       /* typing terminal — triggered by IntersectionObserver when in view */
       this.$nextTick(() => {

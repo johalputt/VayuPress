@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>VayuPress — Your website, blog &amp; private mail. One sovereign binary.</title>
-  <meta name="description" content="VayuPress puts your whole online presence in one sovereign Go binary on a single VPS: a business website, a blog, and a private PGP mail server (VayuMail — SMTP/IMAP/POP3, DKIM, WKD) with an official mobile app, plus cookieless analytics and one control panel (VayuOS). SQLite-first, zero telemetry, Apache-2.0." />
+  <meta name="description" content="VayuPress puts your whole online presence in one sovereign Go binary on a single VPS: a business website, a blog, and a private PGP mail server (VayuMail — SMTP/IMAP/POP3, DKIM, WKD) with an official mobile app, plus cookieless analytics and one control panel (VayuOS). Run it as two switchable worlds — a public Clearnet Space and an anonymous, web-only Tor Space (VayuOS Spaces) — and get paid with built-in monetization (your own Stripe/PayPal keys, memberships, paywalls, a premium mail-ID marketplace, member ads). SQLite-first, zero telemetry, Apache-2.0." />
   <meta name="theme-color" content="#04060d" />
   <link rel="canonical" href="https://vayupress.com/" />
 
@@ -30,7 +30,7 @@
   <script type="application/ld+json">
   {"@context":"https://schema.org","@type":"SoftwareApplication","name":"VayuPress",
    "applicationCategory":"DeveloperApplication","operatingSystem":"Linux",
-   "softwareVersion":"3.13.95","description":"A sovereign, single-VPS platform in one Go binary: a business website, a blog, a private PGP mail server (VayuMail) with an official mobile app, ephemeral end-to-end-encrypted chat (VayuTalk), built-in bot protection (VayuShield), cookieless analytics (VayuAnalytics), a fine-grained scoped API (VayuAPI), one-click Tor onion services for every domain (VayuTor), a one-click MCP connector for Claude and any MCP client (VayuMCP), and one control panel (VayuOS). Zero telemetry.",
+   "softwareVersion":"3.14.68","description":"A sovereign, single-VPS platform in one Go binary: a business website, a blog, a private PGP mail server (VayuMail) with an official mobile app, ephemeral end-to-end-encrypted chat (VayuTalk), built-in bot protection (VayuShield), cookieless analytics (VayuAnalytics), a fine-grained scoped API (VayuAPI), one-click Tor onion services for every domain (VayuTor), a one-click MCP connector for Claude and any MCP client (VayuMCP), and one control panel (VayuOS). Run it as two independently switchable worlds — a public Clearnet Space and a fully anonymous, web-only Tor Space (VayuOS Spaces) — and monetize with your own Stripe/PayPal keys: memberships, per-post paywalls, tier mailboxes, a premium mail-ID marketplace and member ads. Zero telemetry.",
    "url":"https://vayupress.com/","license":"https://www.apache.org/licenses/LICENSE-2.0",
    "offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},
    "author":{"@type":"Organization","name":"VayuPress","email":"hello@vayupress.com"}}
@@ -63,7 +63,7 @@
   <link rel="stylesheet" href="assets/style.css" />
 </head>
 <body class="bg-ink-950 text-gray-200 font-sans antialiased overflow-x-hidden"
-      x-data="app()" @keydown.escape.window="lightbox=null">
+      x-data="app()" :data-world="world" @keydown.escape.window="lightbox=null">
 
   <!-- scroll progress bar -->
   <div id="progress" class="fixed top-0 left-0 z-[60] h-[2px] bg-gradient-to-r from-teal-400 via-teal-500 to-saffron-400 origin-left transition-none"
@@ -88,14 +88,14 @@
         <img src="assets/mark-dark.png" alt="VayuPress mark"
              class="brand-mark h-7 w-auto transition-transform duration-300 group-hover:scale-110" />
         <span class="font-display font-semibold text-white tracking-tight hidden sm:block">VayuPress</span>
-        <span class="hidden sm:inline text-[10px] text-teal-300 font-mono border border-teal-800/60 rounded px-1.5 py-0.5 leading-none" x-text="version || 'v3.13.95'"></span>
+        <span class="hidden sm:inline text-[10px] text-teal-300 font-mono border border-teal-800/60 rounded px-1.5 py-0.5 leading-none" x-text="version || 'v3.14.68'"></span>
       </a>
 
       <!-- desktop links -->
-      <div class="hidden md:flex items-center gap-8 text-sm text-gray-400">
-        <a href="#why"        class="nav-link hover:text-white transition-colors">Why</a>
-        <a href="#stack"      class="nav-link hover:text-white transition-colors">The stack</a>
+      <div class="hidden md:flex items-center gap-7 text-sm text-gray-400">
+        <a href="#worlds"     class="nav-link hover:text-white transition-colors">Worlds</a>
         <a href="#products"   class="nav-link hover:text-white transition-colors">Products</a>
+        <a href="#monetize"   class="nav-link hover:text-white transition-colors">Monetize</a>
         <a href="#compare"    class="nav-link hover:text-white transition-colors">Compare</a>
         <a href="#gallery"    class="nav-link hover:text-white transition-colors">Gallery</a>
         <a href="#quickstart" class="nav-link hover:text-white transition-colors">Quick start</a>
@@ -114,7 +114,8 @@
 
   <!-- ══════════════ HERO ══════════════ -->
   <section id="hero" class="hero-sec relative min-h-[100svh] flex items-center overflow-hidden">
-    <!-- ambient glows -->
+    <!-- ambient glows + futuristic grid -->
+    <div class="hero-grid" aria-hidden="true"></div>
     <div class="hero-beam" aria-hidden="true"></div>
     <div class="glow-hero-1" aria-hidden="true"></div>
     <div class="glow-hero-2" aria-hidden="true"></div>
@@ -122,44 +123,61 @@
     <div class="relative max-w-7xl mx-auto px-6 pt-28 pb-16 sm:pb-20 grid lg:grid-cols-12 gap-10 lg:gap-14 items-center w-full">
       <!-- ── Copy ── -->
       <div class="lg:col-span-7">
-        <!-- cinematic masked headline -->
-        <h1 class="hero-title font-display font-bold tracking-tightest text-white leading-[0.92] mb-6
-                   text-[2.9rem] xs:text-5xl sm:text-6xl lg:text-[5rem]">
-          <span class="line" style="--i:0"><span class="line-in">Your website, blog,</span></span>
-          <span class="line" style="--i:1"><span class="line-in">mail &amp; chat —</span></span>
-          <span class="line" style="--i:2"><span class="line-in text-gradient">one sovereign binary.</span></span>
-        </h1>
+
+        <!-- ✦ animated world toggle (Clearnet ⇄ Tor) ✦ -->
+        <div class="hero-fade mb-7" style="--i:0">
+          <div class="world-toggle" :data-active="world" role="tablist" aria-label="Choose a world">
+            <span class="world-thumb" aria-hidden="true"></span>
+            <button type="button" role="tab" :aria-selected="world==='clearnet'"
+                    @click="setWorld('clearnet')"
+                    class="world-opt focus-ring" :class="world==='clearnet' ? 'is-on' : ''">
+              <span aria-hidden="true">🌐</span><span>Clearnet</span>
+            </button>
+            <button type="button" role="tab" :aria-selected="world==='tor'"
+                    @click="setWorld('tor')"
+                    class="world-opt focus-ring" :class="world==='tor' ? 'is-on' : ''">
+              <span aria-hidden="true">🧅</span><span>Tor</span>
+            </button>
+          </div>
+          <p class="mt-3 text-sm text-gray-500 font-light flex items-center gap-2">
+            <span class="world-dot" aria-hidden="true"></span>
+            <span x-text="w.kicker"></span>
+          </p>
+        </div>
+
+        <!-- cinematic masked headline — re-keyed on world so it re-rises -->
+        <template x-for="hk in [heroKey]" :key="'h'+hk">
+          <h1 class="hero-title font-display font-bold tracking-tightest text-white leading-[0.92] mb-6
+                     text-[2.9rem] xs:text-5xl sm:text-6xl lg:text-[5rem]">
+            <template x-for="(ln, i) in w.title" :key="i">
+              <span class="line" :style="`--i:${i}`">
+                <span class="line-in" :class="i === w.title.length-1 ? 'text-gradient' : ''" x-html="ln"></span>
+              </span>
+            </template>
+          </h1>
+        </template>
 
         <!-- rotating subject -->
         <p class="hero-fade flex items-center flex-wrap gap-x-2.5 text-lg sm:text-xl text-gray-400 font-light mb-6" style="--i:4">
           <span>One command stands up</span>
           <span class="hero-rot-mask">
-            <template x-for="r in [rot]" :key="r"><span class="hero-rot-word text-gradient font-medium" x-text="rotWords[rot]"></span></template>
+            <template x-for="r in [world + rot]" :key="r"><span class="hero-rot-word text-gradient font-medium" x-html="w.rotWords[rot % w.rotWords.length]"></span></template>
           </span>
         </p>
 
-        <p class="hero-fade text-base sm:text-lg text-gray-400 leading-relaxed mb-8 max-w-xl font-light" style="--i:5">
-          Point a domain at one VPS, run one command, and own your whole online presence —
-          <span class="text-gray-100 font-medium">website</span>,
-          <span class="text-gray-100 font-medium">blog</span>,
-          <span class="text-gray-100 font-medium">PGP mail</span>,
-          <span class="text-gray-100 font-medium">encrypted chat</span>,
-          cookieless analytics and one control panel. Publish every site to a
-          <span class="text-gray-100 font-medium">Tor .onion</span> and connect
-          <span class="text-gray-100 font-medium">Claude</span> and
-          <span class="text-gray-100 font-medium">Claude Code</span> to it in one click. SQLite, zero telemetry, nothing rented.
-        </p>
+        <template x-for="lk in [heroKey]" :key="'l'+lk">
+          <p class="hero-fade hero-lead text-base sm:text-lg text-gray-400 leading-relaxed mb-8 max-w-xl font-light" style="--i:5" x-html="w.lead"></p>
+        </template>
 
         <div class="hero-fade flex flex-wrap gap-3 items-center" style="--i:6">
           <button @click="ripple($event); smoothTo('quickstart')"
                   @mousemove="magnet($event)" @mouseleave="demagnet($event)"
-                  class="magnetic ripple-btn group relative px-7 py-3.5 rounded-xl
-                         bg-gradient-to-r from-teal-500 to-teal-600 text-white font-semibold
-                         text-sm sm:text-base overflow-hidden focus-ring
-                         hover:shadow-2xl hover:shadow-teal-600/50"
+                  class="magnetic ripple-btn hero-cta group relative px-7 py-3.5 rounded-xl
+                         text-white font-semibold
+                         text-sm sm:text-base overflow-hidden focus-ring"
                   aria-label="Jump to quick-start">
             <span class="magnetic-in relative flex items-center gap-2">
-              Deploy in one command
+              <span x-text="w.cta"></span>
               <span class="group-hover:translate-x-1 transition-transform" aria-hidden="true">→</span>
             </span>
           </button>
@@ -172,7 +190,7 @@
         </div>
       </div>
 
-      <!-- ── Terminal preview ── -->
+      <!-- ── Terminal preview (world-aware boot log) ── -->
       <div class="hero-visual lg:col-span-5">
         <div class="hero-ring" aria-hidden="true"></div>
         <div class="terminal-frame hero-term rounded-2xl overflow-hidden shadow-2xl shadow-black/70">
@@ -180,23 +198,14 @@
             <span class="w-3 h-3 rounded-full bg-[#ff5f57]" aria-hidden="true"></span>
             <span class="w-3 h-3 rounded-full bg-[#febc2e]" aria-hidden="true"></span>
             <span class="w-3 h-3 rounded-full bg-[#28c840]" aria-hidden="true"></span>
-            <span class="ml-3 text-xs text-gray-500 font-mono">vayupress — ssh root@vps</span>
+            <span class="ml-3 text-xs text-gray-500 font-mono" x-text="world==='tor' ? 'vayupress — tor world' : 'vayupress — ssh root@vps'"></span>
           </div>
           <div class="p-5 sm:p-6 font-mono text-[12px] sm:text-[13px] leading-relaxed space-y-1.5 min-h-[260px] sm:min-h-[280px]">
-            <div x-show="t>=1" x-transition.opacity.duration.300ms>
-              <span class="text-teal-400">❯</span> <span class="text-gray-300">deploy-vayupress.sh · yourdomain.com</span>
-            </div>
-            <div x-show="t>=2" x-transition.opacity.duration.300ms class="text-gray-600">Provisioning · Let's Encrypt × 3 …</div>
-            <div x-show="t>=3" x-transition.opacity.duration.300ms class="text-emerald-400">✓ Website · <span class="text-teal-300">yourdomain.com</span></div>
-            <div x-show="t>=4" x-transition.opacity.duration.300ms class="text-emerald-400">✓ Blog · <span class="text-teal-300">blog.yourdomain.com</span></div>
-            <div x-show="t>=5" x-transition.opacity.duration.300ms class="text-emerald-400">✓ VayuMail · <span class="text-teal-300">mail.yourdomain.com</span> · DKIM + IMAP</div>
-            <div x-show="t>=6" x-transition.opacity.duration.300ms class="text-emerald-400">✓ VayuTalk · <span class="text-teal-300">talk.yourdomain.com</span> · E2E chat relay</div>
-            <div x-show="t>=7" x-transition.opacity.duration.300ms class="text-emerald-400">✓ VayuPGP · WKD published (AES-256 at rest)</div>
-            <div x-show="t>=8" x-transition.opacity.duration.300ms class="text-emerald-400">✓ VayuShield + VayuAnalytics · bot protection · cookieless</div>
-            <div x-show="t>=9" x-transition.opacity.duration.300ms class="text-emerald-400">✓ VayuTor · <span class="text-purple-300">every domain now on .onion</span> · one click</div>
-            <div x-show="t>=10" x-transition.opacity.duration.300ms class="text-emerald-400">✓ VayuMCP · <span class="text-indigo-300">mcp.yourdomain.com</span> · connect Claude &amp; any MCP client</div>
-            <div x-show="t>=11" x-transition.opacity.duration.300ms class="text-saffron-300 font-medium pt-2">
-              VayuOS online · your whole stack is live <span class="cursor" aria-hidden="true">▊</span>
+            <template x-for="(ln, i) in w.term" :key="world + '-' + i">
+              <div x-show="t > i" x-transition.opacity.duration.300ms :class="ln.cls"><span :class="ln.markCls" x-text="ln.mark"></span><span x-text="ln.body"></span><span :class="ln.hostCls" x-text="ln.host"></span><span x-text="ln.tail"></span></div>
+            </template>
+            <div x-show="t > w.term.length" x-transition.opacity.duration.300ms class="text-saffron-300 font-medium pt-2">
+              <span x-text="w.termDone"></span> <span class="cursor" aria-hidden="true">▊</span>
             </div>
           </div>
         </div>
@@ -204,7 +213,7 @@
     </div>
 
     <!-- scroll hint -->
-    <button @click="smoothTo('products')"
+    <button @click="smoothTo('worlds')"
             class="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2
                    text-gray-600 text-[11px] tracking-widest uppercase hover:text-teal-400
                    transition-colors focus-ring rounded-lg px-2 py-1"
@@ -212,6 +221,84 @@
       <span>explore</span>
       <span class="scroll-pill" aria-hidden="true"></span>
     </button>
+  </section>
+
+  <!-- ══════════════ TWO WORLDS — VayuOS Spaces (ADR-0141) ══════════════ -->
+  <section id="worlds" class="relative py-24 sm:py-28 lg:py-32 overflow-hidden">
+    <div class="worlds-ambient" aria-hidden="true"></div>
+    <div class="max-w-6xl mx-auto px-6 relative">
+      <header class="max-w-3xl mb-12 sm:mb-14" data-reveal>
+        <p class="font-mono text-xs mb-4 tracking-[0.25em] uppercase eyebrow-accent">Two worlds · one binary</p>
+        <h2 class="font-display text-3xl sm:text-4xl lg:text-5xl font-bold text-white tracking-tight leading-[1.08]">
+          A public world and an anonymous one —
+          <span class="text-gray-600 block mt-1" x-text="world==='tor' ? 'and you’re in the shadow one now.' : 'switchable, and never mixed.'"></span>
+        </h2>
+        <p class="mt-6 text-base sm:text-lg text-gray-400 leading-relaxed">
+          One install switch (<span class="font-mono text-gray-200">VAYUOS_MODE</span>) runs VayuPress as a public
+          <span class="text-gray-100 font-medium">Clearnet Space</span> or a fully anonymous, web-only
+          <span class="text-gray-100 font-medium">Tor Space</span> — each with its own database, its own identity, and
+          <span class="text-gray-100 font-medium">nothing crossing between them</span>. Flip the toggle above to preview each.
+        </p>
+      </header>
+
+      <div class="grid md:grid-cols-2 gap-4 sm:gap-5">
+        <!-- Clearnet card -->
+        <button type="button" @click="setWorld('clearnet')"
+                class="world-card text-left focus-ring" :class="world==='clearnet' ? 'is-active' : ''"
+                data-reveal aria-label="Preview the Clearnet world">
+          <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-3">
+              <span class="world-card-ic" aria-hidden="true">🌐</span>
+              <h3 class="font-display text-xl font-semibold text-white">Clearnet Space</h3>
+            </div>
+            <span class="world-card-state" x-show="world==='clearnet'" x-cloak>● live</span>
+          </div>
+          <p class="text-sm text-gray-400 leading-relaxed mb-4">
+            Your public HTTPS presence at full power — website, blog, global VayuMail with DKIM &amp; PGP,
+            mail-linked VayuTalk, cookieless analytics, and one-click Tor <span class="font-mono">.onion</span> mirrors.
+          </p>
+          <ul class="space-y-2" role="list">
+            <template x-for="pt in ['HTTPS site + blog on your domain','Sovereign PGP mail + official mobile app','Monetization: memberships, paywalls, mail-IDs, ads','VayuMCP — connect Claude in one click']" :key="pt">
+              <li class="flex items-start gap-2.5 text-sm text-gray-300" role="listitem">
+                <span class="world-tick clear" aria-hidden="true">✓</span><span x-text="pt"></span>
+              </li>
+            </template>
+          </ul>
+        </button>
+
+        <!-- Tor card -->
+        <button type="button" @click="setWorld('tor')"
+                class="world-card world-card--tor text-left focus-ring" :class="world==='tor' ? 'is-active' : ''"
+                data-reveal style="--d:70ms" aria-label="Preview the Tor world">
+          <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-3">
+              <span class="world-card-ic" aria-hidden="true">🧅</span>
+              <h3 class="font-display text-xl font-semibold text-white">Tor Space</h3>
+            </div>
+            <span class="world-card-state tor" x-show="world==='tor'" x-cloak>● live</span>
+          </div>
+          <p class="text-sm text-gray-400 leading-relaxed mb-4">
+            A separate, anonymous, web-only world on its own <span class="font-mono">v3 .onion</span> — anti-leak by
+            construction, with no clearnet callbacks, no CA-TLS, and no cookies that follow you off the onion.
+          </p>
+          <ul class="space-y-2" role="list">
+            <template x-for="pt in ['A Tor-native site on its own .onion','VayuMail·Tor — webmail only, no clearnet MX','Anonymous, rotatable VayuTalk — onion-to-onion','obfs4 bridges + separate DB; nothing crosses back']" :key="pt">
+              <li class="flex items-start gap-2.5 text-sm text-gray-300" role="listitem">
+                <span class="world-tick tor" aria-hidden="true">✓</span><span x-text="pt"></span>
+              </li>
+            </template>
+          </ul>
+        </button>
+      </div>
+
+      <p class="mt-5 text-xs text-gray-500 leading-relaxed" data-reveal>
+        Content moves between worlds only through a checksummed, offline-movable
+        <span class="font-mono text-gray-400">vayupress migrate export|import</span> bundle — accounts, mailboxes,
+        PGP keys and chat IDs never cross.
+        <a href="https://github.com/johalputt/VayuPress/blob/main/docs/adr/ADR-0141-vayuos-spaces-clearnet-tor.md"
+           target="_blank" rel="noopener" class="underline decoration-white/20 hover:decoration-teal-400 hover:text-gray-300">Read ADR-0141 →</a>
+      </p>
+    </div>
   </section>
 
   <!-- ══════════════ WHY ══════════════ -->
@@ -344,6 +431,7 @@
         <p class="mt-6 text-base sm:text-lg text-gray-400 leading-relaxed">
           Not a bundle of plugins — a single Go process where publishing, mail, chat,
           bot defense and analytics are first-class citizens. Switch between them below.
+          <span x-show="world==='tor'" x-cloak class="block mt-2 text-purple-300/90">In the Tor world, VayuMail is webmail-only, VayuTalk is anonymous and rotatable, and VayuTor is already on — the same suite, hardened for anonymity.</span>
         </p>
       </header>
 
@@ -542,6 +630,62 @@
 
           </div>
         </template>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════ MONETIZATION ══════════════ -->
+  <section id="monetize" class="relative py-24 sm:py-28 lg:py-36 overflow-hidden">
+    <div class="money-ambient" aria-hidden="true"></div>
+    <div class="max-w-6xl mx-auto px-6 relative">
+      <header class="max-w-3xl mb-12 sm:mb-14" data-reveal>
+        <p class="font-mono text-xs mb-4 tracking-[0.25em] uppercase eyebrow-money">Turn it on · get paid</p>
+        <h2 class="font-display text-3xl sm:text-4xl lg:text-5xl font-bold text-white tracking-tight leading-[1.08]">
+          Your audience, your revenue —
+          <span class="text-gray-600 block mt-1">and your own payment keys.</span>
+        </h2>
+        <p class="mt-6 text-base sm:text-lg text-gray-400 leading-relaxed">
+          A complete, <span class="text-gray-100 font-medium">redirect-based</span> monetization suite is built in — no
+          payment SDK is ever embedded, so your strict CSP stays intact. Take money through
+          <span class="text-gray-100 font-medium">your own Stripe &amp; PayPal keys</span>, and audit every sale from one
+          <span class="text-gray-100 font-medium">Monetization control centre</span> in VayuOS.
+        </p>
+        <p x-show="world==='tor'" x-cloak class="mt-3 text-sm text-purple-300/90" data-reveal>
+          Payments live in the <span class="font-medium">Clearnet Space</span> — the anonymous Tor world stays callback-free by design.
+        </p>
+      </header>
+
+      <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
+        <div data-reveal class="money-card">
+          <div class="money-ic" aria-hidden="true">💳</div>
+          <h3 class="font-display text-lg font-semibold text-white mb-2">Your keys, your rails</h3>
+          <p class="text-sm text-gray-400 leading-relaxed">Auto-renewing <span class="text-gray-200">PayPal subscriptions</span> and instant <span class="text-gray-200">Stripe one-time</span> checkout over a sovereign payments ledger — idempotent fulfilment, webhook receipts, nothing rented.</p>
+        </div>
+        <div data-reveal style="--d:50ms" class="money-card">
+          <div class="money-ic" aria-hidden="true">🏷️</div>
+          <h3 class="font-display text-lg font-semibold text-white mb-2">Tiers &amp; paywalls</h3>
+          <p class="text-sm text-gray-400 leading-relaxed">Sell <span class="text-gray-200">membership tiers</span> that unlock member-only posts, or drop a <span class="text-gray-200">per-post paywall</span> on any single article — a one-time unlock, remembered per member.</p>
+        </div>
+        <div data-reveal style="--d:100ms" class="money-card">
+          <div class="money-ic" aria-hidden="true">📮</div>
+          <h3 class="font-display text-lg font-semibold text-white mb-2">Tiers become mailboxes</h3>
+          <p class="text-sm text-gray-400 leading-relaxed">Each paid tier can provision a real <span class="text-gray-200">VayuMail mailbox</span> — its own quota, an auto PGP keypair + WKD, and VayuTalk — the moment a member joins.</p>
+        </div>
+        <div data-reveal style="--d:150ms" class="money-card">
+          <div class="money-ic" aria-hidden="true">✨</div>
+          <h3 class="font-display text-lg font-semibold text-white mb-2">Premium mail-ID market</h3>
+          <p class="text-sm text-gray-400 leading-relaxed">Sell reserved and <span class="text-gray-200">vanity addresses</span> — bought → paid entitlement → the member claims it and sets a password — with operator approve/revoke and a terms-agreement trail.</p>
+        </div>
+        <div data-reveal style="--d:200ms" class="money-card">
+          <div class="money-ic" aria-hidden="true">📢</div>
+          <h3 class="font-display text-lg font-semibold text-white mb-2">Members advertise</h3>
+          <p class="text-sm text-gray-400 leading-relaxed">A self-serve <span class="text-gray-200">“Advertise here”</span> panel takes a flat fee and drops each image ad into an operator <span class="text-gray-200">moderation queue</span> — nothing renders until you approve it.</p>
+        </div>
+        <div data-reveal style="--d:250ms" class="money-card money-card--ledger">
+          <div class="money-ic" aria-hidden="true">🧾</div>
+          <h3 class="font-display text-lg font-semibold text-white mb-2">One Orders ledger</h3>
+          <p class="text-sm text-gray-400 leading-relaxed">Every paid section — subscriptions, premium IDs, paid posts, member ads — flows through a single auditable <span class="text-gray-200">Orders</span> ledger you can see end to end.</p>
+        </div>
       </div>
     </div>
   </section>
