@@ -8,7 +8,18 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
-## [3.14.30] — 2026-07-20
+## [3.14.31] — 2026-07-20
+
+### Changed
+- **New "Optimize" hub consolidates the Optimize sidebar group.** SEO, Analytics,
+  Bot Shield, Theme Studio and Theme Store are merged into a single pinned
+  **Optimize** tab (like Dashboard / Growth / Operations) that opens a premium card
+  grid. Each card is gated to the viewer's role exactly like the sidebar it
+  replaced, so an editor sees SEO/Analytics/Theme but never the admin-only Bot
+  Shield card. The **products (VayuMail, VayuTalk, VayuTor)** are intentionally
+  kept pinned in the sidebar under their own row, since they are opened often. The
+  clearnet sidebar is now Dashboard · Growth · Optimize · Products · System ·
+  Operations. Every card links to its existing page — only the navigation moved.
 
 ### Changed
 - **New "Operations" hub consolidates the Operations sidebar group.** System

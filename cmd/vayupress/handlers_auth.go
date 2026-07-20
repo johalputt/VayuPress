@@ -95,7 +95,10 @@ func osPathMinLevel(path string) int {
 		// process, so they are admin-only — never author/editor (ADR-0141 review).
 		"tor", "spaces",
 	}
-	editorAreas := []string{"comments", "pages", "seo", "analytics", "theme", "messages"}
+	// "optimize" is the hub that fronts SEO / Analytics / Bot Shield / Theme Studio
+	// / Theme Store; it opens at editor level (its editor-safe cards) and hides the
+	// admin-only Bot Shield card from non-admins in the grid itself.
+	editorAreas := []string{"comments", "pages", "seo", "analytics", "theme", "messages", "optimize"}
 	for _, a := range adminAreas {
 		if osPathInArea(path, a) {
 			return accessAdmin

@@ -218,6 +218,10 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		// Operations hub: consolidates System Modes / Policy / Topology / Replay /
 		// Fault Engine / ADR Registry into one dashboard-style card page (admin-only).
 		pr.Get("/os/operations", a.handleOSOperations)
+		// Optimize hub: consolidates SEO / Analytics / Bot Shield / Theme Studio /
+		// Theme Store into one dashboard-style card page (editor+; admin-only cards
+		// are hidden from editors).
+		pr.Get("/os/optimize", a.handleOSOptimize)
 		pr.Get("/os/members", a.handleOSMembers)
 		// HTMX fragment: live-refresh the Members "Recent activity" feed.
 		pr.Get("/os/members/activity", a.handleOSMembersActivityFragment)
@@ -916,19 +920,16 @@ func osSidebarNav(active string, s *osSettings) string {
 	// live counts, mirroring the Dashboard pattern — so the sidebar stays minimal.
 	// (My Profile also remains reachable from the sidebar footer avatar.)
 	b.WriteString(gate(navItem("/os/growth", "Growth", "growth", active, iconGrowth), "/os/growth"))
-	section("Optimize",
-		gate(navItem("/os/seo", "SEO", "seo", active, iconSEO), "/os/seo"),
-		gate(navItem("/os/analytics", "Analytics", "analytics", active, iconAnalytics), "/os/analytics"),
-		gate(navItem("/os/shield", "Bot Shield", "shield", active, iconSecurity), "/os/shield"),
-		gate(navItem("/os/theme", "Theme Studio", "theme", active, iconTheme), "/os/theme"),
-		gate(navItem("/os/theme/store", "Theme Store", "theme-store", active, iconThemeStore), "/os/theme/store"),
+	// Optimize (SEO, Analytics, Bot Shield, Theme Studio, Theme Store) is
+	// consolidated into ONE pinned hub tab — a card grid like Dashboard/Growth —
+	// keeping the sidebar minimal. The products (VayuMail, VayuTalk, VayuTor) stay
+	// pinned below as their own row since they are opened often.
+	b.WriteString(gate(navItem("/os/optimize", "Optimize", "optimize", active, iconOptimize), "/os/optimize"))
+	section("Products",
 		navItem("/os/vayumail", "VayuMail", "vayuos", active, iconSecurity),
 		navItem("/os/talk", "VayuTalk", "talk", active, iconTalk),
 		// VayuTor is an admin-only infrastructure control (see osPathMinLevel):
-		// gate its sidebar entry so author/editor sessions never see it. The
-		// Anonymous Tor Space no longer has its own nav row — the one-click world
-		// switch at the TOP of the sidebar is its control, and its detail/address
-		// page is reached from there (fewer sidebar rows, ADR-0141).
+		// gate its sidebar entry so author/editor sessions never see it.
 		gate(navItem("/os/tor", "VayuTor", "tor", active, iconTor), "/os/tor"),
 	)
 	section("System",
@@ -972,6 +973,7 @@ var (
 	iconAnalytics  = svgIcon("M3 17l4-8 4 4 4-6 4 4")
 	iconGrowth     = svgIcon("M3 15l4-4 3 2 6-7m0 0h-3m3 0v3")
 	iconOperations = svgIcon("M6 4v4M6 12v4M14 4v2M14 10v6M6 8a2 2 0 100 4 2 2 0 000-4zM14 6a2 2 0 100 4 2 2 0 000-4z")
+	iconOptimize   = svgIcon("M10 3l1.8 4.2L16 9l-4.2 1.8L10 15l-1.8-4.2L4 9l4.2-1.8L10 3z")
 	iconSettings   = svgIcon("M10 13a3 3 0 100-6 3 3 0 000 6zm0 0v1m0-8V5M4.2 4.2l.7.7m10-.7l-.7.7M3 10H2m16 0h-1M4.9 15.8l.7-.7m9.5.7l-.7-.7")
 	iconSecurity   = svgIcon("M10 2l6 3v5c0 3.5-2.5 6.8-6 8-3.5-1.2-6-4.5-6-8V5l6-3z")
 	iconTools      = svgIcon("M12.5 3.5a3 3 0 00-3.9 3.9l-5.1 5.1 2 2 5.1-5.1a3 3 0 003.9-3.9l-2 2-2-2 2-2z")
