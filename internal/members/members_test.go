@@ -24,6 +24,7 @@ func newTestStore(t *testing.T) *Store {
 		`CREATE TABLE member_labels(id TEXT PRIMARY KEY,name TEXT NOT NULL UNIQUE,created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
 		`CREATE TABLE member_label_map(member_id TEXT NOT NULL,label_id TEXT NOT NULL,PRIMARY KEY(member_id,label_id))`,
 		`CREATE TABLE member_events(id TEXT PRIMARY KEY,member_id TEXT NOT NULL,type TEXT NOT NULL,detail TEXT NOT NULL DEFAULT '',amount_cents INTEGER NOT NULL DEFAULT 0,created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
+		`CREATE TABLE mailid_agreements(id TEXT PRIMARY KEY,email TEXT NOT NULL,address TEXT NOT NULL,terms_sha256 TEXT NOT NULL,accepted_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
 		`INSERT INTO member_tiers(id,slug,name,monthly_cents,yearly_cents,sort) VALUES('tier_free','free','Free',0,0,0),('tier_paid','paid','Premium',500,5000,1)`,
 	} {
 		if _, err := db.Exec(stmt); err != nil {
@@ -31,6 +32,38 @@ func newTestStore(t *testing.T) *Store {
 		}
 	}
 	return New(db)
+}
+
+func TestMailIDAgreement(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	count := func(email string) int {
+		var n int
+		if err := s.db.QueryRowContext(ctx, `SELECT COUNT(1) FROM mailid_agreements WHERE email=?`, email).Scan(&n); err != nil {
+			t.Fatalf("count: %v", err)
+		}
+		return n
+	}
+	if n := count("reader@example.com"); n != 0 {
+		t.Fatalf("expected 0 agreements initially, got %d", n)
+	}
+	// Case-insensitive email; two distinct addresses recorded for one member.
+	if err := s.RecordMailIDAgreement(ctx, "Reader@Example.com", "Me@Example.com", "abc123"); err != nil {
+		t.Fatalf("record: %v", err)
+	}
+	if err := s.RecordMailIDAgreement(ctx, "reader@example.com", "vip@example.com", "def456"); err != nil {
+		t.Fatalf("record 2: %v", err)
+	}
+	if n := count("reader@example.com"); n != 2 {
+		t.Errorf("expected 2 agreements, got %d", n)
+	}
+	// Blank email/address is rejected so an acceptance is never stored anonymously.
+	if err := s.RecordMailIDAgreement(ctx, "", "x@example.com", "z"); err == nil {
+		t.Error("expected error for blank email")
+	}
+	if err := s.RecordMailIDAgreement(ctx, "reader@example.com", "", "z"); err == nil {
+		t.Error("expected error for blank address")
+	}
 }
 
 func TestUpsertAndTier(t *testing.T) {

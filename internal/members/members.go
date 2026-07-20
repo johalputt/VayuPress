@@ -255,6 +255,22 @@ func (s *Store) MailAddressFor(ctx context.Context, email string) string {
 	return addr
 }
 
+// RecordMailIDAgreement stores a member's acceptance of the mail-ID terms — the
+// address they took, a hex SHA-256 of the exact terms text they agreed to, and
+// (via the column default) the time — so the operator holds durable proof of
+// agreement for every provisioned address.
+func (s *Store) RecordMailIDAgreement(ctx context.Context, email, address, termsSHA256 string) error {
+	email = strings.ToLower(strings.TrimSpace(email))
+	address = strings.ToLower(strings.TrimSpace(address))
+	if email == "" || address == "" {
+		return fmt.Errorf("email and address required")
+	}
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO mailid_agreements(id,email,address,terms_sha256) VALUES(?,?,?,?)`,
+		"mag_"+randHex(12), email, address, strings.TrimSpace(termsSHA256))
+	return err
+}
+
 // List returns members, newest first.
 func (s *Store) List(ctx context.Context, limit int) ([]Member, error) {
 	if limit <= 0 {

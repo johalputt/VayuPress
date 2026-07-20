@@ -8,6 +8,23 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.51] — 2026-07-20
+
+### Added
+- **Mailbox terms & acceptance gate (operator protection).** Before a VayuMail
+  address is provisioned to a member, they must accept the operator's mail-ID
+  terms (an editable acceptable-use agreement, `monetization.mailid_terms`, with
+  a sensible default). Each acceptance is recorded — the address taken, a SHA-256
+  of the exact terms text agreed to, and the timestamp (new `mailid_agreements`
+  table, migration 072) — so the operator holds durable proof of agreement and is
+  protected from misuse of the address. The claim form shows the terms with a
+  required "I agree" checkbox; clearing the terms text relaxes the gate.
+- **Configurable premium mail-ID price.** The operator sets what a premium
+  (vanity) address costs (`monetization.premium_mailid_price_cents`, default
+  $5.00 in the checkout currency). The member portal's live availability check
+  now shows the price on a premium name ("✦ vip@domain is a premium address —
+  $5.00"), so premium addresses read as priced, sellable inventory.
+
 ## [3.14.50] — 2026-07-20
 
 ### Added

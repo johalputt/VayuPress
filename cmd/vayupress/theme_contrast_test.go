@@ -109,13 +109,15 @@ func TestThemeEditorCoversSettingsAllowlist(t *testing.T) {
 		// editor.
 		settings.KeyFeatureSearch: true,
 		// The Trending & pinned-posts widget is toggled in Tools & Plugins.
-		settings.KeyFeatureTrending:       true,
-		settings.KeyPayDirectInstructions: true,
-		settings.KeyPayCurrency:           true,
-		settings.KeyPaySupportEmail:       true,
-		settings.KeyPayPalSandbox:         true,
-		settings.KeyAdsenseClient:         true,
-		settings.KeyAffiliateDisclosure:   true,
+		settings.KeyFeatureTrending:         true,
+		settings.KeyPayDirectInstructions:   true,
+		settings.KeyPayCurrency:             true,
+		settings.KeyPaySupportEmail:         true,
+		settings.KeyPayPalSandbox:           true,
+		settings.KeyPremiumMailIDPriceCents: true,
+		settings.KeyMailIDTerms:             true,
+		settings.KeyAdsenseClient:           true,
+		settings.KeyAffiliateDisclosure:     true,
 		// The VayuOS console colour theme is set from the topbar theme toggle
 		// (POST /os/api/settings), not the legacy public-site theme editor.
 		"admin.theme": true,

@@ -9,15 +9,45 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/members"
+	"github.com/johalputt/vayupress/internal/settings"
 	"github.com/johalputt/vayupress/internal/vayuos/mail"
 )
+
+// premiumMailIDDefaultCents is the fallback price (minor units of the checkout
+// currency) for a premium (vanity) mail address when the operator hasn't set one.
+const premiumMailIDDefaultCents = 500
+
+// premiumMailIDPriceCents returns the operator-configured price, in minor units
+// of the checkout currency, for a premium (vanity) mail address.
+func (a *App) premiumMailIDPriceCents(ctx context.Context) int {
+	if a.siteSettings == nil {
+		return premiumMailIDDefaultCents
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(a.siteSettings.Get(ctx, settings.KeyPremiumMailIDPriceCents)))
+	if err != nil || n < 0 {
+		return premiumMailIDDefaultCents
+	}
+	return n
+}
+
+// mailIDTerms returns the acceptable-use / terms text a member must accept before
+// a mailbox is provisioned to them.
+func (a *App) mailIDTerms(ctx context.Context) string {
+	if a.siteSettings == nil {
+		return ""
+	}
+	return strings.TrimSpace(a.siteSettings.Get(ctx, settings.KeyMailIDTerms))
+}
 
 // mailboxEntitlement returns the member's tier and quota (bytes) when it includes
 // a mailbox; ok=false for a free tier or a paid tier without a mailbox.
@@ -83,6 +113,7 @@ func (a *App) handleMemberMailboxStatus(w http.ResponseWriter, r *http.Request) 
 		"has_mailbox": false,
 		"address":     "",
 		"quota_mb":    0,
+		"terms":       a.mailIDTerms(r.Context()),
 	}
 	if ok {
 		resp["quota_mb"] = tier.MailQuotaMB
@@ -108,7 +139,15 @@ func (a *App) handleMemberMailboxAvailable(w http.ResponseWriter, r *http.Reques
 	// premium flags a well-formed, non-reserved vanity name so the portal can
 	// surface it as sellable inventory rather than a plain "unavailable".
 	premium := mail.ValidLocalpart(local) && !mail.IsReservedLocalpart(local) && mail.IsPremiumLocalpart(local)
-	writeJSON(w, r, http.StatusOK, map[string]interface{}{"localpart": local, "available": available, "reason": reason, "premium": premium})
+	resp := map[string]interface{}{"localpart": local, "available": available, "reason": reason, "premium": premium}
+	if premium {
+		cents := a.premiumMailIDPriceCents(r.Context())
+		cur := a.payCurrency(r.Context())
+		resp["price_cents"] = cents
+		resp["currency"] = cur
+		resp["price"] = priceLabel(cur, cents)
+	}
+	writeJSON(w, r, http.StatusOK, resp)
 }
 
 // POST /api/v1/members/mailbox/claim {localpart, password} — provisions the
@@ -133,11 +172,20 @@ func (a *App) handleMemberMailboxClaim(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in struct {
-		Localpart string `json:"localpart"`
-		Password  string `json:"password"`
+		Localpart   string `json:"localpart"`
+		Password    string `json:"password"`
+		AcceptTerms bool   `json:"accept_terms"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16*1024)).Decode(&in); err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "bad-json", "Invalid request body", "")
+		return
+	}
+	// Terms gate: when the operator has mail-ID terms in force, a member must
+	// accept them before an address is provisioned; the acceptance is recorded
+	// (below) as proof. Clearing the terms text relaxes the gate.
+	terms := a.mailIDTerms(r.Context())
+	if terms != "" && !in.AcceptTerms {
+		writeAPIError(w, r, http.StatusBadRequest, "terms-required", "Please accept the mailbox terms to continue.", "")
 		return
 	}
 	local := strings.ToLower(strings.TrimSpace(in.Localpart))
@@ -160,6 +208,13 @@ func (a *App) handleMemberMailboxClaim(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = a.members.SetMailAddress(r.Context(), m.Email, email)
+	// Record the member's acceptance of the exact terms in force (address + a
+	// SHA-256 of the terms text + timestamp) so the operator has durable proof of
+	// agreement for the address just provisioned.
+	termsSum := sha256.Sum256([]byte(terms))
+	if aerr := a.members.RecordMailIDAgreement(r.Context(), m.Email, email, hex.EncodeToString(termsSum[:])); aerr != nil {
+		logging.LogError("members", "record mailid agreement failed", aerr.Error())
+	}
 	logging.LogInfo("members", "member claimed mailbox "+email)
 	writeJSON(w, r, http.StatusCreated, map[string]interface{}{"address": email, "quota_mb": tier.MailQuotaMB})
 }

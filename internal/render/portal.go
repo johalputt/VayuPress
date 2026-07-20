@@ -240,6 +240,12 @@ const PortalJS = `(function () {
           '<div data-vp-mbavail style="font-size:.85rem;min-height:1.2em;margin:.25rem 0"></div>' +
           '<label class="vp-portal-label" for="vp-mb-pass">Set a mailbox password</label>' +
           '<input class="vp-portal-input" id="vp-mb-pass" type="password" autocomplete="new-password" placeholder="At least 8 characters">' +
+          (d.terms ?
+            '<details style="margin:.55rem 0;border:1px solid rgba(128,128,128,.3);border-radius:.45rem;padding:.4rem .6rem">' +
+            '<summary style="cursor:pointer;font-size:.85rem;opacity:.85">Mailbox terms — please read</summary>' +
+            '<div style="max-height:9rem;overflow:auto;font-size:.8rem;opacity:.82;margin-top:.4rem;white-space:pre-wrap">' + esc(d.terms) + '</div></details>' +
+            '<label style="display:flex;gap:.45rem;align-items:flex-start;font-size:.85rem;margin:.2rem 0 .5rem"><input type="checkbox" id="vp-mb-terms" style="margin-top:.2rem"><span>I have read and agree to the mailbox terms.</span></label>'
+            : '') +
           '<button class="vp-portal-btn" type="submit">Claim my mailbox</button>' +
           '</form>' +
           '<div class="vp-portal-msg" aria-live="polite"></div>';
@@ -260,7 +266,7 @@ const PortalJS = `(function () {
         .then(function (r) { return r.json(); })
         .then(function (d) {
           if (d && d.available) { avail.textContent = '✓ ' + v + '@' + domain + ' is available'; avail.style.color = '#22c55e'; }
-          else if (d && d.premium) { avail.textContent = '✦ ' + v + '@' + domain + ' is a premium address — not included on the free claim'; avail.style.color = '#f59e0b'; }
+          else if (d && d.premium) { avail.textContent = '✦ ' + v + '@' + domain + ' is a premium address' + (d.price ? ' — ' + d.price : '') + ' (not included on the free claim)'; avail.style.color = '#f59e0b'; }
           else { avail.textContent = '✕ ' + ((d && d.reason) || 'Not available'); avail.style.color = '#ef4444'; }
         }).catch(function () {});
     }
@@ -270,11 +276,14 @@ const PortalJS = `(function () {
         e.preventDefault();
         var v = (local.value || '').trim().toLowerCase();
         var pass = (body.querySelector('#vp-mb-pass').value) || '';
+        var termsBox = body.querySelector('#vp-mb-terms');
+        var accepted = termsBox ? termsBox.checked : true;
         if (!v) { msg('Choose an address.', 'err'); return; }
         if (pass.length < 8) { msg('Password must be at least 8 characters.', 'err'); return; }
+        if (termsBox && !accepted) { msg('Please accept the mailbox terms to continue.', 'err'); return; }
         var btn = form.querySelector('.vp-portal-btn');
         btn.disabled = true; btn.textContent = 'Claiming…';
-        postJSON('/api/v1/members/mailbox/claim', { localpart: v, password: pass }).then(function (res) {
+        postJSON('/api/v1/members/mailbox/claim', { localpart: v, password: pass, accept_terms: accepted }).then(function (res) {
           btn.disabled = false; btn.textContent = 'Claim my mailbox';
           if (res.ok) { loadMailbox(); }
           else { msg((res.body && res.body.error && res.body.error.message) || 'Could not claim that address.', 'err'); }
