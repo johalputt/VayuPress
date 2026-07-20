@@ -8,6 +8,18 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.29] — 2026-07-20
+
+### Changed
+- **New "Growth" hub consolidates the Audience & Monetization sidebar groups.**
+  Members, Newsletter, Monetization, Advertising (and My Profile) no longer each
+  take a sidebar row — they're merged into a single pinned **Growth** tab (like
+  Dashboard) that opens a premium card grid, with live counts (members, newsletter
+  subscribers) on the cards. This continues the dashboard-hub pattern and keeps the
+  VayuOS sidebar minimal and clean. Every card links to its existing page — nothing
+  about those pages changed, only the navigation — and My Profile also stays
+  reachable from the sidebar footer avatar.
+
 ## [3.14.28] — 2026-07-19
 
 ### Fixed

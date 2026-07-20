@@ -212,6 +212,9 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/media/delete", a.handleOSMediaDelete)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/media/alt", a.handleOSMediaAlt)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/media/import", a.handleMediaImport)
+		// Growth hub: consolidates Members / Newsletter / Monetization / Advertising
+		// (+ My Profile) into one dashboard-style card page (admin-only).
+		pr.Get("/os/growth", a.handleOSGrowth)
 		pr.Get("/os/members", a.handleOSMembers)
 		// HTMX fragment: live-refresh the Members "Recent activity" feed.
 		pr.Get("/os/members/activity", a.handleOSMembersActivityFragment)
@@ -905,15 +908,11 @@ func osSidebarNav(active string, s *osSettings) string {
 	// counts + notification badges, so the sidebar stays focused on the broader
 	// system areas. Only the Dashboard hub is pinned here.
 	b.WriteString(gate(navItem("/os", "Dashboard", "dashboard", active, iconDashboard), "/os"))
-	section("Audience",
-		gate(navItem("/os/members", "Members", "members", active, iconMembers), "/os/members"),
-		gate(navItem("/os/newsletter", "Newsletter", "newsletter", active, iconNewsletter), "/os/newsletter"),
-		navItem("/os/profile", "My Profile", "profile", active, iconMembers),
-	)
-	section("Monetization",
-		gate(navItem("/os/monetization", "Monetization", "monetization", active, iconMoney), "/os/monetization"),
-		gate(navItem("/os/ads", "Advertising", "ads", active, iconAds), "/os/ads"),
-	)
+	// Audience (Members, Newsletter, Profile) and Monetization (Monetization,
+	// Advertising) are consolidated into ONE pinned Growth hub — a card grid with
+	// live counts, mirroring the Dashboard pattern — so the sidebar stays minimal.
+	// (My Profile also remains reachable from the sidebar footer avatar.)
+	b.WriteString(gate(navItem("/os/growth", "Growth", "growth", active, iconGrowth), "/os/growth"))
 	section("Optimize",
 		gate(navItem("/os/seo", "SEO", "seo", active, iconSEO), "/os/seo"),
 		gate(navItem("/os/analytics", "Analytics", "analytics", active, iconAnalytics), "/os/analytics"),
@@ -972,6 +971,7 @@ var (
 	iconNewsletter = svgIcon("M3 8l7-4 7 4v8a1 1 0 01-1 1H4a1 1 0 01-1-1V8zm7-1v9m-4-6h8")
 	iconSEO        = svgIcon("M8 15A7 7 0 108 1a7 7 0 000 14zm5-1l4 4")
 	iconAnalytics  = svgIcon("M3 17l4-8 4 4 4-6 4 4")
+	iconGrowth     = svgIcon("M3 15l4-4 3 2 6-7m0 0h-3m3 0v3")
 	iconSettings   = svgIcon("M10 13a3 3 0 100-6 3 3 0 000 6zm0 0v1m0-8V5M4.2 4.2l.7.7m10-.7l-.7.7M3 10H2m16 0h-1M4.9 15.8l.7-.7m9.5.7l-.7-.7")
 	iconSecurity   = svgIcon("M10 2l6 3v5c0 3.5-2.5 6.8-6 8-3.5-1.2-6-4.5-6-8V5l6-3z")
 	iconTools      = svgIcon("M12.5 3.5a3 3 0 00-3.9 3.9l-5.1 5.1 2 2 5.1-5.1a3 3 0 003.9-3.9l-2 2-2-2 2-2z")
