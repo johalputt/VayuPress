@@ -699,6 +699,110 @@
 @media (max-width: 1100px) { .vp-os .work-grid { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 640px)  { .vp-os .work-grid { grid-template-columns: 1fr; } }
 
+/* ── VayuDomains — premium domain cards & per-site manager (ADR-0141) ────────
+   The domain registry is presented as a responsive grid of premium cards with a
+   staggered entrance, replacing the Stage-1 flat table. Each secondary card
+   links to its own per-site manager (also surfaced from the Optimize hub) where
+   its branding, content and lifecycle are controlled. Shared by both worlds — in
+   the Tor world the hosts are .onion addresses and the same cards render. */
+.vp-os .domain-grid {
+  display: grid; grid-template-columns: repeat(2, 1fr);
+  gap: var(--sp-4); margin-bottom: var(--sp-5);
+}
+@media (max-width: 900px) { .vp-os .domain-grid { grid-template-columns: 1fr; } }
+
+.vp-os .domain-card {
+  position: relative;
+  display: flex; flex-direction: column; gap: var(--sp-3);
+  padding: var(--sp-5);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--bg-surface-2) 55%, var(--bg-surface)) 0%, var(--bg-surface) 60%);
+  border: 1px solid var(--border); border-radius: var(--r-md);
+  overflow: hidden; opacity: 0;
+  animation: vp-dom-in 0.5s cubic-bezier(0.16, 0.84, 0.44, 1) forwards;
+  transition: border-color var(--t), box-shadow var(--t), transform var(--t);
+}
+.vp-os .domain-card::before {
+  content: ""; position: absolute; inset: 0 0 auto 0; height: 2px;
+  background: linear-gradient(90deg, transparent, var(--brand-glow) 50%, transparent);
+  opacity: 0.6;
+}
+.vp-os .domain-card:hover {
+  border-color: var(--border-strong);
+  box-shadow: 0 10px 30px -14px rgba(2, 8, 20, 0.6);
+  transform: translateY(-2px);
+}
+.vp-os .domain-card--primary {
+  border-color: var(--border-strong);
+  background: linear-gradient(135deg, var(--brand-dim), transparent 62%);
+}
+/* Staggered entrance — CSP-safe (no inline styles), driven by document order. */
+.vp-os .domain-card:nth-child(1) { animation-delay: 0.02s; }
+.vp-os .domain-card:nth-child(2) { animation-delay: 0.07s; }
+.vp-os .domain-card:nth-child(3) { animation-delay: 0.12s; }
+.vp-os .domain-card:nth-child(4) { animation-delay: 0.17s; }
+.vp-os .domain-card:nth-child(5) { animation-delay: 0.22s; }
+.vp-os .domain-card:nth-child(6) { animation-delay: 0.27s; }
+.vp-os .domain-card:nth-child(n+7) { animation-delay: 0.3s; }
+@keyframes vp-dom-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .vp-os .domain-card { animation: none; opacity: 1; }
+  .vp-os .domain-card:hover { transform: none; }
+}
+
+.vp-os .domain-card__head { display: flex; align-items: flex-start; gap: var(--sp-3); }
+.vp-os .domain-card__icon {
+  flex: 0 0 auto; width: 38px; height: 38px; border-radius: var(--r-sm);
+  display: flex; align-items: center; justify-content: center;
+  background: var(--brand-dim); color: var(--brand);
+}
+.vp-os .domain-card__icon svg { width: 19px; height: 19px; }
+.vp-os .domain-card__id { flex: 1; min-width: 0; }
+.vp-os .domain-card__host {
+  display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap;
+  font-family: var(--font-mono); font-size: var(--text-sm); font-weight: 600;
+  color: var(--text); word-break: break-all;
+}
+.vp-os .domain-card__serves { margin-top: 3px; font-size: var(--text-xs); color: var(--text-3); }
+
+.vp-os .domain-card__stats { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.vp-os .domain-stat {
+  display: inline-flex; align-items: baseline; gap: 4px;
+  padding: 3px 9px; border-radius: var(--r-full);
+  background: var(--bg-surface-2); border: 1px solid var(--border);
+  font-size: var(--text-xs); color: var(--text-2);
+}
+.vp-os .domain-stat b {
+  font-family: var(--font-head); font-variant-numeric: tabular-nums;
+  color: var(--text); font-weight: 700;
+}
+
+.vp-os .domain-card__meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+.vp-os .domain-card__actions {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2);
+  margin-top: auto; padding-top: var(--sp-3); border-top: 1px solid var(--border);
+}
+
+/* Per-site manager hero (the /os/domains/{id} surface reached from Optimize). */
+.vp-os .site-hero {
+  display: flex; align-items: center; gap: var(--sp-4); flex-wrap: wrap;
+  padding: var(--sp-5); margin-bottom: var(--sp-5);
+  background: linear-gradient(120deg, var(--brand-dim), transparent 70%);
+  border: 1px solid var(--border-strong); border-radius: var(--r-md);
+}
+.vp-os .site-hero__icon {
+  flex: 0 0 auto; width: 46px; height: 46px; border-radius: var(--r-md);
+  display: flex; align-items: center; justify-content: center;
+  background: var(--brand); color: #fff;
+}
+.vp-os .site-hero__icon svg { width: 22px; height: 22px; }
+.vp-os .site-hero__body { flex: 1; min-width: 12rem; }
+.vp-os .site-hero__host {
+  font-family: var(--font-mono); font-size: var(--text-lg); font-weight: 700;
+  color: var(--text); word-break: break-all;
+}
+.vp-os .site-hero__sub { margin-top: 4px; display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); font-size: var(--text-xs); color: var(--text-2); }
+.vp-os .site-hero__actions { display: flex; gap: var(--sp-2); flex-wrap: wrap; }
+
 /* ── Grid system ─────────────────────────────────────────────── */
 .vp-os .grid { display: grid; gap: var(--sp-4); }
 .vp-os .grid-2 { grid-template-columns: repeat(2, 1fr); }

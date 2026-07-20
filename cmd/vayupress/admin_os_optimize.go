@@ -10,6 +10,7 @@ package main
 // (Bot Shield, Domains, Settings, VayuAPI, VayuMCP, Tools).
 
 import (
+	"html"
 	htmpl "html/template"
 	"net/http"
 	"strings"
@@ -17,12 +18,36 @@ import (
 	"github.com/johalputt/vayupress/internal/render"
 )
 
+// optimizeSite is the lightweight per-domain descriptor the Optimize hub needs to
+// render a "Your websites" card (one per secondary domain) linking to that site's
+// manager. It carries only what the card shows — id, host and what it serves.
+type optimizeSite struct {
+	ID    string
+	Host  string
+	Label string
+}
+
 // handleOSOptimize renders the Optimize hub. Opens at editor level (osPathMinLevel
 // gates "/os/optimize"); admin-only cards are hidden from editors in the grid.
 func (a *App) handleOSOptimize(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
-	writeOSHTML(w, adminOSLayout(nonce, "Optimize", "optimize", cfg, htmpl.HTML(osOptimizeGrid(cfg.AccessLevel))))
+
+	// Each secondary domain becomes a "Your websites" card linking to its per-site
+	// manager, so the operator controls every registered site from the Optimize hub.
+	var sites []optimizeSite
+	if a.domains != nil {
+		if list, err := a.domains.List(r.Context()); err == nil {
+			for _, d := range list {
+				if d.IsPrimary || isPendingTorSite(d.Host) {
+					continue
+				}
+				sites = append(sites, optimizeSite{ID: d.ID, Host: d.Host, Label: siteTypeLabel(d.EffectiveSiteType())})
+			}
+		}
+	}
+
+	writeOSHTML(w, adminOSLayout(nonce, "Optimize", "optimize", cfg, htmpl.HTML(osOptimizeGrid(cfg.AccessLevel, sites))))
 }
 
 // osOptimizeGrid builds the Optimize hub body as two card rows. Each card is shown
@@ -30,7 +55,7 @@ func (a *App) handleOSOptimize(w http.ResponseWriter, r *http.Request) {
 // mirroring the sidebar gate — and a row's heading is emitted only when at least
 // one of its cards is visible, so an editor never sees an empty "Configuration"
 // heading.
-func osOptimizeGrid(level int) string {
+func osOptimizeGrid(level int, sites []optimizeSite) string {
 	card := func(href, title, desc, icon string, accent bool) string {
 		if level < osPathMinLevel(href) {
 			return ""
@@ -56,6 +81,20 @@ func osOptimizeGrid(level int) string {
 
 	var b strings.Builder
 	b.WriteString(`<div class="page-head"><div><h1 class="page-title">Optimize</h1><p class="page-sub">Reach, protect and polish your site — plus everything to configure it.</p></div></div>`)
+
+	// Your websites — one card per secondary domain, each opening that site's own
+	// manager where its branding, content and lifecycle are controlled. Shown only
+	// when a secondary site exists and the viewer can reach the domain registry.
+	if len(sites) > 0 && level >= osPathMinLevel("/os/domains") {
+		var cards strings.Builder
+		for _, s := range sites {
+			cards.WriteString(osWorkCard("/os/domains/"+html.EscapeString(s.ID), s.Host, s.Label, iconDomains, 0, "", false))
+		}
+		b.WriteString(`<div class="section-head"><span class="section-head__title">Your websites</span>` +
+			`<span class="section-head__hint">Edit branding, content &amp; theme per site</span></div>` +
+			`<div class="work-grid">` + cards.String() + `</div>`)
+	}
+
 	b.WriteString(row("Reach, protect &amp; polish", "Grow visibility and safeguard your site",
 		card("/os/seo", "SEO", "Search visibility & metadata", iconSEO, true),
 		card("/os/analytics", "Analytics", "Traffic & audience insights", iconAnalytics, false),

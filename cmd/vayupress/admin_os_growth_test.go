@@ -119,7 +119,7 @@ func TestOptimizeHubConsolidatesSidebar(t *testing.T) {
 	}
 
 	// Admins see every card, including the config surfaces and the renamed VayuAPI.
-	admin := osOptimizeGrid(accessAdmin)
+	admin := osOptimizeGrid(accessAdmin, nil)
 	assertCSPSafe(t, "osOptimizeGrid/admin", admin)
 	for _, want := range []string{
 		`href="/os/seo"`, `href="/os/analytics"`, `href="/os/shield"`, `href="/os/theme"`, `href="/os/theme/store"`,
@@ -131,7 +131,7 @@ func TestOptimizeHubConsolidatesSidebar(t *testing.T) {
 		}
 	}
 	// Editors see the editor cards but NOT the admin-only ones (Bot Shield, config).
-	editor := osOptimizeGrid(accessEditor)
+	editor := osOptimizeGrid(accessEditor, nil)
 	for _, deny := range []string{`href="/os/shield"`, `href="/os/settings"`, `href="/os/apikeys"`} {
 		if strings.Contains(editor, deny) {
 			t.Errorf("editor must not see admin-only card %q", deny)

@@ -176,6 +176,9 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		// VayuDomains registry (migration 059) — manage every hostname this
 		// install answers on. Writes are CSRF-protected session-friendly APIs.
 		pr.Get("/os/domains", a.handleOSDomains)
+		// Per-site manager — the "control every part of this site" surface reached
+		// from a domain card and from the Optimize hub's "Your websites" row.
+		pr.Get("/os/domains/{id}", a.handleOSDomainManage)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/domains", a.handleOSDomainCreate)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/domains/assign", a.handleOSDomainAssign)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/domains/sync-all", a.handleOSDomainSyncAll)

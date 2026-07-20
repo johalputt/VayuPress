@@ -8,6 +8,24 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.34] — 2026-07-20
+
+### Changed
+- **Premium, animated Domains registry + per-site manager.** The Domains page is
+  now a responsive grid of premium cards with a staggered entrance (replacing the
+  Stage-1 table): each hostname shows its identity, live post/member/mailbox
+  counts, sync/TLS/status pills and lifecycle actions, and stays a clean
+  add / list / remove surface. Every secondary site gains its **own manager**
+  (`/os/domains/{id}`), reached from its card's **Manage** button and from a new
+  **"Your websites"** row in the **Optimize** hub (one card per site) — so you can
+  edit a site's **branding** (name, tagline, description, accent colours, browser
+  theme-colour), assign posts to it, jump into Theme Studio / Website / Analytics
+  for that site, and run its lifecycle (sync / enable / remove) all in one place.
+  Both worlds get the redesign (shared handlers); the Tor console keeps its
+  one-click **Add Tor site** flow. Per-site branding is prefilled into
+  html-escaped `value` attributes and the manager script reads the domain id from
+  a hidden data node, so no brand value can break out of the markup (CWE-116).
+
 ## [3.14.33] — 2026-07-20
 
 ### Changed

@@ -26,6 +26,7 @@ import (
 	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/domain"
 	"github.com/johalputt/vayupress/internal/render"
+	"github.com/johalputt/vayupress/internal/seo"
 )
 
 // isPendingTorSite reports whether a host is a just-added Tor site still waiting
@@ -141,10 +142,11 @@ func (a *App) handleOSDomains(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// The list is a premium, animated card grid; per-domain branding/content
+	// editing moved to each site's own manager (/os/domains/{id}), surfaced from
+	// the Optimize hub, so this page stays a clean add / list / remove surface.
 	body := domainsHeader(len(domains), viewingHost) +
-		domainsTable(domains, counts, mailCounts, memberCounts, mailOn) +
-		domainsBrandForm(domains, domainsBrandJSON(domains)) +
-		domainsAssignForm(domains) +
+		domainsCards(domains, counts, mailCounts, memberCounts, mailOn) +
 		addForm +
 		domainsScript(nonce) +
 		torSitesScript(nonce, onion, pending)
@@ -171,240 +173,377 @@ func domainsHeader(n int, viewingHost string) string {
 <div class="card card--info"><p class="text-sm">VayuDomains is rolling out in stages. The registry drives <strong>host resolution</strong>, and <strong>per-domain content</strong> (homepage, articles, tags, feeds, sitemap and search) is live — each domain serves only its own posts. <strong>Per-domain mail</strong> is being staged: this page now shows each domain's mail status and mailbox count, with isolated per-domain delivery and branded mail arriving next. Adding a domain only <strong>registers</strong> it — nothing is provisioned automatically. When its DNS points here, press <strong>Sync now</strong> to approve it; the provisioning helper (run by deploy/update, or <code>sudo bash scripts/setup-vayudomain.sh</code>) then obtains its TLS certificate and nginx vhost. Domains on manual hold are never touched.</p></div>`
 }
 
-func domainsTable(domains []domain.Domain, counts, mailCounts, memberCounts map[string]int, mailOn bool) string {
+// domainsCards renders the registry as a premium, animated card grid (replacing
+// the Stage-1 table): each hostname is a card carrying its identity, live
+// content/member/mail counts, sync/TLS/status pills and lifecycle actions. Each
+// secondary card links to its own per-site manager (/os/domains/{id}), which is
+// also surfaced from the Optimize hub, so the operator controls every part of a
+// site from one place. Shared by both worlds — in the Tor world the hosts are
+// .onion addresses and the same cards render unchanged.
+func domainsCards(domains []domain.Domain, counts, mailCounts, memberCounts map[string]int, mailOn bool) string {
 	if len(domains) == 0 {
 		return `<div class="card empty"><div class="empty-title">No domains registered yet</div>
 <div class="empty-sub">The primary domain is seeded automatically once DOMAIN is configured. Add a secondary domain below.</div></div>`
 	}
-	var rows strings.Builder
+	var cards strings.Builder
 	held := 0 // secondary domains parked on manual hold (for the bulk action)
 	for _, d := range domains {
 		if !d.IsPrimary && !d.IsSyncApproved() {
 			held++
 		}
-		badge := ""
-		if d.IsPrimary {
-			badge = ` <span class="pill pill--accent">Primary</span>`
-		}
-		statusPill := `<span class="pill pill--ok">Active</span>`
-		if d.Status != domain.StatusActive {
-			statusPill = `<span class="pill pill--muted">Disabled</span>`
-		}
-		tls := `<span class="pill pill--muted">` + html.EscapeString(tlsLabel(d.TLSState)) + `</span>`
-		// Mail (VayuDomains Stage 3a): show whether the domain carries mail and how
-		// many mailboxes it holds. The primary always carries mail when configured;
-		// a secondary opts in via mail_enabled. Counts are derived read-only from the
-		// account store — per-domain delivery/read isolation ships in Stage 3b.
-		mail := mailCell(d, mailCounts[strings.ToLower(d.Host)], mailOn)
-		// Content ownership (Stage 2): the primary owns the unassigned bucket ("").
+		// Content/member counts are keyed by domain id; the primary owns "".
 		key := d.ID
 		if d.IsPrimary {
 			key = ""
 		}
-		content := strconv.Itoa(counts[key]) + " posts"
-		// Members attributed to this domain (VayuDomains Stage 4). Keyed the same
-		// way as content: the primary owns the "" bucket.
-		members := strconv.Itoa(memberCounts[key]) + " members"
 
-		// Sync (P5 manual gate): the primary is provisioned outside the registry;
-		// a secondary is either approved (helper provisions + maintains it) or on
-		// manual hold (helper skips it until the operator presses Sync now).
-		syncCell := `<span class="text-xs muted">—</span>`
-		if !d.IsPrimary {
-			if d.IsSyncApproved() {
-				syncCell = `<span class="pill pill--ok">Synced</span>`
-			} else {
-				syncCell = `<span class="pill pill--muted">Manual hold</span>`
-			}
-		}
-
-		// Actions: the primary row is read-only here (managed from Website
-		// settings); secondary rows can be synced/held, toggled and removed.
-		actions := `<span class="text-xs muted">Managed in Website</span>`
-		if !d.IsPrimary {
-			syncLabel, syncTarget := "Sync now", domain.SyncApproved
-			if d.IsSyncApproved() {
-				syncLabel, syncTarget = "Pause sync", domain.SyncHold
-			}
-			actions = `<button type="button" class="btn btn--ghost btn--sm" data-dom-sync data-id="` + html.EscapeString(d.ID) + `" data-sync="` + syncTarget + `">` + syncLabel + `</button>
-<button type="button" class="btn btn--ghost btn--sm" data-dom-toggle data-id="` + html.EscapeString(d.ID) + `" data-status="` + toggleStatusFor(d) + `">` + toggleLabelFor(d) + `</button>
-<button type="button" class="btn btn--ghost btn--sm" data-dom-delete data-id="` + html.EscapeString(d.ID) + `" data-host="` + html.EscapeString(d.Host) + `">Remove</button>`
+		cardCls := "domain-card"
+		badge := ""
+		if d.IsPrimary {
+			cardCls += " domain-card--primary"
+			badge = ` <span class="pill pill--accent">Primary</span>`
 		}
 
 		// A just-added Tor site has a placeholder host until the parent mints its
 		// .onion; show that plainly rather than the internal placeholder hostname.
-		hostCell := `<strong>` + html.EscapeString(d.Host) + `</strong>`
+		hostText := `<span class="domain-card__host">` + html.EscapeString(d.Host) + badge + `</span>`
 		if !d.IsPrimary && isPendingTorSite(d.Host) {
-			hostCell = `<span class="pill pill--muted">Minting .onion…</span>`
+			hostText = `<span class="domain-card__host"><span class="pill pill--muted">Minting .onion…</span></span>`
 		}
 
-		rows.WriteString(`<tr data-dom-row>
-  <td>` + hostCell + badge + `</td>
-  <td>` + html.EscapeString(siteTypeLabel(d.EffectiveSiteType())) + `</td>
-  <td class="text-xs muted">` + content + `</td>
-  <td class="text-xs muted">` + members + `</td>
-  <td>` + mail + `</td>
-  <td>` + syncCell + `</td>
-  <td>` + tls + `</td>
-  <td>` + statusPill + `</td>
-  <td class="text-right">` + actions + `</td>
-</tr>`)
+		statusPill := `<span class="pill pill--ok">Active</span>`
+		if d.Status != domain.StatusActive {
+			statusPill = `<span class="pill pill--muted">Disabled</span>`
+		}
+		tlsPill := `<span class="pill pill--muted">` + html.EscapeString(tlsLabel(d.TLSState)) + `</span>`
+		// Sync (P5 manual gate): the primary is provisioned outside the registry.
+		syncPill := ""
+		if !d.IsPrimary {
+			if d.IsSyncApproved() {
+				syncPill = `<span class="pill pill--ok">Synced</span>`
+			} else {
+				syncPill = `<span class="pill pill--muted">Manual hold</span>`
+			}
+		}
+
+		// Stat chips: content, members and mail (all derived read-only).
+		stats := `<span class="domain-stat"><b>` + strconv.Itoa(counts[key]) + `</b> posts</span>` +
+			`<span class="domain-stat"><b>` + strconv.Itoa(memberCounts[key]) + `</b> members</span>` +
+			domainMailStat(d, mailCounts[strings.ToLower(d.Host)], mailOn)
+
+		// Actions: the primary is managed from Website settings; secondary sites get
+		// Manage (per-site editor), Sync, enable/disable and Remove.
+		var actions string
+		if d.IsPrimary {
+			actions = `<a class="btn btn--ghost btn--sm" href="/os/website">Manage in Website</a>`
+		} else {
+			syncLabel, syncTarget := "Sync now", domain.SyncApproved
+			if d.IsSyncApproved() {
+				syncLabel, syncTarget = "Pause sync", domain.SyncHold
+			}
+			actions = `<a class="btn btn--primary btn--sm" href="/os/domains/` + html.EscapeString(d.ID) + `">Manage</a>` +
+				`<button type="button" class="btn btn--ghost btn--sm" data-dom-sync data-id="` + html.EscapeString(d.ID) + `" data-sync="` + syncTarget + `">` + syncLabel + `</button>` +
+				`<button type="button" class="btn btn--ghost btn--sm" data-dom-toggle data-id="` + html.EscapeString(d.ID) + `" data-status="` + toggleStatusFor(d) + `">` + toggleLabelFor(d) + `</button>` +
+				`<button type="button" class="btn btn--danger btn--sm" data-dom-delete data-id="` + html.EscapeString(d.ID) + `" data-host="` + html.EscapeString(d.Host) + `">Remove</button>`
+		}
+
+		cards.WriteString(`<div class="` + cardCls + `" data-dom-row>
+  <div class="domain-card__head">
+    <span class="domain-card__icon">` + iconDomains + `</span>
+    <span class="domain-card__id">` + hostText + `
+      <span class="domain-card__serves">` + html.EscapeString(siteTypeLabel(d.EffectiveSiteType())) + `</span>
+    </span>
+    ` + statusPill + `
+  </div>
+  <div class="domain-card__stats">` + stats + `</div>
+  <div class="domain-card__meta">` + syncPill + tlsPill + `</div>
+  <div class="domain-card__actions">` + actions + `</div>
+</div>`)
 	}
-	// Bulk action: when one or more secondaries sit on manual hold, offer a
-	// single "Sync all pending" that approves them together — the batch
-	// counterpart to each row's "Sync now" (the helper still provisions
-	// out-of-process; approving only adds them to its work list).
+	// Bulk action: when one or more secondaries sit on manual hold, offer a single
+	// "Sync all pending" that approves them together — the batch counterpart to
+	// each card's "Sync now" (the helper still provisions out-of-process).
 	bulk := ""
 	if held > 0 {
 		unit := "domains"
 		if held == 1 {
 			unit = "domain"
 		}
-		bulk = `<div class="vm-row" style="gap:.5rem;align-items:center;margin-top:.75rem">
+		bulk = `<div class="vm-row mb-6">
   <button type="button" class="btn btn--primary btn--sm" data-dom-sync-all>Sync all pending (` + strconv.Itoa(held) + ` ` + unit + `)</button>
   <span id="dom-sync-all-status" class="text-sm muted" role="status" aria-live="polite"></span>
 </div>`
 	}
-	return `<div class="card"><div class="table-wrap"><table class="table">
-  <thead><tr><th>Host</th><th>Serves</th><th>Content</th><th>Members</th><th>Mail</th><th>Sync</th><th>TLS</th><th>Status</th><th></th></tr></thead>
-  <tbody>` + rows.String() + `</tbody>
-</table></div>` + bulk + `</div>`
+	return bulk + `<div class="domain-grid">` + cards.String() + `</div>`
 }
 
-// domainsAssignForm lets the operator move a post to a domain by slug. This is
-// the write half of Stage 2 content ownership; the public site begins serving
-// per-domain content once Stage 2b keys the render cache by domain.
-func domainsAssignForm(domains []domain.Domain) string {
-	var opts strings.Builder
-	opts.WriteString(`<option value="">Primary domain (default)</option>`)
-	for _, d := range domains {
-		if d.IsPrimary {
-			continue
-		}
-		opts.WriteString(`<option value="` + html.EscapeString(d.ID) + `">` + html.EscapeString(d.Host) + `</option>`)
-	}
-	return `<div class="card">
-  <h2 class="card-title">Assign a post to a domain</h2>
-  <p class="text-sm muted">Move a published post to a domain by its slug. Existing posts stay on the primary domain until reassigned. The public per-domain site turns on in the next stage; assignments made now take effect then.</p>
-  <div class="form-grid">
-    <label class="field"><span class="field-label">Post slug</span>
-      <input type="text" id="dom-assign-slug" class="input" placeholder="my-post-slug" autocomplete="off" spellcheck="false"></label>
-    <label class="field"><span class="field-label">Owner domain</span>
-      <select id="dom-assign-domain" class="input">` + opts.String() + `</select></label>
-  </div>
-  <div class="vm-row" style="gap:.5rem;align-items:center">
-    <button type="button" class="btn btn--primary" data-dom-assign>Assign post</button>
-    <span id="dom-assign-status" class="text-sm muted" role="status" aria-live="polite"></span>
-  </div>
-</div>`
-}
-
-// domBrandsCarrier renders the hidden element that carries the per-domain brand
-// map to the page script. It uses html/template so the JSON payload is quoted by
-// the template engine's context-aware auto-escaper — not by manual string
-// concatenation — which is the safe, recognised way to embed a value in an HTML
-// attribute (CWE-116): no brand value can break out of the attribute's quoting.
-var domBrandsCarrier = htmpl.Must(htmpl.New("dom-brands").Parse(
-	`<div id="dom-brands" data-brands="{{.}}" hidden></div>`))
-
-// domainsBrandForm lets the operator give each secondary domain its own public
-// identity — site name, tagline, description, accent colours and browser
-// theme-colour — so it presents as its own site. Every field is optional: a
-// blank field inherits the primary site's value, so a domain can re-brand just
-// its name and keep the rest of the operator's design. The primary domain's
-// identity is the global Website settings and is intentionally not editable here.
-// The card is only rendered when a secondary domain exists (nothing to brand on a
-// single-domain install).
-func domainsBrandForm(domains []domain.Domain, brandJSON string) string {
-	var opts strings.Builder
-	secondaries := 0
-	for _, d := range domains {
-		if d.IsPrimary {
-			continue
-		}
-		opts.WriteString(`<option value="` + html.EscapeString(d.ID) + `">` + html.EscapeString(d.Host) + `</option>`)
-		secondaries++
-	}
-	if secondaries == 0 {
-		return ""
-	}
-	// The per-domain brand map rides in an HTML data attribute and is JSON.parsed by
-	// the page script, rather than being interpolated straight into the inline
-	// <script>. html/template (domBrandsCarrier) owns the attribute quoting, so no
-	// value can break out of it (CWE-116).
-	var carrier strings.Builder
-	_ = domBrandsCarrier.Execute(&carrier, brandJSON)
-	return carrier.String() + `
-<div class="card">
-  <h2 class="card-title">Brand a domain</h2>
-  <p class="text-sm muted">Give a secondary domain its own public identity so it presents as its own site. Every field is optional — leave one blank to inherit the primary site's value. Changes apply to that domain's homepage, articles and theme within a few seconds.</p>
-  <div class="form-grid">
-    <label class="field"><span class="field-label">Domain</span>
-      <select id="dom-brand-domain" class="input">` + opts.String() + `</select></label>
-    <label class="field"><span class="field-label">Site name</span>
-      <input type="text" id="dom-brand-name" class="input" placeholder="Inherit primary" autocomplete="off"></label>
-    <label class="field"><span class="field-label">Tagline</span>
-      <input type="text" id="dom-brand-tagline" class="input" placeholder="Inherit primary" autocomplete="off"></label>
-    <label class="field"><span class="field-label">Meta description</span>
-      <input type="text" id="dom-brand-desc" class="input" placeholder="Inherit primary" autocomplete="off"></label>
-    <label class="field"><span class="field-label">Accent · light (hex)</span>
-      <input type="text" id="dom-brand-accent-light" class="input" placeholder="#2563eb" autocomplete="off" spellcheck="false"></label>
-    <label class="field"><span class="field-label">Accent · dark (hex)</span>
-      <input type="text" id="dom-brand-accent-dark" class="input" placeholder="#60a5fa" autocomplete="off" spellcheck="false"></label>
-    <label class="field"><span class="field-label">Theme colour (hex)</span>
-      <input type="text" id="dom-brand-theme" class="input" placeholder="#0f172a" autocomplete="off" spellcheck="false"></label>
-  </div>
-  <div class="vm-row" style="gap:.5rem;align-items:center">
-    <button type="button" class="btn btn--primary" data-dom-brand-save>Save branding</button>
-    <button type="button" class="btn btn--ghost" data-dom-brand-clear>Reset to primary</button>
-    <span id="dom-brand-status" class="text-sm muted" role="status" aria-live="polite"></span>
-  </div>
-</div>`
-}
-
-// domainsBrandJSON encodes each secondary domain's current brand as a JSON map
-// (id → brand) so the page script can populate the branding form when a domain
-// is selected. Primary domains carry no brand and are omitted.
-func domainsBrandJSON(domains []domain.Domain) string {
-	m := map[string]domain.Brand{}
-	for _, d := range domains {
-		if d.IsPrimary {
-			continue
-		}
-		if b, ok := d.Brand(); ok {
-			m[d.ID] = b
-		} else {
-			m[d.ID] = domain.Brand{}
-		}
-	}
-	out, err := json.Marshal(m)
-	if err != nil {
-		return "{}"
-	}
-	return string(out)
-}
-
-// mailCell renders a domain's Mail column (VayuDomains Stage 3a). The primary
-// carries the install's mail when the engine is enabled; a secondary opts in via
-// mail_enabled, with per-domain delivery/read isolation arriving in Stage 3b. The
-// mailbox count is derived read-only from the account store.
-func mailCell(d domain.Domain, n int, mailOn bool) string {
-	unit := "mailboxes"
-	if n == 1 {
-		unit = "mailbox"
-	}
-	count := ` <span class="text-xs muted">` + strconv.Itoa(n) + ` ` + unit + `</span>`
+// domainMailStat renders the mail chip for a domain card — the compact,
+// card-friendly counterpart to mailCell. The primary carries the install's mail
+// when the engine is on; a secondary opts in via mail_enabled; otherwise the
+// chip reads "no mail". The mailbox count is derived read-only from the account
+// store (VayuDomains Stage 3a).
+func domainMailStat(d domain.Domain, n int, mailOn bool) string {
 	switch {
 	case d.IsPrimary:
 		if !mailOn {
-			return `<span class="text-xs muted">Not configured</span>`
+			return `<span class="domain-stat">no mail</span>`
 		}
-		return `<span class="pill pill--ok">Primary mail</span>` + count
+		return `<span class="domain-stat"><b>` + strconv.Itoa(n) + `</b> mailboxes</span>`
 	case d.MailEnabled:
-		return `<span class="pill pill--muted">Enabled · Stage 3b</span>` + count
+		return `<span class="domain-stat"><b>` + strconv.Itoa(n) + `</b> mailboxes</span>`
 	default:
-		return `<span class="text-xs muted">—</span>`
+		return `<span class="domain-stat">no mail</span>`
 	}
+}
+
+// handleOSDomainManage renders the per-site manager for one secondary domain —
+// the "control every part of this site" surface reached from its card and from
+// the Optimize hub's "Your websites" row. It carries the site's identity and
+// live counts, a scoped branding editor (its own name / tagline / colours), a
+// post-assignment box, lifecycle controls (sync / enable / remove) and shortcuts
+// into Theme Studio and Website. Shared by both worlds. The primary site's
+// identity is the global Website settings, so it is redirected there; an unknown
+// id falls back to the registry list.
+func (a *App) handleOSDomainManage(w http.ResponseWriter, r *http.Request) {
+	nonce := render.CSPNonce(r)
+	cfg := a.getOSSettings(r.Context())
+	id := chi.URLParam(r, "id")
+
+	if token := auth.GenerateCSRFToken(); token != "" {
+		http.SetCookie(w, &http.Cookie{Name: "vp_csrf", Value: token, Path: "/", SameSite: http.SameSiteStrictMode, HttpOnly: false, Secure: csrfCookieSecure(), MaxAge: 3600})
+	}
+
+	var found *domain.Domain
+	if a.domains != nil {
+		if list, err := a.domains.List(r.Context()); err == nil {
+			for i := range list {
+				if list[i].ID == id {
+					d := list[i]
+					found = &d
+					break
+				}
+			}
+		}
+	}
+	if found == nil {
+		http.Redirect(w, r, "/os/domains", http.StatusSeeOther)
+		return
+	}
+	if found.IsPrimary {
+		http.Redirect(w, r, "/os/website", http.StatusSeeOther)
+		return
+	}
+
+	// Per-domain counts — the same read-only sources the registry list uses.
+	posts, members, mailboxes := 0, 0, 0
+	if a.articles != nil {
+		if c, err := a.articles.CountsByDomain(r.Context()); err == nil {
+			posts = c[found.ID]
+		}
+	}
+	if a.members != nil {
+		if c, err := a.members.CountsByDomain(r.Context()); err == nil {
+			members = c[found.ID]
+		}
+	}
+	mailOn := false
+	if a.vayuMail != nil {
+		mailOn = a.vayuMail.Config().Enabled
+		if a.vayuMail.Accounts() != nil {
+			if c, err := a.vayuMail.Accounts().CountsByHost(r.Context()); err == nil {
+				mailboxes = c[strings.ToLower(found.Host)]
+			}
+		}
+	}
+
+	body := domainManagePage(*found, posts, members, mailboxes, mailOn) + domainManageScript(nonce)
+	writeOSHTML(w, adminOSLayout(nonce, "Manage · "+found.Host, "optimize", cfg, htmpl.HTML(body)))
+}
+
+// domainManagePage builds the per-site manager body for a secondary domain: a
+// hero with identity + live-view link, stat chips, lifecycle controls, a scoped
+// branding editor prefilled from the domain's current brand, a post-assignment
+// box and shortcuts into Theme Studio / Website / Analytics.
+func domainManagePage(d domain.Domain, posts, members, mailboxes int, mailOn bool) string {
+	esc := html.EscapeString
+	b, _ := d.Brand()
+	pending := isPendingTorSite(d.Host)
+
+	statusPill := `<span class="pill pill--ok">Active</span>`
+	if d.Status != domain.StatusActive {
+		statusPill = `<span class="pill pill--muted">Disabled</span>`
+	}
+	syncPill := `<span class="pill pill--ok">Synced</span>`
+	if !d.IsSyncApproved() {
+		syncPill = `<span class="pill pill--muted">Manual hold</span>`
+	}
+	tlsPill := `<span class="pill pill--muted">` + esc(tlsLabel(d.TLSState)) + `</span>`
+
+	hostShown := esc(d.Host)
+	viewLink := `<a class="btn btn--ghost btn--sm" href="` + esc(seo.Origin(d.Host)) + `" target="_blank" rel="noopener noreferrer">View site ↗</a>`
+	if pending {
+		hostShown = "Minting .onion…"
+		viewLink = ""
+	}
+
+	stats := `<span class="domain-stat"><b>` + strconv.Itoa(posts) + `</b> posts</span>` +
+		`<span class="domain-stat"><b>` + strconv.Itoa(members) + `</b> members</span>` +
+		domainMailStat(d, mailboxes, mailOn)
+
+	syncLabel, syncTarget := "Sync now", domain.SyncApproved
+	if d.IsSyncApproved() {
+		syncLabel, syncTarget = "Pause sync", domain.SyncHold
+	}
+
+	// A prefilled text input for the branding editor.
+	input := func(id, label, ph, val string) string {
+		return `<label class="field"><span class="field-label">` + label + `</span>
+      <input type="text" id="` + id + `" class="input" placeholder="` + ph + `" value="` + esc(val) + `" autocomplete="off"></label>`
+	}
+
+	branding := `<div class="card">
+  <h2 class="card-title">Branding</h2>
+  <p class="text-sm muted">Give this site its own public identity. Every field is optional — leave one blank to inherit the primary site's value. Changes apply to this domain's homepage, articles and theme within a few seconds.</p>
+  <div class="form-grid">
+    ` + input("site-name", "Site name", "Inherit primary", b.SiteName) + `
+    ` + input("site-tagline", "Tagline", "Inherit primary", b.Tagline) + `
+    ` + input("site-desc", "Meta description", "Inherit primary", b.Description) + `
+    ` + input("site-accent-light", "Accent · light (hex)", "#2563eb", b.AccentLight) + `
+    ` + input("site-accent-dark", "Accent · dark (hex)", "#60a5fa", b.AccentDark) + `
+    ` + input("site-theme", "Theme colour (hex)", "#0f172a", b.ThemeColor) + `
+  </div>
+  <div class="vm-row">
+    <button type="button" class="btn btn--primary" data-site-brand-save>Save branding</button>
+    <button type="button" class="btn btn--ghost" data-site-brand-clear>Reset to primary</button>
+    <span id="site-brand-status" class="text-sm muted" role="status" aria-live="polite"></span>
+  </div>
+</div>`
+
+	assign := `<div class="card">
+  <h2 class="card-title">Content</h2>
+  <p class="text-sm muted">Move a published post to this site by its slug. Existing posts stay on their current domain until reassigned.</p>
+  <div class="form-grid">
+    <label class="field"><span class="field-label">Post slug</span>
+      <input type="text" id="site-assign-slug" class="input" placeholder="my-post-slug" autocomplete="off" spellcheck="false"></label>
+  </div>
+  <div class="vm-row">
+    <button type="button" class="btn btn--primary" data-site-assign>Assign to this site</button>
+    <span id="site-assign-status" class="text-sm muted" role="status" aria-live="polite"></span>
+  </div>
+</div>`
+
+	shortcuts := `<div class="card">
+  <h2 class="card-title">Design &amp; more</h2>
+  <p class="text-sm muted">Deeper editing lives in the shared tools — they apply per domain once this site is selected.</p>
+  <div class="vm-row">
+    <a class="btn btn--ghost btn--sm" href="/os/theme">Theme Studio</a>
+    <a class="btn btn--ghost btn--sm" href="/os/website">Website settings</a>
+    <a class="btn btn--ghost btn--sm" href="/os/analytics">Analytics</a>
+    <a class="btn btn--ghost btn--sm" href="/os/seo">SEO</a>
+  </div>
+</div>`
+
+	lifecycle := `<div class="card">
+  <h2 class="card-title">Lifecycle</h2>
+  <p class="text-sm muted">Approve this site for TLS + nginx provisioning, take it offline, or remove it from the registry.</p>
+  <div class="vm-row">
+    <button type="button" class="btn btn--ghost btn--sm" data-site-sync data-sync="` + syncTarget + `">` + syncLabel + `</button>
+    <button type="button" class="btn btn--ghost btn--sm" data-site-toggle data-status="` + toggleStatusFor(d) + `">` + toggleLabelFor(d) + `</button>
+    <button type="button" class="btn btn--danger btn--sm" data-site-delete data-host="` + esc(d.Host) + `">Remove site</button>
+    <span id="site-life-status" class="text-sm muted" role="status" aria-live="polite"></span>
+  </div>
+</div>`
+
+	return `<div id="dom-manage" data-id="` + esc(d.ID) + `" hidden></div>
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Manage site</h1>
+    <p class="page-sub"><a href="/os/domains">← All domains</a></p>
+  </div>
+</div>
+<div class="site-hero">
+  <span class="site-hero__icon">` + iconDomains + `</span>
+  <span class="site-hero__body">
+    <span class="site-hero__host">` + hostShown + `</span>
+    <span class="site-hero__sub">` + esc(siteTypeLabel(d.EffectiveSiteType())) + statusPill + syncPill + tlsPill + `</span>
+  </span>
+  <span class="site-hero__actions">` + viewLink + `</span>
+</div>
+<div class="domain-card__stats mb-6">` + stats + `</div>
+` + branding + assign + shortcuts + lifecycle
+}
+
+// domainManageScript wires the per-site manager: a scoped branding save/reset, a
+// post-assignment box and the lifecycle controls. It reads the domain id from a
+// hidden data node (CSP-safe) and mirrors the vp_csrf cookie into X-CSRF-Token,
+// exactly like the registry page's script.
+func domainManageScript(nonce string) string {
+	return `<script nonce="` + nonce + `">
+(function(){'use strict';
+function csrf(){var m=document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);return m?decodeURIComponent(m[1]):'';}
+var node=document.getElementById('dom-manage');
+var ID=node?node.getAttribute('data-id'):'';
+if(!ID)return;
+function val(id){var e=document.getElementById(id);return e?e.value.trim():'';}
+function set(id,t){var e=document.getElementById(id);if(e)e.textContent=t;}
+// Branding save
+var bSave=document.querySelector('[data-site-brand-save]');
+if(bSave)bSave.addEventListener('click',function(){
+  var payload={site_name:val('site-name'),tagline:val('site-tagline'),description:val('site-desc'),
+    accent_light:val('site-accent-light'),accent_dark:val('site-accent-dark'),theme_color:val('site-theme')};
+  bSave.disabled=true;set('site-brand-status','Saving…');
+  fetch('/os/api/domains/'+encodeURIComponent(ID)+'/brand',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},body:JSON.stringify(payload)})
+    .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
+    .then(function(res){bSave.disabled=false;set('site-brand-status',res.ok?'Saved ✓':((res.j&&res.j.message)||'Could not save branding'));})
+    .catch(function(e){bSave.disabled=false;set('site-brand-status','Error: '+e);});
+});
+// Branding reset
+var bClear=document.querySelector('[data-site-brand-clear]');
+if(bClear)bClear.addEventListener('click',function(){
+  if(!window.confirm('Reset this site to inherit the primary branding?'))return;
+  bClear.disabled=true;set('site-brand-status','Resetting…');
+  fetch('/os/api/domains/'+encodeURIComponent(ID)+'/brand',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},body:JSON.stringify({})})
+    .then(function(r){if(r.ok){location.reload();}else{bClear.disabled=false;set('site-brand-status','Could not reset');}})
+    .catch(function(e){bClear.disabled=false;set('site-brand-status','Error: '+e);});
+});
+// Assign a post to this site
+var aBtn=document.querySelector('[data-site-assign]');
+if(aBtn)aBtn.addEventListener('click',function(){
+  var slug=val('site-assign-slug');
+  if(!slug){set('site-assign-status','Enter a post slug.');return;}
+  aBtn.disabled=true;set('site-assign-status','Assigning…');
+  fetch('/os/api/domains/assign',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},body:JSON.stringify({slug:slug,domain_id:ID})})
+    .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
+    .then(function(res){aBtn.disabled=false;set('site-assign-status',res.ok?'Assigned ✓':((res.j&&res.j.message)||'Could not assign'));})
+    .catch(function(e){aBtn.disabled=false;set('site-assign-status','Error: '+e);});
+});
+// Lifecycle: sync
+var sBtn=document.querySelector('[data-site-sync]');
+if(sBtn)sBtn.addEventListener('click',function(){
+  sBtn.disabled=true;set('site-life-status','Saving…');
+  fetch('/os/api/domains/'+encodeURIComponent(ID)+'/sync',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},body:JSON.stringify({sync_state:sBtn.getAttribute('data-sync')})})
+    .then(function(r){if(r.ok){location.reload();}else{sBtn.disabled=false;set('site-life-status','Could not update');}})
+    .catch(function(e){sBtn.disabled=false;set('site-life-status','Error: '+e);});
+});
+// Lifecycle: enable/disable
+var tBtn=document.querySelector('[data-site-toggle]');
+if(tBtn)tBtn.addEventListener('click',function(){
+  tBtn.disabled=true;set('site-life-status','Saving…');
+  fetch('/os/api/domains/'+encodeURIComponent(ID)+'/status',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},body:JSON.stringify({status:tBtn.getAttribute('data-status')})})
+    .then(function(r){if(r.ok){location.reload();}else{tBtn.disabled=false;set('site-life-status','Could not update');}})
+    .catch(function(e){tBtn.disabled=false;set('site-life-status','Error: '+e);});
+});
+// Lifecycle: remove → back to the registry
+var dBtn=document.querySelector('[data-site-delete]');
+if(dBtn)dBtn.addEventListener('click',function(){
+  if(!window.confirm('Remove '+dBtn.getAttribute('data-host')+' from the registry? This cannot be undone.'))return;
+  dBtn.disabled=true;set('site-life-status','Removing…');
+  fetch('/os/api/domains/'+encodeURIComponent(ID),{method:'DELETE',headers:{'X-CSRF-Token':csrf()}})
+    .then(function(r){if(r.ok){window.location.href='/os/domains';}else{dBtn.disabled=false;set('site-life-status','Could not remove');}})
+    .catch(function(e){dBtn.disabled=false;set('site-life-status','Error: '+e);});
+});
+})();
+</script>`
 }
 
 func tlsLabel(state string) string {
@@ -502,14 +641,17 @@ if(b)b.addEventListener('click',function(){
 </script>`
 }
 
+// domainsScript wires the registry list page: add a domain, per-card sync /
+// enable / remove, and the bulk "Sync all pending" action. Per-domain branding
+// and post assignment moved to each site's manager (domainManageScript), so this
+// script is now just the list-page CRUD. Every handler is null-guarded so a page
+// without a given control (e.g. no pending domains → no bulk button) is safe.
 func domainsScript(nonce string) string {
 	return `<script nonce="` + nonce + `">
 (function(){'use strict';
 function csrf(){var m=document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);return m?decodeURIComponent(m[1]):'';}
 var st=document.getElementById('dom-status');
 function show(t){if(st)st.textContent=t;}
-var BRANDS={};var _be=document.getElementById('dom-brands');
-if(_be){try{BRANDS=JSON.parse(_be.getAttribute('data-brands')||'{}')||{};}catch(e){BRANDS={};}}
 var addBtn=document.querySelector('[data-dom-add]');
 if(addBtn)addBtn.addEventListener('click',function(){
   var host=(document.getElementById('dom-host').value||'').trim();
@@ -554,50 +696,6 @@ document.querySelectorAll('[data-dom-delete]').forEach(function(b){
       .then(function(r){if(r.ok){location.reload();}else{b.disabled=false;show('Could not remove');}})
       .catch(function(e){b.disabled=false;show('Error: '+e);});
   });
-});
-var ast=document.getElementById('dom-assign-status');
-var assignBtn=document.querySelector('[data-dom-assign]');
-if(assignBtn)assignBtn.addEventListener('click',function(){
-  var slug=(document.getElementById('dom-assign-slug').value||'').trim();
-  if(!slug){if(ast)ast.textContent='Enter a post slug.';return;}
-  var dom=document.getElementById('dom-assign-domain').value;
-  assignBtn.disabled=true;if(ast)ast.textContent='Assigning…';
-  fetch('/os/api/domains/assign',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},body:JSON.stringify({slug:slug,domain_id:dom})})
-    .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
-    .then(function(res){assignBtn.disabled=false;if(res.ok){if(ast)ast.textContent='Assigned ✓';setTimeout(function(){location.reload();},700);}else{if(ast)ast.textContent=(res.j&&res.j.message)||'Could not assign';}})
-    .catch(function(e){assignBtn.disabled=false;if(ast)ast.textContent='Error: '+e;});
-});
-// ── Per-domain branding ─────────────────────────────────────────────────────
-var bSel=document.getElementById('dom-brand-domain');
-var bName=document.getElementById('dom-brand-name'),bTag=document.getElementById('dom-brand-tagline'),
-    bDesc=document.getElementById('dom-brand-desc'),bAL=document.getElementById('dom-brand-accent-light'),
-    bAD=document.getElementById('dom-brand-accent-dark'),bTheme=document.getElementById('dom-brand-theme'),
-    bSt=document.getElementById('dom-brand-status');
-function bShow(t){if(bSt)bSt.textContent=t;}
-function bFill(){if(!bSel)return;var b=BRANDS[bSel.value]||{};
-  bName.value=b.site_name||'';bTag.value=b.tagline||'';bDesc.value=b.description||'';
-  bAL.value=b.accent_light||'';bAD.value=b.accent_dark||'';bTheme.value=b.theme_color||'';bShow('');}
-if(bSel){bSel.addEventListener('change',bFill);bFill();}
-var bSave=document.querySelector('[data-dom-brand-save]');
-if(bSave)bSave.addEventListener('click',function(){
-  if(!bSel||!bSel.value){bShow('Select a domain.');return;}
-  var payload={site_name:bName.value.trim(),tagline:bTag.value.trim(),description:bDesc.value.trim(),
-    accent_light:bAL.value.trim(),accent_dark:bAD.value.trim(),theme_color:bTheme.value.trim()};
-  bSave.disabled=true;bShow('Saving…');
-  fetch('/os/api/domains/'+encodeURIComponent(bSel.value)+'/brand',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},body:JSON.stringify(payload)})
-    .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
-    .then(function(res){bSave.disabled=false;if(res.ok){BRANDS[bSel.value]=res.j&&res.j.brand?res.j.brand:payload;bShow('Saved ✓');}else{bShow((res.j&&res.j.message)||'Could not save branding');}})
-    .catch(function(e){bSave.disabled=false;bShow('Error: '+e);});
-});
-var bClear=document.querySelector('[data-dom-brand-clear]');
-if(bClear)bClear.addEventListener('click',function(){
-  if(!bSel||!bSel.value){bShow('Select a domain.');return;}
-  if(!window.confirm('Reset this domain to inherit the primary site branding?'))return;
-  bClear.disabled=true;bShow('Resetting…');
-  fetch('/os/api/domains/'+encodeURIComponent(bSel.value)+'/brand',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},body:JSON.stringify({})})
-    .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
-    .then(function(res){bClear.disabled=false;if(res.ok){BRANDS[bSel.value]={};bFill();bShow('Reset ✓');}else{bShow((res.j&&res.j.message)||'Could not reset');}})
-    .catch(function(e){bClear.disabled=false;bShow('Error: '+e);});
 });
 })();
 </script>`
