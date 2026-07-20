@@ -114,6 +114,60 @@ func TestMemberSnapshotAvatar(t *testing.T) {
 	}
 }
 
+// TestResolveCommenterRecognisesOperator pins the comment-gate fix: a signed-in
+// VayuOS operator (console session, no reader-member session) is resolved as an
+// authorised commenter with full access — so the "Commenting as …" form the
+// portal shows them is no longer refused with "please sign in as a member". This
+// is the write-side counterpart to TestMemberMeRecognisesOperator: the two must
+// agree on who is authenticated.
+func TestResolveCommenterRecognisesOperator(t *testing.T) {
+	dir := t.TempDir()
+	os.Setenv("DB_PATH", filepath.Join(dir, "commenter.db"))
+	os.Setenv("API_KEY", "test-key")
+	os.Setenv("DOMAIN", "localhost")
+	os.Setenv("CACHE_DIR", dir)
+	config.Load()
+	if err := dbpkg.Init(); err != nil {
+		t.Fatalf("db init: %v", err)
+	}
+	t.Cleanup(func() { dbpkg.DB.Close() })
+
+	// a.members is nil, so resolveMember returns nil and resolveCommenter must fall
+	// through to the console-operator session — the exact path that used to fail.
+	a := &App{
+		userStore: users.New(dbpkg.DB),
+		sessions:  auth.NewSessionStore(dbpkg.DB),
+	}
+	ctx := context.Background()
+	u, err := a.userStore.Create(ctx, "owner@example.com", "Site Owner", "correct horse battery", users.RoleAdmin)
+	if err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+	token, err := a.sessions.Create(ctx, u.ID)
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	// Anonymous → no commenter.
+	if who := a.resolveCommenter(httptest.NewRequest(http.MethodPost, "/x", nil)); who != nil {
+		t.Errorf("anonymous resolveCommenter = %+v, want nil", who)
+	}
+
+	// Operator console session → authorised commenter with full power.
+	req := httptest.NewRequest(http.MethodPost, "/x", nil)
+	req.AddCookie(&http.Cookie{Name: auth.SessionCookie, Value: token})
+	who := a.resolveCommenter(req)
+	if who == nil {
+		t.Fatal("operator session resolveCommenter = nil, want an authorised commenter")
+	}
+	if !who.Operator || who.Email != "owner@example.com" || who.Name != "Site Owner" {
+		t.Errorf("operator identity = %+v, want operator owner@example.com / Site Owner", who)
+	}
+	if !who.Can(members.AccessMembers) || !who.Can(members.AccessPaid) {
+		t.Error("an operator must clear every access level (full power over their own site)")
+	}
+}
+
 func decodeMe(t *testing.T, a *App, token string) map[string]interface{} {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/members/me", nil)

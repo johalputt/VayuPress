@@ -592,8 +592,11 @@ func (a *App) handleArticlePage(w http.ResponseWriter, r *http.Request) {
 
 	// Enforce the paywall: if this article is gated and the viewer is not
 	// authorised, serve a preview with a call to action instead of the body.
+	// resolveCommenter authorises a reader member per their tier AND a signed-in
+	// operator (full access to their own site) — so the owner is never shown a
+	// paywall on their own content, matching the "authorised as per power" rule.
 	if gated {
-		if m := a.resolveMember(r); !authorizedFor(accessLevel, m) {
+		if !a.resolveCommenter(r).Can(accessLevel) {
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			w.Header().Set("Cache-Control", "no-store")
 			fmt.Fprint(w, a.renderPaywall(r, art, accessLevel))

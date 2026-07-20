@@ -98,12 +98,14 @@ func (a *App) handleCommentSubmit(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusForbidden, "comments-off", "Comments are disabled by the operator", "")
 		return
 	}
-	// Commenting is restricted to authenticated members. Readers sign in either
-	// through the membership portal (magic link) or with a VayuMail mailbox —
-	// both produce a member session — so a valid session here means "member or
-	// VayuMail account holder". Anonymous posts are refused.
-	member := a.resolveMember(r)
-	if member == nil {
+	// Commenting is restricted to authenticated principals. Readers sign in via
+	// the membership portal (magic link) or a VayuMail mailbox; the site
+	// owner/staff sign in through the VayuOS console. resolveCommenter recognises
+	// ALL of them — exactly the set /api/v1/members/me reports as authenticated —
+	// so a signed-in operator is no longer shown the "Commenting as …" form and
+	// then refused with "please sign in as a member". Anonymous posts are refused.
+	who := a.resolveCommenter(r)
+	if who == nil {
 		writeAPIError(w, r, http.StatusUnauthorized, "members-only", "Please sign in as a member to comment", "")
 		return
 	}
@@ -124,7 +126,7 @@ func (a *App) handleCommentSubmit(w http.ResponseWriter, r *http.Request) {
 	// honoured but the email is always the session's.
 	author := strings.TrimSpace(body.Author)
 	if author == "" {
-		author = member.DisplayName()
+		author = who.Name
 	}
 
 	// Resolve article ID from slug. Drafts are not public, so commenting on one
@@ -150,7 +152,7 @@ func (a *App) handleCommentSubmit(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	c, err := a.commentStore.SubmitReply(r.Context(), articleID, parentID, author, member.Email, body.Body, geo.Country, geo.Region, geo.City)
+	c, err := a.commentStore.SubmitReply(r.Context(), articleID, parentID, author, who.Email, body.Body, geo.Country, geo.Region, geo.City)
 	if err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "comment-error", err.Error(), "")
 		return

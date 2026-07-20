@@ -48,16 +48,53 @@ func (a *App) resolveMember(r *http.Request) *members.Member {
 	return m
 }
 
-// authorizedFor reports whether member m may view content at the given level.
-func authorizedFor(level string, m *members.Member) bool {
-	switch level {
-	case members.AccessMembers:
-		return m != nil
-	case members.AccessPaid:
-		return m != nil && m.IsPaid()
-	default: // public
-		return true
+// commenterIdentity is the unified "who is signed in and may act as a member on
+// the public site" principal: either a reader member (magic-link or VayuMail
+// portal session) OR a signed-in VayuOS operator/staff user (console session).
+// The two auth surfaces used to disagree — /api/v1/members/me reports an operator
+// as authenticated (so the comment form renders "Commenting as …"), but the
+// member-gated write path only accepted a reader session, so the same operator
+// was then refused with "please sign in as a member". Resolving both here, once,
+// keeps every member-gated surface in sync with what the UI already shows.
+type commenterIdentity struct {
+	Name     string
+	Email    string
+	Paid     bool // reader paid tier, or true for an operator (full access to own site)
+	Operator bool // a signed-in console operator/staff user
+}
+
+// Can reports whether this principal may view content at the given access level.
+// An operator always passes (full power over their own site); a reader passes
+// members-level when signed in and paid-level only when on the paid tier. A nil
+// principal (anonymous) passes only public content.
+func (w *commenterIdentity) Can(level string) bool {
+	if w == nil {
+		return level != members.AccessMembers && level != members.AccessPaid
 	}
+	if level == members.AccessPaid {
+		return w.Paid
+	}
+	return true // members / public — any signed-in principal qualifies
+}
+
+// resolveCommenter returns the authenticated principal allowed to comment or view
+// gated content, or nil for an anonymous visitor. A reader member is preferred; a
+// signed-in operator is accepted as a member-equivalent with full access to their
+// own site ("authorised as per the power they hold"), mirroring exactly what
+// /api/v1/members/me reports so the public UI and the member-gated APIs never
+// disagree.
+func (a *App) resolveCommenter(r *http.Request) *commenterIdentity {
+	if m := a.resolveMember(r); m != nil {
+		return &commenterIdentity{Name: m.DisplayName(), Email: m.Email, Paid: m.IsPaid()}
+	}
+	if u := a.resolveConsoleUser(r); u != nil {
+		name := strings.TrimSpace(u.Name)
+		if name == "" {
+			name = u.Email
+		}
+		return &commenterIdentity{Name: name, Email: u.Email, Paid: true, Operator: true}
+	}
+	return nil
 }
 
 // POST /api/v1/members/login  {email}

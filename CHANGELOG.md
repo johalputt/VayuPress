@@ -8,6 +8,21 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.36] — 2026-07-20
+
+### Fixed
+- **Signed-in owner/staff can now comment (unified member auth).** The public
+  comment widget asks `/api/v1/members/me` who is signed in — which recognises a
+  **VayuOS operator/staff console session** and renders the *"Commenting as …"*
+  form — but the comment **POST** only accepted a reader-membership session, so
+  the same signed-in owner was bounced with *"Please sign in as a member to
+  comment."* A new **`resolveCommenter`** resolves one unified principal — a
+  reader member (magic-link / VayuMail portal) **or** a console operator — so
+  every member-gated surface agrees with what the UI shows. A signed-in person is
+  now **authorised according to the power they hold**: operators/staff can
+  comment, and the **paywall no longer gates an owner out of their own members-
+  or paid-only articles**. Anonymous visitors are still refused.
+
 ## [3.14.35] — 2026-07-20
 
 ### Changed
