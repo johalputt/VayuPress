@@ -8,6 +8,31 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.60] — 2026-07-20
+
+### Fixed
+- **Tor VayuTalk: rotated code no longer piles up in the PGP manager.** In the
+  Tor world your chat identity is an anonymous, rotatable code (`anon…@onion`),
+  and using or rotating it mints a throwaway keypair. Those keys were being
+  listed under **VayuMail → PGP Keys** as if they were mailboxes, so every
+  rotation left another entry behind. The key manager now hides anonymous
+  VayuTalk chat handles (matched by their exact minted shape) — only real
+  mailbox keys are shown.
+- **Tor VayuTalk: sending to an unreachable code now fails honestly instead of
+  silently pretending to send.** The recipient-key resolver used to *fabricate*
+  a local keypair for any unknown address, so a message to a code on another
+  `.onion` was encrypted to a made-up key, queued locally, and reported as
+  sent — while the real person received nothing. In the Tor world the resolver
+  no longer invents keys; the composer now shows a clear "can't reach this code
+  over Tor" message. (Clearnet mint-on-demand for a local mailbox that predates
+  auto-keygen is unchanged.)
+
+### Known limitation
+- Two people on **different** `.onion` installs still cannot exchange VayuTalk
+  messages: the relay is in-process and there is no onion-to-onion delivery yet.
+  This release makes that state visible (honest error) rather than silent;
+  cross-onion delivery is tracked as follow-up work.
+
 ## [3.14.59] — 2026-07-20
 
 ### Added

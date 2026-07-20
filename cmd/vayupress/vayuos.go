@@ -550,8 +550,16 @@ func (a *App) bootVayuOS() {
 			}
 			pk, err := a.vayuPGP.GetPublicKey(email)
 			if err != nil {
-				// Mint on demand so a mailbox that pre-dates auto-keygen still
-				// resolves a key (WKD/GetPublicKey would otherwise 404).
+				// In the Tor world (ADR-0141) a recipient is an anonymous handle on
+				// SOMEONE ELSE'S .onion; minting a local keypair for it would forge a
+				// key we don't own, silently "succeed", and never reach them. Return
+				// the not-found error instead so the send path surfaces an honest
+				// "not reachable" rather than a false delivery.
+				if config.Cfg.OnionMode {
+					return "", "", err
+				}
+				// Clearnet: mint on demand so a LOCAL mailbox that pre-dates
+				// auto-keygen still resolves a key (WKD/GetPublicKey would 404).
 				name := email
 				if i := strings.Index(name, "@"); i > 0 {
 					name = name[:i]
@@ -1056,6 +1064,12 @@ func (a *App) handleVayuOSPGP(w http.ResponseWriter, r *http.Request) {
 	keys, _ := a.vayuPGP.ListKeys()
 	var rows strings.Builder
 	for _, k := range keys {
+		// Anonymous VayuTalk chat handles (Tor world) mint a keypair on use/rotate
+		// but are throwaway identities, not mailboxes — never list them here, so a
+		// rotated code does not accumulate in the mailbox PGP manager (ADR-0141).
+		if isAnonTalkHandle(k.Email) {
+			continue
+		}
 		state := `<span class="badge badge--ok">active</span>`
 		if k.Revoked {
 			state = `<span class="badge badge--warn">revoked</span>`

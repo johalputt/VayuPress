@@ -13,6 +13,7 @@ import (
 	"crypto/rand"
 	"encoding/base32"
 	"net/http"
+	"regexp"
 	"strings"
 
 	"github.com/johalputt/vayupress/internal/config"
@@ -28,6 +29,19 @@ func newTalkAnonID() string {
 	}
 	s := strings.ToLower(base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(b))
 	return "anon" + s
+}
+
+// anonTalkHandleRe matches an anonymous VayuTalk handle minted by newTalkAnonID
+// ("anon" + base32-no-padding of 8 random bytes = 13 chars). These are throwaway
+// Tor-world chat identities, not mailboxes, so we key off this exact shape to keep
+// them out of the mailbox PGP manager (a rotated handle would otherwise pile up
+// there — every rotate mints a fresh keypair and the old one is never a mailbox).
+var anonTalkHandleRe = regexp.MustCompile(`^anon[a-z2-7]{13}@`)
+
+// isAnonTalkHandle reports whether email is an anonymous VayuTalk chat handle
+// rather than a real mailbox address.
+func isAnonTalkHandle(email string) bool {
+	return anonTalkHandleRe.MatchString(strings.ToLower(strings.TrimSpace(email)))
 }
 
 // talkAnonAddress returns the operator's anonymous VayuTalk address in the Tor

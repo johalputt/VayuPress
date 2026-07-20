@@ -462,8 +462,14 @@ func (a *App) handleVayuOSTalkSend(w http.ResponseWriter, r *http.Request) {
 	// WKD lookup otherwise). A missing recipient key is the common, actionable
 	// failure — surface it distinctly from a sender-side problem.
 	if _, _, kerr := a.vayuTalk.PubKey(to); kerr != nil {
-		writeAPIError(w, r, http.StatusNotFound, "no-recipient-key",
-			"No VayuTalk key found for "+to+". They need a VayuMail mailbox on this server (or a published key) before you can message them.", "")
+		msg := "No VayuTalk key found for " + to + ". They need a VayuMail mailbox on this server (or a published key) before you can message them."
+		if config.Cfg.OnionMode {
+			// Tor world: there is no onion-to-onion delivery yet, so a code on
+			// another .onion genuinely cannot be reached. Say so plainly instead of
+			// pretending the message was sent (ADR-0141).
+			msg = "Can't reach " + to + " over Tor. VayuTalk in the Tor world can't yet deliver to a code hosted on a different .onion."
+		}
+		writeAPIError(w, r, http.StatusNotFound, "no-recipient-key", msg, "")
 		return
 	}
 	// Ensure our own signing key exists (a mailbox that predates auto-keygen),

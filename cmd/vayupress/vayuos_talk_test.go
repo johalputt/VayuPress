@@ -86,6 +86,36 @@ func talkSend(a *App, token, to, ciphertextB64, mode string, ttl int) *httptest.
 	return rec
 }
 
+// TestIsAnonTalkHandle guards the classifier that keeps throwaway Tor-world chat
+// handles out of the mailbox PGP manager: a freshly minted handle is recognised,
+// while ordinary mailbox addresses (including one that merely starts with "anon")
+// are not, so a real key is never hidden from the operator.
+func TestIsAnonTalkHandle(t *testing.T) {
+	// Real minted handles must be recognised.
+	for i := 0; i < 20; i++ {
+		id := newTalkAnonID()
+		if id == "" {
+			t.Fatal("newTalkAnonID returned empty")
+		}
+		if !isAnonTalkHandle(id + "@abcdef.onion") {
+			t.Fatalf("minted handle not recognised: %q", id)
+		}
+	}
+	// Ordinary mailboxes — including look-alikes — must NOT be classified as anon.
+	for _, e := range []string{
+		"dana@example.com",
+		"anon@example.com",      // too short to be a minted handle
+		"anonymous@example.com", // dictionary word, not "anon"+13 base32
+		"anon12345@example.com", // wrong length
+		"postmaster@abcdef.onion",
+		"",
+	} {
+		if isAnonTalkHandle(e) {
+			t.Fatalf("false positive: %q classified as an anon Talk handle", e)
+		}
+	}
+}
+
 func TestTalkConnectValidAndInvalid(t *testing.T) {
 	a := appWithTalk(t, map[string]string{"dana@example.com": "pw"})
 	if rec := talkConnect(t, a, "dana@example.com", "pw"); rec.Code != http.StatusOK {
