@@ -27,8 +27,8 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   cartoon face (CSP-safe — no external assets), plus member-authed upload
   (**≤100 KB**, PNG/JPEG/WebP/GIF) and choose/gender endpoints. Comments now
   resolve the author's real photo (CMS user) or their member avatar, so every
-  commenter gets a proper picture. The in-portal picker UI (upload + cartoon grid
-  + gender) lands next.
+  commenter gets a proper picture. The in-portal picker UI (photo upload, cartoon
+  grid, gender) lands next.
 
 ## [3.14.40] — 2026-07-20
 
