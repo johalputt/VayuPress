@@ -142,6 +142,7 @@ const PortalJS = `(function () {
       mailBtn +
       (m.paid ? '<button type="button" class="vp-portal-btn vp-portal-btn--ghost" data-vp-go="mailbox">📬 Your mailbox</button>' : '') +
       '<button type="button" class="vp-portal-btn vp-portal-btn--ghost" data-vp-go="activity">💬 Your comments</button>' +
+      '<button type="button" class="vp-portal-btn vp-portal-btn--ghost" data-vp-go="advertise">📣 Advertise here</button>' +
       '<a class="vp-portal-btn vp-portal-btn--ghost" href="/members/account">Manage account</a>' +
       (m.paid ? '' : '<a class="vp-portal-btn" href="/pricing">See membership plans</a>') +
       '<button type="button" class="vp-portal-btn vp-portal-btn--ghost" data-vp-logout>Sign out</button>' +
@@ -195,6 +196,110 @@ const PortalJS = `(function () {
         box.innerHTML = html;
       })
       .catch(function () { box.innerHTML = '<div class="vp-portal-activity-empty">Could not load your activity.</div>'; });
+  }
+
+  // Advertise view: any signed-in member (paid or free) submits an image ad for a
+  // placement, pays a flat fee, and the ad enters the operator's review queue —
+  // it only goes live once the operator approves it. Server refuses member HTML;
+  // only an image URL + link is accepted.
+  function viewAdvertise() {
+    return '<button type="button" class="vp-portal-link vp-portal-back" data-vp-go="account">&larr; Back</button>' +
+      '<h2 class="vp-portal-title">Advertise here</h2>' +
+      '<div class="vp-portal-mailbox" data-vp-advertise><div class="vp-portal-activity-loading">Loading…</div></div>';
+  }
+
+  function adPlacementOptions() {
+    var ps = [
+      ['header', 'Header (top of page)'],
+      ['above_post', 'Above the post'],
+      ['below_post', 'Below the post'],
+      ['sidebar', 'Sidebar'],
+      ['footer', 'Footer']
+    ];
+    return ps.map(function (p) {
+      return '<option value="' + p[0] + '">' + esc(p[1]) + '</option>';
+    }).join('');
+  }
+
+  function adStatusBadge(s) {
+    var map = {
+      approved: ['✅ Live', 'ok'],
+      pending_review: ['⏳ In review', 'pending'],
+      pending_payment: ['💳 Awaiting payment', 'pending'],
+      rejected: ['🚫 Not approved', 'err']
+    };
+    var e = map[s] || ['•', 'ok'];
+    return '<span class="vp-portal-badge vp-portal-badge--' + e[1] + '">' + e[0] + '</span>';
+  }
+
+  function loadAdvertise() {
+    var box = body.querySelector('[data-vp-advertise]');
+    if (!box) { return; }
+    fetch('/api/v1/members/ads', { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+      .then(function (r) { return r.ok ? r.json() : {}; })
+      .then(function (d) {
+        d = d || {};
+        var mine = '';
+        if (d.ads && d.ads.length) {
+          mine = '<div class="vp-portal-sub" style="margin-top:1rem">Your ads</div>' +
+            d.ads.map(function (a2) {
+              return '<div class="vp-portal-plan" style="margin-bottom:.5rem">' +
+                '<div class="vp-portal-plan-label">' + esc(a2.placement || '') + ' ' + adStatusBadge(a2.status) + '</div>' +
+                '<div class="vp-portal-plan-name" style="font-size:.85rem;word-break:break-all">' + esc(a2.image_url || '') + '</div></div>';
+            }).join('');
+        }
+        if (!d.available) {
+          box.innerHTML = '<p class="vp-portal-sub">Advertising is not open on this site right now. Please check back later.</p>' + mine;
+          return;
+        }
+        box.innerHTML =
+          '<p class="vp-portal-sub">Promote your product on this site. Submit an image ad and pick where it appears — ' +
+          '<strong>' + esc(d.price || '') + '</strong> per placement. Every ad is reviewed before it goes live.</p>' +
+          '<form class="vp-portal-form" data-vp-ad-form novalidate>' +
+          '<label class="vp-portal-label" for="vp-ad-place">Where should it appear?</label>' +
+          '<select class="vp-portal-input" id="vp-ad-place">' + adPlacementOptions() + '</select>' +
+          '<label class="vp-portal-label" for="vp-ad-img">Image URL</label>' +
+          '<input class="vp-portal-input" id="vp-ad-img" type="url" autocomplete="off" spellcheck="false" placeholder="https://…/banner.png">' +
+          '<label class="vp-portal-label" for="vp-ad-link">Link URL (where clicks go)</label>' +
+          '<input class="vp-portal-input" id="vp-ad-link" type="url" autocomplete="off" spellcheck="false" placeholder="https://your-site.example">' +
+          '<label class="vp-portal-label" for="vp-ad-alt">Alt text</label>' +
+          '<input class="vp-portal-input" id="vp-ad-alt" type="text" autocomplete="off" placeholder="Describe your ad">' +
+          '<button class="vp-portal-btn" type="submit">Continue to payment · ' + esc(d.price || '') + '</button>' +
+          '</form>' +
+          '<p class="vp-portal-foot">After payment your ad waits in the review queue. You’ll be notified once it’s live.</p>' +
+          '<div class="vp-portal-msg" aria-live="polite"></div>' + mine;
+        wireAdvertiseForm();
+      })
+      .catch(function () { box.innerHTML = '<div class="vp-portal-activity-empty">Could not load advertising.</div>'; });
+  }
+
+  function wireAdvertiseForm() {
+    var form = body.querySelector('[data-vp-ad-form]');
+    if (!form) { return; }
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var place = (form.querySelector('#vp-ad-place').value || '').trim();
+      var img = (form.querySelector('#vp-ad-img').value || '').trim();
+      var link = (form.querySelector('#vp-ad-link').value || '').trim();
+      var alt = (form.querySelector('#vp-ad-alt').value || '').trim();
+      if (!img) { msg('An image URL is required.', 'err'); return; }
+      var btn = form.querySelector('.vp-portal-btn');
+      btn.disabled = true; btn.textContent = 'Starting checkout…';
+      postJSON('/api/v1/members/ads', { placement: place, image_url: img, link_url: link, alt: alt }).then(function (res) {
+        btn.disabled = false;
+        if (res.ok && res.body && res.body.mode === 'stripe' && res.body.checkout_url) {
+          window.top.location.href = res.body.checkout_url;
+          return;
+        }
+        if (res.ok && res.body && res.body.reference) {
+          msg('Order ' + res.body.reference + ' created. ' + (res.body.instructions || 'Follow the payment instructions to complete it; your ad enters review once paid.'), 'ok');
+          form.reset();
+          return;
+        }
+        msg((res.body && res.body.error && res.body.error.message) || 'Could not start checkout.', 'err');
+        btn.textContent = 'Continue to payment';
+      });
+    });
   }
 
   // Mailbox view: a paid member on a mail-enabled tier claims their included
@@ -352,7 +457,7 @@ const PortalJS = `(function () {
   function render() {
     if (!body) { return; }
     var content;
-    if (state.auth) { content = (view === 'activity') ? viewActivity() : (view === 'mailbox') ? viewMailbox() : viewAccount(); }
+    if (state.auth) { content = (view === 'activity') ? viewActivity() : (view === 'mailbox') ? viewMailbox() : (view === 'advertise') ? viewAdvertise() : viewAccount(); }
     else if (view === 'signin') { content = viewSignin(); }
     else if (view === 'vayumail') { content = viewVayuMail(false); }
     else { content = viewSignup(); }
@@ -433,6 +538,7 @@ const PortalJS = `(function () {
 
     if (state.auth && view === 'activity') { loadActivity(); }
     if (state.auth && view === 'mailbox') { loadMailbox(); }
+    if (state.auth && view === 'advertise') { loadAdvertise(); }
 
     var out = body.querySelector('[data-vp-logout]');
     if (out) {

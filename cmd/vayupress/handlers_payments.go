@@ -491,6 +491,10 @@ func (a *App) fulfillOrder(ctx context.Context, o *payments.Order) error {
 	if o.TierSlug == postOrderTier {
 		return a.fulfillPostOrder(ctx, o)
 	}
+	// A member ad purchase queues the ad for operator moderation.
+	if o.TierSlug == adOrderTier {
+		return a.fulfillAdOrder(ctx, o)
+	}
 	m, err := a.members.Upsert(ctx, o.Email)
 	if err != nil {
 		return err

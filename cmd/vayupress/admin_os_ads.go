@@ -13,6 +13,7 @@ import (
 	"html"
 	htmpl "html/template"
 	"net/http"
+	"strconv"
 
 	"github.com/go-chi/chi/v5"
 
@@ -36,9 +37,12 @@ func (a *App) handleOSAds(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var slots []ads.Slot
+	var pendingAds []ads.Slot
 	if a.ads != nil {
 		slots, _ = a.ads.List(ctx)
+		pendingAds, _ = a.ads.ListByStatus(ctx, ads.StatusPendingReview)
 	}
+	adPrice := a.adSlotPriceCents(ctx)
 
 	banner := ""
 	if !adsOn {
@@ -50,6 +54,20 @@ func (a *App) handleOSAds(w http.ResponseWriter, r *http.Request) {
   <div class="page-actions"><span id="ads-status" role="status" aria-live="polite" class="text-xs muted"></span></div>
 </div>
 ` + banner + `
+<div class="card">
+  <div class="settings-block-title">Member ad submissions` + memberAdBadge(len(pendingAds)) + `</div>
+  <p class="text-sm muted mb-4">Members buy an ad from their account; each paid submission waits here for your review. <strong>Approve</strong> publishes it in its placement; <strong>Reject</strong> declines it. Only image ads are accepted from members — never member HTML.</p>
+  ` + memberAdReviewTable(pendingAds) + `
+</div>
+
+<div class="card">
+  <div class="settings-block-title">Member ad price</div>
+  <p class="text-sm muted mb-4">The flat fee a member pays to submit one ad for review. Charged once per submission via your connected gateway (Stripe one-time, or the sovereign direct method). Set in whole currency units.</p>
+  <div class="field" style="max-width:16rem"><label class="field-label" for="ad-price">Price per ad</label>
+    <input id="ad-price" class="input" type="number" min="0" step="1" data-ads-price value="` + strconv.Itoa(adPrice/100) + `"></div>
+  <button type="button" class="btn btn--primary btn--sm" id="ad-price-save">Save price</button>
+</div>
+
 <div class="card">
   <div class="settings-block-title">Ad slots</div>
   <p class="text-sm muted mb-4">Each slot targets a placement and renders a same-origin image+link, a sanitised HTML creative, or a Google AdSense unit. New slots are enabled by default.</p>
@@ -120,6 +138,16 @@ document.querySelectorAll('[data-ad-action]').forEach(function(b){
     else if(act==='toggle'){b.disabled=true;jfetch('POST','/os/api/ads/'+encodeURIComponent(id)+'/toggle',{enabled:b.getAttribute('data-to')==='1'}).then(function(res){if(res.ok){location.reload();}else{b.disabled=false;show(res.d.detail||'Error',true);}});}
   });
 });
+document.querySelectorAll('[data-adreview-action]').forEach(function(b){
+  b.addEventListener('click',function(){
+    var act=b.getAttribute('data-adreview-action');var id=b.getAttribute('data-id');
+    if(act==='reject'&&!confirm('Reject this member ad? It will not be published.'))return;
+    b.disabled=true;
+    jfetch('POST','/os/api/ads/'+encodeURIComponent(id)+'/'+act).then(function(res){if(res.ok){location.reload();}else{b.disabled=false;show(res.d.detail||(res.d.error&&res.d.error.message)||'Error',true);}});
+  });
+});
+var priceBtn=document.getElementById('ad-price-save');
+if(priceBtn)priceBtn.addEventListener('click',function(){var u=parseInt(val('ad-price'),10);if(isNaN(u)||u<0){show('Enter a valid price',true);return;}jsave('` + settings.KeyAdSlotPriceCents + `',String(u*100),priceBtn);});
 var asBtn=document.getElementById('ad-adsense-save');
 if(asBtn)asBtn.addEventListener('click',function(){jsave('` + settings.KeyAdsenseClient + `',val('ad-adsense-client'),asBtn);});
 var dBtn=document.getElementById('ad-disclosure-save');
@@ -128,6 +156,67 @@ if(dBtn)dBtn.addEventListener('click',function(){jsave('` + settings.KeyAffiliat
 </script>`
 
 	writeOSHTML(w, adminOSLayout(nonce, "Advertising", "ads", cfg, htmpl.HTML(body)))
+}
+
+// memberAdBadge shows the count of ads awaiting review as an inline pill.
+func memberAdBadge(n int) string {
+	if n == 0 {
+		return ""
+	}
+	return ` <span class="status-pill status-pill--draft">` + strconv.Itoa(n) + ` awaiting review</span>`
+}
+
+// memberAdReviewTable renders the moderation queue with approve/reject actions.
+func memberAdReviewTable(pending []ads.Slot) string {
+	if len(pending) == 0 {
+		return `<div class="table-empty">No submissions awaiting review. Paid member ads appear here for approval.</div>`
+	}
+	rows := ""
+	for i := range pending {
+		s := pending[i]
+		preview := html.EscapeString(s.ImageURL)
+		if s.LinkURL != "" {
+			preview += `<div class="row-meta">→ ` + html.EscapeString(s.LinkURL) + `</div>`
+		}
+		rows += `<tr>` +
+			`<td class="muted text-sm">` + html.EscapeString(s.OwnerEmail) + `</td>` +
+			`<td>` + html.EscapeString(s.Placement) + `</td>` +
+			`<td class="row-title"><code>` + preview + `</code></td>` +
+			`<td class="row-actions">` +
+			`<button type="button" class="btn btn--primary btn--sm" data-adreview-action="approve" data-id="` + html.EscapeString(s.ID) + `">Approve</button> ` +
+			`<button type="button" class="btn btn--ghost btn--sm" data-adreview-action="reject" data-id="` + html.EscapeString(s.ID) + `">Reject</button>` +
+			`</td></tr>`
+	}
+	return `<div class="table-wrap"><table class="table">` +
+		`<thead><tr><th>Member</th><th>Placement</th><th>Creative</th><th></th></tr></thead>` +
+		`<tbody>` + rows + `</tbody></table></div>`
+}
+
+// handleOSAdReviewApprove publishes a paid, reviewed member ad.
+func (a *App) handleOSAdReviewApprove(w http.ResponseWriter, r *http.Request) {
+	if a.ads == nil {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "ads-disabled", "Advertising not initialised", "")
+		return
+	}
+	if err := a.ads.ApproveMemberAd(r.Context(), chi.URLParam(r, "id")); err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "approve-failed", err.Error(), "")
+		return
+	}
+	a.purgeAdCaches()
+	writeJSON(w, r, http.StatusOK, map[string]string{"status": "approved"})
+}
+
+// handleOSAdReviewReject declines a member ad.
+func (a *App) handleOSAdReviewReject(w http.ResponseWriter, r *http.Request) {
+	if a.ads == nil {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "ads-disabled", "Advertising not initialised", "")
+		return
+	}
+	if err := a.ads.RejectMemberAd(r.Context(), chi.URLParam(r, "id")); err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "reject-failed", err.Error(), "")
+		return
+	}
+	writeJSON(w, r, http.StatusOK, map[string]string{"status": "rejected"})
 }
 
 func adsSlotsTable(slots []ads.Slot) string {

@@ -16,7 +16,7 @@ func newTestStore(t *testing.T) *Store {
 		t.Fatalf("open db: %v", err)
 	}
 	t.Cleanup(func() { db.Close() })
-	_, err = db.Exec(`CREATE TABLE ad_slots(id TEXT PRIMARY KEY,name TEXT NOT NULL,placement TEXT NOT NULL DEFAULT 'below_post',kind TEXT NOT NULL DEFAULT 'image',image_url TEXT NOT NULL DEFAULT '',link_url TEXT NOT NULL DEFAULT '',alt_text TEXT NOT NULL DEFAULT '',html TEXT NOT NULL DEFAULT '',enabled INTEGER NOT NULL DEFAULT 1,sort INTEGER NOT NULL DEFAULT 0,created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`)
+	_, err = db.Exec(`CREATE TABLE ad_slots(id TEXT PRIMARY KEY,name TEXT NOT NULL,placement TEXT NOT NULL DEFAULT 'below_post',kind TEXT NOT NULL DEFAULT 'image',image_url TEXT NOT NULL DEFAULT '',link_url TEXT NOT NULL DEFAULT '',alt_text TEXT NOT NULL DEFAULT '',html TEXT NOT NULL DEFAULT '',enabled INTEGER NOT NULL DEFAULT 1,sort INTEGER NOT NULL DEFAULT 0,owner_email TEXT NOT NULL DEFAULT '',status TEXT NOT NULL DEFAULT 'approved',order_ref TEXT NOT NULL DEFAULT '',created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`)
 	if err != nil {
 		t.Fatalf("schema: %v", err)
 	}
@@ -40,6 +40,46 @@ func TestSlotCRUDAndPlacement(t *testing.T) {
 	got, _ = s.EnabledByPlacement(ctx, PlacementBelowPost)
 	if len(got) != 0 {
 		t.Errorf("disabled slot should not be returned, got %d", len(got))
+	}
+}
+
+func TestMemberAdLifecycle(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	ad, err := s.CreateMemberAd(ctx, MemberAdInput{OwnerEmail: "Reader@Example.com", Placement: PlacementFooter, ImageURL: "/media/promo.png", LinkURL: "https://sponsor.example", AltText: "Promo", OrderRef: "VP-AD-1"})
+	if err != nil {
+		t.Fatalf("create member ad: %v", err)
+	}
+	if ad.Status != StatusPendingPayment || ad.Enabled || ad.OwnerEmail != "reader@example.com" {
+		t.Fatalf("bad member ad: %+v", ad)
+	}
+	// Not rendered while pending.
+	if got, _ := s.EnabledByPlacement(ctx, PlacementFooter); len(got) != 0 {
+		t.Error("a pending member ad must not render")
+	}
+	// Payment moves it into the moderation queue.
+	if err := s.MarkAdPaidByOrder(ctx, "VP-AD-1"); err != nil {
+		t.Fatalf("mark paid: %v", err)
+	}
+	if q, _ := s.ListByStatus(ctx, StatusPendingReview); len(q) != 1 {
+		t.Errorf("expected 1 ad awaiting review, got %d", len(q))
+	}
+	if got, _ := s.EnabledByPlacement(ctx, PlacementFooter); len(got) != 0 {
+		t.Error("a paid-but-unreviewed ad must not render yet")
+	}
+	// Approval publishes it.
+	if err := s.ApproveMemberAd(ctx, ad.ID); err != nil {
+		t.Fatalf("approve: %v", err)
+	}
+	if got, _ := s.EnabledByPlacement(ctx, PlacementFooter); len(got) != 1 {
+		t.Errorf("an approved member ad must render, got %d", len(got))
+	}
+	// A member sees their own ad; an unsafe image URL is refused.
+	if mine, _ := s.MemberAds(ctx, "reader@example.com"); len(mine) != 1 {
+		t.Errorf("member should see their ad, got %d", len(mine))
+	}
+	if _, err := s.CreateMemberAd(ctx, MemberAdInput{OwnerEmail: "x@y.com", Placement: PlacementFooter, ImageURL: "javascript:alert(1)"}); err == nil {
+		t.Error("unsafe image URL must be refused")
 	}
 }
 

@@ -1,0 +1,3 @@
+ALTER TABLE ad_slots ADD COLUMN owner_email TEXT NOT NULL DEFAULT '';
+ALTER TABLE ad_slots ADD COLUMN status TEXT NOT NULL DEFAULT 'approved';
+ALTER TABLE ad_slots ADD COLUMN order_ref TEXT NOT NULL DEFAULT '';

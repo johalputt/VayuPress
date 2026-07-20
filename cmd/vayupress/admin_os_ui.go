@@ -319,6 +319,8 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.Get("/os/api/ads", a.handleOSAdsList)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/ads", a.handleOSAdCreate)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/ads/{id}/toggle", a.handleOSAdToggle)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/ads/{id}/approve", a.handleOSAdReviewApprove)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/ads/{id}/reject", a.handleOSAdReviewReject)
 		pr.With(auth.CSRFTokenMiddleware).Delete("/os/api/ads/{id}", a.handleOSAdDelete)
 
 		// Update & Backup — one-click signature-verified self-update plus full

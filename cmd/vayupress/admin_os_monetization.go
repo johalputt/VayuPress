@@ -285,6 +285,8 @@ func orderProductLabel(tierSlug string) string {
 		return "Premium mail-ID"
 	case postOrderTier:
 		return "Paid post"
+	case adOrderTier:
+		return "Ad placement"
 	default:
 		return "Membership: " + tierSlug
 	}

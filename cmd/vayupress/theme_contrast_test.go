@@ -116,6 +116,7 @@ func TestThemeEditorCoversSettingsAllowlist(t *testing.T) {
 		settings.KeyPayPalSandbox:           true,
 		settings.KeyPremiumMailIDPriceCents: true,
 		settings.KeyMailIDTerms:             true,
+		settings.KeyAdSlotPriceCents:        true,
 		settings.KeyAdsenseClient:           true,
 		settings.KeyAffiliateDisclosure:     true,
 		// The VayuOS console colour theme is set from the topbar theme toggle

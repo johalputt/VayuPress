@@ -178,6 +178,10 @@ const (
 	// proof of agreement and is protected from misuse of the address. Editable so
 	// the operator can substitute their own legal copy.
 	KeyMailIDTerms = "monetization.mailid_terms"
+	// KeyAdSlotPriceCents is the price (minor units of KeyPayCurrency) a member
+	// pays to submit a self-serve ("advertise here") ad for operator review.
+	// Default "1000" (e.g. $10.00).
+	KeyAdSlotPriceCents = "monetization.ad_slot_price_cents"
 
 	// Advertising configuration.
 	//
@@ -335,6 +339,7 @@ var AllKeys = map[string]bool{
 	KeyPayPalSandbox:           true,
 	KeyPremiumMailIDPriceCents: true,
 	KeyMailIDTerms:             true,
+	KeyAdSlotPriceCents:        true,
 	KeyAdsenseClient:           true,
 	KeyAffiliateDisclosure:     true,
 	KeySiteMode:                true,
@@ -413,6 +418,7 @@ var Defaults = map[string]string{
 	KeyPayPalSandbox:           "off",
 	KeyPremiumMailIDPriceCents: "500",
 	KeyMailIDTerms:             "By claiming this email address you agree to use it lawfully and you accept sole responsibility for all messages sent from it. You must not use it for spam, fraud, impersonation, harassment, or any illegal purpose. The address remains the property of the site operator, who may suspend or reclaim it for a breach of these terms or for non-payment. The operator provides the address as-is and is not liable for your use of it.",
+	KeyAdSlotPriceCents:        "1000",
 	KeyAdsenseClient:           "",
 	KeyAffiliateDisclosure:     "This post may contain affiliate links. We may earn a commission at no extra cost to you.",
 	KeyShieldEnabled:           "off",

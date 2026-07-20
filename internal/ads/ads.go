@@ -72,19 +72,30 @@ func ValidKind(k string) bool {
 
 // Slot is one advertising placement creative.
 type Slot struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	Placement string    `json:"placement"`
-	Kind      string    `json:"kind"`
-	ImageURL  string    `json:"image_url,omitempty"`
-	LinkURL   string    `json:"link_url,omitempty"`
-	AltText   string    `json:"alt_text,omitempty"`
-	HTML      string    `json:"html,omitempty"` // html creative, or AdSense unit id for adsense kind
-	Enabled   bool      `json:"enabled"`
-	Sort      int       `json:"sort"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID         string    `json:"id"`
+	Name       string    `json:"name"`
+	Placement  string    `json:"placement"`
+	Kind       string    `json:"kind"`
+	ImageURL   string    `json:"image_url,omitempty"`
+	LinkURL    string    `json:"link_url,omitempty"`
+	AltText    string    `json:"alt_text,omitempty"`
+	HTML       string    `json:"html,omitempty"` // html creative, or AdSense unit id for adsense kind
+	Enabled    bool      `json:"enabled"`
+	Sort       int       `json:"sort"`
+	OwnerEmail string    `json:"owner_email,omitempty"` // member who submitted a self-serve ad ("" = operator slot)
+	Status     string    `json:"status"`                // approved | pending_payment | pending_review | rejected
+	OrderRef   string    `json:"order_ref,omitempty"`   // the paid order backing a member ad
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
 }
+
+// Member-ad lifecycle statuses. Operator-created slots are always "approved".
+const (
+	StatusApproved       = "approved"        // live (subject to enabled)
+	StatusPendingPayment = "pending_payment" // submitted, awaiting payment
+	StatusPendingReview  = "pending_review"  // paid, awaiting operator moderation
+	StatusRejected       = "rejected"        // operator declined
+)
 
 // Store persists ad slots in the ad_slots table (migration 043).
 type Store struct{ db *sql.DB }
@@ -92,7 +103,7 @@ type Store struct{ db *sql.DB }
 // New creates a Store backed by db.
 func New(db *sql.DB) *Store { return &Store{db: db} }
 
-const slotCols = `id,name,placement,kind,image_url,link_url,alt_text,html,enabled,sort,created_at,updated_at`
+const slotCols = `id,name,placement,kind,image_url,link_url,alt_text,html,enabled,sort,owner_email,status,order_ref,created_at,updated_at`
 
 // SlotInput carries the editable fields of a slot.
 type SlotInput struct {
@@ -190,8 +201,98 @@ func (s *Store) List(ctx context.Context) ([]Slot, error) {
 }
 
 // EnabledByPlacement returns the enabled slots for a placement, render-ordered.
+// A member-submitted ad only becomes enabled when the operator approves it, so
+// pending/rejected member ads never render.
 func (s *Store) EnabledByPlacement(ctx context.Context, placement string) ([]Slot, error) {
 	return s.query(ctx, `SELECT `+slotCols+` FROM ad_slots WHERE placement=? AND enabled=1 ORDER BY sort ASC, created_at ASC`, placement)
+}
+
+// ── Member self-serve ads ("advertise here") ──────────────────────────────────
+
+// MemberAdInput carries a member-submitted image ad. Only the image kind is
+// accepted from members (no member-authored HTML ever reaches the page).
+type MemberAdInput struct {
+	OwnerEmail string
+	Placement  string
+	ImageURL   string
+	LinkURL    string
+	AltText    string
+	OrderRef   string
+}
+
+// CreateMemberAd opens a member-submitted ad as pending_payment (disabled). It is
+// enabled only after the member pays (→ pending_review) and the operator approves.
+func (s *Store) CreateMemberAd(ctx context.Context, in MemberAdInput) (*Slot, error) {
+	email := strings.ToLower(strings.TrimSpace(in.OwnerEmail))
+	if email == "" {
+		return nil, fmt.Errorf("owner email required")
+	}
+	if !ValidPlacement(in.Placement) {
+		return nil, fmt.Errorf("invalid placement %q", in.Placement)
+	}
+	img := safeURL(in.ImageURL)
+	if img == "" {
+		return nil, fmt.Errorf("a valid image URL is required")
+	}
+	link := strings.TrimSpace(in.LinkURL)
+	if link != "" && safeURL(link) == "" {
+		return nil, fmt.Errorf("invalid link URL")
+	}
+	id := "ad_" + randHex(8)
+	if _, err := s.db.ExecContext(ctx,
+		`INSERT INTO ad_slots(id,name,placement,kind,image_url,link_url,alt_text,html,enabled,sort,owner_email,status,order_ref) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		id, "Member ad — "+email, in.Placement, KindImage, img, link, strings.TrimSpace(in.AltText), "", 0, 0, email, StatusPendingPayment, strings.TrimSpace(in.OrderRef)); err != nil {
+		return nil, fmt.Errorf("create member ad: %w", err)
+	}
+	return s.GetByID(ctx, id)
+}
+
+// MarkAdPaidByOrder advances a member ad from pending_payment to pending_review
+// on payment confirmation. Idempotent.
+func (s *Store) MarkAdPaidByOrder(ctx context.Context, orderRef string) error {
+	orderRef = strings.TrimSpace(orderRef)
+	if orderRef == "" {
+		return fmt.Errorf("order reference required")
+	}
+	_, err := s.db.ExecContext(ctx, `UPDATE ad_slots SET status=?,updated_at=? WHERE order_ref=? AND status=?`,
+		StatusPendingReview, time.Now().UTC(), orderRef, StatusPendingPayment)
+	return err
+}
+
+// ApproveMemberAd publishes a paid, reviewed member ad (status approved, enabled).
+func (s *Store) ApproveMemberAd(ctx context.Context, id string) error {
+	res, err := s.db.ExecContext(ctx, `UPDATE ad_slots SET status=?,enabled=1,updated_at=? WHERE id=?`, StatusApproved, time.Now().UTC(), id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("ad not found")
+	}
+	return nil
+}
+
+// RejectMemberAd declines a member ad (status rejected, disabled).
+func (s *Store) RejectMemberAd(ctx context.Context, id string) error {
+	res, err := s.db.ExecContext(ctx, `UPDATE ad_slots SET status=?,enabled=0,updated_at=? WHERE id=?`, StatusRejected, time.Now().UTC(), id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("ad not found")
+	}
+	return nil
+}
+
+// ListByStatus returns ads in a given lifecycle state (newest first) — the
+// operator moderation queue uses pending_review.
+func (s *Store) ListByStatus(ctx context.Context, status string) ([]Slot, error) {
+	return s.query(ctx, `SELECT `+slotCols+` FROM ad_slots WHERE status=? ORDER BY created_at DESC`, status)
+}
+
+// MemberAds returns a member's submitted ads (newest first).
+func (s *Store) MemberAds(ctx context.Context, email string) ([]Slot, error) {
+	email = strings.ToLower(strings.TrimSpace(email))
+	return s.query(ctx, `SELECT `+slotCols+` FROM ad_slots WHERE owner_email=? ORDER BY created_at DESC`, email)
 }
 
 func (s *Store) query(ctx context.Context, q string, args ...interface{}) ([]Slot, error) {
@@ -215,10 +316,13 @@ func scanSlot(sc interface{ Scan(...interface{}) error }) (*Slot, error) {
 	var sl Slot
 	var enabled int
 	if err := sc.Scan(&sl.ID, &sl.Name, &sl.Placement, &sl.Kind, &sl.ImageURL, &sl.LinkURL,
-		&sl.AltText, &sl.HTML, &enabled, &sl.Sort, &sl.CreatedAt, &sl.UpdatedAt); err != nil {
+		&sl.AltText, &sl.HTML, &enabled, &sl.Sort, &sl.OwnerEmail, &sl.Status, &sl.OrderRef, &sl.CreatedAt, &sl.UpdatedAt); err != nil {
 		return nil, err
 	}
 	sl.Enabled = enabled != 0
+	if sl.Status == "" {
+		sl.Status = StatusApproved
+	}
 	return &sl, nil
 }
 

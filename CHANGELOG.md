@@ -8,6 +8,29 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.59] — 2026-07-20
+
+### Added
+- **Members can advertise on your site — self-serve, moderated, monetized.** A
+  new **Advertise here** panel in every member's account lets any signed-in
+  member (paid or free) submit an image ad, choose its placement (header, above
+  or below the post, sidebar, footer), and pay a flat fee. Payment reuses the
+  same one-time substrate as premium mail-IDs and paid posts — Stripe one-time
+  when connected, else the sovereign direct/offline method. Only image creatives
+  are accepted from members; member-authored HTML never reaches the page.
+- **Operator moderation queue.** Each paid submission lands in **Advertising →
+  Member ad submissions** as `pending_review`; nothing renders publicly until
+  you **Approve** it (or **Reject** to decline). The queue shows a live
+  awaiting-review count.
+- **Member ad price is operator-controlled** from the Advertising console —
+  set the flat per-ad fee in whole currency units; it drives every member
+  checkout.
+
+### Changed
+- Member-ad orders flow through the shared payments ledger and appear in the
+  Monetization **Orders** audit trail alongside subscriptions, premium mail-IDs
+  and paid-post unlocks, so every paid section stays auditable from one place.
+
 ## [3.14.58] — 2026-07-20
 
 ### Changed
