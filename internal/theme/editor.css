@@ -411,17 +411,41 @@ article.vayu-prose .content>p:first-of-type::first-letter{float:left;font-family
 .vayu-author-name{font-family:var(--editor-display);font-weight:700;font-size:1.15rem;letter-spacing:var(--editor-track-md);color:var(--editor-ink)}
 .vayu-author-bio{font-family:var(--editor-text);color:var(--editor-ink-muted)}
 
-/* Comments: the letters page. */
-.vayu-comments{border-top:4px double var(--editor-rule-strong);margin-top:2.4rem;padding-top:1rem}
-.vayu-comment-heading{font-family:var(--editor-ui);font-size:.75rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--editor-ink)}
-.vayu-comment{border-top:1px solid var(--editor-rule-soft);padding:1rem 0}
+/* Comments: premium reader cards, merged into the active theme via its own
+   tokens (accent / ink / surface) so they adapt to light, dark and every preset.
+   Each card shows an avatar, the author, a country flag and the exact date+time. */
+.vayu-comments{border-top:4px double var(--editor-rule-strong);margin-top:2.4rem;padding-top:1.2rem}
+.vayu-comment-heading{font-family:var(--editor-ui);font-size:.75rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--editor-ink-faint);margin-bottom:.5rem}
+.vayu-comment-list{display:flex;flex-direction:column;gap:.7rem}
+.vayu-comment{background:var(--vp-surface);border:1px solid var(--editor-rule-soft);border-radius:14px;padding:1rem 1.1rem;transition:border-color var(--t,.16s),box-shadow var(--t,.16s),transform var(--t,.16s)}
+.vayu-comment:hover{border-color:color-mix(in srgb,var(--editor-accent) 40%,var(--editor-rule-soft));box-shadow:0 12px 34px -20px color-mix(in srgb,var(--editor-ink) 55%,transparent);transform:translateY(-1px)}
+.vayu-comment-meta{display:flex;align-items:center;gap:.7rem}
+.vayu-comment-avatar{flex:0 0 auto;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--editor-ui);font-weight:800;font-size:.95rem;color:#fff;background:linear-gradient(135deg,var(--editor-accent),color-mix(in srgb,var(--editor-accent) 45%,#111))}
+.vayu-comment-idc{min-width:0}
+.vayu-comment-idline{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap}
 .vayu-comment-author{font-family:var(--editor-ui);font-weight:700;color:var(--editor-ink)}
-.vayu-comment-date{font-family:var(--editor-ui);font-size:.75rem;color:var(--editor-ink-faint)}
-.vayu-comment-body{font-family:var(--editor-text);line-height:1.6}
-.vayu-comment-input{font-family:var(--editor-ui);background:var(--vp-bg);border:var(--editor-hairline);border-radius:2px;color:var(--editor-ink);padding:.6rem .8rem}
-.vayu-comment-input:focus{outline:2px solid var(--editor-accent);outline-offset:1px}
-.vayu-comment-submit{font-family:var(--editor-ui);font-size:.85rem;font-weight:650;letter-spacing:.03em;background:var(--editor-ink);color:var(--vp-bg);border:1.5px solid var(--editor-ink);border-radius:2px;padding:.55rem 1.2rem;min-height:44px;cursor:pointer;transition:background var(--t,.16s),border-color var(--t,.16s)}
-.vayu-comment-submit:hover{background:var(--editor-accent);border-color:var(--editor-accent);color:#fff}
+.vayu-comment-flag{font-size:1.05rem;line-height:1}
+.vayu-comment-date{display:block;font-family:var(--editor-ui);font-size:.72rem;color:var(--editor-ink-faint);margin-top:1px}
+.vayu-comment-body{font-family:var(--editor-text);line-height:1.65;color:var(--editor-ink);margin:.6rem 0 0;white-space:pre-wrap;word-wrap:break-word}
+.vayu-comment--reply{margin-left:1.4rem;border-style:dashed}
+.vayu-comment-replies{display:flex;flex-direction:column;gap:.55rem;margin-top:.6rem}
+.vayu-comment-bar{margin-top:.55rem}
+.vayu-comment-reply-btn{font-family:var(--editor-ui);font-size:.75rem;font-weight:650;color:var(--editor-ink-faint);background:none;border:none;padding:.15rem 0;cursor:pointer;transition:color var(--t,.16s)}
+.vayu-comment-reply-btn:hover{color:var(--editor-accent)}
+.vayu-comment-replyform{margin-top:.55rem}
+.vayu-comment-empty{font-family:var(--editor-ui);color:var(--editor-ink-faint);padding:1rem 0}
+.vayu-comment-compose{margin-top:1.2rem}
+.vayu-comment-as{font-family:var(--editor-ui);font-size:.8rem;color:var(--editor-ink-faint);margin:0 0 .5rem}
+.vayu-comment-gate{font-family:var(--editor-ui);color:var(--editor-ink-faint);margin:0 0 .6rem}
+.vayu-comment-form{display:flex;flex-direction:column;gap:.6rem}
+.vayu-comment-input{font-family:var(--editor-ui);width:100%;min-height:5rem;resize:vertical;background:var(--vp-bg);border:1px solid var(--editor-rule-soft);border-radius:12px;color:var(--editor-ink);padding:.7rem .85rem;transition:border-color var(--t,.16s),box-shadow var(--t,.16s)}
+.vayu-comment-input:focus{outline:none;border-color:var(--editor-accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--editor-accent) 20%,transparent)}
+.vayu-comment-actions{display:flex;align-items:center;gap:.75rem;flex-wrap:wrap}
+.vayu-comment-status{font-family:var(--editor-ui);font-size:.8rem;color:var(--editor-ink-faint)}
+.vayu-comment-submit{font-family:var(--editor-ui);font-size:.85rem;font-weight:650;letter-spacing:.02em;background:var(--editor-accent);color:#fff;border:1.5px solid var(--editor-accent);border-radius:10px;padding:.55rem 1.3rem;min-height:44px;cursor:pointer;transition:filter var(--t,.16s),transform var(--t,.16s),box-shadow var(--t,.16s)}
+.vayu-comment-submit:hover{filter:brightness(1.08);box-shadow:0 8px 22px -12px color-mix(in srgb,var(--editor-accent) 70%,transparent);transform:translateY(-1px)}
+@media (max-width:520px){.vayu-comment--reply{margin-left:.7rem}}
+@media (prefers-reduced-motion:reduce){.vayu-comment,.vayu-comment-submit{transition:none}.vayu-comment:hover,.vayu-comment-submit:hover{transform:none}}
 
 /* Instant search: a quiet reading-room overlay. */
 .vayu-search-panel{background:var(--vp-surface);border:var(--editor-hairline);border-radius:2px;box-shadow:var(--sh-lg,0 18px 50px rgba(0,0,0,.16))}

@@ -8,6 +8,26 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.39] — 2026-07-20
+
+### Security
+- **Public comments no longer expose the commenter's email.** The comment list
+  and submit endpoints returned the raw stored record, which included each
+  commenter's **email** (and finer region/city). Responses now go through a
+  `publicComment` projection that carries only the author, body, coarse **country**
+  and timestamp — email, region and city never leave the server.
+
+### Changed
+- **Premium, theme-merged comments with country flag + exact time.** Each posted
+  comment is now a rounded card (gradient avatar, hover lift) that shows the
+  commenter's **country flag** (from the coarse, GDPR-safe country code, rendered
+  as a flag emoji — no external asset), the **exact local date + time** in a
+  semantic `<time>` element (with the relative age as a tooltip), and the body.
+  The compose box, reply threads, "posted" states and empty state are all styled
+  from the active theme's own tokens (accent / ink / surface), so the whole
+  comment system adapts to light, dark and every preset — and honours
+  `prefers-reduced-motion` and small screens.
+
 ## [3.14.38] — 2026-07-20
 
 ### Changed

@@ -607,7 +607,14 @@ const CommentsJS = `(function(){
   var me=null;
   var listEl=document.createElement('div');listEl.className='vayu-comment-list';
   function esc(t){return t==null?'':String(t);}
-  function fmt(d){try{return new Date(d).toLocaleDateString();}catch(e){return '';}}
+  // Exact local date + time (e.g. "3 Jul 2026 · 15:42"); relative age for the
+  // tooltip; a machine-readable ISO for the <time datetime>. flag() turns an ISO
+  // alpha-2 country code into its regional-indicator emoji (pure text — no image,
+  // CSP-safe), the empty string when absent or malformed.
+  function fmt(d){try{var t=new Date(d);return t.toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'})+' · '+t.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'});}catch(e){return '';}}
+  function rel(d){try{var s=Math.floor((Date.now()-new Date(d).getTime())/1000);if(s<45)return 'just now';var m=Math.round(s/60);if(m<60)return m+'m ago';var h=Math.round(m/60);if(h<24)return h+'h ago';var dd=Math.round(h/24);if(dd<31)return dd+'d ago';var mo=Math.round(dd/30);if(mo<12)return mo+'mo ago';return Math.round(mo/12)+'y ago';}catch(e){return '';}}
+  function iso(d){try{return new Date(d).toISOString();}catch(e){return '';}}
+  function flag(cc){cc=esc(cc).trim().toUpperCase();if(!/^[A-Z]{2}$/.test(cc))return '';return String.fromCodePoint(0x1F1E6+cc.charCodeAt(0)-65,0x1F1E6+cc.charCodeAt(1)-65);}
   function clear(n){while(n.firstChild)n.removeChild(n.firstChild);}
   function field(ph,type,req){var i=document.createElement(type==='textarea'?'textarea':'input');if(type!=='textarea')i.type=type;i.placeholder=ph;if(req)i.required=true;i.className='vayu-comment-input';return i;}
   function initials(n){n=esc(n).trim();return (n?n.charAt(0):'?').toUpperCase();}
@@ -641,9 +648,15 @@ const CommentsJS = `(function(){
     var el=document.createElement('div');el.className=isReply?'vayu-comment vayu-comment--reply':'vayu-comment';
     var meta=document.createElement('div');meta.className='vayu-comment-meta';
     var av=document.createElement('span');av.className='vayu-comment-avatar';av.textContent=initials(c.author);av.setAttribute('aria-hidden','true');
+    var idc=document.createElement('div');idc.className='vayu-comment-idc';
+    var line=document.createElement('div');line.className='vayu-comment-idline';
     var who=document.createElement('span');who.className='vayu-comment-author';who.textContent=esc(c.author)||'Anonymous';
-    var when=document.createElement('span');when.className='vayu-comment-date';when.textContent=fmt(c.created_at);
-    meta.appendChild(av);meta.appendChild(who);meta.appendChild(when);
+    line.appendChild(who);
+    var fl=flag(c.country);
+    if(fl){var fe=document.createElement('span');fe.className='vayu-comment-flag';fe.textContent=fl;var cc=esc(c.country).toUpperCase();fe.title=cc;fe.setAttribute('aria-label','From '+cc);line.appendChild(fe);}
+    var when=document.createElement('time');when.className='vayu-comment-date';when.textContent=fmt(c.created_at);var r=rel(c.created_at);if(r)when.title=r;var isod=iso(c.created_at);if(isod)when.setAttribute('datetime',isod);
+    idc.appendChild(line);idc.appendChild(when);
+    meta.appendChild(av);meta.appendChild(idc);
     var body=document.createElement('p');body.className='vayu-comment-body';body.textContent=esc(c.body);
     el.appendChild(meta);el.appendChild(body);
     if(me&&!isReply){

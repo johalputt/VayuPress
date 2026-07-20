@@ -89,6 +89,27 @@ func (a *App) handleUpdateHistory(w http.ResponseWriter, r *http.Request) {
 // Comments
 // =============================================================================
 
+// publicComment is the reader-facing projection of a comment: it deliberately
+// omits the commenter's email and the finer region/city so the public list and
+// submit responses expose only what the widget renders — the author, body, a
+// coarse country (for a flag), the moderation status and the timestamp.
+type publicComment struct {
+	ID        string    `json:"id"`
+	ParentID  string    `json:"parent_id,omitempty"`
+	Author    string    `json:"author"`
+	Body      string    `json:"body"`
+	Country   string    `json:"country,omitempty"`
+	Status    string    `json:"status,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+func toPublicComment(c *comments.Comment) publicComment {
+	return publicComment{
+		ID: c.ID, ParentID: c.ParentID, Author: c.Author, Body: c.Body,
+		Country: c.Country, Status: c.Status, CreatedAt: c.CreatedAt,
+	}
+}
+
 // POST /api/v1/articles/{slug}/comments
 func (a *App) handleCommentSubmit(w http.ResponseWriter, r *http.Request) {
 	if a.commentStore == nil {
@@ -172,7 +193,7 @@ func (a *App) handleCommentSubmit(w http.ResponseWriter, r *http.Request) {
 			go a.notifyCommentReply(context.WithoutCancel(r.Context()), c.ID)
 		}
 	}
-	writeJSON(w, r, http.StatusCreated, c)
+	writeJSON(w, r, http.StatusCreated, toPublicComment(c))
 }
 
 // GET /api/v1/articles/{slug}/comments
@@ -193,7 +214,15 @@ func (a *App) handleCommentList(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusInternalServerError, "db-error", err.Error(), "")
 		return
 	}
-	writeJSON(w, r, http.StatusOK, map[string]interface{}{"comments": cs})
+	// Public projection: never expose the commenter's email (privacy/GDPR) or the
+	// finer region/city — the widget shows only the coarse country (for a flag) and
+	// the timestamp. The raw Comment carries email/region/city, so map to a safe DTO
+	// before it leaves the server.
+	out := make([]publicComment, 0, len(cs))
+	for i := range cs {
+		out = append(out, toPublicComment(&cs[i]))
+	}
+	writeJSON(w, r, http.StatusOK, map[string]interface{}{"comments": out})
 }
 
 // PUT /api/v1/admin/comments/{id}/status
