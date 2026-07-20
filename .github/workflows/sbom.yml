@@ -45,7 +45,7 @@ jobs:
           "$(go env GOPATH)/bin/cyclonedx-gomod" mod -output sbom.json -json
           echo "✅ SBOM generated"
       - name: Upload SBOM
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: sbom
           path: sbom.json

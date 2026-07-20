@@ -124,7 +124,7 @@ jobs:
             ./scripts/capture-screenshots.sh "$PROXY_URL"
 
       - name: Upload screenshots artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: screenshots
           path: docs/screenshots/*.png
