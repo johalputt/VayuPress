@@ -8,6 +8,19 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.47] — 2026-07-20
+
+### Added
+- **"Your mailbox" in the member portal — claim your address in a couple of
+  clicks.** A paid member on a mail-enabled tier now sees a **📬 Your mailbox**
+  panel in the account overlay: they pick a name, get **live availability**
+  feedback (reserved and taken addresses are rejected as they type), set a
+  password, and hit **Claim my mailbox** — provisioning a real VayuMail account
+  with PGP + WKD and their tier's storage quota (the Phase 2b backend). Once
+  claimed, the panel shows the address, quota and a link to open VayuMail, plus a
+  reminder to sign in on the mobile app. CSP-safe (same-origin portal script, no
+  new inline handlers).
+
 ## [3.14.46] — 2026-07-20
 
 ### Added

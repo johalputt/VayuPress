@@ -140,6 +140,7 @@ const PortalJS = `(function () {
       '<div class="vp-portal-plan-name">' + esc(plan) + '</div></div>' +
       '<div class="vp-portal-actions">' +
       mailBtn +
+      (m.paid ? '<button type="button" class="vp-portal-btn vp-portal-btn--ghost" data-vp-go="mailbox">📬 Your mailbox</button>' : '') +
       '<button type="button" class="vp-portal-btn vp-portal-btn--ghost" data-vp-go="activity">💬 Your comments</button>' +
       '<a class="vp-portal-btn vp-portal-btn--ghost" href="/members/account">Manage account</a>' +
       (m.paid ? '' : '<a class="vp-portal-btn" href="/pricing">See membership plans</a>') +
@@ -196,10 +197,95 @@ const PortalJS = `(function () {
       .catch(function () { box.innerHTML = '<div class="vp-portal-activity-empty">Could not load your activity.</div>'; });
   }
 
+  // Mailbox view: a paid member on a mail-enabled tier claims their included
+  // VayuMail address (generic only — reserved names are refused server-side),
+  // sets a password, and gets a private PGP mailbox with their tier's quota.
+  function viewMailbox() {
+    return '<button type="button" class="vp-portal-link vp-portal-back" data-vp-go="account">&larr; Back</button>' +
+      '<h2 class="vp-portal-title">Your mailbox</h2>' +
+      '<div class="vp-portal-mailbox" data-vp-mailbox><div class="vp-portal-activity-loading">Loading…</div></div>';
+  }
+
+  function loadMailbox() {
+    var box = body.querySelector('[data-vp-mailbox]');
+    if (!box) { return; }
+    fetch('/api/v1/members/mailbox', { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+      .then(function (r) { return r.ok ? r.json() : {}; })
+      .then(function (d) {
+        d = d || {};
+        if (d.has_mailbox && d.address) {
+          box.innerHTML =
+            '<p class="vp-portal-sub">Your private mailbox is ready 🎉</p>' +
+            '<div class="vp-portal-plan"><div class="vp-portal-plan-label">Address</div>' +
+            '<div class="vp-portal-plan-name">' + esc(d.address) + '</div></div>' +
+            '<p class="vp-portal-foot">' + (d.quota_mb ? esc(String(d.quota_mb)) + ' MB storage' : 'Unlimited storage') + ' · PGP encryption + WKD enabled.</p>' +
+            '<a class="vp-portal-btn" href="/os/vayuos/mail/inbox">Open VayuMail</a>' +
+            '<p class="vp-portal-foot">On your phone, open the VayuMail app and sign in with this address to finish device setup.</p>';
+          return;
+        }
+        if (!d.entitled) {
+          box.innerHTML = '<p class="vp-portal-sub">Your current plan does not include a mailbox.</p>' +
+            '<a class="vp-portal-btn" href="/pricing">See plans with a mailbox</a>';
+          return;
+        }
+        var domain = d.domain || '';
+        box.innerHTML =
+          '<p class="vp-portal-sub">Pick your address — you get a private mailbox with PGP encryption' +
+          (d.quota_mb ? ' and ' + esc(String(d.quota_mb)) + ' MB storage.' : '.') + '</p>' +
+          '<form class="vp-portal-form" data-vp-mailbox-form novalidate>' +
+          '<label class="vp-portal-label" for="vp-mb-local">Choose your address</label>' +
+          '<div style="display:flex;gap:.4rem;align-items:center;flex-wrap:wrap">' +
+          '<input class="vp-portal-input" id="vp-mb-local" type="text" autocomplete="off" spellcheck="false" placeholder="yourname" style="text-transform:lowercase;flex:1;min-width:8rem">' +
+          '<span style="opacity:.7;font-family:monospace">@' + esc(domain) + '</span></div>' +
+          '<div data-vp-mbavail style="font-size:.85rem;min-height:1.2em;margin:.25rem 0"></div>' +
+          '<label class="vp-portal-label" for="vp-mb-pass">Set a mailbox password</label>' +
+          '<input class="vp-portal-input" id="vp-mb-pass" type="password" autocomplete="new-password" placeholder="At least 8 characters">' +
+          '<button class="vp-portal-btn" type="submit">Claim my mailbox</button>' +
+          '</form>' +
+          '<div class="vp-portal-msg" aria-live="polite"></div>';
+        wireMailboxForm(domain);
+      })
+      .catch(function () { box.innerHTML = '<div class="vp-portal-activity-empty">Could not load your mailbox.</div>'; });
+  }
+
+  function wireMailboxForm(domain) {
+    var local = body.querySelector('#vp-mb-local');
+    var avail = body.querySelector('[data-vp-mbavail]');
+    var form = body.querySelector('[data-vp-mailbox-form]');
+    var t = null;
+    function check() {
+      var v = (local.value || '').trim().toLowerCase();
+      if (!v) { avail.textContent = ''; avail.style.color = ''; return; }
+      fetch('/api/v1/members/mailbox/available?localpart=' + encodeURIComponent(v), { credentials: 'same-origin' })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          if (d && d.available) { avail.textContent = '✓ ' + v + '@' + domain + ' is available'; avail.style.color = '#22c55e'; }
+          else { avail.textContent = '✕ ' + ((d && d.reason) || 'Not available'); avail.style.color = '#ef4444'; }
+        }).catch(function () {});
+    }
+    if (local) { local.addEventListener('input', function () { clearTimeout(t); t = setTimeout(check, 300); }); }
+    if (form) {
+      form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        var v = (local.value || '').trim().toLowerCase();
+        var pass = (body.querySelector('#vp-mb-pass').value) || '';
+        if (!v) { msg('Choose an address.', 'err'); return; }
+        if (pass.length < 8) { msg('Password must be at least 8 characters.', 'err'); return; }
+        var btn = form.querySelector('.vp-portal-btn');
+        btn.disabled = true; btn.textContent = 'Claiming…';
+        postJSON('/api/v1/members/mailbox/claim', { localpart: v, password: pass }).then(function (res) {
+          btn.disabled = false; btn.textContent = 'Claim my mailbox';
+          if (res.ok) { loadMailbox(); }
+          else { msg((res.body && res.body.error && res.body.error.message) || 'Could not claim that address.', 'err'); }
+        });
+      });
+    }
+  }
+
   function render() {
     if (!body) { return; }
     var content;
-    if (state.auth) { content = (view === 'activity') ? viewActivity() : viewAccount(); }
+    if (state.auth) { content = (view === 'activity') ? viewActivity() : (view === 'mailbox') ? viewMailbox() : viewAccount(); }
     else if (view === 'signin') { content = viewSignin(); }
     else if (view === 'vayumail') { content = viewVayuMail(false); }
     else { content = viewSignup(); }
@@ -279,6 +365,7 @@ const PortalJS = `(function () {
     }
 
     if (state.auth && view === 'activity') { loadActivity(); }
+    if (state.auth && view === 'mailbox') { loadMailbox(); }
 
     var out = body.querySelector('[data-vp-logout]');
     if (out) {
