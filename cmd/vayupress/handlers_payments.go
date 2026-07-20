@@ -487,6 +487,10 @@ func (a *App) fulfillOrder(ctx context.Context, o *payments.Order) error {
 	if o.TierSlug == mailIDOrderTier {
 		return a.fulfillMailIDOrder(ctx, o)
 	}
+	// A paid-post purchase is a one-time unlock of a single article.
+	if o.TierSlug == postOrderTier {
+		return a.fulfillPostOrder(ctx, o)
+	}
 	m, err := a.members.Upsert(ctx, o.Email)
 	if err != nil {
 		return err

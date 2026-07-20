@@ -8,6 +8,19 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.57] — 2026-07-20
+
+### Added
+- **Paid posts — one-time per-post unlock (Phase 6).** A signed-in member can buy
+  permanent access to a single gated post without a subscription: the paywall
+  shows a **Buy this post — $X** button that opens a one-time Stripe Checkout
+  (instant) or the sovereign direct/offline gateway. Purchase settles through the
+  shared fulfilment path (a pending `article_purchases` row, migration 074, flips
+  to paid), and the post then unlocks for that member. The operator sets a post's
+  access level + price from a new **Paid posts** control on the Monetization
+  console (and the audit ledger labels these orders "Paid post"). Reuses the exact
+  one-time-payment substrate built for premium mail-IDs.
+
 ## [3.14.56] — 2026-07-20
 
 ### Added

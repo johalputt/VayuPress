@@ -323,6 +323,7 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	r.Post("/checkout", a.handleCheckoutPage)
 	r.Get("/checkout/success", a.handleCheckoutSuccess)            // Stripe return: verify + fulfil server-side
 	r.Get("/checkout/paypal/return", a.handleCheckoutPayPalReturn) // PayPal return: verify + fulfil server-side
+	r.Post("/checkout/post/{slug}", a.handlePostCheckout)          // buy one-time access to a single paid post
 	r.Post("/api/v1/payments/webhook/{gateway}", a.handlePaymentWebhook)
 
 	// VayuMCP (ADR-0139): the Model Context Protocol connector at POST /mcp, so an

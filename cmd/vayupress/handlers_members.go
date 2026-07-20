@@ -272,8 +272,9 @@ func (a *App) handleArticleAccessGet(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "members-disabled", "Memberships not initialised", "")
 		return
 	}
-	level := a.members.GetAccess(r.Context(), chi.URLParam(r, "slug"))
-	writeJSON(w, r, http.StatusOK, map[string]string{"level": level})
+	slug := chi.URLParam(r, "slug")
+	level := a.members.GetAccess(r.Context(), slug)
+	writeJSON(w, r, http.StatusOK, map[string]interface{}{"level": level, "price_cents": a.members.GetPostPriceCents(r.Context(), slug)})
 }
 
 // PUT /api/v1/admin/articles/{slug}/access  {level}
@@ -283,7 +284,8 @@ func (a *App) handleArticleAccessSet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Level string `json:"level"`
+		Level      string `json:"level"`
+		PriceCents *int   `json:"price_cents"` // optional per-post one-time price
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "bad-json", "Invalid request body", "")
@@ -294,9 +296,16 @@ func (a *App) handleArticleAccessSet(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusBadRequest, "access-error", err.Error(), "")
 		return
 	}
+	// Optional per-post price (Phase 6 paid posts): 0 disables individual purchase.
+	if body.PriceCents != nil {
+		if err := a.members.SetPostPrice(r.Context(), slug, *body.PriceCents); err != nil {
+			writeAPIError(w, r, http.StatusBadRequest, "price-error", err.Error(), "")
+			return
+		}
+	}
 	// Purge any cached full-content page so the paywall takes effect immediately.
 	render.CachePurgePost(slug)
-	writeJSON(w, r, http.StatusOK, map[string]string{"level": body.Level})
+	writeJSON(w, r, http.StatusOK, map[string]interface{}{"level": body.Level})
 }
 
 // =============================================================================

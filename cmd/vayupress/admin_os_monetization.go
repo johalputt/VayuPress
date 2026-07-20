@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/johalputt/vayupress/internal/members"
 	"github.com/johalputt/vayupress/internal/payments"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/secrets"
@@ -44,6 +45,10 @@ func (a *App) handleOSMonetization(w http.ResponseWriter, r *http.Request) {
 	}
 	premiumPriceStr := strconv.Itoa(a.premiumMailIDPriceCents(ctx))
 	mailidTerms := a.mailIDTerms(ctx)
+	var pricedPosts []members.PricedPost
+	if a.members != nil {
+		pricedPosts, _ = a.members.ListPricedPosts(ctx, 100)
+	}
 
 	var stats payments.Stats
 	var orders []payments.Order
@@ -120,6 +125,21 @@ func (a *App) handleOSMonetization(w http.ResponseWriter, r *http.Request) {
   <button type="button" class="btn btn--primary btn--sm" id="mon-mailid-save">Save mailbox settings</button>
 </div>
 
+<div class="card">
+  <div class="settings-block-title">Paid posts</div>
+  <p class="text-sm muted mb-4">Charge a one-time price for access to a single post — readers buy it (card or offline) without a subscription. Set a post's access level and price by slug; a price of 0 removes the individual sale.</p>
+  <div class="field" style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:flex-end">
+    <div style="flex:2;min-width:10rem"><label class="field-label" for="pp-slug">Post slug</label>
+    <input id="pp-slug" class="input" type="text" placeholder="my-post" autocomplete="off" spellcheck="false"></div>
+    <div style="flex:1;min-width:8rem"><label class="field-label" for="pp-level">Access</label>
+    <select id="pp-level" class="input"><option value="paid">Paid members</option><option value="members">Members</option><option value="public">Public</option></select></div>
+    <div style="flex:1;min-width:7rem"><label class="field-label" for="pp-price">Price (cents)</label>
+    <input id="pp-price" class="input" type="number" min="0" step="1" placeholder="300"></div>
+    <button type="button" class="btn btn--primary btn--sm" id="pp-save">Set</button>
+  </div>
+  ` + paidPostsTable(pricedPosts, currency) + `
+</div>
+
 <div id="action-msg" role="status" aria-live="polite" class="action-msg"></div>
 <script nonce="` + nonce + `">
 (function(){'use strict';
@@ -154,6 +174,17 @@ if(midBtn)midBtn.addEventListener('click',function(){
   fields.forEach(function(el){chain=chain.then(function(){return jsave(el.getAttribute('data-mail-key'),el.value).then(function(r){if(!r.ok)ok=false;});});});
   chain.then(function(){midBtn.disabled=false;show(ok?'Mailbox settings saved':'Some settings failed',!ok);}).catch(function(e){midBtn.disabled=false;show('Error: '+e,true);});
 });
+var ppBtn=document.getElementById('pp-save');
+if(ppBtn)ppBtn.addEventListener('click',function(){
+  var slug=(document.getElementById('pp-slug').value||'').trim();
+  var level=document.getElementById('pp-level').value;
+  var price=parseInt(document.getElementById('pp-price').value||'0',10)||0;
+  if(!slug){show('Enter a post slug first',true);return;}
+  ppBtn.disabled=true;show('Saving…',false);
+  fetch('/api/v1/admin/articles/'+encodeURIComponent(slug)+'/access',{method:'PUT',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},body:JSON.stringify({level:level,price_cents:price})})
+    .then(function(r){ppBtn.disabled=false;if(r.ok){show('Saved '+slug,false);setTimeout(function(){location.reload();},600);}else{r.json().then(function(d){show((d.error&&d.error.message)||'Error',true);}).catch(function(){show('Error',true);});}})
+    .catch(function(e){ppBtn.disabled=false;show('Error: '+e,true);});
+});
 var whBtn=document.getElementById('mon-webhook-save');
 if(whBtn)whBtn.addEventListener('click',function(){
   var sec=(document.getElementById('mon-webhook-secret')||{}).value||'';
@@ -168,6 +199,24 @@ if(whBtn)whBtn.addEventListener('click',function(){
 </script>`
 
 	writeOSHTML(w, adminOSLayout(nonce, "Monetization", "monetization", cfg, htmpl.HTML(body)))
+}
+
+// paidPostsTable lists the posts that carry a one-time price.
+func paidPostsTable(posts []members.PricedPost, currency string) string {
+	if len(posts) == 0 {
+		return `<p class="text-sm muted">No paid posts yet. Set a price above to sell one-time access to a post.</p>`
+	}
+	rows := ""
+	for _, p := range posts {
+		rows += `<tr>` +
+			`<td class="row-title"><code>` + html.EscapeString(p.Slug) + `</code></td>` +
+			`<td>` + html.EscapeString(p.Level) + `</td>` +
+			`<td>` + html.EscapeString(priceLabel(currency, p.PriceCents)) + `</td>` +
+			`</tr>`
+	}
+	return `<div class="table-wrap"><table class="table">` +
+		`<thead><tr><th>Slug</th><th>Access</th><th>Price</th></tr></thead>` +
+		`<tbody>` + rows + `</tbody></table></div>`
 }
 
 // monetizationOrdersTable renders the order ledger, newest first.

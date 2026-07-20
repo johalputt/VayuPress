@@ -18,7 +18,8 @@ func newTestStore(t *testing.T) *Store {
 		`CREATE TABLE members(id TEXT PRIMARY KEY,email TEXT NOT NULL UNIQUE,name TEXT NOT NULL DEFAULT '',note TEXT NOT NULL DEFAULT '',tier TEXT NOT NULL DEFAULT 'free',status TEXT NOT NULL DEFAULT 'active',newsletter_opt_in INTEGER NOT NULL DEFAULT 1,reply_notify INTEGER NOT NULL DEFAULT 1,stripe_customer TEXT NOT NULL DEFAULT '',last_seen_at DATETIME,created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,country TEXT NOT NULL DEFAULT '',region TEXT NOT NULL DEFAULT '',city TEXT NOT NULL DEFAULT '',domain_id TEXT NOT NULL DEFAULT '',gender TEXT NOT NULL DEFAULT '',avatar_choice TEXT NOT NULL DEFAULT '',avatar_mime TEXT NOT NULL DEFAULT '',avatar_blob BLOB)`,
 		`CREATE TABLE member_login_tokens(token_hash TEXT PRIMARY KEY,email TEXT NOT NULL,expires_at DATETIME NOT NULL)`,
 		`CREATE TABLE member_sessions(token_hash TEXT PRIMARY KEY,member_id TEXT NOT NULL,expires_at DATETIME NOT NULL)`,
-		`CREATE TABLE article_access(slug TEXT PRIMARY KEY,level TEXT NOT NULL DEFAULT 'public')`,
+		`CREATE TABLE article_access(slug TEXT PRIMARY KEY,level TEXT NOT NULL DEFAULT 'public',price_cents INTEGER NOT NULL DEFAULT 0)`,
+		`CREATE TABLE article_purchases(id TEXT PRIMARY KEY,email TEXT NOT NULL,slug TEXT NOT NULL,order_ref TEXT NOT NULL DEFAULT '',status TEXT NOT NULL DEFAULT 'pending',created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,paid_at DATETIME,UNIQUE(email,slug))`,
 		`CREATE TABLE member_tiers(id TEXT PRIMARY KEY,slug TEXT NOT NULL UNIQUE,name TEXT NOT NULL,description TEXT NOT NULL DEFAULT '',monthly_cents INTEGER NOT NULL DEFAULT 0,yearly_cents INTEGER NOT NULL DEFAULT 0,currency TEXT NOT NULL DEFAULT 'USD',benefits TEXT NOT NULL DEFAULT '[]',visibility TEXT NOT NULL DEFAULT 'public',active INTEGER NOT NULL DEFAULT 1,sort INTEGER NOT NULL DEFAULT 0,trial_days INTEGER NOT NULL DEFAULT 0,stripe_monthly_price TEXT NOT NULL DEFAULT '',stripe_yearly_price TEXT NOT NULL DEFAULT '',created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,mail_enabled INTEGER NOT NULL DEFAULT 0,mail_quota_mb INTEGER NOT NULL DEFAULT 0)`,
 		`CREATE TABLE member_subscriptions(id TEXT PRIMARY KEY,member_id TEXT NOT NULL,tier_slug TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'active',cadence TEXT NOT NULL DEFAULT 'monthly',amount_cents INTEGER NOT NULL DEFAULT 0,currency TEXT NOT NULL DEFAULT 'USD',stripe_subscription TEXT NOT NULL DEFAULT '',current_period_end DATETIME,trial_end DATETIME,cancel_at_period_end INTEGER NOT NULL DEFAULT 0,started_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,canceled_at DATETIME)`,
 		`CREATE TABLE member_labels(id TEXT PRIMARY KEY,name TEXT NOT NULL UNIQUE,created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
@@ -106,6 +107,48 @@ func TestPremiumLocalpartsAndModeration(t *testing.T) {
 	got, _ := s.PremiumGrantByID(ctx, g2.ID)
 	if got == nil || got.Status != GrantRevoked {
 		t.Errorf("revoked grant status = %+v", got)
+	}
+}
+
+func TestArticlePurchaseFlow(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	// No price by default; setting one is readable back.
+	if c := s.GetPostPriceCents(ctx, "my-post"); c != 0 {
+		t.Fatalf("default price should be 0, got %d", c)
+	}
+	if err := s.SetPostPrice(ctx, "my-post", 300); err != nil {
+		t.Fatalf("set price: %v", err)
+	}
+	if c := s.GetPostPriceCents(ctx, "my-post"); c != 300 {
+		t.Errorf("price = %d, want 300", c)
+	}
+	// Setting the price must not clobber an existing access level.
+	if err := s.SetAccess(ctx, "my-post", AccessPaid); err != nil {
+		t.Fatalf("set access: %v", err)
+	}
+	if err := s.SetPostPrice(ctx, "my-post", 500); err != nil {
+		t.Fatalf("reprice: %v", err)
+	}
+	if lvl := s.GetAccess(ctx, "my-post"); lvl != AccessPaid {
+		t.Errorf("level should stay paid after reprice, got %q", lvl)
+	}
+	// Purchase lifecycle: pending → not unlocked; paid → unlocked.
+	if err := s.CreateArticlePurchase(ctx, "Reader@Example.com", "my-post", "VP-P1"); err != nil {
+		t.Fatalf("create purchase: %v", err)
+	}
+	if s.HasPurchasedArticle(ctx, "reader@example.com", "my-post") {
+		t.Error("a pending purchase must not unlock the post")
+	}
+	if err := s.MarkArticlePurchasePaidByOrder(ctx, "VP-P1"); err != nil {
+		t.Fatalf("mark paid: %v", err)
+	}
+	if !s.HasPurchasedArticle(ctx, "reader@example.com", "my-post") {
+		t.Error("a paid purchase must unlock the post")
+	}
+	// A different member has not purchased it.
+	if s.HasPurchasedArticle(ctx, "someone@else.com", "my-post") {
+		t.Error("purchase must be per-member")
 	}
 }
 

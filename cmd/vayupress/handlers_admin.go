@@ -606,7 +606,15 @@ func (a *App) handleArticlePage(w http.ResponseWriter, r *http.Request) {
 	// operator (full access to their own site) — so the owner is never shown a
 	// paywall on their own content, matching the "authorised as per power" rule.
 	if gated {
-		if !a.resolveCommenter(r).Can(accessLevel) {
+		// A member who bought one-time access to this specific post is authorised
+		// even without a qualifying subscription (Phase 6 paid posts).
+		purchased := false
+		if a.members != nil {
+			if m := a.resolveMember(r); m != nil {
+				purchased = a.members.HasPurchasedArticle(r.Context(), m.Email, slug)
+			}
+		}
+		if !a.resolveCommenter(r).Can(accessLevel) && !purchased {
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			w.Header().Set("Cache-Control", "no-store")
 			fmt.Fprint(w, a.renderPaywall(r, art, accessLevel))
@@ -870,6 +878,23 @@ func (a *App) renderPaywall(r *http.Request, art dbpkg.Article, level string) st
 		}
 	}
 
+	// One-time "buy just this post" option, when the post carries a price. Shown to
+	// a signed-in member as a purchase button; to a signed-out reader as a hint to
+	// sign in first (the inline form below signs them in).
+	buyBlock := ""
+	if a.members != nil {
+		if price := a.members.GetPostPriceCents(r.Context(), art.Slug); price > 0 {
+			label := priceLabel(a.payCurrency(r.Context()), price)
+			if a.resolveMember(r) != nil {
+				buyBlock = `<form class="pw-form" method="POST" action="/checkout/post/` + esc(art.Slug) + `">` +
+					`<button type="submit">Buy this post — ` + esc(label) + `</button></form>` +
+					`<p class="pw-hint">One-time purchase — yours to read forever, no subscription.</p>`
+			} else {
+				buyBlock = `<p class="pw-hint">Prefer just this post? It's ` + esc(label) + ` one-time — sign in below, then buy it.</p>`
+			}
+		}
+	}
+
 	return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">` +
 		`<meta name="viewport" content="width=device-width, initial-scale=1">` +
 		`<title>` + esc(art.Title) + `</title>` +
@@ -882,6 +907,7 @@ func (a *App) renderPaywall(r *http.Request, art dbpkg.Article, level string) st
 		`<p class="pw-title">` + esc(cta) + `</p>` +
 		priceBlock + perks +
 		`<p><a class="pw-join" href="` + joinHref + `">` + esc(joinLabel) + ` →</a></p>` +
+		buyBlock +
 		`<form class="pw-form" method="POST" action="/members/login">` +
 		`<input type="email" name="email" required placeholder="you@example.com">` +
 		`<button type="submit">Email me a sign-in link</button>` +

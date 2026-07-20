@@ -125,6 +125,8 @@ func growthOrderProduct(tierSlug string) string {
 	switch tierSlug {
 	case mailIDOrderTier:
 		return "Premium mail-ID"
+	case postOrderTier:
+		return "Paid post"
 	default:
 		return "Membership: " + tierSlug
 	}
