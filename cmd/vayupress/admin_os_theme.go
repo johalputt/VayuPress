@@ -312,7 +312,7 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
           </div>
         </div>
         <div class="vm-row mt-2">
-          <input type="file" id="brand-favicon-file" accept="image/png,image/x-icon,.png,.ico" class="input">
+          <input type="file" id="brand-favicon-file" accept="image/png,image/jpeg,image/webp,image/gif,image/x-icon,.png,.jpg,.jpeg,.webp,.gif,.ico" class="input">
           <button type="button" class="btn btn--primary btn--sm" id="brand-favicon-upload">Upload</button>
           <button type="button" class="btn btn--sm" id="brand-favicon-remove">Default</button>
           <span id="brand-favicon-status" class="text-xs muted" role="status" aria-live="polite"></span>

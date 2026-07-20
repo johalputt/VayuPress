@@ -14,29 +14,40 @@ import (
 	"github.com/johalputt/vayupress/internal/settings"
 )
 
-// maxFaviconBytes caps an uploaded favicon. Real favicons are a few KB; 256 KB
-// is generous headroom while refusing anything that could bloat the settings
-// row (the bytes are base64-encoded into the DB).
-const maxFaviconBytes = 256 * 1024
+// maxFaviconBytes caps an uploaded logo/favicon. This same asset doubles as the
+// nav-bar logo (see the Theme page), so operators upload real logo images, not
+// just tiny 16px favicons — 1 MB is generous headroom for a crisp PNG/WebP logo
+// while still refusing anything that would bloat the settings row (the bytes are
+// base64-encoded into the DB).
+const maxFaviconBytes = 1024 * 1024
 
-// pngMagic and icoMagic are the leading signature bytes used to validate an
-// uploaded favicon by content rather than trusting its filename or the
-// browser-supplied Content-Type (both of which are attacker-controlled).
+// The leading signature bytes used to validate an uploaded logo/favicon by
+// CONTENT rather than trusting its filename or the browser-supplied Content-Type
+// (both attacker-controlled). Raster formats only — SVG is deliberately NOT
+// accepted, since an SVG served same-origin can carry active content (XSS).
 var (
 	pngMagic = []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A}
 	icoMagic = []byte{0x00, 0x00, 0x01, 0x00}
 )
 
 // detectFaviconType returns the canonical MIME type for b based on its magic
-// number, or ("", false) if b is neither a PNG nor an ICO. Browsers render PNG
-// bytes served as image/png at /favicon.ico fine, so PNG is the primary path;
-// ICO is accepted for operators who already have a classic .ico.
+// number, or ("", false) if b is not a supported logo image. Any of these renders
+// fine at the fixed /static/favicon-*.png + /favicon.ico URLs because browsers
+// honour the Content-Type, not the extension — so a JPEG/WebP/GIF logo works too,
+// which is what most operators actually have (the PNG/ICO-only limit was the
+// usual reason "the logo won't change": the upload was silently rejected).
 func detectFaviconType(b []byte) (string, bool) {
 	switch {
 	case len(b) >= len(pngMagic) && bytes.Equal(b[:len(pngMagic)], pngMagic):
 		return "image/png", true
 	case len(b) >= len(icoMagic) && bytes.Equal(b[:len(icoMagic)], icoMagic):
 		return "image/x-icon", true
+	case len(b) >= 3 && b[0] == 0xFF && b[1] == 0xD8 && b[2] == 0xFF:
+		return "image/jpeg", true
+	case len(b) >= 6 && (bytes.Equal(b[:6], []byte("GIF87a")) || bytes.Equal(b[:6], []byte("GIF89a"))):
+		return "image/gif", true
+	case len(b) >= 12 && bytes.Equal(b[:4], []byte("RIFF")) && bytes.Equal(b[8:12], []byte("WEBP")):
+		return "image/webp", true
 	default:
 		return "", false
 	}
@@ -68,7 +79,7 @@ func (a *App) handleFaviconUpload(w http.ResponseWriter, r *http.Request) {
 	// oversized upload is refused up front rather than buffered.
 	r.Body = http.MaxBytesReader(w, r.Body, maxFaviconBytes+8*1024)
 	if err := r.ParseMultipartForm(maxFaviconBytes + 8*1024); err != nil {
-		fail(400, "could not read upload (max 256 KB): "+err.Error())
+		fail(400, "could not read upload (max 1 MB): "+err.Error())
 		return
 	}
 
@@ -106,13 +117,13 @@ func (a *App) handleFaviconUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(raw) > maxFaviconBytes {
-		fail(400, "favicon exceeds the 256 KB limit")
+		fail(400, "logo exceeds the 1 MB limit")
 		return
 	}
 
 	mime, valid := detectFaviconType(raw)
 	if !valid {
-		fail(400, "file is not a PNG or ICO image")
+		fail(400, "file is not a supported image (PNG, JPEG, WebP, GIF or ICO)")
 		return
 	}
 

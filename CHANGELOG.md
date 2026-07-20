@@ -8,7 +8,18 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
-## [3.14.27] — 2026-07-19
+## [3.14.28] — 2026-07-19
+
+### Fixed
+- **Logo upload accepts real logo images now (PNG, JPEG, WebP, GIF, ICO), up to
+  1 MB.** The upload previously accepted only PNG/ICO at ≤256 KB and the file
+  picker itself filtered to those two types — so a JPEG/WebP/GIF logo (what most
+  people actually have) could not even be selected, and a larger image was
+  rejected. This was the most common reason "the logo won't change": the upload
+  was silently refused. The asset doubles as the nav-bar logo, so the size cap is
+  now logo-friendly. SVG stays refused on purpose (an SVG served same-origin can
+  carry active content). Every format is served correctly because browsers honour
+  the Content-Type, not the URL's `.png`/`.ico` extension.
 
 ### Fixed
 - **Tor-world logo now actually changes.** The default (built-in) favicon/logo was
