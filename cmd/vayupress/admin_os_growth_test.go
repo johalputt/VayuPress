@@ -47,30 +47,40 @@ func TestOperationsHubConsolidatesSidebar(t *testing.T) {
 	if !strings.Contains(nav, ">Operations<") {
 		t.Error("clearnet sidebar must show the consolidated Operations hub tab")
 	}
-	for _, gone := range []string{">System Modes<", ">Policy Inspector<", ">Topology<", ">Replay Explorer<", ">Fault Engine<", ">ADR Registry<"} {
+	// Neither the original ops tools NOR the moved Health & governance items
+	// (Monitoring, Governance, Storage & System, Security) appear in the sidebar.
+	for _, gone := range []string{
+		">System Modes<", ">Policy Inspector<", ">Topology<", ">Replay Explorer<", ">Fault Engine<", ">ADR Registry<",
+		">Monitoring<", ">Governance<", ">Storage & System<", ">Security<",
+	} {
 		if strings.Contains(nav, gone) {
 			t.Errorf("sidebar must not show %q (moved into the Operations hub)", gone)
 		}
 	}
 
-	// Normal mode → no attention badge on the Modes card.
-	normal := osOperationsGrid(mode.ModeNormal)
+	// Normal mode, healthy disk → no attention badge anywhere.
+	normal := osOperationsGrid(mode.ModeNormal, 40)
 	assertCSPSafe(t, "osOperationsGrid/normal", normal)
 	for _, want := range []string{
 		`href="/os/modes"`, `href="/os/policy"`, `href="/os/topology"`,
-		`href="/os/replay"`, `href="/os/faults"`, `href="/os/adr"`, "Operations",
+		`href="/os/replay"`, `href="/os/faults"`, `href="/os/adr"`,
+		`href="/os/monitoring"`, `href="/os/governance"`, `href="/os/storage"`, `href="/os/security"`,
+		"Operations",
 	} {
 		if !strings.Contains(normal, want) {
 			t.Errorf("Operations hub missing %q", want)
 		}
 	}
 	if strings.Contains(normal, "work-card__badge") {
-		t.Error("normal mode must not show an attention badge")
+		t.Error("normal mode + healthy disk must not show an attention badge")
 	}
-	// A non-normal mode surfaces as a badge on the Modes card.
-	quarantined := osOperationsGrid(mode.ModeQuarantined)
-	if !strings.Contains(quarantined, `work-card__badge">quarantined<`) {
+	// A non-normal mode badges the Modes card; high disk badges the Storage card.
+	attn := osOperationsGrid(mode.ModeQuarantined, 88)
+	if !strings.Contains(attn, `work-card__badge">quarantined<`) {
 		t.Error("a non-normal mode must be badged on the System Modes card")
+	}
+	if !strings.Contains(attn, `work-card__badge">88%<`) {
+		t.Error("high disk usage must be badged on the Storage & System card")
 	}
 }
 

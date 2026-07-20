@@ -8,7 +8,18 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
-## [3.14.31] — 2026-07-20
+## [3.14.32] — 2026-07-20
+
+### Changed
+- **Monitoring, Governance, Storage & System and Security moved into the
+  Operations hub.** The Operations tab now has two card rows — *Controls &
+  diagnostics* (System Modes, Policy Inspector, Topology, Replay Explorer, Fault
+  Engine, ADR Registry) and *Health & governance* (Monitoring, Governance, Storage
+  & System, Security). The Storage & System card shows a usage badge when disk is
+  running high (≥ 75%), alongside the existing non-normal-mode badge on System
+  Modes. The System sidebar row now keeps only the everyday config surfaces (Tools
+  & Plugins, Update & Backup, Domains, Settings, API Keys, VayuMCP). Every card
+  links to its existing page — only the navigation moved.
 
 ### Changed
 - **New "Optimize" hub consolidates the Optimize sidebar group.** SEO, Analytics,

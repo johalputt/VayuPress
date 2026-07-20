@@ -932,17 +932,16 @@ func osSidebarNav(active string, s *osSettings) string {
 		// gate its sidebar entry so author/editor sessions never see it.
 		gate(navItem("/os/tor", "VayuTor", "tor", active, iconTor), "/os/tor"),
 	)
+	// Monitoring, Governance, Storage & System and Security moved into the
+	// Operations hub (Health & governance) — the System row keeps the everyday
+	// config surfaces.
 	section("System",
-		gate(navItem("/os/monitoring", "Monitoring", "monitoring", active, iconMonitoring), "/os/monitoring"),
-		gate(navItem("/os/governance", "Governance", "governance", active, iconGovernance), "/os/governance"),
 		gate(navItem("/os/tools", "Tools & Plugins", "tools", active, iconTools), "/os/tools"),
 		gate(navItem("/os/update", "Update & Backup", "update", active, iconUpdate), "/os/update"),
-		gate(navItem("/os/storage", "Storage & System", "storage", active, iconStorage), "/os/storage"),
 		gate(navItem("/os/domains", "Domains", "domains", active, iconDomains), "/os/domains"),
 		gate(navItem("/os/settings", "Settings", "settings", active, iconSettings), "/os/settings"),
 		gate(navItem("/os/apikeys", "API Keys", "apikeys", active, iconKey), "/os/apikeys"),
 		gate(navItem("/os/connector", "VayuMCP", "connector", active, iconConnector), "/os/connector"),
-		gate(navItem("/os/security", "Security", "security", active, iconSecurity), "/os/security"),
 	)
 	// Operations (System Modes, Policy Inspector, Topology, Replay Explorer, Fault
 	// Engine, ADR Registry) is consolidated into ONE pinned hub tab — a card grid
