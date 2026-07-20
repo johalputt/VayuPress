@@ -218,9 +218,9 @@ const PortalJS = `(function () {
             '<p class="vp-portal-sub">Your private mailbox is ready 🎉</p>' +
             '<div class="vp-portal-plan"><div class="vp-portal-plan-label">Address</div>' +
             '<div class="vp-portal-plan-name">' + esc(d.address) + '</div></div>' +
-            '<p class="vp-portal-foot">' + (d.quota_mb ? esc(String(d.quota_mb)) + ' MB storage' : 'Unlimited storage') + ' · PGP encryption + WKD enabled.</p>' +
+            '<p class="vp-portal-foot">' + (d.quota_mb ? esc(String(d.quota_mb)) + ' MB storage' : 'Unlimited storage') + ' · PGP encryption + WKD · VayuTalk secure chat included.</p>' +
             '<a class="vp-portal-btn" href="/os/vayuos/mail/inbox">Open VayuMail</a>' +
-            '<p class="vp-portal-foot">On your phone, open the VayuMail app and sign in with this address to finish device setup.</p>';
+            '<p class="vp-portal-foot">On your phone, open the VayuMail app and sign in with this address to finish device setup — that also unlocks end-to-end encrypted VayuTalk chat.</p>';
           return;
         }
         if (!d.entitled) {
@@ -231,7 +231,7 @@ const PortalJS = `(function () {
         var domain = d.domain || '';
         box.innerHTML =
           '<p class="vp-portal-sub">Pick your address — you get a private mailbox with PGP encryption' +
-          (d.quota_mb ? ' and ' + esc(String(d.quota_mb)) + ' MB storage.' : '.') + '</p>' +
+          (d.quota_mb ? ', ' + esc(String(d.quota_mb)) + ' MB storage' : '') + ' and end-to-end encrypted VayuTalk chat, all included.</p>' +
           '<form class="vp-portal-form" data-vp-mailbox-form novalidate>' +
           '<label class="vp-portal-label" for="vp-mb-local">Choose your address</label>' +
           '<div style="display:flex;gap:.4rem;align-items:center;flex-wrap:wrap">' +

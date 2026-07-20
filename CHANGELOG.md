@@ -8,6 +8,17 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.48] — 2026-07-20
+
+### Added
+- **VayuTalk shown as an included paid benefit.** A paid member's mailbox panel
+  and claim screen now state that **end-to-end encrypted VayuTalk chat is
+  included**. This surfaces what the architecture already delivers: claiming the
+  tier's mailbox (v3.14.46) gives the member the mail identity VayuTalk is keyed
+  to, so signing into the VayuMail mobile app with that address unlocks VayuTalk
+  for them with no separate setup. (Web VayuTalk stays operator-only by design;
+  the member VayuTalk client is the mobile app.)
+
 ## [3.14.47] — 2026-07-20
 
 ### Added
