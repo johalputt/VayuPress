@@ -8,7 +8,20 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
-## [3.14.29] — 2026-07-20
+## [3.14.30] — 2026-07-20
+
+### Changed
+- **New "Operations" hub consolidates the Operations sidebar group.** System
+  Modes, Policy Inspector, Topology, Replay Explorer, Fault Engine and ADR
+  Registry no longer each take a sidebar row — they're merged into a single pinned
+  **Operations** tab (like Dashboard / Growth) that opens a premium card grid. The
+  System Modes card shows a status badge whenever the install is not in normal mode
+  (read-only / degraded / quarantined), so a non-normal state stands out. Every
+  card links to its existing page — only the navigation moved. These are
+  clearnet-only infrastructure controls, so there is no Tor-world counterpart; the
+  design upgrades that DO apply to both worlds (dashboard command-center, cards,
+  world card, Tor analytics, minimal sidebar) already run in the Tor console via
+  the same binary.
 
 ### Changed
 - **New "Growth" hub consolidates the Audience & Monetization sidebar groups.**

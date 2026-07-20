@@ -87,8 +87,9 @@ func osPathMinLevel(path string) int {
 		"tools", "modes", "policy", "topology", "replay", "faults", "adr",
 		"members", "newsletter", "monetization", "ads", "website", "shield",
 		// Growth is the hub that fronts Members / Newsletter / Monetization /
-		// Advertising, so it inherits their admin gate.
-		"growth",
+		// Advertising; Operations fronts Modes / Policy / Topology / Replay / Faults
+		// / ADR — both inherit their fronted pages' admin gate.
+		"growth", "operations",
 		// Infrastructure controls: VayuTor onion services and the Anonymous Tor
 		// Space toggle each supervise network-facing services / a second server
 		// process, so they are admin-only — never author/editor (ADR-0141 review).

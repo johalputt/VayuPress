@@ -215,6 +215,9 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		// Growth hub: consolidates Members / Newsletter / Monetization / Advertising
 		// (+ My Profile) into one dashboard-style card page (admin-only).
 		pr.Get("/os/growth", a.handleOSGrowth)
+		// Operations hub: consolidates System Modes / Policy / Topology / Replay /
+		// Fault Engine / ADR Registry into one dashboard-style card page (admin-only).
+		pr.Get("/os/operations", a.handleOSOperations)
 		pr.Get("/os/members", a.handleOSMembers)
 		// HTMX fragment: live-refresh the Members "Recent activity" feed.
 		pr.Get("/os/members/activity", a.handleOSMembersActivityFragment)
@@ -940,14 +943,10 @@ func osSidebarNav(active string, s *osSettings) string {
 		gate(navItem("/os/connector", "VayuMCP", "connector", active, iconConnector), "/os/connector"),
 		gate(navItem("/os/security", "Security", "security", active, iconSecurity), "/os/security"),
 	)
-	section("Operations",
-		gate(navItem("/os/modes", "System Modes", "modes", active, iconModes), "/os/modes"),
-		gate(navItem("/os/policy", "Policy Inspector", "policy", active, iconPolicy), "/os/policy"),
-		gate(navItem("/os/topology", "Topology", "topology", active, iconTopology), "/os/topology"),
-		gate(navItem("/os/replay", "Replay Explorer", "replay", active, iconReplay), "/os/replay"),
-		gate(navItem("/os/faults", "Fault Engine", "faults", active, iconFaults), "/os/faults"),
-		gate(navItem("/os/adr", "ADR Registry", "adrs", active, iconADR), "/os/adr"),
-	)
+	// Operations (System Modes, Policy Inspector, Topology, Replay Explorer, Fault
+	// Engine, ADR Registry) is consolidated into ONE pinned hub tab — a card grid
+	// like Dashboard/Growth — keeping the sidebar minimal and clean.
+	b.WriteString(gate(navItem("/os/operations", "Operations", "operations", active, iconOperations), "/os/operations"))
 	return b.String()
 }
 
@@ -972,6 +971,7 @@ var (
 	iconSEO        = svgIcon("M8 15A7 7 0 108 1a7 7 0 000 14zm5-1l4 4")
 	iconAnalytics  = svgIcon("M3 17l4-8 4 4 4-6 4 4")
 	iconGrowth     = svgIcon("M3 15l4-4 3 2 6-7m0 0h-3m3 0v3")
+	iconOperations = svgIcon("M6 4v4M6 12v4M14 4v2M14 10v6M6 8a2 2 0 100 4 2 2 0 000-4zM14 6a2 2 0 100 4 2 2 0 000-4z")
 	iconSettings   = svgIcon("M10 13a3 3 0 100-6 3 3 0 000 6zm0 0v1m0-8V5M4.2 4.2l.7.7m10-.7l-.7.7M3 10H2m16 0h-1M4.9 15.8l.7-.7m9.5.7l-.7-.7")
 	iconSecurity   = svgIcon("M10 2l6 3v5c0 3.5-2.5 6.8-6 8-3.5-1.2-6-4.5-6-8V5l6-3z")
 	iconTools      = svgIcon("M12.5 3.5a3 3 0 00-3.9 3.9l-5.1 5.1 2 2 5.1-5.1a3 3 0 003.9-3.9l-2 2-2-2 2-2z")
