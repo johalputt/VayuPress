@@ -133,3 +133,31 @@ func (a *App) handleVayuOSTalkRotate(w http.ResponseWriter, r *http.Request) {
 	a.ensureTalkKeypair(addr) // mint the key so the fresh code is usable immediately
 	writeJSON(w, r, http.StatusOK, map[string]any{"ok": true, "id": addr})
 }
+
+// handleVayuOSTalkFederationToggle flips the experimental onion-to-onion delivery
+// opt-in (ADR-0142). CSRF-checked + admin-only + Tor-world-only. The client
+// reloads to reflect the new state.
+func (a *App) handleVayuOSTalkFederationToggle(w http.ResponseWriter, r *http.Request) {
+	if !config.Cfg.OnionMode {
+		writeAPIError(w, r, http.StatusBadRequest, "not-tor", "onion-to-onion delivery exists only in the Tor world", "")
+		return
+	}
+	if !a.isAdminRequest(r) {
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", "administrators only", "")
+		return
+	}
+	if a.siteSettings == nil {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "unavailable", "settings unavailable", "")
+		return
+	}
+	// Flip relative to the current effective state.
+	next := "on"
+	if a.talkOnionFederationEnabled(r.Context()) {
+		next = "off"
+	}
+	if err := a.siteSettings.SetMany(r.Context(), map[string]string{settings.KeyTalkOnionFederation: next}); err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "write_failed", "could not save the setting", "")
+		return
+	}
+	writeJSON(w, r, http.StatusOK, map[string]any{"ok": true, "enabled": next == "on"})
+}

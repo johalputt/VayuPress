@@ -270,14 +270,17 @@ func (a *App) handleVayuOSTalk(w http.ResponseWriter, r *http.Request) {
 	body.WriteString(`<span class="vtalk-status" id="vtalk-status" data-state="connecting">Connecting…</span></div></div>`)
 	// Tor world: the identity is an anonymous, rotatable code — offer copy + rotate.
 	if config.Cfg.OnionMode {
-		// Onion-to-onion federation status (ADR-0142): reaching a code on another
-		// .onion is opt-in and experimental; surface its state so the operator knows
-		// whether cross-onion messages will be attempted.
+		// Onion-to-onion federation status + toggle (ADR-0142): reaching a code on
+		// another .onion is opt-in and experimental; surface its state and let the
+		// operator flip it.
+		fedOn := a.talkOnionFederationEnabled(r.Context())
 		fedNote := `<p class="text-sm muted">Onion-to-onion delivery is <strong>off</strong> — you can be reached on this .onion; messaging a code on a different .onion is disabled.</p>`
-		if a.talkOnionFederationEnabled(r.Context()) {
-			fedNote = `<p class="text-sm muted">Onion-to-onion delivery is <strong>on</strong> (experimental) — messaging codes on other .onion sites is being rolled out.</p>`
+		fedBtn := `<button type="button" class="btn btn--sm btn--primary" id="vtalk-fed" data-on="0">Enable onion-to-onion</button>`
+		if fedOn {
+			fedNote = `<p class="text-sm muted">Onion-to-onion delivery is <strong>on</strong> (experimental). Set <code>VAYUOS_TOR_SOCKS_ADDR</code> to your tor's SOCKS address for sending to work.</p>`
+			fedBtn = `<button type="button" class="btn btn--sm btn--ghost" id="vtalk-fed" data-on="1">Disable onion-to-onion</button>`
 		}
-		body.WriteString(`<div class="vtalk-anon"><p class="text-sm muted">This is your anonymous code — share it so people can reach you.</p><div class="ak-cred-actions"><button type="button" class="btn btn--sm" data-copy="` + esc(self) + `">Copy code</button><button type="button" class="btn btn--sm btn--ghost" id="vtalk-rotate">Rotate</button></div>` + fedNote + `</div>`)
+		body.WriteString(`<div class="vtalk-anon"><p class="text-sm muted">This is your anonymous code — share it so people can reach you.</p><div class="ak-cred-actions"><button type="button" class="btn btn--sm" data-copy="` + esc(self) + `">Copy code</button><button type="button" class="btn btn--sm btn--ghost" id="vtalk-rotate">Rotate</button></div>` + fedNote + `<div class="ak-cred-actions">` + fedBtn + `</div></div>`)
 	}
 	body.WriteString(`<form class="vtalk-newchat" id="vtalk-newchat"><input class="input input--sm" id="vtalk-peer" type="email" autocomplete="off" spellcheck="false" placeholder="name@domain" aria-label="Recipient address"><button class="btn btn--sm btn--primary" type="submit">Start</button></form>`)
 	body.WriteString(`<ul class="vtalk-convos" id="vtalk-convos" aria-label="Conversations"></ul>`)
@@ -302,8 +305,11 @@ func (a *App) handleVayuOSTalk(w http.ResponseWriter, r *http.Request) {
 	// Anonymous-code controls (Tor world): copy the code, or rotate to a fresh one.
 	// Same-origin, CSRF-checked; reload after a rotate to pick up the new identity.
 	body.WriteString(`<script nonce="` + nonce + `">(function(){
+function csrfTok(){var m=document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);return m?m[1]:'';}
 var rot=document.getElementById('vtalk-rotate');
-if(rot){rot.addEventListener('click',function(){rot.disabled=true;var m=document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);fetch('/os/talk/rotate',{method:'POST',credentials:'same-origin',headers:{'X-CSRF-Token':m?m[1]:''}}).then(function(r){if(r.ok){location.reload();}else{rot.disabled=false;}}).catch(function(){rot.disabled=false;});});}
+if(rot){rot.addEventListener('click',function(){rot.disabled=true;fetch('/os/talk/rotate',{method:'POST',credentials:'same-origin',headers:{'X-CSRF-Token':csrfTok()}}).then(function(r){if(r.ok){location.reload();}else{rot.disabled=false;}}).catch(function(){rot.disabled=false;});});}
+var fed=document.getElementById('vtalk-fed');
+if(fed){fed.addEventListener('click',function(){fed.disabled=true;fetch('/os/talk/federation',{method:'POST',credentials:'same-origin',headers:{'X-CSRF-Token':csrfTok()}}).then(function(r){if(r.ok){location.reload();}else{fed.disabled=false;}}).catch(function(){fed.disabled=false;});});}
 Array.prototype.forEach.call(document.querySelectorAll('.vtalk-anon [data-copy]'),function(b){b.addEventListener('click',function(){var v=b.getAttribute('data-copy')||'',p=b.textContent;var d=function(){b.textContent='Copied';setTimeout(function(){b.textContent=p;},1400);};if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(v).then(d,d);}else{d();}});});
 })();</script>`)
 	writeOSHTML(w, adminOSLayout(nonce, "VayuTalk", "talk", cfg, htmpl.HTML(body.String())))

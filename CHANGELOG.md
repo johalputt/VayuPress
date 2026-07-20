@@ -8,6 +8,22 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.64] — 2026-07-20
+
+### Added
+- **Onion-to-onion VayuTalk — operator controls + guide (Phase 4).** The Tor-world
+  VayuTalk page now has an **Enable / Disable onion-to-onion** button, so the
+  operator can flip `talk.onion_federation` from the console (CSRF-checked,
+  admin-only, Tor-world-only) and see its live state and the reminder to set
+  `VAYUOS_TOR_SOCKS_ADDR`. New operator guide,
+  `docs/VAYUTALK-ONION-FEDERATION.md`, documents how to enable it, the security
+  model, and the experimental limits.
+
+### Notes
+- Inbound sender-signature verification and a managed-tor SOCKS convenience remain
+  planned follow-ups; live two-onion delivery must be validated on real
+  deployments.
+
 ## [3.14.63] — 2026-07-20
 
 ### Added

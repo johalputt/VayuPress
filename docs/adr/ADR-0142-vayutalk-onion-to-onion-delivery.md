@@ -1,6 +1,8 @@
 # ADR-0142 — VayuTalk onion-to-onion delivery (Tor-world federation)
 
-Status: Accepted (Phase 1 in progress — guard-railed outbound onion lane)
+Status: Accepted (P1–P3 shipped: opt-in + inbound endpoint + guard-railed outbound
+lane + send wiring + admin toggle. Remaining: inbound signature verification,
+managed-tor SOCKS convenience. Live 2-onion delivery pending real-deploy validation.)
 Date: 2026-07-20
 Deciders: VayuPress core
 
