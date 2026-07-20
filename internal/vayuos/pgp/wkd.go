@@ -221,3 +221,58 @@ func (e *Engine) LookupExternalKey(email string) (*PublicKey, error) {
 	}
 	return nil, ErrNotFound
 }
+
+// LookupOnionKey discovers a recipient's public key via WKD served over the
+// recipient's own .onion, using the caller-supplied HTTP client (which the caller
+// routes through Tor and restricts to .onion hosts — ADR-0142). Unlike
+// LookupExternalKey this is the intended path in a Tor Space: it only ever builds
+// http://<onion>/… URLs and refuses any non-onion domain, so it introduces no
+// clearnet leak. The armored public key is returned for local encryption; the
+// signature it carries is what a later verification step checks.
+func (e *Engine) LookupOnionKey(email string, client *http.Client) (*PublicKey, error) {
+	if client == nil {
+		return nil, ErrNotFound
+	}
+	local, domain := splitEmail(normalizeEmail(email))
+	if local == "" || !strings.HasSuffix(domain, ".onion") {
+		return nil, ErrNotFound
+	}
+	hash := wkdLocalHash(local)
+	lq := url.QueryEscape(local)
+	// Onion sites serve their own WKD (no openpgpkey subdomain); ServeWKD matches
+	// any path containing /hu/<hash>, so the direct method suffices. http only —
+	// there is no CA-TLS on an .onion.
+	u := "http://" + domain + "/.well-known/openpgpkey/hu/" + hash + "?l=" + lq
+	req, err := http.NewRequest(http.MethodGet, u, nil)
+	if err != nil {
+		return nil, ErrNotFound
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, ErrNotFound
+	}
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || len(body) == 0 {
+		return nil, ErrNotFound
+	}
+	var buf bytes.Buffer
+	aw, err := armor.Encode(&buf, "PGP PUBLIC KEY BLOCK", nil)
+	if err != nil {
+		return nil, ErrNotFound
+	}
+	if _, err := aw.Write(body); err != nil {
+		_ = aw.Close()
+		return nil, ErrNotFound
+	}
+	if err := aw.Close(); err != nil {
+		return nil, ErrNotFound
+	}
+	pk, err := e.ImportPublicKey(buf.Bytes())
+	if err != nil {
+		return nil, ErrNotFound
+	}
+	pk.Email = email
+	pk.Source = "wkd-onion"
+	return pk, nil
+}

@@ -8,6 +8,37 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.63] — 2026-07-20
+
+### Added
+- **Onion-to-onion VayuTalk — outbound delivery (Phases 2b + 3).** The sending
+  half: when you message a code on a different `.onion` and federation is on, the
+  server fetches the recipient's key from their `.onion` over Tor, encrypts+signs
+  locally, and hands the ciphertext to their delivery endpoint over Tor — so it
+  reaches their live stream.
+  - **Guard-railed Tor lane.** A dedicated HTTP client routes only through a Tor
+    SOCKS proxy and **refuses to dial any host that is not a `.onion`** — the
+    check runs in the dialer, before any connection, and never resolves DNS
+    locally or follows redirects. This deanonymization-critical guard is covered
+    by direct unit tests (clearnet hosts, bare IPs, and `*.onion.evil.com`
+    look-alikes are all refused).
+  - **Tor-routed key fetch.** A new `LookupOnionKey` fetches a peer's key from
+    their onion's WKD over the guarded client (`http://` only; onion domains
+    only) — separate from the clearnet `LookupExternalKey`, which still refuses
+    to run in the Tor world.
+  - **Honest failures.** Every branch has a distinct reason: federation off, no
+    Tor SOCKS configured, key not reachable, or peer refused.
+
+### Configuration
+- The lane is **inert by default**. Beyond switching on `talk.onion_federation`,
+  the operator points `VAYUOS_TOR_SOCKS_ADDR` at a Tor SOCKS proxy; with it
+  unset, no client is built and nothing is ever dialled.
+
+### Notes
+- Live delivery between two `.onion` installs must be validated on real
+  deployments — it cannot be exercised in CI. Inbound signature verification, an
+  admin toggle, and the managed-tor SOCKS convenience land in the final phase.
+
 ## [3.14.62] — 2026-07-20
 
 ### Added

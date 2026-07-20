@@ -465,20 +465,13 @@ func (a *App) handleVayuOSTalkSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Onion-to-onion seam (ADR-0142): a recipient on a DIFFERENT .onion can only
-	// be reached by federation, never the local in-process hub. Detect it up front
-	// and give a precise, honest reason rather than a local delivery that would
-	// silently never arrive. (Real cross-onion delivery lands in a later phase; the
-	// resolver already refuses to fabricate a key for a remote handle in the Tor
-	// world, so this seam replaces the generic no-key error with an actionable one.)
+	// Onion-to-onion (ADR-0142): a recipient on a DIFFERENT .onion is reached by
+	// federation over Tor, never the local in-process hub. sendOverOnion fetches
+	// their key over Tor, encrypts locally, and delivers to their install — or
+	// returns a distinct, honest reason for each failure (federation off, no Tor
+	// SOCKS configured, key not reachable, peer refused).
 	if talkRecipientRemoteOnion(self, to) {
-		if !a.talkOnionFederationEnabled(r.Context()) {
-			writeAPIError(w, r, http.StatusNotImplemented, "onion-federation-off",
-				"To message a code on another .onion, turn on onion-to-onion delivery in VayuTalk settings first (experimental).", "")
-			return
-		}
-		writeAPIError(w, r, http.StatusNotImplemented, "onion-federation-pending",
-			"Onion-to-onion delivery is enabled but not yet active in this build — it is rolling out across releases.", "")
+		a.sendOverOnion(w, r, self, to, text, body.TTLSeconds, mode)
 		return
 	}
 

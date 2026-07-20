@@ -69,6 +69,9 @@ type Bridge interface {
 	// WKD (RFC draft / Web Key Directory).
 	ServeWKD(domain string) http.Handler
 	LookupExternalKey(email string) (*PublicKey, error)
+	// LookupOnionKey fetches a key from a peer's .onion WKD over a caller-provided,
+	// Tor-routed, onion-only HTTP client (ADR-0142).
+	LookupOnionKey(email string, client *http.Client) (*PublicKey, error)
 
 	// Import / export.
 	ExportPublicKey(userID string) ([]byte, error)
