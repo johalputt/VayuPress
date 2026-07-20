@@ -42,6 +42,8 @@ func (a *App) handleOSMonetization(w http.ResponseWriter, r *http.Request) {
 			webhookConfigured = true
 		}
 	}
+	premiumPriceStr := strconv.Itoa(a.premiumMailIDPriceCents(ctx))
+	mailidTerms := a.mailIDTerms(ctx)
 
 	var stats payments.Stats
 	var orders []payments.Order
@@ -102,6 +104,22 @@ func (a *App) handleOSMonetization(w http.ResponseWriter, r *http.Request) {
   <button type="button" class="btn btn--primary btn--sm" id="mon-webhook-save">Save webhook secret</button>
 </div>
 
+<div class="card">
+  <div class="settings-block-title">VayuMail address marketplace</div>
+  <p class="text-sm muted mb-4">Premium (vanity) addresses — ultra-short handles and sought-after words — are held back from the free member claim so you can sell them. Set their price, and the terms a member must accept before any address is provisioned to them.</p>
+  <div class="field">
+    <label class="field-label" for="mon-mailid-price">Premium address price</label>
+    <input id="mon-mailid-price" class="input" type="number" min="0" step="1" data-mail-key="` + settings.KeyPremiumMailIDPriceCents + `" value="` + html.EscapeString(premiumPriceStr) + `" placeholder="500" style="max-width:10rem">
+    <span class="field-hint">In minor units of your checkout currency (e.g. 500 = ` + html.EscapeString(priceLabel(currency, 500)) + `).</span>
+  </div>
+  <div class="field">
+    <label class="field-label" for="mon-mailid-terms">Mailbox terms (acceptable-use agreement)</label>
+    <textarea id="mon-mailid-terms" class="textarea" rows="6" data-mail-key="` + settings.KeyMailIDTerms + `" placeholder="Members must accept these terms before an address is provisioned…">` + html.EscapeString(mailidTerms) + `</textarea>
+    <span class="field-hint">Shown with a required &ldquo;I agree&rdquo; checkbox on the claim form. Every acceptance is recorded (address + a hash of this text + time) as your proof of agreement. Leave blank to disable the requirement.</span>
+  </div>
+  <button type="button" class="btn btn--primary btn--sm" id="mon-mailid-save">Save mailbox settings</button>
+</div>
+
 <div id="action-msg" role="status" aria-live="polite" class="action-msg"></div>
 <script nonce="` + nonce + `">
 (function(){'use strict';
@@ -128,6 +146,13 @@ if(saveBtn)saveBtn.addEventListener('click',function(){
   saveBtn.disabled=true;show('Saving…',false);
   fields.forEach(function(el){chain=chain.then(function(){return jsave(el.getAttribute('data-mon-key'),el.value).then(function(r){if(!r.ok)ok=false;});});});
   chain.then(function(){saveBtn.disabled=false;show(ok?'Payment settings saved':'Some settings failed',!ok);}).catch(function(e){saveBtn.disabled=false;show('Error: '+e,true);});
+});
+var midBtn=document.getElementById('mon-mailid-save');
+if(midBtn)midBtn.addEventListener('click',function(){
+  var fields=document.querySelectorAll('[data-mail-key]');var chain=Promise.resolve();var ok=true;
+  midBtn.disabled=true;show('Saving…',false);
+  fields.forEach(function(el){chain=chain.then(function(){return jsave(el.getAttribute('data-mail-key'),el.value).then(function(r){if(!r.ok)ok=false;});});});
+  chain.then(function(){midBtn.disabled=false;show(ok?'Mailbox settings saved':'Some settings failed',!ok);}).catch(function(e){midBtn.disabled=false;show('Error: '+e,true);});
 });
 var whBtn=document.getElementById('mon-webhook-save');
 if(whBtn)whBtn.addEventListener('click',function(){

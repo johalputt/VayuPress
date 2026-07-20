@@ -8,6 +8,16 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.52] — 2026-07-20
+
+### Added
+- **Monetization console: VayuMail address marketplace card.** The operator can
+  now set the premium (vanity) address price and edit the mailbox terms directly
+  in `/os/monetization`, instead of only via the settings API. The card explains
+  that premium names are held back from the free claim to be sold, and that every
+  member's terms acceptance is recorded as proof of agreement. Saves through the
+  existing `/os/api/settings` endpoint (CSRF-protected).
+
 ## [3.14.51] — 2026-07-20
 
 ### Added
