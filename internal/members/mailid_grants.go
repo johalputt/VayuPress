@@ -149,3 +149,51 @@ func (s *Store) MarkPremiumGrantClaimed(ctx context.Context, id string) error {
 		`UPDATE premium_mailid_grants SET status='claimed', claimed_at=CURRENT_TIMESTAMP WHERE id=? AND status='paid'`, id)
 	return err
 }
+
+// AllPremiumGrants returns the most recent premium-address grants for the
+// operator's marketplace control panel, newest first.
+func (s *Store) AllPremiumGrants(ctx context.Context, limit int) ([]PremiumGrant, error) {
+	if limit <= 0 {
+		limit = 200
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT `+premiumGrantCols+` FROM premium_mailid_grants ORDER BY created_at DESC LIMIT ?`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []PremiumGrant
+	for rows.Next() {
+		g, serr := scanPremiumGrant(rows)
+		if serr != nil {
+			return nil, serr
+		}
+		out = append(out, *g)
+	}
+	return out, rows.Err()
+}
+
+// PremiumGrantCounts returns how many premium grants sit in each lifecycle state,
+// for the marketplace KPI cards.
+func (s *Store) PremiumGrantCounts(ctx context.Context) (pending, paid, claimed int) {
+	rows, err := s.db.QueryContext(ctx, `SELECT status, COUNT(1) FROM premium_mailid_grants GROUP BY status`)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var st string
+		var n int
+		if rows.Scan(&st, &n) == nil {
+			switch st {
+			case GrantPending:
+				pending = n
+			case GrantPaid:
+				paid = n
+			case GrantClaimed:
+				claimed = n
+			}
+		}
+	}
+	_ = rows.Err()
+	return
+}

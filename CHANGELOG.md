@@ -8,6 +8,17 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.54] — 2026-07-20
+
+### Added
+- **Growth command centre.** The Growth hub (`/os/growth`) is now the operator's
+  full monetization control panel: headline KPI cards (revenue collected, paid
+  members, pending orders, premium addresses sold), a **premium mail-ID
+  marketplace control unit** (per-status counts, the live price, and a table of
+  every vanity address a member has bought — buyer, status, date), and the
+  Audience + Monetization section cards that drill into each detail page. Built on
+  the existing admin card/stat/table system, elegant and CSP-safe.
+
 ## [3.14.53] — 2026-07-20
 
 ### Added
