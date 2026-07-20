@@ -8,6 +8,28 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.42] — 2026-07-20
+
+### Added
+- **Edit & delete your own comment; operators can delete any comment.** A
+  signed-in commenter now sees inline **Edit** and **Delete** controls on their
+  own comments — Edit swaps the body for a textarea and saves in place; Delete
+  removes it (and, for a top-level comment, its replies, so none are left
+  orphaned). An operator/staff user additionally gets **Delete** on every comment
+  to remove conflicting or abusive content. New same-origin endpoints (`PATCH`
+  and `DELETE` on `/api/v1/articles/{slug}/comments/{id}`) authorise each action
+  by session — the author for edits, the author or an operator for deletes —
+  never by a client-sent flag, so no one can touch another person's words.
+
+### Fixed
+- **Comment country flag now renders on every platform (including Windows).** The
+  widget drew the flag from Unicode regional-indicator characters, which Windows
+  has no glyph for and shows as two letters ("IN") rather than a flag. It now
+  uses the real, self-hosted SVG flag already bundled for VayuAnalytics
+  (`/os/static/flags/<cc>.svg`, flag-icons, MIT), served same-origin so the
+  strict `img-src 'self'` CSP still covers it on clearnet and Tor alike, with a
+  neutral globe fallback when a country has no flag.
+
 ## [3.14.41] — 2026-07-20
 
 ### Fixed

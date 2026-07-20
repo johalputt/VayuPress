@@ -181,6 +181,8 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	r.Get("/api/v1/articles/{slug}/comments", a.handleCommentList)
 	r.Get("/api/v1/articles/{slug}/toc", a.handleArticleTOC)
 	r.Post("/api/v1/articles/{slug}/comments", a.handleCommentSubmit)
+	r.Patch("/api/v1/articles/{slug}/comments/{id}", a.handleCommentEdit)    // edit your own comment
+	r.Delete("/api/v1/articles/{slug}/comments/{id}", a.handleCommentDelete) // delete own (member) / any (operator)
 	r.Post("/api/v1/contact", a.handleContactSubmit)
 	r.Get("/api/v1/search", a.handleSearch)
 	r.Get("/api/v1/tags", a.handleListTags)

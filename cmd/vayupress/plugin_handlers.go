@@ -96,13 +96,19 @@ func (a *App) handleUpdateHistory(w http.ResponseWriter, r *http.Request) {
 // submit responses expose only what the widget renders — the author, body, a
 // coarse country (for a flag), the moderation status and the timestamp.
 type publicComment struct {
-	ID        string    `json:"id"`
-	ParentID  string    `json:"parent_id,omitempty"`
-	Author    string    `json:"author"`
-	Body      string    `json:"body"`
-	Country   string    `json:"country,omitempty"`
-	Avatar    string    `json:"avatar,omitempty"`
-	Status    string    `json:"status,omitempty"`
+	ID       string `json:"id"`
+	ParentID string `json:"parent_id,omitempty"`
+	Author   string `json:"author"`
+	Body     string `json:"body"`
+	Country  string `json:"country,omitempty"`
+	Avatar   string `json:"avatar,omitempty"`
+	Status   string `json:"status,omitempty"`
+	// CanEdit/CanDelete tell the widget which controls to show for the current
+	// viewer without ever leaking who the author is: CanEdit means "you wrote
+	// this" (author-only), CanDelete means "you wrote this OR you moderate the
+	// site" (owner or operator). Both default false for an anonymous reader.
+	CanEdit   bool      `json:"can_edit,omitempty"`
+	CanDelete bool      `json:"can_delete,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
@@ -232,6 +238,9 @@ func (a *App) handleCommentSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 	pc := toPublicComment(c)
 	pc.Avatar = a.commenterAvatar(r.Context(), c.Email)
+	// The author just posted this, so they can always edit or delete it.
+	pc.CanEdit = true
+	pc.CanDelete = true
 	writeJSON(w, r, http.StatusCreated, pc)
 }
 
@@ -257,13 +266,99 @@ func (a *App) handleCommentList(w http.ResponseWriter, r *http.Request) {
 	// finer region/city — the widget shows only the coarse country (for a flag) and
 	// the timestamp. The raw Comment carries email/region/city, so map to a safe DTO
 	// before it leaves the server.
+	// Who is viewing? Anonymous readers see no edit/delete controls; a signed-in
+	// commenter can edit/delete their own comments; an operator can delete any.
+	// Resolved once here, then matched per comment by session email (never exposed).
+	viewer := a.resolveCommenter(r)
 	out := make([]publicComment, 0, len(cs))
 	for i := range cs {
 		pc := toPublicComment(&cs[i])
 		pc.Avatar = a.commenterAvatar(r.Context(), cs[i].Email)
+		if viewer != nil {
+			mine := cs[i].Email != "" && strings.EqualFold(strings.TrimSpace(viewer.Email), strings.TrimSpace(cs[i].Email))
+			pc.CanEdit = mine
+			pc.CanDelete = mine || viewer.Operator
+		}
 		out = append(out, pc)
 	}
 	writeJSON(w, r, http.StatusOK, map[string]interface{}{"comments": out})
+}
+
+// PATCH /api/v1/articles/{slug}/comments/{id}
+// Edit the body of your OWN comment. Identity is taken from the session
+// (resolveCommenter), never the client payload, so no one can rewrite another
+// person's words — an operator's blanket moderation power extends to *deleting*
+// any comment, not silently editing what someone said. Status and thread
+// position are left unchanged so an edited comment stays in place.
+func (a *App) handleCommentEdit(w http.ResponseWriter, r *http.Request) {
+	if a.commentStore == nil {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "comments-disabled", "Comments not initialised", "")
+		return
+	}
+	who := a.resolveCommenter(r)
+	if who == nil {
+		writeAPIError(w, r, http.StatusUnauthorized, "members-only", "Please sign in to edit your comment", "")
+		return
+	}
+	id := chi.URLParam(r, "id")
+	var body struct {
+		Body string `json:"body"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "bad-json", "Invalid request body", "")
+		return
+	}
+	c, err := a.commentStore.Get(r.Context(), id)
+	if err != nil {
+		writeAPIError(w, r, http.StatusNotFound, "not-found", "Comment not found", "")
+		return
+	}
+	if c.Email == "" || !strings.EqualFold(strings.TrimSpace(who.Email), strings.TrimSpace(c.Email)) {
+		writeAPIError(w, r, http.StatusForbidden, "not-your-comment", "You can only edit your own comment", "")
+		return
+	}
+	if err := a.commentStore.UpdateBody(r.Context(), id, body.Body); err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "edit-error", err.Error(), "")
+		return
+	}
+	c.Body = strings.TrimSpace(body.Body)
+	pc := toPublicComment(c)
+	pc.Avatar = a.commenterAvatar(r.Context(), c.Email)
+	pc.CanEdit = true
+	pc.CanDelete = true
+	writeJSON(w, r, http.StatusOK, pc)
+}
+
+// DELETE /api/v1/articles/{slug}/comments/{id}
+// Remove a comment. A member may delete their OWN comment; an operator/staff
+// user may delete ANY comment (moderating conflicting or abusive content).
+// Deleting a top-level comment also removes its replies so none are orphaned.
+func (a *App) handleCommentDelete(w http.ResponseWriter, r *http.Request) {
+	if a.commentStore == nil {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "comments-disabled", "Comments not initialised", "")
+		return
+	}
+	who := a.resolveCommenter(r)
+	if who == nil {
+		writeAPIError(w, r, http.StatusUnauthorized, "members-only", "Please sign in to delete your comment", "")
+		return
+	}
+	id := chi.URLParam(r, "id")
+	c, err := a.commentStore.Get(r.Context(), id)
+	if err != nil {
+		writeAPIError(w, r, http.StatusNotFound, "not-found", "Comment not found", "")
+		return
+	}
+	owns := c.Email != "" && strings.EqualFold(strings.TrimSpace(who.Email), strings.TrimSpace(c.Email))
+	if !owns && !who.Operator {
+		writeAPIError(w, r, http.StatusForbidden, "not-allowed", "You can only delete your own comment", "")
+		return
+	}
+	if err := a.commentStore.DeleteThread(r.Context(), id); err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "delete-error", err.Error(), "")
+		return
+	}
+	writeJSON(w, r, http.StatusOK, map[string]bool{"deleted": true})
 }
 
 // PUT /api/v1/admin/comments/{id}/status

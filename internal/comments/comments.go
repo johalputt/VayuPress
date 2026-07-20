@@ -176,6 +176,33 @@ func (s *Store) Delete(ctx context.Context, id string) error {
 	return err
 }
 
+// UpdateBody replaces a comment's body text, leaving its status and thread
+// position unchanged so an edited comment stays exactly where it was. The caller
+// authorises ownership; an empty body is rejected. Not-found is reported so a
+// stale edit against a deleted comment fails cleanly rather than silently.
+func (s *Store) UpdateBody(ctx context.Context, id, body string) error {
+	if strings.TrimSpace(body) == "" {
+		return fmt.Errorf("comment body is empty")
+	}
+	res, err := s.db.ExecContext(ctx, `UPDATE comments SET body=? WHERE id=?`, body, id)
+	if err != nil {
+		return fmt.Errorf("comments update: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("comment %q not found", id)
+	}
+	return nil
+}
+
+// DeleteThread removes a comment together with any direct replies to it, so
+// deleting a top-level comment never leaves replies orphaned behind a missing
+// parent (they would otherwise persist yet never render). Deleting a reply
+// removes just that reply — nothing points at it as a parent.
+func (s *Store) DeleteThread(ctx context.Context, id string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM comments WHERE id=? OR parent_id=?`, id, id)
+	return err
+}
+
 // Count returns comment counts by status.
 func (s *Store) Count(ctx context.Context) (map[string]int64, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT status,COUNT(*) FROM comments GROUP BY status`)
