@@ -12,6 +12,8 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"html"
@@ -118,13 +120,31 @@ func toPublicComment(c *comments.Comment) publicComment {
 // email itself is never exposed; only the resolved (already-public) URL is.
 func (a *App) commenterAvatar(ctx context.Context, email string) string {
 	email = strings.ToLower(strings.TrimSpace(email))
-	if email == "" || a.userStore == nil {
+	if email == "" {
 		return ""
 	}
-	if u, err := a.userStore.GetByEmail(ctx, email); err == nil && u != nil {
-		return u.AvatarURL
+	// 1) A CMS user / owner with a real profile photo.
+	if a.userStore != nil {
+		if u, err := a.userStore.GetByEmail(ctx, email); err == nil && u != nil && u.AvatarURL != "" {
+			return u.AvatarURL
+		}
+	}
+	// 2) A reader member — their uploaded photo, chosen cartoon, or deterministic
+	// auto avatar. Every member has one, so member comments always get a picture.
+	// The ?v token busts the short cache the instant they change their avatar.
+	if a.members != nil {
+		if m, err := a.members.Get(ctx, email); err == nil && m != nil {
+			return "/api/v1/members/avatar/" + m.ID + "?v=" + avatarVer(m.AvatarChoice, m.Gender)
+		}
 	}
 	return ""
+}
+
+// avatarVer is a short cache-busting token that changes whenever a member's
+// avatar selection (choice or gender) changes.
+func avatarVer(choice, gender string) string {
+	sum := sha256.Sum256([]byte(choice + "|" + gender))
+	return hex.EncodeToString(sum[:3])
 }
 
 // POST /api/v1/articles/{slug}/comments

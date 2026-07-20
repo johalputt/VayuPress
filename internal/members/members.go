@@ -65,6 +65,12 @@ type Member struct {
 	// on ("" = the primary / unassigned bucket). Login stays keyed by the globally
 	// unique email, so this is a reporting dimension, not a read filter (Stage 4).
 	DomainID string `json:"domain_id,omitempty"`
+	// Gender is optional (neutral default) and only steers the deterministic auto
+	// avatar. AvatarChoice selects what the member's avatar shows: "" = auto,
+	// "photo" = their uploaded picture, "cartoon:N" = a prebuilt cartoon. The photo
+	// blob itself is never loaded by the canonical member SELECT.
+	Gender       string `json:"gender,omitempty"`
+	AvatarChoice string `json:"avatar_choice,omitempty"`
 }
 
 // IsPaid reports whether the member has an active paying membership. Any active
@@ -96,7 +102,7 @@ type Store struct{ db *sql.DB }
 func New(db *sql.DB) *Store { return &Store{db: db} }
 
 // memberCols is the canonical SELECT column list for scanning into a Member.
-const memberCols = `id,email,name,note,tier,status,newsletter_opt_in,reply_notify,stripe_customer,last_seen_at,created_at,country,region,city,domain_id`
+const memberCols = `id,email,name,note,tier,status,newsletter_opt_in,reply_notify,stripe_customer,last_seen_at,created_at,country,region,city,domain_id,gender,avatar_choice`
 
 // scanner is satisfied by both *sql.Row and *sql.Rows.
 type scanner interface {
@@ -109,7 +115,7 @@ func scanMember(sc scanner) (*Member, error) {
 	var note, stripe string
 	var optIn, replyNotify int
 	var lastSeen sql.NullTime
-	if err := sc.Scan(&m.ID, &m.Email, &m.Name, &note, &m.Tier, &m.Status, &optIn, &replyNotify, &stripe, &lastSeen, &m.CreatedAt, &m.Country, &m.Region, &m.City, &m.DomainID); err != nil {
+	if err := sc.Scan(&m.ID, &m.Email, &m.Name, &note, &m.Tier, &m.Status, &optIn, &replyNotify, &stripe, &lastSeen, &m.CreatedAt, &m.Country, &m.Region, &m.City, &m.DomainID, &m.Gender, &m.AvatarChoice); err != nil {
 		return nil, err
 	}
 	m.Note = note

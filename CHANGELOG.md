@@ -8,6 +8,28 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.41] — 2026-07-20
+
+### Fixed
+- **Comment cards now actually render on the public site (avatar sized, card
+  drawn).** The premium comment styles had been added to the editor-preview
+  stylesheet, not the public `article.css` bundle — so on a live article the
+  avatar showed at full size and no card was drawn. The card, 44px circular
+  avatar (photos `object-fit: cover`), reply thread rail and compose styling now
+  live in the public stylesheet, scoped under `#vayu-comments` so they reliably
+  win, and use the site theme's own tokens (light + dark).
+
+### Added
+- **Member avatars — real photo, prebuilt cartoons, or a gender-aware auto
+  avatar (foundation).** New `members` columns (gender optional, avatar choice +
+  photo blob) and endpoints: a public `/api/v1/members/avatar/{id}` that serves a
+  member's uploaded photo, a chosen cartoon, or a deterministic self-contained SVG
+  cartoon face (CSP-safe — no external assets), plus member-authed upload
+  (**≤100 KB**, PNG/JPEG/WebP/GIF) and choose/gender endpoints. Comments now
+  resolve the author's real photo (CMS user) or their member avatar, so every
+  commenter gets a proper picture. The in-portal picker UI (upload + cartoon grid
+  + gender) lands next.
+
 ## [3.14.40] — 2026-07-20
 
 ### Fixed

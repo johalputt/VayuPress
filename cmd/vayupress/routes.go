@@ -269,6 +269,12 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	// VayuPortal overlay backend — capability snapshot + VayuMail credential login.
 	r.Get("/api/v1/members/me", a.handleMemberMe)
 	r.Get("/api/v1/members/comments", a.handleMemberComments)
+	// Member avatars: public serve (by opaque id, for comments), plus the
+	// member-authed upload / choose. The member cookie is SameSite=Lax, so a
+	// cross-site POST never carries it (CSRF-safe), matching the account endpoints.
+	r.Get("/api/v1/members/avatar/{id}", a.handleMemberAvatarServe)
+	r.Post("/api/v1/members/avatar", a.handleMemberAvatarUpload)
+	r.Post("/api/v1/members/avatar/choose", a.handleMemberAvatarChoose)
 	r.Post("/api/v1/members/vayumail-login", a.handleMemberVayuMailLogin)
 	// VayuMail-Mobile private-key sync — returns the authenticated caller's OWN
 	// mailbox PGP private key (armored) so the app can import it and decrypt
