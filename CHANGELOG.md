@@ -8,6 +8,29 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.66] — 2026-07-20
+
+### Added
+- **Onion-to-onion VayuTalk — managed-tor SOCKS auto-open (Phase 6).** The
+  outbound Tor lane no longer needs a separate tor: while federation is on in the
+  Tor world, VayuPress's managed tor **opens a loopback-only SOCKS port
+  automatically** (`127.0.0.1:9250`) and closes it again when federation is turned
+  off. Toggling federation nudges the Tor engine so the port opens/closes promptly
+  instead of at the next reconcile tick. `VAYUOS_TOR_SOCKS_ADDR`, when set, still
+  overrides and points the lane at a tor you run yourself.
+
+### Security
+- The managed SOCKS port is **bound to `127.0.0.1` only** (never a public
+  interface) and is absent (`SocksPort 0`) unless federation is explicitly on —
+  proven by a torrc unit test. This narrowly relaxes the previous
+  onion-services-only posture, on an opt-in basis, purely for the guarded
+  outbound onion lane.
+
+### Notes
+- With this, onion-to-onion VayuTalk is feature-complete (opt-in): enable it in
+  the console and message codes on other `.onion` sites. Live delivery must still
+  be validated on two real `.onion` installs — it cannot be exercised in CI.
+
 ## [3.14.65] — 2026-07-20
 
 ### Added

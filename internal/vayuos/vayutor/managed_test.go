@@ -27,6 +27,35 @@ func TestManagedTorrcHasOnlyWhatWeNeed(t *testing.T) {
 	}
 }
 
+// TestManagedTorrcSocksPort proves the loopback SOCKS port for onion-to-onion
+// VayuTalk (ADR-0142) is absent by default and, when requested, is bound to
+// 127.0.0.1 (never a public interface).
+func TestManagedTorrcSocksPort(t *testing.T) {
+	m := newManagedTor("/usr/bin/tor", "/var/lib/vayupress/tor")
+	// Default: no SOCKS surface.
+	if rc := m.buildTorrc(); !strings.Contains(rc, "SocksPort 0") || strings.Contains(rc, "SocksPort 127.0.0.1") {
+		t.Fatalf("default torrc should have 'SocksPort 0' and no loopback SOCKS\n---\n%s", rc)
+	}
+	// Enabled: loopback-bound SOCKS on the requested port.
+	m.setSocksPort(9250)
+	rc := m.buildTorrc()
+	if !strings.Contains(rc, "SocksPort 127.0.0.1:9250") {
+		t.Fatalf("torrc missing loopback SOCKS port\n---\n%s", rc)
+	}
+	if strings.Contains(rc, "SocksPort 0") {
+		t.Fatalf("torrc must not also disable SOCKS when a port is set\n---\n%s", rc)
+	}
+	// A non-loopback bind must never appear.
+	if strings.Contains(rc, "SocksPort 0.0.0.0") || strings.Contains(rc, "SocksPort *:") {
+		t.Fatalf("SOCKS must be loopback-only\n---\n%s", rc)
+	}
+	// Back to off.
+	m.setSocksPort(0)
+	if rc := m.buildTorrc(); !strings.Contains(rc, "SocksPort 0") {
+		t.Fatalf("clearing the port should restore 'SocksPort 0'\n---\n%s", rc)
+	}
+}
+
 func TestParseBootstrap(t *testing.T) {
 	cases := []struct {
 		line    string

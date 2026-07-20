@@ -61,6 +61,12 @@ type Config struct {
 	Bridges     []string        // static operator Bridge lines from env (VAYUOS_TOR_BRIDGES)
 	BridgesLive func() []string // live operator Bridge lines from settings (VayuOS form); read each reconcile
 
+	// SocksPortLive returns the loopback SOCKS port the managed tor should expose,
+	// or 0 for none (the default — onion-services-only). Read each reconcile; the
+	// managed tor is restarted only when the value changes. Used by onion-to-onion
+	// VayuTalk (ADR-0142) to open an outbound Tor lane on demand. nil ⇒ always 0.
+	SocksPortLive func() int
+
 	// TorDownload lets the managed tor download the Tor Project's official static
 	// build into VayuPress's own state dir when the *system* tor is missing or too
 	// old to validate today's consensus (e.g. an EOL distro's 0.4.2.x). Runs as the
@@ -272,6 +278,7 @@ func (e *Engine) reconcile(ctx context.Context) {
 		return
 	}
 	e.applyOperatorBridges()
+	e.applyTalkSocks()
 	if err := e.ensureConnected(); err != nil {
 		e.setErr(err.Error())
 		return
@@ -522,6 +529,27 @@ func (e *Engine) applyOperatorBridges() {
 	e.esc = escBridges
 	e.mu.Unlock()
 	e.managed.stop() // ensureConnected (next line of reconcile) respawns with bridges
+	e.resetConn()
+}
+
+// applyTalkSocks opens or closes the managed tor's loopback SOCKS port to match
+// the host's live request (onion-to-onion VayuTalk, ADR-0142). Like
+// applyOperatorBridges it only reconfigures + restarts the managed tor when the
+// port actually changes, so a steady state never loops. Only the managed tor is
+// affected; an external system tor is left untouched.
+func (e *Engine) applyTalkSocks() {
+	if e.managed == nil || e.cfg.SocksPortLive == nil {
+		return
+	}
+	want := e.cfg.SocksPortLive()
+	if want < 0 {
+		want = 0
+	}
+	if e.managed.socksPortEqual(want) {
+		return // already applied
+	}
+	e.managed.setSocksPort(want)
+	e.managed.stop() // ensureConnected (next in reconcile) respawns with the new torrc
 	e.resetConn()
 }
 

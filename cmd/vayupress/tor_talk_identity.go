@@ -159,5 +159,10 @@ func (a *App) handleVayuOSTalkFederationToggle(w http.ResponseWriter, r *http.Re
 		writeAPIError(w, r, http.StatusInternalServerError, "write_failed", "could not save the setting", "")
 		return
 	}
+	// Nudge the Tor engine so the managed tor opens/closes its loopback SOCKS port
+	// promptly rather than at the next 60s reconcile tick (ADR-0142).
+	if a.vayuTor != nil {
+		a.vayuTor.Kick()
+	}
 	writeJSON(w, r, http.StatusOK, map[string]any{"ok": true, "enabled": next == "on"})
 }

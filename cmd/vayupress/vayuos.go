@@ -673,6 +673,16 @@ func (a *App) bootVayuOS() {
 			}
 			return parseTorBridges(a.siteSettings.Get(context.Background(), settings.KeyTorBridges))
 		},
+		// Onion-to-onion VayuTalk (ADR-0142): open a loopback SOCKS port on the
+		// managed tor only while we are in the Tor world with federation enabled,
+		// so the guarded outbound onion lane has a proxy without the operator
+		// running a separate tor. 0 (off) at all other times.
+		SocksPortLive: func() int {
+			if config.Cfg.OnionMode && a.talkOnionFederationEnabled(context.Background()) {
+				return managedTalkSocksPort
+			}
+			return 0
+		},
 		Store: &torStore{settings: a.siteSettings},
 		Domains: func(ctx context.Context) ([]string, error) {
 			// Per-domain onions belong to the VayuTor one-click toggle only. When

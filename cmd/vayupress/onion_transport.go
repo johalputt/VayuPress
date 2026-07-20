@@ -54,7 +54,7 @@ func (a *App) ensureOnionSenderKey(from string) {
 	if !a.talkOnionFederationEnabled(context.Background()) {
 		return
 	}
-	socks := torSocksAddr()
+	socks := a.resolvedTorSocksAddr(context.Background())
 	if socks == "" {
 		return
 	}
@@ -86,10 +86,33 @@ func (a *App) ensureOnionSenderKey(from string) {
 // clearnet.
 var errNotOnion = errors.New("onion transport: refusing to dial a non-onion host")
 
+// managedTalkSocksPort / managedTalkSocksAddr is the loopback SOCKS port the
+// managed tor opens on demand for the onion lane (ADR-0142). Kept off tor's
+// conventional 9050/9051 to avoid clashing with a system tor. Loopback-bound.
+const (
+	managedTalkSocksPort = 9250
+	managedTalkSocksAddr = "127.0.0.1:9250"
+)
+
 // torSocksAddr returns the operator-configured Tor SOCKS proxy address (host:port)
-// the outbound lane dials through, or "" when unset (the lane stays inert).
+// from the environment, or "" when unset. This is the explicit override; see
+// resolvedTorSocksAddr for the effective value including the managed tor's port.
 func torSocksAddr() string {
 	return strings.TrimSpace(config.EnvOr("VAYUOS_TOR_SOCKS_ADDR", ""))
+}
+
+// resolvedTorSocksAddr is the SOCKS address the outbound onion lane actually
+// dials: the explicit VAYUOS_TOR_SOCKS_ADDR override if set, else the managed
+// tor's loopback SOCKS port when we are in the Tor world with federation on (the
+// managed tor opens that port on the same condition). "" means the lane is inert.
+func (a *App) resolvedTorSocksAddr(ctx context.Context) string {
+	if v := torSocksAddr(); v != "" {
+		return v
+	}
+	if config.Cfg.OnionMode && a.talkOnionFederationEnabled(ctx) {
+		return managedTalkSocksAddr
+	}
+	return ""
 }
 
 // onionGuardedDialContext returns a DialContext that dials host:port through the
@@ -214,10 +237,10 @@ func (a *App) sendOverOnion(w http.ResponseWriter, r *http.Request, self, to, te
 			"To message a code on another .onion, turn on onion-to-onion delivery in VayuTalk settings first (experimental).", "")
 		return
 	}
-	socksAddr := torSocksAddr()
+	socksAddr := a.resolvedTorSocksAddr(ctx)
 	if socksAddr == "" {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "onion-no-socks",
-			"Onion delivery is on but no Tor SOCKS proxy is configured. Set VAYUOS_TOR_SOCKS_ADDR to your tor's SOCKS address.", "")
+			"Onion delivery is on but no Tor SOCKS proxy is available yet. The managed tor opens one automatically; give it a moment after enabling, or set VAYUOS_TOR_SOCKS_ADDR.", "")
 		return
 	}
 	client, cerr := newOnionHTTPClient(socksAddr)

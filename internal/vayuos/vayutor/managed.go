@@ -33,13 +33,14 @@ type managedTor struct {
 	binary string // resolved tor executable (from PATH or an explicit path)
 	dir    string // writable base dir we fully own, e.g. <data>/tor
 
-	mu      sync.Mutex
-	cmd     *exec.Cmd
-	alive   bool
-	last    string   // last spawn/boot error, for the admin status line
-	strict  bool     // restrict outbound to relay ports 80/443 (firewall-friendly)
-	bridges []string // normalized Bridge lines; non-empty ⇒ UseBridges block
-	ptPath  string   // resolved obfs4proxy/lyrebird path; "" ⇒ vanilla bridges only
+	mu        sync.Mutex
+	cmd       *exec.Cmd
+	alive     bool
+	last      string   // last spawn/boot error, for the admin status line
+	strict    bool     // restrict outbound to relay ports 80/443 (firewall-friendly)
+	bridges   []string // normalized Bridge lines; non-empty ⇒ UseBridges block
+	ptPath    string   // resolved obfs4proxy/lyrebird path; "" ⇒ vanilla bridges only
+	socksPort int      // loopback SOCKS port to expose (0 = none; onion-services-only)
 
 	// Managed-download of a current tor (see dist.go): used when the *system* tor
 	// is too old to validate the live consensus (e.g. Debian 10's 0.4.2.x). These
@@ -66,6 +67,22 @@ func (m *managedTor) usingBridges() bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return len(m.bridges) > 0
+}
+
+// setSocksPort configures the loopback SOCKS port tor exposes on its next
+// (re)start (0 = none).
+func (m *managedTor) setSocksPort(port int) {
+	m.mu.Lock()
+	m.socksPort = port
+	m.mu.Unlock()
+}
+
+// socksPortEqual reports whether the configured SOCKS port already matches, so the
+// caller can avoid a needless tor restart.
+func (m *managedTor) socksPortEqual(port int) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.socksPort == port
 }
 
 // bridgesEqual reports whether the configured bridge lines + PT path already
@@ -214,9 +231,19 @@ func (m *managedTor) buildTorrc() string {
 	b.WriteString("DataDirectory " + m.dataDir() + "\n")
 	b.WriteString("ControlPort unix:" + m.controlSocket() + "\n")
 	b.WriteString("CookieAuthentication 1\n")
-	// Client-only: no SOCKS listener, no relaying, no directory service. Onion
-	// service publication does not need any of them.
-	b.WriteString("SocksPort 0\n")
+	// Client-only by default: no SOCKS listener, no relaying, no directory service.
+	// Onion service publication needs none of them. Onion-to-onion VayuTalk
+	// (ADR-0142) can request a LOOPBACK-only SOCKS port on demand for its guarded
+	// outbound onion lane; it is bound to 127.0.0.1 so it is never externally
+	// reachable, and is absent (SocksPort 0) unless explicitly enabled.
+	m.mu.Lock()
+	socksPort := m.socksPort
+	m.mu.Unlock()
+	if socksPort > 0 {
+		b.WriteString("SocksPort 127.0.0.1:" + strconv.Itoa(socksPort) + "\n")
+	} else {
+		b.WriteString("SocksPort 0\n")
+	}
 	b.WriteString("RunAsDaemon 0\n")
 	// Firewall-friendly mode: only reach relays on 80/443, which gets through the
 	// restrictive egress firewalls common on locked-down hosts. Enabled

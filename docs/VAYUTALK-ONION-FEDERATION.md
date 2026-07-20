@@ -14,17 +14,19 @@ It is **off by default** and takes two deliberate steps to turn on.
    inbound delivery endpoint so other onions can reach your code, and lets your
    install attempt outbound delivery.
 
-2. **Point the install at a Tor SOCKS proxy.** Outbound delivery rides Tor. Set:
+That is normally all it takes: while federation is on, VayuPress's **managed tor
+opens a loopback-only SOCKS port automatically** (`127.0.0.1:9250`) for the
+outbound onion lane, and closes it again when you turn federation off. Give it a
+few seconds after enabling for tor to restart with the port.
 
-   ```sh
-   VAYUOS_TOR_SOCKS_ADDR=127.0.0.1:9050
-   ```
+**Optional override.** To route outbound delivery through a *different* tor (e.g.
+a system tor you already run), set:
 
-   to your tor's SOCKS address (a system tor's default is `127.0.0.1:9050`). With
-   this unset, **nothing is ever dialled** — you can still be reached, but your
-   install will report that no Tor SOCKS proxy is configured when you try to send.
+```sh
+VAYUOS_TOR_SOCKS_ADDR=127.0.0.1:9050
+```
 
-Restart the service after changing the environment variable.
+and restart the service. When set, this takes precedence over the managed port.
 
 ## How it works
 
@@ -40,7 +42,13 @@ Restart the service after changing the environment variable.
 - **Onion-only outbound.** The outbound HTTP client routes solely through the Tor
   SOCKS proxy and **refuses to dial any host that is not a `.onion`** — the check
   runs before any connection, never resolves DNS locally, and never follows
-  redirects. Clearnet is unreachable from this lane by construction.
+  redirects. Clearnet is unreachable from this lane by construction. The managed
+  tor's SOCKS port is **bound to `127.0.0.1` only** (never a public interface) and
+  exists only while federation is on.
+- **Authenticity.** Incoming messages are checked for a valid signature from the
+  code they claim to be from; one that can't be verified is shown with a
+  **⚠ unverified** badge rather than dropped. The sender's key is fetched from
+  their `.onion` over Tor (never clearnet).
 - **Closed inbound.** The delivery endpoint returns 404 unless federation is on,
   accepts envelopes **only** addressed to your own current code (never an open
   relay), requires a well-formed onion sender, and is bounded by the same 64 KiB
@@ -54,7 +62,5 @@ Restart the service after changing the environment variable.
 - Rotating your code changes the address peers must use; hand out the new one.
 - There is no cross-onion read receipt yet — the sender does not learn when the
   recipient reads a message delivered to another onion.
-- Inbound sender-signature verification and a managed-tor SOCKS convenience
-  (auto-opening a loopback SOCKS port) are planned follow-ups.
 - **Validate on real onions.** This path cannot be exercised in CI; confirm
   delivery between two live `.onion` installs before relying on it.
