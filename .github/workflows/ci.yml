@@ -341,7 +341,7 @@ jobs:
       - uses: actions/checkout@v7
       - name: Install C build tools (required for CGO/sqlite3)
         run: sudo apt-get install -y gcc build-essential
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           # Go 1.25+ required: govulncheck@latest needs it, and the 1.25 stdlib
           # carries the crypto/tls + crypto/x509 security patches (GO-2025-*).

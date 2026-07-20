@@ -64,7 +64,7 @@ jobs:
         if: steps.exists.outputs.skip != 'true'
         run: sudo apt-get install -y gcc build-essential
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         if: steps.exists.outputs.skip != 'true'
         with:
           go-version: 'stable'
