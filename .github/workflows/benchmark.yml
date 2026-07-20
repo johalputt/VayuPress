@@ -25,7 +25,7 @@ jobs:
             2>&1 | tee benchmark-results.txt
           echo "✅ benchmarks complete"
       - name: Upload benchmark results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: benchmark-results
           path: benchmark-results.txt
