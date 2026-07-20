@@ -145,7 +145,7 @@ func (s *Store) ListByEmail(ctx context.Context, reader *sql.DB, email string, l
 		if err := rows.Scan(&c.ID, &c.ArticleID, &c.ParentID, &c.Author, &c.Email, &c.Body, &c.Status, &createdRaw, &c.Slug, &c.Title); err != nil {
 			return nil, err
 		}
-		c.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdRaw)
+		c.CreatedAt = parseDBTime(createdRaw)
 		out = append(out, c)
 	}
 	return out, rows.Err()
@@ -210,7 +210,7 @@ func (s *Store) list(ctx context.Context, whereClause string, args ...interface{
 		if err := rows.Scan(&c.ID, &c.ArticleID, &c.ParentID, &c.Author, &c.Email, &c.Body, &c.Status, &c.Country, &c.Region, &c.City, &createdRaw); err != nil {
 			return nil, err
 		}
-		c.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdRaw)
+		c.CreatedAt = parseDBTime(createdRaw)
 		out = append(out, c)
 	}
 	return out, rows.Err()
@@ -220,4 +220,29 @@ func newID() string {
 	b := make([]byte, 12)
 	_, _ = rand.Read(b)
 	return hex.EncodeToString(b)
+}
+
+// parseDBTime parses a created_at value in whatever textual form the SQLite
+// driver hands back. The column is a DATETIME defaulting to CURRENT_TIMESTAMP
+// ("YYYY-MM-DD HH:MM:SS" in UTC), but database/sql may also stringify a parsed
+// time.Time as RFC3339 — so a single fixed layout silently failed and produced
+// the zero time (rendered as "1 Jan 1"). Try the known shapes, treating a naive
+// timestamp as UTC (matching SQLite), and fall back to zero only if none match.
+func parseDBTime(raw string) time.Time {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return time.Time{}
+	}
+	for _, layout := range []string{
+		time.RFC3339Nano, time.RFC3339,
+		"2006-01-02 15:04:05.999999999-07:00",
+		"2006-01-02 15:04:05-07:00",
+		"2006-01-02 15:04:05.999999999",
+		"2006-01-02 15:04:05",
+	} {
+		if t, err := time.Parse(layout, raw); err == nil {
+			return t.UTC()
+		}
+	}
+	return time.Time{}
 }

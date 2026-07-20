@@ -647,13 +647,26 @@ const CommentsJS = `(function(){
   function card(c,isReply){
     var el=document.createElement('div');el.className=isReply?'vayu-comment vayu-comment--reply':'vayu-comment';
     var meta=document.createElement('div');meta.className='vayu-comment-meta';
-    var av=document.createElement('span');av.className='vayu-comment-avatar';av.textContent=initials(c.author);av.setAttribute('aria-hidden','true');
+    var av;
+    if(c.avatar){
+      // Real profile photo when the commenter has one; on load failure fall back
+      // to the initials chip so a broken URL never leaves an empty avatar.
+      av=document.createElement('img');av.className='vayu-comment-avatar vayu-comment-avatar--img';
+      av.src=c.avatar;av.alt='';av.loading='lazy';av.referrerPolicy='no-referrer';av.setAttribute('aria-hidden','true');
+      av.addEventListener('error',function(){var s=document.createElement('span');s.className='vayu-comment-avatar';s.textContent=initials(c.author);s.setAttribute('aria-hidden','true');if(av.parentNode)av.parentNode.replaceChild(s,av);});
+    }else{
+      av=document.createElement('span');av.className='vayu-comment-avatar';av.textContent=initials(c.author);av.setAttribute('aria-hidden','true');
+    }
     var idc=document.createElement('div');idc.className='vayu-comment-idc';
     var line=document.createElement('div');line.className='vayu-comment-idline';
     var who=document.createElement('span');who.className='vayu-comment-author';who.textContent=esc(c.author)||'Anonymous';
     line.appendChild(who);
-    var fl=flag(c.country);
-    if(fl){var fe=document.createElement('span');fe.className='vayu-comment-flag';fe.textContent=fl;var cc=esc(c.country).toUpperCase();fe.title=cc;fe.setAttribute('aria-label','From '+cc);line.appendChild(fe);}
+    // Country flag when geo was captured; a neutral globe otherwise, so a comment
+    // always carries a location cue rather than nothing.
+    var fl=flag(c.country);var fe=document.createElement('span');
+    if(fl){fe.className='vayu-comment-flag';fe.textContent=fl;var cc=esc(c.country).toUpperCase();fe.title=cc;fe.setAttribute('aria-label','From '+cc);}
+    else{fe.className='vayu-comment-flag vayu-comment-flag--unknown';fe.textContent='🌐';fe.title='Location unknown';fe.setAttribute('aria-label','Location unknown');}
+    line.appendChild(fe);
     var when=document.createElement('time');when.className='vayu-comment-date';when.textContent=fmt(c.created_at);var r=rel(c.created_at);if(r)when.title=r;var isod=iso(c.created_at);if(isod)when.setAttribute('datetime',isod);
     idc.appendChild(line);idc.appendChild(when);
     meta.appendChild(av);meta.appendChild(idc);

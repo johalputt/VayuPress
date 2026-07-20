@@ -420,15 +420,17 @@ article.vayu-prose .content>p:first-of-type::first-letter{float:left;font-family
 .vayu-comment{background:var(--vp-surface);border:1px solid var(--editor-rule-soft);border-radius:14px;padding:1rem 1.1rem;transition:border-color var(--t,.16s),box-shadow var(--t,.16s),transform var(--t,.16s)}
 .vayu-comment:hover{border-color:color-mix(in srgb,var(--editor-accent) 40%,var(--editor-rule-soft));box-shadow:0 12px 34px -20px color-mix(in srgb,var(--editor-ink) 55%,transparent);transform:translateY(-1px)}
 .vayu-comment-meta{display:flex;align-items:center;gap:.7rem}
-.vayu-comment-avatar{flex:0 0 auto;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--editor-ui);font-weight:800;font-size:.95rem;color:#fff;background:linear-gradient(135deg,var(--editor-accent),color-mix(in srgb,var(--editor-accent) 45%,#111))}
+.vayu-comment-avatar{flex:0 0 auto;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--editor-ui);font-weight:800;font-size:.95rem;color:#fff;background:linear-gradient(135deg,var(--editor-accent),color-mix(in srgb,var(--editor-accent) 45%,#111));overflow:hidden;box-shadow:0 0 0 2px color-mix(in srgb,var(--editor-accent) 22%,transparent)}
+.vayu-comment-avatar--img{padding:0;object-fit:cover;background:var(--vp-surface)}
 .vayu-comment-idc{min-width:0}
 .vayu-comment-idline{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap}
 .vayu-comment-author{font-family:var(--editor-ui);font-weight:700;color:var(--editor-ink)}
 .vayu-comment-flag{font-size:1.05rem;line-height:1}
+.vayu-comment-flag--unknown{opacity:.55;font-size:.92rem}
 .vayu-comment-date{display:block;font-family:var(--editor-ui);font-size:.72rem;color:var(--editor-ink-faint);margin-top:1px}
 .vayu-comment-body{font-family:var(--editor-text);line-height:1.65;color:var(--editor-ink);margin:.6rem 0 0;white-space:pre-wrap;word-wrap:break-word}
-.vayu-comment--reply{margin-left:1.4rem;border-style:dashed}
-.vayu-comment-replies{display:flex;flex-direction:column;gap:.55rem;margin-top:.6rem}
+.vayu-comment-replies{display:flex;flex-direction:column;gap:.5rem;margin:.7rem 0 0 1.1rem;padding-left:1rem;border-left:2px solid color-mix(in srgb,var(--editor-accent) 30%,var(--editor-rule-soft))}
+.vayu-comment--reply{margin-left:0;background:color-mix(in srgb,var(--editor-ink) 4%,var(--vp-surface));border-color:var(--editor-rule-soft)}
 .vayu-comment-bar{margin-top:.55rem}
 .vayu-comment-reply-btn{font-family:var(--editor-ui);font-size:.75rem;font-weight:650;color:var(--editor-ink-faint);background:none;border:none;padding:.15rem 0;cursor:pointer;transition:color var(--t,.16s)}
 .vayu-comment-reply-btn:hover{color:var(--editor-accent)}

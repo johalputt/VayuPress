@@ -99,6 +99,7 @@ type publicComment struct {
 	Author    string    `json:"author"`
 	Body      string    `json:"body"`
 	Country   string    `json:"country,omitempty"`
+	Avatar    string    `json:"avatar,omitempty"`
 	Status    string    `json:"status,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 }
@@ -108,6 +109,22 @@ func toPublicComment(c *comments.Comment) publicComment {
 		ID: c.ID, ParentID: c.ParentID, Author: c.Author, Body: c.Body,
 		Country: c.Country, Status: c.Status, CreatedAt: c.CreatedAt,
 	}
+}
+
+// commenterAvatar resolves a public avatar URL for a comment's author by email —
+// the real profile photo when the commenter is also a CMS user (typically the
+// owner/staff), so their comment shows their actual picture. Readers with no
+// account resolve to "" and the widget draws a deterministic initials chip. The
+// email itself is never exposed; only the resolved (already-public) URL is.
+func (a *App) commenterAvatar(ctx context.Context, email string) string {
+	email = strings.ToLower(strings.TrimSpace(email))
+	if email == "" || a.userStore == nil {
+		return ""
+	}
+	if u, err := a.userStore.GetByEmail(ctx, email); err == nil && u != nil {
+		return u.AvatarURL
+	}
+	return ""
 }
 
 // POST /api/v1/articles/{slug}/comments
@@ -193,7 +210,9 @@ func (a *App) handleCommentSubmit(w http.ResponseWriter, r *http.Request) {
 			go a.notifyCommentReply(context.WithoutCancel(r.Context()), c.ID)
 		}
 	}
-	writeJSON(w, r, http.StatusCreated, toPublicComment(c))
+	pc := toPublicComment(c)
+	pc.Avatar = a.commenterAvatar(r.Context(), c.Email)
+	writeJSON(w, r, http.StatusCreated, pc)
 }
 
 // GET /api/v1/articles/{slug}/comments
@@ -220,7 +239,9 @@ func (a *App) handleCommentList(w http.ResponseWriter, r *http.Request) {
 	// before it leaves the server.
 	out := make([]publicComment, 0, len(cs))
 	for i := range cs {
-		out = append(out, toPublicComment(&cs[i]))
+		pc := toPublicComment(&cs[i])
+		pc.Avatar = a.commenterAvatar(r.Context(), cs[i].Email)
+		out = append(out, pc)
 	}
 	writeJSON(w, r, http.StatusOK, map[string]interface{}{"comments": out})
 }

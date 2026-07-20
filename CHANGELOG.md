@@ -8,6 +8,29 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.40] — 2026-07-20
+
+### Fixed
+- **Comment date/time now shows correctly in the reader's own timezone.** The
+  `created_at` column is a SQLite `DATETIME`; a single fixed parse layout rejected
+  the value the driver returned and silently produced the zero time (rendered as
+  "1 Jan 1"). A tolerant `parseDBTime` now accepts every shape SQLite/database-sql
+  hands back (treating a naive timestamp as UTC), so the widget renders the exact
+  local date + time.
+- **"Your activity" now lists a signed-in owner's own comments.** The portal's
+  Activity tab resolved only reader-membership sessions, so an operator's comments
+  (stored under their console email) never appeared ("you haven't commented yet").
+  It now resolves the unified principal, matching who is allowed to comment.
+
+### Changed
+- **Real avatars + a location cue on every comment.** A comment now shows the
+  author's **real profile photo** when they are a CMS user/owner (resolved by
+  email, with a graceful initials fallback if the image fails); readers with no
+  account get a deterministic gradient initials chip. Each comment also carries a
+  **country flag** when geo was captured, or a neutral **🌐 globe** otherwise, so
+  it is never blank. **Replies now merge into their parent** with an accent thread
+  rail and a tinted card, reading as one conversation.
+
 ## [3.14.39] — 2026-07-20
 
 ### Security

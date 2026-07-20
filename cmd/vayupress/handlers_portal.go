@@ -145,8 +145,12 @@ func (a *App) memberSnapshot(r *http.Request, m *members.Member) map[string]inte
 // and whether each is still pending review or live. Reads via the read pool.
 func (a *App) handleMemberComments(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
-	m := a.resolveMember(r)
-	if m == nil {
+	// Resolve the signed-in principal the same way commenting does — a reader
+	// member OR a console operator — so an operator sees their own comments here
+	// too (their comments are stored under their console email, which resolveMember
+	// alone never matched, so the tab always read "you haven't commented yet").
+	who := a.resolveCommenter(r)
+	if who == nil {
 		writeAPIError(w, r, http.StatusUnauthorized, "not-signed-in", "Sign in to view your activity", "")
 		return
 	}
@@ -154,7 +158,7 @@ func (a *App) handleMemberComments(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, r, http.StatusOK, map[string]interface{}{"comments": []interface{}{}})
 		return
 	}
-	list, err := a.commentStore.ListByEmail(r.Context(), dbpkg.Reader(), m.Email, 100)
+	list, err := a.commentStore.ListByEmail(r.Context(), dbpkg.Reader(), who.Email, 100)
 	if err != nil {
 		writeAPIError(w, r, http.StatusInternalServerError, "db-error", "Could not load your activity", "")
 		return
