@@ -1184,7 +1184,9 @@ func adminOSShellHead(nonce, title, active string, settings *osSettings) string 
     ` + cmdHint + `
     ` + notifBell + `
     <button type="button" class="btn--icon topbar-theme-btn" aria-label="Toggle colour theme (light / dark / auto)" title="Colour theme">
-      <svg viewBox="0 0 20 20" width="18" height="18" fill="none" aria-hidden="true"><path d="M10 2v16M10 2a8 8 0 000 16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="10" cy="10" r="8" stroke="currentColor" stroke-width="1.5"/></svg>
+      <svg class="theme-ico theme-ico--light" viewBox="0 0 20 20" width="18" height="18" fill="none" aria-hidden="true"><circle cx="10" cy="10" r="3.6" stroke="currentColor" stroke-width="1.6"/><path d="M10 1.6v2.2M10 16.2v2.2M1.6 10h2.2M16.2 10h2.2M4.1 4.1l1.5 1.5M14.4 14.4l1.5 1.5M15.9 4.1l-1.5 1.5M5.6 14.4l-1.5 1.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+      <svg class="theme-ico theme-ico--dark" viewBox="0 0 20 20" width="18" height="18" fill="none" aria-hidden="true"><path d="M16.2 11.8A6.6 6.6 0 118.2 3.8a5.2 5.2 0 008 8z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+      <svg class="theme-ico theme-ico--auto" viewBox="0 0 20 20" width="18" height="18" fill="none" aria-hidden="true"><circle cx="10" cy="10" r="8" stroke="currentColor" stroke-width="1.5"/><path d="M10 2a8 8 0 010 16z" fill="currentColor"/></svg>
     </button>
     <form method="POST" action="/os/logout">
       <button type="submit" class="btn btn--ghost btn--sm">Sign out</button>

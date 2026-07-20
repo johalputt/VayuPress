@@ -8,6 +8,20 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.38] — 2026-07-20
+
+### Changed
+- **Premium VayuOS chrome — search, command palette & theme toggle.** Pure-CSS
+  polish (CSP-safe; no new runtime): the **topbar search pill expands on
+  hover/focus** with a brand ring and an icon nudge (the flex spacer absorbs the
+  growth, so the right-side controls stay put). The **⌘K command palette** gets a
+  deeper backdrop blur + vignette, a sweeping brand hairline, a gradient panel, a
+  focus-glow search row, rounded result rows that slide + gain an accent bar and
+  icon on hover/active, an inline **↵** hint on the active row, and premium key
+  chips. The **light/dark/auto toggle** is now a proper animated switch — sun,
+  moon and auto glyphs that rotate + crossfade to the active theme. All of it
+  honours `prefers-reduced-motion` and is responsive down to mobile.
+
 ## [3.14.37] — 2026-07-20
 
 ### Changed

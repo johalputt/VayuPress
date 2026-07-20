@@ -421,16 +421,60 @@
   gap: var(--sp-2);
   padding: var(--sp-2) var(--sp-3);
   border: 1px solid var(--border);
-  border-radius: var(--r-sm);
+  border-radius: var(--r-full);
   font-size: var(--text-xs);
   color: var(--text-3);
   cursor: pointer;
   background: var(--bg-surface-2);
-  transition: border-color var(--t-fast), color var(--t-fast);
-  min-width: 180px;
+  width: 210px;
+  transition: width 0.32s cubic-bezier(0.16, 0.84, 0.44, 1),
+    border-color var(--t-fast), color var(--t-fast), box-shadow var(--t), background var(--t-fast);
 }
-.vp-os .topbar-cmd:hover { border-color: var(--border-strong); color: var(--text-2); }
-.vp-os .topbar-cmd-text { flex: 1; }
+/* Expand on hover/focus into a wider search affordance — the flex spacer to its
+   left absorbs the delta, so it grows leftward and the right-side controls stay
+   put. A soft brand ring + icon nudge make it feel alive. */
+.vp-os .topbar-cmd:hover,
+.vp-os .topbar-cmd:focus-visible {
+  width: 320px;
+  color: var(--text);
+  border-color: var(--brand);
+  background: var(--bg-surface);
+  box-shadow: 0 0 0 3px var(--brand-dim), 0 8px 22px -14px var(--brand-glow);
+}
+.vp-os .topbar-cmd svg { transition: transform var(--t), color var(--t-fast); }
+.vp-os .topbar-cmd:hover svg { transform: scale(1.12) rotate(-6deg); color: var(--brand); }
+.vp-os .topbar-cmd-text { flex: 1; text-align: left; }
+.vp-os .topbar-cmd kbd { transition: border-color var(--t-fast), color var(--t-fast); }
+.vp-os .topbar-cmd:hover kbd { border-color: var(--brand); color: var(--brand); }
+@media (prefers-reduced-motion: reduce) {
+  .vp-os .topbar-cmd { transition: border-color var(--t-fast), color var(--t-fast); width: 260px; }
+  .vp-os .topbar-cmd:hover, .vp-os .topbar-cmd:focus-visible { width: 260px; }
+  .vp-os .topbar-cmd:hover svg { transform: none; }
+}
+
+/* ── Premium theme toggle (sun / moon / auto) ────────────────────────────────
+   The button cycles light → dark → auto; the three glyphs are stacked and the
+   active one (keyed off <body data-theme>) rotates + fades in. Auto is the
+   default, so an unexpected value still shows a glyph rather than a blank. */
+.vp-os .topbar-theme-btn { position: relative; overflow: hidden; }
+.vp-os .topbar-theme-btn:hover { color: var(--brand); border-color: var(--brand); }
+.vp-os .theme-ico {
+  position: absolute; inset: 0; margin: auto; width: 18px; height: 18px;
+  transition: opacity var(--t), transform var(--t);
+}
+/* Default = auto visible; light/dark glyphs parked (rotated out). */
+.vp-os .theme-ico--light, .vp-os .theme-ico--dark { opacity: 0; transform: rotate(-120deg) scale(0.4); }
+.vp-os .theme-ico--auto { opacity: 1; transform: rotate(0) scale(1); }
+.vp-os[data-theme="light"] .theme-ico--auto,
+.vp-os[data-theme="dark"] .theme-ico--auto { opacity: 0; transform: rotate(120deg) scale(0.4); }
+.vp-os[data-theme="light"] .theme-ico--light,
+.vp-os[data-theme="dark"] .theme-ico--dark { opacity: 1; transform: rotate(0) scale(1); }
+@media (prefers-reduced-motion: reduce) {
+  .vp-os .theme-ico { transition: opacity var(--t-fast); }
+  .vp-os .theme-ico--light, .vp-os .theme-ico--dark,
+  .vp-os[data-theme="light"] .theme-ico--auto, .vp-os[data-theme="dark"] .theme-ico--auto { transform: none; }
+  .vp-os[data-theme="light"] .theme-ico--light, .vp-os[data-theme="dark"] .theme-ico--dark { transform: none; }
+}
 
 /* ── Notification centre (topbar bell + expandable panel) ────────────────────
    The bell replaced the New Post shortcut: a count badge + a dropdown of
@@ -1437,25 +1481,35 @@
 }
 .vp-os .cmd-backdrop {
   position: fixed; inset: 0;
-  background: rgba(8, 14, 26, 0.65);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
+  background:
+    radial-gradient(120% 80% at 50% 0%, rgba(14, 22, 40, 0.35), transparent 60%),
+    rgba(6, 11, 22, 0.72);
+  backdrop-filter: blur(10px) saturate(1.05);
+  -webkit-backdrop-filter: blur(10px) saturate(1.05);
   z-index: 800;
   display: flex;
   align-items: flex-start;
   justify-content: center;
   padding-top: 12vh;
+  animation: vp3-backdrop-in var(--t-enter) both;
 }
 .vp-os .cmd-backdrop[hidden] { display: none; }
 .vp-os .cmd-panel {
+  position: relative;
   width: 100%;
-  max-width: 560px;
-  background: var(--bg-surface);
+  max-width: 600px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--bg-surface-2) 55%, var(--bg-surface)) 0%, var(--bg-surface) 42%);
   border: 1px solid var(--border-strong);
-  border-radius: var(--r-md);
-  box-shadow: var(--sh-lg);
+  border-radius: var(--r-lg, 16px);
+  box-shadow: 0 32px 80px -28px rgba(2, 8, 20, 0.85), 0 0 0 1px rgba(255, 255, 255, 0.02) inset;
   overflow: hidden;
   animation: vp3-palette-in var(--t-spring) both;
+}
+/* A brand hairline that sweeps the top edge — the palette's signature. */
+.vp-os .cmd-panel::before {
+  content: ""; position: absolute; inset: 0 0 auto 0; height: 2px; z-index: 1;
+  background: linear-gradient(90deg, transparent, var(--brand) 30%, var(--accent) 70%, transparent);
+  opacity: 0.85;
 }
 .vp-os .cmd-input-wrap {
   display: flex;
@@ -1463,46 +1517,69 @@
   gap: var(--sp-3);
   padding: var(--sp-4) var(--sp-5);
   border-bottom: 1px solid var(--border);
+  transition: border-color var(--t-fast);
 }
-.vp-os .cmd-search-icon { color: var(--text-3); flex-shrink: 0; }
+.vp-os .cmd-input-wrap:focus-within { border-bottom-color: var(--brand); }
+.vp-os .cmd-search-icon { color: var(--text-3); flex-shrink: 0; transition: color var(--t-fast); }
+.vp-os .cmd-input-wrap:focus-within .cmd-search-icon { color: var(--brand); }
 .vp-os .cmd-input {
   flex: 1;
   background: none;
   border: none;
   outline: none;
-  font-size: var(--text-base);
+  font-size: var(--text-lg);
   color: var(--text);
 }
 .vp-os .cmd-input::placeholder { color: var(--text-3); }
-.vp-os .cmd-results { max-height: 360px; overflow-y: auto; }
+.vp-os .cmd-results { max-height: 56vh; overflow-y: auto; padding: var(--sp-2) var(--sp-2) var(--sp-3); scroll-padding: var(--sp-3); }
 .vp-os .cmd-group-label {
-  padding: var(--sp-3) var(--sp-5) var(--sp-2);
+  padding: var(--sp-3) var(--sp-3) var(--sp-2);
   font-size: var(--text-xs);
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.09em;
   color: var(--text-3);
 }
 .vp-os .cmd-item {
+  position: relative;
   display: flex;
   align-items: center;
   gap: var(--sp-3);
-  padding: var(--sp-3) var(--sp-5);
+  padding: var(--sp-3);
+  margin: 1px var(--sp-2);
+  border-radius: var(--r-md);
   cursor: pointer;
-  transition: background var(--t-fast);
+  transition: background var(--t-fast), transform var(--t-fast), box-shadow var(--t-fast);
   text-decoration: none;
   color: var(--text);
 }
-.vp-os .cmd-item:hover, .vp-os .cmd-item--active { background: var(--brand-dim); }
-.vp-os .cmd-item__icon {
-  width: 28px; height: 28px;
-  border-radius: var(--r-sm);
-  background: var(--bg-surface-3);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 14px;
-  flex-shrink: 0;
+.vp-os .cmd-item:hover,
+.vp-os .cmd-item--active {
+  background: var(--brand-dim);
+  transform: translateX(3px);
+  box-shadow: inset 3px 0 0 var(--brand);
 }
-.vp-os .cmd-item__label { font-size: var(--text-sm); font-weight: 500; flex: 1; }
+/* The active row advertises the Enter shortcut. */
+.vp-os .cmd-item--active::after {
+  content: "\21B5"; /* ↵ */
+  margin-left: auto; padding-left: var(--sp-3);
+  font-size: var(--text-sm); color: var(--brand); opacity: 0.9;
+}
+.vp-os .cmd-item__icon {
+  width: 32px; height: 32px;
+  border-radius: var(--r-sm);
+  background: linear-gradient(140deg, var(--bg-surface-3), var(--bg-surface-2));
+  border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 15px;
+  flex-shrink: 0;
+  transition: background var(--t-fast), border-color var(--t-fast), transform var(--t-fast);
+}
+.vp-os .cmd-item:hover .cmd-item__icon,
+.vp-os .cmd-item--active .cmd-item__icon {
+  background: var(--brand); border-color: var(--brand); transform: scale(1.06);
+}
+.vp-os .cmd-item__label { font-size: var(--text-sm); font-weight: 600; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .vp-os .cmd-item__hint { font-size: var(--text-xs); color: var(--text-3); }
 .vp-os .cmd-footer {
   padding: var(--sp-3) var(--sp-5);
@@ -1511,8 +1588,22 @@
   gap: var(--sp-4);
   font-size: var(--text-xs);
   color: var(--text-3);
+  background: color-mix(in srgb, var(--bg-surface-2) 40%, transparent);
 }
 .vp-os .cmd-footer-hint { display: flex; align-items: center; gap: var(--sp-2); }
+.vp-os .cmd-footer kbd {
+  min-width: 18px; height: 18px; padding: 0 5px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--border-strong); border-radius: 5px;
+  background: var(--bg-surface); font-size: 0.66rem; color: var(--text-2);
+}
+@media (prefers-reduced-motion: reduce) {
+  .vp-os .cmd-item:hover, .vp-os .cmd-item--active { transform: none; }
+}
+@media (max-width: 640px) {
+  .vp-os .cmd-backdrop { padding-top: 8vh; padding-left: var(--sp-3); padding-right: var(--sp-3); }
+  .vp-os .cmd-input { font-size: var(--text-base); }
+}
 
 /* ── Activity feed ───────────────────────────────────────────── */
 .vp-os .activity-list { display: flex; flex-direction: column; }
