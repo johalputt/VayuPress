@@ -56,6 +56,9 @@ func TestThemeEditorCoversSettingsAllowlist(t *testing.T) {
 		// The anonymous VayuTalk handle is engine-generated + rotated from the Talk
 		// page, never a theme-editor field.
 		settings.KeyTalkAnonID: true,
+		// Onion-federation opt-in (ADR-0142) is toggled from the Talk page, not the
+		// theme editor.
+		settings.KeyTalkOnionFederation: true,
 		// Feature flags are toggled through the Tools & Plugins panel
 		// (POST /os/api/tools/toggle), not the theme editor form.
 		settings.KeyFeatureComments:    true,

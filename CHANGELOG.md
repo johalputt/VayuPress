@@ -8,6 +8,27 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.61] — 2026-07-20
+
+### Added
+- **ADR-0142 + groundwork for onion-to-onion VayuTalk delivery.** Design record
+  and Phase 1 of letting two people on **different** `.onion` installs exchange
+  VayuTalk messages over Tor. This release lays the foundation:
+  - A new opt-in setting, `talk.onion_federation` (**default off**), gates the
+    experimental cross-onion path. While off — the default — behaviour is
+    unchanged.
+  - The Tor-world Talk page now shows whether onion-to-onion delivery is on or
+    off, so it is clear when cross-onion messages will be attempted.
+  - Sending to a code on a **different** `.onion` now returns a precise,
+    actionable reason (federation off → "turn it on"; on → "rolling out") instead
+    of a generic key error, via a new send-path classifier.
+
+### Notes
+- The outbound Tor lane, remote key fetch, and inbound delivery endpoint land in
+  the following phases; cross-onion delivery is **not active yet**. Two people on
+  the same install / clearnet VayuTalk are unaffected. End-to-end delivery can
+  only be validated on real two-onion deployments, not in CI.
+
 ## [3.14.60] — 2026-07-20
 
 ### Fixed

@@ -9,6 +9,7 @@
 
 | ADR | Title | Status | Owner | Date |
 |-----|-------|--------|-------|------|
+| [ADR-0142](ADR-0142-vayutalk-onion-to-onion-delivery.md) | VayuTalk Onion-to-Onion Delivery (Tor-World Federation) | Accepted | Core | 2026-07-20 |
 | [ADR-0001](ADR-0001-sqlite-first.md) | SQLite-First Data Layer | Accepted | Core | 2024-01-01 |
 | [ADR-0138](ADR-0138-vayutor-onion-services.md) | VayuTor — One-Click Tor Onion Services for Every Hosted Domain | Accepted | Core | 2026-07-17 |
 | [ADR-0137](ADR-0137-vayushield-aegis-surge-and-swarm-scale.md) | VayuShield Aegis — Sovereign Surge, Swarm-Scale Classification & Self-Maintaining Detection | Accepted | Core | 2026-07-16 |

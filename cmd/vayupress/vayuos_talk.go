@@ -270,7 +270,14 @@ func (a *App) handleVayuOSTalk(w http.ResponseWriter, r *http.Request) {
 	body.WriteString(`<span class="vtalk-status" id="vtalk-status" data-state="connecting">Connecting…</span></div></div>`)
 	// Tor world: the identity is an anonymous, rotatable code — offer copy + rotate.
 	if config.Cfg.OnionMode {
-		body.WriteString(`<div class="vtalk-anon"><p class="text-sm muted">This is your anonymous code — share it so people can reach you.</p><div class="ak-cred-actions"><button type="button" class="btn btn--sm" data-copy="` + esc(self) + `">Copy code</button><button type="button" class="btn btn--sm btn--ghost" id="vtalk-rotate">Rotate</button></div></div>`)
+		// Onion-to-onion federation status (ADR-0142): reaching a code on another
+		// .onion is opt-in and experimental; surface its state so the operator knows
+		// whether cross-onion messages will be attempted.
+		fedNote := `<p class="text-sm muted">Onion-to-onion delivery is <strong>off</strong> — you can be reached on this .onion; messaging a code on a different .onion is disabled.</p>`
+		if a.talkOnionFederationEnabled(r.Context()) {
+			fedNote = `<p class="text-sm muted">Onion-to-onion delivery is <strong>on</strong> (experimental) — messaging codes on other .onion sites is being rolled out.</p>`
+		}
+		body.WriteString(`<div class="vtalk-anon"><p class="text-sm muted">This is your anonymous code — share it so people can reach you.</p><div class="ak-cred-actions"><button type="button" class="btn btn--sm" data-copy="` + esc(self) + `">Copy code</button><button type="button" class="btn btn--sm btn--ghost" id="vtalk-rotate">Rotate</button></div>` + fedNote + `</div>`)
 	}
 	body.WriteString(`<form class="vtalk-newchat" id="vtalk-newchat"><input class="input input--sm" id="vtalk-peer" type="email" autocomplete="off" spellcheck="false" placeholder="name@domain" aria-label="Recipient address"><button class="btn btn--sm btn--primary" type="submit">Start</button></form>`)
 	body.WriteString(`<ul class="vtalk-convos" id="vtalk-convos" aria-label="Conversations"></ul>`)
@@ -455,6 +462,23 @@ func (a *App) handleVayuOSTalkSend(w http.ResponseWriter, r *http.Request) {
 	}
 	if mode != "live" && mode != "store" {
 		writeAPIError(w, r, http.StatusBadRequest, "validation_error", "mode must be live or store", "")
+		return
+	}
+
+	// Onion-to-onion seam (ADR-0142): a recipient on a DIFFERENT .onion can only
+	// be reached by federation, never the local in-process hub. Detect it up front
+	// and give a precise, honest reason rather than a local delivery that would
+	// silently never arrive. (Real cross-onion delivery lands in a later phase; the
+	// resolver already refuses to fabricate a key for a remote handle in the Tor
+	// world, so this seam replaces the generic no-key error with an actionable one.)
+	if talkRecipientRemoteOnion(self, to) {
+		if !a.talkOnionFederationEnabled(r.Context()) {
+			writeAPIError(w, r, http.StatusNotImplemented, "onion-federation-off",
+				"To message a code on another .onion, turn on onion-to-onion delivery in VayuTalk settings first (experimental).", "")
+			return
+		}
+		writeAPIError(w, r, http.StatusNotImplemented, "onion-federation-pending",
+			"Onion-to-onion delivery is enabled but not yet active in this build — it is rolling out across releases.", "")
 		return
 	}
 

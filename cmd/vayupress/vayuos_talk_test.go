@@ -116,6 +116,41 @@ func TestIsAnonTalkHandle(t *testing.T) {
 	}
 }
 
+// TestOnionRecipientClassification guards the onion-to-onion seam (ADR-0142):
+// talkHostIsOnion recognises only real .onion hostnames, and
+// talkRecipientRemoteOnion fires only for a code on a DIFFERENT onion than our
+// own — never for a local handle or a clearnet address, so the federation path is
+// entered exactly when a message truly cannot go through the local hub.
+func TestOnionRecipientClassification(t *testing.T) {
+	onion := "abcdefghij234567.onion"
+	for _, h := range []string{onion, "X.onion", "sub." + onion} {
+		if !talkHostIsOnion(h) {
+			t.Fatalf("talkHostIsOnion(%q) = false, want true", h)
+		}
+	}
+	for _, h := range []string{"", ".onion", "example.com", "onion", "example.onion.com"} {
+		if talkHostIsOnion(h) {
+			t.Fatalf("talkHostIsOnion(%q) = true, want false", h)
+		}
+	}
+
+	self := "anon2222222222222@" + onion
+	// A code on a different onion is remote (federation-only).
+	if !talkRecipientRemoteOnion(self, "anon9999999999999@other7654321fedcba.onion") {
+		t.Fatal("different-onion recipient not classified as remote")
+	}
+	// Our own onion, a clearnet address, and our exact self are all local/non-remote.
+	for _, to := range []string{
+		"anon3333333333333@" + onion, // same onion → local hub
+		"bob@example.com",            // clearnet → not an onion recipient
+		self,                         // ourselves
+	} {
+		if talkRecipientRemoteOnion(self, to) {
+			t.Fatalf("recipient %q wrongly classified as remote onion", to)
+		}
+	}
+}
+
 func TestTalkConnectValidAndInvalid(t *testing.T) {
 	a := appWithTalk(t, map[string]string{"dana@example.com": "pw"})
 	if rec := talkConnect(t, a, "dana@example.com", "pw"); rec.Code != http.StatusOK {

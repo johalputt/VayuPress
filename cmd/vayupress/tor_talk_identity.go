@@ -44,6 +44,46 @@ func isAnonTalkHandle(email string) bool {
 	return anonTalkHandleRe.MatchString(strings.ToLower(strings.TrimSpace(email)))
 }
 
+// hostPart returns the host (after "@") of a chat address, lower-cased. "" when
+// the address has no host.
+func hostPart(addr string) string {
+	addr = strings.ToLower(strings.TrimSpace(addr))
+	if i := strings.LastIndex(addr, "@"); i >= 0 && i+1 < len(addr) {
+		return addr[i+1:]
+	}
+	return ""
+}
+
+// talkHostIsOnion reports whether host is a Tor onion hostname (a non-empty label
+// followed by ".onion"). Used to classify a chat recipient as living on an onion.
+// Distinct from isOnionHost (request-Host middleware): this takes a bare host
+// string and requires a real label before ".onion".
+func talkHostIsOnion(host string) bool {
+	host = strings.ToLower(strings.TrimSpace(host))
+	return len(host) > len(".onion") && strings.HasSuffix(host, ".onion")
+}
+
+// talkOnionFederationEnabled reports whether the operator has opted into
+// experimental onion-to-onion VayuTalk delivery (ADR-0142). Always false outside
+// the Tor world — federation only has meaning there.
+func (a *App) talkOnionFederationEnabled(ctx context.Context) bool {
+	if !config.Cfg.OnionMode || a.siteSettings == nil {
+		return false
+	}
+	return a.siteSettings.FeatureEnabled(ctx, settings.KeyTalkOnionFederation)
+}
+
+// talkRecipientRemoteOnion reports whether recipient `to` is a chat code hosted
+// on a DIFFERENT .onion than our own identity `self` — i.e. a message that can
+// only be delivered by onion-to-onion federation, not the local in-process hub.
+func talkRecipientRemoteOnion(self, to string) bool {
+	toHost := hostPart(to)
+	if !talkHostIsOnion(toHost) {
+		return false
+	}
+	return toHost != hostPart(self)
+}
+
 // talkAnonAddress returns the operator's anonymous VayuTalk address in the Tor
 // world (`<random>@<onion>`), generating and persisting a handle on first use. It
 // returns "" outside OnionMode (the clearnet world uses mailbox identities).
