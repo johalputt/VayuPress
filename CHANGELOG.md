@@ -8,6 +8,30 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.68] — 2026-07-20
+
+### Fixed
+- **Clearnet VayuTalk between the app and the web console appeared to stop
+  delivering after entering the Tor world — root cause found and fixed.** The
+  "Enter Tor world" view cookie (`vp_world=tor`) was **persistent for 30 days**,
+  so a single exploratory click silently kept the operator's whole `/os` console
+  — including VayuTalk — proxied into the **separate Tor instance** (its own
+  isolated relay + anonymous identity) for a month, while the mobile app stayed
+  on the clearnet relay (`/api/v1/talk`, never proxied). Two different relays →
+  the app and website could not message each other, with nothing obvious saying
+  you were still viewing Tor.
+  - The view cookie is now a **session cookie** (no 30-day persistence): every new
+    browser session starts on Clearnet; entering Tor is a deliberate per-session
+    act.
+  - The Tor-world VayuTalk page now shows a clear callout that its chat is a
+    separate relay from your Clearnet mailbox chat and the mobile app, with a
+    one-click **switch to Clearnet**.
+- Audit confirmed there is **no crypto/relay regression**: the clearnet relay,
+  the app-facing `/api/v1/talk` handlers, and the signature-verification/read-
+  receipt changes are all behavior-preserving on clearnet (a failed signature
+  only shows a badge, never drops a message). The mobile app is unchanged and
+  always uses the clearnet relay.
+
 ## [3.14.67] — 2026-07-20
 
 ### Added

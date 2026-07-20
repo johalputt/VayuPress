@@ -230,6 +230,15 @@ func (a *App) handleVayuOSTalk(w http.ResponseWriter, r *http.Request) {
 	}
 	body.WriteString(`<div class="page-header"><h1>VayuTalk</h1><span class="muted text-sm">` + tagline + `</span></div>`)
 
+	// You are VIEWING the Tor world (this console is proxied into the separate Tor
+	// instance). Its chat is a DIFFERENT relay + an anonymous identity — it is not
+	// your Clearnet mailbox chat, and the mobile app (clearnet) cannot reach it.
+	// Say so plainly so "the app and website can't message each other" is never a
+	// mystery: switch to Clearnet in the sidebar to use mailbox chat with the app.
+	if config.Cfg.OnionMode {
+		body.WriteString(`<div class="settings-callout">🧅 <strong>This is the Tor world's chat.</strong> It is separate from your Clearnet mailbox chat and the mobile app — they run on a different relay. To message your mailbox contacts or the app, switch to <a href="/os/world?target=clearnet"><strong>Clearnet</strong></a>.</div>`)
+	}
+
 	if !a.vayuTalkEnabled() {
 		body.WriteString(`<div class="empty-state">VayuTalk is inactive. It runs automatically once mail is enabled (a <code>DOMAIN</code> is set); it is disabled only when <code>VAYUOS_TALK=off</code>.</div>`)
 		writeOSHTML(w, adminOSLayout(nonce, "VayuTalk", "talk", cfg, htmpl.HTML(body.String())))

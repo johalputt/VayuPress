@@ -85,9 +85,16 @@ func (a *App) handleWorldSwitch(w http.ResponseWriter, r *http.Request) {
 		if a.torSpace != nil {
 			go a.reconcileTorSpace()
 		}
+		// SESSION cookie (no MaxAge): viewing the Tor world is a per-session context,
+		// not a sticky preference. A 30-day cookie silently kept the operator in Tor
+		// view for a month — so their clearnet /os console (including VayuTalk, which
+		// then proxied to the SEPARATE Tor instance's relay) appeared broken while the
+		// mobile app stayed on the clearnet relay. Session scope means a fresh browser
+		// session always starts on Clearnet; entering Tor is a deliberate, visible act
+		// each time (ADR-0141).
 		http.SetCookie(w, &http.Cookie{
 			Name: worldCookie, Value: "tor", Path: "/",
-			SameSite: http.SameSiteLaxMode, HttpOnly: true, Secure: r.TLS != nil, MaxAge: 30 * 24 * 3600,
+			SameSite: http.SameSiteLaxMode, HttpOnly: true, Secure: r.TLS != nil,
 		})
 	} else {
 		// Back to clearnet: clear the view cookie (the Tor world keeps running).
