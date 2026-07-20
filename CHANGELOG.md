@@ -8,6 +8,20 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.49] — 2026-07-20
+
+### Added
+- **Homepage ad slots.** The activation-gated advertising surface now reaches the
+  highest-traffic page: with the Ads module on, the **Header** slot renders at the
+  top of the homepage feed and the **Footer** slot closes the content column
+  (above the trending strip and site footer), using the same slots already
+  managed under Monetization. Self-hosted image/HTML creatives cache with the page
+  as before; a page that renders a Google AdSense unit is served no-store with the
+  widened ad CSP applied per request and is not disk-cached — matching the
+  per-article ad path exactly. The above/below-post placements stay
+  article-specific, and the sidebar placement remains reserved until a themed
+  aside column exists.
+
 ## [3.14.48] — 2026-07-20
 
 ### Added

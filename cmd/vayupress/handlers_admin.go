@@ -431,10 +431,20 @@ func (a *App) renderHomeAt(w http.ResponseWriter, r *http.Request, page int) {
 		http.Error(w, "render error", 500)
 		return
 	}
-	if useCache {
+	// Monetization: weave activation-gated homepage ad slots (header + footer) into
+	// the feed. A page that emits a Google AdSense unit needs the widened ad CSP
+	// applied per request and must not be disk-cached; self-hosted image/HTML ads
+	// carry no per-request state and cache with the page as before.
+	nonce := render.CSPNonce(r)
+	html, usesAdSense := a.injectHomeAds(r.Context(), nonce, html)
+	if useCache && !usesAdSense {
 		render.CacheWrite(homeRel, html) //nolint:errcheck
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if usesAdSense {
+		w.Header().Set("Cache-Control", "no-store")
+		setAdCSP(w, r, nil)
+	}
 	fmt.Fprint(w, html)
 }
 
@@ -746,6 +756,58 @@ func (a *App) injectArticleAds(ctx context.Context, nonce, htmlOut string) (stri
 	}
 	if footer != "" {
 		htmlOut = strings.Replace(htmlOut, `</main></div>`, footer+`</main></div>`, 1)
+	}
+	if usesAdSense {
+		loader := ads.AdSenseLoader(nonce, cfg.AdsenseClient)
+		htmlOut = strings.Replace(htmlOut, `</head>`, loader+`</head>`, 1)
+	}
+	return htmlOut, usesAdSense
+}
+
+// injectHomeAds weaves the activation-gated header + footer ad slots into the
+// rendered homepage feed. It mirrors injectArticleAds's CSP / AdSense-loader /
+// no-cache contract but targets the homepage's own anchors: the header slot sits
+// at the top of <main>, the footer slot at the bottom of the content (above the
+// trending strip and the site footer). The above/below-post placements are
+// article-specific and are not emitted here; the sidebar placement has no themed
+// aside column yet and is likewise skipped. Returns the augmented HTML and
+// whether an AdSense unit was emitted (so the caller widens the CSP + skips the
+// disk cache). A no-op returning the input unchanged when Ads is off.
+func (a *App) injectHomeAds(ctx context.Context, nonce, htmlOut string) (string, bool) {
+	if a.ads == nil || !a.adsEnabled(ctx) {
+		return htmlOut, false
+	}
+	cfg := ads.RenderConfig{
+		GoogleAdsEnabled: a.googleAdsEnabled(ctx),
+		AdsenseClient:    a.adsenseClient(ctx),
+		Nonce:            nonce,
+		Sanitize:         a.policy.Sanitize,
+	}
+	usesAdSense := false
+	renderPlacement := func(placement string) string {
+		slots, err := a.ads.EnabledByPlacement(ctx, placement)
+		if err != nil || len(slots) == 0 {
+			return ""
+		}
+		if ads.HasAdSense(slots, cfg) {
+			usesAdSense = true
+		}
+		return ads.Render(slots, cfg)
+	}
+	header := renderPlacement(ads.PlacementHeader)
+	footer := renderPlacement(ads.PlacementFooter)
+
+	if header != "" {
+		htmlOut = strings.Replace(htmlOut, `<main id="main-content">`, `<main id="main-content">`+header, 1)
+	}
+	if footer != "" {
+		// Prefer the anchor just above the trending strip so the footer ad closes
+		// the content column; fall back to </main> if the strip ever moves.
+		if strings.Contains(htmlOut, `<section class="vayu-trending"`) {
+			htmlOut = strings.Replace(htmlOut, `<section class="vayu-trending"`, footer+`<section class="vayu-trending"`, 1)
+		} else {
+			htmlOut = strings.Replace(htmlOut, `</main>`, footer+`</main>`, 1)
+		}
 	}
 	if usesAdSense {
 		loader := ads.AdSenseLoader(nonce, cfg.AdsenseClient)
