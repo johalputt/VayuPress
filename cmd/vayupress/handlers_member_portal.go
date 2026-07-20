@@ -373,6 +373,8 @@ type tierBody struct {
 	TrialDays          int      `json:"trial_days"`
 	StripeMonthlyPrice string   `json:"stripe_monthly_price"`
 	StripeYearlyPrice  string   `json:"stripe_yearly_price"`
+	MailEnabled        bool     `json:"mail_enabled"`
+	MailQuotaMB        int      `json:"mail_quota_mb"`
 }
 
 func (b tierBody) toInput() members.TierInput {
@@ -381,6 +383,7 @@ func (b tierBody) toInput() members.TierInput {
 		YearlyCents: b.YearlyCents, Currency: b.Currency, Benefits: b.Benefits,
 		Visibility: b.Visibility, Sort: b.Sort, TrialDays: b.TrialDays,
 		StripeMonthlyPrice: b.StripeMonthlyPrice, StripeYearlyPrice: b.StripeYearlyPrice,
+		MailEnabled: b.MailEnabled, MailQuotaMB: b.MailQuotaMB,
 	}
 }
 

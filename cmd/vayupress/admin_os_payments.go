@@ -22,6 +22,14 @@ import (
 	"github.com/johalputt/vayupress/internal/settings"
 )
 
+// zeroOne renders a bool as "1"/"0" for a data-* attribute.
+func zeroOne(b bool) string {
+	if b {
+		return "1"
+	}
+	return "0"
+}
+
 // stripeStatus reports whether an enabled Stripe key is stored, plus its masked
 // hint for display (never the secret itself).
 func (a *App) stripeStatus(ctx context.Context) (connected bool, hint string) {

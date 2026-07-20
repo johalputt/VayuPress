@@ -145,6 +145,7 @@ func (a *App) handleOSMembers(w http.ResponseWriter, r *http.Request) {
 			data-monthly="` + strconv.Itoa(t.MonthlyCents) + `" data-yearly="` + strconv.Itoa(t.YearlyCents) + `"
 			data-currency="` + esc(t.Currency) + `" data-visibility="` + esc(t.Visibility) + `"
 			data-trial="` + strconv.Itoa(t.TrialDays) + `" data-stripe-monthly="` + esc(t.StripeMonthlyPrice) + `" data-stripe-yearly="` + esc(t.StripeYearlyPrice) + `"
+			data-mail-enabled="` + zeroOne(t.MailEnabled) + `" data-mail-quota="` + strconv.Itoa(t.MailQuotaMB) + `"
 			data-benefits="` + esc(strings.Join(t.Benefits, "\n")) + `">Edit</button>`
 		if t.Slug != members.TierFree && t.Slug != members.TierPaid {
 			actions += ` <button class="btn btn--sm btn--danger" type="button" data-archive-tier data-id="` + esc(t.ID) + `">Archive</button>`
@@ -275,6 +276,13 @@ func (a *App) handleOSMembers(w http.ResponseWriter, r *http.Request) {
           <div class="field"><label class="field-label" for="tier-stripe-yearly">Stripe yearly price ID</label>
             <input class="input" id="tier-stripe-yearly" type="text" maxlength="80" placeholder="price_…"></div>
         </div>
+        <div class="field mt-3" style="border-top:1px solid var(--border,#333);padding-top:.75rem">
+          <label class="field-label" style="display:flex;align-items:center;gap:.5rem;cursor:pointer">
+            <input type="checkbox" id="tier-mail-enabled"> Include a VayuMail mailbox with this tier</label>
+          <p class="field-hint">Paid members on this tier can claim a private mailbox (with PGP + WKD). They pick their address separately.</p></div>
+        <div class="field"><label class="field-label" for="tier-mail-quota">Mailbox size (MB)</label>
+          <input class="input" id="tier-mail-quota" type="number" min="0" value="0" style="max-width:12rem">
+          <p class="field-hint">Storage cap for the included mailbox. 0 = unlimited. (e.g. 1024 = 1&nbsp;GB, 2048 = 2&nbsp;GB.)</p></div>
         <div class="field mt-3"><label class="field-label" for="tier-benefits">Benefits (one per line)</label>
           <textarea class="textarea" id="tier-benefits" rows="4" placeholder="Full access to premium posts&#10;Members-only newsletter"></textarea></div>
       </div>

@@ -49,6 +49,8 @@
     if ($('tier-trial')) { $('tier-trial').value = data.trial || 0; }
     if ($('tier-stripe-monthly')) { $('tier-stripe-monthly').value = data.stripeMonthly || ''; }
     if ($('tier-stripe-yearly')) { $('tier-stripe-yearly').value = data.stripeYearly || ''; }
+    if ($('tier-mail-enabled')) { $('tier-mail-enabled').checked = (data.mailEnabled === '1' || data.mailEnabled === 'true'); }
+    if ($('tier-mail-quota')) { $('tier-mail-quota').value = data.mailQuota || 0; }
     $('tier-benefits').value = data.benefits || '';
     if (titleEl) { titleEl.textContent = data.id ? 'Edit tier' : 'New tier'; }
     if (modal) { modal.removeAttribute('hidden'); }
@@ -85,6 +87,8 @@
         trial_days: $('tier-trial') ? (parseInt($('tier-trial').value, 10) || 0) : 0,
         stripe_monthly_price: $('tier-stripe-monthly') ? $('tier-stripe-monthly').value.trim() : '',
         stripe_yearly_price: $('tier-stripe-yearly') ? $('tier-stripe-yearly').value.trim() : '',
+        mail_enabled: $('tier-mail-enabled') ? !!$('tier-mail-enabled').checked : false,
+        mail_quota_mb: $('tier-mail-quota') ? (parseInt($('tier-mail-quota').value, 10) || 0) : 0,
         benefits: benefits,
       };
       var method = id ? 'PUT' : 'POST';

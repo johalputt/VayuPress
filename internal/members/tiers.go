@@ -42,9 +42,22 @@ type Tier struct {
 	// StripeMonthlyPrice / StripeYearlyPrice are optional Stripe Price ids. When
 	// set, the public pricing page can route the reader straight to a hosted
 	// Stripe Checkout for that cadence without any embedded payment SDK.
-	StripeMonthlyPrice string    `json:"stripe_monthly_price,omitempty"`
-	StripeYearlyPrice  string    `json:"stripe_yearly_price,omitempty"`
-	CreatedAt          time.Time `json:"created_at"`
+	StripeMonthlyPrice string `json:"stripe_monthly_price,omitempty"`
+	StripeYearlyPrice  string `json:"stripe_yearly_price,omitempty"`
+	// MailEnabled grants the member a VayuMail mailbox while they hold this tier;
+	// MailQuotaMB caps that mailbox's storage in megabytes (0 = unlimited). The
+	// member claims/provisions the actual address separately.
+	MailEnabled bool      `json:"mail_enabled"`
+	MailQuotaMB int       `json:"mail_quota_mb"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+// MailQuotaBytes returns the tier's mailbox storage cap in bytes (0 = unlimited).
+func (t *Tier) MailQuotaBytes() int64 {
+	if t == nil || t.MailQuotaMB <= 0 {
+		return 0
+	}
+	return int64(t.MailQuotaMB) * 1024 * 1024
 }
 
 // IsFree reports whether the tier carries no recurring price.
@@ -63,19 +76,21 @@ func scanTier(sc scanner) (*Tier, error) {
 	var t Tier
 	var benefits string
 	var active int
+	var mailEnabled int
 	if err := sc.Scan(&t.ID, &t.Slug, &t.Name, &t.Description, &t.MonthlyCents, &t.YearlyCents,
 		&t.Currency, &benefits, &t.Visibility, &active, &t.Sort, &t.TrialDays,
-		&t.StripeMonthlyPrice, &t.StripeYearlyPrice, &t.CreatedAt); err != nil {
+		&t.StripeMonthlyPrice, &t.StripeYearlyPrice, &t.CreatedAt, &mailEnabled, &t.MailQuotaMB); err != nil {
 		return nil, err
 	}
 	t.Active = active != 0
+	t.MailEnabled = mailEnabled != 0
 	if benefits != "" {
 		_ = json.Unmarshal([]byte(benefits), &t.Benefits)
 	}
 	return &t, nil
 }
 
-const tierCols = `id,slug,name,description,monthly_cents,yearly_cents,currency,benefits,visibility,active,sort,trial_days,stripe_monthly_price,stripe_yearly_price,created_at`
+const tierCols = `id,slug,name,description,monthly_cents,yearly_cents,currency,benefits,visibility,active,sort,trial_days,stripe_monthly_price,stripe_yearly_price,created_at,mail_enabled,mail_quota_mb`
 
 // TierInput carries the editable fields of a tier.
 type TierInput struct {
@@ -90,6 +105,8 @@ type TierInput struct {
 	TrialDays          int
 	StripeMonthlyPrice string
 	StripeYearlyPrice  string
+	MailEnabled        bool
+	MailQuotaMB        int
 }
 
 // CreateTier inserts a new tier, deriving a unique slug from the name.
@@ -109,12 +126,17 @@ func (s *Store) CreateTier(ctx context.Context, in TierInput) (*Tier, error) {
 	}
 	benefits, _ := json.Marshal(cleanBenefits(in.Benefits))
 	id := "tier_" + randHex(8)
+	mailEnabled := 0
+	if in.MailEnabled {
+		mailEnabled = 1
+	}
 	if _, err := s.db.ExecContext(ctx,
-		`INSERT INTO member_tiers(id,slug,name,description,monthly_cents,yearly_cents,currency,benefits,visibility,active,sort,trial_days,stripe_monthly_price,stripe_yearly_price)
-		 VALUES(?,?,?,?,?,?,?,?,?,1,?,?,?,?)`,
+		`INSERT INTO member_tiers(id,slug,name,description,monthly_cents,yearly_cents,currency,benefits,visibility,active,sort,trial_days,stripe_monthly_price,stripe_yearly_price,mail_enabled,mail_quota_mb)
+		 VALUES(?,?,?,?,?,?,?,?,?,1,?,?,?,?,?,?)`,
 		id, slug, name, strings.TrimSpace(in.Description), maxInt(0, in.MonthlyCents), maxInt(0, in.YearlyCents),
 		currency, string(benefits), visibility, in.Sort, maxInt(0, in.TrialDays),
-		strings.TrimSpace(in.StripeMonthlyPrice), strings.TrimSpace(in.StripeYearlyPrice)); err != nil {
+		strings.TrimSpace(in.StripeMonthlyPrice), strings.TrimSpace(in.StripeYearlyPrice),
+		mailEnabled, maxInt(0, in.MailQuotaMB)); err != nil {
 		return nil, fmt.Errorf("create tier: %w", err)
 	}
 	return s.GetTierByID(ctx, id)
@@ -136,11 +158,16 @@ func (s *Store) UpdateTier(ctx context.Context, id string, in TierInput) error {
 		visibility = VisibilityPublic
 	}
 	benefits, _ := json.Marshal(cleanBenefits(in.Benefits))
+	mailEnabled := 0
+	if in.MailEnabled {
+		mailEnabled = 1
+	}
 	res, err := s.db.ExecContext(ctx,
-		`UPDATE member_tiers SET name=?,description=?,monthly_cents=?,yearly_cents=?,currency=?,benefits=?,visibility=?,sort=?,trial_days=?,stripe_monthly_price=?,stripe_yearly_price=? WHERE id=?`,
+		`UPDATE member_tiers SET name=?,description=?,monthly_cents=?,yearly_cents=?,currency=?,benefits=?,visibility=?,sort=?,trial_days=?,stripe_monthly_price=?,stripe_yearly_price=?,mail_enabled=?,mail_quota_mb=? WHERE id=?`,
 		name, strings.TrimSpace(in.Description), maxInt(0, in.MonthlyCents), maxInt(0, in.YearlyCents),
 		currency, string(benefits), visibility, in.Sort, maxInt(0, in.TrialDays),
-		strings.TrimSpace(in.StripeMonthlyPrice), strings.TrimSpace(in.StripeYearlyPrice), id)
+		strings.TrimSpace(in.StripeMonthlyPrice), strings.TrimSpace(in.StripeYearlyPrice),
+		mailEnabled, maxInt(0, in.MailQuotaMB), id)
 	if err != nil {
 		return err
 	}

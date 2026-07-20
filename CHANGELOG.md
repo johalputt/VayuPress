@@ -8,6 +8,18 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.45] — 2026-07-20
+
+### Added
+- **Membership tiers can now bundle a VayuMail mailbox.** The tier editor in the
+  Members console gains two settings — *Include a VayuMail mailbox* and *Mailbox
+  size (MB)* (e.g. `1024` = 1 GB, `2048` = 2 GB, `0` = unlimited) — persisted on
+  the tier (migration 070). An operator can now offer plans like "$1 → 1 GB
+  mailbox, $2 → 2 GB mailbox". This is the entitlement/configuration layer; the
+  member-facing claim and provisioning (a unique address with PGP + WKD, quota
+  enforced, plus reserved-name protection so members only claim generic IDs)
+  builds on it next.
+
 ## [3.14.44] — 2026-07-20
 
 ### Added
