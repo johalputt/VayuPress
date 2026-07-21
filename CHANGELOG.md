@@ -8,6 +8,31 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.71] — 2026-07-21
+
+### Changed
+- **VayuShield: a jailed visitor now gets a solvable "Verify you are human"
+  challenge instead of a dead end.** A suspected/jailed IP was already offered a
+  self-hosted proof-of-work interstitial that pardons the jail on success — but it
+  was silent, and once the per-IP redeem budget (~1 challenge / 30s) was spent the
+  request fell through to a flat "Request rejected by VayuShield (blocked)" page
+  with no way for a real person to prove themselves. Now:
+  - The interstitial is a clean, branded **"Verify you are human"** card with a
+    visible checkbox the visitor ticks; ticking it runs the proof-of-work
+    (Web Crypto SHA-256) and, on success, clears the jail (the existing
+    `RewardProof` pardon lifts the blocklist, the reputation sentence and any
+    kernel ban) and continues. No third-party CAPTCHA, no external calls — fully
+    self-hosted, in keeping with the zero-telemetry posture.
+  - When the redeem budget is momentarily spent, a browser navigation now gets a
+    calm **"Just a moment…"** page that **auto-retries itself** (meta-refresh on
+    the Retry-After) and bounces the visitor straight back into the solvable
+    challenge — instead of the flat dead-end text. Non-navigational requests
+    (API/asset/bot traffic that doesn't ask for HTML) still get the near-free flat
+    rejection, so the shield's cheap-rejection economics and anti-amplification
+    guards are unchanged (status codes and headers are identical either way).
+  - The signed-challenge → `POST /__vayushield/pow` → clearance-cookie backend,
+    the redeem budget, and the under-attack stand-down are all untouched.
+
 ## [3.14.70] — 2026-07-21
 
 ### Security

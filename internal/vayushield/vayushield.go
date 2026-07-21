@@ -855,7 +855,7 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 		if lc.loadShed && !verified {
 			if !m.inflight.Acquire() {
 				reqclass.MarkShielded(r.Context())
-				m.serveThrottled(w, http.StatusServiceUnavailable, "load-shed", "5")
+				m.serveThrottled(w, r, http.StatusServiceUnavailable, "load-shed", "5")
 				return
 			}
 			defer m.inflight.Release()
@@ -878,7 +878,7 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 			if m.prefilter.Check(ipKey, pressure) {
 				reqclass.MarkShielded(r.Context())
 				m.onEvent(ActionBlock, 1.0)
-				m.serveThrottled(w, http.StatusTooManyRequests, "fair-shed", "5")
+				m.serveThrottled(w, r, http.StatusTooManyRequests, "fair-shed", "5")
 				return
 			}
 		}
@@ -903,7 +903,7 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 			}
 			reqclass.MarkShielded(r.Context())
 			m.onEvent(ActionBlock, 1.0)
-			m.serveThrottled(w, http.StatusTooManyRequests, "rate-limited", "10")
+			m.serveThrottled(w, r, http.StatusTooManyRequests, "rate-limited", "10")
 			return
 		}
 
@@ -1019,16 +1019,75 @@ func (m *Manager) serveJailed(w http.ResponseWriter, r *http.Request, ipKey, rea
 			return
 		}
 	}
-	m.serveThrottled(w, http.StatusTooManyRequests, reason, "10")
+	m.serveThrottled(w, r, http.StatusTooManyRequests, reason, "10")
 }
 
 // serveThrottled writes a small, cheap rejection (429/503) with a Retry-After.
-func (m *Manager) serveThrottled(w http.ResponseWriter, code int, reason, retryAfter string) {
+// For a real browser navigation it renders a calm "just a moment" page that
+// auto-retries itself (so a jailed human is never left at a dead end and is
+// bounced back into the solvable challenge as soon as the redeem budget refills),
+// while every non-navigational request (API/asset/bot) still gets the flat,
+// near-free text — the status code and headers are identical either way, so the
+// cheap-rejection accounting the shield relies on is unchanged.
+func (m *Manager) serveThrottled(w http.ResponseWriter, r *http.Request, code int, reason, retryAfter string) {
 	w.Header().Set("Retry-After", retryAfter)
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-VayuShield", reason)
+	if acceptsHTML(r) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(code)
+		_, _ = w.Write([]byte(throttledHTML(retryAfter)))
+		return
+	}
 	w.WriteHeader(code)
 	_, _ = w.Write([]byte("Request rejected by VayuShield (" + reason + "). Please retry shortly."))
+}
+
+// acceptsHTML reports whether r is a top-level browser navigation (a GET that
+// asks for HTML) — the only case where rendering a friendly interstitial pays
+// off. API calls, assets and bots that don't send Accept: text/html keep the
+// cheap flat rejection.
+func acceptsHTML(r *http.Request) bool {
+	if r == nil || r.Method != http.MethodGet {
+		return false
+	}
+	return strings.Contains(r.Header.Get("Accept"), "text/html")
+}
+
+// digitsOr returns s when it is a short all-digit string, else def — so a
+// Retry-After value can be interpolated into the auto-refresh meta safely.
+func digitsOr(s, def string) string {
+	if s == "" || len(s) > 4 {
+		return def
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return def
+		}
+	}
+	return s
+}
+
+// throttledHTML is the calm, self-retrying page shown to a throttled/jailed
+// browser navigation. It carries a meta-refresh set to the Retry-After, so the
+// visitor is automatically returned — and, once the per-IP redeem budget allows,
+// handed the solvable "verify you are human" challenge — with no manual reload.
+func throttledHTML(retryAfter string) string {
+	ra := digitsOr(retryAfter, "5")
+	return `<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="refresh" content="` + ra + `">
+<title>Verifying your browser…</title><meta name="robots" content="noindex">
+</head><body style="margin:0;background:#0b0f14;color:#e5e7eb;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif">
+<main style="max-width:30rem;margin:14vh auto;padding:0 1.25rem;text-align:center">
+  <div style="background:#111827;border:1px solid #1f2937;border-radius:16px;padding:2rem 1.75rem;box-shadow:0 24px 60px -20px rgba(0,0,0,.6)">
+    <div style="font-size:2rem;line-height:1" aria-hidden="true">🛡️</div>
+    <h1 style="font-size:1.15rem;margin:.75rem 0 .35rem">Just a moment…</h1>
+    <p style="color:#94a3b8;font-size:.9rem;margin:0">We’re verifying your connection before letting you through. This page retries itself automatically — no need to refresh.</p>
+    <p style="color:#64748b;font-size:.8rem;margin:1.1rem 0 0">Not sent through shortly? <a href="" style="color:#2dd4bf;text-decoration:none">Tap here to retry</a>.</p>
+  </div>
+  <p style="color:#475569;font-size:.72rem;margin-top:1rem">Protected by VayuShield</p>
+</main></body></html>`
 }
 
 // maybeLearn records a bot-like unknown fingerprint as an auto-learned candidate.
@@ -1356,14 +1415,22 @@ var interstitialTmpl = template.Must(template.New("vayushield-interstitial").Par
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Verifying your browser…</title>
 <meta name="robots" content="noindex">
-</head><body>
-<main style="max-width:32rem;margin:16vh auto;font-family:system-ui,sans-serif;text-align:center;color:#e5e7eb;background:#0b0f14;padding:2rem;border-radius:12px">
-<h1 style="font-size:1.25rem">Verifying your browser…</h1>
-<p style="color:#94a3b8">This automatic check protects the site from bots. It takes a moment and requires no interaction.</p>
-<noscript><p style="color:#f59e0b">JavaScript is required to complete this check.</p></noscript>
-<div id="vayushield-pow" data-challenge="{{.Challenge}}"></div>
-<p id="vayushield-status" style="color:#64748b;font-size:.85rem">Working…</p>
+</head><body style="margin:0;background:#0b0f14;color:#e5e7eb;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif">
+<main style="max-width:30rem;margin:14vh auto;padding:0 1.25rem;text-align:center">
+<div style="background:#111827;border:1px solid #1f2937;border-radius:16px;padding:2rem 1.75rem;box-shadow:0 24px 60px -20px rgba(0,0,0,.6)">
+<div style="font-size:2rem;line-height:1" aria-hidden="true">🛡️</div>
+<h1 style="font-size:1.15rem;margin:.75rem 0 .35rem">Verify you are human</h1>
+<p style="color:#94a3b8;font-size:.9rem;margin:0 0 1.25rem">Confirm you're human to continue. This keeps the site safe from bots — it only takes a moment.</p>
+<label id="vayushield-box" style="display:flex;align-items:center;gap:.7rem;max-width:16rem;margin:0 auto;padding:.8rem 1rem;border:1px solid #334155;border-radius:12px;background:#0b0f14;cursor:pointer;user-select:none">
+<input type="checkbox" id="vayushield-verify" style="width:20px;height:20px;accent-color:#14b8a6;cursor:pointer" aria-describedby="vayushield-status">
+<span id="vayushield-label" style="font-size:.95rem">Verify you are human</span>
+</label>
+<p id="vayushield-status" style="color:#64748b;font-size:.8rem;margin:1rem 0 0;min-height:1.1em" role="status" aria-live="polite">&nbsp;</p>
+<noscript><p style="color:#f59e0b;font-size:.85rem;margin-top:1rem">JavaScript is required to complete this check.</p></noscript>
+</div>
+<p style="color:#475569;font-size:.72rem;margin-top:1rem">Protected by VayuShield · Verifying your browser…</p>
 </main>
+<div id="vayushield-pow" data-challenge="{{.Challenge}}" style="display:none"></div>
 <script src="/__vayushield/challenge.js"></script>
 </body></html>`))
 
@@ -1391,6 +1458,8 @@ func ChallengeJS() string {
 	return `(function(){'use strict';
 var el=document.getElementById('vayushield-pow');
 var st=document.getElementById('vayushield-status');
+var cb=document.getElementById('vayushield-verify');
+var lb=document.getElementById('vayushield-label');
 if(!el){return;}
 var ch;try{ch=JSON.parse(el.getAttribute('data-challenge'));}catch(e){return;}
 function hex(buf){var b=new Uint8Array(buf),s='';for(var i=0;i<b.length;i++){s+=('0'+b[i].toString(16)).slice(-2);}return s;}
@@ -1406,11 +1475,33 @@ async function solve(){
   }
   return null;
 }
-solve().then(function(nonce){
-  if(nonce===null){if(st)st.textContent='Verification failed. Please refresh.';return;}
-  fetch('/__vayushield/pow',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({challenge:ch,nonce:nonce}),credentials:'same-origin'})
-   .then(function(r){if(r.ok){location.reload();}else{if(st)st.textContent='Verification rejected.';}})
-   .catch(function(){if(st)st.textContent='Network error during verification.';});
-}).catch(function(){if(st)st.textContent='Verification error.';});
+function status(t){if(st)st.textContent=t;}
+function label(t){if(lb)lb.textContent=t;}
+function reset(msg){running=false;if(cb){cb.checked=false;cb.disabled=false;}label('Verify you are human');status(msg);}
+var running=false;
+function run(){
+  if(running){return;}
+  running=true;
+  if(cb){cb.checked=true;cb.disabled=true;}
+  label('Verifying…');
+  status('Checking your browser — please don’t refresh this page.');
+  solve().then(function(nonce){
+    if(nonce===null){reset('Verification failed — tap to try again.');return;}
+    fetch('/__vayushield/pow',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({challenge:ch,nonce:nonce}),credentials:'same-origin'})
+     .then(function(r){
+       if(r.ok){label('Verified');status('Verified ✓ — continuing…');setTimeout(function(){location.reload();},350);}
+       else{reset('Verification rejected — tap to try again.');}
+     })
+     .catch(function(){reset('Network error — tap to try again.');});
+  }).catch(function(){reset('Verification error — tap to try again.');});
+}
+if(cb){
+  // Human-in-the-loop: the visitor ticks the box to prove intent; the proof of
+  // work then runs and clears the challenge. Keyboard/AT users get the same path.
+  cb.addEventListener('change',function(){if(cb.checked){run();}});
+}else{
+  // No checkbox present (a minimal host page) — fall back to the silent auto-solve.
+  run();
+}
 })();`
 }
