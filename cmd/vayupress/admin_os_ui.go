@@ -428,6 +428,10 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Get("/os/vayumail/accounts/fragment", a.handleVayuOSAccountsFragment)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/accounts/avatar", a.handleVayuOSAvatarUpload)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/accounts/avatar/remove", a.handleVayuOSAvatarRemove)
+		// Prebuilt cartoon avatars: pick one instead of uploading (POST sets it),
+		// with a GET preview endpoint that renders each option for this address.
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/accounts/avatar/cartoon", a.handleVayuOSAvatarCartoon)
+		pr.Get("/os/vayumail/accounts/avatar/cartoon", a.handleVayuOSAvatarCartoonPreview)
 		pr.Get("/os/vayumail/accounts/avatar", a.handleVayuOSAvatarServe)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/vayumail/accounts/action", a.handleVayuOSAccountsAction)
 		// Per-mailbox address book: view panel + add/delete + one-click save from a

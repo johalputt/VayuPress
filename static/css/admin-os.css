@@ -5393,6 +5393,21 @@
 .vp-os .vtalk-verify-btn:hover { background: var(--bg-surface-3); color: var(--text); }
 .vp-os .vtalk-verify-btn.is-verified { color: var(--ok); border-color: var(--ok); background: var(--ok-dim); }
 
+/* Rename / Keep sit beside Verify; share its pill look. */
+.vp-os .vtalk-head-actions { display: inline-flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+.vp-os .vtalk-head-btn {
+  display: inline-flex; align-items: center; gap: .35rem;
+  padding: .35rem .7rem; font-size: var(--text-xs); font-weight: 600;
+  color: var(--text-2); background: var(--bg-surface-2);
+  border: 1px solid var(--border); border-radius: var(--r-full); cursor: pointer;
+  transition: background var(--t-fast), color var(--t-fast), border-color var(--t-fast);
+}
+.vp-os .vtalk-head-btn:hover { background: var(--bg-surface-3); color: var(--text); }
+.vp-os .vtalk-head-btn.is-on { color: var(--brand); border-color: var(--brand); background: var(--brand-dim); }
+
+/* Kept pin in the conversation row (a chat you chose to preserve across reloads). */
+.vp-os .vtalk-convo-pin { flex: none; font-size: .8em; opacity: .85; line-height: 1; }
+
 .vp-os .vtalk-verify {
   flex-basis: 100%; margin-top: var(--sp-3);
   padding: var(--sp-3) var(--sp-4);
@@ -5676,6 +5691,18 @@
 .vp-os .vm-acct__avatar-edit { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin: var(--sp-3) 0; }
 .vp-os .vm-avatar-form { display: inline-flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; margin: 0; }
 .vp-os .vm-avatar-form input[type=file] { max-width: 220px; }
+
+/* Prebuilt cartoon picker — an alternative to uploading a file. */
+.vp-os .vm-acct__avatar-pick { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin: 0 0 var(--sp-3); }
+.vp-os .vm-cartoon-row { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.vp-os .vm-cartoon {
+  padding: 2px; border: 1px solid var(--border); border-radius: var(--r-full);
+  background: var(--bg-surface-2); cursor: pointer; line-height: 0;
+  transition: border-color var(--t-fast), transform var(--t-fast), box-shadow var(--t-fast);
+}
+.vp-os .vm-cartoon:hover { border-color: var(--brand); transform: translateY(-1px); box-shadow: 0 0 0 3px var(--brand-dim); }
+.vp-os .vm-cartoon:focus-visible { outline: none; border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-dim); }
+.vp-os .vm-cartoon__img { width: 40px; height: 40px; border-radius: var(--r-full); display: block; }
 
 /* Accounts grouped by domain (VayuDomains): a header per domain over its cards. */
 .vp-os .vm-acct-domain + .vm-acct-domain { margin-top: var(--sp-5); }

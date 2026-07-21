@@ -9,9 +9,12 @@ import (
 	"bytes"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+
+	"github.com/johalputt/vayupress/internal/avatar"
 )
 
 // maxMailAvatarBytes caps a stored profile picture at 500 KB (matches the mail
@@ -174,4 +177,63 @@ func (a *App) handleVayuOSAvatarServe(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "private, no-cache")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	_, _ = w.Write(blob)
+}
+
+// cartoonIndexParam parses the "n" form/query value into a valid cartoon index
+// (0..CartoonCount-1), clamping out-of-range and non-numeric input to 0.
+func cartoonIndexParam(raw string) int {
+	n, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil || n < 0 || n >= avatar.CartoonCount {
+		return 0
+	}
+	return n
+}
+
+// handleVayuOSAvatarCartoon sets a mailbox's profile picture to a prebuilt cartoon
+// (seeded by the address, so each mailbox's set is its own), for admins who want a
+// picture without uploading a file. The cartoon is a self-contained SVG generated
+// server-side (never client-supplied), stored like an uploaded picture and served
+// with X-Content-Type-Options: nosniff — an SVG referenced from <img> cannot run
+// scripts, so this is safe. Admin-only, CSRF-protected. Returns the refreshed list.
+func (a *App) handleVayuOSAvatarCartoon(w http.ResponseWriter, r *http.Request) {
+	if a.vayuMail == nil || !a.vayuMail.Config().Enabled || a.vayuMail.Accounts() == nil {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "mail-disabled", "VayuMail is not active", "")
+		return
+	}
+	if !a.isAdminRequest(r) {
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", "administrators only", "")
+		return
+	}
+	email := a.avatarAccountEmail(w, r, r.FormValue("email"))
+	if email == "" {
+		return
+	}
+	svg := avatar.Cartoon(cartoonIndexParam(r.FormValue("n")), email)
+	if err := a.vayuMail.Accounts().SetAvatar(r.Context(), email, []byte(svg), "image/svg+xml"); err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "save-failed", err.Error(), "")
+		return
+	}
+	a.invalidateAvatarCache() // show the chosen cartoon across the mailbox at once
+	writeOSHTML(w, a.vayuAccountsList(r.Context()))
+}
+
+// handleVayuOSAvatarCartoonPreview renders one prebuilt cartoon so the picker can
+// show what each option looks like for this address (GET ?email=&n=). Session-
+// guarded (mounted on the admin group); the SVG is deterministic and reveals
+// nothing private — it is derived from, but does not disclose, the address.
+func (a *App) handleVayuOSAvatarCartoonPreview(w http.ResponseWriter, r *http.Request) {
+	if !a.isAdminRequest(r) {
+		http.NotFound(w, r)
+		return
+	}
+	email := strings.ToLower(sanitizeMailUser(strings.TrimSpace(r.URL.Query().Get("email"))))
+	if email == "" || !strings.Contains(email, "@") {
+		http.NotFound(w, r)
+		return
+	}
+	svg := avatar.Cartoon(cartoonIndexParam(r.URL.Query().Get("n")), email)
+	w.Header().Set("Content-Type", "image/svg+xml; charset=utf-8")
+	w.Header().Set("Cache-Control", "private, max-age=300")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	_, _ = io.WriteString(w, svg)
 }

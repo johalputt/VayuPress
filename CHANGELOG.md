@@ -8,6 +8,24 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.91] — 2026-07-21
+
+### Added
+- **VayuTalk: keep a chat so its id survives a reload.** Conversations are
+  ephemeral by default (a reload wipes them — no message ever touches disk), but
+  the thread header now has a **Keep** pin: pin a contact and its row is restored
+  the next time you open VayuTalk. Only the address you chose to keep is
+  remembered — never any message. Kept rows show a small 📌 in the list.
+- **VayuTalk: show a name, not the raw mail id.** Once a chat is added, the list
+  and thread header show a friendly name derived from the address (`john.doe@…`
+  → “John Doe”) instead of the full address, and a **Rename** button lets you set
+  any name you like. The full address is only ever revealed inside the collapsible
+  verify panel, where it is needed to compare safety numbers.
+- **VayuMail: pick a prebuilt avatar for a mailbox.** The Accounts avatar section
+  now offers eight one-click cartoon avatars (seeded per address, like the member
+  picker) so a mailbox can have a picture without uploading a file. Rendered from
+  a same-origin preview endpoint and stored as a self-contained SVG.
+
 ## [3.14.90] — 2026-07-21
 
 ### Added

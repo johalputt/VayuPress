@@ -54,6 +54,12 @@
   var byId = Object.create(null);           // message id -> message
   var peerInfo = Object.create(null);       // peer -> { found, safety }
   var verified = Object.create(null);       // peer -> bool (this tab only)
+  // Contacts: the ONLY conversation state that survives a reload, and it holds no
+  // messages — just a chosen display name and a "keep" flag per peer. "Keep" pins
+  // the contact so its row is restored on reload (chats are ephemeral by default);
+  // the name lets you show a friendly label instead of the raw address once you've
+  // added someone. Both are per-identity and stored locally only.
+  var contacts = Object.create(null);       // peer -> { name, kept }
   var active = '';
 
   function cookie(name) {
@@ -79,6 +85,53 @@
   }
   function parse(s) { try { return JSON.parse(s); } catch (_) { return null; } }
 
+  // ── Contacts (names + kept flag, the only reload-surviving state) ────────────
+  // Stored per identity as vtalk-contacts:<self>. Never contains messages.
+
+  function contactsKey() { return 'vtalk-contacts:' + currentSelf; }
+  function loadContacts() {
+    contacts = Object.create(null);
+    var obj = parse(lsGet(contactsKey()));
+    if (obj && typeof obj === 'object') {
+      Object.keys(obj).forEach(function (k) {
+        var v = obj[k];
+        if (v && typeof v === 'object') contacts[norm(k)] = { name: (v.name || '').trim(), kept: !!v.kept };
+      });
+    }
+  }
+  function saveContacts() {
+    var out = {};
+    Object.keys(contacts).forEach(function (k) {
+      var v = contacts[k];
+      if (v && (v.name || v.kept)) out[k] = { name: v.name || '', kept: !!v.kept };
+    });
+    lsSet(contactsKey(), JSON.stringify(out));
+  }
+  function contactEntry(peer, create) {
+    peer = norm(peer);
+    if (!contacts[peer] && create) contacts[peer] = { name: '', kept: false };
+    return contacts[peer] || null;
+  }
+  function isKept(peer) { var e = contacts[norm(peer)]; return !!(e && e.kept); }
+
+  // A default friendly label derived from the address' local part, so once a chat
+  // is added the raw mail id is not shown — a name is. "john.doe@x" -> "John Doe".
+  function friendlyName(peer) {
+    var local = norm(peer).replace(/@.*/, '');
+    if (!local) return peer;
+    var words = local.split(/[._+\-]+/).filter(Boolean).map(function (w) {
+      return w.charAt(0).toUpperCase() + w.slice(1);
+    });
+    return words.join(' ') || peer;
+  }
+  // The label shown in the list and thread header: a name the user set, else the
+  // friendly default. The full address is only ever revealed in the verify panel.
+  function displayName(peer) {
+    var e = contacts[norm(peer)];
+    if (e && e.name) return e.name;
+    return friendlyName(peer);
+  }
+
   // ── Conversations ──────────────────────────────────────────────────────────
 
   function getConvo(peer) {
@@ -86,19 +139,26 @@
     if (!peer) return null;
     if (convos[peer]) return convos[peer];
 
+    var name = displayName(peer);
     var item = elem('li', 'vtalk-convo');
-    var av = elem('span', 'vtalk-avatar', initials(peer));
+    var av = elem('span', 'vtalk-avatar', initials(name));
     var meta = elem('span', 'vtalk-convo-meta');
-    meta.appendChild(elem('span', 'vtalk-convo-name', peer));
+    var nameEl = elem('span', 'vtalk-convo-name', name);
+    meta.appendChild(nameEl);
+    var pin = elem('span', 'vtalk-convo-pin', '📌');
+    pin.title = 'Kept — stays in your list after reload';
+    pin.hidden = !isKept(peer);
+    if (isKept(peer)) item.classList.add('vtalk-convo--kept');
     var dot = elem('span', 'vtalk-convo-badge');
     dot.hidden = true;
     item.appendChild(av);
     item.appendChild(meta);
+    item.appendChild(pin);
     item.appendChild(dot);
     item.addEventListener('click', function () { activate(peer); });
     els.convos.appendChild(item);
 
-    var c = { peer: peer, messages: [], unread: 0, item: item, dot: dot };
+    var c = { peer: peer, messages: [], unread: 0, item: item, dot: dot, nameEl: nameEl, av: av, pin: pin };
     convos[peer] = c;
     return c;
   }
@@ -127,25 +187,91 @@
 
   function buildHeader(peer) {
     els.head.textContent = '';
-    var av = elem('span', 'vtalk-avatar', initials(peer));
+    var name = displayName(peer);
+    var av = elem('span', 'vtalk-avatar', initials(name));
     var hmeta = elem('div', 'vtalk-head-meta');
-    hmeta.appendChild(elem('strong', null, peer));
+    hmeta.appendChild(elem('strong', null, name));
     hmeta.appendChild(elem('span', 'text-sm muted', 'End-to-end encrypted · disappears when read'));
+
+    var actions = elem('div', 'vtalk-head-actions');
+
+    // Rename: choose a name to show instead of the address (the address itself is
+    // never shown outside the verify panel once a chat is added).
+    var rbtn = elem('button', 'vtalk-head-btn');
+    rbtn.type = 'button';
+    rbtn.textContent = '✎ Rename';
+    rbtn.title = 'Show a name instead of the address';
+    rbtn.addEventListener('click', function () { renameContact(peer); });
+
+    // Keep: pin the contact so its row survives a reload (chats are ephemeral by
+    // default — nothing but this flag and the chosen name is ever persisted).
+    var kbtn = elem('button', 'vtalk-head-btn');
+    kbtn.type = 'button';
+    kbtn.textContent = isKept(peer) ? '📌 Kept' : '📌 Keep';
+    kbtn.classList.toggle('is-on', isKept(peer));
+    kbtn.title = isKept(peer)
+      ? 'This contact stays in your list after reload'
+      : 'Keep this contact in your list after reload';
+    kbtn.addEventListener('click', function () { toggleKeep(peer); });
 
     var vbtn = elem('button', 'vtalk-verify-btn');
     vbtn.type = 'button';
     setVerifyBtn(vbtn, peer);
     vbtn.addEventListener('click', function () { toggleVerify(peer); });
 
+    actions.appendChild(rbtn);
+    actions.appendChild(kbtn);
+    actions.appendChild(vbtn);
+
     els.head.appendChild(av);
     els.head.appendChild(hmeta);
-    els.head.appendChild(vbtn);
+    els.head.appendChild(actions);
 
     // Collapsible verify panel (hidden until the shield is clicked).
     var panel = elem('div', 'vtalk-verify');
     panel.id = 'vtalk-verify';
     panel.hidden = true;
     els.head.appendChild(panel);
+  }
+
+  // Rename / Keep mutate the contact store, persist, then refresh the row + header.
+  function renameContact(peer) {
+    peer = norm(peer);
+    var next = window.prompt('Name for this contact (leave blank to use the default)', displayName(peer));
+    if (next == null) return; // cancelled
+    var e = contactEntry(peer, true);
+    e.name = next.trim();
+    if (!e.name && !e.kept) delete contacts[peer];
+    saveContacts();
+    refreshContactUI(peer);
+  }
+  function toggleKeep(peer) {
+    peer = norm(peer);
+    var e = contactEntry(peer, true);
+    e.kept = !e.kept;
+    if (!e.name && !e.kept) delete contacts[peer];
+    saveContacts();
+    if (e.kept) getConvo(peer); // ensure the row exists even with no messages yet
+    refreshContactUI(peer);
+  }
+  function refreshContactUI(peer) {
+    peer = norm(peer);
+    var c = convos[peer];
+    if (c) {
+      var name = displayName(peer);
+      if (c.nameEl) c.nameEl.textContent = name;
+      if (c.av) c.av.textContent = initials(name);
+      if (c.pin) c.pin.hidden = !isKept(peer);
+      c.item.classList.toggle('vtalk-convo--kept', isKept(peer));
+    }
+    if (active === peer) buildHeader(peer);
+  }
+  // Restore kept contacts (per current identity) as empty rows on load / identity
+  // switch. Messages are never restored — only the id you chose to keep.
+  function restoreKeptContacts() {
+    Object.keys(contacts).forEach(function (peer) {
+      if (contacts[peer] && contacts[peer].kept) getConvo(peer);
+    });
   }
 
   function setVerifyBtn(btn, peer) {
@@ -171,7 +297,7 @@
   function renderVerify(panel, peer) {
     panel.textContent = '';
     panel.appendChild(elem('p', 'vtalk-verify-intro',
-      'Compare these safety numbers with ' + peer + ' over a call or in person. If they match, your conversation is private end to end and no one is in the middle.'));
+      'Compare these safety numbers with ' + displayName(peer) + ' (' + peer + ') over a call or in person. If they match, your conversation is private end to end and no one is in the middle.'));
     panel.appendChild(safetyRow('You', selfFp || '—', !selfFp));
     var info = peerInfo[peer];
     if (info && info.found) {
@@ -516,6 +642,9 @@
     els.convos.textContent = '';
     els.head.textContent = '';
     els.thread.textContent = '';
+    // Contacts are per identity — reload the new self's kept rows.
+    loadContacts();
+    restoreKeptContacts();
     els.main.setAttribute('data-empty', '1');
     els.input.disabled = true;
     els.send.disabled = true;
@@ -536,6 +665,10 @@
   });
   els.input.addEventListener('input', autogrow);
 
+  // Restore kept contacts for the starting identity before the stream opens, so a
+  // reload brings back the ids you chose to keep (never their messages).
+  loadContacts();
+  restoreKeptContacts();
   connect();
   window.addEventListener('beforeunload', function () { if (es) es.close(); });
 })();

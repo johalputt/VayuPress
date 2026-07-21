@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	avatarpkg "github.com/johalputt/vayupress/internal/avatar"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	vmail "github.com/johalputt/vayupress/internal/vayuos/mail"
 )
@@ -420,6 +421,21 @@ func (a *App) vayuAccountCard(ctx context.Context, ac vmail.Account) string {
 		`<input class="input input--sm" type="file" name="avatar" accept="image/png,image/jpeg,image/gif,image/webp" aria-label="Profile picture">` +
 		`<button class="btn btn--sm" type="submit">Upload</button></form>` + removeBtn +
 		`<span class="text-xs muted">PNG, JPEG, GIF or WebP · up to 500 KB.</span></div>`)
+	// Prefer not to upload a file? Pick a prebuilt cartoon instead — each button
+	// sets it in one click (same as a member's avatar picker). Rendered from a
+	// same-origin preview endpoint so no external asset is fetched.
+	var cartoons strings.Builder
+	qEmail := qparam(ac.Email)
+	for n := 0; n < avatarpkg.CartoonCount; n++ {
+		ns := strconv.Itoa(n)
+		cartoons.WriteString(`<button type="button" class="vm-cartoon" title="Use this cartoon" ` +
+			`hx-post="/os/vayumail/accounts/avatar/cartoon" ` + hxVals("email", ac.Email, "n", ns) +
+			` hx-target="#vm-accounts-list" hx-swap="innerHTML">` +
+			`<img class="vm-cartoon__img" src="/os/vayumail/accounts/avatar/cartoon?email=` + qEmail + `&amp;n=` + ns +
+			`" alt="Cartoon ` + ns + `" width="40" height="40" loading="lazy"></button>`)
+	}
+	c.WriteString(`<div class="vm-acct__avatar-pick"><span class="field-label">Or choose an avatar</span>` +
+		`<div class="vm-cartoon-row">` + cartoons.String() + `</div></div>`)
 	c.WriteString(`<div class="vm-acct__meta muted text-sm">Created ` + ac.CreatedAt.Format("2006-01-02") + `</div>`)
 	c.WriteString(`<div class="vm-acct__actions">` + passBtn + twofaBtn + toggleBtn + deleteBtn + `</div>`)
 	c.WriteString(`</div>`)
