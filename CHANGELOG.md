@@ -8,6 +8,23 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.97] — 2026-07-21
+
+### Added
+- **New-mail desktop notifications in the console.** VayuOS now watches every
+  mailbox you can access and raises a desktop notification the moment new mail
+  arrives in ANY of them — even while you're on another console page — and
+  **clicking the notification opens that mailbox directly**. A new read-only
+  endpoint `GET /os/vayumail/unseen` returns per-mailbox unseen counts (an admin
+  sees every mailbox across the primary and any mail-enabled secondary domain; a
+  staff member sees only their own assigned mailbox — the same scoping as the
+  mailbox pages), and `admin-os.js` polls it, diffing counts to fire the alert.
+  The first poll only records a baseline, so already-unread mail is never
+  announced on load. Desktop notifications require a secure context (HTTPS); on
+  the http `.onion` (Tor) the browser API is unavailable, so it degrades to a
+  clickable in-app toast plus an unread badge in the tab title — both of which
+  also open the mailbox in one click.
+
 ## [3.14.96] — 2026-07-21
 
 ### Changed

@@ -73,6 +73,7 @@ function toast(msg, kind) {
     el.classList.add('leaving');
     setTimeout(function () { el.remove(); }, 200);
   }, 3800);
+  return el; // callers may attach a click handler (e.g. the new-mail notifier)
 }
 window.vpToast = toast;
 
@@ -820,6 +821,94 @@ $$('[data-setting-key]').forEach(function (el) {
   // iOS never fires beforeinstallprompt — reveal the button so iPhone/iPad users
   // still get the install hint.
   if (isIOS) { btn.hidden = false; }
+})();
+
+/* ── New-mail notifications ──────────────────────────────────────────────────
+   Polls /os/vayumail/unseen on every console page and raises a desktop
+   notification the moment any mailbox's unseen count rises — so a new mail in
+   ANY mailbox reaches you even when you're on another VayuOS page. Clicking the
+   notification opens that mailbox directly. The baseline lives only here (no
+   server state); the first poll just records counts and never notifies (so
+   already-unread mail is not announced on load). Desktop notifications need a
+   secure context (HTTPS); on the http .onion (Tor) the API is unavailable, so it
+   degrades to a clickable toast + a title badge. Endpoint auth already scopes
+   what you see (admin = all mailboxes; staff = only their own), so this just
+   renders whatever it is allowed to return. */
+(function initMailNotify() {
+  if (!document.querySelector('.vp-os')) return;        // console pages only
+  if (document.querySelector('.auth-page')) return;     // not the sign-in shell
+  var ENDPOINT = '/os/vayumail/unseen';
+  var POLL_MS = 60000;
+  var baseline = null;                 // address -> unseen; null until first poll
+  var notifyReady = false;
+  var baseTitle = document.title;
+  var titleCount = 0;
+
+  function secureCtx() { return window.isSecureContext !== false; }
+  function ensurePerm() {
+    if (!('Notification' in window) || !secureCtx()) return;
+    if (Notification.permission === 'granted') { notifyReady = true; return; }
+    if (Notification.permission === 'default') {
+      try {
+        Notification.requestPermission().then(function (p) { notifyReady = (p === 'granted'); });
+      } catch (e) { /* Safari <16 uses a callback form; ignore */ }
+    }
+  }
+  function deepLink(key) { return '/os/vayumail/inbox?user=' + encodeURIComponent(key); }
+  function goTo(box) { try { window.focus(); } catch (e) { /* no-op */ } window.location.href = deepLink(box.key); }
+
+  function announce(box, delta) {
+    var msg = (delta > 1 ? delta + ' new messages' : 'New message') + ' in ' + box.address;
+    if (notifyReady && ('Notification' in window)) {
+      try {
+        var n = new Notification('VayuMail — new mail', { body: msg, tag: 'vmail:' + box.address, renotify: true });
+        n.onclick = function () { goTo(box); n.close(); };
+        return;
+      } catch (e) { /* fall through to the in-app toast */ }
+    }
+    if (typeof window.vpToast === 'function') {
+      // Clickable toast: an operator on an .onion or with notifications denied
+      // still gets the alert and a one-click way to the mailbox.
+      var t = window.vpToast(msg + ' — open', 'info');
+      if (t && t.addEventListener) { t.style.cursor = 'pointer'; on(t, 'click', function () { goTo(box); }); }
+    }
+  }
+  function bumpTitle(n) {
+    titleCount += n;
+    document.title = titleCount > 0 ? '(' + titleCount + ') ' + baseTitle : baseTitle;
+  }
+  function clearTitle() { titleCount = 0; document.title = baseTitle; }
+  window.addEventListener('focus', clearTitle);
+
+  function poll() {
+    fetch(ENDPOINT, { headers: { 'Accept': 'application/json' } })
+      .then(function (res) { return res.ok ? res.json() : null; })
+      .then(function (list) {
+        if (!Array.isArray(list)) return;
+        var seen = Object.create(null);
+        list.forEach(function (b) { seen[b.address] = true; });
+        if (baseline === null) {                 // first poll: record, never notify
+          baseline = Object.create(null);
+          list.forEach(function (b) { baseline[b.address] = b.unseen; });
+          ensurePerm();
+          return;
+        }
+        var totalNew = 0;
+        list.forEach(function (b) {
+          var prev = baseline[b.address] || 0;
+          if (b.unseen > prev) { var delta = b.unseen - prev; totalNew += delta; announce(b, delta); }
+          baseline[b.address] = b.unseen;
+        });
+        Object.keys(baseline).forEach(function (addr) { if (!seen[addr]) delete baseline[addr]; });
+        if (totalNew > 0) bumpTitle(totalNew);
+      })
+      .catch(function () { /* offline / transient — try again next tick */ });
+  }
+  // First poll a few seconds after load (so a fresh sign-in isn't spammed), then
+  // on a steady interval. Background tabs are throttled by the browser, which is
+  // fine — the notification is exactly what a backgrounded operator wants.
+  setTimeout(poll, 4000);
+  setInterval(poll, POLL_MS);
 })();
 
 })(); // end IIFE
