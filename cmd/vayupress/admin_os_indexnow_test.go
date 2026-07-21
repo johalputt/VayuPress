@@ -8,6 +8,33 @@ import (
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 )
 
+// TestValidIndexNowKey checks the IndexNow key format rule (8–128 chars of
+// a–z, A–Z, 0–9 or hyphen) used to catch a misconfigured key before submitting.
+func TestValidIndexNowKey(t *testing.T) {
+	good := []string{"abcd1234", "0123456789abcdef0123456789abcdef", "a-b-c-d-1234", strings.Repeat("a", 128)}
+	for _, k := range good {
+		if !validIndexNowKey(k) {
+			t.Errorf("expected %q to be a valid IndexNow key", k)
+		}
+	}
+	bad := []string{"", "short", "abcd123", strings.Repeat("a", 129), "has space", "has_underscore", "emoji✓key", "with\nnewline"}
+	for _, k := range bad {
+		if validIndexNowKey(k) {
+			t.Errorf("expected %q to be rejected as an IndexNow key", k)
+		}
+	}
+}
+
+// TestIndexNowStatusHint maps the overloaded IndexNow status codes to advice.
+func TestIndexNowStatusHint(t *testing.T) {
+	cases := map[int]string{200: "accepted", 202: "accepted", 400: "invalid", 403: "key", 422: "host", 429: "rate"}
+	for code, want := range cases {
+		if got := indexNowStatusHint(code); !strings.Contains(strings.ToLower(got), want) {
+			t.Errorf("hint for %d = %q, want it to mention %q", code, got, want)
+		}
+	}
+}
+
 // TestOSIndexNowBadgeStates covers the four states the per-post IndexNow badge
 // can render: submitted, failed, never-sent, and draft (not public).
 func TestOSIndexNowBadgeStates(t *testing.T) {

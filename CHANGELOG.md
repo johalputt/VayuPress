@@ -8,7 +8,42 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
-## [3.14.74] — 2026-07-21
+## [3.14.75] — 2026-07-21
+
+### Added
+- **Search engine & AI crawler block (Operations → Power & Maintenance).** A
+  single on/off power switch that takes the public site dark to automated
+  indexers — classic search engines and AI crawlers alike — with three
+  reinforcing layers so it holds even against crawlers that ignore robots.txt.
+  First, `robots.txt` disallows everything and names the major AI bots
+  explicitly (GPTBot, ClaudeBot, PerplexityBot, Google-Extended, CCBot,
+  Bytespider, Amazonbot, meta-externalagent, …), served instantly with no
+  artefact regeneration. Second, a hard **403** for any request whose
+  User-Agent matches a known search-engine or AI crawler, reusing VayuShield's
+  compiled bot database. Third, `X-Robots-Tag: noindex, nofollow` on every
+  remaining public response, so an unknown crawler with a generic User-Agent
+  still won't index a page. Humans, the VayuOS console, health probes and
+  **VayuMCP** (first-party AI connect, not crawling) are never affected. While
+  the block is on, IndexNow is automatically paused — the site won't invite the
+  crawlers it's shutting out.
+- **Live IndexNow self-test (SEO page).** A **Test IndexNow now** button submits
+  your homepage through the exact on-publish path and reports the precise
+  outcome — key configured?, domain public?, key format valid?, endpoint
+  accepted (HTTP 200/202) or rejected (with a plain-English reason for 400 / 403
+  / 422 / 429) — so "is instant indexing working?" is answerable in one click.
+
+### Fixed
+- **IndexNow ping now works when the key was pasted with stray whitespace.** A
+  trailing newline or space on the submission key silently broke IndexNow on
+  **both** sides at once: the `keyLocation` URL became malformed and the
+  verification-file handler's exact match failed, so every submission was
+  rejected. The key is now trimmed at its single source (`indexNowKey`), fixing
+  the ping and the `/.well-known/<key>.txt` verification file together, and the
+  key-file handler tolerates a trailing-whitespace request path too.
+- **IndexNow failures are now legible.** Rejections record and surface the HTTP
+  status *with* an explanation (e.g. "HTTP 403 — key not found or not matching
+  the key file at keyLocation"), and the submitter sends an explicit
+  `Content-Type: application/json; charset=utf-8` and `User-Agent`.
 
 ### Changed
 - **Maintenance mode: the "VayuOS is never locked out" guarantee is now covered

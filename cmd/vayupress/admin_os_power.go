@@ -154,7 +154,8 @@ func (a *App) handleOSPower(w http.ResponseWriter, r *http.Request) {
 	if a.siteSettings != nil {
 		msg = a.siteSettings.Get(r.Context(), settings.KeyMaintenanceMessage)
 	}
-	writeOSHTML(w, adminOSLayout(nonce, "Power & Maintenance", "operations", cfg, htmpl.HTML(osPowerBody(nonce, on, msg))))
+	crawlersOff := a.crawlersBlocked(r.Context())
+	writeOSHTML(w, adminOSLayout(nonce, "Power & Maintenance", "operations", cfg, htmpl.HTML(osPowerBody(nonce, on, msg, crawlersOff))))
 }
 
 // handleOSPowerPreview renders the public maintenance page inside the console so
@@ -172,11 +173,23 @@ func (a *App) handleOSPowerPreview(w http.ResponseWriter, r *http.Request) {
 // osPowerBody builds the control page. The inline script (nonce'd) drives the
 // toggle and the restart/shutdown buttons; all three POST to the CSRF-protected
 // /os/api/power/* endpoints.
-func osPowerBody(nonce string, on bool, message string) string {
+func osPowerBody(nonce string, on bool, message string, crawlersOff bool) string {
 	esc := html.EscapeString
 	onAttr := "0"
 	if on {
 		onAttr = "1"
+	}
+	crawlAttr := "0"
+	crawlBadge := `<span class="badge badge--ok">Allowed</span>`
+	crawlToggleLabel := "Block all crawlers"
+	crawlToggleClass := "btn btn--danger btn--sm"
+	crawlHint := "Search engines and AI crawlers <strong>can</strong> index your public site. Turn this on to shut them out."
+	if crawlersOff {
+		crawlAttr = "1"
+		crawlBadge = `<span class="badge badge--warn">Blocked</span>`
+		crawlToggleLabel = "Allow crawlers"
+		crawlToggleClass = "btn btn--primary btn--sm"
+		crawlHint = "Search engines and AI crawlers are <strong>blocked</strong> — robots.txt disallows everything, known crawler bots get a 403, and every public page is marked <code>noindex</code>."
 	}
 	statusBadge := `<span class="badge badge--ok">Live</span>`
 	toggleLabel := "Turn maintenance ON"
@@ -208,6 +221,17 @@ func osPowerBody(nonce string, on bool, message string) string {
       <a class="btn btn--sm btn--ghost" href="/os/power/preview" target="_blank" rel="noopener">Preview the page ↗</a>
     </div>
   </div>
+</div>
+
+<div class="card" data-crawlers-card>
+  <div class="settings-row">
+    <div class="settings-row-info">
+      <div class="settings-row-label">Search engine &amp; AI crawler access ` + crawlBadge + `</div>
+      <div class="settings-row-hint" data-crawlers-hint>` + crawlHint + `</div>
+    </div>
+    <button type="button" class="` + crawlToggleClass + `" data-crawlers-toggle data-on="` + crawlAttr + `">` + crawlToggleLabel + `</button>
+  </div>
+  <div class="settings-row-hint mt-2 text-xs muted">Blocks Google, Bing, GPTBot, ClaudeBot, PerplexityBot and other AI/search bots. Your visitors, the VayuOS console and VayuMCP are never affected.</div>
 </div>
 
 <div class="card">
@@ -251,6 +275,16 @@ if(saveBtn){saveBtn.addEventListener('click',function(){
   post('/os/api/power/maintenance',{message:(ta&&ta.value)||''}).then(function(r){return r.json();}).then(function(j){
     toast(j&&j.ok?'Message saved.':'Could not save the message','ok');
   }).catch(function(){toast('Network error','error');});
+});}
+var crawlBtn=document.querySelector('[data-crawlers-toggle]');
+if(crawlBtn){crawlBtn.addEventListener('click',function(){
+  var block=crawlBtn.getAttribute('data-on')!=='1';
+  if(block&&!window.confirm('Block all search engines and AI crawlers now? Your site stops being indexed until you allow crawlers again.')){return;}
+  crawlBtn.disabled=true;
+  post('/os/api/power/crawlers',{block:block}).then(function(r){return r.json();}).then(function(j){
+    if(j&&j.ok){toast(block?'Search engines & AI crawlers are now blocked.':'Crawlers are allowed again — your site can be indexed.','ok');setTimeout(function(){location.reload();},700);}
+    else{crawlBtn.disabled=false;toast((j&&j.error&&j.error.message)||'Could not change crawler access','error');}
+  }).catch(function(){crawlBtn.disabled=false;toast('Network error','error');});
 });}
 var reBtn=document.querySelector('[data-power-restart]');
 if(reBtn){reBtn.addEventListener('click',function(){

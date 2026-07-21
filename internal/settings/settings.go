@@ -28,6 +28,13 @@ const (
 	KeyMaintenanceMode    = "site.maintenance"
 	KeyMaintenanceMessage = "site.maintenance_message"
 
+	// KeyBlockCrawlers, when "on", hard-blocks search-engine and AI crawlers from
+	// the PUBLIC site: robots.txt disallows everything, known crawler user-agents
+	// (Googlebot, Bingbot, GPTBot, ClaudeBot, PerplexityBot, …) get a 403, and
+	// every public response carries X-Robots-Tag: noindex as a backstop. The
+	// VayuOS console and operational endpoints are never affected. Defaults OFF.
+	KeyBlockCrawlers = "site.block_crawlers"
+
 	// Business-website mode (VayuOS → Website). KeySiteMode selects what the
 	// root domain serves: "" / "blog" keeps the blog at the root (the historic
 	// behaviour — existing installs never change on update), "business" serves
@@ -319,6 +326,7 @@ var AllKeys = map[string]bool{
 	KeyMembershipButtons:       true,
 	KeyMaintenanceMode:         true,
 	KeyMaintenanceMessage:      true,
+	KeyBlockCrawlers:           true,
 	KeyThemePrimaryLight:       true,
 	KeyThemePrimaryDark:        true,
 	KeyThemeAccentLight:        true,

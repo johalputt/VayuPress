@@ -34,6 +34,11 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	// visitors. A near-free pass-through when off; always lets /os, the health
 	// probes and the signed-in operator through so the site can be recovered.
 	r.Use(a.maintenanceMiddleware)
+	// Search-engine / AI crawler block — when the operator has taken the public
+	// site dark to indexers (VayuOS → Power & Maintenance), 403 known crawler
+	// user-agents and mark every other public response noindex. A near-free
+	// pass-through when off; never touches /os, health or well-known/MCP/OAuth.
+	r.Use(a.crawlerBlockMiddleware)
 	// VayuTor onion routing — maps an incoming <onion>.onion Host to the clearnet
 	// domain it serves (so per-domain routing works over Tor), and advertises the
 	// onion on clearnet responses via Onion-Location. Runs BEFORE the domain

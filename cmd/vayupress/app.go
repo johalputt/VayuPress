@@ -5,8 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -355,11 +357,16 @@ func (a *App) indexNowKey() string {
 	if a.secrets != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
-		if k, _ := a.secrets.ProviderSecret(ctx, secrets.ProviderIndexNow); k != "" {
-			return k
+		// Trim: a key pasted into the admin field often carries a trailing newline
+		// or space. Left untrimmed it silently breaks BOTH sides of IndexNow — the
+		// keyLocation URL becomes malformed and the verification-file handler's
+		// exact match fails — so every submission is rejected. Trimming here fixes
+		// the ping and the key file together, from one source of truth.
+		if secret, _ := a.secrets.ProviderSecret(ctx, secrets.ProviderIndexNow); strings.TrimSpace(secret) != "" {
+			return strings.TrimSpace(secret)
 		}
 	}
-	return config.Cfg.IndexNowKey
+	return strings.TrimSpace(config.Cfg.IndexNowKey)
 }
 
 // pingIndexNow announces a published post's URL to IndexNow. It returns the
@@ -374,6 +381,11 @@ func (a *App) pingIndexNow(slug string) (state, detail string) {
 	// de-anonymising the install. Clearnet installs are unaffected.
 	if config.Cfg.OnionMode {
 		return "skipped", "Tor/anonymous mode — clearnet callbacks disabled"
+	}
+	// If the operator has blocked search engines and AI crawlers (VayuOS → Power
+	// & Maintenance), do not turn around and invite them via IndexNow.
+	if a.crawlersBlocked(context.Background()) {
+		return "skipped", "search-engine/AI crawler blocking is on"
 	}
 	indexNowKey := a.indexNowKey()
 	if indexNowKey == "" {
@@ -407,42 +419,147 @@ func (a *App) pingIndexNow(slug string) (state, detail string) {
 		})
 		return "skipped", "suppressed by system mode (" + string(m) + ")"
 	}
-	body, err := json.Marshal(map[string]interface{}{
-		"host": config.Cfg.Domain, "key": indexNowKey,
-		"keyLocation": "https://" + config.Cfg.Domain + "/.well-known/" + indexNowKey + ".txt",
-		"urlList":     []string{"https://" + config.Cfg.Domain + "/" + slug},
-	})
-	if err != nil {
-		logging.LogError("indexnow", "marshal failed: "+slug, err.Error())
-		dbpkg.RecordIndexNow(slug, dbpkg.IndexNowFailed, 0, err.Error())
-		return "failed", err.Error()
-	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, "POST", "https://api.indexnow.org/indexnow", bytes.NewReader(body))
+	status, err := a.indexNowSubmit(ctx, indexNowKey, []string{"https://" + config.Cfg.Domain + "/" + slug})
 	if err != nil {
-		logging.LogError("indexnow", "build request failed: "+slug, err.Error())
+		logging.LogError("indexnow", "submission failed: "+slug, err.Error())
 		dbpkg.RecordIndexNow(slug, dbpkg.IndexNowFailed, 0, err.Error())
 		return "failed", err.Error()
 	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err2 := a.outboundClient.Do(req)
-	if err2 != nil {
-		logging.LogError("indexnow", "submission failed: "+slug, err2.Error())
-		dbpkg.RecordIndexNow(slug, dbpkg.IndexNowFailed, 0, err2.Error())
-		return "failed", err2.Error()
-	}
-	defer resp.Body.Close()
 	// IndexNow returns 200/202 on accept; surface anything else for operators.
-	if resp.StatusCode >= 300 {
-		detail := fmt.Sprintf("endpoint returned HTTP %d", resp.StatusCode)
+	if status >= 300 {
+		detail := fmt.Sprintf("endpoint returned HTTP %d (%s)", status, indexNowStatusHint(status))
 		logging.LogError("indexnow", "submission rejected: "+slug, detail)
-		dbpkg.RecordIndexNow(slug, dbpkg.IndexNowFailed, resp.StatusCode, detail)
+		dbpkg.RecordIndexNow(slug, dbpkg.IndexNowFailed, status, detail)
 		return "failed", detail
 	}
 	logging.LogInfo("indexnow", "submitted "+slug)
-	dbpkg.RecordIndexNow(slug, dbpkg.IndexNowSubmitted, resp.StatusCode, "")
+	dbpkg.RecordIndexNow(slug, dbpkg.IndexNowSubmitted, status, "")
 	return "submitted", ""
+}
+
+// indexNowSubmit performs the raw IndexNow submission: it POSTs the host, key,
+// keyLocation and URL list to the shared IndexNow endpoint (which fans out to
+// Bing, Yandex and every participating engine) and returns the HTTP status code.
+// A status < 300 means accepted. It applies no gating — callers own the
+// mode/onion/published/crawler-block checks — so it can be reused by the manual
+// self-test as well as the on-publish ping. The key must already be trimmed.
+func (a *App) indexNowSubmit(ctx context.Context, indexNowKey string, urls []string) (int, error) {
+	body, err := json.Marshal(map[string]interface{}{
+		"host":        config.Cfg.Domain,
+		"key":         indexNowKey,
+		"keyLocation": "https://" + config.Cfg.Domain + "/.well-known/" + indexNowKey + ".txt",
+		"urlList":     urls,
+	})
+	if err != nil {
+		return 0, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.indexnow.org/indexnow", bytes.NewReader(body))
+	if err != nil {
+		return 0, err
+	}
+	req.Header.Set("Content-Type", "application/json; charset=utf-8")
+	req.Header.Set("User-Agent", "VayuPress-IndexNow/1.0 (+https://"+config.Cfg.Domain+")")
+	resp, err := a.outboundClient.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 8<<10)) // drain so the connection can be reused
+	return resp.StatusCode, nil
+}
+
+// validIndexNowKey reports whether key meets IndexNow's format rule: 8–128
+// characters, each a–z, A–Z, 0–9 or hyphen. An out-of-spec key is rejected by
+// the endpoint, so validating up front turns a silent failure into clear advice.
+func validIndexNowKey(key string) bool {
+	if len(key) < 8 || len(key) > 128 {
+		return false
+	}
+	for _, c := range key {
+		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-') {
+			return false
+		}
+	}
+	return true
+}
+
+// handleOSIndexNowTest runs a live, end-to-end IndexNow self-test and reports the
+// exact outcome, so an operator can see at a glance whether instant indexing
+// works — and if not, precisely why. It submits the site homepage (a public,
+// idempotent URL) through the very same path the on-publish ping uses, and maps
+// every failure mode to a specific, actionable message.
+func (a *App) handleOSIndexNowTest(w http.ResponseWriter, r *http.Request) {
+	if !a.isAdminRequest(r) {
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", "administrator access required", "")
+		return
+	}
+	fail := func(detail string) {
+		writeJSON(w, r, http.StatusOK, map[string]any{"ok": false, "detail": detail})
+	}
+	if config.Cfg.OnionMode {
+		fail("IndexNow is disabled in Tor/anonymous mode — clearnet callbacks are never made.")
+		return
+	}
+	if a.crawlersBlocked(r.Context()) {
+		fail("Search engines & AI crawlers are currently blocked (Power & Maintenance), so IndexNow is paused. Allow crawlers to use it.")
+		return
+	}
+	key := a.indexNowKey()
+	if key == "" {
+		fail("No IndexNow key is configured. Add one under API Keys → IndexNow, or set the INDEXNOW_KEY environment variable, then test again.")
+		return
+	}
+	if !validIndexNowKey(key) {
+		fail("The IndexNow key is not a valid format — it must be 8–128 characters using only a–z, A–Z, 0–9 and hyphen. Fix it under API Keys → IndexNow.")
+		return
+	}
+	d := strings.TrimSpace(config.Cfg.Domain)
+	if d == "" || strings.HasPrefix(d, "localhost") || strings.HasPrefix(d, "127.0.0.1") {
+		fail("Your site domain looks unset or local (" + d + "). IndexNow needs a real public domain to submit and to serve the verification file.")
+		return
+	}
+	if m := mode.Global.Current(); m == mode.ModeReadOnly || m == mode.ModeQuarantined || m == mode.ModeMaintenance {
+		fail("Submissions are suppressed while the system is in " + string(m) + " mode. Return to normal mode to submit.")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 12*time.Second)
+	defer cancel()
+	status, err := a.indexNowSubmit(ctx, key, []string{"https://" + d + "/"})
+	if err != nil {
+		fail("Could not reach the IndexNow endpoint: " + err.Error() + ". Check outbound network / DNS from the server.")
+		return
+	}
+	if status >= 300 {
+		fail(fmt.Sprintf("IndexNow rejected the submission — HTTP %d (%s). Verify the key file is reachable at https://%s/.well-known/%s.txt.", status, indexNowStatusHint(status), d, key))
+		return
+	}
+	logging.LogInfo("indexnow", "self-test submitted homepage successfully")
+	writeJSON(w, r, http.StatusOK, map[string]any{
+		"ok":     true,
+		"status": status,
+		"detail": fmt.Sprintf("IndexNow accepted your submission (HTTP %d). Engines will crawl updated URLs shortly. Every post you publish is submitted automatically.", status),
+	})
+}
+
+// indexNowStatusHint translates an IndexNow HTTP status into a short, actionable
+// explanation for operators (the protocol overloads a handful of codes).
+func indexNowStatusHint(status int) string {
+	switch status {
+	case http.StatusOK, http.StatusAccepted:
+		return "accepted"
+	case http.StatusBadRequest:
+		return "invalid request format"
+	case http.StatusForbidden:
+		return "key not found or not matching the key file at keyLocation"
+	case http.StatusUnprocessableEntity:
+		return "URLs don't belong to the host, or the key doesn't match"
+	case http.StatusTooManyRequests:
+		return "rate limited — too many submissions"
+	default:
+		return "unexpected status"
+	}
 }
 
 // =============================================================================

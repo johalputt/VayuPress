@@ -72,6 +72,15 @@ func (a *App) handleFeed(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleRobots(w http.ResponseWriter, r *http.Request) {
+	// When the operator has blocked search engines and AI crawlers (VayuOS →
+	// Power & Maintenance), serve a disallow-everything robots.txt directly — no
+	// artefact regeneration needed, so the switch takes effect immediately.
+	if a.crawlersBlocked(r.Context()) {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		_, _ = w.Write([]byte(crawlerBlockedRobotsTxt))
+		return
+	}
 	rel := "robots.txt"
 	if a.multiDomain(r) {
 		rel = "robots_d_" + domCacheDir(a.contentScope(r)) + ".txt"

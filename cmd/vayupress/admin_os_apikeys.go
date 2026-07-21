@@ -95,8 +95,8 @@ var knownProviders = []providerMeta{
 // active key (managed in the API Keys console, with env fallback), so IndexNow
 // works without the operator ever uploading a static file. Anything else 404s.
 func (a *App) handleIndexNowKeyFile(w http.ResponseWriter, r *http.Request) {
-	file := chi.URLParam(r, "file")
-	key := a.indexNowKey()
+	file := strings.TrimSpace(chi.URLParam(r, "file"))
+	key := a.indexNowKey() // already trimmed at the source
 	if key == "" || file != key+".txt" {
 		http.NotFound(w, r)
 		return

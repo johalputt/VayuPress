@@ -92,6 +92,22 @@ func (a *App) handleOSSEONative(w http.ResponseWriter, r *http.Request) {
 		return `<span class="badge badge--warn">` + html.EscapeString(when) + `</span>`
 	}
 
+	// Instant-indexing (IndexNow) status: is a usable key configured, and where is
+	// its public verification file? Shown alongside a one-click live self-test.
+	inKey := a.indexNowKey()
+	var indexNowStatus string
+	switch {
+	case config.Cfg.OnionMode:
+		indexNowStatus = `<span class="badge badge--warn">Off</span> IndexNow is disabled in Tor/anonymous mode.`
+	case inKey == "":
+		indexNowStatus = `<span class="badge badge--warn">No key</span> No IndexNow key is configured. Add one under <a href="/os/apikeys">API Keys → IndexNow</a> or set <code>INDEXNOW_KEY</code>.`
+	case !validIndexNowKey(inKey):
+		indexNowStatus = `<span class="badge badge--danger">Invalid key</span> The key must be 8–128 characters of a–z, A–Z, 0–9 or hyphen — IndexNow will reject the current value.`
+	default:
+		link := "/.well-known/" + inKey + ".txt"
+		indexNowStatus = `<span class="badge badge--ok">Key configured</span> Verification file: <a href="` + link + `" target="_blank" rel="noopener" class="mono">https://` + html.EscapeString(config.Cfg.Domain) + link + `</a>`
+	}
+
 	body := `<div class="page-header">
   <h1>SEO</h1>
   <button type="button" class="btn btn--primary btn--sm" data-seo-regenerate>Regenerate artefacts</button>
@@ -124,7 +140,34 @@ func (a *App) handleOSSEONative(w http.ResponseWriter, r *http.Request) {
     <tbody>` + checksRows + `</tbody>
   </table></div>
 </div>
-<script nonce="` + nonce + `" src="/os/static/js/admin-os-intel.js"></script>`
+
+<div class="card mt-6">
+  <div class="card-title">Instant indexing (IndexNow)</div>
+  <p class="text-sm muted">IndexNow tells Bing, Yandex and other participating engines the moment you publish or update a post, so changes get crawled in minutes instead of days. Every published post is submitted automatically — run a live test below to confirm the whole path works.</p>
+  <p class="text-sm mt-2">` + indexNowStatus + `</p>
+  <div class="mt-3"><button type="button" class="btn btn--primary btn--sm" data-indexnow-test>Test IndexNow now</button></div>
+  <div class="seo-status mt-3" data-indexnow-result hidden></div>
+</div>
+<script nonce="` + nonce + `" src="/os/static/js/admin-os-intel.js"></script>
+<script nonce="` + nonce + `">
+(function(){'use strict';
+function csrf(){var m=document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);return m?decodeURIComponent(m[1]):'';}
+var btn=document.querySelector('[data-indexnow-test]');
+var out=document.querySelector('[data-indexnow-result]');
+if(btn&&out){btn.addEventListener('click',function(){
+  btn.disabled=true;out.hidden=false;out.className='seo-status mt-3';out.textContent='Testing IndexNow…';
+  fetch('/os/api/seo/indexnow-test',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},body:'{}'})
+   .then(function(r){return r.json();})
+   .then(function(j){
+     btn.disabled=false;
+     var ok=j&&j.ok;
+     out.className='seo-status mt-3 '+(ok?'editor-status--ok':'editor-status--warn');
+     out.textContent=(ok?'✓ ':'✕ ')+((j&&j.detail)||(j&&j.error&&j.error.message)||'Test failed.');
+   })
+   .catch(function(){btn.disabled=false;out.className='seo-status mt-3 editor-status--danger';out.textContent='✕ Network error running the test.';});
+});}
+})();
+</script>`
 
 	writeOSHTML(w, adminOSLayout(nonce, "SEO", "seo", cfg, htmpl.HTML(body)))
 }

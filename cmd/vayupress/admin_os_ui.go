@@ -302,6 +302,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/power/maintenance", a.handleOSPowerMaintenance)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/power/restart", a.handleOSPowerRestart)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/power/shutdown", a.handleOSPowerShutdown)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/power/crawlers", a.handleOSPowerCrawlers)
 
 		// Monetization — payment order ledger + gateway config, and the
 		// activation-gated advertising surface.
@@ -507,6 +508,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 
 		// CSRF-protected writes
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/seo/regenerate", a.handleSEORegenerate)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/seo/indexnow-test", a.handleOSIndexNowTest)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/settings", a.handleOSSettingsAPI)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/posts/quick-create", a.handleOSQuickCreatePost)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/posts/status", a.handleOSPostStatus)
