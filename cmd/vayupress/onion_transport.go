@@ -191,8 +191,10 @@ func onionDeliverEnvelope(ctx context.Context, client *http.Client, peerHost str
 	}
 	// Strict SSRF gate: the request URL is built from peerHost, so it must be an
 	// exact bare v3 onion — no port/path/userinfo an attacker could smuggle in.
+	// The anchored regexp is matched directly on peerHost (the value used in the
+	// URL) so it reads as a sanitising barrier on that exact dataflow.
 	peerHost = strings.ToLower(strings.TrimSpace(peerHost))
-	if !isDeliverableOnionHost(peerHost) {
+	if !deliverableOnionRe.MatchString(peerHost) {
 		return "", false, false, errNotOnion
 	}
 	payload, merr := json.Marshal(onionEnvelope{
@@ -247,9 +249,10 @@ func (a *App) forwardReadReceiptOverOnion(id, sender, recipient string) {
 		return
 	}
 	// Strict SSRF gate: the receipt URL is built from this host, so require an
-	// exact bare v3 onion — a malformed sender can't redirect the request.
+	// exact bare v3 onion — a malformed sender can't redirect the request. The
+	// anchored regexp is matched directly on the host used in the URL.
 	host := strings.ToLower(strings.TrimSpace(hostPart(sender)))
-	if !isDeliverableOnionHost(host) {
+	if !deliverableOnionRe.MatchString(host) {
 		return
 	}
 	client, err := newOnionHTTPClient(socks)

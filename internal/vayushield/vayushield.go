@@ -1019,7 +1019,10 @@ func (m *Manager) serveJailed(w http.ResponseWriter, r *http.Request, ipKey, rea
 			return
 		}
 	}
-	m.serveThrottled(w, r, http.StatusTooManyRequests, reason, "10")
+	// Short Retry-After: a browser navigation gets the calm auto-retrying page
+	// (serveThrottled) and is bounced back into the solvable challenge quickly, so
+	// a jailed human recovers in seconds rather than being left waiting.
+	m.serveThrottled(w, r, http.StatusTooManyRequests, reason, "5")
 }
 
 // serveThrottled writes a small, cheap rejection (429/503) with a Retry-After.
@@ -1496,12 +1499,13 @@ function run(){
   }).catch(function(){reset('Verification error — tap to try again.');});
 }
 if(cb){
-  // Human-in-the-loop: the visitor ticks the box to prove intent; the proof of
-  // work then runs and clears the challenge. Keyboard/AT users get the same path.
-  cb.addEventListener('change',function(){if(cb.checked){run();}});
-}else{
-  // No checkbox present (a minimal host page) — fall back to the silent auto-solve.
-  run();
+  // The box mirrors progress and lets a visitor retry if the auto-run fails.
+  cb.addEventListener('change',function(){if(cb.checked&&!running){run();}});
 }
+// Auto-start so a false-positive jail (e.g. the operator's own IP after a load
+// test) self-heals in one page load with NO interaction — the box ticks itself
+// to show it is working. A real bot that never runs this script simply never
+// clears. Solving pardons the jail, so the visitor is through on the reload.
+run();
 })();`
 }

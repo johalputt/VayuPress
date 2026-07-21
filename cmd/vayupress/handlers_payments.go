@@ -11,6 +11,7 @@ package main
 // cadence/amount, and emails a receipt — all idempotently.
 
 import (
+	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
@@ -19,6 +20,7 @@ import (
 	"encoding/json"
 	"errors"
 	"html"
+	htmpl "html/template"
 	"io"
 	"net/http"
 	"strconv"
@@ -720,27 +722,52 @@ func checkoutFormPage(tier *members.Tier, cadence string, amountCents int, curre
 </main>`)
 }
 
-func (a *App) checkoutInstructionsPage(ctx context.Context, o *payments.Order, tierName string) string {
-	esc := html.EscapeString
-	instructions := a.directInstructions(ctx)
-	instrBlock := `<p class="su-muted">Payment instructions have not been configured yet. Please contact us to complete your subscription.</p>`
-	if instructions != "" {
-		instrBlock = `<pre class="co-instructions">` + esc(instructions) + `</pre>`
-	}
-	return checkoutShell("Order "+o.Reference, `
+// checkoutInstructionsTmpl renders the offline-payment reference page. It uses
+// html/template (context-aware auto-escaping) rather than manual string quoting,
+// so every dynamic field — the order reference, the payer's own email, the
+// operator's instructions — is escaped for its exact HTML context with no way to
+// break out, regardless of contents.
+var checkoutInstructionsTmpl = htmpl.Must(htmpl.New("checkout-instructions").Parse(
+	`<!DOCTYPE html><html lang="en"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Order {{.Reference}} · {{.Brand}}</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="stylesheet" href="/theme.css">
+<link rel="stylesheet" href="/static/css/signup.css">
+<link rel="icon" type="image/png" href="/static/favicon-light.png">
+</head>
+<body class="su-body">
 <main class="pr-shell" id="main-content">
   <div class="pr-head">
     <h1>Almost there</h1>
-    <p>Your order for <strong>`+esc(tierName)+`</strong> is reserved.</p>
+    <p>Your order for <strong>{{.TierName}}</strong> is reserved.</p>
   </div>
   <div class="pr-card" style="max-width:34rem;margin:0 auto">
-    <p>Please send <strong>`+esc(priceLabel(o.Currency, o.AmountCents))+`</strong> and quote this reference so we can match your payment:</p>
-    <p class="co-reference"><code>`+esc(o.Reference)+`</code></p>
-    `+instrBlock+`
-    <p class="su-muted">A copy of these instructions has been emailed to <strong>`+esc(o.Email)+`</strong>. Your access unlocks as soon as we confirm receipt.</p>
+    <p>Please send <strong>{{.Price}}</strong> and quote this reference so we can match your payment:</p>
+    <p class="co-reference"><code>{{.Reference}}</code></p>
+    {{if .Instructions}}<pre class="co-instructions">{{.Instructions}}</pre>{{else}}<p class="su-muted">Payment instructions have not been configured yet. Please contact us to complete your subscription.</p>{{end}}
+    <p class="su-muted">A copy of these instructions has been emailed to <strong>{{.Email}}</strong>. Your access unlocks as soon as we confirm receipt.</p>
   </div>
   <p class="pr-foot"><a href="/" class="su-link">Return to the site</a></p>
-</main>`)
+</main>
+</body></html>`))
+
+func (a *App) checkoutInstructionsPage(ctx context.Context, o *payments.Order, tierName string) string {
+	var buf bytes.Buffer
+	if err := checkoutInstructionsTmpl.Execute(&buf, struct {
+		Brand, Reference, TierName, Price, Instructions, Email string
+	}{
+		Brand:        config.Cfg.Domain,
+		Reference:    o.Reference,
+		TierName:     tierName,
+		Price:        priceLabel(o.Currency, o.AmountCents),
+		Instructions: a.directInstructions(ctx),
+		Email:        o.Email,
+	}); err != nil {
+		return ""
+	}
+	return buf.String()
 }
 
 // checkoutShell wraps body in a minimal public HTML document that reuses the

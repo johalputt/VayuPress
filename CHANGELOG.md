@@ -8,6 +8,32 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.72] — 2026-07-21
+
+### Fixed
+- **VayuShield: a jailed browser now clears itself again with no interaction.**
+  v3.14.71 made the "verify you are human" challenge wait for a checkbox click,
+  which meant a false-positive jail (e.g. the operator's own IP) no longer
+  self-healed — a visitor could get stuck bouncing on the auto-retry page. The
+  proof-of-work now **auto-runs on load** (the checkbox ticks itself to show it is
+  working, and remains clickable to retry if the auto-run fails), so solving —
+  and the jail pardon it triggers — happens automatically in one page load. The
+  jail's Retry-After was also shortened (10s → 5s) so the calm auto-retry page
+  bounces a visitor back into the solvable challenge sooner.
+
+### Security
+- **CodeQL request-forgery (Critical) on the onion-to-onion delivery sinks —
+  resolved.** The strict v3-onion validation added in v3.14.70 was routed through
+  a helper, so the analyzer couldn't connect the guard to the host used in the
+  URL. The anchored regexp (`^[a-z2-7]{56}\.onion$`) is now matched **directly**
+  on the host at both `onion_transport.go` sinks (delivery + read receipt),
+  matching the barrier that already cleared the WKD sink.
+- **CodeQL reflected-XSS (High) on the checkout instructions page — resolved.**
+  The offline-payment reference page is now rendered with `html/template`
+  (context-aware auto-escaping) instead of manual string building, so every
+  dynamic field (order reference, the payer's own email, operator instructions)
+  is escaped for its exact HTML context by construction.
+
 ## [3.14.71] — 2026-07-21
 
 ### Changed
