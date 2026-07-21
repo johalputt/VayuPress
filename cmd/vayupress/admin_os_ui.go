@@ -647,9 +647,12 @@ func navItemBadge(href, label, key, active, iconSVG string, count int) string {
 		}
 		badge = `<span class="nav-badge" aria-label="` + txt + ` unread">` + txt + `</span>`
 	}
-	return `<a class="` + cls + `" href="` + href + `">` +
-		iconSVG +
-		html.EscapeString(label) +
+	// data-nav carries the section key so the stylesheet can give each item its
+	// own premium accent colour (icon-shaped glow on hover). key is an internal
+	// constant, but escape it anyway — defence in depth for the attribute context.
+	return `<a class="` + cls + `" href="` + href + `" data-nav="` + html.EscapeString(key) + `">` +
+		`<span class="nav-link__ico">` + iconSVG + `</span>` +
+		`<span class="nav-link__label">` + html.EscapeString(label) + `</span>` +
 		badge +
 		`</a>`
 }
@@ -676,9 +679,10 @@ func spaceSwitch(lvl int, _ *osSettings) string {
 		// The live .onion address itself is surfaced on the DASHBOARD now (world
 		// card), not crammed under the switch — the toggle stays a clean control.
 		return `<div class="space-switch-wrap">
-  <div class="space-switch" role="group" aria-label="Active world">
-    <a class="space-switch__seg" href="/os/world?target=clearnet">Clearnet</a>
-    <span class="space-switch__seg is-active" aria-current="true">Tor</span>
+  <div class="space-switch" data-active="tor" role="group" aria-label="Active world">
+    <span class="space-switch__thumb" aria-hidden="true"></span>
+    <a class="space-switch__seg" data-world="clearnet" href="/os/world?target=clearnet">` + iconWorldClearnet + `<span>Clearnet</span></a>
+    <span class="space-switch__seg is-active" data-world="tor" aria-current="true">` + iconWorldTor + `<span>Tor</span></span>
   </div>
 </div>`
 	}
@@ -694,9 +698,10 @@ func spaceSwitch(lvl int, _ *osSettings) string {
 	// data-space-switch on a segment = "clicking me switches to this world":
 	// "on" enters the Tor world (this console proxies into it), "off" stays here.
 	return `<div class="space-switch-wrap">
-  <div class="space-switch" role="group" aria-label="Switch world">
-    <button type="button" class="space-switch__seg is-active" data-space-switch="off" aria-pressed="true">Clearnet</button>
-    <button type="button" class="space-switch__seg" data-space-switch="on" aria-pressed="false">Tor</button>
+  <div class="space-switch" data-active="clearnet" role="group" aria-label="Switch world">
+    <span class="space-switch__thumb" aria-hidden="true"></span>
+    <button type="button" class="space-switch__seg is-active" data-space-switch="off" data-world="clearnet" aria-pressed="true">` + iconWorldClearnet + `<span>Clearnet</span></button>
+    <button type="button" class="space-switch__seg" data-space-switch="on" data-world="tor" aria-pressed="false">` + iconWorldTor + `<span>Tor</span></button>
   </div>
 </div>`
 }
@@ -1044,6 +1049,13 @@ func osSidebarNav(active string, s *osSettings) string {
 func svgIcon(path string) string {
 	return `<svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="` + path + `" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`
 }
+
+// World-switch glyphs shown inside the sidebar Clearnet⟷Tor switch: a globe for
+// the public Clearnet world and a layered onion (the Tor mark) for the anonymous
+// world, so each segment is recognisable at a glance. currentColor lets the
+// stylesheet tint each in its own world accent.
+const iconWorldClearnet = `<svg class="space-switch__ico" viewBox="0 0 16 16" width="14" height="14" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="6.1" stroke="currentColor" stroke-width="1.2"/><path d="M1.9 8h12.2M8 1.9v12.2M8 1.9c-2.3 1.7-2.3 10.5 0 12.2M8 1.9c2.3 1.7 2.3 10.5 0 12.2" stroke="currentColor" stroke-width="1.1"/></svg>`
+const iconWorldTor = `<svg class="space-switch__ico" viewBox="0 0 16 16" width="14" height="14" fill="none" aria-hidden="true"><path d="M8 1.7c-.8.9-.8 1.8 0 2.7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><path d="M8 4c-2.9 0-4.9 2.5-4.9 5.3 0 2.6 2.2 4.9 4.9 4.9s4.9-2.3 4.9-4.9C12.9 6.5 10.9 4 8 4z" stroke="currentColor" stroke-width="1.2"/><path d="M8 4.3c-1.3 1.4-2 3.2-2 5s.7 3.4 2 4.8M8 4.3c1.3 1.4 2 3.2 2 5s-.7 3.4-2 4.8" stroke="currentColor" stroke-width="1"/></svg>`
 
 var (
 	iconDashboard  = svgIcon("M3 10.5L10 3l7 7.5M5 8.5V17h3.5v-4h3v4H15V8.5")

@@ -8,6 +8,31 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.84] — 2026-07-21
+
+### Changed
+- **VayuOS wears the vayupress.com skin.** The console now sits on the same deep
+  "ink" cosmos as the marketing site — a near-black canvas with two faint accent
+  blooms — and every card is a glassy translucent panel (theme-aware: light mode
+  keeps solid white cards so nothing washes out).
+- **Premium side panel.** Each navigation item carries its own light accent
+  colour: on hover the icon lights up in that colour with a soft, icon-shaped
+  glow and gently enlarges, and the active item shows a glowing accent rail.
+- **Sidebar Clearnet ⟷ Tor switch, redesigned like the site's world toggle.** It
+  is now a sliding-thumb pill with the two worlds' real marks — a **globe** for
+  Clearnet and the **Tor onion** for Tor. The thumb rides sky-blue under Clearnet
+  and springs across to violet when you hover Tor, previewing the switch before
+  you commit.
+
+### Fixed
+- **Top-bar icons are now uniform and glow in their own colours.** The
+  notification bell was rendering larger than its neighbours (its SVG had no
+  fixed size) — every top-bar glyph is now locked to 18×18. On hover each icon
+  lights up with a soft glow that follows the **glyph's shape** (not a
+  rectangular box) in its own premium colour: hamburger sky, feedback amber,
+  bell rose, theme violet — and lifts slightly. The same icon-shaped, per-item
+  glow is applied throughout the side panel.
+
 ## [3.14.83] — 2026-07-21
 
 ### Fixed

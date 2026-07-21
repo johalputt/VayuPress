@@ -27,12 +27,21 @@
 
 /* ── Design Tokens ──────────────────────────────────────────── */
 .vp-os {
-  /* Backgrounds */
-  --bg-base:      #080e1a;
-  --bg-surface:   #0f1827;
-  --bg-surface-2: #172135;
-  --bg-surface-3: #1e2d47;
-  --bg-glass:     rgba(15, 24, 39, 0.80);
+  /* Backgrounds — the deep "ink" canvas from vayupress.com, so VayuOS and the
+     public site share one cosmos. Base is the site's ink-950; surfaces lift from
+     it in small, even steps. */
+  --bg-base:      #04060d;
+  --bg-surface:   #090f1e;
+  --bg-surface-2: #10172a;
+  --bg-surface-3: #1a2440;
+  --bg-glass:     rgba(10, 16, 32, 0.75);
+
+  /* Cards — glassy translucent white over the ink, exactly like the site's
+     feature cards. Theme-aware: light mode swaps these for a solid white card so
+     content never washes out. */
+  --card-bg:      rgba(255, 255, 255, 0.025);
+  --card-border:  rgba(255, 255, 255, 0.08);
+  --card-border-strong: rgba(255, 255, 255, 0.16);
 
   /* Borders */
   --border:       rgba(99, 130, 174, 0.18);
@@ -116,6 +125,9 @@
   --bg-surface-2: #f1f5f9;
   --bg-surface-3: #e2e8f0;
   --bg-glass:     rgba(248, 250, 252, 0.88);
+  --card-bg:      #ffffff;
+  --card-border:  rgba(15, 23, 42, 0.10);
+  --card-border-strong: rgba(15, 23, 42, 0.20);
   --border:       rgba(15, 23, 42, 0.10);
   --border-strong:rgba(15, 23, 42, 0.22);
   --text:         #0f172a;
@@ -135,6 +147,9 @@
     --bg-surface-2: #f1f5f9;
     --bg-surface-3: #e2e8f0;
     --bg-glass:     rgba(248, 250, 252, 0.88);
+    --card-bg:      #ffffff;
+    --card-border:  rgba(15, 23, 42, 0.10);
+    --card-border-strong: rgba(15, 23, 42, 0.20);
     --border:       rgba(15, 23, 42, 0.10);
     --border-strong:rgba(15, 23, 42, 0.22);
     --text:         #0f172a;
@@ -151,7 +166,17 @@
 
 /* ── Reset ───────────────────────────────────────────────────── */
 .vp-os *, .vp-os *::before, .vp-os *::after { box-sizing: border-box; margin: 0; padding: 0; }
-.vp-os { font-family: var(--font-body); font-size: var(--text-base); color: var(--text); background: var(--bg-base); line-height: 1.55; -webkit-font-smoothing: antialiased; min-height: 100vh; }
+.vp-os {
+  font-family: var(--font-body); font-size: var(--text-base); color: var(--text);
+  /* Cosmic ink canvas, echoing vayupress.com: two faint accent blooms fixed over
+     the deep base so the whole console feels like the site. */
+  background:
+    radial-gradient(55rem 38rem at 100% -8%, rgba(14, 165, 233, 0.06), transparent 60%),
+    radial-gradient(48rem 40rem at -8% 108%, rgba(167, 139, 250, 0.06), transparent 60%),
+    var(--bg-base);
+  background-attachment: fixed;
+  line-height: 1.55; -webkit-font-smoothing: antialiased; min-height: 100vh;
+}
 .vp-os a { color: var(--brand); text-decoration: none; }
 .vp-os a:hover { text-decoration: underline; }
 .vp-os img, .vp-os svg { display: block; }
@@ -199,7 +224,11 @@
   top: 0; left: 0;
   width: var(--sidebar-w);
   height: 100vh;
-  background: var(--bg-surface);
+  /* Premium depth: a whisper-soft top-down gradient + a faint accent bloom at the
+     top, instead of one flat fill. */
+  background:
+    radial-gradient(120% 45% at 0% 0%, rgba(14, 165, 233, 0.06), transparent 60%),
+    linear-gradient(180deg, var(--bg-surface), var(--bg-base));
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
@@ -256,37 +285,81 @@
 }
 
 /* One-click Clearnet⟷Tor world switch, pinned to the top of the sidebar
-   (ADR-0141). The active segment uses --brand, which the [data-space="tor"]
-   theme re-points to purple, so "Tor" lights up in the Tor colour automatically. */
+   (ADR-0141) — styled like the marketing site's world toggle: a pill with a
+   sliding thumb that sits under the active world and springs across on hover to
+   preview the switch. Clearnet rides a sky-blue thumb, Tor a violet one. */
 .vp-os .space-switch-wrap { padding: var(--sp-3) var(--sp-3) 0; }
 .vp-os .space-switch {
+  --clearnet-accent: #38bdf8;
+  --tor-accent: #a78bfa;
+  position: relative;
   display: flex;
-  gap: 3px;
   padding: 3px;
   background: var(--bg-surface-2);
   border: 1px solid var(--border);
-  border-radius: var(--r);
+  border-radius: var(--r-full);
+  box-shadow: inset 0 1px 3px rgba(2, 8, 20, 0.35);
 }
 .vp-os .space-switch.is-busy { opacity: 0.6; pointer-events: none; }
+/* The sliding thumb — absolutely positioned under the segments, its width one
+   half of the inner track; it translates by its own width to reach segment 2. */
+.vp-os .space-switch__thumb {
+  position: absolute;
+  top: 3px; bottom: 3px; left: 3px;
+  width: calc(50% - 3px);
+  border-radius: var(--r-full);
+  background: var(--clearnet-accent);
+  box-shadow: 0 3px 12px -3px var(--clearnet-accent);
+  transition: transform var(--t-spring), background var(--t), box-shadow var(--t);
+  z-index: 0;
+}
+.vp-os .space-switch[data-active="tor"] .space-switch__thumb {
+  transform: translateX(100%);
+  background: var(--tor-accent);
+  box-shadow: 0 3px 12px -3px var(--tor-accent);
+}
+/* Hover-preview: springs the thumb toward the world you're about to switch to. */
+.vp-os .space-switch[data-active="clearnet"]:has(.space-switch__seg[data-world="tor"]:hover) .space-switch__thumb {
+  transform: translateX(100%); background: var(--tor-accent); box-shadow: 0 3px 14px -3px var(--tor-accent);
+}
+.vp-os .space-switch[data-active="tor"]:has(.space-switch__seg[data-world="clearnet"]:hover) .space-switch__thumb {
+  transform: translateX(0); background: var(--clearnet-accent); box-shadow: 0 3px 14px -3px var(--clearnet-accent);
+}
 .vp-os .space-switch__seg {
+  position: relative;
+  z-index: 1;
   flex: 1;
-  padding: 6px 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 8px;
   font: 600 var(--text-xs)/1 var(--font-body);
-  text-align: center;
   color: var(--text-2);
   background: transparent;
   border: 0;
-  border-radius: var(--r-sm);
+  border-radius: var(--r-full);
   cursor: pointer;
-  transition: color var(--t), background var(--t);
+  text-decoration: none;
+  transition: color var(--t);
 }
-.vp-os .space-switch__seg.is-active {
-  background: var(--brand);
-  color: #fff;
-  box-shadow: var(--sh-sm);
+.vp-os .space-switch__ico {
+  width: 14px; height: 14px; flex: 0 0 auto;
+  transition: transform var(--t-spring), filter var(--t);
 }
+/* The segment whose thumb is under it (active, or hover-previewed) gets dark ink
+   for contrast against the bright thumb; the other stays muted. */
+.vp-os .space-switch__seg.is-active { color: #06121f; }
+.vp-os .space-switch[data-active="clearnet"]:has([data-world="tor"]:hover) .space-switch__seg[data-world="tor"] { color: #06121f; }
+.vp-os .space-switch[data-active="clearnet"]:has([data-world="tor"]:hover) .space-switch__seg[data-world="clearnet"] { color: var(--text-2); }
+.vp-os .space-switch[data-active="tor"]:has([data-world="clearnet"]:hover) .space-switch__seg[data-world="clearnet"] { color: #06121f; }
+.vp-os .space-switch[data-active="tor"]:has([data-world="clearnet"]:hover) .space-switch__seg[data-world="tor"] { color: var(--text-2); }
+.vp-os .space-switch__seg:hover .space-switch__ico { transform: scale(1.16); }
 .vp-os .space-switch__seg[aria-disabled="true"] { cursor: default; opacity: 0.5; }
-.vp-os .space-switch__seg:not(.is-active):not([aria-disabled="true"]):hover { color: var(--text); }
+@media (prefers-reduced-motion: reduce) {
+  .vp-os .space-switch__thumb { transition: background var(--t), box-shadow var(--t); }
+  .vp-os .space-switch__seg:hover .space-switch__ico { transform: none; }
+}
 .vp-os .space-switch__status {
   display: flex;
   align-items: center;
@@ -319,6 +392,8 @@
 .vp-os .sidebar-spacer { margin-top: auto; }
 
 .vp-os .nav-link {
+  --nav-accent: var(--brand);
+  position: relative;
   display: flex;
   align-items: center;
   gap: var(--sp-3);
@@ -327,13 +402,51 @@
   font-size: var(--text-sm);
   font-weight: 500;
   color: var(--text-2);
-  transition: background var(--t-fast), color var(--t-fast);
+  transition: background var(--t), color var(--t), transform var(--t-spring);
   text-decoration: none;
 }
-.vp-os .nav-link:hover { background: var(--bg-surface-2); color: var(--text); text-decoration: none; }
-.vp-os .nav-link.active { background: var(--brand-dim); color: var(--brand); }
-.vp-os .nav-link svg { width: 16px; height: 16px; flex-shrink: 0; opacity: 0.8; }
-.vp-os .nav-link.active svg { opacity: 1; }
+/* Each destination carries its own premium light accent — the icon glows in it
+   on hover, and the active rail lights up in it — so the side panel reads as a
+   colourful, legible map instead of one flat blue list. */
+.vp-os .nav-link[data-nav="dashboard"]  { --nav-accent: #7dd3fc; } /* sky     */
+.vp-os .nav-link[data-nav="growth"]     { --nav-accent: #6ee7b7; } /* emerald */
+.vp-os .nav-link[data-nav="optimize"]   { --nav-accent: #c4b5fd; } /* violet  */
+.vp-os .nav-link[data-nav="operations"] { --nav-accent: #fcd34d; } /* amber   */
+.vp-os .nav-link[data-nav="vayuos"]     { --nav-accent: #f9a8d4; } /* rose    */
+.vp-os .nav-link[data-nav="talk"]       { --nav-accent: #5eead4; } /* teal    */
+.vp-os .nav-link[data-nav="tor"]        { --nav-accent: #c4b5fd; } /* violet  */
+.vp-os .nav-link[data-nav="update"]     { --nav-accent: #93c5fd; } /* blue    */
+.vp-os .nav-link[data-nav="profile"]    { --nav-accent: #fda4af; } /* rose    */
+.vp-os .nav-link__ico {
+  display: inline-flex; flex: 0 0 auto;
+  color: var(--text-2);
+  transition: transform var(--t-spring), filter var(--t), color var(--t);
+}
+.vp-os .nav-link__label { flex: 1; min-width: 0; }
+.vp-os .nav-link svg { width: 16px; height: 16px; flex-shrink: 0; opacity: 0.85; }
+.vp-os .nav-link:hover { background: var(--bg-surface-2); color: var(--text); text-decoration: none; transform: translateX(3px); }
+.vp-os .nav-link:hover .nav-link__ico {
+  color: var(--nav-accent);
+  transform: scale(1.22);
+  filter: drop-shadow(0 0 5px var(--nav-accent));
+}
+.vp-os .nav-link:hover .nav-link__ico svg { opacity: 1; }
+.vp-os .nav-link.active { background: var(--bg-surface-2); color: var(--text); }
+.vp-os .nav-link.active .nav-link__ico { color: var(--nav-accent); filter: drop-shadow(0 0 4px var(--nav-accent)); }
+.vp-os .nav-link.active .nav-link__ico svg { opacity: 1; }
+/* Glowing accent rail on the active item. */
+.vp-os .nav-link.active::before {
+  content: "";
+  position: absolute; left: 0; top: 50%; transform: translateY(-50%);
+  width: 3px; height: 62%;
+  border-radius: 0 3px 3px 0;
+  background: var(--nav-accent);
+  box-shadow: 0 0 8px var(--nav-accent);
+}
+@media (prefers-reduced-motion: reduce) {
+  .vp-os .nav-link:hover { transform: none; }
+  .vp-os .nav-link:hover .nav-link__ico, .vp-os .nav-link.active .nav-link__ico { transform: none; }
+}
 /* Bulk action bar (Posts manager). */
 .vp-os .bulk-bar {
   display: flex; align-items: center; gap: var(--sp-3);
@@ -415,13 +528,10 @@
   justify-content: center;
   transition: color var(--t-fast), border-color var(--t-fast), background var(--t-fast), box-shadow var(--t-fast), transform var(--t-fast);
 }
-/* Premium collapse button: soft brand glow on hover; a subtle nudge and brand
-   tint while the sidebar is collapsed, so its state is legible. */
-.vp-os .menu-toggle:hover, .vp-os .menu-toggle:focus-visible {
-  color: var(--brand); border-color: var(--brand);
-  box-shadow: 0 0 0 1px var(--brand), 0 0 16px -4px var(--brand);
-}
-.vp-os.nav-collapsed .menu-toggle { color: var(--brand); }
+/* Premium collapse button: the icon-shaped glow (shared topbar rule below) does
+   the hover treatment; while the sidebar is collapsed the glyph keeps its sky
+   accent so the state stays legible. */
+.vp-os.nav-collapsed .menu-toggle { color: var(--ico-glow, var(--brand)); }
 /* Desktop: the collapse toggle slides the fixed sidebar off-screen and lets the
    content reclaim the full width — a smooth transition, no scroll lock. */
 @media (min-width: 769px) {
@@ -471,8 +581,8 @@
    The button cycles light → dark → auto; the three glyphs are stacked and the
    active one (keyed off <body data-theme>) rotates + fades in. Auto is the
    default, so an unexpected value still shows a glyph rather than a blank. */
-.vp-os .topbar-theme-btn { position: relative; overflow: hidden; }
-.vp-os .topbar-theme-btn:hover { color: var(--brand); border-color: var(--brand); }
+/* No overflow:hidden — it would clip the icon-shaped drop-shadow glow. */
+.vp-os .topbar-theme-btn { position: relative; }
 .vp-os .theme-ico {
   position: absolute; inset: 0; margin: auto; width: 18px; height: 18px;
   transition: opacity var(--t), transform var(--t);
@@ -496,7 +606,6 @@
    actionable notifications, each a direct link to the page that clears it. */
 .vp-os .topbar-notif { position: relative; display: inline-flex; }
 .vp-os .topbar-notif__btn { position: relative; color: var(--text-2); }
-.vp-os .topbar-notif__btn:hover { color: var(--text); }
 .vp-os .topbar-notif__btn--active { color: var(--brand); }
 /* A soft pulse ring while there are unread notifications. */
 .vp-os .topbar-notif__btn--active::after {
@@ -518,15 +627,27 @@
 .vp-os .topbar-feedback { position: relative; display: inline-flex; }
 .vp-os .topbar-feedback__btn { position: relative; color: var(--text-2); }
 
-/* Unified topbar icon buttons (feedback · notifications · theme): identical 36×36
-   box (flex-centred by .btn--icon, so the anchor renders like the buttons) with a
-   soft brand glow — a crisp ring plus a coloured bloom — on hover/focus. */
-.vp-os .topbar-feedback__btn:hover, .vp-os .topbar-feedback__btn:focus-visible,
-.vp-os .topbar-notif__btn:hover, .vp-os .topbar-notif__btn:focus-visible,
-.vp-os .topbar-theme-btn:hover, .vp-os .topbar-theme-btn:focus-visible {
-  color: var(--brand);
-  border-color: var(--brand);
-  box-shadow: 0 0 0 1px var(--brand), 0 0 16px -4px var(--brand);
+/* Unified topbar icon buttons (hamburger · feedback · notifications · theme):
+   identical 36×36 boxes, each glowing in its OWN premium light colour on hover.
+   The glow follows the GLYPH shape (filter: drop-shadow on a transparent button),
+   NOT a rectangle — so there is no box ring, just the lit icon, gently enlarged.
+   Each button declares its accent via --ico-glow. */
+.vp-os .topbar .btn--icon        { --ico-glow: var(--brand); }
+.vp-os .menu-toggle              { --ico-glow: #7dd3fc; } /* sky    */
+.vp-os .topbar-feedback__btn     { --ico-glow: #fcd34d; } /* amber  */
+.vp-os .topbar-notif__btn        { --ico-glow: #f9a8d4; } /* rose   */
+.vp-os .topbar-theme-btn         { --ico-glow: #c4b5fd; } /* violet */
+.vp-os .topbar .btn--icon:hover, .vp-os .topbar .btn--icon:focus-visible {
+  color: var(--ico-glow);
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  transform: translateY(-1px) scale(1.14);
+  filter: drop-shadow(0 0 3px var(--ico-glow)) drop-shadow(0 0 8px var(--ico-glow));
+}
+.vp-os .topbar .btn--icon:active { transform: translateY(0) scale(1.04); }
+@media (prefers-reduced-motion: reduce) {
+  .vp-os .topbar .btn--icon:hover, .vp-os .topbar .btn--icon:focus-visible { transform: none; }
 }
 .vp-os .topbar-feedback__pop {
   position: absolute; top: calc(100% + 8px); right: 0; z-index: 60;
@@ -690,9 +811,11 @@
   width: 36px; height: 36px; padding: 0; border-radius: var(--r-sm);
   border: 1px solid transparent; background: transparent; color: var(--text-2);
   line-height: 0; cursor: pointer; text-decoration: none;
-  transition: color var(--t-fast), border-color var(--t-fast), background var(--t-fast), box-shadow var(--t-fast);
+  transition: color var(--t-fast), border-color var(--t-fast), background var(--t-fast), box-shadow var(--t-fast), transform var(--t-spring), filter var(--t);
 }
-.vp-os .btn--icon svg { display: block; }
+/* Every topbar glyph renders at exactly 18×18 regardless of the SVG's own
+   width/height attrs — this is what keeps the bell the same size as the rest. */
+.vp-os .btn--icon svg { display: block; width: 18px; height: 18px; }
 .vp-os .btn--icon-lg { width: 42px; height: 42px; padding: 0; }
 .vp-os .btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
 
@@ -775,14 +898,16 @@
 
 /* ── Cards ───────────────────────────────────────────────────── */
 .vp-os .card {
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: var(--r);
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--r-md);
   padding: var(--sp-5);
   box-shadow: var(--sh-sm);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
 }
-.vp-os .card--hover { transition: border-color var(--t), transform var(--t); }
-.vp-os .card--hover:hover { border-color: var(--border-strong); transform: translateY(-2px); box-shadow: var(--sh); }
+.vp-os .card--hover { transition: border-color var(--t), transform var(--t), box-shadow var(--t); }
+.vp-os .card--hover:hover { border-color: var(--card-border-strong); transform: translateY(-2px); box-shadow: var(--sh); }
 .vp-os .card--glass {
   background: var(--bg-glass);
   backdrop-filter: blur(20px) saturate(180%);
