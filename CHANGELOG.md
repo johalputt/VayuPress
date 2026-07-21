@@ -8,7 +8,22 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
-## [3.14.92] — 2026-07-21
+## [3.14.93] — 2026-07-21
+
+### Changed
+- **VayuMail redesigned to the premium Monetization style — every page.** The
+  whole VayuMail console now speaks the same design language as the Monetization
+  page: a clean `page-header` + one-line `page-sub`, a premium **segmented pill
+  tab bar** for the sub-nav, **lifting stat cards** for the metric strips, and
+  **section headers** with hints grouping each page's content.
+  - **Overview** is rebuilt as a flagship: stat grid (mailboxes · domains ·
+    queued · failed · delivered) → "Your mailbox" workspace cards (Inbox,
+    Compose, Sent, Connect) → "Infrastructure" → "Health & status".
+  - **DNS, Security, PGP Keys, Connect** group their records/checks/keys under
+    section headers, with the intro moved to a `page-sub`.
+  - **Accounts, Mailbox, Outbox, Compose** adopt the same header shell; Accounts
+    gains "Add a mailbox" / "Mailboxes" section headers.
+  One shared restyle of the tab bar and stat strip lifts all nine pages at once.
 
 ### Added
 - **Premium cartoon avatars.** The prebuilt avatar generator (members and

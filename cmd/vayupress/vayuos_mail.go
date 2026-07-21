@@ -43,7 +43,8 @@ func (a *App) handleVayuOSCompose(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
 	var body strings.Builder
-	body.WriteString(`<div class="page-header"><h1>Compose</h1><span class="muted text-sm">Send DKIM-signed mail (auto-PGP-encrypted when the recipient key is known)</span></div>`)
+	body.WriteString(`<div class="page-header"><h1>Compose</h1></div>`)
+	body.WriteString(`<p class="page-sub">Send DKIM-signed mail — auto-PGP-encrypted when the recipient's key is known.</p>`)
 	body.WriteString(vayuosNav("compose", a.isAdminRequest(r)))
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled {
 		body.WriteString(`<div class="empty-state">VayuMail is inactive. Set <code>DOMAIN</code> to enable outbound delivery.</div>`)
@@ -786,7 +787,8 @@ func (a *App) handleVayuOSAccounts(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
 	var body strings.Builder
-	body.WriteString(`<div class="page-header"><h1>Mail accounts</h1><span class="muted text-sm">Admin-managed email IDs &amp; passwords (SMTP/IMAP login)</span></div>`)
+	body.WriteString(`<div class="page-header"><h1>Mail accounts</h1></div>`)
+	body.WriteString(`<p class="page-sub">Admin-managed email IDs &amp; passwords (SMTP/IMAP login). Each mailbox is a card — tap to expand.</p>`)
 	body.WriteString(vayuosNav("accounts", a.isAdminRequest(r)))
 	if !a.isAdminRequest(r) {
 		body.WriteString(`<div class="empty-state">Mail-account management is available to administrators only. Your own mailbox is under <a href="/os/vayumail/inbox">Mailbox</a>.</div>`)
@@ -815,7 +817,8 @@ func (a *App) handleVayuOSAccounts(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create form.
-	body.WriteString(`<div class="card"><div class="card-title">Create mail account</div>
+	body.WriteString(`<div class="section-head"><span class="section-head__title">Add a mailbox</span><span class="section-head__hint">Create a new email ID on a mail domain</span></div>`)
+	body.WriteString(`<div class="card">
 <form data-acct-create>
   <div class="vm-row vm-row--end">
     <label class="field vm-grow"><span class="field-label">Address</span>
@@ -845,6 +848,7 @@ func (a *App) handleVayuOSAccounts(w http.ResponseWriter, r *http.Request) {
 	// (VayuMail Accounts redesign). Every inline action swaps this fragment in
 	// place, and the create / 2FA / set-password flows refresh it via htmx.ajax, so
 	// the page never does a full reload.
+	body.WriteString(`<div class="section-head"><span class="section-head__title">Mailboxes</span><span class="section-head__hint">Every email ID on this install</span></div>`)
 	body.WriteString(`<div id="vm-accounts-list">` + a.vayuAccountsList(r.Context()) + `</div>`)
 
 	// Devices — approval-gated sync credentials (ADR-0129): pending devices
@@ -1223,7 +1227,8 @@ func (a *App) handleVayuOSConnect(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
 	var body strings.Builder
-	body.WriteString(`<div class="page-header"><h1>Connect a mail app</h1><span class="muted text-sm">IMAP / POP3 / SMTP settings for Gmail, Apple Mail, Thunderbird, Outlook…</span></div>`)
+	body.WriteString(`<div class="page-header"><h1>Connect a mail app</h1></div>`)
+	body.WriteString(`<p class="page-sub">IMAP / POP3 / SMTP settings for the Gmail app, Apple Mail, Thunderbird, Outlook and more.</p>`)
 	body.WriteString(vayuosNav("connect", a.isAdminRequest(r)))
 
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled {
@@ -1252,7 +1257,8 @@ func (a *App) handleVayuOSConnect(w http.ResponseWriter, r *http.Request) {
 		}
 		return `<span class="badge badge--warn">offline</span>`
 	}
-	body.WriteString(`<div class="card"><div class="card-title">Service status</div>`)
+	body.WriteString(`<div class="section-head"><span class="section-head__title">Service status</span><span class="section-head__hint">Live mail listener health</span></div>`)
+	body.WriteString(`<div class="card">`)
 	body.WriteString(`<div class="table-wrap"><table class="table"><thead><tr><th>Service</th><th>Address</th><th>Status</th></tr></thead><tbody>`)
 	row := func(label, addr string, up bool) {
 		body.WriteString(`<tr><td>` + label + `</td><td class="mono text-sm">` + addr + `</td><td>` + badge(up) + `</td></tr>`)

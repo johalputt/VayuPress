@@ -5480,6 +5480,35 @@
 .vp-os .vm-stat--warn { border-color: var(--warn); background: var(--warn-dim); }
 .vp-os .vm-stat--warn .vm-stat__v { color: var(--warn); }
 
+/* ── VayuMail: Monetization-style shell (premium tab bar + lifting stat cards) ─ */
+/* One place restyles the sub-nav and the stat strip across every VayuMail page. */
+.vp-os .vmtabs {
+  display: flex; flex-wrap: wrap; gap: var(--sp-1);
+  margin: 0 0 var(--sp-5); padding: 5px;
+  border: 1px solid var(--border); border-radius: var(--r-full);
+  background: var(--bg-surface); box-shadow: var(--sh-sm);
+  width: fit-content; max-width: 100%;
+}
+.vp-os .vmtabs .tab {
+  padding: .45rem .95rem; border: 0; border-radius: var(--r-full);
+  color: var(--text-2); font-size: var(--text-sm); font-weight: 600;
+  transition: color var(--t-fast), background var(--t-fast);
+}
+.vp-os .vmtabs .tab:hover { color: var(--text); background: var(--bg-surface-2); text-decoration: none; }
+.vp-os .vmtabs .tab--active,
+.vp-os .vmtabs .tab--active:hover { color: #fff; background: var(--brand); }
+
+/* Stat tiles gain the Monetization stat-card lift + top accent. */
+.vp-os .vm-stat { position: relative; overflow: hidden; transition: border-color var(--t), box-shadow var(--t), transform var(--t); }
+.vp-os .vm-stat::before {
+  content: ""; position: absolute; inset: 0 0 auto 0; height: 2px;
+  background: linear-gradient(90deg, var(--brand), transparent);
+  opacity: 0; transition: opacity var(--t);
+}
+.vp-os .vm-stat:hover { border-color: var(--border-strong); box-shadow: var(--sh); transform: translateY(-2px); }
+.vp-os .vm-stat:hover::before { opacity: .85; }
+@media (prefers-reduced-motion: reduce) { .vp-os .vm-stat:hover { transform: none; } }
+
 /* Collapsible mailbox cards. */
 .vp-os .vm-acct-list { display: flex; flex-direction: column; gap: var(--sp-3); }
 .vp-os .vm-acct {

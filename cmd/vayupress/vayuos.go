@@ -1053,23 +1053,27 @@ func (a *App) handleVayuOSDashboard(w http.ResponseWriter, r *http.Request) {
 			vmStatTile(itoaSafe(delivered), "Delivered", "") +
 			`</div>`
 	}
-	infraCards, healthCard := "", ""
+	infraSection, healthSection := "", ""
 	if admin {
-		infraCards = `
+		infraSection = `<div class="section-head"><span class="section-head__title">Infrastructure</span><span class="section-head__hint">Keys, deliverability &amp; security — administrator only</span></div>
+<div class="grid grid-3">
   <div class="card"><div class="card-title">Privacy (VayuPGP)</div><p class="muted">End-to-end PGP, keys encrypted at rest, WKD published.</p><a class="btn" href="/os/vayumail/pgp">Manage keys</a></div>
   <div class="card"><div class="card-title">Sovereignty (VayuMail)</div><p class="muted">DKIM-signed outbound mail, direct-to-MX, DNS health.</p><a class="btn" href="/os/vayumail/dns">Mail &amp; DNS</a></div>
-  <div class="card"><div class="card-title">Security updates</div><p class="muted">Track upstream PGP/crypto security releases.</p><a class="btn" href="/os/vayumail/security">Updates</a></div>`
-		healthCard = `
+  <div class="card"><div class="card-title">Security updates</div><p class="muted">Track upstream PGP/crypto security releases.</p><a class="btn" href="/os/vayumail/security">Updates</a></div>
+</div>`
+		healthSection = `<div class="section-head"><span class="section-head__title">Health &amp; status</span><span class="section-head__hint">Live subsystem checks</span></div>
 <div class="card"><div class="card-title">Subsystem health</div>
 <div class="table-wrap"><table class="table"><thead><tr><th>Component</th><th>Status</th><th>Detail</th></tr></thead><tbody>` + rows.String() + `</tbody></table></div></div>`
 	}
-	body := `<div class="page-header"><h1>VayuMail</h1>
-<span class="muted text-sm">Your mailboxes — read, compose and connect mail apps</span></div>` + vayuosNav("overview", admin) + statStrip + `
+	body := `<div class="page-header"><h1>VayuMail</h1></div>
+<p class="page-sub">Your mailboxes — read, compose and connect any mail app. Everything in one place.</p>` + vayuosNav("overview", admin) + statStrip + `
+<div class="section-head"><span class="section-head__title">Your mailbox</span><span class="section-head__hint">Read, send and connect an app</span></div>
 <div class="grid grid-3">
   <div class="card"><div class="card-title">Inbox</div><p class="muted">Read mail received into your mailboxes (Maildir).</p><a class="btn" href="/os/vayumail/inbox">Open inbox</a></div>
+  <div class="card"><div class="card-title">Compose</div><p class="muted">Write a new message — multi-domain From, PGP-aware.</p><a class="btn" href="/os/vayumail/compose">New message</a></div>
   <div class="card"><div class="card-title">Sent</div><p class="muted">Outbound delivery queue with per-message status.</p><a class="btn" href="/os/vayumail/sent">View sent</a></div>
-  <div class="card"><div class="card-title">Connect a mail app</div><p class="muted">IMAP/POP3/SMTP settings for the Gmail app, Apple Mail and more.</p><a class="btn" href="/os/vayumail/connect">Connect</a></div>` + infraCards + `
-</div>` + healthCard
+  <div class="card"><div class="card-title">Connect a mail app</div><p class="muted">IMAP/POP3/SMTP settings for the Gmail app, Apple Mail and more.</p><a class="btn" href="/os/vayumail/connect">Connect</a></div>
+</div>` + infraSection + healthSection
 	writeOSHTML(w, adminOSLayout(nonce, "VayuMail", "vayuos", cfg, htmpl.HTML(body)))
 }
 
@@ -1102,11 +1106,13 @@ func (a *App) handleVayuOSPGP(w http.ResponseWriter, r *http.Request) {
 	if rows.Len() == 0 {
 		rows.WriteString(`<tr><td colspan="4" class="muted">No keys yet — keys are generated automatically when accounts are created.</td></tr>`)
 	}
-	body := `<div class="page-header"><h1>VayuPGP keys</h1>
-<span class="muted text-sm">Ed25519 + Curve25519 · private keys AES-256-GCM encrypted at rest · published via WKD</span></div>` + vayuosNav("pgp", true) + `
-<div class="card"><div class="card-title">Keypairs</div>
+	body := `<div class="page-header"><h1>VayuPGP keys</h1></div>
+<p class="page-sub">Ed25519 + Curve25519 · private keys AES-256-GCM encrypted at rest · published via WKD.</p>` + vayuosNav("pgp", true) + `
+<div class="section-head"><span class="section-head__title">Keypairs</span><span class="section-head__hint">One per mailbox — generated automatically on account creation</span></div>
+<div class="card">
 <div class="table-wrap"><table class="table"><thead><tr><th>Email</th><th>Fingerprint</th><th>State</th><th>Expires</th></tr></thead><tbody>` + rows.String() + `</tbody></table></div></div>
-<div class="card"><div class="card-title">Web Key Directory</div><p class="muted">External clients discover these keys at <code>/.well-known/openpgpkey/</code> (advanced method).</p></div>`
+<div class="section-head"><span class="section-head__title">Web Key Directory</span><span class="section-head__hint">How external clients discover your keys</span></div>
+<div class="card"><p class="muted">External clients discover these keys at <code>/.well-known/openpgpkey/</code> (advanced method).</p></div>`
 	writeOSHTML(w, adminOSLayout(nonce, "VayuPGP", "vayuos", cfg, htmpl.HTML(body)))
 }
 
@@ -1128,7 +1134,8 @@ func (a *App) handleVayuOSMail(w http.ResponseWriter, r *http.Request) {
 	}
 	mc := a.vayuMail.Config()
 	var body strings.Builder
-	body.WriteString(`<div class="page-header"><h1>VayuMail</h1><span class="muted text-sm">Native outbound mail sovereignty</span></div>`)
+	body.WriteString(`<div class="page-header"><h1>VayuMail · DNS</h1></div>`)
+	body.WriteString(`<p class="page-sub">Native outbound mail sovereignty — publish these records, then verify every mail domain. Tap a card to expand it.</p>`)
 	body.WriteString(vayuosNav("mail", true))
 	if !mc.Enabled {
 		body.WriteString(`<div class="empty-state">VayuMail is inactive. Set your domain (DOMAIN env / first-boot wizard) to activate DKIM signing and outbound delivery.</div>`)
@@ -1136,16 +1143,22 @@ func (a *App) handleVayuOSMail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	qs, stats, _ := a.vayuMail.QueueStatus(r.Context())
-	body.WriteString(`<div class="grid grid-3">
-  <div class="card"><div class="card-title">Pending</div><div class="vm-stat">` + itoaSafe(qs.Pending) + `</div></div>
-  <div class="card"><div class="card-title">Delivered</div><div class="vm-stat">` + itoaSafe(stats.Delivered) + `</div></div>
-  <div class="card"><div class="card-title">Failed</div><div class="vm-stat">` + itoaSafe(qs.Failed) + `</div></div>
-</div>`)
+	failTone := ""
+	if qs.Failed > 0 {
+		failTone = "warn"
+	}
+	body.WriteString(`<div class="vm-stats">` +
+		vmStatTile(itoaSafe(qs.Pending), "Pending", "") +
+		vmStatTile(itoaSafe(stats.Delivered), "Delivered", "") +
+		vmStatTile(itoaSafe(qs.Failed), "Failed", failTone) +
+		`</div>`)
 	// DNS tab (rebuilt for multi-domain — see vayuos_mail_dns.go): the records to
 	// publish per domain, the mail-host & networking records the old flat table
 	// never showed, and live verification of EVERY mail domain (primary + each
 	// secondary) with an HTMX re-check.
+	body.WriteString(`<div class="section-head"><span class="section-head__title">DNS records</span><span class="section-head__hint">Publish these at your domain's DNS host</span></div>`)
 	body.WriteString(a.vayuDNSPublishSections(r, mc))
+	body.WriteString(`<div class="section-head"><span class="section-head__title">Live verification</span><span class="section-head__hint">Re-check every mail domain</span></div>`)
 	body.WriteString(a.vayuDNSVerifyFragment(r))
 	body.WriteString(vayuDNSScript(nonce))
 	writeOSHTML(w, adminOSLayout(nonce, "VayuMail", "vayuos", cfg, htmpl.HTML(body.String())))
@@ -1174,18 +1187,19 @@ func (a *App) handleVayuOSSecurity(w http.ResponseWriter, r *http.Request) {
 	var body strings.Builder
 	body.WriteString(`<div class="page-header"><h1>Security updates</h1>
   <div class="page-actions">
-    <span class="muted text-sm">Upstream PGP &amp; crypto dependency monitoring</span>
     <button type="button" class="btn btn--sm" data-sec-check>Check now</button>
     <a class="btn btn--primary btn--sm" href="/os/update">Update VayuPress →</a>
     <span class="text-xs muted" data-sec-status role="status" aria-live="polite"></span>
   </div>
 </div>`)
+	body.WriteString(`<p class="page-sub">Upstream PGP &amp; crypto dependency monitoring — VayuPress never reaches out on its own.</p>`)
 	body.WriteString(vayuosNav("security", true))
 	if !rep.Enabled {
 		body.WriteString(`<div class="empty-state">Automatic background checks are off by default (privacy first) — VayuPress never reaches out on its own. Click <strong>Check now</strong> above for a one-time, on-demand check (it fetches only public release metadata from GitHub and sends nothing about your site). To run checks automatically, set <code>VAYUOS_SECURITY_UPDATES=on</code> and restart.</div>`)
 	} else if rep.UpdatesAvailable > 0 {
 		body.WriteString(`<div class="warn-box">` + itoaSafe(rep.UpdatesAvailable) + ` security-relevant update(s) available. ` + html.EscapeString(rep.UpgradeHint) + `</div>`)
 	}
+	body.WriteString(`<div class="section-head"><span class="section-head__title">Dependencies</span><span class="section-head__hint">Upstream PGP / crypto components this build embeds</span></div>`)
 	body.WriteString(buildComponentTable(rep.Components))
 	// One-click dependency update. VayuPress is a single static binary with its
 	// dependencies compiled in, so "updating dependencies" means installing the
@@ -1193,7 +1207,8 @@ func (a *App) handleVayuOSSecurity(w http.ResponseWriter, r *http.Request) {
 	// separate go-get/rebuild step on the server. The button links to the
 	// one-click self-updater (checksum + Ed25519 verified, atomic swap,
 	// auto-rollback), the safe enterprise path to apply these patches.
-	body.WriteString(`<div class="card"><div class="card-title">Apply updates (one click)</div>
+	body.WriteString(`<div class="section-head"><span class="section-head__title">Apply updates</span><span class="section-head__hint">One click · checksum + signature verified</span></div>`)
+	body.WriteString(`<div class="card">
 <p class="text-sm muted">VayuPress ships as one self-contained, statically-linked binary, so security patches to the PGP/crypto libraries above are delivered <strong>inside a signed release</strong> — installing the latest release applies them. There is no separate dependency-fetch/rebuild step to run on your server.</p>
 <p><a class="btn btn--primary btn--sm" href="/os/update">Update VayuPress now →</a></p>
 <p class="text-xs muted">The updater verifies the download by SHA-256 checksum (and Ed25519 signature when a release key is pinned), backs up the database, swaps the binary atomically, and rolls back automatically if the new build fails to start.</p></div>`)
@@ -1696,7 +1711,8 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 		http.SetCookie(w, &http.Cookie{Name: "vp_csrf", Value: token, Path: "/", SameSite: http.SameSiteStrictMode, HttpOnly: false, Secure: csrfCookieSecure(), MaxAge: 3600})
 	}
 	var body strings.Builder
-	body.WriteString(`<div class="page-header"><h1>Mailbox</h1><span class="muted text-sm">Received &amp; filed mail (Maildir)</span></div>`)
+	body.WriteString(`<div class="page-header"><h1>Mailbox</h1></div>`)
+	body.WriteString(`<p class="page-sub">Received &amp; filed mail (Maildir).</p>`)
 	body.WriteString(vayuosNav("mailbox", a.isAdminRequest(r)))
 
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled {
@@ -2823,7 +2839,8 @@ func (a *App) handleVayuOSSent(w http.ResponseWriter, r *http.Request) {
 		http.SetCookie(w, &http.Cookie{Name: "vp_csrf", Value: token, Path: "/", SameSite: http.SameSiteStrictMode, HttpOnly: false, Secure: csrfCookieSecure(), MaxAge: 3600})
 	}
 	var body strings.Builder
-	body.WriteString(`<div class="page-header"><h1>Outbox</h1><span class="muted text-sm">Outbound delivery queue — auto-retries with backoff until sent · one-click Resend</span></div>`)
+	body.WriteString(`<div class="page-header"><h1>Outbox</h1></div>`)
+	body.WriteString(`<p class="page-sub">Outbound delivery queue — auto-retries with backoff until sent, with one-click Resend.</p>`)
 	body.WriteString(vayuosNav("outbox", a.isAdminRequest(r)))
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled {
 		body.WriteString(`<div class="empty-state">VayuMail is inactive. Set <code>DOMAIN</code> to activate outbound delivery.</div>`)
