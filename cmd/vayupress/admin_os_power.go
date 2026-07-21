@@ -155,7 +155,8 @@ func (a *App) handleOSPower(w http.ResponseWriter, r *http.Request) {
 		msg = a.siteSettings.Get(r.Context(), settings.KeyMaintenanceMessage)
 	}
 	crawlersOff := a.crawlersBlocked(r.Context())
-	writeOSHTML(w, adminOSLayout(nonce, "Power & Maintenance", "operations", cfg, htmpl.HTML(osPowerBody(nonce, on, msg, crawlersOff))))
+	feedbackAddr := a.feedbackEmail(r.Context())
+	writeOSHTML(w, adminOSLayout(nonce, "Power & Maintenance", "operations", cfg, htmpl.HTML(osPowerBody(nonce, on, msg, crawlersOff, feedbackAddr))))
 }
 
 // handleOSPowerPreview renders the public maintenance page inside the console so
@@ -173,7 +174,7 @@ func (a *App) handleOSPowerPreview(w http.ResponseWriter, r *http.Request) {
 // osPowerBody builds the control page. The inline script (nonce'd) drives the
 // toggle and the restart/shutdown buttons; all three POST to the CSRF-protected
 // /os/api/power/* endpoints.
-func osPowerBody(nonce string, on bool, message string, crawlersOff bool) string {
+func osPowerBody(nonce string, on bool, message string, crawlersOff bool, feedbackAddr string) string {
 	esc := html.EscapeString
 	onAttr := "0"
 	if on {
@@ -235,6 +236,19 @@ func osPowerBody(nonce string, on bool, message string, crawlersOff bool) string
 </div>
 
 <div class="card">
+  <div class="settings-block-title">Feedback &amp; bug reports</div>
+  <p class="text-sm muted">The 💡 button in the top bar lets you and your team report a bug, request an improvement or suggest a feature — it opens a PGP-encrypted email to the inbox below, with screenshots and file attachments supported. Create this mailbox in VayuMail if it doesn’t exist yet.</p>
+  <div class="field">
+    <label class="field-label" for="fb-addr">Feedback inbox</label>
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">
+      <input id="fb-addr" class="input" type="email" style="max-width:22rem" value="` + esc(feedbackAddr) + `" placeholder="feedback@yourdomain">
+      <button type="button" class="btn btn--sm" data-fb-save>Save</button>
+      <a class="btn btn--ghost btn--sm" href="/os/vayumail/compose?feedback=1">Open a test report ↗</a>
+    </div>
+  </div>
+</div>
+
+<div class="card">
   <div class="settings-block-title">Restart &amp; shutdown</div>
   <p class="text-sm muted">The app drains in-flight requests, then restarts. It comes back automatically within a few seconds (your service runs with auto-restart).</p>
   <div class="settings-row">
@@ -275,6 +289,16 @@ if(saveBtn){saveBtn.addEventListener('click',function(){
   post('/os/api/power/maintenance',{message:(ta&&ta.value)||''}).then(function(r){return r.json();}).then(function(j){
     toast(j&&j.ok?'Message saved.':'Could not save the message','ok');
   }).catch(function(){toast('Network error','error');});
+});}
+var fbBtn=document.querySelector('[data-fb-save]');
+if(fbBtn){fbBtn.addEventListener('click',function(){
+  var inp=document.getElementById('fb-addr');
+  var v=((inp&&inp.value)||'').trim();
+  fbBtn.disabled=true;
+  post('/os/api/settings',{key:'vayupress.feedback_email',value:v}).then(function(r){return r.json();}).then(function(j){
+    fbBtn.disabled=false;
+    toast(j&&j.status==='ok'?'Feedback inbox saved.':'Could not save the address','ok');
+  }).catch(function(){fbBtn.disabled=false;toast('Network error','error');});
 });}
 var crawlBtn=document.querySelector('[data-crawlers-toggle]');
 if(crawlBtn){crawlBtn.addEventListener('click',function(){

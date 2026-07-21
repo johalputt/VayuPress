@@ -28,6 +28,10 @@ const (
 	KeyMaintenanceMode    = "site.maintenance"
 	KeyMaintenanceMessage = "site.maintenance_message"
 
+	// KeyFeedbackEmail is the mailbox that VayuOS's "Report a bug / suggest an
+	// improvement" button composes to. Empty falls back to feedback@<domain>.
+	KeyFeedbackEmail = "vayupress.feedback_email"
+
 	// KeyBlockCrawlers, when "on", hard-blocks search-engine and AI crawlers from
 	// the PUBLIC site: robots.txt disallows everything, known crawler user-agents
 	// (Googlebot, Bingbot, GPTBot, ClaudeBot, PerplexityBot, …) get a 403, and
@@ -327,6 +331,7 @@ var AllKeys = map[string]bool{
 	KeyMaintenanceMode:         true,
 	KeyMaintenanceMessage:      true,
 	KeyBlockCrawlers:           true,
+	KeyFeedbackEmail:           true,
 	KeyThemePrimaryLight:       true,
 	KeyThemePrimaryDark:        true,
 	KeyThemeAccentLight:        true,

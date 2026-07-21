@@ -1154,6 +1154,21 @@ func adminOSShellHead(nonce, title, active string, settings *osSettings) string 
 	// still lives on the dashboard workspace and the command palette.
 	notifBell := osNotifBell(settings)
 
+	// Feedback affordance: a topbar button that opens the VayuMail composer in
+	// feedback mode (recipient pre-filled, structured template, PGP pre-enabled).
+	// On hover/focus a small premium popover explains what it's for. Rendered in
+	// the shared shell, so it appears identically in the clearnet and Tor consoles.
+	feedbackBtn := `<div class="topbar-feedback" data-feedback>
+      <a class="btn--icon topbar-feedback__btn" href="/os/vayumail/compose?feedback=1" aria-label="Report a bug or suggest an improvement" title="Report a bug · request a feature">
+        <svg viewBox="0 0 20 20" width="18" height="18" fill="none" aria-hidden="true"><path d="M10 2.4a5.2 5.2 0 00-3.1 9.36c.44.33.7.86.72 1.42l.02.62h4.72l.02-.62c.02-.56.28-1.09.72-1.42A5.2 5.2 0 0010 2.4z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M8 16.4h4M8.6 18h2.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+      </a>
+      <div class="topbar-feedback__pop" role="tooltip">
+        <div class="topbar-feedback__title">💡 Help improve VayuPress</div>
+        <p class="topbar-feedback__desc">Found a bug, want an improvement, or have a feature idea? Tell us — it opens a secure email (PGP pre-enabled) where you can attach screenshots or files.</p>
+        <span class="topbar-feedback__cta">Report a bug · request a feature →</span>
+      </div>
+    </div>`
+
 	// Space-mode indicator (ADR-0141): every admin page carries an unmistakable
 	// badge for the world this whole install controls — a CLEARNET Space (public
 	// HTTPS domain) or a TOR Space (anonymous .onion, clearnet callbacks off) — so
@@ -1210,6 +1225,7 @@ func adminOSShellHead(nonce, title, active string, settings *osSettings) string 
     ` + spaceBadge + `
     <span class="topbar-spacer"></span>
     ` + cmdHint + `
+    ` + feedbackBtn + `
     ` + notifBell + `
     <button type="button" class="btn--icon topbar-theme-btn" aria-label="Toggle colour theme (light / dark / auto)" title="Colour theme">
       <svg class="theme-ico theme-ico--light" viewBox="0 0 20 20" width="18" height="18" fill="none" aria-hidden="true"><circle cx="10" cy="10" r="3.6" stroke="currentColor" stroke-width="1.6"/><path d="M10 1.6v2.2M10 16.2v2.2M1.6 10h2.2M16.2 10h2.2M4.1 4.1l1.5 1.5M14.4 14.4l1.5 1.5M15.9 4.1l-1.5 1.5M5.6 14.4l-1.5 1.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>

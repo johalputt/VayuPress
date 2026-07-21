@@ -496,6 +496,44 @@
 @media (prefers-reduced-motion: reduce) {
   .vp-os .topbar-notif__btn--active::after { animation: none; }
 }
+
+/* ── Feedback affordance (topbar "report a bug / suggest an improvement") ─────
+   One button that opens the composer in feedback mode; on hover/focus a small
+   premium popover explains it. Pure CSS, so it works in both consoles. */
+.vp-os .topbar-feedback { position: relative; display: inline-flex; }
+.vp-os .topbar-feedback__btn { position: relative; color: var(--text-2); }
+.vp-os .topbar-feedback__btn:hover,
+.vp-os .topbar-feedback__btn:focus-visible { color: var(--brand); }
+.vp-os .topbar-feedback__pop {
+  position: absolute; top: calc(100% + 8px); right: 0; z-index: 60;
+  width: 264px; padding: var(--sp-3) var(--sp-4);
+  background: var(--bg-surface); border: 1px solid var(--border-strong);
+  border-radius: var(--r-md); box-shadow: 0 18px 46px -18px rgba(2, 8, 20, 0.7);
+  opacity: 0; visibility: hidden; transform: translateY(-6px) scale(0.98);
+  transform-origin: top right; pointer-events: none;
+  transition: opacity 0.16s ease, transform 0.16s cubic-bezier(0.16, 0.84, 0.44, 1), visibility 0.16s;
+}
+.vp-os .topbar-feedback:hover .topbar-feedback__pop,
+.vp-os .topbar-feedback:focus-within .topbar-feedback__pop {
+  opacity: 1; visibility: visible; transform: none; pointer-events: auto;
+}
+.vp-os .topbar-feedback__title { font-weight: 700; font-size: var(--text-sm); margin-bottom: 4px; color: var(--text); }
+.vp-os .topbar-feedback__desc { font-size: var(--text-xs); line-height: 1.55; color: var(--text-3); margin: 0 0 8px; }
+.vp-os .topbar-feedback__cta { font-size: var(--text-xs); font-weight: 700; color: var(--brand); }
+@media (prefers-reduced-motion: reduce) {
+  .vp-os .topbar-feedback__pop { transition: opacity 0.12s ease, visibility 0.12s; transform: none; }
+}
+@media (max-width: 640px) {
+  .vp-os .topbar-feedback__pop { position: fixed; top: 56px; right: var(--sp-3); left: var(--sp-3); width: auto; }
+}
+
+/* ── Feedback compose banner ─────────────────────────────────────────────── */
+.vp-os .vm-feedback-banner {
+  margin-bottom: var(--sp-4); padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--border-strong); border-radius: var(--r-md);
+  background: var(--bg-surface-2); color: var(--text-2);
+  font-size: var(--text-sm); line-height: 1.5;
+}
 .vp-os .topbar-notif__badge {
   position: absolute; top: -3px; right: -3px;
   min-width: 16px; height: 16px; padding: 0 4px; border-radius: var(--r-full);

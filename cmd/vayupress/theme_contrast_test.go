@@ -75,6 +75,9 @@ func TestThemeEditorCoversSettingsAllowlist(t *testing.T) {
 		// The search-engine / AI crawler block is a Power & Maintenance switch
 		// (/os/power, POST /os/api/power/crawlers), not a theme-editor field.
 		settings.KeyBlockCrawlers: true,
+		// The feedback inbox is set on the Power & Maintenance page (feedback
+		// button), not the theme editor.
+		settings.KeyFeedbackEmail: true,
 		// Navigation menu is managed through the VayuOS Navigation tab
 		// (/os/settings/navigation), not the legacy theme editor.
 		settings.KeyNavItems: true,

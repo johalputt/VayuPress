@@ -8,7 +8,23 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
-## [3.14.75] — 2026-07-21
+## [3.14.76] — 2026-07-21
+
+### Added
+- **One-tap feedback in VayuOS — report a bug, request an improvement or
+  suggest a feature.** A new 💡 button in the VayuOS top bar (present on every
+  page, in **both** the clearnet and the Tor console) reveals a small premium
+  popover on hover explaining what it's for; clicking it opens the VayuMail
+  composer in **feedback mode**: the recipient is pre-filled to your feedback
+  inbox, a structured template (type · what happened · steps · expected · actual,
+  stamped with the install's version and world) is dropped into the body, and
+  **PGP encryption is pre-enabled** for text-only reports. Screenshots and files
+  can be attached like any message (attachments send DKIM-signed over TLS rather
+  than PGP-encrypted, which the composer already indicates live).
+  - The feedback inbox defaults to `feedback@<your-domain>`, so it works the
+    moment that mailbox exists. You can point it at any address from **Operations
+    → Power & Maintenance → Feedback & bug reports** (setting
+    `vayupress.feedback_email`).
 
 ### Added
 - **Search engine & AI crawler block (Operations → Power & Maintenance).** A

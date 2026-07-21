@@ -115,6 +115,33 @@ func (a *App) handleVayuOSCompose(w http.ResponseWriter, r *http.Request) {
 	// message server-side so URLs stay short and large bodies are handled.
 	prefillTo, prefillSubject, prefillBody := a.composePrefill(r)
 
+	// Feedback mode (the VayuOS topbar "Report a bug / suggest an improvement"
+	// button links to ?feedback=1): address the feedback inbox, drop in a
+	// structured template, and pre-enable PGP so the report is encrypted. Any
+	// explicit ?to/subject/body still wins, so the mode only fills the blanks.
+	feedback := r.URL.Query().Get("feedback") == "1"
+	encryptChecked := r.URL.Query().Get("encrypt") == "1"
+	if feedback {
+		if prefillTo == "" {
+			prefillTo = a.feedbackEmail(r.Context())
+		}
+		if prefillSubject == "" {
+			prefillSubject = feedbackSubject
+		}
+		if prefillBody == "" {
+			prefillBody = feedbackBody()
+		}
+		encryptChecked = true
+	}
+	encAttr := ""
+	if encryptChecked {
+		encAttr = " checked"
+	}
+	feedbackBanner := ""
+	if feedback {
+		feedbackBanner = `<div class="vm-feedback-banner">💡 <strong>Help improve VayuPress.</strong> Tell us about a bug, an improvement or a feature you'd like — attach screenshots or files if they help. PGP encryption is switched on for text-only reports; either way your message is delivered securely. Just add your details and hit Send.</div>`
+	}
+
 	// Recipient autocomplete is scoped to the SENDING mailbox's own address book
 	// only (never a shared/global directory), so one mailbox's contacts stay
 	// private to it. The owner is the opened mailbox; an admin composing without a
@@ -126,7 +153,7 @@ func (a *App) handleVayuOSCompose(w http.ResponseWriter, r *http.Request) {
 		composeOwner = "postmaster@" + domain
 	}
 	body.WriteString(`<div class="card"><div class="card-title">New message</div>
-<form data-mail-compose>
+` + feedbackBanner + `<form data-mail-compose>
   ` + a.composeContactsDatalistFor(r.Context(), composeOwner) + `
   <label class="field"><span class="field-label">From</span>
     <select class="input" data-c-from>` + fromOpts + `</select></label>
@@ -177,7 +204,7 @@ func (a *App) handleVayuOSCompose(w http.ResponseWriter, r *http.Request) {
   </div>
 
   <div class="vm-row vm-row--tight vm-encrypt-row">
-    <label class="vm-filter-check"><input type="checkbox" data-c-encrypt> 🔒 Encrypt with PGP</label>
+    <label class="vm-filter-check"><input type="checkbox" data-c-encrypt` + encAttr + `> 🔒 Encrypt with PGP</label>
     <span class="vm-pgp-hint" data-c-encrypt-hint aria-live="polite">Off — the message is sent as readable text. Encrypt only when the recipient can decrypt PGP (encrypting to a plain inbox like Gmail arrives as unreadable ciphertext).</span>
   </div>
   <div class="vm-row vm-compose-actions">
