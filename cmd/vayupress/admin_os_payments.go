@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/payments"
 	"github.com/johalputt/vayupress/internal/secrets"
@@ -358,6 +359,195 @@ if(dcBtn)dcBtn.addEventListener('click',function(){
   if(!confirm('Disconnect PayPal? New PayPal checkouts will stop.'))return;
   dcBtn.disabled=true;
   jpost('/os/api/payments/paypal/disconnect',null).then(function(res){if(res.ok){location.reload();}else{dcBtn.disabled=false;show('Error',true);}});
+});
+})();
+</script>`
+}
+
+// ── Crypto · BTCPay Server (BTC/XMR/ETH/USDT) ─────────────────────────────────
+
+// btcpayStatus reports whether the crypto gateway is live (URL + store id + an
+// enabled API key), plus the API-key hint and the configured coordinates.
+func (a *App) btcpayStatus(ctx context.Context) (connected bool, hint, url, storeID string) {
+	if a.siteSettings != nil {
+		url = strings.TrimSpace(a.siteSettings.Get(ctx, settings.KeyBTCPayURL))
+		storeID = strings.TrimSpace(a.siteSettings.Get(ctx, settings.KeyBTCPayStoreID))
+	}
+	if a.secrets == nil {
+		return false, "", url, storeID
+	}
+	creds, err := a.secrets.List(ctx)
+	if err != nil {
+		return false, "", url, storeID
+	}
+	keyed := false
+	for _, c := range creds {
+		if c.Provider == secrets.ProviderBTCPay && c.Enabled && c.HasSecret {
+			keyed = true
+			hint = c.Hint
+		}
+	}
+	return keyed && url != "" && storeID != "", hint, url, storeID
+}
+
+// handleBTCPayConnect stores the BTCPay coordinates: server URL + store id in
+// site settings, Greenfield API key + webhook secret encrypted. An empty API key
+// on a re-save preserves the existing one (Upsert semantics), so the operator can
+// add the webhook secret later without re-pasting the key.
+func (a *App) handleBTCPayConnect(w http.ResponseWriter, r *http.Request) {
+	if a.secrets == nil || a.siteSettings == nil {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "secrets-error", "store not initialised", "")
+		return
+	}
+	var in struct {
+		URL           string `json:"url"`
+		StoreID       string `json:"store_id"`
+		APIKey        string `json:"api_key"`
+		WebhookSecret string `json:"webhook_secret"`
+		Enabled       *bool  `json:"enabled"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		writeAPIError(w, r, http.StatusBadRequest, "bad-json", "invalid request body", "")
+		return
+	}
+	enabled := true
+	if in.Enabled != nil {
+		enabled = *in.Enabled
+	}
+	srvURL := strings.TrimRight(strings.TrimSpace(in.URL), "/")
+	storeID := strings.TrimSpace(in.StoreID)
+	if srvURL != "" && !strings.HasPrefix(srvURL, "http://") && !strings.HasPrefix(srvURL, "https://") {
+		writeAPIError(w, r, http.StatusBadRequest, "bad-url", "The BTCPay server URL must start with http:// or https://.", "")
+		return
+	}
+	kv := map[string]string{}
+	if srvURL != "" {
+		kv[settings.KeyBTCPayURL] = srvURL
+	}
+	if storeID != "" {
+		kv[settings.KeyBTCPayStoreID] = storeID
+	}
+	if len(kv) > 0 {
+		if err := a.siteSettings.SetMany(r.Context(), kv); err != nil {
+			writeAPIError(w, r, http.StatusInternalServerError, "settings-error", err.Error(), "")
+			return
+		}
+	}
+	if _, err := a.secrets.Upsert(r.Context(), secrets.ProviderBTCPay, "BTCPay API key", "", strings.TrimSpace(in.APIKey), enabled, false); err != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "secrets-error", err.Error(), "")
+		return
+	}
+	if wh := strings.TrimSpace(in.WebhookSecret); wh != "" {
+		if _, err := a.secrets.Upsert(r.Context(), secrets.ProviderBTCPayWebhook, "BTCPay webhook secret", "", wh, true, false); err != nil {
+			writeAPIError(w, r, http.StatusInternalServerError, "secrets-error", err.Error(), "")
+			return
+		}
+	}
+	logging.LogInfo("payments", "btcpay gateway saved")
+	writeJSON(w, r, http.StatusOK, map[string]interface{}{"ok": true, "enabled": enabled})
+}
+
+// handleBTCPayTest verifies the stored coordinates by asking BTCPay for the store.
+func (a *App) handleBTCPayTest(w http.ResponseWriter, r *http.Request) {
+	baseURL, storeID, apiKey, ok := a.btcpayCreds(r.Context())
+	if !ok {
+		writeAPIError(w, r, http.StatusBadRequest, "not-connected", "Enter the BTCPay URL, store id and API key first.", "")
+		return
+	}
+	c := payments.NewBTCPayClient(a.outboundClient, baseURL, storeID, apiKey)
+	if err := c.Ping(r.Context()); err != nil {
+		writeAPIError(w, r, http.StatusBadGateway, "btcpay-error", err.Error(), "")
+		return
+	}
+	writeJSON(w, r, http.StatusOK, map[string]interface{}{"ok": true})
+}
+
+// handleBTCPayDisconnect disables the BTCPay credentials without deleting them, so
+// reconnecting doesn't require re-pasting the key.
+func (a *App) handleBTCPayDisconnect(w http.ResponseWriter, r *http.Request) {
+	if a.secrets == nil {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "secrets-error", "secret store not initialised", "")
+		return
+	}
+	_, _ = a.secrets.Upsert(r.Context(), secrets.ProviderBTCPay, "BTCPay API key", "", "", false, false)
+	_, _ = a.secrets.Upsert(r.Context(), secrets.ProviderBTCPayWebhook, "BTCPay webhook secret", "", "", false, false)
+	logging.LogInfo("payments", "btcpay gateway disconnected")
+	writeJSON(w, r, http.StatusOK, map[string]interface{}{"ok": true})
+}
+
+// btcpayConnectCard renders the BTCPay (crypto) connect card + its nonce script.
+func (a *App) btcpayConnectCard(nonce string, ctx context.Context) string {
+	connected, _, url, storeID := a.btcpayStatus(ctx)
+	webhookURL := "https://" + config.Cfg.Domain + "/api/v1/payments/btcpay/webhook"
+	statusLine := `<strong>Not connected.</strong> <span class="text-sm muted">Point VayuPress at your self-hosted BTCPay Server to accept BTC, Monero, Ethereum and stablecoins — perfect for anonymous / Tor buyers, since there's no account or KYC.</span>`
+	saveLabel := "Save &amp; connect"
+	disconnect := ""
+	if connected {
+		statusLine = `<strong style="color:var(--color-success,#22c55e)">● Connected</strong> <span class="text-sm muted font-mono">` + html.EscapeString(url) + `</span>`
+		saveLabel = "Update settings"
+		disconnect = `<button type="button" class="btn btn--ghost btn--sm" id="pay-btc-disconnect">Disconnect</button>`
+	}
+	return `<div class="card">
+  <div class="settings-block-title">Crypto · BTCPay Server <span class="muted text-xs">(BTC · XMR · ETH · USDT)</span></div>
+  <p class="text-sm muted mb-4">` + statusLine + ` VayuPress creates an invoice and sends the buyer to your BTCPay-hosted checkout (coin choice, QR and on-chain confirmation happen there); a signed webhook unlocks access. Funds settle straight into <strong>your own</strong> BTCPay wallet — no processor, no custody.</p>
+  <div class="field">
+    <label class="field-label" for="pay-btc-url">BTCPay server URL</label>
+    <input id="pay-btc-url" class="input font-mono" type="text" value="` + html.EscapeString(url) + `" placeholder="https://btcpay.example.com">
+    <span class="field-hint">Your self-hosted BTCPay instance (a clearnet host or a .onion). No trailing slash needed.</span>
+  </div>
+  <div class="field">
+    <label class="field-label" for="pay-btc-store">Store ID</label>
+    <input id="pay-btc-store" class="input font-mono" type="text" value="` + html.EscapeString(storeID) + `" placeholder="Store settings → General → Store ID">
+  </div>
+  <div class="field">
+    <label class="field-label" for="pay-btc-key">Greenfield API key</label>
+    <input id="pay-btc-key" class="input font-mono" type="password" placeholder="token…  (leave blank to keep current)" autocomplete="new-password">
+    <span class="field-hint">BTCPay → Account → API Keys, with <code>btcpay.store.cancreateinvoice</code> + <code>btcpay.store.canviewinvoices</code>. Stored encrypted (AES-256-GCM).</span>
+  </div>
+  <div class="field">
+    <label class="field-label" for="pay-btc-wh">Webhook secret</label>
+    <input id="pay-btc-wh" class="input font-mono" type="password" placeholder="the secret you set on the webhook" autocomplete="new-password">
+    <span class="field-hint">In BTCPay → Store → Webhooks, add <code class="font-mono">` + html.EscapeString(webhookURL) + `</code> for the <em>Invoice settled</em> event, then paste its secret here. Required to confirm payments.</span>
+  </div>
+  <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">
+    <button type="button" class="btn btn--primary btn--sm" id="pay-btc-save">` + saveLabel + `</button>
+    <button type="button" class="btn btn--ghost btn--sm" id="pay-btc-test">Test connection</button>
+    ` + disconnect + `
+    <span id="pay-btc-msg" role="status" aria-live="polite" class="text-xs muted"></span>
+  </div>
+</div>
+<script nonce="` + nonce + `">
+(function(){'use strict';
+function csrf(){var m=document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);return m?m[1]:'';}
+var msg=document.getElementById('pay-btc-msg');
+function show(t,e){if(!msg)return;msg.textContent=t;msg.style.color=e?'#ef4444':'';}
+function jpost(url,body){return fetch(url,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},body:body?JSON.stringify(body):null}).then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d};});});}
+function errMsg(d){return d&&(d.detail||(d.error&&(d.error.message||d.error))||d.title)||'Error';}
+var saveBtn=document.getElementById('pay-btc-save');
+if(saveBtn)saveBtn.addEventListener('click',function(){
+  var body={url:((document.getElementById('pay-btc-url')||{}).value||'').trim(),
+    store_id:((document.getElementById('pay-btc-store')||{}).value||'').trim(),
+    api_key:((document.getElementById('pay-btc-key')||{}).value||'').trim(),
+    webhook_secret:((document.getElementById('pay-btc-wh')||{}).value||'').trim(),enabled:true};
+  saveBtn.disabled=true;show('Saving…',false);
+  jpost('/os/api/payments/btcpay/connect',body).then(function(res){
+    saveBtn.disabled=false;
+    if(res.ok){show('Saved ✓',false);setTimeout(function(){location.reload();},700);}else{show(errMsg(res.d),true);}
+  }).catch(function(e){saveBtn.disabled=false;show('Error: '+e,true);});
+});
+var testBtn=document.getElementById('pay-btc-test');
+if(testBtn)testBtn.addEventListener('click',function(){
+  testBtn.disabled=true;show('Testing…',false);
+  jpost('/os/api/payments/btcpay/test',null).then(function(res){
+    testBtn.disabled=false;
+    if(res.ok){show('Connection OK ✓',false);}else{show(errMsg(res.d),true);}
+  }).catch(function(e){testBtn.disabled=false;show('Error: '+e,true);});
+});
+var dcBtn=document.getElementById('pay-btc-disconnect');
+if(dcBtn)dcBtn.addEventListener('click',function(){
+  if(!confirm('Disconnect BTCPay? New crypto checkouts will stop.'))return;
+  dcBtn.disabled=true;
+  jpost('/os/api/payments/btcpay/disconnect',null).then(function(res){if(res.ok){location.reload();}else{dcBtn.disabled=false;show('Error',true);}});
 });
 })();
 </script>`

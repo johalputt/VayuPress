@@ -317,6 +317,9 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/payments/paypal/connect", a.handlePayPalConnect)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/payments/paypal/test", a.handlePayPalTest)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/payments/paypal/disconnect", a.handlePayPalDisconnect)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/payments/btcpay/connect", a.handleBTCPayConnect)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/payments/btcpay/test", a.handleBTCPayTest)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/payments/btcpay/disconnect", a.handleBTCPayDisconnect)
 		// Premium Mail-ID management console (see/approve/disapprove sales + the
 		// operator's premium-name list).
 		pr.Get("/os/monetization/mailids", a.handleOSMailIDs)

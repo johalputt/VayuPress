@@ -8,7 +8,32 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
-## [3.14.78] — 2026-07-21
+## [3.14.79] — 2026-07-21
+
+### Added
+- **Crypto payments — accept BTC, Monero, Ethereum and stablecoins.** A new
+  self-hosted **BTCPay Server** gateway sits alongside Stripe and PayPal in
+  VayuOS → Monetization. VayuPress creates an invoice via BTCPay's Greenfield API
+  and sends the buyer to BTCPay's own hosted checkout (coin choice, QR and
+  on-chain confirmation all happen there); a **HMAC-verified settlement webhook**
+  then marks the order paid and provisions the entitlement. Funds settle straight
+  into the operator's own BTCPay wallet — **no processor, no custody, no KYC** —
+  so **anonymous / Tor buyers can pay without an account**, which the identity-
+  and clearnet-bound card gateways can't offer. A **Pay with crypto · BTC · XMR ·
+  ETH · USDT** button appears at checkout whenever BTCPay is connected, and the
+  post-payment page reflects the on-chain "confirming" state honestly.
+  - Config lives in Monetization: server URL + store id (settings) and the
+    Greenfield API key + webhook secret (encrypted at rest, AES-256-GCM), with a
+    one-click **Test connection** and the exact webhook URL to register in BTCPay.
+  - Settlement is verified authoritatively: the signed webhook triggers a
+    server-to-server invoice re-fetch, and fulfilment is idempotent (a duplicate
+    webhook or a page refresh never provisions twice).
+
+### Security
+- New `VayuPGP`-independent payment primitives: a minimal BTCPay Greenfield
+  client (`payments.BTCPayClient`) and a constant-time webhook signature verifier
+  (`payments.VerifyBTCPaySig`, HMAC-SHA256 over the raw body). The invoice id is
+  format-validated before it is ever placed in an API path.
 
 ### Changed
 - **Feedback now reaches the VayuPress team by default.** The VayuOS feedback

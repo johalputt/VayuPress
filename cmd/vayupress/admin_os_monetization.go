@@ -91,7 +91,7 @@ func (a *App) handleOSMonetization(w http.ResponseWriter, r *http.Request) {
 </div>
 
 <div class="section-head"><span class="section-head__title">Payments</span><span class="section-head__hint">Connect a card gateway or take payments directly</span></div>
-` + a.paymentGatewaysCard(nonce, ctx) + a.paypalConnectCard(nonce, ctx) + `
+` + a.paymentGatewaysCard(nonce, ctx) + a.paypalConnectCard(nonce, ctx) + a.btcpayConnectCard(nonce, ctx) + `
 <div class="card">
   <div class="settings-block-title">Direct / offline payment</div>
   <p class="text-sm muted mb-4">The dependency-free way to get paid. Publish how readers should pay (bank transfer, UPI, a payment link…); they quote their order reference, you confirm receipt above. No third-party gateway required.</p>

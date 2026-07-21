@@ -128,6 +128,8 @@ func TestThemeEditorCoversSettingsAllowlist(t *testing.T) {
 		settings.KeyPayCurrency:             true,
 		settings.KeyPaySupportEmail:         true,
 		settings.KeyPayPalSandbox:           true,
+		settings.KeyBTCPayURL:               true,
+		settings.KeyBTCPayStoreID:           true,
 		settings.KeyPremiumMailIDPriceCents: true,
 		settings.KeyMailIDTerms:             true,
 		settings.KeyAdSlotPriceCents:        true,

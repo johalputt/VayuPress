@@ -72,6 +72,12 @@ const (
 	// webhook id used to verify PayPal webhook signatures.
 	ProviderPayPal        = "paypal"
 	ProviderPayPalWebhook = "paypal_webhook"
+	// ProviderBTCPay stores the operator's BTCPay Server Greenfield API key
+	// (server-to-server, used to create invoices). The non-secret server URL and
+	// store id live in site settings. ProviderBTCPayWebhook stores the webhook
+	// signing secret used to HMAC-verify BTCPay settlement callbacks.
+	ProviderBTCPay        = "btcpay"
+	ProviderBTCPayWebhook = "btcpay_webhook"
 	ProviderCustom        = "custom"
 )
 
@@ -88,6 +94,8 @@ var KnownProviders = map[string]bool{
 	ProviderStripeWebhook:  true,
 	ProviderPayPal:         true,
 	ProviderPayPalWebhook:  true,
+	ProviderBTCPay:         true,
+	ProviderBTCPayWebhook:  true,
 	ProviderCustom:         true,
 }
 

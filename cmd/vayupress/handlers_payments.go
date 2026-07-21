@@ -23,6 +23,7 @@ import (
 	htmpl "html/template"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -134,6 +135,7 @@ func (a *App) handleCheckoutPage(w http.ResponseWriter, r *http.Request) {
 
 	stripeKey, stripeOn := a.stripeSecretKey(r.Context())
 	ppID, ppSecret, ppSandbox, paypalOn := a.paypalCreds(r.Context())
+	_, _, _, btcpayOn := a.btcpayCreds(r.Context())
 
 	if r.Method == http.MethodPost {
 		emailAddr := strings.TrimSpace(strings.ToLower(r.PostFormValue("email")))
@@ -144,6 +146,8 @@ func (a *App) handleCheckoutPage(w http.ResponseWriter, r *http.Request) {
 		// prefer Stripe, then PayPal, then the built-in direct/offline gateway.
 		gateway := payments.GatewayDirect
 		switch {
+		case method == "crypto" && btcpayOn:
+			gateway = payments.GatewayBTCPay
 		case method == "paypal" && paypalOn:
 			gateway = payments.GatewayPayPal
 		case method == "stripe" && stripeOn:
@@ -159,7 +163,7 @@ func (a *App) handleCheckoutPage(w http.ResponseWriter, r *http.Request) {
 			AmountCents: amount, Currency: currency, Gateway: gateway,
 		})
 		if cerr != nil {
-			_, _ = w.Write([]byte(checkoutFormPage(tier, cadence, amount, currency, stripeOn, paypalOn, cerr.Error())))
+			_, _ = w.Write([]byte(checkoutFormPage(tier, cadence, amount, currency, stripeOn, paypalOn, btcpayOn, cerr.Error())))
 			return
 		}
 		logging.LogInfo("payments", "order opened: "+order.Reference+" tier="+tier.Slug+" gateway="+gateway)
@@ -207,12 +211,17 @@ func (a *App) handleCheckoutPage(w http.ResponseWriter, r *http.Request) {
 			}
 			http.Redirect(w, r, approveURL, http.StatusSeeOther)
 			return
+		case payments.GatewayBTCPay:
+			// BTCPay-hosted crypto checkout (BTC/XMR/ETH/USDT); the settlement
+			// webhook fulfils the order once the network confirms.
+			a.startBTCPayCheckout(r.Context(), w, r, order, tier.Name)
+			return
 		default:
 			a.checkoutOfflineFallback(r.Context(), w, order, tier.Name)
 			return
 		}
 	}
-	_, _ = w.Write([]byte(checkoutFormPage(tier, cadence, amount, currency, stripeOn, paypalOn, "")))
+	_, _ = w.Write([]byte(checkoutFormPage(tier, cadence, amount, currency, stripeOn, paypalOn, btcpayOn, "")))
 }
 
 // checkoutOfflineFallback emails the payer offline instructions and renders the
@@ -395,6 +404,140 @@ func checkoutThanksPage() string {
   </div>
   <div class="pr-card" style="max-width:34rem;margin:0 auto">
     <p>Access unlocks within a few seconds — a receipt is on its way to your inbox.</p>
+    <p class="pr-foot"><a class="btn btn--primary pr-cta pr-cta--primary" href="/members/account">Go to your account</a></p>
+  </div>
+</main>`)
+}
+
+// ── BTCPay Server (crypto: BTC/XMR/ETH/USDT) ──────────────────────────────────
+
+// btcpayCreds returns the operator's BTCPay coordinates (server URL + store id
+// from settings, Greenfield API key from the encrypted store) and whether a live
+// crypto checkout is available.
+func (a *App) btcpayCreds(ctx context.Context) (baseURL, storeID, apiKey string, ok bool) {
+	if a.siteSettings == nil || a.secrets == nil {
+		return "", "", "", false
+	}
+	baseURL = strings.TrimSpace(a.siteSettings.Get(ctx, settings.KeyBTCPayURL))
+	storeID = strings.TrimSpace(a.siteSettings.Get(ctx, settings.KeyBTCPayStoreID))
+	key, _ := a.secrets.ProviderSecret(ctx, secrets.ProviderBTCPay)
+	apiKey = strings.TrimSpace(key)
+	ok = baseURL != "" && storeID != "" && apiKey != ""
+	return
+}
+
+// btcpayWebhookSecret returns the BTCPay webhook signing secret (encrypted store).
+func (a *App) btcpayWebhookSecret(ctx context.Context) string {
+	if a.secrets == nil {
+		return ""
+	}
+	s, _ := a.secrets.ProviderSecret(ctx, secrets.ProviderBTCPayWebhook)
+	return strings.TrimSpace(s)
+}
+
+// startBTCPayCheckout opens a BTCPay invoice for the order and redirects the
+// buyer to BTCPay's hosted checkout (which offers BTC/XMR/ETH/USDT, shows the
+// QR, and confirms on-chain). Settlement is reconciled by the webhook. On any
+// error we fall back to the offline instructions so the buyer is never stranded.
+func (a *App) startBTCPayCheckout(ctx context.Context, w http.ResponseWriter, r *http.Request, order *payments.Order, tierName string) {
+	baseURL, storeID, apiKey, ok := a.btcpayCreds(ctx)
+	if !ok {
+		a.checkoutOfflineFallback(ctx, w, order, tierName)
+		return
+	}
+	origin := "https://" + config.Cfg.Domain
+	c := payments.NewBTCPayClient(a.outboundClient, baseURL, storeID, apiKey)
+	inv, err := c.CreateInvoice(ctx, order.AmountMajor(), order.Currency, order.Reference, origin+"/checkout/crypto/return?ref="+url.QueryEscape(order.Reference))
+	if err != nil || inv == nil || inv.CheckoutLink == "" {
+		msg := "no checkout link"
+		if err != nil {
+			msg = err.Error()
+		}
+		logging.LogError("payments", "btcpay invoice failed", msg)
+		a.checkoutOfflineFallback(ctx, w, order, tierName)
+		return
+	}
+	http.Redirect(w, r, inv.CheckoutLink, http.StatusSeeOther)
+}
+
+// handleCheckoutCryptoReturn is BTCPay's post-payment redirect target. Crypto
+// confirms on-chain (a few minutes), and the webhook is the source of truth for
+// fulfilment, so this shows the order's live state: a thank-you once the webhook
+// has marked it paid, otherwise a friendly "confirming" page.
+func (a *App) handleCheckoutCryptoReturn(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	ref := strings.TrimSpace(r.URL.Query().Get("ref"))
+	if a.payments != nil && ref != "" {
+		if order, err := a.payments.GetByReference(r.Context(), ref); err == nil && order != nil && order.Status == "paid" {
+			_, _ = w.Write([]byte(checkoutThanksPage()))
+			return
+		}
+	}
+	_, _ = w.Write([]byte(checkoutCryptoPendingPage()))
+}
+
+// handleBTCPayWebhook fulfils an order when BTCPay posts a signature-verified
+// settlement event. The signature is HMAC-SHA256 over the raw body; the invoice
+// is then re-fetched from BTCPay (never trusting the body for the money-moving
+// decision) to confirm it is settled and read back the order reference.
+func (a *App) handleBTCPayWebhook(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(io.LimitReader(r.Body, 64<<10))
+	if err != nil {
+		http.Error(w, "read error", http.StatusBadRequest)
+		return
+	}
+	secret := a.btcpayWebhookSecret(r.Context())
+	if secret == "" || !payments.VerifyBTCPaySig(secret, body, r.Header.Get("BTCPay-Sig")) {
+		http.Error(w, "bad signature", http.StatusUnauthorized)
+		return
+	}
+	ev, err := payments.ParseBTCPayWebhook(body)
+	if err != nil {
+		http.Error(w, "bad body", http.StatusBadRequest)
+		return
+	}
+	if !ev.IsSettlementEvent() {
+		w.WriteHeader(http.StatusOK) // ack non-settlement events (created/expired/…)
+		return
+	}
+	baseURL, storeID, apiKey, ok := a.btcpayCreds(r.Context())
+	if !ok || a.payments == nil {
+		http.Error(w, "not configured", http.StatusServiceUnavailable)
+		return
+	}
+	c := payments.NewBTCPayClient(a.outboundClient, baseURL, storeID, apiKey)
+	inv, ierr := c.GetInvoice(r.Context(), ev.InvoiceID)
+	if ierr != nil || inv == nil || !inv.Settled() || inv.OrderRef == "" {
+		http.Error(w, "not settled", http.StatusAccepted)
+		return
+	}
+	order, perr := a.payments.MarkPaid(r.Context(), inv.OrderRef, inv.ID)
+	switch {
+	case perr == nil:
+		if ferr := a.fulfillOrder(r.Context(), order); ferr != nil {
+			logging.LogError("payments", "btcpay fulfilment failed: "+order.Reference, ferr.Error())
+		} else {
+			logging.LogInfo("payments", "order paid via btcpay: "+order.Reference)
+		}
+	case errors.Is(perr, payments.ErrAlreadyPaid):
+		// idempotent — a duplicate webhook or a racing return
+	default:
+		logging.LogError("payments", "btcpay mark-paid failed", perr.Error())
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+// checkoutCryptoPendingPage tells a crypto buyer their payment is confirming.
+func checkoutCryptoPendingPage() string {
+	return checkoutShell("Payment received", `
+<main class="pr-shell" id="main-content">
+  <div class="pr-head">
+    <h1>Payment received 🪙</h1>
+    <p>Your crypto payment is confirming on-chain.</p>
+  </div>
+  <div class="pr-card" style="max-width:34rem;margin:0 auto">
+    <p>Crypto takes a few minutes to confirm. Access unlocks automatically the moment the network confirms your payment — a receipt follows to your inbox. You can safely close this page.</p>
     <p class="pr-foot"><a class="btn btn--primary pr-cta pr-cta--primary" href="/members/account">Go to your account</a></p>
   </div>
 </main>`)
@@ -675,7 +818,7 @@ func verifyHMACHex(sigHex string, payload []byte, secret string) bool {
 
 // ── Public checkout page markup (CSP-safe, no inline JS) ───────────────────────
 
-func checkoutFormPage(tier *members.Tier, cadence string, amountCents int, currency string, stripeOn, paypalOn bool, errMsg string) string {
+func checkoutFormPage(tier *members.Tier, cadence string, amountCents int, currency string, stripeOn, paypalOn, btcpayOn bool, errMsg string) string {
 	esc := html.EscapeString
 	errHTML := ""
 	if errMsg != "" {
@@ -689,13 +832,16 @@ func checkoutFormPage(tier *members.Tier, cadence string, amountCents int, curre
 	// One button per connected gateway (each submits its own method); the built-in
 	// direct/offline gateway is the fallback when none is connected.
 	buttons := `<button type="submit" class="btn btn--primary pr-cta pr-cta--primary" style="width:100%">Continue to payment</button>`
-	if stripeOn || paypalOn {
+	if stripeOn || paypalOn || btcpayOn {
 		buttons = ""
 		if stripeOn {
 			buttons += `<button type="submit" name="method" value="stripe" class="btn btn--primary pr-cta pr-cta--primary" style="width:100%;margin-bottom:.5rem">Pay by card</button>`
 		}
 		if paypalOn {
-			buttons += `<button type="submit" name="method" value="paypal" class="btn btn--ghost pr-cta" style="width:100%">Pay with PayPal</button>`
+			buttons += `<button type="submit" name="method" value="paypal" class="btn btn--ghost pr-cta" style="width:100%;margin-bottom:.5rem">Pay with PayPal</button>`
+		}
+		if btcpayOn {
+			buttons += `<button type="submit" name="method" value="crypto" class="btn btn--ghost pr-cta" style="width:100%">Pay with crypto <span class="text-xs muted">· BTC · XMR · ETH · USDT</span></button>`
 		}
 	}
 	return checkoutShell("Checkout · "+tier.Name, `

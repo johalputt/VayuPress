@@ -61,6 +61,9 @@ const (
 	GatewayStripe = "stripe"
 	// GatewayPayPal is recognised for orders paid through a PayPal subscription.
 	GatewayPayPal = "paypal"
+	// GatewayBTCPay is recognised for orders paid in crypto (BTC/XMR/ETH/USDT)
+	// through a self-hosted BTCPay Server, confirmed by its settlement webhook.
+	GatewayBTCPay = "btcpay"
 )
 
 // ErrAlreadyPaid is returned by MarkPaid when the order was already paid, so the

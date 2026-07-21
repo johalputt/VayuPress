@@ -185,6 +185,13 @@ const (
 	// KeyPayPalSandbox routes PayPal to the sandbox host ("on") instead of live
 	// ("off", default) — for testing with sandbox REST credentials.
 	KeyPayPalSandbox = "monetization.paypal_sandbox"
+	// KeyBTCPayURL / KeyBTCPayStoreID are the non-secret coordinates of the
+	// operator's self-hosted BTCPay Server store (the Greenfield API key + webhook
+	// secret live in the encrypted credential store). With all three present, the
+	// crypto gateway accepts BTC/XMR/ETH/USDT via BTCPay's hosted checkout —
+	// letting anonymous / Tor buyers pay without an account.
+	KeyBTCPayURL     = "monetization.btcpay_url"
+	KeyBTCPayStoreID = "monetization.btcpay_store_id"
 	// KeyPremiumMailIDPriceCents is the price (in minor units of KeyPayCurrency)
 	// the operator charges for a premium (vanity) VayuMail address in the mail-ID
 	// marketplace. Surfaced in the member portal next to a premium name. Default
@@ -366,6 +373,8 @@ var AllKeys = map[string]bool{
 	KeyPayCurrency:             true,
 	KeyPaySupportEmail:         true,
 	KeyPayPalSandbox:           true,
+	KeyBTCPayURL:               true,
+	KeyBTCPayStoreID:           true,
 	KeyPremiumMailIDPriceCents: true,
 	KeyMailIDTerms:             true,
 	KeyAdSlotPriceCents:        true,
@@ -446,6 +455,8 @@ var Defaults = map[string]string{
 	KeyPayCurrency:             "USD",
 	KeyPaySupportEmail:         "",
 	KeyPayPalSandbox:           "off",
+	KeyBTCPayURL:               "",
+	KeyBTCPayStoreID:           "",
 	KeyPremiumMailIDPriceCents: "500",
 	KeyMailIDTerms:             "By claiming this email address you agree to use it lawfully and you accept sole responsibility for all messages sent from it. You must not use it for spam, fraud, impersonation, harassment, or any illegal purpose. The address remains the property of the site operator, who may suspend or reclaim it for a breach of these terms or for non-payment. The operator provides the address as-is and is not liable for your use of it.",
 	KeyAdSlotPriceCents:        "1000",
