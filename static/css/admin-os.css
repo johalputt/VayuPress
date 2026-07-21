@@ -801,6 +801,9 @@
 .vp-os .notif-item__icon--comment { background: var(--accent-dim); color: var(--accent); }
 .vp-os .notif-item__icon--message { background: var(--ok-dim);     color: var(--ok); }
 .vp-os .notif-item__icon--domain  { background: var(--warn-dim);   color: var(--warn); }
+.vp-os .notif-item__icon--update  { background: var(--brand-dim);  color: var(--brand); box-shadow: 0 0 0 0 var(--brand-glow); animation: vp-upd-pulse 2.4s ease-out infinite; }
+@keyframes vp-upd-pulse { 0% { box-shadow: 0 0 0 0 var(--brand-glow); } 70% { box-shadow: 0 0 0 7px rgba(0,0,0,0); } 100% { box-shadow: 0 0 0 0 rgba(0,0,0,0); } }
+@media (prefers-reduced-motion: reduce) { .vp-os .notif-item__icon--update { animation: none; } }
 .vp-os .notif-item__body { flex: 1; min-width: 0; }
 .vp-os .notif-item__title { display: block; font-size: var(--text-sm); font-weight: 600; color: var(--text); }
 .vp-os .notif-item__detail { display: block; margin-top: 1px; font-size: var(--text-xs); color: var(--text-3); }
@@ -976,6 +979,74 @@
 @media (max-width: 560px) {
   .vp-os .mon-acc__sub { white-space: normal; }
   .vp-os .mon-chip { display: none; }
+}
+
+/* ── Update & Backup — premium hero ──────────────────────────────────────────
+   The software-update panel: a glassy hero with a drifting accent aura, an
+   Installed → Latest version flow with an arrow, and a live status chip. */
+.vp-os .upd-hero {
+  position: relative; overflow: hidden;
+  border: 1px solid var(--card-border);
+  border-radius: var(--r-lg);
+  background:
+    radial-gradient(120% 140% at 100% 0%, var(--brand-dim), transparent 55%),
+    var(--card-bg);
+  box-shadow: var(--sh), inset 0 1px 0 rgba(255,255,255,0.05);
+  padding: var(--sp-6);
+  margin-bottom: var(--sp-6);
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+}
+.vp-os .upd-hero__aura {
+  position: absolute; inset: -40% 40% auto -20%; height: 24rem; pointer-events: none;
+  background: radial-gradient(closest-side, var(--brand-glow), transparent 70%);
+  filter: blur(40px); opacity: 0.7;
+  animation: vp-aurora-drift 30s ease-in-out infinite alternate;
+}
+@media (prefers-reduced-motion: reduce) { .vp-os .upd-hero__aura { animation: none; } }
+.vp-os .upd-hero__head { position: relative; }
+.vp-os .upd-hero__badge {
+  display: inline-block; font: 700 var(--text-xs)/1 var(--font-mono);
+  letter-spacing: 0.14em; text-transform: uppercase; color: var(--brand);
+  background: var(--brand-dim); border: 1px solid var(--brand-dim);
+  padding: 5px 10px; border-radius: var(--r-full);
+}
+.vp-os .upd-hero__lead { position: relative; margin-top: var(--sp-3); max-width: 62ch; color: var(--text-2); font-size: var(--text-sm); line-height: 1.6; }
+.vp-os .upd-vers {
+  position: relative;
+  display: flex; align-items: stretch; flex-wrap: wrap; gap: var(--sp-3);
+  margin: var(--sp-5) 0 var(--sp-2);
+}
+.vp-os .upd-ver {
+  flex: 1 1 8rem; min-width: 8rem;
+  display: flex; flex-direction: column; gap: 6px;
+  padding: var(--sp-4);
+  background: var(--bg-surface-2);
+  border: 1px solid var(--card-border);
+  border-radius: var(--r-md);
+}
+.vp-os .upd-ver__label { font-size: 0.68rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-3); font-weight: 600; }
+.vp-os .upd-ver__num { font-family: var(--font-head); font-size: var(--text-2xl); font-weight: 700; color: var(--text); letter-spacing: -0.02em; }
+.vp-os .upd-ver__num--latest { color: var(--brand); }
+.vp-os .upd-ver__arrow { display: flex; align-items: center; color: var(--text-3); flex: 0 0 auto; }
+.vp-os .upd-ver--status { flex: 1 1 10rem; }
+.vp-os .upd-status {
+  align-self: flex-start;
+  font-weight: 650; font-size: var(--text-sm); color: var(--text-2);
+  padding: 4px 10px; border-radius: var(--r-full);
+  border: 1px solid var(--card-border); background: var(--bg-surface);
+}
+.vp-os .upd-status[data-state="uptodate"] { color: var(--ok); border-color: var(--ok-dim); background: var(--ok-dim); }
+.vp-os .upd-status[data-state="available"] { color: var(--brand); border-color: var(--brand-dim); background: var(--brand-dim); }
+.vp-os .upd-status[data-state="error"] { color: var(--danger); border-color: var(--danger-dim); background: var(--danger-dim); }
+.vp-os .upd-opts { position: relative; display: grid; gap: 4px; margin: var(--sp-4) 0; }
+.vp-os .upd-check { display: inline-flex; align-items: center; gap: 10px; font-size: var(--text-sm); color: var(--text); cursor: pointer; }
+.vp-os .upd-check input { width: 16px; height: 16px; accent-color: var(--brand); flex: 0 0 auto; }
+.vp-os .upd-opt-note { font-size: var(--text-xs); color: var(--text-3); line-height: 1.5; margin: 0 0 8px 26px; }
+.vp-os .upd-actions { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); margin-top: var(--sp-4); }
+.vp-os .upd-file { max-width: 22rem; }
+@media (max-width: 560px) {
+  .vp-os .upd-ver__arrow { transform: rotate(90deg); align-self: center; }
+  .vp-os .upd-vers { flex-direction: column; }
 }
 
 /* ── Cards ───────────────────────────────────────────────────── */

@@ -860,6 +860,8 @@ func notifIcon(kind string) string {
 		return iconMessages
 	case "domain":
 		return iconDomains
+	case "update":
+		return iconUpdate
 	default:
 		return iconBell
 	}
@@ -868,7 +870,12 @@ func notifIcon(kind string) string {
 // osNotifItem renders one notification as a clickable row that navigates straight
 // to the page which clears it (a plain <a>, so no JS is needed for the jump).
 func osNotifItem(n osNotification) string {
-	detail := notifCap(n.Count) + " " + n.Detail
+	// Most items read "<count> <detail>" (e.g. "3 unread in your inbox"); the
+	// update notice is a single event, so it shows its detail verbatim.
+	detail := n.Detail
+	if n.Kind != "update" {
+		detail = notifCap(n.Count) + " " + n.Detail
+	}
 	return `<a class="notif-item" href="` + n.Href + `">
   <span class="notif-item__icon notif-item__icon--` + n.Kind + `">` + notifIcon(n.Kind) + `</span>
   <span class="notif-item__body">
@@ -1534,6 +1541,12 @@ func (a *App) osNotifications(ctx context.Context, s *osSettings) []osNotificati
 			}
 			add("/os/domains", "Domains to sync", "waiting for approval", "domain", held)
 		}
+	}
+	// A newer signed VayuPress release is ready to install (read from the cached
+	// update-check history, refreshed by the background watcher). Admin-only via
+	// the /os/update gate in add(); silent in a Tor Space.
+	if v, ok := a.latestUpdateNotice(ctx); ok {
+		add("/os/update", "VayuOS update ready", "Install "+v+" in one click", "update", 1)
 	}
 	return out
 }

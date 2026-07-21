@@ -129,7 +129,9 @@
         if (latestEl) latestEl.textContent = d.latest || '—';
         if (statusEl) {
           statusEl.textContent = d.available ? 'Update available' : 'Up to date';
-          statusEl.className = 'update-version__value' + (d.available ? ' is-available' : '');
+          // Keep the premium chip class; drive its colour via data-state.
+          statusEl.className = 'upd-status';
+          statusEl.setAttribute('data-state', d.available ? 'available' : 'uptodate');
         }
         if (notesEl) {
           if (d.notes) {

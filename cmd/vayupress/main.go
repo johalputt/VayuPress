@@ -81,7 +81,7 @@ import (
 // -ldflags "-X main.Version=<.release-version>", and scripts/update-vayupress.sh
 // reads .release-version too — keep this in sync with .release-version so an
 // un-stamped `go build` still reports an honest version.
-var Version = "3.14.87"
+var Version = "3.14.88"
 var bootTime = time.Now()
 
 // onionSafeBindAddr picks the HTTP listen address (ADR-0141). A Tor Space
@@ -872,6 +872,7 @@ func main() {
 	a.startDashboardWarmer(queue.DoneCh)
 	a.startSearchReconciler(queue.DoneCh)
 	a.startScheduler(queue.DoneCh)
+	a.startUpdateWatcher(queue.DoneCh)
 	a.startCacheWarmer(queue.DoneCh)
 
 	// Wire queue injections.

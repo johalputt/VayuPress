@@ -8,6 +8,25 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.88] — 2026-07-21
+
+### Added
+- **New releases now surface in the notification bell.** A lightweight background
+  watcher checks for a newer signed release (every 6 h, clearnet-only — it never
+  runs in a Tor Space, and only records a history row when the answer changes).
+  When one is available, the topbar bell shows a pulsing **"VayuOS update ready —
+  Install vX.Y.Z in one click"** item linking straight to Update & Backup, so you
+  no longer have to open that page to know an update landed.
+
+### Changed
+- **Update & Backup is a premium, collapsible console.** The software-update
+  panel is now a glassy **hero** with a drifting accent aura, an **Installed →
+  Latest** version flow with an arrow, and a live status chip (grey → teal
+  "Update available" → green "Up to date"). Backup & restore and the long update
+  history collapse into **animated accordions** (smooth fade/slide reveal,
+  rotating chevron), so the page opens focused on the one action that matters.
+  All existing controls and behaviour are unchanged — only the presentation.
+
 ## [3.14.87] — 2026-07-21
 
 ### Changed

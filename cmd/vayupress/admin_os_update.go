@@ -30,6 +30,7 @@ package main
 // escaped, and DOM writes in the JS use textContent.
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"html"
@@ -202,6 +203,28 @@ func (a *App) handleOSUpdate(w http.ResponseWriter, r *http.Request) {
 	// actually available and the mode allows applying.
 	applyDisabled := " disabled"
 
+	iconArchive := `<svg viewBox="0 0 20 20" width="18" height="18" fill="none" aria-hidden="true"><path d="M2.5 4.5h15V8h-15zM4 8h12v8H4zM8 11h4" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round"/></svg>`
+	iconHistory := `<svg viewBox="0 0 20 20" width="18" height="18" fill="none" aria-hidden="true"><circle cx="10" cy="10" r="7" stroke="currentColor" stroke-width="1.4"/><path d="M10 5.6V10l2.9 1.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`
+
+	backupBody := `<p class="text-sm muted mb-4">Download your entire site — database and every setting — as a single consistent, checksummed archive. Restore it on this or another server. There is no size limit on export or import.</p>
+  <div class="settings-block-title">Export</div>
+  <p class="text-sm muted mb-2">Creates a point-in-time <code>.tar.gz</code> snapshot and downloads it to your computer.</p>
+  <a class="btn btn--primary btn--sm" href="/os/api/backup/export" data-backup-export download>Download full backup</a>
+  <div class="section-divider mt-4"></div>
+  <div class="settings-block-title mt-4">Import / restore</div>
+  <p class="text-sm muted mb-2">Restores a previously exported snapshot. Your current database is automatically backed up first, then the service restarts to load the restored data. <strong>This replaces all current content and settings.</strong></p>
+  <div class="theme-actions" data-restore-wrap>
+    <input type="file" id="backup-file" class="input upd-file" accept=".gz,.tgz,application/gzip,application/x-gzip" data-backup-file>
+    <button type="button" class="btn btn--danger btn--sm" data-backup-import>Restore from file</button>
+    <span class="text-xs muted" data-backup-msg role="status" aria-live="polite"></span>
+  </div>
+  <div class="progress mt-3" data-restore-progress hidden><div class="progress__bar progress__bar--ok w-0" data-restore-bar></div></div>`
+
+	historyBody := `<div class="table-wrap"><table class="table">
+    <thead><tr><th>#</th><th>From</th><th>To</th><th>Status</th><th>Detail</th><th>When</th></tr></thead>
+    <tbody data-history-body>` + historyRows + `</tbody>
+  </table></div>`
+
 	body := `<div class="page-header">
   <h1>Update &amp; Backup</h1>
   <div class="page-actions">
@@ -210,33 +233,41 @@ func (a *App) handleOSUpdate(w http.ResponseWriter, r *http.Request) {
 </div>
 ` + banner + `
 
-<div class="card mb-6" data-update-card>
-  <div class="card-title">Software update</div>
-  <p class="text-sm muted mb-4">Install the latest signed VayuPress release in one click — download, signature verification, automatic database backup, atomic swap and restart are all handled for you.</p>
-  <div class="update-row" data-update-state>
-    <div class="update-version">
-      <div class="field-label">Installed</div>
-      <div class="update-version__value">v` + html.EscapeString(Version) + `</div>
+<div class="upd-hero" data-update-card>
+  <div class="upd-hero__aura" aria-hidden="true"></div>
+  <div class="upd-hero__head">
+    <span class="upd-hero__badge">Software update</span>
+    <p class="upd-hero__lead">Install the latest <strong>signed</strong> VayuPress release in one click — download, signature verification, automatic database backup, atomic swap and restart, all handled for you.</p>
+  </div>
+  <div class="upd-vers" data-update-state>
+    <div class="upd-ver">
+      <span class="upd-ver__label">Installed</span>
+      <span class="upd-ver__num">v` + html.EscapeString(Version) + `</span>
     </div>
-    <div class="update-version">
-      <div class="field-label">Latest release</div>
-      <div class="update-version__value" data-latest-version>—</div>
+    <span class="upd-ver__arrow" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none"><path d="M4 12h15M13 6l6 6-6 6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </span>
+    <div class="upd-ver">
+      <span class="upd-ver__label">Latest release</span>
+      <span class="upd-ver__num upd-ver__num--latest" data-latest-version>—</span>
     </div>
-    <div class="update-version">
-      <div class="field-label">Status</div>
-      <div class="update-version__value" data-update-status>Not checked yet</div>
+    <div class="upd-ver upd-ver--status">
+      <span class="upd-ver__label">Status</span>
+      <span class="upd-status" data-update-status>Not checked yet</span>
     </div>
   </div>
   <div class="update-notes" data-update-notes hidden></div>
-  <label class="cz-check mt-4" style="justify-content:flex-start;gap:10px">
-    <input type="checkbox" data-update-backup` + backupChecked + `> Back up the database first
-  </label>
-  <div class="text-xs muted mb-2">` + backupNote + `</div>
-  <label class="cz-check mt-2" style="justify-content:flex-start;gap:10px">
-    <input type="checkbox" data-update-prerelease> Include pre-release &amp; development builds
-  </label>
-  <div class="text-xs muted mb-2">Off installs only stable, signed releases. Turn on to also offer the newest <strong>unreleased</strong> pre-release build when one is published — useful for early testing. Verification is unchanged (checksum always, signature when a release key is pinned).</div>
-  <div class="theme-actions mt-2" data-actions-wrap>
+  <div class="upd-opts">
+    <label class="upd-check">
+      <input type="checkbox" data-update-backup` + backupChecked + `> <span>Back up the database first</span>
+    </label>
+    <div class="upd-opt-note">` + backupNote + `</div>
+    <label class="upd-check">
+      <input type="checkbox" data-update-prerelease> <span>Include pre-release &amp; development builds</span>
+    </label>
+    <div class="upd-opt-note">Off installs only stable, signed releases. Turn on to also offer the newest <strong>unreleased</strong> pre-release build when one is published — useful for early testing. Verification is unchanged (checksum always, signature when a release key is pinned).</div>
+  </div>
+  <div class="upd-actions" data-actions-wrap>
     <button type="button" class="btn btn--ghost btn--sm" data-update-check>Check for updates</button>
     <button type="button" class="btn btn--primary btn--sm" data-update-apply` + applyDisabled + `>Update now</button>
     <button type="button" class="btn btn--ghost btn--sm" data-update-rollback>Roll back</button>
@@ -244,33 +275,10 @@ func (a *App) handleOSUpdate(w http.ResponseWriter, r *http.Request) {
   </div>
 </div>
 
-<div class="card mb-6" data-backup-card>
-  <div class="card-title">Backup &amp; restore</div>
-  <p class="text-sm muted mb-4">Download your entire site — database and every setting — as a single consistent, checksummed archive. Restore it on this or another server. There is no size limit on export or import.</p>
-
-  <div class="settings-block-title">Export</div>
-  <p class="text-sm muted mb-2">Creates a point-in-time <code>.tar.gz</code> snapshot and downloads it to your computer.</p>
-  <a class="btn btn--primary btn--sm" href="/os/api/backup/export" data-backup-export download>Download full backup</a>
-
-  <div class="section-divider mt-4"></div>
-
-  <div class="settings-block-title mt-4">Import / restore</div>
-  <p class="text-sm muted mb-2">Restores a previously exported snapshot. Your current database is automatically backed up first, then the service restarts to load the restored data. <strong>This replaces all current content and settings.</strong></p>
-  <div class="theme-actions" data-restore-wrap>
-    <input type="file" id="backup-file" class="input" accept=".gz,.tgz,application/gzip,application/x-gzip" data-backup-file style="max-width:22rem">
-    <button type="button" class="btn btn--danger btn--sm" data-backup-import>Restore from file</button>
-    <span class="text-xs muted" data-backup-msg role="status" aria-live="polite"></span>
-  </div>
-  <div class="progress mt-3" data-restore-progress hidden><div class="progress__bar progress__bar--ok w-0" data-restore-bar></div></div>
-</div>
-
-<div class="card" data-history-card>
-  <div class="card-title">Update history</div>
-  <div class="table-wrap"><table class="table">
-    <thead><tr><th>#</th><th>From</th><th>To</th><th>Status</th><th>Detail</th><th>When</th></tr></thead>
-    <tbody data-history-body>` + historyRows + `</tbody>
-  </table></div>
-</div>
+<div class="mon-stack" data-backup-card>` +
+		monAcc(iconArchive, "Backup &amp; restore", "Download or restore a full, checksummed snapshot", "", false, backupBody) +
+		monAcc(iconHistory, "Update history", "Every check, install and rollback, newest first", "", false, historyBody) +
+		`</div>
 
 <script nonce="` + nonce + `" src="/os/static/js/admin-os-update.js?v=` + assetVer("js/admin-os-update.js") + `"></script>`
 
@@ -365,6 +373,88 @@ func (a *App) handleOSUpdateCheck(w http.ResponseWriter, r *http.Request) {
 		"mode":       string(mode.Global.Current()),
 		"prerelease": includePre,
 	})
+}
+
+// latestUpdateNotice reports whether a newer signed release is known to exist,
+// returning its version. It reads ONLY the cached update_history rows (the most
+// recent "checked" record), never the network, so it is cheap enough to call on
+// every page render for the topbar bell. It stays silent in a Tor Space — the
+// anonymous world never advertises a clearnet update (ADR-0141 anti-leak).
+func (a *App) latestUpdateNotice(ctx context.Context) (string, bool) {
+	if a.updateStore == nil || config.Cfg.OnionMode {
+		return "", false
+	}
+	recs, err := a.updateStore.List(ctx, 25)
+	if err != nil {
+		return "", false
+	}
+	for _, rec := range recs {
+		if rec.Status != "checked" || rec.ToVersion == "" {
+			continue
+		}
+		// Recompute against the RUNNING version so a stale "available" row from
+		// before an upgrade never lingers: once we are on that version it is false.
+		if update.UpdateAvailable(Version, rec.ToVersion) {
+			return rec.ToVersion, true
+		}
+		return "", false // the most recent check says we are up to date
+	}
+	return "", false
+}
+
+// startUpdateWatcher periodically checks GitHub for a newer signed release and
+// records the result in update_history, so the topbar bell can surface "update
+// available" without the operator ever opening this page. Read-only and
+// clearnet-only: it never runs in a Tor Space (anti-leak, ADR-0141), and it only
+// writes a history row when the answer CHANGES, to keep the log clean.
+func (a *App) startUpdateWatcher(done <-chan struct{}) {
+	if a.updateStore == nil || config.Cfg.OnionMode {
+		return
+	}
+	check := func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		client := &http.Client{Timeout: 30 * time.Second, Transport: safeOutboundTransport()}
+		rel, err := update.CheckLatestChannel(ctx, client, updateOwner, updateRepo, false)
+		if err != nil {
+			return
+		}
+		// Skip logging when the latest release is unchanged since the last check.
+		if recs, err := a.updateStore.List(ctx, 25); err == nil {
+			for _, rec := range recs {
+				if rec.Status == "checked" {
+					if rec.ToVersion == rel.Version {
+						return
+					}
+					break
+				}
+			}
+		}
+		available := update.UpdateAvailable(Version, rel.Version)
+		_, _ = a.updateStore.Log(ctx, update.Record{
+			FromVersion: Version, ToVersion: rel.Version, Status: "checked",
+			Detail: fmt.Sprintf("current=%s latest=%s available=%t (auto)", Version, rel.Version, available),
+		})
+	}
+	go func() {
+		// Let boot settle before the first network call.
+		select {
+		case <-done:
+			return
+		case <-time.After(2 * time.Minute):
+		}
+		check()
+		ticker := time.NewTicker(6 * time.Hour)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				check()
+			}
+		}
+	}()
 }
 
 // isTruthyParam reports whether a query/form value means "on" (1/true/yes/on).
