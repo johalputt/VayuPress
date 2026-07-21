@@ -764,4 +764,52 @@ $$('[data-setting-key]').forEach(function (el) {
   }
 })();
 
+/* ── Installable app (PWA) ───────────────────────────────────────
+   Register the console's /os-scoped service worker (privacy-first: never caches
+   authenticated pages) and turn the topbar install button into a one-tap "Install
+   VayuOS". Handles Chrome/Edge/Android via beforeinstallprompt, and gives iOS —
+   which never fires it — an "Add to Home Screen" hint. Hidden once installed. */
+(function initPWA() {
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('/os/sw.js', { scope: '/os/' }).catch(function () {});
+    });
+  }
+  var btn = document.querySelector('[data-pwa-install]');
+  if (!btn) return;
+  var standalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
+    window.navigator.standalone === true;
+  if (standalone) return; // already installed — nothing to offer
+
+  var isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  var deferred = null;
+
+  window.addEventListener('beforeinstallprompt', function (e) {
+    e.preventDefault();
+    deferred = e;
+    btn.hidden = false;
+  });
+  window.addEventListener('appinstalled', function () {
+    deferred = null;
+    btn.hidden = true;
+    if (window.vpToast) window.vpToast('VayuOS installed — find it on your home screen.', 'success');
+  });
+  on(btn, 'click', function () {
+    if (deferred) {
+      deferred.prompt();
+      deferred.userChoice.then(function () { deferred = null; btn.hidden = true; });
+      return;
+    }
+    if (window.vpToast) {
+      window.vpToast(isIOS
+        ? 'To install: tap the Share button, then “Add to Home Screen”.'
+        : 'To install: open your browser menu and choose “Install app” / “Add to Home screen”.',
+        'info');
+    }
+  });
+  // iOS never fires beforeinstallprompt — reveal the button so iPhone/iPad users
+  // still get the install hint.
+  if (isIOS) { btn.hidden = false; }
+})();
+
 })(); // end IIFE

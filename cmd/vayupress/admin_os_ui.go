@@ -74,6 +74,15 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 	// Public static assets (served same-origin so CSP 'self' covers them).
 	r.Get("/os/static/css/admin-os.css", serveAdminOSAsset("css/admin-os.css", "text/css; charset=utf-8"))
 	r.Get("/os/static/js/admin-os.js", serveAdminOSAsset("js/admin-os.js", "application/javascript; charset=utf-8"))
+	// VayuOS installable app (PWA): manifest, service worker (scoped /os/), and app
+	// icons. Served here without auth — like the other /os/static assets — so the
+	// browser can fetch them to offer + keep the install; they carry no user data.
+	r.Get("/os/manifest.webmanifest", a.handleOSManifest)
+	r.Get("/os/sw.js", a.handleOSServiceWorker)
+	r.Get("/os/static/icons/vayuos-192.png", servePNG(osIcon192PNG))
+	r.Get("/os/static/icons/vayuos-512.png", servePNG(osIcon512PNG))
+	r.Get("/os/static/icons/vayuos-maskable-512.png", servePNG(osIconMaskablePNG))
+	r.Get("/os/static/icons/vayuos-apple-180.png", servePNG(osIconApplePNG))
 	// Alpine.js CSP build + the VayuOS island registry (ADR-0136). Self-hosted,
 	// eval-free, served same-origin so they satisfy script-src 'self' with no
 	// unsafe-eval.
@@ -1217,6 +1226,15 @@ func adminOSShellHead(nonce, title, active string, settings *osSettings) string 
 <meta name="htmx-config" content='{"includeIndicatorStyles":false,"globalViewTransitions":true}'>
 <link rel="stylesheet" href="/os/static/css/admin-os.css?v=` + assetVer("css/admin-os.css") + `">
 <link rel="icon" type="image/png" href="/static/favicon-light.png">
+<!-- Installable app (PWA): manifest + icons so the browser offers "Install VayuOS"
+     on desktop and mobile, and the installed app opens straight into the console. -->
+<link rel="manifest" href="/os/manifest.webmanifest">
+<meta name="theme-color" content="#080e1a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="VayuOS">
+<link rel="apple-touch-icon" href="/os/static/icons/vayuos-apple-180.png">
 </head>
 <body class="vp-os" data-theme="` + html.EscapeString(theme) + `" data-admin-theme="` + html.EscapeString(theme) + `"` + spaceAttr + `>
 <a href="#main-content" class="skip-link">Skip to main content</a>
@@ -1253,6 +1271,9 @@ func adminOSShellHead(nonce, title, active string, settings *osSettings) string 
     ` + cmdHint + `
     ` + feedbackBtn + `
     ` + notifBell + `
+    <button type="button" class="btn--icon topbar-install-btn" data-pwa-install hidden aria-label="Install VayuOS as an app" title="Install VayuOS app">
+      <svg viewBox="0 0 20 20" width="18" height="18" fill="none" aria-hidden="true"><path d="M10 3v9m0 0l-3.2-3.2M10 12l3.2-3.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 15.5h12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+    </button>
     <button type="button" class="btn--icon topbar-theme-btn" aria-label="Toggle colour theme (light / dark / auto)" title="Colour theme">
       <svg class="theme-ico theme-ico--light" viewBox="0 0 20 20" width="18" height="18" fill="none" aria-hidden="true"><circle cx="10" cy="10" r="3.6" stroke="currentColor" stroke-width="1.6"/><path d="M10 1.6v2.2M10 16.2v2.2M1.6 10h2.2M16.2 10h2.2M4.1 4.1l1.5 1.5M14.4 14.4l1.5 1.5M15.9 4.1l-1.5 1.5M5.6 14.4l-1.5 1.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
       <svg class="theme-ico theme-ico--dark" viewBox="0 0 20 20" width="18" height="18" fill="none" aria-hidden="true"><path d="M16.2 11.8A6.6 6.6 0 118.2 3.8a5.2 5.2 0 008 8z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
@@ -1389,8 +1410,16 @@ Array.prototype.forEach.call(document.querySelectorAll('[data-space-switch]'),fu
     }).then(function(r){
       if(r.ok){location.href='/os/world?target=tor';return;} // enter the Tor world console
       if(sw)sw.classList.remove('is-busy');
-      vpSpaceStatus('Could not switch — administrator only.');
-      if(window.vpToast)window.vpToast('Could not switch world (administrator only).','error');
+      // Surface the SERVER's actual reason (admin required, settings unavailable,
+      // write failed…) instead of always blaming permissions — so a real failure
+      // is diagnosable on mobile where there is no console to inspect.
+      r.json().then(function(d){
+        var msg=(d&&(d.detail||d.title))||'Could not start the anonymous world.';
+        vpSpaceStatus(msg);if(window.vpToast)window.vpToast(msg,'error');
+      }).catch(function(){
+        var m='Could not start the anonymous world (HTTP '+r.status+'). Please try again.';
+        vpSpaceStatus(m);if(window.vpToast)window.vpToast(m,'error');
+      });
     }).catch(function(){if(sw)sw.classList.remove('is-busy');vpSpaceStatus('Could not switch — please try again.');if(window.vpToast)window.vpToast('Could not switch world — please try again.','error');});
   });
 });
@@ -1940,6 +1969,15 @@ func authPageShell(title, inner string) string {
 <meta name="robots" content="noindex, nofollow">
 <link rel="stylesheet" href="/os/static/css/admin-os.css?v=` + assetVer("css/admin-os.css") + `">
 <link rel="icon" type="image/png" href="/static/favicon-light.png">
+<!-- Installable app (PWA): manifest + icons so the browser offers "Install VayuOS"
+     on desktop and mobile, and the installed app opens straight into the console. -->
+<link rel="manifest" href="/os/manifest.webmanifest">
+<meta name="theme-color" content="#080e1a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="VayuOS">
+<link rel="apple-touch-icon" href="/os/static/icons/vayuos-apple-180.png">
 </head>
 <body class="vp-os auth-page" data-theme="auto">
   <div class="theme-switch" role="group" aria-label="Colour theme">

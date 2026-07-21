@@ -8,7 +8,30 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
-## [3.14.94] — 2026-07-21
+## [3.14.95] — 2026-07-21
+
+### Added
+- **Install VayuOS as an app (PWA).** The console now ships a web-app manifest
+  (start_url /os, standalone), a privacy-first service worker scoped to /os/
+  (pages always come from the network — never a cached, per-operator dashboard —
+  and only the versioned static shell is cached, so the installed app opens
+  instantly), and app icons built from the official VayuPress mark. A one-tap
+  **Install** button appears in the topbar when the browser reports the app is
+  installable (Chrome/Edge/Android); on iOS it shows the "Add to Home Screen"
+  hint. Works on desktop and mobile.
+
+### Fixed
+- **Update "checksum error" is now diagnosable.** When a proxy/CDN hiccup between
+  the server and GitHub returns an HTML/JSON error page (or an empty body) instead
+  of the release binary, the updater reported a cryptic "checksum mismatch". It now
+  detects that and says it is a transport problem (with the hosts to allow), and a
+  genuine mismatch explains it likely means a corrupted/intercepted download.
+  Checksum parsing also now tolerates a combined SHA256SUMS listing, not only a
+  per-binary `.sha256`.
+- **Clearer Clearnet⟷Tor switch feedback.** The world switch now surfaces the
+  server's actual reason on failure (e.g. settings unavailable, HTTP status)
+  instead of always blaming "administrator only" — so a failure is diagnosable on
+  mobile where there is no console to inspect.
 
 ### Changed
 - **Update & Backup page aligned to the Monetization style.** The page now leads

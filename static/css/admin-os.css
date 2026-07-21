@@ -809,6 +809,11 @@
 /* Every topbar glyph renders at exactly 18×18 regardless of the SVG's own
    width/height attrs — this is what keeps the bell the same size as the rest. */
 .vp-os .btn--icon svg { display: block; width: 18px; height: 18px; }
+/* The PWA install button stays hidden until the browser reports installability;
+   without this, the inline-flex above would defeat the [hidden] attribute. */
+.vp-os .btn--icon[hidden] { display: none; }
+/* Install app: brand-accented so it reads as an action, with its own hover glow. */
+.vp-os .topbar-install-btn { color: var(--brand); --ico-glow: var(--brand); }
 .vp-os .btn--icon-lg { width: 42px; height: 42px; padding: 0; }
 .vp-os .btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
 

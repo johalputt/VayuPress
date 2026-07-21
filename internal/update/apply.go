@@ -1,6 +1,7 @@
 package update
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -128,15 +129,30 @@ func ApplyVerified(ctx context.Context, client *http.Client, owner, repo string,
 	if err != nil {
 		return "", fmt.Errorf("update: download binary: %w", err)
 	}
+	// Turn the most confusing failure into a clear one: when a proxy or network
+	// hiccup between this server and GitHub's download CDN returns an HTML/JSON
+	// error page (or a truncated transfer) instead of the binary, the bytes hash
+	// to something that will never match — surfacing as a cryptic "checksum
+	// mismatch". Detect that here and say what actually happened, so the operator
+	// knows it is a transport problem, not a corrupt or mismatched release.
+	if why := binaryDownloadProblem(binData); why != "" {
+		return "", fmt.Errorf("update: the release binary did not download correctly — %s. "+
+			"This is a network/proxy problem between this server and GitHub's download CDN, not a checksum problem with the release itself. "+
+			"Retry; if it persists, make sure the server can reach github.com and its release-download hosts "+
+			"(release-assets.githubusercontent.com, objects.githubusercontent.com) outbound", why)
+	}
 	sumData, err := download(ctx, client, sumAsset.DownloadURL)
 	if err != nil {
 		return "", fmt.Errorf("update: download checksum: %w", err)
 	}
 
-	// Checksum must pass before any signature check or write.
-	expectedHex := firstHexToken(string(sumData))
+	// Checksum must pass before any signature check or write. checksumForFile
+	// tolerates both a per-binary ".sha256" ("<hex>  <file>") and a combined
+	// SHA256SUMS listing (many files), picking the line for this binary.
+	expectedHex := checksumForFile(sumData, binAsset.Name)
 	if err := VerifyChecksum(binData, expectedHex); err != nil {
-		return "", err
+		return "", fmt.Errorf("%w — the %d bytes downloaded do not match the release's published SHA-256. "+
+			"This normally means the download was corrupted or intercepted in transit (a proxy/CDN issue), not a bad release; retry the update", err, len(binData))
 	}
 
 	if verifySig {
@@ -395,14 +411,48 @@ func selectSidecar(assets []Asset, binaryName, suffix string) *Asset {
 	return nil
 }
 
-// firstHexToken extracts the leading whitespace-delimited token (the typical
-// `sha256sum` output format is "<hex>  <filename>").
-func firstHexToken(s string) string {
-	s = strings.TrimSpace(s)
-	if i := strings.IndexAny(s, " \t\n"); i >= 0 {
-		return s[:i]
+// checksumForFile extracts the SHA-256 hex for binaryName from a checksum file.
+// It accepts both a per-binary ".sha256" ("<hex>  <file>", the format produced by
+// `sha256sum <file>`) and a combined listing (many "<hex>  <file>" lines, e.g.
+// SHA256SUMS / checksums.txt): with several lines it returns the hash on the line
+// whose filename column matches the binary; with one line it returns its hash.
+func checksumForFile(sumData []byte, binaryName string) string {
+	base := strings.ToLower(binaryName)
+	firstTok := ""
+	for _, ln := range strings.Split(string(sumData), "\n") {
+		fields := strings.Fields(strings.TrimSpace(ln))
+		if len(fields) == 0 {
+			continue
+		}
+		if firstTok == "" {
+			firstTok = fields[0]
+		}
+		if len(fields) >= 2 {
+			// The filename column may be "*name" (binary mode), "name", or a path.
+			fn := strings.ToLower(strings.TrimPrefix(fields[len(fields)-1], "*"))
+			if fn == base || strings.HasSuffix(fn, "/"+base) {
+				return fields[0]
+			}
+		}
 	}
-	return s
+	return firstTok
+}
+
+// binaryDownloadProblem returns a human-readable reason when the downloaded
+// "binary" is obviously not a VayuPress executable — an empty response, or an
+// HTML/JSON error page from a proxy/CDN — else "". It lets the updater report a
+// transport failure as such instead of a cryptic checksum error. (A subtly
+// truncated-but-binary transfer still fails the checksum, whose error now says
+// so.)
+func binaryDownloadProblem(data []byte) string {
+	trimmed := bytes.TrimSpace(data)
+	switch {
+	case len(data) == 0:
+		return "the download was empty (0 bytes)"
+	case bytes.HasPrefix(trimmed, []byte("<")) || bytes.HasPrefix(trimmed, []byte("{")) || bytes.HasPrefix(trimmed, []byte("[")):
+		return fmt.Sprintf("the download returned a %d-byte HTML/JSON page, not a binary", len(data))
+	}
+	return ""
 }
 
 // RestartInstructions returns operator guidance after a successful apply.
