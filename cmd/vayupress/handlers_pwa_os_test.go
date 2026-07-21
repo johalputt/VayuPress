@@ -54,4 +54,10 @@ func TestOSServiceWorker(t *testing.T) {
 	if !strings.Contains(body, "caches.keys()") || strings.Contains(body, "caches.open(") {
 		t.Error("service worker must stay zero-cache (purge caches, never open one)")
 	}
+	// Navigations must be fetched with redirect:'manual' so a server redirect (the
+	// Clearnet↔Tor world switch, logout, login) is not turned into a `redirected`
+	// response the browser refuses to use for a navigation.
+	if !strings.Contains(body, "redirect: 'manual'") {
+		t.Error("navigation fetch must use redirect:'manual' or server redirects break in the installed PWA")
+	}
 }

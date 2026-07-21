@@ -8,6 +8,20 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.15.0] — 2026-07-21
+
+### Fixed
+- **Clearnet↔Tor world switch (and logout/login) now work in the installed app.**
+  The PWA service worker intercepted page navigations with a plain `fetch(req)`,
+  which follows a server redirect and returns a `redirected` response — and the
+  browser refuses to let a service worker back a navigation with one, so the
+  navigation silently failed. Because entering the Tor world ends with a redirect
+  (`/os/world` → `/os`), the toggle appeared dead on the installed PWA (it started
+  the world but never entered it); logout and login redirects were hit the same
+  way. The worker now fetches navigations with `redirect: 'manual'`, so a server
+  redirect comes back as an opaque redirect the browser follows itself. Still
+  zero-cache.
+
 ## [3.14.99] — 2026-07-21
 
 ### Added

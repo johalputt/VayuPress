@@ -117,7 +117,14 @@ self.addEventListener('fetch', function (e) {
   // is left to the browser, which honours the server's cache headers (the console
   // HTML is no-store and static assets are content-hash-versioned).
   if (req.mode === 'navigate') {
-    e.respondWith(fetch(req).catch(function () {
+    // redirect:'manual' is essential: a server redirect (the Clearnet↔Tor world
+    // switch, logout, login) then comes back as an opaqueredirect the browser
+    // follows itself. A plain fetch(req) follows the redirect and returns a
+    // "redirected" response, which the browser REFUSES to let a service worker use
+    // for a navigation — that silently broke the world toggle in the installed
+    // app. A normal 200 still renders; only a real network failure hits the
+    // offline notice. Still zero-cache, still always live.
+    e.respondWith(fetch(req, { redirect: 'manual' }).catch(function () {
       return new Response(
         '<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">' +
         '<title>VayuOS — offline</title>' +
