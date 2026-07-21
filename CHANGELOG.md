@@ -8,6 +8,22 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.85] — 2026-07-21
+
+### Changed
+- **Cosmic canvas + higher-contrast text across VayuOS.** The console background
+  now matches vayupress.com more fully: a deep-ink canvas with a top glow, two
+  corner accent blooms, an edge vignette, and a slow-drifting **aurora** layer
+  behind the content (pure CSS, disabled under reduced-motion). Headings pick up
+  the site's tighter tracking.
+
+### Fixed
+- **Muted text is now readable in both light and dark themes.** Secondary and
+  tertiary text tokens (labels, descriptions, hints, timestamps) were too faint
+  against the new darker canvas (dark) and too light on white (light). They are
+  retuned to meet AA contrast in both modes, and card borders are a touch
+  stronger so panels separate cleanly.
+
 ## [3.14.84] — 2026-07-21
 
 ### Changed

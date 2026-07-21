@@ -43,14 +43,23 @@
   --card-border:  rgba(255, 255, 255, 0.08);
   --card-border-strong: rgba(255, 255, 255, 0.16);
 
+  /* Cosmic canvas layers (echoing vayupress.com): three faint accent blooms +
+     an edge vignette, painted behind everything. Theme-aware via these tokens. */
+  --aura-sky:     rgba(14, 165, 233, 0.08);
+  --aura-violet:  rgba(167, 139, 250, 0.08);
+  --aura-teal:    rgba(45, 212, 191, 0.06);
+  --vignette:     rgba(0, 0, 0, 0.55);
+
   /* Borders */
   --border:       rgba(99, 130, 174, 0.18);
   --border-strong:rgba(99, 130, 174, 0.32);
 
-  /* Text */
-  --text:         #eef2f8;
-  --text-2:       #8ba4c4;
-  --text-3:       #4d6480;
+  /* Text — tuned for AA contrast on the deep ink base. --text-2 (secondary) and
+     --text-3 (tertiary/muted) are brightened so labels, hints and timestamps
+     stay legible against the darker canvas. */
+  --text:         #f0f4fa;
+  --text-2:       #a7bcd8;
+  --text-3:       #7791ae;
   /* Aliases: some components reference --text-1/--surface-2 (undefined before).
      Defined via var() indirection so they follow the light-theme overrides of
      --text/--bg-surface-2 automatically. Without these, `fill: var(--text-1)`
@@ -126,13 +135,17 @@
   --bg-surface-3: #e2e8f0;
   --bg-glass:     rgba(248, 250, 252, 0.88);
   --card-bg:      #ffffff;
-  --card-border:  rgba(15, 23, 42, 0.10);
-  --card-border-strong: rgba(15, 23, 42, 0.20);
-  --border:       rgba(15, 23, 42, 0.10);
-  --border-strong:rgba(15, 23, 42, 0.22);
+  --card-border:  rgba(15, 23, 42, 0.12);
+  --card-border-strong: rgba(15, 23, 42, 0.22);
+  --aura-sky:     rgba(2, 132, 199, 0.05);
+  --aura-violet:  rgba(124, 58, 237, 0.05);
+  --aura-teal:    rgba(13, 148, 136, 0.04);
+  --vignette:     rgba(15, 23, 42, 0.05);
+  --border:       rgba(15, 23, 42, 0.12);
+  --border-strong:rgba(15, 23, 42, 0.24);
   --text:         #0f172a;
-  --text-2:       #475569;
-  --text-3:       #94a3b8;
+  --text-2:       #43536a;
+  --text-3:       #5f6d80;
   --brand:        #0284c7;
   --brand-dim:    rgba(2, 132, 199, 0.10);
   --accent:       #7c3aed;
@@ -148,13 +161,17 @@
     --bg-surface-3: #e2e8f0;
     --bg-glass:     rgba(248, 250, 252, 0.88);
     --card-bg:      #ffffff;
-    --card-border:  rgba(15, 23, 42, 0.10);
-    --card-border-strong: rgba(15, 23, 42, 0.20);
-    --border:       rgba(15, 23, 42, 0.10);
-    --border-strong:rgba(15, 23, 42, 0.22);
+    --card-border:  rgba(15, 23, 42, 0.12);
+    --card-border-strong: rgba(15, 23, 42, 0.22);
+    --aura-sky:     rgba(2, 132, 199, 0.05);
+    --aura-violet:  rgba(124, 58, 237, 0.05);
+    --aura-teal:    rgba(13, 148, 136, 0.04);
+    --vignette:     rgba(15, 23, 42, 0.05);
+    --border:       rgba(15, 23, 42, 0.12);
+    --border-strong:rgba(15, 23, 42, 0.24);
     --text:         #0f172a;
-    --text-2:       #475569;
-    --text-3:       #94a3b8;
+    --text-2:       #43536a;
+    --text-3:       #5f6d80;
     --brand:        #0284c7;
     --brand-dim:    rgba(2, 132, 199, 0.10);
     --accent:       #7c3aed;
@@ -168,21 +185,44 @@
 .vp-os *, .vp-os *::before, .vp-os *::after { box-sizing: border-box; margin: 0; padding: 0; }
 .vp-os {
   font-family: var(--font-body); font-size: var(--text-base); color: var(--text);
-  /* Cosmic ink canvas, echoing vayupress.com: two faint accent blooms fixed over
-     the deep base so the whole console feels like the site. */
+  /* Cosmic ink canvas, echoing vayupress.com: a top glow, two corner blooms and
+     an edge vignette fixed over the deep base so the whole console feels like the
+     site. An animated aurora layer (.vp-aurora) drifts on top of this. */
   background:
-    radial-gradient(55rem 38rem at 100% -8%, rgba(14, 165, 233, 0.06), transparent 60%),
-    radial-gradient(48rem 40rem at -8% 108%, rgba(167, 139, 250, 0.06), transparent 60%),
+    radial-gradient(60rem 30rem at 50% -10%, var(--aura-teal), transparent 60%),
+    radial-gradient(52rem 42rem at 100% -4%, var(--aura-sky), transparent 56%),
+    radial-gradient(54rem 46rem at -6% 106%, var(--aura-violet), transparent 56%),
+    radial-gradient(135% 105% at 50% 36%, transparent 52%, var(--vignette) 100%),
     var(--bg-base);
   background-attachment: fixed;
   line-height: 1.55; -webkit-font-smoothing: antialiased; min-height: 100vh;
+}
+/* Slow-drifting aurora, painted behind all content (negative z-index sits above
+   the base background but below the in-flow shell). Pure CSS, CSP-safe. */
+.vp-os .vp-aurora {
+  position: fixed; inset: -20%; z-index: -1; pointer-events: none;
+  background:
+    radial-gradient(38% 30% at 22% 26%, var(--aura-sky), transparent 60%),
+    radial-gradient(34% 30% at 80% 30%, var(--aura-violet), transparent 60%),
+    radial-gradient(40% 32% at 62% 82%, var(--aura-teal), transparent 62%);
+  filter: blur(60px);
+  opacity: 0.9;
+  animation: vp-aurora-drift 46s ease-in-out infinite alternate;
+}
+@keyframes vp-aurora-drift {
+  0%   { transform: translate3d(-3%, -2%, 0) scale(1.05); }
+  50%  { transform: translate3d(3%, 2%, 0) scale(1.12); }
+  100% { transform: translate3d(-2%, 3%, 0) scale(1.05); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vp-os .vp-aurora { animation: none; }
 }
 .vp-os a { color: var(--brand); text-decoration: none; }
 .vp-os a:hover { text-decoration: underline; }
 .vp-os img, .vp-os svg { display: block; }
 .vp-os button { cursor: pointer; border: none; background: none; font: inherit; color: inherit; }
 .vp-os input, .vp-os select, .vp-os textarea { font: inherit; color: inherit; }
-.vp-os h1, .vp-os h2, .vp-os h3, .vp-os h4 { font-family: var(--font-head); font-weight: 600; line-height: 1.25; }
+.vp-os h1, .vp-os h2, .vp-os h3, .vp-os h4 { font-family: var(--font-head); font-weight: 600; line-height: 1.2; letter-spacing: -0.018em; color: var(--text); }
 
 /* Skip link */
 .vp-os .skip-link {
