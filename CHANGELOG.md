@@ -8,6 +8,23 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.90] — 2026-07-21
+
+### Added
+- **VayuTalk: verify your contacts (safety numbers).** The chat rail now has a
+  collapsible **"Your safety number"** panel — the same value the mobile app
+  shows. Read it to a contact (or compare in person); if you both see the same
+  number your chat is end-to-end encrypted with no one in the middle. One-click
+  copy included.
+- **VayuTalk: search your conversations.** A search box filters the conversation
+  list as you type (client-side, instant).
+
+### Changed
+- **VayuTalk got a clean design pass** in the calm VayuOS style: a proper
+  identity card, a labelled Conversations section, a tidy empty state ("No
+  conversations yet — start one above"), and refined spacing throughout the
+  left rail. No behavioural changes to messaging, timers or Live mode.
+
 ## [3.14.89] — 2026-07-21
 
 ### Changed

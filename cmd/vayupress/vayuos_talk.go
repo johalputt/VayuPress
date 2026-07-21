@@ -282,6 +282,19 @@ func (a *App) handleVayuOSTalk(w http.ResponseWriter, r *http.Request) {
 		body.WriteString(`<strong>` + esc(self) + `</strong>`)
 	}
 	body.WriteString(`<span class="vtalk-status" id="vtalk-status" data-state="connecting">Connecting…</span></div></div>`)
+	// Safety number: an out-of-band E2E verification aid (same value the app shows).
+	// Comparing it with a contact confirms no one is in the middle. Collapsed by
+	// default so it never clutters the rail.
+	if sn := formatSafety(selfFP); sn != "" {
+		body.WriteString(`<details class="vtalk-safety">
+  <summary class="vtalk-safety__sum"><svg viewBox="0 0 20 20" width="15" height="15" fill="none" aria-hidden="true"><path d="M10 2.4l6 2.2v4.1c0 3.5-2.4 6-6 6.9-3.6-.9-6-3.4-6-6.9V4.6z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M7.4 10.1l1.8 1.8 3.4-3.6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Your safety number</span></summary>
+  <div class="vtalk-safety__body">
+    <code class="vtalk-safety__num">` + esc(sn) + `</code>
+    <p class="text-xs muted">Read this to your contact (in person or on a call). If you both see the same number, your chat is end-to-end encrypted with no one in the middle.</p>
+    <button type="button" class="btn btn--sm" data-copy="` + esc(sn) + `">Copy number</button>
+  </div>
+</details>`)
+	}
 	// Tor world: the identity is an anonymous, rotatable code — offer copy + rotate.
 	if config.Cfg.OnionMode {
 		// Onion-to-onion federation status + toggle (ADR-0142): reaching a code on
@@ -297,6 +310,8 @@ func (a *App) handleVayuOSTalk(w http.ResponseWriter, r *http.Request) {
 		body.WriteString(`<div class="vtalk-anon"><p class="text-sm muted">This is your anonymous code — share it so people can reach you.</p><div class="ak-cred-actions"><button type="button" class="btn btn--sm" data-copy="` + esc(self) + `">Copy code</button><button type="button" class="btn btn--sm btn--ghost" id="vtalk-rotate">Rotate</button></div>` + fedNote + `<div class="ak-cred-actions">` + fedBtn + `</div></div>`)
 	}
 	body.WriteString(`<form class="vtalk-newchat" id="vtalk-newchat"><input class="input input--sm" id="vtalk-peer" type="email" autocomplete="off" spellcheck="false" placeholder="name@domain" aria-label="Recipient address"><button class="btn btn--sm btn--primary" type="submit">Start</button></form>`)
+	body.WriteString(`<div class="vtalk-convos-head"><span class="vtalk-convos-title">Conversations</span></div>`)
+	body.WriteString(`<div class="vtalk-search-wrap"><svg class="vtalk-search-ico" viewBox="0 0 20 20" width="15" height="15" fill="none" aria-hidden="true"><circle cx="9" cy="9" r="5.2" stroke="currentColor" stroke-width="1.5"/><path d="M13 13l3.5 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><input class="input input--sm vtalk-search" id="vtalk-search" type="search" placeholder="Search conversations…" aria-label="Search conversations" autocomplete="off"></div>`)
 	body.WriteString(`<ul class="vtalk-convos" id="vtalk-convos" aria-label="Conversations"></ul>`)
 	body.WriteString(`</aside>`)
 
@@ -324,7 +339,12 @@ var rot=document.getElementById('vtalk-rotate');
 if(rot){rot.addEventListener('click',function(){rot.disabled=true;fetch('/os/talk/rotate',{method:'POST',credentials:'same-origin',headers:{'X-CSRF-Token':csrfTok()}}).then(function(r){if(r.ok){location.reload();}else{rot.disabled=false;}}).catch(function(){rot.disabled=false;});});}
 var fed=document.getElementById('vtalk-fed');
 if(fed){fed.addEventListener('click',function(){fed.disabled=true;fetch('/os/talk/federation',{method:'POST',credentials:'same-origin',headers:{'X-CSRF-Token':csrfTok()}}).then(function(r){if(r.ok){location.reload();}else{fed.disabled=false;}}).catch(function(){fed.disabled=false;});});}
-Array.prototype.forEach.call(document.querySelectorAll('.vtalk-anon [data-copy]'),function(b){b.addEventListener('click',function(){var v=b.getAttribute('data-copy')||'',p=b.textContent;var d=function(){b.textContent='Copied';setTimeout(function(){b.textContent=p;},1400);};if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(v).then(d,d);}else{d();}});});
+Array.prototype.forEach.call(document.querySelectorAll('.vtalk [data-copy]'),function(b){b.addEventListener('click',function(){var v=b.getAttribute('data-copy')||'',p=b.textContent;var d=function(){b.textContent='Copied';setTimeout(function(){b.textContent=p;},1400);};if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(v).then(d,d);}else{d();}});});
+// Client-side conversation filter: hide/show rows whose text does not match. The
+// list is filled/updated by admin-os-talk.js; re-running on each keystroke keeps
+// it in sync. Uses element.style (CSSOM), which strict CSP permits.
+var q=document.getElementById('vtalk-search'),cv=document.getElementById('vtalk-convos');
+if(q&&cv){q.addEventListener('input',function(){var t=q.value.trim().toLowerCase();Array.prototype.forEach.call(cv.children,function(li){var n=(li.textContent||'').toLowerCase();li.style.display=(!t||n.indexOf(t)>=0)?'':'none';});});}
 })();</script>`)
 	writeOSHTML(w, adminOSLayout(nonce, "VayuTalk", "talk", cfg, htmpl.HTML(body.String())))
 }

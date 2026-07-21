@@ -5136,6 +5136,27 @@
 .vp-os .vtalk-newchat { display: flex; gap: var(--sp-2); padding: var(--sp-3) var(--sp-4); }
 .vp-os .vtalk-newchat .input { flex: 1; min-width: 0; }
 
+/* Safety-number verify (collapsible E2E check). */
+.vp-os .vtalk-safety { margin: 0 var(--sp-4) var(--sp-3); border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--bg-surface-2); }
+.vp-os .vtalk-safety__sum { display: flex; align-items: center; gap: 8px; padding: 8px 10px; font-size: var(--text-xs); font-weight: 600; color: var(--text-2); cursor: pointer; list-style: none; }
+.vp-os .vtalk-safety__sum::-webkit-details-marker { display: none; }
+.vp-os .vtalk-safety__sum:hover { color: var(--text); }
+.vp-os .vtalk-safety[open] .vtalk-safety__sum { color: var(--brand); }
+.vp-os .vtalk-safety__body { padding: 0 10px 10px; display: grid; gap: 8px; }
+.vp-os .vtalk-safety__num { font-family: var(--font-mono); font-size: 0.8rem; letter-spacing: 0.06em; color: var(--text); background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--r-sm); padding: 8px; word-break: break-all; line-height: 1.6; }
+
+/* Conversations header + search + empty state. */
+.vp-os .vtalk-convos-head { display: flex; align-items: center; justify-content: space-between; padding: var(--sp-2) var(--sp-4) 4px; }
+.vp-os .vtalk-convos-title { font-size: 0.68rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-3); font-weight: 600; }
+.vp-os .vtalk-search-wrap { position: relative; margin: 0 var(--sp-4) var(--sp-2); }
+.vp-os .vtalk-search-ico { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-3); pointer-events: none; }
+.vp-os .vtalk-search { width: 100%; padding-left: 30px; }
+.vp-os .vtalk-convos:empty::before {
+  content: "No conversations yet — start one above.";
+  display: block; padding: var(--sp-6) var(--sp-4); text-align: center;
+  font-size: var(--text-xs); color: var(--text-3); line-height: 1.5;
+}
+
 .vp-os .vtalk-convos {
   list-style: none; margin: 0; padding: var(--sp-2);
   overflow-y: auto; flex: 1; min-height: 0;
