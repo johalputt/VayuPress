@@ -8,6 +8,19 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.89] — 2026-07-21
+
+### Changed
+- **VayuOS calmed down — the busy visuals are gone.** Reverted the recent
+  "cosmic" styling that read as noise: no more animated background aurora,
+  coordinate grid, corner blooms or vignette (the canvas is a clean, flat dark
+  navy again); headings are solid, high-contrast text instead of a gradient;
+  the accent is back to a single calm **sky-blue** (Tor world stays purple);
+  cards are plain panels (no glass glow, no cursor-following halo); primary
+  buttons are solid, not gradient. The genuinely useful pieces stay: the
+  Clearnet⇄Tor sliding switch with its world icons, the uniform top-bar icons,
+  the redesigned Update & Backup page, and the update-ready bell notice.
+
 ## [3.14.88] — 2026-07-21
 
 ### Added
