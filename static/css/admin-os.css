@@ -502,8 +502,17 @@
    premium popover explains it. Pure CSS, so it works in both consoles. */
 .vp-os .topbar-feedback { position: relative; display: inline-flex; }
 .vp-os .topbar-feedback__btn { position: relative; color: var(--text-2); }
-.vp-os .topbar-feedback__btn:hover,
-.vp-os .topbar-feedback__btn:focus-visible { color: var(--brand); }
+
+/* Unified topbar icon buttons (feedback · notifications · theme): identical 36×36
+   box (flex-centred by .btn--icon, so the anchor renders like the buttons) with a
+   soft brand glow — a crisp ring plus a coloured bloom — on hover/focus. */
+.vp-os .topbar-feedback__btn:hover, .vp-os .topbar-feedback__btn:focus-visible,
+.vp-os .topbar-notif__btn:hover, .vp-os .topbar-notif__btn:focus-visible,
+.vp-os .topbar-theme-btn:hover, .vp-os .topbar-theme-btn:focus-visible {
+  color: var(--brand);
+  border-color: var(--brand);
+  box-shadow: 0 0 0 1px var(--brand), 0 0 16px -4px var(--brand);
+}
 .vp-os .topbar-feedback__pop {
   position: absolute; top: calc(100% + 8px); right: 0; z-index: 60;
   width: 264px; padding: var(--sp-3) var(--sp-4);
@@ -661,9 +670,47 @@
 
 .vp-os .btn--sm { padding: 0.35rem 0.75rem; font-size: var(--text-xs); }
 .vp-os .btn--lg { padding: 0.75rem 1.5rem; font-size: var(--text-base); }
-.vp-os .btn--icon { width: 36px; height: 36px; padding: 0; border-radius: var(--r-sm); }
+.vp-os .btn--icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 36px; height: 36px; padding: 0; border-radius: var(--r-sm);
+  border: 1px solid transparent; background: transparent; color: var(--text-2);
+  line-height: 0; cursor: pointer; text-decoration: none;
+  transition: color var(--t-fast), border-color var(--t-fast), background var(--t-fast), box-shadow var(--t-fast);
+}
+.vp-os .btn--icon svg { display: block; }
 .vp-os .btn--icon-lg { width: 42px; height: 42px; padding: 0; }
 .vp-os .btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+
+/* ── Payment gateway cards + setup guide (premium) ───────────────────────────
+   The connect cards (Stripe · PayPal · BTCPay) share a premium frame with a
+   thin accent bar; the crypto card wears a coin-spectrum accent. The collapsible
+   "how to turn this on" guide keeps first-run setup obvious without clutter. */
+.vp-os .card--pay { position: relative; overflow: hidden; }
+.vp-os .card--pay::before {
+  content: ""; position: absolute; inset: 0 0 auto 0; height: 2px;
+  background: linear-gradient(90deg, transparent, var(--border-strong), transparent);
+}
+.vp-os .card--crypto::before {
+  background: linear-gradient(90deg, #f7931a 0%, #ff6b00 22%, #627eea 58%, #26a17b 100%);
+  opacity: 0.95;
+}
+.vp-os .pay-guide {
+  margin: 0 0 var(--sp-4); border: 1px solid var(--border); border-radius: var(--r-md);
+  background: var(--bg-surface-2);
+}
+.vp-os .pay-guide > summary {
+  cursor: pointer; padding: var(--sp-3) var(--sp-4); list-style: none;
+  font-size: var(--text-sm); font-weight: 600; color: var(--text);
+  display: flex; align-items: center; gap: 0.5rem;
+}
+.vp-os .pay-guide > summary::-webkit-details-marker { display: none; }
+.vp-os .pay-guide > summary::before { content: "▸"; color: var(--brand); transition: transform var(--t-fast); }
+.vp-os .pay-guide[open] > summary::before { transform: rotate(90deg); }
+.vp-os .pay-guide__steps {
+  margin: 0; padding: 0 var(--sp-5) var(--sp-4) calc(var(--sp-6) + 0.25rem);
+  display: grid; gap: 0.55rem; font-size: var(--text-sm); color: var(--text-2); line-height: 1.55;
+}
+.vp-os .pay-guide__steps code { font-size: 0.82em; }
 
 /* ── Cards ───────────────────────────────────────────────────── */
 .vp-os .card {

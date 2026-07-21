@@ -134,7 +134,7 @@ func (a *App) paymentGatewaysCard(nonce string, ctx context.Context) string {
 		saveLabel = "Update key"
 		disconnect = `<button type="button" class="btn btn--ghost btn--sm" id="pay-stripe-disconnect">Disconnect</button>`
 	}
-	return `<div class="card">
+	return `<div class="card card--pay">
   <div class="settings-block-title">Card payments · Stripe <span class="muted text-xs">(one-click)</span></div>
   <p class="text-sm muted mb-4">` + statusLine + ` VayuPress never embeds Stripe's SDK — your reader is sent to a Stripe-hosted checkout and returns to your site, so nothing weakens your strict security policy. Payments go straight to <strong>your own</strong> Stripe account.</p>
   <div class="field">
@@ -305,7 +305,7 @@ func (a *App) paypalConnectCard(nonce string, ctx context.Context) string {
 	if sandbox {
 		checked = " checked"
 	}
-	return `<div class="card">
+	return `<div class="card card--pay">
   <div class="settings-block-title">PayPal <span class="muted text-xs">(auto-renewing subscriptions)</span></div>
   <p class="text-sm muted mb-4">` + statusLine + ` VayuPress creates the PayPal billing plan for you and sends the reader to a PayPal-hosted approval page (no PayPal SDK, CSP untouched). Funds settle into <strong>your own</strong> PayPal account.</p>
   <div class="field">
@@ -487,9 +487,19 @@ func (a *App) btcpayConnectCard(nonce string, ctx context.Context) string {
 		saveLabel = "Update settings"
 		disconnect = `<button type="button" class="btn btn--ghost btn--sm" id="pay-btc-disconnect">Disconnect</button>`
 	}
-	return `<div class="card">
+	return `<div class="card card--pay card--crypto">
   <div class="settings-block-title">Crypto · BTCPay Server <span class="muted text-xs">(BTC · XMR · ETH · USDT)</span></div>
   <p class="text-sm muted mb-4">` + statusLine + ` VayuPress creates an invoice and sends the buyer to your BTCPay-hosted checkout (coin choice, QR and on-chain confirmation happen there); a signed webhook unlocks access. Funds settle straight into <strong>your own</strong> BTCPay wallet — no processor, no custody.</p>
+  <details class="pay-guide">
+    <summary>First time? How to turn this on (self-hosted) — 5 steps</summary>
+    <ol class="pay-guide__steps">
+      <li><strong>Run BTCPay Server.</strong> Use your own instance (<a href="https://docs.btcpayserver.org/Deployment/" target="_blank" rel="noopener">deployment guide</a>) or a shared host. In the store, enable the coins you want — <strong>Bitcoin, Monero, Ethereum, USDT</strong>.</li>
+      <li><strong>Store ID.</strong> BTCPay → your store → <em>Settings → General</em>. Copy the <strong>Store ID</strong> into the field below.</li>
+      <li><strong>API key.</strong> BTCPay → <em>Account → Manage Account → API Keys → Generate Key</em>, tick <code>btcpay.store.cancreateinvoice</code> and <code>btcpay.store.canviewinvoices</code>. Paste the token below.</li>
+      <li><strong>Webhook.</strong> BTCPay → store → <em>Settings → Webhooks → Create Webhook</em>. Payload URL <code class="font-mono">` + html.EscapeString(webhookURL) + `</code>, event <em>“An invoice has been settled”</em>, set any secret — paste that same secret below.</li>
+      <li><strong>Save &amp; connect</strong>, then <strong>Test connection</strong>. Done — a “Pay with crypto” button now appears at checkout.</li>
+    </ol>
+  </details>
   <div class="field">
     <label class="field-label" for="pay-btc-url">BTCPay server URL</label>
     <input id="pay-btc-url" class="input font-mono" type="text" value="` + html.EscapeString(url) + `" placeholder="https://btcpay.example.com">

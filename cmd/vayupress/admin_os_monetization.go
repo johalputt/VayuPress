@@ -90,7 +90,7 @@ func (a *App) handleOSMonetization(w http.ResponseWriter, r *http.Request) {
   <div class="stat-card"><div class="stat-card__label">Premium addresses sold</div><div class="stat-card__value">` + strconv.Itoa(premiumSold) + `</div></div>
 </div>
 
-<div class="section-head"><span class="section-head__title">Payments</span><span class="section-head__hint">Connect a card gateway or take payments directly</span></div>
+<div class="section-head"><span class="section-head__title">Payments</span><span class="section-head__hint">Cards, PayPal, crypto (anonymous-friendly) — or take payments directly. Funds always settle into your own accounts.</span></div>
 ` + a.paymentGatewaysCard(nonce, ctx) + a.paypalConnectCard(nonce, ctx) + a.btcpayConnectCard(nonce, ctx) + `
 <div class="card">
   <div class="settings-block-title">Direct / offline payment</div>

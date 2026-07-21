@@ -66,10 +66,18 @@ func zbase32(data []byte) string {
 	return sb.String()
 }
 
-// wkdLocalHash returns the z-base-32 SHA-1 hash of the lowercased local-part,
-// as required for WKD lookups.
+// wkdLocalHash returns the z-base-32 SHA-1 hash of the lowercased local-part.
+//
+// SHA-1 here is REQUIRED by the Web Key Directory spec
+// (draft-koch-openpgp-webkey-service): the local-part is hashed with SHA-1 and
+// z-base-32 encoded to form the *public* directory key in the WKD URL. This is a
+// URL-mapping digest of an already-public address — not a security primitive and
+// not applied to any secret — so it is not a "weak hash on sensitive data".
+// Substituting a stronger hash would simply break interoperability with every
+// other WKD client (GnuPG, Thunderbird, …). Any static-analysis alert flagging
+// SHA-1 here is therefore a known false positive.
 func wkdLocalHash(localpart string) string {
-	sum := sha1.Sum([]byte(strings.ToLower(localpart)))
+	sum := sha1.Sum([]byte(strings.ToLower(localpart))) //nolint:gosec // WKD spec mandates SHA-1 for the public directory key (not sensitive data)
 	return zbase32(sum[:])
 }
 

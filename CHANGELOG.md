@@ -8,7 +8,31 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
-## [3.14.79] — 2026-07-21
+## [3.14.80] — 2026-07-21
+
+### Changed
+- **Top-bar icons are now uniform and premium.** The three top-bar controls
+  (💡 feedback · 🔔 notifications · 🌙 theme) are the same 36×36 size and
+  perfectly centred — the feedback control is a link, so it previously rendered
+  slightly off — and all three now share a **soft brand glow** (a crisp ring plus
+  a coloured bloom) on hover/focus.
+- **Crypto setup is no longer a mystery.** The BTCPay card now leads with a
+  collapsible **“How to turn this on (self-hosted) — 5 steps”** guide that walks
+  through, in order, running BTCPay, copying the Store ID, generating the API key
+  with the exact permissions, registering the webhook (with the precise URL and
+  event), and testing the connection. So a self-installer can see exactly where
+  every value comes from.
+- **Premium Monetization payment cards.** Stripe, PayPal and BTCPay now share a
+  cleaner framed card with a thin accent bar; the crypto card wears a coin-
+  spectrum accent (BTC → XMR → ETH → USDT). Clearer section framing throughout.
+
+### Security
+- **Documented the WKD SHA-1 usage** (`internal/vayuos/pgp/wkd.go`): SHA-1 there
+  is mandated by the Web Key Directory spec to form the *public* directory key
+  from an already-public address — it is not applied to any secret — so a
+  static-analysis “weak hash on sensitive data” alert on that line is a known
+  false positive. Substituting a stronger hash would break interoperability with
+  every other WKD client (GnuPG, Thunderbird, …).
 
 ### Added
 - **Crypto payments — accept BTC, Monero, Ethereum and stablecoins.** A new
