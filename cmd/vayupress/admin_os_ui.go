@@ -1164,7 +1164,7 @@ func adminOSShellHead(nonce, title, active string, settings *osSettings) string 
       </a>
       <div class="topbar-feedback__pop" role="tooltip">
         <div class="topbar-feedback__title">💡 Help improve VayuPress</div>
-        <p class="topbar-feedback__desc">Found a bug, want an improvement, or have a feature idea? Tell us — it opens a secure email (PGP pre-enabled) where you can attach screenshots or files.</p>
+        <p class="topbar-feedback__desc">Found a bug, want an improvement, or have a feature idea? Tell us — it opens a PGP-encrypted email (attachments included) where you can add screenshots or files.</p>
         <span class="topbar-feedback__cta">Report a bug · request a feature →</span>
       </div>
     </div>`

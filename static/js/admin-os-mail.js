@@ -205,22 +205,18 @@
       dropzone.addEventListener('drop', function (e) { if (e.dataTransfer && e.dataTransfer.files) addFiles(e.dataTransfer.files); });
     }
 
-    // PGP eligibility hint — reflects the engine's rule (single recipient, no
-    // Cc/Bcc, no attachments) client-side; the actual encryption still depends
-    // on the recipient's key being on file.
+    // PGP eligibility hint. With PGP/MIME (RFC 3156) encryption now covers
+    // attachments and multiple recipients, so the only requirement is that every
+    // recipient has a key on file — which the server checks at send time (it
+    // falls back to plaintext rather than send an unreadable message).
     var pgpHint = compose.querySelector('[data-c-pgp]');
     function countAddrs(v) { return (v || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean).length; }
     function updatePGP() {
       if (!pgpHint) return;
       var to = countAddrs(val(compose, '[data-c-to]')), cc = countAddrs(val(compose, '[data-c-cc]')), bcc = countAddrs(val(compose, '[data-c-bcc]'));
       if (to + cc + bcc === 0) { pgpHint.textContent = ''; pgpHint.className = 'vm-pgp-hint'; return; }
-      if (to === 1 && cc === 0 && bcc === 0 && composeFiles.length === 0) {
-        pgpHint.textContent = '🔒 PGP-eligible — tick “Encrypt with PGP” below to encrypt for the recipient';
-        pgpHint.className = 'vm-pgp-hint vm-pgp-hint--enc';
-      } else {
-        pgpHint.textContent = '🔓 DKIM-signed (PGP needs one recipient, no Cc/Bcc, no attachments)';
-        pgpHint.className = 'vm-pgp-hint';
-      }
+      pgpHint.textContent = '🔒 Tick “Encrypt with PGP” to encrypt the message and any attachments for every recipient whose key is known';
+      pgpHint.className = 'vm-pgp-hint vm-pgp-hint--enc';
     }
     updatePGP();
 
@@ -251,8 +247,8 @@
     function paintEnc() {
       if (!encHint) return;
       encHint.textContent = pgpEncrypt()
-        ? 'On — the body is PGP-encrypted for the recipient (single recipient, no attachments). If they cannot decrypt PGP it will look like ciphertext.'
-        : 'Off — the message is sent as readable text. Encrypt only when the recipient can decrypt PGP (encrypting to a plain inbox like Gmail arrives as unreadable ciphertext).';
+        ? 'On — the message and any attachments are PGP-encrypted (RFC 3156) for every recipient whose key is on file. If a recipient has no key it is sent as readable text instead — never as ciphertext they can’t open.'
+        : 'Off — the message is sent as readable text. Turn on to PGP-encrypt the message and attachments for recipients whose keys are known.';
     }
     if (encToggle) { encToggle.addEventListener('change', paintEnc); paintEnc(); }
     if (fromSel) fromSel.addEventListener('change', paintSig);

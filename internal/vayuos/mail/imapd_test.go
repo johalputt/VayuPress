@@ -19,7 +19,10 @@ func (stubBridge) GetUserByEmail(string) (*MailUser, error)          { return ni
 func (stubBridge) IsLocalRecipient(string) bool                      { return false }
 func (stubBridge) SendTransactional(*TransactionalMessage) error     { return nil }
 func (stubBridge) EncryptForRecipient([]byte, string) ([]byte, bool) { return nil, false }
-func (stubBridge) SignAs([]byte, string) ([]byte, bool)              { return nil, false }
+func (stubBridge) EncryptForRecipients([]byte, []string) ([]byte, []string, bool) {
+	return nil, nil, false
+}
+func (stubBridge) SignAs([]byte, string) ([]byte, bool) { return nil, false }
 
 func TestIMAPLoginSelectFetch(t *testing.T) {
 	t.Parallel()

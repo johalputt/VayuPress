@@ -276,6 +276,17 @@ func (b *vayuMailBridge) EncryptForRecipient(plaintext []byte, recipientEmail st
 	return ct, true
 }
 
+func (b *vayuMailBridge) EncryptForRecipients(plaintext []byte, recipientEmails []string) ([]byte, []string, bool) {
+	if b.app.vayuPGP == nil {
+		return nil, recipientEmails, false
+	}
+	ct, missing, err := b.app.vayuPGP.EncryptToRecipients(plaintext, recipientEmails)
+	if err != nil || len(ct) == 0 {
+		return nil, missing, false
+	}
+	return ct, missing, true
+}
+
 func (b *vayuMailBridge) SignAs(plaintext []byte, senderUserID string) ([]byte, bool) {
 	if b.app.vayuPGP == nil || senderUserID == "" {
 		return nil, false

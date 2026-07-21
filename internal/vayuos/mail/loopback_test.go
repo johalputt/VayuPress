@@ -23,6 +23,9 @@ func (b loopbackBridge) SendTransactional(*TransactionalMessage) error { return 
 func (b loopbackBridge) EncryptForRecipient([]byte, string) ([]byte, bool) {
 	return nil, false
 }
+func (b loopbackBridge) EncryptForRecipients(_ []byte, emails []string) ([]byte, []string, bool) {
+	return nil, emails, false
+}
 func (b loopbackBridge) SignAs([]byte, string) ([]byte, bool) { return nil, false }
 
 func newLoopbackEngine(t *testing.T, bridge Bridge) *Engine {
@@ -185,6 +188,9 @@ type encryptingBridge struct{ loopbackBridge }
 
 func (encryptingBridge) EncryptForRecipient([]byte, string) ([]byte, bool) {
 	return []byte("-----BEGIN PGP MESSAGE-----\nCIPHERTEXT\n-----END PGP MESSAGE-----"), true
+}
+func (encryptingBridge) EncryptForRecipients([]byte, []string) ([]byte, []string, bool) {
+	return []byte("-----BEGIN PGP MESSAGE-----\nCIPHERTEXT\n-----END PGP MESSAGE-----\n"), nil, true
 }
 
 func readMaildirRaw(t *testing.T, root string) string {

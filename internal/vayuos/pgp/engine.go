@@ -332,6 +332,39 @@ func (e *Engine) Encrypt(plaintext []byte, recipientEmail string) ([]byte, error
 	return encryptTo(plaintext, []*openpgp.Entity{recip}, nil)
 }
 
+// EncryptToRecipients produces a single armored PGP message encrypted to every
+// resolvable recipient in recipientEmails (OpenPGP supports many recipients in
+// one message — each gets a session-key packet). It returns the ciphertext plus
+// the lowercased list of addresses whose public keys could NOT be found, so a
+// caller can decide whether to fall back to plaintext rather than send a message
+// some recipient can't read. It errors only when NO recipient could be resolved.
+func (e *Engine) EncryptToRecipients(plaintext []byte, recipientEmails []string) ([]byte, []string, error) {
+	var entities []*openpgp.Entity
+	var missing []string
+	seen := make(map[string]bool, len(recipientEmails))
+	for _, raw := range recipientEmails {
+		em := strings.ToLower(strings.TrimSpace(raw))
+		if em == "" || seen[em] {
+			continue
+		}
+		seen[em] = true
+		ent, err := e.recipientEntity(em)
+		if err != nil || ent == nil {
+			missing = append(missing, em)
+			continue
+		}
+		entities = append(entities, ent)
+	}
+	if len(entities) == 0 {
+		return nil, missing, ErrNotFound
+	}
+	ct, err := encryptTo(plaintext, entities, nil)
+	if err != nil {
+		return nil, missing, err
+	}
+	return ct, missing, nil
+}
+
 // EncryptAndSign produces an armored PGP message encrypted to recipientEmail and
 // signed by senderUserID's key.
 func (e *Engine) EncryptAndSign(plaintext []byte, recipientEmail, senderUserID string) ([]byte, error) {

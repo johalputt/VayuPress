@@ -308,16 +308,25 @@ func (e *Engine) ComposeRich(ctx context.Context, m ComposeMessage) (int64, erro
 		return 0, errors.New("vayumail: no recipients")
 	}
 
-	text := m.Body
-	pgpApplied := false
-	// PGP is opt-in (m.Encrypt): encrypting to a recipient who cannot decrypt
-	// delivers an unreadable ciphertext block, so the operator chooses per message.
-	if m.Encrypt && len(m.Attachments) == 0 && len(m.CC) == 0 && len(m.BCC) == 0 &&
-		e.bridge != nil && len(m.To) == 1 {
-		if ct, ok := e.bridge.EncryptForRecipient([]byte(m.Body), m.To[0]); ok && len(ct) > 0 {
-			text = string(ct)
-			pgpApplied = true
+	// Build the content entity — the MIME entity carrying the actual message: a
+	// text/plain body, or a multipart/mixed of the text plus attachments. entHead
+	// is its own Content-* header block (CRLF-separated, no trailing CRLF), entBody
+	// the body bytes. This entity is sent as-is, or PGP/MIME-encrypted as a whole.
+	var entHead string
+	var entBody []byte
+	if len(m.Attachments) > 0 {
+		boundary := mimeBoundary()
+		var b bytes.Buffer
+		writeMIMEPart(&b, boundary, "text/plain; charset=utf-8", m.Body)
+		for _, at := range m.Attachments {
+			writeAttachmentPart(&b, boundary, at)
 		}
+		b.WriteString("--" + boundary + "--\r\n")
+		entHead = `Content-Type: multipart/mixed; boundary="` + boundary + `"`
+		entBody = b.Bytes()
+	} else {
+		entHead = "Content-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: 8bit"
+		entBody = []byte(normalizeCRLF(m.Body))
 	}
 
 	headers := []HeaderField{
@@ -338,28 +347,49 @@ func (e *Engine) ComposeRich(ctx context.Context, m ComposeMessage) (int64, erro
 	)
 
 	var bodyBuf bytes.Buffer
-	switch {
-	case pgpApplied:
-		headers = append(headers,
-			HeaderField{Key: "Content-Type", Value: "text/plain; charset=utf-8"},
-			HeaderField{Key: "Content-Transfer-Encoding", Value: "8bit"},
-			HeaderField{Key: "X-VayuPGP", Value: "encrypted"},
-		)
-		bodyBuf.WriteString(normalizeCRLF(text))
-	case len(m.Attachments) > 0:
-		boundary := mimeBoundary()
-		headers = append(headers, HeaderField{Key: "Content-Type", Value: `multipart/mixed; boundary="` + boundary + `"`})
-		writeMIMEPart(&bodyBuf, boundary, "text/plain; charset=utf-8", text)
-		for _, at := range m.Attachments {
-			writeAttachmentPart(&bodyBuf, boundary, at)
+	// PGP/MIME (RFC 3156), opt-in via m.Encrypt. Unlike the old inline-PGP path this
+	// encrypts the WHOLE content entity — body AND attachments — to EVERY recipient
+	// (To/Cc/Bcc) plus the sender (so the Sent copy stays readable). We encrypt only
+	// when every recipient has a resolvable key: a message a recipient can't read is
+	// worse than an honestly-plaintext one, so otherwise we fall back to plaintext
+	// (exactly as a missing key did before).
+	encrypted := false
+	if m.Encrypt && e.bridge != nil {
+		var inner bytes.Buffer
+		inner.WriteString(entHead)
+		inner.WriteString("\r\n\r\n")
+		inner.Write(entBody)
+		recips := append(append([]string{}, all...), m.From)
+		if ct, missing, ok := e.bridge.EncryptForRecipients(inner.Bytes(), recips); ok && !anyRecipientMissing(all, missing) {
+			boundary := mimeBoundary()
+			headers = append(headers,
+				HeaderField{Key: "Content-Type", Value: `multipart/encrypted; protocol="application/pgp-encrypted"; boundary="` + boundary + `"`},
+				HeaderField{Key: "X-VayuPGP", Value: "mime"},
+			)
+			bodyBuf.WriteString("--" + boundary + "\r\n")
+			bodyBuf.WriteString("Content-Type: application/pgp-encrypted\r\n")
+			bodyBuf.WriteString("Content-Description: PGP/MIME version identification\r\n\r\n")
+			bodyBuf.WriteString("Version: 1\r\n\r\n")
+			bodyBuf.WriteString("--" + boundary + "\r\n")
+			bodyBuf.WriteString("Content-Type: application/octet-stream; name=\"encrypted.asc\"\r\n")
+			bodyBuf.WriteString("Content-Description: OpenPGP encrypted message\r\n")
+			bodyBuf.WriteString("Content-Disposition: inline; filename=\"encrypted.asc\"\r\n\r\n")
+			bodyBuf.Write(ct)
+			if !bytes.HasSuffix(ct, []byte("\n")) {
+				bodyBuf.WriteString("\r\n")
+			}
+			bodyBuf.WriteString("--" + boundary + "--\r\n")
+			encrypted = true
 		}
-		bodyBuf.WriteString("--" + boundary + "--\r\n")
-	default:
-		headers = append(headers,
-			HeaderField{Key: "Content-Type", Value: "text/plain; charset=utf-8"},
-			HeaderField{Key: "Content-Transfer-Encoding", Value: "8bit"},
-		)
-		bodyBuf.WriteString(normalizeCRLF(text))
+	}
+	if !encrypted {
+		// Plaintext: the content entity's own headers continue the top-level block.
+		for _, ln := range strings.Split(entHead, "\r\n") {
+			if i := strings.Index(ln, ": "); i > 0 {
+				headers = append(headers, HeaderField{Key: ln[:i], Value: ln[i+2:]})
+			}
+		}
+		bodyBuf.Write(entBody)
 	}
 
 	var raw bytes.Buffer
@@ -396,6 +426,25 @@ func (e *Engine) ComposeRich(ctx context.Context, m ComposeMessage) (int64, erro
 		return 0, nil
 	}
 	return e.queue.Enqueue(ctx, envelopeAddress(m.From), remoteRcpt, rawMsg)
+}
+
+// anyRecipientMissing reports whether any address in required appears in the
+// missing list (case-insensitively) — i.e. a real recipient has no PGP key, so
+// the message must not be encrypted (they couldn't read it).
+func anyRecipientMissing(required, missing []string) bool {
+	if len(missing) == 0 {
+		return false
+	}
+	ms := make(map[string]bool, len(missing))
+	for _, m := range missing {
+		ms[strings.ToLower(strings.TrimSpace(m))] = true
+	}
+	for _, r := range required {
+		if ms[strings.ToLower(strings.TrimSpace(r))] {
+			return true
+		}
+	}
+	return false
 }
 
 // writeAttachmentPart appends one base64 MIME attachment part (RFC 2045).

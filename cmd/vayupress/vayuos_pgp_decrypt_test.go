@@ -95,6 +95,50 @@ func TestDecryptHookRebuildsPGPMIME(t *testing.T) {
 	}
 }
 
+// TestPGPMIMERoundTripWithAttachment is the end-to-end proof of the new
+// capability: a real multi-part MIME entity (text + attachment) encrypted to a
+// recipient via EncryptToRecipients, wrapped exactly as ComposeRich now emits
+// (RFC 3156 multipart/encrypted), decrypts back to the original body AND the
+// attachment. This is what inline PGP could never carry.
+func TestPGPMIMERoundTripWithAttachment(t *testing.T) {
+	const rcpt = "rcpt@johal.test"
+	a := pgpAppForDecrypt(t, rcpt)
+
+	// The content entity ComposeRich builds for a message with an attachment.
+	inner := "Content-Type: multipart/mixed; boundary=\"ib\"\r\n\r\n" +
+		"--ib\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\nMESSAGE-BODY-XYZ\r\n" +
+		"--ib\r\nContent-Type: image/png; name=\"pic.png\"\r\nContent-Transfer-Encoding: base64\r\n" +
+		"Content-Disposition: attachment; filename=\"pic.png\"\r\n\r\nQUJD\r\n" +
+		"--ib--\r\n"
+
+	armored, missing, err := a.vayuPGP.EncryptToRecipients([]byte(inner), []string{rcpt})
+	if err != nil {
+		t.Fatalf("encrypt: %v", err)
+	}
+	if len(missing) != 0 {
+		t.Fatalf("recipient with a key should not be missing: %v", missing)
+	}
+
+	// Wrap exactly as engine.ComposeRich emits.
+	msg := "From: s@johal.test\r\nTo: " + rcpt + "\r\nSubject: sealed\r\nMIME-Version: 1.0\r\n" +
+		"Content-Type: multipart/encrypted; protocol=\"application/pgp-encrypted\"; boundary=\"ob\"\r\n" +
+		"X-VayuPGP: mime\r\n\r\n" +
+		"--ob\r\nContent-Type: application/pgp-encrypted\r\nContent-Description: PGP/MIME version identification\r\n\r\nVersion: 1\r\n" +
+		"--ob\r\nContent-Type: application/octet-stream; name=\"encrypted.asc\"\r\nContent-Description: OpenPGP encrypted message\r\nContent-Disposition: inline; filename=\"encrypted.asc\"\r\n\r\n" +
+		string(armored) + "\r\n--ob--\r\n"
+
+	out := string(a.pgpDecryptForAccount(rcpt, []byte(msg)))
+	if strings.Contains(out, "BEGIN PGP MESSAGE") {
+		t.Fatalf("ciphertext survived decryption:\n%s", out)
+	}
+	if !strings.Contains(out, "MESSAGE-BODY-XYZ") {
+		t.Fatalf("body not recovered after decrypt:\n%s", out)
+	}
+	if !strings.Contains(out, `filename="pic.png"`) || !strings.Contains(out, "multipart/mixed") {
+		t.Fatalf("attachment / inner MIME not recovered after decrypt:\n%s", out)
+	}
+}
+
 func TestDecryptHookInlineSpliceStillWorks(t *testing.T) {
 	const rcpt = "rcpt@johal.test"
 	a := pgpAppForDecrypt(t, rcpt)

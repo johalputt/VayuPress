@@ -8,7 +8,34 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
-## [3.14.76] — 2026-07-21
+## [3.14.77] — 2026-07-21
+
+### Added
+- **Encrypted mail can now carry attachments — and encrypt to multiple
+  recipients.** VayuMail's composer previously used *inline PGP*, which encrypts
+  only the plain-text body, so it disabled encryption the moment you added an
+  attachment, a Cc or a Bcc. The composer now emits **PGP/MIME (RFC 3156,
+  `multipart/encrypted`)**, which encrypts the **whole message — body and every
+  attachment — to all recipients at once** (To, Cc and Bcc), plus the sender so
+  the Sent copy stays readable. This is the same standard Thunderbird, Proton
+  Mail and the VayuMail mobile app use, and VayuMail's transparent-decryption
+  hook already understood it, so encrypted mail round-trips cleanly in webmail,
+  over IMAP and to third-party clients. The bug-report/feedback flow is now
+  genuinely PGP-encrypted with screenshots attached.
+
+### Changed
+- **Encryption fails safe.** VayuMail encrypts only when **every** recipient has
+  a resolvable PGP key; if any recipient lacks one it sends honest readable text
+  rather than ciphertext they could never open (previously encrypting to a
+  keyless address produced an unreadable blob). The composer's PGP hints were
+  updated to reflect that encryption now covers attachments and multiple
+  recipients.
+
+### Security
+- New multi-recipient PGP primitive (`VayuPGP.EncryptToRecipients`) encrypts one
+  armored message to every recipient's key in a single pass, reporting any
+  addresses whose keys were not found so the caller can decide to fall back to
+  plaintext.
 
 ### Added
 - **One-tap feedback in VayuOS — report a bug, request an improvement or

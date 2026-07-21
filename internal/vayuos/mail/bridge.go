@@ -70,5 +70,11 @@ type Bridge interface {
 
 	// PGP integration — VayuMail asks VayuPGP through core.
 	EncryptForRecipient(plaintext []byte, recipientEmail string) ([]byte, bool)
+	// EncryptForRecipients encrypts plaintext to EVERY resolvable recipient in one
+	// armored message (for RFC 3156 PGP/MIME, which — unlike inline PGP — carries
+	// attachments and multiple recipients). It returns the ciphertext, the
+	// addresses whose keys were not found, and ok=false when nothing could be
+	// encrypted.
+	EncryptForRecipients(plaintext []byte, recipientEmails []string) ([]byte, []string, bool)
 	SignAs(plaintext []byte, senderUserID string) ([]byte, bool)
 }

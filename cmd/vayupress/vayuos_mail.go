@@ -139,7 +139,7 @@ func (a *App) handleVayuOSCompose(w http.ResponseWriter, r *http.Request) {
 	}
 	feedbackBanner := ""
 	if feedback {
-		feedbackBanner = `<div class="vm-feedback-banner">💡 <strong>Help improve VayuPress.</strong> Tell us about a bug, an improvement or a feature you'd like — attach screenshots or files if they help. PGP encryption is switched on for text-only reports; either way your message is delivered securely. Just add your details and hit Send.</div>`
+		feedbackBanner = `<div class="vm-feedback-banner">💡 <strong>Help improve VayuPress.</strong> Tell us about a bug, an improvement or a feature you'd like — attach screenshots or files if they help. Your report is <strong>PGP-encrypted end-to-end, attachments included</strong>. Just add your details and hit Send.</div>`
 	}
 
 	// Recipient autocomplete is scoped to the SENDING mailbox's own address book
@@ -205,7 +205,7 @@ func (a *App) handleVayuOSCompose(w http.ResponseWriter, r *http.Request) {
 
   <div class="vm-row vm-row--tight vm-encrypt-row">
     <label class="vm-filter-check"><input type="checkbox" data-c-encrypt` + encAttr + `> 🔒 Encrypt with PGP</label>
-    <span class="vm-pgp-hint" data-c-encrypt-hint aria-live="polite">Off — the message is sent as readable text. Encrypt only when the recipient can decrypt PGP (encrypting to a plain inbox like Gmail arrives as unreadable ciphertext).</span>
+    <span class="vm-pgp-hint" data-c-encrypt-hint aria-live="polite">Off — the message is sent as readable text. Turn on to PGP-encrypt the message and attachments (RFC 3156) for recipients whose keys are known.</span>
   </div>
   <div class="vm-row vm-compose-actions">
     <button class="btn btn--primary" type="submit" data-c-send>Send</button>
