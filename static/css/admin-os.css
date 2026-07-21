@@ -877,6 +877,8 @@
 .vp-os .mon-acc__body > .card { border: 0; background: transparent; box-shadow: none; padding: 0; margin: 0; }
 .vp-os .mon-acc__body > .card::before { display: none; }
 .vp-os .mon-acc__body > .card > .settings-block-title:first-child { display: none; }
+/* VayuTor cards use .card-title; hide it inside an accordion (the title is in the summary). */
+.vp-os .mon-acc__body > .card > .card-title:first-child { display: none; }
 .vp-os .mon-chip {
   flex: none; font-size: var(--text-xs); font-weight: 600; padding: 3px 9px; border-radius: var(--r-full);
   border: 1px solid var(--border); color: var(--text-3); background: var(--bg-surface-2); white-space: nowrap;
@@ -5186,8 +5188,11 @@
   display: inline-flex; align-items: center; justify-content: center;
   font-size: var(--text-sm); font-weight: 600; color: #fff;
   background: linear-gradient(135deg, var(--brand), var(--accent));
-  border-radius: var(--r-full);
+  border-radius: var(--r-full); overflow: hidden;
 }
+/* When a real mailbox picture loads, it fills the round chip (no gradient). */
+.vp-os .vtalk-avatar--img { background: none; }
+.vp-os .vtalk-avatar--img img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
 /* ── Main pane ─────────────────────────────────────────────────────────────*/
 .vp-os .vtalk-main {

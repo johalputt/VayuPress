@@ -22,11 +22,17 @@ func TestFaceDeterministicAndValid(t *testing.T) {
 			t.Fatalf("not a well-formed svg: %.60s", svg)
 		}
 		// Self-contained: no styles/scripts, no external fetches (the xmlns
-		// namespace URL is not a fetch and is expected).
-		for _, bad := range []string{"<style", "<script", "<image", "xlink:href", `href="http`, "url("} {
+		// namespace URL is not a fetch and is expected). Internal gradient
+		// references — url(#id) resolving inside the same document — are allowed
+		// (pure paint, no fetch, no script); only external url() fetches are not.
+		for _, bad := range []string{"<style", "<script", "<image", "xlink:href", `href="http`, "url(http", "url(//", "url('", `url("`} {
 			if strings.Contains(svg, bad) {
 				t.Errorf("avatar must be self-contained/CSP-safe; found %q", bad)
 			}
+		}
+		// The gradients we do use must be internal fragment refs.
+		if strings.Contains(svg, "url(") && !strings.Contains(svg, "url(#") {
+			t.Errorf("avatar uses a non-internal url() reference")
 		}
 	}
 }

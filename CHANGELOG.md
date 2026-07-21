@@ -8,6 +8,33 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.92] — 2026-07-21
+
+### Added
+- **Premium cartoon avatars.** The prebuilt avatar generator (members and
+  mailboxes) was redesigned from flat dot-eye faces to polished portraits:
+  gradient backgrounds with a soft sheen, real eyes with catch-lights, shaded
+  skin/hair, and distinct styles (glasses, beard, beanie, bun, afro, long/wavy
+  hair). Still deterministic per seed and fully self-contained SVG (internal
+  gradient paint only — no script, no external fetch), so it stays CSP-safe as
+  an `<img>` and works in the Tor world too.
+- **VayuTalk shows real avatars.** The conversation list and thread header now
+  show a contact's actual mailbox picture when one exists (your own identity and
+  any local mailbox), falling back to coloured initials otherwise. Same-origin
+  only — no external callback — so it is safe in the Tor world.
+- **VayuTalk new-message notifications (web).** A peer's message you are not
+  looking at flashes the tab title and, when the tab is backgrounded and
+  permission was granted, raises a desktop notification (sender name only, never
+  the message text). Over an http onion, notifications degrade gracefully to the
+  title badge.
+
+### Changed
+- **VayuTor page redesigned** to the premium Monetization style: a stat-grid
+  overview (status · Tor visits · onion count · network), a clean one-click
+  control card, and the advanced controls (bridges, custom address, hardening,
+  health, page stats, privacy) grouped into collapsible accordions with live
+  status chips.
+
 ## [3.14.91] — 2026-07-21
 
 ### Added

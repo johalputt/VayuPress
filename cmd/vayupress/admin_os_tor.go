@@ -45,7 +45,8 @@ func (a *App) handleOSTor(w http.ResponseWriter, r *http.Request) {
 	}
 
 	esc := htmpl.HTMLEscapeString
-	body := `<div class="page-header"><h1>VayuTor</h1><span class="muted text-sm">Publish every hosted domain as a Tor onion service — a private, un-trackable way in that works alongside the normal address. No provider, network, or observer can see who visits.</span></div>`
+	body := `<div class="page-header"><h1>VayuTor</h1></div>`
+	body += `<p class="page-sub">Publish every hosted domain as a Tor onion service — a private, un-trackable way in that works alongside the normal address. No provider, network, or observer can see who visits. Tap a card to expand it.</p>`
 
 	if a.vayuTor == nil || !st.Available {
 		body += `<div class="empty-state">VayuTor is switched off at the environment level (<code>VAYUOS_TOR=off</code>). Remove that to make it available, then reload.</div>`
@@ -70,11 +71,38 @@ func (a *App) handleOSTor(w http.ResponseWriter, r *http.Request) {
 		btnLabel, btnKind, nextState = "Deactivate", "btn--ghost", "off"
 	}
 
+	// Premium overview: a stat grid (like Monetization), then a slim control card.
+	shortState := "Inactive"
+	switch {
+	case st.Active && st.Connected && st.BootstrapPct >= 100:
+		shortState = "Active"
+	case st.Active && st.Connected:
+		shortState = strconv.Itoa(st.BootstrapPct) + "%"
+	case st.Active:
+		shortState = "Starting"
+	}
+	netLabel := "—"
+	if st.Active {
+		switch {
+		case st.TorManaged:
+			netLabel = "Managed Tor"
+		case st.Transport != "" && st.Transport != "direct":
+			netLabel = esc(st.Transport)
+		default:
+			netLabel = "Direct"
+		}
+	}
+	body += `<div class="stat-grid">
+  <div class="stat-card"><div class="stat-card__label">Status</div><div class="stat-card__value">` + shortState + `</div></div>
+  <div class="stat-card"><div class="stat-card__label">Tor visits</div><div class="stat-card__value" data-tor-visits>` + strconv.FormatInt(st.Visits, 10) + `</div></div>
+  <div class="stat-card"><div class="stat-card__label">Onion addresses</div><div class="stat-card__value">` + strconv.Itoa(len(st.Onions)) + `</div></div>
+  <div class="stat-card"><div class="stat-card__label">Network</div><div class="stat-card__value">` + netLabel + `</div></div>
+</div>`
+
 	body += `<div class="card vt-hero" data-tor data-boot-pct="` + strconv.Itoa(st.BootstrapPct) + `">
   <div class="vt-hero__main">
     <div class="vt-state ` + stateClass + `"><span class="vt-dot"></span> ` + stateLabel + `</div>
-    <div class="vt-hero__count"><span class="vt-count" data-tor-visits>` + strconv.FormatInt(st.Visits, 10) + `</span> <span class="muted">Tor visits</span></div>
-    <div class="muted text-sm">Count only — no identity, no time, nothing else is ever recorded.</div>
+    <div class="muted text-sm">One click publishes every hosted domain as its own <code>.onion</code>, alongside the normal address — same site, no speed trade-off. Count only: no identity, time, or path is ever recorded.</div>
   </div>
   <form class="vt-hero__action" method="post" action="/os/tor/toggle" data-tor-toggle data-tor-form>
     <input type="hidden" name="state" value="` + nextState + `">
@@ -139,7 +167,8 @@ func (a *App) handleOSTor(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// ── Onion address table ──
-	body += `<div class="card mt-4"><div class="card-title">🧅 Your onion addresses</div>`
+	body += `<div class="section-head"><span class="section-head__title">🧅 Onion addresses</span><span class="section-head__hint">One <code>.onion</code> per hosted domain — same site, a private way in</span></div>`
+	body += `<div class="card">`
 	if len(st.Onions) == 0 {
 		if st.Active {
 			body += `<div class="empty-state">No onion addresses yet — they appear here within a minute of activation, one per hosted domain.</div>`
@@ -161,12 +190,46 @@ func (a *App) handleOSTor(w http.ResponseWriter, r *http.Request) {
 	}
 	body += `</div>`
 
-	body += a.osTorVanityCard(esc, st, r.URL.Query().Get("vanity_err"))
-	body += osTorHealthCard(esc, st)
-	body += a.osTorPageStatsCard(esc, st)
-	body += a.osTorBridgesCard(r, esc, st)
-	body += a.osTorHardeningCard(r)
-	body += osTorPrivacyNote(st)
+	// ── Advanced, grouped into premium collapsible accordions (Monetization style) ──
+	// Summary chips reflect live state so the operator sees what's set at a glance.
+	bridgesConfigured := false
+	if a.siteSettings != nil {
+		bridgesConfigured = strings.TrimSpace(a.siteSettings.Get(r.Context(), settings.KeyTorBridges)) != ""
+	}
+	vanityChip := ""
+	if a.vayuTor != nil {
+		vs := a.vayuTor.VanityStatus()
+		if vs.Active {
+			vanityChip = `<span class="mon-chip">● Searching</span>`
+		} else if vs.Found {
+			vanityChip = `<span class="mon-chip mon-chip--on">● Custom set</span>`
+		}
+	}
+	healthChip := ""
+	switch st.Health {
+	case vtor.HealthHealthy:
+		healthChip = `<span class="mon-chip mon-chip--on">● Healthy</span>`
+	case vtor.HealthDown:
+		healthChip = `<span class="mon-chip mon-chip--off">● Down</span>`
+	case vtor.HealthStarting:
+		healthChip = `<span class="mon-chip">● Starting</span>`
+	case vtor.HealthDegraded:
+		healthChip = `<span class="mon-chip">● Degraded</span>`
+	}
+
+	body += `<div class="section-head"><span class="section-head__title">Setup &amp; network</span><span class="section-head__hint">Reach Tor from anywhere, and personalise your address</span></div>`
+	body += `<div class="mon-stack">` +
+		monAcc("🌉", "Bridges", "For networks that block Tor", monChip(bridgesConfigured, "Configured", "Not set"), false, a.osTorBridgesCard(r, esc, st)) +
+		monAcc("✨", "Custom (vanity) address", "A .onion that starts with letters you choose", vanityChip, false, a.osTorVanityCard(esc, st, r.URL.Query().Get("vanity_err"))) +
+		monAcc("🛡️", "Onion-Location &amp; hardening", "How Tor Browser auto-discovers your onion", "", false, a.osTorHardeningCard(r)) +
+		`</div>`
+
+	body += `<div class="section-head"><span class="section-head__title">Health &amp; privacy</span><span class="section-head__hint">Uptime alerts, opt-in page counts, and exactly what is (never) recorded</span></div>`
+	body += `<div class="mon-stack">` +
+		monAcc("🩺", "Health &amp; alerts", "Onion uptime + signed outage webhooks", healthChip, false, osTorHealthCard(esc, st)) +
+		monAcc("📄", "Popular pages", "Private, opt-in aggregate counts", monChip(st.PageStatsOn, "On", "Off"), false, a.osTorPageStatsCard(esc, st)) +
+		monAcc("🔒", "Privacy posture", "Exactly what VayuTor records — and doesn't", `<span class="mon-chip mon-chip--on">● Count-only</span>`, false, osTorPrivacyNote(st)) +
+		`</div>`
 	body += `<script nonce="` + nonce + `" src="/os/static/js/admin-os-tor.js?v=` + assetVer("js/admin-os-tor.js") + `"></script>`
 	writeOSHTML(w, adminOSLayout(nonce, "VayuTor", "tor", cfg, htmpl.HTML(body)))
 }

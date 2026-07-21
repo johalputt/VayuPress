@@ -85,6 +85,60 @@
   }
   function parse(s) { try { return JSON.parse(s); } catch (_) { return null; } }
 
+  // avatarEl builds a round avatar chip that shows the address' real mailbox
+  // picture when the server has one (your own identity, or any local mailbox),
+  // falling back to coloured initials otherwise. The <img> load/error handlers are
+  // attached in JS (never an inline onerror) so it stays strict-CSP-safe: a 404
+  // (no picture) simply keeps the initials. It is same-origin only and never
+  // reaches another host, so it is safe in the Tor world too.
+  function avatarEl(addr, label) {
+    var el = elem('span', 'vtalk-avatar', initials(label || addr));
+    var a = norm(addr);
+    if (!a) return el;
+    var img = document.createElement('img');
+    img.alt = '';
+    img.addEventListener('load', function () {
+      el.textContent = '';
+      el.appendChild(img);
+      el.classList.add('vtalk-avatar--img');
+    });
+    img.src = '/os/vayumail/accounts/avatar?email=' + encodeURIComponent(a);
+    return el;
+  }
+
+  // ── New-message notifications ────────────────────────────────────────────────
+  // A peer's message that you are not actively looking at flashes the tab title
+  // and (when the tab is in the background and permission was granted) raises a
+  // desktop notification — sender name only, never the message text, to preserve
+  // the private/ephemeral ethos. Desktop notifications need a secure context, so
+  // over an http onion they are skipped gracefully and the title badge still works.
+  var baseTitle = document.title;
+  var unreadTotal = 0;
+  var notifyReady = false;
+  function ensureNotifyPermission() {
+    if (!('Notification' in window)) return;
+    if (Notification.permission === 'granted') { notifyReady = true; return; }
+    if (Notification.permission === 'default') {
+      try { Notification.requestPermission().then(function (p) { notifyReady = (p === 'granted'); }); } catch (_) {}
+    }
+  }
+  function clearTitleBadge() { unreadTotal = 0; document.title = baseTitle; }
+  function notifyIncoming(peer, m) {
+    if (!m || m.mine) return;
+    var lookingHere = (active === peer) && !document.hidden;
+    if (lookingHere) return;
+    unreadTotal++;
+    document.title = '(' + unreadTotal + ') ' + baseTitle;
+    if (notifyReady && document.hidden && ('Notification' in window)) {
+      try {
+        var n = new Notification(displayName(peer), { body: 'New message', tag: 'vtalk:' + peer });
+        n.onclick = function () { try { window.focus(); } catch (_) {} activate(peer); clearTitleBadge(); n.close(); };
+      } catch (_) {}
+    }
+  }
+  window.addEventListener('focus', clearTitleBadge);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) clearTitleBadge(); });
+
   // ── Contacts (names + kept flag, the only reload-surviving state) ────────────
   // Stored per identity as vtalk-contacts:<self>. Never contains messages.
 
@@ -141,7 +195,7 @@
 
     var name = displayName(peer);
     var item = elem('li', 'vtalk-convo');
-    var av = elem('span', 'vtalk-avatar', initials(name));
+    var av = avatarEl(peer, name);
     var meta = elem('span', 'vtalk-convo-meta');
     var nameEl = elem('span', 'vtalk-convo-name', name);
     meta.appendChild(nameEl);
@@ -188,7 +242,7 @@
   function buildHeader(peer) {
     els.head.textContent = '';
     var name = displayName(peer);
-    var av = elem('span', 'vtalk-avatar', initials(name));
+    var av = avatarEl(peer, name);
     var hmeta = elem('div', 'vtalk-head-meta');
     hmeta.appendChild(elem('strong', null, name));
     hmeta.appendChild(elem('span', 'text-sm muted', 'End-to-end encrypted · disappears when read'));
@@ -260,7 +314,8 @@
     if (c) {
       var name = displayName(peer);
       if (c.nameEl) c.nameEl.textContent = name;
-      if (c.av) c.av.textContent = initials(name);
+      // Only refresh the initials fallback — never wipe a loaded picture.
+      if (c.av && !c.av.querySelector('img')) c.av.textContent = initials(name);
       if (c.pin) c.pin.hidden = !isKept(peer);
       c.item.classList.toggle('vtalk-convo--kept', isKept(peer));
     }
@@ -448,6 +503,9 @@
       c.dot.textContent = String(c.unread);
       els.convos.insertBefore(c.item, els.convos.firstChild);
     }
+    // Tab-title badge + (backgrounded) desktop notification for a peer message
+    // you are not currently looking at — including brand-new conversations.
+    notifyIncoming(peer, m);
     // Fallback: an unread message still vanishes when the server's unread hold
     // (expires_at) elapses, even if it is never opened here.
     scheduleExpiry(m);
@@ -622,6 +680,8 @@
     var peer = norm(els.peer.value);
     if (!peer || peer === currentSelf) { els.peer.value = ''; return; }
     els.peer.value = '';
+    // Starting a chat is a user gesture — the right moment to ask to notify.
+    ensureNotifyPermission();
     activate(peer);
   });
 
@@ -669,6 +729,9 @@
   // reload brings back the ids you chose to keep (never their messages).
   loadContacts();
   restoreKeptContacts();
+  // Best-effort permission ask on load (browsers may defer it to a gesture — the
+  // Start button also asks); the tab-title badge works regardless.
+  ensureNotifyPermission();
   connect();
   window.addEventListener('beforeunload', function () { if (es) es.close(); });
 })();
