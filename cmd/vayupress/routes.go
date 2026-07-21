@@ -29,6 +29,11 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 		chimw.Timeout(30*time.Second),
 		securityHeadersMiddleware,
 	)
+	// Maintenance mode — when the operator has taken the public site offline
+	// (VayuOS → Power & Maintenance), serve the premium maintenance page to
+	// visitors. A near-free pass-through when off; always lets /os, the health
+	// probes and the signed-in operator through so the site can be recovered.
+	r.Use(a.maintenanceMiddleware)
 	// VayuTor onion routing — maps an incoming <onion>.onion Host to the clearnet
 	// domain it serves (so per-domain routing works over Tor), and advertises the
 	// onion on clearnet responses via Onion-Location. Runs BEFORE the domain

@@ -221,6 +221,10 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		// Operations hub: consolidates System Modes / Policy / Topology / Replay /
 		// Fault Engine / ADR Registry into one dashboard-style card page (admin-only).
 		pr.Get("/os/operations", a.handleOSOperations)
+		// Power & Maintenance: take the public site offline behind a premium
+		// maintenance page, restart, or shut down. Preview renders that page.
+		pr.Get("/os/power", a.handleOSPower)
+		pr.Get("/os/power/preview", a.handleOSPowerPreview)
 		// Optimize hub: consolidates SEO / Analytics / Bot Shield / Theme Studio /
 		// Theme Store + Tools / Domains / Settings / VayuAPI / VayuMCP into one
 		// dashboard-style card page (editor+; admin-only cards hidden from editors).
@@ -294,6 +298,10 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.Get("/os/tools", a.handleOSTools)
 		pr.Get("/os/api/tools", a.handleOSToolsList)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/tools/toggle", a.handleOSToolToggle)
+		// Power & Maintenance actions (admin-only, CSRF-protected).
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/power/maintenance", a.handleOSPowerMaintenance)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/power/restart", a.handleOSPowerRestart)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/power/shutdown", a.handleOSPowerShutdown)
 
 		// Monetization — payment order ledger + gateway config, and the
 		// activation-gated advertising surface.

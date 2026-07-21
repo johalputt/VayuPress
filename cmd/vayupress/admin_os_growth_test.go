@@ -67,7 +67,7 @@ func TestOperationsHubConsolidatesSidebar(t *testing.T) {
 	}
 
 	// Normal mode, healthy disk → no attention badge anywhere.
-	normal := osOperationsGrid(mode.ModeNormal, 40)
+	normal := osOperationsGrid(mode.ModeNormal, 40, false)
 	assertCSPSafe(t, "osOperationsGrid/normal", normal)
 	for _, want := range []string{
 		`href="/os/modes"`, `href="/os/policy"`, `href="/os/topology"`,
@@ -83,7 +83,7 @@ func TestOperationsHubConsolidatesSidebar(t *testing.T) {
 		t.Error("normal mode + healthy disk must not show an attention badge")
 	}
 	// A non-normal mode badges the Modes card; high disk badges the Storage card.
-	attn := osOperationsGrid(mode.ModeQuarantined, 88)
+	attn := osOperationsGrid(mode.ModeQuarantined, 88, false)
 	if !strings.Contains(attn, `work-card__badge">quarantined<`) {
 		t.Error("a non-normal mode must be badged on the System Modes card")
 	}

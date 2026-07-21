@@ -21,6 +21,13 @@ const (
 	// "true" (as written by the settings toggle) enables it.
 	KeyMembershipButtons = "site.membership_buttons"
 
+	// KeyMaintenanceMode, when "on", takes the PUBLIC site offline behind a
+	// premium "under maintenance" page (a 503). The VayuOS admin console and the
+	// operational endpoints stay reachable so the operator can turn it back off.
+	// KeyMaintenanceMessage is an optional custom line shown on that page.
+	KeyMaintenanceMode    = "site.maintenance"
+	KeyMaintenanceMessage = "site.maintenance_message"
+
 	// Business-website mode (VayuOS → Website). KeySiteMode selects what the
 	// root domain serves: "" / "blog" keeps the blog at the root (the historic
 	// behaviour — existing installs never change on update), "business" serves
@@ -310,6 +317,8 @@ var AllKeys = map[string]bool{
 	KeySiteDescription:         true,
 	KeySiteAuthor:              true,
 	KeyMembershipButtons:       true,
+	KeyMaintenanceMode:         true,
+	KeyMaintenanceMessage:      true,
 	KeyThemePrimaryLight:       true,
 	KeyThemePrimaryDark:        true,
 	KeyThemeAccentLight:        true,

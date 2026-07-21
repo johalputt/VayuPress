@@ -8,6 +8,28 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.73] — 2026-07-21
+
+### Added
+- **Power & Maintenance controls in VayuOS** (Operations → Power & Maintenance).
+  A single, safe control room for taking the site offline or restarting the app:
+  - **Maintenance mode (on/off)** — the reversible power switch. While on, the
+    public site serves a clean, premium, self-contained **"We’ll be right back"**
+    maintenance page (503 + Retry-After, auto-refreshing), with an optional custom
+    message. The VayuOS console (`/os`), the health probes and the signed-in
+    operator’s own browsing always stay live, so the site can never lock you out —
+    flip it back off from the same page. A **Preview** link shows exactly what
+    visitors see without taking anything down.
+  - **Restart** — gracefully restarts the app (drains in-flight requests via the
+    existing SIGTERM path; the auto-restart service brings it back live in
+    seconds) for a quick refresh or after an update.
+  - **Shut down** — turns maintenance on and restarts, so the app comes back with
+    the public site off and stays that way until you lift maintenance — a
+    "stay offline" that never hard-kills the process or blocks admin access.
+  - New setting keys `site.maintenance` / `site.maintenance_message`, a public
+    `maintenanceMiddleware`, and CSRF-protected admin endpoints
+    `POST /os/api/power/{maintenance,restart,shutdown}`.
+
 ## [3.14.72] — 2026-07-21
 
 ### Fixed

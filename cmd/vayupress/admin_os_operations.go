@@ -28,20 +28,25 @@ func (a *App) handleOSOperations(w http.ResponseWriter, r *http.Request) {
 	cfg := a.getOSSettings(r.Context())
 	snap := a.getAdminSnapshot()
 	writeOSHTML(w, adminOSLayout(nonce, "Operations", "operations", cfg,
-		htmpl.HTML(osOperationsGrid(mode.Global.Current(), int(snap.StoragePct)))))
+		htmpl.HTML(osOperationsGrid(mode.Global.Current(), int(snap.StoragePct), a.maintenanceModeOn(r)))))
 }
 
 // osOperationsGrid builds the Operations hub body. The System Modes card carries a
 // status badge whenever the install is not in normal mode, and Storage & System
 // carries a usage badge when disk is running high (>= 75%), so a state that needs
 // attention is impossible to miss from the hub.
-func osOperationsGrid(current mode.Mode, storagePct int) string {
+func osOperationsGrid(current mode.Mode, storagePct int, maintenanceOn bool) string {
 	var b strings.Builder
 	b.WriteString(`<div class="page-head"><div><h1 class="page-title">Operations</h1><p class="page-sub">Advanced controls, diagnostics and governance for your install.</p></div></div>`)
 
 	// Controls & diagnostics.
 	b.WriteString(`<div class="section-head"><span class="section-head__title">Controls &amp; diagnostics</span><span class="section-head__hint">Run, inspect &amp; recover</span></div>`)
 	b.WriteString(`<div class="work-grid">`)
+	powerBadge := ""
+	if maintenanceOn {
+		powerBadge = "Offline"
+	}
+	b.WriteString(osWorkCard("/os/power", "Power &amp; Maintenance", "Maintenance page, restart &amp; shutdown", iconModes, 0, powerBadge, true))
 	modeBadge := ""
 	if current != "" && current != mode.ModeNormal {
 		modeBadge = string(current)
