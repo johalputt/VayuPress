@@ -8,6 +8,20 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.87] — 2026-07-21
+
+### Changed
+- **Gradient primary buttons.** Primary actions now use a teal→teal-dark sweep
+  (violet in the Tor world) with a soft accent shadow and a brighten-on-hover
+  lift — the site's CTA feel. White label text stays on the deeper teal stops so
+  it remains readable (this also retired a stray sky-blue hover colour).
+- **Cursor-follow glow on panels.** Cards, stat tiles and workspace tiles now
+  carry a soft accent halo that tracks the pointer as it moves across them — the
+  site's hero-card effect. It is pure CSS driven by two custom properties that
+  `admin-os.js` updates through the CSSOM (strict-CSP-safe — not an inline style
+  attribute), throttled with `requestAnimationFrame`, and skipped entirely on
+  touch devices so phones never pay for it.
+
 ## [3.14.86] — 2026-07-21
 
 ### Changed

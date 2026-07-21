@@ -764,4 +764,30 @@ $$('[data-setting-key]').forEach(function (el) {
   }
 })();
 
+/* ── Cursor-follow glow on cards ─────────────────────────────
+   Tracks the pointer across .card / .stat-card / .work-card and writes the
+   position into --mx/--my (via the CSSOM, which strict CSP allows — this is not
+   an inline style attribute). rAF-throttled; skipped where there is no real
+   pointer (touch), so phones never pay for it. */
+(function initCardGlow() {
+  if (window.matchMedia && window.matchMedia('(hover: none)').matches) return;
+  var cards = $$('.card, .stat-card, .work-card');
+  if (!cards.length) return;
+  var raf = 0, next = null;
+  function flush() {
+    raf = 0;
+    if (!next) return;
+    next.el.style.setProperty('--mx', next.x + 'px');
+    next.el.style.setProperty('--my', next.y + 'px');
+    next = null;
+  }
+  cards.forEach(function (el) {
+    on(el, 'pointermove', function (e) {
+      var r = el.getBoundingClientRect();
+      next = { el: el, x: Math.round(e.clientX - r.left), y: Math.round(e.clientY - r.top) };
+      if (!raf) raf = requestAnimationFrame(flush);
+    });
+  });
+})();
+
 })(); // end IIFE

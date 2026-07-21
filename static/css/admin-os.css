@@ -77,6 +77,9 @@
   --brand-dim:    rgba(45, 212, 191, 0.16);
   --brand-glow:   rgba(45, 212, 191, 0.32);
   --brand-2:      #fbbf24;
+  /* Primary-button gradient — deeper teals so white label text stays readable. */
+  --btn-a:        #14b8a6;
+  --btn-b:        #0d9488;
   --accent:       #a78bfa;
   --accent-dim:   rgba(167, 139, 250, 0.18);
 
@@ -158,6 +161,8 @@
   --brand-dim:    rgba(13, 148, 136, 0.12);
   --brand-glow:   rgba(13, 148, 136, 0.24);
   --brand-2:      #d97706;
+  --btn-a:        #0d9488;
+  --btn-b:        #0f766e;
   --accent:       #7c3aed;
   --sh-sm: 0 1px 3px rgba(0,0,0,0.10), 0 1px 2px rgba(0,0,0,0.08);
   --sh:    0 4px 16px rgba(0,0,0,0.12), 0 1px 4px rgba(0,0,0,0.08);
@@ -188,6 +193,8 @@
     --brand-dim:    rgba(13, 148, 136, 0.12);
     --brand-glow:   rgba(13, 148, 136, 0.24);
     --brand-2:      #d97706;
+    --btn-a:        #0d9488;
+    --btn-b:        #0f766e;
     --accent:       #7c3aed;
     --sh-sm: 0 1px 3px rgba(0,0,0,0.10), 0 1px 2px rgba(0,0,0,0.08);
     --sh:    0 4px 16px rgba(0,0,0,0.12), 0 1px 4px rgba(0,0,0,0.08);
@@ -844,11 +851,19 @@
 .vp-os .btn:active { transform: translateY(0); }
 
 .vp-os .btn--primary {
-  background: var(--brand);
+  background: linear-gradient(100deg, var(--btn-a), var(--btn-b));
   color: #fff;
-  border-color: var(--brand);
+  border-color: transparent;
+  box-shadow: 0 8px 20px -10px var(--brand-glow);
+  transition: filter var(--t-fast), box-shadow var(--t), transform var(--t);
 }
-.vp-os .btn--primary:hover { background: #0284c7; border-color: #0284c7; box-shadow: 0 4px 12px var(--brand-glow); }
+.vp-os .btn--primary:hover {
+  filter: brightness(1.08) saturate(1.05);
+  border-color: transparent;
+  box-shadow: 0 14px 30px -12px var(--brand-glow);
+  transform: translateY(-1px);
+}
+.vp-os .btn--primary:active { filter: brightness(0.98); transform: translateY(0); }
 
 .vp-os .btn--accent {
   background: var(--accent);
@@ -980,6 +995,21 @@
   border-color: var(--brand-dim);
   transform: translateY(-2px);
   box-shadow: var(--sh), 0 0 0 1px var(--brand-dim), 0 18px 44px -24px var(--brand-glow);
+}
+
+/* Cursor-follow glow — a soft accent halo that tracks the pointer across panels
+   (the site's hero-card effect). --mx/--my are updated by admin-os.js through the
+   CSSOM (element.style.setProperty), which strict CSP style-src permits — it is
+   not an inline style attribute. Skipped on touch devices in JS. */
+.vp-os .card, .vp-os .stat-card, .vp-os .work-card { --mx: 50%; --my: -30%; }
+.vp-os .card::after, .vp-os .stat-card::after, .vp-os .work-card::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit;
+  pointer-events: none; opacity: 0; transition: opacity var(--t-slow);
+  background: radial-gradient(320px circle at var(--mx) var(--my), var(--brand-glow), transparent 46%);
+}
+.vp-os .card:hover::after, .vp-os .stat-card:hover::after, .vp-os .work-card:hover::after { opacity: 0.85; }
+@media (prefers-reduced-motion: reduce) {
+  .vp-os .card::after, .vp-os .stat-card::after, .vp-os .work-card::after { transition: none; }
 }
 .vp-os .card--glass {
   background: var(--bg-glass);
@@ -1367,6 +1397,8 @@
   --brand-dim:  rgba(168, 85, 247, 0.18);
   --brand-glow: rgba(168, 85, 247, 0.34);
   --brand-2:    #d8b4fe;
+  --btn-a:      #9333ea;
+  --btn-b:      #7c3aed;
   --accent:     #a855f7;
   --accent-dim: rgba(168, 85, 247, 0.18);
   /* Tor world blooms go violet so the cosmic canvas signals the anonymous world. */
