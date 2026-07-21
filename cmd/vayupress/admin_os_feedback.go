@@ -19,15 +19,21 @@ import (
 	"github.com/johalputt/vayupress/internal/settings"
 )
 
+// defaultFeedbackEmail is where bug reports / improvement ideas / feature
+// requests go by default: the VayuPress project inbox. Operators can override it
+// per-install (Power & Maintenance → Feedback inbox) to collect reports
+// themselves, but out of the box every install reaches the team.
+const defaultFeedbackEmail = "feedback@vayupress.com"
+
 // feedbackEmail resolves the mailbox the feedback button composes to: the
-// operator-configured address if set, otherwise feedback@<primary-domain>.
+// operator-configured address if set, otherwise the VayuPress project inbox.
 func (a *App) feedbackEmail(ctx context.Context) string {
 	if a.siteSettings != nil {
 		if v := strings.TrimSpace(a.siteSettings.Get(ctx, settings.KeyFeedbackEmail)); v != "" {
 			return v
 		}
 	}
-	return "feedback@" + config.Cfg.Domain
+	return defaultFeedbackEmail
 }
 
 // feedbackSubject / feedbackBody are the prefill for a feedback message. The

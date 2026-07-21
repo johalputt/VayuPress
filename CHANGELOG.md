@@ -8,7 +8,14 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
-## [3.14.77] — 2026-07-21
+## [3.14.78] — 2026-07-21
+
+### Changed
+- **Feedback now reaches the VayuPress team by default.** The VayuOS feedback
+  button (💡) defaults to `feedback@vayupress.com` out of the box, so bug
+  reports, improvement ideas and feature requests come straight to the project.
+  Operators can still point it at their own inbox from Power & Maintenance →
+  Feedback inbox (setting `vayupress.feedback_email`).
 
 ### Added
 - **Encrypted mail can now carry attachments — and encrypt to multiple

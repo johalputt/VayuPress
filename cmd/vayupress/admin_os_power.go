@@ -237,11 +237,11 @@ func osPowerBody(nonce string, on bool, message string, crawlersOff bool, feedba
 
 <div class="card">
   <div class="settings-block-title">Feedback &amp; bug reports</div>
-  <p class="text-sm muted">The 💡 button in the top bar lets you and your team report a bug, request an improvement or suggest a feature — it opens a PGP-encrypted email to the inbox below, with screenshots and file attachments supported. Create this mailbox in VayuMail if it doesn’t exist yet.</p>
+  <p class="text-sm muted">The 💡 button in the top bar lets you and your team report a bug, request an improvement or suggest a feature — it opens a PGP-encrypted email to the inbox below (screenshots and files supported). By default it reaches the <strong>VayuPress team at feedback@vayupress.com</strong>; change it here to collect reports in your own inbox instead.</p>
   <div class="field">
     <label class="field-label" for="fb-addr">Feedback inbox</label>
     <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">
-      <input id="fb-addr" class="input" type="email" style="max-width:22rem" value="` + esc(feedbackAddr) + `" placeholder="feedback@yourdomain">
+      <input id="fb-addr" class="input" type="email" style="max-width:22rem" value="` + esc(feedbackAddr) + `" placeholder="feedback@vayupress.com">
       <button type="button" class="btn btn--sm" data-fb-save>Save</button>
       <a class="btn btn--ghost btn--sm" href="/os/vayumail/compose?feedback=1">Open a test report ↗</a>
     </div>
