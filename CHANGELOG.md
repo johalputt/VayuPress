@@ -8,6 +8,16 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.94] — 2026-07-21
+
+### Changed
+- **Update & Backup page aligned to the Monetization style.** The page now leads
+  with a `page-header` + one-line `page-sub`, then an **"Install an update"**
+  section header over the one-click install card (its Installed → Latest → Status
+  tiles read as the overview), and a **"Backup & history"** section header over
+  the collapsible Backup / Update-history accordions — the same layout language as
+  the Monetization and VayuMail pages.
+
 ## [3.14.93] — 2026-07-21
 
 ### Changed

@@ -231,8 +231,9 @@ func (a *App) handleOSUpdate(w http.ResponseWriter, r *http.Request) {
     <span class="text-sm muted">Current version <strong>v` + html.EscapeString(Version) + `</strong> · mode <strong>` + html.EscapeString(curMode) + `</strong></span>
   </div>
 </div>
+<p class="page-sub">Keep VayuPress current and your data safe — one-click signed updates and full, checksummed database backups. Tap a card to expand it.</p>
 ` + banner + `
-
+<div class="section-head"><span class="section-head__title">Install an update</span><span class="section-head__hint">Signed · verified · auto-backup · atomic swap</span></div>
 <div class="upd-hero" data-update-card>
   <div class="upd-hero__aura" aria-hidden="true"></div>
   <div class="upd-hero__head">
@@ -275,6 +276,7 @@ func (a *App) handleOSUpdate(w http.ResponseWriter, r *http.Request) {
   </div>
 </div>
 
+<div class="section-head"><span class="section-head__title">Backup &amp; history</span><span class="section-head__hint">Snapshots and the full update log</span></div>
 <div class="mon-stack" data-backup-card>` +
 		monAcc(iconArchive, "Backup &amp; restore", "Download or restore a full, checksummed snapshot", "", false, backupBody) +
 		monAcc(iconHistory, "Update history", "Every check, install and rollback, newest first", "", false, historyBody) +
