@@ -1208,6 +1208,7 @@ func adminOSShellHead(nonce, title, active string, settings *osSettings) string 
 <link rel="icon" type="image/png" href="/static/favicon-light.png">
 </head>
 <body class="vp-os" data-theme="` + html.EscapeString(theme) + `" data-admin-theme="` + html.EscapeString(theme) + `"` + spaceAttr + `>
+<div class="vp-grid" aria-hidden="true"></div>
 <div class="vp-aurora" aria-hidden="true"></div>
 <a href="#main-content" class="skip-link">Skip to main content</a>
 

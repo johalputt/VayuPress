@@ -8,6 +8,24 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.86] — 2026-07-21
+
+### Changed
+- **VayuOS now fully wears the vayupress.com identity — teal → saffron.** The
+  accent shifted from sky-blue to the site's **teal**, with **saffron** as its
+  gradient partner. Big titles (page + section headers) render as a **teal→saffron
+  gradient** (guarded by `@supports`, so unsupported browsers keep solid text);
+  primary actions, links, focus rings and card hovers follow the teal accent. In
+  the Anonymous Tor world the whole scheme — accent, gradient, blooms — turns
+  **violet**, so the two worlds stay unmistakable.
+- **A real cosmic background, not a flat fill.** The canvas now carries a teal top
+  glow, **saffron and violet corner blooms**, a masked **coordinate grid**, an
+  edge vignette, and a slow-drifting **aurora** — the site's futuristic depth,
+  pure CSS and CSP-safe (motion is disabled under reduced-motion; light mode gets
+  a soft tint instead of a glow).
+- **Premium card glass.** Cards gain a hairline top highlight and a soft
+  teal-tinted lift/glow on hover, so panels read as glass rather than boxes.
+
 ## [3.14.85] — 2026-07-21
 
 ### Changed

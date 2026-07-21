@@ -43,12 +43,15 @@
   --card-border:  rgba(255, 255, 255, 0.08);
   --card-border-strong: rgba(255, 255, 255, 0.16);
 
-  /* Cosmic canvas layers (echoing vayupress.com): three faint accent blooms +
-     an edge vignette, painted behind everything. Theme-aware via these tokens. */
-  --aura-sky:     rgba(14, 165, 233, 0.08);
-  --aura-violet:  rgba(167, 139, 250, 0.08);
-  --aura-teal:    rgba(45, 212, 191, 0.06);
-  --vignette:     rgba(0, 0, 0, 0.55);
+  /* Cosmic canvas layers (echoing vayupress.com): teal, saffron and violet blooms
+     + a faint coordinate grid + an edge vignette, painted behind everything.
+     Theme-aware via these tokens. */
+  --aura-teal:    rgba(45, 212, 191, 0.16);
+  --aura-saffron: rgba(245, 158, 11, 0.12);
+  --aura-violet:  rgba(167, 139, 250, 0.15);
+  --aura-sky:     rgba(14, 165, 233, 0.13);
+  --grid-line:    rgba(120, 160, 200, 0.06);
+  --vignette:     rgba(0, 0, 0, 0.58);
 
   /* Borders */
   --border:       rgba(99, 130, 174, 0.18);
@@ -67,10 +70,13 @@
   --text-1:       var(--text);
   --surface-2:    var(--bg-surface-2);
 
-  /* Brand */
-  --brand:        #0ea5e9;
-  --brand-dim:    rgba(14, 165, 233, 0.18);
-  --brand-glow:   rgba(14, 165, 233, 0.28);
+  /* Brand — teal → saffron, the vayupress.com signature. --brand drives buttons,
+     links and focus rings; --brand-2 (saffron) is the gradient partner used on
+     display headings and accent sweeps. */
+  --brand:        #2dd4bf;
+  --brand-dim:    rgba(45, 212, 191, 0.16);
+  --brand-glow:   rgba(45, 212, 191, 0.32);
+  --brand-2:      #fbbf24;
   --accent:       #a78bfa;
   --accent-dim:   rgba(167, 139, 250, 0.18);
 
@@ -137,17 +143,21 @@
   --card-bg:      #ffffff;
   --card-border:  rgba(15, 23, 42, 0.12);
   --card-border-strong: rgba(15, 23, 42, 0.22);
-  --aura-sky:     rgba(2, 132, 199, 0.05);
+  --aura-teal:    rgba(13, 148, 136, 0.06);
+  --aura-saffron: rgba(217, 119, 6, 0.05);
   --aura-violet:  rgba(124, 58, 237, 0.05);
-  --aura-teal:    rgba(13, 148, 136, 0.04);
+  --aura-sky:     rgba(2, 132, 199, 0.05);
+  --grid-line:    rgba(15, 23, 42, 0.04);
   --vignette:     rgba(15, 23, 42, 0.05);
   --border:       rgba(15, 23, 42, 0.12);
   --border-strong:rgba(15, 23, 42, 0.24);
   --text:         #0f172a;
   --text-2:       #43536a;
   --text-3:       #5f6d80;
-  --brand:        #0284c7;
-  --brand-dim:    rgba(2, 132, 199, 0.10);
+  --brand:        #0d9488;
+  --brand-dim:    rgba(13, 148, 136, 0.12);
+  --brand-glow:   rgba(13, 148, 136, 0.24);
+  --brand-2:      #d97706;
   --accent:       #7c3aed;
   --sh-sm: 0 1px 3px rgba(0,0,0,0.10), 0 1px 2px rgba(0,0,0,0.08);
   --sh:    0 4px 16px rgba(0,0,0,0.12), 0 1px 4px rgba(0,0,0,0.08);
@@ -163,17 +173,21 @@
     --card-bg:      #ffffff;
     --card-border:  rgba(15, 23, 42, 0.12);
     --card-border-strong: rgba(15, 23, 42, 0.22);
-    --aura-sky:     rgba(2, 132, 199, 0.05);
+    --aura-teal:    rgba(13, 148, 136, 0.06);
+    --aura-saffron: rgba(217, 119, 6, 0.05);
     --aura-violet:  rgba(124, 58, 237, 0.05);
-    --aura-teal:    rgba(13, 148, 136, 0.04);
+    --aura-sky:     rgba(2, 132, 199, 0.05);
+    --grid-line:    rgba(15, 23, 42, 0.04);
     --vignette:     rgba(15, 23, 42, 0.05);
     --border:       rgba(15, 23, 42, 0.12);
     --border-strong:rgba(15, 23, 42, 0.24);
     --text:         #0f172a;
     --text-2:       #43536a;
     --text-3:       #5f6d80;
-    --brand:        #0284c7;
-    --brand-dim:    rgba(2, 132, 199, 0.10);
+    --brand:        #0d9488;
+    --brand-dim:    rgba(13, 148, 136, 0.12);
+    --brand-glow:   rgba(13, 148, 136, 0.24);
+    --brand-2:      #d97706;
     --accent:       #7c3aed;
     --sh-sm: 0 1px 3px rgba(0,0,0,0.10), 0 1px 2px rgba(0,0,0,0.08);
     --sh:    0 4px 16px rgba(0,0,0,0.12), 0 1px 4px rgba(0,0,0,0.08);
@@ -185,29 +199,42 @@
 .vp-os *, .vp-os *::before, .vp-os *::after { box-sizing: border-box; margin: 0; padding: 0; }
 .vp-os {
   font-family: var(--font-body); font-size: var(--text-base); color: var(--text);
-  /* Cosmic ink canvas, echoing vayupress.com: a top glow, two corner blooms and
-     an edge vignette fixed over the deep base so the whole console feels like the
-     site. An animated aurora layer (.vp-aurora) drifts on top of this. */
+  /* Cosmic ink canvas, echoing vayupress.com: a teal top glow, saffron + violet
+     corner blooms and an edge vignette fixed over the deep base. A coordinate
+     grid (.vp-grid) and an animated aurora (.vp-aurora) layer on top. */
   background:
-    radial-gradient(60rem 30rem at 50% -10%, var(--aura-teal), transparent 60%),
-    radial-gradient(52rem 42rem at 100% -4%, var(--aura-sky), transparent 56%),
+    radial-gradient(64rem 32rem at 50% -12%, var(--aura-teal), transparent 60%),
+    radial-gradient(52rem 42rem at 100% -4%, var(--aura-saffron), transparent 56%),
     radial-gradient(54rem 46rem at -6% 106%, var(--aura-violet), transparent 56%),
     radial-gradient(135% 105% at 50% 36%, transparent 52%, var(--vignette) 100%),
     var(--bg-base);
   background-attachment: fixed;
   line-height: 1.55; -webkit-font-smoothing: antialiased; min-height: 100vh;
 }
+/* Faint coordinate grid, masked to fade out — the site's "futuristic hero grid",
+   painted behind content (negative z-index) and never over the base fill. */
+.vp-os .vp-grid {
+  position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background-image:
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+  background-size: 46px 46px;
+  -webkit-mask-image: radial-gradient(ellipse 78% 62% at 50% 4%, #000 0%, transparent 76%);
+          mask-image: radial-gradient(ellipse 78% 62% at 50% 4%, #000 0%, transparent 76%);
+  opacity: 0.7;
+}
 /* Slow-drifting aurora, painted behind all content (negative z-index sits above
    the base background but below the in-flow shell). Pure CSS, CSP-safe. */
 .vp-os .vp-aurora {
-  position: fixed; inset: -20%; z-index: -1; pointer-events: none;
+  position: fixed; inset: -25%; z-index: -1; pointer-events: none;
   background:
-    radial-gradient(38% 30% at 22% 26%, var(--aura-sky), transparent 60%),
-    radial-gradient(34% 30% at 80% 30%, var(--aura-violet), transparent 60%),
-    radial-gradient(40% 32% at 62% 82%, var(--aura-teal), transparent 62%);
-  filter: blur(60px);
-  opacity: 0.9;
-  animation: vp-aurora-drift 46s ease-in-out infinite alternate;
+    radial-gradient(40% 32% at 20% 22%, var(--aura-teal), transparent 60%),
+    radial-gradient(36% 30% at 82% 26%, var(--aura-saffron), transparent 60%),
+    radial-gradient(38% 32% at 68% 80%, var(--aura-violet), transparent 62%),
+    radial-gradient(34% 30% at 30% 92%, var(--aura-sky), transparent 62%);
+  filter: blur(70px);
+  opacity: 1;
+  animation: vp-aurora-drift 42s ease-in-out infinite alternate;
 }
 @keyframes vp-aurora-drift {
   0%   { transform: translate3d(-3%, -2%, 0) scale(1.05); }
@@ -938,16 +965,22 @@
 
 /* ── Cards ───────────────────────────────────────────────────── */
 .vp-os .card {
+  position: relative;
   background: var(--card-bg);
   border: 1px solid var(--card-border);
   border-radius: var(--r-md);
   padding: var(--sp-5);
-  box-shadow: var(--sh-sm);
-  -webkit-backdrop-filter: blur(6px);
-  backdrop-filter: blur(6px);
+  /* Glass depth: soft drop shadow + a 1px light hairline along the top edge. */
+  box-shadow: var(--sh-sm), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
 }
 .vp-os .card--hover { transition: border-color var(--t), transform var(--t), box-shadow var(--t); }
-.vp-os .card--hover:hover { border-color: var(--card-border-strong); transform: translateY(-2px); box-shadow: var(--sh); }
+.vp-os .card--hover:hover {
+  border-color: var(--brand-dim);
+  transform: translateY(-2px);
+  box-shadow: var(--sh), 0 0 0 1px var(--brand-dim), 0 18px 44px -24px var(--brand-glow);
+}
 .vp-os .card--glass {
   background: var(--bg-glass);
   backdrop-filter: blur(20px) saturate(180%);
@@ -1047,6 +1080,19 @@
   color: var(--text); letter-spacing: -0.01em;
 }
 .vp-os .section-head__hint { font-size: var(--text-xs); color: var(--text-3); }
+
+/* Premium gradient headings — the site's teal→saffron sweep on the big titles.
+   Guarded by @supports so browsers without background-clip:text keep the solid
+   --text colour (never invisible). */
+@supports ((-webkit-background-clip: text) or (background-clip: text)) {
+  .vp-os .page-header h1,
+  .vp-os .section-head__title,
+  .vp-os .text-gradient {
+    background-image: linear-gradient(96deg, var(--brand) 0%, var(--brand-2) 94%);
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent; color: transparent;
+  }
+}
 
 .vp-os .work-grid {
   display: grid;
@@ -1317,10 +1363,17 @@
    (active nav, brand, buttons, the sidebar rail) signals the Tor world at a
    glance. Purely a colour shift — layout and the strict CSP are untouched. */
 .vp-os[data-space="tor"] {
-  --brand:     #a855f7;
-  --brand-dim: rgba(168, 85, 247, 0.18);
+  --brand:      #a855f7;
+  --brand-dim:  rgba(168, 85, 247, 0.18);
+  --brand-glow: rgba(168, 85, 247, 0.34);
+  --brand-2:    #d8b4fe;
   --accent:     #a855f7;
   --accent-dim: rgba(168, 85, 247, 0.18);
+  /* Tor world blooms go violet so the cosmic canvas signals the anonymous world. */
+  --aura-teal:    rgba(168, 85, 247, 0.16);
+  --aura-saffron: rgba(216, 180, 254, 0.12);
+  --aura-violet:  rgba(139, 92, 246, 0.16);
+  --aura-sky:     rgba(168, 85, 247, 0.13);
 }
 .vp-os[data-space="tor"] .sidebar {
   border-right-color: var(--accent-dim);
