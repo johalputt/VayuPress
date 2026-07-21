@@ -466,3 +466,93 @@ html[data-theme="light"] {
 .au-post-excerpt { margin: .35rem 0 0; font-size: .92rem; color: var(--su-muted); line-height: 1.55; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .au-posts-empty { color: var(--su-muted); font-size: .95rem; padding: 1rem 0; }
 .au-page .au-foot { margin-top: 2rem; text-align: center; }
+
+/* ══ Premium member dashboard v2 — plan, benefits, mail-ID, 2FA ═════════════ */
+
+.ma-subtitle { margin: .25rem 0 0; color: var(--su-muted); font-size: .9rem; }
+
+/* Plan hero card */
+.ma-card--plan { background: linear-gradient(180deg, rgba(99,102,241,.10), var(--su-surface)); border-color: rgba(129,140,248,.35); }
+.ma-plan-top { display: flex; align-items: center; gap: .6rem; margin-bottom: .3rem; flex-wrap: wrap; }
+.ma-plan-badge {
+  display: inline-flex; align-items: center; gap: .35rem;
+  font-size: .78rem; font-weight: 700; letter-spacing: .02em;
+  padding: .25rem .7rem; border-radius: 999px;
+  background: var(--su-surface-2); border: 1px solid var(--su-border); color: var(--su-text);
+}
+.ma-plan-badge--paid { background: linear-gradient(180deg, var(--su-accent-2), var(--su-accent)); color: #fff; border-color: transparent; }
+.ma-plan-price { color: var(--su-muted); font-size: .85rem; font-weight: 600; }
+.ma-plan-h { margin: .5rem 0 .3rem; font-size: 1.05rem; }
+
+/* Benefit lists (check bullets) */
+.ma-benefits { list-style: none; padding: 0; margin: .4rem 0 1rem; display: flex; flex-direction: column; gap: .5rem; }
+.ma-benefits li { padding-left: 1.5rem; position: relative; font-size: .92rem; line-height: 1.4; }
+.ma-benefits li::before { content: "✓"; position: absolute; left: 0; top: 0; color: var(--su-accent-2); font-weight: 700; }
+
+/* Primary / danger CTAs (buttons and links share the look) */
+.ma-cta-primary, .ma-cta-danger {
+  display: inline-block; width: auto; text-align: center; text-decoration: none;
+  padding: .65rem 1.15rem; border-radius: 11px; font: inherit; font-weight: 600;
+  cursor: pointer; border: 1px solid transparent; margin-top: .4rem;
+}
+.ma-cta-primary { background: linear-gradient(180deg, var(--su-accent-2), var(--su-accent)); color: #fff; }
+.ma-cta-primary:hover { filter: brightness(1.07); }
+.ma-cta-danger { background: transparent; border-color: var(--su-err); color: var(--su-err); }
+.ma-cta-danger:hover { background: rgba(239,68,68,.1); }
+
+/* Free vs Premium comparison */
+.ma-compare { display: grid; grid-template-columns: 1fr 1fr; gap: .9rem; }
+@media (max-width: 34rem) { .ma-compare { grid-template-columns: 1fr; } }
+.ma-plan-col { border: 1px solid var(--su-border); border-radius: 12px; padding: 1rem 1.1rem; background: var(--su-bg); }
+.ma-plan-col--paid { border-color: rgba(129,140,248,.45); background: linear-gradient(180deg, rgba(99,102,241,.08), var(--su-bg)); }
+.ma-plan-col-h { display: flex; align-items: center; gap: .5rem; font-weight: 700; margin-bottom: .5rem; }
+.ma-col-tag { font-size: .62rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; padding: .12rem .45rem; border-radius: 999px; background: var(--su-surface-2); color: var(--su-muted); }
+.ma-col-tag--paid { background: linear-gradient(180deg, var(--su-accent-2), var(--su-accent)); color: #fff; }
+
+/* Mail-ID card */
+.ma-mailid { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1.1rem; font-weight: 600; padding: .7rem .9rem; border-radius: 10px; background: var(--su-bg); border: 1px solid var(--su-border); word-break: break-all; margin-bottom: .3rem; }
+.ma-card--claim, .ma-card--perk { border-color: rgba(129,140,248,.3); }
+
+/* Claim form */
+.ma-claim { display: flex; flex-direction: column; gap: .7rem; }
+.ma-claim-row { display: flex; align-items: stretch; }
+.ma-input { width: 100%; padding: .6rem .8rem; font: inherit; font-size: .98rem; color: var(--su-text); background: var(--su-bg); border: 1px solid var(--su-border); border-radius: 10px; outline: none; }
+.ma-input:focus { border-color: var(--su-accent); box-shadow: 0 0 0 3px rgba(99,102,241,.25); }
+.ma-claim-row .ma-input { border-radius: 10px 0 0 10px; border-right: 0; }
+.ma-claim-at { display: inline-flex; align-items: center; padding: 0 .8rem; background: var(--su-surface-2); border: 1px solid var(--su-border); border-radius: 0 10px 10px 0; color: var(--su-muted); font-size: .9rem; white-space: nowrap; }
+.ma-claim-terms { font-size: .85rem; }
+.ma-claim-msg { margin: 0; font-size: .85rem; min-height: 1.1em; }
+.ma-claim-msg.is-err { color: var(--su-err); }
+.ma-claim-msg.is-ok { color: var(--su-muted); }
+
+/* Two-factor card */
+.ma-badge { font-size: .68rem; font-weight: 700; letter-spacing: .03em; padding: .15rem .5rem; border-radius: 999px; vertical-align: middle; }
+.ma-badge--ok { background: rgba(16,185,129,.16); color: var(--su-ok); }
+.ma-badge--warn { background: rgba(245,158,11,.18); color: #f59e0b; }
+.ma-2fa-off { display: flex; flex-direction: column; gap: .6rem; align-items: flex-start; margin-top: .6rem; }
+.ma-2fa-enroll { margin-top: 1rem; border-top: 1px solid var(--su-border); padding-top: 1rem; }
+.ma-2fa-grid { display: flex; gap: 1.1rem; align-items: flex-start; flex-wrap: wrap; }
+.ma-2fa-qrbox { background: #fff; padding: 8px; border-radius: 10px; line-height: 0; flex-shrink: 0; }
+.ma-2fa-qr { display: block; width: 188px; height: 188px; }
+.ma-2fa-steps { flex: 1; min-width: 12rem; font-size: .9rem; }
+.ma-2fa-steps p { margin: 0 0 .6rem; line-height: 1.45; }
+.ma-2fa-manual { color: var(--su-muted); }
+.ma-2fa-key { display: inline-block; font-family: ui-monospace, monospace; font-size: .85rem; word-break: break-all; background: var(--su-bg); padding: .2rem .4rem; border-radius: 6px; border: 1px solid var(--su-border); }
+.ma-field > span { display: block; font-weight: 600; margin-bottom: .35rem; font-size: .9rem; }
+
+/* Sign-in: alternate VayuMail login + "or" divider */
+.su-or { display: flex; align-items: center; text-align: center; color: var(--su-muted); font-size: .8rem; margin: 1.3rem 0 .6rem; }
+.su-or::before, .su-or::after { content: ""; flex: 1; height: 1px; background: var(--su-border); }
+.su-or span { padding: 0 .7rem; }
+.su-alt { border: 1px solid var(--su-border); border-radius: 12px; padding: .1rem .9rem; background: var(--su-bg); }
+.su-alt summary { cursor: pointer; padding: .8rem 0; font-weight: 600; font-size: .92rem; list-style: none; }
+.su-alt summary::-webkit-details-marker { display: none; }
+.su-alt summary::after { content: "+"; float: right; color: var(--su-muted); font-weight: 700; }
+.su-alt[open] summary::after { content: "\2013"; }
+.su-alt-body { padding: .2rem 0 1rem; }
+.su-btn--ghost { background: transparent; border: 1px solid var(--su-accent); color: var(--su-text); }
+.su-btn--ghost:hover { background: rgba(99,102,241,.12); }
+
+/* Signup: Free-vs-Premium comparison card */
+.su-compare-card { margin-top: 1rem; }
+.su-compare-h { margin: 0 0 1rem; font-size: 1.05rem; }

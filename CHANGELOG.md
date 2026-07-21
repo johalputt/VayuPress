@@ -8,6 +8,35 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.69] — 2026-07-21
+
+### Added
+- **Premium member dashboard + self-serve 2FA with a scannable QR.** The member
+  account page (`/members/account`) is redesigned into a clean, guided dashboard:
+  a plan card with your current benefits, a Free-vs-Premium comparison for free
+  members, a VayuMail-ID card, and a security card.
+  - **Two-factor authentication members can turn on themselves.** A paid member
+    who holds a VayuMail address can enable TOTP 2FA from the dashboard by
+    **scanning a QR code** (the `otpauth://` label pre-fills the account name in
+    the authenticator app) — no more typing a secret by hand. Disabling requires
+    the current code. New member-scoped endpoints: `POST /api/v1/members/totp/
+    begin|verify|disable` (begin returns `{secret, uri, qr}`). The second factor
+    is the same one already enforced at VayuMail-credential sign-in.
+  - **Included-mailbox claim** inline on the dashboard: pick your address +
+    password and your PGP-encrypted `@domain` mailbox is provisioned.
+- **Sign in with your VayuMail address** is now surfaced on the `/members`
+  sign-in page (email + password + 2FA code when enabled), alongside the
+  passwordless magic link.
+- **Free-vs-Premium benefits** are shown on the public signup page so visitors
+  see exactly what a free account gives and what upgrading unlocks, with a link
+  to pricing.
+
+### Changed
+- **Operator mailbox 2FA now shows a QR modal** instead of a plain text prompt.
+  Enabling two-factor for a mailbox from VayuOS presents a scannable code (plus
+  the manual key as a fallback) and a confirmation field in a clean dialog. The
+  `begin` action now also returns a `qr` data image.
+
 ## [3.14.68] — 2026-07-20
 
 ### Fixed

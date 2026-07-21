@@ -30,6 +30,7 @@ func (a *App) handleMemberSignup(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Robots-Tag", "index, follow")
 
 	brand := html.EscapeString(config.Cfg.Domain)
+	esc := html.EscapeString
 	nonce := render.CSPNonce(r)
 
 	// A success/notice banner driven by query flags from the POST redirect.
@@ -40,6 +41,31 @@ func (a *App) handleMemberSignup(w http.ResponseWriter, r *http.Request) {
 	case "error":
 		notice = `<div class="su-notice su-notice--err" role="alert">Something went wrong sending your link. Please try again.</div>`
 	}
+
+	// A clear Free-vs-Premium comparison so a visitor sees exactly what a free
+	// account gives them and what upgrading unlocks, before they commit.
+	freeBenefits, paidBenefits := a.freePaidBenefits(r.Context())
+	benefitLis := func(items []string) string {
+		out := ""
+		for _, b := range items {
+			out += `<li>` + esc(b) + `</li>`
+		}
+		return out
+	}
+	comparison := `<section class="su-card su-compare-card">
+    <h2 class="su-compare-h">What you get</h2>
+    <div class="ma-compare">
+      <div class="ma-plan-col">
+        <div class="ma-plan-col-h">Free</div>
+        <ul class="ma-benefits">` + benefitLis(freeBenefits) + `</ul>
+      </div>
+      <div class="ma-plan-col ma-plan-col--paid">
+        <div class="ma-plan-col-h">Premium <span class="ma-col-tag ma-col-tag--paid">✦</span></div>
+        <ul class="ma-benefits">` + benefitLis(paidBenefits) + `</ul>
+        <a class="ma-cta-primary" href="/pricing">See plans &amp; pricing →</a>
+      </div>
+    </div>
+  </section>`
 
 	page := `<!DOCTYPE html><html lang="en"><head>
 <meta charset="UTF-8">
@@ -72,6 +98,7 @@ func (a *App) handleMemberSignup(w http.ResponseWriter, r *http.Request) {
     </ul>
     <p class="su-foot">Already a member? <a href="/members" class="su-link">Sign in</a> with the same email — it works for both.</p>
   </section>
+  ` + comparison + `
   <p class="su-legal">Powered by VayuPress · your email is used only to send your sign-in link.</p>
 </main>
 <script nonce="` + nonce + `">

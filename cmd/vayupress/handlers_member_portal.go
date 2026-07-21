@@ -17,6 +17,7 @@ package main
 // require the operator API key.
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"html"
@@ -52,6 +53,29 @@ func (a *App) handleMemberSigninPage(w http.ResponseWriter, r *http.Request) {
 		notice = `<div class="su-notice su-notice--ok" role="status">Check your inbox — we just emailed you a secure sign-in link. It is valid for 30 minutes.</div>`
 	}
 
+	// When VayuMail is active, offer a second sign-in path for members who hold a
+	// mailbox: their @domain address + password (+ a 2FA code when enabled). This
+	// posts to the existing /api/v1/members/vayumail-login endpoint.
+	mailIDBlock := ""
+	if a.vayuMailLoginEnabled() {
+		mailIDBlock = `<div class="su-or"><span>or</span></div>
+    <details class="su-alt">
+      <summary>Sign in with your VayuMail address</summary>
+      <div class="su-alt-body">
+        <label class="su-label" for="vm-email">VayuMail address</label>
+        <input class="su-input" id="vm-email" type="email" autocomplete="username" placeholder="you@` + brand + `">
+        <label class="su-label" for="vm-pass">Password</label>
+        <input class="su-input" id="vm-pass" type="password" autocomplete="current-password" placeholder="Your mailbox password">
+        <div id="vm-code-wrap" hidden>
+          <label class="su-label" for="vm-code">Two-factor code</label>
+          <input class="su-input" id="vm-code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000">
+        </div>
+        <p class="su-notice su-notice--err" id="vm-msg" role="alert" hidden></p>
+        <button class="su-btn su-btn--ghost" id="vm-btn" type="button">Sign in →</button>
+      </div>
+    </details>`
+	}
+
 	page := `<!DOCTYPE html><html lang="en"><head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -76,6 +100,7 @@ func (a *App) handleMemberSigninPage(w http.ResponseWriter, r *http.Request) {
       <input class="su-input" id="su-email" type="email" name="email" required autocomplete="email" placeholder="you@example.com" aria-label="Email address">
       <button class="su-btn" type="submit">Email me a sign-in link →</button>
     </form>
+    ` + mailIDBlock + `
     <p class="su-foot">New here? <a href="/signup" class="su-link">Create a free account</a> · <a href="/pricing" class="su-link">View plans</a></p>
   </section>
   <p class="su-legal">Powered by VayuPress · your email is used only to send your sign-in link.</p>
@@ -84,6 +109,25 @@ func (a *App) handleMemberSigninPage(w http.ResponseWriter, r *http.Request) {
 (function(){'use strict';
 var f=document.querySelector('.su-form');
 if(f){f.addEventListener('submit',function(){var b=f.querySelector('.su-btn');if(b){b.disabled=true;b.textContent='Sending your link…';}});}
+var vb=document.getElementById('vm-btn');
+if(vb){
+  var em=document.getElementById('vm-email'),pw=document.getElementById('vm-pass'),cw=document.getElementById('vm-code-wrap'),cd=document.getElementById('vm-code'),msg=document.getElementById('vm-msg');
+  function showErr(t){if(msg){msg.textContent=t;msg.hidden=false;}}
+  vb.addEventListener('click',function(){
+    var email=(em&&em.value||'').trim(),pass=(pw&&pw.value||''),code=(cd&&cd.value||'').replace(/\D/g,'');
+    if(!email||!pass){showErr('Enter your address and password.');return;}
+    vb.disabled=true;if(msg)msg.hidden=true;
+    fetch('/api/v1/members/vayumail-login',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email,password:pass,code:code})})
+      .then(function(res){return res.json().then(function(j){return {ok:res.ok,j:j};},function(){return {ok:res.ok,j:{}};});})
+      .then(function(r){
+        var e=r.j&&r.j.error||{};
+        if(r.ok&&r.j.authenticated){window.location.assign('/members/account');return;}
+        if(e.code==='totp-required'){if(cw)cw.hidden=false;if(cd)cd.focus();showErr(e.message||'Enter your 6-digit code.');vb.disabled=false;return;}
+        showErr(e.message||'That address and password did not match.');vb.disabled=false;
+      })
+      .catch(function(){showErr('Network error — please try again.');vb.disabled=false;});
+  });
+}
 })();
 </script>
 </body></html>`
@@ -107,31 +151,51 @@ func (a *App) handleMemberAccount(w http.ResponseWriter, r *http.Request) {
 
 	brand := html.EscapeString(config.Cfg.Domain)
 	esc := html.EscapeString
+	nonce := render.CSPNonce(r)
+	paid := m.IsPaid()
 
 	// Resolve the member's current tier + subscription for display.
 	tierName := "Free"
 	if t, err := a.members.GetTier(r.Context(), m.Tier); err == nil {
 		tierName = t.Name
-	} else if m.IsPaid() {
+	} else if paid {
 		tierName = "Premium"
 	}
-	planLine := "You are on the <strong>" + esc(tierName) + "</strong> plan."
-	planClass := "ma-plan"
-	if m.IsPaid() {
-		planClass = "ma-plan ma-plan--paid"
+	planPrice := ""
+	planClass := "ma-plan-badge"
+	if paid {
+		planClass = "ma-plan-badge ma-plan-badge--paid"
 		if sub, _ := a.members.ActiveSubscription(r.Context(), m.ID); sub != nil {
-			cad := sub.Cadence
-			if cad == members.CadenceComplimentary {
-				planLine += ` <span class="ma-muted">(complimentary)</span>`
+			if sub.Cadence == members.CadenceComplimentary {
+				planPrice = `<span class="ma-plan-price">Complimentary</span>`
 			} else if sub.AmountCents > 0 {
-				planLine += ` <span class="ma-muted">(` + esc(sub.Currency) + " " + esc(formatMoney(sub.AmountCents)) + " / " + esc(cad) + `)</span>`
+				planPrice = `<span class="ma-plan-price">` + esc(sub.Currency) + " " + esc(formatMoney(sub.AmountCents)) + " / " + esc(sub.Cadence) + `</span>`
 			}
 		}
+	}
+
+	// ── Free vs Paid benefits (prefer the operator's own tier benefit lists) ──
+	freeBenefits, paidBenefits := a.freePaidBenefits(r.Context())
+	benefitLis := func(items []string) string {
+		out := ""
+		for _, b := range items {
+			out += `<li>` + esc(b) + `</li>`
+		}
+		return out
 	}
 
 	notice := ""
 	if r.URL.Query().Get("saved") == "1" {
 		notice = `<div class="su-notice su-notice--ok" role="status">Your details were saved.</div>`
+	}
+	if r.URL.Query().Get("mail") == "claimed" {
+		notice += `<div class="su-notice su-notice--ok" role="status">🎉 Your VayuMail address is ready. You can now sign in with it and turn on two-factor security below.</div>`
+	}
+	switch r.URL.Query().Get("twofa") {
+	case "on":
+		notice += `<div class="su-notice su-notice--ok" role="status">🔐 Two-factor authentication is on. You'll enter a code from your app each time you sign in with your VayuMail address.</div>`
+	case "off":
+		notice += `<div class="su-notice su-notice--ok" role="status">Two-factor authentication is off.</div>`
 	}
 
 	newsletterChecked := ""
@@ -143,12 +207,108 @@ func (a *App) handleMemberAccount(w http.ResponseWriter, r *http.Request) {
 		replyChecked = " checked"
 	}
 
-	upgradeCTA := ""
-	if !m.IsPaid() {
-		upgradeCTA = `<div class="ma-upgrade">
-      <p>Want full access to premium posts?</p>
-      <a class="su-btn su-btn--inline" href="/pricing">See membership plans →</a>
-    </div>`
+	// ── Plan card ──
+	planUpgrade := ""
+	if !paid {
+		planUpgrade = `<a class="ma-cta-primary" href="/pricing">Upgrade to Premium →</a>`
+	}
+	whichBenefits := freeBenefits
+	benefitsTitle := "What you get today"
+	if paid {
+		whichBenefits = paidBenefits
+		benefitsTitle = "Your Premium benefits"
+	}
+	planCard := `<section class="ma-card ma-card--plan">
+    <div class="ma-plan-top">
+      <span class="` + planClass + `">` + esc(tierName) + `</span>` + planPrice + `
+    </div>
+    <h2 class="ma-plan-h">` + benefitsTitle + `</h2>
+    <ul class="ma-benefits">` + benefitLis(whichBenefits) + `</ul>
+    ` + planUpgrade + `
+  </section>`
+
+	// ── Free vs Paid comparison (helps a free member see what upgrading unlocks) ──
+	compareCard := ""
+	if !paid {
+		compareCard = `<section class="ma-card">
+    <h2>Free vs Premium</h2>
+    <p class="ma-hint">Upgrade any time — keep everything you have, and unlock the rest.</p>
+    <div class="ma-compare">
+      <div class="ma-plan-col ma-plan-col--current">
+        <div class="ma-plan-col-h">Free <span class="ma-col-tag">You're here</span></div>
+        <ul class="ma-benefits">` + benefitLis(freeBenefits) + `</ul>
+      </div>
+      <div class="ma-plan-col ma-plan-col--paid">
+        <div class="ma-plan-col-h">Premium <span class="ma-col-tag ma-col-tag--paid">✦ Best value</span></div>
+        <ul class="ma-benefits">` + benefitLis(paidBenefits) + `</ul>
+        <a class="ma-cta-primary" href="/pricing">See plans & upgrade →</a>
+      </div>
+    </div>
+  </section>`
+	}
+
+	// ── VayuMail ID + Security (2FA) cards ──
+	mailboxEmail, hasMailbox := a.memberOwnMailbox(r)
+	_, _, mailEntitled := a.mailboxEntitlement(r.Context(), m)
+	host := a.mailHost()
+	mailCard := ""
+	securityCard := ""
+	scriptTag := ""
+	switch {
+	case hasMailbox:
+		twoFAOn := false
+		console := false
+		if a.vayuMailLoginEnabled() {
+			if _, on := a.vayuMail.Accounts().TOTPStatus(r.Context(), mailboxEmail); on {
+				twoFAOn = true
+			}
+			if _, c := mailConsoleAccess(a.vayuMail.Accounts().RoleFor(r.Context(), mailboxEmail)); c {
+				console = true
+			}
+		}
+		consoleLink := ""
+		if console {
+			consoleLink = ` <a class="su-link" href="/os">Open VayuOS →</a>`
+		}
+		mailCard = `<section class="ma-card">
+    <h2>📮 Your VayuMail ID</h2>
+    <div class="ma-mailid">` + esc(mailboxEmail) + `</div>
+    <p class="ma-hint">Sign in here with this address, in the VayuMail app, or any IMAP client.` + consoleLink + `</p>
+  </section>`
+		securityCard = renderMemberSecurityCard(twoFAOn)
+		scriptTag = memberAccountInlineJS(nonce)
+	case mailEntitled && host != "":
+		terms := ""
+		if a.mailIDTerms(r.Context()) != "" {
+			terms = `<label class="ma-check ma-claim-terms">
+        <input type="checkbox" id="ma-claim-terms">
+        <span>I accept the <a href="#" class="su-link">mailbox terms</a></span>
+      </label>`
+		}
+		mailCard = `<section class="ma-card ma-card--claim">
+    <h2>📮 Claim your VayuMail address</h2>
+    <p class="ma-hint">Your plan includes a private, PGP-encrypted mailbox on <strong>` + esc(host) + `</strong>. Pick your address and a password — you'll use them to sign in here, in the app, and over IMAP.</p>
+    <div class="ma-claim" data-claim-domain="` + esc(host) + `">
+      <div class="ma-claim-row">
+        <input class="ma-input" id="ma-claim-local" type="text" placeholder="you" autocomplete="off" spellcheck="false" maxlength="64">
+        <span class="ma-claim-at">@` + esc(host) + `</span>
+      </div>
+      <input class="ma-input" id="ma-claim-pass" type="password" placeholder="Mailbox password (min 8 characters)" autocomplete="new-password" minlength="8">
+      ` + terms + `
+      <p class="ma-claim-msg" id="ma-claim-msg" role="status"></p>
+      <button class="ma-cta-primary" id="ma-claim-btn" type="button">Create my mail address →</button>
+    </div>
+  </section>`
+		scriptTag = memberAccountInlineJS(nonce)
+	case !paid:
+		mailCard = `<section class="ma-card ma-card--perk">
+    <h2>📮 Get your own email address</h2>
+    <p class="ma-hint">A private <strong>@` + esc(host) + `</strong> VayuMail address — with automatic PGP encryption and two-factor security — is included with Premium.</p>
+    <a class="ma-cta-primary" href="/pricing">Upgrade to get yours →</a>
+  </section>`
+		if host == "" {
+			mailCard = ""
+		}
 	}
 
 	since := m.CreatedAt.UTC().Format("2 January 2006")
@@ -164,15 +324,17 @@ func (a *App) handleMemberAccount(w http.ResponseWriter, r *http.Request) {
 <body class="su-body">
 <main class="ma-shell" id="main-content">
   <div class="ma-head">
-    <h1 class="ma-title">Hello, ` + esc(m.DisplayName()) + `</h1>
+    <div>
+      <h1 class="ma-title">Hello, ` + esc(m.DisplayName()) + `</h1>
+      <p class="ma-subtitle">Manage your membership, mail and security.</p>
+    </div>
     <form method="POST" action="/members/logout"><button class="ma-signout" type="submit">Sign out</button></form>
   </div>
   ` + notice + `
-  <section class="ma-card">
-    <h2>Membership</h2>
-    <p class="` + planClass + `">` + planLine + `</p>
-    ` + upgradeCTA + `
-  </section>
+  ` + planCard + `
+  ` + compareCard + `
+  ` + mailCard + `
+  ` + securityCard + `
   <section class="ma-card">
     <h2>Account</h2>
     <div class="ma-row"><span>Email</span><span>` + esc(m.Email) + `</span></div>
@@ -198,9 +360,48 @@ func (a *App) handleMemberAccount(w http.ResponseWriter, r *http.Request) {
       <button class="su-btn" type="submit">Save changes</button>
     </form>
   </section>
-</main>
+</main>` + scriptTag + `
 </body></html>`
 	_, _ = w.Write([]byte(page))
+}
+
+// renderMemberSecurityCard renders the member's mailbox 2FA card. When 2FA is on
+// it offers a code-gated disable; when off it offers a scannable-QR enrolment
+// that mirrors the operator flow. All the dynamic values (QR, key, URI) are
+// filled client-side from the JSON the /api/v1/members/totp/* endpoints return.
+func renderMemberSecurityCard(enabled bool) string {
+	if enabled {
+		return `<section class="ma-card ma-2fa" data-totp-card>
+    <h2>🔐 Two-factor authentication <span class="ma-badge ma-badge--ok">On</span></h2>
+    <p class="ma-hint">Your VayuMail sign-in asks for a 6-digit code from your authenticator app. Lost your device? Ask the site owner to reset it.</p>
+    <div class="ma-2fa-off">
+      <label class="ma-field"><span>Enter your current code to turn 2FA off</span>
+        <input class="ma-input" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000" data-totp-code></label>
+      <button class="ma-cta-danger" type="button" data-totp-disable>Turn off 2FA</button>
+    </div>
+  </section>`
+	}
+	return `<section class="ma-card ma-2fa" data-totp-card>
+    <h2>🔐 Two-factor authentication <span class="ma-badge ma-badge--warn">Off</span></h2>
+    <p class="ma-hint">Add a one-time code from an authenticator app (Google Authenticator, Aegis, 1Password…) to your VayuMail sign-in. It takes about 30 seconds.</p>
+    <button class="ma-cta-primary" type="button" data-totp-begin>Set up 2FA</button>
+    <div class="ma-2fa-enroll" data-totp-enroll hidden>
+      <div class="ma-2fa-grid">
+        <div class="ma-2fa-qrbox">
+          <img data-totp-qr alt="2FA setup QR code" width="188" height="188" class="ma-2fa-qr">
+        </div>
+        <div class="ma-2fa-steps">
+          <p><strong>1.</strong> Scan this QR in your authenticator app — your address fills in automatically.</p>
+          <p class="ma-2fa-manual"><strong>Can't scan?</strong> Add this key by hand:<br><code data-totp-key class="ma-2fa-key"></code></p>
+          <p><a data-totp-uri href="#" rel="noopener" class="su-link">Open in authenticator app ↗</a></p>
+        </div>
+      </div>
+      <label class="ma-field"><span><strong>2.</strong> Enter the 6-digit code it shows</span>
+        <input class="ma-input" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000" data-totp-code></label>
+      <p class="ma-claim-msg" data-totp-msg role="status"></p>
+      <button class="ma-cta-primary" type="button" data-totp-verify>Verify &amp; turn on</button>
+    </div>
+  </section>`
 }
 
 // POST /members/account — update the signed-in member's profile + preferences.
@@ -591,6 +792,33 @@ func (a *App) handleMemberCancel(w http.ResponseWriter, r *http.Request) {
 // =============================================================================
 // helpers
 // =============================================================================
+
+// freePaidBenefits returns the benefit bullet lists for the Free tier and the
+// primary paid tier, preferring the operator's own per-tier benefit lists and
+// falling back to sensible defaults so the Free-vs-Premium comparison shown on
+// the signup page and the member dashboard is never empty.
+func (a *App) freePaidBenefits(ctx context.Context) (free, paid []string) {
+	free = []string{"Read every free post", "Join the discussion in comments", "The members newsletter", "Your reader profile & preferences"}
+	paid = []string{"Everything in Free", "Unlock all premium posts", "Your own VayuMail address (PGP mail)", "Encrypted VayuTalk messaging", "Two-factor security on your mail ID"}
+	if a.members == nil {
+		return free, paid
+	}
+	tiers, err := a.members.ListTiers(ctx, false)
+	if err != nil {
+		return free, paid
+	}
+	for i := range tiers {
+		if tiers[i].IsFree() {
+			if len(tiers[i].Benefits) > 0 {
+				free = tiers[i].Benefits
+			}
+		} else if len(tiers[i].Benefits) > 0 {
+			paid = tiers[i].Benefits
+			break
+		}
+	}
+	return free, paid
+}
 
 // formatMoney renders integer cents as a major-unit string (e.g. 500 -> "5.00").
 func formatMoney(cents int) string { return fmt.Sprintf("%.2f", float64(cents)/100) }

@@ -287,6 +287,13 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 	r.Get("/api/v1/members/ads", a.handleMemberAdsStatus)
 	r.Post("/api/v1/members/ads", a.handleMemberAdSubmit)
 	r.Post("/api/v1/members/vayumail-login", a.handleMemberVayuMailLogin)
+	// Member self-serve 2FA on their OWN VayuMail mailbox (member-session, SameSite
+	// Lax + same-origin JSON — same protection model as the sibling member POSTs).
+	// begin returns {secret,uri,qr}; the QR + otpauth label auto-fill the account
+	// name when scanned into an authenticator app.
+	r.Post("/api/v1/members/totp/begin", a.handleMemberTOTPBegin)
+	r.Post("/api/v1/members/totp/verify", a.handleMemberTOTPVerify)
+	r.Post("/api/v1/members/totp/disable", a.handleMemberTOTPDisable)
 	// VayuMail-Mobile private-key sync — returns the authenticated caller's OWN
 	// mailbox PGP private key (armored) so the app can import it and decrypt
 	// received mail on-device (WKD only serves public keys). Same credential

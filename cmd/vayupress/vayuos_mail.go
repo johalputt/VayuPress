@@ -1618,7 +1618,11 @@ func (a *App) handleVayuOSAccountTOTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		uri := totp.ProvisioningURI(secret, a.vayuMail.Config().Domain, email)
-		writeJSON(w, r, 200, map[string]string{"secret": secret, "uri": uri})
+		// Include a scannable QR (CSP-safe data: PNG) alongside the manual key so
+		// the operator can point an authenticator app at it instead of typing the
+		// secret. The otpauth:// label already carries "<domain>:<email>", so the
+		// app auto-fills the account name on scan.
+		writeJSON(w, r, 200, map[string]string{"secret": secret, "uri": uri, "qr": qrDataURI(uri)})
 	case "verify":
 		secret, _ := accts.TOTPStatus(r.Context(), email)
 		if secret == "" {

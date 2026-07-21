@@ -469,6 +469,67 @@
     });
   }
 
+  // el is a tiny CSP-safe element builder (no innerHTML with response data —
+  // dynamic values go in via textContent / img.src / setAttribute).
+  function el(tag, cls, txt) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (txt != null) e.textContent = txt;
+    return e;
+  }
+
+  // openMailboxTotpModal shows a premium 2FA-enrolment dialog for a mailbox: a
+  // scannable QR (the otpauth label auto-fills the account name), the manual key
+  // as a fallback, and a code field to confirm. Replaces the old window.prompt.
+  function openMailboxTotpModal(email, data) {
+    var back = el('div', 'modal-backdrop');
+    var panel = el('div', 'modal-panel');
+    var head = el('div', 'modal-header');
+    head.appendChild(el('div', 'modal-title', 'Two-factor · ' + email));
+    var x = el('button', 'modal-close', '×'); x.type = 'button';
+    head.appendChild(x);
+    var body = el('div', 'modal-body');
+    body.appendChild(el('p', 'text-sm muted', 'Scan this QR in the account’s authenticator app (Google Authenticator, Aegis, 1Password…) — the address fills in automatically — then enter the 6-digit code to confirm. Can’t scan? Add the key by hand.'));
+    if (data.qr) {
+      var img = document.createElement('img');
+      img.alt = '2FA setup QR code'; img.width = 188; img.height = 188; img.src = data.qr;
+      img.style.background = '#fff'; img.style.padding = '8px'; img.style.borderRadius = '10px';
+      img.style.display = 'block'; img.style.margin = '4px auto 14px';
+      body.appendChild(img);
+    }
+    var keyWrap = el('p', 'text-xs muted');
+    keyWrap.appendChild(document.createTextNode('Manual key: '));
+    keyWrap.appendChild(el('code', null, data.secret || ''));
+    body.appendChild(keyWrap);
+    var field = el('div', 'field');
+    var lab = el('label', 'field-label', 'Verification code'); lab.setAttribute('for', 'mb-totp-code');
+    var inp = document.createElement('input');
+    inp.id = 'mb-totp-code'; inp.className = 'input'; inp.type = 'text';
+    inp.inputMode = 'numeric'; inp.maxLength = 6; inp.placeholder = '000000';
+    inp.setAttribute('autocomplete', 'one-time-code');
+    field.appendChild(lab); field.appendChild(inp); body.appendChild(field);
+    var foot = el('div', 'modal-footer');
+    var cancel = el('button', 'btn btn--ghost btn--sm', 'Cancel'); cancel.type = 'button';
+    var verify = el('button', 'btn btn--primary btn--sm', 'Verify & enable'); verify.type = 'button';
+    foot.appendChild(cancel); foot.appendChild(verify);
+    panel.appendChild(head); panel.appendChild(body); panel.appendChild(foot);
+    back.appendChild(panel); document.body.appendChild(back);
+    inp.focus();
+    function close() { if (back.parentNode) back.parentNode.removeChild(back); }
+    x.addEventListener('click', close);
+    cancel.addEventListener('click', close);
+    back.addEventListener('click', function (ev) { if (ev.target === back) close(); });
+    verify.addEventListener('click', function () {
+      var c = (inp.value || '').replace(/\D/g, '');
+      if (c.length !== 6) { acctToast('Enter the 6-digit code.', true); return; }
+      verify.disabled = true;
+      postJSON('/os/vayumail/accounts/totp', { email: email, action: 'verify', code: c }).then(function (vr) {
+        if (vr.ok) { close(); acctToast('Two-factor authentication is now ON for ' + email); acctReload(); }
+        else { verify.disabled = false; acctToast('Verification failed: ' + errText(vr), true); }
+      });
+    });
+  }
+
   // Inline mailbox actions (enable/disable, role, quota, retention, delete) are
   // now HTMX: each posts /os/vayumail/accounts/action and the server swaps the
   // #vm-accounts-list fragment in place — no per-element JS, no page reload.
@@ -496,17 +557,7 @@
       var eemail = en.getAttribute('data-acct-2fa-enable');
       postJSON('/os/vayumail/accounts/totp', { email: eemail, action: 'begin' }).then(function (res) {
         if (!res.ok || !res.body || !res.body.secret) { acctToast('Could not start 2FA setup: ' + errText(res), true); return; }
-        window.prompt(
-          'Add this account to an authenticator app, then enter the 6-digit code below.\n\n' +
-          'Secret key:\n' + res.body.secret + '\n\notpauth URI (copyable):',
-          res.body.uri || ''
-        );
-        var code = window.prompt('Enter the current 6-digit code from your authenticator for ' + eemail + ':');
-        if (code === null) return;
-        postJSON('/os/vayumail/accounts/totp', { email: eemail, action: 'verify', code: (code || '').trim() }).then(function (vr) {
-          if (vr.ok) { acctToast('Two-factor authentication is now ON for ' + eemail); acctReload(); }
-          else acctToast('Verification failed: ' + errText(vr), true);
-        });
+        openMailboxTotpModal(eemail, res.body);
       });
       return;
     }
