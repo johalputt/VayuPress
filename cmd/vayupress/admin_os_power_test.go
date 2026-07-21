@@ -30,3 +30,28 @@ func TestMaintenancePageHTML(t *testing.T) {
 		t.Error("empty message should use the default copy")
 	}
 }
+
+// TestMaintenancePathExempt is the safety guarantee: while the public site is in
+// maintenance, the VayuOS console (including the LOGIN page and its assets), the
+// health probes and the operational surfaces stay reachable — so the operator
+// can always sign in and turn maintenance back off, and can never be locked out.
+func TestMaintenancePathExempt(t *testing.T) {
+	// Must stay reachable during maintenance.
+	for _, p := range []string{
+		"/os", "/os/login", "/os/power", "/os/power/preview",
+		"/os/static/js/admin-os.js", "/os/api/power/maintenance",
+		"/health", "/health/ready", "/__vayushield/pow",
+		"/.well-known/acme-challenge/x", "/mcp", "/oauth/token", "/favicon.ico",
+	} {
+		if !maintenancePathExempt(p) {
+			t.Errorf("path %q MUST stay reachable during maintenance (operator lockout risk)", p)
+		}
+	}
+	// Public paths get the maintenance page. Note "/osborne" starts with "/os"
+	// but is NOT the console — the match must be segment-aware.
+	for _, p := range []string{"/", "/blog", "/about", "/some-post", "/osborne", "/oscars"} {
+		if maintenancePathExempt(p) {
+			t.Errorf("public path %q should show the maintenance page, not bypass it", p)
+		}
+	}
+}

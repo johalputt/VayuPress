@@ -8,6 +8,19 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.74] — 2026-07-21
+
+### Changed
+- **Maintenance mode: the "VayuOS is never locked out" guarantee is now covered
+  by a test.** The path-exemption used while the public site is in maintenance is
+  extracted into `maintenancePathExempt` and pinned by a regression test asserting
+  the whole admin console — the **login page** (`/os/login`), its assets
+  (`/os/static/…`) and the Power page (`/os/power`) — plus the health probes and
+  operational surfaces stay reachable, while public pages get the maintenance
+  page (segment-aware, so e.g. `/osborne` is NOT treated as `/os`). So an operator
+  can always sign in and turn maintenance back off from the web, and a future
+  refactor can't silently break that.
+
 ## [3.14.73] — 2026-07-21
 
 ### Added

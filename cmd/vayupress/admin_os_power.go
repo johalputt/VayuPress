@@ -41,6 +41,24 @@ var maintenanceExemptPrefixes = []string{
 	"/os", "/__vayushield", "/__vayuanalytics", "/.well-known", "/mcp", "/oauth", "/health",
 }
 
+// maintenancePathExempt reports whether a path stays reachable while the site is
+// in maintenance. Critically this includes the WHOLE /os console — so the login
+// page (/os/login), its assets (/os/static) and the Power page (/os/power) all
+// keep working and the operator can always turn maintenance back off from the
+// web. The prefix match is segment-aware ("/os" matches "/os" and "/os/…" but
+// never a public page like "/osborne").
+func maintenancePathExempt(p string) bool {
+	if p == "/favicon.ico" {
+		return true
+	}
+	for _, pre := range maintenanceExemptPrefixes {
+		if p == pre || strings.HasPrefix(p, pre+"/") {
+			return true
+		}
+	}
+	return false
+}
+
 // maintenanceModeOn reports whether the operator has taken the public site down.
 func (a *App) maintenanceModeOn(r *http.Request) bool {
 	return a.siteSettings != nil && a.siteSettings.Get(r.Context(), settings.KeyMaintenanceMode) == "on"
@@ -56,19 +74,17 @@ func (a *App) maintenanceMiddleware(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		p := r.URL.Path
-		if p == "/favicon.ico" {
+		// The admin console (/os, incl. /os/login and /os/static), the health
+		// probes and the well-known/shield/MCP surfaces are always reachable — so
+		// the operator can ALWAYS sign in and lift maintenance from the web, and
+		// uptime checks keep working. This is the guarantee that VayuOS never goes
+		// offline with the public site.
+		if maintenancePathExempt(r.URL.Path) {
 			next.ServeHTTP(w, r)
 			return
 		}
-		for _, pre := range maintenanceExemptPrefixes {
-			if p == pre || strings.HasPrefix(p, pre+"/") {
-				next.ServeHTTP(w, r)
-				return
-			}
-		}
-		// The operator (signed-in admin) keeps seeing the real site, so they can
-		// verify a change before lifting maintenance.
+		// A signed-in operator keeps seeing the real site so they can verify a
+		// change before lifting maintenance.
 		if a.isAdminRequest(r) {
 			next.ServeHTTP(w, r)
 			return
