@@ -771,8 +771,18 @@ $$('[data-setting-key]').forEach(function (el) {
    which never fires it — an "Add to Home Screen" hint. Hidden once installed. */
 (function initPWA() {
   if ('serviceWorker' in navigator) {
+    // When a new worker takes control (e.g. after a deploy), reload once so the
+    // freshest VayuOS shows immediately — no stale build ever lingers on a device.
+    var swReloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', function () {
+      if (swReloaded) return;
+      swReloaded = true;
+      window.location.reload();
+    });
     window.addEventListener('load', function () {
-      navigator.serviceWorker.register('/os/sw.js', { scope: '/os/' }).catch(function () {});
+      navigator.serviceWorker.register('/os/sw.js', { scope: '/os/' }).then(function (reg) {
+        if (reg && reg.update) { try { reg.update(); } catch (e) { /* no-op */ } }
+      }).catch(function () {});
     });
   }
   var btn = document.querySelector('[data-pwa-install]');

@@ -95,6 +95,7 @@
       <div class="hidden md:flex items-center gap-7 text-sm text-gray-400">
         <a href="#worlds"     class="nav-link hover:text-white transition-colors">Worlds</a>
         <a href="#products"   class="nav-link hover:text-white transition-colors">Products</a>
+        <a href="#install"    class="nav-link hover:text-white transition-colors">Install</a>
         <a href="#monetize"   class="nav-link hover:text-white transition-colors">Monetize</a>
         <a href="#compare"    class="nav-link hover:text-white transition-colors">Compare</a>
         <a href="#gallery"    class="nav-link hover:text-white transition-colors">Gallery</a>
@@ -630,6 +631,71 @@
 
           </div>
         </template>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════ INSTALL / PWA ══════════════ -->
+  <section id="install" class="relative py-24 sm:py-28 lg:py-32 overflow-hidden">
+    <div class="max-w-6xl mx-auto px-6 relative">
+      <div class="rounded-3xl border border-white/[0.08] bg-white/[0.02] p-8 sm:p-12 lg:p-14 relative overflow-hidden">
+        <div class="grid lg:grid-cols-2 gap-10 lg:gap-14 items-center">
+
+          <div data-reveal>
+            <p class="font-mono text-xs mb-4 tracking-[0.25em] uppercase text-sky-300/80">Install · one click</p>
+            <h2 class="font-display text-3xl sm:text-4xl lg:text-5xl font-bold text-white tracking-tight leading-[1.08]">
+              Put VayuOS on your home screen.
+              <span class="text-gray-500 block mt-1">One click. No store. No download.</span>
+            </h2>
+            <p class="mt-6 text-base sm:text-lg text-gray-300 leading-relaxed">
+              VayuOS is an <span class="text-white font-medium">installable app (PWA)</span>. Open your console and the browser
+              offers <span class="text-white font-medium">Install VayuOS</span> — it lands on your
+              <span class="text-white font-medium">phone home screen or desktop</span> as a standalone, full-screen app that
+              launches instantly. There's an <span class="text-white font-medium">Install</span> button in the console top bar too,
+              so it's always one tap away.
+            </p>
+            <ul class="mt-8 space-y-4">
+              <li class="flex items-start gap-3">
+                <span class="mt-0.5 text-sky-300" aria-hidden="true">➊</span>
+                <span class="text-sm sm:text-base text-gray-300 leading-relaxed"><span class="text-white font-medium">Mobile &amp; desktop.</span> One-click install on Android and desktop Chromium; on iPhone/iPad, Share → <span class="text-white">Add to Home Screen</span>.</span>
+              </li>
+              <li class="flex items-start gap-3">
+                <span class="mt-0.5 text-sky-300" aria-hidden="true">➋</span>
+                <span class="text-sm sm:text-base text-gray-300 leading-relaxed"><span class="text-white font-medium">Always live.</span> A zero-cache worker means an installed VayuOS is <span class="text-white">never stale</span> — every launch shows exactly what your server serves right now.</span>
+              </li>
+              <li class="flex items-start gap-3">
+                <span class="mt-0.5 text-sky-300" aria-hidden="true">➌</span>
+                <span class="text-sm sm:text-base text-gray-300 leading-relaxed"><span class="text-white font-medium">Sovereign by default.</span> Same origin, same strict CSP, your own icon — nothing rented, with a tiny offline notice as the only fallback.</span>
+              </li>
+            </ul>
+          </div>
+
+          <div data-reveal style="--d:80ms" class="flex justify-center">
+            <div class="pwa-device" aria-hidden="true">
+              <div class="pwa-device__notch"></div>
+              <div class="pwa-device__screen">
+                <div class="pwa-prompt">
+                  <div class="pwa-prompt__icon">V</div>
+                  <div class="pwa-prompt__meta">
+                    <div class="pwa-prompt__name">VayuOS</div>
+                    <div class="pwa-prompt__url">your-domain · /os</div>
+                  </div>
+                  <div class="pwa-prompt__btn">Install</div>
+                </div>
+                <div class="pwa-tiles">
+                  <div class="pwa-tile"><span>✉️</span>Mail</div>
+                  <div class="pwa-tile"><span>💬</span>Talk</div>
+                  <div class="pwa-tile"><span>📊</span>Stats</div>
+                  <div class="pwa-tile"><span>🛡️</span>Shield</div>
+                  <div class="pwa-tile"><span>🧅</span>Tor</div>
+                  <div class="pwa-tile"><span>💳</span>Money</div>
+                </div>
+                <div class="pwa-live"><span class="pwa-live__dot"></span> Always live · zero-cache</div>
+              </div>
+            </div>
+          </div>
+
+        </div>
       </div>
     </div>
   </section>

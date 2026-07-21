@@ -57,10 +57,13 @@ func (a *App) handleOSManifest(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleOSServiceWorker serves the console's service worker. Scoped to /os/ (see
-// Service-Worker-Allowed), it is intentionally minimal and privacy-first: pages
-// are always fetched from the network (never a cached, per-operator dashboard),
-// and only the versioned, non-sensitive static shell (CSS/JS/icons under
-// /os/static/) is cached — which is what makes the installed app feel instant.
+// Service-Worker-Allowed), it is deliberately a ZERO-CACHE worker: VayuOS must be
+// live on every device, so the worker never stores or replays any console
+// response. It exists only to make the console installable and to show a tiny
+// offline notice for a failed navigation. Because it caches nothing, an update
+// (or a themed change) is visible the instant the server serves it — no stale
+// panel can ever be shown from a worker cache. It also purges any cache a previous
+// worker version created, so upgrading to this worker self-heals a stale device.
 func (a *App) handleOSServiceWorker(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
@@ -68,41 +71,29 @@ func (a *App) handleOSServiceWorker(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte(osServiceWorkerJS))
 }
 
-const osServiceWorkerJS = `// VayuOS console service worker — privacy-first, static-shell only.
-const CACHE = 'vayuos-shell-v1';
+const osServiceWorkerJS = `// VayuOS console service worker — ZERO-CACHE, always live.
+// It never caches a console response, so no device can ever show a stale VayuOS.
 
-self.addEventListener('install', function (e) { self.skipWaiting(); });
+self.addEventListener('install', function () { self.skipWaiting(); });
 
 self.addEventListener('activate', function (e) {
-  e.waitUntil(caches.keys().then(function (keys) {
-    return Promise.all(keys.map(function (k) { if (k !== CACHE) return caches.delete(k); }));
-  }).then(function () { return self.clients.claim(); }));
+  // Purge EVERY cache (including any this app made in an earlier version): VayuOS
+  // is never served from a cache, so this self-heals a device that was showing an
+  // old build, then takes control of open pages immediately.
+  e.waitUntil(
+    caches.keys()
+      .then(function (keys) { return Promise.all(keys.map(function (k) { return caches.delete(k); })); })
+      .then(function () { return self.clients.claim(); })
+  );
 });
 
 self.addEventListener('fetch', function (e) {
   var req = e.request;
   if (req.method !== 'GET') return;
-  var url = new URL(req.url);
-  if (url.origin !== self.location.origin) return;
-
-  // Versioned static shell (?v=<hash>): cache-first — this is what makes the
-  // installed app open instantly. Never anything authenticated or per-user.
-  if (url.pathname.indexOf('/os/static/') === 0) {
-    e.respondWith(
-      caches.match(req).then(function (hit) {
-        if (hit) return hit;
-        return fetch(req).then(function (res) {
-          if (res && res.ok) { var cp = res.clone(); caches.open(CACHE).then(function (c) { c.put(req, cp); }); }
-          return res;
-        });
-      })
-    );
-    return;
-  }
-
-  // Everything else (the console's pages and APIs): always the network, so an
-  // operator never sees a stale or another user's dashboard. When offline, a
-  // navigation falls back to a tiny built-in offline notice.
+  // Only handle page navigations — always from the network, with a small built-in
+  // offline notice as the ONLY fallback. Every other request (CSS/JS/API/images)
+  // is left to the browser, which honours the server's cache headers (the console
+  // HTML is no-store and static assets are content-hash-versioned).
   if (req.mode === 'navigate') {
     e.respondWith(fetch(req).catch(function () {
       return new Response(
@@ -111,10 +102,9 @@ self.addEventListener('fetch', function (e) {
         '<body style="margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#080e1a;color:#eef2f8;font:16px/1.5 system-ui,sans-serif">' +
         '<div style="text-align:center;padding:24px"><div style="font-size:44px">📴</div>' +
         '<h1 style="font-size:20px;margin:.5em 0">You are offline</h1>' +
-        '<p style="color:#9db0cc;max-width:22rem">VayuOS needs a connection to load your console. Reconnect and try again.</p></div>',
+        '<p style="color:#b8c6dd;max-width:22rem">VayuOS needs a connection to load your console. Reconnect and try again.</p></div>',
         { headers: { 'Content-Type': 'text/html; charset=utf-8' }, status: 503 });
     }));
-    return;
   }
 });
 `

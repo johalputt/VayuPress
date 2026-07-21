@@ -8,6 +8,27 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.96] — 2026-07-21
+
+### Changed
+- **VayuOS is never cached — always live, on every device.** The console's
+  service worker is now a zero-cache worker: it never stores a single console
+  response and, on upgrade, purges every cache a previous worker version may have
+  created, then takes control of open pages immediately. A stale install self-
+  heals, and a themed change or an update is visible the instant the server serves
+  it. The registration also reloads the page once when a new worker takes control.
+  (Console HTML was already `no-store`; static assets stay content-hash-versioned.)
+- **Higher text contrast across the whole console.** The two muted text tiers of
+  the dark theme (secondary and helper/placeholder copy) were lifted to meet AA
+  against every dark surface, so body text, hints, placeholders and editor helper
+  panels are easier to read app-wide — the sidebar and headings are unchanged.
+
+### Added
+- **PWA install is showcased on the site and README.** The marketing site gains a
+  one-click "Install VayuOS" section (with a device mock) and a nav entry, and the
+  README documents installing the console as an app — so operators can put VayuOS
+  on a home screen or desktop in one click.
+
 ## [3.14.95] — 2026-07-21
 
 ### Added

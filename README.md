@@ -72,6 +72,9 @@ Real product analytics — pageviews, sessions, top pages, referrers, UTM campai
 ### 🛠️ One control panel (VayuOS)
 Everything above is run from a single, fast, strict-CSP admin at `/os` — dashboard, editor, media library, themes, members, newsletter, mail, **VayuTalk chat**, analytics, **Bot Shield**, SEO, API keys, and one-click **update & encrypted backup**. The dashboard opens on a real **14-day publishing area chart** (server-rendered SVG, hover tooltips, zero JavaScript) and live stat cards; every data table folds into phone-friendly cards on mobile. TOTP two-factor, role-based access, WORM audit log, and an adaptive policy-governed runtime underneath. Built with **HTMX + lightweight hand-written CSS** — no SPA framework, no build step, negligible RAM/CPU.
 
+### 📲 Install VayuOS as an app — one-click PWA
+VayuOS is an **installable app**. Open `/os` in any modern browser and it offers **Install VayuOS** — a one-click install that puts the console on your **home screen or desktop** as a standalone, full-screen app on both **mobile and Android/desktop Chromium**; on iPhone/iPad, **Share → Add to Home Screen** does the same. There's a built-in **Install** button in the console top bar too, so it's always one tap away. The installed app opens straight into `/os`, uses the official VayuPress mark as its icon, and launches instantly — no store, no download, no account beyond your normal sign-in. It is **privacy-first and always live**: the app ships a **zero-cache service worker** that never stores a single console response and purges any old cache on upgrade, so an installed VayuOS is **never stale** — every visit shows exactly what the server serves right now, and an update is visible the instant it lands. All same-origin, under the same strict CSP, with a tiny offline notice as the only fallback.
+
 ### 🔌 A fine-grained, scoped API (VayuAPI)
 Drive the whole platform programmatically — create posts, apply themes, manage domains, read analytics, install plugins, run backups — with **API keys scoped to the exact section and action they need, and nothing more**. Mint a key from a **12 × 6 permission grid** (twelve sections × six actions, written `section:action`), give it an optional hard expiry and a **per-key rate budget**, then rotate, deactivate (reversibly) or revoke it in a click. Keys are **owner-scoped and stored only as a hash** (the raw value is shown once); every call is checked against the key's grant on both the `/api/v1` and `/os` surfaces, metered against its budget (`429` + `Retry-After` when exhausted), and appended to a tamper-evident **audit log**. So a script, a CI job, or an AI agent can update your site autonomously — without ever holding the keys to everything. *([reference →](docs/compatibility/vayuapi.md) · [ADR →](docs/adr/ADR-0134-vayuapi-fine-grained-keys.md))*
 
@@ -177,6 +180,8 @@ Under the hood: an **immutable platform kernel** (Ed25519 article signing, check
 ### VayuOS — the single control panel
 ![VayuOS dashboard](docs/screenshots/admin-os-dashboard.png)
 *The dashboard (`/os`) — grouped sidebar, stat cards, publishing-trend sparkline, activity feed, and a `⌘K` command palette.*
+
+> **Install it as an app:** open `/os` and click **Install VayuOS** (or the install button in the top bar; on iOS, Share → Add to Home Screen). It lands on your home screen/desktop as a standalone app, always live via a zero-cache worker.
 
 ![VayuOS block editor](docs/screenshots/admin-os-editor.png)
 *The block editor — typed-block document rendered server-side through escape + bluemonday, slash-command palette, autosave, live preview, and inline version-history diff.*

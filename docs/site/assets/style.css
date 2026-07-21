@@ -679,6 +679,73 @@ body[data-world="tor"] .hover\:text-teal-400:hover { color: #c4b5fd !important; 
   #aura { display: none !important; }
 }
 
+/* ══ Install / PWA device mock ══ */
+.pwa-device {
+  width: 260px; max-width: 100%;
+  border-radius: 2rem;
+  padding: 0.7rem;
+  background: linear-gradient(165deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02));
+  border: 1px solid rgba(255,255,255,0.12);
+  box-shadow: 0 30px 80px -30px rgba(14,165,233,0.45), inset 0 1px 0 rgba(255,255,255,0.08);
+  position: relative;
+}
+.pwa-device__notch {
+  width: 34%; height: 6px; margin: 0.1rem auto 0.7rem;
+  border-radius: 999px; background: rgba(255,255,255,0.16);
+}
+.pwa-device__screen {
+  border-radius: 1.4rem; padding: 1rem 0.9rem 1.1rem;
+  background: radial-gradient(120% 90% at 50% 0%, rgba(14,165,233,0.16), transparent 60%), #080e1a;
+  border: 1px solid rgba(255,255,255,0.06);
+}
+.pwa-prompt {
+  display: flex; align-items: center; gap: 0.6rem;
+  background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 0.85rem; padding: 0.55rem 0.6rem;
+}
+.pwa-prompt__icon {
+  width: 34px; height: 34px; flex: none; border-radius: 0.55rem;
+  display: grid; place-items: center;
+  font-family: "Space Grotesk", sans-serif; font-weight: 700; color: #fff; font-size: 1rem;
+  background: linear-gradient(150deg, #0b1424, #0f2740 45%, #0ea5e9);
+  box-shadow: 0 6px 16px rgba(14,165,233,0.4);
+}
+.pwa-prompt__meta { flex: 1 1 auto; min-width: 0; }
+.pwa-prompt__name { font-weight: 600; color: #fff; font-size: 0.85rem; line-height: 1.1; }
+.pwa-prompt__url { font-family: "JetBrains Mono", monospace; font-size: 0.62rem; color: #93a6c4; }
+.pwa-prompt__btn {
+  flex: none; font-size: 0.72rem; font-weight: 600; color: #061019;
+  background: linear-gradient(180deg, #38bdf8, #0ea5e9);
+  border-radius: 999px; padding: 0.3rem 0.7rem;
+  box-shadow: 0 4px 12px rgba(14,165,233,0.45);
+}
+.pwa-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; margin-top: 0.85rem; }
+.pwa-tile {
+  display: flex; flex-direction: column; align-items: center; gap: 0.25rem;
+  padding: 0.55rem 0.2rem; border-radius: 0.7rem;
+  background: rgba(255,255,255,0.035); border: 1px solid rgba(255,255,255,0.06);
+  font-size: 0.62rem; color: #b8c6dd;
+}
+.pwa-tile span { font-size: 1.05rem; }
+.pwa-live {
+  display: flex; align-items: center; justify-content: center; gap: 0.4rem;
+  margin-top: 0.85rem; font-size: 0.66rem; color: #93a6c4;
+  font-family: "JetBrains Mono", monospace;
+}
+.pwa-live__dot {
+  width: 7px; height: 7px; border-radius: 999px; background: #22d3a7;
+  box-shadow: 0 0 0 0 rgba(34,211,167,0.55); animation: pwaPulse 2.2s ease-out infinite;
+}
+@keyframes pwaPulse {
+  0% { box-shadow: 0 0 0 0 rgba(34,211,167,0.5); }
+  70% { box-shadow: 0 0 0 7px rgba(34,211,167,0); }
+  100% { box-shadow: 0 0 0 0 rgba(34,211,167,0); }
+}
+body[data-world="tor"] .pwa-prompt__icon { background: linear-gradient(150deg, #1a0f2e, #2a1a45 45%, #7c3aed); box-shadow: 0 6px 16px rgba(124,58,237,0.4); }
+body[data-world="tor"] .pwa-prompt__btn { background: linear-gradient(180deg, #a78bfa, #7c3aed); box-shadow: 0 4px 12px rgba(124,58,237,0.45); }
+body[data-world="tor"] .pwa-device { box-shadow: 0 30px 80px -30px rgba(124,58,237,0.45), inset 0 1px 0 rgba(255,255,255,0.08); }
+body[data-world="tor"] .pwa-device__screen { background: radial-gradient(120% 90% at 50% 0%, rgba(124,58,237,0.18), transparent 60%), #080e1a; }
+
 /* ── Mobile polish ── */
 @media (max-width: 480px) {
   .terminal-frame pre { font-size: 11px; padding: 1rem; }

@@ -44,10 +44,12 @@
   --border:       rgba(99, 130, 174, 0.18);
   --border-strong:rgba(99, 130, 174, 0.32);
 
-  /* Text */
+  /* Text — muted tiers lifted for readability (AA against every dark surface).
+     --text-2/--text-3 drive nearly all secondary/helper/placeholder copy app-
+     wide, so raising them here brightens the whole console, not just one page. */
   --text:         #eef2f8;
-  --text-2:       #9db0cc;
-  --text-3:       #6a83a4;
+  --text-2:       #b8c6dd;
+  --text-3:       #93a6c4;
   /* Aliases: some components reference --text-1/--surface-2 (undefined before).
      Defined via var() indirection so they follow the light-theme overrides of
      --text/--bg-surface-2 automatically. Without these, `fill: var(--text-1)`
