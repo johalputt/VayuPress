@@ -189,7 +189,10 @@ func onionDeliverEnvelope(ctx context.Context, client *http.Client, peerHost str
 	if client == nil {
 		return "", false, false, errors.New("onion transport: no client")
 	}
-	if !talkHostIsOnion(peerHost) {
+	// Strict SSRF gate: the request URL is built from peerHost, so it must be an
+	// exact bare v3 onion — no port/path/userinfo an attacker could smuggle in.
+	peerHost = strings.ToLower(strings.TrimSpace(peerHost))
+	if !isDeliverableOnionHost(peerHost) {
 		return "", false, false, errNotOnion
 	}
 	payload, merr := json.Marshal(onionEnvelope{
@@ -243,8 +246,10 @@ func (a *App) forwardReadReceiptOverOnion(id, sender, recipient string) {
 	if socks == "" {
 		return
 	}
-	host := hostPart(sender)
-	if !talkHostIsOnion(host) {
+	// Strict SSRF gate: the receipt URL is built from this host, so require an
+	// exact bare v3 onion — a malformed sender can't redirect the request.
+	host := strings.ToLower(strings.TrimSpace(hostPart(sender)))
+	if !isDeliverableOnionHost(host) {
 		return
 	}
 	client, err := newOnionHTTPClient(socks)

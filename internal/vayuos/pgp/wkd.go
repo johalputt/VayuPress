@@ -222,6 +222,10 @@ func (e *Engine) LookupExternalKey(email string) (*PublicKey, error) {
 	return nil, ErrNotFound
 }
 
+// onionWKDHostRe matches a bare Tor v3 onion hostname exactly (56 base32 chars +
+// ".onion") — the only host shape LookupOnionKey will open a WKD request to.
+var onionWKDHostRe = regexp.MustCompile(`^[a-z2-7]{56}\.onion$`)
+
 // LookupOnionKey discovers a recipient's public key via WKD served over the
 // recipient's own .onion, using the caller-supplied HTTP client (which the caller
 // routes through Tor and restricts to .onion hosts — ADR-0142). Unlike
@@ -234,7 +238,11 @@ func (e *Engine) LookupOnionKey(email string, client *http.Client) (*PublicKey, 
 		return nil, ErrNotFound
 	}
 	local, domain := splitEmail(normalizeEmail(email))
-	if local == "" || !strings.HasSuffix(domain, ".onion") {
+	// Strict SSRF gate: the fetch URL is built from domain, so it must be an exact
+	// bare v3 onion (56 base32 chars + ".onion") — a recipient address can never
+	// steer the request at an arbitrary host, port or path.
+	domain = strings.ToLower(strings.TrimSpace(domain))
+	if local == "" || !onionWKDHostRe.MatchString(domain) {
 		return nil, ErrNotFound
 	}
 	hash := wkdLocalHash(local)

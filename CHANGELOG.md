@@ -8,6 +8,25 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.70] — 2026-07-21
+
+### Security
+- **Hardened the onion-to-onion delivery network sinks against request forgery
+  (CodeQL, Critical).** The outbound Tor lanes (VayuTalk envelope delivery, read
+  receipts, and WKD-over-Tor key fetch) previously gated the target host with a
+  loose `".onion"` suffix check, which would still accept a host carrying a port,
+  path, userinfo (`evil@…`) or an extra label. They now require an **exact bare
+  v3 onion** (`^[a-z2-7]{56}\.onion$`) via a new `isDeliverableOnionHost` gate on
+  the precise value used to build each request URL, so an attacker-influenced
+  recipient/sender address can never steer a request at another host. The host is
+  case/space-normalised first. (These lanes are already `.onion`-only and off by
+  default; this closes the theoretical smuggling gap.)
+- **Reflected-XSS hardening on the checkout pages (CodeQL, High).** The shared
+  checkout page shell now escapes the document `<title>` at the boundary itself
+  (`checkoutShell`), so no caller can place unescaped, reflected text (an order
+  reference, a tier name) into the document head. Page bodies were already
+  escaped field-by-field; this makes the shell safe by construction.
+
 ## [3.14.69] — 2026-07-21
 
 ### Added

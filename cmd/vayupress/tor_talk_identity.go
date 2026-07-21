@@ -63,6 +63,20 @@ func talkHostIsOnion(host string) bool {
 	return len(host) > len(".onion") && strings.HasSuffix(host, ".onion")
 }
 
+// deliverableOnionRe matches a bare Tor v3 onion hostname EXACTLY — 56 base32
+// characters followed by ".onion", and nothing else (no port, path, userinfo or
+// extra label). Anything a recipient address carries beyond that shape is refused.
+var deliverableOnionRe = regexp.MustCompile(`^[a-z2-7]{56}\.onion$`)
+
+// isDeliverableOnionHost reports whether host is a well-formed bare v3 onion that
+// we may actually open an HTTP request to. It is the strict gate on the network
+// sinks of onion-to-onion delivery (unlike talkHostIsOnion, which only classifies
+// a recipient): validating the exact shape here means an attacker-influenced
+// recipient address can never steer a request at an arbitrary host (SSRF).
+func isDeliverableOnionHost(host string) bool {
+	return deliverableOnionRe.MatchString(strings.ToLower(strings.TrimSpace(host)))
+}
+
 // talkOnionFederationEnabled reports whether the operator has opted into
 // experimental onion-to-onion VayuTalk delivery (ADR-0142). Always false outside
 // the Tor world — federation only has meaning there.

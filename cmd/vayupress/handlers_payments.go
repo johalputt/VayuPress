@@ -696,7 +696,7 @@ func checkoutFormPage(tier *members.Tier, cadence string, amountCents int, curre
 			buttons += `<button type="submit" name="method" value="paypal" class="btn btn--ghost pr-cta" style="width:100%">Pay with PayPal</button>`
 		}
 	}
-	return checkoutShell("Checkout · "+esc(tier.Name), `
+	return checkoutShell("Checkout · "+tier.Name, `
 <main class="pr-shell" id="main-content">
   <div class="pr-head">
     <h1>Subscribe to `+esc(tier.Name)+`</h1>
@@ -727,7 +727,7 @@ func (a *App) checkoutInstructionsPage(ctx context.Context, o *payments.Order, t
 	if instructions != "" {
 		instrBlock = `<pre class="co-instructions">` + esc(instructions) + `</pre>`
 	}
-	return checkoutShell("Order "+esc(o.Reference), `
+	return checkoutShell("Order "+o.Reference, `
 <main class="pr-shell" id="main-content">
   <div class="pr-head">
     <h1>Almost there</h1>
@@ -747,11 +747,15 @@ func (a *App) checkoutInstructionsPage(ctx context.Context, o *payments.Order, t
 // public theme + signup stylesheet (no inline styles beyond the existing
 // utility attributes used elsewhere on these pages).
 func checkoutShell(title, body string) string {
+	// Escape the title HERE so the sink is sanitised at the boundary — callers
+	// pass a raw title and can never inject markup into the document head, even if
+	// the title carries a reflected value (order reference, tier name, …).
+	safeTitle := html.EscapeString(title)
 	brand := html.EscapeString(config.Cfg.Domain)
 	return `<!DOCTYPE html><html lang="en"><head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>` + title + ` · ` + brand + `</title>
+<title>` + safeTitle + ` · ` + brand + `</title>
 <meta name="robots" content="noindex, nofollow">
 <link rel="stylesheet" href="/theme.css">
 <link rel="stylesheet" href="/static/css/signup.css">
