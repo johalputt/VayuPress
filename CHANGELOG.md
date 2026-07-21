@@ -8,6 +8,18 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.98] — 2026-07-21
+
+### Changed
+- **New-mail notifications now fire through the service worker** — so they work
+  in the installed VayuOS app (PWA) and on Android/mobile browsers, where the
+  page `new Notification()` constructor is unsupported. The worker's new
+  `notificationclick` handler focuses an existing console window (or opens a new
+  one) and steers it to the mailbox, so a single tap lands on the right mailbox
+  even when no tab was open. Desktop browsers without an active worker still use
+  the page Notification API; the http `.onion` still falls back to a clickable
+  toast. The worker stays zero-cache.
+
 ## [3.14.97] — 2026-07-21
 
 ### Added

@@ -860,18 +860,34 @@ $$('[data-setting-key]').forEach(function (el) {
   function announce(box, delta) {
     var msg = (delta > 1 ? delta + ' new messages' : 'New message') + ' in ' + box.address;
     if (notifyReady && ('Notification' in window)) {
-      try {
-        var n = new Notification('VayuMail — new mail', { body: msg, tag: 'vmail:' + box.address, renotify: true });
-        n.onclick = function () { goTo(box); n.close(); };
+      var opts = { body: msg, tag: 'vmail:' + box.address, renotify: true, data: { url: deepLink(box.key) } };
+      // Prefer the service worker's showNotification: it is the ONLY path that
+      // works in an installed PWA and on Android/mobile browsers (where the
+      // `new Notification()` constructor is unsupported), and its click is
+      // handled by the worker (see sw.js `notificationclick`) so the mailbox
+      // opens even if this tab is gone. Fall back to the page Notification
+      // constructor on desktop browsers without an active worker.
+      if (navigator.serviceWorker && navigator.serviceWorker.ready) {
+        navigator.serviceWorker.ready
+          .then(function (reg) { return reg.showNotification('VayuMail — new mail', opts); })
+          .catch(function () { pageNotify(box, opts); });
         return;
-      } catch (e) { /* fall through to the in-app toast */ }
+      }
+      if (pageNotify(box, opts)) return;
     }
     if (typeof window.vpToast === 'function') {
-      // Clickable toast: an operator on an .onion or with notifications denied
-      // still gets the alert and a one-click way to the mailbox.
+      // Clickable toast: an operator on an .onion (no secure context) or with
+      // notifications denied still gets the alert and a one-click way in.
       var t = window.vpToast(msg + ' — open', 'info');
       if (t && t.addEventListener) { t.style.cursor = 'pointer'; on(t, 'click', function () { goTo(box); }); }
     }
+  }
+  function pageNotify(box, opts) {
+    try {
+      var n = new Notification('VayuMail — new mail', opts);
+      n.onclick = function () { goTo(box); n.close(); };
+      return true;
+    } catch (e) { return false; }
   }
   function bumpTitle(n) {
     titleCount += n;

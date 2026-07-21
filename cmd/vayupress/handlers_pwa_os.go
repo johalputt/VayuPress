@@ -87,6 +87,28 @@ self.addEventListener('activate', function (e) {
   );
 });
 
+self.addEventListener('notificationclick', function (e) {
+  // New-mail notifications (posted via registration.showNotification from
+  // admin-os.js) carry the target mailbox URL in data.url. Focus an existing
+  // console window and steer it there, or open a fresh one — so a single tap
+  // lands on the mailbox, even from an installed PWA on mobile.
+  e.notification.close();
+  var url = (e.notification.data && e.notification.data.url) || '/os';
+  e.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (list) {
+      for (var i = 0; i < list.length; i++) {
+        var c = list[i];
+        if ('focus' in c) {
+          c.focus();
+          if (c.navigate) { try { c.navigate(url); } catch (err) { /* cross-origin guard */ } }
+          return;
+        }
+      }
+      if (self.clients.openWindow) return self.clients.openWindow(url);
+    })
+  );
+});
+
 self.addEventListener('fetch', function (e) {
   var req = e.request;
   if (req.method !== 'GET') return;

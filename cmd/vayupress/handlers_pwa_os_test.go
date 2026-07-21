@@ -41,7 +41,17 @@ func TestOSServiceWorker(t *testing.T) {
 	if ct := rr.Header().Get("Content-Type"); !strings.Contains(ct, "javascript") {
 		t.Errorf("Content-Type = %q, want javascript", ct)
 	}
-	if !strings.Contains(rr.Body.String(), "addEventListener") {
+	body := rr.Body.String()
+	if !strings.Contains(body, "addEventListener") {
 		t.Error("service worker body looks empty")
+	}
+	// New-mail notifications are shown via the worker so the installed PWA and
+	// mobile browsers work; the click must route to the mailbox URL.
+	if !strings.Contains(body, "notificationclick") {
+		t.Error("service worker must handle notificationclick to open the mailbox on tap")
+	}
+	// It must remain a zero-cache worker — never persist a console response.
+	if !strings.Contains(body, "caches.keys()") || strings.Contains(body, "caches.open(") {
+		t.Error("service worker must stay zero-cache (purge caches, never open one)")
 	}
 }
