@@ -184,6 +184,7 @@
   margin-left: var(--sidebar-w);
   display: flex;
   flex-direction: column;
+  transition: margin-left var(--t-slow);
 }
 .vp-os .content {
   flex: 1;
@@ -405,13 +406,27 @@
 }
 .vp-os .topbar-spacer { flex: 1; }
 .vp-os .menu-toggle {
-  display: none;
+  display: inline-flex;
   width: 36px; height: 36px;
   border-radius: var(--r-sm);
+  border: 1px solid transparent;
   color: var(--text-2);
-  font-size: 20px;
   align-items: center;
   justify-content: center;
+  transition: color var(--t-fast), border-color var(--t-fast), background var(--t-fast), box-shadow var(--t-fast), transform var(--t-fast);
+}
+/* Premium collapse button: soft brand glow on hover; a subtle nudge and brand
+   tint while the sidebar is collapsed, so its state is legible. */
+.vp-os .menu-toggle:hover, .vp-os .menu-toggle:focus-visible {
+  color: var(--brand); border-color: var(--brand);
+  box-shadow: 0 0 0 1px var(--brand), 0 0 16px -4px var(--brand);
+}
+.vp-os.nav-collapsed .menu-toggle { color: var(--brand); }
+/* Desktop: the collapse toggle slides the fixed sidebar off-screen and lets the
+   content reclaim the full width — a smooth transition, no scroll lock. */
+@media (min-width: 769px) {
+  .vp-os.nav-collapsed .sidebar { transform: translateX(-100%); }
+  .vp-os.nav-collapsed .main { margin-left: 0; }
 }
 
 /* Topbar cmd+k hint */

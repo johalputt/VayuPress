@@ -8,7 +8,18 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
-## [3.14.81] — 2026-07-21
+## [3.14.82] — 2026-07-21
+
+### Fixed
+- **The VayuOS top-bar ☰ button now collapses the sidebar (desktop) instead of
+  freezing the page.** A regression in v3.14.80 (giving `.btn--icon` a flex
+  display) unhid the hamburger on desktop, where clicking it ran the *mobile
+  drawer* logic and locked page scroll. It is now a proper **premium sidebar
+  collapse**: on desktop it smoothly slides the sidebar off-screen and lets the
+  content reclaim the full width (state **persisted** across pages, no scroll
+  lock); on mobile it opens/closes the slide-in drawer as before. The button
+  gets the same brand-glow-on-hover as the other top-bar icons and tints while
+  collapsed so its state is legible.
 
 ### Changed
 - **Monetization is now a clean, premium, collapsible console.** The long

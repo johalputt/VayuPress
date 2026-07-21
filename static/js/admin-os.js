@@ -88,36 +88,72 @@ window.vpToast = toast;
   if (!sidebar) return;
   var overlay = $('.sidebar-overlay');
   var toggles = $$('.menu-toggle, [data-action="toggle-sidebar"]');
+  var body = document.body;
+  var desktop = window.matchMedia('(min-width: 769px)');
+  var KEY = 'vp_nav_collapsed';
 
   function setExpanded(v) {
     toggles.forEach(function (b) { b.setAttribute('aria-expanded', v ? 'true' : 'false'); });
   }
-  function open() {
+  function store(v) { try { localStorage.setItem(KEY, v ? '1' : '0'); } catch (e) {} }
+  function stored() { try { return localStorage.getItem(KEY) === '1'; } catch (e) { return false; } }
+
+  // ── Mobile: slide-in drawer (locks scroll while open) ──────────────────────
+  function openDrawer() {
     sidebar.classList.add('open');
     if (overlay) overlay.classList.add('open');
-    document.body.style.overflow = 'hidden';
+    body.style.overflow = 'hidden';
     setExpanded(true);
   }
-  function close() {
+  function closeDrawer() {
     sidebar.classList.remove('open');
     if (overlay) overlay.classList.remove('open');
-    document.body.style.overflow = '';
+    body.style.overflow = '';
     setExpanded(false);
   }
-  function toggle() { sidebar.classList.contains('open') ? close() : open(); }
+
+  // ── Desktop: collapse the sidebar (persisted; never locks scroll) ──────────
+  function setCollapsed(v) {
+    body.classList.toggle('nav-collapsed', v);
+    setExpanded(!v);
+    store(v);
+  }
+
+  function toggle() {
+    if (desktop.matches) {
+      setCollapsed(!body.classList.contains('nav-collapsed'));
+    } else {
+      sidebar.classList.contains('open') ? closeDrawer() : openDrawer();
+    }
+  }
+
+  // Restore the persisted desktop collapse state on load (desktop only).
+  if (desktop.matches && stored()) { body.classList.add('nav-collapsed'); }
+  setExpanded(!(desktop.matches && body.classList.contains('nav-collapsed')));
 
   toggles.forEach(function (b) {
     on(b, 'click', function (e) { e.preventDefault(); toggle(); });
   });
-  if (overlay) on(overlay, 'click', close);
-  $$('.sidebar .nav-link').forEach(function (a) { on(a, 'click', close); });
-  on(document, 'keydown', function (e) { if (e.key === 'Escape') close(); });
+  if (overlay) on(overlay, 'click', closeDrawer);
+  // On mobile, following a nav link closes the drawer; on desktop the sidebar
+  // stays as-is (collapsed or not) so navigation doesn't fight the toggle.
+  $$('.sidebar .nav-link').forEach(function (a) { on(a, 'click', function () { if (!desktop.matches) closeDrawer(); }); });
+  on(document, 'keydown', function (e) { if (e.key === 'Escape' && !desktop.matches) closeDrawer(); });
 
-  // Collapse the drawer (and unlock scroll) when returning to the desktop layout.
-  var mq = window.matchMedia('(min-width: 769px)');
-  var onChange = function (e) { if (e.matches) close(); };
-  if (mq.addEventListener) mq.addEventListener('change', onChange);
-  else if (mq.addListener) mq.addListener(onChange);
+  // Crossing the breakpoint: entering desktop closes any open mobile drawer and
+  // applies the persisted collapse; entering mobile drops the desktop collapse
+  // class (the drawer owns visibility there) and unlocks scroll.
+  var onChange = function (e) {
+    if (e.matches) {
+      closeDrawer();
+      body.classList.toggle('nav-collapsed', stored());
+    } else {
+      body.classList.remove('nav-collapsed');
+      body.style.overflow = '';
+    }
+  };
+  if (desktop.addEventListener) desktop.addEventListener('change', onChange);
+  else if (desktop.addListener) desktop.addListener(onChange);
 })();
 
 /* ── Bottom bar: active state + role-aware quick links ───────
