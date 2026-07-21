@@ -895,6 +895,23 @@ $$('[data-setting-key]').forEach(function (el) {
   }
   function clearTitle() { titleCount = 0; document.title = baseTitle; }
   window.addEventListener('focus', clearTitle);
+  // Live-bump the topbar notification bell so new mail shows there in real time
+  // (the bell is otherwise only recomputed on a full page render). It reflects the
+  // combined count of all notification types, so we add the new-mail delta.
+  function bumpBell(delta) {
+    var wrap = document.querySelector('[data-notif]');
+    if (!wrap) return;
+    var btn = wrap.querySelector('[data-notif-toggle]');
+    if (!btn) return;
+    var badge = wrap.querySelector('.topbar-notif__badge');
+    var cur = badge ? (parseInt((badge.textContent || '').replace(/\D/g, ''), 10) || 0) : 0;
+    var label = (cur + delta) > 99 ? '99+' : String(cur + delta);
+    if (!badge) { badge = document.createElement('span'); badge.className = 'topbar-notif__badge'; btn.appendChild(badge); }
+    badge.textContent = label;
+    btn.classList.add('topbar-notif__btn--active');
+    var head = wrap.querySelector('.topbar-notif__count');
+    if (head) head.textContent = label + ' new';
+  }
 
   function poll() {
     fetch(ENDPOINT, { headers: { 'Accept': 'application/json' } })
@@ -916,7 +933,7 @@ $$('[data-setting-key]').forEach(function (el) {
           baseline[b.address] = b.unseen;
         });
         Object.keys(baseline).forEach(function (addr) { if (!seen[addr]) delete baseline[addr]; });
-        if (totalNew > 0) bumpTitle(totalNew);
+        if (totalNew > 0) { bumpTitle(totalNew); bumpBell(totalNew); }
       })
       .catch(function () { /* offline / transient — try again next tick */ });
   }

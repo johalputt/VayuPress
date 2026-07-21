@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -80,5 +81,22 @@ func TestUnseenEndpointNonAdminNoMailbox(t *testing.T) {
 	}
 	if len(boxes) != 0 {
 		t.Fatalf("non-admin with no mailbox saw %d mailboxes, want 0: %+v", len(boxes), boxes)
+	}
+}
+
+// TestMailUnseenForViewerAdmin verifies the topbar-bell source counts unseen mail
+// (readdir-only) and points the row at the mailbox.
+func TestMailUnseenForViewerAdmin(t *testing.T) {
+	a := appWithMailAccounts(t)
+	deliverTestMail(t, a, "dana@example.com", "alice@friend.com", "Hi Dana")
+	deliverTestMail(t, a, "dana@example.com", "bob@friend.com", "Second")
+
+	ctx := context.WithValue(context.Background(), ctxUserKey, &users.User{ID: "admin1", Role: users.RoleAdmin})
+	total, href := a.mailUnseenForViewer(ctx, &osSettings{})
+	if total < 2 {
+		t.Errorf("total = %d, want >= 2 unseen", total)
+	}
+	if href != "/os/vayumail/inbox" {
+		t.Errorf("href = %q, want the mailbox directory for an admin", href)
 	}
 }

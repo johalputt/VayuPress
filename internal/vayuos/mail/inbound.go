@@ -63,6 +63,35 @@ func (m *Maildir) List(domain, username string) ([]StoredMessage, error) {
 	return out, nil
 }
 
+// Counts returns the mailbox's message total and unseen count WITHOUT reading any
+// message body — just a readdir of new/ and cur/. Unseen mirrors List's top-level
+// rule (a message in new/ is unseen; anything in cur/ is seen), so it matches the
+// MailboxSummary the mailbox directory shows, but is cheap enough to run on every
+// page render (the topbar bell) and on a short poll. A missing dir counts as 0.
+func (m *Maildir) Counts(domain, username string) (total, unseen int, err error) {
+	for _, sub := range []string{"new", "cur"} {
+		dir := filepath.Join(m.accountDir(domain, username), sub)
+		entries, derr := os.ReadDir(dir)
+		if derr != nil {
+			if os.IsNotExist(derr) {
+				continue
+			}
+			return 0, 0, derr
+		}
+		n := 0
+		for _, e := range entries {
+			if !e.IsDir() {
+				n++
+			}
+		}
+		total += n
+		if sub == "new" {
+			unseen = n
+		}
+	}
+	return total, unseen, nil
+}
+
 // ReadRaw returns the raw bytes of a stored message by its List() id
 // ("new/<name>" or "cur/<name>"). The id is validated to stay within the
 // account directory (no path traversal).
@@ -386,6 +415,40 @@ func (e *Engine) MailboxesForDomain(domain string) ([]MailboxSummary, error) {
 			}
 		}
 		out = append(out, s)
+	}
+	return out, nil
+}
+
+// Summaries is the cheap counterpart of Mailboxes for callers that only need
+// counts (the topbar notification bell, the new-mail poller) — it counts via
+// readdir and never reads a message body.
+func (e *Engine) Summaries() ([]MailboxSummary, error) {
+	return e.SummariesForDomain(e.cfg.Domain)
+}
+
+// SummariesForDomain is the cheap counterpart of MailboxesForDomain: per-account
+// total/unseen counts for one served domain, computed with readdir only (no
+// message body is ever opened), so it is safe to call on every page render and on
+// a short interval poll.
+func (e *Engine) SummariesForDomain(domain string) ([]MailboxSummary, error) {
+	if e.maildir == nil {
+		return nil, errors.New("vayumail: not started")
+	}
+	domain = strings.ToLower(strings.TrimSpace(domain))
+	if domain == "" {
+		domain = e.cfg.Domain
+	}
+	accts, err := e.maildir.Accounts(domain)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]MailboxSummary, 0, len(accts))
+	for _, u := range accts {
+		total, unseen, cerr := e.maildir.Counts(domain, u)
+		if cerr != nil {
+			continue
+		}
+		out = append(out, MailboxSummary{Username: u, Domain: domain, Total: total, Unseen: unseen})
 	}
 	return out, nil
 }

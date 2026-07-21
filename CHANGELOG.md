@@ -8,6 +8,26 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.99] — 2026-07-21
+
+### Added
+- **New mail now shows in the topbar notification bell.** The bell only surfaced
+  mail-device approvals; it now includes a **"New mail — N unread …"** row (an
+  admin sees the total across every mailbox on the primary and each mail-enabled
+  secondary domain; a staff member sees only their own), and its badge counts the
+  unread mail. Clicking the row opens the mailbox. The poller also **live-bumps
+  the bell badge** the moment new mail arrives, so the count rises without a
+  reload — the same signal that raises the desktop notification. This makes new
+  mail visible even where OS notifications are blocked or unavailable (denied
+  permission, or the http `.onion`).
+
+### Changed
+- **Unread counts are now readdir-only.** The bell and the new-mail poll no longer
+  read every message file to count unread — new `Maildir.Counts` /
+  `Engine.Summaries` / `Engine.SummariesForDomain` tally `new/`+`cur/` by
+  directory listing alone, so surfacing unread mail on every page render and on a
+  short poll stays cheap even for large mailboxes.
+
 ## [3.14.98] — 2026-07-21
 
 ### Changed

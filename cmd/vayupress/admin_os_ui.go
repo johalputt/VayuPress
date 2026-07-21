@@ -1554,6 +1554,15 @@ func (a *App) osNotifications(ctx context.Context, s *osSettings) []osNotificati
 	pendingComments := 0
 	_ = rdb.QueryRowContext(ctx, `SELECT COUNT(1) FROM comments WHERE status='pending'`).Scan(&pendingComments)
 	add("/os/comments", "Comments to review", "awaiting moderation", "comment", pendingComments)
+	// New mail waiting in the viewer's mailboxes — the count that also raises the
+	// live desktop notification (admin-os.js). Cheap readdir-only counts.
+	if unseen, href := a.mailUnseenForViewer(ctx, s); unseen > 0 {
+		noun := "unread in your mailbox"
+		if href == "/os/vayumail/inbox" {
+			noun = "unread across your mailboxes"
+		}
+		add(href, "New mail", noun, "mail", unseen)
+	}
 	// Mail devices waiting for approval to sync a mailbox (VayuMail direct-connect).
 	if a.vayuMail != nil {
 		pendingDevices := 0
