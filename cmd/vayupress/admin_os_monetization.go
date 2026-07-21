@@ -67,6 +67,11 @@ func (a *App) handleOSMonetization(w http.ResponseWriter, r *http.Request) {
 		orders, _ = a.payments.List(ctx, "", 200)
 	}
 
+	// Connect state per gateway, for the accordion summary chips.
+	stripeConnected, _ := a.stripeStatus(ctx)
+	paypalConnected, _, _, _ := a.paypalStatus(ctx)
+	btcpayConnected, _, _, _ := a.btcpayStatus(ctx)
+
 	statusBanner := ""
 	if !enabled {
 		statusBanner = `<div class="settings-callout"><strong>Payments are off.</strong> <span class="text-sm muted">Readers cannot check out until you enable the Payments module.</span> <a class="btn btn--primary btn--sm mt-2" href="/os/tools">Enable in Tools &amp; Plugins →</a></div>`
@@ -77,24 +82,9 @@ func (a *App) handleOSMonetization(w http.ResponseWriter, r *http.Request) {
 		revCurrency = currency
 	}
 
-	body := `<div class="page-header">
-  <h1>Monetization</h1>
-  <div class="page-actions"><span id="mon-status" role="status" aria-live="polite" class="text-xs muted"></span></div>
-</div>
-<p class="page-sub">Your whole revenue engine in one place — payments, membership plans, the premium mail-ID marketplace, paid posts and every order.</p>
-` + statusBanner + `
-<div class="stat-grid">
-  <div class="stat-card"><div class="stat-card__label">Revenue collected</div><div class="stat-card__value">` + html.EscapeString(priceLabel(revCurrency, stats.RevenueCents)) + `</div></div>
-  <div class="stat-card"><div class="stat-card__label">Paid members</div><div class="stat-card__value">` + strconv.Itoa(paidMembers) + `</div></div>
-  <div class="stat-card"><div class="stat-card__label">Pending orders</div><div class="stat-card__value">` + strconv.Itoa(stats.Pending) + `</div></div>
-  <div class="stat-card"><div class="stat-card__label">Premium addresses sold</div><div class="stat-card__value">` + strconv.Itoa(premiumSold) + `</div></div>
-</div>
-
-<div class="section-head"><span class="section-head__title">Payments</span><span class="section-head__hint">Cards, PayPal, crypto (anonymous-friendly) — or take payments directly. Funds always settle into your own accounts.</span></div>
-` + a.paymentGatewaysCard(nonce, ctx) + a.paypalConnectCard(nonce, ctx) + a.btcpayConnectCard(nonce, ctx) + `
-<div class="card">
+	directCard := `<div class="card">
   <div class="settings-block-title">Direct / offline payment</div>
-  <p class="text-sm muted mb-4">The dependency-free way to get paid. Publish how readers should pay (bank transfer, UPI, a payment link…); they quote their order reference, you confirm receipt above. No third-party gateway required.</p>
+  <p class="text-sm muted mb-4">The dependency-free way to get paid. Publish how readers should pay (bank transfer, UPI, a payment link…); they quote their order reference, you confirm receipt in the ledger below. No third-party gateway required.</p>
   <div class="field">
     <label class="field-label" for="mon-currency">Currency (ISO-4217)</label>
     <input id="mon-currency" class="input" type="text" maxlength="3" data-mon-key="` + settings.KeyPayCurrency + `" value="` + html.EscapeString(currency) + `" placeholder="USD" style="max-width:8rem;text-transform:uppercase">
@@ -109,9 +99,9 @@ func (a *App) handleOSMonetization(w http.ResponseWriter, r *http.Request) {
     <input id="mon-support" class="input" type="email" data-mon-key="` + settings.KeyPaySupportEmail + `" value="` + html.EscapeString(supportEmail) + `" placeholder="billing@example.com">
   </div>
   <button type="button" class="btn btn--primary btn--sm" id="mon-save-btn">Save payment settings</button>
-</div>
+</div>`
 
-<div class="card">
+	connectedCard := `<div class="card">
   <div class="settings-block-title">Connected gateway (webhook)</div>
   <p class="text-sm muted mb-4">Connect any external processor. Configure it to POST a JSON event to <code>/api/v1/payments/webhook/&lt;name&gt;</code> with an <code>X-VayuPress-Signature</code> header (hex HMAC-SHA256 of the body, using the secret below) and a <code>reference</code> field matching the order. ` + webhookStatus(webhookConfigured) + `</p>
   <div class="field">
@@ -120,17 +110,16 @@ func (a *App) handleOSMonetization(w http.ResponseWriter, r *http.Request) {
     <span class="field-hint">Stored encrypted at rest (AES-256-GCM). Used to verify every inbound gateway webhook.</span>
   </div>
   <button type="button" class="btn btn--primary btn--sm" id="mon-webhook-save">Save webhook secret</button>
-</div>
+</div>`
 
-<div class="section-head"><span class="section-head__title">Products &amp; pricing</span><span class="section-head__hint">Everything you sell — mail-IDs, paid posts, plans</span></div>
-<div class="card">
+	mailidMarketCard := `<div class="card">
   <div class="settings-block-title">Premium mail-ID marketplace</div>
   <p class="text-sm muted mb-4">Members buy premium (vanity) VayuMail addresses from their account. Live sales below — <strong>` + strconv.Itoa(gClaimed) + `</strong> active, <strong>` + strconv.Itoa(gPaid) + `</strong> awaiting activation, <strong>` + strconv.Itoa(gPending) + `</strong> awaiting payment.</p>
   ` + premiumGrantsTable(grants) + `
   <div class="mt-2"><a class="btn btn--primary btn--sm" href="/os/monetization/mailids">Manage premium IDs →</a></div>
-</div>
+</div>`
 
-<div class="card">
+	addrMarketCard := `<div class="card">
   <div class="settings-block-title">VayuMail address marketplace</div>
   <p class="text-sm muted mb-4">Premium (vanity) addresses — ultra-short handles and sought-after words — are held back from the free member claim so you can sell them. Set their price, and the terms a member must accept before any address is provisioned to them.</p>
   <div class="field">
@@ -144,9 +133,9 @@ func (a *App) handleOSMonetization(w http.ResponseWriter, r *http.Request) {
     <span class="field-hint">Shown with a required &ldquo;I agree&rdquo; checkbox on the claim form. Every acceptance is recorded (address + a hash of this text + time) as your proof of agreement. Leave blank to disable the requirement.</span>
   </div>
   <button type="button" class="btn btn--primary btn--sm" id="mon-mailid-save">Save mailbox settings</button>
-</div>
+</div>`
 
-<div class="card">
+	paidPostsCard := `<div class="card">
   <div class="settings-block-title">Paid posts</div>
   <p class="text-sm muted mb-4">Charge a one-time price for access to a single post — readers buy it (card or offline) without a subscription. Set a post's access level and price by slug; a price of 0 removes the individual sale.</p>
   <div class="field" style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:flex-end">
@@ -159,14 +148,47 @@ func (a *App) handleOSMonetization(w http.ResponseWriter, r *http.Request) {
     <button type="button" class="btn btn--primary btn--sm" id="pp-save">Set</button>
   </div>
   ` + paidPostsTable(pricedPosts, currency) + `
-</div>
+</div>`
 
-<div class="section-head"><span class="section-head__title">Orders</span><span class="section-head__hint">Every payment — memberships, mail-IDs & paid posts</span></div>
-<div class="card">
+	ordersCard := `<div class="card">
   <div class="settings-block-title">Order ledger</div>
   <p class="text-sm muted mb-4">Every checkout records an order. For offline/direct payments, confirm receipt with <strong>Mark paid</strong> — that fulfils the purchase and emails a receipt automatically.</p>
   ` + monetizationOrdersTable(orders) + `
+</div>`
+
+	body := `<div class="page-header">
+  <h1>Monetization</h1>
+  <div class="page-actions"><span id="mon-status" role="status" aria-live="polite" class="text-xs muted"></span></div>
 </div>
+<p class="page-sub">Your whole revenue engine in one place — payments, membership plans, the premium mail-ID marketplace, paid posts and every order. Tap a card to expand it.</p>
+` + statusBanner + `
+<div class="stat-grid">
+  <div class="stat-card"><div class="stat-card__label">Revenue collected</div><div class="stat-card__value">` + html.EscapeString(priceLabel(revCurrency, stats.RevenueCents)) + `</div></div>
+  <div class="stat-card"><div class="stat-card__label">Paid members</div><div class="stat-card__value">` + strconv.Itoa(paidMembers) + `</div></div>
+  <div class="stat-card"><div class="stat-card__label">Pending orders</div><div class="stat-card__value">` + strconv.Itoa(stats.Pending) + `</div></div>
+  <div class="stat-card"><div class="stat-card__label">Premium addresses sold</div><div class="stat-card__value">` + strconv.Itoa(premiumSold) + `</div></div>
+</div>
+
+<div class="section-head"><span class="section-head__title">Payment methods</span><span class="section-head__hint">Cards, PayPal, crypto (anonymous-friendly) — or take payments directly. Funds always settle into your own accounts.</span></div>
+<div class="mon-stack">` +
+		monAcc("💳", "Card payments · Stripe", "Cards, Apple&nbsp;Pay &amp; Google&nbsp;Pay via a hosted checkout", monChip(stripeConnected, "Connected", "Not set up"), false, a.paymentGatewaysCard(nonce, ctx)) +
+		monAcc("🅿️", "PayPal", "Auto-renewing subscriptions", monChip(paypalConnected, "Connected", "Not set up"), false, a.paypalConnectCard(nonce, ctx)) +
+		monAcc("🪙", "Crypto · BTCPay Server", "BTC · XMR · ETH · USDT — for anonymous / Tor buyers", monChip(btcpayConnected, "Connected", "Not set up"), false, a.btcpayConnectCard(nonce, ctx)) +
+		monAcc("🏦", "Direct / offline payment", "Bank transfer, UPI or any link — no gateway", `<span class="mon-chip mon-chip--on">● Always on</span>`, false, directCard) +
+		monAcc("🔌", "Connected gateway (webhook)", "Any external processor via a signed webhook", monChip(webhookConfigured, "Configured", "Not set up"), false, connectedCard) +
+		`</div>
+
+<div class="section-head"><span class="section-head__title">Products &amp; pricing</span><span class="section-head__hint">Everything you sell — mail-IDs, paid posts, plans</span></div>
+<div class="mon-stack">` +
+		monAcc("✉️", "Premium mail-ID marketplace", strconv.Itoa(premiumSold)+" sold · "+strconv.Itoa(gPending)+" awaiting payment", monChip(premiumSold > 0, "Live", "No sales yet"), false, mailidMarketCard) +
+		monAcc("🏷️", "VayuMail address marketplace", "Price &amp; terms for vanity addresses", `<span class="mon-chip mon-chip--on">● `+html.EscapeString(priceLabel(currency, a.premiumMailIDPriceCents(ctx)))+`</span>`, false, addrMarketCard) +
+		monAcc("📄", "Paid posts", "One-time access pricing, per post", monChip(len(pricedPosts) > 0, strconv.Itoa(len(pricedPosts))+" priced", "None yet"), false, paidPostsCard) +
+		`</div>
+
+<div class="section-head"><span class="section-head__title">Orders</span><span class="section-head__hint">Every payment — memberships, mail-IDs &amp; paid posts</span></div>
+<div class="mon-stack">` +
+		monAcc("🧾", "Order ledger", "Confirm offline payments · full history", monChip(stats.Pending > 0, strconv.Itoa(stats.Pending)+" pending", "All settled"), true, ordersCard) +
+		`</div>
 
 <div id="action-msg" role="status" aria-live="polite" class="action-msg"></div>
 <script nonce="` + nonce + `">
@@ -342,4 +364,33 @@ func webhookStatus(configured bool) string {
 		return `<strong style="color:var(--color-success,#22c55e)">A signing secret is configured.</strong>`
 	}
 	return `<strong>No signing secret set yet.</strong>`
+}
+
+// monChip renders a small connected/not-connected status pill for an accordion
+// summary, so the state of each option is readable at a glance while collapsed.
+func monChip(on bool, onLabel, offLabel string) string {
+	if on {
+		return `<span class="mon-chip mon-chip--on">● ` + html.EscapeString(onLabel) + `</span>`
+	}
+	return `<span class="mon-chip mon-chip--off">○ ` + html.EscapeString(offLabel) + `</span>`
+}
+
+// monAcc wraps a card body in a premium, animated collapsible accordion. The
+// summary carries an icon, title, one-line subtitle and a status chip; the body
+// (an existing card) reveals with a smooth fade/slide and the chevron rotates.
+// It is pure CSS (native <details>) — no JS, CSP-safe, keyboard-accessible.
+func monAcc(icon, title, subtitle, chip string, open bool, body string) string {
+	openAttr := ""
+	if open {
+		openAttr = " open"
+	}
+	return `<details class="mon-acc"` + openAttr + `>
+  <summary class="mon-acc__sum">
+    <span class="mon-acc__ic" aria-hidden="true">` + icon + `</span>
+    <span class="mon-acc__head"><span class="mon-acc__title">` + title + `</span><span class="mon-acc__sub">` + subtitle + `</span></span>
+    ` + chip + `
+    <svg class="mon-acc__chev" viewBox="0 0 20 20" width="16" height="16" fill="none" aria-hidden="true"><path d="M6 8l4 4 4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </summary>
+  <div class="mon-acc__body">` + body + `</div>
+</details>`
 }

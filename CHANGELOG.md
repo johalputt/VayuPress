@@ -8,7 +8,21 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
-## [3.14.80] — 2026-07-21
+## [3.14.81] — 2026-07-21
+
+### Changed
+- **Monetization is now a clean, premium, collapsible console.** The long
+  wall of always-open cards is gone: every payment method and product is a
+  **premium accordion** — a summary row (icon · title · one-line description ·
+  live **status chip**) that expands, with a smooth fade/slide animation and a
+  rotating chevron, to reveal its settings. At a glance you can see which
+  gateways are **Connected** vs **Not set up**, how many premium addresses have
+  **sold**, how many posts are **priced**, and how many orders are **pending** —
+  without scrolling through every form. Grouped under **Payment methods**,
+  **Products &amp; pricing** and **Orders** (the ledger stays open by default).
+  Fully responsive — the layout reflows and chips tuck away on narrow screens —
+  and pure-CSS (native `<details>`, no scripts), so it stays CSP-safe and
+  keyboard-accessible.
 
 ### Changed
 - **Top-bar icons are now uniform and premium.** The three top-bar controls

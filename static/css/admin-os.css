@@ -712,6 +712,52 @@
 }
 .vp-os .pay-guide__steps code { font-size: 0.82em; }
 
+/* ── Monetization accordions (premium · animated · responsive) ───────────────
+   Each option collapses to a summary row (icon · title · one-line subtitle ·
+   status chip); expanding reveals the existing card, chromeless, with a smooth
+   fade/slide and a rotating chevron. Native <details> — no JS, CSP-safe. */
+.vp-os .mon-stack { display: grid; gap: var(--sp-3); margin-bottom: var(--sp-6); }
+.vp-os .mon-acc {
+  border: 1px solid var(--border); border-radius: var(--r-md); background: var(--bg-surface);
+  overflow: hidden; transition: border-color var(--t-fast), box-shadow var(--t-fast);
+}
+.vp-os .mon-acc[open] { border-color: var(--border-strong); box-shadow: var(--sh-sm); }
+.vp-os .mon-acc__sum {
+  display: flex; align-items: center; gap: var(--sp-3); cursor: pointer; list-style: none;
+  padding: var(--sp-3) var(--sp-4); user-select: none;
+  transition: background var(--t-fast);
+}
+.vp-os .mon-acc__sum::-webkit-details-marker { display: none; }
+.vp-os .mon-acc__sum:hover { background: var(--bg-surface-2); }
+.vp-os .mon-acc__ic {
+  flex: none; width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center;
+  font-size: 1.05rem; border-radius: var(--r-sm); background: var(--bg-surface-2); border: 1px solid var(--border);
+}
+.vp-os .mon-acc__head { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1; }
+.vp-os .mon-acc__title { font-weight: 650; font-size: var(--text-sm); color: var(--text); }
+.vp-os .mon-acc__sub { font-size: var(--text-xs); color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vp-os .mon-acc__chev { flex: none; color: var(--text-3); transition: transform var(--t-fast); }
+.vp-os .mon-acc[open] .mon-acc__chev { transform: rotate(180deg); }
+.vp-os .mon-acc[open] .mon-acc__sum { border-bottom: 1px solid var(--border); }
+.vp-os .mon-acc__body { padding: var(--sp-4); animation: mon-reveal 0.28s cubic-bezier(0.16, 0.84, 0.44, 1); }
+@keyframes mon-reveal { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+/* The wrapped card renders chromeless — the accordion is the frame — and its
+   duplicate title + accent bar are hidden (the summary already names it). */
+.vp-os .mon-acc__body > .card { border: 0; background: transparent; box-shadow: none; padding: 0; margin: 0; }
+.vp-os .mon-acc__body > .card::before { display: none; }
+.vp-os .mon-acc__body > .card > .settings-block-title:first-child { display: none; }
+.vp-os .mon-chip {
+  flex: none; font-size: var(--text-xs); font-weight: 600; padding: 3px 9px; border-radius: var(--r-full);
+  border: 1px solid var(--border); color: var(--text-3); background: var(--bg-surface-2); white-space: nowrap;
+}
+.vp-os .mon-chip--on { color: #34d399; border-color: rgba(52, 211, 153, 0.4); background: rgba(52, 211, 153, 0.12); }
+.vp-os .mon-chip--off { color: var(--text-3); }
+@media (prefers-reduced-motion: reduce) { .vp-os .mon-acc__body { animation: none; } }
+@media (max-width: 560px) {
+  .vp-os .mon-acc__sub { white-space: normal; }
+  .vp-os .mon-chip { display: none; }
+}
+
 /* ── Cards ───────────────────────────────────────────────────── */
 .vp-os .card {
   background: var(--bg-surface);
