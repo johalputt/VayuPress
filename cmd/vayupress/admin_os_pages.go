@@ -158,7 +158,7 @@ func (a *App) handleOSPages(w http.ResponseWriter, r *http.Request) {
 <div id="page-nav-status" class="text-sm muted" role="status" aria-live="polite"></div>`
 	}
 
-	body += `<script nonce="` + nonce + `" src="/os/static/js/admin-os-pages.js"></script>
+	body += `<script nonce="` + nonce + `" src="/os/static/js/admin-os-pages.js?v=` + assetVer("js/admin-os-pages.js") + `"></script>
 <span hidden id="page-nav-seed" data-nav="` + html.EscapeString(navJSON) + `" data-footer="` + html.EscapeString(footerJSON) + `"></span>`
 
 	writeOSHTML(w, adminOSLayout(nonce, "Pages", "pages", cfg, htmpl.HTML(body)))

@@ -1384,7 +1384,7 @@ Array.prototype.forEach.call(document.querySelectorAll('.sidebar [data-copy], .w
 </script>
 ` + alpine + `<!-- Bootstrap (nonce-gated, reads data-admin-theme from body) -->
 <script src="/os/static/js/purify.min.js"></script>
-<script nonce="` + nonce + `" src="/os/static/js/admin-os.js"></script>
+<script nonce="` + nonce + `" src="/os/static/js/admin-os.js?v=` + assetVer("js/admin-os.js") + `"></script>
 </body></html>`
 }
 
@@ -2974,7 +2974,7 @@ func (a *App) handleOSEditor(w http.ResponseWriter, r *http.Request) {
 			if hasBlocks || emptyDraft {
 				body := osEditorBody(slug, art.Title, blocksJSON, authorOpts) + metaScript
 				body += `
-<script nonce="` + nonce + `" src="/os/static/js/admin-os-editor.js"></script>`
+<script nonce="` + nonce + `" src="/os/static/js/admin-os-editor.js?v=` + assetVer("js/admin-os-editor.js") + `"></script>`
 				writeOSHTML(w, adminOSLayout(nonce, "Edit Post", "editor", cfg, htmpl.HTML(body)))
 				return
 			}
@@ -2991,7 +2991,7 @@ func (a *App) handleOSEditor(w http.ResponseWriter, r *http.Request) {
 			}
 			body := osEditorBody(slug, art.Title, string(raw), authorOpts) + metaScript
 			body += `
-<script nonce="` + nonce + `" src="/os/static/js/admin-os-editor.js"></script>`
+<script nonce="` + nonce + `" src="/os/static/js/admin-os-editor.js?v=` + assetVer("js/admin-os-editor.js") + `"></script>`
 			writeOSHTML(w, adminOSLayout(nonce, "Edit Post", "editor", cfg, htmpl.HTML(body)))
 			return
 		}
@@ -3002,7 +3002,7 @@ func (a *App) handleOSEditor(w http.ResponseWriter, r *http.Request) {
 	// to /os/api/editor/save, which creates the article and returns its slug.
 	body := osEditorBody("", "", "[]", a.authorSelectOptions(r.Context(), currentUserIDOf(r))) + osEditorMetaScript("", "", time.Time{}, nil, PostMeta{})
 	body += `
-<script nonce="` + nonce + `" src="/os/static/js/admin-os-editor.js"></script>`
+<script nonce="` + nonce + `" src="/os/static/js/admin-os-editor.js?v=` + assetVer("js/admin-os-editor.js") + `"></script>`
 	writeOSHTML(w, adminOSLayout(nonce, "New Post", "editor", cfg, htmpl.HTML(body)))
 }
 

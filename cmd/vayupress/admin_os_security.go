@@ -378,7 +378,7 @@ func (a *App) handleOSSecurity(w http.ResponseWriter, r *http.Request) {
 
 	body := `<div class="page-header"><h1>Security</h1></div>
 <div class="card" data-totp-card>` + section + `</div>
-<script nonce="` + nonce + `" src="/os/static/js/admin-os-security.js"></script>`
+<script nonce="` + nonce + `" src="/os/static/js/admin-os-security.js?v=` + assetVer("js/admin-os-security.js") + `"></script>`
 
 	writeOSHTML(w, adminOSLayout(nonce, "Security", "security", cfg, htmpl.HTML(body)))
 }

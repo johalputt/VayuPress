@@ -78,7 +78,7 @@ func (a *App) handleOSThemeStore(w http.ResponseWriter, r *http.Request) {
   </div>
   <iframe class="store-preview__frame" data-store-preview-frame title="Live theme preview" loading="lazy" referrerpolicy="no-referrer"></iframe>
 </div>
-<script nonce="` + nonce + `" src="/os/static/js/admin-os-theme-store.js"></script>`
+<script nonce="` + nonce + `" src="/os/static/js/admin-os-theme-store.js?v=` + assetVer("js/admin-os-theme-store.js") + `"></script>`
 
 	writeOSHTML(w, adminOSLayout(nonce, "Theme Store", "theme-store", cfg, htmpl.HTML(body)))
 }

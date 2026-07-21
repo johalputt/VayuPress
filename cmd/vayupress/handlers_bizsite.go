@@ -247,7 +247,7 @@ func (a *App) handleOSWebsite(w http.ResponseWriter, r *http.Request) {
 	}{mode, activeTpl.Key, contentJSON})
 	b.Write(hydr)
 	b.WriteString(`</script>`)
-	b.WriteString(`<script nonce="` + nonce + `" src="/os/static/js/admin-os-website.js"></script>`)
+	b.WriteString(`<script nonce="` + nonce + `" src="/os/static/js/admin-os-website.js?v=` + assetVer("js/admin-os-website.js") + `"></script>`)
 
 	writeOSHTML(w, adminOSLayout(nonce, "Website", "website", cfg, htmpl.HTML(b.String())))
 }

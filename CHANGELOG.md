@@ -8,6 +8,22 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.14.83] — 2026-07-21
+
+### Fixed
+- **The VayuOS admin JavaScript is now cache-busted — so fixes actually reach
+  your browser after an upgrade.** The main `admin-os.js` (and several sibling
+  admin scripts) were served with a one-hour `max-age` but **no `?v=` version
+  query**, while the stylesheet already had one. That meant an upgraded server
+  kept handing the browser the *old* JavaScript: you would see restyled buttons
+  (fresh CSS) but the *old behaviour* (stale JS). This is why the previous
+  top-bar ☰ fix appeared to do nothing on phones — mobile browsers have no
+  easy "hard refresh", so they stayed pinned to the cached script. Every admin
+  script now carries a content-hash `?v=` query (matching the CSS), so a new
+  release changes the URL and the browser fetches the new code immediately.
+  Knock-on effect: the ☰ sidebar collapse **and** the sidebar's Clearnet⇄Tor
+  world switch now behave as shipped once you upgrade.
+
 ## [3.14.82] — 2026-07-21
 
 ### Fixed

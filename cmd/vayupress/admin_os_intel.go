@@ -148,7 +148,7 @@ func (a *App) handleOSSEONative(w http.ResponseWriter, r *http.Request) {
   <div class="mt-3"><button type="button" class="btn btn--primary btn--sm" data-indexnow-test>Test IndexNow now</button></div>
   <div class="seo-status mt-3" data-indexnow-result hidden></div>
 </div>
-<script nonce="` + nonce + `" src="/os/static/js/admin-os-intel.js"></script>
+<script nonce="` + nonce + `" src="/os/static/js/admin-os-intel.js?v=` + assetVer("js/admin-os-intel.js") + `"></script>
 <script nonce="` + nonce + `">
 (function(){'use strict';
 function csrf(){var m=document.cookie.match(/(?:^|;\s*)vp_csrf=([^;]+)/);return m?decodeURIComponent(m[1]):'';}
@@ -358,7 +358,7 @@ func (a *App) handleOSAnalytics(w http.ResponseWriter, r *http.Request) {
 		frag = `<div class="page-header"><h1>Analytics</h1></div>` + osPeriodSelector(days) +
 			`<div class="empty-state">Assembling analytics over ` + html.EscapeString(periodLabel) + `… this runs in the background and will appear on reload in a few seconds.</div>`
 	}
-	body := frag + "\n" + `<script nonce="` + nonce + `" src="/os/static/js/admin-os-intel.js?v=` + Version + `"></script>`
+	body := frag + "\n" + `<script nonce="` + nonce + `" src="/os/static/js/admin-os-intel.js?v=` + assetVer("js/admin-os-intel.js") + `"></script>`
 	writeOSHTML(w, adminOSLayout(nonce, "Analytics", "analytics", cfg, htmpl.HTML(body)))
 }
 

@@ -18,8 +18,8 @@ import (
 func TestOSLayoutCSPSafe(t *testing.T) {
 	out := adminOSLayout("TESTNONCE", "Dashboard", "dashboard", &osSettings{SiteName: "Demo"}, htmpl.HTML("<p>body</p>"))
 	assertCSPSafe(t, "adminOSLayout", out)
-	if !strings.Contains(out, `<script nonce="TESTNONCE" src="/os/static/js/admin-os.js"></script>`) {
-		t.Error("os layout missing nonce'd script tag")
+	if !strings.Contains(out, `<script nonce="TESTNONCE" src="/os/static/js/admin-os.js?v=`) {
+		t.Error("os layout missing nonce'd, cache-busted script tag")
 	}
 	if !strings.Contains(out, `<link rel="stylesheet" href="/os/static/css/admin-os.css?v=`) {
 		t.Error("os layout missing same-origin stylesheet link")

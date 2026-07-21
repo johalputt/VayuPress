@@ -223,7 +223,7 @@ func (a *App) handleOSTools(w http.ResponseWriter, r *http.Request) {
 </div>
 <div class="tools-grid" data-tools-grid>` + cards.String() + `</div>` +
 		pluginRegistryHTML() + `
-<script nonce="` + nonce + `" src="/os/static/js/admin-os-tools.js"></script>`
+<script nonce="` + nonce + `" src="/os/static/js/admin-os-tools.js?v=` + assetVer("js/admin-os-tools.js") + `"></script>`
 
 	writeOSHTML(w, adminOSLayout(nonce, "Tools & Plugins", "tools", cfg, htmpl.HTML(body)))
 }

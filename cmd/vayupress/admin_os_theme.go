@@ -497,7 +497,7 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
     </div>
   </div>
 </div>
-<script nonce="` + nonce + `" src="/os/static/js/admin-os-theme.js"></script>`
+<script nonce="` + nonce + `" src="/os/static/js/admin-os-theme.js?v=` + assetVer("js/admin-os-theme.js") + `"></script>`
 
 	writeOSHTML(w, adminOSLayout(nonce, "Theme Studio", "theme", cfg, htmpl.HTML(body)))
 }
