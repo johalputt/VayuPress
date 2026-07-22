@@ -4,14 +4,14 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>VayuPress — Your website, blog &amp; private mail. One sovereign binary.</title>
-  <meta name="description" content="VayuPress puts your whole online presence in one sovereign Go binary on a single VPS: a business website, a blog, and a private PGP mail server (VayuMail — SMTP/IMAP/POP3, DKIM, WKD) with an official mobile app, plus cookieless analytics and one control panel (VayuOS). Run it as two switchable worlds — a public Clearnet Space and an anonymous, web-only Tor Space (VayuOS Spaces) — and get paid with built-in monetization (your own Stripe/PayPal keys, memberships, paywalls, a premium mail-ID marketplace, member ads). SQLite-first, zero telemetry, Apache-2.0." />
+  <meta name="description" content="VayuPress puts your whole online presence in one sovereign Go binary on a single VPS: a business website, a blog, and a private PGP mail server (VayuMail — SMTP/IMAP/POP3, DKIM, WKD) with an official mobile app, ephemeral E2E chat (VayuTalk), a self-learning bot shield, a scoped API, one-click Tor .onion, a built-in MCP server for Claude (VayuMCP), and one control panel (VayuOS) — installable as a PWA in one click. Run it as two switchable worlds — a public Clearnet Space and an anonymous, web-only Tor Space — and get paid with your own Stripe, PayPal, or self-hosted BTCPay (BTC/Monero/ETH/USDT, no KYC): memberships, paywalls, a premium mail-ID marketplace, member ads. SQLite-first, zero telemetry, Apache-2.0." />
   <meta name="theme-color" content="#04060d" />
   <link rel="canonical" href="https://vayupress.com/" />
 
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://vayupress.com/" />
   <meta property="og:title" content="VayuPress — Your website, blog &amp; private mail. One binary." />
-  <meta property="og:description" content="Your whole online presence in one sovereign Go binary: a website, a blog, and a private PGP mail server (VayuMail) with an official mobile app, plus cookieless analytics and one control panel. SQLite-first, zero telemetry." />
+  <meta property="og:description" content="Your whole online presence in one sovereign Go binary: a website, a blog, a private PGP mail server (VayuMail) with an official mobile app, an MCP server for Claude, and one control panel — installable as a PWA. Get paid with Stripe, PayPal, or crypto (BTCPay). SQLite-first, zero telemetry." />
   <!-- Social share card shows the VayuPress brand mark, not a screenshot. -->
   <meta property="og:image" content="https://vayupress.com/assets/logo-dark.png" />
   <meta property="og:image:width" content="923" />
@@ -19,7 +19,7 @@
   <meta property="og:image:alt" content="VayuPress" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="VayuPress — Your website, blog &amp; private mail. One binary." />
-  <meta name="twitter:description" content="Website + blog + private PGP mail + mobile app + cookieless analytics + one control panel — all in a single sovereign Go binary. Own your content, communication, and privacy." />
+  <meta name="twitter:description" content="Website + blog + private PGP mail + mobile app + MCP server for Claude + one control panel (installable as a PWA) — all in a single sovereign Go binary. Get paid via Stripe, PayPal, or crypto." />
   <meta name="twitter:image" content="https://vayupress.com/assets/logo-dark.png" />
   <meta name="twitter:image:alt" content="VayuPress" />
 
@@ -30,7 +30,7 @@
   <script type="application/ld+json">
   {"@context":"https://schema.org","@type":"SoftwareApplication","name":"VayuPress",
    "applicationCategory":"DeveloperApplication","operatingSystem":"Linux",
-   "softwareVersion":"3.14.68","description":"A sovereign, single-VPS platform in one Go binary: a business website, a blog, a private PGP mail server (VayuMail) with an official mobile app, ephemeral end-to-end-encrypted chat (VayuTalk), built-in bot protection (VayuShield), cookieless analytics (VayuAnalytics), a fine-grained scoped API (VayuAPI), one-click Tor onion services for every domain (VayuTor), a one-click MCP connector for Claude and any MCP client (VayuMCP), and one control panel (VayuOS). Run it as two independently switchable worlds — a public Clearnet Space and a fully anonymous, web-only Tor Space (VayuOS Spaces) — and monetize with your own Stripe/PayPal keys: memberships, per-post paywalls, tier mailboxes, a premium mail-ID marketplace and member ads. Zero telemetry.",
+   "softwareVersion":"3.15.0","description":"A sovereign, single-VPS platform in one Go binary — ten products: a business website, a blog, a private PGP mail server (VayuMail) with an official mobile app, ephemeral end-to-end-encrypted chat (VayuTalk), built-in bot protection (VayuShield), cookieless analytics (VayuAnalytics), a fine-grained scoped API (VayuAPI), one-click Tor onion services for every domain (VayuTor), a one-click MCP connector for Claude and any MCP client (VayuMCP), and one control panel (VayuOS) — installable as a one-click PWA on desktop and mobile via a zero-cache service worker. Run it as two independently switchable worlds — a public Clearnet Space and a fully anonymous, web-only Tor Space (VayuOS Spaces) — and monetize with your own Stripe/PayPal keys or a self-hosted BTCPay Server (Bitcoin, Monero, Ethereum, stablecoins — no processor, no KYC): memberships, per-post paywalls, tier mailboxes, a premium mail-ID marketplace and member ads. Zero telemetry.",
    "url":"https://vayupress.com/","license":"https://www.apache.org/licenses/LICENSE-2.0",
    "offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},
    "author":{"@type":"Organization","name":"VayuPress","email":"hello@vayupress.com"}}
@@ -728,26 +728,31 @@
           <p class="text-sm text-gray-400 leading-relaxed">Auto-renewing <span class="text-gray-200">PayPal subscriptions</span> and instant <span class="text-gray-200">Stripe one-time</span> checkout over a sovereign payments ledger — idempotent fulfilment, webhook receipts, nothing rented.</p>
         </div>
         <div data-reveal style="--d:50ms" class="money-card">
+          <div class="money-ic" aria-hidden="true">₿</div>
+          <h3 class="font-display text-lg font-semibold text-white mb-2">Or take crypto</h3>
+          <p class="text-sm text-gray-400 leading-relaxed">Connect a self-hosted <span class="text-gray-200">BTCPay Server</span> and accept <span class="text-gray-200">Bitcoin, Monero, Ethereum, and stablecoins</span> — funds settle straight into your own wallet, no processor, no custody, no KYC, and it's the one rail an anonymous or Tor buyer can use.</p>
+        </div>
+        <div data-reveal style="--d:100ms" class="money-card">
           <div class="money-ic" aria-hidden="true">🏷️</div>
           <h3 class="font-display text-lg font-semibold text-white mb-2">Tiers &amp; paywalls</h3>
           <p class="text-sm text-gray-400 leading-relaxed">Sell <span class="text-gray-200">membership tiers</span> that unlock member-only posts, or drop a <span class="text-gray-200">per-post paywall</span> on any single article — a one-time unlock, remembered per member.</p>
         </div>
-        <div data-reveal style="--d:100ms" class="money-card">
+        <div data-reveal style="--d:150ms" class="money-card">
           <div class="money-ic" aria-hidden="true">📮</div>
           <h3 class="font-display text-lg font-semibold text-white mb-2">Tiers become mailboxes</h3>
           <p class="text-sm text-gray-400 leading-relaxed">Each paid tier can provision a real <span class="text-gray-200">VayuMail mailbox</span> — its own quota, an auto PGP keypair + WKD, and VayuTalk — the moment a member joins.</p>
         </div>
-        <div data-reveal style="--d:150ms" class="money-card">
+        <div data-reveal style="--d:200ms" class="money-card">
           <div class="money-ic" aria-hidden="true">✨</div>
           <h3 class="font-display text-lg font-semibold text-white mb-2">Premium mail-ID market</h3>
           <p class="text-sm text-gray-400 leading-relaxed">Sell reserved and <span class="text-gray-200">vanity addresses</span> — bought → paid entitlement → the member claims it and sets a password — with operator approve/revoke and a terms-agreement trail.</p>
         </div>
-        <div data-reveal style="--d:200ms" class="money-card">
+        <div data-reveal style="--d:250ms" class="money-card">
           <div class="money-ic" aria-hidden="true">📢</div>
           <h3 class="font-display text-lg font-semibold text-white mb-2">Members advertise</h3>
           <p class="text-sm text-gray-400 leading-relaxed">A self-serve <span class="text-gray-200">“Advertise here”</span> panel takes a flat fee and drops each image ad into an operator <span class="text-gray-200">moderation queue</span> — nothing renders until you approve it.</p>
         </div>
-        <div data-reveal style="--d:250ms" class="money-card money-card--ledger">
+        <div data-reveal style="--d:300ms" class="money-card money-card--ledger">
           <div class="money-ic" aria-hidden="true">🧾</div>
           <h3 class="font-display text-lg font-semibold text-white mb-2">One Orders ledger</h3>
           <p class="text-sm text-gray-400 leading-relaxed">Every paid section — subscriptions, premium IDs, paid posts, member ads — flows through a single auditable <span class="text-gray-200">Orders</span> ledger you can see end to end.</p>
