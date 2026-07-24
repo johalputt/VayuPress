@@ -6,7 +6,7 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
-## [Unreleased]
+## [3.15.17] — 2026-07-24
 
 ### Fixed
 - **IndexNow now works (was HTTP 422) — and is fully automatic.** The key
