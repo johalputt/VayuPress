@@ -181,6 +181,7 @@ func (a *App) handleOSMedia(w http.ResponseWriter, r *http.Request) {
   <h1>Media</h1>
   <span class="muted text-sm">` + strconv.Itoa(count) + ` items</span>
 </div>
+<p class="page-sub">Your whole media library — drag &amp; drop to upload, then copy a link or reuse any file in a post. Everything is served from your own origin.</p>
 
 <div class="media-dropzone" data-media-dropzone tabindex="0" role="button"
      aria-label="Upload media — click or drop files">

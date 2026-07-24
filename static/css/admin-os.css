@@ -749,6 +749,19 @@
 }
 .vp-os .page-actions { display: flex; gap: var(--sp-3); align-items: center; }
 
+/* Premium page subtitle under the header (Monetization-console style), shared by
+   every /os workspace page. When it directly follows a .page-header the header's
+   own bottom margin is tightened so the subtitle tucks in under the title. */
+.vp-os .page-sub {
+  margin: 0 0 var(--sp-6);
+  max-width: 78ch;
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  color: var(--text-2);
+}
+.vp-os .page-sub a { color: var(--brand); }
+.vp-os .page-header:has(+ .page-sub) { margin-bottom: var(--sp-2); }
+
 /* ── Buttons ─────────────────────────────────────────────────── */
 .vp-os .btn {
   display: inline-flex;

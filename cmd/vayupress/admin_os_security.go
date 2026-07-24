@@ -294,7 +294,8 @@ func (a *App) handleOSMembers(w http.ResponseWriter, r *http.Request) {
   </div>
 </div>`
 
-	body := `<div class="page-header"><h1>Members</h1></div>` +
+	body := `<div class="page-header"><h1>Members</h1></div>
+<p class="page-sub">Everyone in your community — memberships, tiers, your team and activity, with growth insights, all owned by you.</p>` +
 		statGrid + insightsCard + activityCard + tiersCard + teamCard + membersCard + modal +
 		`<script nonce="` + nonce + `" src="/os/static/js/admin-os-members.js?v=` + assetVer("js/admin-os-members.js") + `"></script>`
 
@@ -377,6 +378,7 @@ func (a *App) handleOSSecurity(w http.ResponseWriter, r *http.Request) {
 	}
 
 	body := `<div class="page-header"><h1>Security</h1></div>
+<p class="page-sub">Lock down your account — two-factor authentication and sign-in protection, so only you reach your workspace.</p>
 <div class="card" data-totp-card>` + section + `</div>
 <script nonce="` + nonce + `" src="/os/static/js/admin-os-security.js?v=` + assetVer("js/admin-os-security.js") + `"></script>`
 

@@ -355,8 +355,8 @@ func (a *App) handleOSProfile(w http.ResponseWriter, r *http.Request) {
 	}
 	avatarPreview += `</div>`
 
-	body := `<div class="page-header"><h1>My profile</h1>
-<span class="muted text-sm">Your public author profile — shown at <a href="/author/` + esc(authorSlug(u)) + `">/author/` + esc(authorSlug(u)) + `</a></span></div>
+	body := `<div class="page-header"><h1>My profile</h1></div>
+<p class="page-sub">Your public author profile — shown at <a href="/author/` + esc(authorSlug(u)) + `">/author/` + esc(authorSlug(u)) + `</a>.</p>
 <div class="card">
   <form data-profile-form>
     <div class="pf-head">` + avatarPreview + `<div>

@@ -2503,6 +2503,12 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
     <a class="btn btn--primary" href="/os/editor">New Post</a>
   </div>
 </div>
+<p class="page-sub">Every article in one place — search, filter by status or date, publish or unpublish inline, and see at a glance what's announced to search engines.</p>
+<div class="stat-grid mb-6">
+  <div class="stat-card"><div class="stat-card__label">Total posts</div><div class="stat-card__value">` + strconv.Itoa(allCount) + `</div><div class="stat-card__bottom"><span class="muted text-xs">across your whole catalogue</span></div></div>
+  <div class="stat-card"><div class="stat-card__label">Published</div><div class="stat-card__value">` + strconv.Itoa(published) + `</div><div class="stat-card__bottom"><span class="muted text-xs">live on your site</span></div></div>
+  <div class="stat-card"><div class="stat-card__label">Drafts</div><div class="stat-card__value">` + strconv.Itoa(drafts) + `</div><div class="stat-card__bottom"><span class="muted text-xs">not yet published</span></div></div>
+</div>
 <div class="card">
   <div class="toolbar-row">
     <form class="posts-filter" method="GET" action="/os/posts" role="search">
@@ -2734,6 +2740,7 @@ func (a *App) handleOSComments(w http.ResponseWriter, r *http.Request) {
   <h1>Comments <span class="count-pill">` + strconv.Itoa(len(all)) + `</span></h1>
   <div class="page-actions"><span class="text-sm muted"><span id="cc-sum-pending">` + strconv.Itoa(pending) + `</span> pending · <span id="cc-sum-approved">` + strconv.Itoa(approved) + `</span> approved</span></div>
 </div>
+<p class="page-sub">Moderate the conversation on your posts — approve, reply to or remove comments before they go public.</p>
 <div class="card">
   <div class="toolbar-row">
     <div class="seg-filter" role="tablist" aria-label="Filter by status">

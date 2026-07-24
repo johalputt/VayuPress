@@ -152,10 +152,10 @@ func (a *App) handleOSWebsite(w http.ResponseWriter, r *http.Request) {
 	contentJSON, _ := json.Marshal(content)
 
 	var b strings.Builder
-	b.WriteString(`<div class="page-header"><div><h1>Website</h1>` +
-		`<p class="text-sm muted">A business website at your domain — blog at blog.` + he(domain) + `, mail at mail.` + he(domain) + `. Deploy, edit and switch designs from here.</p></div>` +
+	b.WriteString(`<div class="page-header"><div><h1>Website</h1></div>` +
 		`<div class="page-actions"><a class="btn btn--ghost btn--sm" data-biz-preview href="/site?preview=` + he(activeTpl.Key) + `" target="_blank" rel="noopener">Preview ↗</a>` +
-		`<button class="btn btn--primary btn--sm" data-biz-save>Save &amp; publish</button></div></div>`)
+		`<button class="btn btn--primary btn--sm" data-biz-save>Save &amp; publish</button></div></div>` +
+		`<p class="page-sub">A business website at your domain — blog at blog.` + he(domain) + `, mail at mail.` + he(domain) + `. Deploy, edit and switch designs from here.</p>`)
 
 	// Hosting mode — explicit, never changed by updates.
 	b.WriteString(`<div class="card"><div class="card-title">What does ` + he(domain) + ` show?</div>` +

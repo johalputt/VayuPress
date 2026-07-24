@@ -324,7 +324,8 @@ func messagesHeader(count, unread int) string {
     <button type="button" class="btn btn--ghost btn--sm" data-msg-readall>Mark all read</button>
     <button type="button" class="btn btn--ghost btn--sm" data-msg-deleteread>Clear read</button>
   </div>
-</div>`
+</div>
+<p class="page-sub">Submissions from your contact forms land here — a durable record, even if email delivery fails. Search, filter, reply and export.</p>`
 }
 
 // filterClearLink renders a "Clear" link when any filter is active.

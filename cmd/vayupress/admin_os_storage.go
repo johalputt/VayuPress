@@ -174,6 +174,7 @@ func (a *App) handleOSStorage(w http.ResponseWriter, r *http.Request) {
   <h1>Storage &amp; System</h1>
   <div class="page-actions"><span class="text-sm muted">Administrator only · live readings</span></div>
 </div>
+<p class="page-sub">Live readings from your server — memory, disk and database at a glance, so you always know how much headroom you have.</p>
 
 <div class="grid grid-2 mb-6">
   <div class="card">

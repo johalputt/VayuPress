@@ -53,6 +53,7 @@ func (a *App) handleOSAds(w http.ResponseWriter, r *http.Request) {
   <h1>Advertising</h1>
   <div class="page-actions"><span id="ads-status" role="status" aria-live="polite" class="text-xs muted"></span></div>
 </div>
+<p class="page-sub">Run your own ad slots — review member submissions and place your own creatives. Sovereign and origin-served, with no third-party ad network.</p>
 ` + banner + `
 <div class="card">
   <div class="settings-block-title">Member ad submissions` + memberAdBadge(len(pendingAds)) + `</div>

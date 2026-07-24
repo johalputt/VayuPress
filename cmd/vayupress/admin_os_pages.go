@@ -113,8 +113,8 @@ func (a *App) handleOSPages(w http.ResponseWriter, r *http.Request) {
 
 	var body string
 	if len(pages) == 0 {
-		body = `<div class="page-header"><h1>Pages</h1>
-  <p class="text-sm muted">Standalone pages like About, Contact or Privacy — no date, tags or comments.</p></div>` +
+		body = `<div class="page-header"><h1>Pages</h1></div>
+<p class="page-sub">Standalone pages like About, Contact or Privacy — no date, tags or comments. Add them to your menu or footer and publish in a click.</p>` +
 			create + `
 <div class="card empty-state">
   <div class="empty-icon">📄</div>
@@ -146,8 +146,8 @@ func (a *App) handleOSPages(w http.ResponseWriter, r *http.Request) {
   </td>
 </tr>`
 		}
-		body = `<div class="page-header"><h1>Pages <span class="count-pill">` + intToStr(len(pages)) + `</span></h1>
-  <p class="text-sm muted">Standalone pages like About, Contact or Privacy — no date, tags or comments.</p></div>` +
+		body = `<div class="page-header"><h1>Pages <span class="count-pill">` + intToStr(len(pages)) + `</span></h1></div>
+<p class="page-sub">Standalone pages like About, Contact or Privacy — no date, tags or comments. Add them to your menu or footer and publish in a click.</p>` +
 			create + `
 <div class="card">
   <div class="table-wrap"><table class="table">

@@ -221,6 +221,7 @@ func (a *App) handleOSTools(w http.ResponseWriter, r *http.Request) {
     <span class="text-sm muted">Sovereign modules — all built in, zero downloads.</span>
   </div>
 </div>
+<p class="page-sub">Every capability of your install in one place — switch modules on or off and see what's active. All built in, nothing to download.</p>
 <div class="tools-grid" data-tools-grid>` + cards.String() + `</div>` +
 		pluginRegistryHTML() + `
 <script nonce="` + nonce + `" src="/os/static/js/admin-os-tools.js?v=` + assetVer("js/admin-os-tools.js") + `"></script>`

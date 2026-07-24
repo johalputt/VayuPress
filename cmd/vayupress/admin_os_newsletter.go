@@ -172,7 +172,8 @@ func (a *App) handleOSNewsletter(w http.ResponseWriter, r *http.Request) {
   <div class="page-actions">
     <a class="btn btn--ghost btn--sm" href="/os/api/newsletter/export.csv" download>Export CSV</a>
   </div>
-</div>` + banner + statGrid + growthCard + composer + historyCard + subsCard +
+</div>
+<p class="page-sub">Grow and reach your audience — track subscribers, compose a broadcast and review what you've sent, all from your own server.</p>` + banner + statGrid + growthCard + composer + historyCard + subsCard +
 		`<script nonce="` + nonce + `" src="/os/static/js/admin-os-newsletter.js?v=` + assetVer("js/admin-os-newsletter.js") + `"></script>`
 
 	writeOSHTML(w, adminOSLayout(nonce, "Newsletter", "newsletter", cfg, htmpl.HTML(body)))
