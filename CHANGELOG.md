@@ -9,6 +9,17 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 ## [Unreleased]
 
 ### Security
+- **Managed-Tor expert bundle is integrity-checked before it is executed (audit
+  L3).** VayuTor downloaded the Tor expert-bundle tarball and ran the `tor`
+  binary (and any bundled `.so`) with no checksum or signature verification —
+  fine against an ordinary network attacker (the download hosts are fixed HTTPS
+  constants) but not against a TLS compromise. The tarball is now buffered and
+  SHA-256-hashed BEFORE anything is written or made executable: set
+  `VAYUTOR_BUNDLE_SHA256` (the digest from the Tor Project's signed `sha256sums`,
+  obtained over a trusted channel) to pin it and a mismatch aborts; unpinned, the
+  observed digest is logged so it can be pinned, and `VAYUTOR_REQUIRE_VERIFIED_BUNDLE=1`
+  refuses any unpinned bundle. A bundle containing no `tor` binary (lone `.so`
+  files) is now rejected without extracting anything.
 - **PGP private keys are no longer encrypted at rest with a key derived from the
   wire-exposed API key (audit M8).** The AES-256-GCM key sealing every user's PGP
   private key was `sha256("…" || API_KEY)` — coupling the confidentiality of the

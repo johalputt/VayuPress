@@ -12,8 +12,12 @@ package vayutor
 
 import (
 	"archive/tar"
+	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -26,6 +30,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/johalputt/vayupress/internal/logging"
 )
 
 // torMinVersion is the oldest tor that can still validate the live consensus.
@@ -55,6 +61,9 @@ const (
 	// distMaxTarBytes bounds decompressed extraction (defence against a hostile
 	// or corrupt archive). A tor binary + its bundled libs is well under this.
 	distMaxTarBytes = 200 << 20
+	// distMaxDownloadBytes bounds the COMPRESSED tarball buffered in memory for
+	// hashing before extraction (audit L3). The real expert bundle is ~20 MB.
+	distMaxDownloadBytes = 100 << 20
 )
 
 // torVersion is a comparable tor version tuple (a.b.c.d).
@@ -290,27 +299,100 @@ func expertBundleURLs(ver string) []string {
 	return urls
 }
 
-// fetchAndExtractTor streams one expert-bundle tarball and extracts just the tor
-// binary and its bundled shared libraries into dir (flat, by base name — so the
-// binary finds its libs via LD_LIBRARY_PATH=dir). Returns nil only if a tor
-// binary was extracted.
+// fetchAndExtractTor downloads one expert-bundle tarball, verifies its integrity
+// (audit L3), then extracts just the tor binary and its bundled shared libraries
+// into dir (flat, by base name — so the binary finds its libs via
+// LD_LIBRARY_PATH=dir). Returns nil only if a tor binary was extracted.
+//
+// The tarball is buffered and its SHA-256 checked BEFORE anything is written or
+// made executable: an operator can pin the expected digest via
+// VAYUTOR_BUNDLE_SHA256 (obtained from the Tor Project's signed sha256sums over
+// a trusted channel), and a mismatch aborts. Without a pin the digest is logged
+// so it can be pinned, and VAYUTOR_REQUIRE_VERIFIED_BUNDLE=1 refuses any
+// unpinned bundle outright. A bundle with no tor binary (lone .so files) is
+// rejected without extracting anything.
 func fetchAndExtractTor(url, dir string) error {
+	raw, err := downloadBundle(url)
+	if err != nil {
+		return err
+	}
+	sum := sha256.Sum256(raw)
+	if err := verifyBundleIntegrity(url, hex.EncodeToString(sum[:])); err != nil {
+		return err
+	}
+	// Refuse to extract a bundle of libraries with no tor binary (a lone-.so
+	// payload) — the whole point is to run the verified tor, not arbitrary
+	// shared objects (audit L3).
+	if !tarContainsTor(raw) {
+		return errors.New("archive contained no tor binary — refusing to extract shared libraries alone")
+	}
+	return extractTorFromTar(raw, dir)
+}
+
+// downloadBundle fetches url into a bounded in-memory buffer.
+func downloadBundle(url string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), distFetchTimeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	req.Header.Set("User-Agent", "VayuTor")
 	resp, err := http.DefaultClient.Do(req) //nolint:gosec // fixed torproject.org host, HTTPS
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("GET %s: %s", url, resp.Status)
+		return nil, fmt.Errorf("GET %s: %s", url, resp.Status)
 	}
-	gz, err := gzip.NewReader(io.LimitReader(resp.Body, distMaxTarBytes))
+	return io.ReadAll(io.LimitReader(resp.Body, distMaxDownloadBytes))
+}
+
+// verifyBundleIntegrity enforces an operator-pinned SHA-256 when one is set, and
+// otherwise logs the observed digest (and, in strict mode, refuses) — audit L3.
+func verifyBundleIntegrity(url, sumHex string) error {
+	expected := strings.ToLower(strings.TrimSpace(os.Getenv("VAYUTOR_BUNDLE_SHA256")))
+	if expected != "" {
+		if subtle.ConstantTimeCompare([]byte(expected), []byte(sumHex)) != 1 {
+			return fmt.Errorf("tor bundle sha256 mismatch (got %s, pinned %s): refusing to run an unverified binary", sumHex, expected)
+		}
+		logging.LogInfo("vayutor", "tor expert bundle sha256 verified against VAYUTOR_BUNDLE_SHA256")
+		return nil
+	}
+	logging.LogWarn("vayutor", fmt.Sprintf(
+		"tor expert bundle fetched WITHOUT integrity pinning (sha256=%s from %s): set VAYUTOR_BUNDLE_SHA256 to this value — cross-checked against the Tor Project's signed sha256sums — to enforce it (audit L3)",
+		sumHex, url))
+	if v := strings.ToLower(strings.TrimSpace(os.Getenv("VAYUTOR_REQUIRE_VERIFIED_BUNDLE"))); v == "1" || v == "true" || v == "yes" {
+		return errors.New("tor bundle integrity is not pinned and VAYUTOR_REQUIRE_VERIFIED_BUNDLE is set: refusing to download and execute an unverified binary")
+	}
+	return nil
+}
+
+// tarContainsTor reports whether the gzip'd tar in raw carries a regular file
+// named "tor".
+func tarContainsTor(raw []byte) bool {
+	gz, err := gzip.NewReader(bytes.NewReader(raw))
+	if err != nil {
+		return false
+	}
+	defer func() { _ = gz.Close() }()
+	tr := tar.NewReader(gz)
+	for {
+		h, err := tr.Next()
+		if err != nil {
+			return false
+		}
+		if h.Typeflag == tar.TypeReg && filepath.Base(h.Name) == "tor" {
+			return true
+		}
+	}
+}
+
+// extractTorFromTar extracts the tor binary and its shared libraries from the
+// verified, buffered tarball into dir.
+func extractTorFromTar(raw []byte, dir string) error {
+	gz, err := gzip.NewReader(bytes.NewReader(raw))
 	if err != nil {
 		return err
 	}
