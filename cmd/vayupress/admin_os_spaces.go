@@ -54,6 +54,7 @@ func osSpacesAnonAuditCard(checks []anonaudit.Check) string {
   <div class="settings-block-title">Anonymity self-audit</div>
   <p class="text-sm muted mb-4">A live check of what is protecting your identity — and what only you can protect.</p>
   <ul class="reset-list">` + rows + `</ul>
+  <p class="text-sm muted mt-4"><a href="/docs/adr/ADR-0143-tor-space-anonymity-model" target="_blank" rel="noopener">How this works &amp; what it can't protect →</a></p>
 </div>`
 }
 
