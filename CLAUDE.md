@@ -20,6 +20,15 @@ that too — it holds the release-versioning rule).
   3. A matching `## [3.13.95] — <date>` section in `CHANGELOG.md`.
 - Ship as two commits when it reads cleaner (fix commit + release commit), but
   keep the three version files consistent within the release commit.
+- **Release only after the WHOLE plan is complete — never per step.** When
+  working through a multi-step plan (e.g. a security-audit remediation track),
+  do NOT bump the release after each individual fix. Keep every change
+  accumulating under the `## [Unreleased]` heading in `CHANGELOG.md`, and leave
+  `.release-version` / `main.go` `Version` at the last released value. Only when
+  the entire plan is done do you rename `[Unreleased]` → `[X.Y.Z]`, bump all
+  three version files in one release commit, and push. (Each individual fix still
+  lands on `main` as its own commit — only the *version bump / tag* waits for the
+  whole plan.)
 
 ## 2. Branch & push model
 
