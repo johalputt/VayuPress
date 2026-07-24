@@ -9,6 +9,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html"
 	"io"
@@ -28,17 +29,29 @@ import (
 	"github.com/johalputt/vayupress/internal/seo"
 )
 
-// oauthBaseURL returns this site's public origin (scheme://host) as seen by the
-// browser — the issuer for OAuth metadata.
+// oauthBaseURL returns this site's public origin (scheme://host) — the issuer
+// for OAuth metadata.
 //
 // The scheme is derived from the host via seo.Origin (http for a .onion, https
-// otherwise) rather than a client-supplied X-Forwarded-Proto header, which a
-// caller could otherwise spoof into the reflected issuer/endpoint metadata
-// (audit I1). The response is Cache-Control: no-store and reflection-only.
-func oauthBaseURL(r *http.Request) string {
+// otherwise) rather than a client-supplied X-Forwarded-Proto header (audit I1).
+// The host itself is trusted from the request ONLY when it resolves to a domain
+// this install actually serves, so an injected Host / X-Forwarded-Host cannot
+// steer the advertised issuer/endpoints; otherwise it falls back to the
+// configured canonical domain. This keeps per-domain issuers correct on a
+// multi-domain install while refusing arbitrary hosts. The response is
+// Cache-Control: no-store and reflection-only.
+func (a *App) oauthBaseURL(r *http.Request) string {
 	host := strings.TrimSpace(r.Host)
-	if host == "" {
-		host = config.Cfg.Domain
+	trusted := false
+	if host != "" && a != nil && a.domains != nil {
+		if _, err := a.domains.Resolve(r.Context(), host); err == nil {
+			trusted = true
+		}
+	}
+	if !trusted {
+		if d := strings.TrimSpace(config.Cfg.Domain); d != "" && d != "localhost" {
+			host = d
+		}
 	}
 	if host == "" {
 		host = "your-domain.com"
@@ -63,7 +76,7 @@ func oauthError(w http.ResponseWriter, status int, code, desc string) {
 // handleOAuthASMetadata serves RFC 8414 authorization-server metadata at
 // /.well-known/oauth-authorization-server.
 func (a *App) handleOAuthASMetadata(w http.ResponseWriter, r *http.Request) {
-	base := oauthBaseURL(r)
+	base := a.oauthBaseURL(r)
 	oauthWriteJSON(w, http.StatusOK, map[string]any{
 		"issuer":                                base,
 		"authorization_endpoint":                base + "/oauth/authorize",
@@ -80,7 +93,7 @@ func (a *App) handleOAuthASMetadata(w http.ResponseWriter, r *http.Request) {
 // handleOAuthResourceMetadata serves RFC 9728 protected-resource metadata at
 // /.well-known/oauth-protected-resource, pointing MCP clients at this AS.
 func (a *App) handleOAuthResourceMetadata(w http.ResponseWriter, r *http.Request) {
-	base := oauthBaseURL(r)
+	base := a.oauthBaseURL(r)
 	oauthWriteJSON(w, http.StatusOK, map[string]any{
 		"resource":                 base + "/mcp",
 		"authorization_servers":    []string{base},
@@ -376,12 +389,21 @@ func (a *App) oauthTokenFromRefresh(w http.ResponseWriter, r *http.Request) {
 	}
 	keyID, err := a.oauth.ExchangeRefresh(r.Context(), refresh, clientID)
 	if err != nil {
-		oauthError(w, http.StatusBadRequest, "invalid_grant", "the refresh token is invalid or already used")
+		if errors.Is(err, oauth.ErrReuse) {
+			// A rotated-out refresh token was replayed — treat it as a breach and
+			// tear the whole grant down: revoke every refresh token for the key and
+			// the access key itself (audit L9).
+			_ = a.oauth.RevokeRefreshForKey(r.Context(), keyID)
+			_ = a.apiKeys.Revoke(r.Context(), keyID)
+			dbpkg.AuditLog("oauth.refresh_reuse", "oauth:"+clientID, keyID, "grant revoked on refresh-token replay")
+		}
+		oauthError(w, http.StatusBadRequest, "invalid_grant", "the refresh token is invalid, expired, or already used")
 		return
 	}
-	// Rotate the underlying key: the old access token stops working immediately and
-	// a fresh one is returned, keeping the same grant/ownership.
-	raw, err := a.apiKeys.Rotate(r.Context(), keyID)
+	// Rotate the underlying key with a fresh bounded expiry: the old access token
+	// stops working immediately and the renewed one is short-lived again (L9).
+	exp := time.Now().Add(oauthAccessTokenTTL)
+	raw, err := a.apiKeys.RotateWithExpiry(r.Context(), keyID, &exp)
 	if err != nil {
 		oauthError(w, http.StatusBadRequest, "invalid_grant", "the connector key no longer exists")
 		return
@@ -407,7 +429,11 @@ func (a *App) oauthIssueTokens(w http.ResponseWriter, r *http.Request, clientID,
 	if label == "" {
 		label = "Claude via OAuth"
 	}
-	key, raw, err := a.apiKeys.CreateWithPermissions(r.Context(), owner, label, perms, nil, 0)
+	// Mint the access token (a scoped API key) with a short bounded lifetime so a
+	// leaked connector token is not a permanent credential (audit L9). The client
+	// renews it through the rotating refresh token.
+	exp := time.Now().Add(oauthAccessTokenTTL)
+	key, raw, err := a.apiKeys.CreateWithPermissions(r.Context(), owner, label, perms, &exp, 0)
 	if err != nil {
 		oauthError(w, http.StatusInternalServerError, "server_error", "could not mint access token")
 		return
@@ -421,10 +447,16 @@ func (a *App) oauthIssueTokens(w http.ResponseWriter, r *http.Request, clientID,
 	oauthWriteJSON(w, http.StatusOK, oauthTokenResponse(raw, refresh))
 }
 
+// oauthAccessTokenTTL bounds the lifetime of an OAuth-minted access token
+// (audit L9). Short enough that a leaked token is not a lasting credential;
+// clients renew via the rotating refresh token before it lapses.
+const oauthAccessTokenTTL = time.Hour
+
 func oauthTokenResponse(accessToken, refreshToken string) map[string]any {
 	return map[string]any{
 		"access_token":  accessToken,
 		"token_type":    "Bearer",
+		"expires_in":    int(oauthAccessTokenTTL / time.Second),
 		"refresh_token": refreshToken,
 		"scope":         "vayupress",
 	}

@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"testing"
+	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -21,7 +22,7 @@ func newTestStore(t *testing.T) *Store {
 	schema := []string{
 		`CREATE TABLE oauth_clients(client_id TEXT PRIMARY KEY, client_name TEXT NOT NULL DEFAULT '', redirect_uris TEXT NOT NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
 		`CREATE TABLE oauth_codes(code_hash TEXT PRIMARY KEY, client_id TEXT NOT NULL, redirect_uri TEXT NOT NULL, code_challenge TEXT NOT NULL, grant_caps TEXT NOT NULL, owner_user_id TEXT NOT NULL DEFAULT '', label TEXT NOT NULL DEFAULT '', expires_at DATETIME NOT NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
-		`CREATE TABLE oauth_refresh_tokens(token_hash TEXT PRIMARY KEY, client_id TEXT NOT NULL, api_key_id TEXT NOT NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
+		`CREATE TABLE oauth_refresh_tokens(token_hash TEXT PRIMARY KEY, client_id TEXT NOT NULL, api_key_id TEXT NOT NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, expires_at DATETIME, consumed_at DATETIME)`,
 	}
 	for _, s := range schema {
 		if _, err := db.Exec(s); err != nil {
@@ -214,9 +215,10 @@ func TestRefreshRotation(t *testing.T) {
 	if id, err := s.ExchangeRefresh(ctx, raw, "vpc_x"); err != nil || id != "key-1" {
 		t.Errorf("token must survive a wrong-client attempt: id=%q err=%v", id, err)
 	}
-	// ...and now it is consumed (single-use on the successful exchange).
-	if _, err := s.ExchangeRefresh(ctx, raw, "vpc_x"); err != ErrNotFound {
-		t.Errorf("refresh must be single-use after a successful exchange: got %v", err)
+	// ...and replaying the consumed token now trips reuse detection (a breach
+	// signal), returning the bound key id so the caller can revoke the grant.
+	if id, err := s.ExchangeRefresh(ctx, raw, "vpc_x"); err != ErrReuse || id != "key-1" {
+		t.Errorf("replay of a consumed refresh must be ErrReuse (key-1): id=%q err=%v", id, err)
 	}
 	// A fresh refresh token resolves to its bound key exactly once.
 	raw2, _ := s.IssueRefresh(ctx, "vpc_x", "key-1")
@@ -224,8 +226,27 @@ func TestRefreshRotation(t *testing.T) {
 	if err != nil || id != "key-1" {
 		t.Fatalf("valid refresh: id=%q err=%v", id, err)
 	}
-	if _, err := s.ExchangeRefresh(ctx, raw2, "vpc_x"); err != ErrNotFound {
-		t.Errorf("refresh replay must fail: got %v", err)
+	if _, err := s.ExchangeRefresh(ctx, raw2, "vpc_x"); err != ErrReuse {
+		t.Errorf("refresh replay must trip reuse detection: got %v", err)
+	}
+}
+
+// A refresh token past its expiry is rejected with ErrExpired and removed.
+func TestRefreshExpiry(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	raw, err := s.IssueRefresh(ctx, "vpc_x", "key-exp")
+	if err != nil {
+		t.Fatalf("issue: %v", err)
+	}
+	// Force the token past its lifetime.
+	if _, err := s.db.ExecContext(ctx,
+		`UPDATE oauth_refresh_tokens SET expires_at=? WHERE api_key_id='key-exp'`,
+		time.Now().Add(-time.Hour)); err != nil {
+		t.Fatalf("age token: %v", err)
+	}
+	if _, err := s.ExchangeRefresh(ctx, raw, "vpc_x"); err != ErrExpired {
+		t.Errorf("expired refresh must be ErrExpired: got %v", err)
 	}
 }
 

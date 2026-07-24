@@ -226,6 +226,32 @@ func (s *Store) Rotate(ctx context.Context, id string) (string, error) {
 	return raw, nil
 }
 
+// RotateWithExpiry rotates the key secret AND resets its expiry in one update.
+// The OAuth refresh flow uses it so a short-lived access token is renewed with a
+// fresh bounded lifetime on every refresh (audit L9). expiresAt nil clears any
+// expiry. Like Rotate, it refuses the internal/system key.
+func (s *Store) RotateWithExpiry(ctx context.Context, id string, expiresAt *time.Time) (string, error) {
+	if id == InternalKeyID {
+		return "", ErrInternalProtected
+	}
+	raw, prefix, err := generateToken()
+	if err != nil {
+		return "", err
+	}
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE vayu_api_keys SET key_hash=?, prefix=?, last_used_at=NULL, expires_at=? WHERE id=? AND revoked=0`,
+		hashToken(raw), prefix, expiresAt, id,
+	)
+	if err != nil {
+		return "", err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return "", ErrNotFound
+	}
+	s.invalidate()
+	return raw, nil
+}
+
 // Revoke permanently disables a key without deleting its audit row.
 func (s *Store) Revoke(ctx context.Context, id string) error {
 	if id == InternalKeyID {

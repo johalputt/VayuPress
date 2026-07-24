@@ -30,6 +30,11 @@ import (
 // Short, per OAuth 2.1 guidance — codes are single-use and consumed within seconds.
 const CodeTTL = 5 * time.Minute
 
+// RefreshTTL bounds how long a rotating refresh token remains usable (audit
+// L9). A connector that goes idle longer than this must re-consent rather than
+// hold an effectively immortal grant.
+const RefreshTTL = 30 * 24 * time.Hour
+
 var (
 	// ErrNotFound is returned when a client/code/refresh token does not exist.
 	ErrNotFound = errors.New("oauth: not found")
@@ -37,6 +42,10 @@ var (
 	ErrPKCE = errors.New("oauth: PKCE verification failed")
 	// ErrExpired is returned when an authorization code has expired.
 	ErrExpired = errors.New("oauth: authorization code expired")
+	// ErrReuse is returned when an already-consumed (rotated-out) refresh token
+	// is presented again — an OAuth 2.1 reuse-detection breach signal. The caller
+	// revokes the whole grant (audit L9).
+	ErrReuse = errors.New("oauth: refresh token reuse detected")
 	// ErrMismatch is returned when the client_id or redirect_uri on exchange does
 	// not match the values bound to the code.
 	ErrMismatch = errors.New("oauth: client_id or redirect_uri mismatch")
@@ -246,18 +255,29 @@ func (s *Store) IssueRefresh(ctx context.Context, clientID, apiKeyID string) (st
 	if err != nil {
 		return "", err
 	}
+	expiresAt := time.Now().Add(RefreshTTL)
 	if _, err := s.db.ExecContext(ctx,
-		`INSERT INTO oauth_refresh_tokens(token_hash, client_id, api_key_id) VALUES(?,?,?)`,
-		hashToken(raw), clientID, apiKeyID); err != nil {
+		`INSERT INTO oauth_refresh_tokens(token_hash, client_id, api_key_id, expires_at) VALUES(?,?,?,?)`,
+		hashToken(raw), clientID, apiKeyID, expiresAt); err != nil {
 		return "", err
 	}
+	// Opportunistic cleanup so spent/expired rows don't accumulate. A row is safe
+	// to drop only once it can no longer be replayed — i.e. past its expiry.
+	_, _ = s.db.ExecContext(ctx,
+		`DELETE FROM oauth_refresh_tokens WHERE expires_at IS NOT NULL AND expires_at < ?`, time.Now())
 	return raw, nil
 }
 
-// ExchangeRefresh consumes a refresh token (single-use, rotating): it verifies the
-// token exists and matches the client, deletes it, and returns the bound key id so
-// the host can rotate that key and issue a fresh refresh token. ErrNotFound/
-// ErrMismatch on failure.
+// ExchangeRefresh consumes a rotating refresh token: it verifies the token
+// exists, is unexpired, has not already been consumed, and matches the client;
+// it MARKS the token consumed (retaining the row so a later replay is
+// detectable) and returns the bound key id so the host can rotate that key and
+// issue a fresh refresh token.
+//
+// A replay of an already-consumed token is an OAuth 2.1 reuse-detection breach:
+// the whole token family for that key is deleted and ErrReuse is returned (with
+// the key id so the caller can revoke the access key too). ErrNotFound /
+// ErrExpired / ErrMismatch on the ordinary failures.
 func (s *Store) ExchangeRefresh(ctx context.Context, rawRefresh, clientID string) (apiKeyID string, err error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -265,23 +285,42 @@ func (s *Store) ExchangeRefresh(ctx context.Context, rawRefresh, clientID string
 	}
 	defer tx.Rollback() //nolint:errcheck
 	var boundClient string
+	var consumedAt, expiresAt sql.NullTime
 	err = tx.QueryRowContext(ctx,
-		`SELECT client_id, api_key_id FROM oauth_refresh_tokens WHERE token_hash=?`, hashToken(rawRefresh)).
-		Scan(&boundClient, &apiKeyID)
+		`SELECT client_id, api_key_id, consumed_at, expires_at FROM oauth_refresh_tokens WHERE token_hash=?`,
+		hashToken(rawRefresh)).
+		Scan(&boundClient, &apiKeyID, &consumedAt, &expiresAt)
 	if err == sql.ErrNoRows {
 		return "", ErrNotFound
 	}
 	if err != nil {
 		return "", err
 	}
-	// Verify the presenting client BEFORE consuming the token: a wrong client_id
-	// must be a harmless rejection, not destroy a valid token (a DoS otherwise, as
-	// the legitimate client's next refresh would then fail). The deferred Rollback
-	// leaves the token intact on mismatch.
+	// Verify the presenting client BEFORE mutating anything: a wrong client_id
+	// must be a harmless rejection, not destroy a valid token (a DoS otherwise).
+	// The deferred Rollback leaves the token intact on mismatch.
 	if subtle.ConstantTimeCompare([]byte(boundClient), []byte(clientID)) != 1 {
 		return "", ErrMismatch
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM oauth_refresh_tokens WHERE token_hash=?`, hashToken(rawRefresh)); err != nil {
+	// Replay of a rotated-out token → breach. Tear down the whole family (every
+	// refresh token bound to this key) and signal the caller to revoke the key.
+	if consumedAt.Valid {
+		if _, derr := tx.ExecContext(ctx, `DELETE FROM oauth_refresh_tokens WHERE api_key_id=?`, apiKeyID); derr != nil {
+			return apiKeyID, derr
+		}
+		if derr := tx.Commit(); derr != nil {
+			return apiKeyID, derr
+		}
+		return apiKeyID, ErrReuse
+	}
+	if expiresAt.Valid && !time.Now().Before(expiresAt.Time) {
+		_, _ = tx.ExecContext(ctx, `DELETE FROM oauth_refresh_tokens WHERE token_hash=?`, hashToken(rawRefresh))
+		_ = tx.Commit()
+		return "", ErrExpired
+	}
+	// Mark consumed (not deleted) so a later replay is still detectable.
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE oauth_refresh_tokens SET consumed_at=? WHERE token_hash=?`, time.Now(), hashToken(rawRefresh)); err != nil {
 		return "", err
 	}
 	if err := tx.Commit(); err != nil {

@@ -8,6 +8,25 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Security
+- **OAuth/MCP access tokens now expire and refresh tokens rotate with reuse
+  detection (audit L9).** Minted access tokens carried no expiry and the token
+  response omitted `expires_in`, so a leaked connector token was a permanent
+  full-admin credential and clients never rotated. Access tokens are now minted
+  with a bounded 1-hour lifetime and the response advertises `expires_in`; each
+  refresh rotates the underlying key AND resets its short expiry. Refresh tokens
+  gain a finite lifetime (30 days) and OAuth 2.1 reuse detection: a rotated-out
+  refresh token that is replayed is treated as a breach and revokes the entire
+  grant (all refresh tokens for the key plus the access key itself). Legacy
+  tokens issued before this change keep working until their next refresh.
+- **OAuth authorization-server metadata no longer trusts an arbitrary request
+  Host (audit I1).** The advertised `issuer`/endpoints derived their host from
+  the raw request `Host` header. The host is now trusted only when it resolves to
+  a domain this install actually serves (keeping per-domain issuers correct on a
+  multi-domain install); otherwise it falls back to the configured canonical
+  domain, so an injected `Host`/`X-Forwarded-Host` cannot steer the reflected
+  metadata. (The scheme was already fixed via `seo.Origin`.)
+
 ## [3.15.11] — 2026-07-24
 
 ### Changed

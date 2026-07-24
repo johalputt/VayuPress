@@ -83,7 +83,7 @@ func (a *App) requireMCPAuth(next http.Handler) http.Handler {
 			next.ServeHTTP(w, auth.RequestWithKeyInfo(r, ki))
 			return
 		}
-		rm := oauthBaseURL(r) + "/.well-known/oauth-protected-resource"
+		rm := a.oauthBaseURL(r) + "/.well-known/oauth-protected-resource"
 		w.Header().Set("WWW-Authenticate", `Bearer resource_metadata="`+rm+`"`)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
