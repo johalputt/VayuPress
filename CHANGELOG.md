@@ -6,7 +6,7 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
-## [Unreleased]
+## [3.15.15] — 2026-07-24
 
 ### Changed
 - **The Bot Shield & Analytics console now matches the Monetization page — clean,
