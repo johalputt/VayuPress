@@ -168,7 +168,7 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		// Pages
 		pr.Get("/os", a.handleOSDashboard)
 		pr.Get("/os/change-password", a.handleOSChangePassword)
-		pr.Post("/os/change-password", a.handleOSChangePasswordSubmit)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/change-password", a.handleOSChangePasswordSubmit)
 		pr.Get("/os/posts", a.handleOSPosts)
 		pr.Get("/os/comments", a.handleOSComments)
 		// Session-friendly comment moderation. The /api/v1/admin/comments originals
@@ -577,12 +577,13 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.Get("/os/policy", a.handlePolicyPage)
 		pr.Get("/os/adr", a.handleAdminADR)
 
-		// Operator-initiated actions — API key callers don't hold a browser session
-		// so they have no CSRF cookie. These are gated by requireSessionOrAPIKey;
-		// browser callers arriving via the panel always carry a session and are
-		// protected by the SameSite=Strict session cookie which prevents CSRF itself.
-		pr.Post("/os/api/search/reindex", a.handleOSSearchReindex)
-		pr.Post("/os/api/feed/regenerate", a.handleOSFeedRegenerate)
+		// Operator-initiated actions. API-key callers hold no browser session and
+		// bypass CSRF (auth.CSRFTokenMiddleware exempts API-key auth); these two
+		// endpoints have no browser-form caller (the panel's regenerate button hits
+		// /os/api/seo/regenerate), so wrapping them in CSRF middleware hardens the
+		// session lane without SameSite being the sole control (audit L2).
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/search/reindex", a.handleOSSearchReindex)
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/feed/regenerate", a.handleOSFeedRegenerate)
 	})
 
 	// Redirect bare /os/* to dashboard if hitting unknown paths
@@ -1821,8 +1822,15 @@ func (a *App) handleOSChangePassword(w http.ResponseWriter, r *http.Request) {
 	if u != nil {
 		em = u.Email
 	}
+	// Mint a CSRF token and set it as the double-submit cookie so the form POST is
+	// protected (audit M2). The cookie is host-only (no Domain), so a same-site
+	// subdomain foothold cannot read it to forge the token.
+	token := auth.GenerateCSRFToken()
+	if token != "" {
+		http.SetCookie(w, &http.Cookie{Name: "vp_csrf", Value: token, Path: "/", SameSite: http.SameSiteStrictMode, HttpOnly: false, Secure: auth.CSRFCookieSecure(), MaxAge: 3600})
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = w.Write([]byte(osChangePasswordPage(em, "")))
+	_, _ = w.Write([]byte(osChangePasswordPage(em, "", token)))
 }
 
 // handleOSChangePasswordSubmit sets a new password for the signed-in user and
@@ -1838,9 +1846,15 @@ func (a *App) handleOSChangePasswordSubmit(w http.ResponseWriter, r *http.Reques
 	_ = r.ParseForm()
 	pass := r.FormValue("password")
 	confirm := r.FormValue("confirm")
+	// Re-embed the still-valid CSRF token from the cookie so a validation-error
+	// re-render can be resubmitted without a fresh page load.
+	csrf := ""
+	if c, cerr := r.Cookie("vp_csrf"); cerr == nil {
+		csrf = c.Value
+	}
 	render := func(msg string) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte(osChangePasswordPage(u.Email, msg)))
+		_, _ = w.Write([]byte(osChangePasswordPage(u.Email, msg, csrf)))
 	}
 	if len(pass) < 8 {
 		render("Password must be at least 8 characters.")
@@ -1861,7 +1875,7 @@ func (a *App) handleOSChangePasswordSubmit(w http.ResponseWriter, r *http.Reques
 // osChangePasswordPage renders the forced password-change form. Self-contained
 // (reuses the login page chrome); the only inline script is the nonce'd one in
 // the shared shell, so no CSP exception is needed.
-func osChangePasswordPage(email, msg string) string {
+func osChangePasswordPage(email, msg, csrf string) string {
 	banner := ""
 	if msg != "" {
 		banner = `<div class="login-error" role="alert">` + html.EscapeString(msg) + `</div>`
@@ -1876,6 +1890,7 @@ func osChangePasswordPage(email, msg string) string {
     <p class="login-sub">You're signing in with the default administrator password. Choose a new one to continue.</p>
     `+banner+`
     <form class="login-form" method="POST" action="/os/change-password" novalidate>
+      <input type="hidden" name="csrf_token" value="`+html.EscapeString(csrf)+`">
       <div class="field">
         <label class="field-label" for="cp-email">Account</label>
         <input id="cp-email" class="input" type="email" value="`+html.EscapeString(email)+`" readonly>

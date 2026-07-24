@@ -8,6 +8,20 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.15.8] — 2026-07-24
+
+### Security
+- **The operator password-change form is now CSRF-protected.** `/os/change-password`
+  relied on `SameSite=Strict` alone, so a foothold on a same-registrable-site
+  subdomain could auto-submit a silent password reset. The form now carries a
+  double-submit CSRF token (host-only cookie a subdomain cannot read) validated by
+  `CSRFTokenMiddleware`.
+- **Two more session-authenticated `/os` mutations now require a CSRF token.**
+  `/os/api/search/reindex` and `/os/api/feed/regenerate` were registered without
+  CSRF middleware, relying on `SameSite=Strict` only; both are now wrapped
+  (API-key callers are exempt as before, and neither has a browser-form caller —
+  the panel's regenerate button targets `/os/api/seo/regenerate`).
+
 ## [3.15.7] — 2026-07-24
 
 ### Security
