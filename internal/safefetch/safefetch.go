@@ -22,6 +22,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -114,6 +115,24 @@ func (c *Client) transport() *http.Transport {
 	return SafeTransport(TransportOptions{})
 }
 
+// blockClearnetEgress, when true, makes every SafeTransport dial refuse any
+// non-allowlisted (public) destination. This is the fail-closed anti-leak rule
+// for a Tor Space (ADR-0141): safefetch is the DIRECT clearnet dialer (Proxy=nil,
+// dials the resolved public IP), so in OnionMode a direct dial to any public host
+// is a deanonymising leak — a webhook, image import, or embed unfurl would open a
+// clearnet connection from the onion server's real IP. Loopback AllowHosts
+// (Meilisearch/Ollama) still work; anything that legitimately needs onion egress
+// must use the Tor transport instead. This one flag centrally closes every
+// current and future safefetch clearnet callsite in a Tor Space.
+var blockClearnetEgress atomic.Bool
+
+// SetBlockClearnetEgress toggles the Tor-Space anti-leak guard. The app sets it
+// once at boot from config.Cfg.OnionMode.
+func SetBlockClearnetEgress(block bool) { blockClearnetEgress.Store(block) }
+
+// ClearnetEgressBlocked reports whether clearnet egress is currently blocked.
+func ClearnetEgressBlocked() bool { return blockClearnetEgress.Load() }
+
 // TransportOptions configures SafeTransport.
 type TransportOptions struct {
 	// AllowHosts lists hostnames / IP literals that may resolve to a private or
@@ -155,6 +174,11 @@ func SafeTransport(opts TransportOptions) *http.Transport {
 		// given, without the public-IP requirement.
 		if allow[strings.ToLower(host)] {
 			return base.DialContext(ctx, network, addr)
+		}
+		// Tor-Space anti-leak (ADR-0141): a direct dial to any non-allowlisted host
+		// leaks the onion server's real IP. Fail closed.
+		if blockClearnetEgress.Load() {
+			return nil, fmt.Errorf("%w: clearnet egress is disabled in Tor mode", ErrBlockedAddress)
 		}
 		ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
 		if err != nil {

@@ -566,9 +566,18 @@ func InitCSRFSecret() {
 // attribute. It is the single source of truth shared by the auth package and
 // the cmd layer (audit F-7). Override with CSRF_SECURE_COOKIE=true|false;
 // otherwise Secure is set whenever the site is not served on localhost.
+//
+// In a Tor Space (OnionMode, ADR-0141) the site is served over plain http on the
+// .onion, so a Secure cookie would be silently dropped by the browser — breaking
+// sign-in and CSRF. OnionMode therefore forces Secure off (audit L1), matching
+// the request-aware tor-world proxy cookie and CLAUDE.md §8 ("no Secure cookie").
+// An explicit CSRF_SECURE_COOKIE override still wins for unusual topologies.
 func CSRFCookieSecure() bool {
 	if v := os.Getenv("CSRF_SECURE_COOKIE"); v != "" {
 		return v == "true"
+	}
+	if config.Cfg.OnionMode {
+		return false
 	}
 	return config.Cfg.Domain != "localhost"
 }

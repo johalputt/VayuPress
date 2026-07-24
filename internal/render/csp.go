@@ -17,22 +17,32 @@ import (
 	"github.com/johalputt/vayupress/internal/config"
 )
 
-// cspOnionImgSrc is the img-src used in a Tor/anonymous Space: no external https
-// origin, so a reader's Tor Browser can never fetch an off-onion image and leak
-// its IP. cspClearnetImgSrc is the clearnet baseline (hotlinking allowed).
-const (
-	cspClearnetImgSrc = "img-src 'self' data: https:"
-	cspOnionImgSrc    = "img-src 'self' data:"
-)
-
-// applyOnionCSP tightens a built CSP for Tor/anonymous mode (ADR-0141): it strips
-// external https from img-src. In clearnet mode it returns the policy unchanged,
-// so clearnet Spaces are byte-identical.
+// applyOnionCSP is the single CSP chokepoint for Tor/anonymous mode (ADR-0141).
+// In OnionMode it removes EVERY external origin from EVERY directive — the bare
+// `https:` img scheme and any `https://…`/`http://…` source (video embeds, ad
+// networks, anything) — so an onion page can never emit a directive that lets a
+// reader's Tor Browser reach off-onion and leak its IP. Both BuildCSP and
+// BuildAdCSP pass through here, so a new page type or ad integration cannot
+// reintroduce a clearnet origin into a Tor Space (enforced by
+// TestApplyOnionCSPStripsAllExternalOrigins). In clearnet mode the policy is
+// returned unchanged, so clearnet Spaces stay byte-identical.
 func applyOnionCSP(csp string) string {
-	if config.Cfg.OnionMode {
-		return strings.Replace(csp, cspClearnetImgSrc, cspOnionImgSrc, 1)
+	if !config.Cfg.OnionMode {
+		return csp
 	}
-	return csp
+	directives := strings.Split(csp, ";")
+	for i, d := range directives {
+		fields := strings.Fields(d)
+		kept := fields[:0]
+		for _, f := range fields {
+			if f == "https:" || strings.HasPrefix(f, "https://") || strings.HasPrefix(f, "http://") {
+				continue // drop external scheme / origin — no off-onion egress
+			}
+			kept = append(kept, f)
+		}
+		directives[i] = strings.Join(kept, " ")
+	}
+	return strings.Join(directives, "; ")
 }
 
 // privacyFrameOrigins maps a provider key to its cookie-free embed origin. These
@@ -148,9 +158,14 @@ func BuildAdCSP(nonce string, frameOrigins []string) string {
 	frames := append([]string{}, adFrameOrigins...)
 	frames = append(frames, validFrameOrigins(frameOrigins)...)
 	frameSrc := "frame-src 'self' " + strings.Join(dedupeSorted(frames), " ")
-	return "default-src 'self'; font-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'; " +
+	// Route through applyOnionCSP so a Tor Space strips every Google ad origin
+	// (script/frame/img/connect) — the ad loader is CSP-blocked and never leaks
+	// the reader's IP to Google (audit M6). injectArticleAds/injectHomeAds also
+	// skip AdSense entirely in OnionMode, so this is the backstop, not the only
+	// guard.
+	return applyOnionCSP("default-src 'self'; font-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'; " +
 		scriptSrc + "; " + imgSrc + "; " + connectSrc + "; " + frameSrc + "; " +
-		"frame-ancestors 'none'; base-uri 'self'; form-action 'self'; report-uri /csp-report"
+		"frame-ancestors 'none'; base-uri 'self'; form-action 'self'; report-uri /csp-report")
 }
 
 // dedupeSorted returns the input de-duplicated and sorted (stable output).

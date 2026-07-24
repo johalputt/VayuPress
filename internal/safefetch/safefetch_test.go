@@ -10,6 +10,29 @@ import (
 	"testing"
 )
 
+// TestSafeTransportEgressKillSwitch verifies the Tor-Space anti-leak chokepoint
+// (audit H3/M7): when clearnet egress is blocked, every non-allowlisted host is
+// refused with ErrBlockedAddress BEFORE any DNS/dial, while allowlisted loopback
+// services still connect (so a local Meili/Ollama keeps working).
+func TestSafeTransportEgressKillSwitch(t *testing.T) {
+	SetBlockClearnetEgress(true)
+	defer SetBlockClearnetEgress(false)
+	if !ClearnetEgressBlocked() {
+		t.Fatal("ClearnetEgressBlocked() should be true after SetBlockClearnetEgress(true)")
+	}
+	tr := SafeTransport(TransportOptions{AllowHosts: []string{"127.0.0.1"}})
+
+	// A public host must be refused with the block error, and no network touched.
+	if _, err := tr.DialContext(context.Background(), "tcp", "example.com:443"); !errors.Is(err, ErrBlockedAddress) {
+		t.Fatalf("blocked egress: want ErrBlockedAddress for public host, got %v", err)
+	}
+	// An allowlisted loopback host bypasses the kill-switch (it will fail to
+	// connect to a closed port, but NOT with the block error).
+	if _, err := tr.DialContext(context.Background(), "tcp", "127.0.0.1:1"); errors.Is(err, ErrBlockedAddress) {
+		t.Fatal("allowlisted loopback must bypass the egress kill-switch")
+	}
+}
+
 func TestIsPrivateOrReservedIP(t *testing.T) {
 	blocked := []string{
 		"127.0.0.1", "::1", "10.0.0.1", "192.168.1.1", "172.16.0.1",

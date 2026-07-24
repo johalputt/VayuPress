@@ -270,6 +270,16 @@ func (a *App) dispatchWebhook(event string, payload interface{}) {
 	if a.webhooks == nil {
 		return
 	}
+	// Tor/anonymous mode (ADR-0141): a Tor Space must make NO clearnet callback.
+	// A webhook delivery opens a direct clearnet TCP connection from the server's
+	// real IP to the (clearnet) webhook host, correlating the anonymous onion's
+	// publish/payment timeline with that IP — the same deanonymisation the sibling
+	// shareToSocial/purgeCloudflare/pingIndexNow guards prevent. Suppress delivery
+	// here (avoids even spawning the goroutine); safefetch's egress kill-switch is
+	// the transport-level backstop for anything that slips past a call-site guard.
+	if config.Cfg.OnionMode {
+		return
+	}
 	go a.webhooks.Dispatch(context.Background(), event, payload)
 }
 

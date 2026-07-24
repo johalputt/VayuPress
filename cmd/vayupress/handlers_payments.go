@@ -55,7 +55,16 @@ func (a *App) adsEnabled(ctx context.Context) bool {
 
 // googleAdsEnabled reports whether the Google AdSense module is on AND a
 // publisher id is configured (both are required to emit any AdSense markup).
+//
+// Never true in a Tor Space (ADR-0141): AdSense loads executable code and
+// beacons directly from Google, which would send a reader's real IP to Google on
+// page load and deanonymise them — so a Tor Space emits no AdSense loader or unit
+// regardless of settings (audit M6). Self-hosted / house ads are unaffected. This
+// is the injection-side chokepoint; applyOnionCSP is the CSP backstop.
 func (a *App) googleAdsEnabled(ctx context.Context) bool {
+	if config.Cfg.OnionMode {
+		return false
+	}
 	return a.siteSettings != nil && a.siteSettings.FeatureEnabled(ctx, settings.KeyFeatureGoogleAds) && a.adsenseClient(ctx) != ""
 }
 

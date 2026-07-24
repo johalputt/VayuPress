@@ -8,6 +8,32 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.15.2] — 2026-07-24
+
+### Security
+- **Central egress kill-switch for a Tor Space (ADR-0141 anti-leak).** A Tor
+  Space must make no clearnet callback, yet several outbound paths were not
+  OnionMode-gated — most importantly outbound **webhooks**, which fired on
+  publish/payment events and opened a direct clearnet connection from the onion
+  server's real IP, letting the receiver (or a passive observer) correlate the
+  anonymous onion's timeline with that IP. Egress is now blocked in two places:
+  `dispatchWebhook` short-circuits in OnionMode, and — the real chokepoint — the
+  shared `safefetch` dialer refuses **every** non-allowlisted (public) host when
+  OnionMode is armed at boot. That single guard fails closed for webhooks, remote
+  image import, embed unfurl, and any future `safefetch` caller (loopback
+  services like Meilisearch/Ollama still work).
+- **Onion CSP now strips every external origin, not just images.** `applyOnionCSP`
+  is the single CSP chokepoint: in a Tor Space it removes every `https://…`/
+  `http://…` source and the bare `https:` scheme from **every** directive, and
+  `BuildAdCSP` now routes through it — so a video-embed `frame-src` or a Google
+  AdSense origin can no longer appear in a Tor Space's policy and leak a reader's
+  IP. Google AdSense injection is also disabled outright in OnionMode (no loader,
+  no unit); self-hosted/house ads are unaffected.
+- **Auth/CSRF cookie `Secure` flag is OnionMode-aware.** On the plain-http
+  `.onion` a Secure cookie is silently dropped by the browser (breaking sign-in
+  and CSRF); OnionMode now forces `Secure` off for the auth/CSRF cookies, instead
+  of relying on a global override that also weakened clearnet.
+
 ## [3.15.1] — 2026-07-24
 
 ### Security

@@ -62,6 +62,7 @@ import (
 	"github.com/johalputt/vayupress/internal/redirects"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/resource"
+	"github.com/johalputt/vayupress/internal/safefetch"
 	"github.com/johalputt/vayupress/internal/scheduler"
 	"github.com/johalputt/vayupress/internal/search"
 	"github.com/johalputt/vayupress/internal/secrets"
@@ -81,7 +82,7 @@ import (
 // -ldflags "-X main.Version=<.release-version>", and scripts/update-vayupress.sh
 // reads .release-version too — keep this in sync with .release-version so an
 // un-stamped `go build` still reports an honest version.
-var Version = "3.15.1"
+var Version = "3.15.2"
 var bootTime = time.Now()
 
 // onionSafeBindAddr picks the HTTP listen address (ADR-0141). A Tor Space
@@ -610,7 +611,11 @@ func main() {
 	a.scheduler = scheduler.New(dbpkg.DB)
 
 	// Announce the install's world (ADR-0141). Tor/anonymous mode suppresses every
-	// clearnet callback (IndexNow, social auto-post, Cloudflare purge, …).
+	// clearnet callback (IndexNow, social auto-post, Cloudflare purge, …) and arms
+	// the central safefetch egress kill-switch, so EVERY server-side outbound fetch
+	// (webhooks, remote-image import, embed unfurl, and any future caller) fails
+	// closed rather than dialing a clearnet host from the onion server's real IP.
+	safefetch.SetBlockClearnetEgress(config.Cfg.OnionMode)
 	if config.Cfg.OnionMode {
 		logging.LogInfo("vayuos", "VAYUOS_MODE=tor — anonymous Tor Space: clearnet callbacks disabled")
 	}
