@@ -119,7 +119,7 @@ func (p *Prefilter) Check(ip string, pressure bool) bool {
 	p.globalCur.Add(1)
 
 	kh := hash64(ip)
-	sh := hash64(subnetOf(ip))
+	sh := subnetHash(ip)
 	e := int(p.epoch.Load()) // single load so cur/prev stay a consistent pair
 	cur := &p.epochs[e&1]
 	prev := &p.epochs[(e+1)&1]
@@ -197,31 +197,60 @@ func bumpAndEstimate(cur, prev *[depth * width]atomic.Uint32, h uint64) uint32 {
 	return est
 }
 
+const (
+	fnvOffset uint64 = 14695981039346656037
+	fnvPrime  uint64 = 1099511628211
+)
+
 // hash64 is FNV-1a 64 inlined over the key bytes (no allocation).
 func hash64(s string) uint64 {
-	h := uint64(14695981039346656037)
+	h := fnvOffset
 	for i := 0; i < len(s); i++ {
 		h ^= uint64(s[i])
-		h *= 1099511628211
+		h *= fnvPrime
 	}
 	return h
 }
 
-// subnetOf maps an IP to its network group: /24 for IPv4, /48 for IPv6 —
-// the granularity at which botnets and cloud scrapers cluster. Unparseable
-// input groups under itself (still bounded: it's just another sketch key).
-func subnetOf(ip string) string {
+// subnetHash maps an IP to the sketch key for its network group — /24 for IPv4,
+// /48 for IPv6, the granularity at which botnets and cloud scrapers cluster —
+// and hashes it directly from the address bytes with a distinguishing group tag.
+// This is the allocation-free replacement for hash64(subnetOf(ip)): it runs on
+// EVERY non-verified request, so building a "g/1.2.3.0/24" string and re-hashing
+// it per request was pure GC pressure on the hot path. The 'g' tag guarantees a
+// subnet key can never collide with the exact-IP key hash64(ip). Unparseable
+// input groups under a tagged hash of itself (still a bounded sketch key).
+func subnetHash(ip string) uint64 {
 	addr, err := netip.ParseAddr(ip)
 	if err != nil {
-		return "g/" + ip
+		h := fnvOffset
+		h ^= 'g'
+		h *= fnvPrime
+		for i := 0; i < len(ip); i++ {
+			h ^= uint64(ip[i])
+			h *= fnvPrime
+		}
+		return h
 	}
-	bits := 48
+	h := fnvOffset
+	h ^= 'g'
+	h *= fnvPrime
 	if addr.Is4() || addr.Is4In6() {
-		bits = 24
+		a := addr.As4() // stack array, no heap alloc
+		h ^= 4          // family tag
+		h *= fnvPrime
+		for i := 0; i < 3; i++ { // /24 = first 3 octets
+			h ^= uint64(a[i])
+			h *= fnvPrime
+		}
+		return h
 	}
-	pfx, err := addr.Prefix(bits)
-	if err != nil {
-		return "g/" + ip
+	a := addr.As16()
+	h ^= 6 // family tag
+	h *= fnvPrime
+	for i := 0; i < 6; i++ { // /48 = first 6 bytes
+		h ^= uint64(a[i])
+		h *= fnvPrime
 	}
-	return "g/" + pfx.String()
+	return h
 }

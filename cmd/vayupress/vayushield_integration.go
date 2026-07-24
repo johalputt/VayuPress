@@ -170,10 +170,16 @@ func (a *App) bootVayuShield() {
 		// distinct-IP swarm that fills the public lane without spiking per-second
 		// RPS — so unproven traffic is met with a cheap challenge instead of blind
 		// shedding, and real browsers prove in to the priority lane. Zero config.
-		SurgePressureFn: func() bool {
+		// Debounced via surgeHysteresis so a brief legitimate spike (a post going
+		// viral) does not instantly challenge real readers: engage only after the
+		// lane stays >=90% full for a short dwell, and relax below 75%.
+		SurgePressureFn: newSurgeHysteresis(func() (int, int) {
 			g := a.sovereign
-			return g != nil && g.Inflight()*10 >= g.Cap()*9
-		},
+			if g == nil {
+				return 0, 0
+			}
+			return int(g.Inflight()), int(g.Cap())
+		}, 2*time.Second).pressured,
 		// Spoof-proof crawler recognition for the gate-0 SEO fast path: a real
 		// Googlebot/Bingbot/GPTBot (IP-verified) is served content before every
 		// availability gate; a UA merely CLAIMING to be a crawler from an IP that

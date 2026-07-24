@@ -146,16 +146,44 @@ func TestShedProbCurve(t *testing.T) {
 	}
 }
 
-func TestSubnetOf(t *testing.T) {
-	cases := map[string]string{
-		"192.0.2.55":          "g/192.0.2.0/24",
-		"2001:db8:abcd:12::7": "g/2001:db8:abcd::/48",
-		"not-an-ip":           "g/not-an-ip",
+func TestSubnetHash(t *testing.T) {
+	// Same /24 -> same group key; different /24 -> different key.
+	if subnetHash("192.0.2.55") != subnetHash("192.0.2.99") {
+		t.Fatal("IPs in the same /24 must hash to the same subnet group")
 	}
-	for in, want := range cases {
-		if got := subnetOf(in); got != want {
-			t.Fatalf("subnetOf(%q) = %q, want %q", in, got, want)
-		}
+	if subnetHash("192.0.2.55") == subnetHash("192.0.3.55") {
+		t.Fatal("IPs in different /24s must hash to different subnet groups")
+	}
+	// Same /48 -> same group key; different /48 -> different key.
+	if subnetHash("2001:db8:abcd:12::7") != subnetHash("2001:db8:abcd:99::1") {
+		t.Fatal("IPs in the same /48 must hash to the same subnet group")
+	}
+	if subnetHash("2001:db8:abcd:12::7") == subnetHash("2001:db8:ffff:12::7") {
+		t.Fatal("IPs in different /48s must hash to different subnet groups")
+	}
+	// A subnet key must never collide with the exact-IP key for the same input —
+	// otherwise the per-IP and per-subnet sketch counters would double-count.
+	if subnetHash("192.0.2.55") == hash64("192.0.2.55") {
+		t.Fatal("subnet key must be distinct from the exact-IP key")
+	}
+	// Unparseable input still yields a bounded, distinct key (not colliding with
+	// its own exact-IP key, and different unparseable inputs stay separable).
+	if subnetHash("not-an-ip") == hash64("not-an-ip") {
+		t.Fatal("unparseable subnet key must still be distinct from its IP key")
+	}
+	if subnetHash("not-an-ip") == subnetHash("also-not-an-ip") {
+		t.Fatal("distinct unparseable inputs must not collide")
+	}
+}
+
+// TestSubnetHashNoAlloc guards the hot-path promise: computing a subnet group
+// key must not allocate (the whole point of replacing the "g/…/24" string).
+func TestSubnetHashNoAlloc(t *testing.T) {
+	if n := testing.AllocsPerRun(100, func() {
+		_ = subnetHash("192.0.2.55")
+		_ = subnetHash("2001:db8:abcd:12::7")
+	}); n != 0 {
+		t.Fatalf("subnetHash must be allocation-free, got %v allocs/op", n)
 	}
 }
 

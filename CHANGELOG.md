@@ -8,6 +8,24 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Performance
+- **VayuShield hot-path hardening — lower TTFB under load (phase 3/5).** Three
+  changes remove per-request cost so a busy blog stays butter-smooth:
+  - The L2 fair-shed pre-filter computed a fresh `"g/1.2.3.0/24"` string and
+    re-hashed it on **every** non-verified request just to key the subnet sketch.
+    It now hashes the network group directly from the address bytes
+    (`subnetHash`) — **zero allocation** on the hot path (guarded by an
+    `AllocsPerRun` test).
+  - The TLS-fingerprint capture store used a single global mutex, serialising
+    exactly the traffic a flood produces; it is now sharded into 64
+    independently-locked stripes (matching the reputation/signature caches).
+  - Auto Sovereign Surge is now debounced with a hysteresis band
+    (`surgeHysteresis`): it engages only after the L0 lane stays ≥90% full for a
+    short dwell and relaxes below 75%, so a brief legitimate spike (a post going
+    viral) never trips a site-wide browser check for real readers. A sustained
+    flood still engages it, and recognised crawlers bypass surge entirely (phase
+    1). The 5-second tarpit remains off by default.
+
 ### Added
 - **Verified-bot engine — crawlers are authenticated by identity, not a
   spoofable User-Agent (VayuShield hardening, phase 2/5).** New
