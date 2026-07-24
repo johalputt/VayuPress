@@ -6,6 +6,31 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased]
+
+### Fixed
+- **VayuShield no longer throttles your whole audience behind Cloudflare/CDN
+  (critical).** When a site is proxied through Cloudflare, every request reaches
+  the origin from one of Cloudflare's edge IPs, so VayuShield saw the entire
+  audience as a handful of IPs — that pool instantly blew past the per-IP rate
+  limit, auto-block jailed the Cloudflare IP, and **every real visitor got the
+  "Just a moment" throttle page in a loop.** A new **"Behind Cloudflare / a CDN"**
+  toggle (VayuOS → Bot Shield → Availability & anti-DDoS, or `TRUST_CLOUDFLARE=1`)
+  makes the origin read each real visitor's IP from `CF-Connecting-IP` /
+  `True-Client-IP`, so rate-limiting, reputation and lockout apply per visitor.
+  Only genuine Cloudflare edge ranges are trusted, so the header cannot be
+  spoofed from a direct connection. Applies live, no restart.
+
+### Security
+- **Auth/session and CSRF cookies now always carry `Secure` (resolves the CodeQL
+  "Secure attribute is not set to true" findings).** The earlier OnionMode
+  exception was based on a wrong premise: clearnet is HTTPS, and a Tor Space is
+  served only to Tor Browser, which treats a v3 `.onion` as a
+  potentially-trustworthy origin and therefore stores/sends `Secure` cookies over
+  the http onion. `auth.CSRFCookieSecure` is now unconditionally true, so there
+  is no transport on which a real client drops the cookie and no runtime
+  exception for a static analyzer to flag.
+
 ## [3.15.15] — 2026-07-24
 
 ### Changed

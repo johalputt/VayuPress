@@ -195,6 +195,58 @@ func TestClientIPIgnoresSpoofedHeadersFromUntrustedPeer(t *testing.T) {
 	}
 }
 
+// TestClientIPBehindCloudflare verifies the "behind Cloudflare/CDN" fix: with
+// Cloudflare trust ON, the real visitor IP is taken from CF-Connecting-IP when
+// the peer is a genuine Cloudflare edge — so per-visitor rate limiting works
+// instead of pooling everyone onto Cloudflare's IPs. With trust OFF, or from a
+// non-Cloudflare peer, the header is ignored (no spoofing).
+func TestClientIPBehindCloudflare(t *testing.T) {
+	prevTP := config.Cfg.TrustedProxies
+	config.Cfg.TrustedProxies = nil // isolate: only Cloudflare trust under test
+	prevCF := config.TrustCloudflareEnabled()
+	defer func() {
+		config.Cfg.TrustedProxies = prevTP
+		config.SetTrustCloudflare(prevCF)
+	}()
+
+	// A real Cloudflare edge IP (173.245.48.0/20) fronting a visitor.
+	cfEdge := "173.245.48.10:443"
+	realVisitor := "198.51.100.77"
+
+	// Trust OFF → the edge IP is not trusted, so the whole audience pools onto it
+	// (this is the bug that throttled everyone).
+	config.SetTrustCloudflare(false)
+	req := httptest.NewRequest("GET", "/", nil)
+	req.RemoteAddr = cfEdge
+	req.Header.Set("CF-Connecting-IP", realVisitor)
+	if got := ClientIP(req); got != "173.245.48.10" {
+		t.Fatalf("trust off: want the (pooled) edge IP 173.245.48.10, got %q", got)
+	}
+
+	// Trust ON → the real visitor IP is used.
+	config.SetTrustCloudflare(true)
+	if got := ClientIP(req); got != realVisitor {
+		t.Fatalf("trust on: want real visitor %s from CF-Connecting-IP, got %q", realVisitor, got)
+	}
+
+	// True-Client-IP is honoured too (Enterprise/Akamai).
+	req2 := httptest.NewRequest("GET", "/", nil)
+	req2.RemoteAddr = cfEdge
+	req2.Header.Set("True-Client-IP", "203.0.113.9")
+	if got := ClientIP(req2); got != "203.0.113.9" {
+		t.Fatalf("want True-Client-IP 203.0.113.9, got %q", got)
+	}
+
+	// Spoof guard: a direct (non-Cloudflare) peer sending CF-Connecting-IP is
+	// ignored even with trust ON — the header only counts from a real edge.
+	req3 := httptest.NewRequest("GET", "/", nil)
+	req3.RemoteAddr = "45.66.77.88:5555" // not a Cloudflare range
+	req3.Header.Set("CF-Connecting-IP", "10.0.0.1")
+	if got := ClientIP(req3); got != "45.66.77.88" {
+		t.Fatalf("spoof guard: non-edge peer must keep its own IP, got %q", got)
+	}
+}
+
 // TestArgon2idLegacyHashStillVerifies ensures the F-5 cost bump did not break
 // pre-existing hashes stored in the old parameter-less "salt$hash" form.
 func TestArgon2idLegacyHashStillVerifies(t *testing.T) {

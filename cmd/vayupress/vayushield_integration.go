@@ -222,6 +222,13 @@ func (a *App) bootVayuShield() {
 	// toggles). All default OFF; the panel writes these and applies them live, so
 	// nothing here throttles or challenges a real visitor until opted in.
 	a.vayuShield.ApplySettings(a.shieldSettings(context.Background()))
+	// "Behind Cloudflare/CDN" real-visitor-IP trust: enable if EITHER the env
+	// (TRUST_CLOUDFLARE, applied in config.Init) OR the persisted panel toggle is
+	// on. Without it, a Cloudflare-fronted site pools its whole audience onto
+	// Cloudflare's IPs, tripping the rate limit and throttling everyone.
+	if a.siteSettings != nil && a.siteSettings.Get(context.Background(), settings.KeyShieldBehindCDN) == "on" {
+		config.SetTrustCloudflare(true)
+	}
 
 	// Persist the shield's learning + challenge/block records on a bounded,
 	// batched background writer instead of one synchronous writer transaction per
@@ -755,6 +762,7 @@ func vsLayer(tag, name, state, desc, stat1, stat2 string) string {
 func (a *App) shieldProtectionBody(ctx context.Context) string {
 	cur := a.shieldCurrentSettings()
 	beaconOn := a.siteSettings == nil || a.siteSettings.Get(ctx, settings.KeyAnalyticsBeacon) != "off"
+	behindCDN := a.siteSettings != nil && a.siteSettings.Get(ctx, settings.KeyShieldBehindCDN) == "on"
 	var b strings.Builder
 	b.WriteString(`<p class="muted text-sm vs-lead">Everything applies instantly — no restart. Search engines and AI assistants (ChatGPT, Claude, Perplexity) are always allowed and counted separately; verified visitors are never throttled.</p>`)
 	b.WriteString(`<div class="vs-feat">`)
@@ -766,6 +774,9 @@ func (a *App) shieldProtectionBody(ctx context.Context) string {
 	b.WriteString(`<div class="vs-field vs-field--tog">` + vsToggle("sh_tarpit", cur.Tarpit, false) + `<label for="sh_tarpit">Tarpit the worst offenders</label></div>`)
 	b.WriteString(`</div></div>`)
 	b.WriteString(`<div class="card-title vs-section">Availability &amp; anti-DDoS</div>`)
+	b.WriteString(`<div class="vs-feat">`)
+	b.WriteString(vsRow("sh_behind_cdn", "Behind Cloudflare / a CDN", "Turn this ON if your site is proxied through Cloudflare (or any CDN). It reads each real visitor's IP from the CF-Connecting-IP header, so rate-limiting and abuse-blocking apply per visitor. WITHOUT it, a CDN makes your whole audience look like a handful of CDN IPs — which instantly trips the rate limit and shows EVERYONE the &ldquo;Just a moment&rdquo; page. Only genuine Cloudflare edge IPs are trusted, so the header can&rsquo;t be spoofed.", behindCDN, false))
+	b.WriteString(`</div>`)
 	b.WriteString(`<div class="vs-feat">`)
 	b.WriteString(vsRow("sh_ratelimit", "Rate limiting", "Cap requests per IP with a generous burst. Verified visitors are exempt.", cur.RateLimit, true))
 	b.WriteString(`<div class="vs-adv">` + vsField("sh_rpm", "Requests / minute", strconv.Itoa(cur.RatePerMinute)) + vsField("sh_burst", "Burst", strconv.Itoa(cur.Burst)) + `</div></div>`)
@@ -1062,6 +1073,7 @@ func (a *App) handleOSShieldSettings(w http.ResponseWriter, r *http.Request) {
 		settings.KeyShieldUnderAttack:    bs("sh_underattack"),
 		settings.KeyShieldUnderAttackRPS: num("sh_rps"),
 		settings.KeyShieldSurge:          bs("sh_surge"),
+		settings.KeyShieldBehindCDN:      bs("sh_behind_cdn"),
 		settings.KeyAnalyticsBeacon:      bs("sh_beacon"),
 	}
 	if err := a.siteSettings.SetMany(r.Context(), kv); err != nil {
@@ -1069,6 +1081,9 @@ func (a *App) handleOSShieldSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.vayuShield.ApplySettings(a.shieldSettings(r.Context()))
+	// "Behind Cloudflare/CDN" trust applies live (no restart): from now on the
+	// real visitor IP is read from CF-Connecting-IP so per-visitor gates work.
+	config.SetTrustCloudflare(bs("sh_behind_cdn") == "on")
 	// Fire vs-refresh so ONLY the status hero + settings body reload in place to
 	// reflect the applied (and clamped) state — the whole page never refreshes.
 	w.Header().Set("HX-Trigger", "vs-refresh")

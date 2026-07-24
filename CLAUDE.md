@@ -129,7 +129,10 @@ Go 1.25+ is required (govulncheck / x/tools need it).
   nil-client fallback use the guarded transport. Webmention is inbound-only and
   gravatar is serve-only (no outbound), so neither leaks. Also: block external
   hotlinked images, keep `img-src 'self' data:` (never widen to `http:`), serve
-  http onion (no CA-TLS, no HSTS, no Secure cookie), bind loopback only
+  http onion (no CA-TLS, no HSTS; auth/CSRF cookies ARE `Secure` — Tor Browser
+  treats a v3 `.onion` as a potentially-trustworthy origin, so it stores/sends
+  them over the http onion; `auth.CSRFCookieSecure` is now unconditionally true),
+  bind loopback only
   (`onionSafeBindAddr`). `seo.Origin(host)` is the scheme source of truth —
   `.onion` gets `http://`, clearnet stays `https://`.
 - **Verifiable posture:** `internal/anonaudit` computes an honest anonymity

@@ -238,6 +238,7 @@ const (
 	KeyShieldUnderAttack    = "shield.underattack"     // adaptive: tighten thresholds during a flood
 	KeyShieldUnderAttackRPS = "shield.underattack_rps" // global RPS that trips attack mode
 	KeyShieldSurge          = "shield.surge"           // Aegis L3: challenge all unproven visitors up front
+	KeyShieldBehindCDN      = "shield.behind_cdn"      // trust Cloudflare/CDN CF-Connecting-IP for the real visitor IP
 
 	// KeyAnalyticsBeacon toggles the VayuAnalytics engagement beacon (time on
 	// page / scroll depth) injected on public pages. Default ON — it is
@@ -402,6 +403,7 @@ var AllKeys = map[string]bool{
 	KeyShieldUnderAttack:    true,
 	KeyShieldUnderAttackRPS: true,
 	KeyShieldSurge:          true,
+	KeyShieldBehindCDN:      true,
 	KeyAnalyticsBeacon:      true,
 	KeyTorEnabled:           true,
 	KeyTorVisits:            true,
@@ -481,6 +483,7 @@ var Defaults = map[string]string{
 	KeyShieldJailMinutes:    "10",
 	KeyShieldUnderAttack:    "off",
 	KeyShieldUnderAttackRPS: "200",
+	KeyShieldBehindCDN:      "off",
 	KeyAnalyticsBeacon:      "on",
 	KeyTorEnabled:           "off",
 	KeyTorVisits:            "0",

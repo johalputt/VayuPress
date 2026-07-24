@@ -156,6 +156,7 @@ func TestThemeEditorCoversSettingsAllowlist(t *testing.T) {
 		settings.KeyShieldUnderAttack:    true,
 		settings.KeyShieldUnderAttackRPS: true,
 		settings.KeyShieldSurge:          true,
+		settings.KeyShieldBehindCDN:      true,
 		// The VayuAnalytics engagement beacon is toggled in Tools & Plugins /
 		// the Analytics console, not the theme editor.
 		settings.KeyAnalyticsBeacon: true,

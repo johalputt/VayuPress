@@ -47,6 +47,23 @@ func ClientIP(r *http.Request) string {
 	if peer == nil || !ipIsTrustedProxy(peer) {
 		return host // direct / untrusted peer: never trust forwarding headers
 	}
+	// Cloudflare / CDN: CF-Connecting-IP is the single real visitor IP the edge
+	// observed; True-Client-IP is the Enterprise/Akamai equivalent. Honour them
+	// first — reached ONLY when the peer is a trusted edge — so per-visitor rate
+	// limiting, reputation and lockout work behind a proxy instead of pooling the
+	// whole audience onto the edge's handful of IPs (which trips the rate limit
+	// and throttles everyone). A direct/untrusted peer already returned above, so
+	// these headers can never be spoofed from off-edge.
+	if cf := strings.TrimSpace(r.Header.Get("CF-Connecting-IP")); cf != "" {
+		if net.ParseIP(cf) != nil {
+			return cf
+		}
+	}
+	if tc := strings.TrimSpace(r.Header.Get("True-Client-IP")); tc != "" {
+		if net.ParseIP(tc) != nil {
+			return tc
+		}
+	}
 	if xri := strings.TrimSpace(r.Header.Get("X-Real-IP")); xri != "" {
 		if ip := net.ParseIP(xri); ip != nil {
 			return xri
@@ -76,6 +93,12 @@ func ipIsTrustedProxy(ip net.IP) bool {
 		if n.Contains(ip) {
 			return true
 		}
+	}
+	// "Behind Cloudflare/CDN" mode: Cloudflare's published edge ranges are trusted
+	// so CF-Connecting-IP is honoured, without the operator hand-maintaining every
+	// Cloudflare CIDR in TRUSTED_PROXIES.
+	if config.TrustCloudflareEnabled() && config.IsCloudflareIP(ip) {
+		return true
 	}
 	return false
 }
@@ -584,52 +607,48 @@ func InitCSRFSecret() {
 }
 
 // CSRFCookieSecure reports whether auth/CSRF cookies should carry the Secure
-// attribute. It is the single source of truth shared by the auth package and
-// the cmd layer (audit F-7). Override with CSRF_SECURE_COOKIE=true|false;
-// otherwise Secure is set whenever the site is not served on localhost.
+// attribute. It is the single source of truth shared by the auth package and the
+// cmd layer (audit F-7), and it is now unconditionally true.
 //
-// In a Tor Space (OnionMode, ADR-0141) the site is served over plain http on the
-// .onion, so a Secure cookie would be silently dropped by the browser — breaking
-// sign-in and CSRF. OnionMode therefore forces Secure off (audit L1), matching
-// the request-aware tor-world proxy cookie and CLAUDE.md §8 ("no Secure cookie").
-// An explicit CSRF_SECURE_COOKIE override still wins for unusual topologies.
+// Rationale (corrects the earlier OnionMode exception): every transport VayuPress
+// is served on to a real client is one where a Secure cookie is stored and sent —
+//   - clearnet is HTTPS (TLS direct, or the browser↔proxy leg is HTTPS behind a
+//     TLS-terminating reverse proxy), and
+//   - a Tor Space is served only to Tor Browser (CLAUDE.md §8), which treats a
+//     v3 `.onion` as a potentially-trustworthy origin
+//     (`dom.securecontext.whitelist_onions`) and therefore stores/sends Secure
+//     cookies over the plain-http `.onion`.
+//
+// There is therefore no transport on which a real client silently drops the
+// cookie, so Secure is always on — the strongest posture, and it closes the
+// CodeQL "Secure attribute is not set to true" finding with no runtime exception.
 func CSRFCookieSecure() bool {
-	if v := os.Getenv("CSRF_SECURE_COOKIE"); v != "" {
-		return v == "true"
-	}
-	if config.Cfg.OnionMode {
-		return false
-	}
-	return config.Cfg.Domain != "localhost"
+	return true
 }
 
-// WriteSecureCookie writes a session/auth cookie through the single
-// request/host-aware policy: HttpOnly is FORCED on (defense in depth — a session
-// cookie routed here can never accidentally be script-readable), and the Secure
-// flag is decided in exactly one place by CSRFCookieSecure. Secure is off on the
-// http .onion and localhost, on for clearnet HTTPS — it cannot be a constant
-// true without breaking Tor mode (a Secure cookie is dropped over the plain-http
-// .onion, ADR-0141), which is the one intentional deviation from the static
-// analyzer's "Secure must be true" rule.
+// WriteSecureCookie writes a session/auth cookie through the single hardened
+// policy: HttpOnly is FORCED on (defense in depth — a session cookie routed here
+// can never accidentally be script-readable) and Secure is FORCED on (see
+// CSRFCookieSecure for why this is safe on every supported transport, including a
+// Tor Browser `.onion`).
 //
 // Cookies that MUST be script-readable (the double-submit CSRF token) use
 // WriteReadableCookie instead — they are never routed here.
 func WriteSecureCookie(w http.ResponseWriter, c *http.Cookie) {
 	c.HttpOnly = true
-	c.Secure = CSRFCookieSecure()
+	c.Secure = true
 	http.SetCookie(w, c)
 }
 
 // WriteReadableCookie writes a cookie the page script is MEANT to read — only
 // the double-submit CSRF token, whose whole purpose is to be echoed back in the
-// X-CSRF-Token header, so HttpOnly is deliberately left off. It still applies the
-// same request/host-aware Secure policy and is SameSite-scoped by the caller, so
-// the token is not a sensitive-session credential a `HttpOnly`/`Secure` rule
-// would protect. Kept distinct from WriteSecureCookie so the readable exception
-// is explicit and auditable in one place.
+// X-CSRF-Token header, so HttpOnly is deliberately left off. Secure is still
+// FORCED on (safe on every supported transport, incl. a Tor Browser `.onion` —
+// see CSRFCookieSecure). Kept distinct from WriteSecureCookie so the readable
+// exception is explicit and auditable in one place.
 func WriteReadableCookie(w http.ResponseWriter, c *http.Cookie) {
 	c.HttpOnly = false // double-submit CSRF: the page script must read this token
-	c.Secure = CSRFCookieSecure()
+	c.Secure = true
 	http.SetCookie(w, c)
 }
 

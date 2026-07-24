@@ -149,6 +149,13 @@ func Load() {
 	Cfg.AIModel = EnvOr("VAYU_AI_MODEL", "llama3.2")
 	Cfg.StripeWebhookSecret = EnvOr("STRIPE_WEBHOOK_SECRET", "")
 	Cfg.TrustedProxies = parseCIDRs(EnvOr("TRUSTED_PROXIES", "127.0.0.0/8,::1/128"))
+	// "Behind Cloudflare/CDN" real-visitor-IP mode. Boot default from the env;
+	// the VayuOS panel toggle overrides it live (SetTrustCloudflare) with no
+	// restart. Truthy values: 1/true/yes/on.
+	switch strings.ToLower(strings.TrimSpace(EnvOr("TRUST_CLOUDFLARE", ""))) {
+	case "1", "true", "yes", "on", "enabled":
+		SetTrustCloudflare(true)
+	}
 }
 
 // onionModeFromEnv maps VAYUOS_MODE to the whole-install Tor/anonymous switch.
