@@ -170,16 +170,60 @@ func TestKeystoreEncryptedAtRest(t *testing.T) {
 	if rec.Fingerprint != kp.Fingerprint {
 		t.Fatalf("fingerprint mismatch")
 	}
-	// Wrong master secret must fail to decrypt.
-	bad := DefaultConfig()
-	bad.StorageDir = e.cfg.StorageDir
-	bad.MasterSecret = []byte("the-wrong-secret")
-	be := NewEngine(&bad)
-	if err := be.Start(context.Background()); err != nil {
-		t.Fatalf("start bad: %v", err)
+	// Audit M8: the API key (MasterSecret) is NO LONGER the at-rest key — the
+	// persisted DEK is. Reopening the same store with a DIFFERENT master secret
+	// must therefore still decrypt: rotating the API key does not brick keys.
+	rotated := DefaultConfig()
+	rotated.StorageDir = e.cfg.StorageDir
+	rotated.MasterSecret = []byte("a-rotated-api-key")
+	re := NewEngine(&rotated)
+	if err := re.Start(context.Background()); err != nil {
+		t.Fatalf("start rotated: %v", err)
 	}
-	if _, err := be.entity("rest"); err == nil {
-		t.Fatalf("decryption must fail with wrong master secret")
+	if _, err := re.entity("rest"); err != nil {
+		t.Fatalf("rotating the API key must NOT brick stored keys (audit M8): %v", err)
+	}
+}
+
+// With a KEK configured, the KEK — not the API key — governs at-rest access: a
+// wrong KEK cannot open the store, the right one can, and this holds across an
+// API-key rotation (audit M8).
+func TestKeystoreKEKGovernsAtRest(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	cfg := DefaultConfig()
+	cfg.StorageDir = dir
+	cfg.MasterSecret = []byte("api-key-1")
+	cfg.KEKSecret = []byte("dedicated-at-rest-secret")
+	e := NewEngine(&cfg)
+	if err := e.Start(context.Background()); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	if _, err := e.GenerateKeypair(&PGPUser{UserID: "kek", Name: "Kek", Email: "kek@example.com"}); err != nil {
+		t.Fatalf("genkey: %v", err)
+	}
+
+	// Wrong KEK: must refuse to open (never silently decrypt to garbage).
+	bad := DefaultConfig()
+	bad.StorageDir = dir
+	bad.MasterSecret = []byte("api-key-1")
+	bad.KEKSecret = []byte("the-wrong-secret")
+	be := NewEngine(&bad)
+	if err := be.Start(context.Background()); err == nil {
+		t.Fatalf("start with wrong KEK must fail")
+	}
+
+	// Right KEK, but a rotated API key: must still open and decrypt.
+	good := DefaultConfig()
+	good.StorageDir = dir
+	good.MasterSecret = []byte("api-key-2-rotated")
+	good.KEKSecret = []byte("dedicated-at-rest-secret")
+	ge := NewEngine(&good)
+	if err := ge.Start(context.Background()); err != nil {
+		t.Fatalf("start good: %v", err)
+	}
+	if _, err := ge.entity("kek"); err != nil {
+		t.Fatalf("right KEK must decrypt across an API-key rotation: %v", err)
 	}
 }
 

@@ -1,14 +1,86 @@
 package pgp
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 )
+
+// TestLegacyKeystoreMigratesToDEK is the M8 bricking-safety guard: a pre-M8
+// store (key files sealed under the API-key-derived legacy key, NO .keyring.json)
+// must open under the envelope scheme with the DEK set to the legacy key, so
+// every stored private key still decrypts — and a keyring file is written so the
+// API key stops being the at-rest key.
+func TestLegacyKeystoreMigratesToDEK(t *testing.T) {
+	dir := t.TempDir()
+	master := []byte("legacy-api-key")
+	legacy := sha256.Sum256(append([]byte("vayupgp-keystore-v1\x00"), master...))
+
+	priv := []byte("-----BEGIN PGP PRIVATE KEY BLOCK-----\nlegacy-material\n-----END PGP PRIVATE KEY BLOCK-----")
+	nonceHex, ctHex := sealAESGCM(t, legacy, priv)
+	rec := storedKey{
+		UserID: "mail:old@example.com", Email: "old@example.com", Fingerprint: "FP-OLD",
+		PrivateNonce: nonceHex, PrivateCT: ctHex, CreatedAt: time.Now().UTC(),
+	}
+	data, _ := json.MarshalIndent(rec, "", "  ")
+	if err := os.WriteFile(filepath.Join(dir, "legacyfile.key.json"), data, 0o600); err != nil {
+		t.Fatalf("seed legacy file: %v", err)
+	}
+	// No .keyring.json exists yet → this is a pre-M8 store.
+
+	ks, err := newKeyStore(dir, master, nil, "")
+	if err != nil {
+		t.Fatalf("open (migrate): %v", err)
+	}
+	_, got, err := ks.load("mail:old@example.com")
+	if err != nil {
+		t.Fatalf("legacy key must still decrypt after migration: %v", err)
+	}
+	if string(got) != string(priv) {
+		t.Fatalf("decrypted mismatch: %q", got)
+	}
+	if _, err := os.Stat(filepath.Join(dir, dekKeyringName)); err != nil {
+		t.Fatalf("migration must write a keyring file: %v", err)
+	}
+
+	// Reopen with a ROTATED API key: the DEK is now persisted, so it still opens.
+	ks2, err := newKeyStore(dir, []byte("rotated-api-key"), nil, "")
+	if err != nil {
+		t.Fatalf("reopen after rotation: %v", err)
+	}
+	if _, got2, err := ks2.load("mail:old@example.com"); err != nil || string(got2) != string(priv) {
+		t.Fatalf("rotated API key must still decrypt: got %q err %v", got2, err)
+	}
+}
+
+// sealAESGCM seals plaintext under a 32-byte key, returning hex nonce and
+// ciphertext exactly as the keystore stores them.
+func sealAESGCM(t *testing.T, key [32]byte, plaintext []byte) (nonceHex, ctHex string) {
+	t.Helper()
+	block, err := aes.NewCipher(key[:])
+	if err != nil {
+		t.Fatalf("cipher: %v", err)
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		t.Fatalf("gcm: %v", err)
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		t.Fatalf("nonce: %v", err)
+	}
+	ct := gcm.Seal(nil, nonce, plaintext, nil)
+	return hex.EncodeToString(nonce), hex.EncodeToString(ct)
+}
 
 // TestKeystoreDeterministicEmailResolution guards against the "active key flips
 // on restart" hazard: if two key files ever share an email, reindex must resolve
@@ -17,7 +89,7 @@ import (
 func TestKeystoreDeterministicEmailResolution(t *testing.T) {
 	dir := t.TempDir()
 	secret := []byte("s")
-	ks, err := newKeyStore(dir, secret)
+	ks, err := newKeyStore(dir, secret, nil, "")
 	if err != nil {
 		t.Fatalf("new keystore: %v", err)
 	}
@@ -39,7 +111,7 @@ func TestKeystoreDeterministicEmailResolution(t *testing.T) {
 	}
 	// Every fresh open (reindex) must land on the same oldest key.
 	for i := 0; i < 5; i++ {
-		ks2, err := newKeyStore(dir, secret)
+		ks2, err := newKeyStore(dir, secret, nil, "")
 		if err != nil {
 			t.Fatalf("reopen %d: %v", i, err)
 		}
@@ -56,7 +128,7 @@ func TestKeystoreDeterministicEmailResolution(t *testing.T) {
 func TestKeystoreRevokedKeyNotActive(t *testing.T) {
 	dir := t.TempDir()
 	secret := []byte("s")
-	ks, err := newKeyStore(dir, secret)
+	ks, err := newKeyStore(dir, secret, nil, "")
 	if err != nil {
 		t.Fatalf("new keystore: %v", err)
 	}
@@ -72,7 +144,7 @@ func TestKeystoreRevokedKeyNotActive(t *testing.T) {
 	if id, ok := ks.userIDForEmail("r@example.com"); !ok || id != "live" {
 		t.Fatalf("in-process active = %q, want live (revoked must not win)", id)
 	}
-	ks2, err := newKeyStore(dir, secret)
+	ks2, err := newKeyStore(dir, secret, nil, "")
 	if err != nil {
 		t.Fatalf("reopen: %v", err)
 	}
@@ -90,7 +162,7 @@ func TestKeystoreRevokedKeyNotActive(t *testing.T) {
 func TestKeystoreLegacyFilenameStillLoads(t *testing.T) {
 	dir := t.TempDir()
 	secret := []byte("master-secret-under-test")
-	ks, err := newKeyStore(dir, secret)
+	ks, err := newKeyStore(dir, secret, nil, "")
 	if err != nil {
 		t.Fatalf("new keystore: %v", err)
 	}
@@ -110,7 +182,7 @@ func TestKeystoreLegacyFilenameStillLoads(t *testing.T) {
 	}
 
 	// A fresh keystore must find and decrypt the legacy-named file by contents.
-	ks2, err := newKeyStore(dir, secret)
+	ks2, err := newKeyStore(dir, secret, nil, "")
 	if err != nil {
 		t.Fatalf("reopen keystore: %v", err)
 	}
@@ -147,7 +219,7 @@ func TestKeystoreLegacyFilenameStillLoads(t *testing.T) {
 // from a guessed address), but the keyed-HMAC token instead.
 func TestKeystoreFilenameNotBareHashOfUserID(t *testing.T) {
 	dir := t.TempDir()
-	ks, err := newKeyStore(dir, []byte("secret"))
+	ks, err := newKeyStore(dir, []byte("secret"), nil, "")
 	if err != nil {
 		t.Fatalf("new keystore: %v", err)
 	}

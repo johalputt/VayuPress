@@ -63,7 +63,7 @@ func (e *Engine) Start(_ context.Context) error {
 	if !e.cfg.Enabled {
 		return nil
 	}
-	ks, err := newKeyStore(e.cfg.StorageDir, e.cfg.MasterSecret)
+	ks, err := newKeyStore(e.cfg.StorageDir, e.cfg.MasterSecret, e.cfg.KEKSecret, e.cfg.KEKFilePath)
 	if err != nil {
 		return err
 	}

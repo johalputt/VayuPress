@@ -39,9 +39,19 @@ type Config struct {
 	// StorageDir is the base directory for the encrypted key store.
 	StorageDir string
 
-	// MasterSecret derives the at-rest encryption key. It must be set by the
-	// host application and is never persisted by this package.
+	// MasterSecret is used ONLY to compute the legacy at-rest key so an existing
+	// keystore migrates to envelope encryption with its keys still decryptable
+	// (audit M8). It is no longer the ongoing at-rest key. Never persisted here.
 	MasterSecret []byte
+
+	// KEKSecret wraps the keystore's persistent DEK at rest via a dedicated
+	// encryption secret (e.g. VAYU_SECRET), decoupling at-rest confidentiality
+	// from the wire-exposed API key (audit M8). Optional.
+	KEKSecret []byte
+	// KEKFilePath is a host-bound 0600 file used to wrap the DEK when KEKSecret
+	// is unset — so the wrapping key lives outside the ciphertext, not beside it.
+	// Optional; when neither is set the DEK is stored unwrapped (with a warning).
+	KEKFilePath string
 }
 
 // DefaultConfig returns the constitutional defaults: privacy on by default,

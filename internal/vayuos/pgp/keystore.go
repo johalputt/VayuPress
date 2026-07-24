@@ -75,9 +75,12 @@ func (k *keyStore) preferEmailLocked(email, userID string, created time.Time, re
 	}
 }
 
-// newKeyStore opens (and lazily creates) a key store under dir, deriving the
-// at-rest AES key from masterSecret. The derived keys are held only in memory.
-func newKeyStore(dir string, masterSecret []byte) (*keyStore, error) {
+// newKeyStore opens (and lazily creates) a key store under dir. The at-rest AES
+// key is a persistent DEK wrapped by a dedicated KEK (kekSecret / kekFilePath),
+// NOT derived from masterSecret (audit M8); masterSecret is used only to compute
+// the legacy key so an existing store migrates to the envelope scheme with its
+// stored keys still decryptable. The derived keys are held only in memory.
+func newKeyStore(dir string, masterSecret, kekSecret []byte, kekFilePath string) (*keyStore, error) {
 	if dir == "" {
 		return nil, errors.New("vayupgp: empty storage dir")
 	}
@@ -91,10 +94,15 @@ func newKeyStore(dir string, masterSecret []byte) (*keyStore, error) {
 		fileByID:     make(map[string]string),
 		archByID:     make(map[string][]string),
 	}
-	// Domain-separated derivation so the keystore key is distinct from any other
-	// use of the master secret. Never log or persist the derived key. This scheme
-	// is FROZEN — changing it would make every stored private key undecryptable.
-	ks.aeadKey = sha256.Sum256(append([]byte("vayupgp-keystore-v1\x00"), masterSecret...))
+	// The LEGACY at-rest key: sha256("…v1\0" || API_KEY). This exact value seals
+	// every key written before M8, so migration sets the DEK to it and nothing
+	// needs re-encrypting.
+	legacy := sha256.Sum256(append([]byte("vayupgp-keystore-v1\x00"), masterSecret...))
+	dek, err := loadOrCreateDEK(dir, kekSecret, kekFilePath, legacy)
+	if err != nil {
+		return nil, err
+	}
+	ks.aeadKey = dek
 	// The filename HMAC key is domain-separated from the AEAD key.
 	nk := hmac.New(sha256.New, ks.aeadKey[:])
 	nk.Write([]byte("vayupgp-keystore-filename-v1"))

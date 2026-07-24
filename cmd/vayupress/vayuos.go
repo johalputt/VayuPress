@@ -414,7 +414,13 @@ func (a *App) bootVayuOS() {
 
 	pgpCfg := vpgp.DefaultConfig()
 	pgpCfg.StorageDir = filepath.Join(base, "vayudata", "pgp")
+	// MasterSecret (API key) is used only to migrate an existing keystore to
+	// envelope encryption; the ongoing at-rest key is a persistent DEK wrapped by
+	// a dedicated KEK — VAYU_SECRET if set, else a host-bound key file — so the
+	// API key can rotate without bricking stored keys (audit M8).
 	pgpCfg.MasterSecret = master
+	pgpCfg.KEKSecret = []byte(config.EnvOr("VAYU_SECRET", ""))
+	pgpCfg.KEKFilePath = filepath.Join(base, ".vayupgp-kek")
 	a.vayuPGP = vpgp.NewEngine(&pgpCfg)
 
 	mailCfg := vmail.DefaultConfig()

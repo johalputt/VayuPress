@@ -9,6 +9,19 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 ## [Unreleased]
 
 ### Security
+- **PGP private keys are no longer encrypted at rest with a key derived from the
+  wire-exposed API key (audit M8).** The AES-256-GCM key sealing every user's PGP
+  private key was `sha256("…" || API_KEY)` — coupling the confidentiality of the
+  most sensitive material in the system to an authentication credential that
+  travels on every admin/REST call, and freezing it so rotating the API key would
+  brick every stored key. The keystore now uses envelope encryption: a random,
+  persistent Data Encryption Key seals the private keys, and that DEK is wrapped
+  by a dedicated Key Encryption Key from `VAYU_SECRET` (else a host-bound
+  `.vayupgp-kek` file). On first boot an existing store migrates transparently —
+  the DEK is set equal to the old API-key-derived key, so every stored key still
+  decrypts with zero re-encryption — after which the API key can rotate freely and
+  the KEK can be rotated in place. With neither `VAYU_SECRET` nor a writable KEK
+  file, the DEK is stored unwrapped and the server warns loudly.
 - **Service-credential encryption key moved out of the database by default
   (audit L6).** With no `VAYU_SECRET` configured, the Data Encryption Key that
   seals every stored service credential (Stripe/PayPal/BTCPay keys, webhook
