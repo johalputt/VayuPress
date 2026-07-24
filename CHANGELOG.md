@@ -8,6 +8,16 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Security
+- **No DNS leak from the SSRF pre-flight in a Tor Space (ADR-0141).** The
+  `safefetch` host guard resolved the request host (a DNS query) before the
+  dial-time egress guard refused the connection — so in a Tor Space a clearnet
+  fetch leaked the DNS query, and the intent to contact that host, to the system
+  resolver even though the connection itself was blocked. The host guard now
+  refuses a clearnet host BEFORE any lookup. (Audited the other resolvers too:
+  the mail DNS/deliverability checks already redirect away in Tor mode, and
+  outbound MX resolution never runs under the local-only deliverer.)
+
 ### Added
 - **Process-wide egress tripwire in a Tor Space (ADR-0141).** As a
   belt-and-suspenders over the per-call-site guards, a Tor Space now installs a

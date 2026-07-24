@@ -180,3 +180,18 @@ func TestGuardedDefaultTransportCountsAndBlocks(t *testing.T) {
 		t.Fatalf("loopback must not be blocked by the Tor guard: %v", err)
 	}
 }
+
+// In Tor mode the host guard must refuse BEFORE any DNS lookup, so resolving a
+// clearnet host never leaks the query to the system resolver (ADR-0141).
+func TestHostGuardRefusesBeforeDNSInTorMode(t *testing.T) {
+	SetBlockClearnetEgress(true)
+	t.Cleanup(func() { SetBlockClearnetEgress(false) })
+	before := BlockedClearnetCount()
+	err := validatePublicHost(context.Background(), "example.com")
+	if err == nil || !errors.Is(err, ErrBlockedAddress) {
+		t.Fatalf("Tor mode must refuse the host, got %v", err)
+	}
+	if BlockedClearnetCount() != before+1 {
+		t.Fatal("host-guard refusal should increment the tripwire counter")
+	}
+}

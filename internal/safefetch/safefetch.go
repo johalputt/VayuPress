@@ -334,6 +334,14 @@ func validatePublicHost(ctx context.Context, host string) error {
 	if host == "" {
 		return fmt.Errorf("%w: empty host", ErrBlockedAddress)
 	}
+	// Tor Space: refuse BEFORE any DNS lookup. Resolving a clearnet host would
+	// leak the query — and the intent to contact it — to the system resolver,
+	// even though the dial guard would later block the connection (ADR-0141,
+	// DNS-leak). Loopback needs no resolution and stays reachable.
+	if blockClearnetEgress.Load() && !IsLoopbackHost(host) {
+		noteBlockedClearnet()
+		return fmt.Errorf("%w: clearnet egress is disabled in Tor mode", ErrBlockedAddress)
+	}
 	// IP-literal host: validate directly without a DNS lookup.
 	if ip := net.ParseIP(host); ip != nil {
 		if isPrivateOrReservedIP(ip) {
