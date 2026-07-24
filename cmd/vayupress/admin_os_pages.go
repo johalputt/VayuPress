@@ -38,7 +38,7 @@ func (a *App) handleOSPages(w http.ResponseWriter, r *http.Request) {
 
 	// CSRF token cookie so the inline create/nav controls can POST.
 	if token := auth.GenerateCSRFToken(); token != "" {
-		http.SetCookie(w, &http.Cookie{Name: "vp_csrf", Value: token, Path: "/", SameSite: http.SameSiteStrictMode, HttpOnly: false, Secure: csrfCookieSecure(), MaxAge: 3600})
+		setCSRFCookie(w, token)
 	}
 
 	navJSON, footerJSON, contactEmail := "", "", ""

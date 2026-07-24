@@ -194,3 +194,21 @@ func securityHeadersMiddleware(next http.Handler) http.Handler {
 func csrfCookieSecure() bool {
 	return auth.CSRFCookieSecure()
 }
+
+// setCSRFCookie writes the double-submit vp_csrf cookie from ONE place, so its
+// attributes — notably the request/host-aware Secure flag (off on the http
+// .onion and localhost, on for clearnet HTTPS; see auth.CSRFCookieSecure) — are
+// defined once instead of duplicated across every page handler. HttpOnly is
+// false by design: the double-submit pattern requires the page script to read
+// the token and echo it in the X-CSRF-Token header.
+func setCSRFCookie(w http.ResponseWriter, token string) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     "vp_csrf",
+		Value:    token,
+		Path:     "/",
+		SameSite: http.SameSiteStrictMode,
+		HttpOnly: false,
+		Secure:   csrfCookieSecure(),
+		MaxAge:   3600,
+	})
+}

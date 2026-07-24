@@ -71,7 +71,7 @@ func modeShortClass(m mode.Mode) string {
 // (one of: modes, policy, topology, replay, faults, adrs).
 func (a *App) writeConsoleShellHead(w http.ResponseWriter, r *http.Request, active, pageTitle, pageSub string) string {
 	if token := auth.GenerateCSRFToken(); token != "" {
-		http.SetCookie(w, &http.Cookie{Name: "vp_csrf", Value: token, Path: "/", SameSite: http.SameSiteStrictMode, HttpOnly: false, Secure: csrfCookieSecure(), MaxAge: 3600})
+		setCSRFCookie(w, token)
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("X-Robots-Tag", "noindex")

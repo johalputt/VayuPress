@@ -220,7 +220,7 @@ func (a *App) handleVayuOSTalk(w http.ResponseWriter, r *http.Request) {
 	// CSRF cookie so the JSON send POST passes the double-submit middleware,
 	// re-issued on every page load (the token has a 1h life).
 	if token := auth.GenerateCSRFToken(); token != "" {
-		http.SetCookie(w, &http.Cookie{Name: "vp_csrf", Value: token, Path: "/", SameSite: http.SameSiteStrictMode, HttpOnly: false, Secure: csrfCookieSecure(), MaxAge: 3600})
+		setCSRFCookie(w, token)
 	}
 
 	var body strings.Builder

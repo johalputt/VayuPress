@@ -1181,7 +1181,7 @@ func (a *App) handleVayuOSSecurity(w http.ResponseWriter, r *http.Request) {
 
 	// CSRF token so the inline "Check now" control can POST.
 	if token := auth.GenerateCSRFToken(); token != "" {
-		http.SetCookie(w, &http.Cookie{Name: "vp_csrf", Value: token, Path: "/", SameSite: http.SameSiteStrictMode, HttpOnly: false, Secure: csrfCookieSecure(), MaxAge: 3600})
+		setCSRFCookie(w, token)
 	}
 
 	var body strings.Builder
@@ -1708,7 +1708,7 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 	cfg := a.getOSSettings(r.Context())
 	// CSRF cookie so the HTMX row/bulk POSTs pass the double-submit middleware.
 	if token := auth.GenerateCSRFToken(); token != "" {
-		http.SetCookie(w, &http.Cookie{Name: "vp_csrf", Value: token, Path: "/", SameSite: http.SameSiteStrictMode, HttpOnly: false, Secure: csrfCookieSecure(), MaxAge: 3600})
+		setCSRFCookie(w, token)
 	}
 	var body strings.Builder
 	body.WriteString(`<div class="page-header"><h1>Mailbox</h1></div>`)
@@ -2836,7 +2836,7 @@ func (a *App) handleVayuOSSent(w http.ResponseWriter, r *http.Request) {
 	cfg := a.getOSSettings(r.Context())
 	// A CSRF cookie so the Resend/Delete/Retry HTMX POSTs pass the middleware.
 	if token := auth.GenerateCSRFToken(); token != "" {
-		http.SetCookie(w, &http.Cookie{Name: "vp_csrf", Value: token, Path: "/", SameSite: http.SameSiteStrictMode, HttpOnly: false, Secure: csrfCookieSecure(), MaxAge: 3600})
+		setCSRFCookie(w, token)
 	}
 	var body strings.Builder
 	body.WriteString(`<div class="page-header"><h1>Outbox</h1></div>`)

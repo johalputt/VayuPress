@@ -203,7 +203,7 @@ func (a *App) handleMemberVerify(w http.ResponseWriter, r *http.Request) {
 	}
 	http.SetCookie(w, &http.Cookie{
 		Name: memberCookie, Value: token, Path: "/", HttpOnly: true,
-		Secure: config.Cfg.Domain != "localhost", SameSite: http.SameSiteLaxMode,
+		Secure: csrfCookieSecure(), SameSite: http.SameSiteLaxMode,
 		MaxAge: int(members.SessionTTL.Seconds()),
 	})
 	logging.LogInfo("members", "member signed in: "+m.Email)
@@ -221,7 +221,7 @@ func (a *App) handleMemberLogout(w http.ResponseWriter, r *http.Request) {
 	// the deletion reliably targets the original Secure/SameSite cookie.
 	http.SetCookie(w, &http.Cookie{
 		Name: memberCookie, Value: "", Path: "/", HttpOnly: true,
-		Secure: config.Cfg.Domain != "localhost", SameSite: http.SameSiteLaxMode,
+		Secure: csrfCookieSecure(), SameSite: http.SameSiteLaxMode,
 		MaxAge: -1,
 	})
 	http.Redirect(w, r, "/", http.StatusSeeOther)

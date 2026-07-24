@@ -30,7 +30,7 @@ func (a *App) handleOSMessages(w http.ResponseWriter, r *http.Request) {
 	cfg := a.getOSSettings(r.Context())
 
 	if token := auth.GenerateCSRFToken(); token != "" {
-		http.SetCookie(w, &http.Cookie{Name: "vp_csrf", Value: token, Path: "/", SameSite: http.SameSiteStrictMode, HttpOnly: false, Secure: csrfCookieSecure(), MaxAge: 3600})
+		setCSRFCookie(w, token)
 	}
 
 	// Filters: free-text search across name/email/message, and an unread-only
@@ -236,7 +236,7 @@ func (a *App) handleOSMessageDetail(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
 	if token := auth.GenerateCSRFToken(); token != "" {
-		http.SetCookie(w, &http.Cookie{Name: "vp_csrf", Value: token, Path: "/", SameSite: http.SameSiteStrictMode, HttpOnly: false, Secure: csrfCookieSecure(), MaxAge: 3600})
+		setCSRFCookie(w, token)
 	}
 
 	var name, eml, msg, page, country, region, city string

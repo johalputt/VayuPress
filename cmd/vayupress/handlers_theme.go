@@ -265,7 +265,7 @@ func (a *App) handleThemeGet(w http.ResponseWriter, r *http.Request) {
 	// and every governed write would 403 until they bounced through another page.
 	if c, err := r.Cookie("vp_csrf"); err != nil || c.Value == "" {
 		if token := auth.GenerateCSRFToken(); token != "" {
-			http.SetCookie(w, &http.Cookie{Name: "vp_csrf", Value: token, Path: "/", SameSite: http.SameSiteStrictMode, HttpOnly: false, Secure: csrfCookieSecure(), MaxAge: 3600})
+			setCSRFCookie(w, token)
 		}
 	}
 	modeStr := string(mode.Global.Current())

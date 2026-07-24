@@ -22,7 +22,6 @@ import (
 	"time"
 
 	"github.com/johalputt/vayupress/internal/auth"
-	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/members"
@@ -40,7 +39,7 @@ import (
 func (a *App) setMemberSessionCookie(w http.ResponseWriter, token string) {
 	http.SetCookie(w, &http.Cookie{
 		Name: memberCookie, Value: token, Path: "/", HttpOnly: true,
-		Secure: config.Cfg.Domain != "localhost", SameSite: http.SameSiteLaxMode,
+		Secure: csrfCookieSecure(), SameSite: http.SameSiteLaxMode,
 		MaxAge: int(members.SessionTTL.Seconds()),
 	})
 }

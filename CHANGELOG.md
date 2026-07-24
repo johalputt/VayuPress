@@ -8,6 +8,27 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.15.10] — 2026-07-24
+
+### Security
+- **Member, portal, and logout cookies are now Tor-Space aware.** Four session
+  cookies set their `Secure` flag from a raw `Domain != "localhost"` check that
+  did not consult OnionMode, so on a plain-http `.onion` (Tor Space) they forced
+  `Secure` on and the browser silently dropped them — breaking member sign-in and
+  logout in the Tor world. They now use the same request/host-aware source as the
+  CSRF cookie (`auth.CSRFCookieSecure`: off on the http `.onion` and localhost, on
+  for clearnet HTTPS).
+
+### Changed
+- **The double-submit CSRF cookie is now written from a single helper.** The
+  identical `vp_csrf` cookie-set block was duplicated across ~15 handlers; it is
+  now one `setCSRFCookie` helper, so the cookie attributes (including the
+  Secure-flag policy) are defined in exactly one place. This also collapses the
+  duplicated code that a static analyzer flagged ~14 times as "Cookie 'Secure'
+  attribute is not set to true" down to a single, correctly request-aware site
+  (Secure cannot be a hard-coded `true` — an http `.onion` and localhost require
+  it off).
+
 ## [3.15.9] — 2026-07-24
 
 ### Security

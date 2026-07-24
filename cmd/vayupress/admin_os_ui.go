@@ -1636,11 +1636,7 @@ func osSidebarUser(s *osSettings) string {
 // writeOSHTML writes HTML with the standard os response headers and CSRF cookie.
 func writeOSHTML(w http.ResponseWriter, body string) {
 	if token := auth.GenerateCSRFToken(); token != "" {
-		http.SetCookie(w, &http.Cookie{
-			Name: "vp_csrf", Value: token, Path: "/",
-			SameSite: http.SameSiteStrictMode, HttpOnly: false,
-			Secure: csrfCookieSecure(), MaxAge: 3600,
-		})
+		setCSRFCookie(w, token)
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("X-Robots-Tag", "noindex")
@@ -1827,7 +1823,7 @@ func (a *App) handleOSChangePassword(w http.ResponseWriter, r *http.Request) {
 	// subdomain foothold cannot read it to forge the token.
 	token := auth.GenerateCSRFToken()
 	if token != "" {
-		http.SetCookie(w, &http.Cookie{Name: "vp_csrf", Value: token, Path: "/", SameSite: http.SameSiteStrictMode, HttpOnly: false, Secure: auth.CSRFCookieSecure(), MaxAge: 3600})
+		setCSRFCookie(w, token)
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write([]byte(osChangePasswordPage(em, "", token)))
@@ -1924,7 +1920,7 @@ func (a *App) handleOSLogout(w http.ResponseWriter, r *http.Request) {
 	}
 	http.SetCookie(w, &http.Cookie{
 		Name: memberCookie, Value: "", Path: "/", HttpOnly: true,
-		Secure: config.Cfg.Domain != "localhost", SameSite: http.SameSiteLaxMode, MaxAge: -1,
+		Secure: csrfCookieSecure(), SameSite: http.SameSiteLaxMode, MaxAge: -1,
 	})
 	http.Redirect(w, r, "/os/login", http.StatusSeeOther)
 }
@@ -2267,7 +2263,7 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 
 	// A CSRF token cookie so the inline publish/unpublish control can POST.
 	if token := auth.GenerateCSRFToken(); token != "" {
-		http.SetCookie(w, &http.Cookie{Name: "vp_csrf", Value: token, Path: "/", SameSite: http.SameSiteStrictMode, HttpOnly: false, Secure: csrfCookieSecure(), MaxAge: 3600})
+		setCSRFCookie(w, token)
 	}
 
 	// ── Parse filters from the query string ──────────────────────────────────
@@ -2657,7 +2653,7 @@ func (a *App) handleOSComments(w http.ResponseWriter, r *http.Request) {
 
 	// CSRF token cookie so the inline approve/reject controls can POST.
 	if token := auth.GenerateCSRFToken(); token != "" {
-		http.SetCookie(w, &http.Cookie{Name: "vp_csrf", Value: token, Path: "/", SameSite: http.SameSiteStrictMode, HttpOnly: false, Secure: csrfCookieSecure(), MaxAge: 3600})
+		setCSRFCookie(w, token)
 	}
 
 	var body string
