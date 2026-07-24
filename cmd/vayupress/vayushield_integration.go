@@ -489,7 +489,8 @@ func (a *App) handleOSShield(w http.ResponseWriter, r *http.Request) {
 	// via HTMX — see the per-section body builders and handleOSShieldSection.
 	var b strings.Builder
 	b.WriteString(`<div class="vs-page">`)
-	b.WriteString(`<div class="page-header"><h1>Bot Shield &amp; Analytics</h1><span class="muted text-sm">Sovereign bot protection · cookieless analytics · GDPR by design</span></div>`)
+	b.WriteString(`<div class="page-header"><h1>Bot Shield &amp; Analytics</h1><div class="page-actions"><span class="muted text-sm">Sovereign bot protection · cookieless analytics · GDPR by design</span></div></div>`)
+	b.WriteString(`<p class="page-sub">Enterprise-grade, self-hosted bot protection — verified search &amp; AI crawlers always pass, real readers are never challenged, and every defense layer is live below. Tap a card to expand it.</p>`)
 
 	// ── Live status hero — always visible. Auto-polls every 10s and on the
 	// vs-refresh event (fired after a settings save), so the state + realtime
@@ -510,31 +511,31 @@ func (a *App) handleOSShield(w http.ResponseWriter, r *http.Request) {
 	// and the server replies with an HX-Trigger that fires vs-refresh, so ONLY
 	// this section's body (and the status hero) reload in place to show the
 	// applied state — the whole page never refreshes. ─────────────────────────
-	b.WriteString(`<details class="card"><summary class="card-title vs-summary">Protection &amp; settings</summary>`)
-	b.WriteString(`<form hx-post="/os/api/shield/settings" hx-swap="none">`)
-	b.WriteString(`<div id="vs-body-protection" hx-get="/os/shield/section/protection" hx-trigger="vs-refresh from:body" hx-swap="innerHTML">`)
-	b.WriteString(a.shieldProtectionBody(r.Context()))
-	b.WriteString(`</div></form></details>`)
+	enabled := a.shieldCurrentSettings().Enabled
+	b.WriteString(`<div class="section-head"><span class="section-head__title">Protection</span><span class="section-head__hint">How unproven traffic is screened — verified crawlers always pass</span></div>`)
+	b.WriteString(`<div class="mon-stack">`)
+	b.WriteString(monAcc("🛡️", "Protection &amp; settings", "Challenge thresholds, rate-limit, surge &amp; the resilience gates", monChip(enabled, "On", "Off"), false,
+		`<form hx-post="/os/api/shield/settings" hx-swap="none"><div id="vs-body-protection" hx-get="/os/shield/section/protection" hx-trigger="vs-refresh from:body" hx-swap="innerHTML">`+a.shieldProtectionBody(r.Context())+`</div></form>`))
+	b.WriteString(`</div>`)
 
 	// Network hardening (Tier 2/3) — collapsible; the body is an HTMX fragment so
 	// its live state updates in place and, when the privileged agent is installed,
 	// the operator flips Tier 2/3 on/off right here with no terminal.
-	b.WriteString(`<details class="card"><summary class="card-title vs-summary">Network hardening (Tier 2 &amp; 3) — server-level</summary><div id="vs-body-hardening" hx-get="/os/shield/section/hardening" hx-trigger="every 10s" hx-swap="innerHTML">`)
-	b.WriteString(a.shieldHardeningBody())
-	b.WriteString(`</div></details>`)
+	b.WriteString(`<div class="section-head"><span class="section-head__title">Defense &amp; intelligence</span><span class="section-head__hint">Server-level hardening and the self-learning bot database</span></div>`)
+	b.WriteString(`<div class="mon-stack">`)
+	b.WriteString(monAcc("🧱", "Network hardening", "Tier 2 nftables · Tier 3 nginx edge — server-level", `<span class="mon-chip mon-chip--on">● Live</span>`, false,
+		`<div id="vs-body-hardening" hx-get="/os/shield/section/hardening" hx-trigger="every 10s" hx-swap="innerHTML">`+a.shieldHardeningBody()+`</div>`))
 
 	// ── Bot intelligence — collapsible + individually refreshable. Both bodies
 	// also listen for vs-refresh-sig (fired after a Confirm/Dismiss) so their
 	// counts update in place without touching the rest of the page. ───────────
 	if a.vayuShield != nil && a.vayuShield.BotStore() != nil {
-		b.WriteString(`<details class="card"><summary class="card-title vs-summary">Bot signatures</summary><div id="vs-body-signatures" hx-get="/os/shield/section/signatures" hx-trigger="vs-refresh-sig from:body" hx-swap="innerHTML">`)
-		b.WriteString(a.shieldSignaturesBody(r.Context()))
-		b.WriteString(`</div></details>`)
-
-		b.WriteString(`<details class="card"><summary class="card-title vs-summary">Review queue</summary><div id="vs-body-queue" hx-get="/os/shield/section/queue" hx-trigger="vs-refresh-sig from:body" hx-swap="innerHTML">`)
-		b.WriteString(a.shieldQueueBody(r.Context()))
-		b.WriteString(`</div></details>`)
+		b.WriteString(monAcc("🧬", "Bot signatures", "Learned fingerprints &amp; the community knowledge base", "", false,
+			`<div id="vs-body-signatures" hx-get="/os/shield/section/signatures" hx-trigger="vs-refresh-sig from:body" hx-swap="innerHTML">`+a.shieldSignaturesBody(r.Context())+`</div>`))
+		b.WriteString(monAcc("🔍", "Review queue", "Auto-learned candidates awaiting your verdict", "", false,
+			`<div id="vs-body-queue" hx-get="/os/shield/section/queue" hx-trigger="vs-refresh-sig from:body" hx-swap="innerHTML">`+a.shieldQueueBody(r.Context())+`</div>`))
 	}
+	b.WriteString(`</div>`) // close the Defense & intelligence mon-stack
 
 	// The old per-IP "Recent blocks" list was removed (ADR-0137): a scrolling log
 	// of hashed IPs was stale by design (the LIVE jail is in memory) and misread as
@@ -547,9 +548,11 @@ func (a *App) handleOSShield(w http.ResponseWriter, r *http.Request) {
 	// path and cached (admin_dashcache.go) so this panel can never block into a
 	// 502. The group refreshes in place via its own ↻ Refresh button. ──────────
 	if a.vaEngagement != nil {
-		b.WriteString(`<details class="card"><summary class="card-title vs-summary">Engagement analytics</summary><div id="vs-body-engagement">`)
-		b.WriteString(a.shieldEngagementBody(r.Context(), days))
-		b.WriteString(`</div></details>`)
+		b.WriteString(`<div class="section-head"><span class="section-head__title">Analytics</span><span class="section-head__hint">Cookieless, GDPR-by-design engagement</span></div>`)
+		b.WriteString(`<div class="mon-stack">`)
+		b.WriteString(monAcc("📊", "Engagement analytics", "Time-on-page, scroll depth &amp; traffic sources", "", false,
+			`<div id="vs-body-engagement">`+a.shieldEngagementBody(r.Context(), days)+`</div>`))
+		b.WriteString(`</div>`)
 	}
 
 	// Copy-to-clipboard for the Tier 2/3 commands. Same-origin, nonce-gated

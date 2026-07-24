@@ -6,6 +6,19 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased]
+
+### Changed
+- **The Bot Shield & Analytics console now matches the Monetization page — clean,
+  animated accordion cards.** The shield admin page was reskinned to the same
+  design language as the Monetization console: a subtitle, `section-head`
+  dividers (Protection · Defense & intelligence · Analytics), and animated
+  disclosure cards with emoji icons and status pills (the shield on/off pill, a
+  live badge on network hardening). Every live HTMX behaviour is unchanged — the
+  status hero and Aegis strip still auto-poll, the settings form still saves in
+  place, and each section body still refreshes on its own trigger. Pure
+  markup/CSS reuse of the existing admin stylesheet (no new CSS, CSP-safe).
+
 ## [3.15.14] — 2026-07-24
 
 This release is the VayuShield indexing + performance hardening track (phases
