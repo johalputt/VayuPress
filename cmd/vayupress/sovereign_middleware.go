@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/johalputt/vayupress/internal/auth"
+	"github.com/johalputt/vayupress/internal/vayushield"
 )
 
 // trustedSessionTTL bounds how long a validated (or rejected) operator session
@@ -107,6 +108,16 @@ func (a *App) isSovereignLane(r *http.Request) bool {
 		if p == pre || strings.HasPrefix(p, pre+"/") {
 			return true
 		}
+	}
+	// robots.txt / sitemap.xml / feeds are priority (never shed). A 503 on
+	// robots.txt pauses ALL crawling and a 503 on sitemap.xml drops URLs from the
+	// index, so these machine endpoints must always reach the handler even under a
+	// public-traffic flood. The set is small, cacheable and unspoofable (path
+	// shape only), so priority-admitting it can never be abused to bypass the
+	// public-lane cap. (The shield's own bypass already covers them one layer in;
+	// this closes the gap at L0, which runs before the shield.)
+	if vayushield.IsFeedLikePath(p) {
+		return true
 	}
 	if a.vayuShield != nil && a.vayuShield.HasVerifiedSession(r) {
 		return true

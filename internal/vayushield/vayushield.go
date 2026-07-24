@@ -723,6 +723,14 @@ func (m *Manager) isBypassed(r *http.Request) bool {
 	return isFeedLikePath(p)
 }
 
+// IsFeedLikePath reports whether a path is a feed/sitemap/robots endpoint by
+// shape. Exported so the L0 sovereign lane (cmd layer) can grant these machine
+// endpoints the same never-shed priority the shield already gives them: a 503
+// on robots.txt pauses ALL crawling and a 503 on sitemap.xml drops URLs, so
+// these must always reach the handler even while a flood saturates the public
+// lane. The set is small, cacheable and cheap, so priority-admitting it is safe.
+func IsFeedLikePath(p string) bool { return isFeedLikePath(p) }
+
 // isFeedLikePath reports whether a path is a feed, sitemap, or robots endpoint
 // by shape: any *.xml/*.atom/*.rss (covers /index.xml, /sitemap.xml, per-tag
 // feeds), a /feed or /rss path segment (WordPress /feed/, /comments/feed/), or
@@ -737,6 +745,36 @@ func isFeedLikePath(p string) bool {
 	}
 	return strings.HasSuffix(p, "/feed") || strings.HasSuffix(p, "/feed/") ||
 		strings.Contains(p, "/feed/") || strings.HasSuffix(p, "/rss") || strings.HasSuffix(p, "/rss/")
+}
+
+// IsGoodBotCandidate reports whether the request's User-Agent matches a known
+// search-engine or AI crawler in the static classifier (Googlebot, Bingbot,
+// Applebot, DuckDuckBot, GPTBot, ClaudeBot, PerplexityBot, PageSpeed/Lighthouse,
+// uptime monitors, …).
+//
+// It exists to LOOSEN handling for SEO safety, never to block: a recognised
+// crawler must be served the real page and never met with a rate-limit 429, a
+// load-shed/surge 503, or the JS "verify your browser" interstitial — none of
+// which a non-JS crawler can satisfy, and each of which Google reads as a crawl
+// error that de-indexes the URL.
+//
+// Phase 1 recognises by User-Agent ONLY. A UA is spoofable, so this is used
+// exclusively on the allow/loosen path — a spoofed crawler UA can, for now,
+// ride the crawler fast path but gains nothing it could not already get by
+// simply behaving like a browser. Phase 2 (internal/vayushield/verifiedbot)
+// replaces the trust decision with published-IP-range + forward-confirmed
+// reverse-DNS verification, so only a crawler proven to come from the vendor's
+// real network is fast-pathed. Deliberately does NOT recognise bad bots — those
+// stay on the normal classification path.
+func (m *Manager) IsGoodBotCandidate(r *http.Request) bool {
+	if m == nil || m.cfg.Static == nil {
+		return false
+	}
+	sig, ok := m.cfg.Static.MatchUA(r.UserAgent())
+	if !ok {
+		return false
+	}
+	return sig.Classification == botdb.ClassGoodBot || sig.Classification == botdb.ClassAIAgent
 }
 
 // clientBind is the per-client key a session/clearance cookie is cryptographically
@@ -831,6 +869,28 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 		verified := m.hasValidSession(r) ||
 			(m.cfg.TrustedFn != nil && m.cfg.TrustedFn(r))
 
+		// 0. Crawler SEO fast path (VayuShield Phase 1). A recognised search-engine
+		// or AI crawler is served the real page BEFORE any availability gate. A
+		// crawler carries no signed session, so without this it is treated as an
+		// anonymous stranger by every gate below — the rate-limit 429, the
+		// load-shed / fair-shed / Sovereign-Surge 503, and the JS "verify your
+		// browser" interstitial are all things a non-JS crawler cannot satisfy, and
+		// Google/Bing read a sustained non-200 (or a noindex challenge body) on a
+		// content URL as a crawl error and drop the page from the index. That is the
+		// exact mechanism that de-indexed the site. Recognition here is by
+		// User-Agent only (see IsGoodBotCandidate) — a strictly-loosening SEO
+		// safeguard, never used to block; Phase 2 hardens it with published-IP-range
+		// + FCrDNS confirmation so a spoofed UA cannot ride this path. The operator
+		// "block crawlers" (go-dark) switch runs in an OUTER middleware and still
+		// 403s crawlers when deliberately enabled, so this never overrides it.
+		if !verified && m.IsGoodBotCandidate(r) {
+			// Preserve the allow-event stream so operator dashboards still count
+			// recognised-crawler traffic even though it skips the classifier.
+			m.onEvent(ActionAllow, 0)
+			next.ServeHTTP(w, r)
+			return
+		}
+
 		// 1. Blocklist — the cheapest possible gate for a known-abusive IP.
 		if !verified && lc.autoBlock && m.blocklist.Blocked(ipKey) {
 			reqclass.MarkShielded(r.Context())
@@ -915,11 +975,14 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 		// (<100 ms) and rides the verified lane thereafter; a client that will not
 		// run JS never reaches fingerprinting, SQLite or rendering — it costs one
 		// HMAC. This is what lets a single VPS absorb a distributed 1M-source swarm
-		// with no CDN. It challenges EVERY unproven client (a spoofed good-bot UA
-		// gets no free pass here), so there is no UA-spoof bypass; good bots are
-		// briefly asked to retry only while a flood is live. Verified sessions,
-		// trusted operators and bypassed paths already returned above; a nil signer
-		// disables it (fail-open).
+		// with no CDN. Recognised search-engine/AI crawlers already took the SEO
+		// fast path at gate 0, so surge never challenges them — that is what stops a
+		// flood from de-indexing the site; every other unproven client is challenged
+		// here. (Gate-0 recognition is UA-only in Phase 1; Phase 2's published-IP +
+		// FCrDNS verification closes the UA-spoof gap so only a crawler from the
+		// vendor's real network skips surge.) Verified sessions, trusted operators
+		// and bypassed paths already returned above; a nil signer disables it
+		// (fail-open).
 		if !verified && m.underSurge(lc) {
 			// Impose real cost: surge exists to defend against clients that will
 			// (headless browsers) or won't (plain scrapers) run JS during a flood.

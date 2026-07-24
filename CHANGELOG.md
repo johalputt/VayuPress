@@ -8,6 +8,31 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Fixed
+- **VayuShield no longer de-indexes the site: recognised search/AI crawlers take
+  an SEO fast path before every availability gate (VayuShield hardening, phase
+  1/5).** The shield only decided "this is Googlebot, allow it" at classification
+  (gate 5), but every earlier gate — blocklist/reputation jail, load-shed,
+  fair-shed, the per-IP rate limit (which a fast crawler on a concentrated IP
+  range trips → 429 + auto-jail), and **Sovereign Surge** (auto-engaged with zero
+  config at ≥90% L0 saturation, serving a JavaScript proof-of-work 503 that a
+  non-JS crawler can never solve) — ran first and keyed only on `!verified`.
+  A crawler carries no signed session, so it was treated as an anonymous
+  stranger and met with a 429/503 or the "verify your browser" interstitial
+  instead of the page; Google/Bing read a sustained non-200 (or a `noindex`
+  challenge body) on a content URL as a crawl error and drop it. A new gate-0
+  fast path serves a recognised crawler (Googlebot, Bingbot, Applebot,
+  DuckDuckBot, GPTBot, ClaudeBot, PerplexityBot, PageSpeed/Lighthouse, uptime
+  monitors, …) the real page before any of those gates and before surge. Phase 1
+  recognises by User-Agent only and is used **exclusively to loosen** (never to
+  block); phase 2 will confirm identity by published-IP-range + forward-confirmed
+  reverse DNS so a spoofed crawler UA cannot ride the fast path.
+- **`robots.txt` / `sitemap.xml` / feeds are never shed by the L0 sovereignty
+  lane.** A 503 on `robots.txt` pauses all crawling and a 503 on `sitemap.xml`
+  drops URLs; these machine endpoints now join the always-admit priority lane
+  (matching the shield's own bypass) so a public-traffic spike can never return a
+  non-200 for them.
+
 ### Security
 - **Session/auth cookies now enforce `HttpOnly` at the chokepoint (CodeQL
   hardening).** `auth.WriteSecureCookie` forces `HttpOnly=true` so a session or
