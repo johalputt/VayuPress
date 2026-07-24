@@ -199,16 +199,17 @@ func writeSecureCookie(w http.ResponseWriter, c *http.Cookie) {
 	auth.WriteSecureCookie(w, c)
 }
 
-// setCSRFCookie writes the double-submit vp_csrf cookie. HttpOnly is false by
-// design: the double-submit pattern requires the page script to read the token
-// and echo it in the X-CSRF-Token header.
+// setCSRFCookie writes the double-submit vp_csrf cookie via the dedicated
+// readable-cookie writer: HttpOnly is off by design, because the double-submit
+// pattern requires the page script to read the token and echo it in the
+// X-CSRF-Token header. Every other (session/auth) cookie goes through
+// writeSecureCookie, which forces HttpOnly on.
 func setCSRFCookie(w http.ResponseWriter, token string) {
-	writeSecureCookie(w, &http.Cookie{
+	auth.WriteReadableCookie(w, &http.Cookie{
 		Name:     "vp_csrf",
 		Value:    token,
 		Path:     "/",
 		SameSite: http.SameSiteStrictMode,
-		HttpOnly: false,
 		MaxAge:   3600,
 	})
 }

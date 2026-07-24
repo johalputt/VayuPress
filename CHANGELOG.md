@@ -8,6 +8,18 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Security
+- **Session/auth cookies now enforce `HttpOnly` at the chokepoint (CodeQL
+  hardening).** `auth.WriteSecureCookie` forces `HttpOnly=true` so a session or
+  auth cookie routed through it can never accidentally be script-readable, even
+  if a caller forgets. The one cookie that MUST be readable — the double-submit
+  `vp_csrf` token, whose whole purpose is to be echoed back in the
+  `X-CSRF-Token` header — moved to a dedicated `auth.WriteReadableCookie`, so the
+  readable exception is explicit and auditable in one place. (The remaining
+  CodeQL "Secure not set to true" note is a required Tor-mode design exception: a
+  `Secure` cookie is dropped by the browser over the plain-http `.onion`, so it
+  is intentionally request/host-aware via `CSRFCookieSecure`, ADR-0141.)
+
 ## [3.15.13] — 2026-07-24
 
 ### Security

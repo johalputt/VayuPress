@@ -603,14 +603,32 @@ func CSRFCookieSecure() bool {
 	return config.Cfg.Domain != "localhost"
 }
 
-// WriteSecureCookie applies the single request/host-aware Secure policy
-// (CSRFCookieSecure) to c and writes it, so every cookie's Secure flag is decided
-// in exactly one place. This is also why a static analyzer sees ONE
-// correctly-conditional cookie site rather than one per handler. Secure is off on
-// the http .onion and localhost, on for clearnet HTTPS — it cannot be a constant
+// WriteSecureCookie writes a session/auth cookie through the single
+// request/host-aware policy: HttpOnly is FORCED on (defense in depth — a session
+// cookie routed here can never accidentally be script-readable), and the Secure
+// flag is decided in exactly one place by CSRFCookieSecure. Secure is off on the
+// http .onion and localhost, on for clearnet HTTPS — it cannot be a constant
 // true without breaking Tor mode (a Secure cookie is dropped over the plain-http
-// .onion, ADR-0141).
+// .onion, ADR-0141), which is the one intentional deviation from the static
+// analyzer's "Secure must be true" rule.
+//
+// Cookies that MUST be script-readable (the double-submit CSRF token) use
+// WriteReadableCookie instead — they are never routed here.
 func WriteSecureCookie(w http.ResponseWriter, c *http.Cookie) {
+	c.HttpOnly = true
+	c.Secure = CSRFCookieSecure()
+	http.SetCookie(w, c)
+}
+
+// WriteReadableCookie writes a cookie the page script is MEANT to read — only
+// the double-submit CSRF token, whose whole purpose is to be echoed back in the
+// X-CSRF-Token header, so HttpOnly is deliberately left off. It still applies the
+// same request/host-aware Secure policy and is SameSite-scoped by the caller, so
+// the token is not a sensitive-session credential a `HttpOnly`/`Secure` rule
+// would protect. Kept distinct from WriteSecureCookie so the readable exception
+// is explicit and auditable in one place.
+func WriteReadableCookie(w http.ResponseWriter, c *http.Cookie) {
+	c.HttpOnly = false // double-submit CSRF: the page script must read this token
 	c.Secure = CSRFCookieSecure()
 	http.SetCookie(w, c)
 }
@@ -704,7 +722,7 @@ func CSRFTokenMiddleware(next http.Handler) http.Handler {
 			}
 			if needsToken {
 				if token := GenerateCSRFToken(); token != "" {
-					WriteSecureCookie(w, &http.Cookie{Name: "vp_csrf", Value: token, Path: "/", SameSite: http.SameSiteStrictMode, HttpOnly: false, MaxAge: 3600})
+					WriteReadableCookie(w, &http.Cookie{Name: "vp_csrf", Value: token, Path: "/", SameSite: http.SameSiteStrictMode, MaxAge: 3600})
 				}
 			}
 			next.ServeHTTP(w, r)
