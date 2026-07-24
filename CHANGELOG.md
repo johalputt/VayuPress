@@ -8,6 +8,35 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.15.3] — 2026-07-24
+
+### Security
+- **Inbound SMTP no longer auto-creates a mailbox for unknown recipients.** Port
+  25 accepted mail for any local-part on a served domain and delivery created a
+  Maildir per address, so a single unauthenticated connection could spray
+  hundreds of thousands of directories/inodes (a whole-install disk-exhaustion
+  DoS and a silent mail sink). RCPT now requires the address to map to a real
+  provisioned mailbox or alias (`550 5.1.1` otherwise), and envelope recipients
+  are capped per transaction.
+- **The IMAP FETCH MIME parser is now depth- and size-bounded.** A crafted
+  message with deeply chained multipart containers made the FETCH parser recurse
+  without limit, so one stored ≤25 MiB message could OOM / stack-overflow the
+  whole single-binary process on the victim's next `FETCH` — a persistent,
+  unauthenticated remote DoS. The parser now stops at `maxMIMEDepth`, caps the
+  total part count, and bounds each part's retained bytes.
+- **Authenticated submission now binds the sender to the login.** On 587, an
+  authenticated mailbox user could set `MAIL FROM`/`From:` to another local
+  mailbox (e.g. an intern sending as the CEO) — convincing intra-server
+  spearphishing. Submission now refuses an envelope sender that is a *different*
+  local mailbox the authenticated account does not own; own addresses, owned
+  aliases, and external identities are unaffected (the guard fails open on any
+  ambiguity so legitimate delivery is never broken).
+- **Client-submitted (587) mail is now DKIM-signed.** Previously only webmail
+  Compose and the autoresponder signed; 587 (mobile app / Thunderbird) traffic
+  was relayed unsigned, leaving DMARC alignment on SPF alone. Submission now
+  DKIM-signs with the sender-domain key (best-effort; a signing failure relays
+  unsigned rather than bouncing).
+
 ## [3.15.2] — 2026-07-24
 
 ### Security

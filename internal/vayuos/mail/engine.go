@@ -586,7 +586,7 @@ func (e *Engine) Start(ctx context.Context) error {
 			e.inboundErr = fmt.Errorf("tls: %w", terr)
 		}
 
-		smtpd := NewSMTPServer(e.cfg, e.inboundDeliver).WithTLS(e.tlsConf)
+		smtpd := NewSMTPServer(e.cfg, e.inboundDeliver).WithTLS(e.tlsConf).WithRecipientCheck(e.isLocalRecipient)
 		if err := smtpd.Start(ctx); err != nil {
 			e.inboundErr = errors.Join(e.inboundErr, fmt.Errorf("smtp receive: %w", err))
 		} else {
@@ -627,7 +627,7 @@ func (e *Engine) Start(ctx context.Context) error {
 				e.pop3sd = pop3sd
 			}
 			if e.bridge != nil {
-				submitd := NewSubmissionServer(e.cfg, e.tlsConf, e.bridge.AuthUser, e.relayOutbound)
+				submitd := NewSubmissionServer(e.cfg, e.tlsConf, e.bridge.AuthUser, e.relayOutbound).WithSenderCheck(e.submissionSenderAllowed)
 				if err := submitd.Start(ctx); err != nil {
 					e.inboundErr = errors.Join(e.inboundErr, fmt.Errorf("submission (587): %w", err))
 				} else {
@@ -656,7 +656,20 @@ func (e *Engine) relayOutbound(from string, rcpts []string, raw []byte) error {
 	if e.queue == nil {
 		return errors.New("vayumail: queue unavailable")
 	}
-	_, err := e.queue.Enqueue(context.Background(), envelopeAddress(from), rcpts, raw)
+	// DKIM-sign submitted mail (audit L7): 587/client-submitted messages (the
+	// mobile app + Thunderbird path) were enqueued verbatim and unsigned, so DMARC
+	// alignment rested on SPF alone and broke on any forwarding hop. Sign with the
+	// sender-domain key, mirroring the webmail Compose path. Best-effort: a signing
+	// failure relays the message unsigned rather than bouncing it.
+	msg := raw
+	if signer := e.dkimFor(e.senderDomain(from)); signer != nil {
+		if out, err := signer.SignMessage(raw); err == nil && len(out) > 0 {
+			msg = out
+		}
+		// On a signing error, fall through and relay the message unsigned rather
+		// than bounce it (best-effort, matching the prior behaviour).
+	}
+	_, err := e.queue.Enqueue(context.Background(), envelopeAddress(from), rcpts, msg)
 	return err
 }
 
@@ -1051,6 +1064,45 @@ func (e *Engine) splitLocalRecipients(to []string) (local, remote []string) {
 		}
 	}
 	return local, remote
+}
+
+// submissionSenderAllowed enforces sender-login binding on the 587 submission
+// path (audit M5): an authenticated user may send with their own address, an
+// external (non-local) From, or an alias that delivers to their own mailbox — but
+// NOT as ANOTHER local mailbox they do not own (the intra-server spoofing vector,
+// e.g. an intern sending as the CEO). It fails OPEN whenever it cannot positively
+// prove the From belongs to a different local user (empty/null sender, missing
+// account data, or an ambiguous localpart-only login) so legitimate delivery is
+// never broken — the guard only ever blocks a confidently-foreign local sender.
+func (e *Engine) submissionSenderAllowed(authUser, fromAddr string) bool {
+	authUser = strings.TrimSpace(authUser)
+	fromAddr = strings.TrimSpace(fromAddr)
+	if authUser == "" || fromAddr == "" {
+		return true
+	}
+	if strings.EqualFold(authUser, fromAddr) {
+		return true
+	}
+	// Only a LOCAL mailbox owned by someone else is forbidden; an external From is
+	// out of scope for this intra-server guard (recipient-side SPF/DKIM covers it).
+	if !e.isLocalRecipient(fromAddr) {
+		return true
+	}
+	// Tolerate a localpart-only or differently-cased login that still names the
+	// same identity (localparts equal, and any domain the login carried matches).
+	al, ad := splitAddress(authUser)
+	fl, fd := splitAddress(fromAddr)
+	if strings.EqualFold(al, fl) && (ad == "" || strings.EqualFold(ad, fd)) {
+		return true
+	}
+	// Allow an alias/identity that resolves to the authenticated mailbox.
+	if e.accounts != nil {
+		if target := e.accounts.ResolveAlias(context.Background(), fromAddr); target != "" &&
+			(strings.EqualFold(target, authUser) || strings.EqualFold(target, al+"@"+fd)) {
+			return true
+		}
+	}
+	return false
 }
 
 // isLocalRecipient reports whether addr is a mailbox on this instance. The

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"io"
 	"mime"
 	"mime/multipart"
 	"net/mail"
@@ -83,13 +84,31 @@ func serializeHeader(h textproto.MIMEHeader) []byte {
 	return b.Bytes()
 }
 
-// parseMessage parses raw into a MIME tree.
+// maxMIMEParts bounds the total number of MIME parts parsed from one message —
+// the companion to maxMIMEDepth. Together they cap the work and memory a crafted
+// message can force in the IMAP FETCH parser, which runs on its own listener with
+// no HTTP Recoverer: an unbounded parser would let one stored ≤25 MiB message with
+// deeply chained multipart containers recurse to OOM / stack-overflow and take the
+// whole single-binary process down on the victim's next FETCH (audit H5). A real
+// message has a handful of parts; 256 is far above any legitimate structure.
+const maxMIMEParts = 256
+
+// maxFetchPartBytes caps how many bytes readAllLimited retains for a single
+// FETCH part, so a pathological structure cannot hold many near-full copies of
+// the message at once. Set above the 25 MiB MaxMessageBytes ingest cap so a
+// legitimate part (which can never exceed the whole message) is never truncated —
+// this bounds memory without corrupting BODYSTRUCTURE sizes.
+const maxFetchPartBytes = 32 << 20 // 32 MiB
+
+// parseMessage parses raw into a MIME tree, bounded in both depth and total part
+// count so a maliciously nested/part-flooded message yields a finite tree.
 func parseMessage(raw []byte) *part {
 	hb, body := splitHeaderBody(raw)
-	return buildPart(parseHeaderBytes(hb), hb, body)
+	budget := maxMIMEParts
+	return buildPart(parseHeaderBytes(hb), hb, body, 0, &budget)
 }
 
-func buildPart(h textproto.MIMEHeader, headerBytes, content []byte) *part {
+func buildPart(h textproto.MIMEHeader, headerBytes, content []byte, depth int, budget *int) *part {
 	p := &part{
 		header:      h,
 		headerBytes: headerBytes,
@@ -122,15 +141,24 @@ func buildPart(h textproto.MIMEHeader, headerBytes, content []byte) *part {
 	if p.typ == "multipart" {
 		if boundary := p.params["boundary"]; boundary != "" {
 			p.isMultipart = true
+			// Bound the recursion (audit H5): past maxMIMEDepth, or once the
+			// whole-message part budget is spent, stop descending and treat the
+			// container's bytes as an opaque leaf. A crafted deeply-nested /
+			// part-flooded message then parses to a finite tree instead of
+			// exhausting memory or the stack.
+			if depth >= maxMIMEDepth {
+				return p
+			}
 			mr := multipart.NewReader(bytes.NewReader(content), boundary)
-			for {
+			for *budget > 0 {
 				mp, err := mr.NextRawPart()
 				if err != nil {
 					break
 				}
+				*budget--
 				childContent, _ := readAllLimited(mp)
 				childHdrBytes := serializeHeader(mp.Header)
-				p.children = append(p.children, buildPart(mp.Header, childHdrBytes, childContent))
+				p.children = append(p.children, buildPart(mp.Header, childHdrBytes, childContent, depth+1, budget))
 			}
 		}
 	}
@@ -139,8 +167,9 @@ func buildPart(h textproto.MIMEHeader, headerBytes, content []byte) *part {
 
 func readAllLimited(r *multipart.Part) ([]byte, error) {
 	var buf bytes.Buffer
-	// Cap a single part at the configured max message size to bound memory.
-	_, err := buf.ReadFrom(r)
+	// Cap a single part at maxPartBytes to bound memory (the reader's name was
+	// previously aspirational — it applied no limit, audit H5).
+	_, err := buf.ReadFrom(io.LimitReader(r, maxFetchPartBytes))
 	return buf.Bytes(), err
 }
 

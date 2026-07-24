@@ -33,12 +33,27 @@ type SMTPServer struct {
 	tls        *tls.Config
 	submission bool
 	auth       AuthFunc
+	// recipientExists, when set on the inbound (receive) server, reports whether a
+	// local address actually maps to a provisioned mailbox/alias. It closes the
+	// unauthenticated disk/inode-exhaustion vector (audit H4): without it, port 25
+	// accepted mail for ANY local-part on a served domain and delivery auto-created
+	// a Maildir per address, so a single connection could spray hundreds of
+	// thousands of directories. Unknown recipients are now refused with 550 5.1.1.
+	recipientExists func(addr string) bool
+	// senderAllowed, when set on the submission server, reports whether an
+	// authenticated user may send as a given From/MAIL FROM address — the
+	// sender-login binding that stops one mailbox spoofing another (audit M5).
+	senderAllowed func(authUser, fromAddr string) bool
 
 	ln     net.Listener
 	wg     sync.WaitGroup
 	mu     sync.Mutex
 	closed bool
 }
+
+// maxRcptsPerTxn caps envelope recipients per transaction — a flood of RCPTs was
+// an amplification lever for the Maildir-creation DoS (audit H4).
+const maxRcptsPerTxn = 100
 
 // NewSMTPServer creates a receive server bound to cfg.SMTPListen.
 func NewSMTPServer(cfg Config, handler InboundHandler) *SMTPServer {
@@ -49,6 +64,21 @@ func NewSMTPServer(cfg Config, handler InboundHandler) *SMTPServer {
 // server for chaining.
 func (s *SMTPServer) WithTLS(t *tls.Config) *SMTPServer {
 	s.tls = t
+	return s
+}
+
+// WithRecipientCheck wires a mailbox-existence predicate for the inbound server,
+// so RCPT is refused for a local address that maps to no provisioned mailbox or
+// alias (audit H4). Returns the server for chaining.
+func (s *SMTPServer) WithRecipientCheck(exists func(addr string) bool) *SMTPServer {
+	s.recipientExists = exists
+	return s
+}
+
+// WithSenderCheck wires the sender-login binding predicate for the submission
+// server (audit M5). Returns the server for chaining.
+func (s *SMTPServer) WithSenderCheck(allowed func(authUser, fromAddr string) bool) *SMTPServer {
+	s.senderAllowed = allowed
 	return s
 }
 
@@ -135,13 +165,14 @@ func (s *SMTPServer) handle(conn net.Conn) {
 	_ = conn.SetDeadline(time.Now().Add(5 * time.Minute))
 
 	var (
-		br     *bufio.Reader
-		bw     *bufio.Writer
-		onTLS  bool
-		authed bool
-		helo   string
-		from   string
-		rcpts  []string
+		br       *bufio.Reader
+		bw       *bufio.Writer
+		onTLS    bool
+		authed   bool
+		authUser string
+		helo     string
+		from     string
+		rcpts    []string
 	)
 	var clientIP net.IP
 	if ta, ok := conn.RemoteAddr().(*net.TCPAddr); ok {
@@ -202,7 +233,7 @@ func (s *SMTPServer) handle(conn net.Conn) {
 			conn = tconn
 			_ = conn.SetDeadline(time.Now().Add(5 * time.Minute))
 			setup(conn) // RFC 3207: discard prior state after the upgrade
-			onTLS, authed = true, false
+			onTLS, authed, authUser = true, false, ""
 			reset()
 		case "AUTH":
 			if !s.submission {
@@ -217,8 +248,8 @@ func (s *SMTPServer) handle(conn net.Conn) {
 				write("503 5.5.1 Already authenticated")
 				continue
 			}
-			if s.runAuth(br, write, arg) {
-				authed = true
+			if ok, user := s.runAuth(br, write, arg); ok {
+				authed, authUser = true, user
 				write("235 2.7.0 Authentication successful")
 			} else {
 				write("535 5.7.8 Authentication credentials invalid")
@@ -229,12 +260,23 @@ func (s *SMTPServer) handle(conn net.Conn) {
 				continue
 			}
 			from = extractAddr(arg)
+			// Sender-login binding (audit M5): an authenticated submitter may not
+			// use another local mailbox's address as the envelope sender.
+			if s.submission && s.senderAllowed != nil && from != "" && !s.senderAllowed(authUser, from) {
+				from = ""
+				write("553 5.7.1 Sender address not owned by the authenticated account")
+				continue
+			}
 			rcpts = nil
 			write("250 2.1.0 Ok")
 		case "RCPT":
 			addr := extractAddr(arg)
 			if addr == "" {
 				write("501 5.1.3 Bad recipient")
+				continue
+			}
+			if len(rcpts) >= maxRcptsPerTxn {
+				write("452 4.5.3 Too many recipients")
 				continue
 			}
 			if s.submission {
@@ -245,6 +287,11 @@ func (s *SMTPServer) handle(conn net.Conn) {
 				// Authenticated submitters may relay to any recipient.
 			} else if !s.recipientAccepted(addr) {
 				write("550 5.7.1 Relay denied — recipient not local")
+				continue
+			} else if s.recipientExists != nil && !s.recipientExists(addr) {
+				// Local domain, but no such mailbox/alias: refuse rather than accept
+				// and auto-create a Maildir per address (audit H4).
+				write("550 5.1.1 No such user here")
 				continue
 			}
 			rcpts = append(rcpts, addr)
@@ -297,10 +344,12 @@ func (s *SMTPServer) handle(conn net.Conn) {
 }
 
 // runAuth handles AUTH PLAIN / LOGIN, reading any continuation lines. It returns
-// true only when the bridge verifies the credentials.
-func (s *SMTPServer) runAuth(br *bufio.Reader, write func(string), arg string) bool {
+// (true, authenticated-username) only when the bridge verifies the credentials,
+// and (false, "") otherwise. The username is retained for the sender-login
+// binding (audit M5).
+func (s *SMTPServer) runAuth(br *bufio.Reader, write func(string), arg string) (bool, string) {
 	if s.auth == nil {
-		return false
+		return false, ""
 	}
 	parts := strings.SplitN(strings.TrimSpace(arg), " ", 2)
 	mech := strings.ToUpper(strings.TrimSpace(parts[0]))
@@ -328,17 +377,23 @@ func (s *SMTPServer) runAuth(br *bufio.Reader, write func(string), arg string) b
 		}
 		f := strings.Split(raw, "\x00") // authzid \0 authcid \0 passwd
 		if len(f) != 3 {
-			return false
+			return false, ""
 		}
-		return s.verify(f[1], f[2])
+		if s.verify(f[1], f[2]) {
+			return true, f[1]
+		}
+		return false, ""
 	case "LOGIN":
 		write("334 " + base64.StdEncoding.EncodeToString([]byte("Username:")))
 		user := readB64()
 		write("334 " + base64.StdEncoding.EncodeToString([]byte("Password:")))
 		pass := readB64()
-		return s.verify(user, pass)
+		if s.verify(user, pass) {
+			return true, user
+		}
+		return false, ""
 	default:
-		return false
+		return false, ""
 	}
 }
 
