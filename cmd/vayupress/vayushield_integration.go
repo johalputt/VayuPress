@@ -156,7 +156,10 @@ func (a *App) bootVayuShield() {
 		CountryFn:         geoip.Country,
 		ClientIP:          auth.ClientIP,
 		CookieSecure:      auth.CSRFCookieSecure(),
-		OnEvent:           a.vayuShieldOnEvent,
+		// Tor Space: never issue a browser challenge (crypto.subtle is undefined
+		// on the plain-http .onion, so it would lock every visitor out).
+		OnionMode: config.Cfg.OnionMode,
+		OnEvent:   a.vayuShieldOnEvent,
 		// L0 -> L2 pressure link: when the public sovereignty lane passes 75%
 		// occupancy the L2 pre-filter starts fair-shedding heavy hitters, easing
 		// the lane back down BEFORE it saturates and starts shedding blindly.
@@ -229,6 +232,9 @@ func (a *App) bootVayuShield() {
 	} else {
 		logging.LogInfo("vayushield", "bot protection disabled — enable it in VayuOS → Bot Shield & Analytics (no restart needed)")
 	}
+	// SEO canary: assert verified crawlers are served content, not a challenge —
+	// a loud, deterministic startup signal that the shield is not de-indexing.
+	a.logShieldCanary()
 	// The learning/purge reporter always runs (cheap 24h ticker) so the adaptive
 	// database stays curated regardless of the current toggle state.
 	a.vayuShield.StartReporter(queue.DoneCh, 24*time.Hour, config.Cfg.AnalyticsRetainDays, func(res vayushield.LearningResult, err error) {

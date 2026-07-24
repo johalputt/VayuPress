@@ -8,6 +8,19 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Added
+- **Tor Space never locks visitors out, and a boot-time SEO canary (VayuShield
+  hardening, phase 5/5).** A Tor Space serves a plain-http `.onion` where the
+  browser leaves `window.crypto.subtle` undefined, so the proof-of-work challenge
+  solver cannot run — any challenge there would lock **every** human out. The
+  shield now never issues a browser challenge (and never engages Sovereign Surge)
+  in `OnionMode`; it fails open to content while the non-crypto gates (blocklist,
+  reputation jail, rate limit, load-shed) still enforce. Separately, a startup
+  **SEO canary** drives synthetic Googlebot / Bingbot / GPTBot / PageSpeed
+  requests through the live shield and logs a loud error if any is met with a
+  challenge/403 instead of content — so a de-indexing regression is caught at
+  deploy, not weeks later through lost rankings.
+
 ### Changed
 - **Broader, current crawler recognition + the "go dark" switch no longer breaks
   the operator's own tooling (VayuShield hardening, phase 4/5).** The classifier's

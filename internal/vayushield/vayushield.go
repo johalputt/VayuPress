@@ -85,6 +85,16 @@ type Config struct {
 	ChallengeTTL      time.Duration // default 5m
 	CookieSecure      bool
 
+	// OnionMode marks a Tor Space install (VAYUOS_MODE=tor): the site is served
+	// over plain-http .onion, where the browser leaves window.crypto.subtle
+	// undefined (it is a secure-context-only API), so the Web-Worker SHA-256
+	// challenge solver cannot run and NO visitor could ever pass a challenge.
+	// When set, the shield never issues a browser challenge (it fails open to the
+	// content); the non-crypto gates — blocklist, reputation jail, rate limit,
+	// load-shed, fair-shed — still enforce. This prevents a total lockout of a
+	// Tor Space the moment any challenge band is reached.
+	OnionMode bool
+
 	// Injected side channels (all optional).
 	CountryFn func(ip string) string        // e.g. geoip.Country
 	ClientIP  func(r *http.Request) string  // trusted-proxy-aware client IP
@@ -495,7 +505,9 @@ func (m *Manager) jailTTL() time.Duration {
 // Requires a signer (no signer => no surge, fail-open); both checks are a couple
 // of atomic loads, so this is negligible on the hot path.
 func (m *Manager) underSurge(lc *liveConfig) bool {
-	if m.cfg.Signer == nil {
+	if m.cfg.Signer == nil || m.cfg.OnionMode {
+		// No signer → cannot challenge. Tor Space → crypto.subtle is unavailable,
+		// so surge could only lock everyone out; never engage it there.
 		return false
 	}
 	if lc.surge {
@@ -1344,6 +1356,12 @@ func (m *Manager) rotateIPSaltLocked(now time.Time) {
 func (m *Manager) serveChallenge(w http.ResponseWriter, r *http.Request, v Verdict, difficulty int, feedCalib bool) bool {
 	if m.cfg.Signer == nil {
 		return false // cannot challenge without a signer — fail open
+	}
+	if m.cfg.OnionMode {
+		// A Tor Space serves plain-http .onion, so window.crypto.subtle is
+		// undefined and the PoW solver cannot run — a challenge here locks EVERY
+		// human out. Fail open; the non-crypto gates still enforce.
+		return false
 	}
 	pow, err := m.cfg.Signer.IssuePoW(difficulty, m.cfg.ChallengeTTL)
 	if err != nil {
