@@ -120,11 +120,24 @@ Go 1.25+ is required (govulncheck / x/tools need it).
   Tor mode via `config.Cfg.OnionMode`). Run **two installs** (own DBs) for both.
 - **Tor world is web-only** (Tor Browser): VayuMail·Tor is webmail only and
   VayuTalk·Tor is a web client only — no mobile-over-Tor.
-- **Anti-leak in Tor mode:** no clearnet callbacks (IndexNow already gated;
-  webmention/WKD/gravatar/MX to follow), block external hotlinked images, keep
-  `img-src 'self' data:` (never widen to `http:`), serve http onion (no CA-TLS,
-  no HSTS, no Secure cookie). `seo.Origin(host)` is the scheme source of truth —
+- **Anti-leak in Tor mode:** no clearnet callbacks. The central kill-switch is
+  `safefetch.SetBlockClearnetEgress(OnionMode)` — it closes EVERY `safefetch`
+  call site (IndexNow, webhooks, remote images, embed unfurl, WKD). Paths that
+  bypass safefetch are individually guarded too: AI-generate routes through
+  `safeOutboundTransport()`, the external SMTP relay is refused via
+  `safefetch.ClearnetBlocked()`, plugin-registry downloads and the Stripe/PayPal
+  nil-client fallback use the guarded transport. Webmention is inbound-only and
+  gravatar is serve-only (no outbound), so neither leaks. Also: block external
+  hotlinked images, keep `img-src 'self' data:` (never widen to `http:`), serve
+  http onion (no CA-TLS, no HSTS, no Secure cookie), bind loopback only
+  (`onionSafeBindAddr`). `seo.Origin(host)` is the scheme source of truth —
   `.onion` gets `http://`, clearnet stays `https://`.
+- **Verifiable posture:** `internal/anonaudit` computes an honest anonymity
+  report shown on `/os/spaces` and logged at boot — NEVER claims "100%
+  anonymous". The one-click in-app Tor Space (the child supervisor, ADR-0141)
+  spawns with `VAYUOS_MODE=tor`, so it inherits every anti-leak guard; its child
+  env whitelists only `PATH` (no parent secret/DOMAIN bleed) and each keystore
+  DEK falls back to its own host-bound keyfile (no `VAYU_SECRET` needed).
 - **Sync/migrate is content-only:** `vayupress migrate export|import --file
   x.vaybundle` (checksummed, offline-movable; `--mode=merge|add-only`). Accounts,
   mailboxes, PGP keys and Talk IDs never cross (no `author_id`). A Live Mirror
