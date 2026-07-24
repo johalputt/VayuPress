@@ -200,6 +200,14 @@ func (s *Store) InternalKey() string {
 // raw token. The id and label are preserved so any reference to the key stays
 // valid while the old secret is instantly invalidated.
 func (s *Store) Rotate(ctx context.Context, id string) (string, error) {
+	// The internal/system key is provisioned ONLY by EnsureInternal at boot and
+	// must never be rotated through the operator/API surface: a rotate returns
+	// the fresh secret, so rotating the internal key would hand the caller an
+	// unconditional superuser token. Refuse it exactly like Revoke/Delete/
+	// SetActive do (audit C2).
+	if id == InternalKeyID {
+		return "", ErrInternalProtected
+	}
 	raw, prefix, err := generateToken()
 	if err != nil {
 		return "", err
@@ -213,13 +221,6 @@ func (s *Store) Rotate(ctx context.Context, id string) (string, error) {
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
 		return "", ErrNotFound
-	}
-	// If the system key was rotated, propagate the new value to internal
-	// consumers immediately (they read InternalKey() live — no manual step).
-	if id == InternalKeyID {
-		s.mu.Lock()
-		s.internalRaw = raw
-		s.mu.Unlock()
 	}
 	s.invalidate()
 	return raw, nil

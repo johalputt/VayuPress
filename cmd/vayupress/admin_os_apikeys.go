@@ -617,6 +617,10 @@ func (a *App) handleOSAPIKeyRotate(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "apikeys-error", "API key store not initialised", "")
 		return
 	}
+	if !a.keyLifecycleAuthorized(r) {
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", "rotating an API key requires an administrator or a superuser key", "")
+		return
+	}
 	id := strings.TrimSpace(r.URL.Query().Get("id"))
 	if id == "" {
 		var body struct {
@@ -663,10 +667,14 @@ func (a *App) revokeOAuthRefreshForKey(r *http.Request, id string) {
 	}
 }
 
-// apiKeyMutate is the shared revoke/delete helper.
+// apiKeyMutate is the shared revoke/delete/activate helper.
 func (a *App) apiKeyMutate(w http.ResponseWriter, r *http.Request, fn func(id string) error) {
 	if a.apiKeys == nil {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "apikeys-error", "API key store not initialised", "")
+		return
+	}
+	if !a.keyLifecycleAuthorized(r) {
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", "modifying an API key requires an administrator or a superuser key", "")
 		return
 	}
 	var body struct {
@@ -687,6 +695,10 @@ func (a *App) apiKeyMutate(w http.ResponseWriter, r *http.Request, fn func(id st
 func (a *App) handleOSCredentialSave(w http.ResponseWriter, r *http.Request) {
 	if a.secrets == nil {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "secrets-error", "secrets store not initialised", "")
+		return
+	}
+	if !a.isAdminRequest(r) {
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", "admin role required", "")
 		return
 	}
 	var body struct {
@@ -713,6 +725,10 @@ func (a *App) handleOSCredentialReveal(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "secrets-error", "secrets store not initialised", "")
 		return
 	}
+	if !a.isAdminRequest(r) {
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", "admin role required", "")
+		return
+	}
 	var body struct {
 		ID string `json:"id"`
 	}
@@ -728,6 +744,10 @@ func (a *App) handleOSCredentialReveal(w http.ResponseWriter, r *http.Request) {
 func (a *App) handleOSCredentialDelete(w http.ResponseWriter, r *http.Request) {
 	if a.secrets == nil {
 		writeAPIError(w, r, http.StatusServiceUnavailable, "secrets-error", "secrets store not initialised", "")
+		return
+	}
+	if !a.isAdminRequest(r) {
+		writeAPIError(w, r, http.StatusForbidden, "forbidden", "admin role required", "")
 		return
 	}
 	var body struct {

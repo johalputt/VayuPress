@@ -131,16 +131,23 @@ func TestEnsureInternalProvisionsAndPropagates(t *testing.T) {
 	if len(list) != 1 || list[0].Scope != ScopeInternal || list[0].ID != InternalKeyID {
 		t.Fatalf("expected one internal key, got %+v", list)
 	}
-	// Rotation must propagate to InternalKey() live, and the old value dies.
-	newRaw, err := s.Rotate(ctx, InternalKeyID)
-	if err != nil {
-		t.Fatalf("rotate internal: %v", err)
+	// The internal/system key must NOT be rotatable through the store surface:
+	// Rotate returns the fresh secret, so allowing it would mint an unconditional
+	// superuser token (audit C2). It is refreshed only by EnsureInternal at boot.
+	if _, err := s.Rotate(ctx, InternalKeyID); err != ErrInternalProtected {
+		t.Fatalf("rotate internal: expected ErrInternalProtected, got %v", err)
 	}
+	if s.InternalKey() != raw || !s.Verify(raw) {
+		t.Fatal("internal key must be unchanged after a refused rotate")
+	}
+	// EnsureInternal is the legitimate refresh path: it re-provisions the secret,
+	// propagates the new value to InternalKey() live, and retires the old one.
+	if err := s.EnsureInternal(ctx); err != nil {
+		t.Fatalf("re-ensure internal: %v", err)
+	}
+	newRaw := s.InternalKey()
 	if newRaw == raw {
-		t.Fatal("rotation should change the value")
-	}
-	if s.InternalKey() != newRaw {
-		t.Fatal("InternalKey() must reflect the rotated value immediately")
+		t.Fatal("EnsureInternal should refresh the internal secret")
 	}
 	if s.Verify(raw) {
 		t.Error("old internal value must stop authenticating")

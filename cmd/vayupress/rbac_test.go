@@ -77,6 +77,31 @@ func TestOSPathMinLevel(t *testing.T) {
 		"/os/newsletter":       accessAdmin,
 		"/os/security":         accessAdmin,
 		"/os/adr":              accessAdmin,
+		// Money, fulfilment & operator controls — the /os/api twins that were
+		// silently author-accessible (fail-open) before the fail-closed default.
+		"/os/api/credentials/reveal":      accessAdmin,
+		"/os/api/payments/stripe/connect": accessAdmin,
+		"/os/api/orders":                  accessAdmin,
+		"/os/api/orders/o1/paid":          accessAdmin,
+		"/os/api/mailids/m1/activate":     accessAdmin,
+		"/os/api/domains/d1/sync":         accessAdmin,
+		"/os/api/backup/export":           accessAdmin,
+		"/os/api/power/restart":           accessAdmin,
+		"/os/api/users":                   accessAdmin,
+		"/os/api/mode":                    accessAdmin,
+		"/os/api/budgets":                 accessAdmin,
+		"/os/api/torworld/sites":          accessAdmin,
+		"/os/api/branding/favicon":        accessAdmin,
+		// Author-safe API areas must stay reachable at author level (self-service
+		// 2FA, chat, dashboard activity, health, content authoring).
+		"/os/api/totp/begin":      accessAuthor,
+		"/os/api/talk/send":       accessAuthor,
+		"/os/api/activity":        accessAuthor,
+		"/os/api/vayuos/health":   accessAuthor,
+		"/os/api/search/reindex":  accessAuthor,
+		"/os/api/feed/regenerate": accessAuthor,
+		"/os/api/embed/unfurl":    accessAuthor,
+		"/os/api/diagram/render":  accessAuthor,
 		// Infrastructure controls (ADR-0141): VayuTor + the Anonymous Tor Space
 		// toggle each supervise network-facing services / a second server process,
 		// so page AND action paths must be admin-only — never author/editor.
@@ -89,6 +114,32 @@ func TestOSPathMinLevel(t *testing.T) {
 		if got := osPathMinLevel(path); got != want {
 			t.Errorf("osPathMinLevel(%q) = %d, want %d", path, got, want)
 		}
+	}
+}
+
+// TestOSPathMinLevelFailClosed is the anti-regression guard for the systemic
+// fail-open authorization defect (audit C1/H1/H2/M1): any /os/api/* path that is
+// not an explicitly enumerated author- or editor-safe area MUST require admin, so
+// a future sensitive endpoint added without its own guard cannot silently inherit
+// author access. If this test fails because a new author/editor API area was
+// added, add that area to authorAPIAreas/editorAreas in osPathMinLevel — never
+// weaken this default.
+func TestOSPathMinLevelFailClosed(t *testing.T) {
+	unknown := []string{
+		"/os/api/secret-future-endpoint",
+		"/os/api/billing/charge",
+		"/os/api/keys/exfiltrate",
+		"/os/api/system/exec",
+	}
+	for _, p := range unknown {
+		if got := osPathMinLevel(p); got != accessAdmin {
+			t.Errorf("osPathMinLevel(%q) = %d, want accessAdmin (%d) — unenumerated /os/api/* must fail closed to admin", p, got, accessAdmin)
+		}
+	}
+	// A non-API /os page that is unenumerated stays at the permissive author
+	// default (navigational; sensitive pages are admin-gated by name).
+	if got := osPathMinLevel("/os/some-dashboard-widget"); got != accessAuthor {
+		t.Errorf("osPathMinLevel(non-api page) = %d, want accessAuthor (%d)", got, accessAuthor)
 	}
 }
 

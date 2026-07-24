@@ -84,21 +84,38 @@ func osPathInArea(path, area string) bool {
 func osPathMinLevel(path string) int {
 	adminAreas := []string{
 		"settings", "security", "apikeys", "connector", "update", "storage", "monitoring", "governance",
-		"tools", "modes", "policy", "topology", "replay", "faults", "adr",
-		"members", "newsletter", "monetization", "ads", "website", "shield",
+		"tools", "modes", "mode", "policy", "topology", "replay", "faults", "adr", "budgets",
+		"members", "newsletter", "monetization", "ads", "website", "branding", "shield",
+		// Money & fulfilment: payment-gateway secrets, the order ledger, and the
+		// premium mail-ID marketplace mutate revenue and expose customer PII —
+		// admin-only, never author/editor.
+		"payments", "credentials", "orders", "mailids",
+		// Infrastructure & operator controls: domain registration + TLS
+		// provisioning, encrypted backup export, power (restart/shutdown), and
+		// staff-user management each control the machine or its identities.
+		"domains", "backup", "power", "users",
 		// Growth is the hub that fronts Members / Newsletter / Monetization /
 		// Advertising; Operations fronts Modes / Policy / Topology / Replay / Faults
 		// / ADR — both inherit their fronted pages' admin gate.
 		"growth", "operations",
-		// Infrastructure controls: VayuTor onion services and the Anonymous Tor
-		// Space toggle each supervise network-facing services / a second server
-		// process, so they are admin-only — never author/editor (ADR-0141 review).
-		"tor", "spaces",
+		// Infrastructure controls: VayuTor onion services, the Anonymous Tor Space
+		// toggle, and the Tor-world site registry each supervise network-facing
+		// services / a second server process — admin-only (ADR-0141 review).
+		"tor", "spaces", "torworld",
 	}
 	// "optimize" is the hub that fronts SEO / Analytics / Bot Shield / Theme Studio
 	// / Theme Store; it opens at editor level (its editor-safe cards) and hides the
 	// admin-only Bot Shield card from non-admins in the grid itself.
 	editorAreas := []string{"comments", "pages", "seo", "analytics", "theme", "messages", "optimize"}
+	// Author-safe API areas: the self-service and content-authoring endpoints an
+	// author legitimately calls. Every OTHER /os/api/* path is fail-CLOSED to
+	// admin below — so a newly-added sensitive endpoint can never silently
+	// inherit author access (the systemic gap behind the credential/payment/
+	// orders/domains/power/users escalations).
+	authorAPIAreas := []string{
+		"posts", "editor", "media", "embed", "diagram", "profile",
+		"vayumail", "talk", "activity", "cmd-index", "feed", "search", "totp", "vayuos",
+	}
 	for _, a := range adminAreas {
 		if osPathInArea(path, a) {
 			return accessAdmin
@@ -108,6 +125,18 @@ func osPathMinLevel(path string) int {
 		if osPathInArea(path, a) {
 			return accessEditor
 		}
+	}
+	// Fail-closed API default: an /os/api/* path that matched no admin/editor area
+	// requires admin UNLESS it is an explicit author-safe area. Non-API /os pages
+	// keep the permissive author default (they are navigational, and the sensitive
+	// ones are already admin-gated above).
+	if strings.HasPrefix(path, "/os/api/") {
+		for _, a := range authorAPIAreas {
+			if osPathInArea(path, a) {
+				return accessAuthor
+			}
+		}
+		return accessAdmin
 	}
 	return accessAuthor
 }
@@ -472,6 +501,23 @@ func (a *App) isAdminRequest(r *http.Request) bool {
 		return u.Role == users.RoleAdmin
 	}
 	return auth.HasValidAPIKey(r)
+}
+
+// keyLifecycleAuthorized reports whether the caller may perform API-key lifecycle
+// mutations (rotate / revoke / delete / activate / deactivate). Managing the key
+// fleet is an operator-admin / superuser operation: a session administrator is
+// allowed, and an API-key caller must hold a SUPERUSER key. A scoped key — even
+// one with settings:write — must never rotate/revoke/delete another key or mint a
+// superuser token by rotating the internal key (audit C2/M10). This mirrors the
+// fail-closed superuser check keyMayCall applies to unmapped routes.
+func (a *App) keyLifecycleAuthorized(r *http.Request) bool {
+	if u := currentUser(r); u != nil {
+		return u.Role == users.RoleAdmin
+	}
+	if ki, ok := auth.KeyInfoFromContext(r.Context()); ok {
+		return ki.IsSuperuser()
+	}
+	return false
 }
 
 // POST /api/v1/admin/users  {email, name, password, role}

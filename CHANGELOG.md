@@ -8,6 +8,30 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.15.1] — 2026-07-24
+
+### Security
+- **VayuOS `/os/api/*` authorization is now fail-closed.** The console session
+  guard (`osPathMinLevel`) previously granted *author* level to any API area not
+  explicitly listed as admin, so several sensitive `/os/api/*` endpoints
+  inherited low-privilege access. Any un-enumerated `/os/api/*` path now requires
+  **admin** by default; only an explicit allowlist of author/editor-safe areas
+  (content authoring, self-service 2FA, chat, dashboard) opens lower. This closes
+  a privilege-escalation class in which a low-privilege author session could
+  reach the payment-gateway connect, order-ledger, premium mail-ID, domain, and
+  credential-reveal endpoints. Belt-and-suspenders `admin` guards were also added
+  directly to the credential save/reveal/delete handlers. A regression test now
+  fails the build if any future `/os/api/*` endpoint is added without a level.
+- **The internal/system API key can no longer be rotated through the API
+  surface.** `Store.Rotate` now refuses the reserved internal key with
+  `ErrInternalProtected` — matching `Revoke`/`Delete`/`SetActive` — so a rotate
+  (which returns the fresh secret) can no longer be used to mint an unconditional
+  superuser token. It is refreshed only by `EnsureInternal` at boot.
+- **API-key lifecycle mutations require an administrator or a superuser key.**
+  Rotate, revoke, delete, and activate/deactivate now reject a scoped
+  (non-superuser) key caller, so a routine `settings:write` integration key can
+  no longer revoke the operator's superuser keys or rotate keys it does not own.
+
 ## [3.15.0] — 2026-07-21
 
 ### Fixed
