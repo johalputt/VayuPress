@@ -6,6 +6,19 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.19] — 2026-07-24
+
+### Changed
+- **Premium Monetization-console polish across every workspace page.** The whole
+  VayuOS workspace now shares one design language: each page carries a styled
+  subtitle under its title — Posts, Pages, Comments, Media, Members, Newsletter,
+  Messages, Security, Tools, Storage, Advertising, Governance, Monitoring, Website
+  and My profile — matching Monetization, SEO, Analytics and Bot Shield. The Posts
+  page also gains a Total / Published / Drafts stat-grid header. A new page-subtitle
+  style in the admin theme also upgrades the pages that already used the class
+  before it was styled. Dashboard and the consolidated hubs already carried the
+  premium section-head + stat-grid layout and are unchanged.
+
 ## [3.15.18] — 2026-07-24
 
 ### Changed
