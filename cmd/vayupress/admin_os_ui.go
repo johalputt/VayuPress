@@ -2443,7 +2443,7 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 			slugList = append(slugList, p.Slug)
 		}
 		inStatus := dbpkg.IndexNowStatuses(slugList)
-		rows := ""
+		cards := ""
 		for _, p := range posts {
 			tags := ""
 			for _, t := range p.Tags {
@@ -2457,38 +2457,49 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 				// A draft is hidden from the public site (previewed in the editor).
 				viewBtn = ""
 			}
-			// Pin (featured) state — drives the trending/pinned widgets on the
-			// public site. Pinning toggles the same `featured` flag as the editor;
-			// both the button and the badge update in place via HTMX (osPostPinButton
-			// / handleOSPostPinFragment), so no full-page reload.
-			rows += `<tr data-post-row>
-  <td><input type="checkbox" data-post-select value="` + esc + `" aria-label="Select ` + html.EscapeString(p.Title) + `"></td>
-  <td class="row-title">
-    <a href="/os/editor/` + esc + `">` + html.EscapeString(p.Title) + `</a>` + osPostPinBadge(esc, p.Featured, false) + `
-    <div class="row-meta">/` + esc + ` ` + osIndexNowBadge(esc, inSt, inOK, isDraft) + `</div>
-  </td>
-  <td><span id="post-status-` + esc + `">` + osPostStatusPill(p.Status) + `</span></td>
-  <td>` + tags + `</td>
-  <td class="muted text-sm">` + p.Updated.UTC().Format("2 Jan 2006") + `</td>
-  <td class="row-actions">
-    <a class="btn btn--ghost btn--sm" href="/os/editor/` + esc + `">Edit</a>
-    ` + viewBtn + `
-    ` + osPostPinButton(esc, p.Featured) + `
-    ` + osPostStatusButton(esc, p.Status) + `
-    ` + osIndexNowButton(esc, inSt, inOK, isDraft) + `
-    <button type="button" class="btn btn--ghost btn--sm" data-post-delete data-slug="` + esc + `" data-title="` + html.EscapeString(p.Title) + `">Delete</button>
-  </td>
-</tr>`
+			tagsBlock := ""
+			if tags != "" {
+				tagsBlock = `
+      <div class="post-acc__tags">` + tags + `</div>`
+			}
+			// Each post is a premium collapsible card (Monetization-console style).
+			// The bulk-select checkbox sits OUTSIDE the <summary> (column 1 of the
+			// row grid) so ticking it never toggles the card; tapping the card body
+			// reveals ONLY that post's actions. Pin/status/IndexNow keep their stable
+			// per-slug ids so the HTMX out-of-band swaps still land in place.
+			cards += `<div class="post-row" data-post-row>
+  <input type="checkbox" class="post-acc__check" data-post-select value="` + esc + `" aria-label="Select ` + html.EscapeString(p.Title) + `">
+  <details class="mon-acc post-acc">
+    <summary class="mon-acc__sum post-acc__sum">
+      <span class="mon-acc__head">
+        <span class="mon-acc__title">` + html.EscapeString(p.Title) + osPostPinBadge(esc, p.Featured, false) + `</span>
+        <span class="mon-acc__sub">/` + esc + ` · Updated ` + p.Updated.UTC().Format("2 Jan 2006") + `</span>
+      </span>
+      <span id="post-status-` + esc + `" class="post-acc__status">` + osPostStatusPill(p.Status) + `</span>
+      <svg class="mon-acc__chev" viewBox="0 0 20 20" width="16" height="16" fill="none" aria-hidden="true"><path d="M6 8l4 4 4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </summary>
+    <div class="mon-acc__body post-acc__body">` + tagsBlock + `
+      <div class="post-acc__meta-row">` + osIndexNowBadge(esc, inSt, inOK, isDraft) + `</div>
+      <div class="post-acc__actions">
+        <a class="btn btn--primary btn--sm" href="/os/editor/` + esc + `">Edit</a>
+        ` + viewBtn + `
+        ` + osPostPinButton(esc, p.Featured) + `
+        ` + osPostStatusButton(esc, p.Status) + `
+        ` + osIndexNowButton(esc, inSt, inOK, isDraft) + `
+        <button type="button" class="btn btn--ghost btn--sm post-acc__del" data-post-delete data-slug="` + esc + `" data-title="` + html.EscapeString(p.Title) + `">Delete</button>
+      </div>
+    </div>
+  </details>
+</div>`
 		}
 
-		tableBlock := `<div class="table-wrap">
-    <table class="table">
-      <thead><tr><th><input type="checkbox" data-post-select-all aria-label="Select all posts on this page"></th><th>Title</th><th>Status</th><th>Tags</th><th>Updated</th><th></th></tr></thead>
-      <tbody>` + rows + `</tbody>
-    </table>
-  </div>`
+		listBlock := `<div class="post-list-head">
+    <label class="post-selectall"><input type="checkbox" data-post-select-all aria-label="Select all posts on this page"> Select all on this page</label>
+    <span class="muted text-xs">Tap a post to see its actions</span>
+  </div>
+  <div class="mon-stack post-stack">` + cards + `</div>`
 		if len(posts) == 0 {
-			tableBlock = `<div class="table-empty">No posts match your filter. <a href="/os/posts">Clear filters</a>.</div>`
+			listBlock = `<div class="table-empty">No posts match your filter. <a href="/os/posts">Clear filters</a>.</div>`
 		}
 
 		shownFrom, shownTo := 0, 0
@@ -2532,7 +2543,7 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
     <button type="button" class="btn btn--ghost btn--sm" data-post-bulk="draft">Unpublish</button>
     <button type="button" class="btn btn--ghost btn--sm" data-post-bulk="delete">Delete</button>
   </div>
-  ` + tableBlock + `
+  ` + listBlock + `
   ` + osPostsPager(status, q, from, to, period, page, totalPages, total, shownFrom, shownTo) + `
 </div>
 <div id="action-msg" role="status" aria-live="polite" class="action-msg"></div>

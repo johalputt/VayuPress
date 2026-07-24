@@ -906,6 +906,28 @@
 .vp-os .mon-chip--on { color: #34d399; border-color: rgba(52, 211, 153, 0.4); background: rgba(52, 211, 153, 0.12); }
 .vp-os .mon-chip--off { color: var(--text-3); }
 @media (prefers-reduced-motion: reduce) { .vp-os .mon-acc__body { animation: none; } }
+
+/* ── Posts manager — premium per-post accordion cards ────────────────────────
+   Each post is a collapsible card (reusing the .mon-acc frame). The bulk-select
+   checkbox lives OUTSIDE the <summary> (column 1 of the row grid) so ticking it
+   never toggles the card; tapping the card reveals only that post's actions. */
+.vp-os .post-list-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--sp-3); flex-wrap: wrap; margin-bottom: var(--sp-3);
+}
+.vp-os .post-selectall {
+  display: inline-flex; align-items: center; gap: var(--sp-2);
+  font-size: var(--text-sm); color: var(--text-2); cursor: pointer;
+}
+.vp-os .post-stack { margin-bottom: 0; }
+.vp-os .post-row { display: grid; grid-template-columns: auto 1fr; gap: var(--sp-3); align-items: start; }
+.vp-os .post-acc { min-width: 0; }
+.vp-os .post-acc__check { margin-top: 0.9rem; flex: none; cursor: pointer; }
+.vp-os .post-acc__status { flex: none; }
+.vp-os .post-acc__body { display: grid; gap: var(--sp-3); }
+.vp-os .post-acc__tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.vp-os .post-acc__meta-row { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }
+.vp-os .post-acc__actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
 @media (max-width: 560px) {
   .vp-os .mon-acc__sub { white-space: normal; }
   .vp-os .mon-chip { display: none; }
