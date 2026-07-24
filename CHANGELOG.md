@@ -6,7 +6,7 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
-## [Unreleased]
+## [3.15.16] — 2026-07-24
 
 ### Fixed
 - **VayuShield no longer throttles your whole audience behind Cloudflare/CDN
