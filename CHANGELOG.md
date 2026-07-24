@@ -6,7 +6,12 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
-## [Unreleased]
+## [3.15.14] — 2026-07-24
+
+This release is the VayuShield indexing + performance hardening track (phases
+1–5): the WAF no longer de-indexes a site, verifies crawlers by identity instead
+of a spoofable User-Agent, is faster on the hot path, is safe in a Tor Space, and
+now ships gently enabled by default.
 
 ### Added
 - **Tor Space never locks visitors out, and a boot-time SEO canary (VayuShield
@@ -20,41 +25,6 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   requests through the live shield and logs a loud error if any is met with a
   challenge/403 instead of content — so a de-indexing regression is caught at
   deploy, not weeks later through lost rankings.
-
-### Changed
-- **Broader, current crawler recognition + the "go dark" switch no longer breaks
-  the operator's own tooling (VayuShield hardening, phase 4/5).** The classifier's
-  static bot database now recognises the current fetcher variants and more of the
-  market: Google (`GoogleOther`, `AdsBot-Google`, `APIs-Google`,
-  `FeedFetcher-Google`, `Google-Read-Aloud`), Bing (`msnbot`), Baidu, Petal,
-  Seznam, Naver, Sogou, Qwant, DuckAssistBot, more Yandex variants, link-preview
-  bots (Discord, Telegram, WhatsApp, Pinterest, Reddit) and AI systems
-  (`OAI-SearchBot`, `Claude-SearchBot`, `claude-code`, `Meta-ExternalFetcher`,
-  Cohere, You.com, Mistral, Diffbot). **R8:** the "Search engine & AI crawler
-  access → go dark" switch now exempts operator tooling — PageSpeed/Lighthouse,
-  GTmetrix, UptimeRobot, Pingdom, StatusCake, Site24x7 are never `403`'d, so going
-  dark hides the site from indexers without breaking the operator's own
-  performance scoring or uptime dashboards.
-
-### Performance
-- **VayuShield hot-path hardening — lower TTFB under load (phase 3/5).** Three
-  changes remove per-request cost so a busy blog stays butter-smooth:
-  - The L2 fair-shed pre-filter computed a fresh `"g/1.2.3.0/24"` string and
-    re-hashed it on **every** non-verified request just to key the subnet sketch.
-    It now hashes the network group directly from the address bytes
-    (`subnetHash`) — **zero allocation** on the hot path (guarded by an
-    `AllocsPerRun` test).
-  - The TLS-fingerprint capture store used a single global mutex, serialising
-    exactly the traffic a flood produces; it is now sharded into 64
-    independently-locked stripes (matching the reputation/signature caches).
-  - Auto Sovereign Surge is now debounced with a hysteresis band
-    (`surgeHysteresis`): it engages only after the L0 lane stays ≥90% full for a
-    short dwell and relaxes below 75%, so a brief legitimate spike (a post going
-    viral) never trips a site-wide browser check for real readers. A sustained
-    flood still engages it, and recognised crawlers bypass surge entirely (phase
-    1). The 5-second tarpit remains off by default.
-
-### Added
 - **Verified-bot engine — crawlers are authenticated by identity, not a
   spoofable User-Agent (VayuShield hardening, phase 2/5).** New
   `internal/vayushield/verifiedbot` confirms a request really is the search
@@ -75,6 +45,46 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   UA-only vendor) is still allowed, because a fetch failure on our side must never
   de-index a real crawler.
 
+### Changed
+- **VayuShield now defaults ON (gentle).** After the hardening in this release —
+  crawlers are never de-indexed, verified by IP not UA, hot-path optimised,
+  Tor-safe — the shield ships enabled by default: bot **classification** is active
+  so real browsers pass silently and verified search/AI crawlers are fast-pathed,
+  while the aggressive resilience gates (tarpit, rate-limit, load-shed,
+  auto-block, under-attack, surge) stay **off** until you opt in. The panel toggle
+  is authoritative; `VAYUSHIELD=off` force-disables for a quick rollback.
+- **Broader, current crawler recognition + the "go dark" switch no longer breaks
+  the operator's own tooling (phase 4/5).** The classifier's static bot database
+  now recognises the current fetcher variants and more of the market: Google
+  (`GoogleOther`, `AdsBot-Google`, `APIs-Google`, `FeedFetcher-Google`,
+  `Google-Read-Aloud`), Bing (`msnbot`), Baidu, Petal, Seznam, Naver, Sogou,
+  Qwant, DuckAssistBot, more Yandex variants, link-preview bots (Discord,
+  Telegram, WhatsApp, Pinterest, Reddit) and AI systems (`OAI-SearchBot`,
+  `Claude-SearchBot`, `claude-code`, `Meta-ExternalFetcher`, Cohere, You.com,
+  Mistral, Diffbot). **R8:** the "Search engine & AI crawler access → go dark"
+  switch now exempts operator tooling — PageSpeed/Lighthouse, GTmetrix,
+  UptimeRobot, Pingdom, StatusCake, Site24x7 are never `403`'d, so going dark
+  hides the site from indexers without breaking the operator's own performance
+  scoring or uptime dashboards.
+
+### Performance
+- **VayuShield hot-path hardening — lower TTFB under load (phase 3/5).** Three
+  changes remove per-request cost so a busy blog stays butter-smooth:
+  - The L2 fair-shed pre-filter computed a fresh `"g/1.2.3.0/24"` string and
+    re-hashed it on **every** non-verified request just to key the subnet sketch.
+    It now hashes the network group directly from the address bytes
+    (`subnetHash`) — **zero allocation** on the hot path (guarded by an
+    `AllocsPerRun` test).
+  - The TLS-fingerprint capture store used a single global mutex, serialising
+    exactly the traffic a flood produces; it is now sharded into 64
+    independently-locked stripes (matching the reputation/signature caches).
+  - Auto Sovereign Surge is now debounced with a hysteresis band
+    (`surgeHysteresis`): it engages only after the L0 lane stays ≥90% full for a
+    short dwell and relaxes below 75%, so a brief legitimate spike (a post going
+    viral) never trips a site-wide browser check for real readers. A sustained
+    flood still engages it, and recognised crawlers bypass surge entirely (phase
+    1). The 5-second tarpit remains off by default.
+
 ### Security
 - **A spoofed crawler UA no longer earns a free pass (VayuShield).** A request
   whose User-Agent claims a crawler from an IP that is **not** the vendor's real
@@ -85,6 +95,16 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   genuine crawler is verified upstream and never affected. In a Tor Space the feed
   fetches are refused (no clearnet egress), so the engine degrades to
   UA-recognition without leaking a DNS/HTTP call.
+- **Session/auth cookies now enforce `HttpOnly` at the chokepoint (CodeQL
+  hardening).** `auth.WriteSecureCookie` forces `HttpOnly=true` so a session or
+  auth cookie routed through it can never accidentally be script-readable, even
+  if a caller forgets. The one cookie that MUST be readable — the double-submit
+  `vp_csrf` token, whose whole purpose is to be echoed back in the
+  `X-CSRF-Token` header — moved to a dedicated `auth.WriteReadableCookie`, so the
+  readable exception is explicit and auditable in one place. (The remaining
+  CodeQL "Secure not set to true" note is a required Tor-mode design exception: a
+  `Secure` cookie is dropped by the browser over the plain-http `.onion`, so it
+  is intentionally request/host-aware via `CSRFCookieSecure`, ADR-0141.)
 
 ### Fixed
 - **VayuShield no longer de-indexes the site: recognised search/AI crawlers take
@@ -110,18 +130,6 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   drops URLs; these machine endpoints now join the always-admit priority lane
   (matching the shield's own bypass) so a public-traffic spike can never return a
   non-200 for them.
-
-### Security
-- **Session/auth cookies now enforce `HttpOnly` at the chokepoint (CodeQL
-  hardening).** `auth.WriteSecureCookie` forces `HttpOnly=true` so a session or
-  auth cookie routed through it can never accidentally be script-readable, even
-  if a caller forgets. The one cookie that MUST be readable — the double-submit
-  `vp_csrf` token, whose whole purpose is to be echoed back in the
-  `X-CSRF-Token` header — moved to a dedicated `auth.WriteReadableCookie`, so the
-  readable exception is explicit and auditable in one place. (The remaining
-  CodeQL "Secure not set to true" note is a required Tor-mode design exception: a
-  `Secure` cookie is dropped by the browser over the plain-http `.onion`, so it
-  is intentionally request/host-aware via `CSRFCookieSecure`, ADR-0141.)
 
 ## [3.15.13] — 2026-07-24
 

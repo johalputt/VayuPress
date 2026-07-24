@@ -64,9 +64,11 @@ var shieldBypassPrefixes = []string{
 }
 
 // analytics store, wires governance/geoip side channels, and starts the
-// background learning + retention goroutines. Bot protection is OFF by default
-// (VAYUSHIELD=on to enable); analytics ingestion is always available so the
-// dashboard has data even when challenges are not being issued.
+// background learning + retention goroutines. Bot protection defaults ON
+// (gentle: classification only — real browsers pass silently and verified
+// crawlers are fast-pathed, while the aggressive resilience gates default OFF);
+// set VAYUSHIELD=off or toggle it in the panel to disable. Analytics ingestion is
+// always available so the dashboard has data even when challenges are not issued.
 func (a *App) bootVayuShield() {
 	// L0 Aegis — Admin Sovereignty Lane. Constructed first and mounted before
 	// every other middleware (see registerRoutes) so that under a volumetric
@@ -1225,8 +1227,16 @@ func (a *App) shieldSettings(ctx context.Context) vayushield.Settings {
 		}
 		return def
 	}
+	// The shield defaults ON (gentle). The panel toggle (KeyShieldEnabled, whose
+	// stored default is "on") is authoritative; the VAYUSHIELD env var, when set,
+	// overrides it in EITHER direction — VAYUSHIELD=off force-disables for a quick
+	// rollback, =on force-enables — so ops always has an env escape hatch.
+	enabled := on(settings.KeyShieldEnabled)
+	if strings.TrimSpace(config.EnvOr("VAYUSHIELD", "")) != "" {
+		enabled = shieldEnvBool("VAYUSHIELD", enabled)
+	}
 	return vayushield.Settings{
-		Enabled:              on(settings.KeyShieldEnabled) || shieldEnvBool("VAYUSHIELD", false),
+		Enabled:              enabled,
 		PoWThreshold:         fnum(settings.KeyShieldPoW, 0.4),
 		JSThreshold:          fnum(settings.KeyShieldJS, 0.6),
 		BlockThreshold:       fnum(settings.KeyShieldBlock, 0.8),
