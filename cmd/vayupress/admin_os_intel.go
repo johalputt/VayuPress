@@ -570,9 +570,15 @@ func (a *App) renderAnalyticsBody(ctx context.Context, days int, periodLabel str
 		chart = `<div class="card mb-6"><div class="card-title">Traffic — ` + periodLabel + `</div>` +
 			osTrendChart(series, "Traffic over "+periodLabel) + `</div>`
 	}
-	overviewPanel := metricsIntro + overviewCard + engagementStrip + chart
-	if overviewCard == "" && chart == "" {
-		overviewPanel = metricsIntro + `<div class="empty-state">No visits in this period yet.</div>`
+	// Headline KPIs stay pinned at the top (like the Monetization console's stat
+	// row); the trend chart and every other section fold into animated accordions.
+	kpiHeader := metricsIntro + overviewCard + engagementStrip
+	if overviewCard == "" {
+		kpiHeader = metricsIntro
+	}
+	trafficBody := chart
+	if chart == "" {
+		trafficBody = `<div class="empty-state">No visits in this period yet.</div>`
 	}
 
 	pagesPanel := `<div class="grid grid-2">
@@ -607,36 +613,48 @@ func (a *App) renderAnalyticsBody(ctx context.Context, days int, periodLabel str
 	}
 	eventsPanel := `<div class="card"><div class="card-title">Custom events</div>` + osBarList(eventBars, "No custom events yet. Track actions with the data-vp-event attribute or window.VayuPress.track().") + `</div>`
 
-	tabs := []struct{ id, label, icon, body string }{
-		{"overview", "Overview", "📊", overviewPanel},
-		{"live", "Live", "🟢", osLiveCard()},
-		{"pages", "Pages", "📄", pagesPanel},
-		{"audience", "Audience", "🖥️", audiencePanel},
-		{"geo", "Geography", "🌍", osGeoSection(countries, regions, cities)},
-		{"campaigns", "Campaigns", "📣", campaignsPanel},
-		{"events", "Events", "✨", eventsPanel},
-		{"goals", "Goals", "🎯", a.osGoalsSection(ctx, days)},
-		{"journey", "Journey", "🧭", a.osJourneySection(ctx, days)},
-		{"export", "Export", "⬇️", osExportSection(days)},
+	// Small neutral count pill for an accordion summary (hidden on mobile, like
+	// the Monetization chips). Empty when there is nothing to count.
+	countChip := func(n int, noun string) string {
+		if n <= 0 {
+			return ""
+		}
+		return `<span class="mon-chip">` + strconv.Itoa(n) + ` ` + html.EscapeString(noun) + `</span>`
 	}
 
-	nav := `<div class="tab-list vm-analytics-tabs" role="tablist" data-analytics-tabs>`
-	panels := ""
-	for i, t := range tabs {
-		active := ""
-		hidden := " hidden"
-		if i == 0 {
-			active = " tab--active"
-			hidden = ""
-		}
-		nav += `<button type="button" class="tab` + active + `" role="tab" data-atab="` + t.id + `"><span class="vm-tab-ico" aria-hidden="true">` + t.icon + `</span> ` + html.EscapeString(t.label) + `</button>`
-		panels += `<section class="vm-tab-panel" role="tabpanel" data-atab-panel="` + t.id + `"` + hidden + `>` + t.body + `</section>`
-	}
-	nav += `</div>`
+	// Sections mirror the Monetization console: section-head dividers over
+	// mon-stack groups of animated <details> accordions (pure CSS, no JS).
+	sections := `<div class="section-head"><span class="section-head__title">Traffic</span><span class="section-head__hint">How many people visit &amp; who is on your site right now</span></div>
+<div class="mon-stack">` +
+		monAcc("📈", "Traffic over time", "Pageviews &amp; unique visitors, day by day", `<span class="mon-chip">`+strconv.FormatInt(sum.TotalViews, 10)+` views</span>`, true, trafficBody) +
+		monAcc("🟢", "Live visitors", "Who is on your site right now — refreshes every 10s", `<span class="mon-chip mon-chip--on">● Live</span>`, false, osLiveCard()) +
+		`</div>
+
+<div class="section-head"><span class="section-head__title">Content &amp; audience</span><span class="section-head__hint">What they read, on what device, and from where</span></div>
+<div class="mon-stack">` +
+		monAcc("📄", "Top pages &amp; referrers", "Most-viewed content and where visitors come from", countChip(len(sum.TopPages), "pages"), false, pagesPanel) +
+		monAcc("🖥️", "Audience", "Channels, devices, browsers &amp; operating systems", "", false, audiencePanel) +
+		monAcc("🌍", "Geography", "Countries, regions &amp; cities — coarse geo only", countChip(len(countries), "countries"), false, osGeoSection(countries, regions, cities)) +
+		`</div>
+
+<div class="section-head"><span class="section-head__title">Acquisition &amp; actions</span><span class="section-head__hint">Campaigns, custom events, goals and visitor journeys</span></div>
+<div class="mon-stack">` +
+		monAcc("📣", "Campaigns (UTM)", "Which shared links &amp; campaigns bring visitors", countChip(len(utm), "campaigns"), false, campaignsPanel) +
+		monAcc("✨", "Custom events", "Actions you track with data-vp-event / VayuPress.track()", countChip(len(events), "events"), false, eventsPanel) +
+		monAcc("🎯", "Goals &amp; funnels", "Conversions and multi-step funnels", "", false, a.osGoalsSection(ctx, days)) +
+		monAcc("🧭", "Visitor journey", "Common entry pages and paths through your site", "", false, a.osJourneySection(ctx, days)) +
+		`</div>
+
+<div class="section-head"><span class="section-head__title">Export</span><span class="section-head__hint">Take your data with you</span></div>
+<div class="mon-stack">` +
+		monAcc("⬇️", "Export data", "Download the raw analytics for this period", "", false, osExportSection(days)) +
+		`</div>`
 
 	body := `<div class="page-header"><h1>Analytics</h1>
   <span class="muted text-sm">` + strconv.FormatInt(sum.TotalViews, 10) + ` views · ` + periodLabel + ` · updated ` + now.Format("2006-01-02 15:04") + ` UTC</span>
-</div>` + osPeriodSelector(days) + nav + panels + osPrivacyNote()
+</div>
+<p class="page-sub">Privacy-first, cookieless analytics — audience, engagement, geography and campaigns, all computed on your own server. Tap a card to expand it.</p>` +
+		osPeriodSelector(days) + kpiHeader + sections + osPrivacyNote()
 
 	return body
 }

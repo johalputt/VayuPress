@@ -288,6 +288,7 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
     <button type="button" class="btn btn--primary btn--sm" data-theme-apply>Apply theme</button>
   </div>
 </div>
+<p class="page-sub">Design your whole site live — pick a preset, fine-tune colours, type and layout, and watch the preview update as you go. Tap a section to expand it.</p>
 
 <div class="customizer" data-theme-studio>
   <aside class="customizer__panel" aria-label="Theme controls">

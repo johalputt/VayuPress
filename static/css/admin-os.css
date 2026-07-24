@@ -1046,6 +1046,8 @@
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
 }
+/* Word-valued stat (e.g. an active theme name) — smaller so a long name fits. */
+.vp-os .stat-card__value--sm { font-size: var(--text-xl); line-height: 1.15; word-break: break-word; }
 .vp-os .stat-card__bottom { display: flex; align-items: center; justify-content: space-between; }
 .vp-os .stat-card__trend { font-size: var(--text-xs); font-weight: 600; }
 .vp-os .stat-card__trend--up { color: var(--ok); }
@@ -2807,8 +2809,10 @@
 }
 .vp-os .cz-group--open > .cz-group__head::after { transform: translateY(0) rotate(180deg); }
 .vp-os .cz-group__head:hover { background: var(--bg-surface-2); }
-.vp-os .cz-group--open { border-color: var(--border-strong); }
+.vp-os .cz-group--open { border-color: var(--border-strong); box-shadow: var(--sh-sm); }
 .vp-os .cz-group--open > .cz-group__head { background: var(--bg-surface-2); color: var(--text); }
+.vp-os .cz-group--open > .cz-group__body { animation: mon-reveal 0.28s cubic-bezier(0.16, 0.84, 0.44, 1); }
+@media (prefers-reduced-motion: reduce) { .vp-os .cz-group--open > .cz-group__body { animation: none; } }
 .vp-os .cz-group__hint {
   font-size: 0.68rem; font-weight: 600; letter-spacing: .03em; text-transform: uppercase;
   color: #fff; background: var(--brand); padding: 2px 7px; border-radius: var(--r-full);

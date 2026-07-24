@@ -45,15 +45,27 @@ func (a *App) handleOSThemeStore(w http.ResponseWriter, r *http.Request) {
 
 	store := theme.Store()
 
+	activeLabel := "Default"
+	if active != "" {
+		activeLabel = active
+	}
+
 	body := `<div class="page-header">
   <div>
     <h1>Theme Store</h1>
-    <p class="text-sm muted">Browse the full catalogue and deploy any theme to your live site in one click.</p>
   </div>
   <div class="page-actions">
     <span class="text-sm muted" data-store-status></span>
     <a class="btn btn--ghost btn--sm" href="/os/theme">Open Theme Studio</a>
   </div>
+</div>
+<p class="page-sub">Browse the full catalogue and deploy any theme to your live site in one click — every theme is fully sovereign, with no external assets. Search or filter by category to find your look.</p>
+
+<div class="stat-grid mb-6">
+  <div class="stat-card"><div class="stat-card__label">Themes</div><div class="stat-card__value">` + intToStr(len(store)) + `</div><div class="stat-card__bottom"><span class="muted text-xs">ready to deploy</span></div></div>
+  <div class="stat-card"><div class="stat-card__label">Categories</div><div class="stat-card__value">` + intToStr(len(theme.Categories())) + `</div><div class="stat-card__bottom"><span class="muted text-xs">curated styles</span></div></div>
+  <div class="stat-card"><div class="stat-card__label">Active theme</div><div class="stat-card__value stat-card__value--sm">` + html.EscapeString(activeLabel) + `</div><div class="stat-card__bottom"><span class="muted text-xs">live on your site</span></div></div>
+  <div class="stat-card"><div class="stat-card__label">External assets</div><div class="stat-card__value">0</div><div class="stat-card__bottom"><span class="muted text-xs">fully sovereign</span></div></div>
 </div>
 
 <div class="store" data-theme-store data-active-theme="` + html.EscapeString(active) + `">
