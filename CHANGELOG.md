@@ -9,6 +9,14 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 ## [Unreleased]
 
 ### Added
+- **Process-wide egress tripwire in a Tor Space (ADR-0141).** As a
+  belt-and-suspenders over the per-call-site guards, a Tor Space now installs a
+  guarded `http.DefaultTransport`, so even a caller that bypasses `safefetch`
+  (`http.DefaultClient`, a third-party library, or future code) cannot dial
+  clearnet from the onion server's real IP. Every refused dial is counted; the
+  count is surfaced in the anonymity self-audit (zero is expected — a rising
+  count means a feature keeps trying to reach the internet and is being
+  stopped). New `safefetch.BlockedClearnetCount()` / `GuardedDefaultTransport()`.
 - **Anonymity self-audit on the Spaces page (ADR-0141).** A Tor Space now shows
   a live, honest report of its anonymity posture: which anti-leak controls are
   active (clearnet egress disabled, loopback-only bind, external images blocked),

@@ -136,6 +136,48 @@ func SetBlockClearnetEgress(block bool) { blockClearnetEgress.Store(block) }
 // server's real IP (ADR-0141).
 func ClearnetBlocked() bool { return blockClearnetEgress.Load() }
 
+// blockedClearnetAttempts counts dials refused by the Tor-Space guard — a
+// tripwire: in a correctly-behaving Tor Space it should stay at or near zero, so
+// a rising count means some code path is trying to reach clearnet and being
+// stopped (surfaced in the anonymity self-audit).
+var blockedClearnetAttempts atomic.Int64
+
+// BlockedClearnetCount returns how many clearnet dials the guard has refused.
+func BlockedClearnetCount() int64 { return blockedClearnetAttempts.Load() }
+
+// noteBlockedClearnet records one refused clearnet dial.
+func noteBlockedClearnet() { blockedClearnetAttempts.Add(1) }
+
+// GuardedDefaultTransport returns a clone of http.DefaultTransport whose dials
+// refuse clearnet while the Tor-Space guard is engaged. The app installs it as
+// http.DefaultTransport in OnionMode (belt-and-suspenders): even a caller that
+// bypasses SafeTransport — http.DefaultClient, or a third-party library — then
+// cannot dial a clearnet host from the onion server's real IP. Loopback passes.
+func GuardedDefaultTransport() *http.Transport {
+	base := http.DefaultTransport.(*http.Transport).Clone()
+	inner := base.DialContext
+	if inner == nil {
+		d := &net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}
+		inner = d.DialContext
+	}
+	base.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		if blockClearnetEgress.Load() && !IsLoopbackHost(hostOnly(addr)) {
+			noteBlockedClearnet()
+			return nil, fmt.Errorf("%w: clearnet egress is disabled in Tor mode", ErrBlockedAddress)
+		}
+		return inner(ctx, network, addr)
+	}
+	return base
+}
+
+// hostOnly returns the host part of a "host:port" (or the input unchanged).
+func hostOnly(addr string) string {
+	if h, _, err := net.SplitHostPort(addr); err == nil {
+		return h
+	}
+	return addr
+}
+
 // IsLoopbackHost reports whether host is a loopback destination (localhost or a
 // loopback IP literal) that is safe to reach even in a Tor Space.
 func IsLoopbackHost(host string) bool {
@@ -195,8 +237,9 @@ func SafeTransport(opts TransportOptions) *http.Transport {
 			return base.DialContext(ctx, network, addr)
 		}
 		// Tor-Space anti-leak (ADR-0141): a direct dial to any non-allowlisted host
-		// leaks the onion server's real IP. Fail closed.
+		// leaks the onion server's real IP. Fail closed and record the tripwire.
 		if blockClearnetEgress.Load() {
+			noteBlockedClearnet()
 			return nil, fmt.Errorf("%w: clearnet egress is disabled in Tor mode", ErrBlockedAddress)
 		}
 		ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)

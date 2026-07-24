@@ -634,6 +634,10 @@ func main() {
 	// closed rather than dialing a clearnet host from the onion server's real IP.
 	safefetch.SetBlockClearnetEgress(config.Cfg.OnionMode)
 	if config.Cfg.OnionMode {
+		// Belt-and-suspenders: make the PROCESS-WIDE default HTTP transport refuse
+		// clearnet too, so even a caller that bypasses safefetch (http.DefaultClient
+		// or a third-party library) cannot leak the onion server's real IP.
+		http.DefaultTransport = safefetch.GuardedDefaultTransport()
 		logging.LogInfo("vayuos", "VAYUOS_MODE=tor — anonymous Tor Space: clearnet callbacks disabled")
 		checks := anonaudit.Run(anonAuditInputs())
 		pass, warn, fail := anonaudit.Summary(checks)

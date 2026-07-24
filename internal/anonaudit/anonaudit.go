@@ -44,6 +44,10 @@ type Inputs struct {
 	ExternalSMTPConfigured bool
 	// ClearnetDomainSet is whether a real (non-localhost) clearnet Domain is set.
 	ClearnetDomainSet bool
+	// BlockedClearnetAttempts is how many clearnet dials the guard has refused —
+	// the tripwire count. Zero is expected; a non-zero value is shown so the
+	// operator knows the guard caught (and stopped) a leak attempt.
+	BlockedClearnetAttempts int64
 }
 
 // Run computes the anonymity report for the given inputs.
@@ -109,6 +113,15 @@ func Run(in Inputs) []Check {
 		})
 	}
 
+	// Tripwire evidence: the guard actively refused clearnet dials.
+	if in.BlockedClearnetAttempts > 0 {
+		checks = append(checks, Check{
+			Title:  "Egress guard has actively blocked leaks",
+			Status: Info,
+			Detail: fmtCount(in.BlockedClearnetAttempts) + " clearnet connection(s) were attempted and refused — the guard is working. A steadily rising count means some feature keeps trying to reach the internet; that traffic is stopped, but consider disabling that feature.",
+		})
+	}
+
 	// Honest, inherent limitations — never a pass/fail.
 	checks = append(checks,
 		Check{
@@ -128,6 +141,20 @@ func Run(in Inputs) []Check {
 		},
 	)
 	return checks
+}
+
+// fmtCount renders a small non-negative count without importing strconv at call
+// sites (keeps the report package dependency-free).
+func fmtCount(n int64) string {
+	if n <= 0 {
+		return "0"
+	}
+	var b []byte
+	for n > 0 {
+		b = append([]byte{byte('0' + n%10)}, b...)
+		n /= 10
+	}
+	return string(b)
 }
 
 // Summary counts the report by status for a one-line posture (e.g. boot log).

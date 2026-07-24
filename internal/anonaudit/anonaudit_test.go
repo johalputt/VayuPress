@@ -1,6 +1,9 @@
 package anonaudit
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func find(checks []Check, title string) (Check, bool) {
 	for _, c := range checks {
@@ -63,5 +66,21 @@ func TestResidualWarnings(t *testing.T) {
 	// Never a false absolute-anonymity promise.
 	if _, ok := find(checks, "No tool makes you '100% anonymous'"); !ok {
 		t.Fatal("report must include the honest no-100%-anonymity note")
+	}
+}
+
+func TestTripwireCountSurfaced(t *testing.T) {
+	checks := Run(Inputs{OnionMode: true, ClearnetEgressBlocked: true, LoopbackBind: true, BlockedClearnetAttempts: 3})
+	c, ok := find(checks, "Egress guard has actively blocked leaks")
+	if !ok {
+		t.Fatal("a non-zero tripwire count should surface a check")
+	}
+	if !strings.Contains(c.Detail, "3 clearnet") {
+		t.Fatalf("tripwire detail should include the count, got %q", c.Detail)
+	}
+	// Zero attempts → no such line.
+	checks = Run(Inputs{OnionMode: true, ClearnetEgressBlocked: true, LoopbackBind: true})
+	if _, ok := find(checks, "Egress guard has actively blocked leaks"); ok {
+		t.Fatal("zero attempts should not surface the tripwire line")
 	}
 }

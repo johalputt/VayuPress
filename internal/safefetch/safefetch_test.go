@@ -160,3 +160,23 @@ func TestIsLoopbackHostAndClearnetBlocked(t *testing.T) {
 		t.Error("ClearnetBlocked should be false after reset")
 	}
 }
+
+func TestGuardedDefaultTransportCountsAndBlocks(t *testing.T) {
+	SetBlockClearnetEgress(true)
+	t.Cleanup(func() { SetBlockClearnetEgress(false) })
+	before := BlockedClearnetCount()
+
+	tr := GuardedDefaultTransport()
+	_, err := tr.DialContext(context.Background(), "tcp", "api.openai.com:443")
+	if err == nil {
+		t.Fatal("clearnet dial must be refused in Tor mode")
+	}
+	if BlockedClearnetCount() != before+1 {
+		t.Fatalf("blocked-attempt counter did not increment: before=%d after=%d", before, BlockedClearnetCount())
+	}
+	// Loopback still passes the guard (it will fail to connect, but not with the
+	// clearnet-blocked error).
+	if _, err := tr.DialContext(context.Background(), "tcp", "127.0.0.1:1"); err != nil && strings.Contains(err.Error(), "Tor mode") {
+		t.Fatalf("loopback must not be blocked by the Tor guard: %v", err)
+	}
+}

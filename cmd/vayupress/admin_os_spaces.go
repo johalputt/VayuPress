@@ -23,11 +23,12 @@ import (
 // anonAuditInputs snapshots the live anonymity-relevant state for the report.
 func anonAuditInputs() anonaudit.Inputs {
 	return anonaudit.Inputs{
-		OnionMode:              config.Cfg.OnionMode,
-		ClearnetEgressBlocked:  safefetch.ClearnetBlocked(),
-		LoopbackBind:           config.Cfg.OnionMode, // onionSafeBindAddr binds loopback in Tor mode
-		ExternalSMTPConfigured: config.Cfg.SMTPHost != "" && !safefetch.IsLoopbackHost(config.Cfg.SMTPHost),
-		ClearnetDomainSet:      config.Cfg.Domain != "" && config.Cfg.Domain != "localhost",
+		OnionMode:               config.Cfg.OnionMode,
+		ClearnetEgressBlocked:   safefetch.ClearnetBlocked(),
+		LoopbackBind:            config.Cfg.OnionMode, // onionSafeBindAddr binds loopback in Tor mode
+		ExternalSMTPConfigured:  config.Cfg.SMTPHost != "" && !safefetch.IsLoopbackHost(config.Cfg.SMTPHost),
+		ClearnetDomainSet:       config.Cfg.Domain != "" && config.Cfg.Domain != "localhost",
+		BlockedClearnetAttempts: safefetch.BlockedClearnetCount(),
 	}
 }
 
