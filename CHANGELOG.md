@@ -6,6 +6,23 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.18] — 2026-07-24
+
+### Changed
+- **VayuAnalytics redesigned to the Monetization-console style.** The
+  privacy-first analytics page drops the flat tab strip for animated accordion
+  cards grouped under section dividers — Traffic (traffic-over-time chart, live
+  visitors), Content &amp; audience (top pages &amp; referrers, devices/browsers/OS,
+  geography), Acquisition &amp; actions (campaigns, custom events, goals, journey)
+  and Export. The headline KPIs (unique visitors, visits, pageviews, bounce rate)
+  and the engagement strip stay pinned at the top. The live-visitor poller, goals
+  controls and period selector keep their existing hooks, so behaviour is
+  unchanged — only the layout is new.
+- **Theme Studio &amp; Theme Store restyled to match.** Theme Studio gains a page
+  subtitle and its sidebar control groups now carry the same open-state shadow and
+  animated reveal as the Monetization accordions. Theme Store gains a subtitle and
+  a stat-grid header (themes, categories, active theme, external-assets = 0).
+
 ## [3.15.17] — 2026-07-24
 
 ### Fixed
