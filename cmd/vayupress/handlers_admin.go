@@ -513,6 +513,19 @@ func excerptFromHTML(s string, n int) string {
 
 func (a *App) handleArticlePage(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
+	// IndexNow key verification file at the site ROOT (https://<host>/<key>.txt).
+	// IndexNow only trusts a key to vouch for URLs at or below the key file's own
+	// directory — so a key under /.well-known/ cannot authorize root-level post
+	// URLs, which is exactly the "HTTP 422 · URLs don't belong to the host"
+	// rejection. Serving the key at the root lets it cover the whole site. Cheap
+	// exact compare; a real post slug never equals the random <key>.txt.
+	if key := a.indexNowKey(); key != "" && slug == key+".txt" {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Header().Set("Cache-Control", "public, max-age=3600")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		_, _ = w.Write([]byte(key))
+		return
+	}
 	if !api.IsValidSlug(slug) {
 		a.handleNotFound(w, r)
 		return

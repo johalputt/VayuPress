@@ -89,3 +89,20 @@ func TestOSIndexNowBadgeOOB(t *testing.T) {
 		t.Errorf("OOB badge must carry the swap attr and the stable id:\n%s", oob)
 	}
 }
+
+func TestNewIndexNowKeyIsValid(t *testing.T) {
+	seen := map[string]bool{}
+	for i := 0; i < 100; i++ {
+		k := newIndexNowKey()
+		if !validIndexNowKey(k) {
+			t.Fatalf("generated key %q fails IndexNow format rules", k)
+		}
+		if len(k) != 32 {
+			t.Fatalf("key %q length = %d, want 32 hex chars", k, len(k))
+		}
+		if seen[k] {
+			t.Fatalf("generated a duplicate key %q", k)
+		}
+		seen[k] = true
+	}
+}

@@ -8,6 +8,24 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Fixed
+- **IndexNow now works (was HTTP 422) — and is fully automatic.** The key
+  verification file was served under `/.well-known/<key>.txt`, but IndexNow only
+  lets a key authorise URLs at or below its own directory — so a `/.well-known/`
+  key could not vouch for root-level post URLs, and every submission was rejected
+  with "HTTP 422 · URLs don't belong to the host." The key is now served at the
+  site **root** (`https://<domain>/<key>.txt`) and submitted with the root
+  `keyLocation`, so it covers the whole site. **One-click setup:** the SEO page's
+  **Connect & verify IndexNow** button now auto-generates and stores the key,
+  hosts the verification file and verifies with IndexNow — no manual key handling.
+
+### Changed
+- **SEO page redesigned to the Monetization-console style.** A subtitle,
+  `section-head` dividers (Indexing · Site health) and animated accordion cards
+  with status pills — matching the Bot Shield console — replace the flat card
+  stack. The crawl-activity panel is expanded by default so crawl proof is
+  front-and-centre.
+
 ### Added
 - **Search engine & AI crawl-activity panel on the SEO page.** VayuShield now
   tallies, server-side, how many page requests it has served to each verified

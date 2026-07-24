@@ -40,10 +40,7 @@ func (a *App) seoCrawlActivityCard() string {
 		stats = a.verifiedBots.Stats()
 	}
 	if len(stats) == 0 {
-		return `<div class="card mt-6">
-  <div class="card-title">Search engine &amp; AI crawl activity</div>
-  <p class="text-sm muted">No verified crawler visits recorded yet since the last restart. As Googlebot, Bingbot, GPTBot, ClaudeBot, PerplexityBot and others crawl your site, they appear here — live proof the shield is serving them, not blocking indexing.</p>
-</div>`
+		return `<p class="text-sm muted">No verified crawler visits recorded yet since the last restart. As Googlebot, Bingbot, GPTBot, ClaudeBot, PerplexityBot and others crawl your site, they appear here — live proof the shield is serving them, not blocking indexing.</p>`
 	}
 	fmtN := func(n int64) string {
 		s := strconv.FormatInt(n, 10)
@@ -81,11 +78,23 @@ func (a *App) seoCrawlActivityCard() string {
     <thead><tr><th>Crawler</th><th>Requests served</th></tr></thead>
     <tbody>` + rows + `</tbody></table></div></div>`
 	}
-	return `<div class="card mt-6">
-  <div class="card-title">Search engine &amp; AI crawl activity</div>
-  <p class="text-sm muted mb-4">Page requests VayuShield has served to verified crawlers since the last restart — proof they are reaching your content. Counted server-side (crawlers do not run the analytics beacon), so this reflects real crawl traffic even for bots that never appear in Analytics.</p>
-  ` + tbl("Search engines", searchRows.String(), searchTotal) + tbl("AI systems", aiRows.String(), aiTotal) + `
-</div>`
+	return `<p class="text-sm muted mb-4">Page requests VayuShield has served to verified crawlers since the last restart — proof they are reaching your content. Counted server-side (crawlers do not run the analytics beacon), so this reflects real crawl traffic even for bots that never appear in Analytics.</p>
+  ` + tbl("Search engines", searchRows.String(), searchTotal) + tbl("AI systems", aiRows.String(), aiTotal)
+}
+
+// seoCrawlChip is the status pill for the crawl-activity accordion: total
+// verified-crawler requests served, or a neutral "waiting" state.
+func (a *App) seoCrawlChip() string {
+	var total int64
+	if a.verifiedBots != nil {
+		for _, s := range a.verifiedBots.Stats() {
+			total += s.Count
+		}
+	}
+	if total == 0 {
+		return `<span class="mon-chip mon-chip--off">○ Waiting for crawls</span>`
+	}
+	return `<span class="mon-chip mon-chip--on">● ` + strconv.FormatInt(total, 10) + ` served</span>`
 }
 
 // handleOSSEONative renders the native os SEO dashboard: artefact freshness plus
@@ -161,53 +170,64 @@ func (a *App) handleOSSEONative(w http.ResponseWriter, r *http.Request) {
 	case config.Cfg.OnionMode:
 		indexNowStatus = `<span class="badge badge--warn">Off</span> IndexNow is disabled in Tor/anonymous mode.`
 	case inKey == "":
-		indexNowStatus = `<span class="badge badge--warn">No key</span> No IndexNow key is configured. Add one under <a href="/os/apikeys">API Keys → IndexNow</a> or set <code>INDEXNOW_KEY</code>.`
+		indexNowStatus = `<span class="badge badge--warn">Not connected</span> Click <strong>Connect &amp; verify IndexNow</strong> below — a key is created, hosted and verified automatically. Nothing to set up by hand.`
 	case !validIndexNowKey(inKey):
 		indexNowStatus = `<span class="badge badge--danger">Invalid key</span> The key must be 8–128 characters of a–z, A–Z, 0–9 or hyphen — IndexNow will reject the current value.`
 	default:
-		link := "/.well-known/" + inKey + ".txt"
-		indexNowStatus = `<span class="badge badge--ok">Key configured</span> Verification file: <a href="` + link + `" target="_blank" rel="noopener" class="mono">https://` + html.EscapeString(config.Cfg.Domain) + link + `</a>`
+		link := "/" + inKey + ".txt"
+		indexNowStatus = `<span class="badge badge--ok">Connected</span> Verification file: <a href="` + link + `" target="_blank" rel="noopener" class="mono">https://` + html.EscapeString(config.Cfg.Domain) + link + `</a>`
+	}
+
+	// Accordion status pills (Monetization-console style).
+	inChip := `<span class="mon-chip mon-chip--off">○ Not connected</span>`
+	if inKey != "" && validIndexNowKey(inKey) && !config.Cfg.OnionMode {
+		inChip = `<span class="mon-chip mon-chip--on">● Connected</span>`
+	}
+	artChip := `<span class="mon-chip mon-chip--off">○ Incomplete</span>`
+	if smOK && feedOK && robotsOK {
+		artChip = `<span class="mon-chip mon-chip--on">● Ready</span>`
 	}
 
 	body := `<div class="page-header">
   <h1>SEO</h1>
-  <button type="button" class="btn btn--primary btn--sm" data-seo-regenerate>Regenerate artefacts</button>
+  <div class="page-actions"><button type="button" class="btn btn--primary btn--sm" data-seo-regenerate>Regenerate artefacts</button></div>
 </div>
+<p class="page-sub">Search visibility, instant indexing and content health — plus live proof search engines and AI systems are crawling your content. Tap a card to expand it.</p>
 
 <div class="stat-grid mb-6">
   <div class="stat-card"><div class="stat-card__label">SEO-healthy</div><div class="stat-card__value">` + num(healthy) + `</div><div class="stat-card__bottom"><span class="muted text-xs">good title + depth</span></div></div>
   <div class="stat-card"><div class="stat-card__label">Thin content</div><div class="stat-card__value">` + num(thin) + `</div><div class="stat-card__bottom"><span class="muted text-xs">&lt;300 words</span></div></div>
   <div class="stat-card"><div class="stat-card__label">Missing title</div><div class="stat-card__value">` + num(noTitle) + `</div><div class="stat-card__bottom"><span class="muted text-xs">needs a title</span></div></div>
   <div class="stat-card"><div class="stat-card__label">Total posts</div><div class="stat-card__value">` + num(total) + `</div></div>
-</div>` + seoComputingNote(ready) + a.seoCrawlActivityCard() + `
+</div>` + seoComputingNote(ready) + `
 
-<div class="card">
-  <div class="card-title">Artefacts</div>
-  <div class="table-wrap"><table class="table">
+<div class="section-head"><span class="section-head__title">Indexing</span><span class="section-head__hint">Get crawled fast &amp; see who is crawling</span></div>
+<div class="mon-stack">` +
+		monAcc("🤖", "Search engine &amp; AI crawl activity", "Live per-crawler counts — proof indexing works", a.seoCrawlChip(), true, a.seoCrawlActivityCard()) +
+		monAcc("⚡", "Instant indexing (IndexNow)", "One-click auto-connect to Bing, Yandex &amp; more", inChip, false,
+			`<p class="text-sm muted">IndexNow tells Bing, Yandex and other participating engines the moment you publish or update a post, so changes get crawled in minutes instead of days. It is fully automatic — one click creates your key, hosts the verification file at your domain root and verifies it with IndexNow. After that, every post you publish is submitted for you.</p>
+  <p class="text-sm mt-2">`+indexNowStatus+`</p>
+  <div class="mt-3"><button type="button" class="btn btn--primary btn--sm" data-indexnow-test>Connect &amp; verify IndexNow</button></div>
+  <div class="seo-status mt-3" data-indexnow-result hidden></div>`) + `
+</div>
+
+<div class="section-head"><span class="section-head__title">Site health</span><span class="section-head__hint">Artefacts &amp; on-page SEO checks</span></div>
+<div class="mon-stack">` +
+		monAcc("📄", "Artefacts", "Sitemap, RSS &amp; robots.txt freshness", artChip, false,
+			`<div class="table-wrap"><table class="table">
     <thead><tr><th>Artefact</th><th>Status</th></tr></thead>
     <tbody>
-      <tr><td>Sitemap</td><td>` + badge(smOK, smWhen) + `</td></tr>
-      <tr><td>RSS Feed</td><td>` + badge(feedOK, feedWhen) + `</td></tr>
-      <tr><td>robots.txt</td><td>` + badge(robotsOK, robotsWhen) + `</td></tr>
+      <tr><td>Sitemap</td><td>`+badge(smOK, smWhen)+`</td></tr>
+      <tr><td>RSS Feed</td><td>`+badge(feedOK, feedWhen)+`</td></tr>
+      <tr><td>robots.txt</td><td>`+badge(robotsOK, robotsWhen)+`</td></tr>
     </tbody>
   </table></div>
-  <div class="seo-status mt-3" data-seo-status hidden></div>
-</div>
-
-<div class="card mt-6">
-  <div class="card-title">Health checks</div>
-  <div class="table-wrap"><table class="table">
+  <div class="seo-status mt-3" data-seo-status hidden></div>`) +
+		monAcc("✅", "Health checks", "On-page SEO &amp; crawlability", "", false,
+			`<div class="table-wrap"><table class="table">
     <thead><tr><th>Check</th><th>Result</th></tr></thead>
-    <tbody>` + checksRows + `</tbody>
-  </table></div>
-</div>
-
-<div class="card mt-6">
-  <div class="card-title">Instant indexing (IndexNow)</div>
-  <p class="text-sm muted">IndexNow tells Bing, Yandex and other participating engines the moment you publish or update a post, so changes get crawled in minutes instead of days. Every published post is submitted automatically — run a live test below to confirm the whole path works.</p>
-  <p class="text-sm mt-2">` + indexNowStatus + `</p>
-  <div class="mt-3"><button type="button" class="btn btn--primary btn--sm" data-indexnow-test>Test IndexNow now</button></div>
-  <div class="seo-status mt-3" data-indexnow-result hidden></div>
+    <tbody>`+checksRows+`</tbody>
+  </table></div>`) + `
 </div>
 <script nonce="` + nonce + `" src="/os/static/js/admin-os-intel.js?v=` + assetVer("js/admin-os-intel.js") + `"></script>
 <script nonce="` + nonce + `">

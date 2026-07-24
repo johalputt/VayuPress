@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -463,9 +465,13 @@ func (a *App) pingIndexNow(slug string) (state, detail string) {
 // self-test as well as the on-publish ping. The key must already be trimmed.
 func (a *App) indexNowSubmit(ctx context.Context, indexNowKey string, urls []string) (int, error) {
 	body, err := json.Marshal(map[string]interface{}{
-		"host":        config.Cfg.Domain,
-		"key":         indexNowKey,
-		"keyLocation": "https://" + config.Cfg.Domain + "/.well-known/" + indexNowKey + ".txt",
+		"host": config.Cfg.Domain,
+		"key":  indexNowKey,
+		// Root key location: IndexNow only lets a key authorize URLs at or below
+		// the key file's directory, so the key must live at the site root to cover
+		// root-level post URLs (a /.well-known/ location caused HTTP 422). Served by
+		// handleArticlePage's root-key shortcut.
+		"keyLocation": "https://" + config.Cfg.Domain + "/" + indexNowKey + ".txt",
 		"urlList":     urls,
 	})
 	if err != nil {
@@ -524,8 +530,19 @@ func (a *App) handleOSIndexNowTest(w http.ResponseWriter, r *http.Request) {
 	}
 	key := a.indexNowKey()
 	if key == "" {
-		fail("No IndexNow key is configured. Add one under API Keys → IndexNow, or set the INDEXNOW_KEY environment variable, then test again.")
-		return
+		// Fully automatic: generate and store a key so the operator never handles
+		// one manually — this button is the whole IndexNow setup, one click.
+		if a.secrets == nil {
+			fail("Automatic key setup is unavailable (secret storage off). Set the INDEXNOW_KEY environment variable instead.")
+			return
+		}
+		gen := newIndexNowKey()
+		if _, err := a.secrets.Upsert(r.Context(), secrets.ProviderIndexNow, "IndexNow key (auto)", "", gen, true, false); err != nil {
+			fail("Could not save an auto-generated IndexNow key: " + err.Error())
+			return
+		}
+		key = gen
+		logging.LogInfo("indexnow", "auto-generated an IndexNow key on first connect")
 	}
 	if !validIndexNowKey(key) {
 		fail("The IndexNow key is not a valid format — it must be 8–128 characters using only a–z, A–Z, 0–9 and hyphen. Fix it under API Keys → IndexNow.")
@@ -548,15 +565,25 @@ func (a *App) handleOSIndexNowTest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if status >= 300 {
-		fail(fmt.Sprintf("IndexNow rejected the submission — HTTP %d (%s). Verify the key file is reachable at https://%s/.well-known/%s.txt.", status, indexNowStatusHint(status), d, key))
+		fail(fmt.Sprintf("IndexNow rejected the submission — HTTP %d (%s). Verify the key file is reachable at https://%s/%s.txt.", status, indexNowStatusHint(status), d, key))
 		return
 	}
 	logging.LogInfo("indexnow", "self-test submitted homepage successfully")
 	writeJSON(w, r, http.StatusOK, map[string]any{
 		"ok":     true,
 		"status": status,
-		"detail": fmt.Sprintf("IndexNow accepted your submission (HTTP %d). Engines will crawl updated URLs shortly. Every post you publish is submitted automatically.", status),
+		"detail": fmt.Sprintf("Connected — IndexNow accepted your submission (HTTP %d). Your key is set up automatically and every post you publish is now submitted to Bing, Yandex and other engines instantly.", status),
 	})
+}
+
+// newIndexNowKey mints a fresh IndexNow verification key: 32 lowercase hex
+// characters, which satisfies IndexNow's 8–128 [a-zA-Z0-9-] format rule.
+func newIndexNowKey() string {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		return fmt.Sprintf("%032x", time.Now().UnixNano())
+	}
+	return hex.EncodeToString(b)
 }
 
 // indexNowStatusHint translates an IndexNow HTTP status into a short, actionable
