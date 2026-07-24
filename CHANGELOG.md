@@ -8,6 +8,17 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Added
+- **Anonymity self-audit on the Spaces page (ADR-0141).** A Tor Space now shows
+  a live, honest report of its anonymity posture: which anti-leak controls are
+  active (clearnet egress disabled, loopback-only bind, external images blocked),
+  which residual risks remain (a configured external SMTP relay, a leftover
+  clearnet domain), and — deliberately — the things software cannot do for you
+  (use Tor Browser; your content can still identify you; no tool makes anyone
+  "100% anonymous"). The same summary is logged at boot, and any control found
+  "at risk" is logged as an error. New `internal/anonaudit` package (pure,
+  tested); surfaced via `/os/spaces` and the boot log.
+
 ### Security
 - **Tor Space anti-leak now covers the AI-generate and external-SMTP paths
   (ADR-0141).** The Tor-Space egress kill-switch already closed every

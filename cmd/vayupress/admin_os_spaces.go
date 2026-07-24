@@ -13,10 +13,48 @@ import (
 	"html"
 	"net/http"
 
+	"github.com/johalputt/vayupress/internal/anonaudit"
 	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/render"
+	"github.com/johalputt/vayupress/internal/safefetch"
 	"github.com/johalputt/vayupress/internal/settings"
 )
+
+// anonAuditInputs snapshots the live anonymity-relevant state for the report.
+func anonAuditInputs() anonaudit.Inputs {
+	return anonaudit.Inputs{
+		OnionMode:              config.Cfg.OnionMode,
+		ClearnetEgressBlocked:  safefetch.ClearnetBlocked(),
+		LoopbackBind:           config.Cfg.OnionMode, // onionSafeBindAddr binds loopback in Tor mode
+		ExternalSMTPConfigured: config.Cfg.SMTPHost != "" && !safefetch.IsLoopbackHost(config.Cfg.SMTPHost),
+		ClearnetDomainSet:      config.Cfg.Domain != "" && config.Cfg.Domain != "localhost",
+	}
+}
+
+// osSpacesAnonAuditCard renders the anonymity self-audit — the operator's
+// verifiable "is my IP protected?" report (honest: it never claims 100%).
+func osSpacesAnonAuditCard(checks []anonaudit.Check) string {
+	rows := ""
+	for _, c := range checks {
+		badge := `<span class="badge badge--muted">Info</span>`
+		switch c.Status {
+		case anonaudit.Pass:
+			badge = `<span class="badge badge--ok">● Protected</span>`
+		case anonaudit.Warn:
+			badge = `<span class="badge badge--warn">● Review</span>`
+		case anonaudit.Fail:
+			badge = `<span class="badge badge--warn">✕ At risk</span>`
+		}
+		rows += `<li class="mb-2">` + badge +
+			` <strong>` + html.EscapeString(c.Title) + `</strong>` +
+			`<br><span class="text-sm muted">` + html.EscapeString(c.Detail) + `</span></li>`
+	}
+	return `<div class="card">
+  <div class="settings-block-title">Anonymity self-audit</div>
+  <p class="text-sm muted mb-4">A live check of what is protecting your identity — and what only you can protect.</p>
+  <ul class="reset-list">` + rows + `</ul>
+</div>`
+}
 
 // handleOSSpaces renders the Spaces page.
 func (a *App) handleOSSpaces(w http.ResponseWriter, r *http.Request) {
@@ -38,6 +76,8 @@ func (a *App) handleOSSpaces(w http.ResponseWriter, r *http.Request) {
 	if onion {
 		// This whole install already IS the Tor world.
 		body += osSpacesTorSelfCard(config.Cfg.Domain)
+		// A live, honest report of the anonymity posture (ADR-0141).
+		body += osSpacesAnonAuditCard(anonaudit.Run(anonAuditInputs()))
 	} else {
 		// A clearnet install can spin up a separate Anonymous Tor Space child.
 		body += osSpacesTorSpaceCard(a.torSpaceStatusNow())

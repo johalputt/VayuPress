@@ -30,6 +30,7 @@ import (
 	"github.com/johalputt/vayupress/internal/ads"
 	"github.com/johalputt/vayupress/internal/aiassist"
 	"github.com/johalputt/vayupress/internal/analytics"
+	"github.com/johalputt/vayupress/internal/anonaudit"
 	"github.com/johalputt/vayupress/internal/api"
 	"github.com/johalputt/vayupress/internal/apikeys"
 	"github.com/johalputt/vayupress/internal/auth"
@@ -634,6 +635,14 @@ func main() {
 	safefetch.SetBlockClearnetEgress(config.Cfg.OnionMode)
 	if config.Cfg.OnionMode {
 		logging.LogInfo("vayuos", "VAYUOS_MODE=tor — anonymous Tor Space: clearnet callbacks disabled")
+		checks := anonaudit.Run(anonAuditInputs())
+		pass, warn, fail := anonaudit.Summary(checks)
+		logging.LogInfo("anonymity", fmt.Sprintf("Tor Space anonymity self-audit: %d protected, %d to review, %d at risk (see /os/spaces)", pass, warn, fail))
+		for _, c := range checks {
+			if c.Status == anonaudit.Fail {
+				logging.LogError("anonymity", "anonymity control AT RISK: "+c.Title, c.Detail)
+			}
+		}
 	}
 
 	// Privacy-first analytics + outbound webhooks + social posting (Tier 2).
