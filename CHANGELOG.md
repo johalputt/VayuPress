@@ -8,6 +8,8 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.15.13] — 2026-07-24
+
 ### Security
 - **No DNS leak from the SSRF pre-flight in a Tor Space (ADR-0141).** The
   `safefetch` host guard resolved the request host (a DNS query) before the
