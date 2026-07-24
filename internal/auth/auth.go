@@ -475,7 +475,28 @@ func HashSecretArgon2id(secret string) (string, error) {
 // encoded hash. It accepts both the parameterised v2 form and the legacy
 // "salt$hash" form (verified with the legacy time cost), so hashes created
 // before the F-5 cost bump keep working.
+// decoyArgon2Hash is a fixed valid encoded hash used to spend equivalent Argon2id
+// time when a caller passes an EMPTY encoded hash — what a credential lookup
+// returns for a non-existent or inactive account. Without it, the empty-hash path
+// returns in microseconds while a real hash runs the full ~tens-of-ms KDF, a
+// timing oracle that reveals whether an account/mailbox exists (audit M4).
+var decoyArgon2Hash = func() string {
+	h, err := HashSecretArgon2id("vayupress-timing-decoy")
+	if err != nil {
+		return ""
+	}
+	return h
+}()
+
 func VerifySecretArgon2id(secret, encoded string) bool {
+	// Constant-time account existence (audit M4): verify an empty hash against the
+	// decoy so the non-existent-account path spends the same Argon2id time as a
+	// wrong password, then force failure so the decoy can never authenticate.
+	forceFail := false
+	if encoded == "" && decoyArgon2Hash != "" {
+		encoded = decoyArgon2Hash
+		forceFail = true
+	}
 	t := uint32(legacyArgonTime)
 	saltB64, hashB64 := "", ""
 
@@ -509,7 +530,7 @@ func VerifySecretArgon2id(secret, encoded string) bool {
 		return false
 	}
 	got := argon2.IDKey([]byte(secret), salt, t, argonMemory, argonThreads, argonKeyLen)
-	return hmac.Equal(got, want)
+	return hmac.Equal(got, want) && !forceFail
 }
 
 // ── CSRF (ADR-0013/0016/0017) ─────────────────────────────────────────────────

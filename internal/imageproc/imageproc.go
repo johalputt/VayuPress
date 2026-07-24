@@ -22,6 +22,13 @@ import (
 // DefaultMaxWidthStr is DefaultMaxWidth rendered as a string, for log messages.
 func DefaultMaxWidthStr() string { return strconv.Itoa(DefaultMaxWidth) }
 
+// maxDecodePixels bounds the total pixel count of an image before it is fully
+// decoded. A decoded bitmap costs w*h*4 bytes regardless of the (tiny) compressed
+// size, so a crafted PNG/JPEG declaring huge dimensions is a decompression bomb
+// that OOM-kills the single-process binary (audit M11). 40 MP (~160 MB decoded)
+// is far above any legitimate web image and is checked cheaply via DecodeConfig.
+const maxDecodePixels = 40_000_000
+
 // DefaultMaxWidth is the width above which images are downscaled. 1600px covers
 // retina-quality article display while cutting multi-megabyte originals down to
 // web-appropriate sizes.
@@ -55,6 +62,15 @@ func Optimize(raw []byte, ext string, maxWidth int) (Result, error) {
 			return Result{Data: raw, Width: cfg.Width, Height: cfg.Height}, nil
 		}
 		return Result{Data: raw}, nil
+	}
+
+	// Reject a decompression bomb BEFORE the full decode (audit M11): DecodeConfig
+	// reads only the header, so a tiny file declaring enormous dimensions is caught
+	// without allocating the multi-GB bitmap. int64 math avoids overflow.
+	if cfg, _, cerr := image.DecodeConfig(bytes.NewReader(raw)); cerr == nil {
+		if cfg.Width <= 0 || cfg.Height <= 0 || int64(cfg.Width)*int64(cfg.Height) > maxDecodePixels {
+			return Result{}, fmt.Errorf("imageproc: image dimensions %dx%d exceed the %d-megapixel limit", cfg.Width, cfg.Height, maxDecodePixels/1_000_000)
+		}
 	}
 
 	img, _, err := image.Decode(bytes.NewReader(raw))

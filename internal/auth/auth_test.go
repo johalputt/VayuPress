@@ -280,3 +280,30 @@ func TestCSRFMiddlewareBlocksStalePost(t *testing.T) {
 		t.Fatalf("stale token POST: want 403, got %d", rr.Code)
 	}
 }
+
+// TestVerifySecretArgon2idEmptyHashConstantTime guards audit M4: an empty encoded
+// hash (a lookup for a non-existent account) must never authenticate AND must
+// spend Argon2id time, so it is indistinguishable from a wrong password and
+// cannot be used as an account-existence timing oracle.
+func TestVerifySecretArgon2idEmptyHashConstantTime(t *testing.T) {
+	if VerifySecretArgon2id("anything", "") {
+		t.Fatal("empty encoded hash must never authenticate")
+	}
+	// The empty-hash path must run the KDF (tens of ms), not return instantly.
+	start := time.Now()
+	_ = VerifySecretArgon2id("anything", "")
+	if elapsed := time.Since(start); elapsed < time.Millisecond {
+		t.Fatalf("empty-hash verify returned in %v — Argon2id decoy did not run (timing oracle)", elapsed)
+	}
+	// A real hash still verifies correctly.
+	h, err := HashSecretArgon2id("correct horse")
+	if err != nil {
+		t.Fatalf("hash: %v", err)
+	}
+	if !VerifySecretArgon2id("correct horse", h) {
+		t.Error("correct password must verify")
+	}
+	if VerifySecretArgon2id("wrong", h) {
+		t.Error("wrong password must not verify")
+	}
+}

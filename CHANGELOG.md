@@ -8,6 +8,24 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.15.6] — 2026-07-24
+
+### Security
+- **Image uploads are guarded against decompression bombs.** `imageproc.Optimize`
+  decoded PNG/JPEG uploads directly and only measured dimensions *after* the full
+  decode, so a tiny file declaring e.g. 25000×25000 allocated a multi-GB bitmap
+  and OOM-killed the single-process binary (an author-reachable, unauthenticated-
+  via-remote-import DoS). It now checks the declared dimensions via
+  `image.DecodeConfig` first and refuses anything beyond a 40-megapixel budget
+  (int64 math, no overflow) before decoding.
+- **VayuMail/member login no longer leaks account existence via timing.**
+  `VerifySecretArgon2id` returned in microseconds for an empty stored hash (a
+  lookup for a non-existent/inactive account) while a real account ran the full
+  ~tens-of-ms Argon2id — a timing oracle for enumerating valid mailboxes. It now
+  verifies an empty hash against a fixed decoy so both paths spend equal time and
+  always fail, closing the oracle for every caller (portal login and scoped
+  credential verification alike).
+
 ## [3.15.5] — 2026-07-24
 
 ### Fixed
