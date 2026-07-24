@@ -9,6 +9,17 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 ## [Unreleased]
 
 ### Security
+- **Service-credential encryption key moved out of the database by default
+  (audit L6).** With no `VAYU_SECRET` configured, the Data Encryption Key that
+  seals every stored service credential (Stripe/PayPal/BTCPay keys, webhook
+  signing secrets) was written as plaintext hex in the same SQLite DB as the
+  ciphertext — so a single DB read recovered every secret. The DEK is now wrapped
+  by a host-bound key file kept beside the database (0600, `VAYU_SECRET_KEK_FILE`
+  to override), mirroring the CSRF secret, so a database-only read no longer
+  yields the key. A legacy plaintext DEK is transparently migrated into the key
+  file on next boot; if no key file can be created the store keeps working but
+  warns loudly that the at-rest key lives in the DB. `VAYU_SECRET` remains the
+  strongest option and is unchanged.
 - **OAuth/MCP access tokens now expire and refresh tokens rotate with reuse
   detection (audit L9).** Minted access tokens carried no expiry and the token
   response omitted `expires_in`, so a leaked connector token was a permanent

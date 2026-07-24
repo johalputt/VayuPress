@@ -29,7 +29,7 @@ func newAITestSecrets(t *testing.T) *secrets.Store {
 	if _, err := db.Exec(`CREATE TABLE secret_keyring(id INTEGER PRIMARY KEY,dek TEXT NOT NULL,kek_src TEXT NOT NULL DEFAULT 'none',kek_check TEXT NOT NULL DEFAULT '',created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,rotated_at DATETIME)`); err != nil {
 		t.Fatalf("keyring: %v", err)
 	}
-	return secrets.New(db, nil)
+	return secrets.New(db, nil, "")
 }
 
 // TestResolveAIBackendUnconfigured: with no secrets store and no env Ollama, any

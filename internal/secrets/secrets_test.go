@@ -3,6 +3,9 @@ package secrets
 import (
 	"context"
 	"database/sql"
+	"encoding/hex"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -11,7 +14,7 @@ import (
 
 func newTestStore(t *testing.T) *Store {
 	t.Helper()
-	return New(newTestDB(t), nil)
+	return New(newTestDB(t), nil, "")
 }
 
 func newTestDB(t *testing.T) *sql.DB {
@@ -30,6 +33,81 @@ func newTestDB(t *testing.T) *sql.DB {
 		t.Fatalf("keyring schema: %v", err)
 	}
 	return db
+}
+
+// With a keyfile and no VAYU_SECRET, the DEK is wrapped by the host-bound key
+// file (kek_src="file") and is NOT stored as plaintext hex in the DB; a reopen
+// with the same keyfile decrypts, and losing the keyfile makes it unreadable
+// (audit L6).
+func TestKeyfileKEKWrapsDEK(t *testing.T) {
+	db := newTestDB(t)
+	ctx := context.Background()
+	keyfile := filepath.Join(t.TempDir(), ".vayu-secret-kek")
+
+	a := New(db, nil, keyfile)
+	id, err := a.Upsert(ctx, ProviderIndexNow, "IndexNow", "", "sk_live_secret", true, false)
+	if err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+
+	var dekField, kekSrc string
+	if err := db.QueryRow(`SELECT dek, kek_src FROM secret_keyring WHERE id=1`).Scan(&dekField, &kekSrc); err != nil {
+		t.Fatalf("read keyring: %v", err)
+	}
+	if kekSrc != "file" {
+		t.Fatalf("kek_src = %q, want file", kekSrc)
+	}
+	// The stored dek must be a sealed blob ("nonce.ct"), never raw 32-byte hex.
+	if raw, err := hex.DecodeString(dekField); err == nil && len(raw) == 32 {
+		t.Fatal("DEK stored as plaintext hex despite a keyfile")
+	}
+
+	// A fresh store with the same keyfile decrypts.
+	if got, err := New(db, nil, keyfile).Reveal(ctx, id); err != nil || got != "sk_live_secret" {
+		t.Fatalf("reopen with keyfile: got %q err %v", got, err)
+	}
+	// Without the keyfile it cannot be opened.
+	_ = os.Remove(keyfile)
+	if _, err := New(db, nil, keyfile).Reveal(ctx, id); err == nil {
+		t.Fatal("must not decrypt after the keyfile is gone")
+	}
+}
+
+// A legacy plaintext ("none") keyring is transparently upgraded to the
+// host-bound keyfile on next open, and the plaintext DEK stops living in the DB
+// (audit L6).
+func TestLegacyPlaintextUpgradesToKeyfile(t *testing.T) {
+	db := newTestDB(t)
+	ctx := context.Background()
+
+	// Seed the legacy layout: a store with no keyfile persists plaintext "none".
+	legacy := New(db, nil, "")
+	id, err := legacy.Upsert(ctx, ProviderIndexNow, "IndexNow", "", "tok-legacy", true, false)
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	var kekSrc string
+	_ = db.QueryRow(`SELECT kek_src FROM secret_keyring WHERE id=1`).Scan(&kekSrc)
+	if kekSrc != "none" {
+		t.Fatalf("seed kek_src = %q, want none", kekSrc)
+	}
+
+	// Open with a keyfile → upgrade.
+	keyfile := filepath.Join(t.TempDir(), ".vayu-secret-kek")
+	up := New(db, nil, keyfile)
+	if got, err := up.Reveal(ctx, id); err != nil || got != "tok-legacy" {
+		t.Fatalf("reveal during upgrade: got %q err %v", got, err)
+	}
+	var dekField string
+	if err := db.QueryRow(`SELECT dek, kek_src FROM secret_keyring WHERE id=1`).Scan(&dekField, &kekSrc); err != nil {
+		t.Fatalf("read keyring: %v", err)
+	}
+	if kekSrc != "file" {
+		t.Fatalf("after upgrade kek_src = %q, want file", kekSrc)
+	}
+	if raw, err := hex.DecodeString(dekField); err == nil && len(raw) == 32 {
+		t.Fatal("plaintext DEK still in DB after upgrade")
+	}
 }
 
 func TestUpsertSealsAndReveals(t *testing.T) {
@@ -173,13 +251,13 @@ func TestListReportsMetadata(t *testing.T) {
 func TestSecretsSurviveAcrossStores(t *testing.T) {
 	db := newTestDB(t)
 	ctx := context.Background()
-	a := New(db, nil)
+	a := New(db, nil, "")
 	id, err := a.Upsert(ctx, ProviderIndexNow, "IndexNow", "", "key-survives-rotation", true, false)
 	if err != nil {
 		t.Fatalf("upsert: %v", err)
 	}
 	// Simulate a restart / API-key rotation: a fresh store, no shared state.
-	b := New(db, nil)
+	b := New(db, nil, "")
 	got, err := b.Reveal(ctx, id)
 	if err != nil {
 		t.Fatalf("reveal from new store: %v", err)
@@ -193,23 +271,23 @@ func TestSecretsSurviveAcrossStores(t *testing.T) {
 func TestEnvWrappedKeyringRoundTrip(t *testing.T) {
 	db := newTestDB(t)
 	ctx := context.Background()
-	a := New(db, []byte("vayu-secret-passphrase"))
+	a := New(db, []byte("vayu-secret-passphrase"), "")
 	id, err := a.Upsert(ctx, ProviderOpenRouter, "OpenRouter", "", "sk-or-wrapped", true, false)
 	if err != nil {
 		t.Fatalf("upsert: %v", err)
 	}
 	// New store with the same secret can decrypt.
-	b := New(db, []byte("vayu-secret-passphrase"))
+	b := New(db, []byte("vayu-secret-passphrase"), "")
 	if got, err := b.Reveal(ctx, id); err != nil || got != "sk-or-wrapped" {
 		t.Fatalf("reveal with correct secret: got %q err %v", got, err)
 	}
 	// A store with the WRONG secret must fail to initialise the keyring.
-	c := New(db, []byte("wrong-secret"))
+	c := New(db, []byte("wrong-secret"), "")
 	if _, err := c.Reveal(ctx, id); err == nil {
 		t.Fatal("expected failure decrypting with the wrong VAYU_SECRET")
 	}
 	// A store with NO secret must also fail (the keyring is env-wrapped).
-	d := New(db, nil)
+	d := New(db, nil, "")
 	if _, err := d.Reveal(ctx, id); err == nil {
 		t.Fatal("expected failure when VAYU_SECRET is missing")
 	}
@@ -220,7 +298,7 @@ func TestEnvWrappedKeyringRoundTrip(t *testing.T) {
 func TestRewrapMasterMigratesWithoutDataLoss(t *testing.T) {
 	db := newTestDB(t)
 	ctx := context.Background()
-	a := New(db, nil) // start self-managed (no VAYU_SECRET)
+	a := New(db, nil, "") // start self-managed (no VAYU_SECRET)
 	id, err := a.Upsert(ctx, ProviderN8N, "n8n automation", "https://n8n.example/webhook", "tok-123", true, false)
 	if err != nil {
 		t.Fatalf("upsert: %v", err)
@@ -234,10 +312,10 @@ func TestRewrapMasterMigratesWithoutDataLoss(t *testing.T) {
 		t.Fatalf("reveal after rewrap (same store): got %q err %v", got, err)
 	}
 	// And a fresh store with the new secret reads it; the old (no-secret) path fails.
-	if got, err := New(db, []byte("new-vayu-secret")).Reveal(ctx, id); err != nil || got != "tok-123" {
+	if got, err := New(db, []byte("new-vayu-secret"), "").Reveal(ctx, id); err != nil || got != "tok-123" {
 		t.Fatalf("reveal after rewrap (new store, new secret): got %q err %v", got, err)
 	}
-	if _, err := New(db, nil).Reveal(ctx, id); err == nil {
+	if _, err := New(db, nil, "").Reveal(ctx, id); err == nil {
 		t.Fatal("expected failure: keyring is now env-wrapped, so no-secret access must fail")
 	}
 }

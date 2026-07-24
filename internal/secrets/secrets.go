@@ -17,11 +17,14 @@
 // key (or any issued key) never makes a stored secret undecryptable: nothing
 // has to be re-entered. Rotation is therefore 100% automated.
 //
-// The DEK itself is held directly in the keyring when no dedicated encryption
-// secret is configured (the default — fully self-managing), or wrapped by a Key
-// Encryption Key (KEK) derived from VAYU_SECRET when one is set, for
-// defence-in-depth. Because only the small DEK is wrapped, the encryption
-// secret can be changed in place via RewrapMaster without touching — or losing
+// The DEK is wrapped by a Key Encryption Key (KEK), strongest source first:
+// VAYU_SECRET when set (env), else a host-bound key file kept OUTSIDE the
+// database (audit L6) so a database-only read never yields the DEK. Only when
+// neither is available does the DEK fall back to plaintext in the keyring table
+// — and then the store warns loudly, because that provides no confidentiality
+// against a DB-read attacker. A legacy plaintext DEK is transparently upgraded
+// to the key file on next open. Because only the small DEK is wrapped, the KEK
+// source can be changed in place via RewrapMaster without touching — or losing
 // — a single stored credential.
 package secrets
 
@@ -34,11 +37,15 @@ import (
 	"encoding/hex"
 	"errors"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
 	"context"
+
+	"github.com/johalputt/vayupress/internal/logging"
 )
 
 // Provider identifies the downstream service a credential targets. Known
@@ -127,6 +134,11 @@ type Store struct {
 
 	kekSecret []byte // optional; derives the KEK that wraps the DEK at rest
 
+	// keyfilePath is a host-bound 0600 file (outside the DB) whose contents
+	// derive a KEK for the DEK when VAYU_SECRET is not set (audit L6). Empty
+	// disables the keyfile path (the DEK then falls back to in-DB storage).
+	keyfilePath string
+
 	once    sync.Once
 	dek     [32]byte
 	initErr error
@@ -134,10 +146,12 @@ type Store struct {
 
 // New creates a Store backed by db. kekSecret is the optional encryption secret
 // (e.g. VAYU_SECRET) used to wrap the DEK at rest; pass nil/empty to let the
-// store self-manage the DEK (default). The keyring is initialised lazily on
-// first use.
-func New(db *sql.DB, kekSecret []byte) *Store {
-	return &Store{db: db, kekSecret: kekSecret}
+// store self-manage the DEK. keyfilePath is a host-bound file (outside the DB)
+// used to wrap the DEK when no VAYU_SECRET is set — so a DB-only read never
+// yields the DEK (audit L6); pass "" to disable it. The keyring is initialised
+// lazily on first use.
+func New(db *sql.DB, kekSecret []byte, keyfilePath string) *Store {
+	return &Store{db: db, kekSecret: kekSecret, keyfilePath: strings.TrimSpace(keyfilePath)}
 }
 
 // deriveKEK turns an encryption secret into a 32-byte AES key (domain
@@ -205,23 +219,18 @@ func (s *Store) loadOrCreateKeyring() error {
 	hasKEK := len(s.kekSecret) > 0
 
 	if errors.Is(err, sql.ErrNoRows) {
-		// First boot: mint a fresh random DEK and persist it.
+		// First boot: mint a fresh random DEK and persist it under the strongest
+		// wrapping available: VAYU_SECRET (env) > host-bound keyfile > in-DB.
 		if _, err := io.ReadFull(rand.Reader, s.dek[:]); err != nil {
 			return err
 		}
 		if hasKEK {
-			kek := deriveKEK(s.kekSecret)
-			wrapped, err := sealWith(kek, s.dek[:])
-			if err != nil {
-				return err
-			}
-			check, err := sealWith(kek, []byte(kekCheckPlain))
-			if err != nil {
-				return err
-			}
-			_, err = s.db.Exec(`INSERT INTO secret_keyring(id, dek, kek_src, kek_check) VALUES(1,?,?,?)`, wrapped, "env", check)
-			return err
+			return s.persistWrappedDEK(deriveKEK(s.kekSecret), "env")
 		}
+		if kf, ok := s.keyfileKEK(true); ok {
+			return s.persistWrappedDEK(deriveKEK(kf), "file")
+		}
+		s.warnPlaintextDEK("could not create the host-bound key file")
 		_, err = s.db.Exec(`INSERT INTO secret_keyring(id, dek, kek_src, kek_check) VALUES(1,?,?,?)`, hex.EncodeToString(s.dek[:]), "none", "")
 		return err
 	}
@@ -245,14 +254,102 @@ func (s *Store) loadOrCreateKeyring() error {
 		}
 		copy(s.dek[:], dek)
 		return nil
-	default: // "none"
+	case "file":
+		// DEK is wrapped by the host-bound keyfile (audit L6). The keyfile must
+		// exist; without it the stored credentials cannot be opened.
+		kf, ok := s.keyfileKEK(false)
+		if !ok {
+			return errors.New("secrets: stored credentials are wrapped by the host key file, which is missing or unreadable")
+		}
+		kek := deriveKEK(kf)
+		if _, err := openWith(kek, kekCheck); err != nil {
+			return errors.New("secrets: the host key file does not match the stored encryption key")
+		}
+		dek, err := openWith(kek, dekField)
+		if err != nil {
+			return err
+		}
+		copy(s.dek[:], dek)
+		return nil
+	default: // "none" — legacy plaintext DEK stored beside the ciphertext.
 		raw, err := hex.DecodeString(dekField)
 		if err != nil {
 			return err
 		}
 		copy(s.dek[:], raw)
+		// Transparently upgrade a legacy plaintext DEK to the host-bound keyfile
+		// so the cleartext key stops living in the DB (audit L6). Best-effort: if
+		// the keyfile can't be created (read-only dir, no path), keep working on
+		// the plaintext DEK but warn loudly.
+		if !hasKEK {
+			if kf, ok := s.keyfileKEK(true); ok {
+				if err := s.persistWrappedDEK(deriveKEK(kf), "file"); err != nil {
+					logging.LogWarn("secrets", "could not upgrade the at-rest key to the host key file: "+err.Error())
+				} else {
+					logging.LogInfo("secrets", "at-rest encryption key migrated out of the database into the host key file")
+				}
+			} else {
+				s.warnPlaintextDEK("no host-bound key file available")
+			}
+		}
 		return nil
 	}
+}
+
+// persistWrappedDEK seals the current DEK (and a check value) under kek and
+// writes it to the keyring row with the given source label.
+func (s *Store) persistWrappedDEK(kek [32]byte, src string) error {
+	wrapped, err := sealWith(kek, s.dek[:])
+	if err != nil {
+		return err
+	}
+	check, err := sealWith(kek, []byte(kekCheckPlain))
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(
+		`INSERT INTO secret_keyring(id, dek, kek_src, kek_check) VALUES(1,?,?,?)
+		 ON CONFLICT(id) DO UPDATE SET dek=excluded.dek, kek_src=excluded.kek_src, kek_check=excluded.kek_check`,
+		wrapped, src, check)
+	return err
+}
+
+// keyfileKEK loads (or, when create is set, generates) the host-bound 32-byte
+// key-encryption secret from a 0600 file outside the database (audit L6). ok is
+// false when no path is configured or the file cannot be read/created — the
+// caller then falls back to the in-DB DEK.
+func (s *Store) keyfileKEK(create bool) (secret []byte, ok bool) {
+	if s.keyfilePath == "" {
+		return nil, false
+	}
+	if b, err := os.ReadFile(s.keyfilePath); err == nil && len(b) >= 32 {
+		return b[:32], true
+	}
+	if !create {
+		return nil, false
+	}
+	buf := make([]byte, 32)
+	if _, err := io.ReadFull(rand.Reader, buf); err != nil {
+		return nil, false
+	}
+	if err := os.MkdirAll(filepath.Dir(s.keyfilePath), 0o700); err != nil {
+		return nil, false
+	}
+	if err := os.WriteFile(s.keyfilePath, buf, 0o600); err != nil {
+		return nil, false
+	}
+	return buf, true
+}
+
+// warnPlaintextDEK emits a loud warning that the at-rest encryption key is being
+// stored in the database beside the ciphertext it protects — i.e. sealing adds
+// no confidentiality against a DB-read attacker (audit L6). It calls out the
+// payment/webhook secrets that are the highest-value target.
+func (s *Store) warnPlaintextDEK(reason string) {
+	logging.LogWarn("secrets", "at-rest encryption key stored IN THE DATABASE ("+reason+
+		"): stored service credentials (payment keys, webhook signing secrets) are only as "+
+		"confidential as the database file — set VAYU_SECRET or provide a writable data "+
+		"directory / VAYU_SECRET_KEK_FILE so the key lives outside the DB")
 }
 
 // RewrapMaster re-wraps the DEK under a new encryption secret without
@@ -276,7 +373,23 @@ func (s *Store) RewrapMaster(newKEKSecret []byte) error {
 		if _, err := s.db.Exec(`UPDATE secret_keyring SET dek=?, kek_src='env', kek_check=?, rotated_at=? WHERE id=1`, wrapped, check, now); err != nil {
 			return err
 		}
+	} else if kf, ok := s.keyfileKEK(true); ok {
+		// Clearing VAYU_SECRET downgrades to the host-bound keyfile, NOT to a
+		// plaintext in-DB DEK (audit L6).
+		kek := deriveKEK(kf)
+		wrapped, err := sealWith(kek, s.dek[:])
+		if err != nil {
+			return err
+		}
+		check, err := sealWith(kek, []byte(kekCheckPlain))
+		if err != nil {
+			return err
+		}
+		if _, err := s.db.Exec(`UPDATE secret_keyring SET dek=?, kek_src='file', kek_check=?, rotated_at=? WHERE id=1`, wrapped, check, now); err != nil {
+			return err
+		}
 	} else {
+		s.warnPlaintextDEK("no host-bound key file available during rewrap")
 		if _, err := s.db.Exec(`UPDATE secret_keyring SET dek=?, kek_src='none', kek_check='', rotated_at=? WHERE id=1`, hex.EncodeToString(s.dek[:]), now); err != nil {
 			return err
 		}

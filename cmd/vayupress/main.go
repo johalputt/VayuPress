@@ -346,6 +346,22 @@ func writeRobotsScoped(host, rel string) {
 // main
 // =============================================================================
 
+// secretKEKFilePath returns the host-bound file whose contents wrap the secrets
+// DEK when VAYU_SECRET is not set (audit L6) — so the at-rest key lives outside
+// the database. Override with VAYU_SECRET_KEK_FILE; otherwise it sits beside the
+// database (a stable, service-owned, 0600 location), mirroring the CSRF secret.
+// Empty when no stable location is known (the DEK then falls back to in-DB
+// storage with a loud warning).
+func secretKEKFilePath() string {
+	if p := strings.TrimSpace(os.Getenv("VAYU_SECRET_KEK_FILE")); p != "" {
+		return p
+	}
+	if db := strings.TrimSpace(config.Cfg.DBPath); db != "" {
+		return filepath.Join(filepath.Dir(db), ".vayu-secret-kek")
+	}
+	return ""
+}
+
 func main() {
 	log.SetFlags(0)
 
@@ -513,7 +529,7 @@ func main() {
 	// rotate freely.
 	a.apiKeys = apikeys.New(dbpkg.DB)
 	a.oauth = oauth.New(dbpkg.DB)
-	a.secrets = secrets.New(dbpkg.DB, []byte(config.EnvOr("VAYU_SECRET", "")))
+	a.secrets = secrets.New(dbpkg.DB, []byte(config.EnvOr("VAYU_SECRET", "")), secretKEKFilePath())
 	auth.SetExtraAPIKeyVerifier(a.apiKeys.Verify)
 	// Rich resolver (ADR-0134): lets the auth layer stamp each key's grant set
 	// into the request context so the permission middleware can enforce
