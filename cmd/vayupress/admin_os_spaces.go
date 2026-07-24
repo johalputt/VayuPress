@@ -29,6 +29,7 @@ func anonAuditInputs() anonaudit.Inputs {
 		ExternalSMTPConfigured:  config.Cfg.SMTPHost != "" && !safefetch.IsLoopbackHost(config.Cfg.SMTPHost),
 		ClearnetDomainSet:       config.Cfg.Domain != "" && config.Cfg.Domain != "localhost",
 		BlockedClearnetAttempts: safefetch.BlockedClearnetCount(),
+		EgressRoutedOverTor:     safefetch.TorEgressActive(),
 	}
 }
 

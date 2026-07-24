@@ -22,6 +22,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -148,6 +149,35 @@ func BlockedClearnetCount() int64 { return blockedClearnetAttempts.Load() }
 // noteBlockedClearnet records one refused clearnet dial.
 func noteBlockedClearnet() { blockedClearnetAttempts.Add(1) }
 
+// torEgressDialer, when set, turns the Tor-Space guard from "refuse clearnet"
+// into "route clearnet through Tor": an opt-in mode where outbound connections
+// ride the operator's Tor SOCKS proxy instead of being blocked, so features keep
+// working while the real IP stays hidden (ADR-0143). nil (the default) keeps the
+// safe refuse-everything behaviour. The dialer MUST resolve remotely (SOCKS5
+// remote DNS) so no lookup leaks locally.
+var (
+	torEgressMu     sync.RWMutex
+	torEgressDialer func(ctx context.Context, network, addr string) (net.Conn, error)
+)
+
+// SetTorEgressDialer installs (or clears, with nil) the opt-in Tor egress route.
+func SetTorEgressDialer(d func(ctx context.Context, network, addr string) (net.Conn, error)) {
+	torEgressMu.Lock()
+	torEgressDialer = d
+	torEgressMu.Unlock()
+}
+
+// torEgress returns the installed Tor egress dialer, or nil.
+func torEgress() func(ctx context.Context, network, addr string) (net.Conn, error) {
+	torEgressMu.RLock()
+	defer torEgressMu.RUnlock()
+	return torEgressDialer
+}
+
+// TorEgressActive reports whether outbound clearnet is being ROUTED over Tor
+// (opt-in) rather than blocked — surfaced in the anonymity self-audit.
+func TorEgressActive() bool { return blockClearnetEgress.Load() && torEgress() != nil }
+
 // GuardedDefaultTransport returns a clone of http.DefaultTransport whose dials
 // refuse clearnet while the Tor-Space guard is engaged. The app installs it as
 // http.DefaultTransport in OnionMode (belt-and-suspenders): even a caller that
@@ -162,6 +192,9 @@ func GuardedDefaultTransport() *http.Transport {
 	}
 	base.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
 		if blockClearnetEgress.Load() && !IsLoopbackHost(hostOnly(addr)) {
+			if td := torEgress(); td != nil {
+				return td(ctx, network, addr)
+			}
 			noteBlockedClearnet()
 			return nil, fmt.Errorf("%w: clearnet egress is disabled in Tor mode", ErrBlockedAddress)
 		}
@@ -237,8 +270,12 @@ func SafeTransport(opts TransportOptions) *http.Transport {
 			return base.DialContext(ctx, network, addr)
 		}
 		// Tor-Space anti-leak (ADR-0141): a direct dial to any non-allowlisted host
-		// leaks the onion server's real IP. Fail closed and record the tripwire.
+		// leaks the onion server's real IP. Route it over Tor when opt-in egress is
+		// on (ADR-0143), else fail closed and record the tripwire.
 		if blockClearnetEgress.Load() {
+			if td := torEgress(); td != nil {
+				return td(ctx, network, addr)
+			}
 			noteBlockedClearnet()
 			return nil, fmt.Errorf("%w: clearnet egress is disabled in Tor mode", ErrBlockedAddress)
 		}
@@ -334,11 +371,17 @@ func validatePublicHost(ctx context.Context, host string) error {
 	if host == "" {
 		return fmt.Errorf("%w: empty host", ErrBlockedAddress)
 	}
-	// Tor Space: refuse BEFORE any DNS lookup. Resolving a clearnet host would
-	// leak the query — and the intent to contact it — to the system resolver,
-	// even though the dial guard would later block the connection (ADR-0141,
-	// DNS-leak). Loopback needs no resolution and stays reachable.
+	// Tor Space: do not resolve a clearnet host locally. Blocking-mode refuses
+	// BEFORE any DNS lookup, so the query — and the intent to contact the host —
+	// never leaks to the system resolver (ADR-0141, DNS-leak). Opt-in Tor-egress
+	// mode instead ALLOWS the host without local resolution: Tor resolves it
+	// remotely (no leak), and a Tor exit cannot reach our LAN, so the SSRF check
+	// this pre-flight performs is unnecessary there (ADR-0143). Loopback needs no
+	// resolution either way.
 	if blockClearnetEgress.Load() && !IsLoopbackHost(host) {
+		if torEgress() != nil {
+			return nil
+		}
 		noteBlockedClearnet()
 		return fmt.Errorf("%w: clearnet egress is disabled in Tor mode", ErrBlockedAddress)
 	}

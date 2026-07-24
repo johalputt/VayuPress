@@ -195,3 +195,35 @@ func TestHostGuardRefusesBeforeDNSInTorMode(t *testing.T) {
 		t.Fatal("host-guard refusal should increment the tripwire counter")
 	}
 }
+
+// With an opt-in Tor egress dialer installed, a clearnet dial in Tor mode is
+// ROUTED through it (not blocked) and the SSRF pre-flight allows the host
+// without a local DNS lookup (ADR-0143).
+func TestTorEgressRoutesInsteadOfBlocking(t *testing.T) {
+	SetBlockClearnetEgress(true)
+	var routed string
+	SetTorEgressDialer(func(_ context.Context, _, addr string) (net.Conn, error) {
+		routed = addr
+		return nil, nil // pretend the SOCKS dial succeeded
+	})
+	t.Cleanup(func() { SetBlockClearnetEgress(false); SetTorEgressDialer(nil) })
+
+	if !TorEgressActive() {
+		t.Fatal("TorEgressActive should be true when blocked + dialer set")
+	}
+	before := BlockedClearnetCount()
+	tr := GuardedDefaultTransport()
+	if _, err := tr.DialContext(context.Background(), "tcp", "api.openai.com:443"); err != nil {
+		t.Fatalf("clearnet dial should route over Tor, got %v", err)
+	}
+	if routed != "api.openai.com:443" {
+		t.Fatalf("dial should be routed through the Tor egress dialer, got %q", routed)
+	}
+	if BlockedClearnetCount() != before {
+		t.Fatal("a routed dial must NOT increment the blocked-attempt counter")
+	}
+	// Pre-flight allows the host without resolving locally.
+	if err := validatePublicHost(context.Background(), "api.openai.com"); err != nil {
+		t.Fatalf("host guard should allow (route over Tor), got %v", err)
+	}
+}

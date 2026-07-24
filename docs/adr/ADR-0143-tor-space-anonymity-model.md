@@ -110,9 +110,14 @@ its own host-bound key file (no shared `VAYU_SECRET` needed).
 - Features that inherently need clearnet (external SMTP, third-party payments,
   social auto-post, update checks) **do not function** in a Tor Space by default;
   they are refused rather than silently leaking. This is the correct default for
-  the "no clearnet callback" guarantee. A future opt-in could route specific
-  egress **through Tor's SOCKS proxy** instead of blocking it (features work over
-  Tor, IP still hidden) — deliberately not the default, and out of scope here.
+  the "no clearnet callback" guarantee. An **opt-in** mode
+  (`VAYUTOR_ROUTE_EGRESS=1` + `VAYUOS_TOR_SOCKS_ADDR` pointing at a Tor SOCKS
+  proxy) instead ROUTES outbound clearnet **through Tor**: the guarded transports
+  dial via SOCKS5 with remote (in-Tor) DNS resolution, so features work while the
+  real IP stays hidden and no lookup leaks locally. It is deliberately not the
+  default (it trusts Tor exits for clearnet-bound traffic), it fails safe (no
+  SOCKS proxy → stays in block mode, never leaks), and the self-audit shows which
+  mode is active.
 - The layered defense means adding a new outbound integration in the future
   cannot silently deanonymise a Tor Space: the process-wide tripwire catches it
   and the self-audit surfaces the count.

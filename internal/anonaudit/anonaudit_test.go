@@ -84,3 +84,18 @@ func TestTripwireCountSurfaced(t *testing.T) {
 		t.Fatal("zero attempts should not surface the tripwire line")
 	}
 }
+
+func TestEgressRoutedOverTorSurfaces(t *testing.T) {
+	checks := Run(Inputs{OnionMode: true, ClearnetEgressBlocked: true, LoopbackBind: true, EgressRoutedOverTor: true})
+	if _, ok := find(checks, "Outbound routed over Tor (opt-in)"); !ok {
+		t.Fatal("routed-over-Tor mode should surface its own check")
+	}
+	if _, ok := find(checks, "Clearnet egress disabled"); ok {
+		t.Fatal("must not also show the blocked check when routing over Tor")
+	}
+	// Default (blocked, not routed) shows the disabled check.
+	checks = Run(Inputs{OnionMode: true, ClearnetEgressBlocked: true, LoopbackBind: true})
+	if _, ok := find(checks, "Clearnet egress disabled"); !ok {
+		t.Fatal("default mode should show clearnet-disabled")
+	}
+}

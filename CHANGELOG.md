@@ -19,6 +19,14 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   outbound MX resolution never runs under the local-only deliverer.)
 
 ### Added
+- **Opt-in: route Tor-Space egress THROUGH Tor instead of blocking it
+  (ADR-0143).** By default a Tor Space refuses every clearnet connection. Setting
+  `VAYUTOR_ROUTE_EGRESS=1` with `VAYUOS_TOR_SOCKS_ADDR` pointing at a Tor SOCKS
+  proxy instead routes outbound clearnet through Tor — features (update checks,
+  AI, etc.) keep working while the real IP stays hidden and hostnames resolve
+  remotely inside Tor (no DNS leak). Fails safe: with no usable SOCKS proxy it
+  stays in block mode and never leaks. The self-audit shows which mode is active.
+  New `safefetch.SetTorEgressDialer()` / `TorEgressActive()`.
 - **Process-wide egress tripwire in a Tor Space (ADR-0141).** As a
   belt-and-suspenders over the per-call-site guards, a Tor Space now installs a
   guarded `http.DefaultTransport`, so even a caller that bypasses `safefetch`

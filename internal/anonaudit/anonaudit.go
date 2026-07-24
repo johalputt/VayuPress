@@ -48,6 +48,9 @@ type Inputs struct {
 	// the tripwire count. Zero is expected; a non-zero value is shown so the
 	// operator knows the guard caught (and stopped) a leak attempt.
 	BlockedClearnetAttempts int64
+	// EgressRoutedOverTor is the opt-in mode: outbound clearnet is routed THROUGH
+	// Tor instead of blocked, so features work while the real IP stays hidden.
+	EgressRoutedOverTor bool
 }
 
 // Run computes the anonymity report for the given inputs.
@@ -69,7 +72,13 @@ func Run(in Inputs) []Check {
 	}
 
 	// The core IP-protection control.
-	if in.ClearnetEgressBlocked {
+	if in.ClearnetEgressBlocked && in.EgressRoutedOverTor {
+		checks = append(checks, Check{
+			Title:  "Outbound routed over Tor (opt-in)",
+			Status: Pass,
+			Detail: "Outbound connections ride your Tor SOCKS proxy instead of being blocked — features keep working and your real IP stays hidden (hostnames resolve inside Tor, so no DNS leaks). This trusts Tor exits for clearnet-bound traffic; blocking is the stricter default.",
+		})
+	} else if in.ClearnetEgressBlocked {
 		checks = append(checks, Check{
 			Title:  "Clearnet egress disabled",
 			Status: Pass,

@@ -638,6 +638,9 @@ func main() {
 		// clearnet too, so even a caller that bypasses safefetch (http.DefaultClient
 		// or a third-party library) cannot leak the onion server's real IP.
 		http.DefaultTransport = safefetch.GuardedDefaultTransport()
+		// Opt-in: route outbound over Tor instead of blocking (ADR-0143). No-op
+		// unless VAYUTOR_ROUTE_EGRESS + VAYUOS_TOR_SOCKS_ADDR are set; fail-safe.
+		configureTorEgressRouting()
 		logging.LogInfo("vayuos", "VAYUOS_MODE=tor — anonymous Tor Space: clearnet callbacks disabled")
 		checks := anonaudit.Run(anonAuditInputs())
 		pass, warn, fail := anonaudit.Summary(checks)
