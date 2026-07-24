@@ -6,6 +6,19 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.20] — 2026-07-24
+
+### Changed
+- **Posts manager redesigned into premium per-post cards.** The wide,
+  button-heavy table is replaced with a Monetization-style stack of animated
+  collapsible cards — one per post. Each card shows a bulk-select checkbox, the
+  title, its slug/updated line and a live status pill; tapping a card reveals
+  ONLY that post's actions (Edit, View, Pin, Publish/Unpublish, Ping IndexNow,
+  Delete) rather than showing every button on every row at once. The select
+  checkbox sits outside the disclosure, so ticking it for bulk selection never
+  opens the card. Pin, status and IndexNow keep their in-place HTMX updates, and
+  bulk select-all moves to a small header above the list.
+
 ## [3.15.19] — 2026-07-24
 
 ### Changed
