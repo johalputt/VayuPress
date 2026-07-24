@@ -62,6 +62,7 @@ import (
 	"github.com/johalputt/vayupress/internal/vayushield"
 	"github.com/johalputt/vayupress/internal/vayushield/offload"
 	"github.com/johalputt/vayupress/internal/vayushield/sovereign"
+	"github.com/johalputt/vayupress/internal/vayushield/verifiedbot"
 	"github.com/johalputt/vayupress/internal/versions"
 	"github.com/johalputt/vayupress/internal/webhooks"
 	"github.com/johalputt/vayupress/internal/webmention"
@@ -204,6 +205,11 @@ type App struct {
 	// shieldOffload is the Aegis L1 exporter: it writes the shield's live jail
 	// verdicts into the control dir for the root agent to enforce in-kernel.
 	shieldOffload *offload.Exporter
+
+	// verifiedBots authenticates search-engine / AI crawlers by published IP
+	// range + forward-confirmed reverse DNS, so the shield can fast-path a real
+	// Googlebot/Bingbot/GPTBot past every gate without trusting a spoofable UA.
+	verifiedBots *verifiedbot.Verifier
 
 	// trustedSessions caches operator-session validation (TTL) so the shield's
 	// operator-immunity check stays off the SQLite read path under load.

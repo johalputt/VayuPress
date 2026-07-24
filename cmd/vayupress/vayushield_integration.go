@@ -16,7 +16,10 @@ import (
 	"fmt"
 	"html"
 	htmpl "html/template"
+	"net"
 	"net/http"
+	"net/netip"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -42,6 +45,7 @@ import (
 	"github.com/johalputt/vayupress/internal/vayushield/challenge"
 	"github.com/johalputt/vayupress/internal/vayushield/offload"
 	"github.com/johalputt/vayupress/internal/vayushield/sovereign"
+	"github.com/johalputt/vayupress/internal/vayushield/verifiedbot"
 )
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
@@ -103,6 +107,20 @@ func (a *App) bootVayuShield() {
 	a.shieldOffload = offload.New(shieldControlDir())
 	a.shieldOffload.Start(queue.DoneCh)
 
+	// Verified-bot engine: authenticates crawlers by published IP range +
+	// forward-confirmed reverse DNS. Feeds are fetched through the SSRF-safe
+	// outbound transport (and are refused in a Tor Space, where the verifier then
+	// degrades to UA-recognition rather than leaking a clearnet DNS/HTTP call).
+	// Last-good feeds persist under CacheDir so verification works right after a
+	// restart and offline.
+	a.verifiedBots = verifiedbot.New(verifiedbot.Config{
+		Client:   &http.Client{Transport: safeOutboundTransport(), Timeout: 20 * time.Second},
+		CacheDir: filepath.Join(config.Cfg.CacheDir, "verifiedbot"),
+		Resolver: net.DefaultResolver,
+		Logf:     func(format string, args ...any) { logging.LogInfo("vayushield", fmt.Sprintf(format, args...)) },
+	})
+	a.verifiedBots.Start(queue.DoneCh)
+
 	bots := botdb.New(dbpkg.DB)
 	// The per-request signature Lookup runs on the hot classification path for
 	// every unverified request; route it (and the panel reads) through the
@@ -155,6 +173,24 @@ func (a *App) bootVayuShield() {
 		SurgePressureFn: func() bool {
 			g := a.sovereign
 			return g != nil && g.Inflight()*10 >= g.Cap()*9
+		},
+		// Spoof-proof crawler recognition for the gate-0 SEO fast path: a real
+		// Googlebot/Bingbot/GPTBot (IP-verified) is served content before every
+		// availability gate; a UA merely CLAIMING to be a crawler from an IP that
+		// is not the vendor's is reported as a spoof and gets no free pass.
+		VerifiedBotFn: func(ip netip.Addr, ua string) (bool, bool) {
+			if a.verifiedBots == nil {
+				return false, false
+			}
+			verdict, _, _ := a.verifiedBots.Classify(ip, ua)
+			switch verdict {
+			case verifiedbot.Verified, verifiedbot.Unverifiable:
+				return true, false // fast-path allow (SEO-safe)
+			case verifiedbot.SpoofSuspect:
+				return false, true // strip the UA's good-bot benefit
+			default:
+				return false, false // not a recognised crawler
+			}
 		},
 		// L1 kernel offload: jailed IPs also get dropped by nftables/XDP.
 		OffloadFn: a.shieldOffload.Ban,

@@ -26,6 +26,7 @@ import (
 	"html/template"
 	"net"
 	"net/http"
+	"net/netip"
 	"runtime"
 	"strings"
 	"sync"
@@ -113,6 +114,23 @@ type Config struct {
 	// in-binary gates keep enforcing on their own. Never called for verified
 	// visitors — only for sources the shield has actively jailed.
 	OffloadFn func(ip string, ttl time.Duration)
+
+	// VerifiedBotFn authoritatively classifies a request's (client IP, UA) as a
+	// legitimate crawler by IDENTITY, not by the spoofable UA string. It is the
+	// spoof-proof upgrade of the gate-0 SEO fast path:
+	//   - allow=true  → take the crawler fast path (IP-verified against the
+	//     vendor's published ranges / forward-confirmed reverse DNS, OR a
+	//     recognised crawler that cannot be disproved — the SEO-safe default so a
+	//     feed-fetch failure never de-indexes a real crawler).
+	//   - spoof=true  → the UA claims a crawler whose real network this IP is NOT;
+	//     do not fast-path, and do not let the UA earn a good-bot allow in the
+	//     classifier either — it falls to behavioural scoring.
+	//   - both false  → not a recognised crawler; handle normally.
+	// Optional; when nil the shield falls back to UA-only recognition
+	// (IsGoodBotCandidate). Must be cheap and non-blocking (see internal/
+	// vayushield/verifiedbot, which fronts everything with a sharded cache and
+	// runs reverse-DNS off the hot path).
+	VerifiedBotFn func(ip netip.Addr, ua string) (allow, spoof bool)
 
 	// TrustedFn reports whether the request carries a valid OPERATOR login
 	// session (the admin console cookie — not the shield's own PoW cookie).
@@ -566,6 +584,21 @@ func ipOnly(s string) string {
 	return s
 }
 
+// spoofSuspectKey marks a request whose User-Agent claims a crawler that the
+// verified-bot engine could not confirm (the IP is not the vendor's real
+// network). Decide reads it so the spoofed UA cannot short-circuit to a good-bot
+// allow — the request falls to behavioural scoring instead.
+type spoofSuspectKey struct{}
+
+func withSpoofSuspect(ctx context.Context) context.Context {
+	return context.WithValue(ctx, spoofSuspectKey{}, true)
+}
+
+func isSpoofSuspect(ctx context.Context) bool {
+	v, _ := ctx.Value(spoofSuspectKey{}).(bool)
+	return v
+}
+
 // Verdict is the full classification result for a request, exposed so the
 // analytics layer can reuse the same client-type/bot-score decision.
 type Verdict struct {
@@ -646,7 +679,17 @@ func (m *Manager) Decide(r *http.Request, v Verdict) Action {
 		return ActionAllow
 	}
 	switch v.Result.ClientType {
-	case botdb.TypeGoodBot, botdb.TypeAIAgent, botdb.TypeHuman:
+	case botdb.TypeGoodBot, botdb.TypeAIAgent:
+		// A recognised good bot is allowed UNLESS the verified-bot engine flagged
+		// it a spoof suspect (crawler UA from an IP that is not the vendor's). In
+		// that case the UA no longer earns a free pass — fall through to
+		// behavioural scoring so a spoofed "Googlebot" is challenged like any other
+		// unproven client. A genuine crawler is verified upstream and never reaches
+		// here, so this only ever tightens screening of impostors.
+		if !isSpoofSuspect(r.Context()) {
+			return ActionAllow
+		}
+	case botdb.TypeHuman:
 		return ActionAllow
 	}
 	if v.AIReferrer != "" {
@@ -883,12 +926,28 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 		// + FCrDNS confirmation so a spoofed UA cannot ride this path. The operator
 		// "block crawlers" (go-dark) switch runs in an OUTER middleware and still
 		// 403s crawlers when deliberately enabled, so this never overrides it.
-		if !verified && m.IsGoodBotCandidate(r) {
-			// Preserve the allow-event stream so operator dashboards still count
-			// recognised-crawler traffic even though it skips the classifier.
-			m.onEvent(ActionAllow, 0)
-			next.ServeHTTP(w, r)
-			return
+		if !verified {
+			if fn := m.cfg.VerifiedBotFn; fn != nil {
+				// Spoof-proof path: identity is confirmed by published IP range /
+				// reverse DNS, not the UA string.
+				ipAddr, _ := netip.ParseAddr(ipKey)
+				allow, spoof := fn(ipAddr, r.UserAgent())
+				if allow {
+					m.onEvent(ActionAllow, 0)
+					next.ServeHTTP(w, r)
+					return
+				}
+				if spoof {
+					// A UA claiming a crawler from an IP that is not the vendor's —
+					// strip its good-bot benefit for the rest of the pipeline.
+					r = r.WithContext(withSpoofSuspect(r.Context()))
+				}
+			} else if m.IsGoodBotCandidate(r) {
+				// No verifier wired: fall back to Phase-1 UA-only recognition.
+				m.onEvent(ActionAllow, 0)
+				next.ServeHTTP(w, r)
+				return
+			}
 		}
 
 		// 1. Blocklist — the cheapest possible gate for a known-abusive IP.

@@ -8,6 +8,38 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Added
+- **Verified-bot engine — crawlers are authenticated by identity, not a
+  spoofable User-Agent (VayuShield hardening, phase 2/5).** New
+  `internal/vayushield/verifiedbot` confirms a request really is the search
+  engine / AI system it claims before granting the gate-0 SEO fast path, the way
+  Cloudflare's "verified bots" work — self-hosted in the binary. Two tiers, never
+  UA-alone: (A) the client IP is matched against the vendor's **published
+  IP-range JSON** (Google, Bing, DuckDuckGo, Apple, OpenAI, Anthropic,
+  Perplexity), loaded into an in-memory longest-prefix set, refreshed daily and
+  cached to disk so it works immediately after a restart and offline; (B)
+  **forward-confirmed reverse DNS** (reverse-lookup → vendor PTR suffix →
+  forward-resolve back to the same IP) for vendors with no feed (Yandex, Baidu,
+  Amazonbot, Petal, Seznam) and as a backstop, run on a bounded background worker
+  pool so it never blocks a request. A 256-shard verdict cache keeps the hot path
+  to one lock-free map read. The registry is deliberately broad — every major
+  search engine and AI system, plus link-preview and uptime/PageSpeed bots — so
+  no legitimate crawler a site depends on is ever challenged. Verification
+  degrades **SEO-safe**: a crawler we cannot confirm (feed not yet loaded, or a
+  UA-only vendor) is still allowed, because a fetch failure on our side must never
+  de-index a real crawler.
+
+### Security
+- **A spoofed crawler UA no longer earns a free pass (VayuShield).** A request
+  whose User-Agent claims a crawler from an IP that is **not** the vendor's real
+  network (checked against the published ranges + reverse DNS above) is flagged a
+  spoof suspect: it is denied the gate-0 fast path AND stripped of the classifier's
+  good-bot allow, so it falls to behavioural scoring and is challenged like any
+  other unproven client instead of being trusted on its UA string alone. A
+  genuine crawler is verified upstream and never affected. In a Tor Space the feed
+  fetches are refused (no clearnet egress), so the engine degrades to
+  UA-recognition without leaking a DNS/HTTP call.
+
 ### Fixed
 - **VayuShield no longer de-indexes the site: recognised search/AI crawlers take
   an SEO fast path before every availability gate (VayuShield hardening, phase
