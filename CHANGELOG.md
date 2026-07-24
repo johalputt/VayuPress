@@ -8,6 +8,19 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.15.9] — 2026-07-24
+
+### Security
+- **Operator custom theme CSS can no longer reach an external origin.** The
+  clearnet CSP keeps `img-src 'self' data: https:` so authors can hotlink content
+  images, which meant a `background:url(https://…/beacon)` (or an `@import`) in
+  operator-supplied custom CSS would load from an external origin — a
+  tracking/deanonymisation beacon on public signup/member/legal pages, contrary to
+  the "served same-origin, self-contained" promise. `@import` and external/
+  protocol-relative `url()` are now stripped from custom CSS at render time
+  (`data:`, relative and same-origin `url()`s are preserved), and the operator UI
+  copy is corrected to describe this.
+
 ## [3.15.8] — 2026-07-24
 
 ### Security

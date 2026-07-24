@@ -509,9 +509,32 @@ func ThemeCSSFor(s SiteSettings) string {
 		sb.WriteString("}")
 	}
 	if s.CustomCSS != "" {
-		sb.WriteString(s.CustomCSS)
+		sb.WriteString(sanitizeCustomCSS(s.CustomCSS))
 	}
 	return sb.String()
+}
+
+// cssImportRe and cssExternalURLRe match the two ways operator-supplied theme CSS
+// could pull from an external origin: an @import rule, or a url() pointing at an
+// absolute/protocol-relative http(s) host. cssExternalURLRe deliberately does not
+// match data: or same-origin/relative url()s.
+var (
+	cssImportRe      = regexp.MustCompile(`(?i)@import[^;]*;?`)
+	cssExternalURLRe = regexp.MustCompile(`(?i)url\(\s*['"]?\s*(?:https?:)?//[^)]*\)`)
+)
+
+// sanitizeCustomCSS neutralises off-origin references in operator-supplied theme
+// CSS (audit L4). The clearnet CSP keeps img-src 'self' data: https: so authors
+// can hotlink content images, which means a raw `background:url(https://evil/beacon)`
+// in custom CSS WOULD load from an external origin — contradicting the operator
+// promise that /theme.css is served same-origin and self-contained, and giving a
+// tracking/deanonymisation beacon on public signup/member/legal pages. Strip
+// @import and external url() here (data:, relative and same-origin url()s are
+// kept), so the guarantee holds regardless of the CSP.
+func sanitizeCustomCSS(css string) string {
+	css = cssImportRe.ReplaceAllString(css, "")
+	css = cssExternalURLRe.ReplaceAllString(css, "url()")
+	return css
 }
 
 // ThemeCSSETag returns a stable content hash of the current dynamic theme CSS,

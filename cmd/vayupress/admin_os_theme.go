@@ -434,7 +434,7 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
     <section class="cz-group">
       <button type="button" class="cz-group__head" aria-expanded="false">Custom CSS</button>
       <div class="cz-group__body">
-        <div class="text-sm muted mb-3">Served same-origin via <code>/theme.css</code> (CSP-safe), appended after the theme styles. Max 64&nbsp;KB. Reflected live in the preview.</div>
+        <div class="text-sm muted mb-3">Served same-origin via <code>/theme.css</code>, appended after the theme styles. <code>@import</code> and external <code>url()</code> are stripped, so it stays self-contained (no off-origin requests). Max 64&nbsp;KB. Reflected live in the preview.</div>
         <textarea class="input theme-code" data-theme-css rows="10" maxlength="65536" spellcheck="false" placeholder="/* e.g. .vayu-post-title { letter-spacing: -0.02em; } */">` + html.EscapeString(val(settings.KeyThemeCustomCSS)) + `</textarea>
         <div class="vm-row">
           <button type="button" class="btn btn--primary btn--sm" data-theme-code-save>Save CSS &amp; meta</button>
