@@ -10,8 +10,20 @@ import (
 
 	_ "github.com/mattn/go-sqlite3"
 
+	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/oauth"
 )
+
+// pinDomain fixes the canonical domain for a test's duration so the OAuth issuer
+// — which prefers the configured domain when the request Host is not a
+// registered served domain (audit I1) — is deterministic regardless of the
+// ambient global config other tests may have set.
+func pinDomain(t *testing.T, d string) {
+	t.Helper()
+	old := config.Cfg.Domain
+	config.Cfg.Domain = d
+	t.Cleanup(func() { config.Cfg.Domain = old })
+}
 
 func oauthTestApp(t *testing.T) *App {
 	t.Helper()
@@ -24,7 +36,7 @@ func oauthTestApp(t *testing.T) *App {
 	for _, s := range []string{
 		`CREATE TABLE oauth_clients(client_id TEXT PRIMARY KEY, client_name TEXT NOT NULL DEFAULT '', redirect_uris TEXT NOT NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
 		`CREATE TABLE oauth_codes(code_hash TEXT PRIMARY KEY, client_id TEXT NOT NULL, redirect_uri TEXT NOT NULL, code_challenge TEXT NOT NULL, grant_caps TEXT NOT NULL, owner_user_id TEXT NOT NULL DEFAULT '', label TEXT NOT NULL DEFAULT '', expires_at DATETIME NOT NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
-		`CREATE TABLE oauth_refresh_tokens(token_hash TEXT PRIMARY KEY, client_id TEXT NOT NULL, api_key_id TEXT NOT NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
+		`CREATE TABLE oauth_refresh_tokens(token_hash TEXT PRIMARY KEY, client_id TEXT NOT NULL, api_key_id TEXT NOT NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, expires_at DATETIME, consumed_at DATETIME)`,
 	} {
 		if _, err := db.Exec(s); err != nil {
 			t.Fatalf("schema: %v", err)
@@ -34,6 +46,7 @@ func oauthTestApp(t *testing.T) *App {
 }
 
 func TestOAuthASMetadata(t *testing.T) {
+	pinDomain(t, "blog.example.com")
 	a := &App{}
 	req := httptest.NewRequest(http.MethodGet, "http://blog.example.com/.well-known/oauth-authorization-server", nil)
 	rec := httptest.NewRecorder()
@@ -58,6 +71,7 @@ func TestOAuthASMetadata(t *testing.T) {
 }
 
 func TestOAuthResourceMetadata(t *testing.T) {
+	pinDomain(t, "blog.example.com")
 	a := &App{}
 	req := httptest.NewRequest(http.MethodGet, "https://blog.example.com/.well-known/oauth-protected-resource", nil)
 	rec := httptest.NewRecorder()
@@ -76,6 +90,7 @@ func TestOAuthResourceMetadata(t *testing.T) {
 // TestMCPChallenge proves an unauthenticated /mcp request gets a 401 with the RFC
 // 9728 WWW-Authenticate challenge pointing MCP clients at the resource metadata.
 func TestMCPChallenge(t *testing.T) {
+	pinDomain(t, "blog.example.com")
 	a := &App{}
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { t.Error("must not reach handler without a key") })
 	h := a.requireMCPAuth(next)
