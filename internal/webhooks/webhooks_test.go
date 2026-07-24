@@ -29,7 +29,9 @@ func newTestStore(t *testing.T, client *http.Client) *Store {
 			t.Fatal(err)
 		}
 	}
-	return New(db, client)
+	// Tests deliver to a loopback httptest server; permit it explicitly. Production
+	// New() is strict and refuses loopback/private targets (audit L5).
+	return New(db, client).AllowHosts("127.0.0.1", "::1", "localhost")
 }
 
 func TestCreateValidation(t *testing.T) {

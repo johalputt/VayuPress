@@ -42,10 +42,13 @@ func TestOAuthASMetadata(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &m); err != nil {
 		t.Fatalf("bad JSON: %v", err)
 	}
-	if m["issuer"] != "http://blog.example.com" {
+	// The issuer scheme is derived from the host (seo.Origin), not the request's
+	// transport: a clearnet domain is always https (VayuPress serves behind a
+	// TLS-terminating proxy), and only a .onion would be http (audit I1).
+	if m["issuer"] != "https://blog.example.com" {
 		t.Errorf("issuer = %v", m["issuer"])
 	}
-	if m["authorization_endpoint"] != "http://blog.example.com/oauth/authorize" || m["token_endpoint"] != "http://blog.example.com/oauth/token" {
+	if m["authorization_endpoint"] != "https://blog.example.com/oauth/authorize" || m["token_endpoint"] != "https://blog.example.com/oauth/token" {
 		t.Errorf("wrong endpoints: %v", m)
 	}
 	methods, _ := m["code_challenge_methods_supported"].([]any)

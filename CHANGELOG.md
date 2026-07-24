@@ -8,6 +8,33 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.15.4] — 2026-07-24
+
+### Security
+- **WKD external-key lookup is now SSRF-hardened.** The Web Key Directory
+  discovery fetch used a default HTTP client that would follow redirects and
+  reach any address a crafted recipient domain resolved to (loopback, cloud
+  metadata). It now uses the same resolve-and-pin `safefetch` transport as every
+  other outbound fetch (refuses private/reserved IPs, no proxy) and refuses
+  redirects.
+- **Outbound webhooks can no longer reach internal services.** Webhook delivery
+  rode the shared outbound client, whose loopback allowlist (for local
+  Meilisearch/Ollama) let a webhook URL target `127.0.0.1`/private ranges. The
+  webhook store now uses its own strict SSRF transport with no allowlist, screens
+  private/reserved IP-literal targets at registration, and offers an explicit
+  `AllowHosts` opt-in for an operator who deliberately points a hook at a local
+  receiver.
+- **OAuth/MCP consent now shows where the authorization code will be sent.** The
+  consent screen displayed only the client's self-declared name (dynamic
+  registration is unauthenticated, so a client can call itself "Claude"); it now
+  prominently shows the exact **redirect destination host** and warns that the
+  app name is unverified — so an operator can't be phished into delivering a code
+  to an attacker's host.
+- **OAuth metadata issuer no longer trusts a client header.** The
+  discovery/issuer origin is derived from the host via `seo.Origin` (https for a
+  clearnet domain, http only for a `.onion`) instead of a spoofable
+  `X-Forwarded-Proto`.
+
 ## [3.15.3] — 2026-07-24
 
 ### Security

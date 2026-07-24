@@ -19,9 +19,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
+
+	"github.com/johalputt/vayupress/internal/safefetch"
 )
 
 // Hook is a registered outbound endpoint.
@@ -36,16 +40,53 @@ type Hook struct {
 
 // Store manages webhook registrations and delivery records.
 type Store struct {
-	db     *sql.DB
-	client *http.Client
+	db      *sql.DB
+	client  *http.Client
+	timeout time.Duration
+	allow   map[string]bool // hosts permitted to resolve to a private/reserved IP
 }
 
-// New creates a Store. client should be the app's SSRF-safe outbound client.
+// New creates a Store. Webhooks POST to an operator-supplied URL, so delivery
+// uses a STRICT SSRF-hardened client with NO loopback allowlist — unlike the
+// shared outbound client (which allows 127.0.0.1 for local Meili/Ollama). This
+// stops a webhook target from reaching internal services or the cloud metadata
+// endpoint (audit L5). The passed client is consulted only for its timeout so
+// callers keep one place to tune it.
 func New(db *sql.DB, client *http.Client) *Store {
-	if client == nil {
-		client = &http.Client{Timeout: 10 * time.Second}
+	timeout := 10 * time.Second
+	if client != nil && client.Timeout > 0 {
+		timeout = client.Timeout
 	}
-	return &Store{db: db, client: client}
+	s := &Store{db: db, timeout: timeout, allow: map[string]bool{}}
+	s.rebuildClient()
+	return s
+}
+
+// AllowHosts permits webhook delivery to the named hosts even if they resolve to
+// a private/reserved address — the explicit opt-in for an operator who
+// deliberately points a hook at a loopback/LAN receiver (e.g. a local n8n).
+// Empty by default (strict). Returns the Store for chaining.
+func (s *Store) AllowHosts(hosts ...string) *Store {
+	for _, h := range hosts {
+		if h = strings.ToLower(strings.TrimSpace(h)); h != "" {
+			s.allow[h] = true
+		}
+	}
+	s.rebuildClient()
+	return s
+}
+
+// rebuildClient rebuilds the delivery client so its SSRF transport honours the
+// current allowlist (empty = fully strict).
+func (s *Store) rebuildClient() {
+	list := make([]string, 0, len(s.allow))
+	for h := range s.allow {
+		list = append(list, h)
+	}
+	s.client = &http.Client{
+		Timeout:   s.timeout,
+		Transport: safefetch.SafeTransport(safefetch.TransportOptions{AllowHosts: list}),
+	}
 }
 
 // Create registers a new webhook for the given event types. A random secret is
@@ -54,6 +95,17 @@ func (s *Store) Create(ctx context.Context, rawURL, secret string, events []stri
 	rawURL = strings.TrimSpace(rawURL)
 	if !strings.HasPrefix(rawURL, "http://") && !strings.HasPrefix(rawURL, "https://") {
 		return nil, fmt.Errorf("url must be http(s)")
+	}
+	// Reject an obvious private/reserved IP-literal target at registration time for
+	// clear operator feedback (audit L5); a DNS name that resolves into the private
+	// range is still caught at dial time by the strict SSRF transport.
+	if u, err := url.Parse(rawURL); err == nil {
+		host := strings.ToLower(u.Hostname())
+		if !s.allow[host] {
+			if ip := net.ParseIP(host); ip != nil && safefetch.IsPrivateOrReservedIP(ip) {
+				return nil, fmt.Errorf("url must not target a private or reserved address")
+			}
+		}
 	}
 	if len(events) == 0 {
 		return nil, fmt.Errorf("at least one event type is required")

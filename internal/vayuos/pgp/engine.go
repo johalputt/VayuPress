@@ -16,6 +16,7 @@ import (
 	"github.com/ProtonMail/go-crypto/openpgp"
 	"github.com/ProtonMail/go-crypto/openpgp/armor"
 	"github.com/ProtonMail/go-crypto/openpgp/packet"
+	"github.com/johalputt/vayupress/internal/safefetch"
 )
 
 // Engine is the VayuPGP runtime. It owns the encrypted key store, an in-memory
@@ -37,9 +38,20 @@ func NewEngine(cfg *Config) *Engine {
 		cfg = &c
 	}
 	return &Engine{
-		cfg:       *cfg,
-		unlocked:  make(map[string]*openpgp.Entity),
-		wkdClient: &http.Client{Timeout: 8 * time.Second},
+		cfg:      *cfg,
+		unlocked: make(map[string]*openpgp.Entity),
+		// WKD discovery fetches an attacker-influenced recipient domain, so it must
+		// go through the SSRF-hardened dialer (resolve-and-pin, refuse private/
+		// reserved IPs, never honour a proxy) — not a default client that would
+		// happily reach 127.0.0.1 / 169.254.169.254 via a crafted openpgpkey record
+		// or redirect (audit M3). Redirects are refused: WKD responses are direct.
+		wkdClient: &http.Client{
+			Timeout:   8 * time.Second,
+			Transport: safefetch.SafeTransport(safefetch.TransportOptions{}),
+			CheckRedirect: func(*http.Request, []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		},
 	}
 }
 

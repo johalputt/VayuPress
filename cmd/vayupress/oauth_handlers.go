@@ -25,25 +25,25 @@ import (
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/oauth"
 	"github.com/johalputt/vayupress/internal/render"
+	"github.com/johalputt/vayupress/internal/seo"
 )
 
 // oauthBaseURL returns this site's public origin (scheme://host) as seen by the
-// browser — the issuer for OAuth metadata. Scheme mirrors publicMCPEndpoint.
+// browser — the issuer for OAuth metadata.
+//
+// The scheme is derived from the host via seo.Origin (http for a .onion, https
+// otherwise) rather than a client-supplied X-Forwarded-Proto header, which a
+// caller could otherwise spoof into the reflected issuer/endpoint metadata
+// (audit I1). The response is Cache-Control: no-store and reflection-only.
 func oauthBaseURL(r *http.Request) string {
-	scheme := "https"
-	if fp := r.Header.Get("X-Forwarded-Proto"); fp != "" {
-		if i := strings.IndexByte(fp, ','); i >= 0 {
-			fp = fp[:i]
-		}
-		scheme = strings.TrimSpace(fp)
-	} else if r.TLS == nil {
-		scheme = "http"
+	host := strings.TrimSpace(r.Host)
+	if host == "" {
+		host = config.Cfg.Domain
 	}
-	host := r.Host
 	if host == "" {
 		host = "your-domain.com"
 	}
-	return scheme + "://" + host
+	return seo.Origin(host)
 }
 
 func oauthWriteJSON(w http.ResponseWriter, status int, v any) {
@@ -550,10 +550,19 @@ func oauthConsentPage(client oauth.Client, redirectURI, challenge, state, consen
     </label>`
 	}
 	escName := html.EscapeString(name)
+	// Anti-phishing (audit M9): show WHERE the authorization code will be delivered.
+	// Dynamic client registration is unauthenticated and the client_name is
+	// self-asserted — a malicious client can call itself "Claude" — so the redirect
+	// host is the ground truth the operator must verify before approving.
+	destHost := redirectURI
+	if pu, perr := url.Parse(redirectURI); perr == nil && pu.Host != "" {
+		destHost = pu.Host
+	}
 	inner := `
   <div class="login-card oauth-consent">
     <h1 class="login-title">Connect ` + escName + `?</h1>
     <p class="login-sub"><strong>` + escName + `</strong> is asking to connect to your VayuPress site. Choose how much access to grant. You can revoke it anytime from <a href="/os/apikeys">API&nbsp;Keys</a>.</p>
+    <p class="login-sub oauth-dest" role="note">⚠️ Approving sends your authorization code to <strong>` + html.EscapeString(destHost) + `</strong>. This app registered itself and its name is <em>not verified</em> by VayuPress — approve only if that address is where you expect <strong>` + escName + `</strong> to receive it.</p>
     <form method="POST" action="/oauth/authorize/consent" class="oauth-form">
       <input type="hidden" name="client_id" value="` + html.EscapeString(client.ID) + `">
       <input type="hidden" name="redirect_uri" value="` + html.EscapeString(redirectURI) + `">
