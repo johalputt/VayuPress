@@ -47,20 +47,37 @@ type Signature struct {
 
 // goodBots are indexed/allowed and counted separately — never blocked.
 var goodBots = []Signature{
-	{Name: "Googlebot", Classification: ClassGoodBot, UAPatterns: []string{"googlebot", "google-inspectiontool", "storebot-google"}, IPRangeHint: "Google (66.249.0.0/16 et al.)"},
-	{Name: "Bingbot", Classification: ClassGoodBot, UAPatterns: []string{"bingbot", "adidxbot", "microsoftpreview"}, IPRangeHint: "Microsoft (40.77.0.0/16 et al.)"},
-	{Name: "DuckDuckBot", Classification: ClassGoodBot, UAPatterns: []string{"duckduckbot", "duckduckgo"}, IPRangeHint: "DuckDuckGo"},
+	{Name: "Googlebot", Classification: ClassGoodBot, UAPatterns: []string{"googlebot", "google-inspectiontool", "storebot-google", "googleother", "adsbot-google", "apis-google", "feedfetcher-google", "google-read-aloud", "mediapartners-google", "google-safety"}, IPRangeHint: "Google (66.249.0.0/16 et al.)"},
+	{Name: "Bingbot", Classification: ClassGoodBot, UAPatterns: []string{"bingbot", "adidxbot", "msnbot", "microsoftpreview"}, IPRangeHint: "Microsoft (40.77.0.0/16 et al.)"},
+	{Name: "DuckDuckBot", Classification: ClassGoodBot, UAPatterns: []string{"duckduckbot", "duckduckgo", "duckassistbot"}, IPRangeHint: "DuckDuckGo"},
 	{Name: "BraveBot", Classification: ClassGoodBot, UAPatterns: []string{"bravebot"}, IPRangeHint: "Brave"},
-	{Name: "YandexBot", Classification: ClassGoodBot, UAPatterns: []string{"yandexbot", "yandex.com/bots"}, IPRangeHint: "Yandex (5.45.0.0/16 et al.)"},
+	{Name: "YandexBot", Classification: ClassGoodBot, UAPatterns: []string{"yandexbot", "yandeximages", "yandexmobilebot", "yandex.com/bots"}, IPRangeHint: "Yandex (5.45.0.0/16 et al.)"},
+	{Name: "Baiduspider", Classification: ClassGoodBot, UAPatterns: []string{"baiduspider"}, IPRangeHint: "Baidu"},
 	{Name: "Applebot", Classification: ClassGoodBot, UAPatterns: []string{"applebot"}, IPRangeHint: "Apple (17.0.0.0/8)"},
+	{Name: "PetalBot", Classification: ClassGoodBot, UAPatterns: []string{"petalbot", "aspiegelbot"}, IPRangeHint: "Petal/Huawei"},
+	{Name: "SeznamBot", Classification: ClassGoodBot, UAPatterns: []string{"seznambot"}, IPRangeHint: "Seznam"},
+	{Name: "Naver", Classification: ClassGoodBot, UAPatterns: []string{"yeti/"}, IPRangeHint: "Naver"},
+	{Name: "Sogou", Classification: ClassGoodBot, UAPatterns: []string{"sogou"}, IPRangeHint: "Sogou"},
+	{Name: "Qwant", Classification: ClassGoodBot, UAPatterns: []string{"qwantify", "qwantbot"}, IPRangeHint: "Qwant"},
 	{Name: "Twitterbot", Classification: ClassGoodBot, UAPatterns: []string{"twitterbot"}, IPRangeHint: "X/Twitter"},
 	{Name: "LinkedInBot", Classification: ClassGoodBot, UAPatterns: []string{"linkedinbot"}, IPRangeHint: "LinkedIn/Microsoft"},
 	{Name: "Slackbot", Classification: ClassGoodBot, UAPatterns: []string{"slackbot", "slack-imgproxy"}, IPRangeHint: "Slack"},
+	{Name: "Discordbot", Classification: ClassGoodBot, UAPatterns: []string{"discordbot"}, IPRangeHint: "Discord"},
+	{Name: "TelegramBot", Classification: ClassGoodBot, UAPatterns: []string{"telegrambot"}, IPRangeHint: "Telegram"},
+	{Name: "WhatsApp", Classification: ClassGoodBot, UAPatterns: []string{"whatsapp"}, IPRangeHint: "Meta/WhatsApp"},
+	{Name: "Pinterest", Classification: ClassGoodBot, UAPatterns: []string{"pinterest"}, IPRangeHint: "Pinterest"},
+	{Name: "RedditBot", Classification: ClassGoodBot, UAPatterns: []string{"redditbot"}, IPRangeHint: "Reddit"},
+	{Name: "FacebookBot", Classification: ClassGoodBot, UAPatterns: []string{"facebookexternalhit", "facebookbot", "meta-externalagent"}, IPRangeHint: "Meta"},
+	// Operator tooling — performance testers and uptime monitors. These are NOT
+	// indexers; the crawler "go dark" switch must never 403 them (see
+	// operatorToolBot), or the operator's own dashboards report the site as down
+	// and PageSpeed scoring breaks.
 	{Name: "UptimeRobot", Classification: ClassGoodBot, UAPatterns: []string{"uptimerobot"}, IPRangeHint: "UptimeRobot monitors"},
 	{Name: "Pingdom", Classification: ClassGoodBot, UAPatterns: []string{"pingdom"}, IPRangeHint: "Pingdom monitors"},
 	{Name: "GTmetrix", Classification: ClassGoodBot, UAPatterns: []string{"gtmetrix"}, IPRangeHint: "GTmetrix"},
+	{Name: "StatusCake", Classification: ClassGoodBot, UAPatterns: []string{"statuscake"}, IPRangeHint: "StatusCake monitors"},
+	{Name: "Site24x7", Classification: ClassGoodBot, UAPatterns: []string{"site24x7"}, IPRangeHint: "Site24x7 monitors"},
 	{Name: "PageSpeed", Classification: ClassGoodBot, UAPatterns: []string{"pagespeed", "lighthouse", "chrome-lighthouse", "google page speed"}, IPRangeHint: "Google PageSpeed Insights"},
-	{Name: "FacebookBot", Classification: ClassGoodBot, UAPatterns: []string{"facebookexternalhit", "facebookbot", "meta-externalagent"}, IPRangeHint: "Meta"},
 }
 
 // aiAgents represent real readers arriving via an AI assistant browsing on their
@@ -68,13 +85,18 @@ var goodBots = []Signature{
 var aiAgents = []Signature{
 	{Name: "GPTBot", Classification: ClassAIAgent, UAPatterns: []string{"gptbot"}, IPRangeHint: "OpenAI"},
 	{Name: "ChatGPT-User", Classification: ClassAIAgent, UAPatterns: []string{"chatgpt-user", "oai-searchbot"}, IPRangeHint: "OpenAI (user-initiated browsing)"},
-	{Name: "ClaudeBot", Classification: ClassAIAgent, UAPatterns: []string{"claudebot", "anthropic-ai"}, IPRangeHint: "Anthropic"},
-	{Name: "Claude-User", Classification: ClassAIAgent, UAPatterns: []string{"claude-user", "claude-web"}, IPRangeHint: "Anthropic (user-initiated browsing)"},
+	{Name: "ClaudeBot", Classification: ClassAIAgent, UAPatterns: []string{"claudebot", "anthropic-ai", "claude-searchbot"}, IPRangeHint: "Anthropic"},
+	{Name: "Claude-User", Classification: ClassAIAgent, UAPatterns: []string{"claude-user", "claude-web", "claude-code"}, IPRangeHint: "Anthropic (user-initiated browsing)"},
 	{Name: "PerplexityBot", Classification: ClassAIAgent, UAPatterns: []string{"perplexitybot", "perplexity-user"}, IPRangeHint: "Perplexity"},
 	{Name: "Google-Extended", Classification: ClassAIAgent, UAPatterns: []string{"google-extended"}, IPRangeHint: "Google Gemini training"},
 	{Name: "Bytespider", Classification: ClassAIAgent, UAPatterns: []string{"bytespider"}, IPRangeHint: "ByteDance"},
 	{Name: "CCBot", Classification: ClassAIAgent, UAPatterns: []string{"ccbot"}, IPRangeHint: "Common Crawl"},
 	{Name: "Amazonbot", Classification: ClassAIAgent, UAPatterns: []string{"amazonbot"}, IPRangeHint: "Amazon"},
+	{Name: "Meta-ExternalFetcher", Classification: ClassAIAgent, UAPatterns: []string{"meta-externalfetcher"}, IPRangeHint: "Meta AI"},
+	{Name: "Cohere", Classification: ClassAIAgent, UAPatterns: []string{"cohere-ai", "cohere-training-data-crawler"}, IPRangeHint: "Cohere"},
+	{Name: "YouBot", Classification: ClassAIAgent, UAPatterns: []string{"youbot"}, IPRangeHint: "You.com"},
+	{Name: "MistralAI", Classification: ClassAIAgent, UAPatterns: []string{"mistralai"}, IPRangeHint: "Mistral"},
+	{Name: "Diffbot", Classification: ClassAIAgent, UAPatterns: []string{"diffbot"}, IPRangeHint: "Diffbot"},
 }
 
 // badBots are challenged or blocked: scraper frameworks, scanners, generic

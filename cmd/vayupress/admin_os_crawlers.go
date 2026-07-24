@@ -77,7 +77,13 @@ Disallow: /
 User-agent: Amazonbot
 Disallow: /
 
+User-agent: Claude-SearchBot
+Disallow: /
+
 User-agent: meta-externalagent
+Disallow: /
+
+User-agent: meta-externalfetcher
 Disallow: /
 
 User-agent: cohere-ai
@@ -90,13 +96,32 @@ func (a *App) crawlersBlocked(ctx context.Context) bool {
 	return a.siteSettings != nil && a.siteSettings.Get(ctx, settings.KeyBlockCrawlers) == "on"
 }
 
+// operatorToolBots are performance testers and uptime monitors — the operator's
+// OWN tooling, not indexers. The crawler "go dark" switch must never 403 them:
+// blocking PageSpeed/Lighthouse breaks the operator's performance score and
+// blocking uptime monitors makes their dashboards report the live site as down.
+// Going dark is about search/AI indexing, not about hiding from monitoring.
+var operatorToolBots = map[string]bool{
+	"PageSpeed":   true,
+	"GTmetrix":    true,
+	"UptimeRobot": true,
+	"Pingdom":     true,
+	"StatusCake":  true,
+	"Site24x7":    true,
+}
+
 // crawlerUABlocked reports whether ua identifies a search-engine or AI crawler
 // that the block should reject. Bad bots (scrapers/scanners) are deliberately
 // out of scope here — VayuShield already challenges those; this switch is
-// specifically about search engines and AI systems.
+// specifically about search engines and AI systems. Operator tooling (PageSpeed,
+// uptime monitors) is always exempt (R8) so going dark never breaks the
+// operator's own performance scoring or uptime dashboards.
 func crawlerUABlocked(ua string) bool {
 	sig, ok := crawlerClassifier.MatchUA(ua)
 	if !ok {
+		return false
+	}
+	if operatorToolBots[sig.Name] {
 		return false
 	}
 	return sig.Classification == botdb.ClassGoodBot || sig.Classification == botdb.ClassAIAgent

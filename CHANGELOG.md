@@ -8,6 +8,21 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Changed
+- **Broader, current crawler recognition + the "go dark" switch no longer breaks
+  the operator's own tooling (VayuShield hardening, phase 4/5).** The classifier's
+  static bot database now recognises the current fetcher variants and more of the
+  market: Google (`GoogleOther`, `AdsBot-Google`, `APIs-Google`,
+  `FeedFetcher-Google`, `Google-Read-Aloud`), Bing (`msnbot`), Baidu, Petal,
+  Seznam, Naver, Sogou, Qwant, DuckAssistBot, more Yandex variants, link-preview
+  bots (Discord, Telegram, WhatsApp, Pinterest, Reddit) and AI systems
+  (`OAI-SearchBot`, `Claude-SearchBot`, `claude-code`, `Meta-ExternalFetcher`,
+  Cohere, You.com, Mistral, Diffbot). **R8:** the "Search engine & AI crawler
+  access → go dark" switch now exempts operator tooling — PageSpeed/Lighthouse,
+  GTmetrix, UptimeRobot, Pingdom, StatusCake, Site24x7 are never `403`'d, so going
+  dark hides the site from indexers without breaking the operator's own
+  performance scoring or uptime dashboards.
+
 ### Performance
 - **VayuShield hot-path hardening — lower TTFB under load (phase 3/5).** Three
   changes remove per-request cost so a busy blog stays butter-smooth:
