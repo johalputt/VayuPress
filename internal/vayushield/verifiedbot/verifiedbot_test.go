@@ -260,6 +260,38 @@ func TestWorkerPoolAsyncPath(t *testing.T) {
 	t.Fatal("async FCrDNS worker did not confirm Yandex within the deadline")
 }
 
+func TestCrawlActivityCounts(t *testing.T) {
+	v := New(Config{})
+	// Two Googlebot hits (UA-recognised; no feed loaded -> Unverifiable but served)
+	// and one Bytespider hit; a normal browser must not be counted.
+	v.Classify(addr("66.249.66.1"), googlebotUA)
+	v.Classify(addr("66.249.66.2"), googlebotUA)
+	v.Classify(addr("1.2.3.4"), "Mozilla/5.0 (compatible; Bytespider)")
+	v.Classify(addr("9.9.9.9"), "Mozilla/5.0 (Windows NT 10.0) Chrome/130")
+
+	stats := v.Stats()
+	got := map[string]int64{}
+	for _, s := range stats {
+		got[s.Name] = s.Count
+	}
+	if got["Googlebot"] != 2 {
+		t.Fatalf("Googlebot count = %d, want 2", got["Googlebot"])
+	}
+	if got["Bytespider"] != 1 {
+		t.Fatalf("Bytespider count = %d, want 1", got["Bytespider"])
+	}
+	// A normal browser is not a crawler and must not appear.
+	for _, s := range stats {
+		if s.Count == 0 {
+			t.Fatalf("Stats must omit zero-activity vendors, got %s=0", s.Name)
+		}
+	}
+	// Sorted most-crawled first.
+	if len(stats) >= 2 && stats[0].Count < stats[1].Count {
+		t.Fatal("Stats must be sorted by count descending")
+	}
+}
+
 func mustVendor(t *testing.T, name string) *vendorDef {
 	t.Helper()
 	for i := range registry {

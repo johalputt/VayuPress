@@ -572,16 +572,26 @@ const ThemeToggleJS = `(function(){var K='vayu-theme',r=document.documentElement
 	`b.addEventListener('click',function(){var c=r.getAttribute('data-theme')||'dark',` +
 	`n=c==='dark'?'light':'dark';a(n);try{localStorage.setItem(K,n);}catch(e){}y();});});})();`
 
-// themeToggleJSHash versions the toggle script URL for cache-busting.
-var themeToggleJSHash = func() string {
-	sum := sha256.Sum256([]byte(ThemeToggleJS))
-	return hex.EncodeToString(sum[:8])
-}()
-
-// ThemeToggleJSLink returns the <script> tag for the public theme toggle.
+// ThemeToggleJSLink returns the public theme switcher INLINED into the page head.
+// It is small (~0.5 KB) and must run before paint to apply the stored light/dark
+// preference without a flash — so inlining removes a render-blocking network
+// round-trip (a real mobile-PageSpeed win) while keeping the flash-free behaviour.
+// Inlining is allowed under the strict `script-src 'self' 'nonce'` CSP because the
+// script's constant hash (ThemeToggleCSPHash) is added to script-src: the hash is
+// stable, so it stays valid across disk-cached pages where a per-request nonce
+// cannot. The external file (handleThemeToggleJS) stays served for any page still
+// cached with the old <script src> reference.
 func ThemeToggleJSLink() template.HTML {
-	return template.HTML(`<script src="/static/js/theme-toggle.js?v=` + themeToggleJSHash + `"></script>`)
+	return template.HTML(`<script>` + ThemeToggleJS + `</script>`)
 }
+
+// ThemeToggleCSPHash is the base64 SHA-256 of the inline theme script, in the
+// `'sha256-…'` CSP source form, added to script-src by BuildCSP so the inline
+// script above is permitted under the strict policy.
+var ThemeToggleCSPHash = func() string {
+	sum := sha256.Sum256([]byte(ThemeToggleJS))
+	return "'sha256-" + base64.StdEncoding.EncodeToString(sum[:]) + "'"
+}()
 
 // VideoFacadeJS is the public click-to-load handler for video embeds (ADR-0070).
 // It loads NOTHING third-party until the reader clicks a facade: on click it

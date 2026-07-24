@@ -6,6 +6,25 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [Unreleased]
+
+### Added
+- **Search engine & AI crawl-activity panel on the SEO page.** VayuShield now
+  tallies, server-side, how many page requests it has served to each verified
+  crawler (Googlebot, Bingbot, GPTBot, ClaudeBot, PerplexityBot, …) and shows it
+  on VayuOS → SEO, split into search engines vs AI systems. Because it counts on
+  the server (crawlers never run the JS analytics beacon), it reflects real crawl
+  traffic — live proof the shield is serving crawlers, not blocking indexing.
+
+### Performance
+- **Theme switcher inlined — one fewer render-blocking request on every page.**
+  The light/dark theme script must run before paint (to avoid a flash), so it
+  could not be deferred; it was loaded as an external render-blocking file. It is
+  now inlined in the page head (no network round-trip), allowed under the strict
+  `script-src 'self' 'nonce'` CSP via the script's constant SHA-256 hash — which
+  stays valid across disk-cached pages where a per-request nonce cannot. Improves
+  mobile First/Largest Contentful Paint.
+
 ## [3.15.16] — 2026-07-24
 
 ### Fixed

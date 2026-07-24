@@ -25,7 +25,68 @@ import (
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/settings"
+	"github.com/johalputt/vayupress/internal/vayushield/verifiedbot"
 )
+
+// seoCrawlActivityCard renders the live "Search engine & AI crawl activity"
+// panel: how many page requests each recognised search engine / AI system has
+// been SERVED since the last restart. It reads VayuShield's verified-bot tally
+// (server-side, so it captures crawlers that never run the JS beacon). Its whole
+// purpose is assurance — visible proof that the shield is letting crawlers index
+// the site, not blocking them.
+func (a *App) seoCrawlActivityCard() string {
+	var stats []verifiedbot.VendorStat
+	if a.verifiedBots != nil {
+		stats = a.verifiedBots.Stats()
+	}
+	if len(stats) == 0 {
+		return `<div class="card mt-6">
+  <div class="card-title">Search engine &amp; AI crawl activity</div>
+  <p class="text-sm muted">No verified crawler visits recorded yet since the last restart. As Googlebot, Bingbot, GPTBot, ClaudeBot, PerplexityBot and others crawl your site, they appear here — live proof the shield is serving them, not blocking indexing.</p>
+</div>`
+	}
+	fmtN := func(n int64) string {
+		s := strconv.FormatInt(n, 10)
+		// thousands separators
+		if n < 1000 {
+			return s
+		}
+		var out []byte
+		for i, c := range []byte(s) {
+			if i > 0 && (len(s)-i)%3 == 0 {
+				out = append(out, ',')
+			}
+			out = append(out, c)
+		}
+		return string(out)
+	}
+	var searchRows, aiRows strings.Builder
+	var searchTotal, aiTotal int64
+	for _, s := range stats {
+		row := `<tr><td class="row-title">` + html.EscapeString(s.Name) + `</td><td>` + fmtN(s.Count) + `</td></tr>`
+		if s.Class == verifiedbot.ClassAIAgent {
+			aiRows.WriteString(row)
+			aiTotal += s.Count
+		} else {
+			searchRows.WriteString(row)
+			searchTotal += s.Count
+		}
+	}
+	tbl := func(title string, rows string, total int64) string {
+		if rows == "" {
+			return ""
+		}
+		return `<div class="mb-4"><div class="settings-block-title">` + title + ` <span class="muted text-sm">— ` + fmtN(total) + ` requests served</span></div>
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th>Crawler</th><th>Requests served</th></tr></thead>
+    <tbody>` + rows + `</tbody></table></div></div>`
+	}
+	return `<div class="card mt-6">
+  <div class="card-title">Search engine &amp; AI crawl activity</div>
+  <p class="text-sm muted mb-4">Page requests VayuShield has served to verified crawlers since the last restart — proof they are reaching your content. Counted server-side (crawlers do not run the analytics beacon), so this reflects real crawl traffic even for bots that never appear in Analytics.</p>
+  ` + tbl("Search engines", searchRows.String(), searchTotal) + tbl("AI systems", aiRows.String(), aiTotal) + `
+</div>`
+}
 
 // handleOSSEONative renders the native os SEO dashboard: artefact freshness plus
 // per-article readiness, computed live from the DB and cache.
@@ -118,7 +179,7 @@ func (a *App) handleOSSEONative(w http.ResponseWriter, r *http.Request) {
   <div class="stat-card"><div class="stat-card__label">Thin content</div><div class="stat-card__value">` + num(thin) + `</div><div class="stat-card__bottom"><span class="muted text-xs">&lt;300 words</span></div></div>
   <div class="stat-card"><div class="stat-card__label">Missing title</div><div class="stat-card__value">` + num(noTitle) + `</div><div class="stat-card__bottom"><span class="muted text-xs">needs a title</span></div></div>
   <div class="stat-card"><div class="stat-card__label">Total posts</div><div class="stat-card__value">` + num(total) + `</div></div>
-</div>` + seoComputingNote(ready) + `
+</div>` + seoComputingNote(ready) + a.seoCrawlActivityCard() + `
 
 <div class="card">
   <div class="card-title">Artefacts</div>

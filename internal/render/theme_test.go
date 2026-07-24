@@ -1,6 +1,10 @@
 package render
 
-import "strings"
+import (
+	"crypto/sha256"
+	"encoding/base64"
+	"strings"
+)
 
 import "testing"
 
@@ -102,14 +106,32 @@ func TestDefaultPaletteMatchesVendoredCSS(t *testing.T) {
 	}
 }
 
-func TestThemeToggleJSLinkIsSameOriginScript(t *testing.T) {
+func TestThemeToggleJSLinkIsInlineWithCSPHash(t *testing.T) {
 	link := string(ThemeToggleJSLink())
-	if !strings.HasPrefix(link, `<script src="/static/js/theme-toggle.js?v=`) {
-		t.Errorf("toggle link must be a same-origin <script src>, got: %s", link)
+	// The toggle is now INLINED (no render-blocking network request) with the
+	// exact script body, so it can run before paint to avoid a theme flash.
+	if !strings.HasPrefix(link, `<script>`) || !strings.Contains(link, "localStorage") {
+		t.Errorf("toggle must be an inline <script> carrying the theme body, got: %s", link)
 	}
-	// Must carry no inline body (would require a CSP nonce that cached HTML lacks).
-	if strings.Contains(link, "localStorage") {
-		t.Errorf("toggle must be external, not inline: %s", link)
+	if strings.Contains(link, "src=") {
+		t.Errorf("toggle must be inline, not an external <script src>: %s", link)
+	}
+	// Inlining is only CSP-safe because the script's constant hash is added to
+	// script-src. Verify the hash is well-formed and actually present in the CSP.
+	if !strings.HasPrefix(ThemeToggleCSPHash, "'sha256-") || !strings.HasSuffix(ThemeToggleCSPHash, "'") {
+		t.Fatalf("ThemeToggleCSPHash malformed: %q", ThemeToggleCSPHash)
+	}
+	csp := BuildCSP("test-nonce", nil)
+	if !strings.Contains(csp, ThemeToggleCSPHash) {
+		t.Errorf("BuildCSP must include the inline theme script hash %s; got: %s", ThemeToggleCSPHash, csp)
+	}
+	// The hash must match the exact inlined body, or the browser blocks it.
+	want := func() string {
+		sum := sha256.Sum256([]byte(ThemeToggleJS))
+		return "'sha256-" + base64.StdEncoding.EncodeToString(sum[:]) + "'"
+	}()
+	if ThemeToggleCSPHash != want {
+		t.Fatalf("hash mismatch: header has %s, body hashes to %s — inline script would be blocked", ThemeToggleCSPHash, want)
 	}
 	if !strings.Contains(ThemeToggleJS, "localStorage") {
 		t.Error("toggle script should persist preference in localStorage")

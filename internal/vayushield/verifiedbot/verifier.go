@@ -19,7 +19,9 @@ import (
 	"hash/fnv"
 	"net/http"
 	"net/netip"
+	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -71,6 +73,20 @@ type Verifier struct {
 	cache    *verdictCache
 	jobs     chan fcrdnsJob
 	pending  sync.Map // netip.Addr -> struct{} (FCrDNS single-flight)
+
+	// counts is a per-vendor served-request tally (crawl activity), keyed by
+	// vendor name. The map is built once at New (immutable keys) so the hot-path
+	// increment is a lock-free atomic add. Surfaced on the SEO/Optimize page so
+	// the operator can SEE that search engines and AI systems are crawling —
+	// proof the shield is not blocking indexing.
+	counts map[string]*atomic.Int64
+}
+
+// VendorStat is one crawler's served-request tally for the crawl-activity panel.
+type VendorStat struct {
+	Name  string // e.g. "Googlebot"
+	Class Class  // good_bot | ai_agent
+	Count int64  // requests served to this crawler since boot
 }
 
 // New builds a Verifier and seeds feed vendors from the on-disk last-good cache
@@ -89,14 +105,44 @@ func New(cfg Config) *Verifier {
 		sets:     make(map[string]*atomicCIDRSet, len(registry)),
 		cache:    newVerdictCache(),
 		jobs:     make(chan fcrdnsJob, cfg.QueueLen),
+		counts:   make(map[string]*atomic.Int64, len(registry)),
 	}
 	for i := range registry {
 		if registry[i].tier == tierFeed {
 			v.sets[registry[i].name] = &atomicCIDRSet{}
 		}
+		v.counts[registry[i].name] = new(atomic.Int64)
 	}
 	v.loadFromDisk()
 	return v
+}
+
+// note records one served request for a recognised crawler (lock-free).
+func (v *Verifier) note(vendor string) {
+	if c := v.counts[vendor]; c != nil {
+		c.Add(1)
+	}
+}
+
+// Stats returns the per-vendor crawl-activity tally, most-crawled first, for the
+// operator-facing "search engine & AI crawl activity" panel. Vendors with zero
+// activity are omitted.
+func (v *Verifier) Stats() []VendorStat {
+	if v == nil {
+		return nil
+	}
+	out := make([]VendorStat, 0, len(registry))
+	for i := range registry {
+		c := v.counts[registry[i].name]
+		if c == nil {
+			continue
+		}
+		if n := c.Load(); n > 0 {
+			out = append(out, VendorStat{Name: registry[i].name, Class: registry[i].class, Count: n})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Count > out[j].Count })
+	return out
 }
 
 // Start launches the FCrDNS workers and the daily feed refresh (with an
@@ -144,6 +190,9 @@ func (v *Verifier) Classify(ip netip.Addr, ua string) (Verdict, string, Class) {
 	}
 	ip = ip.Unmap()
 	if e, ok := v.cache.get(ip, v.now()); ok {
+		if e.verdict == Verified {
+			v.note(e.vendor) // cached crawler still counts as crawl activity
+		}
 		return e.verdict, e.vendor, e.class
 	}
 	vd, ok := matchVendor(ua)
@@ -152,17 +201,21 @@ func (v *Verifier) Classify(ip netip.Addr, ua string) (Verdict, string, Class) {
 	}
 	switch vd.tier {
 	case tierUAOnly:
+		v.note(vd.name)
 		return Unverifiable, vd.name, vd.class
 	case tierFCrDNS:
 		v.kickFCrDNS(ip, vd) // async; SEO-safe until it answers
+		v.note(vd.name)
 		return Unverifiable, vd.name, vd.class
 	case tierFeed:
 		set := v.sets[vd.name]
 		if !set.loaded() {
+			v.note(vd.name)
 			return Unverifiable, vd.name, vd.class // no authoritative data yet
 		}
 		if set.load().contains(ip) {
 			v.cache.put(ip, Verified, vd.name, vd.class, v.now().Add(positiveTTL))
+			v.note(vd.name)
 			return Verified, vd.name, vd.class
 		}
 		if len(vd.ptrSuffix) > 0 {
