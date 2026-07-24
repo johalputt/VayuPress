@@ -8,6 +8,8 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.15.12] — 2026-07-24
+
 ### Security
 - **Managed-Tor expert bundle is integrity-checked before it is executed (audit
   L3).** VayuTor downloaded the Tor expert-bundle tarball and ran the `tor`
