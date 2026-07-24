@@ -4,6 +4,8 @@ import (
 	"encoding/base64"
 	"strings"
 	"testing"
+
+	"github.com/johalputt/vayupress/internal/safefetch"
 )
 
 func TestNewNoopWhenUnconfigured(t *testing.T) {
@@ -155,5 +157,21 @@ func TestSendFallbackValidatesRecipient(t *testing.T) {
 	s.SetFallback(func(Message) error { return nil })
 	if err := s.Send(Message{To: "not-an-email", Subject: "x", Text: "y"}); err == nil {
 		t.Error("expected an invalid-recipient error on the fallback path")
+	}
+}
+
+// In a Tor Space, relaying through an external SMTP host is refused before any
+// dial — it would reveal the onion server's real IP (ADR-0141).
+func TestSendRefusesExternalSMTPInTorSpace(t *testing.T) {
+	safefetch.SetBlockClearnetEgress(true)
+	t.Cleanup(func() { safefetch.SetBlockClearnetEgress(false) })
+
+	s := New(Config{Host: "smtp.sendgrid.net", Port: 587, From: "VayuPress <hi@example.com>"})
+	if !s.Enabled() {
+		t.Fatal("sender with a host should be enabled")
+	}
+	err := s.Send(Message{To: "reader@example.com", Subject: "hi", Text: "x"})
+	if err == nil || !strings.Contains(err.Error(), "Tor Space") {
+		t.Fatalf("external SMTP must be refused in a Tor Space, got %v", err)
 	}
 }

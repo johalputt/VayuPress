@@ -139,3 +139,24 @@ func TestGetSizeCapBoundary(t *testing.T) {
 		t.Errorf("body len = %d, want 1024", len(res.Body))
 	}
 }
+
+func TestIsLoopbackHostAndClearnetBlocked(t *testing.T) {
+	for _, h := range []string{"localhost", "127.0.0.1", "::1", "127.0.0.53"} {
+		if !IsLoopbackHost(h) {
+			t.Errorf("%q should be loopback", h)
+		}
+	}
+	for _, h := range []string{"smtp.sendgrid.net", "8.8.8.8", "example.com", ""} {
+		if IsLoopbackHost(h) {
+			t.Errorf("%q should not be loopback", h)
+		}
+	}
+	SetBlockClearnetEgress(true)
+	if !ClearnetBlocked() {
+		t.Error("ClearnetBlocked should be true after SetBlockClearnetEgress(true)")
+	}
+	SetBlockClearnetEgress(false)
+	if ClearnetBlocked() {
+		t.Error("ClearnetBlocked should be false after reset")
+	}
+}

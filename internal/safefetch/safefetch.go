@@ -130,6 +130,28 @@ var blockClearnetEgress atomic.Bool
 // once at boot from config.Cfg.OnionMode.
 func SetBlockClearnetEgress(block bool) { blockClearnetEgress.Store(block) }
 
+// ClearnetBlocked reports whether the Tor-Space anti-leak guard is engaged, so
+// non-HTTP callers that cannot use SafeTransport (e.g. the external SMTP relay)
+// can refuse a clearnet connection themselves rather than leak the onion
+// server's real IP (ADR-0141).
+func ClearnetBlocked() bool { return blockClearnetEgress.Load() }
+
+// IsLoopbackHost reports whether host is a loopback destination (localhost or a
+// loopback IP literal) that is safe to reach even in a Tor Space.
+func IsLoopbackHost(host string) bool {
+	host = strings.ToLower(strings.TrimSpace(host))
+	if host == "" {
+		return false
+	}
+	if host == "localhost" {
+		return true
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.IsLoopback()
+	}
+	return false
+}
+
 // TransportOptions configures SafeTransport.
 type TransportOptions struct {
 	// AllowHosts lists hostnames / IP literals that may resolve to a private or

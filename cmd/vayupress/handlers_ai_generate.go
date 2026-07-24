@@ -32,8 +32,11 @@ import (
 
 // aiGenHTTP is the client used for author-triggered generation. Generation is
 // slow, so the timeout is generous; endpoints are operator-configured (a stored
-// provider or VAYU_AI_URL), never a per-request user URL.
-var aiGenHTTP = &http.Client{Timeout: 120 * time.Second}
+// provider or VAYU_AI_URL), never a per-request user URL. It routes through the
+// SSRF-hardened, egress-guarded transport so a Tor Space never dials an AI
+// provider from the onion server's real IP (ADR-0141) and a hostile provider
+// URL cannot be steered at an internal host.
+var aiGenHTTP = &http.Client{Timeout: 120 * time.Second, Transport: safeOutboundTransport()}
 
 // Abuse controls for author-triggered generation. Any author-role console user
 // can reach the generate route, and every call spends the operator's stored

@@ -8,6 +8,17 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+### Security
+- **Tor Space anti-leak now covers the AI-generate and external-SMTP paths
+  (ADR-0141).** The Tor-Space egress kill-switch already closed every
+  `safefetch` call site, but author-triggered AI generation used a bare
+  `http.Client` and the external SMTP relay dialed directly — either would reach
+  a third party (AI provider, SMTP relay) from the onion server's real IP in a
+  Tor Space. AI generation now routes through the SSRF-hardened, egress-guarded
+  transport, and the external SMTP relay is refused (before any dial) whenever
+  the guard is engaged and the relay host is not loopback. Adds
+  `safefetch.ClearnetBlocked()` / `IsLoopbackHost()` for non-HTTP callers.
+
 ## [3.15.12] — 2026-07-24
 
 ### Security

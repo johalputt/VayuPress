@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/johalputt/vayupress/internal/logging"
+	"github.com/johalputt/vayupress/internal/safefetch"
 )
 
 // TLSMode selects how the transport secures the SMTP connection.
@@ -170,6 +171,12 @@ func (s *Sender) Send(msg Message) error {
 // deliver opens a connection (honouring the TLS mode), authenticates when
 // credentials are present, and writes the assembled message.
 func (s *Sender) deliver(to string, raw []byte) error {
+	// Tor-Space anti-leak (ADR-0141): relaying to an external SMTP host would
+	// reveal the onion server's real IP to that relay. Refuse a non-loopback
+	// relay while the guard is engaged.
+	if safefetch.ClearnetBlocked() && !safefetch.IsLoopbackHost(s.cfg.Host) {
+		return fmt.Errorf("email: external SMTP relay %q is disabled in a Tor Space", s.cfg.Host)
+	}
 	addr := net.JoinHostPort(s.cfg.Host, fmt.Sprintf("%d", s.cfg.Port))
 	dialer := &net.Dialer{Timeout: s.cfg.Timeout}
 
