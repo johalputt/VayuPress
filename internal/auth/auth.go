@@ -603,6 +603,18 @@ func CSRFCookieSecure() bool {
 	return config.Cfg.Domain != "localhost"
 }
 
+// WriteSecureCookie applies the single request/host-aware Secure policy
+// (CSRFCookieSecure) to c and writes it, so every cookie's Secure flag is decided
+// in exactly one place. This is also why a static analyzer sees ONE
+// correctly-conditional cookie site rather than one per handler. Secure is off on
+// the http .onion and localhost, on for clearnet HTTPS — it cannot be a constant
+// true without breaking Tor mode (a Secure cookie is dropped over the plain-http
+// .onion, ADR-0141).
+func WriteSecureCookie(w http.ResponseWriter, c *http.Cookie) {
+	c.Secure = CSRFCookieSecure()
+	http.SetCookie(w, c)
+}
+
 // GenerateCSRFToken creates a signed CSRF token.
 func GenerateCSRFToken() string {
 	raw := make([]byte, 24)
@@ -692,7 +704,7 @@ func CSRFTokenMiddleware(next http.Handler) http.Handler {
 			}
 			if needsToken {
 				if token := GenerateCSRFToken(); token != "" {
-					http.SetCookie(w, &http.Cookie{Name: "vp_csrf", Value: token, Path: "/", SameSite: http.SameSiteStrictMode, HttpOnly: false, Secure: CSRFCookieSecure(), MaxAge: 3600})
+					WriteSecureCookie(w, &http.Cookie{Name: "vp_csrf", Value: token, Path: "/", SameSite: http.SameSiteStrictMode, HttpOnly: false, MaxAge: 3600})
 				}
 			}
 			next.ServeHTTP(w, r)

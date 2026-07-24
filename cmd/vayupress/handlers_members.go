@@ -201,10 +201,10 @@ func (a *App) handleMemberVerify(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "could not start session", http.StatusInternalServerError)
 		return
 	}
-	http.SetCookie(w, &http.Cookie{
+	writeSecureCookie(w, &http.Cookie{
 		Name: memberCookie, Value: token, Path: "/", HttpOnly: true,
-		Secure: csrfCookieSecure(), SameSite: http.SameSiteLaxMode,
-		MaxAge: int(members.SessionTTL.Seconds()),
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   int(members.SessionTTL.Seconds()),
 	})
 	logging.LogInfo("members", "member signed in: "+m.Email)
 	http.Redirect(w, r, "/members/account", http.StatusSeeOther)
@@ -219,10 +219,10 @@ func (a *App) handleMemberLogout(w http.ResponseWriter, r *http.Request) {
 	}
 	// Clear with the same security attributes the session cookie was set with so
 	// the deletion reliably targets the original Secure/SameSite cookie.
-	http.SetCookie(w, &http.Cookie{
+	writeSecureCookie(w, &http.Cookie{
 		Name: memberCookie, Value: "", Path: "/", HttpOnly: true,
-		Secure: csrfCookieSecure(), SameSite: http.SameSiteLaxMode,
-		MaxAge: -1,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   -1,
 	})
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }

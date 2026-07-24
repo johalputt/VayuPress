@@ -1918,9 +1918,9 @@ func (a *App) handleOSLogout(w http.ResponseWriter, r *http.Request) {
 			_ = a.members.DestroySession(r.Context(), c.Value)
 		}
 	}
-	http.SetCookie(w, &http.Cookie{
+	writeSecureCookie(w, &http.Cookie{
 		Name: memberCookie, Value: "", Path: "/", HttpOnly: true,
-		Secure: csrfCookieSecure(), SameSite: http.SameSiteLaxMode, MaxAge: -1,
+		SameSite: http.SameSiteLaxMode, MaxAge: -1,
 	})
 	http.Redirect(w, r, "/os/login", http.StatusSeeOther)
 }

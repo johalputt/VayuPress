@@ -136,23 +136,21 @@ func SetSessionCookieRemember(w http.ResponseWriter, token string, remember bool
 		Value:    token,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   CSRFCookieSecure(),
 		SameSite: http.SameSiteStrictMode,
 	}
 	if remember {
 		c.MaxAge = int(DefaultSessionTTL.Seconds())
 	}
-	http.SetCookie(w, c)
+	WriteSecureCookie(w, c)
 }
 
 // ClearSessionCookie expires the session cookie on the client.
 func ClearSessionCookie(w http.ResponseWriter) {
-	http.SetCookie(w, &http.Cookie{
+	WriteSecureCookie(w, &http.Cookie{
 		Name:     SessionCookie,
 		Value:    "",
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   CSRFCookieSecure(),
 		SameSite: http.SameSiteStrictMode,
 		MaxAge:   -1,
 	})

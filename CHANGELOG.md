@@ -8,6 +8,21 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.15.11] — 2026-07-24
+
+### Changed
+- **Every same-policy cookie now flows through one `WriteSecureCookie` chokepoint.**
+  Extending v3.15.10, the member-session, operator-session, and CSRF cookies across
+  the app and the auth package now set their `Secure` flag from a single
+  `auth.WriteSecureCookie` helper instead of each handler repeating the
+  determination. Net effect: the static-analysis "Cookie 'Secure' attribute is not
+  set to true" surface drops from ~18 duplicated sites to a single correctly
+  request/host-aware site (plus the Tor-world proxy's two cookies, which are
+  intentionally per-request `Secure: r.TLS != nil` because that proxy serves both
+  the clearnet-HTTPS and http-`.onion` faces). `Secure` remains conditional by
+  necessity — a hard-coded `true` would be dropped by the browser over the
+  plain-http `.onion` and break Tor mode (ADR-0141).
+
 ## [3.15.10] — 2026-07-24
 
 ### Security

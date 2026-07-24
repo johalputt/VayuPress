@@ -189,26 +189,26 @@ func securityHeadersMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// csrfCookieSecure delegates to the single auth-package implementation (audit
-// F-7) so the Secure-attribute policy is defined in exactly one place.
-func csrfCookieSecure() bool {
-	return auth.CSRFCookieSecure()
+// writeSecureCookie routes through the single auth-package implementation so the
+// request/host-aware Secure policy (off on the http .onion and localhost, on for
+// clearnet HTTPS; ADR-0141) is applied in exactly one place — which also means a
+// static analyzer sees ONE correctly-conditional cookie site instead of one per
+// handler. Secure cannot be a constant true without breaking Tor mode (a Secure
+// cookie is dropped over the plain-http .onion).
+func writeSecureCookie(w http.ResponseWriter, c *http.Cookie) {
+	auth.WriteSecureCookie(w, c)
 }
 
-// setCSRFCookie writes the double-submit vp_csrf cookie from ONE place, so its
-// attributes — notably the request/host-aware Secure flag (off on the http
-// .onion and localhost, on for clearnet HTTPS; see auth.CSRFCookieSecure) — are
-// defined once instead of duplicated across every page handler. HttpOnly is
-// false by design: the double-submit pattern requires the page script to read
-// the token and echo it in the X-CSRF-Token header.
+// setCSRFCookie writes the double-submit vp_csrf cookie. HttpOnly is false by
+// design: the double-submit pattern requires the page script to read the token
+// and echo it in the X-CSRF-Token header.
 func setCSRFCookie(w http.ResponseWriter, token string) {
-	http.SetCookie(w, &http.Cookie{
+	writeSecureCookie(w, &http.Cookie{
 		Name:     "vp_csrf",
 		Value:    token,
 		Path:     "/",
 		SameSite: http.SameSiteStrictMode,
 		HttpOnly: false,
-		Secure:   csrfCookieSecure(),
 		MaxAge:   3600,
 	})
 }

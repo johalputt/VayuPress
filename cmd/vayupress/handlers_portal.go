@@ -37,10 +37,10 @@ import (
 // security attributes used elsewhere, so portal logins and magic-link logins
 // produce interchangeable sessions.
 func (a *App) setMemberSessionCookie(w http.ResponseWriter, token string) {
-	http.SetCookie(w, &http.Cookie{
+	writeSecureCookie(w, &http.Cookie{
 		Name: memberCookie, Value: token, Path: "/", HttpOnly: true,
-		Secure: csrfCookieSecure(), SameSite: http.SameSiteLaxMode,
-		MaxAge: int(members.SessionTTL.Seconds()),
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   int(members.SessionTTL.Seconds()),
 	})
 }
 
