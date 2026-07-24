@@ -17,9 +17,6 @@ import (
 func TestSafeTransportEgressKillSwitch(t *testing.T) {
 	SetBlockClearnetEgress(true)
 	defer SetBlockClearnetEgress(false)
-	if !ClearnetEgressBlocked() {
-		t.Fatal("ClearnetEgressBlocked() should be true after SetBlockClearnetEgress(true)")
-	}
 	tr := SafeTransport(TransportOptions{AllowHosts: []string{"127.0.0.1"}})
 
 	// A public host must be refused with the block error, and no network touched.

@@ -8,6 +8,27 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.15.5] — 2026-07-24
+
+### Fixed
+- **CI: removed a newly-unreachable function** (`safefetch.ClearnetEgressBlocked`)
+  that failed the deadcode gate in the go-native job. The egress kill-switch keeps
+  its setter (`SetBlockClearnetEgress`); the unused accessor is gone.
+
+### Security
+- **Payment fulfilment is now atomic (no double-provisioning).** `MarkPaid` read
+  the order status and then issued an unconditional `UPDATE`, so the browser-return
+  and a gateway webhook (or a gateway retry) could both observe "pending" and both
+  fulfil — duplicate receipts, duplicate `payment.completed` events, and a
+  subscription started twice. The transition is now a conditional
+  `UPDATE … WHERE status<>'paid'` that acts only when exactly one row flips;
+  otherwise it returns `ErrAlreadyPaid`.
+- **Magic-link login is now atomic single-use.** `ConsumeLoginToken` deleted the
+  token unconditionally and returned the email regardless of whether that call
+  removed the row, so two concurrent verifies of a captured link both minted a
+  session. It now requires the `DELETE` to have removed exactly one row, so a
+  captured link can never be replayed into a second session.
+
 ## [3.15.4] — 2026-07-24
 
 ### Security

@@ -229,14 +229,26 @@ func (s *Store) MarkPaid(ctx context.Context, idOrRef, gatewayRef string) (*Orde
 	if err != nil {
 		return nil, err
 	}
-	if o.Status == StatusPaid {
-		return o, ErrAlreadyPaid
-	}
 	now := time.Now().UTC()
-	if _, err := s.db.ExecContext(ctx,
-		`UPDATE payment_orders SET status=?,gateway_ref=COALESCE(NULLIF(?,''),gateway_ref),paid_at=?,updated_at=? WHERE id=?`,
-		StatusPaid, strings.TrimSpace(gatewayRef), now, now, o.ID); err != nil {
+	// Atomic transition (audit L10): the `status<>paid` predicate lets exactly one
+	// concurrent caller flip the row, so fulfilment runs once even when the browser
+	// return and a gateway webhook (or a gateway retry) race for the same order.
+	// A read-then-write (checking o.Status, then an unconditional UPDATE) let both
+	// racers observe "pending" and both fulfil — duplicate receipts/provisioning.
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE payment_orders SET status=?,gateway_ref=COALESCE(NULLIF(?,''),gateway_ref),paid_at=?,updated_at=? WHERE id=? AND status<>?`,
+		StatusPaid, strings.TrimSpace(gatewayRef), now, now, o.ID, StatusPaid)
+	if err != nil {
 		return nil, err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		// The row was already paid (or a concurrent caller won the race): signal the
+		// caller to skip re-fulfilment, returning the current order state.
+		paid, gerr := s.GetByID(ctx, o.ID)
+		if gerr != nil {
+			return nil, gerr
+		}
+		return paid, ErrAlreadyPaid
 	}
 	return s.GetByID(ctx, o.ID)
 }

@@ -477,12 +477,22 @@ func (s *Store) ConsumeLoginToken(ctx context.Context, token string) (string, er
 	h := hashToken(token)
 	var email string
 	var exp time.Time
-	err := s.db.QueryRowContext(ctx,
-		`SELECT email,expires_at FROM member_login_tokens WHERE token_hash=?`, h).Scan(&email, &exp)
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT email,expires_at FROM member_login_tokens WHERE token_hash=?`, h).Scan(&email, &exp); err != nil {
+		return "", fmt.Errorf("invalid or expired link")
+	}
+	// Enforce single-use atomically (audit L11): only the caller whose DELETE
+	// actually removed the row may proceed. On the single-writer SQLite, two
+	// concurrent verifies of the same captured link each SELECT the row, but only
+	// one DELETE affects a row — the other sees RowsAffected==0 and is rejected, so
+	// a captured magic link can never be replayed into a second session.
+	res, err := s.db.ExecContext(ctx, `DELETE FROM member_login_tokens WHERE token_hash=?`, h)
 	if err != nil {
 		return "", fmt.Errorf("invalid or expired link")
 	}
-	_, _ = s.db.ExecContext(ctx, `DELETE FROM member_login_tokens WHERE token_hash=?`, h)
+	if n, _ := res.RowsAffected(); n != 1 {
+		return "", fmt.Errorf("invalid or expired link")
+	}
 	if time.Now().UTC().After(exp.UTC()) {
 		return "", fmt.Errorf("link expired")
 	}

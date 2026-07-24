@@ -130,9 +130,6 @@ var blockClearnetEgress atomic.Bool
 // once at boot from config.Cfg.OnionMode.
 func SetBlockClearnetEgress(block bool) { blockClearnetEgress.Store(block) }
 
-// ClearnetEgressBlocked reports whether clearnet egress is currently blocked.
-func ClearnetEgressBlocked() bool { return blockClearnetEgress.Load() }
-
 // TransportOptions configures SafeTransport.
 type TransportOptions struct {
 	// AllowHosts lists hostnames / IP literals that may resolve to a private or
