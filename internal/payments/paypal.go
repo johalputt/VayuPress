@@ -48,7 +48,7 @@ type PayPalClient struct {
 // selects the PayPal sandbox host (for test credentials).
 func NewPayPalClient(hc *http.Client, clientID, secret string, sandbox bool) *PayPalClient {
 	if hc == nil {
-		hc = http.DefaultClient
+		hc = guardedDefaultClient()
 	}
 	base := payPalLiveBase
 	if sandbox {

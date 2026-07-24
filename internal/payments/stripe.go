@@ -34,10 +34,10 @@ type StripeClient struct {
 }
 
 // NewStripeClient binds a client to the operator's secret key (sk_live_… /
-// sk_test_…). A nil http.Client falls back to http.DefaultClient.
+// sk_test_…). A nil http.Client falls back to a guarded, SSRF-hardened client.
 func NewStripeClient(hc *http.Client, secretKey string) *StripeClient {
 	if hc == nil {
-		hc = http.DefaultClient
+		hc = guardedDefaultClient()
 	}
 	return &StripeClient{http: hc, secret: strings.TrimSpace(secretKey), base: stripeAPIBase}
 }

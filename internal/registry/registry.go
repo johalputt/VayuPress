@@ -4,6 +4,7 @@
 package registry
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -13,6 +14,9 @@ import (
 	"net/http"
 	"os"
 	"sync"
+	"time"
+
+	"github.com/johalputt/vayupress/internal/safefetch"
 )
 
 // PluginMeta describes a registered plugin.
@@ -73,8 +77,19 @@ func (r *Registry) Install(name, version, destPath string) error {
 	if !ok {
 		return fmt.Errorf("registry: plugin %s@%s not found", name, version)
 	}
-	// nolint:gosec — URL from registry, validated by operator
-	resp, err := http.Get(meta.DownloadURL) //nolint:noctx
+	// The download URL comes from the registry (not the operator per-install), so
+	// fetch it through the SSRF-hardened, egress-guarded transport: it refuses
+	// private/reserved hosts and, in a Tor Space, refuses clearnet entirely
+	// (ADR-0141) — a registry can no longer steer the fetch at an internal host
+	// or leak the onion server's real IP. The SHA-256 check below still runs.
+	client := &http.Client{Timeout: 2 * time.Minute, Transport: safefetch.SafeTransport(safefetch.TransportOptions{})}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, meta.DownloadURL, nil)
+	if err != nil {
+		return fmt.Errorf("registry: build request %s: %w", meta.DownloadURL, err)
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("registry: download %s: %w", meta.DownloadURL, err)
 	}

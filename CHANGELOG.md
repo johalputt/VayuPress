@@ -18,6 +18,13 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
   transport, and the external SMTP relay is refused (before any dial) whenever
   the guard is engaged and the relay host is not loopback. Adds
   `safefetch.ClearnetBlocked()` / `IsLoopbackHost()` for non-HTTP callers.
+- **Plugin-registry downloads and payment-gateway fallback clients now route
+  through the guarded transport too (ADR-0141).** The plugin registry fetched a
+  registry-supplied `download_url` with a bare `http.Get` — an SSRF vector and a
+  Tor-Space clearnet leak; it now uses the SSRF-hardened, egress-guarded
+  transport (the SHA-256 integrity check is unchanged). The Stripe/PayPal client
+  constructors' nil-client fallback no longer defaults to `http.DefaultClient`
+  (which bypassed the guard) but to the same guarded client.
 
 ## [3.15.12] — 2026-07-24
 
