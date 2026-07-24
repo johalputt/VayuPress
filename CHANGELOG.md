@@ -8,6 +8,24 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ## [Unreleased]
 
+## [3.15.7] — 2026-07-24
+
+### Security
+- **The public GraphQL endpoint now enforces a query-cost limit.** `/api/v1/graphql`
+  is unauthenticated and some resolvers load up to 1000 rows each, so a single
+  64 KiB document that aliased an expensive root field hundreds of times could fan
+  out into ~10⁶ database resolver calls and saturate the connection pool. Queries
+  are now parsed and rejected before execution when their total field-selection
+  count (200) or nesting depth (12) exceeds a bound — a real query uses a handful
+  of fields at shallow depth.
+- **Member mailbox claiming is now atomic (no entitlement bypass).** The
+  "one included mailbox per member" rule was a read-then-act check, so a member on
+  a single-mailbox tier could fire N parallel claims with different localparts and
+  each would provision a real, outbound-capable mailbox. The slot is now reserved
+  with a single conditional `UPDATE … WHERE mail_address IS NULL/''` before any
+  mailbox is created, so exactly one claim wins; a provisioning failure releases
+  the reservation for a clean retry.
+
 ## [3.15.6] — 2026-07-24
 
 ### Security

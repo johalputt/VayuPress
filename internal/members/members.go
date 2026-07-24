@@ -244,6 +244,45 @@ func (s *Store) SetMailAddress(ctx context.Context, email, mailAddr string) erro
 	return err
 }
 
+// ClaimMailAddress atomically reserves a member's single mailbox slot: it sets
+// mail_address to addr ONLY if the member currently has none, returning true when
+// this call won the reservation. It closes the concurrent-claim TOCTOU (audit
+// M13) where two parallel claims with different localparts each passed a
+// read-then-act "one mailbox per member" check and each provisioned a real
+// mailbox. On the single-writer SQLite exactly one racer's conditional UPDATE
+// affects a row; the others get false. The caller provisions only after winning,
+// and releases with ClearMailAddressIf if provisioning then fails.
+func (s *Store) ClaimMailAddress(ctx context.Context, email, addr string) (bool, error) {
+	email = strings.ToLower(strings.TrimSpace(email))
+	addr = strings.ToLower(strings.TrimSpace(addr))
+	if email == "" || addr == "" {
+		return false, fmt.Errorf("email and address required")
+	}
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE members SET mail_address=? WHERE email=? AND (mail_address IS NULL OR mail_address='')`,
+		addr, email)
+	if err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	return n == 1, nil
+}
+
+// ClearMailAddressIf releases a reservation made by ClaimMailAddress when the
+// stored address still matches addr (i.e. provisioning failed after the claim),
+// so the member can retry. It never clears a different, already-provisioned
+// address.
+func (s *Store) ClearMailAddressIf(ctx context.Context, email, addr string) error {
+	email = strings.ToLower(strings.TrimSpace(email))
+	addr = strings.ToLower(strings.TrimSpace(addr))
+	if email == "" || addr == "" {
+		return nil
+	}
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE members SET mail_address='' WHERE email=? AND mail_address=?`, email, addr)
+	return err
+}
+
 // MailAddressFor returns the mailbox address a member has claimed, or "" if none.
 func (s *Store) MailAddressFor(ctx context.Context, email string) string {
 	email = strings.ToLower(strings.TrimSpace(email))

@@ -401,12 +401,34 @@ func (a *App) handleMemberMailboxClaim(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusInternalServerError, "hash-failed", "Could not secure the password", "")
 		return
 	}
+	// Atomically reserve the member's single mailbox slot BEFORE creating anything
+	// (audit M13): only the first concurrent claim transitions mail_address from
+	// empty, so N parallel claims with different localparts can no longer each
+	// provision a real mailbox. The early MailAddressFor check above is a fast-path
+	// for the common case; this is the authoritative guard.
+	intended := local + "@" + a.mailHost()
+	claimed, cerr := a.members.ClaimMailAddress(r.Context(), m.Email, intended)
+	if cerr != nil {
+		writeAPIError(w, r, http.StatusInternalServerError, "claim-failed", "Could not reserve the mailbox", "")
+		return
+	}
+	if !claimed {
+		writeAPIError(w, r, http.StatusConflict, "already-claimed", "You already have a mailbox.", "")
+		return
+	}
 	email, perr := a.provisionMailbox(r.Context(), "", local, a.mailHost(), hash, m.DisplayName(), mail.RoleMailbox, quotaBytes)
 	if perr != nil {
+		// Release the reservation so the member can retry (e.g. with another
+		// localpart) rather than being permanently stuck "already-claimed".
+		_ = a.members.ClearMailAddressIf(r.Context(), m.Email, intended)
 		writeAPIError(w, r, http.StatusBadRequest, "provision-failed", perr.Error(), "")
 		return
 	}
-	_ = a.members.SetMailAddress(r.Context(), m.Email, email)
+	// Reconcile the reserved address with the one actually provisioned (normally
+	// identical); the reservation already holds the slot.
+	if !strings.EqualFold(email, intended) {
+		_ = a.members.SetMailAddress(r.Context(), m.Email, email)
+	}
 	// Record the member's acceptance of the exact terms in force (address + a
 	// SHA-256 of the terms text + timestamp) so the operator has durable proof of
 	// agreement for the address just provisioned.

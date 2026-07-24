@@ -15,13 +15,72 @@ package graphqlapi
 
 import (
 	"context"
+	"fmt"
 	"regexp"
 	"strings"
 
 	"github.com/graphql-go/graphql"
+	"github.com/graphql-go/graphql/gqlerrors"
+	"github.com/graphql-go/graphql/language/ast"
+	"github.com/graphql-go/graphql/language/parser"
+	"github.com/graphql-go/graphql/language/source"
 
 	"github.com/johalputt/vayupress/internal/db"
 )
+
+// Query-cost bounds (audit M12). The public /api/v1/graphql endpoint is
+// unauthenticated and some resolvers load up to 1000 rows each, so a single
+// ≤64 KiB document that aliases an expensive root field hundreds of times could
+// fan out into ~1e6 DB resolver calls. These caps reject such a query before
+// execution. A real query uses a handful of fields at shallow depth.
+const (
+	maxQueryFields = 200 // total field selections across the operation
+	maxQueryDepth  = 12  // selection-set nesting depth
+)
+
+// checkQueryCost parses query and rejects it when its total field-selection count
+// or nesting depth exceeds the cost bounds. A parse error is ignored here so
+// graphql.Do returns the proper, client-friendly syntax error.
+func checkQueryCost(query string) error {
+	doc, err := parser.Parse(parser.ParseParams{Source: source.NewSource(&source.Source{Body: []byte(query)})})
+	if err != nil || doc == nil {
+		return nil
+	}
+	fields, depth := 0, 0
+	var walk func(ss *ast.SelectionSet, d int)
+	walk = func(ss *ast.SelectionSet, d int) {
+		if ss == nil {
+			return
+		}
+		if d > depth {
+			depth = d
+		}
+		for _, sel := range ss.Selections {
+			if fields > maxQueryFields || depth > maxQueryDepth {
+				return
+			}
+			switch f := sel.(type) {
+			case *ast.Field:
+				fields++
+				walk(f.SelectionSet, d+1)
+			case *ast.InlineFragment:
+				walk(f.SelectionSet, d+1)
+			}
+		}
+	}
+	for _, def := range doc.Definitions {
+		if op, ok := def.(*ast.OperationDefinition); ok {
+			walk(op.SelectionSet, 1)
+		}
+	}
+	if fields > maxQueryFields {
+		return fmt.Errorf("query rejected: %d field selections exceeds the limit of %d", fields, maxQueryFields)
+	}
+	if depth > maxQueryDepth {
+		return fmt.Errorf("query rejected: selection depth %d exceeds the limit of %d", depth, maxQueryDepth)
+	}
+	return nil
+}
 
 // Resolver is the data-access seam the schema depends on. It is satisfied by a
 // thin adapter in package main so this package stays free of HTTP/app wiring.
@@ -250,6 +309,9 @@ func toInterfaceSlice(arts []db.Article) []interface{} {
 // Execute runs a GraphQL query and returns the result. variables and
 // operationName may be nil/empty.
 func (s *Service) Execute(ctx context.Context, query string, variables map[string]interface{}, operationName string) *graphql.Result {
+	if err := checkQueryCost(query); err != nil {
+		return &graphql.Result{Errors: []gqlerrors.FormattedError{gqlerrors.NewFormattedError(err.Error())}}
+	}
 	return graphql.Do(graphql.Params{
 		Schema:         s.schema,
 		RequestString:  query,

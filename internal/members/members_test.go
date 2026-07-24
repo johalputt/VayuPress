@@ -15,7 +15,7 @@ func newTestStore(t *testing.T) *Store {
 		t.Fatal(err)
 	}
 	for _, stmt := range []string{
-		`CREATE TABLE members(id TEXT PRIMARY KEY,email TEXT NOT NULL UNIQUE,name TEXT NOT NULL DEFAULT '',note TEXT NOT NULL DEFAULT '',tier TEXT NOT NULL DEFAULT 'free',status TEXT NOT NULL DEFAULT 'active',newsletter_opt_in INTEGER NOT NULL DEFAULT 1,reply_notify INTEGER NOT NULL DEFAULT 1,stripe_customer TEXT NOT NULL DEFAULT '',last_seen_at DATETIME,created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,country TEXT NOT NULL DEFAULT '',region TEXT NOT NULL DEFAULT '',city TEXT NOT NULL DEFAULT '',domain_id TEXT NOT NULL DEFAULT '',gender TEXT NOT NULL DEFAULT '',avatar_choice TEXT NOT NULL DEFAULT '',avatar_mime TEXT NOT NULL DEFAULT '',avatar_blob BLOB)`,
+		`CREATE TABLE members(id TEXT PRIMARY KEY,email TEXT NOT NULL UNIQUE,name TEXT NOT NULL DEFAULT '',note TEXT NOT NULL DEFAULT '',tier TEXT NOT NULL DEFAULT 'free',status TEXT NOT NULL DEFAULT 'active',newsletter_opt_in INTEGER NOT NULL DEFAULT 1,reply_notify INTEGER NOT NULL DEFAULT 1,stripe_customer TEXT NOT NULL DEFAULT '',last_seen_at DATETIME,created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,country TEXT NOT NULL DEFAULT '',region TEXT NOT NULL DEFAULT '',city TEXT NOT NULL DEFAULT '',domain_id TEXT NOT NULL DEFAULT '',gender TEXT NOT NULL DEFAULT '',avatar_choice TEXT NOT NULL DEFAULT '',avatar_mime TEXT NOT NULL DEFAULT '',avatar_blob BLOB,mail_address TEXT NOT NULL DEFAULT '')`,
 		`CREATE TABLE member_login_tokens(token_hash TEXT PRIMARY KEY,email TEXT NOT NULL,expires_at DATETIME NOT NULL)`,
 		`CREATE TABLE member_sessions(token_hash TEXT PRIMARY KEY,member_id TEXT NOT NULL,expires_at DATETIME NOT NULL)`,
 		`CREATE TABLE article_access(slug TEXT PRIMARY KEY,level TEXT NOT NULL DEFAULT 'public',price_cents INTEGER NOT NULL DEFAULT 0)`,
@@ -277,5 +277,43 @@ func TestUpgradeByEmailCreatesPaid(t *testing.T) {
 	got, _ := s.Get(ctx, "new@b.com")
 	if !got.IsPaid() {
 		t.Error("UpgradeByEmail should create a paid member")
+	}
+}
+
+// TestClaimMailAddressAtomic guards audit M13: the "one mailbox per member" rule
+// is enforced by an atomic conditional UPDATE, so two concurrent claims with
+// different localparts cannot both reserve a slot — exactly one wins, and a
+// release re-opens the slot for a retry after a provisioning failure.
+func TestClaimMailAddressAtomic(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	if _, err := s.db.ExecContext(ctx, `INSERT INTO members(id,email) VALUES('m1','a@x.com')`); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := s.ClaimMailAddress(ctx, "a@x.com", "alice@x.com"); err != nil || !ok {
+		t.Fatalf("first claim should win: ok=%v err=%v", ok, err)
+	}
+	// A second claim with a different localpart must lose (slot already taken).
+	if ok, err := s.ClaimMailAddress(ctx, "a@x.com", "alice2@x.com"); err != nil {
+		t.Fatal(err)
+	} else if ok {
+		t.Fatal("second concurrent claim must lose (one mailbox per member)")
+	}
+	if got := s.MailAddressFor(ctx, "a@x.com"); got != "alice@x.com" {
+		t.Fatalf("stored address = %q, want alice@x.com", got)
+	}
+	// Releasing the reservation (a provisioning failure) re-opens the slot.
+	if err := s.ClearMailAddressIf(ctx, "a@x.com", "alice@x.com"); err != nil {
+		t.Fatal(err)
+	}
+	if ok, _ := s.ClaimMailAddress(ctx, "a@x.com", "bob@x.com"); !ok {
+		t.Fatal("claim should succeed after the slot is released")
+	}
+	// ClearMailAddressIf must NOT clear a different, already-provisioned address.
+	if err := s.ClearMailAddressIf(ctx, "a@x.com", "someone-else@x.com"); err != nil {
+		t.Fatal(err)
+	}
+	if got := s.MailAddressFor(ctx, "a@x.com"); got != "bob@x.com" {
+		t.Fatalf("address wrongly cleared: %q, want bob@x.com", got)
 	}
 }
