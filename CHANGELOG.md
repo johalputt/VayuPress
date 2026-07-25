@@ -6,6 +6,57 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.21] — 2026-07-25
+
+### Fixed
+- **VayuShield no longer hurdles, stalls or jails real readers.** Three
+  compounding false-positive paths meant a genuine visitor could be met with a
+  5-second stall and then the auto-retrying "just a moment" page for hours, with
+  no operator switch that stopped it.
+  - **The reputation jail ignored every operator toggle.** The blocklist gate
+    checks the auto-block switch; the self-learning reputation jail did not — so an
+    operator who turned OFF rate limiting, load shedding, auto-block, adaptive mode
+    and Sovereign Surge still had sentences served to their readers, and no switch
+    left to reach for. It is now gated on auto-block like the blocklist. The engine
+    still *observes* while enforcement is off, so re-enabling is instant.
+  - **A score-only tarpit or block could hit ordinary page loads.** Both are
+    reached from the same "score above the block threshold" condition, so a single
+    mis-scored browser lost 5 seconds per page *and* took reputation damage — two
+    or three page loads then collapsed its standing past the jail floor and the
+    escalating sentence answered every later request. A top-level navigation from a
+    merely-unproven client is now handed the ordinary solvable challenge instead:
+    cleared in well under a second, with no reputation damage, so the spiral cannot
+    start. Clients identified by signature and all non-navigation traffic (asset
+    and API hammering) keep the full tarpit/block treatment.
+  - **A mis-jailed visitor waited out the redeem budget on a dead page.** Solving
+    the challenge both issues the clearance cookie and pardons the sentence, so a
+    browser navigation is now always offered it while there is no active flood —
+    out on the first page load. Non-browser traffic still gets the cheap rejection,
+    and the carve-out collapses under attack.
+
+  Crawler handling is untouched: the SEO fast path still runs before every gate.
+
+### Added
+- **Visitor & crawler check — live proof on the Bot Shield page.** The SEO canary
+  already drove synthetic crawlers through the live middleware at boot, but only
+  wrote the result to the log. It now also probes four ordinary first-time readers
+  (Chrome, Safari/iPhone, Firefox, Chromium) as real top-level navigations, and the
+  whole report is surfaced as a panel: a per-probe served / challenged / blocked
+  verdict measured against **your current settings**, with a Refresh button. The
+  card auto-expands and names the problem when something is wrong rather than
+  showing green — so "is the shield hurting my readers or my indexing?" is answered
+  with evidence. Probes run in-process and are never counted as real traffic.
+- **Release all sentences now** — an operator amnesty control on the Bot Shield
+  page. Sentences self-expire but escalate to hours, so after fixing the cause of a
+  false-positive run this frees your readers at once instead of waiting the
+  punishment out.
+
+### Changed
+- **Website page redesigned to the Monetization-console style.** A stat-grid header
+  (what the root serves · active design · designs available · custom build) plus
+  animated accordion cards grouped under Hosting, Design &amp; content and Custom
+  build, replacing the flat stack of cards.
+
 ## [3.15.20] — 2026-07-24
 
 ### Changed
