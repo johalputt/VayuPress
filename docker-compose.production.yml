@@ -1,0 +1,7 @@
+# Production override: enable Caddy's administration IP allowlist.
+services:
+  caddy:
+    environment:
+      ADMIN_ALLOWED_IPS: ${ADMIN_ALLOWED_IPS:?set ADMIN_ALLOWED_IPS in .env.production}
+    volumes:
+      - ./Caddyfile.production:/etc/caddy/Caddyfile:ro

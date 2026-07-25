@@ -1,0 +1,58 @@
+# Caddy uses its local CA for localhost and public ACME certificates for a real
+# DOMAIN. It also redirects HTTP to HTTPS automatically.
+{
+	servers {
+		# Bound slow clients and oversized request headers at the public edge.
+		timeouts {
+			read_header 10s
+			read_body 5m
+			idle 2m
+		}
+		max_header_size 32KB
+
+		# Avoid replaying state-changing requests as HTTP/3 early data.
+		0rtt off
+	}
+}
+
+{$DOMAIN:localhost} {
+	encode zstd gzip
+
+	# JSON access logs go to stdout for `docker compose logs caddy`. Caddy
+	# redacts Cookie and Authorization values by default.
+	log {
+		output stdout
+		format json
+	}
+
+	# Match the VPS edge cap. Endpoint-specific, smaller application limits
+	# remain authoritative after the request reaches VayuPress.
+	request_body {
+		max_size 50MiB
+	}
+
+	# Set defense-in-depth defaults only when VayuPress did not set the header.
+	# In particular, never replace its per-request nonce-based CSP.
+	header {
+		?Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+		?X-Content-Type-Options "nosniff"
+		?X-Frame-Options "DENY"
+		?X-XSS-Protection "1; mode=block"
+		?Referrer-Policy "strict-origin-when-cross-origin"
+		?Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+	}
+
+	reverse_proxy vayupress:8080 {
+		# Preserve long-lived WebSocket/SSE sessions across ordinary reloads,
+		# but eventually recycle abandoned streams.
+		stream_close_delay 5m
+		stream_timeout 24h
+
+		transport http {
+			dial_timeout 10s
+			response_header_timeout 60s
+			write_timeout 30s
+			max_response_header 32KB
+		}
+	}
+}

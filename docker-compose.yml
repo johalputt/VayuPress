@@ -2,14 +2,34 @@
 #
 #   1. Copy .env.example to .env and set a strong API_KEY + your DOMAIN.
 #   2. docker compose up -d --build
-#   3. Put a TLS-terminating reverse proxy (nginx/Caddy) in front (see
-#      docs/INSTALLATION.md). VayuPress itself speaks plain HTTP on :8080 and
-#      expects to sit behind a trusted proxy that sets X-Forwarded-For.
+#   3. Open https://$DOMAIN. Caddy provisions and renews TLS automatically.
 #
 # Search is built in (VayuFind, ADR-0101) — there is no external search service
 # to run. The single binary is the whole deployment.
 
 services:
+  caddy:
+    image: caddy:2.11.4-alpine
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp" # HTTP/3
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:2019/config/"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+    networks:
+      proxy:
+        ipv4_address: 172.30.0.2
+
   vayupress:
     build:
       context: .
@@ -17,12 +37,17 @@ services:
         VERSION: ${VAYU_VERSION:-docker}
     image: vayupress:latest
     restart: unless-stopped
-    ports:
-      - "127.0.0.1:8080:8080"   # bind to loopback; the reverse proxy exposes 443
+    expose:
+      - "8080" # reachable only by Caddy on the private Compose network
+    depends_on:
+      caddy:
+        condition: service_healthy
     environment:
       API_KEY: ${API_KEY:?set API_KEY in .env}
       DOMAIN: ${DOMAIN:-localhost}
       PORT: "8080"
+      # Trust only Caddy's fixed private address, not the whole Docker subnet.
+      TRUSTED_PROXIES: 172.30.0.2/32
     volumes:
       - vayupress-data:/var/lib/vayupress     # SQLite DB + uploaded media
       - vayupress-cache:/var/cache/vayupress  # rendered HTML / sitemap / feed
@@ -32,7 +57,18 @@ services:
       timeout: 3s
       retries: 3
       start_period: 10s
+    networks:
+      - proxy
 
 volumes:
   vayupress-data:
   vayupress-cache:
+  caddy-data:
+  caddy-config:
+
+networks:
+  proxy:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
