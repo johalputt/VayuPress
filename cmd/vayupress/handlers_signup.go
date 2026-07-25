@@ -73,7 +73,7 @@ func (a *App) handleMemberSignup(w http.ResponseWriter, r *http.Request) {
 <title>Join ` + brand + `</title>
 <meta name="description" content="Become a member of ` + brand + ` — sign up free and read everything.">
 <link rel="stylesheet" href="/theme.css">
-<link rel="stylesheet" href="/static/css/signup.css">
+<link rel="stylesheet" href="/static/css/signup.css?v=` + assetVer("css/signup.css") + `">
 <link rel="icon" type="image/png" href="/static/favicon-light.png">
 </head>
 <body class="su-body">

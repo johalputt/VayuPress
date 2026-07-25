@@ -61,6 +61,11 @@ type Member struct {
 	City            string     `json:"city,omitempty"`
 	LastSeenAt      *time.Time `json:"last_seen_at,omitempty"`
 	CreatedAt       time.Time  `json:"created_at"`
+	// VerifiedAt is when this person proved they control the address — the magic
+	// link was consumed, a mailbox credential authenticated, or a payment
+	// completed. Every creation path stamps it, so nil means the row predates that
+	// rule and was never confirmed.
+	VerifiedAt *time.Time `json:"verified_at,omitempty"`
 	// DomainID is the VayuDomains attribution: which domain this member signed up
 	// on ("" = the primary / unassigned bucket). Login stays keyed by the globally
 	// unique email, so this is a reporting dimension, not a read filter (Stage 4).
@@ -102,7 +107,7 @@ type Store struct{ db *sql.DB }
 func New(db *sql.DB) *Store { return &Store{db: db} }
 
 // memberCols is the canonical SELECT column list for scanning into a Member.
-const memberCols = `id,email,name,note,tier,status,newsletter_opt_in,reply_notify,stripe_customer,last_seen_at,created_at,country,region,city,domain_id,gender,avatar_choice`
+const memberCols = `id,email,name,note,tier,status,newsletter_opt_in,reply_notify,stripe_customer,last_seen_at,created_at,country,region,city,domain_id,gender,avatar_choice,verified_at`
 
 // scanner is satisfied by both *sql.Row and *sql.Rows.
 type scanner interface {
@@ -114,8 +119,8 @@ func scanMember(sc scanner) (*Member, error) {
 	var m Member
 	var note, stripe string
 	var optIn, replyNotify int
-	var lastSeen sql.NullTime
-	if err := sc.Scan(&m.ID, &m.Email, &m.Name, &note, &m.Tier, &m.Status, &optIn, &replyNotify, &stripe, &lastSeen, &m.CreatedAt, &m.Country, &m.Region, &m.City, &m.DomainID, &m.Gender, &m.AvatarChoice); err != nil {
+	var lastSeen, verified sql.NullTime
+	if err := sc.Scan(&m.ID, &m.Email, &m.Name, &note, &m.Tier, &m.Status, &optIn, &replyNotify, &stripe, &lastSeen, &m.CreatedAt, &m.Country, &m.Region, &m.City, &m.DomainID, &m.Gender, &m.AvatarChoice, &verified); err != nil {
 		return nil, err
 	}
 	m.Note = note
@@ -125,6 +130,10 @@ func scanMember(sc scanner) (*Member, error) {
 	if lastSeen.Valid {
 		t := lastSeen.Time.UTC()
 		m.LastSeenAt = &t
+	}
+	if verified.Valid {
+		t := verified.Time.UTC()
+		m.VerifiedAt = &t
 	}
 	return &m, nil
 }
@@ -139,21 +148,114 @@ func (s *Store) Upsert(ctx context.Context, email string) (*Member, error) {
 // primary domain, byte-identical; a secondary domain id records where the member
 // signed up). An existing member keeps its original domain — email is globally
 // unique, so a member is a single entity found by email regardless of scope.
+//
+// Calling this asserts the address has just been PROVEN: the caller consumed a
+// magic link, authenticated a mailbox credential, or completed a payment. There
+// is deliberately no way to create a member without that proof, so an address
+// that was merely typed into a form never becomes a member — and verified_at is
+// stamped here rather than left to each caller to remember.
 func (s *Store) UpsertScoped(ctx context.Context, scope, email string) (*Member, error) {
 	email = strings.TrimSpace(strings.ToLower(email))
 	if _, err := mail.ParseAddress(email); err != nil {
 		return nil, fmt.Errorf("invalid email: %w", err)
 	}
 	if m, err := s.Get(ctx, email); err == nil {
+		// An existing row that predates the verification rule is confirmed now: the
+		// caller just proved control of the address.
+		if m.VerifiedAt == nil {
+			now := time.Now().UTC()
+			if _, err := s.db.ExecContext(ctx, `UPDATE members SET verified_at=? WHERE id=? AND verified_at IS NULL`, now, m.ID); err == nil {
+				m.VerifiedAt = &now
+			}
+		}
 		return m, nil
 	}
 	id := randHex(12)
+	now := time.Now().UTC()
 	if _, err := s.db.ExecContext(ctx,
-		`INSERT INTO members(id,email,domain_id) VALUES(?,?,?)`, id, email, scope); err != nil {
+		`INSERT INTO members(id,email,domain_id,verified_at) VALUES(?,?,?,?)`, id, email, scope, now); err != nil {
 		return nil, fmt.Errorf("upsert member: %w", err)
 	}
 	s.recordEventTx(ctx, id, EventSignup, "", 0)
-	return &Member{ID: id, Email: email, Tier: TierFree, Status: "active", NewsletterOptIn: true, DomainID: scope, CreatedAt: time.Now().UTC()}, nil
+	return &Member{ID: id, Email: email, Tier: TierFree, Status: "active", NewsletterOptIn: true, DomainID: scope, CreatedAt: now, VerifiedAt: &now}, nil
+}
+
+// Exists reports whether a member row already exists for email. It is the
+// enumeration-safe way to ask "is this a returning address?" without creating
+// anything — used to decide whether a first-time welcome is due.
+func (s *Store) Exists(ctx context.Context, email string) bool {
+	var one int
+	err := s.db.QueryRowContext(ctx, `SELECT 1 FROM members WHERE email=?`,
+		strings.TrimSpace(strings.ToLower(email))).Scan(&one)
+	return err == nil
+}
+
+// Unverified returns members that were never confirmed — rows created by the
+// pre-verification signup path that shipped before verified_at existed. They are
+// the only members whose address may not be real, so the console lists them for
+// removal.
+func (s *Store) Unverified(ctx context.Context, limit int) ([]Member, error) {
+	if limit <= 0 || limit > 500 {
+		limit = 200
+	}
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT `+memberCols+` FROM members WHERE verified_at IS NULL ORDER BY created_at DESC LIMIT ?`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Member
+	for rows.Next() {
+		m, err := scanMember(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *m)
+	}
+	return out, rows.Err()
+}
+
+// CountUnverified returns how many members were never confirmed.
+func (s *Store) CountUnverified(ctx context.Context) int {
+	var n int
+	_ = s.db.QueryRowContext(ctx, `SELECT COUNT(1) FROM members WHERE verified_at IS NULL`).Scan(&n)
+	return n
+}
+
+// Delete removes a member and everything keyed to them: sessions (so any live
+// cookie dies immediately), pending magic-link tokens, subscription and event
+// history. It refuses to touch a verified member — removing a real person's
+// account is a different, deliberate operation, and this exists to clear
+// never-confirmed rows.
+func (s *Store) Delete(ctx context.Context, email string) error {
+	email = strings.TrimSpace(strings.ToLower(email))
+	m, err := s.Get(ctx, email)
+	if err != nil {
+		return fmt.Errorf("no such member")
+	}
+	if m.VerifiedAt != nil {
+		return fmt.Errorf("member is verified")
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	for _, q := range []struct {
+		sql, arg string
+	}{
+		{`DELETE FROM member_sessions WHERE member_id=?`, m.ID},
+		{`DELETE FROM member_events WHERE member_id=?`, m.ID},
+		{`DELETE FROM member_subscriptions WHERE member_id=?`, m.ID},
+		{`DELETE FROM member_label_map WHERE member_id=?`, m.ID},
+		{`DELETE FROM member_login_tokens WHERE email=?`, m.Email},
+		{`DELETE FROM members WHERE id=?`, m.ID},
+	} {
+		if _, err := tx.ExecContext(ctx, q.sql, q.arg); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 // CountsByDomain returns the number of members per signup domain, keyed by

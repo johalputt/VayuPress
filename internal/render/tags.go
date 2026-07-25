@@ -17,6 +17,7 @@ type TagInfo struct {
 // tagURL path-escapes a tag so links survive spaces, slashes, and other
 // characters that are legal in a tag but not in a raw URL path segment.
 var tagFuncs = template.FuncMap{
+	"portalJS":  PortalJSLink,
 	"humanDate": func(t time.Time) string { return t.Format("2 January 2006") },
 	"shortDate": func(t time.Time) string { return t.UTC().Format("2006-01-02") },
 	"tagURL":    func(s string) string { return url.PathEscape(s) },
@@ -80,7 +81,7 @@ var tagIndexTmpl = template.Must(template.New("tagindex").Funcs(tagFuncs).Parse(
 <link rel="icon" type="image/png" href="/static/favicon-light.png" media="(prefers-color-scheme: dark)">
 <link rel="icon" type="image/png" href="/static/favicon-light.png">
 <script defer src="/static/vp-analytics.js"></script>
-<script defer src="/static/js/portal.js"></script>
+{{portalJS}}
 </head><body>
 <a href="#main-content" class="skip-link">Skip to main content</a>
 <div class="container">
@@ -119,7 +120,7 @@ var tagPageTmpl = template.Must(template.New("tagpage").Funcs(tagFuncs).Parse(`<
 <link rel="icon" type="image/png" href="/static/favicon-light.png" media="(prefers-color-scheme: dark)">
 <link rel="icon" type="image/png" href="/static/favicon-light.png">
 <script defer src="/static/vp-analytics.js"></script>
-<script defer src="/static/js/portal.js"></script>
+{{portalJS}}
 </head><body>
 <a href="#main-content" class="skip-link">Skip to main content</a>
 <div class="container">

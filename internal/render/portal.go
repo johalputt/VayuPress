@@ -4,6 +4,10 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"html/template"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
 )
 
 // PortalJS is the VayuPortal membership widget: a floating launch button plus a
@@ -642,7 +646,7 @@ const PortalJS = `(function () {
     if (document.querySelector('link[data-vp-portal]')) { return; }
     var l = document.createElement('link');
     l.rel = 'stylesheet';
-    l.href = '/static/css/portal.css';
+    l.href = '__PORTAL_CSS_HREF__';
     l.setAttribute('data-vp-portal', '');
     document.head.appendChild(l);
   }
@@ -669,14 +673,70 @@ const PortalJS = `(function () {
   else { document.addEventListener('DOMContentLoaded', init); }
 })();`
 
-// portalJSHash versions the widget URL for cache-busting.
-var portalJSHash = func() string {
-	sum := sha256.Sum256([]byte(PortalJS))
+// portalCSSToken is the placeholder the served script carries in place of the
+// stylesheet URL, so the URL can be content-versioned at boot.
+const portalCSSToken = "__PORTAL_CSS_HREF__"
+
+// portal.css is served with a one-year immutable cache lifetime, which is only
+// safe if its URL changes whenever its bytes do. The widget injects the
+// stylesheet from script rather than from page HTML, so the version has to reach
+// it through the script — hence the placeholder above, resolved here.
+var (
+	portalAssetMu  sync.RWMutex
+	portalCSSVer   string
+	portalJSBody   = strings.Replace(PortalJS, portalCSSToken, "/static/css/portal.css", 1)
+	portalJSVerStr = shortSum(portalJSBody)
+)
+
+// SetPortalCSSVersion records the content version of the on-disk portal.css and
+// rebuilds the served script around it. Hashing the finished body means a
+// stylesheet-only change also moves the script URL, so a client holding a cached
+// script still learns about the new stylesheet.
+func SetPortalCSSVersion(ver string) {
+	href := "/static/css/portal.css"
+	if ver != "" {
+		href += "?v=" + ver
+	}
+	body := strings.Replace(PortalJS, portalCSSToken, href, 1)
+	portalAssetMu.Lock()
+	portalCSSVer, portalJSBody, portalJSVerStr = ver, body, shortSum(body)
+	portalAssetMu.Unlock()
+}
+
+// initPortalCSSVersion hashes portal.css from staticDir. It runs from Init,
+// after syncEmbeddedStatic has refreshed the file on disk.
+func initPortalCSSVersion(staticDir string) {
+	if staticDir == "" {
+		return
+	}
+	b, err := os.ReadFile(filepath.Join(staticDir, "css", "portal.css"))
+	if err != nil {
+		return
+	}
+	SetPortalCSSVersion(shortSum(string(b)))
+}
+
+func shortSum(s string) string {
+	sum := sha256.Sum256([]byte(s))
 	return hex.EncodeToString(sum[:8])
-}()
+}
+
+// PortalJSBody returns the widget script exactly as it should be served.
+func PortalJSBody() string {
+	portalAssetMu.RLock()
+	defer portalAssetMu.RUnlock()
+	return portalJSBody
+}
+
+// PortalJSVersion returns the cache-busting version of the served script body.
+func PortalJSVersion() string {
+	portalAssetMu.RLock()
+	defer portalAssetMu.RUnlock()
+	return portalJSVerStr
+}
 
 // PortalJSLink returns the deferred <script> tag for the VayuPortal widget,
-// versioned so a new build invalidates any cached copy.
+// versioned so neither a new build nor a restyle can be masked by a cached copy.
 func PortalJSLink() template.HTML {
-	return template.HTML(`<script src="/static/js/portal.js?v=` + portalJSHash + `" defer></script>`)
+	return template.HTML(`<script src="/static/js/portal.js?v=` + PortalJSVersion() + `" defer></script>`)
 }

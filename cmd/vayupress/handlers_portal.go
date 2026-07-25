@@ -500,5 +500,14 @@ func (a *App) handleMemberVayuMailPrivKey(w http.ResponseWriter, r *http.Request
 func (a *App) handleMemberPortalJS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
 	w.Header().Set("Cache-Control", "public, max-age=86400")
-	_, _ = w.Write([]byte(render.PortalJS))
+	// Serve the resolved body (the stylesheet URL carries its content version) and
+	// an ETag over it, so a client that kept an older copy revalidates cheaply
+	// instead of holding a script that points at a superseded stylesheet.
+	body := render.PortalJSBody()
+	w.Header().Set("ETag", `"`+render.PortalJSVersion()+`"`)
+	if match := r.Header.Get("If-None-Match"); match != "" && strings.Contains(match, render.PortalJSVersion()) {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+	_, _ = w.Write([]byte(body))
 }

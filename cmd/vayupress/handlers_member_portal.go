@@ -82,7 +82,7 @@ func (a *App) handleMemberSigninPage(w http.ResponseWriter, r *http.Request) {
 <title>Sign in · ` + brand + `</title>
 <meta name="description" content="Sign in to your ` + brand + ` membership.">
 <link rel="stylesheet" href="/theme.css">
-<link rel="stylesheet" href="/static/css/signup.css">
+<link rel="stylesheet" href="/static/css/signup.css?v=` + assetVer("css/signup.css") + `">
 <link rel="icon" type="image/png" href="/static/favicon-light.png">
 </head>
 <body class="su-body">
@@ -318,7 +318,7 @@ func (a *App) handleMemberAccount(w http.ResponseWriter, r *http.Request) {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Your account · ` + brand + `</title>
 <link rel="stylesheet" href="/theme.css">
-<link rel="stylesheet" href="/static/css/signup.css">
+<link rel="stylesheet" href="/static/css/signup.css?v=` + assetVer("css/signup.css") + `">
 <link rel="icon" type="image/png" href="/static/favicon-light.png">
 </head>
 <body class="su-body">
@@ -577,7 +577,7 @@ func (a *App) handlePricingPage(w http.ResponseWriter, r *http.Request) {
 <title>Membership plans · ` + brand + `</title>
 <meta name="description" content="Choose a membership plan to support ` + brand + ` and unlock premium posts.">
 <link rel="stylesheet" href="/theme.css">
-<link rel="stylesheet" href="/static/css/signup.css">
+<link rel="stylesheet" href="/static/css/signup.css?v=` + assetVer("css/signup.css") + `">
 <link rel="icon" type="image/png" href="/static/favicon-light.png">
 </head>
 <body class="su-body">

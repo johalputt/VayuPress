@@ -889,7 +889,7 @@ var checkoutInstructionsTmpl = htmpl.Must(htmpl.New("checkout-instructions").Par
 <title>Order {{.Reference}} · {{.Brand}}</title>
 <meta name="robots" content="noindex, nofollow">
 <link rel="stylesheet" href="/theme.css">
-<link rel="stylesheet" href="/static/css/signup.css">
+<link rel="stylesheet" href="/static/css/signup.css?v=` + assetVer("css/signup.css") + `">
 <link rel="icon" type="image/png" href="/static/favicon-light.png">
 </head>
 <body class="su-body">
@@ -940,7 +940,7 @@ func checkoutShell(title, body string) string {
 <title>` + safeTitle + ` · ` + brand + `</title>
 <meta name="robots" content="noindex, nofollow">
 <link rel="stylesheet" href="/theme.css">
-<link rel="stylesheet" href="/static/css/signup.css">
+<link rel="stylesheet" href="/static/css/signup.css?v=` + assetVer("css/signup.css") + `">
 <link rel="icon" type="image/png" href="/static/favicon-light.png">
 </head>
 <body class="su-body">` + body + `

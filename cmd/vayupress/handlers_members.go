@@ -125,18 +125,19 @@ func (a *App) handleMemberLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	email := strings.TrimSpace(strings.ToLower(emailRaw))
 
-	// Always behave the same way regardless of whether the email is known, so
-	// the endpoint cannot enumerate members. A brand-new address additionally
-	// gets a one-time welcome email alongside its sign-in link.
-	_, getErr := a.members.Get(r.Context(), email)
-	isNew := getErr != nil
-	if _, err := a.members.UpsertScoped(r.Context(), a.memberScope(r), email); err == nil {
-		if token, err := a.members.CreateLoginToken(r.Context(), email); err == nil {
-			go a.sendMemberMagicLink(email, token)
-		}
-		if isNew {
-			go a.sendMemberWelcome(email)
-		}
+	// Issue the link ONLY — do not create a member. Requesting a link proves
+	// nothing about the address: anyone can type anything here, and a typo or a
+	// throwaway domain whose mail bounces would otherwise leave a permanent
+	// "member" behind who never received, let alone clicked, anything. The member
+	// row is created in handleMemberVerify, when the emailed token comes back — the
+	// one moment control of the address is actually demonstrated.
+	//
+	// The token row carries the address on its own (no foreign key to members) and
+	// expires in 30 minutes, so nothing durable is written for an address that
+	// never confirms. Behaviour is identical for known and unknown addresses, so
+	// this still cannot be used to enumerate members.
+	if token, err := a.members.CreateLoginToken(r.Context(), email); err == nil {
+		go a.sendMemberMagicLink(email, token)
 	}
 	if formPost {
 		http.Redirect(w, r, "/?check_email=1", http.StatusSeeOther)
@@ -204,10 +205,17 @@ func (a *App) handleMemberVerify(w http.ResponseWriter, r *http.Request) {
 	if c, err := r.Cookie(memberCookie); err == nil && c.Value != "" {
 		_ = a.members.DestroySession(r.Context(), c.Value)
 	}
+	// This is where membership begins: the token came back, so the address is
+	// proven. Ask whether it is new BEFORE upserting, so the welcome greeting goes
+	// out exactly once — on first confirmed join rather than on every link request.
+	isNew := !a.members.Exists(r.Context(), email)
 	m, err := a.members.UpsertScoped(r.Context(), a.memberScope(r), email)
 	if err != nil {
 		http.Error(w, "could not sign in", http.StatusInternalServerError)
 		return
+	}
+	if isNew {
+		go a.sendMemberWelcome(email)
 	}
 	// Record coarse, GDPR-safe join location once (country/region/city; no IP).
 	geo := geoFromHeaders(r)

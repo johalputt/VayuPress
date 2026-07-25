@@ -621,7 +621,7 @@ func (a *App) handlePublicAuthor(w http.ResponseWriter, r *http.Request) {
 <title>` + name + ` · ` + brand + `</title>
 <meta name="description" content="` + name + ` on ` + brand + `.">
 <link rel="stylesheet" href="/theme.css">
-<link rel="stylesheet" href="/static/css/signup.css">
+<link rel="stylesheet" href="/static/css/signup.css?v=` + assetVer("css/signup.css") + `">
 <link rel="icon" type="image/png" href="/static/favicon-light.png">
 <script src="/static/js/theme-toggle.js" defer></script>
 </head>

@@ -451,6 +451,10 @@ func (a *App) registerRoutes(r chi.Router, staticDir string) {
 		r.With(auth.CSRFTokenMiddleware).Put("/api/v1/admin/members/{email}/tier", a.handleMemberSetTier)
 		r.With(auth.CSRFTokenMiddleware).Put("/api/v1/admin/members/{email}/cancel", a.handleMemberCancel)
 		r.Get("/api/v1/admin/members/{email}", a.handleMemberDetail)
+		// Clearing members who never confirmed their address. The store refuses to
+		// delete a verified member, so neither endpoint can remove a real account.
+		r.With(auth.CSRFTokenMiddleware).Post("/api/v1/admin/members/unverified/purge", a.handleMembersPurgeUnverified)
+		r.With(auth.CSRFTokenMiddleware).Delete("/api/v1/admin/members/{email}", a.handleMemberDeleteAdmin)
 		r.With(auth.CSRFTokenMiddleware).Post("/api/v1/admin/members/{email}/labels", a.handleMemberLabelAdd)
 		r.With(auth.CSRFTokenMiddleware).Delete("/api/v1/admin/members/{email}/labels/{label}", a.handleMemberLabelRemove)
 		r.Get("/api/v1/admin/articles/{slug}/access", a.handleArticleAccessGet)

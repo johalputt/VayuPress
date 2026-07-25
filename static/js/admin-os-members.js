@@ -157,6 +157,31 @@
     });
   });
 
+  // ── Remove a member who never confirmed their address ───────────────────
+  // Only ever offered on unconfirmed rows, and the server refuses to delete a
+  // verified member, so a real account cannot be lost here by mistake.
+  document.querySelectorAll('[data-remove-member]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var email = btn.dataset.email;
+      if (!window.confirm('Remove ' + email + '?\n\nThis address was never confirmed. If the person is real they can still join later by opening a sign-in link.')) { return; }
+      api('DELETE', '/os/api/members/' + encodeURIComponent(email)).then(function (r) {
+        if (r.ok) { reload(); } else { alert('Could not remove that member.'); }
+      }).catch(function () { alert('Network error.'); });
+    });
+  });
+
+  // ── Remove every unconfirmed address at once ────────────────────────────
+  document.querySelectorAll('[data-purge-unverified]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var n = btn.dataset.count || 'all';
+      if (!window.confirm('Remove ' + n + ' unconfirmed ' + (n === '1' ? 'address' : 'addresses') + '?\n\nVerified members are not affected.')) { return; }
+      btn.disabled = true;
+      api('POST', '/os/api/members/unverified/purge', {}).then(function (r) {
+        if (r.ok) { reload(); } else { btn.disabled = false; alert('Could not remove them.'); }
+      }).catch(function () { btn.disabled = false; alert('Network error.'); });
+    });
+  });
+
   // ── Client-side member search ───────────────────────────────────────────
   var search = document.querySelector('[data-member-search]');
   if (search) {

@@ -579,7 +579,7 @@ func themeEditorPage(vals map[string]string, modeStr, nonce, errMsg string) stri
 	sb.WriteString(`<!DOCTYPE html><html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Theme · VayuPress Console</title>
-<link rel="stylesheet" href="/static/css/admin.css">
+<link rel="stylesheet" href="/static/css/admin.css?v=` + assetVer("css/admin.css") + `">
 </head><body>
 <div class="app-shell">
 <header class="topbar">

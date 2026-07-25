@@ -215,10 +215,18 @@ func (a *App) handleOSMembers(w http.ResponseWriter, r *http.Request) {
 		if m.IsPaid() {
 			actions = `<button type="button" class="btn btn--xs btn--danger" data-cancel-member data-email="` + esc(m.Email) + `">Cancel</button>`
 		}
+		// An unconfirmed row predates the rule that a member must prove control of
+		// their address, so it may not be a real person at all. Say so on the row and
+		// offer the only action that makes sense for it.
+		emailCell := esc(m.Email)
+		if m.VerifiedAt == nil {
+			emailCell += ` <span class="badge badge--warn" title="This address was never confirmed — the sign-in link was requested but never used.">unconfirmed</span>`
+			actions = `<button type="button" class="btn btn--xs btn--danger" data-remove-member data-email="` + esc(m.Email) + `">Remove</button>`
+		}
 		// data-search lets the client-side filter match on email, name and labels.
 		searchKey := esc(strings.ToLower(m.Email + " " + m.Name + " " + strings.Join(m.Labels, " ")))
 		rows += `<tr data-member-row data-search="` + searchKey + `">
-  <td class="row-title">` + esc(m.Email) + `</td>
+  <td class="row-title">` + emailCell + `</td>
   <td>` + name + `</td>
   <td>` + badge + `</td>
   <td><select class="select input--sm" data-member-tier data-email="` + esc(m.Email) + `">` + tierOptions(m.Tier) + `</select></td>
@@ -240,6 +248,10 @@ func (a *App) handleOSMembers(w http.ResponseWriter, r *http.Request) {
     <input class="input input--sm" type="search" placeholder="Search members…" data-member-search aria-label="Search members" style="max-width:16rem">
   </div>
   <div class="empty-state" data-members-empty hidden>No members match your search.</div>` + membersTable + `</div>`
+
+	// Unconfirmed leftovers from the old pre-send signup path. The card only exists
+	// while there is something to clean up, so a healthy install never sees it.
+	unconfirmedCard := unverifiedMembersCardHTML(a.members.CountUnverified(ctx))
 
 	// ── Team & roles (admin-only; staff accounts, not readers) ────────────────
 	teamCard := a.teamCardHTML(r)
@@ -297,7 +309,7 @@ func (a *App) handleOSMembers(w http.ResponseWriter, r *http.Request) {
 
 	body := `<div class="page-header"><h1>Members</h1></div>
 <p class="page-sub">Everyone in your community — memberships, tiers, your team and activity, with growth insights, all owned by you.</p>` +
-		statGrid + insightsCard + activityCard + tiersCard + teamCard + membersCard + modal +
+		statGrid + insightsCard + activityCard + tiersCard + teamCard + unconfirmedCard + membersCard + modal +
 		`<script nonce="` + nonce + `" src="/os/static/js/admin-os-members.js?v=` + assetVer("js/admin-os-members.js") + `"></script>`
 
 	writeOSHTML(w, adminOSLayout(nonce, "Members", "members", cfg, htmpl.HTML(body)))

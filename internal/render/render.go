@@ -98,6 +98,7 @@ var (
 func Init(staticDir string) {
 	policy = bluemonday.UGCPolicy()
 	WriteCSSAssets(staticDir)
+	initPortalCSSVersion(staticDir)
 }
 
 // ── CSS assets ────────────────────────────────────────────────────────────────
@@ -1554,6 +1555,7 @@ func ChromaCSS() string {
 
 var articleTmpl = template.Must(template.New("article").Funcs(template.FuncMap{
 	"blogBase": BlogBase,
+	"portalJS": PortalJSLink,
 	"trunc": func(s string, n int) string {
 		s = regexp.MustCompile(`<[^>]+>`).ReplaceAllString(s, "")
 		s = strings.TrimSpace(s)
@@ -1623,7 +1625,7 @@ var articleTmpl = template.Must(template.New("article").Funcs(template.FuncMap{
 <link rel="icon" type="image/png" href="/static/favicon-light.png" media="(prefers-color-scheme: dark)">
 <link rel="icon" type="image/png" href="/static/favicon-light.png">
 <script defer src="/static/vp-analytics.js"></script>
-<script defer src="/static/js/portal.js"></script>
+{{portalJS}}
 </head><body>
 <a href="#main-content" class="skip-link">Skip to main content</a>
 <div class="container">
@@ -1758,6 +1760,7 @@ func blogPageURL(n int) string {
 }
 
 var homeFuncs = template.FuncMap{
+	"portalJS":  PortalJSLink,
 	"humanDate": func(t time.Time) string { return config.FormatSite(t, "2 January 2006") },
 	"shortDate": func(t time.Time) string { return config.FormatSite(t, "2006-01-02") },
 	"blogBase":  BlogBase,
@@ -1781,7 +1784,7 @@ var homeTmpl = template.Must(template.New("home").Funcs(homeFuncs).Parse(`<!DOCT
 <link rel="icon" type="image/png" href="/static/favicon-light.png" media="(prefers-color-scheme: dark)">
 <link rel="icon" type="image/png" href="/static/favicon-light.png">
 <script defer src="/static/vp-analytics.js"></script>
-<script defer src="/static/js/portal.js"></script>
+{{portalJS}}
 </head><body>
 <a href="#main-content" class="skip-link">Skip to main content</a>
 <div class="container">
@@ -1832,7 +1835,7 @@ var notFoundTmpl = template.Must(template.New("404").Funcs(homeFuncs).Parse(`<!D
 <link rel="icon" type="image/png" href="/static/favicon-light.png" media="(prefers-color-scheme: dark)">
 <link rel="icon" type="image/png" href="/static/favicon-light.png">
 <script defer src="/static/vp-analytics.js"></script>
-<script defer src="/static/js/portal.js"></script>
+{{portalJS}}
 </head><body>
 <div class="container">
 <nav class="vayu-nav" aria-label="Primary">

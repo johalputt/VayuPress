@@ -167,7 +167,7 @@ func (a *App) renderTorWorldUnavailable(w http.ResponseWriter, r *http.Request) 
 	_, _ = w.Write([]byte(`<!doctype html><html><head><meta charset="utf-8">
 <meta http-equiv="refresh" content="4">
 <title>Tor world starting…</title>
-<link rel="stylesheet" href="/os/static/css/admin-os.css">
+<link rel="stylesheet" href="/os/static/css/admin-os.css?v=` + assetVer("css/admin-os.css") + `">
 </head><body class="vp-os" data-space="tor">
 <div style="max-width:34rem;margin:14vh auto;padding:0 1.5rem;text-align:center">
 <h1>Starting your Tor world…</h1>

@@ -257,6 +257,10 @@ func (a *App) registerAdminOSUIRoutes(r chi.Router) {
 		pr.With(auth.CSRFTokenMiddleware).Put("/os/api/members/{email}/cancel", a.handleMemberCancel)
 		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/members/{email}/labels", a.handleMemberLabelAdd)
 		pr.With(auth.CSRFTokenMiddleware).Delete("/os/api/members/{email}/labels/{label}", a.handleMemberLabelRemove)
+		// Removing members who never confirmed their address. The store refuses to
+		// delete a verified member, so neither route can remove a real account.
+		pr.With(auth.CSRFTokenMiddleware).Post("/os/api/members/unverified/purge", a.handleMembersPurgeUnverified)
+		pr.With(auth.CSRFTokenMiddleware).Delete("/os/api/members/{email}", a.handleMemberDeleteAdmin)
 		// Newsletter console — the operator page plus session-friendly management
 		// APIs (the /api/v1/admin/newsletter/* originals require an API key; os
 		// operators hold a session cookie). Writes are CSRF-protected.
