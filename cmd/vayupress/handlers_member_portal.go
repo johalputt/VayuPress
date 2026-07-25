@@ -332,6 +332,7 @@ func (a *App) handleMemberAccount(w http.ResponseWriter, r *http.Request) {
   </div>
   ` + notice + `
   ` + planCard + `
+  ` + a.memberBillingCard(r.Context(), m) + `
   ` + compareCard + `
   ` + mailCard + `
   ` + securityCard + `

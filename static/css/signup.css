@@ -646,3 +646,35 @@ html[data-theme="light"] {
   .pr-cta, .pr-card { transition: none; }
   .pr-cta:hover, .pr-card:hover { transform: none; }
 }
+
+/* ── Membership & billing card ────────────────────────────────────────────────
+   A definition list rather than a table: these are label/value facts, not
+   tabular data, and a dl stays readable when it wraps to one column on a phone. */
+.ma-bill { margin: 0; display: grid; gap: .1rem; }
+.ma-bill-row {
+  display: grid;
+  grid-template-columns: 8.5rem 1fr;
+  gap: .6rem;
+  padding: .5rem 0;
+  border-bottom: 1px solid var(--su-border, rgba(255, 255, 255, .07));
+}
+.ma-bill-row:last-child { border-bottom: 0; }
+.ma-bill-row dt { color: var(--su-muted); font-size: .82rem; }
+.ma-bill-row dd { margin: 0; font-size: .9rem; font-weight: 600; }
+.ma-bill-note {
+  display: block;
+  margin-top: .15rem;
+  font-size: .76rem;
+  font-weight: 400;
+  color: var(--su-muted);
+}
+
+.ma-bill-hist { margin-top: .9rem; padding-top: .8rem; border-top: 1px solid var(--su-border, rgba(255, 255, 255, .07)); }
+.ma-bill-hist-h { font-size: .74rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--su-muted); margin-bottom: .45rem; }
+.ma-bill-hist ul { list-style: none; margin: 0; padding: 0; display: grid; gap: .3rem; }
+.ma-bill-hist li { font-size: .84rem; display: flex; gap: .55rem; }
+.ma-bill-when { color: var(--su-muted); font-variant-numeric: tabular-nums; flex: none; min-width: 5.4rem; }
+
+@media (max-width: 480px) {
+  .ma-bill-row { grid-template-columns: 1fr; gap: .1rem; }
+}
