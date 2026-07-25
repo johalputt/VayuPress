@@ -6,6 +6,41 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.24] — 2026-07-25
+
+### Added
+- **Theme Studio redesigned to the Monetization-console language.** All thirteen
+  control groups now carry an icon, a title, a one-line subtitle and a status chip
+  in the same summary layout as the Monetization accordions, and section dividers
+  group the panel into **Start here · Colour · Layout &amp; type · Fine detail ·
+  Advanced** — so thirteen sections read as five decisions. The single-open
+  accordion behaviour and the sticky jump bar are unchanged.
+- **Readability readout (WCAG contrast).** Contrast is the one property you cannot
+  eyeball — it depends on relative luminance, not on how bold a colour feels. The
+  Brand colours group now measures each accent against the background it is
+  actually read on and reports the grade (AAA / AA / AA-large-only / Fails) with
+  the measured ratio. The collapsed chip grades the **weakest** pairing, so it
+  cannot reassure you when your accent is unreadable on one of the two
+  backgrounds. It reports — it never refuses a colour.
+- **Preview colour-scheme toggle.** The palette is keyed off the preview page's
+  theme attribute, so the light-mode colours you were editing could not be seen
+  without changing your OS setting. Dark / Light buttons in the preview toolbar now
+  reload the preview in the chosen scheme.
+
+### Fixed
+- **A VayuShield block now explains itself.** The Visitor &amp; crawler check
+  reported only a bare status, so a red row said "403" and left the cause ambiguous
+  between a compiled-in signature, a learned signature and plain heuristic scoring.
+  Each failing probe now shows the score, the classification, the bot name, the top
+  reason the scorer recorded, and whether the verdict was treated as *identified*.
+- **Recovery now reaches operator-verified signatures.** The amnesty deliberately
+  preserves signatures someone confirmed, assuming a human vetted them — but
+  confirming a review-queue candidate during a false-positive run marks a **real
+  browser** as an identified bad actor, and identified verdicts get no leniency, so
+  the amnesty could not free those visitors. A new **Forget all learned
+  signatures** control clears every learned row, including verified ones.
+  Compiled-in known-bad signatures are untouched, so real bots stay recognised.
+
 ## [3.15.23] — 2026-07-25
 
 ### Fixed
