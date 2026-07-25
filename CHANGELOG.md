@@ -6,6 +6,45 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.27] — 2026-07-25
+
+### Added
+- **Premium motion for the Vayu flagship theme and the member portal — at no cost
+  to speed or SEO.** Both changes are **CSS only**: no markup moves, so headings,
+  structured data, canonical tags and the geo/analytics hooks are byte-identical and
+  nothing here can shift an SEO or geo result either way. No new requests and no web
+  fonts, so LCP is unchanged. Every effect animates only transform / opacity /
+  shadow / background-position — properties the compositor handles without a layout
+  pass — and all of it stands down under `prefers-reduced-motion`.
+  - **Member panel &amp; login buttons** (shared by every theme): buttons now
+    **enlarge on hover** — lift plus scale, an accent-tinted shadow and a sheen that
+    sweeps across once — with a press state and a real focus ring. The launch button
+    rises in and gains a breathing accent ring. The panel slides with a touch of
+    scale over a blurred backdrop and reveals its rows in a short stagger. On phones
+    it is now a **bottom sheet** — full width, rounded top, grab handle, slide-up,
+    and 46px minimum tap targets. Input focus rings follow the active theme's accent
+    instead of a hard-coded indigo.
+  - **Vayu theme**: a slow aurora glow behind the hero, a drifting gradient on the
+    hero heading, an accent edge that draws itself down each card on hover, a firmer
+    glow-lift, a staggered rise for the first screen of cards, and hover lift on the
+    stats, nav sign-in and pagination.
+
+### Performance
+- **Feed cards skip rendering work while offscreen** (`content-visibility` paired
+  with an intrinsic size so the scrollbar stays stable) — a real Core Web Vitals
+  win rather than a cosmetic one.
+- **The nav underline no longer animates `width`**, which forced a layout pass on
+  every frame; it is now a composited `scaleX` on a full-width bar, visually
+  identical.
+
+### Fixed
+- **A gradient heading can no longer render invisible.** Gradient text needs the
+  glyph fill to be transparent; a bare `color: transparent` is honoured by every
+  engine, so anywhere `background-clip: text` is unsupported the most important
+  text on the page would simply vanish. The hero heading now uses
+  `-webkit-text-fill-color`, matching the other gradient headings — an engine that
+  cannot clip a background to text ignores it too and keeps the solid colour.
+
 ## [3.15.26] — 2026-07-25
 
 ### Fixed
