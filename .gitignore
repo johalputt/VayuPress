@@ -63,3 +63,6 @@ mem.prof
 .claude/
 # CLAUDE.md is intentionally tracked — it holds standing agent instructions
 # that every session (including fresh clones) must auto-follow.
+
+# npm workspace for the screenshot capture tooling (scripts/screenshot.mjs).
+node_modules/

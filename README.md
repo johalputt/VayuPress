@@ -203,24 +203,45 @@ Under the hood: an **immutable platform kernel** (Ed25519 article signing, check
 ![Theme Studio](docs/screenshots/admin-os-theme.png)
 *Theme Studio (`/os/theme`) — a preset gallery and design-token editor with instant live preview, compiled to one sovereign stylesheet served from your own origin.*
 
-![VayuAnalytics](docs/screenshots/admin-os-analytics.png)
-*VayuAnalytics — cookieless, no-PII product analytics computed entirely from your local SQLite database.*
+### 🧅 VayuTor — clearnet and an anonymous Tor world, side by side
+![Spaces — Clearnet and Tor](docs/screenshots/admin-os-spaces.png)
+*Spaces (`/os/spaces`) — one click runs a **second, fully separate** VayuPress as an anonymous `.onion` world with its own database, accounts and identity. The two share nothing, so their content and logins can never be linked. The page states the honest limit rather than claiming perfect anonymity: both worlds run on the same server, so this separates identity and content, not the machine.*
+
+### 💳 Monetization — the whole revenue engine on one page
+![Monetization](docs/screenshots/admin-os-monetization.png)
+*Monetization (`/os/monetization`) — cards, PayPal, crypto (BTC/XMR/ETH/USDT) and direct transfer, membership plans, the premium mail-ID marketplace, paid posts and every order. Funds always settle into your own accounts; there is no platform cut and no SDK lock-in.*
 
 ### 🛡️ VayuShield — the built-in bot shield
 ![Bot Shield & Analytics](docs/screenshots/admin-os-shield.png)
 *The Bot Shield console (`/os/shield`) — a live Aegis layer map (L0 sovereignty lane · L2 fair-shed · L4 challenges · L5 reputation brain · L1 kernel offload), protection toggles that apply with no restart, learned-signature review queue, and cookieless engagement analytics. Self-learning and self-healing: it protects availability automatically, never blocks a real reader or a search/AI crawler, and needs no Cloudflare.*
 
+![VayuAnalytics](docs/screenshots/admin-os-analytics.png)
+*VayuAnalytics — cookieless, no-PII product analytics computed entirely from your local SQLite database.*
+
+### The rest of the ten products
+
+| | |
+|---|---|
+| ![VayuMail](docs/screenshots/admin-os-vayumail.png) | ![VayuTalk](docs/screenshots/admin-os-vayutalk.png) |
+| *VayuMail — a real mail server: SMTP/IMAP/POP3, DKIM, and PGP encryption at rest* | *VayuTalk — end-to-end encrypted chat on your own domain* |
+| ![VayuMCP](docs/screenshots/admin-os-connector.png) | ![Members](docs/screenshots/admin-os-members.png) |
+| *VayuMCP — a built-in MCP server + OAuth 2.1, so Claude and any MCP client connect in one click* | *Members — tiers, growth, revenue and retention, all from your own database* |
+| ![Website](docs/screenshots/admin-os-website.png) | ![Domains](docs/screenshots/admin-os-domains.png) |
+| *Website — pages, navigation and the public shell* | *VayuDomains — host several domains from one binary* |
+
 <details>
-<summary><strong>More of VayuOS</strong> — posts, media, SEO, security, and the operator control plane</summary>
+<summary><strong>More of VayuOS</strong> — posts, media, SEO, security, members and the operator control plane</summary>
 
 | | |
 |---|---|
 | ![Posts](docs/screenshots/admin-os-posts.png) | ![Media](docs/screenshots/admin-os-media.png) |
-| *Post manager with live status pills* | *Content-addressed media library* |
+| *Post manager — one collapsible card per post* | *Content-addressed media library* |
 | ![SEO](docs/screenshots/admin-os-seo.png) | ![Security](docs/screenshots/admin-os-security.png) |
 | *SEO readiness dashboard* | *Security & PGP surface (admin-only)* |
-| ![Sign-in](docs/screenshots/os-login.png) | ![Member signup](docs/screenshots/member-signup.png) |
-| *Strict-CSP, self-hosted sign-in* | *Branded passwordless member signup* |
+| ![Sign-in](docs/screenshots/os-login.png) | ![Settings](docs/screenshots/admin-os-settings.png) |
+| *Strict-CSP, self-hosted sign-in* | *Settings — one place, no scattered config* |
+| ![Member signup](docs/screenshots/member-signup.png) | ![Plans](docs/screenshots/member-pricing.png) |
+| *Branded passwordless member signup* | *Reader-facing plans, aware of who is signed in* |
 
 The adaptive-governance runtime is fully inspectable from inside VayuOS — system modes, the policy provenance inspector, a live runtime-topology graph, the dead-letter replay explorer, the fault manager, and the ADR registry.
 
@@ -228,6 +249,8 @@ The adaptive-governance runtime is fully inspectable from inside VayuOS — syst
 |---|---|
 | ![System modes](docs/screenshots/policy-modes.png) | ![Policy inspector](docs/screenshots/policy-inspector.png) |
 | ![Runtime topology](docs/screenshots/runtime-topology.png) | ![Replay explorer](docs/screenshots/replay-explorer.png) |
+| ![Fault manager](docs/screenshots/fault-manager.png) | ![ADR registry](docs/screenshots/adr-registry.png) |
+| ![Governance](docs/screenshots/admin-os-governance.png) | ![Monitoring](docs/screenshots/admin-os-monitoring.png) |
 
 </details>
 
