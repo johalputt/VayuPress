@@ -6,6 +6,82 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.30] — 2026-07-25
+
+### Security
+- **No address becomes a member without being verified.** Requesting a
+  passwordless sign-in link used to create the member row immediately, before the
+  email had even been handed to the mail queue. Anyone could therefore mint a
+  "member" out of any string that parsed as an address — a typo, a throwaway
+  domain, or an address whose delivery failed outright — and the account stayed
+  behind forever, counted in the member total and announced as *"Member joined"* in
+  the activity feed, for somebody who never received, let alone opened, anything.
+
+  Membership now begins at the one moment control of an address is actually
+  demonstrated: when the emailed token comes back. Requesting a link writes only
+  the token, which carries the address on its own and expires in 30 minutes, so an
+  address that never confirms leaves nothing durable behind. Two supporting
+  properties:
+
+  - The rule is **structural, not a convention**. `verified_at` is stamped by the
+    single INSERT rather than by each caller, and all three surviving creation
+    paths — magic link consumed, VayuMail mailbox credential authenticated,
+    payment completed — are already proof. There is no exported way to create an
+    unverified member, so this cannot regress by someone adding a new caller.
+  - The endpoint stays **non-enumerable**. It behaves identically for a known and
+    an unknown address, so it still cannot be used to ask who is a member — which
+    was the reason it was written to respond generically in the first place.
+
+  The first-time welcome email moved with it: it is sent on the first *confirmed*
+  join instead of on every link request, so a greeting no longer goes out to an
+  address that never joined.
+
+### Added
+- **Unconfirmed addresses are visible and removable in the console.** Rows created
+  by the old behaviour are flagged `unconfirmed` on the Members list with a Remove
+  action, and a summary card offers to clear them all at once. The card only exists
+  while there is something to clear. Removal deletes the member record, its
+  sessions and any pending sign-in link — so a link issued before the cleanup
+  cannot recreate the row afterwards — and the store **refuses to delete a
+  verified member**, so the cleanup path cannot take a real account with it. If the
+  person turns out to be real, opening a link still enrols them normally, and a
+  legacy row is confirmed in place rather than left flagged.
+
+### Fixed
+- **Stylesheet changes were invisible for up to a year.** Everything under
+  `/static/css` is served `public, immutable, max-age=31536000`, which is only safe
+  if the URL changes whenever the bytes do — an immutable response is never
+  revalidated. Several stylesheets were linked **without a version**, most
+  consequentially `portal.css`: the member portal panel was restyled across two
+  releases and could not be seen, because browsers and the edge kept serving the
+  copy they had cached first. Every stylesheet link now carries a content hash.
+
+  The member portal needed one extra step, since its stylesheet is injected by
+  script rather than linked from page HTML: the version travels through the widget,
+  and the widget's own version is computed over the finished body. A restyle
+  therefore moves the script URL too, so a client holding a cached script still
+  learns about the new stylesheet instead of quietly asking for the old one. The
+  script is served with an ETag so a stale copy revalidates cheaply rather than
+  being refetched in full.
+
+  A test now sweeps every Go source that emits HTML for an unversioned
+  `/static/css` link, so a stylesheet cannot be shipped behind a year-long cache
+  entry again.
+
+### Upgrade Notes
+- Migration `078-member-verified` adds `members.verified_at` and backfills it for
+  members whose control of their address is already evidenced — they have signed in
+  at least once (which requires a consumed link or a verified mailbox credential),
+  or they hold a paid tier. Anything left unset was created by the old pre-send
+  path and is surfaced in the console for review; nothing is deleted
+  automatically.
+- Because stylesheet URLs now carry content hashes, the first page load after
+  upgrading fetches them once more and is then cached as before. If a panel still
+  looks unchanged, a hard refresh (Cmd/Ctrl-Shift-R) clears the previously pinned
+  immutable entry.
+
+---
+
 ## [3.15.29] — 2026-07-25
 
 ### Added
