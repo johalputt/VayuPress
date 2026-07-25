@@ -107,6 +107,154 @@
     var EMAIL_RE = /^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/;
     function localPart(addr) { var m = (addr || '').match(/[^<@\s]+(?=@)/); return m ? m[0] : ''; }
 
+    // ── Formatting toolbar ─────────────────────────────────────────────────
+    // Wraps or prefixes the selection with plain-text conventions. The body is
+    // sent as text/plain, so what the composer shows is exactly what is
+    // delivered — no hidden HTML alternative that only some clients honour.
+    var bodyEl = compose.querySelector('[data-c-body]');
+    var countEl = compose.querySelector('[data-c-count]');
+
+    function updateCount() {
+      if (!countEl || !bodyEl) { return; }
+      var text = bodyEl.value;
+      var words = text.trim() ? text.trim().split(/\s+/).length : 0;
+      countEl.textContent = words + (words === 1 ? ' word' : ' words') + ' · ' + text.length + ' characters';
+    }
+
+    // Wrap the selection in a marker, or unwrap it when it is already wrapped so
+    // the button toggles instead of stacking asterisks on every click.
+    function wrapSelection(marker) {
+      var start = bodyEl.selectionStart, end = bodyEl.selectionEnd;
+      var value = bodyEl.value;
+      var selected = value.slice(start, end);
+      var before = value.slice(0, start), after = value.slice(end);
+      if (before.endsWith(marker) && after.startsWith(marker)) {
+        bodyEl.value = before.slice(0, -marker.length) + selected + after.slice(marker.length);
+        bodyEl.setSelectionRange(start - marker.length, end - marker.length);
+      } else {
+        bodyEl.value = before + marker + (selected || 'text') + marker + after;
+        var inner = start + marker.length;
+        bodyEl.setSelectionRange(inner, inner + (selected ? selected.length : 4));
+      }
+    }
+
+    // Prefix every line of the selection, numbering when asked. Re-running it on
+    // an already-prefixed block removes the prefix.
+    function prefixLines(prefix, numbered) {
+      var value = bodyEl.value;
+      var start = value.lastIndexOf('\n', bodyEl.selectionStart - 1) + 1;
+      var end = bodyEl.selectionEnd;
+      var lineEnd = value.indexOf('\n', end);
+      if (lineEnd === -1) { lineEnd = value.length; }
+      var block = value.slice(start, lineEnd);
+      var lines = block.split('\n');
+      var already = lines.every(function (l) {
+        return !l.trim() || (numbered ? /^\d+\.\s/.test(l) : l.indexOf(prefix) === 0);
+      });
+      var out = lines.map(function (l, i) {
+        if (!l.trim()) { return l; }
+        if (already) { return l.replace(numbered ? /^\d+\.\s/ : new RegExp('^' + prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), ''); }
+        return (numbered ? (i + 1) + '. ' : prefix) + l;
+      }).join('\n');
+      bodyEl.value = value.slice(0, start) + out + value.slice(lineEnd);
+      bodyEl.setSelectionRange(start, start + out.length);
+    }
+
+    function insertBlock(text) {
+      var start = bodyEl.selectionStart;
+      var value = bodyEl.value;
+      var lead = (start > 0 && value[start - 1] !== '\n') ? '\n' : '';
+      bodyEl.value = value.slice(0, start) + lead + text + value.slice(bodyEl.selectionEnd);
+      var pos = start + lead.length + text.length;
+      bodyEl.setSelectionRange(pos, pos);
+    }
+
+    function applyFormat(kind) {
+      if (!bodyEl) { return; }
+      bodyEl.focus();
+      switch (kind) {
+        case 'bold':   wrapSelection('**'); break;
+        case 'italic': wrapSelection('*'); break;
+        case 'strike': wrapSelection('~~'); break;
+        case 'h2':     prefixLines('## '); break;
+        case 'ul':     prefixLines('- '); break;
+        case 'ol':     prefixLines('', true); break;
+        case 'quote':  prefixLines('> '); break;
+        case 'code': {
+          var s0 = bodyEl.selectionStart, e0 = bodyEl.selectionEnd;
+          var sel = bodyEl.value.slice(s0, e0);
+          insertBlock('```\n' + (sel || 'code') + '\n```\n');
+          break;
+        }
+        case 'link': {
+          var a = bodyEl.selectionStart, b = bodyEl.selectionEnd;
+          var label = bodyEl.value.slice(a, b) || 'link text';
+          var url = window.prompt('Link URL', 'https://');
+          if (!url) { return; }
+          bodyEl.value = bodyEl.value.slice(0, a) + label + ' <' + url + '>' + bodyEl.value.slice(b);
+          break;
+        }
+        case 'rule': insertBlock('\n---\n\n'); break;
+      }
+      updateCount();
+    }
+
+    compose.querySelectorAll('[data-c-fmt]').forEach(function (btn) {
+      btn.addEventListener('click', function () { applyFormat(btn.getAttribute('data-c-fmt')); });
+    });
+
+    if (bodyEl) {
+      bodyEl.addEventListener('input', updateCount);
+      // Familiar shortcuts. Ctrl/Cmd-Enter sends, which is what every mail client
+      // trains people to expect.
+      bodyEl.addEventListener('keydown', function (e) {
+        var mod = e.ctrlKey || e.metaKey;
+        if (!mod) { return; }
+        var k = e.key.toLowerCase();
+        if (k === 'b') { e.preventDefault(); applyFormat('bold'); }
+        else if (k === 'i') { e.preventDefault(); applyFormat('italic'); }
+        else if (k === 'k') { e.preventDefault(); applyFormat('link'); }
+        else if (e.key === 'Enter' && sendBtn) { e.preventDefault(); sendBtn.click(); }
+      });
+      updateCount();
+    }
+
+    // Preview: renders the plain-text conventions the way a reader's eye groups
+    // them. Built with textContent per node, never innerHTML, so a message can
+    // never inject markup into the console.
+    var previewBtn = compose.querySelector('[data-c-preview]');
+    var previewPane = compose.querySelector('[data-c-preview-pane]');
+    if (previewBtn && previewPane && bodyEl) {
+      previewBtn.addEventListener('click', function () {
+        var showing = previewPane.hasAttribute('hidden');
+        if (!showing) {
+          previewPane.setAttribute('hidden', '');
+          bodyEl.removeAttribute('hidden');
+          previewBtn.setAttribute('aria-pressed', 'false');
+          previewBtn.textContent = 'Preview';
+          return;
+        }
+        previewPane.textContent = '';
+        bodyEl.value.split(/\n/).forEach(function (line) {
+          var row = document.createElement('div');
+          var t = line.trim();
+          if (!t) { row.className = 'vm-pv-blank'; }
+          else if (t.indexOf('## ') === 0) { row.className = 'vm-pv-h'; row.textContent = t.slice(3); }
+          else if (t.indexOf('> ') === 0) { row.className = 'vm-pv-q'; row.textContent = t.slice(2); }
+          else if (t === '---') { row.className = 'vm-pv-hr'; }
+          else { row.textContent = line; }
+          // A literal non-breaking space, not innerHTML: an empty div collapses,
+          // and the claim above about never using innerHTML has to hold here too.
+          if (!row.textContent && row.className !== 'vm-pv-hr') { row.textContent = '\u00a0'; }
+          previewPane.appendChild(row);
+        });
+        previewPane.removeAttribute('hidden');
+        bodyEl.setAttribute('hidden', '');
+        previewBtn.setAttribute('aria-pressed', 'true');
+        previewBtn.textContent = 'Edit';
+      });
+    }
+
     // Reveal Cc/Bcc and Reply-To on demand (kept out of the way by default).
     var toggle = function (btnSel, fieldSels) {
       var btn = compose.querySelector(btnSel);

@@ -3473,7 +3473,12 @@
 .btn--ghost:hover { background: var(--bg-surface-2); }
 .vm-grow { flex: 1 1 12rem; }
 .vm-suffix { color: var(--text-3); font-size: .85rem; margin-left: .35rem; }
-.vm-pre { white-space: pre-wrap; word-break: break-word; font-size: 13px; line-height: 1.5; max-height: 65vh; overflow: auto; margin: 0; }
+/* The message body must NOT be its own scroll container. It used to carry
+   max-height: 65vh + overflow: auto, which put a scrollbar inside the reading
+   pane's scrollbar and squeezed the text into 65% of the window even in full
+   view, where a whole screen was available. The pane scrolls; the body flows.
+   Only the raw source keeps a cap (.vm-raw below) — that one really is a dump. */
+.vm-pre { white-space: pre-wrap; word-break: break-word; margin: 0; }
 .vm-stat { font-size: 1.6rem; font-weight: 600; }
 .vm-section-title { margin-top: 1.5rem; }
 .vm-break { word-break: break-all; }
@@ -3600,7 +3605,6 @@
 .vp-os .vm-attach-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .vp-os .vm-attach-size { color: var(--text-3); font-size: .72rem; flex: 0 0 auto; }
 
-.vp-os .vm-msg-body { line-height: 1.6; max-width: 70ch; }
 .vp-os .vm-html { line-height: 1.6; overflow-wrap: anywhere; }
 .vp-os .vm-html img { max-width: 100%; height: auto; }
 .vp-os .vm-html a { color: var(--accent); }
@@ -5974,3 +5978,266 @@
 /* API Keys live filter (ADR-0136 Alpine island). Progressive: inert without JS. */
 .vp-os .ak-filter { margin-bottom: var(--sp-3); }
 .vp-os .ak-filter-input { max-width: 340px; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   VayuMail — reading and composing, premium pass.
+
+   The reading pane was a terminal dump: the body rendered in a 13px monospace
+   <pre> capped at 65vh with its OWN scrollbar, so in full view you scrolled a box
+   inside a box and the text used two thirds of a screen it had all of. Mail is
+   long-form reading; it gets a reading column, a real type scale, and a header
+   built from the same grammar as the Monetization page.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── The reading column ─────────────────────────────────────────────────── */
+
+.vp-os .vm-msg-body {
+  /* Proportional, not monospace: plain-text mail still preserves the author's
+     line breaks (white-space: pre-wrap), but nothing about it requires a fixed
+     pitch, and 13px mono is why this read like a log file. */
+  font-family: var(--font-sans, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif);
+  font-size: 0.95rem;
+  line-height: 1.7;
+  color: var(--text);
+  /* ~72 characters is the comfortable measure for continuous reading. */
+  max-width: 72ch;
+  margin-top: 1.1rem;
+  overflow-wrap: anywhere;
+}
+.vp-os .vm-msg-body .vm-pre { font-family: inherit; font-size: inherit; line-height: inherit; }
+
+/* Quoted history: present but recessive, and never the first thing you read. */
+.vp-os .vm-quote { margin-top: 1.1rem; }
+.vp-os .vm-quote > summary {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  padding: .3rem .7rem;
+  border: 1px solid var(--border);
+  border-radius: var(--r-full);
+  font-size: var(--text-xs);
+  color: var(--text-3);
+  background: var(--bg-surface-2);
+  list-style: none;
+  transition: color var(--t-fast), border-color var(--t-fast);
+}
+.vp-os .vm-quote > summary::-webkit-details-marker { display: none; }
+.vp-os .vm-quote > summary:hover { color: var(--text); border-color: var(--border-strong); }
+.vp-os .vm-pre--quoted { margin-top: .8rem; }
+
+/* The raw source IS a dump, so it keeps a cap and its own monospace. */
+.vp-os .vm-raw {
+  max-height: 60vh;
+  overflow: auto;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12px;
+  line-height: 1.5;
+  background: var(--bg-surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: .75rem;
+  margin-top: .6rem;
+}
+
+/* Sanitised HTML mail: constrain what a sender's markup can do to the console. */
+.vp-os .vm-html { max-width: 72ch; line-height: 1.7; }
+.vp-os .vm-html img { max-width: 100%; height: auto; }
+.vp-os .vm-html table { max-width: 100%; display: block; overflow-x: auto; }
+.vp-os .vm-html blockquote {
+  margin: .9rem 0;
+  padding-left: .9rem;
+  border-left: 2px solid var(--border-strong);
+  color: var(--text-2);
+}
+
+/* ── Header: identity, then metadata as a grid ──────────────────────────── */
+
+.vp-os .vm-msg-subject {
+  font-family: var(--font-head, inherit);
+  font-size: 1.35rem;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.015em;
+  margin-bottom: .85rem;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: .5rem;
+}
+.vp-os .vm-msg-from-row {
+  display: flex;
+  align-items: flex-start;
+  gap: .7rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+.vp-os .vm-msg-from-meta { min-width: 0; flex: 1; display: grid; gap: 2px; }
+.vp-os .vm-msg-fromname { font-size: 0.95rem; }
+/* Metadata reads as label/value pairs rather than a run of bold-prefixed lines. */
+.vp-os .vm-msg-from-meta > .muted.text-sm {
+  display: grid;
+  grid-template-columns: 3.2rem 1fr;
+  gap: .5rem;
+  align-items: baseline;
+}
+.vp-os .vm-msg-from-meta > .muted.text-sm strong {
+  font-weight: 600;
+  color: var(--text-3);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* ── Full view: a centred reading column, not an edge-to-edge stretch ───── */
+
+.vp-os #vm-readpane.vm-readpane--full {
+  /* Scroll behaviour lives here — this is the one scroll container. */
+  padding: 0;
+  overscroll-behavior: contain;
+}
+.vp-os #vm-readpane.vm-readpane--full .vm-reader {
+  max-width: 62rem;
+  margin: 0 auto;
+  padding: 1.6rem 2rem 3rem;
+}
+/* The action bar stays reachable however far you have read — the same rule the
+   member portal's close button needed. */
+.vp-os #vm-readpane.vm-readpane--full .vm-actions,
+.vp-os #vm-readpane.vm-readpane--full .vm-reader-top {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: var(--bg-surface);
+  padding-top: .75rem;
+  padding-bottom: .75rem;
+  margin-bottom: 0;
+}
+.vp-os #vm-readpane.vm-readpane--full .vm-reader-top { border-bottom: 1px solid var(--border); }
+@media (max-width: 768px) {
+  .vp-os #vm-readpane.vm-readpane--full .vm-reader { padding: 1.1rem 1.15rem 2.5rem; }
+  .vp-os .vm-msg-subject { font-size: 1.15rem; }
+  .vp-os .vm-msg-from-meta > .muted.text-sm { grid-template-columns: 2.6rem 1fr; }
+}
+
+/* Actions: one primary, the rest quiet, wrapping instead of overflowing. */
+.vp-os .vm-actions { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; }
+
+/* ── Attachments ────────────────────────────────────────────────────────── */
+
+.vp-os .vm-attach { margin-top: 1rem; }
+.vp-os .vm-attach-list { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .5rem; }
+.vp-os .vm-attach-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .45rem .7rem;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--bg-surface-2);
+  text-decoration: none;
+  color: var(--text);
+  font-size: var(--text-sm);
+  transition: border-color var(--t-fast), transform var(--t-fast);
+}
+.vp-os .vm-attach-chip:hover { border-color: var(--accent); transform: translateY(-1px); }
+.vp-os .vm-attach-size { color: var(--text-3); font-size: var(--text-xs); }
+
+@media (prefers-reduced-motion: reduce) {
+  .vp-os .vm-attach-chip, .vp-os .vm-quote > summary { transition: none; }
+  .vp-os .vm-attach-chip:hover { transform: none; }
+}
+
+/* ── Composer: a real editor bar ─────────────────────────────────────────────
+   The message field was a bare textarea. Formatting now has a toolbar, a word
+   count and a preview — and every control writes plain text into the body,
+   because that is exactly what gets delivered. */
+
+.vp-os .vm-editor { display: grid; gap: 0; }
+.vp-os .vm-ed-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: .75rem;
+  margin-bottom: .35rem;
+}
+
+.vp-os .vm-ed-bar {
+  display: flex;
+  align-items: center;
+  gap: .15rem;
+  flex-wrap: wrap;
+  padding: .3rem .35rem;
+  border: 1px solid var(--border);
+  border-bottom: 0;
+  border-radius: var(--r-sm) var(--r-sm) 0 0;
+  background: var(--bg-surface-2);
+}
+.vp-os .vm-ed-btn {
+  min-width: 32px;
+  height: 32px;
+  padding: 0 .5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-2);
+  font-size: var(--text-sm);
+  line-height: 1;
+  cursor: pointer;
+  transition: background var(--t-fast), color var(--t-fast), border-color var(--t-fast);
+}
+.vp-os .vm-ed-btn:hover { background: var(--bg-surface); color: var(--text); border-color: var(--border); }
+.vp-os .vm-ed-btn:active { transform: translateY(1px); }
+.vp-os .vm-ed-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.vp-os .vm-ed-btn[aria-pressed="true"] {
+  background: var(--accent-dim);
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+.vp-os .vm-ed-btn--wide { min-width: auto; font-weight: 600; }
+.vp-os .vm-ed-sep { width: 1px; height: 18px; background: var(--border); margin: 0 .25rem; }
+.vp-os .vm-ed-spacer { flex: 1; }
+
+.vp-os .vm-ed-area {
+  border-radius: 0 0 var(--r-sm) var(--r-sm);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.9rem;
+  line-height: 1.65;
+  resize: vertical;
+}
+
+/* Preview shares the reading column's type so it previews the READER's
+   experience, not the editor's. */
+.vp-os .vm-ed-preview {
+  border: 1px solid var(--border);
+  border-top: 0;
+  border-radius: 0 0 var(--r-sm) var(--r-sm);
+  background: var(--bg-surface);
+  padding: 1rem 1.1rem;
+  min-height: 18rem;
+  max-width: 72ch;
+  font-size: 0.95rem;
+  line-height: 1.7;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.vp-os .vm-pv-h { font-weight: 700; font-size: 1.05rem; margin: .8rem 0 .3rem; }
+.vp-os .vm-pv-q {
+  border-left: 2px solid var(--border-strong);
+  padding-left: .8rem;
+  color: var(--text-2);
+}
+.vp-os .vm-pv-hr { border-top: 1px solid var(--border); margin: .9rem 0; height: 0; }
+.vp-os .vm-pv-blank { height: .55rem; }
+
+@media (max-width: 560px) {
+  /* Keep every control tappable rather than letting the bar shrink them. */
+  .vp-os .vm-ed-btn { min-width: 38px; height: 38px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vp-os .vm-ed-btn { transition: none; }
+  .vp-os .vm-ed-btn:active { transform: none; }
+}

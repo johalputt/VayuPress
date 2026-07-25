@@ -180,8 +180,36 @@ func (a *App) handleVayuOSCompose(w http.ResponseWriter, r *http.Request) {
 
   <label class="field"><span class="field-label">Subject</span>
     <input class="input" type="text" data-c-subject placeholder="Subject" value="` + html.EscapeString(prefillSubject) + `"></label>
-  <label class="field"><span class="field-label">Message</span>
-    <textarea class="input" rows="12" data-c-body placeholder="Write your message…">` + html.EscapeString(prefillBody) + `</textarea></label>
+  <div class="field vm-editor">
+    <div class="vm-ed-head">
+      <span class="field-label">Message</span>
+      <span class="vm-ed-count muted text-xs" data-c-count aria-live="polite"></span>
+    </div>
+    <!-- Formatting inserts plain-text conventions, because a message body IS
+         plain text end to end (mail.ComposeMessage.Body). A contenteditable
+         WYSIWYG would imply an HTML alternative part the engine does not build,
+         so it would promise formatting the recipient never receives. What goes in
+         here is exactly what is sent, and it stays readable in every client. -->
+    <div class="vm-ed-bar" role="toolbar" aria-label="Formatting" data-c-toolbar>
+      <button class="vm-ed-btn" type="button" data-c-fmt="bold" title="Bold (Ctrl+B)" aria-label="Bold"><strong>B</strong></button>
+      <button class="vm-ed-btn" type="button" data-c-fmt="italic" title="Italic (Ctrl+I)" aria-label="Italic"><em>I</em></button>
+      <button class="vm-ed-btn" type="button" data-c-fmt="strike" title="Strikethrough" aria-label="Strikethrough"><s>S</s></button>
+      <span class="vm-ed-sep" aria-hidden="true"></span>
+      <button class="vm-ed-btn" type="button" data-c-fmt="h2" title="Heading" aria-label="Heading">H</button>
+      <button class="vm-ed-btn" type="button" data-c-fmt="ul" title="Bulleted list" aria-label="Bulleted list">&bull;&nbsp;&#8801;</button>
+      <button class="vm-ed-btn" type="button" data-c-fmt="ol" title="Numbered list" aria-label="Numbered list">1.&nbsp;&#8801;</button>
+      <button class="vm-ed-btn" type="button" data-c-fmt="quote" title="Quote" aria-label="Quote">&rdquo;</button>
+      <span class="vm-ed-sep" aria-hidden="true"></span>
+      <button class="vm-ed-btn" type="button" data-c-fmt="code" title="Code block" aria-label="Code block">&lt;/&gt;</button>
+      <button class="vm-ed-btn" type="button" data-c-fmt="link" title="Link (Ctrl+K)" aria-label="Insert link">&#128279;</button>
+      <button class="vm-ed-btn" type="button" data-c-fmt="rule" title="Divider" aria-label="Divider">&mdash;</button>
+      <span class="vm-ed-spacer"></span>
+      <button class="vm-ed-btn vm-ed-btn--wide" type="button" data-c-preview title="Preview how the message will look" aria-pressed="false">Preview</button>
+    </div>
+    <textarea class="input vm-ed-area" rows="16" data-c-body placeholder="Write your message…">` + html.EscapeString(prefillBody) + `</textarea>
+    <div class="vm-ed-preview" data-c-preview-pane hidden aria-live="polite"></div>
+    <p class="field-hint">Formatting is written into the message itself, so it reads the same in every mail client — including ones that refuse HTML.</p>
+  </div>
 
   <span class="field-label">Attachments</span>
   <div class="vm-dropzone" data-c-dropzone>
