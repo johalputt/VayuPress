@@ -6,6 +6,53 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.35] — 2026-07-25
+
+### Fixed
+- **Reading a message put a scrollbar inside a scrollbar.** The body rendered in a
+  13px monospace `<pre>` carrying `max-height: 65vh; overflow: auto`, so in full
+  view you scrolled a box inside the pane's own scroll — and the text was squeezed
+  into two thirds of a screen it had all of. Mail read like a log file in a box.
+  The pane scrolls now and the body flows; only the raw-source dump keeps a cap,
+  because that one really is a dump.
+- **The full-view action bar scrolled out of reach** on a long message. It is
+  sticky now — the same lesson the member portal's close button taught: in a
+  scrolling container, a control that scrolls away is a control that is not there.
+- Two competing `.vm-msg-body` rules existed; they are merged into one.
+
+### Changed
+- **The reading pane is a reading surface.** Proportional type at 0.95rem/1.7 on a
+  72-character measure, with the author's line breaks still preserved
+  (`white-space: pre-wrap`) — nothing about plain-text mail requires a fixed pitch,
+  and the monospace was why it read like terminal output. Full view centres a
+  62rem column instead of stretching edge to edge. Sender metadata reads as
+  label/value pairs rather than a run of bold-prefixed lines, quoted history
+  collapses behind a quiet chip, attachments are chips that lift on hover, and
+  sanitised HTML mail is constrained so a sender's markup cannot reshape the
+  console.
+- **The composer has a real editor.** The message field was a bare textarea. It now
+  carries a formatting toolbar — bold, italic, strikethrough, heading, bulleted and
+  numbered lists, quote, code block, link, divider — plus a live word/character
+  count, a preview, and `Ctrl/Cmd-B`, `-I`, `-K` shortcuts with `Ctrl/Cmd-Enter` to
+  send. Formatting toggles: clicking bold on already-bold text unwraps it instead
+  of stacking asterisks, and list buttons remove their own prefixes.
+
+  **The toolbar writes plain text on purpose.** `mail.ComposeMessage.Body` is text
+  with no HTML alternative part, so a contenteditable WYSIWYG would promise
+  formatting the recipient never receives. What the composer shows is exactly what
+  is delivered, and it stays readable in clients that refuse HTML. A test forbids
+  `contenteditable` here so that constraint is not quietly broken later. The
+  preview builds every node with `textContent`, never `innerHTML` — the composer's
+  own field is untrusted input to the console.
+
+### Upgrade Notes
+- Rich HTML mail (a `multipart/alternative` body with a styled part) is **not** in
+  this release. It needs the mail engine to assemble and sign a second body part,
+  which is a larger change than the composer UI; the toolbar deliberately does not
+  imply it.
+
+---
+
 ## [3.15.34] — 2026-07-25
 
 ### Changed
