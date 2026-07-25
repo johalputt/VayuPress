@@ -448,6 +448,13 @@ func (a *App) handleMemberAccountUpdate(w http.ResponseWriter, r *http.Request) 
 func (a *App) handlePricingPage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("X-Robots-Tag", "index, follow")
+	// This page's content now depends on the member session, so it MUST declare
+	// that: without Vary, a shared cache could store one member's personalised
+	// page and serve it to everyone. The anonymous version stays cacheable (it is
+	// the version search engines index and the one most visitors get); the
+	// signed-in version is marked private and unstorable further down, once we
+	// know who is reading.
+	w.Header().Set("Vary", "Cookie")
 
 	brand := html.EscapeString(config.Cfg.Domain)
 	esc := html.EscapeString
@@ -457,6 +464,27 @@ func (a *App) handlePricingPage(w http.ResponseWriter, r *http.Request) {
 		tiers, _ = a.members.ListTiers(r.Context(), false)
 	}
 	payEnabled := a.paymentsEnabled(r.Context())
+
+	// Who is reading this page? Offering "Get started" and "Sign in" to somebody
+	// already signed in is the plans page telling them it does not know them — and
+	// it hides the one action they actually came for, which is to upgrade. Resolve
+	// the member so each card can speak to their real position.
+	me := a.resolveMember(r)
+	signedIn := me != nil
+	if signedIn {
+		// A page naming somebody's plan is theirs alone — never store it.
+		w.Header().Set("Cache-Control", "private, no-store")
+		w.Header().Set("CDN-Cache-Control", "no-store")
+	} else {
+		// Anonymous: safe (and good for speed) for an edge to reuse briefly.
+		w.Header().Set("Cache-Control", "public, max-age=300")
+	}
+	currentTier := ""
+	onPaid := false
+	if signedIn {
+		currentTier = me.Tier
+		onPaid = me.IsPaid()
+	}
 
 	cards := ""
 	for i := range tiers {
@@ -483,19 +511,45 @@ func (a *App) handlePricingPage(w http.ResponseWriter, r *http.Request) {
 		if t.YearlyCents > 0 && t.MonthlyCents > 0 {
 			yearly = `<p class="pr-yearly">or ` + esc(priceLabel(t.Currency, t.YearlyCents)) + ` billed yearly</p>`
 		}
-		cta := `<a class="pr-cta" href="/signup">Get started</a>`
-		if !t.IsFree() {
+		// The call to action depends on where the reader already stands.
+		isCurrent := signedIn && (t.Slug == currentTier || (t.IsFree() && !onPaid))
+		cadence := "monthly"
+		if t.MonthlyCents == 0 && t.YearlyCents > 0 {
+			cadence = "yearly"
+		}
+		var cta string
+		switch {
+		case isCurrent:
+			// Nothing to sell here — say so plainly instead of inviting a signup
+			// that would do nothing.
+			cta = `<span class="pr-cta pr-cta--current" aria-disabled="true">Your current plan</span>`
+		case !signedIn && t.IsFree():
+			cta = `<a class="pr-cta" href="/signup">Get started</a>`
+		case !signedIn:
 			cta = `<a class="pr-cta pr-cta--primary" href="/signup">Become a member</a>`
 			if payEnabled {
-				cadence := "monthly"
-				if t.MonthlyCents == 0 && t.YearlyCents > 0 {
-					cadence = "yearly"
-				}
 				cta = `<a class="pr-cta pr-cta--primary" href="/checkout?tier=` + esc(t.Slug) + `&amp;cadence=` + cadence + `">Subscribe</a>`
 			}
+		case t.IsFree():
+			// A paying member looking at the free tier: downgrading is a billing
+			// decision, so point at the account page rather than a checkout.
+			cta = `<a class="pr-cta" href="/members/account">Manage in your account</a>`
+		default:
+			// Signed in, not on this paid tier — this is the upgrade they came for.
+			cta = `<a class="pr-cta pr-cta--primary" href="/signup">Upgrade to ` + esc(t.Name) + `</a>`
+			if payEnabled {
+				cta = `<a class="pr-cta pr-cta--primary" href="/checkout?tier=` + esc(t.Slug) + `&amp;cadence=` + cadence + `">Upgrade to ` + esc(t.Name) + `</a>`
+			}
+		}
+		if isCurrent {
+			featured += " pr-card--current"
+		}
+		here := ""
+		if isCurrent {
+			here = ` <span class="pr-here">You&rsquo;re here</span>`
 		}
 		cards += `<article class="pr-card` + featured + `">
-      <h2 class="pr-name">` + esc(t.Name) + `</h2>
+      <h2 class="pr-name">` + esc(t.Name) + here + `</h2>
       <p class="pr-desc">` + esc(t.Description) + `</p>
       <div class="pr-price"><span class="pr-amount">` + esc(price) + `</span> <span class="pr-per">` + esc(sub) + `</span></div>
       ` + yearly + `
@@ -505,6 +559,15 @@ func (a *App) handlePricingPage(w http.ResponseWriter, r *http.Request) {
 	}
 	if cards == "" {
 		cards = `<p class="pr-empty">Membership plans are not available yet.</p>`
+	}
+
+	// Copy follows the reader. A signed-in member is not "becoming" a member, and
+	// offering them a sign-in link is noise.
+	prTitle, prLead := "Become a member", "Support independent publishing and unlock everything."
+	prFooter := `<p class="pr-foot">Already a member? <a href="/members" class="su-link">Sign in</a></p>`
+	if signedIn {
+		prTitle, prLead = "Your membership", "Compare what each plan includes. Your current plan is marked."
+		prFooter = `<p class="pr-foot"><a href="/members/account" class="su-link">Back to your account</a></p>`
 	}
 
 	page := `<!DOCTYPE html><html lang="en"><head>
@@ -519,11 +582,11 @@ func (a *App) handlePricingPage(w http.ResponseWriter, r *http.Request) {
 <body class="su-body">
 <main class="pr-shell" id="main-content">
   <div class="pr-head">
-    <h1>Become a member</h1>
-    <p>Support independent publishing and unlock everything.</p>
+    <h1>` + prTitle + `</h1>
+    <p>` + prLead + `</p>
   </div>
   <div class="pr-grid">` + cards + `</div>
-  <p class="pr-foot">Already a member? <a href="/members" class="su-link">Sign in</a></p>
+  ` + prFooter + `
 </main>
 </body></html>`
 	_, _ = w.Write([]byte(page))

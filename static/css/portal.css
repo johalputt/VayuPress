@@ -429,3 +429,99 @@
   .vp-portal-btn:hover::after { transform: translateX(-120%); }
   .vp-portal-overlay { backdrop-filter: none; }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Compact & calm pass.
+
+   The panel had generous editorial spacing, which suits a landing page but makes
+   a utility surface — "who am I, what is my plan, sign out" — feel oversized. It
+   is now tighter and quieter: a narrower column, a smaller type scale, less air
+   between rows, and motion reduced to what communicates state rather than what
+   draws attention. Hover still enlarges, just gently.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Frame: narrower column, tighter padding ─────────────────────────────── */
+.vp-portal-panel {
+  max-width: 22rem;
+  padding: 1.5rem 1.4rem 1.6rem;
+}
+
+/* ── Header block ────────────────────────────────────────────────────────── */
+.vp-portal-brand { gap: .5rem; margin-bottom: 1rem; }
+.vp-portal-brand img { width: 26px; height: 26px; border-radius: 7px; }
+.vp-portal-brand span { font-size: .9rem; }
+
+.vp-portal-title { font-size: 1.12rem; line-height: 1.25; margin-bottom: .25rem; }
+.vp-portal-sub { font-size: .84rem; line-height: 1.5; margin-bottom: 1rem; }
+
+/* ── Identity row: a smaller mark, closer to its text ────────────────────── */
+.vp-portal-account-id { gap: .65rem; margin-bottom: 1rem; }
+.vp-portal-avatar { width: 38px; height: 38px; font-size: .95rem; }
+.vp-portal-account-id .vp-portal-acc-name { font-size: .94rem; font-weight: 650; }
+.vp-portal-account-id .vp-portal-acc-mail { font-size: .78rem; }
+
+/* ── Plan card ───────────────────────────────────────────────────────────── */
+.vp-portal-plan { padding: .7rem .8rem; margin-bottom: .85rem; border-radius: 10px; }
+.vp-portal-plan-label { font-size: .68rem; letter-spacing: .06em; }
+.vp-portal-plan-name { font-size: .94rem; margin-top: .1rem; }
+
+/* ── Controls: smaller targets on desktop, still comfortable on touch ────── */
+.vp-portal-form { gap: .5rem; }
+.vp-portal-label { font-size: .72rem; }
+.vp-portal-input { padding: .6rem .75rem; font-size: .9rem; border-radius: 9px; }
+.vp-portal-btn {
+  margin-top: .25rem;
+  padding: .62rem .9rem;
+  font-size: .9rem;
+  font-weight: 600;
+  border-radius: 9px;
+}
+.vp-portal-actions { gap: .42rem; margin-top: .3rem; }
+
+/* ── Perks / lists ───────────────────────────────────────────────────────── */
+.vp-portal-perks { margin-top: 1rem; padding-top: .85rem; gap: .42rem; }
+.vp-portal-perks li { font-size: .84rem; }
+
+.vp-portal-badge { font-size: .68rem; padding: .12rem .45rem; }
+
+/* ── Calm the motion ─────────────────────────────────────────────────────────
+   The sheen sweep and the wide glow read as promotional on a surface someone
+   opens to do one small thing. The hover still lifts and enlarges — just enough
+   to feel responsive — and the shadows are softer. */
+.vp-portal-btn::after { display: none; }
+.vp-portal-btn:hover {
+  transform: translateY(-1px) scale(1.012);
+  filter: brightness(1.04);
+  box-shadow: 0 6px 16px -10px color-mix(in srgb, var(--vpp-accent) 55%, transparent);
+}
+.vp-portal-btn--ghost:hover {
+  transform: translateY(-1px) scale(1.012);
+  box-shadow: none;
+  background: color-mix(in srgb, var(--vpp-accent) 7%, transparent);
+}
+.vp-portal-trigger:hover {
+  transform: translateY(-2px) scale(1.05);
+  box-shadow: 0 12px 28px -14px color-mix(in srgb, var(--vpp-accent) 45%, transparent);
+}
+.vp-portal-trigger:hover::after { opacity: .4; }
+
+/* A close button that fades rather than spins. */
+.vp-portal-close:hover { transform: none; opacity: .85; }
+
+/* Reveal contents together and quickly — a stagger this short is felt, not
+   watched. */
+.vp-portal-overlay.is-open .vp-portal-body > * { animation-duration: .28s; }
+.vp-portal-overlay.is-open .vp-portal-body > :nth-child(1),
+.vp-portal-overlay.is-open .vp-portal-body > :nth-child(2) { animation-delay: .04s; }
+.vp-portal-overlay.is-open .vp-portal-body > :nth-child(3),
+.vp-portal-overlay.is-open .vp-portal-body > :nth-child(4) { animation-delay: .08s; }
+.vp-portal-overlay.is-open .vp-portal-body > :nth-child(n+5) { animation-delay: .12s; }
+
+.vp-portal-overlay { backdrop-filter: blur(2px); }
+
+/* ── Touch: keep the sheet, restore comfortable target sizes ─────────────── */
+@media (max-width: 560px) {
+  .vp-portal-panel { padding: 1.6rem 1.15rem 1.9rem; }
+  .vp-portal-btn { min-height: 44px; font-size: .94rem; }
+  .vp-portal-input { padding: .7rem .8rem; font-size: .95rem; }
+}

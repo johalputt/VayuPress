@@ -556,3 +556,93 @@ html[data-theme="light"] {
 /* Signup: Free-vs-Premium comparison card */
 .su-compare-card { margin-top: 1rem; }
 .su-compare-h { margin: 0 0 1rem; font-size: 1.05rem; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Member pages — compact & calm pass.
+
+   The account and plans pages were sized like a marketing landing page: 2rem
+   headings, tall cards, saturated gradient buttons. But someone opens these to
+   check a plan, upgrade, or sign out — a utility errand, not a pitch. Tighter
+   spacing, a smaller type scale, and one clearly primary action per card make
+   them quicker to read and calmer to sit in. Colour is used to mark state (your
+   current plan) rather than to shout.
+
+   New in this pass: .pr-cta--current and .pr-here, the states the plans page
+   needs now that it knows who is signed in.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Plans page ──────────────────────────────────────────────────────────── */
+.pr-shell { max-width: 54rem; padding: 1.9rem 1.15rem 2.4rem; }
+.pr-head { margin-bottom: 1.6rem; }
+.pr-head h1 { font-size: 1.5rem; margin-bottom: .35rem; }
+.pr-head p { font-size: .92rem; }
+
+.pr-grid { gap: 1rem; }
+.pr-card { padding: 1.25rem 1.25rem 1.35rem; border-radius: 14px; }
+/* The featured card is distinguished by its border, not by a wide glow. */
+.pr-card--featured { box-shadow: 0 6px 22px -14px rgba(99, 102, 241, .45); }
+
+.pr-name { font-size: 1.08rem; display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.pr-desc { font-size: .88rem; margin: .2rem 0 .6rem; min-height: 0; }
+.pr-amount { font-size: 1.5rem; }
+.pr-per, .pr-yearly { font-size: .82rem; }
+.pr-benefits { margin: .8rem 0; gap: .38rem; }
+.pr-benefits li { font-size: .86rem; padding-left: 1.3rem; }
+
+.pr-cta { padding: .62rem 1rem; font-size: .92rem; border-radius: 9px; }
+.pr-cta:hover { filter: brightness(1.04); }
+.pr-foot { margin-top: 1.4rem; font-size: .88rem; }
+
+/* The plan you are already on: legible, clearly not a button. */
+.pr-cta--current {
+  display: block;
+  text-align: center;
+  cursor: default;
+  color: var(--su-muted);
+  background: transparent;
+  border: 1px dashed var(--su-border, rgba(255, 255, 255, .18));
+}
+.pr-cta--current:hover { filter: none; }
+
+/* A quiet marker beside the current plan's name. */
+.pr-here {
+  font-size: .64rem;
+  font-weight: 700;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  padding: .16rem .45rem;
+  border-radius: 999px;
+  color: var(--su-accent-2);
+  background: color-mix(in srgb, var(--su-accent-2) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--su-accent-2) 34%, transparent);
+}
+/* Your current card leads with state rather than with a sales border. */
+.pr-card--current { border-color: color-mix(in srgb, var(--su-accent-2) 38%, transparent); }
+.pr-card--current.pr-card--featured { box-shadow: none; }
+
+/* ── Account page ────────────────────────────────────────────────────────── */
+.ma-title { font-size: 1.32rem; }
+.ma-card { padding: 1.15rem 1.2rem; border-radius: 14px; }
+.ma-card h2 { font-size: .98rem; margin-bottom: .75rem; }
+/* The plan card's tint was competing with the page; keep the hint, drop the wash. */
+.ma-card--plan { background: var(--su-surface); border-color: color-mix(in srgb, var(--su-accent-2) 30%, transparent); }
+
+/* ── Motion: responsive, not theatrical ──────────────────────────────────── */
+.pr-cta, .pr-card {
+  transition: transform .18s cubic-bezier(.22, .61, .36, 1), box-shadow .18s ease, filter .18s ease;
+}
+.pr-cta:hover { transform: translateY(-1px); }
+.pr-card:hover { transform: translateY(-2px); }
+.pr-cta--current:hover, .pr-card--current:hover { transform: none; }
+.pr-cta:focus-visible { outline: 3px solid var(--su-accent-2); outline-offset: 2px; }
+
+@media (max-width: 560px) {
+  .pr-shell { padding: 1.5rem .95rem 2rem; }
+  .pr-head h1 { font-size: 1.32rem; }
+  .pr-cta { min-height: 44px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pr-cta, .pr-card { transition: none; }
+  .pr-cta:hover, .pr-card:hover { transform: none; }
+}
