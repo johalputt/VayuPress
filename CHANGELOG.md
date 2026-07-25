@@ -6,6 +6,42 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.22] — 2026-07-25
+
+### Added
+- **Site display timezone — dates and times finally match your clock.** VayuPress
+  stores every timestamp in UTC (unambiguous, survives a server move, never shifts
+  under daylight saving) but it also *displayed* UTC, so an operator on IST read
+  every admin timestamp 5½ hours behind their own clock, and a post published after
+  05:30 local time showed readers the **previous day's date**. Set your zone in
+  **VayuOS → Settings → General → Date &amp; time** (an IANA picker showing each
+  zone's live UTC offset) and it applies everywhere immediately, with no restart:
+  - public post dates, the machine `<time datetime>` and the OG / schema.org
+    timestamps all render in your zone, so the visible date, the machine date and
+    your clock finally agree (RFC3339 keeps its offset, so machine timestamps stay
+    unambiguous for search engines);
+  - every admin timestamp renders in your zone and is labelled with the **real**
+    zone abbreviation instead of a hard-coded "UTC".
+
+  Stored data is untouched — changing the setting only changes how times read — and
+  leaving it unset keeps the previous all-UTC behaviour. Export filenames, RFC3339
+  API/bundle fields and the analytics window bounds deliberately stay UTC, because
+  those are machine values and the analytics rows are keyed by UTC date.
+
+### Fixed
+- **Trending &amp; pinned posts now show on every post, every time.** The widget
+  hides itself when it has nothing to show, but *every* response carried a
+  five-minute public cache header — so a reader whose fetch happened to land during
+  a cold start, or whose cheap warm-up response came back empty, cached that empty
+  answer and kept getting the hidden widget from their own browser cache for the
+  next five minutes, across every post they opened. That is the "sometimes shows,
+  sometimes not". An empty or degraded response is now sent `no-store`, so the very
+  next page load re-asks and gets real data. Two supporting fixes: the warm-up
+  payload is built on a detached context (a reader navigating away mid-fetch used to
+  cancel its queries and produce the empty payload), and a computation that returns
+  nothing is no longer memoised — a transient query failure could previously pin an
+  empty list for up to an hour.
+
 ## [3.15.21] — 2026-07-25
 
 ### Fixed
