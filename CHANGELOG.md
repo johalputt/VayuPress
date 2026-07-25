@@ -6,6 +6,44 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.34] — 2026-07-25
+
+### Changed
+- **Every screenshot regenerated, and the set now shows the whole product.** The
+  images in the README and on the marketing site were captured before the console
+  redesign, so they advertised an interface that no longer exists. All 32 are
+  recaptured from a live instance, and the set finally covers what "one binary,
+  ten products" means — **VayuTor Spaces** (clearnet and an anonymous `.onion`
+  world side by side), **Monetization**, **VayuMail**, **VayuTalk**, **VayuMCP**,
+  **Members**, **Website**, **Domains**, and the reader-facing plans page were all
+  missing entirely.
+- Four orphans are gone (`health-observability`, `policy-engine`, `queue-events`,
+  `traces-metrics`): nothing referenced them and no capture step produced them, so
+  they had been drifting since whatever page they once showed was removed.
+  `admin-os-tools` went too — it is a configuration surface, not a showcase. Every
+  remaining file now has both a capture step and a reference, and neither list has
+  an entry the other lacks.
+
+### Fixed
+- **The screenshot tooling could silently publish "Access denied" into the
+  README.** Headless Chrome announces itself in its user agent, so VayuShield
+  classifies it as automation and answers with a block page — which is a perfectly
+  valid response that screenshots perfectly happily. A capture run would have
+  replaced the entire public-page gallery with bot-protection notices and reported
+  success. `screenshot.mjs` now refuses any response ≥ 400 or whose document title
+  is a challenge page, and the capture must run against an instance started with
+  `VAYUSHIELD=off`. The check matches on the title rather than body text, because
+  the Bot Shield and VayuMCP pages legitimately quote those phrases while
+  describing what a challenge looks like.
+- `screenshot.mjs` accepts `PLAYWRIGHT_CHROMIUM_PATH`, so a machine with a
+  preinstalled browser no longer has to download Playwright's pinned revision.
+
+### Added
+- `node_modules/` is git-ignored — the capture tooling installs Playwright into the
+  working tree and nothing was stopping it being committed.
+
+---
+
 ## [3.15.33] — 2026-07-25
 
 Thanks to **@fenix-hub** for [#319](https://github.com/johalputt/VayuPress/pull/319),
