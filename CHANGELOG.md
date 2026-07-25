@@ -6,6 +6,44 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.28] — 2026-07-25
+
+### Fixed
+- **The plans page now knows you are signed in.** It never resolved the current
+  member, so every call to action was hard-coded to `/signup` — a signed-in member
+  was offered "Get started", "Become a member" and "Already a member? Sign in",
+  which both told them the page did not know them and hid the one action they came
+  for. Each card now speaks to their real position:
+  - the plan they already hold is **stated** ("Your current plan", marked
+    "You're here") rather than sold;
+  - a signed-in member on a lower tier gets **"Upgrade to &lt;tier&gt;"**, routed to
+    checkout when payments are enabled;
+  - a paying member looking at the free tier is pointed at their **account**,
+    because downgrading is a billing decision, not a checkout;
+  - an anonymous visitor keeps exactly the previous flow;
+  - the heading and footer follow suit — "Your membership" and a link back to the
+    account, instead of an invitation to sign in.
+
+  Because the page is now personalised it declares `Vary: Cookie`, and the
+  signed-in variant is `private, no-store` so no shared cache can serve one
+  member's plan page to somebody else. The anonymous variant — the one search
+  engines index and most visitors receive — stays publicly cacheable, so speed and
+  SEO are unaffected.
+
+### Changed
+- **Member surfaces are compact and calm.** The portal panel was sized for
+  editorial reading; it is now a narrower column with tighter padding, a smaller
+  type scale, a 38px avatar in place of 52px and less air between rows — it is a
+  utility surface for "who am I, what is my plan, sign out". The account and plans
+  pages come down from 2rem display headings and tall cards to a working scale,
+  with one clearly primary action per card, and colour now marks state (the plan
+  you are on) rather than shouting.
+- **Motion dialled back to what communicates state.** The button sheen sweep is
+  gone, hover lift and scale are much gentler, shadows are softer, the close button
+  fades rather than spins, and the panel's reveal stagger is short enough to be
+  felt rather than watched. Hover still enlarges — just quietly. Everything stands
+  down under reduced-motion, and touch targets stay at 44px and up.
+
 ## [3.15.27] — 2026-07-25
 
 ### Added
