@@ -1833,7 +1833,8 @@ func (a *App) handleOSChangePassword(w http.ResponseWriter, r *http.Request) {
 	if u != nil {
 		em = u.Email
 	}
-	// Reuse a valid token when one already exists. The cookie is host-only (no Domain), so a same-site subdomain
+	// Reuse a valid token when one already exists, else mint a new one. 
+	// The cookie is host-only (no Domain), so a same-site subdomain 
 	// foothold cannot read it to forge the token.
 	token := ""
 	if c, err := r.Cookie("vp_csrf"); err == nil && auth.ValidateCSRFToken(c.Value) {
