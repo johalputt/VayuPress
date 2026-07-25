@@ -975,7 +975,16 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 		// read, no classification. A verified session always passes (and a
 		// solved challenge pardons the sentence — see RewardProof), so a real
 		// user behind a shared/NAT IP is never locked out.
-		if !verified && m.brain.Jailed(ipKey) {
+		//
+		// It is gated on the operator's auto-block switch, exactly like the
+		// blocklist gate above. Jailing is an availability defence, so when the
+		// operator has turned auto-blocking OFF the shield must not keep serving
+		// sentences behind their back: an operator who disables every anti-DDoS
+		// gate and still saw real readers met with the "just a moment" throttle
+		// page has no switch left to reach for, which is precisely the trap this
+		// closes. Classification/challenges are unaffected — they are governed by
+		// the bot-protection switch, not this one.
+		if !verified && lc.autoBlock && m.brain.Jailed(ipKey) {
 			reqclass.MarkShielded(r.Context())
 			m.onEvent(ActionBlock, 1.0)
 			m.serveJailed(w, r, ipKey, "reputation")
@@ -1122,6 +1131,9 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 			}
 		case ActionTarpit:
 			// A confirmed bad actor (score ≥ block threshold, tarpit variant).
+			if m.softenForNavigation(w, r, v, next) {
+				return
+			}
 			m.brain.Observe(ipKey, brain.SignalBlock)
 			m.jailBadActor(r.Context(), ipKey, lc.autoBlock, v)
 			m.serveTarpit(w, r, v, next)
@@ -1130,6 +1142,9 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 			// is dropped by the O(1) blocklist gate above — without re-running
 			// classification — and fold its fingerprint into the signature
 			// knowledge base so the bot database grows from real detections.
+			if m.softenForNavigation(w, r, v, next) {
+				return
+			}
 			m.brain.Observe(ipKey, brain.SignalBlock)
 			m.jailBadActor(r.Context(), ipKey, lc.autoBlock, v)
 			m.serveBlock(w, r, v)
@@ -1148,7 +1163,15 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 // flood or without a signer, gets the cheap flat rejection. This preserves both
 // properties: real users redeem within seconds, hammering bots cost ~nothing.
 func (m *Manager) serveJailed(w http.ResponseWriter, r *http.Request, ipKey, reason string) {
-	if m.cfg.Signer != nil && !m.controller.UnderAttack() && m.redeem.Allow(ipKey) {
+	// A top-level browser navigation is always offered the solvable challenge
+	// while there is no active flood: solving it both issues the session cookie
+	// and pardons the sentence, so a mis-jailed person is out on their FIRST page
+	// load instead of bouncing on the auto-retrying throttle page until the ~30s
+	// per-IP redeem budget refills. The budget still governs everything else
+	// (assets, API calls, non-browser clients) and the whole carve-out collapses
+	// under attack, so a flood is still answered by the cheap rejection.
+	navigation := acceptsHTML(r)
+	if m.cfg.Signer != nil && !m.controller.UnderAttack() && (navigation || m.redeem.Allow(ipKey)) {
 		if m.serveChallenge(w, r, Verdict{}, challenge.DefaultDifficulty, false) {
 			return
 		}
@@ -1404,6 +1427,60 @@ func (m *Manager) serveBlock(w http.ResponseWriter, r *http.Request, v Verdict) 
 
 // serveTarpit accepts the request but delays it, wasting scraper compute. The
 // content is still served (so detection is not revealed) after the delay.
+// ReleaseAllSentences lifts every active jail sentence — the reputation brain's
+// standing records AND the O(1) blocklist — and returns the number of sources
+// released. It is the operator's amnesty control: sentences self-expire but
+// escalate to hours, so after fixing the cause of a false-positive run (a load
+// test, a proxy that made every reader look like one IP, a threshold set too
+// tight) the operator would otherwise still have to wait out punishments aimed at
+// their own readers. Verified sessions and the SEO crawler lane were never
+// affected by sentences, so this only ever restores access.
+func (m *Manager) ReleaseAllSentences() int {
+	n := m.brain.ReleaseAll()
+	n += m.blocklist.UnblockAll()
+	return n
+}
+
+// softenForNavigation converts a score-only tarpit/block verdict into the
+// solvable challenge when the request is a top-level browser navigation, and
+// reports whether it handled the response.
+//
+// Why: the tarpit and the hard block are both reached from the SAME condition —
+// score ≥ the block threshold — so a single mis-scored real browser (privacy
+// browsers that strip or randomise the headers the fingerprint is built from are
+// the common case) is met with a 5-second stall or a 403 on a page it is simply
+// trying to read. Worse, each of those verdicts feeds SignalBlock into the
+// reputation brain, so two or three page loads collapse that reader's standing
+// below the jail floor and the escalating sentence then answers every subsequent
+// request with the "just a moment" throttle page. That is a compounding
+// false-positive spiral, and it is indistinguishable — from the reader's seat —
+// from the site being broken.
+//
+// A navigation is instead handed the ordinary solvable challenge: a real browser
+// clears it in well under a second and rides the verified lane for the whole
+// session TTL, while a scraper that will not run JS is still stopped and pays
+// real compute for every attempt. No reputation damage is recorded, so a
+// mis-scored human can never spiral into a jail.
+//
+// This deliberately does NOT soften a client whose verdict came from a known-bad
+// signature match (TypeBadBot / TypeHeadless): those are identified, not merely
+// unproven, and keep the full tarpit/block treatment. Non-navigation traffic
+// (asset and API hammering) also keeps it — that is where a tarpit actually
+// wastes a scraper's time instead of a person's.
+func (m *Manager) softenForNavigation(w http.ResponseWriter, r *http.Request, v Verdict, next http.Handler) bool {
+	if !acceptsHTML(r) {
+		return false
+	}
+	switch v.Result.ClientType {
+	case botdb.TypeBadBot, botdb.TypeHeadless:
+		return false // identified bad actor — no leniency
+	}
+	if !m.serveChallenge(w, r, v, challenge.HardDifficulty, true) {
+		next.ServeHTTP(w, r) // fail open if the challenge cannot be issued
+	}
+	return true
+}
+
 func (m *Manager) serveTarpit(w http.ResponseWriter, r *http.Request, v Verdict, next http.Handler) {
 	m.recordChallenge(r, v, "tarpit", "delayed", 0)
 	delay := 5 * time.Second

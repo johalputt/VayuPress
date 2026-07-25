@@ -784,8 +784,20 @@ func (a *App) shieldProtectionBody(ctx context.Context) string {
 	b.WriteString(vsRow("sh_loadshed", "Load shedding", "Return a cheap 503 when the server is saturated, protecting it from collapse.", cur.LoadShed, true))
 	b.WriteString(`<div class="vs-adv">` + vsField("sh_maxinflight", "Max concurrent (0 = unlimited)", strconv.Itoa(cur.MaxInFlight)) + `</div></div>`)
 	b.WriteString(`<div class="vs-feat">`)
-	b.WriteString(vsRow("sh_autoblock", "Auto-block abusive IPs", "Temporarily jail IPs that relentlessly breach the rate limit.", cur.AutoBlock, true))
-	b.WriteString(`<div class="vs-adv">` + vsField("sh_jail", "Jail for (minutes)", strconv.Itoa(cur.AutoBlockJailMinutes)) + `</div></div>`)
+	b.WriteString(vsRow("sh_autoblock", "Auto-block abusive IPs", "Temporarily jail IPs that relentlessly breach the rate limit. Jailing only ever happens while this is ON — turning it off immediately stops every sentence being served, including the self-learning reputation jail.", cur.AutoBlock, true))
+	b.WriteString(`<div class="vs-adv">` + vsField("sh_jail", "Jail for (minutes)", strconv.Itoa(cur.AutoBlockJailMinutes)) + `</div>`)
+	// Amnesty: sentences self-expire but escalate to hours, so after fixing the
+	// cause of a false-positive run the operator needs a way to free their own
+	// readers now rather than waiting the punishment out.
+	if a.vayuShield != nil {
+		stt := a.vayuShield.Status()
+		b.WriteString(`<div class="vs-adv"><button type="button" class="btn btn--ghost btn--sm"` +
+			` hx-post="/os/api/shield/release" hx-swap="none"` +
+			` hx-confirm="Release every active sentence now? Jailed IPs regain access immediately.">Release all sentences now</button>` +
+			` <span class="muted text-xs">` + strconv.Itoa(stt.RepJailed) + ` jailed · ` +
+			strconv.Itoa(stt.Suspects) + ` tracked suspects. Clears every jail and resets reputation — use after fixing a false-positive run.</span></div>`)
+	}
+	b.WriteString(`</div>`)
 	b.WriteString(`<div class="vs-feat">`)
 	b.WriteString(vsRow("sh_underattack", "Adaptive under-attack mode", "Automatically tighten challenge thresholds during a flood and relax when it passes.", cur.UnderAttack, true))
 	b.WriteString(`<div class="vs-adv">` + vsField("sh_rps", "Trip at (requests/sec)", strconv.Itoa(cur.UnderAttackRPS)) + `</div></div>`)
@@ -1015,6 +1027,24 @@ func (a *App) handleOSShieldDismiss(w http.ResponseWriter, r *http.Request) {
 	// HTMX hx-swap="delete" removes the row on 2xx; vs-refresh-sig also refreshes
 	// the signature counts + queue body in place.
 	w.Header().Set("HX-Trigger", "vs-refresh-sig")
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleOSShieldRelease lifts every active jail sentence (reputation brain +
+// blocklist) at once. Sentences self-expire but escalate to hours, so once the
+// operator has fixed the cause of a false-positive run — a load test from their
+// own IP, a CDN that made every reader look like one address, a threshold set too
+// tight — this frees their readers immediately instead of making them wait the
+// punishment out. It only ever restores access, so there is nothing to undo.
+func (a *App) handleOSShieldRelease(w http.ResponseWriter, r *http.Request) {
+	if a.vayuShield == nil {
+		writeAPIError(w, r, http.StatusServiceUnavailable, "shield-disabled", "VayuShield not initialized", "")
+		return
+	}
+	n := a.vayuShield.ReleaseAllSentences()
+	logging.LogInfo("vayushield", "released all jail sentences: "+strconv.Itoa(n)+" sources")
+	// Reload so the hero counters and this card reflect the cleared state.
+	w.Header().Set("HX-Refresh", "true")
 	w.WriteHeader(http.StatusNoContent)
 }
 

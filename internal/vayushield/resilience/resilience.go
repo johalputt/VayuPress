@@ -262,6 +262,19 @@ func (b *Blocklist) Blocked(key string) bool {
 	return true
 }
 
+// UnblockAll lifts every sentence at once — the operator's amnesty switch for a
+// run of false positives. Returns how many keys were released.
+func (b *Blocklist) UnblockAll() int {
+	n := 0
+	for i := range b.shards {
+		b.shards[i].mu.Lock()
+		n += len(b.shards[i].m)
+		b.shards[i].m = make(map[string]time.Time)
+		b.shards[i].mu.Unlock()
+	}
+	return n
+}
+
 // Len returns the number of jailed keys (for metrics/tests).
 func (b *Blocklist) Len() int {
 	n := 0

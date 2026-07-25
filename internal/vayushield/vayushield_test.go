@@ -526,13 +526,16 @@ func TestMiddlewareReputationJailAndVerifiedExemption(t *testing.T) {
 		Signer:   signer,
 		ClientIP: func(r *http.Request) string { return "6.6.6.7:9" },
 	})
-	m.ApplySettings(Settings{RateLimit: true, RatePerMinute: 1, Burst: 1})
+	// AutoBlock governs the jail gates (blocklist + L5 reputation), so it must be
+	// on for a sentence to be served at all.
+	m.ApplySettings(Settings{RateLimit: true, RatePerMinute: 1, Burst: 1, AutoBlock: true})
 	h := m.Middleware(okHandler())
 
 	// Breach the rate limit until reputation collapses into a jail sentence.
-	// The jailed source is offered the redeemable challenge — but only within
-	// its redeem budget (~once/30s); the rest of the flood gets the cheap flat
-	// rejection, so a hammering bot never turns the jail into expensive work.
+	// A jailed BROWSER NAVIGATION is always offered the redeemable challenge (so a
+	// mis-jailed person is out on their first page load); the cheap flat rejection
+	// still answers the rate-limit breaches themselves, so a hammering source
+	// never turns the jail into expensive work.
 	var sawChallenge, sawCheap bool
 	for i := 0; i < 20; i++ {
 		rr := httptest.NewRecorder()
@@ -700,5 +703,162 @@ func TestJailedSourceGetsRedeemableChallenge(t *testing.T) {
 	}
 	if cheap < 20 {
 		t.Fatalf("most jailed requests should get the cheap 429; got only %d", cheap)
+	}
+}
+
+// ── False-positive containment (real readers must never be hurdled) ───────────
+
+// navReq builds a top-level browser navigation — a GET that asks for HTML, which
+// is what a real person's page load looks like (and what acceptsHTML detects).
+func navReq(path string) *http.Request {
+	req := browserReq(path)
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+	return req
+}
+
+// TestReputationJailRespectsAutoBlockSwitch: the L5 reputation jail is an
+// availability defence, so with the operator's auto-block switch OFF it must
+// never serve a sentence. Regression guard for the trap where an operator turned
+// every anti-DDoS gate off and real readers were still met with the "just a
+// moment" throttle page, leaving no switch to reach for.
+func TestReputationJailRespectsAutoBlockSwitch(t *testing.T) {
+	ip := "198.51.100.42:7777"
+	m := New(Config{
+		Enabled:  false,
+		Signer:   challenge.NewSigner([]byte("test-secret")),
+		Now:      time.Now,
+		ClientIP: func(r *http.Request) string { return ip },
+	})
+	// Rate limiting on (to collapse reputation via breaches) but auto-block OFF.
+	m.ApplySettings(Settings{RateLimit: true, RatePerMinute: 1, Burst: 1, AutoBlock: false})
+	h := m.Middleware(okHandler())
+
+	for i := 0; i < 30; i++ {
+		rr := httptest.NewRecorder()
+		h.ServeHTTP(rr, navReq("/post"))
+		if got := rr.Header().Get("X-VayuShield"); got == "reputation" || got == "blocked" {
+			t.Fatalf("request %d served a jail sentence (%q) while auto-block is OFF", i, got)
+		}
+	}
+	// The brain still LEARNED (observation is always on, it just isn't enforced),
+	// which is what makes turning the switch back on effective immediately.
+	if m.Status().Suspects == 0 {
+		t.Error("the reputation brain should still observe suspects while enforcement is off")
+	}
+}
+
+// TestNavigationIsChallengedNotTarpitted: a person reading a page must never be
+// met with the 5-second tarpit stall or a hard block on a score-only verdict —
+// both are reached from the SAME score >= block threshold, so one mis-scored
+// browser would otherwise lose 5s per page AND take reputation damage that
+// compounds into an automatic jail. It gets the solvable challenge instead.
+func TestNavigationIsChallengedNotTarpitted(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		tarpit bool
+	}{
+		{"tarpit-variant", true},
+		{"block-variant", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ip := "198.51.100.77:2222"
+			m := New(Config{
+				Enabled:  true,
+				Signer:   challenge.NewSigner([]byte("test-secret")),
+				Now:      time.Now,
+				ClientIP: func(r *http.Request) string { return ip },
+			})
+			// An unproven client (no UA) scores 0.70 as TypeUnknown — exactly the
+			// "merely unproven, not identified" case a mis-scored human falls into.
+			// A block threshold under that puts it in the block/tarpit band.
+			m.ApplySettings(Settings{
+				Enabled: true, PoWThreshold: 0.4, JSThreshold: 0.6, BlockThreshold: 0.65, Tarpit: tc.tarpit,
+			})
+			h := m.Middleware(okHandler())
+
+			req := navReq("/post")
+			req.Header.Set("User-Agent", "")
+			start := time.Now()
+			rr := httptest.NewRecorder()
+			h.ServeHTTP(rr, req)
+			elapsed := time.Since(start)
+
+			if got := rr.Header().Get("X-VayuShield"); got != "challenge" {
+				t.Fatalf("navigation should be offered the solvable challenge, got %q (code %d)", got, rr.Code)
+			}
+			// The tarpit sleeps 5s; a challenge is immediate. Proves no stall.
+			if elapsed > 2*time.Second {
+				t.Fatalf("navigation was stalled for %v — it must never be tarpitted", elapsed)
+			}
+			// Crucially: no reputation damage, so a mis-scored reader can never
+			// spiral into the escalating jail by simply reading more pages.
+			if m.Status().RepJailed != 0 {
+				t.Error("a challenged navigation must not collapse the reader's standing into a jail")
+			}
+		})
+	}
+}
+
+// TestKnownBadBotsKeepFullTreatment: the navigation carve-out must not become a
+// free pass — a client identified by signature (not merely unproven) keeps the
+// hard block even when it sends a browser-looking Accept header.
+func TestKnownBadBotsKeepFullTreatment(t *testing.T) {
+	m := newTestManager(true)
+	m.ApplySettings(Settings{Enabled: true, PoWThreshold: 0.4, JSThreshold: 0.6, BlockThreshold: 0.8})
+	for _, ct := range []botdb.ClientType{botdb.TypeBadBot, botdb.TypeHeadless} {
+		rr := httptest.NewRecorder()
+		v := Verdict{Result: scorer.Result{BotScore: 0.95, ClientType: ct}}
+		if m.softenForNavigation(rr, navReq("/post"), v, okHandler()) {
+			t.Errorf("%s must not be softened into a challenge", ct)
+		}
+	}
+	// A merely-unproven client (the mis-scored-human case) IS softened.
+	rr := httptest.NewRecorder()
+	v := Verdict{Result: scorer.Result{BotScore: 0.95, ClientType: botdb.TypeUnknown}}
+	if !m.softenForNavigation(rr, navReq("/post"), v, okHandler()) {
+		t.Error("an unproven navigation should be softened into a solvable challenge")
+	}
+	// A non-navigation (asset/API hammering) keeps the tarpit/block path.
+	rr = httptest.NewRecorder()
+	if m.softenForNavigation(rr, browserReq("/api/thing"), v, okHandler()) {
+		t.Error("non-navigation traffic must keep the full tarpit/block treatment")
+	}
+}
+
+// TestJailedNavigationEscapesOnFirstLoad: a mis-jailed person must be handed the
+// solvable challenge on their FIRST page load — not bounce on the auto-retrying
+// throttle page until the ~30s per-IP redeem budget refills.
+func TestJailedNavigationEscapesOnFirstLoad(t *testing.T) {
+	ip := "198.51.100.99:3333"
+	m := New(Config{
+		Enabled:  false,
+		Signer:   challenge.NewSigner([]byte("test-secret")),
+		Now:      time.Now,
+		ClientIP: func(r *http.Request) string { return ip },
+	})
+	m.ApplySettings(Settings{AutoBlock: true, AutoBlockJailMinutes: 10})
+	h := m.Middleware(okHandler())
+	m.blocklist.Block(ipOnly(ip), 10*time.Minute)
+
+	// Every navigation while jailed gets the solvable challenge, not a dead end.
+	for i := 0; i < 3; i++ {
+		rr := httptest.NewRecorder()
+		h.ServeHTTP(rr, navReq("/post"))
+		if got := rr.Header().Get("X-VayuShield"); got != "challenge" {
+			t.Fatalf("jailed navigation %d got %q, want the solvable challenge", i, got)
+		}
+	}
+	// A jailed NON-navigation (asset/API/bot) still gets the cheap rejection, so
+	// a hammering source never turns the jail into expensive work.
+	var cheap int
+	for i := 0; i < 5; i++ {
+		rr := httptest.NewRecorder()
+		h.ServeHTTP(rr, browserReq("/style.css"))
+		if rr.Header().Get("X-VayuShield") == "blocked" {
+			cheap++
+		}
+	}
+	if cheap == 0 {
+		t.Error("jailed non-navigation traffic should still get the cheap flat rejection")
 	}
 }

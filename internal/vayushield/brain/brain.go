@@ -238,6 +238,26 @@ type Stats struct {
 	Redeems int64 // cumulative instant pardons via positive proof
 }
 
+// ReleaseAll forgets every tracked source: all sentences are lifted and all
+// standing returns to neutral. It is the operator's amnesty switch — the escape
+// hatch for a run of false positives (a load test from the office IP, a
+// misconfigured proxy that made every reader look like one address, or a
+// threshold that was set too tight for a while). Sentences are otherwise
+// self-expiring but escalate up to hours, so without this an operator who has
+// already fixed the cause still has to wait out punishments aimed at their own
+// readers. Returns how many tracked sources were cleared.
+func (b *Brain) ReleaseAll() int {
+	n := 0
+	for i := range b.shards {
+		s := &b.shards[i]
+		s.mu.Lock()
+		n += len(s.m)
+		s.m = make(map[string]*rep)
+		s.mu.Unlock()
+	}
+	return n
+}
+
 // Stats returns the live counters. Walks the shards; dashboard-only.
 func (b *Brain) Stats() Stats {
 	now := b.now()
