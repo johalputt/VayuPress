@@ -523,6 +523,14 @@ func (a *App) handleOSShield(w http.ResponseWriter, r *http.Request) {
 	b.WriteString(`<div class="mon-stack">`)
 	b.WriteString(monAcc("🛡️", "Protection &amp; settings", "Challenge thresholds, rate-limit, surge &amp; the resilience gates", monChip(enabled, "On", "Off"), false,
 		`<form hx-post="/os/api/shield/settings" hx-swap="none"><div id="vs-body-protection" hx-get="/os/shield/section/protection" hx-trigger="vs-refresh from:body" hx-swap="innerHTML">`+a.shieldProtectionBody(r.Context())+`</div></form>`))
+	// Live self-test: proves, against the CURRENT settings, that real readers and
+	// crawlers are served content. It answers the two questions an operator cannot
+	// otherwise verify without leaving the panel — "am I hurdling my own visitors?"
+	// and "am I hurting indexing?" — so the answer is evidence, not a promise.
+	selfTest := a.runShieldCanary()
+	b.WriteString(monAcc("🩺", "Visitor &amp; crawler check", "Live proof that real readers and search engines get through",
+		shieldSelfTestChip(selfTest), selfTest.readers != len(canaryReaders) || !selfTest.ok(),
+		`<div id="vs-body-selftest" hx-get="/os/shield/section/selftest" hx-trigger="vs-refresh from:body" hx-swap="innerHTML">`+shieldSelfTestBody(selfTest)+`</div>`))
 	b.WriteString(`</div>`)
 
 	// Network hardening (Tier 2/3) — collapsible; the body is an HTMX fragment so
@@ -812,6 +820,75 @@ func (a *App) shieldProtectionBody(ctx context.Context) string {
 	return b.String()
 }
 
+// shieldSelfTestChip summarises the self-test for the collapsed accordion, so a
+// problem is visible without expanding anything.
+func shieldSelfTestChip(res shieldCanaryResult) string {
+	if len(res.probes) == 0 {
+		return `<span class="mon-chip mon-chip--off">○ Unavailable</span>`
+	}
+	if res.readers != len(canaryReaders) {
+		return `<span class="mon-chip mon-chip--off">○ Readers hurdled</span>`
+	}
+	if !res.ok() {
+		return `<span class="mon-chip mon-chip--off">○ Crawler blocked</span>`
+	}
+	return `<span class="mon-chip mon-chip--on">● All clear</span>`
+}
+
+// shieldSelfTestBody renders the live self-test report: each synthetic visitor is
+// driven through the REAL middleware with the operator's current settings, so the
+// verdict reflects this install rather than a documented intention.
+func shieldSelfTestBody(res shieldCanaryResult) string {
+	var b strings.Builder
+	b.WriteString(vsRefresh("selftest", "vs-body-selftest", ""))
+	if len(res.probes) == 0 {
+		b.WriteString(`<p class="muted text-sm">VayuShield is not initialised, so there is nothing to test.</p>`)
+		return b.String()
+	}
+	switch {
+	case res.readers != len(canaryReaders):
+		b.WriteString(`<p class="text-sm"><strong>Real visitors are being hurdled.</strong> At least one ordinary browser was met with a verification page or a rejection instead of your content. Lower <em>Block at</em> / <em>Challenge at score</em>, or turn off Sovereign Surge, then re-run this check.</p>`)
+	case !res.ok():
+		b.WriteString(`<p class="text-sm"><strong>A crawler is not being served content.</strong> Sustained non-200 responses on real URLs are read as crawl errors and cost you indexing. Re-run after loosening the thresholds.</p>`)
+	default:
+		b.WriteString(`<p class="text-sm">Every ordinary visitor and every major crawler is served real content under your current settings. Nothing is being hurdled and indexing is unaffected.</p>`)
+	}
+	row := func(p canaryProbeResult) string {
+		pill := `<span class="badge badge--ok">✓ Served</span>`
+		if !p.OK {
+			label := "Challenged"
+			if p.Status == http.StatusForbidden {
+				label = "Blocked"
+			} else if p.Status == http.StatusTooManyRequests {
+				label = "Throttled"
+			}
+			pill = `<span class="badge badge--danger">✕ ` + label + `</span>`
+		}
+		return `<tr><td class="row-title">` + html.EscapeString(p.Name) + `</td><td>` + pill +
+			`</td><td class="muted text-sm">HTTP ` + strconv.Itoa(p.Status) + `</td></tr>`
+	}
+	for _, group := range []string{"Readers", "Crawlers"} {
+		rows := ""
+		for _, p := range res.probes {
+			if p.Group == group {
+				rows += row(p)
+			}
+		}
+		if rows == "" {
+			continue
+		}
+		caption := "Ordinary first-time visitors — no clearance cookie"
+		if group == "Crawlers" {
+			caption = "Search engines, AI crawlers &amp; the performance tester"
+		}
+		b.WriteString(`<div class="settings-block-title mt-3">` + group + `</div>` +
+			`<p class="muted text-xs mb-2">` + caption + `</p>` +
+			`<div class="table-wrap"><table class="table"><tbody>` + rows + `</tbody></table></div>`)
+	}
+	b.WriteString(`<p class="muted text-xs mt-2">Each probe is driven through the live shield in-process — it never leaves your server and is never counted as real traffic.</p>`)
+	return b.String()
+}
+
 // shieldSignaturesBody renders the bot-signature stats + class pills + export.
 func (a *App) shieldSignaturesBody(ctx context.Context) string {
 	var b strings.Builder
@@ -910,6 +987,8 @@ func (a *App) handleOSShieldSection(w http.ResponseWriter, r *http.Request) {
 		out = a.shieldEngagementBody(r.Context(), shieldDays(r))
 	case "hardening":
 		out = a.shieldHardeningBody()
+	case "selftest":
+		out = shieldSelfTestBody(a.runShieldCanary())
 	default:
 		http.NotFound(w, r)
 		return

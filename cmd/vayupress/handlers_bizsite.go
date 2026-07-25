@@ -139,6 +139,22 @@ func (a *App) handleBizSiteCSS(w http.ResponseWriter, r *http.Request) {
 
 // handleOSWebsite renders the Website studio: hosting-mode chooser, template
 // gallery, and the content editor.
+// bizModeLabel renders the hosting mode as a short human label for the page's
+// stat header and the accordion's status chip, so what the domain currently
+// serves is readable without expanding anything.
+func bizModeLabel(mode string) string {
+	switch mode {
+	case "business":
+		return "Business site"
+	case "business_subpath":
+		return "Site + /blog"
+	case "custom":
+		return "Custom upload"
+	default:
+		return "Blog"
+	}
+}
+
 func (a *App) handleOSWebsite(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
@@ -157,60 +173,72 @@ func (a *App) handleOSWebsite(w http.ResponseWriter, r *http.Request) {
 		`<button class="btn btn--primary btn--sm" data-biz-save>Save &amp; publish</button></div></div>` +
 		`<p class="page-sub">A business website at your domain — blog at blog.` + he(domain) + `, mail at mail.` + he(domain) + `. Deploy, edit and switch designs from here.</p>`)
 
+	// Premium stat header (Monetization-console style): the four facts an
+	// operator wants confirmed at a glance before touching anything.
+	cmHead := customsite.ReadManifest(customSiteDir())
+	buildLabel := "None"
+	if customsite.Deployed(customSiteDir()) {
+		buildLabel = fmt.Sprintf("%d files", cmHead.Files)
+	}
+	b.WriteString(`<div class="stat-grid mb-6">` +
+		`<div class="stat-card"><div class="stat-card__label">Root serves</div><div class="stat-card__value stat-card__value--sm">` + he(bizModeLabel(mode)) + `</div><div class="stat-card__bottom"><span class="muted text-xs">` + he(domain) + `</span></div></div>` +
+		`<div class="stat-card"><div class="stat-card__label">Active design</div><div class="stat-card__value stat-card__value--sm">` + he(activeTpl.Name) + `</div><div class="stat-card__bottom"><span class="muted text-xs">` + he(activeTpl.Category) + `</span></div></div>` +
+		`<div class="stat-card"><div class="stat-card__label">Designs</div><div class="stat-card__value">` + fmt.Sprintf("%d", len(bizsite.All())) + `</div><div class="stat-card__bottom"><span class="muted text-xs">ready to switch to</span></div></div>` +
+		`<div class="stat-card"><div class="stat-card__label">Custom build</div><div class="stat-card__value stat-card__value--sm">` + he(buildLabel) + `</div><div class="stat-card__bottom"><span class="muted text-xs">uploaded static site</span></div></div>` +
+		`</div>`)
+
+	b.WriteString(`<div class="section-head"><span class="section-head__title">Hosting</span>` +
+		`<span class="section-head__hint">What your domain serves — kept across updates</span></div><div class="mon-stack">`)
+
 	// Hosting mode — explicit, never changed by updates.
-	b.WriteString(`<div class="card"><div class="card-title">What does ` + he(domain) + ` show?</div>` +
-		`<p class="text-sm muted">Your current choice is kept forever across updates — nothing changes unless you change it here.</p>` +
+	var hostBody strings.Builder
+	b2 := &hostBody
+	b2.WriteString(`<p class="text-sm muted">Your current choice is kept forever across updates — nothing changes unless you change it here.</p>` +
 		`<label class="vb-mode"><input type="radio" name="biz-mode" value="blog"`)
 	if mode != "business" {
-		b.WriteString(` checked`)
+		b2.WriteString(` checked`)
 	}
-	b.WriteString(`> <strong>Blog at the root</strong> <span class="muted text-sm">— ` + he(domain) + ` is your blog (current default)</span></label>`)
-	b.WriteString(`<label class="vb-mode"><input type="radio" name="biz-mode" value="business"`)
+	b2.WriteString(`> <strong>Blog at the root</strong> <span class="muted text-sm">— ` + he(domain) + ` is your blog (current default)</span></label>`)
+	b2.WriteString(`<label class="vb-mode"><input type="radio" name="biz-mode" value="business"`)
 	if mode == "business" {
-		b.WriteString(` checked`)
+		b2.WriteString(` checked`)
 	}
-	b.WriteString(`> <strong>Business website at the root</strong> <span class="muted text-sm">— ` + he(domain) + ` is your business site; the blog lives at blog.` + he(domain) + `</span></label>`)
-	b.WriteString(`<label class="vb-mode"><input type="radio" name="biz-mode" value="business_subpath"`)
+	b2.WriteString(`> <strong>Business website at the root</strong> <span class="muted text-sm">— ` + he(domain) + ` is your business site; the blog lives at blog.` + he(domain) + `</span></label>`)
+	b2.WriteString(`<label class="vb-mode"><input type="radio" name="biz-mode" value="business_subpath"`)
 	if mode == "business_subpath" {
-		b.WriteString(` checked`)
+		b2.WriteString(` checked`)
 	}
-	b.WriteString(`> <strong>Website at the root, blog at /blog</strong> <span class="muted text-sm">— ` + he(domain) + ` is your business site, the blog homepage is ` + he(domain) + `/blog, and every existing post keeps its ` + he(domain) + `/slug URL. One domain, no subdomain or extra certificate needed.</span></label>`)
-	b.WriteString(`<label class="vb-mode"><input type="radio" name="biz-mode" value="custom"`)
+	b2.WriteString(`> <strong>Website at the root, blog at /blog</strong> <span class="muted text-sm">— ` + he(domain) + ` is your business site, the blog homepage is ` + he(domain) + `/blog, and every existing post keeps its ` + he(domain) + `/slug URL. One domain, no subdomain or extra certificate needed.</span></label>`)
+	b2.WriteString(`<label class="vb-mode"><input type="radio" name="biz-mode" value="custom"`)
 	if mode == "custom" {
-		b.WriteString(` checked`)
+		b2.WriteString(` checked`)
 	}
-	b.WriteString(`> <strong>Custom uploaded website</strong> <span class="muted text-sm">— serve your own static site (built by hand or with AI, uploaded below) at ` + he(domain) + `; the blog stays at ` + he(domain) + `/blog and posts keep their ` + he(domain) + `/slug URLs</span></label>`)
-	b.WriteString(`<p class="muted text-xs mt-2">The subdomain option points <span class="mono">` + he(domain) + `</span>, <span class="mono">blog.` + he(domain) + `</span> and <span class="mono">mail.` + he(domain) + `</span> at this server; the installer issues and renews Let&#39;s Encrypt certificates for all three automatically. The <span class="mono">/blog</span> and custom options need only <span class="mono">` + he(domain) + `</span>.</p></div>`)
+	b2.WriteString(`> <strong>Custom uploaded website</strong> <span class="muted text-sm">— serve your own static site (built by hand or with AI, uploaded below) at ` + he(domain) + `; the blog stays at ` + he(domain) + `/blog and posts keep their ` + he(domain) + `/slug URLs</span></label>`)
+	b2.WriteString(`<p class="muted text-xs mt-2">The subdomain option points <span class="mono">` + he(domain) + `</span>, <span class="mono">blog.` + he(domain) + `</span> and <span class="mono">mail.` + he(domain) + `</span> at this server; the installer issues and renews Let&#39;s Encrypt certificates for all three automatically. The <span class="mono">/blog</span> and custom options need only <span class="mono">` + he(domain) + `</span>.</p>`)
+	b.WriteString(monAcc("🌐", "What does "+he(domain)+" show?", "Blog, business site, /blog or your own upload",
+		`<span class="mon-chip mon-chip--on">● `+he(bizModeLabel(mode))+`</span>`, true, hostBody.String()))
+	b.WriteString(`</div>`)
 
-	// Custom build deploy card.
-	cm := customsite.ReadManifest(customSiteDir())
-	customDeployed := customsite.Deployed(customSiteDir())
-	b.WriteString(`<div class="card"><div class="card-title">Deploy a custom build</div>`)
-	b.WriteString(`<p class="text-sm muted">Upload a complete static website as a <span class="mono">.zip</span> — it must contain <span class="mono">index.html</span> at its root and reference assets with relative paths. It goes live at <span class="mono">` + he(domain) + `</span> once you choose <strong>Custom uploaded website</strong> above and Save &amp; publish. Building with an AI assistant? <a href="/os/api/website/custom-guide">Download the build guide ↓</a></p>`)
-	if customDeployed {
-		b.WriteString(`<p class="text-sm">Current build: <strong>` + fmt.Sprintf("%d", cm.Files) + `</strong> files, ` + fmt.Sprintf("%.1f", float64(cm.Bytes)/(1024*1024)) + ` MiB` +
-			`, deployed <span class="mono">` + he(cm.DeployedAt.Format("2006-01-02 15:04")) + ` UTC</span>.</p>`)
-	}
-	b.WriteString(`<div class="biz-deploy"><input type="file" accept=".zip,application/zip" data-biz-zip class="input">` +
-		`<button type="button" class="btn btn--primary btn--sm" data-biz-deploy>Deploy .zip</button>`)
-	if cm.HasPrev {
-		b.WriteString(`<button type="button" class="btn btn--ghost btn--sm" data-biz-rollback>Roll back</button>`)
-	}
-	b.WriteString(`<span class="text-sm muted" data-biz-deploy-status></span></div></div>`)
+	// ── Design & content ──────────────────────────────────────────────────────
+	b.WriteString(`<div class="section-head"><span class="section-head__title">Design &amp; content</span>` +
+		`<span class="section-head__hint">Pick a look, then fill in the details — switching designs keeps your content</span></div><div class="mon-stack">`)
 
 	// Template gallery.
-	b.WriteString(`<div class="card"><div class="card-title">Choose a design — ` + he(activeTpl.Name) + ` is active</div><div class="biz-grid">`)
+	var galBody strings.Builder
+	galBody.WriteString(`<div class="biz-grid">`)
 	for _, t := range bizsite.All() {
 		cls := "biz-card"
 		if t.Key == activeTpl.Key {
 			cls += " biz-card--active"
 		}
-		b.WriteString(`<button type="button" class="` + cls + `" data-biz-template="` + he(t.Key) + `">` +
+		galBody.WriteString(`<button type="button" class="` + cls + `" data-biz-template="` + he(t.Key) + `">` +
 			`<span class="biz-card-cat">` + he(t.Category) + `</span>` +
 			`<span class="biz-card-name">` + he(t.Name) + `</span>` +
 			`<span class="biz-card-tag text-sm muted">` + he(t.Tagline) + `</span></button>`)
 	}
-	b.WriteString(`</div><p class="muted text-xs mt-2">Selecting a design keeps your content — only the look changes. Empty fields fall back to the design&#39;s sample content.</p></div>`)
+	galBody.WriteString(`</div><p class="muted text-xs mt-2">Selecting a design keeps your content — only the look changes. Empty fields fall back to the design&#39;s sample content.</p>`)
+	b.WriteString(monAcc("🎨", "Choose a design", fmt.Sprintf("%d ready-made looks — %s is active", len(bizsite.All()), he(activeTpl.Name)),
+		`<span class="mon-chip mon-chip--on">● `+he(activeTpl.Name)+`</span>`, false, galBody.String()))
 
 	// Content editor.
 	field := func(key, label, ph string) string {
@@ -219,24 +247,48 @@ func (a *App) handleOSWebsite(w http.ResponseWriter, r *http.Request) {
 	area := func(key, label, ph string, rows string) string {
 		return `<label class="pm-label">` + he(label) + `</label><textarea class="input" rows="` + rows + `" data-biz-f="` + key + `" placeholder="` + he(ph) + `"></textarea>`
 	}
-	b.WriteString(`<div class="card"><div class="card-title">Your content</div><div class="biz-form" data-biz-form>`)
-	b.WriteString(`<div class="biz-form-col">`)
-	b.WriteString(field("name", "Business name", "Maison Olive"))
-	b.WriteString(field("tagline", "Tagline", "Seasonal plates, honest wine."))
-	b.WriteString(area("about", "About (one paragraph per line)", "Who you are, what you do…", "4"))
-	b.WriteString(field("cta", "Button label", "Book a table"))
-	b.WriteString(field("ctaLink", "Button link (optional)", "#contact, tel:…, or a URL"))
-	b.WriteString(field("heroImg", "Hero image URL (optional)", "/media/hero.jpg or any https image"))
-	b.WriteString(`</div><div class="biz-form-col">`)
-	b.WriteString(field("phone", "Phone", "+1 555 0100"))
-	b.WriteString(field("email", "Email", "hello@"+domain))
-	b.WriteString(field("address", "Address", "12 Main Street…"))
-	b.WriteString(area("hours", "Hours (one line per range)", "Mon–Fri 09:00–18:00", "3"))
-	b.WriteString(area("services", "Offerings — one per line: Title | Description | Price", "Flat white | | £3.40", "6"))
-	b.WriteString(area("gallery", "Gallery image URLs (one per line)", "/media/one.jpg", "3"))
-	b.WriteString(`<label class="vb-mode"><input type="checkbox" data-biz-f="showBlog"> Link the blog from the website</label>`)
-	b.WriteString(`</div></div>`)
-	b.WriteString(`<span class="text-sm muted" data-biz-status></span></div>`)
+	var formBody strings.Builder
+	formBody.WriteString(`<div class="biz-form" data-biz-form>`)
+	formBody.WriteString(`<div class="biz-form-col">`)
+	formBody.WriteString(field("name", "Business name", "Maison Olive"))
+	formBody.WriteString(field("tagline", "Tagline", "Seasonal plates, honest wine."))
+	formBody.WriteString(area("about", "About (one paragraph per line)", "Who you are, what you do…", "4"))
+	formBody.WriteString(field("cta", "Button label", "Book a table"))
+	formBody.WriteString(field("ctaLink", "Button link (optional)", "#contact, tel:…, or a URL"))
+	formBody.WriteString(field("heroImg", "Hero image URL (optional)", "/media/hero.jpg or any https image"))
+	formBody.WriteString(`</div><div class="biz-form-col">`)
+	formBody.WriteString(field("phone", "Phone", "+1 555 0100"))
+	formBody.WriteString(field("email", "Email", "hello@"+domain))
+	formBody.WriteString(field("address", "Address", "12 Main Street…"))
+	formBody.WriteString(area("hours", "Hours (one line per range)", "Mon–Fri 09:00–18:00", "3"))
+	formBody.WriteString(area("services", "Offerings — one per line: Title | Description | Price", "Flat white | | £3.40", "6"))
+	formBody.WriteString(area("gallery", "Gallery image URLs (one per line)", "/media/one.jpg", "3"))
+	formBody.WriteString(`<label class="vb-mode"><input type="checkbox" data-biz-f="showBlog"> Link the blog from the website</label>`)
+	formBody.WriteString(`</div></div>`)
+	formBody.WriteString(`<span class="text-sm muted" data-biz-status></span>`)
+	b.WriteString(monAcc("✍️", "Your content", "Name, tagline, contact details, hours, offerings &amp; gallery", "", false, formBody.String()))
+	b.WriteString(`</div>`)
+
+	// ── Custom build ──────────────────────────────────────────────────────────
+	b.WriteString(`<div class="section-head"><span class="section-head__title">Custom build</span>` +
+		`<span class="section-head__hint">Bring your own static site instead of a ready-made design</span></div><div class="mon-stack">`)
+	cm := customsite.ReadManifest(customSiteDir())
+	customDeployed := customsite.Deployed(customSiteDir())
+	var zipBody strings.Builder
+	zipBody.WriteString(`<p class="text-sm muted">Upload a complete static website as a <span class="mono">.zip</span> — it must contain <span class="mono">index.html</span> at its root and reference assets with relative paths. It goes live at <span class="mono">` + he(domain) + `</span> once you choose <strong>Custom uploaded website</strong> above and Save &amp; publish. Building with an AI assistant? <a href="/os/api/website/custom-guide">Download the build guide ↓</a></p>`)
+	if customDeployed {
+		zipBody.WriteString(`<p class="text-sm">Current build: <strong>` + fmt.Sprintf("%d", cm.Files) + `</strong> files, ` + fmt.Sprintf("%.1f", float64(cm.Bytes)/(1024*1024)) + ` MiB` +
+			`, deployed <span class="mono">` + he(cm.DeployedAt.Format("2006-01-02 15:04")) + ` UTC</span>.</p>`)
+	}
+	zipBody.WriteString(`<div class="biz-deploy"><input type="file" accept=".zip,application/zip" data-biz-zip class="input">` +
+		`<button type="button" class="btn btn--primary btn--sm" data-biz-deploy>Deploy .zip</button>`)
+	if cm.HasPrev {
+		zipBody.WriteString(`<button type="button" class="btn btn--ghost btn--sm" data-biz-rollback>Roll back</button>`)
+	}
+	zipBody.WriteString(`<span class="text-sm muted" data-biz-deploy-status></span></div>`)
+	b.WriteString(monAcc("📦", "Deploy a custom build", "Upload a .zip static site — with one-click rollback",
+		monChip(customDeployed, buildLabel+" deployed", "None uploaded"), false, zipBody.String()))
+	b.WriteString(`</div>`)
 
 	// Hydration payload + external JS (CSP-safe).
 	b.WriteString(`<script type="application/json" id="vp-biz-data">`)

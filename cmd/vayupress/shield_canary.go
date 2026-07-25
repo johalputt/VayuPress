@@ -41,11 +41,32 @@ var canaryCrawlers = []struct{ name, ua string }{
 	{"PageSpeed", "Mozilla/5.0 (Linux; Android 11) AppleWebKit/537.36 Chrome/130 Mobile Safari/537.36 Chrome-Lighthouse"},
 }
 
-// shieldCanaryResult reports how many synthetic crawler probes were served
-// content vs challenged/blocked.
+// canaryReaders are ordinary first-time human visitors — a top-level navigation
+// from a mainstream browser, carrying no clearance cookie. They are the other
+// half of the promise: a shield that de-indexes nothing is still broken if it
+// meets real people with a verification page. Each MUST be served content.
+var canaryReaders = []struct{ name, ua string }{
+	{"Reader · Chrome (Windows)", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"},
+	{"Reader · Safari (iPhone)", "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"},
+	{"Reader · Firefox", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:130.0) Gecko/20100101 Firefox/130.0"},
+	{"Reader · Brave/Chromium", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"},
+}
+
+// canaryProbeResult is one probe's outcome, for the operator-facing report.
+type canaryProbeResult struct {
+	Name   string
+	Group  string // "Readers" | "Crawlers"
+	Status int
+	OK     bool
+}
+
+// shieldCanaryResult reports how many synthetic probes were served content vs
+// challenged/blocked, plus the per-probe detail the admin panel renders.
 type shieldCanaryResult struct {
-	passed []string
-	failed []string
+	passed  []string
+	failed  []string
+	probes  []canaryProbeResult
+	readers int // how many reader probes were served content
 }
 
 func (r shieldCanaryResult) ok() bool { return len(r.failed) == 0 }
@@ -66,20 +87,36 @@ func (a *App) runShieldCanary() shieldCanaryResult {
 		_, _ = w.Write([]byte("content"))
 	})
 	h := a.vayuShield.Middleware(sentinel)
-	for _, c := range canaryCrawlers {
+	probe := func(name, group, ua string, navigation bool) {
 		req, err := http.NewRequest(http.MethodGet, "/", nil)
 		if err != nil {
-			continue
+			return
 		}
-		req.Header.Set("User-Agent", c.ua)
+		req.Header.Set("User-Agent", ua)
+		if navigation {
+			// What a real person's page load looks like: a GET asking for HTML.
+			req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+			req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+		}
 		req.RemoteAddr = "203.0.113.1:12345"
 		rec := &canaryRecorder{}
 		h.ServeHTTP(rec, req)
-		if rec.status == http.StatusOK {
-			res.passed = append(res.passed, c.name)
+		ok := rec.status == http.StatusOK
+		res.probes = append(res.probes, canaryProbeResult{Name: name, Group: group, Status: rec.status, OK: ok})
+		if ok {
+			res.passed = append(res.passed, name)
+			if group == "Readers" {
+				res.readers++
+			}
 		} else {
-			res.failed = append(res.failed, fmt.Sprintf("%s→%d", c.name, rec.status))
+			res.failed = append(res.failed, fmt.Sprintf("%s→%d", name, rec.status))
 		}
+	}
+	for _, c := range canaryReaders {
+		probe(c.name, "Readers", c.ua, true)
+	}
+	for _, c := range canaryCrawlers {
+		probe(c.name, "Crawlers", c.ua, false)
 	}
 	return res
 }
