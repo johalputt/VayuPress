@@ -455,9 +455,14 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
-VayuPress listens on plain HTTP `:8080` (bound to loopback in the compose file)
-and expects a **TLS-terminating reverse proxy** in front that sets
-`X-Forwarded-For`. A minimal nginx server block:
+The Compose deployment includes Caddy as its TLS-terminating reverse proxy.
+Caddy starts before VayuPress, obtains and renews certificates automatically,
+and is the only service that publishes host ports. See the root
+[`CADDY.md`](../CADDY.md) for local-certificate trust and operational commands.
+
+If you deploy the binary without Compose, it listens on plain HTTP `:8080` and
+expects a trusted reverse proxy in front that sets `X-Forwarded-For`. A minimal
+nginx server block for that deployment style is:
 
 ```nginx
 server {

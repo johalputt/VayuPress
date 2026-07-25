@@ -1,0 +1,7 @@
+# Caddy uses its local CA for localhost and public ACME certificates for a real
+# DOMAIN. It also redirects HTTP to HTTPS automatically.
+{$DOMAIN:localhost} {
+	encode zstd gzip
+
+	reverse_proxy vayupress:8080
+}
