@@ -64,11 +64,15 @@ body::before {
 .vayu-nav-links { display: flex; align-items: center; gap: 1.5rem; }
 .vayu-nav-links a { position: relative; color: var(--muted, #94a3b8); font-size: .93rem; font-weight: 500; transition: color .18s; }
 .vayu-nav-links a::after {
-  content: ""; position: absolute; left: 0; bottom: -5px; height: 1.5px; width: 0;
-  background: var(--vayu-grad); transition: width .3s ease;
+  /* scaleX rather than width: animating width forces a layout pass on every
+     frame, while a transform is composited. Visually identical. */
+  content: ""; position: absolute; left: 0; bottom: -5px; height: 1.5px; width: 100%;
+  transform: scaleX(0); transform-origin: left;
+  background: var(--vayu-grad); transition: transform .3s ease;
 }
 .vayu-nav-links a:hover { color: var(--text, #e5e7eb); }
-.vayu-nav-links a:hover::after { width: 100%; }
+.vayu-nav-links a:hover::after,
+.vayu-nav-links a:focus-visible::after { transform: scaleX(1); }
 .vayu-nav-signin { color: var(--text, #e5e7eb) !important; }
 .vayu-nav-signup {
   background: var(--accent, #2dd4bf); color: #04060d !important; font-weight: 600;
@@ -255,5 +259,151 @@ article.vayu-prose, .content { font-size: 1.06rem; line-height: 1.75; }
 }
 @media (prefers-reduced-motion: reduce) {
   .vayu-post-card, .vayu-post-card::before, .vayu-post-arrow, .vayu-nav-links a::after, .content a { transition: none; }
+  .vayu-hero h1 { animation: none; background-position: 30% 50%; }
   .vayu-post-card:hover { transform: none; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Vayu — premium motion + performance layer.
+
+   Design rules this block holds itself to, because a flagship theme that costs
+   speed is not a flagship theme:
+
+     - Animate ONLY transform / opacity / background-position / box-shadow, so
+       every effect is composited and none of it triggers layout or reflow.
+     - No JS, no scroll listeners, no observers: entrance motion is pure CSS with
+       nth-child delays, so it cannot block the main thread or delay paint.
+     - No new network requests and no web fonts, so LCP is unchanged.
+     - Markup is untouched, so headings, structured data, canonical tags and the
+       geo/analytics hooks are exactly as they were — nothing here can move an
+       SEO needle in either direction.
+     - Decorative layers are pointer-events:none and aria-hidden by nature (they
+       are pseudo-elements), so they add nothing to the accessibility tree.
+     - content-visibility below the fold is a real Core Web Vitals win, not a
+       cosmetic one: offscreen cards skip layout and paint entirely.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Speed: skip rendering work for cards the reader cannot see yet ───────── */
+.vayu-post-card {
+  content-visibility: auto;
+  /* An honest size estimate keeps the scrollbar stable while cards are skipped;
+     without it the page height jumps as they render. */
+  contain-intrinsic-size: auto 168px;
+}
+
+/* ── Aurora: a slow, wide glow behind the hero ───────────────────────────── */
+.vayu-hero::before {
+  content: "";
+  position: absolute;
+  inset: -30% -20% 30% -20%;
+  background:
+    radial-gradient(38% 55% at 18% 30%, color-mix(in srgb, var(--accent, #2dd4bf) 22%, transparent), transparent 70%),
+    radial-gradient(32% 48% at 82% 18%, color-mix(in srgb, var(--accent2, #f59e0b) 16%, transparent), transparent 70%);
+  filter: blur(38px);
+  opacity: .75;
+  pointer-events: none;
+  z-index: 0;
+  animation: vayu-aurora 22s ease-in-out infinite alternate;
+}
+/* Content must sit above the glow. */
+.vayu-hero > * { position: relative; z-index: 1; }
+@keyframes vayu-aurora {
+  from { transform: translate3d(-2%, -1%, 0) scale(1); }
+  to   { transform: translate3d(3%, 2%, 0) scale(1.08); }
+}
+
+/* ── Display headings: a gradient that drifts, never a flash ─────────────────
+   Transparency comes from -webkit-text-fill-color, matching the technique the
+   headings above already use. That property is simply ignored by an engine that
+   cannot clip a background to text, so the heading falls back to its solid colour
+   instead of rendering invisible — which is what plain color:transparent would do
+   to the most important text on the page. */
+.vayu-hero h1 {
+  background: linear-gradient(100deg,
+    var(--text, #e5e7eb) 0%,
+    var(--hi, #5eead4) 32%,
+    var(--accent, #2dd4bf) 52%,
+    var(--text, #e5e7eb) 78%);
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: vayu-sheen 14s ease-in-out infinite alternate;
+}
+@keyframes vayu-sheen {
+  from { background-position: 0% 50%; }
+  to   { background-position: 100% 50%; }
+}
+
+/* ── Post cards: a firmer lift, and an accent edge that draws itself in ──── */
+.vayu-post-card { will-change: transform; }
+.vayu-post-card::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  border-radius: 2px 0 0 2px;
+  background: var(--vayu-grad, linear-gradient(180deg, var(--accent, #2dd4bf), var(--accent2, #f59e0b)));
+  transform: scaleY(0);
+  transform-origin: top;
+  transition: transform .32s cubic-bezier(.22, .61, .36, 1);
+  pointer-events: none;
+}
+.vayu-post-card:hover::after,
+.vayu-post-card:focus-within::after { transform: scaleY(1); }
+.vayu-post-card:hover {
+  box-shadow: 0 22px 48px -22px color-mix(in srgb, var(--accent, #2dd4bf) 45%, transparent),
+              0 0 0 1px color-mix(in srgb, var(--accent, #2dd4bf) 22%, transparent);
+}
+
+/* First screen only: cards rise in, staggered. Capped at six so a long feed
+   never waits on a growing delay chain. */
+.vayu-post-card:nth-child(-n+6) {
+  animation: vayu-card-in .5s cubic-bezier(.22, .61, .36, 1) both;
+}
+.vayu-post-card:nth-child(1) { animation-delay: .02s; }
+.vayu-post-card:nth-child(2) { animation-delay: .07s; }
+.vayu-post-card:nth-child(3) { animation-delay: .12s; }
+.vayu-post-card:nth-child(4) { animation-delay: .17s; }
+.vayu-post-card:nth-child(5) { animation-delay: .22s; }
+.vayu-post-card:nth-child(6) { animation-delay: .27s; }
+@keyframes vayu-card-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* ── Stats: the numbers lift on hover of the row ─────────────────────────── */
+.vayu-stat-val { display: inline-block; transition: transform .22s cubic-bezier(.22, .61, .36, 1), color .2s; }
+.vayu-stats:hover .vayu-stat-val { transform: translateY(-2px); color: var(--accent, #2dd4bf); }
+
+/* ── Nav sign-in: match the portal's enlarge-on-hover language ───────────── */
+.vayu-nav-signin {
+  transition: transform .18s cubic-bezier(.22, .61, .36, 1), box-shadow .18s ease, filter .18s ease;
+}
+.vayu-nav-signin:hover {
+  transform: translateY(-2px) scale(1.04);
+  box-shadow: 0 12px 24px -12px color-mix(in srgb, var(--accent, #2dd4bf) 60%, transparent);
+}
+.vayu-nav-signin:active { transform: translateY(0) scale(.99); }
+
+/* ── Page links / pagination ─────────────────────────────────────────────── */
+.vayu-page-link { transition: border-color .15s, color .15s, background .15s, transform .18s ease; }
+.vayu-page-link:hover { transform: translateY(-2px); }
+
+/* ── Motion off: every animation and lift stands down ────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .vayu-hero::before,
+  .vayu-hero h1,
+  .vayu-post-card:nth-child(-n+6) { animation: none; }
+  .vayu-post-card::after,
+  .vayu-stat-val,
+  .vayu-nav-signin,
+  .vayu-page-link { transition: none; }
+  .vayu-stats:hover .vayu-stat-val,
+  .vayu-nav-signin:hover,
+  .vayu-page-link:hover { transform: none; }
+  /* Keep the gradient heading legible without the drift. */
+  .vayu-hero h1 { background-position: 30% 50%; }
 }

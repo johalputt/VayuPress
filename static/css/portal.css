@@ -268,3 +268,164 @@
 .vayu-nav-avatar { width: 22px; height: 22px; border-radius: 50%; object-fit: cover; vertical-align: middle; }
 /* Operator/staff chip links straight to the VayuOS dashboard. */
 .vayu-nav-operator { cursor: pointer; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   VayuPortal — premium motion layer.
+
+   Everything below animates ONLY transform, opacity, box-shadow and filter, so
+   each effect runs on the compositor and never triggers layout or reflow. No new
+   requests, no web fonts, no JS: the panel stays as fast as it was and the page's
+   markup — and therefore its SEO — is untouched. Every animation is disabled
+   under prefers-reduced-motion at the end of this block.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Launch button: a confident hover, and a glow ring that breathes ─────── */
+.vp-portal-trigger {
+  /* Promote once so repeated hovers don't re-rasterise the layer. */
+  will-change: transform;
+}
+.vp-portal-trigger::after {
+  /* The ring lives on a pseudo-element so scaling it never nudges the button. */
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border-radius: inherit;
+  border: 2px solid var(--vpp-accent);
+  opacity: 0;
+  transform: scale(.82);
+  transition: opacity .28s ease, transform .28s cubic-bezier(.22, .61, .36, 1);
+  pointer-events: none;
+}
+.vp-portal-trigger:hover {
+  transform: translateY(-3px) scale(1.09);
+  box-shadow: 0 18px 42px -12px color-mix(in srgb, var(--vpp-accent) 55%, transparent),
+              0 0 0 1px color-mix(in srgb, var(--vpp-accent) 35%, transparent);
+}
+.vp-portal-trigger:hover::after { opacity: .55; transform: scale(1); }
+.vp-portal-trigger:focus-visible::after { opacity: .9; transform: scale(1); }
+
+/* First appearance: rise in rather than pop, so it reads as intentional. */
+.vp-portal-trigger { animation: vpp-rise .42s cubic-bezier(.22, .61, .36, 1) both; }
+@keyframes vpp-rise {
+  from { opacity: 0; transform: translateY(14px) scale(.9); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* ── Panel: slide with a touch of scale, then reveal its contents in order ── */
+.vp-portal-panel {
+  transform: translateX(100%) scale(.985);
+  transition: transform .34s cubic-bezier(.22, .61, .36, 1);
+}
+.vp-portal-overlay.is-open .vp-portal-panel { transform: translateX(0) scale(1); }
+.vp-portal-overlay { backdrop-filter: blur(3px); }
+
+/* Staggered reveal. Depth-1 children only, so nesting cannot multiply delays. */
+.vp-portal-overlay.is-open .vp-portal-body > * {
+  animation: vpp-reveal .4s cubic-bezier(.22, .61, .36, 1) both;
+}
+.vp-portal-overlay.is-open .vp-portal-body > :nth-child(1) { animation-delay: .06s; }
+.vp-portal-overlay.is-open .vp-portal-body > :nth-child(2) { animation-delay: .10s; }
+.vp-portal-overlay.is-open .vp-portal-body > :nth-child(3) { animation-delay: .14s; }
+.vp-portal-overlay.is-open .vp-portal-body > :nth-child(4) { animation-delay: .18s; }
+.vp-portal-overlay.is-open .vp-portal-body > :nth-child(n+5) { animation-delay: .22s; }
+@keyframes vpp-reveal {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* ── Buttons: enlarge on hover, with a sheen that sweeps across once ─────── */
+.vp-portal-btn {
+  position: relative;
+  overflow: hidden;
+  transition: transform .18s cubic-bezier(.22, .61, .36, 1),
+              box-shadow .18s ease, filter .18s ease;
+}
+.vp-portal-btn::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(115deg, transparent 20%,
+              rgba(255, 255, 255, .22) 50%, transparent 80%);
+  transform: translateX(-120%);
+  transition: transform .55s ease;
+  pointer-events: none;
+}
+.vp-portal-btn:hover {
+  transform: translateY(-2px) scale(1.025);
+  filter: brightness(1.07);
+  box-shadow: 0 12px 26px -10px color-mix(in srgb, var(--vpp-accent) 65%, transparent);
+}
+.vp-portal-btn:hover::after { transform: translateX(120%); }
+.vp-portal-btn:active { transform: translateY(0) scale(.99); box-shadow: none; }
+.vp-portal-btn:focus-visible {
+  outline: 3px solid var(--vpp-accent-2);
+  outline-offset: 2px;
+}
+.vp-portal-btn:disabled { transform: none; box-shadow: none; }
+.vp-portal-btn:disabled::after { display: none; }
+
+.vp-portal-btn--ghost:hover {
+  transform: translateY(-2px) scale(1.025);
+  box-shadow: 0 10px 22px -12px rgba(0, 0, 0, .55);
+  background: color-mix(in srgb, var(--vpp-accent) 10%, transparent);
+}
+
+/* ── Inputs: a calm accent ring instead of a hard-coded indigo one ───────── */
+.vp-portal-input:focus {
+  border-color: var(--vpp-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vpp-accent) 28%, transparent);
+}
+
+/* ── Close button ───────────────────────────────────────────────────────── */
+.vp-portal-close { transition: color .15s, border-color .15s, transform .18s ease; }
+.vp-portal-close:hover { transform: rotate(90deg); }
+
+/* ── Responsive: a bottom sheet on phones, a side panel above that ───────── */
+@media (max-width: 560px) {
+  .vp-portal-panel {
+    max-width: 100%;
+    width: 100%;
+    left: 0;
+    right: 0;
+    top: auto;
+    bottom: 0;
+    height: auto;
+    max-height: 92vh;
+    overflow-y: auto;
+    border-radius: 20px 20px 0 0;
+    /* A sheet slides UP; reusing the horizontal transform would fly it in
+       sideways off a screen it already fills. */
+    transform: translateY(100%) scale(1);
+    padding: 2rem 1.35rem 2.4rem;
+  }
+  .vp-portal-overlay.is-open .vp-portal-panel { transform: translateY(0); }
+  /* A thumb-reachable grab handle, purely decorative. */
+  .vp-portal-panel::before {
+    content: "";
+    display: block;
+    width: 42px;
+    height: 4px;
+    border-radius: 999px;
+    background: var(--vpp-border);
+    margin: -0.6rem auto 1.1rem;
+  }
+  .vp-portal-trigger { right: 1rem; bottom: 1rem; }
+  /* Comfortable tap targets (WCAG 2.5.5). */
+  .vp-portal-btn { min-height: 46px; }
+}
+
+/* ── Motion off: keep every state change, drop the movement ──────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .vp-portal-trigger,
+  .vp-portal-overlay.is-open .vp-portal-body > * { animation: none; }
+  .vp-portal-trigger::after,
+  .vp-portal-btn,
+  .vp-portal-btn::after,
+  .vp-portal-close { transition: none; }
+  .vp-portal-trigger:hover,
+  .vp-portal-btn:hover,
+  .vp-portal-btn--ghost:hover { transform: none; }
+  .vp-portal-close:hover { transform: none; }
+  .vp-portal-btn:hover::after { transform: translateX(-120%); }
+  .vp-portal-overlay { backdrop-filter: none; }
+}
