@@ -89,7 +89,7 @@ func (a *App) handleOSSpaces(w http.ResponseWriter, r *http.Request) {
 	full := adminOSShellHead(nonce, "Spaces", "spaces", cfg) +
 		body +
 		adminOSShellFoot(nonce, osSpacesScript, false)
-	writeOSHTML(w, full)
+	writeOSHTML(w, r, full)
 }
 
 // handleOSSpaceToggle flips the Anonymous Tor Space on/off and converges the

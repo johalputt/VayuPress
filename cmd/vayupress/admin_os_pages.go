@@ -22,7 +22,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/johalputt/vayupress/internal/auth"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/render"
 	"github.com/johalputt/vayupress/internal/settings"
@@ -37,9 +36,7 @@ func (a *App) handleOSPages(w http.ResponseWriter, r *http.Request) {
 	cfg := a.getOSSettings(r.Context())
 
 	// CSRF token cookie so the inline create/nav controls can POST.
-	if token := auth.GenerateCSRFToken(); token != "" {
-		setCSRFCookie(w, token)
-	}
+	csrfTokenFor(w, r)
 
 	navJSON, footerJSON, contactEmail := "", "", ""
 	autoReply := true
@@ -161,7 +158,7 @@ func (a *App) handleOSPages(w http.ResponseWriter, r *http.Request) {
 	body += `<script nonce="` + nonce + `" src="/os/static/js/admin-os-pages.js?v=` + assetVer("js/admin-os-pages.js") + `"></script>
 <span hidden id="page-nav-seed" data-nav="` + html.EscapeString(navJSON) + `" data-footer="` + html.EscapeString(footerJSON) + `"></span>`
 
-	writeOSHTML(w, adminOSLayout(nonce, "Pages", "pages", cfg, htmpl.HTML(body)))
+	writeOSHTML(w, r, adminOSLayout(nonce, "Pages", "pages", cfg, htmpl.HTML(body)))
 }
 
 // pageFooterSelect renders the per-page "Footer group" <select>: the page can be

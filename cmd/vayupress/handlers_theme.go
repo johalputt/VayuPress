@@ -12,7 +12,6 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/logging"
 	"github.com/johalputt/vayupress/internal/mode"
 	"github.com/johalputt/vayupress/internal/render"
@@ -263,11 +262,10 @@ func (a *App) handleThemeGet(w http.ResponseWriter, r *http.Request) {
 	// X-CSRF-Token header. This GET route isn't wrapped in CSRFTokenMiddleware, so
 	// without this a visitor landing directly on /admin/theme would have no token
 	// and every governed write would 403 until they bounced through another page.
-	if c, err := r.Cookie("vp_csrf"); err != nil || c.Value == "" {
-		if token := auth.GenerateCSRFToken(); token != "" {
-			setCSRFCookie(w, token)
-		}
-	}
+	// csrfTokenFor also covers the case this originally missed: a cookie that is
+	// PRESENT but no longer valid (the secret rotates on restart) was left alone,
+	// so every governed write 403'd and reloading never recovered it.
+	csrfTokenFor(w, r)
 	modeStr := string(mode.Global.Current())
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	fmt.Fprint(w, themeEditorPage(vals, modeStr, render.CSPNonce(r), ""))

@@ -156,7 +156,7 @@ func (a *App) handleOSPower(w http.ResponseWriter, r *http.Request) {
 	}
 	crawlersOff := a.crawlersBlocked(r.Context())
 	feedbackAddr := a.feedbackEmail(r.Context())
-	writeOSHTML(w, adminOSLayout(nonce, "Power & Maintenance", "operations", cfg, htmpl.HTML(osPowerBody(nonce, on, msg, crawlersOff, feedbackAddr))))
+	writeOSHTML(w, r, adminOSLayout(nonce, "Power & Maintenance", "operations", cfg, htmpl.HTML(osPowerBody(nonce, on, msg, crawlersOff, feedbackAddr))))
 }
 
 // handleOSPowerPreview renders the public maintenance page inside the console so

@@ -50,7 +50,7 @@ func (a *App) handleOSTor(w http.ResponseWriter, r *http.Request) {
 
 	if a.vayuTor == nil || !st.Available {
 		body += `<div class="empty-state">VayuTor is switched off at the environment level (<code>VAYUOS_TOR=off</code>). Remove that to make it available, then reload.</div>`
-		writeOSHTML(w, adminOSLayout(nonce, "VayuTor", "tor", cfg, htmpl.HTML(body)))
+		writeOSHTML(w, r, adminOSLayout(nonce, "VayuTor", "tor", cfg, htmpl.HTML(body)))
 		return
 	}
 
@@ -231,7 +231,7 @@ func (a *App) handleOSTor(w http.ResponseWriter, r *http.Request) {
 		monAcc("🔒", "Privacy posture", "Exactly what VayuTor records — and doesn't", `<span class="mon-chip mon-chip--on">● Count-only</span>`, false, osTorPrivacyNote(st)) +
 		`</div>`
 	body += `<script nonce="` + nonce + `" src="/os/static/js/admin-os-tor.js?v=` + assetVer("js/admin-os-tor.js") + `"></script>`
-	writeOSHTML(w, adminOSLayout(nonce, "VayuTor", "tor", cfg, htmpl.HTML(body)))
+	writeOSHTML(w, r, adminOSLayout(nonce, "VayuTor", "tor", cfg, htmpl.HTML(body)))
 }
 
 // osTorLogRemedy recognises the most common hard bootstrap failures in tor's

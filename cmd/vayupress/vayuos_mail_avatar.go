@@ -94,7 +94,7 @@ func (a *App) handleVayuOSAvatarUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.invalidateAvatarCache() // show the new picture across the mailbox at once
-	writeOSHTML(w, a.vayuAccountsList(r.Context()))
+	writeOSHTML(w, r, a.vayuAccountsList(r.Context()))
 }
 
 // handleVayuOSAvatarRemove clears a mailbox's profile picture (back to initials)
@@ -117,7 +117,7 @@ func (a *App) handleVayuOSAvatarRemove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.invalidateAvatarCache() // drop the removed picture across the mailbox at once
-	writeOSHTML(w, a.vayuAccountsList(r.Context()))
+	writeOSHTML(w, r, a.vayuAccountsList(r.Context()))
 }
 
 // handleFederatedAvatar serves a mailbox's profile picture over the public
@@ -214,7 +214,7 @@ func (a *App) handleVayuOSAvatarCartoon(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	a.invalidateAvatarCache() // show the chosen cartoon across the mailbox at once
-	writeOSHTML(w, a.vayuAccountsList(r.Context()))
+	writeOSHTML(w, r, a.vayuAccountsList(r.Context()))
 }
 
 // handleVayuOSAvatarCartoonPreview renders one prebuilt cartoon so the picker can

@@ -231,5 +231,5 @@ func (a *App) handleOSMedia(w http.ResponseWriter, r *http.Request) {
   <div class="skeleton skeleton--media"></div>
 </div>`
 
-	writeOSHTML(w, adminOSLayout(nonce, "Media", "media", cfg, htmpl.HTML(body)))
+	writeOSHTML(w, r, adminOSLayout(nonce, "Media", "media", cfg, htmpl.HTML(body)))
 }

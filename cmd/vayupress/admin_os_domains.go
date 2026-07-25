@@ -22,7 +22,6 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/domain"
 	"github.com/johalputt/vayupress/internal/render"
@@ -76,9 +75,7 @@ func (a *App) handleOSDomains(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
 
-	if token := auth.GenerateCSRFToken(); token != "" {
-		setCSRFCookie(w, token)
-	}
+	csrfTokenFor(w, r)
 
 	var domains []domain.Domain
 	if a.domains != nil {
@@ -151,7 +148,7 @@ func (a *App) handleOSDomains(w http.ResponseWriter, r *http.Request) {
 		domainsScript(nonce) +
 		torSitesScript(nonce, onion, pending)
 
-	writeOSHTML(w, adminOSLayout(nonce, "Domains", "domains", cfg, htmpl.HTML(body)))
+	writeOSHTML(w, r, adminOSLayout(nonce, "Domains", "domains", cfg, htmpl.HTML(body)))
 }
 
 func domainsHeader(n int, viewingHost string) string {
@@ -309,9 +306,7 @@ func (a *App) handleOSDomainManage(w http.ResponseWriter, r *http.Request) {
 	cfg := a.getOSSettings(r.Context())
 	id := chi.URLParam(r, "id")
 
-	if token := auth.GenerateCSRFToken(); token != "" {
-		setCSRFCookie(w, token)
-	}
+	csrfTokenFor(w, r)
 
 	var found *domain.Domain
 	if a.domains != nil {
@@ -357,7 +352,7 @@ func (a *App) handleOSDomainManage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	body := domainManagePage(*found, posts, members, mailboxes, mailOn) + domainManageScript(nonce)
-	writeOSHTML(w, adminOSLayout(nonce, "Manage · "+found.Host, "optimize", cfg, htmpl.HTML(body)))
+	writeOSHTML(w, r, adminOSLayout(nonce, "Manage · "+found.Host, "optimize", cfg, htmpl.HTML(body)))
 }
 
 // domainManagePage builds the per-site manager body for a secondary domain: a

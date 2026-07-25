@@ -608,7 +608,7 @@ document.querySelectorAll('.vs-copy-btn').forEach(function(btn){
 </script>`)
 
 	b.WriteString(`</div>`) // .vs-page
-	writeOSHTML(w, adminOSLayout(nonce, "Bot Shield & Analytics", "shield", cfg, htmpl.HTML(b.String())))
+	writeOSHTML(w, r, adminOSLayout(nonce, "Bot Shield & Analytics", "shield", cfg, htmpl.HTML(b.String())))
 }
 
 // shieldDays parses the ?days analytics window (default 30, clamped 1..365).

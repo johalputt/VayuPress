@@ -33,8 +33,13 @@
 
 	# Set defense-in-depth defaults only when VayuPress did not set the header.
 	# In particular, never replace its per-request nonce-based CSP.
+	# No HSTS here. This file also serves DOMAIN=localhost behind Caddy's internal
+	# CA, and a two-year includeSubDomains+preload pin against a development
+	# hostname is not undone by stopping the container: it makes the certificate
+	# warning unbypassable and can take other local services down with it.
+	# Production sets HSTS (Caddyfile.production), and VayuPress sets its own on
+	# proxied responses regardless.
 	header {
-		?Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
 		?X-Content-Type-Options "nosniff"
 		?X-Frame-Options "DENY"
 		?X-XSS-Protection "1; mode=block"

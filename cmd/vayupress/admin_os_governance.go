@@ -168,5 +168,5 @@ func (a *App) handleOSGovernance(w http.ResponseWriter, r *http.Request) {
 </div>
 <p class="page-sub">The adaptive runtime that keeps your install healthy — policy, budgets and transparency, all decided on your own server.</p>` + summary + policyCard + budgetCard + transCard + consoles
 
-	writeOSHTML(w, adminOSLayout(nonce, "Governance", "governance", cfg, htmpl.HTML(body)))
+	writeOSHTML(w, r, adminOSLayout(nonce, "Governance", "governance", cfg, htmpl.HTML(body)))
 }

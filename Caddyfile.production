@@ -50,7 +50,11 @@
 	# Set defense-in-depth defaults only when VayuPress did not set the header.
 	# In particular, never replace its per-request nonce-based CSP.
 	header {
-		?Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+		# No "preload": that token is a request to be added to the browsers' built-in
+		# preload list, which is a one-way commitment for the apex AND every
+		# subdomain, and it is dishonest to advertise without submitting. Add it
+		# deliberately once you have.
+		?Strict-Transport-Security "max-age=63072000; includeSubDomains"
 		?X-Content-Type-Options "nosniff"
 		?X-Frame-Options "DENY"
 		?X-XSS-Protection "1; mode=block"

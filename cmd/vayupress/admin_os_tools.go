@@ -226,7 +226,7 @@ func (a *App) handleOSTools(w http.ResponseWriter, r *http.Request) {
 		pluginRegistryHTML() + `
 <script nonce="` + nonce + `" src="/os/static/js/admin-os-tools.js?v=` + assetVer("js/admin-os-tools.js") + `"></script>`
 
-	writeOSHTML(w, adminOSLayout(nonce, "Tools & Plugins", "tools", cfg, htmpl.HTML(body)))
+	writeOSHTML(w, r, adminOSLayout(nonce, "Tools & Plugins", "tools", cfg, htmpl.HTML(body)))
 }
 
 // pluginRegistryHTML renders the live sandboxed-plugin registry: every

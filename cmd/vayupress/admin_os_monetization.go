@@ -249,7 +249,7 @@ if(whBtn)whBtn.addEventListener('click',function(){
 })();
 </script>`
 
-	writeOSHTML(w, adminOSLayout(nonce, "Monetization", "monetization", cfg, htmpl.HTML(body)))
+	writeOSHTML(w, r, adminOSLayout(nonce, "Monetization", "monetization", cfg, htmpl.HTML(body)))
 }
 
 // paidPostsTable lists the posts that carry a one-time price.

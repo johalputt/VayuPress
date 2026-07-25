@@ -50,7 +50,7 @@ func (a *App) handleOSMembers(w http.ResponseWriter, r *http.Request) {
 	if a.members == nil {
 		body := `<div class="page-header"><h1>Members</h1></div>
 <div class="empty-state">Memberships are not enabled on this instance.</div>`
-		writeOSHTML(w, adminOSLayout(nonce, "Members", "members", cfg, htmpl.HTML(body)))
+		writeOSHTML(w, r, adminOSLayout(nonce, "Members", "members", cfg, htmpl.HTML(body)))
 		return
 	}
 
@@ -312,7 +312,7 @@ func (a *App) handleOSMembers(w http.ResponseWriter, r *http.Request) {
 		statGrid + insightsCard + activityCard + tiersCard + teamCard + unconfirmedCard + membersCard + modal +
 		`<script nonce="` + nonce + `" src="/os/static/js/admin-os-members.js?v=` + assetVer("js/admin-os-members.js") + `"></script>`
 
-	writeOSHTML(w, adminOSLayout(nonce, "Members", "members", cfg, htmpl.HTML(body)))
+	writeOSHTML(w, r, adminOSLayout(nonce, "Members", "members", cfg, htmpl.HTML(body)))
 }
 
 // handleOSMembersActivityFragment returns just the recent-activity feed as an
@@ -345,7 +345,7 @@ func (a *App) handleOSSecurity(w http.ResponseWriter, r *http.Request) {
 		// API-key session (no user record): 2FA is per-account, so explain.
 		body := `<div class="page-header"><h1>Security</h1></div>
 <div class="card"><p class="muted">Two-factor authentication applies to password accounts. You are signed in with an API key.</p></div>`
-		writeOSHTML(w, adminOSLayout(nonce, "Security", "security", cfg, htmpl.HTML(body)))
+		writeOSHTML(w, r, adminOSLayout(nonce, "Security", "security", cfg, htmpl.HTML(body)))
 		return
 	}
 
@@ -395,7 +395,7 @@ func (a *App) handleOSSecurity(w http.ResponseWriter, r *http.Request) {
 <div class="card" data-totp-card>` + section + `</div>
 <script nonce="` + nonce + `" src="/os/static/js/admin-os-security.js?v=` + assetVer("js/admin-os-security.js") + `"></script>`
 
-	writeOSHTML(w, adminOSLayout(nonce, "Security", "security", cfg, htmpl.HTML(body)))
+	writeOSHTML(w, r, adminOSLayout(nonce, "Security", "security", cfg, htmpl.HTML(body)))
 }
 
 // handleOSTOTPBegin generates a fresh secret (stored disabled) and returns the

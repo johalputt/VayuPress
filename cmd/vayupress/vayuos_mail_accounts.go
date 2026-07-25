@@ -455,7 +455,7 @@ func (a *App) handleVayuOSAccountsFragment(w http.ResponseWriter, r *http.Reques
 		writeAPIError(w, r, http.StatusForbidden, "forbidden", "administrators only", "")
 		return
 	}
-	writeOSHTML(w, a.vayuAccountsList(r.Context()))
+	writeOSHTML(w, r, a.vayuAccountsList(r.Context()))
 }
 
 // handleVayuOSAccountsAction applies one inline account action (toggle / role /
@@ -515,7 +515,7 @@ func (a *App) handleVayuOSAccountsAction(w http.ResponseWriter, r *http.Request)
 	if opErr != nil {
 		list = `<div class="empty-state" role="alert">⚠ ` + html.EscapeString(opErr.Error()) + `</div>` + list
 	}
-	writeOSHTML(w, list)
+	writeOSHTML(w, r, list)
 }
 
 // handleVayuOSDevicesFragment returns the Devices card fragment. It backs the
@@ -530,5 +530,5 @@ func (a *App) handleVayuOSDevicesFragment(w http.ResponseWriter, r *http.Request
 		writeAPIError(w, r, http.StatusForbidden, "forbidden", "administrators only", "")
 		return
 	}
-	writeOSHTML(w, a.vayuDevicesCard(r.Context()))
+	writeOSHTML(w, r, a.vayuDevicesCard(r.Context()))
 }

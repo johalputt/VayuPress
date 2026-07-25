@@ -250,7 +250,7 @@ if(btn&&out){btn.addEventListener('click',function(){
 })();
 </script>`
 
-	writeOSHTML(w, adminOSLayout(nonce, "SEO", "seo", cfg, htmpl.HTML(body)))
+	writeOSHTML(w, r, adminOSLayout(nonce, "SEO", "seo", cfg, htmpl.HTML(body)))
 }
 
 // seoCheck is one SEO health finding. OK = pass; Warn = advisory; otherwise it
@@ -421,7 +421,7 @@ func (a *App) handleOSAnalytics(w http.ResponseWriter, r *http.Request) {
 	if a.analytics == nil {
 		body := `<div class="page-header"><h1>Analytics</h1></div>
 <div class="empty-state">Analytics are not enabled on this instance.</div>`
-		writeOSHTML(w, adminOSLayout(nonce, "Analytics", "analytics", cfg, htmpl.HTML(body)))
+		writeOSHTML(w, r, adminOSLayout(nonce, "Analytics", "analytics", cfg, htmpl.HTML(body)))
 		return
 	}
 
@@ -440,7 +440,7 @@ func (a *App) handleOSAnalytics(w http.ResponseWriter, r *http.Request) {
 			`<div class="empty-state">Assembling analytics over ` + html.EscapeString(periodLabel) + `… this runs in the background and will appear on reload in a few seconds.</div>`
 	}
 	body := frag + "\n" + `<script nonce="` + nonce + `" src="/os/static/js/admin-os-intel.js?v=` + assetVer("js/admin-os-intel.js") + `"></script>`
-	writeOSHTML(w, adminOSLayout(nonce, "Analytics", "analytics", cfg, htmpl.HTML(body)))
+	writeOSHTML(w, r, adminOSLayout(nonce, "Analytics", "analytics", cfg, htmpl.HTML(body)))
 }
 
 // renderAnalyticsBody builds the Analytics page body (everything except the

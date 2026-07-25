@@ -26,6 +26,13 @@ services:
       interval: 5s
       timeout: 3s
       retries: 3
+    # The PROXY waits for the app, not the other way round. Reversed, VayuPress
+    # could not start at all whenever Caddy was unhealthy — the edge holding the
+    # origin hostage — and the ordering bought nothing, since Caddy's healthcheck
+    # only probes its own admin API and says nothing about the upstream.
+    depends_on:
+      vayupress:
+        condition: service_healthy
     networks:
       proxy:
         ipv4_address: 172.30.0.2
@@ -39,9 +46,6 @@ services:
     restart: unless-stopped
     expose:
       - "8080" # reachable only by Caddy on the private Compose network
-    depends_on:
-      caddy:
-        condition: service_healthy
     environment:
       API_KEY: ${API_KEY:?set API_KEY in .env}
       DOMAIN: ${DOMAIN:-localhost}

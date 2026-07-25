@@ -92,7 +92,7 @@ func (a *App) handleOSThemeStore(w http.ResponseWriter, r *http.Request) {
 </div>
 <script nonce="` + nonce + `" src="/os/static/js/admin-os-theme-store.js?v=` + assetVer("js/admin-os-theme-store.js") + `"></script>`
 
-	writeOSHTML(w, adminOSLayout(nonce, "Theme Store", "theme-store", cfg, htmpl.HTML(body)))
+	writeOSHTML(w, r, adminOSLayout(nonce, "Theme Store", "theme-store", cfg, htmpl.HTML(body)))
 }
 
 // themeStoreFilterChips renders the category filter buttons. "All" is the
@@ -327,7 +327,7 @@ func (a *App) handleOSThemePreview(w http.ResponseWriter, r *http.Request) {
 		string(render.PicoCSSLink()) + string(render.CustomCSSLink()) + string(render.ArticleCSSLink()) +
 		`<link id="vayu-theme-css" rel="stylesheet" href="` + html.EscapeString(cssHref) + `">` +
 		`</head><body><div class="container">` + themePreviewSampleHTML() + `</div>` + swap + `</body></html>`
-	writeOSHTML(w, page)
+	writeOSHTML(w, r, page)
 }
 
 // previewOptionsFromQuery extracts theme customization option values from the

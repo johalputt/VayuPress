@@ -327,7 +327,7 @@ func (a *App) handleOSProfile(w http.ResponseWriter, r *http.Request) {
 		// API-key sessions have no associated user account to edit.
 		body := `<div class="page-header"><h1>My profile</h1></div>
 <div class="empty-state">Profile editing is available when you sign in with a user account.</div>`
-		writeOSHTML(w, adminOSLayout(nonce, "My profile", "profile", cfg, htmpl.HTML(body)))
+		writeOSHTML(w, r, adminOSLayout(nonce, "My profile", "profile", cfg, htmpl.HTML(body)))
 		return
 	}
 	// Reload to get the freshest profile fields.
@@ -380,7 +380,7 @@ func (a *App) handleOSProfile(w http.ResponseWriter, r *http.Request) {
   </form>
 </div>
 <script nonce="` + nonce + `" src="/os/static/js/admin-os-profile.js?v=` + assetVer("js/admin-os-profile.js") + `"></script>`
-	writeOSHTML(w, adminOSLayout(nonce, "My profile", "profile", cfg, htmpl.HTML(body)))
+	writeOSHTML(w, r, adminOSLayout(nonce, "My profile", "profile", cfg, htmpl.HTML(body)))
 }
 
 // profileSaveBody is the JSON payload from the profile editor.

@@ -199,6 +199,37 @@ func writeSecureCookie(w http.ResponseWriter, c *http.Cookie) {
 	auth.WriteSecureCookie(w, c)
 }
 
+// csrfTokenFor returns the CSRF token this response should carry: the one the
+// browser already holds when it is still valid, and a freshly minted one only
+// when there is none. It always (re)writes the cookie, which refreshes the
+// 1-hour lifetime without changing the value.
+//
+// Reuse is the point. Minting unconditionally on every page render meant a second
+// tab — or simply loading a page twice — overwrote the cookie while the first
+// page's form still carried the previous token, so submitting the older form
+// 403'd with "CSRF token missing or invalid" and no amount of retrying helped.
+// auth.CSRFTokenMiddleware has always behaved this way for the routes it guards;
+// the HTML writers minted directly and so contradicted it. This is that same rule
+// in one place, for every writer.
+//
+// Reuse costs nothing in defence: the token is a stateless HMAC, unforgeable
+// without the server secret, and the double-submit check still requires the
+// attacker to both know the value and set the cookie — which rotation on render
+// never prevented either.
+func csrfTokenFor(w http.ResponseWriter, r *http.Request) string {
+	if r != nil {
+		if c, err := r.Cookie("vp_csrf"); err == nil && c.Value != "" && auth.ValidateCSRFToken(c.Value) {
+			setCSRFCookie(w, c.Value)
+			return c.Value
+		}
+	}
+	token := auth.GenerateCSRFToken()
+	if token != "" {
+		setCSRFCookie(w, token)
+	}
+	return token
+}
+
 // setCSRFCookie writes the double-submit vp_csrf cookie via the dedicated
 // readable-cookie writer: HttpOnly is off by design, because the double-submit
 // pattern requires the page script to read the token and echo it in the

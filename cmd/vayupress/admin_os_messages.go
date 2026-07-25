@@ -20,7 +20,6 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/render"
@@ -30,9 +29,7 @@ func (a *App) handleOSMessages(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
 
-	if token := auth.GenerateCSRFToken(); token != "" {
-		setCSRFCookie(w, token)
-	}
+	csrfTokenFor(w, r)
 
 	// Filters: free-text search across name/email/message, and an unread-only
 	// toggle. Both are applied in SQL so the list scales past the render cap.
@@ -225,7 +222,7 @@ if(delRead)delRead.addEventListener('click',function(){
 </script>`
 	}
 
-	writeOSHTML(w, adminOSLayout(nonce, "Messages", "messages", cfg, htmpl.HTML(body)))
+	writeOSHTML(w, r, adminOSLayout(nonce, "Messages", "messages", cfg, htmpl.HTML(body)))
 }
 
 // handleOSMessageDetail shows a single contact message in full, and marks it
@@ -236,9 +233,7 @@ func (a *App) handleOSMessageDetail(w http.ResponseWriter, r *http.Request) {
 	cfg := a.getOSSettings(r.Context())
 	id := chi.URLParam(r, "id")
 
-	if token := auth.GenerateCSRFToken(); token != "" {
-		setCSRFCookie(w, token)
-	}
+	csrfTokenFor(w, r)
 
 	var name, eml, msg, page, country, region, city string
 	var created time.Time
@@ -256,7 +251,7 @@ func (a *App) handleOSMessageDetail(w http.ResponseWriter, r *http.Request) {
 <div class="card empty-state"><div class="empty-icon">🔍</div>
   <div class="empty-title">Message not found</div>
   <div class="empty-sub">It may have been deleted. <a href="/os/messages">Back to inbox</a>.</div></div>`
-		writeOSHTML(w, adminOSLayout(nonce, "Message", "messages", cfg, htmpl.HTML(body)))
+		writeOSHTML(w, r, adminOSLayout(nonce, "Message", "messages", cfg, htmpl.HTML(body)))
 		return
 	}
 
@@ -311,7 +306,7 @@ if(b)b.addEventListener('click',function(){
 })();
 </script>`
 
-	writeOSHTML(w, adminOSLayout(nonce, "Message", "messages", cfg, htmpl.HTML(body)))
+	writeOSHTML(w, r, adminOSLayout(nonce, "Message", "messages", cfg, htmpl.HTML(body)))
 }
 
 // messagesHeader renders the Messages page header with the count, unread tally

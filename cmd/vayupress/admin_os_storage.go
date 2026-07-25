@@ -219,7 +219,7 @@ func (a *App) handleOSStorage(w http.ResponseWriter, r *http.Request) {
 
 <script nonce="` + nonce + `" src="/os/static/js/admin-os-storage.js?v=` + assetVer("js/admin-os-storage.js") + `"></script>`
 
-	writeOSHTML(w, adminOSLayout(nonce, "Storage & System", "storage", cfg, htmpl.HTML(body)))
+	writeOSHTML(w, r, adminOSLayout(nonce, "Storage & System", "storage", cfg, htmpl.HTML(body)))
 }
 
 // storageFilesTable renders the managed-files table with per-row download +

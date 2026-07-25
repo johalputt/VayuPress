@@ -1639,10 +1639,10 @@ func osSidebarUser(s *osSettings) string {
 }
 
 // writeOSHTML writes HTML with the standard os response headers and CSRF cookie.
-func writeOSHTML(w http.ResponseWriter, body string) {
-	if token := auth.GenerateCSRFToken(); token != "" {
-		setCSRFCookie(w, token)
-	}
+func writeOSHTML(w http.ResponseWriter, r *http.Request, body string) {
+	// Reuse the browser's existing token rather than rotating on every render —
+	// rotating is what made a second console tab's form 403 on submit.
+	csrfTokenFor(w, r)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("X-Robots-Tag", "noindex")
 	// Admin pages must never be cached by the browser or any proxy/CDN —
@@ -1833,19 +1833,11 @@ func (a *App) handleOSChangePassword(w http.ResponseWriter, r *http.Request) {
 	if u != nil {
 		em = u.Email
 	}
-	// Reuse a valid token when one already exists, else mint a new one. 
-	// The cookie is host-only (no Domain), so a same-site subdomain 
-	// foothold cannot read it to forge the token.
-	token := ""
-	if c, err := r.Cookie("vp_csrf"); err == nil && auth.ValidateCSRFToken(c.Value) {
-		token = c.Value
-	}
-	if token == "" {
-		token = auth.GenerateCSRFToken()
-	}
-	if token != "" {
-		setCSRFCookie(w, token)
-	}
+	// Reuse a valid token when the browser already holds one (see csrfTokenFor):
+	// minting on every render invalidated a form left open in another tab. The
+	// cookie is host-only (no Domain), so a same-site subdomain foothold cannot
+	// read it to forge the token.
+	token := csrfTokenFor(w, r)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write([]byte(osChangePasswordPage(em, "", token)))
 }
@@ -2160,7 +2152,7 @@ func (a *App) handleOSDashboard(w http.ResponseWriter, r *http.Request) {
   </div>
 </div>`
 
-	writeOSHTML(w, adminOSLayout(nonce, "Dashboard", "dashboard", cfg, htmpl.HTML(body)))
+	writeOSHTML(w, r, adminOSLayout(nonce, "Dashboard", "dashboard", cfg, htmpl.HTML(body)))
 }
 
 // ── Posts ────────────────────────────────────────────────────────────────────
@@ -2283,9 +2275,7 @@ func (a *App) handleOSPosts(w http.ResponseWriter, r *http.Request) {
 	cfg := a.getOSSettings(r.Context())
 
 	// A CSRF token cookie so the inline publish/unpublish control can POST.
-	if token := auth.GenerateCSRFToken(); token != "" {
-		setCSRFCookie(w, token)
-	}
+	csrfTokenFor(w, r)
 
 	// ── Parse filters from the query string ──────────────────────────────────
 	qv := r.URL.Query()
@@ -2612,7 +2602,7 @@ document.querySelectorAll('[data-post-bulk]').forEach(function(b){
 })();
 </script>`
 	}
-	writeOSHTML(w, adminOSLayout(nonce, "Posts", "posts", cfg, htmpl.HTML(body)))
+	writeOSHTML(w, r, adminOSLayout(nonce, "Posts", "posts", cfg, htmpl.HTML(body)))
 }
 
 // ── Comments moderation ──────────────────────────────────────────────────────
@@ -2690,9 +2680,7 @@ func (a *App) handleOSComments(w http.ResponseWriter, r *http.Request) {
 	cfg := a.getOSSettings(r.Context())
 
 	// CSRF token cookie so the inline approve/reject controls can POST.
-	if token := auth.GenerateCSRFToken(); token != "" {
-		setCSRFCookie(w, token)
-	}
+	csrfTokenFor(w, r)
 
 	var body string
 	if a.commentStore == nil {
@@ -2700,7 +2688,7 @@ func (a *App) handleOSComments(w http.ResponseWriter, r *http.Request) {
 <div class="card empty-state"><div class="empty-icon">💬</div>
 <div class="empty-title">Comments unavailable</div>
 <div class="empty-sub">The comment store is not initialised.</div></div>`
-		writeOSHTML(w, adminOSLayout(nonce, "Comments", "comments", cfg, htmpl.HTML(body)))
+		writeOSHTML(w, r, adminOSLayout(nonce, "Comments", "comments", cfg, htmpl.HTML(body)))
 		return
 	}
 
@@ -2817,7 +2805,7 @@ document.body.addEventListener('htmx:afterSwap',applyFilter);
 })();
 </script>`
 	}
-	writeOSHTML(w, adminOSLayout(nonce, "Comments", "comments", cfg, htmpl.HTML(body)))
+	writeOSHTML(w, r, adminOSLayout(nonce, "Comments", "comments", cfg, htmpl.HTML(body)))
 }
 
 // handleOSCommentModerateFragment is the HTMX counterpart to handleCommentModerate:
@@ -3102,7 +3090,7 @@ func (a *App) handleOSEditor(w http.ResponseWriter, r *http.Request) {
 				body := osEditorBody(slug, art.Title, blocksJSON, authorOpts) + metaScript
 				body += `
 <script nonce="` + nonce + `" src="/os/static/js/admin-os-editor.js?v=` + assetVer("js/admin-os-editor.js") + `"></script>`
-				writeOSHTML(w, adminOSLayout(nonce, "Edit Post", "editor", cfg, htmpl.HTML(body)))
+				writeOSHTML(w, r, adminOSLayout(nonce, "Edit Post", "editor", cfg, htmpl.HTML(body)))
 				return
 			}
 			// Legacy (non-block) content: open it in the native block editor,
@@ -3119,7 +3107,7 @@ func (a *App) handleOSEditor(w http.ResponseWriter, r *http.Request) {
 			body := osEditorBody(slug, art.Title, string(raw), authorOpts) + metaScript
 			body += `
 <script nonce="` + nonce + `" src="/os/static/js/admin-os-editor.js?v=` + assetVer("js/admin-os-editor.js") + `"></script>`
-			writeOSHTML(w, adminOSLayout(nonce, "Edit Post", "editor", cfg, htmpl.HTML(body)))
+			writeOSHTML(w, r, adminOSLayout(nonce, "Edit Post", "editor", cfg, htmpl.HTML(body)))
 			return
 		}
 	}
@@ -3130,7 +3118,7 @@ func (a *App) handleOSEditor(w http.ResponseWriter, r *http.Request) {
 	body := osEditorBody("", "", "[]", a.authorSelectOptions(r.Context(), currentUserIDOf(r))) + osEditorMetaScript("", "", time.Time{}, nil, PostMeta{})
 	body += `
 <script nonce="` + nonce + `" src="/os/static/js/admin-os-editor.js?v=` + assetVer("js/admin-os-editor.js") + `"></script>`
-	writeOSHTML(w, adminOSLayout(nonce, "New Post", "editor", cfg, htmpl.HTML(body)))
+	writeOSHTML(w, r, adminOSLayout(nonce, "New Post", "editor", cfg, htmpl.HTML(body)))
 }
 
 // ── SEO ──────────────────────────────────────────────────────────────────────
@@ -3416,7 +3404,7 @@ if(footerInput){
 	fullHTML := adminOSShellHead(nonce, "Settings", "settings", cfg) +
 		renderTrustedHTML(htmpl.HTML(body)) +
 		adminOSShellFoot(nonce, saveScript, pageUsesAlpine(body))
-	writeOSHTML(w, fullHTML)
+	writeOSHTML(w, r, fullHTML)
 }
 
 func osSettingsGeneral(ctx context.Context, ss *settings.Store) string {

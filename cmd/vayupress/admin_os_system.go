@@ -21,7 +21,7 @@ import (
 func (a *App) handleOSSystem(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
-	writeOSHTML(w, adminOSLayout(nonce, "System", "system", cfg, htmpl.HTML(osSystemGrid(cfg.AccessLevel))))
+	writeOSHTML(w, r, adminOSLayout(nonce, "System", "system", cfg, htmpl.HTML(osSystemGrid(cfg.AccessLevel))))
 }
 
 // osSystemGrid builds the System hub body. A card appears only when the viewer's

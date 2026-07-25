@@ -156,7 +156,7 @@ if(dBtn)dBtn.addEventListener('click',function(){jsave('` + settings.KeyAffiliat
 })();
 </script>`
 
-	writeOSHTML(w, adminOSLayout(nonce, "Advertising", "ads", cfg, htmpl.HTML(body)))
+	writeOSHTML(w, r, adminOSLayout(nonce, "Advertising", "ads", cfg, htmpl.HTML(body)))
 }
 
 // memberAdBadge shows the count of ads awaiting review as an inline pill.

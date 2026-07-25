@@ -33,7 +33,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/config"
 	"github.com/johalputt/vayupress/internal/render"
 	vpgp "github.com/johalputt/vayupress/internal/vayuos/pgp"
@@ -219,9 +218,7 @@ func (a *App) handleVayuOSTalk(w http.ResponseWriter, r *http.Request) {
 	cfg := a.getOSSettings(r.Context())
 	// CSRF cookie so the JSON send POST passes the double-submit middleware,
 	// re-issued on every page load (the token has a 1h life).
-	if token := auth.GenerateCSRFToken(); token != "" {
-		setCSRFCookie(w, token)
-	}
+	csrfTokenFor(w, r)
 
 	var body strings.Builder
 	tagline := `Ephemeral, end-to-end-encrypted chat — same relay as the app. Pick a self-destruct timer; messages burn a set time after they're read.`
@@ -241,14 +238,14 @@ func (a *App) handleVayuOSTalk(w http.ResponseWriter, r *http.Request) {
 
 	if !a.vayuTalkEnabled() {
 		body.WriteString(`<div class="empty-state">VayuTalk is inactive. It runs automatically once mail is enabled (a <code>DOMAIN</code> is set); it is disabled only when <code>VAYUOS_TALK=off</code>.</div>`)
-		writeOSHTML(w, adminOSLayout(nonce, "VayuTalk", "talk", cfg, htmpl.HTML(body.String())))
+		writeOSHTML(w, r, adminOSLayout(nonce, "VayuTalk", "talk", cfg, htmpl.HTML(body.String())))
 		return
 	}
 
 	idents := a.talkIdentities(r)
 	if len(idents) == 0 {
 		body.WriteString(`<div class="empty-state">VayuTalk needs a mailbox on this domain to use as your chat identity, and this server has no mailboxes yet. Create one under <a href="/os/vayumail/accounts">VayuMail → Accounts</a>, then reload.</div>`)
-		writeOSHTML(w, adminOSLayout(nonce, "VayuTalk", "talk", cfg, htmpl.HTML(body.String())))
+		writeOSHTML(w, r, adminOSLayout(nonce, "VayuTalk", "talk", cfg, htmpl.HTML(body.String())))
 		return
 	}
 	self := idents[0]
@@ -346,7 +343,7 @@ Array.prototype.forEach.call(document.querySelectorAll('.vtalk [data-copy]'),fun
 var q=document.getElementById('vtalk-search'),cv=document.getElementById('vtalk-convos');
 if(q&&cv){q.addEventListener('input',function(){var t=q.value.trim().toLowerCase();Array.prototype.forEach.call(cv.children,function(li){var n=(li.textContent||'').toLowerCase();li.style.display=(!t||n.indexOf(t)>=0)?'':'none';});});}
 })();</script>`)
-	writeOSHTML(w, adminOSLayout(nonce, "VayuTalk", "talk", cfg, htmpl.HTML(body.String())))
+	writeOSHTML(w, r, adminOSLayout(nonce, "VayuTalk", "talk", cfg, htmpl.HTML(body.String())))
 }
 
 // handleVayuOSTalkStream is the server-side-decrypting SSE bridge. It subscribes

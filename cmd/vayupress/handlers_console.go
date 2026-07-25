@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/johalputt/vayupress/internal/auth"
 	"github.com/johalputt/vayupress/internal/config"
 	dbpkg "github.com/johalputt/vayupress/internal/db"
 	"github.com/johalputt/vayupress/internal/fault"
@@ -70,9 +69,7 @@ func modeShortClass(m mode.Mode) string {
 // there is no separate admin panel. active selects the highlighted sidebar item
 // (one of: modes, policy, topology, replay, faults, adrs).
 func (a *App) writeConsoleShellHead(w http.ResponseWriter, r *http.Request, active, pageTitle, pageSub string) string {
-	if token := auth.GenerateCSRFToken(); token != "" {
-		setCSRFCookie(w, token)
-	}
+	csrfTokenFor(w, r)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("X-Robots-Tag", "noindex")
 	nonce := render.CSPNonce(r)

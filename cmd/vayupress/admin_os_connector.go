@@ -77,7 +77,7 @@ func (a *App) handleOSConnector(w http.ResponseWriter, r *http.Request) {
 	full := adminOSShellHead(nonce, "VayuMCP", "connector", cfg) +
 		body +
 		adminOSShellFoot(nonce, osConnectorScript, pageUsesAlpine(body))
-	writeOSHTML(w, full)
+	writeOSHTML(w, r, full)
 }
 
 func osConnectorIntro() string {

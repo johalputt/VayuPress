@@ -27,7 +27,7 @@ func (a *App) handleOSOperations(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
 	snap := a.getAdminSnapshot()
-	writeOSHTML(w, adminOSLayout(nonce, "Operations", "operations", cfg,
+	writeOSHTML(w, r, adminOSLayout(nonce, "Operations", "operations", cfg,
 		htmpl.HTML(osOperationsGrid(mode.Global.Current(), int(snap.StoragePct), a.maintenanceModeOn(r)))))
 }
 

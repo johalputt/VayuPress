@@ -1080,7 +1080,7 @@ func (a *App) handleVayuOSDashboard(w http.ResponseWriter, r *http.Request) {
   <div class="card"><div class="card-title">Sent</div><p class="muted">Outbound delivery queue with per-message status.</p><a class="btn" href="/os/vayumail/sent">View sent</a></div>
   <div class="card"><div class="card-title">Connect a mail app</div><p class="muted">IMAP/POP3/SMTP settings for the Gmail app, Apple Mail and more.</p><a class="btn" href="/os/vayumail/connect">Connect</a></div>
 </div>` + infraSection + healthSection
-	writeOSHTML(w, adminOSLayout(nonce, "VayuMail", "vayuos", cfg, htmpl.HTML(body)))
+	writeOSHTML(w, r, adminOSLayout(nonce, "VayuMail", "vayuos", cfg, htmpl.HTML(body)))
 }
 
 func (a *App) handleVayuOSPGP(w http.ResponseWriter, r *http.Request) {
@@ -1119,7 +1119,7 @@ func (a *App) handleVayuOSPGP(w http.ResponseWriter, r *http.Request) {
 <div class="table-wrap"><table class="table"><thead><tr><th>Email</th><th>Fingerprint</th><th>State</th><th>Expires</th></tr></thead><tbody>` + rows.String() + `</tbody></table></div></div>
 <div class="section-head"><span class="section-head__title">Web Key Directory</span><span class="section-head__hint">How external clients discover your keys</span></div>
 <div class="card"><p class="muted">External clients discover these keys at <code>/.well-known/openpgpkey/</code> (advanced method).</p></div>`
-	writeOSHTML(w, adminOSLayout(nonce, "VayuPGP", "vayuos", cfg, htmpl.HTML(body)))
+	writeOSHTML(w, r, adminOSLayout(nonce, "VayuPGP", "vayuos", cfg, htmpl.HTML(body)))
 }
 
 func (a *App) handleVayuOSMail(w http.ResponseWriter, r *http.Request) {
@@ -1145,7 +1145,7 @@ func (a *App) handleVayuOSMail(w http.ResponseWriter, r *http.Request) {
 	body.WriteString(vayuosNav("mail", true))
 	if !mc.Enabled {
 		body.WriteString(`<div class="empty-state">VayuMail is inactive. Set your domain (DOMAIN env / first-boot wizard) to activate DKIM signing and outbound delivery.</div>`)
-		writeOSHTML(w, adminOSLayout(nonce, "VayuMail", "vayuos", cfg, htmpl.HTML(body.String())))
+		writeOSHTML(w, r, adminOSLayout(nonce, "VayuMail", "vayuos", cfg, htmpl.HTML(body.String())))
 		return
 	}
 	qs, stats, _ := a.vayuMail.QueueStatus(r.Context())
@@ -1167,7 +1167,7 @@ func (a *App) handleVayuOSMail(w http.ResponseWriter, r *http.Request) {
 	body.WriteString(`<div class="section-head"><span class="section-head__title">Live verification</span><span class="section-head__hint">Re-check every mail domain</span></div>`)
 	body.WriteString(a.vayuDNSVerifyFragment(r))
 	body.WriteString(vayuDNSScript(nonce))
-	writeOSHTML(w, adminOSLayout(nonce, "VayuMail", "vayuos", cfg, htmpl.HTML(body.String())))
+	writeOSHTML(w, r, adminOSLayout(nonce, "VayuMail", "vayuos", cfg, htmpl.HTML(body.String())))
 }
 
 func (a *App) handleVayuOSSecurity(w http.ResponseWriter, r *http.Request) {
@@ -1186,9 +1186,7 @@ func (a *App) handleVayuOSSecurity(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// CSRF token so the inline "Check now" control can POST.
-	if token := auth.GenerateCSRFToken(); token != "" {
-		setCSRFCookie(w, token)
-	}
+	csrfTokenFor(w, r)
 
 	var body strings.Builder
 	body.WriteString(`<div class="page-header"><h1>Security updates</h1>
@@ -1230,7 +1228,7 @@ if(b)b.addEventListener('click',function(){
 });
 })();
 </script>`)
-	writeOSHTML(w, adminOSLayout(nonce, "Security updates", "vayuos", cfg, htmpl.HTML(body.String())))
+	writeOSHTML(w, r, adminOSLayout(nonce, "Security updates", "vayuos", cfg, htmpl.HTML(body.String())))
 }
 
 // handleVayuOSSecurityCheck performs an on-demand upstream security check
@@ -1713,9 +1711,7 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
 	// CSRF cookie so the HTMX row/bulk POSTs pass the double-submit middleware.
-	if token := auth.GenerateCSRFToken(); token != "" {
-		setCSRFCookie(w, token)
-	}
+	csrfTokenFor(w, r)
 	var body strings.Builder
 	body.WriteString(`<div class="page-header"><h1>Mailbox</h1></div>`)
 	body.WriteString(`<p class="page-sub">Received &amp; filed mail (Maildir).</p>`)
@@ -1723,7 +1719,7 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled {
 		body.WriteString(`<div class="empty-state">VayuMail is inactive. Set <code>DOMAIN</code> to a real domain to provision mailboxes. The inbound SMTP/IMAP listener runs by default once a domain is set (disable with <code>VAYUOS_MAIL_INBOUND=off</code>); receiving external mail also needs port 25 reachable and MX/A DNS records pointing at this host.</div>`)
-		writeOSHTML(w, adminOSLayout(nonce, "Mailbox", "vayuos", cfg, htmpl.HTML(body.String())))
+		writeOSHTML(w, r, adminOSLayout(nonce, "Mailbox", "vayuos", cfg, htmpl.HTML(body.String())))
 		return
 	}
 	domain := a.vayuMail.Config().Domain
@@ -1738,7 +1734,7 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 		local := a.ownMailboxKey(r)
 		if local == "" {
 			body.WriteString(`<div class="empty-state">No mailbox has been assigned to your account yet. Ask an administrator to assign you an email address under <strong>Members → Team &amp; roles</strong>.</div>`)
-			writeOSHTML(w, adminOSLayout(nonce, "Mailbox", "vayuos", cfg, htmpl.HTML(body.String())))
+			writeOSHTML(w, r, adminOSLayout(nonce, "Mailbox", "vayuos", cfg, htmpl.HTML(body.String())))
 			return
 		}
 		user = local
@@ -1753,11 +1749,11 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 		primary, err := a.vayuMail.Mailboxes()
 		if err != nil {
 			body.WriteString(`<div class="empty-state">Could not read mailboxes: ` + html.EscapeString(err.Error()) + `</div>`)
-			writeOSHTML(w, adminOSLayout(nonce, "Mailbox", "vayuos", cfg, htmpl.HTML(body.String())))
+			writeOSHTML(w, r, adminOSLayout(nonce, "Mailbox", "vayuos", cfg, htmpl.HTML(body.String())))
 			return
 		}
 		body.WriteString(a.vayuMailboxTabs(domain, primary, a.mailSecondaryHosts(r.Context())))
-		writeOSHTML(w, adminOSLayout(nonce, "Mailbox", "vayuos", cfg, htmpl.HTML(body.String())))
+		writeOSHTML(w, r, adminOSLayout(nonce, "Mailbox", "vayuos", cfg, htmpl.HTML(body.String())))
 		return
 	}
 
@@ -1776,7 +1772,7 @@ func (a *App) handleVayuOSInbox(w http.ResponseWriter, r *http.Request) {
 	body.WriteString(`<div id="vm-readpane" class="vm-readpane">` + vayuReadpaneEmpty("") + `</div>`)
 	body.WriteString(`</div>`)
 	body.WriteString(`<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail.js?v=` + assetVer("js/admin-os-mail.js") + `"></script>`)
-	writeOSHTML(w, adminOSLayout(nonce, "Mailbox", "vayuos", cfg, htmpl.HTML(body.String())))
+	writeOSHTML(w, r, adminOSLayout(nonce, "Mailbox", "vayuos", cfg, htmpl.HTML(body.String())))
 }
 
 // vayuMailboxTabs renders the mailbox directory as one tab per mail domain
@@ -2201,7 +2197,7 @@ func (a *App) handleVayuOSSearch(w http.ResponseWriter, r *http.Request) {
 	body.WriteString(vayuosNav("mailbox", a.isAdminRequest(r)))
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled || user == "" {
 		body.WriteString(`<div class="empty-state">VayuMail is inactive or no mailbox selected. <a href="/os/vayumail/inbox">Back to Mailbox</a></div>`)
-		writeOSHTML(w, adminOSLayout(nonce, "Search mail", "vayuos", cfg, htmpl.HTML(body.String())))
+		writeOSHTML(w, r, adminOSLayout(nonce, "Search mail", "vayuos", cfg, htmpl.HTML(body.String())))
 		return
 	}
 	body.WriteString(`<div class="card"><div class="card-title"><a href="/os/vayumail/inbox?user=` + qparam(user) + `">← ` + html.EscapeString(mailAddrOf(user, a.cfgDomain())) + `</a></div>`)
@@ -2235,7 +2231,7 @@ func (a *App) handleVayuOSSearch(w http.ResponseWriter, r *http.Request) {
 </form>`)
 	body.WriteString(`<div id="vm-search-results">` + a.vayuSearchResults(user, sf) + `</div>`)
 	body.WriteString(`</div>`)
-	writeOSHTML(w, adminOSLayout(nonce, "Search mail", "vayuos", cfg, htmpl.HTML(body.String())))
+	writeOSHTML(w, r, adminOSLayout(nonce, "Search mail", "vayuos", cfg, htmpl.HTML(body.String())))
 }
 
 // searchFilters holds the query and the refinement filters for a mail search.
@@ -2465,31 +2461,31 @@ func (a *App) handleVayuOSMessage(w http.ResponseWriter, r *http.Request) {
 
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled || user == "" || id == "" {
 		if pane {
-			writeOSHTML(w, vayuReadpaneEmpty("Message not available."))
+			writeOSHTML(w, r, vayuReadpaneEmpty("Message not available."))
 			return
 		}
 		var body strings.Builder
 		body.WriteString(`<div class="page-header"><h1>Message</h1></div>` + vayuosNav("mailbox", a.isAdminRequest(r)))
 		body.WriteString(`<div class="empty-state">Message not available. <a href="/os/vayumail/inbox">Back to Mailbox</a></div>`)
-		writeOSHTML(w, adminOSLayout(nonce, "Message", "vayuos", cfg, htmpl.HTML(body.String())))
+		writeOSHTML(w, r, adminOSLayout(nonce, "Message", "vayuos", cfg, htmpl.HTML(body.String())))
 		return
 	}
 
 	card, ok := a.vayuReaderCard(user, folder, id, pane)
 	if !ok {
 		if pane {
-			writeOSHTML(w, vayuReadpaneEmpty("Could not read this message."))
+			writeOSHTML(w, r, vayuReadpaneEmpty("Could not read this message."))
 			return
 		}
 		var body strings.Builder
 		body.WriteString(`<div class="page-header"><h1>Message</h1></div>` + vayuosNav("mailbox", a.isAdminRequest(r)))
 		body.WriteString(`<div class="empty-state">Could not read message. <a href="/os/vayumail/inbox?user=` + qparam(user) + `">Back</a></div>`)
-		writeOSHTML(w, adminOSLayout(nonce, "Message", "vayuos", cfg, htmpl.HTML(body.String())))
+		writeOSHTML(w, r, adminOSLayout(nonce, "Message", "vayuos", cfg, htmpl.HTML(body.String())))
 		return
 	}
 	if pane {
 		// Fragment only — the inbox page already loaded admin-os-mail.js.
-		writeOSHTML(w, card)
+		writeOSHTML(w, r, card)
 		return
 	}
 	var body strings.Builder
@@ -2497,7 +2493,7 @@ func (a *App) handleVayuOSMessage(w http.ResponseWriter, r *http.Request) {
 	body.WriteString(vayuosNav("mailbox", a.isAdminRequest(r)))
 	body.WriteString(card)
 	body.WriteString(`<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail.js?v=` + assetVer("js/admin-os-mail.js") + `"></script>`)
-	writeOSHTML(w, adminOSLayout(nonce, "Message", "vayuos", cfg, htmpl.HTML(body.String())))
+	writeOSHTML(w, r, adminOSLayout(nonce, "Message", "vayuos", cfg, htmpl.HTML(body.String())))
 }
 
 // vayuReadpaneEmpty renders the reading-pane placeholder (also the "message
@@ -2737,7 +2733,7 @@ func (a *App) vayuReaderCard(user, folder, id string, pane bool) (string, bool) 
 // so the message list refreshes in place. Pure HTMX — no page-load JS.
 func (a *App) handleVayuOSMessagePaneAction(w http.ResponseWriter, r *http.Request) {
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled {
-		writeOSHTML(w, vayuReadpaneEmpty("VayuMail is not active."))
+		writeOSHTML(w, r, vayuReadpaneEmpty("VayuMail is not active."))
 		return
 	}
 	_ = r.ParseForm()
@@ -2751,13 +2747,13 @@ func (a *App) handleVayuOSMessagePaneAction(w http.ResponseWriter, r *http.Reque
 		own := a.ownMailboxKey(r)
 		if own == "" {
 			w.WriteHeader(http.StatusForbidden)
-			writeOSHTML(w, vayuReadpaneEmpty("You can only manage your own mailbox."))
+			writeOSHTML(w, r, vayuReadpaneEmpty("You can only manage your own mailbox."))
 			return
 		}
 		user = own // non-admin: own mailbox engine key (domain included), server-derived
 	}
 	if user == "" || id == "" {
-		writeOSHTML(w, vayuReadpaneEmpty("Message not available."))
+		writeOSHTML(w, r, vayuReadpaneEmpty("Message not available."))
 		return
 	}
 	// Every branch below changes what the list shows, so refresh it in place.
@@ -2767,35 +2763,35 @@ func (a *App) handleVayuOSMessagePaneAction(w http.ResponseWriter, r *http.Reque
 	case r.FormValue("snooze") != "":
 		until := snoozeUntil(r.FormValue("snooze"))
 		if err := a.vayuMail.Snooze(user, folder, id, until); err != nil {
-			writeOSHTML(w, vayuReadpaneEmpty("Could not snooze: "+err.Error()))
+			writeOSHTML(w, r, vayuReadpaneEmpty("Could not snooze: "+err.Error()))
 			return
 		}
-		writeOSHTML(w, vayuReadpaneEmpty("Snoozed — wakes "+until.Local().Format("Mon 15:04")+"."))
+		writeOSHTML(w, r, vayuReadpaneEmpty("Snoozed — wakes "+until.Local().Format("Mon 15:04")+"."))
 	case r.FormValue("delete") == "1":
 		_ = a.vayuMail.DeleteMessage(user, folder, id)
-		writeOSHTML(w, vayuReadpaneEmpty("Message deleted."))
+		writeOSHTML(w, r, vayuReadpaneEmpty("Message deleted."))
 	case strings.TrimSpace(r.FormValue("to")) != "":
 		to := strings.TrimSpace(r.FormValue("to"))
 		_ = a.vayuMail.MoveMessage(user, id, folder, to)
-		writeOSHTML(w, vayuReadpaneEmpty("Moved to "+html.EscapeString(to)+"."))
+		writeOSHTML(w, r, vayuReadpaneEmpty("Moved to "+html.EscapeString(to)+"."))
 	case r.FormValue("mark") == "unread":
 		_, _ = a.vayuMail.MarkUnread(user, folder, id)
 		// Gmail-style: marking unread closes the reader so the bold row stands out.
-		writeOSHTML(w, vayuReadpaneEmpty("Marked unread."))
+		writeOSHTML(w, r, vayuReadpaneEmpty("Marked unread."))
 	case r.FormValue("pin") == "1" || r.FormValue("pin") == "0":
 		if nid, err := a.vayuMail.SetPinned(user, folder, id, r.FormValue("pin") == "1"); err == nil && nid != "" {
 			id = nid
 		}
 		if card, ok := a.vayuReaderCard(user, folder, id, true); ok {
-			writeOSHTML(w, card)
+			writeOSHTML(w, r, card)
 		} else {
-			writeOSHTML(w, vayuReadpaneEmpty(""))
+			writeOSHTML(w, r, vayuReadpaneEmpty(""))
 		}
 	default:
 		if card, ok := a.vayuReaderCard(user, folder, id, true); ok {
-			writeOSHTML(w, card)
+			writeOSHTML(w, r, card)
 		} else {
-			writeOSHTML(w, vayuReadpaneEmpty(""))
+			writeOSHTML(w, r, vayuReadpaneEmpty(""))
 		}
 	}
 }
@@ -2803,7 +2799,7 @@ func (a *App) handleVayuOSMessagePaneAction(w http.ResponseWriter, r *http.Reque
 // handleVayuOSReadpane returns the empty reading-pane placeholder — the pane's
 // initial split-view state and what its Close button restores.
 func (a *App) handleVayuOSReadpane(w http.ResponseWriter, r *http.Request) {
-	writeOSHTML(w, vayuReadpaneEmpty(""))
+	writeOSHTML(w, r, vayuReadpaneEmpty(""))
 }
 
 // snoozeUntil maps a snooze preset to its wake time: "later" (+4h),
@@ -2841,23 +2837,21 @@ func (a *App) handleVayuOSSent(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
 	// A CSRF cookie so the Resend/Delete/Retry HTMX POSTs pass the middleware.
-	if token := auth.GenerateCSRFToken(); token != "" {
-		setCSRFCookie(w, token)
-	}
+	csrfTokenFor(w, r)
 	var body strings.Builder
 	body.WriteString(`<div class="page-header"><h1>Outbox</h1></div>`)
 	body.WriteString(`<p class="page-sub">Outbound delivery queue — auto-retries with backoff until sent, with one-click Resend.</p>`)
 	body.WriteString(vayuosNav("outbox", a.isAdminRequest(r)))
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled {
 		body.WriteString(`<div class="empty-state">VayuMail is inactive. Set <code>DOMAIN</code> to activate outbound delivery.</div>`)
-		writeOSHTML(w, adminOSLayout(nonce, "Outbox", "vayuos", cfg, htmpl.HTML(body.String())))
+		writeOSHTML(w, r, adminOSLayout(nonce, "Outbox", "vayuos", cfg, htmpl.HTML(body.String())))
 		return
 	}
 	// The outbound delivery queue is server-wide; non-admins see their own sent
 	// mail in their mailbox's Sent folder instead.
 	if !a.isAdminRequest(r) {
 		body.WriteString(`<div class="empty-state">Your sent messages are in your mailbox under <a href="/os/vayumail/inbox?folder=Sent">Mailbox → Sent</a>. The server-wide delivery queue is visible to administrators only.</div>`)
-		writeOSHTML(w, adminOSLayout(nonce, "Outbox", "vayuos", cfg, htmpl.HTML(body.String())))
+		writeOSHTML(w, r, adminOSLayout(nonce, "Outbox", "vayuos", cfg, htmpl.HTML(body.String())))
 		return
 	}
 	// The auto-refresh poller lives INSIDE the body (see vayuOutboxBody) so it
@@ -2865,7 +2859,7 @@ func (a *App) handleVayuOSSent(w http.ResponseWriter, r *http.Request) {
 	body.WriteString(`<div id="vm-outbox-body">`)
 	body.WriteString(a.vayuOutboxBody(r.Context(), r.URL.Query().Get("domain")))
 	body.WriteString(`</div>`)
-	writeOSHTML(w, adminOSLayout(nonce, "Outbox", "vayuos", cfg, htmpl.HTML(body.String())))
+	writeOSHTML(w, r, adminOSLayout(nonce, "Outbox", "vayuos", cfg, htmpl.HTML(body.String())))
 }
 
 // emailDomain returns the lower-cased domain of an email address, or fallback

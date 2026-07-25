@@ -48,7 +48,7 @@ func (a *App) handleVayuOSCompose(w http.ResponseWriter, r *http.Request) {
 	body.WriteString(vayuosNav("compose", a.isAdminRequest(r)))
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled {
 		body.WriteString(`<div class="empty-state">VayuMail is inactive. Set <code>DOMAIN</code> to enable outbound delivery.</div>`)
-		writeOSHTML(w, adminOSLayout(nonce, "Compose", "vayuos", cfg, htmpl.HTML(body.String())))
+		writeOSHTML(w, r, adminOSLayout(nonce, "Compose", "vayuos", cfg, htmpl.HTML(body.String())))
 		return
 	}
 	domain := a.vayuMail.Config().Domain
@@ -102,7 +102,7 @@ func (a *App) handleVayuOSCompose(w http.ResponseWriter, r *http.Request) {
 		_, ownEmail := a.ownMailbox(r)
 		if ownEmail == "" {
 			body.WriteString(`<div class="empty-state">No mailbox has been assigned to your account yet. Ask an administrator to assign you an email address under <strong>Members → Team &amp; roles</strong>.</div>`)
-			writeOSHTML(w, adminOSLayout(nonce, "Compose", "vayuos", cfg, htmpl.HTML(body.String())))
+			writeOSHTML(w, r, adminOSLayout(nonce, "Compose", "vayuos", cfg, htmpl.HTML(body.String())))
 			return
 		}
 		ownSig := ""
@@ -218,7 +218,7 @@ func (a *App) handleVayuOSCompose(w http.ResponseWriter, r *http.Request) {
     <button class="btn btn--sm" type="button" data-c-undo>Undo</button>
   </div>
 </form></div>` + `<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail.js?v=` + assetVer("js/admin-os-mail.js") + `"></script>`)
-	writeOSHTML(w, adminOSLayout(nonce, "Compose", "vayuos", cfg, htmpl.HTML(body.String())))
+	writeOSHTML(w, r, adminOSLayout(nonce, "Compose", "vayuos", cfg, htmpl.HTML(body.String())))
 }
 
 // composePrefill derives the To/Subject/Body for the compose form from the
@@ -792,12 +792,12 @@ func (a *App) handleVayuOSAccounts(w http.ResponseWriter, r *http.Request) {
 	body.WriteString(vayuosNav("accounts", a.isAdminRequest(r)))
 	if !a.isAdminRequest(r) {
 		body.WriteString(`<div class="empty-state">Mail-account management is available to administrators only. Your own mailbox is under <a href="/os/vayumail/inbox">Mailbox</a>.</div>`)
-		writeOSHTML(w, adminOSLayout(nonce, "Mail accounts", "vayuos", cfg, htmpl.HTML(body.String())))
+		writeOSHTML(w, r, adminOSLayout(nonce, "Mail accounts", "vayuos", cfg, htmpl.HTML(body.String())))
 		return
 	}
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled || a.vayuMail.Accounts() == nil {
 		body.WriteString(`<div class="empty-state">VayuMail is inactive. Set <code>DOMAIN</code> to manage mail accounts.</div>`)
-		writeOSHTML(w, adminOSLayout(nonce, "Mail accounts", "vayuos", cfg, htmpl.HTML(body.String())))
+		writeOSHTML(w, r, adminOSLayout(nonce, "Mail accounts", "vayuos", cfg, htmpl.HTML(body.String())))
 		return
 	}
 	domain := a.vayuMail.Config().Domain
@@ -861,7 +861,7 @@ func (a *App) handleVayuOSAccounts(w http.ResponseWriter, r *http.Request) {
 	// no separate account-wide alias/filter cards here.
 
 	body.WriteString(`<script nonce="` + nonce + `" src="/os/static/js/admin-os-mail.js?v=` + assetVer("js/admin-os-mail.js") + `"></script>`)
-	writeOSHTML(w, adminOSLayout(nonce, "Mail accounts", "vayuos", cfg, htmpl.HTML(body.String())))
+	writeOSHTML(w, r, adminOSLayout(nonce, "Mail accounts", "vayuos", cfg, htmpl.HTML(body.String())))
 }
 
 // handleVayuOSFilterAction creates or deletes a delivery rule and returns the
@@ -906,7 +906,7 @@ func (a *App) handleVayuOSFilterAction(w http.ResponseWriter, r *http.Request) {
 	if opErr != nil {
 		card = `<div class="empty-state" role="alert">⚠ ` + html.EscapeString(opErr.Error()) + `</div>` + card
 	}
-	writeOSHTML(w, card)
+	writeOSHTML(w, r, card)
 }
 
 // handleVayuOSAutoreplyAction saves a mailbox's autoresponder settings and
@@ -959,7 +959,7 @@ func (a *App) handleVayuOSAutoreplyAction(w http.ResponseWriter, r *http.Request
 	if opErr != nil {
 		card = `<div class="empty-state" role="alert">⚠ ` + html.EscapeString(opErr.Error()) + `</div>` + card
 	}
-	writeOSHTML(w, card)
+	writeOSHTML(w, r, card)
 }
 
 // handleVayuOSAliasAction applies an alias/forward change and returns the
@@ -1020,7 +1020,7 @@ func (a *App) handleVayuOSAliasAction(w http.ResponseWriter, r *http.Request) {
 	if opErr != nil {
 		card = `<div class="empty-state" role="alert">⚠ ` + html.EscapeString(opErr.Error()) + `</div>` + card
 	}
-	writeOSHTML(w, card)
+	writeOSHTML(w, r, card)
 }
 
 // mailPort extracts the port from a listen address (":993", "127.0.0.1:993"),
@@ -1233,7 +1233,7 @@ func (a *App) handleVayuOSConnect(w http.ResponseWriter, r *http.Request) {
 
 	if a.vayuMail == nil || !a.vayuMail.Config().Enabled {
 		body.WriteString(`<div class="empty-state">VayuMail is inactive. Set <code>DOMAIN</code> to enable mailboxes and mail-client access.</div>`)
-		writeOSHTML(w, adminOSLayout(nonce, "Connect a mail app", "vayuos", cfg, htmpl.HTML(body.String())))
+		writeOSHTML(w, r, adminOSLayout(nonce, "Connect a mail app", "vayuos", cfg, htmpl.HTML(body.String())))
 		return
 	}
 
@@ -1400,7 +1400,7 @@ func (a *App) handleVayuOSConnect(w http.ResponseWriter, r *http.Request) {
 	}
 	body.WriteString(`</tbody></table></div></div>`)
 
-	writeOSHTML(w, adminOSLayout(nonce, "Connect a mail app", "vayuos", cfg, htmpl.HTML(body.String())))
+	writeOSHTML(w, r, adminOSLayout(nonce, "Connect a mail app", "vayuos", cfg, htmpl.HTML(body.String())))
 }
 
 func (a *App) handleVayuOSAccountCreate(w http.ResponseWriter, r *http.Request) {
@@ -1902,7 +1902,7 @@ func (a *App) handleVayuOSAppPasswordCreate(w http.ResponseWriter, r *http.Reque
 	if opErr != nil {
 		card = `<div class="empty-state" role="alert">⚠ ` + html.EscapeString(opErr.Error()) + `</div>` + card
 	}
-	writeOSHTML(w, banner+card)
+	writeOSHTML(w, r, banner+card)
 }
 
 // handleVayuOSAppPasswordDelete revokes one app password by id (scoped to the
@@ -1932,7 +1932,7 @@ func (a *App) handleVayuOSAppPasswordDelete(w http.ResponseWriter, r *http.Reque
 	if opErr != nil {
 		card = `<div class="empty-state" role="alert">⚠ ` + html.EscapeString(opErr.Error()) + `</div>` + card
 	}
-	writeOSHTML(w, card)
+	writeOSHTML(w, r, card)
 }
 
 // ── Devices — approval-gated sync credentials (ADR-0129) ────────────────────
@@ -2087,5 +2087,5 @@ func (a *App) handleVayuOSDeviceAction(w http.ResponseWriter, r *http.Request) {
 	if opErr != nil {
 		card = `<div class="empty-state" role="alert">⚠ ` + html.EscapeString(opErr.Error()) + `</div>` + card
 	}
-	writeOSHTML(w, card)
+	writeOSHTML(w, r, card)
 }

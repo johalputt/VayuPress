@@ -47,7 +47,7 @@ func (a *App) handleOSOptimize(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	writeOSHTML(w, adminOSLayout(nonce, "Optimize", "optimize", cfg, htmpl.HTML(osOptimizeGrid(cfg.AccessLevel, sites))))
+	writeOSHTML(w, r, adminOSLayout(nonce, "Optimize", "optimize", cfg, htmpl.HTML(osOptimizeGrid(cfg.AccessLevel, sites))))
 }
 
 // osOptimizeGrid builds the Optimize hub body as two card rows. Each card is shown

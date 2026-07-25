@@ -160,7 +160,7 @@ func (a *App) handleOSAPIKeys(w http.ResponseWriter, r *http.Request) {
 	full := adminOSShellHead(nonce, "API Keys", "apikeys", cfg) +
 		body +
 		adminOSShellFoot(nonce, osAPIKeysScript, pageUsesAlpine(body))
-	writeOSHTML(w, full)
+	writeOSHTML(w, r, full)
 }
 
 // apiBaseURL returns the recommended public base URL for the REST API. When a

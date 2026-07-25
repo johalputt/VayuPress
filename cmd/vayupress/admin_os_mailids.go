@@ -100,7 +100,7 @@ document.querySelectorAll('[data-remove-name]').forEach(function(b){
 })();
 </script>`
 
-	writeOSHTML(w, adminOSLayout(nonce, "Premium Mail IDs", "growth", cfg, htmpl.HTML(body)))
+	writeOSHTML(w, r, adminOSLayout(nonce, "Premium Mail IDs", "growth", cfg, htmpl.HTML(body)))
 }
 
 // mailIDGrantsAdminTable renders the sales table with per-row moderation actions.

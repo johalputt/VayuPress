@@ -29,7 +29,7 @@ func (a *App) handleOSGrowth(w http.ResponseWriter, r *http.Request) {
 		_ = dbpkg.Reader().QueryRowContext(ctx, `SELECT COUNT(1) FROM members WHERE tier NOT IN ('free','')`).Scan(&paid)
 	}
 
-	writeOSHTML(w, adminOSLayout(nonce, "Growth", "growth", cfg, htmpl.HTML(osGrowthGrid(memberCount, subscribers, paid))))
+	writeOSHTML(w, r, adminOSLayout(nonce, "Growth", "growth", cfg, htmpl.HTML(osGrowthGrid(memberCount, subscribers, paid))))
 }
 
 // osGrowthGrid builds the clean Growth hub: the Audience cards and a Monetization

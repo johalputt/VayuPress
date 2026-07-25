@@ -284,7 +284,7 @@ func (a *App) handleOSUpdate(w http.ResponseWriter, r *http.Request) {
 
 <script nonce="` + nonce + `" src="/os/static/js/admin-os-update.js?v=` + assetVer("js/admin-os-update.js") + `"></script>`
 
-	writeOSHTML(w, adminOSLayout(nonce, "Update & Backup", "update", cfg, htmpl.HTML(body)))
+	writeOSHTML(w, r, adminOSLayout(nonce, "Update & Backup", "update", cfg, htmpl.HTML(body)))
 }
 
 // updateHistoryRowsHTML renders the most recent update_history rows as table
