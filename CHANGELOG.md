@@ -6,6 +6,90 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.31] — 2026-07-25
+
+### Fixed
+- **Installing the site on Android produced a shortcut, not an app — so a restart
+  could delete it.** Chrome only mints a **WebAPK** — a real generated Android
+  package that survives reboots like any other app — when a site passes the full
+  installability check. Miss any part of it and the browser silently substitutes a
+  legacy launcher shortcut: an entry in the launcher's own database, which many
+  Android builds discard on restart or when the launcher rebuilds. Nothing in the
+  install flow tells you which of the two you got; you find out later, when the icon
+  is gone. Three things were wrong, and all three had to be fixed for the install to
+  become real:
+
+  - **The service worker was never registered.** `/sw.js` was served, but no page
+    ever called `navigator.serviceWorker.register`, and a worker that is not
+    registered does not exist. This alone failed the check. Registration now ships
+    as a deferred, same-origin script (so it satisfies `script-src 'self'` with no
+    nonce) that runs after `load`, feature-detects, and swallows its own failures —
+    it can never delay first paint or break a page.
+  - **The manifest was missing its install essentials.** It now declares a stable
+    `id` (without one, identity comes from `start_url`, so ever changing the landing
+    page would orphan an already-installed app), plus `scope`, `display_override`
+    and `orientation`. An unnamed manifest is not installable at all, so a final
+    name fallback replaces the previous silent failure when neither a site name nor
+    a domain is configured, and `short_name` is now trimmed on a word boundary by
+    **runes** rather than bytes — a byte cut would put a broken character on the
+    home screen.
+  - **The icons were not what the manifest claimed.** One 256x256 file was declared
+    as being both `192x192` and `512x512`, and the unpadded brand mark was declared
+    `maskable` — which asks Android to crop the mark's own edges. There are now a
+    real 192, a real 512, a padded fully-opaque maskable 512 (mark at 62.5%, inside
+    the 80% safe zone, so no mask shape can clip it), and an apple-touch-icon,
+    generated from the brand mark by `scripts/gen-pwa-icons.py`.
+
+  **VayuShield was also challenging the install.** `/manifest.json` and `/sw.js` sat
+  outside the bypass list. The manifest is not fetched only by the reader's browser:
+  the WebAPK minting server downloads it, and the icons it names, to build the
+  package — and again on every update check. Those fetches are not a mainstream
+  browser and cannot solve a challenge, so a challenge there means no WebAPK. A
+  challenge on `/sw.js` is the same shape of failure in reverse: the browser asks for
+  JavaScript and is handed an HTML challenge page, so the worker update fails on an
+  app that is already installed. Both are bypassed now; the icons were already
+  covered by `/static`.
+
+- **iOS installs got a screenshot as their icon.** iPhone ignores the manifest for
+  icons and standalone display entirely — it is driven by `apple-*` head tags, which
+  the public pages did not carry. They do now, so "Add to Home Screen" gets the
+  brand mark and opens without browser chrome.
+
+### Changed
+- **The service worker no longer overrides the server on what may be cached.** The
+  previous worker served page navigations **stale-first** (`cached || network`), so
+  a reader who was online still got yesterday's page whenever a cached copy existed,
+  and it stored whatever a navigation returned — including responses the server had
+  marked `private` or `no-store`. On a shared device that could replay one member's
+  account page to the next person, and it could re-show a cached sign-in form to
+  somebody already signed in, defeating the server-side redirect before the origin
+  was ever consulted. Now:
+
+  - pages are **network-first**, with the cache only as an offline fallback;
+  - a response is stored only if the server permits it — no `no-store`/`private`,
+    no `Vary: Cookie`, no `Set-Cookie`;
+  - every per-user surface (the console, the legacy admin path, and all member,
+    sign-up, sign-in, plans and API paths) goes straight to the network and is never
+    stored;
+  - the precache list is fetched entry by entry, because `cache.addAll` rejects
+    atomically — one 404 in that list used to fail the whole install, and a worker
+    whose install fails leaves the app uninstallable;
+  - `CACHE_NAME` moves to `v3`, so activating this worker purges the v2 cache and a
+    device that was holding stale or private pages self-heals.
+
+### Upgrade Notes
+- Existing installs on Android are most likely shortcuts rather than real apps.
+  After deploying, **remove the old icon and install again** — the new install mints
+  a WebAPK, which survives restarts. Confirm it worked in Chrome's DevTools under
+  Application → Manifest, or by checking that the app appears in Android's app list
+  rather than only on the home screen.
+- The updated service worker takes over on the next visit and purges the previous
+  cache automatically; no manual clearing is needed.
+- Re-run `python3 scripts/gen-pwa-icons.py` after changing `favicon-light.png` so
+  the app icons stay in step with the brand mark.
+
+---
+
 ## [3.15.30] — 2026-07-25
 
 ### Security
