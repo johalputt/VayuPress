@@ -678,3 +678,149 @@ html[data-theme="light"] {
 @media (max-width: 480px) {
   .ma-bill-row { grid-template-columns: 1fr; gap: .1rem; }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Monetization design language on the member pages.
+
+   The account page was a flat stack of eight equal-weight cards, so everything
+   shouted at the same volume and the page had to be read top to bottom to find
+   anything. Each secondary section now collapses to one summary row — icon tile ·
+   title · one-line subtitle · status chip · rotating chevron — and expanding
+   reveals the existing card, chromeless, with a short reveal. This mirrors
+   .mon-acc in admin-os.css deliberately: the console and the member pages should
+   read as one design.
+
+   Native <details>, so it needs no JavaScript: nothing to break under a strict
+   CSP, and nothing lost if a script fails to load.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.ma-sec {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: .75rem;
+  margin: 1.5rem 0 .7rem;
+}
+.ma-sec__title {
+  margin: 0;
+  font-size: 1.02rem;
+  font-weight: 700;
+  letter-spacing: -.01em;
+  color: var(--su-text, #e8eaf0);
+}
+.ma-sec__hint { font-size: .74rem; color: var(--su-muted, #9aa3b2); }
+
+.ma-acc {
+  border: 1px solid var(--su-border, rgba(255, 255, 255, .09));
+  border-radius: 14px;
+  background: var(--su-surface, #161922);
+  overflow: hidden;
+  margin-bottom: .55rem;
+  transition: border-color .16s ease, box-shadow .16s ease;
+}
+.ma-acc[open] {
+  border-color: color-mix(in srgb, var(--su-accent, #6366f1) 32%, var(--su-border, rgba(255, 255, 255, .09)));
+  box-shadow: 0 8px 22px -14px rgba(0, 0, 0, .65);
+}
+
+.ma-acc__sum {
+  display: flex;
+  align-items: center;
+  gap: .7rem;
+  cursor: pointer;
+  list-style: none;
+  padding: .7rem .85rem;
+  /* Comfortable tap target (WCAG 2.5.5). */
+  min-height: 48px;
+  user-select: none;
+  touch-action: manipulation;
+  transition: background .16s ease;
+}
+.ma-acc__sum::-webkit-details-marker { display: none; }
+.ma-acc__sum::marker { content: ""; }
+.ma-acc__sum:hover { background: color-mix(in srgb, #fff 3%, transparent); }
+.ma-acc__sum:focus-visible { outline: 2px solid var(--su-accent, #6366f1); outline-offset: -2px; }
+
+.ma-acc__ic {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  border-radius: 10px;
+  background: color-mix(in srgb, #fff 5%, transparent);
+  border: 1px solid var(--su-border, rgba(255, 255, 255, .09));
+}
+.ma-acc__head { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1; }
+.ma-acc__title { font-weight: 650; font-size: .92rem; color: var(--su-text, #e8eaf0); }
+.ma-acc__sub {
+  font-size: .77rem;
+  color: var(--su-muted, #9aa3b2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ma-acc__chev { flex: none; color: var(--su-muted, #9aa3b2); transition: transform .16s ease; }
+.ma-acc[open] .ma-acc__chev { transform: rotate(180deg); }
+.ma-acc[open] .ma-acc__sum { border-bottom: 1px solid var(--su-border, rgba(255, 255, 255, .09)); }
+
+.ma-acc__body { animation: ma-reveal .26s cubic-bezier(.16, .84, .44, 1); }
+@keyframes ma-reveal {
+  from { opacity: 0; transform: translateY(-5px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* The wrapped card renders chromeless — the accordion IS the frame — and its
+   duplicate heading is hidden, because the summary row already names it. */
+.ma-acc__body > .ma-card {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  margin: 0;
+  padding: .85rem .9rem 1rem;
+}
+.ma-acc__body > .ma-card::before { display: none; }
+.ma-acc__body > .ma-card > h2:first-child { display: none; }
+
+/* ── Status chip (mirrors .mon-chip) ────────────────────────────────────── */
+
+.ma-chip {
+  flex: none;
+  font-size: .69rem;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--su-border, rgba(255, 255, 255, .09));
+  color: var(--su-muted, #9aa3b2);
+  background: color-mix(in srgb, #fff 4%, transparent);
+  white-space: nowrap;
+  max-width: 11rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ma-chip--on {
+  color: #34d399;
+  border-color: rgba(52, 211, 153, .4);
+  background: rgba(52, 211, 153, .12);
+}
+
+@media (max-width: 560px) {
+  .ma-acc__sum { padding: .75rem .8rem; gap: .6rem; }
+  .ma-acc__ic { width: 32px; height: 32px; }
+  /* The subtitle is often an email address; let it wrap rather than truncate to
+     a few characters on a narrow screen. */
+  .ma-acc__sub { white-space: normal; overflow-wrap: anywhere; }
+  .ma-chip { max-width: 6.5rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ma-acc__body { animation: none; }
+  .ma-acc, .ma-acc__sum, .ma-acc__chev { transition: none; }
+}
+
+/* "Sign out" wrapped to two lines in the page header on a narrow screen, because
+   the flex header let the button shrink below its text. It is a two-word label; it
+   should never break. */
+.ma-signout { white-space: nowrap; flex: none; }

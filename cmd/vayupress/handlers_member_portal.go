@@ -254,6 +254,10 @@ func (a *App) handleMemberAccount(w http.ResponseWriter, r *http.Request) {
 	mailCard := ""
 	securityCard := ""
 	scriptTag := ""
+	// Summary state for the collapsed rows, so the page reads at a glance without
+	// anything having to be expanded.
+	mailSub, mailChip := "", ""
+	secSub, secChip := "", ""
 	switch {
 	case hasMailbox:
 		twoFAOn := false
@@ -275,7 +279,13 @@ func (a *App) handleMemberAccount(w http.ResponseWriter, r *http.Request) {
     <div class="ma-mailid">` + esc(mailboxEmail) + `</div>
     <p class="ma-hint">Sign in here with this address, in the VayuMail app, or any IMAP client.` + consoleLink + `</p>
   </section>`
+		mailSub, mailChip = mailboxEmail, maChip("Ready", true)
 		securityCard = renderMemberSecurityCard(twoFAOn)
+		secSub = "Protects your mailbox sign-in"
+		secChip = maChip("Off", false)
+		if twoFAOn {
+			secChip = maChip("On", true)
+		}
 		scriptTag = memberAccountInlineJS(nonce)
 	case mailEntitled && host != "":
 		terms := ""
@@ -299,6 +309,7 @@ func (a *App) handleMemberAccount(w http.ResponseWriter, r *http.Request) {
       <button class="ma-cta-primary" id="ma-claim-btn" type="button">Create my mail address →</button>
     </div>
   </section>`
+		mailSub, mailChip = "Included with your plan", maChip("Claim yours", false)
 		scriptTag = memberAccountInlineJS(nonce)
 	case !paid:
 		mailCard = `<section class="ma-card ma-card--perk">
@@ -306,12 +317,47 @@ func (a *App) handleMemberAccount(w http.ResponseWriter, r *http.Request) {
     <p class="ma-hint">A private <strong>@` + esc(host) + `</strong> VayuMail address — with automatic PGP encryption and two-factor security — is included with Premium.</p>
     <a class="ma-cta-primary" href="/pricing">Upgrade to get yours →</a>
   </section>`
+		mailSub, mailChip = "Included with Premium", maChip("Premium", false)
 		if host == "" {
 			mailCard = ""
 		}
 	}
 
 	since := config.FormatSite(m.CreatedAt, "2 January 2006")
+
+	// Everything below the plan and billing summary collapses into one row each, in
+	// the console's Monetization grammar: the page can be scanned rather than read.
+	// Exactly one row starts open — mail, which is the thing members come here to
+	// do — so the page is useful immediately without being a wall of cards.
+	// Rows are collected first, then the FIRST one is opened. Marking a specific row
+	// open would leave the page with nothing expanded whenever that row happens not
+	// to render — mail, for instance, is absent when no mail host is configured.
+	type accRow struct{ icon, title, sub, chip, body string }
+	rows := []accRow{}
+	if mailCard != "" {
+		rows = append(rows, accRow{"&#128236;", "VayuMail address", mailSub, mailChip, mailCard})
+	}
+	if securityCard != "" {
+		rows = append(rows, accRow{"&#128274;", "Two-factor authentication", secSub, secChip, securityCard})
+	}
+	rows = append(rows, accRow{"&#128100;", "Sign-in details", m.Email, "",
+		`<section class="ma-card">
+    <div class="ma-row"><span>Email</span><span>` + esc(m.Email) + `</span></div>
+    <div class="ma-row"><span>Member since</span><span>` + esc(since) + `</span></div>
+  </section>`})
+	// Titles are escaped by maAcc, so this passes a literal ampersand — pre-escaping
+	// it here would render as "&amp;".
+	rows = append(rows, accRow{"&#9881;", "Name & notifications", "How you appear and what we email you", "",
+		memberDetailsCard(m, replyChecked, newsletterChecked)})
+
+	accordions := maSectionHead("Your account", "Tap a row to open it")
+	for i, row := range rows {
+		accordions += maAcc(row.icon, row.title, row.sub, row.chip, row.body, i == 0)
+	}
+	if compareCard != "" {
+		accordions += maSectionHead("Upgrade", "What Premium adds") +
+			maAcc("&#10024;", "Compare plans", "Free vs Premium", "", compareCard, false)
+	}
 
 	page := `<!DOCTYPE html><html lang="en"><head>
 <meta charset="UTF-8">
@@ -333,15 +379,17 @@ func (a *App) handleMemberAccount(w http.ResponseWriter, r *http.Request) {
   ` + notice + `
   ` + planCard + `
   ` + a.memberBillingCard(r.Context(), m) + `
-  ` + compareCard + `
-  ` + mailCard + `
-  ` + securityCard + `
-  <section class="ma-card">
-    <h2>Account</h2>
-    <div class="ma-row"><span>Email</span><span>` + esc(m.Email) + `</span></div>
-    <div class="ma-row"><span>Member since</span><span>` + esc(since) + `</span></div>
-  </section>
-  <section class="ma-card">
+  ` + accordions + `
+</main>` + scriptTag + `
+</body></html>`
+	_, _ = w.Write([]byte(page))
+}
+
+// memberDetailsCard is the "Your details" form: display name plus the two
+// notification preferences.
+func memberDetailsCard(m *members.Member, replyChecked, newsletterChecked string) string {
+	esc := html.EscapeString
+	return `<section class="ma-card">
     <h2>Your details</h2>
     <form method="POST" action="/members/account">
       <div class="ma-field">
@@ -360,10 +408,7 @@ func (a *App) handleMemberAccount(w http.ResponseWriter, r *http.Request) {
       <p class="ma-hint">You're in control — change these any time, or unsubscribe with one click from any email.</p>
       <button class="su-btn" type="submit">Save changes</button>
     </form>
-  </section>
-</main>` + scriptTag + `
-</body></html>`
-	_, _ = w.Write([]byte(page))
+  </section>`
 }
 
 // renderMemberSecurityCard renders the member's mailbox 2FA card. When 2FA is on

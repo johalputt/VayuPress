@@ -89,25 +89,6 @@
 
 .vp-portal-overlay.is-open .vp-portal-panel { transform: translateX(0); }
 
-.vp-portal-close {
-  position: absolute;
-  top: 1rem;
-  right: 1rem;
-  width: 36px;
-  height: 36px;
-  border-radius: 9px;
-  border: 1px solid var(--vpp-border);
-  background: transparent;
-  color: var(--vpp-muted);
-  cursor: pointer;
-  font-size: 1.25rem;
-  line-height: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.vp-portal-close:hover { color: var(--vpp-text); border-color: var(--vpp-accent); }
-
 /* ── Content ─────────────────────────────────────────────────────────────── */
 
 .vp-portal-brand { display: flex; align-items: center; gap: .55rem; margin-bottom: 1.6rem; }
@@ -377,9 +358,6 @@
 }
 
 /* ── Close button ───────────────────────────────────────────────────────── */
-.vp-portal-close { transition: color .15s, border-color .15s, transform .18s ease; }
-.vp-portal-close:hover { transform: rotate(90deg); }
-
 /* ── Responsive: a bottom sheet on phones, a side panel above that ───────── */
 @media (max-width: 560px) {
   .vp-portal-panel {
@@ -444,7 +422,6 @@
 .vp-portal-panel {
   /* A utility popover, not a page: narrow enough to read in one glance. */
   max-width: 19.5rem;
-  padding: 1.15rem 1.1rem 1.25rem;
 }
 
 /* ── Header block ────────────────────────────────────────────────────────── */
@@ -522,7 +499,6 @@
 
 /* ── Touch: keep the sheet, restore comfortable target sizes ─────────────── */
 @media (max-width: 560px) {
-  .vp-portal-panel { padding: 1.6rem 1.15rem 1.9rem; }
   .vp-portal-btn { min-height: 44px; font-size: .94rem; }
   .vp-portal-input { padding: .7rem .8rem; font-size: .95rem; }
 }
@@ -560,4 +536,283 @@
     box-shadow: 0 -1px 0 0 color-mix(in srgb, var(--vpp-accent) 22%, transparent),
                 var(--vpp-shadow);
   }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Monetization design language, and a close button that actually closes.
+
+   Two problems this block fixes.
+
+   1. The X worked only sometimes. The panel is the scroll container
+      (overflow-y: auto), and the close button was position: absolute inside it —
+      so past the first screenful it scrolled away with the content and was no
+      longer where it appeared to be. It now lives in a STICKY header, pinned to
+      the top of whatever is visible, at a 44px touch target (WCAG 2.5.5) instead
+      of 36px, with the rotate-on-hover removed: on touch, hover sticks after a
+      tap, so the glyph stayed rotated and read as a stuck control.
+
+   2. The account view was a flat stack of equal-weight buttons, which carried no
+      sense of what each one did or what state it was in. It now uses the same
+      grammar as the Monetization console page — icon tile · title · one-line
+      subtitle · status chip · rotating chevron, revealing on expand — built on
+      native <details>, so there is no JavaScript and nothing for a strict CSP to
+      refuse.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Box model ──────────────────────────────────────────────────────────────
+   Only the action buttons declared border-box, so .vp-portal-input — width: 100%
+   plus horizontal padding and a border — measured wider than its container and
+   spilled past the panel edge. Scoped to the widget's own subtree so it cannot
+   touch the host page's box model. */
+.vp-portal-overlay,
+.vp-portal-overlay *,
+.vp-portal-overlay *::before,
+.vp-portal-overlay *::after { box-sizing: border-box; }
+
+/* ── Sticky header ──────────────────────────────────────────────────────── */
+
+/* The panel drops its own padding: the header needs to span the full width to
+   pin correctly, and a sticky element with negative margins lays the body out
+   underneath itself — which clipped the first row of content. Padding now belongs
+   to the header and the body separately. */
+.vp-portal-panel { padding: 0; }
+.vp-portal-body { padding: .85rem 1.1rem 1.35rem; }
+
+.vp-portal-head {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: .5rem;
+  min-height: 48px;
+  padding: .3rem .45rem .3rem .9rem;
+  /* Opaque, so body content scrolling underneath never shows through the row the
+     close button sits in. */
+  /* Matches the panel gradient's tinted top so the pinned bar reads as part of
+     the surface rather than a band laid over it. */
+  background: color-mix(in srgb, var(--vpp-accent) 6%, var(--vpp-surface-2));
+  border-bottom: 1px solid var(--vpp-border);
+}
+
+.vp-portal-head .vp-portal-brand {
+  display: flex;
+  align-items: center;
+  gap: .45rem;
+  margin: 0;
+  min-width: 0;
+  font-size: .84rem;
+  font-weight: 650;
+  letter-spacing: -.01em;
+  color: var(--vpp-text);
+}
+.vp-portal-head .vp-portal-brand img { width: 22px; height: 22px; border-radius: 6px; flex: none; }
+.vp-portal-head .vp-portal-brand span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vp-portal-close {
+  position: static;
+  top: auto;
+  right: auto;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--vpp-muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* The tap must land on the button, never on a child: an SVG child can be the
+     event target, and on touch that was one more way for a tap to be lost. */
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition: color .15s ease, background .15s ease, border-color .15s ease;
+}
+.vp-portal-close svg { width: 20px; height: 20px; display: block; pointer-events: none; }
+.vp-portal-close:hover {
+  color: var(--vpp-text);
+  background: var(--vpp-surface);
+  border-color: var(--vpp-border);
+  transform: none; /* no rotate: on touch the hover state sticks after a tap */
+}
+.vp-portal-close:active { background: var(--vpp-surface-2); }
+.vp-portal-close:focus-visible { outline: 2px solid var(--vpp-accent-2); outline-offset: 2px; }
+
+/* ── Identity card ──────────────────────────────────────────────────────── */
+
+.vp-portal-account-id {
+  display: flex;
+  align-items: center;
+  gap: .7rem;
+  padding: .7rem .75rem;
+  margin-bottom: .8rem;
+  border: 1px solid var(--vpp-border);
+  border-radius: 14px;
+  background: linear-gradient(180deg, var(--vpp-surface), var(--vpp-bg));
+}
+.vp-portal-idtext { min-width: 0; flex: 1; }
+.vp-portal-account-id .vp-portal-acc-name,
+.vp-portal-account-id .vp-portal-acc-mail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Accordion rows (mirrors .mon-acc) ──────────────────────────────────── */
+
+.vp-acc-stack { display: grid; gap: .5rem; }
+
+.vp-acc {
+  border: 1px solid var(--vpp-border);
+  border-radius: 13px;
+  background: var(--vpp-surface);
+  overflow: hidden;
+  transition: border-color .16s ease, box-shadow .16s ease;
+}
+.vp-acc[open] {
+  border-color: color-mix(in srgb, var(--vpp-accent) 32%, var(--vpp-border));
+  box-shadow: 0 6px 18px -12px rgba(0, 0, 0, .6);
+}
+
+.vp-acc__sum {
+  display: flex;
+  align-items: center;
+  gap: .65rem;
+  cursor: pointer;
+  list-style: none;
+  padding: .6rem .7rem;
+  min-height: 44px;
+  user-select: none;
+  touch-action: manipulation;
+  transition: background .16s ease;
+}
+.vp-acc__sum::-webkit-details-marker { display: none; }
+.vp-acc__sum::marker { content: ""; }
+.vp-acc__sum:hover { background: var(--vpp-surface-2); }
+.vp-acc__sum:focus-visible { outline: 2px solid var(--vpp-accent-2); outline-offset: -2px; }
+
+.vp-acc__ic {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: .95rem;
+  border-radius: 9px;
+  background: var(--vpp-surface-2);
+  border: 1px solid var(--vpp-border);
+}
+.vp-acc__head { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1; }
+.vp-acc__title { font-weight: 650; font-size: .88rem; color: var(--vpp-text); }
+.vp-acc__sub {
+  font-size: .76rem;
+  color: var(--vpp-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vp-acc__chev { flex: none; color: var(--vpp-muted); transition: transform .16s ease; }
+.vp-acc[open] .vp-acc__chev { transform: rotate(180deg); }
+.vp-acc[open] .vp-acc__sum { border-bottom: 1px solid var(--vpp-border); }
+
+.vp-acc__body {
+  padding: .7rem .75rem .8rem;
+  animation: vpp-reveal .26s cubic-bezier(.16, .84, .44, 1);
+}
+.vp-acc__note {
+  margin: 0 0 .6rem;
+  font-size: .8rem;
+  line-height: 1.5;
+  color: var(--vpp-muted);
+}
+.vp-acc__body .vp-portal-actions {
+  margin: 0;
+  gap: .4rem;
+  /* The accordion IS the frame; the separator and the dimmed last child from the
+     flat-button layout would both be noise in here. */
+  padding-top: 0;
+  border-top: 0;
+}
+.vp-acc__body .vp-portal-actions > :last-child { opacity: 1; }
+
+@keyframes vpp-reveal {
+  from { opacity: 0; transform: translateY(-5px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* ── Status chip (mirrors .mon-chip) ────────────────────────────────────── */
+
+.vp-chip {
+  flex: none;
+  font-size: .68rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--vpp-border);
+  color: var(--vpp-muted);
+  background: var(--vpp-surface-2);
+  white-space: nowrap;
+}
+.vp-chip--on {
+  color: #34d399;
+  border-color: rgba(52, 211, 153, .4);
+  background: rgba(52, 211, 153, .12);
+}
+
+/* ── Sign out, set apart ────────────────────────────────────────────────── */
+
+.vp-portal-signout {
+  margin-top: .9rem;
+  padding-top: .75rem;
+  border-top: 1px solid var(--vpp-border);
+}
+.vp-portal-signout .vp-portal-btn { width: 100%; }
+
+/* ── Phones ─────────────────────────────────────────────────────────────── */
+
+@media (max-width: 560px) {
+  /* The sheet's grab handle moves INTO the pinned header. Left on the panel it
+     collided with the header's negative top margin, and it scrolled away with the
+     content — so the one affordance that says "drag me" disappeared exactly when
+     the sheet was scrolled. */
+  .vp-portal-panel::before { display: none; }
+  /* The compact pass set max-width: 19.5rem on the panel LATER in the file than
+     the bottom-sheet block, so by source order the sheet was pinned to 312px and
+     sat inset from the screen edge instead of spanning it. Restate it here, after
+     that rule, so a phone gets a real full-width sheet. */
+  .vp-portal-panel { max-width: 100%; width: 100%; }
+  .vp-portal-head {
+    position: sticky;
+    padding: .95rem .5rem .35rem .95rem;
+    /* Clear the sheet's rounded top corners. */
+    border-radius: 20px 20px 0 0;
+  }
+  .vp-portal-body { padding: .5rem 1.15rem 1.9rem; }
+  .vp-portal-head::before {
+    content: "";
+    position: absolute;
+    top: .4rem;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 42px;
+    height: 4px;
+    border-radius: 999px;
+    background: var(--vpp-border);
+    /* Decoration only: it must never absorb a tap meant for the close button. */
+    pointer-events: none;
+  }
+  .vp-acc__sum { padding: .7rem .75rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vp-acc__body { animation: none; }
+  .vp-acc__chev, .vp-acc, .vp-acc__sum, .vp-portal-close { transition: none; }
 }

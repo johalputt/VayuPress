@@ -31,6 +31,28 @@ const PortalJS = `(function () {
 
   var ICON_USER = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>';
   var ICON_MAIL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="m3 7 9 6 9-6"></path></svg>';
+  // A drawn X rather than the &times; glyph, which sits off-centre in many fonts
+  // and made the button look misaligned at small sizes.
+  var ICON_CLOSE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg>';
+  var ICON_CHEV = '<svg class="vp-acc__chev" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>';
+
+  // acc builds one Monetization-style accordion row: an icon tile, a title with a
+  // one-line subtitle, a status chip, and a rotating chevron; the body reveals on
+  // expand. Native <details>, so it needs no JavaScript and stays CSP-safe.
+  function acc(icon, title, sub, chip, body, open) {
+    return '<details class="vp-acc"' + (open ? ' open' : '') + '>' +
+      '<summary class="vp-acc__sum">' +
+      '<span class="vp-acc__ic" aria-hidden="true">' + icon + '</span>' +
+      '<span class="vp-acc__head"><span class="vp-acc__title">' + esc(title) + '</span>' +
+      '<span class="vp-acc__sub">' + esc(sub) + '</span></span>' +
+      (chip || '') + ICON_CHEV +
+      '</summary>' +
+      '<div class="vp-acc__body">' + body + '</div></details>';
+  }
+
+  function chip(label, on) {
+    return '<span class="vp-chip' + (on ? ' vp-chip--on' : '') + '">' + esc(label) + '</span>';
+  }
 
   var state = { enabled: false, vayumail: false, auth: false, member: null };
   var view = 'signup';
@@ -136,19 +158,56 @@ const PortalJS = `(function () {
     var avatarInner = m.avatar
       ? '<img class="vp-portal-avatar-img" src="' + esc(m.avatar) + '" alt="">'
       : esc(initial);
+
+    // Identity first, then one collapsed row per area of the account. The previous
+    // view was a flat stack of seven equal-weight buttons, which said nothing about
+    // what each did or what state it was in; these rows carry the same icon ·
+    // title · subtitle · status-chip grammar as the console, so the panel can be
+    // read at a glance instead of scanned.
+    var rows = acc('&#128142;', 'Membership', plan, chip(m.paid ? 'Active' : 'Free', m.paid),
+      '<p class="vp-acc__note">' + (m.paid
+        ? 'Your premium access is active. Billing dates and payment history live on your account page.'
+        : 'You are on the free plan. Premium unlocks members-only posts and a private mail address.') + '</p>' +
+      '<div class="vp-portal-actions">' +
+      // One primary action per row. For a free member that is "See plans"; managing
+      // the account is the secondary path, so it stays a ghost button rather than
+      // competing with it as a second filled button.
+      '<a class="vp-portal-btn vp-portal-btn--ghost" href="/members/account">Manage account</a>' +
+      (m.paid ? '' : '<a class="vp-portal-btn" href="/pricing">See plans</a>') +
+      '</div>', true);
+
+    if (m.mail || m.paid) {
+      var mailSub = m.mail ? 'Mailbox ready' : 'Included with your plan';
+      rows += acc('&#9993;', 'VayuMail', mailSub, chip(m.mail ? 'Ready' : 'Claim', !!m.mail),
+        '<p class="vp-acc__note">' + (m.mail
+          ? 'Your private address is live. Open it here or in the console.'
+          : 'Your plan includes a private address on this domain — pick a name to claim it.') + '</p>' +
+        '<div class="vp-portal-actions">' + mailBtn +
+        '<button type="button" class="vp-portal-btn vp-portal-btn--ghost" data-vp-go="mailbox">Your mailbox</button>' +
+        '</div>');
+    }
+
+    rows += acc('&#128172;', 'Your comments', 'Replies and their status', '',
+      '<p class="vp-acc__note">See where you commented and whether each one is live or still awaiting review.</p>' +
+      '<div class="vp-portal-actions">' +
+      '<button type="button" class="vp-portal-btn vp-portal-btn--ghost" data-vp-go="activity">Open your comments</button>' +
+      '</div>');
+
+    rows += acc('&#128227;', 'Advertise here', 'Reach this audience', '',
+      '<p class="vp-acc__note">Book a slot on this site and manage your creatives.</p>' +
+      '<div class="vp-portal-actions">' +
+      '<button type="button" class="vp-portal-btn vp-portal-btn--ghost" data-vp-go="advertise">Open advertising</button>' +
+      '</div>');
+
     return '<div class="vp-portal-account-id">' +
       '<div class="vp-portal-avatar">' + avatarInner + '</div>' +
-      '<div><div class="vp-portal-acc-name">' + esc(name) + '</div>' +
-      '<div class="vp-portal-acc-mail">' + esc(m.email || '') + '</div></div></div>' +
-      '<div class="vp-portal-plan"><div class="vp-portal-plan-label">Your plan</div>' +
-      '<div class="vp-portal-plan-name">' + esc(plan) + '</div></div>' +
-      '<div class="vp-portal-actions">' +
-      mailBtn +
-      (m.paid ? '<button type="button" class="vp-portal-btn vp-portal-btn--ghost" data-vp-go="mailbox">📬 Your mailbox</button>' : '') +
-      '<button type="button" class="vp-portal-btn vp-portal-btn--ghost" data-vp-go="activity">💬 Your comments</button>' +
-      '<button type="button" class="vp-portal-btn vp-portal-btn--ghost" data-vp-go="advertise">📣 Advertise here</button>' +
-      '<a class="vp-portal-btn vp-portal-btn--ghost" href="/members/account">Manage account</a>' +
-      (m.paid ? '' : '<a class="vp-portal-btn" href="/pricing">See membership plans</a>') +
+      '<div class="vp-portal-idtext"><div class="vp-portal-acc-name">' + esc(name) + '</div>' +
+      '<div class="vp-portal-acc-mail">' + esc(m.email || '') + '</div></div>' +
+      chip(m.paid ? 'Premium' : 'Free', m.paid) + '</div>' +
+      '<div class="vp-acc-stack">' + rows + '</div>' +
+      // Sign out sits last and quiet: it is the one action you never want to hit by
+      // accident, so it is separated from the rows above rather than sharing weight.
+      '<div class="vp-portal-signout">' +
       '<button type="button" class="vp-portal-btn vp-portal-btn--ghost" data-vp-logout>Sign out</button>' +
       '</div>' +
       '<div class="vp-portal-msg" aria-live="polite"></div>';
@@ -466,8 +525,7 @@ const PortalJS = `(function () {
     else if (view === 'vayumail') { content = viewVayuMail(false); }
     else { content = viewSignup(); }
 
-    body.innerHTML = '<div class="vp-portal-brand"><img src="/static/favicon-light.png" alt="" width="32" height="32"><span>' +
-      esc(brandName()) + '</span></div>' + content;
+    body.innerHTML = content;
     wire();
     var first = body.querySelector('input, a, button:not(.vp-portal-close)');
     if (first) { try { first.focus(); } catch (e) {} }
@@ -523,10 +581,8 @@ const PortalJS = `(function () {
           var ec = res.body && res.body.error && res.body.error.code;
           if (ec === 'totp-required') {
             // Re-render with the code field, preserving what was typed.
-            body.querySelector('.vp-portal-brand');
             var keepEmail = email, keepPass = pass;
-            body.innerHTML = '<div class="vp-portal-brand"><img src="/static/favicon-light.png" alt="" width="32" height="32"><span>' +
-              esc(brandName()) + '</span></div>' + viewVayuMail(true);
+            body.innerHTML = viewVayuMail(true);
             wire();
             body.querySelector('[name=email]').value = keepEmail;
             body.querySelector('[name=password]').value = keepPass;
@@ -591,12 +647,38 @@ const PortalJS = `(function () {
     panel.setAttribute('role', 'dialog');
     panel.setAttribute('aria-modal', 'true');
     panel.setAttribute('aria-label', 'Membership');
-    var closeBtn = el('button', 'vp-portal-close', '&times;');
+    // The close button lives in a STICKY header, not absolutely positioned in the
+    // panel. The panel is the scroll container, so an absolutely positioned button
+    // scrolled away with the content: past the first screenful the X was simply not
+    // where it appeared to be, which is why closing worked only sometimes. Sticky
+    // keeps it pinned to the top of whatever is visible.
+    var head = el('div', 'vp-portal-head');
+    // The brand sits in the header rather than at the top of the body. In the body
+    // it was a row that scrolled under the pinned header and clipped; here it gives
+    // the bar an identity and stays put, which is what an app bar is for.
+    var brand = el('div', 'vp-portal-brand');
+    brand.innerHTML = '<img src="/static/favicon-light.png" alt="" width="24" height="24"><span>' +
+      esc(brandName()) + '</span>';
+    head.appendChild(brand);
+    var closeBtn = el('button', 'vp-portal-close', ICON_CLOSE);
     closeBtn.type = 'button';
     closeBtn.setAttribute('aria-label', 'Close');
-    closeBtn.addEventListener('click', close);
+    // Bound on pointerup as well as click: on touch, a slight finger movement
+    // between touchstart and touchend can cancel the synthetic click, so a tap that
+    // visibly landed on the X did nothing. Guard against handling both.
+    var closing = false;
+    function requestClose(e) {
+      if (closing) { return; }
+      closing = true;
+      if (e && e.preventDefault) { e.preventDefault(); }
+      close();
+      setTimeout(function () { closing = false; }, 350);
+    }
+    closeBtn.addEventListener('click', requestClose);
+    closeBtn.addEventListener('pointerup', requestClose);
+    head.appendChild(closeBtn);
     body = el('div', 'vp-portal-body');
-    panel.appendChild(closeBtn);
+    panel.appendChild(head);
     panel.appendChild(body);
     overlay.appendChild(panel);
     overlay.addEventListener('click', function (e) { if (e.target === overlay) { close(); } });
