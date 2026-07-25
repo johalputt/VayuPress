@@ -265,6 +265,15 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
 		textRow("RadiusSm", "Small radius", "0.25rem") +
 		textRow("RadiusLg", "Large radius", "0.75rem")
 
+	// Accessibility readout for the saved palette (see admin_os_theme_a11y.go).
+	a11y := themeA11yChecks(
+		val(settings.KeyThemeAccentDark), "",
+		val(settings.KeyThemeAccentLight), "")
+	a11yChip := a11ySummaryChip(a11y)
+	if a11yChip == "" {
+		a11yChip = `<span class="cz-chip">Palette</span>`
+	}
+
 	faviconBust := time.Now().Format("150405")
 	navSeed := html.EscapeString(val(settings.KeyNavItems))
 	membershipChecked := ""
@@ -293,8 +302,13 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
 <div class="customizer" data-theme-studio>
   <aside class="customizer__panel" aria-label="Theme controls">
 
+    <div class="cz-sec"><span class="cz-sec__title">Start here</span><span class="cz-sec__hint">Pick a design, then make it yours</span></div>
     <section class="cz-group cz-group--open">
-      <button type="button" class="cz-group__head" aria-expanded="true">Presets <span class="cz-group__hint">start here</span></button>
+      <button type="button" class="cz-group__head" aria-expanded="true" data-cz-label="Presets">
+        <span class="cz-group__ic" aria-hidden="true">🎨</span>
+        <span class="cz-group__text"><span class="cz-group__title">Presets</span><span class="cz-group__sub">Start from a ready-made design, then fine-tune</span></span>
+        <span class="cz-chip cz-chip--go">START HERE</span>
+      </button>
       <div class="cz-group__body">
         <p class="text-sm muted mb-3">Pick a starting design, then fine-tune anything below. The preview updates as you go.</p>
         <div class="theme-gallery" data-theme-presets aria-label="Theme presets">` + themePresetCards() + `</div>
@@ -302,7 +316,11 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
     </section>
 
     <section class="cz-group cz-group--open">
-      <button type="button" class="cz-group__head" aria-expanded="true">Appearance <span class="cz-group__hint">start here</span></button>
+      <button type="button" class="cz-group__head" aria-expanded="true" data-cz-label="Appearance">
+        <span class="cz-group__ic" aria-hidden="true">🖼️</span>
+        <span class="cz-group__text"><span class="cz-group__title">Appearance</span><span class="cz-group__sub">Logo, favicon, share image &amp; nav buttons</span></span>
+        <span class="cz-chip">Identity</span>
+      </button>
       <div class="cz-group__body">
         <p class="text-sm muted mb-3">The essentials — logo, social share image and the Sign in / Sign up buttons. These stay fixed when you switch themes.</p>
         <div class="cz-logo">
@@ -340,17 +358,28 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
       </div>
     </section>
 
+    <div class="cz-sec"><span class="cz-sec__title">Colour</span><span class="cz-sec__hint">Palette, schemes &amp; accessibility</span></div>
     <section class="cz-group cz-group--open">
-      <button type="button" class="cz-group__head" aria-expanded="true">Brand colours <span class="cz-group__hint">theme</span></button>
+      <button type="button" class="cz-group__head" aria-expanded="true" data-cz-label="Brand colours">
+        <span class="cz-group__ic" aria-hidden="true">🌈</span>
+        <span class="cz-group__text"><span class="cz-group__title">Brand colours</span><span class="cz-group__sub">Accent colours &amp; colour scheme</span></span>
+        ` + a11yChip + `
+      </button>
       <div class="cz-group__body">
         <p class="text-sm muted mb-3">Accent colours and colour scheme for the active theme.</p>
         <div class="theme-fields">` + brandRows + `</div>
         <div class="theme-fields theme-fields--text mt-3">` + optionRowsByKeys("scheme", "accentfill", "paper") + `</div>
+        ` + themeA11yPanel(a11y) + `
       </div>
     </section>
 
+    <div class="cz-sec"><span class="cz-sec__title">Layout &amp; type</span><span class="cz-sec__hint">Structure, spacing and typography</span></div>
     <section class="cz-group">
-      <button type="button" class="cz-group__head" aria-expanded="false">Layout</button>
+      <button type="button" class="cz-group__head" aria-expanded="false" data-cz-label="Layout">
+        <span class="cz-group__ic" aria-hidden="true">📐</span>
+        <span class="cz-group__text"><span class="cz-group__title">Layout</span><span class="cz-group__sub">Width, corners, feed, header, cards &amp; density</span></span>
+        
+      </button>
       <div class="cz-group__body">
         <p class="text-sm muted mb-3">Reading width, corners, post-feed layout, header alignment, navigation, post cards and density — applied across the whole blog.</p>
         <div class="theme-fields theme-fields--text">` + optionRowsByKeys("archetype", "width", "corners", "feedlayout", "cardimage", "headeralign", "navstyle", "cardstyle", "density", "columnrules", "pagefade") + `</div>
@@ -358,7 +387,11 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
     </section>
 
     <section class="cz-group">
-      <button type="button" class="cz-group__head" aria-expanded="false">Hero section</button>
+      <button type="button" class="cz-group__head" aria-expanded="false" data-cz-label="Hero section">
+        <span class="cz-group__ic" aria-hidden="true">⭐</span>
+        <span class="cz-group__text"><span class="cz-group__title">Hero section</span><span class="cz-group__sub">Homepage hero — style, height &amp; background</span></span>
+        
+      </button>
       <div class="cz-group__body">
         <p class="text-sm muted mb-3">Style the homepage hero — layout, height and an optional background tint, gradient or uploaded image.</p>
         <div class="vm-row mb-3">
@@ -384,7 +417,11 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
     </section>
 
     <section class="cz-group">
-      <button type="button" class="cz-group__head" aria-expanded="false">Typography &amp; fonts</button>
+      <button type="button" class="cz-group__head" aria-expanded="false" data-cz-label="Typography &amp; fonts">
+        <span class="cz-group__ic" aria-hidden="true">🔤</span>
+        <span class="cz-group__text"><span class="cz-group__title">Typography &amp; fonts</span><span class="cz-group__sub">Font pairing, scale, drop caps &amp; metrics</span></span>
+        
+      </button>
       <div class="cz-group__body">
         ` + fontPairSelectHTML() + `
         <div class="theme-fields theme-fields--text">` + optionRowsByKeys("headingcase", "headingscale", "dropcap") + typoRows + `</div>
@@ -392,7 +429,11 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
     </section>
 
     <section class="cz-group">
-      <button type="button" class="cz-group__head" aria-expanded="false">Article pages</button>
+      <button type="button" class="cz-group__head" aria-expanded="false" data-cz-label="Article pages">
+        <span class="cz-group__ic" aria-hidden="true">📄</span>
+        <span class="cz-group__text"><span class="cz-group__title">Article pages</span><span class="cz-group__sub">Post layout, meta line, related &amp; author box</span></span>
+        
+      </button>
       <div class="cz-group__body">
         <p class="text-sm muted mb-3">How individual posts look — header alignment, the meta line, related &amp; trending posts, the author box and content links.</p>
         <div class="theme-fields theme-fields--text">` + optionRowsByKeys("articlealign", "articlemeta", "relatedposts", "trendingposts", "authorbox", "linkstyle", "readingprogress") + `</div>
@@ -404,22 +445,36 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
       </div>
     </section>
 
+    <div class="cz-sec"><span class="cz-sec__title">Fine detail</span><span class="cz-sec__hint">Every individual surface colour</span></div>
     <section class="cz-group">
-      <button type="button" class="cz-group__head" aria-expanded="false">Colours — dark mode</button>
+      <button type="button" class="cz-group__head" aria-expanded="false" data-cz-label="Colours — dark mode">
+        <span class="cz-group__ic" aria-hidden="true">🌙</span>
+        <span class="cz-group__text"><span class="cz-group__title">Colours — dark mode</span><span class="cz-group__sub">Every surface &amp; text colour, dark</span></span>
+        
+      </button>
       <div class="cz-group__body">
         <div class="theme-fields">` + darkRows + `</div>
       </div>
     </section>
 
     <section class="cz-group">
-      <button type="button" class="cz-group__head" aria-expanded="false">Colours — light mode</button>
+      <button type="button" class="cz-group__head" aria-expanded="false" data-cz-label="Colours — light mode">
+        <span class="cz-group__ic" aria-hidden="true">☀️</span>
+        <span class="cz-group__text"><span class="cz-group__title">Colours — light mode</span><span class="cz-group__sub">Every surface &amp; text colour, light</span></span>
+        
+      </button>
       <div class="cz-group__body">
         <div class="theme-fields">` + lightRows + `</div>
       </div>
     </section>
 
+    <div class="cz-sec"><span class="cz-sec__title">Advanced</span><span class="cz-sec__hint">Menu, custom CSS, meta &amp; portability</span></div>
     <section class="cz-group">
-      <button type="button" class="cz-group__head" aria-expanded="false">Navigation <span class="cz-group__hint">live</span></button>
+      <button type="button" class="cz-group__head" aria-expanded="false" data-cz-label="Navigation">
+        <span class="cz-group__ic" aria-hidden="true">🧭</span>
+        <span class="cz-group__text"><span class="cz-group__title">Navigation</span><span class="cz-group__sub">The public site menu</span></span>
+        <span class="cz-chip cz-chip--live">● Saves live</span>
+      </button>
       <div class="cz-group__body">
         <p class="text-sm muted mb-3">Edit the public site menu. Saved straight to your live site (the preview shows a representative menu).</p>
         <div id="cz-nav-rows" data-nav-editor></div>
@@ -433,7 +488,11 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
     </section>
 
     <section class="cz-group">
-      <button type="button" class="cz-group__head" aria-expanded="false">Custom CSS</button>
+      <button type="button" class="cz-group__head" aria-expanded="false" data-cz-label="Custom CSS">
+        <span class="cz-group__ic" aria-hidden="true">✒️</span>
+        <span class="cz-group__text"><span class="cz-group__title">Custom CSS</span><span class="cz-group__sub">Your own CSS, served same-origin</span></span>
+        
+      </button>
       <div class="cz-group__body">
         <div class="text-sm muted mb-3">Served same-origin via <code>/theme.css</code>, appended after the theme styles. <code>@import</code> and external <code>url()</code> are stripped, so it stays self-contained (no off-origin requests). Max 64&nbsp;KB. Reflected live in the preview.</div>
         <textarea class="input theme-code" data-theme-css rows="10" maxlength="65536" spellcheck="false" placeholder="/* e.g. .vayu-post-title { letter-spacing: -0.02em; } */">` + html.EscapeString(val(settings.KeyThemeCustomCSS)) + `</textarea>
@@ -445,7 +504,11 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
     </section>
 
     <section class="cz-group">
-      <button type="button" class="cz-group__head" aria-expanded="false">Head &amp; SEO (meta)</button>
+      <button type="button" class="cz-group__head" aria-expanded="false" data-cz-label="Head &amp; SEO (meta)">
+        <span class="cz-group__ic" aria-hidden="true">🔎</span>
+        <span class="cz-group__text"><span class="cz-group__title">Head &amp; SEO (meta)</span><span class="cz-group__sub">Keywords, theme colour, robots &amp; verification</span></span>
+        
+      </button>
       <div class="cz-group__body">
         <div class="text-sm muted mb-3">Rendered to a validated, escaped <code>&lt;meta&gt;</code> allowlist (raw &lt;head&gt; HTML is intentionally not accepted).</div>
         <div class="theme-fields theme-fields--text">
@@ -464,7 +527,11 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
     </section>
 
     <section class="cz-group">
-      <button type="button" class="cz-group__head" aria-expanded="false">Import / Export</button>
+      <button type="button" class="cz-group__head" aria-expanded="false" data-cz-label="Import / Export">
+        <span class="cz-group__ic" aria-hidden="true">📦</span>
+        <span class="cz-group__text"><span class="cz-group__title">Import / Export</span><span class="cz-group__sub">Move a theme between installs as JSON</span></span>
+        
+      </button>
       <div class="cz-group__body">
         <div class="text-sm muted mb-3">Download the full theme as JSON, or import one to apply it everywhere. Imported tokens are validated before they go live.</div>
         <div class="vm-row">
@@ -485,6 +552,10 @@ func (a *App) handleOSTheme(w http.ResponseWriter, r *http.Request) {
         <button type="button" class="cz-device cz-device--active" data-theme-device="desktop" aria-pressed="true" title="Desktop">Desktop</button>
         <button type="button" class="cz-device" data-theme-device="tablet" aria-pressed="false" title="Tablet">Tablet</button>
         <button type="button" class="cz-device" data-theme-device="mobile" aria-pressed="false" title="Mobile">Mobile</button>
+      </div>
+      <div class="cz-devices" role="group" aria-label="Preview colour scheme">
+        <button type="button" class="cz-device cz-device--active" data-theme-scheme="dark" aria-pressed="true" title="Preview the dark palette">🌙 Dark</button>
+        <button type="button" class="cz-device" data-theme-scheme="light" aria-pressed="false" title="Preview the light palette">☀️ Light</button>
       </div>
       <span class="cz-toolbar-spacer"></span>
       <span class="text-xs muted" data-theme-preview-status>Live preview</span>

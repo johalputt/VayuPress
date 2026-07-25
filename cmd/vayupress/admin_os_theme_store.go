@@ -313,7 +313,15 @@ func (a *App) handleOSThemePreview(w http.ResponseWriter, r *http.Request) {
 	// which can silently fail and make live updates appear broken.
 	swap := `<script src="/os/static/js/theme-preview-frame.js"></script>`
 
-	page := `<!doctype html><html lang="en"><head><meta charset="utf-8">` +
+	// Colour scheme for the preview. The public site keys its palette off
+	// data-theme on <html>, so honouring a ?scheme= param lets the Studio preview
+	// the light palette without the operator changing their OS setting — the only
+	// way to see the light-mode colours they are editing. Dark stays the default.
+	previewTheme := "dark"
+	if strings.EqualFold(r.URL.Query().Get("scheme"), "light") {
+		previewTheme = "light"
+	}
+	page := `<!doctype html><html lang="en" data-theme="` + previewTheme + `"><head><meta charset="utf-8">` +
 		`<meta name="viewport" content="width=device-width, initial-scale=1">` +
 		`<title>Preview — ` + html.EscapeString(title) + `</title>` +
 		string(render.PicoCSSLink()) + string(render.CustomCSSLink()) + string(render.ArticleCSSLink()) +

@@ -60,6 +60,11 @@ type canaryProbeResult struct {
 	Group  string // "Readers" | "Crawlers"
 	Status int
 	OK     bool
+	// Why explains a non-200 outcome in the shield's own words — the score, the
+	// classification and the top reason the scorer recorded. Without it a red row
+	// says only "403", which leaves the operator (and anyone helping them) guessing
+	// between a static signature, a learned signature and plain heuristic scoring.
+	Why string
 	// NotTestable marks a probe whose identity cannot be simulated in-process, so
 	// its result is not evidence either way. Crawler probes are in this state once
 	// crawler recognition is IP-verified: a synthetic Googlebot from a test address
@@ -114,8 +119,23 @@ func (a *App) runShieldCanary() shieldCanaryResult {
 		h.ServeHTTP(rec, req)
 		ok := rec.status == http.StatusOK
 		untestable := group == "Crawlers" && crawlersUntestable && !ok
+		why := ""
+		if !ok && !untestable {
+			// Re-run classification (pure, no side effects) purely to report WHY.
+			v := a.vayuShield.Classify(req)
+			why = fmt.Sprintf("score %.2f · %s", v.Result.BotScore, v.Result.ClientType)
+			if v.Result.BotName != "" {
+				why += " · " + v.Result.BotName
+			}
+			if len(v.Result.Reasons) > 0 {
+				why += " · " + v.Result.Reasons[0]
+			}
+			if v.Result.Authoritative {
+				why += " · identified (no benefit of the doubt)"
+			}
+		}
 		res.probes = append(res.probes, canaryProbeResult{
-			Name: name, Group: group, Status: rec.status, OK: ok, NotTestable: untestable,
+			Name: name, Group: group, Status: rec.status, OK: ok, NotTestable: untestable, Why: why,
 		})
 		switch {
 		case ok:

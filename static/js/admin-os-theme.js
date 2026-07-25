@@ -37,6 +37,14 @@
   var previewStatusEl = document.querySelector('[data-theme-preview-status]');
   var newTabLink = document.querySelector('[data-theme-newtab]');
   var deviceBtns = Array.prototype.slice.call(document.querySelectorAll('[data-theme-device]'));
+  var schemeBtns = Array.prototype.slice.call(document.querySelectorAll('[data-theme-scheme]'));
+  // Preview colour scheme. The palette is keyed off data-theme on the preview
+  // page's <html>, so flipping it needs a reload rather than a stylesheet swap —
+  // this is the only way to see the light-mode colours being edited without
+  // changing the operator's OS setting.
+  var previewScheme = 'dark';
+  var lastDraftID = '';
+  function schemeQS() { return previewScheme === 'light' ? '&scheme=light' : ''; }
 
   // Token + option controls.
   var inputs = {};
@@ -163,7 +171,8 @@
   }
 
   function applyPreview(id, cssHref) {
-    var pageURL = '/os/theme/preview?draft=' + encodeURIComponent(id);
+    lastDraftID = id;
+    var pageURL = '/os/theme/preview?draft=' + encodeURIComponent(id) + schemeQS();
     if (newTabLink) newTabLink.setAttribute('href', pageURL);
 
     // Fallback mode (or first load): reload the iframe with the draft page —
@@ -243,6 +252,25 @@
     });
   });
 
+  // ── Preview colour-scheme toggle ────────────────────────────────────────────
+  schemeBtns.forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var want = btn.getAttribute('data-theme-scheme') === 'light' ? 'light' : 'dark';
+      if (want === previewScheme) return;
+      previewScheme = want;
+      schemeBtns.forEach(function (b) {
+        var on = b === btn;
+        b.classList.toggle('cz-device--active', on);
+        b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      });
+      if (!lastDraftID || !frame) return;
+      var pageURL = '/os/theme/preview?draft=' + encodeURIComponent(lastDraftID) + schemeQS();
+      if (newTabLink) newTabLink.setAttribute('href', pageURL);
+      showLoading(true);
+      frame.src = pageURL; // full reload: data-theme lives on <html>
+    });
+  });
+
   // ── Collapsible control groups — single-open accordion ─────────────────────
   // Clicking a header opens that section fully and closes the rest, so the panel
   // stays compact and every section name is always visible. Delegated for
@@ -278,7 +306,8 @@
     groups.forEach(function (g) {
       var head = g.querySelector('.cz-group__head');
       if (!head) return;
-      var label = head.firstChild ? head.firstChild.textContent.trim() : (head.textContent || '').trim();
+      var label = head.getAttribute('data-cz-label') ||
+        (head.firstChild ? head.firstChild.textContent.trim() : (head.textContent || '').trim());
       if (!label) return;
       var chip = document.createElement('button');
       chip.type = 'button';
@@ -673,12 +702,19 @@
   });
 
   // ── Gallery swatches via CSSOM (CSP-safe) ──────────────────────────────────
-  function paintSwatches() {
-    if (!galleryEl) return;
-    galleryEl.querySelectorAll('[data-color]').forEach(function (el) {
+  // Scripted style writes are not gated by style-src, so this is how any
+  // data-color element gets its colour without an inline style attribute.
+  function paintColorEls(scope) {
+    if (!scope) return;
+    scope.querySelectorAll('[data-color]').forEach(function (el) {
       var c = el.getAttribute('data-color');
       if (c) el.style.backgroundColor = c;
     });
+  }
+  function paintSwatches() {
+    paintColorEls(galleryEl);
+    // The readability readout's colour dots live outside the gallery.
+    paintColorEls(document.querySelector('[data-theme-a11y]'));
   }
   paintSwatches();
 

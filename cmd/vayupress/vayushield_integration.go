@@ -803,7 +803,11 @@ func (a *App) shieldProtectionBody(ctx context.Context) string {
 			` hx-post="/os/api/shield/release" hx-swap="none"` +
 			` hx-confirm="Release every active sentence now? Jailed IPs regain access immediately.">Release all sentences now</button>` +
 			` <span class="muted text-xs">` + strconv.Itoa(stt.RepJailed) + ` jailed · ` +
-			strconv.Itoa(stt.Suspects) + ` tracked suspects. Clears every jail and resets reputation — use after fixing a false-positive run.</span></div>`)
+			strconv.Itoa(stt.Suspects) + ` tracked suspects. Clears every jail, resets reputation and forgets auto-learned signatures.</span></div>`)
+		b.WriteString(`<div class="vs-adv"><button type="button" class="btn btn--ghost btn--sm"` +
+			` hx-post="/os/api/shield/release?all=1" hx-swap="none"` +
+			` hx-confirm="Forget EVERY learned signature, including ones you confirmed? Built-in known-bad signatures are kept.">Forget all learned signatures</button>` +
+			` <span class="muted text-xs">Use this if real visitors are still refused after the amnesty above. Confirming a review-queue candidate during a false-positive run marks a real browser as an identified bad actor, which no leniency applies to — this undoes that. Built-in signatures are untouched.</span></div>`)
 	}
 	b.WriteString(`</div>`)
 	b.WriteString(`<div class="vs-feat">`)
@@ -871,6 +875,9 @@ func shieldSelfTestBody(res shieldCanaryResult) string {
 				label = "Throttled"
 			}
 			pill = `<span class="badge badge--danger">✕ ` + label + `</span>`
+			if p.Why != "" {
+				note += " — " + p.Why
+			}
 		}
 		return `<tr><td class="row-title">` + html.EscapeString(p.Name) + `</td><td>` + pill +
 			`</td><td class="muted text-sm">` + html.EscapeString(note) + `</td></tr>`
@@ -1140,9 +1147,23 @@ func (a *App) handleOSShieldRelease(w http.ResponseWriter, r *http.Request) {
 	// getting more confident with every refusal. Clearing the sentences without
 	// clearing what was learned from them would leave the operator still blocked.
 	// Operator-verified signatures are kept.
+	// "all" also clears operator-verified rows. Confirming a review-queue
+	// candidate during a false-positive run marks a real browser as an identified
+	// bad actor, which no leniency applies to — so recovery needs a way to undo
+	// that too, not just the auto-learned guesses.
+	all := r.PostFormValue("all") == "1" || r.URL.Query().Get("all") == "1"
 	forgotten := int64(0)
 	if bs := a.vayuShield.BotStore(); bs != nil {
-		if got, err := bs.ForgetAutoLearned(r.Context()); err == nil {
+		var (
+			got int64
+			err error
+		)
+		if all {
+			got, err = bs.ForgetAllLearned(r.Context())
+		} else {
+			got, err = bs.ForgetAutoLearned(r.Context())
+		}
+		if err == nil {
 			forgotten = got
 			a.vayuShield.InvalidateSigCache()
 		}

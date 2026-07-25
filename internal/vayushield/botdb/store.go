@@ -410,6 +410,42 @@ func (s *Store) ForgetAutoLearned(ctx context.Context) (int64, error) {
 	}
 }
 
+// ForgetAllLearned deletes EVERY learned signature, including ones marked
+// operator-verified. It is the last-resort recovery when the database itself is
+// the thing refusing real visitors.
+//
+// ForgetAutoLearned deliberately preserves verified rows, on the assumption that
+// a human vetted them. But "verified" only means someone clicked Confirm on a
+// review-queue candidate — and during a false-positive run those candidates ARE
+// the operator's own readers, so confirming one makes a real browser permanently
+// unappealable: it becomes an identified bad actor that no leniency applies to.
+// This clears the slate completely. The compiled-in static signatures are
+// untouched, so known-bad clients are still recognised. Returns the count.
+func (s *Store) ForgetAllLearned(ctx context.Context) (int64, error) {
+	if s == nil || s.db == nil {
+		return 0, nil
+	}
+	var total int64
+	for {
+		res, err := s.db.ExecContext(ctx,
+			`DELETE FROM vayushield_signatures WHERE rowid IN (SELECT rowid FROM vayushield_signatures LIMIT ?)`,
+			purgeChunk)
+		if err != nil {
+			return total, err
+		}
+		n, _ := res.RowsAffected()
+		total += n
+		if n < purgeChunk {
+			return total, nil
+		}
+		select {
+		case <-ctx.Done():
+			return total, ctx.Err()
+		default:
+		}
+	}
+}
+
 // PurgeBlocked ages out old rows from vayushield_blocked. That table is a hashed,
 // non-PII record of hard blocks kept only for aggregate counts (there is no live
 // per-IP list any more, ADR-0137), so it must not grow forever. Chunked and
