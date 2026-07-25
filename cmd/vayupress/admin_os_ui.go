@@ -2069,7 +2069,7 @@ func (a *App) handleOSDashboard(w http.ResponseWriter, r *http.Request) {
 	if dbpkg.DB != nil {
 		_ = dbpkg.Reader().QueryRowContext(r.Context(), `SELECT COUNT(1) FROM comments WHERE status='pending'`).Scan(&pendingComments)
 	}
-	mediaCount := len(listMediaItems())
+	mediaCount := countMediaItems()
 	// The Tor world's .onion is shown ONLY inside the Tor console itself — the
 	// clearnet dashboard must never surface the anonymous address (ADR-0141
 	// anti-correlation: the onion never appears alongside the clearnet identity).

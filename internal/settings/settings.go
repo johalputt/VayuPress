@@ -555,7 +555,26 @@ func (s *Store) GetAll(ctx context.Context) (map[string]string, error) {
 }
 
 // Get returns a single setting value (falls back to default on any error).
+// Get returns one setting's value (falling back to its default).
+//
+// It reads the cached map in place rather than going through GetAll, which
+// COPIES every entry. Get is the hot accessor — the VayuOS shell alone calls it
+// several times per page render and it is used from ~60 call sites — so copying
+// the whole ~85-entry map to read a single string was pure waste on every admin
+// page load and every public render. Only a cold/expired cache falls through to
+// GetAll (which does the query and refills).
 func (s *Store) Get(ctx context.Context, key string) string {
+	s.mu.RLock()
+	if time.Now().Before(s.ttl) {
+		v, ok := s.cache[key]
+		s.mu.RUnlock()
+		if ok {
+			return v
+		}
+		return Defaults[key]
+	}
+	s.mu.RUnlock()
+
 	all, _ := s.GetAll(ctx)
 	if v, ok := all[key]; ok {
 		return v

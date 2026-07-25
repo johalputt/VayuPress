@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"sync"
+	"time"
 
 	"github.com/johalputt/vayupress/internal/logging"
 )
@@ -58,6 +60,12 @@ type canaryProbeResult struct {
 	Group  string // "Readers" | "Crawlers"
 	Status int
 	OK     bool
+	// NotTestable marks a probe whose identity cannot be simulated in-process, so
+	// its result is not evidence either way. Crawler probes are in this state once
+	// crawler recognition is IP-verified: a synthetic Googlebot from a test address
+	// is SUPPOSED to be treated as an impostor, so counting it as a failure would
+	// raise a false indexing alarm.
+	NotTestable bool
 }
 
 // shieldCanaryResult reports how many synthetic probes were served content vs
@@ -87,6 +95,9 @@ func (a *App) runShieldCanary() shieldCanaryResult {
 		_, _ = w.Write([]byte("content"))
 	})
 	h := a.vayuShield.Middleware(sentinel)
+	// With IP-verified crawler recognition, a crawler's identity cannot be faked
+	// from this host, so those probes are informational only.
+	crawlersUntestable := a.vayuShield.CrawlerIdentityIsIPVerified()
 	probe := func(name, group, ua string, navigation bool) {
 		req, err := http.NewRequest(http.MethodGet, "/", nil)
 		if err != nil {
@@ -102,13 +113,19 @@ func (a *App) runShieldCanary() shieldCanaryResult {
 		rec := &canaryRecorder{}
 		h.ServeHTTP(rec, req)
 		ok := rec.status == http.StatusOK
-		res.probes = append(res.probes, canaryProbeResult{Name: name, Group: group, Status: rec.status, OK: ok})
-		if ok {
+		untestable := group == "Crawlers" && crawlersUntestable && !ok
+		res.probes = append(res.probes, canaryProbeResult{
+			Name: name, Group: group, Status: rec.status, OK: ok, NotTestable: untestable,
+		})
+		switch {
+		case ok:
 			res.passed = append(res.passed, name)
 			if group == "Readers" {
 				res.readers++
 			}
-		} else {
+		case untestable:
+			// Not evidence — a synthetic crawler cannot hold a vendor IP.
+		default:
 			res.failed = append(res.failed, fmt.Sprintf("%s→%d", name, rec.status))
 		}
 	}
@@ -119,6 +136,51 @@ func (a *App) runShieldCanary() shieldCanaryResult {
 		probe(c.name, "Crawlers", c.ua, false)
 	}
 	return res
+}
+
+// canaryCache memoises the self-test. runShieldCanary drives EIGHT synthetic
+// requests through the full middleware (classification, fingerprint hashing, a
+// signature-cache lookup each), which is fine on demand but must not be paid on
+// every render of the Bot Shield page — that is a page an operator reloads
+// repeatedly while tuning, and the cost showed up as console lag. The verdict
+// only changes when the settings change, so a short TTL is ample; the panel's
+// Refresh button calls the fragment endpoint, which forces a fresh run.
+var (
+	canaryMu      sync.Mutex
+	canaryResult  *shieldCanaryResult
+	canaryExpires time.Time
+)
+
+const canaryTTL = 60 * time.Second
+
+// cachedShieldCanary returns the memoised self-test, running it at most once per
+// canaryTTL. Used by the page render; the explicit Refresh path bypasses it.
+func (a *App) cachedShieldCanary() shieldCanaryResult {
+	canaryMu.Lock()
+	if canaryResult != nil && time.Now().Before(canaryExpires) {
+		res := *canaryResult
+		canaryMu.Unlock()
+		return res
+	}
+	canaryMu.Unlock()
+
+	res := a.runShieldCanary()
+
+	canaryMu.Lock()
+	canaryResult = &res
+	canaryExpires = time.Now().Add(canaryTTL)
+	canaryMu.Unlock()
+	return res
+}
+
+// invalidateShieldCanary drops the memo so the next read re-tests. Called when
+// the operator changes shield settings, since that is exactly when the verdict
+// can flip.
+func invalidateShieldCanary() {
+	canaryMu.Lock()
+	canaryResult = nil
+	canaryExpires = time.Time{}
+	canaryMu.Unlock()
 }
 
 // logShieldCanary runs the canary once and logs the outcome at boot.
@@ -135,4 +197,15 @@ func (a *App) logShieldCanary() {
 	logging.LogError("vayushield",
 		"SEO canary FAILED — a verified crawler was not served content and may be de-indexed",
 		fmt.Sprintf("challenged/blocked: %v; served: %v", res.failed, res.passed))
+}
+
+// crawlerProbesUntestable reports whether the crawler rows in a report are
+// informational (identity is IP-verified, so it cannot be simulated here).
+func crawlerProbesUntestable(res shieldCanaryResult) bool {
+	for _, p := range res.probes {
+		if p.Group == "Crawlers" && p.NotTestable {
+			return true
+		}
+	}
+	return false
 }

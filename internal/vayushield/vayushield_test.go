@@ -805,11 +805,15 @@ func TestNavigationIsChallengedNotTarpitted(t *testing.T) {
 func TestKnownBadBotsKeepFullTreatment(t *testing.T) {
 	m := newTestManager(true)
 	m.ApplySettings(Settings{Enabled: true, PoWThreshold: 0.4, JSThreshold: 0.6, BlockThreshold: 0.8})
+	// An IDENTIFIED bad actor (static signature / operator-verified) keeps the hard
+	// block even on a navigation. Authoritative is what marks that distinction — an
+	// auto-learned guess is covered by
+	// TestAutoLearnedVerdictDoesNotHardBlockNavigation instead.
 	for _, ct := range []botdb.ClientType{botdb.TypeBadBot, botdb.TypeHeadless} {
 		rr := httptest.NewRecorder()
-		v := Verdict{Result: scorer.Result{BotScore: 0.95, ClientType: ct}}
+		v := Verdict{Result: scorer.Result{BotScore: 0.95, ClientType: ct, Authoritative: true}}
 		if m.softenForNavigation(rr, navReq("/post"), v, okHandler()) {
-			t.Errorf("%s must not be softened into a challenge", ct)
+			t.Errorf("identified %s must not be softened into a challenge", ct)
 		}
 	}
 	// A merely-unproven client (the mis-scored-human case) IS softened.
@@ -860,5 +864,49 @@ func TestJailedNavigationEscapesOnFirstLoad(t *testing.T) {
 	}
 	if cheap == 0 {
 		t.Error("jailed non-navigation traffic should still get the cheap flat rejection")
+	}
+}
+
+// ── Self-poisoning containment (the learner must not learn from its mistakes) ──
+
+// TestBrowserFingerprintsAreNeverAutoLearnedAsBots is the guard for the failure
+// that hard-blocked real Chrome/Brave visitors: a false-positive block recorded
+// the VISITOR's fingerprint as a bad bot, confidence climbed +0.10 per repeat
+// until the scorer treated it as identified, and from then on everyone using that
+// browser got a permanent 403 that each refusal reinforced.
+func TestBrowserFingerprintsAreNeverAutoLearnedAsBots(t *testing.T) {
+	for _, fam := range []string{"chrome", "chromium", "firefox", "safari", "edge"} {
+		if !isBrowserUAFamily(fam) {
+			t.Errorf("%q must be treated as a mainstream browser family", fam)
+		}
+	}
+	// Programmatic / bot clients are still learnable — that is the point of the DB.
+	for _, fam := range []string{"http-lib", "bot", "unknown", ""} {
+		if isBrowserUAFamily(fam) {
+			t.Errorf("%q must remain learnable", fam)
+		}
+	}
+}
+
+// TestAutoLearnedVerdictDoesNotHardBlockNavigation: an auto-learned signature is a
+// GUESS. It must not produce a dead 403 for someone reading a page — they get the
+// solvable challenge instead. Only an operator-verified (or compiled-in) verdict
+// forfeits that benefit of the doubt.
+func TestAutoLearnedVerdictDoesNotHardBlockNavigation(t *testing.T) {
+	m := New(Config{Enabled: true, Signer: challenge.NewSigner([]byte("s"))})
+	m.ApplySettings(Settings{Enabled: true, PoWThreshold: 0.4, JSThreshold: 0.6, BlockThreshold: 0.8})
+	nav := browserReq("/post")
+	nav.Header.Set("Accept", "text/html")
+
+	// Auto-learned "bad bot" (Authoritative=false) — must be softened.
+	auto := Verdict{Result: scorer.Result{BotScore: 0.9, ClientType: botdb.TypeBadBot}}
+	if !m.softenForNavigation(httptest.NewRecorder(), nav, auto, okHandler()) {
+		t.Error("an auto-learned bad-bot guess must not hard-block a page load")
+	}
+
+	// Operator-verified / static signature — keeps the hard block.
+	vetted := Verdict{Result: scorer.Result{BotScore: 0.9, ClientType: botdb.TypeBadBot, Authoritative: true}}
+	if m.softenForNavigation(httptest.NewRecorder(), nav, vetted, okHandler()) {
+		t.Error("an operator-verified bad bot must still be blocked")
 	}
 }

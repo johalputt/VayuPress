@@ -1313,6 +1313,24 @@ func (m *Manager) jailBadActor(ctx context.Context, ipKey string, autoBlock bool
 	if m.cfg.Bots == nil || v.Composite.FingerprintHash == "" {
 		return
 	}
+	// NEVER auto-learn a mainstream browser's fingerprint as a bad bot.
+	//
+	// A fingerprint is shared by everyone running the same browser build, so
+	// recording one as a bad bot indicts a whole population, not an attacker. And
+	// the record compounds: confidence rises +0.10 per repeat until it crosses the
+	// threshold where the scorer treats it as an identified bot — from then on every
+	// real visitor using that browser is hard-blocked, and each block reinforces the
+	// verdict. One burst of false positives (a mis-tuned threshold, a CDN making the
+	// whole audience look like one IP) is enough to poison the database permanently
+	// and 403 the operator's own readers.
+	//
+	// A real bad actor wearing a browser UA is still stopped — by scoring, the
+	// challenge ladder and the reputation engine, none of which need this record.
+	// What is given up is only the ability to auto-promote a browser fingerprint to
+	// "identified bot", which was never sound.
+	if isBrowserUAFamily(uaFamily(v.Signals.UserAgent)) {
+		return
+	}
 	obs := botdb.Observation{
 		FingerprintHash:   v.Composite.FingerprintHash,
 		JA3:               v.Composite.JA3,
@@ -1427,6 +1445,16 @@ func (m *Manager) serveBlock(w http.ResponseWriter, r *http.Request, v Verdict) 
 
 // serveTarpit accepts the request but delays it, wasting scraper compute. The
 // content is still served (so detection is not revealed) after the delay.
+// CrawlerIdentityIsIPVerified reports whether crawler recognition is hardened with
+// published-IP-range / reverse-DNS confirmation. When it is, a crawler's identity
+// CANNOT be simulated from an arbitrary source address — which matters for the
+// operator-facing self-test: a synthetic Googlebot probe sent from a documentation
+// IP is correctly treated as a spoof suspect, so reporting it as "blocked" would
+// be a false alarm about indexing rather than a finding.
+func (m *Manager) CrawlerIdentityIsIPVerified() bool {
+	return m.cfg.VerifiedBotFn != nil
+}
+
 // ReleaseAllSentences lifts every active jail sentence — the reputation brain's
 // standing records AND the O(1) blocklist — and returns the number of sources
 // released. It is the operator's amnesty control: sentences self-expire but
@@ -1471,9 +1499,17 @@ func (m *Manager) softenForNavigation(w http.ResponseWriter, r *http.Request, v 
 	if !acceptsHTML(r) {
 		return false
 	}
-	switch v.Result.ClientType {
-	case botdb.TypeBadBot, botdb.TypeHeadless:
-		return false // identified bad actor — no leniency
+	// Only an AUTHORITATIVE verdict — a compiled-in signature, or a learned one the
+	// operator verified — forfeits the benefit of the doubt. An auto-learned guess
+	// does not: those are exactly the records that can be wrong about a whole
+	// population of real browsers, and a wrong one used to mean a permanent 403 with
+	// no way for the visitor to prove otherwise. A challenge still stops a real bot
+	// (it will not solve it) while giving a mislabelled human a way through.
+	if v.Result.Authoritative {
+		switch v.Result.ClientType {
+		case botdb.TypeBadBot, botdb.TypeHeadless:
+			return false // identified bad actor — no leniency
+		}
 	}
 	if !m.serveChallenge(w, r, v, challenge.HardDifficulty, true) {
 		next.ServeHTTP(w, r) // fail open if the challenge cannot be issued
@@ -1725,4 +1761,17 @@ if(cb){
 // clears. Solving pardons the jail, so the visitor is through on the reload.
 run();
 })();`
+}
+
+// isBrowserUAFamily reports whether a coarse UA family is a mainstream browser —
+// a fingerprint shared by a whole population of real people rather than one
+// actor. Used to keep browser fingerprints out of the auto-learned bad-bot
+// database, where a single false positive would otherwise compound into a
+// permanent block for everyone running that browser.
+func isBrowserUAFamily(fam string) bool {
+	switch fam {
+	case "chrome", "chromium", "firefox", "safari", "edge":
+		return true
+	}
+	return false
 }

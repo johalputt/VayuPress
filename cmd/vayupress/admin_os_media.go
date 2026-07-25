@@ -49,6 +49,28 @@ func (a *App) mediaAltMap(ctx context.Context) map[string]string {
 	return out
 }
 
+// countMediaItems returns just how many media files there are, without stat-ing
+// each one or building and sorting a slice. The dashboard and the Media page
+// header only need the count, and listMediaItems costs a stat syscall per file
+// plus an allocation per file plus a sort — work that grows with the library and
+// is paid on every render of the most-visited page in the console.
+func countMediaItems() int {
+	entries, err := os.ReadDir(config.Cfg.MediaDir)
+	if err != nil {
+		return 0
+	}
+	n := 0
+	for _, e := range entries {
+		// IsDir and Name come from the directory entry itself (no stat), and the
+		// name check is the same allowlist listMediaItems applies.
+		if e.IsDir() || !safeMediaName.MatchString(e.Name()) {
+			continue
+		}
+		n++
+	}
+	return n
+}
+
 // listMediaItems reads MediaDir and returns the stored assets newest-first. Only
 // names matching safeMediaName (the content-addressed pattern this server itself
 // produces) are included, so stray or hostile filenames are ignored.
@@ -175,7 +197,7 @@ func (a *App) handleOSMedia(w http.ResponseWriter, r *http.Request) {
 	nonce := render.CSPNonce(r)
 	cfg := a.getOSSettings(r.Context())
 
-	count := len(listMediaItems())
+	count := countMediaItems()
 
 	body := `<div class="page-header">
   <h1>Media</h1>

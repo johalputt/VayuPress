@@ -35,6 +35,19 @@ type Result struct {
 	Classification botdb.Classification `json:"classification"`
 	BotName        string               `json:"bot_name,omitempty"`
 	Reasons        []string             `json:"reasons,omitempty"`
+
+	// Authoritative marks a verdict that came from a source a human stands behind:
+	// a compiled-in static signature, or a learned signature the OPERATOR verified.
+	// It is false for an auto-learned guess and for pure heuristic scoring.
+	//
+	// This distinction exists because auto-learning can be wrong in a way that
+	// compounds: a false-positive block records the visitor's fingerprint as a bad
+	// bot, and each repeat raises its confidence until it crosses the threshold
+	// where the scorer treats it as identified — at which point real people sharing
+	// that fingerprint (every user of a given browser build) are hard-blocked
+	// forever. Callers use this to decide how much benefit of the doubt a client is
+	// owed, so an unproven GUESS can never become a permanent 403.
+	Authoritative bool `json:"authoritative,omitempty"`
 }
 
 func clamp01(f float64) float64 {
@@ -58,10 +71,12 @@ func Score(in Input) Result {
 		switch in.StaticMatch.Classification {
 		case botdb.ClassGoodBot:
 			return Result{BotScore: 0.7, ClientType: botdb.TypeGoodBot, Classification: botdb.ClassGoodBot,
-				BotName: in.StaticMatch.Name, Reasons: []string{"static good-bot signature: " + in.StaticMatch.Name}}
+				BotName: in.StaticMatch.Name, Authoritative: true,
+				Reasons: []string{"static good-bot signature: " + in.StaticMatch.Name}}
 		case botdb.ClassAIAgent:
 			return Result{BotScore: 0.7, ClientType: botdb.TypeAIAgent, Classification: botdb.ClassAIAgent,
-				BotName: in.StaticMatch.Name, Reasons: []string{"static AI-agent signature: " + in.StaticMatch.Name}}
+				BotName: in.StaticMatch.Name, Authoritative: true,
+				Reasons: []string{"static AI-agent signature: " + in.StaticMatch.Name}}
 		case botdb.ClassBadBot:
 			ct := botdb.TypeBadBot
 			name := strings.ToLower(in.StaticMatch.Name)
@@ -69,22 +84,29 @@ func Score(in Input) Result {
 				ct = botdb.TypeHeadless
 			}
 			return Result{BotScore: 0.95, ClientType: ct, Classification: botdb.ClassBadBot,
-				BotName: in.StaticMatch.Name, Reasons: []string{"static bad-bot signature: " + in.StaticMatch.Name}}
+				BotName: in.StaticMatch.Name, Authoritative: true,
+				Reasons: []string{"static bad-bot signature: " + in.StaticMatch.Name}}
 		}
 	}
 
 	// 2) Learned adaptive database (operator-verified or high confidence).
 	if in.Learned != nil && (in.Learned.OperatorVerified || in.Learned.Confidence >= 0.8) {
+		// Only an operator-verified signature is authoritative. A signature that
+		// merely auto-promoted itself past the confidence threshold is still a
+		// guess, and callers must be able to tell the difference.
+		vetted := in.Learned.OperatorVerified
 		switch in.Learned.Classification {
 		case botdb.ClassGoodBot:
 			return Result{BotScore: 0.7, ClientType: botdb.TypeGoodBot, Classification: botdb.ClassGoodBot,
-				BotName: in.Learned.BotName, Reasons: []string{"learned good-bot signature"}}
+				BotName: in.Learned.BotName, Authoritative: vetted,
+				Reasons: []string{"learned good-bot signature"}}
 		case botdb.ClassAIAgent:
 			return Result{BotScore: 0.7, ClientType: botdb.TypeAIAgent, Classification: botdb.ClassAIAgent,
-				BotName: in.Learned.BotName, Reasons: []string{"learned AI-agent signature"}}
+				BotName: in.Learned.BotName, Authoritative: vetted,
+				Reasons: []string{"learned AI-agent signature"}}
 		case botdb.ClassBadBot:
 			return Result{BotScore: clamp01(math.Max(0.85, in.Learned.Confidence)), ClientType: botdb.TypeBadBot,
-				Classification: botdb.ClassBadBot, BotName: in.Learned.BotName,
+				Classification: botdb.ClassBadBot, BotName: in.Learned.BotName, Authoritative: vetted,
 				Reasons: []string{"learned bad-bot signature (confidence " + ftoa(in.Learned.Confidence) + ")"}}
 		case botdb.ClassHuman:
 			return Result{BotScore: 0.05, ClientType: botdb.TypeHuman, Classification: botdb.ClassHuman,

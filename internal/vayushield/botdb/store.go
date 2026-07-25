@@ -374,6 +374,42 @@ func (s *Store) PurgeStale(ctx context.Context, retainDays int) (int64, error) {
 	}
 }
 
+// ForgetAutoLearned deletes every AUTO-LEARNED signature, keeping the ones the
+// operator explicitly verified. It is the recovery path for a poisoned database.
+//
+// Auto-learning records the fingerprint of anything that got blocked, and raises
+// that record's confidence on every repeat until the scorer treats it as an
+// identified bot. If the blocks were false positives — a threshold set too tight,
+// or a CDN making a whole audience look like one address — the database ends up
+// certain that a real browser is a bot, and every visitor using it is refused with
+// no way to prove otherwise. The learner cannot unlearn that on its own, because
+// each refusal looks like confirmation. This gives the operator a clean slate
+// without discarding their own verified work. Returns the number removed.
+func (s *Store) ForgetAutoLearned(ctx context.Context) (int64, error) {
+	if s == nil || s.db == nil {
+		return 0, nil
+	}
+	var total int64
+	for {
+		res, err := s.db.ExecContext(ctx,
+			`DELETE FROM vayushield_signatures WHERE rowid IN (SELECT rowid FROM vayushield_signatures WHERE operator_verified=0 LIMIT ?)`,
+			purgeChunk)
+		if err != nil {
+			return total, err
+		}
+		n, _ := res.RowsAffected()
+		total += n
+		if n < purgeChunk {
+			return total, nil
+		}
+		select {
+		case <-ctx.Done():
+			return total, ctx.Err()
+		default:
+		}
+	}
+}
+
 // PurgeBlocked ages out old rows from vayushield_blocked. That table is a hashed,
 // non-PII record of hard blocks kept only for aggregate counts (there is no live
 // per-IP list any more, ADR-0137), so it must not grow forever. Chunked and

@@ -13,6 +13,7 @@ package main
 import (
 	"html"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/johalputt/vayupress/internal/config"
@@ -75,6 +76,18 @@ var commonTimezones = []struct{ Value, Label string }{
 	{"Pacific/Auckland", "Pacific/Auckland"},
 }
 
+// tzOffsetCache memoises the resolved offset label per zone. time.LoadLocation
+// opens and parses a zoneinfo entry on EVERY call — it does not cache — so
+// rendering the picker used to do ~50 file reads and parses per page load, which
+// is exactly the kind of avoidable work that shows up as console lag. Offsets only
+// change at a daylight-saving boundary, so the memo is keyed by zone plus the
+// current UTC date.
+var (
+	tzOffsetMu    sync.Mutex
+	tzOffsetDay   string
+	tzOffsetCache = map[string]string{}
+)
+
 // timezoneOffsetLabel renders the zone's current UTC offset (e.g. "UTC+05:30")
 // so an operator can pick by offset without knowing IANA names. Returns "" when
 // the zone cannot be resolved on this host.
@@ -82,6 +95,28 @@ func timezoneOffsetLabel(name string) string {
 	if strings.TrimSpace(name) == "" {
 		return "UTC+00:00"
 	}
+	today := time.Now().UTC().Format("2006-01-02")
+	tzOffsetMu.Lock()
+	if tzOffsetDay != today {
+		// A new UTC day: drop the memo so a DST transition is picked up.
+		tzOffsetDay = today
+		tzOffsetCache = map[string]string{}
+	} else if lbl, ok := tzOffsetCache[name]; ok {
+		tzOffsetMu.Unlock()
+		return lbl
+	}
+	tzOffsetMu.Unlock()
+
+	label := computeTZOffsetLabel(name)
+
+	tzOffsetMu.Lock()
+	tzOffsetCache[name] = label
+	tzOffsetMu.Unlock()
+	return label
+}
+
+// computeTZOffsetLabel does the actual zone lookup (the expensive part).
+func computeTZOffsetLabel(name string) string {
 	loc, err := time.LoadLocation(name)
 	if err != nil {
 		return ""

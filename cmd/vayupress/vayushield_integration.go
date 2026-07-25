@@ -527,7 +527,7 @@ func (a *App) handleOSShield(w http.ResponseWriter, r *http.Request) {
 	// crawlers are served content. It answers the two questions an operator cannot
 	// otherwise verify without leaving the panel — "am I hurdling my own visitors?"
 	// and "am I hurting indexing?" — so the answer is evidence, not a promise.
-	selfTest := a.runShieldCanary()
+	selfTest := a.cachedShieldCanary()
 	b.WriteString(monAcc("🩺", "Visitor &amp; crawler check", "Live proof that real readers and search engines get through",
 		shieldSelfTestChip(selfTest), selfTest.readers != len(canaryReaders) || !selfTest.ok(),
 		`<div id="vs-body-selftest" hx-get="/os/shield/section/selftest" hx-trigger="vs-refresh from:body" hx-swap="innerHTML">`+shieldSelfTestBody(selfTest)+`</div>`))
@@ -855,7 +855,15 @@ func shieldSelfTestBody(res shieldCanaryResult) string {
 	}
 	row := func(p canaryProbeResult) string {
 		pill := `<span class="badge badge--ok">✓ Served</span>`
-		if !p.OK {
+		note := "HTTP " + strconv.Itoa(p.Status)
+		switch {
+		case p.OK:
+		case p.NotTestable:
+			// Honest reporting: a synthetic crawler cannot hold a vendor IP, so this
+			// probe proves nothing. Saying "blocked" here would be a false alarm.
+			pill = `<span class="badge badge--muted">— Not testable here</span>`
+			note = "verified by IP in production"
+		default:
 			label := "Challenged"
 			if p.Status == http.StatusForbidden {
 				label = "Blocked"
@@ -865,7 +873,7 @@ func shieldSelfTestBody(res shieldCanaryResult) string {
 			pill = `<span class="badge badge--danger">✕ ` + label + `</span>`
 		}
 		return `<tr><td class="row-title">` + html.EscapeString(p.Name) + `</td><td>` + pill +
-			`</td><td class="muted text-sm">HTTP ` + strconv.Itoa(p.Status) + `</td></tr>`
+			`</td><td class="muted text-sm">` + html.EscapeString(note) + `</td></tr>`
 	}
 	for _, group := range []string{"Readers", "Crawlers"} {
 		rows := ""
@@ -880,6 +888,11 @@ func shieldSelfTestBody(res shieldCanaryResult) string {
 		caption := "Ordinary first-time visitors — no clearance cookie"
 		if group == "Crawlers" {
 			caption = "Search engines, AI crawlers &amp; the performance tester"
+			if len(res.probes) > 0 && crawlerProbesUntestable(res) {
+				caption += ". Crawler identity is confirmed by published IP range and reverse DNS, " +
+					"which a probe from this host cannot imitate — so these rows are informational. " +
+					"Real crawlers arriving from their vendor's network take the fast path."
+			}
 		}
 		b.WriteString(`<div class="settings-block-title mt-3">` + group + `</div>` +
 			`<p class="muted text-xs mb-2">` + caption + `</p>` +
@@ -1121,7 +1134,22 @@ func (a *App) handleOSShieldRelease(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	n := a.vayuShield.ReleaseAllSentences()
-	logging.LogInfo("vayushield", "released all jail sentences: "+strconv.Itoa(n)+" sources")
+	// Also forget the AUTO-LEARNED signatures. A false-positive run does not just
+	// jail addresses — it teaches the signature database that the affected
+	// browsers are bots, and that record then refuses those visitors on its own,
+	// getting more confident with every refusal. Clearing the sentences without
+	// clearing what was learned from them would leave the operator still blocked.
+	// Operator-verified signatures are kept.
+	forgotten := int64(0)
+	if bs := a.vayuShield.BotStore(); bs != nil {
+		if got, err := bs.ForgetAutoLearned(r.Context()); err == nil {
+			forgotten = got
+			a.vayuShield.InvalidateSigCache()
+		}
+	}
+	invalidateShieldCanary()
+	logging.LogInfo("vayushield", "amnesty: released "+strconv.Itoa(n)+
+		" jailed sources and forgot "+strconv.FormatInt(forgotten, 10)+" auto-learned signatures")
 	// Reload so the hero counters and this card reflect the cleared state.
 	w.Header().Set("HX-Refresh", "true")
 	w.WriteHeader(http.StatusNoContent)
@@ -1195,6 +1223,8 @@ func (a *App) handleOSShieldSettings(w http.ResponseWriter, r *http.Request) {
 	config.SetTrustCloudflare(bs("sh_behind_cdn") == "on")
 	// Fire vs-refresh so ONLY the status hero + settings body reload in place to
 	// reflect the applied (and clamped) state — the whole page never refreshes.
+	// The self-test verdict can flip with these settings — re-test on next read.
+	invalidateShieldCanary()
 	w.Header().Set("HX-Trigger", "vs-refresh")
 	w.WriteHeader(http.StatusNoContent)
 }
