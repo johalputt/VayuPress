@@ -6,6 +6,61 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.36] — 2026-07-25
+
+### Added
+- **Optional HTML mail, derived from what you actually typed.** A new
+  **"Also send an HTML version"** toggle in the composer sends a
+  `multipart/alternative`: the Markdown exactly as written in the `text/plain`
+  part, and a rendering of **the same text** in the `text/html` part. Because one
+  is generated from the other they cannot describe different messages — the
+  failure mode of every WYSIWYG mail composer, where the plain-text fallback
+  decays into "please view this in HTML".
+
+  **It is off by default, and that is a deliberate deliverability choice, not a
+  preference.** HTML from a domain with young sending reputation scores worse than
+  plain text, so opting in has to be a decision.
+
+  Notably, this needed **no new dependencies**: `goldmark` and `bluemonday` were
+  already compiled in for the article pipeline, and the engine's `sendMail` path
+  had assembled `multipart/alternative` for newsletters all along. The binary does
+  not grow.
+
+### Changed
+- `mail.ComposeMessage` gains an optional `HTML` field, and `ComposeRich` grows
+  the matching assembly:
+  - HTML with no attachments → `multipart/alternative`
+  - HTML with attachments → `multipart/alternative` **nested inside**
+    `multipart/mixed`, because siblings of the attachments would tell the client
+    they are two separate documents and it would show both
+  - no HTML → byte-identical to before
+  The plain text is always the **first** part: RFC 2046 §5.1.4 makes the last
+  alternative the preferred one, so this order is what lets HTML win where it is
+  supported and text remain the fallback everywhere else.
+- **DKIM and PGP are untouched.** Signing covers whatever MIME tree it is handed,
+  and PGP/MIME already encrypted the content entity as a whole — an alternative
+  entity encrypts identically.
+
+### Security
+- **Outbound HTML is sanitised, even though we generate it.** The body is operator
+  input about to be signed with this domain's DKIM key and sent to third parties, so
+  a compromised console must not be able to send scripts, iframes, forms or
+  `javascript:` links under a signature vouching for this domain.
+- **The outbound policy is stricter than the one used to display received mail: it
+  allows no images at all.** An outbound remote image is indistinguishable from a
+  tracking pixel, VayuPress does not send those, and a permissive sanitiser here
+  would make it possible to. A test fails the build if an image ever survives.
+- The HTML part is a self-contained document with no external stylesheet, font or
+  script reference — nothing that could leak a read receipt.
+
+### Upgrade Notes
+- Existing behaviour is unchanged unless the toggle is switched on: with it off,
+  the assembled message is byte-identical to before.
+- Turning it on for a domain that has not built sending reputation may *reduce*
+  inbox placement. Send plain text until your domain is warm.
+
+---
+
 ## [3.15.35] — 2026-07-25
 
 ### Fixed
