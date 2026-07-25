@@ -22,7 +22,7 @@ services:
       - caddy-data:/data
       - caddy-config:/config
     healthcheck:
-      test: ["CMD", "curl", "http://localhost:2019/metrics"]
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:2019/config/"]
       interval: 5s
       timeout: 3s
       retries: 3
@@ -38,7 +38,7 @@ services:
     image: vayupress:latest
     restart: unless-stopped
     expose:
-      - "8080:8080" # reachable only by Caddy on the private Compose network
+      - "8080" # reachable only by Caddy on the private Compose network
     depends_on:
       caddy:
         condition: service_healthy
