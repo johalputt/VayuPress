@@ -96,3 +96,81 @@ func TestScoreClamped(t *testing.T) {
 		t.Fatalf("score out of range: %.2f", r.BotScore)
 	}
 }
+
+// TestLearnedSignatureCannotBlockRealBrowser reproduces the live incident that
+// hard-blocked real Chrome and Brave visitors with "Access denied".
+//
+// The stored row was: classification=bad_bot, operator_verified=1,
+// confidence=0.19, false_positive_count=4, user_agent_pattern=chrome. It got
+// there honestly — confirmed once in the review queue at 0.99, then decayed 0.2
+// per solved challenge (0.99→0.79→0.59→0.39→0.19) as real people proved they were
+// human four times. But operator_verified short-circuited scoring regardless, and
+// the bad-bot branch manufactured a 0.85 score, so every visitor on that browser
+// build got a 403 that no leniency applied to. The database had recorded that it
+// was wrong and kept convicting anyway.
+func TestLearnedSignatureCannotBlockRealBrowser(t *testing.T) {
+	poisoned := &botdb.StoredSignature{
+		Classification:   botdb.ClassBadBot,
+		OperatorVerified: true,
+		Confidence:       0.19,
+		FalsePositives:   4,
+		UserAgentPattern: "chrome",
+	}
+	in := Input{
+		Learned: poisoned,
+		Signals: fingerprint.Signals{
+			UserAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+		},
+	}
+	got := Score(in)
+	if got.ClientType == botdb.TypeBadBot {
+		t.Errorf("a real browser must not be classified BadBot from this row (score %.2f, reasons %v)",
+			got.BotScore, got.Reasons)
+	}
+	if got.Authoritative {
+		t.Error("a disputed, collapsed-confidence row must never be authoritative")
+	}
+	if got.BotScore >= 0.8 {
+		t.Errorf("score %.2f would land in the block band", got.BotScore)
+	}
+
+	// Each guard must hold on its own, so removing any one still protects.
+	t.Run("browser family alone", func(t *testing.T) {
+		l := &botdb.StoredSignature{Classification: botdb.ClassBadBot, OperatorVerified: true,
+			Confidence: 0.99, UserAgentPattern: "chromium"}
+		if learnedIsUsable(l) {
+			t.Error("a bad-bot row for a browser fingerprint must never convict")
+		}
+	})
+	t.Run("false positives alone", func(t *testing.T) {
+		l := &botdb.StoredSignature{Classification: botdb.ClassBadBot, OperatorVerified: true,
+			Confidence: 0.99, FalsePositives: 1, UserAgentPattern: "http-lib"}
+		if learnedIsUsable(l) {
+			t.Error("a disputed row must not convict on its own")
+		}
+	})
+	t.Run("collapsed confidence alone", func(t *testing.T) {
+		l := &botdb.StoredSignature{Classification: botdb.ClassBadBot, OperatorVerified: true,
+			Confidence: 0.19, UserAgentPattern: "http-lib"}
+		if learnedIsUsable(l) {
+			t.Error("operator_verified must not outrank collapsed confidence")
+		}
+	})
+
+	// A genuine scraper signature still convicts — the fix must not disarm the DB.
+	t.Run("real bad bot still convicts", func(t *testing.T) {
+		l := &botdb.StoredSignature{Classification: botdb.ClassBadBot, OperatorVerified: true,
+			Confidence: 0.95, UserAgentPattern: "http-lib"}
+		if !learnedIsUsable(l) {
+			t.Error("a confident, undisputed non-browser bad-bot row must still convict")
+		}
+	})
+	// Good-bot / human verdicts only ever widen access, so they stay usable.
+	t.Run("good bot unaffected", func(t *testing.T) {
+		l := &botdb.StoredSignature{Classification: botdb.ClassGoodBot, OperatorVerified: true,
+			Confidence: 0.1, FalsePositives: 9, UserAgentPattern: "chrome"}
+		if !learnedIsUsable(l) {
+			t.Error("a good-bot row must remain usable — it only widens access")
+		}
+	})
+}

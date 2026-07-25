@@ -90,7 +90,7 @@ func Score(in Input) Result {
 	}
 
 	// 2) Learned adaptive database (operator-verified or high confidence).
-	if in.Learned != nil && (in.Learned.OperatorVerified || in.Learned.Confidence >= 0.8) {
+	if in.Learned != nil && learnedIsUsable(in.Learned) {
 		// Only an operator-verified signature is authoritative. A signature that
 		// merely auto-promoted itself past the confidence threshold is still a
 		// guess, and callers must be able to tell the difference.
@@ -221,4 +221,54 @@ func ftoa(f float64) string {
 	frac := i % 100
 	d := []byte{byte('0' + whole%10), '.', byte('0' + frac/10), byte('0' + frac%10)}
 	return string(d)
+}
+
+// learnedBadBotFloor is the minimum confidence a learned signature must still
+// carry before it is allowed to convict. A row whose confidence has fallen below
+// this has been contradicted more than it has been confirmed.
+const learnedBadBotFloor = 0.6
+
+// learnedIsUsable decides whether a learned signature may short-circuit scoring.
+//
+// Three guards, each closing a way a stored row could refuse real people:
+//
+//  1. A BAD-BOT verdict is never taken for a mainstream-browser fingerprint.
+//     That fingerprint is shared by everyone running the same browser build, so no
+//     stored row — auto-learned, imported, or even operator-confirmed — should be
+//     able to turn "this is Chrome" into a hard block. Falling through to the
+//     heuristics scores a real browser as human, which is the honest answer.
+//  2. A row with recorded false positives is disputed, so it no longer gets to
+//     convict on its own.
+//  3. A bad-bot verdict needs confidence still above the floor. Confidence decays
+//     when a signature is contradicted; once it has collapsed, the database is
+//     telling us it was wrong, and continuing to block on it ignores that. This
+//     also stops operator_verified acting as a permanent override — a human's
+//     one-time Confirm should not outrank the evidence that accumulated since.
+//
+// Good-bot / AI / human verdicts are unaffected: those only ever widen access.
+func learnedIsUsable(l *botdb.StoredSignature) bool {
+	usable := l.OperatorVerified || l.Confidence >= 0.8
+	if !usable {
+		return false
+	}
+	if l.Classification != botdb.ClassBadBot {
+		return true
+	}
+	if isBrowserFamily(l.UserAgentPattern) {
+		return false
+	}
+	if l.FalsePositives > 0 {
+		return false
+	}
+	return l.Confidence >= learnedBadBotFloor
+}
+
+// isBrowserFamily reports whether a stored user_agent_pattern names a mainstream
+// browser. The pattern is written by the coarse UA bucketing at learn time.
+func isBrowserFamily(pattern string) bool {
+	switch strings.ToLower(strings.TrimSpace(pattern)) {
+	case "chrome", "chromium", "firefox", "safari", "edge":
+		return true
+	}
+	return false
 }
