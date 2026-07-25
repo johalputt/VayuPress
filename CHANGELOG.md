@@ -6,6 +6,80 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.33] — 2026-07-25
+
+Thanks to **@fenix-hub** for [#319](https://github.com/johalputt/VayuPress/pull/319),
+which contributed the Caddy deployment path and found the CSRF rotation bug below.
+
+### Fixed
+- **The admin console rotated its CSRF token on every page render, so a second tab
+  broke the first.** Loading any console page minted a brand-new token and
+  overwrote the cookie, while the page already open still carried the previous
+  one. Submitting that older form failed with "CSRF token missing or invalid", and
+  reloading it did not help — the reload rotated the token again. Two tabs, or one
+  double-click on a link, was enough.
+
+  `auth.CSRFTokenMiddleware` has always had the correct rule — reissue only when
+  the cookie is missing, empty or invalid — but the HTML writers minted directly
+  and so contradicted it. #319 fixed the change-password page; the same bug was in
+  **fifteen** places, because `writeOSHTML` took no request and therefore had no
+  cookie to read. It now takes the request, and every writer goes through one
+  `csrfTokenFor` helper. A test fails the build if any handler calls
+  `auth.GenerateCSRFToken()` directly again.
+
+  Reuse costs nothing in defence: the token is a stateless HMAC, unforgeable
+  without the server secret, and the double-submit check still requires an attacker
+  to both know the value and set the cookie — which per-render rotation never
+  prevented either. The cookie is still rewritten each time, so an idle tab's
+  1-hour lifetime is refreshed rather than left to expire.
+
+- **The theme editor could strand an operator after a restart.** It seeded the CSRF
+  cookie only when one was *absent*, never checking whether it was still valid. The
+  CSRF secret rotates on every process restart, so a stale cookie was left in place
+  and every governed write 403'd with no way to recover by reloading. It now uses
+  the same helper, which replaces an invalid token as readily as a missing one.
+
+### Added
+- **Caddy as the reverse proxy for the Docker Compose path** (from #319): automatic
+  TLS and renewal, HTTP/2 and HTTP/3, private container networking with VayuPress
+  no longer publishing a host port, health-gated startup, structured JSON access
+  logs with credentials redacted, bounded header/body sizes and timeouts, and
+  `0rtt off` so HTTP/3 early data cannot replay state-changing requests. Security
+  headers are set only when VayuPress did not already set them, leaving its
+  per-request nonce CSP authoritative. Documented in `CADDY.md`.
+- **An opt-in production overlay** (`docker-compose.production.yml`) putting an
+  IP/CIDR allowlist in front of `/os` and `/admin`. It fails closed: Compose
+  refuses to start when `ADMIN_ALLOWED_IPS` is unset.
+
+### Changed
+- **The Compose dependency direction is reversed.** As merged, VayuPress declared
+  `depends_on: caddy: service_healthy` — the app refused to start whenever the
+  proxy was unhealthy, letting the edge hold the origin hostage. It bought nothing,
+  because Caddy's healthcheck probes its own admin API and says nothing about the
+  upstream. Caddy now waits for VayuPress instead, which also removes the 502
+  window on a cold start.
+- **The development Caddyfile no longer sends HSTS.** It also serves
+  `DOMAIN=localhost` behind Caddy's internal CA, and a two-year
+  `includeSubDomains; preload` pin against a development hostname is not undone by
+  stopping the container: it makes the certificate warning unbypassable and can
+  take other local services down with it. Production keeps HSTS, now without
+  `preload` — that token is a one-way commitment covering every subdomain, and
+  advertising it without submitting to the preload list is dishonest.
+
+### Upgrade Notes
+- **Existing Docker Compose deployments that run their own reverse proxy will
+  break.** VayuPress no longer publishes `127.0.0.1:8080`, and the bundled Caddy
+  binds host ports 80 and 443, which an existing nginx already holds. Either adopt
+  the bundled Caddy, or keep your proxy and re-add the `ports` mapping to the
+  `vayupress` service while removing the `caddy` service. Bare-VPS installs via
+  `scripts/` are unaffected.
+- `TRUSTED_PROXIES` is set to Caddy's fixed container address so client IPs stay
+  accurate for VayuShield, rate limiting and analytics. If you replace the proxy,
+  set it to the new proxy's address — leaving it wrong makes every visitor look
+  like one IP.
+
+---
+
 ## [3.15.32] — 2026-07-25
 
 ### Fixed
