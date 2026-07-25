@@ -273,11 +273,20 @@ type Attachment struct {
 
 // ComposeMessage carries the fields of a rich outgoing message.
 type ComposeMessage struct {
-	From         string
-	To, CC, BCC  []string
-	ReplyTo      string
-	Subject      string
-	Body         string
+	From        string
+	To, CC, BCC []string
+	ReplyTo     string
+	Subject     string
+	Body        string
+	// HTML is an OPTIONAL alternative rendering of Body. When set, the message is
+	// assembled as multipart/alternative with the plain text FIRST — the order every
+	// mainstream client sends and spam filters expect, and the order that makes the
+	// text part the fallback rather than an afterthought.
+	//
+	// Body stays authoritative: HTML is derived from it upstream, so the two cannot
+	// describe different messages. Leave HTML empty and the assembly below is
+	// byte-identical to before.
+	HTML         string
 	Attachments  []Attachment
 	SenderUserID string
 	// Encrypt opts this message into PGP encryption. Encryption is applied only
@@ -292,7 +301,9 @@ type ComposeMessage struct {
 // ComposeRich sends a message with optional Cc/Bcc/Reply-To and file
 // attachments, then files a copy in the sender's Sent folder. Bcc recipients
 // receive the mail but never appear in the headers. When attachments are present
-// the message is assembled as multipart/mixed; PGP auto-encryption is applied
+// the message is assembled as multipart/mixed, and when m.HTML is set the two
+// bodies form a multipart/alternative (nested inside the mixed part when both
+// apply); PGP auto-encryption is applied
 // only for a single-recipient, no-attachment, no-Cc/Bcc message (encrypting a
 // multipart body is out of scope for the composer). DKIM signing, local loopback
 // delivery and MX queueing match the plain send path.
@@ -314,17 +325,36 @@ func (e *Engine) ComposeRich(ctx context.Context, m ComposeMessage) (int64, erro
 	// the body bytes. This entity is sent as-is, or PGP/MIME-encrypted as a whole.
 	var entHead string
 	var entBody []byte
-	if len(m.Attachments) > 0 {
+	withHTML := strings.TrimSpace(m.HTML) != ""
+	switch {
+	case len(m.Attachments) > 0:
 		boundary := mimeBoundary()
 		var b bytes.Buffer
-		writeMIMEPart(&b, boundary, "text/plain; charset=utf-8", m.Body)
+		if withHTML {
+			// mixed[ alternative[text, html], attachments... ] — the alternative
+			// nests INSIDE the mixed part. Putting the two bodies as siblings of the
+			// attachments would tell the client they are two separate documents, and
+			// it would show both.
+			b.WriteString("--" + boundary + "\r\n")
+			b.Write(alternativeEntity(m.Body, m.HTML))
+		} else {
+			writeMIMEPart(&b, boundary, "text/plain; charset=utf-8", m.Body)
+		}
 		for _, at := range m.Attachments {
 			writeAttachmentPart(&b, boundary, at)
 		}
 		b.WriteString("--" + boundary + "--\r\n")
 		entHead = `Content-Type: multipart/mixed; boundary="` + boundary + `"`
 		entBody = b.Bytes()
-	} else {
+	case withHTML:
+		alt := alternativeEntity(m.Body, m.HTML)
+		// Split the entity's own header block off: at top level it continues the
+		// message headers rather than being written as a nested part.
+		if i := bytes.Index(alt, []byte("\r\n\r\n")); i > 0 {
+			entHead = string(alt[:i])
+			entBody = alt[i+4:]
+		}
+	default:
 		entHead = "Content-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: 8bit"
 		entBody = []byte(normalizeCRLF(m.Body))
 	}
@@ -1188,6 +1218,25 @@ func normalizeCRLF(s string) string {
 	s = strings.ReplaceAll(s, "\r\n", "\n")
 	s = strings.ReplaceAll(s, "\r", "\n")
 	return strings.ReplaceAll(s, "\n", "\r\n")
+}
+
+// alternativeEntity builds a complete multipart/alternative MIME entity — its own
+// Content-Type header line, a blank line, then the two parts — carrying the plain
+// text first and the HTML second.
+//
+// It returns a whole entity rather than writing into a parent buffer because it is
+// used in two places: nested inside a multipart/mixed when there are attachments,
+// and promoted to the top level when there are not. A nested multipart declares no
+// Content-Transfer-Encoding: RFC 2045 §6.4 restricts multipart to 7bit/8bit/binary,
+// and the parts carry their own.
+func alternativeEntity(text, html string) []byte {
+	boundary := mimeBoundary()
+	var b bytes.Buffer
+	b.WriteString(`Content-Type: multipart/alternative; boundary="` + boundary + `"` + "\r\n\r\n")
+	writeMIMEPart(&b, boundary, "text/plain; charset=utf-8", text)
+	writeMIMEPart(&b, boundary, "text/html; charset=utf-8", html)
+	b.WriteString("--" + boundary + "--\r\n")
+	return b.Bytes()
 }
 
 // writeMIMEPart appends one multipart/alternative body part (CRLF-terminated).

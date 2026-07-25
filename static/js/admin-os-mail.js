@@ -392,6 +392,8 @@
     var encToggle = compose.querySelector('[data-c-encrypt]');
     var encHint = compose.querySelector('[data-c-encrypt-hint]');
     function pgpEncrypt() { return !!(encToggle && encToggle.checked); }
+    var richToggle = compose.querySelector('[data-c-rich]');
+    function richHTML() { return !!(richToggle && richToggle.checked); }
     function paintEnc() {
       if (!encHint) return;
       encHint.textContent = pgpEncrypt()
@@ -518,12 +520,14 @@
         snap.files.forEach(function (file) { fd.append('attachments', file); });
         fd.append('appendSig', snap.appendSig ? '1' : '0');
         fd.append('encrypt', snap.encrypt ? '1' : '0');
+        fd.append('richHTML', snap.richHTML ? '1' : '0');
         opts.body = fd;
       } else {
         var payload = {};
         Object.keys(snap.fields).forEach(function (k) { payload[k] = snap.fields[k]; });
         payload.appendSig = snap.appendSig;
         payload.encrypt = snap.encrypt;
+        payload.richHTML = snap.richHTML;
         opts.headers['Content-Type'] = 'application/json';
         opts.body = JSON.stringify(payload);
       }
@@ -548,7 +552,7 @@
       var f = composeFields();
       if (!f.to && !f.cc && !f.bcc) { if (cStatus) cStatus.textContent = 'Add at least one recipient.'; return; }
       // Snapshot at click time so edits during the hold don't leak into the send.
-      holdSnapshot = { fields: f, files: composeFiles.slice(), appendSig: sigAppend(), encrypt: pgpEncrypt(), from: f.from, draftId: draftId };
+      holdSnapshot = { fields: f, files: composeFiles.slice(), appendSig: sigAppend(), encrypt: pgpEncrypt(), richHTML: richHTML(), from: f.from, draftId: draftId };
       stopAutosave();
       if (sendBtn) sendBtn.disabled = true;
       if (cStatus) cStatus.textContent = '';

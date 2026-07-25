@@ -127,18 +127,22 @@ func TestComposerPreviewNeverInjectsMarkup(t *testing.T) {
 	}
 }
 
-// TestComposerFormattingStaysPlainText pins the honesty constraint. The engine
-// sends mail.ComposeMessage.Body as text, with no HTML alternative part, so the
-// toolbar must write conventions INTO the text rather than pretend to style it.
-// A contenteditable WYSIWYG here would promise formatting the recipient never
-// receives.
+// TestComposerFormattingStaysPlainText pins that the TEXTAREA remains the source
+// of truth even now that an HTML alternative can be sent.
+//
+// The engine gained multipart/alternative support, but the composer deliberately
+// did not gain a WYSIWYG. The Markdown the operator types is sent verbatim as the
+// text/plain part AND rendered into the text/html part, so the two can never
+// describe different messages. A contenteditable would invert that: the HTML would
+// become the source and the plain-text fallback would drift into "please view this
+// in HTML", which is exactly the failure this design avoids.
 func TestComposerFormattingStaysPlainText(t *testing.T) {
 	src, err := os.ReadFile("vayuos_mail.go")
 	if err != nil {
 		t.Fatalf("read vayuos_mail.go: %v", err)
 	}
 	if !strings.Contains(string(src), `data-c-body placeholder="Write your message…"`) {
-		t.Error("the body must remain a textarea; a contenteditable would imply an HTML part the engine does not build")
+		t.Error("the body must remain a textarea — it is the source both MIME parts are built from")
 	}
 	if strings.Contains(withoutComments(string(src)), "contenteditable") {
 		t.Error("no contenteditable in the composer — see the comment above the toolbar")

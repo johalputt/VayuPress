@@ -233,6 +233,10 @@ func (a *App) handleVayuOSCompose(w http.ResponseWriter, r *http.Request) {
   </div>
 
   <div class="vm-row vm-row--tight vm-encrypt-row">
+    <label class="vm-filter-check"><input type="checkbox" data-c-rich> &#127912; Also send an HTML version</label>
+    <span class="vm-pgp-hint">Off &mdash; the message goes as plain text, which is what a young sending domain delivers best. Turn on to add an HTML rendering of the same words alongside it; clients that prefer HTML show that one, the rest see your text unchanged.</span>
+  </div>
+  <div class="vm-row vm-row--tight vm-encrypt-row">
     <label class="vm-filter-check"><input type="checkbox" data-c-encrypt` + encAttr + `> 🔒 Encrypt with PGP</label>
     <span class="vm-pgp-hint" data-c-encrypt-hint aria-live="polite">Off — the message is sent as readable text. Turn on to PGP-encrypt the message and attachments (RFC 3156) for recipients whose keys are known.</span>
   </div>
@@ -416,10 +420,15 @@ func (a *App) handleVayuOSSend(w http.ResponseWriter, r *http.Request) {
 		From, To, CC, BCC, ReplyTo, Subject, Body string
 		AppendSig                                 *bool `json:"appendSig"`
 		Encrypt                                   *bool `json:"encrypt"`
+		// RichHTML opts into a multipart/alternative with an HTML rendering of the
+		// same body. Off by default: a young sending IP scores worse with HTML than
+		// with plain text, so this must be a deliberate choice, not a default.
+		RichHTML *bool `json:"richHTML"`
 	}
 	var attachments []vmail.Attachment
 	appendSig := true // default: append the sender's signature when one is set
 	encrypt := false  // default OFF: plain messages are delivered as readable text
+	richHTML := false // default OFF: see RichHTML above — deliverability, not preference
 
 	if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
 		// Cap the whole request at the attachment budget + 1 MB of text/fields.
@@ -437,6 +446,9 @@ func (a *App) handleVayuOSSend(w http.ResponseWriter, r *http.Request) {
 		in.Body = r.FormValue("body")
 		if r.FormValue("appendSig") == "0" {
 			appendSig = false
+		}
+		if r.FormValue("richHTML") == "1" {
+			richHTML = true
 		}
 		if r.FormValue("encrypt") == "1" {
 			encrypt = true
@@ -477,6 +489,9 @@ func (a *App) handleVayuOSSend(w http.ResponseWriter, r *http.Request) {
 		}
 		if in.Encrypt != nil {
 			encrypt = *in.Encrypt
+		}
+		if in.RichHTML != nil {
+			richHTML = *in.RichHTML
 		}
 	}
 
@@ -530,6 +545,12 @@ func (a *App) handleVayuOSSend(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	// Render AFTER the signature is appended, so both parts carry it and neither
+	// can be the odd one out.
+	htmlBody := ""
+	if richHTML {
+		htmlBody = renderMailHTML(bodyText)
+	}
 	id, err := a.vayuMail.ComposeRich(r.Context(), vmail.ComposeMessage{
 		From:         fromHeader,
 		To:           to,
@@ -538,6 +559,7 @@ func (a *App) handleVayuOSSend(w http.ResponseWriter, r *http.Request) {
 		ReplyTo:      strings.TrimSpace(in.ReplyTo),
 		Subject:      in.Subject,
 		Body:         bodyText,
+		HTML:         htmlBody,
 		Attachments:  attachments,
 		SenderUserID: senderUserID,
 		Encrypt:      encrypt,
