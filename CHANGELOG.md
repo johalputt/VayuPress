@@ -6,6 +6,39 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.26] — 2026-07-25
+
+### Fixed
+- **"I'm logged in, but after closing the window the site shows the sign-in page —
+  and deleting `/login` from the address bar gets me straight in."** The sign-in
+  page already redirects an authenticated visitor, and that redirect works — which
+  is precisely why editing the URL succeeded. What served the form was a **cache in
+  front of the origin**. The page carried `no-store`, but a shared cache needs more
+  than that to be reliably forbidden from storing a response and handing it to
+  another visitor: it needs `private`, and it needs to know the response depends on
+  the cookie. Auth pages now send `private` + `Vary: Cookie` + a CDN-specific
+  `no-store` alongside the existing directives, so no edge can answer for the origin
+  and show a stale form to somebody holding a live session.
+- **Signing in now replaces your session instead of stacking on it.** Opening a
+  sign-in link for one account in a browser already signed in as another left *two*
+  live sessions, so which account you were acting as depended on resolution order
+  rather than on what you just clicked. (The link itself was never the problem — it
+  is single-use and atomically consumed.) Both member sign-in paths — magic link and
+  mailbox portal — now destroy the incoming session server-side before issuing the
+  new one. This also closes session fixation: a session created before
+  authentication can no longer survive it.
+- **Logging out no longer signs you back in as the previous account.** A signed-in
+  operator is deliberately accepted as a member-equivalent on the public site, so
+  clearing only the member cookie left that identity standing and you were shown as
+  signed in again immediately. Member logout now also ends the console session and
+  clears its cookie, mirroring what the console logout already did for the
+  membership session.
+
+  **Note the deliberate tradeoff:** an operator who signs out from the public site
+  now also leaves the console and signs in again at `/os/login`. That is the safe
+  direction — leaving a browser authenticated after an explicit logout is the wrong
+  failure mode, especially on a shared machine.
+
 ## [3.15.25] — 2026-07-25
 
 ### Fixed
