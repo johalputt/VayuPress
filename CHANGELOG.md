@@ -6,6 +6,45 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.29] — 2026-07-25
+
+### Added
+- **Membership &amp; billing on the member account page — including the next payment
+  date.** The subscription record already carried the period end, trial end,
+  cancel-at-period-end flag and start date, and **none of it was ever shown**: a
+  paying member could see *what* plan they held but nothing about when they would
+  next be charged, whether a trial was about to convert, or whether a cancellation
+  had actually taken. The card now shows status, price and cadence, **next payment
+  date**, trial end, member-since, and recent membership activity.
+
+  The wording follows the member's real situation, because getting this wrong
+  misinforms people about their own money:
+  - after cancelling, the period end is when **access** stops, so it reads
+    "Access until" with "No further payments will be taken" — calling that date
+    "next payment" would say they are about to be charged again;
+  - a **trial** shows its end date *and* states plainly that it converts
+    automatically;
+  - a **complimentary** plan says "Renews" and notes that no payment is taken;
+  - dates render in your **site timezone**, so a renewal reads as the day the
+    member's own calendar shows;
+  - a free member sees no card — there is nothing to bill.
+
+### Changed
+- **The member panel is properly compact, and premium from materials rather than
+  size.** Narrowed to 19.5rem with tighter padding and a smaller type scale
+  throughout (32px avatar, smaller controls, less air between rows). Because
+  compactness alone can read as cramped, the finish now comes from a hairline
+  accent edge along the leading border, a subtly lit surface, a plan chip that
+  reads as status, and a separator above the account actions so a dense layout
+  still has visible structure. Sign out sits last and quiet.
+
+### Note
+- **The VayuMail address for paying members already works end to end** — an
+  entitled member sees a claim card (pick an address, set a mailbox password) and a
+  free member sees it presented as a Premium benefit. Entitlement is **per tier**:
+  enable *mail* and set a quota on the paid tier in the console's member tier
+  editor, and the claim card appears for those members.
+
 ## [3.15.28] — 2026-07-25
 
 ### Fixed
