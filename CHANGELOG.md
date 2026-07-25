@@ -6,6 +6,81 @@ Format: [Added / Changed / Deprecated / Fixed / Security / Upgrade Notes / Ethic
 
 ---
 
+## [3.15.32] — 2026-07-25
+
+### Fixed
+- **The member panel's X only closed it sometimes — and it was not the click
+  handler.** The close button was `position: absolute` at the panel's top-right,
+  while the brand row was a full-width flex row at the top of the panel *body*. The
+  two overlapped, and the brand painted on top, so a click that visibly landed on
+  the X went to the brand instead. Measured in a real browser at the button's
+  centre: `elementsFromPoint` returned `.vp-portal-brand` once the reveal animation
+  had settled, and returned **nothing at all** while it was still running — which is
+  exactly why closing worked only sometimes. Driving the old build with a real
+  browser, the click could not be delivered at all.
+
+  Three compounding faults, all fixed structurally rather than tweaked:
+
+  - The brand and the close button are now **siblings in a sticky header**, so they
+    cannot overlap. The header being sticky also fixes a second failure: the panel
+    is its own scroll container, so an absolutely positioned button scrolled out of
+    view on a long panel and was no longer where it appeared to be.
+  - The target went from **36px to 44px** (WCAG 2.5.5), the icon is a drawn X rather
+    than the `&times;` glyph (which sits off-centre in many fonts), and it sets
+    `pointer-events: none` so a tap can never land on the icon instead of the
+    button. Close is also bound to `pointerup` as well as `click`, because slight
+    finger movement between touchstart and touchend cancels the synthetic click.
+  - The **rotate-on-hover is gone**. On touch, `:hover` persists after a tap, so the
+    glyph stayed rotated and read as a stuck control. The superseded rules were
+    deleted rather than merely overridden, so the file no longer describes a button
+    that is 36px and absolutely positioned.
+
+- **A full-width input spilled past the panel edge.** Only the action buttons
+  declared `border-box`, so `.vp-portal-input` — `width: 100%` plus horizontal
+  padding and a border — measured wider than its container. The widget's own subtree
+  now declares it, scoped so it cannot touch the host page's box model.
+
+- **The phone bottom sheet was 312px wide instead of full width.** The compact pass
+  set `max-width: 19.5rem` on the panel *later in the file* than the bottom-sheet
+  block, so by source order the sheet was pinned narrow and sat inset from the
+  screen edge. The sheet's grab handle also moved into the pinned header — on the
+  panel it collided with the header and scrolled away with the content, so the one
+  affordance that says "drag me" disappeared exactly when the sheet was scrolled.
+
+### Changed
+- **The member panel and the member account page are now built in the Monetization
+  design language.** Both were flat stacks of equal-weight controls — seven buttons
+  in the panel, eight cards on the account page — which carried no sense of what
+  each one did or what state it was in. Both now use the console's grammar: one
+  collapsible row per area, each with an **icon tile, a title, a one-line subtitle,
+  a status chip and a rotating chevron**, revealing its content with a short fade.
+
+  - The panel leads with an identity card (avatar, name, email, plan chip), then
+    rows for Membership, VayuMail, Your comments and Advertise. Sign out sits last
+    and separated, because it is the one action you never want to hit by accident.
+    Each row has **one** primary action: a free member's Membership row makes "See
+    plans" the filled button and "Manage account" the ghost, instead of two filled
+    buttons competing.
+  - The account page keeps the plan and billing summaries visible — they are what
+    the page is for — and collapses the rest under section headings. Exactly one row
+    starts open, and which row that is is derived rather than hard-coded, so the
+    page is never left with nothing expanded when a row (mail, when no mail host is
+    configured) does not render.
+  - Rows are native `<details>`/`<summary>`: no JavaScript, so there is nothing for
+    a strict CSP to refuse, nothing to lose if a script fails, and no click handler
+    that can miss. Summary rows are 44px+ tap targets, subtitles wrap rather than
+    truncate on a narrow screen, and everything stands down under
+    `prefers-reduced-motion`.
+  - "Sign out" no longer wraps to two lines in the account page header.
+
+### Upgrade Notes
+- The panel's stylesheet is content-versioned (v3.15.30), so this reaches browsers
+  without a manual cache clear. If the panel still looks unchanged, hard-refresh
+  once (Cmd/Ctrl-Shift-R) to drop a stylesheet pinned by the pre-v3.15.30
+  year-long immutable cache entry.
+
+---
+
 ## [3.15.31] — 2026-07-25
 
 ### Fixed
